@@ -17,22 +17,23 @@ func main() {
 	app := NewApp()
 
 	err := wails.Run(&options.App{
-		Title:     "Cortex — AI Memory Shell",
-		Width:     1280,
-		Height:    800,
-		MinWidth:  900,
-		MinHeight: 600,
+		Title:            "Memo — AI Memory Shell",
+		Width:            1440,
+		Height:           900,
+		MinWidth:         800,
+		MinHeight:        500,
+		WindowStartState: options.Maximised,
 		AssetServer: &assetserver.Options{
 			Assets: assets,
 		},
-		BackgroundColour:   &options.RGBA{R: 10, G: 10, B: 15, A: 255},
-		OnStartup:          app.startup,
-		Frameless:          false,
-		StartHidden:        false,
-		HideWindowOnClose:  false,
-		DisableResize:      false,
+		BackgroundColour:  &options.RGBA{R: 5, G: 5, B: 5, A: 255},
+		OnStartup:         app.startup,
+		Frameless:         false,
+		StartHidden:       false,
+		HideWindowOnClose: false,
+		DisableResize:     false,
 		Linux: &linux.Options{
-			ProgramName: "Cortex",
+			ProgramName: "Memo",
 		},
 		Bind: []interface{}{
 			app,
@@ -40,6 +41,6 @@ func main() {
 	})
 
 	if err != nil {
-		log.Fatalf("Error starting Cortex: %v", err)
+		log.Fatalf("Error starting Memo: %v", err)
 	}
 }

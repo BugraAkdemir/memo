@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"cortex/internal/memory"
+	"memo/internal/memory"
 )
 
 type Identity struct {

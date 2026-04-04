@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"cortex/internal/api"
+	"memo/internal/api"
 
 	chromem "github.com/philippgille/chromem-go"
 )

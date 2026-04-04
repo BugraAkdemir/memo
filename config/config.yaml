@@ -1,4 +1,4 @@
-# Cortex AI Memory Shell — Configuration
+# Memo AI Memory Shell — Configuration
 # ========================================
 
 api:
@@ -8,7 +8,7 @@ api:
 
 identity:
   user_name: "User"
-  assistant_name: "Cortex"
+  assistant_name: "Memo"
   # Styles: formal, casual, technical, creative
   style: "casual"
   # Custom system prompt override (leave empty to use style-based prompt)

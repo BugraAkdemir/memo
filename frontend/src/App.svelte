@@ -13,7 +13,6 @@
 
   marked.setOptions({ breaks: true, gfm: true });
 
-  // State
   let messages = [];
   let input = '';
   let loading = false;
@@ -21,33 +20,35 @@
   let chats = [];
   let activeChatId = '';
   let sidebarOpen = true;
-  let connStatus = { connected: false, models: [] };
+  let conn = { connected: false, models: [] };
   let memCount = 0;
 
-  // Attachments
   let attachedImage = '';
   let attachedFile = '';
   let attachedFileName = '';
 
-  // Settings
   let settingsOpen = false;
-  let settingsTab = 'prompt'; // 'prompt' | 'memory'
+  let settingsTab = 'prompt';
   let sysPrompt = '';
-  let sysPromptSaved = false;
+  let promptSaved = false;
   let memFiles = [];
   let memBusy = false;
 
   onMount(async () => {
+    await refreshAll();
+    setInterval(refreshStatus, 30000);
+  });
+
+  async function refreshAll() {
     await refreshChats();
     await loadMessages();
     await refreshStatus();
-    setInterval(refreshStatus, 30000);
-  });
+  }
 
   async function refreshStatus() {
     try {
       const [s, c] = await Promise.all([CheckConnection(), GetMemoryCount()]);
-      connStatus = s;
+      conn = s;
       memCount = c;
     } catch(e) {}
   }
@@ -63,287 +64,210 @@
     try {
       const msgs = await GetActiveMessages();
       messages = (msgs || []).map((m, i) => ({
-        id: i,
-        role: m.role,
-        text: m.content,
-        image: m.image_path || '',
-        file: m.file_path || '',
-        time: m.timestamp || ''
+        id: i, role: m.role, text: m.content,
+        image: m.image_path || '', file: m.file_path || '', time: m.timestamp || ''
       }));
-    } catch(e) {
-      messages = [];
-    }
+    } catch(e) { messages = []; }
     await tick();
-    scrollBottom();
+    scroll();
   }
 
-  function scrollBottom() {
-    if (chatEl) chatEl.scrollTop = chatEl.scrollHeight;
-  }
+  function scroll() { if (chatEl) chatEl.scrollTop = chatEl.scrollHeight; }
+  function ts() { return new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' }); }
 
-  // ─── Send ──────────────────────────
-
+  // ─── Send ─────────────────────
   async function send() {
     const msg = input.trim();
     if ((!msg && !attachedImage && !attachedFile) || loading) return;
-
-    const userText = msg || '(attached file)';
+    const text = msg || '(file attached)';
     input = '';
     loading = true;
-
-    const userMsg = { id: Date.now(), role: 'user', text: userText, image: attachedImage, file: attachedFileName, time: now() };
-    messages = [...messages, userMsg];
-    await tick();
-    scrollBottom();
+    messages = [...messages, { id: Date.now(), role: 'user', text, image: attachedImage, file: attachedFileName, time: ts() }];
+    await tick(); scroll();
 
     let reply = '';
     try {
-      if (attachedImage) {
-        reply = await SendMessageWithImage(userText, attachedImage);
-      } else if (attachedFile) {
-        reply = await SendMessageWithFile(userText, attachedFile);
-      } else {
-        reply = await SendMessage(userText);
-      }
-    } catch (e) {
-      reply = '⚠️ ' + (e?.message || e);
-    }
+      if (attachedImage) reply = await SendMessageWithImage(text, attachedImage);
+      else if (attachedFile) reply = await SendMessageWithFile(text, attachedFile);
+      else reply = await SendMessage(text);
+    } catch (e) { reply = '⚠ ' + (e?.message || e); }
 
-    attachedImage = '';
-    attachedFile = '';
-    attachedFileName = '';
-
-    messages = [...messages, { id: Date.now() + 1, role: 'assistant', text: reply, image: '', file: '', time: now() }];
+    attachedImage = ''; attachedFile = ''; attachedFileName = '';
+    messages = [...messages, { id: Date.now()+1, role: 'assistant', text: reply, image:'', file:'', time: ts() }];
     loading = false;
-    await tick();
-    scrollBottom();
+    await tick(); scroll();
     refreshChats();
   }
 
-  function now() {
-    return new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' });
-  }
+  function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
 
-  function onKey(e) {
-    if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); }
-  }
-
-  // ─── Attachments ───────────────────
-
+  // ─── Attach ───────────────────
   async function pickImage() {
-    try {
-      const path = await SelectImage();
-      if (path) { attachedImage = path; attachedFile = ''; attachedFileName = ''; }
-    } catch(e) {}
+    try { const p = await SelectImage(); if (p) { attachedImage=p; attachedFile=''; attachedFileName=''; } } catch(e) {}
   }
-
   async function pickFile() {
-    try {
-      const path = await SelectFile();
-      if (path) { attachedFile = path; attachedFileName = path.split('/').pop(); attachedImage = ''; }
-    } catch(e) {}
+    try { const p = await SelectFile(); if (p) { attachedFile=p; attachedFileName=p.split('/').pop(); attachedImage=''; } } catch(e) {}
   }
+  function clearAttach() { attachedImage=''; attachedFile=''; attachedFileName=''; }
 
-  function clearAttachment() {
-    attachedImage = '';
-    attachedFile = '';
-    attachedFileName = '';
-  }
+  // ─── Sessions ─────────────────
+  async function newChat() { try { await NewChat(); await refreshChats(); await loadMessages(); } catch(e) {} }
+  async function switchTo(id) { if (id===activeChatId) return; try { await SwitchChat(id); activeChatId=id; await loadMessages(); } catch(e) {} }
+  async function delChat(ev, id) { ev.stopPropagation(); try { await DeleteChat(id); await refreshChats(); await loadMessages(); } catch(e) {} }
 
-  // ─── Sessions ──────────────────────
-
-  async function createChat() {
-    try {
-      await NewChat();
-      await refreshChats();
-      await loadMessages();
-    } catch(e) {}
-  }
-
-  async function switchTo(id) {
-    if (id === activeChatId) return;
-    try {
-      await SwitchChat(id);
-      activeChatId = id;
-      await loadMessages();
-    } catch(e) {}
-  }
-
-  async function deleteChat(e, id) {
-    e.stopPropagation();
-    try {
-      await DeleteChat(id);
-      await refreshChats();
-      await loadMessages();
-    } catch(e) {}
-  }
-
-  // ─── Settings ──────────────────────
-
+  // ─── Settings ─────────────────
   async function openSettings() {
-    settingsOpen = true;
-    settingsTab = 'prompt';
-    sysPromptSaved = false;
-    try {
-      sysPrompt = await GetSystemPrompt() || '';
-    } catch(e) { sysPrompt = ''; }
+    settingsOpen = true; settingsTab = 'prompt'; promptSaved = false;
+    try { sysPrompt = await GetSystemPrompt() || ''; } catch(e) { sysPrompt=''; }
   }
-
   async function savePrompt() {
-    try {
-      await SetSystemPrompt(sysPrompt);
-      sysPromptSaved = true;
-      setTimeout(() => sysPromptSaved = false, 2000);
-    } catch(e) {}
+    try { await SetSystemPrompt(sysPrompt); promptSaved=true; setTimeout(()=>promptSaved=false,2000); } catch(e) {}
   }
-
   async function resetPrompt() {
-    try {
-      await ResetSystemPrompt();
-      sysPrompt = '';
-      sysPromptSaved = true;
-      setTimeout(() => sysPromptSaved = false, 2000);
-    } catch(e) {}
+    try { await ResetSystemPrompt(); sysPrompt=''; promptSaved=true; setTimeout(()=>promptSaved=false,2000); } catch(e) {}
   }
-
-  async function openMemoryTab() {
-    settingsTab = 'memory';
-    memBusy = true;
-    try {
-      memFiles = await ListMemoryFiles() || [];
-    } catch(e) { memFiles = []; }
-    memBusy = false;
+  async function openMemTab() {
+    settingsTab='memory'; memBusy=true;
+    try { memFiles = await ListMemoryFiles() || []; } catch(e) { memFiles=[]; }
+    memBusy=false;
   }
-
-  async function clearAll() {
-    memBusy = true;
-    try {
-      await ClearAllMemory();
-      memFiles = [];
-      memCount = 0;
-    } catch(e) {}
-    memBusy = false;
+  async function clearMem() {
+    memBusy=true;
+    try { await ClearAllMemory(); memFiles=[]; memCount=0; } catch(e) {}
+    memBusy=false;
   }
-
-  async function deleteFile(path) {
-    try {
-      await DeleteMemoryFile(path);
-      memFiles = memFiles.filter(f => f.path !== path);
-      memCount = Math.max(0, memCount - 1);
-    } catch(e) {}
+  async function delMem(path) {
+    try { await DeleteMemoryFile(path); memFiles=memFiles.filter(f=>f.path!==path); memCount=Math.max(0,memCount-1); } catch(e) {}
   }
 </script>
 
-<div class="layout">
-  <!-- Sidebar -->
+<div class="shell">
+  <!-- ═══ Sidebar ═══ -->
   {#if sidebarOpen}
-  <aside class="sidebar">
-    <div class="sb-head">
-      <span class="brand">Cortex</span>
-      <button class="btn-icon" on:click={createChat} title="New Chat">＋</button>
+  <aside class="side">
+    <div class="side-top">
+      <button class="new-session" on:click={newChat}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        <span>New Session</span>
+      </button>
     </div>
 
-    <div class="sb-list">
+    <nav class="sessions">
       {#each chats as c}
-        <button
-          class="chat-item"
-          class:active={c.id === activeChatId}
-          on:click={() => switchTo(c.id)}
-        >
-          <span class="ci-title">{c.title}</span>
-          <span class="ci-meta">{c.msg_count} msg</span>
-          <button class="ci-del" on:click={(e) => deleteChat(e, c.id)} title="Delete">×</button>
+        <button class="s-item" class:active={c.id === activeChatId} on:click={() => switchTo(c.id)}>
+          <div class="s-info">
+            <span class="s-title">{c.title}</span>
+            <span class="s-time">{c.updated_at}</span>
+          </div>
+          <button class="s-del" on:click={(e) => delChat(e, c.id)}>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
         </button>
       {/each}
-    </div>
+    </nav>
 
-    <div class="sb-foot">
-      <div class="conn" class:on={connStatus.connected}>
+    <div class="side-bottom">
+      <div class="status" class:on={conn.connected}>
         <span class="dot"></span>
-        <span>{connStatus.connected ? (connStatus.models?.[0] || 'Connected') : 'Offline'}</span>
+        <span class="status-text">{conn.connected ? (conn.models?.[0] || 'online') : 'offline'}</span>
       </div>
-      <div class="mem">🧠 {memCount}</div>
+      <span class="mem-badge">{memCount} memories</span>
     </div>
   </aside>
   {/if}
 
-  <!-- Main -->
+  <!-- ═══ Main ═══ -->
   <main class="main">
     <!-- Header -->
-    <div class="header">
-      <button class="btn-icon" on:click={() => sidebarOpen = !sidebarOpen}>☰</button>
-      <span class="header-title">
-        {chats.find(c => c.id === activeChatId)?.title || 'Cortex'}
-      </span>
-      <button class="btn-icon" on:click={openSettings} title="Settings">⚙</button>
-    </div>
+    <header class="bar">
+      <button class="bar-btn" on:click={() => sidebarOpen = !sidebarOpen}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
+      <span class="bar-title">{chats.find(c => c.id === activeChatId)?.title || 'Memo'}</span>
+      <button class="bar-btn" on:click={openSettings}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      </button>
+    </header>
 
-    <!-- Messages -->
-    <div class="chat" bind:this={chatEl}>
+    <!-- Feed -->
+    <div class="feed" bind:this={chatEl}>
       {#if messages.length === 0}
-        <div class="empty">
-          <div class="empty-icon">◈</div>
-          <div class="empty-title">Cortex</div>
-          <div class="empty-sub">Yerel AI · Kalıcı Hafıza · Tamamen Özel</div>
+        <div class="welcome">
+          <div class="w-mark">memo</div>
+          <div class="w-sub">local ai · persistent memory · private</div>
         </div>
       {/if}
 
       {#each messages as m (m.id)}
-        <div class="msg {m.role}" style="animation: fadeIn 150ms ease-out">
-          <div class="msg-label">{m.role === 'user' ? 'Sen' : 'Cortex'}<span class="msg-time">{m.time}</span></div>
+        <div class="entry" class:memo={m.role==='assistant'} style="animation:fadeIn 120ms ease-out">
+          <div class="entry-head">
+            <span class="entry-sender">{m.role === 'user' ? 'Buğra' : 'Memo'} ›</span>
+            <span class="entry-time">{m.time}</span>
+          </div>
           {#if m.image}
-            <div class="msg-attach">📷 {m.image.split('/').pop()}</div>
+            <div class="entry-attach">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+              {m.image.split('/').pop()}
+            </div>
           {/if}
           {#if m.file}
-            <div class="msg-attach">📎 {m.file}</div>
+            <div class="entry-attach">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+              {m.file}
+            </div>
           {/if}
-          <div class="bubble {m.role}">
+          <div class="entry-body">
             {#if m.role === 'assistant'}
               <div class="md">{@html marked.parse(m.text || '')}</div>
             {:else}
-              <p>{m.text}</p>
+              {m.text}
             {/if}
           </div>
         </div>
       {/each}
 
       {#if loading}
-        <div class="msg assistant" style="animation: fadeIn 150ms ease-out">
-          <div class="msg-label">Cortex</div>
-          <div class="bubble assistant thinking">Düşünüyor<span class="dots">...</span></div>
+        <div class="entry memo" style="animation:fadeIn 120ms ease-out">
+          <div class="entry-head">
+            <span class="entry-sender">Memo ›</span>
+          </div>
+          <div class="entry-body thinking">
+            <span class="cursor-blink">▊</span>
+          </div>
         </div>
       {/if}
     </div>
 
     <!-- Attachment preview -->
     {#if attachedImage || attachedFile}
-      <div class="attach-bar">
-        {#if attachedImage}
-          <span>📷 {attachedImage.split('/').pop()}</span>
-        {:else}
-          <span>📎 {attachedFileName}</span>
-        {/if}
-        <button class="attach-clear" on:click={clearAttachment}>×</button>
+      <div class="attach-row">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <span>{attachedImage ? attachedImage.split('/').pop() : attachedFileName}</span>
+        <button class="attach-x" on:click={clearAttach}>×</button>
       </div>
     {/if}
 
     <!-- Input -->
-    <div class="input-area">
-      <div class="input-box">
-        <button class="btn-attach" on:click={pickImage} disabled={loading} title="Send Image">📷</button>
-        <button class="btn-attach" on:click={pickFile} disabled={loading} title="Send File">📎</button>
+    <div class="input-dock">
+      <div class="input-row">
+        <button class="dock-btn" on:click={pickImage} disabled={loading} title="Attach image">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+        </button>
+        <button class="dock-btn" on:click={pickFile} disabled={loading} title="Attach file">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+        </button>
         <textarea
           bind:value={input}
           on:keydown={onKey}
-          placeholder="Mesajını yaz..."
+          placeholder="Type a message to Memo..."
           rows="1"
           disabled={loading}
         ></textarea>
-        <button class="btn-send" on:click={send} disabled={(!input.trim() && !attachedImage && !attachedFile) || loading}>
+        <button class="send-btn" on:click={send} disabled={(!input.trim() && !attachedImage && !attachedFile) || loading}>
           {#if loading}
-            <span class="spinner"></span>
+            <span class="spin"></span>
           {:else}
-            →
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           {/if}
         </button>
       </div>
@@ -351,74 +275,53 @@
   </main>
 </div>
 
-<!-- Settings Modal -->
+<!-- ═══ Settings Modal ═══ -->
 {#if settingsOpen}
-<div class="modal-overlay" on:click={() => settingsOpen = false}>
+<div class="overlay" on:click={() => settingsOpen=false}>
   <div class="modal" on:click|stopPropagation>
-    <div class="modal-head">
-      <h2>⚙ Ayarlar</h2>
-      <button class="btn-icon modal-close" on:click={() => settingsOpen = false}>×</button>
-    </div>
-
-    <div class="modal-tabs">
-      <button class="tab" class:active={settingsTab === 'prompt'} on:click={() => settingsTab = 'prompt'}>
-        Sistem Prompt
-      </button>
-      <button class="tab" class:active={settingsTab === 'memory'} on:click={openMemoryTab}>
-        Hafıza Yönetimi
+    <div class="m-head">
+      <span class="m-title">Settings</span>
+      <button class="bar-btn" on:click={() => settingsOpen=false}>
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
-
-    <div class="modal-body">
+    <div class="m-tabs">
+      <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>System Prompt</button>
+      <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>Memory</button>
+    </div>
+    <div class="m-body">
       {#if settingsTab === 'prompt'}
-        <div class="setting-section">
-          <p class="setting-desc">
-            Asistanın nasıl davranacağını buradan belirle. Boş bırakırsan varsayılan prompt kullanılır.
-          </p>
-          <textarea
-            class="prompt-input"
-            bind:value={sysPrompt}
-            placeholder="Örn: Sen bir yazılım uzmanısın. Soruları Türkçe cevapla..."
-            rows="8"
-          ></textarea>
-          <div class="setting-actions">
-            <button class="btn-primary" on:click={savePrompt}>Kaydet</button>
-            <button class="btn-secondary" on:click={resetPrompt}>Varsayılana Dön</button>
-            {#if sysPromptSaved}
-              <span class="save-ok">✓ Kaydedildi</span>
-            {/if}
-          </div>
+        <p class="m-desc">Define how Memo behaves. Leave empty for default.</p>
+        <textarea class="m-prompt" bind:value={sysPrompt} placeholder="e.g. You are a senior Go developer..." rows="8"></textarea>
+        <div class="m-actions">
+          <button class="m-btn gold" on:click={savePrompt}>Save</button>
+          <button class="m-btn" on:click={resetPrompt}>Reset Default</button>
+          {#if promptSaved}<span class="m-ok">✓ saved</span>{/if}
         </div>
-
-      {:else if settingsTab === 'memory'}
-        <div class="setting-section">
-          <div class="mem-header">
-            <p class="setting-desc">
-              Toplam hafıza: <strong>{memFiles.length} kayıt</strong>
-            </p>
-            <button class="btn-danger" on:click={clearAll} disabled={memBusy || memFiles.length === 0}>
-              {memBusy ? '...' : '🗑 Tümünü Sil'}
-            </button>
-          </div>
-
-          {#if memBusy}
-            <div class="mem-loading">Yükleniyor...</div>
-          {:else if memFiles.length === 0}
-            <div class="mem-empty">Hafıza boş — henüz kayıt yok.</div>
-          {:else}
-            <div class="mem-list">
-              {#each memFiles as f}
-                <div class="mem-item">
-                  <div class="mem-info">
-                    <span class="mem-name">{f.name}</span>
-                    <span class="mem-meta">{f.size_kb} KB · {f.modified}</span>
-                  </div>
-                  <button class="mem-del" on:click={() => deleteFile(f.path)} title="Sil">×</button>
+      {:else}
+        <div class="mem-top">
+          <p class="m-desc">{memFiles.length} memory records stored</p>
+          <button class="m-btn danger" on:click={clearMem} disabled={memBusy || !memFiles.length}>
+            {memBusy ? '...' : 'Clear All'}
+          </button>
+        </div>
+        {#if memBusy}
+          <div class="mem-empty">Loading...</div>
+        {:else if !memFiles.length}
+          <div class="mem-empty">No memories stored yet.</div>
+        {:else}
+          <div class="mem-grid">
+            {#each memFiles as f}
+              <div class="mem-row">
+                <div class="mem-info">
+                  <span class="mem-name">{f.name}</span>
+                  <span class="mem-meta">{f.size_kb}KB · {f.modified}</span>
                 </div>
-              {/each}
-            </div>
-          {/if}
-        </div>
+                <button class="mem-x" on:click={() => delMem(f.path)}>×</button>
+              </div>
+            {/each}
+          </div>
+        {/if}
       {/if}
     </div>
   </div>
@@ -426,372 +329,355 @@
 {/if}
 
 <style>
-  .layout {
-    height: 100vh;
-    display: flex;
-    overflow: hidden;
-  }
+  /* ═══════════════════════════════════
+     SHELL LAYOUT
+  ═══════════════════════════════════ */
+  .shell { height:100vh; display:flex; overflow:hidden; }
 
-  /* ─── Sidebar ─── */
-  .sidebar {
-    width: 260px;
-    background: var(--bg-1);
-    border-right: 1px solid var(--border);
+  /* ─── SIDEBAR ─── */
+  .side {
+    width: 240px;
+    background: var(--black-1);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
+    border-right: 1px solid var(--t-3);
   }
-  .sb-head {
+  .side-top { padding: var(--sp-4); }
+  .new-session {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 14px 16px;
-    border-bottom: 1px solid var(--border);
-  }
-  .brand {
-    font-size: 17px;
-    font-weight: 700;
-    color: var(--accent);
-    letter-spacing: -0.3px;
-  }
-  .sb-list {
-    flex: 1;
-    overflow-y: auto;
-    padding: 8px;
-  }
-  .chat-item {
+    gap: var(--sp-2);
     width: 100%;
+    padding: var(--sp-3) var(--sp-4);
+    color: var(--gold);
+    font-size: 14px;
+    font-weight: 500;
+    letter-spacing: 0.3px;
+    border-radius: var(--r);
+  }
+  .new-session:hover { background: var(--gold-subtle); }
+
+  .sessions { flex:1; overflow-y:auto; padding: 0 var(--sp-2); }
+  .s-item {
     display: flex;
     align-items: center;
-    gap: 6px;
-    padding: 10px 12px;
-    border-radius: var(--r-md);
+    width: 100%;
+    padding: var(--sp-3) var(--sp-3);
+    border-bottom: 1px solid var(--t-3);
     text-align: left;
-    color: var(--text-1);
-    font-size: 13px;
-    margin-bottom: 2px;
-    position: relative;
+    color: var(--t-1);
+    font-size: 14px;
+    gap: var(--sp-2);
   }
-  .chat-item:hover { background: var(--bg-hover); color: var(--text-0); }
-  .chat-item.active {
-    background: var(--accent-soft);
-    color: var(--accent);
-    border: 1px solid var(--border-accent);
+  .s-item:last-child { border-bottom: none; }
+  .s-item:hover { color: var(--t-0); background: var(--black-2); }
+  .s-item.active { color: var(--gold); background: var(--gold-subtle); }
+  .s-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
+  .s-title {
+    font-size: 14px;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
-  .ci-title { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .ci-meta { font-size: 10px; color: var(--text-2); flex-shrink: 0; }
-  .ci-del {
+  .s-time { font-size: 11px; color: var(--t-2); }
+  .s-del {
     opacity: 0;
-    font-size: 16px;
-    color: var(--text-2);
-    width: 20px; height: 20px;
+    width: 24px; height: 24px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 4px;
+    color: var(--t-2);
     flex-shrink: 0;
   }
-  .chat-item:hover .ci-del { opacity: 1; }
-  .ci-del:hover { background: var(--bg-active); color: var(--red); }
-  .sb-foot {
-    padding: 12px 16px;
-    border-top: 1px solid var(--border);
+  .s-item:hover .s-del { opacity: 1; }
+  .s-del:hover { background: var(--black-4); color: var(--red); }
+
+  .side-bottom {
+    padding: var(--sp-3) var(--sp-4);
+    border-top: 1px solid var(--t-3);
     display: flex;
     align-items: center;
     justify-content: space-between;
-    font-size: 11px;
-    color: var(--text-2);
+    font-size: 10px;
+    color: var(--t-2);
   }
-  .conn { display: flex; align-items: center; gap: 6px; }
-  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--red); }
-  .conn.on .dot { background: var(--green); box-shadow: 0 0 6px var(--green); }
-  .mem { color: var(--text-2); }
+  .status { display:flex; align-items:center; gap: 6px; }
+  .dot { width:5px; height:5px; border-radius:50%; background:var(--red); }
+  .status.on .dot { background: var(--green); }
+  .status-text { letter-spacing: 0.3px; font-size: 12px; }
+  .mem-badge { color: var(--t-2); font-size: 12px; }
 
-  /* ─── Main ─── */
+  /* ─── MAIN AREA ─── */
   .main {
     flex: 1;
     display: flex;
     flex-direction: column;
     min-width: 0;
-    background: var(--bg-0);
+    background: var(--black-0);
   }
-  .header {
+
+  .bar {
     display: flex;
     align-items: center;
-    gap: 12px;
-    padding: 10px 16px;
-    border-bottom: 1px solid var(--border);
-    background: var(--bg-1);
+    gap: var(--sp-3);
+    padding: var(--sp-2) var(--sp-4);
+    border-bottom: 1px solid var(--t-3);
+    background: var(--black-1);
     flex-shrink: 0;
+    height: 44px;
   }
-  .header-title {
+  .bar-title {
     flex: 1;
     font-size: 14px;
     font-weight: 600;
-    color: var(--text-0);
+    color: var(--t-1);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
+    letter-spacing: 0.2px;
+  }
+  .bar-btn {
+    width: 36px; height: 36px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--r);
+    color: var(--t-2);
+  }
+  .bar-btn:hover { background: var(--black-4); color: var(--t-0); }
+
+  /* ─── FEED ─── */
+  .feed {
+    flex: 1;
+    overflow-y: auto;
+    padding: var(--sp-5) var(--sp-6);
   }
 
-  /* ─── Chat ─── */
-  .chat { flex: 1; overflow-y: auto; padding: 20px 24px; }
-  .empty {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    height: 100%; gap: 8px;
+  .welcome {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    gap: var(--sp-2);
   }
-  .empty-icon { font-size: 48px; color: var(--accent); opacity: 0.6; }
-  .empty-title { font-size: 26px; font-weight: 700; color: var(--text-0); letter-spacing: -0.5px; }
-  .empty-sub { font-size: 13px; color: var(--text-2); }
+  .w-mark {
+    font-family: var(--mono);
+    font-size: 36px;
+    font-weight: 500;
+    color: var(--gold);
+    letter-spacing: -1px;
+    opacity: 0.7;
+  }
+  .w-sub {
+    font-size: 11px;
+    color: var(--t-2);
+    letter-spacing: 1px;
+    text-transform: uppercase;
+  }
 
-  .msg {
-    margin-bottom: 16px;
-    max-width: 720px;
-    margin-left: auto; margin-right: auto;
+  .entry {
+    max-width: 90%;
+    margin: 0 auto var(--sp-4);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r);
     width: 100%;
   }
-  .msg.user { text-align: right; }
-  .msg-label { font-size: 11px; font-weight: 600; color: var(--text-2); margin-bottom: 4px; }
-  .msg-time { font-weight: 400; margin-left: 8px; color: var(--text-3); }
-  .msg-attach { font-size: 11px; color: var(--accent); margin-bottom: 4px; }
-  .bubble {
-    display: inline-block; padding: 10px 16px;
-    border-radius: var(--r-lg); font-size: 14px; line-height: 1.65;
-    white-space: pre-wrap; word-break: break-word; text-align: left;
+  .entry.memo {
+    background: var(--black-2);
   }
-  .bubble.user {
-    background: var(--accent); color: #0a0a0a;
-    border-bottom-right-radius: 4px; font-weight: 450;
+  .entry-head {
+    display: flex;
+    align-items: baseline;
+    gap: var(--sp-2);
+    margin-bottom: var(--sp-1);
   }
-  .bubble.assistant {
-    background: var(--bg-2); color: var(--text-0);
-    border: 1px solid var(--border); border-bottom-left-radius: 4px;
+  .entry-sender {
+    font-weight: 700;
+    font-size: 14px;
+    color: var(--gold);
+    font-family: var(--mono);
   }
-  .bubble p { margin: 0; }
-  .thinking { color: var(--text-2); font-style: italic; }
-  .dots { animation: fadeIn 1s infinite alternate; }
+  .entry-time {
+    font-size: 12px;
+    color: var(--t-3);
+  }
+  .entry-attach {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    font-size: 13px;
+    color: var(--t-2);
+    margin-bottom: var(--sp-1);
+  }
+  .entry-body {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--t-0);
+  }
+  .thinking { color: var(--t-2); }
+  .cursor-blink { animation: pulse 1s infinite; color: var(--gold); }
 
-  /* ─── Attachment ─── */
-  .attach-bar {
-    display: flex; align-items: center; gap: 8px;
-    padding: 6px 24px; font-size: 12px; color: var(--accent);
-    background: var(--bg-1); border-top: 1px solid var(--border);
+  /* ─── ATTACHMENT ROW ─── */
+  .attach-row {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-2);
+    padding: var(--sp-1) var(--sp-6);
+    font-size: 11px;
+    color: var(--gold);
   }
-  .attach-clear {
-    font-size: 16px; color: var(--text-2);
-    width: 20px; height: 20px;
+  .attach-x {
+    font-size: 14px;
+    color: var(--t-2);
+    width: 18px; height: 18px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: 4px;
+    border-radius: 3px;
   }
-  .attach-clear:hover { background: var(--bg-hover); color: var(--red); }
+  .attach-x:hover { color: var(--red); }
 
-  /* ─── Input ─── */
-  .input-area { padding: 0 24px 16px; max-width: 768px; margin: 0 auto; width: 100%; }
-  .input-box {
-    display: flex; align-items: flex-end; gap: 4px;
-    padding: 6px 8px; border-radius: var(--r-xl);
-    background: var(--bg-2); border: 1px solid var(--border);
-    transition: border-color 150ms;
+  /* ─── INPUT DOCK ─── */
+  .input-dock {
+    padding: var(--sp-2) var(--sp-5);
+    background: rgba(5,5,5,0.85);
+    backdrop-filter: blur(12px);
+    border-top: 1px solid var(--t-3);
   }
-  .input-box:focus-within {
-    border-color: var(--accent-dim);
-    box-shadow: 0 0 0 2px var(--accent-glow);
+  .input-row {
+    display: flex;
+    align-items: flex-end;
+    gap: var(--sp-1);
+    max-width: 90%;
+    margin: 0 auto;
   }
-  .btn-attach {
-    width: 34px; height: 34px; border-radius: var(--r-sm);
-    font-size: 15px; display: flex; align-items: center; justify-content: center;
-    color: var(--text-2); flex-shrink: 0;
+  .dock-btn {
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--r);
+    color: var(--t-2);
+    flex-shrink: 0;
   }
-  .btn-attach:hover:not(:disabled) { background: var(--bg-hover); color: var(--text-0); }
-  .input-box textarea {
-    flex: 1; background: none; border: none; color: var(--text-0);
-    font-size: 14px; line-height: 1.5; resize: none;
-    min-height: 22px; max-height: 140px; padding: 6px 4px; outline: none;
+  .dock-btn:hover:not(:disabled) { color: var(--gold); background: var(--black-3); }
+  .input-row textarea {
+    flex: 1;
+    background: transparent;
+    border: none;
+    color: var(--t-0);
+    font-size: 15px;
+    line-height: 1.5;
+    resize: none;
+    min-height: 20px;
+    max-height: 120px;
+    padding: var(--sp-2) var(--sp-2);
+    outline: none;
+    font-family: var(--sans);
   }
-  .btn-send {
-    width: 38px; height: 38px; border-radius: var(--r-md);
-    background: var(--accent); color: #0a0a0a;
-    font-size: 18px; font-weight: 700;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  .input-row textarea::placeholder { color: var(--gold-muted); }
+  .input-row textarea:disabled { opacity: 0.35; }
+  .send-btn {
+    width: 38px; height: 38px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: var(--r);
+    color: var(--gold);
+    flex-shrink: 0;
   }
-  .btn-send:hover:not(:disabled) { background: var(--accent-dim); transform: scale(1.04); }
-  .btn-send:disabled { opacity: 0.2; }
-  .spinner {
-    width: 16px; height: 16px;
-    border: 2px solid rgba(0,0,0,0.2);
-    border-top-color: #0a0a0a;
+  .send-btn:hover:not(:disabled) { background: var(--gold-subtle); }
+  .send-btn:disabled { color: var(--t-3); }
+  .spin {
+    width: 14px; height: 14px;
+    border: 1.5px solid var(--t-3);
+    border-top-color: var(--gold);
     border-radius: 50%;
     animation: spin 0.5s linear infinite;
   }
-  .btn-icon {
-    width: 32px; height: 32px; border-radius: var(--r-sm);
-    font-size: 18px; display: flex; align-items: center; justify-content: center;
-    color: var(--text-1);
-  }
-  .btn-icon:hover { background: var(--bg-hover); color: var(--text-0); }
 
-  /* ─── Settings Modal ─── */
-  .modal-overlay {
+  /* ═══ SETTINGS MODAL ═══ */
+  .overlay {
     position: fixed; inset: 0;
-    background: rgba(0,0,0,0.7);
+    background: rgba(0,0,0,0.75);
     backdrop-filter: blur(4px);
     display: flex; align-items: center; justify-content: center;
-    z-index: 1000;
-    animation: fadeIn 120ms ease-out;
+    z-index: 100;
+    animation: fadeIn 100ms ease-out;
   }
   .modal {
-    width: 560px;
-    max-height: 80vh;
-    background: var(--bg-1);
-    border: 1px solid var(--border);
+    width: 520px;
+    max-height: 75vh;
+    background: var(--black-1);
+    border: 1px solid var(--t-3);
     border-radius: var(--r-lg);
     display: flex;
     flex-direction: column;
-    box-shadow: 0 16px 48px rgba(0,0,0,0.5);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.6);
   }
-  .modal-head {
+  .m-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--t-3);
+  }
+  .m-title { font-size: 13px; font-weight: 700; color: var(--t-0); letter-spacing: 0.3px; }
+  .m-tabs {
     display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 16px 20px;
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--t-3);
   }
-  .modal-head h2 { font-size: 16px; font-weight: 700; color: var(--text-0); }
-  .modal-close { font-size: 22px; }
-  .modal-tabs {
-    display: flex;
-    padding: 0 20px;
-    border-bottom: 1px solid var(--border);
-  }
-  .tab {
-    padding: 12px 16px;
-    font-size: 13px;
+  .m-tab {
+    padding: var(--sp-3) var(--sp-4);
+    font-size: 12px;
     font-weight: 500;
-    color: var(--text-2);
+    color: var(--t-2);
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
   }
-  .tab:hover { color: var(--text-0); }
-  .tab.active {
-    color: var(--accent);
-    border-bottom-color: var(--accent);
-  }
-  .modal-body {
-    flex: 1;
-    overflow-y: auto;
-    padding: 20px;
-  }
-  .setting-section { }
-  .setting-desc {
-    font-size: 13px;
-    color: var(--text-1);
-    margin-bottom: 12px;
-    line-height: 1.5;
-  }
-  .prompt-input {
+  .m-tab:hover { color: var(--t-0); }
+  .m-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .m-body { flex:1; overflow-y:auto; padding: var(--sp-5); }
+  .m-desc { font-size: 12px; color: var(--t-2); margin-bottom: var(--sp-3); line-height: 1.5; }
+  .m-prompt {
     width: 100%;
-    min-height: 160px;
-    background: var(--bg-0);
-    border: 1px solid var(--border);
-    border-radius: var(--r-md);
-    color: var(--text-0);
-    font-size: 13px;
-    padding: 12px;
+    min-height: 140px;
+    background: var(--black-0);
+    border: 1px solid var(--t-3);
+    border-radius: var(--r);
+    color: var(--t-0);
+    font-size: 12px;
+    padding: var(--sp-3);
     line-height: 1.6;
     resize: vertical;
     font-family: var(--mono);
   }
-  .prompt-input:focus {
-    border-color: var(--accent-dim);
-    outline: none;
-  }
-  .setting-actions {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-top: 12px;
-  }
-  .btn-primary {
-    padding: 8px 20px;
-    border-radius: var(--r-md);
-    background: var(--accent);
-    color: #0a0a0a;
-    font-weight: 600;
-    font-size: 13px;
-  }
-  .btn-primary:hover { background: var(--accent-dim); }
-  .btn-secondary {
-    padding: 8px 16px;
-    border-radius: var(--r-md);
-    background: var(--bg-3);
-    color: var(--text-1);
-    font-size: 13px;
-  }
-  .btn-secondary:hover { background: var(--bg-hover); color: var(--text-0); }
-  .btn-danger {
-    padding: 8px 16px;
-    border-radius: var(--r-md);
-    background: rgba(248,113,113,0.1);
-    color: var(--red);
-    font-size: 13px;
-    font-weight: 600;
-    border: 1px solid rgba(248,113,113,0.2);
-  }
-  .btn-danger:hover { background: rgba(248,113,113,0.2); }
-  .btn-danger:disabled { opacity: 0.3; }
-  .save-ok {
+  .m-prompt:focus { border-color: var(--gold-dim); outline: none; }
+  .m-actions { display:flex; align-items:center; gap: var(--sp-2); margin-top: var(--sp-3); }
+  .m-btn {
+    padding: 6px 16px;
+    border-radius: var(--r);
     font-size: 12px;
-    color: var(--green);
-    animation: fadeIn 200ms ease-out;
+    font-weight: 500;
+    background: var(--black-4);
+    color: var(--t-1);
   }
-
-  /* Memory list */
-  .mem-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    margin-bottom: 16px;
+  .m-btn:hover { background: var(--black-5); color: var(--t-0); }
+  .m-btn.gold { background: var(--gold); color: var(--black-0); }
+  .m-btn.gold:hover { background: var(--gold-dim); }
+  .m-btn.danger { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.15); }
+  .m-btn.danger:hover { background: rgba(239,68,68,0.18); }
+  .m-ok { font-size: 11px; color: var(--green); }
+  .mem-top { display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--sp-4); }
+  .mem-top .m-desc { margin-bottom: 0; }
+  .mem-empty { text-align:center; padding: var(--sp-8); color: var(--t-2); font-size: 12px; }
+  .mem-grid { display:flex; flex-direction:column; gap: 2px; max-height: 280px; overflow-y:auto; }
+  .mem-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-2) var(--sp-3);
+    border-radius: var(--r);
+    background: var(--black-0);
   }
-  .mem-header .setting-desc { margin-bottom: 0; }
-  .mem-loading, .mem-empty {
-    text-align: center;
-    padding: 32px;
-    color: var(--text-2);
-    font-size: 13px;
+  .mem-row:hover { background: var(--black-3); }
+  .mem-info { display:flex; flex-direction:column; gap:1px; flex:1; min-width:0; }
+  .mem-name { font-size: 11px; font-family: var(--mono); color: var(--t-0); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mem-meta { font-size: 10px; color: var(--t-2); }
+  .mem-x {
+    font-size: 14px; color: var(--t-2); width:22px; height:22px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius: 3px; opacity: 0.4;
   }
-  .mem-list {
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    max-height: 320px;
-    overflow-y: auto;
-  }
-  .mem-item {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 8px 12px;
-    border-radius: var(--r-sm);
-    background: var(--bg-0);
-    border: 1px solid var(--border);
-  }
-  .mem-item:hover { border-color: rgba(248,113,113,0.2); }
-  .mem-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
-  .mem-name {
-    font-size: 12px;
-    font-family: var(--mono);
-    color: var(--text-0);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  .mem-meta { font-size: 10px; color: var(--text-2); }
-  .mem-del {
-    font-size: 16px;
-    color: var(--text-2);
-    width: 24px; height: 24px;
-    display: flex; align-items: center; justify-content: center;
-    border-radius: 4px;
-    flex-shrink: 0;
-    opacity: 0.5;
-  }
-  .mem-del:hover { background: rgba(248,113,113,0.15); color: var(--red); opacity: 1; }
+  .mem-x:hover { color: var(--red); opacity: 1; background: var(--black-4); }
 </style>

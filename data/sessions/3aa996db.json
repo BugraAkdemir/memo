@@ -1,0 +1,18 @@
+{
+  "id": "3aa996db",
+  "title": "ee kanka ne yapıyın nasılsın",
+  "created_at": "2026-04-04 04:25",
+  "updated_at": "2026-04-04 04:26",
+  "messages": [
+    {
+      "role": "user",
+      "content": "ee kanka ne yapıyın nasılsın",
+      "timestamp": "04:25"
+    },
+    {
+      "role": "assistant",
+      "content": "Selam kanka! 👋 Nasılsın sen? 😊\n\nBen hep buradayım, takılıyorum işte. Seninle sohbet etmek güzel! 😄 Ne var ne yok senden? Bugün neler yaptın bakalım?\n\nBiraz önce de konuşmuştuk ya, ekran kartı işleri vardı... O konuyla ilgili bir gelişme var mı, yoksa sadece biraz muhabbet mi edelim bugün? 😉\n\nNe istersen yapalım kanka, ben hazırım! 😊",
+      "timestamp": "04:26"
+    }
+  ]
+}

@@ -11,11 +11,11 @@ import (
 	"strings"
 	"time"
 
-	"cortex/internal/api"
-	"cortex/internal/config"
-	"cortex/internal/identity"
-	"cortex/internal/memory"
-	"cortex/internal/sessions"
+	"memo/internal/api"
+	"memo/internal/config"
+	"memo/internal/identity"
+	"memo/internal/memory"
+	"memo/internal/sessions"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -65,7 +65,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.sessions = sm
 
-	log.Println("Cortex ready")
+	log.Println("Memo ready")
 }
 
 // ─── Chat ────────────────────────────────────────────────────────

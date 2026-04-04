@@ -50,7 +50,7 @@ func Default() *AppConfig {
 		},
 		Identity: IdentityConfig{
 			UserName:      "User",
-			AssistantName: "Cortex",
+			AssistantName: "Memo",
 			Style:         "casual",
 			SystemRole:    "",
 		},
@@ -135,7 +135,7 @@ func (c *AppConfig) validate() {
 		c.API.TimeoutSeconds = 120
 	}
 	if c.Identity.AssistantName == "" {
-		c.Identity.AssistantName = "Cortex"
+		c.Identity.AssistantName = "Memo"
 	}
 	if c.Identity.Style == "" {
 		c.Identity.Style = "casual"

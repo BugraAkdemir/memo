@@ -1,0 +1,20 @@
+# Cortex AI Memory Shell — Configuration
+# ========================================
+
+api:
+  base_url: "http://localhost:1234/v1"
+  embedding_model: "nomic-embed-text-v1.5"
+  timeout_seconds: 120
+
+identity:
+  user_name: "User"
+  assistant_name: "Cortex"
+  # Styles: formal, casual, technical, creative
+  style: "casual"
+  # Custom system prompt override (leave empty to use style-based prompt)
+  system_role: ""
+
+memory:
+  persist_dir: "./data/memory"
+  top_k: 5
+  min_similarity: 0.3

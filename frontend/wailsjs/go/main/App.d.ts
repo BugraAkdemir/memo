@@ -4,6 +4,7 @@ import {main} from '../models';
 import {sessions} from '../models';
 import {config} from '../models';
 import {memory} from '../models';
+import {embed} from '../models';
 
 export function CheckConnection():Promise<main.ConnectionStatus>;
 
@@ -29,6 +30,8 @@ export function GetIncognitoPrompt():Promise<string>;
 
 export function GetMemoryCount():Promise<number>;
 
+export function GetRemoteAccessStatus():Promise<main.RemoteAccessStatus>;
+
 export function GetSystemPrompt():Promise<string>;
 
 export function ListChats():Promise<Array<sessions.SessionInfo>>;
@@ -51,7 +54,11 @@ export function SendMessageWithFile(arg1:string,arg2:string):Promise<string>;
 
 export function SendMessageWithImage(arg1:string,arg2:string):Promise<string>;
 
+export function SetEmbeddedAssets(arg1:embed.FS):Promise<void>;
+
 export function SetIncognitoPrompt(arg1:string):Promise<void>;
+
+export function SetRemoteAccess(arg1:boolean,arg2:number):Promise<void>;
 
 export function SetSystemPrompt(arg1:string):Promise<void>;
 
@@ -64,3 +71,9 @@ export function SwitchChat(arg1:string):Promise<void>;
 export function ToggleIncognito(arg1:boolean):Promise<void>;
 
 export function UpdateIdentity(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function WebCheckConnection():Promise<any>;
+
+export function WebGetActiveMessages():Promise<any>;
+
+export function WebListChats():Promise<any>;

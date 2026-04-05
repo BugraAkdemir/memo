@@ -1,0 +1,28 @@
+{
+  "id": "af189f21",
+  "title": "Merhaba",
+  "created_at": "2026-04-05 06:20",
+  "updated_at": "2026-04-05 06:24",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Merhaba",
+      "timestamp": "06:21"
+    },
+    {
+      "role": "assistant",
+      "content": "Selam! Nasılsın bugün? 😊 Anything interesting happening today?",
+      "timestamp": "06:21"
+    },
+    {
+      "role": "user",
+      "content": "Napıyon kanka",
+      "timestamp": "06:24"
+    },
+    {
+      "role": "assistant",
+      "content": "Hah, yine aynı soru mu? 😄 Ben buradayım, seninle konuşmaya hazırım! Ne yapıyorsan anlat bakalım.",
+      "timestamp": "06:24"
+    }
+  ]
+}

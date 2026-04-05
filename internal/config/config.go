@@ -10,9 +10,15 @@ import (
 )
 
 type AppConfig struct {
-	API      APIConfig      `yaml:"api"`
-	Identity IdentityConfig `yaml:"identity"`
-	Memory   MemoryConfig   `yaml:"memory"`
+	API          APIConfig          `yaml:"api"`
+	Identity     IdentityConfig     `yaml:"identity"`
+	Memory       MemoryConfig       `yaml:"memory"`
+	RemoteAccess RemoteAccessConfig `yaml:"remote_access"`
+}
+
+type RemoteAccessConfig struct {
+	Enabled bool `yaml:"enabled" json:"enabled"`
+	Port    int  `yaml:"port" json:"port"`
 }
 
 type APIConfig struct {
@@ -60,6 +66,10 @@ func Default() *AppConfig {
 			PersistDir:    "./data/memory",
 			TopK:          5,
 			MinSimilarity: 0.3,
+		},
+		RemoteAccess: RemoteAccessConfig{
+			Enabled: false,
+			Port:    8080,
 		},
 	}
 }
@@ -150,5 +160,8 @@ func (c *AppConfig) validate() {
 	}
 	if c.Memory.MinSimilarity <= 0 {
 		c.Memory.MinSimilarity = 0.3
+	}
+	if c.RemoteAccess.Port <= 0 || c.RemoteAccess.Port > 65535 {
+		c.RemoteAccess.Port = 8080
 	}
 }

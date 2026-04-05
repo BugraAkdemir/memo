@@ -16,6 +16,20 @@ export namespace config {
 	        this.TimeoutSeconds = source["TimeoutSeconds"];
 	    }
 	}
+	export class RemoteAccessConfig {
+	    enabled: boolean;
+	    port: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteAccessConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.port = source["port"];
+	    }
+	}
 	export class MemoryConfig {
 	    PersistDir: string;
 	    TopK: number;
@@ -56,6 +70,7 @@ export namespace config {
 	    API: APIConfig;
 	    Identity: IdentityConfig;
 	    Memory: MemoryConfig;
+	    RemoteAccess: RemoteAccessConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfig(source);
@@ -66,6 +81,7 @@ export namespace config {
 	        this.API = this.convertValues(source["API"], APIConfig);
 	        this.Identity = this.convertValues(source["Identity"], IdentityConfig);
 	        this.Memory = this.convertValues(source["Memory"], MemoryConfig);
+	        this.RemoteAccess = this.convertValues(source["RemoteAccess"], RemoteAccessConfig);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -87,6 +103,24 @@ export namespace config {
 		}
 	}
 	
+	
+
+}
+
+export namespace embed {
+	
+	export class FS {
+	
+	
+	    static createFrom(source: any = {}) {
+	        return new FS(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	
+	    }
+	}
 
 }
 
@@ -106,6 +140,24 @@ export namespace main {
 	        this.connected = source["connected"];
 	        this.models = source["models"];
 	        this.error = source["error"];
+	    }
+	}
+	export class RemoteAccessStatus {
+	    enabled: boolean;
+	    port: number;
+	    running: boolean;
+	    addresses: string[];
+	
+	    static createFrom(source: any = {}) {
+	        return new RemoteAccessStatus(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.port = source["port"];
+	        this.running = source["running"];
+	        this.addresses = source["addresses"];
 	    }
 	}
 

@@ -15,6 +15,7 @@ var assets embed.FS
 
 func main() {
 	app := NewApp()
+	app.SetEmbeddedAssets(assets)
 
 	err := wails.Run(&options.App{
 		Title:            "Memo — AI Memory Shell",

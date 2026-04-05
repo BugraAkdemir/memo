@@ -3,9 +3,11 @@ package main
 import (
 	"bytes"
 	"context"
+	"embed"
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -20,6 +22,7 @@ import (
 	"memo/internal/identity"
 	"memo/internal/memory"
 	"memo/internal/sessions"
+	"memo/internal/webserver"
 
 	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
@@ -40,10 +43,16 @@ type App struct {
 	isIncognito       bool
 	incognitoMessages []api.Message
 	sttServer         *exec.Cmd
+	webServer         *webserver.Server
+	embeddedAssets    embed.FS
 }
 
 func NewApp() *App {
 	return &App{}
+}
+
+func (a *App) SetEmbeddedAssets(assets embed.FS) {
+	a.embeddedAssets = assets
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -75,7 +84,24 @@ func (a *App) startup(ctx context.Context) {
 	// Start STT server in background
 	go a.startSTTServer()
 
+	// Start remote access server if enabled
+	if cfg.RemoteAccess.Enabled {
+		go a.startWebServer(cfg.RemoteAccess.Port)
+	}
+
 	log.Println("Memo ready")
+}
+
+func (a *App) startWebServer(port int) {
+	subFS, err := fs.Sub(a.embeddedAssets, "frontend/dist")
+	if err != nil {
+		log.Printf("Remote access: cannot access frontend assets: %v", err)
+		return
+	}
+	a.webServer = webserver.New(a, subFS)
+	if err := a.webServer.Start(port); err != nil {
+		log.Printf("Remote access: %v", err)
+	}
 }
 
 func (a *App) startSTTServer() {
@@ -504,6 +530,53 @@ func (a *App) DeleteMemoryFile(relPath string) error {
 	}
 	log.Printf("Deleting memory file: %s", relPath)
 	return a.store.DeleteGobFile(relPath)
+}
+
+// ─── Web Bridge (interface adapters for webserver) ───────────────
+
+func (a *App) WebListChats() interface{}          { return a.ListChats() }
+func (a *App) WebGetActiveMessages() interface{}   { return a.GetActiveMessages() }
+func (a *App) WebCheckConnection() interface{}     { return a.CheckConnection() }
+
+// ─── Settings: Remote Access ─────────────────────────────────────
+
+type RemoteAccessStatus struct {
+	Enabled   bool     `json:"enabled"`
+	Port      int      `json:"port"`
+	Running   bool     `json:"running"`
+	Addresses []string `json:"addresses"`
+}
+
+func (a *App) GetRemoteAccessStatus() RemoteAccessStatus {
+	status := RemoteAccessStatus{
+		Enabled: a.cfg.RemoteAccess.Enabled,
+		Port:    a.cfg.RemoteAccess.Port,
+	}
+	if a.webServer != nil {
+		status.Running = a.webServer.IsRunning()
+		status.Addresses = a.webServer.GetAddresses()
+	}
+	return status
+}
+
+func (a *App) SetRemoteAccess(enabled bool, port int) error {
+	if port <= 0 || port > 65535 {
+		return fmt.Errorf("invalid port: %d", port)
+	}
+
+	// Stop existing server if running
+	if a.webServer != nil && a.webServer.IsRunning() {
+		a.webServer.Stop()
+	}
+
+	a.cfg.RemoteAccess.Enabled = enabled
+	a.cfg.RemoteAccess.Port = port
+
+	if enabled {
+		a.startWebServer(port)
+	}
+
+	return config.Save(a.cfg)
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────

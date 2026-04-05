@@ -50,6 +50,10 @@ export function GetMemoryCount() {
   return window['go']['main']['App']['GetMemoryCount']();
 }
 
+export function GetRemoteAccessStatus() {
+  return window['go']['main']['App']['GetRemoteAccessStatus']();
+}
+
 export function GetSystemPrompt() {
   return window['go']['main']['App']['GetSystemPrompt']();
 }
@@ -94,8 +98,16 @@ export function SendMessageWithImage(arg1, arg2) {
   return window['go']['main']['App']['SendMessageWithImage'](arg1, arg2);
 }
 
+export function SetEmbeddedAssets(arg1) {
+  return window['go']['main']['App']['SetEmbeddedAssets'](arg1);
+}
+
 export function SetIncognitoPrompt(arg1) {
   return window['go']['main']['App']['SetIncognitoPrompt'](arg1);
+}
+
+export function SetRemoteAccess(arg1, arg2) {
+  return window['go']['main']['App']['SetRemoteAccess'](arg1, arg2);
 }
 
 export function SetSystemPrompt(arg1) {
@@ -120,4 +132,16 @@ export function ToggleIncognito(arg1) {
 
 export function UpdateIdentity(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateIdentity'](arg1, arg2, arg3);
+}
+
+export function WebCheckConnection() {
+  return window['go']['main']['App']['WebCheckConnection']();
+}
+
+export function WebGetActiveMessages() {
+  return window['go']['main']['App']['WebGetActiveMessages']();
+}
+
+export function WebListChats() {
+  return window['go']['main']['App']['WebListChats']();
 }

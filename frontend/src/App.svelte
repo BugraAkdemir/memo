@@ -11,9 +11,16 @@
     GetIncognitoPrompt, SetIncognitoPrompt,
     ClearAllMemory, ListMemoryFiles, DeleteMemoryFile,
     GetImageBase64,
-    StartRecording, StopRecordingAndTranscribe
-  } from '../wailsjs/go/main/App.js';
-  import { EventsOn } from '../wailsjs/runtime/runtime.js';
+    StartRecording, StopRecordingAndTranscribe,
+    GetRemoteAccessStatus, SetRemoteAccess,
+    isWailsEnvironment
+  } from './lib/api-bridge.js';
+
+  // EventsOn - only available in Wails
+  let _eventsOnReady = null;
+  if (isWailsEnvironment()) {
+    _eventsOnReady = import('../wailsjs/runtime/runtime.js').then(m => m.EventsOn);
+  }
 
   marked.setOptions({ breaks: true, gfm: true });
 
@@ -29,20 +36,35 @@
     const handleResize = () => { if(window.innerWidth <= 768 && sidebarOpen) sidebarOpen = false; };
     window.addEventListener('resize', handleResize);
 
-    // Block F12, Ctrl+Shift+I, and right-click context menu
-    const blockDevTools = (e) => {
-      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
-        e.preventDefault();
-      }
-    };
-    const blockContextMenu = (e) => e.preventDefault();
-    window.addEventListener('keydown', blockDevTools);
-    window.addEventListener('contextmenu', blockContextMenu);
+    // Fix mobile keyboard pushing content out of view
+    let vpHandler;
+    if (window.visualViewport) {
+      vpHandler = () => {
+        const vh = window.visualViewport.height;
+        document.documentElement.style.setProperty('--app-height', `${vh}px`);
+      };
+      vpHandler(); // set initial
+      window.visualViewport.addEventListener('resize', vpHandler);
+    }
+
+    // Block F12, Ctrl+Shift+I, and right-click context menu (desktop only)
+    let blockDevTools, blockContextMenu;
+    if (isDesktop) {
+      blockDevTools = (e) => {
+        if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
+          e.preventDefault();
+        }
+      };
+      blockContextMenu = (e) => e.preventDefault();
+      window.addEventListener('keydown', blockDevTools);
+      window.addEventListener('contextmenu', blockContextMenu);
+    }
 
     return () => {
       window.removeEventListener('resize', handleResize);
-      window.removeEventListener('keydown', blockDevTools);
-      window.removeEventListener('contextmenu', blockContextMenu);
+      if (vpHandler && window.visualViewport) window.visualViewport.removeEventListener('resize', vpHandler);
+      if (blockDevTools) window.removeEventListener('keydown', blockDevTools);
+      if (blockContextMenu) window.removeEventListener('contextmenu', blockContextMenu);
     };
   });
   let conn = { connected: false, models: [] };
@@ -65,25 +87,42 @@
   let isRecording = false;
   let isTranscribing = false;
 
+  // Desktop-only features detection
+  const isDesktop = isWailsEnvironment();
+
+  // Web file input refs
+  let webImageInput;
+  let webFileInput;
+
+  // Remote Access
+  let remoteEnabled = false;
+  let remotePort = 8080;
+  let remoteRunning = false;
+  let remoteAddresses = [];
+  let remoteSaving = false;
+
   onMount(async () => {
     await refreshAll();
     setInterval(refreshStatus, 30000);
 
-    EventsOn('wails:file-drop', (x, y, paths) => {
-      if (paths && paths.length > 0) {
-        const file = paths[0];
-        const ext = file.split('.').pop().toLowerCase();
-        if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) {
-          attachedImage = file;
-          attachedFile = '';
-          attachedFileName = '';
-        } else {
-          attachedFile = file;
-          attachedFileName = file.split(/[/\\]/).pop();
-          attachedImage = '';
+    if (isDesktop && _eventsOnReady) {
+      const EventsOn = await _eventsOnReady;
+      EventsOn('wails:file-drop', (x, y, paths) => {
+        if (paths && paths.length > 0) {
+          const file = paths[0];
+          const ext = file.split('.').pop().toLowerCase();
+          if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) {
+            attachedImage = file;
+            attachedFile = '';
+            attachedFileName = '';
+          } else {
+            attachedFile = file;
+            attachedFileName = file.split(/[/\\]/).pop();
+            attachedImage = '';
+          }
         }
-      }
-    });
+      });
+    }
   });
 
   async function refreshAll() {
@@ -150,12 +189,40 @@
 
   // ─── Attach ───────────────────
   async function pickImage() {
-    try { const p = await SelectImage(); if (p) { attachedImage=p; attachedFile=''; attachedFileName=''; } } catch(e) {}
+    if (isDesktop) {
+      try { const p = await SelectImage(); if (p) { attachedImage=p; attachedFile=''; attachedFileName=''; } } catch(e) {}
+    } else {
+      webImageInput?.click();
+    }
   }
   async function pickFile() {
-    try { const p = await SelectFile(); if (p) { attachedFile=p; attachedFileName=p.split('/').pop(); attachedImage=''; } } catch(e) {}
+    if (isDesktop) {
+      try { const p = await SelectFile(); if (p) { attachedFile=p; attachedFileName=p.split('/').pop(); attachedImage=''; } } catch(e) {}
+    } else {
+      webFileInput?.click();
+    }
   }
   function clearAttach() { attachedImage=''; attachedFile=''; attachedFileName=''; }
+
+  // Web file input handlers
+  function onWebImage(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    attachedImage = URL.createObjectURL(file);
+    attachedFile = '';
+    attachedFileName = '';
+    // Store the actual file for later upload
+    attachedImage._webFile = file;
+    e.target.value = '';
+  }
+  function onWebFile(e) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    attachedFile = URL.createObjectURL(file);
+    attachedFileName = file.name;
+    attachedImage = '';
+    e.target.value = '';
+  }
 
   // ─── Sessions ─────────────────
   async function newChat() {
@@ -265,6 +332,31 @@
   }
   async function delMem(path) {
     try { await DeleteMemoryFile(path); memFiles=memFiles.filter(f=>f.path!==path); memCount=Math.max(0,memCount-1); } catch(e) {}
+  }
+
+  async function openRemoteTab() {
+    settingsTab = 'remote';
+    try {
+      const status = await GetRemoteAccessStatus();
+      remoteEnabled = status.enabled;
+      remotePort = status.port;
+      remoteRunning = status.running;
+      remoteAddresses = status.addresses || [];
+    } catch(e) {}
+  }
+
+  async function saveRemoteAccess() {
+    remoteSaving = true;
+    try {
+      await SetRemoteAccess(remoteEnabled, remotePort);
+      // Refresh status
+      const status = await GetRemoteAccessStatus();
+      remoteRunning = status.running;
+      remoteAddresses = status.addresses || [];
+    } catch(e) {
+      console.error('Remote access error:', e);
+    }
+    remoteSaving = false;
   }
 </script>
 
@@ -443,6 +535,7 @@
           <button class="dock-btn" on:click={pickFile} disabled={loading} title="Attach file">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </button>
+          {#if isDesktop}
           <button class="dock-btn" on:click={startMic} disabled={loading} title="Voice input">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -451,6 +544,7 @@
               <line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
           </button>
+          {/if}
           <textarea
             bind:value={input}
             on:keydown={onKey}
@@ -485,6 +579,9 @@
       <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>System Prompt</button>
       <button class="m-tab" class:active={settingsTab==='incognito'} on:click={() => settingsTab='incognito'}>Incognito Prompt</button>
       <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>Memory</button>
+      {#if isDesktop}
+      <button class="m-tab" class:active={settingsTab==='remote'} on:click={openRemoteTab}>Remote Access</button>
+      {/if}
     </div>
     <div class="m-body">
       {#if settingsTab === 'prompt'}
@@ -502,7 +599,7 @@
           <button class="m-btn danger" on:click={saveIncognitoPrompt}>Save</button>
           {#if promptSaved}<span class="m-ok" style="color:var(--red);">✓ saved</span>{/if}
         </div>
-      {:else}
+      {:else if settingsTab === 'memory'}
         <div class="mem-top">
           <p class="m-desc">{memFiles.length} memory records stored</p>
           <button class="m-btn danger" on:click={clearMem} disabled={memBusy || !memFiles.length}>
@@ -526,6 +623,48 @@
             {/each}
           </div>
         {/if}
+      {:else if settingsTab === 'remote'}
+        <div class="remote-section">
+          <p class="m-desc">Enable remote access to use Memo from your phone or other devices on the same network.</p>
+
+          <div class="remote-toggle-row">
+            <label class="toggle-label">
+              <span>Remote Access</span>
+              <button class="toggle-switch" class:on={remoteEnabled} on:click={() => remoteEnabled = !remoteEnabled}>
+                <span class="toggle-knob"></span>
+              </button>
+            </label>
+          </div>
+
+          <label class="field remote-field">
+            <span>Port</span>
+            <input type="number" bind:value={remotePort} min="1024" max="65535" placeholder="8080" />
+          </label>
+
+          {#if remoteRunning}
+            <div class="remote-status running">
+              <span class="remote-dot on"></span>
+              <span>Server Running</span>
+            </div>
+            <div class="remote-addresses">
+              <p class="m-desc" style="margin-bottom:8px;">Connect from your phone:</p>
+              {#each remoteAddresses as addr}
+                <div class="remote-addr">{addr}</div>
+              {/each}
+            </div>
+          {:else if remoteEnabled}
+            <div class="remote-status">
+              <span class="remote-dot"></span>
+              <span>Server Stopped</span>
+            </div>
+          {/if}
+
+          <div class="m-actions" style="margin-top:16px;">
+            <button class="m-btn gold" on:click={saveRemoteAccess} disabled={remoteSaving}>
+              {remoteSaving ? '...' : 'Save & Apply'}
+            </button>
+          </div>
+        </div>
       {/if}
     </div>
   </div>
@@ -536,7 +675,7 @@
   /* ═══════════════════════════════════
      SHELL LAYOUT
   ═══════════════════════════════════ */
-  .shell { height:100vh; display:flex; overflow:hidden; }
+  .shell { height: var(--app-height, 100dvh); display:flex; overflow:hidden; }
 
   /* ─── SIDEBAR ─── */
   .side {
@@ -783,18 +922,20 @@
   .dock-btn:hover:not(:disabled) { color: var(--gold); background: var(--black-3); }
   .input-row textarea {
     flex: 1;
-    background: transparent;
-    border: none;
+    background: var(--black-2);
+    border: 1px solid var(--t-3);
+    border-radius: var(--r);
     color: var(--t-0);
     font-size: 15px;
     line-height: 1.5;
     resize: none;
     min-height: 20px;
     max-height: 120px;
-    padding: var(--sp-2) var(--sp-2);
+    padding: var(--sp-2) var(--sp-3);
     outline: none;
     font-family: var(--sans);
   }
+  .input-row textarea:focus { border-color: var(--gold-dim); }
   .input-row textarea::placeholder { color: var(--gold-muted); }
   .input-row textarea:disabled { opacity: 0.35; }
   .send-btn {
@@ -991,12 +1132,64 @@
   }
   .mem-x:hover { color: var(--red); opacity: 1; background: var(--black-4); }
 
+  /* ═══ REMOTE ACCESS TAB ═══ */
+  .remote-section { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .remote-toggle-row {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: var(--sp-3) 0;
+  }
+  .toggle-label {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; font-size: 13px; color: var(--t-0); cursor: pointer;
+  }
+  .toggle-switch {
+    position: relative; width: 44px; height: 24px; border-radius: 12px;
+    background: var(--black-4); border: 1px solid var(--t-3);
+    transition: background 200ms, border-color 200ms; cursor: pointer;
+  }
+  .toggle-switch.on { background: var(--gold); border-color: var(--gold-dim); }
+  .toggle-knob {
+    position: absolute; top: 2px; left: 2px;
+    width: 18px; height: 18px; border-radius: 50%;
+    background: var(--t-0); transition: transform 200ms;
+  }
+  .toggle-switch.on .toggle-knob { transform: translateX(20px); }
+  .remote-field { margin-top: var(--sp-1); }
+  .remote-field span { font-size: 12px; color: var(--t-2); }
+  .remote-field input {
+    width: 100%; font-size: 13px; padding: 8px 12px;
+    background: var(--black-0); border: 1px solid var(--t-3);
+    border-radius: var(--r); color: var(--t-0);
+  }
+  .remote-field input:focus { border-color: var(--gold-dim); outline: none; }
+  .remote-status {
+    display: flex; align-items: center; gap: var(--sp-2);
+    font-size: 12px; color: var(--t-2); padding: var(--sp-2) 0;
+  }
+  .remote-status.running { color: var(--green); }
+  .remote-dot {
+    width: 7px; height: 7px; border-radius: 50%;
+    background: var(--red);
+  }
+  .remote-dot.on {
+    background: var(--green);
+    box-shadow: 0 0 8px rgba(74, 222, 128, 0.5);
+  }
+  .remote-addresses { margin-top: var(--sp-2); }
+  .remote-addr {
+    font-family: var(--mono); font-size: 13px;
+    color: var(--gold); padding: var(--sp-2) var(--sp-3);
+    background: var(--black-0); border: 1px solid var(--gold-border);
+    border-radius: var(--r); margin-bottom: var(--sp-1);
+    word-break: break-all;
+  }
+
   /* ═══════════════════════════════════
      RESPONSIVE (MOBILE)
   ═══════════════════════════════════ */
   @media (max-width: 768px) {
     .side {
-      position: absolute;
+      position: fixed;
       z-index: 50;
       height: 100%;
       width: 280px;
@@ -1005,21 +1198,56 @@
       box-shadow: 4px 0 24px rgba(0,0,0,0.5);
     }
     .side-overlay {
-      position: absolute;
+      position: fixed;
       inset: 0;
       background: rgba(0,0,0,0.6);
       z-index: 40;
       backdrop-filter: blur(2px);
     }
     .main { width: 100%; }
+    .bar { padding: var(--sp-2) var(--sp-3); height: 48px; }
+    .bar-title { font-size: 13px; }
+    .bar-btn { width: 40px; height: 40px; min-width: 40px; }
     .feed {
-      padding: var(--sp-4) var(--sp-3);
+      padding: var(--sp-3) var(--sp-2);
     }
-    .entry { max-width: 100%; padding: var(--sp-3); }
+    .entry { max-width: 100%; padding: var(--sp-2) var(--sp-3); }
+    .entry-body { font-size: 14px; line-height: 1.6; }
+    .entry-sender { font-size: 13px; }
     .w-mark { font-size: 28px; }
-    .input-dock { padding: var(--sp-2) var(--sp-2); }
-    .input-row { max-width: 100%; }
-    .dock-btn, .send-btn { width: 34px; height: 34px; }
-    .modal { width: 90%; max-height: 85vh; }
+    .w-sub { font-size: 10px; }
+    .input-dock {
+      padding: var(--sp-3) var(--sp-2);
+      padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom));
+      background: var(--black-1);
+      border-top: 1px solid var(--t-3);
+    }
+    .input-row {
+      max-width: 100%;
+      gap: 2px;
+    }
+    .input-row textarea { font-size: 16px; padding: var(--sp-2) var(--sp-1); }
+    .dock-btn { width: 40px; height: 40px; min-width: 40px; }
+    .send-btn { width: 42px; height: 42px; min-width: 42px; }
+    .attach-row { padding: var(--sp-1) var(--sp-3); }
+    .modal { width: 94%; max-height: 90vh; margin: var(--sp-3); }
+    .m-head { padding: var(--sp-3) var(--sp-4); }
+    .m-tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .m-tab { white-space: nowrap; padding: var(--sp-3) var(--sp-3); font-size: 11px; }
+    .m-body { padding: var(--sp-4); }
+    .m-prompt { font-size: 14px; min-height: 120px; }
+    .recording-row { gap: var(--sp-2); }
+    .rec-action-btn { width: 46px; height: 46px; }
+    .waveform { max-width: 250px; }
+    .chat-img { max-height: 250px; }
+    .remote-addr { font-size: 12px; }
+  }
+
+  /* Extra small screens */
+  @media (max-width: 400px) {
+    .side { width: 260px; }
+    .bar-title { font-size: 12px; }
+    .entry-body { font-size: 13px; }
+    .dock-btn { width: 36px; height: 36px; min-width: 36px; }
   }
 </style>

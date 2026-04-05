@@ -12,9 +12,12 @@
     ClearAllMemory, ListMemoryFiles, DeleteMemoryFile,
     GetImageBase64,
     StartRecording, StopRecordingAndTranscribe,
+    GetRemoteAccessStatus, SetRemoteAccess,
     GetVersion,
     isWailsEnvironment,
-    ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer
+    SearchModels, GetModelFiles, DownloadModel, GetDownloadProgress,
+    CancelDownload, ListLocalModels, DeleteLocalModel,
+    StartLocalModel, StopLocalModel, GetLocalModelStatus, DetectGPU
   } from './lib/api-bridge.js';
 
   // EventsOn - only available in Wails
@@ -214,13 +217,7 @@ Core Directives:
   let attachedFileName = '';
 
   let settingsOpen = false;
-  let settingsTab = 'general';
-  
-  let currentView = 'chat'; // 'chat' or 'models'
-  let isLlamaInstalled = false;
-  let isInstalling = false;
-  let installFailed = false;
-  let installLog = [];
+  let settingsTab = 'prompt';
   let sysPrompt = '';
   let incognitoPrompt = '';
   let promptSaved = false;
@@ -249,7 +246,6 @@ Core Directives:
   // Model Store
   let modelSearchQuery = '';
   let modelSearchResults = [];
-  let modelSearchError = '';
   let modelSearching = false;
   let expandedModel = null;
   let modelFiles = [];
@@ -265,16 +261,6 @@ Core Directives:
 
   onMount(async () => {
     await refreshAll();
-    if (window.runtime && window.runtime.EventsOn) {
-      window.runtime.EventsOn("llama:install-log", (msg) => {
-        installLog = [...installLog, msg];
-        setTimeout(() => {
-          const el = document.getElementById("install-log-box");
-          if (el) el.scrollTop = el.scrollHeight;
-        }, 50);
-      });
-    }
-
     setInterval(refreshStatus, 30000);
 
     if (isDesktop && _eventsOnReady) {
@@ -541,64 +527,31 @@ Core Directives:
     remoteSaving = false;
   }
   // ─── Model Store ───────────────
-  async function checkLlamaStatus() {
-    isLlamaInstalled = await CheckLlamaInstallation();
-  }
-
   async function openModelsTab() {
-    currentView = 'models';
-    settingsOpen = false;
-    await checkLlamaStatus();
-    
-    if (isLlamaInstalled) {
-      localModelLoading = true;
-      try {
-        [localModels, localModelStatus, gpuInfo] = await Promise.all([
-          ListLocalModels() || [],
-          GetLocalModelStatus(),
-          DetectGPU()
-        ]);
-        localModels = localModels || [];
-      } catch(e) { console.error('Models tab error:', e); }
-      localModelLoading = false;
-      pollDownloadProgress();
-    }
-  }
-
-  async function startInstallation() {
-    isInstalling = true;
-    installFailed = false;
-    installLog = [];
+    settingsTab = 'models';
+    localModelLoading = true;
     try {
-      await InstallLlamaServer();
-      await checkLlamaStatus();
-      if (isLlamaInstalled) {
-         openModelsTab();
-      } else {
-         installFailed = true;
-      }
-    } catch(e) {
-      installLog = [...installLog, "\\nERROR: " + e];
-      installFailed = true;
-    }
-    isInstalling = false;
+      [localModels, localModelStatus, gpuInfo] = await Promise.all([
+        ListLocalModels() || [],
+        GetLocalModelStatus(),
+        DetectGPU()
+      ]);
+      localModels = localModels || [];
+    } catch(e) { console.error('Models tab error:', e); }
+    localModelLoading = false;
+    pollDownloadProgress();
   }
 
   async function searchHF() {
     if (!modelSearchQuery.trim()) return;
     modelSearching = true;
-    modelSearchError = '';
     expandedModel = null;
     modelFiles = [];
     try {
       modelSearchResults = await SearchModels(modelSearchQuery.trim()) || [];
-      if (modelSearchResults.length === 0) {
-        modelSearchError = 'No GGUF models found for "' + modelSearchQuery.trim() + '"';
-      }
     } catch(e) {
       console.error('Search error:', e);
       modelSearchResults = [];
-      modelSearchError = 'Search failed: ' + (e?.message || e || 'Network error');
     }
     modelSearching = false;
   }
@@ -651,38 +604,18 @@ Core Directives:
     } catch(e) { console.error('Delete error:', e); }
   }
 
-  // Model Config State
-  let configModalOpen = false;
-  let modelToStart = null;
-  let configCtxSize = 4096;
-  let configGpuLayers = -1;
-  let configPort = 8081;
-
-  function openModelConfig(model) {
-    modelToStart = model;
-    configCtxSize = 4096;
-    configPort = 8081;
-    if (gpuInfo && gpuInfo.vram_mb > 0) {
-      configGpuLayers = -1; // Auto maximum
-    } else {
-      configGpuLayers = 0; // CPU only
-    }
-    configModalOpen = true;
-  }
-
-  async function confirmStartModel() {
-    if (!modelToStart) return;
-    configModalOpen = false;
-    modelStarting = modelToStart.path;
+  async function startModel(model) {
+    modelStarting = model.path;
     try {
-      await StartLocalModel(modelToStart.path, parseInt(configCtxSize), parseInt(configPort), parseInt(configGpuLayers));
+      await StartLocalModel(model.path);
       localModelStatus = await GetLocalModelStatus();
+      // Refresh connection status
+      await refreshStatus();
     } catch(e) {
       console.error('Start model error:', e);
       alert('Failed to start model: ' + (e?.message || e));
     }
     modelStarting = '';
-    modelToStart = null;
   }
 
   async function stopModel() {
@@ -690,6 +623,7 @@ Core Directives:
     try {
       await StopLocalModel();
       localModelStatus = await GetLocalModelStatus();
+      await refreshStatus();
     } catch(e) { console.error('Stop model error:', e); }
     modelStopping = false;
   }
@@ -752,29 +686,6 @@ Core Directives:
   </div>
 </div>
 {/if}
-
-<div class="app-container">
-  <!-- NAV RAIL -->
-  <div class="nav-rail">
-    <div class="nav-rail-top">
-      <button class="nav-rail-btn" class:active={currentView==='chat'} on:click={() => currentView='chat'} title="Chat">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-      </button>
-      {#if isDesktop}
-      <button class="nav-rail-btn" class:active={currentView==='models'} on:click={openModelsTab} title="Models Store">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
-      </button>
-      {/if}
-    </div>
-    <div class="nav-rail-bottom">
-      <button class="nav-rail-btn" on:click={() => settingsOpen=true} title="Settings">
-        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
-      </button>
-    </div>
-  </div>
-
-  <div class="app-content">
-  {#if currentView === 'chat'}
 
 <div class="shell" class:incognito-mode={isIncognito}>
   <input type="file" accept="image/*" style="display:none" bind:this={webImageInput} on:change={onWebImage} />
@@ -993,208 +904,6 @@ Core Directives:
   </main>
 </div>
 
-    {:else if currentView === 'models'}
-       <div class="models-view-full shell">
-          {#if !isLlamaInstalled}
-             <div class="installer-card">
-               <h2>Local Inference Engine Required</h2>
-               <p>To use models locally without LM Studio, you need the llama.cpp engine. Click below to install it.</p>
-               <button class="m-btn gold" on:click={startInstallation} disabled={isInstalling}>
-                  {isInstalling ? 'Installing...' : (installFailed ? 'Retry Installation' : '1-Click Compile & Install')}
-               </button>
-               
-               {#if isInstalling || installLog.length > 0}
-                 <div id="install-log-box" class="install-log-box" style="{installFailed ? 'border-color: #ef4444;' : ''}">
-                   {#each installLog as log}
-                      <div>{log}</div>
-                   {/each}
-                 </div>
-               {/if}
-             </div>
-          {:else}
-             <div class="models-view-container">
-        <div class="models-panel">
-          <!-- Reinstall option -->
-          {#if !isInstalling}
-            <details class="reinstall-details">
-              <summary class="reinstall-summary">Engine installed · Reinstall?</summary>
-              <div style="padding: 0.75rem 0 0.25rem;">
-                <button class="m-btn subtle" style="font-size:0.8rem;" on:click={startInstallation}>
-                  {installFailed ? 'Retry Installation' : 'Recompile & Reinstall'}
-                </button>
-                <p style="color:#71717a; font-size:0.75rem; margin-top:0.5rem;">Use this if the engine crashes or shared libraries are missing.</p>
-              </div>
-            </details>
-          {/if}
-          {#if isInstalling || installLog.length > 0}
-            <div id="install-log-box" class="install-log-box" style="{installFailed ? 'border-color: #ef4444;' : ''}">
-              {#each installLog as log}
-                <div>{log}</div>
-              {/each}
-            </div>
-          {/if}
-
-          <div class="gpu-badge" class:cpu={gpuInfo.type === 'cpu' || !gpuInfo.type} class:nvidia={gpuInfo.type === 'nvidia'} class:amd={gpuInfo.type === 'amd'}>
-            {#if gpuInfo.type === 'cpu' || !gpuInfo.type}
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#eab308" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-              <span style="color:#eab308; font-weight: 500;">Models are running on CPU (Slow)</span>
-            {:else}
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
-              <span>{gpuInfo.name}</span>
-              {#if gpuInfo.vram_mb > 0}<span class="gpu-vram">{(gpuInfo.vram_mb / 1024).toFixed(0)} GB VRAM</span>{/if}
-            {/if}
-          </div>
-
-          <!-- Running Model Status -->
-          {#if localModelStatus.running}
-            <div class="running-model-card">
-              <div class="running-model-info">
-                <span class="running-dot"></span>
-                <div>
-                  <div class="running-name">{localModelStatus.model_name}</div>
-                  <div class="running-meta">Port {localModelStatus.port} · PID {localModelStatus.pid} · {localModelStatus.gpu.type.toUpperCase()}</div>
-                </div>
-              </div>
-              <button class="m-btn danger" on:click={stopModel} disabled={modelStopping}>
-                {modelStopping ? '...' : 'Stop'}
-              </button>
-            </div>
-          {/if}
-
-          <!-- Download Progress -->
-          {#if downloadProgress.active}
-            <div class="download-card">
-              <div class="download-header">
-                <span class="download-name">{downloadProgress.filename}</span>
-                <button class="download-cancel" on:click={cancelDL}>✕</button>
-              </div>
-              <div class="download-bar-track">
-                <div class="download-bar-fill" style="width: {downloadProgress.percent.toFixed(1)}%"></div>
-              </div>
-              <div class="download-stats">
-                <span>{downloadProgress.percent.toFixed(1)}%</span>
-                <span>{formatBytes(downloadProgress.downloaded)} / {formatBytes(downloadProgress.total_bytes)}</span>
-                <span>{downloadProgress.speed}</span>
-              </div>
-            </div>
-          {/if}
-
-          <!-- Search -->
-          <div class="model-search-box">
-            <input type="text" bind:value={modelSearchQuery} on:keydown={onSearchKey} placeholder="Search GGUF models on Hugging Face..." class="model-search-input" />
-            <button class="m-btn gold" on:click={searchHF} disabled={modelSearching || !modelSearchQuery.trim()}>
-              {modelSearching ? '...' : 'Search'}
-            </button>
-          </div>
-
-          <!-- Skeleton while searching -->
-          {#if modelSearching}
-            <div class="model-results">
-              {#each Array(5) as _}
-                <div class="model-result-card">
-                  <div style="padding: 12px 16px; display:flex; flex-direction:column; gap:6px;">
-                    <div class="skeleton" style="height:13px; width:60%; border-radius:6px;"></div>
-                    <div class="skeleton" style="height:11px; width:30%; border-radius:6px;"></div>
-                  </div>
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          <!-- Search Error -->
-          {#if modelSearchError && !modelSearching}
-            <div style="padding: 0.75rem 1rem; margin-top: 0.5rem; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: var(--red); font-size: 0.82rem;">
-              {modelSearchError}
-            </div>
-          {/if}
-
-          <!-- Search Results -->
-          {#if modelSearchResults.length > 0 && !modelSearching}
-            <div class="model-results">
-              {#each modelSearchResults as model}
-                <div class="model-result-card">
-                  <button class="model-result-header" on:click={() => expandModel(model.id)}>
-                    <div class="model-result-info">
-                      <span class="model-result-name">{model.id}</span>
-                      <span class="model-result-meta">
-                        ↓ {model.downloads?.toLocaleString() || '?'} · ♥ {model.likes || 0}
-                      </span>
-                    </div>
-                    <span class="model-expand-icon" class:rotated={expandedModel === model.id}>▸</span>
-                  </button>
-                  {#if expandedModel === model.id}
-                    <div class="model-files-list">
-                      {#if modelFilesLoading}
-                        <div class="model-files-loading">Loading files...</div>
-                      {:else if modelFiles.length === 0}
-                        <div class="model-files-loading">No .gguf files found</div>
-                      {:else}
-                        {#each modelFiles as file}
-                          <div class="model-file-row">
-                            <div class="model-file-info">
-                              <span class="model-file-name">{file.filename}</span>
-                              <span class="model-file-size">{formatBytes(file.size)}</span>
-                              {#if gpuInfo && gpuInfo.vram_mb > 0}
-                                {#if (file.size / (1024*1024)) > gpuInfo.vram_mb}
-                                  <span class="sys-req error">⚠️ Not enough VRAM (Needs {(file.size/(1024*1024*1024)).toFixed(1)}GB)</span>
-                                {:else if (file.size / (1024*1024)) > (gpuInfo.vram_mb * 0.8)}
-                                  <span class="sys-req warn">⚠️ High VRAM usage</span>
-                                {:else}
-                                  <span class="sys-req good">✓ Works smoothly</span>
-                                {/if}
-                              {:else}
-                                <span class="sys-req warn">⚠️ CPU Mode (Will be slow)</span>
-                              {/if}
-                            </div>
-                            <button class="m-btn small-dl-btn" on:click={() => startDownload(model.id, file.filename)} disabled={downloadProgress.active}>
-                              ↓ Download
-                            </button>
-                          </div>
-                        {/each}
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              {/each}
-            </div>
-          {/if}
-
-          <!-- Local Models -->
-          <div class="local-models-section">
-            <h4 class="section-title">Downloaded Models</h4>
-            {#if localModelLoading}
-              <div class="mem-empty">Loading...</div>
-            {:else if !localModels || localModels.length === 0}
-              <div class="mem-empty">No models downloaded yet. Search above to get started.</div>
-            {:else}
-              {#each localModels as model}
-                <div class="local-model-card" class:active-model={localModelStatus.running && localModelStatus.model_path === model.path}>
-                  <div class="local-model-info">
-                    <span class="local-model-name">{model.filename}</span>
-                    <span class="local-model-meta">{model.repo_id} · {formatBytes(model.size)}</span>
-                  </div>
-                  <div class="local-model-actions">
-                    {#if localModelStatus.running && localModelStatus.model_path === model.path}
-                      <span class="model-active-badge">● Running</span>
-                    {:else}
-                      <button class="m-btn small-start-btn" on:click={() => openModelConfig(model)} disabled={modelStarting === model.path || localModelStatus.running}>
-                        {modelStarting === model.path ? '... Loading' : '▶ Start'}
-                      </button>
-                    {/if}
-                    <button class="model-del-btn" on:click={() => deleteModel(model.path)} disabled={localModelStatus.running && localModelStatus.model_path === model.path} title="Delete model">🗑</button>
-                  </div>
-                </div>
-              {/each}
-            {/if}
-          </div>
-        </div>
-             </div>
-          {/if}
-       </div>
-    {/if}
-  </div> <!-- end app-content -->
-</div> <!-- end app-container -->
-
 <!-- ═══ Settings Modal ═══ -->
 {#if settingsOpen}
 <!-- svelte-ignore a11y-click-events-have-key-events -->
@@ -1217,7 +926,12 @@ Core Directives:
       {#if isDesktop}
       <button class="m-tab" class:active={settingsTab==='remote'} on:click={openRemoteTab}>Remote Access</button>
       {/if}
-    <!-- ═══ Settings Modal ═══ -->
+      {#if isDesktop}
+      <button class="m-tab models-tab" class:active={settingsTab==='models'} on:click={openModelsTab}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path></svg>
+        Models
+      </button>
+      {/if}
       <button class="m-tab" class:active={settingsTab==='about'} on:click={() => settingsTab='about'}>{t('about')}</button>
     </div>
     <div class="m-body">
@@ -1317,6 +1031,126 @@ Core Directives:
             </button>
           </div>
         </div>
+      {:else if settingsTab === 'models'}
+        <div class="models-panel">
+          <!-- GPU Info Badge -->
+          <div class="gpu-badge" class:nvidia={gpuInfo.type === 'nvidia'} class:amd={gpuInfo.type === 'amd'}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><rect x="9" y="9" width="6" height="6"/><line x1="9" y1="1" x2="9" y2="4"/><line x1="15" y1="1" x2="15" y2="4"/><line x1="9" y1="20" x2="9" y2="23"/><line x1="15" y1="20" x2="15" y2="23"/><line x1="20" y1="9" x2="23" y2="9"/><line x1="20" y1="14" x2="23" y2="14"/><line x1="1" y1="9" x2="4" y2="9"/><line x1="1" y1="14" x2="4" y2="14"/></svg>
+            <span>{gpuInfo.name}</span>
+            {#if gpuInfo.vram_mb > 0}<span class="gpu-vram">{(gpuInfo.vram_mb / 1024).toFixed(0)} GB VRAM</span>{/if}
+          </div>
+
+          <!-- Running Model Status -->
+          {#if localModelStatus.running}
+            <div class="running-model-card">
+              <div class="running-model-info">
+                <span class="running-dot"></span>
+                <div>
+                  <div class="running-name">{localModelStatus.model_name}</div>
+                  <div class="running-meta">Port {localModelStatus.port} · PID {localModelStatus.pid} · {localModelStatus.gpu.type.toUpperCase()}</div>
+                </div>
+              </div>
+              <button class="m-btn danger" on:click={stopModel} disabled={modelStopping}>
+                {modelStopping ? '...' : 'Stop'}
+              </button>
+            </div>
+          {/if}
+
+          <!-- Download Progress -->
+          {#if downloadProgress.active}
+            <div class="download-card">
+              <div class="download-header">
+                <span class="download-name">{downloadProgress.filename}</span>
+                <button class="download-cancel" on:click={cancelDL}>✕</button>
+              </div>
+              <div class="download-bar-track">
+                <div class="download-bar-fill" style="width: {downloadProgress.percent.toFixed(1)}%"></div>
+              </div>
+              <div class="download-stats">
+                <span>{downloadProgress.percent.toFixed(1)}%</span>
+                <span>{formatBytes(downloadProgress.downloaded)} / {formatBytes(downloadProgress.total_bytes)}</span>
+                <span>{downloadProgress.speed}</span>
+              </div>
+            </div>
+          {/if}
+
+          <!-- Search -->
+          <div class="model-search-box">
+            <input type="text" bind:value={modelSearchQuery} on:keydown={onSearchKey} placeholder="Search GGUF models on Hugging Face..." class="model-search-input" />
+            <button class="m-btn gold" on:click={searchHF} disabled={modelSearching || !modelSearchQuery.trim()}>
+              {modelSearching ? '...' : 'Search'}
+            </button>
+          </div>
+
+          <!-- Search Results -->
+          {#if modelSearchResults.length > 0}
+            <div class="model-results">
+              {#each modelSearchResults as model}
+                <div class="model-result-card">
+                  <button class="model-result-header" on:click={() => expandModel(model.id)}>
+                    <div class="model-result-info">
+                      <span class="model-result-name">{model.id}</span>
+                      <span class="model-result-meta">
+                        ↓ {model.downloads?.toLocaleString() || '?'} · ♥ {model.likes || 0}
+                      </span>
+                    </div>
+                    <span class="model-expand-icon" class:rotated={expandedModel === model.id}>▸</span>
+                  </button>
+                  {#if expandedModel === model.id}
+                    <div class="model-files-list">
+                      {#if modelFilesLoading}
+                        <div class="model-files-loading">Loading files...</div>
+                      {:else if modelFiles.length === 0}
+                        <div class="model-files-loading">No .gguf files found</div>
+                      {:else}
+                        {#each modelFiles as file}
+                          <div class="model-file-row">
+                            <div class="model-file-info">
+                              <span class="model-file-name">{file.filename}</span>
+                              <span class="model-file-size">{formatBytes(file.size)}</span>
+                            </div>
+                            <button class="m-btn small-dl-btn" on:click={() => startDownload(model.id, file.filename)} disabled={downloadProgress.active}>
+                              ↓ Download
+                            </button>
+                          </div>
+                        {/each}
+                      {/if}
+                    </div>
+                  {/if}
+                </div>
+              {/each}
+            </div>
+          {/if}
+
+          <!-- Local Models -->
+          <div class="local-models-section">
+            <h4 class="section-title">Downloaded Models</h4>
+            {#if localModelLoading}
+              <div class="mem-empty">Loading...</div>
+            {:else if !localModels || localModels.length === 0}
+              <div class="mem-empty">No models downloaded yet. Search above to get started.</div>
+            {:else}
+              {#each localModels as model}
+                <div class="local-model-card" class:active-model={localModelStatus.running && localModelStatus.model_path === model.path}>
+                  <div class="local-model-info">
+                    <span class="local-model-name">{model.filename}</span>
+                    <span class="local-model-meta">{model.repo_id} · {formatBytes(model.size)}</span>
+                  </div>
+                  <div class="local-model-actions">
+                    {#if localModelStatus.running && localModelStatus.model_path === model.path}
+                      <span class="model-active-badge">● Running</span>
+                    {:else}
+                      <button class="m-btn small-start-btn" on:click={() => startModel(model)} disabled={modelStarting === model.path || localModelStatus.running}>
+                        {modelStarting === model.path ? '...' : '▶ Start'}
+                      </button>
+                    {/if}
+                    <button class="model-del-btn" on:click={() => deleteModel(model.path)} disabled={localModelStatus.running && localModelStatus.model_path === model.path} title="Delete model">🗑</button>
+                  </div>
+                </div>
+              {/each}
+            {/if}
+          </div>
+        </div>
       {:else if settingsTab === 'about'}
         <div class="m-section about-section">
           <h3 style="margin: 0; display: flex; align-items: center; justify-content: space-between;">
@@ -1339,308 +1173,7 @@ Core Directives:
 </div>
 {/if}
 
-<!-- ═══ Model Config Overlay ═══ -->
-{#if configModalOpen && modelToStart}
-  <!-- svelte-ignore a11y-no-static-element-interactions -->
-  <!-- svelte-ignore a11y-click-events-have-key-events -->
-  <div class="modal-overlay" on:click={() => configModalOpen = false}>
-    <div class="modal-content run-config-modal" on:click|stopPropagation>
-      <div class="modal-header">
-        <h2 class="modal-title">Configure & Load Model</h2>
-        <button class="modal-close" on:click={() => configModalOpen = false}>×</button>
-      </div>
-      <div class="modal-body setup-body">
-        <div class="setup-log-container" style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 1rem;">
-          <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #4ade80; margin-bottom:0.5rem; white-space: nowrap; overflow:hidden; text-overflow:ellipsis;">
-            {modelToStart.filename}
-          </p>
-          <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">Size: {formatBytes(modelToStart.size)}</p>
-        </div>
-
-        <div class="settings-form">
-          <div class="form-group">
-            <label for="configCtx">Context Size (Tokens)</label>
-            <input id="configCtx" type="number" class="w-input" bind:value={configCtxSize} min="512" max="128000" step="512" />
-            <span class="form-hint">Higher context uses more RAM/VRAM. (Default: 4096)</span>
-          </div>
-          <div class="form-group">
-            <label for="configGpu">GPU Layers (-1 for Max)</label>
-            <input id="configGpu" type="number" class="w-input" bind:value={configGpuLayers} min="-1" max="100" />
-            <span class="form-hint">If your VRAM gets exhausted, lower this number. (0 = CPU only)</span>
-          </div>
-          <div class="form-group">
-            <label for="configPort">Host Port</label>
-            <input id="configPort" type="number" class="w-input" bind:value={configPort} min="1024" max="65535" />
-          </div>
-        </div>
-      </div>
-      <div class="modal-actions" style="margin-top:0;">
-        <button class="m-btn subtle" on:click={() => configModalOpen = false}>Cancel</button>
-        <button class="m-btn primary" on:click={confirmStartModel}>▶ Run Engine</button>
-      </div>
-    </div>
-  </div>
-{/if}
-
 <style>
-  /* ═══════════════════════════════════
-     APP CONTAINER & NAV RAIL
-  ═══════════════════════════════════ */
-  :global(body) { margin: 0; padding: 0; background: var(--bg-body); }
-  .app-container {
-    display: flex;
-    height: 100dvh;
-    width: 100vw;
-    overflow: hidden;
-  }
-  .nav-rail {
-    width: 60px;
-    background: var(--bg-app);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 16px 0;
-    flex-shrink: 0;
-    z-index: 10;
-  }
-  .nav-rail-top {
-    display: flex;
-    flex-direction: column;
-    gap: 16px;
-    flex: 1;
-  }
-  .nav-rail-bottom {
-    margin-top: auto;
-  }
-  .nav-rail-btn {
-    width: 44px;
-    height: 44px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted);
-    transition: all 0.2s ease;
-    border: none;
-    background: transparent;
-    cursor: pointer;
-  }
-  .nav-rail-btn:hover {
-    color: var(--text-main);
-    background: var(--bg-hover);
-  }
-  .nav-rail-btn.active {
-    color: var(--accent);
-    background: var(--accent-muted);
-  }
-  .app-content {
-    flex: 1;
-    display: flex;
-    min-width: 0;
-    position: relative;
-    border-left: 1px solid var(--border-soft);
-  }
-  
-  /* OVERRIDE EXISTING SHELL TO FILL PARENT */
-  .app-content > .shell {
-    width: 100%;
-  }
-
-  /* MODELS VIEW FULL */
-  .models-view-full {
-    width: 100%;
-    height: 100%;
-    background: var(--bg-app);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    overflow-y: auto;
-    padding: 32px 0;
-  }
-  .models-view-container {
-    width: 100%;
-    max-width: 900px;
-    padding: 0 32px;
-    margin: 0 auto;
-  }
-  
-  /* INSTALLER UI */
-  .installer-card {
-    background: var(--bg-panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--r-lg);
-    padding: 40px;
-    width: 100%;
-    max-width: 600px;
-    text-align: center;
-    margin-top: 40px;
-  }
-  .installer-card h2 { margin-top: 0; color: var(--text-main); fill: var(--text-main); margin-bottom:12px; }
-  .installer-card p { color: var(--text-muted); margin-bottom: 32px; font-size: 15px; }
-  .install-log-box {
-    margin-top: 32px;
-    background: #111;
-    border-radius: var(--r-md);
-    padding: 16px;
-    color: #4ade80;
-    font-family: monospace;
-    font-size: 12px;
-    height: 300px;
-    overflow-y: auto;
-    text-align: left;
-    white-space: pre-wrap;
-    border: 1px solid #333;
-    box-shadow: inset 0 2px 4px rgba(0,0,0,0.5);
-  }
-
-  /* ═══════════════════════════════════
-     MODELS PANEL CSS
-  ═══════════════════════════════════ */
-  .models-panel {
-    display: flex;
-    flex-direction: column;
-    gap: 24px;
-    width: 100%;
-    margin-bottom: 40px;
-  }
-  .gpu-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    padding: 10px 16px;
-    background: var(--bg-hover);
-    border-radius: var(--r-md);
-    font-size: 13px;
-    color: var(--text-muted);
-    align-self: flex-start;
-    border: 1px solid var(--border-soft);
-  }
-  .gpu-badge.nvidia { border-color: #4ade80; color: #4ade80; background: rgba(74, 222, 128, 0.05); }
-  .gpu-badge.amd { border-color: #f97316; color: #f97316; background: rgba(249, 115, 22, 0.05); }
-  .gpu-badge.cpu { border-color: #eab308; color: #eab308; background: rgba(234, 179, 8, 0.05); }
-  .gpu-vram {
-    opacity: 0.7;
-    margin-left: 4px;
-  }
-  .model-search-box {
-    display: flex;
-    gap: 12px;
-  }
-  .model-search-input {
-    flex: 1;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-soft);
-    padding: 12px 16px;
-    border-radius: var(--r-md);
-    color: var(--text-main);
-    font-size: 14px;
-    outline: none;
-    transition: border-color 0.2s;
-  }
-  .model-search-input:focus {
-    border-color: var(--accent);
-  }
-  /* intentionally removed — canonical rules live in the second CSS block below */
-  .sys-req {
-    font-size: 0.7rem;
-    padding: 2px 6px;
-    border-radius: 4px;
-    white-space: nowrap;
-    font-weight: 500;
-  }
-  .sys-req.good { background: rgba(74, 222, 128, 0.1); color: #4ade80; }
-  .sys-req.warn { background: rgba(250, 204, 21, 0.1); color: #facc15; }
-  .sys-req.error { background: rgba(248, 113, 113, 0.1); color: #f87171; }
-
-  .small-dl-btn {
-    padding: 0.35rem 0.6rem;
-    font-size: 0.75rem;
-    background: rgba(255,255,255,0.05);
-  }
-
-  .small-start-btn {
-    padding: 0.4rem 0.8rem;
-    font-size: 0.75rem;
-    background: rgba(74, 222, 128, 0.15);
-    color: #4ade80;
-    border: 1px solid rgba(74, 222, 128, 0.3);
-  }
-  .small-start-btn:hover:not(:disabled) {
-    background: rgba(74, 222, 128, 0.25);
-  }
-
-  .model-active-badge {
-    font-size: 0.75rem;
-    color: #4ade80;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    gap: 0.35rem;
-    padding: 0.35rem 0.6rem;
-    background: rgba(74, 222, 128, 0.1);
-    border-radius: 6px;
-  }
-
-  .active-model {
-    border-color: rgba(74, 222, 128, 0.4) !important;
-    background: rgba(74, 222, 128, 0.05) !important;
-    box-shadow: 0 0 15px rgba(74, 222, 128, 0.1);
-  }
-
-  .local-models-section {
-    margin-top: 16px;
-    display: flex;
-    flex-direction: column;
-    gap: 12px;
-  }
-  .local-model-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    background: var(--bg-panel);
-    border: 1px solid var(--border-soft);
-    border-radius: var(--r-md);
-  }
-  .local-model-card.active-model {
-    border-color: var(--accent);
-    box-shadow: 0 0 0 1px var(--accent);
-  }
-  .local-model-info { display: flex; flex-direction: column; gap: 4px; }
-  .local-model-name { color: var(--text-main); font-weight: 500; font-size: 14.5px; }
-  .local-model-meta { color: var(--text-dim); font-size: 12.5px; }
-  .local-model-actions { display: flex; align-items: center; gap: 12px; }
-  
-  .running-model-card {
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    padding: 16px;
-    background: rgba(163, 190, 140, 0.05);
-    border: 1px solid rgba(163, 190, 140, 0.2);
-    border-radius: var(--r-md);
-  }
-  .running-model-info {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
-  .running-dot {
-    width: 10px;
-    height: 10px;
-    border-radius: 50%;
-    background: var(--accent);
-    box-shadow: 0 0 8px var(--accent);
-    animation: pulse 2s infinite;
-  }
-  @keyframes pulse {
-    0% { transform: scale(1); opacity: 1; }
-    50% { transform: scale(1.1); opacity: 0.7; }
-    100% { transform: scale(1); opacity: 1; }
-  }
-  .running-name { color: var(--text-main); font-weight: 500; margin-bottom: 2px; }
-  .running-meta { color: var(--accent); font-size: 12px; opacity: 0.9; }
-
   /* ═══════════════════════════════════
      SHELL LAYOUT
   ═══════════════════════════════════ */
@@ -2407,116 +1940,56 @@ Core Directives:
   }
   .model-search-input::placeholder { color: var(--text-muted); }
 
-  /* ═══ SKELETON LOADER ═══ */
-  .skeleton {
-    background: linear-gradient(90deg, var(--bg-element) 25%, var(--bg-hover) 50%, var(--bg-element) 75%);
-    background-size: 200% 100%;
-    animation: shimmer 1.4s infinite;
-  }
-  @keyframes shimmer {
-    0% { background-position: 200% 0; }
-    100% { background-position: -200% 0; }
-  }
-
-  /* ═══ SEARCH RESULTS (scrollable) ═══ */
+  /* Search Results */
   .model-results {
-    display: flex;
-    flex-direction: column;
-    gap: 0;
-    max-height: 380px;
-    overflow-y: auto;
-    border: 1px solid var(--border-soft);
-    border-radius: var(--r-md);
-    background: var(--bg-app);
+    display: flex; flex-direction: column; gap: 4px;
+    max-height: 300px; overflow-y: auto;
   }
-  .model-results::-webkit-scrollbar { width: 5px; }
-  .model-results::-webkit-scrollbar-track { background: transparent; }
-  .model-results::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 99px; }
-
   .model-result-card {
-    border-bottom: 1px solid var(--border-soft);
+    border-radius: var(--r-md);
+    border: 1px solid var(--border-soft);
+    background: var(--bg-app);
     overflow: hidden;
   }
-  .model-result-card:last-child { border-bottom: none; }
-
   .model-result-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
-    cursor: pointer;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 14px; width: 100%; text-align: left;
     color: var(--text-main);
-    transition: background 150ms;
   }
   .model-result-header:hover { background: var(--bg-hover); }
-
-  .model-result-info {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    flex: 1;
-    overflow: hidden;
-  }
+  .model-result-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
   .model-result-name {
-    color: var(--text-main);
-    font-size: 13.5px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    font-size: 13px; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
-  .model-result-meta {
-    color: var(--text-muted);
-    font-size: 11.5px;
-  }
+  .model-result-meta { font-size: 11px; color: var(--text-muted); }
   .model-expand-icon {
-    color: var(--text-dim);
-    font-size: 11px;
-    flex-shrink: 0;
+    font-size: 12px; color: var(--text-muted);
     transition: transform 200ms;
+    flex-shrink: 0;
   }
   .model-expand-icon.rotated { transform: rotate(90deg); }
 
   /* Model Files List */
   .model-files-list {
     border-top: 1px solid var(--border-soft);
-    background: var(--bg-panel);
-    padding: 4px 0;
+    padding: 6px 0;
+    background: rgba(0, 0, 0, 0.15);
   }
   .model-files-loading {
-    padding: 14px 16px;
-    font-size: 12px;
-    color: var(--text-muted);
-    text-align: center;
+    padding: 12px 14px; font-size: 12px;
+    color: var(--text-muted); text-align: center;
   }
   .model-file-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 16px;
-    transition: background 150ms;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 14px; gap: 8px;
   }
   .model-file-row:hover { background: var(--bg-hover); }
-  .model-file-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    overflow: hidden;
-  }
+  .model-file-info { display: flex; flex-direction: column; gap: 1px; flex: 1; min-width: 0; }
   .model-file-name {
-    font-size: 12.5px;
-    font-family: var(--mono);
+    font-size: 12px; font-family: var(--mono);
     color: var(--text-main);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   .model-file-size { font-size: 11px; color: var(--text-muted); }
 
@@ -2529,7 +2002,7 @@ Core Directives:
   .local-models-section { margin-top: 4px; }
   .section-title {
     font-size: 13px; font-weight: 600;
-    color: var(--text-muted);
+    color: var(--text-secondary);
     margin: 0 0 8px 0;
     padding-bottom: 6px;
     border-bottom: 1px solid var(--border-soft);
@@ -2585,89 +2058,5 @@ Core Directives:
   }
   .model-del-btn:hover:not(:disabled) { opacity: 1; background: rgba(239, 68, 68, 0.12); color: var(--red); }
   .model-del-btn:disabled { opacity: 0.2; cursor: not-allowed; }
-  /* ═══ START CONFIG MODAL & SEARCH UI FIXES ═══ */
-  .modal-overlay {
-    position: fixed; top: 0; left: 0; right: 0; bottom: 0;
-    background: rgba(0, 0, 0, 0.6);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    display: flex; align-items: center; justify-content: center;
-    z-index: 9999;
-    animation: fadeIn 0.15s ease-out;
-  }
-  .modal-content {
-    background: #1e1e1e;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    width: 400px; max-width: 90vw;
-    display: flex; flex-direction: column;
-  }
-  .modal-header {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
-    display: flex; justify-content: space-between; align-items: center;
-  }
-  .modal-title { font-size: 1rem; font-weight: 600; color: #fff; margin:0; }
-  .modal-close { background: none; border: none; color: #a1a1aa; cursor: pointer; font-size: 1.5rem; transition: color 0.15s; }
-  .modal-close:hover { color: #fff; }
-  .modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
-  .modal-actions { padding: 1rem 1.25rem; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; gap: 0.75rem; }
-
-  /* ═══ REINSTALL DETAILS ═══ */
-  .reinstall-details {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
-    padding: 0.6rem 1rem;
-    margin-bottom: 0.75rem;
-    font-size: 0.82rem;
-  }
-  .reinstall-summary {
-    color: #71717a;
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
-  }
-  .reinstall-summary::-webkit-details-marker { display: none; }
-  .reinstall-summary::before { content: '▸ '; }
-  details[open] .reinstall-summary::before { content: '▾ '; }
-
-  /* ═══ CONFIG DIALOG FORM ═══ */
-  .run-config-modal { width: 480px; }
-  .settings-form {
-    display: flex; flex-direction: column; gap: 1rem;
-  }
-  .form-group {
-    display: flex; flex-direction: column; gap: 0.35rem;
-  }
-  .form-group label {
-    color: #d4d4d8; font-size: 0.85rem; font-weight: 500;
-  }
-  .w-input {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 6px;
-    padding: 0.55rem 0.75rem;
-    color: #e4e4e7;
-    font-size: 0.9rem;
-    outline: none;
-    transition: border-color 0.15s;
-    -moz-appearance: textfield;
-    appearance: textfield;
-  }
-  .w-input:focus {
-    border-color: rgba(74,222,128,0.5);
-  }
-  .w-input::-webkit-inner-spin-button,
-  .w-input::-webkit-outer-spin-button {
-    opacity: 1;
-  }
-  .form-hint {
-    color: #71717a; font-size: 0.75rem;
-  }
-  .setup-body { padding: 1.25rem; }
-
-  /* ═══ SEARCH MODELS UI ═══ */
 </style>
 

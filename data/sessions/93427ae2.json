@@ -1,0 +1,18 @@
+{
+  "id": "93427ae2",
+  "title": "öerhaba",
+  "created_at": "2026-04-06 01:17",
+  "updated_at": "2026-04-06 01:17",
+  "messages": [
+    {
+      "role": "user",
+      "content": "öerhaba",
+      "timestamp": "01:17"
+    },
+    {
+      "role": "assistant",
+      "content": "⚠️ api.ChatCompletion: status 400: {\"error\":{\"code\":400,\"message\":\"Unable to generate parser for this template. Automatic parser generation failed: \\n------------\\nWhile executing CallExpression at line 19, column 27 in source:\\n...% 2 == 0) -%}↵        {{ raise_exception(\\\"Conversation roles must alternate user...\\n                                           ^\\nError: Jinja Exception: Conversation roles must alternate user/assistant/user/assistant/...\",\"type\":\"invalid_request_error\"}}",
+      "timestamp": "01:17"
+    }
+  ]
+}

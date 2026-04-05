@@ -14,6 +14,7 @@ type AppConfig struct {
 	Identity     IdentityConfig     `yaml:"identity"`
 	Memory       MemoryConfig       `yaml:"memory"`
 	RemoteAccess RemoteAccessConfig `yaml:"remote_access"`
+	Llama        LlamaConfig        `yaml:"llama"`
 }
 
 type RemoteAccessConfig struct {
@@ -25,6 +26,13 @@ type APIConfig struct {
 	BaseURL        string `yaml:"base_url"`
 	EmbeddingModel string `yaml:"embedding_model"`
 	TimeoutSeconds int    `yaml:"timeout_seconds"`
+}
+
+type LlamaConfig struct {
+	BinaryPath string `yaml:"binary_path" json:"binary_path"` // path to llama-server, auto-detected if empty
+	Port       int    `yaml:"port" json:"port"`               // default 8081
+	CtxSize    int    `yaml:"ctx_size" json:"ctx_size"`         // default 4096
+	ModelsDir  string `yaml:"models_dir" json:"models_dir"`     // default "./data/models"
 }
 
 type IdentityConfig struct {
@@ -70,6 +78,12 @@ func Default() *AppConfig {
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,
 			Port:    8080,
+		},
+		Llama: LlamaConfig{
+			BinaryPath: "",
+			Port:       8081,
+			CtxSize:    4096,
+			ModelsDir:  "./data/models",
 		},
 	}
 }
@@ -163,5 +177,14 @@ func (c *AppConfig) validate() {
 	}
 	if c.RemoteAccess.Port <= 0 || c.RemoteAccess.Port > 65535 {
 		c.RemoteAccess.Port = 8080
+	}
+	if c.Llama.Port <= 0 || c.Llama.Port > 65535 {
+		c.Llama.Port = 8081
+	}
+	if c.Llama.CtxSize <= 0 {
+		c.Llama.CtxSize = 4096
+	}
+	if c.Llama.ModelsDir == "" {
+		c.Llama.ModelsDir = "./data/models"
 	}
 }

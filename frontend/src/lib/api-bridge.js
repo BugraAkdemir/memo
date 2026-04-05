@@ -305,3 +305,120 @@ export async function GetVersion() {
 export function isWailsEnvironment() {
   return isWails;
 }
+
+// ─── Model Store ─────────────────────────────────────────────────
+
+export async function SearchModels(query) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.SearchModels(query);
+  }
+  return [];
+}
+
+export async function GetModelFiles(repoID) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.GetModelFiles(repoID);
+  }
+  return [];
+}
+
+export async function DownloadModel(repoID, filename) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.DownloadModel(repoID, filename);
+  }
+}
+
+export async function GetDownloadProgress() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.GetDownloadProgress();
+  }
+  return { active: false, percent: 0, speed: '', downloaded: 0, total_bytes: 0 };
+}
+
+export async function CancelDownload() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.CancelDownload();
+  }
+}
+
+export async function ListLocalModels() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.ListLocalModels();
+  }
+  return [];
+}
+
+export async function DeleteLocalModel(path) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.DeleteLocalModel(path);
+  }
+}
+
+// ─── llama-server Management ────────────────────────────────────
+
+export async function StartLocalModel(modelPath, ctxSize = 4096, port = 8081, gpuLayers = -1) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.StartLocalModel(modelPath, ctxSize, port, gpuLayers);
+  }
+}
+
+export async function StopLocalModel() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.StopLocalModel();
+  }
+}
+
+export async function GetLocalModelStatus() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.GetLocalModelStatus();
+  }
+  return { running: false, model_name: '', port: 0, gpu: { type: 'cpu', name: 'N/A' } };
+}
+
+export async function DetectGPU() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.DetectGPU();
+  }
+  return { type: 'cpu', name: 'N/A', vram_mb: 0, recommended_layers: 0 };
+}
+
+export async function GetLlamaConfig() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.GetLlamaConfig();
+  }
+  return { binary_path: '', port: 8081, ctx_size: 4096, models_dir: './data/models' };
+}
+
+export async function SetLlamaBinaryPath(path) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.SetLlamaBinaryPath(path);
+  }
+}
+
+export async function CheckLlamaInstallation() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.CheckLlamaInstallation();
+  }
+  return false;
+}
+
+export async function InstallLlamaServer() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.InstallLlamaServer();
+  }
+}

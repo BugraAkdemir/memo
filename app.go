@@ -21,7 +21,9 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/llama"
 	"memo/internal/memory"
+	"memo/internal/modelstore"
 	"memo/internal/sessions"
 	"memo/internal/webserver"
 
@@ -56,6 +58,10 @@ type App struct {
 	sttServer         *exec.Cmd
 	webServer         *webserver.Server
 	embeddedAssets    embed.FS
+	modelStore        *modelstore.Store
+	llamaServer       *llama.Server
+	llamaInstaller    *llama.Installer
+	originalBaseURL   string // stores the original API base URL before llama override
 }
 
 func NewApp() *App {
@@ -75,6 +81,7 @@ func (a *App) startup(ctx context.Context) {
 		cfg = config.Default()
 	}
 	a.cfg = cfg
+	a.originalBaseURL = cfg.API.BaseURL
 	a.client = api.NewClient(cfg.API.BaseURL, cfg.API.TimeoutSeconds)
 
 	embeddingFunc := memory.NewLMStudioEmbeddingFunc(a.client, cfg.API.EmbeddingModel)
@@ -91,6 +98,13 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("WARN: sessions: %v", err)
 	}
 	a.sessions = sm
+
+	// Initialize model store
+	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
+
+	// Initialize llama server manager and installer
+	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
+	a.llamaInstaller = llama.NewInstaller("data")
 
 	// Start STT server in background
 	go a.startSTTServer()
@@ -160,6 +174,12 @@ func (a *App) shutdown(ctx context.Context) {
 	log.Println("Memo shutting down, cleaning up background processes...")
 	if a.sttServer != nil && a.sttServer.Process != nil {
 		a.sttServer.Process.Kill()
+	}
+	// Stop llama-server if running
+	if a.llamaServer != nil {
+		if err := a.llamaServer.Stop(); err != nil {
+			log.Printf("llama shutdown: %v", err)
+		}
 	}
 }
 
@@ -638,21 +658,188 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 	return config.Save(a.cfg)
 }
 
+// ─── Model Store: Search & Download ──────────────────────────────
+
+func (a *App) SearchModels(query string) ([]modelstore.HFModelResult, error) {
+	results, err := a.modelStore.SearchModels(query)
+	if err != nil {
+		log.Printf("SearchModels error: %v", err)
+		return nil, fmt.Errorf("search failed: %w", err)
+	}
+	return results, nil
+}
+
+func (a *App) GetModelFiles(repoID string) []modelstore.GGUFFile {
+	files, err := a.modelStore.GetModelFiles(repoID)
+	if err != nil {
+		log.Printf("GetModelFiles error: %v", err)
+		return nil
+	}
+	return files
+}
+
+func (a *App) DownloadModel(repoID, filename string) error {
+	return a.modelStore.DownloadModel(repoID, filename)
+}
+
+func (a *App) GetDownloadProgress() *modelstore.DownloadProgress {
+	return a.modelStore.GetDownloadProgress()
+}
+
+func (a *App) CancelDownload() {
+	a.modelStore.CancelDownload()
+}
+
+func (a *App) ListLocalModels() []modelstore.LocalModel {
+	return a.modelStore.ListLocalModels()
+}
+
+func (a *App) DeleteLocalModel(path string) error {
+	return a.modelStore.DeleteLocalModel(path)
+}
+
+// ─── llama-server: Lifecycle Management ──────────────────────────
+
+func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error {
+	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers); err != nil {
+		return err
+	}
+
+	// Wait for the server to become ready (up to 120s for large models)
+	if err := a.llamaServer.WaitReady(120 * time.Second); err != nil {
+		a.llamaServer.Stop()
+		return fmt.Errorf("model loaded but server failed to start: %w", err)
+	}
+
+	// Redirect API client to the local llama-server
+	newBaseURL := a.llamaServer.GetBaseURL()
+	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
+	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
+
+	// Re-initialize embedding function with the new client
+	embeddingFunc := memory.NewLMStudioEmbeddingFunc(a.client, a.cfg.API.EmbeddingModel)
+	if a.store != nil {
+		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
+		if err != nil {
+			log.Printf("WARN: memory re-init: %v", err)
+		} else {
+			a.store = newStore
+		}
+	}
+
+	return nil
+}
+
+func (a *App) StopLocalModel() error {
+	if err := a.llamaServer.Stop(); err != nil {
+		return err
+	}
+
+	// Revert API client to the original base URL
+	a.client = api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
+	log.Printf("API client reverted to: %s", a.originalBaseURL)
+
+	// Re-initialize embedding function with the reverted client
+	embeddingFunc := memory.NewLMStudioEmbeddingFunc(a.client, a.cfg.API.EmbeddingModel)
+	if a.store != nil {
+		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
+		if err != nil {
+			log.Printf("WARN: memory re-init: %v", err)
+		} else {
+			a.store = newStore
+		}
+	}
+
+	return nil
+}
+
+func (a *App) GetLocalModelStatus() llama.ServerStatus {
+	return a.llamaServer.GetStatus()
+}
+
+func (a *App) DetectGPU() llama.GPUInfo {
+	return llama.DetectGPU()
+}
+
+// ─── Settings: Llama Config ──────────────────────────────────────
+
+func (a *App) GetLlamaConfig() config.LlamaConfig {
+	return a.cfg.Llama
+}
+
+func (a *App) SetLlamaBinaryPath(path string) error {
+	a.cfg.Llama.BinaryPath = path
+	return config.Save(a.cfg)
+}
+
+// ─── Llama Installer ─────────────────────────────────────────────
+
+func (a *App) CheckLlamaInstallation() bool {
+	return a.llamaInstaller.IsInstalled(a.cfg.Llama.BinaryPath)
+}
+
+func (a *App) InstallLlamaServer() error {
+	logger := func(msg string) {
+		llama.StreamToFrontend(a.ctx, msg)
+	}
+
+	binPath, err := a.llamaInstaller.Install(a.ctx, logger)
+	if err != nil {
+		return err
+	}
+
+	// Update config to point to the newly compiled binary
+	a.cfg.Llama.BinaryPath = binPath
+	return config.Save(a.cfg)
+}
+
 // ─── Internal Helpers ────────────────────────────────────────────
 
 func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Message {
 	memories := a.retrieveMemory(userMsg)
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
+	history := a.getSessionHistory()
 	var msgs []api.Message
-	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
-	msgs = append(msgs, a.getSessionHistory()...)
 
-	if len(extraImageB64) > 0 {
-		msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, extraImageB64...))
+	if a.llamaServer.IsRunning() {
+		// Local models (e.g. Gemma) require strict user/assistant alternation —
+		// no "system" role allowed. Inject system prompt into the first user turn.
+		if len(history) == 0 {
+			// First message: prepend system prompt to user message
+			combinedMsg := systemPrompt + "\n\n" + userMsg
+			if len(extraImageB64) > 0 {
+				msgs = append(msgs, api.NewMultimodalMessage("user", combinedMsg, extraImageB64...))
+			} else {
+				msgs = append(msgs, api.NewTextMessage("user", combinedMsg))
+			}
+		} else {
+			// Subsequent messages: inject system prompt into the very first user message in history
+			injected := false
+			for i, h := range history {
+				if !injected && h.Role == "user" {
+					content := systemPrompt + "\n\n" + h.GetTextContent()
+					history[i] = api.NewTextMessage("user", content)
+					injected = true
+				}
+			}
+			msgs = append(msgs, history...)
+			if len(extraImageB64) > 0 {
+				msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, extraImageB64...))
+			} else {
+				msgs = append(msgs, api.NewTextMessage("user", userMsg))
+			}
+		}
 	} else {
-		msgs = append(msgs, api.NewTextMessage("user", userMsg))
+		msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
+		msgs = append(msgs, history...)
+		if len(extraImageB64) > 0 {
+			msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, extraImageB64...))
+		} else {
+			msgs = append(msgs, api.NewTextMessage("user", userMsg))
+		}
 	}
+
 	return msgs
 }
 

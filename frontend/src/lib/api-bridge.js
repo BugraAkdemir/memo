@@ -220,12 +220,22 @@ export async function GetImageBase64(path) {
   return '';
 }
 
+let _mediaRecorder = null;
+let _audioChunks = [];
+let _mediaStream = null;
+
 export async function StartRecording() {
   if (isWails) {
     const w = await getWailsApp();
     return w.StartRecording();
   }
-  throw new Error('Voice recording is not available on web');
+  _audioChunks = [];
+  _mediaStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+  _mediaRecorder = new MediaRecorder(_mediaStream, {
+    mimeType: MediaRecorder.isTypeSupported('audio/webm;codecs=opus') ? 'audio/webm;codecs=opus' : 'audio/webm'
+  });
+  _mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) _audioChunks.push(e.data); };
+  _mediaRecorder.start(100);
 }
 
 export async function StopRecordingAndTranscribe() {
@@ -233,7 +243,22 @@ export async function StopRecordingAndTranscribe() {
     const w = await getWailsApp();
     return w.StopRecordingAndTranscribe();
   }
-  throw new Error('Voice recording is not available on web');
+  if (!_mediaRecorder || _mediaRecorder.state !== 'recording') throw new Error('Not recording');
+  return new Promise((resolve, reject) => {
+    _mediaRecorder.onstop = async () => {
+      if (_mediaStream) { _mediaStream.getTracks().forEach(t => t.stop()); _mediaStream = null; }
+      const blob = new Blob(_audioChunks, { type: _mediaRecorder.mimeType });
+      _audioChunks = [];
+      _mediaRecorder = null;
+      try {
+        const resp = await fetch(`${API_BASE}/transcribe`, { method: 'POST', body: blob });
+        if (!resp.ok) throw new Error(await resp.text());
+        const data = await resp.json();
+        resolve(data.text || '');
+      } catch (e) { reject(e); }
+    };
+    _mediaRecorder.stop();
+  });
 }
 
 export async function GetRemoteAccessStatus() {

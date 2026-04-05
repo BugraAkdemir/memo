@@ -2,13 +2,23 @@ package webserver
 
 import (
 	"context"
+	"crypto/ecdsa"
+	"crypto/elliptic"
+	"crypto/rand"
+	"crypto/tls"
+	"crypto/x509"
+	"crypto/x509/pkix"
 	"encoding/json"
+	"encoding/pem"
 	"fmt"
+	"io"
 	"io/fs"
 	"log"
+	"math/big"
 	"net"
 	"net/http"
 	"sync"
+	"time"
 )
 
 // AppBridge defines the interface that the main App must implement
@@ -24,6 +34,7 @@ type AppBridge interface {
 	WebCheckConnection() interface{}
 	GetMemoryCount() int
 	ToggleIncognito(enabled bool)
+	TranscribeAudio(audioData []byte) (string, error)
 }
 
 type Server struct {
@@ -63,6 +74,7 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/api/messages", s.handleMessages)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/incognito", s.handleIncognito)
+	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
 
 	// Serve frontend static files
 	fileServer := http.FileServer(http.FS(s.assets))
@@ -75,16 +87,22 @@ func (s *Server) Start(port int) error {
 	s.port = port
 	s.localIPs = getLocalIPs()
 
-	ln, err := net.Listen("tcp", s.srv.Addr)
+	tlsCert, err := generateSelfSignedCert(s.localIPs)
+	if err != nil {
+		return fmt.Errorf("TLS cert: %w", err)
+	}
+	s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{tlsCert}}
+
+	ln, err := tls.Listen("tcp", s.srv.Addr, s.srv.TLSConfig)
 	if err != nil {
 		return fmt.Errorf("cannot listen on port %d: %w", port, err)
 	}
 
 	s.running = true
 	go func() {
-		log.Printf("Remote access server started on port %d", port)
+		log.Printf("Remote access server (HTTPS) started on port %d", port)
 		for _, ip := range s.localIPs {
-			log.Printf("  → http://%s:%d", ip, port)
+			log.Printf("  → https://%s:%d", ip, port)
 		}
 		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("Remote server error: %v", err)
@@ -128,7 +146,7 @@ func (s *Server) GetAddresses() []string {
 	defer s.mu.Unlock()
 	var addrs []string
 	for _, ip := range s.localIPs {
-		addrs = append(addrs, fmt.Sprintf("http://%s:%d", ip, s.port))
+		addrs = append(addrs, fmt.Sprintf("https://%s:%d", ip, s.port))
 	}
 	return addrs
 }
@@ -238,6 +256,26 @@ func (s *Server) handleIncognito(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, 10<<20)
+	audioData, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	text, err := s.bridge.TranscribeAudio(audioData)
+	if err != nil {
+		log.Printf("Transcribe error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"text": text})
+}
+
 // ─── Helpers ────────────────────────────────────────────────────
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -273,4 +311,54 @@ func getLocalIPs() []string {
 		ips = []string{"localhost"}
 	}
 	return ips
+}
+
+func generateSelfSignedCert(ips []string) (tls.Certificate, error) {
+	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	notBefore := time.Now()
+	notAfter := notBefore.Add(365 * 24 * time.Hour)
+
+	serialNumberLimit := new(big.Int).Lsh(big.NewInt(1), 128)
+	serialNumber, err := rand.Int(rand.Reader, serialNumberLimit)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	template := x509.Certificate{
+		SerialNumber: serialNumber,
+		Subject: pkix.Name{
+			Organization: []string{"Memo Local Engine"},
+		},
+		NotBefore:             notBefore,
+		NotAfter:              notAfter,
+		KeyUsage:              x509.KeyUsageKeyEncipherment | x509.KeyUsageDigitalSignature,
+		ExtKeyUsage:           []x509.ExtKeyUsage{x509.ExtKeyUsageServerAuth},
+		BasicConstraintsValid: true,
+	}
+
+	for _, ip := range ips {
+		if parsedIP := net.ParseIP(ip); parsedIP != nil {
+			template.IPAddresses = append(template.IPAddresses, parsedIP)
+		}
+	}
+	template.DNSNames = append(template.DNSNames, "localhost")
+
+	derBytes, err := x509.CreateCertificate(rand.Reader, &template, &template, &priv.PublicKey, priv)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+
+	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
+	
+	privBytes, err := x509.MarshalECPrivateKey(priv)
+	if err != nil {
+		return tls.Certificate{}, err
+	}
+	keyPEM := pem.EncodeToMemory(&pem.Block{Type: "EC PRIVATE KEY", Bytes: privBytes})
+
+	return tls.X509KeyPair(certPEM, keyPEM)
 }

@@ -130,6 +130,10 @@ export function ToggleIncognito(arg1) {
   return window['go']['main']['App']['ToggleIncognito'](arg1);
 }
 
+export function TranscribeAudio(arg1) {
+  return window['go']['main']['App']['TranscribeAudio'](arg1);
+}
+
 export function UpdateIdentity(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateIdentity'](arg1, arg2, arg3);
 }

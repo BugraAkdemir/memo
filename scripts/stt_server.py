@@ -5,6 +5,8 @@ import json
 import wave
 import tempfile
 import os
+import subprocess
+
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from vosk import Model, KaldiRecognizer, SetLogLevel
 
@@ -29,12 +31,30 @@ class Handler(BaseHTTPRequestHandler):
         length = int(self.headers.get("Content-Length", 0))
         audio_data = self.rfile.read(length)
 
-        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as f:
+        print(f"[STT] Received {length} bytes. Header: {audio_data[:10]}", flush=True)
+
+        is_wav = audio_data[:4] == b"RIFF"
+        suffix = ".wav" if is_wav else ".webm"
+
+        with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
             f.write(audio_data)
             tmp_path = f.name
 
+        wav_path = tmp_path
+        converted = False
+
         try:
-            wf = wave.open(tmp_path, "rb")
+            if not is_wav:
+                wav_path = tmp_path + ".wav"
+                result_proc = subprocess.run(
+                    ["ffmpeg", "-y", "-i", tmp_path, "-ar", "16000", "-ac", "1", "-f", "wav", wav_path],
+                    capture_output=True, timeout=15
+                )
+                if result_proc.returncode != 0:
+                    raise Exception(f"ffmpeg error: {result_proc.stderr.decode()}")
+                converted = True
+
+            wf = wave.open(wav_path, "rb")
             rec = KaldiRecognizer(model, wf.getframerate())
             rec.SetWords(False)
 
@@ -52,6 +72,8 @@ class Handler(BaseHTTPRequestHandler):
             print(f"[STT] Error: {e}", flush=True)
         finally:
             os.unlink(tmp_path)
+            if converted and os.path.exists(wav_path):
+                os.unlink(wav_path)
 
         resp = json.dumps({"text": text}).encode()
         self.send_response(200)

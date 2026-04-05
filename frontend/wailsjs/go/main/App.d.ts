@@ -70,6 +70,8 @@ export function SwitchChat(arg1:string):Promise<void>;
 
 export function ToggleIncognito(arg1:boolean):Promise<void>;
 
+export function TranscribeAudio(arg1:Array<number>):Promise<string>;
+
 export function UpdateIdentity(arg1:string,arg2:string,arg3:string):Promise<void>;
 
 export function WebCheckConnection():Promise<any>;

@@ -535,7 +535,6 @@
           <button class="dock-btn" on:click={pickFile} disabled={loading} title="Attach file">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
           </button>
-          {#if isDesktop}
           <button class="dock-btn" on:click={startMic} disabled={loading} title="Voice input">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -544,7 +543,6 @@
               <line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
           </button>
-          {/if}
           <textarea
             bind:value={input}
             on:keydown={onKey}

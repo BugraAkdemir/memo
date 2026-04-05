@@ -32,6 +32,61 @@
   let activeChatId = '';
   let sidebarOpen = window.innerWidth > 768;
   
+  // Custom i18n setup
+  let lang = localStorage.getItem('memo_lang') || 'tr';
+  const dict = {
+    tr: {
+      newChat: "Yeni Sohbet",
+      incognito: "Gizli Mod",
+      incognitoActive: "Gizli Mod Aktif",
+      memories: "hatıra",
+      welcome: "Size nasıl yardımcı olabilirim?",
+      inputPlaceholder: "Memo'ya bir mesaj yazın...",
+      settings: "Ayarlar",
+      general: "Genel",
+      systemPrompt: "Sistem İstemi",
+      incognitoPrompt: "Gizli Mod İstemi",
+      memory: "Hafıza",
+      prefs: "Uygulama Tercihleri",
+      language: "Dil",
+      save: "Kaydet",
+      saved: "kaydedildi",
+      reset: "Sıfırla",
+      clearAll: "Tümünü Temizle",
+      remote: "Uzaktan Erişim",
+      userProfile: "Kullanıcı",
+      freePlan: "Ücretsiz Plan"
+    },
+    en: {
+      newChat: "New Chat",
+      incognito: "Incognito",
+      incognitoActive: "Incognito Mode Active",
+      memories: "memories",
+      welcome: "What can I help you with?",
+      inputPlaceholder: "Type a message to Memo...",
+      settings: "Settings",
+      general: "General",
+      systemPrompt: "System Prompt",
+      incognitoPrompt: "Incognito Prompt",
+      memory: "Memory",
+      prefs: "Application Preferences",
+      language: "Language",
+      save: "Save",
+      saved: "saved",
+      reset: "Reset Default",
+      clearAll: "Clear All",
+      remote: "Remote Access",
+      userProfile: "User Account",
+      freePlan: "Free Plan"
+    }
+  };
+  $: t = (key) => dict[lang][key] || key;
+  
+  function setLanguage(l) {
+    lang = l;
+    localStorage.setItem('memo_lang', l);
+  }
+  
   onMount(() => {
     const handleResize = () => { if(window.innerWidth <= 768 && sidebarOpen) sidebarOpen = false; };
     window.addEventListener('resize', handleResize);
@@ -382,11 +437,11 @@
     <div class="side-top">
       <button class="new-session" on:click={newChat}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        <span>New Session</span>
+        <span>{t('newChat')}</span>
       </button>
       <button class="new-session incognito-btn" on:click={startIncognito}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11v1a10 10 0 1 1-9-10"></path><path d="M22 4L12 14.01l-3-3"></path></svg>
-        <span>Incognito</span>
+        <span>{t('incognito')}</span>
       </button>
     </div>
 
@@ -405,11 +460,18 @@
     </nav>
 
     <div class="side-bottom">
-      <div class="status" class:on={conn.connected}>
-        <span class="dot"></span>
-        <span class="status-text">{conn.connected ? (conn.models?.[0] || 'online') : 'offline'}</span>
+      <div class="user-profile">
+        <div class="user-avatar">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+        </div>
+        <div class="user-info">
+          <span class="user-name">{t('userProfile')}</span>
+          <span class="user-plan">{t('freePlan')}</span>
+        </div>
+        <button class="user-settings-btn" on:click={openSettings}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+        </button>
       </div>
-      <span class="mem-badge">{memCount} memories</span>
     </div>
   </aside>
   {/if}
@@ -423,7 +485,10 @@
       </button>
       <span class="bar-title">
         {#if isIncognito}
-          🕵️ Incognito Mode
+          <div class="incognito-title">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11v1a10 10 0 1 1-9-10"></path><path d="M22 4L12 14.01l-3-3"></path></svg>
+            <span>{t('incognitoActive')}</span>
+          </div>
         {:else}
           {chats.find(c => c.id === activeChatId)?.title || 'Memo'}
         {/if}
@@ -437,11 +502,13 @@
     <div class="feed" bind:this={chatEl}>
       {#if messages.length === 0}
         <div class="welcome">
-          <div class="w-mark">memo</div>
+          <div class="w-mark">
+            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><polyline points="3.27 6.96 12 12.01 20.73 6.96"></polyline><line x1="12" y1="22.08" x2="12" y2="12"></line></svg>
+          </div>
           {#if isIncognito}
-            <div class="w-sub" style="color:var(--red);">Incognito Mode: Nothing is saved to memory</div>
+            <div class="w-sub" style="color:var(--red);">{t('incognitoActive')}</div>
           {:else}
-            <div class="w-sub">local ai · persistent memory · private</div>
+            <div class="w-sub">{t('welcome')}</div>
           {/if}
         </div>
       {/if}
@@ -496,7 +563,7 @@
     <!-- Attachment preview -->
     {#if attachedImage || attachedFile}
       <div class="attach-row">
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--gold)" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         <span>{attachedImage ? attachedImage.split('/').pop() : attachedFileName}</span>
         <button class="attach-x" on:click={clearAttach}>×</button>
       </div>
@@ -558,7 +625,7 @@
           <textarea
             bind:value={input}
             on:keydown={onKey}
-            placeholder="Type a message to Memo..."
+            placeholder={t('inputPlaceholder')}
             rows="1"
             disabled={loading}
           ></textarea>
@@ -577,43 +644,59 @@
 
 <!-- ═══ Settings Modal ═══ -->
 {#if settingsOpen}
+<!-- svelte-ignore a11y-click-events-have-key-events -->
+<!-- svelte-ignore a11y-no-static-element-interactions -->
 <div class="overlay" on:click={() => settingsOpen=false}>
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
   <div class="modal" on:click|stopPropagation>
     <div class="m-head">
-      <span class="m-title">Settings</span>
+      <span class="m-title">{t('settings')}</span>
       <button class="bar-btn" on:click={() => settingsOpen=false}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
       </button>
     </div>
     <div class="m-tabs">
-      <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>System Prompt</button>
-      <button class="m-tab" class:active={settingsTab==='incognito'} on:click={() => settingsTab='incognito'}>Incognito Prompt</button>
-      <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>Memory</button>
+      <button class="m-tab" class:active={settingsTab==='general'} on:click={() => settingsTab='general'}>{t('general')}</button>
+      <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>{t('systemPrompt')}</button>
+      <button class="m-tab" class:active={settingsTab==='incognito'} on:click={() => settingsTab='incognito'}>{t('incognitoPrompt')}</button>
+      <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>{t('memory')}</button>
       {#if isDesktop}
       <button class="m-tab" class:active={settingsTab==='remote'} on:click={openRemoteTab}>Remote Access</button>
       {/if}
     </div>
     <div class="m-body">
-      {#if settingsTab === 'prompt'}
+      {#if settingsTab === 'general'}
+        <div class="m-section">
+          <p class="m-desc">{t('prefs')}</p>
+          <div class="setting-row">
+            <span class="setting-label">{t('language')}</span>
+            <div class="lang-toggle">
+              <button class="lang-btn" class:active={lang === 'tr'} on:click={() => setLanguage('tr')}>Türkçe</button>
+              <button class="lang-btn" class:active={lang === 'en'} on:click={() => setLanguage('en')}>English</button>
+            </div>
+          </div>
+        </div>
+      {:else if settingsTab === 'prompt'}
         <p class="m-desc">Define how Memo behaves. Leave empty for default.</p>
         <textarea class="m-prompt" bind:value={sysPrompt} placeholder="e.g. You are a senior Go developer..." rows="8"></textarea>
         <div class="m-actions">
-          <button class="m-btn gold" on:click={savePrompt}>Save</button>
-          <button class="m-btn" on:click={resetPrompt}>Reset Default</button>
-          {#if promptSaved}<span class="m-ok">✓ saved</span>{/if}
+          <button class="m-btn gold" on:click={savePrompt}>{t('save')}</button>
+          <button class="m-btn" on:click={resetPrompt}>{t('reset')}</button>
+          {#if promptSaved}<span class="m-ok">✓ {t('saved')}</span>{/if}
         </div>
       {:else if settingsTab === 'incognito'}
         <p class="m-desc" style="color:var(--red);">Define how Memo behaves in Incognito Mode.</p>
         <textarea class="m-prompt" bind:value={incognitoPrompt} placeholder="e.g. You are Memo in Incognito Mode..." style="border-color: rgba(255, 60, 60, 0.3);" rows="8"></textarea>
         <div class="m-actions">
-          <button class="m-btn danger" on:click={saveIncognitoPrompt}>Save</button>
-          {#if promptSaved}<span class="m-ok" style="color:var(--red);">✓ saved</span>{/if}
+          <button class="m-btn danger" on:click={saveIncognitoPrompt}>{t('save')}</button>
+          {#if promptSaved}<span class="m-ok" style="color:var(--red);">✓ {t('saved')}</span>{/if}
         </div>
       {:else if settingsTab === 'memory'}
         <div class="mem-top">
-          <p class="m-desc">{memFiles.length} memory records stored</p>
+          <p class="m-desc">{memFiles.length} {t('memories')} stored</p>
           <button class="m-btn danger" on:click={clearMem} disabled={memBusy || !memFiles.length}>
-            {memBusy ? '...' : 'Clear All'}
+            {memBusy ? '...' : t('clearAll')}
           </button>
         </div>
         {#if memBusy}
@@ -690,11 +773,11 @@
   /* ─── SIDEBAR ─── */
   .side {
     width: 240px;
-    background: var(--black-1);
+    background: var(--bg-panel);
     display: flex;
     flex-direction: column;
     flex-shrink: 0;
-    border-right: 1px solid var(--t-3);
+    border-right: 1px solid var(--text-dim);
   }
   .side-top { padding: var(--sp-4); }
   .new-session {
@@ -703,13 +786,13 @@
     gap: var(--sp-2);
     width: 100%;
     padding: var(--sp-3) var(--sp-4);
-    color: var(--gold);
+    color: var(--accent);
     font-size: 14px;
     font-weight: 500;
     letter-spacing: 0.3px;
-    border-radius: var(--r);
+    border-radius: var(--r-md);
   }
-  .new-session:hover { background: var(--gold-subtle); }
+  .new-session:hover { background: var(--accent-muted); }
   
   .incognito-btn { color: var(--red); margin-top: var(--sp-2); }
   .incognito-btn:hover { background: rgba(255, 60, 60, 0.1); }
@@ -721,15 +804,15 @@
     align-items: center;
     width: 100%;
     padding: var(--sp-3) var(--sp-3);
-    border-bottom: 1px solid var(--t-3);
+    border-bottom: 1px solid var(--text-dim);
     text-align: left;
-    color: var(--t-1);
+    color: var(--text-main);
     font-size: 14px;
     gap: var(--sp-2);
   }
   .s-item:last-child { border-bottom: none; }
-  .s-item:hover { color: var(--t-0); background: var(--black-2); }
-  .s-item.active { color: var(--gold); background: var(--gold-subtle); }
+  .s-item:hover { color: var(--text-main); background: var(--bg-element); }
+  .s-item.active { color: var(--accent); background: var(--accent-muted); }
   .s-info { flex:1; min-width:0; display:flex; flex-direction:column; gap:1px; }
   .s-title {
     font-size: 14px;
@@ -738,32 +821,75 @@
     text-overflow: ellipsis;
     white-space: nowrap;
   }
-  .s-time { font-size: 11px; color: var(--t-2); }
+  .s-time { font-size: 11px; color: var(--text-muted); }
   .s-del {
     opacity: 0;
     width: 24px; height: 24px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 4px;
-    color: var(--t-2);
+    color: var(--text-muted);
     flex-shrink: 0;
   }
   .s-item:hover .s-del { opacity: 1; }
-  .s-del:hover { background: var(--black-4); color: var(--red); }
+  .s-del:hover { background: var(--border-soft); color: var(--red); }
 
   .side-bottom {
-    padding: var(--sp-3) var(--sp-4);
-    border-top: 1px solid var(--t-3);
+    padding: var(--sp-3) var(--sp-3);
+    border-top: 1px solid var(--border-soft);
+    background: var(--bg-panel);
+    flex-shrink: 0;
+  }
+  .user-profile {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    font-size: 10px;
-    color: var(--t-2);
+    gap: var(--sp-3);
+    padding: var(--sp-2);
+    border-radius: var(--r-md);
+    transition: background 0.15s;
+    cursor: pointer;
   }
-  .status { display:flex; align-items:center; gap: 6px; }
-  .dot { width:5px; height:5px; border-radius:50%; background:var(--red); }
-  .status.on .dot { background: var(--green); }
-  .status-text { letter-spacing: 0.3px; font-size: 12px; }
-  .mem-badge { color: var(--t-2); font-size: 12px; }
+  .user-profile:hover {
+    background: var(--bg-hover);
+  }
+  .user-avatar {
+    width: 32px; height: 32px;
+    border-radius: 50%;
+    background: var(--bg-element);
+    color: var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    flex-shrink: 0;
+  }
+  .user-info {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+  }
+  .user-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .user-plan {
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .user-settings-btn {
+    width: 28px; height: 28px;
+    display: flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    color: var(--text-muted);
+    opacity: 0.6;
+    flex-shrink: 0;
+  }
+  .user-profile:hover .user-settings-btn { opacity: 1; }
+  .user-settings-btn:hover { background: var(--border-soft); color: var(--text-main); }
+  .incognito-title {
+    display: flex; align-items: center; gap: 6px;
+  }
 
   /* ─── MAIN AREA ─── */
   .main {
@@ -771,7 +897,7 @@
     display: flex;
     flex-direction: column;
     min-width: 0;
-    background: var(--black-0);
+    background: var(--bg-app);
   }
 
   .bar {
@@ -779,8 +905,8 @@
     align-items: center;
     gap: var(--sp-3);
     padding: var(--sp-2) var(--sp-4);
-    border-bottom: 1px solid var(--t-3);
-    background: var(--black-1);
+    border-bottom: 1px solid var(--text-dim);
+    background: var(--bg-panel);
     flex-shrink: 0;
     height: 44px;
   }
@@ -788,7 +914,7 @@
     flex: 1;
     font-size: 14px;
     font-weight: 600;
-    color: var(--t-1);
+    color: var(--text-main);
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -797,10 +923,10 @@
   .bar-btn {
     width: 36px; height: 36px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: var(--r);
-    color: var(--t-2);
+    border-radius: var(--r-md);
+    color: var(--text-muted);
   }
-  .bar-btn:hover { background: var(--black-4); color: var(--t-0); }
+  .bar-btn:hover { background: var(--border-soft); color: var(--text-main); }
 
   /* ─── FEED ─── */
   .feed {
@@ -821,49 +947,44 @@
     font-family: var(--mono);
     font-size: 36px;
     font-weight: 500;
-    color: var(--gold);
+    color: var(--accent);
     letter-spacing: -1px;
     opacity: 0.7;
   }
   .w-sub {
     font-size: 11px;
-    color: var(--t-2);
+    color: var(--text-muted);
     letter-spacing: 1px;
     text-transform: uppercase;
   }
 
   .entry {
-    max-width: 90%;
-    margin: 0 auto var(--sp-4);
-    padding: var(--sp-3) var(--sp-4);
-    border-radius: var(--r);
+    max-width: 800px;
+    margin: 0 auto var(--sp-6);
+    padding: 0 var(--sp-4);
     width: 100%;
-  }
-  .entry.memo {
-    background: var(--black-2);
   }
   .entry-head {
     display: flex;
-    align-items: baseline;
-    gap: var(--sp-2);
-    margin-bottom: var(--sp-1);
+    align-items: center;
+    gap: var(--sp-3);
+    margin-bottom: var(--sp-2);
   }
   .entry-sender {
-    font-weight: 700;
-    font-size: 14px;
-    color: var(--gold);
-    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 15px;
+    color: var(--text-main);
   }
   .entry-time {
     font-size: 12px;
-    color: var(--t-3);
+    color: var(--text-muted);
   }
   .entry-attach {
     display: flex;
     align-items: center;
     gap: var(--sp-2);
     font-size: 13px;
-    color: var(--t-2);
+    color: var(--text-muted);
     margin-bottom: var(--sp-1);
   }
   .image-attach {
@@ -874,21 +995,21 @@
   .chat-img {
     max-width: 100%;
     max-height: 350px;
-    border-radius: var(--r);
+    border-radius: var(--r-md);
     display: block;
   }
   .loading-img, .error-img {
     font-size: 12px;
-    color: var(--t-3);
+    color: var(--text-dim);
     font-style: italic;
   }
   .entry-body {
     font-size: 15px;
     line-height: 1.7;
-    color: var(--t-0);
+    color: var(--text-main);
   }
-  .thinking { color: var(--t-2); }
-  .cursor-blink { animation: pulse 1s infinite; color: var(--gold); }
+  .thinking { color: var(--text-muted); }
+  .cursor-blink { animation: pulse 1s infinite; color: var(--accent); }
 
   /* ─── ATTACHMENT ROW ─── */
   .attach-row {
@@ -897,11 +1018,11 @@
     gap: var(--sp-2);
     padding: var(--sp-1) var(--sp-6);
     font-size: 11px;
-    color: var(--gold);
+    color: var(--accent);
   }
   .attach-x {
     font-size: 14px;
-    color: var(--t-2);
+    color: var(--text-muted);
     width: 18px; height: 18px;
     display: flex; align-items: center; justify-content: center;
     border-radius: 3px;
@@ -910,57 +1031,67 @@
 
   /* ─── INPUT DOCK ─── */
   .input-dock {
-    padding: var(--sp-2) var(--sp-5);
-    background: rgba(5,5,5,0.85);
-    backdrop-filter: blur(12px);
-    border-top: 1px solid var(--t-3);
+    padding: var(--sp-4) var(--sp-5) var(--sp-6); /* add padding bottom for floating look */
+    background: transparent;
+    border-top: none;
+    display: flex;
+    justify-content: center;
   }
   .input-row {
     display: flex;
     align-items: flex-end;
     gap: var(--sp-1);
-    max-width: 90%;
+    width: 100%;
+    max-width: 800px;
     margin: 0 auto;
+    background: var(--bg-app);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-md);
+    padding: var(--sp-2) var(--sp-2);
+    transition: box-shadow 0.2s ease;
+  }
+  .input-row:focus-within {
+    box-shadow: var(--shadow-lg);
+    border-color: var(--border-hover);
   }
   .dock-btn {
-    width: 38px; height: 38px;
+    width: 40px; height: 40px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: var(--r);
-    color: var(--t-2);
+    border-radius: 50%;
+    color: var(--text-muted);
     flex-shrink: 0;
   }
-  .dock-btn:hover:not(:disabled) { color: var(--gold); background: var(--black-3); }
+  .dock-btn:hover:not(:disabled) { color: var(--accent); background: var(--bg-hover); }
   .input-row textarea {
     flex: 1;
-    background: var(--black-2);
-    border: 1px solid var(--t-3);
-    border-radius: var(--r);
-    color: var(--t-0);
+    background: transparent;
+    border: none;
+    color: var(--text-main);
     font-size: 15px;
     line-height: 1.5;
     resize: none;
-    min-height: 20px;
-    max-height: 120px;
-    padding: var(--sp-2) var(--sp-3);
+    min-height: 24px;
+    max-height: 200px;
+    padding: 8px var(--sp-2);
     outline: none;
     font-family: var(--sans);
   }
-  .input-row textarea:focus { border-color: var(--gold-dim); }
-  .input-row textarea::placeholder { color: var(--gold-muted); }
+  .input-row textarea::placeholder { color: var(--text-dim); }
   .input-row textarea:disabled { opacity: 0.35; }
   .send-btn {
     width: 38px; height: 38px;
     display: flex; align-items: center; justify-content: center;
-    border-radius: var(--r);
-    color: var(--gold);
+    border-radius: var(--r-md);
+    color: var(--accent);
     flex-shrink: 0;
   }
-  .send-btn:hover:not(:disabled) { background: var(--gold-subtle); }
-  .send-btn:disabled { color: var(--t-3); }
+  .send-btn:hover:not(:disabled) { background: var(--accent-muted); }
+  .send-btn:disabled { color: var(--text-dim); }
   .spin {
     width: 14px; height: 14px;
-    border: 1.5px solid var(--t-3);
-    border-top-color: var(--gold);
+    border: 1.5px solid var(--text-dim);
+    border-top-color: var(--accent);
     border-radius: 50%;
     animation: spin 0.5s linear infinite;
   }
@@ -1031,8 +1162,8 @@
   }
 
   .send-rec-btn {
-    background: var(--gold-subtle);
-    color: var(--gold);
+    background: var(--accent-muted);
+    color: var(--accent);
     border: 1px solid rgba(212, 175, 55, 0.25);
   }
   .send-rec-btn:hover {
@@ -1047,7 +1178,7 @@
   }
   .transcribing-text {
     font-size: 13px;
-    color: var(--t-2);
+    color: var(--text-muted);
     letter-spacing: 0.3px;
   }
 
@@ -1063,8 +1194,8 @@
   .modal {
     width: 520px;
     max-height: 75vh;
-    background: var(--black-1);
-    border: 1px solid var(--t-3);
+    background: var(--bg-panel);
+    border: 1px solid var(--text-dim);
     border-radius: var(--r-lg);
     display: flex;
     flex-direction: column;
@@ -1073,74 +1204,81 @@
   .m-head {
     display: flex; align-items: center; justify-content: space-between;
     padding: var(--sp-4) var(--sp-5);
-    border-bottom: 1px solid var(--t-3);
+    border-bottom: 1px solid var(--text-dim);
   }
-  .m-title { font-size: 13px; font-weight: 700; color: var(--t-0); letter-spacing: 0.3px; }
+  .m-title { font-size: 13px; font-weight: 700; color: var(--text-main); letter-spacing: 0.3px; }
   .m-tabs {
     display: flex;
-    border-bottom: 1px solid var(--t-3);
+    border-bottom: 1px solid var(--text-dim);
   }
   .m-tab {
     padding: var(--sp-3) var(--sp-4);
     font-size: 12px;
     font-weight: 500;
-    color: var(--t-2);
+    color: var(--text-muted);
     border-bottom: 2px solid transparent;
     margin-bottom: -1px;
   }
-  .m-tab:hover { color: var(--t-0); }
-  .m-tab.active { color: var(--gold); border-bottom-color: var(--gold); }
+  .m-tab:hover { color: var(--text-main); }
+  .m-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
   .m-body { flex:1; overflow-y:auto; padding: var(--sp-5); }
-  .m-desc { font-size: 12px; color: var(--t-2); margin-bottom: var(--sp-3); line-height: 1.5; }
+  .m-desc { font-size: 12px; color: var(--text-muted); margin-bottom: var(--sp-3); line-height: 1.5; }
+  .m-section { display: flex; flex-direction: column; gap: var(--sp-3); }
+  .setting-row { display: flex; align-items: center; justify-content: space-between; padding: var(--sp-3) 0; border-bottom: 1px solid var(--border-soft); }
+  .setting-row:last-child { border-bottom: none; }
+  .setting-label { font-size: 14px; color: var(--text-main); font-weight: 500; }
+  .lang-toggle { display: flex; background: var(--bg-element); border-radius: var(--r-md); padding: 4px; gap: 2px; }
+  .lang-btn { padding: 4px 12px; border-radius: 6px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
+  .lang-btn.active { background: var(--bg-app); color: var(--text-main); box-shadow: var(--shadow-sm); }
   .m-prompt {
     width: 100%;
     min-height: 140px;
-    background: var(--black-0);
-    border: 1px solid var(--t-3);
-    border-radius: var(--r);
-    color: var(--t-0);
+    background: var(--bg-app);
+    border: 1px solid var(--text-dim);
+    border-radius: var(--r-md);
+    color: var(--text-main);
     font-size: 12px;
     padding: var(--sp-3);
     line-height: 1.6;
     resize: vertical;
     font-family: var(--mono);
   }
-  .m-prompt:focus { border-color: var(--gold-dim); outline: none; }
+  .m-prompt:focus { border-color: var(--accent-hover); outline: none; }
   .m-actions { display:flex; align-items:center; gap: var(--sp-2); margin-top: var(--sp-3); }
   .m-btn {
     padding: 6px 16px;
-    border-radius: var(--r);
+    border-radius: var(--r-md);
     font-size: 12px;
     font-weight: 500;
-    background: var(--black-4);
-    color: var(--t-1);
+    background: var(--border-soft);
+    color: var(--text-main);
   }
-  .m-btn:hover { background: var(--black-5); color: var(--t-0); }
-  .m-btn.gold { background: var(--gold); color: var(--black-0); }
-  .m-btn.gold:hover { background: var(--gold-dim); }
+  .m-btn:hover { background: var(--border-hover); color: var(--text-main); }
+  .m-btn.gold { background: var(--accent); color: var(--bg-app); }
+  .m-btn.gold:hover { background: var(--accent-hover); }
   .m-btn.danger { background: rgba(239,68,68,0.1); color: var(--red); border: 1px solid rgba(239,68,68,0.15); }
   .m-btn.danger:hover { background: rgba(239,68,68,0.18); }
   .m-ok { font-size: 11px; color: var(--green); }
   .mem-top { display:flex; align-items:center; justify-content:space-between; margin-bottom: var(--sp-4); }
   .mem-top .m-desc { margin-bottom: 0; }
-  .mem-empty { text-align:center; padding: var(--sp-8); color: var(--t-2); font-size: 12px; }
+  .mem-empty { text-align:center; padding: var(--sp-8); color: var(--text-muted); font-size: 12px; }
   .mem-grid { display:flex; flex-direction:column; gap: 2px; max-height: 280px; overflow-y:auto; }
   .mem-row {
     display: flex; align-items: center; justify-content: space-between;
     padding: var(--sp-2) var(--sp-3);
-    border-radius: var(--r);
-    background: var(--black-0);
+    border-radius: var(--r-md);
+    background: var(--bg-app);
   }
-  .mem-row:hover { background: var(--black-3); }
+  .mem-row:hover { background: var(--bg-hover); }
   .mem-info { display:flex; flex-direction:column; gap:1px; flex:1; min-width:0; }
-  .mem-name { font-size: 11px; font-family: var(--mono); color: var(--t-0); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .mem-meta { font-size: 10px; color: var(--t-2); }
+  .mem-name { font-size: 11px; font-family: var(--mono); color: var(--text-main); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .mem-meta { font-size: 10px; color: var(--text-muted); }
   .mem-x {
-    font-size: 14px; color: var(--t-2); width:22px; height:22px;
+    font-size: 14px; color: var(--text-muted); width:22px; height:22px;
     display:flex; align-items:center; justify-content:center;
     border-radius: 3px; opacity: 0.4;
   }
-  .mem-x:hover { color: var(--red); opacity: 1; background: var(--black-4); }
+  .mem-x:hover { color: var(--red); opacity: 1; background: var(--border-soft); }
 
   /* ═══ REMOTE ACCESS TAB ═══ */
   .remote-section { display: flex; flex-direction: column; gap: var(--sp-3); }
@@ -1150,31 +1288,31 @@
   }
   .toggle-label {
     display: flex; align-items: center; justify-content: space-between;
-    width: 100%; font-size: 13px; color: var(--t-0); cursor: pointer;
+    width: 100%; font-size: 13px; color: var(--text-main); cursor: pointer;
   }
   .toggle-switch {
     position: relative; width: 44px; height: 24px; border-radius: 12px;
-    background: var(--black-4); border: 1px solid var(--t-3);
+    background: var(--border-soft); border: 1px solid var(--text-dim);
     transition: background 200ms, border-color 200ms; cursor: pointer;
   }
-  .toggle-switch.on { background: var(--gold); border-color: var(--gold-dim); }
+  .toggle-switch.on { background: var(--accent); border-color: var(--accent-hover); }
   .toggle-knob {
     position: absolute; top: 2px; left: 2px;
     width: 18px; height: 18px; border-radius: 50%;
-    background: var(--t-0); transition: transform 200ms;
+    background: var(--text-main); transition: transform 200ms;
   }
   .toggle-switch.on .toggle-knob { transform: translateX(20px); }
   .remote-field { margin-top: var(--sp-1); }
-  .remote-field span { font-size: 12px; color: var(--t-2); }
+  .remote-field span { font-size: 12px; color: var(--text-muted); }
   .remote-field input {
     width: 100%; font-size: 13px; padding: 8px 12px;
-    background: var(--black-0); border: 1px solid var(--t-3);
-    border-radius: var(--r); color: var(--t-0);
+    background: var(--bg-app); border: 1px solid var(--text-dim);
+    border-radius: var(--r-md); color: var(--text-main);
   }
-  .remote-field input:focus { border-color: var(--gold-dim); outline: none; }
+  .remote-field input:focus { border-color: var(--accent-hover); outline: none; }
   .remote-status {
     display: flex; align-items: center; gap: var(--sp-2);
-    font-size: 12px; color: var(--t-2); padding: var(--sp-2) 0;
+    font-size: 12px; color: var(--text-muted); padding: var(--sp-2) 0;
   }
   .remote-status.running { color: var(--green); }
   .remote-dot {
@@ -1188,9 +1326,9 @@
   .remote-addresses { margin-top: var(--sp-2); }
   .remote-addr {
     font-family: var(--mono); font-size: 13px;
-    color: var(--gold); padding: var(--sp-2) var(--sp-3);
-    background: var(--black-0); border: 1px solid var(--gold-border);
-    border-radius: var(--r); margin-bottom: var(--sp-1);
+    color: var(--accent); padding: var(--sp-2) var(--sp-3);
+    background: var(--bg-app); border: 1px solid var(--border-soft);
+    border-radius: var(--r-md); margin-bottom: var(--sp-1);
     word-break: break-all;
   }
 
@@ -1229,8 +1367,8 @@
     .input-dock {
       padding: var(--sp-3) var(--sp-2);
       padding-bottom: max(var(--sp-3), env(safe-area-inset-bottom));
-      background: var(--black-1);
-      border-top: 1px solid var(--t-3);
+      background: var(--bg-panel);
+      border-top: 1px solid var(--text-dim);
     }
     .input-row {
       max-width: 100%;

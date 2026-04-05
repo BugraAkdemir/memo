@@ -1,0 +1,7 @@
+[Desktop Entry]
+Name=Memo
+Exec=/usr/bin/memo
+Icon=memo
+Type=Application
+Categories=Utility;Education;Development;
+Terminal=false

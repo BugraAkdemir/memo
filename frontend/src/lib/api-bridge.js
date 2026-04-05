@@ -293,6 +293,14 @@ export async function SetRemoteAccess(enabled, port) {
   }
 }
 
+export async function GetVersion() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.GetVersion();
+  }
+  return 'V1.0.0-Browser';
+}
+
 // Utility: check if running in Wails
 export function isWailsEnvironment() {
   return isWails;

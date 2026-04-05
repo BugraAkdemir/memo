@@ -34,6 +34,8 @@ export function GetRemoteAccessStatus():Promise<main.RemoteAccessStatus>;
 
 export function GetSystemPrompt():Promise<string>;
 
+export function GetVersion():Promise<string>;
+
 export function ListChats():Promise<Array<sessions.SessionInfo>>;
 
 export function ListMemoryFiles():Promise<Array<memory.GobFileInfo>>;

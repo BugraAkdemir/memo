@@ -1,0 +1,6 @@
+Package: memo
+Version: 1.0.0
+Architecture: amd64
+Maintainer: Bugra Akdemir
+Description: Memo Local AI Assistant
+ A completely local, privacy-first AI desktop memory shell.

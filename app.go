@@ -13,6 +13,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -24,8 +25,18 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/webserver"
 
-	"github.com/wailsapp/wails/v2/pkg/runtime"
+	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
+
+//go:embed binaries/*
+var embeddedBinaries embed.FS
+
+//go:embed version
+var versionBytes []byte
+
+func (a *App) GetVersion() string {
+	return strings.TrimSpace(string(versionBytes))
+}
 
 type ConnectionStatus struct {
 	Connected bool     `json:"connected"`
@@ -105,14 +116,35 @@ func (a *App) startWebServer(port int) {
 }
 
 func (a *App) startSTTServer() {
-	pythonPath := a.findPath("stt-env/bin/python")
-	scriptPath := a.findPath("scripts/stt_server.py")
-	if pythonPath == "" || scriptPath == "" {
-		log.Println("STT: stt-env or stt_server.py not found, speech-to-text disabled")
+	var binName string
+	if runtime.GOOS == "windows" {
+		binName = "stt_server_windows.exe"
+	} else if runtime.GOOS == "linux" {
+		binName = "stt_server_linux"
+	} else {
+		log.Printf("STT disabled: OS %s not specifically supported for bundled binary yet.", runtime.GOOS)
 		return
 	}
 
-	a.sttServer = exec.Command(pythonPath, scriptPath, "tr", "9876")
+	binData, err := embeddedBinaries.ReadFile("binaries/" + binName)
+	if err != nil {
+		log.Printf("STT: embedded binary %s not found in build. STT disabled.", binName)
+		return
+	}
+
+	tempPath := filepath.Join(os.TempDir(), "memo_stt_server")
+	if runtime.GOOS == "windows" {
+		tempPath += ".exe"
+	}
+
+	// Always overwrite the temp file to ensure it is the latest bundled version
+	err = os.WriteFile(tempPath, binData, 0755)
+	if err != nil {
+		log.Printf("STT server unpacking failed: %v", err)
+		return
+	}
+
+	a.sttServer = exec.Command(tempPath, "tr", "9876")
 	a.sttServer.Stdout = os.Stdout
 	a.sttServer.Stderr = os.Stderr
 
@@ -311,9 +343,9 @@ func (a *App) GetActiveChatID() string {
 // ─── File Dialog ─────────────────────────────────────────────────
 
 func (a *App) SelectImage() string {
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "Select Image",
-		Filters: []runtime.FileFilter{
+		Filters: []wailsRuntime.FileFilter{
 			{DisplayName: "Images", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp"},
 		},
 	})
@@ -325,9 +357,9 @@ func (a *App) SelectImage() string {
 }
 
 func (a *App) SelectFile() string {
-	path, err := runtime.OpenFileDialog(a.ctx, runtime.OpenDialogOptions{
+	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
 		Title: "Select File",
-		Filters: []runtime.FileFilter{
+		Filters: []wailsRuntime.FileFilter{
 			{DisplayName: "Text Files", Pattern: "*.txt;*.md;*.py;*.js;*.ts;*.go;*.json;*.yaml;*.yml;*.html;*.css;*.csv;*.log;*.sh;*.bat;*.xml;*.toml;*.sql"},
 			{DisplayName: "All Files", Pattern: "*.*"},
 		},

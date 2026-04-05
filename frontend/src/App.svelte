@@ -13,6 +13,7 @@
     GetImageBase64,
     StartRecording, StopRecordingAndTranscribe,
     GetRemoteAccessStatus, SetRemoteAccess,
+    GetVersion,
     isWailsEnvironment
   } from './lib/api-bridge.js';
 
@@ -129,6 +130,7 @@
   let setupLMStatus = false;
   let setupModelStatus = false;
   let setupChecking = false;
+  let appVersion = '...';
   
   async function checkSetupConnection() {
     setupChecking = true;
@@ -167,6 +169,8 @@ Core Directives:
     if (showSetup) {
       checkSetupConnection();
     }
+    
+    GetVersion().then(v => appVersion = v);
     
     const handleResize = () => { if(window.innerWidth <= 768 && sidebarOpen) sidebarOpen = false; };
     window.addEventListener('resize', handleResize);
@@ -896,7 +900,10 @@ Core Directives:
         </div>
       {:else if settingsTab === 'about'}
         <div class="m-section about-section">
-          <h3 style="margin-top:0;">Memo AI</h3>
+          <h3 style="margin: 0; display: flex; align-items: center; justify-content: space-between;">
+            Memo AI
+            <span style="font-size: 11px; opacity: 0.5; font-weight: normal;">{appVersion}</span>
+          </h3>
           <p class="m-desc">{t('aboutDev')}: <strong>Buğra Akdemir</strong></p>
           <div class="about-card mt-3">
             <h4>{t('aboutVisionTitle')}</h4>

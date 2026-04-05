@@ -58,6 +58,10 @@ export function GetSystemPrompt() {
   return window['go']['main']['App']['GetSystemPrompt']();
 }
 
+export function GetVersion() {
+  return window['go']['main']['App']['GetVersion']();
+}
+
 export function ListChats() {
   return window['go']['main']['App']['ListChats']();
 }

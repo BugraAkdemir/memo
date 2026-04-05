@@ -173,12 +173,17 @@
 
     let reply = '';
     try {
-      if (attachedImage) reply = await SendMessageWithImage(text, attachedImage);
-      else if (attachedFile) reply = await SendMessageWithFile(text, attachedFile);
-      else reply = await SendMessage(text);
+      if (attachedImage) {
+        reply = await SendMessageWithImage(text, isDesktop ? attachedImage : webImageFile);
+      } else if (attachedFile) {
+        reply = await SendMessageWithFile(text, isDesktop ? attachedFile : webFileFile);
+      } else {
+        reply = await SendMessage(text);
+      }
     } catch (e) { reply = '⚠ ' + (e?.message || e); }
 
     attachedImage = ''; attachedFile = ''; attachedFileName = '';
+    webImageFile = null; webFileFile = null;
     messages = [...messages, { id: Date.now()+1, role: 'assistant', text: reply, image:'', file:'', time: ts() }];
     loading = false;
     await tick(); scroll();
@@ -204,6 +209,9 @@
   }
   function clearAttach() { attachedImage=''; attachedFile=''; attachedFileName=''; }
 
+  let webImageFile = null;
+  let webFileFile = null;
+
   // Web file input handlers
   function onWebImage(e) {
     const file = e.target.files?.[0];
@@ -211,8 +219,8 @@
     attachedImage = URL.createObjectURL(file);
     attachedFile = '';
     attachedFileName = '';
-    // Store the actual file for later upload
-    attachedImage._webFile = file;
+    webImageFile = file;
+    webFileFile = null;
     e.target.value = '';
   }
   function onWebFile(e) {
@@ -221,6 +229,8 @@
     attachedFile = URL.createObjectURL(file);
     attachedFileName = file.name;
     attachedImage = '';
+    webFileFile = file;
+    webImageFile = null;
     e.target.value = '';
   }
 
@@ -361,6 +371,8 @@
 </script>
 
 <div class="shell" class:incognito-mode={isIncognito}>
+  <input type="file" accept="image/*" style="display:none" bind:this={webImageInput} on:change={onWebImage} />
+  <input type="file" style="display:none" bind:this={webFileInput} on:change={onWebFile} />
   <!-- ═══ Sidebar ═══ -->
   {#if sidebarOpen}
   <!-- svelte-ignore a11y-click-events-have-key-events -->

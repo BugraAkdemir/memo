@@ -17,6 +17,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"os"
 	"sync"
 	"time"
 )
@@ -25,6 +26,8 @@ import (
 // for the web server to call its methods.
 type AppBridge interface {
 	SendMessage(userMsg string) string
+	SendMessageWithImage(userMsg string, imagePath string) string
+	SendMessageWithFile(userMsg string, filePath string) string
 	NewChat() string
 	WebListChats() interface{}
 	SwitchChat(id string) error
@@ -75,6 +78,7 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/incognito", s.handleIncognito)
 	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
+	mux.HandleFunc("/api/send_file", s.handleSendFile)
 
 	// Serve frontend static files
 	fileServer := http.FileServer(http.FS(s.assets))
@@ -166,6 +170,66 @@ func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	reply := s.bridge.SendMessage(req.Message)
+	writeJSON(w, map[string]string{"reply": reply})
+}
+
+func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+
+	err := r.ParseMultipartForm(50 << 20) // 50 MB
+	if err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+
+	msg := r.FormValue("message")
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Write to temp file
+	tmpFile, err := os.CreateTemp("", "memo_web_*_"+header.Filename)
+	if err != nil {
+		http.Error(w, "tmp error", http.StatusInternalServerError)
+		return
+	}
+	defer tmpFile.Close()
+
+	if _, err := io.Copy(tmpFile, file); err != nil {
+		http.Error(w, "copy error", http.StatusInternalServerError)
+		return
+	}
+	tmpFilePath := tmpFile.Name()
+	tmpFile.Close() // Close before sending to bridge
+
+	mimeType := header.Header.Get("Content-Type")
+	isImage := false
+	if mimeType != "" {
+		if len(mimeType) >= 5 && mimeType[:5] == "image" {
+			isImage = true
+		}
+	} else {
+		// Use file extension guess if MIME not provided
+		ext := tmpFilePath[len(tmpFilePath)-4:]
+		if ext == ".png" || ext == ".jpg" || ext == "jpeg" || ext == ".gif" {
+			isImage = true
+		}
+	}
+
+	var reply string
+	if isImage {
+		reply = s.bridge.SendMessageWithImage(msg, tmpFilePath)
+	} else {
+		reply = s.bridge.SendMessageWithFile(msg, tmpFilePath)
+	}
+
 	writeJSON(w, map[string]string{"reply": reply})
 }
 

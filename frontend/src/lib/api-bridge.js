@@ -42,20 +42,37 @@ export async function SendMessage(msg) {
   return data.reply;
 }
 
-export async function SendMessageWithImage(msg, imagePath) {
+export async function SendMessageWithImage(msg, payload) {
   if (isWails) {
     const w = await getWailsApp();
-    return w.SendMessageWithImage(msg, imagePath);
+    return w.SendMessageWithImage(msg, payload);
   }
-  // Image upload not supported on web - send text only
+  if (payload instanceof File) {
+    const formData = new FormData();
+    formData.append('message', msg);
+    formData.append('file', payload);
+    const resp = await fetch(`${API_BASE}/send_file`, { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    return data.reply;
+  }
   const data = await restPost('/send', { message: msg });
   return data.reply;
 }
 
-export async function SendMessageWithFile(msg, filePath) {
+export async function SendMessageWithFile(msg, payload) {
   if (isWails) {
     const w = await getWailsApp();
-    return w.SendMessageWithFile(msg, filePath);
+    return w.SendMessageWithFile(msg, payload);
+  }
+  if (payload instanceof File) {
+    const formData = new FormData();
+    formData.append('message', msg);
+    formData.append('file', payload);
+    const resp = await fetch(`${API_BASE}/send_file`, { method: 'POST', body: formData });
+    if (!resp.ok) throw new Error(await resp.text());
+    const data = await resp.json();
+    return data.reply;
   }
   const data = await restPost('/send', { message: msg });
   return data.reply;

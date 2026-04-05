@@ -55,7 +55,24 @@
       clearAll: "Tümünü Temizle",
       remote: "Uzaktan Erişim",
       userProfile: "Kullanıcı",
-      freePlan: "Ücretsiz Plan"
+      freePlan: "Ücretsiz Plan",
+      about: "Hakkında",
+      wizardTitle: "Memo'ya Hoş Geldiniz",
+      wizardDesc: "Kişisel AI asistanınızı birlikte kuralım.",
+      nameLabel: "Adınız Soyadınız",
+      systemPromptLabel: "Özel Sistem İstemi (Opsiyonel)",
+      systemPromptDesc: "Boş bırakırsanız varsayılan kullanılacaktır.",
+      checkLM: "LM-Studio Bağlantısı",
+      checkModels: "Yüklü Modeller",
+      lmStudioWarning: "Lütfen LM-Studio'yu açın, bir model yükleyin ve Local Server'ı başlatın (Port: 1234).",
+      refresh: "Yenile",
+      ready: "Başla Devam Et",
+      resetSetup: "Kurulumu Sıfırla",
+      aboutDev: "Geliştirici",
+      aboutVisionTitle: "Vizyon ve Misyon",
+      aboutVisionText: "Memo, tamamen yerel bilgisayarınızda çalışan, sizin konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazıyan özel bir yapay zeka asistanıdır. Asıl amaç, bulut teknolojilere muhtaç kalmadan, özgürce ve güvenle kendi bilgisayarında barındırabileceğiniz akıllı bir asistan yaratmaktır.",
+      aboutPrivacyTitle: "Şeffaflık Raporu & Gizlilik İlkeleri",
+      aboutPrivacyText: "Tüm mesaj geçmişiniz, vektör (RAG) hafızası, dosyalarınız ve ses kayıtlarınız cihazınızda (lokal ortamda) kapalı bir devre olarak yaşar. Dış internete veya 3. parti API veritabanlarına kesinlikle log veya bilgi gönderilmez. Uygulamanız ve zihniniz %100 size aittir ve her zaman güvenliğiniz ön plandadır."
     },
     en: {
       newChat: "New Chat",
@@ -77,7 +94,24 @@
       clearAll: "Clear All",
       remote: "Remote Access",
       userProfile: "User Account",
-      freePlan: "Free Plan"
+      freePlan: "Free Plan",
+      about: "About",
+      wizardTitle: "Welcome to Memo",
+      wizardDesc: "Let's set up your personal AI assistant.",
+      nameLabel: "Your Name and Surname",
+      systemPromptLabel: "Custom System Prompt (Optional)",
+      systemPromptDesc: "Leave blank to use the default prompt.",
+      checkLM: "LM-Studio Connection",
+      checkModels: "Loaded Models",
+      lmStudioWarning: "Please open LM-Studio, load a model, and start the Local Server (Port: 1234).",
+      refresh: "Refresh",
+      ready: "Ready to Go",
+      resetSetup: "Reset Setup",
+      aboutDev: "Developer",
+      aboutVisionTitle: "Vision and Mission",
+      aboutVisionText: "Memo is a specialized AI assistant that runs entirely locally on your computer, learning your conversations and preferences over time and etching them into its persistent memory. The main goal is to create a smart assistant that you can freely and securely host on your own machine without relying on cloud technologies.",
+      aboutPrivacyTitle: "Transparency & Privacy Principles",
+      aboutPrivacyText: "All your message history, vector (RAG) memory, files, and voice recordings live in a closed circuit locally on your device. Absolutely no logs or information are sent to the external internet or 3rd party API databases. Your app and your mind are 100% yours, with security always at the forefront."
     }
   };
   $: t = (key) => dict[lang][key] || key;
@@ -87,7 +121,53 @@
     localStorage.setItem('memo_lang', l);
   }
   
+  // Wizard Setup Variables
+  let showSetup = localStorage.getItem('memo_setup_complete') !== 'true';
+  let setupName = '';
+  let setupSurname = '';
+  let setupPrompt = '';
+  let setupLMStatus = false;
+  let setupModelStatus = false;
+  let setupChecking = false;
+  
+  async function checkSetupConnection() {
+    setupChecking = true;
+    try {
+      const s = await CheckConnection();
+      setupLMStatus = s && s.connected;
+      setupModelStatus = s && s.models && s.models.length > 0;
+    } catch(e) {
+      setupLMStatus = false;
+      setupModelStatus = false;
+    }
+    setupChecking = false;
+  }
+  
+  async function finishSetup() {
+    let fullName = (setupName.trim() + " " + setupSurname.trim()).trim();
+    if (!fullName) fullName = "User";
+    
+    let finalPrompt = setupPrompt.trim();
+    if (!finalPrompt) {
+      finalPrompt = `You are Memo, a highly capable AI assistant. You are speaking with ${fullName}.
+
+Core Directives:
+- You have persistent memory. You remember past conversations and use that context naturally.
+- You are model-agnostic — regardless of the underlying LLM, you maintain your identity as Memo.
+- Be helpful, accurate, and thoughtful in every response.
+- When you recall something from a past conversation, integrate it naturally without saying "I recall" or "As we discussed".
+- Adapt to the user's language. If they write in Turkish, respond in Turkish. If English, respond in English.`;
+    }
+    await SetSystemPrompt(finalPrompt);
+    localStorage.setItem('memo_setup_complete', 'true');
+    showSetup = false;
+  }
+  
   onMount(() => {
+    if (showSetup) {
+      checkSetupConnection();
+    }
+    
     const handleResize = () => { if(window.innerWidth <= 768 && sidebarOpen) sidebarOpen = false; };
     window.addEventListener('resize', handleResize);
 
@@ -425,6 +505,57 @@
   }
 </script>
 
+<!-- ═══ Setup Wizard Overlay ═══ -->
+{#if showSetup}
+<div class="overlay" style="z-index: 1000; display:flex;">
+  <div class="modal setup-wizard">
+    <div class="m-head" style="justify-content:center; border-bottom:none; padding-bottom:0;">
+      <span class="m-title" style="font-size:18px; font-weight:700;">{t('wizardTitle')}</span>
+    </div>
+    <div class="m-body" style="padding:var(--sp-4) var(--sp-6);">
+      <p class="m-desc" style="text-align:center; font-size:14px; margin-bottom:var(--sp-5);">{t('wizardDesc')}</p>
+      
+      <div class="m-section">
+        <label class="setting-label">{t('nameLabel')}</label>
+        <input type="text" bind:value={setupName} placeholder="E.g. Buğra Akdemir" class="setup-input"/>
+      </div>
+      
+      <div class="m-section" style="margin-top:var(--sp-4);">
+        <label class="setting-label">{t('systemPromptLabel')}</label>
+        <p class="m-desc" style="margin-bottom:4px;">{t('systemPromptDesc')}</p>
+        <textarea bind:value={setupPrompt} class="m-prompt" placeholder="You are Memo, a highly capable AI assistant..." rows="4"></textarea>
+      </div>
+
+      <div class="m-section" style="margin-top:var(--sp-5); background:var(--bg-app); border:1px solid var(--border-soft); border-radius:var(--r-md); padding:var(--sp-4);">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--sp-3);">
+          <span class="setting-label" style="font-size:13px; color:var(--text-muted);">Connection Diagnostics</span>
+          <button class="lang-btn" style="background:var(--bg-hover);" on:click={checkSetupConnection} disabled={setupChecking}>{setupChecking ? '...' : t('refresh')}</button>
+        </div>
+        
+        <div class="setup-check" class:ok={setupLMStatus}>
+          <span class="check-icon">{setupLMStatus ? '✓' : '✗'}</span>
+          <span>{t('checkLM')}</span>
+        </div>
+        <div class="setup-check" class:ok={setupModelStatus}>
+          <span class="check-icon">{setupModelStatus ? '✓' : '✗'}</span>
+          <span>{t('checkModels')}</span>
+        </div>
+        
+        {#if !setupLMStatus || !setupModelStatus}
+          <div style="margin-top:12px; font-size:12px; color:var(--red); line-height:1.4;">
+            {t('lmStudioWarning')}
+          </div>
+        {/if}
+      </div>
+
+    </div>
+    <div class="m-actions" style="padding:var(--sp-4) var(--sp-6); border-top:1px solid var(--text-dim); justify-content:flex-end; margin-top:0;">
+      <button class="m-btn gold" on:click={finishSetup} disabled={!setupLMStatus}>{t('ready')}</button>
+    </div>
+  </div>
+</div>
+{/if}
+
 <div class="shell" class:incognito-mode={isIncognito}>
   <input type="file" accept="image/*" style="display:none" bind:this={webImageInput} on:change={onWebImage} />
   <input type="file" style="display:none" bind:this={webFileInput} on:change={onWebFile} />
@@ -664,6 +795,7 @@
       {#if isDesktop}
       <button class="m-tab" class:active={settingsTab==='remote'} on:click={openRemoteTab}>Remote Access</button>
       {/if}
+      <button class="m-tab" class:active={settingsTab==='about'} on:click={() => settingsTab='about'}>{t('about')}</button>
     </div>
     <div class="m-body">
       {#if settingsTab === 'general'}
@@ -675,6 +807,10 @@
               <button class="lang-btn" class:active={lang === 'tr'} on:click={() => setLanguage('tr')}>Türkçe</button>
               <button class="lang-btn" class:active={lang === 'en'} on:click={() => setLanguage('en')}>English</button>
             </div>
+          </div>
+          <div class="setting-row">
+            <span class="setting-label">Setup Wizard</span>
+            <button class="m-btn" on:click={() => { localStorage.removeItem('memo_setup_complete'); showSetup=true; checkSetupConnection(); settingsOpen=false; }}>{t('resetSetup')}</button>
           </div>
         </div>
       {:else if settingsTab === 'prompt'}
@@ -756,6 +892,19 @@
             <button class="m-btn gold" on:click={saveRemoteAccess} disabled={remoteSaving}>
               {remoteSaving ? '...' : 'Save & Apply'}
             </button>
+          </div>
+        </div>
+      {:else if settingsTab === 'about'}
+        <div class="m-section about-section">
+          <h3 style="margin-top:0;">Memo AI</h3>
+          <p class="m-desc">{t('aboutDev')}: <strong>Buğra Akdemir</strong></p>
+          <div class="about-card mt-3">
+            <h4>{t('aboutVisionTitle')}</h4>
+            <p>{t('aboutVisionText')}</p>
+          </div>
+          <div class="about-card mt-3">
+            <h4>{t('aboutPrivacyTitle')}</h4>
+            <p>{t('aboutPrivacyText')}</p>
           </div>
         </div>
       {/if}
@@ -1230,6 +1379,19 @@
   .lang-toggle { display: flex; background: var(--bg-element); border-radius: var(--r-md); padding: 4px; gap: 2px; }
   .lang-btn { padding: 4px 12px; border-radius: 6px; font-size: 12px; color: var(--text-muted); font-weight: 600; }
   .lang-btn.active { background: var(--bg-app); color: var(--text-main); box-shadow: var(--shadow-sm); }
+  
+  .about-card { background: var(--bg-element); padding: var(--sp-4); border-radius: var(--r-md); margin-top: var(--sp-3); }
+  .about-card h4 { margin: 0 0 var(--sp-2) 0; font-size: 13px; color: var(--text-main); }
+  .about-card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+  
+  .setup-wizard { padding: 0; max-width: 540px; }
+  .setup-input { width: 100%; border: 1px solid var(--border-soft); background: var(--bg-app); color: var(--text-main); padding: var(--sp-3); border-radius: var(--r-md); font-size: 14px; margin-top: 4px; }
+  .setup-input:focus { border-color: var(--accent); }
+  .setup-check { display: flex; align-items: center; gap: var(--sp-2); padding: var(--sp-2) 0; color: var(--text-muted); font-size: 13px; }
+  .setup-check.ok { color: var(--green); }
+  .check-icon { width: 24px; height: 24px; border-radius: 50%; background: var(--border-soft); display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: bold; }
+  .setup-check.ok .check-icon { background: rgba(34, 197, 94, 0.15); color: var(--green); }
+  
   .m-prompt {
     width: 100%;
     min-height: 140px;

@@ -87,6 +87,7 @@ class Handler(BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    HTTPServer.allow_reuse_address = True
     server = HTTPServer(("127.0.0.1", PORT), Handler)
     print(f"[STT] Ready at http://127.0.0.1:{PORT}", flush=True)
     server.serve_forever()

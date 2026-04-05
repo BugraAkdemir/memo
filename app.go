@@ -124,6 +124,13 @@ func (a *App) startSTTServer() {
 	log.Println("STT server starting on :9876")
 }
 
+func (a *App) shutdown(ctx context.Context) {
+	log.Println("Memo shutting down, cleaning up background processes...")
+	if a.sttServer != nil && a.sttServer.Process != nil {
+		a.sttServer.Process.Kill()
+	}
+}
+
 // ─── Incognito ───────────────────────────────────────────────────
 
 func (a *App) ToggleIncognito(enabled bool) {

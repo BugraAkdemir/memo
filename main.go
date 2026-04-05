@@ -32,6 +32,10 @@ func main() {
 		StartHidden:       false,
 		HideWindowOnClose: false,
 		DisableResize:     false,
+		DragAndDrop: &options.DragAndDrop{
+			EnableFileDrop:     true,
+			DisableWebViewDrop: true,
+		},
 		Linux: &linux.Options{
 			ProgramName: "Memo",
 		},

@@ -43,4 +43,4 @@ Memo (eskiden Cortex) yerelde çalışan (Local LLM), modelden bağımsız (Mode
 Detaylar için lütfen [`Neden.md`](Neden.md) ve `defultPromt.md` (veya app_config) okuyun. Her dosya bağımsızdır; biri hasar alsa diğeri çalışır. Eşzamanlı (concurrency) çakışmalarda atomik koruma sağlar.
 
 ---
-*Geliştirme: Buğra & Antigravity (Local Assistant Build)*
+*Geliştirme: Buğra*

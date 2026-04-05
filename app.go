@@ -32,7 +32,9 @@ type App struct {
 	store    *memory.Store
 	identity *identity.Identity
 	cfg      *config.AppConfig
-	sessions *sessions.Manager
+	sessions          *sessions.Manager
+	isIncognito       bool
+	incognitoMessages []api.Message
 }
 
 func NewApp() *App {
@@ -68,10 +70,42 @@ func (a *App) startup(ctx context.Context) {
 	log.Println("Memo ready")
 }
 
+// ─── Incognito ───────────────────────────────────────────────────
+
+func (a *App) ToggleIncognito(enabled bool) {
+	a.isIncognito = enabled
+	if enabled {
+		a.incognitoMessages = nil
+		log.Println("Entered Incognito Mode")
+	} else {
+		a.incognitoMessages = nil
+		log.Println("Exited Incognito Mode")
+	}
+}
+
 // ─── Chat ────────────────────────────────────────────────────────
+
+func (a *App) handleIncognito(userMsg string, b64 string) string {
+	if b64 != "" {
+		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
+	} else {
+		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("user", userMsg))
+	}
+
+	msgs := []api.Message{api.NewTextMessage("system", a.cfg.Identity.IncognitoPrompt)}
+	msgs = append(msgs, a.incognitoMessages...)
+
+	reply := a.callLLM(msgs)
+	a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
+	return reply
+}
 
 func (a *App) SendMessage(userMsg string) string {
 	log.Printf(">> SendMessage: %q", userMsg)
+
+	if a.isIncognito {
+		return a.handleIncognito(userMsg, "")
+	}
 
 	// Save user message to session
 	if a.sessions != nil {
@@ -93,14 +127,16 @@ func (a *App) SendMessage(userMsg string) string {
 func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	log.Printf(">> Vision: %q with image %s", userMsg, imagePath)
 
-	// Read and encode image
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
 		return "⚠️ Cannot read image: " + err.Error()
 	}
-
 	mime := detectMime(imagePath, imgData)
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
+
+	if a.isIncognito {
+		return a.handleIncognito(userMsg, b64)
+	}
 
 	// Save to session
 	if a.sessions != nil {
@@ -136,12 +172,15 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	fileName := filepath.Base(filePath)
 	fileContent := string(content)
 
-	// Truncate very large files
 	if len(fileContent) > 10000 {
 		fileContent = fileContent[:10000] + "\n\n... (truncated, file too large)"
 	}
 
 	combined := fmt.Sprintf("%s\n\n--- File: %s ---\n%s", userMsg, fileName, fileContent)
+
+	if a.isIncognito {
+		return a.handleIncognito(combined, "")
+	}
 
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", filePath)
@@ -248,6 +287,15 @@ func (a *App) GetMemoryCount() int {
 	return a.store.Count()
 }
 
+func (a *App) GetImageBase64(path string) string {
+	imgData, err := os.ReadFile(path)
+	if err != nil {
+		return ""
+	}
+	mime := detectMime(path, imgData)
+	return "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
+}
+
 func (a *App) CheckConnection() ConnectionStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
@@ -283,6 +331,15 @@ func (a *App) ClearHistory() {
 
 func (a *App) GetSystemPrompt() string {
 	return a.cfg.Identity.SystemRole
+}
+
+func (a *App) GetIncognitoPrompt() string {
+	return a.cfg.Identity.IncognitoPrompt
+}
+
+func (a *App) SetIncognitoPrompt(prompt string) error {
+	a.cfg.Identity.IncognitoPrompt = prompt
+	return config.Save(a.cfg)
 }
 
 func (a *App) SetSystemPrompt(prompt string) error {

@@ -38,6 +38,14 @@ export function GetConfig() {
   return window['go']['main']['App']['GetConfig']();
 }
 
+export function GetImageBase64(arg1) {
+  return window['go']['main']['App']['GetImageBase64'](arg1);
+}
+
+export function GetIncognitoPrompt() {
+  return window['go']['main']['App']['GetIncognitoPrompt']();
+}
+
 export function GetMemoryCount() {
   return window['go']['main']['App']['GetMemoryCount']();
 }
@@ -86,12 +94,20 @@ export function SendMessageWithImage(arg1, arg2) {
   return window['go']['main']['App']['SendMessageWithImage'](arg1, arg2);
 }
 
+export function SetIncognitoPrompt(arg1) {
+  return window['go']['main']['App']['SetIncognitoPrompt'](arg1);
+}
+
 export function SetSystemPrompt(arg1) {
   return window['go']['main']['App']['SetSystemPrompt'](arg1);
 }
 
 export function SwitchChat(arg1) {
   return window['go']['main']['App']['SwitchChat'](arg1);
+}
+
+export function ToggleIncognito(arg1) {
+  return window['go']['main']['App']['ToggleIncognito'](arg1);
 }
 
 export function UpdateIdentity(arg1, arg2, arg3) {

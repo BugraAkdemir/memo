@@ -2,14 +2,17 @@
   import { marked } from 'marked';
   import { onMount, tick } from 'svelte';
   import {
-    SendMessage, SendMessageWithImage, SendMessageWithFile,
+    SendMessage, SendMessageWithImage, SendMessageWithFile, ToggleIncognito,
     NewChat, ListChats, SwitchChat, DeleteChat,
     GetActiveMessages, GetActiveChatID,
     SelectImage, SelectFile,
     CheckConnection, GetMemoryCount,
     GetSystemPrompt, SetSystemPrompt, ResetSystemPrompt,
-    ClearAllMemory, ListMemoryFiles, DeleteMemoryFile
+    GetIncognitoPrompt, SetIncognitoPrompt,
+    ClearAllMemory, ListMemoryFiles, DeleteMemoryFile,
+    GetImageBase64
   } from '../wailsjs/go/main/App.js';
+  import { EventsOn } from '../wailsjs/runtime/runtime.js';
 
   marked.setOptions({ breaks: true, gfm: true });
 
@@ -19,7 +22,13 @@
   let chatEl;
   let chats = [];
   let activeChatId = '';
-  let sidebarOpen = true;
+  let sidebarOpen = window.innerWidth > 768;
+  
+  onMount(() => {
+    const handleResize = () => { if(window.innerWidth <= 768 && sidebarOpen) sidebarOpen = false; };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  });
   let conn = { connected: false, models: [] };
   let memCount = 0;
 
@@ -30,13 +39,31 @@
   let settingsOpen = false;
   let settingsTab = 'prompt';
   let sysPrompt = '';
+  let incognitoPrompt = '';
   let promptSaved = false;
   let memFiles = [];
   let memBusy = false;
+  let isIncognito = false;
 
   onMount(async () => {
     await refreshAll();
     setInterval(refreshStatus, 30000);
+
+    EventsOn('wails:file-drop', (x, y, paths) => {
+      if (paths && paths.length > 0) {
+        const file = paths[0];
+        const ext = file.split('.').pop().toLowerCase();
+        if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].includes(ext)) {
+          attachedImage = file;
+          attachedFile = '';
+          attachedFileName = '';
+        } else {
+          attachedFile = file;
+          attachedFileName = file.split(/[/\\]/).pop();
+          attachedImage = '';
+        }
+      }
+    });
   });
 
   async function refreshAll() {
@@ -111,17 +138,50 @@
   function clearAttach() { attachedImage=''; attachedFile=''; attachedFileName=''; }
 
   // ─── Sessions ─────────────────
-  async function newChat() { try { await NewChat(); await refreshChats(); await loadMessages(); } catch(e) {} }
-  async function switchTo(id) { if (id===activeChatId) return; try { await SwitchChat(id); activeChatId=id; await loadMessages(); } catch(e) {} }
-  async function delChat(ev, id) { ev.stopPropagation(); try { await DeleteChat(id); await refreshChats(); await loadMessages(); } catch(e) {} }
+  async function newChat() {
+    if (isIncognito) {
+      isIncognito = false;
+      try { await ToggleIncognito(false); } catch(e) {}
+    }
+    input = '';
+    try { await NewChat(); await refreshChats(); await loadMessages(); } catch(e) {}
+  }
+  async function switchTo(id) {
+    if (isIncognito) {
+      isIncognito = false;
+      try { await ToggleIncognito(false); } catch(e) {}
+    }
+    if (id===activeChatId) return; 
+    try { await SwitchChat(id); activeChatId=id; await loadMessages(); } catch(e) {}
+  }
+  async function delChat(e, id) {
+    e.stopPropagation();
+    try {
+      await DeleteChat(id);
+      await refreshChats();
+      if (activeChatId === id && !isIncognito) await newChat();
+    } catch (err) {}
+  }
+
+  async function startIncognito() {
+    isIncognito = true;
+    activeChatId = 'incognito';
+    messages = [];
+    input = '';
+    try { await ToggleIncognito(true); } catch(e) {}
+  }
 
   // ─── Settings ─────────────────
   async function openSettings() {
     settingsOpen = true; settingsTab = 'prompt'; promptSaved = false;
     try { sysPrompt = await GetSystemPrompt() || ''; } catch(e) { sysPrompt=''; }
+    try { incognitoPrompt = await GetIncognitoPrompt() || ''; } catch(e) { incognitoPrompt=''; }
   }
   async function savePrompt() {
     try { await SetSystemPrompt(sysPrompt); promptSaved=true; setTimeout(()=>promptSaved=false,2000); } catch(e) {}
+  }
+  async function saveIncognitoPrompt() {
+    try { await SetIncognitoPrompt(incognitoPrompt); promptSaved=true; setTimeout(()=>promptSaved=false,2000); } catch(e) {}
   }
   async function resetPrompt() {
     try { await ResetSystemPrompt(); sysPrompt=''; promptSaved=true; setTimeout(()=>promptSaved=false,2000); } catch(e) {}
@@ -141,20 +201,27 @@
   }
 </script>
 
-<div class="shell">
+<div class="shell" class:incognito-mode={isIncognito}>
   <!-- ═══ Sidebar ═══ -->
   {#if sidebarOpen}
+  <!-- svelte-ignore a11y-click-events-have-key-events -->
+  <!-- svelte-ignore a11y-no-static-element-interactions -->
+  <div class="side-overlay" on:click={() => sidebarOpen = false}></div>
   <aside class="side">
     <div class="side-top">
       <button class="new-session" on:click={newChat}>
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         <span>New Session</span>
       </button>
+      <button class="new-session incognito-btn" on:click={startIncognito}>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 11v1a10 10 0 1 1-9-10"></path><path d="M22 4L12 14.01l-3-3"></path></svg>
+        <span>Incognito</span>
+      </button>
     </div>
 
     <nav class="sessions">
       {#each chats as c}
-        <button class="s-item" class:active={c.id === activeChatId} on:click={() => switchTo(c.id)}>
+        <button class="s-item" class:active={c.id === activeChatId} on:click={() => { switchTo(c.id); if (window.innerWidth <= 768) sidebarOpen = false; }}>
           <div class="s-info">
             <span class="s-title">{c.title}</span>
             <span class="s-time">{c.updated_at}</span>
@@ -183,7 +250,13 @@
       <button class="bar-btn" on:click={() => sidebarOpen = !sidebarOpen}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
       </button>
-      <span class="bar-title">{chats.find(c => c.id === activeChatId)?.title || 'Memo'}</span>
+      <span class="bar-title">
+        {#if isIncognito}
+          🕵️ Incognito Mode
+        {:else}
+          {chats.find(c => c.id === activeChatId)?.title || 'Memo'}
+        {/if}
+      </span>
       <button class="bar-btn" on:click={openSettings}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
       </button>
@@ -194,7 +267,11 @@
       {#if messages.length === 0}
         <div class="welcome">
           <div class="w-mark">memo</div>
-          <div class="w-sub">local ai · persistent memory · private</div>
+          {#if isIncognito}
+            <div class="w-sub" style="color:var(--red);">Incognito Mode: Nothing is saved to memory</div>
+          {:else}
+            <div class="w-sub">local ai · persistent memory · private</div>
+          {/if}
         </div>
       {/if}
 
@@ -205,9 +282,16 @@
             <span class="entry-time">{m.time}</span>
           </div>
           {#if m.image}
-            <div class="entry-attach">
-              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-              {m.image.split('/').pop()}
+            <div class="entry-attach image-attach">
+              {#await GetImageBase64(m.image)}
+                <span class="loading-img">Loading image...</span>
+              {:then src}
+                {#if src}
+                  <img src={src} alt="attachment" class="chat-img" />
+                {:else}
+                  <span class="error-img">⚠️ Missing image: {m.image.split(/[/\\]/).pop()}</span>
+                {/if}
+              {/await}
             </div>
           {/if}
           {#if m.file}
@@ -287,6 +371,7 @@
     </div>
     <div class="m-tabs">
       <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>System Prompt</button>
+      <button class="m-tab" class:active={settingsTab==='incognito'} on:click={() => settingsTab='incognito'}>Incognito Prompt</button>
       <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>Memory</button>
     </div>
     <div class="m-body">
@@ -297,6 +382,13 @@
           <button class="m-btn gold" on:click={savePrompt}>Save</button>
           <button class="m-btn" on:click={resetPrompt}>Reset Default</button>
           {#if promptSaved}<span class="m-ok">✓ saved</span>{/if}
+        </div>
+      {:else if settingsTab === 'incognito'}
+        <p class="m-desc" style="color:var(--red);">Define how Memo behaves in Incognito Mode.</p>
+        <textarea class="m-prompt" bind:value={incognitoPrompt} placeholder="e.g. You are Memo in Incognito Mode..." style="border-color: rgba(255, 60, 60, 0.3);" rows="8"></textarea>
+        <div class="m-actions">
+          <button class="m-btn danger" on:click={saveIncognitoPrompt}>Save</button>
+          {#if promptSaved}<span class="m-ok" style="color:var(--red);">✓ saved</span>{/if}
         </div>
       {:else}
         <div class="mem-top">
@@ -357,6 +449,10 @@
     border-radius: var(--r);
   }
   .new-session:hover { background: var(--gold-subtle); }
+  
+  .incognito-btn { color: var(--red); margin-top: var(--sp-2); }
+  .incognito-btn:hover { background: rgba(255, 60, 60, 0.1); }
+  .incognito-mode .bar-title { color: var(--red); font-weight: 500; }
 
   .sessions { flex:1; overflow-y:auto; padding: 0 var(--sp-2); }
   .s-item {
@@ -508,6 +604,22 @@
     font-size: 13px;
     color: var(--t-2);
     margin-bottom: var(--sp-1);
+  }
+  .image-attach {
+    display: block;
+    margin-top: var(--sp-2);
+    margin-bottom: var(--sp-2);
+  }
+  .chat-img {
+    max-width: 100%;
+    max-height: 350px;
+    border-radius: var(--r);
+    display: block;
+  }
+  .loading-img, .error-img {
+    font-size: 12px;
+    color: var(--t-3);
+    font-style: italic;
   }
   .entry-body {
     font-size: 15px;
@@ -680,4 +792,36 @@
     border-radius: 3px; opacity: 0.4;
   }
   .mem-x:hover { color: var(--red); opacity: 1; background: var(--black-4); }
+
+  /* ═══════════════════════════════════
+     RESPONSIVE (MOBILE)
+  ═══════════════════════════════════ */
+  @media (max-width: 768px) {
+    .side {
+      position: absolute;
+      z-index: 50;
+      height: 100%;
+      width: 280px;
+      left: 0;
+      top: 0;
+      box-shadow: 4px 0 24px rgba(0,0,0,0.5);
+    }
+    .side-overlay {
+      position: absolute;
+      inset: 0;
+      background: rgba(0,0,0,0.6);
+      z-index: 40;
+      backdrop-filter: blur(2px);
+    }
+    .main { width: 100%; }
+    .feed {
+      padding: var(--sp-4) var(--sp-3);
+    }
+    .entry { max-width: 100%; padding: var(--sp-3); }
+    .w-mark { font-size: 28px; }
+    .input-dock { padding: var(--sp-2) var(--sp-2); }
+    .input-row { max-width: 100%; }
+    .dock-btn, .send-btn { width: 34px; height: 34px; }
+    .modal { width: 90%; max-height: 85vh; }
+  }
 </style>

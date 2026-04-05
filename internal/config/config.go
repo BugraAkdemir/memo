@@ -24,8 +24,9 @@ type APIConfig struct {
 type IdentityConfig struct {
 	UserName      string `yaml:"user_name"`
 	AssistantName string `yaml:"assistant_name"`
-	Style         string `yaml:"style"`
-	SystemRole    string `yaml:"system_role"`
+	Style           string `yaml:"style"`
+	SystemRole      string `yaml:"system_role"`
+	IncognitoPrompt string `yaml:"incognito_prompt"`
 }
 
 type MemoryConfig struct {
@@ -50,9 +51,10 @@ func Default() *AppConfig {
 		},
 		Identity: IdentityConfig{
 			UserName:      "User",
-			AssistantName: "Memo",
-			Style:         "casual",
-			SystemRole:    "",
+			AssistantName:   "Memo",
+			Style:           "casual",
+			SystemRole:      "",
+			IncognitoPrompt: "You are Memo, in Incognito Mode. This is a secure session. Never refer to past events, because you have no memory here. Do your best to assist the user right now.",
 		},
 		Memory: MemoryConfig{
 			PersistDir:    "./data/memory",

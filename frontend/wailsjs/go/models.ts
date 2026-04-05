@@ -37,6 +37,7 @@ export namespace config {
 	    AssistantName: string;
 	    Style: string;
 	    SystemRole: string;
+	    IncognitoPrompt: string;
 	
 	    static createFrom(source: any = {}) {
 	        return new IdentityConfig(source);
@@ -48,6 +49,7 @@ export namespace config {
 	        this.AssistantName = source["AssistantName"];
 	        this.Style = source["Style"];
 	        this.SystemRole = source["SystemRole"];
+	        this.IncognitoPrompt = source["IncognitoPrompt"];
 	    }
 	}
 	export class AppConfig {

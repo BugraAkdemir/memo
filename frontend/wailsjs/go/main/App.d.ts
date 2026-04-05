@@ -23,6 +23,10 @@ export function GetAvailableStyles():Promise<Array<string>>;
 
 export function GetConfig():Promise<config.AppConfig>;
 
+export function GetImageBase64(arg1:string):Promise<string>;
+
+export function GetIncognitoPrompt():Promise<string>;
+
 export function GetMemoryCount():Promise<number>;
 
 export function GetSystemPrompt():Promise<string>;
@@ -47,8 +51,12 @@ export function SendMessageWithFile(arg1:string,arg2:string):Promise<string>;
 
 export function SendMessageWithImage(arg1:string,arg2:string):Promise<string>;
 
+export function SetIncognitoPrompt(arg1:string):Promise<void>;
+
 export function SetSystemPrompt(arg1:string):Promise<void>;
 
 export function SwitchChat(arg1:string):Promise<void>;
+
+export function ToggleIncognito(arg1:boolean):Promise<void>;
 
 export function UpdateIdentity(arg1:string,arg2:string,arg3:string):Promise<void>;

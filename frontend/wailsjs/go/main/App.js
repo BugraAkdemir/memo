@@ -102,6 +102,14 @@ export function SetSystemPrompt(arg1) {
   return window['go']['main']['App']['SetSystemPrompt'](arg1);
 }
 
+export function StartRecording() {
+  return window['go']['main']['App']['StartRecording']();
+}
+
+export function StopRecordingAndTranscribe() {
+  return window['go']['main']['App']['StopRecordingAndTranscribe']();
+}
+
 export function SwitchChat(arg1) {
   return window['go']['main']['App']['SwitchChat'](arg1);
 }

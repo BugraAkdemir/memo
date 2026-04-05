@@ -149,6 +149,12 @@ type ModelInfo struct {
 	OwnedBy string `json:"owned_by"`
 }
 
+// --- Transcription ---
+
+type TranscriptionResponse struct {
+	Text string `json:"text"`
+}
+
 // --- Stream Chunk for frontend ---
 
 type StreamChunk struct {

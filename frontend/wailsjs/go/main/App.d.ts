@@ -55,6 +55,10 @@ export function SetIncognitoPrompt(arg1:string):Promise<void>;
 
 export function SetSystemPrompt(arg1:string):Promise<void>;
 
+export function StartRecording():Promise<void>;
+
+export function StopRecordingAndTranscribe():Promise<string>;
+
 export function SwitchChat(arg1:string):Promise<void>;
 
 export function ToggleIncognito(arg1:boolean):Promise<void>;

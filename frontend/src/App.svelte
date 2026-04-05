@@ -10,7 +10,8 @@
     GetSystemPrompt, SetSystemPrompt, ResetSystemPrompt,
     GetIncognitoPrompt, SetIncognitoPrompt,
     ClearAllMemory, ListMemoryFiles, DeleteMemoryFile,
-    GetImageBase64
+    GetImageBase64,
+    StartRecording, StopRecordingAndTranscribe
   } from '../wailsjs/go/main/App.js';
   import { EventsOn } from '../wailsjs/runtime/runtime.js';
 
@@ -27,7 +28,22 @@
   onMount(() => {
     const handleResize = () => { if(window.innerWidth <= 768 && sidebarOpen) sidebarOpen = false; };
     window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+
+    // Block F12, Ctrl+Shift+I, and right-click context menu
+    const blockDevTools = (e) => {
+      if (e.key === 'F12' || (e.ctrlKey && e.shiftKey && e.key === 'I')) {
+        e.preventDefault();
+      }
+    };
+    const blockContextMenu = (e) => e.preventDefault();
+    window.addEventListener('keydown', blockDevTools);
+    window.addEventListener('contextmenu', blockContextMenu);
+
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', blockDevTools);
+      window.removeEventListener('contextmenu', blockContextMenu);
+    };
   });
   let conn = { connected: false, models: [] };
   let memCount = 0;
@@ -44,6 +60,10 @@
   let memFiles = [];
   let memBusy = false;
   let isIncognito = false;
+
+  // Speech-to-text
+  let isRecording = false;
+  let isTranscribing = false;
 
   onMount(async () => {
     await refreshAll();
@@ -169,6 +189,53 @@
     messages = [];
     input = '';
     try { await ToggleIncognito(true); } catch(e) {}
+  }
+
+  // ─── Speech to Text ────────────
+  async function startMic() {
+    if (isRecording || isTranscribing) return;
+    try {
+      await StartRecording();
+      isRecording = true;
+    } catch (e) {
+      console.error('Mic start error:', e);
+      isRecording = false;
+    }
+  }
+
+  // Tick: stop → put text in input for editing
+  async function stopMicToEdit() {
+    if (!isRecording) return;
+    isRecording = false;
+    isTranscribing = true;
+    try {
+      const text = await StopRecordingAndTranscribe();
+      if (text) {
+        input = input ? input + ' ' + text : text;
+      }
+    } catch (e) {
+      console.error('STT error:', e);
+    }
+    isTranscribing = false;
+  }
+
+  // Send: stop → transcribe → send immediately
+  async function stopMicAndSend() {
+    if (!isRecording) return;
+    isRecording = false;
+    isTranscribing = true;
+    try {
+      const text = await StopRecordingAndTranscribe();
+      if (text) {
+        input = text;
+        isTranscribing = false;
+        await send();
+        return;
+      }
+    } catch (e) {
+      console.error('STT error:', e);
+    }
+    isTranscribing = false;
   }
 
   // ─── Settings ─────────────────
@@ -333,28 +400,73 @@
 
     <!-- Input -->
     <div class="input-dock">
-      <div class="input-row">
-        <button class="dock-btn" on:click={pickImage} disabled={loading} title="Attach image">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
-        </button>
-        <button class="dock-btn" on:click={pickFile} disabled={loading} title="Attach file">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
-        </button>
-        <textarea
-          bind:value={input}
-          on:keydown={onKey}
-          placeholder="Type a message to Memo..."
-          rows="1"
-          disabled={loading}
-        ></textarea>
-        <button class="send-btn" on:click={send} disabled={(!input.trim() && !attachedImage && !attachedFile) || loading}>
-          {#if loading}
-            <span class="spin"></span>
-          {:else}
+      {#if isRecording}
+        <!-- Recording mode -->
+        <div class="input-row recording-row">
+          <button class="rec-action-btn tick-btn" on:click={stopMicToEdit} title="Stop & edit text">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          </button>
+          <div class="waveform">
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+            <div class="wave-bar"></div>
+          </div>
+          <button class="rec-action-btn send-rec-btn" on:click={stopMicAndSend} title="Stop & send immediately">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-          {/if}
-        </button>
-      </div>
+          </button>
+        </div>
+      {:else if isTranscribing}
+        <!-- Transcribing mode -->
+        <div class="input-row transcribing-row">
+          <span class="spin"></span>
+          <span class="transcribing-text">Converting speech...</span>
+        </div>
+      {:else}
+        <!-- Normal mode -->
+        <div class="input-row">
+          <button class="dock-btn" on:click={pickImage} disabled={loading} title="Attach image">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/></svg>
+          </button>
+          <button class="dock-btn" on:click={pickFile} disabled={loading} title="Attach file">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/></svg>
+          </button>
+          <button class="dock-btn" on:click={startMic} disabled={loading} title="Voice input">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/>
+              <line x1="8" y1="23" x2="16" y2="23"/>
+            </svg>
+          </button>
+          <textarea
+            bind:value={input}
+            on:keydown={onKey}
+            placeholder="Type a message to Memo..."
+            rows="1"
+            disabled={loading}
+          ></textarea>
+          <button class="send-btn" on:click={send} disabled={(!input.trim() && !attachedImage && !attachedFile) || loading}>
+            {#if loading}
+              <span class="spin"></span>
+            {:else}
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
+            {/if}
+          </button>
+        </div>
+      {/if}
     </div>
   </main>
 </div>
@@ -700,6 +812,92 @@
     border-top-color: var(--gold);
     border-radius: 50%;
     animation: spin 0.5s linear infinite;
+  }
+
+  /* ─── RECORDING MODE ─── */
+  .recording-row {
+    justify-content: center;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-2) 0;
+  }
+  .waveform {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 3px;
+    height: 38px;
+    max-width: 400px;
+  }
+  .wave-bar {
+    width: 3px;
+    border-radius: 2px;
+    background: var(--red);
+    animation: waveAnim 1.2s ease-in-out infinite;
+  }
+  .wave-bar:nth-child(1)  { animation-delay: 0.0s; }
+  .wave-bar:nth-child(2)  { animation-delay: 0.1s; }
+  .wave-bar:nth-child(3)  { animation-delay: 0.2s; }
+  .wave-bar:nth-child(4)  { animation-delay: 0.3s; }
+  .wave-bar:nth-child(5)  { animation-delay: 0.4s; }
+  .wave-bar:nth-child(6)  { animation-delay: 0.5s; }
+  .wave-bar:nth-child(7)  { animation-delay: 0.6s; }
+  .wave-bar:nth-child(8)  { animation-delay: 0.7s; }
+  .wave-bar:nth-child(9)  { animation-delay: 0.6s; }
+  .wave-bar:nth-child(10) { animation-delay: 0.5s; }
+  .wave-bar:nth-child(11) { animation-delay: 0.4s; }
+  .wave-bar:nth-child(12) { animation-delay: 0.3s; }
+  .wave-bar:nth-child(13) { animation-delay: 0.2s; }
+  .wave-bar:nth-child(14) { animation-delay: 0.1s; }
+  .wave-bar:nth-child(15) { animation-delay: 0.0s; }
+  .wave-bar:nth-child(16) { animation-delay: 0.1s; }
+
+  @keyframes waveAnim {
+    0%, 100% { height: 4px; opacity: 0.4; }
+    50%      { height: 28px; opacity: 1; }
+  }
+
+  .rec-action-btn {
+    width: 42px;
+    height: 42px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    flex-shrink: 0;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .rec-action-btn:active { transform: scale(0.92); }
+
+  .tick-btn {
+    background: rgba(34, 197, 94, 0.12);
+    color: var(--green);
+    border: 1px solid rgba(34, 197, 94, 0.25);
+  }
+  .tick-btn:hover {
+    background: rgba(34, 197, 94, 0.22);
+  }
+
+  .send-rec-btn {
+    background: var(--gold-subtle);
+    color: var(--gold);
+    border: 1px solid rgba(212, 175, 55, 0.25);
+  }
+  .send-rec-btn:hover {
+    background: rgba(212, 175, 55, 0.22);
+  }
+
+  .transcribing-row {
+    justify-content: center;
+    align-items: center;
+    gap: var(--sp-3);
+    padding: var(--sp-3) 0;
+  }
+  .transcribing-text {
+    font-size: 13px;
+    color: var(--t-2);
+    letter-spacing: 0.3px;
   }
 
   /* ═══ SETTINGS MODAL ═══ */

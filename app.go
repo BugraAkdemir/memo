@@ -1,14 +1,18 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/base64"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"memo/internal/api"
@@ -35,6 +39,7 @@ type App struct {
 	sessions          *sessions.Manager
 	isIncognito       bool
 	incognitoMessages []api.Message
+	sttServer         *exec.Cmd
 }
 
 func NewApp() *App {
@@ -67,7 +72,30 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.sessions = sm
 
+	// Start STT server in background
+	go a.startSTTServer()
+
 	log.Println("Memo ready")
+}
+
+func (a *App) startSTTServer() {
+	pythonPath := a.findPath("stt-env/bin/python")
+	scriptPath := a.findPath("scripts/stt_server.py")
+	if pythonPath == "" || scriptPath == "" {
+		log.Println("STT: stt-env or stt_server.py not found, speech-to-text disabled")
+		return
+	}
+
+	a.sttServer = exec.Command(pythonPath, scriptPath, "tr", "9876")
+	a.sttServer.Stdout = os.Stdout
+	a.sttServer.Stderr = os.Stderr
+
+	if err := a.sttServer.Start(); err != nil {
+		log.Printf("STT server start failed: %v", err)
+		a.sttServer = nil
+		return
+	}
+	log.Println("STT server starting on :9876")
 }
 
 // ─── Incognito ───────────────────────────────────────────────────
@@ -276,6 +304,103 @@ func (a *App) SelectFile() string {
 		return ""
 	}
 	return path
+}
+
+// ─── Speech to Text ─────────────────────────────────────────────
+
+var (
+	recCmd  *exec.Cmd
+	recFile string
+	recMu   sync.Mutex
+)
+
+func (a *App) StartRecording() error {
+	recMu.Lock()
+	defer recMu.Unlock()
+
+	if recCmd != nil {
+		return fmt.Errorf("already recording")
+	}
+
+	tmpFile, err := os.CreateTemp("", "memo-stt-*.wav")
+	if err != nil {
+		return fmt.Errorf("temp file: %w", err)
+	}
+	tmpFile.Close()
+	recFile = tmpFile.Name()
+
+	recCmd = exec.Command("arecord", "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav", recFile)
+	if err := recCmd.Start(); err != nil {
+		recCmd = nil
+		os.Remove(recFile)
+		return fmt.Errorf("arecord start: %w", err)
+	}
+
+	log.Println("Recording started")
+	return nil
+}
+
+func (a *App) StopRecordingAndTranscribe() (string, error) {
+	recMu.Lock()
+	defer recMu.Unlock()
+
+	if recCmd == nil {
+		return "", fmt.Errorf("not recording")
+	}
+
+	// Stop arecord gracefully with SIGINT
+	if recCmd.Process != nil {
+		recCmd.Process.Signal(os.Interrupt)
+	}
+	recCmd.Wait()
+	recCmd = nil
+
+	defer os.Remove(recFile)
+
+	// Send WAV to the local STT server
+	audioData, err := os.ReadFile(recFile)
+	if err != nil {
+		return "", fmt.Errorf("read recording: %w", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:9876/transcribe", bytes.NewReader(audioData))
+	if err != nil {
+		return "", fmt.Errorf("stt request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/octet-stream")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("stt server unreachable (model may still be loading): %w", err)
+	}
+	defer resp.Body.Close()
+
+	var result struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("stt decode: %w", err)
+	}
+
+	log.Printf("STT result: %q", result.Text)
+	return result.Text, nil
+}
+
+func (a *App) findPath(relative string) string {
+	// Try relative to working directory first (dev mode)
+	if _, err := os.Stat(relative); err == nil {
+		return relative
+	}
+	// Try relative to binary
+	exePath, _ := os.Executable()
+	full := filepath.Join(filepath.Dir(exePath), relative)
+	if _, err := os.Stat(full); err == nil {
+		return full
+	}
+	return ""
 }
 
 // ─── Other ───────────────────────────────────────────────────────

@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"time"
 )
@@ -150,6 +151,51 @@ func (c *Client) CreateEmbedding(ctx context.Context, model, text string) ([]flo
 	}
 
 	return result.Data[0].Embedding, nil
+}
+
+func (c *Client) TranscribeAudio(ctx context.Context, audioData []byte, filename string) (string, error) {
+	var buf bytes.Buffer
+	w := multipart.NewWriter(&buf)
+
+	part, err := w.CreateFormFile("file", filename)
+	if err != nil {
+		return "", fmt.Errorf("api.Transcribe: form file: %w", err)
+	}
+	if _, err := part.Write(audioData); err != nil {
+		return "", fmt.Errorf("api.Transcribe: write: %w", err)
+	}
+
+	if err := w.WriteField("model", "whisper-1"); err != nil {
+		return "", fmt.Errorf("api.Transcribe: field: %w", err)
+	}
+
+	if err := w.Close(); err != nil {
+		return "", fmt.Errorf("api.Transcribe: close: %w", err)
+	}
+
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/audio/transcriptions", &buf)
+	if err != nil {
+		return "", fmt.Errorf("api.Transcribe: request: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", w.FormDataContentType())
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return "", fmt.Errorf("api.Transcribe: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		b, _ := io.ReadAll(resp.Body)
+		return "", fmt.Errorf("api.Transcribe: status %d: %s", resp.StatusCode, string(b))
+	}
+
+	var result TranscriptionResponse
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return "", fmt.Errorf("api.Transcribe: decode: %w", err)
+	}
+
+	return result.Text, nil
 }
 
 func (c *Client) CheckConnection(ctx context.Context) ([]ModelInfo, error) {

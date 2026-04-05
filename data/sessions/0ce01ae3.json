@@ -1,7 +1,18 @@
 {
   "id": "0ce01ae3",
-  "title": "New Chat",
+  "title": "nabewr",
   "created_at": "2026-04-04 05:11",
-  "updated_at": "2026-04-04 05:11",
-  "messages": []
+  "updated_at": "2026-04-05 05:50",
+  "messages": [
+    {
+      "role": "user",
+      "content": "nabewr",
+      "timestamp": "05:50"
+    },
+    {
+      "role": "assistant",
+      "content": "Hey there! What’s up? Anything I can help you with today? 😊",
+      "timestamp": "05:50"
+    }
+  ]
 }

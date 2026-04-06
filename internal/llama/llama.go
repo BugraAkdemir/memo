@@ -1,7 +1,6 @@
 package llama
 
 import (
-	"context"
 	"fmt"
 	"log"
 	"net/http"
@@ -34,6 +33,7 @@ type Server struct {
 	modelPath string
 	gpu       GPUInfo
 	stopping  bool
+	waitDone  chan struct{} // Closed when the process actually exits
 }
 
 // NewServer creates a new llama-server manager.
@@ -106,6 +106,7 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	s.cmd.Stderr = os.Stderr
 	s.modelPath = modelPath
 	s.stopping = false
+	s.waitDone = make(chan struct{})
 
 	// Set LD_LIBRARY_PATH to include the binary's directory (shared libs live next to it)
 	binDir := filepath.Dir(bin)
@@ -171,19 +172,17 @@ func (s *Server) Stop() error {
 	pid := s.cmd.Process.Pid
 	log.Printf("llama: stopping server (PID %d)", pid)
 
-	// Step 1: Send SIGTERM for graceful shutdown
-	if err := s.cmd.Process.Signal(syscall.SIGTERM); err != nil {
-		log.Printf("llama: SIGTERM failed: %v, trying SIGKILL", err)
-		s.forceKill()
-		return nil
+	// Step 1: Send SIGTERM to the process group for graceful shutdown
+	pgid, err := syscall.Getpgid(pid)
+	if err == nil {
+		syscall.Kill(-pgid, syscall.SIGTERM)
+	} else {
+		s.cmd.Process.Signal(syscall.SIGTERM)
 	}
 
-	// Step 2: Wait up to 5 seconds for graceful exit
-	done := make(chan error, 1)
-	go func() { done <- s.cmd.Wait() }()
-
+	// Step 2: Wait up to 5 seconds for graceful exit (monitored by monitor loop)
 	select {
-	case <-done:
+	case <-s.waitDone:
 		log.Printf("llama: server stopped gracefully")
 	case <-time.After(5 * time.Second):
 		log.Printf("llama: graceful shutdown timed out, force killing")
@@ -209,20 +208,14 @@ func (s *Server) forceKill() {
 		s.cmd.Process.Kill()
 	}
 
-	// Wait for the process to actually exit
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-	defer cancel()
-
-	waitDone := make(chan struct{})
-	go func() {
-		s.cmd.Wait()
-		close(waitDone)
-	}()
-
-	select {
-	case <-waitDone:
-	case <-ctx.Done():
-		log.Printf("llama: WARNING — process may not have exited cleanly")
+	// Wait for the monitor loop to catch the exit
+	if s.waitDone != nil {
+		select {
+		case <-s.waitDone:
+			// Process exited
+		case <-time.After(3 * time.Second):
+			log.Printf("llama: WARNING — process may not have exited cleanly")
+		}
 	}
 }
 
@@ -236,6 +229,16 @@ func (s *Server) monitor() {
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Signal that the process has exited
+	if s.waitDone != nil {
+		select {
+		case <-s.waitDone:
+			// already closed
+		default:
+			close(s.waitDone)
+		}
+	}
 
 	if s.stopping {
 		return // Expected shutdown

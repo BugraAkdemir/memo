@@ -67,11 +67,11 @@
       nameLabel: "Adınız Soyadınız",
       systemPromptLabel: "Özel Sistem İstemi (Opsiyonel)",
       systemPromptDesc: "Boş bırakırsanız varsayılan kullanılacaktır.",
-      checkLM: "LM-Studio Bağlantısı",
+      checkLM: "Yapay Zeka Motoru",
       checkModels: "Yüklü Modeller",
-      lmStudioWarning: "Lütfen LM-Studio'yu açın, bir model yükleyin ve Local Server'ı başlatın (Port: 1234).",
+      lmStudioWarning: "Aktif bir model bulunamadı. Kurulumu tamamladıktan sonra 'Modeller' sekmesinden bir model indirebilir veya harici bir sunucuya bağlanabilirsiniz.",
       refresh: "Yenile",
-      ready: "Başla Devam Et",
+      ready: "Başla ve Keşfet",
       resetSetup: "Kurulumu Sıfırla",
       aboutDev: "Geliştirici",
       aboutVisionTitle: "Vizyon ve Misyon",
@@ -128,11 +128,11 @@
       nameLabel: "Your Name and Surname",
       systemPromptLabel: "Custom System Prompt (Optional)",
       systemPromptDesc: "Leave blank to use the default prompt.",
-      checkLM: "LM-Studio Connection",
+      checkLM: "AI Engine Status",
       checkModels: "Loaded Models",
-      lmStudioWarning: "Please open LM-Studio, load a model, and start the Local Server (Port: 1234).",
+      lmStudioWarning: "No active model detected. You can download one from the 'Models' tab or connect an external server after finishing setup.",
       refresh: "Refresh",
-      ready: "Ready to Go",
+      ready: "Finish & Explore",
       resetSetup: "Reset Setup",
       aboutDev: "Developer",
       aboutVisionTitle: "Vision and Mission",
@@ -867,7 +867,7 @@ Core Directives:
 
       <div class="m-section" style="margin-top:var(--sp-5); background:var(--bg-app); border:1px solid var(--border-soft); border-radius:var(--r-md); padding:var(--sp-4);">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--sp-3);">
-          <span class="setting-label" style="font-size:13px; color:var(--text-muted);">Connection Diagnostics</span>
+          <span class="setting-label" style="font-size:13px; color:var(--text-muted);">System Diagnostics</span>
           <button class="lang-btn" style="background:var(--bg-hover);" on:click={checkSetupConnection} disabled={setupChecking}>{setupChecking ? '...' : t('refresh')}</button>
         </div>
         
@@ -889,7 +889,7 @@ Core Directives:
 
     </div>
     <div class="m-actions" style="padding:var(--sp-4) var(--sp-6); border-top:1px solid var(--text-dim); justify-content:flex-end; margin-top:0;">
-      <button class="m-btn gold" on:click={finishSetup} disabled={!setupLMStatus}>{t('ready')}</button>
+      <button class="m-btn gold" on:click={finishSetup}>{t('ready')}</button>
     </div>
   </div>
 </div>
@@ -1734,7 +1734,6 @@ Core Directives:
     font-weight: 500;
   }
   .sys-req.good { background: rgba(74, 222, 128, 0.1); color: #4ade80; }
-  .sys-req.warn { background: rgba(250, 204, 21, 0.1); color: #facc15; }
   .sys-req.error { background: rgba(248, 113, 113, 0.1); color: #f87171; }
 
   .small-dl-btn {

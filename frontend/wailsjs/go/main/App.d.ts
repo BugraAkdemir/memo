@@ -38,6 +38,8 @@ export function GetConfig():Promise<config.AppConfig>;
 
 export function GetDownloadProgress():Promise<modelstore.DownloadProgress>;
 
+export function GetEmbeddingModelStatus():Promise<llama.ServerStatus>;
+
 export function GetImageBase64(arg1:string):Promise<string>;
 
 export function GetIncognitoPrompt():Promise<string>;
@@ -92,9 +94,13 @@ export function SetRemoteAccess(arg1:boolean,arg2:number):Promise<void>;
 
 export function SetSystemPrompt(arg1:string):Promise<void>;
 
+export function StartEmbeddingModel(arg1:string,arg2:number):Promise<void>;
+
 export function StartLocalModel(arg1:string,arg2:number,arg3:number,arg4:number):Promise<void>;
 
 export function StartRecording():Promise<void>;
+
+export function StopEmbeddingModel():Promise<void>;
 
 export function StopLocalModel():Promise<void>;
 

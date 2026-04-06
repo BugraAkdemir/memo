@@ -62,6 +62,10 @@ export function GetDownloadProgress() {
   return window['go']['main']['App']['GetDownloadProgress']();
 }
 
+export function GetEmbeddingModelStatus() {
+  return window['go']['main']['App']['GetEmbeddingModelStatus']();
+}
+
 export function GetImageBase64(arg1) {
   return window['go']['main']['App']['GetImageBase64'](arg1);
 }
@@ -170,12 +174,20 @@ export function SetSystemPrompt(arg1) {
   return window['go']['main']['App']['SetSystemPrompt'](arg1);
 }
 
+export function StartEmbeddingModel(arg1, arg2) {
+  return window['go']['main']['App']['StartEmbeddingModel'](arg1, arg2);
+}
+
 export function StartLocalModel(arg1, arg2, arg3, arg4) {
   return window['go']['main']['App']['StartLocalModel'](arg1, arg2, arg3, arg4);
 }
 
 export function StartRecording() {
   return window['go']['main']['App']['StartRecording']();
+}
+
+export function StopEmbeddingModel() {
+  return window['go']['main']['App']['StopEmbeddingModel']();
 }
 
 export function StopLocalModel() {

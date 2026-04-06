@@ -19,6 +19,7 @@ export namespace config {
 	export class LlamaConfig {
 	    binary_path: string;
 	    port: number;
+	    embedding_port: number;
 	    ctx_size: number;
 	    models_dir: string;
 	
@@ -30,6 +31,7 @@ export namespace config {
 	        if ('string' === typeof source) source = JSON.parse(source);
 	        this.binary_path = source["binary_path"];
 	        this.port = source["port"];
+	        this.embedding_port = source["embedding_port"];
 	        this.ctx_size = source["ctx_size"];
 	        this.models_dir = source["models_dir"];
 	    }

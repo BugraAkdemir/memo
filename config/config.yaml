@@ -26,5 +26,6 @@ remote_access:
 llama:
     binary_path: data/bin/llama-server
     port: 8081
+    embedding_port: 8082
     ctx_size: 4096
     models_dir: ./data/models

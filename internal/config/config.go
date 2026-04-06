@@ -29,10 +29,11 @@ type APIConfig struct {
 }
 
 type LlamaConfig struct {
-	BinaryPath string `yaml:"binary_path" json:"binary_path"` // path to llama-server, auto-detected if empty
-	Port       int    `yaml:"port" json:"port"`               // default 8081
-	CtxSize    int    `yaml:"ctx_size" json:"ctx_size"`         // default 4096
-	ModelsDir  string `yaml:"models_dir" json:"models_dir"`     // default "./data/models"
+	BinaryPath    string `yaml:"binary_path" json:"binary_path"`       // path to llama-server, auto-detected if empty
+	Port          int    `yaml:"port" json:"port"`                     // default 8081
+	EmbeddingPort int    `yaml:"embedding_port" json:"embedding_port"` // default 8082
+	CtxSize       int    `yaml:"ctx_size" json:"ctx_size"`             // default 4096
+	ModelsDir     string `yaml:"models_dir" json:"models_dir"`         // default "./data/models"
 }
 
 type IdentityConfig struct {
@@ -80,10 +81,11 @@ func Default() *AppConfig {
 			Port:    8080,
 		},
 		Llama: LlamaConfig{
-			BinaryPath: "",
-			Port:       8081,
-			CtxSize:    4096,
-			ModelsDir:  "./data/models",
+			BinaryPath:    "",
+			Port:          8081,
+			EmbeddingPort: 8082,
+			CtxSize:       4096,
+			ModelsDir:     "./data/models",
 		},
 	}
 }
@@ -180,6 +182,9 @@ func (c *AppConfig) validate() {
 	}
 	if c.Llama.Port <= 0 || c.Llama.Port > 65535 {
 		c.Llama.Port = 8081
+	}
+	if c.Llama.EmbeddingPort <= 0 || c.Llama.EmbeddingPort > 65535 {
+		c.Llama.EmbeddingPort = 8082
 	}
 	if c.Llama.CtxSize <= 0 {
 		c.Llama.CtxSize = 4096

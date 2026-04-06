@@ -1,5 +1,23 @@
-build/bin
-node_modules
-frontend/dist
+# Build outputs
+build/bin/
+frontend/dist/
+frontend/node_modules/
+
+# Runtime data (user-specific)
+data/models/
+data/memory/
+data/sessions/
+data/bin/
+
+# Embedded binaries (large, platform-specific)
+binaries/
+
+# Python / STT
 stt-env/
-data/models
+
+# Packaged releases
+dist_packages/
+
+# OS files
+.DS_Store
+Thumbs.db

@@ -60,8 +60,10 @@ type App struct {
 	embeddedAssets    embed.FS
 	modelStore        *modelstore.Store
 	llamaServer       *llama.Server
+	llamaEmbedServer  *llama.Server  // dedicated embedding model server
 	llamaInstaller    *llama.Installer
 	originalBaseURL   string // stores the original API base URL before llama override
+	embeddingClient   *api.Client // separate client for embedding server
 }
 
 func NewApp() *App {
@@ -84,7 +86,7 @@ func (a *App) startup(ctx context.Context) {
 	a.originalBaseURL = cfg.API.BaseURL
 	a.client = api.NewClient(cfg.API.BaseURL, cfg.API.TimeoutSeconds)
 
-	embeddingFunc := memory.NewLMStudioEmbeddingFunc(a.client, cfg.API.EmbeddingModel)
+	embeddingFunc := memory.NewEmbeddingFunc(a.client, cfg.API.EmbeddingModel)
 	store, err := memory.NewStore(cfg.Memory.PersistDir, embeddingFunc)
 	if err != nil {
 		log.Printf("WARN: memory: %v", err)
@@ -102,8 +104,9 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize model store
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 
-	// Initialize llama server manager and installer
+	// Initialize llama server managers and installer
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
+	a.llamaEmbedServer = llama.NewServer(cfg.Llama.EmbeddingPort, 512) // embedding models need minimal context
 	a.llamaInstaller = llama.NewInstaller("data")
 
 	// Start STT server in background
@@ -175,10 +178,15 @@ func (a *App) shutdown(ctx context.Context) {
 	if a.sttServer != nil && a.sttServer.Process != nil {
 		a.sttServer.Process.Kill()
 	}
-	// Stop llama-server if running
+	// Stop llama servers if running
 	if a.llamaServer != nil {
 		if err := a.llamaServer.Stop(); err != nil {
-			log.Printf("llama shutdown: %v", err)
+			log.Printf("llama chat shutdown: %v", err)
+		}
+	}
+	if a.llamaEmbedServer != nil {
+		if err := a.llamaEmbedServer.Stop(); err != nil {
+			log.Printf("llama embedding shutdown: %v", err)
 		}
 	}
 }
@@ -220,12 +228,14 @@ func (a *App) SendMessage(userMsg string) string {
 		return a.handleIncognito(userMsg, "")
 	}
 
-	// Save user message to session
+	messages := a.buildMessages(userMsg, nil)
+
+	// Save user message to session AFTER building messages,
+	// so getSessionHistory() doesn't include it (avoiding duplicate user turns).
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", "")
 	}
 
-	messages := a.buildMessages(userMsg, nil)
 	reply := a.callLLM(messages)
 
 	// Save assistant reply to session
@@ -251,12 +261,8 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		return a.handleIncognito(userMsg, b64)
 	}
 
-	// Save to session
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, imagePath, "")
-	}
-
-	// Build multimodal messages
+	// Build multimodal messages BEFORE saving to session,
+	// so getSessionHistory() doesn't include the current user message.
 	memories := a.retrieveMemory(userMsg)
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
@@ -264,6 +270,11 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
 	msgs = append(msgs, a.getSessionHistory()...)
 	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
+
+	// Save to session after building messages
+	if a.sessions != nil {
+		a.sessions.AddMessage("user", userMsg, imagePath, "")
+	}
 
 	reply := a.callLLM(msgs)
 
@@ -295,11 +306,13 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 		return a.handleIncognito(combined, "")
 	}
 
+	messages := a.buildMessages(combined, nil)
+
+	// Save to session after building messages
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", filePath)
 	}
 
-	messages := a.buildMessages(combined, nil)
 	reply := a.callLLM(messages)
 
 	if a.sessions != nil {
@@ -716,15 +729,9 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
 	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
-	// Re-initialize embedding function with the new client
-	embeddingFunc := memory.NewLMStudioEmbeddingFunc(a.client, a.cfg.API.EmbeddingModel)
-	if a.store != nil {
-		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
-		if err != nil {
-			log.Printf("WARN: memory re-init: %v", err)
-		} else {
-			a.store = newStore
-		}
+	// Only re-init embedding if no dedicated embedding server is running
+	if !a.llamaEmbedServer.IsRunning() {
+		a.reinitMemoryStore(a.client, a.cfg.API.EmbeddingModel)
 	}
 
 	return nil
@@ -739,15 +746,9 @@ func (a *App) StopLocalModel() error {
 	a.client = api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
 	log.Printf("API client reverted to: %s", a.originalBaseURL)
 
-	// Re-initialize embedding function with the reverted client
-	embeddingFunc := memory.NewLMStudioEmbeddingFunc(a.client, a.cfg.API.EmbeddingModel)
-	if a.store != nil {
-		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
-		if err != nil {
-			log.Printf("WARN: memory re-init: %v", err)
-		} else {
-			a.store = newStore
-		}
+	// Only re-init embedding if no dedicated embedding server is running
+	if !a.llamaEmbedServer.IsRunning() {
+		a.reinitMemoryStore(a.client, a.cfg.API.EmbeddingModel)
 	}
 
 	return nil
@@ -793,7 +794,58 @@ func (a *App) InstallLlamaServer() error {
 	return config.Save(a.cfg)
 }
 
+// ─── Embedding Server: Lifecycle Management ─────────────────────
+
+func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
+	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, a.cfg.Llama.EmbeddingPort, gpuLayers); err != nil {
+		return err
+	}
+
+	if err := a.llamaEmbedServer.WaitReady(60 * time.Second); err != nil {
+		a.llamaEmbedServer.Stop()
+		return fmt.Errorf("embedding model loaded but server failed to start: %w", err)
+	}
+
+	// Create dedicated embedding client and reinit memory store
+	embBaseURL := a.llamaEmbedServer.GetBaseURL()
+	a.embeddingClient = api.NewClient(embBaseURL, a.cfg.API.TimeoutSeconds)
+	a.reinitMemoryStore(a.embeddingClient, a.cfg.API.EmbeddingModel)
+	log.Printf("Embedding server ready on %s", embBaseURL)
+
+	return nil
+}
+
+func (a *App) StopEmbeddingModel() error {
+	if err := a.llamaEmbedServer.Stop(); err != nil {
+		return err
+	}
+
+	a.embeddingClient = nil
+	log.Println("Embedding server stopped")
+
+	// Fall back to main client for embeddings
+	a.reinitMemoryStore(a.client, a.cfg.API.EmbeddingModel)
+
+	return nil
+}
+
+func (a *App) GetEmbeddingModelStatus() llama.ServerStatus {
+	return a.llamaEmbedServer.GetStatus()
+}
+
 // ─── Internal Helpers ────────────────────────────────────────────
+
+func (a *App) reinitMemoryStore(client *api.Client, model string) {
+	embeddingFunc := memory.NewEmbeddingFunc(client, model)
+	if a.store != nil {
+		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
+		if err != nil {
+			log.Printf("WARN: memory re-init: %v", err)
+		} else {
+			a.store = newStore
+		}
+	}
+}
 
 func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Message {
 	memories := a.retrieveMemory(userMsg)

@@ -84,9 +84,15 @@ export function SelectImage():Promise<string>;
 
 export function SendMessage(arg1:string):Promise<string>;
 
+export function SendMessageStream(arg1:string):Promise<void>;
+
 export function SendMessageWithFile(arg1:string,arg2:string):Promise<string>;
 
+export function SendMessageWithFileStream(arg1:string,arg2:string):Promise<void>;
+
 export function SendMessageWithImage(arg1:string,arg2:string):Promise<string>;
+
+export function SendMessageWithImageStream(arg1:string,arg2:string):Promise<void>;
 
 export function SetEmbeddedAssets(arg1:embed.FS):Promise<void>;
 

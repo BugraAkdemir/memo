@@ -154,12 +154,24 @@ export function SendMessage(arg1) {
   return window['go']['main']['App']['SendMessage'](arg1);
 }
 
+export function SendMessageStream(arg1) {
+  return window['go']['main']['App']['SendMessageStream'](arg1);
+}
+
 export function SendMessageWithFile(arg1, arg2) {
   return window['go']['main']['App']['SendMessageWithFile'](arg1, arg2);
 }
 
+export function SendMessageWithFileStream(arg1, arg2) {
+  return window['go']['main']['App']['SendMessageWithFileStream'](arg1, arg2);
+}
+
 export function SendMessageWithImage(arg1, arg2) {
   return window['go']['main']['App']['SendMessageWithImage'](arg1, arg2);
+}
+
+export function SendMessageWithImageStream(arg1, arg2) {
+  return window['go']['main']['App']['SendMessageWithImageStream'](arg1, arg2);
 }
 
 export function SetEmbeddedAssets(arg1) {

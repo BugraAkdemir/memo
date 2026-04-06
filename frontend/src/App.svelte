@@ -1,8 +1,12 @@
 <script>
   import { marked } from 'marked';
   import { onMount, tick } from 'svelte';
+  // @ts-ignore
+  const { EventsOn, EventsOff } = (typeof window !== 'undefined' && window.runtime) || {};
   import {
-    SendMessage, SendMessageWithImage, SendMessageWithFile, ToggleIncognito,
+    SendMessage, SendMessageWithImage, SendMessageWithFile,
+    SendMessageStream, SendMessageWithImageStream, SendMessageWithFileStream,
+    ToggleIncognito,
     NewChat, ListChats, SwitchChat, DeleteChat,
     GetActiveMessages, GetActiveChatID,
     SelectImage, SelectFile,
@@ -73,7 +77,29 @@
       aboutVisionTitle: "Vizyon ve Misyon",
       aboutVisionText: "Memo, tamamen yerel bilgisayarınızda çalışan, sizin konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazıyan özel bir yapay zeka asistanıdır. Asıl amaç, bulut teknolojilere muhtaç kalmadan, özgürce ve güvenle kendi bilgisayarında barındırabileceğiniz akıllı bir asistan yaratmaktır.",
       aboutPrivacyTitle: "Şeffaflık Raporu & Gizlilik İlkeleri",
-      aboutPrivacyText: "Tüm mesaj geçmişiniz, vektör (RAG) hafızası, dosyalarınız ve ses kayıtlarınız cihazınızda (lokal ortamda) kapalı bir devre olarak yaşar. Dış internete veya 3. parti API veritabanlarına kesinlikle log veya bilgi gönderilmez. Uygulamanız ve zihniniz %100 size aittir ve her zaman güvenliğiniz ön plandadır."
+      aboutPrivacyText: "Tüm mesaj geçmişiniz, vektör (RAG) hafızası, dosyalarınız ve ses kayıtlarınız cihazınızda (lokal ortamda) kapalı bir devre olarak yaşar. Dış internete veya 3. parti API veritabanlarına kesinlikle log veya bilgi gönderilmez. Uygulamanız ve zihniniz %100 size aittir ve her zaman güvenliğiniz ön plandadır.",
+      addModel: "Model Ekle",
+      modelDesc: "Hugging Face'den modelinizi bulun ve Repo ID'sini yapıştırın.",
+      repoIdPlaceholder: "Repo ID (örn: google/gemma-3-4b-it)",
+      getFiles: "Dosyaları Getir",
+      vramInsufficient: "⚠️ VRAM Yetersiz",
+      gpuCompatible: "✓ GPU Uyumlu",
+      downloadedModels: "İndirilen Modeller",
+      noModels: "Henüz model indirilmedi. Aramaya başlayın.",
+      download: "İndir",
+      thinking: "Memo düşünüyor...",
+      running: "Çalışıyor",
+      embedding: "Hafıza Motoru",
+      modelAction: "İşlemler",
+      stop: "Durdur",
+      start: "Başlat",
+      useAsMemory: "Hafıza Olarak Kullan",
+      delete: "Sil",
+      speed: "Hız",
+      totalTokens: "Toplam Token",
+      duration: "Süre",
+      finishReason: "Bitiş Nedeni",
+      loading: "Yükleniyor..."
     },
     en: {
       newChat: "New Chat",
@@ -112,7 +138,29 @@
       aboutVisionTitle: "Vision and Mission",
       aboutVisionText: "Memo is a specialized AI assistant that runs entirely locally on your computer, learning your conversations and preferences over time and etching them into its persistent memory. The main goal is to create a smart assistant that you can freely and securely host on your own machine without relying on cloud technologies.",
       aboutPrivacyTitle: "Transparency & Privacy Principles",
-      aboutPrivacyText: "All your message history, vector (RAG) memory, files, and voice recordings live in a closed circuit locally on your device. Absolutely no logs or information are sent to the external internet or 3rd party API databases. Your app and your mind are 100% yours, with security always at the forefront."
+      aboutPrivacyText: "All your message history, vector (RAG) memory, files, and voice recordings live in a closed circuit locally on your device. Absolutely no logs or information are sent to the external internet or 3rd party API databases. Your app and your mind are 100% yours, with security always at the forefront.",
+      addModel: "Add Model",
+      modelDesc: "Find your model on Hugging Face and paste the Repo ID.",
+      repoIdPlaceholder: "Repo ID (e.g., google/gemma-3-4b-it)",
+      getFiles: "Get Files",
+      vramInsufficient: "⚠️ Insufficient VRAM",
+      gpuCompatible: "✓ GPU Compatible",
+      downloadedModels: "Downloaded Models",
+      noModels: "No models downloaded yet. Search above to get started.",
+      download: "Download",
+      thinking: "Memo is thinking...",
+      running: "Running",
+      embedding: "Memory Engine",
+      modelAction: "Actions",
+      stop: "Stop",
+      start: "Start",
+      useAsMemory: "Use as Memory",
+      delete: "Delete",
+      speed: "Speed",
+      totalTokens: "Total Tokens",
+      duration: "Duration",
+      finishReason: "Finish Reason",
+      loading: "Loading..."
     }
   };
   $: t = (key) => dict[lang][key] || key;
@@ -337,6 +385,53 @@ Core Directives:
   function ts() { return new Date().toLocaleTimeString('tr-TR', { hour:'2-digit', minute:'2-digit' }); }
 
   // ─── Send ─────────────────────
+  onMount(() => {
+    EventsOn('chat:chunk', (chunk) => {
+      if (chunk.content) {
+        if (messages.length > 0) {
+          const last = messages[messages.length - 1];
+          if (last.role === 'assistant' && last.isStreaming) {
+            last.text += chunk.content;
+            messages = [...messages];
+            scroll();
+          }
+        }
+      }
+    });
+
+    EventsOn('chat:done', (chunk) => {
+      if (messages.length > 0) {
+        const last = messages[messages.length - 1];
+        if (last.role === 'assistant' && last.isStreaming) {
+          last.isStreaming = false;
+          if (chunk.stats) {
+            last.stats = chunk.stats;
+          }
+          messages = [...messages];
+          loading = false;
+          refreshChats();
+        }
+      }
+    });
+
+    EventsOn('chat:error', (err) => {
+      if (messages.length > 0) {
+        const last = messages[messages.length - 1];
+        if (last.role === 'assistant' && last.isStreaming) {
+          last.text += '\n\n' + err;
+          last.isStreaming = false;
+        }
+      }
+      loading = false;
+    });
+
+    return () => {
+      EventsOff('chat:chunk');
+      EventsOff('chat:done');
+      EventsOff('chat:error');
+    };
+  });
+
   async function send() {
     const msg = input.trim();
     if ((!msg && !attachedImage && !attachedFile) || loading) return;
@@ -346,23 +441,36 @@ Core Directives:
     messages = [...messages, { id: Date.now(), role: 'user', text, image: attachedImage, file: attachedFileName, time: ts() }];
     await tick(); scroll();
 
-    let reply = '';
+    // Placeholder for assistant response
+    messages = [...messages, { 
+      id: Date.now()+1, 
+      role: 'assistant', 
+      text: '', 
+      image:'', 
+      file:'', 
+      time: ts(),
+      isStreaming: true 
+    }];
+    messages = [...messages]; // trigger update
+
     try {
       if (attachedImage) {
-        reply = await SendMessageWithImage(text, isDesktop ? attachedImage : webImageFile);
+        SendMessageWithImageStream(text, isDesktop ? attachedImage : webImageFile);
       } else if (attachedFile) {
-        reply = await SendMessageWithFile(text, isDesktop ? attachedFile : webFileFile);
+        SendMessageWithFileStream(text, isDesktop ? attachedFile : webFileFile);
       } else {
-        reply = await SendMessage(text);
+        SendMessageStream(text);
       }
-    } catch (e) { reply = '⚠ ' + (e?.message || e); }
+    } catch (e) { 
+      const last = messages[messages.length - 1];
+      last.text = '⚠ ' + (e?.message || e);
+      last.isStreaming = false;
+      loading = false;
+      messages = [...messages];
+    }
 
     attachedImage = ''; attachedFile = ''; attachedFileName = '';
     webImageFile = null; webFileFile = null;
-    messages = [...messages, { id: Date.now()+1, role: 'assistant', text: reply, image:'', file:'', time: ts() }];
-    loading = false;
-    await tick(); scroll();
-    refreshChats();
   }
 
   function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
@@ -588,26 +696,24 @@ Core Directives:
     isInstalling = false;
   }
 
-  async function searchHF() {
-    if (!modelSearchQuery.trim()) return;
+  let manualRepoID = '';
+  async function fetchRepoFiles() {
+    if (!manualRepoID.trim()) return;
     modelSearching = true;
     modelSearchError = '';
-    expandedModel = null;
     modelFiles = [];
     try {
-      modelSearchResults = await SearchModels(modelSearchQuery.trim()) || [];
-      if (modelSearchResults.length === 0) {
-        modelSearchError = 'No GGUF models found for "' + modelSearchQuery.trim() + '"';
+      modelFiles = await GetModelFiles(manualRepoID.trim()) || [];
+      if (modelFiles.length === 0) {
+        modelSearchError = 'Bu repo altında .gguf dosyası bulunamadı veya repo geçersiz.';
       }
     } catch(e) {
-      console.error('Search error:', e);
-      modelSearchResults = [];
-      modelSearchError = 'Search failed: ' + (e?.message || e || 'Network error');
+      modelSearchError = 'Hata: ' + (e?.message || e);
     }
     modelSearching = false;
   }
 
-  function onSearchKey(e) { if (e.key === 'Enter') searchHF(); }
+  function onSearchKey(e) { if (e.key === 'Enter') fetchRepoFiles(); }
 
   async function expandModel(repoID) {
     if (expandedModel === repoID) { expandedModel = null; modelFiles = []; return; }
@@ -749,14 +855,14 @@ Core Directives:
       <p class="m-desc" style="text-align:center; font-size:14px; margin-bottom:var(--sp-5);">{t('wizardDesc')}</p>
       
       <div class="m-section">
-        <label class="setting-label">{t('nameLabel')}</label>
-        <input type="text" bind:value={setupName} placeholder="E.g. Buğra Akdemir" class="setup-input"/>
+        <label for="setup-name" class="setting-label">{t('nameLabel')}</label>
+        <input id="setup-name" type="text" bind:value={setupName} placeholder="E.g. Buğra Akdemir" class="setup-input"/>
       </div>
       
       <div class="m-section" style="margin-top:var(--sp-4);">
-        <label class="setting-label">{t('systemPromptLabel')}</label>
+        <label for="setup-prompt" class="setting-label">{t('systemPromptLabel')}</label>
         <p class="m-desc" style="margin-bottom:4px;">{t('systemPromptDesc')}</p>
-        <textarea bind:value={setupPrompt} class="m-prompt" placeholder="You are Memo, a highly capable AI assistant..." rows="4"></textarea>
+        <textarea id="setup-prompt" bind:value={setupPrompt} class="m-prompt" placeholder="You are Memo, a highly capable AI assistant…" rows="4"></textarea>
       </div>
 
       <div class="m-section" style="margin-top:var(--sp-5); background:var(--bg-app); border:1px solid var(--border-soft); border-radius:var(--r-md); padding:var(--sp-4);">
@@ -905,6 +1011,34 @@ Core Directives:
           <div class="entry-head">
             <span class="entry-sender">{m.role === 'user' ? 'Buğra' : 'Memo'} ›</span>
             <span class="entry-time">{m.time}</span>
+            
+            {#if m.role === 'assistant' && m.stats}
+              <div class="m-stats-wrap">
+                <button class="m-stats-trigger" title="Generation stats">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+                </button>
+                <div class="m-stats-popover">
+                  <div class="m-stat-row">
+                    <span class="m-stat-label">{t('speed')}:</span>
+                    <span class="m-stat-val">{(m.stats.tokens_per_second || 0).toFixed(2)} tok/s</span>
+                  </div>
+                  <div class="m-stat-row">
+                    <span class="m-stat-label">{t('totalTokens')}:</span>
+                    <span class="m-stat-val">{m.stats.completion_tokens}</span>
+                  </div>
+                  <div class="m-stat-row">
+                    <span class="m-stat-label">{t('duration')}:</span>
+                    <span class="m-stat-val">{(m.stats.total_duration_secs || 0).toFixed(2)}s</span>
+                  </div>
+                  {#if m.stats.stop_reason}
+                  <div class="m-stat-row">
+                    <span class="m-stat-label">{t('finishReason')}:</span>
+                    <span class="m-stat-val">{m.stats.stop_reason}</span>
+                  </div>
+                  {/if}
+                </div>
+              </div>
+            {/if}
           </div>
           {#if m.image}
             <div class="entry-attach image-attach">
@@ -927,7 +1061,17 @@ Core Directives:
           {/if}
           <div class="entry-body">
             {#if m.role === 'assistant'}
-              <div class="md">{@html marked.parse(m.text || '')}</div>
+              {#if m.isStreaming && !m.text}
+                <div class="thinking-status">
+                  <span class="thinking-text">{t('thinking')}</span>
+                  <span class="pulse-dot"></span>
+                </div>
+              {:else}
+                <div class="md">
+                  {@html marked.parse(m.text || '')}
+                  {#if m.isStreaming}<span class="cursor-blink">▊</span>{/if}
+                </div>
+              {/if}
             {:else}
               {m.text}
             {/if}
@@ -935,16 +1079,6 @@ Core Directives:
         </div>
       {/each}
 
-      {#if loading}
-        <div class="entry memo" style="animation:fadeIn 120ms ease-out">
-          <div class="entry-head">
-            <span class="entry-sender">Memo ›</span>
-          </div>
-          <div class="entry-body thinking">
-            <span class="cursor-blink">▊</span>
-          </div>
-        </div>
-      {/if}
     </div>
 
     <!-- Attachment preview -->
@@ -1115,18 +1249,24 @@ Core Directives:
             </div>
           {/if}
 
-          <!-- Search -->
-          <div class="model-search-box">
-            <input type="text" bind:value={modelSearchQuery} on:keydown={onSearchKey} placeholder="Search GGUF models on Hugging Face..." class="model-search-input" />
-            <button class="m-btn gold" on:click={searchHF} disabled={modelSearching || !modelSearchQuery.trim()}>
-              {modelSearching ? '...' : 'Search'}
-            </button>
+          <!-- Direct Model Entry -->
+          <div class="model-entry-card" style="margin-bottom: 24px; background: var(--bg-panel); border: 1px solid var(--border-soft); border-radius: var(--r-md); padding: 20px;">
+            <h3 style="margin-bottom: 8px;">{t('addModel')}</h3>
+            <p class="m-desc" style="margin-bottom: 16px;">{t('modelDesc')}<br/>Example: <code style="background: var(--bg-app); padding: 2px 6px; border-radius: 4px; font-family: var(--mono); font-size: 13px;">google/gemma-3-4b-it</code></p>
+            
+            <div class="model-search-box">
+              <label for="repo-id-input" class="sr-only">Repo ID</label>
+              <input id="repo-id-input" type="text" bind:value={manualRepoID} placeholder={t('repoIdPlaceholder')} class="model-search-input" on:keydown={onSearchKey} />
+              <button class="m-btn gold" on:click={fetchRepoFiles} disabled={modelSearching || !manualRepoID.trim()}>
+                {modelSearching ? '…' : t('getFiles')}
+              </button>
+            </div>
           </div>
 
           <!-- Skeleton while searching -->
           {#if modelSearching}
             <div class="model-results">
-              {#each Array(5) as _}
+              {#each Array(3) as _}
                 <div class="model-result-card">
                   <div style="padding: 12px 16px; display:flex; flex-direction:column; gap:6px;">
                     <div class="skeleton" style="height:13px; width:60%; border-radius:6px;"></div>
@@ -1139,69 +1279,51 @@ Core Directives:
 
           <!-- Search Error -->
           {#if modelSearchError && !modelSearching}
-            <div style="padding: 0.75rem 1rem; margin-top: 0.5rem; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: var(--red); font-size: 0.82rem;">
+            <div style="padding: 0.75rem 1rem; margin-bottom: 1rem; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); color: var(--red); font-size: 0.82rem;">
               {modelSearchError}
             </div>
           {/if}
 
-          <!-- Search Results -->
-          {#if modelSearchResults.length > 0 && !modelSearching}
-            <div class="model-results">
-              {#each modelSearchResults as model}
-                <div class="model-result-card">
-                  <button class="model-result-header" on:click={() => expandModel(model.id)}>
-                    <div class="model-result-info">
-                      <span class="model-result-name">{model.id}</span>
-                      <span class="model-result-meta">
-                        ↓ {model.downloads?.toLocaleString() || '?'} · ♥ {model.likes || 0}
-                      </span>
+          <!-- Model Files List (Result of manual entry) -->
+          {#if modelFiles.length > 0 && !modelSearching}
+            <div class="model-results-files" style="margin-top: 16px; margin-bottom: 32px;">
+              <h4 class="section-title" style="margin-bottom: 12px; display: flex; align-items: center; gap: 8px;">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                {manualRepoID}
+              </h4>
+              <div class="model-files-list" style="border: 1px solid var(--border-soft); border-radius: var(--r-md); background: white; overflow: hidden; box-shadow: var(--shadow-sm);">
+                {#each modelFiles as file}
+                  <div class="model-file-row" style="padding: 14px 16px; border-bottom: 1px solid var(--border-soft); display: flex; justify-content: space-between; align-items: center; gap: 12px; transition: background 150ms;" class:hover-bg={true}>
+                    <div class="model-file-info" style="display: flex; flex-direction: column; gap: 4px; min-width: 0; flex: 1;">
+                      <span class="model-file-name" style="font-weight: 600; font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; color: var(--text-main);">{file.filename}</span>
+                      <div style="display: flex; align-items: center; gap: 8px;">
+                        <span class="model-file-size" style="font-size: 11.5px; color: var(--text-muted);">{formatBytes(file.size)}</span>
+                        {#if gpuInfo && gpuInfo.vram_mb > 0}
+                          {#if (file.size / (1024*1024)) > gpuInfo.vram_mb}
+                            <span class="sys-req error" style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(239,68,68,0.08); color: var(--red);">{t('vramInsufficient')}</span>
+                          {:else}
+                            <span class="sys-req good" style="font-size: 10px; padding: 1px 6px; border-radius: 4px; background: rgba(81,181,118,0.08); color: var(--green);">{t('gpuCompatible')}</span>
+                          {/if}
+                        {/if}
+                      </div>
                     </div>
-                    <span class="model-expand-icon" class:rotated={expandedModel === model.id}>▸</span>
-                  </button>
-                  {#if expandedModel === model.id}
-                    <div class="model-files-list">
-                      {#if modelFilesLoading}
-                        <div class="model-files-loading">Loading files...</div>
-                      {:else if modelFiles.length === 0}
-                        <div class="model-files-loading">No .gguf files found</div>
-                      {:else}
-                        {#each modelFiles as file}
-                          <div class="model-file-row">
-                            <div class="model-file-info">
-                              <span class="model-file-name">{file.filename}</span>
-                              <span class="model-file-size">{formatBytes(file.size)}</span>
-                              {#if gpuInfo && gpuInfo.vram_mb > 0}
-                                {#if (file.size / (1024*1024)) > gpuInfo.vram_mb}
-                                  <span class="sys-req error">⚠️ Not enough VRAM (Needs {(file.size/(1024*1024*1024)).toFixed(1)}GB)</span>
-                                {:else if (file.size / (1024*1024)) > (gpuInfo.vram_mb * 0.8)}
-                                  <span class="sys-req warn">⚠️ High VRAM usage</span>
-                                {:else}
-                                  <span class="sys-req good">✓ Works smoothly</span>
-                                {/if}
-                              {:else}
-                                <span class="sys-req warn">⚠️ CPU Mode (Will be slow)</span>
-                              {/if}
-                            </div>
-                            <button class="m-btn small-dl-btn" on:click={() => startDownload(model.id, file.filename)} disabled={downloadProgress.active}>
-                              ↓ Download
-                            </button>
-                          </div>
-                        {/each}
-                      {/if}
-                    </div>
-                  {/if}
-                </div>
-              {/each}
+                    <button class="m-btn gold" style="padding: 6px 12px; font-size: 12px; height: 32px; flex-shrink: 0;" on:click={() => startDownload(manualRepoID, file.filename)} disabled={downloadProgress.active}>
+                      ↓ {t('download')}
+                    </button>
+                  </div>
+                {/each}
+              </div>
             </div>
           {/if}
 
+
           <!-- Local Models -->
           <div class="local-models-section">
-            <h4 class="section-title">Downloaded Models</h4>
+            <h4 class="section-title">{t('downloadedModels')}</h4>
             {#if localModelLoading}
               <div class="mem-empty">Loading...</div>
             {:else if !localModels || localModels.length === 0}
-              <div class="mem-empty">No models downloaded yet. Search above to get started.</div>
+              <div class="mem-empty">{t('noModels')}</div>
             {:else}
               {#each localModels as model}
                 <div class="local-model-card" class:active-model={(localModelStatus.running && localModelStatus.model_path === model.path) || (embeddingModelStatus.running && embeddingModelStatus.model_path === model.path)}>
@@ -1216,15 +1338,15 @@ Core Directives:
                   </div>
                   <div class="local-model-actions">
                     {#if localModelStatus.running && localModelStatus.model_path === model.path}
-                      <span class="model-active-badge">● Running</span>
+                      <span class="model-active-badge">● {t('running')}</span>
                     {:else if embeddingModelStatus.running && embeddingModelStatus.model_path === model.path}
-                      <span class="model-active-badge" style="color: #4ade80;">● Embedding</span>
+                      <span class="model-active-badge" style="color: #4ade80;">● {t('embedding')}</span>
                     {:else}
                       <button class="m-btn small-start-btn" on:click={() => openModelConfig(model)} disabled={modelStarting === model.path || localModelStatus.running || model.is_embedding}>
-                        {modelStarting === model.path ? '... Loading' : '▶ Start'}
+                        {modelStarting === model.path ? t('loading') : '▶ ' + t('start')}
                       </button>
                     {/if}
-                    <button class="model-del-btn" on:click={() => deleteModel(model.path)} disabled={(localModelStatus.running && localModelStatus.model_path === model.path) || (embeddingModelStatus.running && embeddingModelStatus.model_path === model.path)} title="Delete model">🗑</button>
+                    <button class="model-del-btn" on:click={() => deleteModel(model.path)} disabled={(localModelStatus.running && localModelStatus.model_path === model.path) || (embeddingModelStatus.running && embeddingModelStatus.model_path === model.path)} title={t('delete')}>🗑</button>
                   </div>
                 </div>
               {/each}
@@ -1313,7 +1435,7 @@ Core Directives:
                   <span class="mem-name">{f.name}</span>
                   <span class="mem-meta">{f.size_kb}KB · {f.modified}</span>
                 </div>
-                <button class="mem-x" on:click={() => delMem(f.path)}>×</button>
+                <button class="mem-x" on:click={() => delMem(f.path)} aria-label="Delete memory file">×</button>
               </div>
             {/each}
           </div>
@@ -1325,7 +1447,7 @@ Core Directives:
           <div class="remote-toggle-row">
             <label class="toggle-label">
               <span>Remote Access</span>
-              <button class="toggle-switch" class:on={remoteEnabled} on:click={() => remoteEnabled = !remoteEnabled}>
+              <button class="toggle-switch" class:on={remoteEnabled} on:click={() => remoteEnabled = !remoteEnabled} aria-pressed={remoteEnabled} aria-label="Toggle remote access">
                 <span class="toggle-knob"></span>
               </button>
             </label>
@@ -1355,8 +1477,8 @@ Core Directives:
           {/if}
 
           <div class="m-actions" style="margin-top:16px;">
-            <button class="m-btn gold" on:click={saveRemoteAccess} disabled={remoteSaving}>
-              {remoteSaving ? '...' : 'Save & Apply'}
+            <button class="m-btn gold" on:click={saveRemoteAccess} disabled={remoteSaving} aria-label="Save remote access settings">
+              {remoteSaving ? '…' : 'Save & Apply'}
             </button>
           </div>
         </div>
@@ -1390,14 +1512,14 @@ Core Directives:
     <div class="modal-content run-config-modal" on:click|stopPropagation>
       <div class="modal-header">
         <h2 class="modal-title">Configure & Load Model</h2>
-        <button class="modal-close" on:click={() => configModalOpen = false}>×</button>
+        <button class="modal-close" on:click={() => configModalOpen = false} aria-label="Close">×</button>
       </div>
       <div class="modal-body setup-body">
-        <div class="setup-log-container" style="background: rgba(0,0,0,0.2); padding: 1rem; border-radius: 8px; border: 1px solid rgba(255,255,255,0.05); margin-bottom: 1rem;">
-          <p style="font-family: 'JetBrains Mono', monospace; font-size: 0.85rem; color: #4ade80; margin-bottom:0.5rem; white-space: nowrap; overflow:hidden; text-overflow:ellipsis;">
+        <div class="model-info-box">
+          <p class="model-info-filename">
             {modelToStart.filename}
           </p>
-          <p style="font-size: 0.8rem; color: rgba(255,255,255,0.5);">Size: {formatBytes(modelToStart.size)}</p>
+          <p class="model-info-size">Size: {formatBytes(modelToStart.size)}</p>
         </div>
 
         <div class="settings-form">
@@ -1419,16 +1541,16 @@ Core Directives:
 
         <!-- Embedding Model Suggestion -->
         {#if getAvailableEmbedModels().length > 0}
-          <div class="embed-suggestion" style="margin-top: 1rem; background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.2); border-radius: 8px; padding: 0.85rem 1rem;">
-            <label class="embed-toggle" style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; margin-bottom: 0.4rem;">
-              <input type="checkbox" bind:checked={embedModelEnabled} style="accent-color: #4ade80; width: 16px; height: 16px;" />
-              <span style="font-size: 0.9rem; font-weight: 600; color: #4ade80;">Start Embedding Model</span>
+          <div class="embed-suggestion-box">
+            <label class="embed-toggle">
+              <input type="checkbox" bind:checked={embedModelEnabled} />
+              <span class="embed-toggle-text">Start Embedding Model</span>
             </label>
-            <p style="font-size: 0.78rem; color: rgba(255,255,255,0.55); margin: 0 0 0.5rem 0; line-height: 1.4;">
+            <p class="embed-desc">
               An embedding model improves memory search accuracy. It runs alongside the chat model using minimal resources.
             </p>
             {#if embedModelEnabled}
-              <select bind:value={selectedEmbedModel} style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 0.82rem;">
+              <select bind:value={selectedEmbedModel} class="embed-select">
                 {#each getAvailableEmbedModels() as em}
                   <option value={em}>{em.filename} ({formatBytes(em.size)})</option>
                 {/each}
@@ -1437,9 +1559,9 @@ Core Directives:
           </div>
         {/if}
       </div>
-      <div class="modal-actions" style="margin-top:0;">
-        <button class="m-btn subtle" on:click={() => configModalOpen = false}>Cancel</button>
-        <button class="m-btn primary" on:click={confirmStartModel}>▶ Run Engine</button>
+      <div class="modal-actions">
+        <button class="m-btn" on:click={() => configModalOpen = false}>Cancel</button>
+        <button class="m-btn gold" on:click={confirmStartModel}>Run Engine</button>
       </div>
     </div>
   </div>
@@ -1483,7 +1605,7 @@ Core Directives:
     align-items: center;
     justify-content: center;
     color: var(--text-muted);
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, transform 0.2s ease;
     border: none;
     background: transparent;
     cursor: pointer;
@@ -1673,7 +1795,32 @@ Core Directives:
   .local-model-name { color: var(--text-main); font-weight: 500; font-size: 14.5px; }
   .local-model-meta { color: var(--text-dim); font-size: 12.5px; }
   .local-model-actions { display: flex; align-items: center; gap: 12px; }
-  
+
+  /* THINKING INDICATOR */
+  .thinking-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 4px 0;
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 0.9rem;
+  }
+  .thinking-text {
+    opacity: 0.8;
+  }
+  .pulse-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--accent);
+    border-radius: 50%;
+    animation: thinking-pulse 1.4s infinite ease-in-out;
+  }
+  @keyframes thinking-pulse {
+    0%, 100% { transform: scale(0.6); opacity: 0.4; }
+    50% { transform: scale(1.1); opacity: 1; }
+  }
+
   .running-model-card {
     display: flex;
     justify-content: space-between;
@@ -1908,6 +2055,77 @@ Core Directives:
     align-items: center;
     gap: var(--sp-3);
     margin-bottom: var(--sp-2);
+    position: relative;
+  }
+  .m-stats-wrap {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin-left: 2px;
+  }
+  .m-stats-trigger {
+    background: none;
+    border: none;
+    padding: 4px;
+    color: var(--text-muted);
+    display: flex;
+    align-items: center;
+    opacity: 0.4;
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    cursor: pointer;
+    border-radius: 6px;
+  }
+  .m-stats-wrap:hover .m-stats-trigger {
+    opacity: 1;
+    color: var(--accent);
+    background: var(--bg-element);
+    box-shadow: var(--shadow-sm);
+  }
+  .m-stats-popover {
+    position: absolute;
+    top: 28px;
+    left: 0;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-md);
+    padding: 10px 14px;
+    box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.2);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    z-index: 1000;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(-8px);
+    transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    min-width: 160px;
+    backdrop-filter: blur(12px) saturate(180%);
+    pointer-events: none;
+  }
+  .m-stats-wrap:hover .m-stats-popover {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+    pointer-events: auto;
+  }
+  .m-stat-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    white-space: nowrap;
+    border-bottom: 1px solid rgba(0,0,0,0.03);
+    padding-bottom: 2px;
+  }
+  .m-stat-row:last-child { border-bottom: none; }
+  .m-stat-label {
+    color: var(--text-muted);
+    font-size: 11px;
+    font-weight: 500;
+  }
+  .m-stat-val {
+    color: var(--text-main);
+    font-weight: 700;
+    font-size: 11px;
   }
   .entry-sender {
     font-weight: 600;
@@ -2351,12 +2569,6 @@ Core Directives:
     .dock-btn { width: 36px; height: 36px; min-width: 36px; }
   }
 
-  /* ═══════════════════════════════════
-     MODEL STORE
-  ═══════════════════════════════════ */
-  .models-tab {
-    display: flex; align-items: center; gap: 5px;
-  }
   .models-panel {
     display: flex; flex-direction: column; gap: 12px;
   }
@@ -2485,108 +2697,32 @@ Core Directives:
   .model-results {
     display: flex;
     flex-direction: column;
-    gap: 0;
-    max-height: 380px;
+    gap: 6px;
+    padding: 8px;
+    max-height: 440px;
     overflow-y: auto;
+    background: var(--bg-panel);
     border: 1px solid var(--border-soft);
     border-radius: var(--r-md);
-    background: var(--bg-app);
+    margin-top: 8px;
   }
   .model-results::-webkit-scrollbar { width: 5px; }
   .model-results::-webkit-scrollbar-track { background: transparent; }
   .model-results::-webkit-scrollbar-thumb { background: var(--text-dim); border-radius: 99px; }
 
   .model-result-card {
-    border-bottom: 1px solid var(--border-soft);
+    background: white;
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-sm);
     overflow: hidden;
+    transition: transform 200ms ease, border-color 200ms ease, box-shadow 200ms ease;
   }
-  .model-result-card:last-child { border-bottom: none; }
+  .model-result-card:hover {
+    border-color: var(--text-dim);
+    box-shadow: var(--shadow-sm);
+    transform: translateY(-1px);
+  }
 
-  .model-result-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 12px 16px;
-    width: 100%;
-    text-align: left;
-    background: transparent;
-    border: none;
-    cursor: pointer;
-    color: var(--text-main);
-    transition: background 150ms;
-  }
-  .model-result-header:hover { background: var(--bg-hover); }
-
-  .model-result-info {
-    display: flex;
-    flex-direction: column;
-    gap: 3px;
-    flex: 1;
-    overflow: hidden;
-  }
-  .model-result-name {
-    color: var(--text-main);
-    font-size: 13.5px;
-    font-weight: 500;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .model-result-meta {
-    color: var(--text-muted);
-    font-size: 11.5px;
-  }
-  .model-expand-icon {
-    color: var(--text-dim);
-    font-size: 11px;
-    flex-shrink: 0;
-    transition: transform 200ms;
-  }
-  .model-expand-icon.rotated { transform: rotate(90deg); }
-
-  /* Model Files List */
-  .model-files-list {
-    border-top: 1px solid var(--border-soft);
-    background: var(--bg-panel);
-    padding: 4px 0;
-  }
-  .model-files-loading {
-    padding: 14px 16px;
-    font-size: 12px;
-    color: var(--text-muted);
-    text-align: center;
-  }
-  .model-file-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    padding: 8px 16px;
-    transition: background 150ms;
-  }
-  .model-file-row:hover { background: var(--bg-hover); }
-  .model-file-info {
-    display: flex;
-    flex-direction: column;
-    gap: 2px;
-    flex: 1;
-    overflow: hidden;
-  }
-  .model-file-name {
-    font-size: 12.5px;
-    font-family: var(--mono);
-    color: var(--text-main);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
-  .model-file-size { font-size: 11px; color: var(--text-muted); }
-
-  .small-dl-btn {
-    padding: 4px 10px !important; font-size: 11px !important;
-    white-space: nowrap; flex-shrink: 0;
-  }
 
   /* Local Models */
   .local-models-section { margin-top: 4px; }
@@ -2659,76 +2795,97 @@ Core Directives:
     animation: fadeIn 0.15s ease-out;
   }
   .modal-content {
-    background: #1e1e1e;
-    border: 1px solid rgba(255, 255, 255, 0.1);
-    box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-    border-radius: 12px;
-    width: 400px; max-width: 90vw;
+    background: var(--bg-panel);
+    border: 1px solid var(--border-soft);
+    box-shadow: 0 24px 64px rgba(0,0,0,0.25);
+    border-radius: var(--r-lg);
+    width: 480px; max-width: 90vw;
     display: flex; flex-direction: column;
+    animation: modalPop 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  @keyframes modalPop {
+    from { opacity: 0; transform: scale(0.96) translateY(10px); }
+    to { opacity: 1; transform: scale(1) translateY(0); }
   }
   .modal-header {
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid rgba(255,255,255,0.08);
+    padding: var(--sp-4) var(--sp-5);
+    border-bottom: 1px solid var(--border-soft);
     display: flex; justify-content: space-between; align-items: center;
   }
-  .modal-title { font-size: 1rem; font-weight: 600; color: #fff; margin:0; }
-  .modal-close { background: none; border: none; color: #a1a1aa; cursor: pointer; font-size: 1.5rem; transition: color 0.15s; }
-  .modal-close:hover { color: #fff; }
+  .modal-title { font-size: 13px; font-weight: 700; color: var(--text-main); margin:0; letter-spacing: 0.3px; }
+  .modal-close { background: none; border: none; color: var(--text-muted); cursor: pointer; font-size: 1.25rem; transition: color 0.15s; }
+  .modal-close:hover { color: var(--text-main); }
   .modal-body { padding: 1.25rem; display: flex; flex-direction: column; gap: 1rem; }
-  .modal-actions { padding: 1rem 1.25rem; border-top: 1px solid rgba(255,255,255,0.08); display: flex; justify-content: flex-end; gap: 0.75rem; }
+  .modal-actions {
+    padding: var(--sp-4) var(--sp-5);
+    border-top: 1px solid var(--border-soft);
+    display: flex; justify-content: flex-end; gap: var(--sp-2);
+  }
 
-  /* ═══ REINSTALL DETAILS ═══ */
-  .reinstall-details {
-    background: rgba(255,255,255,0.03);
-    border: 1px solid rgba(255,255,255,0.08);
-    border-radius: 8px;
-    padding: 0.6rem 1rem;
-    margin-bottom: 0.75rem;
-    font-size: 0.82rem;
+  .model-info-box {
+    background: var(--bg-element);
+    padding: var(--sp-3) var(--sp-4);
+    border-radius: var(--r-md);
+    border: 1px solid var(--border-soft);
+    margin-bottom: var(--sp-4);
   }
-  .reinstall-summary {
-    color: #71717a;
-    cursor: pointer;
-    user-select: none;
-    list-style: none;
+  .model-info-filename {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+    margin: 0 0 4px 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
   }
-  .reinstall-summary::-webkit-details-marker { display: none; }
-  .reinstall-summary::before { content: '▸ '; }
-  details[open] .reinstall-summary::before { content: '▾ '; }
+  .model-info-size { font-size: 11px; color: var(--text-muted); margin: 0; }
 
   /* ═══ CONFIG DIALOG FORM ═══ */
-  .run-config-modal { width: 480px; }
-  .settings-form {
-    display: flex; flex-direction: column; gap: 1rem;
-  }
-  .form-group {
-    display: flex; flex-direction: column; gap: 0.35rem;
-  }
-  .form-group label {
-    color: #d4d4d8; font-size: 0.85rem; font-weight: 500;
-  }
+  .settings-form { display: flex; flex-direction: column; gap: var(--sp-4); }
+  .form-group { display: flex; flex-direction: column; gap: 6px; }
+  .form-group label { color: var(--text-main); font-size: 13px; font-weight: 600; }
   .w-input {
-    background: rgba(255,255,255,0.06);
-    border: 1px solid rgba(255,255,255,0.12);
-    border-radius: 6px;
-    padding: 0.55rem 0.75rem;
-    color: #e4e4e7;
-    font-size: 0.9rem;
+    background: var(--bg-app);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-md);
+    padding: 10px 12px;
+    color: var(--text-main);
+    font-size: 14px;
     outline: none;
-    transition: border-color 0.15s;
+    transition: all 0.15s ease;
     -moz-appearance: textfield;
     appearance: textfield;
   }
   .w-input:focus {
-    border-color: rgba(74,222,128,0.5);
+    border-color: var(--accent);
+    box-shadow: 0 0 0 2px rgba(214, 188, 148, 0.15);
   }
-  .w-input::-webkit-inner-spin-button,
-  .w-input::-webkit-outer-spin-button {
-    opacity: 1;
+  .form-hint { color: var(--text-muted); font-size: 11px; line-height: 1.4; }
+
+  /* Embedding suggestion */
+  .embed-suggestion-box {
+    margin-top: var(--sp-4);
+    background: rgba(16, 185, 129, 0.05);
+    border: 1px solid rgba(16, 185, 129, 0.2);
+    border-radius: var(--r-md);
+    padding: 14px 16px;
   }
-  .form-hint {
-    color: #71717a; font-size: 0.75rem;
+  .embed-toggle { display: flex; align-items: center; gap: 10px; cursor: pointer; margin-bottom: 6px; }
+  .embed-toggle input { accent-color: var(--green); width: 16px; height: 16px; }
+  .embed-toggle-text { font-size: 13px; font-weight: 700; color: var(--green); }
+  .embed-desc { font-size: 11px; color: var(--text-muted); margin: 0 0 10px 0; line-height: 1.5; }
+  .embed-select {
+    width: 100%;
+    padding: 8px 10px;
+    border-radius: 6px;
+    background: var(--bg-app);
+    border: 1px solid var(--border-soft);
+    color: var(--text-main);
+    font-size: 13px;
+    outline: none;
   }
+  .embed-select:focus { border-color: var(--accent); }
   .setup-body { padding: 1.25rem; }
 
   /* ═══ SEARCH MODELS UI ═══ */

@@ -155,11 +155,17 @@ type TranscriptionResponse struct {
 	Text string `json:"text"`
 }
 
-// --- Stream Chunk for frontend ---
+type MessageStats struct {
+	TokensPerSecond  float64 `json:"tokens_per_second"`
+	CompletionTokens int     `json:"completion_tokens"`
+	TotalDuration    float64 `json:"total_duration_secs"`
+	StopReason       string  `json:"stop_reason"`
+}
 
 type StreamChunk struct {
-	Content      string `json:"content"`
-	Done         bool   `json:"done"`
-	Error        string `json:"error,omitempty"`
-	FinishReason string `json:"finish_reason,omitempty"`
+	Content      string        `json:"content"`
+	Done         bool          `json:"done"`
+	Error        string        `json:"error,omitempty"`
+	FinishReason string        `json:"finish_reason,omitempty"`
+	Stats        *MessageStats `json:"stats,omitempty"`
 }

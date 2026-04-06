@@ -444,3 +444,27 @@ export async function InstallLlamaServer() {
     return w.InstallLlamaServer();
   }
 }
+export async function SendMessageStream(msg) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.SendMessageStream(msg);
+  }
+  // Fallback to sync on web for now
+  return SendMessage(msg);
+}
+
+export async function SendMessageWithImageStream(msg, payload) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.SendMessageWithImageStream(msg, payload);
+  }
+  return SendMessageWithImage(msg, payload);
+}
+
+export async function SendMessageWithFileStream(msg, payload) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.SendMessageWithFileStream(msg, payload);
+  }
+  return SendMessageWithFile(msg, payload);
+}

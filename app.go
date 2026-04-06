@@ -232,28 +232,178 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 
 func (a *App) SendMessage(userMsg string) string {
 	log.Printf(">> SendMessage: %q", userMsg)
-
 	if a.isIncognito {
 		return a.handleIncognito(userMsg, "")
+	}
+	messages := a.buildMessages(userMsg, nil)
+	if a.sessions != nil {
+		a.sessions.AddMessage("user", userMsg, "", "")
+	}
+	reply := a.callLLM(messages)
+	if a.sessions != nil {
+		a.sessions.AddMessage("assistant", reply, "", "")
+	}
+	a.saveMemoryAsync(userMsg, reply)
+	return reply
+}
+
+func (a *App) SendMessageStream(userMsg string) {
+	log.Printf(">> SendMessageStream: %q", userMsg)
+
+	if a.isIncognito {
+		a.handleIncognitoStream(userMsg, "")
+		return
 	}
 
 	messages := a.buildMessages(userMsg, nil)
 
-	// Save user message to session AFTER building messages,
-	// so getSessionHistory() doesn't include it (avoiding duplicate user turns).
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", "")
 	}
 
-	reply := a.callLLM(messages)
+	a.callLLMStream(context.Background(), messages, userMsg, "", "")
+}
 
-	// Save assistant reply to session
-	if a.sessions != nil {
-		a.sessions.AddMessage("assistant", reply, "", "")
+func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) {
+	log.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
+
+	imgData, err := os.ReadFile(imagePath)
+	if err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ Cannot read image: "+err.Error())
+		return
+	}
+	mime := detectMime(imagePath, imgData)
+	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
+
+	if a.isIncognito {
+		a.handleIncognitoStream(userMsg, b64)
+		return
 	}
 
-	a.saveMemoryAsync(userMsg, reply)
-	return reply
+	memories := a.retrieveMemory(userMsg)
+	systemPrompt := a.identity.BuildSystemPrompt(memories)
+
+	var msgs []api.Message
+	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
+	msgs = append(msgs, a.getSessionHistory()...)
+	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
+
+	if a.sessions != nil {
+		a.sessions.AddMessage("user", userMsg, imagePath, "")
+	}
+
+	a.callLLMStream(context.Background(), msgs, userMsg, imagePath, "")
+}
+
+func (a *App) SendMessageWithFileStream(userMsg string, filePath string) {
+	log.Printf(">> FileStream: %q with %s", userMsg, filePath)
+
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ Cannot read file: "+err.Error())
+		return
+	}
+
+	fileName := filepath.Base(filePath)
+	fileContent := string(content)
+	if len(fileContent) > 10000 {
+		fileContent = fileContent[:10000] + "\n\n... (truncated, file too large)"
+	}
+
+	combined := fmt.Sprintf("%s\n\n--- File: %s ---\n%s", userMsg, fileName, fileContent)
+
+	if a.isIncognito {
+		a.handleIncognitoStream(combined, "")
+		return
+	}
+
+	messages := a.buildMessages(combined, nil)
+
+	if a.sessions != nil {
+		a.sessions.AddMessage("user", userMsg, "", filePath)
+	}
+
+	a.callLLMStream(context.Background(), messages, userMsg, "", filePath)
+}
+
+func (a *App) handleIncognitoStream(userMsg string, b64 string) {
+	if b64 != "" {
+		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
+	} else {
+		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("user", userMsg))
+	}
+
+	msgs := []api.Message{api.NewTextMessage("system", a.cfg.Identity.IncognitoPrompt)}
+	msgs = append(msgs, a.incognitoMessages...)
+
+	// Note: for incognito, we don't save to memory/sessions, handled in callLLMStream via isIncognito flag
+	a.callLLMStream(context.Background(), msgs, userMsg, "", "")
+}
+
+func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) {
+	streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+	defer cancel()
+
+	ch, err := a.client.ChatCompletionStream(streamCtx, messages)
+	if err != nil {
+		log.Printf("LLM stream error: %v", err)
+		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ "+err.Error())
+		return
+	}
+
+	start := time.Now()
+	var fullReply strings.Builder
+	tokenCount := 0
+
+	for chunk := range ch {
+		if chunk.Error != "" {
+			log.Printf("Stream chunk error: %s", chunk.Error)
+			wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ "+chunk.Error)
+			return
+		}
+
+		if chunk.Content != "" {
+			fullReply.WriteString(chunk.Content)
+			tokenCount++
+			wailsRuntime.EventsEmit(a.ctx, "chat:chunk", api.StreamChunk{
+				Content: chunk.Content,
+			})
+		}
+
+		if chunk.Done {
+			duration := time.Since(start).Seconds()
+			tps := 0.0
+			if duration > 0 {
+				tps = float64(tokenCount) / duration
+			}
+
+			reply := fullReply.String()
+			stats := &api.MessageStats{
+				TokensPerSecond:  tps,
+				CompletionTokens: tokenCount,
+				TotalDuration:    duration,
+				StopReason:       chunk.FinishReason,
+			}
+
+			// Final chunk with stats
+			wailsRuntime.EventsEmit(a.ctx, "chat:done", api.StreamChunk{
+				Done:  true,
+				Stats: stats,
+			})
+
+			// Post-stream persistence
+			if !a.isIncognito {
+				if a.sessions != nil {
+					a.sessions.AddMessage("assistant", reply, "", "")
+				}
+				a.saveMemoryAsync(userMsg, reply)
+			} else {
+				// For incognito, we still need to track the conversation in memory (volatile)
+				a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
+			}
+			return
+		}
+	}
 }
 
 func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {

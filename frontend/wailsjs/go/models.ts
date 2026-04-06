@@ -271,6 +271,24 @@ export namespace memory {
 	        this.modified = source["modified"];
 	    }
 	}
+	export class MemoryResult {
+	    content: string;
+	    similarity: number;
+	    timestamp: string;
+	    id: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new MemoryResult(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.content = source["content"];
+	        this.similarity = source["similarity"];
+	        this.timestamp = source["timestamp"];
+	        this.id = source["id"];
+	    }
+	}
 
 }
 
@@ -339,6 +357,7 @@ export namespace modelstore {
 	    filename: string;
 	    size: number;
 	    path: string;
+	    is_embedding: boolean;
 	
 	    static createFrom(source: any = {}) {
 	        return new LocalModel(source);
@@ -350,6 +369,7 @@ export namespace modelstore {
 	        this.filename = source["filename"];
 	        this.size = source["size"];
 	        this.path = source["path"];
+	        this.is_embedding = source["is_embedding"];
 	    }
 	}
 

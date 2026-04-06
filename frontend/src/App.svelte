@@ -14,7 +14,7 @@
     StartRecording, StopRecordingAndTranscribe,
     GetVersion,
     isWailsEnvironment,
-    ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer
+    ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, StartEmbeddingModel, StopEmbeddingModel, GetEmbeddingModelStatus, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer
   } from './lib/api-bridge.js';
 
   // EventsOn - only available in Wails
@@ -279,6 +279,9 @@ Core Directives:
 
     if (isDesktop && _eventsOnReady) {
       const EventsOn = await _eventsOnReady;
+      EventsOn('memory:error', (msg) => {
+        console.warn('[Memory Error]', msg);
+      });
       EventsOn('wails:file-drop', (x, y, paths) => {
         if (paths && paths.length > 0) {
           const file = paths[0];
@@ -553,10 +556,11 @@ Core Directives:
     if (isLlamaInstalled) {
       localModelLoading = true;
       try {
-        [localModels, localModelStatus, gpuInfo] = await Promise.all([
+        [localModels, localModelStatus, gpuInfo, embeddingModelStatus] = await Promise.all([
           ListLocalModels() || [],
           GetLocalModelStatus(),
-          DetectGPU()
+          DetectGPU(),
+          GetEmbeddingModelStatus()
         ]);
         localModels = localModels || [];
       } catch(e) { console.error('Models tab error:', e); }
@@ -657,15 +661,32 @@ Core Directives:
   let configCtxSize = 4096;
   let configGpuLayers = -1;
   let configPort = 8081;
+  let embedModelEnabled = false;
+  let selectedEmbedModel = null;
+  let embeddingModelStatus = { running: false };
+
+  function getAvailableEmbedModels() {
+    if (!localModels) return [];
+    return localModels.filter(m => m.is_embedding);
+  }
 
   function openModelConfig(model) {
     modelToStart = model;
     configCtxSize = 4096;
     configPort = 8081;
     if (gpuInfo && gpuInfo.vram_mb > 0) {
-      configGpuLayers = -1; // Auto maximum
+      configGpuLayers = -1;
     } else {
-      configGpuLayers = 0; // CPU only
+      configGpuLayers = 0;
+    }
+    // Auto-detect embedding models and pre-select if available
+    const embedModels = getAvailableEmbedModels();
+    if (embedModels.length > 0) {
+      embedModelEnabled = true;
+      selectedEmbedModel = embedModels[0];
+    } else {
+      embedModelEnabled = false;
+      selectedEmbedModel = null;
     }
     configModalOpen = true;
   }
@@ -677,6 +698,16 @@ Core Directives:
     try {
       await StartLocalModel(modelToStart.path, parseInt(configCtxSize), parseInt(configPort), parseInt(configGpuLayers));
       localModelStatus = await GetLocalModelStatus();
+
+      // Start embedding model alongside if user opted in
+      if (embedModelEnabled && selectedEmbedModel) {
+        try {
+          await StartEmbeddingModel(selectedEmbedModel.path, 0); // CPU for embedding (small model)
+          embeddingModelStatus = await GetEmbeddingModelStatus();
+        } catch(e) {
+          console.error('Embedding model start error:', e);
+        }
+      }
     } catch(e) {
       console.error('Start model error:', e);
       alert('Failed to start model: ' + (e?.message || e));
@@ -688,6 +719,11 @@ Core Directives:
   async function stopModel() {
     modelStopping = true;
     try {
+      // Stop embedding model first if running
+      if (embeddingModelStatus.running) {
+        await StopEmbeddingModel();
+        embeddingModelStatus = { running: false };
+      }
       await StopLocalModel();
       localModelStatus = await GetLocalModelStatus();
     } catch(e) { console.error('Stop model error:', e); }
@@ -1168,20 +1204,27 @@ Core Directives:
               <div class="mem-empty">No models downloaded yet. Search above to get started.</div>
             {:else}
               {#each localModels as model}
-                <div class="local-model-card" class:active-model={localModelStatus.running && localModelStatus.model_path === model.path}>
+                <div class="local-model-card" class:active-model={(localModelStatus.running && localModelStatus.model_path === model.path) || (embeddingModelStatus.running && embeddingModelStatus.model_path === model.path)}>
                   <div class="local-model-info">
-                    <span class="local-model-name">{model.filename}</span>
+                    <span class="local-model-name">
+                      {model.filename}
+                      {#if model.is_embedding}
+                        <span style="font-size: 0.7rem; background: rgba(74,222,128,0.15); color: #4ade80; padding: 1px 6px; border-radius: 4px; margin-left: 6px;">embed</span>
+                      {/if}
+                    </span>
                     <span class="local-model-meta">{model.repo_id} · {formatBytes(model.size)}</span>
                   </div>
                   <div class="local-model-actions">
                     {#if localModelStatus.running && localModelStatus.model_path === model.path}
                       <span class="model-active-badge">● Running</span>
+                    {:else if embeddingModelStatus.running && embeddingModelStatus.model_path === model.path}
+                      <span class="model-active-badge" style="color: #4ade80;">● Embedding</span>
                     {:else}
-                      <button class="m-btn small-start-btn" on:click={() => openModelConfig(model)} disabled={modelStarting === model.path || localModelStatus.running}>
+                      <button class="m-btn small-start-btn" on:click={() => openModelConfig(model)} disabled={modelStarting === model.path || localModelStatus.running || model.is_embedding}>
                         {modelStarting === model.path ? '... Loading' : '▶ Start'}
                       </button>
                     {/if}
-                    <button class="model-del-btn" on:click={() => deleteModel(model.path)} disabled={localModelStatus.running && localModelStatus.model_path === model.path} title="Delete model">🗑</button>
+                    <button class="model-del-btn" on:click={() => deleteModel(model.path)} disabled={(localModelStatus.running && localModelStatus.model_path === model.path) || (embeddingModelStatus.running && embeddingModelStatus.model_path === model.path)} title="Delete model">🗑</button>
                   </div>
                 </div>
               {/each}
@@ -1373,6 +1416,26 @@ Core Directives:
             <input id="configPort" type="number" class="w-input" bind:value={configPort} min="1024" max="65535" />
           </div>
         </div>
+
+        <!-- Embedding Model Suggestion -->
+        {#if getAvailableEmbedModels().length > 0}
+          <div class="embed-suggestion" style="margin-top: 1rem; background: rgba(74, 222, 128, 0.08); border: 1px solid rgba(74, 222, 128, 0.2); border-radius: 8px; padding: 0.85rem 1rem;">
+            <label class="embed-toggle" style="display: flex; align-items: center; gap: 0.6rem; cursor: pointer; margin-bottom: 0.4rem;">
+              <input type="checkbox" bind:checked={embedModelEnabled} style="accent-color: #4ade80; width: 16px; height: 16px;" />
+              <span style="font-size: 0.9rem; font-weight: 600; color: #4ade80;">Start Embedding Model</span>
+            </label>
+            <p style="font-size: 0.78rem; color: rgba(255,255,255,0.55); margin: 0 0 0.5rem 0; line-height: 1.4;">
+              An embedding model improves memory search accuracy. It runs alongside the chat model using minimal resources.
+            </p>
+            {#if embedModelEnabled}
+              <select bind:value={selectedEmbedModel} style="width: 100%; padding: 6px 8px; border-radius: 6px; background: rgba(0,0,0,0.3); border: 1px solid rgba(255,255,255,0.1); color: #fff; font-size: 0.82rem;">
+                {#each getAvailableEmbedModels() as em}
+                  <option value={em}>{em.filename} ({formatBytes(em.size)})</option>
+                {/each}
+              </select>
+            {/if}
+          </div>
+        {/if}
       </div>
       <div class="modal-actions" style="margin-top:0;">
         <button class="m-btn subtle" on:click={() => configModalOpen = false}>Cancel</button>

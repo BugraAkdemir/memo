@@ -19,7 +19,7 @@ identity:
 memory:
     persist_dir: ./data/memory
     top_k: 5
-    min_similarity: 0.3
+    min_similarity: 0.1
 remote_access:
     enabled: true
     port: 8088

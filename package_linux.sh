@@ -5,7 +5,7 @@ set -e
 
 APP_NAME="Memo"
 EXEC_NAME="local-llmmmemory"
-VER=1.5.0
+VER=2.0.0
 ARCH="amd64"
 
 echo "========================================="

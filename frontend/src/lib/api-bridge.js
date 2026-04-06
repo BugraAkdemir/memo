@@ -385,6 +385,28 @@ export async function GetLocalModelStatus() {
   return { running: false, model_name: '', port: 0, gpu: { type: 'cpu', name: 'N/A' } };
 }
 
+export async function StartEmbeddingModel(modelPath, gpuLayers = -1) {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.StartEmbeddingModel(modelPath, gpuLayers);
+  }
+}
+
+export async function StopEmbeddingModel() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.StopEmbeddingModel();
+  }
+}
+
+export async function GetEmbeddingModelStatus() {
+  if (isWails) {
+    const w = await getWailsApp();
+    return w.GetEmbeddingModelStatus();
+  }
+  return { running: false, model_name: '', port: 0, gpu: { type: 'cpu', name: 'N/A' } };
+}
+
 export async function DetectGPU() {
   if (isWails) {
     const w = await getWailsApp();

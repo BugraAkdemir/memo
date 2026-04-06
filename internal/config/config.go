@@ -74,7 +74,7 @@ func Default() *AppConfig {
 		Memory: MemoryConfig{
 			PersistDir:    "./data/memory",
 			TopK:          5,
-			MinSimilarity: 0.3,
+			MinSimilarity: 0.1,
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,

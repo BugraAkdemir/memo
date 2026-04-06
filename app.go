@@ -109,6 +109,15 @@ func (a *App) startup(ctx context.Context) {
 	a.llamaEmbedServer = llama.NewServer(cfg.Llama.EmbeddingPort, 512) // embedding models need minimal context
 	a.llamaInstaller = llama.NewInstaller("data")
 
+	// Check embedding health in background
+	go func() {
+		time.Sleep(2 * time.Second) // wait for LM Studio / embedding server to be ready
+		h := a.CheckEmbeddingHealth()
+		if h["ok"] != true {
+			log.Printf("⚠️  EMBEDDING NOT WORKING: %v — memory will NOT function!", h["error"])
+		}
+	}()
+
 	// Start STT server in background
 	go a.startSTTServer()
 
@@ -523,6 +532,16 @@ func (a *App) TranscribeAudio(audioData []byte) (string, error) {
 
 // ─── Other ───────────────────────────────────────────────────────
 
+// DebugMemorySearch searches memory WITHOUT similarity filter — for debugging.
+func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
+	if a.store == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.store.DebugSearch(ctx, query, 10)
+}
+
 func (a *App) GetMemoryCount() int {
 	if a.store == nil {
 		return 0
@@ -729,9 +748,10 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
 	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
-	// Only re-init embedding if no dedicated embedding server is running
+	// Keep embeddings on the original API (e.g. LM Studio) — chat model doesn't support /embeddings
 	if !a.llamaEmbedServer.IsRunning() {
-		a.reinitMemoryStore(a.client, a.cfg.API.EmbeddingModel)
+		origClient := api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
+		a.reinitMemoryStore(origClient, a.cfg.API.EmbeddingModel)
 	}
 
 	return nil
@@ -911,12 +931,16 @@ func (a *App) retrieveMemory(query string) []memory.MemoryResult {
 	if a.store == nil {
 		return nil
 	}
-	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	m, err := a.store.RetrieveContext(ctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
 	if err != nil {
-		log.Printf("memory skip: %v", err)
+		log.Printf("MEMORY RETRIEVE FAILED: %v", err)
+		wailsRuntime.EventsEmit(a.ctx, "memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
 		return nil
+	}
+	if len(m) > 0 {
+		log.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), m[0].Similarity*100)
 	}
 	return m
 }
@@ -944,12 +968,58 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 		return
 	}
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
-			log.Printf("memory save skip: %v", err)
+			log.Printf("MEMORY SAVE FAILED: %v", err)
+			wailsRuntime.EventsEmit(a.ctx, "memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
+		} else {
+			log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
 		}
 	}()
+}
+
+func truncateLog(s string, n int) string {
+	if len(s) <= n {
+		return s
+	}
+	return s[:n] + "..."
+}
+
+// CheckEmbeddingHealth tests if the embedding API is reachable and working.
+func (a *App) CheckEmbeddingHealth() map[string]interface{} {
+	result := map[string]interface{}{
+		"ok":    false,
+		"error": "",
+		"count": 0,
+	}
+
+	if a.store == nil {
+		result["error"] = "memory store not initialized"
+		return result
+	}
+
+	result["count"] = a.store.Count()
+
+	// Try a test embedding
+	client := a.client
+	if a.embeddingClient != nil {
+		client = a.embeddingClient
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	_, err := client.CreateEmbedding(ctx, a.cfg.API.EmbeddingModel, "test")
+	if err != nil {
+		result["error"] = err.Error()
+		log.Printf("EMBEDDING HEALTH CHECK FAILED: %v", err)
+		return result
+	}
+
+	result["ok"] = true
+	log.Printf("Embedding health: OK (model=%s, memories=%d)", a.cfg.API.EmbeddingModel, a.store.Count())
+	return result
 }
 
 func detectMime(path string, data []byte) string {

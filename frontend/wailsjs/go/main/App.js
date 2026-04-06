@@ -10,6 +10,10 @@ export function CheckConnection() {
   return window['go']['main']['App']['CheckConnection']();
 }
 
+export function CheckEmbeddingHealth() {
+  return window['go']['main']['App']['CheckEmbeddingHealth']();
+}
+
 export function CheckLlamaInstallation() {
   return window['go']['main']['App']['CheckLlamaInstallation']();
 }
@@ -20,6 +24,10 @@ export function ClearAllMemory() {
 
 export function ClearHistory() {
   return window['go']['main']['App']['ClearHistory']();
+}
+
+export function DebugMemorySearch(arg1) {
+  return window['go']['main']['App']['DebugMemorySearch'](arg1);
 }
 
 export function DeleteChat(arg1) {

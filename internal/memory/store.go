@@ -46,11 +46,20 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 	defer s.mu.Unlock()
 
 	ts := time.Now().Format(time.RFC3339)
+
+	// Generate embedding from USER MESSAGE ONLY — this gives much better
+	// retrieval accuracy. The full conversation is stored in Content for the LLM.
+	embedding, err := s.embeddingFunc(ctx, userMsg)
+	if err != nil {
+		return fmt.Errorf("memory.SaveInteraction: embed: %w", err)
+	}
+
 	content := fmt.Sprintf("[%s] User: %s\nAssistant: %s", ts, userMsg, assistantMsg)
 
 	doc := chromem.Document{
-		ID:      fmt.Sprintf("conv_%d_%s", s.docCount+1, time.Now().Format("20060102_150405")),
-		Content: content,
+		ID:        fmt.Sprintf("conv_%d_%s", s.docCount+1, time.Now().Format("20060102_150405")),
+		Content:   content,
+		Embedding: embedding,
 		Metadata: map[string]string{
 			"timestamp":  ts,
 			"type":       "conversation",
@@ -70,7 +79,8 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 func (s *Store) Count() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	return s.docCount
+	// Use actual collection count — docCount can drift after restart or reinit
+	return s.collection.Count()
 }
 
 // ClearAll removes all memory by deleting the persist directory and reinitializing

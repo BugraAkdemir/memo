@@ -45,10 +45,23 @@ type DownloadProgress struct {
 
 // LocalModel represents a downloaded .gguf file on disk.
 type LocalModel struct {
-	RepoID   string `json:"repo_id"`
-	Filename string `json:"filename"`
-	Size     int64  `json:"size"`
-	Path     string `json:"path"`
+	RepoID      string `json:"repo_id"`
+	Filename    string `json:"filename"`
+	Size        int64  `json:"size"`
+	Path        string `json:"path"`
+	IsEmbedding bool   `json:"is_embedding"`
+}
+
+// isEmbeddingModel checks if a model filename/repo suggests it's an embedding model.
+func isEmbeddingModel(filename, repoID string) bool {
+	lower := strings.ToLower(filename + " " + repoID)
+	keywords := []string{"embed", "nomic", "bge", "e5-", "gte-", "mxbai-embed", "snowflake-arctic-embed"}
+	for _, kw := range keywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }
 
 // ─── HF API response types (internal) ────────────────────────────
@@ -338,10 +351,11 @@ func (s *Store) ListLocalModels() []LocalModel {
 		}
 
 		models = append(models, LocalModel{
-			RepoID:   repoID,
-			Filename: info.Name(),
-			Size:     info.Size(),
-			Path:     path,
+			RepoID:      repoID,
+			Filename:    info.Name(),
+			Size:        info.Size(),
+			Path:        path,
+			IsEmbedding: isEmbeddingModel(info.Name(), repoID),
 		})
 
 		return nil

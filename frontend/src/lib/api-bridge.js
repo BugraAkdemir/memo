@@ -301,6 +301,69 @@ export async function GetVersion() {
   return 'V1.0.0-Browser';
 }
 
+// ─── Cloud Sync ──────────────────────────────────────────────────
+
+export async function CheckAuth() {
+  if (!isWails) return false;
+  const w = await getWailsApp();
+  if (typeof w.CheckAuth === 'function') return w.CheckAuth();
+  if (typeof w.CheckSyncAuth === 'function') return w.CheckSyncAuth();
+  return false;
+}
+
+export async function StartSyncAuth() {
+  if (!isWails) return '';
+  const w = await getWailsApp();
+  if (typeof w.StartSyncAuth === 'function') return w.StartSyncAuth();
+  throw new Error('Cloud sync auth is not available');
+}
+
+export async function TriggerSync() {
+  if (!isWails) return;
+  const w = await getWailsApp();
+  if (typeof w.TriggerSync === 'function') return w.TriggerSync();
+  throw new Error('Cloud sync trigger is not available');
+}
+
+export async function GetSyncAccount() {
+  if (!isWails) return { authenticated: false, name: '', email: '' };
+  const w = await getWailsApp();
+  if (typeof w.GetSyncAccount === 'function') {
+    return w.GetSyncAccount();
+  }
+  return { authenticated: false, name: '', email: '' };
+}
+
+export async function GetSyncSettings() {
+  if (!isWails) return { enabled: false, client_id: '', client_secret: '', passphrase: '', token_path: './data/sync_token.json', interval_messages: 50 };
+  const w = await getWailsApp();
+  if (typeof w.GetSyncSettings === 'function') return w.GetSyncSettings();
+  return { enabled: false, client_id: '', client_secret: '', passphrase: '', token_path: './data/sync_token.json', interval_messages: 50 };
+}
+
+export async function UpdateSyncSettings(enabled, clientID, clientSecret, passphrase, tokenPath, intervalMessages) {
+  if (!isWails) return;
+  const w = await getWailsApp();
+  if (typeof w.UpdateSyncSettings === 'function') {
+    return w.UpdateSyncSettings(enabled, clientID, clientSecret, passphrase, tokenPath, intervalMessages);
+  }
+  throw new Error('Sync settings update is not available');
+}
+
+export async function PullSync() {
+  if (!isWails) return;
+  const w = await getWailsApp();
+  if (typeof w.PullSync === 'function') return w.PullSync();
+  throw new Error('Sync pull is not available');
+}
+
+export async function SyncNow() {
+  if (!isWails) return;
+  const w = await getWailsApp();
+  if (typeof w.SyncNow === 'function') return w.SyncNow();
+  throw new Error('Full sync is not available');
+}
+
 // Utility: check if running in Wails
 export function isWailsEnvironment() {
   return isWails;

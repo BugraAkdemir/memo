@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"memo/internal/api"
+	"memo/internal/cloudsync"
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/llama"
@@ -46,12 +47,18 @@ type ConnectionStatus struct {
 	Error     string   `json:"error,omitempty"`
 }
 
+type SyncAccount struct {
+	Authenticated bool   `json:"authenticated"`
+	Name          string `json:"name,omitempty"`
+	Email         string `json:"email,omitempty"`
+}
+
 type App struct {
-	ctx      context.Context
-	client   *api.Client
-	store    *memory.Store
-	identity *identity.Identity
-	cfg      *config.AppConfig
+	ctx               context.Context
+	client            *api.Client
+	store             *memory.Store
+	identity          *identity.Identity
+	cfg               *config.AppConfig
 	sessions          *sessions.Manager
 	isIncognito       bool
 	incognitoMessages []api.Message
@@ -60,10 +67,11 @@ type App struct {
 	embeddedAssets    embed.FS
 	modelStore        *modelstore.Store
 	llamaServer       *llama.Server
-	llamaEmbedServer  *llama.Server  // dedicated embedding model server
+	llamaEmbedServer  *llama.Server // dedicated embedding model server
 	llamaInstaller    *llama.Installer
-	originalBaseURL   string // stores the original API base URL before llama override
+	originalBaseURL   string      // stores the original API base URL before llama override
 	embeddingClient   *api.Client // separate client for embedding server
+	syncManager       *cloudsync.Manager
 }
 
 func NewApp() *App {
@@ -124,6 +132,25 @@ func (a *App) startup(ctx context.Context) {
 	// Start remote access server if enabled
 	if cfg.RemoteAccess.Enabled {
 		go a.startWebServer(cfg.RemoteAccess.Port)
+	}
+
+	// Initialize cloud sync (credentials may come from app-level env vars).
+	if cfg.Sync.Enabled {
+		clientID, clientSecret := a.resolveSyncCredentials()
+		if clientID != "" && clientSecret != "" {
+			a.syncManager = cloudsync.New(
+				ctx,
+				cfg.Memory.PersistDir,
+				cfg.Sync.Passphrase,
+				cfg.Sync.IntervalMessages,
+				clientID,
+				clientSecret,
+				cfg.Sync.TokenPath,
+			)
+			log.Println("Cloud sync enabled")
+		} else {
+			log.Println("Cloud sync enabled in config but OAuth credentials are not available")
+		}
 	}
 
 	log.Println("Memo ready")
@@ -673,7 +700,9 @@ func (a *App) TranscribeAudio(audioData []byte) (string, error) {
 		return "", fmt.Errorf("stt server unreachable: %w", err)
 	}
 	defer resp.Body.Close()
-	var result struct{ Text string `json:"text"` }
+	var result struct {
+		Text string `json:"text"`
+	}
 	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
 		return "", fmt.Errorf("stt decode: %w", err)
 	}
@@ -723,7 +752,7 @@ func (a *App) CheckConnection() ConnectionStatus {
 }
 
 func (a *App) GetConfig() *config.AppConfig { return a.cfg }
-func (a *App) GetAvailableStyles() []string  { return identity.AvailableStyles() }
+func (a *App) GetAvailableStyles() []string { return identity.AvailableStyles() }
 
 func (a *App) UpdateIdentity(userName, assistantName, style string) error {
 	a.identity.Update(userName, assistantName, style, "")
@@ -795,9 +824,9 @@ func (a *App) DeleteMemoryFile(relPath string) error {
 
 // ─── Web Bridge (interface adapters for webserver) ───────────────
 
-func (a *App) WebListChats() interface{}          { return a.ListChats() }
-func (a *App) WebGetActiveMessages() interface{}   { return a.GetActiveMessages() }
-func (a *App) WebCheckConnection() interface{}     { return a.CheckConnection() }
+func (a *App) WebListChats() interface{}         { return a.ListChats() }
+func (a *App) WebGetActiveMessages() interface{} { return a.GetActiveMessages() }
+func (a *App) WebCheckConnection() interface{}   { return a.CheckConnection() }
 
 // ─── Settings: Remote Access ─────────────────────────────────────
 
@@ -1125,6 +1154,9 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 			wailsRuntime.EventsEmit(a.ctx, "memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
 		} else {
 			log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
+			if a.syncManager != nil {
+				a.syncManager.Increment()
+			}
 		}
 	}()
 }
@@ -1190,4 +1222,157 @@ func detectMime(path string, data []byte) string {
 		return "image/jpeg"
 	}
 	return mime
+}
+
+// ─── Cloud Sync ───────────────────────────────────────────────────────────────
+
+func (a *App) resolveSyncCredentials() (string, string) {
+	clientID := strings.TrimSpace(a.cfg.Sync.ClientID)
+	clientSecret := strings.TrimSpace(a.cfg.Sync.ClientSecret)
+	if clientID == "" {
+		clientID = strings.TrimSpace(os.Getenv("MEMO_GOOGLE_CLIENT_ID"))
+	}
+	if clientSecret == "" {
+		clientSecret = strings.TrimSpace(os.Getenv("MEMO_GOOGLE_CLIENT_SECRET"))
+	}
+	return clientID, clientSecret
+}
+
+func (a *App) ensureSyncManager() error {
+	if a.syncManager != nil {
+		return nil
+	}
+	clientID, clientSecret := a.resolveSyncCredentials()
+	if clientID == "" || clientSecret == "" {
+		return fmt.Errorf("cloud sync OAuth credentials missing (set MEMO_GOOGLE_CLIENT_ID and MEMO_GOOGLE_CLIENT_SECRET in app environment)")
+	}
+	a.syncManager = cloudsync.New(
+		a.ctx,
+		a.cfg.Memory.PersistDir,
+		a.cfg.Sync.Passphrase,
+		a.cfg.Sync.IntervalMessages,
+		clientID,
+		clientSecret,
+		a.cfg.Sync.TokenPath,
+	)
+	return nil
+}
+
+// CheckSyncAuth reports whether the cloud sync manager is authenticated.
+func (a *App) CheckSyncAuth() bool {
+	if err := a.ensureSyncManager(); err != nil {
+		return false
+	}
+	return a.syncManager.IsAuthenticated()
+}
+
+// CheckAuth is an alias for CheckSyncAuth exposed for cloud sync UI logic.
+func (a *App) CheckAuth() bool {
+	return a.CheckSyncAuth()
+}
+
+// StartSyncAuth starts the OAuth2 loopback flow and returns the URL to open.
+// The frontend should open this URL in the system browser. Poll CheckSyncAuth
+// to detect when the user has completed the flow.
+func (a *App) StartSyncAuth() (string, error) {
+	if err := a.ensureSyncManager(); err != nil {
+		return "", err
+	}
+	url, err := a.syncManager.StartAuthFlow()
+	if err != nil {
+		return "", err
+	}
+	wailsRuntime.BrowserOpenURL(a.ctx, url)
+	return url, nil
+}
+
+// TriggerSync forces an immediate backup upload outside the automatic 50-message cycle.
+func (a *App) TriggerSync() {
+	if err := a.ensureSyncManager(); err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "sync:error", err.Error())
+		return
+	}
+	a.syncManager.TriggerNow()
+}
+
+// PullSync downloads latest cloud backup and restores local .gob files.
+func (a *App) PullSync() {
+	if err := a.ensureSyncManager(); err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "sync:error", err.Error())
+		return
+	}
+	a.syncManager.TriggerPullNow()
+}
+
+// SyncNow runs push then pull in background.
+func (a *App) SyncNow() {
+	if err := a.ensureSyncManager(); err != nil {
+		wailsRuntime.EventsEmit(a.ctx, "sync:error", err.Error())
+		return
+	}
+	a.syncManager.TriggerFullSyncNow()
+}
+
+// GetSyncAccount returns Google account identity for the connected sync session.
+func (a *App) GetSyncAccount() SyncAccount {
+	if err := a.ensureSyncManager(); err != nil {
+		return SyncAccount{Authenticated: false}
+	}
+	if !a.syncManager.IsAuthenticated() {
+		return SyncAccount{Authenticated: false}
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	acc, err := a.syncManager.GetAccountInfo(ctx)
+	if err != nil {
+		log.Printf("cloud sync account info: %v", err)
+		return SyncAccount{Authenticated: true}
+	}
+	return SyncAccount{
+		Authenticated: true,
+		Name:          acc.Name,
+		Email:         acc.Email,
+	}
+}
+
+func (a *App) GetSyncSettings() config.SyncConfig {
+	return a.cfg.Sync
+}
+
+func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphrase, tokenPath string, intervalMessages int) error {
+	if tokenPath == "" {
+		tokenPath = "./data/sync_token.json"
+	}
+	if intervalMessages <= 0 {
+		intervalMessages = 50
+	}
+
+	a.cfg.Sync.Enabled = enabled
+	a.cfg.Sync.ClientID = strings.TrimSpace(clientID)
+	a.cfg.Sync.ClientSecret = strings.TrimSpace(clientSecret)
+	a.cfg.Sync.Passphrase = passphrase
+	a.cfg.Sync.TokenPath = strings.TrimSpace(tokenPath)
+	a.cfg.Sync.IntervalMessages = intervalMessages
+
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+
+	// Re-create manager with fresh settings.
+	resolvedClientID, resolvedClientSecret := a.resolveSyncCredentials()
+	if a.cfg.Sync.Enabled && resolvedClientID != "" && resolvedClientSecret != "" {
+		a.syncManager = cloudsync.New(
+			a.ctx,
+			a.cfg.Memory.PersistDir,
+			a.cfg.Sync.Passphrase,
+			a.cfg.Sync.IntervalMessages,
+			resolvedClientID,
+			resolvedClientSecret,
+			a.cfg.Sync.TokenPath,
+		)
+	} else {
+		a.syncManager = nil
+	}
+	return nil
 }

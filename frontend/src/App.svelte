@@ -18,7 +18,8 @@
     StartRecording, StopRecordingAndTranscribe,
     GetVersion,
     isWailsEnvironment,
-    ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, StartEmbeddingModel, StopEmbeddingModel, GetEmbeddingModelStatus, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer
+    ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, StartEmbeddingModel, StopEmbeddingModel, GetEmbeddingModelStatus, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer,
+    CheckAuth, StartSyncAuth, GetSyncAccount, GetSyncSettings, UpdateSyncSettings, TriggerSync, PullSync, SyncNow
   } from './lib/api-bridge.js';
 
   // EventsOn - only available in Wails
@@ -99,7 +100,17 @@
       totalTokens: "Toplam Token",
       duration: "Süre",
       finishReason: "Bitiş Nedeni",
-      loading: "Yükleniyor..."
+      loading: "Yükleniyor...",
+      driveNotConnected: "Drive bağlı değil",
+      driveConnected: "Google Drive bağlı",
+      driveConnecting: "Drive bağlanıyor...",
+      cloudSync: "Cloud Sync",
+      saveAndApply: "Kaydet ve Uygula",
+      backupNow: "Anlık Yedekle",
+      syncNow: "Senkron Et",
+      pullNow: "Cloud'dan Çek",
+      syncSaved: "Sync ayarları kaydedildi",
+      syncSaveError: "Sync ayarı kaydedilemedi"
     },
     en: {
       newChat: "New Chat",
@@ -160,7 +171,17 @@
       totalTokens: "Total Tokens",
       duration: "Duration",
       finishReason: "Finish Reason",
-      loading: "Loading..."
+      loading: "Loading...",
+      driveNotConnected: "Drive not connected",
+      driveConnected: "Google Drive connected",
+      driveConnecting: "Connecting Drive...",
+      cloudSync: "Cloud Sync",
+      saveAndApply: "Save & Apply",
+      backupNow: "Backup Now",
+      syncNow: "Sync Now",
+      pullNow: "Pull Latest",
+      syncSaved: "Sync settings saved",
+      syncSaveError: "Failed to save sync settings"
     }
   };
   $: t = (key) => dict[lang][key] || key;
@@ -179,6 +200,61 @@
   let setupModelStatus = false;
   let setupChecking = false;
   let appVersion = '...';
+  let syncAccountName = '';
+  let syncAccountSub = '';
+  let syncAuthenticated = false;
+  let syncConnecting = false;
+
+  async function refreshSyncAccount() {
+    let isAuthed = false;
+    try {
+      isAuthed = await CheckAuth();
+      if (!isAuthed) {
+        syncAuthenticated = false;
+        syncAccountName = t('userProfile');
+        syncAccountSub = t('driveNotConnected');
+        return;
+      }
+      const acc = await GetSyncAccount();
+      syncAuthenticated = !!acc?.authenticated;
+      syncAccountName = acc?.name || acc?.email || t('userProfile');
+      syncAccountSub = acc?.email || t('driveConnected');
+    } catch (e) {
+      syncAuthenticated = isAuthed;
+      syncAccountName = t('userProfile');
+      syncAccountSub = isAuthed ? t('driveConnected') : t('driveNotConnected');
+    }
+  }
+
+  async function handleProfileSyncClick() {
+    if (syncConnecting) return;
+    if (syncAuthenticated) {
+      settingsOpen = true;
+      await openSyncTab();
+      return;
+    }
+    syncConnecting = true;
+    syncAccountSub = t('driveConnecting');
+    try {
+      await StartSyncAuth();
+      const startedAt = Date.now();
+      const poll = setInterval(async () => {
+        const ok = await CheckAuth().catch(() => false);
+        if (ok || Date.now() - startedAt > 180000) {
+          clearInterval(poll);
+          syncConnecting = false;
+          await refreshSyncAccount();
+        }
+      }, 1500);
+    } catch (e) {
+      syncConnecting = false;
+      await refreshSyncAccount();
+    }
+  }
+  $: if (!syncAuthenticated && !syncConnecting) {
+    syncAccountName = t('userProfile');
+    syncAccountSub = t('driveNotConnected');
+  }
   
   async function checkSetupConnection() {
     setupChecking = true;
@@ -293,6 +369,16 @@ Core Directives:
   let remoteRunning = false;
   let remoteAddresses = [];
   let remoteSaving = false;
+  let syncEnabled = false;
+  let syncClientID = '';
+  let syncClientSecret = '';
+  let syncPassphrase = '';
+  let syncTokenPath = './data/sync_token.json';
+  let syncIntervalMessages = 50;
+  let syncSaving = false;
+  let syncActionRunning = false;
+  let syncStatusText = '';
+  let syncErrorText = '';
 
   // Model Store
   let modelSearchQuery = '';
@@ -313,6 +399,7 @@ Core Directives:
 
   onMount(async () => {
     await refreshAll();
+    await refreshSyncAccount();
     if (window.runtime && window.runtime.EventsOn) {
       window.runtime.EventsOn("llama:install-log", (msg) => {
         installLog = [...installLog, msg];
@@ -344,6 +431,17 @@ Core Directives:
             attachedImage = '';
           }
         }
+      });
+      EventsOn('sync:status', (payload) => {
+        const s = typeof payload === 'string' ? payload : payload?.status;
+        if (!s) return;
+        syncStatusText = `Sync: ${s}`;
+        if (s === 'done') {
+          refreshSyncAccount();
+        }
+      });
+      EventsOn('sync:error', (msg) => {
+        syncErrorText = String(msg || 'Unknown sync error');
       });
     }
   });
@@ -636,6 +734,77 @@ Core Directives:
       remoteRunning = status.running;
       remoteAddresses = status.addresses || [];
     } catch(e) {}
+  }
+
+  async function openSyncTab() {
+    settingsTab = 'sync';
+    syncErrorText = '';
+    syncStatusText = '';
+    try {
+      const s = await GetSyncSettings();
+      syncEnabled = !!s.enabled;
+      syncClientID = s.client_id || '';
+      syncClientSecret = s.client_secret || '';
+      syncPassphrase = s.passphrase || '';
+      syncTokenPath = s.token_path || './data/sync_token.json';
+      syncIntervalMessages = Number(s.interval_messages || 50);
+    } catch (e) {
+      syncErrorText = String(e);
+    }
+  }
+
+  async function saveSyncSettings() {
+    syncSaving = true;
+    syncErrorText = '';
+    try {
+      await UpdateSyncSettings(
+        syncEnabled,
+        syncClientID,
+        syncClientSecret,
+        syncPassphrase,
+        syncTokenPath,
+        Math.max(1, Number(syncIntervalMessages || 50)),
+      );
+      syncStatusText = t('syncSaved');
+      await refreshSyncAccount();
+      setTimeout(() => { syncStatusText = ''; }, 2000);
+    } catch (e) {
+      syncErrorText = `${t('syncSaveError')}: ${e}`;
+    }
+    syncSaving = false;
+  }
+
+  async function runBackupNow() {
+    syncActionRunning = true;
+    syncErrorText = '';
+    try {
+      await TriggerSync();
+    } catch (e) {
+      syncErrorText = String(e);
+    }
+    syncActionRunning = false;
+  }
+
+  async function runSyncNow() {
+    syncActionRunning = true;
+    syncErrorText = '';
+    try {
+      await SyncNow();
+    } catch (e) {
+      syncErrorText = String(e);
+    }
+    syncActionRunning = false;
+  }
+
+  async function runPullNow() {
+    syncActionRunning = true;
+    syncErrorText = '';
+    try {
+      await PullSync();
+    } catch (e) {
+      syncErrorText = String(e);
+    }
+    syncActionRunning = false;
   }
 
   async function saveRemoteAccess() {
@@ -954,13 +1123,15 @@ Core Directives:
 
     <div class="side-bottom">
       <div class="user-profile">
-        <div class="user-avatar">
-          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
-        </div>
-        <div class="user-info">
-          <span class="user-name">{t('userProfile')}</span>
-          <span class="user-plan">{t('freePlan')}</span>
-        </div>
+        <button class="user-account-btn" on:click={handleProfileSyncClick} title={!syncAuthenticated ? t('driveNotConnected') : syncAccountSub}>
+          <div class="user-avatar">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path><circle cx="12" cy="7" r="4"></circle></svg>
+          </div>
+          <div class="user-info">
+            <span class="user-name">{syncAccountName || t('userProfile')}</span>
+            <span class="user-plan">{syncConnecting ? t('driveConnecting') : (syncAccountSub || t('freePlan'))}</span>
+          </div>
+        </button>
         <button class="user-settings-btn" on:click={openSettings}>
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
         </button>
@@ -1379,6 +1550,7 @@ Core Directives:
       <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>{t('systemPrompt')}</button>
       <button class="m-tab" class:active={settingsTab==='incognito'} on:click={() => settingsTab='incognito'}>{t('incognitoPrompt')}</button>
       <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>{t('memory')}</button>
+      <button class="m-tab" class:active={settingsTab==='sync'} on:click={openSyncTab}>{t('cloudSync')}</button>
       {#if isDesktop}
       <button class="m-tab" class:active={settingsTab==='remote'} on:click={openRemoteTab}>Remote Access</button>
       {/if}
@@ -1440,6 +1612,53 @@ Core Directives:
             {/each}
           </div>
         {/if}
+      {:else if settingsTab === 'sync'}
+        <div class="m-section">
+          <p class="m-desc">Kullanıcı için tek tık Google giriş. OAuth bilgileri uygulama seviyesinden otomatik alınır.</p>
+          <div class="setting-row">
+            <span class="setting-label">Enable Sync</span>
+            <button class="toggle-switch" class:on={syncEnabled} on:click={() => syncEnabled = !syncEnabled} aria-pressed={syncEnabled}>
+              <span class="toggle-knob"></span>
+            </button>
+          </div>
+          <label class="field remote-field">
+            <span>Passphrase (Opsiyonel)</span>
+            <input type="password" bind:value={syncPassphrase} placeholder="Boş bırakılırsa cihaz kimliği kullanılır" />
+          </label>
+          <label class="field remote-field">
+            <span>Token Path</span>
+            <input type="text" bind:value={syncTokenPath} placeholder="./data/sync_token.json" />
+          </label>
+          <label class="field remote-field">
+            <span>Yedekleme Sıklığı (Mesaj)</span>
+            <input type="number" bind:value={syncIntervalMessages} min="1" />
+          </label>
+          <details style="margin-top:10px;">
+            <summary style="cursor:pointer; color:var(--text-muted); font-size:12px;">Gelişmiş (opsiyonel)</summary>
+            <label class="field remote-field">
+              <span>Client ID</span>
+              <input type="text" bind:value={syncClientID} placeholder="Google OAuth Client ID" />
+            </label>
+            <label class="field remote-field">
+              <span>Client Secret</span>
+              <input type="password" bind:value={syncClientSecret} placeholder="Google OAuth Client Secret" />
+            </label>
+          </details>
+          <div class="m-actions" style="margin-top:16px;">
+            <button class="m-btn gold" on:click={saveSyncSettings} disabled={syncSaving}>
+              {syncSaving ? '…' : t('saveAndApply')}
+            </button>
+            <button class="m-btn" on:click={runBackupNow} disabled={syncActionRunning}>{t('backupNow')}</button>
+            <button class="m-btn" on:click={runSyncNow} disabled={syncActionRunning}>{t('syncNow')}</button>
+            <button class="m-btn" on:click={runPullNow} disabled={syncActionRunning}>{t('pullNow')}</button>
+          </div>
+          {#if syncStatusText}
+            <p class="m-desc" style="color:var(--green); margin-top:8px;">{syncStatusText}</p>
+          {/if}
+          {#if syncErrorText}
+            <p class="m-desc" style="color:var(--red); margin-top:8px;">{syncErrorText}</p>
+          {/if}
+        </div>
       {:else if settingsTab === 'remote'}
         <div class="remote-section">
           <p class="m-desc">Enable remote access to use Memo from your phone or other devices on the same network.</p>
@@ -1931,10 +2150,18 @@ Core Directives:
     padding: var(--sp-2);
     border-radius: var(--r-md);
     transition: background 0.15s;
-    cursor: pointer;
   }
   .user-profile:hover {
     background: var(--bg-hover);
+  }
+  .user-account-btn {
+    display: flex;
+    align-items: center;
+    gap: var(--sp-3);
+    min-width: 0;
+    flex: 1;
+    text-align: left;
+    color: inherit;
   }
   .user-avatar {
     width: 32px; height: 32px;
@@ -2889,4 +3116,3 @@ Core Directives:
 
   /* ═══ SEARCH MODELS UI ═══ */
 </style>
-

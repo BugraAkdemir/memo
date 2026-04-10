@@ -6,6 +6,10 @@ export function CancelDownload() {
   return window['go']['main']['App']['CancelDownload']();
 }
 
+export function CheckAuth() {
+  return window['go']['main']['App']['CheckAuth']();
+}
+
 export function CheckConnection() {
   return window['go']['main']['App']['CheckConnection']();
 }
@@ -16,6 +20,10 @@ export function CheckEmbeddingHealth() {
 
 export function CheckLlamaInstallation() {
   return window['go']['main']['App']['CheckLlamaInstallation']();
+}
+
+export function CheckSyncAuth() {
+  return window['go']['main']['App']['CheckSyncAuth']();
 }
 
 export function ClearAllMemory() {
@@ -102,6 +110,14 @@ export function GetRemoteAccessStatus() {
   return window['go']['main']['App']['GetRemoteAccessStatus']();
 }
 
+export function GetSyncAccount() {
+  return window['go']['main']['App']['GetSyncAccount']();
+}
+
+export function GetSyncSettings() {
+  return window['go']['main']['App']['GetSyncSettings']();
+}
+
 export function GetSystemPrompt() {
   return window['go']['main']['App']['GetSystemPrompt']();
 }
@@ -128,6 +144,10 @@ export function ListMemoryFiles() {
 
 export function NewChat() {
   return window['go']['main']['App']['NewChat']();
+}
+
+export function PullSync() {
+  return window['go']['main']['App']['PullSync']();
 }
 
 export function RenameChat(arg1, arg2) {
@@ -206,6 +226,10 @@ export function StartRecording() {
   return window['go']['main']['App']['StartRecording']();
 }
 
+export function StartSyncAuth() {
+  return window['go']['main']['App']['StartSyncAuth']();
+}
+
 export function StopEmbeddingModel() {
   return window['go']['main']['App']['StopEmbeddingModel']();
 }
@@ -222,6 +246,10 @@ export function SwitchChat(arg1) {
   return window['go']['main']['App']['SwitchChat'](arg1);
 }
 
+export function SyncNow() {
+  return window['go']['main']['App']['SyncNow']();
+}
+
 export function ToggleIncognito(arg1) {
   return window['go']['main']['App']['ToggleIncognito'](arg1);
 }
@@ -230,8 +258,16 @@ export function TranscribeAudio(arg1) {
   return window['go']['main']['App']['TranscribeAudio'](arg1);
 }
 
+export function TriggerSync() {
+  return window['go']['main']['App']['TriggerSync']();
+}
+
 export function UpdateIdentity(arg1, arg2, arg3) {
   return window['go']['main']['App']['UpdateIdentity'](arg1, arg2, arg3);
+}
+
+export function UpdateSyncSettings(arg1, arg2, arg3, arg4, arg5, arg6) {
+  return window['go']['main']['App']['UpdateSyncSettings'](arg1, arg2, arg3, arg4, arg5, arg6);
 }
 
 export function WebCheckConnection() {

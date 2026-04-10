@@ -16,6 +16,28 @@ export namespace config {
 	        this.TimeoutSeconds = source["TimeoutSeconds"];
 	    }
 	}
+	export class SyncConfig {
+	    enabled: boolean;
+	    client_id: string;
+	    client_secret: string;
+	    passphrase?: string;
+	    token_path: string;
+	    interval_messages: number;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncConfig(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.enabled = source["enabled"];
+	        this.client_id = source["client_id"];
+	        this.client_secret = source["client_secret"];
+	        this.passphrase = source["passphrase"];
+	        this.token_path = source["token_path"];
+	        this.interval_messages = source["interval_messages"];
+	    }
+	}
 	export class LlamaConfig {
 	    binary_path: string;
 	    port: number;
@@ -92,6 +114,7 @@ export namespace config {
 	    Memory: MemoryConfig;
 	    RemoteAccess: RemoteAccessConfig;
 	    Llama: LlamaConfig;
+	    Sync: SyncConfig;
 	
 	    static createFrom(source: any = {}) {
 	        return new AppConfig(source);
@@ -104,6 +127,7 @@ export namespace config {
 	        this.Memory = this.convertValues(source["Memory"], MemoryConfig);
 	        this.RemoteAccess = this.convertValues(source["RemoteAccess"], RemoteAccessConfig);
 	        this.Llama = this.convertValues(source["Llama"], LlamaConfig);
+	        this.Sync = this.convertValues(source["Sync"], SyncConfig);
 	    }
 	
 		convertValues(a: any, classs: any, asMap: boolean = false): any {
@@ -124,6 +148,7 @@ export namespace config {
 		    return a;
 		}
 	}
+	
 	
 	
 	
@@ -246,6 +271,22 @@ export namespace main {
 	        this.port = source["port"];
 	        this.running = source["running"];
 	        this.addresses = source["addresses"];
+	    }
+	}
+	export class SyncAccount {
+	    authenticated: boolean;
+	    name?: string;
+	    email?: string;
+	
+	    static createFrom(source: any = {}) {
+	        return new SyncAccount(source);
+	    }
+	
+	    constructor(source: any = {}) {
+	        if ('string' === typeof source) source = JSON.parse(source);
+	        this.authenticated = source["authenticated"];
+	        this.name = source["name"];
+	        this.email = source["email"];
 	    }
 	}
 

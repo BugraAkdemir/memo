@@ -10,11 +10,15 @@ import {embed} from '../models';
 
 export function CancelDownload():Promise<void>;
 
+export function CheckAuth():Promise<boolean>;
+
 export function CheckConnection():Promise<main.ConnectionStatus>;
 
 export function CheckEmbeddingHealth():Promise<Record<string, any>>;
 
 export function CheckLlamaInstallation():Promise<boolean>;
+
+export function CheckSyncAuth():Promise<boolean>;
 
 export function ClearAllMemory():Promise<void>;
 
@@ -58,6 +62,10 @@ export function GetModelFiles(arg1:string):Promise<Array<modelstore.GGUFFile>>;
 
 export function GetRemoteAccessStatus():Promise<main.RemoteAccessStatus>;
 
+export function GetSyncAccount():Promise<main.SyncAccount>;
+
+export function GetSyncSettings():Promise<config.SyncConfig>;
+
 export function GetSystemPrompt():Promise<string>;
 
 export function GetVersion():Promise<string>;
@@ -71,6 +79,8 @@ export function ListLocalModels():Promise<Array<modelstore.LocalModel>>;
 export function ListMemoryFiles():Promise<Array<memory.GobFileInfo>>;
 
 export function NewChat():Promise<string>;
+
+export function PullSync():Promise<void>;
 
 export function RenameChat(arg1:string,arg2:string):Promise<void>;
 
@@ -110,6 +120,8 @@ export function StartLocalModel(arg1:string,arg2:number,arg3:number,arg4:number)
 
 export function StartRecording():Promise<void>;
 
+export function StartSyncAuth():Promise<string>;
+
 export function StopEmbeddingModel():Promise<void>;
 
 export function StopLocalModel():Promise<void>;
@@ -118,11 +130,17 @@ export function StopRecordingAndTranscribe():Promise<string>;
 
 export function SwitchChat(arg1:string):Promise<void>;
 
+export function SyncNow():Promise<void>;
+
 export function ToggleIncognito(arg1:boolean):Promise<void>;
 
 export function TranscribeAudio(arg1:Array<number>):Promise<string>;
 
+export function TriggerSync():Promise<void>;
+
 export function UpdateIdentity(arg1:string,arg2:string,arg3:string):Promise<void>;
+
+export function UpdateSyncSettings(arg1:boolean,arg2:string,arg3:string,arg4:string,arg5:string,arg6:number):Promise<void>;
 
 export function WebCheckConnection():Promise<any>;
 

@@ -15,6 +15,20 @@ type AppConfig struct {
 	Memory       MemoryConfig       `yaml:"memory"`
 	RemoteAccess RemoteAccessConfig `yaml:"remote_access"`
 	Llama        LlamaConfig        `yaml:"llama"`
+	Sync         SyncConfig         `yaml:"sync"`
+}
+
+// SyncConfig holds Google Drive backup settings.
+// ClientID and ClientSecret come from the user's own Google Cloud project
+// (OAuth 2.0 Desktop App credentials). Passphrase derives the AES-256 key;
+// leave empty to use a hardware-derived key automatically.
+type SyncConfig struct {
+	Enabled          bool   `yaml:"enabled" json:"enabled"`
+	ClientID         string `yaml:"client_id" json:"client_id"`
+	ClientSecret     string `yaml:"client_secret" json:"client_secret"`
+	Passphrase       string `yaml:"passphrase" json:"passphrase,omitempty"`
+	TokenPath        string `yaml:"token_path" json:"token_path"`
+	IntervalMessages int    `yaml:"interval_messages" json:"interval_messages"`
 }
 
 type RemoteAccessConfig struct {
@@ -37,8 +51,8 @@ type LlamaConfig struct {
 }
 
 type IdentityConfig struct {
-	UserName      string `yaml:"user_name"`
-	AssistantName string `yaml:"assistant_name"`
+	UserName        string `yaml:"user_name"`
+	AssistantName   string `yaml:"assistant_name"`
 	Style           string `yaml:"style"`
 	SystemRole      string `yaml:"system_role"`
 	IncognitoPrompt string `yaml:"incognito_prompt"`
@@ -65,7 +79,7 @@ func Default() *AppConfig {
 			TimeoutSeconds: 120,
 		},
 		Identity: IdentityConfig{
-			UserName:      "User",
+			UserName:        "User",
 			AssistantName:   "Memo",
 			Style:           "casual",
 			SystemRole:      "",
@@ -86,6 +100,11 @@ func Default() *AppConfig {
 			EmbeddingPort: 8082,
 			CtxSize:       4096,
 			ModelsDir:     "./data/models",
+		},
+		Sync: SyncConfig{
+			Enabled:          false,
+			TokenPath:        "./data/sync_token.json",
+			IntervalMessages: 50,
 		},
 	}
 }
@@ -191,5 +210,11 @@ func (c *AppConfig) validate() {
 	}
 	if c.Llama.ModelsDir == "" {
 		c.Llama.ModelsDir = "./data/models"
+	}
+	if c.Sync.TokenPath == "" {
+		c.Sync.TokenPath = "./data/sync_token.json"
+	}
+	if c.Sync.IntervalMessages <= 0 {
+		c.Sync.IntervalMessages = 50
 	}
 }

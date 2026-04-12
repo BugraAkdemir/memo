@@ -19,7 +19,7 @@
     GetVersion,
     isWailsEnvironment,
     ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, StartEmbeddingModel, StopEmbeddingModel, GetEmbeddingModelStatus, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer,
-    CheckAuth, StartSyncAuth, GetSyncAccount, GetSyncSettings, UpdateSyncSettings, TriggerSync, PullSync, SyncNow
+    CheckAuth, StartSyncAuth, GetSyncAccount, GetSyncSettings, UpdateSyncSettings, TriggerSync, PullSync, SyncNow, DisconnectSync
   } from './lib/api-bridge.js';
 
   // EventsOn - only available in Wails
@@ -110,7 +110,19 @@
       syncNow: "Senkron Et",
       pullNow: "Cloud'dan Çek",
       syncSaved: "Sync ayarları kaydedildi",
-      syncSaveError: "Sync ayarı kaydedilemedi"
+      syncSaveError: "Sync ayarı kaydedilemedi",
+      connectDrive: "Google Drive'a Bağlan",
+      disconnectDrive: "Bağlantıyı Kes",
+      syncAccount: "Bağlı Hesap",
+      syncBackupInterval: "Yedekleme Sıklığı",
+      syncPassphrase: "Şifreleme Parolası (Opsiyonel)",
+      syncPassphrasePlaceholder: "Boş bırakılırsa cihaz kimliği kullanılır",
+      syncAdvanced: "Gelişmiş Ayarlar",
+      syncConnectDesc: "Konuşmalarınızı ve hafızanızı Google Drive'a şifreli olarak yedekleyin.",
+      syncConnectedDesc: "Yedeklemeler şifreli olarak Drive'daki \"Memo Backups\" klasörüne kaydedilir.",
+      aboutBuiltWith: "Kullanılan Teknolojiler",
+      aboutLicense: "Lisans",
+      aboutOpenSource: "Açık Kaynak (MIT)"
     },
     en: {
       newChat: "New Chat",
@@ -181,7 +193,19 @@
       syncNow: "Sync Now",
       pullNow: "Pull Latest",
       syncSaved: "Sync settings saved",
-      syncSaveError: "Failed to save sync settings"
+      syncSaveError: "Failed to save sync settings",
+      connectDrive: "Connect Google Drive",
+      disconnectDrive: "Disconnect",
+      syncAccount: "Connected Account",
+      syncBackupInterval: "Backup Interval",
+      syncPassphrase: "Encryption Passphrase (Optional)",
+      syncPassphrasePlaceholder: "Leave blank to use device ID",
+      syncAdvanced: "Advanced Settings",
+      syncConnectDesc: "Back up your conversations and memory to Google Drive, encrypted end-to-end.",
+      syncConnectedDesc: "Backups are saved encrypted to the \"Memo Backups\" folder in your Drive.",
+      aboutBuiltWith: "Built With",
+      aboutLicense: "License",
+      aboutOpenSource: "Open Source (MIT)"
     }
   };
   $: t = (key) => dict[lang][key] || key;
@@ -772,6 +796,18 @@ Core Directives:
       syncErrorText = `${t('syncSaveError')}: ${e}`;
     }
     syncSaving = false;
+  }
+
+  async function handleDisconnectSync() {
+    if (!confirm(lang === 'tr' ? 'Google Drive bağlantısı kesilecek. Emin misiniz?' : 'Disconnect Google Drive? You will need to sign in again.')) return;
+    try {
+      await DisconnectSync();
+      syncAuthenticated = false;
+      syncAccountName = t('userProfile');
+      syncAccountSub = t('driveNotConnected');
+    } catch (e) {
+      syncErrorText = String(e);
+    }
   }
 
   async function runBackupNow() {
@@ -1613,50 +1649,100 @@ Core Directives:
           </div>
         {/if}
       {:else if settingsTab === 'sync'}
-        <div class="m-section">
-          <p class="m-desc">Kullanıcı için tek tık Google giriş. OAuth bilgileri uygulama seviyesinden otomatik alınır.</p>
-          <div class="setting-row">
-            <span class="setting-label">Enable Sync</span>
-            <button class="toggle-switch" class:on={syncEnabled} on:click={() => syncEnabled = !syncEnabled} aria-pressed={syncEnabled}>
-              <span class="toggle-knob"></span>
-            </button>
-          </div>
-          <label class="field remote-field">
-            <span>Passphrase (Opsiyonel)</span>
-            <input type="password" bind:value={syncPassphrase} placeholder="Boş bırakılırsa cihaz kimliği kullanılır" />
-          </label>
-          <label class="field remote-field">
-            <span>Token Path</span>
-            <input type="text" bind:value={syncTokenPath} placeholder="./data/sync_token.json" />
-          </label>
-          <label class="field remote-field">
-            <span>Yedekleme Sıklığı (Mesaj)</span>
-            <input type="number" bind:value={syncIntervalMessages} min="1" />
-          </label>
-          <details style="margin-top:10px;">
-            <summary style="cursor:pointer; color:var(--text-muted); font-size:12px;">Gelişmiş (opsiyonel)</summary>
+        <div class="m-section sync-section">
+
+          {#if syncAuthenticated}
+            <!-- ── Bağlı durum ── -->
+            <div class="sync-account-card">
+              <div class="sync-account-avatar">
+                {(syncAccountName || '?')[0].toUpperCase()}
+              </div>
+              <div class="sync-account-info">
+                <span class="sync-account-name">{syncAccountName}</span>
+                <span class="sync-account-email">{syncAccountSub}</span>
+              </div>
+              <button class="sync-disconnect-btn" on:click={handleDisconnectSync} title={t('disconnectDrive')}>
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/>
+                  <polyline points="16 17 21 12 16 7"/>
+                  <line x1="21" y1="12" x2="9" y2="12"/>
+                </svg>
+                {t('disconnectDrive')}
+              </button>
+            </div>
+            <p class="m-desc sync-connected-desc">{t('syncConnectedDesc')}</p>
+
+            <div class="sync-toggle-row">
+              <span class="setting-label">Otomatik Yedekleme</span>
+              <button class="toggle-switch" class:on={syncEnabled} on:click={() => syncEnabled = !syncEnabled} aria-pressed={syncEnabled}>
+                <span class="toggle-knob"></span>
+              </button>
+            </div>
+
             <label class="field remote-field">
-              <span>Client ID</span>
-              <input type="text" bind:value={syncClientID} placeholder="Google OAuth Client ID" />
+              <span>{t('syncBackupInterval')} (mesaj)</span>
+              <input type="number" bind:value={syncIntervalMessages} min="1" />
             </label>
+
             <label class="field remote-field">
-              <span>Client Secret</span>
-              <input type="password" bind:value={syncClientSecret} placeholder="Google OAuth Client Secret" />
+              <span>{t('syncPassphrase')}</span>
+              <input type="password" bind:value={syncPassphrase} placeholder={t('syncPassphrasePlaceholder')} />
             </label>
-          </details>
-          <div class="m-actions" style="margin-top:16px;">
-            <button class="m-btn gold" on:click={saveSyncSettings} disabled={syncSaving}>
-              {syncSaving ? '…' : t('saveAndApply')}
-            </button>
-            <button class="m-btn" on:click={runBackupNow} disabled={syncActionRunning}>{t('backupNow')}</button>
-            <button class="m-btn" on:click={runSyncNow} disabled={syncActionRunning}>{t('syncNow')}</button>
-            <button class="m-btn" on:click={runPullNow} disabled={syncActionRunning}>{t('pullNow')}</button>
-          </div>
+
+            <details class="sync-advanced">
+              <summary>{t('syncAdvanced')}</summary>
+              <label class="field remote-field">
+                <span>Client ID</span>
+                <input type="text" bind:value={syncClientID} placeholder="Google OAuth Client ID" />
+              </label>
+              <label class="field remote-field">
+                <span>Client Secret</span>
+                <input type="password" bind:value={syncClientSecret} placeholder="Google OAuth Client Secret" />
+              </label>
+              <label class="field remote-field">
+                <span>Token Path</span>
+                <input type="text" bind:value={syncTokenPath} placeholder="./data/sync_token.json" />
+              </label>
+            </details>
+
+            <div class="m-actions" style="margin-top:16px; flex-wrap:wrap;">
+              <button class="m-btn gold" on:click={saveSyncSettings} disabled={syncSaving}>
+                {syncSaving ? '…' : t('saveAndApply')}
+              </button>
+              <button class="m-btn" on:click={runBackupNow} disabled={syncActionRunning}>{t('backupNow')}</button>
+              <button class="m-btn" on:click={runPullNow} disabled={syncActionRunning}>{t('pullNow')}</button>
+            </div>
+
+          {:else}
+            <!-- ── Bağlı değil ── -->
+            <div class="sync-connect-card">
+              <div class="sync-connect-icon">
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>
+                  <polyline points="16 16 12 12 8 16"/>
+                  <line x1="12" y1="12" x2="12" y2="21"/>
+                </svg>
+              </div>
+              <h4>Google Drive Yedekleme</h4>
+              <p>{t('syncConnectDesc')}</p>
+              <button class="sync-connect-btn" on:click={handleProfileSyncClick} disabled={syncConnecting}>
+                {#if syncConnecting}
+                  <span class="sync-spinner"></span> {t('driveConnecting')}
+                {:else}
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="M15.05 5A5 5 0 0 1 19 8.95M15.05 1A9 9 0 0 1 23 8.94m-1 7.98v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 3.04 9.08 19.79 19.79 0 0 1 0 .42"/>
+                  </svg>
+                  {t('connectDrive')}
+                {/if}
+              </button>
+            </div>
+          {/if}
+
           {#if syncStatusText}
-            <p class="m-desc" style="color:var(--green); margin-top:8px;">{syncStatusText}</p>
+            <p class="sync-feedback ok">{syncStatusText}</p>
           {/if}
           {#if syncErrorText}
-            <p class="m-desc" style="color:var(--red); margin-top:8px;">{syncErrorText}</p>
+            <p class="sync-feedback err">{syncErrorText}</p>
           {/if}
         </div>
       {:else if settingsTab === 'remote'}
@@ -1703,18 +1789,50 @@ Core Directives:
         </div>
       {:else if settingsTab === 'about'}
         <div class="m-section about-section">
-          <h3 style="margin: 0; display: flex; align-items: center; justify-content: space-between;">
-            Memo AI
-            <span style="font-size: 11px; opacity: 0.5; font-weight: normal;">{appVersion}</span>
-          </h3>
-          <p class="m-desc">{t('aboutDev')}: <strong>Buğra Akdemir</strong></p>
+          <!-- Logo + version -->
+          <div class="about-hero">
+            <div class="about-logo">M</div>
+            <div class="about-hero-text">
+              <h3>Memo</h3>
+              <span class="about-version">v{appVersion}</span>
+            </div>
+          </div>
+
+          <p class="about-tagline">Your Mind. Your Data. Your Computer.</p>
+
+          <!-- Feature pills -->
+          <div class="about-pills">
+            <span class="about-pill">🧠 RAG Memory</span>
+            <span class="about-pill">🔒 100% Local</span>
+            <span class="about-pill">⚡ llama.cpp</span>
+            <span class="about-pill">☁️ Drive Backup</span>
+            <span class="about-pill">🎙️ Voice Input</span>
+          </div>
+
           <div class="about-card mt-3">
             <h4>{t('aboutVisionTitle')}</h4>
             <p>{t('aboutVisionText')}</p>
           </div>
+
           <div class="about-card mt-3">
             <h4>{t('aboutPrivacyTitle')}</h4>
             <p>{t('aboutPrivacyText')}</p>
+          </div>
+
+          <div class="about-card mt-3">
+            <h4>{t('aboutBuiltWith')}</h4>
+            <div class="about-tech-grid">
+              <div class="about-tech-item"><span class="about-tech-icon">Go</span><span>Wails + Go</span></div>
+              <div class="about-tech-item"><span class="about-tech-icon">Sv</span><span>Svelte</span></div>
+              <div class="about-tech-item"><span class="about-tech-icon">🦙</span><span>llama.cpp</span></div>
+              <div class="about-tech-item"><span class="about-tech-icon">🔍</span><span>chromem-go</span></div>
+            </div>
+          </div>
+
+          <div class="about-footer">
+            <span>{t('aboutDev')}: <strong>Buğra Akdemir</strong></span>
+            <span class="about-sep">·</span>
+            <span>{t('aboutOpenSource')}</span>
           </div>
         </div>
       {/if}
@@ -2617,6 +2735,48 @@ Core Directives:
   .about-card { background: var(--bg-element); padding: var(--sp-4); border-radius: var(--r-md); margin-top: var(--sp-3); }
   .about-card h4 { margin: 0 0 var(--sp-2) 0; font-size: 13px; color: var(--text-main); }
   .about-card p { font-size: 13px; color: var(--text-muted); line-height: 1.6; margin: 0; }
+
+  /* About redesign */
+  .about-hero { display: flex; align-items: center; gap: 14px; margin-bottom: 6px; }
+  .about-logo { width: 44px; height: 44px; background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%); border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 22px; font-weight: 700; color: var(--text-main); flex-shrink: 0; }
+  .about-hero-text { display: flex; flex-direction: column; gap: 2px; }
+  .about-hero-text h3 { margin: 0; font-size: 18px; color: var(--text-main); }
+  .about-version { font-size: 11px; color: var(--text-muted); background: var(--bg-element); border: 1px solid var(--border-subtle); border-radius: 999px; padding: 1px 8px; width: fit-content; }
+  .about-tagline { font-size: 12px; color: var(--text-muted); margin-bottom: 16px; font-style: italic; }
+  .about-pills { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 4px; }
+  .about-pill { font-size: 11px; padding: 3px 10px; border-radius: 999px; background: var(--bg-element); border: 1px solid var(--border-subtle); color: var(--text-muted); }
+  .about-tech-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 8px; }
+  .about-tech-item { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted); }
+  .about-tech-icon { width: 24px; height: 24px; background: var(--bg-tertiary); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--text-secondary); flex-shrink: 0; }
+  .about-footer { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
+  .about-sep { color: var(--border-default, #444); }
+
+  /* Sync section redesign */
+  .sync-section { display: flex; flex-direction: column; gap: 12px; }
+  .sync-account-card { display: flex; align-items: center; gap: 12px; background: var(--bg-element); border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: 12px 14px; }
+  .sync-account-avatar { width: 36px; height: 36px; border-radius: 50%; background: linear-gradient(135deg, var(--accent) 0%, var(--accent-hover) 100%); display: flex; align-items: center; justify-content: center; font-size: 15px; font-weight: 700; color: var(--text-main); flex-shrink: 0; }
+  .sync-account-info { display: flex; flex-direction: column; gap: 2px; flex: 1; min-width: 0; }
+  .sync-account-name { font-size: 13px; font-weight: 600; color: var(--text-main); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sync-account-email { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .sync-disconnect-btn { display: flex; align-items: center; gap: 5px; padding: 5px 10px; border-radius: var(--r-sm); background: transparent; border: 1px solid var(--border-subtle); color: var(--text-muted); font-size: 11px; cursor: pointer; transition: color 150ms, border-color 150ms; flex-shrink: 0; }
+  .sync-disconnect-btn:hover { color: #f87171; border-color: #f87171; }
+  .sync-connected-desc { margin: 0; }
+  .sync-toggle-row { display: flex; align-items: center; justify-content: space-between; padding: 6px 0; }
+  .sync-advanced { margin-top: 4px; }
+  .sync-advanced summary { cursor: pointer; font-size: 12px; color: var(--text-muted); padding: 6px 0; user-select: none; }
+  .sync-connect-card { background: var(--bg-element); border: 1px solid var(--border-subtle); border-radius: var(--r-md); padding: 28px 20px; text-align: center; display: flex; flex-direction: column; align-items: center; gap: 10px; }
+  .sync-connect-icon { color: var(--text-muted); opacity: 0.6; }
+  .sync-connect-card h4 { font-size: 14px; color: var(--text-main); margin: 0; }
+  .sync-connect-card p { font-size: 12px; color: var(--text-muted); line-height: 1.6; max-width: 280px; }
+  .sync-connect-btn { margin-top: 6px; display: flex; align-items: center; gap: 7px; padding: 8px 20px; border-radius: var(--r-pill); background: var(--text-main); border: none; color: var(--text-inverse); font-size: 13px; font-weight: 600; cursor: pointer; transition: background 150ms, box-shadow 150ms; }
+  .sync-connect-btn:hover:not(:disabled) { background: var(--accent); box-shadow: 0 0 20px rgba(201, 168, 76, 0.35); }
+  .sync-connect-btn:hover:not(:disabled) { opacity: 0.88; }
+  .sync-connect-btn:disabled { opacity: 0.5; cursor: default; }
+  .sync-spinner { width: 12px; height: 12px; border: 2px solid rgba(255,255,255,.3); border-top-color: #fff; border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .sync-feedback { font-size: 12px; margin: 0; padding: 8px 12px; border-radius: var(--r-sm); }
+  .sync-feedback.ok { color: var(--status-online, #4ade80); background: rgba(74,222,128,.08); }
+  .sync-feedback.err { color: #f87171; background: rgba(248,113,113,.08); }
   
   .setup-wizard { padding: 0; max-width: 540px; }
   .setup-input { width: 100%; border: 1px solid var(--border-soft); background: var(--bg-app); color: var(--text-main); padding: var(--sp-3); border-radius: var(--r-md); font-size: 14px; margin-top: 4px; }

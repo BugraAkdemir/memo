@@ -54,6 +54,10 @@ export function DetectGPU() {
   return window['go']['main']['App']['DetectGPU']();
 }
 
+export function DisconnectSync() {
+  return window['go']['main']['App']['DisconnectSync']();
+}
+
 export function DownloadModel(arg1, arg2) {
   return window['go']['main']['App']['DownloadModel'](arg1, arg2);
 }

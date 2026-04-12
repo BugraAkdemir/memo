@@ -10,40 +10,71 @@
   --sp-6: 32px;
   --sp-8: 48px;
 
-  /* ─── Premium Greige Palette ─── */
-  --bg-app: #fbfbfa;
-  --bg-panel: #f4f3ef;
-  --bg-element: #ebeae5;
-  --bg-hover: #e3e2dc;
-  
-  --text-main: #2b2a28;
-  --text-muted: #73706b;
-  --text-dim: #9c9a93;
-  --text-inverse: #fbfbfa;
-  
-  --border-soft: rgba(0, 0, 0, 0.06);
-  --border-hover: rgba(0, 0, 0, 0.12);
-  
-  --accent: #5e5c57;
-  --accent-muted: rgba(94, 92, 87, 0.1);
-  --accent-hover: #4a4945;
+  /* ─── Cream + Gold Palette (matches memo-web) ─── */
+  --bg-app:     #FDFCF0;   /* website --cream          */
+  --bg-body:    #FDFCF0;
+  --bg-panel:   #F5F3E0;   /* website --cream-dark     */
+  --bg-element: #EAE8D5;   /* website --cream-darker   */
+  --bg-hover:   #DDD9C4;   /* one step deeper          */
+
+  --text-main:      #1A1A1A;  /* website --charcoal       */
+  --text-secondary: #2C2C2C;  /* website --charcoal-mid   */
+  --text-muted:     #4A4A4A;  /* website --charcoal-light */
+  --text-dim:       #8A8A7A;  /* website --muted          */
+  --text-inverse:   #FDFCF0;
+
+  --border-soft:   rgba(26, 26, 26, 0.08);   /* website --border        */
+  --border-subtle: rgba(26, 26, 26, 0.06);
+  --border-hover:  rgba(26, 26, 26, 0.18);   /* website --glass-border  */
+
+  /* ─── Gold Accent (matches website --gold) ─── */
+  --accent:       #C9A84C;
+  --accent-light: #E8C97A;   /* website --gold-light    */
+  --accent-pale:  #F5E8C0;   /* website --gold-pale     */
+  --accent-muted: rgba(201, 168, 76, 0.12);
+  --accent-hover: #b8943e;
 
   /* ─── Functional ─── */
   --green: #51b576;
-  --red: #d35f5f;
-  --shadow-sm: 0 2px 8px rgba(0,0,0,0.03);
-  --shadow-md: 0 4px 16px rgba(0,0,0,0.05);
-  --shadow-lg: 0 8px 32px rgba(0,0,0,0.06);
+  --red:   #d35f5f;
+  --shadow-sm: 0 2px 8px rgba(26,26,26,0.04);
+  --shadow-md: 0 4px 16px rgba(26,26,26,0.07);
+  --shadow-lg: 0 8px 32px rgba(26,26,26,0.10);
 
   /* ─── Spacing / Radius ─── */
-  --r-sm: 8px;
-  --r-md: 14px;
-  --r-lg: 20px;
+  --r-sm:   8px;
+  --r-md:   14px;
+  --r-lg:   20px;
   --r-pill: 9999px;
 
   /* ─── Fonts ─── */
   --sans: 'Inter', -apple-system, system-ui, sans-serif;
   --mono: 'JetBrains Mono', 'Fira Code', monospace;
+  --font-sans: var(--sans);
+  --font-mono: var(--mono);
+
+  /* ─── Aliases (for legacy component vars) ─── */
+  --radius-full:  9999px;
+  --bg-tertiary:  var(--bg-hover);
+  --bg-body:      var(--bg-app);
+  --text-secondary: #2C2C2C;
+  --border-subtle:  rgba(26, 26, 26, 0.07);
+  --status-online:  #51b576;
+
+  /* ─── Gold accent (formerly purple) ─── */
+  --neon-purple:     #C9A84C;
+  --neon-purple-dim: rgba(201, 168, 76, 0.10);
+  --glow-purple:     rgba(201, 168, 76, 0.38);
+
+  /* ─── Warm brown (formerly neon-blue, for incognito / live mode) ─── */
+  --neon-blue:     #8B6535;
+  --neon-blue-dim: rgba(139, 101, 53, 0.10);
+
+  /* ─── Glass (warm cream glass, matches website) ─── */
+  --glass-bg:           rgba(253, 252, 240, 0.85);
+  --glass-border:       rgba(201, 168, 76, 0.18);
+  --glass-border-hover: rgba(201, 168, 76, 0.35);
+  --bg-elevated:        rgba(253, 252, 240, 0.95);
 }
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; }
@@ -67,9 +98,12 @@ html, body {
 
 /* ─── Scrollbar ─── */
 ::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-track { background: var(--bg-app); }
 ::-webkit-scrollbar-thumb { background: var(--bg-hover); border-radius: var(--r-pill); }
-::-webkit-scrollbar-thumb:hover { background: var(--text-dim); }
+::-webkit-scrollbar-thumb:hover { background: var(--accent); }
+
+/* ─── Selection ─── */
+::selection { background: var(--accent-pale); color: var(--text-main); }
 
 /* ─── Base Resets ─── */
 button {

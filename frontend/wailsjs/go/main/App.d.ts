@@ -34,6 +34,8 @@ export function DeleteMemoryFile(arg1:string):Promise<void>;
 
 export function DetectGPU():Promise<llama.GPUInfo>;
 
+export function DisconnectSync():Promise<void>;
+
 export function DownloadModel(arg1:string,arg2:string):Promise<void>;
 
 export function GetActiveChatID():Promise<string>;

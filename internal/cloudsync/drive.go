@@ -23,9 +23,10 @@ import (
 )
 
 const (
-	backupMimeType   = "application/octet-stream"
-	backupNamePrefix = "memo_backup_"
-	driveAppFolder   = "appDataFolder"
+	backupMimeType    = "application/octet-stream"
+	backupNamePrefix  = "memo_backup_"
+	driveFolderName   = "Memo Backups"
+	driveFolderMime   = "application/vnd.google-apps.folder"
 )
 
 // driveClient wraps the Google Drive API with automatic token refresh and persistence.
@@ -34,6 +35,7 @@ type driveClient struct {
 	cfg       *oauth2.Config
 	token     *oauth2.Token
 	tokenPath string
+	folderID  string // cached "Memo Backups" folder ID
 
 	// authDone is closed once the OAuth loopback flow completes.
 	authDone       chan struct{}
@@ -44,9 +46,9 @@ func newDriveClient(clientID, clientSecret, tokenPath string) *driveClient {
 	cfg := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
-		// appdata scope: only files this app creates; user cannot see them in Drive UI.
+		// drive.file scope: access only to files created by this app; no verification required.
 		Scopes: []string{
-			drive.DriveAppdataScope,
+			drive.DriveFileScope,
 			"openid",
 			"https://www.googleapis.com/auth/userinfo.email",
 			"https://www.googleapis.com/auth/userinfo.profile",
@@ -120,10 +122,34 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 			http.Error(w, "missing code", http.StatusBadRequest)
 			return
 		}
-		fmt.Fprint(w, `<html><body style="font-family:sans-serif;padding:2rem">
-			<h2>Memo — Authorization complete</h2>
-			<p>You can close this tab and return to the app.</p>
-		</body></html>`)
+		fmt.Fprint(w, `<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Memo — Connected</title>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{min-height:100vh;display:flex;align-items:center;justify-content:center;background:#0a0a0a;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#e5e5e5}
+  .card{background:#141414;border:1px solid #2a2a2a;border-radius:16px;padding:48px 40px;max-width:400px;width:90%;text-align:center;box-shadow:0 24px 64px rgba(0,0,0,.6)}
+  .icon{width:64px;height:64px;background:linear-gradient(135deg,#a78bfa,#7c3aed);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 24px}
+  .icon svg{width:32px;height:32px;stroke:#fff;fill:none;stroke-width:2.5;stroke-linecap:round;stroke-linejoin:round}
+  h1{font-size:20px;font-weight:600;color:#f5f5f5;margin-bottom:8px}
+  p{font-size:14px;color:#888;line-height:1.6}
+  .badge{display:inline-block;margin-top:24px;padding:6px 16px;background:#1e1e1e;border:1px solid #333;border-radius:999px;font-size:12px;color:#666;letter-spacing:.04em}
+</style>
+</head>
+<body>
+<div class="card">
+  <div class="icon">
+    <svg viewBox="0 0 24 24"><polyline points="20 6 9 17 4 12"/></svg>
+  </div>
+  <h1>Drive Connected</h1>
+  <p>Authorization complete. You can close this tab and return to Memo.</p>
+  <span class="badge">MEMO · LOCAL AI</span>
+</div>
+</body>
+</html>`)
 
 		// Exchange in background so the HTTP response can flush.
 		go func() {
@@ -257,9 +283,58 @@ func (dc *driveClient) GetAccountInfo(ctx context.Context) (string, string, erro
 	return u.Name, u.Email, nil
 }
 
-// UploadBackup uploads an already-encrypted blob to Drive's appDataFolder.
+// getOrCreateFolder returns the Drive folder ID for "Memo Backups", creating it if needed.
+// The ID is cached so subsequent calls are free.
+func (dc *driveClient) getOrCreateFolder(svc *drive.Service) (string, error) {
+	dc.mu.Lock()
+	cached := dc.folderID
+	dc.mu.Unlock()
+	if cached != "" {
+		return cached, nil
+	}
+
+	// Search for existing folder.
+	q := fmt.Sprintf("name = '%s' and mimeType = '%s' and trashed = false", driveFolderName, driveFolderMime)
+	resp, err := svc.Files.List().
+		Spaces("drive").
+		Q(q).
+		Fields("files(id)").
+		PageSize(1).
+		Do()
+	if err != nil {
+		return "", fmt.Errorf("cloudsync: folder search: %w", err)
+	}
+
+	var folderID string
+	if len(resp.Files) > 0 {
+		folderID = resp.Files[0].Id
+	} else {
+		// Create the folder.
+		f, err := svc.Files.Create(&drive.File{
+			Name:     driveFolderName,
+			MimeType: driveFolderMime,
+		}).Fields("id").Do()
+		if err != nil {
+			return "", fmt.Errorf("cloudsync: folder create: %w", err)
+		}
+		folderID = f.Id
+		log.Printf("cloudsync: created Drive folder %q (%s)", driveFolderName, folderID)
+	}
+
+	dc.mu.Lock()
+	dc.folderID = folderID
+	dc.mu.Unlock()
+	return folderID, nil
+}
+
+// UploadBackup uploads an already-encrypted blob into the "Memo Backups" Drive folder.
 func (dc *driveClient) UploadBackup(data []byte) (string, error) {
 	svc, err := dc.service()
+	if err != nil {
+		return "", err
+	}
+
+	folderID, err := dc.getOrCreateFolder(svc)
 	if err != nil {
 		return "", err
 	}
@@ -267,7 +342,7 @@ func (dc *driveClient) UploadBackup(data []byte) (string, error) {
 	name := fmt.Sprintf("%s%s.enc", backupNamePrefix, time.Now().UTC().Format("20060102_150405"))
 	meta := &drive.File{
 		Name:    name,
-		Parents: []string{driveAppFolder},
+		Parents: []string{folderID},
 	}
 
 	f, err := svc.Files.Create(meta).
@@ -289,9 +364,14 @@ func (dc *driveClient) DownloadLatestBackup() (string, []byte, error) {
 		return "", nil, err
 	}
 
-	q := fmt.Sprintf("name contains '%s' and trashed = false", backupNamePrefix)
+	folderID, err := dc.getOrCreateFolder(svc)
+	if err != nil {
+		return "", nil, err
+	}
+
+	q := fmt.Sprintf("'%s' in parents and name contains '%s' and trashed = false", folderID, backupNamePrefix)
 	resp, err := svc.Files.List().
-		Spaces(driveAppFolder).
+		Spaces("drive").
 		Q(q).
 		Fields("files(id, name, createdTime)").
 		OrderBy("createdTime desc").
@@ -325,9 +405,14 @@ func (dc *driveClient) PruneOldBackups(keep int) error {
 		return err
 	}
 
-	q := fmt.Sprintf("name contains '%s' and trashed = false", backupNamePrefix)
+	folderID, err := dc.getOrCreateFolder(svc)
+	if err != nil {
+		return err
+	}
+
+	q := fmt.Sprintf("'%s' in parents and name contains '%s' and trashed = false", folderID, backupNamePrefix)
 	resp, err := svc.Files.List().
-		Spaces(driveAppFolder).
+		Spaces("drive").
 		Q(q).
 		Fields("files(id, name, createdTime)").
 		OrderBy("createdTime desc").

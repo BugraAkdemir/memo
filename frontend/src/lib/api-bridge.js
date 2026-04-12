@@ -318,6 +318,13 @@ export async function StartSyncAuth() {
   throw new Error('Cloud sync auth is not available');
 }
 
+export async function DisconnectSync() {
+  if (!isWails) return;
+  const w = await getWailsApp();
+  if (typeof w.DisconnectSync === 'function') return w.DisconnectSync();
+  throw new Error('DisconnectSync is not available');
+}
+
 export async function TriggerSync() {
   if (!isWails) return;
   const w = await getWailsApp();

@@ -82,8 +82,36 @@ func (a *App) SetEmbeddedAssets(assets embed.FS) {
 	a.embeddedAssets = assets
 }
 
+// loadDotEnv reads a .env file and sets any unset environment variables from it.
+// Lines starting with # are ignored. Format: KEY=VALUE (no export keyword needed).
+func loadDotEnv(path string) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return // .env is optional
+	}
+	for _, line := range strings.Split(string(data), "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.SplitN(line, "=", 2)
+		if len(parts) != 2 {
+			continue
+		}
+		key := strings.TrimSpace(parts[0])
+		val := strings.TrimSpace(parts[1])
+		// Only set if not already set by the real environment.
+		if key != "" && os.Getenv(key) == "" {
+			_ = os.Setenv(key, val)
+		}
+	}
+}
+
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
+
+	// Load .env before anything else so credentials are available via os.Getenv.
+	loadDotEnv(".env")
 
 	cfg, err := config.Load("config/config.yaml")
 	if err != nil {
@@ -1374,5 +1402,19 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 	} else {
 		a.syncManager = nil
 	}
+	return nil
+}
+
+// DisconnectSync revokes the local OAuth token and resets the sync manager.
+// The user will need to re-authenticate to use cloud sync again.
+func (a *App) DisconnectSync() error {
+	tokenPath := a.cfg.Sync.TokenPath
+	if tokenPath == "" {
+		tokenPath = "./data/sync_token.json"
+	}
+	if err := os.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
+		return fmt.Errorf("disconnect sync: remove token: %w", err)
+	}
+	a.syncManager = nil
 	return nil
 }

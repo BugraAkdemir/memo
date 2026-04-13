@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 )
@@ -145,6 +146,9 @@ func detectAMD() (GPUInfo, bool) {
 }
 
 func detectAMDSysfs() (GPUInfo, bool) {
+	if runtime.GOOS != "linux" {
+		return GPUInfo{}, false
+	}
 	// Check /sys/class/drm/card*/device/vendor for AMD vendor ID 0x1002
 	out, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/vendor 2>/dev/null | head -1").Output()
 	if err != nil {

@@ -145,7 +145,7 @@ func (a *App) startup(ctx context.Context) {
 	a.llamaEmbedServer = llama.NewServer(cfg.Llama.EmbeddingPort, 512) // embedding models need minimal context
 	a.llamaInstaller = llama.NewInstaller("data")
 
-	// Check embedding health in background
+	// Check embedding health in background.
 	go func() {
 		time.Sleep(2 * time.Second) // wait for LM Studio / embedding server to be ready
 		h := a.CheckEmbeddingHealth()
@@ -426,38 +426,44 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		}
 
 		if chunk.Done {
-			duration := time.Since(start).Seconds()
-			tps := 0.0
-			if duration > 0 {
-				tps = float64(tokenCount) / duration
-			}
-
-			reply := fullReply.String()
-			stats := &api.MessageStats{
-				TokensPerSecond:  tps,
-				CompletionTokens: tokenCount,
-				TotalDuration:    duration,
-				StopReason:       chunk.FinishReason,
-			}
-
-			// Final chunk with stats
-			wailsRuntime.EventsEmit(a.ctx, "chat:done", api.StreamChunk{
-				Done:  true,
-				Stats: stats,
-			})
-
-			// Post-stream persistence
-			if !a.isIncognito {
-				if a.sessions != nil {
-					a.sessions.AddMessage("assistant", reply, "", "")
-				}
-				a.saveMemoryAsync(userMsg, reply)
-			} else {
-				// For incognito, we still need to track the conversation in memory (volatile)
-				a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
-			}
+			a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
 			return
 		}
+	}
+
+	// Channel closed without an explicit Done chunk (some providers skip [DONE]).
+	// Treat accumulated content as a complete reply.
+	if fullReply.Len() > 0 {
+		a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
+	} else {
+		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ Model boş yanıt döndürdü")
+	}
+}
+
+func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg string) {
+	duration := time.Since(start).Seconds()
+	tps := 0.0
+	if duration > 0 && tokenCount > 0 {
+		tps = float64(tokenCount) / duration
+	}
+
+	wailsRuntime.EventsEmit(a.ctx, "chat:done", api.StreamChunk{
+		Done: true,
+		Stats: &api.MessageStats{
+			TokensPerSecond:  tps,
+			CompletionTokens: tokenCount,
+			TotalDuration:    duration,
+			StopReason:       finishReason,
+		},
+	})
+
+	if !a.isIncognito {
+		if a.sessions != nil {
+			a.sessions.AddMessage("assistant", reply, "", "")
+		}
+		a.saveMemoryAsync(userMsg, reply)
+	} else {
+		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
 	}
 }
 
@@ -587,6 +593,90 @@ func (a *App) GetActiveChatID() string {
 	return a.sessions.GetActiveID()
 }
 
+// ExportChat returns the active chat as a Markdown string.
+func (a *App) ExportChat() string {
+	if a.sessions == nil {
+		return ""
+	}
+	msgs := a.sessions.GetActiveMessages()
+	if len(msgs) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	chatID := a.sessions.GetActiveID()
+	// Find title from list
+	title := "Memo Chat"
+	for _, s := range a.sessions.ListChats() {
+		if s.ID == chatID {
+			title = s.Title
+			break
+		}
+	}
+	sb.WriteString("# " + title + "\n\n")
+	sb.WriteString("_Exported from Memo — " + time.Now().Format("2006-01-02 15:04") + "_\n\n---\n\n")
+
+	for _, m := range msgs {
+		switch m.Role {
+		case "user":
+			sb.WriteString("**You** · " + m.Timestamp + "\n\n")
+		case "assistant":
+			sb.WriteString("**Memo** · " + m.Timestamp + "\n\n")
+		}
+		sb.WriteString(m.Content + "\n\n---\n\n")
+	}
+	return sb.String()
+}
+
+// GenerateChatTitle asks the LLM to produce a short title from the first
+// exchange, then renames the active chat and returns the new title.
+func (a *App) GenerateChatTitle() string {
+	if a.sessions == nil {
+		return ""
+	}
+	msgs := a.sessions.GetActiveMessages()
+	// Only generate when we have exactly the first exchange (user + assistant).
+	if len(msgs) < 2 {
+		return ""
+	}
+
+	first := msgs[0].Content
+	if len(first) > 300 {
+		first = first[:300]
+	}
+	second := msgs[1].Content
+	if len(second) > 300 {
+		second = second[:300]
+	}
+
+	prompt := []api.Message{
+		api.NewTextMessage("user", fmt.Sprintf(
+			"Based on this conversation excerpt, generate a very short chat title (3–6 words max, no quotes, no punctuation at end):\n\nUser: %s\nAssistant: %s\n\nTitle:",
+			first, second,
+		)),
+	}
+
+	title := strings.TrimSpace(a.callLLM(prompt))
+	// Discard error replies.
+	if title == "" || strings.HasPrefix(title, "⚠️") {
+		return ""
+	}
+	// Sanitize: remove surrounding quotes if any.
+	title = strings.Trim(title, `"'`)
+	// Truncate to 60 chars just in case.
+	runes := []rune(title)
+	if len(runes) > 60 {
+		title = string(runes[:60])
+	}
+
+	chatID := a.sessions.GetActiveID()
+	if err := a.sessions.RenameChat(chatID, title); err != nil {
+		log.Printf("auto-title rename: %v", err)
+		return ""
+	}
+	return title
+}
+
 // ─── File Dialog ─────────────────────────────────────────────────
 
 func (a *App) SelectImage() string {
@@ -641,11 +731,25 @@ func (a *App) StartRecording() error {
 	tmpFile.Close()
 	recFile = tmpFile.Name()
 
-	recCmd = exec.Command("arecord", "-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav", recFile)
+	var recordArgs []string
+	var recorder string
+	switch runtime.GOOS {
+	case "windows":
+		// ffmpeg with DirectShow — ships with many Windows systems; graceful fallback if missing
+		recorder = "ffmpeg"
+		recordArgs = []string{"-y", "-f", "dshow", "-i", "audio=@device_cm_{33D9A762-90C8-11D0-BD43-00A0C911CE86}\\wave_{00000000-0000-0000-0000-000000000000}", "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", recFile}
+	case "darwin":
+		recorder = "sox"
+		recordArgs = []string{"-d", "-b", "16", "-r", "16000", "-c", "1", recFile}
+	default:
+		recorder = "arecord"
+		recordArgs = []string{"-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav", recFile}
+	}
+	recCmd = exec.Command(recorder, recordArgs...)
 	if err := recCmd.Start(); err != nil {
 		recCmd = nil
 		os.Remove(recFile)
-		return fmt.Errorf("arecord start: %w", err)
+		return fmt.Errorf("recording start (%s): %w", recorder, err)
 	}
 
 	log.Println("Recording started")
@@ -783,7 +887,7 @@ func (a *App) GetConfig() *config.AppConfig { return a.cfg }
 func (a *App) GetAvailableStyles() []string { return identity.AvailableStyles() }
 
 func (a *App) UpdateIdentity(userName, assistantName, style string) error {
-	a.identity.Update(userName, assistantName, style, "")
+	a.identity.Update(userName, assistantName, style, a.cfg.Identity.SystemRole)
 	a.cfg.Identity.UserName = userName
 	a.cfg.Identity.AssistantName = assistantName
 	a.cfg.Identity.Style = style
@@ -940,26 +1044,33 @@ func (a *App) DeleteLocalModel(path string) error {
 // ─── llama-server: Lifecycle Management ──────────────────────────
 
 func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error {
-	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers); err != nil {
+	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers, false); err != nil {
 		return err
 	}
 
-	// Wait for the server to become ready (up to 120s for large models)
-	if err := a.llamaServer.WaitReady(120 * time.Second); err != nil {
-		a.llamaServer.Stop()
-		return fmt.Errorf("model loaded but server failed to start: %w", err)
-	}
+	// Wait in background — emit events so the UI can show real-time progress.
+	go func() {
+		wailsRuntime.EventsEmit(a.ctx, "model:loading", map[string]any{"model": modelPath})
 
-	// Redirect API client to the local llama-server
-	newBaseURL := a.llamaServer.GetBaseURL()
-	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
-	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
+		if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
+			a.llamaServer.Stop()
+			wailsRuntime.EventsEmit(a.ctx, "model:error", err.Error())
+			return
+		}
 
-	// Keep embeddings on the original API (e.g. LM Studio) — chat model doesn't support /embeddings
-	if !a.llamaEmbedServer.IsRunning() {
-		origClient := api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
-		a.reinitMemoryStore(origClient, a.cfg.API.EmbeddingModel)
-	}
+		// Redirect API client to the local llama-server
+		newBaseURL := a.llamaServer.GetBaseURL()
+		a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
+		log.Printf("API client redirected to local llama-server: %s", newBaseURL)
+
+		// Keep embeddings on the original API (e.g. LM Studio)
+		if !a.llamaEmbedServer.IsRunning() {
+			origClient := api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
+			a.reinitMemoryStore(origClient, a.cfg.API.EmbeddingModel)
+		}
+
+		wailsRuntime.EventsEmit(a.ctx, "model:ready", map[string]any{"model": modelPath})
+	}()
 
 	return nil
 }
@@ -1024,7 +1135,7 @@ func (a *App) InstallLlamaServer() error {
 // ─── Embedding Server: Lifecycle Management ─────────────────────
 
 func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
-	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, a.cfg.Llama.EmbeddingPort, gpuLayers); err != nil {
+	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, a.cfg.Llama.EmbeddingPort, gpuLayers, true); err != nil {
 		return err
 	}
 

@@ -62,6 +62,14 @@ export function DownloadModel(arg1, arg2) {
   return window['go']['main']['App']['DownloadModel'](arg1, arg2);
 }
 
+export function ExportChat() {
+  return window['go']['main']['App']['ExportChat']();
+}
+
+export function GenerateChatTitle() {
+  return window['go']['main']['App']['GenerateChatTitle']();
+}
+
 export function GetActiveChatID() {
   return window['go']['main']['App']['GetActiveChatID']();
 }

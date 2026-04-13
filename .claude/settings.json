@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(chmod +x /home/bugrapc/Documents/local-llmmmemory/package_windows.sh)",
+      "Bash(command -v makensis)",
+      "Bash(makensis /VERSION)",
+      "Bash(pacman -Ss nsis)",
+      "Bash(yay -Ss nsis)",
+      "Bash(paru -Ss nsis)",
+      "Bash(yay -Ss \"^nsis\")",
+      "Bash(yay --noconfirm -Ss nsis)",
+      "Bash(echo \"Linux EXIT:$?\")",
+      "Bash(echo \"Windows EXIT:$?\")",
+      "Bash(makensis --version)",
+      "Read(//usr/share/nsis/Include/**)",
+      "Bash(bash /home/bugrapc/Documents/local-llmmmemory/package_windows.sh)"
+    ]
+  }
+}

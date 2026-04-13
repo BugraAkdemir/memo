@@ -12,6 +12,7 @@ func processSSEStream(body io.ReadCloser, ch chan<- StreamChunk) {
 	defer body.Close()
 
 	scanner := bufio.NewScanner(body)
+	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer for long Gemini chunks
 	for scanner.Scan() {
 		line := scanner.Text()
 

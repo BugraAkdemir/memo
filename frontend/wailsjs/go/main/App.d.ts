@@ -38,6 +38,10 @@ export function DisconnectSync():Promise<void>;
 
 export function DownloadModel(arg1:string,arg2:string):Promise<void>;
 
+export function ExportChat():Promise<string>;
+
+export function GenerateChatTitle():Promise<string>;
+
 export function GetActiveChatID():Promise<string>;
 
 export function GetActiveMessages():Promise<Array<sessions.ChatMessage>>;

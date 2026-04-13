@@ -19,7 +19,8 @@
     GetVersion,
     isWailsEnvironment,
     ListLocalModels, GetLocalModelStatus, StartLocalModel, StopLocalModel, StartEmbeddingModel, StopEmbeddingModel, GetEmbeddingModelStatus, DetectGPU, GetDownloadProgress, DownloadModel, CancelDownload, SearchModels, GetModelFiles, DeleteLocalModel, SetRemoteAccess, GetRemoteAccessStatus, CheckLlamaInstallation, InstallLlamaServer,
-    CheckAuth, StartSyncAuth, GetSyncAccount, GetSyncSettings, UpdateSyncSettings, TriggerSync, PullSync, SyncNow, DisconnectSync
+    CheckAuth, StartSyncAuth, GetSyncAccount, GetSyncSettings, UpdateSyncSettings, TriggerSync, PullSync, SyncNow, DisconnectSync,
+    ExportChat, GenerateChatTitle
   } from './lib/api-bridge.js';
 
   // EventsOn - only available in Wails
@@ -33,6 +34,29 @@
   let messages = [];
   let input = '';
   let loading = false;
+  let showTemplates = false;
+
+  const PROMPT_TEMPLATES = [
+    { key: '/code',    icon: '💻', label: 'Kod Review',       text: 'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```' },
+    { key: '/explain', icon: '📖', label: 'Açıkla',           text: 'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n' },
+    { key: '/fix',     icon: '🔧', label: 'Hata Düzelt',      text: 'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n' },
+    { key: '/plan',    icon: '🗺️', label: 'Plan Yap',         text: 'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n' },
+    { key: '/summary', icon: '📝', label: 'Özetle',           text: 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n' },
+    { key: '/compare', icon: '⚖️', label: 'Karşılaştır',      text: 'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ' },
+    { key: '/brainstorm', icon: '💡', label: 'Beyin Fırtınası', text: 'Şu konu hakkında yaratıcı fikirler üret:\n\n' },
+    { key: '/translate', icon: '🌐', label: 'Çevir (EN→TR)',  text: 'Aşağıdaki metni Türkçeye çevir:\n\n' },
+  ];
+
+  $: {
+    if (input === '/') { showTemplates = true; }
+    else if (!input.startsWith('/')) { showTemplates = false; }
+  }
+
+  function applyTemplate(tpl) {
+    input = tpl.text;
+    showTemplates = false;
+    setTimeout(() => document.querySelector('.chat-input')?.focus(), 50);
+  }
   let chatEl;
   let chats = [];
   let activeChatId = '';
@@ -419,6 +443,7 @@ Core Directives:
   let localModelStatus = { running: false, model_name: '', gpu: { type: 'cpu', name: 'N/A' } };
   let downloadProgress = { active: false, percent: 0, speed: '', downloaded: 0, total_bytes: 0 };
   let downloadPollTimer = null;
+  let modelStatusPollTimer = null;
   let gpuInfo = { type: 'cpu', name: 'N/A', vram_mb: 0 };
 
   onMount(async () => {
@@ -466,6 +491,29 @@ Core Directives:
       });
       EventsOn('sync:error', (msg) => {
         syncErrorText = String(msg || 'Unknown sync error');
+      });
+      EventsOn('model:loading', () => {
+        // Process started, waiting for server to become ready
+        modelLoadingMsg = 'Model yükleniyor...';
+      });
+      EventsOn('model:ready', async () => {
+        modelLoadingMsg = '';
+        modelStarting = '';
+        localModelStatus = await GetLocalModelStatus();
+        // Start embedding if queued
+        if (_pendingEmbedModel) {
+          const em = _pendingEmbedModel;
+          _pendingEmbedModel = null;
+          try {
+            await StartEmbeddingModel(em.path, 0);
+            embeddingModelStatus = await GetEmbeddingModelStatus();
+          } catch(e) { console.error('Embedding start error:', e); }
+        }
+      });
+      EventsOn('model:error', (msg) => {
+        modelLoadingMsg = '';
+        modelStarting = '';
+        alert('Model başlatılamadı: ' + msg);
       });
     }
   });
@@ -532,6 +580,8 @@ Core Directives:
           messages = [...messages];
           loading = false;
           refreshChats();
+          // Auto-title after first exchange (2 messages = 1 user + 1 assistant)
+          if (messages.length === 2) tryAutoTitle();
         }
       }
     });
@@ -596,6 +646,35 @@ Core Directives:
   }
 
   function onKey(e) { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(); } }
+
+  // ─── Export ───────────────────
+  async function exportChat() {
+    try {
+      const md = await ExportChat();
+      if (!md) return;
+      const blob = new Blob([md], { type: 'text/markdown' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      const chatTitle = chats.find(c => c.id === activeChatId)?.title || 'memo-chat';
+      a.href = url;
+      a.download = chatTitle.replace(/[^a-z0-9]/gi, '-').toLowerCase() + '.md';
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) { console.error('Export error:', e); }
+  }
+
+  // ─── Auto Title ───────────────────
+  async function tryAutoTitle() {
+    if (isIncognito) return;
+    const activeChat = chats.find(c => c.id === activeChatId);
+    if (!activeChat || activeChat.title !== 'New Chat') return;
+    try {
+      const newTitle = await GenerateChatTitle();
+      if (newTitle) {
+        await refreshChats();
+      }
+    } catch (e) {}
+  }
 
   // ─── Attach ───────────────────
   async function pickImage() {
@@ -879,6 +958,7 @@ Core Directives:
       } catch(e) { console.error('Models tab error:', e); }
       localModelLoading = false;
       pollDownloadProgress();
+      startModelStatusPoll();
     }
   }
 
@@ -959,6 +1039,32 @@ Core Directives:
     try { await CancelDownload(); } catch(e) {}
   }
 
+  function startModelStatusPoll() {
+    if (modelStatusPollTimer) clearInterval(modelStatusPollTimer);
+    modelStatusPollTimer = setInterval(async () => {
+      if (currentView !== 'models') {
+        clearInterval(modelStatusPollTimer);
+        modelStatusPollTimer = null;
+        return;
+      }
+      try {
+        [localModelStatus, embeddingModelStatus] = await Promise.all([
+          GetLocalModelStatus(),
+          GetEmbeddingModelStatus()
+        ]);
+      } catch(e) {}
+    }, 3000);
+  }
+
+  async function refreshModelStatus() {
+    try {
+      [localModelStatus, embeddingModelStatus] = await Promise.all([
+        GetLocalModelStatus(),
+        GetEmbeddingModelStatus()
+      ]);
+    } catch(e) {}
+  }
+
   async function deleteModel(path) {
     try {
       await DeleteLocalModel(path);
@@ -975,6 +1081,8 @@ Core Directives:
   let embedModelEnabled = false;
   let selectedEmbedModel = null;
   let embeddingModelStatus = { running: false };
+  let modelLoadingMsg = '';
+  let _pendingEmbedModel = null;
 
   function getAvailableEmbedModels() {
     if (!localModels) return [];
@@ -1006,24 +1114,18 @@ Core Directives:
     if (!modelToStart) return;
     configModalOpen = false;
     modelStarting = modelToStart.path;
+    modelLoadingMsg = 'Başlatılıyor...';
+    // Queue embedding model to start after chat model is ready
+    _pendingEmbedModel = (embedModelEnabled && selectedEmbedModel) ? selectedEmbedModel : null;
     try {
       await StartLocalModel(modelToStart.path, parseInt(configCtxSize), parseInt(configPort), parseInt(configGpuLayers));
-      localModelStatus = await GetLocalModelStatus();
-
-      // Start embedding model alongside if user opted in
-      if (embedModelEnabled && selectedEmbedModel) {
-        try {
-          await StartEmbeddingModel(selectedEmbedModel.path, 0); // CPU for embedding (small model)
-          embeddingModelStatus = await GetEmbeddingModelStatus();
-        } catch(e) {
-          console.error('Embedding model start error:', e);
-        }
-      }
+      // StartLocalModel now returns immediately; model:ready event handles the rest
     } catch(e) {
       console.error('Start model error:', e);
-      alert('Failed to start model: ' + (e?.message || e));
+      modelLoadingMsg = '';
+      modelStarting = '';
+      alert('Model başlatılamadı: ' + (e?.message || e));
     }
-    modelStarting = '';
     modelToStart = null;
   }
 
@@ -1193,9 +1295,20 @@ Core Directives:
           {chats.find(c => c.id === activeChatId)?.title || 'Memo'}
         {/if}
       </span>
-      <button class="bar-btn" on:click={openSettings}>
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-      </button>
+      <div style="display:flex;align-items:center;gap:4px;">
+        {#if messages.length > 0 && !isIncognito}
+          <button class="bar-btn" on:click={exportChat} title={lang === 'tr' ? 'Sohbeti dışa aktar' : 'Export chat'}>
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+              <polyline points="7 10 12 15 17 10"/>
+              <line x1="12" y1="15" x2="12" y2="3"/>
+            </svg>
+          </button>
+        {/if}
+        <button class="bar-btn" on:click={openSettings}>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        </button>
+      </div>
     </header>
 
     <!-- Feed -->
@@ -1294,6 +1407,26 @@ Core Directives:
         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
         <span>{attachedImage ? attachedImage.split('/').pop() : attachedFileName}</span>
         <button class="attach-x" on:click={clearAttach}>×</button>
+      </div>
+    {/if}
+
+    <!-- Prompt Templates Dropdown -->
+    {#if showTemplates}
+      <!-- svelte-ignore a11y-no-static-element-interactions -->
+      <div class="template-backdrop" on:click={() => showTemplates = false}></div>
+      <div class="template-popup">
+        <div class="template-hint">Bir şablon seç veya yazmaya devam et</div>
+        {#each PROMPT_TEMPLATES as tpl}
+          <!-- svelte-ignore a11y-no-static-element-interactions -->
+          <!-- svelte-ignore a11y-click-events-have-key-events -->
+          <button class="template-item" on:click={() => applyTemplate(tpl)}>
+            <span class="template-icon">{tpl.icon}</span>
+            <div class="template-info">
+              <span class="template-label">{tpl.label}</span>
+              <span class="template-key">{tpl.key}</span>
+            </div>
+          </button>
+        {/each}
       </div>
     {/if}
 
@@ -1422,21 +1555,55 @@ Core Directives:
             {/if}
           </div>
 
-          <!-- Running Model Status -->
-          {#if localModelStatus.running}
-            <div class="running-model-card">
-              <div class="running-model-info">
-                <span class="running-dot"></span>
-                <div>
-                  <div class="running-name">{localModelStatus.model_name}</div>
-                  <div class="running-meta">Port {localModelStatus.port} · PID {localModelStatus.pid} · {localModelStatus.gpu.type.toUpperCase()}</div>
-                </div>
-              </div>
-              <button class="m-btn danger" on:click={stopModel} disabled={modelStopping}>
-                {modelStopping ? '...' : 'Stop'}
-              </button>
+          <!-- Model Loading Progress -->
+          {#if modelLoadingMsg}
+            <div class="model-loading-bar">
+              <span class="model-loading-spinner"></span>
+              <span>{modelLoadingMsg}</span>
             </div>
           {/if}
+
+          <!-- Running Model Status -->
+          <div class="running-model-section">
+            <div class="running-section-header">
+              <span class="running-section-title">
+                {#if localModelStatus.running}
+                  <span class="status-dot-live"></span> Çalışan Model
+                {:else}
+                  <span class="status-dot-off"></span> Model Çalışmıyor
+                {/if}
+              </span>
+              <button class="refresh-btn" on:click={refreshModelStatus} title="Durumu yenile">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                Yenile
+              </button>
+            </div>
+            {#if localModelStatus.running}
+              <div class="running-model-card">
+                <div class="running-model-info">
+                  <span class="running-dot"></span>
+                  <div>
+                    <div class="running-name">{localModelStatus.model_name}</div>
+                    <div class="running-meta">Port {localModelStatus.port} · PID {localModelStatus.pid} · {localModelStatus.gpu.type.toUpperCase()}</div>
+                  </div>
+                </div>
+                <button class="m-btn danger" on:click={stopModel} disabled={modelStopping}>
+                  {modelStopping ? '...' : 'Stop'}
+                </button>
+              </div>
+            {/if}
+            {#if embeddingModelStatus.running}
+              <div class="running-model-card" style="margin-top: 6px; opacity: 0.85;">
+                <div class="running-model-info">
+                  <span class="running-dot" style="background: var(--accent-light);"></span>
+                  <div>
+                    <div class="running-name" style="font-size: 12px;">{embeddingModelStatus.model_name} <span style="color: var(--text-dim); font-size: 11px;">(embedding)</span></div>
+                    <div class="running-meta">Port {embeddingModelStatus.port} · PID {embeddingModelStatus.pid}</div>
+                  </div>
+                </div>
+              </div>
+            {/if}
+          </div>
 
           <!-- Download Progress -->
           {#if downloadProgress.active}
@@ -1586,7 +1753,7 @@ Core Directives:
       <button class="m-tab" class:active={settingsTab==='prompt'} on:click={() => settingsTab='prompt'}>{t('systemPrompt')}</button>
       <button class="m-tab" class:active={settingsTab==='incognito'} on:click={() => settingsTab='incognito'}>{t('incognitoPrompt')}</button>
       <button class="m-tab" class:active={settingsTab==='memory'} on:click={openMemTab}>{t('memory')}</button>
-      <button class="m-tab" class:active={settingsTab==='sync'} on:click={openSyncTab}>{t('cloudSync')}</button>
+<button class="m-tab" class:active={settingsTab==='sync'} on:click={openSyncTab}>{t('cloudSync')}</button>
       {#if isDesktop}
       <button class="m-tab" class:active={settingsTab==='remote'} on:click={openRemoteTab}>Remote Access</button>
       {/if}
@@ -2530,13 +2697,56 @@ Core Directives:
   }
   .attach-x:hover { color: var(--red); }
 
+  /* ─── PROMPT TEMPLATES ─── */
+  .template-backdrop { position: fixed; inset: 0; z-index: 99; }
+  .template-popup {
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: var(--sp-5);
+    right: var(--sp-5);
+    max-width: 520px;
+    margin: 0 auto;
+    background: var(--bg-app);
+    border: 1px solid var(--border-soft);
+    border-radius: var(--r-lg);
+    box-shadow: var(--shadow-lg), 0 0 0 1px rgba(201,168,76,0.08);
+    z-index: 100;
+    overflow: hidden;
+    animation: fadeIn 120ms ease-out;
+  }
+  .template-hint {
+    padding: 8px 14px 6px;
+    font-size: 11px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border-soft);
+    letter-spacing: 0.03em;
+  }
+  .template-item {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 9px 14px;
+    width: 100%;
+    text-align: left;
+    background: none;
+    border: none;
+    cursor: pointer;
+    transition: background 120ms;
+  }
+  .template-item:hover { background: var(--bg-element); }
+  .template-icon { font-size: 16px; flex-shrink: 0; }
+  .template-info { display: flex; flex-direction: column; gap: 1px; }
+  .template-label { font-size: 13px; font-weight: 500; color: var(--text-main); }
+  .template-key { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+
   /* ─── INPUT DOCK ─── */
   .input-dock {
-    padding: var(--sp-4) var(--sp-5) var(--sp-6); /* add padding bottom for floating look */
+    padding: var(--sp-4) var(--sp-5) var(--sp-6);
     background: transparent;
     border-top: none;
     display: flex;
     justify-content: center;
+    position: relative;
   }
   .input-row {
     display: flex;
@@ -2750,6 +2960,47 @@ Core Directives:
   .about-tech-icon { width: 24px; height: 24px; background: var(--bg-tertiary); border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--text-secondary); flex-shrink: 0; }
   .about-footer { margin-top: 20px; padding-top: 16px; border-top: 1px solid var(--border-subtle); display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: 12px; color: var(--text-muted); }
   .about-sep { color: var(--border-default, #444); }
+
+  /* API Provider */
+  .api-provider-grid {
+    display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px;
+    margin-bottom: 4px;
+  }
+  .api-provider-card {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 10px 12px; border-radius: var(--r-md);
+    border: 1px solid var(--border-soft);
+    background: var(--bg-element);
+    font-size: 12px; font-weight: 500; color: var(--text-muted);
+    cursor: pointer; transition: all 150ms ease; text-align: left;
+  }
+  .api-provider-card:hover { border-color: var(--accent); color: var(--text-main); }
+  .api-provider-card.selected { border-color: var(--accent); background: var(--accent-muted); color: var(--text-main); }
+  .api-provider-check { color: var(--accent); font-weight: 700; }
+  .api-provider-name { line-height: 1.3; }
+  .api-fields { display: flex; flex-direction: column; margin-top: 14px; }
+  .api-model-group { margin-top: 10px; }
+  .api-model-group-label {
+    display: block; font-size: 11px; font-weight: 600; color: var(--text-dim);
+    text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 5px;
+  }
+  .api-model-row {
+    display: flex; align-items: center; justify-content: space-between;
+    width: 100%; padding: 7px 10px; margin-bottom: 3px;
+    border-radius: var(--r-sm); border: 1px solid var(--border-soft);
+    background: var(--bg-element); font-size: 13px; color: var(--text-muted);
+    cursor: pointer; transition: all 120ms ease; text-align: left;
+  }
+  .api-model-row:hover { border-color: var(--accent); color: var(--text-main); }
+  .api-model-row.selected { border-color: var(--accent); background: var(--accent-muted); color: var(--text-main); }
+  .api-model-id { font-size: 11px; color: var(--text-dim); font-family: var(--mono); }
+  .api-custom-model-input { margin-top: 2px; }
+  .api-advanced summary.api-advanced-toggle {
+    font-size: 12px; color: var(--text-dim); cursor: pointer;
+    padding: 6px 0; user-select: none;
+  }
+  .api-advanced summary.api-advanced-toggle:hover { color: var(--accent); }
+  .api-advanced-body { padding: 10px 0 4px; display: flex; flex-direction: column; gap: 4px; }
 
   /* Sync section redesign */
   .sync-section { display: flex; flex-direction: column; gap: 12px; }
@@ -2984,6 +3235,56 @@ Core Directives:
     opacity: 0.8;
     font-weight: 600;
   }
+
+  .model-loading-bar {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; margin-bottom: 12px;
+    border-radius: var(--r-md);
+    background: var(--accent-muted);
+    border: 1px solid var(--accent-pale);
+    font-size: 13px; color: var(--text-muted);
+  }
+  .model-loading-spinner {
+    display: inline-block; width: 14px; height: 14px;
+    border: 2px solid var(--accent-pale);
+    border-top-color: var(--accent);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+    flex-shrink: 0;
+  }
+
+  /* Running Model Section */
+  .running-model-section {
+    margin-bottom: 16px;
+  }
+  .running-section-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 8px;
+  }
+  .running-section-title {
+    display: flex; align-items: center; gap: 6px;
+    font-size: 12px; font-weight: 600; color: var(--text-muted);
+    text-transform: uppercase; letter-spacing: 0.5px;
+  }
+  .status-dot-live {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: #10b981;
+    box-shadow: 0 0 6px rgba(16, 185, 129, 0.6);
+    animation: pulse-glow 2s ease-in-out infinite;
+  }
+  .status-dot-off {
+    display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+    background: var(--text-dim); opacity: 0.5;
+  }
+  .refresh-btn {
+    display: flex; align-items: center; gap: 4px;
+    font-size: 11px; color: var(--text-dim);
+    padding: 4px 8px; border-radius: var(--r-sm);
+    border: 1px solid var(--border-soft);
+    background: none; cursor: pointer;
+    transition: all 120ms ease;
+  }
+  .refresh-btn:hover { color: var(--accent); border-color: var(--accent); background: var(--accent-muted); }
 
   /* Running Model Card */
   .running-model-card {

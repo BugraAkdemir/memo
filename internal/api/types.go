@@ -67,11 +67,14 @@ func (m Message) GetTextContent() string {
 }
 
 type ChatCompletionRequest struct {
-	Model       string    `json:"model"`
-	Messages    []Message `json:"messages"`
-	Temperature float64   `json:"temperature,omitempty"`
-	MaxTokens   int       `json:"max_tokens,omitempty"`
-	Stream      bool      `json:"stream"`
+	Model      string    `json:"model"`
+	Messages   []Message `json:"messages"`
+	Temperature float64  `json:"temperature,omitempty"`
+	MaxTokens  int       `json:"max_tokens,omitempty"`
+	Stream     bool      `json:"stream"`
+	// Explicitly disable tool/function calling so models with built-in tool
+	// templates don't output JSON tool-call responses instead of plain text.
+	ToolChoice string `json:"tool_choice,omitempty"`
 }
 
 type ChatCompletionResponse struct {

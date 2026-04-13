@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/exec"
 	"runtime"
 	"strings"
 )
@@ -24,13 +25,35 @@ func deriveKey(passphrase string) [32]byte {
 // hardwareID returns a stable machine identifier for key derivation.
 // It prefers machine-id files when available, then falls back to hostname.
 func hardwareID() string {
-	if runtime.GOOS == "linux" {
+	switch runtime.GOOS {
+	case "windows":
+		// Read MachineGuid from registry — stable across reboots
+		out, err := exec.Command("powershell", "-NoProfile", "-Command",
+			`(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' MachineGuid).MachineGuid`).Output()
+		if err == nil {
+			if id := strings.TrimSpace(string(out)); id != "" {
+				return id
+			}
+		}
+	case "linux":
 		if data, err := os.ReadFile("/etc/machine-id"); err == nil {
 			return strings.TrimSpace(string(data))
 		}
-	}
-	if data, err := os.ReadFile("/var/lib/dbus/machine-id"); err == nil {
-		return strings.TrimSpace(string(data))
+		if data, err := os.ReadFile("/var/lib/dbus/machine-id"); err == nil {
+			return strings.TrimSpace(string(data))
+		}
+	case "darwin":
+		out, err := exec.Command("ioreg", "-rd1", "-c", "IOPlatformExpertDevice").Output()
+		if err == nil {
+			for _, line := range strings.Split(string(out), "\n") {
+				if strings.Contains(line, "IOPlatformUUID") {
+					parts := strings.SplitN(line, "=", 2)
+					if len(parts) == 2 {
+						return strings.Trim(strings.TrimSpace(parts[1]), `"`)
+					}
+				}
+			}
+		}
 	}
 	host, err := os.Hostname()
 	if err != nil {

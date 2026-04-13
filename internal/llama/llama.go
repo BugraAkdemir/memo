@@ -10,7 +10,6 @@ import (
 	"runtime"
 	"strings"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -52,7 +51,8 @@ func NewServer(port, ctxSize int) *Server {
 
 // Start launches llama-server with the given model file and configuration.
 // If gpuLayers is -1, it auto-detects maximum capacity. If port/ctxSize are 0, they use defaults.
-func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers int) error {
+// Set embedding=true only for dedicated embedding models; chat models must NOT get --embedding.
+func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers int, embedding bool) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -95,8 +95,10 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		"--n-gpu-layers", fmt.Sprintf("%d", actualGPU),
 		"--ctx-size", fmt.Sprintf("%d", actualCtx),
 		"--parallel", "1",
-		"--embedding",
-		"--pooling", "mean",
+	}
+	if embedding {
+		// Embedding-only mode: enables /embeddings endpoint, disables chat.
+		args = append(args, "--embedding", "--pooling", "mean")
 	}
 
 	log.Printf("llama: launching %s %s", bin, strings.Join(args, " "))
@@ -108,20 +110,32 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	s.stopping = false
 	s.waitDone = make(chan struct{})
 
-	// Set LD_LIBRARY_PATH to include the binary's directory (shared libs live next to it)
+	// Add binary directory to the shared library search path.
+	// Windows uses PATH for DLL discovery; Linux/macOS use LD_LIBRARY_PATH.
 	binDir := filepath.Dir(bin)
 	env := os.Environ()
-	ldPath := binDir
-	for _, e := range env {
-		if strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
-			ldPath = binDir + ":" + strings.TrimPrefix(e, "LD_LIBRARY_PATH=")
-			break
+	if runtime.GOOS == "windows" {
+		for i, e := range env {
+			if strings.HasPrefix(strings.ToUpper(e), "PATH=") {
+				env[i] = e[:5] + binDir + ";" + e[5:]
+				break
+			}
 		}
+		s.cmd.Env = env
+	} else {
+		ldPath := binDir
+		for _, e := range env {
+			if strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
+				ldPath = binDir + ":" + strings.TrimPrefix(e, "LD_LIBRARY_PATH=")
+				break
+			}
+		}
+		s.cmd.Env = append(env, "LD_LIBRARY_PATH="+ldPath)
 	}
-	s.cmd.Env = append(env, "LD_LIBRARY_PATH="+ldPath)
 
-	// Set process group so we can kill the entire tree
-	s.cmd.SysProcAttr = &syscall.SysProcAttr{Setpgid: true}
+	// Pdeathsig: child receives SIGKILL when parent dies (even force-kill).
+	// NOTE: Setpgid must NOT be set — it clears Pdeathsig on Linux.
+	s.cmd.SysProcAttr = newSysProcAttr()
 
 	if err := s.cmd.Start(); err != nil {
 		s.cmd = nil
@@ -165,20 +179,20 @@ func (s *Server) Stop() error {
 	defer s.mu.Unlock()
 
 	if s.cmd == nil || s.cmd.Process == nil {
+		// No tracked process — try to kill whatever is on the port.
+		if s.port > 0 {
+			if err := s.killByPort(s.port); err != nil {
+				return fmt.Errorf("llama: stop by port: %w", err)
+			}
+		}
 		return nil
 	}
 
 	s.stopping = true
-	pid := s.cmd.Process.Pid
-	log.Printf("llama: stopping server (PID %d)", pid)
+	log.Printf("llama: stopping server (PID %d)", s.cmd.Process.Pid)
 
-	// Step 1: Send SIGTERM to the process group for graceful shutdown
-	pgid, err := syscall.Getpgid(pid)
-	if err == nil {
-		syscall.Kill(-pgid, syscall.SIGTERM)
-	} else {
-		s.cmd.Process.Signal(syscall.SIGTERM)
-	}
+	// Step 1: Send SIGTERM to the process for graceful shutdown.
+	processSignalTerm(s.cmd.Process)
 
 	// Step 2: Wait up to 5 seconds for graceful exit (monitored by monitor loop)
 	select {
@@ -194,29 +208,47 @@ func (s *Server) Stop() error {
 	return nil
 }
 
-// forceKill sends SIGKILL to the entire process group.
+// killByPort finds the PID listening on the given TCP port and kills it.
+// Uses lsof (primary) or fuser (fallback) to locate the process.
+func (s *Server) killByPort(port int) error {
+	pid := s.pidOnPort(port)
+	if pid <= 0 {
+		log.Printf("llama: nothing found on port %d", port)
+		return nil
+	}
+
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("find process %d: %w", pid, err)
+	}
+
+	log.Printf("llama: killing external PID %d on port %d", pid, port)
+	processSignalTerm(proc)
+
+	// Give it 3s to die gracefully, then force kill.
+	for i := 0; i < 6; i++ {
+		time.Sleep(500 * time.Millisecond)
+		if !processIsAlive(proc) {
+			log.Printf("llama: process %d exited cleanly", pid)
+			return nil
+		}
+	}
+	log.Printf("llama: force-killing PID %d", pid)
+	proc.Kill()
+	return nil
+}
+
+// pidOnPort returns the PID of the process listening on the given TCP port, or 0.
+func (s *Server) pidOnPort(port int) int {
+	return pidListeningOnPort(port)
+}
+
+// forceKill sends SIGKILL to the process (and its group if possible).
 func (s *Server) forceKill() {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return
 	}
-
-	// Kill the entire process group
-	pgid, err := syscall.Getpgid(s.cmd.Process.Pid)
-	if err == nil {
-		syscall.Kill(-pgid, syscall.SIGKILL)
-	} else {
-		s.cmd.Process.Kill()
-	}
-
-	// Wait for the monitor loop to catch the exit
-	if s.waitDone != nil {
-		select {
-		case <-s.waitDone:
-			// Process exited
-		case <-time.After(3 * time.Second):
-			log.Printf("llama: WARNING — process may not have exited cleanly")
-		}
-	}
+	forceKillCmd(s.cmd, s.waitDone)
 }
 
 // monitor watches for unexpected process exit.
@@ -261,13 +293,13 @@ func (s *Server) IsRunning() bool {
 	if s.cmd == nil || s.cmd.Process == nil {
 		return false
 	}
-
-	// Check if process is still alive
-	err := s.cmd.Process.Signal(syscall.Signal(0))
-	return err == nil
+	return processIsAlive(s.cmd.Process)
 }
 
 // GetStatus returns the current server status.
+// If the app lost track of the process (e.g. after restart), it falls back to
+// an HTTP health check on the configured port so we never show "not running"
+// when something is actually listening.
 func (s *Server) GetStatus() ServerStatus {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -278,13 +310,34 @@ func (s *Server) GetStatus() ServerStatus {
 	}
 
 	if s.cmd != nil && s.cmd.Process != nil {
+		// Process is tracked — use direct info.
+		if processIsAlive(s.cmd.Process) {
+			status.Running = true
+			status.PID = s.cmd.Process.Pid
+			status.ModelPath = s.modelPath
+			status.ModelName = extractModelName(s.modelPath)
+		}
+		return status
+	}
+
+	// No tracked process — ping the port to detect externally started servers.
+	if s.port > 0 && s.pingPort() {
 		status.Running = true
-		status.PID = s.cmd.Process.Pid
-		status.ModelPath = s.modelPath
-		status.ModelName = extractModelName(s.modelPath)
+		status.ModelName = "llama-server (harici)"
 	}
 
 	return status
+}
+
+// pingPort does a quick HTTP check on /v1/models to see if a server is live.
+func (s *Server) pingPort() bool {
+	client := &http.Client{Timeout: 500 * time.Millisecond}
+	resp, err := client.Get(fmt.Sprintf("http://127.0.0.1:%d/v1/models", s.port))
+	if err != nil {
+		return false
+	}
+	resp.Body.Close()
+	return resp.StatusCode == http.StatusOK
 }
 
 // GetBaseURL returns the OpenAI-compatible API base URL.
@@ -304,24 +357,37 @@ func resolveBinary(configured string) (string, error) {
 		return "", fmt.Errorf("configured binary not found: %s", configured)
 	}
 
-	// 2. Check PATH
+	// 2. Check PATH (exec.LookPath handles .exe on Windows automatically)
 	if path, err := exec.LookPath("llama-server"); err == nil {
 		return path, nil
 	}
 
 	// 3. Check common install locations
-	commonPaths := []string{
-		"/usr/local/bin/llama-server",
-		"/usr/bin/llama-server",
-		filepath.Join(os.Getenv("HOME"), ".local", "bin", "llama-server"),
-		filepath.Join(os.Getenv("HOME"), "llama.cpp", "build", "bin", "llama-server"),
-	}
-
-	if runtime.GOOS == "darwin" {
-		commonPaths = append(commonPaths,
+	var commonPaths []string
+	switch runtime.GOOS {
+	case "windows":
+		home := os.Getenv("USERPROFILE")
+		commonPaths = []string{
+			filepath.Join(home, "llama.cpp", "build", "bin", "llama-server.exe"),
+			filepath.Join(home, "scoop", "apps", "llama.cpp", "current", "llama-server.exe"),
+			`C:\Program Files\llama.cpp\llama-server.exe`,
+			filepath.Join(home, ".local", "bin", "llama-server.exe"),
+		}
+	case "darwin":
+		home := os.Getenv("HOME")
+		commonPaths = []string{
 			"/opt/homebrew/bin/llama-server",
 			"/usr/local/opt/llama.cpp/bin/llama-server",
-		)
+			filepath.Join(home, "llama.cpp", "build", "bin", "llama-server"),
+		}
+	default:
+		home := os.Getenv("HOME")
+		commonPaths = []string{
+			"/usr/local/bin/llama-server",
+			"/usr/bin/llama-server",
+			filepath.Join(home, ".local", "bin", "llama-server"),
+			filepath.Join(home, "llama.cpp", "build", "bin", "llama-server"),
+		}
 	}
 
 	for _, p := range commonPaths {
@@ -331,6 +397,14 @@ func resolveBinary(configured string) (string, error) {
 	}
 
 	return "", fmt.Errorf("llama-server binary not found — install llama.cpp or set the binary path in settings")
+}
+
+// llamaServerBinary returns the platform-specific llama-server binary name.
+func llamaServerBinary() string {
+	if runtime.GOOS == "windows" {
+		return "llama-server.exe"
+	}
+	return "llama-server"
 }
 
 // extractModelName gets a clean name from a model file path.

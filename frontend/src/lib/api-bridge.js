@@ -136,6 +136,18 @@ export async function GetActiveChatID() {
   return data.id;
 }
 
+export async function ExportChat() {
+  if (!isWails) return '';
+  const w = await getWailsApp();
+  return w.ExportChat();
+}
+
+export async function GenerateChatTitle() {
+  if (!isWails) return '';
+  const w = await getWailsApp();
+  return w.GenerateChatTitle();
+}
+
 export async function CheckConnection() {
   if (isWails) {
     const w = await getWailsApp();

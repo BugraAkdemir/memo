@@ -8,40 +8,58 @@ import (
 	"io"
 	"mime/multipart"
 	"net/http"
+	"strings"
 	"time"
 )
 
 type Client struct {
 	baseURL      string
+	apiKey       string
+	model        string // model name sent in requests; defaults to "local-model"
 	httpClient   *http.Client
 	streamClient *http.Client
 }
 
 func NewClient(baseURL string, timeoutSeconds int) *Client {
+	return NewClientWithKey(baseURL, "", timeoutSeconds)
+}
+
+func NewClientWithKey(baseURL, apiKey string, timeoutSeconds int) *Client {
 	transport := &http.Transport{
 		MaxIdleConns:        10,
 		MaxIdleConnsPerHost: 10,
 		IdleConnTimeout:     90 * time.Second,
 	}
-
 	return &Client{
-		baseURL: baseURL,
+		baseURL: strings.TrimRight(baseURL, "/"), // prevent double-slash in paths
+		apiKey:  apiKey,
+		model:   "local-model",
 		httpClient: &http.Client{
 			Timeout:   time.Duration(timeoutSeconds) * time.Second,
 			Transport: transport,
 		},
-		// Stream client has NO timeout — response body is read over time
-		streamClient: &http.Client{
-			Transport: transport,
-		},
+		streamClient: &http.Client{Transport: transport},
+	}
+}
+
+func (c *Client) SetModel(model string) {
+	if model != "" {
+		c.model = model
+	}
+}
+
+func (c *Client) setAuth(req *http.Request) {
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
 	}
 }
 
 func (c *Client) ChatCompletion(ctx context.Context, messages []Message) (*ChatCompletionResponse, error) {
 	req := ChatCompletionRequest{
-		Model:    "local-model",
-		Messages: messages,
-		Stream:   false,
+		Model:      c.model,
+		Messages:   messages,
+		Stream:     false,
+		ToolChoice: "none",
 	}
 
 	body, err := json.Marshal(req)
@@ -54,6 +72,7 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message) (*ChatC
 		return nil, fmt.Errorf("api.ChatCompletion: request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	c.setAuth(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -76,9 +95,10 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message) (*ChatC
 
 func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message) (<-chan StreamChunk, error) {
 	req := ChatCompletionRequest{
-		Model:    "local-model",
-		Messages: messages,
-		Stream:   true,
+		Model:      c.model,
+		Messages:   messages,
+		Stream:     true,
+		ToolChoice: "none",
 	}
 
 	body, err := json.Marshal(req)
@@ -94,6 +114,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message) (
 	httpReq.Header.Set("Accept", "text/event-stream")
 	httpReq.Header.Set("Cache-Control", "no-cache")
 	httpReq.Header.Set("Connection", "keep-alive")
+	c.setAuth(httpReq)
 
 	// Use stream client (no timeout)
 	resp, err := c.streamClient.Do(httpReq)

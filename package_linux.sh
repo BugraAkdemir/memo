@@ -20,8 +20,14 @@ echo "--> Paketleme dizinleri hazırlanıyor..."
 mkdir -p dist_packages/{AppDir,deb_build}
 
 # 2. TAR.GZ (Standart Sıkıştırılmış Arşiv)
+# data/bin/ (llama-server + libs) ve config/ dahil edilir — kurulum sonrası ek indirme gerekmez
 echo "--> TAR.GZ Formatı Oluşturuluyor..."
-tar -czvf dist_packages/${APP_NAME}_Linux_${ARCH}.tar.gz -C build/bin ${EXEC_NAME}
+mkdir -p dist_packages/tar_stage/
+cp build/bin/${EXEC_NAME} dist_packages/tar_stage/
+[ -d data/bin ] && cp -r data/bin dist_packages/tar_stage/
+[ -d config ]   && cp -r config   dist_packages/tar_stage/
+tar -czvf dist_packages/${APP_NAME}_Linux_${ARCH}.tar.gz -C dist_packages/tar_stage .
+rm -rf dist_packages/tar_stage
 
 # 3. DEBIAN Paketleme (.deb)
 echo "--> .deb Formatı Oluşturuluyor..."
@@ -33,6 +39,11 @@ mkdir -p ${DEB_ROOT}/DEBIAN
 
 # Executable Dosyayı Kopyala
 cp build/bin/${EXEC_NAME} ${DEB_ROOT}/usr/bin/memo
+
+# data/bin (llama-server + shared libs) ve config → /usr/share/memo/
+mkdir -p ${DEB_ROOT}/usr/share/memo
+[ -d data/bin ] && cp -r data/bin ${DEB_ROOT}/usr/share/memo/
+[ -d config ]   && cp -r config   ${DEB_ROOT}/usr/share/memo/
 
 # Desktop Kısayolunu Yarat
 cat <<EOF > ${DEB_ROOT}/usr/share/applications/memo.desktop
@@ -74,15 +85,20 @@ mkdir -p ${APPDIR}/usr/bin
 # Dosyaları AppDir'e taşı
 cp build/bin/${EXEC_NAME} ${APPDIR}/usr/bin/memo
 cp ${DEB_ROOT}/usr/share/applications/memo.desktop ${APPDIR}/
+
+# data/bin (llama-server + libs) ve config AppImage kökünde — uygulama CWD'den okur
+[ -d data/bin ] && cp -r data/bin ${APPDIR}/data/bin || true
+[ -d config ]   && cp -r config   ${APPDIR}/config   || true
 if [ -f "build/appicon.png" ]; then
     cp build/appicon.png ${APPDIR}/memo.png
     cp build/appicon.png ${APPDIR}/.DirIcon
 fi
 
-# AppRun script'i
+# AppRun script'i — CWD AppDir'e set edilir böylece data/bin ve config bulunur
 cat <<EOF > ${APPDIR}/AppRun
 #!/bin/sh
 HERE="\$(dirname "\$(readlink -f "\${0}")")"
+cd "\${HERE}"
 exec "\${HERE}/usr/bin/memo" "\$@"
 EOF
 chmod +x ${APPDIR}/AppRun

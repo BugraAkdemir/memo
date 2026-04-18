@@ -9,7 +9,7 @@
 - **Go struct'larını direkt** diske yazar (tip güvenliği korunur)
 
 Go'nun standart kütüphanesindeki `encoding/gob` paketi ile çalışır.
-
+Bugra
 ---
 
 ## Dosya Yapısı

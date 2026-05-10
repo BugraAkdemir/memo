@@ -1,8 +1,39 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'package:shared_preferences/shared_preferences.dart';
+
 import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import 'chat_provider.dart';
+
+// ─── Setup Complete ─────────────────────────────────────────────
+
+final setupCompleteProvider = StateNotifierProvider<SetupCompleteNotifier, bool>((ref) {
+  return SetupCompleteNotifier();
+});
+
+class SetupCompleteNotifier extends StateNotifier<bool> {
+  SetupCompleteNotifier() : super(true) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = prefs.getBool('memo_setup_complete') ?? false;
+  }
+
+  Future<void> completeSetup() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('memo_setup_complete', true);
+    state = true;
+  }
+
+  Future<void> resetSetup() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('memo_setup_complete', false);
+    state = false;
+  }
+}
 
 // ─── System Prompt ──────────────────────────────────────────────
 

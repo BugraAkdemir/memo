@@ -39,7 +39,7 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 - [x] 1.3 — `headless.go` eklendi (Wails olmadan `--headless --port 8090` ile REST server başlatır)
 
 ## Faz 2: Flutter Projesi Oluştur
-- [ ] 2.1 — `frontend_flutter/` dizininde Flutter desktop projesi oluştur
+- [ ] 2.1 — `frontend/` dizininde Flutter desktop projesi oluştur
 - [ ] 2.2 — `pubspec.yaml` bağımlılıkları ekle (dio, riverpod, flutter_markdown, vb.)
 - [ ] 2.3 — Proje yapısını oluştur (core/, models/, providers/, screens/, widgets/)
 
@@ -51,7 +51,7 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 - [x] 3.5 — Riverpod provider'ları (chat, settings, models, sync)
 
 ## Faz 4: Flutter Ekranlar — Chat
-- [ ] 4.1 — App Shell (nav rail + content area)
+- [/] 4.1 — App Shell (nav rail + content area)
 - [ ] 4.2 — Chat Sidebar (sohbet listesi, yeni sohbet, gizli mod)
 - [ ] 4.3 — Chat Ekranı (mesaj listesi, markdown rendering, streaming cursor)
 - [ ] 4.4 — Chat Input (metin, resim/dosya ekleme butonları, ses kaydı)

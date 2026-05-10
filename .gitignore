@@ -18,6 +18,21 @@ stt-env/
 # Packaged releases
 dist_packages/
 
+# Flutter
+frontend_flutter/.dart_tool/
+frontend_flutter/.packages
+frontend_flutter/build/
+frontend_flutter/.flutter-plugins
+frontend_flutter/.flutter-plugins-dependencies
+frontend_flutter/linux/flutter/ephemeral/
+frontend_flutter/windows/flutter/ephemeral/
+
+# Svelte backup
+frontend_svelte_backup/
+
+# Local Flutter SDK
+.local/share/flutter/
+
 # OS files
 .DS_Store
 Thumbs.db

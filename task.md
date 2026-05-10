@@ -4,13 +4,13 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 
 ---
 
-## Faz 0: Hazırlık
-- [ ] 0.1 — Eski Svelte frontend'i `frontend_svelte_backup/` olarak yedekle
-- [ ] 0.2 — `.gitignore`'a Flutter dizinlerini ekle
+## Faz 0: Hazırlık ✅
+- [x] 0.1 — Eski Svelte frontend'i `frontend_svelte_backup/` olarak yedekle
+- [x] 0.2 — `.gitignore`'a Flutter dizinlerini ekle
 
 ## Faz 1: Go Webserver Genişletme (Backend core'a DOKUNMA, sadece webserver)
-- [ ] 1.1 — `AppBridge` interface'ini genişlet (tüm App metodlarını kapsasın)
-- [ ] 1.2 — Eksik REST endpoint'leri ekle:
+- [x] 1.1 — `AppBridge` interface'ini genişlet → `bridge.go` (FullBridge)
+- [x] 1.2 — Eksik REST endpoint'leri ekle → `handlers_flutter.go` (tüm endpoint'ler)
   - [ ] `POST /api/send/stream` (SSE streaming chat)
   - [ ] `GET /api/system-prompt` + `PUT /api/system-prompt`
   - [ ] `GET /api/incognito-prompt` + `PUT /api/incognito-prompt`
@@ -36,7 +36,7 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
   - [ ] `POST /api/sync/trigger` + `POST /api/sync/pull` + `POST /api/sync/now`
   - [ ] `POST /api/sync/disconnect`
   - [ ] `POST /api/recording/start` + `POST /api/recording/stop`
-- [ ] 1.3 — `main.go`'ya `--headless` flag ekle (Wails olmadan REST server başlat)
+- [x] 1.3 — `headless.go` eklendi (Wails olmadan `--headless --port 8090` ile REST server başlatır)
 
 ## Faz 2: Flutter Projesi Oluştur
 - [ ] 2.1 — `frontend_flutter/` dizininde Flutter desktop projesi oluştur
@@ -44,7 +44,7 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 - [ ] 2.3 — Proje yapısını oluştur (core/, models/, providers/, screens/, widgets/)
 
 ## Faz 3: Flutter Core Katman
-- [ ] 3.1 — API client (dio + SSE streaming)
+- [/] 3.1 — API client (dio + SSE streaming)
 - [ ] 3.2 — Tema sistemi (Cream/Gold palette — mevcut tasarımı koru)
 - [ ] 3.3 — i18n (Türkçe/İngilizce)
 - [ ] 3.4 — Model sınıfları (Chat, Message, LocalModel, GPUInfo, vb.)

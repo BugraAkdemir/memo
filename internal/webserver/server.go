@@ -41,20 +41,25 @@ type AppBridge interface {
 }
 
 type Server struct {
-	mu       sync.Mutex
-	srv      *http.Server
-	bridge   AppBridge
-	assets   fs.FS
-	running  bool
-	port     int
-	localIPs []string
+	mu         sync.Mutex
+	srv        *http.Server
+	bridge     AppBridge
+	fullBridge FullBridge
+	assets     fs.FS
+	running    bool
+	port       int
+	localIPs   []string
 }
 
 func New(bridge AppBridge, assets fs.FS) *Server {
-	return &Server{
+	s := &Server{
 		bridge: bridge,
 		assets: assets,
 	}
+	if fb, ok := bridge.(FullBridge); ok {
+		s.fullBridge = fb
+	}
+	return s
 }
 
 func (s *Server) Start(port int) error {
@@ -67,7 +72,7 @@ func (s *Server) Start(port int) error {
 
 	mux := http.NewServeMux()
 
-	// API endpoints
+	// API endpoints (original)
 	mux.HandleFunc("/api/send", s.handleSend)
 	mux.HandleFunc("/api/chats", s.handleChats)
 	mux.HandleFunc("/api/chats/new", s.handleNewChat)
@@ -79,6 +84,43 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/api/incognito", s.handleIncognito)
 	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
 	mux.HandleFunc("/api/send_file", s.handleSendFile)
+
+	// New endpoints for Flutter frontend
+	mux.HandleFunc("/api/send/stream", s.handleSendStream)
+	mux.HandleFunc("/api/system-prompt", s.handleSystemPrompt)
+	mux.HandleFunc("/api/system-prompt/reset", s.handleResetSystemPrompt)
+	mux.HandleFunc("/api/incognito-prompt", s.handleIncognitoPrompt)
+	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
+	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
+	mux.HandleFunc("/api/version", s.handleVersion)
+	mux.HandleFunc("/api/image", s.handleImage)
+	mux.HandleFunc("/api/chat/export", s.handleExportChat)
+	mux.HandleFunc("/api/chat/title", s.handleGenerateTitle)
+	mux.HandleFunc("/api/models/local", s.handleLocalModels)
+	mux.HandleFunc("/api/models/start", s.handleModelStart)
+	mux.HandleFunc("/api/models/stop", s.handleModelStop)
+	mux.HandleFunc("/api/models/status", s.handleModelStatus)
+	mux.HandleFunc("/api/models/embedding/start", s.handleEmbeddingStart)
+	mux.HandleFunc("/api/models/embedding/stop", s.handleEmbeddingStop)
+	mux.HandleFunc("/api/models/embedding/status", s.handleEmbeddingStatus)
+	mux.HandleFunc("/api/gpu", s.handleGPU)
+	mux.HandleFunc("/api/models/search", s.handleModelSearch)
+	mux.HandleFunc("/api/models/files", s.handleModelFiles)
+	mux.HandleFunc("/api/models/download", s.handleModelDownload)
+	mux.HandleFunc("/api/models/download/progress", s.handleDownloadProgress)
+	mux.HandleFunc("/api/models/download/cancel", s.handleDownloadCancel)
+	mux.HandleFunc("/api/models/llama/check", s.handleLlamaCheck)
+	mux.HandleFunc("/api/models/llama/install", s.handleLlamaInstall)
+	mux.HandleFunc("/api/remote-access", s.handleRemoteAccess)
+	mux.HandleFunc("/api/sync/settings", s.handleSyncSettings)
+	mux.HandleFunc("/api/sync/auth", s.handleSyncAuth)
+	mux.HandleFunc("/api/sync/account", s.handleSyncAccount)
+	mux.HandleFunc("/api/sync/trigger", s.handleSyncTrigger)
+	mux.HandleFunc("/api/sync/pull", s.handleSyncPull)
+	mux.HandleFunc("/api/sync/now", s.handleSyncNow)
+	mux.HandleFunc("/api/sync/disconnect", s.handleSyncDisconnect)
+	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
+	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
 
 	// Serve frontend static files
 	fileServer := http.FileServer(http.FS(s.assets))

@@ -43,12 +43,12 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 - [ ] 2.2 — `pubspec.yaml` bağımlılıkları ekle (dio, riverpod, flutter_markdown, vb.)
 - [ ] 2.3 — Proje yapısını oluştur (core/, models/, providers/, screens/, widgets/)
 
-## Faz 3: Flutter Core Katman
-- [/] 3.1 — API client (dio + SSE streaming)
-- [ ] 3.2 — Tema sistemi (Cream/Gold palette — mevcut tasarımı koru)
-- [ ] 3.3 — i18n (Türkçe/İngilizce)
-- [ ] 3.4 — Model sınıfları (Chat, Message, LocalModel, GPUInfo, vb.)
-- [ ] 3.5 — Riverpod provider'ları (chat, settings, models, sync)
+## Faz 3: Flutter Core Katman ✅
+- [x] 3.1 — API client (dio + SSE streaming)
+- [x] 3.2 — Tema sistemi (Cream/Gold palette — mevcut tasarımı koru)
+- [x] 3.3 — i18n (Türkçe/İngilizce)
+- [x] 3.4 — Model sınıfları (Chat, Message, LocalModel, GPUInfo, vb.)
+- [x] 3.5 — Riverpod provider'ları (chat, settings, models, sync)
 
 ## Faz 4: Flutter Ekranlar — Chat
 - [ ] 4.1 — App Shell (nav rail + content area)

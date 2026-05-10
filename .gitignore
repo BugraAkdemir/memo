@@ -1,7 +1,5 @@
 # Build outputs
 build/bin/
-frontend/dist/
-frontend/node_modules/
 
 # Runtime data (user-specific)
 data/models/
@@ -18,14 +16,15 @@ stt-env/
 # Packaged releases
 dist_packages/
 
-# Flutter
-frontend_flutter/.dart_tool/
-frontend_flutter/.packages
-frontend_flutter/build/
-frontend_flutter/.flutter-plugins
-frontend_flutter/.flutter-plugins-dependencies
-frontend_flutter/linux/flutter/ephemeral/
-frontend_flutter/windows/flutter/ephemeral/
+# Flutter (frontend/)
+frontend/.dart_tool/
+frontend/.packages
+frontend/build/
+frontend/.flutter-plugins
+frontend/.flutter-plugins-dependencies
+frontend/linux/flutter/ephemeral/
+frontend/windows/flutter/ephemeral/
+frontend/dist/
 
 # Svelte backup
 frontend_svelte_backup/

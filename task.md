@@ -50,36 +50,36 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 - [x] 3.4 — Model sınıfları (Chat, Message, LocalModel, GPUInfo, vb.)
 - [x] 3.5 — Riverpod provider'ları (chat, settings, models, sync)
 
-## Faz 4: Flutter Ekranlar — Chat
-- [/] 4.1 — App Shell (nav rail + content area)
-- [ ] 4.2 — Chat Sidebar (sohbet listesi, yeni sohbet, gizli mod)
-- [ ] 4.3 — Chat Ekranı (mesaj listesi, markdown rendering, streaming cursor)
-- [ ] 4.4 — Chat Input (metin, resim/dosya ekleme butonları, ses kaydı)
-- [ ] 4.5 — Prompt şablonları popup
-- [ ] 4.6 — Welcome view (boş chat durumu)
+## Faz 4: Flutter Ekranlar — Chat ✅
+- [x] 4.1 — App Shell (nav rail + content area)
+- [x] 4.2 — Chat Sidebar (sohbet listesi, yeni sohbet, gizli mod)
+- [x] 4.3 — Chat Ekranı (mesaj listesi, markdown rendering, streaming cursor)
+- [x] 4.4 — Chat Input (metin, resim/dosya ekleme butonları, ses kaydı)
+- [x] 4.5 — Prompt şablonları popup
+- [x] 4.6 — Welcome view (boş chat durumu)
 
-## Faz 5: Flutter Ekranlar — Settings
-- [ ] 5.1 — Settings dialog (tab yapısı)
-- [ ] 5.2 — General tab (dil, setup wizard reset)
-- [ ] 5.3 — System Prompt tab
-- [ ] 5.4 — Incognito Prompt tab
-- [ ] 5.5 — Memory tab (dosya listesi, silme, temizle)
-- [ ] 5.6 — Cloud Sync tab
-- [ ] 5.7 — Remote Access tab
-- [ ] 5.8 — About tab
+## Faz 5: Flutter Ekranlar — Settings ✅
+- [x] 5.1 — Settings dialog (tab yapısı)
+- [x] 5.2 — General tab (dil, setup wizard reset)
+- [x] 5.3 — System Prompt tab
+- [x] 5.4 — Incognito Prompt tab
+- [x] 5.5 — Memory tab (dosya listesi, silme, temizle)
+- [x] 5.6 — Cloud Sync tab
+- [x] 5.7 — Remote Access tab
+- [x] 5.8 — About tab
 
-## Faz 6: Flutter Ekranlar — Model Store
-- [ ] 6.1 — Model Store ekranı (ana yapı)
-- [ ] 6.2 — GPU badge widget
-- [ ] 6.3 — Model arama + dosya listesi
-- [ ] 6.4 — İndirme progress kartı
-- [ ] 6.5 — Çalışan model kartı + başlat/durdur
-- [ ] 6.6 — Model config dialog (ctx size, gpu layers, port)
-- [ ] 6.7 — Llama installer view
+## Faz 6: Flutter Ekranlar — Model Store ✅
+- [x] 6.1 — Model Store ekranı (ana yapı)
+- [x] 6.2 — GPU badge widget
+- [x] 6.3 — Model arama + dosya listesi
+- [x] 6.4 — İndirme progress kartı
+- [x] 6.5 — Çalışan model kartı + başlat/durdur
+- [x] 6.6 — Model config dialog (ctx size, gpu layers, port)
+- [x] 6.7 — Llama installer view
 
-## Faz 7: Flutter Ekranlar — Setup Wizard
-- [ ] 7.1 — Setup wizard overlay (ilk açılış)
-
+## Faz 7: Flutter Ekranlar — Setup Wizard ✅
+- [x] 7.1 — Setup wizard overlay (ilk açılış)
+- [x] 7.2 — Diagnostics checker (Llama & Models check)
 ## Faz 8: Entegrasyon & Test
 - [ ] 8.1 — Go headless server + Flutter desktop birlikte test
 - [ ] 8.2 — Tüm chat akışını test et (gönder, stream, resim, dosya)

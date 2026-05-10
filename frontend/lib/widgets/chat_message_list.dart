@@ -226,7 +226,7 @@ class _MessageBubbleState extends State<_MessageBubble>
                                   fontSize: 13),
                               tableBody: TextStyle(
                                   color: MemoTheme.textMain, fontSize: 13),
-                              tableBorder: BorderSide(
+                              tableBorder: TableBorder.all(
                                   color: MemoTheme.borderSoft),
                               a: TextStyle(
                                   color: MemoTheme.accent,

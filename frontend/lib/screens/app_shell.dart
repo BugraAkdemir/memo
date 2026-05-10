@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../widgets/settings_dialog.dart';
+import '../widgets/llama_installer_view.dart';
+import '../widgets/setup_wizard_view.dart';
 import 'chat_screen.dart';
+import 'model_store_screen.dart';
 
 /// Main app shell — sidebar (chat list) + content area.
 /// Navigation between Chat and Model Store via bottom of sidebar.
@@ -21,17 +25,25 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: MemoTheme.bgApp,
-      body: Row(
+      body: Stack(
         children: [
-          // ─── Nav Rail ─────────────────────────────────
-          _buildNavRail(),
+          Row(
+            children: [
+              // ─── Nav Rail ─────────────────────────────────
+              _buildNavRail(),
 
-          // ─── Content ─────────────────────────────────
-          Expanded(
-            child: _currentIndex == 0
-                ? const ChatScreen()
-                : const _ModelStorePlaceholder(),
+              // ─── Content ─────────────────────────────────
+              Expanded(
+                child: _currentIndex == 0
+                    ? const ChatScreen()
+                    : const ModelStoreScreen(),
+              ),
+            ],
           ),
+          
+          // ─── Overlays ───────────────────────────────────
+          const LlamaInstallerOverlay(),
+          const SetupWizardOverlay(),
         ],
       ),
     );
@@ -102,7 +114,10 @@ class _AppShellState extends ConsumerState<AppShell> {
             label: L10n.t('settings'),
             isActive: false,
             onTap: () {
-              // TODO: open settings dialog (Faz 5)
+              showDialog(
+                context: context,
+                builder: (context) => const SettingsDialog(),
+              );
             },
           ),
 
@@ -155,33 +170,4 @@ class _NavRailButton extends StatelessWidget {
   }
 }
 
-/// Placeholder for Model Store — will be built in Faz 6.
-class _ModelStorePlaceholder extends StatelessWidget {
-  const _ModelStorePlaceholder();
 
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.memory, size: 48, color: MemoTheme.textDim),
-          const SizedBox(height: 16),
-          Text(
-            L10n.t('model_store'),
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: MemoTheme.textMuted,
-                ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Yapım aşamasında...',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: MemoTheme.textDim,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}

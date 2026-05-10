@@ -969,7 +969,7 @@ type RemoteAccessStatus struct {
 	Addresses []string `json:"addresses"`
 }
 
-func (a *App) GetRemoteAccessStatus() RemoteAccessStatus {
+func (a *App) GetRemoteAccessStatus() interface{} {
 	status := RemoteAccessStatus{
 		Enabled: a.cfg.RemoteAccess.Enabled,
 		Port:    a.cfg.RemoteAccess.Port,
@@ -1453,7 +1453,7 @@ func (a *App) SyncNow() {
 }
 
 // GetSyncAccount returns Google account identity for the connected sync session.
-func (a *App) GetSyncAccount() SyncAccount {
+func (a *App) GetSyncAccount() interface{} {
 	if err := a.ensureSyncManager(); err != nil {
 		return SyncAccount{Authenticated: false}
 	}
@@ -1475,7 +1475,7 @@ func (a *App) GetSyncAccount() SyncAccount {
 	}
 }
 
-func (a *App) GetSyncSettings() config.SyncConfig {
+func (a *App) GetSyncSettings() interface{} {
 	return a.cfg.Sync
 }
 
@@ -1529,3 +1529,4 @@ func (a *App) DisconnectSync() error {
 	a.syncManager = nil
 	return nil
 }
+var _ webserver.FullBridge = (*App)(nil)

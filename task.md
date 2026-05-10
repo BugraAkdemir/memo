@@ -81,6 +81,9 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 - [x] 7.1 — Setup wizard overlay (ilk açılış)
 - [x] 7.2 — Diagnostics checker (Llama & Models check)
 ## Faz 8: Entegrasyon & Test
+- [x] 8.1.1 — Go headless server bridge interface eksikliklerini gider (FullBridge hataları düzeltildi)
+- [ ] 8.1.2 — STT (Vosk) Python sunucusunu PyInstaller ile `--collect-all vosk` bayrağı kullanarak yeniden paketle (`libvosk.so` hatası için)
+- [ ] 8.1.3 — Flutter uygulamasını HTTPS (https://localhost:8090) kullanacak şekilde yeniden derle (400 Bad Request TLS hatasını çözer)
 - [ ] 8.1 — Go headless server + Flutter desktop birlikte test
 - [ ] 8.2 — Tüm chat akışını test et (gönder, stream, resim, dosya)
 - [ ] 8.3 — Settings kaydetme/yükleme testi

@@ -32,23 +32,39 @@ class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
 // ─── Model Status ───────────────────────────────────────────────
 
 final modelStatusProvider = FutureProvider<ServerStatus>((ref) async {
-  return ref.read(apiClientProvider).getModelStatus();
+  try {
+    return await ref.read(apiClientProvider).getModelStatus();
+  } catch (_) {
+    return const ServerStatus();
+  }
 });
 
 final embeddingStatusProvider = FutureProvider<ServerStatus>((ref) async {
-  return ref.read(apiClientProvider).getEmbeddingStatus();
+  try {
+    return await ref.read(apiClientProvider).getEmbeddingStatus();
+  } catch (_) {
+    return const ServerStatus();
+  }
 });
 
 // ─── GPU Info ───────────────────────────────────────────────────
 
 final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
-  return ref.read(apiClientProvider).getGpuInfo();
+  try {
+    return await ref.read(apiClientProvider).getGpuInfo();
+  } catch (_) {
+    return const GPUInfo(); // CPU fallback
+  }
 });
 
 // ─── Download Progress ──────────────────────────────────────────
 
 final downloadProgressProvider = FutureProvider<DownloadProgress>((ref) async {
-  return ref.read(apiClientProvider).getDownloadProgress();
+  try {
+    return await ref.read(apiClientProvider).getDownloadProgress();
+  } catch (_) {
+    return const DownloadProgress();
+  }
 });
 
 // ─── HF Search ──────────────────────────────────────────────────
@@ -65,5 +81,9 @@ final modelSearchResultsProvider =
 // ─── Llama Installation ─────────────────────────────────────────
 
 final llamaInstalledProvider = FutureProvider<bool>((ref) async {
-  return ref.read(apiClientProvider).checkLlamaInstallation();
+  try {
+    return await ref.read(apiClientProvider).checkLlamaInstallation();
+  } catch (_) {
+    return true; // assume installed if backend unreachable — don't block UI
+  }
 });

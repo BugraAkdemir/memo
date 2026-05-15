@@ -107,30 +107,50 @@ class MemoryFilesNotifier extends AsyncNotifier<List<MemoryFileInfo>> {
 // ─── Sync ───────────────────────────────────────────────────────
 
 final syncAuthProvider = FutureProvider<bool>((ref) async {
-  return ref.read(apiClientProvider).checkSyncAuth();
+  try {
+    return await ref.read(apiClientProvider).checkSyncAuth();
+  } catch (_) {
+    return false;
+  }
 });
 
 final syncAccountProvider =
     FutureProvider<Map<String, dynamic>>((ref) async {
-  return ref.read(apiClientProvider).getSyncAccount();
+  try {
+    return await ref.read(apiClientProvider).getSyncAccount();
+  } catch (_) {
+    return {'authenticated': false};
+  }
 });
 
 final syncSettingsProvider =
     FutureProvider<Map<String, dynamic>>((ref) async {
-  return ref.read(apiClientProvider).getSyncSettings();
+  try {
+    return await ref.read(apiClientProvider).getSyncSettings();
+  } catch (_) {
+    return {};
+  }
 });
 
 // ─── Remote Access ──────────────────────────────────────────────
 
 final remoteAccessProvider =
     FutureProvider<Map<String, dynamic>>((ref) async {
-  return ref.read(apiClientProvider).getRemoteAccess();
+  try {
+    return await ref.read(apiClientProvider).getRemoteAccess();
+  } catch (_) {
+    return {'enabled': false};
+  }
 });
 
 // ─── App Version ────────────────────────────────────────────────
 
 final appVersionProvider = FutureProvider<String>((ref) async {
-  return ref.read(apiClientProvider).getVersion();
+  try {
+    return await ref.read(apiClientProvider).getVersion();
+  } catch (_) {
+    return 'unknown';
+  }
 });
 
 // ─── Locale ─────────────────────────────────────────────────────

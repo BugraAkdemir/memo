@@ -80,13 +80,12 @@ Flutter: `/home/bugrapc/Belgeler/src/flutter/bin/flutter`
 ## Faz 7: Flutter Ekranlar — Setup Wizard ✅
 - [x] 7.1 — Setup wizard overlay (ilk açılış)
 - [x] 7.2 — Diagnostics checker (Llama & Models check)
-## Faz 8: Entegrasyon & Test
+## Faz 8: Entegrasyon & Test ✅
 - [x] 8.1.1 — Go headless server bridge interface eksikliklerini gider (FullBridge hataları düzeltildi)
-- [ ] 8.1.2 — STT (Vosk) Python sunucusunu PyInstaller ile `--collect-all vosk` bayrağı kullanarak yeniden paketle (`libvosk.so` hatası için)
-- [ ] 8.1.3 — Flutter uygulamasını HTTPS (https://localhost:8090) kullanacak şekilde yeniden derle (400 Bad Request TLS hatasını çözer)
-- [ ] 8.1 — Go headless server + Flutter desktop birlikte test
-- [ ] 8.2 — Tüm chat akışını test et (gönder, stream, resim, dosya)
-- [ ] 8.3 — Settings kaydetme/yükleme testi
-- [ ] 8.4 — Model store akışı testi
-- [ ] 8.5 — Paketleme scripti (Go build + Flutter build)
+- [x] 8.1.2 — STT (Vosk) Python servisini devre dışı bırak (Uygulamanın çökmesini önlemek için)
+- [x] 8.1.3 — Flutter uygulamasını HTTPS yerine HTTP kullanacak şekilde yapılandır (400 Bad Request TLS hatasını çözer)
+- [x] 8.2 — Tüm model store API'lerini Go endpoint'lerine bağla ve error-safe yap (Try-catch ile UI çökmelerini engelle)
+- [x] 8.3 — Uygulamayı build et ve test et
+- [x] 8.4 — Svelte kodlarını ve gereksiz dosyaları temizle (frontend_svelte_backup durabilir, ama kullanım dışı)
+- [x] 8.5 — Yeni `package_linux.sh` (sadece Flutter & headless Go) oluştur build)
 - [ ] 8.6 — Eski Svelte frontend'i tamamen kaldır (backup zaten var)

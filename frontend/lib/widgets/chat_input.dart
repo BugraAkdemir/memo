@@ -116,6 +116,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   // TODO: file picker (Faz 8 integration)
                 },
               ),
+              /* STT Disabled due to Vosk crashes
               const SizedBox(width: 4),
               _InputIconButton(
                 icon: Icons.mic_none,
@@ -124,6 +125,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   // TODO: recording (Faz 8 integration)
                 },
               ),
+              */
 
               const SizedBox(width: 12),
 

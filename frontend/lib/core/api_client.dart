@@ -1,35 +1,24 @@
 import 'dart:async';
 
-import 'dart:io';
 import 'package:dio/dio.dart';
-import 'package:dio/io.dart';
 
 import '../models/chat.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 
 /// Memo Go backend REST API client.
-/// Connects to headless Go server on localhost.
+/// Connects to headless Go server on localhost (plain HTTP, no TLS).
 class MemoApiClient {
   late final Dio _dio;
   final String baseUrl;
 
-  MemoApiClient({this.baseUrl = 'https://localhost:8090'}) {
+  MemoApiClient({this.baseUrl = 'http://localhost:8090'}) {
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 5),
       receiveTimeout: const Duration(seconds: 120),
       headers: {'Content-Type': 'application/json'},
     ));
-
-    _dio.httpClientAdapter = IOHttpClientAdapter(
-      createHttpClient: () {
-        final client = HttpClient();
-        client.badCertificateCallback =
-            (X509Certificate cert, String host, int port) => true;
-        return client;
-      },
-    );
   }
 
   // ─── Chat ───────────────────────────────────────────────────────

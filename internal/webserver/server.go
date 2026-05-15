@@ -161,6 +161,93 @@ func (s *Server) Start(port int) error {
 	return nil
 }
 
+// StartHTTP starts a plain HTTP server (no TLS) for local Flutter desktop communication.
+// This avoids self-signed certificate issues when Flutter connects to localhost.
+func (s *Server) StartHTTP(port int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.running {
+		return fmt.Errorf("server already running on port %d", s.port)
+	}
+
+	mux := http.NewServeMux()
+
+	// API endpoints (original)
+	mux.HandleFunc("/api/send", s.handleSend)
+	mux.HandleFunc("/api/chats", s.handleChats)
+	mux.HandleFunc("/api/chats/new", s.handleNewChat)
+	mux.HandleFunc("/api/chats/switch", s.handleSwitchChat)
+	mux.HandleFunc("/api/chats/delete", s.handleDeleteChat)
+	mux.HandleFunc("/api/chats/active", s.handleActiveChat)
+	mux.HandleFunc("/api/messages", s.handleMessages)
+	mux.HandleFunc("/api/status", s.handleStatus)
+	mux.HandleFunc("/api/incognito", s.handleIncognito)
+	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
+	mux.HandleFunc("/api/send_file", s.handleSendFile)
+
+	// Flutter-specific endpoints
+	mux.HandleFunc("/api/send/stream", s.handleSendStream)
+	mux.HandleFunc("/api/system-prompt", s.handleSystemPrompt)
+	mux.HandleFunc("/api/system-prompt/reset", s.handleResetSystemPrompt)
+	mux.HandleFunc("/api/incognito-prompt", s.handleIncognitoPrompt)
+	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
+	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
+	mux.HandleFunc("/api/version", s.handleVersion)
+	mux.HandleFunc("/api/image", s.handleImage)
+	mux.HandleFunc("/api/chat/export", s.handleExportChat)
+	mux.HandleFunc("/api/chat/title", s.handleGenerateTitle)
+	mux.HandleFunc("/api/models/local", s.handleLocalModels)
+	mux.HandleFunc("/api/models/start", s.handleModelStart)
+	mux.HandleFunc("/api/models/stop", s.handleModelStop)
+	mux.HandleFunc("/api/models/status", s.handleModelStatus)
+	mux.HandleFunc("/api/models/embedding/start", s.handleEmbeddingStart)
+	mux.HandleFunc("/api/models/embedding/stop", s.handleEmbeddingStop)
+	mux.HandleFunc("/api/models/embedding/status", s.handleEmbeddingStatus)
+	mux.HandleFunc("/api/gpu", s.handleGPU)
+	mux.HandleFunc("/api/models/search", s.handleModelSearch)
+	mux.HandleFunc("/api/models/files", s.handleModelFiles)
+	mux.HandleFunc("/api/models/download", s.handleModelDownload)
+	mux.HandleFunc("/api/models/download/progress", s.handleDownloadProgress)
+	mux.HandleFunc("/api/models/download/cancel", s.handleDownloadCancel)
+	mux.HandleFunc("/api/models/llama/check", s.handleLlamaCheck)
+	mux.HandleFunc("/api/models/llama/install", s.handleLlamaInstall)
+	mux.HandleFunc("/api/remote-access", s.handleRemoteAccess)
+	mux.HandleFunc("/api/sync/settings", s.handleSyncSettings)
+	mux.HandleFunc("/api/sync/auth", s.handleSyncAuth)
+	mux.HandleFunc("/api/sync/account", s.handleSyncAccount)
+	mux.HandleFunc("/api/sync/trigger", s.handleSyncTrigger)
+	mux.HandleFunc("/api/sync/pull", s.handleSyncPull)
+	mux.HandleFunc("/api/sync/now", s.handleSyncNow)
+	mux.HandleFunc("/api/sync/disconnect", s.handleSyncDisconnect)
+	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
+	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
+
+	s.srv = &http.Server{
+		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
+		Handler: corsMiddleware(mux),
+	}
+	s.port = port
+
+	ln, err := net.Listen("tcp", s.srv.Addr)
+	if err != nil {
+		return fmt.Errorf("cannot listen on port %d: %w", port, err)
+	}
+
+	s.running = true
+	go func() {
+		log.Printf("Flutter API server (HTTP) started on http://127.0.0.1:%d", port)
+		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
+			log.Printf("Flutter server error: %v", err)
+		}
+		s.mu.Lock()
+		s.running = false
+		s.mu.Unlock()
+	}()
+
+	return nil
+}
+
 func (s *Server) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -392,8 +479,8 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
-		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return

@@ -4,12 +4,17 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../providers/models_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/settings_provider.dart';
 
 class LlamaInstallerOverlay extends ConsumerWidget {
   const LlamaInstallerOverlay({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Don't show llama installer until setup wizard is complete
+    final isSetupComplete = ref.watch(setupCompleteProvider);
+    if (!isSetupComplete) return const SizedBox.shrink();
+
     final installedAsync = ref.watch(llamaInstalledProvider);
 
     return installedAsync.when(

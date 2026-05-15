@@ -20,8 +20,8 @@ func runHeadless(port int) {
 	app.startup(ctx)
 	defer app.shutdown(ctx)
 
-	// Start the web server for Flutter frontend (API only, no static assets needed)
-	app.startWebServer(port)
+	// Start the REST API server for Flutter frontend (plain HTTP, no TLS, localhost only)
+	app.startWebServerHTTP(port)
 	log.Printf("Memo headless server running on port %d", port)
 
 	// Wait for interrupt signal

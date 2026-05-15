@@ -41,9 +41,11 @@ class _AppShellState extends ConsumerState<AppShell> {
             ],
           ),
           
-          // ─── Overlays ───────────────────────────────────
-          const LlamaInstallerOverlay(),
+          // ─── Overlays ───────────────────────────────────────────────
+          // Order matters: SetupWizard renders on top (setup must complete first),
+          // then LlamaInstaller shows if llama.cpp is missing after setup.
           const SetupWizardOverlay(),
+          const LlamaInstallerOverlay(),
         ],
       ),
     );

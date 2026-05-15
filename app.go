@@ -163,8 +163,8 @@ func (a *App) startup(ctx context.Context) {
 		}
 	}()
 
-	// Start STT server in background
-	go a.startSTTServer()
+	// Start STT server in background (DISABLED due to Vosk crashes)
+	// go a.startSTTServer()
 
 	// Start remote access server if enabled
 	if cfg.RemoteAccess.Enabled {

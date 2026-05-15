@@ -1,0 +1,10 @@
+2026/05/16 01:10:13 Cloud sync enabled
+2026/05/16 01:10:13 Memo ready
+2026/05/16 01:10:13 Memo headless server running on port 8090
+2026/05/16 01:10:13 Remote access server (HTTPS) started on port 8088
+2026/05/16 01:10:13   → https://192.168.1.108:8088
+2026/05/16 01:10:13   → https://172.18.0.1:8088
+2026/05/16 01:10:13   → https://172.17.0.1:8088
+2026/05/16 01:10:13 Flutter API server (HTTP) started on http://127.0.0.1:8090
+2026/05/16 01:10:15 EMBEDDING HEALTH CHECK FAILED: api.Embedding: Post "http://localhost:1234/v1/embeddings": dial tcp [::1]:1234: connect: connection refused
+2026/05/16 01:10:15 ⚠️  EMBEDDING NOT WORKING: api.Embedding: Post "http://localhost:1234/v1/embeddings": dial tcp [::1]:1234: connect: connection refused — memory will NOT function!

@@ -1,0 +1,30 @@
+api:
+    base_url: http://localhost:1234/v1
+    embedding_model: nomic-embed-text-v1.5
+    timeout_seconds: 120
+identity:
+    user_name: User
+    assistant_name: Memo
+    style: casual
+    system_role: ""
+    incognito_prompt: You are Memo, in Incognito Mode. This is a secure session. Never refer to past events, because you have no memory here. Do your best to assist the user right now.
+memory:
+    persist_dir: ./data/memory
+    top_k: 5
+    min_similarity: 0.1
+remote_access:
+    enabled: false
+    port: 8080
+llama:
+    binary_path: ""
+    port: 8081
+    embedding_port: 8082
+    ctx_size: 4096
+    models_dir: ./data/models
+sync:
+    enabled: false
+    client_id: ""
+    client_secret: ""
+    passphrase: ""
+    token_path: ./data/sync_token.json
+    interval_messages: 50

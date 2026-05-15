@@ -1,51 +1,51 @@
 #!/bin/bash
-# Linux Paketleme Script'i (AppImage, DEB, TAR.GZ) - YENİ FLUTTER & GO MİMARİSİ
-
 set -e
 
-APP_NAME="Memo"
-EXEC_NAME="memo"
-VER=2.5.0
-ARCH="amd64"
+echo "====================================="
+echo "📦 Memo Linux Packaging (Flutter + Go)"
+echo "====================================="
 
-echo "========================================="
-echo "Memo Linux Paketleme İşlemi Başladı (Flutter + Go REST)"
-echo "========================================="
+# Clean build directory
+rm -rf build_output
+mkdir -p build_output/memo-linux-x64/data
+mkdir -p build_output/memo-linux-x64/config
 
-# 1. Go Backend Build
-echo "--> Go Headless Backend Build alınıyor..."
-mkdir -p build/bin
-go build -o build/bin/memo-backend .
+echo ""
+echo "⚙️ 1. Building Go Backend (Headless)..."
+go build -o build_output/memo-linux-x64/memo .
 
-# 2. Flutter Frontend Build
-echo "--> Flutter Frontend Build alınıyor..."
+echo ""
+echo "⚙️ 2. Building Flutter Frontend..."
 cd frontend
 flutter build linux --release
 cd ..
 
-echo "--> Paketleme dizinleri hazırlanıyor..."
-mkdir -p dist_packages/{AppDir,deb_build,tar_stage}
+echo ""
+echo "⚙️ 3. Copying Frontend Assets..."
+cp -r frontend/build/linux/x64/release/bundle/* build_output/memo-linux-x64/
 
-# 3. TAR.GZ (Standart Sıkıştırılmış Arşiv)
-echo "--> TAR.GZ Formatı Oluşturuluyor..."
-# Flutter çıktılarını kopyala
-cp -r frontend/build/linux/x64/release/bundle/* dist_packages/tar_stage/
-# Go backend'i Flutter executable'ının yanına ekle
-cp build/bin/memo-backend dist_packages/tar_stage/
-# data/ ve config/ klasörleri (varsa)
-[ -d data/bin ] && mkdir -p dist_packages/tar_stage/data && cp -r data/bin dist_packages/tar_stage/data/
-[ -d config ]   && cp -r config   dist_packages/tar_stage/
+# Create a runner script
+cat << 'EOF' > build_output/memo-linux-x64/run_memo.sh
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+cd "$DIR"
 
-tar -czvf dist_packages/${APP_NAME}_Linux_${ARCH}.tar.gz -C dist_packages/tar_stage .
-rm -rf dist_packages/tar_stage
+echo "Starting backend..."
+./memo --headless --port 8090 > backend.log 2>&1 &
+BACKEND_PID=$!
 
-# Not: AppImage ve DEB işlemleri bu aşamadan sonra yeni yapıya göre entegre edilmelidir.
-# Mevcut durumda Flutter build ile AppImage oluşturmak için linuxdeploy eklentisi gerekir.
-# Şimdilik TAR.GZ ana dağıtım yöntemidir.
+sleep 1
+echo "Starting frontend..."
+./memo_flutter
+
+echo "Shutting down backend..."
+kill $BACKEND_PID 2>/dev/null
+wait $BACKEND_PID 2>/dev/null
+EOF
+
+chmod +x build_output/memo-linux-x64/run_memo.sh
 
 echo ""
-echo "========================================="
-echo "BAŞARILI! Çıktılar 'dist_packages/' klasöründe hazır:"
-echo "1. TAR Arşivi: dist_packages/${APP_NAME}_Linux_${ARCH}.tar.gz"
-echo "========================================="
-echo "Not: Flutter arayüzünün 'memo-backend -headless' işlemini arka planda başlatması gerekmektedir."
+echo "✅ Packaging complete!"
+echo "📍 Output directory: build_output/memo-linux-x64/"
+echo "🚀 To run: cd build_output/memo-linux-x64 && ./run_memo.sh"

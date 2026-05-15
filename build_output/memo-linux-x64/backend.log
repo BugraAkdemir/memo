@@ -1,0 +1,5 @@
+2026/05/16 01:12:02 Memo ready
+2026/05/16 01:12:02 Flutter server: cannot listen on port 8090: listen tcp 127.0.0.1:8090: bind: address already in use
+2026/05/16 01:12:02 Memo headless server running on port 8090
+2026/05/16 01:12:04 EMBEDDING HEALTH CHECK FAILED: api.Embedding: Post "http://localhost:1234/v1/embeddings": dial tcp [::1]:1234: connect: connection refused
+2026/05/16 01:12:04 ⚠️  EMBEDDING NOT WORKING: api.Embedding: Post "http://localhost:1234/v1/embeddings": dial tcp [::1]:1234: connect: connection refused — memory will NOT function!

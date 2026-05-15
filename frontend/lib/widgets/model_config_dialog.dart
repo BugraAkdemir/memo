@@ -47,6 +47,27 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
             port: port,
             gpuLayers: gpuLayers,
           );
+
+      // Auto-start embedding model if the started model is not an embedding model
+      if (!widget.model.isEmbedding) {
+        final localModelsOpt = ref.read(localModelsProvider).valueOrNull;
+        if (localModelsOpt != null) {
+          // Find the first embedding model available
+          final em = localModelsOpt.where((m) => m.isEmbedding).firstOrNull;
+          if (em != null) {
+            try {
+              // Start it silently in the background with minimal layers
+              await ref.read(apiClientProvider).startEmbeddingModel(
+                    path: em.path,
+                    gpuLayers: 0,
+                  );
+              ref.invalidate(embeddingStatusProvider);
+            } catch (e) {
+              debugPrint('Embedding start error: $e');
+            }
+          }
+        }
+      }
       
       // Refresh status after start
       ref.invalidate(modelStatusProvider);

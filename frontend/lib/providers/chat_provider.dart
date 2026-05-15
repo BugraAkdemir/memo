@@ -83,6 +83,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   Future<String> sendMessage(String message) async {
     final api = ref.read(apiClientProvider);
 
+    // Signal sending state
+    ref.read(isSendingProvider.notifier).state = true;
+
     // Optimistically add user message
     final userMsg = ChatMessage(
       role: 'user',
@@ -93,15 +96,19 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final current = state.valueOrNull ?? [];
     state = AsyncData([...current, userMsg]);
 
-    // Send and get reply
-    final reply = await api.sendMessage(message);
+    try {
+      // Send and get reply
+      final reply = await api.sendMessage(message);
 
-    // Refresh full message list from backend
-    await refresh();
-    // Also refresh chat list (titles may have changed)
-    ref.invalidate(chatListProvider);
+      // Refresh full message list from backend
+      await refresh();
+      // Also refresh chat list (titles may have changed)
+      ref.invalidate(chatListProvider);
 
-    return reply;
+      return reply;
+    } finally {
+      ref.read(isSendingProvider.notifier).state = false;
+    }
   }
 }
 

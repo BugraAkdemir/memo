@@ -107,6 +107,15 @@ func loadDotEnv(path string) {
 	}
 }
 
+func (a *App) emitEvent(name string, data ...interface{}) {
+	defer func() {
+		if r := recover(); r != nil {
+			// ignore wails panic in headless mode or invalid contexts
+		}
+	}()
+	wailsRuntime.EventsEmit(a.ctx, name, data...)
+}
+
 func (a *App) startup(ctx context.Context) {
 	a.ctx = ctx
 
@@ -193,6 +202,16 @@ func (a *App) startWebServer(port int) {
 	a.webServer = webserver.New(a, subFS)
 	if err := a.webServer.Start(port); err != nil {
 		log.Printf("Remote access: %v", err)
+	}
+}
+
+// startWebServerHTTP starts a plain HTTP API server for the Flutter desktop frontend.
+// Unlike startWebServer, this does NOT use TLS and does NOT serve static assets —
+// it only exposes the REST API on localhost for Flutter to consume.
+func (a *App) startWebServerHTTP(port int) {
+	a.webServer = webserver.New(a, nil)
+	if err := a.webServer.StartHTTP(port); err != nil {
+		log.Printf("Flutter server: %v", err)
 	}
 }
 
@@ -324,7 +343,7 @@ func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) {
 
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ Cannot read image: "+err.Error())
+		a.emitEvent( "chat:error", "⚠️ Cannot read image: "+err.Error())
 		return
 	}
 	mime := detectMime(imagePath, imgData)
@@ -355,7 +374,7 @@ func (a *App) SendMessageWithFileStream(userMsg string, filePath string) {
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ Cannot read file: "+err.Error())
+		a.emitEvent( "chat:error", "⚠️ Cannot read file: "+err.Error())
 		return
 	}
 
@@ -402,7 +421,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	ch, err := a.client.ChatCompletionStream(streamCtx, messages)
 	if err != nil {
 		log.Printf("LLM stream error: %v", err)
-		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ "+err.Error())
+		a.emitEvent( "chat:error", "⚠️ "+err.Error())
 		return
 	}
 
@@ -413,14 +432,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	for chunk := range ch {
 		if chunk.Error != "" {
 			log.Printf("Stream chunk error: %s", chunk.Error)
-			wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ "+chunk.Error)
+			a.emitEvent( "chat:error", "⚠️ "+chunk.Error)
 			return
 		}
 
 		if chunk.Content != "" {
 			fullReply.WriteString(chunk.Content)
 			tokenCount++
-			wailsRuntime.EventsEmit(a.ctx, "chat:chunk", api.StreamChunk{
+			a.emitEvent( "chat:chunk", api.StreamChunk{
 				Content: chunk.Content,
 			})
 		}
@@ -436,7 +455,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	if fullReply.Len() > 0 {
 		a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
 	} else {
-		wailsRuntime.EventsEmit(a.ctx, "chat:error", "⚠️ Model boş yanıt döndürdü")
+		a.emitEvent( "chat:error", "⚠️ Model boş yanıt döndürdü")
 	}
 }
 
@@ -447,7 +466,7 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		tps = float64(tokenCount) / duration
 	}
 
-	wailsRuntime.EventsEmit(a.ctx, "chat:done", api.StreamChunk{
+	a.emitEvent( "chat:done", api.StreamChunk{
 		Done: true,
 		Stats: &api.MessageStats{
 			TokensPerSecond:  tps,
@@ -1050,11 +1069,11 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 
 	// Wait in background — emit events so the UI can show real-time progress.
 	go func() {
-		wailsRuntime.EventsEmit(a.ctx, "model:loading", map[string]any{"model": modelPath})
+		a.emitEvent( "model:loading", map[string]any{"model": modelPath})
 
 		if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
 			a.llamaServer.Stop()
-			wailsRuntime.EventsEmit(a.ctx, "model:error", err.Error())
+			a.emitEvent( "model:error", err.Error())
 			return
 		}
 
@@ -1069,7 +1088,7 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 			a.reinitMemoryStore(origClient, a.cfg.API.EmbeddingModel)
 		}
 
-		wailsRuntime.EventsEmit(a.ctx, "model:ready", map[string]any{"model": modelPath})
+		a.emitEvent( "model:ready", map[string]any{"model": modelPath})
 	}()
 
 	return nil
@@ -1254,7 +1273,7 @@ func (a *App) retrieveMemory(query string) []memory.MemoryResult {
 	m, err := a.store.RetrieveContext(ctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
 	if err != nil {
 		log.Printf("MEMORY RETRIEVE FAILED: %v", err)
-		wailsRuntime.EventsEmit(a.ctx, "memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
+		a.emitEvent( "memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
 		return nil
 	}
 	if len(m) > 0 {
@@ -1290,7 +1309,7 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 		defer cancel()
 		if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
 			log.Printf("MEMORY SAVE FAILED: %v", err)
-			wailsRuntime.EventsEmit(a.ctx, "memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
+			a.emitEvent( "memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
 		} else {
 			log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
 			if a.syncManager != nil {
@@ -1428,7 +1447,7 @@ func (a *App) StartSyncAuth() (string, error) {
 // TriggerSync forces an immediate backup upload outside the automatic 50-message cycle.
 func (a *App) TriggerSync() {
 	if err := a.ensureSyncManager(); err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "sync:error", err.Error())
+		a.emitEvent( "sync:error", err.Error())
 		return
 	}
 	a.syncManager.TriggerNow()
@@ -1437,7 +1456,7 @@ func (a *App) TriggerSync() {
 // PullSync downloads latest cloud backup and restores local .gob files.
 func (a *App) PullSync() {
 	if err := a.ensureSyncManager(); err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "sync:error", err.Error())
+		a.emitEvent( "sync:error", err.Error())
 		return
 	}
 	a.syncManager.TriggerPullNow()
@@ -1446,7 +1465,7 @@ func (a *App) PullSync() {
 // SyncNow runs push then pull in background.
 func (a *App) SyncNow() {
 	if err := a.ensureSyncManager(); err != nil {
-		wailsRuntime.EventsEmit(a.ctx, "sync:error", err.Error())
+		a.emitEvent( "sync:error", err.Error())
 		return
 	}
 	a.syncManager.TriggerFullSyncNow()

@@ -13,7 +13,7 @@ final setupCompleteProvider = StateNotifierProvider<SetupCompleteNotifier, bool>
 });
 
 class SetupCompleteNotifier extends StateNotifier<bool> {
-  SetupCompleteNotifier() : super(true) {
+  SetupCompleteNotifier() : super(false) {
     _init();
   }
 

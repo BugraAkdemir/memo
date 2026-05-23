@@ -405,6 +405,7 @@ class _ActiveModelCard extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final statusAsync = ref.watch(modelStatusProvider);
+    final embStatusAsync = ref.watch(embeddingStatusProvider);
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -480,6 +481,61 @@ class _ActiveModelCard extends ConsumerWidget {
                 );
               }
             },
+          ),
+          
+          // Embedding Model Status
+          embStatusAsync.when(
+            data: (embStatus) {
+              if (embStatus.running) {
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const SizedBox(height: 12),
+                    Divider(color: MemoTheme.accent.withValues(alpha: 0.2)),
+                    const SizedBox(height: 12),
+                    Row(
+                      children: [
+                        const Icon(Icons.hub_outlined, color: MemoTheme.accent, size: 16),
+                        const SizedBox(width: 8),
+                        Text(
+                          'Hafıza (Embedding) Modeli',
+                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        ),
+                        const Spacer(),
+                        const _StatusIndicator(active: true),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      embStatus.modelPath.split('/').last,
+                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.end,
+                      children: [
+                        OutlinedButton(
+                          onPressed: () {
+                            ref.read(apiClientProvider).stopEmbeddingModel();
+                            ref.invalidate(embeddingStatusProvider);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: MemoTheme.red,
+                            side: const BorderSide(color: MemoTheme.red),
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            minimumSize: const Size(0, 32),
+                          ),
+                          child: Text('Hafıza Modelini Durdur', style: const TextStyle(fontSize: 12)),
+                        ),
+                      ],
+                    ),
+                  ],
+                );
+              }
+              return const SizedBox.shrink();
+            },
+            loading: () => const SizedBox.shrink(),
+            error: (_, __) => const SizedBox.shrink(),
           ),
         ],
       ),

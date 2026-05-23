@@ -4,6 +4,16 @@ set -e
 APP_NAME="Memo"
 APP_EXEC="memo_flutter"
 VERSION=$(cat version 2>/dev/null || echo "3.5.0")
+
+# Auto-detect Flutter SDK
+if ! command -v flutter &>/dev/null; then
+    for p in "$HOME/Belgeler/src/flutter/bin" "$HOME/.local/share/flutter/bin" "$HOME/snap/flutter/common/flutter/bin"; do
+        if [ -x "$p/flutter" ]; then
+            export PATH="$p:$PATH"
+            break
+        fi
+    done
+fi
 VERSION=$(echo $VERSION | awk '{print $1}' | tr -d 'Vv') # Clean version string, e.g. 3.5.0
 
 echo "=========================================================="
@@ -42,32 +52,55 @@ if [ "$OS" == "linux" ]; then
     cd ..
     cp -r frontend/build/linux/x64/release/bundle/* "$STAGEDIR/"
     
-    # 3. Copy Assets (data, config)
-    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp, stt, modeller)..."
-    cp -r data/* "$STAGEDIR/data/" 2>/dev/null || true
+    # 3. Copy Assets (data/bin only — NO models, they are downloaded in-app)
+    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp kütüphaneleri)..."
+    mkdir -p "$STAGEDIR/data/bin"
+    cp -r data/bin/* "$STAGEDIR/data/bin/" 2>/dev/null || true
+    # stt_server varsa kopyala
+    cp data/bin/stt_server "$STAGEDIR/data/bin/" 2>/dev/null || true
+    # Config
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
     cp .env "$STAGEDIR/" 2>/dev/null || true
+    # Boş klasörleri hazırla ki uygulama hatasız başlasın
+    mkdir -p "$STAGEDIR/data/models"
+    mkdir -p "$STAGEDIR/data/memory"
+    mkdir -p "$STAGEDIR/data/sessions"
     
     # Create Runner Script
     cat << 'RUNNER' > "$STAGEDIR/run_memo.sh"
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-cd "$DIR"
 
-# LD_LIBRARY_PATH'i ayarla ki llama.cpp ve diğer paylaşımlı kütüphaneler bulunsun
-export LD_LIBRARY_PATH="$DIR/data/bin:$LD_LIBRARY_PATH"
+# Writable workspace
+MEMO_HOME="$HOME/.memo"
+mkdir -p "$MEMO_HOME/data/bin"
+mkdir -p "$MEMO_HOME/data/models"
+mkdir -p "$MEMO_HOME/data/memory"
+mkdir -p "$MEMO_HOME/data/sessions"
+mkdir -p "$MEMO_HOME/config"
 
-pkill -9 -f "./memo-backend" 2>/dev/null || true
+# Copy bundled data on first run
+if [ ! -f "$MEMO_HOME/data/bin/llama-server" ] && [ -f "$DIR/data/bin/llama-server" ]; then
+    echo "📦 İlk çalıştırma: dosyalar kopyalanıyor..."
+    cp -r "$DIR/data/bin/"* "$MEMO_HOME/data/bin/"
+fi
+[ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ] && cp -r "$DIR/config/"* "$MEMO_HOME/config/"
+[ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
+
+cd "$MEMO_HOME"
+export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
+
+pkill -9 -f "memo-backend" 2>/dev/null || true
 pkill -9 -f "llama-server" 2>/dev/null || true
-sleep 1
+sleep 0.5
 
-./memo-backend > backend.log 2>&1 &
+"$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
 BACKEND_PID=$!
-
 sleep 1
-./memo_flutter
 
-kill -9 $BACKEND_PID 2>/dev/null
+"$DIR/memo_flutter"
+
+kill $BACKEND_PID 2>/dev/null
 pkill -9 -f "llama-server" 2>/dev/null || true
 RUNNER
     chmod +x "$STAGEDIR/run_memo.sh"
@@ -88,7 +121,53 @@ RUNNER
     cat << 'APPRUN' > "$APPDIR/AppRun"
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
-exec "$HERE/usr/bin/run_memo.sh" "$@"
+APPBIN="$HERE/usr/bin"
+
+# Writable workspace in user's home directory
+MEMO_HOME="$HOME/.memo"
+mkdir -p "$MEMO_HOME/data/bin"
+mkdir -p "$MEMO_HOME/data/models"
+mkdir -p "$MEMO_HOME/data/memory"
+mkdir -p "$MEMO_HOME/data/sessions"
+mkdir -p "$MEMO_HOME/config"
+
+# Copy llama.cpp binaries if not already present (first run)
+if [ ! -f "$MEMO_HOME/data/bin/llama-server" ] && [ -f "$APPBIN/data/bin/llama-server" ]; then
+    echo "📦 İlk çalıştırma: llama.cpp kütüphaneleri kopyalanıyor..."
+    cp -r "$APPBIN/data/bin/"* "$MEMO_HOME/data/bin/"
+fi
+
+# Copy default config if not present
+if [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$APPBIN/config" ]; then
+    cp -r "$APPBIN/config/"* "$MEMO_HOME/config/"
+fi
+
+# Copy .env if not present
+if [ ! -f "$MEMO_HOME/.env" ] && [ -f "$APPBIN/.env" ]; then
+    cp "$APPBIN/.env" "$MEMO_HOME/.env"
+fi
+
+cd "$MEMO_HOME"
+
+# Set library paths
+export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$APPBIN/lib:$LD_LIBRARY_PATH"
+
+# Stop old processes
+pkill -9 -f "memo-backend" 2>/dev/null || true
+pkill -9 -f "llama-server" 2>/dev/null || true
+sleep 0.5
+
+# Start backend from writable directory
+"$APPBIN/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
+BACKEND_PID=$!
+sleep 1
+
+# Start Flutter frontend
+"$APPBIN/memo_flutter" "$@"
+
+# Cleanup
+kill $BACKEND_PID 2>/dev/null
+pkill -9 -f "llama-server" 2>/dev/null || true
 APPRUN
     chmod +x "$APPDIR/AppRun"
     
@@ -105,13 +184,15 @@ DESKTOP
     # Create a dummy icon if doesn't exist
     touch "$APPDIR/${APP_NAME}.png"
     
-    # Download appimagetool if not exists
-    if [ ! -f "appimagetool-x86_64.AppImage" ]; then
+    # Download appimagetool if not exists or is empty
+    if [ ! -s "appimagetool-x86_64.AppImage" ]; then
         echo "⬇️ appimagetool indiriliyor..."
-        wget -qO appimagetool-x86_64.AppImage https://github.com/AppImage/AppImageKit/releases/download/13/appimagetool-x86_64.AppImage
+        rm -f appimagetool-x86_64.AppImage
+        wget -qO appimagetool-x86_64.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
         chmod +x appimagetool-x86_64.AppImage
     fi
-    ./appimagetool-x86_64.AppImage "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" >/dev/null 2>&1 || echo "⚠️ AppImage oluşturulamadı (FUSE sorunu olabilir)."
+    # Try with --appimage-extract-and-run for systems without FUSE
+    ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
     
     # --- DEB ---
     echo "📦 6. .deb Paketi Oluşturuluyor..."
@@ -143,7 +224,11 @@ Type=Application
 Categories=Utility;
 DEBDESKTOP
 
-    dpkg-deb --build "$DEBDIR" "build_output/dist/" >/dev/null
+    if command -v dpkg-deb &>/dev/null; then
+        dpkg-deb --build "$DEBDIR" "build_output/dist/" >/dev/null
+    else
+        echo "⚠️ dpkg-deb bulunamadı. .deb paketi atlanıyor. Kurmak için: sudo apt install dpkg"
+    fi
     
     echo "🎉 LİNUX PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."
 
@@ -159,10 +244,14 @@ elif [ "$OS" == "windows" ]; then
     cd ..
     cp -r frontend/build/windows/x64/release/runner/Release/* "$STAGEDIR/"
     
-    echo "📂 3. Gömülü Dosyalar Kopyalanıyor..."
-    cp -r data/* "$STAGEDIR/data/" 2>/dev/null || true
+    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp kütüphaneleri)..."
+    mkdir -p "$STAGEDIR/data/bin"
+    cp -r data/bin/* "$STAGEDIR/data/bin/" 2>/dev/null || true
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
     cp .env "$STAGEDIR/" 2>/dev/null || true
+    mkdir -p "$STAGEDIR/data/models"
+    mkdir -p "$STAGEDIR/data/memory"
+    mkdir -p "$STAGEDIR/data/sessions"
     
     # Create batch runner for Windows
     cat << 'RUNNERWIN' > "$STAGEDIR/run_memo.bat"

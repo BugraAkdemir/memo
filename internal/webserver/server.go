@@ -122,9 +122,11 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
 	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
 
-	// Serve frontend static files
-	fileServer := http.FileServer(http.FS(s.assets))
-	mux.Handle("/", fileServer)
+	// Serve frontend static files if assets are provided
+	if s.assets != nil {
+		fileServer := http.FileServer(http.FS(s.assets))
+		mux.Handle("/", fileServer)
+	}
 
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("0.0.0.0:%d", port),

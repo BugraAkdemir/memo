@@ -1,5 +1,5 @@
 api:
-    base_url: http://localhost:1234/v1
+    base_url: http://127.0.0.1:8081/v1
     embedding_model: nomic-embed-text-v1.5
     timeout_seconds: 120
 identity:

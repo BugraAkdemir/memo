@@ -7,14 +7,13 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
-
-	"github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 // copyFile copies a file from src to dst with the given permissions.
@@ -481,5 +480,5 @@ func (i *Installer) runCmdStream(cmd *exec.Cmd, logger func(string)) error {
 
 // StreamToFrontend is a helper to wrap the Wails runtime emit.
 func StreamToFrontend(ctx context.Context, line string) {
-	runtime.EventsEmit(ctx, "llama:install-log", line)
+	log.Println("INSTALL:", line)
 }

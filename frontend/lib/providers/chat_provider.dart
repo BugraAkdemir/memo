@@ -110,6 +110,33 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(isSendingProvider.notifier).state = false;
     }
   }
+
+  Future<String> sendFile(String message, String filePath) async {
+    final api = ref.read(apiClientProvider);
+
+    ref.read(isSendingProvider.notifier).state = true;
+
+    final fileName = filePath.split('/').last;
+    final displayMsg = message.isEmpty ? '*(Dosya gönderildi: $fileName)*' : '$message\n*(Dosya: $fileName)*';
+
+    final userMsg = ChatMessage(
+      role: 'user',
+      content: displayMsg,
+      timestamp: DateTime.now().toIso8601String().substring(11, 16),
+    );
+
+    final current = state.valueOrNull ?? [];
+    state = AsyncData([...current, userMsg]);
+
+    try {
+      final reply = await api.sendFile(message, filePath);
+      await refresh();
+      ref.invalidate(chatListProvider);
+      return reply;
+    } finally {
+      ref.read(isSendingProvider.notifier).state = false;
+    }
+  }
 }
 
 // ─── Incognito Mode ─────────────────────────────────────────────

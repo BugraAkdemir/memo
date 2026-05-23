@@ -371,6 +371,25 @@ func (s *Server) handleLocalModels(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleModelImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.ImportLocalModel(req.Path); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 func (s *Server) handleModelStart(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)

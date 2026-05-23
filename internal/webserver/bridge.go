@@ -49,6 +49,7 @@ type FullBridge interface {
 	DownloadModel(repoID, filename string) error
 	GetDownloadProgress() *modelstore.DownloadProgress
 	CancelDownload()
+	ImportLocalModel(sourcePath string) error
 	ListLocalModels() []modelstore.LocalModel
 	DeleteLocalModel(path string) error
 	StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error

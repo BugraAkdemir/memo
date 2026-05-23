@@ -311,14 +311,13 @@ class _LocalModelsList extends ConsumerWidget {
                   if (result != null && result.files.single.path != null) {
                     final sourceFile = File(result.files.single.path!);
                     final filename = result.files.single.name;
-                    // Create data/models directory if it doesn't exist
-                    final modelsDir = Directory('data/models');
+                    // ../data/models -> proje kökündeki data/models (backend'in baktığı yer)
+                    final modelsDir = Directory('../data/models');
                     if (!await modelsDir.exists()) {
                       await modelsDir.create(recursive: true);
                     }
                     final destPath = '${modelsDir.path}/$filename';
                     
-                    // Show a simple loading snackbar
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Model içe aktarılıyor: $filename...')),
@@ -418,6 +417,44 @@ class _LocalModelCard extends ConsumerWidget {
             style: TextStyle(fontSize: 11, color: MemoTheme.textDim),
           ),
           const SizedBox(height: 8),
+          Builder(
+            builder: (context) {
+              final tags = <String>[];
+              final name = model.filename.toLowerCase();
+              if (model.isEmbedding || name.contains('embed') || name.contains('bge')) {
+                tags.add('Embedding');
+              }
+              if (name.contains('vision') || name.contains('llava') || name.contains('pixtral')) {
+                tags.add('Vision');
+              }
+              if (name.contains('think') || name.contains('reason') || name.contains('r1') || name.contains('o1')) {
+                tags.add('Think');
+              }
+              if (name.contains('tool') || name.contains('function') || name.contains('fc')) {
+                tags.add('Tool');
+              }
+              if (tags.isEmpty) {
+                tags.add('Text');
+              }
+
+              return Row(
+                children: tags.map((t) => Container(
+                  margin: const EdgeInsets.only(right: 6),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.accentPale.withValues(alpha: 0.5),
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
+                  ),
+                  child: Text(
+                    t, 
+                    style: const TextStyle(fontSize: 10, color: MemoTheme.accent, fontWeight: FontWeight.w600)
+                  ),
+                )).toList(),
+              );
+            }
+          ),
+          const SizedBox(height: 10),
           Row(
             children: [
               Container(

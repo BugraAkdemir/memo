@@ -69,10 +69,14 @@ class _ChatContent extends ConsumerWidget {
               ),
             ),
             data: (messages) {
-              if (messages.isEmpty) {
+              final isSending = ref.watch(isSendingProvider);
+              if (messages.isEmpty && !isSending) {
                 return const WelcomeView();
               }
-              return ChatMessageList(messages: messages);
+              return ChatMessageList(
+                messages: messages,
+                isTyping: isSending,
+              );
             },
           ),
         ),

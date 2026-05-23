@@ -628,7 +628,7 @@ class _AboutTab extends ConsumerWidget {
                 versionAsync.when(
                   loading: () => const Text('...'),
                   error: (_, __) => const SizedBox(),
-                  data: (v) => Text('Version $v',
+                  data: (v) => Text(v,
                       style: TextStyle(color: MemoTheme.textDim)),
                 ),
               ],

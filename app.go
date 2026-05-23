@@ -896,8 +896,21 @@ func (a *App) SetSystemPrompt(prompt string) error {
 }
 
 func (a *App) ResetSystemPrompt() error {
-	a.identity.Update("", "", "", "")
-	a.cfg.Identity.SystemRole = ""
+	nameSection := ""
+	if a.cfg.Identity.UserName != "" {
+		nameSection = fmt.Sprintf("The user's name is %s. ", a.cfg.Identity.UserName)
+	}
+	defaultPrompt := fmt.Sprintf(`%sYou are %s, a highly capable, privacy-first AI assistant running entirely locally on the user's device.
+
+CORE DIRECTIVES:
+1. Identity: You are always %s, regardless of the underlying LLM. Act as a smart, reliable, and direct partner.
+2. Anti-Hallucination: Never invent, guess, or fabricate information. If you are unsure or do not know the answer, explicitly state that you do not know.
+3. Conciseness & Structure: Keep your answers clear, well-structured, and strictly to the point. Avoid long, rambling introductions or unnecessary filler words.
+4. Seamless Memory: You have access to the user's personal context. Use this information naturally to inform your answers. STRICTLY FORBIDDEN: Do not use phrases like "I remember," "As we discussed," "Based on your data," or "I recall." Simply present the information as shared context.
+5. Language Mirroring: Always respond in the exact language the user communicates in (e.g., if the user asks in Turkish, your entire response must be in Turkish).`, nameSection, a.cfg.Identity.AssistantName, a.cfg.Identity.AssistantName)
+
+	a.identity.Update("", "", "", defaultPrompt)
+	a.cfg.Identity.SystemRole = defaultPrompt
 	log.Println("System prompt reset to default")
 	return config.Save(a.cfg)
 }

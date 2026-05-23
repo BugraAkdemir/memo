@@ -113,6 +113,11 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	// Add binary directory to the shared library search path.
 	// Windows uses PATH for DLL discovery; Linux/macOS use LD_LIBRARY_PATH.
 	binDir := filepath.Dir(bin)
+	absBinDir, err := filepath.Abs(binDir)
+	if err == nil {
+		binDir = absBinDir
+	}
+	
 	env := os.Environ()
 	if runtime.GOOS == "windows" {
 		for i, e := range env {

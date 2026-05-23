@@ -180,6 +180,10 @@ class MemoApiClient {
     await _dio.delete('/api/models/local', data: {'path': path});
   }
 
+  Future<void> importModel(String path) async {
+    await _dio.post('/api/models/import', data: {'path': path});
+  }
+
   Future<void> startModel({
     required String path,
     int ctxSize = 4096,

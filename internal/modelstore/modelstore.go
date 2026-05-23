@@ -397,6 +397,43 @@ func (s *Store) DeleteLocalModel(path string) error {
 	return nil
 }
 
+func (s *Store) ImportLocalModel(sourcePath string) error {
+	absSource, err := filepath.Abs(sourcePath)
+	if err != nil {
+		return err
+	}
+	info, err := os.Stat(absSource)
+	if err != nil {
+		return err
+	}
+	if info.IsDir() {
+		return fmt.Errorf("source is a directory")
+	}
+
+	if err := os.MkdirAll(s.modelsDir, 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+
+	destPath := filepath.Join(s.modelsDir, info.Name())
+
+	input, err := os.Open(absSource)
+	if err != nil {
+		return err
+	}
+	defer input.Close()
+
+	output, err := os.Create(destPath)
+	if err != nil {
+		return err
+	}
+	defer output.Close()
+
+	if _, err = io.Copy(output, input); err != nil {
+		return err
+	}
+	return nil
+}
+
 // ─── Helpers ─────────────────────────────────────────────────────
 
 // sanitizePath replaces "/" in repo IDs with "__" for safe directory names.

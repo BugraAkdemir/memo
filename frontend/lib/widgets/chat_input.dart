@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -104,16 +105,58 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               _InputIconButton(
                 icon: Icons.image_outlined,
                 tooltip: L10n.t('attach_image'),
-                onTap: () {
-                  // TODO: file picker (Faz 8 integration)
+                onTap: () async {
+                  final isSending = ref.read(isSendingProvider);
+                  if (isSending) return;
+                  
+                  final result = await FilePicker.platform.pickFiles(
+                    type: FileType.image,
+                    allowMultiple: false,
+                  );
+                  if (result != null && result.files.single.path != null) {
+                    final path = result.files.single.path!;
+                    final text = _controller.text.trim();
+                    _controller.clear();
+                    setState(() => _showTemplates = false);
+                    try {
+                      await ref.read(messagesProvider.notifier).sendFile(text, path);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${L10n.t('error')}: $e')),
+                        );
+                      }
+                    }
+                  }
                 },
               ),
               const SizedBox(width: 4),
               _InputIconButton(
                 icon: Icons.attach_file,
                 tooltip: L10n.t('attach_file'),
-                onTap: () {
-                  // TODO: file picker (Faz 8 integration)
+                onTap: () async {
+                  final isSending = ref.read(isSendingProvider);
+                  if (isSending) return;
+
+                  final result = await FilePicker.platform.pickFiles(
+                    type: FileType.any,
+                    allowMultiple: false,
+                  );
+                  if (result != null && result.files.single.path != null) {
+                    final path = result.files.single.path!;
+                    final text = _controller.text.trim();
+                    _controller.clear();
+                    setState(() => _showTemplates = false);
+                    try {
+                      await ref.read(messagesProvider.notifier).sendFile(text, path);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${L10n.t('error')}: $e')),
+                        );
+                      }
+                    }
+                  }
                 },
               ),
               /* STT Disabled due to Vosk crashes

@@ -501,6 +501,11 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 
 	reply := a.callLLM(msgs)
 
+	// Detect vision-not-supported error and return friendly message
+	if strings.Contains(reply, "image input is not supported") || strings.Contains(reply, "mmproj") {
+		reply = "⚠️ Bu model görsel/resim desteklemiyor. Resim gönderebilmek için vision destekli bir model kullanmalısınız (örn: LLaVA, BakLLaVA, Llama Vision gibi)."
+	}
+
 	if a.sessions != nil {
 		a.sessions.AddMessage("assistant", reply, "", "")
 	}
@@ -1017,6 +1022,10 @@ func (a *App) GetDownloadProgress() *modelstore.DownloadProgress {
 
 func (a *App) CancelDownload() {
 	a.modelStore.CancelDownload()
+}
+
+func (a *App) ImportLocalModel(sourcePath string) error {
+	return a.modelStore.ImportLocalModel(sourcePath)
 }
 
 func (a *App) ListLocalModels() []modelstore.LocalModel {

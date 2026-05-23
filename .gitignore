@@ -35,3 +35,13 @@ frontend_svelte_backup/
 # OS files
 .DS_Store
 Thumbs.db
+
+# Extra ignored paths to prevent large files
+build_output/
+dist/
+build/
+*.pkg
+data/bin/
+data/models/
+data/memory/
+data/sessions/

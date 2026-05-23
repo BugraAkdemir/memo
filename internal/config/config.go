@@ -74,7 +74,7 @@ var (
 func Default() *AppConfig {
 	return &AppConfig{
 		API: APIConfig{
-			BaseURL:        "http://localhost:1234/v1",
+			BaseURL:        "http://127.0.0.1:8081/v1",
 			EmbeddingModel: "nomic-embed-text-v1.5",
 			TimeoutSeconds: 120,
 		},
@@ -176,7 +176,7 @@ func saveToFile(cfg *AppConfig, path string) error {
 
 func (c *AppConfig) validate() {
 	if c.API.BaseURL == "" {
-		c.API.BaseURL = "http://localhost:1234/v1"
+		c.API.BaseURL = "http://127.0.0.1:8081/v1"
 	}
 	if c.API.TimeoutSeconds <= 0 {
 		c.API.TimeoutSeconds = 120

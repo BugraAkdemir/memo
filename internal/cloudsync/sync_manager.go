@@ -24,7 +24,6 @@ import (
 	"sync"
 	"sync/atomic"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 const (
@@ -451,9 +450,8 @@ func (m *Manager) restoreZip(zipData []byte) error {
 // ─── Event helpers ────────────────────────────────────────────────────────────
 
 func (m *Manager) emit(event string, payload any) {
-	if m.ctx != nil {
-		wailsRuntime.EventsEmit(m.ctx, event, payload)
-	}
+	// Headless modunda (Flutter client) Wails events emit fonksiyonu panik yarattığı için kaldırıldı.
+	log.Printf("SYNC EVENT: %s - %v", event, payload)
 }
 
 func (m *Manager) emitError(msg string) {

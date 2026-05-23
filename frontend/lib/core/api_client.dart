@@ -12,7 +12,7 @@ class MemoApiClient {
   late final Dio _dio;
   final String baseUrl;
 
-  MemoApiClient({this.baseUrl = 'http://localhost:8090'}) {
+  MemoApiClient({this.baseUrl = 'http://127.0.0.1:8090'}) {
     _dio = Dio(BaseOptions(
       baseUrl: baseUrl,
       connectTimeout: const Duration(seconds: 5),

@@ -7,7 +7,6 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
-	"io/fs"
 	"log"
 	"net/http"
 	"os"
@@ -28,7 +27,6 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/webserver"
 
-	wailsRuntime "github.com/wailsapp/wails/v2/pkg/runtime"
 )
 
 //go:embed binaries/*
@@ -64,7 +62,6 @@ type App struct {
 	incognitoMessages []api.Message
 	sttServer         *exec.Cmd
 	webServer         *webserver.Server
-	embeddedAssets    embed.FS
 	modelStore        *modelstore.Store
 	llamaServer       *llama.Server
 	llamaEmbedServer  *llama.Server // dedicated embedding model server
@@ -78,9 +75,6 @@ func NewApp() *App {
 	return &App{}
 }
 
-func (a *App) SetEmbeddedAssets(assets embed.FS) {
-	a.embeddedAssets = assets
-}
 
 // loadDotEnv reads a .env file and sets any unset environment variables from it.
 // Lines starting with # are ignored. Format: KEY=VALUE (no export keyword needed).
@@ -108,12 +102,9 @@ func loadDotEnv(path string) {
 }
 
 func (a *App) emitEvent(name string, data ...interface{}) {
-	defer func() {
-		if r := recover(); r != nil {
-			// ignore wails panic in headless mode or invalid contexts
-		}
-	}()
-	wailsRuntime.EventsEmit(a.ctx, name, data...)
+	// Wails runtime calls cause fatal exits (os.Exit(1)) when context is invalid (headless mode)
+	// We no longer use Wails frontend events since Flutter migration
+	// log.Printf("APP EVENT: %s - %v", name, data)
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -155,13 +146,8 @@ func (a *App) startup(ctx context.Context) {
 	a.llamaInstaller = llama.NewInstaller("data")
 
 	// Check embedding health in background.
-	go func() {
-		time.Sleep(2 * time.Second) // wait for LM Studio / embedding server to be ready
-		h := a.CheckEmbeddingHealth()
-		if h["ok"] != true {
-			log.Printf("⚠️  EMBEDDING NOT WORKING: %v — memory will NOT function!", h["error"])
-		}
-	}()
+	// Removed: Since we are using internal models, they are started manually.
+	// Running a health check here will falsely report an error.
 
 	// Start STT server in background (DISABLED due to Vosk crashes)
 	// go a.startSTTServer()
@@ -193,18 +179,6 @@ func (a *App) startup(ctx context.Context) {
 	log.Println("Memo ready")
 }
 
-func (a *App) startWebServer(port int) {
-	subFS, err := fs.Sub(a.embeddedAssets, "frontend/dist")
-	if err != nil {
-		log.Printf("Remote access: cannot access frontend assets: %v", err)
-		return
-	}
-	a.webServer = webserver.New(a, subFS)
-	if err := a.webServer.Start(port); err != nil {
-		log.Printf("Remote access: %v", err)
-	}
-}
-
 // startWebServerHTTP starts a plain HTTP API server for the Flutter desktop frontend.
 // Unlike startWebServer, this does NOT use TLS and does NOT serve static assets —
 // it only exposes the REST API on localhost for Flutter to consume.
@@ -212,6 +186,16 @@ func (a *App) startWebServerHTTP(port int) {
 	a.webServer = webserver.New(a, nil)
 	if err := a.webServer.StartHTTP(port); err != nil {
 		log.Printf("Flutter server: %v", err)
+	}
+}
+
+// startWebServer starts a TLS server for remote access.
+func (a *App) startWebServer(port int) {
+	if a.webServer == nil {
+		a.webServer = webserver.New(a, nil)
+	}
+	if err := a.webServer.Start(port); err != nil {
+		log.Printf("Remote access server: %v", err)
 	}
 }
 
@@ -697,36 +681,6 @@ func (a *App) GenerateChatTitle() string {
 }
 
 // ─── File Dialog ─────────────────────────────────────────────────
-
-func (a *App) SelectImage() string {
-	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: "Select Image",
-		Filters: []wailsRuntime.FileFilter{
-			{DisplayName: "Images", Pattern: "*.png;*.jpg;*.jpeg;*.gif;*.webp;*.bmp"},
-		},
-	})
-	if err != nil {
-		log.Printf("file dialog error: %v", err)
-		return ""
-	}
-	return path
-}
-
-func (a *App) SelectFile() string {
-	path, err := wailsRuntime.OpenFileDialog(a.ctx, wailsRuntime.OpenDialogOptions{
-		Title: "Select File",
-		Filters: []wailsRuntime.FileFilter{
-			{DisplayName: "Text Files", Pattern: "*.txt;*.md;*.py;*.js;*.ts;*.go;*.json;*.yaml;*.yml;*.html;*.css;*.csv;*.log;*.sh;*.bat;*.xml;*.toml;*.sql"},
-			{DisplayName: "All Files", Pattern: "*.*"},
-		},
-	})
-	if err != nil {
-		log.Printf("file dialog error: %v", err)
-		return ""
-	}
-	return path
-}
-
 // ─── Speech to Text ─────────────────────────────────────────────
 
 var (
@@ -1082,10 +1036,9 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 		a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
 		log.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
-		// Keep embeddings on the original API (e.g. LM Studio)
+		// Auto-start embedding model if not already running
 		if !a.llamaEmbedServer.IsRunning() {
-			origClient := api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
-			a.reinitMemoryStore(origClient, a.cfg.API.EmbeddingModel)
+			a.autoStartEmbeddingModel()
 		}
 
 		a.emitEvent( "model:ready", map[string]any{"model": modelPath})
@@ -1138,7 +1091,7 @@ func (a *App) CheckLlamaInstallation() bool {
 
 func (a *App) InstallLlamaServer() error {
 	logger := func(msg string) {
-		llama.StreamToFrontend(a.ctx, msg)
+		log.Println("INSTALL:", msg)
 	}
 
 	binPath, err := a.llamaInstaller.Install(a.ctx, logger)
@@ -1191,6 +1144,32 @@ func (a *App) GetEmbeddingModelStatus() llama.ServerStatus {
 }
 
 // ─── Internal Helpers ────────────────────────────────────────────
+
+// autoStartEmbeddingModel finds the first embedding model in the local model store
+// and starts it automatically. This ensures the GOB memory/RAG system works
+// without requiring the user to manually start the embedding server.
+func (a *App) autoStartEmbeddingModel() {
+	models := a.modelStore.ListLocalModels()
+	var embeddingPath string
+	for _, m := range models {
+		if m.IsEmbedding {
+			embeddingPath = m.Path
+			break
+		}
+	}
+	if embeddingPath == "" {
+		log.Println("⚠️  No embedding model found in local models — memory/RAG will NOT function.")
+		log.Println("   Download an embedding model (e.g. nomic-embed-text) from the Model Store.")
+		return
+	}
+
+	log.Printf("Auto-starting embedding model: %s", embeddingPath)
+	if err := a.StartEmbeddingModel(embeddingPath, -1); err != nil {
+		log.Printf("⚠️  Failed to auto-start embedding model: %v", err)
+	} else {
+		log.Println("✅ Embedding model auto-started — memory/RAG is active.")
+	}
+}
 
 func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	embeddingFunc := memory.NewEmbeddingFunc(client, model)
@@ -1440,7 +1419,6 @@ func (a *App) StartSyncAuth() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	wailsRuntime.BrowserOpenURL(a.ctx, url)
 	return url, nil
 }
 

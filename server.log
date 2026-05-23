@@ -1,17 +1,13 @@
-2026/05/16 01:10:13 Cloud sync enabled
-2026/05/16 01:10:13 Memo ready
-2026/05/16 01:10:13 Memo headless server running on port 8090
-2026/05/16 01:10:13 Remote access server (HTTPS) started on port 8088
-2026/05/16 01:10:13   → https://192.168.1.108:8088
-2026/05/16 01:10:13   → https://172.18.0.1:8088
-2026/05/16 01:10:13   → https://172.17.0.1:8088
-2026/05/16 01:10:13 Flutter API server (HTTP) started on http://127.0.0.1:8090
-2026/05/16 01:10:15 EMBEDDING HEALTH CHECK FAILED: api.Embedding: Post "http://localhost:1234/v1/embeddings": dial tcp [::1]:1234: connect: connection refused
-2026/05/16 01:10:15 ⚠️  EMBEDDING NOT WORKING: api.Embedding: Post "http://localhost:1234/v1/embeddings": dial tcp [::1]:1234: connect: connection refused — memory will NOT function!
-2026/05/16 01:12:07 GPU detected: AMD device 0x1638 via sysfs (ROCm may not be installed)
-2026/05/16 01:12:18 GPU detected: AMD device 0x1638 via sysfs (ROCm may not be installed)
-2026/05/16 01:12:18 llama: launching data/bin/llama-server --model data/models/Qwen3-VL-4B-Instruct-Q4_K_M.gguf --port 8080 --host 127.0.0.1 --n-gpu-layers 33 --ctx-size 4096 --parallel 1
-2026/05/16 01:12:18 llama: server started (PID 761209, port 8080, GPU layers: 0)
-2026/05/16 01:12:18 cannot call 'github.com/wailsapp/wails/v2/pkg/runtime.EventsEmit': An invalid context was passed. This method requires the specific context given in the lifecycle hooks:
-https://wails.io/docs/reference/runtime/intro
-data/bin/llama-server: error while loading shared libraries: libmtmd.so.0: cannot open shared object file: No such file or directory
+2026/05/23 16:56:43 Cloud sync enabled
+2026/05/23 16:56:43 Memo ready
+2026/05/23 16:56:43 Memo backend server running on port 8090
+2026/05/23 16:56:43 Flutter API server (HTTP) started on http://127.0.0.1:8090
+2026/05/23 16:56:43 Remote access server (HTTPS) started on port 8088
+2026/05/23 16:56:43   → https://192.168.1.108:8088
+2026/05/23 16:56:43   → https://172.18.0.1:8088
+2026/05/23 16:56:43   → https://172.17.0.1:8088
+
+Shutting down backend...
+2026/05/23 16:57:35 Memo shutting down, cleaning up background processes...
+2026/05/23 16:57:35 llama: nothing found on port 8081
+2026/05/23 16:57:35 llama: nothing found on port 8082

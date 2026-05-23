@@ -8,8 +8,9 @@ import '../models/chat.dart';
 /// Scrollable list of chat messages with markdown rendering.
 class ChatMessageList extends StatefulWidget {
   final List<ChatMessage> messages;
+  final bool isTyping;
 
-  const ChatMessageList({super.key, required this.messages});
+  const ChatMessageList({super.key, required this.messages, this.isTyping = false});
 
   @override
   State<ChatMessageList> createState() => _ChatMessageListState();
@@ -21,7 +22,8 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.messages.length != oldWidget.messages.length) {
+    if (widget.messages.length != oldWidget.messages.length ||
+        (widget.isTyping && !oldWidget.isTyping)) {
       _scrollToBottom();
     }
   }
@@ -46,11 +48,16 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
+    final itemCount = widget.messages.length + (widget.isTyping ? 1 : 0);
+
     return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      itemCount: widget.messages.length,
+      itemCount: itemCount,
       itemBuilder: (context, index) {
+        if (index == widget.messages.length) {
+          return const _TypingIndicator();
+        }
         final msg = widget.messages[index];
         return _MessageBubble(message: msg);
       },
@@ -273,6 +280,75 @@ class _MessageBubbleState extends State<_MessageBubble>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _TypingIndicator extends StatelessWidget {
+  const _TypingIndicator();
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.start,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Avatar
+          Container(
+            width: 32,
+            height: 32,
+            margin: const EdgeInsets.only(right: 10, top: 2),
+            decoration: BoxDecoration(
+              color: MemoTheme.accentPale,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
+            ),
+            child: const Center(
+              child: Text(
+                'M',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.bold,
+                  color: MemoTheme.accent,
+                ),
+              ),
+            ),
+          ),
+          // Bubble
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: MemoTheme.bgPanel,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(color: MemoTheme.borderSoft),
+            ),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: MemoTheme.accent,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Düşünüyor...',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontStyle: FontStyle.italic,
+                    color: MemoTheme.textMuted,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

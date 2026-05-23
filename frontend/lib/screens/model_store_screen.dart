@@ -1,5 +1,7 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -258,7 +260,10 @@ class _SearchResultCard extends StatelessWidget {
             alignment: Alignment.centerRight,
             child: ElevatedButton.icon(
               onPressed: () {
-                // TODO: Show model details/files dialog
+                showDialog(
+                  context: context,
+                  builder: (_) => _ModelFilesDialog(repoId: result.id),
+                );
               },
               icon: const Icon(Icons.search, size: 16),
               label: const Text('Dosyaları Gör'),
@@ -285,9 +290,60 @@ class _LocalModelsList extends ConsumerWidget {
       children: [
         Padding(
           padding: const EdgeInsets.all(24).copyWith(bottom: 8),
-          child: Text(
-            L10n.t('local_models'),
-            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                L10n.t('local_models'),
+                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+              ),
+              TextButton.icon(
+                icon: const Icon(Icons.file_upload, size: 16),
+                label: const Text('İçe Aktar'),
+                style: TextButton.styleFrom(
+                  foregroundColor: MemoTheme.accent,
+                ),
+                onPressed: () async {
+                  final result = await FilePicker.platform.pickFiles(
+                    type: FileType.any, // GGUF isn't a standard mime type
+                    allowMultiple: false,
+                  );
+                  if (result != null && result.files.single.path != null) {
+                    final sourceFile = File(result.files.single.path!);
+                    final filename = result.files.single.name;
+                    // Create data/models directory if it doesn't exist
+                    final modelsDir = Directory('data/models');
+                    if (!await modelsDir.exists()) {
+                      await modelsDir.create(recursive: true);
+                    }
+                    final destPath = '${modelsDir.path}/$filename';
+                    
+                    // Show a simple loading snackbar
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Model içe aktarılıyor: $filename...')),
+                      );
+                    }
+                    
+                    try {
+                      await sourceFile.copy(destPath);
+                      ref.invalidate(localModelsProvider);
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(content: Text('Model başarıyla içe aktarıldı.')),
+                        );
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('İçe aktarma hatası: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+              ),
+            ],
           ),
         ),
         Expanded(
@@ -655,3 +711,86 @@ class _DownloadProgressCard extends ConsumerWidget {
     );
   }
 }
+
+class _ModelFilesDialog extends ConsumerStatefulWidget {
+  final String repoId;
+  const _ModelFilesDialog({required this.repoId});
+
+  @override
+  ConsumerState<_ModelFilesDialog> createState() => _ModelFilesDialogState();
+}
+
+class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
+  List<GGUFFile>? _files;
+  String? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFiles();
+  }
+
+  Future<void> _loadFiles() async {
+    try {
+      final files = await ref.read(apiClientProvider).getModelFiles(widget.repoId);
+      if (mounted) {
+        setState(() {
+          _files = files;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _error = e.toString();
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      backgroundColor: MemoTheme.bgApp,
+      title: Text('Model Dosyaları', style: TextStyle(color: MemoTheme.textMain)),
+      content: SizedBox(
+        width: double.maxFinite,
+        height: 400,
+        child: _files == null && _error == null
+            ? const Center(child: CircularProgressIndicator())
+            : _error != null
+                ? Center(child: Text('Hata: $_error', style: TextStyle(color: MemoTheme.red)))
+                : _files!.isEmpty
+                    ? Center(child: Text('Bu modelde GGUF dosyası bulunamadı.', style: TextStyle(color: MemoTheme.textDim)))
+                    : ListView.separated(
+                        itemCount: _files!.length,
+                        separatorBuilder: (_, __) => const Divider(),
+                        itemBuilder: (context, index) {
+                          final file = _files![index];
+                          final sizeMB = (file.size / (1024 * 1024)).toStringAsFixed(1);
+                          return ListTile(
+                            title: Text(file.filename, style: TextStyle(color: MemoTheme.textMain, fontSize: 13)),
+                            subtitle: Text('$sizeMB MB', style: TextStyle(color: MemoTheme.textDim, fontSize: 11)),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.download, color: MemoTheme.accent),
+                              onPressed: () {
+                                ref.read(apiClientProvider).downloadModel(widget.repoId, file.filename);
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('${file.filename} indirmesi başlatıldı...')),
+                                );
+                              },
+                            ),
+                          );
+                        },
+                      ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Kapat'),
+        ),
+      ],
+    );
+  }
+}
+

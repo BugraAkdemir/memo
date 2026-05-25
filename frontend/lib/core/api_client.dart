@@ -13,12 +13,14 @@ class MemoApiClient {
   final String baseUrl;
 
   MemoApiClient({this.baseUrl = 'http://127.0.0.1:8090'}) {
-    _dio = Dio(BaseOptions(
-      baseUrl: baseUrl,
-      connectTimeout: const Duration(seconds: 5),
-      receiveTimeout: const Duration(seconds: 120),
-      headers: {'Content-Type': 'application/json'},
-    ));
+    _dio = Dio(
+      BaseOptions(
+        baseUrl: baseUrl,
+        connectTimeout: const Duration(seconds: 5),
+        receiveTimeout: const Duration(seconds: 120),
+        headers: {'Content-Type': 'application/json'},
+      ),
+    );
   }
 
   // ─── Chat ───────────────────────────────────────────────────────
@@ -164,6 +166,21 @@ class MemoApiClient {
     await _dio.post('/api/memory/clear');
   }
 
+  Future<Map<String, dynamic>> getMemorySettings() async {
+    final res = await _dio.get('/api/memory/settings');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateMemorySettings({
+    required int topK,
+    required double minSimilarity,
+  }) async {
+    await _dio.put(
+      '/api/memory/settings',
+      data: {'top_k': topK, 'min_similarity': minSimilarity},
+    );
+  }
+
   // ─── Models (Local) ─────────────────────────────────────────────
 
   Future<List<LocalModel>> listLocalModels() async {
@@ -190,12 +207,15 @@ class MemoApiClient {
     int port = 8081,
     int gpuLayers = -1,
   }) async {
-    await _dio.post('/api/models/start', data: {
-      'path': path,
-      'ctx_size': ctxSize,
-      'port': port,
-      'gpu_layers': gpuLayers,
-    });
+    await _dio.post(
+      '/api/models/start',
+      data: {
+        'path': path,
+        'ctx_size': ctxSize,
+        'port': port,
+        'gpu_layers': gpuLayers,
+      },
+    );
   }
 
   Future<void> stopModel() async {
@@ -213,10 +233,10 @@ class MemoApiClient {
     required String path,
     int gpuLayers = -1,
   }) async {
-    await _dio.post('/api/models/embedding/start', data: {
-      'path': path,
-      'gpu_layers': gpuLayers,
-    });
+    await _dio.post(
+      '/api/models/embedding/start',
+      data: {'path': path, 'gpu_layers': gpuLayers},
+    );
   }
 
   Future<void> stopEmbeddingModel() async {
@@ -248,8 +268,10 @@ class MemoApiClient {
   }
 
   Future<List<GGUFFile>> getModelFiles(String repoId) async {
-    final res =
-        await _dio.get('/api/models/files', queryParameters: {'repo': repoId});
+    final res = await _dio.get(
+      '/api/models/files',
+      queryParameters: {'repo': repoId},
+    );
     if (res.data is List) {
       return (res.data as List)
           .map((e) => GGUFFile.fromJson(e as Map<String, dynamic>))
@@ -259,8 +281,10 @@ class MemoApiClient {
   }
 
   Future<void> downloadModel(String repoId, String filename) async {
-    await _dio
-        .post('/api/models/download', data: {'repo_id': repoId, 'filename': filename});
+    await _dio.post(
+      '/api/models/download',
+      data: {'repo_id': repoId, 'filename': filename},
+    );
   }
 
   Future<DownloadProgress> getDownloadProgress() async {
@@ -291,8 +315,10 @@ class MemoApiClient {
   }
 
   Future<void> setRemoteAccess(bool enabled, int port) async {
-    await _dio
-        .put('/api/remote-access', data: {'enabled': enabled, 'port': port});
+    await _dio.put(
+      '/api/remote-access',
+      data: {'enabled': enabled, 'port': port},
+    );
   }
 
   // ─── Sync ───────────────────────────────────────────────────────
@@ -325,14 +351,17 @@ class MemoApiClient {
     required String tokenPath,
     required int intervalMessages,
   }) async {
-    await _dio.put('/api/sync/settings', data: {
-      'enabled': enabled,
-      'client_id': clientId,
-      'client_secret': clientSecret,
-      'passphrase': passphrase,
-      'token_path': tokenPath,
-      'interval_messages': intervalMessages,
-    });
+    await _dio.put(
+      '/api/sync/settings',
+      data: {
+        'enabled': enabled,
+        'client_id': clientId,
+        'client_secret': clientSecret,
+        'passphrase': passphrase,
+        'token_path': tokenPath,
+        'interval_messages': intervalMessages,
+      },
+    );
   }
 
   Future<void> triggerSync() async {
@@ -365,8 +394,7 @@ class MemoApiClient {
   // ─── Image ──────────────────────────────────────────────────────
 
   Future<String> getImageBase64(String path) async {
-    final res =
-        await _dio.get('/api/image', queryParameters: {'path': path});
+    final res = await _dio.get('/api/image', queryParameters: {'path': path});
     return res.data['data'] as String? ?? '';
   }
 

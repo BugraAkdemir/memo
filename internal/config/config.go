@@ -59,9 +59,9 @@ type IdentityConfig struct {
 }
 
 type MemoryConfig struct {
-	PersistDir    string  `yaml:"persist_dir"`
-	TopK          int     `yaml:"top_k"`
-	MinSimilarity float32 `yaml:"min_similarity"`
+	PersistDir    string  `yaml:"persist_dir" json:"persist_dir"`
+	TopK          int     `yaml:"top_k" json:"top_k"`
+	MinSimilarity float32 `yaml:"min_similarity" json:"min_similarity"`
 }
 
 var (

@@ -138,6 +138,33 @@ func (s *Server) handleMemoryClear(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+func (s *Server) handleMemorySettings(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.GetMemorySettings())
+	case http.MethodPut:
+		var req struct {
+			TopK          int     `json:"top_k"`
+			MinSimilarity float32 `json:"min_similarity"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateMemorySettings(req.TopK, req.MinSimilarity); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 // ─── Version & Image ────────────────────────────────────────────
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {

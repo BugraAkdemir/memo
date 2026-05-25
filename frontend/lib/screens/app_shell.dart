@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../providers/settings_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
@@ -23,6 +24,9 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   @override
   Widget build(BuildContext context) {
+    final locale = ref.watch(localeProvider);
+    L10n.setLocale(locale);
+
     return Scaffold(
       backgroundColor: MemoTheme.bgApp,
       body: Stack(
@@ -35,12 +39,12 @@ class _AppShellState extends ConsumerState<AppShell> {
               // ─── Content ─────────────────────────────────
               Expanded(
                 child: _currentIndex == 0
-                    ? const ChatScreen()
-                    : const ModelStoreScreen(),
+                    ? ChatScreen(key: ValueKey('chat_$locale'))
+                    : ModelStoreScreen(key: ValueKey('models_$locale')),
               ),
             ],
           ),
-          
+
           // ─── Overlays ───────────────────────────────────────────────
           // Order matters: SetupWizard renders on top (setup must complete first),
           // then LlamaInstaller shows if llama.cpp is missing after setup.
@@ -56,9 +60,7 @@ class _AppShellState extends ConsumerState<AppShell> {
       width: 64,
       decoration: BoxDecoration(
         color: MemoTheme.bgPanel,
-        border: Border(
-          right: BorderSide(color: MemoTheme.borderSoft),
-        ),
+        border: Border(right: BorderSide(color: MemoTheme.borderSoft)),
       ),
       child: Column(
         children: [
@@ -171,5 +173,3 @@ class _NavRailButton extends StatelessWidget {
     );
   }
 }
-
-

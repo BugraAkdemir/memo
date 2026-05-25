@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'core/l10n.dart';
 import 'core/theme.dart';
+import 'providers/settings_provider.dart';
 import 'screens/app_shell.dart';
 
 void main() {
@@ -9,11 +11,14 @@ void main() {
   runApp(const ProviderScope(child: MemoApp()));
 }
 
-class MemoApp extends StatelessWidget {
+class MemoApp extends ConsumerWidget {
   const MemoApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeProvider);
+    L10n.setLocale(locale);
+
     return MaterialApp(
       title: 'Memo',
       debugShowCheckedModeBanner: false,

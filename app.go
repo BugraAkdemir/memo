@@ -26,7 +26,6 @@ import (
 	"memo/internal/modelstore"
 	"memo/internal/sessions"
 	"memo/internal/webserver"
-
 )
 
 //go:embed binaries/*
@@ -74,7 +73,6 @@ type App struct {
 func NewApp() *App {
 	return &App{}
 }
-
 
 // loadDotEnv reads a .env file and sets any unset environment variables from it.
 // Lines starting with # are ignored. Format: KEY=VALUE (no export keyword needed).
@@ -327,7 +325,7 @@ func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) {
 
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
-		a.emitEvent( "chat:error", "⚠️ Cannot read image: "+err.Error())
+		a.emitEvent("chat:error", "⚠️ Cannot read image: "+err.Error())
 		return
 	}
 	mime := detectMime(imagePath, imgData)
@@ -358,7 +356,7 @@ func (a *App) SendMessageWithFileStream(userMsg string, filePath string) {
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		a.emitEvent( "chat:error", "⚠️ Cannot read file: "+err.Error())
+		a.emitEvent("chat:error", "⚠️ Cannot read file: "+err.Error())
 		return
 	}
 
@@ -402,33 +400,43 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
+	requestStart := time.Now()
 	ch, err := a.client.ChatCompletionStream(streamCtx, messages)
 	if err != nil {
+		log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 		log.Printf("LLM stream error: %v", err)
-		a.emitEvent( "chat:error", "⚠️ "+err.Error())
+		a.emitEvent("chat:error", "⚠️ "+err.Error())
 		return
 	}
+	log.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 
 	start := time.Now()
 	var fullReply strings.Builder
 	tokenCount := 0
+	firstTokenLogged := false
 
 	for chunk := range ch {
 		if chunk.Error != "" {
+			log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 			log.Printf("Stream chunk error: %s", chunk.Error)
-			a.emitEvent( "chat:error", "⚠️ "+chunk.Error)
+			a.emitEvent("chat:error", "⚠️ "+chunk.Error)
 			return
 		}
 
 		if chunk.Content != "" {
+			if !firstTokenLogged {
+				firstTokenLogged = true
+				log.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
+			}
 			fullReply.WriteString(chunk.Content)
 			tokenCount++
-			a.emitEvent( "chat:chunk", api.StreamChunk{
+			a.emitEvent("chat:chunk", api.StreamChunk{
 				Content: chunk.Content,
 			})
 		}
 
 		if chunk.Done {
+			log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
 			a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
 			return
 		}
@@ -437,9 +445,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	// Channel closed without an explicit Done chunk (some providers skip [DONE]).
 	// Treat accumulated content as a complete reply.
 	if fullReply.Len() > 0 {
+		log.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 		a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
 	} else {
-		a.emitEvent( "chat:error", "⚠️ Model boş yanıt döndürdü")
+		log.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
+		a.emitEvent("chat:error", "⚠️ Model boş yanıt döndürdü")
 	}
 }
 
@@ -450,7 +460,7 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		tps = float64(tokenCount) / duration
 	}
 
-	a.emitEvent( "chat:done", api.StreamChunk{
+	a.emitEvent("chat:done", api.StreamChunk{
 		Done: true,
 		Stats: &api.MessageStats{
 			TokensPerSecond:  tps,
@@ -945,6 +955,27 @@ func (a *App) DeleteMemoryFile(relPath string) error {
 	return a.store.DeleteGobFile(relPath)
 }
 
+func (a *App) GetMemorySettings() config.MemoryConfig {
+	return a.cfg.Memory
+}
+
+func (a *App) UpdateMemorySettings(topK int, minSimilarity float32) error {
+	if topK < 1 || topK > 50 {
+		return fmt.Errorf("top_k must be between 1 and 50")
+	}
+	if minSimilarity <= 0 || minSimilarity > 1 {
+		return fmt.Errorf("min_similarity must be between 0.01 and 1")
+	}
+
+	a.cfg.Memory.TopK = topK
+	a.cfg.Memory.MinSimilarity = minSimilarity
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	log.Printf("Memory settings updated: top_k=%d min_similarity=%.2f", topK, minSimilarity)
+	return nil
+}
+
 // ─── Web Bridge (interface adapters for webserver) ───────────────
 
 func (a *App) WebListChats() interface{}         { return a.ListChats() }
@@ -1045,11 +1076,11 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 
 	// Wait in background — emit events so the UI can show real-time progress.
 	go func() {
-		a.emitEvent( "model:loading", map[string]any{"model": modelPath})
+		a.emitEvent("model:loading", map[string]any{"model": modelPath})
 
 		if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
 			a.llamaServer.Stop()
-			a.emitEvent( "model:error", err.Error())
+			a.emitEvent("model:error", err.Error())
 			return
 		}
 
@@ -1063,7 +1094,7 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 			a.autoStartEmbeddingModel()
 		}
 
-		a.emitEvent( "model:ready", map[string]any{"model": modelPath})
+		a.emitEvent("model:ready", map[string]any{"model": modelPath})
 	}()
 
 	return nil
@@ -1206,6 +1237,7 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 }
 
 func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Message {
+	start := time.Now()
 	memories := a.retrieveMemory(userMsg)
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
@@ -1250,6 +1282,7 @@ func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Messag
 		}
 	}
 
+	log.Printf("LATENCY chat.build_messages total_ms=%d memories=%d history=%d messages=%d system_chars=%d", time.Since(start).Milliseconds(), len(memories), len(history), len(msgs), len(systemPrompt))
 	return msgs
 }
 
@@ -1269,14 +1302,17 @@ func (a *App) retrieveMemory(query string) []memory.MemoryResult {
 	if a.store == nil {
 		return nil
 	}
+	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	m, err := a.store.RetrieveContext(ctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
 	if err != nil {
+		log.Printf("LATENCY app.retrieve_memory total_ms=%d status=error", time.Since(start).Milliseconds())
 		log.Printf("MEMORY RETRIEVE FAILED: %v", err)
-		a.emitEvent( "memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
+		a.emitEvent("memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
 		return nil
 	}
+	log.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))
 	if len(m) > 0 {
 		log.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), m[0].Similarity*100)
 	}
@@ -1287,16 +1323,20 @@ func (a *App) callLLM(messages []api.Message) string {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 
+	start := time.Now()
 	resp, err := a.client.ChatCompletion(ctx, messages)
 	if err != nil {
+		log.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		log.Printf("LLM error: %v", err)
 		return "⚠️ " + err.Error()
 	}
 	if len(resp.Choices) == 0 {
+		log.Printf("LATENCY llm.complete total_ms=%d status=empty messages=%d", time.Since(start).Milliseconds(), len(messages))
 		return "⚠️ Empty response"
 	}
 
 	reply := resp.Choices[0].Message.GetTextContent()
+	log.Printf("LATENCY llm.complete total_ms=%d status=ok messages=%d reply_chars=%d", time.Since(start).Milliseconds(), len(messages), len(reply))
 	log.Printf("<< Reply: %d chars", len(reply))
 	return reply
 }
@@ -1306,12 +1346,15 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 		return
 	}
 	go func() {
+		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
+			log.Printf("LATENCY app.memory_save_async total_ms=%d status=error", time.Since(start).Milliseconds())
 			log.Printf("MEMORY SAVE FAILED: %v", err)
-			a.emitEvent( "memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
+			a.emitEvent("memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
 		} else {
+			log.Printf("LATENCY app.memory_save_async total_ms=%d status=ok", time.Since(start).Milliseconds())
 			log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
 			if a.syncManager != nil {
 				a.syncManager.Increment()
@@ -1447,7 +1490,7 @@ func (a *App) StartSyncAuth() (string, error) {
 // TriggerSync forces an immediate backup upload outside the automatic 50-message cycle.
 func (a *App) TriggerSync() {
 	if err := a.ensureSyncManager(); err != nil {
-		a.emitEvent( "sync:error", err.Error())
+		a.emitEvent("sync:error", err.Error())
 		return
 	}
 	a.syncManager.TriggerNow()
@@ -1456,7 +1499,7 @@ func (a *App) TriggerSync() {
 // PullSync downloads latest cloud backup and restores local .gob files.
 func (a *App) PullSync() {
 	if err := a.ensureSyncManager(); err != nil {
-		a.emitEvent( "sync:error", err.Error())
+		a.emitEvent("sync:error", err.Error())
 		return
 	}
 	a.syncManager.TriggerPullNow()
@@ -1465,7 +1508,7 @@ func (a *App) PullSync() {
 // SyncNow runs push then pull in background.
 func (a *App) SyncNow() {
 	if err := a.ensureSyncManager(); err != nil {
-		a.emitEvent( "sync:error", err.Error())
+		a.emitEvent("sync:error", err.Error())
 		return
 	}
 	a.syncManager.TriggerFullSyncNow()
@@ -1548,4 +1591,5 @@ func (a *App) DisconnectSync() error {
 	a.syncManager = nil
 	return nil
 }
+
 var _ webserver.FullBridge = (*App)(nil)

@@ -2,64 +2,117 @@ package memory
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/gob"
+	"encoding/hex"
+	"errors"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
-	"runtime"
+	"strings"
 	"sync"
 	"time"
 
 	chromem "github.com/philippgille/chromem-go"
 )
 
+const (
+	collectionName   = "conversations"
+	metadataFileName = "00000000.gob"
+)
+
+type MemoryIndex struct {
+	ID     string
+	Vector []float32
+}
+
 type Store struct {
-	db            *chromem.DB
-	collection    *chromem.Collection
 	mu            sync.RWMutex
-	docCount      int
+	index         []MemoryIndex
 	persistDir    string
+	collectionDir string
 	embeddingFunc chromem.EmbeddingFunc
 }
 
 func NewStore(persistDir string, embeddingFunc chromem.EmbeddingFunc) (*Store, error) {
-	db, err := chromem.NewPersistentDB(persistDir, false)
-	if err != nil {
+	if persistDir == "" {
+		persistDir = "./chromem-go"
+	}
+
+	s := &Store{
+		persistDir:    filepath.Clean(persistDir),
+		collectionDir: filepath.Join(filepath.Clean(persistDir), hash2hex(collectionName)),
+		embeddingFunc: embeddingFunc,
+	}
+
+	if err := s.ensureCollectionMetadata(); err != nil {
 		return nil, fmt.Errorf("memory.NewStore: %w", err)
 	}
-
-	col, err := db.GetOrCreateCollection("conversations", nil, embeddingFunc)
-	if err != nil {
-		return nil, fmt.Errorf("memory.NewStore: create collection: %w", err)
+	if err := s.LoadCache(); err != nil {
+		return nil, fmt.Errorf("memory.NewStore: load cache: %w", err)
 	}
 
-	return &Store{
-		db:            db,
-		collection:    col,
-		docCount:      col.Count(),
-		persistDir:    persistDir,
-		embeddingFunc: embeddingFunc,
-	}, nil
+	return s, nil
+}
+
+func (s *Store) LoadCache() error {
+	start := time.Now()
+	entries, err := os.ReadDir(s.collectionDir)
+	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			s.mu.Lock()
+			s.index = nil
+			s.mu.Unlock()
+			return nil
+		}
+		return fmt.Errorf("read collection dir: %w", err)
+	}
+
+	nextIndex := make([]MemoryIndex, 0, len(entries))
+	for _, entry := range entries {
+		if entry.IsDir() || entry.Name() == metadataFileName || filepath.Ext(entry.Name()) != ".gob" {
+			continue
+		}
+
+		doc, err := readDocument(filepath.Join(s.collectionDir, entry.Name()))
+		if err != nil {
+			return fmt.Errorf("read index document %q: %w", entry.Name(), err)
+		}
+		if doc.ID == "" || len(doc.Embedding) == 0 {
+			continue
+		}
+
+		nextIndex = append(nextIndex, MemoryIndex{
+			ID:     doc.ID,
+			Vector: append([]float32(nil), doc.Embedding...),
+		})
+	}
+
+	s.mu.Lock()
+	s.index = nextIndex
+	s.mu.Unlock()
+	log.Printf("LATENCY memory.load_cache total_ms=%d indexed=%d", time.Since(start).Milliseconds(), len(nextIndex))
+	return nil
 }
 
 func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
+	totalStart := time.Now()
+	now := time.Now()
+	ts := now.Format(time.RFC3339)
 
-	ts := time.Now().Format(time.RFC3339)
-
-	// Generate embedding from USER MESSAGE ONLY — this gives much better
-	// retrieval accuracy. The full conversation is stored in Content for the LLM.
+	embedStart := time.Now()
 	embedding, err := s.embeddingFunc(ctx, userMsg)
 	if err != nil {
 		return fmt.Errorf("memory.SaveInteraction: embed: %w", err)
 	}
+	embedDuration := time.Since(embedStart)
 
 	content := fmt.Sprintf("[%s] User: %s\nAssistant: %s", ts, userMsg, assistantMsg)
-
 	doc := chromem.Document{
-		ID:        fmt.Sprintf("conv_%d_%s", s.docCount+1, time.Now().Format("20060102_150405")),
+		ID:        fmt.Sprintf("conv_%d", now.UnixNano()),
 		Content:   content,
-		Embedding: embedding,
+		Embedding: normalizeVector(embedding),
 		Metadata: map[string]string{
 			"timestamp":  ts,
 			"type":       "conversation",
@@ -68,49 +121,52 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 		},
 	}
 
-	if err := s.collection.AddDocuments(ctx, []chromem.Document{doc}, runtime.NumCPU()); err != nil {
-		return fmt.Errorf("memory.SaveInteraction: %w", err)
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	s.docCount++
+	diskStart := time.Now()
+	if err := writeDocument(s.documentPath(doc.ID), doc); err != nil {
+		return fmt.Errorf("memory.SaveInteraction: persist: %w", err)
+	}
+	diskDuration := time.Since(diskStart)
+
+	s.upsertIndexLocked(MemoryIndex{
+		ID:     doc.ID,
+		Vector: append([]float32(nil), doc.Embedding...),
+	})
+	log.Printf(
+		"LATENCY memory.save total_ms=%d embed_ms=%d disk_ms=%d cache_docs=%d",
+		time.Since(totalStart).Milliseconds(),
+		embedDuration.Milliseconds(),
+		diskDuration.Milliseconds(),
+		len(s.index),
+	)
 	return nil
 }
 
 func (s *Store) Count() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
-	// Use actual collection count — docCount can drift after restart or reinit
-	return s.collection.Count()
+	return len(s.index)
 }
 
-// ClearAll removes all memory by deleting the persist directory and reinitializing
+// ClearAll removes all memory by deleting the persist directory and reinitializing.
 func (s *Store) ClearAll() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	// Remove all files in persist dir
 	if err := os.RemoveAll(s.persistDir); err != nil {
 		return fmt.Errorf("memory.ClearAll: %w", err)
 	}
-
-	// Reinitialize
-	db, err := chromem.NewPersistentDB(s.persistDir, false)
-	if err != nil {
-		return fmt.Errorf("memory.ClearAll: reinit db: %w", err)
+	if err := s.ensureCollectionMetadataLocked(); err != nil {
+		return fmt.Errorf("memory.ClearAll: reinit metadata: %w", err)
 	}
 
-	col, err := db.GetOrCreateCollection("conversations", nil, s.embeddingFunc)
-	if err != nil {
-		return fmt.Errorf("memory.ClearAll: reinit col: %w", err)
-	}
-
-	s.db = db
-	s.collection = col
-	s.docCount = 0
+	s.index = nil
 	return nil
 }
 
-// ListGobFiles returns all .gob files with their paths and sizes for selective deletion
+// ListGobFiles returns all .gob files with their paths and sizes for selective deletion.
 type GobFileInfo struct {
 	Path     string `json:"path"`
 	Name     string `json:"name"`
@@ -127,7 +183,7 @@ func (s *Store) ListGobFiles() []GobFileInfo {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && filepath.Ext(path) == ".gob" && info.Name() != "_chromem.gob" {
+		if !info.IsDir() && filepath.Ext(path) == ".gob" && info.Name() != metadataFileName {
 			relPath, _ := filepath.Rel(s.persistDir, path)
 			files = append(files, GobFileInfo{
 				Path:     relPath,
@@ -141,27 +197,151 @@ func (s *Store) ListGobFiles() []GobFileInfo {
 	return files
 }
 
-// DeleteGobFile deletes a specific .gob memory file
+// DeleteGobFile deletes a specific .gob memory file and removes it from the RAM index.
 func (s *Store) DeleteGobFile(relPath string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	fullPath := filepath.Join(s.persistDir, relPath)
+	fullPath, err := s.safePersistPath(relPath)
+	if err != nil {
+		return err
+	}
+	if filepath.Ext(fullPath) != ".gob" || filepath.Base(fullPath) == metadataFileName {
+		return fmt.Errorf("not a memory .gob file")
+	}
 
-	// Safety: only delete .gob files within persistDir
-	if filepath.Ext(fullPath) != ".gob" {
-		return fmt.Errorf("not a .gob file")
+	doc, err := readDocument(fullPath)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("memory.DeleteGobFile: read before delete: %w", err)
 	}
 
 	if err := os.Remove(fullPath); err != nil {
-		return fmt.Errorf("memory.DeleteGobFile: %w", err)
+		if !errors.Is(err, os.ErrNotExist) {
+			return fmt.Errorf("memory.DeleteGobFile: %w", err)
+		}
 	}
 
-	s.docCount--
-	if s.docCount < 0 {
-		s.docCount = 0
+	if doc.ID != "" {
+		s.removeIndexLocked(doc.ID)
 	}
 	return nil
+}
+
+func (s *Store) ensureCollectionMetadata() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.ensureCollectionMetadataLocked()
+}
+
+func (s *Store) ensureCollectionMetadataLocked() error {
+	if err := os.MkdirAll(s.collectionDir, 0o700); err != nil {
+		return err
+	}
+
+	path := filepath.Join(s.collectionDir, metadataFileName)
+	if _, err := os.Stat(path); err == nil {
+		return nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+
+	metadata := struct {
+		Name     string
+		Metadata map[string]string
+	}{
+		Name:     collectionName,
+		Metadata: nil,
+	}
+	return writeGobFile(path, metadata)
+}
+
+func (s *Store) documentPath(id string) string {
+	return filepath.Join(s.collectionDir, hash2hex(id)+".gob")
+}
+
+func (s *Store) safePersistPath(relPath string) (string, error) {
+	if filepath.IsAbs(relPath) {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+
+	base, err := filepath.Abs(s.persistDir)
+	if err != nil {
+		return "", err
+	}
+	full, err := filepath.Abs(filepath.Join(s.persistDir, relPath))
+	if err != nil {
+		return "", err
+	}
+	if full != base && !strings.HasPrefix(full, base+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path escapes memory directory")
+	}
+	return full, nil
+}
+
+func (s *Store) upsertIndexLocked(item MemoryIndex) {
+	for i := range s.index {
+		if s.index[i].ID == item.ID {
+			s.index[i] = item
+			return
+		}
+	}
+	s.index = append(s.index, item)
+}
+
+func (s *Store) removeIndexLocked(id string) {
+	for i := range s.index {
+		if s.index[i].ID == id {
+			s.index = append(s.index[:i], s.index[i+1:]...)
+			return
+		}
+	}
+}
+
+func readDocument(path string) (chromem.Document, error) {
+	var doc chromem.Document
+	if err := readGobFile(path, &doc); err != nil {
+		return chromem.Document{}, err
+	}
+	return doc, nil
+}
+
+func writeDocument(path string, doc chromem.Document) error {
+	return writeGobFile(path, doc)
+}
+
+func readGobFile(path string, v any) error {
+	f, err := os.Open(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gob.NewDecoder(f).Decode(v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func writeGobFile(path string, v any) error {
+	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+		return err
+	}
+
+	f, err := os.Create(path)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	if err := gob.NewEncoder(f).Encode(v); err != nil {
+		return err
+	}
+	return nil
+}
+
+func hash2hex(name string) string {
+	hash := sha256.Sum256([]byte(name))
+	return hex.EncodeToString(hash[:4])
 }
 
 func truncate(s string, maxLen int) string {

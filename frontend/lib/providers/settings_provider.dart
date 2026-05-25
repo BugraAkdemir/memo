@@ -6,11 +6,31 @@ import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import 'chat_provider.dart';
 
+class MemorySettings {
+  final int topK;
+  final double minSimilarity;
+
+  const MemorySettings({required this.topK, required this.minSimilarity});
+
+  factory MemorySettings.fromJson(Map<String, dynamic> json) {
+    final topKValue = json['top_k'] ?? json['TopK'];
+    final minSimilarityValue = json['min_similarity'] ?? json['MinSimilarity'];
+
+    return MemorySettings(
+      topK: topKValue is num ? topKValue.toInt() : 5,
+      minSimilarity: minSimilarityValue is num
+          ? minSimilarityValue.toDouble()
+          : 0.1,
+    );
+  }
+}
+
 // ─── Setup Complete ─────────────────────────────────────────────
 
-final setupCompleteProvider = StateNotifierProvider<SetupCompleteNotifier, bool>((ref) {
-  return SetupCompleteNotifier();
-});
+final setupCompleteProvider =
+    StateNotifierProvider<SetupCompleteNotifier, bool>((ref) {
+      return SetupCompleteNotifier();
+    });
 
 class SetupCompleteNotifier extends StateNotifier<bool> {
   SetupCompleteNotifier() : super(false) {
@@ -39,7 +59,8 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
 
 final systemPromptProvider =
     AsyncNotifierProvider<SystemPromptNotifier, String>(
-        SystemPromptNotifier.new);
+      SystemPromptNotifier.new,
+    );
 
 class SystemPromptNotifier extends AsyncNotifier<String> {
   @override
@@ -62,7 +83,8 @@ class SystemPromptNotifier extends AsyncNotifier<String> {
 
 final incognitoPromptProvider =
     AsyncNotifierProvider<IncognitoPromptNotifier, String>(
-        IncognitoPromptNotifier.new);
+      IncognitoPromptNotifier.new,
+    );
 
 class IncognitoPromptNotifier extends AsyncNotifier<String> {
   @override
@@ -80,7 +102,8 @@ class IncognitoPromptNotifier extends AsyncNotifier<String> {
 
 final memoryFilesProvider =
     AsyncNotifierProvider<MemoryFilesNotifier, List<MemoryFileInfo>>(
-        MemoryFilesNotifier.new);
+      MemoryFilesNotifier.new,
+    );
 
 class MemoryFilesNotifier extends AsyncNotifier<List<MemoryFileInfo>> {
   @override
@@ -90,7 +113,8 @@ class MemoryFilesNotifier extends AsyncNotifier<List<MemoryFileInfo>> {
 
   Future<void> refresh() async {
     state = await AsyncValue.guard(
-        () => ref.read(apiClientProvider).listMemoryFiles());
+      () => ref.read(apiClientProvider).listMemoryFiles(),
+    );
   }
 
   Future<void> deleteFile(String path) async {
@@ -104,6 +128,26 @@ class MemoryFilesNotifier extends AsyncNotifier<List<MemoryFileInfo>> {
   }
 }
 
+final memorySettingsProvider =
+    AsyncNotifierProvider<MemorySettingsNotifier, MemorySettings>(
+      MemorySettingsNotifier.new,
+    );
+
+class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
+  @override
+  Future<MemorySettings> build() async {
+    final data = await ref.read(apiClientProvider).getMemorySettings();
+    return MemorySettings.fromJson(data);
+  }
+
+  Future<void> save({required int topK, required double minSimilarity}) async {
+    await ref
+        .read(apiClientProvider)
+        .updateMemorySettings(topK: topK, minSimilarity: minSimilarity);
+    state = AsyncData(MemorySettings(topK: topK, minSimilarity: minSimilarity));
+  }
+}
+
 // ─── Sync ───────────────────────────────────────────────────────
 
 final syncAuthProvider = FutureProvider<bool>((ref) async {
@@ -114,8 +158,7 @@ final syncAuthProvider = FutureProvider<bool>((ref) async {
   }
 });
 
-final syncAccountProvider =
-    FutureProvider<Map<String, dynamic>>((ref) async {
+final syncAccountProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getSyncAccount();
   } catch (_) {
@@ -123,8 +166,7 @@ final syncAccountProvider =
   }
 });
 
-final syncSettingsProvider =
-    FutureProvider<Map<String, dynamic>>((ref) async {
+final syncSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getSyncSettings();
   } catch (_) {
@@ -134,8 +176,7 @@ final syncSettingsProvider =
 
 // ─── Remote Access ──────────────────────────────────────────────
 
-final remoteAccessProvider =
-    FutureProvider<Map<String, dynamic>>((ref) async {
+final remoteAccessProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getRemoteAccess();
   } catch (_) {
@@ -155,14 +196,26 @@ final appVersionProvider = FutureProvider<String>((ref) async {
 
 // ─── Locale ─────────────────────────────────────────────────────
 
-final localeProvider =
-    StateNotifierProvider<LocaleNotifier, MemoLocale>(
-        (ref) => LocaleNotifier());
+final localeProvider = StateNotifierProvider<LocaleNotifier, MemoLocale>(
+  (ref) => LocaleNotifier(),
+);
 
 class LocaleNotifier extends StateNotifier<MemoLocale> {
-  LocaleNotifier() : super(MemoLocale.tr);
+  LocaleNotifier() : super(MemoLocale.tr) {
+    _init();
+  }
 
-  void setLocale(MemoLocale locale) {
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('memo_locale');
+    final locale = saved == 'en' ? MemoLocale.en : MemoLocale.tr;
+    L10n.setLocale(locale);
+    state = locale;
+  }
+
+  Future<void> setLocale(MemoLocale locale) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('memo_locale', locale == MemoLocale.en ? 'en' : 'tr');
     L10n.setLocale(locale);
     state = locale;
   }

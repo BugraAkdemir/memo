@@ -92,6 +92,7 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/api/incognito-prompt", s.handleIncognitoPrompt)
 	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
 	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
+	mux.HandleFunc("/api/memory/settings", s.handleMemorySettings)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/image", s.handleImage)
 	mux.HandleFunc("/api/chat/export", s.handleExportChat)
@@ -196,6 +197,7 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/incognito-prompt", s.handleIncognitoPrompt)
 	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
 	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
+	mux.HandleFunc("/api/memory/settings", s.handleMemorySettings)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/image", s.handleImage)
 	mux.HandleFunc("/api/chat/export", s.handleExportChat)
@@ -550,7 +552,7 @@ func generateSelfSignedCert(ips []string) (tls.Certificate, error) {
 	}
 
 	certPEM := pem.EncodeToMemory(&pem.Block{Type: "CERTIFICATE", Bytes: derBytes})
-	
+
 	privBytes, err := x509.MarshalECPrivateKey(priv)
 	if err != nil {
 		return tls.Certificate{}, err

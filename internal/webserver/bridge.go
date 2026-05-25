@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
@@ -29,6 +30,8 @@ type FullBridge interface {
 	ClearAllMemory() error
 	ListMemoryFiles() []memory.GobFileInfo
 	DeleteMemoryFile(relPath string) error
+	GetMemorySettings() config.MemoryConfig
+	UpdateMemorySettings(topK int, minSimilarity float32) error
 
 	// Image
 	GetImageBase64(path string) string

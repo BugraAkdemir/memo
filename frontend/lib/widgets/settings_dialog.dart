@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
@@ -16,7 +17,7 @@ class SettingsDialog extends ConsumerStatefulWidget {
 class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   int _activeTab = 0;
 
-  final List<String> _tabs = [
+  List<String> get _tabs => [
     L10n.t('general'),
     L10n.t('system_prompt'),
     L10n.t('incognito_prompt'),
@@ -28,6 +29,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
 
   @override
   Widget build(BuildContext context) {
+    ref.watch(localeProvider);
+    final tabs = _tabs;
+
     return Dialog(
       backgroundColor: MemoTheme.bgApp,
       shape: RoundedRectangleBorder(
@@ -80,18 +84,21 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                     decoration: BoxDecoration(
                       color: MemoTheme.bgPanel.withValues(alpha: 0.5),
                       border: Border(
-                          right: BorderSide(color: MemoTheme.borderSoft)),
+                        right: BorderSide(color: MemoTheme.borderSoft),
+                      ),
                     ),
                     child: ListView.builder(
                       padding: const EdgeInsets.symmetric(vertical: 12),
-                      itemCount: _tabs.length,
+                      itemCount: tabs.length,
                       itemBuilder: (context, index) {
                         final isActive = _activeTab == index;
                         return InkWell(
                           onTap: () => setState(() => _activeTab = index),
                           child: Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 24, vertical: 12),
+                              horizontal: 24,
+                              vertical: 12,
+                            ),
                             decoration: BoxDecoration(
                               color: isActive
                                   ? MemoTheme.bgElement
@@ -106,7 +113,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                               ),
                             ),
                             child: Text(
-                              _tabs[index],
+                              tabs[index],
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: isActive
@@ -173,15 +180,17 @@ class _GeneralTab extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeProvider);
+
     return ListView(
       padding: const EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('general'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: MemoTheme.textMain,
-              ),
+            fontWeight: FontWeight.bold,
+            color: MemoTheme.textMain,
+          ),
         ),
         const SizedBox(height: 32),
 
@@ -204,19 +213,13 @@ class _GeneralTab extends ConsumerWidget {
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<MemoLocale>(
-              value: L10n.locale,
+              value: locale,
               isExpanded: true,
               dropdownColor: MemoTheme.bgPanel,
               icon: const Icon(Icons.arrow_drop_down, color: MemoTheme.textDim),
               items: const [
-                DropdownMenuItem(
-                  value: MemoLocale.tr,
-                  child: Text('Türkçe'),
-                ),
-                DropdownMenuItem(
-                  value: MemoLocale.en,
-                  child: Text('English'),
-                ),
+                DropdownMenuItem(value: MemoLocale.tr, child: Text('Türkçe')),
+                DropdownMenuItem(value: MemoLocale.en, child: Text('English')),
               ],
               onChanged: (val) {
                 if (val != null) {
@@ -251,10 +254,7 @@ class _GeneralTab extends ConsumerWidget {
             children: [
               Text(
                 'Kurulumu Sıfırla',
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: MemoTheme.textMain,
-                ),
+                style: const TextStyle(fontSize: 14, color: MemoTheme.textMain),
               ),
               OutlinedButton(
                 onPressed: () {
@@ -298,9 +298,9 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
         Text(
           L10n.t('system_prompt'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: MemoTheme.textMain,
-              ),
+            fontWeight: FontWeight.bold,
+            color: MemoTheme.textMain,
+          ),
         ),
         const SizedBox(height: 12),
         Text(
@@ -324,10 +324,10 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                   controller: _controller,
                   maxLines: 12,
                   style: const TextStyle(
-                      fontSize: 13, fontFamily: 'JetBrains Mono'),
-                  decoration: const InputDecoration(
-                    alignLabelWithHint: true,
+                    fontSize: 13,
+                    fontFamily: 'JetBrains Mono',
                   ),
+                  decoration: const InputDecoration(alignLabelWithHint: true),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -347,7 +347,7 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                             .read(systemPromptProvider.notifier)
                             .save(_controller.text);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(L10n.t('save') + ' başarılı')),
+                          SnackBar(content: Text('${L10n.t('save')} başarılı')),
                         );
                       },
                       child: Text(L10n.t('save')),
@@ -391,9 +391,9 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
         Text(
           L10n.t('incognito_prompt'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-                color: MemoTheme.textMain,
-              ),
+            fontWeight: FontWeight.bold,
+            color: MemoTheme.textMain,
+          ),
         ),
         const SizedBox(height: 12),
         Text(
@@ -417,7 +417,9 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
                   controller: _controller,
                   maxLines: 12,
                   style: const TextStyle(
-                      fontSize: 13, fontFamily: 'JetBrains Mono'),
+                    fontSize: 13,
+                    fontFamily: 'JetBrains Mono',
+                  ),
                 ),
                 const SizedBox(height: 16),
                 Row(
@@ -429,7 +431,7 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
                             .read(incognitoPromptProvider.notifier)
                             .save(_controller.text);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(L10n.t('save') + ' başarılı')),
+                          SnackBar(content: Text('${L10n.t('save')} başarılı')),
                         );
                       },
                       child: Text(L10n.t('save')),
@@ -445,80 +447,310 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
   }
 }
 
-class _MemoryTab extends ConsumerWidget {
+class _MemoryTab extends ConsumerStatefulWidget {
   const _MemoryTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_MemoryTab> createState() => _MemoryTabState();
+}
+
+class _MemoryTabState extends ConsumerState<_MemoryTab> {
+  final _topKController = TextEditingController();
+  final _minSimilarityController = TextEditingController();
+  bool _settingsInitialized = false;
+  bool _savingSettings = false;
+
+  @override
+  void dispose() {
+    _topKController.dispose();
+    _minSimilarityController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final memoryAsync = ref.watch(memoryFilesProvider);
+    final settingsAsync = ref.watch(memorySettingsProvider);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Padding(
-          padding: const EdgeInsets.all(32).copyWith(bottom: 16),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Expanded(
+          child: ListView(
+            padding: const EdgeInsets.all(32),
             children: [
               Text(
-                L10n.t('memory_files'),
+                L10n.t('memory'),
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: MemoTheme.textMain,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                L10n.t('memory_advanced_hint'),
+                style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+              ),
+              const SizedBox(height: 20),
+              settingsAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Text('${L10n.t('error')}: $e'),
+                data: (settings) {
+                  if (!_settingsInitialized) {
+                    _topKController.text = settings.topK.toString();
+                    _minSimilarityController.text = settings.minSimilarity
+                        .toStringAsFixed(2);
+                    _settingsInitialized = true;
+                  }
+
+                  return Container(
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.bgPanel,
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                      border: Border.all(color: MemoTheme.borderSoft),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        Text(
+                          L10n.t('memory_retrieval_settings'),
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            color: MemoTheme.textMain,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        _MemorySettingField(
+                          label: L10n.t('memory_top_k'),
+                          controller: _topKController,
+                          hint: '3',
+                          inputFormatters: [
+                            FilteringTextInputFormatter.digitsOnly,
+                          ],
+                        ),
+                        const SizedBox(height: 12),
+                        _MemorySettingField(
+                          label: L10n.t('memory_min_similarity'),
+                          controller: _minSimilarityController,
+                          hint: '0.25',
+                          inputFormatters: [
+                            FilteringTextInputFormatter.allow(
+                              RegExp(r'^\d*\.?\d{0,2}'),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 14),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.end,
+                          children: [
+                            ElevatedButton(
+                              onPressed: _savingSettings
+                                  ? null
+                                  : () async {
+                                      final topK =
+                                          int.tryParse(_topKController.text) ??
+                                          settings.topK;
+                                      final minSimilarity =
+                                          double.tryParse(
+                                            _minSimilarityController.text,
+                                          ) ??
+                                          settings.minSimilarity;
+                                      final messenger = ScaffoldMessenger.of(
+                                        context,
+                                      );
+
+                                      setState(() => _savingSettings = true);
+                                      try {
+                                        await ref
+                                            .read(
+                                              memorySettingsProvider.notifier,
+                                            )
+                                            .save(
+                                              topK: topK,
+                                              minSimilarity: minSimilarity,
+                                            );
+                                        if (mounted) {
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text(L10n.t('saved')),
+                                            ),
+                                          );
+                                        }
+                                      } catch (e) {
+                                        if (mounted) {
+                                          messenger.showSnackBar(
+                                            SnackBar(
+                                              content: Text(
+                                                '${L10n.t('error')}: $e',
+                                              ),
+                                            ),
+                                          );
+                                        }
+                                      } finally {
+                                        if (mounted) {
+                                          setState(
+                                            () => _savingSettings = false,
+                                          );
+                                        }
+                                      }
+                                    },
+                              child: _savingSettings
+                                  ? const SizedBox(
+                                      width: 14,
+                                      height: 14,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                      ),
+                                    )
+                                  : Text(L10n.t('save')),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              ),
+              const SizedBox(height: 28),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Text(
+                    L10n.t('memory_files'),
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
                       color: MemoTheme.textMain,
                     ),
+                  ),
+                  OutlinedButton.icon(
+                    icon: const Icon(Icons.delete_sweep, size: 18),
+                    label: Text(L10n.t('clear_memory')),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: MemoTheme.red,
+                      side: const BorderSide(color: MemoTheme.red),
+                    ),
+                    onPressed: () {
+                      ref.read(memoryFilesProvider.notifier).clearAll();
+                    },
+                  ),
+                ],
               ),
-              OutlinedButton.icon(
-                icon: const Icon(Icons.delete_sweep, size: 18),
-                label: Text(L10n.t('clear_memory')),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: MemoTheme.red,
-                  side: const BorderSide(color: MemoTheme.red),
-                ),
-                onPressed: () {
-                  // TODO: Confirm dialog
-                  ref.read(memoryFilesProvider.notifier).clearAll();
+              const SizedBox(height: 12),
+              memoryAsync.when(
+                loading: () => const Center(child: CircularProgressIndicator()),
+                error: (e, _) => Center(child: Text('${L10n.t('error')}: $e')),
+                data: (files) {
+                  if (files.isEmpty) {
+                    return Padding(
+                      padding: const EdgeInsets.only(top: 40),
+                      child: Center(
+                        child: Text(
+                          L10n.t('no_memory_files'),
+                          style: TextStyle(color: MemoTheme.textDim),
+                        ),
+                      ),
+                    );
+                  }
+
+                  return Column(
+                    children: files.map((file) {
+                      return Column(
+                        children: [
+                          ListTile(
+                            contentPadding: EdgeInsets.zero,
+                            title: Text(
+                              file.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '${file.sizeKb} KB • ${file.modified}',
+                              style: TextStyle(
+                                color: MemoTheme.textDim,
+                                fontSize: 12,
+                              ),
+                            ),
+                            trailing: IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              color: MemoTheme.red,
+                              onPressed: () {
+                                ref
+                                    .read(memoryFilesProvider.notifier)
+                                    .deleteFile(file.path);
+                              },
+                            ),
+                          ),
+                          const Divider(),
+                        ],
+                      );
+                    }).toList(),
+                  );
                 },
               ),
             ],
           ),
         ),
-        Expanded(
-          child: memoryAsync.when(
-            loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, _) => Center(child: Text('${L10n.t('error')}: $e')),
-            data: (files) {
-              if (files.isEmpty) {
-                return Center(
-                  child: Text(
-                    L10n.t('no_memory_files'),
-                    style: TextStyle(color: MemoTheme.textDim),
-                  ),
-                );
-              }
+      ],
+    );
+  }
+}
 
-              return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 32),
-                itemCount: files.length,
-                separatorBuilder: (context, index) => const Divider(),
-                itemBuilder: (context, index) {
-                  final file = files[index];
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: Text(file.name,
-                        style: const TextStyle(fontWeight: FontWeight.w500)),
-                    subtitle: Text('${file.sizeKb} KB • ${file.modified}',
-                        style: TextStyle(color: MemoTheme.textDim, fontSize: 12)),
-                    trailing: IconButton(
-                      icon: const Icon(Icons.delete_outline),
-                      color: MemoTheme.red,
-                      onPressed: () {
-                        ref.read(memoryFilesProvider.notifier).deleteFile(file.path);
-                      },
-                    ),
-                  );
-                },
-              );
-            },
+class _MemorySettingField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final String hint;
+  final List<TextInputFormatter> inputFormatters;
+
+  const _MemorySettingField({
+    required this.label,
+    required this.controller,
+    required this.hint,
+    required this.inputFormatters,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 170,
+          child: Text(
+            label,
+            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+          ),
+        ),
+        Expanded(
+          child: SizedBox(
+            height: 36,
+            child: TextField(
+              controller: controller,
+              keyboardType: const TextInputType.numberWithOptions(
+                decimal: true,
+              ),
+              inputFormatters: inputFormatters,
+              style: const TextStyle(fontSize: 13),
+              decoration: InputDecoration(
+                hintText: hint,
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                filled: true,
+                fillColor: MemoTheme.bgApp,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                  borderSide: BorderSide(color: MemoTheme.borderSoft),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                  borderSide: BorderSide(color: MemoTheme.borderSoft),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                  borderSide: const BorderSide(color: MemoTheme.accent),
+                ),
+              ),
+            ),
           ),
         ),
       ],
@@ -539,16 +771,16 @@ class _CloudSyncTab extends ConsumerWidget {
           const SizedBox(height: 16),
           Text(
             L10n.t('cloud_sync'),
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: MemoTheme.textMuted,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: MemoTheme.textMuted),
           ),
           const SizedBox(height: 8),
           Text(
             'Google Drive entegrasyonu yapım aşamasında...',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: MemoTheme.textDim,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: MemoTheme.textDim),
           ),
         ],
       ),
@@ -569,16 +801,16 @@ class _RemoteAccessTab extends ConsumerWidget {
           const SizedBox(height: 16),
           Text(
             L10n.t('remote_access'),
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  color: MemoTheme.textMuted,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.titleLarge?.copyWith(color: MemoTheme.textMuted),
           ),
           const SizedBox(height: 8),
           Text(
             'Yapım aşamasında...',
-            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                  color: MemoTheme.textDim,
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodyMedium?.copyWith(color: MemoTheme.textDim),
           ),
         ],
       ),
@@ -607,11 +839,14 @@ class _AboutTab extends ConsumerWidget {
                 border: Border.all(color: MemoTheme.accent, width: 2),
               ),
               child: const Center(
-                child: Text('M',
-                    style: TextStyle(
-                        fontSize: 28,
-                        fontWeight: FontWeight.bold,
-                        color: MemoTheme.accent)),
+                child: Text(
+                  'M',
+                  style: TextStyle(
+                    fontSize: 28,
+                    fontWeight: FontWeight.bold,
+                    color: MemoTheme.accent,
+                  ),
+                ),
               ),
             ),
             const SizedBox(width: 24),
@@ -621,34 +856,40 @@ class _AboutTab extends ConsumerWidget {
                 Text(
                   L10n.t('app_title'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: MemoTheme.textMain,
-                      ),
+                    fontWeight: FontWeight.bold,
+                    color: MemoTheme.textMain,
+                  ),
                 ),
                 versionAsync.when(
                   loading: () => const Text('...'),
-                  error: (_, __) => const SizedBox(),
-                  data: (v) => Text(v,
-                      style: TextStyle(color: MemoTheme.textDim)),
+                  error: (_, _) => const SizedBox(),
+                  data: (v) =>
+                      Text(v, style: TextStyle(color: MemoTheme.textDim)),
                 ),
               ],
             ),
           ],
         ),
         const SizedBox(height: 48),
-        Text('Vizyon ve Misyon',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(
+          'Vizyon ve Misyon',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         const SizedBox(height: 8),
         Text(
-            'Memo, tamamen yerel bilgisayarınızda çalışan, sizin konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazıyan özel bir yapay zeka asistanıdır. Asıl amaç, bulut teknolojilere muhtaç kalmadan, özgürce ve güvenle kendi bilgisayarında barındırabileceğiniz akıllı bir asistan yaratmaktır.',
-            style: TextStyle(height: 1.6, color: MemoTheme.textMuted)),
+          'Memo, tamamen yerel bilgisayarınızda çalışan, sizin konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazıyan özel bir yapay zeka asistanıdır. Asıl amaç, bulut teknolojilere muhtaç kalmadan, özgürce ve güvenle kendi bilgisayarında barındırabileceğiniz akıllı bir asistan yaratmaktır.',
+          style: TextStyle(height: 1.6, color: MemoTheme.textMuted),
+        ),
         const SizedBox(height: 32),
-        Text('Açık Kaynak (MIT Lisansı)',
-            style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+        Text(
+          'Açık Kaynak (MIT Lisansı)',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
         const SizedBox(height: 8),
         Text(
-            'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
-            style: TextStyle(height: 1.6, color: MemoTheme.textMuted)),
+          'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
+          style: TextStyle(height: 1.6, color: MemoTheme.textMuted),
+        ),
       ],
     );
   }

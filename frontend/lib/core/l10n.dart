@@ -66,6 +66,7 @@ class L10n {
     'remote_access': 'Uzaktan Erişim',
     'about': 'Hakkında',
     'save': 'Kaydet',
+    'saved': 'Kaydedildi',
     'cancel': 'İptal',
     'reset': 'Sıfırla',
     'reset_prompt': 'Varsayılana Sıfırla',
@@ -80,6 +81,11 @@ class L10n {
         'Tüm bellek dosyalarını silmek istediğinizden emin misiniz?',
     'no_memory_files': 'Henüz bellek dosyası yok',
     'delete_file': 'Dosyayı Sil',
+    'memory_retrieval_settings': 'Gelişmiş Hatırlama Ayarları',
+    'memory_advanced_hint':
+        'Bu ayarlar hafızayı silmez; sadece her yanıtta modele kaç anı ve hangi benzerlik eşiğiyle gönderileceğini belirler.',
+    'memory_top_k': 'Gösterilecek Anı Sayısı',
+    'memory_min_similarity': 'Minimum Benzerlik',
 
     // Models
     'model_store': 'Model Mağazası',
@@ -178,6 +184,7 @@ class L10n {
     'remote_access': 'Remote Access',
     'about': 'About',
     'save': 'Save',
+    'saved': 'Saved',
     'cancel': 'Cancel',
     'reset': 'Reset',
     'reset_prompt': 'Reset to Default',
@@ -187,10 +194,14 @@ class L10n {
     'memory_files': 'Memory Files',
     'memory_count': 'Memory Count',
     'clear_memory': 'Clear All Memory',
-    'clear_memory_confirm':
-        'Are you sure you want to delete all memory files?',
+    'clear_memory_confirm': 'Are you sure you want to delete all memory files?',
     'no_memory_files': 'No memory files yet',
     'delete_file': 'Delete File',
+    'memory_retrieval_settings': 'Advanced Retrieval Settings',
+    'memory_advanced_hint':
+        'These settings do not delete memory; they only control how many memories are sent to the model and the similarity threshold.',
+    'memory_top_k': 'Memories To Include',
+    'memory_min_similarity': 'Minimum Similarity',
 
     'model_store': 'Model Store',
     'local_models': 'Local Models',

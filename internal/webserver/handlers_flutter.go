@@ -606,3 +606,15 @@ func (s *Server) handleLlamaInstall(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]string{"ok": "true"})
 }
+
+func (s *Server) handleLlamaSkip(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.SkipLlamaGPUInstall(); err != nil {
+		http.Error(w, fmt.Sprintf("skip failed: %v", err), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}

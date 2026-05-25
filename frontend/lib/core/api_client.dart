@@ -307,6 +307,10 @@ class MemoApiClient {
     await _dio.post('/api/models/llama/install');
   }
 
+  Future<void> skipLlamaGPUInstall() async {
+    await _dio.post('/api/models/llama/skip');
+  }
+
   // ─── Remote Access ──────────────────────────────────────────────
 
   Future<Map<String, dynamic>> getRemoteAccess() async {

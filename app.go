@@ -1154,7 +1154,24 @@ func (a *App) InstallLlamaServer() error {
 
 	// Update config to point to the newly compiled binary
 	a.cfg.Llama.BinaryPath = binPath
+	// If GPU installer succeeds, remove any old .force_cpu file so they run on GPU!
+	_ = os.Remove("data/.force_cpu")
 	return config.Save(a.cfg)
+}
+
+func (a *App) SkipLlamaGPUInstall() error {
+	// Create .force_cpu file in data directory to bypass GPU checks
+	if err := os.MkdirAll("data", 0755); err != nil {
+		return err
+	}
+	forceCPUFile := "data/.force_cpu"
+	f, err := os.Create(forceCPUFile)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	log.Println("Created .force_cpu bypass file. Future starts will use CPU.")
+	return nil
 }
 
 // ─── Embedding Server: Lifecycle Management ─────────────────────

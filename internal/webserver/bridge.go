@@ -64,6 +64,7 @@ type FullBridge interface {
 	DetectGPU() llama.GPUInfo
 	CheckLlamaInstallation() bool
 	InstallLlamaServer() error
+	SkipLlamaGPUInstall() error
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

@@ -43,6 +43,38 @@ func NewInstaller(baseDir string) *Installer {
 	return &Installer{BaseDir: baseDir}
 }
 
+// HasGPUSupport checks if the installed binaries in binPath's directory contain GPU dynamic libraries
+func HasGPUSupport(binPath string, gpuType GPUType) bool {
+	if gpuType == GPUTypeCPU {
+		return true
+	}
+	dir := filepath.Dir(binPath)
+	files, err := os.ReadDir(dir)
+	if err != nil {
+		return false
+	}
+
+	gType := strings.ToLower(string(gpuType))
+
+	for _, file := range files {
+		if file.IsDir() {
+			continue
+		}
+		name := strings.ToLower(file.Name())
+		// Look for ggml backend dynamic libraries
+		// e.g., libggml-cuda.so, ggml-cuda.dll, libggml-vulkan.so, ggml-vulkan.dll, libggml-hip.so, etc.
+		if strings.Contains(name, "ggml") && (strings.HasSuffix(name, ".so") || strings.HasSuffix(name, ".dll") || strings.Contains(name, ".so.")) {
+			if gType == "nvidia" && (strings.Contains(name, "cuda") || strings.Contains(name, "vulkan")) {
+				return true
+			}
+			if gType == "amd" && (strings.Contains(name, "hip") || strings.Contains(name, "rocm") || strings.Contains(name, "vulkan")) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // CheckPrerequisites verifies build tools on Linux/macOS.
 // On Windows, pre-built binaries are downloaded — no build tools needed.
 func (i *Installer) CheckPrerequisites() error {
@@ -63,14 +95,37 @@ func (i *Installer) CheckPrerequisites() error {
 	return nil
 }
 
-// IsInstalled quickly checks if llama-server is available.
+// IsInstalled quickly checks if llama-server is available and compatible with the system's GPU.
 func (i *Installer) IsInstalled(configuredPath string) bool {
+	var binPath string
 	if path, err := resolveBinary(configuredPath); err == nil && path != "" {
-		return true
+		binPath = path
+	} else {
+		binPath = filepath.Join(i.BaseDir, "bin", llamaServerBinary())
 	}
-	targetBin := filepath.Join(i.BaseDir, "bin", llamaServerBinary())
-	_, err := os.Stat(targetBin)
-	return err == nil
+
+	_, err := os.Stat(binPath)
+	if err != nil {
+		return false
+	}
+
+	// Check if the installed version supports the current GPU
+	gpu := DetectGPU()
+	if gpu.Type != GPUTypeCPU {
+		// Check for offline/user bypass file
+		forceCPUFile := filepath.Join(i.BaseDir, ".force_cpu")
+		if _, err := os.Stat(forceCPUFile); err == nil {
+			log.Printf("llama installer: GPU detected but .force_cpu file exists, bypassing GPU check")
+			return true
+		}
+
+		if !HasGPUSupport(binPath, gpu.Type) {
+			log.Printf("llama installer: binary found at %s but lacks GPU support for %s", binPath, gpu.Type)
+			return false
+		}
+	}
+
+	return true
 }
 
 // Install downloads pre-built binaries when possible, falls back to source compilation.

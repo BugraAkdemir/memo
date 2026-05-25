@@ -135,9 +135,44 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
                           ),
                         )
                       : const Text(
-                          'Şimdi Kur',
+                          'Ekran Kartı İçin Kur (Önerilen)',
                           style: TextStyle(fontWeight: FontWeight.w600),
                         ),
+                ),
+              ),
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                height: 40,
+                child: OutlinedButton(
+                  onPressed: _installing
+                      ? null
+                      : () async {
+                          setState(() {
+                            _installing = true;
+                            _error = '';
+                          });
+                          try {
+                            await ref.read(apiClientProvider).skipLlamaGPUInstall();
+                            ref.invalidate(llamaInstalledProvider);
+                          } catch (e) {
+                            setState(() {
+                              _error = e.toString();
+                              _installing = false;
+                            });
+                          }
+                        },
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: MemoTheme.textDim,
+                    side: const BorderSide(color: MemoTheme.borderSoft),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    ),
+                  ),
+                  child: const Text(
+                    'CPU ile Devam Et (Ekran Kartını Atla)',
+                    style: TextStyle(fontWeight: FontWeight.w500),
+                  ),
                 ),
               ),
             ],

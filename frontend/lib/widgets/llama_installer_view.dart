@@ -58,6 +58,19 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final gpuAsync = ref.watch(gpuInfoProvider);
+    final hasGpu = gpuAsync.whenOrNull(data: (g) => g.hasGpu) ?? false;
+    final gpuName = gpuAsync.whenOrNull(data: (g) => g.name) ?? '';
+
+    final title = 'Llama.cpp Eksik';
+    final description = hasGpu
+        ? 'Uygulamanın modelleri çalıştırabilmesi için Llama.cpp motorunun kurulması gerekiyor. '
+            'Sisteminizde $gpuName bulundu — GPU destekli sürüm indirilecek.'
+        : 'Uygulamanın modelleri çalıştırabilmesi için Llama.cpp motorunun kurulması gerekiyor. '
+            'Bu işlem sisteminize uygun CPU sürümünü indirecektir.';
+    final primaryLabel =
+        hasGpu ? 'Ekran Kartı İçin Kur (Önerilen)' : 'Motoru İndir ve Kur';
+
     return Container(
       color: MemoTheme.bgApp.withValues(alpha: 0.95),
       child: Center(
@@ -89,19 +102,19 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
                 child: const Icon(Icons.memory, size: 32, color: MemoTheme.accent),
               ),
               const SizedBox(height: 24),
-              const Text(
-                'Llama.cpp Eksik',
-                style: TextStyle(
+              Text(
+                title,
+                style: const TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.bold,
                   color: MemoTheme.textMain,
                 ),
               ),
               const SizedBox(height: 12),
-              const Text(
-                'Uygulamanın modelleri çalıştırabilmesi için Llama.cpp motorunun kurulması gerekiyor. Bu işlem sisteminize uygun sürümü indirecektir.',
+              Text(
+                description,
                 textAlign: TextAlign.center,
-                style: TextStyle(color: MemoTheme.textDim, height: 1.5),
+                style: const TextStyle(color: MemoTheme.textDim, height: 1.5),
               ),
               const SizedBox(height: 32),
               if (_error.isNotEmpty)
@@ -134,47 +147,50 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
                             color: MemoTheme.textInverse,
                           ),
                         )
-                      : const Text(
-                          'Ekran Kartı İçin Kur (Önerilen)',
-                          style: TextStyle(fontWeight: FontWeight.w600),
+                      : Text(
+                          primaryLabel,
+                          style: const TextStyle(fontWeight: FontWeight.w600),
                         ),
                 ),
               ),
-              const SizedBox(height: 12),
-              SizedBox(
-                width: double.infinity,
-                height: 40,
-                child: OutlinedButton(
-                  onPressed: _installing
-                      ? null
-                      : () async {
-                          setState(() {
-                            _installing = true;
-                            _error = '';
-                          });
-                          try {
-                            await ref.read(apiClientProvider).skipLlamaGPUInstall();
-                            ref.invalidate(llamaInstalledProvider);
-                          } catch (e) {
+              // Only show "Skip GPU / Use CPU" button when a GPU was actually detected.
+              if (hasGpu) ...[
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 40,
+                  child: OutlinedButton(
+                    onPressed: _installing
+                        ? null
+                        : () async {
                             setState(() {
-                              _error = e.toString();
-                              _installing = false;
+                              _installing = true;
+                              _error = '';
                             });
-                          }
-                        },
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: MemoTheme.textDim,
-                    side: const BorderSide(color: MemoTheme.borderSoft),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                            try {
+                              await ref.read(apiClientProvider).skipLlamaGPUInstall();
+                              ref.invalidate(llamaInstalledProvider);
+                            } catch (e) {
+                              setState(() {
+                                _error = e.toString();
+                                _installing = false;
+                              });
+                            }
+                          },
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: MemoTheme.textDim,
+                      side: const BorderSide(color: MemoTheme.borderSoft),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                      ),
+                    ),
+                    child: const Text(
+                      'CPU ile Devam Et (Ekran Kartını Atla)',
+                      style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
-                  child: const Text(
-                    'CPU ile Devam Et (Ekran Kartını Atla)',
-                    style: TextStyle(fontWeight: FontWeight.w500),
-                  ),
                 ),
-              ),
+              ],
             ],
           ),
         ),

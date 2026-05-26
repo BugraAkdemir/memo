@@ -304,7 +304,12 @@ class MemoApiClient {
   }
 
   Future<void> installLlamaServer() async {
-    await _dio.post('/api/models/llama/install');
+    // Installation can take 5-10+ minutes when compiling from source.
+    // Override the default 120s timeout with 15 minutes for this call only.
+    await _dio.post(
+      '/api/models/llama/install',
+      options: Options(receiveTimeout: const Duration(minutes: 15)),
+    );
   }
 
   Future<void> skipLlamaGPUInstall() async {

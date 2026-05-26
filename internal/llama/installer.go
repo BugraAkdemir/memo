@@ -1,8 +1,10 @@
 package llama
 
 import (
+	"archive/tar"
 	"archive/zip"
 	"bufio"
+	"compress/gzip"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -168,10 +170,15 @@ var assetPrefs = map[string]map[GPUType][]string{
 		GPUTypeAMD:    {"rocm", "vulkan", "ubuntu"},
 		GPUTypeCPU:    {"ubuntu"},
 	},
+	"darwin": {
+		GPUTypeNVIDIA: {"macos"},
+		GPUTypeAMD:    {"macos"},
+		GPUTypeCPU:    {"macos"},
+	},
 }
 
 func (i *Installer) installFromRelease(ctx context.Context, logger func(string)) (string, error) {
-	logger("--- Memo AI Engine Kurulumu (Windows) ---")
+	logger("--- Memo AI Engine Kurulumu ---")
 	logger("1/3 GitHub'dan en son sürüm bilgisi alınıyor...")
 
 	rel, err := fetchLatestRelease(ctx)
@@ -189,12 +196,17 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 	}
 	logger(fmt.Sprintf("Seçilen paket: %s", asset.Name))
 
-	// Download zip to temp
-	zipPath := filepath.Join(i.BaseDir, "tmp_llama_release.zip")
-	defer os.Remove(zipPath)
+	// Determine archive type and temp path
+	isTarGz := strings.HasSuffix(strings.ToLower(asset.Name), ".tar.gz")
+	tempExt := ".zip"
+	if isTarGz {
+		tempExt = ".tar.gz"
+	}
+	tempPath := filepath.Join(i.BaseDir, "tmp_llama_release"+tempExt)
+	defer os.Remove(tempPath)
 
 	logger(fmt.Sprintf("2/3 İndiriliyor: %s", asset.Name))
-	if err := downloadFileProgress(ctx, asset.BrowserDownloadURL, zipPath, func(pct int) {
+	if err := downloadFileProgress(ctx, asset.BrowserDownloadURL, tempPath, func(pct int) {
 		logger(fmt.Sprintf("  İndirme: %d%%", pct))
 	}); err != nil {
 		return "", fmt.Errorf("indirme başarısız: %w", err)
@@ -206,13 +218,20 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 	if err := os.MkdirAll(binDir, 0755); err != nil {
 		return "", err
 	}
-	if err := extractZipToBin(zipPath, binDir, logger); err != nil {
-		return "", fmt.Errorf("çıkarma başarısız: %w", err)
+
+	if isTarGz {
+		if err := extractTarGzToBin(tempPath, binDir, logger); err != nil {
+			return "", fmt.Errorf("çıkarma başarısız: %w", err)
+		}
+	} else {
+		if err := extractZipToBin(tempPath, binDir, logger); err != nil {
+			return "", fmt.Errorf("çıkarma başarısız: %w", err)
+		}
 	}
 
-	targetBin := filepath.Join(binDir, "llama-server.exe")
+	targetBin := filepath.Join(binDir, llamaServerBinary())
 	if _, err := os.Stat(targetBin); err != nil {
-		return "", fmt.Errorf("llama-server.exe kurulum sonrası bulunamadı")
+		return "", fmt.Errorf("%s kurulum sonrası bulunamadı", llamaServerBinary())
 	}
 
 	logger("=== Kurulum Başarılı! ===")
@@ -247,10 +266,10 @@ func fetchLatestRelease(ctx context.Context) (*githubRelease, error) {
 }
 
 func pickBestAsset(assets []githubAsset, gpu GPUInfo) (githubAsset, error) {
-	os := goruntime.GOOS
-	platformPrefs := assetPrefs[os]
+	currentOS := goruntime.GOOS
+	platformPrefs := assetPrefs[currentOS]
 	if platformPrefs == nil {
-		return githubAsset{}, fmt.Errorf("desteklenmeyen platform: %s", os)
+		return githubAsset{}, fmt.Errorf("desteklenmeyen platform: %s", currentOS)
 	}
 
 	prefs := platformPrefs[gpu.Type]
@@ -263,26 +282,36 @@ func pickBestAsset(assets []githubAsset, gpu GPUInfo) (githubAsset, error) {
 		"windows": "win",
 		"linux":   "ubuntu",
 		"darwin":  "macos",
-	}[os]
+	}[currentOS]
+
+	// Windows uses .zip, Linux/macOS use .tar.gz
+	wantZip := currentOS == "windows"
+
+	matchesExt := func(name string) bool {
+		if wantZip {
+			return strings.HasSuffix(name, ".zip")
+		}
+		return strings.HasSuffix(name, ".tar.gz")
+	}
 
 	for _, pref := range prefs {
 		for _, a := range assets {
 			name := strings.ToLower(a.Name)
 			if strings.Contains(name, platformKeyword) &&
 				strings.Contains(name, pref) &&
-				strings.HasSuffix(name, ".zip") {
+				matchesExt(name) {
 				return a, nil
 			}
 		}
 	}
-	// Last resort: any zip for this platform
+	// Last resort: any matching archive for this platform
 	for _, a := range assets {
 		name := strings.ToLower(a.Name)
-		if strings.Contains(name, platformKeyword) && strings.HasSuffix(name, ".zip") {
+		if strings.Contains(name, platformKeyword) && matchesExt(name) {
 			return a, nil
 		}
 	}
-	return githubAsset{}, fmt.Errorf("uygun %s paketi bulunamadı", os)
+	return githubAsset{}, fmt.Errorf("uygun %s paketi bulunamadı", currentOS)
 }
 
 func downloadFileProgress(ctx context.Context, url, dest string, progress func(int)) error {
@@ -334,6 +363,68 @@ func downloadFileProgress(ctx context.Context, url, dest string, progress func(i
 			return ctx.Err()
 		default:
 		}
+	}
+	return nil
+}
+
+// extractTarGzToBin extracts llama-server and shared libraries from a .tar.gz archive.
+func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
+	f, err := os.Open(archivePath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+
+	gr, err := gzip.NewReader(f)
+	if err != nil {
+		return fmt.Errorf("gzip okuma hatası: %w", err)
+	}
+	defer gr.Close()
+
+	tr := tar.NewReader(gr)
+	extracted := 0
+
+	for {
+		hdr, err := tr.Next()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			return fmt.Errorf("tar okuma hatası: %w", err)
+		}
+
+		if hdr.Typeflag == tar.TypeDir {
+			continue
+		}
+
+		name := filepath.Base(hdr.Name)
+		lname := strings.ToLower(name)
+
+		// Extract llama-server binary and shared libraries (.so)
+		isServerBin := name == "llama-server"
+		isSharedLib := strings.HasSuffix(lname, ".so") || strings.Contains(lname, ".so.")
+		if !isServerBin && !isSharedLib {
+			continue
+		}
+
+		destPath := filepath.Join(destDir, name)
+		out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+		if err != nil {
+			logger(fmt.Sprintf("Uyarı: %s yazılamadı: %v", name, err))
+			continue
+		}
+		if _, err := io.Copy(out, tr); err != nil {
+			out.Close()
+			logger(fmt.Sprintf("Uyarı: %s kopyalanamadı: %v", name, err))
+			continue
+		}
+		out.Close()
+		logger(fmt.Sprintf("  Çıkarıldı: %s", name))
+		extracted++
+	}
+
+	if extracted == 0 {
+		return fmt.Errorf("tar.gz içinde hiçbir binary bulunamadı")
 	}
 	return nil
 }

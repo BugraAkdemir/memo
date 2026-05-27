@@ -1,0 +1,208 @@
+{
+  "main": {
+    "id": "264605635963b11a",
+    "type": "split",
+    "children": [
+      {
+        "id": "8a61530e8a45b44c",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "9566fdd15bfe34e6",
+            "type": "leaf",
+            "state": {
+              "type": "markdown",
+              "state": {
+                "file": "Mimari Yapı.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Mimari Yapı"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "vertical"
+  },
+  "left": {
+    "id": "f41d28907d77533e",
+    "type": "split",
+    "children": [
+      {
+        "id": "9f635244540affdb",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "dbf44956ce6ea5e5",
+            "type": "leaf",
+            "state": {
+              "type": "file-explorer",
+              "state": {
+                "sortOrder": "alphabetical",
+                "autoReveal": false
+              },
+              "icon": "lucide-folder-closed",
+              "title": "Dosya Gezgini"
+            }
+          },
+          {
+            "id": "e3f847874ad2a5cd",
+            "type": "leaf",
+            "state": {
+              "type": "search",
+              "state": {
+                "query": "",
+                "matchingCase": false,
+                "explainSearch": false,
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical"
+              },
+              "icon": "lucide-search",
+              "title": "Ara"
+            }
+          },
+          {
+            "id": "97f70e0fc5838aff",
+            "type": "leaf",
+            "state": {
+              "type": "bookmarks",
+              "state": {},
+              "icon": "lucide-bookmark",
+              "title": "Yer İmleri"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300
+  },
+  "right": {
+    "id": "a43fd799f0d83097",
+    "type": "split",
+    "children": [
+      {
+        "id": "3dccd10225a7880a",
+        "type": "tabs",
+        "children": [
+          {
+            "id": "22fa8da8606b24b7",
+            "type": "leaf",
+            "state": {
+              "type": "backlink",
+              "state": {
+                "file": "Mimari Yapı.md",
+                "collapseAll": false,
+                "extraContext": false,
+                "sortOrder": "alphabetical",
+                "showSearch": false,
+                "searchQuery": "",
+                "backlinkCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-coming-in",
+              "title": "Mimari Yapı için geri bağlantılar"
+            }
+          },
+          {
+            "id": "f21f81a722b9063f",
+            "type": "leaf",
+            "state": {
+              "type": "outgoing-link",
+              "state": {
+                "file": "Mimari Yapı.md",
+                "linksCollapsed": false,
+                "unlinkedCollapsed": true
+              },
+              "icon": "links-going-out",
+              "title": "Mimari Yapı'dan giden bağlantılar"
+            }
+          },
+          {
+            "id": "cab53f779f7527f5",
+            "type": "leaf",
+            "state": {
+              "type": "tag",
+              "state": {
+                "sortOrder": "frequency",
+                "useHierarchy": true,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-tags",
+              "title": "Etiketler"
+            }
+          },
+          {
+            "id": "2673dc028dfce9e2",
+            "type": "leaf",
+            "state": {
+              "type": "all-properties",
+              "state": {
+                "sortOrder": "frequency",
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-archive",
+              "title": "Tüm özellikler"
+            }
+          },
+          {
+            "id": "823d0682dd60ea9a",
+            "type": "leaf",
+            "state": {
+              "type": "outline",
+              "state": {
+                "file": "Mimari Yapı.md",
+                "followCursor": false,
+                "showSearch": false,
+                "searchQuery": ""
+              },
+              "icon": "lucide-list",
+              "title": "Mimari Yapı ana hatları"
+            }
+          }
+        ]
+      }
+    ],
+    "direction": "horizontal",
+    "width": 300,
+    "collapsed": true
+  },
+  "left-ribbon": {
+    "hiddenItems": {
+      "switcher:Hızlı geçişi aç": false,
+      "graph:Grafik görünümünü aç": false,
+      "canvas:Yeni tuval oluşturun": false,
+      "daily-notes:Bugünün Notunu Aç": false,
+      "templates:Şablon ekle": false,
+      "command-palette:Komut paletini aç": false,
+      "bases:Create new base": false
+    }
+  },
+  "active": "9566fdd15bfe34e6",
+  "lastOpenFiles": [
+    "00 Ana Sayfa.md",
+    "API Dökümantasyonu.md",
+    "Sistem Genel Bakış.md",
+    "Gelişmiş Ayarlar.md",
+    "Kullanım Kılavuzu.md",
+    "Derleme ve Paketleme.md",
+    "Geliştirici Kurulum Rehberi.md",
+    "Vektör Arama Mantığı.md",
+    "Llama.cpp Entegrasyonu.md",
+    "Multimodal Yetenekler (Görsel ve Ses).md",
+    "Gizli Mod (Incognito).md",
+    "Model Yönetimi (Fabrika).md",
+    "Bulut Senkronizasyonu.md",
+    "Frontend (Flutter) Tasarımı.md",
+    "Veri Katmanı ve Kalıcılık.md",
+    "Backend (Go) Mimarisi.md",
+    "Hoş geldiniz.md",
+    "RAG ve Semantik Hafıza.md",
+    "Mimari Yapı.md"
+  ]
+}

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 
@@ -31,11 +32,44 @@ class MemoApiClient {
     return res.data['reply'] as String? ?? '';
   }
 
-  /// Send a message with streaming SSE (falls back to sync for now).
+  /// Send a message with streaming SSE.
   Stream<String> sendMessageStream(String message) async* {
-    // TODO: implement proper SSE streaming when backend supports it
-    final reply = await sendMessage(message);
-    yield reply;
+    try {
+      final response = await _dio.post(
+        '/api/send/stream',
+        data: {'message': message},
+        options: Options(responseType: ResponseType.stream),
+      );
+
+      final stream = response.data.stream;
+      final lineStream = stream
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lineStream) {
+        if (line.startsWith('data: ')) {
+          final jsonStr = line.substring(6);
+          try {
+            final data = json.decode(jsonStr);
+            if (data['error'] != null && (data['error'] as String).isNotEmpty) {
+              yield '⚠️ Hata: ${data['error']}';
+              break;
+            }
+            if (data['content'] != null) {
+              yield data['content'] as String;
+            }
+            if (data['done'] == true) {
+              break;
+            }
+          } catch (_) {
+            // ignore malformed chunks
+          }
+        }
+      }
+    } catch (e) {
+      yield '⚠️ Bağlantı hatası: $e';
+    }
   }
 
   /// Get all chats list.

@@ -47,6 +47,7 @@ type LlamaConfig struct {
 	Port          int    `yaml:"port" json:"port"`                     // default 8081
 	EmbeddingPort int    `yaml:"embedding_port" json:"embedding_port"` // default 8082
 	CtxSize       int    `yaml:"ctx_size" json:"ctx_size"`             // default 4096
+	MaxHistory    int    `yaml:"max_history" json:"max_history"`       // default 20
 	ModelsDir     string `yaml:"models_dir" json:"models_dir"`         // default "./data/models"
 }
 
@@ -99,6 +100,7 @@ func Default() *AppConfig {
 			Port:          8081,
 			EmbeddingPort: 8082,
 			CtxSize:       4096,
+			MaxHistory:    20,
 			ModelsDir:     "./data/models",
 		},
 		Sync: SyncConfig{
@@ -205,8 +207,11 @@ func (c *AppConfig) validate() {
 	if c.Llama.EmbeddingPort <= 0 || c.Llama.EmbeddingPort > 65535 {
 		c.Llama.EmbeddingPort = 8082
 	}
-	if c.Llama.CtxSize <= 0 {
+	if (c.Llama.CtxSize <= 0) {
 		c.Llama.CtxSize = 4096
+	}
+	if c.Llama.MaxHistory <= 0 {
+		c.Llama.MaxHistory = 20
 	}
 	if c.Llama.ModelsDir == "" {
 		c.Llama.ModelsDir = "./data/models"

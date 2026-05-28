@@ -54,6 +54,7 @@ type App struct {
 	ctx               context.Context
 	client            *api.Client
 	store             *memory.Store
+	storeMu           sync.RWMutex
 	identity          *identity.Identity
 	cfg               *config.AppConfig
 	sessions          *sessions.Manager
@@ -303,12 +304,11 @@ func (a *App) SendMessage(userMsg string) string {
 	return reply
 }
 
-func (a *App) SendMessageStream(userMsg string) {
+func (a *App) SendMessageStream(userMsg string) <-chan api.StreamChunk {
 	log.Printf(">> SendMessageStream: %q", userMsg)
 
 	if a.isIncognito {
-		a.handleIncognitoStream(userMsg, "")
-		return
+		return a.handleIncognitoStream(userMsg, "")
 	}
 
 	messages := a.buildMessages(userMsg, nil)
@@ -317,23 +317,24 @@ func (a *App) SendMessageStream(userMsg string) {
 		a.sessions.AddMessage("user", userMsg, "", "")
 	}
 
-	a.callLLMStream(context.Background(), messages, userMsg, "", "")
+	return a.callLLMStream(context.Background(), messages, userMsg, "", "")
 }
 
-func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) {
+func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) <-chan api.StreamChunk {
 	log.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
 
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
-		a.emitEvent("chat:error", "⚠️ Cannot read image: "+err.Error())
-		return
+		ch := make(chan api.StreamChunk, 1)
+		ch <- api.StreamChunk{Error: "⚠️ Cannot read image: " + err.Error(), Done: true}
+		close(ch)
+		return ch
 	}
 	mime := detectMime(imagePath, imgData)
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 
 	if a.isIncognito {
-		a.handleIncognitoStream(userMsg, b64)
-		return
+		return a.handleIncognitoStream(userMsg, b64)
 	}
 
 	memories := a.retrieveMemory(userMsg)
@@ -348,16 +349,18 @@ func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) {
 		a.sessions.AddMessage("user", userMsg, imagePath, "")
 	}
 
-	a.callLLMStream(context.Background(), msgs, userMsg, imagePath, "")
+	return a.callLLMStream(context.Background(), msgs, userMsg, imagePath, "")
 }
 
-func (a *App) SendMessageWithFileStream(userMsg string, filePath string) {
+func (a *App) SendMessageWithFileStream(userMsg string, filePath string) <-chan api.StreamChunk {
 	log.Printf(">> FileStream: %q with %s", userMsg, filePath)
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		a.emitEvent("chat:error", "⚠️ Cannot read file: "+err.Error())
-		return
+		ch := make(chan api.StreamChunk, 1)
+		ch <- api.StreamChunk{Error: "⚠️ Cannot read file: " + err.Error(), Done: true}
+		close(ch)
+		return ch
 	}
 
 	fileName := filepath.Base(filePath)
@@ -369,8 +372,7 @@ func (a *App) SendMessageWithFileStream(userMsg string, filePath string) {
 	combined := fmt.Sprintf("%s\n\n--- File: %s ---\n%s", userMsg, fileName, fileContent)
 
 	if a.isIncognito {
-		a.handleIncognitoStream(combined, "")
-		return
+		return a.handleIncognitoStream(combined, "")
 	}
 
 	messages := a.buildMessages(combined, nil)
@@ -379,10 +381,10 @@ func (a *App) SendMessageWithFileStream(userMsg string, filePath string) {
 		a.sessions.AddMessage("user", userMsg, "", filePath)
 	}
 
-	a.callLLMStream(context.Background(), messages, userMsg, "", filePath)
+	return a.callLLMStream(context.Background(), messages, userMsg, "", filePath)
 }
 
-func (a *App) handleIncognitoStream(userMsg string, b64 string) {
+func (a *App) handleIncognitoStream(userMsg string, b64 string) <-chan api.StreamChunk {
 	if b64 != "" {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
 	} else {
@@ -393,64 +395,72 @@ func (a *App) handleIncognitoStream(userMsg string, b64 string) {
 	msgs = append(msgs, a.incognitoMessages...)
 
 	// Note: for incognito, we don't save to memory/sessions, handled in callLLMStream via isIncognito flag
-	a.callLLMStream(context.Background(), msgs, userMsg, "", "")
+	return a.callLLMStream(context.Background(), msgs, userMsg, "", "")
 }
 
-func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) {
-	streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
-	defer cancel()
+func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {
+	outCh := make(chan api.StreamChunk, 128)
 
-	requestStart := time.Now()
-	ch, err := a.client.ChatCompletionStream(streamCtx, messages)
-	if err != nil {
-		log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
-		log.Printf("LLM stream error: %v", err)
-		a.emitEvent("chat:error", "⚠️ "+err.Error())
-		return
-	}
-	log.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
+	go func() {
+		defer close(outCh)
 
-	start := time.Now()
-	var fullReply strings.Builder
-	tokenCount := 0
-	firstTokenLogged := false
+		streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+		defer cancel()
 
-	for chunk := range ch {
-		if chunk.Error != "" {
-			log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			log.Printf("Stream chunk error: %s", chunk.Error)
-			a.emitEvent("chat:error", "⚠️ "+chunk.Error)
+		requestStart := time.Now()
+		ch, err := a.client.ChatCompletionStream(streamCtx, messages)
+		if err != nil {
+			log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
+			log.Printf("LLM stream error: %v", err)
+			outCh <- api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true}
 			return
 		}
+		log.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 
-		if chunk.Content != "" {
-			if !firstTokenLogged {
-				firstTokenLogged = true
-				log.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
+		start := time.Now()
+		var fullReply strings.Builder
+		tokenCount := 0
+		firstTokenLogged := false
+
+		for chunk := range ch {
+			if chunk.Error != "" {
+				log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
+				log.Printf("Stream chunk error: %s", chunk.Error)
+				outCh <- api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true}
+				return
 			}
-			fullReply.WriteString(chunk.Content)
-			tokenCount++
-			a.emitEvent("chat:chunk", api.StreamChunk{
-				Content: chunk.Content,
-			})
+
+			if chunk.Content != "" {
+				if !firstTokenLogged {
+					firstTokenLogged = true
+					log.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
+				}
+				fullReply.WriteString(chunk.Content)
+				tokenCount++
+				outCh <- chunk
+			}
+
+			if chunk.Done {
+				log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
+				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
+				outCh <- chunk
+				return
+			}
 		}
 
-		if chunk.Done {
-			log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-			a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
-			return
+		// Channel closed without an explicit Done chunk (some providers skip [DONE]).
+		// Treat accumulated content as a complete reply.
+		if fullReply.Len() > 0 {
+			log.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
+			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
+			outCh <- api.StreamChunk{Done: true, FinishReason: "stop"}
+		} else {
+			log.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
+			outCh <- api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true}
 		}
-	}
+	}()
 
-	// Channel closed without an explicit Done chunk (some providers skip [DONE]).
-	// Treat accumulated content as a complete reply.
-	if fullReply.Len() > 0 {
-		log.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-		a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
-	} else {
-		log.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
-		a.emitEvent("chat:error", "⚠️ Model boş yanıt döndürdü")
-	}
+	return outCh
 }
 
 func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg string) {
@@ -833,6 +843,8 @@ func (a *App) TranscribeAudio(audioData []byte) (string, error) {
 
 // DebugMemorySearch searches memory WITHOUT similarity filter — for debugging.
 func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
 	if a.store == nil {
 		return nil
 	}
@@ -842,6 +854,8 @@ func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
 }
 
 func (a *App) GetMemoryCount() int {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
 	if a.store == nil {
 		return 0
 	}
@@ -933,6 +947,8 @@ CORE DIRECTIVES:
 // ─── Settings: Memory Management ─────────────────────────────────
 
 func (a *App) ClearAllMemory() error {
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
 	if a.store == nil {
 		return fmt.Errorf("no memory store")
 	}
@@ -941,6 +957,8 @@ func (a *App) ClearAllMemory() error {
 }
 
 func (a *App) ListMemoryFiles() []memory.GobFileInfo {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
 	if a.store == nil {
 		return nil
 	}
@@ -948,6 +966,8 @@ func (a *App) ListMemoryFiles() []memory.GobFileInfo {
 }
 
 func (a *App) DeleteMemoryFile(relPath string) error {
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
 	if a.store == nil {
 		return fmt.Errorf("no memory store")
 	}
@@ -1228,14 +1248,17 @@ func (a *App) autoStartEmbeddingModel() {
 		}
 	}
 	if embeddingPath == "" {
-		log.Println("⚠️  No embedding model found in local models — memory/RAG will NOT function.")
-		log.Println("   Download an embedding model (e.g. nomic-embed-text) from the Model Store.")
+		msg := "⚠️ No embedding model found — RAG will NOT function."
+		log.Println(msg)
+		a.emitEvent("memory:error", msg)
 		return
 	}
 
 	log.Printf("Auto-starting embedding model: %s", embeddingPath)
 	if err := a.StartEmbeddingModel(embeddingPath, -1); err != nil {
-		log.Printf("⚠️  Failed to auto-start embedding model: %v", err)
+		msg := fmt.Sprintf("⚠️ Failed to auto-start embedding model: %v", err)
+		log.Printf(msg)
+		a.emitEvent("memory:error", msg)
 	} else {
 		log.Println("✅ Embedding model auto-started — memory/RAG is active.")
 	}
@@ -1243,6 +1266,8 @@ func (a *App) autoStartEmbeddingModel() {
 
 func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	embeddingFunc := memory.NewEmbeddingFunc(client, model)
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
 	if a.store != nil {
 		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
 		if err != nil {
@@ -1307,7 +1332,7 @@ func (a *App) getSessionHistory() []api.Message {
 	if a.sessions == nil {
 		return nil
 	}
-	history := a.sessions.GetHistoryForAPI(20)
+	history := a.sessions.GetHistoryForAPI(a.cfg.Llama.MaxHistory)
 	var msgs []api.Message
 	for _, h := range history {
 		msgs = append(msgs, api.NewTextMessage(h["role"], h["content"]))
@@ -1316,6 +1341,8 @@ func (a *App) getSessionHistory() []api.Message {
 }
 
 func (a *App) retrieveMemory(query string) []memory.MemoryResult {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
 	if a.store == nil {
 		return nil
 	}
@@ -1359,6 +1386,8 @@ func (a *App) callLLM(messages []api.Message) string {
 }
 
 func (a *App) saveMemoryAsync(userMsg, reply string) {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
 	if a.store == nil || reply == "" {
 		return
 	}
@@ -1366,6 +1395,13 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
+		
+		a.storeMu.Lock()
+		defer a.storeMu.Unlock()
+		if a.store == nil {
+			return
+		}
+		
 		if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
 			log.Printf("LATENCY app.memory_save_async total_ms=%d status=error", time.Since(start).Milliseconds())
 			log.Printf("MEMORY SAVE FAILED: %v", err)
@@ -1395,6 +1431,9 @@ func (a *App) CheckEmbeddingHealth() map[string]interface{} {
 		"count": 0,
 	}
 
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	
 	if a.store == nil {
 		result["error"] = "memory store not initialized"
 		return result

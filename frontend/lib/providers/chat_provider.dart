@@ -80,7 +80,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         () => ref.read(apiClientProvider).getMessages());
   }
 
-  Future<String> sendMessage(String message) async {
+  Future<void> sendMessage(String message) async {
     final api = ref.read(apiClientProvider);
 
     // Signal sending state
@@ -93,19 +93,42 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       timestamp: DateTime.now().toIso8601String().substring(11, 16),
     );
 
+    // Add empty assistant message for streaming
+    final assistantMsg = ChatMessage(
+      role: 'assistant',
+      content: '',
+      timestamp: DateTime.now().toIso8601String().substring(11, 16),
+    );
+
     final current = state.valueOrNull ?? [];
-    state = AsyncData([...current, userMsg]);
+    state = AsyncData([...current, userMsg, assistantMsg]);
 
     try {
-      // Send and get reply
-      final reply = await api.sendMessage(message);
+      final stream = api.sendMessageStream(message);
+      String fullReply = '';
 
-      // Refresh full message list from backend
+      await for (final token in stream) {
+        fullReply += token;
+
+        // Update the last message in the list
+        final updatedMessages = [...state.valueOrNull ?? []];
+        if (updatedMessages.isNotEmpty) {
+          updatedMessages[updatedMessages.length - 1] = ChatMessage(
+            role: 'assistant',
+            content: fullReply,
+            timestamp: assistantMsg.timestamp,
+          );
+          state = AsyncData(updatedMessages);
+        }
+      }
+
+      // Final refresh to ensure everything is synced (metadata, IDs, etc)
       await refresh();
       // Also refresh chat list (titles may have changed)
       ref.invalidate(chatListProvider);
-
-      return reply;
+    } catch (e) {
+      // Revert if error? For now just refresh
+      await refresh();
     } finally {
       ref.read(isSendingProvider.notifier).state = false;
     }

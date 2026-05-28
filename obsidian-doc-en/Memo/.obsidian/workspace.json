@@ -167,13 +167,13 @@
   },
   "left-ribbon": {
     "hiddenItems": {
+      "bases:Yeni taban oluştur": false,
       "switcher:Hızlı geçişi aç": false,
       "graph:Grafik görünümünü aç": false,
       "canvas:Yeni tuval oluşturun": false,
       "daily-notes:Bugünün Notunu Aç": false,
       "templates:Şablon ekle": false,
-      "command-palette:Komut paletini aç": false,
-      "bases:Create new base": false
+      "command-palette:Komut paletini aç": false
     }
   },
   "active": "c5e189af1749a253",

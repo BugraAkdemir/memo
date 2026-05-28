@@ -13,6 +13,7 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "not available", http.StatusMethodNotAllowed)
 		return
 	}
+
 	var req struct {
 		Message string `json:"message"`
 	}
@@ -20,9 +21,43 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	// For now, fall back to sync send and return full reply
-	reply := s.bridge.SendMessage(req.Message)
-	writeJSON(w, map[string]string{"reply": reply})
+
+	// Set headers for SSE
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ch := s.fullBridge.SendMessageStream(req.Message)
+	ctx := r.Context()
+
+	for {
+		select {
+		case <-ctx.Done():
+			// Client disconnected
+			return
+		case chunk, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(chunk)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+
+			if chunk.Done {
+				return
+			}
+		}
+	}
 }
 
 // ─── System Prompt ──────────────────────────────────────────────

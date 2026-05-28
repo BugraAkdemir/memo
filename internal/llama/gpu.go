@@ -150,31 +150,43 @@ func detectAMDSysfs() (GPUInfo, bool) {
 		return GPUInfo{}, false
 	}
 	// Check /sys/class/drm/card*/device/vendor for AMD vendor ID 0x1002
-	out, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/vendor 2>/dev/null | head -1").Output()
+	vendorOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/vendor 2>/dev/null | head -1").Output()
 	if err != nil {
 		return GPUInfo{}, false
 	}
 
-	vendor := strings.TrimSpace(string(out))
+	vendor := strings.TrimSpace(string(vendorOut))
 	if vendor != "0x1002" {
 		return GPUInfo{}, false
 	}
 
-	// Get device name
-	nameOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/device 2>/dev/null | head -1").Output()
+	// Get device ID
+	deviceIDOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/device 2>/dev/null | head -1").Output()
 	if err != nil {
 		return GPUInfo{}, false
 	}
-	deviceID := strings.TrimSpace(string(nameOut))
+	deviceID := strings.TrimSpace(string(deviceIDOut))
 
-	log.Printf("GPU detected: AMD device %s via sysfs (ROCm may not be installed)", deviceID)
+	// Try to get VRAM from sysfs
+	vram := 0
+	vramOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1").Output()
+	if err == nil {
+		vramBytes, _ := strconv.ParseUint(strings.TrimSpace(string(vramOut)), 10, 64)
+		if vramBytes > 0 {
+			vram = int(vramBytes / (1024 * 1024)) // bytes to MB
+		}
+	}
+
+	layers := recommendLayers(vram)
+
+	log.Printf("GPU detected: AMD device %s via sysfs (VRAM: %d MB, recommending %d layers)", deviceID, vram, layers)
 
 	return GPUInfo{
 		Type:        GPUTypeAMD,
 		Name:        fmt.Sprintf("AMD GPU (device %s)", deviceID),
-		VRAM:        0,
-		GPULayers:   0, // Can't reliably determine without ROCm
-		Description: fmt.Sprintf("AMD GPU detected (device %s) — install ROCm for GPU acceleration", deviceID),
+		VRAM:        vram,
+		GPULayers:   layers,
+		Description: fmt.Sprintf("AMD GPU (device %s) — %d MB VRAM — ROCm recommended", deviceID, vram),
 	}, true
 }
 

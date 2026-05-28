@@ -1,29 +1,22 @@
-# Ayrik Hafiza (Separated Memory) Uygulama Plani
+# Memo Geliştirme Görev Listesi
 
-- [x] Mevcut `internal/memory` mimarisini ve `chromem-go` gob disk formatini incele.
-- [x] Diskteki mevcut `.gob` veri yapisini bozmadan hafif `MemoryIndex` modeli ekle.
-- [x] Uygulama baslangicinda tum gob dosyalarindan sadece `ID` ve `Vector` yukleyen `LoadCache()` fonksiyonunu yaz.
-- [x] RAM indeksine erisimleri `sync.RWMutex` ile koru.
-- [x] Semantik aramayi disk yerine RAM indeksinde, CPU cekirdeklerine bolunen worker pool ile yap.
-- [x] Sadece eslesen kayitlarin gob dosyalarini diskten okuyan retrieval akisini kur.
-- [x] Yeni ani kaydinda diske yazma ve RAM indeks guncellemesini senkron tut.
-- [x] Silme ve tum hafizayi temizleme akislarinda disk/RAM tutarliligini koru.
-- [x] RAM'de bulunan fakat diskte olmayan kayitlarda panic yerine guvenli error/log mekanizmasi kullan.
-- [x] `gofmt` ve `go test ./internal/memory` ile dogrula.
+## 🚀 Performans ve Akış (Streaming)
+- [x] **Backend: SSE Altyapısı** -> `internal/webserver` içinde SSE (Server-Sent Events) desteği eklenmesi.
+- [x] **Backend: Llama Akış Desteği** -> `llama` modülü ve `app.go` içindeki mesaj gönderme mantığının stream destekleyecek şekilde güncellenmesi.
+- [x] **Frontend: Stream Tüketimi** -> `api_client.dart` içinde SSE akışlarını okuyacak yapının kurulması.
+- [x] **Frontend: Canlı Yazma Efekti** -> `ChatScreen` ve `chat_provider.dart` içinde gelen tokenların gerçek zamanlı ekrana basılması.
 
-## Latency Loglari
+## 🧠 Bağlam ve Hafıza Yönetimi
+- [x] **Sliding Window Uygulaması** -> LLM'e gönderilen mesaj geçmişinin belirli bir sınırda (son N mesaj) tutulması ve yapılandırılabilir hale getirilmesi.
+- [x] **RAG Entegrasyonu Optimizasyonu** -> Geçmiş mesajlar azalsa bile RAG'in en alakalı anıları getirmeye devam etmesinin doğrulanması.
+- [ ] **Asenkron Özetleme (İsteğe Bağlı)** -> Uzun sohbetlerin arka planda özetlenerek bağlam verimliliğinin artırılması.
 
-- [x] Memory cold start cache yukleme suresini logla.
-- [x] Memory retrieval icinde embedding, RAM search ve disk read surelerini ayri logla.
-- [x] Chat message build suresini, memory sayisini ve history/message adetlerini logla.
-- [x] LLM stream hazir olma, first token ve stream bitis surelerini logla.
-- [x] Non-stream LLM cagrisinin toplam suresini logla.
-- [x] Async memory save suresini logla.
-- [x] `go test ./...` ile dogrula.
+## 🛡️ Donanım ve Kararlılık
+- [x] **GPU Algılama İyileştirmesi** -> AMD VRAM ve sysfs desteğinin güçlendirilmesi.
+- [x] **Otomatik Katman Önerisi** -> VRAM miktarına göre optimal `n_gpu_layers` seçimi.
+- [x] **Hata ve Risk Dökümantasyonu** -> `KNOWN_ISSUES.md` dosyasına teknik risklerin yazılması.
 
-## Gelismis Hafiza Ayarlari
-
-- [x] `memory.top_k` ve `memory.min_similarity` ayarlarini REST API uzerinden okunur/yazilir hale getir.
-- [x] Ayar degisince `config/config.yaml` dosyasina kaydet ve retrieval akisinda aninda kullan.
-- [x] Flutter Settings > Memory sekmesine Top K ve Minimum Similarity alanlari ekle.
-- [x] Backend icin `go test ./...` ve `go build ./...` ile dogrula.
+## 🛠️ Kritik Güvenlik ve Kararlılık Düzeltmeleri
+- [x] **Hafıza Pointer Güvenliği** -> `reinitMemoryStore` sırasında oluşan yarış durumlarının (race condition) önlenmesi.
+- [x] **SSE Kaynak Yönetimi** -> İstemci bağlantısı koptuğunda SSE akışının durdurulması.
+- [x] **Sessiz Hata İyileştirmesi** -> Kritik arka plan hatalarının kullanıcıya bildirilmesi.

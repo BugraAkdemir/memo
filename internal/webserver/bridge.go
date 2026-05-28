@@ -13,9 +13,9 @@ type FullBridge interface {
 	AppBridge
 
 	// Chat
-	SendMessageStream(userMsg string)
-	SendMessageWithImageStream(userMsg string, imagePath string)
-	SendMessageWithFileStream(userMsg string, filePath string)
+	SendMessageStream(userMsg string) <-chan api.StreamChunk
+	SendMessageWithImageStream(userMsg string, imagePath string) <-chan api.StreamChunk
+	SendMessageWithFileStream(userMsg string, filePath string) <-chan api.StreamChunk
 	ExportChat() string
 	GenerateChatTitle() string
 

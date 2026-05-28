@@ -22,8 +22,13 @@ class _ChatMessageListState extends State<ChatMessageList> {
   @override
   void didUpdateWidget(ChatMessageList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (widget.messages.length != oldWidget.messages.length ||
-        (widget.isTyping && !oldWidget.isTyping)) {
+    final messagesChanged = widget.messages.length != oldWidget.messages.length;
+    final typingChanged = widget.isTyping && !oldWidget.isTyping;
+    final lastMessageUpdated = widget.messages.isNotEmpty &&
+        oldWidget.messages.isNotEmpty &&
+        widget.messages.last.content != oldWidget.messages.last.content;
+
+    if (messagesChanged || typingChanged || lastMessageUpdated) {
       _scrollToBottom();
     }
   }

@@ -20,3 +20,4 @@
 - [x] **Hafıza Pointer Güvenliği** -> `reinitMemoryStore` sırasında oluşan yarış durumlarının (race condition) önlenmesi.
 - [x] **SSE Kaynak Yönetimi** -> İstemci bağlantısı koptuğunda SSE akışının durdurulması.
 - [x] **Sessiz Hata İyileştirmesi** -> Kritik arka plan hatalarının kullanıcıya bildirilmesi.
+s

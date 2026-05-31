@@ -52,7 +52,7 @@ func NewServer(port, ctxSize int) *Server {
 // Start launches llama-server with the given model file and configuration.
 // If gpuLayers is -1, it auto-detects maximum capacity. If port/ctxSize are 0, they use defaults.
 // Set embedding=true only for dedicated embedding models; chat models must NOT get --embedding.
-func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers int, embedding bool) error {
+func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers int, embedding bool, mode string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -61,18 +61,29 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	}
 
 	// Resolve binary path
-	bin, err := resolveBinary(binaryPath)
+	bin, err := resolveBinary(binaryPath, mode)
 	if err != nil {
 		return fmt.Errorf("Llama.cpp motoru (llama-server) bulunamadı. Lütfen motorun kurulu olduğundan emin olun veya Ayarlar -> Llama kısmından yolu kontrol edin. (Hata: %w)", err)
 	}
 
 	// Detect GPU
 	s.gpu = DetectGPU()
+	if mode == "cpu" {
+		s.gpu = GPUInfo{Type: GPUTypeCPU, Name: "CPU (Zorunlu)"}
+	} else if mode == "nvidia" {
+		s.gpu.Type = GPUTypeNVIDIA
+	} else if mode == "amd" {
+		s.gpu.Type = GPUTypeAMD
+	}
 	
 	// Apply overrides
 	actualGPU := gpuLayers
 	if actualGPU < 0 {
 		actualGPU = s.gpu.GPULayers
+	}
+	// If mode is CPU, force 0 layers
+	if mode == "cpu" {
+		actualGPU = 0
 	}
 	actualCtx := ctxSize
 	if actualCtx <= 0 {
@@ -98,7 +109,7 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	}
 	if embedding {
 		// Embedding-only mode: enables /embeddings endpoint, disables chat.
-		args = append(args, "--embedding", "--pooling", "mean")
+		args = append(args, "--embedding")
 	}
 
 	log.Printf("llama: launching %s %s", bin, strings.Join(args, " "))
@@ -353,16 +364,44 @@ func (s *Server) GetBaseURL() string {
 // ─── Binary Resolution ──────────────────────────────────────────
 
 // resolveBinary finds the llama-server binary.
-func resolveBinary(configured string) (string, error) {
-	// 1. Use configured path if provided
+func resolveBinary(configured string, mode string) (string, error) {
+	// 1. If a specific mode is requested, look in bundled paths first
+	currentOS := runtime.GOOS
+	if mode != "" && mode != "auto" {
+		p := filepath.Join("binaries", currentOS, mode, llamaServerBinary())
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+		// Also check top-level bin/ folder if it was moved during packaging
+		p = filepath.Join("bin", llamaServerBinary())
+		if _, err := os.Stat(p); err == nil {
+			return p, nil
+		}
+	}
+
+	// 2. Use configured path if provided
 	if configured != "" {
 		if _, err := os.Stat(configured); err == nil {
 			return configured, nil
 		}
-		return "", fmt.Errorf("configured binary not found: %s", configured)
 	}
 
-	// 2. Check PATH (exec.LookPath handles .exe on Windows automatically)
+	// 3. Check Bundled Paths (Auto-detect order)
+	bundledDirs := []string{
+		filepath.Join("binaries", currentOS, "amd", llamaServerBinary()),
+		filepath.Join("binaries", currentOS, "nvidia", llamaServerBinary()),
+		filepath.Join("binaries", currentOS, "cpu", llamaServerBinary()),
+		filepath.Join("bin", llamaServerBinary()),
+	}
+
+	for _, p := range bundledDirs {
+		if _, err := os.Stat(p); err == nil {
+			// Found a bundled binary!
+			return p, nil
+		}
+	}
+
+	// 3. Check PATH (exec.LookPath handles .exe on Windows automatically)
 	if path, err := exec.LookPath("llama-server"); err == nil {
 		return path, nil
 	}

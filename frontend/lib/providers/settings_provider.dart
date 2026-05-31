@@ -25,6 +25,54 @@ class MemorySettings {
   }
 }
 
+class LlamaSettings {
+  final String engineMode;
+  final String binaryPath;
+  final int port;
+  final int ctxSize;
+
+  const LlamaSettings({
+    required this.engineMode,
+    required this.binaryPath,
+    required this.port,
+    required this.ctxSize,
+  });
+
+  factory LlamaSettings.fromJson(Map<String, dynamic> json) {
+    return LlamaSettings(
+      engineMode: json['engine_mode'] ?? 'auto',
+      binaryPath: json['binary_path'] ?? '',
+      port: json['port'] ?? 8081,
+      ctxSize: json['ctx_size'] ?? 4096,
+    );
+  }
+}
+
+final llamaSettingsProvider =
+    AsyncNotifierProvider<LlamaSettingsNotifier, LlamaSettings>(
+      LlamaSettingsNotifier.new,
+    );
+
+class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
+  @override
+  Future<LlamaSettings> build() async {
+    final data = await ref.read(apiClientProvider).getLlamaConfig();
+    return LlamaSettings.fromJson(data);
+  }
+
+  Future<void> updateEngineMode(String mode) async {
+    final current = await future;
+    // Note: We need a backend handler for updating llama config
+    await ref.read(apiClientProvider).updateLlamaConfig(engineMode: mode);
+    state = AsyncData(LlamaSettings(
+      engineMode: mode,
+      binaryPath: current.binaryPath,
+      port: current.port,
+      ctxSize: current.ctxSize,
+    ));
+  }
+}
+
 // ─── Setup Complete ─────────────────────────────────────────────
 
 final setupCompleteProvider =

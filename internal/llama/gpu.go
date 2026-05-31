@@ -3,6 +3,7 @@ package llama
 import (
 	"fmt"
 	"log"
+	"os"
 	"os/exec"
 	"runtime"
 	"strconv"
@@ -30,6 +31,17 @@ type GPUInfo struct {
 // DetectGPU probes the system for available GPU acceleration.
 // Priority: NVIDIA (CUDA) → AMD (ROCm) → CPU fallback.
 func DetectGPU() GPUInfo {
+	// Check for manual CPU override
+	if _, err := os.Stat("data/.force_cpu"); err == nil {
+		return GPUInfo{
+			Type:        GPUTypeCPU,
+			Name:        "CPU (Zorunlu)",
+			VRAM:        0,
+			GPULayers:   0,
+			Description: "Manual override via .force_cpu file",
+		}
+	}
+
 	if info, ok := detectNVIDIA(); ok {
 		return info
 	}

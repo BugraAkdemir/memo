@@ -1003,77 +1003,126 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (installed) {
-            return Container(
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: MemoTheme.bgPanel,
-                borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                border: Border.all(color: MemoTheme.borderSoft),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
+            final llamaSettings = ref.watch(llamaSettingsProvider);
+            return Column(
+              children: [
+                // Engine Mode Selection
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.bgPanel,
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    border: Border.all(color: MemoTheme.borderSoft),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Icon(
-                        installed ? Icons.check_circle : Icons.warning_amber_rounded,
-                        color: installed ? MemoTheme.green : Colors.orange,
-                        size: 24,
-                      ),
-                      const SizedBox(width: 12),
-                      Text(
-                        installed ? 'Llama Motoru Yüklü' : 'Llama Motoru Yüklü Değil',
+                      const Text(
+                        'Motor Modu',
                         style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
                           color: MemoTheme.textMain,
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      llamaSettings.when(
+                        loading: () => const CircularProgressIndicator(),
+                        error: (e, _) => Text('Hata: $e'),
+                        data: (settings) => DropdownButton<String>(
+                          value: settings.engineMode,
+                          isExpanded: true,
+                          dropdownColor: MemoTheme.bgPanel,
+                          items: const [
+                            DropdownMenuItem(value: 'auto', child: Text('Otomatik (Önerilen)')),
+                            DropdownMenuItem(value: 'cpu', child: Text('Sadece İşlemci (CPU)')),
+                            DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA (CUDA)')),
+                            DropdownMenuItem(value: 'amd', child: Text('AMD (ROCm/Vulkan)')),
+                          ],
+                          onChanged: (mode) {
+                            if (mode != null) {
+                              ref.read(llamaSettingsProvider.notifier).updateEngineMode(mode);
+                            }
+                          },
                         ),
                       ),
                     ],
                   ),
-                  const SizedBox(height: 12),
-                  Text(
-                    installed
-                        ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
-                        : 'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
-                    style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                ),
+                const SizedBox(height: 24),
+                // Installation Status Card
+                Container(
+                  padding: const EdgeInsets.all(20),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.bgPanel,
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    border: Border.all(color: MemoTheme.borderSoft),
                   ),
-                  const SizedBox(height: 20),
-                  if (_error.isNotEmpty)
-                    Padding(
-                      padding: const EdgeInsets.only(bottom: 16),
-                      child: Text(
-                        _error,
-                        style: const TextStyle(color: MemoTheme.red, fontSize: 13),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Icon(
+                            installed ? Icons.check_circle : Icons.warning_amber_rounded,
+                            color: installed ? MemoTheme.green : Colors.orange,
+                            size: 24,
+                          ),
+                          const SizedBox(width: 12),
+                          Text(
+                            installed ? 'Llama Motoru Yüklü' : 'Llama Motoru Yüklü Değil',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: MemoTheme.textMain,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  if (!installed || true) // Her zaman yeniden kurmaya izin verelim
-                    SizedBox(
-                      width: double.infinity,
-                      height: 44,
-                      child: ElevatedButton(
-                        onPressed: _installing ? null : _startInstall,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: MemoTheme.accent,
-                          foregroundColor: MemoTheme.textInverse,
+                      const SizedBox(height: 12),
+                      Text(
+                        installed
+                            ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
+                            : 'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
+                        style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                      ),
+                      const SizedBox(height: 20),
+                      if (_error.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 16),
+                          child: Text(
+                            _error,
+                            style: const TextStyle(color: MemoTheme.red, fontSize: 13),
+                          ),
                         ),
-                        child: _installing
-                            ? const SizedBox(
-                                width: 20,
-                                height: 20,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: MemoTheme.textInverse,
+                      SizedBox(
+                        width: double.infinity,
+                        height: 44,
+                        child: ElevatedButton(
+                          onPressed: _installing ? null : _startInstall,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: MemoTheme.accent,
+                            foregroundColor: MemoTheme.textInverse,
+                          ),
+                          child: _installing
+                              ? const SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: MemoTheme.textInverse,
+                                  ),
+                                )
+                              : Text(
+                                  installed ? 'Motoru Yeniden Kur / Onar' : (hasGpu ? 'Ekran Kartı İçin Kur (Önerilen)' : 'Motoru İndir ve Kur'),
+                                  style: const TextStyle(fontWeight: FontWeight.w600),
                                 ),
-                              )
-                            : Text(
-                                installed ? 'Motoru Yeniden Kur / Onar' : (hasGpu ? 'Ekran Kartı İçin Kur (Önerilen)' : 'Motoru İndir ve Kur'),
-                                style: const TextStyle(fontWeight: FontWeight.w600),
-                              ),
+                        ),
                       ),
-                    ),
-                ],
-              ),
+                    ],
+                  ),
+                ),
+              ],
             );
           },
         ),

@@ -114,6 +114,15 @@ func (s *Server) Start(port int) error {
 	mux.HandleFunc("/api/models/llama/check", s.handleLlamaCheck)
 	mux.HandleFunc("/api/models/llama/install", s.handleLlamaInstall)
 	mux.HandleFunc("/api/models/llama/skip", s.handleLlamaSkip)
+	mux.HandleFunc("/api/models/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			s.handleLlamaConfigGet(w, r)
+		} else if r.Method == http.MethodPut {
+			s.handleLlamaConfigUpdate(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	mux.HandleFunc("/api/remote-access", s.handleRemoteAccess)
 	mux.HandleFunc("/api/sync/settings", s.handleSyncSettings)
 	mux.HandleFunc("/api/sync/auth", s.handleSyncAuth)
@@ -220,6 +229,15 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/models/llama/check", s.handleLlamaCheck)
 	mux.HandleFunc("/api/models/llama/install", s.handleLlamaInstall)
 	mux.HandleFunc("/api/models/llama/skip", s.handleLlamaSkip)
+	mux.HandleFunc("/api/models/config", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			s.handleLlamaConfigGet(w, r)
+		} else if r.Method == http.MethodPut {
+			s.handleLlamaConfigUpdate(w, r)
+		} else {
+			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		}
+	})
 	mux.HandleFunc("/api/remote-access", s.handleRemoteAccess)
 	mux.HandleFunc("/api/sync/settings", s.handleSyncSettings)
 	mux.HandleFunc("/api/sync/auth", s.handleSyncAuth)

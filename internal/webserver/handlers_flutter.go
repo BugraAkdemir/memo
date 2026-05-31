@@ -3,6 +3,8 @@ package webserver
 import (
 	"encoding/json"
 	"fmt"
+	"log"
+	"memo/internal/config"
 	"net/http"
 )
 
@@ -651,5 +653,33 @@ func (s *Server) handleLlamaSkip(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, fmt.Sprintf("skip failed: %v", err), http.StatusInternalServerError)
 		return
 	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleLlamaConfigGet(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetLlamaConfig())
+}
+
+func (s *Server) handleLlamaConfigUpdate(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut || s.fullBridge == nil {
+		http.Error(w, "PUT only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req config.LlamaConfig
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	log.Printf("📥 Backend: Engine mode update received: %s", req.EngineMode)
+	if err := s.fullBridge.UpdateLlamaConfig(req); err != nil {
+		log.Printf("❌ Backend: Config update error: %v", err)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	log.Printf("✅ Backend: Configuration saved successfully.")
 	writeJSON(w, map[string]string{"ok": "true"})
 }

@@ -16,8 +16,12 @@ mkdir -p dist_packages/windows_stage
 echo "--> Go Headless Backend Windows için derleniyor..."
 GOOS=windows GOARCH=amd64 go build -o dist_packages/windows_stage/memo-backend.exe .
 
-# 2. Flutter Frontend Build (Windows Cross-Compile - *Not: Linux üzerinde Flutter Windows build almak resmi olarak desteklenmez ancak Wine veya cross-toolchain ile yapılabilir, bu adım test aşamasındadır*)
-echo "--> Flutter Frontend Build alınıyor..."
+# 2. Bundled Binaries
+echo "--> Bundled Llama-Server binary'leri kopyalanıyor..."
+mkdir -p dist_packages/windows_stage/binaries/windows
+cp -r binaries/windows/* dist_packages/windows_stage/binaries/windows/
+
+# 3. Flutter Frontend Build
 # cd frontend && flutter build windows --release && cd ..
 # cp -r frontend/build/windows/x64/release/runner/Release/* dist_packages/windows_stage/
 

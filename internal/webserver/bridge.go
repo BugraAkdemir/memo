@@ -66,6 +66,8 @@ type FullBridge interface {
 	CheckLlamaInstallation() bool
 	InstallLlamaServer() error
 	SkipLlamaGPUInstall() error
+	GetLlamaConfig() config.LlamaConfig
+	UpdateLlamaConfig(cfg config.LlamaConfig) error
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

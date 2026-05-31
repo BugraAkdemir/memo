@@ -24,10 +24,12 @@ remote_access:
     enabled: true
     port: 8088
 llama:
-    binary_path: data/bin/llama-server
+    engine_mode: cpu
+    binary_path: ""
     port: 8081
     embedding_port: 8082
     ctx_size: 4096
+    max_history: 20
     models_dir: ./data/models
 sync:
     enabled: true

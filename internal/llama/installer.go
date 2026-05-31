@@ -99,35 +99,21 @@ func (i *Installer) CheckPrerequisites() error {
 
 // IsInstalled quickly checks if llama-server is available and compatible with the system's GPU.
 func (i *Installer) IsInstalled(configuredPath string) bool {
-	var binPath string
-	if path, err := resolveBinary(configuredPath); err == nil && path != "" {
-		binPath = path
-	} else {
-		binPath = filepath.Join(i.BaseDir, "bin", llamaServerBinary())
-	}
-
-	_, err := os.Stat(binPath)
-	if err != nil {
-		return false
-	}
-
-	// Check if the installed version supports the current GPU
-	gpu := DetectGPU()
-	if gpu.Type != GPUTypeCPU {
-		// Check for offline/user bypass file
-		forceCPUFile := filepath.Join(i.BaseDir, ".force_cpu")
-		if _, err := os.Stat(forceCPUFile); err == nil {
-			log.Printf("llama installer: GPU detected but .force_cpu file exists, bypassing GPU check")
+	// 1. First, try to resolve via standard logic (which now includes bundled paths)
+	if path, err := resolveBinary(configuredPath, ""); err == nil && path != "" {
+		// If it's a bundled binary, we consider it "installed" regardless of dynamic GPU checks
+		// because the user/bundler is responsible for providing the right one.
+		if strings.Contains(path, "binaries/") || strings.HasPrefix(path, "bin/") {
 			return true
 		}
-
-		if !HasGPUSupport(binPath, gpu.Type) {
-			log.Printf("llama installer: binary found at %s but lacks GPU support for %s", binPath, gpu.Type)
-			return false
+		
+		_, err := os.Stat(path)
+		if err == nil {
+			return true
 		}
 	}
 
-	return true
+	return false
 }
 
 // Install downloads pre-built binaries when possible, falls back to source compilation.
@@ -284,6 +270,12 @@ func pickBestAsset(assets []githubAsset, gpu GPUInfo) (githubAsset, error) {
 		"darwin":  "macos",
 	}[currentOS]
 
+	// Architecture keyword
+	archKeyword := goruntime.GOARCH
+	if archKeyword == "amd64" {
+		archKeyword = "x64"
+	}
+
 	// Windows uses .zip, Linux/macOS use .tar.gz
 	wantZip := currentOS == "windows"
 
@@ -298,10 +290,20 @@ func pickBestAsset(assets []githubAsset, gpu GPUInfo) (githubAsset, error) {
 		for _, a := range assets {
 			name := strings.ToLower(a.Name)
 			if strings.Contains(name, platformKeyword) &&
+				strings.Contains(name, archKeyword) &&
 				strings.Contains(name, pref) &&
 				matchesExt(name) {
 				return a, nil
 			}
+		}
+	}
+	// Fallback without preference but with architecture
+	for _, a := range assets {
+		name := strings.ToLower(a.Name)
+		if strings.Contains(name, platformKeyword) &&
+			strings.Contains(name, archKeyword) &&
+			matchesExt(name) {
+			return a, nil
 		}
 	}
 	// Last resort: any matching archive for this platform
@@ -408,6 +410,20 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 		}
 
 		destPath := filepath.Join(destDir, name)
+
+		if hdr.Typeflag == tar.TypeSymlink {
+			if err := os.Remove(destPath); err != nil && !os.IsNotExist(err) {
+				logger(fmt.Sprintf("Uyarı: Eski sembolik bağ silinemedi %s: %v", name, err))
+			}
+			if err := os.Symlink(hdr.Linkname, destPath); err != nil {
+				logger(fmt.Sprintf("Uyarı: Sembolik bağ oluşturulamadı %s -> %s: %v", name, hdr.Linkname, err))
+			} else {
+				logger(fmt.Sprintf("  Bağlandı: %s -> %s", name, hdr.Linkname))
+				extracted++
+			}
+			continue
+		}
+
 		out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
 		if err != nil {
 			logger(fmt.Sprintf("Uyarı: %s yazılamadı: %v", name, err))

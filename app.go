@@ -1090,7 +1090,7 @@ func (a *App) DeleteLocalModel(path string) error {
 // ─── llama-server: Lifecycle Management ──────────────────────────
 
 func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error {
-	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers, false); err != nil {
+	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers, false, a.cfg.Llama.EngineMode); err != nil {
 		return err
 	}
 
@@ -1145,6 +1145,11 @@ func (a *App) GetLlamaConfig() config.LlamaConfig {
 	return a.cfg.Llama
 }
 
+func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
+	a.cfg.Llama = cfg
+	return config.Save(a.cfg)
+}
+
 func (a *App) SetLlamaBinaryPath(path string) error {
 	a.cfg.Llama.BinaryPath = path
 	return config.Save(a.cfg)
@@ -1191,11 +1196,17 @@ func (a *App) SkipLlamaGPUInstall() error {
 // ─── Embedding Server: Lifecycle Management ─────────────────────
 
 func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
-	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, a.cfg.Llama.EmbeddingPort, gpuLayers, true); err != nil {
+	// Stop existing embedding server if running
+	if a.llamaEmbedServer.IsRunning() {
+		a.llamaEmbedServer.Stop()
+		time.Sleep(500 * time.Millisecond) // Give it a moment to release ports
+	}
+
+	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, a.cfg.Llama.EmbeddingPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
 		return err
 	}
 
-	if err := a.llamaEmbedServer.WaitReady(60 * time.Second); err != nil {
+	if err := a.llamaEmbedServer.WaitReady(120 * time.Second); err != nil {
 		a.llamaEmbedServer.Stop()
 		return fmt.Errorf("embedding model loaded but server failed to start: %w", err)
 	}

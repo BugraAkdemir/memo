@@ -276,6 +276,26 @@ class MemoApiClient {
     return ServerStatus.fromJson(res.data as Map<String, dynamic>);
   }
 
+  Future<Map<String, dynamic>> getLlamaConfig() async {
+    final res = await _dio.get('/api/models/config');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateLlamaConfig({
+    String? engineMode,
+    String? binaryPath,
+    int? port,
+    int? ctxSize,
+  }) async {
+    final data = <String, dynamic>{};
+    if (engineMode != null) data['engine_mode'] = engineMode;
+    if (binaryPath != null) data['binary_path'] = binaryPath;
+    if (port != null) data['port'] = port;
+    if (ctxSize != null) data['ctx_size'] = ctxSize;
+
+    await _dio.put('/api/models/config', data: data);
+  }
+
   // ─── Embedding Model ───────────────────────────────────────────
 
   Future<void> startEmbeddingModel({

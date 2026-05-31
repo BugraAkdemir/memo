@@ -25,7 +25,15 @@ echo "⚙️ 3. Copying Frontend Assets..."
 cp -r frontend/build/linux/x64/release/bundle/* build_output/memo-linux-x64/
 
 echo ""
-echo "⚙️ 4. Copying Backend Data & Config..."
+echo "⚙️ 4. Copying Bundled Binaries (llama-server engines)..."
+mkdir -p build_output/memo-linux-x64/binaries/linux
+cp -r binaries/linux/* build_output/memo-linux-x64/binaries/linux/
+# Ensure execution permissions for the engines
+find build_output/memo-linux-x64/binaries/linux -name "llama-server" -exec chmod +x {} \;
+find build_output/memo-linux-x64/binaries/linux -name "*.so*" -exec chmod +x {} \;
+
+echo ""
+echo "⚙️ 5. Copying Backend Data & Config..."
 cp -r data/* build_output/memo-linux-x64/data/ 2>/dev/null || true
 cp -r config/* build_output/memo-linux-x64/config/ 2>/dev/null || true
 cp .env build_output/memo-linux-x64/ 2>/dev/null || true

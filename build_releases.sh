@@ -52,11 +52,12 @@ if [ "$OS" == "linux" ]; then
     cd ..
     cp -r frontend/build/linux/x64/release/bundle/* "$STAGEDIR/"
     
-    # 3. Copy Assets (data/bin only — NO models, they are downloaded in-app)
+    # 3. Copy Assets
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp kütüphaneleri)..."
-    mkdir -p "$STAGEDIR/data/bin"
-    cp -r data/bin/* "$STAGEDIR/data/bin/" 2>/dev/null || true
+    mkdir -p "$STAGEDIR/binaries"
+    cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
     # stt_server varsa kopyala
+    mkdir -p "$STAGEDIR/data/bin"
     cp data/bin/stt_server "$STAGEDIR/data/bin/" 2>/dev/null || true
     # Config
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
@@ -80,9 +81,9 @@ mkdir -p "$MEMO_HOME/data/sessions"
 mkdir -p "$MEMO_HOME/config"
 
 # Copy bundled data on first run
-if [ ! -f "$MEMO_HOME/data/bin/llama-server" ] && [ -f "$DIR/data/bin/llama-server" ]; then
-    echo "📦 İlk çalıştırma: dosyalar kopyalanıyor..."
-    cp -r "$DIR/data/bin/"* "$MEMO_HOME/data/bin/"
+if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
+    echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
+    cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
 fi
 [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ] && cp -r "$DIR/config/"* "$MEMO_HOME/config/"
 [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
@@ -132,9 +133,9 @@ mkdir -p "$MEMO_HOME/data/sessions"
 mkdir -p "$MEMO_HOME/config"
 
 # Copy llama.cpp binaries if not already present (first run)
-if [ ! -f "$MEMO_HOME/data/bin/llama-server" ] && [ -f "$APPBIN/data/bin/llama-server" ]; then
-    echo "📦 İlk çalıştırma: llama.cpp kütüphaneleri kopyalanıyor..."
-    cp -r "$APPBIN/data/bin/"* "$MEMO_HOME/data/bin/"
+if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$APPBIN/binaries" ]; then
+    echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
+    cp -r "$APPBIN/binaries/"* "$MEMO_HOME/binaries/"
 fi
 
 # Copy default config if not present
@@ -245,8 +246,8 @@ elif [ "$OS" == "windows" ]; then
     cp -r frontend/build/windows/x64/release/runner/Release/* "$STAGEDIR/"
     
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp kütüphaneleri)..."
-    mkdir -p "$STAGEDIR/data/bin"
-    cp -r data/bin/* "$STAGEDIR/data/bin/" 2>/dev/null || true
+    mkdir -p "$STAGEDIR/binaries"
+    cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
     cp .env "$STAGEDIR/" 2>/dev/null || true
     mkdir -p "$STAGEDIR/data/models"

@@ -10,5 +10,7 @@ import "syscall"
 // child prematurely. Process-group kill (killByPort / forceKill) handles
 // cleanup instead.
 func newSysProcAttr() *syscall.SysProcAttr {
-	return &syscall.SysProcAttr{Setpgid: true}
+	return &syscall.SysProcAttr{
+		Pdeathsig: syscall.SIGKILL,
+	}
 }

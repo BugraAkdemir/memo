@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "Mimari Yapı.md",
+                "file": "00 Ana Sayfa.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "Mimari Yapı"
+              "title": "00 Ana Sayfa"
             }
           }
         ]
@@ -44,7 +44,7 @@
                 "autoReveal": false
               },
               "icon": "lucide-folder-closed",
-              "title": "Dosya Gezgini"
+              "title": "Files"
             }
           },
           {
@@ -174,19 +174,20 @@
   },
   "left-ribbon": {
     "hiddenItems": {
-      "switcher:Hızlı geçişi aç": false,
-      "graph:Grafik görünümünü aç": false,
-      "canvas:Yeni tuval oluşturun": false,
-      "daily-notes:Bugünün Notunu Aç": false,
-      "templates:Şablon ekle": false,
-      "command-palette:Komut paletini aç": false,
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
       "bases:Create new base": false
     }
   },
   "active": "9566fdd15bfe34e6",
   "lastOpenFiles": [
-    "00 Ana Sayfa.md",
     "API Dökümantasyonu.md",
+    "00 Ana Sayfa.md",
+    "Mimari Yapı.md",
     "Sistem Genel Bakış.md",
     "Gelişmiş Ayarlar.md",
     "Kullanım Kılavuzu.md",
@@ -202,7 +203,6 @@
     "Veri Katmanı ve Kalıcılık.md",
     "Backend (Go) Mimarisi.md",
     "Hoş geldiniz.md",
-    "RAG ve Semantik Hafıza.md",
-    "Mimari Yapı.md"
+    "RAG ve Semantik Hafıza.md"
   ]
 }

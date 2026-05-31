@@ -195,84 +195,139 @@ class _SearchResultsPanel extends ConsumerWidget {
   }
 }
 
-class _SearchResultCard extends StatelessWidget {
+class _SearchResultCard extends StatefulWidget {
   final HFModelResult result;
 
   const _SearchResultCard({required this.result});
 
   @override
+  State<_SearchResultCard> createState() => _SearchResultCardState();
+}
+
+class _SearchResultCardState extends State<_SearchResultCard> {
+  bool _isHovered = false;
+
+  String _formatCount(int count) {
+    if (count >= 1000000) {
+      return '${(count / 1000000).toStringAsFixed(1)}M';
+    } else if (count >= 1000) {
+      return '${(count / 1000).toStringAsFixed(1)}K';
+    }
+    return count.toString();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: MemoTheme.bgPanel,
-        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        border: Border.all(color: MemoTheme.borderSoft),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  result.id,
-                  style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 15),
-                ),
-              ),
-              Row(
-                children: [
-                  const Icon(Icons.download, size: 14, color: MemoTheme.textDim),
-                  const SizedBox(width: 4),
-                  Text(
-                    '${result.downloads}',
-                    style: TextStyle(fontSize: 12, color: MemoTheme.textDim),
+    return MouseRegion(
+      onEnter: (_) => setState(() => _isHovered = true),
+      onExit: (_) => setState(() => _isHovered = false),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 200),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(
+          color: _isHovered ? MemoTheme.bgHover.withValues(alpha: 0.3) : MemoTheme.bgPanel,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+          border: Border.all(
+            color: _isHovered ? MemoTheme.accent.withValues(alpha: 0.5) : MemoTheme.borderSoft,
+            width: _isHovered ? 1.5 : 1.0,
+          ),
+          boxShadow: _isHovered ? MemoTheme.shadowMd : [],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    widget.result.id,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 16,
+                      color: MemoTheme.textMain,
+                    ),
                   ),
-                ],
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Author: ${result.author}',
-            style: TextStyle(fontSize: 12, color: MemoTheme.textMuted),
-          ),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 6,
-            runSpacing: 6,
-            children: result.tags.take(4).map((t) {
-              return Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: MemoTheme.bgElement,
-                  borderRadius: BorderRadius.circular(4),
                 ),
-                child: Text(
-                  t,
-                  style: TextStyle(fontSize: 10, color: MemoTheme.textDim),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.bgElement,
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.download_rounded, size: 14, color: MemoTheme.textMuted),
+                      const SizedBox(width: 6),
+                      Text(
+                        _formatCount(widget.result.downloads),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: MemoTheme.textMuted,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
-              );
-            }).toList(),
-          ),
-          const SizedBox(height: 16),
-          Align(
-            alignment: Alignment.centerRight,
-            child: ElevatedButton.icon(
-              onPressed: () {
-                showDialog(
-                  context: context,
-                  builder: (_) => _ModelFilesDialog(repoId: result.id),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                const Icon(Icons.person_outline, size: 14, color: MemoTheme.textDim),
+                const SizedBox(width: 4),
+                Text(
+                  widget.result.author,
+                  style: const TextStyle(fontSize: 13, color: MemoTheme.textDim),
+                ),
+                const SizedBox(width: 12),
+                const Icon(Icons.favorite_border_rounded, size: 14, color: MemoTheme.textDim),
+                const SizedBox(width: 4),
+                Text(
+                  '${widget.result.likes} beğeni',
+                  style: const TextStyle(fontSize: 12, color: MemoTheme.textDim),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: widget.result.tags.take(5).map((t) {
+                return Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.bgApp,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: MemoTheme.borderSoft),
+                  ),
+                  child: Text(
+                    t,
+                    style: const TextStyle(fontSize: 11, color: MemoTheme.textMuted),
+                  ),
                 );
-              },
-              icon: const Icon(Icons.search, size: 16),
-              label: const Text('Dosyaları Gör'),
-              style: ElevatedButton.styleFrom(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              }).toList(),
+            ),
+            const SizedBox(height: 20),
+            Align(
+              alignment: Alignment.centerRight,
+              child: ElevatedButton.icon(
+                onPressed: () {
+                  showDialog(
+                    context: context,
+                    builder: (_) => _ModelFilesDialog(repoId: widget.result.id),
+                  );
+                },
+                icon: const Icon(Icons.folder_open_rounded, size: 18),
+                label: const Text('Dosyaları İncele'),
+                style: ElevatedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  backgroundColor: _isHovered ? MemoTheme.accent : MemoTheme.accent.withValues(alpha: 0.9),
+                ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -469,20 +524,25 @@ class _LocalModelCard extends ConsumerWidget {
                 ),
               ),
               const Spacer(),
-              ElevatedButton(
-                onPressed: () {
-                  showDialog(
-                    context: context,
-                    builder: (context) => ModelConfigDialog(model: model),
+              Consumer(
+                builder: (context, ref, _) {
+                  final installed = ref.watch(llamaInstalledProvider).valueOrNull ?? false;
+                  return ElevatedButton(
+                    onPressed: !installed ? null : () {
+                      showDialog(
+                        context: context,
+                        builder: (context) => ModelConfigDialog(model: model),
+                      );
+                    },
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MemoTheme.accent,
+                      foregroundColor: MemoTheme.textInverse,
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      minimumSize: const Size(0, 32),
+                    ),
+                    child: Text(L10n.t('start_model'), style: const TextStyle(fontSize: 12)),
                   );
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MemoTheme.accent,
-                  foregroundColor: MemoTheme.textInverse,
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                  minimumSize: const Size(0, 32),
-                ),
-                child: Text(L10n.t('start_model'), style: const TextStyle(fontSize: 12)),
+                }
               ),
             ],
           ),
@@ -684,59 +744,225 @@ class _StatusIndicator extends StatelessWidget {
 class _DownloadProgressCard extends ConsumerWidget {
   const _DownloadProgressCard();
 
+  String _formatBytes(int bytes) {
+    if (bytes >= 1024 * 1024 * 1024) {
+      return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    } else if (bytes >= 1024 * 1024) {
+      return '${(bytes / (1024 * 1024)).toStringAsFixed(1)} MB';
+    } else if (bytes >= 1024) {
+      return '${(bytes / 1024).toStringAsFixed(0)} KB';
+    }
+    return '$bytes B';
+  }
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    // Listen for download completion to refresh local models
+    ref.listen(downloadProgressProvider, (previous, next) {
+      final wasActive = previous?.value?.active ?? false;
+      final isNowActive = next.value?.active ?? false;
+      if (wasActive && !isNowActive) {
+        ref.invalidate(localModelsProvider);
+      }
+    });
+
     final progressAsync = ref.watch(downloadProgressProvider);
 
     return progressAsync.when(
       data: (progress) {
-        if (!progress.active) return const SizedBox.shrink();
+        if (!progress.active) {
+          return const SizedBox.shrink();
+        }
+
+        final percentText = progress.percent.toStringAsFixed(1);
+        final downloadedText = _formatBytes(progress.downloaded);
+        final totalText = _formatBytes(progress.totalBytes);
 
         return Container(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(24),
           decoration: BoxDecoration(
-            color: MemoTheme.bgApp,
+            gradient: LinearGradient(
+              colors: [
+                MemoTheme.accent.withValues(alpha: 0.1),
+                MemoTheme.bgPanel,
+              ],
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+            ),
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-            border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.5)),
+            border: Border.all(
+              color: MemoTheme.accent.withValues(alpha: 0.4),
+              width: 1.5,
+            ),
+            boxShadow: MemoTheme.shadowMd,
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              // Filename (Prominent)
               Row(
                 children: [
-                  const Icon(Icons.downloading, color: MemoTheme.accent, size: 20),
-                  const SizedBox(width: 8),
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: const Icon(
+                      Icons.cloud_download_rounded,
+                      color: MemoTheme.accent,
+                      size: 24,
+                    ),
+                  ),
+                  const SizedBox(width: 16),
                   Expanded(
-                    child: Text(
-                      progress.filename,
-                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
-                      overflow: TextOverflow.ellipsis,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          progress.filename,
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 15,
+                            color: MemoTheme.textMain,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Model indiriliyor...',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: MemoTheme.textDim,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(4),
-                child: LinearProgressIndicator(
-                  value: progress.percent / 100.0,
-                  backgroundColor: MemoTheme.bgElement,
-                  color: MemoTheme.accent,
-                  minHeight: 6,
-                ),
+
+              const SizedBox(height: 24),
+
+              // Percentage display
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                crossAxisAlignment: CrossAxisAlignment.baseline,
+                textBaseline: TextBaseline.alphabetic,
+                children: [
+                  Text(
+                    percentText,
+                    style: const TextStyle(
+                      fontSize: 48,
+                      fontWeight: FontWeight.w900,
+                      color: MemoTheme.accent,
+                      letterSpacing: -2,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  const Text(
+                    '%',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: MemoTheme.accent,
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
+
+              const SizedBox(height: 20),
+
+              // Progress bar
+              Stack(
+                children: [
+                  Container(
+                    height: 12,
+                    decoration: BoxDecoration(
+                      color: MemoTheme.bgElement,
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                  ),
+                  TweenAnimationBuilder<double>(
+                    tween: Tween(begin: 0, end: progress.percent / 100.0),
+                    duration: const Duration(milliseconds: 500),
+                    curve: Curves.easeOutCubic,
+                    builder: (context, value, _) {
+                      return FractionallySizedBox(
+                        widthFactor: value,
+                        child: Container(
+                          height: 12,
+                          decoration: BoxDecoration(
+                            gradient: const LinearGradient(
+                              colors: [MemoTheme.accentLight, MemoTheme.accent],
+                            ),
+                            borderRadius: BorderRadius.circular(6),
+                            boxShadow: [
+                              BoxShadow(
+                                color: MemoTheme.accent.withValues(alpha: 0.3),
+                                blurRadius: 4,
+                                offset: const Offset(0, 2),
+                              ),
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ],
+              ),
+
+              const SizedBox(height: 20),
+
+              // Size + Speed row
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
-                  Text(
-                    '${progress.percent.toStringAsFixed(1)}%',
-                    style: TextStyle(fontSize: 12, color: MemoTheme.textDim, fontWeight: FontWeight.bold),
+                  // Downloaded / Total
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      const Text(
+                        'İNDİRİLEN',
+                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: MemoTheme.textDim, letterSpacing: 0.5),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        '$downloadedText / $totalText',
+                        style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.bold,
+                          color: MemoTheme.textMuted,
+                        ),
+                      ),
+                    ],
                   ),
-                  Text(
-                    progress.speed,
-                    style: TextStyle(fontSize: 12, color: MemoTheme.textMuted),
-                  ),
+                  // Speed badge
+                  if (progress.speed.isNotEmpty)
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      decoration: BoxDecoration(
+                        color: MemoTheme.accent.withValues(alpha: 0.1),
+                        borderRadius: BorderRadius.circular(8),
+                        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.2)),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const Icon(Icons.bolt_rounded, size: 14, color: MemoTheme.accent),
+                          const SizedBox(width: 6),
+                          Text(
+                            progress.speed,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              fontWeight: FontWeight.w900,
+                              color: MemoTheme.accent,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ],
@@ -748,6 +974,8 @@ class _DownloadProgressCard extends ConsumerWidget {
     );
   }
 }
+
+
 
 class _ModelFilesDialog extends ConsumerStatefulWidget {
   final String repoId;
@@ -784,49 +1012,219 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
     }
   }
 
+  Widget _buildQuantBadge(String filename) {
+    final lower = filename.toLowerCase();
+    String? quant;
+    if (lower.contains('q4_k_m')) quant = 'Q4_K_M';
+    else if (lower.contains('q4_k_s')) quant = 'Q4_K_S';
+    else if (lower.contains('q5_k_m')) quant = 'Q5_K_M';
+    else if (lower.contains('q5_k_s')) quant = 'Q5_K_S';
+    else if (lower.contains('q8_0')) quant = 'Q8_0';
+    else if (lower.contains('q4_0')) quant = 'Q4_0';
+    else if (lower.contains('fp16')) quant = 'FP16';
+
+    if (quant == null) return const SizedBox.shrink();
+
+    return Container(
+      margin: const EdgeInsets.only(left: 8),
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: MemoTheme.accent.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
+      ),
+      child: Text(
+        quant,
+        style: const TextStyle(
+          fontSize: 10,
+          fontWeight: FontWeight.bold,
+          color: MemoTheme.accent,
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      backgroundColor: MemoTheme.bgApp,
-      title: Text('Model Dosyaları', style: TextStyle(color: MemoTheme.textMain)),
-      content: SizedBox(
-        width: double.maxFinite,
-        height: 400,
-        child: _files == null && _error == null
-            ? const Center(child: CircularProgressIndicator())
-            : _error != null
-                ? Center(child: Text('Hata: $_error', style: TextStyle(color: MemoTheme.red)))
-                : _files!.isEmpty
-                    ? Center(child: Text('Bu modelde GGUF dosyası bulunamadı.', style: TextStyle(color: MemoTheme.textDim)))
-                    : ListView.separated(
-                        itemCount: _files!.length,
-                        separatorBuilder: (_, __) => const Divider(),
-                        itemBuilder: (context, index) {
-                          final file = _files![index];
-                          final sizeMB = (file.size / (1024 * 1024)).toStringAsFixed(1);
-                          return ListTile(
-                            title: Text(file.filename, style: TextStyle(color: MemoTheme.textMain, fontSize: 13)),
-                            subtitle: Text('$sizeMB MB', style: TextStyle(color: MemoTheme.textDim, fontSize: 11)),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.download, color: MemoTheme.accent),
-                              onPressed: () {
-                                ref.read(apiClientProvider).downloadModel(widget.repoId, file.filename);
-                                Navigator.pop(context);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                  SnackBar(content: Text('${file.filename} indirmesi başlatıldı...')),
+    return Dialog(
+      backgroundColor: Colors.transparent,
+      insetPadding: const EdgeInsets.symmetric(horizontal: 40, vertical: 60),
+      child: Container(
+        width: 600,
+        decoration: BoxDecoration(
+          color: MemoTheme.bgApp,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
+          boxShadow: MemoTheme.shadowLg,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Header
+            Padding(
+              padding: const EdgeInsets.all(24),
+              child: Row(
+                children: [
+                  const Icon(Icons.folder_open_rounded, color: MemoTheme.accent),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Model Dosyaları',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: MemoTheme.textMain,
+                          ),
+                        ),
+                        Text(
+                          widget.repoId,
+                          style: const TextStyle(fontSize: 12, color: MemoTheme.textDim),
+                        ),
+                      ],
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: () => Navigator.pop(context),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+            ),
+            const Divider(),
+
+            // Content
+            Flexible(
+              child: _files == null && _error == null
+                  ? const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(child: CircularProgressIndicator()),
+                    )
+                  : _error != null
+                      ? Padding(
+                          padding: const EdgeInsets.all(40),
+                          child: Center(
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                const Icon(Icons.error_outline, color: MemoTheme.red, size: 48),
+                                const SizedBox(height: 16),
+                                Text('Hata: $_error',
+                                    textAlign: TextAlign.center,
+                                    style: const TextStyle(color: MemoTheme.red)),
+                              ],
+                            ),
+                          ),
+                        )
+                      : _files!.isEmpty
+                          ? const Padding(
+                              padding: EdgeInsets.all(40),
+                              child: Center(
+                                child: Text(
+                                  'Bu modelde GGUF dosyası bulunamadı.',
+                                  style: TextStyle(color: MemoTheme.textDim),
+                                ),
+                              ),
+                            )
+                          : ListView.separated(
+                              shrinkWrap: true,
+                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              itemCount: _files!.length,
+                              separatorBuilder: (_, __) => const SizedBox(height: 8),
+                              itemBuilder: (context, index) {
+                                final file = _files![index];
+                                final sizeGB = (file.size / (1024 * 1024 * 1024));
+                                final sizeMB = (file.size / (1024 * 1024));
+                                final sizeText = sizeGB >= 1 
+                                    ? '${sizeGB.toStringAsFixed(1)} GB' 
+                                    : '${sizeMB.toStringAsFixed(0)} MB';
+                                
+                                return Container(
+                                  decoration: BoxDecoration(
+                                    color: MemoTheme.bgPanel,
+                                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                                    border: Border.all(color: MemoTheme.borderSoft),
+                                  ),
+                                  child: ListTile(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                                    title: Row(
+                                      children: [
+                                        Expanded(
+                                          child: Text(
+                                            file.filename,
+                                            style: const TextStyle(
+                                              color: MemoTheme.textMain,
+                                              fontSize: 14,
+                                              fontWeight: FontWeight.w500,
+                                            ),
+                                          ),
+                                        ),
+                                        _buildQuantBadge(file.filename),
+                                      ],
+                                    ),
+                                    subtitle: Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: Row(
+                                        children: [
+                                          Container(
+                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                                            decoration: BoxDecoration(
+                                              color: MemoTheme.accent.withValues(alpha: 0.15),
+                                              borderRadius: BorderRadius.circular(4),
+                                            ),
+                                            child: Text(
+                                              sizeText,
+                                              style: const TextStyle(
+                                                color: MemoTheme.accent,
+                                                fontSize: 11,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    trailing: ElevatedButton(
+                                      onPressed: () {
+                                        ref.read(apiClientProvider).downloadModel(widget.repoId, file.filename);
+                                        Navigator.pop(context);
+                                        ScaffoldMessenger.of(context).showSnackBar(
+                                          SnackBar(
+                                            content: Text('${file.filename} indirmesi başlatıldı...'),
+                                            backgroundColor: MemoTheme.green,
+                                          ),
+                                        );
+                                      },
+                                      style: ElevatedButton.styleFrom(
+                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                                        minimumSize: const Size(0, 36),
+                                      ),
+                                      child: const Text('İndir', style: TextStyle(fontSize: 13)),
+                                    ),
+                                  ),
                                 );
                               },
                             ),
-                          );
-                        },
-                      ),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Kapat'),
+            ),
+
+            // Footer
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('Kapat'),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

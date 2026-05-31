@@ -241,15 +241,30 @@ class MemoApiClient {
     int port = 8081,
     int gpuLayers = -1,
   }) async {
-    await _dio.post(
-      '/api/models/start',
-      data: {
-        'path': path,
-        'ctx_size': ctxSize,
-        'port': port,
-        'gpu_layers': gpuLayers,
-      },
-    );
+    try {
+      await _dio.post(
+        '/api/models/start',
+        data: {
+          'path': path,
+          'ctx_size': ctxSize,
+          'port': port,
+          'gpu_layers': gpuLayers,
+        },
+      );
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e));
+    }
+  }
+
+  String _extractErrorMessage(DioException e) {
+    if (e.response?.data != null) {
+      // If server returned a plain string error or a JSON with error field
+      if (e.response?.data is String) return e.response!.data as String;
+      if (e.response?.data is Map && e.response?.data['error'] != null) {
+        return e.response?.data['error'].toString() ?? e.message ?? 'Unknown error';
+      }
+    }
+    return e.message ?? 'Unknown error';
   }
 
   Future<void> stopModel() async {
@@ -267,10 +282,14 @@ class MemoApiClient {
     required String path,
     int gpuLayers = -1,
   }) async {
-    await _dio.post(
-      '/api/models/embedding/start',
-      data: {'path': path, 'gpu_layers': gpuLayers},
-    );
+    try {
+      await _dio.post(
+        '/api/models/embedding/start',
+        data: {'path': path, 'gpu_layers': gpuLayers},
+      );
+    } on DioException catch (e) {
+      throw Exception(_extractErrorMessage(e));
+    }
   }
 
   Future<void> stopEmbeddingModel() async {

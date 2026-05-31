@@ -1094,28 +1094,22 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 		return err
 	}
 
-	// Wait in background — emit events so the UI can show real-time progress.
-	go func() {
-		a.emitEvent("model:loading", map[string]any{"model": modelPath})
+	// Wait up to 3 minutes for the model to load before returning success to the UI.
+	// Since Flutter event system is currently disabled, we use synchronous wait.
+	if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
+		a.llamaServer.Stop()
+		return fmt.Errorf("Model yükleme zaman aşımına uğradı (3 dk). (Hata: %w)", err)
+	}
 
-		if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
-			a.llamaServer.Stop()
-			a.emitEvent("model:error", err.Error())
-			return
-		}
+	// Redirect API client to the local llama-server
+	newBaseURL := a.llamaServer.GetBaseURL()
+	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
+	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
-		// Redirect API client to the local llama-server
-		newBaseURL := a.llamaServer.GetBaseURL()
-		a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
-		log.Printf("API client redirected to local llama-server: %s", newBaseURL)
-
-		// Auto-start embedding model if not already running
-		if !a.llamaEmbedServer.IsRunning() {
-			a.autoStartEmbeddingModel()
-		}
-
-		a.emitEvent("model:ready", map[string]any{"model": modelPath})
-	}()
+	// Auto-start embedding model if not already running
+	if !a.llamaEmbedServer.IsRunning() {
+		a.autoStartEmbeddingModel()
+	}
 
 	return nil
 }

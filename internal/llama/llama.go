@@ -63,7 +63,7 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	// Resolve binary path
 	bin, err := resolveBinary(binaryPath)
 	if err != nil {
-		return fmt.Errorf("llama: %w", err)
+		return fmt.Errorf("Llama.cpp motoru (llama-server) bulunamadı. Lütfen motorun kurulu olduğundan emin olun veya Ayarlar -> Llama kısmından yolu kontrol edin. (Hata: %w)", err)
 	}
 
 	// Detect GPU

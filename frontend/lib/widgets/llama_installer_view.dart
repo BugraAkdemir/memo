@@ -38,6 +38,7 @@ class _InstallerScreen extends ConsumerStatefulWidget {
 class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
   bool _installing = false;
   String _error = '';
+  bool _dismissed = false;
 
   Future<void> _startInstall() async {
     setState(() {
@@ -58,6 +59,8 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_dismissed) return const SizedBox.shrink();
+
     final gpuAsync = ref.watch(gpuInfoProvider);
     final hasGpu = gpuAsync.whenOrNull(data: (g) => g.hasGpu) ?? false;
     final gpuName = gpuAsync.whenOrNull(data: (g) => g.name) ?? '';
@@ -162,20 +165,10 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
                   child: OutlinedButton(
                     onPressed: _installing
                         ? null
-                        : () async {
+                        : () {
                             setState(() {
-                              _installing = true;
-                              _error = '';
+                              _dismissed = true;
                             });
-                            try {
-                              await ref.read(apiClientProvider).skipLlamaGPUInstall();
-                              ref.invalidate(llamaInstalledProvider);
-                            } catch (e) {
-                              setState(() {
-                                _error = e.toString();
-                                _installing = false;
-                              });
-                            }
                           },
                     style: OutlinedButton.styleFrom(
                       foregroundColor: MemoTheme.textDim,
@@ -185,7 +178,7 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
                       ),
                     ),
                     child: const Text(
-                      'CPU ile Devam Et (Ekran Kartını Atla)',
+                      'Şimdilik Atla (Daha Sonra Ayarlardan Kur)',
                       style: TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),

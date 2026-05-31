@@ -5,6 +5,8 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/settings_provider.dart';
+import '../providers/models_provider.dart';
+import '../providers/chat_provider.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
@@ -22,6 +24,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('system_prompt'),
     L10n.t('incognito_prompt'),
     L10n.t('memory'),
+    'Ekran Kartı Config',
     L10n.t('cloud_sync'),
     L10n.t('remote_access'),
     L10n.t('about'),
@@ -164,10 +167,12 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 3:
         return const _MemoryTab();
       case 4:
-        return const _CloudSyncTab();
+        return const _GpuConfigTab();
       case 5:
-        return const _RemoteAccessTab();
+        return const _CloudSyncTab();
       case 6:
+        return const _RemoteAccessTab();
+      case 7:
         return const _AboutTab();
       default:
         return const SizedBox.shrink();
@@ -889,6 +894,188 @@ class _AboutTab extends ConsumerWidget {
         Text(
           'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
           style: TextStyle(height: 1.6, color: MemoTheme.textMuted),
+        ),
+      ],
+    );
+  }
+}
+
+class _GpuConfigTab extends ConsumerStatefulWidget {
+  const _GpuConfigTab();
+
+  @override
+  ConsumerState<_GpuConfigTab> createState() => _GpuConfigTabState();
+}
+
+class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
+  bool _installing = false;
+  String _error = '';
+
+  Future<void> _startInstall() async {
+    setState(() {
+      _installing = true;
+      _error = '';
+    });
+
+    try {
+      await ref.read(apiClientProvider).installLlamaServer();
+      ref.invalidate(llamaInstalledProvider);
+    } catch (e) {
+      setState(() {
+        _error = e.toString();
+      });
+    } finally {
+      if (mounted) {
+        setState(() {
+          _installing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final installedAsync = ref.watch(llamaInstalledProvider);
+    final gpuAsync = ref.watch(gpuInfoProvider);
+    final hasGpu = gpuAsync.whenOrNull(data: (g) => g.hasGpu) ?? false;
+    final gpuName = gpuAsync.whenOrNull(data: (g) => g.name) ?? '';
+
+    return ListView(
+      padding: const EdgeInsets.all(32),
+      children: [
+        Text(
+          'Ekran Kartı (GPU) / Llama Motoru',
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: MemoTheme.textMain,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Yapay zeka modellerini çalıştıran Llama.cpp motorunun kurulum ve ekran kartı ayarları.',
+          style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+        ),
+        const SizedBox(height: 32),
+
+        Container(
+          padding: const EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: MemoTheme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.borderSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                'Sistem Donanım Durumu',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: MemoTheme.textMain,
+                ),
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Icon(
+                    hasGpu ? Icons.memory : Icons.developer_board,
+                    size: 20,
+                    color: hasGpu ? MemoTheme.accent : MemoTheme.textDim,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      hasGpu
+                          ? 'Algılanan Ekran Kartı: $gpuName'
+                          : 'Sadece İşlemci (CPU) algılandı veya GPU desteklenmiyor.',
+                      style: TextStyle(fontSize: 14, color: MemoTheme.textMain),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        installedAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('${L10n.t('error')}: $e'),
+          data: (installed) {
+            return Container(
+              padding: const EdgeInsets.all(20),
+              decoration: BoxDecoration(
+                color: MemoTheme.bgPanel,
+                borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                border: Border.all(color: MemoTheme.borderSoft),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(
+                        installed ? Icons.check_circle : Icons.warning_amber_rounded,
+                        color: installed ? MemoTheme.green : Colors.orange,
+                        size: 24,
+                      ),
+                      const SizedBox(width: 12),
+                      Text(
+                        installed ? 'Llama Motoru Yüklü' : 'Llama Motoru Yüklü Değil',
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
+                          color: MemoTheme.textMain,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Text(
+                    installed
+                        ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
+                        : 'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
+                    style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                  ),
+                  const SizedBox(height: 20),
+                  if (_error.isNotEmpty)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 16),
+                      child: Text(
+                        _error,
+                        style: const TextStyle(color: MemoTheme.red, fontSize: 13),
+                      ),
+                    ),
+                  if (!installed || true) // Her zaman yeniden kurmaya izin verelim
+                    SizedBox(
+                      width: double.infinity,
+                      height: 44,
+                      child: ElevatedButton(
+                        onPressed: _installing ? null : _startInstall,
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: MemoTheme.accent,
+                          foregroundColor: MemoTheme.textInverse,
+                        ),
+                        child: _installing
+                            ? const SizedBox(
+                                width: 20,
+                                height: 20,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: MemoTheme.textInverse,
+                                ),
+                              )
+                            : Text(
+                                installed ? 'Motoru Yeniden Kur / Onar' : (hasGpu ? 'Ekran Kartı İçin Kur (Önerilen)' : 'Motoru İndir ve Kur'),
+                                style: const TextStyle(fontWeight: FontWeight.w600),
+                              ),
+                      ),
+                    ),
+                ],
+              ),
+            );
+          },
         ),
       ],
     );

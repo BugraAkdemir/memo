@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/memory"

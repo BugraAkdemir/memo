@@ -111,7 +111,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         fullReply += token;
 
         // Update the last message in the list
-        final updatedMessages = [...state.valueOrNull ?? []];
+        final updatedMessages = [...state.valueOrNull ?? <ChatMessage>[]];
         if (updatedMessages.isNotEmpty) {
           updatedMessages[updatedMessages.length - 1] = ChatMessage(
             role: 'assistant',

@@ -1,23 +1,31 @@
-# Memo Geliştirme Görev Listesi
+# Model İndirme UI Yeniden Tasarımı
 
-## 🚀 Performans ve Akış (Streaming)
-- [x] **Backend: SSE Altyapısı** -> `internal/webserver` içinde SSE (Server-Sent Events) desteği eklenmesi.
-- [x] **Backend: Llama Akış Desteği** -> `llama` modülü ve `app.go` içindeki mesaj gönderme mantığının stream destekleyecek şekilde güncellenmesi.
-- [x] **Frontend: Stream Tüketimi** -> `api_client.dart` içinde SSE akışlarını okuyacak yapının kurulması.
-- [x] **Frontend: Canlı Yazma Efekti** -> `ChatScreen` ve `chat_provider.dart` içinde gelen tokenların gerçek zamanlı ekrana basılması.
+## Tamamlanan İşler
+- `[x]` GPU Config sekmesi Ayarlara eklendi
+- `[x]` Llama installer overlay kapatılabilir yapıldı
+- `[x]` `models_provider.dart` — `downloadProgressProvider` StreamProvider'a çevrildi (1sn polling)
 
-## 🧠 Bağlam ve Hafıza Yönetimi
-- [x] **Sliding Window Uygulaması** -> LLM'e gönderilen mesaj geçmişinin belirli bir sınırda (son N mesaj) tutulması ve yapılandırılabilir hale getirilmesi.
-- [x] **RAG Entegrasyonu Optimizasyonu** -> Geçmiş mesajlar azalsa bile RAG'in en alakalı anıları getirmeye devam etmesinin doğrulanması.
-- [ ] **Asenkron Özetleme (İsteğe Bağlı)** -> Uzun sohbetlerin arka planda özetlenerek bağlam verimliliğinin artırılması.
+## Yapılacaklar
 
-## 🛡️ Donanım ve Kararlılık
-- [x] **GPU Algılama İyileştirmesi** -> AMD VRAM ve sysfs desteğinin güçlendirilmesi.
-- [x] **Otomatik Katman Önerisi** -> VRAM miktarına göre optimal `n_gpu_layers` seçimi.
-- [x] **Hata ve Risk Dökümantasyonu** -> `KNOWN_ISSUES.md` dosyasına teknik risklerin yazılması.
+### 1. `_DownloadProgressCard` Yeniden Tasarımı (model_store_screen.dart)
+- `[x]` İndirme aktifken büyük, belirgin bir kart göster
+  - Dosya adı büyük font ile
+  - Yüzde göstergesi (büyük, ortada, animasyonlu)
+  - İndirilen / Toplam boyut (ör: "1.2 GB / 4.5 GB")
+  - Hız bilgisi (ör: "12.5 MB/s")
+  - Renkli LinearProgressIndicator (kalın, animasyonlu)
+  - İndirme bitince otomatik olarak local models listesini yenile
 
-## 🛠️ Kritik Güvenlik ve Kararlılık Düzeltmeleri
-- [x] **Hafıza Pointer Güvenliği** -> `reinitMemoryStore` sırasında oluşan yarış durumlarının (race condition) önlenmesi.
-- [x] **SSE Kaynak Yönetimi** -> İstemci bağlantısı koptuğunda SSE akışının durdurulması.
-- [x] **Sessiz Hata İyileştirmesi** -> Kritik arka plan hatalarının kullanıcıya bildirilmesi.
-s
+### 2. `_ModelFilesDialog` Tasarım İyileştirmesi (model_store_screen.dart)
+- `[x]` AlertDialog yerine özel Dialog kullan
+  - Dosya boyutlarını renkli badge ile göster
+  - İndir butonunu daha belirgin yap
+  - Quant bilgisini (Q4_K_M, Q5_K_S vb.) vurgula
+
+### 3. `_SearchResultCard` Tasarım İyileştirmesi (model_store_screen.dart)
+- `[x]` Download/Like sayılarını daha okunabilir formatta göster
+- `[x]` Kart hover efekti ekle
+
+### 4. Derleme ve Test
+- `[ ]` `flutter run -d linux` ile derle
+- `[ ]` İndirme başlat, yüzde takibinin çalıştığını doğrula

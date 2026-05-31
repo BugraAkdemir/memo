@@ -57,13 +57,23 @@ final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
   }
 });
 
-// ─── Download Progress ──────────────────────────────────────────
+// ─── Download Progress (polling) ────────────────────────────────
 
-final downloadProgressProvider = FutureProvider<DownloadProgress>((ref) async {
-  try {
-    return await ref.read(apiClientProvider).getDownloadProgress();
-  } catch (_) {
-    return const DownloadProgress();
+final downloadProgressProvider = StreamProvider<DownloadProgress>((ref) async* {
+  final api = ref.read(apiClientProvider);
+
+  while (true) {
+    try {
+      final progress = await api.getDownloadProgress();
+      yield progress;
+      // Poll every second while active, every 3 seconds when idle
+      await Future.delayed(progress.active
+          ? const Duration(seconds: 1)
+          : const Duration(seconds: 3));
+    } catch (_) {
+      yield const DownloadProgress();
+      await Future.delayed(const Duration(seconds: 3));
+    }
   }
 });
 
@@ -83,7 +93,13 @@ final modelSearchResultsProvider =
 final llamaInstalledProvider = FutureProvider<bool>((ref) async {
   try {
     return await ref.read(apiClientProvider).checkLlamaInstallation();
-  } catch (_) {
-    return true; // assume installed if backend unreachable — don't block UI
+  } catch (e) {
+    // Only return true if it's truly unreachable (like backend down)
+    // If we get a response but it's an error, something else is wrong.
+    if (e is DioException && e.type == DioExceptionType.connectionError) {
+      return true; 
+    }
+    // For other errors, assume not installed to be safe and show installer
+    return false;
   }
 });

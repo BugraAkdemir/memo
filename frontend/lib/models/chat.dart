@@ -2,6 +2,7 @@
 class ChatMessage {
   final String role;
   final String content;
+  final String? thinking;
   final String? imagePath;
   final String? filePath;
   final String timestamp;
@@ -9,6 +10,7 @@ class ChatMessage {
   const ChatMessage({
     required this.role,
     required this.content,
+    this.thinking,
     this.imagePath,
     this.filePath,
     required this.timestamp,
@@ -17,6 +19,7 @@ class ChatMessage {
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
         role: json['role'] as String? ?? '',
         content: json['content'] as String? ?? '',
+        thinking: json['thinking'] as String?,
         imagePath: json['image_path'] as String?,
         filePath: json['file_path'] as String?,
         timestamp: json['timestamp'] as String? ?? '',
@@ -25,6 +28,7 @@ class ChatMessage {
   Map<String, dynamic> toJson() => {
         'role': role,
         'content': content,
+        if (thinking != null) 'thinking': thinking,
         if (imagePath != null) 'image_path': imagePath,
         if (filePath != null) 'file_path': filePath,
         'timestamp': timestamp,
@@ -34,6 +38,20 @@ class ChatMessage {
   bool get isAssistant => role == 'assistant';
   bool get hasImage => imagePath != null && imagePath!.isNotEmpty;
   bool get hasFile => filePath != null && filePath!.isNotEmpty;
+  bool get hasThinking => thinking != null && thinking!.isNotEmpty;
+}
+
+/// A single chunk from the SSE stream, may contain content and/or thinking.
+class StreamChunk {
+  final String content;
+  final String? thinking;
+
+  const StreamChunk({required this.content, this.thinking});
+
+  factory StreamChunk.fromJson(Map<String, dynamic> json) => StreamChunk(
+        content: json['content'] as String? ?? '',
+        thinking: json['thinking'] as String?,
+      );
 }
 
 /// Chat session info — mirrors Go `sessions.SessionInfo`

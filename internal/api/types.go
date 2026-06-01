@@ -167,6 +167,7 @@ type MessageStats struct {
 
 type StreamChunk struct {
 	Content      string        `json:"content"`
+	Thinking     string        `json:"thinking,omitempty"`
 	Done         bool          `json:"done"`
 	Error        string        `json:"error,omitempty"`
 	FinishReason string        `json:"finish_reason,omitempty"`

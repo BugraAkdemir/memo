@@ -106,9 +106,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     try {
       final stream = api.sendMessageStream(message);
       String fullReply = '';
+      String fullThinking = '';
 
-      await for (final token in stream) {
-        fullReply += token;
+      await for (final chunk in stream) {
+        fullReply += chunk.content;
+        fullThinking += chunk.thinking ?? '';
 
         // Update the last message in the list
         final updatedMessages = [...state.valueOrNull ?? <ChatMessage>[]];
@@ -116,6 +118,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           updatedMessages[updatedMessages.length - 1] = ChatMessage(
             role: 'assistant',
             content: fullReply,
+            thinking: fullThinking.isNotEmpty ? fullThinking : null,
             timestamp: assistantMsg.timestamp,
           );
           state = AsyncData(updatedMessages);

@@ -32,8 +32,8 @@ class MemoApiClient {
     return res.data['reply'] as String? ?? '';
   }
 
-  /// Send a message with streaming SSE.
-  Stream<String> sendMessageStream(String message) async* {
+  /// Send a message with streaming SSE. Yields [StreamChunk] with content and/or thinking.
+  Stream<StreamChunk> sendMessageStream(String message) async* {
     try {
       final response = await _dio.post(
         '/api/send/stream',
@@ -53,11 +53,14 @@ class MemoApiClient {
           try {
             final data = json.decode(jsonStr);
             if (data['error'] != null && (data['error'] as String).isNotEmpty) {
-              yield '⚠️ Hata: ${data['error']}';
+              yield StreamChunk(content: '⚠️ Hata: ${data['error']}');
               break;
             }
-            if (data['content'] != null) {
-              yield data['content'] as String;
+            if (data['content'] != null || data['thinking'] != null) {
+              yield StreamChunk(
+                content: data['content'] as String? ?? '',
+                thinking: data['thinking'] as String?,
+              );
             }
             if (data['done'] == true) {
               break;
@@ -68,7 +71,7 @@ class MemoApiClient {
         }
       }
     } catch (e) {
-      yield '⚠️ Bağlantı hatası: $e';
+      yield StreamChunk(content: '⚠️ Bağlantı hatası: $e');
     }
   }
 
@@ -503,4 +506,3 @@ class MemoApiClient {
     }
   }
 }
-q

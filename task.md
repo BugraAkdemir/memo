@@ -1,40 +1,51 @@
-# Strateji Değişimi: Bundled Llama Engine
+# Memo Frontend Fix Task List
 
-Mevcut indirme tabanlı (download-on-demand) sistemden, tüm donanım varyasyonlarını içeren "tak-çalıştır" (bundled) sistemine geçiş planı.
+## Bölüm 1 — Thinking/Reasoning Metnini Ayrıştırma ve Collapsible UI ✅
+**Hedef:** DeepSeek R1, QwQ gibi reasoning modellerin `...` içindeki düşünme metnini ayrıştır, toggle arrow ile gizle/göster yap.
+- [x] Backend: `StreamChunk`'a `Thinking string` alanı ekle (`internal/api/types.go`)
+- [x] Backend: `processSSEStream`'de `...` tag'lerini parse et (`internal/api/streaming.go`)
+- [x] Frontend: `ChatMessage` modeline `String? thinking` ekle, `StreamChunk` sınıfı ekle (`models/chat.dart`)
+- [x] Frontend: `api_client.dart` SSE reader'da `StreamChunk` yield et, `thinking` field'ını da oku
+- [x] Frontend: `chat_provider.dart` stream'de thinking/content ayrı buffer
+- [x] Frontend: `chat_message_list.dart` collapsible `_ThinkingToggle` widget'ı (`▶ Düşünme göster / ▼ Düşünme gizle`)
 
-## Artıları (+):
-- **%100 Stabilite:** İnternet hızı, GitHub erişimi veya kütüphane bağlama (symlink) hataları tamamen ortadan kalkar.
-- **Anında Kurulum:** Kullanıcı uygulamayı yüklediği anda motor hazırdır. "İndiriliyor" bekleme ekranı biter.
-- **Offline Çalışma:** Uygulama ilk kez açıldığında bile internet gerektirmez.
-- **Garantili Çalışma:** Senin sisteminde test ettiğimiz çalışan dosyaları gömdüğümüz için "Bende çalışmadı" şikayeti minimuma iner.
+## Bölüm 2 — SSE Stream Token Rebuild Optimizasyonu
+**Hedef:** Her token'da tüm mesaj listesinin yeniden oluşmasını engelle.
+- [ ] `chat_provider.dart` sendMessage: tüm listeyi kopyalamak yerine son mesajı güncelle
+- [ ] `chat_message_list.dart`: sadece değişen mesaj rebuild olsun
 
-## Eksileri (-):
-- **Dosya Boyutu:** Uygulama boyutu ~100 MB'tan ~700 MB - 1 GB arasına çıkar.
-- **Bakım (Maintenance):** Llama.cpp güncellendiğinde her 3 binary setini de manuel güncellemek gerekir.
+## Bölüm 3 — Incognito Toggle Race Condition
+**Hedef:** API hatasında frontend/backend state desync olmasın.
+- [ ] `chat_provider.dart` toggle: API başarısız olursa state'i geri al
 
----
+## Bölüm 4 — Stream İptali (Orphaned Stream)
+**Hedef:** Chat değişince veya ekran kapanınca stream temizlensin.
+- [ ] `chat_provider.dart` sendMessage: StreamSubscription yönetimi, dispose'da cancel
 
-## YAPILACAKLAR
+## Bölüm 5 — Hata Mesajlarını Chat'e Yazma
+**Hedef:** Bağlantı hataları chat mesajı olarak görünmesin.
+- [ ] `api_client.dart` catch bloğunda hata fırlat, yield etme
+- [ ] `chat_provider.dart` hata durumunu snackbar/UI ile göster
 
-### 1. Dosya Yapısının Hazırlanması
-- `[x]` `binaries/linux/` altında `cpu`, `nvidia`, `amd` klasörlerini oluştur.
-- `[x]` `binaries/windows/` altında `cpu`, `nvidia`, `amd` klasörlerini oluştur.
-- `[ ]` Çalışan kütüphane (`.so`/`.dll`) ve binary dosyalarını bu klasörlere yerleştir.
+## Bölüm 6 — Çift Mesaj Göndermeyi Engelle
+**Hedef:** isSending kontrolünü sağlamlaştır, race condition'ları önle.
+- [ ] `chat_input.dart` send butonunda isSending kontrolü
+- [ ] `chat_provider.dart` sendMessage başında double-send koruması
 
-### 2. Backend Geliştirmeleri (`internal/llama/`)
-- `[x]` `llama.go`: `resolveBinary` fonksiyonunu paket içindeki `binaries/` klasörüne öncelik verecek şekilde güncelle.
-- `[x]` `installer.go`: İndirme mantığını "opsiyonel fallback" (yedek plan) haline getir veya tamamen kaldır.
-- `[ ]` `gpu.go`: Algılanan donanıma göre varsayılan klasörü (cpu/nvidia/amd) seçme mantığını ekle.
+## Bölüm 7 — Zaman Damgasına Saniye Ekle
+**Hedef:** Aynı dakika içindeki mesajlar ayırt edilebilsin.
+- [ ] `chat_provider.dart` timestamp formatı: `HH:mm` → `HH:mm:ss`
 
-### 3. Paketleme Scriptlerinin Güncellenmesi
-- `[x]` `package_linux.sh`: `binaries/linux/` içeriğini `build_output` içine kopyalama adımını ekle.
-- `[x]` `package_windows.sh`: `binaries/windows/` içeriğini dahil et.
+## Bölüm 8 — Export Chat İyileştirmesi
+**Hedef:** Export edilen chat içeriğini dosyaya kaydet.
+- [ ] `chat_screen.dart` export: file_picker ile save dialog, dosyaya yaz
 
-### 4. Frontend UI Değişimi
-- `[ ]` `llama_installer_view.dart`: "Motoru Kur" ekranını kaldır.
-- `[ ]` `settings_dialog.dart`: "Motor Modu Seçimi" (Radio Button: Otomatik, CPU, NVIDIA, AMD) ekle.
-- `[ ]` Mod değiştiğinde backend'e yeni yolu bildirip motoru anında yeniden başlatma tetikleyicisi koy.
+## Bölüm 9 — Silme İşlemlerine Onay Dialogu Ekle
+**Hedef:** Yanlışlıkla silme önlensin.
+- [ ] `chat_sidebar.dart` chat silme: confirm dialog
+- [ ] `settings_dialog.dart` hafıza temizleme: confirm dialog
+- [ ] `model_store_screen.dart` model silme: confirm dialog
 
-### 5. Temizlik ve Test
-- `[ ]` Eski `.force_cpu` mantığını "Sadece CPU" moduyla birleştir.
-- `[ ]` `data/bin` klasörünü geçici cache olarak kullanmaktan vazgeç, paketlenmiş yola güven.
+## Bölüm 10 — Boş Mesaj Kontrolü
+**Hedef:** Boşluk/boş string gönderimi engellensin.
+- [ ] `chat_input.dart` send'den önce `trim().isEmpty` kontrolü

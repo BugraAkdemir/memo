@@ -1,7 +1,7 @@
 <div align="center">
   <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=for-the-badge&logo=go" alt="Go 1.25"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=for-the-badge&logo=flutter" alt="Flutter 3.10"/>
-  <img src="https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge" alt="License MIT"/>
+  <img src="https://img.shields.io/badge/License-AGPL_v3-blue?style=for-the-badge" alt="License AGPL v3"/>
   <img src="https://img.shields.io/badge/Status-v2.0.0--beta-blue?style=for-the-badge" alt="v2.0.0-beta"/>
   <br/>
   <img src="https://img.shields.io/badge/llama.cpp-Integrated-orange?style=flat-square&logo=llama" alt="llama.cpp"/>

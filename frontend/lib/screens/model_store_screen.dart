@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
@@ -364,23 +363,16 @@ class _LocalModelsList extends ConsumerWidget {
                     allowMultiple: false,
                   );
                   if (result != null && result.files.single.path != null) {
-                    final sourceFile = File(result.files.single.path!);
-                    final filename = result.files.single.name;
-                    // ../data/models -> proje kökündeki data/models (backend'in baktığı yer)
-                    final modelsDir = Directory('../data/models');
-                    if (!await modelsDir.exists()) {
-                      await modelsDir.create(recursive: true);
-                    }
-                    final destPath = '${modelsDir.path}/$filename';
+                    final sourcePath = result.files.single.path!;
                     
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Model içe aktarılıyor: $filename...')),
+                        SnackBar(content: Text('Model içe aktarılıyor...')),
                       );
                     }
                     
                     try {
-                      await sourceFile.copy(destPath);
+                      await ref.read(apiClientProvider).importModel(sourcePath);
                       ref.invalidate(localModelsProvider);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(

@@ -222,13 +222,12 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 	s.progress.TotalBytes = totalBytes
 	s.mu.Unlock()
 
-	// Create destination directory
-	destDir := filepath.Join(s.modelsDir, sanitizePath(repoID))
-	if err := os.MkdirAll(destDir, 0755); err != nil {
+	// Create destination directory (flat: directly in modelsDir, no subdirectory)
+	if err := os.MkdirAll(s.modelsDir, 0755); err != nil {
 		return fmt.Errorf("create dir: %w", err)
 	}
 
-	destPath := filepath.Join(destDir, filename)
+	destPath := filepath.Join(s.modelsDir, filename)
 	tmpPath := destPath + ".downloading"
 
 	f, err := os.Create(tmpPath)

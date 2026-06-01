@@ -49,3 +49,8 @@
 ## Bölüm 10 — Boş Mesaj Kontrolü
 **Hedef:** Boşluk/boş string gönderimi engellensin.
 - [ ] `chat_input.dart` send'den önce `trim().isEmpty` kontrolü
+
+## Bölüm 11 — HuggingFace İndirilen Modellerin Algılanmaması ✅
+**Hedef:** HF'den indirilen modeller `models/repo__adi/model.gguf` (nested) yerine direkt `models/model.gguf` (flat) olarak kaydedilsin. Flutter import path'i de API üzerinden yapılsın.
+- [x] Backend: `doDownload` modeli alt dizinsiz, direkt `modelsDir` içine kaydetsin (`modelstore.go`)
+- [x] Flutter: `model_store_screen.dart` import'u API (`api.importModel`) üzerinden yapsın, `dart:io` import'u kaldırıldı

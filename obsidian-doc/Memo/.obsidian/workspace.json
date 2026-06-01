@@ -11,10 +11,14 @@
             "id": "9566fdd15bfe34e6",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Graph view"
+              "type": "markdown",
+              "state": {
+                "file": "Veri Katmanı ve Kalıcılık.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "Veri Katmanı ve Kalıcılık"
             }
           }
         ]
@@ -181,7 +185,10 @@
   },
   "active": "9566fdd15bfe34e6",
   "lastOpenFiles": [
+    "Vektör Arama Mantığı.md",
+    "Multimodal Yetenekler (Görsel ve Ses).md",
     "00 Ana Sayfa.md",
+    "Temel Özellikler.md",
     "API Dökümantasyonu.md",
     "Mimari Yapı.md",
     "Sistem Genel Bakış.md",
@@ -189,9 +196,7 @@
     "Kullanım Kılavuzu.md",
     "Derleme ve Paketleme.md",
     "Geliştirici Kurulum Rehberi.md",
-    "Vektör Arama Mantığı.md",
     "Llama.cpp Entegrasyonu.md",
-    "Multimodal Yetenekler (Görsel ve Ses).md",
     "Gizli Mod (Incognito).md",
     "Model Yönetimi (Fabrika).md",
     "Bulut Senkronizasyonu.md",

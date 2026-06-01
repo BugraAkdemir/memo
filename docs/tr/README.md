@@ -86,20 +86,27 @@
 ### Gereksinimler
 - **Go 1.25+** — [indir](https://go.dev/dl/)
 - **Flutter 3.10+** — [kur](https://docs.flutter.dev/get-started/install)
-- **llama.cpp** — ilk çalıştırmada otomatik kurulur veya [elle derle](https://github.com/ggerganov/llama.cpp)
+- **llama.cpp** — gömülü! Uygulama, platformunuz için önceden derlenmiş llama-server binary'leri ile birlikte gelir. Elle kurulum gerekmez.
 
-### Tek Komut (Linux)
+### Hızlı Başlangıç (Linux)
 ```bash
-git clone https://github.com/bugra/memo.git && cd memo && go run . --port 8090
-# Başka bir terminalde:
+# Projeyi klonla ve backend'i çalıştır
+git clone https://github.com/bugra/memo.git && cd memo
+go run . --port 8090
+
+# Başka bir terminalde frontend'i çalıştır
 cd frontend && flutter run -d linux
 ```
 
-### Kaynak Koddan Derleme
+İlk modeli başlattığınızda uygulama, `binaries/` klasöründeki gömülü llama-server'ı kullanır. GGUF modelleri doğrudan HuggingFace üzerinden arayüzden indirilir.
+
+### Taşınabilir Sürüm Derleme
 ```bash
-# Her şeyi derle
-./package_linux.sh
-# Çıktı: build_output/memo-linux-x64/run_memo.sh
+./build_releases.sh
+# Çıktı: build_output/dist/
+#   Memo-linux-x64-v3.5.0.tar.gz
+#   Memo-linux-x64-v3.5.0.AppImage
+#   Memo-linux-x64-v3.5.0.deb
 ```
 
 ---

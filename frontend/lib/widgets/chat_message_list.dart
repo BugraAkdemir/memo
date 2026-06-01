@@ -84,6 +84,7 @@ class _MessageBubbleState extends State<_MessageBubble>
   late final AnimationController _fadeController;
   late final Animation<double> _fadeAnimation;
   bool _hovering = false;
+  bool _thinkingExpanded = false;
 
   @override
   void initState() {
@@ -171,7 +172,16 @@ class _MessageBubbleState extends State<_MessageBubble>
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        // Message content
+                        // ─── Thinking toggle ──────────
+                        if (!isUser && widget.message.hasThinking)
+                          _ThinkingToggle(
+                            thinking: widget.message.thinking!,
+                            expanded: _thinkingExpanded,
+                            onToggle: () =>
+                                setState(() => _thinkingExpanded = !_thinkingExpanded),
+                          ),
+
+                        // ─── Message content ──────────
                         if (isUser)
                           SelectableText(
                             widget.message.content,
@@ -285,6 +295,86 @@ class _MessageBubbleState extends State<_MessageBubble>
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Collapsible thinking section shown inside assistant message bubbles.
+class _ThinkingToggle extends StatelessWidget {
+  final String thinking;
+  final bool expanded;
+  final VoidCallback onToggle;
+
+  const _ThinkingToggle({
+    required this.thinking,
+    required this.expanded,
+    required this.onToggle,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          // Toggle pill
+          GestureDetector(
+            onTap: onToggle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: MemoTheme.bgElement,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: MemoTheme.borderSoft),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    expanded ? Icons.expand_more : Icons.chevron_right,
+                    size: 16,
+                    color: MemoTheme.textMuted,
+                  ),
+                  const SizedBox(width: 4),
+                  Text(
+                    expanded ? 'Düşünme gizle' : 'Düşünme göster',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w500,
+                      color: MemoTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+
+          // Expanded thinking content
+          if (expanded) ...[
+            const SizedBox(height: 8),
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: MemoTheme.bgElement.withValues(alpha: 0.4),
+                borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                border: Border.all(color: MemoTheme.borderSoft),
+              ),
+              child: SelectableText(
+                thinking,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: MemoTheme.textMuted,
+                  fontStyle: FontStyle.italic,
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ],
       ),
     );
   }

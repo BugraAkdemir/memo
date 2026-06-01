@@ -1,160 +1,325 @@
-# Memo — Detaylı Proje Mimari Analiz Raporu
+# Memo — Architecture & Technical Deep Dive
 
-Bu belge, **Memo (Local LLM Memory Shell)** projesinin teknik mimarisini, veri akışını, arka uç ve ön uç bileşenlerini, API tasarımlarını ve veri depolama katmanlarını detaylandırmak üzere hazırlanmıştır. Projenin çalışma prensiplerini ve kod tabanını anlamak için kalıcı bir başvuru kaynağıdır.
-
----
-
-## 🏛️ 1. Genel Mimari ve Tasarım Felsefesi
-
-Memo, sıradan bir yerel sohbet arayüzü değildir. Temel odağı, kullanıcının yerel yapay zeka modelleriyle yaptığı etkileşimleri **gizlilik odaklı ve yüksek performanslı bir "İkinci Beyin" (Second Brain)** yapısına dönüştürmektir.
-
-### Temel Sütunlar:
-1.  **Sovereign Interface (Egemen Arayüz):** Kullanıcının tüm verileri kendi donanımında kalır. Sıfır veri sızıntısı ve çevrimdışı (offline) çalışabilme esastır.
-2.  **Contextual Resonance (Bağlamsal Rezonans):** RAG (Retrieval-Augmented Generation) mekanizması sayesinde asistan, kullanıcının geçmiş konuşmalarını hatırlar, düşünme biçimini öğrenir ve her etkileşimde kişiselleştirilmiş yanıtlar üretir.
-3.  **Decoupled & Headless (Gevşek Bağlı & Arayüzsüz):** Sistem, Wails-Svelte monolitik yapısından tamamen ayrıştırılmış; Go ile yazılmış headless bir REST API sunucusu ve Flutter ile yazılmış native bir masaüstü arayüzünden oluşmaktadır.
+This document details the technical architecture, data flow, backend and frontend components, API design, and storage layers of **Memo (Local LLM Memory Shell)**.
 
 ---
 
-## 📐 2. Sistem Bileşenleri ve İletişim Şeması
-
-Aşağıdaki şemada, Flutter Masaüstü uygulaması ile Headless Go Backend arasındaki veri akışı ve bileşen etkileşimleri gösterilmektedir:
+## 🏛️ 1. High-Level Architecture
 
 ```mermaid
-graph TD
-    subgraph Frontend [Flutter Desktop Client - localhost]
-        UI[AppShell / UI Screens] -->|Riverpod| States[State Providers]
-        States -->|Dio HTTP| API_Client[MemoApiClient]
+graph TB
+    subgraph Frontend["Flutter Desktop Client (localhost)"]
+        UI["AppShell / Screens"] -->|Riverpod| States["State Providers"]
+        States -->|Dio HTTP| API["MemoApiClient (508 lines)"]
     end
 
-    subgraph Backend [Headless Go Server - :8090]
-        WebServer[Web Server Router] -->|AppBridge Interface| AppGo[App Go Engine]
-        AppGo -->|Vector Search & Gob| Memory[Memory Vector Store]
-        AppGo -->|Binary Sessions| Sessions[Sessions Manager]
-        AppGo -->|Llama.cpp Wrapper| Llama[Llama Server Manager]
-        AppGo -->|Google Drive Sync| Sync[Cloud Sync Manager]
+    subgraph Backend["Headless Go Server (:8090)"]
+        WS["Web Server<br/>(server.go + handlers_flutter.go)"]
+        WS -->|AppBridge| APP["app.go (1656 lines)"]
+        APP -->|chromem-go| MEM["Memory Store<br/>(.gob files)"]
+        APP -->|sync.RWMutex| SES["Session Manager<br/>(JSON files)"]
+        APP -->|subprocess| LLAMA["Llama Server<br/>Manager"]
+        APP -->|OAuth2 + AES-256| SYNC["Cloud Sync<br/>(Google Drive)"]
+        APP -->|HF API| MODEL["Model Store<br/>(HF download/search)"]
     end
 
-    API_Client <-->|REST API / JSON| WebServer
-    Llama <-->|Process Exec| LlamaCPP[llama-server Binary]
+    API <-->|"REST / JSON / SSE"| WS
+    LLAMA <-->|"stdin/stdout"| CP["llama-server Binary"]
 ```
 
-### A. İletişim Protokolü:
-*   **Protokol:** HTTP/REST (Plain HTTP, TLS yok). Localhost üzerinde self-signed sertifika hatalarını önlemek için düz HTTP tercih edilmiştir.
-*   **Varsayılan Port:** `8090` (Backend parametrik olarak `--port` bayrağı ile değiştirilebilir).
-*   **Veri Formatı:** JSON (MIME-Type: `application/json`). Çoklu ortam dosyaları `Multipart/Form-Data` olarak taşınır.
+### Communication Protocol
+- **Protocol:** HTTP/REST (plain HTTP, no TLS on localhost)
+- **Default Port:** `8090` (configurable via `--port`)
+- **Data Format:** JSON (`application/json`), Multipart for file uploads
+- **Streaming:** Server-Sent Events (SSE) for LLM token streaming
 
 ---
 
-## 💾 3. Bilişsel Motor ve Veri Katmanı (Cognitive Engine)
+## 💾 2. Storage Layer
 
-### A. RAG (Retrieval-Augmented Generation) Mekanizması:
-Sohbet esnasında veri akışı şu şekilde işler:
-1.  Kullanıcı bir mesaj gönderir.
-2.  **Bellek Sorgulama (Retrieval):** Gönderilen mesaj, yerel embedding sunucusu (varsayılan port: `8082`) aracılığıyla vektörleştirilir.
-3.  **Vektör Arama:** [internal/memory](file:///home/bugrapc/Documents/local-llmmmemory/internal/memory) modülü, kullanıcının yerel hafıza dizinindeki vektör dosyalarında kosinüs benzerliği (cosine similarity) araması yaparak en yakın "anıları" (memories) çeker.
-4.  **Bağlam İnşası (Context Construction):** Elde edilen anılar, [internal/identity](file:///home/bugrapc/Documents/local-llmmmemory/internal/identity) tarafından yönetilen sistem komutuna (System Prompt) gizlice eklenir.
-5.  **LLM Sorgusu:** Birleştirilmiş prompt (Sistem komutu + anılar + oturum geçmişi + aktif mesaj) yerel LLM sunucusuna iletilir.
-6.  **Kalıcılık (Persistence):** LLM'den gelen cevap kullanıcıya gösterilirken, asenkron olarak arka planda yeni etkileşim semantik indeksleme yapılarak yerel hafızaya kaydedilir.
+### Memory Store (`internal/memory/`)
+- **Format:** Go binary `.gob` files, one file per interaction
+- **Vector DB:** In-memory `chromem-go` index built from `.gob` files on startup
+- **Search:** Brute-force cosine similarity (O(N) over all embeddings)
+- **Embedding:** Local embedding model via OpenAI-compatible API (default port 8082)
+- **Limitations:**
+  - Startup time increases linearly with memory count (`LoadCache`)
+  - No incremental indexing — full rebuild on every restart
+  - `hash2hex` uses only 4 bytes of SHA-256 → collision risk
 
-### B. Depolama Formatı ve Kalıcılık (.gob):
-*   **Binary-Atomic Persistence:** Memo, yüksek hızlı okuma/yazma ve veri tutarlılığı için Go'nun yerel `.gob` ikili formatını kullanır.
-*   **Atomik Yazma:** Her bir etkileşim veya anı, bağımsız birer ikili dosya olarak kaydedilir. Bu sayede olası bir çökme veri tabanının tamamını bozmaz (SQL tabanlı veritabanı çökmelerinin önüne geçilir).
-*   **Lazy Loading:** Anılar belleğe (RAM) yalnızca ihtiyaç duyulduğunda (semantik arama tetiklendiğinde) yüklenir. Bu sayede yıllarca süren sohbet geçmişinde bile bellek tüketimi sıfıra yakın kalır.
+### Session Manager (`internal/sessions/`)
+- **Format:** JSON files in `data/sessions/`
+- **Persistence:** Written on every message (synchronous)
+- **Session ID:** UUID truncated to first 8 hex chars → collision risk
+- **Auto-title:** Generated from first user message content
 
----
-
-## 📡 4. Backend Modülleri Detaylı Analizi (Go)
-
-Backend kodu [internal/](file:///home/bugrapc/Documents/local-llmmmemory/internal/) dizini altında modüler bir şekilde organize edilmiştir:
-
-1.  **`internal/webserver` ([server.go](file:///home/bugrapc/Documents/local-llmmmemory/internal/webserver/server.go)):**
-    *   İki farklı modda sunucu başlatabilir: `StartHTTP` (Flutter masaüstü ile haberleşen localhost HTTP sunucusu) ve `Start` (Dış erişim için HTTPS/TLS destekli uzaktan erişim sunucusu).
-    *   **AppBridge/FullBridge:** Web sunucusu ile ana uygulama mantığı (`app.go`) arasındaki gevşek bağı sağlar.
-2.  **`internal/llama`:**
-    *   Yerel `llama-server` süreçlerini yönetir.
-    *   Sohbet sunucusu ve embedding sunucusu olmak üzere iki ayrı süreci izole bir şekilde başlatıp durdurabilir.
-    *   `llama.cpp` kurulumunu (`llamaInstaller`) işletim sistemine uygun şekilde otomatikleştirir.
-3.  **`internal/memory`:**
-    *   Semantik hafıza yönetimini, vektör veritabanını, kosinüs benzerliği hesaplamalarını ve `.gob` serializasyonunu yönetir.
-4.  **`internal/sessions`:**
-    *   Sohbet oturumlarını yönetir (`data/sessions` dizininde JSON formatında saklanır). Sohbetlerin silinmesi, adlandırılması ve aktif oturum geçmişinin döndürülmesinden sorumludur.
-5.  **`internal/cloudsync`:**
-    *   Google Drive entegrasyonu sağlar.
-    *   Verileri buluta yüklemeden önce kullanıcının belirlediği özel **Passphrase (Parola)** ile AES-256 tabanlı uçtan uca şifreler.
-6.  **`internal/config`:**
-    *   `config/config.yaml` dosyasını okuyarak sistem yapılandırmasını (Portlar, API ayarları, Llama ayarları vb.) yükler.
+### Config (`config/config.yaml`)
+- YAML-based, loaded at startup
+- Contains: llama settings, API keys, sync config, GPU config
+- **Note:** Written with `0644` permissions (world-readable)
 
 ---
 
-## 📱 5. Frontend Modülleri Detaylı Analizi (Flutter)
+## 🧠 3. Cognitive Engine (RAG Pipeline)
 
-Flutter tarafı, modern Material 3 standartlarında, yüksek performanslı ve reaktif bir yapı sunar:
+```mermaid
+sequenceDiagram
+    participant User
+    participant Frontend
+    participant Backend
+    participant Embedder
+    participant Memory
+    participant LLM
 
-1.  **Giriş ve AppShell ([app_shell.dart](file:///home/bugrapc/Documents/local-llmmmemory/frontend/lib/screens/app_shell.dart)):**
-    *   Sol taraftaki minimalist navigasyon rayı (NavRail) üzerinden Sohbet (`ChatScreen`) ve Model Deposu (`ModelStoreScreen`) sekmeleri arasında geçiş sağlar.
-    *   İlk açılışta `SetupWizardOverlay` (Kurulum Sihirbazı) ve `LlamaInstallerOverlay` (Llama sunucusu yükleyici) katmanlarını yönetir.
-2.  **Durum Yönetimi (Riverpod Providers):**
-    *   `chatProvider`: Aktif mesajları, mesaj gönderim durumunu ve stream akışlarını yönetir.
-    *   `localModelsProvider`: İndirilmiş yerel modellerin listesini ve silme/yükleme durumlarını takip eder.
-    *   `settingsProvider`: Sistem dili, karanlık mod, sistem promptu gibi ayarları yönetir.
-3.  **Aesthetic Design (Greige Theme - [theme.dart](file:///home/bugrapc/Documents/local-llmmmemory/frontend/lib/core/theme.dart)):**
-    *   Gözü yormayan pastel bej-gri tonları, yumuşatılmış köşeler (`radiusMd`, `radiusLg`) ve kaliteli tipografi ile premium bir arayüz sunar.
-4.  **Modüler Dialoglar ve Widget'lar:**
-    *   `SettingsDialog`: Genel, Sistem Komutu, Gizli Mod Komutu, Hafıza Temizleme, Senkronizasyon, Uzaktan Erişim ayarlarını içeren sekmeli yapı.
-    *   `ModelConfigDialog`: Modeli başlatırken GPU katman sayısı (VRAM), bağlam boyutu ve port seçimi yapılmasına olanak tanır.
-    *   `ChatInput`: Zengin metin girişi, resim ekleme (Multimodal LLM'ler için), dosya içeriği okuma (RAG'e besleme) ve ses kaydı butonlarını barındırır.
+    User->>Frontend: Send message
+    Frontend->>Backend: POST /api/send/stream
+    Backend->>Embedder: Embed query text
+    Embedder-->>Backend: Query vector
+    Backend->>Memory: Cosine similarity search
+    Memory-->>Backend: Top-K relevant memories
+    Backend->>LLM: System prompt + memories + history + query
+    LLM-->>Backend: Streaming tokens (SSE)
+    Backend-->>Frontend: SSE stream chunks
+    Frontend-->>User: Render tokens
+    Backend->>Memory: Save interaction as .gob (async)
+```
 
----
+### RAG Flow:
 
-## 🔌 6. REST API Endpoint Tablosu
-
-Aşağıda ön uç ile arka uç arasındaki REST haberleşmesinin tam listesi bulunmaktadır:
-
-| Endpoint | Metot | Açıklama |
-| :--- | :--- | :--- |
-| `/api/send` | POST | Klasik mesaj gönderimi (JSON gövdesi ile) |
-| `/api/send/stream` | POST | Akışlı mesaj gönderimi (SSE fallback ile) |
-| `/api/send_file` | POST | Dosya/Görsel içeren mesaj gönderimi (Multipart) |
-| `/api/chats` | GET | Kayıtlı tüm sohbet oturumlarını listeler |
-| `/api/chats/new` | POST | Yeni bir sohbet oturumu oluşturur |
-| `/api/chats/switch` | POST | Belirtilen sohbet oturumuna geçiş yapar |
-| `/api/chats/delete` | POST | Belirtilen sohbet oturumunu siler |
-| `/api/messages` | GET | Aktif sohbet oturumunun mesaj geçmişini getirir |
-| `/api/status` | GET | Sistem durumunu ve hafıza anı sayısını döndürür |
-| `/api/incognito` | POST | Gizli modu açar/kapatır (Gizli modda anılar kaydedilmez) |
-| `/api/system-prompt` | GET/PUT | Sistem komutunu çeker veya günceller |
-| `/api/memory/files` | GET/DEL | Semantik anı dosyalarını listeler veya tek tek siler |
-| `/api/memory/clear` | POST | Tüm semantik hafızayı tamamen sıfırlar |
-| `/api/models/local` | GET/DEL | İndirilmiş/İçe aktarılmış modelleri listeler veya siler |
-| `/api/models/start` | POST | Belirtilen modeli llama-server üzerinde başlatır |
-| `/api/models/stop` | POST | Çalışan yerel modeli durdurur |
-| `/api/models/status` | GET | Yerel modelin aktiflik/çalışma durumunu döndürür |
-| `/api/gpu` | GET | Sistemdeki aktif GPU'yu ve VRAM miktarını tespit eder |
-| `/api/models/search` | POST | HuggingFace üzerinde GGUF modeli arar |
-| `/api/models/download` | POST | HuggingFace üzerinden model indirme işlemi başlatır |
-| `/api/models/download/progress` | GET | Aktif indirme işleminin yüzdesini ve hızını döndürür |
-| `/api/models/llama/check` | GET | `llama.cpp` yerel sunucusunun kurulu olup olmadığını kontrol eder |
-| `/api/sync/settings` | GET/PUT | Cloud Sync (Bulut Yedekleme) ayarlarını yönetir |
+1. **User sends message** → Flutter → `POST /api/send/stream`
+2. **Embedding:** Query is vectorized via local embedding model
+3. **Retrieval:** Cosine similarity search over all `.gob` memory entries
+4. **Context construction:** Relevant memories injected into system prompt
+5. **LLM call:** Combined prompt sent to `llama-server` via OpenAI-compatible API
+6. **Streaming:** Tokens delivered via SSE, rendered in real-time
+7. **Persistence:** Interaction saved asynchronously to `.gob`
 
 ---
 
-## 🛠️ 7. Geliştirme (Development) ve Derleme Kılavuzu
+## 🖥️ 4. Backend Modules
 
-### Geliştirici Ortamı Kurulumu:
-Sistemi geliştirme aşamasında ayağa kaldırmak için iki ayrı terminal sekmeli çalıştırılmalıdır:
+### `app.go` (1656 lines)
+Central orchestrator. Manages:
+- LLM client lifecycle (`a.client`, `a.embeddingClient`)
+- Model start/stop/swap
+- Memory store init & reinit
+- Session management
+- Cloud sync manager
+- Incognito mode toggle
 
+**Known issues:**
+- `a.client` reassigned without mutex → race condition
+- `saveMemoryAsync` RLock→Lock pattern → deadlock risk
+- `buildMessages` mutates session history (slice aliasing)
+- Background errors never reach UI (`emitEvent` is no-op for Flutter)
+
+### `internal/webserver/server.go` (583 lines)
+- Dual-mode server: `StartHTTP` (localhost) and `Start` (remote/TLS)
+- Router with ~40+ handler registrations
+- SSE streaming endpoint handler
+- **Known issue:** `Shutdown(context.Background())` can block indefinitely
+
+### `internal/webserver/handlers_flutter.go` (700+ lines)
+All Flutter-facing REST handlers:
+- Chat CRUD, message send/stream
+- Model management (list, start, stop, download)
+- Memory management (list, delete, clear)
+- GPU detection, sync settings, config updates
+
+**Known issue:** SSE handler doesn't monitor `request.Context().Done()` → orphaned streams
+
+### `internal/llama/llama.go` (462 lines)
+- `llama-server` subprocess lifecycle (start, stop, monitor, wait-ready)
+- GPU layer detection & configuration
+- Port conflict resolution (`killByPort`)
+- **Known issue:** `monitor()` goroutine accesses `s.cmd` outside lock
+
+### `internal/llama/installer.go` (646 lines)
+- Automatic `llama.cpp` binary download from GitHub releases
+- Git clone + build from source fallback
+- tar.gz / zip extraction for all platforms
+- **Known issue:** File descriptor leak in `extractTarGzToBin`
+
+### `internal/llama/gpu.go` (232 lines)
+- GPU detection for NVIDIA (nvidia-smi), AMD (rocm-smi), Apple Metal
+- VRAM calculation and layer count recommendation
+- **Known issue:** `nvidia-smi` errors silently ignored → 0 VRAM → CPU fallback
+
+### `internal/memory/store.go` + `retriever.go` + `embedder.go`
+- `.gob` file-based vector storage
+- O(N) brute-force search with concurrent workers
+- Embedding via OpenAI-compatible API
+- **Known issue:** `LoadCache` O(N) startup, no incremental index
+
+### `internal/modelstore/modelstore.go` (458 lines)
+- HuggingFace model search & download
+- Local model file management (import, delete, list)
+- Download progress tracking with cancel support
+- **Known issue:** Temp file leak on non-cancellation download errors
+
+### `internal/cloudsync/sync_manager.go` + `drive.go` + `crypto.go`
+- Google Drive OAuth2 authentication (loopback server)
+- AES-256-GCM encryption with passphrase-derived key
+- Periodic/triggered pull/push/full-sync pipeline
+- Zip-based archive format for cloud storage
+- **Known issues:** Weak KDF (single SHA-256), hardcoded fallback key, no timeout on OAuth exchange
+
+### `internal/sessions/sessions.go` (262 lines)
+- Chat session CRUD with JSON persistence
+- Auto-title generation from first message
+- **Known issues:** UUID truncation to 8 hex chars, save errors silently discarded
+
+### `internal/identity/identity.go` + `styles.go`
+- User identity management (name, personality)
+- System prompt construction with memory injection
+
+### `internal/api/types.go` + `client.go` + `streaming.go`
+- OpenAI-compatible API client types
+- HTTP client for llama-server communication
+- SSE parsing with thinking/reasoning extraction
+- **Known issue:** `[DONE]` chunk missing `finish_reason`
+
+---
+
+## 📱 5. Frontend (Flutter)
+
+### Architecture
+- **State Management:** Riverpod 2.x (Notifier + AsyncNotifier)
+- **HTTP Client:** Dio with SSE interceptor
+- **Platform:** Flutter 3.10+ (Linux, Windows, macOS)
+
+### Module Map
+
+```mermaid
+graph LR
+    subgraph Screens
+        CS[ChatScreen]
+        MS[ModelStoreScreen]
+        AS[AppShell]
+    end
+    subgraph Providers
+        CP[ChatProvider]
+        MP[ModelsProvider]
+        SP[SettingsProvider]
+    end
+    subgraph Core
+        AC[ApiClient]
+        TH[Theme]
+        L10n[L10n]
+    end
+    subgraph Widgets
+        CML[ChatMessageList]
+        CI[ChatInput]
+        SD[SettingsDialog]
+        SW[SetupWizard]
+        MB[MessageBubble]
+    end
+
+    AS --> CS & MS
+    CS --> CML & CI
+    CS --> CP
+    MS --> MP
+    AS --> SP
+    CP --> AC
+    MP --> AC
+    SP --> AC
+    CML --> MB
+    AC -->|HTTP/SSE| Backend
+```
+
+### Key Components
+
+| Component | File | Lines | Responsibility |
+|---|---|---|---|
+| `ApiClient` | `api_client.dart` | 508 | All REST + SSE communication |
+| `ChatProvider` | `chat_provider.dart` | 192 | Message state, stream handling |
+| `ModelsProvider` | `models_provider.dart` | 106 | Model list, download progress |
+| `SettingsProvider` | `settings_provider.dart` | 270 | App settings, llama config |
+| `ChatMessageList` | `chat_message_list.dart` | 450 | Message rendering, markdown |
+| `ChatInput` | `chat_input.dart` | 283 | Text input, file attach, STT |
+| `SettingsDialog` | `settings_dialog.dart` | 1132 | 8-tab settings dialog |
+| `ModelStoreScreen` | `model_store_screen.dart` | 1223 | HF model search + download |
+| `SetupWizardView` | `setup_wizard_view.dart` | 296 | First-run setup flow |
+
+### Known Issues
+- `AnimationController` per message bubble → severe jank with 50+ messages
+- Auto-scroll yanks to bottom when reading history
+- Download polling loop never cancels (runs entire app lifetime)
+- Cloud Sync & Remote Access tabs show "under construction" (backend ready)
+- Error handling: silent `catch (_) {}` on export, model stop button unawaited
+
+---
+
+## 🔌 6. REST API Endpoints
+
+| Method | Endpoint | Description |
+|---|---|---|
+| `POST` | `/api/send` | Classic message (JSON body) |
+| `POST` | `/api/send/stream` | Streaming message (SSE) |
+| `POST` | `/api/send_file` | File/image message (Multipart) |
+| `GET` | `/api/chats` | List all chat sessions |
+| `POST` | `/api/chats/new` | Create new chat |
+| `POST` | `/api/chats/switch` | Switch active session |
+| `POST` | `/api/chats/delete` | Delete session |
+| `GET` | `/api/messages` | Get active chat history |
+| `GET` | `/api/status` | System status + memory count |
+| `POST` | `/api/incognito` | Toggle incognito mode |
+| `GET`/`PUT` | `/api/system-prompt` | Get/update system prompt |
+| `GET`/`DEL` | `/api/memory/files` | List/delete memory files |
+| `POST` | `/api/memory/clear` | Clear all memory |
+| `GET`/`DEL` | `/api/models/local` | List/delete local models |
+| `POST` | `/api/models/start` | Start a model |
+| `POST` | `/api/models/stop` | Stop running model |
+| `GET` | `/api/models/status` | Model runtime status |
+| `GET` | `/api/gpu` | GPU detection info |
+| `POST` | `/api/models/search` | Search HuggingFace for GGUF |
+| `POST` | `/api/models/download` | Start model download |
+| `GET` | `/api/models/download/progress` | Download progress |
+| `GET` | `/api/models/llama/check` | Check llama.cpp installed |
+| `GET`/`PUT` | `/api/sync/settings` | Cloud sync settings |
+| `GET`/`PUT` | `/api/config/llama` | Llama configuration |
+| `POST` | `/api/image` | Read image (⚠️ arbitrary file read) |
+| `POST` | `/api/embed/start/stop` | Embedding server control |
+
+---
+
+## 🛠️ 7. Development & Build
+
+### Prerequisites
+- Go 1.25+
+- Flutter 3.10+
+- llama.cpp (auto-installed by the app, or manual)
+
+### Development (two terminals)
 ```bash
-# 1. Terminal: Backend'i başlatın
+# Terminal 1: Backend
 go run . --port 8090
 
-# 2. Terminal: Frontend'i başlatın
-cd frontend
-flutter run -d linux
+# Terminal 2: Frontend
+cd frontend && flutter run -d linux
 ```
 
-### Derleme ve Paketleme (Linux):
-Projenin kök dizininde bulunan [package_linux.sh](file:///home/bugrapc/Documents/local-llmmmemory/package_linux.sh) betiği çalıştırıldığında sistem otomatik olarak:
-1.  Go backend kodunu bağımsız bir çalıştırılabilir binary olarak derler.
-2.  Flutter ön yüzünü Linux için `release` modunda derler.
-3.  Tüm konfigürasyon, veri klasörleri ve `.env` şablonlarını `build_output/memo-linux-x64/` klasörüne kopyalar.
-4.  Çift tıklamayla veya terminalden `./run_memo.sh` ile çalıştırıldığında arka planda eski açık portları temizleyen, backend'i sessizce ayağa kaldıran ve Flutter arayüzünü açan akıllı başlatıcı betiğini hazırlar.
+### Build for Linux
+```bash
+./package_linux.sh
+# Output: build_output/memo-linux-x64/
+```
+
+---
+
+## 📋 8. Current Status & Roadmap
+
+| Version | Status | Focus |
+|---|---|---|
+| **v2.0.0** | Current | All features implemented, known issues documented |
+| **v3.0.0** | Planned | Security, stability, performance fix pass |
+| **v4.0.0** | Future | SQLite migration, UI overhaul, missing frontend tabs |
+| **v5.0.0** | Future | Plugins, mobile, knowledge graph, autonomy |
+
+**Full known issues:** [docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
+**Detailed roadmap:** [docs/ROADMAP.md](./docs/ROADMAP.md)
+
+---
+
+> **Last updated:** 2026-06-02
+> **Codebase audit:** 55 known issues (7 critical, 15 high, 13 medium, 20 low, 8 info)

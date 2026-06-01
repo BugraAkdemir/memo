@@ -86,20 +86,27 @@
 ### Prerequisites
 - **Go 1.25+** — [download](https://go.dev/dl/)
 - **Flutter 3.10+** — [install](https://docs.flutter.dev/get-started/install)
-- **llama.cpp** — auto-installed on first run, or [manual build](https://github.com/ggerganov/llama.cpp)
+- **llama.cpp** — bundled! The app ships with pre-built llama-server binaries for your platform. No manual install needed.
 
-### One-Liner (Linux)
+### Quick Start (Linux)
 ```bash
-git clone https://github.com/bugra/memo.git && cd memo && go run . --port 8090
-# In another terminal:
+# Clone and run backend
+git clone https://github.com/bugra/memo.git && cd memo
+go run . --port 8090
+
+# In another terminal, run frontend
 cd frontend && flutter run -d linux
 ```
 
-### Or Build from Source
+The first time you start a model, the app uses the bundled llama-server from `binaries/`. GGUF models are downloaded from HuggingFace directly through the UI.
+
+### Build a Portable Release
 ```bash
-# Build everything
-./package_linux.sh
-# Output: build_output/memo-linux-x64/run_memo.sh
+./build_releases.sh
+# Output: build_output/dist/
+#   Memo-linux-x64-v3.5.0.tar.gz
+#   Memo-linux-x64-v3.5.0.AppImage
+#   Memo-linux-x64-v3.5.0.deb
 ```
 
 ---

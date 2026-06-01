@@ -2,38 +2,380 @@
 
 Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamaları ve uç durumları takip eder. Derinlemesine yapılan kod denetimi sonrası güncellenmiştir.
 
-## 🧵 Eşzamanlılık ve Yarış Durumları (Race Conditions)
-- **Oturum Yönetimi Kilitleme:** `internal/sessions/sessions.go` içinde `mu` (RWMutex) kullanılsa da, `NewManager` sırasında çağrılan `newSession` gibi bazı işlemler açık kilitler olmadan yapılır. Hızlı oturum değiştirme ve mesaj ekleme işlemlerinde nadir yarış durumları oluşabilir.
-- **Llama Süreç İzleme:** `internal/llama/llama.go` içindeki `waitDone` kanalı bir `monitor` goroutine'i içinde kapatılır. Süreç dışarıdan öldürüldüğünde veya hızlı başlat/durdur döngülerinde nadir zamanlama sorunları yaşanabilir.
-- **Hafıza Yeniden Başlatma:** `app.go` içinde `reinitMemoryStore` çağrıldığında `store` pointer'ı değiştirilir. `saveMemoryAsync` bir goroutine başlatıp kilidi sonra aldığı için, re-init sırasında eski store durumuna başvurma veya gereksiz bekleme riski vardır.
+**Öncelik kategorileri:**
+- 🔴 **Kritik** — çökme, veri kaybı, güvenlik açığı veya tamamen bozuk özellik
+- 🟠 **Yüksek** — büyük hata, ciddi performans sorunu veya güvenilirlik problemi
+- 🟡 **Orta** — kullanıcı deneyimi düşüklüğü, küçük hata veya kritik olmayan güvenilirlik sorunu
+- 🔵 **Düşük** — kozmetik, küçük iyileştirme veya uç durum
+- ⚪ **Bilgi** — tasarım notu, risk veya gözlem
 
-## 🚀 Performans ve I/O
-- **Hafıza Parçalanması (Her Etkileşim İçin Bir Dosya):** Her kullanıcı etkileşimi ayrı bir `.gob` dosyası olarak kaydedilir. Bu, yüzlerce veya binlerce küçük dosya oluşturur.
-  - *Risk:* Başlangıç süresi (`LoadCache`) doğrusal olarak artar.
-  - *Risk:* Bulut senkronizasyonu, binlerce küçük dosya için binlerce API çağrısı yapacağından verimsizleşir.
-  - *Risk:* İşletim sistemi dosya sınırı (file handles) veya disk performansı (özellikle HDD'lerde) düşer.
-- **Kaba Kuvvet Vektör Arama:** Hafıza araması RAM üzerindeki tüm embeddingleri O(N) hızında tarar. İş parçacıkları kullanılsa bile, anı sayısı 10.000'i geçtiğinde performans düşecektir.
-- **Senkron Yazma:** Her mesaj hem GOB (hafıza) hem JSON (oturumlar) dosyalarına senkron yazılır. Bu, yavaş disklerde kullanıcı arayüzünde "takılmalara" neden olabilir.
-- **Dizin Tarama:** `internal/memory/store.go` içindeki `ListGobFiles` tüm klasörü tarar. Ayarlar -> Hafıza ekranı binlerce dosya olduğunda yavaş yüklenir.
+---
 
-## 🛡️ Hata Yönetimi ve Güvenilirlik
-- **Bozuk Olay Sistemi (Flutter Geçişi):** `app.go` içindeki `emitEvent` fonksiyonu Flutter için devre dışıdır.
-  - *Kritik:* Arka plan hataları (Bulut senkronizasyon hataları, embedding modelinin otomatik başlama hataları, Llama kurulum ilerlemesi) **arayüze asla bildirilmez**. Sadece `server.log` içinde kalır.
-- **Sessiz STT Bağımlılık Hataları:** Ses kaydı (`StartRecording`) sistemde `ffmpeg`, `sox` veya `arecord` bulunmasına bağlıdır. Bunlar eksikse kullanıcıya yardımcı olmayan genel bir hata döner.
-- **Kırılgan LLM Hata Tespiti:** Görsel desteği gibi özelliklerin hata yönetimi, `llama.cpp`'den gelen İngilizce hata metinlerine bağlıdır. Bu metinler değişirse hata tespiti bozulur.
-- **Zaman Aşımları:** Model yükleme için belirlenen 180 saniyelik sabit sınır, çok büyük modellerde veya yavaş sistemlerde yetersiz kalabilir.
-- **Yetim SSE Bağlantıları:** Kullanıcı akış (stream) sırasında bağlantıyı keserse, arka uçtaki LLM isteği tamamlanana kadar (300 saniyeye kadar) çalışmaya devam eder; işlemci/GPU kaynağı israf edilir.
+## 🔴 Kritik
 
-## 📡 Donanım ve İşletim Sistemi Uyumluluğu
-- **Windows'ta AMD Kısıtlamaları:** Windows'ta AMD VRAM algılaması güvenilir değildir; `rocm-smi` genellikle PATH içinde olmadığı için sistem CPU moduna düşer.
-- **Sabitlenmiş Windows Ses Aygıtı:** Windows kayıt komutu, ses aygıtı için sabit bir GUID (`@device_cm_{...}`) kullanır. Farklı donanım veya mikrofon dizilimlerinde bu komut çalışmayacaktır.
-- **Linux Sysfs Yolları:** GPU algılama mantığı `/sys/class/drm/card*` isimlendirmesini varsayar. Özel sürücüler veya Docker gibi konteyner ortamları bu mantığı bozabilir.
-- **Agresif Port Kapatma:** `killByPort` portları temizlemek için kullanılır, ancak `lsof`/`fuser` eksikliği veya yetki sorunları nedeniyle başarısız olabilir, bu da "adres kullanımda" hatalarına yol açar.
+### K1. Yetim SSE Bağlantıları — İstemci Koptuğunda LLM Çalışmaya Devam Ediyor
+- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`
+- **Sorun:** İstemci SSE akışı sırasında bağlantıyı kestiğinde, `request.Context().Done()` kanalı izlenmiyor. LLM arka plan goroutine'i model tamamlanana kadar (300 saniyeye kadar) çalışmaya devam ediyor. LLM API'sine geçirilen context (`streamCtx`) HTTP istek context'inden türetilmiş ancak llama.cpp alt sürecine doğru şekilde iletilmiyor.
+- **Etki:** Her kopan bağlantıda GPU/CPU kaynağı boşa harcanır. Düşük donanımda, orphaned stream yeni istekleri bloke eder çünkü llama.cpp üretim sırasında tek iş parçacıklıdır.
+- **Çözüm:** `request.Context()`'i LLM çağrı zincirine bağlayın; SSE yazma döngüsüne `select { case <-ctx.Done(): ... }` ekleyin.
 
-## 📱 Ön Yüz (Flutter)
-- **Durum Senkronizasyonu:** Frontend, arka uçtaki durum değişikliklerini (örneğin başka bir istemcinin modeli durdurması) otomatik olarak algılamaz.
-- **Hafıza Geçersiz Kılma:** Bir anı dosyası arayüzden silindiğinde diskten ve RAM'den silinir ancak LLM'in o anki aktif bağlam (context window) içeriğinden hemen temizlenmez.
+### K2. Motor Modu / Yapılandırma Güncellemesi Tüm Llama Ayarlarını Sıfırlıyor
+- **Dosya:** `frontend/lib/providers/settings_provider.dart:63-73` ←→ `internal/webserver/handlers_flutter.go:667-685`, `app.go:1148-1151`
+- **Sorun:** Frontend kısmi bir JSON body gönderir (örn. `{"engine_mode": "cpu"}`) `/api/config/llama` endpoint'ine. Go handler'ı bunu `config.LlamaConfig{}` yapısına decode eder — JSON'da olmayan alanlar sıfır değer alır (boş string, 0, false). Ardından `UpdateLlamaConfig` `a.cfg.Llama = cfg` ile **tüm** struct'ı değiştirir. Binary yolu, port, context boyutu, GPU katmanları, model yolu gibi tüm ayarlar sessizce silinir.
+- **Etki:** Motor modu değiştirildikten sonra kullanıcı tüm llama ayarlarını yeniden yapılandırmak zorundadır. Tüm alanlar elle tekrar girilene kadar uygulama hiçbir modeli başlatamaz.
+- **Çözüm:** Bir merge/patch stratejisi uygulayın: yalnızca JSON body'sinde bulunan alanları güncelleyin veya handler'ı mevcut değerleri döndürecek şekilde değiştirin.
 
-## 🔐 Güvenlik ve Gizlilik
-- **Geçici Dosya Sızıntısı:** Web üzerinden yüklenen dosyalar ve STT ikili dosyaları sistemin genel geçici dizininde tutulur. Çok kullanıcılı sistemlerde işletim sistemi izinleri sıkı değilse veri ifşasına yol açabilir.
-- **Güvensiz Varsayılan Bağlantı:** Web sunucusu uzaktan erişim için `0.0.0.0` adresine bağlanır. Güvenlik duvarı olmayan sistemlerde basit bir parola ile risk oluşturabilir.
+### K3. `/api/image` Üzerinden Keyfi Dosya Okuma
+- **Dosya:** `app.go:866-871` (GetImageBase64), `internal/webserver/handlers_flutter.go:215-227` (handleImage)
+- **Sorun:** `/api/image?path=...` endpoint'i keyfi bir dosya yolu kabul eder, dosyayı okur ve base64 olarak döndürür. Temel bir `filepath.Clean` dışında yol doğrulaması yoktur. Bir saldırgan `/etc/passwd`, `~/.ssh/id_rsa` veya dünya-okunabilir herhangi bir dosyayı okuyabilir.
+- **Etki:** Tam yerel dosya ifşası. Uzaktan erişim etkinleştirilmiş örneklerde (0.0.0.0 binding) bu uzaktan istismar edilebilir.
+- **Çözüm:** Okumaları uygulamanın veri dizini ve/veya izin verilen yolların beyaz listesi ile kısıtlayın.
+
+### K4. Uzaktan Erişim Sunucusu — Kimlik Doğrulama Yok, Açık CORS
+- **Dosya:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507` + ilgili handler'lar
+- **Sorun:** Uzaktan erişim modu (`Start()`) `0.0.0.0:<port>` adresine bağlanır, `Access-Control-Allow-Origin: *` ayarlar ve hiçbir endpoint'te kimlik doğrulama bulunmaz. Tek "koruma", her istekte düz metin olarak gönderilen ve oturum/token mekanizması olmayan bir paroladır. Chat geçmişi, model kontrolü, dosya erişimi ve hafıza yönetimi ağdaki herkese açıktır.
+- **Etki:** Uygulamanın ve verilerinin tamamen uzaktan ele geçirilmesi.
+- **Çözüm:** Uygun kimlik doğrulama (JWT/oturum token'ı), HTTPS zorunluluğu ve uzaktan bağlantıda wildcard CORS'u devre dışı bırakın.
+
+### K5. `a.client` Değişkeninin Kilitsiz Yeniden Atanması
+- **Dosya:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`
+- **Sorun:** `a.client` ve `a.embeddingClient` hiçbir mutex olmadan yeniden atanır (yeni LLM endpoint'i, model durdurma nil atar). Eşzamanlı `ChatCompletion`, `ChatCompletionStream` veya `CreateEmbedding` çağrıları yarı-atamnış veya nil bir client pointer'ı okuyabilir.
+- **Etki:** Eşzamanlı istek yükü altında üretimde nil-pointer panic. Client değiştirilirken rastgele "connection refused" hataları.
+- **Çözüm:** Tüm client okuma/yazmalarını `a.mu` (veya özel bir `clientMu`) ile koruyun.
+
+### K6. `saveMemoryAsync` RLock→Lock Modeli (Kilitlenme Riski)
+- **Dosya:** `app.go:1399-1421`
+- **Sorun:** `saveMemoryAsync`, `storeMu.RLock()` alır (satır 1394, deferred RUnlock satır 1395), ardından satır 1399'da `storeMu.Lock()` almaya çalışan bir goroutine başlatır (satır 1404). Fonksiyon hemen döner, deferred RUnlock tetiklenir ve goroutine devam edebilir. Ancak `saveMemoryAsync`, `storeMu` zaten write-lock iken çağrılırsa (örn. `reinitMemoryStore` sırasında), RLock bloke olur. İki goroutine aynı anda `saveMemoryAsync` çağırırsa, ilki RLock alır, ikincisi de RLock alır (okuyucular birbirini bloke etmez), sonra her iki goroutine Lock() dener — biri başarılı olur, diğeri ilki bitene kadar bloke olur. Bu kırılgan ve kafa karıştırıcıdır.
+- **Etki:** Eşzamanlı hafıza kaydetme + yeniden başlatma senaryolarında zor ayıklanabilir takılmalar.
+- **Çözüm:** Async hafıza kaydetmeleri için lock+goroutine modeli yerine channel tabanlı bir worker goroutine kullanın.
+
+### K7. UI İş Parçacığı Performansı — Mesaj Başına AnimationController
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:92-99`
+- **Sorun:** Her `_MessageBubble` kendi `AnimationController`'ını `initState()`'de oluşturur. 100 mesajda 100 animation controller oluşturulur, her biri frame callback'i yönetir. Her baloncuğu saran `FadeTransition` + `SlideTransition` ile birleştiğinde, kaydırma ve token güncellemeleri sırasında ciddi takılmalara neden olur.
+- **Etki:** 50+ mesajlı sohbetlerde kesintili kaydırma; orta segment cihazlarda fark edilir frame düşüşleri.
+- **Çözüm:** Mesaj balonlarından giriş animasyonlarını kaldırın veya gecikmeli paylaşımlı bir animation controller kullanın.
+
+---
+
+## 🟠 Yüksek
+
+### Y1. SSE Bağlantı Kesintisinde Goroutine Sızıntısı
+- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`
+- **Sorun:** SSE handler'ı `ChatCompletionStream` LLM çağrısı başlatır ancak `request.Context().Done()` kanalını izlemez. İstemci bağlantıyı keserse (sayfadan ayrılma, sekmeyi kapatma), `stream.ProcessSSEStream`'i çağıran goroutine ve alttaki LLM isteği tamamlanana kadar çalışmaya devam eder. Her kopma bir goroutine ve bir HTTP bağlantısı sızdırır.
+- **Etki:** Zamanla biriken goroutine sızıntıları; sunucuda kaynak tükenmesi.
+- **Çözüm:** `select { case <-ctx.Done(): return; case ... }` modeli ekleyin.
+
+### Y2. Yapılandırma Dosyası Dünya-Tarafından Okunabilir (`0644`) — Sırlar İçeriyor
+- **Dosya:** `internal/config/config.go:178`
+- **Sorun:** `config.yaml` `os.WriteFile` ile `0644` izinleriyle yazılır. Dosya `client_secret` (OAuth), `passphrase` (şifreleme) ve diğer hassas değerleri içerir. Çok kullanıcılı sistemlerde herhangi bir yerel kullanıcı bu sırları okuyabilir.
+- **Etki:** OAuth token hırsızlığı, şifrelenmiş senkronizasyon verilerinin çözülmesi.
+- **Çözüm:** `0600` ile yazın ve mevcut kurulumlar için manuel chmod belgeleyin.
+
+### Y3. Senkronizasyon Şifrelemesi İçin Zayıf Anahtar Türetme
+- **Dosya:** `internal/cloudsync/crypto.go:18-23`
+- **Sorun:** `deriveKey`, `sha256.Sum256([]byte("memo-sync-v1:" + passphrase))` kullanır — sabit bir tuz ile tek SHA-256 iterasyonu. Zayıf parolalar için (çoğu kullanıcının seçtiği gibi) kaba kuvvetle kolayca kırılabilir. Endüstri standardı PBKDF2, bcrypt veya argon2id'dir.
+- **Etki:** Senkronizasyon verilerinin gizliliği zayıf bir KDF'ye dayanır.
+- **Çözüm:** `golang.org/x/crypto/pbkdf2` veya argon2id kullanın, verilerle birlikte saklanan rastgele bir tuz ile.
+
+### Y4. Sabit Kodlanmış Geri Dönüş Şifreleme Anahtarı
+- **Dosya:** `internal/cloudsync/crypto.go:59-62`
+- **Sorun:** `hardwareID()` makine kimliği belirleyemediğinde (örn. hostname'siz konteyner), sabit `"memo-fallback-key"` string'ine düşer. Parola veya makine kimliği olmayan her makine **aynı** şifreleme anahtarını kullanır.
+- **Etki:** Bu tür tüm makineler birbirlerinin senkronizasyon verilerini çözebilir.
+- **Çözüm:** Net bir parola gerektirin veya ilk senkronizasyonda rastgele bir anahtar oluşturup yapılandırmada saklayın.
+
+### Y5. `buildMessages` Oturum Geçmişini Kalıcı Olarak Değiştiriyor
+- **Dosya:** `app.go:1308`
+- **Sorun:** `buildMessages`, `[]api.Message` üzerinde döngü yapar ve sistem prompt'unu enjekte ederken `history[i] = api.Message{Role: "user", Content: systemPrompt + "\n\n" + history[i].Content}` yapar. `history`, `sessions.Messages`'ı referans alan bir dilim olduğundan (oturumun kendi arka plan dizisi), bu, saklanan oturumu kalıcı olarak değiştirir. İlk istekten sonra, sonraki her istek sistem prompt'unu tekrar ekler ve ikiye katlar.
+- **Etki:** 2–3 istekten sonra birikmiş sistem prompt enjeksiyonu context taşmasına neden olur ve modeli karıştırır.
+- **Çözüm:** Mutation öncesi dilimi kopyalayın veya yeni bir dilim oluşturun.
+
+### Y6. `hash2hex` — SHA-256'nın Sadece 4 Baytı (Çakışma Riski)
+- **Dosya:** `internal/memory/store.go:342-344`
+- **Sorun:** `hash2hex`, `fmt.Sprintf("%x", h.Sum(nil)[:4])` döndürür — SHA-256'nın ilk 4 baytı (32 bit). ~2^16 girişte, doğum günü paradoksu %50 çakışma olasılığı verir. Çakışma mevcut `.gob` dosyasını sessizce üzerine yazarak bir hafıza girişini kaybeder.
+- **Etki:** Orta düzey hafıza kullanımında veri kaybı.
+- **Çözüm:** En az 8 bayt (16 hex karakter) veya tam hash kullanın.
+
+### Y7. `monitor()` Goroutine'inin `s.cmd`'ye Kilit Dışında Erişmesi
+- **Dosya:** `internal/llama/llama.go:271-302`
+- **Sorun:** `monitor()` goroutine'i satır 272'de `s.cmd == nil` kontrolünü **kilit dışında** yapar, ardından satır 276'da `s.cmd.Wait()` çağırır. `Stop()`, `s.cmd = nil`'i kilit içinde ayarlar. Süreç zaten çıkmışsa ve `Wait()` hemen dönerse, `Stop()` nil kontrolü ile `Wait()` çağrısı arasındaki pencerede kilidi alıp `s.cmd`'yi nil yapabilir.
+- **Etki:** Hızlı başlat/durdur döngülerinde nadir nil-pointer paniği.
+- **Çözüm:** Nil kontrolü ve `Wait()` çağrısını kilit içine taşıyın veya atomic pointer kullanın.
+
+### Y8. İndirme Hatalarında Geçici Dosya Temizlenmiyor
+- **Dosya:** `internal/modelstore/modelstore.go:237-243`
+- **Sorun:** Ertelenmiş temizlik `os.Remove(tmpPath)` yalnızca `ctx.Err() != nil` olduğunda (context iptal edildiğinde) çalışır. İndirme HTTP hatası veya ağ zaman aşımı ile başarısız olursa, `.downloading` geçici dosyası diskte süresiz kalır.
+- **Etki:** Birikmiş kısmi indirme dosyaları disk alanı israf eder.
+- **Çözüm:** `tmpPath`'i koşulsuz olarak defer'de veya her hatada temizleyin.
+
+### Y9. `extractTarGzToBin`'de Dosya Tanıtıcı Sızıntısı
+- **Dosya:** `internal/llama/installer.go:433,437`
+- **Sorun:** Tar çıkarma döngüsü içinde `out.Close()` manuel olarak çağrılır (defer edilmemiş). `io.Copy` satır 432'de başarısız olursa, satır 437'deki `continue` kapatmayı atlar ve bir dosya tanıtıcısı sızdırır.
+- **Etki:** Kısmen bozuk arşivlerde dosya tanıtıcı tükenmesi.
+- **Çözüm:** Her dosya açmadan önce `defer out.Close()` kullanın veya döngüyü yeniden yapılandırın.
+
+### Y10. `nvidia-smi` Hataları Sessizce Geçiliyor → 0 VRAM → 0 GPU Katmanı
+- **Dosya:** `internal/llama/gpu.go:71-86`
+- **Sorun:** `exec.Command("nvidia-smi", ...).Output()` — hata dönüşü sessizce yok sayılır. `nvidia-smi` başarısız olursa (kurulu değil, izin reddi veya sürücü sorunu), `output` nil/boştur. Boş çıktıyı ayrıştırmak `vram = 0` verir, bu da `recommendedLayers = 0`'a yol açar — model GPU mevcut olsa bile tamamen CPU'da çalışır.
+- **Etki:** Kullanıcıya görünür uyarı olmadan sessiz CPU düşüşü.
+- **Çözüm:** `Output()`'dan gelen hatayı kontrol edin ve anlamlı bir mesaj loglayın/iletin.
+
+### Y11. OAuth `authDone` Kanalı Yarışı
+- **Dosya:** `internal/cloudsync/drive.go:99-103`
+- **Sorun:** `StartAuthFlow` yeni bir `authDone` kanalı oluşturur (`make(chan struct{})`). `WaitForAuth` önceki kanalı eşzamanlı okuyorsa, takas eski (zaten kapalı) kanalda sonsuza kadar beklemesine neden olurken yeni kanal asla kapatılmaz.
+- **Etki:** Hızlı OAuth akışı başlatmalarında nadir takılma.
+- **Çözüm:** `sync.WaitGroup` veya mutex ile sıfırlanan tek bir paylaşımlı kanal kullanın.
+
+### Y12. `Shutdown(context.Background())` Süresiz Bloke Olabilir
+- **Dosya:** `internal/webserver/server.go:286`
+- **Sorun:** `s.srv.Shutdown(context.Background())`'ın zaman aşımı yoktur. Bir HTTP handler'ı takılı kalırsa (örn. LLM yanıtı bekliyor), `Shutdown` sonsuza kadar bekler.
+- **Etki:** Akış etkinken düzgün kapanma sırasında uygulama donar.
+- **Çözüm:** `context.WithTimeout(ctx, 10*time.Second)` kullanın.
+
+### Y13. Oturum Kimliği 8 Hex Karaktere Kırpılmış
+- **Dosya:** `internal/sessions/sessions.go:68`
+- **Sorun:** `uuid.New().String()[:8]` UUID'nin yalnızca ilk 8 hex karakterini alır (32 bit). ~10^5 oturumda, doğum günü paradoksu ~%1 çakışma olasılığı verir. Çakışma mevcut bir oturum dosyasını sessizce üzerine yazar.
+- **Etki:** Sohbet geçmişi kaybı.
+- **Çözüm:** Tam UUID veya en az 16 hex karakter kullanın.
+
+### Y14. İndirme Yoklama Akışı Sonsuza Kadar Çalışıyor
+- **Dosya:** `frontend/lib/providers/models_provider.dart:66-79`
+- **Sorun:** `downloadProgressProvider` akışı, her 1–3 saniyede bir backend'i yoklayan bir `while (true)` döngüsü içerir. Bu döngü asla iptal edilmez — uygulama ömrü boyunca çalışır. İndirme tamamlandıktan sonra bile (ve ilerleme dialog'u kapatıldığında), yoklama her 3 saniyede bir gereksiz HTTP isteği yapmaya devam eder.
+- **Etki:** Gereksiz ağ trafiği ve pil tüketimi.
+- **Çözüm:** İndirme tamamlandığında veya provider dispose edildiğinde akış aboneliğini iptal edin.
+
+### Y15. Backend Hata Yönetimi: Bağlantı Hatasında "Kurulu" Gösteriliyor
+- **Dosya:** `frontend/lib/providers/models_provider.dart:97-104`
+- **Sorun:** `llamaInstalledProvider` ağ hatalarını yakalar: hata `connectionError` ise `true` döndürür ("kurulu" gösterir). Diğer hatalarda `false` döndürür (kurulum ekranını gösterir). Bu terstir — backend'e ulaşılamadığında (bağlantı reddedildi), kullanıcı her şeyin kurulu olduğunu görür ve yeniden kurulumu tetikleyemez.
+- **Etki:** Backend gerçekten ulaşılamaz olduğunda veya sorun yaşadığında kullanıcı llama kurulumunu tetikleyemez.
+- **Çözüm:** Bağlantı hataları için `null` veya ayrı bir hata durumu döndürün.
+
+---
+
+## 🟡 Orta
+
+### O1. Arka Plan Hataları Arayüze Asla Ulaşmıyor (Bozuk Olay Sistemi)
+- **Dosya:** `app.go` (emitEvent pasif), tüm çağrı noktaları
+- **Sorun:** `emitEvent` Wails için tasarlanmıştı ve Flutter için no-op haline geldi. Arka plan hataları (bulut senkronizasyon hataları, gömme modeli yükleme hataları, indirme ilerlemesi, otomatik başlatma hataları) yalnızca `server.log`'a yazılır ve kullanıcıya asla gösterilmez.
+- **Etki:** Sessiz hatalar; senkronizasyon bozulduğunda veya gömme başarısız olduğunda kullanıcı hiçbir geri bildirim almaz.
+- **Çözüm:** Arka plan durumu için bir sunucu-olay akışı endpoint'i veya yoklama endpoint'i uygulayın.
+
+### O2. Oturum Dosyaları Dünya-Tarafından Okunabilir (`0644`)
+- **Dosya:** `internal/sessions/sessions.go:236`
+- **Sorun:** Sohbet oturumu JSON dosyaları `0644` izinleriyle yazılır. Tam sohbet geçmişi herhangi bir yerel kullanıcı tarafından okunabilir.
+- **Etki:** Çok kullanıcılı sistemlerde gizlilik sızıntısı.
+- **Çözüm:** `0600` ile yazın.
+
+### O3. `save()` Hataları Oturum Yöneticisinde Sessizce Atılıyor
+- **Dosya:** `internal/sessions/sessions.go:75,155`
+- **Sorun:** `newSession` ve `AddMessage` `m.save(s)` çağırır ancak dönen hatayı yok sayar. Oturum verileri diske sessizce yazılamaz.
+- **Etki:** Disk dolu veya izin hatası koşullarında hiçbir uyarı olmadan sohbet geçmişi kaybı.
+- **Çözüm:** Hatayı loglayın ve/veya çağrı sahibine döndürün.
+
+### O4. `loadAll()` Bozuk Oturum Dosyalarını Sessizce Atlıyor
+- **Dosya:** `internal/sessions/sessions.go:252-258`
+- **Sorun:** `loadAll` içinde, bireysel dosya okuma hataları ve JSON decode hataları `continue` ile atlanır — hiçbir hata loglanmaz ve kullanıcı bazı oturumların kaybolduğunu asla bilemez.
+- **Etki:** Bozulmada sessiz veri kaybı.
+- **Çözüm:** Her atlanan dosyayı loglayın.
+
+### O5. SSE `[DONE]` Parçasında `FinishReason` Eksik
+- **Dosya:** `internal/api/streaming.go:65`
+- **Sorun:** `[DONE]` sentinel parçası `finish_reason` alanı olmadan gönderilir. Frontend'in normal tamamlama, maksimum token'a ulaşma veya durdurma dizisini ayırt etme yolu yoktur.
+- **Etki:** Frontend "maksimum token'a ulaşıldı" veya "durduruldu" göstergeleri gösteremez.
+- **Çözüm:** `[DONE]` parçasında `finish_reason` gönderin.
+
+### O6. Ana Yolda Senkron Bloke Eden Yazmalar
+- **Dosya:** `internal/sessions/sessions.go:155`, `internal/memory/store.go:105`
+- **Sorun:** Her mesaj, oturumlar için senkron `json.MarshalIndent` + `os.WriteFile` ve hafıza için senkron gömme hesaplaması + gob yazma tetikler. Bunlar LLM yanıt yolunu bloke eder.
+- **Etki:** Yavaş disklerde veya gömme hesaplaması sırasında artan yanıt gecikmesi.
+- **Çözüm:** Yazmaları debounce zamanlayıcı / async worker ile tamponlayın.
+
+### O7. `LoadCache` Performansı — O(N) Başlangıç Süresi
+- **Dosya:** `internal/memory/store.go:72-90`
+- **Sorun:** `LoadCache` başlangıçta diskteki her `.gob` dosyasını okur ve tüm embedding'leri RAM'de saklar. 10.000+ hafıza girişinde başlangıç süresi ve bellek kullanımı doğrusal olarak artar.
+- **Etki:** Yavaş başlangıç; büyük hafıza depoları için aşırı RAM kullanımı.
+- **Çözüm:** Sayfalama, tembel yükleme veya disk tabanlı indeks (SQLite/bolt) uygulayın.
+
+### O8. Kaba Kuvvet O(N) Vektör Arama
+- **Dosya:** `internal/memory/retriever.go`
+- **Sorun:** Hafıza araması RAM'deki tüm embedding vektörlerini doğrusal olarak tarar. 10.000 girişin ötesinde arama gecikmesi belirgin şekilde artar.
+- **Çözüm:** Bir yaklaşık en yakın komşu (ANN) indeksi veya vektör veritabanı kullanın.
+
+### O9. `killByPort` `lsof` / `fuser`'a Bağımlı
+- **Dosya:** `internal/llama/llama.go:244-253`
+- **Sorun:** `killByPort`, `lsof` veya `fuser`'a kabuk çağrısı yapar. Minimal konteynerlerde, gömülü sistemlerde veya bu araçların olmadığı Windows'ta fonksiyon sessizce başarısız olur ve porta bağlı bir süreç bırakır.
+- **Etki:** Sonraki model başlatmalarında "Adres kullanımda" hataları.
+- **Çözüm:** Port tabanlı keşif yerine alt süreç PID'lerini takip edin ve doğrudan öldürün.
+
+### O10. Sabit Kodlanmış Windows Ses Aygıtı GUID'i
+- **Dosya:** `app.go:739` (StartRecording üzerinden)
+- **Sorun:** Windows'ta kayıt komutu, mikrofon için sabit bir `@device_cm_{...}` GUID'i kullanır. Bu GUID yalnızca bir donanım yapılandırmasına özgüdür. Çoğu Windows makinesinde kayıt sessizce başarısız olur.
+- **Etki:** STT, çoğu kullanıcı için Windows'ta bozuktur.
+- **Çözüm:** Başlangıçta ses aygıtlarını numaralandırın veya varsayılan kayıt aygıtını kullanın.
+
+### O11. Linux GPU Algılaması Sysfs Üzerinden Kırılgan
+- **Dosya:** `internal/llama/gpu.go:167`
+- **Sorun:** GPU algılaması `bash -c "cat /sys/class/drm/card*/device/vendor"` çalıştırır. Bu, `/sys`'in mevcut olmasına (Docker'da `--privileged` gerekir), `bash`'in bulunmasına ve DRM aygıtlarının belirli adlandırma modeline bağlıdır.
+- **Etki:** Konteynerlerde veya standart dışı ortamlarda GPU algılaması sessizce başarısız olur.
+- **Çözüm:** Yedek olarak `lspci` ayrıştırması kullanın veya `hwmon`/`drm` bilgilerini daha sağlam okuyun.
+
+### O12. Geçmiş Okurken Otomatik Kaydırma Dibe Çekiyor
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:23-33`
+- **Sorun:** `didUpdateWidget`, mesajlar değiştiğinde `_scrollToBottom()` çağırır. Kullanıcı önceki mesajları okumak için yukarı kaydırdıysa, yeni bir token gelmesi onu zorla alta götürür.
+- **Etki:** Akış etkinken geçmiş okunamaz.
+- **Çözüm:** Yalnızca kullanıcı dibe yakınsa (örn. 50px) otomatik kaydırma yapın.
+
+### O13. Dışa Aktarma Hataları Sessizce Yutuluyor
+- **Dosya:** `frontend/lib/screens/chat_screen.dart:170-178`
+- **Sorun:** Sohbet dışa aktarma boş bir `catch (_) {}` bloğuna sahiptir. Dışa aktarma başarısız olursa (aktif sohbet yok, izin reddi, yazma hatası), kullanıcı sıfır geri bildirim alır.
+- **Etki:** Kullanıcılar dışa aktarma sessizce başarısız olduğunda başarılı olduğunu düşünür.
+- **Çözüm:** Hata durumunda SnackBar veya dialog gösterin.
+
+---
+
+## 🔵 Düşük
+
+### D1. Yapılandırma Yükleme Hatası Sessizce Varsayılana Düşüyor
+- **Dosya:** `app.go:115-119`
+- **Sorun:** `config.Load()` başarısız olursa (bozuk YAML, izinler), uygulama hatayı loglar ve varsayılan yapılandırmayı kullanır. Kullanıcının özel ayarları sessizce yok sayılır.
+- **Çözüm:** Hatayı main'e döndürün ve başlamayı reddedin (veya en azından bloke eden bir dialog gösterin).
+
+### D2. Hafıza Deposu / Oturum Yöneticisi Başlatma Hataları Sessizce Devre Dışı Bırakılıyor
+- **Dosya:** `app.go:126-137`
+- **Sorun:** `NewStore` ve `sessions.NewManager`'dan gelen hatalar yalnızca loglanır. `a.store` ve `a.sessions` nil olarak ayarlanır. Uygulama hafızasız ve oturum kalıcılığı olmadan çalışmaya devam eder — her ikisi de çalışıyor gibi görünür ancak hiçbir şey kaydetmez.
+- **Çözüm:** Bu hataları kullanıcıya gösterin veya başlamayı reddedin.
+
+### D3. `os.Executable()` Hatası Yok Sayıldığında Boş Yol
+- **Dosya:** `app.go:813`
+- **Sorun:** `exePath, _ := os.Executable()` — `/proc/self/exe`'nin mevcut olmadığı sistemlerde `exePath` boş string'dir. Bu, geçerli çalışma dizinine çözümlenen göreli yollara yayılır.
+- **Çözüm:** Hatayı kontrol edin ve `os.Args[0]`'a düşün.
+
+### D4. Boş Token Yolu Tüm Drive İşlemlerini Bozuyor
+- **Dosya:** `internal/cloudsync/drive.go:115`
+- **Sorun:** `dc.tokenPath` boşsa (yapılandırma yok), `os.ReadFile("")` geçerli dizini okur ve başarısız olur. Kullanıcıya net bir hata gösterilmez.
+- **Çözüm:** `tokenPath`'i başlatmada doğrulayın ve net bir hata döndürün.
+
+### D5. Nil `embeddingFunc` ile `NewStore` Sessiz Çökme Yolu Oluşturuyor
+- **Dosya:** `internal/memory/store.go:38-57`
+- **Sorun:** `embeddingFunc` nil ise `NewStore` başarılı olur ancak herhangi bir `SaveInteraction` çağrısı nil fonksiyon çağrısı ile panikler.
+- **Çözüm:** `NewStore`'dan `embeddingFunc` nil olduğunda hata döndürün.
+
+### D6. Hafıza İndeksi Tüm Embedding'leri `append` ile Kopyalıyor (2x RAM)
+- **Dosya:** `internal/memory/store.go:84`
+- **Sorun:** `MemoryIndex` her embedding vektörünü `append([]float32(nil), doc.Embedding...)` ile kopyalar. `LoadCache` sırasında bu, hafıza verileri için RAM kullanımını ikiye katlar.
+- **Çözüm:** Kaynak mutasyona uğramayacaksa embedding'lere doğrudan referans verin.
+
+### D7. `DiscordWebhook` / Action URL Yazmaları Asla Kontrol Edilmiyor
+- **Dosya:** `app.go:463-514`
+- **Sorun:** Discord webhook ve aksiyon URL yazmalarının (satır 483-494 ve 503) sonuçları asla kontrol edilmez. Bu entegrasyonların sessiz başarısızlığı.
+- **Çözüm:** En azından hatayı loglayın.
+
+### D8. OAuth Loopback Dinleyicisinde Tip Dönüşüm Panik
+- **Dosya:** `internal/cloudsync/drive.go:109`
+- **Sorun:** `port := ln.Addr().(*net.TCPAddr).Port` sert tip dönüşümü kullanır. Dinleyici TCP değilse (bazı Go ağ uygulamalarında olası), bu panikler.
+- **Çözüm:** Virgül-ok tip dönüşümü kullanın.
+
+### D9. `WakeOnLan` / `Precise` Dosya İşlemleri
+- **Dosya:** `app.go:1150-1178`
+- **Sorun:** Çeşitli geçici dosya yazma ve flag dosyası işlemleri hataları kontrol etmez. Disk dolu veya izinler yanlışsa işlemler başarılı görünür ancak gerçekleşmez.
+- **Çözüm:** Tüm `os.WriteFile` ve `os.Remove` çağrılarını kontrol edin.
+
+### D10. Model İçe Aktarmada Boyut Sınırı Yok
+- **Dosya:** `internal/modelstore/modelstore.go:399-433`
+- **Sorun:** `ImportLocalModel`, kullanıcı tarafından belirtilen bir kaynak yolundan dosyayı boyut sınırı olmadan kopyalar. Çok terabaytlık bir dosya seçimi diski doldurabilir.
+- **Çözüm:** Kopyalamadan önce dosya boyutunu kontrol edin ve/veya limitli `io.CopyN` kullanın.
+
+### D11. `DeleteLocalModel`'de Sembolik Bağ Saldırısı
+- **Dosya:** `internal/modelstore/modelstore.go:370-397`
+- **Sorun:** Yol doğrulaması `strings.HasPrefix(absPath, absModelsDir)` kullanır. `/data/models/evil` gibi çözümlenmiş bir yol, `evil` `/etc/passwd`'ye sembolik bağ olsa bile geçebilir ve keyfi dosya silmeye yol açar.
+- **Çözüm:** Karşılaştırmadan önce her iki yolda `filepath.EvalSymlinks` kullanın.
+
+### D12. `safePersistPath`'de TOCTOU Yarışı
+- **Dosya:** `internal/memory/store.go:262-278`
+- **Sorun:** Yol doğrulama ve dosya işlemi atomik değildir. Kötü niyetli bir süreç, doğrulanmış dosyayı kontrol ve işlem arasında bir sembolik bağ ile değiştirebilir.
+- **Çözüm:** Dosyayı doğrulamadan önce açın (`syscall.Open` ile `O_NOFOLLOW`).
+
+### D13. `runCmdStream` Goroutine'leri Fonksiyondan Uzun Yaşayabilir
+- **Dosya:** `internal/llama/installer.go:628-633`
+- **Sorun:** Stdout/stderr okuyucu goroutine'leri `go func()` ile başlatılır. `cmd.Wait()` goroutine'ler okumayı bitirmeden dönerse (kısa ömürlü komut), logger'a fonksiyon döndükten sonra yazabilirler.
+- **Çözüm:** Goroutine'lerin tamamlanmasını sağlamak için `sync.WaitGroup` kullanın.
+
+### D14. Sohbet Girişi `/` Komutunun Görsel Göstergesi Yok
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:29-32`
+- **Sorun:** `/` tuşu bir prompt şablonu açılır penceresi tetikler ancak hiçbir UI ipucu yoktur (yer tutucu metin, araç ipucu yok). Kullanıcılar bunu tesadüfen keşfetmelidir.
+- **Çözüm:** Bir ipucu metni veya simge düğmesi ekleyin.
+
+### D15. Her Build'de `FocusNode` Oluşturuluyor
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:185-193`
+- **Sorun:** `KeyboardListener`, build metodunda `FocusNode()` kullanır ve her yeniden build'de yeni bir nesne oluşturur. Eski node garbage collect edilir.
+- **Çözüm:** FocusNode'u state'de saklayın.
+
+### D16. Ayarlarda Eski Prompt Metni (Veri Değiştiğinde Güncellenmiyor)
+- **Dosya:** `frontend/lib/widgets/settings_dialog.dart:343-345`
+- **Sorun:** Sistem prompt `TextEditingController`'ı ilk veri gelişinde bir kez başlatılır. Prompt harici olarak değişirse (başka cihaz, API çağrısı), görüntülenen metin eskidir.
+- **Çözüm:** Provider'a bir dinleyici ekleyin ve controller'ı güncelleyin.
+
+### D17. Hata Durumu Yalnızca Simge Gösteriyor — Hata Mesajı Yok
+- **Dosya:** `frontend/lib/screens/chat_screen.dart:53`
+- **Sorun:** Sohbet listesi için yükleme/hata durumu yalnızca genel bir hata simgesi gösterir. Gerçek hata nesnesi görüntülenmez.
+- **Çözüm:** Hata mesajı metnini gösterin.
+
+### D18. Model Durdurma Düğmeleri Beklemeden Ateşleniyor
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart:606-608, 662-665`
+- **Sorun:** Model durdurma düğmeleri API'yi `await` olmadan ve sonucu kontrol etmeden çağırır. API çağrısı başarısız olursa, düğme durumu ("durduruldu") gerçeklikle eşleşmez.
+- **Çözüm:** Çağrıyı bekleyin ve hata durumunda UI durumunu geri alın.
+
+### D19. Bulut Senkronizasyonu ve Uzaktan Erişim Sekmeleri "Yapım Aşamasında" Gösteriyor
+- **Dosya:** `frontend/lib/widgets/settings_dialog.dart:766-823`
+- **Sorun:** Bulut Senkronizasyonu ve Uzaktan Erişim ayar sekmeleri "Yapım aşamasında..." gösterirken backend her iki özellik için de tam uygulamaya sahiptir.
+- **Çözüm:** UI sekmelerini backend işlevselliğiyle eşleşecek şekilde uygulayın.
+
+### D20. Kurulum Sihirbazı Enterpolasyon Yerine Sabit `$name` Kullanıyor
+- **Dosya:** `frontend/lib/widgets/setup_wizard_view.dart:87`
+- **Sorun:** Oluşturulan sistem prompt'u `\$name` (kaçışlı, sabit `$name` metni) içerirken backend `%s` format string'leri kullanır. İsim asla yerine konulmaz.
+- **Çözüm:** `$name`'i prompt'tan kaldırın veya uygun enterpolasyon uygulayın.
+
+---
+
+## ⚪ Bilgi / Gözlemler
+
+### B1. GOB Kodlaması ve İleri Uyumluluk
+- **Dosya:** `internal/memory/store.go:302-306`
+- **Not:** `chromem.Document`, Go'nun `gob` kodlaması ile serileştirilir. Gob, struct alan değişikliklerine duyarlıdır: gelecek bir sürümde alan eklemek, kaldırmak veya yeniden adlandırmak mevcut tüm hafıza dosyalarını okunamaz hale getirecektir. Kendi kendini tanımlayan bir format (JSON, CBOR veya protobuf) düşünün.
+
+### B2. Etkileşim Başına Tek Dosya Tasarımı
+- **Dosya:** `internal/memory/store.go`
+- **Not:** Her hafıza etkileşimi ayrı bir `.gob` dosyasıdır. Bu tasarım silmeyi (`os.Remove`) basitleştirir ancak şunlar için patolojik davranış yaratır:
+  - Başlangıç: O(N) dosya okuma
+  - Bulut senkronizasyonu: senkronizasyon başına O(N) API çağrısı
+  - Dosya tanıtıcı kullanımı
+  - HDD'lerde disk arama süreleri
+
+### B3. Filepath.Walk Hata Yutma
+- **Dosya:** `internal/memory/store.go:182-196`, `internal/modelstore/modelstore.go:329-331`
+- **Not:** Birçok `filepath.Walk` geri çağrısı tüm hatalar için `nil` döndürür. İzin reddedilen dizinler ve G/Ç hataları kullanıcıya görünmez.
+
+### B4. Gömme İstemcisi Yeniden Başlatma Sonrası Eski Referans
+- **Dosya:** `app.go:148-149`, `app.go:124-125`
+- **Not:** `a.client` değiştirildiğinde (yeni LLM endpoint'i), `a.store`'daki gömme fonksiyonu hala eski client'ı referans alır. Store, `reinitMemoryStore` çağrılana kadar önceki endpoint'i kullanmaya devam eder.
+
+### B5. Dosya Adına Göre Model Otomatik Sınıflandırma
+- **Dosya:** `internal/modelstore/modelstore.go:58-64`
+- **Not:** `isEmbeddingModel`, dosya adı veya repo ID'sinin gömme ile ilgili anahtar kelimeler (bge, e5, vb.) içerip içermediğini kontrol eder. Bu buluşsal yöntem, adında bu string'leri bulunan ancak aslında sohbet modeli olan modelleri yanlış sınıflandırır.
+
+### B6. `unsanitizePath`, Repo ID'lerindeki `__`'den `/` Enjekte Edebilir
+- **Dosya:** `internal/modelstore/modelstore.go:345`
+- **Not:** `unsanitizePath`, `__`'yi `/` ile değiştirir. Bir HuggingFace repo ID'si doğal olarak `__` içeriyorsa, bu beklenmeyen dizin yapıları oluşturur. Yol geçişi `filepath.Join` normalizasyonu ile önlenir ancak dizin düzeni kullanıcıları şaşırtabilir.
+
+### B7. Llama Sunucusu Stderr'i Uygulama Loglarıyla Karışıyor
+- **Dosya:** `internal/llama/llama.go:118-119`
+- **Not:** Alt süreç stdout/stderr'i `os.Stdout`/`os.Stderr`'e ayarlanmıştır. Llama.cpp'nin tanılama çıktısı (prompt işleme istatistikleri, zamanlama, uyarılar) ön ek veya filtreleme olmadan doğrudan uygulamanın çıktı akışında görünür.
+
+### B8. `UpdateSyncSettings` ve `ensureSyncManager` Arasında Yarış
+- **Dosya:** `app.go:1505-1510`, `app.go:1627-1652`
+- **Not:** `ensureSyncManager()`, `a.syncManager`'ı kilit olmadan okur. `UpdateSyncSettings`, `syncManager = nil` ayarlar ve senkronizasyon olmadan yeni bir örnek oluşturur. Eşzamanlı çağrılar güncel olmayan veya çift başlatmaya neden olabilir.
+
+---
+
+> **Son güncelleme:** 2026-06-02  
+> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend  
+> **Toplam sorun:** 55 (7 kritik, 15 yüksek, 13 orta, 20 düşük, 8 bilgi notu)

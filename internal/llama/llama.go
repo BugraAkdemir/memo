@@ -364,18 +364,22 @@ func (s *Server) GetBaseURL() string {
 // ─── Binary Resolution ──────────────────────────────────────────
 
 // resolveBinary finds the llama-server binary.
+// It searches relative to the current working directory first, then relative to
+// the running executable's location (for bundled AppImage/tar.gz deployments
+// where CWD is $HOME/.memo but binaries live next to memo-backend).
 func resolveBinary(configured string, mode string) (string, error) {
 	// 1. If a specific mode is requested, look in bundled paths first
 	currentOS := runtime.GOOS
 	if mode != "" && mode != "auto" {
-		p := filepath.Join("binaries", currentOS, mode, llamaServerBinary())
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
-		}
-		// Also check top-level bin/ folder if it was moved during packaging
-		p = filepath.Join("bin", llamaServerBinary())
-		if _, err := os.Stat(p); err == nil {
-			return p, nil
+		for _, base := range binarySearchBases() {
+			p := filepath.Join(base, "binaries", currentOS, mode, llamaServerBinary())
+			if _, err := os.Stat(p); err == nil {
+				return p, nil
+			}
+			p = filepath.Join(base, "bin", llamaServerBinary())
+			if _, err := os.Stat(p); err == nil {
+				return p, nil
+			}
 		}
 	}
 
@@ -386,27 +390,27 @@ func resolveBinary(configured string, mode string) (string, error) {
 		}
 	}
 
-	// 3. Check Bundled Paths (Auto-detect order)
-	bundledDirs := []string{
-		filepath.Join("binaries", currentOS, "amd", llamaServerBinary()),
-		filepath.Join("binaries", currentOS, "nvidia", llamaServerBinary()),
-		filepath.Join("binaries", currentOS, "cpu", llamaServerBinary()),
-		filepath.Join("bin", llamaServerBinary()),
-	}
-
-	for _, p := range bundledDirs {
-		if _, err := os.Stat(p); err == nil {
-			// Found a bundled binary!
-			return p, nil
+	// 3. Check Bundled Paths (Auto-detect order) in all search bases
+	for _, base := range binarySearchBases() {
+		bundledDirs := []string{
+			filepath.Join(base, "binaries", currentOS, "amd", llamaServerBinary()),
+			filepath.Join(base, "binaries", currentOS, "nvidia", llamaServerBinary()),
+			filepath.Join(base, "binaries", currentOS, "cpu", llamaServerBinary()),
+			filepath.Join(base, "bin", llamaServerBinary()),
+		}
+		for _, p := range bundledDirs {
+			if _, err := os.Stat(p); err == nil {
+				return p, nil
+			}
 		}
 	}
 
-	// 3. Check PATH (exec.LookPath handles .exe on Windows automatically)
+	// 4. Check PATH (exec.LookPath handles .exe on Windows automatically)
 	if path, err := exec.LookPath("llama-server"); err == nil {
 		return path, nil
 	}
 
-	// 3. Check common install locations
+	// 5. Check common install locations
 	var commonPaths []string
 	switch runtime.GOOS {
 	case "windows":
@@ -441,6 +445,19 @@ func resolveBinary(configured string, mode string) (string, error) {
 	}
 
 	return "", fmt.Errorf("llama-server binary not found — install llama.cpp or set the binary path in settings")
+}
+
+// binarySearchBases returns directories to search for bundled binaries.
+// First the current working directory, then the directory of the running executable.
+func binarySearchBases() []string {
+	bases := []string{"."}
+	if exePath, err := os.Executable(); err == nil {
+		exeDir := filepath.Dir(exePath)
+		if exeDir != "." {
+			bases = append(bases, exeDir)
+		}
+	}
+	return bases
 }
 
 // llamaServerBinary returns the platform-specific llama-server binary name.

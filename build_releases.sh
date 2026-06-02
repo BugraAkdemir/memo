@@ -5,6 +5,11 @@ APP_NAME="Memo"
 APP_EXEC="memo_flutter"
 VERSION=$(cat version 2>/dev/null || echo "3.5.0")
 
+# Paket türleri
+BUILD_DEB=false          # .deb paketi oluştur (dpkg-deb gerekli)
+BUILD_APPIMAGE=true      # .AppImage paketi oluştur
+BUILD_TARGZ=true         # .tar.gz paketi oluştur
+
 # Auto-detect Flutter SDK
 if ! command -v flutter &>/dev/null; then
     for p in "$HOME/Belgeler/src/flutter/bin" "$HOME/.local/share/flutter/bin" "$HOME/snap/flutter/common/flutter/bin"; do
@@ -83,6 +88,7 @@ mkdir -p "$MEMO_HOME/config"
 # Copy bundled data on first run
 if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
     echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
+    mkdir -p "$MEMO_HOME/binaries"
     cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
 fi
 [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ] && cp -r "$DIR/config/"* "$MEMO_HOME/config/"
@@ -107,19 +113,22 @@ RUNNER
     chmod +x "$STAGEDIR/run_memo.sh"
     
     # --- TAR.GZ ---
-    echo "📦 4. tar.gz Paketi Oluşturuluyor..."
-    cd build_output/stage
-    tar -czvf "../dist/${APP_NAME}-linux-x64-v${VERSION}.tar.gz" $APP_NAME >/dev/null
-    cd ../..
+    if [ "$BUILD_TARGZ" = true ]; then
+        echo "📦 4. tar.gz Paketi Oluşturuluyor..."
+        cd build_output/stage
+        tar -czvf "../dist/${APP_NAME}-linux-x64-v${VERSION}.tar.gz" $APP_NAME >/dev/null
+        cd ../..
+    fi
     
     # --- APPIMAGE ---
-    echo "📦 5. AppImage Paketi Oluşturuluyor..."
-    APPDIR="build_output/stage/AppDir"
-    mkdir -p "$APPDIR/usr/bin"
-    cp -r "$STAGEDIR/"* "$APPDIR/usr/bin/"
-    
-    # Create AppRun
-    cat << 'APPRUN' > "$APPDIR/AppRun"
+    if [ "$BUILD_APPIMAGE" = true ]; then
+        echo "📦 5. AppImage Paketi Oluşturuluyor..."
+        APPDIR="build_output/stage/AppDir"
+        mkdir -p "$APPDIR/usr/bin"
+        cp -r "$STAGEDIR/"* "$APPDIR/usr/bin/"
+        
+        # Create AppRun
+        cat << 'APPRUN' > "$APPDIR/AppRun"
 #!/bin/bash
 HERE="$(dirname "$(readlink -f "${0}")")"
 APPBIN="$HERE/usr/bin"
@@ -135,6 +144,7 @@ mkdir -p "$MEMO_HOME/config"
 # Copy llama.cpp binaries if not already present (first run)
 if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$APPBIN/binaries" ]; then
     echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
+    mkdir -p "$MEMO_HOME/binaries"
     cp -r "$APPBIN/binaries/"* "$MEMO_HOME/binaries/"
 fi
 
@@ -170,10 +180,10 @@ sleep 1
 kill $BACKEND_PID 2>/dev/null
 pkill -9 -f "llama-server" 2>/dev/null || true
 APPRUN
-    chmod +x "$APPDIR/AppRun"
-    
-    # Create Desktop entry
-    cat << DESKTOP > "$APPDIR/${APP_NAME}.desktop"
+        chmod +x "$APPDIR/AppRun"
+        
+        # Create Desktop entry
+        cat << DESKTOP > "$APPDIR/${APP_NAME}.desktop"
 [Desktop Entry]
 Name=${APP_NAME}
 Exec=run_memo.sh
@@ -181,32 +191,34 @@ Icon=${APP_NAME}
 Type=Application
 Categories=Utility;
 DESKTOP
-    
-    # Create a dummy icon if doesn't exist
-    touch "$APPDIR/${APP_NAME}.png"
-    
-    # Download appimagetool if not exists or is empty
-    if [ ! -s "appimagetool-x86_64.AppImage" ]; then
-        echo "⬇️ appimagetool indiriliyor..."
-        rm -f appimagetool-x86_64.AppImage
-        wget -qO appimagetool-x86_64.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-        chmod +x appimagetool-x86_64.AppImage
+        
+        # Create a dummy icon if doesn't exist
+        touch "$APPDIR/${APP_NAME}.png"
+        
+        # Download appimagetool if not exists or is empty
+        if [ ! -s "appimagetool-x86_64.AppImage" ]; then
+            echo "⬇️ appimagetool indiriliyor..."
+            rm -f appimagetool-x86_64.AppImage
+            wget -qO appimagetool-x86_64.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+            chmod +x appimagetool-x86_64.AppImage
+        fi
+        # Try with --appimage-extract-and-run for systems without FUSE
+        ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
     fi
-    # Try with --appimage-extract-and-run for systems without FUSE
-    ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
     
     # --- DEB ---
-    echo "📦 6. .deb Paketi Oluşturuluyor..."
-    DEBDIR="build_output/stage/${APP_NAME}_${VERSION}_amd64"
-    mkdir -p "$DEBDIR/opt/$APP_NAME"
-    mkdir -p "$DEBDIR/usr/bin"
-    mkdir -p "$DEBDIR/usr/share/applications"
-    mkdir -p "$DEBDIR/DEBIAN"
-    
-    cp -r "$STAGEDIR/"* "$DEBDIR/opt/$APP_NAME/"
-    ln -s "/opt/$APP_NAME/run_memo.sh" "$DEBDIR/usr/bin/${APP_NAME,,}"
-    
-    cat << CONTROL > "$DEBDIR/DEBIAN/control"
+    if [ "$BUILD_DEB" = true ]; then
+        echo "📦 6. .deb Paketi Oluşturuluyor..."
+        DEBDIR="build_output/stage/${APP_NAME}_${VERSION}_amd64"
+        mkdir -p "$DEBDIR/opt/$APP_NAME"
+        mkdir -p "$DEBDIR/usr/bin"
+        mkdir -p "$DEBDIR/usr/share/applications"
+        mkdir -p "$DEBDIR/DEBIAN"
+        
+        cp -r "$STAGEDIR/"* "$DEBDIR/opt/$APP_NAME/"
+        ln -s "/opt/$APP_NAME/run_memo.sh" "$DEBDIR/usr/bin/${APP_NAME,,}"
+        
+        cat << CONTROL > "$DEBDIR/DEBIAN/control"
 Package: ${APP_NAME,,}
 Version: ${VERSION}
 Section: utils
@@ -216,7 +228,7 @@ Maintainer: Bugra Akdemir <bugrakaptan5@gmail.com>
 Description: Local LLM Memory Application with Flutter and Go
 CONTROL
 
-    cat << DEBDESKTOP > "$DEBDIR/usr/share/applications/${APP_NAME}.desktop"
+        cat << DEBDESKTOP > "$DEBDIR/usr/share/applications/${APP_NAME}.desktop"
 [Desktop Entry]
 Name=${APP_NAME}
 Exec=/opt/${APP_NAME}/run_memo.sh
@@ -225,10 +237,11 @@ Type=Application
 Categories=Utility;
 DEBDESKTOP
 
-    if command -v dpkg-deb &>/dev/null; then
-        dpkg-deb --build "$DEBDIR" "build_output/dist/" >/dev/null
-    else
-        echo "⚠️ dpkg-deb bulunamadı. .deb paketi atlanıyor. Kurmak için: sudo apt install dpkg"
+        if command -v dpkg-deb &>/dev/null; then
+            dpkg-deb --build "$DEBDIR" "build_output/dist/" >/dev/null
+        else
+            echo "⚠️ dpkg-deb bulunamadı. .deb paketi atlanıyor. Kurmak için: sudo apt install dpkg"
+        fi
     fi
     
     echo "🎉 LİNUX PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."

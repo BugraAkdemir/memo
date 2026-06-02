@@ -36,6 +36,15 @@ class _ChatContent extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final messagesAsync = ref.watch(messagesProvider);
 
+    ref.listen<String>(errorMessageProvider, (previous, next) {
+      if (next.isNotEmpty && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next), backgroundColor: MemoTheme.red),
+        );
+        ref.read(errorMessageProvider.notifier).state = '';
+      }
+    });
+
     return Column(
       children: [
         // ─── Top Bar ──────────────────────────────

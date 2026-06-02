@@ -18,14 +18,14 @@
 **Hedef:** API hatasında frontend/backend state desync olmasın.
 - [x] `chat_provider.dart` toggle: API başarısız olursa state'i geri al (try/catch ile rollback)
 
-## Bölüm 4 — Stream İptali (Orphaned Stream)
+## Bölüm 4 — Stream İptali (Orphaned Stream) ✅
 **Hedef:** Chat değişince veya ekran kapanınca stream temizlensin.
-- [ ] `chat_provider.dart` sendMessage: StreamSubscription yönetimi, dispose'da cancel
+- [x] `chat_provider.dart` sendMessage: `await for` → `StreamSubscription` + `Completer`; `_cancelStream()` yeni mesaj/switchChat/dispose'da çağrılır
 
-## Bölüm 5 — Hata Mesajlarını Chat'e Yazma
+## Bölüm 5 — Hata Mesajlarını Chat'e Yazma ✅
 **Hedef:** Bağlantı hataları chat mesajı olarak görünmesin.
-- [ ] `api_client.dart` catch bloğunda hata fırlat, yield etme
-- [ ] `chat_provider.dart` hata durumunu snackbar/UI ile göster
+- [x] `api_client.dart` catch bloğunda hata fırlat, yield etme
+- [x] `chat_provider.dart` hata durumunu snackbar/UI ile göster (`errorMessageProvider` + `chat_screen.dart` ref.listen)
 
 ## Bölüm 6 — Çift Mesaj Göndermeyi Engelle
 **Hedef:** isSending kontrolünü sağlamlaştır, race condition'ları önle.

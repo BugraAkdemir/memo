@@ -53,6 +53,7 @@ type SyncAccount struct {
 type App struct {
 	ctx               context.Context
 	client            *api.Client
+	clientMu          sync.RWMutex // protects client and embeddingClient reassignment
 	store             *memory.Store
 	storeMu           sync.RWMutex
 	identity          *identity.Identity
@@ -119,9 +120,14 @@ func (a *App) startup(ctx context.Context) {
 	}
 	a.cfg = cfg
 	a.originalBaseURL = cfg.API.BaseURL
+	a.clientMu.Lock()
 	a.client = api.NewClient(cfg.API.BaseURL, cfg.API.TimeoutSeconds)
+	a.clientMu.Unlock()
 
-	embeddingFunc := memory.NewEmbeddingFunc(a.client, cfg.API.EmbeddingModel)
+	a.clientMu.RLock()
+	initClient := a.client
+	a.clientMu.RUnlock()
+	embeddingFunc := memory.NewEmbeddingFunc(initClient, cfg.API.EmbeddingModel)
 	store, err := memory.NewStore(cfg.Memory.PersistDir, embeddingFunc)
 	if err != nil {
 		log.Printf("WARN: memory: %v", err)
@@ -401,6 +407,10 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
+	a.clientMu.RLock()
+	streamClient := a.client
+	a.clientMu.RUnlock()
+
 	go func() {
 		defer close(outCh)
 
@@ -408,7 +418,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		defer cancel()
 
 		requestStart := time.Now()
-		ch, err := a.client.ChatCompletionStream(streamCtx, messages)
+		ch, err := streamClient.ChatCompletionStream(streamCtx, messages)
 		if err != nil {
 			log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			log.Printf("LLM stream error: %v", err)
@@ -896,7 +906,10 @@ func (a *App) GetImageBase64(path string) string {
 func (a *App) CheckConnection() ConnectionStatus {
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	models, err := a.client.CheckConnection(ctx)
+	a.clientMu.RLock()
+	checkClient := a.client
+	a.clientMu.RUnlock()
+	models, err := checkClient.CheckConnection(ctx)
 	if err != nil {
 		return ConnectionStatus{Connected: false, Error: err.Error()}
 	}
@@ -1113,7 +1126,9 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 
 	// Redirect API client to the local llama-server
 	newBaseURL := a.llamaServer.GetBaseURL()
+	a.clientMu.Lock()
 	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
+	a.clientMu.Unlock()
 	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
 	// Auto-start embedding model if not already running
@@ -1130,12 +1145,15 @@ func (a *App) StopLocalModel() error {
 	}
 
 	// Revert API client to the original base URL
+	a.clientMu.Lock()
 	a.client = api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
+	revertedClient := a.client
+	a.clientMu.Unlock()
 	log.Printf("API client reverted to: %s", a.originalBaseURL)
 
 	// Only re-init embedding if no dedicated embedding server is running
 	if !a.llamaEmbedServer.IsRunning() {
-		a.reinitMemoryStore(a.client, a.cfg.API.EmbeddingModel)
+		a.reinitMemoryStore(revertedClient, a.cfg.API.EmbeddingModel)
 	}
 
 	return nil
@@ -1244,8 +1262,11 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 
 	// Create dedicated embedding client and reinit memory store
 	embBaseURL := a.llamaEmbedServer.GetBaseURL()
+	a.clientMu.Lock()
 	a.embeddingClient = api.NewClient(embBaseURL, a.cfg.API.TimeoutSeconds)
-	a.reinitMemoryStore(a.embeddingClient, a.cfg.API.EmbeddingModel)
+	embClient := a.embeddingClient
+	a.clientMu.Unlock()
+	a.reinitMemoryStore(embClient, a.cfg.API.EmbeddingModel)
 	log.Printf("Embedding server ready on %s", embBaseURL)
 
 	return nil
@@ -1256,11 +1277,16 @@ func (a *App) StopEmbeddingModel() error {
 		return err
 	}
 
+	a.clientMu.Lock()
 	a.embeddingClient = nil
+	a.clientMu.Unlock()
 	log.Println("Embedding server stopped")
 
 	// Fall back to main client for embeddings
-	a.reinitMemoryStore(a.client, a.cfg.API.EmbeddingModel)
+	a.clientMu.RLock()
+	mainClient := a.client
+	a.clientMu.RUnlock()
+	a.reinitMemoryStore(mainClient, a.cfg.API.EmbeddingModel)
 
 	return nil
 }
@@ -1404,7 +1430,10 @@ func (a *App) callLLM(messages []api.Message) string {
 	defer cancel()
 
 	start := time.Now()
-	resp, err := a.client.ChatCompletion(ctx, messages)
+	a.clientMu.RLock()
+	llmClient := a.client
+	a.clientMu.RUnlock()
+	resp, err := llmClient.ChatCompletion(ctx, messages)
 	if err != nil {
 		log.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		log.Printf("LLM error: %v", err)
@@ -1478,10 +1507,12 @@ func (a *App) CheckEmbeddingHealth() map[string]interface{} {
 	result["count"] = a.store.Count()
 
 	// Try a test embedding
+	a.clientMu.RLock()
 	client := a.client
 	if a.embeddingClient != nil {
 		client = a.embeddingClient
 	}
+	a.clientMu.RUnlock()
 
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

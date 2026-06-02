@@ -29,11 +29,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **File:** `internal/webserver/server.go:65-176`, `app.go:155-157`, `app.go:1048-1063`
 - **Fix:** Remote access has been completely disabled in v3.0.0. `Start()` returns an error immediately. `SetRemoteAccess` refuses to enable it. CORS wildcard replaced with `Origin` echo. Will be re-implemented properly in a future version.
 
-### C5. `a.client` Reassignment Without Synchronization
-- **File:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`
-- **Issue:** `a.client` and `a.embeddingClient` are reassigned (new LLM endpoint, stop model sets to nil) without any mutex. Concurrent calls to `ChatCompletion`, `ChatCompletionStream`, or `CreateEmbedding` can read a half-assigned or nil client pointer.
-- **Impact:** Potential nil-pointer panic in production under concurrent request load. Random `connection refused` errors when client is being swapped.
-- **Fix:** Guard all client reads/writes with `a.mu` (or a dedicated `clientMu`).
+### ~~C5. `a.client` Reassignment Without Synchronization~~ ✅ Fixed
+- **File:** `app.go`
+- **Fix:** Added `clientMu sync.RWMutex` to `App` struct. All writes use `Lock/Unlock`, all reads use `RLock/RUnlock` with pointer copy. Both `a.client` and `a.embeddingClient` are fully protected.
 
 ### C6. `saveMemoryAsync` RLock→Lock Pattern (Deadlock Risk)
 - **File:** `app.go:1399-1421`

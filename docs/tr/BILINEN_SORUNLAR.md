@@ -73,11 +73,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/memory/store.go:342-344`
 - **Çözüm:** `hash[:4]` → `hash[:8]` olarak değiştirildi. Artık 8 bayt (16 hex karakter) kullanılıyor. Çakışma olasılığı %50'den ihmal edilebilir seviyeye düştü.
 
-### Y7. `monitor()` Goroutine'inin `s.cmd`'ye Kilit Dışında Erişmesi
+### ~~Y7. `monitor()` Goroutine'inin `s.cmd`'ye Kilit Dışında Erişmesi~~ ✅ Çözüldü
 - **Dosya:** `internal/llama/llama.go:271-302`
-- **Sorun:** `monitor()` goroutine'i satır 272'de `s.cmd == nil` kontrolünü **kilit dışında** yapar, ardından satır 276'da `s.cmd.Wait()` çağırır. `Stop()`, `s.cmd = nil`'i kilit içinde ayarlar. Süreç zaten çıkmışsa ve `Wait()` hemen dönerse, `Stop()` nil kontrolü ile `Wait()` çağrısı arasındaki pencerede kilidi alıp `s.cmd`'yi nil yapabilir.
-- **Etki:** Hızlı başlat/durdur döngülerinde nadir nil-pointer paniği.
-- **Çözüm:** Nil kontrolü ve `Wait()` çağrısını kilit içine taşıyın veya atomic pointer kullanın.
+- **Çözüm:** Nil kontrolü artık lock içinde yapılıp local kopyaya alınıyor (`cmd := s.cmd`). `Wait()` local kopya üzerinden çağrılıyor. `Stop()` `s.cmd = nil` yapsa bile `monitor()` kendi kopyası üzerinde çalıştığı için nil-pointer paniği mümkün değil.
 
 ### ~~Y8. İndirme Hatalarında Geçici Dosya Temizlenmiyor~~ ✅ Çözüldü
 - **Dosya:** `internal/modelstore/modelstore.go:237-243`
@@ -87,11 +85,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/llama/installer.go:433,437`
 - **Çözüm:** Tar çıkarma döngüsü yeniden yapılandırıldı. Her dosya için ayrı `extractFile()` fonksiyonu oluşturuldu, `defer out.Close()` ile dosyanın her koşulda kapanması garanti altına alındı. Manuel `out.Close()` çağrıları kaldırıldı.
 
-### Y10. `nvidia-smi` Hataları Sessizce Geçiliyor → 0 VRAM → 0 GPU Katmanı
-- **Dosya:** `internal/llama/gpu.go:71-86`
-- **Sorun:** `exec.Command("nvidia-smi", ...).Output()` — hata dönüşü sessizce yok sayılır. `nvidia-smi` başarısız olursa (kurulu değil, izin reddi veya sürücü sorunu), `output` nil/boştur. Boş çıktıyı ayrıştırmak `vram = 0` verir, bu da `recommendedLayers = 0`'a yol açar — model GPU mevcut olsa bile tamamen CPU'da çalışır.
-- **Etki:** Kullanıcıya görünür uyarı olmadan sessiz CPU düşüşü.
-- **Çözüm:** `Output()`'dan gelen hatayı kontrol edin ve anlamlı bir mesaj loglayın/iletin.
+### ~~Y10. `nvidia-smi` Hataları Sessizce Geçiliyor → 0 VRAM → 0 GPU Katmanı~~ ✅ Çözüldü
+- **Dosya:** `internal/llama/gpu.go:62-101`
+- **Çözüm:** Her `nvidia-smi` çağrısının hatası artık `log.Printf` ile loglanıyor: binary bulunamazsa, name sorgusu başarısız olursa, VRAM sorgusu başarısız olursa ve VRAM değeri parse edilemezse. Kullanıcı artık neden GPU kullanılamadığını görebilir.
 
 ### Y11. OAuth `authDone` Kanalı Yarışı
 - **Dosya:** `internal/cloudsync/drive.go:99-103`
@@ -113,11 +109,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Etki:** Gereksiz ağ trafiği ve pil tüketimi.
 - **Çözüm:** İndirme tamamlandığında veya provider dispose edildiğinde akış aboneliğini iptal edin.
 
-### Y15. Backend Hata Yönetimi: Bağlantı Hatasında "Kurulu" Gösteriliyor
+### ~~Y15. Backend Hata Yönetimi: Bağlantı Hatasında "Kurulu" Gösteriliyor~~ ✅ Çözüldü
 - **Dosya:** `frontend/lib/providers/models_provider.dart:97-104`
-- **Sorun:** `llamaInstalledProvider` ağ hatalarını yakalar: hata `connectionError` ise `true` döndürür ("kurulu" gösterir). Diğer hatalarda `false` döndürür (kurulum ekranını gösterir). Bu terstir — backend'e ulaşılamadığında (bağlantı reddedildi), kullanıcı her şeyin kurulu olduğunu görür ve yeniden kurulumu tetikleyemez.
-- **Etki:** Backend gerçekten ulaşılamaz olduğunda veya sorun yaşadığında kullanıcı llama kurulumunu tetikleyemez.
-- **Çözüm:** Bağlantı hataları için `null` veya ayrı bir hata durumu döndürün.
+- **Çözüm:** Bağlantı hatasında `true` ("kurulu") döndüren `connectionError` kontrolü kaldırıldı. Artık her hata durumunda `false` döndürülür — backend ulaşılamaz olduğunda kullanıcı kurulum ekranını görür ve işlemi tetikleyebilir.
 
 ---
 
@@ -348,4 +342,4 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 > **Son güncelleme:** 2026-06-02  
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend  
-> **Toplam sorun:** 55 (7 kritik ✅, 15 yüksek → 6 ✅ / 9 ⬜, 13 orta, 20 düşük, 8 bilgi notu)
+> **Toplam sorun:** 55 (7 kritik ✅, 15 yüksek → 11 ✅ / 4 ⬜, 13 orta, 20 düşük, 8 bilgi notu)

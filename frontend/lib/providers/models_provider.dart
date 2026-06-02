@@ -95,12 +95,9 @@ final llamaInstalledProvider = FutureProvider<bool>((ref) async {
   try {
     return await ref.read(apiClientProvider).checkLlamaInstallation();
   } catch (e) {
-    // Only return true if it's truly unreachable (like backend down)
-    // If we get a response but it's an error, something else is wrong.
-    if (e is DioException && e.type == DioExceptionType.connectionError) {
-      return true; 
-    }
-    // For other errors, assume not installed to be safe and show installer
+    // Connection error: backend unreachable — assume not installed
+    // so the user sees the installer and can trigger setup.
+    // Other errors: also return false to show installer.
     return false;
   }
 });

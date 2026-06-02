@@ -151,10 +151,10 @@ func (a *App) startup(ctx context.Context) {
 	// Start STT server in background (DISABLED due to Vosk crashes)
 	// go a.startSTTServer()
 
-	// Start remote access server if enabled
-	if cfg.RemoteAccess.Enabled {
-		go a.startWebServer(cfg.RemoteAccess.Port)
-	}
+	// Remote access devre dışı (v3.0.0'da kaldırıldı, ileride eklenecek)
+	// if cfg.RemoteAccess.Enabled {
+	// 	go a.startWebServer(cfg.RemoteAccess.Port)
+	// }
 
 	// Initialize cloud sync (credentials may come from app-level env vars).
 	if cfg.Sync.Enabled {
@@ -1046,23 +1046,11 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 }
 
 func (a *App) SetRemoteAccess(enabled bool, port int) error {
-	if port <= 0 || port > 65535 {
-		return fmt.Errorf("invalid port: %d", port)
-	}
-
-	// Stop existing server if running
-	if a.webServer != nil && a.webServer.IsRunning() {
-		a.webServer.Stop()
-	}
-
-	a.cfg.RemoteAccess.Enabled = enabled
-	a.cfg.RemoteAccess.Port = port
-
+	// Remote access devre dışı (v3.0.0)
 	if enabled {
-		a.startWebServer(port)
+		return fmt.Errorf("remote access is disabled in this version")
 	}
-
-	return config.Save(a.cfg)
+	return nil
 }
 
 // ─── Model Store: Search & Download ──────────────────────────────

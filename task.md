@@ -33,14 +33,16 @@
 
 ---
 
-## [ ] K4 — Remote Access'te Auth Yok, CORS Açık
-- **Dosya:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507`
+## [x] K4 — Remote Access'te Auth Yok, CORS Açık ✅
+- **Dosya:** `internal/webserver/server.go:65-176`, `app.go:155-157`, `app.go:1048-1063`
 - **Sorun:** `0.0.0.0:<port>` binding, `Access-Control-Allow-Origin: *`, plaintext passphrase, oturum/token yok
-- **Çözüm:** JWT/token auth, HTTPS zorunluluğu, wildcard CORS'u kapat
+- **Çözüm:** Remote access tamamen devre dışı bırakıldı. Flutter'da da özellik "under construction" olduğu için ileride düzgün implementation ile gelmek üzere kapatıldı.
 - **İşlemler:**
-  - [ ] `server.go` — CORS'u `*` yerine sadece gerekli origin'lere ayarla
-  - [ ] Token/session auth mekanizması ekle
-  - [ ] Go derleme testi yap
+  - [x] `server.go` — `Start()` anında hata döndürür hale getirildi
+  - [x] `app.go` — `SetRemoteAccess` enable etmeye çalışınca hata döndürür
+  - [x] `app.go` — startup'ta remote server başlatılmaz
+  - [x] `server.go` — CORS `*` yerine `Origin` header'ını yankılar
+  - [x] Go derleme testi yapıldı
 
 ---
 

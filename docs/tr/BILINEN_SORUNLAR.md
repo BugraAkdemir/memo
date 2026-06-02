@@ -25,11 +25,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `app.go:865-872` (GetImageBase64), `internal/webserver/handlers_flutter.go:214-226` (handleImage)
 - **Çözüm:** Çift katmanlı path doğrulama. Katman 1 (handler): `..` traversal ve absolute path engellenir. Katman 2 (`GetImageBase64`): `filepath.Abs` + `EvalSymlinks` çözümlemesi + `data/` dizini whitelist prefix kontrolü. Symlink saldırıları da engellenir.
 
-### K4. Uzaktan Erişim Sunucusu — Kimlik Doğrulama Yok, Açık CORS
-- **Dosya:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507` + ilgili handler'lar
-- **Sorun:** Uzaktan erişim modu (`Start()`) `0.0.0.0:<port>` adresine bağlanır, `Access-Control-Allow-Origin: *` ayarlar ve hiçbir endpoint'te kimlik doğrulama bulunmaz. Tek "koruma", her istekte düz metin olarak gönderilen ve oturum/token mekanizması olmayan bir paroladır. Chat geçmişi, model kontrolü, dosya erişimi ve hafıza yönetimi ağdaki herkese açıktır.
-- **Etki:** Uygulamanın ve verilerinin tamamen uzaktan ele geçirilmesi.
-- **Çözüm:** Uygun kimlik doğrulama (JWT/oturum token'ı), HTTPS zorunluluğu ve uzaktan bağlantıda wildcard CORS'u devre dışı bırakın.
+### ~~K4. Uzaktan Erişim Sunucusu — Kimlik Doğrulama Yok, Açık CORS~~ ✅ Çözüldü
+- **Dosya:** `internal/webserver/server.go:65-176`, `app.go:155-157`, `app.go:1048-1063`
+- **Çözüm:** Uzaktan erişim v3.0.0'da tamamen devre dışı bırakıldı. `Start()` anında hata döndürür. `SetRemoteAccess` etkinleştirmeyi reddeder. CORS wildcard'ı `Origin` yankısı ile değiştirildi. Gelecek bir sürümde yeniden eklenecek.
 
 ### K5. `a.client` Değişkeninin Kilitsiz Yeniden Atanması
 - **Dosya:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`

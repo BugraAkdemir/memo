@@ -63,116 +63,7 @@ func New(bridge AppBridge, assets fs.FS) *Server {
 }
 
 func (s *Server) Start(port int) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.running {
-		return fmt.Errorf("server already running on port %d", s.port)
-	}
-
-	mux := http.NewServeMux()
-
-	// API endpoints (original)
-	mux.HandleFunc("/api/send", s.handleSend)
-	mux.HandleFunc("/api/chats", s.handleChats)
-	mux.HandleFunc("/api/chats/new", s.handleNewChat)
-	mux.HandleFunc("/api/chats/switch", s.handleSwitchChat)
-	mux.HandleFunc("/api/chats/delete", s.handleDeleteChat)
-	mux.HandleFunc("/api/chats/active", s.handleActiveChat)
-	mux.HandleFunc("/api/messages", s.handleMessages)
-	mux.HandleFunc("/api/status", s.handleStatus)
-	mux.HandleFunc("/api/incognito", s.handleIncognito)
-	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
-	mux.HandleFunc("/api/send_file", s.handleSendFile)
-
-	// New endpoints for Flutter frontend
-	mux.HandleFunc("/api/send/stream", s.handleSendStream)
-	mux.HandleFunc("/api/system-prompt", s.handleSystemPrompt)
-	mux.HandleFunc("/api/system-prompt/reset", s.handleResetSystemPrompt)
-	mux.HandleFunc("/api/incognito-prompt", s.handleIncognitoPrompt)
-	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
-	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
-	mux.HandleFunc("/api/memory/settings", s.handleMemorySettings)
-	mux.HandleFunc("/api/version", s.handleVersion)
-	mux.HandleFunc("/api/image", s.handleImage)
-	mux.HandleFunc("/api/chat/export", s.handleExportChat)
-	mux.HandleFunc("/api/chat/title", s.handleGenerateTitle)
-	mux.HandleFunc("/api/models/local", s.handleLocalModels)
-	mux.HandleFunc("/api/models/import", s.handleModelImport)
-	mux.HandleFunc("/api/models/start", s.handleModelStart)
-	mux.HandleFunc("/api/models/stop", s.handleModelStop)
-	mux.HandleFunc("/api/models/status", s.handleModelStatus)
-	mux.HandleFunc("/api/models/embedding/start", s.handleEmbeddingStart)
-	mux.HandleFunc("/api/models/embedding/stop", s.handleEmbeddingStop)
-	mux.HandleFunc("/api/models/embedding/status", s.handleEmbeddingStatus)
-	mux.HandleFunc("/api/gpu", s.handleGPU)
-	mux.HandleFunc("/api/models/search", s.handleModelSearch)
-	mux.HandleFunc("/api/models/files", s.handleModelFiles)
-	mux.HandleFunc("/api/models/download", s.handleModelDownload)
-	mux.HandleFunc("/api/models/download/progress", s.handleDownloadProgress)
-	mux.HandleFunc("/api/models/download/cancel", s.handleDownloadCancel)
-	mux.HandleFunc("/api/models/llama/check", s.handleLlamaCheck)
-	mux.HandleFunc("/api/models/llama/install", s.handleLlamaInstall)
-	mux.HandleFunc("/api/models/llama/skip", s.handleLlamaSkip)
-	mux.HandleFunc("/api/models/config", func(w http.ResponseWriter, r *http.Request) {
-		if r.Method == http.MethodGet {
-			s.handleLlamaConfigGet(w, r)
-		} else if r.Method == http.MethodPut {
-			s.handleLlamaConfigUpdate(w, r)
-		} else {
-			http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		}
-	})
-	mux.HandleFunc("/api/remote-access", s.handleRemoteAccess)
-	mux.HandleFunc("/api/sync/settings", s.handleSyncSettings)
-	mux.HandleFunc("/api/sync/auth", s.handleSyncAuth)
-	mux.HandleFunc("/api/sync/account", s.handleSyncAccount)
-	mux.HandleFunc("/api/sync/trigger", s.handleSyncTrigger)
-	mux.HandleFunc("/api/sync/pull", s.handleSyncPull)
-	mux.HandleFunc("/api/sync/now", s.handleSyncNow)
-	mux.HandleFunc("/api/sync/disconnect", s.handleSyncDisconnect)
-	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
-	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
-
-	// Serve frontend static files if assets are provided
-	if s.assets != nil {
-		fileServer := http.FileServer(http.FS(s.assets))
-		mux.Handle("/", fileServer)
-	}
-
-	s.srv = &http.Server{
-		Addr:    fmt.Sprintf("0.0.0.0:%d", port),
-		Handler: corsMiddleware(mux),
-	}
-	s.port = port
-	s.localIPs = getLocalIPs()
-
-	tlsCert, err := generateSelfSignedCert(s.localIPs)
-	if err != nil {
-		return fmt.Errorf("TLS cert: %w", err)
-	}
-	s.srv.TLSConfig = &tls.Config{Certificates: []tls.Certificate{tlsCert}}
-
-	ln, err := tls.Listen("tcp", s.srv.Addr, s.srv.TLSConfig)
-	if err != nil {
-		return fmt.Errorf("cannot listen on port %d: %w", port, err)
-	}
-
-	s.running = true
-	go func() {
-		log.Printf("Remote access server (HTTPS) started on port %d", port)
-		for _, ip := range s.localIPs {
-			log.Printf("  → https://%s:%d", ip, port)
-		}
-		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Printf("Remote server error: %v", err)
-		}
-		s.mu.Lock()
-		s.running = false
-		s.mu.Unlock()
-	}()
-
-	return nil
+	return fmt.Errorf("remote access is disabled in this version")
 }
 
 // StartHTTP starts a plain HTTP server (no TLS) for local Flutter desktop communication.
@@ -504,7 +395,11 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		if origin == "" {
+			origin = "http://localhost"
+		}
+		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {

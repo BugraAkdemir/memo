@@ -86,27 +86,8 @@ final messagesProvider =
     );
 
 class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
-  StreamSubscription? _streamSubscription;
-  Completer<void>? _streamCompleter;
-  bool _disposed = false;
-
-  void _cancelStream() {
-    _streamSubscription?.cancel();
-    _streamSubscription = null;
-    if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-      _streamCompleter!.complete();
-    }
-    _streamCompleter = null;
-    ref.read(streamingContentProvider.notifier).state = '';
-    ref.read(streamingThinkingProvider.notifier).state = '';
-  }
-
   @override
   Future<List<ChatMessage>> build() async {
-    ref.onDispose(() {
-      _disposed = true;
-      _cancelStream();
-    });
     return ref.read(apiClientProvider).getMessages();
   }
 
@@ -117,16 +98,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   }
 
   Future<void> sendMessage(String message) async {
-    // Double-send guard
     if (ref.read(isSendingProvider)) return;
 
     final api = ref.read(apiClientProvider);
 
-    // Cancel any in-flight stream (e.g. orphaned from previous message)
-    _cancelStream();
-
+    // Signal sending state
     ref.read(isSendingProvider.notifier).state = true;
 
+    // Optimistically add user message only (assistant handled via streamingContent)
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     final userMsg = ChatMessage(
       role: 'user',
@@ -137,39 +116,22 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final current = state.valueOrNull ?? [];
     state = AsyncData([...current, userMsg]);
 
-    String fullReply = '';
-    String fullThinking = '';
-
     try {
       final stream = api.sendMessageStream(message);
-      _streamCompleter = Completer<void>();
+      String fullReply = '';
+      String fullThinking = '';
 
-      _streamSubscription = stream.listen(
-        (chunk) {
-          fullReply += chunk.content;
-          fullThinking += chunk.thinking ?? '';
-          ref.read(streamingContentProvider.notifier).state = fullReply;
-          ref.read(streamingThinkingProvider.notifier).state = fullThinking;
-        },
-        onDone: () {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.complete();
-          }
-        },
-        onError: (e) {
-          if (_streamCompleter != null && !_streamCompleter!.isCompleted) {
-            _streamCompleter!.completeError(e);
-          }
-        },
-        cancelOnError: false,
-      );
+      await for (final chunk in stream) {
+        fullReply += chunk.content;
+        fullThinking += chunk.thinking ?? '';
 
-      await _streamCompleter!.future;
-
-      if (_disposed) return;
+        // Update streaming providers instead of copying the entire message list
+        ref.read(streamingContentProvider.notifier).state = fullReply;
+        ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+      }
 
       // Append final assistant message to the list
-      final list = state.valueOrNull ?? <ChatMessage>[];
+      final list = [...(state.valueOrNull ?? <ChatMessage>[])];
       if (fullReply.isNotEmpty || fullThinking.isNotEmpty) {
         list.add(
           ChatMessage(
@@ -182,31 +144,28 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
       state = AsyncData(list);
 
-      // Clear streaming state before refresh
+      // Clear streaming state before refresh to avoid stale UI
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
 
-      await refresh();
+      // Refresh only chat metadata; refreshing messages here can race with the
+      // backend session write and make the just-streamed reply disappear.
       ref.invalidate(chatListProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state = e.toString();
+      // Clear streaming state on error
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       await refresh();
     } finally {
       ref.read(isSendingProvider.notifier).state = false;
-      _streamCompleter = null;
     }
   }
 
   Future<String> sendFile(String message, String filePath) async {
-    // Double-send guard
     if (ref.read(isSendingProvider)) return '';
 
     final api = ref.read(apiClientProvider);
-
-    // Cancel any in-flight stream when sending a file too
-    _cancelStream();
 
     ref.read(isSendingProvider.notifier).state = true;
 

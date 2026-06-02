@@ -70,7 +70,7 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 		data := strings.TrimPrefix(line, "data: ")
 
 		if data == "[DONE]" {
-			ch <- StreamChunk{Done: true}
+			ch <- StreamChunk{Done: true, FinishReason: "stop"}
 			return
 		}
 

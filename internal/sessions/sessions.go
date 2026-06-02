@@ -3,6 +3,7 @@ package sessions
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -72,7 +73,9 @@ func (m *Manager) newSession(title string) *Session {
 		Messages:  []ChatMessage{},
 	}
 	m.sessions[s.ID] = s
-	m.save(s)
+	if err := m.save(s); err != nil {
+		log.Printf("sessions: save new session %s: %v", s.ID, err)
+	}
 	return s
 }
 
@@ -152,7 +155,9 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string) {
 		s.Title = title
 	}
 
-	m.save(s)
+	if err := m.save(s); err != nil {
+		log.Printf("sessions: save message %s: %v", s.ID, err)
+	}
 }
 
 func (m *Manager) GetActiveMessages() []ChatMessage {
@@ -233,7 +238,13 @@ func (m *Manager) save(s *Session) error {
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(filepath.Join(m.dir, s.ID+".json"), data, 0644)
+	path := filepath.Join(m.dir, s.ID+".json")
+	go func() {
+		if err := os.WriteFile(path, data, 0600); err != nil {
+			log.Printf("sessions: async write %s: %v", s.ID, err)
+		}
+	}()
+	return nil
 }
 
 func (m *Manager) loadAll() error {
@@ -250,10 +261,12 @@ func (m *Manager) loadAll() error {
 		}
 		data, err := os.ReadFile(filepath.Join(m.dir, e.Name()))
 		if err != nil {
+			log.Printf("sessions: read %s: %v", e.Name(), err)
 			continue
 		}
 		var s Session
 		if err := json.Unmarshal(data, &s); err != nil {
+			log.Printf("sessions: decode %s: %v", e.Name(), err)
 			continue
 		}
 		m.sessions[s.ID] = &s

@@ -155,7 +155,8 @@ func (s *Store) DebugSearch(ctx context.Context, query string, topK int) []Memor
 }
 
 func (s *Store) searchIndex(ctx context.Context, queryEmbedding []float32, topK int) ([]scoredMemory, error) {
-	queryEmbedding = normalizeVector(queryEmbedding)
+	queryVec := normalizeVector(queryEmbedding)
+	queryNorm := vectorNorm(queryVec)
 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -203,7 +204,7 @@ func (s *Store) searchIndex(ctx context.Context, queryEmbedding []float32, topK 
 				}
 				local = append(local, scoredMemory{
 					ID:         item.ID,
-					Similarity: cosineSimilarity(queryEmbedding, item.Vector),
+					Similarity: cosineSimilarityFast(queryVec, queryNorm, item.Vector, item.Norm),
 				})
 			}
 
@@ -262,23 +263,25 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 	return sb.String()
 }
 
-func cosineSimilarity(a, b []float32) float32 {
-	if len(a) == 0 || len(a) != len(b) {
-		return 0
+// vectorNorm returns the L2 norm of a vector.
+func vectorNorm(v []float32) float64 {
+	var sum float64
+	for _, val := range v {
+		sum += float64(val) * float64(val)
 	}
+	return math.Sqrt(sum)
+}
 
-	var dot, normA, normB float64
-	for i := range a {
-		av := float64(a[i])
-		bv := float64(b[i])
-		dot += av * bv
-		normA += av * av
-		normB += bv * bv
-	}
-	if normA == 0 || normB == 0 {
+// cosineSimilarityFast computes cosine similarity using pre-computed norms.
+func cosineSimilarityFast(a []float32, aNorm float64, b []float32, bNorm float64) float32 {
+	if len(a) == 0 || len(a) != len(b) || aNorm == 0 || bNorm == 0 {
 		return 0
 	}
-	return float32(dot / (math.Sqrt(normA) * math.Sqrt(normB)))
+	var dot float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+	}
+	return float32(dot / (aNorm * bNorm))
 }
 
 func normalizeVector(v []float32) []float32 {

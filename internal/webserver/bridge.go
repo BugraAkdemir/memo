@@ -74,6 +74,9 @@ type FullBridge interface {
 	GetRemoteAccessStatus() interface{}
 	SetRemoteAccess(enabled bool, port int) error
 
+	// Events
+	GetEvents() []map[string]string
+
 	// Sync
 	CheckAuth() bool
 	StartSyncAuth() (string, error)

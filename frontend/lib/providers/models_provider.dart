@@ -67,13 +67,11 @@ final downloadProgressProvider = StreamProvider<DownloadProgress>((ref) async* {
     try {
       final progress = await api.getDownloadProgress();
       yield progress;
-      // Poll every second while active, every 3 seconds when idle
-      await Future.delayed(progress.active
-          ? const Duration(seconds: 1)
-          : const Duration(seconds: 3));
+      if (!progress.active) break; // stop polling when idle/complete
+      await Future.delayed(const Duration(seconds: 1));
     } catch (_) {
       yield const DownloadProgress();
-      await Future.delayed(const Duration(seconds: 3));
+      break; // stop polling on error
     }
   }
 });

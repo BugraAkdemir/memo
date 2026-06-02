@@ -24,6 +24,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	"github.com/google/uuid"
 )
 
 const (
@@ -38,7 +39,7 @@ const (
 type Manager struct {
 	ctx        context.Context
 	persistDir string
-	key        [32]byte
+	passphrase string
 	drive      *driveClient
 	interval   int64
 
@@ -70,13 +71,32 @@ func New(
 	if intervalMessages <= 0 {
 		intervalMessages = SyncInterval
 	}
+	if passphrase == "" {
+		passphrase = loadOrCreateMachineID(persistDir)
+	}
 	return &Manager{
 		ctx:        ctx,
 		persistDir: persistDir,
-		key:        deriveKey(passphrase),
+		passphrase: passphrase,
 		drive:      newDriveClient(clientID, clientSecret, tokenPath),
 		interval:   int64(intervalMessages),
 	}
+}
+
+// loadOrCreateMachineID reads a persistent machine identifier from a file,
+// or generates one on first run and stores it.
+func loadOrCreateMachineID(dir string) string {
+	path := filepath.Join(dir, ".machine-id")
+	if data, err := os.ReadFile(path); err == nil {
+		if id := strings.TrimSpace(string(data)); id != "" {
+			return id
+		}
+	}
+	id := uuid.NewString()
+	if err := os.WriteFile(path, []byte(id+"\n"), 0600); err != nil {
+		log.Printf("cloudsync: failed to write machine-id: %v", err)
+	}
+	return id
 }
 
 // Increment records one saved interaction. When the count reaches a multiple
@@ -213,7 +233,7 @@ func (m *Manager) runPipeline() bool {
 
 	// 2. Encrypt (local, before any network I/O)
 	m.emit("sync:status", "encrypting")
-	blob, err := encrypt(m.key, zipBuf)
+	blob, err := encrypt(m.passphrase, zipBuf)
 	if err != nil {
 		m.emitError(fmt.Sprintf("Encryption failed: %v", err))
 		return false
@@ -251,7 +271,7 @@ func (m *Manager) runPullPipeline() bool {
 	log.Printf("cloudsync: pulled backup %s (%d bytes)", name, len(blob))
 
 	m.emit("sync:status", "decrypting")
-	zipBuf, err := decrypt(m.key, blob)
+	zipBuf, err := decrypt(m.passphrase, blob)
 	if err != nil {
 		m.emitError(fmt.Sprintf("Decrypt failed: %v", err))
 		return false

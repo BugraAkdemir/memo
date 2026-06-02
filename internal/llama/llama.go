@@ -33,6 +33,7 @@ type Server struct {
 	gpu       GPUInfo
 	stopping  bool
 	waitDone  chan struct{} // Closed when the process actually exits
+	portPid   int           // Last known PID for the port (fallback when cmd is nil)
 }
 
 // NewServer creates a new llama-server manager.
@@ -158,6 +159,8 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		return fmt.Errorf("llama: start failed: %w", err)
 	}
 
+	s.portPid = s.cmd.Process.Pid
+
 	log.Printf("llama: server started (PID %d, port %d, GPU layers: %d)",
 		s.cmd.Process.Pid, s.port, s.gpu.GPULayers)
 
@@ -195,8 +198,16 @@ func (s *Server) Stop() error {
 	defer s.mu.Unlock()
 
 	if s.cmd == nil || s.cmd.Process == nil {
-		// No tracked process — try to kill whatever is on the port.
+		// No tracked cmd — try last known PID first, then port discovery.
 		if s.port > 0 {
+			if s.portPid > 0 {
+				if err := killPID(s.portPid); err != nil {
+					log.Printf("llama: kill stored PID %d: %v, trying port discovery", s.portPid, err)
+				} else {
+					s.portPid = 0
+					return nil
+				}
+			}
 			if err := s.killByPort(s.port); err != nil {
 				return fmt.Errorf("llama: stop by port: %w", err)
 			}
@@ -221,6 +232,7 @@ func (s *Server) Stop() error {
 
 	s.cmd = nil
 	s.modelPath = ""
+	s.portPid = 0
 	return nil
 }
 
@@ -229,7 +241,7 @@ func (s *Server) Stop() error {
 func (s *Server) killByPort(port int) error {
 	pid := s.pidOnPort(port)
 	if pid <= 0 {
-		log.Printf("llama: nothing found on port %d", port)
+		log.Printf("llama: nothing found on port %d (lsof/fuser/netstat unavailable or port free)", port)
 		return nil
 	}
 

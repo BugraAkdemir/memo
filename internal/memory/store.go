@@ -25,6 +25,7 @@ const (
 type MemoryIndex struct {
 	ID     string
 	Vector []float32
+	Norm   float64 // pre-computed L2 norm for faster cosine similarity
 }
 
 type Store struct {
@@ -33,6 +34,7 @@ type Store struct {
 	persistDir    string
 	collectionDir string
 	embeddingFunc chromem.EmbeddingFunc
+	indexPath     string // single-file index path for fast startup
 }
 
 func NewStore(persistDir string, embeddingFunc chromem.EmbeddingFunc) (*Store, error) {
@@ -44,6 +46,7 @@ func NewStore(persistDir string, embeddingFunc chromem.EmbeddingFunc) (*Store, e
 		persistDir:    filepath.Clean(persistDir),
 		collectionDir: filepath.Join(filepath.Clean(persistDir), hash2hex(collectionName)),
 		embeddingFunc: embeddingFunc,
+		indexPath:     filepath.Join(filepath.Clean(persistDir), "memory_index.gob"),
 	}
 
 	if err := s.ensureCollectionMetadata(); err != nil {
@@ -58,6 +61,18 @@ func NewStore(persistDir string, embeddingFunc chromem.EmbeddingFunc) (*Store, e
 
 func (s *Store) LoadCache() error {
 	start := time.Now()
+
+	// Try single-file index first (fast startup).
+	nextIndex, err := s.loadIndexFile()
+	if err == nil {
+		s.mu.Lock()
+		s.index = nextIndex
+		s.mu.Unlock()
+		log.Printf("LATENCY memory.load_cache total_ms=%d indexed=%d (fast path)", time.Since(start).Milliseconds(), len(nextIndex))
+		return nil
+	}
+
+	// Fallback: scan individual .gob files (legacy path, slow).
 	entries, err := os.ReadDir(s.collectionDir)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
@@ -69,7 +84,7 @@ func (s *Store) LoadCache() error {
 		return fmt.Errorf("read collection dir: %w", err)
 	}
 
-	nextIndex := make([]MemoryIndex, 0, len(entries))
+	nextIndex = make([]MemoryIndex, 0, len(entries))
 	for _, entry := range entries {
 		if entry.IsDir() || entry.Name() == metadataFileName || filepath.Ext(entry.Name()) != ".gob" {
 			continue
@@ -83,17 +98,48 @@ func (s *Store) LoadCache() error {
 			continue
 		}
 
+		vec := append([]float32(nil), doc.Embedding...)
 		nextIndex = append(nextIndex, MemoryIndex{
 			ID:     doc.ID,
-			Vector: append([]float32(nil), doc.Embedding...),
+			Vector: vec,
+			Norm:   vectorNorm(vec),
 		})
+	}
+
+	// Persist the rebuilt index for next startup.
+	if err := s.writeIndexFile(nextIndex); err != nil {
+		log.Printf("memory: failed to persist index file: %v", err)
 	}
 
 	s.mu.Lock()
 	s.index = nextIndex
 	s.mu.Unlock()
-	log.Printf("LATENCY memory.load_cache total_ms=%d indexed=%d", time.Since(start).Milliseconds(), len(nextIndex))
+	log.Printf("LATENCY memory.load_cache total_ms=%d indexed=%d (legacy path)", time.Since(start).Milliseconds(), len(nextIndex))
 	return nil
+}
+
+// loadIndexFile reads the single-file index from disk.
+func (s *Store) loadIndexFile() ([]MemoryIndex, error) {
+	f, err := os.Open(s.indexPath)
+	if err != nil {
+		return nil, err
+	}
+	defer f.Close()
+	var idx []MemoryIndex
+	if err := gob.NewDecoder(f).Decode(&idx); err != nil {
+		return nil, err
+	}
+	return idx, nil
+}
+
+// writeIndexFile persists the in-memory index as a single gob file.
+func (s *Store) writeIndexFile(idx []MemoryIndex) error {
+	f, err := os.Create(s.indexPath)
+	if err != nil {
+		return err
+	}
+	defer f.Close()
+	return gob.NewEncoder(f).Encode(idx)
 }
 
 func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
@@ -130,10 +176,15 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 	}
 	diskDuration := time.Since(diskStart)
 
-	s.upsertIndexLocked(MemoryIndex{
+	vec := append([]float32(nil), doc.Embedding...)
+	idx := MemoryIndex{
 		ID:     doc.ID,
-		Vector: append([]float32(nil), doc.Embedding...),
-	})
+		Vector: vec,
+		Norm:   vectorNorm(vec),
+	}
+	s.upsertIndexLocked(idx)
+	cp := append([]MemoryIndex(nil), s.index...) // copy under lock
+	go s.writeIndexFile(cp) // async persist for fast startup next time
 	log.Printf(
 		"LATENCY memory.save total_ms=%d embed_ms=%d disk_ms=%d cache_docs=%d",
 		time.Since(totalStart).Milliseconds(),
@@ -292,6 +343,8 @@ func (s *Store) removeIndexLocked(id string) {
 	for i := range s.index {
 		if s.index[i].ID == id {
 			s.index = append(s.index[:i], s.index[i+1:]...)
+			cp := append([]MemoryIndex(nil), s.index...)
+			go s.writeIndexFile(cp)
 			return
 		}
 	}

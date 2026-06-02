@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"context"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/llama"
@@ -14,9 +15,9 @@ type FullBridge interface {
 	AppBridge
 
 	// Chat
-	SendMessageStream(userMsg string) <-chan api.StreamChunk
-	SendMessageWithImageStream(userMsg string, imagePath string) <-chan api.StreamChunk
-	SendMessageWithFileStream(userMsg string, filePath string) <-chan api.StreamChunk
+	SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk
+	SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk
+	SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk
 	ExportChat() string
 	GenerateChatTitle() string
 

@@ -13,23 +13,17 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 
 ## 🔴 Critical
 
-### C1. Orphaned SSE Streams — LLM Continues After Client Disconnect
-- **File:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`
-- **Issue:** When a client disconnects during SSE streaming, the `request.Context().Done()` channel is not monitored. The LLM backend goroutine continues running `ChatCompletionStream` until the model finishes (up to 300s). The context passed to the LLM API (`streamCtx`) is derived from the HTTP request context but is not properly cascaded to the llama.cpp subprocess.
-- **Impact:** GPU/CPU resources are wasted on every disconnected stream. On low-end hardware, an orphaned stream blocks new requests because llama.cpp is single-threaded for generation.
-- **Fix:** Wire `request.Context()` into the LLM call chain; add a `select` on `ctx.Done()` in the SSE write loop.
+### ~~C1. Orphaned SSE Streams — LLM Continues After Client Disconnect~~ ✅ Fixed
+- **File:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`, `app.go`, `internal/webserver/bridge.go`
+- **Fix:** Added `ctx context.Context` parameter to `AppBridge`/`FullBridge` stream methods. `handleSendStream` now passes `r.Context()` through the entire LLM call chain (→ `SendMessageStream` → `callLLMStream` → `ChatCompletionStream`). When the client disconnects, context cancellation terminates the LLM HTTP request and the goroutine exits naturally.
 
-### C2. Engine Mode / Config Update Resets All Llama Settings to Zero
-- **File:** `frontend/lib/providers/settings_provider.dart:63-73` ←→ `internal/webserver/handlers_flutter.go:667-685`, `app.go:1148-1151`
-- **Issue:** The frontend sends a partial JSON body (e.g. `{"engine_mode": "cpu"}`) to the `/api/config/llama` endpoint. The Go handler unmarshals this into `config.LlamaConfig{}` — any field absent from JSON is zero-valued (empty string, 0, false). Then `UpdateLlamaConfig` does `a.cfg.Llama = cfg`, replacing the **entire** struct. All existing settings (binary path, port, context size, GPU layers, model path) are silently erased.
-- **Impact:** After changing engine mode, the user must reconfigure every llama setting. The app may fail to start any model until all fields are manually re-entered.
-- **Fix:** Implement a merge/patch strategy: only overwrite fields present in the JSON body, or make the handler return current values for omitted fields.
+### ~~C2. Engine Mode / Config Update Resets All Llama Settings to Zero~~ ✅ Fixed
+- **File:** `app.go:1148-1151`
+- **Fix:** `UpdateLlamaConfig` now performs a field-by-field merge instead of replacing the entire struct. Only non-zero values from the incoming config overwrite the current config. A partial JSON body like `{"engine_mode": "cpu"}` only updates the `EngineMode` field, preserving all other settings (port, ctx_size, binary_path, etc.).
 
-### C3. Arbitrary File Read via `/api/image`
-- **File:** `app.go:866-871` (GetImageBase64), `internal/webserver/handlers_flutter.go:215-227` (handleImage)
-- **Issue:** The `/api/image?path=...` endpoint accepts an arbitrary file path, reads the file, and returns it as base64. No path sanitization beyond a basic `filepath.Clean`. An attacker can read `/etc/passwd`, `~/.ssh/id_rsa`, or any world-readable file.
-- **Impact:** Full local file disclosure. On remote-access-enabled instances (0.0.0.0 binding), this is remotely exploitable.
-- **Fix:** Restrict reads to the app's data directory and/or a whitelist of allowed paths.
+### ~~C3. Arbitrary File Read via `/api/image`~~ ✅ Fixed
+- **File:** `app.go:865-872` (GetImageBase64), `internal/webserver/handlers_flutter.go:214-226` (handleImage)
+- **Fix:** Dual-layer path validation. Layer 1 (handler): `..` traversal and absolute paths rejected. Layer 2 (`GetImageBase64`): `filepath.Abs` + `EvalSymlinks` resolution + `data/` directory prefix whitelist. Symlink attacks also prevented.
 
 ### C4. Remote Access Server — No Authentication, Wide-Open CORS
 - **File:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507` + related handlers

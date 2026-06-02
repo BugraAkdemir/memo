@@ -304,11 +304,11 @@ func (a *App) SendMessage(userMsg string) string {
 	return reply
 }
 
-func (a *App) SendMessageStream(userMsg string) <-chan api.StreamChunk {
+func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	log.Printf(">> SendMessageStream: %q", userMsg)
 
 	if a.isIncognito {
-		return a.handleIncognitoStream(userMsg, "")
+		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
 
 	messages := a.buildMessages(userMsg, nil)
@@ -317,10 +317,10 @@ func (a *App) SendMessageStream(userMsg string) <-chan api.StreamChunk {
 		a.sessions.AddMessage("user", userMsg, "", "")
 	}
 
-	return a.callLLMStream(context.Background(), messages, userMsg, "", "")
+	return a.callLLMStream(ctx, messages, userMsg, "", "")
 }
 
-func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) <-chan api.StreamChunk {
+func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk {
 	log.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
 
 	imgData, err := os.ReadFile(imagePath)
@@ -334,7 +334,7 @@ func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) <-cha
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 
 	if a.isIncognito {
-		return a.handleIncognitoStream(userMsg, b64)
+		return a.handleIncognitoStream(ctx, userMsg, b64)
 	}
 
 	memories := a.retrieveMemory(userMsg)
@@ -349,10 +349,10 @@ func (a *App) SendMessageWithImageStream(userMsg string, imagePath string) <-cha
 		a.sessions.AddMessage("user", userMsg, imagePath, "")
 	}
 
-	return a.callLLMStream(context.Background(), msgs, userMsg, imagePath, "")
+	return a.callLLMStream(ctx, msgs, userMsg, imagePath, "")
 }
 
-func (a *App) SendMessageWithFileStream(userMsg string, filePath string) <-chan api.StreamChunk {
+func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk {
 	log.Printf(">> FileStream: %q with %s", userMsg, filePath)
 
 	content, err := os.ReadFile(filePath)
@@ -372,7 +372,7 @@ func (a *App) SendMessageWithFileStream(userMsg string, filePath string) <-chan 
 	combined := fmt.Sprintf("%s\n\n--- File: %s ---\n%s", userMsg, fileName, fileContent)
 
 	if a.isIncognito {
-		return a.handleIncognitoStream(combined, "")
+		return a.handleIncognitoStream(ctx, combined, "")
 	}
 
 	messages := a.buildMessages(combined, nil)
@@ -384,7 +384,7 @@ func (a *App) SendMessageWithFileStream(userMsg string, filePath string) <-chan 
 	return a.callLLMStream(context.Background(), messages, userMsg, "", filePath)
 }
 
-func (a *App) handleIncognitoStream(userMsg string, b64 string) <-chan api.StreamChunk {
+func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 string) <-chan api.StreamChunk {
 	if b64 != "" {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
 	} else {
@@ -395,7 +395,7 @@ func (a *App) handleIncognitoStream(userMsg string, b64 string) <-chan api.Strea
 	msgs = append(msgs, a.incognitoMessages...)
 
 	// Note: for incognito, we don't save to memory/sessions, handled in callLLMStream via isIncognito flag
-	return a.callLLMStream(context.Background(), msgs, userMsg, "", "")
+	return a.callLLMStream(ctx, msgs, userMsg, "", "")
 }
 
 func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {
@@ -863,7 +863,29 @@ func (a *App) GetMemoryCount() int {
 }
 
 func (a *App) GetImageBase64(path string) string {
-	imgData, err := os.ReadFile(path)
+	// Layer 2: Only allow paths under the data directory
+	dataDir := filepath.Dir(a.cfg.Memory.PersistDir)
+	absDataDir, err := filepath.Abs(dataDir)
+	if err != nil {
+		return ""
+	}
+
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return ""
+	}
+
+	realPath, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return ""
+	}
+
+	if !strings.HasPrefix(realPath, absDataDir) {
+		log.Printf("WARNING: Blocked attempt to read file outside data dir: %s", path)
+		return ""
+	}
+
+	imgData, err := os.ReadFile(realPath)
 	if err != nil {
 		return ""
 	}
@@ -1146,7 +1168,28 @@ func (a *App) GetLlamaConfig() config.LlamaConfig {
 }
 
 func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
-	a.cfg.Llama = cfg
+	// Merge partial updates — only overwrite fields with non-zero values
+	if cfg.EngineMode != "" {
+		a.cfg.Llama.EngineMode = cfg.EngineMode
+	}
+	if cfg.BinaryPath != "" {
+		a.cfg.Llama.BinaryPath = cfg.BinaryPath
+	}
+	if cfg.Port != 0 {
+		a.cfg.Llama.Port = cfg.Port
+	}
+	if cfg.EmbeddingPort != 0 {
+		a.cfg.Llama.EmbeddingPort = cfg.EmbeddingPort
+	}
+	if cfg.CtxSize != 0 {
+		a.cfg.Llama.CtxSize = cfg.CtxSize
+	}
+	if cfg.MaxHistory != 0 {
+		a.cfg.Llama.MaxHistory = cfg.MaxHistory
+	}
+	if cfg.ModelsDir != "" {
+		a.cfg.Llama.ModelsDir = cfg.ModelsDir
+	}
 	return config.Save(a.cfg)
 }
 

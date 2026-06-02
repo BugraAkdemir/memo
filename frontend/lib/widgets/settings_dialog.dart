@@ -636,8 +636,33 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                       foregroundColor: MemoTheme.red,
                       side: const BorderSide(color: MemoTheme.red),
                     ),
-                    onPressed: () {
-                      ref.read(memoryFilesProvider.notifier).clearAll();
+                    onPressed: () async {
+                      final confirmed = await showDialog<bool>(
+                        context: context,
+                        builder: (ctx) => AlertDialog(
+                          backgroundColor: MemoTheme.bgPanel,
+                          title: const Text('Hafızayı Temizle'),
+                          content: const Text(
+                            'Tüm hafıza dosyaları silinecek. Emin misin?',
+                          ),
+                          actions: [
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, false),
+                              child: Text(L10n.t('cancel')),
+                            ),
+                            TextButton(
+                              onPressed: () => Navigator.pop(ctx, true),
+                              style: TextButton.styleFrom(
+                                foregroundColor: MemoTheme.red,
+                              ),
+                              child: const Text('Temizle'),
+                            ),
+                          ],
+                        ),
+                      );
+                      if (confirmed == true) {
+                        ref.read(memoryFilesProvider.notifier).clearAll();
+                      }
                     },
                   ),
                 ],
@@ -1034,14 +1059,28 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           isExpanded: true,
                           dropdownColor: MemoTheme.bgPanel,
                           items: const [
-                            DropdownMenuItem(value: 'auto', child: Text('Otomatik (Önerilen)')),
-                            DropdownMenuItem(value: 'cpu', child: Text('Sadece İşlemci (CPU)')),
-                            DropdownMenuItem(value: 'nvidia', child: Text('NVIDIA (CUDA)')),
-                            DropdownMenuItem(value: 'amd', child: Text('AMD (ROCm/Vulkan)')),
+                            DropdownMenuItem(
+                              value: 'auto',
+                              child: Text('Otomatik (Önerilen)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'cpu',
+                              child: Text('Sadece İşlemci (CPU)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'nvidia',
+                              child: Text('NVIDIA (CUDA)'),
+                            ),
+                            DropdownMenuItem(
+                              value: 'amd',
+                              child: Text('AMD (ROCm/Vulkan)'),
+                            ),
                           ],
                           onChanged: (mode) {
                             if (mode != null) {
-                              ref.read(llamaSettingsProvider.notifier).updateEngineMode(mode);
+                              ref
+                                  .read(llamaSettingsProvider.notifier)
+                                  .updateEngineMode(mode);
                             }
                           },
                         ),
@@ -1064,13 +1103,17 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                       Row(
                         children: [
                           Icon(
-                            installed ? Icons.check_circle : Icons.warning_amber_rounded,
+                            installed
+                                ? Icons.check_circle
+                                : Icons.warning_amber_rounded,
                             color: installed ? MemoTheme.green : Colors.orange,
                             size: 24,
                           ),
                           const SizedBox(width: 12),
                           Text(
-                            installed ? 'Llama Motoru Yüklü' : 'Llama Motoru Yüklü Değil',
+                            installed
+                                ? 'Llama Motoru Yüklü'
+                                : 'Llama Motoru Yüklü Değil',
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -1084,7 +1127,10 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                         installed
                             ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
                             : 'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
-                        style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                        style: TextStyle(
+                          color: MemoTheme.textDim,
+                          fontSize: 13,
+                        ),
                       ),
                       const SizedBox(height: 20),
                       if (_error.isNotEmpty)
@@ -1092,7 +1138,10 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           padding: const EdgeInsets.only(bottom: 16),
                           child: Text(
                             _error,
-                            style: const TextStyle(color: MemoTheme.red, fontSize: 13),
+                            style: const TextStyle(
+                              color: MemoTheme.red,
+                              fontSize: 13,
+                            ),
                           ),
                         ),
                       SizedBox(
@@ -1114,8 +1163,14 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                                   ),
                                 )
                               : Text(
-                                  installed ? 'Motoru Yeniden Kur / Onar' : (hasGpu ? 'Ekran Kartı İçin Kur (Önerilen)' : 'Motoru İndir ve Kur'),
-                                  style: const TextStyle(fontWeight: FontWeight.w600),
+                                  installed
+                                      ? 'Motoru Yeniden Kur / Onar'
+                                      : (hasGpu
+                                            ? 'Ekran Kartı İçin Kur (Önerilen)'
+                                            : 'Motoru İndir ve Kur'),
+                                  style: const TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                         ),
                       ),

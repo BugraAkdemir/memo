@@ -47,7 +47,8 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
                   children: [
                     Text(
                       L10n.t('model_store'),
-                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                      style: Theme.of(context).textTheme.headlineSmall
+                          ?.copyWith(
                             fontWeight: FontWeight.bold,
                             color: MemoTheme.textMain,
                           ),
@@ -74,8 +75,9 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
                   flex: 3,
                   child: Container(
                     decoration: BoxDecoration(
-                      border:
-                          Border(right: BorderSide(color: MemoTheme.borderSoft)),
+                      border: Border(
+                        right: BorderSide(color: MemoTheme.borderSoft),
+                      ),
                     ),
                     child: Column(
                       children: [
@@ -86,31 +88,40 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
                             controller: _searchController,
                             decoration: InputDecoration(
                               hintText: L10n.t('search_models'),
-                              prefixIcon:
-                                  const Icon(Icons.search, color: MemoTheme.textDim),
+                              prefixIcon: const Icon(
+                                Icons.search,
+                                color: MemoTheme.textDim,
+                              ),
                               filled: true,
                               fillColor: MemoTheme.bgPanel,
                               border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                                borderSide: BorderSide(color: MemoTheme.borderSoft),
+                                borderRadius: BorderRadius.circular(
+                                  MemoTheme.radiusMd,
+                                ),
+                                borderSide: BorderSide(
+                                  color: MemoTheme.borderSoft,
+                                ),
                               ),
                               enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                                borderSide: BorderSide(color: MemoTheme.borderSoft),
+                                borderRadius: BorderRadius.circular(
+                                  MemoTheme.radiusMd,
+                                ),
+                                borderSide: BorderSide(
+                                  color: MemoTheme.borderSoft,
+                                ),
                               ),
                             ),
                             onSubmitted: (val) {
                               ref
-                                  .read(modelSearchQueryProvider.notifier)
-                                  .state = val;
+                                      .read(modelSearchQueryProvider.notifier)
+                                      .state =
+                                  val;
                             },
                           ),
                         ),
 
                         // Search Results / Downloading
-                        Expanded(
-                          child: const _SearchResultsPanel(),
-                        ),
+                        Expanded(child: const _SearchResultsPanel()),
                       ],
                     ),
                   ),
@@ -139,9 +150,7 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
                         const Divider(height: 1),
 
                         // Local Models
-                        Expanded(
-                          child: const _LocalModelsList(),
-                        ),
+                        Expanded(child: const _LocalModelsList()),
                       ],
                     ),
                   ),
@@ -178,7 +187,12 @@ class _SearchResultsPanel extends ConsumerWidget {
       error: (e, _) => Center(child: Text('${L10n.t('error')}: $e')),
       data: (results) {
         if (results.isEmpty) {
-          return Center(child: Text('Sonuç bulunamadı', style: TextStyle(color: MemoTheme.textDim)));
+          return Center(
+            child: Text(
+              'Sonuç bulunamadı',
+              style: TextStyle(color: MemoTheme.textDim),
+            ),
+          );
         }
         return ListView.separated(
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
@@ -224,10 +238,14 @@ class _SearchResultCardState extends State<_SearchResultCard> {
         duration: const Duration(milliseconds: 200),
         padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: _isHovered ? MemoTheme.bgHover.withValues(alpha: 0.3) : MemoTheme.bgPanel,
+          color: _isHovered
+              ? MemoTheme.bgHover.withValues(alpha: 0.3)
+              : MemoTheme.bgPanel,
           borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
           border: Border.all(
-            color: _isHovered ? MemoTheme.accent.withValues(alpha: 0.5) : MemoTheme.borderSoft,
+            color: _isHovered
+                ? MemoTheme.accent.withValues(alpha: 0.5)
+                : MemoTheme.borderSoft,
             width: _isHovered ? 1.5 : 1.0,
           ),
           boxShadow: _isHovered ? MemoTheme.shadowMd : [],
@@ -248,14 +266,21 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: MemoTheme.bgElement,
                     borderRadius: BorderRadius.circular(20),
                   ),
                   child: Row(
                     children: [
-                      const Icon(Icons.download_rounded, size: 14, color: MemoTheme.textMuted),
+                      const Icon(
+                        Icons.download_rounded,
+                        size: 14,
+                        color: MemoTheme.textMuted,
+                      ),
                       const SizedBox(width: 6),
                       Text(
                         _formatCount(widget.result.downloads),
@@ -273,18 +298,32 @@ class _SearchResultCardState extends State<_SearchResultCard> {
             const SizedBox(height: 8),
             Row(
               children: [
-                const Icon(Icons.person_outline, size: 14, color: MemoTheme.textDim),
+                const Icon(
+                  Icons.person_outline,
+                  size: 14,
+                  color: MemoTheme.textDim,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   widget.result.author,
-                  style: const TextStyle(fontSize: 13, color: MemoTheme.textDim),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: MemoTheme.textDim,
+                  ),
                 ),
                 const SizedBox(width: 12),
-                const Icon(Icons.favorite_border_rounded, size: 14, color: MemoTheme.textDim),
+                const Icon(
+                  Icons.favorite_border_rounded,
+                  size: 14,
+                  color: MemoTheme.textDim,
+                ),
                 const SizedBox(width: 4),
                 Text(
                   '${widget.result.likes} beğeni',
-                  style: const TextStyle(fontSize: 12, color: MemoTheme.textDim),
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: MemoTheme.textDim,
+                  ),
                 ),
               ],
             ),
@@ -294,7 +333,10 @@ class _SearchResultCardState extends State<_SearchResultCard> {
               runSpacing: 8,
               children: widget.result.tags.take(5).map((t) {
                 return Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
                   decoration: BoxDecoration(
                     color: MemoTheme.bgApp,
                     borderRadius: BorderRadius.circular(8),
@@ -302,7 +344,10 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                   ),
                   child: Text(
                     t,
-                    style: const TextStyle(fontSize: 11, color: MemoTheme.textMuted),
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: MemoTheme.textMuted,
+                    ),
                   ),
                 );
               }).toList(),
@@ -320,8 +365,13 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                 icon: const Icon(Icons.folder_open_rounded, size: 18),
                 label: const Text('Dosyaları İncele'),
                 style: ElevatedButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-                  backgroundColor: _isHovered ? MemoTheme.accent : MemoTheme.accent.withValues(alpha: 0.9),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 12,
+                  ),
+                  backgroundColor: _isHovered
+                      ? MemoTheme.accent
+                      : MemoTheme.accent.withValues(alpha: 0.9),
                 ),
               ),
             ),
@@ -349,14 +399,15 @@ class _LocalModelsList extends ConsumerWidget {
             children: [
               Text(
                 L10n.t('local_models'),
-                style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16),
+                style: const TextStyle(
+                  fontWeight: FontWeight.w600,
+                  fontSize: 16,
+                ),
               ),
               TextButton.icon(
                 icon: const Icon(Icons.file_upload, size: 16),
                 label: const Text('İçe Aktar'),
-                style: TextButton.styleFrom(
-                  foregroundColor: MemoTheme.accent,
-                ),
+                style: TextButton.styleFrom(foregroundColor: MemoTheme.accent),
                 onPressed: () async {
                   final result = await FilePicker.platform.pickFiles(
                     type: FileType.any, // GGUF isn't a standard mime type
@@ -364,19 +415,21 @@ class _LocalModelsList extends ConsumerWidget {
                   );
                   if (result != null && result.files.single.path != null) {
                     final sourcePath = result.files.single.path!;
-                    
+
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(content: Text('Model içe aktarılıyor...')),
                       );
                     }
-                    
+
                     try {
                       await ref.read(apiClientProvider).importModel(sourcePath);
                       ref.invalidate(localModelsProvider);
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(content: Text('Model başarıyla içe aktarıldı.')),
+                          const SnackBar(
+                            content: Text('Model başarıyla içe aktarıldı.'),
+                          ),
                         );
                       }
                     } catch (e) {
@@ -399,13 +452,18 @@ class _LocalModelsList extends ConsumerWidget {
             data: (models) {
               if (models.isEmpty) {
                 return Center(
-                  child: Text(L10n.t('no_models'),
-                      style: TextStyle(color: MemoTheme.textDim)),
+                  child: Text(
+                    L10n.t('no_models'),
+                    style: TextStyle(color: MemoTheme.textDim),
+                  ),
                 );
               }
 
               return ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 8,
+                ),
                 itemCount: models.length,
                 separatorBuilder: (_, __) => const SizedBox(height: 12),
                 itemBuilder: (context, index) {
@@ -443,7 +501,10 @@ class _LocalModelCard extends ConsumerWidget {
               Expanded(
                 child: Text(
                   model.filename,
-                  style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 14),
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w500,
+                    fontSize: 14,
+                  ),
                   overflow: TextOverflow.ellipsis,
                 ),
               ),
@@ -452,8 +513,35 @@ class _LocalModelCard extends ConsumerWidget {
                 color: MemoTheme.red,
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
-                onPressed: () {
-                  ref.read(localModelsProvider.notifier).deleteModel(model.path);
+                onPressed: () async {
+                  final confirmed = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      backgroundColor: MemoTheme.bgPanel,
+                      title: const Text('Modeli Sil'),
+                      content: Text(
+                        '"${model.filename}" silinecek. Emin misin?',
+                      ),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, false),
+                          child: const Text('İptal'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.pop(ctx, true),
+                          style: TextButton.styleFrom(
+                            foregroundColor: MemoTheme.red,
+                          ),
+                          child: const Text('Sil'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirmed == true) {
+                    ref
+                        .read(localModelsProvider.notifier)
+                        .deleteModel(model.path);
+                  }
                 },
               ),
             ],
@@ -468,16 +556,25 @@ class _LocalModelCard extends ConsumerWidget {
             builder: (context) {
               final tags = <String>[];
               final name = model.filename.toLowerCase();
-              if (model.isEmbedding || name.contains('embed') || name.contains('bge')) {
+              if (model.isEmbedding ||
+                  name.contains('embed') ||
+                  name.contains('bge')) {
                 tags.add('Embedding');
               }
-              if (name.contains('vision') || name.contains('llava') || name.contains('pixtral')) {
+              if (name.contains('vision') ||
+                  name.contains('llava') ||
+                  name.contains('pixtral')) {
                 tags.add('Vision');
               }
-              if (name.contains('think') || name.contains('reason') || name.contains('r1') || name.contains('o1')) {
+              if (name.contains('think') ||
+                  name.contains('reason') ||
+                  name.contains('r1') ||
+                  name.contains('o1')) {
                 tags.add('Think');
               }
-              if (name.contains('tool') || name.contains('function') || name.contains('fc')) {
+              if (name.contains('tool') ||
+                  name.contains('function') ||
+                  name.contains('fc')) {
                 tags.add('Tool');
               }
               if (tags.isEmpty) {
@@ -485,21 +582,34 @@ class _LocalModelCard extends ConsumerWidget {
               }
 
               return Row(
-                children: tags.map((t) => Container(
-                  margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: MemoTheme.accentPale.withValues(alpha: 0.5),
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
-                  ),
-                  child: Text(
-                    t, 
-                    style: const TextStyle(fontSize: 10, color: MemoTheme.accent, fontWeight: FontWeight.w600)
-                  ),
-                )).toList(),
+                children: tags
+                    .map(
+                      (t) => Container(
+                        margin: const EdgeInsets.only(right: 6),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: MemoTheme.accentPale.withValues(alpha: 0.5),
+                          borderRadius: BorderRadius.circular(4),
+                          border: Border.all(
+                            color: MemoTheme.accent.withValues(alpha: 0.3),
+                          ),
+                        ),
+                        child: Text(
+                          t,
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: MemoTheme.accent,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ),
+                    )
+                    .toList(),
               );
-            }
+            },
           ),
           const SizedBox(height: 10),
           Row(
@@ -518,23 +628,33 @@ class _LocalModelCard extends ConsumerWidget {
               const Spacer(),
               Consumer(
                 builder: (context, ref, _) {
-                  final installed = ref.watch(llamaInstalledProvider).valueOrNull ?? false;
+                  final installed =
+                      ref.watch(llamaInstalledProvider).valueOrNull ?? false;
                   return ElevatedButton(
-                    onPressed: !installed ? null : () {
-                      showDialog(
-                        context: context,
-                        builder: (context) => ModelConfigDialog(model: model),
-                      );
-                    },
+                    onPressed: !installed
+                        ? null
+                        : () {
+                            showDialog(
+                              context: context,
+                              builder: (context) =>
+                                  ModelConfigDialog(model: model),
+                            );
+                          },
                     style: ElevatedButton.styleFrom(
                       backgroundColor: MemoTheme.accent,
                       foregroundColor: MemoTheme.textInverse,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 0,
+                      ),
                       minimumSize: const Size(0, 32),
                     ),
-                    child: Text(L10n.t('start_model'), style: const TextStyle(fontSize: 12)),
+                    child: Text(
+                      L10n.t('start_model'),
+                      style: const TextStyle(fontSize: 12),
+                    ),
                   );
-                }
+                },
               ),
             ],
           ),
@@ -575,7 +695,10 @@ class _ActiveModelCard extends ConsumerWidget {
               const SizedBox(width: 8),
               Text(
                 'Çalışan Model',
-                style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14,
+                ),
               ),
               const Spacer(),
               statusAsync.when(
@@ -596,7 +719,10 @@ class _ActiveModelCard extends ConsumerWidget {
                   children: [
                     Text(
                       status.modelPath.split('/').last,
-                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -610,10 +736,16 @@ class _ActiveModelCard extends ConsumerWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: MemoTheme.red,
                             side: const BorderSide(color: MemoTheme.red),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 0,
+                            ),
                             minimumSize: const Size(0, 32),
                           ),
-                          child: Text(L10n.t('stop_model'), style: const TextStyle(fontSize: 12)),
+                          child: Text(
+                            L10n.t('stop_model'),
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ),
                       ],
                     ),
@@ -627,7 +759,7 @@ class _ActiveModelCard extends ConsumerWidget {
               }
             },
           ),
-          
+
           // Embedding Model Status
           embStatusAsync.when(
             data: (embStatus) {
@@ -640,11 +772,18 @@ class _ActiveModelCard extends ConsumerWidget {
                     const SizedBox(height: 12),
                     Row(
                       children: [
-                        const Icon(Icons.hub_outlined, color: MemoTheme.accent, size: 16),
+                        const Icon(
+                          Icons.hub_outlined,
+                          color: MemoTheme.accent,
+                          size: 16,
+                        ),
                         const SizedBox(width: 8),
                         Text(
                           'Hafıza (Embedding) Modeli',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 13,
+                          ),
                         ),
                         const Spacer(),
                         const _StatusIndicator(active: true),
@@ -653,7 +792,10 @@ class _ActiveModelCard extends ConsumerWidget {
                     const SizedBox(height: 8),
                     Text(
                       embStatus.modelPath.split('/').last,
-                      style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w500,
+                        fontSize: 13,
+                      ),
                     ),
                     const SizedBox(height: 12),
                     Row(
@@ -667,10 +809,16 @@ class _ActiveModelCard extends ConsumerWidget {
                           style: OutlinedButton.styleFrom(
                             foregroundColor: MemoTheme.red,
                             side: const BorderSide(color: MemoTheme.red),
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 0,
+                            ),
                             minimumSize: const Size(0, 32),
                           ),
-                          child: Text('Hafıza Modelini Durdur', style: const TextStyle(fontSize: 12)),
+                          child: Text(
+                            'Hafıza Modelini Durdur',
+                            style: const TextStyle(fontSize: 12),
+                          ),
                         ),
                       ],
                     ),
@@ -917,7 +1065,12 @@ class _DownloadProgressCard extends ConsumerWidget {
                     children: [
                       const Text(
                         'İNDİRİLEN',
-                        style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: MemoTheme.textDim, letterSpacing: 0.5),
+                        style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: MemoTheme.textDim,
+                          letterSpacing: 0.5,
+                        ),
                       ),
                       const SizedBox(height: 2),
                       Text(
@@ -933,16 +1086,25 @@ class _DownloadProgressCard extends ConsumerWidget {
                   // Speed badge
                   if (progress.speed.isNotEmpty)
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 6,
+                      ),
                       decoration: BoxDecoration(
                         color: MemoTheme.accent.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.2)),
+                        border: Border.all(
+                          color: MemoTheme.accent.withValues(alpha: 0.2),
+                        ),
                       ),
                       child: Row(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          const Icon(Icons.bolt_rounded, size: 14, color: MemoTheme.accent),
+                          const Icon(
+                            Icons.bolt_rounded,
+                            size: 14,
+                            color: MemoTheme.accent,
+                          ),
                           const SizedBox(width: 6),
                           Text(
                             progress.speed,
@@ -967,8 +1129,6 @@ class _DownloadProgressCard extends ConsumerWidget {
   }
 }
 
-
-
 class _ModelFilesDialog extends ConsumerStatefulWidget {
   final String repoId;
   const _ModelFilesDialog({required this.repoId});
@@ -989,7 +1149,9 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
 
   Future<void> _loadFiles() async {
     try {
-      final files = await ref.read(apiClientProvider).getModelFiles(widget.repoId);
+      final files = await ref
+          .read(apiClientProvider)
+          .getModelFiles(widget.repoId);
       if (mounted) {
         setState(() {
           _files = files;
@@ -1007,13 +1169,20 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
   Widget _buildQuantBadge(String filename) {
     final lower = filename.toLowerCase();
     String? quant;
-    if (lower.contains('q4_k_m')) quant = 'Q4_K_M';
-    else if (lower.contains('q4_k_s')) quant = 'Q4_K_S';
-    else if (lower.contains('q5_k_m')) quant = 'Q5_K_M';
-    else if (lower.contains('q5_k_s')) quant = 'Q5_K_S';
-    else if (lower.contains('q8_0')) quant = 'Q8_0';
-    else if (lower.contains('q4_0')) quant = 'Q4_0';
-    else if (lower.contains('fp16')) quant = 'FP16';
+    if (lower.contains('q4_k_m'))
+      quant = 'Q4_K_M';
+    else if (lower.contains('q4_k_s'))
+      quant = 'Q4_K_S';
+    else if (lower.contains('q5_k_m'))
+      quant = 'Q5_K_M';
+    else if (lower.contains('q5_k_s'))
+      quant = 'Q5_K_S';
+    else if (lower.contains('q8_0'))
+      quant = 'Q8_0';
+    else if (lower.contains('q4_0'))
+      quant = 'Q4_0';
+    else if (lower.contains('fp16'))
+      quant = 'FP16';
 
     if (quant == null) return const SizedBox.shrink();
 
@@ -1057,7 +1226,10 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
               padding: const EdgeInsets.all(24),
               child: Row(
                 children: [
-                  const Icon(Icons.folder_open_rounded, color: MemoTheme.accent),
+                  const Icon(
+                    Icons.folder_open_rounded,
+                    color: MemoTheme.accent,
+                  ),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
@@ -1073,7 +1245,10 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                         ),
                         Text(
                           widget.repoId,
-                          style: const TextStyle(fontSize: 12, color: MemoTheme.textDim),
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: MemoTheme.textDim,
+                          ),
                         ),
                       ],
                     ),
@@ -1095,110 +1270,142 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                       child: Center(child: CircularProgressIndicator()),
                     )
                   : _error != null
-                      ? Padding(
-                          padding: const EdgeInsets.all(40),
-                          child: Center(
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
+                  ? Padding(
+                      padding: const EdgeInsets.all(40),
+                      child: Center(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.error_outline,
+                              color: MemoTheme.red,
+                              size: 48,
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Hata: $_error',
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(color: MemoTheme.red),
+                            ),
+                          ],
+                        ),
+                      ),
+                    )
+                  : _files!.isEmpty
+                  ? const Padding(
+                      padding: EdgeInsets.all(40),
+                      child: Center(
+                        child: Text(
+                          'Bu modelde GGUF dosyası bulunamadı.',
+                          style: TextStyle(color: MemoTheme.textDim),
+                        ),
+                      ),
+                    )
+                  : ListView.separated(
+                      shrinkWrap: true,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      itemCount: _files!.length,
+                      separatorBuilder: (_, __) => const SizedBox(height: 8),
+                      itemBuilder: (context, index) {
+                        final file = _files![index];
+                        final sizeGB = (file.size / (1024 * 1024 * 1024));
+                        final sizeMB = (file.size / (1024 * 1024));
+                        final sizeText = sizeGB >= 1
+                            ? '${sizeGB.toStringAsFixed(1)} GB'
+                            : '${sizeMB.toStringAsFixed(0)} MB';
+
+                        return Container(
+                          decoration: BoxDecoration(
+                            color: MemoTheme.bgPanel,
+                            borderRadius: BorderRadius.circular(
+                              MemoTheme.radiusMd,
+                            ),
+                            border: Border.all(color: MemoTheme.borderSoft),
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 8,
+                            ),
+                            title: Row(
                               children: [
-                                const Icon(Icons.error_outline, color: MemoTheme.red, size: 48),
-                                const SizedBox(height: 16),
-                                Text('Hata: $_error',
-                                    textAlign: TextAlign.center,
-                                    style: const TextStyle(color: MemoTheme.red)),
+                                Expanded(
+                                  child: Text(
+                                    file.filename,
+                                    style: const TextStyle(
+                                      color: MemoTheme.textMain,
+                                      fontSize: 14,
+                                      fontWeight: FontWeight.w500,
+                                    ),
+                                  ),
+                                ),
+                                _buildQuantBadge(file.filename),
                               ],
                             ),
-                          ),
-                        )
-                      : _files!.isEmpty
-                          ? const Padding(
-                              padding: EdgeInsets.all(40),
-                              child: Center(
-                                child: Text(
-                                  'Bu modelde GGUF dosyası bulunamadı.',
-                                  style: TextStyle(color: MemoTheme.textDim),
-                                ),
-                              ),
-                            )
-                          : ListView.separated(
-                              shrinkWrap: true,
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                              itemCount: _files!.length,
-                              separatorBuilder: (_, __) => const SizedBox(height: 8),
-                              itemBuilder: (context, index) {
-                                final file = _files![index];
-                                final sizeGB = (file.size / (1024 * 1024 * 1024));
-                                final sizeMB = (file.size / (1024 * 1024));
-                                final sizeText = sizeGB >= 1 
-                                    ? '${sizeGB.toStringAsFixed(1)} GB' 
-                                    : '${sizeMB.toStringAsFixed(0)} MB';
-                                
-                                return Container(
-                                  decoration: BoxDecoration(
-                                    color: MemoTheme.bgPanel,
-                                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                                    border: Border.all(color: MemoTheme.borderSoft),
+                            subtitle: Padding(
+                              padding: const EdgeInsets.only(top: 8),
+                              child: Row(
+                                children: [
+                                  Container(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 8,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: MemoTheme.accent.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      sizeText,
+                                      style: const TextStyle(
+                                        color: MemoTheme.accent,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
                                   ),
-                                  child: ListTile(
-                                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                                    title: Row(
-                                      children: [
-                                        Expanded(
-                                          child: Text(
-                                            file.filename,
-                                            style: const TextStyle(
-                                              color: MemoTheme.textMain,
-                                              fontSize: 14,
-                                              fontWeight: FontWeight.w500,
-                                            ),
-                                          ),
-                                        ),
-                                        _buildQuantBadge(file.filename),
-                                      ],
+                                ],
+                              ),
+                            ),
+                            trailing: ElevatedButton(
+                              onPressed: () {
+                                ref
+                                    .read(apiClientProvider)
+                                    .downloadModel(
+                                      widget.repoId,
+                                      file.filename,
+                                    );
+                                Navigator.pop(context);
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(
+                                    content: Text(
+                                      '${file.filename} indirmesi başlatıldı...',
                                     ),
-                                    subtitle: Padding(
-                                      padding: const EdgeInsets.only(top: 8),
-                                      child: Row(
-                                        children: [
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                                            decoration: BoxDecoration(
-                                              color: MemoTheme.accent.withValues(alpha: 0.15),
-                                              borderRadius: BorderRadius.circular(4),
-                                            ),
-                                            child: Text(
-                                              sizeText,
-                                              style: const TextStyle(
-                                                color: MemoTheme.accent,
-                                                fontSize: 11,
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    ),
-                                    trailing: ElevatedButton(
-                                      onPressed: () {
-                                        ref.read(apiClientProvider).downloadModel(widget.repoId, file.filename);
-                                        Navigator.pop(context);
-                                        ScaffoldMessenger.of(context).showSnackBar(
-                                          SnackBar(
-                                            content: Text('${file.filename} indirmesi başlatıldı...'),
-                                            backgroundColor: MemoTheme.green,
-                                          ),
-                                        );
-                                      },
-                                      style: ElevatedButton.styleFrom(
-                                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 0),
-                                        minimumSize: const Size(0, 36),
-                                      ),
-                                      child: const Text('İndir', style: TextStyle(fontSize: 13)),
-                                    ),
+                                    backgroundColor: MemoTheme.green,
                                   ),
                                 );
                               },
+                              style: ElevatedButton.styleFrom(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 0,
+                                ),
+                                minimumSize: const Size(0, 36),
+                              ),
+                              child: const Text(
+                                'İndir',
+                                style: TextStyle(fontSize: 13),
+                              ),
                             ),
+                          ),
+                        );
+                      },
+                    ),
             ),
 
             // Footer
@@ -1220,4 +1427,3 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
     );
   }
 }
-

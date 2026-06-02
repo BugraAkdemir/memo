@@ -20,9 +20,7 @@ class ChatSidebar extends ConsumerWidget {
       width: 260,
       decoration: BoxDecoration(
         color: MemoTheme.bgPanel,
-        border: Border(
-          right: BorderSide(color: MemoTheme.borderSoft),
-        ),
+        border: Border(right: BorderSide(color: MemoTheme.borderSoft)),
       ),
       child: Column(
         children: [
@@ -88,8 +86,10 @@ class ChatSidebar extends ConsumerWidget {
                       padding: const EdgeInsets.all(24),
                       child: Text(
                         L10n.t('no_chats'),
-                        style:
-                            TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                        style: TextStyle(
+                          color: MemoTheme.textDim,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
                   );
@@ -115,9 +115,34 @@ class ChatSidebar extends ConsumerWidget {
                             .switchTo(chat.id);
                       },
                       onDelete: () async {
-                        await ref
-                            .read(chatListProvider.notifier)
-                            .delete(chat.id);
+                        final confirmed = await showDialog<bool>(
+                          context: context,
+                          builder: (ctx) => AlertDialog(
+                            backgroundColor: MemoTheme.bgPanel,
+                            title: const Text('Chat\'i Sil'),
+                            content: Text(
+                              '"${chat.title}" silinecek. Emin misin?',
+                            ),
+                            actions: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, false),
+                                child: Text(L10n.t('cancel')),
+                              ),
+                              TextButton(
+                                onPressed: () => Navigator.pop(ctx, true),
+                                style: TextButton.styleFrom(
+                                  foregroundColor: MemoTheme.red,
+                                ),
+                                child: const Text('Sil'),
+                              ),
+                            ],
+                          ),
+                        );
+                        if (confirmed == true) {
+                          await ref
+                              .read(chatListProvider.notifier)
+                              .delete(chat.id);
+                        }
                       },
                     );
                   },
@@ -184,8 +209,9 @@ class _ChatListItemState extends State<_ChatListItem> {
                       widget.chat.title,
                       style: TextStyle(
                         fontSize: 13,
-                        fontWeight:
-                            widget.isActive ? FontWeight.w600 : FontWeight.w400,
+                        fontWeight: widget.isActive
+                            ? FontWeight.w600
+                            : FontWeight.w400,
                         color: widget.isActive
                             ? MemoTheme.textMain
                             : MemoTheme.textSecondary,
@@ -196,10 +222,7 @@ class _ChatListItemState extends State<_ChatListItem> {
                     const SizedBox(height: 2),
                     Text(
                       '${widget.chat.msgCount} mesaj · ${widget.chat.updatedAt}',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: MemoTheme.textDim,
-                      ),
+                      style: TextStyle(fontSize: 11, color: MemoTheme.textDim),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -340,7 +363,8 @@ class _SidebarStatusBar extends ConsumerWidget {
             connAsync.when(
               loading: () => '...',
               error: (_, __) => L10n.t('connection_error'),
-              data: (connected) => connected ? 'Memo Engine' : L10n.t('connection_error'),
+              data: (connected) =>
+                  connected ? 'Memo Engine' : L10n.t('connection_error'),
             ),
             style: TextStyle(fontSize: 11, color: MemoTheme.textDim),
           ),

@@ -729,8 +729,16 @@ class _ActiveModelCard extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         OutlinedButton(
-                          onPressed: () {
-                            ref.read(apiClientProvider).stopModel();
+                          onPressed: () async {
+                            try {
+                              await ref.read(apiClientProvider).stopModel();
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('$e')),
+                                );
+                              }
+                            }
                             ref.invalidate(modelStatusProvider);
                           },
                           style: OutlinedButton.styleFrom(
@@ -802,8 +810,16 @@ class _ActiveModelCard extends ConsumerWidget {
                       mainAxisAlignment: MainAxisAlignment.end,
                       children: [
                         OutlinedButton(
-                          onPressed: () {
-                            ref.read(apiClientProvider).stopEmbeddingModel();
+                          onPressed: () async {
+                            try {
+                              await ref.read(apiClientProvider).stopEmbeddingModel();
+                            } catch (e) {
+                              if (context.mounted) {
+                                ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('$e')),
+                                );
+                              }
+                            }
                             ref.invalidate(embeddingStatusProvider);
                           },
                           style: OutlinedButton.styleFrom(

@@ -19,6 +19,7 @@ class ChatInput extends ConsumerStatefulWidget {
 class _ChatInputState extends ConsumerState<ChatInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+  final _kbFocusNode = FocusNode();
   bool _showTemplates = false;
 
   @override
@@ -38,6 +39,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void dispose() {
     _controller.dispose();
     _focusNode.dispose();
+    _kbFocusNode.dispose();
     super.dispose();
   }
 
@@ -179,7 +181,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     border: Border.all(color: MemoTheme.borderSoft),
                   ),
                   child: KeyboardListener(
-                    focusNode: FocusNode(),
+                    focusNode: _kbFocusNode,
                     onKeyEvent: (event) {
                       if (event is KeyDownEvent &&
                           event.logicalKey == LogicalKeyboardKey.enter &&
@@ -198,7 +200,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         height: 1.5,
                       ),
                       decoration: InputDecoration(
-                        hintText: L10n.t('type_message'),
+                        hintText: '${L10n.t('type_message')} (/)',
                         hintStyle: TextStyle(color: MemoTheme.textDim),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(

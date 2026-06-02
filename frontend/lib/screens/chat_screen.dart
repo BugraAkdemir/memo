@@ -65,8 +65,9 @@ class _ChatContent extends ConsumerWidget {
                   Icon(Icons.error_outline, color: MemoTheme.red, size: 40),
                   const SizedBox(height: 12),
                   Text(
-                    L10n.t('connection_error'),
+                    '$e',
                     style: TextStyle(color: MemoTheme.textMuted),
+                    textAlign: TextAlign.center,
                   ),
                   const SizedBox(height: 12),
                   OutlinedButton(

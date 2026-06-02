@@ -74,11 +74,15 @@ func New(
 	if passphrase == "" {
 		passphrase = loadOrCreateMachineID(persistDir)
 	}
+	dc, err := newDriveClient(clientID, clientSecret, tokenPath)
+	if err != nil {
+		log.Printf("WARN: cloudsync: %v", err)
+	}
 	return &Manager{
 		ctx:        ctx,
 		persistDir: persistDir,
 		passphrase: passphrase,
-		drive:      newDriveClient(clientID, clientSecret, tokenPath),
+		drive:      dc,
 		interval:   int64(intervalMessages),
 	}
 }

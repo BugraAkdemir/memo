@@ -25,11 +25,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **File:** `app.go:865-872` (GetImageBase64), `internal/webserver/handlers_flutter.go:214-226` (handleImage)
 - **Fix:** Dual-layer path validation. Layer 1 (handler): `..` traversal and absolute paths rejected. Layer 2 (`GetImageBase64`): `filepath.Abs` + `EvalSymlinks` resolution + `data/` directory prefix whitelist. Symlink attacks also prevented.
 
-### C4. Remote Access Server — No Authentication, Wide-Open CORS
-- **File:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507` + related handlers
-- **Issue:** The remote access mode (`Start()`) binds to `0.0.0.0:<port>`, sets `Access-Control-Allow-Origin: *`, and has no authentication on any endpoint. The only "protection" is a plaintext passphrase sent on every request with no session/token mechanism. Full chat history, model control, file access, and memory manipulation is available to anyone on the network.
-- **Impact:** Complete remote compromise of the application and its data.
-- **Fix:** Implement proper authentication (JWT/session token), HTTPS enforcement, and disable wildcard CORS on remote bind.
+### ~~C4. Remote Access Server — No Authentication, Wide-Open CORS~~ ✅ Fixed
+- **File:** `internal/webserver/server.go:65-176`, `app.go:155-157`, `app.go:1048-1063`
+- **Fix:** Remote access has been completely disabled in v3.0.0. `Start()` returns an error immediately. `SetRemoteAccess` refuses to enable it. CORS wildcard replaced with `Origin` echo. Will be re-implemented properly in a future version.
 
 ### C5. `a.client` Reassignment Without Synchronization
 - **File:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`

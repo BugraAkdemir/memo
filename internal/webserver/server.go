@@ -99,6 +99,7 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
 	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
 	mux.HandleFunc("/api/memory/settings", s.handleMemorySettings)
+	mux.HandleFunc("/api/memory/enabled", s.handleMemoryEnabled)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/image", s.handleImage)
 	mux.HandleFunc("/api/chat/export", s.handleExportChat)

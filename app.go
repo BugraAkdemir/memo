@@ -401,7 +401,10 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		return a.handleIncognitoStream(ctx, userMsg, b64)
 	}
 
-	memories := a.retrieveMemory(userMsg)
+	var memories []memory.MemoryResult
+	if a.cfg.Memory.MemoryEnabled {
+		memories = a.retrieveMemory(userMsg)
+	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
 	var msgs []api.Message
@@ -551,6 +554,10 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 	if !a.isIncognito {
 		if a.sessions != nil {
 			a.sessions.AddMessage("assistant", reply, "", "")
+			// Auto-generate smart title after first exchange
+			if len(a.sessions.GetActiveMessages()) == 2 {
+				go a.GenerateChatTitle()
+			}
 		}
 		a.saveMemoryAsync(userMsg, reply)
 	} else {
@@ -574,7 +581,10 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 
 	// Build multimodal messages BEFORE saving to session,
 	// so getSessionHistory() doesn't include the current user message.
-	memories := a.retrieveMemory(userMsg)
+	var memories []memory.MemoryResult
+	if a.cfg.Memory.MemoryEnabled {
+		memories = a.retrieveMemory(userMsg)
+	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
 	var msgs []api.Message
@@ -1131,6 +1141,15 @@ func (a *App) UpdateMemorySettings(topK int, minSimilarity float32) error {
 	return nil
 }
 
+func (a *App) GetMemoryEnabled() bool {
+	return a.cfg.Memory.MemoryEnabled
+}
+
+func (a *App) SetMemoryEnabled(enabled bool) error {
+	a.cfg.Memory.MemoryEnabled = enabled
+	return config.Save(a.cfg)
+}
+
 // ─── Web Bridge (interface adapters for webserver) ───────────────
 
 func (a *App) WebListChats() interface{}         { return a.ListChats() }
@@ -1231,9 +1250,11 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	a.clientMu.Unlock()
 	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
-	// Auto-start embedding model if not already running
-	if !a.llamaEmbedServer.IsRunning() {
+	// Auto-start embedding model if not already running and memory is enabled
+	if a.cfg.Memory.MemoryEnabled && !a.llamaEmbedServer.IsRunning() {
 		a.autoStartEmbeddingModel()
+	} else if !a.cfg.Memory.MemoryEnabled {
+		log.Println("Memory disabled — skipping embedding model auto-start")
 	}
 
 	return nil
@@ -1442,7 +1463,10 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 
 func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Message {
 	start := time.Now()
-	memories := a.retrieveMemory(userMsg)
+	var memories []memory.MemoryResult
+	if a.cfg.Memory.MemoryEnabled {
+		memories = a.retrieveMemory(userMsg)
+	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
 	history := a.getSessionHistory()
@@ -1553,7 +1577,7 @@ func (a *App) callLLM(messages []api.Message) string {
 }
 
 func (a *App) saveMemoryAsync(userMsg, reply string) {
-	if reply == "" {
+	if reply == "" || !a.cfg.Memory.MemoryEnabled {
 		return
 	}
 	select {
@@ -1570,6 +1594,9 @@ func (a *App) memorySaveWorker() {
 }
 
 func (a *App) saveMemorySync(userMsg, reply string) {
+	if !a.cfg.Memory.MemoryEnabled {
+		return
+	}
 	start := time.Now()
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()

@@ -186,6 +186,7 @@ class _GeneralTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
+    final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
 
     return ListView(
       padding: const EdgeInsets.all(32),
@@ -231,6 +232,69 @@ class _GeneralTab extends ConsumerWidget {
                   ref.read(localeProvider.notifier).setLocale(val);
                 }
               },
+            ),
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // Memory Toggle
+        Text(
+          'Hafıza',
+          style: const TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.textMain,
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.borderSoft),
+          ),
+          child: memoryEnabledAsync.when(
+            loading: () => const SizedBox(
+              height: 24,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            error: (e, _) => Text('${L10n.t('error')}: $e'),
+            data: (enabled) => Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        enabled ? 'Hafıza Aktif' : 'Hafıza Kapalı',
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: MemoTheme.textMain,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Kapalıyken hafıza sorgulanmaz ve yeni anı kaydedilmez. '
+                        'Model %100 ham performansla çalışır.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: MemoTheme.textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  activeColor: MemoTheme.accent,
+                  onChanged: (_) {
+                    ref.read(memoryEnabledProvider.notifier).toggle();
+                  },
+                ),
+              ],
             ),
           ),
         ),

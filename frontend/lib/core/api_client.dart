@@ -217,6 +217,15 @@ class MemoApiClient {
     );
   }
 
+  Future<bool> getMemoryEnabled() async {
+    final res = await _dio.get('/api/memory/enabled');
+    return res.data['enabled'] as bool? ?? true;
+  }
+
+  Future<void> setMemoryEnabled(bool enabled) async {
+    await _dio.put('/api/memory/enabled', data: {'enabled': enabled});
+  }
+
   // ─── Models (Local) ─────────────────────────────────────────────
 
   Future<List<LocalModel>> listLocalModels() async {

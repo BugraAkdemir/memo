@@ -64,6 +64,7 @@ type MemoryConfig struct {
 	PersistDir    string  `yaml:"persist_dir" json:"persist_dir"`
 	TopK          int     `yaml:"top_k" json:"top_k"`
 	MinSimilarity float32 `yaml:"min_similarity" json:"min_similarity"`
+	MemoryEnabled bool    `yaml:"memory_enabled" json:"memory_enabled"`
 }
 
 var (
@@ -91,6 +92,7 @@ func Default() *AppConfig {
 			PersistDir:    "./data/memory",
 			TopK:          5,
 			MinSimilarity: 0.1,
+			MemoryEnabled: true,
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,

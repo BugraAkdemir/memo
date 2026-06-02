@@ -22,10 +22,7 @@ class ChatScreen extends ConsumerWidget {
 
         // ─── Main Chat Area ───────────────────────
         Expanded(
-          child: Container(
-            color: MemoTheme.bgApp,
-            child: const _ChatContent(),
-          ),
+          child: Container(color: MemoTheme.bgApp, child: const _ChatContent()),
         ),
       ],
     );
@@ -70,12 +67,16 @@ class _ChatContent extends ConsumerWidget {
             ),
             data: (messages) {
               final isSending = ref.watch(isSendingProvider);
-              if (messages.isEmpty && !isSending) {
+              final streamingContent = ref.watch(streamingContentProvider);
+              final streamingThinking = ref.watch(streamingThinkingProvider);
+              if (messages.isEmpty && !isSending && streamingContent.isEmpty) {
                 return const WelcomeView();
               }
               return ChatMessageList(
                 messages: messages,
                 isTyping: isSending,
+                streamingContent: streamingContent,
+                streamingThinking: streamingThinking,
               );
             },
           ),
@@ -110,9 +111,7 @@ class _ChatTopBar extends ConsumerWidget {
       padding: const EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
         color: MemoTheme.bgApp,
-        border: Border(
-          bottom: BorderSide(color: MemoTheme.borderSoft),
-        ),
+        border: Border(bottom: BorderSide(color: MemoTheme.borderSoft)),
       ),
       child: Row(
         children: [
@@ -122,8 +121,10 @@ class _ChatTopBar extends ConsumerWidget {
               children: [
                 if (isIncognito) ...[
                   Container(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
                     decoration: BoxDecoration(
                       color: MemoTheme.warmBrown.withValues(alpha: 0.12),
                       borderRadius: BorderRadius.circular(6),
@@ -131,8 +132,11 @@ class _ChatTopBar extends ConsumerWidget {
                     child: Row(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.visibility_off,
-                            size: 14, color: MemoTheme.warmBrown),
+                        Icon(
+                          Icons.visibility_off,
+                          size: 14,
+                          color: MemoTheme.warmBrown,
+                        ),
                         const SizedBox(width: 4),
                         Text(
                           L10n.t('incognito_on'),
@@ -151,9 +155,9 @@ class _ChatTopBar extends ConsumerWidget {
                   child: Text(
                     isIncognito ? L10n.t('incognito_mode') : title,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                          fontWeight: FontWeight.w600,
-                          color: MemoTheme.textMain,
-                        ),
+                      fontWeight: FontWeight.w600,
+                      color: MemoTheme.textMain,
+                    ),
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
@@ -172,7 +176,9 @@ class _ChatTopBar extends ConsumerWidget {
                 final md = await api.exportChat();
                 if (md.isNotEmpty && context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Chat exported (${md.length} chars)')),
+                    SnackBar(
+                      content: Text('Chat exported (${md.length} chars)'),
+                    ),
                   );
                 }
               } catch (_) {}

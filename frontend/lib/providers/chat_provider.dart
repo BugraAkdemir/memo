@@ -14,7 +14,8 @@ final apiClientProvider = Provider<MemoApiClient>((ref) {
 
 final chatListProvider =
     AsyncNotifierProvider<ChatListNotifier, List<ChatSession>>(
-        ChatListNotifier.new);
+      ChatListNotifier.new,
+    );
 
 class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
   @override
@@ -26,7 +27,8 @@ class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
   Future<void> refresh() async {
     state = const AsyncLoading();
     state = await AsyncValue.guard(
-        () => ref.read(apiClientProvider).listChats());
+      () => ref.read(apiClientProvider).listChats(),
+    );
   }
 
   Future<String> createNew() async {
@@ -47,7 +49,8 @@ class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
 
 final activeChatIdProvider =
     AsyncNotifierProvider<ActiveChatIdNotifier, String>(
-        ActiveChatIdNotifier.new);
+      ActiveChatIdNotifier.new,
+    );
 
 class ActiveChatIdNotifier extends AsyncNotifier<String> {
   @override
@@ -57,17 +60,30 @@ class ActiveChatIdNotifier extends AsyncNotifier<String> {
 
   Future<void> switchTo(String id) async {
     final api = ref.read(apiClientProvider);
+    // Clear any in-flight streaming state
+    ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(streamingThinkingProvider.notifier).state = '';
     await api.switchChat(id);
     state = AsyncData(id);
     ref.invalidate(messagesProvider);
   }
 }
 
+// ─── Streaming Content ──────────────────────────────────────────
+
+/// Holds the currently streaming assistant content (token by token).
+/// Resets to '' when streaming ends or on error.
+final streamingContentProvider = StateProvider<String>((ref) => '');
+
+/// Holds the currently streaming thinking content (token by token).
+final streamingThinkingProvider = StateProvider<String>((ref) => '');
+
 // ─── Messages ───────────────────────────────────────────────────
 
 final messagesProvider =
     AsyncNotifierProvider<MessagesNotifier, List<ChatMessage>>(
-        MessagesNotifier.new);
+      MessagesNotifier.new,
+    );
 
 class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   @override
@@ -77,7 +93,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
   Future<void> refresh() async {
     state = await AsyncValue.guard(
-        () => ref.read(apiClientProvider).getMessages());
+      () => ref.read(apiClientProvider).getMessages(),
+    );
   }
 
   Future<void> sendMessage(String message) async {
@@ -86,22 +103,16 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // Signal sending state
     ref.read(isSendingProvider.notifier).state = true;
 
-    // Optimistically add user message
+    // Optimistically add user message only (assistant handled via streamingContent)
+    final timestamp = DateTime.now().toIso8601String().substring(11, 16);
     final userMsg = ChatMessage(
       role: 'user',
       content: message,
-      timestamp: DateTime.now().toIso8601String().substring(11, 16),
-    );
-
-    // Add empty assistant message for streaming
-    final assistantMsg = ChatMessage(
-      role: 'assistant',
-      content: '',
-      timestamp: DateTime.now().toIso8601String().substring(11, 16),
+      timestamp: timestamp,
     );
 
     final current = state.valueOrNull ?? [];
-    state = AsyncData([...current, userMsg, assistantMsg]);
+    state = AsyncData([...current, userMsg]);
 
     try {
       final stream = api.sendMessageStream(message);
@@ -112,25 +123,37 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         fullReply += chunk.content;
         fullThinking += chunk.thinking ?? '';
 
-        // Update the last message in the list
-        final updatedMessages = [...state.valueOrNull ?? <ChatMessage>[]];
-        if (updatedMessages.isNotEmpty) {
-          updatedMessages[updatedMessages.length - 1] = ChatMessage(
+        // Update streaming providers instead of copying the entire message list
+        ref.read(streamingContentProvider.notifier).state = fullReply;
+        ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+      }
+
+      // Append final assistant message to the list
+      final list = state.valueOrNull ?? <ChatMessage>[];
+      if (fullReply.isNotEmpty || fullThinking.isNotEmpty) {
+        list.add(
+          ChatMessage(
             role: 'assistant',
             content: fullReply,
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
-            timestamp: assistantMsg.timestamp,
-          );
-          state = AsyncData(updatedMessages);
-        }
+            timestamp: timestamp,
+          ),
+        );
       }
+      state = AsyncData(list);
+
+      // Clear streaming state before refresh to avoid stale UI
+      ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingThinkingProvider.notifier).state = '';
 
       // Final refresh to ensure everything is synced (metadata, IDs, etc)
       await refresh();
       // Also refresh chat list (titles may have changed)
       ref.invalidate(chatListProvider);
     } catch (e) {
-      // Revert if error? For now just refresh
+      // Clear streaming state on error
+      ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingThinkingProvider.notifier).state = '';
       await refresh();
     } finally {
       ref.read(isSendingProvider.notifier).state = false;
@@ -143,7 +166,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(isSendingProvider.notifier).state = true;
 
     final fileName = filePath.split('/').last;
-    final displayMsg = message.isEmpty ? '*(Dosya gönderildi: $fileName)*' : '$message\n*(Dosya: $fileName)*';
+    final displayMsg = message.isEmpty
+        ? '*(Dosya gönderildi: $fileName)*'
+        : '$message\n*(Dosya: $fileName)*';
 
     final userMsg = ChatMessage(
       role: 'user',
@@ -168,7 +193,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 // ─── Incognito Mode ─────────────────────────────────────────────
 
 final incognitoProvider = StateNotifierProvider<IncognitoNotifier, bool>(
-    (ref) => IncognitoNotifier(ref));
+  (ref) => IncognitoNotifier(ref),
+);
 
 class IncognitoNotifier extends StateNotifier<bool> {
   final Ref _ref;

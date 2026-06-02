@@ -28,7 +28,7 @@ Test adımları. Başarılı testleri `[x]` ile işaretle.
 
 ## Bölüm 4 — Stream İptali (Orphaned Stream)
 - [ ] Stream devam ederken (yanıt gelirken) başka bir sohbete tıkla
-- [ ] Eski sohbetteki stream duruyor mu? (backend log'unda hata/kesinti yok)
+- [ ] Eski sgohbetteki stream duruyor mu? (backend lo'unda hata/kesinti yok)
 - [ ] Yeni sohbet açılıp mesaj gönderilebiliyor mu?
 - [ ] Stream devam ederken "Yeni Sohbet" butonuna bas — stream iptal oluyor mu?
 - [ ] Stream devam ederken uygulamayı kapat — dispose'da stream cancel oluyor (log'da hata yok)

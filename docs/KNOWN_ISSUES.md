@@ -33,11 +33,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **File:** `app.go`
 - **Fix:** Added `clientMu sync.RWMutex` to `App` struct. All writes use `Lock/Unlock`, all reads use `RLock/RUnlock` with pointer copy. Both `a.client` and `a.embeddingClient` are fully protected.
 
-### C6. `saveMemoryAsync` RLock→Lock Pattern (Deadlock Risk)
-- **File:** `app.go:1399-1421`
-- **Issue:** `saveMemoryAsync` acquires `storeMu.RLock()` at line 1394 (deferred RUnlock at 1395), then spawns a goroutine at line 1399 that tries to acquire `storeMu.Lock()` at line 1404. The function returns almost immediately, so the deferred RUnlock fires quickly, and the goroutine can proceed. However, if `saveMemoryAsync` is called while `storeMu` is already write-locked (e.g. during `reinitMemoryStore`), the RLock blocks. The goroutine then queues behind the RLock. If two goroutines call `saveMemoryAsync` concurrently, the first holds RLock, the second also takes RLock (readers don't block each other), then both goroutines try Lock() — one succeeds, the other blocks until the first finishes. This is fragile and confusing.
-- **Impact:** Hard-to-debug hangs under concurrent memory save + reinit scenarios.
-- **Fix:** Use a channel-based worker goroutine for async memory saves instead of the lock-then-goroutine pattern.
+### ~~C6. `saveMemoryAsync` RLock→Lock Pattern (Deadlock Risk)~~ ✅ Fixed
+- **File:** `app.go`
+- **Fix:** Replaced the lock-then-goroutine pattern with a channel-based worker. `saveMemoryAsync` now sends a `saveTask` to a buffered channel (cap 64) and returns immediately. A single `memorySaveWorker` goroutine processes tasks sequentially, acquiring `storeMu.Lock()` directly — no RLock→Lock transition, no deadlock risk.
 
 ### C7. UI Thread Performance — AnimationController Per Message
 - **File:** `frontend/lib/widgets/chat_message_list.dart:92-99`

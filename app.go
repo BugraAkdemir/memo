@@ -1262,7 +1262,7 @@ func (a *App) autoStartEmbeddingModel() {
 	log.Printf("Auto-starting embedding model: %s", embeddingPath)
 	if err := a.StartEmbeddingModel(embeddingPath, -1); err != nil {
 		msg := fmt.Sprintf("⚠️ Failed to auto-start embedding model: %v", err)
-		log.Printf(msg)
+		log.Print(msg)
 		a.emitEvent("memory:error", msg)
 	} else {
 		log.Println("✅ Embedding model auto-started — memory/RAG is active.")
@@ -1400,13 +1400,13 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 		start := time.Now()
 		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
-		
+
 		a.storeMu.Lock()
 		defer a.storeMu.Unlock()
 		if a.store == nil {
 			return
 		}
-		
+
 		if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
 			log.Printf("LATENCY app.memory_save_async total_ms=%d status=error", time.Since(start).Milliseconds())
 			log.Printf("MEMORY SAVE FAILED: %v", err)
@@ -1438,7 +1438,7 @@ func (a *App) CheckEmbeddingHealth() map[string]interface{} {
 
 	a.storeMu.RLock()
 	defer a.storeMu.RUnlock()
-	
+
 	if a.store == nil {
 		result["error"] = "memory store not initialized"
 		return result

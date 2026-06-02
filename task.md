@@ -1,4 +1,4 @@
-# 🟠 Yüksek Öncelikli Sorunlar — Kategorik Çalışma Planı
+# 🟡 Orta Öncelikli Sorunlar — Kategorik Çalışma Planı
 
 ---
 
@@ -6,35 +6,30 @@
 
 > Hiçbir mantıksal değişiklik gerektirmez. Arka arkaya sıralı olarak yapılabilir.
 
-### A1. Y13 — Oturum Kimliği 8 Hex Karaktere Kırpılmış
-- **Dosya:** `internal/sessions/sessions.go:68`
-- **Sorun:** `uuid.New().String()[:8]` → 32 bit, ~10^5 oturumda %1 collision
-- **Çözüm:** `uuid.New().String()` (tam UUID) veya en az 16 hex karakter
-
-### A2. Y6 — `hash2hex` SHA-256'nın Sadece 4 Baytı
-- **Dosya:** `internal/memory/store.go:342-344`
-- **Sorun:** `h.Sum(nil)[:4]` → 4 bayt, ~2^16 girişte %50 collision
-- **Çözüm:** `[:8]` (en az 8 bayt / 16 hex karakter)
-
-### A3. Y2 — Config Dosyası Dünya-Tarafından Okunabilir
-- **Dosya:** `internal/config/config.go:178`
-- **Sorun:** `os.WriteFile` ile `0644` izni
+### A1. O2 — Oturum Dosyaları Dünya-Tarafından Okunabilir (`0644`)
+- **Dosya:** `internal/sessions/sessions.go:236`
+- **Sorun:** JSON dosyaları `0644` — herkes okuyabilir
 - **Çözüm:** `0600`
 
-### A4. Y8 — İndirme Hatalarında Geçici Dosya Temizlenmiyor
-- **Dosya:** `internal/modelstore/modelstore.go:237-243`
-- **Sorun:** `os.Remove(tmpPath)` yalnızca `ctx.Err() != nil` durumunda
-- **Çözüm:** Koşulsuz `defer os.Remove(tmpPath)`
+### A2. O5 — SSE `[DONE]` Parçasında `FinishReason` Eksik
+- **Dosya:** `internal/api/streaming.go:65`
+- **Sorun:** `[DONE]` sentinel'inde `finish_reason` yok, frontend ayırt edemiyor
+- **Çözüm:** `[DONE]` parçasına `finish_reason` alanı ekle
 
-### A5. Y9 — `extractTarGzToBin` Dosya Tanıtıcı Sızıntısı
-- **Dosya:** `internal/llama/installer.go:433,437`
-- **Sorun:** `out.Close()` manuel, `io.Copy` hatasında `continue` ile atlanıyor
-- **Çözüm:** `defer out.Close()` kullan
+### A3. O3 — `save()` Hataları Oturum Yöneticisinde Sessizce Atılıyor
+- **Dosya:** `internal/sessions/sessions.go:75,155`
+- **Sorun:** `save()` hatası yok sayılıyor, kayıp veri
+- **Çözüm:** `log.Printf` ekle (session manager'da)
 
-### A6. Y12 — `Shutdown(context.Background())` Süresiz Bloke
-- **Dosya:** `internal/webserver/server.go:286`
-- **Sorun:** Zaman aşımı yok, takılı handler varsa uygulama donar
-- **Çözüm:** `context.WithTimeout(ctx, 10*time.Second)`
+### A4. O4 — `loadAll()` Bozuk Oturum Dosyalarını Sessizce Atlıyor
+- **Dosya:** `internal/sessions/sessions.go:252-258`
+- **Sorun:** `continue` ile atlanan dosyalar loglanmıyor
+- **Çözüm:** Her atlanan dosya için `log.Printf`
+
+### A5. O13 — Dışa Aktarma Hataları Sessizce Yutuluyor
+- **Dosya:** `frontend/lib/screens/chat_screen.dart:170-178`
+- **Sorun:** Boş `catch (_) {}` bloğu
+- **Çözüm:** SnackBar veya dialog göster
 
 ---
 
@@ -42,30 +37,30 @@
 
 > Her biri bağımsız, sıra önemli değil. Tek tek ilerlenmeli.
 
-### B1. Y1 — SSE Bağlantı Kesintisinde Goroutine Sızıntısı
-- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`
-- **Sorun:** `request.Context().Done()` izlenmiyor, istemci kopunca goroutine sızar
-- **Çözüm:** `select { case <-ctx.Done(): return; case ... }` modeli
+### B1. O9 — `killByPort` `lsof` / `fuser`'a Bağımlı
+- **Dosya:** `internal/llama/llama.go:244-253`
+- **Sorun:** Minimal ortamlarda `lsof`/`fuser` yok → "Adres kullanımda"
+- **Çözüm:** PID takibi + doğrudan sinyal gönderimi
 
-### B2. Y5 — `buildMessages` Oturum Geçmişini Mutasyona Uğratıyor
-- **Dosya:** `app.go:1308`
-- **Sorun:** `history[i] = ...` ile orijinal slice değişir, her istekte sistem prompt'u ikiye katlanır
-- **Çözüm:** Mutation öncesi `append([]Message{}, history...)` ile kopyala
+### B2. O10 — Sabit Kodlanmış Windows Ses Aygıtı GUID'i
+- **Dosya:** `app.go:739`
+- **Sorun:** Tek GUID çoğu Windows makinede çalışmaz
+- **Çözüm:** Başlangıçta ses aygıtlarını numaralandır / varsayılan kayıt aygıtını kullan
 
-### B3. Y7 — `monitor()` Goroutine'i `s.cmd`'ye Kilit Dışında Erişiyor
-- **Dosya:** `internal/llama/llama.go:271-302`
-- **Sorun:** Nil kontrolü ve `cmd.Wait()` kilit dışında → nadir nil-pointer paniği
-- **Çözüm:** Nil kontrolü + `Wait()`'i `s.mu` kilit içine taşı
+### B3. O12 — Geçmiş Okurken Otomatik Kaydırma Dibe Çekiyor
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:23-33`
+- **Sorun:** Kullanıcı yukarı kaydırdıysa yeni token zorla alta götürür
+- **Çözüm:** Yalnızca dibe yakınsa (örn. 50px) otomatik kaydır
 
-### B4. Y10 — `nvidia-smi` Hataları Sessizce Geçiliyor
-- **Dosya:** `internal/llama/gpu.go:71-86`
-- **Sorun:** `exec.Command("nvidia-smi").Output()` hatası yok sayılır → 0 VRAM → CPU fallback
-- **Çözüm:** Hatayı kontrol et, logla, kullanıcıya bildir
+### B4. O11 — Linux GPU Algılaması Sysfs Üzerinden Kırılgan
+- **Dosya:** `internal/llama/gpu.go:167`
+- **Sorun:** `/sys`'e bağımlı, Docker'da `--privileged` gerekir
+- **Çözüm:** `lspci` yedeği veya daha sağlam `drm`/`hwmon` okuma
 
-### B5. Y15 — Backend Bağlantı Hatasında "Kurulu" Gösteriliyor
-- **Dosya:** `frontend/lib/providers/models_provider.dart:97-104`
-- **Sorun:** `connectionError` → `true` ("kurulu") döner, kullanıcı kurulumu tetikleyemez
-- **Çözüm:** Bağlantı hataları için `null` veya ayrı hata state'i
+### B5. O1 — Arka Plan Hataları Arayüze Asla Ulaşmıyor (Bozuk Olay Sistemi)
+- **Dosya:** `app.go` (emitEvent pasif)
+- **Sorun:** Arka plan hataları yalnızca log'a yazılır, kullanıcıya gösterilmez
+- **Çözüm:** Sunucu-olay akışı endpoint'i veya yoklama endpoint'i uygula
 
 ---
 
@@ -73,25 +68,20 @@
 
 > Concurrency, yeni mekanizma veya frontend-backend koordinasyonu gerektirir.
 
-### C1. Y3 — Senkronizasyon Şifrelemesi İçin Zayıf Anahtar Türetme
-- **Dosya:** `internal/cloudsync/crypto.go:18-23`
-- **Sorun:** Tek SHA-256 + sabit tuz → kaba kuvvete açık
-- **Çözüm:** `golang.org/x/crypto/pbkdf2` veya argon2id, rastgele tuz + veride saklama
+### C1. O6 — Ana Yolda Senkron Bloke Eden Yazmalar
+- **Dosya:** `internal/sessions/sessions.go:155`, `internal/memory/store.go:105`
+- **Sorun:** Her mesajda `json.Marshal` + `os.WriteFile` + gömme hesaplaması LLM yolunu bloke eder
+- **Çözüm:** Debounce zamanlayıcı / async worker ile yazmaları tamponla
 
-### C2. Y4 — Sabit Kodlanmış Geri Dönüş Şifreleme Anahtarı
-- **Dosya:** `internal/cloudsync/crypto.go:59-62`
-- **Sorun:** `hardwareID()` başarısız olunca `"memo-fallback-key"` → tüm makineler aynı anahtar
-- **Çözüm:** Rastgele anahtar üret, config'de sakla, parola sor
+### C2. O7 — `LoadCache` Performansı — O(N) Başlangıç Süresi
+- **Dosya:** `internal/memory/store.go:72-90`
+- **Sorun:** 10.000+ girişte başlangıç süresi ve RAM kullanımı doğrusal artar
+- **Çözüm:** Sayfalama, tembel yükleme veya disk tabanlı indeks (SQLite/bolt)
 
-### C3. Y11 — OAuth `authDone` Kanalı Yarışı
-- **Dosya:** `internal/cloudsync/drive.go:99-103`
-- **Sorun:** Kanal takası eski kanalda sonsuz beklemeye yol açar
-- **Çözüm:** `sync.WaitGroup` veya mutex + tek paylaşımlı kanal
-
-### C4. Y14 — İndirme Yoklama Akışı Sonsuza Kadar Çalışıyor
-- **Dosya:** `frontend/lib/providers/models_provider.dart:66-79`
-- **Sorun:** `while (true)` asla iptal edilmez, indirme bitse bile poll devam eder
-- **Çözüm:** Provider dispose / indirme tamamlanınca iptal (`await` + state kontrolü)
+### C3. O8 — Kaba Kuvvet O(N) Vektör Arama
+- **Dosya:** `internal/memory/retriever.go`
+- **Sorun:** 10.000 giriş ötesinde arama gecikmesi belirgin
+- **Çözüm:** ANN indeksi veya vektör veritabanı
 
 ---
 
@@ -99,18 +89,20 @@
 
 | # | Kategori | Sorun | Durum |
 |---|----------|-------|-------|
-| A1 | ✅ Kolay | Y13 — Session ID | ✅ Tamam |
-| A2 | ✅ Kolay | Y6 — hash2hex | ✅ Tamam |
-| A3 | ✅ Kolay | Y2 — Config 0644 | ✅ Tamam |
-| A4 | ✅ Kolay | Y8 — Temp dosya | ✅ Tamam |
-| A5 | ✅ Kolay | Y9 — FD leak | ✅ Tamam |
-| A6 | ✅ Kolay | Y12 — Shutdown timeout | ✅ Tamam |
-| B1 | 🟡 Orta | Y1 — SSE goroutine leak | ✅ Tamam |
-| B2 | 🟡 Orta | Y5 — buildMessages mutation | ✅ Tamam |
-| B3 | 🟡 Orta | Y7 — monitor() race | ✅ Tamam |
-| B4 | 🟡 Orta | Y10 — nvidia-smi hata | ✅ Tamam |
-| B5 | 🟡 Orta | Y15 — "Kurulu" hatası | ✅ Tamam |
-| C1 | 🔴 Zor | Y3 — Zayıf KDF | ⬜ |
-| C2 | 🔴 Zor | Y4 — Fallback key | ⬜ |
-| C3 | 🔴 Zor | Y11 — OAuth race | ⬜ |
-| C4 | 🔴 Zor | Y14 — Download polling | ⬜ |
+| A1 | ✅ Kolay | O2 — Session 0644 | ✅ Tamam |
+| A2 | ✅ Kolay | O5 — FinishReason | ✅ Tamam |
+| A3 | ✅ Kolay | O3 — save() hata log | ✅ Tamam |
+| A4 | ✅ Kolay | O4 — loadAll() hata log | ✅ Tamam |
+| A5 | ✅ Kolay | O13 — Dışa aktarma hata | ✅ Tamam |
+| A2 | ✅ Kolay | O5 — FinishReason | ✅ Tamam |
+| A3 | ✅ Kolay | O3 — save() hata log | ✅ Tamam |
+| A4 | ✅ Kolay | O4 — loadAll() hata log | ✅ Tamam |
+| A5 | ✅ Kolay | O13 — Dışa aktarma hata | ✅ Tamam |
+| B1 | 🟡 Orta | O9 — killByPort | ✅ Tamam |
+| B2 | 🟡 Orta | O10 — Windows ses GUID | ✅ Tamam |
+| B3 | 🟡 Orta | O12 — Otomatik kaydırma | ✅ Tamam |
+| B4 | 🟡 Orta | O11 — GPU algılama | ✅ Tamam |
+| B5 | 🟡 Orta | O1 — Olay sistemi | ✅ Tamam |
+| C1 | 🔴 Zor | O6 — Senkron yazmalar | ✅ Tamam |
+| C2 | 🔴 Zor | O7 — LoadCache perf | ✅ Tamam |
+| C3 | 🔴 Zor | O8 — Vektör arama | ✅ Tamam |

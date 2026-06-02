@@ -200,7 +200,13 @@ class _ChatTopBar extends ConsumerWidget {
                     );
                   }
                 }
-              } catch (_) {}
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Export failed: $e')),
+                  );
+                }
+              }
             },
           ),
         ],

@@ -418,6 +418,15 @@ func (s *Server) handleSyncDisconnect(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotFound)
+		return
+	}
+	evs := s.fullBridge.GetEvents()
+	writeJSON(w, evs)
+}
+
 // ─── Models ─────────────────────────────────────────────────────
 
 func (s *Server) handleLocalModels(w http.ResponseWriter, r *http.Request) {

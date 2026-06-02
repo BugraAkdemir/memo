@@ -137,6 +137,7 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/sync/pull", s.handleSyncPull)
 	mux.HandleFunc("/api/sync/now", s.handleSyncNow)
 	mux.HandleFunc("/api/sync/disconnect", s.handleSyncDisconnect)
+	mux.HandleFunc("/api/events", s.handleEvents)
 	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
 	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
 

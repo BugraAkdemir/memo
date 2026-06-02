@@ -37,9 +37,8 @@ type driveClient struct {
 	tokenPath string
 	folderID  string // cached "Memo Backups" folder ID
 
-	// authDone is closed once the OAuth loopback flow completes.
-	authDone       chan struct{}
-	authDoneClosed bool
+	// authWg counts in-flight OAuth flows; WaitForAuth blocks until Done is called.
+	authWg sync.WaitGroup
 }
 
 func newDriveClient(clientID, clientSecret, tokenPath string) *driveClient {
@@ -58,12 +57,9 @@ func newDriveClient(clientID, clientSecret, tokenPath string) *driveClient {
 	dc := &driveClient{
 		cfg:       cfg,
 		tokenPath: tokenPath,
-		authDone:  make(chan struct{}),
 	}
 	if t, err := dc.loadToken(); err == nil {
 		dc.token = t
-		dc.authDoneClosed = true
-		close(dc.authDone) // already authenticated
 	}
 	return dc
 }
@@ -96,11 +92,9 @@ func (dc *driveClient) IsAuthenticated() bool {
 // StartAuthFlow starts a loopback HTTP server, returns the URL the user must
 // open in a browser. Call WaitForAuth to block until the flow completes.
 func (dc *driveClient) StartAuthFlow() (string, error) {
-	// Reset the done channel so the flow can be restarted.
-	dc.mu.Lock()
-	dc.authDone = make(chan struct{})
-	dc.authDoneClosed = false
-	dc.mu.Unlock()
+	// Reset the WaitGroup so the flow can be restarted.
+	// Add must be called before anyone can Wait.
+	dc.authWg.Add(1)
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -185,9 +179,11 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 
 // WaitForAuth blocks until the OAuth flow finishes or the context is cancelled.
 func (dc *driveClient) WaitForAuth(ctx context.Context) error {
-	dc.mu.Lock()
-	done := dc.authDone
-	dc.mu.Unlock()
+	done := make(chan struct{}, 1)
+	go func() {
+		dc.authWg.Wait()
+		done <- struct{}{}
+	}()
 
 	select {
 	case <-done:
@@ -463,9 +459,5 @@ func (dc *driveClient) saveToken(t *oauth2.Token) error {
 }
 
 func (dc *driveClient) closeAuthDoneLocked() {
-	if dc.authDoneClosed {
-		return
-	}
-	close(dc.authDone)
-	dc.authDoneClosed = true
+	dc.authWg.Done()
 }

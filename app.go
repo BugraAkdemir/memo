@@ -55,6 +55,47 @@ type saveTask struct {
 	reply   string
 }
 
+// AppEvent represents a background notification for the UI.
+type AppEvent struct {
+	Name string `json:"name"`
+	Data string `json:"data,omitempty"`
+}
+
+// eventRing is a fixed-size ring buffer of recent events.
+type eventRing struct {
+	mu   sync.Mutex
+	buf  [64]AppEvent
+	pos  int // next write position
+	full bool
+}
+
+func (r *eventRing) push(e AppEvent) {
+	r.mu.Lock()
+	r.buf[r.pos] = e
+	r.pos = (r.pos + 1) % len(r.buf)
+	if r.pos == 0 {
+		r.full = true
+	}
+	r.mu.Unlock()
+}
+
+func (r *eventRing) snapshot() []AppEvent {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	n := len(r.buf)
+	if !r.full {
+		n = r.pos
+	}
+	out := make([]AppEvent, n)
+	if r.full {
+		copy(out, r.buf[r.pos:])
+		copy(out[len(r.buf)-r.pos:], r.buf[:r.pos])
+	} else {
+		copy(out, r.buf[:r.pos])
+	}
+	return out
+}
+
 type App struct {
 	ctx               context.Context
 	client            *api.Client
@@ -76,10 +117,11 @@ type App struct {
 	embeddingClient   *api.Client // separate client for embedding server
 	syncManager       *cloudsync.Manager
 	memorySaveCh      chan saveTask
+	events            *eventRing
 }
 
 func NewApp() *App {
-	return &App{}
+	return &App{events: &eventRing{}}
 }
 
 // loadDotEnv reads a .env file and sets any unset environment variables from it.
@@ -108,9 +150,12 @@ func loadDotEnv(path string) {
 }
 
 func (a *App) emitEvent(name string, data ...interface{}) {
-	// Wails runtime calls cause fatal exits (os.Exit(1)) when context is invalid (headless mode)
-	// We no longer use Wails frontend events since Flutter migration
-	// log.Printf("APP EVENT: %s - %v", name, data)
+	var dataStr string
+	if len(data) > 0 {
+		dataStr = fmt.Sprint(data...)
+	}
+	a.events.push(AppEvent{Name: name, Data: dataStr})
+	log.Printf("event: %s — %s", name, dataStr)
 }
 
 func (a *App) startup(ctx context.Context) {
@@ -734,6 +779,45 @@ var (
 	recMu   sync.Mutex
 )
 
+// windowsRecordArgs returns ffmpeg args using the system default microphone.
+// Enumerates DirectShow devices; falls back to "default" if enumeration fails.
+func windowsRecordArgs(outPath string) []string {
+	dev := getDefaultDshowDevice()
+	return []string{"-y", "-f", "dshow", "-i", "audio=" + dev, "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", outPath}
+}
+
+// getDefaultDshowDevice enumerates ffmpeg DirectShow audio devices and returns
+// the first available one, or "default" as a safe fallback.
+func getDefaultDshowDevice() string {
+	out, err := exec.Command("ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
+	if err != nil {
+		return "default"
+	}
+	// ffmpeg lists audio devices as:
+	//   "dshow\tAlternative name\t@device_cm:{GUID}"
+	// Look for the first device line that is not "dummy".
+	lines := strings.Split(string(out), "\n")
+	for _, line := range lines {
+		if !strings.HasPrefix(line, "[dshow") {
+			continue
+		}
+		if !strings.Contains(line, "\"") {
+			continue
+		}
+		// Find device name between double quotes
+		a := strings.Index(line, "\"")
+		b := strings.LastIndex(line, "\"")
+		if a != -1 && b > a+1 {
+			name := line[a+1 : b]
+			// Skip dummy and virtual-audio-capturer which may not produce audio
+			if name != "" {
+				return name
+			}
+		}
+	}
+	return "default"
+}
+
 func (a *App) StartRecording() error {
 	recMu.Lock()
 	defer recMu.Unlock()
@@ -753,9 +837,9 @@ func (a *App) StartRecording() error {
 	var recorder string
 	switch runtime.GOOS {
 	case "windows":
-		// ffmpeg with DirectShow — ships with many Windows systems; graceful fallback if missing
+		// ffmpeg with DirectShow — use system default microphone instead of hardcoded GUID
 		recorder = "ffmpeg"
-		recordArgs = []string{"-y", "-f", "dshow", "-i", "audio=@device_cm_{33D9A762-90C8-11D0-BD43-00A0C911CE86}\\wave_{00000000-0000-0000-0000-000000000000}", "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", recFile}
+		recordArgs = windowsRecordArgs(recFile)
 	case "darwin":
 		recorder = "sox"
 		recordArgs = []string{"-d", "-b", "16", "-r", "16000", "-c", "1", recFile}
@@ -1734,6 +1818,16 @@ func (a *App) DisconnectSync() error {
 	}
 	a.syncManager = nil
 	return nil
+}
+
+// GetEvents returns recent background events for the frontend to display.
+func (a *App) GetEvents() []map[string]string {
+	evs := a.events.snapshot()
+	out := make([]map[string]string, len(evs))
+	for i, e := range evs {
+		out[i] = map[string]string{"name": e.Name, "data": e.Data}
+	}
+	return out
 }
 
 var _ webserver.FullBridge = (*App)(nil)

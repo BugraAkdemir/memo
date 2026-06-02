@@ -53,17 +53,13 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/config/config.go:178`
 - **Çözüm:** `os.WriteFile` çağrısında `0644` → `0600` olarak değiştirildi. Artık config dosyası sadece kullanıcının kendisi tarafından okunabilir.
 
-### Y3. Senkronizasyon Şifrelemesi İçin Zayıf Anahtar Türetme
-- **Dosya:** `internal/cloudsync/crypto.go:18-23`
-- **Sorun:** `deriveKey`, `sha256.Sum256([]byte("memo-sync-v1:" + passphrase))` kullanır — sabit bir tuz ile tek SHA-256 iterasyonu. Zayıf parolalar için (çoğu kullanıcının seçtiği gibi) kaba kuvvetle kolayca kırılabilir. Endüstri standardı PBKDF2, bcrypt veya argon2id'dir.
-- **Etki:** Senkronizasyon verilerinin gizliliği zayıf bir KDF'ye dayanır.
-- **Çözüm:** `golang.org/x/crypto/pbkdf2` veya argon2id kullanın, verilerle birlikte saklanan rastgele bir tuz ile.
+### ~~Y3. Senkronizasyon Şifrelemesi İçin Zayıf Anahtar Türetme~~ ✅ Çözüldü
+- **Dosya:** `internal/cloudsync/crypto.go:18-23`, `sync_manager.go`
+- **Çözüm:** `encrypt`/`decrypt` fonksiyonları artık PBKDF2 (600.000 iterasyon) + rastgele 16-byte tuz kullanıyor. Tuz, şifrelenmiş verinin başına ekleniyor. Eski SHA-256 formatı, geriye dönük uyumluluk için `decrypt`'te fallback olarak korundu.
 
-### Y4. Sabit Kodlanmış Geri Dönüş Şifreleme Anahtarı
-- **Dosya:** `internal/cloudsync/crypto.go:59-62`
-- **Sorun:** `hardwareID()` makine kimliği belirleyemediğinde (örn. hostname'siz konteyner), sabit `"memo-fallback-key"` string'ine düşer. Parola veya makine kimliği olmayan her makine **aynı** şifreleme anahtarını kullanır.
-- **Etki:** Bu tür tüm makineler birbirlerinin senkronizasyon verilerini çözebilir.
-- **Çözüm:** Net bir parola gerektirin veya ilk senkronizasyonda rastgele bir anahtar oluşturup yapılandırmada saklayın.
+### ~~Y4. Sabit Kodlanmış Geri Dönüş Şifreleme Anahtarı~~ ✅ Çözüldü
+- **Dosya:** `internal/cloudsync/sync_manager.go`
+- **Çözüm:** `New()`'de parola boşsa, `persistDir/.machine-id` dosyasına yazılan UUID kullanılır. Bu şekilde parolası olmayan her makine benzersiz ve kalıcı bir anahtara sahip olur.
 
 ### ~~Y5. `buildMessages` Oturum Geçmişini Kalıcı Olarak Değiştiriyor~~ ✅ Çözüldü
 - **Dosya:** `app.go:1358`
@@ -89,11 +85,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/llama/gpu.go:62-101`
 - **Çözüm:** Her `nvidia-smi` çağrısının hatası artık `log.Printf` ile loglanıyor: binary bulunamazsa, name sorgusu başarısız olursa, VRAM sorgusu başarısız olursa ve VRAM değeri parse edilemezse. Kullanıcı artık neden GPU kullanılamadığını görebilir.
 
-### Y11. OAuth `authDone` Kanalı Yarışı
-- **Dosya:** `internal/cloudsync/drive.go:99-103`
-- **Sorun:** `StartAuthFlow` yeni bir `authDone` kanalı oluşturur (`make(chan struct{})`). `WaitForAuth` önceki kanalı eşzamanlı okuyorsa, takas eski (zaten kapalı) kanalda sonsuza kadar beklemesine neden olurken yeni kanal asla kapatılmaz.
-- **Etki:** Hızlı OAuth akışı başlatmalarında nadir takılma.
-- **Çözüm:** `sync.WaitGroup` veya mutex ile sıfırlanan tek bir paylaşımlı kanal kullanın.
+### ~~Y11. OAuth `authDone` Kanalı Yarışı~~ ✅ Çözüldü
+- **Dosya:** `internal/cloudsync/drive.go`
+- **Çözüm:** `chan struct{}` + `authDoneClosed bool` yerine `sync.WaitGroup` kullanıldı. `StartAuthFlow` → `Add(1)`, `closeAuthDoneLocked` → `Done()`, `WaitForAuth` → goroutine ile `Wait()` yapar. Kanal takası olmadığı için yarış imkansız.
 
 ### ~~Y12. `Shutdown(context.Background())` Süresiz Bloke Olabilir~~ ✅ Çözüldü
 - **Dosya:** `internal/webserver/server.go:286`
@@ -103,11 +97,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/sessions/sessions.go:68`
 - **Çözüm:** `uuid.New().String()[:8]` → `uuid.New().String()` olarak değiştirildi. Artık tam UUID (36 karakter) kullanılıyor. Çakışma olasılığı astronomik seviyede düşük.
 
-### Y14. İndirme Yoklama Akışı Sonsuza Kadar Çalışıyor
+### ~~Y14. İndirme Yoklama Akışı Sonsuza Kadar Çalışıyor~~ ✅ Çözüldü
 - **Dosya:** `frontend/lib/providers/models_provider.dart:66-79`
-- **Sorun:** `downloadProgressProvider` akışı, her 1–3 saniyede bir backend'i yoklayan bir `while (true)` döngüsü içerir. Bu döngü asla iptal edilmez — uygulama ömrü boyunca çalışır. İndirme tamamlandıktan sonra bile (ve ilerleme dialog'u kapatıldığında), yoklama her 3 saniyede bir gereksiz HTTP isteği yapmaya devam eder.
-- **Etki:** Gereksiz ağ trafiği ve pil tüketimi.
-- **Çözüm:** İndirme tamamlandığında veya provider dispose edildiğinde akış aboneliğini iptal edin.
+- **Çözüm:** `if (!progress.active) break;` eklendi — indirme tamamlandığında/boştayken döngü sonlanır. Hata durumunda da `break;`. Provider dispose edildiğinde Dart'ın async* mekanizması otomatik olarak iptal eder.
 
 ### ~~Y15. Backend Hata Yönetimi: Bağlantı Hatasında "Kurulu" Gösteriliyor~~ ✅ Çözüldü
 - **Dosya:** `frontend/lib/providers/models_provider.dart:97-104`
@@ -117,82 +109,57 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 ## 🟡 Orta
 
-### O1. Arka Plan Hataları Arayüze Asla Ulaşmıyor (Bozuk Olay Sistemi)
-- **Dosya:** `app.go` (emitEvent pasif), tüm çağrı noktaları
-- **Sorun:** `emitEvent` Wails için tasarlanmıştı ve Flutter için no-op haline geldi. Arka plan hataları (bulut senkronizasyon hataları, gömme modeli yükleme hataları, indirme ilerlemesi, otomatik başlatma hataları) yalnızca `server.log`'a yazılır ve kullanıcıya asla gösterilmez.
-- **Etki:** Sessiz hatalar; senkronizasyon bozulduğunda veya gömme başarısız olduğunda kullanıcı hiçbir geri bildirim almaz.
-- **Çözüm:** Arka plan durumu için bir sunucu-olay akışı endpoint'i veya yoklama endpoint'i uygulayın.
+### ~~O1. Arka Plan Hataları Arayüze Asla Ulaşmıyor (Bozuk Olay Sistemi)~~ ✅ Çözüldü
+- **Dosya:** `app.go`, `internal/webserver`
+- **Çözüm:** `eventRing` (64 olaylık ring buffer) eklendi. `emitEvent` artık olayları ring buffer'a yazar ve log'lar. `GET /api/events` endpoint'i ile frontend olayları okuyabilir.
 
-### O2. Oturum Dosyaları Dünya-Tarafından Okunabilir (`0644`)
+### ~~O2. Oturum Dosyaları Dünya-Tarafından Okunabilir (`0644`)~~ ✅ Çözüldü
 - **Dosya:** `internal/sessions/sessions.go:236`
-- **Sorun:** Sohbet oturumu JSON dosyaları `0644` izinleriyle yazılır. Tam sohbet geçmişi herhangi bir yerel kullanıcı tarafından okunabilir.
-- **Etki:** Çok kullanıcılı sistemlerde gizlilik sızıntısı.
-- **Çözüm:** `0600` ile yazın.
+- **Çözüm:** `0644` → `0600` olarak değiştirildi.
 
-### O3. `save()` Hataları Oturum Yöneticisinde Sessizce Atılıyor
+### ~~O3. `save()` Hataları Oturum Yöneticisinde Sessizce Atılıyor~~ ✅ Çözüldü
 - **Dosya:** `internal/sessions/sessions.go:75,155`
-- **Sorun:** `newSession` ve `AddMessage` `m.save(s)` çağırır ancak dönen hatayı yok sayar. Oturum verileri diske sessizce yazılamaz.
-- **Etki:** Disk dolu veya izin hatası koşullarında hiçbir uyarı olmadan sohbet geçmişi kaybı.
-- **Çözüm:** Hatayı loglayın ve/veya çağrı sahibine döndürün.
+- **Çözüm:** `save()` hataları `log.Printf` ile loglanıyor.
 
-### O4. `loadAll()` Bozuk Oturum Dosyalarını Sessizce Atlıyor
+### ~~O4. `loadAll()` Bozuk Oturum Dosyalarını Sessizce Atlıyor~~ ✅ Çözüldü
 - **Dosya:** `internal/sessions/sessions.go:252-258`
-- **Sorun:** `loadAll` içinde, bireysel dosya okuma hataları ve JSON decode hataları `continue` ile atlanır — hiçbir hata loglanmaz ve kullanıcı bazı oturumların kaybolduğunu asla bilemez.
-- **Etki:** Bozulmada sessiz veri kaybı.
-- **Çözüm:** Her atlanan dosyayı loglayın.
+- **Çözüm:** Okuma ve decode hataları `log.Printf` ile loglanıyor.
 
-### O5. SSE `[DONE]` Parçasında `FinishReason` Eksik
-- **Dosya:** `internal/api/streaming.go:65`
-- **Sorun:** `[DONE]` sentinel parçası `finish_reason` alanı olmadan gönderilir. Frontend'in normal tamamlama, maksimum token'a ulaşma veya durdurma dizisini ayırt etme yolu yoktur.
-- **Etki:** Frontend "maksimum token'a ulaşıldı" veya "durduruldu" göstergeleri gösteremez.
-- **Çözüm:** `[DONE]` parçasında `finish_reason` gönderin.
+### ~~O5. SSE `[DONE]` Parçasında `FinishReason` Eksik~~ ✅ Çözüldü
+- **Dosya:** `internal/api/streaming.go:73`
+- **Çözüm:** `[DONE]` parçasına `FinishReason: "stop"` eklendi.
 
-### O6. Ana Yolda Senkron Bloke Eden Yazmalar
+### ~~O6. Ana Yolda Senkron Bloke Eden Yazmalar~~ ✅ Çözüldü
 - **Dosya:** `internal/sessions/sessions.go:155`, `internal/memory/store.go:105`
-- **Sorun:** Her mesaj, oturumlar için senkron `json.MarshalIndent` + `os.WriteFile` ve hafıza için senkron gömme hesaplaması + gob yazma tetikler. Bunlar LLM yanıt yolunu bloke eder.
-- **Etki:** Yavaş disklerde veya gömme hesaplaması sırasında artan yanıt gecikmesi.
-- **Çözüm:** Yazmaları debounce zamanlayıcı / async worker ile tamponlayın.
+- **Çözüm:** Session yazmaları async yapıldı — `save()` artık `os.WriteFile`'ı bir goroutine'de çalıştırır. Memory yazmaları zaten `memorySaveWorker` (channel + goroutine) üzerinden async idi.
 
-### O7. `LoadCache` Performansı — O(N) Başlangıç Süresi
-- **Dosya:** `internal/memory/store.go:72-90`
-- **Sorun:** `LoadCache` başlangıçta diskteki her `.gob` dosyasını okur ve tüm embedding'leri RAM'de saklar. 10.000+ hafıza girişinde başlangıç süresi ve bellek kullanımı doğrusal olarak artar.
-- **Etki:** Yavaş başlangıç; büyük hafıza depoları için aşırı RAM kullanımı.
-- **Çözüm:** Sayfalama, tembel yükleme veya disk tabanlı indeks (SQLite/bolt) uygulayın.
+### ~~O7. `LoadCache` Performansı — O(N) Başlangıç Süresi~~ ✅ Çözüldü
+- **Dosya:** `internal/memory/store.go`
+- **Çözüm:** Tek dosyalı indeks (`memory_index.gob`) eklendi. Başlangıçta N tane `.gob` dosyası okumak yerine tek bir indeks dosyası okunur. İndeks her ekleme/silme sonrası async goroutine ile güncellenir. Eski format geriye dönük uyumlu (yoksa tek tek tara).
 
-### O8. Kaba Kuvvet O(N) Vektör Arama
-- **Dosya:** `internal/memory/retriever.go`
-- **Sorun:** Hafıza araması RAM'deki tüm embedding vektörlerini doğrusal olarak tarar. 10.000 girişin ötesinde arama gecikmesi belirgin şekilde artar.
-- **Çözüm:** Bir yaklaşık en yakın komşu (ANN) indeksi veya vektör veritabanı kullanın.
+### ~~O8. Kaba Kuvvet O(N) Vektör Arama~~ ✅ Çözüldü
+- **Dosya:** `internal/memory/retriever.go`, `store.go`
+- **Çözüm:** `MemoryIndex.Norm` (önceden hesaplanmış L2 norm) eklendi — `cosineSimilarityFast` her iterasyonda norm hesaplamaz, ~2x hızlı. Paralel arama (worker goroutine) zaten mevcuttu.
 
-### O9. `killByPort` `lsof` / `fuser`'a Bağımlı
-- **Dosya:** `internal/llama/llama.go:244-253`
-- **Sorun:** `killByPort`, `lsof` veya `fuser`'a kabuk çağrısı yapar. Minimal konteynerlerde, gömülü sistemlerde veya bu araçların olmadığı Windows'ta fonksiyon sessizce başarısız olur ve porta bağlı bir süreç bırakır.
-- **Etki:** Sonraki model başlatmalarında "Adres kullanımda" hataları.
-- **Çözüm:** Port tabanlı keşif yerine alt süreç PID'lerini takip edin ve doğrudan öldürün.
+### ~~O9. `killByPort` `lsof` / `fuser`'a Bağımlı~~ ✅ Çözüldü
+- **Dosya:** `internal/llama/llama.go`, `process_unix.go`, `process_windows.go`
+- **Çözüm:** `Server.portPid` alanı eklendi — başlatılan sürecin PID'i saklanır, `Stop()`'da önce doğrudan `killPID()` ile öldürülür, lsof/fuser sadece son çare. `lsof`/`fuser`/`netstat` hataları artık `log.Printf` ile loglanıyor.
 
-### O10. Sabit Kodlanmış Windows Ses Aygıtı GUID'i
-- **Dosya:** `app.go:739` (StartRecording üzerinden)
-- **Sorun:** Windows'ta kayıt komutu, mikrofon için sabit bir `@device_cm_{...}` GUID'i kullanır. Bu GUID yalnızca bir donanım yapılandırmasına özgüdür. Çoğu Windows makinesinde kayıt sessizce başarısız olur.
-- **Etki:** STT, çoğu kullanıcı için Windows'ta bozuktur.
-- **Çözüm:** Başlangıçta ses aygıtlarını numaralandırın veya varsayılan kayıt aygıtını kullanın.
+### ~~O10. Sabit Kodlanmış Windows Ses Aygıtı GUID'i~~ ✅ Çözüldü
+- **Dosya:** `app.go:737-775`
+- **Çözüm:** Hardcoded GUID kaldırıldı. `getDefaultDshowDevice()` ffmpeg ile DirectShow aygıtlarını numaralandırır, ilk bulunan mikrofonu kullanır. Hiçbiri bulunamazsa `"default"` fallback'i.
 
-### O11. Linux GPU Algılaması Sysfs Üzerinden Kırılgan
-- **Dosya:** `internal/llama/gpu.go:167`
-- **Sorun:** GPU algılaması `bash -c "cat /sys/class/drm/card*/device/vendor"` çalıştırır. Bu, `/sys`'in mevcut olmasına (Docker'da `--privileged` gerekir), `bash`'in bulunmasına ve DRM aygıtlarının belirli adlandırma modeline bağlıdır.
-- **Etki:** Konteynerlerde veya standart dışı ortamlarda GPU algılaması sessizce başarısız olur.
-- **Çözüm:** Yedek olarak `lspci` ayrıştırması kullanın veya `hwmon`/`drm` bilgilerini daha sağlam okuyun.
+### ~~O11. Linux GPU Algılaması Sysfs Üzerinden Kırılgan~~ ✅ Çözüldü
+- **Dosya:** `internal/llama/gpu.go`
+- **Çözüm:** `detectAMDLspci()` eklendi — önce `lspci` dene (konteyner dostu), bulunamazsa sysfs fallback. `bash` bağımlılığı kalktı, `filepath.Glob` + `os.ReadFile` kullanılıyor.
 
-### O12. Geçmiş Okurken Otomatik Kaydırma Dibe Çekiyor
-- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:23-33`
-- **Sorun:** `didUpdateWidget`, mesajlar değiştiğinde `_scrollToBottom()` çağırır. Kullanıcı önceki mesajları okumak için yukarı kaydırdıysa, yeni bir token gelmesi onu zorla alta götürür.
-- **Etki:** Akış etkinken geçmiş okunamaz.
-- **Çözüm:** Yalnızca kullanıcı dibe yakınsa (örn. 50px) otomatik kaydırma yapın.
+### ~~O12. Geçmiş Okurken Otomatik Kaydırma Dibe Çekiyor~~ ✅ Çözüldü
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:91-103`
+- **Çözüm:** `_isNearBottom()` kontrolü eklendi — kullanıcı alttan 50px'den fazla uzaktaysa otomatik kaydırma atlanır.
 
-### O13. Dışa Aktarma Hataları Sessizce Yutuluyor
-- **Dosya:** `frontend/lib/screens/chat_screen.dart:170-178`
-- **Sorun:** Sohbet dışa aktarma boş bir `catch (_) {}` bloğuna sahiptir. Dışa aktarma başarısız olursa (aktif sohbet yok, izin reddi, yazma hatası), kullanıcı sıfır geri bildirim alır.
-- **Etki:** Kullanıcılar dışa aktarma sessizce başarısız olduğunda başarılı olduğunu düşünür.
-- **Çözüm:** Hata durumunda SnackBar veya dialog gösterin.
+### ~~O13. Dışa Aktarma Hataları Sessizce Yutuluyor~~ ✅ Çözüldü
+- **Dosya:** `frontend/lib/screens/chat_screen.dart:203`
+- **Çözüm:** Boş `catch (_) {}` → hata mesajı gösteren SnackBar eklendi.
 
 ---
 
@@ -342,4 +309,4 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 > **Son güncelleme:** 2026-06-02  
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend  
-> **Toplam sorun:** 55 (7 kritik ✅, 15 yüksek → 11 ✅ / 4 ⬜, 13 orta, 20 düşük, 8 bilgi notu)
+> **Toplam sorun:** 55 (7 kritik ✅, 15 yüksek ✅, 13 orta ✅, 20 düşük, 8 bilgi notu)

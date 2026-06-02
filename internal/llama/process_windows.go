@@ -36,9 +36,18 @@ func forceKillCmd(cmd *exec.Cmd, waitDone chan struct{}) {
 	}
 }
 
+func killPID(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("find %d: %w", pid, err)
+	}
+	return processSignalTerm(proc)
+}
+
 func pidListeningOnPort(port int) int {
 	out, err := exec.Command("netstat", "-ano").Output()
 	if err != nil {
+		log.Printf("llama: netstat failed: %v", err)
 		return 0
 	}
 	target := fmt.Sprintf(":%d", port)

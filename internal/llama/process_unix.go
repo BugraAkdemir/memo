@@ -38,6 +38,14 @@ func forceKillCmd(cmd *exec.Cmd, waitDone chan struct{}) {
 	}
 }
 
+func killPID(pid int) error {
+	proc, err := os.FindProcess(pid)
+	if err != nil {
+		return fmt.Errorf("find %d: %w", pid, err)
+	}
+	return processSignalTerm(proc)
+}
+
 func pidListeningOnPort(port int) int {
 	out, err := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%d", port)).Output()
 	if err == nil {
@@ -47,6 +55,8 @@ func pidListeningOnPort(port int) int {
 				return pid
 			}
 		}
+	} else {
+		log.Printf("llama: lsof for port %d failed: %v", port, err)
 	}
 
 	out, err = exec.Command("fuser", fmt.Sprintf("%d/tcp", port)).Output()
@@ -60,6 +70,8 @@ func pidListeningOnPort(port int) int {
 				}
 			}
 		}
+	} else {
+		log.Printf("llama: fuser for port %d failed: %v", port, err)
 	}
 
 	return 0

@@ -88,7 +88,14 @@ class _ChatMessageListState extends State<ChatMessageList> {
     }
   }
 
+  bool _isNearBottom() {
+    if (!_scrollController.hasClients) return true;
+    final pos = _scrollController.position;
+    return pos.maxScrollExtent - pos.pixels < 50;
+  }
+
   void _scrollToBottom() {
+    if (!_isNearBottom()) return; // don't yank if user scrolled up
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(

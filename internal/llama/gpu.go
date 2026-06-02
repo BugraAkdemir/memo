@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/exec"
+	"path/filepath"
 	"runtime"
 	"strconv"
 	"strings"
@@ -161,27 +162,80 @@ func detectAMD() (GPUInfo, bool) {
 	}, true
 }
 
+// readSysfsFile reads the first matching sysfs file via a glob pattern.
+func readSysfsFile(pattern string) (string, error) {
+	matches, err := filepath.Glob(pattern)
+	if err != nil || len(matches) == 0 {
+		return "", fmt.Errorf("no match for %s", pattern)
+	}
+	data, err := os.ReadFile(matches[0])
+	if err != nil {
+		return "", err
+	}
+	return strings.TrimSpace(string(data)), nil
+}
+
+// detectAMDLspci tries to detect AMD GPUs via lspci (works in most containers).
+func detectAMDLspci() (GPUInfo, bool) {
+	out, err := exec.Command("lspci").Output()
+	if err != nil {
+		return GPUInfo{}, false
+	}
+	for _, line := range strings.Split(string(out), "\n") {
+		// Look for AMD/ATI VGA or 3D controller
+		if !strings.Contains(line, "AMD") && !strings.Contains(line, "ATI") && !strings.Contains(line, "Advanced Micro Devices") {
+			continue
+		}
+		if !strings.Contains(line, "VGA") && !strings.Contains(line, "3D") {
+			continue
+		}
+		name := strings.TrimSpace(line)
+		// Try to get VRAM from sysfs
+		vram := 0
+		matches, _ := filepath.Glob("/sys/class/drm/card*/device/mem_info_vram_total")
+		if len(matches) > 0 {
+			if data, err := os.ReadFile(matches[0]); err == nil {
+				log.Printf("GPU: lspci found AMD: %s", name)
+				if v, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64); err == nil {
+					vram = int(v / (1024 * 1024)) // bytes → MB
+				}
+			}
+		}
+		if vram <= 0 {
+			log.Printf("GPU: lspci found AMD: %s (VRAM unknown)", name)
+		}
+		layers := recommendLayers(vram)
+		return GPUInfo{
+			Type:        GPUTypeAMD,
+			Name:        name,
+			VRAM:        vram,
+			GPULayers:   layers,
+			Description: fmt.Sprintf("%s — %d MB VRAM — ROCm acceleration", name, vram),
+		}, true
+	}
+	return GPUInfo{}, false
+}
+
 func detectAMDSysfs() (GPUInfo, bool) {
 	if runtime.GOOS != "linux" {
 		return GPUInfo{}, false
 	}
-	// Check /sys/class/drm/card*/device/vendor for AMD vendor ID 0x1002
-	vendorOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/vendor 2>/dev/null | head -1").Output()
-	if err != nil {
+
+	// Try lspci first (more portable across containers/environments)
+	if info, ok := detectAMDLspci(); ok {
+		return info, true
+	}
+
+	// Fallback: /sys/class/drm
+	vendor, err := readSysfsFile("/sys/class/drm/*/device/vendor")
+	if err != nil || vendor != "0x1002" {
 		return GPUInfo{}, false
 	}
 
-	vendor := strings.TrimSpace(string(vendorOut))
-	if vendor != "0x1002" {
-		return GPUInfo{}, false
-	}
-
-	// Get device ID
-	deviceIDOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/device 2>/dev/null | head -1").Output()
+	deviceID, err := readSysfsFile("/sys/class/drm/*/device/device")
 	if err != nil {
 		return GPUInfo{}, false
 	}
-	deviceID := strings.TrimSpace(string(deviceIDOut))
 
 	// Try to get VRAM from sysfs
 	vram := 0

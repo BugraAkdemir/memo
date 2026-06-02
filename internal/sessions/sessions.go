@@ -79,6 +79,8 @@ func (m *Manager) newSession(title string) *Session {
 	return s
 }
 
+
+
 func (m *Manager) NewChat() string {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -239,11 +241,9 @@ func (m *Manager) save(s *Session) error {
 		return err
 	}
 	path := filepath.Join(m.dir, s.ID+".json")
-	go func() {
-		if err := os.WriteFile(path, data, 0600); err != nil {
-			log.Printf("sessions: async write %s: %v", s.ID, err)
-		}
-	}()
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		return fmt.Errorf("sessions: write %s: %w", s.ID, err)
+	}
 	return nil
 }
 

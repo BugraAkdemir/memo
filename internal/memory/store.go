@@ -237,7 +237,7 @@ func (s *Store) ListGobFiles() []GobFileInfo {
 		if err != nil {
 			return nil
 		}
-		if !info.IsDir() && filepath.Ext(path) == ".gob" && info.Name() != metadataFileName {
+		if !info.IsDir() && filepath.Ext(path) == ".gob" && info.Name() != metadataFileName && info.Name() != "memory_index.gob" {
 			relPath, _ := filepath.Rel(s.persistDir, path)
 			files = append(files, GobFileInfo{
 				Path:     relPath,

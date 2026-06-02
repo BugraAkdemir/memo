@@ -6,6 +6,8 @@ import (
 	"log"
 	"memo/internal/config"
 	"net/http"
+	"path/filepath"
+	"strings"
 )
 
 // ─── Chat Streaming (SSE) ───────────────────────────────────────
@@ -36,13 +38,12 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	ch := s.fullBridge.SendMessageStream(req.Message)
 	ctx := r.Context()
+	ch := s.fullBridge.SendMessageStream(ctx, req.Message)
 
 	for {
 		select {
 		case <-ctx.Done():
-			// Client disconnected
 			return
 		case chunk, ok := <-ch:
 			if !ok {
@@ -222,7 +223,22 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing path", http.StatusBadRequest)
 		return
 	}
+
+	// Layer 1: Basic path sanitization
+	if strings.Contains(path, "..") {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+	if filepath.IsAbs(path) {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
 	b64 := s.fullBridge.GetImageBase64(path)
+	if b64 == "" {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
 	writeJSON(w, map[string]string{"data": b64})
 }
 

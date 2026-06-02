@@ -1,25 +1,74 @@
-# Yapılan İşlemler
+# Kritik Hatalar (🔴) — Adım Adım Düzeltme
 
-## 1. Hata: Build sonrası llama.cpp bulunamıyor (`.memo/binaries/` oluşmuyor)
+## [x] K1 — Yetim SSE Bağlantıları ✅
+- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`, `app.go`, `internal/webserver/bridge.go`
+- **Sorun:** İstemci kopunca LLM çalışmaya devam ediyor, GPU/CPU boşa harcanıyor
+- **Çözüm:** `FullBridge` stream metodlarına `ctx context.Context` eklendi. `handleSendStream`'den `r.Context()` tüm zincire iletilir. Client kopunca context cancel → LLM HTTP isteği iptal → goroutine doğal sonlanır.
+- **İşlemler:**
+  - [x] `bridge.go` — `SendMessageStream`/`SendMessageWithImageStream`/`SendMessageWithFileStream` imzalarına `ctx` eklendi
+  - [x] `handlers_flutter.go` — `handleSendStream`'de `r.Context()` zincire bağlandı
+  - [x] `app.go` — Stream metodları ve `handleIncognitoStream` `ctx` parametresi alıp `callLLMStream`'e iletiyor
+  - [x] Go derleme testi yapıldı
 
-### Kök Neden
-`build_releases.sh` içindeki `run_memo.sh` ve `AppRun` scriptleri `$HOME/.memo/binaries/` dizinini **oluşturmadan** `cp -r` ile çoklu dosya kopyalamaya çalışıyordu. `cp -r` hedef dizin yoksa sessizce başarısız oluyor, bu yüzden `llama-server` binary'leri `$HOME/.memo/binaries/linux/{cpu,nvidia,amd}/` altına hiç kopyalanmıyordu. Dev modunda (`flutter run -d linux`) CWD proje kökü olduğu için sorun yok.
+---
 
-### Yapılan Düzeltmeler
+## [x] K2 — Engine Modu Değişince Tüm Config Sıfırlanıyor ✅
+- **Dosya:** `frontend/lib/providers/settings_provider.dart:63-73` ↔ `internal/webserver/handlers_flutter.go:667-685`, `app.go:1148-1151`
+- **Sorun:** Kısmi JSON body (örn `{"engine_mode": "cpu"}`) tüm `LlamaConfig` struct'ını sıfırlıyor
+- **Çözüm:** `UpdateLlamaConfig`'de tüm struct'ı replace etmek yerine sadece non-zero alanları merge et
+- **İşlemler:**
+  - [x] `app.go` — `UpdateLlamaConfig`'de partial merge eklendi (her alan ayrı kontrol: sadece non-zero ise güncelle)
+  - [x] Go derleme testi yapıldı
 
-#### 1. `build_releases.sh` — RUNNER scripti (tar.gz/deb)
-- `mkdir -p "$MEMO_HOME/binaries"` eklendi, `cp -r`den önce hedef dizin oluşturuluyor.
+---
 
-#### 2. `build_releases.sh` — AppRun scripti (AppImage)
-- `mkdir -p "$MEMO_HOME/binaries"` eklendi, `cp -r`den önce hedef dizin oluşturuluyor.
+## [x] K3 — `/api/image` ile Keyfi Dosya Okuma ✅
+- **Dosya:** `app.go:866-871` (GetImageBase64), `internal/webserver/handlers_flutter.go:214-226` (handleImage)
+- **Sorun:** Path sanitization yok, `/etc/passwd`, `~/.ssh/id_rsa` okunabilir
+- **Çözüm:** Çift katmanlı path doğrulama: Handler'da `..` ve absolute path reddi, `GetImageBase64`'te `data/` whitelist + symlink koruması
+- **İşlemler:**
+  - [x] `handlers_flutter.go` — `handleImage`'de Layer 1 path doğrulaması eklendi (`..` ve absolute path reddedilir)
+  - [x] `app.go` — `GetImageBase64`'te Layer 2 whitelist kontrolü eklendi (`filepath.Abs` + `EvalSymlinks` + `data/` prefix)
+  - [x] Go derleme testi yapıldı
 
-#### 3. `internal/llama/llama.go` — `resolveBinary()` fonksiyonu
-- Artık binary'yi önce CWD'de (`binaries/linux/...`), bulamazsa **çalıştırılabilir dosyanın kendi dizininde** (`/opt/Memo/binaries/linux/...` gibi) arıyor. Bu, shell script'teki kopyalama başarısız olsa bile backend'in kendi yanındaki binaries klasörünü bulmasını sağlar.
-- `binarySearchBases()` helper fonksiyonu eklendi: `["."]` + `exeDir`.
+---
 
-## 2. Değişiklik: `.deb` paketi opsiyonel yapıldı
+## [ ] K4 — Remote Access'te Auth Yok, CORS Açık
+- **Dosya:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507`
+- **Sorun:** `0.0.0.0:<port>` binding, `Access-Control-Allow-Origin: *`, plaintext passphrase, oturum/token yok
+- **Çözüm:** JWT/token auth, HTTPS zorunluluğu, wildcard CORS'u kapat
+- **İşlemler:**
+  - [ ] `server.go` — CORS'u `*` yerine sadece gerekli origin'lere ayarla
+  - [ ] Token/session auth mekanizması ekle
+  - [ ] Go derleme testi yap
 
-### Yapılan
-- `BUILD_DEB`, `BUILD_APPIMAGE`, `BUILD_TARGZ` değişkenleri eklendi (varsayılan: deb=false, appimage=true, targz=true).
-- `.deb` paketleme kısmı `if [ "$BUILD_DEB" = true ]` bloğuna alındı.
-- AppImage ve tar.gz kısımları da kendi değişkenleriyle kontrol ediliyor.
+---
+
+## [ ] K5 — `a.client` Kilitsiz Yeniden Atanıyor
+- **Dosya:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`
+- **Sorun:** `a.client` ve `a.embeddingClient` mutex olmadan yeniden atanıyor → race condition, nil-pointer panic
+- **Çözüm:** Tüm client okuma/yazmalarını `a.mu` ile koru
+- **İşlemler:**
+  - [ ] `app.go` — client atamalarını `a.mu.Lock()`/`Unlock()` içine al
+  - [ ] Client okuyan yerlerde `a.mu.RLock()`/`RUnlock()` ekle
+  - [ ] Go derleme testi yap
+
+---
+
+## [ ] K6 — `saveMemoryAsync` RLock→Lock Deadlock Riski
+- **Dosya:** `app.go:1399-1421`
+- **Sorun:** RLock alıp içinde Lock almaya çalışan goroutine → kilitlenme riski
+- **Çözüm:** Channel-based worker goroutine kullan
+- **İşlemler:**
+  - [ ] `app.go` — `saveMemoryAsync`'i channel-based worker pattern'e çevir
+  - [ ] Go derleme testi yap
+
+---
+
+## [ ] K7 — Mesaj Başına AnimationController (UI Jank)
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:92-99`
+- **Sorun:** Her mesaj balonu kendi AnimationController'ını oluşturuyor → 50+ mesajda severe jank
+- **Çözüm:** Entry animasyonlarını kaldır veya shared animation controller kullan
+- **İşlemler:**
+  - [ ] `chat_message_list.dart` — AnimationController'ları kaldır/azalt
+  - [ ] Flutter derleme testi yap

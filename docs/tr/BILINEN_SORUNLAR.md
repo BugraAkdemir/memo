@@ -13,23 +13,17 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 ## 🔴 Kritik
 
-### K1. Yetim SSE Bağlantıları — İstemci Koptuğunda LLM Çalışmaya Devam Ediyor
-- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`
-- **Sorun:** İstemci SSE akışı sırasında bağlantıyı kestiğinde, `request.Context().Done()` kanalı izlenmiyor. LLM arka plan goroutine'i model tamamlanana kadar (300 saniyeye kadar) çalışmaya devam ediyor. LLM API'sine geçirilen context (`streamCtx`) HTTP istek context'inden türetilmiş ancak llama.cpp alt sürecine doğru şekilde iletilmiyor.
-- **Etki:** Her kopan bağlantıda GPU/CPU kaynağı boşa harcanır. Düşük donanımda, orphaned stream yeni istekleri bloke eder çünkü llama.cpp üretim sırasında tek iş parçacıklıdır.
-- **Çözüm:** `request.Context()`'i LLM çağrı zincirine bağlayın; SSE yazma döngüsüne `select { case <-ctx.Done(): ... }` ekleyin.
+### ~~K1. Yetim SSE Bağlantıları — İstemci Koptuğunda LLM Çalışmaya Devam Ediyor~~ ✅ Çözüldü
+- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`, `app.go`, `internal/webserver/bridge.go`
+- **Çözüm:** `AppBridge`/`FullBridge` stream metodlarına `ctx context.Context` parametresi eklendi. `handleSendStream`'den `r.Context()` tüm LLM çağrı zincirine (→ `SendMessageStream` → `callLLMStream` → `ChatCompletionStream`) iletiliyor. İstemci kopunca context cancel oluyor, LLM HTTP isteği iptal ediliyor, goroutine doğal olarak sonlanıyor.
 
-### K2. Motor Modu / Yapılandırma Güncellemesi Tüm Llama Ayarlarını Sıfırlıyor
-- **Dosya:** `frontend/lib/providers/settings_provider.dart:63-73` ←→ `internal/webserver/handlers_flutter.go:667-685`, `app.go:1148-1151`
-- **Sorun:** Frontend kısmi bir JSON body gönderir (örn. `{"engine_mode": "cpu"}`) `/api/config/llama` endpoint'ine. Go handler'ı bunu `config.LlamaConfig{}` yapısına decode eder — JSON'da olmayan alanlar sıfır değer alır (boş string, 0, false). Ardından `UpdateLlamaConfig` `a.cfg.Llama = cfg` ile **tüm** struct'ı değiştirir. Binary yolu, port, context boyutu, GPU katmanları, model yolu gibi tüm ayarlar sessizce silinir.
-- **Etki:** Motor modu değiştirildikten sonra kullanıcı tüm llama ayarlarını yeniden yapılandırmak zorundadır. Tüm alanlar elle tekrar girilene kadar uygulama hiçbir modeli başlatamaz.
-- **Çözüm:** Bir merge/patch stratejisi uygulayın: yalnızca JSON body'sinde bulunan alanları güncelleyin veya handler'ı mevcut değerleri döndürecek şekilde değiştirin.
+### ~~K2. Motor Modu / Yapılandırma Güncellemesi Tüm Llama Ayarlarını Sıfırlıyor~~ ✅ Çözüldü
+- **Dosya:** `app.go:1148-1151`
+- **Çözüm:** `UpdateLlamaConfig` artık tüm struct'ı replace etmek yerine her alanı ayrı ayrı kontrol ediyor: sadece non-zero (boş olmayan) değerler mevcut config'e yazılıyor. Kısmi JSON body (`{"engine_mode": "cpu"}`) sadece `EngineMode` alanını güncelliyor, diğer ayarlar (port, ctx_size, binary_path vb.) korunuyor.
 
-### K3. `/api/image` Üzerinden Keyfi Dosya Okuma
-- **Dosya:** `app.go:866-871` (GetImageBase64), `internal/webserver/handlers_flutter.go:215-227` (handleImage)
-- **Sorun:** `/api/image?path=...` endpoint'i keyfi bir dosya yolu kabul eder, dosyayı okur ve base64 olarak döndürür. Temel bir `filepath.Clean` dışında yol doğrulaması yoktur. Bir saldırgan `/etc/passwd`, `~/.ssh/id_rsa` veya dünya-okunabilir herhangi bir dosyayı okuyabilir.
-- **Etki:** Tam yerel dosya ifşası. Uzaktan erişim etkinleştirilmiş örneklerde (0.0.0.0 binding) bu uzaktan istismar edilebilir.
-- **Çözüm:** Okumaları uygulamanın veri dizini ve/veya izin verilen yolların beyaz listesi ile kısıtlayın.
+### ~~K3. `/api/image` Üzerinden Keyfi Dosya Okuma~~ ✅ Çözüldü
+- **Dosya:** `app.go:865-872` (GetImageBase64), `internal/webserver/handlers_flutter.go:214-226` (handleImage)
+- **Çözüm:** Çift katmanlı path doğrulama. Katman 1 (handler): `..` traversal ve absolute path engellenir. Katman 2 (`GetImageBase64`): `filepath.Abs` + `EvalSymlinks` çözümlemesi + `data/` dizini whitelist prefix kontrolü. Symlink saldırıları da engellenir.
 
 ### K4. Uzaktan Erişim Sunucusu — Kimlik Doğrulama Yok, Açık CORS
 - **Dosya:** `internal/webserver/server.go:144`, `internal/webserver/server.go:507` + ilgili handler'lar

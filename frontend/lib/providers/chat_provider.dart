@@ -201,8 +201,13 @@ class IncognitoNotifier extends StateNotifier<bool> {
   IncognitoNotifier(this._ref) : super(false);
 
   Future<void> toggle() async {
+    final previous = state;
     state = !state;
-    await _ref.read(apiClientProvider).toggleIncognito(state);
+    try {
+      await _ref.read(apiClientProvider).toggleIncognito(state);
+    } catch (_) {
+      state = previous;
+    }
   }
 }
 

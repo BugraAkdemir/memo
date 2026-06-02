@@ -45,24 +45,19 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    final isSending = ref.read(isSendingProvider);
-    if (isSending) return;
+    if (ref.read(isSendingProvider)) return;
 
     _controller.clear();
     setState(() => _showTemplates = false);
-
-    ref.read(isSendingProvider.notifier).state = true;
 
     try {
       await ref.read(messagesProvider.notifier).sendMessage(text);
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${L10n.t('error')}: $e')));
       }
-    } finally {
-      ref.read(isSendingProvider.notifier).state = false;
     }
 
     _focusNode.requestFocus();
@@ -94,9 +89,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: MemoTheme.bgApp,
-            border: Border(
-              top: BorderSide(color: MemoTheme.borderSoft),
-            ),
+            border: Border(top: BorderSide(color: MemoTheme.borderSoft)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -108,7 +101,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 onTap: () async {
                   final isSending = ref.read(isSendingProvider);
                   if (isSending) return;
-                  
+
                   final result = await FilePicker.platform.pickFiles(
                     type: FileType.image,
                     allowMultiple: false,
@@ -119,7 +112,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     _controller.clear();
                     setState(() => _showTemplates = false);
                     try {
-                      await ref.read(messagesProvider.notifier).sendFile(text, path);
+                      await ref
+                          .read(messagesProvider.notifier)
+                          .sendFile(text, path);
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -148,7 +143,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     _controller.clear();
                     setState(() => _showTemplates = false);
                     try {
-                      await ref.read(messagesProvider.notifier).sendFile(text, path);
+                      await ref
+                          .read(messagesProvider.notifier)
+                          .sendFile(text, path);
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
@@ -159,6 +156,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
+
               /* STT Disabled due to Vosk crashes
               const SizedBox(width: 4),
               _InputIconButton(
@@ -169,7 +167,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 },
               ),
               */
-
               const SizedBox(width: 12),
 
               // ─── Text Input ──────────────────────────
@@ -178,8 +175,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   constraints: const BoxConstraints(maxHeight: 160),
                   decoration: BoxDecoration(
                     color: MemoTheme.bgPanel,
-                    borderRadius:
-                        BorderRadius.circular(MemoTheme.radiusMd),
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                     border: Border.all(color: MemoTheme.borderSoft),
                   ),
                   child: KeyboardListener(
@@ -206,7 +202,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         hintStyle: TextStyle(color: MemoTheme.textDim),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
-                            horizontal: 14, vertical: 12),
+                          horizontal: 14,
+                          vertical: 12,
+                        ),
                         isDense: true,
                       ),
                     ),
@@ -221,12 +219,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 duration: const Duration(milliseconds: 150),
                 child: Material(
                   color: isSending ? MemoTheme.bgElement : MemoTheme.accent,
-                  borderRadius:
-                      BorderRadius.circular(MemoTheme.radiusSm),
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   child: InkWell(
                     onTap: isSending ? null : _send,
-                    borderRadius:
-                        BorderRadius.circular(MemoTheme.radiusSm),
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                     child: SizedBox(
                       width: 42,
                       height: 42,

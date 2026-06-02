@@ -46,14 +46,15 @@
 
 ---
 
-## [ ] K5 — `a.client` Kilitsiz Yeniden Atanıyor
-- **Dosya:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`
+## [x] K5 — `a.client` Kilitsiz Yeniden Atanıyor ✅
+- **Dosya:** `app.go`
 - **Sorun:** `a.client` ve `a.embeddingClient` mutex olmadan yeniden atanıyor → race condition, nil-pointer panic
-- **Çözüm:** Tüm client okuma/yazmalarını `a.mu` ile koru
+- **Çözüm:** `App` struct'ına `clientMu sync.RWMutex` eklendi. Tüm yazmalar `Lock/Unlock`, tüm okumalar `RLock/RUnlock` ile korunuyor. Pointer'lar kopyalanıp dışarıda kullanılıyor.
 - **İşlemler:**
-  - [ ] `app.go` — client atamalarını `a.mu.Lock()`/`Unlock()` içine al
-  - [ ] Client okuyan yerlerde `a.mu.RLock()`/`RUnlock()` ekle
-  - [ ] Go derleme testi yap
+  - [x] `app.go` — `clientMu` field'ı eklendi
+  - [x] `app.go` — 5 client yazma yeri Lock/Unlock ile korundu
+  - [x] `app.go` — 6 client okuma yeri RLock/RUnlock ile korundu
+  - [x] Go derleme testi yapıldı
 
 ---
 

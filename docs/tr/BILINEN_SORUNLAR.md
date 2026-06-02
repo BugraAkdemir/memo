@@ -29,11 +29,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/webserver/server.go:65-176`, `app.go:155-157`, `app.go:1048-1063`
 - **Çözüm:** Uzaktan erişim v3.0.0'da tamamen devre dışı bırakıldı. `Start()` anında hata döndürür. `SetRemoteAccess` etkinleştirmeyi reddeder. CORS wildcard'ı `Origin` yankısı ile değiştirildi. Gelecek bir sürümde yeniden eklenecek.
 
-### K5. `a.client` Değişkeninin Kilitsiz Yeniden Atanması
-- **Dosya:** `app.go:1106`, `app.go:1123`, `app.go:1216`, `app.go:1228`
-- **Sorun:** `a.client` ve `a.embeddingClient` hiçbir mutex olmadan yeniden atanır (yeni LLM endpoint'i, model durdurma nil atar). Eşzamanlı `ChatCompletion`, `ChatCompletionStream` veya `CreateEmbedding` çağrıları yarı-atamnış veya nil bir client pointer'ı okuyabilir.
-- **Etki:** Eşzamanlı istek yükü altında üretimde nil-pointer panic. Client değiştirilirken rastgele "connection refused" hataları.
-- **Çözüm:** Tüm client okuma/yazmalarını `a.mu` (veya özel bir `clientMu`) ile koruyun.
+### ~~K5. `a.client` Değişkeninin Kilitsiz Yeniden Atanması~~ ✅ Çözüldü
+- **Dosya:** `app.go`
+- **Çözüm:** `App` struct'ına `clientMu sync.RWMutex` eklendi. Tüm yazmalar `Lock/Unlock`, tüm okumalar `RLock/RUnlock` ile korunuyor. `a.client` ve `a.embeddingClient` tamamen güvence altına alındı.
 
 ### K6. `saveMemoryAsync` RLock→Lock Modeli (Kilitlenme Riski)
 - **Dosya:** `app.go:1399-1421`

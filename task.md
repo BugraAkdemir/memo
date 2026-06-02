@@ -14,9 +14,9 @@
 - [x] `chat_provider.dart` sendMessage: list copy kaldırıldı, streaming ayrı provider'lar (`streamingContentProvider`/`streamingThinkingProvider`) üzerinden token-by-token güncelleniyor
 - [x] `chat_message_list.dart`: `ValueKey` + `RepaintBoundary` ile sadece değişen mesaj rebuild olur; streaming için animasyonsuz `_StreamingBubble` widget'ı
 
-## Bölüm 3 — Incognito Toggle Race Condition
+## Bölüm 3 — Incognito Toggle Race Condition ✅
 **Hedef:** API hatasında frontend/backend state desync olmasın.
-- [ ] `chat_provider.dart` toggle: API başarısız olursa state'i geri al
+- [x] `chat_provider.dart` toggle: API başarısız olursa state'i geri al (try/catch ile rollback)
 
 ## Bölüm 4 — Stream İptali (Orphaned Stream)
 **Hedef:** Chat değişince veya ekran kapanınca stream temizlensin.

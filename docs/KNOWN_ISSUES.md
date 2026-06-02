@@ -37,11 +37,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **File:** `app.go`
 - **Fix:** Replaced the lock-then-goroutine pattern with a channel-based worker. `saveMemoryAsync` now sends a `saveTask` to a buffered channel (cap 64) and returns immediately. A single `memorySaveWorker` goroutine processes tasks sequentially, acquiring `storeMu.Lock()` directly — no RLock→Lock transition, no deadlock risk.
 
-### C7. UI Thread Performance — AnimationController Per Message
-- **File:** `frontend/lib/widgets/chat_message_list.dart:92-99`
-- **Issue:** Every `_MessageBubble` creates its own `AnimationController` in `initState()`. With 100 messages, 100 animation controllers are created, each driving a frame callback. Combined with `FadeTransition` + `SlideTransition` wrapping every bubble, this causes severe jank on scroll and during streaming token updates.
-- **Impact:** Choppy scrolling on chats with 50+ messages; noticeable frame drops on mid-range devices.
-- **Fix:** Remove entry animations from message bubbles, or use a shared animation controller with staggered delays.
+### ~~C7. UI Thread Performance — AnimationController Per Message~~ ✅ Fixed
+- **File:** `frontend/lib/widgets/chat_message_list.dart`
+- **Fix:** Removed all entry animations from `_MessageBubble`. `SingleTickerProviderStateMixin`, `AnimationController`, `FadeTransition`, and `SlideTransition` have been eliminated entirely. Bubbles render directly with no frame callbacks.
 
 ---
 

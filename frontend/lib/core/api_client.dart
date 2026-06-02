@@ -53,8 +53,7 @@ class MemoApiClient {
           try {
             final data = json.decode(jsonStr);
             if (data['error'] != null && (data['error'] as String).isNotEmpty) {
-              yield StreamChunk(content: '⚠️ Hata: ${data['error']}');
-              break;
+              throw Exception(data['error'] as String);
             }
             if (data['content'] != null || data['thinking'] != null) {
               yield StreamChunk(
@@ -71,7 +70,7 @@ class MemoApiClient {
         }
       }
     } catch (e) {
-      yield StreamChunk(content: '⚠️ Bağlantı hatası: $e');
+      throw Exception('Bağlantı hatası: $e');
     }
   }
 
@@ -264,7 +263,9 @@ class MemoApiClient {
       // If server returned a plain string error or a JSON with error field
       if (e.response?.data is String) return e.response!.data as String;
       if (e.response?.data is Map && e.response?.data['error'] != null) {
-        return e.response?.data['error'].toString() ?? e.message ?? 'Unknown error';
+        return e.response?.data['error'].toString() ??
+            e.message ??
+            'Unknown error';
       }
     }
     return e.message ?? 'Unknown error';

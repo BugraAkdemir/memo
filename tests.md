@@ -18,6 +18,8 @@ Test adımları. Başarılı testleri `[x]` ile işaretle.
 - [x] Stream sırasında diğer mesajların üzerine gelince hover efekti çalışıyor mu? (sadece son mesaj rebuild oluyor)
 - [x] Stream tamamlanınca mesaj listeye ekleniyor ve düzgün görünüyor mu?
 
+- Bug Var ben 2. mesajı gönderdiğim zaman al ilk çıktısı siniyor
+
 ## Bölüm 3 — Incognito Toggle Race Condition
 - [ ] Incognito toggle'a tıkla (açık/kapalı)
 - [ ] Backend kapalıyken toggle'a tıkla — state geri alınıyor mu?

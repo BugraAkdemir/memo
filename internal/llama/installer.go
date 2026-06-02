@@ -424,23 +424,29 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 			continue
 		}
 
-		out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
-		if err != nil {
-			logger(fmt.Sprintf("Uyarı: %s yazılamadı: %v", name, err))
+		if err := extractFile(tr, destPath, name, logger); err != nil {
+			logger(fmt.Sprintf("Uyarı: %s çıkarılamadı: %v", name, err))
 			continue
 		}
-		if _, err := io.Copy(out, tr); err != nil {
-			out.Close()
-			logger(fmt.Sprintf("Uyarı: %s kopyalanamadı: %v", name, err))
-			continue
-		}
-		out.Close()
 		logger(fmt.Sprintf("  Çıkarıldı: %s", name))
 		extracted++
 	}
 
 	if extracted == 0 {
 		return fmt.Errorf("tar.gz içinde hiçbir binary bulunamadı")
+	}
+	return nil
+}
+
+func extractFile(tr *tar.Reader, destPath, name string, logger func(string)) error {
+	out, err := os.OpenFile(destPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0755)
+	if err != nil {
+		return fmt.Errorf("dosya oluşturulamadı: %w", err)
+	}
+	defer out.Close()
+
+	if _, err := io.Copy(out, tr); err != nil {
+		return fmt.Errorf("kopyalanamadı: %w", err)
 	}
 	return nil
 }

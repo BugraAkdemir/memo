@@ -129,7 +129,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message) (
 	}
 
 	ch := make(chan StreamChunk, 128)
-	go processSSEStream(resp.Body, ch)
+	go processSSEStream(ctx, resp.Body, ch)
 
 	return ch, nil
 }

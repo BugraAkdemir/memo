@@ -2,6 +2,7 @@ package api
 
 import (
 	"bufio"
+	"context"
 	"encoding/json"
 	"io"
 	"strings"
@@ -41,9 +42,15 @@ func (p *thinkingParser) process(content string) (regular, thinking string) {
 	}
 }
 
-func processSSEStream(body io.ReadCloser, ch chan<- StreamChunk) {
+func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamChunk) {
 	defer close(ch)
 	defer body.Close()
+
+	// Monitor context cancellation — close the body to unblock scanner
+	go func() {
+		<-ctx.Done()
+		body.Close()
+	}()
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer for long Gemini chunks

@@ -236,10 +236,7 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 	}
 	defer func() {
 		f.Close()
-		// Clean up temp file on error
-		if ctx.Err() != nil {
-			os.Remove(tmpPath)
-		}
+		os.Remove(tmpPath)
 	}()
 
 	buf := make([]byte, 256*1024) // 256KB chunks

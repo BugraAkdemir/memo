@@ -51,11 +51,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **Impact:** Accumulated goroutine leaks over time; resource exhaustion on the server.
 - **Fix:** Add a `select { case <-ctx.Done(): return; case ... }` pattern.
 
-### H2. Config File World-Readable (`0644`) Containing Secrets
+### ~~H2. Config File World-Readable (`0644`) Containing Secrets~~ ✅ Fixed
 - **File:** `internal/config/config.go:178`
-- **Issue:** `config.yaml` is written with `os.WriteFile` and `0644` permissions. The file contains `client_secret` (OAuth), `passphrase` (sync encryption), and other sensitive values. On multi-user systems, any local user can read these secrets.
-- **Impact:** OAuth token theft, encrypted sync data decryption.
-- **Fix:** Write with `0600` and document manual chmod for existing installations.
+- **Fix:** Changed `0644` → `0600` in `os.WriteFile` call. Config file is now only readable by the owner.
 
 ### H3. Weak Key Derivation for Sync Encryption
 - **File:** `internal/cloudsync/crypto.go:18-23`
@@ -75,11 +73,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **Impact:** After 2–3 requests, the accumulated system prompt injection causes context overflow and confuses the model.
 - **Fix:** Copy the slice before mutating, or build a new slice.
 
-### H6. `hash2hex` — Only 4 Bytes of SHA-256 (Collision Risk)
+### ~~H6. `hash2hex` — Only 4 Bytes of SHA-256 (Collision Risk)~~ ✅ Fixed
 - **File:** `internal/memory/store.go:342-344`
-- **Issue:** `hash2hex` returns `fmt.Sprintf("%x", h.Sum(nil)[:4])` — the first 4 bytes (32 bits) of SHA-256. With ~2^16 entries, birthday paradox gives a 50% collision probability. A collision silently overwrites the existing `.gob` file, losing a memory entry.
-- **Impact:** Data loss under moderate memory store usage.
-- **Fix:** Use at least 8 bytes (16 hex chars) or use the full hash.
+- **Fix:** Changed `hash[:4]` → `hash[:8]` (8 bytes / 16 hex chars). Collision probability reduced from 50% to negligible levels.
 
 ### H7. `monitor()` Goroutine Access to `s.cmd` Outside Lock
 - **File:** `internal/llama/llama.go:271-302`
@@ -87,17 +83,13 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **Impact:** Rare nil-pointer panic during rapid stop/start cycles of the LLM server.
 - **Fix:** Move the nil check and `Wait()` call inside the lock, or use an atomic pointer.
 
-### H8. Temp File Leak on Download Non-Cancellation Errors
+### ~~H8. Temp File Leak on Download Non-Cancellation Errors~~ ✅ Fixed
 - **File:** `internal/modelstore/modelstore.go:237-243`
-- **Issue:** The deferred cleanup `os.Remove(tmpPath)` only runs when `ctx.Err() != nil` (context cancelled). If the download fails with an HTTP error or network timeout, the `.downloading` temporary file remains on disk indefinitely.
-- **Impact:** Accumulated partial download files waste disk space.
-- **Fix:** Remove `tmpPath` unconditionally in the defer, or always on error.
+- **Fix:** Changed conditional `os.Remove(tmpPath)` (`if ctx.Err() != nil`) to unconditional `defer os.Remove(tmpPath)`. Temp file is now cleaned up on every exit path — context cancellation, HTTP error, or network timeout.
 
-### H9. File Descriptor Leak in `extractTarGzToBin`
+### ~~H9. File Descriptor Leak in `extractTarGzToBin`~~ ✅ Fixed
 - **File:** `internal/llama/installer.go:433,437`
-- **Issue:** Inside the tar extraction loop, `out.Close()` is called manually (not deferred). If `io.Copy` fails at line 432, the `continue` at line 437 skips the close, leaking a file descriptor.
-- **Impact:** FD exhaustion on installers with partially corrupted archives.
-- **Fix:** Use `defer out.Close()` before each file open, or restructure the loop.
+- **Fix:** Extracted file-write logic into a separate `extractFile()` helper function that uses `defer out.Close()`. This guarantees the file descriptor is always closed, even on `io.Copy` errors. Manual `out.Close()` calls removed.
 
 ### H10. `nvidia-smi` Errors Silently Ignored → 0 VRAM → 0 GPU Layers
 - **File:** `internal/llama/gpu.go:71-86`
@@ -111,17 +103,13 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **Impact:** Rare hang of the OAuth flow when starting authentication rapidly.
 - **Fix:** Use a `sync.WaitGroup` or a single shared channel that is reset with a mutex.
 
-### H12. `Shutdown(context.Background())` Can Block Indefinitely
+### ~~H12. `Shutdown(context.Background())` Can Block Indefinitely~~ ✅ Fixed
 - **File:** `internal/webserver/server.go:286`
-- **Issue:** `s.srv.Shutdown(context.Background())` has no timeout. If an HTTP handler is stuck (e.g. blocked on LLM response), `Shutdown` waits forever.
-- **Impact:** App hangs on graceful shutdown if a stream is active.
-- **Fix:** Use `context.WithTimeout(ctx, 10*time.Second)`.
+- **Fix:** Replaced `context.Background()` with `context.WithTimeout(10*time.Second)`. Server shutdown now times out after 10 seconds if a handler is stuck.
 
-### H13. Session ID Truncated to 8 Hex Chars
+### ~~H13. Session ID Truncated to 8 Hex Chars~~ ✅ Fixed
 - **File:** `internal/sessions/sessions.go:68`
-- **Issue:** `uuid.New().String()[:8]` takes only the first 8 hex characters (32 bits). With ~10^5 sessions, birthday paradox gives ~1% collision probability. A collision silently overwrites an existing session file.
-- **Impact:** Chat history loss.
-- **Fix:** Use the full UUID or at least 16 hex characters.
+- **Fix:** Changed `uuid.New().String()[:8]` → `uuid.New().String()`. Full UUID (36 chars) used as session ID. Collision probability is now astronomically low.
 
 ### H14. Download Polling Stream Runs Forever
 - **File:** `frontend/lib/providers/models_provider.dart:66-79`
@@ -364,4 +352,4 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 
 > **Last updated:** 2026-06-02  
 > **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend  
-> **Total issues:** 55 (7 critical, 15 high, 13 medium, 20 low, 8 info notes)
+> **Total issues:** 55 (7 critical ✅, 15 high → 6 ✅ / 9 ⬜, 13 medium, 20 low, 8 info notes)

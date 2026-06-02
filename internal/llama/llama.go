@@ -269,11 +269,15 @@ func (s *Server) forceKill() {
 
 // monitor watches for unexpected process exit.
 func (s *Server) monitor() {
-	if s.cmd == nil {
+	s.mu.Lock()
+	cmd := s.cmd
+	s.mu.Unlock()
+
+	if cmd == nil {
 		return
 	}
 
-	err := s.cmd.Wait()
+	err := cmd.Wait()
 
 	s.mu.Lock()
 	defer s.mu.Unlock()

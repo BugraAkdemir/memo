@@ -341,7 +341,7 @@ func writeGobFile(path string, v any) error {
 
 func hash2hex(name string) string {
 	hash := sha256.Sum256([]byte(name))
-	return hex.EncodeToString(hash[:4])
+	return hex.EncodeToString(hash[:8])
 }
 
 func truncate(s string, maxLen int) string {

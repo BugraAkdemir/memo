@@ -174,7 +174,9 @@ func (s *Server) Stop() error {
 	}
 
 	log.Println("Stopping remote access server...")
-	err := s.srv.Shutdown(context.Background())
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	err := s.srv.Shutdown(ctx)
 	s.running = false
 	return err
 }

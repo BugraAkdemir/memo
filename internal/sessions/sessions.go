@@ -65,7 +65,7 @@ func NewManager(dir string) (*Manager, error) {
 func (m *Manager) newSession(title string) *Session {
 	now := time.Now().Format("2006-01-02 15:04")
 	s := &Session{
-		ID:        uuid.New().String()[:8],
+		ID:        uuid.New().String(),
 		Title:     title,
 		CreatedAt: now,
 		UpdatedAt: now,

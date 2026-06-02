@@ -105,20 +105,11 @@
 | A4 | ✅ Kolay | Y8 — Temp dosya | ✅ Tamam |
 | A5 | ✅ Kolay | Y9 — FD leak | ✅ Tamam |
 | A6 | ✅ Kolay | Y12 — Shutdown timeout | ✅ Tamam |
-| B1 | 🟡 Orta | Y1 — SSE goroutine leak | ⬜ |
-| B2 | 🟡 Orta | Y5 — buildMessages mutation | ⬜ |
-| B3 | 🟡 Orta | Y7 — monitor() race | ⬜ |
-| B4 | 🟡 Orta | Y10 — nvidia-smi hata | ⬜ |
-| B5 | 🟡 Orta | Y15 — "Kurulu" hatası | ⬜ |
-| C1 | 🔴 Zor | Y3 — Zayıf KDF | ⬜ |
-| C2 | 🔴 Zor | Y4 — Fallback key | ⬜ |
-| C3 | 🔴 Zor | Y11 — OAuth race | ⬜ |
-| C4 | 🔴 Zor | Y14 — Download polling | ⬜ |
-| B1 | 🟡 Orta | Y1 — SSE goroutine leak | ⬜ |
-| B2 | 🟡 Orta | Y5 — buildMessages mutation | ⬜ |
-| B3 | 🟡 Orta | Y7 — monitor() race | ⬜ |
-| B4 | 🟡 Orta | Y10 — nvidia-smi hata | ⬜ |
-| B5 | 🟡 Orta | Y15 — "Kurulu" hatası | ⬜ |
+| B1 | 🟡 Orta | Y1 — SSE goroutine leak | ✅ Tamam |
+| B2 | 🟡 Orta | Y5 — buildMessages mutation | ✅ Tamam |
+| B3 | 🟡 Orta | Y7 — monitor() race | ✅ Tamam |
+| B4 | 🟡 Orta | Y10 — nvidia-smi hata | ✅ Tamam |
+| B5 | 🟡 Orta | Y15 — "Kurulu" hatası | ✅ Tamam |
 | C1 | 🔴 Zor | Y3 — Zayıf KDF | ⬜ |
 | C2 | 🔴 Zor | Y4 — Fallback key | ⬜ |
 | C3 | 🔴 Zor | Y11 — OAuth race | ⬜ |

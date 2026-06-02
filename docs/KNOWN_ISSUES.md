@@ -45,11 +45,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 
 ## 🟠 High
 
-### H1. Goroutine Leak on SSE Disconnection
-- **File:** `internal/webserver/handlers_flutter.go:39-61`
-- **Issue:** The SSE handler starts a `ChatCompletionStream` LLM call but does not monitor `request.Context().Done()`. If the client disconnects (navigates away, closes tab), the goroutine calling `stream.ProcessSSEStream` and the underlying LLM request continue running until completion. Every disconnection leaks one goroutine and one HTTP connection to llama.cpp.
-- **Impact:** Accumulated goroutine leaks over time; resource exhaustion on the server.
-- **Fix:** Add a `select { case <-ctx.Done(): return; case ... }` pattern.
+### ~~H1. Goroutine Leak on SSE Disconnection~~ ✅ Fixed
+- **File:** `internal/api/streaming.go`, `internal/api/client.go`
+- **Fix:** `processSSEStream` now accepts a `ctx context.Context` parameter. A watcher goroutine closes the response body on context cancellation, unblocking the scanner and terminating the goroutine naturally. `ChatCompletionStream` passes the context to `processSSEStream`.
 
 ### ~~H2. Config File World-Readable (`0644`) Containing Secrets~~ ✅ Fixed
 - **File:** `internal/config/config.go:178`
@@ -67,21 +65,17 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **Impact:** All such machines can decrypt each other's sync data.
 - **Fix:** Require an explicit passphrase, or generate a random key on first sync and store it in the config.
 
-### H5. `buildMessages` Mutates Session History Permanently
-- **File:** `app.go:1308`
-- **Issue:** `buildMessages` loops over `history []api.Message` and when injecting the system prompt, does `history[i] = api.Message{Role: "user", Content: systemPrompt + "\n\n" + history[i].Content}`. Since `history` is a slice referencing `sessions.Messages` (the session's own backing array), this permanently alters the stored session. After the first request, every subsequent request prepends the system prompt again, doubling it.
-- **Impact:** After 2–3 requests, the accumulated system prompt injection causes context overflow and confuses the model.
-- **Fix:** Copy the slice before mutating, or build a new slice.
+### ~~H5. `buildMessages` Mutates Session History Permanently~~ ✅ Fixed
+- **File:** `app.go:1358`
+- **Fix:** Added a defensive copy in `buildMessages`: `history = append([]api.Message{}, history...)`. Mutations on the local copy never affect session data. System prompt is injected once per request without accumulation.
 
 ### ~~H6. `hash2hex` — Only 4 Bytes of SHA-256 (Collision Risk)~~ ✅ Fixed
 - **File:** `internal/memory/store.go:342-344`
 - **Fix:** Changed `hash[:4]` → `hash[:8]` (8 bytes / 16 hex chars). Collision probability reduced from 50% to negligible levels.
 
-### H7. `monitor()` Goroutine Access to `s.cmd` Outside Lock
+### ~~H7. `monitor()` Goroutine Access to `s.cmd` Outside Lock~~ ✅ Fixed
 - **File:** `internal/llama/llama.go:271-302`
-- **Issue:** The `monitor()` goroutine checks `s.cmd == nil` at line 272 **outside** the lock, then calls `s.cmd.Wait()` at line 276. `Stop()` sets `s.cmd = nil` inside the lock. If the process has already exited and `Wait()` returns immediately, `Stop()` can acquire the lock and nil `s.cmd` during the window between the nil check and the `Wait()` call.
-- **Impact:** Rare nil-pointer panic during rapid stop/start cycles of the LLM server.
-- **Fix:** Move the nil check and `Wait()` call inside the lock, or use an atomic pointer.
+- **Fix:** Nil check is now performed inside the lock and copied to a local variable (`cmd := s.cmd`). `Wait()` is called on the local copy. Even if `Stop()` sets `s.cmd = nil`, `monitor()` operates on its own copy — nil-pointer panic is no longer possible.
 
 ### ~~H8. Temp File Leak on Download Non-Cancellation Errors~~ ✅ Fixed
 - **File:** `internal/modelstore/modelstore.go:237-243`
@@ -91,11 +85,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **File:** `internal/llama/installer.go:433,437`
 - **Fix:** Extracted file-write logic into a separate `extractFile()` helper function that uses `defer out.Close()`. This guarantees the file descriptor is always closed, even on `io.Copy` errors. Manual `out.Close()` calls removed.
 
-### H10. `nvidia-smi` Errors Silently Ignored → 0 VRAM → 0 GPU Layers
-- **File:** `internal/llama/gpu.go:71-86`
-- **Issue:** `exec.Command("nvidia-smi", ...).Output()` — the error return is silently ignored. If `nvidia-smi` fails (not installed, permission denied, or driver issue), `output` is nil/empty. Parsing empty output yields `vram = 0`, which leads to `recommendedLayers = 0` — the model runs entirely on CPU even though a GPU might be present but misconfigured.
-- **Impact:** Silent CPU fallback with no user-visible warning.
-- **Fix:** Check the error from `Output()` and log/propagate a meaningful message.
+### ~~H10. `nvidia-smi` Errors Silently Ignored → 0 VRAM → 0 GPU Layers~~ ✅ Fixed
+- **File:** `internal/llama/gpu.go:62-101`
+- **Fix:** All `nvidia-smi` call errors are now logged via `log.Printf`: binary not found, name query failure, VRAM query failure, and VRAM value parse failure. Users can now see why GPU detection failed in the logs.
 
 ### H11. OAuth `authDone` Channel Race
 - **File:** `internal/cloudsync/drive.go:99-103`
@@ -117,11 +109,9 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 - **Impact:** Unnecessary network traffic and battery drain.
 - **Fix:** Cancel the stream subscription when the download completes or the provider is disposed.
 
-### H15. Backend Error Handling: Connection Error Shows "Installed"
+### ~~H15. Backend Error Handling: Connection Error Shows "Installed"~~ ✅ Fixed
 - **File:** `frontend/lib/providers/models_provider.dart:97-104`
-- **Issue:** `llamaInstalledProvider` catches network errors: if the error is a `connectionError`, it returns `true` (showing "installed"). For other errors, it returns `false` (showing the installer). This is inverted — when the backend is unreachable (connection refused), the user sees that everything is installed and cannot trigger re-installation.
-- **Impact:** User cannot trigger llama installation when the backend is genuinely unreachable or has an issue.
-- **Fix:** Return `null` or a distinct error state for connection errors vs. installation status.
+- **Fix:** Removed the `connectionError` special case that returned `true` ("installed"). All errors now return `false` — when the backend is unreachable, the user sees the installer and can trigger setup.
 
 ---
 
@@ -352,4 +342,4 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 
 > **Last updated:** 2026-06-02  
 > **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend  
-> **Total issues:** 55 (7 critical ✅, 15 high → 6 ✅ / 9 ⬜, 13 medium, 20 low, 8 info notes)
+> **Total issues:** 55 (7 critical ✅, 15 high → 11 ✅ / 4 ⬜, 13 medium, 20 low, 8 info notes)

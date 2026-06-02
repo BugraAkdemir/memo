@@ -61,15 +61,16 @@ func DetectGPU() GPUInfo {
 
 func detectNVIDIA() (GPUInfo, bool) {
 	// Check if nvidia-smi exists
-	path, err := exec.LookPath("nvidia-smi")
+	_, err := exec.LookPath("nvidia-smi")
 	if err != nil {
+		log.Printf("GPU: nvidia-smi not found: %v", err)
 		return GPUInfo{}, false
 	}
-	_ = path
 
 	// Get GPU name
 	nameOut, err := exec.Command("nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits").Output()
 	if err != nil {
+		log.Printf("GPU: nvidia-smi name query failed: %v", err)
 		return GPUInfo{}, false
 	}
 	name := strings.TrimSpace(strings.Split(string(nameOut), "\n")[0])
@@ -77,11 +78,13 @@ func detectNVIDIA() (GPUInfo, bool) {
 	// Get total VRAM in MiB
 	vramOut, err := exec.Command("nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits").Output()
 	if err != nil {
+		log.Printf("GPU: nvidia-smi VRAM query failed: %v", err)
 		return GPUInfo{}, false
 	}
 	vramStr := strings.TrimSpace(strings.Split(string(vramOut), "\n")[0])
 	vram, err := strconv.Atoi(vramStr)
 	if err != nil {
+		log.Printf("GPU: failed to parse VRAM value %q: %v", vramStr, err)
 		vram = 0
 	}
 
@@ -112,6 +115,7 @@ func detectAMD() (GPUInfo, bool) {
 	// Try to get GPU info from rocm-smi
 	out, err := exec.Command("rocm-smi", "--showproductname").Output()
 	if err != nil {
+		log.Printf("GPU: rocm-smi query failed: %v", err)
 		return GPUInfo{}, false
 	}
 	name := "AMD GPU"

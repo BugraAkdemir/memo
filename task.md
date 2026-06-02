@@ -27,28 +27,28 @@
 - [x] `api_client.dart` catch bloğunda hata fırlat, yield etme
 - [x] `chat_provider.dart` hata durumunu snackbar/UI ile göster (`errorMessageProvider` + `chat_screen.dart` ref.listen)
 
-## Bölüm 6 — Çift Mesaj Göndermeyi Engelle
+## Bölüm 6 — Çift Mesaj Göndermeyi Engelle ✅
 **Hedef:** isSending kontrolünü sağlamlaştır, race condition'ları önle.
-- [ ] `chat_input.dart` send butonunda isSending kontrolü
-- [ ] `chat_provider.dart` sendMessage başında double-send koruması
+- [x] `chat_input.dart` send butonunda isSending kontrolü (mevcut)
+- [x] `chat_provider.dart` sendMessage/sendFile başında double-send koruması (`if (ref.read(isSendingProvider)) return`)
 
-## Bölüm 7 — Zaman Damgasına Saniye Ekle
+## Bölüm 7 — Zaman Damgasına Saniye Ekle ✅
 **Hedef:** Aynı dakika içindeki mesajlar ayırt edilebilsin.
-- [ ] `chat_provider.dart` timestamp formatı: `HH:mm` → `HH:mm:ss`
+- [x] `chat_provider.dart` timestamp formatı: `HH:mm` → `HH:mm:ss` (`.substring(11, 16)` → `.substring(11, 19)`)
 
-## Bölüm 8 — Export Chat İyileştirmesi
+## Bölüm 8 — Export Chat İyileştirmesi ✅
 **Hedef:** Export edilen chat içeriğini dosyaya kaydet.
-- [ ] `chat_screen.dart` export: file_picker ile save dialog, dosyaya yaz
+- [x] `chat_screen.dart` export: `FilePicker.platform.saveFile()` ile save dialog, `File.writeAsString` ile dosyaya yaz
 
-## Bölüm 9 — Silme İşlemlerine Onay Dialogu Ekle
+## Bölüm 9 — Silme İşlemlerine Onay Dialogu Ekle ✅
 **Hedef:** Yanlışlıkla silme önlensin.
-- [ ] `chat_sidebar.dart` chat silme: confirm dialog
-- [ ] `settings_dialog.dart` hafıza temizleme: confirm dialog
-- [ ] `model_store_screen.dart` model silme: confirm dialog
+- [x] `chat_sidebar.dart` chat silme: `AlertDialog` ile confirm dialog
+- [x] `settings_dialog.dart` hafıza temizleme: `AlertDialog` ile confirm dialog
+- [x] `model_store_screen.dart` model silme: `AlertDialog` ile confirm dialog
 
-## Bölüm 10 — Boş Mesaj Kontrolü
+## Bölüm 10 — Boş Mesaj Kontrolü ✅
 **Hedef:** Boşluk/boş string gönderimi engellensin.
-- [ ] `chat_input.dart` send'den önce `trim().isEmpty` kontrolü
+- [x] `chat_input.dart` send'den önce `trim().isEmpty` kontrolü (zaten vardı)
 
 ## Bölüm 11 — HuggingFace İndirilen Modellerin Algılanmaması ✅
 **Hedef:** HF'den indirilen modeller `models/repo__adi/model.gguf` (nested) yerine direkt `models/model.gguf` (flat) olarak kaydedilsin. Flutter import path'i de API üzerinden yapılsın.

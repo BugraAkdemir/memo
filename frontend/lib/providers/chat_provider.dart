@@ -127,7 +127,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
     ref.read(isSendingProvider.notifier).state = true;
 
-    final timestamp = DateTime.now().toIso8601String().substring(11, 16);
+    final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     final userMsg = ChatMessage(
       role: 'user',
       content: message,
@@ -218,7 +218,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final userMsg = ChatMessage(
       role: 'user',
       content: displayMsg,
-      timestamp: DateTime.now().toIso8601String().substring(11, 16),
+      timestamp: DateTime.now().toIso8601String().substring(11, 19),
     );
 
     final current = state.valueOrNull ?? [];

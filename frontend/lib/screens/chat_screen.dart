@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import 'dart:io';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -183,12 +185,20 @@ class _ChatTopBar extends ConsumerWidget {
               try {
                 final api = ref.read(apiClientProvider);
                 final md = await api.exportChat();
-                if (md.isNotEmpty && context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Chat exported (${md.length} chars)'),
-                    ),
-                  );
+                if (md.isEmpty || !context.mounted) return;
+                final path = await FilePicker.platform.saveFile(
+                  dialogTitle: L10n.t('export_chat'),
+                  fileName: 'chat_export.md',
+                  type: FileType.custom,
+                  allowedExtensions: ['md'],
+                );
+                if (path != null) {
+                  await File(path).writeAsString(md);
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Chat kaydedildi: $path')),
+                    );
+                  }
                 }
               } catch (_) {}
             },

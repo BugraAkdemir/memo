@@ -41,6 +41,9 @@ func NewStore(persistDir string, embeddingFunc chromem.EmbeddingFunc) (*Store, e
 	if persistDir == "" {
 		persistDir = "./chromem-go"
 	}
+	if embeddingFunc == nil {
+		return nil, fmt.Errorf("memory.NewStore: embeddingFunc is nil")
+	}
 
 	s := &Store{
 		persistDir:    filepath.Clean(persistDir),
@@ -98,11 +101,10 @@ func (s *Store) LoadCache() error {
 			continue
 		}
 
-		vec := append([]float32(nil), doc.Embedding...)
 		nextIndex = append(nextIndex, MemoryIndex{
 			ID:     doc.ID,
-			Vector: vec,
-			Norm:   vectorNorm(vec),
+			Vector: doc.Embedding,
+			Norm:   vectorNorm(doc.Embedding),
 		})
 	}
 
@@ -183,8 +185,9 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 		Norm:   vectorNorm(vec),
 	}
 	s.upsertIndexLocked(idx)
-	cp := append([]MemoryIndex(nil), s.index...) // copy under lock
-	go s.writeIndexFile(cp) // async persist for fast startup next time
+	if err := s.writeIndexFile(s.index); err != nil {
+		log.Printf("memory: failed to persist index: %v", err)
+	}
 	log.Printf(
 		"LATENCY memory.save total_ms=%d embed_ms=%d disk_ms=%d cache_docs=%d",
 		time.Since(totalStart).Milliseconds(),
@@ -326,7 +329,15 @@ func (s *Store) safePersistPath(relPath string) (string, error) {
 	if full != base && !strings.HasPrefix(full, base+string(os.PathSeparator)) {
 		return "", fmt.Errorf("path escapes memory directory")
 	}
-	return full, nil
+	// Resolve symlinks to prevent TOCTOU symlink swaps.
+	resolved, err := filepath.EvalSymlinks(full)
+	if err != nil {
+		return "", err
+	}
+	if resolved != base && !strings.HasPrefix(resolved, base+string(os.PathSeparator)) {
+		return "", fmt.Errorf("path escapes memory directory (symlink resolved)")
+	}
+	return resolved, nil
 }
 
 func (s *Store) upsertIndexLocked(item MemoryIndex) {

@@ -41,7 +41,10 @@ type driveClient struct {
 	authWg sync.WaitGroup
 }
 
-func newDriveClient(clientID, clientSecret, tokenPath string) *driveClient {
+func newDriveClient(clientID, clientSecret, tokenPath string) (*driveClient, error) {
+	if tokenPath == "" {
+		return nil, fmt.Errorf("cloudsync: token path is empty")
+	}
 	cfg := &oauth2.Config{
 		ClientID:     clientID,
 		ClientSecret: clientSecret,
@@ -61,7 +64,7 @@ func newDriveClient(clientID, clientSecret, tokenPath string) *driveClient {
 	if t, err := dc.loadToken(); err == nil {
 		dc.token = t
 	}
-	return dc
+	return dc, nil
 }
 
 // IsAuthenticated reports whether a valid (or refreshable) token is available.
@@ -100,7 +103,11 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 	if err != nil {
 		return "", fmt.Errorf("cloudsync: oauth listener: %w", err)
 	}
-	port := ln.Addr().(*net.TCPAddr).Port
+	tcpAddr, ok := ln.Addr().(*net.TCPAddr)
+	if !ok {
+		return "", fmt.Errorf("cloudsync: listener is not TCP")
+	}
+	port := tcpAddr.Port
 	redirectURL := fmt.Sprintf("http://127.0.0.1:%d/callback", port)
 	dc.mu.Lock()
 	dc.cfg.RedirectURL = redirectURL

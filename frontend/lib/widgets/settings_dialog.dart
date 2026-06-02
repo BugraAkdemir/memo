@@ -285,7 +285,6 @@ class _SystemPromptTab extends ConsumerStatefulWidget {
 
 class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
   final _controller = TextEditingController();
-  bool _initialized = false;
 
   @override
   void dispose() {
@@ -318,9 +317,8 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
           loading: () => const Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (prompt) {
-            if (!_initialized) {
+            if (_controller.text != prompt) {
               _controller.text = prompt;
-              _initialized = true;
             }
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -341,7 +339,6 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                     TextButton(
                       onPressed: () {
                         ref.read(systemPromptProvider.notifier).reset();
-                        _initialized = false;
                       },
                       child: Text(L10n.t('reset_prompt')),
                     ),
@@ -788,32 +785,177 @@ class _MemorySettingField extends StatelessWidget {
   }
 }
 
-class _CloudSyncTab extends ConsumerWidget {
+class _CloudSyncTab extends ConsumerStatefulWidget {
   const _CloudSyncTab();
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(Icons.cloud_sync_outlined, size: 48, color: MemoTheme.textDim),
-          const SizedBox(height: 16),
-          Text(
-            L10n.t('cloud_sync'),
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(color: MemoTheme.textMuted),
+  ConsumerState<_CloudSyncTab> createState() => _CloudSyncTabState();
+}
+
+class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
+  Future<void> _startAuth() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final url = await api.startSyncAuth();
+      if (url.isNotEmpty && mounted) {
+        // Copy URL to clipboard — user opens in browser.
+        await Clipboard.setData(ClipboardData(text: url));
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('OAuth URL kopyalandı: $url')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  Future<void> _syncNow() async {
+    try {
+      await ref.read(apiClientProvider).syncNow();
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Senkronizasyon başlatıldı')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  Future<void> _disconnect() async {
+    try {
+      await ref.read(apiClientProvider).disconnectSync();
+      if (mounted) {
+        ref.invalidate(syncAuthProvider);
+        ref.invalidate(syncAccountProvider);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Bağlantı kesildi')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('$e')));
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final authAsync = ref.watch(syncAuthProvider);
+    final accountAsync = ref.watch(syncAccountProvider);
+
+    return ListView(
+      padding: const EdgeInsets.all(32),
+      children: [
+        Text(
+          L10n.t('cloud_sync'),
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+            fontWeight: FontWeight.bold,
+            color: MemoTheme.textMain,
           ),
-          const SizedBox(height: 8),
-          Text(
-            'Google Drive entegrasyonu yapım aşamasında...',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: MemoTheme.textDim),
+        ),
+        const SizedBox(height: 12),
+        Text(
+          'Google Drive üzerinde otomatik yedekleme. Her 50 mesajda bir senkronizasyon yapılır.',
+          style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+        ),
+        const SizedBox(height: 24),
+
+        // Auth status
+        authAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('${L10n.t('error')}: $e'),
+          data: (authenticated) => Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    authenticated ? Icons.check_circle : Icons.cloud_off,
+                    color: authenticated ? MemoTheme.green : MemoTheme.red,
+                    size: 20,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    authenticated ? 'Google Drive bağlı' : 'Bağlı değil',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w500,
+                      color: authenticated
+                          ? MemoTheme.green
+                          : MemoTheme.textMuted,
+                    ),
+                  ),
+                ],
+              ),
+              if (authenticated) ...[
+                const SizedBox(height: 8),
+                accountAsync.when(
+                  loading: () => const SizedBox.shrink(),
+                  error: (_, __) => const SizedBox.shrink(),
+                  data: (account) {
+                    final email = account['email'] as String?;
+                    if (email != null && email.isNotEmpty) {
+                      return Padding(
+                        padding: const EdgeInsets.only(left: 28),
+                        child: Text(
+                          email,
+                          style: TextStyle(
+                            color: MemoTheme.textDim,
+                            fontSize: 13,
+                          ),
+                        ),
+                      );
+                    }
+                    return const SizedBox.shrink();
+                  },
+                ),
+              ],
+              const SizedBox(height: 20),
+              Row(
+                children: [
+                  if (!authenticated)
+                    ElevatedButton.icon(
+                      onPressed: _startAuth,
+                      icon: const Icon(Icons.login, size: 16),
+                      label: Text('Google ile bağlan'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: MemoTheme.accent,
+                        foregroundColor: MemoTheme.textInverse,
+                      ),
+                    ),
+                  if (authenticated) ...[
+                    OutlinedButton.icon(
+                      onPressed: _syncNow,
+                      icon: const Icon(Icons.sync, size: 16),
+                      label: Text('Şimdi senkronize et'),
+                    ),
+                    const SizedBox(width: 8),
+                    OutlinedButton.icon(
+                      onPressed: _disconnect,
+                      icon: const Icon(Icons.link_off, size: 16),
+                      label: Text('Bağlantıyı kes'),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: MemoTheme.red,
+                        side: const BorderSide(color: MemoTheme.red),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ],
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -837,10 +979,11 @@ class _RemoteAccessTab extends ConsumerWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            'Yapım aşamasında...',
+            'Bu özellik v3.0.0\'da devre dışı bırakılmıştır. Gelecek bir sürümde tekrar eklenecek.',
             style: Theme.of(
               context,
             ).textTheme.bodyMedium?.copyWith(color: MemoTheme.textDim),
+            textAlign: TextAlign.center,
           ),
         ],
       ),

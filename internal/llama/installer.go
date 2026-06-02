@@ -16,6 +16,7 @@ import (
 	"path/filepath"
 	goruntime "runtime"
 	"strings"
+	"sync"
 )
 
 // copyFile copies a file from src to dst with the given permissions.
@@ -631,19 +632,25 @@ func (i *Installer) runCmdStream(cmd *exec.Cmd, logger func(string)) error {
 	if err := cmd.Start(); err != nil {
 		return err
 	}
+	var wg sync.WaitGroup
+	wg.Add(2)
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stdoutR)
 		for scanner.Scan() {
 			logger(scanner.Text())
 		}
 	}()
 	go func() {
+		defer wg.Done()
 		scanner := bufio.NewScanner(stderrR)
 		for scanner.Scan() {
 			logger(scanner.Text())
 		}
 	}()
-	return cmd.Wait()
+	err = cmd.Wait()
+	wg.Wait()
+	return err
 }
 
 // StreamToFrontend is a helper to wrap the Wails runtime emit.

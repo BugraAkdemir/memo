@@ -167,6 +167,7 @@ func (a *App) startup(ctx context.Context) {
 	cfg, err := config.Load("config/config.yaml")
 	if err != nil {
 		log.Printf("WARN: config: %v", err)
+		a.emitEvent("config_load_error", err.Error())
 		cfg = config.Default()
 	}
 	a.cfg = cfg
@@ -182,6 +183,7 @@ func (a *App) startup(ctx context.Context) {
 	store, err := memory.NewStore(cfg.Memory.PersistDir, embeddingFunc)
 	if err != nil {
 		log.Printf("WARN: memory: %v", err)
+		a.emitEvent("memory_store_error", err.Error())
 	}
 	a.store = store
 
@@ -190,6 +192,7 @@ func (a *App) startup(ctx context.Context) {
 	sm, err := sessions.NewManager("data/sessions")
 	if err != nil {
 		log.Printf("WARN: sessions: %v", err)
+		a.emitEvent("sessions_manager_error", err.Error())
 	}
 	a.sessions = sm
 
@@ -913,7 +916,10 @@ func (a *App) findPath(relative string) string {
 		return relative
 	}
 	// Try relative to binary
-	exePath, _ := os.Executable()
+	exePath, err := os.Executable()
+	if err != nil {
+		exePath = os.Args[0]
+	}
 	full := filepath.Join(filepath.Dir(exePath), relative)
 	if _, err := os.Stat(full); err == nil {
 		return full

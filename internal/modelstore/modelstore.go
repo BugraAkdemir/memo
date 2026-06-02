@@ -365,13 +365,24 @@ func (s *Store) ListLocalModels() []LocalModel {
 }
 
 func (s *Store) DeleteLocalModel(path string) error {
-	// Security: ensure the path is within our models directory
 	absPath, err := filepath.Abs(path)
 	if err != nil {
 		return fmt.Errorf("modelstore.Delete: %w", err)
 	}
-	absModelsDir, _ := filepath.Abs(s.modelsDir)
-	if !strings.HasPrefix(absPath, absModelsDir) {
+	absModelsDir, err := filepath.Abs(s.modelsDir)
+	if err != nil {
+		return fmt.Errorf("modelstore.Delete: %w", err)
+	}
+	// Resolve symlinks to prevent TOCTOU symlink attacks.
+	absPath, err = filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return fmt.Errorf("modelstore.Delete: %w", err)
+	}
+	evalModelsDir, err := filepath.EvalSymlinks(absModelsDir)
+	if err != nil {
+		return fmt.Errorf("modelstore.Delete: %w", err)
+	}
+	if !strings.HasPrefix(absPath, evalModelsDir) {
 		return fmt.Errorf("modelstore.Delete: path outside models directory")
 	}
 
@@ -393,6 +404,8 @@ func (s *Store) DeleteLocalModel(path string) error {
 	return nil
 }
 
+const maxImportSize int64 = 50 << 30 // 50 GiB — covers virtually all LLM models
+
 func (s *Store) ImportLocalModel(sourcePath string) error {
 	absSource, err := filepath.Abs(sourcePath)
 	if err != nil {
@@ -404,6 +417,9 @@ func (s *Store) ImportLocalModel(sourcePath string) error {
 	}
 	if info.IsDir() {
 		return fmt.Errorf("source is a directory")
+	}
+	if info.Size() > maxImportSize {
+		return fmt.Errorf("file too large (%d bytes, max %d bytes)", info.Size(), maxImportSize)
 	}
 
 	if err := os.MkdirAll(s.modelsDir, 0755); err != nil {

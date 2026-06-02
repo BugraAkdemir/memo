@@ -9,10 +9,10 @@
 - [x] Frontend: `chat_provider.dart` stream'de thinking/content ayrı buffer
 - [x] Frontend: `chat_message_list.dart` collapsible `_ThinkingToggle` widget'ı (`▶ Düşünme göster / ▼ Düşünme gizle`)
 
-## Bölüm 2 — SSE Stream Token Rebuild Optimizasyonu
+## Bölüm 2 — SSE Stream Token Rebuild Optimizasyonu ✅
 **Hedef:** Her token'da tüm mesaj listesinin yeniden oluşmasını engelle.
-- [ ] `chat_provider.dart` sendMessage: tüm listeyi kopyalamak yerine son mesajı güncelle
-- [ ] `chat_message_list.dart`: sadece değişen mesaj rebuild olsun
+- [x] `chat_provider.dart` sendMessage: list copy kaldırıldı, streaming ayrı provider'lar (`streamingContentProvider`/`streamingThinkingProvider`) üzerinden token-by-token güncelleniyor
+- [x] `chat_message_list.dart`: `ValueKey` + `RepaintBoundary` ile sadece değişen mesaj rebuild olur; streaming için animasyonsuz `_StreamingBubble` widget'ı
 
 ## Bölüm 3 — Incognito Toggle Race Condition
 **Hedef:** API hatasında frontend/backend state desync olmasın.

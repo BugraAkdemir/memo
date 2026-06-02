@@ -34,6 +34,8 @@ type FullBridge interface {
 	DeleteMemoryFile(relPath string) error
 	GetMemorySettings() config.MemoryConfig
 	UpdateMemorySettings(topK int, minSimilarity float32) error
+	GetMemoryEnabled() bool
+	SetMemoryEnabled(enabled bool) error
 
 	// Image
 	GetImageBase64(path string) string

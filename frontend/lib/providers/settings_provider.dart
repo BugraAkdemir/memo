@@ -232,6 +232,27 @@ final remoteAccessProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   }
 });
 
+// ─── Memory Enabled ────────────────────────────────────────────
+
+final memoryEnabledProvider =
+    AsyncNotifierProvider<MemoryEnabledNotifier, bool>(
+      MemoryEnabledNotifier.new,
+    );
+
+class MemoryEnabledNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    return ref.read(apiClientProvider).getMemoryEnabled();
+  }
+
+  Future<void> toggle() async {
+    final current = state.valueOrNull ?? true;
+    final next = !current;
+    await ref.read(apiClientProvider).setMemoryEnabled(next);
+    state = AsyncData(next);
+  }
+}
+
 // ─── App Version ────────────────────────────────────────────────
 
 final appVersionProvider = FutureProvider<String>((ref) async {

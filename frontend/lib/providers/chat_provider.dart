@@ -148,9 +148,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
 
-      // Refresh only chat metadata; refreshing messages here can race with the
-      // backend session write and make the just-streamed reply disappear.
+      // Refresh chat metadata — wait a beat so async title generation finishes
       ref.invalidate(chatListProvider);
+      Future.delayed(const Duration(seconds: 2), () {
+        ref.invalidate(chatListProvider);
+      });
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state = e.toString();
       // Clear streaming state on error

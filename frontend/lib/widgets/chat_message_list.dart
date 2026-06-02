@@ -152,46 +152,16 @@ class _MessageBubble extends StatefulWidget {
   State<_MessageBubble> createState() => _MessageBubbleState();
 }
 
-class _MessageBubbleState extends State<_MessageBubble>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _fadeController;
-  late final Animation<double> _fadeAnimation;
+class _MessageBubbleState extends State<_MessageBubble> {
   bool _hovering = false;
   bool _thinkingExpanded = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 300),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOut,
-    );
-    _fadeController.forward();
-  }
-
-  @override
-  void dispose() {
-    _fadeController.dispose();
-    super.dispose();
-  }
 
   @override
   Widget build(BuildContext context) {
     final isUser = widget.message.isUser;
     final maxWidth = MediaQuery.of(context).size.width * 0.55;
 
-    return FadeTransition(
-      opacity: _fadeAnimation,
-      child: SlideTransition(
-        position: Tween<Offset>(
-          begin: const Offset(0, 0.05),
-          end: Offset.zero,
-        ).animate(_fadeAnimation),
-        child: Padding(
+    return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Row(
             mainAxisAlignment: isUser
@@ -313,9 +283,7 @@ class _MessageBubbleState extends State<_MessageBubble>
               ),
             ],
           ),
-        ),
-      ),
-    );
+        );
   }
 }
 

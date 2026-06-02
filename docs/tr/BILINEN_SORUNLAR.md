@@ -37,11 +37,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `app.go`
 - **Çözüm:** Lock+goroutine modeli channel-based worker ile değiştirildi. `saveMemoryAsync` kanala yazar, anında döner. `memorySaveWorker` sırayla işleri `storeMu.Lock()` alarak yapar. RLock→Lock geçişi tamamen kalktı.
 
-### K7. UI İş Parçacığı Performansı — Mesaj Başına AnimationController
-- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:92-99`
-- **Sorun:** Her `_MessageBubble` kendi `AnimationController`'ını `initState()`'de oluşturur. 100 mesajda 100 animation controller oluşturulur, her biri frame callback'i yönetir. Her baloncuğu saran `FadeTransition` + `SlideTransition` ile birleştiğinde, kaydırma ve token güncellemeleri sırasında ciddi takılmalara neden olur.
-- **Etki:** 50+ mesajlı sohbetlerde kesintili kaydırma; orta segment cihazlarda fark edilir frame düşüşleri.
-- **Çözüm:** Mesaj balonlarından giriş animasyonlarını kaldırın veya gecikmeli paylaşımlı bir animation controller kullanın.
+### ~~K7. UI İş Parçacığı Performansı — Mesaj Başına AnimationController~~ ✅ Çözüldü
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart`
+- **Çözüm:** `_MessageBubble`'daki tüm entry animasyonları kaldırıldı. `SingleTickerProviderStateMixin`, `AnimationController`, `FadeTransition`, `SlideTransition` tamamen temizlendi.
 
 ---
 

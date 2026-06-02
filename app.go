@@ -397,7 +397,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		a.sessions.AddMessage("user", userMsg, "", filePath)
 	}
 
-	return a.callLLMStream(context.Background(), messages, userMsg, "", filePath)
+	return a.callLLMStream(ctx, messages, userMsg, "", filePath)
 }
 
 func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 string) <-chan api.StreamChunk {

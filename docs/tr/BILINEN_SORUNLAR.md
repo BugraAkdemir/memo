@@ -45,17 +45,13 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 ## 🟠 Yüksek
 
-### Y1. SSE Bağlantı Kesintisinde Goroutine Sızıntısı
-- **Dosya:** `internal/webserver/handlers_flutter.go:39-61`
-- **Sorun:** SSE handler'ı `ChatCompletionStream` LLM çağrısı başlatır ancak `request.Context().Done()` kanalını izlemez. İstemci bağlantıyı keserse (sayfadan ayrılma, sekmeyi kapatma), `stream.ProcessSSEStream`'i çağıran goroutine ve alttaki LLM isteği tamamlanana kadar çalışmaya devam eder. Her kopma bir goroutine ve bir HTTP bağlantısı sızdırır.
-- **Etki:** Zamanla biriken goroutine sızıntıları; sunucuda kaynak tükenmesi.
-- **Çözüm:** `select { case <-ctx.Done(): return; case ... }` modeli ekleyin.
+### ~~Y1. SSE Bağlantı Kesintisinde Goroutine Sızıntısı~~ ✅ Çözüldü
+- **Dosya:** `internal/api/streaming.go`, `internal/api/client.go`
+- **Çözüm:** `processSSEStream` artık `ctx context.Context` parametresi alıyor. Context iptal olduğunda body'i kapatan bir watcher goroutine ile scanner uyandırılıyor, goroutine doğal olarak sonlanıyor. `ChatCompletionStream` context'i `processSSEStream`'e iletiyor.
 
-### Y2. Yapılandırma Dosyası Dünya-Tarafından Okunabilir (`0644`) — Sırlar İçeriyor
+### ~~Y2. Yapılandırma Dosyası Dünya-Tarafından Okunabilir (`0644`) — Sırlar İçeriyor~~ ✅ Çözüldü
 - **Dosya:** `internal/config/config.go:178`
-- **Sorun:** `config.yaml` `os.WriteFile` ile `0644` izinleriyle yazılır. Dosya `client_secret` (OAuth), `passphrase` (şifreleme) ve diğer hassas değerleri içerir. Çok kullanıcılı sistemlerde herhangi bir yerel kullanıcı bu sırları okuyabilir.
-- **Etki:** OAuth token hırsızlığı, şifrelenmiş senkronizasyon verilerinin çözülmesi.
-- **Çözüm:** `0600` ile yazın ve mevcut kurulumlar için manuel chmod belgeleyin.
+- **Çözüm:** `os.WriteFile` çağrısında `0644` → `0600` olarak değiştirildi. Artık config dosyası sadece kullanıcının kendisi tarafından okunabilir.
 
 ### Y3. Senkronizasyon Şifrelemesi İçin Zayıf Anahtar Türetme
 - **Dosya:** `internal/cloudsync/crypto.go:18-23`
@@ -69,17 +65,13 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Etki:** Bu tür tüm makineler birbirlerinin senkronizasyon verilerini çözebilir.
 - **Çözüm:** Net bir parola gerektirin veya ilk senkronizasyonda rastgele bir anahtar oluşturup yapılandırmada saklayın.
 
-### Y5. `buildMessages` Oturum Geçmişini Kalıcı Olarak Değiştiriyor
-- **Dosya:** `app.go:1308`
-- **Sorun:** `buildMessages`, `[]api.Message` üzerinde döngü yapar ve sistem prompt'unu enjekte ederken `history[i] = api.Message{Role: "user", Content: systemPrompt + "\n\n" + history[i].Content}` yapar. `history`, `sessions.Messages`'ı referans alan bir dilim olduğundan (oturumun kendi arka plan dizisi), bu, saklanan oturumu kalıcı olarak değiştirir. İlk istekten sonra, sonraki her istek sistem prompt'unu tekrar ekler ve ikiye katlar.
-- **Etki:** 2–3 istekten sonra birikmiş sistem prompt enjeksiyonu context taşmasına neden olur ve modeli karıştırır.
-- **Çözüm:** Mutation öncesi dilimi kopyalayın veya yeni bir dilim oluşturun.
+### ~~Y5. `buildMessages` Oturum Geçmişini Kalıcı Olarak Değiştiriyor~~ ✅ Çözüldü
+- **Dosya:** `app.go:1358`
+- **Çözüm:** `buildMessages` içinde `history`'nin savunma amaçlı kopyası eklendi: `history = append([]api.Message{}, history...)`. Artık `getSessionHistory()` dönüşü üzerinde yapılan mutasyonlar session verisini asla etkilemez. Sistem prompt'u her istekte tek sefer enjekte edilir, ikiye katlanmaz.
 
-### Y6. `hash2hex` — SHA-256'nın Sadece 4 Baytı (Çakışma Riski)
+### ~~Y6. `hash2hex` — SHA-256'nın Sadece 4 Baytı (Çakışma Riski)~~ ✅ Çözüldü
 - **Dosya:** `internal/memory/store.go:342-344`
-- **Sorun:** `hash2hex`, `fmt.Sprintf("%x", h.Sum(nil)[:4])` döndürür — SHA-256'nın ilk 4 baytı (32 bit). ~2^16 girişte, doğum günü paradoksu %50 çakışma olasılığı verir. Çakışma mevcut `.gob` dosyasını sessizce üzerine yazarak bir hafıza girişini kaybeder.
-- **Etki:** Orta düzey hafıza kullanımında veri kaybı.
-- **Çözüm:** En az 8 bayt (16 hex karakter) veya tam hash kullanın.
+- **Çözüm:** `hash[:4]` → `hash[:8]` olarak değiştirildi. Artık 8 bayt (16 hex karakter) kullanılıyor. Çakışma olasılığı %50'den ihmal edilebilir seviyeye düştü.
 
 ### Y7. `monitor()` Goroutine'inin `s.cmd`'ye Kilit Dışında Erişmesi
 - **Dosya:** `internal/llama/llama.go:271-302`
@@ -87,17 +79,13 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Etki:** Hızlı başlat/durdur döngülerinde nadir nil-pointer paniği.
 - **Çözüm:** Nil kontrolü ve `Wait()` çağrısını kilit içine taşıyın veya atomic pointer kullanın.
 
-### Y8. İndirme Hatalarında Geçici Dosya Temizlenmiyor
+### ~~Y8. İndirme Hatalarında Geçici Dosya Temizlenmiyor~~ ✅ Çözüldü
 - **Dosya:** `internal/modelstore/modelstore.go:237-243`
-- **Sorun:** Ertelenmiş temizlik `os.Remove(tmpPath)` yalnızca `ctx.Err() != nil` olduğunda (context iptal edildiğinde) çalışır. İndirme HTTP hatası veya ağ zaman aşımı ile başarısız olursa, `.downloading` geçici dosyası diskte süresiz kalır.
-- **Etki:** Birikmiş kısmi indirme dosyaları disk alanı israf eder.
-- **Çözüm:** `tmpPath`'i koşulsuz olarak defer'de veya her hatada temizleyin.
+- **Çözüm:** `os.Remove(tmpPath)` koşullu (`ctx.Err() != nil`) olmaktan çıkarılıp koşulsuz `defer` içine alındı. Artık ister context iptali, ister HTTP hatası, ister ağ zaman aşımı olsun — her durumda `.downloading` geçici dosyası temizlenir.
 
-### Y9. `extractTarGzToBin`'de Dosya Tanıtıcı Sızıntısı
+### ~~Y9. `extractTarGzToBin`'de Dosya Tanıtıcı Sızıntısı~~ ✅ Çözüldü
 - **Dosya:** `internal/llama/installer.go:433,437`
-- **Sorun:** Tar çıkarma döngüsü içinde `out.Close()` manuel olarak çağrılır (defer edilmemiş). `io.Copy` satır 432'de başarısız olursa, satır 437'deki `continue` kapatmayı atlar ve bir dosya tanıtıcısı sızdırır.
-- **Etki:** Kısmen bozuk arşivlerde dosya tanıtıcı tükenmesi.
-- **Çözüm:** Her dosya açmadan önce `defer out.Close()` kullanın veya döngüyü yeniden yapılandırın.
+- **Çözüm:** Tar çıkarma döngüsü yeniden yapılandırıldı. Her dosya için ayrı `extractFile()` fonksiyonu oluşturuldu, `defer out.Close()` ile dosyanın her koşulda kapanması garanti altına alındı. Manuel `out.Close()` çağrıları kaldırıldı.
 
 ### Y10. `nvidia-smi` Hataları Sessizce Geçiliyor → 0 VRAM → 0 GPU Katmanı
 - **Dosya:** `internal/llama/gpu.go:71-86`
@@ -111,17 +99,13 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Etki:** Hızlı OAuth akışı başlatmalarında nadir takılma.
 - **Çözüm:** `sync.WaitGroup` veya mutex ile sıfırlanan tek bir paylaşımlı kanal kullanın.
 
-### Y12. `Shutdown(context.Background())` Süresiz Bloke Olabilir
+### ~~Y12. `Shutdown(context.Background())` Süresiz Bloke Olabilir~~ ✅ Çözüldü
 - **Dosya:** `internal/webserver/server.go:286`
-- **Sorun:** `s.srv.Shutdown(context.Background())`'ın zaman aşımı yoktur. Bir HTTP handler'ı takılı kalırsa (örn. LLM yanıtı bekliyor), `Shutdown` sonsuza kadar bekler.
-- **Etki:** Akış etkinken düzgün kapanma sırasında uygulama donar.
-- **Çözüm:** `context.WithTimeout(ctx, 10*time.Second)` kullanın.
+- **Çözüm:** `context.Background()` → `context.WithTimeout(10*time.Second)` olarak değiştirildi. Artık sunucu kapanırken bir handler takılı kalırsa 10 saniye sonra zaman aşımına uğrar ve kapanma tamamlanır.
 
-### Y13. Oturum Kimliği 8 Hex Karaktere Kırpılmış
+### ~~Y13. Oturum Kimliği 8 Hex Karaktere Kırpılmış~~ ✅ Çözüldü
 - **Dosya:** `internal/sessions/sessions.go:68`
-- **Sorun:** `uuid.New().String()[:8]` UUID'nin yalnızca ilk 8 hex karakterini alır (32 bit). ~10^5 oturumda, doğum günü paradoksu ~%1 çakışma olasılığı verir. Çakışma mevcut bir oturum dosyasını sessizce üzerine yazar.
-- **Etki:** Sohbet geçmişi kaybı.
-- **Çözüm:** Tam UUID veya en az 16 hex karakter kullanın.
+- **Çözüm:** `uuid.New().String()[:8]` → `uuid.New().String()` olarak değiştirildi. Artık tam UUID (36 karakter) kullanılıyor. Çakışma olasılığı astronomik seviyede düşük.
 
 ### Y14. İndirme Yoklama Akışı Sonsuza Kadar Çalışıyor
 - **Dosya:** `frontend/lib/providers/models_provider.dart:66-79`
@@ -364,4 +348,4 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 > **Son güncelleme:** 2026-06-02  
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend  
-> **Toplam sorun:** 55 (7 kritik, 15 yüksek, 13 orta, 20 düşük, 8 bilgi notu)
+> **Toplam sorun:** 55 (7 kritik ✅, 15 yüksek → 6 ✅ / 9 ⬜, 13 orta, 20 düşük, 8 bilgi notu)

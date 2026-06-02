@@ -1356,6 +1356,8 @@ func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Messag
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
 	history := a.getSessionHistory()
+	// Defensive copy: ensure mutations below never affect session data
+	history = append([]api.Message{}, history...)
 	var msgs []api.Message
 
 	if a.llamaServer.IsRunning() {

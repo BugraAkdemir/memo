@@ -175,7 +175,7 @@ func saveToFile(cfg *AppConfig, path string) error {
 		return fmt.Errorf("config.saveToFile: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0644)
+	return os.WriteFile(path, data, 0600)
 }
 
 func (c *AppConfig) validate() {

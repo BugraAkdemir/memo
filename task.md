@@ -58,13 +58,16 @@
 
 ---
 
-## [ ] K6 — `saveMemoryAsync` RLock→Lock Deadlock Riski
-- **Dosya:** `app.go:1399-1421`
+## [x] K6 — `saveMemoryAsync` RLock→Lock Deadlock Riski ✅
+- **Dosya:** `app.go`
 - **Sorun:** RLock alıp içinde Lock almaya çalışan goroutine → kilitlenme riski
-- **Çözüm:** Channel-based worker goroutine kullan
+- **Çözüm:** Channel-based worker goroutine. `saveMemoryAsync` sadece kanala yazar, anında döner. Tek bir `memorySaveWorker` goroutine sırayla işleri Lock alarak yapar. RLock→Lock geçişi tamamen kalkar.
 - **İşlemler:**
-  - [ ] `app.go` — `saveMemoryAsync`'i channel-based worker pattern'e çevir
-  - [ ] Go derleme testi yap
+  - [x] `app.go` — `saveTask` struct ve `memorySaveCh` channel eklendi
+  - [x] `app.go` — `startup()`'da channel init + worker başlatıldı
+  - [x] `app.go` — `saveMemoryAsync` channel'a yazmaya indirgendi
+  - [x] `app.go` — `memorySaveWorker` + `saveMemorySync` fonksiyonları eklendi
+  - [x] Go derleme testi yapıldı
 
 ---
 

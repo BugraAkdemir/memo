@@ -33,11 +33,9 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `app.go`
 - **Çözüm:** `App` struct'ına `clientMu sync.RWMutex` eklendi. Tüm yazmalar `Lock/Unlock`, tüm okumalar `RLock/RUnlock` ile korunuyor. `a.client` ve `a.embeddingClient` tamamen güvence altına alındı.
 
-### K6. `saveMemoryAsync` RLock→Lock Modeli (Kilitlenme Riski)
-- **Dosya:** `app.go:1399-1421`
-- **Sorun:** `saveMemoryAsync`, `storeMu.RLock()` alır (satır 1394, deferred RUnlock satır 1395), ardından satır 1399'da `storeMu.Lock()` almaya çalışan bir goroutine başlatır (satır 1404). Fonksiyon hemen döner, deferred RUnlock tetiklenir ve goroutine devam edebilir. Ancak `saveMemoryAsync`, `storeMu` zaten write-lock iken çağrılırsa (örn. `reinitMemoryStore` sırasında), RLock bloke olur. İki goroutine aynı anda `saveMemoryAsync` çağırırsa, ilki RLock alır, ikincisi de RLock alır (okuyucular birbirini bloke etmez), sonra her iki goroutine Lock() dener — biri başarılı olur, diğeri ilki bitene kadar bloke olur. Bu kırılgan ve kafa karıştırıcıdır.
-- **Etki:** Eşzamanlı hafıza kaydetme + yeniden başlatma senaryolarında zor ayıklanabilir takılmalar.
-- **Çözüm:** Async hafıza kaydetmeleri için lock+goroutine modeli yerine channel tabanlı bir worker goroutine kullanın.
+### ~~K6. `saveMemoryAsync` RLock→Lock Modeli (Kilitlenme Riski)~~ ✅ Çözüldü
+- **Dosya:** `app.go`
+- **Çözüm:** Lock+goroutine modeli channel-based worker ile değiştirildi. `saveMemoryAsync` kanala yazar, anında döner. `memorySaveWorker` sırayla işleri `storeMu.Lock()` alarak yapar. RLock→Lock geçişi tamamen kalktı.
 
 ### K7. UI İş Parçacığı Performansı — Mesaj Başına AnimationController
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:92-99`

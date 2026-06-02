@@ -50,6 +50,11 @@ type SyncAccount struct {
 	Email         string `json:"email,omitempty"`
 }
 
+type saveTask struct {
+	userMsg string
+	reply   string
+}
+
 type App struct {
 	ctx               context.Context
 	client            *api.Client
@@ -70,6 +75,7 @@ type App struct {
 	originalBaseURL   string      // stores the original API base URL before llama override
 	embeddingClient   *api.Client // separate client for embedding server
 	syncManager       *cloudsync.Manager
+	memorySaveCh      chan saveTask
 }
 
 func NewApp() *App {
@@ -153,6 +159,10 @@ func (a *App) startup(ctx context.Context) {
 	// Check embedding health in background.
 	// Removed: Since we are using internal models, they are started manually.
 	// Running a health check here will falsely report an error.
+
+	// Start memory save worker (channel-based, single goroutine — no lock contention)
+	a.memorySaveCh = make(chan saveTask, 64)
+	go a.memorySaveWorker()
 
 	// Start STT server in background (DISABLED due to Vosk crashes)
 	// go a.startSTTServer()
@@ -1451,34 +1461,43 @@ func (a *App) callLLM(messages []api.Message) string {
 }
 
 func (a *App) saveMemoryAsync(userMsg, reply string) {
-	a.storeMu.RLock()
-	defer a.storeMu.RUnlock()
-	if a.store == nil || reply == "" {
+	if reply == "" {
 		return
 	}
-	go func() {
-		start := time.Now()
-		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-		defer cancel()
+	select {
+	case a.memorySaveCh <- saveTask{userMsg: userMsg, reply: reply}:
+	default:
+		log.Println("WARN: memory save channel full, dropping")
+	}
+}
 
-		a.storeMu.Lock()
-		defer a.storeMu.Unlock()
-		if a.store == nil {
-			return
-		}
+func (a *App) memorySaveWorker() {
+	for task := range a.memorySaveCh {
+		a.saveMemorySync(task.userMsg, task.reply)
+	}
+}
 
-		if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
-			log.Printf("LATENCY app.memory_save_async total_ms=%d status=error", time.Since(start).Milliseconds())
-			log.Printf("MEMORY SAVE FAILED: %v", err)
-			a.emitEvent("memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
-		} else {
-			log.Printf("LATENCY app.memory_save_async total_ms=%d status=ok", time.Since(start).Milliseconds())
-			log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
-			if a.syncManager != nil {
-				a.syncManager.Increment()
-			}
+func (a *App) saveMemorySync(userMsg, reply string) {
+	start := time.Now()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
+	if a.store == nil {
+		return
+	}
+
+	if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
+		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
+		log.Printf("MEMORY SAVE FAILED: %v", err)
+	} else {
+		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
+		log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
+		if a.syncManager != nil {
+			a.syncManager.Increment()
 		}
-	}()
+	}
 }
 
 func truncateLog(s string, n int) string {

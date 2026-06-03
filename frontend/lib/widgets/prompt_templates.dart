@@ -88,9 +88,9 @@ class PromptTemplatesPopup extends StatelessWidget {
       margin: const EdgeInsets.symmetric(horizontal: 16),
       constraints: const BoxConstraints(maxHeight: 320),
       decoration: BoxDecoration(
-        color: MemoTheme.bgApp,
+        color: MemoTheme.of(context).bgApp,
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        border: Border.all(color: MemoTheme.borderSoft),
+        border: Border.all(color: MemoTheme.of(context).borderSoft),
         boxShadow: MemoTheme.shadowMd,
       ),
       child: ClipRRect(
@@ -134,7 +134,7 @@ class _TemplateItemState extends State<_TemplateItem> {
         onTap: widget.onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          color: _hovering ? MemoTheme.bgElement : Colors.transparent,
+          color: _hovering ? MemoTheme.of(context).bgElement : Colors.transparent,
           child: Row(
             children: [
               Text(widget.template.icon, style: const TextStyle(fontSize: 18)),
@@ -148,14 +148,14 @@ class _TemplateItemState extends State<_TemplateItem> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: MemoTheme.textMain,
+                        color: MemoTheme.of(context).textMain,
                       ),
                     ),
                     Text(
                       widget.template.key,
                       style: TextStyle(
                         fontSize: 11,
-                        color: MemoTheme.textDim,
+                        color: MemoTheme.of(context).textDim,
                         fontFamily: 'JetBrains Mono',
                       ),
                     ),

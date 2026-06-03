@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
 import '../models/chat.dart';
+import 'settings_provider.dart';
 
 /// Global API client instance.
 final apiClientProvider = Provider<MemoApiClient>((ref) {
@@ -67,9 +68,8 @@ class ActiveChatIdNotifier extends AsyncNotifier<String> {
 
   Future<void> switchTo(String id) async {
     final api = ref.read(apiClientProvider);
-    // Clear any in-flight streaming state
-    ref.read(streamingContentProvider.notifier).state = '';
-    ref.read(streamingThinkingProvider.notifier).state = '';
+    // Cancel any in-flight stream
+    ref.read(messagesProvider.notifier).stopStreaming();
     await api.switchChat(id);
     state = AsyncData(id);
     ref.invalidate(messagesProvider);
@@ -173,22 +173,28 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     state = AsyncData([...current, userMsg]);
 
     try {
-      final stream = api.sendMessageStream(message, cancelToken: _cancelToken);
+      final streamingEnabled = ref.read(streamingEnabledProvider);
       String fullReply = '';
       String fullThinking = '';
 
-      await for (final chunk in stream) {
-        fullReply += chunk.content;
-        fullThinking += chunk.thinking ?? '';
+      if (streamingEnabled) {
+        final stream = api.sendMessageStream(message, cancelToken: _cancelToken);
 
-        // Update streaming providers instead of copying the entire message list
-        ref.read(streamingContentProvider.notifier).state = fullReply;
-        ref.read(streamingThinkingProvider.notifier).state = fullThinking;
-      }
+        await for (final chunk in stream) {
+          fullReply += chunk.content;
+          fullThinking += chunk.thinking ?? '';
 
-      if (_stopped) {
-        _stopped = false;
-        return;
+          // Update streaming providers instead of copying the entire message list
+          ref.read(streamingContentProvider.notifier).state = fullReply;
+          ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+        }
+
+        if (_stopped) {
+          _stopped = false;
+          return;
+        }
+      } else {
+        fullReply = await api.sendMessage(message);
       }
 
       // Append final assistant message to the list

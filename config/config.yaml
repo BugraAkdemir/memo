@@ -32,6 +32,9 @@ llama:
     ctx_size: 4096
     max_history: 20
     models_dir: ./data/models
+    temperature: 0.7
+    top_p: 0.9
+    max_tokens: 0
 sync:
     enabled: true
     client_id: ""

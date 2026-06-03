@@ -105,6 +105,7 @@ type App struct {
 	identity          *identity.Identity
 	cfg               *config.AppConfig
 	sessions          *sessions.Manager
+	incognitoMu       sync.RWMutex
 	isIncognito       bool
 	incognitoMessages []api.Message
 	sttServer         *exec.Cmd
@@ -324,12 +325,13 @@ func (a *App) shutdown(ctx context.Context) {
 // ─── Incognito ───────────────────────────────────────────────────
 
 func (a *App) ToggleIncognito(enabled bool) {
+	a.incognitoMu.Lock()
 	a.isIncognito = enabled
+	a.incognitoMessages = nil
+	a.incognitoMu.Unlock()
 	if enabled {
-		a.incognitoMessages = nil
 		log.Println("Entered Incognito Mode")
 	} else {
-		a.incognitoMessages = nil
 		log.Println("Exited Incognito Mode")
 	}
 }
@@ -337,23 +339,30 @@ func (a *App) ToggleIncognito(enabled bool) {
 // ─── Chat ────────────────────────────────────────────────────────
 
 func (a *App) handleIncognito(userMsg string, b64 string) string {
+	a.incognitoMu.Lock()
 	if b64 != "" {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
 	} else {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("user", userMsg))
 	}
-
 	msgs := []api.Message{api.NewTextMessage("system", a.cfg.Identity.IncognitoPrompt)}
 	msgs = append(msgs, a.incognitoMessages...)
+	a.incognitoMu.Unlock()
 
 	reply := a.callLLM(msgs)
+
+	a.incognitoMu.Lock()
 	a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
+	a.incognitoMu.Unlock()
 	return reply
 }
 
 func (a *App) SendMessage(userMsg string) string {
 	log.Printf(">> SendMessage: %q", userMsg)
-	if a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
 		return a.handleIncognito(userMsg, "")
 	}
 	messages := a.buildMessages(userMsg, nil)
@@ -371,7 +380,10 @@ func (a *App) SendMessage(userMsg string) string {
 func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	log.Printf(">> SendMessageStream: %q", userMsg)
 
-	if a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
 		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
 
@@ -397,7 +409,10 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	mime := detectMime(imagePath, imgData)
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 
-	if a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
 		return a.handleIncognitoStream(ctx, userMsg, b64)
 	}
 
@@ -438,7 +453,10 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 
 	combined := fmt.Sprintf("%s\n\n--- File: %s ---\n%s", userMsg, fileName, fileContent)
 
-	if a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
 		return a.handleIncognitoStream(ctx, combined, "")
 	}
 
@@ -452,14 +470,15 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 }
 
 func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 string) <-chan api.StreamChunk {
+	a.incognitoMu.Lock()
 	if b64 != "" {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewMultimodalMessage("user", userMsg, b64))
 	} else {
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("user", userMsg))
 	}
-
 	msgs := []api.Message{api.NewTextMessage("system", a.cfg.Identity.IncognitoPrompt)}
 	msgs = append(msgs, a.incognitoMessages...)
+	a.incognitoMu.Unlock()
 
 	// Note: for incognito, we don't save to memory/sessions, handled in callLLMStream via isIncognito flag
 	return a.callLLMStream(ctx, msgs, userMsg, "", "")
@@ -551,7 +570,10 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		},
 	})
 
-	if !a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if !incog {
 		if a.sessions != nil {
 			a.sessions.AddMessage("assistant", reply, "", "")
 			// Auto-generate smart title after first exchange
@@ -561,7 +583,9 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		}
 		a.saveMemoryAsync(userMsg, reply)
 	} else {
+		a.incognitoMu.Lock()
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
+		a.incognitoMu.Unlock()
 	}
 }
 
@@ -575,7 +599,10 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	mime := detectMime(imagePath, imgData)
 	b64 := "data:" + mime + ";base64," + base64.StdEncoding.EncodeToString(imgData)
 
-	if a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
 		return a.handleIncognito(userMsg, b64)
 	}
 
@@ -628,7 +655,10 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 
 	combined := fmt.Sprintf("%s\n\n--- File: %s ---\n%s", userMsg, fileName, fileContent)
 
-	if a.isIncognito {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
 		return a.handleIncognito(combined, "")
 	}
 

@@ -17,13 +17,22 @@ class MemoApp extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
+    final themeModeStr = ref.watch(themeModeProvider);
     L10n.setLocale(locale);
+
+    final themeMode = switch (themeModeStr) {
+      'light' => ThemeMode.light,
+      'dark' => ThemeMode.dark,
+      _ => ThemeMode.system,
+    };
 
     return MaterialApp(
       title: 'Memo',
       debugShowCheckedModeBanner: false,
       theme: MemoTheme.themeData,
-      home: const AppShell(),
+      darkTheme: MemoTheme.darkThemeData,
+      themeMode: themeMode,
+      home: AppShell(),
     );
   }
 }

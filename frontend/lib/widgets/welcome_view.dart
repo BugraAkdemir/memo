@@ -36,10 +36,7 @@ class WelcomeView extends StatelessWidget {
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [
-                      MemoTheme.accentPale,
-                      MemoTheme.accentMuted,
-                    ],
+                    colors: [MemoTheme.accentPale, MemoTheme.accentMuted],
                   ),
                   borderRadius: BorderRadius.circular(24),
                   border: Border.all(
@@ -86,9 +83,9 @@ class WelcomeView extends StatelessWidget {
               child: Text(
                 L10n.t('welcome_title'),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                      fontWeight: FontWeight.bold,
-                      color: MemoTheme.textMain,
-                    ),
+                  fontWeight: FontWeight.bold,
+                  color: MemoTheme.of(context).textMain,
+                ),
               ),
             ),
 
@@ -99,16 +96,13 @@ class WelcomeView extends StatelessWidget {
               duration: const Duration(milliseconds: 700),
               curve: Curves.easeOut,
               builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: child,
-                );
+                return Opacity(opacity: value, child: child);
               },
               child: Text(
                 L10n.t('welcome_subtitle'),
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                      color: MemoTheme.textDim,
-                    ),
+                  color: MemoTheme.of(context).textDim,
+                ),
               ),
             ),
 
@@ -168,26 +162,25 @@ class WelcomeView extends StatelessWidget {
                 return Opacity(opacity: value, child: child);
               },
               child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 10,
+                ),
                 decoration: BoxDecoration(
-                  color: MemoTheme.bgPanel,
+                  color: MemoTheme.of(context).bgPanel,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  border: Border.all(color: MemoTheme.borderSoft),
+                  border: Border.all(color: MemoTheme.of(context).borderSoft),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      '💡',
-                      style: TextStyle(fontSize: 14),
-                    ),
+                    Text('💡', style: TextStyle(fontSize: 14)),
                     const SizedBox(width: 8),
                     Text(
                       'İpucu: "/" yazarak hızlı şablonlara ulaşabilirsiniz',
                       style: TextStyle(
                         fontSize: 12,
-                        color: MemoTheme.textDim,
+                        color: MemoTheme.of(context).textDim,
                       ),
                     ),
                   ],
@@ -229,11 +222,14 @@ class _QuickActionState extends State<_QuickAction> {
         width: 140,
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
-          color: _hovering ? MemoTheme.bgElement : MemoTheme.bgPanel,
+          color: _hovering
+              ? MemoTheme.of(context).bgElement
+              : MemoTheme.of(context).bgPanel,
           borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
           border: Border.all(
-            color:
-                _hovering ? MemoTheme.accent.withValues(alpha: 0.3) : MemoTheme.borderSoft,
+            color: _hovering
+                ? MemoTheme.accent.withValues(alpha: 0.3)
+                : MemoTheme.of(context).borderSoft,
           ),
         ),
         child: Column(
@@ -245,14 +241,17 @@ class _QuickActionState extends State<_QuickAction> {
               style: TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w500,
-                color: MemoTheme.textMain,
+                color: MemoTheme.of(context).textMain,
               ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 2),
             Text(
               widget.hint,
-              style: TextStyle(fontSize: 11, color: MemoTheme.textDim),
+              style: TextStyle(
+                fontSize: 11,
+                color: MemoTheme.of(context).textDim,
+              ),
               textAlign: TextAlign.center,
             ),
           ],

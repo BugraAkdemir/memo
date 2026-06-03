@@ -321,21 +321,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             () => _thinkingExpanded = !_thinkingExpanded,
                           ),
                         ),
-                      if (isUser)
-                        SelectableText(
-                          widget.message.content,
-                          style:  TextStyle(
-                            fontSize: 14,
-                            height: 1.6,
-                            color: MemoTheme.of(context).textMain,
-                          ),
-                        )
-                      else
-                        MarkdownBody(
-                          data: widget.message.content,
-                          selectable: true,
-                          styleSheet: _buildMarkdownStyleSheet(context),
-                        ),
+                      MarkdownBody(
+                        data: widget.message.content,
+                        selectable: true,
+                        styleSheet: _buildMarkdownStyleSheet(context),
+                      ),
                       if (_hovering || isUser) ...[
                          SizedBox(height: 6),
                         Row(

@@ -63,7 +63,7 @@
   - Delete: onay dialog'u, backend'den mesajı sil, UI'dan kaldır
   - Backend'de `updateMessage` / `deleteMessage` endpoint'leri yoksa eklenmeli
 
-### 7. Tema (Dark / Light)
+### 7. Tema (Dark / Light) ✅
 - **İstek:** Uygulama şu an sadece light tema ile çalışıyor. Dark mode eklenmeli.
 - **Neden:** Gece kullanımında göz yorgunluğu.
 - **Detay:**
@@ -72,7 +72,7 @@
   - Tercih `SharedPreferences` veya backend config'inde saklanabilir
   - Material 3 theme uyumlu olmalı (mevcut tema renklerine sadık kalınarak)
 
-### 8. Streaming Toggle
+### 8. Streaming Toggle ✅
 - **İstek:** Kullanıcı streaming (anlık token gösterimi) açıp kapatabilmeli.
 - **Neden:** Bazı kullanıcılar tam yanıt gelince göstermeyi tercih edebilir, özellikle yavaş modellerde.
 - **Detay:**
@@ -84,7 +84,7 @@
 
 ## UX İyileştirmeleri (v4.0.0'dan Çekildi)
 
-### 9. Markdown Rendering
+### 9. Markdown Rendering ✅
 - **İstek:** Kullanıcı mesajlarında markdown render edilmeli (kod blokları, listeler, başlıklar).
 - **Neden:** Şu an tüm mesajlar düz `SelectableText` ile gösteriliyor, kod blokları okunamıyor.
 - **Detay:**
@@ -94,49 +94,38 @@
   - Kod blokları için arka plan rengi ve monospace font
   - Linkler tıklanabilir olmalı
 
-### 10. Hata Mesajları SnackBar Olarak Gösterilsin
-- **İstek:** Backend hataları şu an chat bubble'ı olarak gösteriliyor. SnackBar'a taşınmalı.
-- **Neden:** Hata mesajı sohbet akışını bozmamalı, geçici bildirim olarak görünüp kaybolmalı.
+### 10. Hata Mesajları SnackBar Olarak Gösterilsin ✅
+Zaten yapılmış — `errorMessageProvider` (chat_provider.dart) + SnackBar listener (chat_screen.dart) mevcut.
 
-### 11. Silme Onay Dialog'ları
-- **İstek:** Chat, hafıza, model silme işlemlerinde onay dialog'u.
-- **Neden:** Yanlışlıkla silme önlenmeli.
+### 11. Silme Onay Dialog'ları ✅
+Hepsi zaten yapılmış — chat sidebar, model store, mesaj silme, hafıza temizleme hepsinde onay dialog'u mevcut.
 
-### 12. Boş Mesaj Koruması
-- **İstek:** Kullanıcı boş mesaj gönderememeli.
-- **Neden:** Backend'e boş istek gitmesi engellenmeli, kullanıcıya buton disabled veya uyarı ile bildirilmeli.
+### 12. Boş Mesaj Koruması ✅
+Zaten yapılmış — `chat_input.dart:47-48`'de `text.isEmpty` kontrolü var.
 
-### 13. Çift Gönderim Önleme
-- **İstek:** Kullanıcı gönder butonuna birden fazla basarsa ikinci istek engellenmeli.
-- **Neden:** LLM'a aynı mesaj iki kere gitmesin, kaynak israfı olmasın.
-- **Detay:**
-  - `isLoading` state kontrolü ile buton disabled
-  - Veya debounce mekanizması
+### 13. Çift Gönderim Önleme ✅
+Zaten yapılmış — `chat_input.dart:50`'da `isSendingProvider` kontrolü, ek olarak attachment butonlarında da (satır 104-105) mevcut.
 
-### 14. Timestamp Formatı: `HH:mm` → `HH:mm:ss`
-- **İstek:** Mesaj zaman damgaları saniyeyi de göstermeli.
-- **Neden:** Hızlı mesajlaşmada hangi mesajın önce geldiğini anlamak zor.
+### 14. Timestamp Formatı: `HH:mm` → `HH:mm:ss` ✅
+Zaten yapılmış — `chat_provider.dart:166,251`'de `.substring(11, 19)` kullanılıyor (eski `16`'dan `19`'a çekilmiş).
 
-### 15. Export Chat: File Picker Kaydet Dialog
-- **İstek:** Dışa aktarma işleminde kullanıcı nereye kaydedeceğini seçebilmeli.
-- **Neden:** Şu an sabit bir yola kaydediyor, kullanıcı bulamıyor.
+### 15. Export Chat: File Picker Kaydet Dialog ✅
+Zaten yapılmış — `chat_screen.dart:196`'da `FilePicker.platform.saveFile()` kullanılıyor.
 
-### 16. Incognito Toggle Yarış Fix
-- **İstek:** Incognito geçişinde oluşan yarış koşulu düzeltilmeli.
-- **Detay:** Backend'de incognito state'inin okunması/yazılması mutex ile korunmalı.
+### 16. Incognito Toggle Yarış Fix ✅
+Backend'de `app.go`'ya `incognitoMu sync.RWMutex` eklendi. `isIncognito` ve `incognitoMessages` tüm okuma/yazma noktalarında lock ile korunuyor (ToggleIncognito, handleIncognito, handleIncognitoStream, finishStream, SendMessage ve tüm stream/image/file entry point'leri).
 
-### 17. Stream Cancel on Chat Switch
-- **İstek:** Kullanıcı sohbet değiştirdiğinde devam eden stream iptal edilmeli.
-- **Neden:** Eski sohbetin yanıtı gelmeye devam ederse gereksiz kaynak tüketimi ve UI karışıklığı.
+### 17. Stream Cancel on Chat Switch ✅
+`ActiveChatIdNotifier.switchTo()` içine `messagesProvider.notifier.stopStreaming()` eklendi (chat_provider.dart:71). Yeni sohbet oluşturma da aynı yoldan geçiyor.
 
-### 18. SSE Token Rebuild Optimizasyonu
-- **İstek:** SSE stream'de token rebuild mekanizması optimize edilmeli.
-- **Detay:** Her token'da yeniden oluşturmak yerine buffer biriktirme veya daha az rebuild stratejisi.
+### 18. SSE Token Rebuild Optimizasyonu ✅
+Zaten optimize edilmiş — `streamingContentProvider` / `streamingThinkingProvider` ayrı ayrı güncelleniyor, her chunk'ta tüm mesaj listesi yeniden oluşturulmuyor.
 
-### 19. STT Başlangıç Doğrulama
-- **İstek:** Uygulama başlarken STT için gerekli araçların (ffmpeg, sox, arecord) varlığı kontrol edilmeli.
-- **Neden:** Kullanıcı "Record" butonuna basınca araç yoksa sessizce hata alıyor.
+### 19. STT Başlangıç Doğrulama ❌
+STT şu an frontend'de Vosk crash'leri nedeniyle devre dışı (`chat_input.dart:162-171`). Araçlar kontrol edilse bile çalışmıyor. STT yeniden aktifleştirilince ele alınmalı.
 
-### 20. Model Store Görsel İyileştirme
-- **İstek:** Model store'da kapak resmi, rozetler, arama çubuğu.
-- **Neden:** HuggingFace'den model seçimi şu an çok ham, kullanıcı modeller arasında gezemiyor.
+### 20. Model Store Görsel İyileştirme ✅
+- **Rozetler:** Popüler (500K+ indirme) ve GGUF badge'leri eklendi (`model_store_screen.dart`)
+- **Avatar:** Repo adının ilk harfinden gradient renkli avatar (`_avatarColor` palette)
+- **Renkli Tag Chip'leri:** Tag türüne göre renk kodlaması (GGUF/llama → kahverengi, transformers → accent, text → mavi)
+- **Auto-Search:** `onChanged` ile 2+ karakter girince otomatik arama

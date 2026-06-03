@@ -296,6 +296,31 @@ class ThemeModeNotifier extends StateNotifier<String> {
   }
 }
 
+// ─── Streaming Enabled ─────────────────────────────────────────
+
+final streamingEnabledProvider =
+    StateNotifierProvider<StreamingEnabledNotifier, bool>(
+      (ref) => StreamingEnabledNotifier(),
+    );
+
+class StreamingEnabledNotifier extends StateNotifier<bool> {
+  StreamingEnabledNotifier() : super(true) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = prefs.getBool('memo_streaming') ?? true;
+  }
+
+  Future<void> toggle() async {
+    final next = !state;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('memo_streaming', next);
+    state = next;
+  }
+}
+
 // ─── Locale ─────────────────────────────────────────────────────
 
 final localeProvider = StateNotifierProvider<LocaleNotifier, MemoLocale>(

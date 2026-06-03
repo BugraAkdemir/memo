@@ -111,11 +111,16 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
                                 ),
                               ),
                             ),
+                            onChanged: (val) {
+                              if (val.length < 2) return;
+                              ref
+                                  .read(modelSearchQueryProvider.notifier)
+                                  .state = val;
+                            },
                             onSubmitted: (val) {
                               ref
-                                      .read(modelSearchQueryProvider.notifier)
-                                      .state =
-                                  val;
+                                  .read(modelSearchQueryProvider.notifier)
+                                  .state = val;
                             },
                           ),
                         ),
@@ -220,6 +225,17 @@ class _SearchResultCard extends StatefulWidget {
 class _SearchResultCardState extends State<_SearchResultCard> {
   bool _isHovered = false;
 
+  static const _avatarColors = [
+    Color(0xFFE53935), Color(0xFF1E88E5), Color(0xFF43A047),
+    Color(0xFFFB8C00), Color(0xFF8E24AA), Color(0xFF00ACC1),
+    Color(0xFFD81B60), Color(0xFF3949AB), Color(0xFF6D4C41),
+  ];
+
+  Color get _avatarColor {
+    final hash = widget.result.id.hashCode;
+    return _avatarColors[hash.abs() % _avatarColors.length];
+  }
+
   String _formatCount(int count) {
     if (count >= 1000000) {
       return '${(count / 1000000).toStringAsFixed(1)}M';
@@ -255,6 +271,28 @@ class _SearchResultCardState extends State<_SearchResultCard> {
           children: [
             Row(
               children: [
+                // Avatar (first letter of repo)
+                Container(
+                  width: 40,
+                  height: 40,
+                  margin:  EdgeInsets.only(right: 12),
+                  decoration: BoxDecoration(
+                    color: _avatarColor,
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Center(
+                    child: Text(
+                      widget.result.id.isNotEmpty
+                          ? widget.result.id[0].toUpperCase()
+                          : '?',
+                      style:  TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 18,
+                      ),
+                    ),
+                  ),
+                ),
                 Expanded(
                   child: Text(
                     widget.result.id,
@@ -265,6 +303,48 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                     ),
                   ),
                 ),
+                // Popular badge
+                if (widget.result.downloads > 500000)
+                  Container(
+                    margin:  EdgeInsets.only(right: 8),
+                    padding:  EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.accent.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'Popüler',
+                      style:  TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: MemoTheme.accent,
+                      ),
+                    ),
+                  ),
+                // GGUF badge
+                if (widget.result.tags.any((t) => t.toLowerCase().contains('gguf')))
+                  Container(
+                    margin:  EdgeInsets.only(right: 8),
+                    padding:  EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.warmBrown.withValues(alpha: 0.15),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Text(
+                      'GGUF',
+                      style:  TextStyle(
+                        fontSize: 10,
+                        fontWeight: FontWeight.w600,
+                        color: MemoTheme.warmBrown,
+                      ),
+                    ),
+                  ),
                 Container(
                   padding:  EdgeInsets.symmetric(
                     horizontal: 10,
@@ -332,21 +412,39 @@ class _SearchResultCardState extends State<_SearchResultCard> {
               spacing: 8,
               runSpacing: 8,
               children: widget.result.tags.take(5).map((t) {
+                final lower = t.toLowerCase();
+                Color chipBg;
+                Color chipText;
+                if (lower.contains('gguf') || lower.contains('llama')) {
+                  chipBg = MemoTheme.warmBrown.withValues(alpha: 0.12);
+                  chipText = MemoTheme.warmBrown;
+                } else if (lower.contains('transformers') || lower.contains('safetensors')) {
+                  chipBg = MemoTheme.accent.withValues(alpha: 0.12);
+                  chipText = MemoTheme.accent;
+                } else if (lower.contains('text') || lower.contains('conversational')) {
+                  chipBg = Color(0xFF1E88E5).withValues(alpha: 0.12);
+                  chipText = const Color(0xFF1E88E5);
+                } else {
+                  chipBg = MemoTheme.of(context).bgApp;
+                  chipText = MemoTheme.of(context).textMuted;
+                }
                 return Container(
                   padding:  EdgeInsets.symmetric(
                     horizontal: 10,
                     vertical: 5,
                   ),
                   decoration: BoxDecoration(
-                    color: MemoTheme.of(context).bgApp,
+                    color: chipBg,
                     borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: MemoTheme.of(context).borderSoft),
+                    border: Border.all(
+                      color: chipText.withValues(alpha: 0.2),
+                    ),
                   ),
                   child: Text(
                     t,
                     style:  TextStyle(
                       fontSize: 11,
-                      color: MemoTheme.of(context).textMuted,
+                      color: chipText,
                     ),
                   ),
                 );

@@ -277,6 +277,61 @@ class _GeneralTab extends ConsumerWidget {
 
          SizedBox(height: 32),
 
+        // Streaming Toggle
+        Text(
+          'Anlık Gösterim',
+          style:  TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
+          ),
+        ),
+         SizedBox(height: 12),
+        Container(
+          padding:  EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ref.watch(streamingEnabledProvider) ? 'Açık' : 'Kapalı',
+                      style:  TextStyle(
+                        fontSize: 14,
+                        color: MemoTheme.of(context).textMain,
+                      ),
+                    ),
+                     SizedBox(height: 4),
+                    Text(
+                      'Kapalıyken yanıt tamamlandığında tek seferde gösterilir.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: MemoTheme.of(context).textDim,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: ref.watch(streamingEnabledProvider),
+                activeColor: MemoTheme.accent,
+                onChanged: (_) {
+                  ref.read(streamingEnabledProvider.notifier).toggle();
+                },
+              ),
+            ],
+          ),
+        ),
+
+         SizedBox(height: 32),
+
         // Memory Toggle
         Text(
           'Hafıza',

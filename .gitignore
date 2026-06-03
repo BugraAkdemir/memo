@@ -45,3 +45,4 @@ data/bin/
 data/models/
 data/memory/
 data/sessions/
+data/sync_token.json

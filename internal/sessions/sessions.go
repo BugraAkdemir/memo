@@ -162,6 +162,37 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string) {
 	}
 }
 
+func (m *Manager) UpdateMessage(index int, content string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[m.active]
+	if s == nil {
+		return fmt.Errorf("no active session")
+	}
+	if index < 0 || index >= len(s.Messages) {
+		return fmt.Errorf("message index %d out of range", index)
+	}
+	s.Messages[index].Content = content
+	s.Messages[index].Timestamp = time.Now().Format("15:04")
+	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	return m.save(s)
+}
+
+func (m *Manager) DeleteMessage(index int) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[m.active]
+	if s == nil {
+		return fmt.Errorf("no active session")
+	}
+	if index < 0 || index >= len(s.Messages) {
+		return fmt.Errorf("message index %d out of range", index)
+	}
+	s.Messages = append(s.Messages[:index], s.Messages[index+1:]...)
+	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	return m.save(s)
+}
+
 func (m *Manager) GetActiveMessages() []ChatMessage {
 	m.mu.RLock()
 	defer m.mu.RUnlock()

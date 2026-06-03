@@ -13,18 +13,18 @@ import '../widgets/welcome_view.dart';
 
 /// Chat screen — sidebar + message list + input area.
 class ChatScreen extends ConsumerWidget {
-  const ChatScreen({super.key});
+   ChatScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return Row(
       children: [
         // ─── Sidebar ──────────────────────────────
-        const ChatSidebar(),
+         ChatSidebar(),
 
         // ─── Main Chat Area ───────────────────────
         Expanded(
-          child: Container(color: MemoTheme.bgApp, child: const _ChatContent()),
+          child: Container(color: MemoTheme.of(context).bgApp, child:  _ChatContent()),
         ),
       ],
     );
@@ -32,7 +32,7 @@ class ChatScreen extends ConsumerWidget {
 }
 
 class _ChatContent extends ConsumerWidget {
-  const _ChatContent();
+   _ChatContent();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -50,12 +50,12 @@ class _ChatContent extends ConsumerWidget {
     return Column(
       children: [
         // ─── Top Bar ──────────────────────────────
-        const _ChatTopBar(),
+         _ChatTopBar(),
 
         // ─── Messages or Welcome ──────────────────
         Expanded(
           child: messagesAsync.when(
-            loading: () => const Center(
+            loading: () =>  Center(
               child: CircularProgressIndicator(color: MemoTheme.accent),
             ),
             error: (e, _) => Center(
@@ -63,13 +63,13 @@ class _ChatContent extends ConsumerWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Icon(Icons.error_outline, color: MemoTheme.red, size: 40),
-                  const SizedBox(height: 12),
+                   SizedBox(height: 12),
                   Text(
                     '$e',
-                    style: TextStyle(color: MemoTheme.textMuted),
+                    style: TextStyle(color: MemoTheme.of(context).textMuted),
                     textAlign: TextAlign.center,
                   ),
-                  const SizedBox(height: 12),
+                   SizedBox(height: 12),
                   OutlinedButton(
                     onPressed: () => ref.invalidate(messagesProvider),
                     child: Text(L10n.t('retry')),
@@ -82,27 +82,33 @@ class _ChatContent extends ConsumerWidget {
               final streamingContent = ref.watch(streamingContentProvider);
               final streamingThinking = ref.watch(streamingThinkingProvider);
               if (messages.isEmpty && !isSending && streamingContent.isEmpty) {
-                return const WelcomeView();
+                return  WelcomeView();
               }
               return ChatMessageList(
                 messages: messages,
                 isTyping: isSending,
                 streamingContent: streamingContent,
                 streamingThinking: streamingThinking,
+                onEdit: (index, newContent) {
+                  ref.read(messagesProvider.notifier).updateMessage(index, newContent);
+                },
+                onDelete: (index) {
+                  ref.read(messagesProvider.notifier).deleteMessage(index);
+                },
               );
             },
           ),
         ),
 
         // ─── Input ────────────────────────────────
-        const ChatInput(),
+         ChatInput(),
       ],
     );
   }
 }
 
 class _ChatTopBar extends ConsumerWidget {
-  const _ChatTopBar();
+   _ChatTopBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -120,10 +126,10 @@ class _ChatTopBar extends ConsumerWidget {
 
     return Container(
       height: 56,
-      padding: const EdgeInsets.symmetric(horizontal: 20),
+      padding:  EdgeInsets.symmetric(horizontal: 20),
       decoration: BoxDecoration(
-        color: MemoTheme.bgApp,
-        border: Border(bottom: BorderSide(color: MemoTheme.borderSoft)),
+        color: MemoTheme.of(context).bgApp,
+        border: Border(bottom: BorderSide(color: MemoTheme.of(context).borderSoft)),
       ),
       child: Row(
         children: [
@@ -133,7 +139,7 @@ class _ChatTopBar extends ConsumerWidget {
               children: [
                 if (isIncognito) ...[
                   Container(
-                    padding: const EdgeInsets.symmetric(
+                    padding:  EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 3,
                     ),
@@ -149,7 +155,7 @@ class _ChatTopBar extends ConsumerWidget {
                           size: 14,
                           color: MemoTheme.warmBrown,
                         ),
-                        const SizedBox(width: 4),
+                         SizedBox(width: 4),
                         Text(
                           L10n.t('incognito_on'),
                           style: TextStyle(
@@ -161,14 +167,14 @@ class _ChatTopBar extends ConsumerWidget {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 12),
+                   SizedBox(width: 12),
                 ],
                 Flexible(
                   child: Text(
                     isIncognito ? L10n.t('incognito_mode') : title,
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.w600,
-                      color: MemoTheme.textMain,
+                      color: MemoTheme.of(context).textMain,
                     ),
                     overflow: TextOverflow.ellipsis,
                   ),
@@ -179,8 +185,8 @@ class _ChatTopBar extends ConsumerWidget {
 
           // Export button
           IconButton(
-            icon: const Icon(Icons.file_download_outlined, size: 20),
-            color: MemoTheme.textDim,
+            icon:  Icon(Icons.file_download_outlined, size: 20),
+            color: MemoTheme.of(context).textDim,
             tooltip: L10n.t('export_chat'),
             onPressed: () async {
               try {

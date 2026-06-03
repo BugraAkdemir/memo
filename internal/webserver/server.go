@@ -32,6 +32,9 @@ type AppBridge interface {
 	WebListChats() interface{}
 	SwitchChat(id string) error
 	DeleteChat(id string) error
+	RenameChat(id, title string) error
+	UpdateMessage(index int, content string) error
+	DeleteMessage(index int) error
 	WebGetActiveMessages() interface{}
 	GetActiveChatID() string
 	WebCheckConnection() interface{}
@@ -84,8 +87,11 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/chats/new", s.handleNewChat)
 	mux.HandleFunc("/api/chats/switch", s.handleSwitchChat)
 	mux.HandleFunc("/api/chats/delete", s.handleDeleteChat)
+	mux.HandleFunc("/api/chats/rename", s.handleRenameChat)
 	mux.HandleFunc("/api/chats/active", s.handleActiveChat)
 	mux.HandleFunc("/api/messages", s.handleMessages)
+	mux.HandleFunc("/api/messages/update", s.handleUpdateMessage)
+	mux.HandleFunc("/api/messages/delete", s.handleDeleteMessage)
 	mux.HandleFunc("/api/status", s.handleStatus)
 	mux.HandleFunc("/api/incognito", s.handleIncognito)
 	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
@@ -334,6 +340,26 @@ func (s *Server) handleDeleteChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+func (s *Server) handleRenameChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID    string `json:"id"`
+		Title string `json:"title"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.bridge.RenameChat(req.ID, req.Title); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 func (s *Server) handleActiveChat(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"id": s.bridge.GetActiveChatID()})
 }
@@ -345,6 +371,45 @@ func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, msgs)
+}
+
+func (s *Server) handleUpdateMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Index   int    `json:"index"`
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.bridge.UpdateMessage(req.Index, req.Content); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleDeleteMessage(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Index int `json:"index"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.bridge.DeleteMessage(req.Index); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
 }
 
 func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {

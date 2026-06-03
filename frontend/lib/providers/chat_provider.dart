@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
@@ -41,6 +42,12 @@ class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
   Future<void> delete(String id) async {
     final api = ref.read(apiClientProvider);
     await api.deleteChat(id);
+    await refresh();
+  }
+
+  Future<void> rename(String id, String title) async {
+    final api = ref.read(apiClientProvider);
+    await api.renameChat(id, title);
     await refresh();
   }
 }
@@ -86,6 +93,18 @@ final messagesProvider =
     );
 
 class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
+  CancelToken? _cancelToken;
+  bool _stopped = false;
+
+  void stopStreaming() {
+    _stopped = true;
+    _cancelToken?.cancel();
+    _cancelToken = null;
+    ref.read(isSendingProvider.notifier).state = false;
+    ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(streamingThinkingProvider.notifier).state = '';
+  }
+
   @override
   Future<List<ChatMessage>> build() async {
     return ref.read(apiClientProvider).getMessages();
@@ -97,9 +116,46 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     );
   }
 
+  Future<void> updateMessage(int index, String newContent) async {
+    final api = ref.read(apiClientProvider);
+    try {
+      await api.updateMessage(index, newContent);
+      final current = [...(state.valueOrNull ?? <ChatMessage>[])];
+      if (index >= 0 && index < current.length) {
+        current[index] = ChatMessage(
+          role: current[index].role,
+          content: newContent,
+          thinking: current[index].thinking,
+          imagePath: current[index].imagePath,
+          filePath: current[index].filePath,
+          timestamp: current[index].timestamp,
+        );
+        state = AsyncData(current);
+      }
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state = e.toString();
+    }
+  }
+
+  Future<void> deleteMessage(int index) async {
+    final api = ref.read(apiClientProvider);
+    try {
+      await api.deleteMessage(index);
+      final current = [...(state.valueOrNull ?? <ChatMessage>[])];
+      if (index >= 0 && index < current.length) {
+        current.removeAt(index);
+        state = AsyncData(current);
+      }
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state = e.toString();
+    }
+  }
+
   Future<void> sendMessage(String message) async {
     if (ref.read(isSendingProvider)) return;
 
+    _stopped = false;
+    _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
     // Signal sending state
@@ -117,7 +173,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     state = AsyncData([...current, userMsg]);
 
     try {
-      final stream = api.sendMessageStream(message);
+      final stream = api.sendMessageStream(message, cancelToken: _cancelToken);
       String fullReply = '';
       String fullThinking = '';
 
@@ -128,6 +184,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         // Update streaming providers instead of copying the entire message list
         ref.read(streamingContentProvider.notifier).state = fullReply;
         ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+      }
+
+      if (_stopped) {
+        _stopped = false;
+        return;
       }
 
       // Append final assistant message to the list
@@ -160,6 +221,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingThinkingProvider.notifier).state = '';
       await refresh();
     } finally {
+      _cancelToken = null;
       ref.read(isSendingProvider.notifier).state = false;
     }
   }

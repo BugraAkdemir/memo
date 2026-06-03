@@ -7,22 +7,22 @@ import '../providers/models_provider.dart';
 
 /// Small badge that displays GPU status (Detected / CPU Only)
 class GPUBadge extends ConsumerWidget {
-  const GPUBadge({super.key});
+   GPUBadge({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final gpuAsync = ref.watch(gpuInfoProvider);
 
     return gpuAsync.when(
-      loading: () => const _Badge(
+      loading: () =>  _Badge(
         icon: Icons.memory,
         text: '...',
-        color: MemoTheme.textDim,
+        color: MemoTheme.of(context).textDim,
       ),
       error: (_, __) => _Badge(
         icon: Icons.memory,
         text: L10n.t('error'),
-        color: MemoTheme.textDim,
+        color: MemoTheme.of(context).textDim,
       ),
       data: (gpu) {
         if (gpu.hasGpu) {
@@ -35,7 +35,7 @@ class GPUBadge extends ConsumerWidget {
           return _Badge(
             icon: Icons.memory,
             text: L10n.t('cpu_mode'),
-            color: MemoTheme.textDim,
+            color: MemoTheme.of(context).textDim,
           );
         }
       },
@@ -48,7 +48,7 @@ class _Badge extends StatelessWidget {
   final String text;
   final Color color;
 
-  const _Badge({
+   _Badge({
     required this.icon,
     required this.text,
     required this.color,
@@ -57,7 +57,7 @@ class _Badge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      padding:  EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
         color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
@@ -67,7 +67,7 @@ class _Badge extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Icon(icon, size: 14, color: color),
-          const SizedBox(width: 6),
+           SizedBox(width: 6),
           Text(
             text,
             style: TextStyle(

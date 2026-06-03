@@ -13,7 +13,7 @@ import 'model_store_screen.dart';
 /// Main app shell — sidebar (chat list) + content area.
 /// Navigation between Chat and Model Store via bottom of sidebar.
 class AppShell extends ConsumerStatefulWidget {
-  const AppShell({super.key});
+   AppShell({super.key});
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();
@@ -28,7 +28,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     L10n.setLocale(locale);
 
     return Scaffold(
-      backgroundColor: MemoTheme.bgApp,
+      backgroundColor: MemoTheme.of(context).bgApp,
       body: Stack(
         children: [
           Row(
@@ -48,8 +48,8 @@ class _AppShellState extends ConsumerState<AppShell> {
           // ─── Overlays ───────────────────────────────────────────────
           // Order matters: SetupWizard renders on top (setup must complete first),
           // then LlamaInstaller shows if llama.cpp is missing after setup.
-          const SetupWizardOverlay(),
-          const LlamaInstallerOverlay(),
+           SetupWizardOverlay(),
+           LlamaInstallerOverlay(),
         ],
       ),
     );
@@ -59,12 +59,12 @@ class _AppShellState extends ConsumerState<AppShell> {
     return Container(
       width: 64,
       decoration: BoxDecoration(
-        color: MemoTheme.bgPanel,
-        border: Border(right: BorderSide(color: MemoTheme.borderSoft)),
+        color: MemoTheme.of(context).bgPanel,
+        border: Border(right: BorderSide(color: MemoTheme.of(context).borderSoft)),
       ),
       child: Column(
         children: [
-          const SizedBox(height: 16),
+           SizedBox(height: 16),
 
           // ─── Logo ──────────────────────────────────
           Container(
@@ -75,7 +75,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: MemoTheme.accent, width: 1.5),
             ),
-            child: const Center(
+            child:  Center(
               child: Text(
                 'M',
                 style: TextStyle(
@@ -87,7 +87,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             ),
           ),
 
-          const SizedBox(height: 24),
+           SizedBox(height: 24),
 
           // ─── Chat Tab ────────────────────────────────
           _NavRailButton(
@@ -98,7 +98,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 0),
           ),
 
-          const SizedBox(height: 8),
+           SizedBox(height: 8),
 
           // ─── Models Tab ──────────────────────────────
           _NavRailButton(
@@ -109,7 +109,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 1),
           ),
 
-          const Spacer(),
+           Spacer(),
 
           // ─── Settings Button ─────────────────────────
           _NavRailButton(
@@ -120,12 +120,12 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () {
               showDialog(
                 context: context,
-                builder: (context) => const SettingsDialog(),
+                builder: (context) =>  SettingsDialog(),
               );
             },
           ),
 
-          const SizedBox(height: 16),
+           SizedBox(height: 16),
         ],
       ),
     );
@@ -139,7 +139,7 @@ class _NavRailButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _NavRailButton({
+   _NavRailButton({
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -156,7 +156,7 @@ class _NavRailButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
+          duration:  Duration(milliseconds: 150),
           width: 44,
           height: 44,
           decoration: BoxDecoration(
@@ -166,7 +166,7 @@ class _NavRailButton extends StatelessWidget {
           child: Icon(
             isActive ? activeIcon : icon,
             size: 22,
-            color: isActive ? MemoTheme.accent : MemoTheme.textDim,
+            color: isActive ? MemoTheme.accent : MemoTheme.of(context).textDim,
           ),
         ),
       ),

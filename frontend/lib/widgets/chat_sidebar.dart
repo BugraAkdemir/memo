@@ -8,7 +8,7 @@ import '../providers/chat_provider.dart';
 
 /// Chat sidebar — chat list, new chat, incognito toggle.
 class ChatSidebar extends ConsumerWidget {
-  const ChatSidebar({super.key});
+   ChatSidebar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,14 +19,14 @@ class ChatSidebar extends ConsumerWidget {
     return Container(
       width: 260,
       decoration: BoxDecoration(
-        color: MemoTheme.bgPanel,
-        border: Border(right: BorderSide(color: MemoTheme.borderSoft)),
+        color: MemoTheme.of(context).bgPanel,
+        border: Border(right: BorderSide(color: MemoTheme.of(context).borderSoft)),
       ),
       child: Column(
         children: [
           // ─── New Chat + Incognito ──────────────────
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding:  EdgeInsets.all(12),
             child: Row(
               children: [
                 Expanded(
@@ -43,7 +43,7 @@ class ChatSidebar extends ConsumerWidget {
                     },
                   ),
                 ),
-                const SizedBox(width: 8),
+                 SizedBox(width: 8),
                 _IconActionButton(
                   icon: isIncognito
                       ? Icons.visibility_off
@@ -58,12 +58,12 @@ class ChatSidebar extends ConsumerWidget {
             ),
           ),
 
-          const Divider(height: 1),
+           Divider(height: 1),
 
           // ─── Chat List ─────────────────────────────
           Expanded(
             child: chatListAsync.when(
-              loading: () => const Center(
+              loading: () =>  Center(
                 child: CircularProgressIndicator(
                   color: MemoTheme.accent,
                   strokeWidth: 2,
@@ -71,10 +71,10 @@ class ChatSidebar extends ConsumerWidget {
               ),
               error: (e, _) => Center(
                 child: Padding(
-                  padding: const EdgeInsets.all(16),
+                  padding:  EdgeInsets.all(16),
                   child: Text(
                     L10n.t('connection_error'),
-                    style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                    style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
                     textAlign: TextAlign.center,
                   ),
                 ),
@@ -83,11 +83,11 @@ class ChatSidebar extends ConsumerWidget {
                 if (chats.isEmpty) {
                   return Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(24),
+                      padding:  EdgeInsets.all(24),
                       child: Text(
                         L10n.t('no_chats'),
                         style: TextStyle(
-                          color: MemoTheme.textDim,
+                          color: MemoTheme.of(context).textDim,
                           fontSize: 13,
                         ),
                       ),
@@ -98,7 +98,7 @@ class ChatSidebar extends ConsumerWidget {
                 final activeId = activeChatAsync.valueOrNull ?? '';
 
                 return ListView.builder(
-                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  padding:  EdgeInsets.symmetric(vertical: 4),
                   itemCount: chats.length,
                   itemBuilder: (context, index) {
                     final chat = chats[index];
@@ -106,43 +106,23 @@ class ChatSidebar extends ConsumerWidget {
                     return _ChatListItem(
                       chat: chat,
                       isActive: isActive,
-                      onTap: () {
+                      onTap: (id) {
                         if (isIncognito) {
                           ref.read(incognitoProvider.notifier).toggle();
                         }
                         ref
                             .read(activeChatIdProvider.notifier)
-                            .switchTo(chat.id);
+                            .switchTo(id);
                       },
-                      onDelete: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (ctx) => AlertDialog(
-                            backgroundColor: MemoTheme.bgPanel,
-                            title: const Text('Chat\'i Sil'),
-                            content: Text(
-                              '"${chat.title}" silinecek. Emin misin?',
-                            ),
-                            actions: [
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, false),
-                                child: Text(L10n.t('cancel')),
-                              ),
-                              TextButton(
-                                onPressed: () => Navigator.pop(ctx, true),
-                                style: TextButton.styleFrom(
-                                  foregroundColor: MemoTheme.red,
-                                ),
-                                child: const Text('Sil'),
-                              ),
-                            ],
-                          ),
-                        );
-                        if (confirmed == true) {
-                          await ref
-                              .read(chatListProvider.notifier)
-                              .delete(chat.id);
-                        }
+                      onDelete: (id) async {
+                        ref
+                            .read(chatListProvider.notifier)
+                            .delete(id);
+                      },
+                      onRename: (title) async {
+                        ref
+                            .read(chatListProvider.notifier)
+                            .rename(chat.id, title);
                       },
                     );
                   },
@@ -152,7 +132,7 @@ class ChatSidebar extends ConsumerWidget {
           ),
 
           // ─── Status Bar ────────────────────────────
-          const _SidebarStatusBar(),
+           _SidebarStatusBar(),
         ],
       ),
     );
@@ -162,14 +142,16 @@ class ChatSidebar extends ConsumerWidget {
 class _ChatListItem extends StatefulWidget {
   final ChatSession chat;
   final bool isActive;
-  final VoidCallback onTap;
-  final VoidCallback onDelete;
+  final ValueChanged<String> onTap;
+  final ValueChanged<String> onDelete;
+  final ValueChanged<String> onRename;
 
-  const _ChatListItem({
+   _ChatListItem({
     required this.chat,
     required this.isActive,
     required this.onTap,
     required this.onDelete,
+    required this.onRename,
   });
 
   @override
@@ -178,6 +160,57 @@ class _ChatListItem extends StatefulWidget {
 
 class _ChatListItemState extends State<_ChatListItem> {
   bool _hovering = false;
+  bool _isEditing = false;
+  late TextEditingController _editController;
+  late FocusNode _editFocusNode;
+  Offset? _secondaryTapPosition;
+
+  @override
+  void initState() {
+    super.initState();
+    _editController = TextEditingController(text: widget.chat.title);
+    _editFocusNode = FocusNode();
+  }
+
+  @override
+  void didUpdateWidget(_ChatListItem old) {
+    super.didUpdateWidget(old);
+    if (!_isEditing) {
+      _editController.text = widget.chat.title;
+    }
+  }
+
+  @override
+  void dispose() {
+    _editController.dispose();
+    _editFocusNode.dispose();
+    super.dispose();
+  }
+
+  void _startEditing() {
+    setState(() {
+      _isEditing = true;
+      _editController.text = widget.chat.title;
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _editFocusNode.requestFocus();
+    });
+  }
+
+  void _finishEditing() {
+    final newTitle = _editController.text.trim();
+    if (newTitle.isNotEmpty && newTitle != widget.chat.title) {
+      widget.onRename(newTitle);
+    }
+    setState(() => _isEditing = false);
+  }
+
+  void _cancelEditing() {
+    setState(() {
+      _isEditing = false;
+      _editController.text = widget.chat.title;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -185,15 +218,21 @@ class _ChatListItemState extends State<_ChatListItem> {
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
       child: GestureDetector(
-        onTap: widget.onTap,
+        onTap: _isEditing ? null : () => widget.onTap(widget.chat.id),
+        onSecondaryTapDown: (details) {
+          _secondaryTapPosition = details.globalPosition;
+        },
+        onSecondaryTap: _isEditing
+            ? null
+            : () => _showContextMenu(context),
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          margin: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          duration:  Duration(milliseconds: 120),
+          margin:  EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+          padding:  EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           decoration: BoxDecoration(
             color: widget.isActive
                 ? MemoTheme.accentMuted
-                : (_hovering ? MemoTheme.bgElement : Colors.transparent),
+                : (_hovering ? MemoTheme.of(context).bgElement : Colors.transparent),
             borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
             border: widget.isActive
                 ? Border.all(color: MemoTheme.accent.withValues(alpha: 0.3))
@@ -202,50 +241,179 @@ class _ChatListItemState extends State<_ChatListItem> {
           child: Row(
             children: [
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      widget.chat.title,
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontWeight: widget.isActive
-                            ? FontWeight.w600
-                            : FontWeight.w400,
-                        color: widget.isActive
-                            ? MemoTheme.textMain
-                            : MemoTheme.textSecondary,
+                child: _isEditing
+                    ? SizedBox(
+                        height: 30,
+                        child: TextField(
+                          controller: _editController,
+                          focusNode: _editFocusNode,
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: MemoTheme.of(context).textMain,
+                          ),
+                          decoration: InputDecoration(
+                            isDense: true,
+                            contentPadding:  EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 4,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(4),
+                              borderSide: BorderSide(
+                                color: MemoTheme.accent,
+                              ),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(4),
+                              borderSide: BorderSide(
+                                color: MemoTheme.accent,
+                                width: 1.5,
+                              ),
+                            ),
+                          ),
+                          onSubmitted: (_) => _finishEditing(),
+                          onTapOutside: (_) => _finishEditing(),
+                          onChanged: (_) => setState(() {}),
+                        ),
+                      )
+                    : Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            widget.chat.title,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: widget.isActive
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
+                              color: widget.isActive
+                                  ? MemoTheme.of(context).textMain
+                                  : MemoTheme.of(context).textSecondary,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                           SizedBox(height: 2),
+                          Text(
+                            '${widget.chat.msgCount} mesaj · ${widget.chat.updatedAt}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: MemoTheme.of(context).textDim,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
                       ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '${widget.chat.msgCount} mesaj · ${widget.chat.updatedAt}',
-                      style: TextStyle(fontSize: 11, color: MemoTheme.textDim),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                ),
               ),
-              if (_hovering || widget.isActive)
+              if ((_hovering || widget.isActive) && !_isEditing)
                 GestureDetector(
-                  onTap: widget.onDelete,
+                  onTap: () => widget.onDelete(widget.chat.id),
                   child: Padding(
-                    padding: const EdgeInsets.only(left: 4),
+                    padding:  EdgeInsets.only(left: 4),
                     child: Icon(
                       Icons.close,
                       size: 14,
-                      color: MemoTheme.textDim,
+                      color: MemoTheme.of(context).textDim,
                     ),
                   ),
+                ),
+              if (_isEditing)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    GestureDetector(
+                      onTap: _finishEditing,
+                      child: Padding(
+                        padding:  EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.check,
+                          size: 14,
+                          color: MemoTheme.green,
+                        ),
+                      ),
+                    ),
+                    GestureDetector(
+                      onTap: _cancelEditing,
+                      child: Padding(
+                        padding:  EdgeInsets.only(left: 4),
+                        child: Icon(
+                          Icons.close,
+                          size: 14,
+                          color: MemoTheme.red,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  void _showContextMenu(BuildContext context) {
+    final pos = _secondaryTapPosition ?? Offset.zero;
+    showMenu<String>(
+      context: context,
+      position: RelativeRect.fromLTRB(
+        pos.dx, pos.dy, pos.dx + 1, pos.dy + 1,
+      ),
+      items: [
+        PopupMenuItem(
+          value: 'rename',
+          child: Row(
+            children: [
+              Icon(Icons.edit, size: 16, color: MemoTheme.of(context).textMain),
+               SizedBox(width: 8),
+               Text('Yeniden Adlandır'),
+            ],
+          ),
+        ),
+        PopupMenuItem(
+          value: 'delete',
+          child: Row(
+            children: [
+              Icon(Icons.delete, size: 16, color: MemoTheme.red),
+               SizedBox(width: 8),
+              Text('Sil', style: TextStyle(color: MemoTheme.red)),
+            ],
+          ),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'rename') {
+        _startEditing();
+      } else if (value == 'delete') {
+        _confirmDelete(context);
+      }
+    });
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: MemoTheme.of(context).bgPanel,
+        title:  Text('Chat\'i Sil'),
+        content: Text('"${widget.chat.title}" silinecek. Emin misin?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: Text(L10n.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
+            child:  Text('Sil'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      widget.onDelete(widget.chat.id);
+    }
   }
 }
 
@@ -254,7 +422,7 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-  const _ActionButton({
+   _ActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -263,24 +431,24 @@ class _ActionButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      color: MemoTheme.bgElement,
+      color: MemoTheme.of(context).bgElement,
       borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 10),
+          padding:  EdgeInsets.symmetric(vertical: 10),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(icon, size: 16, color: MemoTheme.textMuted),
-              const SizedBox(width: 6),
+              Icon(icon, size: 16, color: MemoTheme.of(context).textMuted),
+               SizedBox(width: 6),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 13,
                   fontWeight: FontWeight.w500,
-                  color: MemoTheme.textMuted,
+                  color: MemoTheme.of(context).textMuted,
                 ),
               ),
             ],
@@ -297,7 +465,7 @@ class _IconActionButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  const _IconActionButton({
+   _IconActionButton({
     required this.icon,
     required this.tooltip,
     required this.isActive,
@@ -311,7 +479,7 @@ class _IconActionButton extends StatelessWidget {
       child: Material(
         color: isActive
             ? MemoTheme.warmBrown.withValues(alpha: 0.15)
-            : MemoTheme.bgElement,
+            : MemoTheme.of(context).bgElement,
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         child: InkWell(
           onTap: onTap,
@@ -322,7 +490,7 @@ class _IconActionButton extends StatelessWidget {
             child: Icon(
               icon,
               size: 18,
-              color: isActive ? MemoTheme.warmBrown : MemoTheme.textDim,
+              color: isActive ? MemoTheme.warmBrown : MemoTheme.of(context).textDim,
             ),
           ),
         ),
@@ -332,16 +500,16 @@ class _IconActionButton extends StatelessWidget {
 }
 
 class _SidebarStatusBar extends ConsumerWidget {
-  const _SidebarStatusBar();
+   _SidebarStatusBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connAsync = ref.watch(connectionStatusProvider);
 
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      padding:  EdgeInsets.symmetric(horizontal: 14, vertical: 10),
       decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: MemoTheme.borderSoft)),
+        border: Border(top: BorderSide(color: MemoTheme.of(context).borderSoft)),
       ),
       child: Row(
         children: [
@@ -351,14 +519,14 @@ class _SidebarStatusBar extends ConsumerWidget {
             decoration: BoxDecoration(
               shape: BoxShape.circle,
               color: connAsync.when(
-                loading: () => MemoTheme.textDim,
+                loading: () => MemoTheme.of(context).textDim,
                 error: (_, __) => MemoTheme.red,
                 data: (connected) =>
                     connected ? MemoTheme.green : MemoTheme.red,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+           SizedBox(width: 8),
           Text(
             connAsync.when(
               loading: () => '...',
@@ -366,7 +534,7 @@ class _SidebarStatusBar extends ConsumerWidget {
               data: (connected) =>
                   connected ? 'Memo Engine' : L10n.t('connection_error'),
             ),
-            style: TextStyle(fontSize: 11, color: MemoTheme.textDim),
+            style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
           ),
         ],
       ),

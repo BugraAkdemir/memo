@@ -33,12 +33,13 @@ class MemoApiClient {
   }
 
   /// Send a message with streaming SSE. Yields [StreamChunk] with content and/or thinking.
-  Stream<StreamChunk> sendMessageStream(String message) async* {
+  Stream<StreamChunk> sendMessageStream(String message, {CancelToken? cancelToken}) async* {
     try {
       final response = await _dio.post(
         '/api/send/stream',
         data: {'message': message},
         options: Options(responseType: ResponseType.stream),
+        cancelToken: cancelToken,
       );
 
       final stream = response.data.stream;
@@ -69,6 +70,9 @@ class MemoApiClient {
           }
         }
       }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      throw Exception('Bağlantı hatası: $e');
     } catch (e) {
       throw Exception('Bağlantı hatası: $e');
     }
@@ -107,6 +111,11 @@ class MemoApiClient {
     await _dio.post('/api/chats/delete', data: {'id': id});
   }
 
+  /// Rename a chat by ID.
+  Future<void> renameChat(String id, String title) async {
+    await _dio.post('/api/chats/rename', data: {'id': id, 'title': title});
+  }
+
   /// Get active chat ID.
   Future<String> getActiveChatId() async {
     final res = await _dio.get('/api/chats/active');
@@ -122,6 +131,16 @@ class MemoApiClient {
           .toList();
     }
     return [];
+  }
+
+  /// Update a message's content by index.
+  Future<void> updateMessage(int index, String content) async {
+    await _dio.post('/api/messages/update', data: {'index': index, 'content': content});
+  }
+
+  /// Delete a message by index.
+  Future<void> deleteMessage(int index) async {
+    await _dio.post('/api/messages/delete', data: {'index': index});
   }
 
   /// Export current chat as markdown.
@@ -299,12 +318,18 @@ class MemoApiClient {
     String? binaryPath,
     int? port,
     int? ctxSize,
+    double? temperature,
+    double? topP,
+    int? maxTokens,
   }) async {
     final data = <String, dynamic>{};
     if (engineMode != null) data['engine_mode'] = engineMode;
     if (binaryPath != null) data['binary_path'] = binaryPath;
     if (port != null) data['port'] = port;
     if (ctxSize != null) data['ctx_size'] = ctxSize;
+    if (temperature != null) data['temperature'] = temperature;
+    if (topP != null) data['top_p'] = topP;
+    if (maxTokens != null) data['max_tokens'] = maxTokens;
 
     await _dio.put('/api/models/config', data: data);
   }

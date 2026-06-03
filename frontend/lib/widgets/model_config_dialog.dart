@@ -12,7 +12,7 @@ import '../providers/chat_provider.dart';
 class ModelConfigDialog extends ConsumerStatefulWidget {
   final LocalModel model;
 
-  const ModelConfigDialog({super.key, required this.model});
+   ModelConfigDialog({super.key, required this.model});
 
   @override
   ConsumerState<ModelConfigDialog> createState() => _ModelConfigDialogState();
@@ -132,13 +132,13 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
     final isEmbeddingModel = widget.model.isEmbedding;
 
     return Dialog(
-      backgroundColor: MemoTheme.bgApp,
+      backgroundColor: MemoTheme.of(context).bgApp,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
       ),
       child: Container(
         width: 440,
-        padding: const EdgeInsets.all(24),
+        padding:  EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,17 +147,17 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               L10n.t('model_config'),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: MemoTheme.textMain,
+                    color: MemoTheme.of(context).textMain,
                   ),
             ),
-            const SizedBox(height: 8),
+             SizedBox(height: 8),
             Text(
               widget.model.filename,
               style: TextStyle(color: MemoTheme.accent, fontSize: 13),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-            const SizedBox(height: 24),
+             SizedBox(height: 24),
 
             // Context Size
             _ConfigField(
@@ -165,7 +165,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               controller: _ctxSizeController,
               hint: '4096',
             ),
-            const SizedBox(height: 16),
+             SizedBox(height: 16),
 
             // GPU Layers
             _ConfigField(
@@ -173,7 +173,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               controller: _gpuLayersController,
               hint: '33',
             ),
-            const SizedBox(height: 16),
+             SizedBox(height: 16),
 
             // Port
             _ConfigField(
@@ -184,46 +184,46 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
 
             // Embedding Model Selector — only show when starting a chat model
             if (!isEmbeddingModel) ...[
-              const SizedBox(height: 20),
-              const Divider(color: MemoTheme.borderSoft),
-              const SizedBox(height: 12),
+               SizedBox(height: 20),
+              Divider(color: MemoTheme.of(context).borderSoft),
+               SizedBox(height: 12),
               Row(
                 children: [
                   Icon(Icons.memory, size: 16, color: MemoTheme.accent),
-                  const SizedBox(width: 8),
+                   SizedBox(width: 8),
                   Text(
                     L10n.t('embedding_model'),
-                    style: const TextStyle(
+                    style:  TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
-                      color: MemoTheme.textMain,
+                      color: MemoTheme.of(context).textMain,
                     ),
                   ),
                 ],
               ),
-              const SizedBox(height: 4),
+               SizedBox(height: 4),
               Text(
                 L10n.t('embedding_hint'),
                 style: TextStyle(
                   fontSize: 11,
-                  color: MemoTheme.textDim,
+                  color: MemoTheme.of(context).textDim,
                 ),
               ),
-              const SizedBox(height: 8),
+               SizedBox(height: 8),
               Container(
                 height: 40,
                 decoration: BoxDecoration(
-                  color: MemoTheme.bgPanel,
+                  color: MemoTheme.of(context).bgPanel,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  border: Border.all(color: MemoTheme.borderSoft),
+                  border: Border.all(color: MemoTheme.of(context).borderSoft),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding:  EdgeInsets.symmetric(horizontal: 12),
                 child: embeddingModels.isEmpty
                     ? Row(
                         children: [
                           Icon(Icons.warning_amber_rounded,
                               size: 16, color: Colors.orange.shade400),
-                          const SizedBox(width: 8),
+                           SizedBox(width: 8),
                           Text(
                             L10n.t('no_embedding_model'),
                             style: TextStyle(
@@ -236,21 +236,21 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                     : DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           isExpanded: true,
-                          dropdownColor: MemoTheme.bgPanel,
+                          dropdownColor: MemoTheme.of(context).bgPanel,
                           value: _selectedEmbeddingPath,
-                          style: const TextStyle(
+                          style:  TextStyle(
                             fontSize: 12,
-                            color: MemoTheme.textMain,
+                            color: MemoTheme.of(context).textMain,
                           ),
-                          icon: const Icon(Icons.arrow_drop_down,
-                              color: MemoTheme.textDim),
+                          icon:  Icon(Icons.arrow_drop_down,
+                              color: MemoTheme.of(context).textDim),
                           items: [
                             DropdownMenuItem<String>(
                               value: null,
                               child: Text(
                                 L10n.t('no_embedding_selection'),
                                 style: TextStyle(
-                                  color: MemoTheme.textDim,
+                                  color: MemoTheme.of(context).textDim,
                                   fontSize: 12,
                                 ),
                               ),
@@ -259,7 +259,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                                   value: m.path,
                                   child: Text(
                                     '${m.filename}  (${m.sizeFormatted})',
-                                    style: const TextStyle(fontSize: 12),
+                                    style:  TextStyle(fontSize: 12),
                                     overflow: TextOverflow.ellipsis,
                                   ),
                                 )),
@@ -272,15 +272,15 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               ),
             ],
 
-            const SizedBox(height: 24),
+             SizedBox(height: 24),
 
             // Status message while starting
             if (_statusMessage.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(bottom: 12),
+                padding:  EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
-                    const SizedBox(
+                     SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
@@ -288,7 +288,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                         color: MemoTheme.accent,
                       ),
                     ),
-                    const SizedBox(width: 8),
+                     SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _statusMessage,
@@ -308,21 +308,21 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               children: [
                 TextButton(
                   onPressed: _starting ? null : () => Navigator.of(context).pop(),
-                  child: Text(L10n.t('cancel'), style: TextStyle(color: MemoTheme.textDim)),
+                  child: Text(L10n.t('cancel'), style: TextStyle(color: MemoTheme.of(context).textDim)),
                 ),
-                const SizedBox(width: 12),
+                 SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: _starting ? null : _startModel,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: MemoTheme.accent,
-                    foregroundColor: MemoTheme.textInverse,
-                    padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    foregroundColor: MemoTheme.of(context).textInverse,
+                    padding:  EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
                   child: _starting
-                      ? const SizedBox(
+                      ?  SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.textInverse),
+                          child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.of(context).textInverse),
                         )
                       : Text(L10n.t('start_model')),
                 ),
@@ -340,7 +340,7 @@ class _ConfigField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
 
-  const _ConfigField({
+   _ConfigField({
     required this.label,
     required this.controller,
     required this.hint,
@@ -354,7 +354,7 @@ class _ConfigField extends StatelessWidget {
           width: 120,
           child: Text(
             label,
-            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            style:  TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
         ),
         Expanded(
@@ -364,23 +364,23 @@ class _ConfigField extends StatelessWidget {
               controller: controller,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style: const TextStyle(fontSize: 13),
+              style:  TextStyle(fontSize: 13),
               decoration: InputDecoration(
                 hintText: hint,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                contentPadding:  EdgeInsets.symmetric(horizontal: 12),
                 filled: true,
-                fillColor: MemoTheme.bgPanel,
+                fillColor: MemoTheme.of(context).bgPanel,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.borderSoft),
+                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.borderSoft),
+                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: const BorderSide(color: MemoTheme.accent),
+                  borderSide:  BorderSide(color: MemoTheme.accent),
                 ),
               ),
             ),

@@ -43,13 +43,16 @@ type APIConfig struct {
 }
 
 type LlamaConfig struct {
-	EngineMode    string `yaml:"engine_mode" json:"engine_mode"`       // "auto", "cpu", "nvidia", "amd"
-	BinaryPath    string `yaml:"binary_path" json:"binary_path"`       // path to llama-server, auto-detected if empty
-	Port          int    `yaml:"port" json:"port"`                     // default 8081
-	EmbeddingPort int    `yaml:"embedding_port" json:"embedding_port"` // default 8082
-	CtxSize       int    `yaml:"ctx_size" json:"ctx_size"`             // default 4096
-	MaxHistory    int    `yaml:"max_history" json:"max_history"`       // default 20
-	ModelsDir     string `yaml:"models_dir" json:"models_dir"`         // default "./data/models"
+	EngineMode    string  `yaml:"engine_mode" json:"engine_mode"`         // "auto", "cpu", "nvidia", "amd"
+	BinaryPath    string  `yaml:"binary_path" json:"binary_path"`         // path to llama-server, auto-detected if empty
+	Port          int     `yaml:"port" json:"port"`                       // default 8081
+	EmbeddingPort int     `yaml:"embedding_port" json:"embedding_port"`   // default 8082
+	CtxSize       int     `yaml:"ctx_size" json:"ctx_size"`               // default 4096
+	MaxHistory    int     `yaml:"max_history" json:"max_history"`         // default 20
+	ModelsDir     string  `yaml:"models_dir" json:"models_dir"`           // default "./data/models"
+	Temperature   float64 `yaml:"temperature" json:"temperature"`         // default 0.7
+	TopP          float64 `yaml:"top_p" json:"top_p"`                     // default 0.9
+	MaxTokens     int     `yaml:"max_tokens" json:"max_tokens"`           // default 0 (no limit)
 }
 
 type IdentityConfig struct {
@@ -106,6 +109,9 @@ func Default() *AppConfig {
 			CtxSize:       4096,
 			MaxHistory:    20,
 			ModelsDir:     "./data/models",
+			Temperature:   0.7,
+			TopP:          0.9,
+			MaxTokens:     0,
 		},
 		Sync: SyncConfig{
 			Enabled:          false,
@@ -219,6 +225,15 @@ func (c *AppConfig) validate() {
 	}
 	if c.Llama.ModelsDir == "" {
 		c.Llama.ModelsDir = "./data/models"
+	}
+	if c.Llama.Temperature <= 0 {
+		c.Llama.Temperature = 0.7
+	}
+	if c.Llama.TopP <= 0 {
+		c.Llama.TopP = 0.9
+	}
+	if c.Llama.MaxTokens < 0 {
+		c.Llama.MaxTokens = 0
 	}
 	if c.Sync.TokenPath == "" {
 		c.Sync.TokenPath = "./data/sync_token.json"

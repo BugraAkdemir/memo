@@ -30,12 +30,18 @@ class LlamaSettings {
   final String binaryPath;
   final int port;
   final int ctxSize;
+  final double temperature;
+  final double topP;
+  final int maxTokens;
 
   const LlamaSettings({
     required this.engineMode,
     required this.binaryPath,
     required this.port,
     required this.ctxSize,
+    this.temperature = 0.7,
+    this.topP = 0.9,
+    this.maxTokens = 0,
   });
 
   factory LlamaSettings.fromJson(Map<String, dynamic> json) {
@@ -44,6 +50,9 @@ class LlamaSettings {
       binaryPath: json['binary_path'] ?? '',
       port: json['port'] ?? 8081,
       ctxSize: json['ctx_size'] ?? 4096,
+      temperature: (json['temperature'] as num?)?.toDouble() ?? 0.7,
+      topP: (json['top_p'] as num?)?.toDouble() ?? 0.9,
+      maxTokens: json['max_tokens'] as int? ?? 0,
     );
   }
 }
@@ -60,16 +69,17 @@ class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
     return LlamaSettings.fromJson(data);
   }
 
-  Future<void> updateEngineMode(String mode) async {
-    final current = await future;
-    // Note: We need a backend handler for updating llama config
-    await ref.read(apiClientProvider).updateLlamaConfig(engineMode: mode);
-    state = AsyncData(LlamaSettings(
-      engineMode: mode,
-      binaryPath: current.binaryPath,
-      port: current.port,
-      ctxSize: current.ctxSize,
-    ));
+  Future<void> save(LlamaSettings settings) async {
+    await ref.read(apiClientProvider).updateLlamaConfig(
+      engineMode: settings.engineMode,
+      binaryPath: settings.binaryPath,
+      port: settings.port,
+      ctxSize: settings.ctxSize,
+      temperature: settings.temperature,
+      topP: settings.topP,
+      maxTokens: settings.maxTokens,
+    );
+    state = AsyncData(settings);
   }
 }
 
@@ -262,6 +272,29 @@ final appVersionProvider = FutureProvider<String>((ref) async {
     return 'unknown';
   }
 });
+
+// ─── Theme Mode ─────────────────────────────────────────────────
+
+final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, String>(
+  (ref) => ThemeModeNotifier(),
+);
+
+class ThemeModeNotifier extends StateNotifier<String> {
+  ThemeModeNotifier() : super('system') {
+    _init();
+  }
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = prefs.getString('memo_theme_mode') ?? 'system';
+  }
+
+  Future<void> setMode(String mode) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('memo_theme_mode', mode);
+    state = mode;
+  }
+}
 
 // ─── Locale ─────────────────────────────────────────────────────
 

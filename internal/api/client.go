@@ -54,12 +54,15 @@ func (c *Client) setAuth(req *http.Request) {
 	}
 }
 
-func (c *Client) ChatCompletion(ctx context.Context, messages []Message) (*ChatCompletionResponse, error) {
+func (c *Client) ChatCompletion(ctx context.Context, messages []Message, temperature float64, topP float64, maxTokens int) (*ChatCompletionResponse, error) {
 	req := ChatCompletionRequest{
-		Model:      c.model,
-		Messages:   messages,
-		Stream:     false,
-		ToolChoice: "none",
+		Model:       c.model,
+		Messages:    messages,
+		Temperature: temperature,
+		TopP:        topP,
+		MaxTokens:   maxTokens,
+		Stream:      false,
+		ToolChoice:  "none",
 	}
 
 	body, err := json.Marshal(req)
@@ -93,12 +96,15 @@ func (c *Client) ChatCompletion(ctx context.Context, messages []Message) (*ChatC
 	return &result, nil
 }
 
-func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message) (<-chan StreamChunk, error) {
+func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message, temperature float64, topP float64, maxTokens int) (<-chan StreamChunk, error) {
 	req := ChatCompletionRequest{
-		Model:      c.model,
-		Messages:   messages,
-		Stream:     true,
-		ToolChoice: "none",
+		Model:       c.model,
+		Messages:    messages,
+		Temperature: temperature,
+		TopP:        topP,
+		MaxTokens:   maxTokens,
+		Stream:      true,
+		ToolChoice:  "none",
 	}
 
 	body, err := json.Marshal(req)

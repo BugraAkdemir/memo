@@ -2,7 +2,7 @@
 
 ## Özellik Talepleri
 
-### 1. Hafıza Aç/Kapa (Memory Toggle)
+### 1. Hafıza Aç/Kapa (Memory Toggle) ✅
 - **İstek:** Kullanıcı ayarlardan hafızayı açıp kapatabilmeli.
 - **Neden:** Kod yazdırma gibi durumlarda hafıza gereksiz ve hız kaybettiriyor. Hafıza kapalıyken %100 llama.cpp hızına erişilmeli (memory retrieval yok, geçmiş context gönderilmiyor).
 - **Detay:**
@@ -13,7 +13,7 @@
   - Ayar `config.json`'da kalıcı olarak saklanmalı (örn. `"memory_enabled": true/false`)
   - Varsayılan: açık (`true`)
 
-### 2. Akıllı Sohbet Başlığı (Smart Chat Titles)
+### 2. Akıllı Sohbet Başlığı (Smart Chat Titles) ✅
 - **İstek:** Şu an sohbet başlığı ilk mesajın metni oluyor. Bunun yerine LLM ile kısa, anlamlı bir başlık otomatik oluşturulmalı.
 - **Neden:** İlk mesaj çoğu zaman "merhaba", "şunu yap" gibi anlamsız oluyor. Kullanıcı sohbet listesinde ne konuştuğunu göremiyor.
 - **Detay:**
@@ -26,7 +26,7 @@
   - Title çok uzunsa kırpılmalı (max ~50 karakter)
   - İlk mesajın tamamı title olarak kullanılmaya devam edebilir (fallback), ama LLM title'ı geldiğinde üzerine yazılmalı
 
-### 3. Sistem Prompt'u UI'dan Düzenleme
+### 3. Sistem Prompt'u UI'dan Düzenleme ✅
 - **İstek:** Şu an sistem prompt'u sadece config.json'dan değiştirilebiliyor. Ayarlar sayfasına bir text field eklenmeli.
 - **Neden:** Kullanıcı her sohbet öncesi dosya düzenlemek zorunda kalmamalı.
 - **Detay:**
@@ -36,7 +36,7 @@
   - Varsayılan prompt gösterilmeli (boşsa)
   - "Reset to default" butonu da eklenebilir
 
-### 4. Session Yönetimi UI
+### 4. Session Yönetimi UI ✅
 - **İstek:** Sohbet listesinde session silme, yeniden adlandırma, geçmiş listing.
 - **Neden:** Şu an session yönetimi için hiçbir UI yok; dosyaları manuel silmek gerekiyor.
 - **Detay:**
@@ -45,7 +45,7 @@
   - Rename: inline editing (TextField açılır, kaydedince backend'e `RenameSession`)
   - Session listesi zaten `GET /api/sessions` üzerinden geliyor, delete/rename endpoint'leri backend'de mevcut mu kontrol edilmeli (yoksa eklenmeli)
 
-### 5. Model Parametreleri UI
+### 5. Model Parametreleri UI ✅
 - **İstek:** Temperature, top_p, max_tokens, ctx_size gibi parametreler ayarlardan kontrol edilebilmeli.
 - **Neden:** Şu an sadece config.json'dan değişiyor, kullanıcı denemek için her seferinde dosya düzenlemek zorunda.
 - **Detay:**
@@ -54,7 +54,7 @@
   - Backend: `UpdateLlamaConfig` zaten mevcut (field-by-field merge yapıyor), frontend'den çağrılabilir
   - Her değişiklik anında backend'e gönderilmeyebilir, "Apply" butonu ile toplu gönderim daha iyi
 
-### 6. Mesaj Düzenleme / Silme
+### 6. Mesaj Düzenleme / Silme ✅
 - **İstek:** Sohbet geçmişinde bir mesaja uzun basınca "Edit" veya "Delete" seçeneği çıkmalı.
 - **Neden:** Yanlış yazılan mesajı veya LLM'in kötü yanıtını temizlemek/düzeltmek için.
 - **Detay:**

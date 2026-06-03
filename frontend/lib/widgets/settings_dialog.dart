@@ -10,7 +10,7 @@ import '../providers/chat_provider.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
-  const SettingsDialog({super.key});
+   SettingsDialog({super.key});
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
@@ -36,7 +36,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final tabs = _tabs;
 
     return Dialog(
-      backgroundColor: MemoTheme.bgApp,
+      backgroundColor: MemoTheme.of(context).bgApp,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
       ),
@@ -52,26 +52,26 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             // ─── Header ─────────────────────────────────
             Container(
               height: 56,
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding:  EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
-                color: MemoTheme.bgPanel,
-                border: Border(bottom: BorderSide(color: MemoTheme.borderSoft)),
+                color: MemoTheme.of(context).bgPanel,
+                border: Border(bottom: BorderSide(color: MemoTheme.of(context).borderSoft)),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     L10n.t('settings'),
-                    style: const TextStyle(
+                    style:  TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
-                      color: MemoTheme.textMain,
+                      color: MemoTheme.of(context).textMain,
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.close, size: 20),
+                    icon:  Icon(Icons.close, size: 20),
                     onPressed: () => Navigator.of(context).pop(),
-                    color: MemoTheme.textDim,
+                    color: MemoTheme.of(context).textDim,
                   ),
                 ],
               ),
@@ -85,26 +85,26 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   Container(
                     width: 200,
                     decoration: BoxDecoration(
-                      color: MemoTheme.bgPanel.withValues(alpha: 0.5),
+                      color: MemoTheme.of(context).bgPanel.withValues(alpha: 0.5),
                       border: Border(
-                        right: BorderSide(color: MemoTheme.borderSoft),
+                        right: BorderSide(color: MemoTheme.of(context).borderSoft),
                       ),
                     ),
                     child: ListView.builder(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
+                      padding:  EdgeInsets.symmetric(vertical: 12),
                       itemCount: tabs.length,
                       itemBuilder: (context, index) {
                         final isActive = _activeTab == index;
                         return InkWell(
                           onTap: () => setState(() => _activeTab = index),
                           child: Container(
-                            padding: const EdgeInsets.symmetric(
+                            padding:  EdgeInsets.symmetric(
                               horizontal: 24,
                               vertical: 12,
                             ),
                             decoration: BoxDecoration(
                               color: isActive
-                                  ? MemoTheme.bgElement
+                                  ? MemoTheme.of(context).bgElement
                                   : Colors.transparent,
                               border: Border(
                                 left: BorderSide(
@@ -123,8 +123,8 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                                     ? FontWeight.w600
                                     : FontWeight.w500,
                                 color: isActive
-                                    ? MemoTheme.textMain
-                                    : MemoTheme.textSecondary,
+                                    ? MemoTheme.of(context).textMain
+                                    : MemoTheme.of(context).textSecondary,
                               ),
                             ),
                           ),
@@ -136,7 +136,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   // Tab Content
                   Expanded(
                     child: Container(
-                      color: MemoTheme.bgApp,
+                      color: MemoTheme.of(context).bgApp,
                       child: _buildTabContent(_activeTab),
                     ),
                   ),
@@ -159,29 +159,29 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     // 6: About
     switch (index) {
       case 0:
-        return const _GeneralTab();
+        return  _GeneralTab();
       case 1:
-        return const _SystemPromptTab();
+        return  _SystemPromptTab();
       case 2:
-        return const _IncognitoPromptTab();
+        return  _IncognitoPromptTab();
       case 3:
-        return const _MemoryTab();
+        return  _MemoryTab();
       case 4:
-        return const _GpuConfigTab();
+        return  _GpuConfigTab();
       case 5:
-        return const _CloudSyncTab();
+        return  _CloudSyncTab();
       case 6:
-        return const _RemoteAccessTab();
+        return  _RemoteAccessTab();
       case 7:
-        return const _AboutTab();
+        return  _AboutTab();
       default:
-        return const SizedBox.shrink();
+        return  SizedBox.shrink();
     }
   }
 }
 
 class _GeneralTab extends ConsumerWidget {
-  const _GeneralTab();
+   _GeneralTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -189,40 +189,40 @@ class _GeneralTab extends ConsumerWidget {
     final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(32),
+      padding:  EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('general'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 32),
+         SizedBox(height: 32),
 
         // Language Selection
         Text(
           L10n.t('language'),
-          style: const TextStyle(
+          style:  TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding:  EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
-            color: MemoTheme.bgPanel,
+            color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-            border: Border.all(color: MemoTheme.borderSoft),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: DropdownButtonHideUnderline(
             child: DropdownButton<MemoLocale>(
               value: locale,
               isExpanded: true,
-              dropdownColor: MemoTheme.bgPanel,
-              icon: const Icon(Icons.arrow_drop_down, color: MemoTheme.textDim),
+              dropdownColor: MemoTheme.of(context).bgPanel,
+              icon:  Icon(Icons.arrow_drop_down, color: MemoTheme.of(context).textDim),
               items: const [
                 DropdownMenuItem(value: MemoLocale.tr, child: Text('Türkçe')),
                 DropdownMenuItem(value: MemoLocale.en, child: Text('English')),
@@ -236,27 +236,66 @@ class _GeneralTab extends ConsumerWidget {
           ),
         ),
 
-        const SizedBox(height: 32),
+         SizedBox(height: 32),
+
+        // Theme Selection
+        Text(
+          'Tema',
+          style:  TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
+          ),
+        ),
+         SizedBox(height: 12),
+        Container(
+          padding:  EdgeInsets.symmetric(horizontal: 16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: DropdownButtonHideUnderline(
+            child: DropdownButton<String>(
+              value: ref.watch(themeModeProvider),
+              isExpanded: true,
+              dropdownColor: MemoTheme.of(context).bgPanel,
+              icon:  Icon(Icons.arrow_drop_down, color: MemoTheme.of(context).textDim),
+              items: const [
+                DropdownMenuItem(value: 'system', child: Text('Sistem Varsayılanı')),
+                DropdownMenuItem(value: 'light', child: Text('Açık')),
+                DropdownMenuItem(value: 'dark', child: Text('Koyu')),
+              ],
+              onChanged: (val) {
+                if (val != null) {
+                  ref.read(themeModeProvider.notifier).setMode(val);
+                }
+              },
+            ),
+          ),
+        ),
+
+         SizedBox(height: 32),
 
         // Memory Toggle
         Text(
           'Hafıza',
-          style: const TextStyle(
+          style:  TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.all(16),
+          padding:  EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: MemoTheme.bgPanel,
+            color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-            border: Border.all(color: MemoTheme.borderSoft),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: memoryEnabledAsync.when(
-            loading: () => const SizedBox(
+            loading: () =>  SizedBox(
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
@@ -270,18 +309,18 @@ class _GeneralTab extends ConsumerWidget {
                     children: [
                       Text(
                         enabled ? 'Hafıza Aktif' : 'Hafıza Kapalı',
-                        style: const TextStyle(
+                        style:  TextStyle(
                           fontSize: 14,
-                          color: MemoTheme.textMain,
+                          color: MemoTheme.of(context).textMain,
                         ),
                       ),
-                      const SizedBox(height: 4),
+                       SizedBox(height: 4),
                       Text(
                         'Kapalıyken hafıza sorgulanmaz ve yeni anı kaydedilmez. '
                         'Model %100 ham performansla çalışır.',
                         style: TextStyle(
                           fontSize: 12,
-                          color: MemoTheme.textDim,
+                          color: MemoTheme.of(context).textDim,
                         ),
                       ),
                     ],
@@ -299,31 +338,31 @@ class _GeneralTab extends ConsumerWidget {
           ),
         ),
 
-        const SizedBox(height: 32),
+         SizedBox(height: 32),
 
         // Reset Setup Wizard
         Text(
           'Kurulum',
-          style: const TextStyle(
+          style:  TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Container(
-          padding: const EdgeInsets.all(16),
+          padding:  EdgeInsets.all(16),
           decoration: BoxDecoration(
-            color: MemoTheme.bgPanel,
+            color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-            border: Border.all(color: MemoTheme.borderSoft),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
                 'Kurulumu Sıfırla',
-                style: const TextStyle(fontSize: 14, color: MemoTheme.textMain),
+                style:  TextStyle(fontSize: 14, color: MemoTheme.of(context).textMain),
               ),
               OutlinedButton(
                 onPressed: () {
@@ -341,7 +380,7 @@ class _GeneralTab extends ConsumerWidget {
 }
 
 class _SystemPromptTab extends ConsumerStatefulWidget {
-  const _SystemPromptTab();
+   _SystemPromptTab();
 
   @override
   ConsumerState<_SystemPromptTab> createState() => _SystemPromptTabState();
@@ -361,24 +400,24 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
     final asyncPrompt = ref.watch(systemPromptProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(32),
+      padding:  EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('system_prompt'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Text(
           'Modelin temel davranışını, kimliğini ve sınırlarını belirleyen ana yönerge.',
-          style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+          style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-        const SizedBox(height: 24),
+         SizedBox(height: 24),
 
         asyncPrompt.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () =>  Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (prompt) {
             if (_controller.text != prompt) {
@@ -390,13 +429,13 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                 TextField(
                   controller: _controller,
                   maxLines: 12,
-                  style: const TextStyle(
+                  style:  TextStyle(
                     fontSize: 13,
                     fontFamily: 'JetBrains Mono',
                   ),
-                  decoration: const InputDecoration(alignLabelWithHint: true),
+                  decoration:  InputDecoration(alignLabelWithHint: true),
                 ),
-                const SizedBox(height: 16),
+                 SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -406,7 +445,7 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                       },
                       child: Text(L10n.t('reset_prompt')),
                     ),
-                    const SizedBox(width: 12),
+                     SizedBox(width: 12),
                     ElevatedButton(
                       onPressed: () {
                         ref
@@ -430,7 +469,7 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
 }
 
 class _IncognitoPromptTab extends ConsumerStatefulWidget {
-  const _IncognitoPromptTab();
+   _IncognitoPromptTab();
 
   @override
   ConsumerState<_IncognitoPromptTab> createState() =>
@@ -452,24 +491,24 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
     final asyncPrompt = ref.watch(incognitoPromptProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(32),
+      padding:  EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('incognito_prompt'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Text(
           'Gizli moddayken modelin hafızaya erişmeden nasıl davranması gerektiğini belirten yönerge.',
-          style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+          style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-        const SizedBox(height: 24),
+         SizedBox(height: 24),
 
         asyncPrompt.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () =>  Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (prompt) {
             if (!_initialized) {
@@ -482,12 +521,12 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
                 TextField(
                   controller: _controller,
                   maxLines: 12,
-                  style: const TextStyle(
+                  style:  TextStyle(
                     fontSize: 13,
                     fontFamily: 'JetBrains Mono',
                   ),
                 ),
-                const SizedBox(height: 16),
+                 SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -514,7 +553,7 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
 }
 
 class _MemoryTab extends ConsumerStatefulWidget {
-  const _MemoryTab();
+   _MemoryTab();
 
   @override
   ConsumerState<_MemoryTab> createState() => _MemoryTabState();
@@ -543,23 +582,23 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
       children: [
         Expanded(
           child: ListView(
-            padding: const EdgeInsets.all(32),
+            padding:  EdgeInsets.all(32),
             children: [
               Text(
                 L10n.t('memory'),
                 style: Theme.of(context).textTheme.titleLarge?.copyWith(
                   fontWeight: FontWeight.bold,
-                  color: MemoTheme.textMain,
+                  color: MemoTheme.of(context).textMain,
                 ),
               ),
-              const SizedBox(height: 8),
+               SizedBox(height: 8),
               Text(
                 L10n.t('memory_advanced_hint'),
-                style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+                style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
               ),
-              const SizedBox(height: 20),
+               SizedBox(height: 20),
               settingsAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
+                loading: () =>  Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text('${L10n.t('error')}: $e'),
                 data: (settings) {
                   if (!_settingsInitialized) {
@@ -570,24 +609,24 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   }
 
                   return Container(
-                    padding: const EdgeInsets.all(16),
+                    padding:  EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: MemoTheme.bgPanel,
+                      color: MemoTheme.of(context).bgPanel,
                       borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                      border: Border.all(color: MemoTheme.borderSoft),
+                      border: Border.all(color: MemoTheme.of(context).borderSoft),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
                           L10n.t('memory_retrieval_settings'),
-                          style: const TextStyle(
+                          style:  TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
-                            color: MemoTheme.textMain,
+                            color: MemoTheme.of(context).textMain,
                           ),
                         ),
-                        const SizedBox(height: 14),
+                         SizedBox(height: 14),
                         _MemorySettingField(
                           label: L10n.t('memory_top_k'),
                           controller: _topKController,
@@ -596,7 +635,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             FilteringTextInputFormatter.digitsOnly,
                           ],
                         ),
-                        const SizedBox(height: 12),
+                         SizedBox(height: 12),
                         _MemorySettingField(
                           label: L10n.t('memory_min_similarity'),
                           controller: _minSimilarityController,
@@ -607,7 +646,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             ),
                           ],
                         ),
-                        const SizedBox(height: 14),
+                         SizedBox(height: 14),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
@@ -663,7 +702,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                                       }
                                     },
                               child: _savingSettings
-                                  ? const SizedBox(
+                                  ?  SizedBox(
                                       width: 14,
                                       height: 14,
                                       child: CircularProgressIndicator(
@@ -679,7 +718,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   );
                 },
               ),
-              const SizedBox(height: 28),
+               SizedBox(height: 28),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -687,23 +726,23 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                     L10n.t('memory_files'),
                     style: Theme.of(context).textTheme.titleMedium?.copyWith(
                       fontWeight: FontWeight.bold,
-                      color: MemoTheme.textMain,
+                      color: MemoTheme.of(context).textMain,
                     ),
                   ),
                   OutlinedButton.icon(
-                    icon: const Icon(Icons.delete_sweep, size: 18),
+                    icon:  Icon(Icons.delete_sweep, size: 18),
                     label: Text(L10n.t('clear_memory')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: MemoTheme.red,
-                      side: const BorderSide(color: MemoTheme.red),
+                      side:  BorderSide(color: MemoTheme.red),
                     ),
                     onPressed: () async {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
-                          backgroundColor: MemoTheme.bgPanel,
-                          title: const Text('Hafızayı Temizle'),
-                          content: const Text(
+                          backgroundColor: MemoTheme.of(context).bgPanel,
+                          title:  Text('Hafızayı Temizle'),
+                          content:  Text(
                             'Tüm hafıza dosyaları silinecek. Emin misin?',
                           ),
                           actions: [
@@ -716,7 +755,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                               style: TextButton.styleFrom(
                                 foregroundColor: MemoTheme.red,
                               ),
-                              child: const Text('Temizle'),
+                              child:  Text('Temizle'),
                             ),
                           ],
                         ),
@@ -728,18 +767,18 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+               SizedBox(height: 12),
               memoryAsync.when(
-                loading: () => const Center(child: CircularProgressIndicator()),
+                loading: () =>  Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('${L10n.t('error')}: $e')),
                 data: (files) {
                   if (files.isEmpty) {
                     return Padding(
-                      padding: const EdgeInsets.only(top: 40),
+                      padding:  EdgeInsets.only(top: 40),
                       child: Center(
                         child: Text(
                           L10n.t('no_memory_files'),
-                          style: TextStyle(color: MemoTheme.textDim),
+                          style: TextStyle(color: MemoTheme.of(context).textDim),
                         ),
                       ),
                     );
@@ -753,19 +792,19 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(
                               file.name,
-                              style: const TextStyle(
+                              style:  TextStyle(
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
                             subtitle: Text(
                               '${file.sizeKb} KB • ${file.modified}',
                               style: TextStyle(
-                                color: MemoTheme.textDim,
+                                color: MemoTheme.of(context).textDim,
                                 fontSize: 12,
                               ),
                             ),
                             trailing: IconButton(
-                              icon: const Icon(Icons.delete_outline),
+                              icon:  Icon(Icons.delete_outline),
                               color: MemoTheme.red,
                               onPressed: () {
                                 ref
@@ -774,7 +813,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                               },
                             ),
                           ),
-                          const Divider(),
+                           Divider(),
                         ],
                       );
                     }).toList(),
@@ -795,7 +834,7 @@ class _MemorySettingField extends StatelessWidget {
   final String hint;
   final List<TextInputFormatter> inputFormatters;
 
-  const _MemorySettingField({
+   _MemorySettingField({
     required this.label,
     required this.controller,
     required this.hint,
@@ -810,7 +849,7 @@ class _MemorySettingField extends StatelessWidget {
           width: 170,
           child: Text(
             label,
-            style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            style:  TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
         ),
         Expanded(
@@ -818,27 +857,27 @@ class _MemorySettingField extends StatelessWidget {
             height: 36,
             child: TextField(
               controller: controller,
-              keyboardType: const TextInputType.numberWithOptions(
+              keyboardType:  TextInputType.numberWithOptions(
                 decimal: true,
               ),
               inputFormatters: inputFormatters,
-              style: const TextStyle(fontSize: 13),
+              style:  TextStyle(fontSize: 13),
               decoration: InputDecoration(
                 hintText: hint,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12),
+                contentPadding:  EdgeInsets.symmetric(horizontal: 12),
                 filled: true,
-                fillColor: MemoTheme.bgApp,
+                fillColor: MemoTheme.of(context).bgApp,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.borderSoft),
+                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.borderSoft),
+                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: const BorderSide(color: MemoTheme.accent),
+                  borderSide:  BorderSide(color: MemoTheme.accent),
                 ),
               ),
             ),
@@ -850,7 +889,7 @@ class _MemorySettingField extends StatelessWidget {
 }
 
 class _CloudSyncTab extends ConsumerStatefulWidget {
-  const _CloudSyncTab();
+   _CloudSyncTab();
 
   @override
   ConsumerState<_CloudSyncTab> createState() => _CloudSyncTabState();
@@ -919,25 +958,25 @@ class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
     final accountAsync = ref.watch(syncAccountProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(32),
+      padding:  EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('cloud_sync'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Text(
           'Google Drive üzerinde otomatik yedekleme. Her 50 mesajda bir senkronizasyon yapılır.',
-          style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+          style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-        const SizedBox(height: 24),
+         SizedBox(height: 24),
 
         // Auth status
         authAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () =>  Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (authenticated) => Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -949,68 +988,68 @@ class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
                     color: authenticated ? MemoTheme.green : MemoTheme.red,
                     size: 20,
                   ),
-                  const SizedBox(width: 8),
+                   SizedBox(width: 8),
                   Text(
                     authenticated ? 'Google Drive bağlı' : 'Bağlı değil',
                     style: TextStyle(
                       fontWeight: FontWeight.w500,
                       color: authenticated
                           ? MemoTheme.green
-                          : MemoTheme.textMuted,
+                          : MemoTheme.of(context).textMuted,
                     ),
                   ),
                 ],
               ),
               if (authenticated) ...[
-                const SizedBox(height: 8),
+                 SizedBox(height: 8),
                 accountAsync.when(
-                  loading: () => const SizedBox.shrink(),
-                  error: (_, __) => const SizedBox.shrink(),
+                  loading: () =>  SizedBox.shrink(),
+                  error: (_, __) =>  SizedBox.shrink(),
                   data: (account) {
                     final email = account['email'] as String?;
                     if (email != null && email.isNotEmpty) {
                       return Padding(
-                        padding: const EdgeInsets.only(left: 28),
+                        padding:  EdgeInsets.only(left: 28),
                         child: Text(
                           email,
                           style: TextStyle(
-                            color: MemoTheme.textDim,
+                            color: MemoTheme.of(context).textDim,
                             fontSize: 13,
                           ),
                         ),
                       );
                     }
-                    return const SizedBox.shrink();
+                    return  SizedBox.shrink();
                   },
                 ),
               ],
-              const SizedBox(height: 20),
+               SizedBox(height: 20),
               Row(
                 children: [
                   if (!authenticated)
                     ElevatedButton.icon(
                       onPressed: _startAuth,
-                      icon: const Icon(Icons.login, size: 16),
+                      icon:  Icon(Icons.login, size: 16),
                       label: Text('Google ile bağlan'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: MemoTheme.accent,
-                        foregroundColor: MemoTheme.textInverse,
+                        foregroundColor: MemoTheme.of(context).textInverse,
                       ),
                     ),
                   if (authenticated) ...[
                     OutlinedButton.icon(
                       onPressed: _syncNow,
-                      icon: const Icon(Icons.sync, size: 16),
+                      icon:  Icon(Icons.sync, size: 16),
                       label: Text('Şimdi senkronize et'),
                     ),
-                    const SizedBox(width: 8),
+                     SizedBox(width: 8),
                     OutlinedButton.icon(
                       onPressed: _disconnect,
-                      icon: const Icon(Icons.link_off, size: 16),
+                      icon:  Icon(Icons.link_off, size: 16),
                       label: Text('Bağlantıyı kes'),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: MemoTheme.red,
-                        side: const BorderSide(color: MemoTheme.red),
+                        side:  BorderSide(color: MemoTheme.red),
                       ),
                     ),
                   ],
@@ -1025,7 +1064,7 @@ class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
 }
 
 class _RemoteAccessTab extends ConsumerWidget {
-  const _RemoteAccessTab();
+   _RemoteAccessTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1033,20 +1072,20 @@ class _RemoteAccessTab extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.wifi_tethering, size: 48, color: MemoTheme.textDim),
-          const SizedBox(height: 16),
+          Icon(Icons.wifi_tethering, size: 48, color: MemoTheme.of(context).textDim),
+           SizedBox(height: 16),
           Text(
             L10n.t('remote_access'),
             style: Theme.of(
               context,
-            ).textTheme.titleLarge?.copyWith(color: MemoTheme.textMuted),
+            ).textTheme.titleLarge?.copyWith(color: MemoTheme.of(context).textMuted),
           ),
-          const SizedBox(height: 8),
+           SizedBox(height: 8),
           Text(
             'Bu özellik v3.0.0\'da devre dışı bırakılmıştır. Gelecek bir sürümde tekrar eklenecek.',
             style: Theme.of(
               context,
-            ).textTheme.bodyMedium?.copyWith(color: MemoTheme.textDim),
+            ).textTheme.bodyMedium?.copyWith(color: MemoTheme.of(context).textDim),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1056,14 +1095,14 @@ class _RemoteAccessTab extends ConsumerWidget {
 }
 
 class _AboutTab extends ConsumerWidget {
-  const _AboutTab();
+   _AboutTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final versionAsync = ref.watch(appVersionProvider);
 
     return ListView(
-      padding: const EdgeInsets.all(32),
+      padding:  EdgeInsets.all(32),
       children: [
         Row(
           children: [
@@ -1075,7 +1114,7 @@ class _AboutTab extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: MemoTheme.accent, width: 2),
               ),
-              child: const Center(
+              child:  Center(
                 child: Text(
                   'M',
                   style: TextStyle(
@@ -1086,7 +1125,7 @@ class _AboutTab extends ConsumerWidget {
                 ),
               ),
             ),
-            const SizedBox(width: 24),
+             SizedBox(width: 24),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1094,38 +1133,38 @@ class _AboutTab extends ConsumerWidget {
                   L10n.t('app_title'),
                   style: Theme.of(context).textTheme.headlineSmall?.copyWith(
                     fontWeight: FontWeight.bold,
-                    color: MemoTheme.textMain,
+                    color: MemoTheme.of(context).textMain,
                   ),
                 ),
                 versionAsync.when(
-                  loading: () => const Text('...'),
-                  error: (_, _) => const SizedBox(),
+                  loading: () =>  Text('...'),
+                  error: (_, _) =>  SizedBox(),
                   data: (v) =>
-                      Text(v, style: TextStyle(color: MemoTheme.textDim)),
+                      Text(v, style: TextStyle(color: MemoTheme.of(context).textDim)),
                 ),
               ],
             ),
           ],
         ),
-        const SizedBox(height: 48),
+         SizedBox(height: 48),
         Text(
           'Vizyon ve Misyon',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        const SizedBox(height: 8),
+         SizedBox(height: 8),
         Text(
           'Memo, tamamen yerel bilgisayarınızda çalışan, sizin konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazıyan özel bir yapay zeka asistanıdır. Asıl amaç, bulut teknolojilere muhtaç kalmadan, özgürce ve güvenle kendi bilgisayarında barındırabileceğiniz akıllı bir asistan yaratmaktır.',
-          style: TextStyle(height: 1.6, color: MemoTheme.textMuted),
+          style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
-        const SizedBox(height: 32),
+         SizedBox(height: 32),
         Text(
           'Açık Kaynak (MIT Lisansı)',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-        const SizedBox(height: 8),
+         SizedBox(height: 8),
         Text(
           'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
-          style: TextStyle(height: 1.6, color: MemoTheme.textMuted),
+          style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
       ],
     );
@@ -1133,7 +1172,7 @@ class _AboutTab extends ConsumerWidget {
 }
 
 class _GpuConfigTab extends ConsumerStatefulWidget {
-  const _GpuConfigTab();
+   _GpuConfigTab();
 
   @override
   ConsumerState<_GpuConfigTab> createState() => _GpuConfigTabState();
@@ -1173,28 +1212,28 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
     final gpuName = gpuAsync.whenOrNull(data: (g) => g.name) ?? '';
 
     return ListView(
-      padding: const EdgeInsets.all(32),
+      padding:  EdgeInsets.all(32),
       children: [
         Text(
           'Ekran Kartı (GPU) / Llama Motoru',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
-            color: MemoTheme.textMain,
+            color: MemoTheme.of(context).textMain,
           ),
         ),
-        const SizedBox(height: 12),
+         SizedBox(height: 12),
         Text(
           'Yapay zeka modellerini çalıştıran Llama.cpp motorunun kurulum ve ekran kartı ayarları.',
-          style: TextStyle(color: MemoTheme.textDim, fontSize: 13),
+          style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-        const SizedBox(height: 32),
+         SizedBox(height: 32),
 
         Container(
-          padding: const EdgeInsets.all(20),
+          padding:  EdgeInsets.all(20),
           decoration: BoxDecoration(
-            color: MemoTheme.bgPanel,
+            color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-            border: Border.all(color: MemoTheme.borderSoft),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -1204,24 +1243,24 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
-                  color: MemoTheme.textMain,
+                  color: MemoTheme.of(context).textMain,
                 ),
               ),
-              const SizedBox(height: 12),
+               SizedBox(height: 12),
               Row(
                 children: [
                   Icon(
                     hasGpu ? Icons.memory : Icons.developer_board,
                     size: 20,
-                    color: hasGpu ? MemoTheme.accent : MemoTheme.textDim,
+                    color: hasGpu ? MemoTheme.accent : MemoTheme.of(context).textDim,
                   ),
-                  const SizedBox(width: 8),
+                   SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       hasGpu
                           ? 'Algılanan Ekran Kartı: $gpuName'
                           : 'Sadece İşlemci (CPU) algılandı veya GPU desteklenmiyor.',
-                      style: TextStyle(fontSize: 14, color: MemoTheme.textMain),
+                      style: TextStyle(fontSize: 14, color: MemoTheme.of(context).textMain),
                     ),
                   ),
                 ],
@@ -1229,10 +1268,10 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
             ],
           ),
         ),
-        const SizedBox(height: 24),
+         SizedBox(height: 24),
 
         installedAsync.when(
-          loading: () => const Center(child: CircularProgressIndicator()),
+          loading: () =>  Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (installed) {
             final llamaSettings = ref.watch(llamaSettingsProvider);
@@ -1240,31 +1279,31 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
               children: [
                 // Engine Mode Selection
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding:  EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: MemoTheme.bgPanel,
+                    color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                    border: Border.all(color: MemoTheme.borderSoft),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text(
+                       Text(
                         'Motor Modu',
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
-                          color: MemoTheme.textMain,
+                          color: MemoTheme.of(context).textMain,
                         ),
                       ),
-                      const SizedBox(height: 12),
+                       SizedBox(height: 12),
                       llamaSettings.when(
-                        loading: () => const CircularProgressIndicator(),
+                        loading: () =>  CircularProgressIndicator(),
                         error: (e, _) => Text('Hata: $e'),
                         data: (settings) => DropdownButton<String>(
                           value: settings.engineMode,
                           isExpanded: true,
-                          dropdownColor: MemoTheme.bgPanel,
+                          dropdownColor: MemoTheme.of(context).bgPanel,
                           items: const [
                             DropdownMenuItem(
                               value: 'auto',
@@ -1285,9 +1324,14 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           ],
                           onChanged: (mode) {
                             if (mode != null) {
-                              ref
-                                  .read(llamaSettingsProvider.notifier)
-                                  .updateEngineMode(mode);
+                              final cur = llamaSettings.valueOrNull;
+                              if (cur != null) {
+                                ref.read(llamaSettingsProvider.notifier).save(LlamaSettings(
+                                  engineMode: mode, binaryPath: cur.binaryPath,
+                                  port: cur.port, ctxSize: cur.ctxSize,
+                                  temperature: cur.temperature, topP: cur.topP, maxTokens: cur.maxTokens,
+                                ));
+                              }
                             }
                           },
                         ),
@@ -1295,14 +1339,16 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 24),
+                 SizedBox(height: 24),
+                _ModelParametersCard(),
+                 SizedBox(height: 24),
                 // Installation Status Card
                 Container(
-                  padding: const EdgeInsets.all(20),
+                  padding:  EdgeInsets.all(20),
                   decoration: BoxDecoration(
-                    color: MemoTheme.bgPanel,
+                    color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                    border: Border.all(color: MemoTheme.borderSoft),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -1316,7 +1362,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                             color: installed ? MemoTheme.green : Colors.orange,
                             size: 24,
                           ),
-                          const SizedBox(width: 12),
+                           SizedBox(width: 12),
                           Text(
                             installed
                                 ? 'Llama Motoru Yüklü'
@@ -1324,28 +1370,28 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
-                              color: MemoTheme.textMain,
+                              color: MemoTheme.of(context).textMain,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                       SizedBox(height: 12),
                       Text(
                         installed
                             ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
                             : 'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
                         style: TextStyle(
-                          color: MemoTheme.textDim,
+                          color: MemoTheme.of(context).textDim,
                           fontSize: 13,
                         ),
                       ),
-                      const SizedBox(height: 20),
+                       SizedBox(height: 20),
                       if (_error.isNotEmpty)
                         Padding(
-                          padding: const EdgeInsets.only(bottom: 16),
+                          padding:  EdgeInsets.only(bottom: 16),
                           child: Text(
                             _error,
-                            style: const TextStyle(
+                            style:  TextStyle(
                               color: MemoTheme.red,
                               fontSize: 13,
                             ),
@@ -1358,15 +1404,15 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           onPressed: _installing ? null : _startInstall,
                           style: ElevatedButton.styleFrom(
                             backgroundColor: MemoTheme.accent,
-                            foregroundColor: MemoTheme.textInverse,
+                            foregroundColor: MemoTheme.of(context).textInverse,
                           ),
                           child: _installing
-                              ? const SizedBox(
+                              ?  SizedBox(
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
                                     strokeWidth: 2,
-                                    color: MemoTheme.textInverse,
+                                    color: MemoTheme.of(context).textInverse,
                                   ),
                                 )
                               : Text(
@@ -1375,7 +1421,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                                       : (hasGpu
                                             ? 'Ekran Kartı İçin Kur (Önerilen)'
                                             : 'Motoru İndir ve Kur'),
-                                  style: const TextStyle(
+                                  style:  TextStyle(
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),
@@ -1388,6 +1434,205 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
             );
           },
         ),
+      ],
+    );
+  }
+}
+
+class _ModelParametersCard extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_ModelParametersCard> createState() =>
+      _ModelParametersCardState();
+}
+
+class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
+  late double _temperature;
+  late double _topP;
+  late int _maxTokens;
+  late int _ctxSize;
+  bool _loaded = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final llamaSettings = ref.watch(llamaSettingsProvider);
+    return llamaSettings.when(
+      loading: () =>  SizedBox.shrink(),
+      error: (e, _) => Text('Hata: $e'),
+      data: (settings) {
+        if (!_loaded) {
+          _temperature = settings.temperature;
+          _topP = settings.topP;
+          _maxTokens = settings.maxTokens;
+          _ctxSize = settings.ctxSize;
+          _loaded = true;
+        }
+        return Container(
+          padding:  EdgeInsets.all(20),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+               Text('Model Parametreleri',
+                style: TextStyle(
+                  fontSize: 14, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain,
+                ),
+              ),
+               SizedBox(height: 16),
+              _ParamSlider(
+                label: 'Temperature', value: _temperature,
+                min: 0.0, max: 2.0, divisions: 40,
+                displayValue: _temperature.toStringAsFixed(2),
+                onChanged: (v) => setState(() => _temperature = v),
+              ),
+               SizedBox(height: 12),
+              _ParamSlider(
+                label: 'Top P', value: _topP,
+                min: 0.0, max: 1.0, divisions: 20,
+                displayValue: _topP.toStringAsFixed(2),
+                onChanged: (v) => setState(() => _topP = v),
+              ),
+               SizedBox(height: 12),
+              _ParamIntInput(
+                label: 'Max Tokens', value: _maxTokens,
+                min: 0, max: 65536, step: 256,
+                displaySuffix: '0 = limitsiz',
+                onChanged: (v) => setState(() => _maxTokens = v),
+              ),
+               SizedBox(height: 12),
+              _ParamIntInput(
+                label: 'Context Size', value: _ctxSize,
+                min: 512, max: 65536, step: 512,
+                onChanged: (v) => setState(() => _ctxSize = v),
+              ),
+               SizedBox(height: 16),
+              SizedBox(
+                width: double.infinity, height: 44,
+                child: ElevatedButton(
+                  onPressed: () async {
+                    await ref.read(llamaSettingsProvider.notifier).save(
+                      LlamaSettings(
+                        engineMode: settings.engineMode,
+                        binaryPath: settings.binaryPath,
+                        port: settings.port,
+                        ctxSize: _ctxSize,
+                        temperature: _temperature,
+                        topP: _topP,
+                        maxTokens: _maxTokens,
+                      ),
+                    );
+                    if (context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content:  Text('Parametreler kaydedildi.'),
+                          duration:  Duration(seconds: 2),
+                          backgroundColor: MemoTheme.green,
+                        ),
+                      );
+                    }
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MemoTheme.accent,
+                    foregroundColor: MemoTheme.of(context).textInverse,
+                  ),
+                  child:  Text('Uygula', style: TextStyle(fontWeight: FontWeight.w600)),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _ParamSlider extends StatelessWidget {
+  final String label;
+  final double value;
+  final double min;
+  final double max;
+  final int divisions;
+  final String displayValue;
+  final ValueChanged<double> onChanged;
+
+   _ParamSlider({
+    required this.label, required this.value,
+    required this.min, required this.max, required this.divisions,
+    required this.displayValue, required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style:  TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain)),
+            Text(displayValue, style:  TextStyle(fontSize: 13, color: MemoTheme.accent, fontWeight: FontWeight.w600)),
+          ],
+        ),
+        Slider(
+          value: value, min: min, max: max,
+          divisions: divisions,
+          activeColor: MemoTheme.accent,
+          inactiveColor: MemoTheme.of(context).borderSoft,
+          onChanged: onChanged,
+        ),
+      ],
+    );
+  }
+}
+
+class _ParamIntInput extends StatelessWidget {
+  final String label;
+  final int value;
+  final int min;
+  final int max;
+  final int step;
+  final String? displaySuffix;
+  final ValueChanged<int> onChanged;
+
+   _ParamIntInput({
+    required this.label, required this.value,
+    required this.min, required this.max, required this.step,
+    this.displaySuffix, required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        SizedBox(
+          width: 140,
+          child: Text(label, style:  TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain)),
+        ),
+        SizedBox(
+          width: 120,
+          child: TextField(
+            keyboardType: TextInputType.number,
+            decoration:  InputDecoration(
+              isDense: true,
+              contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4))),
+            ),
+            controller: TextEditingController(text: value == 0 && min == 0 ? '0' : value.toString()),
+            onChanged: (v) {
+              final parsed = int.tryParse(v);
+              if (parsed != null) {
+                onChanged(parsed.clamp(min, max));
+              }
+            },
+          ),
+        ),
+        if (displaySuffix != null) ...[
+           SizedBox(width: 8),
+          Text(displaySuffix!, style:  TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+        ],
       ],
     );
   }

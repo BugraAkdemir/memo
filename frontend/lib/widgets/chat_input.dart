@@ -10,7 +10,7 @@ import 'prompt_templates.dart';
 
 /// Chat input bar — text field, attachment buttons, send button.
 class ChatInput extends ConsumerStatefulWidget {
-  const ChatInput({super.key});
+   ChatInput({super.key});
 
   @override
   ConsumerState<ChatInput> createState() => _ChatInputState();
@@ -88,10 +88,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
         // Input area
         Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding:  EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
-            color: MemoTheme.bgApp,
-            border: Border(top: BorderSide(color: MemoTheme.borderSoft)),
+            color: MemoTheme.of(context).bgApp,
+            border: Border(top: BorderSide(color: MemoTheme.of(context).borderSoft)),
           ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
@@ -127,7 +127,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
-              const SizedBox(width: 4),
+               SizedBox(width: 4),
               _InputIconButton(
                 icon: Icons.attach_file,
                 tooltip: L10n.t('attach_file'),
@@ -160,7 +160,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               ),
 
               /* STT Disabled due to Vosk crashes
-              const SizedBox(width: 4),
+               SizedBox(width: 4),
               _InputIconButton(
                 icon: Icons.mic_none,
                 tooltip: L10n.t('record_audio'),
@@ -169,16 +169,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 },
               ),
               */
-              const SizedBox(width: 12),
+               SizedBox(width: 12),
 
               // ─── Text Input ──────────────────────────
               Expanded(
                 child: Container(
-                  constraints: const BoxConstraints(maxHeight: 160),
+                  constraints:  BoxConstraints(maxHeight: 160),
                   decoration: BoxDecoration(
-                    color: MemoTheme.bgPanel,
+                    color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                    border: Border.all(color: MemoTheme.borderSoft),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
                   ),
                   child: KeyboardListener(
                     focusNode: _kbFocusNode,
@@ -196,14 +196,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       textInputAction: TextInputAction.newline,
                       style: TextStyle(
                         fontSize: 14,
-                        color: MemoTheme.textMain,
+                        color: MemoTheme.of(context).textMain,
                         height: 1.5,
                       ),
                       decoration: InputDecoration(
                         hintText: '${L10n.t('type_message')} (/)',
-                        hintStyle: TextStyle(color: MemoTheme.textDim),
+                        hintStyle: TextStyle(color: MemoTheme.of(context).textDim),
                         border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
+                        contentPadding:  EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 12,
                         ),
@@ -214,32 +214,32 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 ),
               ),
 
-              const SizedBox(width: 12),
+               SizedBox(width: 12),
 
-              // ─── Send Button ─────────────────────────
+              // ─── Send / Stop Button ──────────────────
               AnimatedContainer(
-                duration: const Duration(milliseconds: 150),
+                duration:  Duration(milliseconds: 150),
                 child: Material(
-                  color: isSending ? MemoTheme.bgElement : MemoTheme.accent,
+                  color: isSending ? MemoTheme.red : MemoTheme.accent,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   child: InkWell(
-                    onTap: isSending ? null : _send,
+                    onTap: isSending
+                        ? () => ref.read(messagesProvider.notifier).stopStreaming()
+                        : _send,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                     child: SizedBox(
                       width: 42,
                       height: 42,
                       child: isSending
-                          ? const Padding(
-                              padding: EdgeInsets.all(12),
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                color: MemoTheme.accent,
-                              ),
+                          ?  Icon(
+                              Icons.stop_rounded,
+                              size: 22,
+                              color: MemoTheme.of(context).textInverse,
                             )
-                          : const Icon(
+                          :  Icon(
                               Icons.send_rounded,
                               size: 20,
-                              color: MemoTheme.textInverse,
+                              color: MemoTheme.of(context).textInverse,
                             ),
                     ),
                   ),
@@ -258,7 +258,7 @@ class _InputIconButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
 
-  const _InputIconButton({
+   _InputIconButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
@@ -272,8 +272,8 @@ class _InputIconButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding: const EdgeInsets.all(8),
-          child: Icon(icon, size: 20, color: MemoTheme.textDim),
+          padding:  EdgeInsets.all(8),
+          child: Icon(icon, size: 20, color: MemoTheme.of(context).textDim),
         ),
       ),
     );

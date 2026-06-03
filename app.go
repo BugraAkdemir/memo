@@ -479,7 +479,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		defer cancel()
 
 		requestStart := time.Now()
-		ch, err := streamClient.ChatCompletionStream(streamCtx, messages)
+		ch, err := streamClient.ChatCompletionStream(streamCtx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
 		if err != nil {
 			log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			log.Printf("LLM stream error: %v", err)
@@ -683,6 +683,20 @@ func (a *App) RenameChat(id, title string) error {
 		return fmt.Errorf("no session manager")
 	}
 	return a.sessions.RenameChat(id, title)
+}
+
+func (a *App) UpdateMessage(index int, content string) error {
+	if a.sessions == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return a.sessions.UpdateMessage(index, content)
+}
+
+func (a *App) DeleteMessage(index int) error {
+	if a.sessions == nil {
+		return fmt.Errorf("no session manager")
+	}
+	return a.sessions.DeleteMessage(index)
 }
 
 func (a *App) GetActiveMessages() []sessions.ChatMessage {
@@ -1317,6 +1331,15 @@ func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
 	if cfg.ModelsDir != "" {
 		a.cfg.Llama.ModelsDir = cfg.ModelsDir
 	}
+	if cfg.Temperature != 0 {
+		a.cfg.Llama.Temperature = cfg.Temperature
+	}
+	if cfg.TopP != 0 {
+		a.cfg.Llama.TopP = cfg.TopP
+	}
+	if cfg.MaxTokens != 0 {
+		a.cfg.Llama.MaxTokens = cfg.MaxTokens
+	}
 	return config.Save(a.cfg)
 }
 
@@ -1559,7 +1582,7 @@ func (a *App) callLLM(messages []api.Message) string {
 	a.clientMu.RLock()
 	llmClient := a.client
 	a.clientMu.RUnlock()
-	resp, err := llmClient.ChatCompletion(ctx, messages)
+	resp, err := llmClient.ChatCompletion(ctx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
 	if err != nil {
 		log.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		log.Printf("LLM error: %v", err)

@@ -7,22 +7,22 @@ import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 
 class SetupWizardOverlay extends ConsumerWidget {
-  const SetupWizardOverlay({super.key});
+   SetupWizardOverlay({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isSetupComplete = ref.watch(setupCompleteProvider);
 
     if (isSetupComplete) {
-      return const SizedBox.shrink();
+      return  SizedBox.shrink();
     }
 
-    return const _SetupWizardScreen();
+    return  _SetupWizardScreen();
   }
 }
 
 class _SetupWizardScreen extends ConsumerStatefulWidget {
-  const _SetupWizardScreen();
+   _SetupWizardScreen();
 
   @override
   ConsumerState<_SetupWizardScreen> createState() => _SetupWizardScreenState();
@@ -108,21 +108,21 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   @override
   Widget build(BuildContext context) {
     return Container(
-      color: MemoTheme.bgApp.withValues(alpha: 0.95),
+      color: MemoTheme.of(context).bgApp.withValues(alpha: 0.95),
       child: Center(
         child: SingleChildScrollView(
           child: Container(
             width: 500,
-            padding: const EdgeInsets.all(32),
+            padding:  EdgeInsets.all(32),
             decoration: BoxDecoration(
-              color: MemoTheme.bgPanel,
+              color: MemoTheme.of(context).bgPanel,
               borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
-              border: Border.all(color: MemoTheme.borderSoft),
+              border: Border.all(color: MemoTheme.of(context).borderSoft),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.2),
                   blurRadius: 20,
-                  offset: const Offset(0, 10),
+                  offset:  Offset(0, 10),
                 ),
               ],
             ),
@@ -130,106 +130,106 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                const Text(
+                 Text(
                   'Memo Kurulum Sihirbazı',
                   textAlign: TextAlign.center,
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.bold,
-                    color: MemoTheme.textMain,
+                    color: MemoTheme.of(context).textMain,
                   ),
                 ),
-                const SizedBox(height: 12),
-                const Text(
+                 SizedBox(height: 12),
+                 Text(
                   'Hoş geldiniz! Memo tamamen yerel ve gizlilik odaklı bir AI asistanıdır. Başlamadan önce birkaç ayarı tamamlayalım.',
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: MemoTheme.textDim, height: 1.5),
+                  style: TextStyle(color: MemoTheme.of(context).textDim, height: 1.5),
                 ),
-                const SizedBox(height: 32),
+                 SizedBox(height: 32),
 
                 // Name
-                const Text('Adınız (İsteğe bağlı)', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-                const SizedBox(height: 8),
+                 Text('Adınız (İsteğe bağlı)', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                 SizedBox(height: 8),
                 TextField(
                   controller: _nameController,
                   decoration: InputDecoration(
                     hintText: 'Örn: Buğra Akdemir',
                     filled: true,
-                    fillColor: MemoTheme.bgElement,
+                    fillColor: MemoTheme.of(context).bgElement,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                 SizedBox(height: 24),
 
                 // System Prompt
-                const Text('Sistem Komutu (Özelleştirebilirsiniz)', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
-                const SizedBox(height: 4),
-                const Text('Boş bırakırsanız Memo varsayılan davranışıyla ayarlanacaktır.', style: TextStyle(fontSize: 11, color: MemoTheme.textMuted)),
-                const SizedBox(height: 8),
+                 Text('Sistem Komutu (Özelleştirebilirsiniz)', style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+                 SizedBox(height: 4),
+                Text('Boş bırakırsanız Memo varsayılan davranışıyla ayarlanacaktır.', style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textMuted)),
+                 SizedBox(height: 8),
                 TextField(
                   controller: _promptController,
                   maxLines: 4,
                   decoration: InputDecoration(
                     hintText: 'You are Memo, a highly capable AI assistant...',
                     filled: true,
-                    fillColor: MemoTheme.bgElement,
+                    fillColor: MemoTheme.of(context).bgElement,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                       borderSide: BorderSide.none,
                     ),
                   ),
                 ),
-                const SizedBox(height: 32),
+                 SizedBox(height: 32),
 
                 // Diagnostics
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding:  EdgeInsets.all(16),
                   decoration: BoxDecoration(
-                    color: MemoTheme.bgApp,
+                    color: MemoTheme.of(context).bgApp,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                    border: Border.all(color: MemoTheme.borderSoft),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
                   ),
                   child: Column(
                     children: [
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Sistem Kontrolü', style: TextStyle(fontSize: 13, color: MemoTheme.textDim)),
+                          Text('Sistem Kontrolü', style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim)),
                           InkWell(
                             onTap: _checking ? null : _checkDiagnostics,
                             child: Padding(
-                              padding: const EdgeInsets.all(4),
+                              padding:  EdgeInsets.all(4),
                               child: _checking
-                                  ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
-                                  : const Icon(Icons.refresh, size: 16, color: MemoTheme.textDim),
+                                  ?  SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                                  :  Icon(Icons.refresh, size: 16, color: MemoTheme.of(context).textDim),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                       SizedBox(height: 12),
                       _DiagnosticRow(
                         title: 'Backend Bağlantısı',
                         ok: _backendOk,
                       ),
-                      const SizedBox(height: 8),
+                       SizedBox(height: 8),
                       _DiagnosticRow(
                         title: 'Yerel Modeller',
                         ok: _modelsOk,
                       ),
                       if (!_backendOk || !_modelsOk) ...[
-                        const SizedBox(height: 12),
+                         SizedBox(height: 12),
                         Text(
                           'Tüm sistemlerin çalışır durumda olması şart değildir, devam edebilirsiniz.',
-                          style: TextStyle(fontSize: 11, color: MemoTheme.textMuted, fontStyle: FontStyle.italic),
+                          style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textMuted, fontStyle: FontStyle.italic),
                         ),
                       ],
                     ],
                   ),
                 ),
-                const SizedBox(height: 32),
+                 SizedBox(height: 32),
 
                 // Save Button
                 SizedBox(
@@ -238,21 +238,21 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                     onPressed: _saving ? null : _saveSetup,
                     style: ElevatedButton.styleFrom(
                       backgroundColor: MemoTheme.accent,
-                      foregroundColor: MemoTheme.textInverse,
+                      foregroundColor: MemoTheme.of(context).textInverse,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                       ),
                     ),
                     child: _saving
-                        ? const SizedBox(
+                        ?  SizedBox(
                             width: 20,
                             height: 20,
                             child: CircularProgressIndicator(
                               strokeWidth: 2,
-                              color: MemoTheme.textInverse,
+                              color: MemoTheme.of(context).textInverse,
                             ),
                           )
-                        : const Text(
+                        :  Text(
                             'Başla',
                             style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
                           ),
@@ -271,7 +271,7 @@ class _DiagnosticRow extends StatelessWidget {
   final String title;
   final bool ok;
 
-  const _DiagnosticRow({required this.title, required this.ok});
+   _DiagnosticRow({required this.title, required this.ok});
 
   @override
   Widget build(BuildContext context) {
@@ -282,12 +282,12 @@ class _DiagnosticRow extends StatelessWidget {
           color: ok ? MemoTheme.green : MemoTheme.red,
           size: 18,
         ),
-        const SizedBox(width: 8),
+         SizedBox(width: 8),
         Text(
           title,
           style: TextStyle(
             fontSize: 13,
-            color: ok ? MemoTheme.textMain : MemoTheme.red,
+            color: ok ? MemoTheme.of(context).textMain : MemoTheme.red,
           ),
         ),
       ],

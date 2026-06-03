@@ -306,6 +306,10 @@ func (a *App) startSTTServer() {
 
 func (a *App) shutdown(ctx context.Context) {
 	log.Println("Memo shutting down, cleaning up background processes...")
+
+	// Signal memorySaveWorker to stop
+	close(a.memorySaveCh)
+
 	if a.sttServer != nil && a.sttServer.Process != nil {
 		a.sttServer.Process.Kill()
 	}
@@ -502,7 +506,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		if err != nil {
 			log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			log.Printf("LLM stream error: %v", err)
-			outCh <- api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true}
+			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
 		log.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
@@ -516,7 +520,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			if chunk.Error != "" {
 				log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 				log.Printf("Stream chunk error: %s", chunk.Error)
-				outCh <- api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true}
+				trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 				return
 			}
 
@@ -527,13 +531,13 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 				fullReply.WriteString(chunk.Content)
 				tokenCount++
-				outCh <- chunk
+				trySend(streamCtx, outCh, chunk)
 			}
 
 			if chunk.Done {
 				log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
 				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
-				outCh <- chunk
+				trySend(streamCtx, outCh, chunk)
 				return
 			}
 		}
@@ -543,14 +547,23 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		if fullReply.Len() > 0 {
 			log.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
-			outCh <- api.StreamChunk{Done: true, FinishReason: "stop"}
+			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			log.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
-			outCh <- api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true}
+			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true})
 		}
 	}()
 
 	return outCh
+}
+
+// trySend sends a chunk to outCh or returns if the context is cancelled.
+// This prevents goroutine leaks when the consumer disconnects.
+func trySend(ctx context.Context, outCh chan<- api.StreamChunk, chunk api.StreamChunk) {
+	select {
+	case outCh <- chunk:
+	case <-ctx.Done():
+	}
 }
 
 func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg string) {

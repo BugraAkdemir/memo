@@ -354,8 +354,7 @@ func (s *Store) removeIndexLocked(id string) {
 	for i := range s.index {
 		if s.index[i].ID == id {
 			s.index = append(s.index[:i], s.index[i+1:]...)
-			cp := append([]MemoryIndex(nil), s.index...)
-			go s.writeIndexFile(cp)
+			s.writeIndexFile(s.index)
 			return
 		}
 	}

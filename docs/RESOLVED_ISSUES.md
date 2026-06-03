@@ -1,6 +1,6 @@
 # Resolved Issues
 
-This document lists all 55 identified bugs that have been fixed in the Memo project.
+This document lists all 61 identified bugs that have been fixed in the Memo project.
 
 **Priority legend:**
 - 🔴 **Critical** — crash, data loss, security vulnerability, or complete feature breakage
@@ -39,6 +39,32 @@ This document lists all 55 identified bugs that have been fixed in the Memo proj
 ### C7. UI Thread Performance — AnimationController Per Message
 - **File:** `frontend/lib/widgets/chat_message_list.dart`
 - **Fix:** Removed all entry animations from `_MessageBubble`. `SingleTickerProviderStateMixin`, `AnimationController`, `FadeTransition`, and `SlideTransition` have been eliminated entirely. Bubbles render directly with no frame callbacks.
+
+---
+
+### C8. Stream Cancel on Chat Switch
+- **File:** `frontend/lib/providers/chat_provider.dart`
+- **Fix:** Added `messagesProvider.notifier.stopStreaming()` call in `switchTo()`. Switching chats now cancels the previous HTTP request.
+
+### C9. Incognito Toggle Race
+- **File:** `app.go`
+- **Fix:** Added `incognitoMu sync.RWMutex`. All read points use `RLock`/`RUnlock`, all write points use `Lock`/`Unlock`. Zero data race risk on concurrent incognito toggle + message send.
+
+### C10. `processSSEStream` Watcher Goroutine Leak
+- **File:** `internal/api/streaming.go:49-53`
+- **Fix:** Added `context.WithCancel` child context + `defer cancel()`. When the function returns, `cancel()` is called and the watcher goroutine exits via `watchCtx.Done()`. Goroutine pool no longer exhaustible.
+
+### C11. `callLLMStream` Blocks on Full Channel
+- **File:** `app.go`
+- **Fix:** Added `trySend()` helper: `select { case outCh <- chunk: case <-ctx.Done(): }`. The sender unblocks on context cancellation instead of blocking forever on a full channel.
+
+### C12. `memorySaveWorker` Never Exits on Shutdown
+- **File:** `app.go:309`
+- **Fix:** Added `close(a.memorySaveCh)` in `shutdown()`. The goroutine exits its `range` loop when the channel is closed. Goroutine leak on every shutdown eliminated.
+
+### C13. Concurrent `writeIndexFile` Index Corruption
+- **File:** `internal/memory/store.go:357-358`
+- **Fix:** Changed `go s.writeIndexFile(cp)` → synchronous `s.writeIndexFile(s.index)`. Already under write lock, no need for async. Memory index is always consistent.
 
 ---
 
@@ -244,6 +270,6 @@ This document lists all 55 identified bugs that have been fixed in the Memo proj
 
 ---
 
-> **Last updated:** 2026-06-02  
+> **Last updated:** 2026-06-03  
 > **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend  
-> **Total fixes:** 55 (7 critical, 15 high, 13 medium, 20 low)
+> **Total fixes:** 61 (13 critical, 15 high, 13 medium, 20 low)

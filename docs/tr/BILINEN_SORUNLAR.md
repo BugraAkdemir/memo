@@ -1,6 +1,6 @@
 # Bilinen Sorunlar ve Teknik Riskler (Kapsamlı Denetim)
 
-Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamaları ve uç durumları takip eder. Derinlemesine yapılan kod denetimi sonrası güncellenmiştir.
+Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamaları ve uç durumları takip eder. 2026-06-03 tarihli derinlemesine kod denetimi sonrası güncellenmiştir.
 
 **Öncelik kategorileri:**
 - 🔴 **Kritik** — çökme, veri kaybı, güvenlik açığı veya tamamen bozuk özellik
@@ -9,7 +9,203 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - 🔵 **Düşük** — kozmetik, küçük iyileştirme veya uç durum
 - ⚪ **Bilgi** — tasarım notu, risk veya gözlem
 
-Tespit edilen 55 hata da çözüldü. Bu dosya artık sadece tasarım gözlemlerini takip eder.
+---
+
+## 🔴 Kritik
+
+### C1. `a.syncManager` veri yarışı (Data Race)
+- **Dosya:** `app.go:1880-1890`, `app.go:1669-1671`
+- **Detay:** `UpdateSyncSettings` fonksiyonu `a.syncManager`'ı **herhangi bir kilit olmadan** atar (`nil` yapar veya yeni örnek oluşturur). Aynı anda, `memorySaveWorker` goroutine'i (`saveMemorySync` üzerinden) `a.syncManager`'ı okur. Bu bir **data race** — işaretçinin eşzamanlı okuma ve yazması.
+- **Risk:** Çökmeye yol açabilir. `syncManager` nil okunursa `Increment()` nil pointer panic üretir.
+
+### C2. `a.store` startup'ta `storeMu` olmadan atanıyor
+- **Dosya:** `app.go:189`
+- **Detay:** Başlangıçta `a.store = store` ataması `storeMu` tutulmadan yapılır. Startup sonrası `reinitMemoryStore` `storeMu.Lock()` ile değiştirir. İlk yazma senkronize değil.
+- **Risk:** Startup sırasında başka bir goroutine store'u okursa yarış oluşur.
+
+### C6. OAuth sunucu sızıntısı + `authWg` yarışı
+- **Dosya:** `internal/cloudsync/drive.go:97-185`
+- **Detay:**
+  - **Sızıntı:** `StartAuthFlow()` iki kez çağrılırsa ilk HTTP sunucusu sonsuza kadar çalışmaya devam eder.
+  - **Yarış:** `dc.authWg.Add(1)` satır 100'de `dc.mu` olmadan çağrılır. İlk flow tamamlanırsa (`Done`), ikinci `StartAuthFlow` `Add` çağırır, sonra `WaitForAuth` başlarsa, ikinci `Done()` sıfırın altına düşer → **`sync.WaitGroup` paniği**.
+- **Risk:** Çökme veya kaynak sızıntısı.
+
+### C9. `DeleteGobFile` hata durumunda indeks tutarsızlığı
+- **Dosya:** `internal/memory/store.go:267-269`
+- **Detay:** `readDocument` başarılı olursa (dosyayı açar, okur, kapatır) ancak `os.Remove` başarısız olursa, **indeks girdisi sessizce kaldırılmaz**. İndeks, artık var olmayan bir dosyayı referans alır.
+- **Risk:** Hafıza indeksi şişer, ölü referanslar oluşur.
+
+### C10. `UpdateSyncSettings` eski `syncManager`'ı temizlemeden yenisini oluşturur
+- **Dosya:** `app.go:1880`
+- **Detay:** Eski `a.syncManager`'ın devam eden bir yedekleme goroutine'i olabilir. Eski yöneticinin `count` atomic'i ve `inFlight` flag'i yetim kalır.
+- **Risk:** Yetim goroutine'ler ve tutarsız durum.
+
+### C11. Flutter: `Navigator.pop()` sonrası `context` kullanımı
+- **Dosya:** `screens/model_store_screen.dart:1497-1498`, `widgets/model_config_dialog.dart:103-111`
+- **Detay:** Dialog kapatıldıktan sonra `ScaffoldMessenger.of(context)` çağrılır. Dialog pop edilince context geçersiz olabilir.
+- **Risk:** Çökme veya SnackBar'ın görünmemesi.
+
+### C12. Flutter: Context menu'de async sonrası context kullanımı
+- **Dosya:** `widgets/chat_message_list.dart:182-188`, `widgets/chat_sidebar.dart:385-391`
+- **Detay:** `showMenu` sonrası `.then()` callback'inde widget dispose edilmiş olabilir. `_showEditDialog()` / `_showDeleteConfirm()` context kullanır.
+- **Risk:** Widget dispose edildikten sonra context kullanımı.
+
+### C13. Flutter: `TextEditingController` `build()` içinde oluşturuluyor, dispose edilmiyor
+- **Dosya:** `widgets/settings_dialog.dart:1678`
+- **Detay:** `_ParamIntInput.build()` içinde her frame'de yeni bir `TextEditingController` oluşturulur. Hiçbiri dispose edilmez.
+- **Risk:** Bellek sızıntısı, her parametre değişikliğinde sızan controller'lar.
+
+### C14. Flutter: `setState` async sonrası `mounted` kontrolü yok
+- **Dosya:** `widgets/llama_installer_view.dart:53-56`
+- **Detay:** Async işlem sonrası `setState` çağrılmadan önce `mounted` kontrolü yok. Dispose sonrası çağrılırsa patlar.
+- **Risk:** Çökme.
+
+### C15. Flutter: `FocusNode.requestFocus()` async sonrası `mounted` kontrolü yok
+- **Dosya:** `widgets/chat_input.dart:65`
+- **Detay:** `sendMessage` async çağrısı sonrası `_focusNode.requestFocus()`. Widget dispose edilmişse çöker.
+- **Risk:** Çökme.
+
+---
+
+## 🟠 Yüksek
+
+### H1. OAuth callback'inde duplicate `Done` paniği
+- **Dosya:** `internal/cloudsync/drive.go:156-174`
+- **Detay:** Callback goroutine'i `dc.closeAuthDoneLocked()` → `dc.authWg.Done()` çağırır. Callback iki kez tetiklenirse (HTTP replay ile mümkün), `Done` panik üretir.
+- **Risk:** Çökme.
+
+### H2. `callLLMStream` goroutine'i istemci koptuktan sonra 5 dakika daha çalışır
+- **Dosya:** `app.go:487-554`, `handlers_flutter.go:44-63`
+- **Detay:** HTTP istemcisi bağlantıyı kestiğinde `handleSendStream` döner (satır 50/61) ancak `callLLMStream` goroutine'i 300 saniyelik context timeout'u dolana kadar çalışmaya devam eder.
+- **Risk:** 5 dakika boyunca GPU/CPU kaynağı boşa harcanır.
+
+### H3. Eşzamanlı `AddMessage` çağrıları mesaj sırasını karıştırabilir
+- **Dosya:** `app.go:360-378`, `app.go:487-554`
+- **Detay:** `SendMessage` ve `SendMessageStream` (goroutine içinde `finishStream`) aynı anda `a.sessions.AddMessage` çağırır. Mutex korumalı olsa da kullanıcı ve asistan mesajlarının sırası karışabilir.
+
+### H4. `isAuthenticated` zaman aşımı yok
+- **Dosya:** `internal/cloudsync/drive.go:70-93`
+- **Detay:** `TokenSource` ve `Token()` çağrıları `context.Background()` kullanır. OAuth token sunucusu yanıt vermezse çağrı sonsuza kadar bloke olur.
+
+### H5. Nil `embeddingClient` ile embedding çağrısı nil pointer panic
+- **Dosya:** `app.go:1455`, `embedder.go:13-21`
+- **Detay:** `StopEmbeddingModel` `embeddingClient = nil` atar. `NewEmbeddingFunc` nil client yakalarsa, `client.CreateEmbedding` nil pointer panic üretir. `reinitMemoryStore`'daki parametre kontrolü yetersizdir.
+
+### H6. Hafıza sessizce devre dışı kalır, kullanıcı habersiz
+- **Dosya:** `app.go:185-189`
+- **Detay:** `NewStore` başarısız olursa (disk hatası), `a.store = nil` atanır. Sonraki işlemler sessizce nil döndürür. Kullanıcıya sadece log satırı yazılır, UI'da bildirim olmaz.
+
+### H7. Flutter: `Future.delayed` iptal edilmiyor
+- **Dosya:** `providers/chat_provider.dart:220-222`
+- **Detay:** Her `sendMessage()` çağrısı 2 saniye gecikmeli bir `Future.delayed` oluşturur. Kullanıcı hızlı mesaj gönderirse birden çok timer birikir, hepsi ateşlenir. Dispose edilince temizlenmez.
+
+### H8. Flutter: Async metodlar await edilmiyor
+- **Dosya:** `widgets/chat_sidebar.dart:113-114, 119-125`, `widgets/settings_dialog.dart:498-508`
+- **Detay:** `switchTo(id)`, `delete(id)`, `save()` gibi Future dönen metodlar `await` edilmeden çağrılıyor. Hatalar sessizce yutuluyor.
+
+### H9. Flutter: `build()` içinde yan etki (side-effect mutation)
+- **Dosya:** `screens/chat_screen.dart:120-125`
+- **Detay:** `whenData()` callback'leri içinde `title` değişkeni mutate ediliyor. İlk build'de her zaman "Yeni Sohbet" görünür, veri gelince düzelir. Gereksiz bir frame'de yanlış başlık gösterilir.
+
+### H10. Flutter: Context menu'de stale closure
+- **Dosya:** `widgets/chat_sidebar.dart:36-42`
+- **Detay:** `isIncognito` build zamanında yakalanır. Kullanıcı buton ile incognito'yu değiştirdiyse closure güncel olmayabilir.
+
+---
+
+## 🟡 Orta
+
+### M1. `retrieveMemory` request context yerine `context.Background()` kullanır
+- **Dosya:** `app.go:1591`
+- **Detay:** Kullanıcı sohbet değiştirdiğinde veya iptal ettiğinde memory retrieval iptal edilemez.
+
+### M2. `callLLM` request context yerine `context.Background()` kullanır
+- **Dosya:** `app.go:1608`
+- **Detay:** Kullanıcı 120 saniyelik LLM çağrısını iptal edemez.
+
+### M3. Path traversal Layer 1 kontrolü zayıf
+- **Dosya:** `internal/webserver/handlers_flutter.go:254`
+- **Detay:** `strings.Contains(path, "..")` URL-encoded `..` (`%2e%2e`) ile atlatılabilir. Ancak Layer 2 (`GetImageBase64`) `filepath.EvalSymlinks` ile sağlam kontrol yapar. Gerçek güvenlik Layer 2'ye dayanır.
+
+### M4. Çoğu HTTP handler'da istek gövde boyut sınırı yok
+- **Dosya:** `internal/webserver/server.go`, `handlers_flutter.go`
+- **Detay:** Sadece `handleTranscribe` `MaxBytesReader` kullanır. Diğer handler'lar sınırsız gövde kabul eder. DoS vektörü.
+
+### M5. Geçici dosyalar sistem temp dizini yerine uygulama dizinine yazılır
+- **Dosya:** `internal/llama/installer.go:192`
+- **Detay:** Multi-GB model indirmeleri `os.TempDir()` yerine `i.BaseDir` ("data/") dizinine yazılır. Disk dolmasına yol açabilir.
+
+### M6. `syncManager.Increment()` ile `TriggerNow` yarışı — çift yedekleme
+- **Dosya:** `internal/cloudsync/sync_manager.go:108-152`
+- **Detay:** `Increment` `m.inFlight` kontrolünü `m.mu` altında yapar, sonra pipeline başlatmadan önce kilidi bırakır. `TriggerNow` araya girip `inFlight = false` görebilir. Sonuç: **iki eşzamanlı yedekleme**.
+
+### M7. GitHub API çağrılarında zaman aşımı yok
+- **Dosya:** `internal/llama/installer.go:238, 325`
+- **Detay:** `http.DefaultClient` timeout olmadan kullanılır. GitHub API asılı kalırsa çağrı sonsuza kadar bloke olur.
+
+### M8. `restoreZip`'de zip bomb koruması yok
+- **Dosya:** `internal/cloudsync/sync_manager.go:355-472`
+- **Detay:** Google Drive'dan gelen zip'in açılmış boyutu sınırlandırılmamış. Güvenilir kaynaktan gelse de, compromised bir yedekleme keyfi miktarda veriyi diske yazabilir.
+
+### M9. Flutter: `_init()` constructor'dan çağrılıyor — state geçici olarak yanlış
+- **Dosya:** `providers/settings_provider.dart:94-96, 283-285, 307-309, 331-333`
+- **Detay:** `StateNotifier` constructor'ları `_init()` çağırır ancak async işlem beklenmez. İlk state hardcoded default'tur, sonra SharedPreferences gelince düzelir. Kısa bir süre yanlış değer gösterilir.
+
+### M10. Flutter: `ref.listen` her build'de yeniden kaydolur
+- **Dosya:** `screens/chat_screen.dart:41-48`, `screens/model_store_screen.dart:1015-1021`
+- **Detay:** Her rebuild'de yeni listener eklenir. Riverpod deduplicate etse de gereksiz overhead oluşur.
+
+### M11. Flutter: `_ModelParametersCardState` ayarları güncellenmez
+- **Dosya:** `widgets/settings_dialog.dart:1517-1523`
+- **Detay:** `llamaSettingsProvider` değişirse local state güncellenmez. Kullanıcı diğer sekmeden değişiklik yaparsa UI yansımaz.
+
+### M12. Flutter: `MarkdownStyleSheet` her frame'de yeniden oluşturulur
+- **Dosya:** `widgets/chat_message_list.dart:9-37`
+- **Detay:** `_buildMarkdownStyleSheet(context)` her `_MessageBubble.build()`'de çağrılır. Cache mekanizması yok.
+
+---
+
+## 🔵 Düşük
+
+### L1. `saveToken` hataları sessizce yutuluyor
+- **Dosya:** `internal/cloudsync/drive.go:89, 174, 224, 256`
+- **Detay:** `_ = dc.saveToken(t)` — token kaydedilemezse sessizce geçilir. Yeniden başlatmada token kaybolur.
+
+### L2. `writeJSON` encode hatalarını yutar
+- **Dosya:** `internal/webserver/server.go:462`
+- **Detay:** `json.NewEncoder(w).Encode(v)` hatası kontrol edilmez. Bağlantı koparsa veya JSON serialize edilemezse sessizce başarısız olur.
+
+### L3. `config.Save` validation hatalarını bildirmez
+- **Dosya:** `internal/config/config.go:170`
+- **Detay:** `cfg.validate()` hata döndürmez, geçersiz değerleri sessizce düzeltir. Kullanıcı girdisinin yok sayıldığını bilmez.
+
+### L4. STT binary dünya-tarafından çalıştırılabilir
+- **Dosya:** `app.go:289`
+- **Detay:** STT binary'si 0755 izniyle geçici dizine yazılır. Diğer kullanıcılar binary'i okuyabilir.
+
+### L5. STT süreç grubu temizlenmez
+- **Dosya:** `app.go:308-311`
+- **Detay:** Sadece ana süreç kill edilir, alt süreçler yetim kalır.
+
+### L6. Alt süreçler için `Setpgid` ayarlanmamış
+- **Dosya:** `internal/llama/sysproc_linux.go:12-16`
+- **Detay:** `Setpgid` ayarlanmazsa `Pdeathsig` sadece direkt alt süreci öldürür, torunları hayatta kalır.
+
+### L7. Flutter: `const` constructor'lar eksik (birçok yerde)
+- **Tüm proje genelinde:**
+  - `AppShell()`, `ChatSidebar()`, `ChatInput()`, `WelcomeView()`, sayısız `SizedBox()`, `Padding()`, `Text()`, `Icon()` çağrısı `const` değil.
+
+### L8. Flutter: Boş `catch (_)` blokları hataları yutar
+- **Dosya:** `core/api_client.dart:68`, `providers/settings_provider.dart:214, 221, 229, 239, 268`
+- **Detay:** Hatalar sessizce yutulur, kullanıcıya bildirilmez.
+
+### L9. Flutter: `connectionStatusProvider` sadece bir kere sorgulanır
+- **Dosya:** `providers/chat_provider.dart:301-303`
+- **Detay:** `FutureProvider` olduğu için sadece bir kere çalışır. Backend sonradan düşerse durum göstergesi yeşil kalır.
+
+### L10. Flutter: Türkçe string'ler L10n sistemi dışında hardcoded
+- **Dosya:** `screens/model_store_screen.dart:58-59, 183, 197-198, 330, 340, 369, 403, 464, 507, 519, 536, 796, 888, 1478, 1501, 1533`
+- **Detay:** Çeviri sistemi bypass edilir. İngilizce UI'da Türkçe metinler görünür.
 
 ---
 
@@ -17,42 +213,39 @@ Tespit edilen 55 hata da çözüldü. Bu dosya artık sadece tasarım gözlemler
 
 ### B1. GOB Kodlaması ve İleri Uyumluluk
 - **Dosya:** `internal/memory/store.go:302-306`
-- **Not:** `chromem.Document`, Go'nun `gob` kodlaması ile serileştirilir. Gob, struct alan değişikliklerine duyarlıdır: gelecek bir sürümde alan eklemek, kaldırmak veya yeniden adlandırmak mevcut tüm hafıza dosyalarını okunamaz hale getirecektir. Kendi kendini tanımlayan bir format (JSON, CBOR veya protobuf) düşünün.
 
 ### B2. Etkileşim Başına Tek Dosya Tasarımı
 - **Dosya:** `internal/memory/store.go`
-- **Not:** Her hafıza etkileşimi ayrı bir `.gob` dosyasıdır. Bu tasarım silmeyi (`os.Remove`) basitleştirir ancak şunlar için patolojik davranış yaratır:
-  - Başlangıç: O(N) dosya okuma
-  - Bulut senkronizasyonu: senkronizasyon başına O(N) API çağrısı
-  - Dosya tanıtıcı kullanımı
-  - HDD'lerde disk arama süreleri
 
 ### B3. Filepath.Walk Hata Yutma
 - **Dosya:** `internal/memory/store.go:182-196`, `internal/modelstore/modelstore.go:329-331`
-- **Not:** Birçok `filepath.Walk` geri çağrısı tüm hatalar için `nil` döndürür. İzin reddedilen dizinler ve G/Ç hataları kullanıcıya görünmez.
 
 ### B4. Gömme İstemcisi Yeniden Başlatma Sonrası Eski Referans
 - **Dosya:** `app.go:148-149`, `app.go:124-125`
-- **Not:** `a.client` değiştirildiğinde (yeni LLM endpoint'i), `a.store`'daki gömme fonksiyonu hala eski client'ı referans alır. Store, `reinitMemoryStore` çağrılana kadar önceki endpoint'i kullanmaya devam eder.
 
 ### B5. Dosya Adına Göre Model Otomatik Sınıflandırma
 - **Dosya:** `internal/modelstore/modelstore.go:58-64`
-- **Not:** `isEmbeddingModel`, dosya adı veya repo ID'sinin gömme ile ilgili anahtar kelimeler (bge, e5, vb.) içerip içermediğini kontrol eder. Bu buluşsal yöntem, adında bu string'leri bulunan ancak aslında sohbet modeli olan modelleri yanlış sınıflandırır.
 
 ### B6. `unsanitizePath`, Repo ID'lerindeki `__`'den `/` Enjekte Edebilir
 - **Dosya:** `internal/modelstore/modelstore.go:345`
-- **Not:** `unsanitizePath`, `__`'yi `/` ile değiştirir. Bir HuggingFace repo ID'si doğal olarak `__` içeriyorsa, bu beklenmeyen dizin yapıları oluşturur. Yol geçişi `filepath.Join` normalizasyonu ile önlenir ancak dizin düzeni kullanıcıları şaşırtabilir.
 
 ### B7. Llama Sunucusu Stderr'i Uygulama Loglarıyla Karışıyor
 - **Dosya:** `internal/llama/llama.go:118-119`
-- **Not:** Alt süreç stdout/stderr'i `os.Stdout`/`os.Stderr`'e ayarlanmıştır. Llama.cpp'nin tanılama çıktısı (prompt işleme istatistikleri, zamanlama, uyarılar) ön ek veya filtreleme olmadan doğrudan uygulamanın çıktı akışında görünür.
 
-### B8. `UpdateSyncSettings` ve `ensureSyncManager` Arasında Yarış
-- **Dosya:** `app.go:1505-1510`, `app.go:1627-1652`
-- **Not:** `ensureSyncManager()`, `a.syncManager`'ı kilit olmadan okur. `UpdateSyncSettings`, `syncManager = nil` ayarlar ve senkronizasyon olmadan yeni bir örnek oluşturur. Eşzamanlı çağrılar güncel olmayan veya çift başlatmaya neden olabilir.
+### B8. Flutter: `App` struct'ında context saklanması (anti-pattern)
+- **Dosya:** `app.go:100`
+- **Not:** Go `context` paketi dokümantasyonuna göre context'ler struct'da saklanmamalı, fonksiyonlara parametre olarak geçilmeli. `a.ctx` birden çok yerde kullanılır.
+
+### B9. Flutter: L10n kendi listener sistemini kullanıyor, Riverpod değil
+- **Dosya:** `core/l10n.dart:8`
+- **Not:** İki paralel bildirim sistemi mevcut.
+
+### B10. Flutter: Hardcoded Türkçe string'ler L10n bypass ediyor
+- Detay için L10'a bakın.
 
 ---
 
-> **Son güncelleme:** 2026-06-02  
-> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend  
-> **Toplam gözlem:** 8
+> **Son güncelleme:** 2026-06-03
+> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend
+> **Toplam hata:** 31 (🔴10, 🟠10, 🟡8, 🟣0)
+> **Toplam gözlem:** 10

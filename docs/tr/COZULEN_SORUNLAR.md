@@ -1,6 +1,6 @@
 # Çözülen Sorunlar
 
-Bu belge, Memo projesinde çözülmüş olan 55 hatayı listeler.
+Bu belge, Memo projesinde çözülmüş olan 61 hatayı listeler.
 
 **Öncelik kategorileri:**
 - 🔴 **Kritik** — çökme, veri kaybı, güvenlik açığı veya tamamen bozuk özellik
@@ -39,6 +39,32 @@ Bu belge, Memo projesinde çözülmüş olan 55 hatayı listeler.
 ### K7. UI İş Parçacığı Performansı — Mesaj Başına AnimationController
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart`
 - **Çözüm:** `_MessageBubble`'daki tüm entry animasyonları kaldırıldı. `SingleTickerProviderStateMixin`, `AnimationController`, `FadeTransition`, `SlideTransition` tamamen temizlendi.
+
+---
+
+### K8. Sohbet Değiştirince Stream İptal (Stream Cancel on Chat Switch)
+- **Dosya:** `frontend/lib/providers/chat_provider.dart`
+- **Çözüm:** `switchTo()` içinde `messagesProvider.notifier.stopStreaming()` çağrısı eklendi. Kullanıcı sohbet değiştirince önceki HTTP isteği iptal edilir.
+
+### K9. Incognito Yarış Koşulu (Incognito Toggle Race)
+- **Dosya:** `app.go`
+- **Çözüm:** `incognitoMu sync.RWMutex` eklendi. Tüm okuma noktaları `RLock`/`RUnlock`, tüm yazma noktaları `Lock`/`Unlock` ile korundu. Hızlı art arda incognito toggle + mesaj gönderme işlemlerinde data race riski sıfır.
+
+### K10. `processSSEStream` Watcher Goroutine Sızıntısı
+- **Dosya:** `internal/api/streaming.go:49-53`
+- **Çözüm:** `context.WithCancel` child context + `defer cancel()` eklendi. Fonksiyon dönünce `cancel()` çağrılır, watcher goroutine `watchCtx.Done()` alır ve çıkar. Uzun süreli kullanımda goroutine havuzu tükenmez.
+
+### K11. `callLLMStream` Dolu Kanala Bloke Olma
+- **Dosya:** `app.go`
+- **Çözüm:** `trySend()` yardımcı fonksiyonu eklendi: `select { case outCh <- chunk: case <-ctx.Done(): }` ile context iptalinde bloke olmadan döner. İstemci kopunca goroutine saniyeler içinde temizlenir.
+
+### K12. `memorySaveWorker` Shutdown'da Sızıntı
+- **Dosya:** `app.go:309`
+- **Çözüm:** `shutdown()` fonksiyonuna `close(a.memorySaveCh)` eklendi. Kanal kapanınca goroutine döngüden çıkar. Her uygulama kapanışında goroutine sızıntısı önlendi.
+
+### K13. Eşzamanlı `writeIndexFile` İndeks Bozulması
+- **Dosya:** `internal/memory/store.go:357-358`
+- **Çözüm:** `go s.writeIndexFile(cp)` → `s.writeIndexFile(s.index)` (senkron). Zaten write lock altında çağrıldığı için async olmasına gerek yok. Hafıza indeksi her zaman tutarlı.
 
 ---
 
@@ -244,6 +270,6 @@ Bu belge, Memo projesinde çözülmüş olan 55 hatayı listeler.
 
 ---
 
-> **Son güncelleme:** 2026-06-02  
+> **Son güncelleme:** 2026-06-03  
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend  
-> **Toplam çözüm:** 55 (7 kritik, 15 yüksek, 13 orta, 20 düşük)
+> **Toplam çözüm:** 61 (13 kritik, 15 yüksek, 13 orta, 20 düşük)

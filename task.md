@@ -1,131 +1,191 @@
-# v3.0.0 Yapılacaklar
+# v4.0.0 Yapılacaklar — Sistem Yönetimi (AI Agent Mode)
 
-## Özellik Talepleri
+## Amaç
 
-### 1. Hafıza Aç/Kapa (Memory Toggle) ✅
-- **İstek:** Kullanıcı ayarlardan hafızayı açıp kapatabilmeli.
-- **Neden:** Kod yazdırma gibi durumlarda hafıza gereksiz ve hız kaybettiriyor. Hafıza kapalıyken %100 llama.cpp hızına erişilmeli (memory retrieval yok, geçmiş context gönderilmiyor).
-- **Detay:**
-  - Ayarlar sayfasına `Memory` toggle eklenmeli (tercihen genel ayarlar, Cloud Sync/Remote Access ile aynı seviyede)
-  - Frontend: toggle durumu `apiClient` üzerinden backend'e bildirilmeli
-  - Backend: `SendMessageStream` / `callLLMStream`'e bir `memoryEnabled bool` parametresi geçmeli
-  - Kapalıyken: `buildMessages` sadece sistem prompt'u + mevcut session mesajlarını içermeli, `searchMemory` çağrılmamalı
-  - Ayar `config.json`'da kalıcı olarak saklanmalı (örn. `"memory_enabled": true/false`)
-  - Varsayılan: açık (`true`)
-
-### 2. Akıllı Sohbet Başlığı (Smart Chat Titles) ✅
-- **İstek:** Şu an sohbet başlığı ilk mesajın metni oluyor. Bunun yerine LLM ile kısa, anlamlı bir başlık otomatik oluşturulmalı.
-- **Neden:** İlk mesaj çoğu zaman "merhaba", "şunu yap" gibi anlamsız oluyor. Kullanıcı sohbet listesinde ne konuştuğunu göremiyor.
-- **Detay:**
-  - Tetikleyici: İkinci mesaj gönderildiğinde (yani sohbetin bir konusu netleşmeye başladığında)
-  - LLM'e kısa bir prompt gönder: `"Summarize this conversation in max 5 words: ..."`
-  - Yanıt doğrudan session title olarak kaydedilmeli
-  - Frontend: sohbet listesinde title güncellenmeli (provider state update)
-  - Backend: `app.go`'da `SendMessage` sonrası title oluşturma mantığı eklenmeli
-  - Async olmalı — kullanıcı mesajlaşmaya devam ederken arkada çalışmalı
-  - Title çok uzunsa kırpılmalı (max ~50 karakter)
-  - İlk mesajın tamamı title olarak kullanılmaya devam edebilir (fallback), ama LLM title'ı geldiğinde üzerine yazılmalı
-
-### 3. Sistem Prompt'u UI'dan Düzenleme ✅
-- **İstek:** Şu an sistem prompt'u sadece config.json'dan değiştirilebiliyor. Ayarlar sayfasına bir text field eklenmeli.
-- **Neden:** Kullanıcı her sohbet öncesi dosya düzenlemek zorunda kalmamalı.
-- **Detay:**
-  - Ayarlar'da `System Prompt` başlıklı bir `TextField` (veya `TextFormField`, çok satırlı)
-  - Mevcut prompt backend'den çekilmeli (`GET /api/config` benzeri bir endpoint)
-  - Kaydedince backend'e gönderilmeli, `config.json`'a yazılmalı
-  - Varsayılan prompt gösterilmeli (boşsa)
-  - "Reset to default" butonu da eklenebilir
-
-### 4. Session Yönetimi UI ✅
-- **İstek:** Sohbet listesinde session silme, yeniden adlandırma, geçmiş listing.
-- **Neden:** Şu an session yönetimi için hiçbir UI yok; dosyaları manuel silmek gerekiyor.
-- **Detay:**
-  - Sohbet listesinde her öğeye sağ tık / uzun basın -> "Rename", "Delete"
-  - Delete: onay dialog'u, backend'de `DeleteSession` çağrılmalı
-  - Rename: inline editing (TextField açılır, kaydedince backend'e `RenameSession`)
-  - Session listesi zaten `GET /api/sessions` üzerinden geliyor, delete/rename endpoint'leri backend'de mevcut mu kontrol edilmeli (yoksa eklenmeli)
-
-### 5. Model Parametreleri UI ✅
-- **İstek:** Temperature, top_p, max_tokens, ctx_size gibi parametreler ayarlardan kontrol edilebilmeli.
-- **Neden:** Şu an sadece config.json'dan değişiyor, kullanıcı denemek için her seferinde dosya düzenlemek zorunda.
-- **Detay:**
-  - Ayarlar'da `Model Parameters` başlıklı bir bölüm
-  - Slider'lar veya number input'lar: Temperature (0.0-2.0), Top P (0.0-1.0), Max Tokens, Context Size
-  - Backend: `UpdateLlamaConfig` zaten mevcut (field-by-field merge yapıyor), frontend'den çağrılabilir
-  - Her değişiklik anında backend'e gönderilmeyebilir, "Apply" butonu ile toplu gönderim daha iyi
-
-### 6. Mesaj Düzenleme / Silme ✅
-- **İstek:** Sohbet geçmişinde bir mesaja uzun basınca "Edit" veya "Delete" seçeneği çıkmalı.
-- **Neden:** Yanlış yazılan mesajı veya LLM'in kötü yanıtını temizlemek/düzeltmek için.
-- **Detay:**
-  - `chat_message_list.dart`'taki her bubble'a `GestureDetector` veya `InkWell` ile uzun basma
-  - Edit: mesaj metnini inline düzenleme (TextField açar), kaydedince backend'e `UpdateMessage` isteği
-  - Delete: onay dialog'u, backend'den mesajı sil, UI'dan kaldır
-  - Backend'de `updateMessage` / `deleteMessage` endpoint'leri yoksa eklenmeli
-
-### 7. Tema (Dark / Light) ✅
-- **İstek:** Uygulama şu an sadece light tema ile çalışıyor. Dark mode eklenmeli.
-- **Neden:** Gece kullanımında göz yorgunluğu.
-- **Detay:**
-  - Flutter `ThemeData` kullanılarak dark/light theme tanımları
-  - Ayarlar'a "Theme" toggle (Dark / Light / System default)
-  - Tercih `SharedPreferences` veya backend config'inde saklanabilir
-  - Material 3 theme uyumlu olmalı (mevcut tema renklerine sadık kalınarak)
-
-### 8. Streaming Toggle ✅
-- **İstek:** Kullanıcı streaming (anlık token gösterimi) açıp kapatabilmeli.
-- **Neden:** Bazı kullanıcılar tam yanıt gelince göstermeyi tercih edebilir, özellikle yavaş modellerde.
-- **Detay:**
-  - Ayarlar'a "Streaming" toggle
-  - Kapalıyken: frontend `sendMessageStream` yerine `sendMessage` (non-stream) çağırmalı
-  - Backend'de `SendMessage` (non-stream) zaten mevcut mu? Değilse eklenmeli — tek seferde tam yanıt dönen endpoint
+Kullanıcının bilgisayarında dosya açma, dosya silme, terminal komutları çalıştırma gibi işlemleri yapabilen profesyonel bir AI agent sistemi. Claude Code benzeri bir yapı — kullanıcıya her işlem öncesi izin sorulacak (allow once, always allow, deny, deny forever gibi seçeneklerle).
 
 ---
 
-## UX İyileştirmeleri (v4.0.0'dan Çekildi)
+## 1. Backend: Agent Execution Engine
 
-### 9. Markdown Rendering ✅
-- **İstek:** Kullanıcı mesajlarında markdown render edilmeli (kod blokları, listeler, başlıklar).
-- **Neden:** Şu an tüm mesajlar düz `SelectableText` ile gösteriliyor, kod blokları okunamıyor.
-- **Detay:**
-  - `flutter_markdown` paketi eklenmeli (veya `markdown` + custom widget)
-  - LLM yanıtları için bubble içinde `MarkdownBody` kullanılmalı
-  - Kullanıcı mesajları da markdown render edebilir (isteğe bağlı)
-  - Kod blokları için arka plan rengi ve monospace font
-  - Linkler tıklanabilir olmalı
+### 1.1 Tool Definition Sistemi
+- Her aracın tanımı JSON Schema formatında olmalı (OpenAI tool calling standardı)
+- Tool tanımı: `name`, `description`, `parameters` (JSON Schema), `danger_level` (safe/medium/dangerous)
+- Built-in tool'lar:
+  - `read_file(path)` — dosya okuma (safe)
+  - `write_file(path, content)` — dosya yazma/oluşturma (medium)
+  - `delete_file(path)` — dosya silme (dangerous)
+  - `list_directory(path)` — dizin listeleme (safe)
+  - `run_command(command, cwd)` — terminal komutu çalıştırma (dangerous)
+  - `search_files(pattern, path)` — dosya arama (safe)
+  - `get_file_info(path)` — dosya meta bilgisi (safe)
+  - `read_env()` — ortam değişkenlerini listele (medium)
 
-### 10. Hata Mesajları SnackBar Olarak Gösterilsin ✅
-Zaten yapılmış — `errorMessageProvider` (chat_provider.dart) + SnackBar listener (chat_screen.dart) mevcut.
+### 1.2 Permission Manager
+- `internal/agent/permissions.go` — yeni paket
+- Permission tipleri:
+  - `PromptAlways` — her seferinde sor
+  - `AllowOnce` — bir kereye mahsus izin ver
+  - `AllowSession` — bu oturum boyunca izin ver
+  - `AllowForever` — kalıcı olarak izin ver (`.opencode/` dizinine kaydedilir)
+  - `DenyOnce` — bir kere reddet
+  - `DenyForever` — kalıcı reddet
+- Permission kaydı: `data/permissions/` dizininde JSON dosyaları
+- Her izin kaydı: `tool_name`, `args_hash` (argümanların hash'i), `policy`, `created_at`, `updated_at`
 
-### 11. Silme Onay Dialog'ları ✅
-Hepsi zaten yapılmış — chat sidebar, model store, mesaj silme, hafıza temizleme hepsinde onay dialog'u mevcut.
+### 1.3 Tool Execution Sandbox
+- `internal/agent/executor.go` — tool'ları çalıştırma
+- `run_command` için:
+  - Maksimum çalışma süresi (varsayılan 60 saniye, yapılandırılabilir)
+  - Output boyut limiti (10MB)
+  - Yasaklı komutlar listesi (rm -rf /, dd, mkfs, format, vb.)
+  - `$PATH` güvenliği — sadece standart dizinler
+- `write_file`/`delete_file` için:
+  - Proje dizini dışına yazma/silme engeli (opsiyonel, ayarlanabilir)
+  - Symlink saldırı koruması (mevcut `safePersistPath` benzeri)
 
-### 12. Boş Mesaj Koruması ✅
-Zaten yapılmış — `chat_input.dart:47-48`'de `text.isEmpty` kontrolü var.
+### 1.4 Agent Pipeline
+- `internal/agent/pipeline.go`:
+  1. Kullanıcı mesajı → LLM'e gönder (tool tanımlarıyla birlikte)
+  2. LLM tool call yanıtı dönerse → permission kontrolü
+  3. İzin varsa → tool'u çalıştır, sonucu LLM'e geri gönder
+  4. LLM nihai yanıtı üretir → kullanıcıya göster
+- Loop desteği: LLM birden çok tool call yapabilir, her biri ayrı permission kontrolünden geçer
 
-### 13. Çift Gönderim Önleme ✅
-Zaten yapılmış — `chat_input.dart:50`'da `isSendingProvider` kontrolü, ek olarak attachment butonlarında da (satır 104-105) mevcut.
+### 1.5 Streaming Support
+- Tool execution sonuçları streaming ile kullanıcıya iletilmeli
+- Uzun süren komutlarda (build, test) output anlık gösterilmeli
+- Kullanıcı komutu iptal edebilmeli (cancel butonu)
 
-### 14. Timestamp Formatı: `HH:mm` → `HH:mm:ss` ✅
-Zaten yapılmış — `chat_provider.dart:166,251`'de `.substring(11, 19)` kullanılıyor (eski `16`'dan `19`'a çekilmiş).
+---
 
-### 15. Export Chat: File Picker Kaydet Dialog ✅
-Zaten yapılmış — `chat_screen.dart:196`'da `FilePicker.platform.saveFile()` kullanılıyor.
+## 2. Frontend: Permission UI
 
-### 16. Incognito Toggle Yarış Fix ✅
-Backend'de `app.go`'ya `incognitoMu sync.RWMutex` eklendi. `isIncognito` ve `incognitoMessages` tüm okuma/yazma noktalarında lock ile korunuyor (ToggleIncognito, handleIncognito, handleIncognitoStream, finishStream, SendMessage ve tüm stream/image/file entry point'leri).
+### 2.1 Permission Dialog
+- `frontend/lib/widgets/agent/permission_dialog.dart`
+- LLM bir tool çağırmak istediğinde açılan dialog
+- İçerik:
+  - **Tool adı** ve **açıklaması** (örn. "Run Command: `rm -rf /tmp/test`")
+  - **Tehlikeli araç** uyarı banner'ı (kırmızı/kahverengi)
+  - **Argümanlar** okunabilir formatta gösterilmeli
+  - **Dosya önizleme** (read_file için ilk 20 satır)
+- Butonlar:
+  - "Allow Once" (birincil)
+  - "Always Allow — this session" (ikincil)
+  - "Always Allow — forever" (üçüncül, `.opencode/permissions.json`'a kaydedilir)
+  - "Deny" (iptal)
+  - "Deny Forever" (kırmızı, kalıcı red)
+- Güvenlik: "Allow" butonlarına 2 saniyelik bekleme süresi (dangerous tool'larda)
 
-### 17. Stream Cancel on Chat Switch ✅
-`ActiveChatIdNotifier.switchTo()` içine `messagesProvider.notifier.stopStreaming()` eklendi (chat_provider.dart:71). Yeni sohbet oluşturma da aynı yoldan geçiyor.
+### 2.2 Permission History Panel
+- `frontend/lib/widgets/agent/permission_history.dart`
+- Ayarlar'da "Permission History" bölümü
+- Geçmiş tüm izin kararları listelenir
+- Her kayıt: tool, args, policy, timestamp
+- "Revoke" butonu — kalıcı izni iptal et
+- "Clear All" — tüm kalıcı izinleri temizle
 
-### 18. SSE Token Rebuild Optimizasyonu ✅
-Zaten optimize edilmiş — `streamingContentProvider` / `streamingThinkingProvider` ayrı ayrı güncelleniyor, her chunk'ta tüm mesaj listesi yeniden oluşturulmuyor.
+### 2.3 Agent Chat UI
+- Normal sohbetten farklı bir görünüm (opsiyonel)
+- Tool çağrıları görsel kart olarak gösterilmeli:
+  ```
+  ┌─────────────────────────────────┐
+  │ 🔧 read_file("/etc/hosts")      │
+  │ ✅ Completed (0.02s)            │
+  │ 📄 [önizleme: 15 satır]         │
+  └─────────────────────────────────┘
+  ```
+- Hata durumunda kart kırmızı:
+  ```
+  ┌─────────────────────────────────┐
+  │ ❌ run_command("rm -rf /")      │
+  │ ⛔ Permission denied            │
+  └─────────────────────────────────┘
+  ```
+- Komut output'u varsa expandable/collapsible bölüm
 
-### 19. STT Başlangıç Doğrulama ❌
-STT şu an frontend'de Vosk crash'leri nedeniyle devre dışı (`chat_input.dart:162-171`). Araçlar kontrol edilse bile çalışmıyor. STT yeniden aktifleştirilince ele alınmalı.
+### 2.4 Agent Mode Toggle
+- Ana ekranda bir "Agent Mode" toggle (sohbet girişinin üstünde)
+- Kapalıyken: normal sohbet (tool çağrısı yok)
+- Açıkken: LLM tool çağırabilir, permission dialog'ları gösterilir
+- Varsayılan: kapalı (güvenlik)
 
-### 20. Model Store Görsel İyileştirme ✅
-- **Rozetler:** Popüler (500K+ indirme) ve GGUF badge'leri eklendi (`model_store_screen.dart`)
-- **Avatar:** Repo adının ilk harfinden gradient renkli avatar (`_avatarColor` palette)
-- **Renkli Tag Chip'leri:** Tag türüne göre renk kodlaması (GGUF/llama → kahverengi, transformers → accent, text → mavi)
-- **Auto-Search:** `onChanged` ile 2+ karakter girince otomatik arama
+---
+
+## 3. Güvenlik ve Kısıtlamalar
+
+### 3.1 Danger Level Sistemi
+| Seviye | Örnek | Varsayılan Policy |
+|---|---|---|
+| `safe` | read_file, search_files, list_directory | Allow (sessiz) |
+| `medium` | write_file, read_env | Prompt |
+| `dangerous` | delete_file, run_command | Prompt + 2sn gecikme |
+
+### 3.2 Yasaklı İşlemler
+- `run_command` için kara liste:
+  - `rm -rf /`, `rm -rf ~`, `rm -rf .` (kök dizin koruması)
+  - `dd`, `mkfs`, `format`, `fdisk`, `parted`
+  - `chmod 777`, `chown` (sistem dosyalarında)
+  - `sudo`, `su`, `pkexec` (yükseltilmiş yetki)
+  - `:(){ :|:& };:` (fork bomb)
+- `write_file` için:
+  - `/etc/`, `/usr/`, `/bin/`, `/boot/`, `/dev/` dizinlerine yazma engeli
+- `delete_file` için:
+  - Aynı kara liste + proje `.git/` dizini koruması
+
+### 3.3 Rate Limit ve Güvenlik
+- Dakikada maksimum 30 tool call
+- Aynı `run_command` çağrısı 5 saniyede 1'den fazla olamaz
+- Tool call'ların tam log'u `data/agent-log/` dizinine yazılır (denetim için)
+
+---
+
+## 4. Yapısal Değişiklikler
+
+### 4.1 Yeni Dizin Yapısı
+```
+internal/agent/
+├── executor.go      # tool execution engine
+├── permissions.go   # permission manager
+├── pipeline.go      # LLM ↔ tool orchestration
+├── tools.go         # tool definitions & registry
+├── sandbox.go       # execution sandbox (security)
+└── tools/
+    ├── file.go      # read_file, write_file, delete_file, etc.
+    ├── command.go   # run_command
+    └── search.go    # search_files, get_file_info
+
+frontend/lib/widgets/agent/
+├── permission_dialog.dart
+├── permission_history.dart
+├── agent_chat_card.dart
+├── agent_mode_toggle.dart
+├── tool_result_view.dart
+└── tool_call_bubble.dart
+```
+
+### 4.2 Mevcut Dosyalarda Değişiklik
+- `app.go` — `Agent` yöneticisi eklenmeli, `SendMessageStream` agent mode'u desteklemeli
+- `internal/webserver/handlers_flutter.go` — yeni endpoint'ler:
+  - `POST /api/agent/tool-call` — tool call izni sonucu (allow/deny)
+  - `GET /api/agent/permissions` — kalıcı izin listesi
+  - `DELETE /api/agent/permissions/:id` — izni iptal et
+- `internal/webserver/bridge.go` — `AgentBridge` eklenmeli
+- `frontend/lib/providers/` — `agent_provider.dart`, `permission_provider.dart`
+- `frontend/lib/screens/chat_screen.dart` — agent mode toggle, tool call bubble'ları
+
+---
+
+## 5. İleri Seviye Özellikler (Sonraki Versiyonlar)
+
+- **Multi-step planning:** LLM birden çok adımlı plan yapabilir, her adımı permission kontrolünden geçer
+- **File edit:** Sadece yazma değil, belirli satırları değiştirme (`edit_file(path, old_string, new_string)`)
+- **Git işlemleri:** `git status`, `git diff`, `git commit` gibi işlemler için özel araçlar
+- **Web scraping:** LLM'in URL'den içerik okuması
+- **MCP uyumluluğu:** Model Context Protocol desteği — harici araçların entegrasyonu
+- **Session bazlı context:** Agent'ın çalışma dizini, ortam değişkenleri oturum boyunca korunur
+- **Script modu:** Kullanıcının yazdığı script'i güvenli bir sandbox'ta çalıştırma
+
+---
+
+> **Not:** v4.0.0 öncesi mevcut 31 bilinen hata (BILINEN_SORUNLAR.md) ve zayıf test altyapısı ele alınmalı mı? Yoksa doğrudan agent sistemine mi geçilmeli? Bu karar verilmeli.

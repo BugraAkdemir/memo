@@ -46,9 +46,12 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 	defer close(ch)
 	defer body.Close()
 
-	// Monitor context cancellation — close the body to unblock scanner
+	// Monitor context cancellation — close the body to unblock scanner.
+	// Derive a cancellable child context so the goroutine exits when we return.
+	watchCtx, watchCancel := context.WithCancel(ctx)
+	defer watchCancel()
 	go func() {
-		<-ctx.Done()
+		<-watchCtx.Done()
 		body.Close()
 	}()
 

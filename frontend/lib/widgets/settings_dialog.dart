@@ -4,9 +4,12 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/provider_config.dart';
 import '../providers/settings_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/provider_provider.dart';
+import 'provider_config_dialog.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
@@ -24,6 +27,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('system_prompt'),
     L10n.t('incognito_prompt'),
     L10n.t('memory'),
+    'API Providers',
     'Ekran Kartı Config',
     L10n.t('cloud_sync'),
     L10n.t('remote_access'),
@@ -154,9 +158,11 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     // 1: System Prompt
     // 2: Incognito Prompt
     // 3: Memory
-    // 4: Cloud Sync
-    // 5: Remote Access
-    // 6: About
+    // 4: API Providers
+    // 5: GPU Config
+    // 6: Cloud Sync
+    // 7: Remote Access
+    // 8: About
     switch (index) {
       case 0:
         return  _GeneralTab();
@@ -167,16 +173,284 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 3:
         return  _MemoryTab();
       case 4:
-        return  _GpuConfigTab();
+        return  _ProvidersTab();
       case 5:
-        return  _CloudSyncTab();
+        return  _GpuConfigTab();
       case 6:
-        return  _RemoteAccessTab();
+        return  _CloudSyncTab();
       case 7:
+        return  _RemoteAccessTab();
+      case 8:
         return  _AboutTab();
       default:
         return  SizedBox.shrink();
     }
+  }
+}
+
+// ─── API Providers Tab ─────────────────────────────────────────────
+
+class _ProvidersTab extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final providersAsync = ref.watch(providerListProvider);
+
+    return ListView(
+      padding: const EdgeInsets.all(32),
+      children: [
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              'API Providers',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.bold,
+                color: MemoTheme.of(context).textMain,
+              ),
+            ),
+            FilledButton.icon(
+              onPressed: () async {
+                final result = await showDialog<bool>(
+                  context: context,
+                  builder: (_) => const ProviderConfigDialog(),
+                );
+                if (result == true) {
+                  ref.invalidate(providerListProvider);
+                }
+              },
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Add Provider'),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Configure external LLM providers (OpenAI, Claude, Gemini, etc.)',
+          style: TextStyle(
+            color: MemoTheme.of(context).textDim,
+            fontSize: 13,
+          ),
+        ),
+        const SizedBox(height: 24),
+
+        providersAsync.when(
+          data: (providers) {
+            if (providers.isEmpty) {
+              return Container(
+                padding: const EdgeInsets.all(32),
+                decoration: BoxDecoration(
+                  border: Border.all(color: MemoTheme.of(context).borderSoft),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    const SizedBox(height: 8),
+                    Text(
+                      'No providers configured yet.',
+                      style: TextStyle(color: MemoTheme.of(context).textDim),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Click "Add Provider" to get started.',
+                      style: TextStyle(
+                        color: MemoTheme.of(context).textDim,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }
+
+            return Column(
+              children: providers.map((p) => _ProviderCard(p: p)).toList(),
+            );
+          },
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (e, _) => Text('Error: $e'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ProviderCard extends ConsumerWidget {
+  final ProviderConfig p;
+
+  const _ProviderCard({required this.p});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final icon = providerIcon(p.type);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            // Icon
+            Container(
+              width: 48,
+              height: 48,
+              decoration: BoxDecoration(
+                color: p.enabled
+                    ? MemoTheme.accent.withValues(alpha: 0.1)
+                    : MemoTheme.of(context).borderSoft,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Center(
+                child: Text(icon, style: const TextStyle(fontSize: 24)),
+              ),
+            ),
+            const SizedBox(width: 16),
+
+            // Info
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    p.name,
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 14,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    p.model,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: MemoTheme.of(context).textDim,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 2,
+                        ),
+                        decoration: BoxDecoration(
+                          color: p.enabled
+                              ? Colors.green.withValues(alpha: 0.1)
+                              : Colors.grey.withValues(alpha: 0.1),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          p.enabled ? 'Enabled' : 'Disabled',
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: p.enabled ? Colors.green : Colors.grey,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      if (p.connected)
+                        const Row(
+                          children: [
+                            Icon(Icons.check_circle,
+                                size: 14, color: Colors.green),
+                            SizedBox(width: 4),
+                            Text(
+                              'Connected',
+                              style: TextStyle(
+                                fontSize: 11,
+                                color: Colors.green,
+                              ),
+                            ),
+                          ],
+                        ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+
+            // Actions
+            PopupMenuButton<String>(
+              onSelected: (value) async {
+                if (value == 'configure') {
+                  final result = await showDialog<bool>(
+                    context: context,
+                    builder: (_) => ProviderConfigDialog(existing: p),
+                  );
+                  if (result == true) {
+                    ref.invalidate(providerListProvider);
+                  }
+                } else if (value == 'delete') {
+                  final confirm = await showDialog<bool>(
+                    context: context,
+                    builder: (ctx) => AlertDialog(
+                      title: const Text('Delete Provider'),
+                      content: Text('Delete ${p.name} configuration?'),
+                      actions: [
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(false),
+                          child: const Text('Cancel'),
+                        ),
+                        TextButton(
+                          onPressed: () => Navigator.of(ctx).pop(true),
+                          child: const Text('Delete'),
+                        ),
+                      ],
+                    ),
+                  );
+                  if (confirm == true) {
+                    await ref
+                        .read(providerListProvider.notifier)
+                        .deleteProvider(p.type);
+                  }
+                } else if (value == 'toggle') {
+                  await ref.read(providerListProvider.notifier).updateProvider(
+                    p.copyWith(enabled: !p.enabled),
+                  );
+                }
+              },
+              itemBuilder: (_) => [
+                PopupMenuItem(
+                  value: 'configure',
+                  child: const Row(
+                    children: [
+                      Icon(Icons.edit, size: 18),
+                      SizedBox(width: 8),
+                      Text('Configure'),
+                    ],
+                  ),
+                ),
+                PopupMenuItem(
+                  value: 'toggle',
+                  child: Row(
+                    children: [
+                      Icon(
+                        p.enabled ? Icons.toggle_off : Icons.toggle_on,
+                        size: 18,
+                      ),
+                      const SizedBox(width: 8),
+                      Text(p.enabled ? 'Disable' : 'Enable'),
+                    ],
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem(
+                  value: 'delete',
+                  child: const Row(
+                    children: [
+                      Icon(Icons.delete, size: 18, color: Colors.red),
+                      SizedBox(width: 8),
+                      Text('Delete', style: TextStyle(color: Colors.red)),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
   }
 }
 

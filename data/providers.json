@@ -1,0 +1,66 @@
+{
+  "providers": [
+    {
+      "type": "openai",
+      "name": "OpenAI",
+      "api_key_encrypted": "",
+      "base_url": "http://127.0.0.1:8046/v1",
+      "model": "gemini-3.5-flash-extra-low",
+      "enabled": false,
+      "priority": 0,
+      "temperature": 0.7,
+      "top_p": 0.9
+    },
+    {
+      "type": "gemini",
+      "name": "Google Gemini",
+      "api_key_encrypted": "",
+      "model": "gemini-2.0-flash",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "grok",
+      "name": "xAI Grok",
+      "api_key_encrypted": "",
+      "model": "grok-2",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "claude",
+      "name": "Anthropic Claude",
+      "api_key_encrypted": "",
+      "model": "claude-sonnet-4-20250514",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "openrouter",
+      "name": "OpenRouter",
+      "api_key_encrypted": "",
+      "model": "openai/gpt-4o",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "ollama",
+      "name": "Ollama",
+      "api_key_encrypted": "",
+      "model": "llama3",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "groq",
+      "name": "Groq",
+      "api_key_encrypted": "57304fc430d3d9723d539b9f4dc85cb09e13185c92cbbeafa1b2958d16fbfff2044d097a38a111cc2d99101a10d8a76aa457c20b92052962e49b1f18f125ace0d16701b65ba31168db8b196503802324c075279e",
+      "base_url": "https://api.groq.com/openai/v1",
+      "model": "openai/gpt-oss-20b",
+      "enabled": true,
+      "priority": 0,
+      "temperature": 0.7,
+      "top_p": 0.9
+    }
+  ]
+}

@@ -148,6 +148,11 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
 	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
 
+	// Provider management
+	mux.HandleFunc("/api/providers", s.handleProviders)
+	mux.HandleFunc("/api/providers/test", s.handleProviderTest)
+	mux.HandleFunc("/api/providers/active", s.handleActiveProvider)
+
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
 		Handler: corsMiddleware(mux),

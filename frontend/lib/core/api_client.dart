@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import '../models/chat.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
+import '../models/provider_config.dart';
 
 /// Memo Go backend REST API client.
 /// Connects to headless Go server on localhost (plain HTTP, no TLS).
@@ -539,5 +540,45 @@ class MemoApiClient {
     } catch (_) {
       return false;
     }
+  }
+
+  // ─── Provider Management ─────────────────────────────────────────
+
+  /// Get all provider configs.
+  Future<List<ProviderConfig>> getProviders() async {
+    final res = await _dio.get('/api/providers');
+    if (res.data is List) {
+      return (res.data as List)
+          .map((e) => ProviderConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Update a provider config.
+  Future<void> updateProvider(ProviderConfig config) async {
+    await _dio.put('/api/providers', data: config.toJson());
+  }
+
+  /// Delete a provider config.
+  Future<void> deleteProvider(String type) async {
+    await _dio.delete('/api/providers', data: {'type': type});
+  }
+
+  /// Test a provider connection.
+  Future<Map<String, dynamic>> testProvider(ProviderConfig config) async {
+    final res = await _dio.post('/api/providers/test', data: config.toJson());
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Get active provider.
+  Future<String> getActiveProvider() async {
+    final res = await _dio.get('/api/providers/active');
+    return res.data['provider'] as String? ?? '';
+  }
+
+  /// Set active provider.
+  Future<void> setActiveProvider(String type) async {
+    await _dio.put('/api/providers/active', data: {'provider': type});
   }
 }

@@ -24,6 +24,7 @@ import (
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
+	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/webserver"
 )
@@ -119,6 +120,11 @@ type App struct {
 	syncManager       *cloudsync.Manager
 	memorySaveCh      chan saveTask
 	events            *eventRing
+
+	providerCfgMgr  *provider.ConfigManager
+	providerRouter  *provider.Router
+	activeProvider  provider.ProviderType // which provider is currently active
+
 }
 
 func NewApp() *App {
@@ -239,6 +245,24 @@ func (a *App) startup(ctx context.Context) {
 			log.Println("Cloud sync enabled in config but OAuth credentials are not available")
 		}
 	}
+
+	// Initialize provider system
+	a.providerCfgMgr = provider.NewConfigManager("data/providers.json", nil)
+	configs := a.providerCfgMgr.GetEnabled()
+	if len(configs) > 0 {
+		a.providerRouter = provider.NewRouter(configs)
+		// Start health check goroutine for auto-recovery
+		go a.providerRouter.HealthCheck(ctx, 5*time.Minute)
+		log.Printf("Provider system initialized with %d enabled provider(s)", len(configs))
+		for _, cfg := range configs {
+			log.Printf("  - %s (%s)", cfg.Type, cfg.Model)
+		}
+	} else {
+		log.Println("No external providers configured, using local models")
+	}
+
+	// activeProvider starts empty — user must explicitly select from UI
+	a.activeProvider = ""
 
 	log.Println("Memo ready")
 }
@@ -491,6 +515,74 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
+	// Use external provider only if user explicitly selected one
+	if a.activeProvider != "" && a.providerRouter != nil {
+		go func() {
+			defer close(outCh)
+
+			providerCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
+			defer cancel()
+
+			// Convert api.Message to provider.Message
+			pMsgs := make([]provider.Message, len(messages))
+			for i, m := range messages {
+				pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+			}
+
+			req := provider.ChatRequest{
+				Messages:    pMsgs,
+				Temperature: a.cfg.Llama.Temperature,
+				TopP:        a.cfg.Llama.TopP,
+				MaxTokens:   a.cfg.Llama.MaxTokens,
+				Stream:      true,
+			}
+
+			ch, err := a.providerRouter.ChatCompletionStream(providerCtx, req)
+			if err != nil {
+				log.Printf("Provider stream error: %v", err)
+				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				return
+			}
+
+			start := time.Now()
+			var fullReply strings.Builder
+			tokenCount := 0
+			firstTokenLogged := false
+
+			for chunk := range ch {
+				if chunk.Error != "" {
+					trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+					return
+				}
+
+				if chunk.Content != "" {
+					if !firstTokenLogged {
+						firstTokenLogged = true
+						log.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
+					}
+					fullReply.WriteString(chunk.Content)
+					tokenCount++
+					trySend(providerCtx, outCh, api.StreamChunk{Content: chunk.Content})
+				}
+
+				if chunk.Done {
+					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
+					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+					return
+				}
+			}
+
+			if fullReply.Len() > 0 {
+				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
+				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+			} else {
+				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ Provider returned empty response", Done: true})
+			}
+		}()
+		return outCh
+	}
+
+	// Fallback to local model
 	a.clientMu.RLock()
 	streamClient := a.client
 	a.clientMu.RUnlock()
@@ -1037,6 +1129,70 @@ func (a *App) GetMemoryCount() int {
 		return 0
 	}
 	return a.store.Count()
+}
+
+// ─── Provider Management ───────────────────────────────────────────
+
+func (a *App) GetProviders() []provider.ProviderConfig {
+	if a.providerCfgMgr == nil {
+		return nil
+	}
+	configs := a.providerCfgMgr.GetAll()
+	// Add connection status from router
+	if a.providerRouter != nil {
+		active := a.providerRouter.ActiveProviders()
+		activeMap := make(map[provider.ProviderType]bool)
+		for _, cfg := range active {
+			activeMap[cfg.Type] = true
+		}
+		for i, cfg := range configs {
+			configs[i].Connected = activeMap[cfg.Type]
+		}
+	}
+	return configs
+}
+
+func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
+	if a.providerCfgMgr == nil {
+		return fmt.Errorf("provider system not initialized")
+	}
+	if err := cfg.Validate(); err != nil {
+		return err
+	}
+	a.providerCfgMgr.Set(cfg)
+	// Rebuild router
+	configs := a.providerCfgMgr.GetEnabled()
+	a.providerRouter = provider.NewRouter(configs)
+	if len(configs) > 0 {
+		go a.providerRouter.HealthCheck(a.ctx, 5*time.Minute)
+	}
+	return nil
+}
+
+func (a *App) DeleteProvider(pt provider.ProviderType) error {
+	if a.providerCfgMgr == nil {
+		return fmt.Errorf("provider system not initialized")
+	}
+	a.providerCfgMgr.Delete(pt)
+	configs := a.providerCfgMgr.GetEnabled()
+	a.providerRouter = provider.NewRouter(configs)
+	return nil
+}
+
+func (a *App) TestProviderConnection(cfg provider.ProviderConfig) error {
+	if a.providerCfgMgr == nil {
+		return fmt.Errorf("provider system not initialized")
+	}
+	return a.providerCfgMgr.TestConnection(&cfg)
+}
+
+func (a *App) SetActiveProvider(pt provider.ProviderType) {
+	a.activeProvider = pt
+	log.Printf("Active provider set to: %s", pt)
+}
+
+func (a *App) GetActiveProvider() string {
+	return string(a.activeProvider)
 }
 
 func (a *App) GetImageBase64(path string) string {
@@ -1618,6 +1774,32 @@ func (a *App) retrieveMemory(query string) []memory.MemoryResult {
 }
 
 func (a *App) callLLM(messages []api.Message) string {
+	// Use external provider only if user explicitly selected one
+	if a.activeProvider != "" && a.providerRouter != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		defer cancel()
+
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+
+		req := provider.ChatRequest{
+			Messages:    pMsgs,
+			Temperature: a.cfg.Llama.Temperature,
+			TopP:        a.cfg.Llama.TopP,
+			MaxTokens:   a.cfg.Llama.MaxTokens,
+		}
+
+		resp, err := a.providerRouter.ChatCompletion(ctx, req)
+		if err != nil {
+			log.Printf("Provider error: %v", err)
+			return "⚠️ " + err.Error()
+		}
+		return resp.Content
+	}
+
+	// Fallback to local model
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 

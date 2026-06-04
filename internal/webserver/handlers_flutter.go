@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"memo/internal/config"
+	"memo/internal/provider"
 	"net/http"
 	"path/filepath"
 	"strings"
@@ -733,4 +734,132 @@ func (s *Server) handleLlamaConfigUpdate(w http.ResponseWriter, r *http.Request)
 	}
 	log.Printf("✅ Backend: Configuration saved successfully.")
 	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+// ─── Provider Management ─────────────────────────────────────────
+
+func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		providers := s.fullBridge.GetProviders()
+		writeJSON(w, providers)
+	case http.MethodPut:
+		var req struct {
+			Type        provider.ProviderType  `json:"type"`
+			Name        string                 `json:"name"`
+			APIKey      string                 `json:"api_key"`
+			BaseURL     string                 `json:"base_url"`
+			Model       string                 `json:"model"`
+			Enabled     bool                   `json:"enabled"`
+			Priority    int                    `json:"priority"`
+			Temperature float64                `json:"temperature"`
+			TopP        float64                `json:"top_p"`
+			MaxTokens   int                    `json:"max_tokens"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		cfg := provider.ProviderConfig{
+			Type:        req.Type,
+			Name:        req.Name,
+			APIKey:      req.APIKey,
+			BaseURL:     req.BaseURL,
+			Model:       req.Model,
+			Enabled:     req.Enabled,
+			Priority:    req.Priority,
+			Temperature: req.Temperature,
+			TopP:        req.TopP,
+			MaxTokens:   req.MaxTokens,
+		}
+		if err := s.fullBridge.UpdateProvider(cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	case http.MethodDelete:
+		var req struct {
+			Type provider.ProviderType `json:"type"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.DeleteProvider(req.Type); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, PUT, DELETE", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type        provider.ProviderType `json:"type"`
+		Name        string                `json:"name"`
+		APIKey      string                `json:"api_key"`
+		BaseURL     string                `json:"base_url"`
+		Model       string                `json:"model"`
+		Temperature float64               `json:"temperature"`
+		TopP        float64               `json:"top_p"`
+		MaxTokens   int                   `json:"max_tokens"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	cfg := provider.ProviderConfig{
+		Type:        req.Type,
+		Name:        req.Name,
+		APIKey:      req.APIKey,
+		BaseURL:     req.BaseURL,
+		Model:       req.Model,
+		Temperature: req.Temperature,
+		TopP:        req.TopP,
+		MaxTokens:   req.MaxTokens,
+	}
+	if err := s.fullBridge.TestProviderConnection(cfg); err != nil {
+		writeJSON(w, map[string]interface{}{
+			"connected": false,
+			"error":     err.Error(),
+		})
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"connected": true,
+		"error":     "",
+	})
+}
+
+func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]string{"provider": s.fullBridge.GetActiveProvider()})
+	case http.MethodPut:
+		var req struct {
+			Provider provider.ProviderType `json:"provider"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		s.fullBridge.SetActiveProvider(req.Provider)
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
 }

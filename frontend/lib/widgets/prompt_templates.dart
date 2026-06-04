@@ -17,63 +17,108 @@ class _PromptTemplate {
   });
 }
 
-const _templates = [
-  _PromptTemplate(
+/// Action command (like /model).
+class _PromptCommand {
+  final String key;
+  final String icon;
+  final String label;
+  final String subtitle;
+
+  const _PromptCommand({
+    required this.key,
+    required this.icon,
+    required this.label,
+    required this.subtitle,
+  });
+}
+
+enum _ItemType { template, command }
+
+class _PopupItem {
+  final _ItemType type;
+  final _PromptTemplate? template;
+  final _PromptCommand? command;
+
+  const _PopupItem.template(this.template) : type = _ItemType.template, command = null;
+  const _PopupItem.command(this.command) : type = _ItemType.command, template = null;
+
+  String get key => template?.key ?? command!.key;
+  String get icon => template?.icon ?? command!.icon;
+  String get label => template?.label ?? command!.label;
+}
+
+const _templates = <_PopupItem>[
+  _PopupItem.template(_PromptTemplate(
     key: '/code',
     icon: '💻',
     label: 'Kod Review',
     text:
         'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
-  ),
-  _PromptTemplate(
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/explain',
     icon: '📖',
     label: 'Açıkla',
     text: 'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
-  ),
-  _PromptTemplate(
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/fix',
     icon: '🔧',
     label: 'Hata Düzelt',
     text: 'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
-  ),
-  _PromptTemplate(
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/plan',
     icon: '🗺️',
     label: 'Plan Yap',
-    text:
-        'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
-  ),
-  _PromptTemplate(
+    text: 'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/summary',
     icon: '📝',
     label: 'Özetle',
     text: 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
-  ),
-  _PromptTemplate(
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/compare',
     icon: '⚖️',
     label: 'Karşılaştır',
-    text:
-        'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
-  ),
-  _PromptTemplate(
+    text: 'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/brainstorm',
     icon: '💡',
     label: 'Beyin Fırtınası',
     text: 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
-  ),
-  _PromptTemplate(
+  )),
+  _PopupItem.template(_PromptTemplate(
     key: '/translate',
     icon: '🌐',
     label: 'Çevir (EN→TR)',
     text: 'Aşağıdaki metni Türkçeye çevir:\n\n',
-  ),
+  )),
+  // ─── Commands ───────────────────────────────────────
+  _PopupItem.command(_PromptCommand(
+    key: '/model',
+    icon: '🧠',
+    label: 'Model Değiştir',
+    subtitle: 'Local / API arasında geçiş',
+  )),
 ];
+
+/// Result when user picks an item.
+sealed class PopupResult {}
+
+class PopupInsertText extends PopupResult {
+  final String text;
+  PopupInsertText(this.text);
+}
+
+class PopupModelSwitch extends PopupResult {}
 
 /// Popup that appears above the input when user types "/".
 class PromptTemplatesPopup extends StatelessWidget {
-  final void Function(String templateText) onSelect;
+  final void Function(PopupResult result) onSelect;
   final VoidCallback onDismiss;
 
   const PromptTemplatesPopup({
@@ -86,7 +131,7 @@ class PromptTemplatesPopup extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      constraints: const BoxConstraints(maxHeight: 320),
+      constraints: const BoxConstraints(maxHeight: 360),
       decoration: BoxDecoration(
         color: MemoTheme.of(context).bgApp,
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -100,10 +145,16 @@ class PromptTemplatesPopup extends StatelessWidget {
           shrinkWrap: true,
           itemCount: _templates.length,
           itemBuilder: (context, index) {
-            final tpl = _templates[index];
-            return _TemplateItem(
-              template: tpl,
-              onTap: () => onSelect(tpl.text),
+            final item = _templates[index];
+            return _PopupItemWidget(
+              item: item,
+              onTap: () {
+                if (item.type == _ItemType.template) {
+                  onSelect(PopupInsertText(item.template!.text));
+                } else {
+                  onSelect(PopupModelSwitch());
+                }
+              },
             );
           },
         ),
@@ -112,17 +163,17 @@ class PromptTemplatesPopup extends StatelessWidget {
   }
 }
 
-class _TemplateItem extends StatefulWidget {
-  final _PromptTemplate template;
+class _PopupItemWidget extends StatefulWidget {
+  final _PopupItem item;
   final VoidCallback onTap;
 
-  const _TemplateItem({required this.template, required this.onTap});
+  const _PopupItemWidget({required this.item, required this.onTap});
 
   @override
-  State<_TemplateItem> createState() => _TemplateItemState();
+  State<_PopupItemWidget> createState() => _PopupItemWidgetState();
 }
 
-class _TemplateItemState extends State<_TemplateItem> {
+class _PopupItemWidgetState extends State<_PopupItemWidget> {
   bool _hovering = false;
 
   @override
@@ -137,14 +188,14 @@ class _TemplateItemState extends State<_TemplateItem> {
           color: _hovering ? MemoTheme.of(context).bgElement : Colors.transparent,
           child: Row(
             children: [
-              Text(widget.template.icon, style: const TextStyle(fontSize: 18)),
+              Text(widget.item.icon, style: const TextStyle(fontSize: 18)),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      widget.template.label,
+                      widget.item.label,
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
@@ -152,7 +203,7 @@ class _TemplateItemState extends State<_TemplateItem> {
                       ),
                     ),
                     Text(
-                      widget.template.key,
+                      widget.item.key,
                       style: TextStyle(
                         fontSize: 11,
                         color: MemoTheme.of(context).textDim,
@@ -162,6 +213,18 @@ class _TemplateItemState extends State<_TemplateItem> {
                   ],
                 ),
               ),
+              if (widget.item.type == _ItemType.command)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.accent.withValues(alpha: 0.1),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    'action',
+                    style: TextStyle(fontSize: 9, color: MemoTheme.accent, fontWeight: FontWeight.w600),
+                  ),
+                ),
             ],
           ),
         ),

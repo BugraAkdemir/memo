@@ -90,6 +90,164 @@ Memo'yu sadece local modellere bağımlı olmaktan çıkarıp, harici API'ler (O
 
 ---
 
+## 0.8 Orchestra Mode (Çoklu Model Orkestrasyonu)
+
+> **Öncelik:** Agent 1.0'dan önce yapılacak. Çünkü orkestrasyon, agent altyapısının temelini oluşturur.
+
+### 0.8.1 Nedir?
+
+Orchestra Mode, birden çok modelin aynı anda bir ekip olarak çalışmasını sağlayan sistemdir. Kullanıcı bir prompt girer, bir **Şef (Chief)** model bu prompt'u analiz eder, alt görevlere böler ve her görevi uzmanlaşmış modele atar. Sonuçları toplar ve kullanıcıya tek bir cevap olarak sunar.
+
+### 0.8.2 Mimarisi
+
+```
+Kullanıcı Prompt'u
+       │
+       ▼
+┌─────────────────────────────────┐
+│         ŞEF (Chief)             │
+│  Örn: Claude / GPT-4o / Grok    │
+│  "Prompt'u analiz et, plan      │
+│   oluştur, görev dağıt"         │
+└──────────┬──────────────────────┘
+           │
+           ▼ Plan (JSON)
+┌─────────────────────────────────┐
+│  Görev Listesi:                  │
+│  [                                │
+│    {"role":"frontend","prompt":..│
+│     "model":"grok"},             │
+│    {"role":"backend","prompt":.. │
+│     "model":"claude"},           │
+│    {"role":"bug","prompt":..     │
+│     "model":"gemini"}            │
+│  ]                                │
+└─────────────────────────────────┘
+           │
+           ▼ Parallel Execution
+┌──────────┼──────────────────────┐
+│  ┌───────┴───────┐  ┌─────────┐ │
+│  │ Frontend Uzman│  │ Backend │ │
+│  │ (Grok)        │  │ (Claude)│ │
+│  └───────────────┘  └─────────┘ │
+│  ┌─────────────────────────────┐│
+│  │ Bug Fix (Gemini)            ││
+│  └─────────────────────────────┘│
+└─────────────────────────────────┘
+           │
+           ▼
+┌─────────────────────────────────┐
+│      ŞEF (Sentezleme)           │
+│  "Tüm cevapları birleştir,     │
+│   tutarlı tek bir cevap ol"     │
+└──────────┬──────────────────────┘
+           │
+           ▼
+     Kullanıcıya Cevap
+```
+
+### 0.8.3 Şef (Chief) Model
+
+- Özel bir **system prompt** ile yapılandırılır:
+  ```
+  Sen bir Orkestra Şefi'sin. Kullanıcının isteğini analiz eder,
+  alt görevlere ayırır, her görevi en uygun uzmana atar ve
+  sonuçları sentezlersin. JSON formatında plan döndürürsün.
+  ```
+- Görevleri JSON formatında planlar:
+  ```json
+  {
+    "tasks": [
+      {
+        "role": "frontend",
+        "prompt": "React component oluştur: ...",
+        "model": "grok",
+        "depends_on": []
+      },
+      {
+        "role": "backend",
+        "prompt": "API endpoint yaz: ...",
+        "model": "claude",
+        "depends_on": []
+      }
+    ],
+    "parallel": true
+  }
+  ```
+- Planlama tamamlandıktan sonra tüm görev sonuçlarını alır ve **tek bir tutarlı cevap** halinde sentezler.
+
+### 0.8.4 Uzman Rolleri (Built-in)
+
+| Rol | Sistem Promptı | Varsayılan Kullanım |
+|---|---|---|
+| `planner` | "Sen bir yazılım mimarısın. İşi analiz et, adımlara böl, detaylı plan çıkar." | Planlama/tasarım |
+| `frontend` | "Sen bir frontend uzmanısın. React/Vue/Flutter bileşenleri yazarsın. Kullanıcı arayüzü, state yönetimi, responsive tasarım konularında uzmansın." | UI geliştirme |
+| `backend` | "Sen bir backend uzmanısın. API'ler, veritabanı, sunucu mantığı, kimlik doğrulama konularında uzmansın." | Backend geliştirme |
+| `bug_fixer` | "Sen bir hata ayıklama uzmanısın. Kod hatalarını bulur, çözüm önerirsin. Stack trace analizi ve debugging konularında uzmansın." | Hata ayıklama |
+| `reviewer` | "Sen bir kod inceleme uzmanısın. Kod kalitesi, güvenlik, performans açısından inceleme yaparsın." | Code review |
+| `security` | "Sen bir güvenlik uzmanısın. OWASP, güvenlik açıkları, şifreleme, yetkilendirme konularında uzmansın." | Güvenlik denetimi |
+| `devops` | "Sen bir DevOps uzmanısın. CI/CD, Docker, Kubernetes, cloud altyapı konularında uzmansın." | Altyapı/deploy |
+| `general` | "Sen genel amaçlı bir asistansın. Kullanıcıya her konuda yardımcı olursun." | Fallback |
+
+### 0.8.5 Kullanıcı Atamaları
+
+- Kullanıcı Ayarlar → Orchestra Mode bölümünden:
+  - Hangi modelin hangi rolde olacağını seçer
+  - Her role özel system prompt'u düzenleyebilir
+  - Şef modeli seçer (liste: tüm configured provider'lar + local)
+  - Hangi rollerin aktif olacağını seçer (checkbox)
+- Varsayılan: Şef = Claude, frontend = Grok, backend = GPT-4o, bug = Gemini
+
+### 0.8.6 Yürütme (Execution)
+
+- **Paralel çalışma:** Bağımsız görevler aynı anda çalıştırılır (goroutine + WaitGroup)
+- **Sıralı çalışma:** `depends_on` varsa bağımlı görevler sırayla çalışır
+- **Timeout:** Her görev için 60 saniye timeout
+- **Hata yönetimi:** Bir görev başarısız olursa, diğer görevler devam eder. Hata kullanıcıya bildirilir.
+
+### 0.8.7 Streaming
+
+- V1: Non-streaming (tüm orkestrasyon tamamlanınca cevap döner)
+- V2: Streaming ile her adım kullanıcıya gösterilir:
+  - "🧠 Şef planlıyor..."
+  - "🎨 Frontend (Grok) çalışıyor..."
+  - "⚙️ Backend (Claude) çalışıyor..."
+  - "🔧 Bug Fix (Gemini) çalışıyor..."
+  - "📝 Şef sentezliyor..."
+
+### 0.8.8 Frontend Değişiklikleri
+
+- Ayarlar'da "Orchestra Mode" bölümü:
+  - Aç/Kapa toggle
+  - Şef model seçimi (dropdown)
+  - Rol listesi: her rol için model atama + system prompt düzenleme
+  - "Test Orchestra" butonu (tüm akışı çalıştırır, sonucu gösterir)
+- Sohbet ekranında `/model` komutuna "🎵 Orchestra Mode" seçeneği eklenir
+- `/orchestra` slash komutu:
+  - `/orchestra on` — açar
+  - `/orchestra off` — kapatır
+  - `/orchestra config` — yapılandırma dialog'unu açar
+  - `/orchestra status` — mevcut durumu gösterir
+
+### 0.8.9 Dosya Değişiklikleri
+
+- Yeni: `internal/orchestra/` — yeni paket
+  - `types.go` — tipler (OrchestraConfig, OrchestraTask, OrchestraPlan, OrchestraResult)
+  - `conductor.go` — şef mantığı (plan, execute, synthesize)
+  - `roles.go` — yerleşik roller ve system prompt'lar
+- Değişen: `app.go` — orchestra mod entegrasyonu
+- Değişen: `internal/webserver/handlers_flutter.go` — orchestra endpoint'leri
+- Değişen: `internal/webserver/bridge.go` — OrchestraBridge
+- Değişen: `internal/webserver/server.go` — route kaydı
+- Yeni: `frontend/lib/providers/orchestra_provider.dart`
+- Yeni: `frontend/lib/widgets/orchestra_config_dialog.dart`
+- Yeni: `frontend/lib/widgets/orchestra_mode_toggle.dart`
+- Değişen: `frontend/lib/widgets/settings_dialog.dart` — yeni sekme
+- Değişen: `frontend/lib/widgets/chat_input.dart` — `/orchestra` komutu
+- Değişen: `frontend/lib/widgets/prompt_templates.dart` — `/orchestra` handler
+
+---
+
 ## 1. Backend: Agent Execution Engine
 
 ### 1.1 Tool Definition Sistemi

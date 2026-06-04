@@ -7,6 +7,7 @@ import (
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
+	"memo/internal/provider"
 	"memo/internal/sessions"
 )
 
@@ -75,6 +76,14 @@ type FullBridge interface {
 	// Remote access
 	GetRemoteAccessStatus() interface{}
 	SetRemoteAccess(enabled bool, port int) error
+
+	// Providers
+	GetProviders() []provider.ProviderConfig
+	UpdateProvider(cfg provider.ProviderConfig) error
+	DeleteProvider(pt provider.ProviderType) error
+	TestProviderConnection(cfg provider.ProviderConfig) error
+	SetActiveProvider(pt provider.ProviderType)
+	GetActiveProvider() string
 
 	// Events
 	GetEvents() []map[string]string

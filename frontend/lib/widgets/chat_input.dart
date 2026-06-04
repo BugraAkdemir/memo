@@ -5,7 +5,9 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
+import '../providers/provider_provider.dart';
 import 'prompt_templates.dart';
 
 /// Chat input bar — text field, attachment buttons, send button.
@@ -65,6 +67,102 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _focusNode.requestFocus();
   }
 
+  void _onPopupResult(PopupResult result) {
+    setState(() => _showTemplates = false);
+
+    if (result is PopupInsertText) {
+      _controller.text = result.text;
+      _controller.selection = TextSelection.fromPosition(
+        TextPosition(offset: result.text.length),
+      );
+      _focusNode.requestFocus();
+    } else if (result is PopupModelSwitch) {
+      _showModelSwitcher();
+    }
+  }
+
+  Future<void> _showModelSwitcher() async {
+    // Fetch current state
+    final api = ref.read(apiClientProvider);
+    String activeProvider;
+    List<ProviderConfig> providers;
+
+    try {
+      activeProvider = await api.getActiveProvider();
+      providers = await api.getProviders();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to load providers: $e')),
+        );
+      }
+      return;
+    }
+
+    if (!mounted) return;
+
+    // Build options: local + external providers
+    final options = <_ModelOption>[];
+    options.add(_ModelOption(
+      type: 'local',
+      name: 'Local Model',
+      icon: '🖥️',
+      subtitle: 'llama.cpp',
+    ));
+    for (final p in providers) {
+      if (p.enabled) {
+        options.add(_ModelOption(
+          type: p.type,
+          name: p.name,
+          icon: providerIcon(p.type),
+          subtitle: p.model,
+        ));
+      }
+    }
+
+    if (options.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('No models available')),
+      );
+      return;
+    }
+
+    final selected = await showDialog<String>(
+      context: context,
+      builder: (ctx) => _ModelSwitcherDialog(
+        options: options,
+        activeType: activeProvider.isEmpty ? 'local' : activeProvider,
+      ),
+    );
+
+    if (selected == null || !mounted) return;
+
+    try {
+      if (selected == 'local') {
+        await api.setActiveProvider('');
+        ref.read(activeProviderTypeProvider.notifier).setActive('');
+      } else {
+        await api.setActiveProvider(selected);
+        ref.read(activeProviderTypeProvider.notifier).setActive(selected);
+      }
+      if (mounted) {
+        final name = options.firstWhere((o) => o.type == selected).name;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Switched to $name'),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Failed to switch: $e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final isSending = ref.watch(isSendingProvider);
@@ -75,20 +173,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         // Prompt templates popup
         if (_showTemplates)
           PromptTemplatesPopup(
-            onSelect: (template) {
-              _controller.text = template;
-              _controller.selection = TextSelection.fromPosition(
-                TextPosition(offset: template.length),
-              );
-              setState(() => _showTemplates = false);
-              _focusNode.requestFocus();
-            },
+            onSelect: _onPopupResult,
             onDismiss: () => setState(() => _showTemplates = false),
           ),
 
         // Input area
         Container(
-          padding:  EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgApp,
             border: Border(top: BorderSide(color: MemoTheme.of(context).borderSoft)),
@@ -127,7 +218,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
-               SizedBox(width: 4),
+              const SizedBox(width: 4),
               _InputIconButton(
                 icon: Icons.attach_file,
                 tooltip: L10n.t('attach_file'),
@@ -158,23 +249,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
-
-              /* STT Disabled due to Vosk crashes
-               SizedBox(width: 4),
-              _InputIconButton(
-                icon: Icons.mic_none,
-                tooltip: L10n.t('record_audio'),
-                onTap: () {
-                  // TODO: recording (Faz 8 integration)
-                },
-              ),
-              */
-               SizedBox(width: 12),
+              const SizedBox(width: 12),
 
               // ─── Text Input ──────────────────────────
               Expanded(
                 child: Container(
-                  constraints:  BoxConstraints(maxHeight: 160),
+                  constraints: const BoxConstraints(maxHeight: 160),
                   decoration: BoxDecoration(
                     color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -203,7 +283,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         hintText: '${L10n.t('type_message')} (/)',
                         hintStyle: TextStyle(color: MemoTheme.of(context).textDim),
                         border: InputBorder.none,
-                        contentPadding:  EdgeInsets.symmetric(
+                        contentPadding: const EdgeInsets.symmetric(
                           horizontal: 14,
                           vertical: 12,
                         ),
@@ -214,11 +294,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 ),
               ),
 
-               SizedBox(width: 12),
+              const SizedBox(width: 12),
 
               // ─── Send / Stop Button ──────────────────
               AnimatedContainer(
-                duration:  Duration(milliseconds: 150),
+                duration: const Duration(milliseconds: 150),
                 child: Material(
                   color: isSending ? MemoTheme.red : MemoTheme.accent,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
@@ -231,12 +311,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       width: 42,
                       height: 42,
                       child: isSending
-                          ?  Icon(
+                          ? Icon(
                               Icons.stop_rounded,
                               size: 22,
                               color: MemoTheme.of(context).textInverse,
                             )
-                          :  Icon(
+                          : Icon(
                               Icons.send_rounded,
                               size: 20,
                               color: MemoTheme.of(context).textInverse,
@@ -258,7 +338,7 @@ class _InputIconButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
 
-   _InputIconButton({
+  const _InputIconButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
@@ -272,9 +352,109 @@ class _InputIconButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
         child: Padding(
-          padding:  EdgeInsets.all(8),
+          padding: const EdgeInsets.all(8),
           child: Icon(icon, size: 20, color: MemoTheme.of(context).textDim),
         ),
+      ),
+    );
+  }
+}
+
+// ─── Model Switcher Dialog ──────────────────────────────────────
+
+class _ModelOption {
+  final String type;
+  final String name;
+  final String icon;
+  final String subtitle;
+
+  const _ModelOption({
+    required this.type,
+    required this.name,
+    required this.icon,
+    required this.subtitle,
+  });
+}
+
+class _ModelSwitcherDialog extends StatelessWidget {
+  final List<_ModelOption> options;
+  final String activeType;
+
+  const _ModelSwitcherDialog({
+    required this.options,
+    required this.activeType,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('Switch Model'),
+      content: SizedBox(
+        width: 320,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              'Choose which model to use for chat:',
+              style: TextStyle(
+                fontSize: 13,
+                color: MemoTheme.of(context).textDim,
+              ),
+            ),
+            const SizedBox(height: 16),
+            ...options.map((opt) => _ModelOptionTile(
+              option: opt,
+              isActive: opt.type == activeType,
+              onTap: () => Navigator.of(context).pop(opt.type),
+            )),
+          ],
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: const Text('Cancel'),
+        ),
+      ],
+    );
+  }
+}
+
+class _ModelOptionTile extends StatelessWidget {
+  final _ModelOption option;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _ModelOptionTile({
+    required this.option,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      color: isActive
+          ? MemoTheme.accent.withValues(alpha: 0.08)
+          : null,
+      child: ListTile(
+        leading: Text(option.icon, style: const TextStyle(fontSize: 24)),
+        title: Text(
+          option.name,
+          style: TextStyle(
+            fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+          ),
+        ),
+        subtitle: Text(
+          option.subtitle,
+          style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+        ),
+        trailing: isActive
+            ? Icon(Icons.check_circle, color: MemoTheme.accent, size: 20)
+            : null,
+        onTap: onTap,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
       ),
     );
   }

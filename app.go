@@ -24,6 +24,7 @@ import (
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
+	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/webserver"
@@ -125,6 +126,7 @@ type App struct {
 	providerRouter  *provider.Router
 	activeProvider  provider.ProviderType // which provider is currently active
 
+	orchestraConductor *orchestra.Conductor
 }
 
 func NewApp() *App {
@@ -263,6 +265,22 @@ func (a *App) startup(ctx context.Context) {
 
 	// activeProvider starts empty — user must explicitly select from UI
 	a.activeProvider = ""
+
+	// Initialize orchestra conductor
+	orchestraCfg := orchestra.LoadConfig("data/orchestra.json")
+	a.orchestraConductor = orchestra.NewConductor(
+		orchestraCfg,
+		func(cfg provider.ProviderConfig) (provider.Provider, error) {
+			return provider.NewProvider(cfg)
+		},
+		func() []provider.ProviderConfig {
+			if a.providerCfgMgr == nil {
+				return nil
+			}
+			return a.providerCfgMgr.GetAll()
+		},
+	)
+	log.Printf("Orchestra mode initialized (enabled=%v)", orchestraCfg.Enabled)
 
 	log.Println("Memo ready")
 }
@@ -514,6 +532,79 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 
 func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
+
+	// Orchestra mode takes priority
+	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+		go func() {
+			defer close(outCh)
+
+			// Build user message and conversation context
+			var userPrompt string
+			for i := len(messages) - 1; i >= 0; i-- {
+				if messages[i].Role == "user" {
+					userPrompt = messages[i].GetTextContent()
+					if userPrompt != "" {
+						break
+					}
+				}
+			}
+			if userPrompt == "" {
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ No user message found", Done: true})
+				return
+			}
+
+			// Include conversation history for context
+			conversationCtx := buildConversationContext(messages, userPrompt)
+
+			start := time.Now()
+
+			trySend(ctx, outCh, api.StreamChunk{Content: "🎵 **Orchestra Mode Active**\n"})
+			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
+
+			var synthBuf strings.Builder
+
+			finalResponse, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
+				switch up.Type {
+				case orchestra.ProgressPlan:
+					trySend(ctx, outCh, api.StreamChunk{Content: "🧠 Şef planlıyor...\n"})
+				case orchestra.ProgressPlanChunk:
+					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				case orchestra.ProgressTaskStart:
+					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				case orchestra.ProgressTaskDone:
+					if up.Error != "" {
+						trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("❌ %s | %s\n   ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)})
+					} else {
+						trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("✅ %s | %s (%dms)\n", up.Role, up.ModelType, up.DurationMs)})
+						trySend(ctx, outCh, api.StreamChunk{Content: up.Content + "\n\n"})
+					}
+				case orchestra.ProgressSynthChunk:
+					synthBuf.WriteString(up.Content)
+					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				}
+			})
+			if err != nil {
+				a.finishStream(start, 0, "error", synthBuf.String(), userPrompt)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				return
+			}
+
+			// Use synthBuf content if non-empty, otherwise finalResponse
+			finalContent := synthBuf.String()
+			if finalContent == "" {
+				finalContent = finalResponse
+			}
+
+			tokenCount := 0
+			if finalContent != "" {
+				tokenCount = len(strings.Fields(finalContent))
+			}
+
+			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt)
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+		}()
+		return outCh
+	}
 
 	// Use external provider only if user explicitly selected one
 	if a.activeProvider != "" && a.providerRouter != nil {
@@ -1195,6 +1286,28 @@ func (a *App) GetActiveProvider() string {
 	return string(a.activeProvider)
 }
 
+// ─── Orchestra Mode ───────────────────────────────────────────
+
+func (a *App) GetOrchestraConfig() orchestra.OrchestraConfig {
+	if a.orchestraConductor == nil {
+		return orchestra.DefaultConfig()
+	}
+	return a.orchestraConductor.Config()
+}
+
+func (a *App) UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error {
+	if a.orchestraConductor == nil {
+		return fmt.Errorf("orchestra system not initialized")
+	}
+	a.orchestraConductor.UpdateConfig(cfg)
+	if err := orchestra.SaveConfig("data/orchestra.json", a.orchestraConductor.Config()); err != nil {
+		log.Printf("ORCHESTRA: config save error: %v", err)
+		return err
+	}
+	log.Printf("Orchestra config updated: enabled=%v, chief=%s/%s", cfg.Enabled, cfg.ChiefType, cfg.ChiefModel)
+	return nil
+}
+
 func (a *App) GetImageBase64(path string) string {
 	// Layer 2: Only allow paths under the data directory
 	dataDir := filepath.Dir(a.cfg.Memory.PersistDir)
@@ -1738,6 +1851,71 @@ func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Messag
 	return msgs
 }
 
+// buildConversationContext extracts conversation history from messages for orchestra chief.
+// It returns the latest user message with preceding conversation context.
+func buildConversationContext(messages []api.Message, userPrompt string) string {
+	var sb strings.Builder
+
+	// Collect previous non-system messages (up to last 6 exchanges = 12 messages)
+	var prevMsgs []api.Message
+	for i := len(messages) - 2; i >= 0; i-- {
+		if messages[i].Role == "system" {
+			continue
+		}
+		prevMsgs = append(prevMsgs, messages[i])
+		if len(prevMsgs) >= 12 {
+			break
+		}
+	}
+
+	// Reverse to get chronological order
+	for i := len(prevMsgs) - 1; i >= 0; i-- {
+		msg := prevMsgs[i]
+		roleLabel := "Kullanıcı"
+		if msg.Role == "assistant" {
+			roleLabel = "Asistan"
+		}
+		if text, ok := msg.Content.(string); ok {
+			// Filter out orchestra debug/result lines (emoji-prefixed headers)
+			cleanText := stripOrchestraLines(text)
+			sb.WriteString(fmt.Sprintf("%s: %s\n", roleLabel, cleanText))
+		}
+	}
+
+	if sb.Len() > 0 {
+		// Prepend the context header
+		ctx := fmt.Sprintf("Önceki konuşma:\n%s\n---\nYeni mesaj:\nKullanıcı: %s", sb.String(), userPrompt)
+		return ctx
+	}
+
+	return fmt.Sprintf("Kullanıcı: %s", userPrompt)
+}
+
+var orchestraPrefixes = []string{"🎵", "🧙", "🧠", "✅", "❌", "📝"}
+
+// stripOrchestraLines removes lines that start with orchestra debug prefixes.
+func stripOrchestraLines(text string) string {
+	lines := strings.Split(text, "\n")
+	var filtered []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" {
+			continue
+		}
+		skip := false
+		for _, prefix := range orchestraPrefixes {
+			if strings.HasPrefix(trimmed, prefix) {
+				skip = true
+				break
+			}
+		}
+		if !skip {
+			filtered = append(filtered, line)
+		}
+	}
+	return strings.Join(filtered, "\n")
+}
+
 func (a *App) getSessionHistory() []api.Message {
 	if a.sessions == nil {
 		return nil
@@ -1774,6 +1952,30 @@ func (a *App) retrieveMemory(query string) []memory.MemoryResult {
 }
 
 func (a *App) callLLM(messages []api.Message) string {
+	// Orchestra mode takes priority
+	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+		var userPrompt string
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "user" {
+				userPrompt = messages[i].GetTextContent()
+				if userPrompt != "" {
+					break
+				}
+			}
+		}
+		if userPrompt == "" {
+			return "⚠️ No user message found"
+		}
+		conversationCtx := buildConversationContext(messages, userPrompt)
+		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		defer cancel()
+		finalResponse, _, err := a.orchestraConductor.Run(ctx, conversationCtx)
+		if err != nil {
+			return "⚠️ " + err.Error()
+		}
+		return finalResponse
+	}
+
 	// Use external provider only if user explicitly selected one
 	if a.activeProvider != "" && a.providerRouter != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)

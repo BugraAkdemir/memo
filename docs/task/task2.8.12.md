@@ -1,6 +1,7 @@
 # Kritik Hatalar (🔴) — Adım Adım Düzeltme
 
 ## [x] K1 — Yetim SSE Bağlantıları ✅
+## [x] K1 — Yetim SSE Bağlantıları ✅
 - **Dosya:** `internal/webserver/handlers_flutter.go:39-61`, `internal/api/streaming.go`, `app.go`, `internal/webserver/bridge.go`
 - **Sorun:** İstemci kopunca LLM çalışmaya devam ediyor, GPU/CPU boşa harcanıyor
 - **Çözüm:** `FullBridge` stream metodlarına `ctx context.Context` eklendi. `handleSendStream`'den `r.Context()` tüm zincire iletilir. Client kopunca context cancel → LLM HTTP isteği iptal → goroutine doğal sonlanır.

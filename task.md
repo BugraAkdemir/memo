@@ -90,7 +90,7 @@ Memo'yu sadece local modellere bağımlı olmaktan çıkarıp, harici API'ler (O
 
 ---
 
-## 0.8 Orchestra Mode (Çoklu Model Orkestrasyonu)
+## 0.8 ✅ Orchestra Mode (Çoklu Model Orkestrasyonu) — TAMAMLANDI
 
 > **Öncelik:** Agent 1.0'dan önce yapılacak. Çünkü orkestrasyon, agent altyapısının temelini oluşturur.
 
@@ -245,6 +245,14 @@ Kullanıcı Prompt'u
 - Değişen: `frontend/lib/widgets/settings_dialog.dart` — yeni sekme
 - Değişen: `frontend/lib/widgets/chat_input.dart` — `/orchestra` komutu
 - Değişen: `frontend/lib/widgets/prompt_templates.dart` — `/orchestra` handler
+
+> ✅ **Tamamlandı (v4.0.0 F11)**
+> - Backend: `internal/orchestra/` (types.go, conductor.go) — plan, execute, synthesize
+> - Retry mekanizması: `callWithRetry` (rate limit + exponential backoff + jitter)
+> - API endpoint'leri: GET/PUT `/api/orchestra/config`
+> - Frontend: settings sekmesi, config dialog, `/orchestra` slash komutu
+> - Detect fix'leri: Role fallback, JSON `depends_on` tip dönüşümü, API key propagasyonu
+> - Fark: `roles.go` ayrı dosya yerine config'de inline system prompt kullanıldı; `orchestra_mode_toggle.dart` ayrı widget yerine settings dialog'da toggle eklendi
 
 ---
 

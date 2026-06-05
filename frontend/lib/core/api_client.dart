@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import '../models/chat.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
+import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 
 /// Memo Go backend REST API client.
@@ -580,5 +581,18 @@ class MemoApiClient {
   /// Set active provider.
   Future<void> setActiveProvider(String type) async {
     await _dio.put('/api/providers/active', data: {'provider': type});
+  }
+
+  // ─── Orchestra Mode ───────────────────────────────────────────────
+
+  /// Get orchestra config.
+  Future<OrchestraConfig> getOrchestraConfig() async {
+    final res = await _dio.get('/api/orchestra/config');
+    return OrchestraConfig.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  /// Update orchestra config.
+  Future<void> updateOrchestraConfig(OrchestraConfig config) async {
+    await _dio.put('/api/orchestra/config', data: config.toJson());
   }
 }

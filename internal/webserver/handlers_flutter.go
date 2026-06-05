@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"memo/internal/config"
+	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"net/http"
 	"path/filepath"
@@ -842,10 +843,6 @@ func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {
-	if s.fullBridge == nil {
-		http.Error(w, "not available", http.StatusNotImplemented)
-		return
-	}
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, map[string]string{"provider": s.fullBridge.GetActiveProvider()})
@@ -858,6 +855,29 @@ func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		s.fullBridge.SetActiveProvider(req.Provider)
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
+// ─── Orchestra Handlers ──────────────────────────────────────────────
+
+func (s *Server) handleOrchestraConfig(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodGet:
+		cfg := s.fullBridge.GetOrchestraConfig()
+		writeJSON(w, cfg)
+	case http.MethodPut:
+		var cfg orchestra.OrchestraConfig
+		if err := json.NewDecoder(r.Body).Decode(&cfg); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateOrchestraConfig(cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
 		writeJSON(w, map[string]string{"ok": "true"})
 	default:
 		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)

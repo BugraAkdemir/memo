@@ -4,6 +4,8 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 
 import '../core/theme.dart';
 import '../models/chat.dart';
+import '../models/agent.dart';
+import 'agent/agent_chat_card.dart';
 
 MarkdownStyleSheet _buildMarkdownStyleSheet(BuildContext context) {
   final c = MemoTheme.of(context);
@@ -43,6 +45,7 @@ class ChatMessageList extends StatefulWidget {
   final bool isTyping;
   final String streamingContent;
   final String streamingThinking;
+  final List<AgentEvent>? streamingAgentEvents;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
@@ -52,6 +55,7 @@ class ChatMessageList extends StatefulWidget {
     this.isTyping = false,
     this.streamingContent = '',
     this.streamingThinking = '',
+    this.streamingAgentEvents,
     this.onEdit,
     this.onDelete,
   });
@@ -103,7 +107,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
 
   @override
   Widget build(BuildContext context) {
-    final hasStreaming = widget.streamingContent.isNotEmpty;
+    final hasStreaming = widget.streamingContent.isNotEmpty || (widget.streamingAgentEvents != null && widget.streamingAgentEvents!.isNotEmpty);
     final showTyping = widget.isTyping && !hasStreaming;
     final itemCount =
         widget.messages.length + (hasStreaming ? 1 : 0) + (showTyping ? 1 : 0);
@@ -132,6 +136,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
           return _StreamingBubble(
             content: widget.streamingContent,
             thinking: widget.streamingThinking,
+            agentEvents: widget.streamingAgentEvents,
           );
         }
         // Typing indicator — shown before first token arrives
@@ -321,11 +326,22 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             () => _thinkingExpanded = !_thinkingExpanded,
                           ),
                         ),
-                      MarkdownBody(
-                        data: widget.message.content,
-                        selectable: true,
-                        styleSheet: _buildMarkdownStyleSheet(context),
-                      ),
+                      if (!isUser && widget.message.agentEvents != null)
+                        ...widget.message.agentEvents!.map((e) {
+                          if (e is AgentEvent) {
+                            return AgentChatCard(event: e);
+                          }
+                          if (e is Map<String, dynamic>) {
+                            return AgentChatCard(event: AgentEvent.fromJson(e));
+                          }
+                          return const SizedBox.shrink();
+                        }),
+                      if (widget.message.content.isNotEmpty)
+                        MarkdownBody(
+                          data: widget.message.content,
+                          selectable: true,
+                          styleSheet: _buildMarkdownStyleSheet(context),
+                        ),
                       if (_hovering || isUser) ...[
                          SizedBox(height: 6),
                         Row(
@@ -381,8 +397,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
 class _StreamingBubble extends StatefulWidget {
   final String content;
   final String thinking;
+  final List<AgentEvent>? agentEvents;
 
-   _StreamingBubble({required this.content, this.thinking = ''});
+   _StreamingBubble({required this.content, this.thinking = '', this.agentEvents});
 
   @override
   State<_StreamingBubble> createState() => _StreamingBubbleState();
@@ -443,11 +460,14 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                         () => _thinkingExpanded = !_thinkingExpanded,
                       ),
                     ),
-                  MarkdownBody(
-                    data: widget.content,
-                    selectable: true,
-                    styleSheet: _buildMarkdownStyleSheet(context),
-                  ),
+                  if (widget.agentEvents != null)
+                    ...widget.agentEvents!.map((e) => AgentChatCard(event: e)),
+                  if (widget.content.isNotEmpty)
+                    MarkdownBody(
+                      data: widget.content,
+                      selectable: true,
+                      styleSheet: _buildMarkdownStyleSheet(context),
+                    ),
                    SizedBox(height: 6),
                   Text(
                     DateTime.now().toIso8601String().substring(11, 16),

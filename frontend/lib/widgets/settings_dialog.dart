@@ -13,6 +13,7 @@ import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'provider_config_dialog.dart';
+import 'agent/permission_history.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
@@ -32,6 +33,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('memory'),
     'API Providers',
     '🎵 Orchestra',
+    '🤖 Agent Permissions',
     'Ekran Kartı Config',
     L10n.t('cloud_sync'),
     L10n.t('remote_access'),
@@ -181,16 +183,28 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 5:
         return  _OrchestraTab();
       case 6:
-        return  _GpuConfigTab();
+        return  _AgentPermissionsTab();
       case 7:
-        return  _CloudSyncTab();
+        return  _GpuConfigTab();
       case 8:
-        return  _RemoteAccessTab();
+        return  _CloudSyncTab();
       case 9:
+        return  _RemoteAccessTab();
+      case 10:
         return  _AboutTab();
       default:
         return  SizedBox.shrink();
     }
+  }
+}
+
+class _AgentPermissionsTab extends StatelessWidget {
+  @override
+  Widget build(BuildContext context) {
+    return const Padding(
+      padding: EdgeInsets.all(32),
+      child: PermissionHistory(),
+    );
   }
 }
 

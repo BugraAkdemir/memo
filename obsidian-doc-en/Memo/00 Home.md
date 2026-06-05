@@ -21,6 +21,12 @@ Features that make Memo more than just a chat interface, but a true memory shell
 - [[Cloud Sync]]
 - [[Multimodal Capabilities (Vision and Voice)]]
 
+### 🆕 [[v3.0.0 Features]]
+Major new capabilities added in the current release.
+- [[External Providers]] — Connect to OpenAI, Gemini, Claude, Grok, and more
+- [[Agent Mode]] — AI tool calling (file ops, commands) with permission system
+- [[Orchestra Mode]] — Multi-model orchestration with expert roles
+
 ### 🔧 [[Technical Reference]]
 In-depth technical information for developers.
 - [[API Documentation]]
@@ -35,5 +41,7 @@ Set up, develop, and use Memo.
 - [[User Guide]]
 
 ---
+
 > **Our Philosophy:** *Control your AI. Own your Memory.*
 > **Developer:** Buğra
+> **Current Version:** v3.0.0-beta

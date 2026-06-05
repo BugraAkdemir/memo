@@ -1,0 +1,10 @@
+[
+  {
+    "id": "1780694673874707937",
+    "tool_name": "read_env",
+    "args_hash": "c89a148be40e6752261e3038609a4b68de22fa3bfdaf32f884edffb8480b9bbe",
+    "policy": "allow_forever",
+    "created_at": "2026-06-06T00:24:33.874707616+03:00",
+    "updated_at": "2026-06-06T00:24:33.874707616+03:00"
+  }
+]

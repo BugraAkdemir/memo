@@ -211,42 +211,7 @@ Kullanıcı Prompt'u
 - V2: Streaming ile her adım kullanıcıya gösterilir:
   - "🧠 Şef planlıyor..."
   - "🎨 Frontend (Grok) çalışıyor..."
-  - "⚙️ Backend (Claude) çalışıyor..."
-  - "🔧 Bug Fix (Gemini) çalışıyor..."
-  - "📝 Şef sentezliyor..."
-
-### 0.8.8 Frontend Değişiklikleri
-
-- Ayarlar'da "Orchestra Mode" bölümü:
-  - Aç/Kapa toggle
-  - Şef model seçimi (dropdown)
-  - Rol listesi: her rol için model atama + system prompt düzenleme
-  - "Test Orchestra" butonu (tüm akışı çalıştırır, sonucu gösterir)
-- Sohbet ekranında `/model` komutuna "🎵 Orchestra Mode" seçeneği eklenir
-- `/orchestra` slash komutu:
-  - `/orchestra on` — açar
-  - `/orchestra off` — kapatır
-  - `/orchestra config` — yapılandırma dialog'unu açar
-  - `/orchestra status` — mevcut durumu gösterir
-
-### 0.8.9 Dosya Değişiklikleri
-
-- Yeni: `internal/orchestra/` — yeni paket
-  - `types.go` — tipler (OrchestraConfig, OrchestraTask, OrchestraPlan, OrchestraResult)
-  - `conductor.go` — şef mantığı (plan, execute, synthesize)
-  - `roles.go` — yerleşik roller ve system prompt'lar
-- Değişen: `app.go` — orchestra mod entegrasyonu
-- Değişen: `internal/webserver/handlers_flutter.go` — orchestra endpoint'leri
-- Değişen: `internal/webserver/bridge.go` — OrchestraBridge
-- Değişen: `internal/webserver/server.go` — route kaydı
-- Yeni: `frontend/lib/providers/orchestra_provider.dart`
-- Yeni: `frontend/lib/widgets/orchestra_config_dialog.dart`
-- Yeni: `frontend/lib/widgets/orchestra_mode_toggle.dart`
-- Değişen: `frontend/lib/widgets/settings_dialog.dart` — yeni sekme
-- Değişen: `frontend/lib/widgets/chat_input.dart` — `/orchestra` komutu
-- Değişen: `frontend/lib/widgets/prompt_templates.dart` — `/orchestra` handler
-
-> ✅ **Tamamlandı (v4.0.0 F11)**
+  - "⚙️ B> ✅ **Tamamlandı (v4.0.0 F11)**
 > - Backend: `internal/orchestra/` (types.go, conductor.go) — plan, execute, synthesize
 > - Retry mekanizması: `callWithRetry` (rate limit + exponential backoff + jitter)
 > - API endpoint'leri: GET/PUT `/api/orchestra/config`
@@ -256,9 +221,16 @@ Kullanıcı Prompt'u
 
 ---
 
-## 1. Backend: Agent Execution Engine
 
-### 1.1 Tool Definition Sistemi
+> ✅ **Tamamlandı 1.1 (External Provider Support)**
+> - `internal/provider/` paketi tam: openai.go, gemini.go, claude.go, grok.go, groq.go, openrouter.go, ollama.go, router.go
+> - Frontend: `provider_config_dialog.dart`, `settings_dialog.dart` API Providers sekmesi, model switcher
+
+---
+
+## 1. Backend: Agent Execution Engine  ✅ TAMAMLANDI
+
+### 1.1 Tool Definition Sistemi  ✅
 - Her aracın tanımı JSON Schema formatında olmalı (OpenAI tool calling standardı)
 - Tool tanımı: `name`, `description`, `parameters` (JSON Schema), `danger_level` (safe/medium/dangerous)
 - Built-in tool'lar:
@@ -271,98 +243,54 @@ Kullanıcı Prompt'u
   - `get_file_info(path)` — dosya meta bilgisi (safe)
   - `read_env()` — ortam değişkenlerini listele (medium)
 
-### 1.2 Permission Manager
-- `internal/agent/permissions.go` — yeni paket
-- Permission tipleri:
-  - `PromptAlways` — her seferinde sor
-  - `AllowOnce` — bir kereye mahsus izin ver
-  - `AllowSession` — bu oturum boyunca izin ver
-  - `AllowForever` — kalıcı olarak izin ver (`.opencode/` dizinine kaydedilir)
-  - `DenyOnce` — bir kere reddet
-  - `DenyForever` — kalıcı reddet
-- Permission kaydı: `data/permissions/` dizininde JSON dosyaları
-- Her izin kaydı: `tool_name`, `args_hash` (argümanların hash'i), `policy`, `created_at`, `updated_at`
+### 1.2 Permission Manager  ✅
+- `internal/agent/permissions.go` — tamamlandı
+- Tüm permission tipleri: PromptAlways, AllowOnce, AllowSession, AllowForever, DenyOnce, DenyForever
+- `data/permissions.json` dosyasında kalıcı saklama
 
-### 1.3 Tool Execution Sandbox
-- `internal/agent/executor.go` — tool'ları çalıştırma
-- `run_command` için:
-  - Maksimum çalışma süresi (varsayılan 60 saniye, yapılandırılabilir)
-  - Output boyut limiti (10MB)
-  - Yasaklı komutlar listesi (rm -rf /, dd, mkfs, format, vb.)
-  - `$PATH` güvenliği — sadece standart dizinler
-- `write_file`/`delete_file` için:
-  - Proje dizini dışına yazma/silme engeli (opsiyonel, ayarlanabilir)
-  - Symlink saldırı koruması (mevcut `safePersistPath` benzeri)
+### 1.3 Tool Execution Sandbox  ✅
+- `internal/agent/sandbox.go` — tamamlandı
+- `run_command` blacklist, timeout (60s), output limit (10MB)
+- Path traversal koruması, rate limit (30/dk)
 
-### 1.4 Agent Pipeline
-- `internal/agent/pipeline.go`:
-  1. Kullanıcı mesajı → LLM'e gönder (tool tanımlarıyla birlikte)
-  2. LLM tool call yanıtı dönerse → permission kontrolü
-  3. İzin varsa → tool'u çalıştır, sonucu LLM'e geri gönder
-  4. LLM nihai yanıtı üretir → kullanıcıya göster
-- Loop desteği: LLM birden çok tool call yapabilir, her biri ayrı permission kontrolünden geçer
+### 1.4 Agent Pipeline  ✅
+- `internal/agent/pipeline.go` — tamamlandı
+- `internal/agent/executor.go` — tamamlandı
+- LLM ↔ tool döngüsü, permission kontrol, SSE event emit
 
-### 1.5 Streaming Support
-- Tool execution sonuçları streaming ile kullanıcıya iletilmeli
-- Uzun süren komutlarda (build, test) output anlık gösterilmeli
-- Kullanıcı komutu iptal edebilmeli (cancel butonu)
+### 1.5 Streaming Support  ✅
+- `app.go`'da `callAgentStream()` — SSE ile tool eventleri iletildi
+- `finish_reason: "agent_event"` özel flag ile frontend'e gönderim
+
+> ✅ **Backend Agent Engine tamamen tamamlandı.**
 
 ---
 
-## 2. Frontend: Permission UI
+## 2. Frontend: Permission UI  ✅ TAMAMLANDI
 
-### 2.1 Permission Dialog
-- `frontend/lib/widgets/agent/permission_dialog.dart`
-- LLM bir tool çağırmak istediğinde açılan dialog
-- İçerik:
-  - **Tool adı** ve **açıklaması** (örn. "Run Command: `rm -rf /tmp/test`")
-  - **Tehlikeli araç** uyarı banner'ı (kırmızı/kahverengi)
-  - **Argümanlar** okunabilir formatta gösterilmeli
-  - **Dosya önizleme** (read_file için ilk 20 satır)
-- Butonlar:
-  - "Allow Once" (birincil)
-  - "Always Allow — this session" (ikincil)
-  - "Always Allow — forever" (üçüncül, `.opencode/permissions.json`'a kaydedilir)
-  - "Deny" (iptal)
-  - "Deny Forever" (kırmızı, kalıcı red)
-- Güvenlik: "Allow" butonlarına 2 saniyelik bekleme süresi (dangerous tool'larda)
+### 2.1 Permission Dialog  ✅
+- `frontend/lib/widgets/agent/permission_dialog.dart` — tamamlandı
+- Tehlike seviyesine göre uyarı banner, 2s güvenlik gecikmesi, tüm policy butonları
 
-### 2.2 Permission History Panel
-- `frontend/lib/widgets/agent/permission_history.dart`
-- Ayarlar'da "Permission History" bölümü
-- Geçmiş tüm izin kararları listelenir
-- Her kayıt: tool, args, policy, timestamp
-- "Revoke" butonu — kalıcı izni iptal et
-- "Clear All" — tüm kalıcı izinleri temizle
+### 2.2 Permission History Panel  ✅
+- `frontend/lib/widgets/agent/permission_history.dart` — tamamlandı
+- Ayarlar → "🤖 Agent Permissions" sekmesi, Revoke / Clear All
 
-### 2.3 Agent Chat UI
-- Normal sohbetten farklı bir görünüm (opsiyonel)
-- Tool çağrıları görsel kart olarak gösterilmeli:
-  ```
-  ┌─────────────────────────────────┐
-  │ 🔧 read_file("/etc/hosts")      │
-  │ ✅ Completed (0.02s)            │
-  │ 📄 [önizleme: 15 satır]         │
-  └─────────────────────────────────┘
-  ```
-- Hata durumunda kart kırmızı:
-  ```
-  ┌─────────────────────────────────┐
-  │ ❌ run_command("rm -rf /")      │
-  │ ⛔ Permission denied            │
-  └─────────────────────────────────┘
-  ```
-- Komut output'u varsa expandable/collapsible bölüm
+### 2.3 Agent Chat UI  ✅
+- `frontend/lib/widgets/agent/agent_chat_card.dart` — tamamlandı
+- Tool executing / result / error / permission_denied durumları, süre gösterimi
 
-### 2.4 Agent Mode Toggle
-- Ana ekranda bir "Agent Mode" toggle (sohbet girişinin üstünde)
-- Kapalıyken: normal sohbet (tool çağrısı yok)
-- Açıkken: LLM tool çağırabilir, permission dialog'ları gösterilir
-- Varsayılan: kapalı (güvenlik)
+### 2.4 Agent Mode Toggle  ✅
+- `frontend/lib/widgets/agent/agent_mode_toggle.dart` — tamamlandı
+- `chat_input.dart`'a entegre, `agentEnabledProvider` ile backend senkronize
+
+> ✅ **Frontend Permission UI tamamen tamamlandı.**
 
 ---
 
-## 3. Güvenlik ve Kısıtlamalar
+---
+
+## 3. Güvenlik ve Kısıtlamalar ✅ TAMAMLANDI
 
 ### 3.1 Danger Level Sistemi
 | Seviye | Örnek | Varsayılan Policy |
@@ -390,41 +318,40 @@ Kullanıcı Prompt'u
 
 ---
 
-## 4. Yapısal Değişiklikler
+## 4. Yapısal Değişiklikler  ✅ TAMAMLANDI
 
-### 4.1 Yeni Dizin Yapısı
+### 4.1 Yeni Dizin Yapısı  ✅
 ```
 internal/agent/
-├── executor.go      # tool execution engine
-├── permissions.go   # permission manager
-├── pipeline.go      # LLM ↔ tool orchestration
-├── tools.go         # tool definitions & registry
-├── sandbox.go       # execution sandbox (security)
+├── executor.go      ✅ tamamlandı
+├── permissions.go   ✅ tamamlandı
+├── pipeline.go      ✅ tamamlandı
+├── tools.go         ✅ tamamlandı
+├── sandbox.go       ✅ tamamlandı
 └── tools/
-    ├── file.go      # read_file, write_file, delete_file, etc.
-    ├── command.go   # run_command
-    └── search.go    # search_files, get_file_info
+    ├── file.go      ✅ tamamlandı
+    ├── command.go   ✅ tamamlandı
+    └── search.go    ✅ tamamlandı
 
 frontend/lib/widgets/agent/
-├── permission_dialog.dart
-├── permission_history.dart
-├── agent_chat_card.dart
-├── agent_mode_toggle.dart
-├── tool_result_view.dart
-└── tool_call_bubble.dart
+├── permission_dialog.dart   ✅ tamamlandı
+├── permission_history.dart  ✅ tamamlandı
+├── agent_chat_card.dart     ✅ tamamlandı
+├── agent_mode_toggle.dart   ✅ tamamlandı
+├── tool_result_view.dart    ⬜ henüz yok (AgentChatCard içinde birleştirildi)
+└── tool_call_bubble.dart    ⬜ henüz yok (AgentChatCard içinde birleştirildi)
 ```
 
-### 4.2 Mevcut Dosyalarda Değişiklik
-- `app.go` — `Agent` yöneticisi eklenmeli, `SendMessageStream` agent mode'u desteklemeli
-- `internal/webserver/handlers_flutter.go` — yeni endpoint'ler:
-  - `POST /api/agent/tool-call` — tool call izni sonucu (allow/deny)
-  - `GET /api/agent/permissions` — kalıcı izin listesi
-  - `DELETE /api/agent/permissions/:id` — izni iptal et
-- `internal/webserver/bridge.go` — `AgentBridge` eklenmeli
-- `frontend/lib/providers/` — `agent_provider.dart`, `permission_provider.dart`
-- `frontend/lib/screens/chat_screen.dart` — agent mode toggle, tool call bubble'ları
-
----
+### 4.2 Mevcut Dosyalarda Değişiklik  ✅
+- `app.go` — Agent yöneticisi eklendi, `callLLMStream` agent mode'u destekliyor
+- `internal/webserver/handlers_flutter.go` — agent endpoint'leri eklendi:
+  - `GET/PUT /api/agent/enabled`
+  - `POST /api/agent/permission`
+  - `GET/DELETE /api/agent/permissions`
+- `internal/webserver/bridge.go` — `AgentBridge` eklendi
+- `frontend/lib/providers/agent_provider.dart` — ✅ tamamlandı
+- `frontend/lib/models/agent.dart` — ✅ tamamlandı
+- `frontend/lib/screens/chat_screen.dart` — ✅ agent mode toggle ve tool card entegre
 
 ---
 
@@ -451,13 +378,14 @@ frontend/lib/widgets/agent/
 
 ---
 
-## 6. File Edit (Satır Bazlı Düzenleme)
+## 6. File Edit (Satır Bazlı Düzenleme) ❌ BEKLİYOR
 
 ### 6.1 `edit_file` Tool
 - `edit_file(path, old_string, new_string)` — dosyada belirtilen string'i değiştirir
 - `edit_file(path, start_line, end_line, new_content)` — satır bazlı değiştirme
 - `insert_line(path, line_number, content)` — belirli satıra ekleme
 - `delete_lines(path, start_line, end_line)` — satır aralığı silme
+- **Not:** Şu anda sadece `write_file` (tam dosya yazma) var, satır bazlı edit yok
 
 ### 6.2 Güvenlik
 - Değişiklik öncesi otomatik yedek: `data/agent-backups/{path}.bak`

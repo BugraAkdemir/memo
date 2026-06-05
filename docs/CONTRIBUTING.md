@@ -24,6 +24,14 @@ Have a great idea? Open an issue and describe how it would benefit the "local-fi
 - **Privacy First:** Never add code that sends data to external servers without explicit user consent.
 - **Performance:** Prefer binary formats (.gob) and efficient algorithms to keep RAM usage low.
 - **Documentation:** Every new feature should be documented in the `/docs` folder and the Obsidian vault.
+- **Testing:** Backend tests use standard `go test`. New packages (`internal/provider/`, `internal/agent/`, `internal/orchestra/`) currently lack tests — contributions welcome.
+
+## Key Areas for Contribution
+- **Agent Frontend UI:** Permission dialog, tool call cards, agent mode toggle (Flutter).
+- **Tests:** Unit tests for `internal/provider/`, `internal/agent/`, `internal/orchestra/`.
+- **Multi-Step Planning:** Plan creation, batch permission, step-by-step execution.
+- **File Edit Tool:** Line-based editing with diff preview and undo.
+- **Git Tools:** git_status, git_diff, git_commit, git_push integration.
 
 ## Philosophy
 Memo is built on **Sovereignty**. Users should own their AI, their data, and their hardware. Keep it local, keep it fast, keep it yours.

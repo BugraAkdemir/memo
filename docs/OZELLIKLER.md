@@ -79,7 +79,87 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 ---
 
-## 5. 👁️ Çoklu Modalite ve Duyular
+## 5. 🔌 Harici Sağlayıcı Desteği (External Providers)
+
+### Çoklu Sağlayıcı Mimarisi
+Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
+- **Desteklenen Sağlayıcılar:** OpenAI (GPT-4o, o1, o3), Google Gemini (2.0 Flash, 2.5 Pro), xAI Grok (2, 3), Anthropic Claude (3.5 Sonnet, 3 Opus), OpenRouter (tek API ile tüm modeller), Groq (hızlı çıkarım), Ollama (yerel alternatif)
+- **Sağlayıcı Arayüzü:** Ortak `Provider` interface ile `ChatCompletion`, `ChatCompletionStream`, `ListModels`
+- **Fallback Zinciri:** Router sağlayıcıları sırayla dener; 3 başarısızlıkta auto-disable; iyileşince health check ile tekrar aktifleştirme
+
+### Şifreli Anahtar Yönetimi
+- **AES-256-GCM Şifreleme:** API anahtarları makineye özel anahtar (`/etc/machine-id`) ile şifrelenir
+- **Anahtar Depolama:** `data/providers.json` şifreli anahtar değerleriyle
+- **Test Bağlantısı:** Kaydetmeden önce bağlantıyı test eden buton
+
+### Frontend Sağlayıcı Arayüzü
+- **API Providers Sekmesi:** Sağlayıcı ekleme/düzenleme için ayarlar sekmesi
+- **Yapılandırma Dialog'u:** Sağlayıcı türü seçimi, API anahtarı girişi (maskeli), base URL, model dropdown
+- **Aktif Sağlayıcı Seçimi:** Hangi sağlayıcının kullanılacağını seçme
+
+---
+
+## 6. 🧠 Ajan Modu (Agent Mode)
+
+### Araç Çalıştırma Motoru
+Memo, bilgisayarınızda işlem yapabilen bir AI ajanı olarak çalışır:
+- **8 Yerleşik Araç:** `read_file`, `write_file`, `delete_file`, `list_directory`, `run_command`, `search_files`, `get_file_info`, `read_env`
+- **Araç Kaydı:** JSON Schema parametre tanımlarıyla thread-safe kayıt sistemi
+- **Tehlike Seviyesi:** `safe` (otomatik izin), `medium` (kullanıcıya sor), `dangerous` (kullanıcıya sor + 2sn gecikme)
+
+### İzin Sistemi
+- **6 Politika Türü:** PromptAlways, AllowOnce, AllowSession, AllowForever, DenyOnce, DenyForever
+- **Oturum Kalıcılığı:** İzinler `data/permissions.json` dosyasında saklanır
+- **Argüman Hash'leme:** İzin eşleştirme için SHA-256 hash kullanılır
+
+### Güvenlik Sandbox'ı
+- **Path Traversal Koruması:** Symlink çözümleme, `..` engelleme, proje kök dizini sınırlaması
+- **Komut Kara Listesi:** 23 tehlikeli pattern engellenir (`rm -rf /`, `sudo`, fork bomb, vb.)
+- **Rate Limiting:** Dakikada 30 araç çağrısı, komut başına 5sn bekleme
+
+### Ajan Pipeline'ı
+- **LLM ↔ Araç Döngüsü:** Kullanıcı mesajı + araç tanımları LLM'e gönderilir, araç çağrıları çalıştırılır, sonuçlar LLM'e geri beslenir, nihai yanıta kadar döngü devam eder (max 20 iterasyon)
+- **Olay Akışı:** Araç çalıştırma olayları SSE ile frontend'e iletilir
+- **Denetim Günlüğü:** Son 1000 araç çalıştırması zaman damgasıyla kaydedilir
+
+> **Not:** Ajan frontend UI'ı (izin dialog'ları, araç kartları, mod toggle) henüz uygulanmamıştır. Ajan sadece backend API üzerinden çalışır.
+
+---
+
+## 7. 🎵 Orkestra Modu (Multi-Model Orchestration)
+
+### Konsept
+Birden çok AI modeli bir ekip olarak çalışır:
+1. **Şef Model** kullanıcı isteğini analiz eder, alt görevlere böler
+2. **Uzman Roller** görevleri paralel olarak çalıştırır (frontend, backend, bug_fixer, vb.)
+3. **Şef Model** sonuçları tek bir tutarlı cevapta birleştirir
+
+### Yerleşik Roller
+| Rol | Varsayılan Model | Amaç |
+|------|-------------|---------|
+| Planner | Claude | Yazılım mimarisi, görev dağılımı |
+| Frontend | Grok | UI geliştirme |
+| Backend | GPT-4o | API/sunucu mantığı |
+| Bug Fixer | Gemini | Hata ayıklama, kök neden analizi |
+| Reviewer | Claude | Kod kalite incelemesi |
+| Security | GPT-4o | Güvenlik denetimi |
+| DevOps | Grok | Altyapı/deploy |
+| General | GPT-4o | Genel amaçlı yedek |
+
+### Çalıştırma Modeli
+- **Paralel Görevler:** Bağımsız görevler eşzamanlı çalışır (goroutine + WaitGroup)
+- **Sıralı Görevler:** `depends_on` alanıyla bağımlılık çözümleme
+- **Yeniden Deneme:** Rate-limit farkındalıklı üstel geri sarma (3 denemeye kadar)
+- **Akış:** Her aşama için ilerleme güncellemeleri (plan → çalıştır → sentezle)
+
+### Frontend Kontrolleri
+- **Ayarlar Sekmesi:** Aç/kapa, şef model seçimi, rollere model atama
+- **Yapılandırma Dialog'u:** Rol düzenleyici, model seçimi, system prompt düzenleme, özel rol desteği
+- **Slash Komutu:** `/orchestra on`, `/orchestra off`, `/orchestra config`, `/orchestra status`
+
+---
+
+## 8. 👁️ Çoklu Modalite ve Duyular
 
 ### Görsel Destek (Multimodal)
 

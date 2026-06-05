@@ -15,16 +15,20 @@ graph TB
 
     subgraph Backend["Headless Go Server (:8090)"]
         WS["Web Server<br/>(server.go + handlers_flutter.go)"]
-        WS -->|AppBridge| APP["app.go (1656 lines)"]
+        WS -->|AppBridge / FullBridge| APP["app.go (2409 lines)"]
         APP -->|chromem-go| MEM["Memory Store<br/>(.gob files)"]
         APP -->|sync.RWMutex| SES["Session Manager<br/>(JSON files)"]
         APP -->|subprocess| LLAMA["Llama Server<br/>Manager"]
         APP -->|OAuth2 + AES-256| SYNC["Cloud Sync<br/>(Google Drive)"]
         APP -->|HF API| MODEL["Model Store<br/>(HF download/search)"]
+        APP -->|Router + Fallback| PROV["Provider System<br/>(OpenAI, Gemini, Claude...)"]
+        APP -->|Tool Registry + Pipeline| AGENT["Agent Engine<br/>(Tool Calling, Permissions)"]
+        APP -->|Chief + Roles| ORCH["Orchestra Mode<br/>(Multi-Model)"]
     end
 
     API <-->|"REST / JSON / SSE"| WS
     LLAMA <-->|"stdin/stdout"| CP["llama-server Binary"]
+    PROV -->|"HTTP"| EXT["External LLM APIs"]
 ```
 
 ### Communication Protocol
@@ -90,15 +94,20 @@ sequenceDiagram
 2. **Embedding:** Query is vectorized via local embedding model
 3. **Retrieval:** Cosine similarity search over all `.gob` memory entries
 4. **Context construction:** Relevant memories injected into system prompt
-5. **LLM call:** Combined prompt sent to `llama-server` via OpenAI-compatible API
+5. **LLM routing (priority order):**
+   - **Orchestra mode** (if enabled) → multi-model workflow (chief → experts → synthesis)
+   - **External provider** (if `activeProvider` set) → `provider.Router` with fallback chain
+   - **Local llama.cpp** → `api.Client` pointed at local `llama-server`
 6. **Streaming:** Tokens delivered via SSE, rendered in real-time
 7. **Persistence:** Interaction saved asynchronously to `.gob`
+
+> **Agent mode** overrides normal flow when enabled + active provider set: `SendMessageStream` routes to `callAgentStream` which runs the LLM tool-calling pipeline.
 
 ---
 
 ## 🖥️ 4. Backend Modules
 
-### `app.go` (1656 lines)
+### `app.go` (2409 lines)
 Central orchestrator. Manages:
 - LLM client lifecycle (`a.client`, `a.embeddingClient`)
 - Model start/stop/swap
@@ -106,12 +115,14 @@ Central orchestrator. Manages:
 - Session management
 - Cloud sync manager
 - Incognito mode toggle
+- Provider config manager + router (external LLM APIs)
+- Agent executor (tool calling, permissions, pipeline)
+- Orchestra conductor (multi-model orchestration)
 
 **Known issues:**
-- `a.client` reassigned without mutex → race condition
-- `saveMemoryAsync` RLock→Lock pattern → deadlock risk
-- `buildMessages` mutates session history (slice aliasing)
-- Background errors never reach UI (`emitEvent` is no-op for Flutter)
+- `a.syncManager` assigned without lock → data race
+- `a.store` assigned without `storeMu` at startup
+- Background errors reach UI via event ring buffer (64 events) but overflow drops oldest
 
 ### `internal/webserver/server.go` (583 lines)
 - Dual-mode server: `StartHTTP` (localhost) and `Start` (remote/TLS)
@@ -119,14 +130,17 @@ Central orchestrator. Manages:
 - SSE streaming endpoint handler
 - **Known issue:** `Shutdown(context.Background())` can block indefinitely
 
-### `internal/webserver/handlers_flutter.go` (700+ lines)
+### `internal/webserver/handlers_flutter.go` (960 lines)
 All Flutter-facing REST handlers:
 - Chat CRUD, message send/stream
 - Model management (list, start, stop, download)
 - Memory management (list, delete, clear)
 - GPU detection, sync settings, config updates
+- Provider CRUD + test connection + active provider
+- Agent mode toggle, permission response, permission CRUD
+- Orchestra config (get/put)
 
-**Known issue:** SSE handler doesn't monitor `request.Context().Done()` → orphaned streams
+**Known issues:** SSE handler doesn't monitor `request.Context().Done()` → orphaned streams (mitigated via context propagation)
 
 ### `internal/llama/llama.go` (462 lines)
 - `llama-server` subprocess lifecycle (start, stop, monitor, wait-ready)
@@ -173,6 +187,36 @@ All Flutter-facing REST handlers:
 - User identity management (name, personality)
 - System prompt construction with memory injection
 
+### `internal/provider/` (10 files, ~1700 lines total)
+External LLM provider system:
+- **`provider.go`** — `Provider` interface (`ChatCompletion`, `ChatCompletionStream`, `ListModels`) + factory
+- **`config.go`** — `ConfigManager`: AES-256-GCM encrypted API keys in `data/providers.json`, machine-derived key
+- **`router.go`** — Multi-provider router with fallback chain, auto-disable after 3 failures, health check goroutine
+- **`openai.go`** — Full OpenAI-compatible implementation (ChatCompletion, SSE parsing, ListModels)
+- **`gemini.go`** — Custom Google Gemini implementation (`generateContent`, `streamGenerateContent`)
+- **`claude.go`** — Custom Anthropic Claude implementation (`x-api-key` auth, SSE event parsing)
+- **`grok.go`/`groq.go`/`openrouter.go`/`ollama.go`** — Thin OpenAI-compatible wrappers (different base URLs)
+- **Known issues:** Provider `Priority` field exists but unused by router; no test files
+
+### `internal/agent/` (8 files, ~1450 lines total)
+Agent execution engine:
+- **`tools.go`** — Tool definition system: `ToolDef`, `DangerLevel` (Safe/Medium/Dangerous), `ToolRegistry` with 8 built-in tools
+- **`permissions.go`** — `PermissionManager`: 6 policies (PromptAlways, AllowOnce/Session/Forever, DenyOnce/Forever), SHA-256 arg hashing, persistent JSON storage
+- **`sandbox.go`** — `Sandbox` with path traversal protection, rate limiting (30 calls/min, 5s cooldown), command blacklist (23 patterns)
+- **`pipeline.go`** — `Pipeline`: LLM → tool call → permission check → execution → result loop (max 20 iterations), event streaming via channels
+- **`executor.go`** — Top-level orchestrator: `RunStream()`, `HandlePermissionResponse()`, audit log (last 1000 entries)
+- **`tools/file.go`/`command.go`/`search.go`** — Tool implementations with path validation, backup creation, environment variable masking
+- **Known issues:** No test files; frontend agent UI not implemented yet
+
+### `internal/orchestra/` (3 files, ~1000 lines total)
+Multi-model orchestration (Orchestra Mode):
+- **`conductor.go`** — `Conductor`: plan (chief analyzes + decomposes), execute (parallel/sequential tasks), synthesize (chief merges results)
+- **`types.go`** — `OrchestraConfig`, `OrchestraTask`, `OrchestraPlan`, `OrchestraResult`, `ProgressUpdate` with streaming
+- **`roles.go`** — 8 built-in roles (planner, frontend, backend, bug_fixer, reviewer, security, devops, general) with Turkish system prompts
+- Retry: `callWithRetry` (rate limit + exponential backoff + jitter), `retryTask` (2 retries, 3s base delay)
+- Parallel execution via goroutines + WaitGroup; sequential via dependency resolution (DAG)
+- **Known issues:** Orchestra bypasses `provider.Router` (creates providers directly); chief model must support JSON output
+
 ### `internal/api/types.go` + `client.go` + `streaming.go`
 - OpenAI-compatible API client types
 - HTTP client for llama-server communication
@@ -201,6 +245,8 @@ graph LR
         CP[ChatProvider]
         MP[ModelsProvider]
         SP[SettingsProvider]
+        PP[ProviderListProvider]
+        OP[OrchestraConfigProvider]
     end
     subgraph Core
         AC[ApiClient]
@@ -213,6 +259,8 @@ graph LR
         SD[SettingsDialog]
         SW[SetupWizard]
         MB[MessageBubble]
+        PC[ProviderConfigDialog]
+        OC[OrchestraConfigDialog]
     end
 
     AS --> CS & MS
@@ -223,6 +271,8 @@ graph LR
     CP --> AC
     MP --> AC
     SP --> AC
+    PP --> AC
+    OP --> AC
     CML --> MB
     AC -->|HTTP/SSE| Backend
 ```
@@ -230,23 +280,28 @@ graph LR
 ### Key Components
 
 | Component | File | Lines | Responsibility |
-|---|---|---|---|
-| `ApiClient` | `api_client.dart` | 508 | All REST + SSE communication |
+|---|---|---|---|---|
+| `ApiClient` | `api_client.dart` | ~600 | All REST + SSE communication |
 | `ChatProvider` | `chat_provider.dart` | 192 | Message state, stream handling |
 | `ModelsProvider` | `models_provider.dart` | 106 | Model list, download progress |
 | `SettingsProvider` | `settings_provider.dart` | 270 | App settings, llama config |
+| `ProviderListNotifier` | `provider_provider.dart` | 88 | Provider config CRUD |
+| `OrchestraConfigNotifier` | `orchestra_provider.dart` | 31 | Orchestra config state |
 | `ChatMessageList` | `chat_message_list.dart` | 450 | Message rendering, markdown |
-| `ChatInput` | `chat_input.dart` | 283 | Text input, file attach, STT |
-| `SettingsDialog` | `settings_dialog.dart` | 1132 | 8-tab settings dialog |
+| `ChatInput` | `chat_input.dart` | 283 | Text input, file attach, STT, `/orchestra` command |
+| `SettingsDialog` | `settings_dialog.dart` | 2129 | 8-tab settings (incl. API Providers + Orchestra) |
+| `ProviderConfigDialog` | `provider_config_dialog.dart` | 264 | Add/edit external provider config |
+| `OrchestraConfigDialog` | `orchestra_config_dialog.dart` | 330 | Configure chief model + role assignments |
 | `ModelStoreScreen` | `model_store_screen.dart` | 1223 | HF model search + download |
 | `SetupWizardView` | `setup_wizard_view.dart` | 296 | First-run setup flow |
 
 ### Known Issues
-- `AnimationController` per message bubble → severe jank with 50+ messages
-- Auto-scroll yanks to bottom when reading history
-- Download polling loop never cancels (runs entire app lifetime)
-- Cloud Sync & Remote Access tabs show "under construction" (backend ready)
-- Error handling: silent `catch (_) {}` on export, model stop button unawaited
+- `AnimationController` per message bubble → severe jank with 50+ messages (fixed in v3.0.0)
+- Auto-scroll yanks to bottom when reading history (fixed in v3.0.0)
+- Download polling loop never cancels (fixed in v3.0.0)
+- Cloud Sync UI completed; Remote Access tab shows "disabled in v3.0.0"
+- Agent frontend UI (permission dialog, tool call cards, mode toggle) not yet implemented
+- No agent-related API methods in `api_client.dart`
 
 ---
 
@@ -280,6 +335,14 @@ graph LR
 | `GET`/`PUT` | `/api/config/llama` | Llama configuration |
 | `POST` | `/api/image` | Read image (⚠️ arbitrary file read) |
 | `POST` | `/api/embed/start/stop` | Embedding server control |
+| `GET`/`PUT`/`DELETE` | `/api/providers` | List/update/delete provider configs |
+| `POST` | `/api/providers/test` | Test provider connection |
+| `GET`/`PUT` | `/api/providers/active` | Get/set active provider |
+| `GET`/`PUT` | `/api/agent/enabled` | Get/set agent mode |
+| `POST` | `/api/agent/permission` | Respond to permission request |
+| `GET` | `/api/agent/permissions` | List permanent permissions |
+| `DELETE` | `/api/agent/permissions` | Revoke or clear permissions |
+| `GET`/`PUT` | `/api/orchestra/config` | Get/update orchestra config |
 
 ---
 
@@ -311,8 +374,8 @@ cd frontend && flutter run -d linux
 
 | Version | Status | Focus |
 |---|---|---|
-| **v2.0.0** | Current | All features implemented, known issues documented |
-| **v3.0.0** | Planned | Security, stability, performance fix pass |
+| **v3.0.0-beta** | Current | External providers + Agent engine + Orchestra (backend complete, frontend agent UI pending) |
+| **v3.0.0** | Planned | Agent frontend UI, multi-step planning, file edit, git, web scraping |
 | **v4.0.0** | Future | SQLite migration, UI overhaul, missing frontend tabs |
 | **v5.0.0** | Future | Plugins, mobile, knowledge graph, autonomy |
 
@@ -321,5 +384,5 @@ cd frontend && flutter run -d linux
 
 ---
 
-> **Last updated:** 2026-06-02
-> **Codebase audit:** 55 known issues (7 critical, 15 high, 13 medium, 20 low, 8 info)
+> **Last updated:** 2026-06-05
+> **Codebase audit:** 42 known issues (10 critical, 10 high, 12 medium, 10 low) + 10 observations

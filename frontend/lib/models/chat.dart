@@ -6,6 +6,7 @@ class ChatMessage {
   final String? imagePath;
   final String? filePath;
   final String timestamp;
+  final List<dynamic>? agentEvents;
 
   const ChatMessage({
     required this.role,
@@ -14,6 +15,7 @@ class ChatMessage {
     this.imagePath,
     this.filePath,
     required this.timestamp,
+    this.agentEvents,
   });
 
   factory ChatMessage.fromJson(Map<String, dynamic> json) => ChatMessage(
@@ -23,6 +25,7 @@ class ChatMessage {
         imagePath: json['image_path'] as String?,
         filePath: json['file_path'] as String?,
         timestamp: json['timestamp'] as String? ?? '',
+        agentEvents: json['agent_events'] as List<dynamic>?,
       );
 
   Map<String, dynamic> toJson() => {
@@ -32,6 +35,7 @@ class ChatMessage {
         if (imagePath != null) 'image_path': imagePath,
         if (filePath != null) 'file_path': filePath,
         'timestamp': timestamp,
+        if (agentEvents != null) 'agent_events': agentEvents,
       };
 
   bool get isUser => role == 'user';
@@ -45,12 +49,18 @@ class ChatMessage {
 class StreamChunk {
   final String content;
   final String? thinking;
+  final String? finishReason;
 
-  const StreamChunk({required this.content, this.thinking});
+  const StreamChunk({
+    required this.content,
+    this.thinking,
+    this.finishReason,
+  });
 
   factory StreamChunk.fromJson(Map<String, dynamic> json) => StreamChunk(
         content: json['content'] as String? ?? '',
         thinking: json['thinking'] as String?,
+        finishReason: json['finish_reason'] as String?,
       );
 }
 

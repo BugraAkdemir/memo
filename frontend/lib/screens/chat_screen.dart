@@ -10,6 +10,9 @@ import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/welcome_view.dart';
+import '../widgets/agent/permission_dialog.dart';
+import '../providers/agent_provider.dart';
+import '../models/agent.dart';
 
 /// Chat screen — sidebar + message list + input area.
 class ChatScreen extends ConsumerWidget {
@@ -47,6 +50,19 @@ class _ChatContent extends ConsumerWidget {
       }
     });
 
+    ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
+      if (next.hasValue && next.value != null && context.mounted) {
+        final event = next.value!;
+        if (event.type == 'permission_request') {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => PermissionDialog(event: event),
+          );
+        }
+      }
+    });
+
     return Column(
       children: [
         // ─── Top Bar ──────────────────────────────
@@ -81,7 +97,8 @@ class _ChatContent extends ConsumerWidget {
               final isSending = ref.watch(isSendingProvider);
               final streamingContent = ref.watch(streamingContentProvider);
               final streamingThinking = ref.watch(streamingThinkingProvider);
-              if (messages.isEmpty && !isSending && streamingContent.isEmpty) {
+              final streamingAgentEvents = ref.watch(streamingAgentEventsProvider);
+              if (messages.isEmpty && !isSending && streamingContent.isEmpty && streamingAgentEvents.isEmpty) {
                 return  WelcomeView();
               }
               return ChatMessageList(
@@ -89,6 +106,7 @@ class _ChatContent extends ConsumerWidget {
                 isTyping: isSending,
                 streamingContent: streamingContent,
                 streamingThinking: streamingThinking,
+                streamingAgentEvents: streamingAgentEvents,
                 onEdit: (index, newContent) {
                   ref.read(messagesProvider.notifier).updateMessage(index, newContent);
                 },
@@ -183,6 +201,29 @@ class _ChatTopBar extends ConsumerWidget {
             ),
           ),
 
+          // Undo button
+          IconButton(
+            icon: Icon(Icons.undo, size: 20),
+            color: MemoTheme.of(context).textDim,
+            tooltip: 'Ajanın Son İşlemini Geri Al',
+            onPressed: () async {
+              try {
+                await ref.read(apiClientProvider).undoAgentEdit();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Son ajan işlemi başarıyla geri alındı.')),
+                  );
+                }
+              } catch (e) {
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('Geri alma başarısız: $e'), backgroundColor: MemoTheme.red),
+                  );
+                }
+              }
+            },
+          ),
+          
           // Export button
           IconButton(
             icon:  Icon(Icons.file_download_outlined, size: 20),

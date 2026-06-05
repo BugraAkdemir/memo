@@ -7,6 +7,7 @@ import (
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
+	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 )
@@ -84,6 +85,10 @@ type FullBridge interface {
 	TestProviderConnection(cfg provider.ProviderConfig) error
 	SetActiveProvider(pt provider.ProviderType)
 	GetActiveProvider() string
+
+	// Orchestra mode
+	GetOrchestraConfig() orchestra.OrchestraConfig
+	UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error
 
 	// Events
 	GetEvents() []map[string]string

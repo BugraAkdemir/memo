@@ -153,6 +153,9 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/providers/test", s.handleProviderTest)
 	mux.HandleFunc("/api/providers/active", s.handleActiveProvider)
 
+	// Orchestra mode
+	mux.HandleFunc("/api/orchestra/config", s.handleOrchestraConfig)
+
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
 		Handler: corsMiddleware(mux),

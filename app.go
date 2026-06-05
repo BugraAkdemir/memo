@@ -17,6 +17,7 @@ import (
 	"sync"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/cloudsync"
 	"memo/internal/config"
@@ -127,6 +128,10 @@ type App struct {
 	activeProvider  provider.ProviderType // which provider is currently active
 
 	orchestraConductor *orchestra.Conductor
+
+	agentExecutor *agent.Executor
+	agentEnabled  bool
+	agentMu       sync.RWMutex
 }
 
 func NewApp() *App {
@@ -281,6 +286,12 @@ func (a *App) startup(ctx context.Context) {
 		},
 	)
 	log.Printf("Orchestra mode initialized (enabled=%v)", orchestraCfg.Enabled)
+
+	// Initialize Agent Executor
+	basePath, _ := filepath.Abs(".")
+	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)
+	a.agentEnabled = false // Default disabled
+	log.Printf("Agent mode initialized (enabled=false)")
 
 	log.Println("Memo ready")
 }
@@ -439,6 +450,14 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		a.sessions.AddMessage("user", userMsg, "", "")
 	}
 
+	a.agentMu.RLock()
+	agentActive := a.agentEnabled
+	a.agentMu.RUnlock()
+
+	if agentActive && a.activeProvider != "" {
+		return a.callAgentStream(ctx, messages, userMsg)
+	}
+
 	return a.callLLMStream(ctx, messages, userMsg, "", "")
 }
 
@@ -528,6 +547,80 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 
 	// Note: for incognito, we don't save to memory/sessions, handled in callLLMStream via isIncognito flag
 	return a.callLLMStream(ctx, msgs, userMsg, "", "")
+}
+
+func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
+	outCh := make(chan api.StreamChunk, 128)
+
+	go func() {
+		defer close(outCh)
+
+		// Convert api.Message to provider.Message
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+
+		sessionID := ""
+		if a.sessions != nil {
+			sessionID = a.sessions.GetActiveID()
+		}
+
+		modelName := ""
+		if a.activeProvider != "" && a.providerRouter != nil {
+			// Find model for active provider
+			for _, p := range a.providerCfgMgr.GetEnabled() {
+				if p.Type == a.activeProvider {
+					modelName = p.Model
+					break
+				}
+			}
+		}
+
+		start := time.Now()
+		var fullReply strings.Builder
+
+		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
+			// Emit agent events as special StreamChunks so frontend can render them
+			chunkData, _ := json.Marshal(ev)
+			trySend(ctx, outCh, api.StreamChunk{
+				Content: string(chunkData),
+				FinishReason: "agent_event", // Special flag
+			})
+		})
+
+		if err != nil {
+			log.Printf("Agent error: %v", err)
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
+		}
+
+		// Forward final response stream
+		for chunk := range streamCh {
+			if chunk.Error != "" {
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+				return
+			}
+
+			if chunk.Content != "" {
+				fullReply.WriteString(chunk.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
+			}
+
+			if chunk.Done {
+				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg)
+				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+				return
+			}
+		}
+
+		if fullReply.Len() > 0 {
+			a.finishStream(start, 0, "stop", fullReply.String(), userMsg)
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+		}
+	}()
+
+	return outCh
 }
 
 func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {

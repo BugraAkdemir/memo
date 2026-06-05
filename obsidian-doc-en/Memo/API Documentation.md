@@ -5,26 +5,70 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 ## Core Endpoints
 
 ### Chat and Messaging
-- `POST /api/send`: Standard message submission.
-- `POST /api/send/stream`: Streaming (SSE) message submission.
-- `POST /api/send_file`: Submission of messages containing files or images.
-- `GET /api/messages`: Fetches the message history of the current session.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/send` | Standard message submission (non-streaming) |
+| `POST` | `/api/send/stream` | Streaming (SSE) message submission |
+| `POST` | `/api/send_file` | File/image message submission (Multipart) |
+| `GET` | `/api/chats` | List all chat sessions |
+| `POST` | `/api/chats/new` | Create new chat session |
+| `POST` | `/api/chats/switch` | Switch active session |
+| `POST` | `/api/chats/delete` | Delete session |
+| `GET` | `/api/messages` | Get active chat history |
 
 ### Memory Management
-- `GET /api/status`: Returns the total number of memories and system status.
-- `POST /api/incognito`: Toggles Incognito Mode.
-- `GET /api/memory/files`: Lists semantic memory files.
-- `POST /api/memory/clear`: Resets all memory.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/status` | System status + memory count |
+| `POST` | `/api/incognito` | Toggle incognito mode |
+| `GET`/`DELETE` | `/api/memory/files` | List/delete memory files |
+| `POST` | `/api/memory/clear` | Clear all memory |
+| `GET`/`PUT` | `/api/system-prompt` | Get/update system prompt |
 
 ### Model Control
-- `GET /api/models/local`: Lists downloaded models.
-- `POST /api/models/start`: Starts a specific model.
-- `POST /api/models/stop`: Stops the running model.
-- `GET /api/gpu`: Returns GPU and VRAM information.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`DELETE` | `/api/models/local` | List/delete local models |
+| `POST` | `/api/models/start` | Start a model |
+| `POST` | `/api/models/stop` | Stop running model |
+| `GET` | `/api/models/status` | Model runtime status |
+| `GET` | `/api/gpu` | GPU/VRAM detection info |
+| `POST` | `/api/models/search` | Search HuggingFace for GGUF |
+| `POST` | `/api/models/download` | Start model download |
+| `GET` | `/api/models/download/progress` | Download progress stream |
+| `GET` | `/api/models/llama/check` | Check llama.cpp installed |
+
+### External Providers (NEW)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT`/`DELETE` | `/api/providers` | List/update/delete provider configs |
+| `POST` | `/api/providers/test` | Test provider connection |
+| `GET`/`PUT` | `/api/providers/active` | Get/set active provider |
+
+### Agent Mode (NEW)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT` | `/api/agent/enabled` | Get/set agent mode |
+| `POST` | `/api/agent/permission` | Respond to permission request |
+| `GET`/`DELETE` | `/api/agent/permissions` | List/revoke permissions |
+
+### Orchestra Mode (NEW)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT` | `/api/orchestra/config` | Get/update orchestra config |
 
 ### Synchronization
-- `GET /api/sync/settings`: Fetches Cloud Sync settings.
-- `PUT /api/sync/settings`: Updates settings.
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT` | `/api/sync/settings` | Get/update Cloud Sync settings |
+
+### Configuration
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT` | `/api/config/llama` | Get/update llama configuration |
+| `POST` | `/api/image` | Read image (path-restricted) |
+| `POST` | `/api/embed/start` | Start embedding server |
+| `POST` | `/api/embed/stop` | Stop embedding server |
 
 ---
-> **Note:** For more details on API usage, you can examine the `internal/webserver/server.go` file.
+> **Note:** For more details on API usage, examine `internal/webserver/server.go` and `internal/webserver/handlers_flutter.go`.

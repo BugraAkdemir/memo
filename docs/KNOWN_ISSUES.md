@@ -209,6 +209,52 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 
 ---
 
+## 🔴 Critical (Provider/Agent/Orchestra)
+
+### C16. Orchestra Bypasses Provider Router — No Fallback
+- **File:** `internal/orchestra/conductor.go:510-540`
+- **Detail:** `createProviderForType` creates providers directly via factory, bypassing `provider.Router`. If a provider fails, there is no fallback chain — the task fails immediately.
+- **Risk:** Orchestra task failure on transient provider errors.
+
+### C17. Agent Pipeline No Streaming — Blocks UI
+- **File:** `internal/agent/pipeline.go:85-180`
+- **Detail:** `Pipeline.Run()` uses non-streaming `ChatCompletion` for tool calls. User sees no response until the entire tool-calling loop completes (potentially minutes).
+- **Risk:** Poor UX, perceived hang.
+
+## 🟠 High (Provider/Agent/Orchestra)
+
+### H11. Provider Priority Field Unused
+- **File:** `internal/provider/config.go`, `router.go:40-55`
+- **Detail:** `ProviderConfig.Priority` field exists but `getActiveEntries()` returns providers in insertion order, not by priority.
+
+### H12. Active Provider Not Visible in Provider Settings UI
+- **File:** `frontend/lib/widgets/settings_dialog.dart:199-281`
+- **Detail:** The `_ProvidersTab` shows provider cards but no indicator of which provider is currently active. User must navigate elsewhere to see active status.
+
+### H13. No Agent API Methods in Frontend ApiClient
+- **File:** `frontend/lib/core/api_client.dart`
+- **Detail:** Backend has fully working agent endpoints but frontend `api_client.dart` has no methods to call them. Agent mode cannot be toggled from UI.
+
+### H14. Agent Permission Dialog Not Implemented
+- **File:** Not created
+- **Detail:** Backend emits `EventPermissionRequest` events but there is no frontend dialog to allow/deny tool calls. Agent pipeline blocks forever waiting for permission response.
+
+## 🟡 Medium (Provider/Agent/Orchestra)
+
+### M13. Orchestra Config Has No Validation
+- **File:** `internal/orchestra/conductor.go:115-120`
+- **Detail:** `UpdateConfig` accepts any role configuration. An invalid chief model or missing role model causes runtime error during execution rather than at config time.
+
+### M14. Agent Pipeline No Timeout Per Tool Call
+- **File:** `internal/agent/pipeline.go:120-150`
+- **Detail:** Individual tool executions have no timeout. A hanging `run_command` blocks the entire pipeline indefinitely (sandbox has 60s timeout but pipeline doesn't enforce it).
+
+### M15. Agent Audit Log Limited to 1000 Entries
+- **File:** `internal/agent/executor.go:40-45`
+- **Detail:** `logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.
+
+---
+
 ## ⚪ Info / Observations
 
 ### I1. GOB Encoding vs. Forward Compatibility
@@ -243,9 +289,12 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 ### I10. Flutter: Hardcoded Turkish strings bypass L10n
 - See L10 for details.
 
+### I11. No Test Files for Provider/Agent/Orchestra
+- **File:** `internal/provider/`, `internal/agent/`, `internal/orchestra/`
+- **Note:** Zero unit tests exist for the three new packages (~4150 lines of production code).
+
 ---
 
-> **Last updated:** 2026-06-03
+> **Last updated:** 2026-06-05
 > **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend
-> **Total bugs:** 31 (🔴10, 🟠10, 🟡8, 🔵0)
-> **Total observations:** 10
+> **Total bugs:** 54 (🔴12, 🟠14, 🟡15, 🔵10) + 11 observations

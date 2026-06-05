@@ -34,3 +34,20 @@ Common issues and their solutions for Memo.
 - Check if "Incognito Mode" is active (it disables memory).
 - Ensure an embedding model is loaded. RAG requires an active embedding server (usually port 8082).
 - Check `data/memory/` to see if `.gob` files are being generated.
+
+## 6. External Provider Connection Issues
+**Issue:** "Failed to connect" or "Authentication error" when using external providers.
+**Solution:**
+- Verify your API key is correct in Settings → API Providers.
+- Use "Test Connection" to diagnose the issue before saving.
+- Check if the provider's base URL is correct (especially for custom endpoints).
+- Rate limits: Some providers (e.g., Grok, Gemini free tier) have strict rate limits. Wait and retry.
+- The router auto-disables providers after 3 consecutive failures. Re-enable from provider settings.
+
+## 7. Agent Mode Not Working
+**Issue:** Agent mode doesn't respond or tool calls fail.
+**Solution:**
+- Agent mode requires an active external provider (local llama.cpp doesn't support tool calling reliably).
+- Enable Agent Mode in settings: `PUT /api/agent/enabled {"enabled": true}`.
+- Agent frontend UI is not yet implemented. Use backend API directly for now.
+- Check `data/permissions.json` if permission policies are blocking tools.

@@ -11,6 +11,7 @@ import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
+import 'agent/agent_mode_toggle.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
    ChatInput({super.key});
@@ -386,6 +387,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       }
                     },
                   ),
+                  const SizedBox(width: 8),
+                  const AgentModeToggle(),
                   const SizedBox(width: 12),
 
                   // ─── Text Input ──────────────────────────

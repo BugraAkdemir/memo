@@ -166,6 +166,18 @@ func (s *Server) handleMemoryFiles(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleAgentUndo(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.UndoLastAgentEdit(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 func (s *Server) handleMemoryClear(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -883,3 +895,78 @@ func (s *Server) handleOrchestraConfig(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
 	}
 }
+
+// ─── Agent Handlers ──────────────────────────────────────────────────
+
+func (s *Server) handleAgentEnabled(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": s.fullBridge.GetAgentEnabled()})
+	case http.MethodPut:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetAgentEnabled(req.Enabled); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleAgentPermission(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		RequestID string `json:"request_id"`
+		Policy    string `json:"policy"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.HandleAgentPermission(req.RequestID, req.Policy); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleAgentPermissions(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		perms := s.fullBridge.GetAgentPermissions()
+		writeJSON(w, perms)
+	case http.MethodDelete:
+		id := r.URL.Query().Get("id")
+		if id != "" {
+			if err := s.fullBridge.RevokeAgentPermission(id); err != nil {
+				http.Error(w, err.Error(), http.StatusNotFound)
+				return
+			}
+		} else {
+			s.fullBridge.ClearAgentPermissions()
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "GET or DELETE", http.StatusMethodNotAllowed)
+	}
+}
+

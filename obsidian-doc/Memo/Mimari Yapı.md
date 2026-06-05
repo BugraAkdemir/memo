@@ -16,14 +16,30 @@ graph TD
     end
 
     subgraph Backend [Headless Go Server]
-        WebServer[Gin Web Server] -->|Bridge| AppGo[Ana Uygulama Motoru]
+        WebServer[http.ServeMux] -->|AppBridge| AppGo[Ana Uygulama Motoru]
         AppGo -->|Vector Search| Memory[Semantik Hafıza]
         AppGo -->|Process Management| Llama[Llama.cpp Wrapper]
         AppGo -->|E2E Encryption| Sync[Google Drive Sync]
+        AppGo -->|Router + Fallback| Providers[Harici LLM Sağlayıcıları]
+        AppGo -->|Tool Registry + Pipeline| Agent[Ajan Motoru]
+        AppGo -->|Şef + Roller| Orchestra[Orkestra Modu]
     end
 
     API_Client <-->|localhost:8090| WebServer
+    Providers -->|HTTP| External[OpenAI / Gemini / Claude ...]
 ```
+
+## Modül Haritası
+| Modül | Dizin | Görev |
+|--------|-----------|------|
+| Web Sunucusu | `internal/webserver/` | REST API (~45 endpoint) |
+| Llama Yöneticisi | `internal/llama/` | llama.cpp yaşam döngüsü |
+| Hafıza Deposu | `internal/memory/` | Vektör DB (.gob + chromem-go) |
+| Bulut Senk. | `internal/cloudsync/` | Google Drive E2E yedek |
+| Kimlik | `internal/identity/` | Sistem promptu & persona |
+| **Sağlayıcılar** | **`internal/provider/`** | **Harici LLM API entegrasyonu** |
+| **Ajan** | **`internal/agent/`** | **Araç çağırma & izinler** |
+| **Orkestra** | **`internal/orchestra/`** | **Çoklu model orkestrasyonu** |
 
 ### Bağlantılı Notlar:
 - [[Sistem Genel Bakış]]: Genel işleyiş şeması.

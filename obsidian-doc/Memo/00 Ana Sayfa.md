@@ -21,6 +21,12 @@ Memo'yu sadece bir sohbet arayüzü değil, bir hafıza kabuğu yapan özellikle
 - [[Bulut Senkronizasyonu]]
 - [[Multimodal Yetenekler (Görsel ve Ses)]]
 
+### 🆕 [[v3.0.0 Özellikleri]]
+Bu sürümde eklenen büyük yeni yetenekler.
+- [[Harici Sağlayıcılar]] — OpenAI, Gemini, Claude, Grok ve daha fazlasına bağlantı
+- [[Ajan Modu]] — AI araç çağırma (dosya işlemleri, komutlar) izin sistemiyle
+- [[Orkestra Modu]] — Uzman rollerle çoklu model orkestrasyonu
+
 ### 🔧 [[Teknik Referans]]
 Geliştiriciler için derinlemesine teknik bilgiler.
 - [[API Dökümantasyonu]]
@@ -35,5 +41,7 @@ Memo'yu kurun, geliştirin ve kullanın.
 - [[Kullanım Kılavuzu]]
 
 ---
+
 > **Felsefemiz:** *Control your AI. Own your Memory.*
 > **Geliştirici:** Buğra
+> **Güncel Sürüm:** v3.0.0-beta

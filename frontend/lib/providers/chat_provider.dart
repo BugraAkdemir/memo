@@ -1,10 +1,13 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../models/agent.dart';
 import '../models/chat.dart';
+import 'agent_provider.dart';
 import 'settings_provider.dart';
 
 /// Global API client instance.
@@ -85,6 +88,9 @@ final streamingContentProvider = StateProvider<String>((ref) => '');
 /// Holds the currently streaming thinking content (token by token).
 final streamingThinkingProvider = StateProvider<String>((ref) => '');
 
+/// Holds the agent events while streaming.
+final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>((ref) => []);
+
 // ─── Messages ───────────────────────────────────────────────────
 
 final messagesProvider =
@@ -103,6 +109,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(isSendingProvider.notifier).state = false;
     ref.read(streamingContentProvider.notifier).state = '';
     ref.read(streamingThinkingProvider.notifier).state = '';
+    ref.read(streamingAgentEventsProvider.notifier).state = [];
   }
 
   @override
@@ -129,6 +136,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           imagePath: current[index].imagePath,
           filePath: current[index].filePath,
           timestamp: current[index].timestamp,
+          agentEvents: current[index].agentEvents,
         );
         state = AsyncData(current);
       }
@@ -176,17 +184,43 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       final streamingEnabled = ref.read(streamingEnabledProvider);
       String fullReply = '';
       String fullThinking = '';
+      List<AgentEvent> finalAgentEvents = [];
 
       if (streamingEnabled) {
         final stream = api.sendMessageStream(message, cancelToken: _cancelToken);
 
         await for (final chunk in stream) {
-          fullReply += chunk.content;
-          fullThinking += chunk.thinking ?? '';
+          if (chunk.finishReason == 'agent_event') {
+            try {
+              final ev = AgentEvent.fromJson(json.decode(chunk.content));
+              final currentEvents = [...ref.read(streamingAgentEventsProvider)];
+              
+              // Handle update or add logic (ToolExecuting vs ToolResult vs ToolError)
+              final existingIdx = currentEvents.lastIndexWhere((e) => e.toolName == ev.toolName && e.type != 'permission_request' && ev.type != 'permission_request');
+              if (existingIdx != -1 && (ev.type == 'tool_result' || ev.type == 'tool_error')) {
+                  // Replace executing state with result
+                  currentEvents[existingIdx] = ev;
+              } else {
+                  currentEvents.add(ev);
+              }
+              
+              ref.read(streamingAgentEventsProvider.notifier).state = currentEvents;
+              finalAgentEvents = currentEvents;
 
-          // Update streaming providers instead of copying the entire message list
-          ref.read(streamingContentProvider.notifier).state = fullReply;
-          ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+              if (ev.type == 'permission_request') {
+                ref.read(agentEventBusProvider).emit(ev);
+              }
+            } catch (e) {
+               // ignore parse errors
+            }
+          } else {
+            fullReply += chunk.content;
+            fullThinking += chunk.thinking ?? '';
+
+            // Update streaming providers instead of copying the entire message list
+            ref.read(streamingContentProvider.notifier).state = fullReply;
+            ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+          }
         }
 
         if (_stopped) {
@@ -199,13 +233,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
       // Append final assistant message to the list
       final list = [...(state.valueOrNull ?? <ChatMessage>[])];
-      if (fullReply.isNotEmpty || fullThinking.isNotEmpty) {
+      if (fullReply.isNotEmpty || fullThinking.isNotEmpty || finalAgentEvents.isNotEmpty) {
         list.add(
           ChatMessage(
             role: 'assistant',
             content: fullReply,
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
             timestamp: timestamp,
+            agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
           ),
         );
       }
@@ -214,6 +249,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       // Clear streaming state before refresh to avoid stale UI
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
+      ref.read(streamingAgentEventsProvider.notifier).state = [];
 
       // Refresh chat metadata — wait a beat so async title generation finishes
       ref.invalidate(chatListProvider);
@@ -225,6 +261,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       // Clear streaming state on error
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
+      ref.read(streamingAgentEventsProvider.notifier).state = [];
       await refresh();
     } finally {
       _cancelToken = null;

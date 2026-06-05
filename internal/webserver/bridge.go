@@ -2,6 +2,7 @@ package webserver
 
 import (
 	"context"
+	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/llama"
@@ -51,6 +52,15 @@ type FullBridge interface {
 	// Recording
 	StartRecording() error
 	StopRecordingAndTranscribe() (string, error)
+
+	// Agent
+	GetAgentEnabled() bool
+	SetAgentEnabled(enabled bool) error
+	HandleAgentPermission(requestID string, policy string) error
+	GetAgentPermissions() []agent.PermissionRecord
+	RevokeAgentPermission(id string) error
+	ClearAgentPermissions()
+	UndoLastAgentEdit() error
 
 	// Models
 	SearchModels(query string) ([]modelstore.HFModelResult, error)

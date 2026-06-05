@@ -14,10 +14,10 @@
     {
       "type": "gemini",
       "name": "Google Gemini",
-      "api_key_encrypted": "e5fad20a2b193ccafbfcf0fc4391f731737ebc908a4af92667e9ac9d2ee405b1417b8dd0ab794b2c9b56f7a6a4263dea7d4eb2f42dc76ef54bfb555059500e54b2f2f4525e622fa10e4937fcb83e6e5d43",
+      "api_key_encrypted": "ae48398246c05b24c404978112dd07231fbe3bbd598f168cc4483ac13bb6a99f74dab1eef5d232c03523a63889581d0ed38e4b8b34b2b12932199542c22cd0987b2078eaf871150381fe537e78cbc48f92",
       "base_url": "https://generativelanguage.googleapis.com/v1beta",
       "model": "gemini-2.0-flash",
-      "enabled": false,
+      "enabled": true,
       "priority": 0,
       "temperature": 0.7,
       "top_p": 0.9
@@ -39,17 +39,6 @@
       "priority": 0
     },
     {
-      "type": "openrouter",
-      "name": "Kimi",
-      "api_key_encrypted": "9c0c80ed4d5c3041662366ed7cd3f0c2f9622bf899111883c5b4a543b5f4f8fbe4dcdd60cae00d0e83bab8ff1d22f45d1c828a439846e2ead42e56210932d3a3cd7d03f599eb6d1918dd11f4a157800b48f546efcad62ed1e57270f0652893d20949cd6ea0",
-      "base_url": "https://openrouter.ai/api/v1",
-      "model": "moonshotai/kimi-k2.6:free",
-      "enabled": true,
-      "priority": 0,
-      "temperature": 0.7,
-      "top_p": 0.9
-    },
-    {
       "type": "ollama",
       "name": "Ollama",
       "api_key_encrypted": "",
@@ -60,7 +49,7 @@
     {
       "type": "groq",
       "name": "Groq",
-      "api_key_encrypted": "3ef9d98b449d402920ec714111c97fee6bd2f0ff8596e1310c7c1158dafa1defc1f6891dc2d9542afc2d804f1195a63f23893c881545d2d7f70f156ea078118b080f8ddd1ff0b200cee27580de7f472d96347c61",
+      "api_key_encrypted": "17f1a060f907ada97ebb144e2d6fce3d2373547ed0e6c4b03df24a75e31f6f42e7ff01e74fb3f3ea484ff4c3041a3ca794719118996fb53944db35342cd8168d38fca3e8996c9fd80d35136c4ed65744e62ca26f",
       "base_url": "https://api.groq.com/openai/v1",
       "model": "openai/gpt-oss-20b",
       "enabled": false,

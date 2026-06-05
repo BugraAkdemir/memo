@@ -16,14 +16,30 @@ graph TD
     end
 
     subgraph Backend [Headless Go Server]
-        WebServer[Gin Web Server] -->|Bridge| AppGo[Core App Engine]
+        WebServer[http.ServeMux] -->|AppBridge| AppGo[Core App Engine]
         AppGo -->|Vector Search| Memory[Semantic Memory]
         AppGo -->|Process Management| Llama[Llama.cpp Wrapper]
         AppGo -->|E2E Encryption| Sync[Google Drive Sync]
+        AppGo -->|Router + Fallback| Providers[External LLM Providers]
+        AppGo -->|Tool Registry + Pipeline| Agent[Agent Engine]
+        AppGo -->|Chief + Roles| Orchestra[Orchestra Mode]
     end
 
     API_Client <-->|localhost:8090| WebServer
+    Providers -->|HTTP| External[OpenAI / Gemini / Claude ...]
 ```
+
+## Module Map
+| Module | Directory | Role |
+|--------|-----------|------|
+| Web Server | `internal/webserver/` | REST API (~45 endpoints) |
+| Llama Manager | `internal/llama/` | llama.cpp lifecycle |
+| Memory Store | `internal/memory/` | Vector DB (.gob + chromem-go) |
+| Cloud Sync | `internal/cloudsync/` | Google Drive E2E backup |
+| Identity | `internal/identity/` | System prompt & persona |
+| **Providers** | **`internal/provider/`** | **External LLM API integration** |
+| **Agent** | **`internal/agent/`** | **Tool calling & permissions** |
+| **Orchestra** | **`internal/orchestra/`** | **Multi-model orchestration** |
 
 ### Linked Notes:
 - [[System Overview]]: General workflow diagram.

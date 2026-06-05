@@ -67,7 +67,87 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ---
 
-## 5. 👁️ Multimodality & Senses
+## 5. 🔌 External Provider Support
+
+### Multi-Provider Architecture
+Memo connects to external LLM APIs alongside local models:
+- **Supported Providers:** OpenAI (GPT-4o, o1, o3), Google Gemini (2.0 Flash, 2.5 Pro), xAI Grok (2, 3), Anthropic Claude (3.5 Sonnet, 3 Opus), OpenRouter (unified access), Groq (fast inference), Ollama (local alternative)
+- **Provider Interface:** Common `Provider` interface with `ChatCompletion`, `ChatCompletionStream`, `ListModels`
+- **Fallback Chain:** Router tries providers in order; auto-disables after 3 consecutive failures; health-check re-enables on recovery
+
+### Encrypted Key Management
+- **AES-256-GCM Encryption:** API keys encrypted with machine-derived key (`/etc/machine-id`)
+- **Key Storage:** `data/providers.json` with encrypted key values
+- **Test Connection:** Built-in test button validates connectivity before saving
+
+### Frontend Provider UI
+- **API Providers Tab:** Settings tab for adding/editing providers
+- **Configuration Dialog:** Provider type selector, API key input (masked), base URL, model dropdown
+- **Active Provider Selection:** Choose which provider is active for chat
+
+---
+
+## 6. 🧠 Agent Mode (Tool Calling)
+
+### Tool Execution Engine
+Memo acts as an AI agent with full computer control:
+- **8 Built-in Tools:** `read_file`, `write_file`, `delete_file`, `list_directory`, `run_command`, `search_files`, `get_file_info`, `read_env`
+- **Tool Registry:** Thread-safe registry with JSON Schema parameter definitions
+- **Danger Level System:** `safe` (auto-allowed), `medium` (prompt user), `dangerous` (prompt + delay)
+
+### Permission System
+- **6 Policy Types:** PromptAlways, AllowOnce, AllowSession, AllowForever, DenyOnce, DenyForever
+- **Session Persistence:** Permissions stored in `data/permissions.json`
+- **Arg Hashing:** SHA-256 hashing for permission matching
+
+### Security Sandbox
+- **Path Traversal Protection:** Symlink resolution, `..` blocking, project root confinement
+- **Command Blacklist:** 23 dangerous patterns blocked (`rm -rf /`, `sudo`, fork bombs, etc.)
+- **Rate Limiting:** 30 tool calls/minute, 5s cooldown per command
+
+### Agent Pipeline
+- **LLM ↔ Tool Loop:** Sends user message + tool definitions to LLM, executes tool calls, feeds results back, loops until final response (max 20 iterations)
+- **Event Streaming:** Tool execution events streamed to frontend via SSE
+- **Audit Log:** Last 1000 tool executions logged with timestamps
+
+> **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) is not yet implemented. Agent works via backend API only.
+
+---
+
+## 7. 🎵 Orchestra Mode (Multi-Model Orchestration)
+
+### Concept
+Multiple AI models collaborate as a team:
+1. **Chief Model** analyzes user request, breaks into subtasks
+2. **Expert Roles** execute tasks in parallel (frontend, backend, bug_fixer, etc.)
+3. **Chief Model** synthesizes results into a single coherent response
+
+### Built-in Roles
+| Role | Default Model | Purpose |
+|------|-------------|---------|
+| Planner | Claude | Software architecture, task decomposition |
+| Frontend | Grok | UI development |
+| Backend | GPT-4o | API/server logic |
+| Bug Fixer | Gemini | Debugging, root cause analysis |
+| Reviewer | Claude | Code quality review |
+| Security | GPT-4o | Security auditing |
+| DevOps | Grok | Infrastructure/deploy |
+| General | GPT-4o | General-purpose fallback |
+
+### Execution Model
+- **Parallel Tasks:** Independent tasks run concurrently (goroutines + WaitGroup)
+- **Sequential Tasks:** Dependency resolution via `depends_on` field
+- **Retry:** Rate-limit aware retry with exponential backoff (up to 3 retries)
+- **Streaming:** Progress updates streamed per phase (plan → execute → synthesize)
+
+### Frontend Controls
+- **Settings Tab:** Enable/disable, configure chief model, assign models to roles
+- **Config Dialog:** Role editor with model selection, system prompt editing, custom role support
+- **Slash Command:** `/orchestra on`, `/orchestra off`, `/orchestra config`, `/orchestra status`
+
+---
+
+## 8. 👁️ Multimodality & Senses
 
 ### Vision Support (Multimodal)
 - **Image Integration**: Drag-and-drop or upload images for analysis (requires a multimodal-capable GGUF like Llava or Moondream).

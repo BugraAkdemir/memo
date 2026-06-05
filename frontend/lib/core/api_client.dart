@@ -58,10 +58,11 @@ class MemoApiClient {
             if (data['error'] != null && (data['error'] as String).isNotEmpty) {
               throw Exception(data['error'] as String);
             }
-            if (data['content'] != null || data['thinking'] != null) {
+            if (data['content'] != null || data['thinking'] != null || data['finish_reason'] != null) {
               yield StreamChunk(
                 content: data['content'] as String? ?? '',
                 thinking: data['thinking'] as String?,
+                finishReason: data['finish_reason'] as String?,
               );
             }
             if (data['done'] == true) {
@@ -594,5 +595,50 @@ class MemoApiClient {
   /// Update orchestra config.
   Future<void> updateOrchestraConfig(OrchestraConfig config) async {
     await _dio.put('/api/orchestra/config', data: config.toJson());
+  }
+
+  // ─── Agent Mode ───────────────────────────────────────────────────
+
+  /// Get agent enabled status.
+  Future<bool> getAgentEnabled() async {
+    final res = await _dio.get('/api/agent/enabled');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  /// Set agent enabled status.
+  Future<void> setAgentEnabled(bool enabled) async {
+    await _dio.put('/api/agent/enabled', data: {'enabled': enabled});
+  }
+
+  /// Send permission response.
+  Future<void> handleAgentPermission(String requestId, String policy) async {
+    await _dio.post('/api/agent/permission', data: {
+      'request_id': requestId,
+      'policy': policy,
+    });
+  }
+
+  /// Get persistent agent permissions.
+  Future<List<Map<String, dynamic>>> getAgentPermissions() async {
+    final res = await _dio.get('/api/agent/permissions');
+    if (res.data is List) {
+      return (res.data as List).cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Revoke a specific agent permission by ID.
+  Future<void> revokeAgentPermission(String id) async {
+    await _dio.delete('/api/agent/permissions', queryParameters: {'id': id});
+  }
+
+  /// Clear all agent permissions.
+  Future<void> clearAgentPermissions() async {
+    await _dio.delete('/api/agent/permissions');
+  }
+
+  /// Undo the last agent file edit.
+  Future<void> undoAgentEdit() async {
+    await _dio.post('/api/agent/undo');
   }
 }

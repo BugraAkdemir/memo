@@ -101,8 +101,9 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
       ref.invalidate(modelStatusProvider);
 
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
+        messenger.showSnackBar(
           SnackBar(
             content: Text('✅ ${widget.model.filename} ${L10n.t('starting')}...'),
             backgroundColor: Colors.green.shade800,

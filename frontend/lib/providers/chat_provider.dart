@@ -111,6 +111,13 @@ final messagesProvider =
 class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   CancelToken? _cancelToken;
   bool _stopped = false;
+  Timer? _delayedRefreshTimer;
+
+  @override
+  Future<List<ChatMessage>> build() async {
+    ref.onDispose(() => _delayedRefreshTimer?.cancel());
+    return ref.read(apiClientProvider).getMessages();
+  }
 
   void stopStreaming() {
     _stopped = true;
@@ -120,11 +127,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(streamingContentProvider.notifier).state = '';
     ref.read(streamingThinkingProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
-  }
-
-  @override
-  Future<List<ChatMessage>> build() async {
-    return ref.read(apiClientProvider).getMessages();
   }
 
   Future<void> refresh() async {
@@ -263,7 +265,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
       // Refresh chat metadata — wait a beat so async title generation finishes
       ref.invalidate(chatListProvider);
-      Future.delayed(const Duration(seconds: 2), () {
+      _delayedRefreshTimer?.cancel();
+      _delayedRefreshTimer = Timer(const Duration(seconds: 2), () {
         ref.invalidate(chatListProvider);
       });
     } catch (e) {

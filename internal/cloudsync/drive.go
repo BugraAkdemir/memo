@@ -38,7 +38,9 @@ type driveClient struct {
 	folderID  string // cached "Memo Backups" folder ID
 
 	// authWg counts in-flight OAuth flows; WaitForAuth blocks until Done is called.
-	authWg sync.WaitGroup
+	authWg   sync.WaitGroup
+	authDone bool      // prevents duplicate authWg.Done() panic
+	authSrv  *http.Server // current auth HTTP server; shut down before starting a new one
 }
 
 func newDriveClient(clientID, clientSecret, tokenPath string) (*driveClient, error) {
@@ -77,7 +79,9 @@ func (dc *driveClient) IsAuthenticated() bool {
 	if token == nil {
 		return false
 	}
-	ts := cfg.TokenSource(context.Background(), token)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	ts := cfg.TokenSource(ctx, token)
 	t, err := ts.Token()
 	if err != nil {
 		return false
@@ -95,9 +99,17 @@ func (dc *driveClient) IsAuthenticated() bool {
 // StartAuthFlow starts a loopback HTTP server, returns the URL the user must
 // open in a browser. Call WaitForAuth to block until the flow completes.
 func (dc *driveClient) StartAuthFlow() (string, error) {
-	// Reset the WaitGroup so the flow can be restarted.
-	// Add must be called before anyone can Wait.
+	dc.mu.Lock()
+	// Shut down any previous auth server to avoid leak (C6).
+	if dc.authSrv != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		_ = dc.authSrv.Shutdown(ctx)
+		cancel()
+	}
+	dc.authDone = false
+	dc.authWg = sync.WaitGroup{}
 	dc.authWg.Add(1)
+	dc.mu.Unlock()
 
 	ln, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -116,6 +128,10 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 
 	mux := http.NewServeMux()
 	srv := &http.Server{Handler: mux}
+
+	dc.mu.Lock()
+	dc.authSrv = srv
+	dc.mu.Unlock()
 
 	mux.HandleFunc("/callback", func(w http.ResponseWriter, r *http.Request) {
 		code := r.URL.Query().Get("code")
@@ -466,5 +482,9 @@ func (dc *driveClient) saveToken(t *oauth2.Token) error {
 }
 
 func (dc *driveClient) closeAuthDoneLocked() {
+	if dc.authDone {
+		return // prevent duplicate Done panic (H1)
+	}
+	dc.authDone = true
 	dc.authWg.Done()
 }

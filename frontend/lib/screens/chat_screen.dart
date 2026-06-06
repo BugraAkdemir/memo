@@ -243,7 +243,7 @@ class _ChatTopBar extends ConsumerWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          'Agent',
+                          L10n.t('agent_badge'),
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
@@ -274,19 +274,19 @@ class _ChatTopBar extends ConsumerWidget {
             IconButton(
               icon: Icon(Icons.undo, size: 20),
               color: MemoTheme.of(context).textDim,
-              tooltip: 'Ajanın Son İşlemini Geri Al',
+              tooltip: L10n.t('agent_undo'),
               onPressed: () async {
                 try {
                   await ref.read(apiClientProvider).undoAgentEdit();
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Son ajan işlemi başarıyla geri alındı.')),
+                      SnackBar(content: Text(L10n.t('agent_undone'))),
                     );
                   }
                 } catch (e) {
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Geri alma başarısız: $e'), backgroundColor: MemoTheme.red),
+                      SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': e.toString()})), backgroundColor: MemoTheme.red),
                     );
                   }
                 }
@@ -313,14 +313,14 @@ class _ChatTopBar extends ConsumerWidget {
                   await File(path).writeAsString(md);
                   if (context.mounted) {
                     ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('Chat kaydedildi: $path')),
+                      SnackBar(content: Text(L10n.t('chat_exported', {'path': path}))),
                     );
                   }
                 }
               } catch (e) {
                 if (context.mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Export failed: $e')),
+                    SnackBar(content: Text(L10n.t('export_failed', {'e': e.toString()}))),
                   );
                 }
               }

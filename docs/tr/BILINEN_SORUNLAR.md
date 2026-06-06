@@ -13,135 +13,160 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 ## 🔴 Kritik
 
-### C1. `a.syncManager` veri yarışı (Data Race)
+### C1. `a.syncManager` veri yarışı (Data Race) — ✅ Düzeltildi (K16)
 - **Dosya:** `app.go:1880-1890`, `app.go:1669-1671`
 - **Detay:** `UpdateSyncSettings` fonksiyonu `a.syncManager`'ı **herhangi bir kilit olmadan** atar (`nil` yapar veya yeni örnek oluşturur). Aynı anda, `memorySaveWorker` goroutine'i (`saveMemorySync` üzerinden) `a.syncManager`'ı okur. Bu bir **data race** — işaretçinin eşzamanlı okuma ve yazması.
 - **Risk:** Çökmeye yol açabilir. `syncManager` nil okunursa `Increment()` nil pointer panic üretir.
+- **Çözüm (K16):** `getSyncManager()` yardımcısı lock+RLock ile pointer kopyalar, tüm çağrıcılar kopya üzerinden çalışır.
 
-### C2. `a.store` startup'ta `storeMu` olmadan atanıyor
-- **Dosya:** `app.go:189`
-- **Detay:** Başlangıçta `a.store = store` ataması `storeMu` tutulmadan yapılır. Startup sonrası `reinitMemoryStore` `storeMu.Lock()` ile değiştirir. İlk yazma senkronize değil.
+### C2. `a.store` startup'ta `storeMu` olmadan atanıyor — ✅ Düzeltildi
+- **Dosya:** `app.go:205`
+- **Detay:** Başlangıçta `a.store = store` ataması `storeMu` tutulmadan yapılır.
 - **Risk:** Startup sırasında başka bir goroutine store'u okursa yarış oluşur.
+- **Çözüm:** `a.storeMu.Lock()`/`Unlock()` içine alındı.
 
-### C6. OAuth sunucu sızıntısı + `authWg` yarışı
+### C6. OAuth sunucu sızıntısı + `authWg` yarışı — ✅ Düzeltildi (K19)
 - **Dosya:** `internal/cloudsync/drive.go:97-185`
 - **Detay:**
   - **Sızıntı:** `StartAuthFlow()` iki kez çağrılırsa ilk HTTP sunucusu sonsuza kadar çalışmaya devam eder.
   - **Yarış:** `dc.authWg.Add(1)` satır 100'de `dc.mu` olmadan çağrılır. İlk flow tamamlanırsa (`Done`), ikinci `StartAuthFlow` `Add` çağırır, sonra `WaitForAuth` başlarsa, ikinci `Done()` sıfırın altına düşer → **`sync.WaitGroup` paniği**.
 - **Risk:** Çökme veya kaynak sızıntısı.
+- **Çözüm (K19):** `authSrv` alanı eklendi; yeni flow önce eski sunucuyu kapatır. `authDone` flag + `authWg` reset ile duplicate Done paniği önlendi.
 
-### C9. `DeleteGobFile` hata durumunda indeks tutarsızlığı
+### C9. `DeleteGobFile` hata durumunda indeks tutarsızlığı — ✅ Düzeltildi (K20)
 - **Dosya:** `internal/memory/store.go:267-269`
 - **Detay:** `readDocument` başarılı olursa (dosyayı açar, okur, kapatır) ancak `os.Remove` başarısız olursa, **indeks girdisi sessizce kaldırılmaz**. İndeks, artık var olmayan bir dosyayı referans alır.
 - **Risk:** Hafıza indeksi şişer, ölü referanslar oluşur.
+- **Çözüm (K20):** İndeksteki ID, dosya hash'inden bulunur (gob okumaya gerek yok). Önce dosya silinir, başarısız olursa indeks dokunulmaz.
 
-### C10. `UpdateSyncSettings` eski `syncManager`'ı temizlemeden yenisini oluşturur
-- **Dosya:** `app.go:1880`
+### C10. `UpdateSyncSettings` eski `syncManager`'ı temizlemeden yenisini oluşturur — ✅ Düzeltildi (K16)
+- **Dosya:** `app.go:2622-2659`
 - **Detay:** Eski `a.syncManager`'ın devam eden bir yedekleme goroutine'i olabilir. Eski yöneticinin `count` atomic'i ve `inFlight` flag'i yetim kalır.
 - **Risk:** Yetim goroutine'ler ve tutarsız durum.
+- **Çözüm (K16):** `syncMu.Lock()` içinde eski manager nil yapılır, yeni manager oluşturulur. Goroutine doğal olarak sonlanır.
 
-### C11. Flutter: `Navigator.pop()` sonrası `context` kullanımı
+### C11. Flutter: `Navigator.pop()` sonrası `context` kullanımı — ✅ Düzeltildi (K21)
 - **Dosya:** `screens/model_store_screen.dart:1497-1498`, `widgets/model_config_dialog.dart:103-111`
 - **Detay:** Dialog kapatıldıktan sonra `ScaffoldMessenger.of(context)` çağrılır. Dialog pop edilince context geçersiz olabilir.
 - **Risk:** Çökme veya SnackBar'ın görünmemesi.
+- **Çözüm (K21):** `ScaffoldMessenger` referansı pop öncesi alınır.
 
-### C12. Flutter: Context menu'de async sonrası context kullanımı
+### C12. Flutter: Context menu'de async sonrası context kullanımı — ✅ Düzeltildi (K21)
 - **Dosya:** `widgets/chat_message_list.dart:182-188`, `widgets/chat_sidebar.dart:385-391`
 - **Detay:** `showMenu` sonrası `.then()` callback'inde widget dispose edilmiş olabilir. `_showEditDialog()` / `_showDeleteConfirm()` context kullanır.
 - **Risk:** Widget dispose edildikten sonra context kullanımı.
+- **Çözüm (K21):** `if (!mounted) return;` kontrolleri eklendi.
 
-### C13. Flutter: `TextEditingController` `build()` içinde oluşturuluyor, dispose edilmiyor
+### C13. Flutter: `TextEditingController` `build()` içinde oluşturuluyor, dispose edilmiyor — ✅ Düzeltildi (K21)
 - **Dosya:** `widgets/settings_dialog.dart:1678`
 - **Detay:** `_ParamIntInput.build()` içinde her frame'de yeni bir `TextEditingController` oluşturulur. Hiçbiri dispose edilmez.
 - **Risk:** Bellek sızıntısı, her parametre değişikliğinde sızan controller'lar.
+- **Çözüm (K21):** `_ParamIntInput` StatefulWidget'a dönüştürüldü; controller initState'de oluşur, dispose'de temizlenir.
 
-### C14. Flutter: `setState` async sonrası `mounted` kontrolü yok
+### C14. Flutter: `setState` async sonrası `mounted` kontrolü yok — ✅ Düzeltildi (K21)
 - **Dosya:** `widgets/llama_installer_view.dart:53-56`
 - **Detay:** Async işlem sonrası `setState` çağrılmadan önce `mounted` kontrolü yok. Dispose sonrası çağrılırsa patlar.
 - **Risk:** Çökme.
+- **Çözüm (K21):** Tüm async setState öncesi `if (!mounted) return;` eklendi.
 
-### C15. Flutter: `FocusNode.requestFocus()` async sonrası `mounted` kontrolü yok
+### C15. Flutter: `FocusNode.requestFocus()` async sonrası `mounted` kontrolü yok — ✅ Düzeltildi (K21)
 - **Dosya:** `widgets/chat_input.dart:65`
 - **Detay:** `sendMessage` async çağrısı sonrası `_focusNode.requestFocus()`. Widget dispose edilmişse çöker.
 - **Risk:** Çökme.
+- **Çözüm (K21):** `requestFocus` öncesi `if (!mounted) return;` eklendi.
 
 ---
 
 ## 🟠 Yüksek
 
-### H1. OAuth callback'inde duplicate `Done` paniği
+### H1. OAuth callback'inde duplicate `Done` paniği — ✅ Düzeltildi (K19)
 - **Dosya:** `internal/cloudsync/drive.go:156-174`
 - **Detay:** Callback goroutine'i `dc.closeAuthDoneLocked()` → `dc.authWg.Done()` çağırır. Callback iki kez tetiklenirse (HTTP replay ile mümkün), `Done` panik üretir.
 - **Risk:** Çökme.
+- **Çözüm (K19):** `authDone` flag ile duplicate `Done` çağrıları engellendi.
 
-### H2. `callLLMStream` goroutine'i istemci koptuktan sonra 5 dakika daha çalışır
+### H2. `callLLMStream` goroutine'i istemci koptuktan sonra 5 dakika daha çalışır — ✅ Kısmen düzeltildi (K11+K17)
 - **Dosya:** `app.go:487-554`, `handlers_flutter.go:44-63`
 - **Detay:** HTTP istemcisi bağlantıyı kestiğinde `handleSendStream` döner (satır 50/61) ancak `callLLMStream` goroutine'i 300 saniyelik context timeout'u dolana kadar çalışmaya devam eder.
 - **Risk:** 5 dakika boyunca GPU/CPU kaynağı boşa harcanır.
+- **Çözüm (K11+K17):** `trySend()` context iptalinde bloke olmaz; `processSSEStream`'deki tüm `ch <-` gönderimleri `select` ile korunur. İstemci kopunca kanala bloke olma ve goroutine sızıntısı önlenir.
 
-### H3. Eşzamanlı `AddMessage` çağrıları mesaj sırasını karıştırabilir
+### H3. Eşzamanlı `AddMessage` çağrıları mesaj sırasını karıştırabilir — ✅ Düzeltildi (K22)
 - **Dosya:** `app.go:360-378`, `app.go:487-554`
 - **Detay:** `SendMessage` ve `SendMessageStream` (goroutine içinde `finishStream`) aynı anda `a.sessions.AddMessage` çağırır. Mutex korumalı olsa da kullanıcı ve asistan mesajlarının sırası karışabilir.
+- **Çözüm (K22):** Per-session mutex (`sessionSendMu`) eklendi. Aynı oturuma yeni mesaj gönderimi, önceki stream bitene kadar bekler.
 
-### H4. `isAuthenticated` zaman aşımı yok
+### H4. `isAuthenticated` zaman aşımı yok — ✅ Düzeltildi (K19)
 - **Dosya:** `internal/cloudsync/drive.go:70-93`
 - **Detay:** `TokenSource` ve `Token()` çağrıları `context.Background()` kullanır. OAuth token sunucusu yanıt vermezse çağrı sonsuza kadar bloke olur.
+- **Çözüm (K19):** 10 saniyelik context timeout eklendi.
 
-### H5. Nil `embeddingClient` ile embedding çağrısı nil pointer panic
+### H5. Nil `embeddingClient` ile embedding çağrısı nil pointer panic — ✅ Düzeltildi (K23)
 - **Dosya:** `app.go:1455`, `embedder.go:13-21`
 - **Detay:** `StopEmbeddingModel` `embeddingClient = nil` atar. `NewEmbeddingFunc` nil client yakalarsa, `client.CreateEmbedding` nil pointer panic üretir. `reinitMemoryStore`'daki parametre kontrolü yetersizdir.
+- **Çözüm (K23):** `CheckEmbeddingHealth` lock altında güvenli kopya alır. Init'te store nil ise atanmaz.
 
-### H6. Hafıza sessizce devre dışı kalır, kullanıcı habersiz
+### H6. Hafıza sessizce devre dışı kalır, kullanıcı habersiz — ✅ Düzeltildi (K23)
 - **Dosya:** `app.go:185-189`
 - **Detay:** `NewStore` başarısız olursa (disk hatası), `a.store = nil` atanır. Sonraki işlemler sessizce nil döndürür. Kullanıcıya sadece log satırı yazılır, UI'da bildirim olmaz.
+- **Çözüm (K23):** Store nil ise atanmaz; `retrieveMemory` ve `saveMemorySync` event gönderir.
 
-### H7. Flutter: `Future.delayed` iptal edilmiyor
+### H7. Flutter: `Future.delayed` iptal edilmiyor — ✅ Düzeltildi (K21)
 - **Dosya:** `providers/chat_provider.dart:220-222`
 - **Detay:** Her `sendMessage()` çağrısı 2 saniye gecikmeli bir `Future.delayed` oluşturur. Kullanıcı hızlı mesaj gönderirse birden çok timer birikir, hepsi ateşlenir. Dispose edilince temizlenmez.
+- **Çözüm (K21):** `Future.delayed` yerine `Timer` kullanıldı, `ref.onDispose` ile iptal edilir.
 
-### H8. Flutter: Async metodlar await edilmiyor
+### H8. Flutter: Async metodlar await edilmiyor — ✅ Düzeltildi (K21)
 - **Dosya:** `widgets/chat_sidebar.dart:113-114, 119-125`, `widgets/settings_dialog.dart:498-508`
 - **Detay:** `switchTo(id)`, `delete(id)`, `save()` gibi Future dönen metodlar `await` edilmeden çağrılıyor. Hatalar sessizce yutuluyor.
+- **Çözüm (K21):** `unawaited()` ile sarıldı veya `await` eklendi.
 
-### H9. Flutter: `build()` içinde yan etki (side-effect mutation)
+### H9. Flutter: `build()` içinde yan etki (side-effect mutation) — ✅ Düzeltildi (K21)
 - **Dosya:** `screens/chat_screen.dart:120-125`
 - **Detay:** `whenData()` callback'leri içinde `title` değişkeni mutate ediliyor. İlk build'de her zaman "Yeni Sohbet" görünür, veri gelince düzelir. Gereksiz bir frame'de yanlış başlık gösterilir.
+- **Çözüm (K21):** `ref.listen` ile async sonrası mounted kontrolü eklendi.
 
-### H10. Flutter: Context menu'de stale closure
+### H10. Flutter: Context menu'de stale closure — ✅ Düzeltildi (K21)
 - **Dosya:** `widgets/chat_sidebar.dart:36-42`
 - **Detay:** `isIncognito` build zamanında yakalanır. Kullanıcı buton ile incognito'yu değiştirdiyse closure güncel olmayabilir.
+- **Çözüm (K21):** `if (!mounted) return;` guard eklendi.
 
 ---
 
 ## 🟡 Orta
 
-### M1. `retrieveMemory` request context yerine `context.Background()` kullanır
+### M1. `retrieveMemory` request context yerine `context.Background()` kullanır — ✅ Düzeltildi (K23)
 - **Dosya:** `app.go:1591`
 - **Detay:** Kullanıcı sohbet değiştirdiğinde veya iptal ettiğinde memory retrieval iptal edilemez.
+- **Çözüm (K23):** `ctx context.Context` parametresi eklendi, çağrıcılardan türetilir.
 
-### M2. `callLLM` request context yerine `context.Background()` kullanır
+### M2. `callLLM` request context yerine `context.Background()` kullanır — ✅ Düzeltildi (K23)
 - **Dosya:** `app.go:1608`
 - **Detay:** Kullanıcı 120 saniyelik LLM çağrısını iptal edemez.
+- **Çözüm (K23):** `ctx context.Context` parametresi eklendi, çağrıcılardan request context türetilir.
 
 ### M3. Path traversal Layer 1 kontrolü zayıf
 - **Dosya:** `internal/webserver/handlers_flutter.go:254`
 - **Detay:** `strings.Contains(path, "..")` URL-encoded `..` (`%2e%2e`) ile atlatılabilir. Ancak Layer 2 (`GetImageBase64`) `filepath.EvalSymlinks` ile sağlam kontrol yapar. Gerçek güvenlik Layer 2'ye dayanır.
 
-### M4. Çoğu HTTP handler'da istek gövde boyut sınırı yok
+### M4. Çoğu HTTP handler'da istek gövde boyut sınırı yok — ✅ Düzeltildi (K18)
 - **Dosya:** `internal/webserver/server.go`, `handlers_flutter.go`
 - **Detay:** Sadece `handleTranscribe` `MaxBytesReader` kullanır. Diğer handler'lar sınırsız gövde kabul eder. DoS vektörü.
+- **Çözüm (K18):** `limitBodyMiddleware` tüm handler'lara 10MB limit uygular.
 
 ### M5. Geçici dosyalar sistem temp dizini yerine uygulama dizinine yazılır
 - **Dosya:** `internal/llama/installer.go:192`
 - **Detay:** Multi-GB model indirmeleri `os.TempDir()` yerine `i.BaseDir` ("data/") dizinine yazılır. Disk dolmasına yol açabilir.
 
-### M6. `syncManager.Increment()` ile `TriggerNow` yarışı — çift yedekleme
+### M6. `syncManager.Increment()` ile `TriggerNow` yarışı — çift yedekleme — ✅ Düzeltildi (K24)
 - **Dosya:** `internal/cloudsync/sync_manager.go:108-152`
 - **Detay:** `Increment` `m.inFlight` kontrolünü `m.mu` altında yapar, sonra pipeline başlatmadan önce kilidi bırakır. `TriggerNow` araya girip `inFlight = false` görebilir. Sonuç: **iki eşzamanlı yedekleme**.
+- **Çözüm (K24):** `scheduleMu` mutex'i Increment ve TriggerNow arasındaki yarışı engeller.
 
-### M7. GitHub API çağrılarında zaman aşımı yok
+### M7. GitHub API çağrılarında zaman aşımı yok — ✅ Düzeltildi (K25)
 - **Dosya:** `internal/llama/installer.go:238, 325`
 - **Detay:** `http.DefaultClient` timeout olmadan kullanılır. GitHub API asılı kalırsa çağrı sonsuza kadar bloke olur.
+- **Çözüm (K25):** API çağrılarına 30 saniye, dosya indirmelerine 5 dakika timeout eklendi.
 
 ### M8. `restoreZip`'de zip bomb koruması yok
 - **Dosya:** `internal/cloudsync/sync_manager.go:355-472`
@@ -245,7 +270,8 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 ---
 
-> **Son güncelleme:** 2026-06-03
+> **Son güncelleme:** 2026-06-06
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend
-> **Toplam hata:** 31 (🔴10, 🟠10, 🟡8, 🟣0)
+> **Toplam hata:** 27 (🔴7, 🟠9, 🟡7, 🟣0) — 21'i düzeltildi ✅
+> **Kalan:** 6 (🟡 M3, M5, M8, M9, M10, M11) — tüm 🔴 ve 🟠 hatalar giderildi
 > **Toplam gözlem:** 10

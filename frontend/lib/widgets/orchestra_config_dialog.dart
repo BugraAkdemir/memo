@@ -207,10 +207,8 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                 isBuiltin
                     ? Expanded(child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: MemoTheme.of(context).textMain)))
                     : Expanded(
-                        child: TextField(
-                          controller: TextEditingController(text: role.role),
-                          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: MemoTheme.of(context).textMain),
-                          decoration: const InputDecoration(isDense: true, border: InputBorder.none, contentPadding: EdgeInsets.zero),
+                        child: _RoleNameField(
+                          initialValue: role.role,
                           onChanged: (v) {
                             final newRoles = List<RoleConfig>.from(config.roles);
                             newRoles[index] = role.copyWith(role: v);
@@ -302,20 +300,8 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: TextField(
-              controller: TextEditingController(text: role.systemPrompt),
-              style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
-              decoration: InputDecoration(
-                hintText: 'System prompt...',
-                hintStyle: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim.withValues(alpha: 0.4)),
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusSm)),
-                filled: true,
-                fillColor: MemoTheme.of(context).bgElement,
-              ),
-              minLines: 2,
-              maxLines: 4,
+            child: _SystemPromptField(
+              initialValue: role.systemPrompt,
               onChanged: (v) {
                 final newRoles = List<RoleConfig>.from(config.roles);
                 newRoles[index] = role.copyWith(systemPrompt: v);
@@ -375,14 +361,127 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
     try {
       await ref.read(orchestraConfigProvider.notifier).save(config);
       if (mounted) {
+        final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Orchestra config saved')));
+        messenger.showSnackBar(const SnackBar(content: Text('Orchestra config saved')));
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
+  }
+}
+
+class _RoleNameField extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+  const _RoleNameField({required this.initialValue, required this.onChanged});
+
+  @override
+  State<_RoleNameField> createState() => _RoleNameFieldState();
+}
+
+class _RoleNameFieldState extends State<_RoleNameField> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void didUpdateWidget(_RoleNameField old) {
+    super.didUpdateWidget(old);
+    if (widget.initialValue != old.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      style: TextStyle(
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+        color: MemoTheme.of(context).textMain,
+      ),
+      decoration: const InputDecoration(
+        isDense: true,
+        border: InputBorder.none,
+        contentPadding: EdgeInsets.zero,
+      ),
+      onChanged: widget.onChanged,
+    );
+  }
+}
+
+class _SystemPromptField extends StatefulWidget {
+  final String initialValue;
+  final ValueChanged<String> onChanged;
+  const _SystemPromptField({required this.initialValue, required this.onChanged});
+
+  @override
+  State<_SystemPromptField> createState() => _SystemPromptFieldState();
+}
+
+class _SystemPromptFieldState extends State<_SystemPromptField> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(text: widget.initialValue);
+  }
+
+  @override
+  void didUpdateWidget(_SystemPromptField old) {
+    super.didUpdateWidget(old);
+    if (widget.initialValue != old.initialValue) {
+      _controller.text = widget.initialValue;
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return TextField(
+      controller: _controller,
+      style: TextStyle(
+        fontSize: 11,
+        color: MemoTheme.of(context).textDim,
+      ),
+      decoration: InputDecoration(
+        hintText: 'System prompt...',
+        hintStyle: TextStyle(
+          fontSize: 11,
+          color: MemoTheme.of(context).textDim.withValues(alpha: 0.4),
+        ),
+        isDense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        ),
+        filled: true,
+        fillColor: MemoTheme.of(context).bgElement,
+      ),
+      minLines: 2,
+      maxLines: 4,
+      onChanged: widget.onChanged,
+    );
   }
 }
 

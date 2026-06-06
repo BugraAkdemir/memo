@@ -43,9 +43,10 @@ type Manager struct {
 	drive      *driveClient
 	interval   int64
 
-	count    atomic.Int64
-	mu       sync.Mutex // guards in-flight backup
-	inFlight bool
+	count      atomic.Int64
+	mu         sync.Mutex // guards in-flight backup
+	scheduleMu sync.Mutex // serializes Increment / TriggerNow scheduling race
+	inFlight   bool
 }
 
 // AccountInfo describes the connected Google account.
@@ -106,18 +107,22 @@ func loadOrCreateMachineID(dir string) string {
 // Increment records one saved interaction. When the count reaches a multiple
 // of SyncInterval a background backup is launched (at most one at a time).
 func (m *Manager) Increment() {
+	m.scheduleMu.Lock()
 	n := m.count.Add(1)
 	if n%m.interval != 0 {
+		m.scheduleMu.Unlock()
 		return
 	}
 	m.mu.Lock()
 	if m.inFlight {
 		m.mu.Unlock()
+		m.scheduleMu.Unlock()
 		log.Println("cloudsync: backup already in flight, skipping")
 		return
 	}
 	m.inFlight = true
 	m.mu.Unlock()
+	m.scheduleMu.Unlock()
 
 	go func() {
 		defer func() {
@@ -132,14 +137,17 @@ func (m *Manager) Increment() {
 // TriggerNow forces an immediate backup regardless of the message counter.
 // It is non-blocking; it spawns a goroutine if no backup is already running.
 func (m *Manager) TriggerNow() {
+	m.scheduleMu.Lock()
 	m.mu.Lock()
 	if m.inFlight {
 		m.mu.Unlock()
+		m.scheduleMu.Unlock()
 		m.emit("sync:status", "busy")
 		return
 	}
 	m.inFlight = true
 	m.mu.Unlock()
+	m.scheduleMu.Unlock()
 
 	go func() {
 		defer func() {

@@ -147,6 +147,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
     }
 
+    if (!mounted) return;
     _focusNode.requestFocus();
   }
 
@@ -209,7 +210,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to load providers: $e')),
+          SnackBar(content: Text(L10n.t('providers_load_failed', {'e': e.toString()}))),
         );
       }
       return;
@@ -220,9 +221,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final options = <_ModelOption>[];
     options.add(_ModelOption(
       type: 'local',
-      name: 'Local Model',
+      name: L10n.t('local_model'),
       icon: '🖥️',
-      subtitle: 'llama.cpp',
+      subtitle: L10n.t('llama_cpp'),
     ));
     for (final p in providers) {
       if (p.enabled) {
@@ -265,7 +266,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         final name = options.firstWhere((o) => o.type == selected).name;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Switched to $name'),
+            content: Text(L10n.t('switched_to', {'name': name})),
             duration: const Duration(seconds: 2),
           ),
         );
@@ -273,7 +274,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed to switch: $e')),
+          SnackBar(content: Text(L10n.t('switch_failed', {'e': e.toString()}))),
         );
       }
     }
@@ -289,7 +290,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final keyResult = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('OpenRouter Bağlantısı'),
+        title: Text(L10n.t('openrouter_connect')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -332,6 +333,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       ),
     );
 
+    keyController.dispose();
     if (keyResult == null || keyResult.isEmpty || !mounted) return;
 
     // Step 2: Fetch models from OpenRouter

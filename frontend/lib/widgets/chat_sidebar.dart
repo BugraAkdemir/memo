@@ -296,7 +296,7 @@ class _ChatListItemState extends State<_ChatListItem> {
                           ),
                            SizedBox(height: 2),
                           Text(
-                            '${widget.chat.msgCount} mesaj · ${widget.chat.updatedAt}',
+                            L10n.t('message_count_short', {'count': '${widget.chat.msgCount}', 'date': widget.chat.updatedAt}),
                             style: TextStyle(
                               fontSize: 11,
                               color: MemoTheme.of(context).textDim,
@@ -368,7 +368,7 @@ class _ChatListItemState extends State<_ChatListItem> {
             children: [
               Icon(Icons.edit, size: 16, color: MemoTheme.of(context).textMain),
                SizedBox(width: 8),
-               Text('Yeniden Adlandır'),
+               Text(L10n.t('rename')),
             ],
           ),
         ),
@@ -378,12 +378,13 @@ class _ChatListItemState extends State<_ChatListItem> {
             children: [
               Icon(Icons.delete, size: 16, color: MemoTheme.red),
                SizedBox(width: 8),
-              Text('Sil', style: TextStyle(color: MemoTheme.red)),
+              Text(L10n.t('delete'), style: TextStyle(color: MemoTheme.red)),
             ],
           ),
         ),
       ],
     ).then((value) {
+      if (!mounted) return;
       if (value == 'rename') {
         _startEditing();
       } else if (value == 'delete') {
@@ -397,8 +398,8 @@ class _ChatListItemState extends State<_ChatListItem> {
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: MemoTheme.of(context).bgPanel,
-        title:  Text('Chat\'i Sil'),
-        content: Text('"${widget.chat.title}" silinecek. Emin misin?'),
+        title:  Text(L10n.t('delete_chat_title')),
+        content: Text(L10n.t('delete_chat_confirm_name', {'title': widget.chat.title})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -407,7 +408,7 @@ class _ChatListItemState extends State<_ChatListItem> {
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
-            child:  Text('Sil'),
+            child:  Text(L10n.t('delete')),
           ),
         ],
       ),
@@ -533,7 +534,7 @@ class _SidebarStatusBar extends ConsumerWidget {
               loading: () => '...',
               error: (_, __) => L10n.t('connection_error'),
               data: (connected) =>
-                  connected ? 'Memo Engine' : L10n.t('connection_error'),
+                  connected ? L10n.t('engine_status') : L10n.t('connection_error'),
             ),
             style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
           ),

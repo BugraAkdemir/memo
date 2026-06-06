@@ -59,6 +59,22 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 	scanner.Buffer(make([]byte, 1024*1024), 1024*1024) // 1MB buffer for long Gemini chunks
 	var tp thinkingParser
 
+	trySend := func(sc StreamChunk) bool {
+		// Non-blocking send first — avoids dropping data when context is cancelled
+		// but the channel still has buffer space.
+		select {
+		case ch <- sc:
+			return true
+		default:
+		}
+		select {
+		case ch <- sc:
+			return true
+		case <-watchCtx.Done():
+			return false
+		}
+	}
+
 	for scanner.Scan() {
 		line := scanner.Text()
 
@@ -73,13 +89,13 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 		data := strings.TrimPrefix(line, "data: ")
 
 		if data == "[DONE]" {
-			ch <- StreamChunk{Done: true, FinishReason: "stop"}
+			trySend(StreamChunk{Done: true, FinishReason: "stop"})
 			return
 		}
 
 		var chunk ChatCompletionChunk
 		if err := json.Unmarshal([]byte(data), &chunk); err != nil {
-			ch <- StreamChunk{Error: "failed to parse stream chunk: " + err.Error(), Done: true}
+			trySend(StreamChunk{Error: "failed to parse stream chunk: " + err.Error(), Done: true})
 			return
 		}
 
@@ -99,7 +115,9 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 			sc.Done = true
 		}
 
-		ch <- sc
+		if !trySend(sc) {
+			return
+		}
 
 		if sc.Done {
 			return
@@ -107,6 +125,6 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 	}
 
 	if err := scanner.Err(); err != nil {
-		ch <- StreamChunk{Error: "stream read error: " + err.Error(), Done: true}
+		trySend(StreamChunk{Error: "stream read error: " + err.Error(), Done: true})
 	}
 }

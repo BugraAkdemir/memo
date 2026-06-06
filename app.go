@@ -201,7 +201,9 @@ func (a *App) startup(ctx context.Context) {
 		a.emitEvent("memory_store_error", err.Error())
 	}
 	a.storeMu.Lock()
-	a.store = store
+	if store != nil {
+		a.store = store
+	}
 	a.storeMu.Unlock()
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
@@ -416,7 +418,7 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 	msgs = append(msgs, a.incognitoMessages...)
 	a.incognitoMu.Unlock()
 
-	reply := a.callLLM(msgs)
+	reply := a.callLLM(context.Background(), msgs)
 
 	a.incognitoMu.Lock()
 	a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
@@ -432,11 +434,11 @@ func (a *App) SendMessage(userMsg string) string {
 	if incog {
 		return a.handleIncognito(userMsg, "")
 	}
-	messages := a.buildMessages(userMsg, nil)
+	messages := a.buildMessages(context.Background(), userMsg, nil)
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", "")
 	}
-	reply := a.callLLM(messages)
+	reply := a.callLLM(context.Background(), messages)
 	if a.sessions != nil {
 		a.sessions.AddMessage("assistant", reply, "", "")
 	}
@@ -454,7 +456,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
 
-	messages := a.buildMessages(userMsg, nil)
+	messages := a.buildMessages(ctx, userMsg, nil)
 
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", "")
@@ -498,7 +500,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 
 	var memories []memory.MemoryResult
 	if a.cfg.Memory.MemoryEnabled {
-		memories = a.retrieveMemory(userMsg)
+		memories = a.retrieveMemory(ctx, userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
@@ -540,7 +542,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		return a.handleIncognitoStream(ctx, combined, "")
 	}
 
-	messages := a.buildMessages(combined, nil)
+	messages := a.buildMessages(ctx, combined, nil)
 
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", filePath)
@@ -1116,7 +1118,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	// so getSessionHistory() doesn't include the current user message.
 	var memories []memory.MemoryResult
 	if a.cfg.Memory.MemoryEnabled {
-		memories = a.retrieveMemory(userMsg)
+		memories = a.retrieveMemory(context.Background(), userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
@@ -1130,7 +1132,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		a.sessions.AddMessage("user", userMsg, imagePath, "")
 	}
 
-	reply := a.callLLM(msgs)
+	reply := a.callLLM(context.Background(), msgs)
 
 	// Detect vision-not-supported error and return friendly message
 	if strings.Contains(reply, "image input is not supported") || strings.Contains(reply, "mmproj") {
@@ -1168,14 +1170,14 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 		return a.handleIncognito(combined, "")
 	}
 
-	messages := a.buildMessages(combined, nil)
+	messages := a.buildMessages(context.Background(), combined, nil)
 
 	// Save to session after building messages
 	if a.sessions != nil {
 		a.sessions.AddMessage("user", userMsg, "", filePath)
 	}
 
-	reply := a.callLLM(messages)
+	reply := a.callLLM(context.Background(), messages)
 
 	if a.sessions != nil {
 		a.sessions.AddMessage("assistant", reply, "", "")
@@ -1319,7 +1321,7 @@ func (a *App) GenerateChatTitle() string {
 		)),
 	}
 
-	title := strings.TrimSpace(a.callLLM(prompt))
+	title := strings.TrimSpace(a.callLLM(context.Background(), prompt))
 	// Discard error replies.
 	if title == "" || strings.HasPrefix(title, "⚠️") {
 		return ""
@@ -2116,11 +2118,11 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	}
 }
 
-func (a *App) buildMessages(userMsg string, extraImageB64 []string) []api.Message {
+func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
 	start := time.Now()
 	var memories []memory.MemoryResult
 	if a.cfg.Memory.MemoryEnabled {
-		memories = a.retrieveMemory(userMsg)
+		memories = a.retrieveMemory(ctx, userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
@@ -2248,16 +2250,17 @@ func (a *App) getSessionHistory() []api.Message {
 	return msgs
 }
 
-func (a *App) retrieveMemory(query string) []memory.MemoryResult {
+func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryResult {
 	a.storeMu.RLock()
 	defer a.storeMu.RUnlock()
 	if a.store == nil {
+		log.Println("Memory: store not initialized, skipping retrieve")
 		return nil
 	}
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	rctx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
-	m, err := a.store.RetrieveContext(ctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
+	m, err := a.store.RetrieveContext(rctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
 	if err != nil {
 		log.Printf("LATENCY app.retrieve_memory total_ms=%d status=error", time.Since(start).Milliseconds())
 		log.Printf("MEMORY RETRIEVE FAILED: %v", err)
@@ -2271,7 +2274,7 @@ func (a *App) retrieveMemory(query string) []memory.MemoryResult {
 	return m
 }
 
-func (a *App) callLLM(messages []api.Message) string {
+func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	// Orchestra mode takes priority
 	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
 		var userPrompt string
@@ -2287,9 +2290,9 @@ func (a *App) callLLM(messages []api.Message) string {
 			return "⚠️ No user message found"
 		}
 		conversationCtx := buildConversationContext(messages, userPrompt)
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		octx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
-		finalResponse, _, err := a.orchestraConductor.Run(ctx, conversationCtx)
+		finalResponse, _, err := a.orchestraConductor.Run(octx, conversationCtx)
 		if err != nil {
 			return "⚠️ " + err.Error()
 		}
@@ -2298,7 +2301,7 @@ func (a *App) callLLM(messages []api.Message) string {
 
 	// Use external provider only if user explicitly selected one
 	if a.activeProvider != "" && a.providerRouter != nil {
-		ctx, cancel := context.WithTimeout(context.Background(), 300*time.Second)
+		pctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
 
 		pMsgs := make([]provider.Message, len(messages))
@@ -2313,7 +2316,7 @@ func (a *App) callLLM(messages []api.Message) string {
 			MaxTokens:   a.cfg.Llama.MaxTokens,
 		}
 
-		resp, err := a.providerRouter.ChatCompletion(ctx, req)
+		resp, err := a.providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
 			log.Printf("Provider error: %v", err)
 			return "⚠️ " + err.Error()
@@ -2322,14 +2325,14 @@ func (a *App) callLLM(messages []api.Message) string {
 	}
 
 	// Fallback to local model
-	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	lctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
 	start := time.Now()
 	a.clientMu.RLock()
 	llmClient := a.client
 	a.clientMu.RUnlock()
-	resp, err := llmClient.ChatCompletion(ctx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
+	resp, err := llmClient.ChatCompletion(lctx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
 	if err != nil {
 		log.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		log.Printf("LLM error: %v", err)
@@ -2359,27 +2362,31 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 
 func (a *App) memorySaveWorker() {
 	for task := range a.memorySaveCh {
-		a.saveMemorySync(task.userMsg, task.reply)
+		a.saveMemorySync(context.Background(), task.userMsg, task.reply)
 	}
 }
 
-func (a *App) saveMemorySync(userMsg, reply string) {
+func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	if !a.cfg.Memory.MemoryEnabled {
 		return
 	}
 	start := time.Now()
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
 
 	a.storeMu.Lock()
 	defer a.storeMu.Unlock()
 	if a.store == nil {
+		log.Println("MEMORY SAVE SKIPPED: store not initialized")
+		a.emitEvent("memory:error", "Hafıza kaydedilemedi: depo başlatılmamış")
 		return
 	}
 
-	if err := a.store.SaveInteraction(ctx, userMsg, reply); err != nil {
+	mctx, cancel := context.WithTimeout(ctx, 10*time.Second)
+	defer cancel()
+
+	if err := a.store.SaveInteraction(mctx, userMsg, reply); err != nil {
 		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
 		log.Printf("MEMORY SAVE FAILED: %v", err)
+		a.emitEvent("memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
 	} else {
 		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
 		log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
@@ -2400,7 +2407,7 @@ func truncateLog(s string, n int) string {
 }
 
 // CheckEmbeddingHealth tests if the embedding API is reachable and working.
-func (a *App) CheckEmbeddingHealth() map[string]interface{} {
+func (a *App) CheckEmbeddingHealth(ctx context.Context) map[string]interface{} {
 	result := map[string]interface{}{
 		"ok":    false,
 		"error": "",
@@ -2423,12 +2430,14 @@ func (a *App) CheckEmbeddingHealth() map[string]interface{} {
 	if a.embeddingClient != nil {
 		client = a.embeddingClient
 	}
+	// Local copy of client pointer is safe from nil (copied under lock),
+	// but embedding server may shut down after releasing lock — acceptable for MVP.
 	a.clientMu.RUnlock()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ectx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()
 
-	_, err := client.CreateEmbedding(ctx, a.cfg.API.EmbeddingModel, "test")
+	_, err := client.CreateEmbedding(ectx, a.cfg.API.EmbeddingModel, "test")
 	if err != nil {
 		result["error"] = err.Error()
 		log.Printf("EMBEDDING HEALTH CHECK FAILED: %v", err)

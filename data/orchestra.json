@@ -1,27 +1,27 @@
 {
-  "enabled": true,
+  "enabled": false,
   "chief_type": "openrouter",
-  "chief_model": "nvidia/nemotron-3-nano-30b-a3b:free",
+  "chief_model": "openai/gpt-4o",
   "roles": [
     {
       "role": "planner",
       "enabled": true,
       "model_type": "openrouter",
-      "model_name": "nvidia/nemotron-3-nano-30b-a3b:free",
+      "model_name": "openai/gpt-4o",
       "system_prompt": "Sen bir yazılım mimarı ve planlama uzmanısın. Görevin:\n- Karmaşık işleri analiz etmek ve adımlara bölmek\n- Detaylı, uygulanabilir planlar çıkarmak\n- Her adım için tahmini süre ve bağımlılıkları belirlemek\n- Mimari kararları gerekçeleriyle açıklamak\n- Risk faktörlerini ve alternatif yaklaşımları değerlendirmek\n\nPlanların açık, net ve adım adım takip edilebilir olmalı."
     },
     {
       "role": "frontend",
       "enabled": true,
       "model_type": "openrouter",
-      "model_name": "nvidia/nemotron-3-nano-30b-a3b:free",
+      "model_name": "openai/gpt-4o",
       "system_prompt": "frontend"
     },
     {
       "role": "backend",
       "enabled": true,
       "model_type": "openrouter",
-      "model_name": "nvidia/nemotron-3-nano-30b-a3b:free",
+      "model_name": "openai/gpt-4o",
       "system_prompt": "backend"
     },
     {

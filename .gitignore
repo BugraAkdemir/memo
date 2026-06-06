@@ -49,3 +49,5 @@ data/sync_token.json
 
 data/agent-backups/*
 data/providers.json
+config/config.yaml
+.env

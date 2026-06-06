@@ -3,7 +3,7 @@ set -e
 
 APP_NAME="Memo"
 APP_EXEC="memo_flutter"
-VERSION=$(cat version 2>/dev/null || echo "3.5.0")
+VERSION=$(cat version 2>/dev/null || echo "3.0.0")
 
 # Paket türleri
 BUILD_DEB=false          # .deb paketi oluştur (dpkg-deb gerekli)
@@ -19,7 +19,7 @@ if ! command -v flutter &>/dev/null; then
         fi
     done
 fi
-VERSION=$(echo $VERSION | awk '{print $1}' | tr -d 'Vv') # Clean version string, e.g. 3.5.0
+VERSION=$(echo $VERSION | awk '{print $1}' | tr -d 'Vv') # Clean version string, e.g. 3.0.0
 
 echo "=========================================================="
 echo "🚀 $APP_NAME V$VERSION Paketleme İşlemi (Linux & Windows) 🚀"
@@ -66,11 +66,18 @@ if [ "$OS" == "linux" ]; then
     cp data/bin/stt_server "$STAGEDIR/data/bin/" 2>/dev/null || true
     # Config
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
-    cp .env "$STAGEDIR/" 2>/dev/null || true
+    # .env.example'ı .env olarak kopyala (gerçek .env değil)
+    cp .env.example "$STAGEDIR/.env" 2>/dev/null || true
+    # Provider & Orchestra example configs
+    cp data/providers.example.json "$STAGEDIR/data/providers.example.json" 2>/dev/null || true
+    cp data/orchestra.json "$STAGEDIR/data/orchestra.json" 2>/dev/null || true
+    # Agent permissions (boş başlangıç)
+    echo '[]' > "$STAGEDIR/data/permissions.json"
     # Boş klasörleri hazırla ki uygulama hatasız başlasın
     mkdir -p "$STAGEDIR/data/models"
     mkdir -p "$STAGEDIR/data/memory"
     mkdir -p "$STAGEDIR/data/sessions"
+    mkdir -p "$STAGEDIR/data/agent-backups"
     
     # Create Runner Script
     cat << 'RUNNER' > "$STAGEDIR/run_memo.sh"
@@ -83,6 +90,7 @@ mkdir -p "$MEMO_HOME/data/bin"
 mkdir -p "$MEMO_HOME/data/models"
 mkdir -p "$MEMO_HOME/data/memory"
 mkdir -p "$MEMO_HOME/data/sessions"
+mkdir -p "$MEMO_HOME/data/agent-backups"
 mkdir -p "$MEMO_HOME/config"
 
 # Copy bundled data on first run
@@ -93,6 +101,12 @@ if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
 fi
 [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ] && cp -r "$DIR/config/"* "$MEMO_HOME/config/"
 [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
+# Copy provider example config if no providers.json exists
+[ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
+# Copy orchestra config if not present
+[ ! -f "$MEMO_HOME/data/orchestra.json" ] && [ -f "$DIR/data/orchestra.json" ] && cp "$DIR/data/orchestra.json" "$MEMO_HOME/data/orchestra.json"
+# Copy permissions if not present
+[ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
 
 cd "$MEMO_HOME"
 export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
@@ -139,6 +153,7 @@ mkdir -p "$MEMO_HOME/data/bin"
 mkdir -p "$MEMO_HOME/data/models"
 mkdir -p "$MEMO_HOME/data/memory"
 mkdir -p "$MEMO_HOME/data/sessions"
+mkdir -p "$MEMO_HOME/data/agent-backups"
 mkdir -p "$MEMO_HOME/config"
 
 # Copy llama.cpp binaries if not already present (first run)
@@ -157,6 +172,19 @@ fi
 if [ ! -f "$MEMO_HOME/.env" ] && [ -f "$APPBIN/.env" ]; then
     cp "$APPBIN/.env" "$MEMO_HOME/.env"
 fi
+
+# Copy provider example config if no providers.json exists
+if [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$APPBIN/data/providers.example.json" ]; then
+    cp "$APPBIN/data/providers.example.json" "$MEMO_HOME/data/providers.json"
+fi
+
+# Copy orchestra config if not present
+if [ ! -f "$MEMO_HOME/data/orchestra.json" ] && [ -f "$APPBIN/data/orchestra.json" ]; then
+    cp "$APPBIN/data/orchestra.json" "$MEMO_HOME/data/orchestra.json"
+fi
+
+# Create empty permissions if not present (Agent mode)
+[ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
 
 cd "$MEMO_HOME"
 
@@ -225,7 +253,7 @@ Section: utils
 Priority: optional
 Architecture: amd64
 Maintainer: Bugra Akdemir <bugrakaptan5@gmail.com>
-Description: Local LLM Memory Application with Flutter and Go
+Description: Local LLM Memory Shell — Privacy-first AI assistant with RAG, Agent mode, Orchestra, and External Providers
 CONTROL
 
         cat << DEBDESKTOP > "$DEBDIR/usr/share/applications/${APP_NAME}.desktop"
@@ -262,16 +290,30 @@ elif [ "$OS" == "windows" ]; then
     mkdir -p "$STAGEDIR/binaries"
     cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
-    cp .env "$STAGEDIR/" 2>/dev/null || true
+    # .env.example'ı .env olarak kopyala (gerçek .env değil)
+    cp .env.example "$STAGEDIR/.env" 2>/dev/null || true
+    # Provider & Orchestra example configs
+    cp data/providers.example.json "$STAGEDIR/data/providers.example.json" 2>/dev/null || true
+    cp data/orchestra.json "$STAGEDIR/data/orchestra.json" 2>/dev/null || true
+    echo '[]' > "$STAGEDIR/data/permissions.json"
     mkdir -p "$STAGEDIR/data/models"
     mkdir -p "$STAGEDIR/data/memory"
     mkdir -p "$STAGEDIR/data/sessions"
+    mkdir -p "$STAGEDIR/data/agent-backups"
     
     # Create batch runner for Windows
     cat << 'RUNNERWIN' > "$STAGEDIR/run_memo.bat"
 @echo off
 cd /d "%~dp0"
 set PATH=%~dp0data\bin;%PATH%
+
+REM First-run: copy example configs if needed
+if not exist "%USERPROFILE%\.memo\data\providers.json" (
+    if exist "%~dp0data\providers.example.json" (
+        mkdir "%USERPROFILE%\.memo\data" 2>nul
+        copy "%~dp0data\providers.example.json" "%USERPROFILE%\.memo\data\providers.json" >nul
+    )
+)
 
 taskkill /F /IM memo-backend.exe >nul 2>&1
 taskkill /F /IM llama-server.exe >nul 2>&1
@@ -296,4 +338,3 @@ echo "=========================================================="
 echo "📁 Tüm Derleme Dosyaları: build_output/dist/"
 ls -lh build_output/dist/
 echo "=========================================================="
-

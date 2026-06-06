@@ -76,6 +76,16 @@ class ActiveChatIdNotifier extends AsyncNotifier<String> {
     await api.switchChat(id);
     state = AsyncData(id);
     ref.invalidate(messagesProvider);
+
+    // Auto-enable/disable agent mode based on chat type
+    final chats = ref.read(chatListProvider).valueOrNull ?? [];
+    final chat = chats.where((c) => c.id == id).firstOrNull;
+    final isAgent = chat?.isAgentChat ?? false;
+    if (isAgent) {
+      if (!ref.read(agentEnabledProvider)) {
+        ref.read(agentEnabledProvider.notifier).setEnabled(true);
+      }
+    }
   }
 }
 

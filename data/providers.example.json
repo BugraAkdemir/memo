@@ -1,0 +1,72 @@
+{
+  "providers": [
+    {
+      "type": "openai",
+      "name": "OpenAI",
+      "api_key_encrypted": "",
+      "base_url": "https://api.openai.com/v1",
+      "model": "gpt-4o",
+      "enabled": false,
+      "priority": 0,
+      "temperature": 0.7,
+      "top_p": 0.9
+    },
+    {
+      "type": "gemini",
+      "name": "Google Gemini",
+      "api_key_encrypted": "",
+      "base_url": "https://generativelanguage.googleapis.com/v1beta",
+      "model": "gemini-2.0-flash",
+      "enabled": false,
+      "priority": 0,
+      "temperature": 0.7,
+      "top_p": 0.9
+    },
+    {
+      "type": "grok",
+      "name": "xAI Grok",
+      "api_key_encrypted": "",
+      "model": "grok-2",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "claude",
+      "name": "Anthropic Claude",
+      "api_key_encrypted": "",
+      "model": "claude-sonnet-4-20250514",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "ollama",
+      "name": "Ollama",
+      "api_key_encrypted": "",
+      "model": "llama3",
+      "enabled": false,
+      "priority": 0
+    },
+    {
+      "type": "groq",
+      "name": "Groq",
+      "api_key_encrypted": "",
+      "base_url": "https://api.groq.com/openai/v1",
+      "model": "llama-3.3-70b-versatile",
+      "enabled": false,
+      "priority": 0,
+      "temperature": 0.7,
+      "top_p": 0.9
+    },
+    {
+      "type": "openrouter",
+      "name": "OpenRouter",
+      "api_key_encrypted": "",
+      "base_url": "https://openrouter.ai/api/v1",
+      "model": "openai/gpt-4o",
+      "enabled": false,
+      "priority": 0,
+      "temperature": 0.7,
+      "top_p": 0.9
+    }
+  ]
+}

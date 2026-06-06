@@ -582,10 +582,18 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		}
 
 		modelName := ""
-		if a.activeProvider != "" && a.providerRouter != nil {
-			// Find model for active provider
-			for _, p := range a.providerCfgMgr.GetEnabled() {
-				if p.Type == a.activeProvider {
+		if a.providerRouter != nil {
+			if a.activeProvider != "" {
+				for _, p := range a.providerCfgMgr.GetEnabled() {
+					if p.Type == a.activeProvider {
+						modelName = p.Model
+						break
+					}
+				}
+			}
+			// Fallback: pick any enabled provider
+			if modelName == "" {
+				for _, p := range a.providerCfgMgr.GetEnabled() {
 					modelName = p.Model
 					break
 				}
@@ -597,6 +605,22 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		if sessionID != "" && a.sessions != nil {
 			projectPath = a.sessions.GetProjectPath(sessionID)
 		}
+
+		// Ensure provider router is healthy
+		if a.providerRouter == nil && a.providerCfgMgr != nil {
+			if configs := a.providerCfgMgr.GetEnabled(); len(configs) > 0 {
+				a.providerRouter = provider.NewRouter(configs)
+			}
+		}
+		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
+			trySend(ctx, outCh, api.StreamChunk{
+				Error: "⚠️ Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin.",
+				Done:  true,
+			})
+			return
+		}
+		// Sync executor's router with current app router (router is replaced on provider changes)
+		a.agentExecutor.SyncRouter(a.providerRouter)
 
 		start := time.Now()
 		var fullReply strings.Builder
@@ -732,9 +756,17 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		}
 
 		modelName := ""
-		if a.activeProvider != "" && a.providerRouter != nil {
-			for _, p := range a.providerCfgMgr.GetEnabled() {
-				if p.Type == a.activeProvider {
+		if a.providerRouter != nil {
+			if a.activeProvider != "" {
+				for _, p := range a.providerCfgMgr.GetEnabled() {
+					if p.Type == a.activeProvider {
+						modelName = p.Model
+						break
+					}
+				}
+			}
+			if modelName == "" {
+				for _, p := range a.providerCfgMgr.GetEnabled() {
 					modelName = p.Model
 					break
 				}
@@ -745,6 +777,16 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		if sessionID != "" && a.sessions != nil {
 			projectPath = a.sessions.GetProjectPath(sessionID)
 		}
+
+		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
+			trySend(ctx, outCh, api.StreamChunk{
+				Error: "⚠️ Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin.",
+				Done:  true,
+			})
+			return
+		}
+		// Sync executor's router with current app router
+		a.agentExecutor.SyncRouter(a.providerRouter)
 
 		start := time.Now()
 		var agentBuf strings.Builder

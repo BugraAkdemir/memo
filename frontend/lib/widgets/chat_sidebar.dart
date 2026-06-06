@@ -1,12 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../providers/chat_provider.dart';
-import '../providers/agent_provider.dart';
 
 /// Chat sidebar — chat list, new chat, incognito toggle.
 class ChatSidebar extends ConsumerWidget {
@@ -56,24 +54,6 @@ class ChatSidebar extends ConsumerWidget {
                     ref.read(incognitoProvider.notifier).toggle();
                   },
                 ),
-                 SizedBox(width: 8),
-                _IconActionButton(
-                  icon: Icons.psychology,
-                  tooltip: L10n.t('agent_chat'),
-                  isActive: false,
-                  onTap: () async {
-                    final result = await FilePicker.platform.getDirectoryPath(
-                      dialogTitle: L10n.t('agent_chat_select_project'),
-                    );
-                    if (result == null) return;
-                    final api = ref.read(apiClientProvider);
-                    final id = await api.createAgentChat(result);
-                    ref.read(activeChatIdProvider.notifier).switchTo(id);
-                    if (!ref.read(agentEnabledProvider)) {
-                      ref.read(agentEnabledProvider.notifier).setEnabled(true);
-                    }
-                  },
-                ),
               ],
             ),
           ),
@@ -100,7 +80,8 @@ class ChatSidebar extends ConsumerWidget {
                 ),
               ),
               data: (chats) {
-                if (chats.isEmpty) {
+                final normalChats = chats.where((c) => !c.isAgentChat).toList();
+                if (normalChats.isEmpty) {
                   return Center(
                     child: Padding(
                       padding:  EdgeInsets.all(24),
@@ -119,9 +100,9 @@ class ChatSidebar extends ConsumerWidget {
 
                 return ListView.builder(
                   padding:  EdgeInsets.symmetric(vertical: 4),
-                  itemCount: chats.length,
+                  itemCount: normalChats.length,
                   itemBuilder: (context, index) {
-                    final chat = chats[index];
+                    final chat = normalChats[index];
                     final isActive = chat.id == activeId && !isIncognito;
                     return _ChatListItem(
                       chat: chat,

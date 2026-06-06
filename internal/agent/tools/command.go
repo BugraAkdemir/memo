@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 )
@@ -18,21 +19,38 @@ type RunCommandArgs struct {
 	CWD     string `json:"cwd"`
 }
 
-var blacklistedCommands = []string{
-	"rm -rf /",
-	"rm -rf ~",
-	"rm -rf .",
-	"dd",
-	"mkfs",
-	"format",
-	"fdisk",
-	"parted",
-	"chmod 777",
-	"chown",
-	"sudo",
-	"su",
-	"pkexec",
-	":(){ :|:& };:", // fork bomb
+var blacklistedPatterns = []*regexp.Regexp{
+	regexp.MustCompile(`\brm\s+-rf\s+/\b`),
+	regexp.MustCompile(`\brm\s+-rf\s+~\b`),
+	regexp.MustCompile(`\brm\s+-rf\s+\.\b`),
+	regexp.MustCompile(`\bdd\b`),
+	regexp.MustCompile(`\bmkfs\b`),
+	regexp.MustCompile(`\bformat\b`),
+	regexp.MustCompile(`\bfdisk\b`),
+	regexp.MustCompile(`\bparted\b`),
+	regexp.MustCompile(`\bchmod\s+777\b`),
+	regexp.MustCompile(`\bchown\b`),
+	regexp.MustCompile(`\bsudo\b`),
+	regexp.MustCompile(`\bsu\b`),
+	regexp.MustCompile(`\bpkexec\b`),
+	regexp.MustCompile(`:\{\s*:\|\s*:\s*&\s*;?\s*:\s*\}`), // fork bomb
+	regexp.MustCompile(`\bnc\s+-e\b`),
+	regexp.MustCompile(`\bbash\s+-i\b`),
+	regexp.MustCompile(`\bmkfifo\b`),
+	regexp.MustCompile(`\bshutdown\b`),
+	regexp.MustCompile(`\breboot\b`),
+	regexp.MustCompile(`\bhalt\b`),
+	regexp.MustCompile(`\bpoweroff\b`),
+}
+
+func isBlacklisted(cmd string) (string, bool) {
+	cmdLower := strings.ToLower(cmd)
+	for _, re := range blacklistedPatterns {
+		if re.MatchString(cmdLower) {
+			return re.String(), true
+		}
+	}
+	return "", false
 }
 
 func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
@@ -64,11 +82,8 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 	}
 
 	// Security: Blacklist check
-	cmdLower := strings.ToLower(args.Command)
-	for _, blacklisted := range blacklistedCommands {
-		if strings.Contains(cmdLower, blacklisted) {
-			return "", fmt.Errorf("command is blacklisted for safety: %s", blacklisted)
-		}
+	if pattern, blocked := isBlacklisted(args.Command); blocked {
+		return "", fmt.Errorf("command is blacklisted for safety: %s", pattern)
 	}
 
 	// Execution
@@ -77,7 +92,7 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 
 	cmd := exec.CommandContext(ctx, "bash", "-c", args.Command)
 	cmd.Dir = workingDir
-	
+
 	// Limit env variables, keep safe path
 	cmd.Env = []string{
 		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
@@ -91,7 +106,7 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 	cmd.Stderr = &stderr
 
 	err = cmd.Run()
-	
+
 	var result strings.Builder
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {

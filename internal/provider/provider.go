@@ -42,8 +42,10 @@ type ChatRequest struct {
 
 // Message represents a single message in a conversation.
 type Message struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
+	Role       string      `json:"role"`
+	Content    interface{} `json:"content"`
+	ToolCallID string     `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
 }
 
 func TextMessage(role, text string) Message {

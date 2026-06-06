@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
+import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 
@@ -244,25 +245,59 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           ),
           Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: DropdownButtonFormField<String>(
-              key: ValueKey('role_${index}_${choices.length}'),
-              value: role.enabled && validChoice ? currentKey : null,
-              hint: Text(role.enabled ? 'Model seç' : 'Önce rolü aç', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
-              decoration: InputDecoration(
-                isDense: true,
-                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd)),
-                filled: true,
-                fillColor: role.enabled ? Colors.transparent : MemoTheme.of(context).bgElement,
-              ),
-              items: choices.map((c) => DropdownMenuItem(value: c.key, child: Text('${c.icon} ${c.label}', style: const TextStyle(fontSize: 12)))).toList(),
-              onChanged: role.enabled ? (val) {
-                if (val == null) return;
-                final choice = choices.firstWhere((c) => c.key == val);
-                final newRoles = List<RoleConfig>.from(config.roles);
-                newRoles[index] = role.copyWith(modelType: choice.type, modelName: choice.model);
-                setState(() => _config = config.copyWith(roles: newRoles));
-              } : null,
+            child: Column(
+              children: [
+                DropdownButtonFormField<String>(
+                  key: ValueKey('role_${index}_${choices.length}'),
+                  value: role.enabled && validChoice ? currentKey : null,
+                  hint: Text(role.enabled ? 'Provider seç' : 'Önce rolü aç', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+                  decoration: InputDecoration(
+                    isDense: true,
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd)),
+                    filled: true,
+                    fillColor: role.enabled ? Colors.transparent : MemoTheme.of(context).bgElement,
+                  ),
+                  items: choices.map((c) => DropdownMenuItem(value: c.key, child: Text('${c.icon} ${c.label}', style: const TextStyle(fontSize: 12)))).toList(),
+                  onChanged: role.enabled ? (val) {
+                    if (val == null) return;
+                    final choice = choices.firstWhere((c) => c.key == val);
+                    final newRoles = List<RoleConfig>.from(config.roles);
+                    newRoles[index] = role.copyWith(modelType: choice.type, modelName: choice.model);
+                    setState(() => _config = config.copyWith(roles: newRoles));
+                  } : null,
+                ),
+                if (role.modelType == 'openrouter') ...[
+                  const SizedBox(height: 6),
+                  InkWell(
+                    onTap: () => _pickModelForRole(index, role),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(color: MemoTheme.of(context).borderSoft),
+                        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                        color: MemoTheme.of(context).bgElement,
+                      ),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              role.modelName.isNotEmpty ? role.modelName : 'Model seçmek için tıkla',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: role.modelName.isNotEmpty ? MemoTheme.of(context).textMain : MemoTheme.of(context).textDim,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.search, size: 14, color: MemoTheme.of(context).textDim),
+                        ],
+                      ),
+                    ),
+                  ),
+                ],
+              ],
             ),
           ),
           Padding(
@@ -291,6 +326,37 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
         ],
       ),
     );
+  }
+
+  Future<void> _pickModelForRole(int index, RoleConfig role) async {
+    final apiClient = ref.read(apiClientProvider);
+    List<Map<String, dynamic>> models;
+    try {
+      final result = await apiClient.fetchOpenRouterModels('');
+      if (result['status'] != 'ok') {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('❌ ${result['error'] ?? 'Model listesi alınamadı. Önce API Provider\'dan OpenRouter\'ı yapılandır.'}')),
+          );
+        }
+        return;
+      }
+      models = (result['models'] as List).cast<Map<String, dynamic>>();
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
+      return;
+    }
+    if (!mounted) return;
+    final selected = await showDialog<Map<String, dynamic>>(
+      context: context,
+      builder: (_) => _RoleModelBrowserDialog(models: models),
+    );
+    if (selected != null) {
+      final modelId = selected['id'] as String;
+      final newRoles = List<RoleConfig>.from(_config!.roles);
+      newRoles[index] = role.copyWith(modelName: modelId);
+      setState(() => _config = _config!.copyWith(roles: newRoles));
+    }
   }
 
   Future<void> _save(OrchestraConfig config) async {
@@ -327,4 +393,105 @@ class _ModelChoice {
   final String icon;
   final String label;
   _ModelChoice(this.type, this.model, this.icon, this.label) : key = '$type/$model';
+}
+
+class _RoleModelBrowserDialog extends StatefulWidget {
+  final List<Map<String, dynamic>> models;
+  const _RoleModelBrowserDialog({required this.models});
+
+  @override
+  State<_RoleModelBrowserDialog> createState() => _RoleModelBrowserDialogState();
+}
+
+class _RoleModelBrowserDialogState extends State<_RoleModelBrowserDialog> {
+  String _search = '';
+
+  List<Map<String, dynamic>> get _filtered {
+    final models = List<Map<String, dynamic>>.from(widget.models);
+    models.sort((a, b) {
+      final aFree = (a['pricing']?['prompt'] ?? 0.0) == 0.0;
+      final bFree = (b['pricing']?['prompt'] ?? 0.0) == 0.0;
+      if (aFree != bFree) return aFree ? -1 : 1;
+      return (a['name'] as String? ?? '').compareTo(b['name'] as String? ?? '');
+    });
+    if (_search.isEmpty) return models;
+    final q = _search.toLowerCase();
+    return models.where((m) =>
+      (m['id'] as String? ?? '').toLowerCase().contains(q) ||
+      (m['name'] as String? ?? '').toLowerCase().contains(q)
+    ).toList();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final filtered = _filtered;
+    return Dialog(
+      backgroundColor: MemoTheme.of(context).bgApp,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusLg)),
+      constraints: const BoxConstraints(maxWidth: 480, maxHeight: 520),
+      child: Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: TextField(
+              onChanged: (v) => setState(() => _search = v),
+              decoration: InputDecoration(
+                hintText: 'Model ara...',
+                isDense: true,
+                prefixIcon: const Icon(Icons.search, size: 18),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd)),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              ),
+              autofocus: true,
+            ),
+          ),
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16),
+            child: Row(
+              children: [
+                Text('🟢', style: TextStyle(fontSize: 10)),
+                SizedBox(width: 4),
+                Text('Ücretsiz', style: TextStyle(fontSize: 10)),
+                SizedBox(width: 16),
+                Text('🟡', style: TextStyle(fontSize: 10)),
+                SizedBox(width: 4),
+                Text('Ücretli', style: TextStyle(fontSize: 10)),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Expanded(
+            child: ListView.separated(
+              padding: const EdgeInsets.symmetric(horizontal: 16),
+              itemCount: filtered.length,
+              separatorBuilder: (_, __) => Divider(height: 1, color: MemoTheme.of(context).borderSoft),
+              itemBuilder: (ctx, i) {
+                final m = filtered[i];
+                final id = m['id'] as String? ?? '';
+                final name = m['name'] as String? ?? '';
+                final pricing = m['pricing'] as Map<String, dynamic>? ?? {};
+                final promptVal = pricing['prompt'];
+                final promptPrice = promptVal is double
+                    ? promptVal
+                    : double.tryParse(promptVal?.toString() ?? '0') ?? 0.0;
+                final contextLen = m['context_length'] ?? 0;
+                final isFree = promptPrice == 0.0;
+                return ListTile(
+                  dense: true,
+                  title: Text(name, style: const TextStyle(fontSize: 13)),
+                  subtitle: Text(id, style: TextStyle(fontSize: 10, color: MemoTheme.of(context).textDim), overflow: TextOverflow.ellipsis),
+                  leading: Text(isFree ? '🟢' : '🟡', style: const TextStyle(fontSize: 16)),
+                  trailing: Text(
+                    '${contextLen ~/ 1000}K | \$${promptPrice.toStringAsFixed(promptPrice < 0.001 ? 7 : promptPrice < 1 ? 5 : 4)}/K',
+                    style: TextStyle(fontSize: 9, color: MemoTheme.of(context).textDim),
+                  ),
+                  onTap: () => Navigator.pop(context, m),
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
 }

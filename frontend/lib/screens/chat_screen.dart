@@ -131,14 +131,19 @@ class _ChatTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isIncognito = ref.watch(incognitoProvider);
+    final isAgentEnabled = ref.watch(agentEnabledProvider);
     final chatListAsync = ref.watch(chatListProvider);
     final activeChatAsync = ref.watch(activeChatIdProvider);
 
     String title = L10n.t('new_chat');
+    String? agentProjectPath;
     activeChatAsync.whenData((activeId) {
       chatListAsync.whenData((chats) {
         final chat = chats.where((c) => c.id == activeId).firstOrNull;
-        if (chat != null) title = chat.title;
+        if (chat != null) {
+          title = chat.title;
+          agentProjectPath = chat.projectPath;
+        }
       });
     });
 
@@ -187,6 +192,69 @@ class _ChatTopBar extends ConsumerWidget {
                   ),
                    SizedBox(width: 12),
                 ],
+                if (isAgentEnabled && agentProjectPath != null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.green.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.folder_outlined,
+                          size: 14,
+                          color: MemoTheme.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          '${L10n.t('agent_chat_project')}${agentProjectPath!.split('/').last}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: MemoTheme.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ] else if (isAgentEnabled && agentProjectPath == null) ...[
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.accent.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.psychology,
+                          size: 14,
+                          color: MemoTheme.accent,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Agent',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: MemoTheme.accent,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
                 Flexible(
                   child: Text(
                     isIncognito ? L10n.t('incognito_mode') : title,
@@ -201,28 +269,29 @@ class _ChatTopBar extends ConsumerWidget {
             ),
           ),
 
-          // Undo button
-          IconButton(
-            icon: Icon(Icons.undo, size: 20),
-            color: MemoTheme.of(context).textDim,
-            tooltip: 'Ajanın Son İşlemini Geri Al',
-            onPressed: () async {
-              try {
-                await ref.read(apiClientProvider).undoAgentEdit();
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Son ajan işlemi başarıyla geri alındı.')),
-                  );
+          // Undo button (only when agent mode is on)
+          if (isAgentEnabled)
+            IconButton(
+              icon: Icon(Icons.undo, size: 20),
+              color: MemoTheme.of(context).textDim,
+              tooltip: 'Ajanın Son İşlemini Geri Al',
+              onPressed: () async {
+                try {
+                  await ref.read(apiClientProvider).undoAgentEdit();
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('Son ajan işlemi başarıyla geri alındı.')),
+                    );
+                  }
+                } catch (e) {
+                  if (context.mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('Geri alma başarısız: $e'), backgroundColor: MemoTheme.red),
+                    );
+                  }
                 }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('Geri alma başarısız: $e'), backgroundColor: MemoTheme.red),
-                  );
-                }
-              }
-            },
-          ),
+              },
+            ),
           
           // Export button
           IconButton(

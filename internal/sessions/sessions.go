@@ -14,19 +14,21 @@ import (
 )
 
 type ChatMessage struct {
-	Role      string `json:"role"`
-	Content   string `json:"content"`
-	ImagePath string `json:"image_path,omitempty"`
-	FilePath  string `json:"file_path,omitempty"`
-	Timestamp string `json:"timestamp"`
+	Role        string        `json:"role"`
+	Content     string        `json:"content"`
+	ImagePath   string        `json:"image_path,omitempty"`
+	FilePath    string        `json:"file_path,omitempty"`
+	Timestamp   string        `json:"timestamp"`
+	AgentEvents []interface{} `json:"agent_events,omitempty"`
 }
 
 type Session struct {
-	ID        string        `json:"id"`
-	Title     string        `json:"title"`
-	CreatedAt string        `json:"created_at"`
-	UpdatedAt string        `json:"updated_at"`
-	Messages  []ChatMessage `json:"messages"`
+	ID          string        `json:"id"`
+	Title       string        `json:"title"`
+	CreatedAt   string        `json:"created_at"`
+	UpdatedAt   string        `json:"updated_at"`
+	Messages    []ChatMessage `json:"messages"`
+	ProjectPath string        `json:"project_path,omitempty"`
 }
 
 type Manager struct {
@@ -89,6 +91,25 @@ func (m *Manager) NewChat() string {
 	return s.ID
 }
 
+func (m *Manager) NewAgentChat(projectPath string) string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.newSession("Agent Chat")
+	s.ProjectPath = projectPath
+	m.active = s.ID
+	return s.ID
+}
+
+func (m *Manager) GetProjectPath(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	return s.ProjectPath
+}
+
 func (m *Manager) SwitchChat(id string) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -131,7 +152,7 @@ func (m *Manager) RenameChat(id, title string) error {
 	return m.save(s)
 }
 
-func (m *Manager) AddMessage(role, content, imagePath, filePath string) {
+func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEvents ...[]interface{}) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	s := m.sessions[m.active]
@@ -144,6 +165,9 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string) {
 		ImagePath: imagePath,
 		FilePath:  filePath,
 		Timestamp: time.Now().Format("15:04"),
+	}
+	if len(agentEvents) > 0 && len(agentEvents[0]) > 0 {
+		msg.AgentEvents = agentEvents[0]
 	}
 	s.Messages = append(s.Messages, msg)
 	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
@@ -212,11 +236,19 @@ func (m *Manager) GetActiveID() string {
 }
 
 type SessionInfo struct {
-	ID        string `json:"id"`
-	Title     string `json:"title"`
-	CreatedAt string `json:"created_at"`
-	UpdatedAt string `json:"updated_at"`
-	MsgCount  int    `json:"msg_count"`
+	ID          string `json:"id"`
+	Title       string `json:"title"`
+	CreatedAt   string `json:"created_at"`
+	UpdatedAt   string `json:"updated_at"`
+	MsgCount    int    `json:"msg_count"`
+	ProjectPath string `json:"project_path,omitempty"`
+}
+
+func (m *Manager) IsAgentChat(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	return ok && s.ProjectPath != ""
 }
 
 func (m *Manager) ListChats() []SessionInfo {
@@ -226,11 +258,12 @@ func (m *Manager) ListChats() []SessionInfo {
 	out := make([]SessionInfo, len(list))
 	for i, s := range list {
 		out[i] = SessionInfo{
-			ID:        s.ID,
-			Title:     s.Title,
-			CreatedAt: s.CreatedAt,
-			UpdatedAt: s.UpdatedAt,
-			MsgCount:  len(s.Messages),
+			ID:          s.ID,
+			Title:       s.Title,
+			CreatedAt:   s.CreatedAt,
+			UpdatedAt:   s.UpdatedAt,
+			MsgCount:    len(s.Messages),
+			ProjectPath: s.ProjectPath,
 		}
 	}
 	return out

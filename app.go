@@ -120,6 +120,7 @@ type App struct {
 	originalBaseURL   string      // stores the original API base URL before llama override
 	embeddingClient   *api.Client // separate client for embedding server
 	syncManager       *cloudsync.Manager
+	syncMu            sync.RWMutex
 	memorySaveCh      chan saveTask
 	events            *eventRing
 
@@ -199,7 +200,9 @@ func (a *App) startup(ctx context.Context) {
 		log.Printf("WARN: memory: %v", err)
 		a.emitEvent("memory_store_error", err.Error())
 	}
+	a.storeMu.Lock()
 	a.store = store
+	a.storeMu.Unlock()
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
 
@@ -238,6 +241,7 @@ func (a *App) startup(ctx context.Context) {
 	if cfg.Sync.Enabled {
 		clientID, clientSecret := a.resolveSyncCredentials()
 		if clientID != "" && clientSecret != "" {
+			a.syncMu.Lock()
 			a.syncManager = cloudsync.New(
 				ctx,
 				cfg.Memory.PersistDir,
@@ -247,6 +251,7 @@ func (a *App) startup(ctx context.Context) {
 				clientSecret,
 				cfg.Sync.TokenPath,
 			)
+			a.syncMu.Unlock()
 			log.Println("Cloud sync enabled")
 		} else {
 			log.Println("Cloud sync enabled in config but OAuth credentials are not available")
@@ -276,6 +281,11 @@ func (a *App) startup(ctx context.Context) {
 	a.orchestraConductor = orchestra.NewConductor(
 		orchestraCfg,
 		func(cfg provider.ProviderConfig) (provider.Provider, error) {
+			if a.providerRouter != nil {
+				if p, ok := a.providerRouter.GetProvider(cfg.Type); ok {
+					return p, nil
+				}
+			}
 			return provider.NewProvider(cfg)
 		},
 		func() []provider.ProviderConfig {
@@ -454,7 +464,12 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	agentActive := a.agentEnabled
 	a.agentMu.RUnlock()
 
+	orchestraEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
+
 	if agentActive && a.activeProvider != "" {
+		if orchestraEnabled {
+			return a.callAgentWithOrchestra(ctx, messages, userMsg)
+		}
 		return a.callAgentStream(ctx, messages, userMsg)
 	}
 
@@ -577,17 +592,26 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			}
 		}
 
+		// Get project path from session (agent chat support)
+		projectPath := ""
+		if sessionID != "" && a.sessions != nil {
+			projectPath = a.sessions.GetProjectPath(sessionID)
+		}
+
 		start := time.Now()
 		var fullReply strings.Builder
+		var agentEvents []interface{}
 
 		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
+			// Collect agent events for persistence
+			agentEvents = append(agentEvents, ev)
 			// Emit agent events as special StreamChunks so frontend can render them
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
 				Content: string(chunkData),
 				FinishReason: "agent_event", // Special flag
 			})
-		})
+		}, projectPath)
 
 		if err != nil {
 			log.Printf("Agent error: %v", err)
@@ -608,14 +632,158 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			}
 
 			if chunk.Done {
-				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg)
+				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, agentEvents)
 				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 				return
 			}
 		}
 
 		if fullReply.Len() > 0 {
-			a.finishStream(start, 0, "stop", fullReply.String(), userMsg)
+			a.finishStream(start, 0, "stop", fullReply.String(), userMsg, agentEvents)
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+		}
+	}()
+
+	return outCh
+}
+
+// callAgentWithOrchestra runs when both agent mode and orchestra mode are enabled.
+// It first runs the orchestra workflow for multi-model reasoning, then feeds the
+// result through the agent pipeline so the agent can execute any tool calls.
+func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
+	outCh := make(chan api.StreamChunk, 128)
+
+	go func() {
+		defer close(outCh)
+
+		// Build conversation context for orchestra
+		var userPrompt string
+		for i := len(messages) - 1; i >= 0; i-- {
+			if messages[i].Role == "user" {
+				userPrompt = messages[i].GetTextContent()
+				if userPrompt != "" {
+					break
+				}
+			}
+		}
+		if userPrompt == "" {
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ No user message found", Done: true})
+			return
+		}
+
+		conversationCtx := buildConversationContext(messages, userPrompt)
+
+		// Run orchestra workflow
+		trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Orchestra + Agent**\n"})
+		trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
+
+		var fullBuf strings.Builder
+		orchestraResult, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
+			switch up.Type {
+			case orchestra.ProgressPlan:
+				trySend(ctx, outCh, api.StreamChunk{Content: "🧠 Şef planlıyor...\n"})
+			case orchestra.ProgressPlanChunk:
+				fullBuf.WriteString(up.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+			case orchestra.ProgressTaskStart:
+				fullBuf.WriteString(up.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+			case orchestra.ProgressTaskDone:
+				if up.Error != "" {
+					chunk := fmt.Sprintf("❌ %s | %s\n   ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
+					fullBuf.WriteString(chunk)
+					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
+				} else {
+					chunk := fmt.Sprintf("✅ %s | %s (%dms)\n", up.Role, up.ModelType, up.DurationMs)
+					fullBuf.WriteString(chunk)
+					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
+					fullBuf.WriteString(up.Content + "\n\n")
+					trySend(ctx, outCh, api.StreamChunk{Content: up.Content + "\n\n"})
+				}
+			case orchestra.ProgressSynthChunk:
+				fullBuf.WriteString(up.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+			}
+		})
+		if err != nil {
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Orchestra hatası: " + err.Error(), Done: true})
+			return
+		}
+
+		finalContent := fullBuf.String()
+		if finalContent == "" {
+			finalContent = orchestraResult
+		}
+
+		// Now feed the orchestra result through the agent pipeline for tool execution
+		trySend(ctx, outCh, api.StreamChunk{Content: "\n🤖 **Agent executing tasks...**\n"})
+
+		// Convert to provider messages
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+		// Add the orchestra result as an assistant message context
+		pMsgs = append(pMsgs, provider.Message{Role: "assistant", Content: finalContent})
+
+		sessionID := ""
+		if a.sessions != nil {
+			sessionID = a.sessions.GetActiveID()
+		}
+
+		modelName := ""
+		if a.activeProvider != "" && a.providerRouter != nil {
+			for _, p := range a.providerCfgMgr.GetEnabled() {
+				if p.Type == a.activeProvider {
+					modelName = p.Model
+					break
+				}
+			}
+		}
+
+		projectPath := ""
+		if sessionID != "" && a.sessions != nil {
+			projectPath = a.sessions.GetProjectPath(sessionID)
+		}
+
+		start := time.Now()
+		var agentBuf strings.Builder
+		var agentEvents []interface{}
+
+		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
+			agentEvents = append(agentEvents, ev)
+			chunkData, _ := json.Marshal(ev)
+			trySend(ctx, outCh, api.StreamChunk{
+				Content:      string(chunkData),
+				FinishReason: "agent_event",
+			})
+		}, projectPath)
+
+		if err != nil {
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent hatası: " + err.Error(), Done: true})
+			return
+		}
+
+		for chunk := range streamCh {
+			if chunk.Error != "" {
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+				return
+			}
+			if chunk.Content != "" {
+				agentBuf.WriteString(chunk.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
+			}
+			if chunk.Done {
+				finalReply := finalContent + "\n\n" + agentBuf.String()
+				a.finishStream(start, 0, chunk.FinishReason, finalReply, userMsg, agentEvents)
+				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+				return
+			}
+		}
+
+		if agentBuf.Len() > 0 {
+			finalReply := finalContent + "\n\n" + agentBuf.String()
+			a.finishStream(start, 0, "stop", finalReply, userMsg, agentEvents)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		}
 	}()
@@ -654,36 +822,43 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			trySend(ctx, outCh, api.StreamChunk{Content: "🎵 **Orchestra Mode Active**\n"})
 			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
 
-			var synthBuf strings.Builder
+			var fullBuf strings.Builder
 
 			finalResponse, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
 				switch up.Type {
 				case orchestra.ProgressPlan:
 					trySend(ctx, outCh, api.StreamChunk{Content: "🧠 Şef planlıyor...\n"})
 				case orchestra.ProgressPlanChunk:
+					fullBuf.WriteString(up.Content)
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				case orchestra.ProgressTaskStart:
+					fullBuf.WriteString(up.Content)
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				case orchestra.ProgressTaskDone:
 					if up.Error != "" {
-						trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("❌ %s | %s\n   ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)})
+						chunk := fmt.Sprintf("❌ %s | %s\n   ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
+						fullBuf.WriteString(chunk)
+						trySend(ctx, outCh, api.StreamChunk{Content: chunk})
 					} else {
-						trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("✅ %s | %s (%dms)\n", up.Role, up.ModelType, up.DurationMs)})
+						chunk := fmt.Sprintf("✅ %s | %s (%dms)\n", up.Role, up.ModelType, up.DurationMs)
+						fullBuf.WriteString(chunk)
+						trySend(ctx, outCh, api.StreamChunk{Content: chunk})
+						fullBuf.WriteString(up.Content + "\n\n")
 						trySend(ctx, outCh, api.StreamChunk{Content: up.Content + "\n\n"})
 					}
 				case orchestra.ProgressSynthChunk:
-					synthBuf.WriteString(up.Content)
+					fullBuf.WriteString(up.Content)
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				}
 			})
 			if err != nil {
-				a.finishStream(start, 0, "error", synthBuf.String(), userPrompt)
+				a.finishStream(start, 0, "error", fullBuf.String(), userPrompt)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
 
-			// Use synthBuf content if non-empty, otherwise finalResponse
-			finalContent := synthBuf.String()
+			// Use fullBuf content if non-empty, otherwise finalResponse
+			finalContent := fullBuf.String()
 			if finalContent == "" {
 				finalContent = finalResponse
 			}
@@ -842,7 +1017,7 @@ func trySend(ctx context.Context, outCh chan<- api.StreamChunk, chunk api.Stream
 	}
 }
 
-func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg string) {
+func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg string, agentEvents ...[]interface{}) {
 	duration := time.Since(start).Seconds()
 	tps := 0.0
 	if duration > 0 && tokenCount > 0 {
@@ -864,7 +1039,7 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 	a.incognitoMu.RUnlock()
 	if !incog {
 		if a.sessions != nil {
-			a.sessions.AddMessage("assistant", reply, "", "")
+			a.sessions.AddMessage("assistant", reply, "", "", agentEvents...)
 			// Auto-generate smart title after first exchange
 			if len(a.sessions.GetActiveMessages()) == 2 {
 				go a.GenerateChatTitle()
@@ -974,6 +1149,13 @@ func (a *App) NewChat() string {
 		return ""
 	}
 	return a.sessions.NewChat()
+}
+
+func (a *App) NewAgentChat(projectPath string) string {
+	if a.sessions == nil {
+		return ""
+	}
+	return a.sessions.NewAgentChat(projectPath)
 }
 
 func (a *App) ListChats() []sessions.SessionInfo {
@@ -1372,6 +1554,9 @@ func (a *App) TestProviderConnection(cfg provider.ProviderConfig) error {
 
 func (a *App) SetActiveProvider(pt provider.ProviderType) {
 	a.activeProvider = pt
+	if a.providerRouter != nil {
+		a.providerRouter.SetActiveProvider(pt)
+	}
 	log.Printf("Active provider set to: %s", pt)
 }
 
@@ -2156,8 +2341,11 @@ func (a *App) saveMemorySync(userMsg, reply string) {
 	} else {
 		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
 		log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
-		if a.syncManager != nil {
-			a.syncManager.Increment()
+		a.syncMu.RLock()
+		sm := a.syncManager
+		a.syncMu.RUnlock()
+		if sm != nil {
+			sm.Increment()
 		}
 	}
 }
@@ -2245,12 +2433,20 @@ func (a *App) resolveSyncCredentials() (string, string) {
 }
 
 func (a *App) ensureSyncManager() error {
-	if a.syncManager != nil {
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm != nil {
 		return nil
 	}
 	clientID, clientSecret := a.resolveSyncCredentials()
 	if clientID == "" || clientSecret == "" {
 		return fmt.Errorf("cloud sync OAuth credentials missing (set MEMO_GOOGLE_CLIENT_ID and MEMO_GOOGLE_CLIENT_SECRET in app environment)")
+	}
+	a.syncMu.Lock()
+	defer a.syncMu.Unlock()
+	if a.syncManager != nil {
+		return nil // double-check after acquiring write lock
 	}
 	a.syncManager = cloudsync.New(
 		a.ctx,
@@ -2366,6 +2562,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 
 	// Re-create manager with fresh settings.
 	resolvedClientID, resolvedClientSecret := a.resolveSyncCredentials()
+	a.syncMu.Lock()
 	if a.cfg.Sync.Enabled && resolvedClientID != "" && resolvedClientSecret != "" {
 		a.syncManager = cloudsync.New(
 			a.ctx,
@@ -2379,6 +2576,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 	} else {
 		a.syncManager = nil
 	}
+	a.syncMu.Unlock()
 	return nil
 }
 
@@ -2392,7 +2590,9 @@ func (a *App) DisconnectSync() error {
 	if err := os.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("disconnect sync: remove token: %w", err)
 	}
+	a.syncMu.Lock()
 	a.syncManager = nil
+	a.syncMu.Unlock()
 	return nil
 }
 

@@ -1,3 +1,4 @@
+
 # 👁️ Multimodal Yetenekler (Görsel ve Ses)
 
 Memo sadece metinle sınırlı değildir; görselleri görebilir ve sesleri duyabilir.

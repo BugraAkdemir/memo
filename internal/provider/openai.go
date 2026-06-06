@@ -91,8 +91,10 @@ type openAIChatRequest struct {
 }
 
 type openAIMessage struct {
-	Role    string      `json:"role"`
-	Content interface{} `json:"content"`
+	Role       string           `json:"role"`
+	Content    interface{}      `json:"content"`
+	ToolCallID string           `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall       `json:"tool_calls,omitempty"`
 }
 
 type openAIChoice struct {
@@ -326,7 +328,14 @@ func (p *openAIProvider) setAuth(req *http.Request) {
 func (p *openAIProvider) toOpenAIMessages(msgs []Message) []openAIMessage {
 	out := make([]openAIMessage, 0, len(msgs))
 	for _, m := range msgs {
-		out = append(out, openAIMessage{Role: m.Role, Content: m.Content})
+		om := openAIMessage{Role: m.Role, Content: m.Content}
+		if m.ToolCallID != "" {
+			om.ToolCallID = m.ToolCallID
+		}
+		if len(m.ToolCalls) > 0 {
+			om.ToolCalls = m.ToolCalls
+		}
+		out = append(out, om)
 	}
 	return out
 }

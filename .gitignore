@@ -48,3 +48,4 @@ data/sessions/
 data/sync_token.json
 
 data/agent-backups/*
+data/providers.json

@@ -69,6 +69,14 @@ func (e *Executor) IsAvailable() bool {
 	return true
 }
 
+// SyncRouter updates the providerRouter reference to match the app's current router.
+// This is needed because the router is replaced when providers change.
+func (e *Executor) SyncRouter(r *provider.Router) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.providerRouter = r
+}
+
 // RunStream starts the agent execution and streams back chunks and events.
 func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
 	if !e.IsAvailable() {

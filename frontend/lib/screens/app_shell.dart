@@ -8,10 +8,10 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
 import 'chat_screen.dart';
+import 'agent_screen.dart';
 import 'model_store_screen.dart';
 
-/// Main app shell — sidebar (chat list) + content area.
-/// Navigation between Chat and Model Store via bottom of sidebar.
+/// Main app shell — NavRail + content area.
 class AppShell extends ConsumerStatefulWidget {
    AppShell({super.key});
 
@@ -20,7 +20,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _currentIndex = 0; // 0 = chat, 1 = models (future)
+  int _currentIndex = 0; // 0 = chat, 1 = agent, 2 = models
 
   @override
   Widget build(BuildContext context) {
@@ -33,23 +33,21 @@ class _AppShellState extends ConsumerState<AppShell> {
         children: [
           Row(
             children: [
-              // ─── Nav Rail ─────────────────────────────────
               _buildNavRail(),
-
-              // ─── Content ─────────────────────────────────
               Expanded(
-                child: _currentIndex == 0
-                    ? ChatScreen(key: ValueKey('chat_$locale'))
-                    : ModelStoreScreen(key: ValueKey('models_$locale')),
+                child: IndexedStack(
+                  index: _currentIndex,
+                  children: [
+                    ChatScreen(key: ValueKey('chat_$locale')),
+                    const AgentScreen(),
+                    ModelStoreScreen(key: ValueKey('models_$locale')),
+                  ],
+                ),
               ),
             ],
           ),
-
-          // ─── Overlays ───────────────────────────────────────────────
-          // Order matters: SetupWizard renders on top (setup must complete first),
-          // then LlamaInstaller shows if llama.cpp is missing after setup.
-           SetupWizardOverlay(),
-           LlamaInstallerOverlay(),
+          SetupWizardOverlay(),
+          LlamaInstallerOverlay(),
         ],
       ),
     );
@@ -89,8 +87,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
            SizedBox(height: 24),
 
-          // ─── Chat Tab ────────────────────────────────
-          _NavRailButton(
+           // ─── Chat Tab ────────────────────────────────
+           _NavRailButton(
             icon: Icons.chat_bubble_outline,
             activeIcon: Icons.chat_bubble,
             label: L10n.t('chats'),
@@ -100,13 +98,24 @@ class _AppShellState extends ConsumerState<AppShell> {
 
            SizedBox(height: 8),
 
-          // ─── Models Tab ──────────────────────────────
+           // ─── Agent Tab ──────────────────────────────
+          _NavRailButton(
+            icon: Icons.smart_toy_outlined,
+            activeIcon: Icons.smart_toy,
+            label: 'Ajan',
+            isActive: _currentIndex == 1,
+            onTap: () => setState(() => _currentIndex = 1),
+          ),
+
+           SizedBox(height: 8),
+
+           // ─── Models Tab ──────────────────────────────
           _NavRailButton(
             icon: Icons.memory_outlined,
             activeIcon: Icons.memory,
             label: L10n.t('model_store'),
-            isActive: _currentIndex == 1,
-            onTap: () => setState(() => _currentIndex = 1),
+            isActive: _currentIndex == 2,
+            onTap: () => setState(() => _currentIndex = 2),
           ),
 
            Spacer(),

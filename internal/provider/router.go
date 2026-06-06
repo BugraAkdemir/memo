@@ -11,9 +11,10 @@ import (
 
 // Router manages multiple providers with fallback support.
 type Router struct {
-	mu        sync.RWMutex
-	providers []*providerEntry
-	configs   []ProviderConfig
+	mu            sync.RWMutex
+	providers     []*providerEntry
+	configs       []ProviderConfig
+	activeType    ProviderType // only this type will be used; empty = use any
 }
 
 type providerEntry struct {
@@ -175,16 +176,29 @@ func (r *Router) CheckConnection(ctx context.Context) []ProviderConfig {
 	return results
 }
 
-// getActiveEntries returns all non-disabled provider entries sorted by priority.
+// SetActiveProvider restricts the router to only use the given provider type.
+// Pass empty string to allow any enabled provider.
+func (r *Router) SetActiveProvider(pt ProviderType) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	r.activeType = pt
+}
+
+// getActiveEntries returns non-disabled provider entries.
+// If activeType is set, only the matching provider is returned.
 func (r *Router) getActiveEntries() []*providerEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
 	entries := make([]*providerEntry, 0, len(r.providers))
 	for _, entry := range r.providers {
-		if !entry.disabled {
-			entries = append(entries, entry)
+		if entry.disabled {
+			continue
 		}
+		if r.activeType != "" && entry.Name() != r.activeType {
+			continue
+		}
+		entries = append(entries, entry)
 	}
 	return entries
 }
@@ -204,6 +218,18 @@ func (r *Router) resetFailCount(entry *providerEntry) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	entry.failCount = 0
+}
+
+// GetProvider returns an existing provider instance by type.
+func (r *Router) GetProvider(pt ProviderType) (Provider, bool) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	for _, entry := range r.providers {
+		if entry.Name() == pt && !entry.disabled {
+			return entry.Provider, true
+		}
+	}
+	return nil, false
 }
 
 // ReenableProvider re-enables a previously auto-disabled provider.

@@ -104,6 +104,12 @@ class MemoApiClient {
     return res.data['id'] as String? ?? '';
   }
 
+  /// Create an agent chat with a project directory, returns the new chat ID.
+  Future<String> createAgentChat(String projectPath) async {
+    final res = await _dio.post('/api/agent/chat', data: {'project_path': projectPath});
+    return res.data['id'] as String? ?? '';
+  }
+
   /// Switch to a chat by ID.
   Future<void> switchChat(String id) async {
     await _dio.post('/api/chats/switch', data: {'id': id});
@@ -156,6 +162,28 @@ class MemoApiClient {
   Future<String> generateTitle() async {
     final res = await _dio.post('/api/chat/title');
     return res.data['title'] as String? ?? '';
+  }
+
+  // ─── OpenRouter ───────────────────────────────────────────────
+
+  /// Save OpenRouter API key and activate provider.
+  Future<Map<String, dynamic>> connectOpenRouter({
+    required String apiKey,
+    String model = 'openai/gpt-4o',
+  }) async {
+    final res = await _dio.post('/api/openrouter/connect', data: {
+      'api_key': apiKey,
+      'model': model,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Fetch available models from OpenRouter for the given API key.
+  Future<Map<String, dynamic>> fetchOpenRouterModels(String apiKey) async {
+    final res = await _dio.post('/api/openrouter/models', data: {
+      'api_key': apiKey,
+    });
+    return res.data as Map<String, dynamic>;
   }
 
   // ─── Status ─────────────────────────────────────────────────────

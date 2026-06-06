@@ -75,150 +75,151 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		copy(currentMessages, messages)
 
 		for iteration := 0; iteration < p.maxIters; iteration++ {
-			// Check context cancellation
-			select {
-			case <-ctx.Done():
-				trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true})
-				return
-			default:
+		// Check context cancellation
+		select {
+		case <-ctx.Done():
+			trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled", Done: true})
+			return
+		default:
+		}
+
+		// Define request
+		req := provider.ChatRequest{
+			Model:       modelName,
+			Messages:    currentMessages,
+			Temperature: 0.2,
+			Tools:       p.registry.ToOpenAITools(),
+			Stream:      false,
+		}
+
+		// Call LLM
+		resp, err := p.prov.ChatCompletion(ctx, req)
+		if err != nil {
+			log.Printf("AGENT: ChatCompletion error: %v", err)
+			trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true})
+			return
+		}
+
+		// If no tool calls, we are done
+		if len(resp.ToolCalls) == 0 {
+			if resp.Content != "" {
+				trySend(ctx, outCh, provider.StreamChunk{Content: resp.Content})
+			}
+			onEvent(AgentEvent{Type: EventFinalResponse, Content: resp.Content})
+			trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop"})
+			return
+		}
+
+		// Add assistant message with tool_calls to history
+		assistantMsg := provider.Message{
+			Role:      "assistant",
+			Content:   resp.Content,
+			ToolCalls: resp.ToolCalls,
+		}
+		currentMessages = append(currentMessages, assistantMsg)
+
+		// Execute each tool call
+		for _, tc := range resp.ToolCalls {
+			toolName := tc.Function.Name
+			args := tc.Function.Arguments
+
+			// Fix double-encoded JSON args (some LLMs return string inside string)
+			args = fixJSONArgs(args)
+
+			// Ensure tool exists
+			toolDef, ok := p.registry.Get(toolName)
+			if !ok {
+				errMsg := fmt.Sprintf("Unknown tool: %s", toolName)
+				onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
+				currentMessages = append(currentMessages, provider.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    fmt.Sprintf("Error: %s", errMsg),
+				})
+				continue
 			}
 
-			// Define request
-			req := provider.ChatRequest{
-				Model:       modelName,
-				Messages:    currentMessages,
-				Temperature: 0.2, // Low temp for more reliable tool calling
-				Tools:       p.registry.ToOpenAITools(),
-				Stream:      false, // We don't stream intermediate tool calls to keep logic simple, only final response
+			// Check Rate Limit
+			if err := p.sandbox.RateLimit(toolName, hashArgs(args)); err != nil {
+				onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
+				currentMessages = append(currentMessages, provider.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    fmt.Sprintf("Error: %s", err.Error()),
+				})
+				continue
 			}
 
-			// Call LLM
-			resp, err := p.prov.ChatCompletion(ctx, req)
-			if err != nil {
-				log.Printf("AGENT: ChatCompletion error: %v", err)
-				trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true})
-				return
-			}
+			// Check Permission
+			permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel)
 
-			// If no tool calls, we are done! We should ideally stream the final response.
-			// But since we did a non-streaming request, we just emit the content and finish.
-			// To stream the final response properly, we'd need to peek if tool_calls exist, which requires streaming API handling.
-			// For simplicity in V1: if no tools, we just emit the full text chunk.
-			if len(resp.ToolCalls) == 0 {
-				if resp.Content != "" {
-					trySend(ctx, outCh, provider.StreamChunk{Content: resp.Content})
-				}
-				onEvent(AgentEvent{Type: EventFinalResponse, Content: resp.Content})
-				trySend(ctx, outCh, provider.StreamChunk{Done: true, FinishReason: "stop"})
-				return
-			}
-
-			// We have tool calls! Add assistant message to history
-			currentMessages = append(currentMessages, provider.Message{
-				Role:    "assistant",
-				Content: resp.Content, // Might be empty if it only returned tools
-				// Note: In a real implementation we need to properly serialize tool_calls back to the LLM history.
-				// For the interface we have, we might need to format it as JSON string if provider.Message doesn't support ToolCalls natively yet.
-			})
-
-			// Execute each tool call
-			for _, tc := range resp.ToolCalls {
-				toolName := tc.Function.Name
-				args := tc.Function.Arguments
-
-				// Ensure tool exists
-				toolDef, ok := p.registry.Get(toolName)
-				if !ok {
-					errMsg := fmt.Sprintf("Unknown tool: %s", toolName)
-					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: errMsg})
-					currentMessages = append(currentMessages, provider.Message{
-						Role:    "tool",
-						Content: fmt.Sprintf("Error: %s", errMsg),
-					})
-					continue
+			if permRes.NeedPrompt {
+				var preview string
+				if toolDef.PreviewFn != nil {
+					preview, _ = toolDef.PreviewFn(args, p.sandbox.config.BasePath)
 				}
 
-				// Check Rate Limit
-				if err := p.sandbox.RateLimit(toolName, hashArgs(args)); err != nil {
-					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: err.Error()})
-					currentMessages = append(currentMessages, provider.Message{
-						Role:    "tool",
-						Content: fmt.Sprintf("Error: %s", err.Error()),
-					})
-					continue
+				reqID := generateID()
+				ev := AgentEvent{
+					Type:        EventPermissionRequest,
+					RequestID:   reqID,
+					ToolName:    toolName,
+					Args:        args,
+					DangerLevel: toolDef.DangerLevel,
+					Preview:     preview,
 				}
+				onEvent(ev)
 
-				// Check Permission
-				permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel)
-				
-				if permRes.NeedPrompt {
-					var preview string
-					if toolDef.PreviewFn != nil {
-						preview, _ = toolDef.PreviewFn(args, p.sandbox.config.BasePath)
-					}
-
-					reqID := generateID()
-					ev := AgentEvent{
-						Type:        EventPermissionRequest,
-						RequestID:   reqID,
-						ToolName:    toolName,
-						Args:        args,
-						DangerLevel: toolDef.DangerLevel,
-						Preview:     preview,
-					}
-					onEvent(ev)
-
-					// Wait for user
-					policy, err := permissionWaitFn(reqID, ev)
-					if err != nil {
-						// Wait cancelled or timeout
-						onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: "Permission wait cancelled"})
-						return
-					}
-
-					p.permissions.HandleResponse(toolName, args, policy)
-					
-					// Re-check after response
-					if policy == DenyOnce || policy == DenyForever {
-						permRes.Allowed = false
-					} else {
-						permRes.Allowed = true
-					}
-				}
-
-				if !permRes.Allowed {
-					onEvent(AgentEvent{Type: EventPermissionDenied, ToolName: toolName, Args: args})
-					currentMessages = append(currentMessages, provider.Message{
-						Role:    "tool",
-						Content: "Error: User denied permission to execute this tool.",
-					})
-					continue
-				}
-
-				// Execute!
-				onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
-				
-				start := time.Now()
-				result, err := p.registry.Execute(toolName, args, p.sandbox.config.BasePath, p.backup.CreateBackup)
-				duration := time.Since(start).Milliseconds()
-
-				// Clean up AllowOnce/DenyOnce state
-				p.permissions.ClearOnce(toolName, args)
-
+				policy, err := permissionWaitFn(reqID, ev)
 				if err != nil {
-					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Args: args, Error: err.Error(), DurationMs: duration})
-					currentMessages = append(currentMessages, provider.Message{
-						Role:    "tool",
-						Content: fmt.Sprintf("Execution Error: %v", err),
-					})
+					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: "Permission wait cancelled"})
+					return
+				}
+
+				p.permissions.HandleResponse(toolName, args, policy)
+
+				if policy == DenyOnce || policy == DenyForever {
+					permRes.Allowed = false
 				} else {
-					onEvent(AgentEvent{Type: EventToolResult, ToolName: toolName, Args: args, Result: result, DurationMs: duration})
-					currentMessages = append(currentMessages, provider.Message{
-						Role:    "tool",
-						Content: result,
-					})
+					permRes.Allowed = true
 				}
 			}
+
+			if !permRes.Allowed {
+				onEvent(AgentEvent{Type: EventPermissionDenied, ToolName: toolName, Args: args})
+				currentMessages = append(currentMessages, provider.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    "Error: User denied permission to execute this tool.",
+				})
+				continue
+			}
+
+			// Execute!
+			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
+
+			start := time.Now()
+			result, err := p.registry.Execute(toolName, args, p.sandbox.config.BasePath, p.backup.CreateBackup)
+			duration := time.Since(start).Milliseconds()
+
+			p.permissions.ClearOnce(toolName, args)
+
+			if err != nil {
+				onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Args: args, Error: err.Error(), DurationMs: duration})
+				currentMessages = append(currentMessages, provider.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    fmt.Sprintf("Execution Error: %v", err),
+				})
+			} else {
+				onEvent(AgentEvent{Type: EventToolResult, ToolName: toolName, Args: args, Result: result, DurationMs: duration})
+				currentMessages = append(currentMessages, provider.Message{
+					Role:       "tool",
+					ToolCallID: tc.ID,
+					Content:    result,
+				})
+			}
+		}
 		}
 
 		trySend(ctx, outCh, provider.StreamChunk{Error: "Max tool iterations reached", Done: true})
@@ -232,4 +233,29 @@ func trySend(ctx context.Context, outCh chan<- provider.StreamChunk, chunk provi
 	case outCh <- chunk:
 	case <-ctx.Done():
 	}
+}
+
+// fixJSONArgs handles LLMs that return double-encoded JSON
+// (e.g., args is "\"{\\\"path\\\": ...}\"" instead of {"path": ...})
+func fixJSONArgs(raw json.RawMessage) json.RawMessage {
+	if len(raw) == 0 {
+		return raw
+	}
+	// Try to unmarshal as-is into a generic map
+	var v interface{}
+	if err := json.Unmarshal(raw, &v); err == nil {
+		// If it's a string, it might be double-encoded JSON
+		if s, ok := v.(string); ok {
+			// Try parsing the inner string as JSON
+			var inner interface{}
+			if json.Unmarshal([]byte(s), &inner) == nil {
+				// It was double-encoded — re-marshal as proper JSON
+				fixed, _ := json.Marshal(inner)
+				return fixed
+			}
+		}
+		// Valid JSON, return as-is
+		return raw
+	}
+	return raw
 }

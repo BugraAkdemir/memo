@@ -48,6 +48,7 @@ type FullBridge interface {
 
 	// Sessions
 	ListChats() []sessions.SessionInfo
+	NewAgentChat(projectPath string) string
 
 	// Recording
 	StartRecording() error

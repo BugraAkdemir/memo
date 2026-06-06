@@ -71,6 +71,7 @@ class ChatSession {
   final String createdAt;
   final String updatedAt;
   final int msgCount;
+  final String? projectPath;
 
   const ChatSession({
     required this.id,
@@ -78,7 +79,10 @@ class ChatSession {
     required this.createdAt,
     required this.updatedAt,
     required this.msgCount,
+    this.projectPath,
   });
+
+  bool get isAgentChat => projectPath != null && projectPath!.isNotEmpty;
 
   factory ChatSession.fromJson(Map<String, dynamic> json) => ChatSession(
         id: json['id'] as String? ?? '',
@@ -86,5 +90,6 @@ class ChatSession {
         createdAt: json['created_at'] as String? ?? '',
         updatedAt: json['updated_at'] as String? ?? '',
         msgCount: json['msg_count'] as int? ?? 0,
+        projectPath: json['project_path'] as String?,
       );
 }

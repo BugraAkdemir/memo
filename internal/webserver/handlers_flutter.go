@@ -896,6 +896,26 @@ func (s *Server) handleOrchestraConfig(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleAgentChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ProjectPath string `json:"project_path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if req.ProjectPath == "" {
+		http.Error(w, "project_path required", http.StatusBadRequest)
+		return
+	}
+	id := s.fullBridge.NewAgentChat(req.ProjectPath)
+	writeJSON(w, map[string]string{"id": id})
+}
+
 // ─── Agent Handlers ──────────────────────────────────────────────────
 
 func (s *Server) handleAgentEnabled(w http.ResponseWriter, r *http.Request) {

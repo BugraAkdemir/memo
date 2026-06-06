@@ -151,13 +151,22 @@ func (c *Conductor) findProviderConfig(modelType string) *provider.ProviderConfi
 
 // createProviderForType creates a provider for the given model type and model name.
 func (c *Conductor) createProviderForType(modelType, modelName string) (provider.Provider, error) {
+	// First try exact match
 	pCfg := c.findProviderConfig(modelType)
 	if pCfg != nil {
-		// Use the saved config (with API key, base URL etc.)
 		pCfg.Model = modelName
 		return c.pf(*pCfg)
 	}
-	// Fallback: create minimal config — will fail for external APIs
+
+	// Fallback: use any enabled provider (e.g. OpenRouter)
+	configs := c.getConfigs()
+	for _, cfg := range configs {
+		if cfg.Enabled {
+			cfg.Model = modelName
+			return c.pf(cfg)
+		}
+	}
+
 	return nil, fmt.Errorf("%s/%s için provider konfigürasyonu bulunamadı. Lütfen API Providers sayfasından provider'ı ekleyip etkinleştir", modelType, modelName)
 }
 

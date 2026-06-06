@@ -47,6 +47,13 @@ func NewSandbox(config SandboxConfig) *Sandbox {
 	}
 }
 
+// SetBasePath updates the sandbox base path (thread-safe, used by agent chat).
+func (s *Sandbox) SetBasePath(basePath string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.config.BasePath = basePath
+}
+
 // ValidatePath checks if a path is safe to access.
 func (s *Sandbox) ValidatePath(targetPath string) error {
 	var fullPath string

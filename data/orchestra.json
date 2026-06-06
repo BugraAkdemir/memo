@@ -1,32 +1,32 @@
 {
   "enabled": false,
-  "chief_type": "gemini",
-  "chief_model": "gemini-2.0-flash",
+  "chief_type": "openrouter",
+  "chief_model": "moonshotai/kimi-k2.6:free",
   "roles": [
     {
       "role": "planner",
-      "enabled": false,
-      "model_type": "claude",
-      "model_name": "claude-sonnet-4-20250514",
+      "enabled": true,
+      "model_type": "openrouter",
+      "model_name": "google/gemma-4-26b-a4b-it:free",
       "system_prompt": "Sen bir yazılım mimarı ve planlama uzmanısın. Görevin:\n- Karmaşık işleri analiz etmek ve adımlara bölmek\n- Detaylı, uygulanabilir planlar çıkarmak\n- Her adım için tahmini süre ve bağımlılıkları belirlemek\n- Mimari kararları gerekçeleriyle açıklamak\n- Risk faktörlerini ve alternatif yaklaşımları değerlendirmek\n\nPlanların açık, net ve adım adım takip edilebilir olmalı."
     },
     {
       "role": "frontend",
       "enabled": true,
-      "model_type": "groq",
-      "model_name": "openai/gpt-oss-20b",
+      "model_type": "openrouter",
+      "model_name": "moonshotai/kimi-k2.6:free",
       "system_prompt": "frontend"
     },
     {
       "role": "backend",
       "enabled": true,
-      "model_type": "groq",
-      "model_name": "openai/gpt-oss-20b",
+      "model_type": "openrouter",
+      "model_name": "moonshotai/kimi-k2.6:free",
       "system_prompt": "backend"
     },
     {
       "role": "bug_fixer",
-      "enabled": true,
+      "enabled": false,
       "model_type": "groq",
       "model_name": "openai/gpt-oss-20b",
       "system_prompt": "bug"

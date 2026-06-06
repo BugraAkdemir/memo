@@ -46,3 +46,5 @@ data/models/
 data/memory/
 data/sessions/
 data/sync_token.json
+
+data/agent-backups/*

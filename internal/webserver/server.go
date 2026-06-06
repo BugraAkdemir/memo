@@ -153,10 +153,15 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/providers/test", s.handleProviderTest)
 	mux.HandleFunc("/api/providers/active", s.handleActiveProvider)
 
+	// OpenRouter
+	mux.HandleFunc("/api/openrouter/connect", s.handleOpenRouterConnect)
+	mux.HandleFunc("/api/openrouter/models", s.handleOpenRouterModels)
+
 	// Orchestra mode
 	mux.HandleFunc("/api/orchestra/config", s.handleOrchestraConfig)
 
 	// Agent mode
+	mux.HandleFunc("/api/agent/chat", s.handleAgentChat)
 	mux.HandleFunc("/api/agent/enabled", s.handleAgentEnabled)
 	mux.HandleFunc("/api/agent/permission", s.handleAgentPermission)
 	mux.HandleFunc("/api/agent/permissions", s.handleAgentPermissions)

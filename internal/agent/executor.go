@@ -70,9 +70,17 @@ func (e *Executor) IsAvailable() bool {
 }
 
 // RunStream starts the agent execution and streams back chunks and events.
-func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, messages []provider.Message, onEvent func(AgentEvent)) (<-chan provider.StreamChunk, error) {
+func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
 	if !e.IsAvailable() {
 		return nil, fmt.Errorf("agent mode requires an active external provider")
+	}
+
+	// If a project path is provided for agent chat, update sandbox base path.
+	// If not provided (regular chat), restore the default base path.
+	if len(projectPath) > 0 && projectPath[0] != "" {
+		e.sandbox.SetBasePath(projectPath[0])
+	} else {
+		e.sandbox.SetBasePath(e.basePath)
 	}
 
 	pipeline := NewPipeline(e.registry, e.permissions, e.sandbox, e.providerRouter, e.backup)

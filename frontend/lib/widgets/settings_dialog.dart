@@ -31,10 +31,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('system_prompt'),
     L10n.t('incognito_prompt'),
     L10n.t('memory'),
-    'API Providers',
-    '🎵 Orchestra',
-    '🤖 Agent Permissions',
-    'Ekran Kartı Config',
+    L10n.t('tab_providers'),
+    L10n.t('tab_orchestra'),
+    L10n.t('tab_agent_permissions'),
+    L10n.t('tab_gpu_config'),
     L10n.t('cloud_sync'),
     L10n.t('remote_access'),
     L10n.t('about'),
@@ -1407,6 +1407,7 @@ class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
       if (url.isNotEmpty && mounted) {
         // Copy URL to clipboard — user opens in browser.
         await Clipboard.setData(ClipboardData(text: url));
+        if (!mounted) return;
         ScaffoldMessenger.of(
           context,
         ).showSnackBar(SnackBar(content: Text('OAuth URL kopyalandı: $url')));
@@ -1696,6 +1697,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
       await ref.read(apiClientProvider).installLlamaServer();
       ref.invalidate(llamaInstalledProvider);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
       });
@@ -2092,7 +2094,7 @@ class _ParamSlider extends StatelessWidget {
   }
 }
 
-class _ParamIntInput extends StatelessWidget {
+class _ParamIntInput extends StatefulWidget {
   final String label;
   final int value;
   final int min;
@@ -2108,34 +2110,63 @@ class _ParamIntInput extends StatelessWidget {
   });
 
   @override
+  State<_ParamIntInput> createState() => _ParamIntInputState();
+}
+
+class _ParamIntInputState extends State<_ParamIntInput> {
+  late TextEditingController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = TextEditingController(
+      text: widget.value == 0 && widget.min == 0 ? '0' : widget.value.toString(),
+    );
+  }
+
+  @override
+  void didUpdateWidget(_ParamIntInput old) {
+    super.didUpdateWidget(old);
+    if (widget.value != old.value) {
+      _controller.text = widget.value == 0 && widget.min == 0 ? '0' : widget.value.toString();
+    }
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return Row(
       children: [
         SizedBox(
           width: 140,
-          child: Text(label, style:  TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain)),
+          child: Text(widget.label, style:  TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain)),
         ),
         SizedBox(
           width: 120,
           child: TextField(
+            controller: _controller,
             keyboardType: TextInputType.number,
             decoration:  InputDecoration(
               isDense: true,
               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
               border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4))),
             ),
-            controller: TextEditingController(text: value == 0 && min == 0 ? '0' : value.toString()),
             onChanged: (v) {
               final parsed = int.tryParse(v);
               if (parsed != null) {
-                onChanged(parsed.clamp(min, max));
+                widget.onChanged(parsed.clamp(widget.min, widget.max));
               }
             },
           ),
         ),
-        if (displaySuffix != null) ...[
+        if (widget.displaySuffix != null) ...[
            SizedBox(width: 8),
-          Text(displaySuffix!, style:  TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+          Text(widget.displaySuffix!, style:  TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
         ],
       ],
     );

@@ -264,19 +264,25 @@ func (s *Store) DeleteGobFile(relPath string) error {
 		return fmt.Errorf("not a memory .gob file")
 	}
 
-	doc, err := readDocument(fullPath)
-	if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("memory.DeleteGobFile: read before delete: %w", err)
-	}
-
-	if err := os.Remove(fullPath); err != nil {
-		if !errors.Is(err, os.ErrNotExist) {
-			return fmt.Errorf("memory.DeleteGobFile: %w", err)
+	// Look up the document ID from the index using the filename hash,
+	// so we don't need to read (possibly corrupted) gob files.
+	baseName := strings.TrimSuffix(filepath.Base(fullPath), ".gob")
+	var docID string
+	for _, idx := range s.index {
+		if hash2hex(idx.ID) == baseName {
+			docID = idx.ID
+			break
 		}
 	}
 
-	if doc.ID != "" {
-		s.removeIndexLocked(doc.ID)
+	// Delete the file; if it fails, keep the index intact.
+	if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("memory.DeleteGobFile: %w", err)
+	}
+
+	// Remove from index so stale entries don't accumulate (C9).
+	if docID != "" {
+		s.removeIndexLocked(docID)
 	}
 	return nil
 }

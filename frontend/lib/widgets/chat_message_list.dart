@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/chat.dart';
 import '../models/agent.dart';
 import 'agent/agent_chat_card.dart';
+import '../core/l10n.dart';
 
 MarkdownStyleSheet _buildMarkdownStyleSheet(BuildContext context) {
   final c = MemoTheme.of(context);
@@ -181,8 +182,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
         position.dy + 1,
       ),
       items: [
-         PopupMenuItem(value: 'edit', child: Text('Düzenle')),
-         PopupMenuItem(value: 'delete', child: Text('Sil')),
+         PopupMenuItem(value: 'edit', child: Text(L10n.t('edit'))),
+         PopupMenuItem(value: 'delete', child: Text(L10n.t('delete'))),
       ],
     ).then((value) {
       if (value == 'edit') {
@@ -198,11 +199,11 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final result = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title:  Text('Mesajı Düzenle'),
+        title:  Text(L10n.t('edit_message')),
         content: TextField(
           controller: controller,
           decoration:  InputDecoration(
-            hintText: 'Mesajı düzenleyin...',
+            hintText: L10n.t('edit_message_hint'),
             border: OutlineInputBorder(),
           ),
           minLines: 3,
@@ -212,15 +213,16 @@ class _MessageBubbleState extends State<_MessageBubble> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child:  Text('İptal'),
+            child:  Text(L10n.t('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(controller.text.trim()),
-            child:  Text('Kaydet'),
+            child:  Text(L10n.t('save')),
           ),
         ],
       ),
     );
+    controller.dispose();
     if (result != null && result.isNotEmpty) {
       widget.onEdit?.call(widget.index, result);
     }
@@ -235,12 +237,12 @@ class _MessageBubbleState extends State<_MessageBubble> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
-            child:  Text('İptal'),
+            child:  Text(L10n.t('cancel')),
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            child:  Text('Sil'),
+            child:  Text(L10n.t('delete')),
           ),
         ],
       ),

@@ -141,6 +141,7 @@ class _ProviderConfigDialogState
       model: _modelCtrl.text,
     );
     final result = await ref.read(providerListProvider.notifier).testProvider(config);
+    if (!mounted) return;
     setState(() {
       _testing = false;
       _testResult = result;

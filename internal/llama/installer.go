@@ -17,6 +17,7 @@ import (
 	goruntime "runtime"
 	"strings"
 	"sync"
+	"time"
 )
 
 // copyFile copies a file from src to dst with the given permissions.
@@ -235,7 +236,8 @@ func fetchLatestRelease(ctx context.Context) (*githubRelease, error) {
 	req.Header.Set("Accept", "application/vnd.github+json")
 	req.Header.Set("User-Agent", "memo-app/1.0")
 
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Do(req)
 	if err != nil {
 		return nil, err
 	}
@@ -322,7 +324,8 @@ func downloadFileProgress(ctx context.Context, url, dest string, progress func(i
 	if err != nil {
 		return err
 	}
-	resp, err := http.DefaultClient.Do(req)
+	client := &http.Client{Timeout: 5 * time.Minute}
+	resp, err := client.Do(req)
 	if err != nil {
 		return err
 	}

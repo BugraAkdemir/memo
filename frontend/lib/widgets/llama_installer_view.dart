@@ -50,6 +50,7 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
       await ref.read(apiClientProvider).installLlamaServer();
       ref.invalidate(llamaInstalledProvider);
     } catch (e) {
+      if (!mounted) return;
       setState(() {
         _error = e.toString();
         _installing = false;

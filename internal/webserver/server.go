@@ -169,7 +169,7 @@ func (s *Server) StartHTTP(port int) error {
 
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
-		Handler: corsMiddleware(mux),
+		Handler: limitBodyMiddleware(corsMiddleware(mux), 10<<20), // 10 MB request body limit
 	}
 	s.port = port
 
@@ -493,6 +493,17 @@ func corsMiddleware(next http.Handler) http.Handler {
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
 			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// limitBodyMiddleware limits request body size to prevent DoS.
+// File upload handlers that need larger limits should skip this or set their own.
+func limitBodyMiddleware(next http.Handler, maxBytes int64) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Body != nil {
+			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
 		}
 		next.ServeHTTP(w, r)
 	})

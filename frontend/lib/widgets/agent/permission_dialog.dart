@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -17,12 +18,13 @@ class PermissionDialog extends ConsumerStatefulWidget {
 
 class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   bool _canAllow = false;
+  Timer? _allowTimer;
 
   @override
   void initState() {
     super.initState();
     if (widget.event.dangerLevel == 'dangerous') {
-      Future.delayed(const Duration(seconds: 2), () {
+      _allowTimer = Timer(const Duration(seconds: 2), () {
         if (mounted) {
           setState(() {
             _canAllow = true;
@@ -34,9 +36,18 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
     }
   }
 
+  @override
+  void dispose() {
+    _allowTimer?.cancel();
+    super.dispose();
+  }
+
   void _submit(String policy) {
-    if (widget.event.requestId != null) {
-      ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy);
+    final future = widget.event.requestId != null
+        ? ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy)
+        : null;
+    if (future != null) {
+      unawaited(future);
     }
     Navigator.of(context).pop();
   }

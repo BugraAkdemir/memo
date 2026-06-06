@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../providers/chat_provider.dart';
@@ -47,10 +48,10 @@ class _AgentSidebar extends ConsumerWidget {
               width: double.infinity,
               child: _ActionButton(
                 icon: Icons.add,
-                label: 'Yeni Ajan Sohbeti',
+                label: L10n.t('agent_new_chat'),
                   onTap: () async {
                     final result = await FilePicker.platform.getDirectoryPath(
-                      dialogTitle: 'Ajan için proje klasörü seç',
+                      dialogTitle: L10n.t('agent_select_project'),
                     );
                     if (result == null) return;
                     final api = ref.read(apiClientProvider);
@@ -70,7 +71,7 @@ class _AgentSidebar extends ConsumerWidget {
               loading: () => const Center(child: CircularProgressIndicator(strokeWidth: 2)),
               error: (e, _) => Center(child: Padding(
                 padding: const EdgeInsets.all(16),
-                child: Text('Hata', style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13)),
+                child: Text(L10n.t('error'), style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13)),
               )),
               data: (chats) {
                 final activeId = activeChatAsync.valueOrNull ?? '';
@@ -78,7 +79,7 @@ class _AgentSidebar extends ConsumerWidget {
                 if (agentChats.isEmpty) {
                   return Center(child: Padding(
                     padding: const EdgeInsets.all(24),
-                    child: Text('Henüz ajan sohbeti yok', style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13)),
+                    child: Text(L10n.t('agent_no_chats'), style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13)),
                   ));
                 }
                 return ListView.builder(
@@ -105,7 +106,7 @@ class _AgentSidebar extends ConsumerWidget {
               children: [
                 Container(width: 8, height: 8, decoration: const BoxDecoration(shape: BoxShape.circle, color: MemoTheme.green)),
                 const SizedBox(width: 8),
-                Text('Agent Modu', style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+                Text(L10n.t('agent_mode'), style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
               ],
             ),
           ),
@@ -145,7 +146,7 @@ class _AgentChatItem extends StatelessWidget {
                 children: [
                   Text(chat.title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: MemoTheme.of(context).textMain), maxLines: 1, overflow: TextOverflow.ellipsis),
                   const SizedBox(height: 2),
-                  Text('${chat.msgCount} mesaj', style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+                  Text(L10n.t('message_count', {'count': chat.msgCount.toString()}), style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
                 ],
               ),
             ),
@@ -194,9 +195,9 @@ class _AgentContent extends ConsumerWidget {
             children: [
               Icon(Icons.smart_toy, size: 48, color: MemoTheme.of(context).textDim),
               const SizedBox(height: 16),
-              Text('Ajan Sohbeti Seç', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain)),
+              Text(L10n.t('agent_chat_select'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain)),
               const SizedBox(height: 8),
-              Text('Soldan bir ajan sohbeti seç veya yeni bir tane başlat.', style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim)),
+              Text(L10n.t('agent_chat_instruction'), style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim)),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () async {

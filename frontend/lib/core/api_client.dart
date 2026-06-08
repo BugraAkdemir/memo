@@ -35,7 +35,10 @@ class MemoApiClient {
   }
 
   /// Send a message with streaming SSE. Yields [StreamChunk] with content and/or thinking.
-  Stream<StreamChunk> sendMessageStream(String message, {CancelToken? cancelToken}) async* {
+  Stream<StreamChunk> sendMessageStream(
+    String message, {
+    CancelToken? cancelToken,
+  }) async* {
     try {
       final response = await _dio.post(
         '/api/send/stream',
@@ -58,7 +61,9 @@ class MemoApiClient {
             if (data['error'] != null && (data['error'] as String).isNotEmpty) {
               throw Exception(data['error'] as String);
             }
-            if (data['content'] != null || data['thinking'] != null || data['finish_reason'] != null) {
+            if (data['content'] != null ||
+                data['thinking'] != null ||
+                data['finish_reason'] != null) {
               yield StreamChunk(
                 content: data['content'] as String? ?? '',
                 thinking: data['thinking'] as String?,
@@ -106,7 +111,10 @@ class MemoApiClient {
 
   /// Create an agent chat with a project directory, returns the new chat ID.
   Future<String> createAgentChat(String projectPath) async {
-    final res = await _dio.post('/api/agent/chat', data: {'project_path': projectPath});
+    final res = await _dio.post(
+      '/api/agent/chat',
+      data: {'project_path': projectPath},
+    );
     return res.data['id'] as String? ?? '';
   }
 
@@ -144,7 +152,10 @@ class MemoApiClient {
 
   /// Update a message's content by index.
   Future<void> updateMessage(int index, String content) async {
-    await _dio.post('/api/messages/update', data: {'index': index, 'content': content});
+    await _dio.post(
+      '/api/messages/update',
+      data: {'index': index, 'content': content},
+    );
   }
 
   /// Delete a message by index.
@@ -171,18 +182,19 @@ class MemoApiClient {
     required String apiKey,
     String model = 'openai/gpt-4o',
   }) async {
-    final res = await _dio.post('/api/openrouter/connect', data: {
-      'api_key': apiKey,
-      'model': model,
-    });
+    final res = await _dio.post(
+      '/api/openrouter/connect',
+      data: {'api_key': apiKey, 'model': model},
+    );
     return res.data as Map<String, dynamic>;
   }
 
   /// Fetch available models from OpenRouter for the given API key.
   Future<Map<String, dynamic>> fetchOpenRouterModels(String apiKey) async {
-    final res = await _dio.post('/api/openrouter/models', data: {
-      'api_key': apiKey,
-    });
+    final res = await _dio.post(
+      '/api/openrouter/models',
+      data: {'api_key': apiKey},
+    );
     return res.data as Map<String, dynamic>;
   }
 
@@ -192,12 +204,6 @@ class MemoApiClient {
   Future<Map<String, dynamic>> getStatus() async {
     final res = await _dio.get('/api/status');
     return res.data as Map<String, dynamic>;
-  }
-
-  /// Get app version.
-  Future<String> getVersion() async {
-    final res = await _dio.get('/api/version');
-    return res.data['version'] as String? ?? 'unknown';
   }
 
   // ─── Incognito ──────────────────────────────────────────────────
@@ -640,10 +646,10 @@ class MemoApiClient {
 
   /// Send permission response.
   Future<void> handleAgentPermission(String requestId, String policy) async {
-    await _dio.post('/api/agent/permission', data: {
-      'request_id': requestId,
-      'policy': policy,
-    });
+    await _dio.post(
+      '/api/agent/permission',
+      data: {'request_id': requestId, 'policy': policy},
+    );
   }
 
   /// Get persistent agent permissions.
@@ -668,5 +674,105 @@ class MemoApiClient {
   /// Undo the last agent file edit.
   Future<void> undoAgentEdit() async {
     await _dio.post('/api/agent/undo');
+  }
+
+  // ─── Version Check ───────────────────────────────────────────
+
+  /// Get current app version from backend.
+  Future<String> getVersion() async {
+    final res = await _dio.get('/api/version');
+    return res.data['version'] as String? ?? 'unknown';
+  }
+
+  /// Check if a newer version is available.
+  /// Returns a map with current, latest, and error fields.
+  Future<Map<String, dynamic>> checkVersion() async {
+    try {
+      final res = await _dio.get('/api/version/check');
+      return res.data as Map<String, dynamic>;
+    } catch (e) {
+      return {'current': 'unknown', 'latest': null, 'error': e.toString()};
+    }
+  }
+
+  // ─── WhatsApp ──────────────────────────────────────────────────
+
+  /// Get WhatsApp connection status.
+  Future<Map<String, dynamic>> getWhatsAppStatus() async {
+    final res = await _dio.get('/api/whatsapp/status');
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Start WhatsApp connection (triggers QR pairing if not logged in).
+  Future<Map<String, dynamic>> startWhatsApp() async {
+    final res = await _dio.post('/api/whatsapp/start');
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Stop/disconnect WhatsApp.
+  Future<void> stopWhatsApp() async {
+    await _dio.post('/api/whatsapp/stop');
+  }
+
+  /// Send a WhatsApp message.
+  Future<Map<String, dynamic>> sendWhatsApp(String jid, String text) async {
+    final res = await _dio.post('/api/whatsapp/send', data: {'jid': jid, 'text': text});
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Search WhatsApp messages.
+  Future<List<dynamic>> searchWhatsApp(String query) async {
+    final res = await _dio.get('/api/whatsapp/search', queryParameters: {'q': query});
+    return (res.data as List<dynamic>?) ?? [];
+  }
+
+  /// Get WhatsApp chat list.
+  Future<List<dynamic>> getWhatsAppChats() async {
+    final res = await _dio.get('/api/whatsapp/chats');
+    return (res.data as List<dynamic>?) ?? [];
+  }
+
+  /// Get messages for a specific WhatsApp chat.
+  Future<List<dynamic>> getWhatsAppMessages(String jid) async {
+    final res = await _dio.get('/api/whatsapp/messages', queryParameters: {'jid': jid});
+    return (res.data as List<dynamic>?) ?? [];
+  }
+
+  /// Get WhatsApp message statistics.
+  Future<Map<String, dynamic>> getWhatsAppStats() async {
+    final res = await _dio.get('/api/whatsapp/stats');
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Get WhatsApp chat mode state.
+  Future<bool> getWhatsAppChatMode() async {
+    final res = await _dio.get('/api/whatsapp/chat-mode');
+    return (res.data as Map<String, dynamic>?)?['enabled'] == true;
+  }
+
+  /// Set WhatsApp chat mode.
+  Future<void> setWhatsAppChatMode(bool enabled) async {
+    await _dio.post('/api/whatsapp/chat-mode', data: {'enabled': enabled});
+  }
+
+  /// Send a message in WhatsApp chat mode (streaming SSE).
+  Stream<String> sendWhatsAppChatStream(String message) async* {
+    final response = await _dio.post(
+      '/api/whatsapp/chat-stream',
+      data: {'message': message},
+      options: Options(responseType: ResponseType.stream),
+    );
+    final stream = response.data.stream;
+    final lineStream = stream
+        .cast<List<int>>()
+        .transform(utf8.decoder)
+        .transform(const LineSplitter());
+    await for (final line in lineStream) {
+      if (line.startsWith('data: ')) {
+        final content = line.substring(6);
+        if (content == '[DONE]') return;
+        yield content;
+      }
+    }
   }
 }

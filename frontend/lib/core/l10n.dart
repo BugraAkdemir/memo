@@ -299,6 +299,14 @@ class L10n {
 
     // Settings — About
     'about': 'Hakkında',
+    'whatsapp': 'WhatsApp',
+    'whatsapp_connect': 'WhatsApp\'a Bağlan',
+    'whatsapp_not_initialized': 'WhatsApp entegrasyonu aktif değil. config.yaml\'dan etkinleştirin.',
+    'whatsapp_search': 'Mesajlarda ara...',
+    'whatsapp_placeholder': 'Mesaj yaz...',
+    'whatsapp_no_messages': 'Henüz mesaj yok',
+    'whatsapp_mode_on': 'WhatsApp Sohbeti — Devre Dışı Bırak',
+    'whatsapp_mode_off': 'WhatsApp Sohbeti — Etkinleştir',
     'about_vision': 'Vizyon ve Misyon',
     'about_license': 'Açık Kaynak (MIT Lisansı)',
     'about_license_text':
@@ -732,6 +740,14 @@ class L10n {
     'reset_setup': 'Reset Setup',
 
     'about': 'About',
+    'whatsapp': 'WhatsApp',
+    'whatsapp_connect': 'Connect to WhatsApp',
+    'whatsapp_not_initialized': 'WhatsApp integration not enabled. Enable it in config.yaml.',
+    'whatsapp_search': 'Search messages...',
+    'whatsapp_placeholder': 'Type a message...',
+    'whatsapp_no_messages': 'No messages yet',
+    'whatsapp_mode_on': 'WhatsApp Chat — Turn Off',
+    'whatsapp_mode_off': 'WhatsApp Chat — Turn On',
     'about_vision': 'Vision and Mission',
     'about_license': 'Open Source (MIT License)',
     'about_license_text':

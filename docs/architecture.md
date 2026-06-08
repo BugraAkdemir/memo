@@ -16,7 +16,7 @@ graph TB
     subgraph Backend["Headless Go Server (:8090)"]
         WS["Web Server<br/>(server.go + handlers_flutter.go)"]
         WS -->|AppBridge / FullBridge| APP["app.go (2409 lines)"]
-        APP -->|chromem-go| MEM["Memory Store<br/>(.gob files)"]
+        APP -->|SQLite + sqlite-vec| MEM["Memory Store<br/>(vec0 ANN index)"]
         APP -->|sync.RWMutex| SES["Session Manager<br/>(JSON files)"]
         APP -->|subprocess| LLAMA["Llama Server<br/>Manager"]
         APP -->|OAuth2 + AES-256| SYNC["Cloud Sync<br/>(Google Drive)"]
@@ -42,14 +42,13 @@ graph TB
 ## 💾 2. Storage Layer
 
 ### Memory Store (`internal/memory/`)
-- **Format:** Go binary `.gob` files, one file per interaction
-- **Vector DB:** In-memory `chromem-go` index built from `.gob` files on startup
-- **Search:** Brute-force cosine similarity (O(N) over all embeddings)
+- **Format:** SQLite database with `vec0` virtual table for ANN index
+- **Vector DB:** Persistent SQLite database with sqlite-vec extension
+- **Search:** Approximate nearest neighbor (ANN) search via vec0 index (O(log N))
 - **Embedding:** Local embedding model via OpenAI-compatible API (default port 8082)
 - **Limitations:**
-  - Startup time increases linearly with memory count (`LoadCache`)
-  - No incremental indexing — full rebuild on every restart
-  - `hash2hex` uses only 4 bytes of SHA-256 → collision risk
+  - Index build time on first query after write
+  - ANN recall vs. speed tradeoff configurable via vec0 parameters
 
 ### Session Manager (`internal/sessions/`)
 - **Format:** JSON files in `data/sessions/`
@@ -85,21 +84,21 @@ sequenceDiagram
     LLM-->>Backend: Streaming tokens (SSE)
     Backend-->>Frontend: SSE stream chunks
     Frontend-->>User: Render tokens
-    Backend->>Memory: Save interaction as .gob (async)
+    Backend->>Memory: Save interaction to vec0 index (async)
 ```
 
 ### RAG Flow:
 
 1. **User sends message** → Flutter → `POST /api/send/stream`
 2. **Embedding:** Query is vectorized via local embedding model
-3. **Retrieval:** Cosine similarity search over all `.gob` memory entries
+3. **Retrieval:** ANN search via vec0 index over all memory entries
 4. **Context construction:** Relevant memories injected into system prompt
 5. **LLM routing (priority order):**
    - **Orchestra mode** (if enabled) → multi-model workflow (chief → experts → synthesis)
    - **External provider** (if `activeProvider` set) → `provider.Router` with fallback chain
    - **Local llama.cpp** → `api.Client` pointed at local `llama-server`
 6. **Streaming:** Tokens delivered via SSE, rendered in real-time
-7. **Persistence:** Interaction saved asynchronously to `.gob`
+7. **Persistence:** Interaction saved asynchronously to vec0 index
 
 > **Agent mode** overrides normal flow when enabled + active provider set: `SendMessageStream` routes to `callAgentStream` which runs the LLM tool-calling pipeline.
 
@@ -160,10 +159,10 @@ All Flutter-facing REST handlers:
 - **Known issue:** `nvidia-smi` errors silently ignored → 0 VRAM → CPU fallback
 
 ### `internal/memory/store.go` + `retriever.go` + `embedder.go`
-- `.gob` file-based vector storage
-- O(N) brute-force search with concurrent workers
+- SQLite + sqlite-vec based vector storage
+- ANN search via vec0 index
 - Embedding via OpenAI-compatible API
-- **Known issue:** `LoadCache` O(N) startup, no incremental index
+- **Known issue:** Index build time on first query after write
 
 ### `internal/modelstore/modelstore.go` (458 lines)
 - HuggingFace model search & download
@@ -376,7 +375,7 @@ cd frontend && flutter run -d linux
 |---|---|---|
 | **v3.0.0-beta** | Current | External providers + Agent engine + Orchestra (backend complete, frontend agent UI pending) |
 | **v3.0.0** | Planned | Agent frontend UI, multi-step planning, file edit, git, web scraping |
-| **v4.0.0** | Future | SQLite migration, UI overhaul, missing frontend tabs |
+| **v4.0.0** | Future | UI overhaul, missing frontend tabs |
 | **v5.0.0** | Future | Plugins, mobile, knowledge graph, autonomy |
 
 **Full known issues:** [docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)

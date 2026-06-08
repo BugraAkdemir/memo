@@ -59,6 +59,22 @@ func NewExecutor(basePath string, providerRouter *provider.Router, providerCfgMg
 	}
 }
 
+// NewWhatsAppExecutor creates a lightweight executor with only WhatsApp tools.
+// Reuses sandbox/permissions from an existing executor to avoid re-init.
+func NewWhatsAppExecutor(existing *Executor) *Executor {
+	return &Executor{
+		basePath:       existing.basePath,
+		providerRouter: existing.providerRouter,
+		providerCfgMgr: existing.providerCfgMgr,
+		registry:       NewWhatsAppRegistry(),
+		permissions:    existing.permissions,
+		sandbox:        existing.sandbox,
+		backup:         existing.backup,
+		pendingPerms:   make(map[string]*PermissionRequest),
+		logs:           make([]AgentLogEntry, 0),
+	}
+}
+
 // IsAvailable checks if the agent can run (needs external provider).
 func (e *Executor) IsAvailable() bool {
 	if e.providerRouter == nil {

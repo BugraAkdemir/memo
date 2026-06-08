@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=for-the-badge&logo=go" alt="Go 1.25"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=for-the-badge&logo=flutter" alt="Flutter 3.10"/>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-blue?style=for-the-badge" alt="Lisans AGPL v3"/>
-  <img src="https://img.shields.io/badge/Durum-v2.0.0--beta-blue?style=for-the-badge" alt="v2.0.0-beta"/>
+  <img src="https://img.shields.io/badge/Durum-v3.0.0--beta-blue?style=for-the-badge" alt="v3.0.0-beta"/>
   <br/>
   <img src="https://img.shields.io/badge/llama.cpp-Entegre-orange?style=flat-square&logo=llama" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-Aktif-green?style=flat-square" alt="RAG"/>
@@ -30,7 +30,7 @@
 
 ---
 
-> **⚠️ Güncel Durum:** v2.0.0-beta — Aktif geliştirme. Tüm temel özellikler çalışıyor, v3.0.0 için sağlamlaştırma çalışması devam ediyor. [Bilinen sorunlar →](./BILINEN_SORUNLAR.md)
+> **⚠️ Güncel Durum:** v3.0.0-beta — SQLite + sqlite-vec geçişi tamamlandı. chromem-go kaldırıldı, vektör ANN indeksi aktif. [Bilinen sorunlar →](./BILINEN_SORUNLAR.md)
 
 ---
 
@@ -142,7 +142,8 @@ cd frontend && flutter run -d linux
 │  ┌──┴──┐  ┌────┴────┐  ┌─┴─────────┐           │
 │  │Hafıza│  │Oturum  │  │Llama Yön. │           │
 │  │Deposu│  │Yönetici│  │(alt süreç)│           │
-│  │.gob  │  │JSON    │  │llama.cpp  │           │
+│  │vec0  │  │JSON    │  │llama.cpp  │           │
+│  │SQLite│  │         │  │           │           │
 │  └─────┘  └─────────┘  └───────────┘           │
 │  ┌──────────┐  ┌──────────────┐                 │
 │  │Bulut Sync│  │Model Deposu │                  │
@@ -192,9 +193,9 @@ cd frontend && flutter run -d linux
 
 | Sürüm | Odak | Zaman |
 |---|---|---|
-| **v2.0.0** 🎯 | Mevcut — Tüm özellikler canlı | Şimdi |
-| **v3.0.0** 🔒 | Güvenlik, kararlılık, performans düzeltme | Sıradaki |
-| **v4.0.0** 🎨 | SQLite geçişi, UI yenileme, eksik sekmeler | Gelecek |
+| **v3.0.0** 🎯 | Mevcut — SQLite+vec0 geçişi, cross-mode, performans | Şimdi |
+| **v3.5.0** 🔒 | Güvenlik, kararlılık, performans düzeltme | Sıradaki |
+| **v4.0.0** 🎨 | UI yenileme, eksik sekmeler, cloud sync UI | Gelecek |
 | **v5.0.0** 🚀 | Eklentiler, mobil, bilgi grafiği | Gelecek |
 
 [Tam yol haritası →](./ROADMAP.md)
@@ -206,11 +207,11 @@ cd frontend && flutter run -d linux
 <div align="center">
 
 | Katman | Teknoloji |
-|---|---|
-| **Arka Uç** | Go 1.25, chromem-go, gorilla/mux |
+|---|---|---|
+| **Arka Uç** | Go 1.25, http.ServeMux |
 | **Ön Yüz** | Flutter 3.10+, Riverpod 2.x, Dio |
 | **LLM** | llama.cpp, OpenAI uyumlu API |
-| **Vektör** | chromem-go (bellek içi, .gob kalıcı) |
+| **Vektör** | SQLite + sqlite-vec (vec0 ANN indeksi) |
 | **Senkronizasyon** | Google Drive API, AES-256-GCM |
 | **GPU** | nvidia-smi, rocm-smi, sysfs, Metal |
 | **Derleme** | Go toolchain, Flutter build, shell script |

@@ -33,7 +33,7 @@ Common issues and their solutions for Memo.
 **Solution:**
 - Check if "Incognito Mode" is active (it disables memory).
 - Ensure an embedding model is loaded. RAG requires an active embedding server (usually port 8082).
-- Check `data/memory/` to see if `.gob` files are being generated.
+- Check if memory store is active and embedding model is loaded. The memory store uses SQLite (sqlite-vec) for vector storage.
 
 ## 6. External Provider Connection Issues
 **Issue:** "Failed to connect" or "Authentication error" when using external providers.

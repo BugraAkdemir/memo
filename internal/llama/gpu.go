@@ -61,15 +61,28 @@ func DetectGPU() GPUInfo {
 // ─── NVIDIA Detection ────────────────────────────────────────────
 
 func detectNVIDIA() (GPUInfo, bool) {
-	// Check if nvidia-smi exists
-	_, err := exec.LookPath("nvidia-smi")
+	// Check if nvidia-smi exists (also check common Windows paths)
+	nvidiaSmi := "nvidia-smi"
+	if runtime.GOOS == "windows" {
+		winPaths := []string{
+			`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi.exe`,
+			`C:\Program Files\NVIDIA Corporation\NVSMI\nvidia-smi`,
+		}
+		for _, p := range winPaths {
+			if _, err := os.Stat(p); err == nil {
+				nvidiaSmi = p
+				break
+			}
+		}
+	}
+	_, err := exec.LookPath(nvidiaSmi)
 	if err != nil {
 		log.Printf("GPU: nvidia-smi not found: %v", err)
 		return GPUInfo{}, false
 	}
 
 	// Get GPU name
-	nameOut, err := exec.Command("nvidia-smi", "--query-gpu=name", "--format=csv,noheader,nounits").Output()
+	nameOut, err := exec.Command(nvidiaSmi, "--query-gpu=name", "--format=csv,noheader,nounits").Output()
 	if err != nil {
 		log.Printf("GPU: nvidia-smi name query failed: %v", err)
 		return GPUInfo{}, false
@@ -77,7 +90,7 @@ func detectNVIDIA() (GPUInfo, bool) {
 	name := strings.TrimSpace(strings.Split(string(nameOut), "\n")[0])
 
 	// Get total VRAM in MiB
-	vramOut, err := exec.Command("nvidia-smi", "--query-gpu=memory.total", "--format=csv,noheader,nounits").Output()
+	vramOut, err := exec.Command(nvidiaSmi, "--query-gpu=memory.total", "--format=csv,noheader,nounits").Output()
 	if err != nil {
 		log.Printf("GPU: nvidia-smi VRAM query failed: %v", err)
 		return GPUInfo{}, false

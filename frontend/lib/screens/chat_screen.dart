@@ -6,6 +6,7 @@ import 'dart:io';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/chat_provider.dart';
+import '../providers/whatsapp_provider.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
@@ -132,6 +133,8 @@ class _ChatTopBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isIncognito = ref.watch(incognitoProvider);
     final isAgentEnabled = ref.watch(agentEnabledProvider);
+    final isWhatsAppMode = ref.watch(whatsAppChatModeProvider);
+    final waStatus = ref.watch(whatsAppStatusProvider);
     final chatListAsync = ref.watch(chatListProvider);
     final activeChatAsync = ref.watch(activeChatIdProvider);
 
@@ -291,6 +294,18 @@ class _ChatTopBar extends ConsumerWidget {
                   }
                 }
               },
+            ),
+          
+          // WhatsApp mode toggle (only when connected)
+          if (waStatus.asData?.value.connected == true)
+            IconButton(
+              icon: Icon(
+                Icons.chat,
+                size: 20,
+                color: isWhatsAppMode ? MemoTheme.green : MemoTheme.of(context).textDim,
+              ),
+              tooltip: isWhatsAppMode ? L10n.t('whatsapp_mode_on') : L10n.t('whatsapp_mode_off'),
+              onPressed: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
             ),
           
           // Export button

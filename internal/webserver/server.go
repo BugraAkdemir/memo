@@ -107,6 +107,7 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/memory/settings", s.handleMemorySettings)
 	mux.HandleFunc("/api/memory/enabled", s.handleMemoryEnabled)
 	mux.HandleFunc("/api/version", s.handleVersion)
+	mux.HandleFunc("/api/version/check", s.handleVersionCheck)
 	mux.HandleFunc("/api/image", s.handleImage)
 	mux.HandleFunc("/api/chat/export", s.handleExportChat)
 	mux.HandleFunc("/api/chat/title", s.handleGenerateTitle)
@@ -166,6 +167,18 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/agent/permission", s.handleAgentPermission)
 	mux.HandleFunc("/api/agent/permissions", s.handleAgentPermissions)
 	mux.HandleFunc("/api/agent/undo", s.handleAgentUndo)
+
+	// WhatsApp
+	mux.HandleFunc("/api/whatsapp/status", s.handleWhatsAppStatus)
+	mux.HandleFunc("/api/whatsapp/start", s.handleWhatsAppStart)
+	mux.HandleFunc("/api/whatsapp/stop", s.handleWhatsAppStop)
+	mux.HandleFunc("/api/whatsapp/send", s.handleWhatsAppSend)
+	mux.HandleFunc("/api/whatsapp/search", s.handleWhatsAppSearch)
+	mux.HandleFunc("/api/whatsapp/chats", s.handleWhatsAppChats)
+	mux.HandleFunc("/api/whatsapp/messages", s.handleWhatsAppMessages)
+	mux.HandleFunc("/api/whatsapp/stats", s.handleWhatsAppStats)
+	mux.HandleFunc("/api/whatsapp/chat-mode", s.handleWhatsAppChatMode)
+	mux.HandleFunc("/api/whatsapp/chat-stream", s.handleWhatsAppChatStream)
 
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", port),

@@ -13,7 +13,7 @@ Memo sadece yazdıklarınızı okumaz; onları semantik (anlamsal) olarak indeks
 5. **Kalıcılık:** Üretilen yanıt ve kullanıcı mesajı, asenkron olarak hafızaya yeni birer anı olarak eklenir.
 
 ## Teknik Özellikler
-- **Binary-Atomic Persistence:** Veriler Go'nun `.gob` formatında saklanır.
+- **Binary-Atomic Persistence:** Veriler SQLite/vec0 formatında saklanır.
 - **RAM İndeksi:** Arama performansı için vektörler RAM'de önbelleğe alınır.
 - **Lazy Loading:** Sadece arama sonucunda eşleşen detaylar diskten okunur, böylece RAM kullanımı minimumda tutulur.
 

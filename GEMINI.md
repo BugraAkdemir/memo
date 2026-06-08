@@ -10,7 +10,7 @@ Memo is a high-performance, privacy-focused "Memory Shell" for local Large Langu
     -   **Backend:** Go (Golang)
     -   **Frontend:** Flutter (Dart)
     -   **Inference Engine:** `llama.cpp` (managed via internal wrappers)
-    -   **Persistence:** Binary-Atomic `.gob` format (Go-native binary serialization)
+    -   **Persistence:** SQLite + sqlite-vec (memory vector store)
     -   **Vector Search:** Cosine similarity with RAM-based indexing for high performance.
     -   **Cloud Sync:** E2E encrypted Google Drive integration.
 
@@ -45,7 +45,7 @@ To create a standalone release package (Linux):
 
 -   **`main.go` / `app.go`:** Entry point and central "Bridge" logic connecting all modules.
 -   **`internal/webserver/`:** REST API routing and handler management (using Gin/Mux).
--   **`internal/memory/`:** Semantic memory, vector database, and `.gob` serialization logic.
+-   **`internal/memory/`:** Semantic memory, vector database, and SQLite/sqlite-vec storage.
 -   **`internal/llama/`:** Lifecycle management for `llama-server` (start/stop/install).
 -   **`internal/cloudsync/`:** AES-256 encrypted synchronization with Google Drive.
 -   **`frontend/lib/`:** Flutter source code organized by Material 3 design principles and Riverpod state management.
@@ -53,7 +53,7 @@ To create a standalone release package (Linux):
 ## 📝 Development Conventions
 
 -   **Privacy First:** No telemetry or data leakage. All data stays local by default.
--   **Binary Persistence:** Prefer Go's `.gob` format for speed and atomic integrity over traditional SQL for memory storage.
+-   **Persistence:** Use SQLite + sqlite-vec for fast, atomic vector storage over traditional file-per-interaction formats.
 -   **Decoupled Communication:** The Frontend must only communicate with the Backend via the REST API defined in `internal/webserver/server.go`.
 -   **Performance Monitoring:** High-resolution latency logging is implemented across the RAG and LLM pipeline (look for `LATENCY` logs in the console).
 -   **State Management:** Flutter uses `flutter_riverpod` for reactive UI state.

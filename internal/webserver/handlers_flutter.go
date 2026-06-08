@@ -250,7 +250,34 @@ func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"version": "unknown"})
 		return
 	}
-	writeJSON(w, map[string]string{"version": s.fullBridge.GetVersion()})
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]string{"version": s.fullBridge.GetVersion()})
+	default:
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleVersionCheck(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+	latest, err := s.fullBridge.CheckLatestVersion()
+	if err != nil {
+		// Return current version and the error for diagnostics
+		writeJSON(w, map[string]interface{}{
+			"current": s.fullBridge.GetVersion(),
+			"latest":  "",
+			"error":   err.Error(),
+		})
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"current": s.fullBridge.GetVersion(),
+		"latest":  latest,
+		"error":   nil,
+	})
 }
 
 func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
@@ -762,16 +789,16 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, providers)
 	case http.MethodPut:
 		var req struct {
-			Type        provider.ProviderType  `json:"type"`
-			Name        string                 `json:"name"`
-			APIKey      string                 `json:"api_key"`
-			BaseURL     string                 `json:"base_url"`
-			Model       string                 `json:"model"`
-			Enabled     bool                   `json:"enabled"`
-			Priority    int                    `json:"priority"`
-			Temperature float64                `json:"temperature"`
-			TopP        float64                `json:"top_p"`
-			MaxTokens   int                    `json:"max_tokens"`
+			Type        provider.ProviderType `json:"type"`
+			Name        string                `json:"name"`
+			APIKey      string                `json:"api_key"`
+			BaseURL     string                `json:"base_url"`
+			Model       string                `json:"model"`
+			Enabled     bool                  `json:"enabled"`
+			Priority    int                   `json:"priority"`
+			Temperature float64               `json:"temperature"`
+			TopP        float64               `json:"top_p"`
+			MaxTokens   int                   `json:"max_tokens"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
@@ -990,3 +1017,178 @@ func (s *Server) handleAgentPermissions(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+// ─── WhatsApp Handlers ────────────────────────────────────────────
+
+func (s *Server) handleWhatsAppStatus(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, s.fullBridge.WhatsAppStatus())
+}
+
+func (s *Server) handleWhatsAppStart(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.StartWhatsApp(r.Context()); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, s.fullBridge.WhatsAppStatus())
+}
+
+func (s *Server) handleWhatsAppStop(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	s.fullBridge.StopWhatsApp()
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleWhatsAppSend(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		JID  string `json:"jid"`
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	msgID, err := s.fullBridge.WhatsAppSend(r.Context(), req.JID, req.Text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"id": msgID})
+}
+
+func (s *Server) handleWhatsAppSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	query := r.URL.Query().Get("q")
+	msgs, err := s.fullBridge.WhatsAppSearch(query, 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, msgs)
+}
+
+func (s *Server) handleWhatsAppChats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	chats, err := s.fullBridge.WhatsAppGetChats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, chats)
+}
+
+func (s *Server) handleWhatsAppMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	chatJID := r.URL.Query().Get("jid")
+	if chatJID == "" {
+		http.Error(w, "jid param required", http.StatusBadRequest)
+		return
+	}
+	msgs, err := s.fullBridge.WhatsAppGetMessages(chatJID, 50)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, msgs)
+}
+
+func (s *Server) handleWhatsAppStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	total, last24h, err := s.fullBridge.WhatsAppStats()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"total":    total,
+		"last_24h": last24h,
+	})
+}
+
+func (s *Server) handleWhatsAppChatMode(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": s.fullBridge.GetWhatsAppChatMode()})
+	case http.MethodPost:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		s.fullBridge.SetWhatsAppChatMode(req.Enabled)
+		writeJSON(w, map[string]bool{"enabled": req.Enabled})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+
+	ctx := r.Context()
+	streamCh := s.fullBridge.WhatsAppChatStream(ctx, req.Message)
+
+	for chunk := range streamCh {
+		if chunk.FinishReason == "agent_event" {
+			fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
+		} else if chunk.Content != "" {
+			fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
+		}
+		if chunk.Done {
+			fmt.Fprintf(w, "data: [DONE]\n\n")
+			break
+		}
+		flusher.Flush()
+	}
+}

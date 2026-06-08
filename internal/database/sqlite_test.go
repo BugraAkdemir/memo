@@ -1,0 +1,78 @@
+package database
+
+import (
+	"context"
+	"path/filepath"
+	"testing"
+)
+
+func TestVec0Available(t *testing.T) {
+	db, err := Open(Config{
+		Path:    filepath.Join(t.TempDir(), "test.db"),
+		MaxPool: 1,
+	})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	ctx := context.Background()
+
+	// Check via module list (vec0 registers as a virtual table module, not a function)
+	var modCount int
+	err = db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM pragma_module_list WHERE name = 'vec0'",
+	).Scan(&modCount)
+	if err == nil && modCount > 0 {
+		t.Logf("vec0 module found (%d entries)", modCount)
+	} else {
+		// Fallback: check function list
+		var funcCount int
+		err2 := db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM pragma_function_list WHERE name LIKE '%vec%'",
+		).Scan(&funcCount)
+		if err2 != nil {
+			t.Fatalf("query pragma_function_list: %v", err2)
+		}
+		if funcCount == 0 {
+			t.Fatal("vec0 not found in module or function list — extension not loaded")
+		}
+		t.Logf("vec0 functions found: %d", funcCount)
+	}
+
+	_, err = db.ExecContext(ctx,
+		"CREATE VIRTUAL TABLE IF NOT EXISTS test_vec USING vec0(embedding FLOAT[3] distance_metric=cosine)",
+	)
+	if err != nil {
+		t.Fatalf("create vec0 table: %v", err)
+	}
+
+	_, err = db.ExecContext(ctx,
+		`INSERT INTO test_vec(rowid, embedding) VALUES (1, '[1.0, 0.0, 0.0]')`,
+	)
+	if err != nil {
+		t.Fatalf("insert into vec0: %v", err)
+	}
+
+	rows, err := db.QueryContext(ctx,
+		`SELECT rowid, distance FROM test_vec WHERE embedding MATCH '[0.9, 0.1, 0.0]' AND k = 5`,
+	)
+	if err != nil {
+		t.Fatalf("search vec0: %v", err)
+	}
+	defer rows.Close()
+
+	var found bool
+	for rows.Next() {
+		var rowid int64
+		var dist float64
+		rows.Scan(&rowid, &dist)
+		if rowid == 1 {
+			found = true
+			t.Logf("Found rowid=1 with distance=%f", dist)
+		}
+	}
+	if !found {
+		t.Error("expected to find rowid=1 in search results")
+	}
+}

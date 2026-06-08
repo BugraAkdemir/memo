@@ -11,7 +11,10 @@ import (
 	"io"
 	"log"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 )
@@ -350,12 +353,30 @@ func defaultConfigs() []ProviderConfig {
 // defaultMachineKey derives a machine-specific key from hardware info.
 // This is not cryptographically secure but prevents plaintext key storage.
 func defaultMachineKey() []byte {
-	// Try to read /etc/machine-id (Linux)
-	if data, err := os.ReadFile("/etc/machine-id"); err == nil && len(data) >= 32 {
-		return []byte(data[:32])
+	if runtime.GOOS == "windows" {
+		// Windows: read MachineGuid from registry via PowerShell
+		out, err := exec.Command("powershell", "-NoProfile", "-Command",
+			`(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' MachineGuid).MachineGuid`).Output()
+		if err == nil {
+			if id := strings.TrimSpace(string(out)); len(id) >= 32 {
+				return []byte(id[:32])
+			}
+		}
+	} else {
+		// Linux: try /etc/machine-id
+		if data, err := os.ReadFile("/etc/machine-id"); err == nil && len(data) >= 32 {
+			return []byte(data[:32])
+		}
+		// macOS: try IOPlatformUUID
+		out, err := exec.Command("sh", "-c",
+			`ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $4}'`).Output()
+		if err == nil {
+			if id := strings.TrimSpace(string(out)); len(id) >= 32 {
+				return []byte(id[:32])
+			}
+		}
 	}
 	// Fallback: use a hardcoded but obscured key
-	// In production, this should be stored in a keychain
 	return []byte("Mm3m0L0c4lK3y!@#$%^&*()9876543210")
 }
 

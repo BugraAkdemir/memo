@@ -1,80 +1,76 @@
-# Neden Her Sohbet İçin Yeni .gob Dosyası Açılıyor?
+# Hafıza SQLite + sqlite-vec ile Nasıl Çalışıyor?
 
-## .gob Nedir?
+## SQLite + vec0 Nedir?
 
-`.gob` (Go Binary) — Go dilinin kendi **binary serialization** formatıdır. JSON veya XML gibi text-based değil, **binary** formattır. Bu yüzden:
+Memo artık hafıza depolaması için **SQLite** veritabanını `sqlite-vec` eklentisiyle birlikte kullanır:
 
-- **Daha hızlı** okunur/yazılır (parse etmeye gerek yok)  
-- **Daha küçük** dosya boyutu (text overhead yok)
-- **Go struct'larını direkt** diske yazar (tip güvenliği korunur)
+- **SQLite**: Gömülü, sunucusuz, ACID uyumlu ilişkisel veritabanı
+- **sqlite-vec**: Vektör benzerlik araması için `vec0` sanal tablo eklentisi
+- **ANN İndeksi**: Yaklaşık en yakın komşu (ANN) araması ile O(log N) karmaşıklık
+- **Tek Dosya**: Tüm hafıza kayıtları `data/memory/memo.db` dosyasında saklanır
 
-Go'nun standart kütüphanesindeki `encoding/gob` paketi ile çalışır.
-Bugra
 ---
 
-## Dosya Yapısı
+## Veritabanı Şeması
 
 ```
 data/memory/
-└── 5c0dc939/              ← Collection (koleksiyon) dizini
-    ├── 6d13fa80.gob       ← Tek bir hafıza kaydı (document)
-    ├── a3f7b2c1.gob       ← Başka bir hafıza kaydı
-    ├── 1e9d4a5f.gob       ← ...
-    └── _chromem.gob        ← Koleksiyon metadata'sı
+└── memo.db                ← Tek SQLite veritabanı dosyası
+    ├── vec0 tablosu       ← Vektör ANN indeksi (sqlite-vec)
+    ├── documents tablosu  ← İçerik ve metadata
+    └── metadata tablosu   ← Koleksiyon bilgisi
 ```
 
-### Açıklama:
+### Tablo Yapısı:
 
-| Yol | Ne İşe Yarar |
-|-----|-------------|
-| `5c0dc939/` | Collection ID'sinin hash'i. `chromem-go` koleksiyon adını (`conversations`) alıp hash'leyerek dizin adı oluşturur |
-| `6d13fa80.gob` | **Tek bir konuşma kaydı (document)**. Her `SaveInteraction()` çağrısında yeni bir dosya oluşur |
-| `_chromem.gob` | Koleksiyonun metadata'sı (isim, embedding boyutu vb.) |
+| Tablo | Sütunlar | Açıklama |
+|-------|----------|----------|
+| `documents` | `id`, `content`, `created_at`, `metadata_json` | Hafıza kayıtlarının içerik ve zaman bilgisi |
+| `vec0` | `id`, `embedding` | Vektör ANN indeksi (sqlite-vec sanal tablosu) |
+| `metadata` | `key`, `value` | Koleksiyon metadata'sı |
 
 ---
 
-## Neden Hepsi Tek Dosyada Değil?
+## SQLite'ın Sağladığı Avantajlar
 
-Bu mimari kararın **5 kritik nedeni** var:
-
-### 1. Atomik Yazma (Atomic Writes)
-Her kayıt kendi dosyasındaysa, bir yazma hatası **sadece o kaydı** etkiler. Tek dosyalı sistemde bir crash tüm veritabanını bozabilir.
+### 1. Atomik Yazma (ACID Transactions)
+SQLite'ın yerleşik işlem (transaction) desteği sayesinde yazma sırasında oluşabilecek hatalar tüm veritabanını bozmaz. Ya tüm işlem başarılı olur ya da hiçbir değişiklik kalıcı olmaz.
 
 ```
-❌ Tek dosya: Yazarken crash → TÜM VERİ BOZULUR
-✅ Ayrı dosya: Yazarken crash → Sadece 1 kayıt etkilenir, gerisi sağlam
+✅ SQLite: Yazarken crash → Son transaction geri alınır (ROLLBACK), veri sağlam kalır
 ```
 
 ### 2. Eşzamanlı Erişim (Concurrent Access)
-Farklı goroutine'ler farklı dosyalara aynı anda yazabilir. Tek dosyada tüm yazma işlemleri sıralı olmak zorunda (bottleneck).
+SQLite, WAL (Write-Ahead Logging) modunda okuma ve yazma işlemlerinin eşzamanlı çalışmasına izin verir. Go rutinleri aynı anda sorgulama yapabilir.
 
-### 3. Artımlı Güncelleme (Incremental Updates)
-Yeni bir mesaj kaydederken sadece **1 yeni dosya** yazarsın. Tek dosya olsaydı, her yeni kayıtta **tüm dosyayı baştan yazmak** gerekirdi (O(n) vs O(1)).
+### 3. Artımlı Güncelleme
+Yeni bir mesaj kaydederken sadece **INSERT** sorgusu çalışır. Tüm veritabanını yeniden yazmak gerekmez.
 
-### 4. Lazy Loading
-Uygulama açıldığında **tüm dosyaları RAM'e yüklemek zorunda değil**. İhtiyaç oldukça (query geldiğinde) dosyalar okunur. Tek dosyada tüm veri baştan yüklenmek zorunda.
+### 4. Lazy Loading Gerekmez
+Veriler diskte yapılandırılmış şekilde durur. Sorgular sadece gerekli kayıtları getirir — tüm veriyi RAM'e yüklemek gerekmez.
 
 ### 5. Silinebilirlik
-Tek bir kaydı silmek = tek bir dosyayı silmek. Tek dosyada silme işlemi dosyayı yeniden yazmayı gerektirir.
+Tek bir `DELETE` sorgusu ile istenen kayıt silinir.
 
 ---
 
-## Her .gob Dosyasının İçeriği
+## Kayıt Yapısı
 
-Her `.gob` dosyası şu yapıyı binary olarak saklar:
+Her hafıza kaydı SQLite'da şu şekilde saklanır:
 
-```go
-type Document struct {
-    ID        string       // Benzersiz ID (hash)
-    Content   string       // "User: merhaba\nAssistant: Selam! Nasılsın?"
-    Metadata  map[string]string  // {"timestamp": "2024-...", "type": "conversation"}
-    Embedding []float32    // [0.023, -0.841, 0.192, ...] → 768 boyutlu vektör
-}
+```sql
+-- documents tablosu
+INSERT INTO documents (id, content, created_at, metadata_json)
+VALUES ('abc123', 'User: merhaba\nAssistant: Selam!', '2024-...', '{"type": "conversation"}');
+
+-- vec0 ANN indeksi
+INSERT INTO vec0 (id, embedding)
+VALUES ('abc123', '[0.023, -0.841, 0.192, ...]');  -- 768 boyutlu vektör
 ```
 
 - **Content**: Kullanıcı mesajı + asistan cevabı birlikte
-- **Embedding**: Bu metnin vektör temsili (LM Studio'daki embedding model ile üretilir)
-- **Metadata**: Zaman damgası ve ek bilgiler
+- **Embedding**: Bu metnin vektör temsili (embedding model ile üretilir)
+- **Metadata**: Zaman damgası ve ek bilgiler (JSON formatında)
 
 ---
 
@@ -82,9 +78,9 @@ type Document struct {
 
 1. Kullanıcı yeni mesaj yazar: `"ekran kartı öner"`
 2. Bu metin embedding modeline gönderilir → `[0.12, -0.55, ...]` vektörü döner
-3. Tüm `.gob` dosyalarındaki embedding'lerle **kosinüs benzerliği** hesaplanır
+3. `vec0` ANN indeksi üzerinden **yaklaşık en yakın komşu (ANN)** araması yapılır
 4. En benzer 5 kayıt (Top-K) bulunur
-5. Bu kayıtların `Content`'i system prompt'a eklenir
+5. Bu kayıtların `content`'i system prompt'a eklenir
 6. LLM artık geçmiş konuşmaları "hatırlayarak" cevap verir
 
 ---
@@ -93,8 +89,8 @@ type Document struct {
 
 | Soru | Cevap |
 |------|-------|
-| .gob nedir? | Go'nun binary serialization formatı |
-| Neden her kayıt ayrı dosyada? | Atomik yazma, performans, güvenlik |
-| Neden tek dosya değil? | Crash riski, yavaş yazma, scalability |
-| Bu dosyalar ne zaman oluşuyor? | Her `SendMessage()` çağrısından sonra (arka planda) |
-| Silebilir miyim? | Evet, `data/memory/` klasörünü silersen hafıza sıfırlanır |
+| Veritabanı nedir? | SQLite + sqlite-vec |
+| ANN indeksi ne işe yarar? | O(log N) vektör benzerlik araması |
+| Neden SQLite? | ACID, sıfır konfigürasyon, tek dosya |
+| Kayıtlar ne zaman oluşuyor? | Her `SendMessage()` çağrısından sonra (arka planda) |
+| Hafızayı sıfırlayabilir miyim? | Evet, `data/memory/memo.db` dosyasını silersen hafıza sıfırlanır |

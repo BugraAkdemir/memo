@@ -29,10 +29,10 @@ This document tracks all identified bugs, architectural limitations, and edge ca
   - **Race:** `dc.authWg.Add(1)` called without `dc.mu`. If flows interleave, `Done()` decrements below zero → **`sync.WaitGroup` panic**.
 - **Risk:** Crash or resource leak.
 
-### C9. `DeleteGobFile` index inconsistency on error
-- **File:** `internal/memory/store.go:267-269`
-- **Detail:** If `readDocument` succeeds but `os.Remove` fails, the **index entry is silently not removed**. The index references a deleted file.
-- **Risk:** Memory index bloat, dead references.
+### C9. Legacy Gob migration path index inconsistency
+- **File:** `internal/memory/store.go` (legacy migration path)
+- **Detail:** The legacy `.gob` migration path has an index inconsistency issue. See L6 for details.
+- **Risk:** Low — only affects users migrating from old `.gob` store.
 
 ### C10. `UpdateSyncSettings` orphaned syncManager goroutines
 - **File:** `app.go:1880`
@@ -257,8 +257,8 @@ This document tracks all identified bugs, architectural limitations, and edge ca
 
 ## ⚪ Info / Observations
 
-### I1. GOB Encoding vs. Forward Compatibility
-- **File:** `internal/memory/store.go:302-306`
+### I1. Legacy GOB Format (migrated to SQLite)
+- **File:** `internal/memory/store.go` (legacy migration path)
 
 ### I2. Single-File-Per-Interaction Design
 - **File:** `internal/memory/store.go`

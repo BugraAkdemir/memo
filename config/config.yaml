@@ -21,6 +21,9 @@ memory:
     top_k: 5
     min_similarity: 0.1
     memory_enabled: true
+    embedding_dimension: 768
+    embedding_model_repo: nomic-ai/nomic-embed-text-v1.5-GGUF
+    embedding_model_file: nomic-embed-text-v1.5.Q4_K_M.gguf
 remote_access:
     enabled: true
     port: 8088
@@ -42,3 +45,8 @@ sync:
     passphrase: ""
     token_path: ./data/sync_token.json
     interval_messages: 50
+whatsapp:
+    enabled: true
+    data_dir: ./data/whatsapp
+    auto_index: true
+    max_history_days: 7

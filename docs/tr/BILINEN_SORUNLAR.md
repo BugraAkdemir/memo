@@ -37,7 +37,7 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 - **Dosya:** `internal/memory/store.go:267-269`
 - **Detay:** `readDocument` başarılı olursa (dosyayı açar, okur, kapatır) ancak `os.Remove` başarısız olursa, **indeks girdisi sessizce kaldırılmaz**. İndeks, artık var olmayan bir dosyayı referans alır.
 - **Risk:** Hafıza indeksi şişer, ölü referanslar oluşur.
-- **Çözüm (K20):** İndeksteki ID, dosya hash'inden bulunur (gob okumaya gerek yok). Önce dosya silinir, başarısız olursa indeks dokunulmaz.
+- **Çözüm (K20):** İndeksteki ID, dosya hash'inden bulunur (okumaya gerek yok). Önce dosya silinir, başarısız olursa indeks dokunulmaz.
 
 ### C10. `UpdateSyncSettings` eski `syncManager`'ı temizlemeden yenisini oluşturur — ✅ Düzeltildi (K16)
 - **Dosya:** `app.go:2622-2659`
@@ -236,8 +236,8 @@ Bu belge, Memo projesindeki tüm tespit edilen hataları, mimari kısıtlamalar�
 
 ## ⚪ Bilgi / Gözlemler
 
-### B1. GOB Kodlaması ve İleri Uyumluluk
-- **Dosya:** `internal/memory/store.go:302-306`
+### B1. Eski GOB Formatı (SQLite'e taşındı)
+- **Dosya:** `internal/memory/store.go` (legacy migration yolu)
 
 ### B2. Etkileşim Başına Tek Dosya Tasarımı
 - **Dosya:** `internal/memory/store.go`

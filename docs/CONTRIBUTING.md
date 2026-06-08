@@ -22,7 +22,7 @@ Have a great idea? Open an issue and describe how it would benefit the "local-fi
 
 ## Development Standards
 - **Privacy First:** Never add code that sends data to external servers without explicit user consent.
-- **Performance:** Prefer binary formats (.gob) and efficient algorithms to keep RAM usage low.
+- **Performance:** Prefer efficient algorithms (SQLite + sqlite-vec for vector storage) to keep RAM usage low.
 - **Documentation:** Every new feature should be documented in the `/docs` folder and the Obsidian vault.
 - **Testing:** Backend tests use standard `go test`. New packages (`internal/provider/`, `internal/agent/`, `internal/orchestra/`) currently lack tests — contributions welcome.
 

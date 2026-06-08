@@ -13,7 +13,7 @@ Memo doesn't just read what you write; it indexes it semantically. This allows t
 5. **Persistence:** The generated response and user message are asynchronously added to the memory as new memories.
 
 ## Technical Specifications
-- **Binary-Atomic Persistence:** Data is stored in Go's `.gob` format.
+- **Binary-Atomic Persistence:** Data is stored in SQLite/vec0 format.
 - **RAM Indexing:** Vectors are cached in RAM for search performance.
 - **Lazy Loading:** Only matching details are read from the disk after a search, keeping RAM usage minimal.
 

@@ -12,13 +12,14 @@ Memo'nun temel mantığı, **Bağlamsal Rezonans** prensibi üzerine kuruludur. 
 
 Memo, merkezi olmayan bir vektör arama mekanizması kullanır. Gönderdiğiniz her mesaj ve aldığınız her yanıt, yerel embedding modelleri kullanılarak anlamsal olarak indekslenir. Yapay zeka yanıt vermeden önce Memo, geçmiş konuşmalarınızı "dinler", en ilgili hatıraları geri getirir ve size derinlemesine kişiselleştirilmiş ve bağlam odaklı bir yanıt sunar.
 
-### 2. İkili-Atomik Süreklilik (.gob)
+### 2. SQLite + Vektör ANN (sqlite-vec)
 
-Güvenilirlik, projenin en öncelikli özelliğidir. Memo, veri saklama için Go dilinin yerel `.gob` ikili formatını kullanır.
+Memo, vektör arama için **SQLite + sqlite-vec** mimarisini kullanır. Veriler `memory.db` dosyasında WAL modunda SQLite'te saklanır, vektör indeksi ise `vec0` ANN (Approximate Nearest Neighbor) sanal tablosu ile yönetilir.
 
-- **Atomik Yazma**: Her etkileşim bağımsız bir ikili dosya olarak kaydedilir. Bir oturumdaki çökme asla tüm veritabanını bozmaz.
-- **Lazy Loading (Gecikmeli Yükleme)**: Hatıralar yalnızca anlamsal olarak ilgili olduklarında RAM'e çekilir, bu da yıllarca süren bir geçmişte bile neredeyse sıfır performans kaybı sağlar.
-- **Tip Güvenliği**: İkili serileştirme (binary serialization) kullanımı, veri yapınızın tutarlı, hızlı ve güvenli kalmasını sağlar.
+- **Atomik Yazma**: SQLite WAL (Write-Ahead Logging) modu sayesinde yazma işlemleri çakışmaz, çökmelere karşı dayanıklıdır.
+- **ANN İndeksi**: Vamana grafik algoritması (DiskANN ailesi) ile O(log n) karmaşıklıkta arama. 10 bin anı da olsa 10 milyon da olsa arama hızı aynı.
+- **Write-Queue**: Concurrency-safe yazma kuyruğu ile "database is locked" hataları önlenir.
+- **Go Fallback**: vec0 extension yüklenemezse cosine similarity brute-force ile çalışır (O(n)).
 
 ---
 

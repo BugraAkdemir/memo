@@ -33,4 +33,4 @@ Memo için yaygın sorunlar ve çözümleri.
 **Çözüm:**
 - "Gizli Mod"un aktif olup olmadığını kontrol edin (Hafızayı devre dışı bırakır).
 - Bir embedding modelinin yüklü olduğundan emin olun. RAG, aktif bir embedding sunucusu gerektirir (genellikle port 8082).
-- `.gob` dosyalarının oluşturulup oluşturulmadığını görmek için `data/memory/` dizinine bakın.
+- Hafıza deposunun aktif olup olmadığını kontrol edin. Hafıza, SQLite (sqlite-vec) vektör deposu kullanır.

@@ -9,6 +9,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -90,16 +91,24 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	cmd := exec.CommandContext(ctx, "bash", "-c", args.Command)
-	cmd.Dir = workingDir
-
-	// Limit env variables, keep safe path
-	cmd.Env = []string{
-		"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
-		"HOME=" + os.Getenv("HOME"),
-		"USER=" + os.Getenv("USER"),
-		"LANG=en_US.UTF-8",
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(ctx, "cmd", "/C", args.Command)
+		cmd.Env = []string{
+			"PATH=" + os.Getenv("PATH"),
+			"USERPROFILE=" + os.Getenv("USERPROFILE"),
+			"SystemRoot=" + os.Getenv("SystemRoot"),
+		}
+	} else {
+		cmd = exec.CommandContext(ctx, "bash", "-c", args.Command)
+		cmd.Env = []string{
+			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"HOME=" + os.Getenv("HOME"),
+			"USER=" + os.Getenv("USER"),
+			"LANG=en_US.UTF-8",
+		}
 	}
+	cmd.Dir = workingDir
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

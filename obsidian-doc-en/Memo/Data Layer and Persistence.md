@@ -2,8 +2,8 @@
 
 Memo uses a specialized file structure for local performance and data integrity instead of traditional databases (SQL/NoSQL).
 
-## .gob Format: Binary-Atomic Persistence
-All of Memo's memories and settings are stored in Go's native binary format, `.gob`.
+## SQLite/vec0 Format: Persistence
+All of Memo's memories and settings are stored in SQLite/vec0 format.
 
 ### Advantages:
 - **Speed:** Much faster serialization and restoration compared to JSON or XML.

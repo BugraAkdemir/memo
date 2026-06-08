@@ -82,9 +82,9 @@ Strategic vision and release plan.
 **Theme:** Architectural improvements, UI overhaul, mobile companion.
 
 ### Storage Overhaul
-- [ ] Migrate memory store from `.gob` to SQLite (CGO-free)
-- [ ] One-time migration script
-- [ ] ANN index for vector search (FTS5 + vector extension)
+- [x] Migrate memory store from `.gob` to SQLite (with sqlite-vec) ✅
+- [ ] One-time migration script (optional)
+- [x] ANN index for vector search (vec0) ✅
 - [ ] Lazy loading / pagination
 
 ### UI/UX Overhaul

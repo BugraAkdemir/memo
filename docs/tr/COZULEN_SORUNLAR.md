@@ -160,7 +160,7 @@ Bu belge, Memo projesinde çözülmüş olan 61 hatayı listeler.
 
 ### O7. `LoadCache` Performansı — O(N) Başlangıç Süresi
 - **Dosya:** `internal/memory/store.go`
-- **Çözüm:** Tek dosyalı indeks (`memory_index.gob`) eklendi. Başlangıçta N tane `.gob` dosyası okumak yerine tek bir indeks dosyası okunur. İndeks her ekleme/silme sonrası async goroutine ile güncellenir. Eski format geriye dönük uyumlu (yoksa tek tek tara).
+- **Çözüm:** SQLite indeks (`memory_index.sqlite`) eklendi. Başlangıçta N tane dosya okumak yerine tek bir SQLite dosyası okunur. İndeks her ekleme/silme sonrası async goroutine ile güncellenir.
 
 ### O8. Kaba Kuvvet O(N) Vektör Arama
 - **Dosya:** `internal/memory/retriever.go`, `store.go`
@@ -212,7 +212,7 @@ Bu belge, Memo projesinde çözülmüş olan 61 hatayı listeler.
 
 ### D6. Hafıza İndeksi Tüm Embedding'leri `append` ile Kopyalıyor (2x RAM)
 - **Dosya:** `internal/memory/store.go:104-108`
-- **Çözüm:** `LoadCache` legacy path'inde `doc.Embedding`'e doğrudan referans veriliyor (doc scope dışına çıktığı için kopya gereksizdi). `SaveInteraction` path'indeki kopya korundu (chromem koleksiyonu referans tutabilir).
+- **Çözüm:** `LoadCache` legacy path'inde `doc.Embedding`'e doğrudan referans veriliyor (doc scope dışına çıktığı için kopya gereksizdi). `SaveInteraction` path'indeki kopya korundu (orijinal store referans tutabilir).
 
 ### D7. `DiscordWebhook` / Action URL Yazmaları Asla Kontrol Edilmiyor
 - **Çözüm:** Discord/webhook/ActionURL özelliği kod tabanından kaldırıldığı için sorun kendiliğinden çözüldü.

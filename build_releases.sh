@@ -46,9 +46,10 @@ mkdir -p "$STAGEDIR/config"
 if [ "$OS" == "linux" ]; then
     echo "✅ İşletim Sistemi: Linux tespit edildi. (tar.gz, AppImage, deb oluşturulacak)"
     
-    # 1. Build Backend
-    echo "🔨 1. Go Backend Derleniyor..."
-    go build -o "$STAGEDIR/memo-backend" .
+# 1. Build Backend
+echo "🔨 1. Go Backend Derleniyor..."
+go mod download
+go build -o "$STAGEDIR/memo-backend" .
     
     # 2. Build Frontend
     echo "🔨 2. Flutter Frontend Derleniyor..."
@@ -58,12 +59,16 @@ if [ "$OS" == "linux" ]; then
     cp -r frontend/build/linux/x64/release/bundle/* "$STAGEDIR/"
     
     # 3. Copy Assets
-    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp kütüphaneleri)..."
+    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
+
+    # Binaries (llama-server + vec0 extension)
     mkdir -p "$STAGEDIR/binaries"
     cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
+
     # stt_server varsa kopyala
     mkdir -p "$STAGEDIR/data/bin"
     cp data/bin/stt_server "$STAGEDIR/data/bin/" 2>/dev/null || true
+
     # Config
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
     # .env.example'ı .env olarak kopyala (gerçek .env değil)
@@ -78,6 +83,8 @@ if [ "$OS" == "linux" ]; then
     mkdir -p "$STAGEDIR/data/memory"
     mkdir -p "$STAGEDIR/data/sessions"
     mkdir -p "$STAGEDIR/data/agent-backups"
+    mkdir -p "$STAGEDIR/data/whatsapp"
+    touch "$STAGEDIR/data/whatsapp/.gitkeep"
     
     # Create Runner Script
     cat << 'RUNNER' > "$STAGEDIR/run_memo.sh"
@@ -91,70 +98,7 @@ mkdir -p "$MEMO_HOME/data/models"
 mkdir -p "$MEMO_HOME/data/memory"
 mkdir -p "$MEMO_HOME/data/sessions"
 mkdir -p "$MEMO_HOME/data/agent-backups"
-mkdir -p "$MEMO_HOME/config"
-
-# Copy bundled data on first run
-if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
-    echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
-    mkdir -p "$MEMO_HOME/binaries"
-    cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
-fi
-[ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ] && cp -r "$DIR/config/"* "$MEMO_HOME/config/"
-[ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
-# Copy provider example config if no providers.json exists
-[ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
-# Copy orchestra config if not present
-[ ! -f "$MEMO_HOME/data/orchestra.json" ] && [ -f "$DIR/data/orchestra.json" ] && cp "$DIR/data/orchestra.json" "$MEMO_HOME/data/orchestra.json"
-# Copy permissions if not present
-[ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
-
-cd "$MEMO_HOME"
-export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
-
-pkill -9 -f "memo-backend" 2>/dev/null || true
-pkill -9 -f "llama-server" 2>/dev/null || true
-sleep 0.5
-
-"$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
-BACKEND_PID=$!
-sleep 1
-
-"$DIR/memo_flutter"
-
-kill $BACKEND_PID 2>/dev/null
-pkill -9 -f "llama-server" 2>/dev/null || true
-RUNNER
-    chmod +x "$STAGEDIR/run_memo.sh"
-    
-    # --- TAR.GZ ---
-    if [ "$BUILD_TARGZ" = true ]; then
-        echo "📦 4. tar.gz Paketi Oluşturuluyor..."
-        cd build_output/stage
-        tar -czvf "../dist/${APP_NAME}-linux-x64-v${VERSION}.tar.gz" $APP_NAME >/dev/null
-        cd ../..
-    fi
-    
-    # --- APPIMAGE ---
-    if [ "$BUILD_APPIMAGE" = true ]; then
-        echo "📦 5. AppImage Paketi Oluşturuluyor..."
-        APPDIR="build_output/stage/AppDir"
-        mkdir -p "$APPDIR/usr/bin"
-        cp -r "$STAGEDIR/"* "$APPDIR/usr/bin/"
-        
-        # Create AppRun
-        cat << 'APPRUN' > "$APPDIR/AppRun"
-#!/bin/bash
-HERE="$(dirname "$(readlink -f "${0}")")"
-APPBIN="$HERE/usr/bin"
-
-# Writable workspace in user's home directory
-MEMO_HOME="$HOME/.memo"
-mkdir -p "$MEMO_HOME/data/bin"
-mkdir -p "$MEMO_HOME/data/models"
-mkdir -p "$MEMO_HOME/data/memory"
-mkdir -p "$MEMO_HOME/data/sessions"
-mkdir -p "$MEMO_HOME/data/agent-backups"
-mkdir -p "$MEMO_HOME/config"
+mkdir -p "$MEMO_HOME/data/whatsapp"
 
 # Copy llama.cpp binaries if not already present (first run)
 if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$APPBIN/binaries" ]; then
@@ -286,9 +230,18 @@ elif [ "$OS" == "windows" ]; then
     cd ..
     cp -r frontend/build/windows/x64/release/runner/Release/* "$STAGEDIR/"
     
-    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp kütüphaneleri)..."
+    echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
+
+    # Binaries (llama-server DLL'leri + vec0 extension)
     mkdir -p "$STAGEDIR/binaries"
     cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
+
+    # Windows için vec0.dll yoksa uyar
+    if [ ! -f "$STAGEDIR/binaries/windows/vec0.dll" ] && [ ! -f "$STAGEDIR/binaries/windows/cpu/vec0.dll" ]; then
+        echo "⚠️  vec0.dll bulunamadı! Windows'ta vektör arama çalışmayacak."
+        echo "   İndirmek için: https://github.com/asg017/sqlite-vec/releases"
+    fi
+
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
     # .env.example'ı .env olarak kopyala (gerçek .env değil)
     cp .env.example "$STAGEDIR/.env" 2>/dev/null || true
@@ -300,6 +253,8 @@ elif [ "$OS" == "windows" ]; then
     mkdir -p "$STAGEDIR/data/memory"
     mkdir -p "$STAGEDIR/data/sessions"
     mkdir -p "$STAGEDIR/data/agent-backups"
+    mkdir -p "$STAGEDIR/data/whatsapp"
+    touch "$STAGEDIR/data/whatsapp/.gitkeep"
     
     # Create batch runner for Windows
     cat << 'RUNNERWIN' > "$STAGEDIR/run_memo.bat"

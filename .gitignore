@@ -51,3 +51,4 @@ data/agent-backups/*
 data/providers.json
 config/config.yaml
 .env
+data/whatsapp/*

@@ -420,6 +420,15 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 				logger(fmt.Sprintf("Uyarı: Eski sembolik bağ silinemedi %s: %v", name, err))
 			}
 			if err := os.Symlink(hdr.Linkname, destPath); err != nil {
+				// Windows: copy instead of symlink (requires admin/Developer Mode)
+				if goruntime.GOOS == "windows" {
+					srcPath := filepath.Join(filepath.Dir(destPath), hdr.Linkname)
+					if copyErr := copyFile(srcPath, destPath, 0755); copyErr == nil {
+						logger(fmt.Sprintf("  Kopyalandı (symlink yerine): %s -> %s", name, hdr.Linkname))
+						extracted++
+						continue
+					}
+				}
 				logger(fmt.Sprintf("Uyarı: Sembolik bağ oluşturulamadı %s -> %s: %v", name, hdr.Linkname, err))
 			} else {
 				logger(fmt.Sprintf("  Bağlandı: %s -> %s", name, hdr.Linkname))

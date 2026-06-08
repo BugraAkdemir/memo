@@ -2,420 +2,613 @@ package memory
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/gob"
-	"encoding/hex"
-	"errors"
+	"database/sql"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"log"
-	"os"
+	"math"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 	"time"
 
-	chromem "github.com/philippgille/chromem-go"
+	"memo/internal/database"
+	"memo/internal/models"
 )
 
-const (
-	collectionName   = "conversations"
-	metadataFileName = "00000000.gob"
-)
+type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
 
-type MemoryIndex struct {
-	ID     string
-	Vector []float32
-	Norm   float64 // pre-computed L2 norm for faster cosine similarity
-}
+type MemoryResult = models.MemoryResult
+type MemoryFileInfo = models.MemoryFileInfo
+type GobFileInfo = models.MemoryFileInfo
 
 type Store struct {
-	mu            sync.RWMutex
-	index         []MemoryIndex
-	persistDir    string
-	collectionDir string
-	embeddingFunc chromem.EmbeddingFunc
-	indexPath     string // single-file index path for fast startup
+	db     *database.DB
+	embed  EmbeddingFunc
+	dim    int
+	dir    string
+	dbPath string
+	mu     sync.RWMutex
+	closed bool
+	useVec bool
 }
 
-func NewStore(persistDir string, embeddingFunc chromem.EmbeddingFunc) (*Store, error) {
-	if persistDir == "" {
-		persistDir = "./chromem-go"
+type StoreConfig struct {
+	Dir           string
+	Dimension     int
+	EmbeddingFunc EmbeddingFunc
+}
+
+func (c StoreConfig) dbPath() string {
+	return filepath.Join(c.Dir, "memory.db")
+}
+
+func NewStore(cfg StoreConfig) (*Store, error) {
+	if cfg.Dimension <= 0 {
+		cfg.Dimension = 768
 	}
-	if embeddingFunc == nil {
+	if cfg.EmbeddingFunc == nil {
 		return nil, fmt.Errorf("memory.NewStore: embeddingFunc is nil")
 	}
 
-	s := &Store{
-		persistDir:    filepath.Clean(persistDir),
-		collectionDir: filepath.Join(filepath.Clean(persistDir), hash2hex(collectionName)),
-		embeddingFunc: embeddingFunc,
-		indexPath:     filepath.Join(filepath.Clean(persistDir), "memory_index.gob"),
+	dbPath := cfg.dbPath()
+
+	dbCfg := database.Config{
+		Path:    dbPath,
+		MaxPool: 1,
 	}
 
-	if err := s.ensureCollectionMetadata(); err != nil {
+	db, err := database.Open(dbCfg)
+	if err != nil {
 		return nil, fmt.Errorf("memory.NewStore: %w", err)
 	}
-	if err := s.LoadCache(); err != nil {
-		return nil, fmt.Errorf("memory.NewStore: load cache: %w", err)
+
+	s := &Store{
+		db:     db,
+		embed:  cfg.EmbeddingFunc,
+		dim:    cfg.Dimension,
+		dir:    cfg.Dir,
+		dbPath: dbPath,
+	}
+
+	if err := s.initSchema(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("memory.NewStore: schema: %w", err)
 	}
 
 	return s, nil
 }
 
-func (s *Store) LoadCache() error {
-	start := time.Now()
+func (s *Store) initSchema() error {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
-	// Try single-file index first (fast startup).
-	nextIndex, err := s.loadIndexFile()
-	if err == nil {
-		s.mu.Lock()
-		s.index = nextIndex
-		s.mu.Unlock()
-		log.Printf("LATENCY memory.load_cache total_ms=%d indexed=%d (fast path)", time.Since(start).Milliseconds(), len(nextIndex))
-		return nil
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS memories (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid TEXT NOT NULL UNIQUE,
+			role TEXT NOT NULL DEFAULT 'user',
+			content TEXT NOT NULL,
+			timestamp TEXT NOT NULL,
+			user_msg TEXT NOT NULL DEFAULT '',
+			assist_msg TEXT NOT NULL DEFAULT '',
+			type TEXT NOT NULL DEFAULT 'conversation',
+			embedding BLOB DEFAULT NULL
+		)
+	`); err != nil {
+		return err
 	}
 
-	// Fallback: scan individual .gob files (legacy path, slow).
-	entries, err := os.ReadDir(s.collectionDir)
+	if _, err := s.db.ExecContext(ctx, `
+		CREATE TABLE IF NOT EXISTS _metadata (
+			key TEXT PRIMARY KEY,
+			value TEXT NOT NULL
+		)
+	`); err != nil {
+		return err
+	}
+
+	vecErr := s.tryCreateVecTable(ctx)
+	if vecErr == nil {
+		s.useVec = true
+		if err := s.ensureVecMetadata(ctx); err != nil {
+			log.Printf("MEMORY: metadata init: %v", err)
+		}
+
+		if err := s.migrateEmbeddingsToVec(ctx); err != nil {
+			log.Printf("MEMORY: migrate to vec: %v", err)
+		}
+	} else {
+		s.useVec = false
+		log.Printf("MEMORY: vec0 not available (%v), using Go fallback", vecErr)
+	}
+
+	var existingDim int
+	err := s.db.QueryRowContext(ctx,
+		"SELECT value FROM _metadata WHERE key = 'embedding_dimension'",
+	).Scan(&existingDim)
 	if err != nil {
-		if errors.Is(err, os.ErrNotExist) {
-			s.mu.Lock()
-			s.index = nil
-			s.mu.Unlock()
-			return nil
-		}
-		return fmt.Errorf("read collection dir: %w", err)
-	}
-
-	nextIndex = make([]MemoryIndex, 0, len(entries))
-	for _, entry := range entries {
-		if entry.IsDir() || entry.Name() == metadataFileName || filepath.Ext(entry.Name()) != ".gob" {
-			continue
-		}
-
-		doc, err := readDocument(filepath.Join(s.collectionDir, entry.Name()))
-		if err != nil {
-			return fmt.Errorf("read index document %q: %w", entry.Name(), err)
-		}
-		if doc.ID == "" || len(doc.Embedding) == 0 {
-			continue
-		}
-
-		nextIndex = append(nextIndex, MemoryIndex{
-			ID:     doc.ID,
-			Vector: doc.Embedding,
-			Norm:   vectorNorm(doc.Embedding),
+		_ = s.db.Write(func(tx *sql.Tx) error {
+			_, err := tx.Exec(
+				"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('embedding_dimension', ?)",
+				fmt.Sprintf("%d", s.dim),
+			)
+			return err
 		})
 	}
 
-	// Persist the rebuilt index for next startup.
-	if err := s.writeIndexFile(nextIndex); err != nil {
-		log.Printf("memory: failed to persist index file: %v", err)
-	}
-
-	s.mu.Lock()
-	s.index = nextIndex
-	s.mu.Unlock()
-	log.Printf("LATENCY memory.load_cache total_ms=%d indexed=%d (legacy path)", time.Since(start).Milliseconds(), len(nextIndex))
 	return nil
 }
 
-// loadIndexFile reads the single-file index from disk.
-func (s *Store) loadIndexFile() ([]MemoryIndex, error) {
-	f, err := os.Open(s.indexPath)
-	if err != nil {
-		return nil, err
-	}
-	defer f.Close()
-	var idx []MemoryIndex
-	if err := gob.NewDecoder(f).Decode(&idx); err != nil {
-		return nil, err
-	}
-	return idx, nil
+func (s *Store) tryCreateVecTable(ctx context.Context) error {
+	q := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(
+		embedding FLOAT[%d] distance_metric=cosine
+	)`, s.dim)
+	_, err := s.db.ExecContext(ctx, q)
+	return err
 }
 
-// writeIndexFile persists the in-memory index as a single gob file.
-func (s *Store) writeIndexFile(idx []MemoryIndex) error {
-	f, err := os.Create(s.indexPath)
+func (s *Store) ensureVecMetadata(ctx context.Context) error {
+	var existingDim int
+	err := s.db.QueryRowContext(ctx,
+		"SELECT value FROM _metadata WHERE key = 'embedding_dimension'",
+	).Scan(&existingDim)
+
+	if err != nil {
+		return s.db.Write(func(tx *sql.Tx) error {
+			_, err := tx.Exec(
+				"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('embedding_dimension', ?)",
+				fmt.Sprintf("%d", s.dim),
+			)
+			return err
+		})
+	}
+
+	if existingDim != s.dim {
+		log.Printf("MEMORY: embedding dimension changed from %d to %d, recreating vec index", existingDim, s.dim)
+		return s.db.Write(func(tx *sql.Tx) error {
+			if _, err := tx.Exec("DROP TABLE IF EXISTS vec_memories"); err != nil {
+				return err
+			}
+			if _, err := tx.Exec(fmt.Sprintf(
+				"CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(embedding FLOAT[%d] distance_metric=cosine)",
+				s.dim,
+			)); err != nil {
+				return err
+			}
+			_, err := tx.Exec(
+				"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('embedding_dimension', ?)",
+				fmt.Sprintf("%d", s.dim),
+			)
+			return err
+		})
+	}
+
+	return nil
+}
+
+func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
+	if !s.useVec {
+		return nil
+	}
+
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id, embedding FROM memories WHERE embedding IS NOT NULL")
 	if err != nil {
 		return err
 	}
-	defer f.Close()
-	return gob.NewEncoder(f).Encode(idx)
-}
+	defer rows.Close()
 
-func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
-	totalStart := time.Now()
-	now := time.Now()
-	ts := now.Format(time.RFC3339)
-
-	embedStart := time.Now()
-	embedding, err := s.embeddingFunc(ctx, userMsg)
-	if err != nil {
-		return fmt.Errorf("memory.SaveInteraction: embed: %w", err)
-	}
-	embedDuration := time.Since(embedStart)
-
-	content := fmt.Sprintf("[%s] User: %s\nAssistant: %s", ts, userMsg, assistantMsg)
-	doc := chromem.Document{
-		ID:        fmt.Sprintf("conv_%d", now.UnixNano()),
-		Content:   content,
-		Embedding: normalizeVector(embedding),
-		Metadata: map[string]string{
-			"timestamp":  ts,
-			"type":       "conversation",
-			"user_msg":   truncate(userMsg, 200),
-			"assist_msg": truncate(assistantMsg, 200),
-		},
-	}
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	diskStart := time.Now()
-	if err := writeDocument(s.documentPath(doc.ID), doc); err != nil {
-		return fmt.Errorf("memory.SaveInteraction: persist: %w", err)
-	}
-	diskDuration := time.Since(diskStart)
-
-	vec := append([]float32(nil), doc.Embedding...)
-	idx := MemoryIndex{
-		ID:     doc.ID,
-		Vector: vec,
-		Norm:   vectorNorm(vec),
-	}
-	s.upsertIndexLocked(idx)
-	if err := s.writeIndexFile(s.index); err != nil {
-		log.Printf("memory: failed to persist index: %v", err)
-	}
-	log.Printf(
-		"LATENCY memory.save total_ms=%d embed_ms=%d disk_ms=%d cache_docs=%d",
-		time.Since(totalStart).Milliseconds(),
-		embedDuration.Milliseconds(),
-		diskDuration.Milliseconds(),
-		len(s.index),
-	)
-	return nil
-}
-
-func (s *Store) Count() int {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	return len(s.index)
-}
-
-// ClearAll removes all memory by deleting the persist directory and reinitializing.
-func (s *Store) ClearAll() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if err := os.RemoveAll(s.persistDir); err != nil {
-		return fmt.Errorf("memory.ClearAll: %w", err)
-	}
-	if err := s.ensureCollectionMetadataLocked(); err != nil {
-		return fmt.Errorf("memory.ClearAll: reinit metadata: %w", err)
-	}
-
-	s.index = nil
-	return nil
-}
-
-// ListGobFiles returns all .gob files with their paths and sizes for selective deletion.
-type GobFileInfo struct {
-	Path     string `json:"path"`
-	Name     string `json:"name"`
-	SizeKB   int64  `json:"size_kb"`
-	Modified string `json:"modified"`
-}
-
-func (s *Store) ListGobFiles() []GobFileInfo {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-
-	var files []GobFileInfo
-	filepath.Walk(s.persistDir, func(path string, info os.FileInfo, err error) error {
-		if err != nil {
-			return nil
-		}
-		if !info.IsDir() && filepath.Ext(path) == ".gob" && info.Name() != metadataFileName && info.Name() != "memory_index.gob" {
-			relPath, _ := filepath.Rel(s.persistDir, path)
-			files = append(files, GobFileInfo{
-				Path:     relPath,
-				Name:     info.Name(),
-				SizeKB:   info.Size() / 1024,
-				Modified: info.ModTime().Format("2006-01-02 15:04"),
-			})
+	return s.db.Write(func(tx *sql.Tx) error {
+		for rows.Next() {
+			var id int64
+			var blob []byte
+			if err := rows.Scan(&id, &blob); err != nil {
+				continue
+			}
+			vec := blobToFloats(blob)
+			if len(vec) == 0 {
+				continue
+			}
+			jsonVec, _ := json.Marshal(vec)
+			tx.Exec("INSERT OR IGNORE INTO vec_memories(rowid, embedding) VALUES (?, ?)", id, string(jsonVec))
 		}
 		return nil
 	})
+}
+
+func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
+	embedStart := time.Now()
+	embedding, err := s.embed(ctx, userMsg)
+	if err != nil {
+		return fmt.Errorf("memory.SaveInteraction: embed: %w", err)
+	}
+	if len(embedding) != s.dim {
+		return fmt.Errorf("memory.SaveInteraction: embedding dimension %d != expected %d", len(embedding), s.dim)
+	}
+	embedDur := time.Since(embedStart)
+
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	uuid := fmt.Sprintf("mem_%d", time.Now().UnixNano())
+	content := fmt.Sprintf("[%s] User: %s\nAssistant: %s", timestamp, userMsg, assistantMsg)
+
+	writeStart := time.Now()
+	err = s.db.Write(func(tx *sql.Tx) error {
+		embedBlob := floatsToBlob(embedding)
+
+		res, err := tx.Exec(
+			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding)
+			 VALUES (?, 'user', ?, ?, ?, ?, ?)`,
+			uuid, content, timestamp, userMsg, assistantMsg, embedBlob,
+		)
+		if err != nil {
+			return fmt.Errorf("insert memory: %w", err)
+		}
+
+		if s.useVec {
+			rowID, err := res.LastInsertId()
+			if err != nil {
+				return err
+			}
+			vecJSON, _ := json.Marshal(embedding)
+			_, err = tx.Exec(
+				"INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)",
+				rowID, string(vecJSON),
+			)
+			if err != nil {
+				return fmt.Errorf("insert vector: %w", err)
+			}
+		}
+
+		return nil
+	})
+	writeDur := time.Since(writeStart)
+
+	log.Printf("LATENCY memory.save total_ms=%d embed_ms=%d write_ms=%d dim=%d vec=%v",
+		time.Since(embedStart.Add(writeDur)).Milliseconds(),
+		embedDur.Milliseconds(),
+		writeDur.Milliseconds(),
+		s.dim,
+		s.useVec,
+	)
+
+	return err
+}
+
+func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
+	start := time.Now()
+
+	embedStart := time.Now()
+	queryEmbedding, err := s.embed(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("memory.RetrieveContext: embed: %w", err)
+	}
+	embedDur := time.Since(embedStart)
+
+	if len(queryEmbedding) != s.dim {
+		return nil, fmt.Errorf("memory.RetrieveContext: embedding dimension %d != expected %d", len(queryEmbedding), s.dim)
+	}
+
+	if topK <= 0 {
+		return nil, nil
+	}
+
+	var memories []MemoryResult
+
+	if s.useVec {
+		memories, err = s.vecSearch(ctx, queryEmbedding, topK, minSimilarity)
+	} else {
+		memories, err = s.goSearch(ctx, queryEmbedding, topK, minSimilarity)
+	}
+
+	log.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v",
+		time.Since(start).Milliseconds(),
+		embedDur.Milliseconds(),
+		topK,
+		len(memories),
+		s.useVec,
+	)
+
+	return memories, err
+}
+
+func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
+	vecJSON, err := json.Marshal(queryEmbedding)
+	if err != nil {
+		return nil, fmt.Errorf("memory.vecSearch: marshal: %w", err)
+	}
+
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg, v.distance
+		FROM vec_memories v
+		JOIN memories m ON m.id = v.rowid
+		WHERE v.embedding MATCH ?
+		  AND k = ?
+		ORDER BY v.distance
+	`, string(vecJSON), topK)
+	if err != nil {
+		return nil, fmt.Errorf("memory.vecSearch: %w", err)
+	}
+	defer rows.Close()
+
+	var results []MemoryResult
+	for rows.Next() {
+		var (
+			uuid, content, timestamp string
+			userMsg, assistMsg       string
+			distance                 float64
+		)
+		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &distance); err != nil {
+			return nil, fmt.Errorf("memory.vecSearch: scan: %w", err)
+		}
+
+		sim := float32(1.0 - math.Max(0, math.Min(distance, 2))/2)
+		if sim < minSimilarity {
+			continue
+		}
+
+		results = append(results, MemoryResult{
+			ID:         uuid,
+			Content:    content,
+			Similarity: sim,
+			Timestamp:  timestamp,
+			UserMsg:    userMsg,
+			AssistMsg:  assistMsg,
+		})
+	}
+
+	return results, rows.Err()
+}
+
+func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id, uuid, content, timestamp, user_msg, assist_msg, embedding FROM memories WHERE embedding IS NOT NULL")
+	if err != nil {
+		return nil, fmt.Errorf("memory.goSearch: %w", err)
+	}
+	defer rows.Close()
+
+	type scored struct {
+		uuid     string
+		content  string
+		ts       string
+		userMsg  string
+		assistMsg string
+		sim      float32
+	}
+
+	queryNorm := vectorNorm(queryEmbedding)
+
+	var all []scored
+	for rows.Next() {
+		var id int64
+		var uuid, content, timestamp, userMsg, assistMsg string
+		var blob []byte
+		if err := rows.Scan(&id, &uuid, &content, &timestamp, &userMsg, &assistMsg, &blob); err != nil {
+			continue
+		}
+
+		vec := blobToFloats(blob)
+		if len(vec) != s.dim {
+			continue
+		}
+
+		sim := cosineSimilarityFast(queryEmbedding, queryNorm, vec, vectorNorm(vec))
+		if sim < minSimilarity {
+			continue
+		}
+
+		all = append(all, scored{
+			uuid:      uuid,
+			content:   content,
+			ts:        timestamp,
+			userMsg:   userMsg,
+			assistMsg: assistMsg,
+			sim:       sim,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	sort.Slice(all, func(i, j int) bool {
+		return all[i].sim > all[j].sim
+	})
+
+	if topK > len(all) {
+		topK = len(all)
+	}
+
+	results := make([]MemoryResult, 0, topK)
+	for _, s := range all[:topK] {
+		results = append(results, MemoryResult{
+			ID:         s.uuid,
+			Content:    s.content,
+			Similarity: s.sim,
+			Timestamp:  s.ts,
+			UserMsg:    s.userMsg,
+			AssistMsg:  s.assistMsg,
+		})
+	}
+
+	return results, nil
+}
+
+func (s *Store) DebugSearch(ctx context.Context, query string, topK int) []MemoryResult {
+	results, err := s.RetrieveContext(ctx, query, topK, 0)
+	if err != nil {
+		log.Printf("DEBUG SEARCH ERROR: %v", err)
+		return nil
+	}
+	return results
+}
+
+func (s *Store) Count() int {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var count int
+	err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&count)
+	if err != nil {
+		return 0
+	}
+	return count
+}
+
+func (s *Store) ClearAll() error {
+	return s.db.Write(func(tx *sql.Tx) error {
+		if s.useVec {
+			if _, err := tx.Exec("DELETE FROM vec_memories"); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec("DELETE FROM memories"); err != nil {
+			return err
+		}
+		return nil
+	})
+}
+
+func (s *Store) ListGobFiles() []MemoryFileInfo {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT uuid, timestamp FROM memories ORDER BY id DESC LIMIT 100",
+	)
+	if err != nil {
+		return nil
+	}
+	defer rows.Close()
+
+	var files []MemoryFileInfo
+	for rows.Next() {
+		var uuid, ts string
+		if err := rows.Scan(&uuid, &ts); err != nil {
+			continue
+		}
+		files = append(files, MemoryFileInfo{
+			Path:     uuid,
+			Name:     uuid,
+			SizeKB:   0,
+			Modified: ts,
+		})
+	}
 	return files
 }
 
-// DeleteGobFile deletes a specific .gob memory file and removes it from the RAM index.
 func (s *Store) DeleteGobFile(relPath string) error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	fullPath, err := s.safePersistPath(relPath)
-	if err != nil {
-		return err
-	}
-	if filepath.Ext(fullPath) != ".gob" || filepath.Base(fullPath) == metadataFileName {
-		return fmt.Errorf("not a memory .gob file")
-	}
-
-	// Look up the document ID from the index using the filename hash,
-	// so we don't need to read (possibly corrupted) gob files.
-	baseName := strings.TrimSuffix(filepath.Base(fullPath), ".gob")
-	var docID string
-	for _, idx := range s.index {
-		if hash2hex(idx.ID) == baseName {
-			docID = idx.ID
-			break
+	return s.db.Write(func(tx *sql.Tx) error {
+		var id int64
+		err := tx.QueryRow("SELECT id FROM memories WHERE uuid = ?", relPath).Scan(&id)
+		if err != nil {
+			return fmt.Errorf("memory not found: %s", relPath)
 		}
-	}
 
-	// Delete the file; if it fails, keep the index intact.
-	if err := os.Remove(fullPath); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return fmt.Errorf("memory.DeleteGobFile: %w", err)
-	}
-
-	// Remove from index so stale entries don't accumulate (C9).
-	if docID != "" {
-		s.removeIndexLocked(docID)
-	}
-	return nil
-}
-
-func (s *Store) ensureCollectionMetadata() error {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.ensureCollectionMetadataLocked()
-}
-
-func (s *Store) ensureCollectionMetadataLocked() error {
-	if err := os.MkdirAll(s.collectionDir, 0o700); err != nil {
-		return err
-	}
-
-	path := filepath.Join(s.collectionDir, metadataFileName)
-	if _, err := os.Stat(path); err == nil {
+		if s.useVec {
+			if _, err := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", id); err != nil {
+				return err
+			}
+		}
+		if _, err := tx.Exec("DELETE FROM memories WHERE id = ?", id); err != nil {
+			return err
+		}
 		return nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-
-	metadata := struct {
-		Name     string
-		Metadata map[string]string
-	}{
-		Name:     collectionName,
-		Metadata: nil,
-	}
-	return writeGobFile(path, metadata)
+	})
 }
 
-func (s *Store) documentPath(id string) string {
-	return filepath.Join(s.collectionDir, hash2hex(id)+".gob")
+func (s *Store) Stats() models.MemoryStats {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	var stats models.MemoryStats
+	stats.Dimension = s.dim
+
+	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&stats.Count)
+	stats.VecCount = stats.Count
+
+	return stats
 }
 
-func (s *Store) safePersistPath(relPath string) (string, error) {
-	if filepath.IsAbs(relPath) {
-		return "", fmt.Errorf("absolute paths are not allowed")
+func (s *Store) Close() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed {
+		return nil
 	}
-
-	base, err := filepath.Abs(s.persistDir)
-	if err != nil {
-		return "", err
-	}
-	full, err := filepath.Abs(filepath.Join(s.persistDir, relPath))
-	if err != nil {
-		return "", err
-	}
-	if full != base && !strings.HasPrefix(full, base+string(os.PathSeparator)) {
-		return "", fmt.Errorf("path escapes memory directory")
-	}
-	// Resolve symlinks to prevent TOCTOU symlink swaps.
-	resolved, err := filepath.EvalSymlinks(full)
-	if err != nil {
-		return "", err
-	}
-	if resolved != base && !strings.HasPrefix(resolved, base+string(os.PathSeparator)) {
-		return "", fmt.Errorf("path escapes memory directory (symlink resolved)")
-	}
-	return resolved, nil
+	s.closed = true
+	return s.db.Close()
 }
 
-func (s *Store) upsertIndexLocked(item MemoryIndex) {
-	for i := range s.index {
-		if s.index[i].ID == item.ID {
-			s.index[i] = item
-			return
-		}
+func FormatMemoriesForPrompt(memories []MemoryResult) string {
+	if len(memories) == 0 {
+		return ""
 	}
-	s.index = append(s.index, item)
+
+	var sb strings.Builder
+	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
+	for i, m := range memories {
+		sb.WriteString(fmt.Sprintf("[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, m.Content))
+	}
+	sb.WriteString("--- END MEMORIES ---\n")
+	return sb.String()
 }
 
-func (s *Store) removeIndexLocked(id string) {
-	for i := range s.index {
-		if s.index[i].ID == id {
-			s.index = append(s.index[:i], s.index[i+1:]...)
-			s.writeIndexFile(s.index)
-			return
-		}
+func vectorNorm(v []float32) float64 {
+	var sum float64
+	for _, val := range v {
+		sum += float64(val) * float64(val)
 	}
+	return math.Sqrt(sum)
 }
 
-func readDocument(path string) (chromem.Document, error) {
-	var doc chromem.Document
-	if err := readGobFile(path, &doc); err != nil {
-		return chromem.Document{}, err
+func cosineSimilarityFast(a []float32, aNorm float64, b []float32, bNorm float64) float32 {
+	if len(a) == 0 || len(a) != len(b) || aNorm == 0 || bNorm == 0 {
+		return 0
 	}
-	return doc, nil
+	var dot float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+	}
+	return float32(dot / (aNorm * bNorm))
 }
 
-func writeDocument(path string, doc chromem.Document) error {
-	return writeGobFile(path, doc)
+func normalizeVector(v []float32) []float32 {
+	if len(v) == 0 {
+		return v
+	}
+	var norm float64
+	for _, val := range v {
+		norm += float64(val * val)
+	}
+	if norm == 0 {
+		return v
+	}
+	scale := float32(1 / math.Sqrt(norm))
+	out := make([]float32, len(v))
+	for i, val := range v {
+		out[i] = val * scale
+	}
+	return out
 }
 
-func readGobFile(path string, v any) error {
-	f, err := os.Open(path)
-	if err != nil {
-		return err
+func floatsToBlob(v []float32) []byte {
+	b := make([]byte, len(v)*4)
+	for i, f := range v {
+		binary.LittleEndian.PutUint32(b[i*4:], math.Float32bits(f))
 	}
-	defer f.Close()
-
-	if err := gob.NewDecoder(f).Decode(v); err != nil {
-		return err
-	}
-	return nil
+	return b
 }
 
-func writeGobFile(path string, v any) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
+func blobToFloats(b []byte) []float32 {
+	if len(b) == 0 || len(b)%4 != 0 {
+		return nil
 	}
-
-	f, err := os.Create(path)
-	if err != nil {
-		return err
+	v := make([]float32, len(b)/4)
+	for i := range v {
+		v[i] = math.Float32frombits(binary.LittleEndian.Uint32(b[i*4:]))
 	}
-	defer f.Close()
-
-	if err := gob.NewEncoder(f).Encode(v); err != nil {
-		return err
-	}
-	return nil
-}
-
-func hash2hex(name string) string {
-	hash := sha256.Sum256([]byte(name))
-	return hex.EncodeToString(hash[:8])
-}
-
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	return s[:maxLen] + "..."
+	return v
 }

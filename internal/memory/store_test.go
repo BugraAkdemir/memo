@@ -5,15 +5,22 @@ import (
 	"strings"
 	"testing"
 
-	chromem "github.com/philippgille/chromem-go"
+	"memo/internal/models"
 )
 
-func TestSeparatedMemorySearchLoadsOnlyMatchingDocument(t *testing.T) {
+func TestSaveAndRetrieve(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewStore(t.TempDir(), testEmbedding)
+	dir := t.TempDir()
+
+	store, err := NewStore(StoreConfig{
+		Dir:           dir,
+		Dimension:     3,
+		EmbeddingFunc: testEmbedding,
+	})
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}
+	defer store.Close()
 
 	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction(coffee) error = %v", err)
@@ -22,15 +29,11 @@ func TestSeparatedMemorySearchLoadsOnlyMatchingDocument(t *testing.T) {
 		t.Fatalf("SaveInteraction(hiking) error = %v", err)
 	}
 
-	reloaded, err := NewStore(store.persistDir, testEmbedding)
-	if err != nil {
-		t.Fatalf("reload NewStore() error = %v", err)
-	}
-	if reloaded.Count() != 2 {
-		t.Fatalf("Count() = %d, want 2", reloaded.Count())
+	if store.Count() != 2 {
+		t.Fatalf("Count() = %d, want 2", store.Count())
 	}
 
-	results, err := reloaded.RetrieveContext(ctx, "coffee grinder", 1, 0)
+	results, err := store.RetrieveContext(ctx, "coffee grinder", 1, 0)
 	if err != nil {
 		t.Fatalf("RetrieveContext() error = %v", err)
 	}
@@ -42,12 +45,20 @@ func TestSeparatedMemorySearchLoadsOnlyMatchingDocument(t *testing.T) {
 	}
 }
 
-func TestDeleteGobFileRemovesDiskAndIndex(t *testing.T) {
+func TestDeleteMemory(t *testing.T) {
 	ctx := context.Background()
-	store, err := NewStore(t.TempDir(), testEmbedding)
+	dir := t.TempDir()
+
+	store, err := NewStore(StoreConfig{
+		Dir:           dir,
+		Dimension:     3,
+		EmbeddingFunc: testEmbedding,
+	})
 	if err != nil {
 		t.Fatalf("NewStore() error = %v", err)
 	}
+	defer store.Close()
+
 	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
@@ -56,11 +67,96 @@ func TestDeleteGobFileRemovesDiskAndIndex(t *testing.T) {
 	if len(files) != 1 {
 		t.Fatalf("len(files) = %d, want 1", len(files))
 	}
+
 	if err := store.DeleteGobFile(files[0].Path); err != nil {
 		t.Fatalf("DeleteGobFile() error = %v", err)
 	}
 	if store.Count() != 0 {
 		t.Fatalf("Count() = %d, want 0", store.Count())
+	}
+}
+
+func TestClearAll(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store, err := NewStore(StoreConfig{
+		Dir:           dir,
+		Dimension:     3,
+		EmbeddingFunc: testEmbedding,
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+	if store.Count() != 1 {
+		t.Fatalf("Count() = %d, want 1", store.Count())
+	}
+
+	if err := store.ClearAll(); err != nil {
+		t.Fatalf("ClearAll() error = %v", err)
+	}
+	if store.Count() != 0 {
+		t.Fatalf("after ClearAll Count() = %d, want 0", store.Count())
+	}
+}
+
+func TestStats(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store, err := NewStore(StoreConfig{
+		Dir:           dir,
+		Dimension:     3,
+		EmbeddingFunc: testEmbedding,
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	stats := store.Stats()
+	if stats.Dimension != 3 {
+		t.Fatalf("Dimension = %d, want 3", stats.Dimension)
+	}
+
+	if err := store.SaveInteraction(ctx, "test", "response"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+
+	stats = store.Stats()
+	if stats.Count != 1 {
+		t.Fatalf("Count = %d, want 1", stats.Count)
+	}
+	if stats.VecCount != 1 {
+		t.Fatalf("VecCount = %d, want 1", stats.VecCount)
+	}
+}
+
+func TestFormatMemoriesForPrompt(t *testing.T) {
+	memories := []models.MemoryResult{
+		{Content: "test content", Similarity: 0.95, ID: "1"},
+		{Content: "more content", Similarity: 0.50, ID: "2"},
+	}
+
+	result := FormatMemoriesForPrompt(memories)
+	if !strings.Contains(result, "RELEVANT MEMORIES") {
+		t.Error("should contain header")
+	}
+	if !strings.Contains(result, "95%") {
+		t.Error("should contain 95% relevance")
+	}
+	if !strings.Contains(result, "50%") {
+		t.Error("should contain 50% relevance")
+	}
+
+	empty := FormatMemoriesForPrompt(nil)
+	if empty != "" {
+		t.Error("should be empty for nil input")
 	}
 }
 
@@ -71,9 +167,9 @@ func testEmbedding(_ context.Context, text string) ([]float32, error) {
 		return []float32{1, 0, 0}, nil
 	case strings.Contains(text, "mountain") || strings.Contains(text, "hiking"):
 		return []float32{0, 1, 0}, nil
+	case strings.Contains(text, "test"):
+		return []float32{0.5, 0.5, 0}, nil
 	default:
 		return []float32{0, 0, 1}, nil
 	}
 }
-
-var _ chromem.EmbeddingFunc = testEmbedding

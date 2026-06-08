@@ -160,7 +160,7 @@ This document lists all 61 identified bugs that have been fixed in the Memo proj
 
 ### M7. `LoadCache` Performance — O(N) Startup Time
 - **File:** `internal/memory/store.go`
-- **Fix:** Single-file index (`memory_index.gob`) replaces per-file scan. Startup reads one file instead of N. Index is maintained incrementally on save/delete.
+- **Fix:** SQLite index (`memory_index.sqlite`) replaces per-file scan. Startup reads one database instead of N files. Index is maintained incrementally on save/delete.
 
 ### M8. Brute-Force O(N) Vector Search
 - **File:** `internal/memory/retriever.go`, `store.go`
@@ -212,7 +212,7 @@ This document lists all 61 identified bugs that have been fixed in the Memo proj
 
 ### L6. Memory Index Copies All Embeddings with `append` (2x RAM)
 - **File:** `internal/memory/store.go:104-108`
-- **Fix:** Direct reference to `doc.Embedding` in legacy `LoadCache` path (doc goes out of scope, no mutation risk). Copy preserved in `SaveInteraction` where chromem collection may retain reference.
+- **Fix:** Direct reference to `doc.Embedding` in legacy `LoadCache` path (doc goes out of scope, no mutation risk). Copy preserved in `SaveInteraction` where original memory store may retain reference.
 
 ### L7. `DiscordWebhook` / Action URL Writes Never Checked
 - **Fix:** Feature removed from codebase; issue resolved by removal.

@@ -5,11 +5,12 @@ A granular look into the engineering decisions behind Memo.
 ## 1. The Bridge Pattern (`app.go`)
 The `App` struct acts as the central hub. It implements the `AppBridge` interface, which defines all the actions the web server can trigger. This decoupling allows us to theoretically swap the web server for a CLI or a GUI without touching the core logic.
 
-## 2. GOB Persistence vs. SQL
-Why no SQLite?
-- **Serialization Speed:** GOB is native to Go and requires zero translation layers.
-- **Binary Integrity:** Storing embeddings (large float arrays) in SQL blobs is often slower and more complex than direct binary files.
-- **Zero-Config:** No migration scripts or DB engines to manage.
+## 2. SQLite + vec0 Persistence
+Why SQLite?
+- **Unified Storage:** Both vector embeddings and metadata live in the same database — no separate `.gob` files to manage.
+- **ANN Indexing:** The `sqlite-vec` extension provides a `vec0` virtual table for approximate nearest neighbor search, replacing O(N) brute-force scans with O(log N) lookups.
+- **ACID Compliance:** Built-in transaction support ensures atomic writes without per-file crash risk.
+- **Zero-Config:** SQLite requires no external server — the database is a single file in `data/memory/`.
 
 ## 3. Llama Process Lifecycle
 Memo doesn't just "call" Llama; it manages its lifecycle.
@@ -25,7 +26,7 @@ When a user queries their memory:
 4. Results are gathered, sorted, and filtered by the `top_k` and `min_similarity` thresholds.
 
 ## 5. E2E Sync Strategy
-1. Collect all `.gob` and `.json` files.
+1. Collect the SQLite database and all `.json` files.
 2. Compress into a single stream.
 3. Encrypt using **AES-256-GCM** with the user's passphrase.
 4. Upload to a hidden app-data folder on Google Drive.

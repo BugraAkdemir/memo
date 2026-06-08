@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=for-the-badge&logo=go" alt="Go 1.25"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=for-the-badge&logo=flutter" alt="Flutter 3.10"/>
   <img src="https://img.shields.io/badge/License-AGPL_v3-blue?style=for-the-badge" alt="License AGPL v3"/>
-  <img src="https://img.shields.io/badge/Status-v2.0.0--beta-blue?style=for-the-badge" alt="v2.0.0-beta"/>
+  <img src="https://img.shields.io/badge/Status-v3.0.0--beta-blue?style=for-the-badge" alt="v3.0.0-beta"/>
   <br/>
   <img src="https://img.shields.io/badge/llama.cpp-Integrated-orange?style=flat-square&logo=llama" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-Enabled-green?style=flat-square" alt="RAG"/>
@@ -30,7 +30,7 @@
 
 ---
 
-> **⚠️ Current Status:** v2.0.0-beta — Active development. All core features implemented, hardening pass underway for v3.0.0. [See known issues →](docs/KNOWN_ISSUES.md)
+> **⚠️ Current Status:** v3.0.0-beta — SQLite + sqlite-vec migration complete. chromem-go removed, vector ANN index active. [See known issues →](docs/KNOWN_ISSUES.md)
 
 ---
 
@@ -142,7 +142,8 @@ The first time you start a model, the app uses the bundled llama-server from `bi
 │  ┌──┴──┐  ┌────┴────┐  ┌─┴─────────┐           │
 │  │Mem  │  │Sessions │  │Llama Mgr  │           │
 │  │Store│  │Manager  │  │(subproc)  │           │
-│  │.gob │  │JSON     │  │llama.cpp  │           │
+│  │vec0 │  │JSON     │  │llama.cpp  │           │
+│  │SQLite│  │         │  │           │           │
 │  └─────┘  └─────────┘  └───────────┘           │
 │  ┌──────────┐  ┌──────────────┐                 │
 │  │Cloud Sync│  │Model Store  │                  │
@@ -192,9 +193,9 @@ The first time you start a model, the app uses the bundled llama-server from `bi
 
 | Version | Focus | Timeline |
 |---|---|---|
-| **v2.0.0** 🎯 | Current — All features live | Now |
-| **v3.0.0** 🔒 | Security, stability, performance fix pass | Next |
-| **v4.0.0** 🎨 | SQLite migration, UI overhaul, missing tabs | Future |
+| **v3.0.0** 🎯 | Current — SQLite+vec0 migration, cross-mode, performance | Now |
+| **v3.5.0** 🔒 | Security, stability, performance fix pass | Next |
+| **v4.0.0** 🎨 | UI overhaul, missing tabs, cloud sync UI | Future |
 | **v5.0.0** 🚀 | Plugins, mobile, knowledge graph | Future |
 
 [Full roadmap →](docs/ROADMAP.md)
@@ -206,11 +207,11 @@ The first time you start a model, the app uses the bundled llama-server from `bi
 <div align="center">
 
 | Layer | Technology |
-|---|---|
-| **Backend** | Go 1.25, chromem-go, gorilla/mux |
+|---|---|---|
+| **Backend** | Go 1.25, http.ServeMux |
 | **Frontend** | Flutter 3.10+, Riverpod 2.x, Dio |
 | **LLM** | llama.cpp, OpenAI-compatible API |
-| **Vector** | chromem-go (in-memory, .gob persist) |
+| **Vector** | SQLite + sqlite-vec (vec0 ANN index) |
 | **Sync** | Google Drive API, AES-256-GCM |
 | **GPU** | nvidia-smi, rocm-smi, sysfs, Metal |
 | **Build** | Go toolchain, Flutter build, shell scripts |

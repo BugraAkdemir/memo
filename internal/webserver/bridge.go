@@ -11,6 +11,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
+	"memo/internal/whatsapp"
 )
 
 // FullBridge extends AppBridge with all App methods needed by the Flutter frontend.
@@ -45,6 +46,7 @@ type FullBridge interface {
 
 	// Version
 	GetVersion() string
+	CheckLatestVersion() (string, error)
 
 	// Sessions
 	ListChats() []sessions.SessionInfo
@@ -114,4 +116,17 @@ type FullBridge interface {
 	PullSync()
 	SyncNow()
 	DisconnectSync() error
+
+	// WhatsApp
+	StartWhatsApp(ctx context.Context) error
+	StopWhatsApp()
+	WhatsAppStatus() map[string]interface{}
+	WhatsAppSend(ctx context.Context, jid, text string) (string, error)
+	WhatsAppSearch(query string, limit int) ([]whatsapp.Message, error)
+	WhatsAppGetChats() ([]whatsapp.ChatSummary, error)
+	WhatsAppGetMessages(chatJID string, limit int) ([]whatsapp.Message, error)
+	WhatsAppStats() (total, last24h int, err error)
+	GetWhatsAppChatMode() bool
+	SetWhatsAppChatMode(enabled bool)
+	WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk
 }

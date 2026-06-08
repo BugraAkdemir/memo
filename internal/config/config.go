@@ -16,6 +16,7 @@ type AppConfig struct {
 	RemoteAccess RemoteAccessConfig `yaml:"remote_access"`
 	Llama        LlamaConfig        `yaml:"llama"`
 	Sync         SyncConfig         `yaml:"sync"`
+	WhatsApp     WhatsAppConfig     `yaml:"whatsapp"`
 }
 
 // SyncConfig holds Google Drive backup settings.
@@ -29,6 +30,14 @@ type SyncConfig struct {
 	Passphrase       string `yaml:"passphrase" json:"passphrase,omitempty"`
 	TokenPath        string `yaml:"token_path" json:"token_path"`
 	IntervalMessages int    `yaml:"interval_messages" json:"interval_messages"`
+}
+
+// WhatsAppConfig holds WhatsApp integration settings.
+type WhatsAppConfig struct {
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	DataDir        string `yaml:"data_dir" json:"data_dir"`
+	AutoIndex      bool   `yaml:"auto_index" json:"auto_index"`
+	MaxHistoryDays int    `yaml:"max_history_days" json:"max_history_days"`
 }
 
 type RemoteAccessConfig struct {
@@ -64,10 +73,13 @@ type IdentityConfig struct {
 }
 
 type MemoryConfig struct {
-	PersistDir    string  `yaml:"persist_dir" json:"persist_dir"`
-	TopK          int     `yaml:"top_k" json:"top_k"`
-	MinSimilarity float32 `yaml:"min_similarity" json:"min_similarity"`
-	MemoryEnabled bool    `yaml:"memory_enabled" json:"memory_enabled"`
+	PersistDir           string  `yaml:"persist_dir" json:"persist_dir"`
+	TopK                 int     `yaml:"top_k" json:"top_k"`
+	MinSimilarity        float32 `yaml:"min_similarity" json:"min_similarity"`
+	MemoryEnabled        bool    `yaml:"memory_enabled" json:"memory_enabled"`
+	EmbeddingDimension   int     `yaml:"embedding_dimension" json:"embedding_dimension"`
+	EmbeddingModelRepo   string  `yaml:"embedding_model_repo" json:"embedding_model_repo"`
+	EmbeddingModelFile   string  `yaml:"embedding_model_file" json:"embedding_model_file"`
 }
 
 var (
@@ -92,10 +104,13 @@ func Default() *AppConfig {
 			IncognitoPrompt: "You are Memo, in Incognito Mode. This is a secure session. Never refer to past events, because you have no memory here. Do your best to assist the user right now.",
 		},
 		Memory: MemoryConfig{
-			PersistDir:    "./data/memory",
-			TopK:          5,
-			MinSimilarity: 0.1,
-			MemoryEnabled: true,
+			PersistDir:           "./data/memory",
+			TopK:                 5,
+			MinSimilarity:        0.1,
+			MemoryEnabled:        true,
+			EmbeddingDimension:   768,
+			EmbeddingModelRepo:   "nomic-ai/nomic-embed-text-v1.5-GGUF",
+			EmbeddingModelFile:   "nomic-embed-text-v1.5.Q4_K_M.gguf",
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,
@@ -117,6 +132,12 @@ func Default() *AppConfig {
 			Enabled:          false,
 			TokenPath:        "./data/sync_token.json",
 			IntervalMessages: 50,
+		},
+		WhatsApp: WhatsAppConfig{
+			Enabled:        false,
+			DataDir:        "./data/whatsapp",
+			AutoIndex:      true,
+			MaxHistoryDays: 7,
 		},
 	}
 }
@@ -207,6 +228,9 @@ func (c *AppConfig) validate() {
 	}
 	if c.Memory.MinSimilarity <= 0 {
 		c.Memory.MinSimilarity = 0.3
+	}
+	if c.Memory.EmbeddingDimension <= 0 {
+		c.Memory.EmbeddingDimension = 768
 	}
 	if c.RemoteAccess.Port <= 0 || c.RemoteAccess.Port > 65535 {
 		c.RemoteAccess.Port = 8080

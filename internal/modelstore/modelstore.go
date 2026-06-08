@@ -288,7 +288,12 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 
 	// Rename temp file to final name
 	if err := os.Rename(tmpPath, destPath); err != nil {
-		return fmt.Errorf("rename: %w", err)
+		// Cross-volume rename fallback: copy + delete
+		if copyErr := copyFile(tmpPath, destPath); copyErr != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("rename and copy fallback both failed: rename: %w, copy: %v", err, copyErr)
+		}
+		os.Remove(tmpPath)
 	}
 
 	s.mu.Lock()
@@ -297,6 +302,27 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 	s.mu.Unlock()
 
 	return nil
+}
+
+// copyFile copies a file from src to dst (cross-device safe).
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
 }
 
 // ─── Progress & Cancel ───────────────────────────────────────────

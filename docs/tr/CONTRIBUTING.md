@@ -22,7 +22,7 @@ Harika bir fikriniz mi var? Bir issue açın ve bunun "yerel öncelikli" (local-
 
 ## Geliştirme Standartları
 - **Önce Gizlilik:** Kullanıcının açık rızası olmadan verileri harici sunuculara gönderen kodları asla eklemeyin.
-- **Performans:** RAM kullanımını düşük tutmak için binary formatları (.gob) ve verimli algoritmaları tercih edin.
+- **Performans:** RAM kullanımını düşük tutmak için SQLite + sqlite-vec gibi verimli algoritmaları tercih edin.
 - **Dökümantasyon:** Her yeni özellik `/docs` klasöründe ve Obsidian kasasında dökümante edilmelidir.
 
 ## Felsefe

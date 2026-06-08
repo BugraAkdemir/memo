@@ -16,7 +16,7 @@ The codebase is divided into modules, each with a specific responsibility:
 
 ### 3. `memory`
 - **Role:** Semantic memory and vector database.
-- **Feature:** Cosine similarity calculations, `.gob` serialization, and fast RAM-based indexing using `chromem-go`.
+- **Feature:** Cosine similarity calculations and vec0 ANN index-based search using SQLite + sqlite-vec.
 
 ### 4. `cloudsync`
 - **Role:** Google Drive integration.

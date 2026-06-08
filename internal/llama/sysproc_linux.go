@@ -4,13 +4,12 @@ package llama
 
 import "syscall"
 
-// newSysProcAttr puts the child in its own process group so we can kill the
-// entire tree cleanly. Note: Pdeathsig cannot be used together with Setpgid
-// in Go — the Go runtime recycles OS threads, which triggers Pdeathsig on the
-// child prematurely. Process-group kill (killByPort / forceKill) handles
-// cleanup instead.
+// newSysProcAttr puts the child in its own process group so forceKill/killByPort
+// can kill the entire tree without affecting the parent. Pdeathsig is NOT used
+// because it's incompatible with Setpgid in Go (runtime thread reuse triggers
+// premature child death). Process-group kill handles cleanup instead.
 func newSysProcAttr() *syscall.SysProcAttr {
 	return &syscall.SysProcAttr{
-		Pdeathsig: syscall.SIGKILL,
+		Setpgid: true,
 	}
 }

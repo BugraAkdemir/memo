@@ -5,7 +5,7 @@ Memo, standart bir sohbet arayüzünden ziyade, yerel Büyük Dil Modelleri (Loc
 
 En önemli odak noktaları:
 - **Gizlilik:** Çevrimdışı (Offline) çalışabilme, sıfır veri sızıntısı.
-- **Performans:** Hızlı okuma/yazma için Go'nun native `.gob` (ikili-atomik) formatında verilerin saklanması.
+- **Performans:** Hızlı okuma/yazma için SQLite + sqlite-vec ile vektör veritabanında verilerin saklanması.
 
 ## Mimari Yapı
 Proje, Wails/Svelte tabanlı eski mimariden ayrılmış ve "Decoupled" (Bağımsız) bir yapıya geçmiştir. İki ana bileşenden oluşur:

@@ -21,10 +21,10 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ## 2. 🏛️ Architecture & Persistence
 
-### Binary-Atomic Persistence (.gob)
-- **High Performance**: Uses Go’s native `.gob` format for ultra-fast binary serialization.
-- **Atomic Writes**: Each memory is its own file, preventing database corruption and ensuring data integrity.
-- **Lazy Loading**: Data is pulled from the disk only when semantically relevant, keeping RAM usage extremely lean.
+### SQLite + sqlite-vec Persistence
+- **Unified Storage**: Vector embeddings and metadata live in the same SQLite database.
+- **ANN Indexing**: `vec0` virtual table provides approximate nearest neighbor search with O(log N) query time.
+- **ACID Compliance**: Built-in transaction support ensures atomic writes and data integrity.
 
 ### Privacy & Local Isolation
 - **100% Offline**: No data ever leaves your computer. No telemetry, no logs, no cloud dependencies.

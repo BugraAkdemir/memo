@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -18,6 +19,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 	"memo/internal/cloudsync"
 	"memo/internal/config"
@@ -28,6 +30,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
+	"memo/internal/whatsapp"
 	"memo/internal/webserver"
 )
 
@@ -39,6 +42,40 @@ var versionBytes []byte
 
 func (a *App) GetVersion() string {
 	return strings.TrimSpace(string(versionBytes))
+}
+
+// CheckLatestVersion checks the remote version at version-zeta.vercel.app/version.json
+// and returns the latest version string if newer, or empty string if up-to-date.
+func (a *App) CheckLatestVersion() (string, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, "https://version-zeta.vercel.app/version.json", nil)
+	if err != nil {
+		return "", fmt.Errorf("version check request: %w", err)
+	}
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("version check http: %w", err)
+	}
+	defer resp.Body.Close()
+
+	var body struct {
+		Version string `json:"version"`
+	}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		return "", fmt.Errorf("version check decode: %w", err)
+	}
+
+	current := a.GetVersion()
+	latest := strings.TrimSpace(body.Version)
+
+	// Compare versions — if latest is different and not empty, notify
+	if latest == "" || latest == current {
+		return "", nil
+	}
+	return latest, nil
 }
 
 type ConnectionStatus struct {
@@ -114,6 +151,9 @@ type App struct {
 	sttServer         *exec.Cmd
 	webServer         *webserver.Server
 	modelStore        *modelstore.Store
+
+	waClient    *whatsapp.Client
+	waMsgStore  *whatsapp.Store
 	llamaServer       *llama.Server
 	llamaEmbedServer  *llama.Server // dedicated embedding model server
 	llamaInstaller    *llama.Installer
@@ -124,15 +164,18 @@ type App struct {
 	memorySaveCh      chan saveTask
 	events            *eventRing
 
-	providerCfgMgr  *provider.ConfigManager
-	providerRouter  *provider.Router
-	activeProvider  provider.ProviderType // which provider is currently active
+	providerCfgMgr *provider.ConfigManager
+	providerRouter *provider.Router
+	activeProvider provider.ProviderType // which provider is currently active
 
 	orchestraConductor *orchestra.Conductor
 
 	agentExecutor *agent.Executor
 	agentEnabled  bool
 	agentMu       sync.RWMutex
+
+	whatsappChatMode   bool
+	whatsappChatMu     sync.RWMutex
 }
 
 func NewApp() *App {
@@ -195,7 +238,11 @@ func (a *App) startup(ctx context.Context) {
 	initClient := a.client
 	a.clientMu.RUnlock()
 	embeddingFunc := memory.NewEmbeddingFunc(initClient, cfg.API.EmbeddingModel)
-	store, err := memory.NewStore(cfg.Memory.PersistDir, embeddingFunc)
+	store, err := memory.NewStore(memory.StoreConfig{
+		Dir:           cfg.Memory.PersistDir,
+		Dimension:     cfg.Memory.EmbeddingDimension,
+		EmbeddingFunc: embeddingFunc,
+	})
 	if err != nil {
 		log.Printf("WARN: memory: %v", err)
 		a.emitEvent("memory_store_error", err.Error())
@@ -239,25 +286,16 @@ func (a *App) startup(ctx context.Context) {
 	// 	go a.startWebServer(cfg.RemoteAccess.Port)
 	// }
 
-	// Initialize cloud sync (credentials may come from app-level env vars).
-	if cfg.Sync.Enabled {
-		clientID, clientSecret := a.resolveSyncCredentials()
-		if clientID != "" && clientSecret != "" {
-			a.syncMu.Lock()
-			a.syncManager = cloudsync.New(
-				ctx,
-				cfg.Memory.PersistDir,
-				cfg.Sync.Passphrase,
-				cfg.Sync.IntervalMessages,
-				clientID,
-				clientSecret,
-				cfg.Sync.TokenPath,
-			)
-			a.syncMu.Unlock()
-			log.Println("Cloud sync enabled")
-		} else {
-			log.Println("Cloud sync enabled in config but OAuth credentials are not available")
-		}
+	// Cross-mode: if memory is enabled and embedding model is configured,
+	// auto-download (if needed) and auto-start the embedding server.
+	// This lets API providers handle chat while a tiny local model handles embeddings.
+	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
+		go a.startupEmbeddingModel()
+	}
+
+	// Initialize WhatsApp integration
+	if cfg.WhatsApp.Enabled {
+		a.initWhatsApp()
 	}
 
 	// Initialize provider system
@@ -634,7 +672,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			// Emit agent events as special StreamChunks so frontend can render them
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
-				Content: string(chunkData),
+				Content:      string(chunkData),
 				FinishReason: "agent_event", // Special flag
 			})
 		}, projectPath)
@@ -1438,9 +1476,13 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 		return "", fmt.Errorf("not recording")
 	}
 
-	// Stop arecord gracefully with SIGINT
+	// Stop recording gracefully
 	if recCmd.Process != nil {
-		recCmd.Process.Signal(os.Interrupt)
+		if runtime.GOOS == "windows" {
+			recCmd.Process.Kill()
+		} else {
+			recCmd.Process.Signal(os.Interrupt)
+		}
 	}
 	recCmd.Wait()
 	recCmd = nil
@@ -2020,6 +2062,341 @@ func (a *App) SkipLlamaGPUInstall() error {
 	return nil
 }
 
+// ─── WhatsApp Integration ─────────────────────────────────────
+
+// initWhatsApp initializes the WhatsApp client and message store,
+// then auto-connects (QR codes become available via WhatsAppStatus()).
+func (a *App) initWhatsApp() {
+	cfg := a.cfg.WhatsApp
+
+	dataDir := cfg.DataDir
+	if err := os.MkdirAll(dataDir, 0755); err != nil {
+		log.Printf("WhatsApp: mkdir data dir: %v", err)
+		return
+	}
+
+	msgDB := filepath.Join(dataDir, "messages.db")
+	sessionDB := filepath.Join(dataDir, "session.db")
+
+	msgStore, err := whatsapp.NewStore(msgDB)
+	if err != nil {
+		log.Printf("WhatsApp: store init error: %v", err)
+		return
+	}
+	a.waMsgStore = msgStore
+
+	waCfg := whatsapp.Config{
+		DataDir:        dataDir,
+		MessageStoreDB: msgDB,
+		SessionDB:      sessionDB,
+		AutoIndex:      cfg.AutoIndex,
+		MaxHistoryDays: cfg.MaxHistoryDays,
+	}
+
+	a.waClient = whatsapp.NewClient(waCfg)
+	a.waClient.SetStore(msgStore)
+
+	// Wire up WhatsApp client for agent tools (package-level global)
+	tools.WhatsAppClient = waToolAdapter{a.waClient}
+
+	// Auto-connect: embedding model gibi startup'ta bağlan.
+	// QR varsa Fluent UI QR gösterir, session varsa direkt bağlanır.
+	go func() {
+		if err := a.waClient.Start(context.Background()); err != nil {
+			log.Printf("WhatsApp: auto-connect error: %v", err)
+		}
+	}()
+
+	log.Println("WhatsApp client initialized and connecting...")
+}
+
+// StartWhatsApp connects to WhatsApp Web. Flutter reads QRCodes() for pairing.
+func (a *App) StartWhatsApp(ctx context.Context) error {
+	if a.waClient == nil {
+		return fmt.Errorf("WhatsApp not initialized (enable in config)")
+	}
+	return a.waClient.Start(ctx)
+}
+
+// StopWhatsApp disconnects from WhatsApp Web.
+func (a *App) StopWhatsApp() {
+	if a.waClient != nil {
+		a.waClient.Stop()
+	}
+}
+
+// WhatsAppStatus returns QR codes (if pairing) and connection state.
+func (a *App) WhatsAppStatus() map[string]interface{} {
+	if a.waClient == nil {
+		return map[string]interface{}{
+			"initialized": false,
+			"connected":   false,
+			"logged_in":   false,
+		}
+	}
+	return map[string]interface{}{
+		"initialized": true,
+		"connected":   a.waClient.IsConnected(),
+		"logged_in":   a.waClient.IsLoggedIn(),
+		"qr_codes":    a.waClient.QRCodes(),
+	}
+}
+
+// WhatsAppSend sends a text message via WhatsApp.
+func (a *App) WhatsAppSend(ctx context.Context, jid, text string) (string, error) {
+	if a.waClient == nil {
+		return "", fmt.Errorf("WhatsApp not initialized")
+	}
+	return a.waClient.SendMessage(ctx, jid, text)
+}
+
+// GetWhatsAppChatMode returns whether WhatsApp chat mode is active.
+func (a *App) GetWhatsAppChatMode() bool {
+	a.whatsappChatMu.RLock()
+	defer a.whatsappChatMu.RUnlock()
+	return a.whatsappChatMode
+}
+
+// SetWhatsAppChatMode enables or disables WhatsApp chat mode.
+// When active, messages are handled by an agent with WhatsApp-only tools.
+func (a *App) SetWhatsAppChatMode(enabled bool) {
+	a.whatsappChatMu.Lock()
+	defer a.whatsappChatMu.Unlock()
+	a.whatsappChatMode = enabled
+}
+
+// WhatsAppChatStream handles a chat message in WhatsApp mode.
+// Uses a dedicated agent executor with ONLY WhatsApp tools (no file/command tools).
+func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
+	outCh := make(chan api.StreamChunk, 128)
+
+	go func() {
+		defer close(outCh)
+
+		trySend := func(ctx context.Context, ch chan<- api.StreamChunk, chunk api.StreamChunk) bool {
+			select {
+			case ch <- chunk:
+				return true
+			case <-ctx.Done():
+				return false
+			}
+		}
+
+		// Build messages with WhatsApp context in system prompt
+		messages := a.buildMessages(ctx, userMsg, nil)
+
+		if a.sessions != nil {
+			a.sessions.AddMessage("user", userMsg, "", "")
+		}
+
+		// Convert to provider messages
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+
+		sessionID := ""
+		if a.sessions != nil {
+			sessionID = a.sessions.GetActiveID()
+		}
+
+		modelName := ""
+		if a.providerRouter != nil {
+			if a.activeProvider != "" {
+				for _, p := range a.providerCfgMgr.GetEnabled() {
+					if p.Type == a.activeProvider {
+						modelName = p.Model
+						break
+					}
+				}
+			}
+			if modelName == "" {
+				for _, p := range a.providerCfgMgr.GetEnabled() {
+					modelName = p.Model
+					break
+				}
+			}
+		}
+
+		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
+			trySend(ctx, outCh, api.StreamChunk{
+				Error: "WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.",
+				Done:  true,
+			})
+			return
+		}
+
+		// WhatsApp system prompt: tell the LLM about WhatsApp capabilities
+		waPrompt := provider.Message{
+			Role: "system",
+			Content: `Sen bir WhatsApp asistanısın. Kullanıcının WhatsApp mesajlarını okuyabilir, arama yapabilir ve mesaj gönderebilirsin.
+
+Kullanabileceğin araçlar:
+- whatsapp_latest: En son mesajlaşılan sohbetleri listele
+- whatsapp_messages: Bir sohbetin mesaj geçmişini getir
+- whatsapp_search: Mesajlarda metin araması yap
+- whatsapp_send: Bir kişiye mesaj gönder
+
+Kullanıcı "bana en son kim yazdı" derse whatsapp_latest çağır.
+"falana mesaj at" derse whatsapp_send çağır.
+"falana ne yazmışım" derse whatsapp_messages veya whatsapp_search çağır.
+
+NOT: Kişi JID'leri telefon numarası formatındadır (ör: 905551234567@s.whatsapp.net).
+Kullanıcıya JID sormadan önce whatsapp_latest ile sohbet listesini kontrol et.`,
+		}
+
+		// Prepend WhatsApp system prompt
+		allMsgs := make([]provider.Message, 0, len(pMsgs)+1)
+		allMsgs = append(allMsgs, waPrompt)
+		allMsgs = append(allMsgs, pMsgs...)
+
+		// Create WhatsApp-only executor
+		waExecutor := agent.NewWhatsAppExecutor(a.agentExecutor)
+		waExecutor.SyncRouter(a.providerRouter)
+
+		start := time.Now()
+		var fullReply strings.Builder
+
+		streamCh, err := waExecutor.RunStream(ctx, sessionID, modelName, allMsgs, func(ev agent.AgentEvent) {
+			chunkData, _ := json.Marshal(ev)
+			trySend(ctx, outCh, api.StreamChunk{
+				Content:      string(chunkData),
+				FinishReason: "agent_event",
+			})
+		})
+
+		if err != nil {
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
+		}
+
+		for chunk := range streamCh {
+			if chunk.Content != "" {
+				fullReply.WriteString(chunk.Content)
+			}
+			trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content, FinishReason: chunk.FinishReason, Done: chunk.Done})
+		}
+
+		reply := fullReply.String()
+		if reply != "" && a.sessions != nil {
+			a.sessions.AddMessage("assistant", reply, "", "")
+		}
+
+		log.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))
+	}()
+
+	return outCh
+}
+
+// WhatsAppSearch searches WhatsApp messages.
+func (a *App) WhatsAppSearch(query string, limit int) ([]whatsapp.Message, error) {
+	if a.waMsgStore == nil {
+		return nil, fmt.Errorf("WhatsApp store not available")
+	}
+	return a.waMsgStore.SearchMessages(query, limit)
+}
+
+// WhatsAppGetChats returns the chat list.
+func (a *App) WhatsAppGetChats() ([]whatsapp.ChatSummary, error) {
+	if a.waMsgStore == nil {
+		return nil, fmt.Errorf("WhatsApp store not available")
+	}
+	return a.waMsgStore.GetChatList()
+}
+
+// WhatsAppGetMessages returns messages for a specific chat.
+func (a *App) WhatsAppGetMessages(chatJID string, limit int) ([]whatsapp.Message, error) {
+	if a.waMsgStore == nil {
+		return nil, fmt.Errorf("WhatsApp store not available")
+	}
+	return a.waMsgStore.GetChatMessages(chatJID, limit)
+}
+
+// WhatsAppStats returns message statistics.
+func (a *App) WhatsAppStats() (total, last24h int, err error) {
+	if a.waMsgStore == nil {
+		return 0, 0, fmt.Errorf("WhatsApp store not available")
+	}
+	return a.waMsgStore.Stats()
+}
+
+// ─── WhatsApp Agent Tool Adapter ────────────────────────────────
+
+// waToolAdapter wraps *whatsapp.Client to satisfy tools.WhatsAppClient.
+type waToolAdapter struct {
+	c *whatsapp.Client
+}
+
+func (a waToolAdapter) SendMessage(ctx context.Context, jid, text string) (string, error) {
+	return a.c.SendMessage(ctx, jid, text)
+}
+
+func (a waToolAdapter) SearchMessages(query string, limit int) ([]tools.WhatsAppMsg, error) {
+	if a.c == nil {
+		return nil, nil
+	}
+	msgs, err := a.c.SearchMessages(query, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tools.WhatsAppMsg, len(msgs))
+	for i, m := range msgs {
+		out[i] = tools.WhatsAppMsg{
+			ID:         m.ID,
+			ChatJID:    m.ChatJID,
+			SenderJID:  m.SenderJID,
+			SenderName: m.SenderName,
+			Text:       m.Text,
+			Timestamp:  m.Timestamp,
+			FromMe:     m.FromMe,
+		}
+	}
+	return out, nil
+}
+
+func (a waToolAdapter) GetChatList() ([]tools.WhatsAppChat, error) {
+	if a.c == nil {
+		return nil, nil
+	}
+	chats, err := a.c.GetChatList()
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tools.WhatsAppChat, len(chats))
+	for i, c := range chats {
+		out[i] = tools.WhatsAppChat{
+			JID:         c.JID,
+			LastMessage: c.LastMessage,
+			LastTime:    c.LastTime,
+			Unread:      c.Unread,
+		}
+	}
+	return out, nil
+}
+
+func (a waToolAdapter) GetChatMessages(chatJID string, limit int) ([]tools.WhatsAppMsg, error) {
+	if a.c == nil {
+		return nil, nil
+	}
+	msgs, err := a.c.GetChatMessages(chatJID, limit)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tools.WhatsAppMsg, len(msgs))
+	for i, m := range msgs {
+		out[i] = tools.WhatsAppMsg{
+			ID:         m.ID,
+			ChatJID:    m.ChatJID,
+			SenderJID:  m.SenderJID,
+			SenderName: m.SenderName,
+			Text:       m.Text,
+			Timestamp:  m.Timestamp,
+			FromMe:     m.FromMe,
+		}
+	}
+	return out, nil
+}
+
 // ─── Embedding Server: Lifecycle Management ─────────────────────
 
 func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
@@ -2029,7 +2406,14 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 		time.Sleep(500 * time.Millisecond) // Give it a moment to release ports
 	}
 
-	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, a.cfg.Llama.EmbeddingPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
+	// Use 8082 as the fixed embedding port — MUST NOT conflict with chat port (8081)
+	embPort := a.cfg.Llama.EmbeddingPort
+	if embPort <= 0 || embPort == a.cfg.Llama.Port {
+		embPort = 8082
+	}
+	log.Printf("Starting embedding model on port %d", embPort)
+
+	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, embPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
 		return err
 	}
 
@@ -2104,12 +2488,120 @@ func (a *App) autoStartEmbeddingModel() {
 	}
 }
 
+// startupEmbeddingModel ensures the embedding model is available and running.
+// It is called during startup when memory is enabled and an embedding model
+// is configured (cross-mode: API provider for chat + local embed). 
+func (a *App) startupEmbeddingModel() {
+	repoID := a.cfg.Memory.EmbeddingModelRepo
+	filename := a.cfg.Memory.EmbeddingModelFile
+	modelsDir := a.cfg.Llama.ModelsDir
+	modelPath := filepath.Join(modelsDir, filename)
+
+	// Check if model already exists
+	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
+		log.Printf("Downloading embedding model: %s/%s ...", repoID, filename)
+		if err := a.downloadFile(repoID, filename, modelPath); err != nil {
+			log.Printf("WARN: failed to download embedding model: %v", err)
+			a.emitEvent("memory:error", fmt.Sprintf("Embedding model indirme hatası: %v", err))
+			return
+		}
+		log.Printf("Embedding model downloaded: %s", modelPath)
+	}
+
+	// Start the embedding server
+	log.Printf("Auto-starting embedding model: %s", modelPath)
+	if err := a.StartEmbeddingModel(modelPath, -1); err != nil {
+		msg := fmt.Sprintf("Failed to start embedding model: %v", err)
+		log.Print(msg)
+		a.emitEvent("memory:error", msg)
+	} else {
+		log.Println("Cross-mode active: API provider for chat, local model for embeddings")
+	}
+}
+
+// downloadFile downloads a GGUF model from HuggingFace synchronously.
+func (a *App) downloadFile(repoID, filename, destPath string) error {
+	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, filename)
+
+	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, downloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+
+	dlClient := &http.Client{Timeout: 0} // no timeout for large files
+	resp, err := dlClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("download request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return fmt.Errorf("download status %d: %s", resp.StatusCode, string(body))
+	}
+
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return fmt.Errorf("create dir: %w", err)
+	}
+
+	tmpPath := destPath + ".downloading"
+	f, err := os.Create(tmpPath)
+	if err != nil {
+		return fmt.Errorf("create file: %w", err)
+	}
+	defer f.Close()
+
+	written, err := io.Copy(f, resp.Body)
+	if err != nil {
+		os.Remove(tmpPath)
+		return fmt.Errorf("download write: %w", err)
+	}
+	f.Close()
+
+	if err := os.Rename(tmpPath, destPath); err != nil {
+		// Cross-volume rename fallback: copy + delete
+		if copyErr := copyFile(tmpPath, destPath); copyErr != nil {
+			os.Remove(tmpPath)
+			return fmt.Errorf("rename and copy fallback both failed: rename: %w, copy: %v", err, copyErr)
+		}
+		os.Remove(tmpPath)
+	}
+
+	log.Printf("Downloaded %s (%d bytes)", destPath, written)
+	return nil
+}
+
+// copyFile copies a file from src to dst (cross-device safe).
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+
+	if err := os.MkdirAll(filepath.Dir(dst), 0755); err != nil {
+		return err
+	}
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	defer out.Close()
+
+	_, err = io.Copy(out, in)
+	return err
+}
+
 func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	embeddingFunc := memory.NewEmbeddingFunc(client, model)
 	a.storeMu.Lock()
 	defer a.storeMu.Unlock()
 	if a.store != nil {
-		newStore, err := memory.NewStore(a.cfg.Memory.PersistDir, embeddingFunc)
+		newStore, err := memory.NewStore(memory.StoreConfig{
+			Dir:           a.cfg.Memory.PersistDir,
+			Dimension:     a.cfg.Memory.EmbeddingDimension,
+			EmbeddingFunc: embeddingFunc,
+		})
 		if err != nil {
 			log.Printf("WARN: memory re-init: %v", err)
 		} else {

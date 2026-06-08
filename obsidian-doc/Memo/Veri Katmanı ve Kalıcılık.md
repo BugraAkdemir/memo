@@ -2,8 +2,8 @@
 
 Memo, geleneksel veritabanları (SQL/NoSQL) yerine, yerel performans ve veri bütünlüğü için özelleşmiş bir dosya yapısı kullanır.
 
-## .gob Formatı: İkili-Atomik Kalıcılık
-Memo'nun tüm anıları ve ayarları Go'nun yerel ikili formatı olan `.gob` ile saklanır.
+## SQLite/vec0 Formatı: Kalıcılık
+Memo'nun tüm anıları ve ayarları SQLite/vec0 formatında saklanır.
 
 ### Avantajları:
 - **Hız:** JSON veya XML'e göre çok daha hızlı serileştirme ve geri yükleme.

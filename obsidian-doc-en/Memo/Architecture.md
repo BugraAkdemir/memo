@@ -34,7 +34,7 @@ graph TD
 |--------|-----------|------|
 | Web Server | `internal/webserver/` | REST API (~45 endpoints) |
 | Llama Manager | `internal/llama/` | llama.cpp lifecycle |
-| Memory Store | `internal/memory/` | Vector DB (.gob + chromem-go) |
+| Memory Store | `internal/memory/` | Vector DB (SQLite + sqlite-vec) |
 | Cloud Sync | `internal/cloudsync/` | Google Drive E2E backup |
 | Identity | `internal/identity/` | System prompt & persona |
 | **Providers** | **`internal/provider/`** | **External LLM API integration** |
@@ -45,4 +45,4 @@ graph TD
 - [[System Overview]]: General workflow diagram.
 - [[Backend (Go) Architecture]]: Modular structure of the backend.
 - [[Frontend (Flutter) Design]]: Modern Material 3 interface.
-- [[Data Layer and Persistence]]: .gob format and atomic writes.
+- [[Data Layer and Persistence]]: SQLite/vec0 format and atomic writes.

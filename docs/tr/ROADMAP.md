@@ -70,9 +70,9 @@ Kod tabanı denetimine (2026-06-02) dayalı stratejik vizyon ve sürüm planı.
 **Tema:** Mimari iyileştirmeler, UI yenilemesi, eksik frontend özellikleri.
 
 ### Depolama Dönüşümü
-- [ ] Hafıza deposunu `.gob` dosyalarından SQLite'a taşı (CGO'suz: `modernc.org/sqlite`)
-- [ ] Mevcut `.gob` verileri için tek seferlik migrasyon script'i
-- [ ] O(N) kaba kuvvet vektör arama → ANN indeksi ekle (SQLite FTS5 + vektör eklentisi veya özel vektör DB)
+- [x] Hafıza deposu SQLite + sqlite-vec'e taşındı ✅
+- [ ] Mevcut `.gob` verileri için tek seferlik migrasyon script'i (isteğe bağlı)
+- [x] vec0 ANN indeksi eklendi ✅
 - [ ] `LoadCache` için tembel yükleme / sayfalama
 
 ### UI/UV Yenilemesi

@@ -21,10 +21,10 @@ Memo sadece bir sohbet aracı değil; bir "İkinci Beyin"dir.
 
 ## 2. 🏛️ Mimari ve Kalıcılık
 
-### İkili-Atomik Kalıcılık (.gob)
-- **Yüksek Performans**: Ultra hızlı ikili serileştirme için Go'nun yerel `.gob` formatını kullanır.
-- **Atomik Yazma**: Her hafıza kaydı kendi dosyasıdır; bu, veritabanı bozulmalarını önler ve veri bütünlüğünü korur.
-- **Gecikmeli Yükleme (Lazy Loading)**: Veriler yalnızca anlamsal olarak ilgili olduğunda diskten okunur, bu da RAM kullanımını minimumda tutar.
+### SQLite + sqlite-vec Kalıcılığı
+- **Birleşik Depolama**: Vektör gömmeleri ve meta veriler aynı SQLite veritabanında saklanır.
+- **ANN İndeksleme**: `vec0` sanal tablosu sayesinde yaklaşık en yakın komşu (ANN) araması ile O(log N) sorgu süresi.
+- **ACID Uyumluluğu**: Yerleşik işlem desteği ile atomik yazma ve veri bütünlüğü garantisi.
 
 ### Gizlilik ve Yerel İzolasyon
 - **%100 Çevrimdışı**: Hiçbir veri bilgisayarınızdan dışarı çıkmaz. Telemetri yok, log yok, bulut bağımlılığı yok.

@@ -16,7 +16,7 @@ Kod tabanı, her biri belirli bir sorumluluğa sahip olan modüllere ayrılmış
 
 ### 3. `memory`
 - **Görev:** Semantik hafıza ve vektör veritabanı.
-- **Özellik:** Kosinüs benzerliği hesaplamaları, `.gob` serileştirme ve `chromem-go` ile RAM-tabanlı hızlı indeksleme.
+- **Özellik:** Kosinüs benzerliği hesaplamaları ve SQLite + sqlite-vec ile vec0 ANN indeksi tabanlı arama.
 
 ### 4. `cloudsync`
 - **Görev:** Google Drive entegrasyonu.

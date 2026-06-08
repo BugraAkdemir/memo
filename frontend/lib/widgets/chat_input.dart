@@ -7,10 +7,12 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/chat.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
 
@@ -137,6 +139,12 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _controller.clear();
     _dismissPopup();
 
+    // WhatsApp chat mode — use WhatsApp stream instead of normal chat
+    if (ref.read(whatsAppChatModeProvider)) {
+      await _sendWhatsApp(text);
+      return;
+    }
+
     try {
       await ref.read(messagesProvider.notifier).sendMessage(text);
     } catch (e) {
@@ -149,6 +157,34 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     if (!mounted) return;
     _focusNode.requestFocus();
+  }
+
+  Future<void> _sendWhatsApp(String text) async {
+    final api = ref.read(apiClientProvider);
+    final timestamp = DateTime.now().toIso8601String().substring(11, 19);
+    final userMsg = ChatMessage(role: 'user', content: text, timestamp: timestamp);
+
+    ref.read(isSendingProvider.notifier).state = true;
+    ref.read(messagesProvider.notifier).addMessage(userMsg);
+
+    ref.read(streamingContentProvider.notifier).state = '';
+    try {
+      await for (final chunk in api.sendWhatsAppChatStream(text)) {
+        ref.read(streamingContentProvider.notifier).state =
+            ref.read(streamingContentProvider) + chunk;
+      }
+    } catch (_) {
+      // stream ended normally
+    }
+
+    final full = ref.read(streamingContentProvider);
+    if (full.isNotEmpty) {
+      ref.read(messagesProvider.notifier).addMessage(
+        ChatMessage(role: 'assistant', content: full, timestamp: timestamp),
+      );
+    }
+    ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(isSendingProvider.notifier).state = false;
   }
 
   /// Check if text matches a command key; if so, execute it instead of sending.

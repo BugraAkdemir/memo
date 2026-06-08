@@ -1,0 +1,8 @@
+- [x] Projeyi anla (versinNote, docs okundu)
+- [ ] Backend: `/api/version/check` endpoint'i ekle (remote version kontrolü)
+- [ ] Backend: `GetVersion()` / `CheckLatestVersion()` bridge metodu
+- [ ] Frontend: `api_client.dart`'a version check metodu ekle
+- [ ] Frontend: Version check provider ekle
+- [ ] Frontend: Sağ alt köşe banner widget'ı
+- [ ] Frontend: Banner'a tıklayınca memo.bugradev.com'a yönlendir
+- [ ] Test et

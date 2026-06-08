@@ -132,6 +132,49 @@ func (r *ToolRegistry) registerBuiltins() {
 		ExecuteFn:   tools.DeleteLines,
 		PreviewFn:   tools.DeleteLinesPreview,
 	})
+
+	r.registerWhatsAppTools()
+}
+
+// registerWhatsAppTools adds WhatsApp-specific tools to this registry.
+func (r *ToolRegistry) registerWhatsAppTools() {
+	r.Register(ToolDef{
+		Name:        "whatsapp_send",
+		Description: "WhatsApp üzerinden bir kişiye mesaj gönderir. jid: telefon numarası (örnek: 905551234567@s.whatsapp.net), text: mesaj içeriği",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"jid":{"type":"string","description":"Alıcının JID'si (ör: 905551234567@s.whatsapp.net)"},"text":{"type":"string","description":"Gönderilecek mesaj"}},"required":["jid","text"]}`),
+		DangerLevel: Medium,
+		ExecuteFn:   tools.SendWhatsApp,
+	})
+	r.Register(ToolDef{
+		Name:        "whatsapp_search",
+		Description: "WhatsApp mesajlarında metin araması yapar. query: aranacak kelime, limit: maksimum sonuç sayısı",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Aranacak metin"},"limit":{"type":"integer","description":"Maksimum sonuç sayısı (varsayılan 10)"}},"required":["query"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.SearchWhatsApp,
+	})
+	r.Register(ToolDef{
+		Name:        "whatsapp_latest",
+		Description: "En son mesajlaşılan WhatsApp sohbetlerini listeler. limit: kaç sohbet gösterileceği (varsayılan 10)",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"limit":{"type":"integer","description":"Sohbet sayısı (varsayılan 10)"}}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.LatestWhatsAppChats,
+	})
+	r.Register(ToolDef{
+		Name:        "whatsapp_messages",
+		Description: "Belirli bir WhatsApp sohbetinin mesaj geçmişini getirir. jid: sohbet JID'si, limit: mesaj sayısı (varsayılan 20)",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"jid":{"type":"string","description":"Sohbet JID'si (ör: 905551234567@s.whatsapp.net)"},"limit":{"type":"integer","description":"Mesaj sayısı (varsayılan 20)"}},"required":["jid"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetWhatsAppMessages,
+	})
+}
+
+// NewWhatsAppRegistry creates a registry with only WhatsApp tools.
+func NewWhatsAppRegistry() *ToolRegistry {
+	r := &ToolRegistry{
+		tools: make(map[string]ToolDef),
+	}
+	r.registerWhatsAppTools()
+	return r
 }
 
 func (r *ToolRegistry) Register(tool ToolDef) {

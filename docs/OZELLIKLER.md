@@ -24,10 +24,10 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 ## 2. 🏛️ Mimari ve Veri Sürekliliği
 
-### İkili-Atomik Süreklilik (.gob)
+### SQLite + sqlite-vec Vektör Deposu
 
-- **Yüksek Performans**: Ultra hızlı ikili serileştirme için Go'nun yerel `.gob` formatını kullanır.
-- **Atomik Yazma**: Her hafıza kaydı kendi bağımsız dosyasıdır; bu, veritabanı bozulmalarını önler ve veri bütünlüğünü korur.
+- **Yüksek Performans**: SQLite + sqlite-vec ile hızlı vektör arama ve ANN (Approximate Nearest Neighbor) indeksi.
+- **Atomik Yazma**: SQLite'in ACID özellikleri sayesinde veri bütünlüğü garanti altındadır.
 - **Gecikmeli Yükleme (Lazy Loading)**: Veriler yalnızca anlamsal olarak ilgili olduğunda diskten okunur, bu da yıllarca süren geçmişte bile RAM kullanımını minimumda tutar.
 
 ### Gizlilik ve Yerel İzolasyon

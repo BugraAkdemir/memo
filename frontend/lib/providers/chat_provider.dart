@@ -113,11 +113,16 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   bool _stopped = false;
   Timer? _delayedRefreshTimer;
 
-  @override
-  Future<List<ChatMessage>> build() async {
-    ref.onDispose(() => _delayedRefreshTimer?.cancel());
-    return ref.read(apiClientProvider).getMessages();
-  }
+	@override
+	Future<List<ChatMessage>> build() async {
+		ref.onDispose(() => _delayedRefreshTimer?.cancel());
+		return ref.read(apiClientProvider).getMessages();
+	}
+
+	void addMessage(ChatMessage msg) {
+		final current = [...(state.valueOrNull ?? <ChatMessage>[])];
+		state = AsyncData([...current, msg]);
+	}
 
   void stopStreaming() {
     _stopped = true;

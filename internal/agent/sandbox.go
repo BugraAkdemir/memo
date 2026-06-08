@@ -3,6 +3,7 @@ package agent
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -26,9 +27,20 @@ func DefaultSandboxConfig(basePath string) SandboxConfig {
 		MaxOutputSize:         10 * 1024 * 1024, // 10MB
 		MaxToolCallsPerMinute: 30,
 		CommandCooldown:       5 * time.Duration(time.Second),
-		ProtectedPaths: []string{
-			"/etc/", "/usr/", "/boot/", "/dev/", "/sys/", "/proc/", "/var/",
-		},
+		ProtectedPaths: defaultProtectedPaths(),
+	}
+}
+
+// defaultProtectedPaths returns platform-appropriate protected system paths.
+func defaultProtectedPaths() []string {
+	if runtime.GOOS == "windows" {
+		return []string{
+			`C:\Windows\`, `C:\Program Files\`, `C:\Program Files (x86)\`,
+			`C:\System32\`, `C:\Boot\`, `C:\ProgramData\`,
+		}
+	}
+	return []string{
+		"/etc/", "/usr/", "/boot/", "/dev/", "/sys/", "/proc/", "/var/",
 	}
 }
 

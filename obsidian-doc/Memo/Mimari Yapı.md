@@ -34,7 +34,7 @@ graph TD
 |--------|-----------|------|
 | Web Sunucusu | `internal/webserver/` | REST API (~45 endpoint) |
 | Llama Yöneticisi | `internal/llama/` | llama.cpp yaşam döngüsü |
-| Hafıza Deposu | `internal/memory/` | Vektör DB (.gob + chromem-go) |
+| Hafıza Deposu | `internal/memory/` | Vektör DB (SQLite + sqlite-vec) |
 | Bulut Senk. | `internal/cloudsync/` | Google Drive E2E yedek |
 | Kimlik | `internal/identity/` | Sistem promptu & persona |
 | **Sağlayıcılar** | **`internal/provider/`** | **Harici LLM API entegrasyonu** |
@@ -45,4 +45,4 @@ graph TD
 - [[Sistem Genel Bakış]]: Genel işleyiş şeması.
 - [[Backend (Go) Mimarisi]]: Arka uçtaki modüler yapı.
 - [[Frontend (Flutter) Tasarımı]]: Modern Material 3 arayüzü.
-- [[Veri Katmanı ve Kalıcılık]]: `.gob` formatı ve atomik yazma.
+- [[Veri Katmanı ve Kalıcılık]]: SQLite/vec0 formatı ve atomik yazma.

@@ -17,6 +17,7 @@ class WhatsAppScreen extends ConsumerStatefulWidget {
 
 class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   String? _selectedChatJid;
+  String _selectedChatName = '';
   final _messageController = TextEditingController();
   final _searchController = TextEditingController();
   bool _searchMode = false;
@@ -296,7 +297,10 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
         _formatTime(chat.lastTime),
         style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 11),
       ),
-      onTap: () => setState(() => _selectedChatJid = chat.jid),
+      onTap: () => setState(() {
+        _selectedChatJid = chat.jid;
+        _selectedChatName = chat.displayName;
+      }),
     );
   }
 
@@ -316,7 +320,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               ),
               Expanded(
                 child: Text(
-                  _selectedChatJid ?? '',
+                  _selectedChatName.isNotEmpty ? _selectedChatName : _selectedChatJid ?? '',
                   style: TextStyle(color: MemoTheme.of(context).textMain),
                 ),
               ),

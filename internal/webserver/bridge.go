@@ -129,4 +129,9 @@ type FullBridge interface {
 	GetWhatsAppChatMode() bool
 	SetWhatsAppChatMode(enabled bool)
 	WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk
+
+	// Backup
+	ExportData(includeModels bool) ([]byte, error)
+	ImportData(data []byte) error
+	WipeAllData() error
 }

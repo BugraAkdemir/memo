@@ -29,6 +29,7 @@ type WhatsAppMsg struct {
 
 type WhatsAppChat struct {
 	JID         string    `json:"jid"`
+	DisplayName string    `json:"display_name"`
 	LastMessage string    `json:"last_message"`
 	LastTime    time.Time `json:"last_time"`
 	Unread      int       `json:"unread"`
@@ -90,7 +91,7 @@ func SearchWhatsApp(argsJSON json.RawMessage, basePath string, createBackup func
 	for _, m := range msgs {
 		from := m.SenderName
 		if from == "" {
-			from = m.SenderJID
+			from = partsBeforeAt(m.SenderJID)
 		}
 		ts := m.Timestamp.Format("02/01 15:04")
 		lines = append(lines, fmt.Sprintf("[%s] %s: %s", ts, from, m.Text))
@@ -122,7 +123,10 @@ func LatestWhatsAppChats(argsJSON json.RawMessage, basePath string, createBackup
 	chats = chats[:args.Limit]
 	var lines []string
 	for _, c := range chats {
-		displayName := partsBeforeAt(c.JID)
+		displayName := c.DisplayName
+		if displayName == "" {
+			displayName = partsBeforeAt(c.JID)
+		}
 		ts := c.LastTime.Format("02/01 15:04")
 		lines = append(lines, fmt.Sprintf("%s: %s [%s]", displayName, c.LastMessage, ts))
 	}
@@ -151,7 +155,7 @@ func GetWhatsAppMessages(argsJSON json.RawMessage, basePath string, createBackup
 	for _, m := range msgs {
 		from := m.SenderName
 		if from == "" {
-			from = m.SenderJID
+			from = partsBeforeAt(m.SenderJID)
 		}
 		ts := m.Timestamp.Format("02/01 15:04")
 		lines = append(lines, fmt.Sprintf("[%s] %s: %s", ts, from, m.Text))

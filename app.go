@@ -1,6 +1,7 @@
 package main
 
 import (
+	"archive/zip"
 	"bytes"
 	"context"
 	"embed"
@@ -238,20 +239,24 @@ func (a *App) startup(ctx context.Context) {
 	initClient := a.client
 	a.clientMu.RUnlock()
 	embeddingFunc := memory.NewEmbeddingFunc(initClient, cfg.API.EmbeddingModel)
-	store, err := memory.NewStore(memory.StoreConfig{
-		Dir:           cfg.Memory.PersistDir,
-		Dimension:     cfg.Memory.EmbeddingDimension,
-		EmbeddingFunc: embeddingFunc,
-	})
-	if err != nil {
-		log.Printf("WARN: memory: %v", err)
-		a.emitEvent("memory_store_error", err.Error())
-	}
-	a.storeMu.Lock()
-	if store != nil {
+
+	// Memory store initialization in background (vec0 extension loading is slow)
+	go func() {
+		store, err := memory.NewStore(memory.StoreConfig{
+			Dir:           cfg.Memory.PersistDir,
+			Dimension:     cfg.Memory.EmbeddingDimension,
+			EmbeddingFunc: embeddingFunc,
+		})
+		if err != nil {
+			log.Printf("WARN: memory: %v", err)
+			a.emitEvent("memory_store_error", err.Error())
+			return
+		}
+		a.storeMu.Lock()
 		a.store = store
-	}
-	a.storeMu.Unlock()
+		a.storeMu.Unlock()
+		log.Println("Memory store ready")
+	}()
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
 
@@ -289,7 +294,7 @@ func (a *App) startup(ctx context.Context) {
 	// Cross-mode: if memory is enabled and embedding model is configured,
 	// auto-download (if needed) and auto-start the embedding server.
 	// This lets API providers handle chat while a tiny local model handles embeddings.
-	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
+	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		go a.startupEmbeddingModel()
 	}
 
@@ -2366,6 +2371,7 @@ func (a waToolAdapter) GetChatList() ([]tools.WhatsAppChat, error) {
 	for i, c := range chats {
 		out[i] = tools.WhatsAppChat{
 			JID:         c.JID,
+			DisplayName: c.DisplayName,
 			LastMessage: c.LastMessage,
 			LastTime:    c.LastTime,
 			Unread:      c.Unread,
@@ -2959,6 +2965,160 @@ func detectMime(path string, data []byte) string {
 		return "image/jpeg"
 	}
 	return mime
+}
+
+// ─── Backup / Restore (.memo) ──────────────────────────────────────────────────
+
+// ExportData packages all user data (except models) into a .memo zip archive.
+func (a *App) ExportData(includeModels bool) ([]byte, error) {
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+
+	// Helper to add a file to the zip
+	addFile := func(name, src string) error {
+		fi, err := os.Stat(src)
+		if err != nil {
+			return nil // skip missing files
+		}
+		if fi.IsDir() {
+			return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
+				if err != nil || info.IsDir() {
+					return err
+				}
+				rel, _ := filepath.Rel(filepath.Dir(src), path)
+				w, err := zw.Create(filepath.Join(name, rel))
+				if err != nil {
+					return err
+				}
+				f, err := os.Open(path)
+				if err != nil {
+					return err
+				}
+				defer f.Close()
+				_, err = io.Copy(w, f)
+				return err
+			})
+		}
+		w, err := zw.Create(name)
+		if err != nil {
+			return err
+		}
+		f, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.Copy(w, f)
+		return err
+	}
+
+	// Include: sessions, config, providers, orchestra, memory, whatsapp
+	addFile("sessions/", "data/sessions")
+	addFile("config/config.yaml", "config/config.yaml")
+	addFile("data/providers.json", "data/providers.json")
+	addFile("data/orchestra.json", "data/orchestra.json")
+	addFile("data/memory/", "data/memory")
+	addFile("data/whatsapp/", "data/whatsapp")
+	if includeModels {
+		addFile("data/models/", "data/models")
+	}
+
+	if err := zw.Close(); err != nil {
+		return nil, err
+	}
+	return buf.Bytes(), nil
+}
+
+// ImportData restores user data from a .memo zip archive.
+func (a *App) ImportData(data []byte) error {
+	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
+	if err != nil {
+		return fmt.Errorf("import: invalid zip: %w", err)
+	}
+
+	extractDir := "data"
+
+	for _, f := range zr.File {
+		if f.FileInfo().IsDir() {
+			continue
+		}
+
+		// Determine target path (strip any leading dirs, write under data/)
+		target := filepath.Join(extractDir, f.Name)
+
+		// Safety: prevent path traversal
+		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(extractDir)) {
+			continue
+		}
+
+		// Create parent dir
+		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
+			return fmt.Errorf("import: mkdir: %w", err)
+		}
+
+		rc, err := f.Open()
+		if err != nil {
+			return fmt.Errorf("import: open %s: %w", f.Name, err)
+		}
+
+		out, err := os.Create(target)
+		if err != nil {
+			rc.Close()
+			return fmt.Errorf("import: create %s: %w", target, err)
+		}
+
+		_, err = io.Copy(out, rc)
+		rc.Close()
+		out.Close()
+		if err != nil {
+			return fmt.Errorf("import: write %s: %w", target, err)
+		}
+	}
+
+	// Re-initialize components after import
+	if a.sessions != nil {
+		sm, err := sessions.NewManager("data/sessions")
+		if err == nil {
+			a.sessions = sm
+		}
+	}
+	if a.store == nil {
+		// memory store will be initialized in background goroutine
+	}
+
+	return nil
+}
+
+// WipeAllData removes all user data: sessions, memory, whatsapp, providers.
+func (a *App) WipeAllData() error {
+	dirs := []string{
+		"data/sessions",
+		"data/memory",
+		"data/whatsapp",
+		"data/providers.json",
+		"data/orchestra.json",
+	}
+	for _, d := range dirs {
+		if err := os.RemoveAll(d); err != nil {
+			return fmt.Errorf("wipe: %s: %w", d, err)
+		}
+	}
+
+	// Re-init sessions
+	if a.sessions != nil {
+		sm, err := sessions.NewManager("data/sessions")
+		if err == nil {
+			a.sessions = sm
+		}
+	}
+
+	// Reset memory store
+	a.storeMu.Lock()
+	a.store = nil
+	a.storeMu.Unlock()
+
+	log.Println("All user data wiped")
+	return nil
 }
 
 // ─── Cloud Sync ───────────────────────────────────────────────────────────────

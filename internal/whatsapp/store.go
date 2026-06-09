@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -80,6 +81,26 @@ func (s *Store) SaveMessage(msg Message) error {
 		msg.Timestamp.Unix(), boolToInt(msg.FromMe),
 	)
 	return err
+}
+
+// SaveContact stores or updates a contact name mapping.
+func (s *Store) SaveContact(jid, name string) error {
+	_, err := s.db.Exec(
+		`INSERT INTO contacts (jid, name, updated_at) VALUES (?, ?, ?)
+		 ON CONFLICT(jid) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,
+		jid, name, time.Now().Unix(),
+	)
+	return err
+}
+
+// GetContactName retrieves a contact's display name from the local store.
+func (s *Store) GetContactName(jid string) string {
+	var name string
+	err := s.db.QueryRow(`SELECT name FROM contacts WHERE jid = ?`, jid).Scan(&name)
+	if err != nil {
+		return ""
+	}
+	return name
 }
 
 // SearchMessages searches messages by text content.
@@ -186,20 +207,21 @@ func (s *Store) GetChatMessages(chatJID string, limit int) ([]Message, error) {
 
 // ChatSummary represents a chat overview with the latest message.
 type ChatSummary struct {
-	JID         string    `json:"jid"`
-	LastMessage string    `json:"last_message"`
-	LastTime    time.Time `json:"last_time"`
-	Unread      int       `json:"unread"`
+	JID          string    `json:"jid"`
+	DisplayName  string    `json:"display_name"`
+	LastMessage  string    `json:"last_message"`
+	LastTime     time.Time `json:"last_time"`
+	Unread       int       `json:"unread"`
 }
 
 // GetChatList returns the list of unique chats with the latest message.
 func (s *Store) GetChatList() ([]ChatSummary, error) {
 	rows, err := s.db.Query(
-		`SELECT chat_jid, text, timestamp,
-			(SELECT COUNT(*) FROM messages m2 WHERE m2.chat_jid = messages.chat_jid AND m2.from_me = 0) as total
-		 FROM messages
-		 GROUP BY chat_jid
-		 ORDER BY MAX(timestamp) DESC`,
+		`SELECT m.chat_jid, m.text, m.timestamp,
+			(SELECT COUNT(*) FROM messages m2 WHERE m2.chat_jid = m.chat_jid AND m2.from_me = 0) as total
+		 FROM messages m
+		 GROUP BY m.chat_jid
+		 ORDER BY MAX(m.timestamp) DESC`,
 	)
 	if err != nil {
 		return nil, err
@@ -214,6 +236,11 @@ func (s *Store) GetChatList() ([]ChatSummary, error) {
 			return nil, err
 		}
 		c.LastTime = time.Unix(unixTS, 0)
+		// Try to resolve display name from contacts table
+		c.DisplayName = s.GetContactName(c.JID)
+		if c.DisplayName == "" {
+			c.DisplayName = partsBeforeAt(c.JID)
+		}
 		chats = append(chats, c)
 	}
 	if err := rows.Err(); err != nil {
@@ -243,4 +270,11 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+func partsBeforeAt(s string) string {
+	if parts := strings.SplitN(s, "@", 2); len(parts) > 0 {
+		return parts[0]
+	}
+	return s
 }

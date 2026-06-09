@@ -34,12 +34,14 @@ class WhatsAppMessage {
 
 class WhatsAppChatSummary {
   final String jid;
+  final String displayName;
   final String lastMessage;
   final DateTime lastTime;
   final int unread;
 
   WhatsAppChatSummary({
     required this.jid,
+    required this.displayName,
     required this.lastMessage,
     required this.lastTime,
     required this.unread,
@@ -48,20 +50,13 @@ class WhatsAppChatSummary {
   factory WhatsAppChatSummary.fromJson(Map<String, dynamic> json) {
     return WhatsAppChatSummary(
       jid: json['jid'] as String? ?? '',
+      displayName: json['display_name'] as String? ?? '',
       lastMessage: json['last_message'] as String? ?? '',
       lastTime: json['last_time'] != null
           ? DateTime.tryParse(json['last_time'].toString()) ?? DateTime.now()
           : DateTime.now(),
       unread: json['unread'] as int? ?? 0,
     );
-  }
-
-  String get displayName {
-    final parts = jid.split('@');
-    if (parts.isEmpty) return jid;
-    final name = parts[0];
-    if (name.contains('-')) return 'Grup';
-    return name;
   }
 }
 

@@ -271,6 +271,7 @@ class L10n {
 
     // Settings — Cloud Sync
     'cloud_sync': 'Bulut Senkronizasyon',
+    'backup': 'Yedekleme',
     'sync_enabled': 'Senkronizasyon Aktif',
     'sync_disabled': 'Senkronizasyon Devre Dışı',
     'sync_now': 'Şimdi Senkronize Et',
@@ -715,6 +716,7 @@ class L10n {
     'orchestra_saved': 'Orchestra config saved',
 
     'cloud_sync': 'Cloud Sync',
+    'backup': 'Backup',
     'sync_enabled': 'Sync Enabled',
     'sync_disabled': 'Sync Disabled',
     'sync_now': 'Sync Now',

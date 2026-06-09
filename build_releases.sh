@@ -45,19 +45,19 @@ mkdir -p "$STAGEDIR/config"
 
 if [ "$OS" == "linux" ]; then
     echo "✅ İşletim Sistemi: Linux tespit edildi. (tar.gz, AppImage, deb oluşturulacak)"
-    
-# 1. Build Backend
-echo "🔨 1. Go Backend Derleniyor..."
-go mod download
-go build -o "$STAGEDIR/memo-backend" .
-    
+
+    # 1. Build Backend
+    echo "🔨 1. Go Backend Derleniyor..."
+    go mod download
+    go build -o "$STAGEDIR/memo-backend" .
+
     # 2. Build Frontend
     echo "🔨 2. Flutter Frontend Derleniyor..."
     cd frontend
     flutter build linux --release
     cd ..
     cp -r frontend/build/linux/x64/release/bundle/* "$STAGEDIR/"
-    
+
     # 3. Copy Assets
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
 
@@ -85,7 +85,7 @@ go build -o "$STAGEDIR/memo-backend" .
     mkdir -p "$STAGEDIR/data/agent-backups"
     mkdir -p "$STAGEDIR/data/whatsapp"
     touch "$STAGEDIR/data/whatsapp/.gitkeep"
-    
+
     # Create Runner Script
     cat << 'RUNNER' > "$STAGEDIR/run_memo.sh"
 #!/bin/bash
@@ -101,30 +101,30 @@ mkdir -p "$MEMO_HOME/data/agent-backups"
 mkdir -p "$MEMO_HOME/data/whatsapp"
 
 # Copy llama.cpp binaries if not already present (first run)
-if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$APPBIN/binaries" ]; then
+if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
     echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
     mkdir -p "$MEMO_HOME/binaries"
-    cp -r "$APPBIN/binaries/"* "$MEMO_HOME/binaries/"
+    cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
 fi
 
 # Copy default config if not present
-if [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$APPBIN/config" ]; then
-    cp -r "$APPBIN/config/"* "$MEMO_HOME/config/"
+if [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ]; then
+    cp -r "$DIR/config/"* "$MEMO_HOME/config/"
 fi
 
 # Copy .env if not present
-if [ ! -f "$MEMO_HOME/.env" ] && [ -f "$APPBIN/.env" ]; then
-    cp "$APPBIN/.env" "$MEMO_HOME/.env"
+if [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ]; then
+    cp "$DIR/.env" "$MEMO_HOME/.env"
 fi
 
 # Copy provider example config if no providers.json exists
-if [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$APPBIN/data/providers.example.json" ]; then
-    cp "$APPBIN/data/providers.example.json" "$MEMO_HOME/data/providers.json"
+if [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ]; then
+    cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
 fi
 
 # Copy orchestra config if not present
-if [ ! -f "$MEMO_HOME/data/orchestra.json" ] && [ -f "$APPBIN/data/orchestra.json" ]; then
-    cp "$APPBIN/data/orchestra.json" "$MEMO_HOME/data/orchestra.json"
+if [ ! -f "$MEMO_HOME/data/orchestra.json" ] && [ -f "$DIR/data/orchestra.json" ]; then
+    cp "$DIR/data/orchestra.json" "$MEMO_HOME/data/orchestra.json"
 fi
 
 # Create empty permissions if not present (Agent mode)
@@ -133,7 +133,7 @@ fi
 cd "$MEMO_HOME"
 
 # Set library paths
-export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$APPBIN/lib:$LD_LIBRARY_PATH"
+export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
 
 # Stop old processes
 pkill -9 -f "memo-backend" 2>/dev/null || true
@@ -141,19 +141,40 @@ pkill -9 -f "llama-server" 2>/dev/null || true
 sleep 0.5
 
 # Start backend from writable directory
-"$APPBIN/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
+"$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
 BACKEND_PID=$!
 sleep 1
 
 # Start Flutter frontend
-"$APPBIN/memo_flutter" "$@"
+"$DIR/memo_flutter" "$@"
 
 # Cleanup
 kill $BACKEND_PID 2>/dev/null
 pkill -9 -f "llama-server" 2>/dev/null || true
-APPRUN
+RUNNER
+
+    chmod +x "$STAGEDIR/run_memo.sh"
+
+    # 4. tar.gz
+    if [ "$BUILD_TARGZ" = true ]; then
+        echo "📦 4. tar.gz Paketi Oluşturuluyor..."
+        cd build_output/stage
+        tar czf "../dist/${APP_NAME}-linux-x64-v${VERSION}.tar.gz" "$APP_NAME"
+        cd ../..
+    fi
+
+    # 5. AppImage
+    if [ "$BUILD_APPIMAGE" = true ]; then
+        echo "📦 5. AppImage Paketi Oluşturuluyor..."
+        APPDIR="build_output/stage/${APP_NAME}.AppDir"
+        mkdir -p "$APPDIR"
+
+        cp -r "$STAGEDIR/"* "$APPDIR/"
+
+        # Use run_memo.sh as AppRun
+        ln -sf "run_memo.sh" "$APPDIR/AppRun"
         chmod +x "$APPDIR/AppRun"
-        
+
         # Create Desktop entry
         cat << DESKTOP > "$APPDIR/${APP_NAME}.desktop"
 [Desktop Entry]
@@ -163,10 +184,10 @@ Icon=${APP_NAME}
 Type=Application
 Categories=Utility;
 DESKTOP
-        
+
         # Create a dummy icon if doesn't exist
         touch "$APPDIR/${APP_NAME}.png"
-        
+
         # Download appimagetool if not exists or is empty
         if [ ! -s "appimagetool-x86_64.AppImage" ]; then
             echo "⬇️ appimagetool indiriliyor..."
@@ -177,7 +198,7 @@ DESKTOP
         # Try with --appimage-extract-and-run for systems without FUSE
         ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
     fi
-    
+
     # --- DEB ---
     if [ "$BUILD_DEB" = true ]; then
         echo "📦 6. .deb Paketi Oluşturuluyor..."
@@ -186,10 +207,10 @@ DESKTOP
         mkdir -p "$DEBDIR/usr/bin"
         mkdir -p "$DEBDIR/usr/share/applications"
         mkdir -p "$DEBDIR/DEBIAN"
-        
+
         cp -r "$STAGEDIR/"* "$DEBDIR/opt/$APP_NAME/"
         ln -s "/opt/$APP_NAME/run_memo.sh" "$DEBDIR/usr/bin/${APP_NAME,,}"
-        
+
         cat << CONTROL > "$DEBDIR/DEBIAN/control"
 Package: ${APP_NAME,,}
 Version: ${VERSION}
@@ -215,21 +236,21 @@ DEBDESKTOP
             echo "⚠️ dpkg-deb bulunamadı. .deb paketi atlanıyor. Kurmak için: sudo apt install dpkg"
         fi
     fi
-    
+
     echo "🎉 LİNUX PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."
 
 elif [ "$OS" == "windows" ]; then
     echo "✅ İşletim Sistemi: Windows tespit edildi. (.exe oluşturulacak)"
-    
+
     echo "🔨 1. Go Backend Derleniyor..."
     go build -o "$STAGEDIR/memo-backend.exe" .
-    
+
     echo "🔨 2. Flutter Frontend Derleniyor..."
     cd frontend
     flutter build windows --release
     cd ..
     cp -r frontend/build/windows/x64/release/runner/Release/* "$STAGEDIR/"
-    
+
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
 
     # Binaries (llama-server DLL'leri + vec0 extension)
@@ -255,7 +276,7 @@ elif [ "$OS" == "windows" ]; then
     mkdir -p "$STAGEDIR/data/agent-backups"
     mkdir -p "$STAGEDIR/data/whatsapp"
     touch "$STAGEDIR/data/whatsapp/.gitkeep"
-    
+
     # Create batch runner for Windows
     cat << 'RUNNERWIN' > "$STAGEDIR/run_memo.bat"
 @echo off
@@ -280,12 +301,12 @@ start "" /WAIT memo_flutter.exe
 taskkill /F /IM memo-backend.exe >nul 2>&1
 taskkill /F /IM llama-server.exe >nul 2>&1
 RUNNERWIN
-    
+
     echo "📦 4. Windows ZIP Paketi Oluşturuluyor..."
     cd build_output/stage
     powershell -Command "Compress-Archive -Path '${APP_NAME}\*' -DestinationPath '..\dist\${APP_NAME}-windows-x64-v${VERSION}.zip' -Force"
     cd ../..
-    
+
     echo "🎉 WINDOWS PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."
 fi
 

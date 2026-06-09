@@ -1,6 +1,9 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -35,7 +38,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
     L10n.t('tab_gpu_config'),
-    L10n.t('cloud_sync'),
+    L10n.t('backup'),
     L10n.t('remote_access'),
     L10n.t('about'),
   ];
@@ -160,15 +163,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   }
 
   Widget _buildTabContent(int index) {
-    // 0: General
-    // 1: System Prompt
-    // 2: Incognito Prompt
-    // 3: Memory
-    // 4: API Providers
-    // 5: GPU Config
-    // 6: Cloud Sync
-    // 7: Remote Access
-    // 8: About
     switch (index) {
       case 0:
         return  _GeneralTab();
@@ -187,7 +181,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 7:
         return  _GpuConfigTab();
       case 8:
-        return  _CloudSyncTab();
+        return  _BackupRestoreTab();
       case 9:
         return  _RemoteAccessTab();
       case 10:
@@ -1392,81 +1386,123 @@ class _MemorySettingField extends StatelessWidget {
   }
 }
 
-class _CloudSyncTab extends ConsumerStatefulWidget {
-   _CloudSyncTab();
+class _BackupRestoreTab extends ConsumerStatefulWidget {
+   _BackupRestoreTab();
 
   @override
-  ConsumerState<_CloudSyncTab> createState() => _CloudSyncTabState();
+  ConsumerState<_BackupRestoreTab> createState() => _BackupRestoreTabState();
 }
 
-class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
-  Future<void> _startAuth() async {
+class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
+  bool _exporting = false;
+  bool _importing = false;
+  bool _includeModels = false;
+  bool _wiping = false;
+  bool _wipeConfirm1 = false;
+  bool _wipeConfirm2 = false;
+
+  Future<void> _export() async {
+    if (_exporting) return;
+    setState(() => _exporting = true);
     try {
       final api = ref.read(apiClientProvider);
-      final url = await api.startSyncAuth();
-      if (url.isNotEmpty && mounted) {
-        // Copy URL to clipboard — user opens in browser.
-        await Clipboard.setData(ClipboardData(text: url));
-        if (!mounted) return;
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('OAuth URL kopyalandı: $url')));
+      final data = await api.exportData(includeModels: _includeModels);
+      if (!mounted) return;
+
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: 'Memo Yedekle',
+        fileName: 'memo_backup.memo',
+        type: FileType.any,
+      );
+      if (path != null) {
+        await File(path).writeAsBytes(data);
+        if (mounted) {
+          ScaffoldMessenger.of(
+            context,
+          ).showSnackBar(SnackBar(content: Text('Yedek kaydedildi: $path')));
+        }
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Dışa aktarma hatası: $e')),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _exporting = false);
     }
   }
 
-  Future<void> _syncNow() async {
+  Future<void> _import() async {
+    if (_importing) return;
+    setState(() => _importing = true);
     try {
-      await ref.read(apiClientProvider).syncNow();
+      final result = await FilePicker.platform.pickFiles(
+        dialogTitle: 'Memo Yedek İçe Aktar',
+        type: FileType.any,
+      );
+      if (result == null || result.files.isEmpty) return;
+
+      final bytes = result.files.first.bytes;
+      if (bytes == null) {
+        final path = result.files.first.path;
+        if (path == null) return;
+        final file = File(path);
+        if (!await file.exists()) return;
+        final data = await file.readAsBytes();
+        await ref.read(apiClientProvider).importData(data);
+      } else {
+        await ref.read(apiClientProvider).importData(bytes);
+      }
+
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Senkronizasyon başlatıldı')));
+        ).showSnackBar(SnackBar(content: Text('Yedek başarıyla içe aktarıldı. Uygulamayı yeniden başlatın.')));
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('İçe aktarma hatası: $e')),
+        );
       }
+    } finally {
+      if (mounted) setState(() => _importing = false);
     }
   }
 
-  Future<void> _disconnect() async {
+  Future<void> _wipe() async {
+    if (_wiping) return;
+    setState(() => _wiping = true);
     try {
-      await ref.read(apiClientProvider).disconnectSync();
+      await ref.read(apiClientProvider).wipeData();
       if (mounted) {
-        ref.invalidate(syncAuthProvider);
-        ref.invalidate(syncAccountProvider);
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Bağlantı kesildi')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Tüm veriler silindi. Uygulamayı yeniden başlatın.')),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('$e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Silme hatası: $e')),
+        );
       }
+    } finally {
+      if (mounted) setState(() {
+        _wiping = false;
+        _wipeConfirm1 = false;
+        _wipeConfirm2 = false;
+      });
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final authAsync = ref.watch(syncAuthProvider);
-    final accountAsync = ref.watch(syncAccountProvider);
-
     return ListView(
       padding:  EdgeInsets.all(32),
       children: [
         Text(
-          L10n.t('cloud_sync'),
+          'Yedekleme',
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
             color: MemoTheme.of(context).textMain,
@@ -1474,95 +1510,121 @@ class _CloudSyncTabState extends ConsumerState<_CloudSyncTab> {
         ),
          SizedBox(height: 12),
         Text(
-          'Google Drive üzerinde otomatik yedekleme. Her 50 mesajda bir senkronizasyon yapılır.',
+          'Tüm sohbet geçmişi, yapılandırma ve WhatsApp mesajlarınızı .memo dosyasına aktarın veya geri yükleyin.',
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
          SizedBox(height: 24),
 
-        // Auth status
-        authAsync.when(
-          loading: () =>  Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('${L10n.t('error')}: $e'),
-          data: (authenticated) => Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  Icon(
-                    authenticated ? Icons.check_circle : Icons.cloud_off,
-                    color: authenticated ? MemoTheme.green : MemoTheme.red,
-                    size: 20,
-                  ),
-                   SizedBox(width: 8),
-                  Text(
-                    authenticated ? 'Google Drive bağlı' : 'Bağlı değil',
-                    style: TextStyle(
-                      fontWeight: FontWeight.w500,
-                      color: authenticated
-                          ? MemoTheme.green
-                          : MemoTheme.of(context).textMuted,
-                    ),
-                  ),
-                ],
-              ),
-              if (authenticated) ...[
-                 SizedBox(height: 8),
-                accountAsync.when(
-                  loading: () =>  SizedBox.shrink(),
-                  error: (_, __) =>  SizedBox.shrink(),
-                  data: (account) {
-                    final email = account['email'] as String?;
-                    if (email != null && email.isNotEmpty) {
-                      return Padding(
-                        padding:  EdgeInsets.only(left: 28),
-                        child: Text(
-                          email,
-                          style: TextStyle(
-                            color: MemoTheme.of(context).textDim,
-                            fontSize: 13,
-                          ),
-                        ),
-                      );
-                    }
-                    return  SizedBox.shrink();
-                  },
-                ),
-              ],
-               SizedBox(height: 20),
-              Row(
-                children: [
-                  if (!authenticated)
-                    ElevatedButton.icon(
-                      onPressed: _startAuth,
-                      icon:  Icon(Icons.login, size: 16),
-                      label: Text('Google ile bağlan'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: MemoTheme.accent,
-                        foregroundColor: MemoTheme.of(context).textInverse,
-                      ),
-                    ),
-                  if (authenticated) ...[
-                    OutlinedButton.icon(
-                      onPressed: _syncNow,
-                      icon:  Icon(Icons.sync, size: 16),
-                      label: Text('Şimdi senkronize et'),
-                    ),
-                     SizedBox(width: 8),
-                    OutlinedButton.icon(
-                      onPressed: _disconnect,
-                      icon:  Icon(Icons.link_off, size: 16),
-                      label: Text('Bağlantıyı kes'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MemoTheme.red,
-                        side:  BorderSide(color: MemoTheme.red),
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ],
+        // Include models toggle
+        Card(
+          child: SwitchListTile(
+            title: Text('Modelleri dahil et'),
+            subtitle: Text('GGUF modelleri (büyük boyut)',
+              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+            value: _includeModels,
+            onChanged: (v) => setState(() => _includeModels = v),
+            secondary:  Icon(Icons.model_training, color: MemoTheme.accent),
           ),
         ),
+         SizedBox(height: 12),
+
+        // Export
+        Card(
+          child: ListTile(
+            leading:  Icon(Icons.file_upload_outlined, color: MemoTheme.accent),
+            title: Text('Dışa Aktar'),
+            subtitle: Text('Tüm verileri .memo dosyasına kaydeder',
+              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+            trailing: _exporting
+                ?  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                :  Icon(Icons.download, color: MemoTheme.of(context).textDim),
+            onTap: _exporting ? null : _export,
+          ),
+        ),
+         SizedBox(height: 12),
+
+        // Import
+        Card(
+          child: ListTile(
+            leading:  Icon(Icons.file_download_outlined, color: MemoTheme.warmBrown),
+            title: Text('İçe Aktar'),
+            subtitle: Text('.memo dosyasından verileri geri yükler',
+              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+            trailing: _importing
+                ?  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                :  Icon(Icons.upload, color: MemoTheme.of(context).textDim),
+            onTap: _importing ? null : _import,
+          ),
+        ),
+         SizedBox(height: 32),
+
+        // Wipe All Data
+        Text(
+          'Tüm Verileri Sil',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: MemoTheme.warmBrown),
+        ),
+         SizedBox(height: 8),
+        Text(
+          'Sohbet geçmişi, WhatsApp mesajları, hafıza ve yapılandırma kalıcı olarak silinir.',
+          style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
+        ),
+         SizedBox(height: 12),
+        if (!_wipeConfirm1)
+          Card(
+            child: ListTile(
+              leading:  Icon(Icons.delete_forever, color: MemoTheme.warmBrown),
+              title: Text('Tüm Verileri Sil', style: TextStyle(color: MemoTheme.warmBrown)),
+              subtitle: Text('Bu işlem geri alınamaz',
+                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+              trailing:  Icon(Icons.warning_amber, color: MemoTheme.warmBrown),
+              onTap: () => setState(() => _wipeConfirm1 = true),
+            ),
+          ),
+        if (_wipeConfirm1 && !_wipeConfirm2)
+          Card(
+            color: MemoTheme.warmBrown.withValues(alpha: 0.08),
+            child: ListTile(
+              leading:  Icon(Icons.delete_forever, color: Colors.redAccent),
+              title: Text('Emin misiniz?', style: TextStyle(color: Colors.redAccent)),
+              subtitle: Text('Tüm verileriniz silinecek. Onaylamak için tekrar tıklayın.',
+                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+              trailing: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: Icon(Icons.close, color: MemoTheme.of(context).textDim),
+                    onPressed: () => setState(() {
+                      _wipeConfirm1 = false;
+                      _wipeConfirm2 = false;
+                    }),
+                  ),
+                  Icon(Icons.warning, color: Colors.redAccent),
+                ],
+              ),
+              onTap: () => setState(() => _wipeConfirm2 = true),
+            ),
+          ),
+        if (_wipeConfirm2)
+          Card(
+            color: Colors.red.shade50,
+            child: ListTile(
+              leading: _wiping
+                  ?  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
+                  :  Icon(Icons.delete_sweep, color: Colors.red),
+              title: Text('Sil',
+                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+              subtitle: Text('Bu işlem geri alınamaz. Tüm veriler silinecek.',
+                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+              trailing: IconButton(
+                icon: Icon(Icons.close, color: MemoTheme.of(context).textDim),
+                onPressed: () => setState(() {
+                  _wipeConfirm1 = false;
+                  _wipeConfirm2 = false;
+                }),
+              ),
+              onTap: _wiping ? null : _wipe,
+            ),
+          ),
       ],
     );
   }
@@ -1651,24 +1713,41 @@ class _AboutTab extends ConsumerWidget {
             ),
           ],
         ),
-         SizedBox(height: 48),
-        Text(
-          'Vizyon ve Misyon',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-         SizedBox(height: 8),
-        Text(
-          'Memo, tamamen yerel bilgisayarınızda çalışan, sizin konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazıyan özel bir yapay zeka asistanıdır. Asıl amaç, bulut teknolojilere muhtaç kalmadan, özgürce ve güvenle kendi bilgisayarında barındırabileceğiniz akıllı bir asistan yaratmaktır.',
-          style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
-        ),
          SizedBox(height: 32),
         Text(
-          'Açık Kaynak (MIT Lisansı)',
+          L10n.t('about_vision'),
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
          SizedBox(height: 8),
         Text(
-          'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
+          'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı bir yapay zeka asistanıdır. '
+          'Konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazır. '
+          'Üçüncü taraf sunuculara ihtiyaç duymadan, kendi bilgisayarınızda çalışır — '
+          'verileriniz tamamen sizde kalır. İsteğe bağlı olarak harici API sağlayıcıları '
+          'veya yerel llama.cpp modelleri ile kullanılabilir. '
+          'WhatsApp entegrasyonu, RAG hafıza ve E2E şifreli bulut senkronizasyonu destekler.',
+          style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
+        ),
+         SizedBox(height: 24),
+        Text(
+          'Lisans',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+         SizedBox(height: 8),
+        Text(
+          'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile lisanslanmıştır. '
+          'Geliştirici: Buğra Akdemir. Kaynak kod: github.com/BugraAkdemir/memo',
+          style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
+        ),
+         SizedBox(height: 24),
+        Text(
+          'Teknolojiler',
+          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+        ),
+         SizedBox(height: 8),
+        Text(
+          'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vektör arama) | '
+          'whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
           style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
       ],

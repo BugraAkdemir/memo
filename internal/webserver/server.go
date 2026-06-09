@@ -179,6 +179,9 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/whatsapp/stats", s.handleWhatsAppStats)
 	mux.HandleFunc("/api/whatsapp/chat-mode", s.handleWhatsAppChatMode)
 	mux.HandleFunc("/api/whatsapp/chat-stream", s.handleWhatsAppChatStream)
+	mux.HandleFunc("/api/export", s.handleExport)
+	mux.HandleFunc("/api/import", s.handleImport)
+	mux.HandleFunc("/api/wipe", s.handleWipe)
 
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("127.0.0.1:%d", port),

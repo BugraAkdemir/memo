@@ -3,6 +3,7 @@ package webserver
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"memo/internal/config"
 	"memo/internal/orchestra"
@@ -63,6 +64,54 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
+}
+
+// ─── Backup / Restore (.memo) ─────────────────────────────────────────────────
+
+func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	includeModels := r.URL.Query().Get("include_models") == "true"
+	data, err := s.fullBridge.ExportData(includeModels)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/octet-stream")
+	w.Header().Set("Content-Disposition", "attachment; filename=memo_backup.memo")
+	w.Write(data)
+}
+
+func (s *Server) handleImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	defer r.Body.Close()
+	data, err := io.ReadAll(r.Body)
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.ImportData(data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "ok"})
+}
+
+func (s *Server) handleWipe(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if err := s.fullBridge.WipeAllData(); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"status": "ok"})
 }
 
 // ─── System Prompt ──────────────────────────────────────────────
@@ -1175,7 +1224,7 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-
+	//Cr: Bugra Akdmeir Memo iS oPENsOURCE
 	ctx := r.Context()
 	streamCh := s.fullBridge.WhatsAppChatStream(ctx, req.Message)
 

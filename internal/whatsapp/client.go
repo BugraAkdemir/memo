@@ -96,6 +96,10 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 
 	c.started = true
+
+	// Import contacts from whatsmeow store to local contacts table
+	c.importContacts()
+
 	return nil
 }
 
@@ -121,7 +125,7 @@ func (c *Client) IsLoggedIn() bool {
 	return c.waClient != nil && c.waClient.IsLoggedIn()
 }
 
-// SendMessage sends a text message to a JID.
+// SendMessage sends a text message to a JID and saves it to the local store.
 func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, error) {
 	if !c.IsConnected() || !c.IsLoggedIn() {
 		return "", fmt.Errorf("whatsapp: not connected")
@@ -136,6 +140,27 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 	if err != nil {
 		return "", fmt.Errorf("whatsapp: send: %w", err)
 	}
+
+	// Save outgoing message to local store
+	if c.store != nil {
+		myJID := ""
+		if c.waClient.Store != nil {
+			myJID = c.waClient.Store.ID.String()
+		}
+		outMsg := Message{
+			ID:         resp.ID,
+			ChatJID:    jid,
+			SenderJID:  myJID,
+			SenderName: "Ben",
+			Text:       text,
+			Timestamp:  time.Now(),
+			FromMe:     true,
+		}
+		if err := c.store.SaveMessage(outMsg); err != nil {
+			log.Printf("WhatsApp: save sent message error: %v", err)
+		}
+	}
+
 	return resp.ID, nil
 }
 
@@ -200,6 +225,10 @@ func (c *Client) handleHistorySync(evt *waEvent.HistorySync) {
 	}
 	convs := evt.Data.GetConversations()
 	log.Printf("WhatsApp: history sync received %d conversations", len(convs))
+	myJID := ""
+	if c.waClient != nil && c.waClient.Store != nil {
+		myJID = c.waClient.Store.ID.String()
+	}
 	count := 0
 	for _, conv := range convs {
 		for _, hsm := range conv.GetMessages() {
@@ -215,16 +244,21 @@ func (c *Client) handleHistorySync(evt *waEvent.HistorySync) {
 			if msgText == "" {
 				continue
 			}
-			msg := Message{
-				ID:        key.GetID(),
-				ChatJID:   key.GetRemoteJID(),
-				SenderJID: key.GetRemoteJID(),
-				Text:      msgText,
-				Timestamp: time.Unix(int64(wmi.GetMessageTimestamp()), 0),
-				FromMe:    key.GetFromMe(),
+			fromMe := key.GetFromMe()
+			senderJID := key.GetRemoteJID()
+			senderName := c.resolveDisplayName(senderJID)
+			if fromMe {
+				senderJID = myJID
+				senderName = "Ben"
 			}
-			if msg.FromMe {
-				msg.SenderName = "Ben"
+			msg := Message{
+				ID:         key.GetID(),
+				ChatJID:    key.GetRemoteJID(),
+				SenderJID:  senderJID,
+				SenderName: senderName,
+				Text:       msgText,
+				Timestamp:  time.Unix(int64(wmi.GetMessageTimestamp()), 0),
+				FromMe:     fromMe,
 			}
 			if err := c.store.SaveMessage(msg); err != nil {
 				log.Printf("WhatsApp: save history msg error: %v", err)
@@ -267,20 +301,32 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 		return // skip non-text messages
 	}
 
-	msg := Message{
-		ID:        info.ID,
-		ChatJID:   info.Chat.String(),
-		SenderJID: info.Sender.String(),
-		Text:      text,
-		Timestamp: info.Timestamp,
-		FromMe:    info.IsFromMe,
+	senderJID := info.Sender.String()
+	senderName := info.PushName
+
+	// Save contact info if we have a push name
+	if senderName != "" && c.store != nil {
+		c.store.SaveContact(senderJID, senderName)
 	}
 
-	// Get sender name from pushname
-	if info.PushName != "" {
-		msg.SenderName = info.PushName
-	} else if info.IsFromMe {
-		msg.SenderName = "Ben"
+	if senderName == "" {
+		senderName = c.resolveDisplayName(senderJID)
+	}
+	if info.IsFromMe {
+		senderName = "Ben"
+		if c.waClient != nil && c.waClient.Store != nil {
+			senderJID = c.waClient.Store.ID.String()
+		}
+	}
+
+	msg := Message{
+		ID:         info.ID,
+		ChatJID:    info.Chat.String(),
+		SenderJID:  senderJID,
+		SenderName: senderName,
+		Text:       text,
+		Timestamp:  info.Timestamp,
+		FromMe:     info.IsFromMe,
 	}
 
 	// Save to store
@@ -295,4 +341,62 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 	case c.msgCh <- msg:
 	default:
 	}
+}
+
+// resolveDisplayName resolves a JID to a display name using the local contact store.
+func (c *Client) resolveDisplayName(jid string) string {
+	if c.store != nil {
+		if name := c.store.GetContactName(jid); name != "" {
+			return name
+		}
+	}
+	// Try whatsmeow's own contact store
+	if c.waClient != nil && c.waClient.Store != nil {
+		parsed, err := types.ParseJID(jid)
+		if err == nil {
+			contact, err2 := c.waClient.Store.Contacts.GetContact(context.Background(), parsed)
+			if err2 == nil {
+				if contact.FullName != "" {
+					return contact.FullName
+				}
+				if contact.FirstName != "" {
+					return contact.FirstName
+				}
+				if contact.PushName != "" {
+					return contact.PushName
+				}
+			}
+		}
+	}
+	// Fallback: strip @s.whatsapp.net
+	return partsBeforeAt(jid)
+}
+
+// importContacts copies all contacts from whatsmeow's store to our local contacts table.
+func (c *Client) importContacts() {
+	if c.waClient == nil || c.waClient.Store == nil || c.store == nil {
+		return
+	}
+	contacts, err := c.waClient.Store.Contacts.GetAllContacts(context.Background())
+	if err != nil || len(contacts) == 0 {
+		return
+	}
+	count := 0
+	for jid, contact := range contacts {
+		name := contact.FullName
+		if name == "" {
+			name = contact.FirstName
+		}
+		if name == "" {
+			name = contact.PushName
+		}
+		if name == "" {
+			continue
+		}
+		if err := c.store.SaveContact(jid.String(), name); err != nil {
+			log.Printf("WhatsApp: save contact %s error: %v", jid, err)
+		}
+		count++
+	}
+	log.Printf("WhatsApp: imported %d contacts", count)
 }

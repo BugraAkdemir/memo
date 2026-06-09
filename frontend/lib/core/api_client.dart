@@ -537,6 +537,31 @@ class MemoApiClient {
     await _dio.post('/api/sync/disconnect');
   }
 
+  // ─── Backup / Restore (.memo) ────────────────────────────────────
+
+  /// Export all user data as .memo bytes.
+  Future<List<int>> exportData({bool includeModels = false}) async {
+    final res = await _dio.get('/api/export',
+        queryParameters: {'include_models': includeModels.toString()},
+        options: Options(responseType: ResponseType.bytes));
+    return res.data as List<int>;
+  }
+
+  /// Import from .memo bytes.
+  Future<void> importData(List<int> data) async {
+    await _dio.post('/api/import',
+        data: Stream.fromIterable([data]),
+        options: Options(
+          contentType: 'application/octet-stream',
+          headers: {'Content-Length': data.length.toString()},
+        ));
+  }
+
+  /// Wipe all user data.
+  Future<void> wipeData() async {
+    await _dio.post('/api/wipe');
+  }
+
   // ─── Recording ──────────────────────────────────────────────────
 
   Future<void> startRecording() async {

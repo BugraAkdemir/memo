@@ -80,6 +80,7 @@ type MemoryConfig struct {
 	EmbeddingDimension   int     `yaml:"embedding_dimension" json:"embedding_dimension"`
 	EmbeddingModelRepo   string  `yaml:"embedding_model_repo" json:"embedding_model_repo"`
 	EmbeddingModelFile   string  `yaml:"embedding_model_file" json:"embedding_model_file"`
+	EmbeddingAutoStart   bool    `yaml:"embedding_auto_start" json:"embedding_auto_start"`
 }
 
 var (
@@ -134,7 +135,7 @@ func Default() *AppConfig {
 			IntervalMessages: 50,
 		},
 		WhatsApp: WhatsAppConfig{
-			Enabled:        false,
+			Enabled:        true,
 			DataDir:        "./data/whatsapp",
 			AutoIndex:      true,
 			MaxHistoryDays: 7,

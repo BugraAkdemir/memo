@@ -374,7 +374,7 @@ func (c *Client) resolveDisplayName(jid string) string {
 
 // importContacts copies all contacts from whatsmeow's store to our local contacts table.
 func (c *Client) importContacts() {
-	if c.waClient == nil || c.waClient.Store == nil || c.store == nil {
+	if c.waClient == nil || c.waClient.Store == nil || c.waClient.Store.Contacts == nil || c.store == nil {
 		return
 	}
 	contacts, err := c.waClient.Store.Contacts.GetAllContacts(context.Background())

@@ -1,120 +1,177 @@
-# Memo Yol Haritası
+# Memo Yol Haritası — Stratejik Vizyon
 
-Kod tabanı denetimine (2026-06-02) dayalı stratejik vizyon ve sürüm planı.
-
----
-
-## v3.0.0 — "Sağlamlaştırma" (Mevcut Hedef)
-
-**Tema:** Kararlılık, güvenlik ve performans iyileştirmesi. Yeni özellik yok — denetimdeki tüm sorunları düzelt.
-
-### Güvenlik (P0)
-- [ ] `/api/image` keyfi dosya okuma — uygulama veri dizini ile kısıtla
-- [ ] Uzaktan erişim: JWT/oturum kimlik doğrulama ekle, `0.0.0.0`'da wildcard CORS'u kapat
-- [ ] Yapılandırma dosyası (`config.yaml`) izinleri: `0644` → `0600`
-- [ ] Oturum dosyası izinleri: `0644` → `0600`
-- [ ] Modelstore `DeleteLocalModel` — sembolik bağ saldırı koruması (`filepath.EvalSymlinks`)
-- [ ] Modelstore `ImportLocalModel` — dosya boyut sınırı ekle
-- [ ] Zayıf KDF (`sha256.Sum256`) → PBKDF2/argon2id (senkronizasyon şifrelemesi)
-- [ ] Sabit kodlanmış geri dönüş şifreleme anahtarı — kaldır veya net parola zorunluluğu getir
-
-### Eşzamanlılık ve Kaynak Sızıntıları (P0)
-- [ ] SSE stream context bağlantısı — istemci kopunca LLM çağrısını iptal et
-- [ ] `a.client` / `a.embeddingClient` — tüm okuma/yazmaları mutex ile koru
-- [ ] `saveMemoryAsync` RLock→Lock modeli — channel tabanlı worker ile yeniden yaz
-- [ ] `monitor()` goroutine — `s.cmd` nil kontrolü + `Wait()`'i kilit içine taşı
-- [ ] `Shutdown(context.Background())` → `WithTimeout`
-- [ ] OAuth `authDone` kanal yarışı — `sync.WaitGroup` veya paylaşımlı kanal kullan
-
-### Kritik Hata Düzeltmeleri (P0)
-- [ ] Motor modu güncellemesinde config yaması: kısmi JSON birleştir, alanları sıfırlama
-- [ ] `buildMessages` oturum geçmişini değiştiriyor — sistem prompt'u enjekte etmeden önce dilimi kopyala
-- [ ] `hash2hex` 4-bayt çakışması → en az 8 bayt kullan
-- [ ] Oturum kimliği 8 hex karaktere kırpılmış — tam UUID veya 16+ karakter kullan
-
-### Frontend Performans ve Kullanıcı Deneyimi (P1)
-- [ ] Mesaj başına `AnimationController` → giriş animasyonlarını kaldır, hafif render kullan
-- [ ] İndirme yoklama döngüsü (`models_provider.dart`) — tamamlanınca/ dispose'da iptal et
-- [ ] Geçmiş okurken otomatik kaydırma can sıkıyor — yalnızca dibe yakınsa kaydır
-- [ ] Hata durumu (chat_screen) — sadece simge değil, hata mesajını da göster
-- [ ] Sohbet dışa aktarma — sessiz `catch (_) {}` yerine hatayı kullanıcıya bildir
-- [ ] Model durdurma düğmeleri — API çağrısını `await` ile bekle, hata durumunda UI'ı geri al
-
-### Task.md Birikmiş İşler (P1)
-- [ ] SSE stream token yeniden oluşturma optimizasyonu (Bölüm 2)
-- [ ] Incognito toggle yarış durumu düzeltmesi (Bölüm 3)
-- [ ] Sohbet değişiminde stream iptali (Bölüm 4)
-- [ ] Hata mesajlarını snackbar olarak göster, sohbet balonu olarak değil (Bölüm 5)
-- [ ] Çift mesaj gönderme önleme (Bölüm 6)
-- [ ] Zaman damgası: `HH:mm` → `HH:mm:ss` (Bölüm 7)
-- [ ] Sohbet dışa aktarma: dosya seçici kaydet dialogu (Bölüm 8)
-- [ ] Silme onayları: sohbet, hafıza, model (Bölüm 9)
-- [ ] Boş mesaj kontrolü (Bölüm 10)
-
-### Kalite İyileştirmeleri (P1)
-- [ ] Arka plan hataları arayüze ulaşsın — event polling veya SSE durum endpoint'i uygula
-- [ ] Oturum `save()` hataları — sessiz yok saymak yerine çağrı sahibine ilet
-- [ ] `loadAll()` — atlanan bozuk oturum dosyalarını logla
-- [ ] SSE `[DONE]` — `finish_reason` alanı ekle
-- [ ] İndirme hatasında geçici dosya sızıntısı — `.downloading` dosyalarını her zaman temizle
-- [ ] `extractTarGzToBin` dosya tanıtıcı sızıntısı — `defer out.Close()` kullan
-- [ ] `nvidia-smi` hata yönetimi — başarısızlığı tespit et ve kullanıcıyı uyar
-- [ ] `killByPort` `lsof`/`fuser` bağımlılığı — PID'leri doğrudan takip et
-- [ ] Sabit kodlanmış Windows ses GUID'i — aygıtları numaralandır veya varsayılanı kullan
-- [ ] Linux GPU algılaması — `lspci` yedeği ekle
+Gizlilik odaklı, yerel öncelikli bir yapay zeka asistanı. Tüm özellikler temel prensibe bağlı kalır: **verileriniz izniniz olmadan cihazınızdan asla çıkmaz.**
 
 ---
 
-## v4.0.0 — "Yenileme"
+## ✅ v3.1.0 — "Hafıza" (Mevcut Sürüm)
 
-**Tema:** Mimari iyileştirmeler, UI yenilemesi, eksik frontend özellikleri.
+**Tema:** Kalıcı bellek, yerel embedding, çapraz-mod mimari ve WhatsApp temeli.
 
-### Depolama Dönüşümü
-- [x] Hafıza deposu SQLite + sqlite-vec'e taşındı ✅
-- [ ] Mevcut `.gob` verileri için tek seferlik migrasyon script'i (isteğe bağlı)
-- [x] vec0 ANN indeksi eklendi ✅
-- [ ] `LoadCache` için tembel yükleme / sayfalama
+### WhatsApp Entegrasyonu
+- WhatsApp Web QR eşleştirme ile tam bağlantı
+- Yerel mesaj deposu (izole SQLite veritabanı)
+- Kişi adı çözümleme (rehber senkronizasyonu, push isimleri, telefon numarası yedeği)
+- Çift yönlü mesajlaşma (kişi adı gösterimi ile)
+- **Beyaz liste tabanlı dosya aktarımı:** güvenilir kişiler beyaz listedeki dizinlerden dosya talep edebilir; otomatik yetkilendirme kontrolü
+- Agent araç seti: `SendWhatsApp`, `SearchWhatsApp`, `LatestWhatsAppChats`, `GetWhatsAppMessages`
+- İzole WhatsApp sohbet modu (bağımsız executor ve tool kaydı)
 
-### UI/UV Yenilemesi
-- [ ] Özel tasarım sistemi (marka kimliği, Material ötesi özel ikonlar)
-- [ ] Kullanıcı mesajlarında Markdown gösterimi (şu an düz `SelectableText`)
-- [ ] Model mağazası görsel yenileme (kapak resimleri, rozetler, arama)
-- [ ] Akıcı, performanslı animasyonlar (mesaj başına AnimationController yok)
-- [ ] Bulut Senkronizasyonu ayarları UI sekmesi (backend hazır, frontend "yapım aşamasında")
-- [ ] Uzaktan Erişim ayarları UI sekmesi (backend hazır, frontend "yapım aşamasında")
-- [ ] Sohbet girişinde `/` komutu için görsel ipucu
-- [ ] Sistem prompt düzenleyici — backend değişiklikleriyle canlı senkronizasyon
+### RAG Bellek
+- SQLite + sqlite-vec vektör deposu (ANN indeksi)
+- Yerel embedding modeli (nomic-embed-text-v1.5, 768 boyut)
+- Çapraz-mod mimari: harici API sohbeti + yerel embedding bağımsız çalışır
+- Engel olmayan goroutine tabanlı başlatma
 
-### Güvenilirlik
-- [ ] Başlangıçta yapılandırma doğrulama — sessiz varsayılanlar yerine yüksek sesle hata ver
-- [ ] Hafıza deposu / oturum başlatma hataları — bloke eden hata göster, sessiz devre dışı bırakma
-- [ ] Olay sistemi: arka plan durumu için SSE endpoint'i uygula
-- [ ] `os.Executable()` hata yönetimi
-- [ ] STT başlangıç: kayıt öncesi bağımlılıkları doğrula (`ffmpeg`, `sox`, `arecord`)
+### Yedekleme ve Kurtarma
+- Tam dışa/içe aktarma için `.memo` zip formatı (oturumlar, yapılandırma, sağlayıcılar, orkestra, bellek, WhatsApp verisi)
+- Çift aşamalı onay ile tüm verileri silme
+- Yapılandırma dosyası silme işleminden etkilenmez
 
----
-
-## v5.0.0 — "Gelişim"
-
-**Tema:** Orijinal vizyondan yeni yetenekler, ekosistem ve otonomi özellikleri.
-
-### Gelişmiş Zeka
-- [ ] Sorgu karmaşıklığına göre dinamik Top-K seçimi
-- [ ] Oturumlar arası akıl yürütme — sohbet oturumları arasında bilgi sentezi
-- [ ] Bilgi Grafiği — anılar arasındaki anlamsal bağlantıları görselleştir (Obsidian tarzı grafik görünümü)
-- [ ] İkincil model ile gelişmiş yeniden sıralama
-
-### Ekosistem
-- [ ] Eklenti sistemi — özel araçlar için Go eklentileri (web arama, hesap makinesi, kod çalıştırma)
-- [ ] Mobil yardımcı uygulama — yerel belleğe güvenli tünel
-- [ ] İçe/Dışa aktarma sihirbazları — Notion, Obsidian, Google Keep
-
-### Otonomi
-- [ ] Otonom hafıza budama — gereksiz/çelişkili anıların yapay zeka ile temizlenmesi
-- [ ] Kendini geliştiren sistem prompt'u — kullanıcı geri bildirimlerinden öğrenir
-- [ ] Çoklu kullanıcı desteği ile izolasyon
+### Platform ve Kararlılık
+- Windows derleme desteği (Inno Setup kurulum)
+- `LoadExtension .so.so` çift-eklenti hatası düzeltildi
+- `sqrtf` sembol çözümlemesi (patchelf)
+- Port güvenliği ve süreç grubu temizliği (`Setpgid`)
+- Lisans: GNU AGPL v3
 
 ---
 
-> **Lejant:** P0 = v3.0 için olmazsa olmaz, P1 = v3.0 için olmalı  
-> **Tam sorun referansı:** [BILINEN_SORUNLAR.md](./BILINEN_SORUNLAR.md) (55 sorun, 7 kritik, 15 yüksek, 13 orta, 20 düşük, 8 bilgi)
+## 🚧 v3.2.0 — "Zamanlanmış Zeka"
+
+**Tema:** Zaman bilincine sahip planlama, takvim senkronizasyonu, ses kontrolü ve akıllı ev entegrasyonu ile proaktif otomasyon.
+
+### Takvim ve Hatırlatıcılar
+- Herhangi bir sohbet bağlamından doğal dil ile tarih/saat ayrıştırma (WhatsApp dahil)
+- Konuşmadan otomatik takvim etkinliği oluşturma: _"Memo, kanka yarın saat 10'da halısaha gel"_ → etkinlik + hatırlatıcı
+- Masaüstü ve mobil bildirimler
+- Tekrarlanan etkinlikler, alarmlar ve erteleme
+- Çift yönlü takvim senkronizasyonu (isteğe bağlı CalDAV)
+
+### Zamanlanmış Görevler (Cron Motoru)
+- Doğal konuşma ile tekrarlı görev tanımlama: _"Memo, her gün saat 10'da günaydın yaz"_
+- WhatsApp mesajları, sistem komutları veya özel agent eylemleri zamanlama
+- Ayarlar panelinde görsel cron düzenleyici
+- Uygulama yeniden başlatmalarında görev kalıcılığı
+- Yürütme günlükleri ve hata bildirimleri
+
+### Sesli Kontrol
+- Yapılandırılabilir hassasiyette uyandırma sözcüğü algılama ("Hey Memo")
+- whisper.cpp ile yerel konuşmadan metne (isteğe bağlı bulut yedeği)
+- Tam sesli komut yürütme: _"Memo, Buğra'ya mesaj gönder, akşam yemeğe geliyorum de"_
+- Metinden konuşmaya yanıt çıktısı
+- Google Asistan tarzı eller-serbest etkileşim modeli
+
+### Akıllı Ev Entegrasyonu
+- Sohbet tabanlı ev otomasyonu: _"Memo, ışıkları kapat"_
+- MQTT ve Home Assistant protokol desteği
+- Rol tabanlı erişim kontrolü ile cihaz beyaz listesi
+- Konuşma yoluyla sahne ve rutin tanımlama
+- Enerji takibi ve otomasyon tetikleyicileri
+
+---
+
+## 🚧 v3.3.0 — "Mobil Yardımcı"
+
+**Tema:** İnce mobil istemci — tüm yapay zeka işlemleri bilgisayarınızda kalır.
+
+### Mobil Uygulama
+- Flutter tabanlı mobil uygulama (Android ve iOS)
+- Masaüstü Memo örneğine güvenli tünel (LAN, Tailscale veya TLS şifreli tünel)
+- Mobilde sıfır işlem — sadece uzak görüntüleyici olarak çalışır
+- Tam özellik erişimi: sohbet, ayarlar, bellek tarama, WhatsApp kontrolü, sesli giriş
+- Uygulama erişimi için biyometrik kimlik doğrulama
+
+### Uzaktan Erişim Altyapısı
+- Tailscale-native bağlantı veya TLS + parola kimlik doğrulama
+- Uçtan uca şifreli iletişim kanalı
+- Masaüstünden mobile bildirim aktarımı
+- Otomatik yeniden bağlanma ile bağlantı durumu göstergesi
+
+---
+
+## 🚧 v3.4.0 — "Kişisel Model"
+
+**Tema:** Nihai sıçrama — kendi konuşmalarınız üzerinde özel bir model ince ayarı. Vektör deposunu tamamen ortadan kaldırır.
+
+### Kişisel Fine-Tuning Motoru
+- Tüm konuşmaları yapılandırılmış JSONL veri setine dönüştüren otomatik boru hattı
+- Veri seti temizliği: yineleme silme, kalite filtreleme, gizlilik temizliği
+- **Kişisel konuşma verileriyle 1.2B–3B parametreli kompakt model eğitimi**
+- Model vektör belleğin yerini tamamen alır — embedding sunucusu gerekmez, sıfır gecikme
+- 1.2B model, embedding + LLM boru hattından hem hız hem alaka açısından daha iyi performans gösterir
+- Model, kullanıcının iletişim stilini, tercihlerini, kişilerini ve rutinlerini içselleştirir
+- Periyodik artımlı fine-tuning ile model kullanıcıyla birlikte evrilir
+
+### Veri Seti Altyapısı
+- Gizlilik odaklı mimari: veri seti yerel makineden asla çıkmaz
+- Düşük değerli konuşmaların otomatik kalite puanlaması ve filtrelenmesi
+- Topluluk model katkıları için isteğe bağlı anonimleştirilmiş dışa aktarma
+- Artımlı eğitim desteği — tam yeniden eğitim gerektirmez
+- Veri seti sürümleme ve geri alma yeteneği
+
+### Toplantı Zekası
+- Zoom/Google Meet toplantılarına otomatik bot ile katılım
+- Konuşmacı ayırma ile gerçek zamanlı transkripsiyon
+- Yapay zeka destekli toplantı özeti ve anahtar nokta çıkarma
+- Otomatik aksiyon maddesi tespiti → takvim kaydı oluşturma
+- Geçmiş toplantı sorgulama: _"Memo, bugünkü toplantıda ne konuştuk?"_
+
+### Gelişmiş Agent Yetenekleri
+- Karmaşık isteklerden çok adımlı plan oluşturma
+- Toplu izin onay iş akışı
+- Hata durumunda geri almalı adım adım yürütme
+- Diff önizleme ve geri alma ile satır tabanlı dosya düzenleme
+- SSRF korumalı web kazıma
+- Git entegrasyonu (status, diff, commit, push)
+- Oturum tabanlı bağlam yönetimi (cwd, env, history)
+- Sandbox'ta betik yürütme (bash, Python, Node.js)
+
+---
+
+## 🔮 v3.5.0 — "Ekosistem"
+
+**Tema:** Eklenti mimarisi, bilgi grafiği, çoklu kullanıcı desteği ve kendini geliştirme.
+
+### Eklenti Sistemi
+- Özel araçlar ve veri kaynakları için Go eklenti arayüzü
+- Kod imzalı topluluk eklenti kayıt defteri
+- Kaynak limitli sandbox'ta eklenti yürütme
+
+### Bilgi Grafiği
+- Bellek girişleri üzerinde Obsidian tarzı grafik görselleştirme
+- Konuşmalar arasında anlamsal ilişki keşfi
+- Mobil ve masaüstü arayüzde etkileşimli grafik keşfi
+
+### Çoklu Kullanıcı Mimarisi
+- Kullanıcı başına ayrı model ile izole profiller
+- Açıkça yapılandırıldığında paylaşılan bağlam
+- Aile/paylaşımlı kullanım için rol tabanlı erişim kontrolü
+
+### Kendini Geliştiren Zeka
+- Kullanıcı geri bildirimlerinden otomatik sistem promptu iyileştirme
+- Proaktif öneriler için kullanım deseni analizi
+- Otonom bellek budama ve birleştirme
+
+### İçe Aktarma ve Birlikte Çalışabilirlik
+- Notion, Obsidian, Google Keep için veri içe aktarma sihirbazları
+- Standart formatlara dışa aktarma (Markdown, JSON, PDF)
+- Anonimleştirilmiş kişisel modeller için topluluk model merkezi
+
+---
+
+## Temel İlkeler
+
+| İlke | Açıklama |
+|------|----------|
+| **Yerel öncelikli** | Her özellik çevrimdışı çalışır. Bulut bağımlılığı yoktur. |
+| **Gizlilik tasarım gereği** | Veriler, siz açıkça izin vermediğiniz sürece cihazınızdan çıkmaz. |
+| **Kullanıcı sahipliği** | Verilerinizin, modelinizin ve ince ayarınızın kontrolü sizdedir. |
+| **Aşamalı karmaşıklık** | Özellikler, asistanla birlikte büyüdükçe kendini gösterir. |
+| **Açık kaynak** | AGPL v3 — inceleyin, değiştirin, yeniden dağıtın. |
+
+---
+
+> **Lejant:** ✅ Yayınlandı | 🚧 Geliştirme Aşamasında | 🔮 Gelecek  
+> **Güncel sürüm:** v3.1.0-beta  
+> **Depo:** [github.com/BugraAkdemir/memo](https://github.com/BugraAkdemir/memo)

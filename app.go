@@ -2985,7 +2985,7 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 				if err != nil || info.IsDir() {
 					return err
 				}
-				rel, _ := filepath.Rel(filepath.Dir(src), path)
+				rel, _ := filepath.Rel(src, path)
 				w, err := zw.Create(filepath.Join(name, rel))
 				if err != nil {
 					return err
@@ -3036,18 +3036,21 @@ func (a *App) ImportData(data []byte) error {
 		return fmt.Errorf("import: invalid zip: %w", err)
 	}
 
-	extractDir := "data"
-
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
 		}
 
-		// Determine target path (strip any leading dirs, write under data/)
-		target := filepath.Join(extractDir, f.Name)
+		// Map zip entry paths to filesystem paths
+		target := f.Name
+		// sessions/* -> data/sessions/*
+		if strings.HasPrefix(target, "sessions/") {
+			target = filepath.Join("data", target)
+		}
 
 		// Safety: prevent path traversal
-		if !strings.HasPrefix(filepath.Clean(target), filepath.Clean(extractDir)) {
+		clean := filepath.Clean(target)
+		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
 			continue
 		}
 

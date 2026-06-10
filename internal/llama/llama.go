@@ -76,7 +76,7 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	} else if mode == "amd" {
 		s.gpu.Type = GPUTypeAMD
 	}
-	
+
 	// Apply overrides
 	actualGPU := gpuLayers
 	if actualGPU < 0 {
@@ -104,7 +104,6 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		"--model", modelPath,
 		"--port", fmt.Sprintf("%d", actualPort),
 		"--host", "127.0.0.1",
-		"--n-gpu-layers", fmt.Sprintf("%d", actualGPU),
 		"--ctx-size", fmt.Sprintf("%d", actualCtx),
 		"--parallel", "1",
 	}
@@ -123,32 +122,23 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	s.waitDone = make(chan struct{})
 
 	// Add binary directory to the shared library search path.
-	// Windows uses PATH for DLL discovery; Linux/macOS use LD_LIBRARY_PATH.
+	// Windows uses PATH for DLL discovery.
+	// On Linux/macOS: the bundled binary has its RUNPATH set at build time.
 	binDir := filepath.Dir(bin)
 	absBinDir, err := filepath.Abs(binDir)
 	if err == nil {
 		binDir = absBinDir
 	}
-	
+
 	env := os.Environ()
 	if runtime.GOOS == "windows" {
-		for i, e := range env {
-			if strings.HasPrefix(strings.ToUpper(e), "PATH=") {
-				env[i] = e[:5] + binDir + ";" + e[5:]
-				break
-			}
-		}
-		s.cmd.Env = env
+		env = withPrependedEnvPath(env, "PATH", binDir, true)
 	} else {
-		ldPath := binDir
-		for _, e := range env {
-			if strings.HasPrefix(e, "LD_LIBRARY_PATH=") {
-				ldPath = binDir + ":" + strings.TrimPrefix(e, "LD_LIBRARY_PATH=")
-				break
-			}
-		}
-		s.cmd.Env = append(env, "LD_LIBRARY_PATH="+ldPath)
+		// The bundled binary has RUNPATH=/tmp/llama.cpp/build/bin: which
+		// doesn't exist after deployment. Put the real directory first.
+		env = withPrependedEnvPath(env, "LD_LIBRARY_PATH", binDir, false)
 	}
+	s.cmd.Env = env
 
 	// Pdeathsig: child receives SIGKILL when parent dies (even force-kill).
 	// NOTE: Setpgid must NOT be set — it clears Pdeathsig on Linux.
@@ -482,6 +472,61 @@ func llamaServerBinary() string {
 		return "llama-server.exe"
 	}
 	return "llama-server"
+}
+
+func withPrependedEnvPath(env []string, key, dir string, caseInsensitive bool) []string {
+	out := make([]string, 0, len(env)+1)
+	found := false
+
+	for _, entry := range env {
+		entryKey, entryValue, ok := strings.Cut(entry, "=")
+		if !ok {
+			out = append(out, entry)
+			continue
+		}
+
+		matches := entryKey == key
+		if caseInsensitive {
+			matches = strings.EqualFold(entryKey, key)
+		}
+		if !matches {
+			out = append(out, entry)
+			continue
+		}
+
+		if found {
+			continue
+		}
+		out = append(out, entryKey+"="+prependPathValue(entryValue, dir))
+		found = true
+	}
+
+	if !found {
+		out = append(out, key+"="+dir)
+	}
+	return out
+}
+
+func prependPathValue(current, dir string) string {
+	if current == "" {
+		return dir
+	}
+
+	parts := []string{dir}
+	for _, part := range filepath.SplitList(current) {
+		if part == "" || samePathEntry(part, dir) {
+			continue
+		}
+		parts = append(parts, part)
+	}
+	return strings.Join(parts, string(os.PathListSeparator))
+}
+
+func samePathEntry(a, b string) bool {
+	if runtime.GOOS == "windows" {
+		return strings.EqualFold(filepath.Clean(a), filepath.Clean(b))
+	}
+	return filepath.Clean(a) == filepath.Clean(b)
 }
 
 // extractModelName gets a clean name from a model file path.

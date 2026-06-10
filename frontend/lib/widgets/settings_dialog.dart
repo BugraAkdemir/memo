@@ -20,7 +20,7 @@ import 'agent/permission_history.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
-   SettingsDialog({super.key});
+  SettingsDialog({super.key});
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
@@ -65,24 +65,26 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
             // ─── Header ─────────────────────────────────
             Container(
               height: 56,
-              padding:  EdgeInsets.symmetric(horizontal: 24),
+              padding: EdgeInsets.symmetric(horizontal: 24),
               decoration: BoxDecoration(
                 color: MemoTheme.of(context).bgPanel,
-                border: Border(bottom: BorderSide(color: MemoTheme.of(context).borderSoft)),
+                border: Border(
+                  bottom: BorderSide(color: MemoTheme.of(context).borderSoft),
+                ),
               ),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
                   Text(
                     L10n.t('settings'),
-                    style:  TextStyle(
+                    style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: MemoTheme.of(context).textMain,
                     ),
                   ),
                   IconButton(
-                    icon:  Icon(Icons.close, size: 20),
+                    icon: Icon(Icons.close, size: 20),
                     onPressed: () => Navigator.of(context).pop(),
                     color: MemoTheme.of(context).textDim,
                   ),
@@ -98,20 +100,24 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   Container(
                     width: 200,
                     decoration: BoxDecoration(
-                      color: MemoTheme.of(context).bgPanel.withValues(alpha: 0.5),
+                      color: MemoTheme.of(
+                        context,
+                      ).bgPanel.withValues(alpha: 0.5),
                       border: Border(
-                        right: BorderSide(color: MemoTheme.of(context).borderSoft),
+                        right: BorderSide(
+                          color: MemoTheme.of(context).borderSoft,
+                        ),
                       ),
                     ),
                     child: ListView.builder(
-                      padding:  EdgeInsets.symmetric(vertical: 12),
+                      padding: EdgeInsets.symmetric(vertical: 12),
                       itemCount: tabs.length,
                       itemBuilder: (context, index) {
                         final isActive = _activeTab == index;
                         return InkWell(
                           onTap: () => setState(() => _activeTab = index),
                           child: Container(
-                            padding:  EdgeInsets.symmetric(
+                            padding: EdgeInsets.symmetric(
                               horizontal: 24,
                               vertical: 12,
                             ),
@@ -165,29 +171,29 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   Widget _buildTabContent(int index) {
     switch (index) {
       case 0:
-        return  _GeneralTab();
+        return _GeneralTab();
       case 1:
-        return  _SystemPromptTab();
+        return _SystemPromptTab();
       case 2:
-        return  _IncognitoPromptTab();
+        return _IncognitoPromptTab();
       case 3:
-        return  _MemoryTab();
+        return _MemoryTab();
       case 4:
-        return  _ProvidersTab();
+        return _ProvidersTab();
       case 5:
-        return  _OrchestraTab();
+        return _OrchestraTab();
       case 6:
-        return  _AgentPermissionsTab();
+        return _AgentPermissionsTab();
       case 7:
-        return  _GpuConfigTab();
+        return _GpuConfigTab();
       case 8:
-        return  _BackupRestoreTab();
+        return _BackupRestoreTab();
       case 9:
-        return  _RemoteAccessTab();
+        return _RemoteAccessTab();
       case 10:
-        return  _AboutTab();
+        return _AboutTab();
       default:
-        return  SizedBox.shrink();
+        return SizedBox.shrink();
     }
   }
 }
@@ -240,10 +246,7 @@ class _ProvidersTab extends ConsumerWidget {
         const SizedBox(height: 8),
         Text(
           'Configure external LLM providers (OpenAI, Claude, Gemini, etc.)',
-          style: TextStyle(
-            color: MemoTheme.of(context).textDim,
-            fontSize: 13,
-          ),
+          style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         const SizedBox(height: 24),
 
@@ -366,8 +369,11 @@ class _ProviderCard extends ConsumerWidget {
                       if (p.connected)
                         const Row(
                           children: [
-                            Icon(Icons.check_circle,
-                                size: 14, color: Colors.green),
+                            Icon(
+                              Icons.check_circle,
+                              size: 14,
+                              color: Colors.green,
+                            ),
                             SizedBox(width: 4),
                             Text(
                               'Connected',
@@ -419,9 +425,9 @@ class _ProviderCard extends ConsumerWidget {
                         .deleteProvider(p.type);
                   }
                 } else if (value == 'toggle') {
-                  await ref.read(providerListProvider.notifier).updateProvider(
-                    p.copyWith(enabled: !p.enabled),
-                  );
+                  await ref
+                      .read(providerListProvider.notifier)
+                      .updateProvider(p.copyWith(enabled: !p.enabled));
                 }
               },
               itemBuilder: (_) => [
@@ -485,7 +491,11 @@ class _OrchestraTab extends ConsumerWidget {
             const SizedBox(width: 12),
             Text(
               'Orchestra Mode',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w600,
+                color: MemoTheme.of(context).textMain,
+              ),
             ),
           ],
         ),
@@ -494,7 +504,10 @@ class _OrchestraTab extends ConsumerWidget {
           'Birden çok modeli aynı anda bir ekip olarak çalıştır. '
           'Bir Şef (Chief) model kullanıcının isteğini analiz eder, '
           'alt görevlere böler ve her görevi uzmanlaşmış modele atar.',
-          style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textSecondary),
+          style: TextStyle(
+            fontSize: 13,
+            color: MemoTheme.of(context).textSecondary,
+          ),
         ),
         const SizedBox(height: 24),
 
@@ -503,22 +516,32 @@ class _OrchestraTab extends ConsumerWidget {
           data: (config) => Container(
             padding: const EdgeInsets.all(16),
             decoration: BoxDecoration(
-              color: config.enabled ? MemoTheme.accent.withValues(alpha: 0.1) : MemoTheme.of(context).bgPanel,
+              color: config.enabled
+                  ? MemoTheme.accent.withValues(alpha: 0.1)
+                  : MemoTheme.of(context).bgPanel,
               borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
               border: Border.all(
-                color: config.enabled ? MemoTheme.accent.withValues(alpha: 0.3) : MemoTheme.of(context).borderSoft,
+                color: config.enabled
+                    ? MemoTheme.accent.withValues(alpha: 0.3)
+                    : MemoTheme.of(context).borderSoft,
               ),
             ),
             child: Row(
               children: [
                 Container(
-                  width: 40, height: 40,
+                  width: 40,
+                  height: 40,
                   decoration: BoxDecoration(
-                    color: config.enabled ? MemoTheme.accent.withValues(alpha: 0.2) : MemoTheme.of(context).bgElement,
+                    color: config.enabled
+                        ? MemoTheme.accent.withValues(alpha: 0.2)
+                        : MemoTheme.of(context).bgElement,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                   ),
                   child: Center(
-                    child: Text(config.enabled ? '🎵' : '⏸️', style: const TextStyle(fontSize: 20)),
+                    child: Text(
+                      config.enabled ? '🎵' : '⏸️',
+                      style: const TextStyle(fontSize: 20),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -527,15 +550,24 @@ class _OrchestraTab extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        config.enabled ? 'Orchestra Mode Aktif' : 'Orchestra Mode Pasif',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain),
+                        config.enabled
+                            ? 'Orchestra Mode Aktif'
+                            : 'Orchestra Mode Pasif',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          color: MemoTheme.of(context).textMain,
+                        ),
                       ),
                       const SizedBox(height: 4),
                       Text(
                         config.enabled
                             ? 'Şef: ${config.chiefType}/${config.chiefModel} • ${config.roles.where((r) => r.enabled).length} rol aktif'
                             : 'Aktifleştirmek için aç/kapa yap',
-                        style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: MemoTheme.of(context).textDim,
+                        ),
                       ),
                     ],
                   ),
@@ -545,7 +577,8 @@ class _OrchestraTab extends ConsumerWidget {
                   scale: 0.8,
                   child: Switch(
                     value: config.enabled,
-                    onChanged: (v) => ref.read(orchestraConfigProvider.notifier).toggle(v),
+                    onChanged: (v) =>
+                        ref.read(orchestraConfigProvider.notifier).toggle(v),
                     activeColor: MemoTheme.accent,
                   ),
                 ),
@@ -578,40 +611,62 @@ class _OrchestraTab extends ConsumerWidget {
               children: [
                 Text(
                   '🎭 Aktif Roller',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain),
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w600,
+                    color: MemoTheme.of(context).textMain,
+                  ),
                 ),
                 const SizedBox(height: 12),
-                ...config.roles.where((r) => r.enabled).map((role) => Container(
-                  margin: const EdgeInsets.only(bottom: 8),
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: MemoTheme.of(context).bgPanel,
-                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                    border: Border.all(color: MemoTheme.of(context).borderSoft),
-                  ),
-                  child: Row(
-                    children: [
-                      Text(OrchestraDefaults.iconForRole(role.role), style: const TextStyle(fontSize: 16)),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                ...config.roles
+                    .where((r) => r.enabled)
+                    .map(
+                      (role) => Container(
+                        margin: const EdgeInsets.only(bottom: 8),
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: MemoTheme.of(context).bgPanel,
+                          borderRadius: BorderRadius.circular(
+                            MemoTheme.radiusMd,
+                          ),
+                          border: Border.all(
+                            color: MemoTheme.of(context).borderSoft,
+                          ),
+                        ),
+                        child: Row(
                           children: [
                             Text(
-                              OrchestraDefaults.labelForRole(role.role),
-                              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: MemoTheme.of(context).textMain),
+                              OrchestraDefaults.iconForRole(role.role),
+                              style: const TextStyle(fontSize: 16),
                             ),
-                            const SizedBox(height: 2),
-                            Text(
-                              '${providerIcon(role.modelType)} ${role.modelType} → ${role.modelName}',
-                              style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    OrchestraDefaults.labelForRole(role.role),
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: FontWeight.w500,
+                                      color: MemoTheme.of(context).textMain,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    '${providerIcon(role.modelType)} ${role.modelType} → ${role.modelName}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: MemoTheme.of(context).textDim,
+                                    ),
+                                  ),
+                                ],
+                              ),
                             ),
                           ],
                         ),
                       ),
-                    ],
-                  ),
-                )),
+                    ),
               ],
             );
           },
@@ -624,7 +679,7 @@ class _OrchestraTab extends ConsumerWidget {
 }
 
 class _GeneralTab extends ConsumerWidget {
-   _GeneralTab();
+  _GeneralTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -632,7 +687,7 @@ class _GeneralTab extends ConsumerWidget {
     final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
 
     return ListView(
-      padding:  EdgeInsets.all(32),
+      padding: EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('general'),
@@ -641,20 +696,20 @@ class _GeneralTab extends ConsumerWidget {
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
         // Language Selection
         Text(
           L10n.t('language'),
-          style:  TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Container(
-          padding:  EdgeInsets.symmetric(horizontal: 16),
+          padding: EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -665,7 +720,10 @@ class _GeneralTab extends ConsumerWidget {
               value: locale,
               isExpanded: true,
               dropdownColor: MemoTheme.of(context).bgPanel,
-              icon:  Icon(Icons.arrow_drop_down, color: MemoTheme.of(context).textDim),
+              icon: Icon(
+                Icons.arrow_drop_down,
+                color: MemoTheme.of(context).textDim,
+              ),
               items: const [
                 DropdownMenuItem(value: MemoLocale.tr, child: Text('Türkçe')),
                 DropdownMenuItem(value: MemoLocale.en, child: Text('English')),
@@ -679,20 +737,20 @@ class _GeneralTab extends ConsumerWidget {
           ),
         ),
 
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
         // Theme Selection
         Text(
           'Tema',
-          style:  TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Container(
-          padding:  EdgeInsets.symmetric(horizontal: 16),
+          padding: EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -703,9 +761,15 @@ class _GeneralTab extends ConsumerWidget {
               value: ref.watch(themeModeProvider),
               isExpanded: true,
               dropdownColor: MemoTheme.of(context).bgPanel,
-              icon:  Icon(Icons.arrow_drop_down, color: MemoTheme.of(context).textDim),
+              icon: Icon(
+                Icons.arrow_drop_down,
+                color: MemoTheme.of(context).textDim,
+              ),
               items: const [
-                DropdownMenuItem(value: 'system', child: Text('Sistem Varsayılanı')),
+                DropdownMenuItem(
+                  value: 'system',
+                  child: Text('Sistem Varsayılanı'),
+                ),
                 DropdownMenuItem(value: 'light', child: Text('Açık')),
                 DropdownMenuItem(value: 'dark', child: Text('Koyu')),
               ],
@@ -718,20 +782,20 @@ class _GeneralTab extends ConsumerWidget {
           ),
         ),
 
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
         // Streaming Toggle
         Text(
           'Anlık Gösterim',
-          style:  TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Container(
-          padding:  EdgeInsets.all(16),
+          padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -746,12 +810,12 @@ class _GeneralTab extends ConsumerWidget {
                   children: [
                     Text(
                       ref.watch(streamingEnabledProvider) ? 'Açık' : 'Kapalı',
-                      style:  TextStyle(
+                      style: TextStyle(
                         fontSize: 14,
                         color: MemoTheme.of(context).textMain,
                       ),
                     ),
-                     SizedBox(height: 4),
+                    SizedBox(height: 4),
                     Text(
                       'Kapalıyken yanıt tamamlandığında tek seferde gösterilir.',
                       style: TextStyle(
@@ -773,27 +837,27 @@ class _GeneralTab extends ConsumerWidget {
           ),
         ),
 
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
         // Memory Toggle
         Text(
           'Hafıza',
-          style:  TextStyle(
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Container(
-          padding:  EdgeInsets.all(16),
+          padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
             border: Border.all(color: MemoTheme.of(context).borderSoft),
           ),
           child: memoryEnabledAsync.when(
-            loading: () =>  SizedBox(
+            loading: () => SizedBox(
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
@@ -807,12 +871,12 @@ class _GeneralTab extends ConsumerWidget {
                     children: [
                       Text(
                         enabled ? 'Hafıza Aktif' : 'Hafıza Kapalı',
-                        style:  TextStyle(
+                        style: TextStyle(
                           fontSize: 14,
                           color: MemoTheme.of(context).textMain,
                         ),
                       ),
-                       SizedBox(height: 4),
+                      SizedBox(height: 4),
                       Text(
                         'Kapalıyken hafıza sorgulanmaz ve yeni anı kaydedilmez. '
                         'Model %100 ham performansla çalışır.',
@@ -836,20 +900,124 @@ class _GeneralTab extends ConsumerWidget {
           ),
         ),
 
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
-        // Reset Setup Wizard
+        // ─── Beta Features ──────────────────────────────────────
+        const SizedBox(height: 32),
         Text(
-          'Kurulum',
-          style:  TextStyle(
+          'Beta Özellikler',
+          style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        const SizedBox(height: 12),
         Container(
-          padding:  EdgeInsets.all(16),
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      ref.watch(betaFeaturesProvider)
+                          ? 'Beta Açık'
+                          : 'Beta Kapalı',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: MemoTheme.of(context).textMain,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'Beta özellikler (WhatsApp entegrasyonu vb.) açık/kapalı.',
+                      style: TextStyle(
+                        fontSize: 12,
+                        color: MemoTheme.of(context).textDim,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: ref.watch(betaFeaturesProvider),
+                activeColor: MemoTheme.accent,
+                onChanged: (value) async {
+                  // If turning ON, show a warning dialog first
+                  if (value) {
+                    final confirmed = await showDialog<bool>(
+                      context: context,
+                      builder: (ctx) => AlertDialog(
+                        title: const Row(
+                          children: [
+                            Icon(
+                              Icons.warning_amber_rounded,
+                              color: Colors.orange,
+                              size: 24,
+                            ),
+                            SizedBox(width: 12),
+                            Text('Beta Özellikler'),
+                          ],
+                        ),
+                        content: const Text(
+                          'Beta özellikler henüz tam kararlı değildir.\n\n'
+                          '• WhatsApp entegrasyonu deneysel aşamadadır\n'
+                          '• Beklenmeyen hatalarla karşılaşabilirsiniz\n'
+                          '• Veri kaybı yaşanabilir\n'
+                          '• Bazı özellikler beklendiği gibi çalışmayabilir\n\n'
+                          'Devam etmek istediğinize emin misiniz?',
+                        ),
+                        actions: [
+                          TextButton(
+                            onPressed: () => Navigator.of(ctx).pop(false),
+                            child: const Text('İptal'),
+                          ),
+                          ElevatedButton(
+                            onPressed: () => Navigator.of(ctx).pop(true),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: Colors.orange,
+                              foregroundColor: Colors.white,
+                            ),
+                            child: const Text('Evet, Aç'),
+                          ),
+                        ],
+                      ),
+                    );
+                    if (confirmed == true) {
+                      ref.read(betaFeaturesProvider.notifier).toggle();
+                    }
+                  } else {
+                    // Turning OFF — no warning needed
+                    ref.read(betaFeaturesProvider.notifier).toggle();
+                  }
+                },
+              ),
+            ],
+          ),
+        ),
+
+        const SizedBox(height: 32),
+
+        // Reset Setup Wizard
+        Text(
+          'Kurulum',
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
+          ),
+        ),
+        SizedBox(height: 12),
+        Container(
+          padding: EdgeInsets.all(16),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -860,7 +1028,10 @@ class _GeneralTab extends ConsumerWidget {
             children: [
               Text(
                 'Kurulumu Sıfırla',
-                style:  TextStyle(fontSize: 14, color: MemoTheme.of(context).textMain),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: MemoTheme.of(context).textMain,
+                ),
               ),
               OutlinedButton(
                 onPressed: () {
@@ -878,7 +1049,7 @@ class _GeneralTab extends ConsumerWidget {
 }
 
 class _SystemPromptTab extends ConsumerStatefulWidget {
-   _SystemPromptTab();
+  _SystemPromptTab();
 
   @override
   ConsumerState<_SystemPromptTab> createState() => _SystemPromptTabState();
@@ -898,7 +1069,7 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
     final asyncPrompt = ref.watch(systemPromptProvider);
 
     return ListView(
-      padding:  EdgeInsets.all(32),
+      padding: EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('system_prompt'),
@@ -907,15 +1078,15 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Text(
           'Modelin temel davranışını, kimliğini ve sınırlarını belirleyen ana yönerge.',
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-         SizedBox(height: 24),
+        SizedBox(height: 24),
 
         asyncPrompt.when(
-          loading: () =>  Center(child: CircularProgressIndicator()),
+          loading: () => Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (prompt) {
             if (_controller.text != prompt) {
@@ -927,13 +1098,10 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                 TextField(
                   controller: _controller,
                   maxLines: 12,
-                  style:  TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'JetBrains Mono',
-                  ),
-                  decoration:  InputDecoration(alignLabelWithHint: true),
+                  style: TextStyle(fontSize: 13, fontFamily: 'JetBrains Mono'),
+                  decoration: InputDecoration(alignLabelWithHint: true),
                 ),
-                 SizedBox(height: 16),
+                SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -943,7 +1111,7 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
                       },
                       child: Text(L10n.t('reset_prompt')),
                     ),
-                     SizedBox(width: 12),
+                    SizedBox(width: 12),
                     ElevatedButton(
                       onPressed: () {
                         ref
@@ -967,7 +1135,7 @@ class _SystemPromptTabState extends ConsumerState<_SystemPromptTab> {
 }
 
 class _IncognitoPromptTab extends ConsumerStatefulWidget {
-   _IncognitoPromptTab();
+  _IncognitoPromptTab();
 
   @override
   ConsumerState<_IncognitoPromptTab> createState() =>
@@ -989,7 +1157,7 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
     final asyncPrompt = ref.watch(incognitoPromptProvider);
 
     return ListView(
-      padding:  EdgeInsets.all(32),
+      padding: EdgeInsets.all(32),
       children: [
         Text(
           L10n.t('incognito_prompt'),
@@ -998,18 +1166,19 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Text(
           'Gizli moddayken modelin hafızaya erişmeden nasıl davranması gerektiğini belirten yönerge.',
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-         SizedBox(height: 24),
+        SizedBox(height: 24),
 
         asyncPrompt.when(
-          loading: () =>  Center(child: CircularProgressIndicator()),
+          loading: () => Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (prompt) {
-            if (!_initialized) {
+            // Always update controller text; _initialized prevents overwriting user edits on rebuild
+            if (!_initialized || _controller.text.isEmpty) {
               _controller.text = prompt;
               _initialized = true;
             }
@@ -1019,12 +1188,9 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
                 TextField(
                   controller: _controller,
                   maxLines: 12,
-                  style:  TextStyle(
-                    fontSize: 13,
-                    fontFamily: 'JetBrains Mono',
-                  ),
+                  style: TextStyle(fontSize: 13, fontFamily: 'JetBrains Mono'),
                 ),
-                 SizedBox(height: 16),
+                SizedBox(height: 16),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
@@ -1051,7 +1217,7 @@ class _IncognitoPromptTabState extends ConsumerState<_IncognitoPromptTab> {
 }
 
 class _MemoryTab extends ConsumerStatefulWidget {
-   _MemoryTab();
+  _MemoryTab();
 
   @override
   ConsumerState<_MemoryTab> createState() => _MemoryTabState();
@@ -1080,7 +1246,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
       children: [
         Expanded(
           child: ListView(
-            padding:  EdgeInsets.all(32),
+            padding: EdgeInsets.all(32),
             children: [
               Text(
                 L10n.t('memory'),
@@ -1089,14 +1255,17 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   color: MemoTheme.of(context).textMain,
                 ),
               ),
-               SizedBox(height: 8),
+              SizedBox(height: 8),
               Text(
                 L10n.t('memory_advanced_hint'),
-                style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
+                style: TextStyle(
+                  color: MemoTheme.of(context).textDim,
+                  fontSize: 13,
+                ),
               ),
-               SizedBox(height: 20),
+              SizedBox(height: 20),
               settingsAsync.when(
-                loading: () =>  Center(child: CircularProgressIndicator()),
+                loading: () => Center(child: CircularProgressIndicator()),
                 error: (e, _) => Text('${L10n.t('error')}: $e'),
                 data: (settings) {
                   if (!_settingsInitialized) {
@@ -1107,24 +1276,26 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   }
 
                   return Container(
-                    padding:  EdgeInsets.all(16),
+                    padding: EdgeInsets.all(16),
                     decoration: BoxDecoration(
                       color: MemoTheme.of(context).bgPanel,
                       borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                      border: Border.all(color: MemoTheme.of(context).borderSoft),
+                      border: Border.all(
+                        color: MemoTheme.of(context).borderSoft,
+                      ),
                     ),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         Text(
                           L10n.t('memory_retrieval_settings'),
-                          style:  TextStyle(
+                          style: TextStyle(
                             fontSize: 14,
                             fontWeight: FontWeight.w600,
                             color: MemoTheme.of(context).textMain,
                           ),
                         ),
-                         SizedBox(height: 14),
+                        SizedBox(height: 14),
                         _MemorySettingField(
                           label: L10n.t('memory_top_k'),
                           controller: _topKController,
@@ -1133,7 +1304,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             FilteringTextInputFormatter.digitsOnly,
                           ],
                         ),
-                         SizedBox(height: 12),
+                        SizedBox(height: 12),
                         _MemorySettingField(
                           label: L10n.t('memory_min_similarity'),
                           controller: _minSimilarityController,
@@ -1144,7 +1315,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             ),
                           ],
                         ),
-                         SizedBox(height: 14),
+                        SizedBox(height: 14),
                         Row(
                           mainAxisAlignment: MainAxisAlignment.end,
                           children: [
@@ -1200,7 +1371,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                                       }
                                     },
                               child: _savingSettings
-                                  ?  SizedBox(
+                                  ? SizedBox(
                                       width: 14,
                                       height: 14,
                                       child: CircularProgressIndicator(
@@ -1216,7 +1387,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   );
                 },
               ),
-               SizedBox(height: 28),
+              SizedBox(height: 28),
               Row(
                 mainAxisAlignment: MainAxisAlignment.spaceBetween,
                 children: [
@@ -1228,19 +1399,19 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                     ),
                   ),
                   OutlinedButton.icon(
-                    icon:  Icon(Icons.delete_sweep, size: 18),
+                    icon: Icon(Icons.delete_sweep, size: 18),
                     label: Text(L10n.t('clear_memory')),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: MemoTheme.red,
-                      side:  BorderSide(color: MemoTheme.red),
+                      side: BorderSide(color: MemoTheme.red),
                     ),
                     onPressed: () async {
                       final confirmed = await showDialog<bool>(
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: MemoTheme.of(context).bgPanel,
-                          title:  Text('Hafızayı Temizle'),
-                          content:  Text(
+                          title: Text('Hafızayı Temizle'),
+                          content: Text(
                             'Tüm hafıza dosyaları silinecek. Emin misin?',
                           ),
                           actions: [
@@ -1253,7 +1424,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                               style: TextButton.styleFrom(
                                 foregroundColor: MemoTheme.red,
                               ),
-                              child:  Text('Temizle'),
+                              child: Text('Temizle'),
                             ),
                           ],
                         ),
@@ -1265,18 +1436,20 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                   ),
                 ],
               ),
-               SizedBox(height: 12),
+              SizedBox(height: 12),
               memoryAsync.when(
-                loading: () =>  Center(child: CircularProgressIndicator()),
+                loading: () => Center(child: CircularProgressIndicator()),
                 error: (e, _) => Center(child: Text('${L10n.t('error')}: $e')),
                 data: (files) {
                   if (files.isEmpty) {
                     return Padding(
-                      padding:  EdgeInsets.only(top: 40),
+                      padding: EdgeInsets.only(top: 40),
                       child: Center(
                         child: Text(
                           L10n.t('no_memory_files'),
-                          style: TextStyle(color: MemoTheme.of(context).textDim),
+                          style: TextStyle(
+                            color: MemoTheme.of(context).textDim,
+                          ),
                         ),
                       ),
                     );
@@ -1290,9 +1463,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             contentPadding: EdgeInsets.zero,
                             title: Text(
                               file.name,
-                              style:  TextStyle(
-                                fontWeight: FontWeight.w500,
-                              ),
+                              style: TextStyle(fontWeight: FontWeight.w500),
                             ),
                             subtitle: Text(
                               '${file.sizeKb} KB • ${file.modified}',
@@ -1302,7 +1473,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                               ),
                             ),
                             trailing: IconButton(
-                              icon:  Icon(Icons.delete_outline),
+                              icon: Icon(Icons.delete_outline),
                               color: MemoTheme.red,
                               onPressed: () {
                                 ref
@@ -1311,7 +1482,7 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                               },
                             ),
                           ),
-                           Divider(),
+                          Divider(),
                         ],
                       );
                     }).toList(),
@@ -1332,7 +1503,7 @@ class _MemorySettingField extends StatelessWidget {
   final String hint;
   final List<TextInputFormatter> inputFormatters;
 
-   _MemorySettingField({
+  _MemorySettingField({
     required this.label,
     required this.controller,
     required this.hint,
@@ -1347,7 +1518,7 @@ class _MemorySettingField extends StatelessWidget {
           width: 170,
           child: Text(
             label,
-            style:  TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
         ),
         Expanded(
@@ -1355,27 +1526,29 @@ class _MemorySettingField extends StatelessWidget {
             height: 36,
             child: TextField(
               controller: controller,
-              keyboardType:  TextInputType.numberWithOptions(
-                decimal: true,
-              ),
+              keyboardType: TextInputType.numberWithOptions(decimal: true),
               inputFormatters: inputFormatters,
-              style:  TextStyle(fontSize: 13),
+              style: TextStyle(fontSize: 13),
               decoration: InputDecoration(
                 hintText: hint,
-                contentPadding:  EdgeInsets.symmetric(horizontal: 12),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
                 filled: true,
                 fillColor: MemoTheme.of(context).bgApp,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                  borderSide: BorderSide(
+                    color: MemoTheme.of(context).borderSoft,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                  borderSide: BorderSide(
+                    color: MemoTheme.of(context).borderSoft,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide:  BorderSide(color: MemoTheme.accent),
+                  borderSide: BorderSide(color: MemoTheme.accent),
                 ),
               ),
             ),
@@ -1387,7 +1560,7 @@ class _MemorySettingField extends StatelessWidget {
 }
 
 class _BackupRestoreTab extends ConsumerStatefulWidget {
-   _BackupRestoreTab();
+  _BackupRestoreTab();
 
   @override
   ConsumerState<_BackupRestoreTab> createState() => _BackupRestoreTabState();
@@ -1424,9 +1597,9 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Dışa aktarma hatası: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Dışa aktarma hatası: $e')));
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -1456,15 +1629,19 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       }
 
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Yedek başarıyla içe aktarıldı. Uygulamayı yeniden başlatın.')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Yedek başarıyla içe aktarıldı. Uygulamayı yeniden başlatın.',
+            ),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('İçe aktarma hatası: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('İçe aktarma hatası: $e')));
       }
     } finally {
       if (mounted) setState(() => _importing = false);
@@ -1478,28 +1655,31 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
       await ref.read(apiClientProvider).wipeData();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Tüm veriler silindi. Uygulamayı yeniden başlatın.')),
+          SnackBar(
+            content: Text('Tüm veriler silindi. Uygulamayı yeniden başlatın.'),
+          ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Silme hatası: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Silme hatası: $e')));
       }
     } finally {
-      if (mounted) setState(() {
-        _wiping = false;
-        _wipeConfirm1 = false;
-        _wipeConfirm2 = false;
-      });
+      if (mounted)
+        setState(() {
+          _wiping = false;
+          _wipeConfirm1 = false;
+          _wipeConfirm2 = false;
+        });
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding:  EdgeInsets.all(32),
+      padding: EdgeInsets.all(32),
       children: [
         Text(
           'Yedekleme',
@@ -1508,75 +1688,113 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Text(
           'Tüm sohbet geçmişi, yapılandırma ve WhatsApp mesajlarınızı .memo dosyasına aktarın veya geri yükleyin.',
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-         SizedBox(height: 24),
+        SizedBox(height: 24),
 
         // Include models toggle
         Card(
           child: SwitchListTile(
             title: Text('Modelleri dahil et'),
-            subtitle: Text('GGUF modelleri (büyük boyut)',
-              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+            subtitle: Text(
+              'GGUF modelleri (büyük boyut)',
+              style: TextStyle(
+                fontSize: 12,
+                color: MemoTheme.of(context).textDim,
+              ),
+            ),
             value: _includeModels,
             onChanged: (v) => setState(() => _includeModels = v),
-            secondary:  Icon(Icons.model_training, color: MemoTheme.accent),
+            secondary: Icon(Icons.model_training, color: MemoTheme.accent),
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
 
         // Export
         Card(
           child: ListTile(
-            leading:  Icon(Icons.file_upload_outlined, color: MemoTheme.accent),
+            leading: Icon(Icons.file_upload_outlined, color: MemoTheme.accent),
             title: Text('Dışa Aktar'),
-            subtitle: Text('Tüm verileri .memo dosyasına kaydeder',
-              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+            subtitle: Text(
+              'Tüm verileri .memo dosyasına kaydeder',
+              style: TextStyle(
+                fontSize: 12,
+                color: MemoTheme.of(context).textDim,
+              ),
+            ),
             trailing: _exporting
-                ?  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                :  Icon(Icons.download, color: MemoTheme.of(context).textDim),
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(Icons.download, color: MemoTheme.of(context).textDim),
             onTap: _exporting ? null : _export,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
 
         // Import
         Card(
           child: ListTile(
-            leading:  Icon(Icons.file_download_outlined, color: MemoTheme.warmBrown),
+            leading: Icon(
+              Icons.file_download_outlined,
+              color: MemoTheme.warmBrown,
+            ),
             title: Text('İçe Aktar'),
-            subtitle: Text('.memo dosyasından verileri geri yükler',
-              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+            subtitle: Text(
+              '.memo dosyasından verileri geri yükler',
+              style: TextStyle(
+                fontSize: 12,
+                color: MemoTheme.of(context).textDim,
+              ),
+            ),
             trailing: _importing
-                ?  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                :  Icon(Icons.upload, color: MemoTheme.of(context).textDim),
+                ? SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : Icon(Icons.upload, color: MemoTheme.of(context).textDim),
             onTap: _importing ? null : _import,
           ),
         ),
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
         // Wipe All Data
         Text(
           'Tüm Verileri Sil',
-          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: MemoTheme.warmBrown),
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 16,
+            color: MemoTheme.warmBrown,
+          ),
         ),
-         SizedBox(height: 8),
+        SizedBox(height: 8),
         Text(
           'Sohbet geçmişi, WhatsApp mesajları, hafıza ve yapılandırma kalıcı olarak silinir.',
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         if (!_wipeConfirm1)
           Card(
             child: ListTile(
-              leading:  Icon(Icons.delete_forever, color: MemoTheme.warmBrown),
-              title: Text('Tüm Verileri Sil', style: TextStyle(color: MemoTheme.warmBrown)),
-              subtitle: Text('Bu işlem geri alınamaz',
-                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
-              trailing:  Icon(Icons.warning_amber, color: MemoTheme.warmBrown),
+              leading: Icon(Icons.delete_forever, color: MemoTheme.warmBrown),
+              title: Text(
+                'Tüm Verileri Sil',
+                style: TextStyle(color: MemoTheme.warmBrown),
+              ),
+              subtitle: Text(
+                'Bu işlem geri alınamaz',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: MemoTheme.of(context).textDim,
+                ),
+              ),
+              trailing: Icon(Icons.warning_amber, color: MemoTheme.warmBrown),
               onTap: () => setState(() => _wipeConfirm1 = true),
             ),
           ),
@@ -1584,15 +1802,26 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
           Card(
             color: MemoTheme.warmBrown.withValues(alpha: 0.08),
             child: ListTile(
-              leading:  Icon(Icons.delete_forever, color: Colors.redAccent),
-              title: Text('Emin misiniz?', style: TextStyle(color: Colors.redAccent)),
-              subtitle: Text('Tüm verileriniz silinecek. Onaylamak için tekrar tıklayın.',
-                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+              leading: Icon(Icons.delete_forever, color: Colors.redAccent),
+              title: Text(
+                'Emin misiniz?',
+                style: TextStyle(color: Colors.redAccent),
+              ),
+              subtitle: Text(
+                'Tüm verileriniz silinecek. Onaylamak için tekrar tıklayın.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: MemoTheme.of(context).textDim,
+                ),
+              ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   IconButton(
-                    icon: Icon(Icons.close, color: MemoTheme.of(context).textDim),
+                    icon: Icon(
+                      Icons.close,
+                      color: MemoTheme.of(context).textDim,
+                    ),
                     onPressed: () => setState(() {
                       _wipeConfirm1 = false;
                       _wipeConfirm2 = false;
@@ -1609,12 +1838,26 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
             color: Colors.red.shade50,
             child: ListTile(
               leading: _wiping
-                  ?  SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                  :  Icon(Icons.delete_sweep, color: Colors.red),
-              title: Text('Sil',
-                style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
-              subtitle: Text('Bu işlem geri alınamaz. Tüm veriler silinecek.',
-                style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+                  ? SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : Icon(Icons.delete_sweep, color: Colors.red),
+              title: Text(
+                'Sil',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              subtitle: Text(
+                'Bu işlem geri alınamaz. Tüm veriler silinecek.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: MemoTheme.of(context).textDim,
+                ),
+              ),
               trailing: IconButton(
                 icon: Icon(Icons.close, color: MemoTheme.of(context).textDim),
                 onPressed: () => setState(() {
@@ -1631,7 +1874,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
 }
 
 class _RemoteAccessTab extends ConsumerWidget {
-   _RemoteAccessTab();
+  _RemoteAccessTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -1639,20 +1882,24 @@ class _RemoteAccessTab extends ConsumerWidget {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(Icons.wifi_tethering, size: 48, color: MemoTheme.of(context).textDim),
-           SizedBox(height: 16),
+          Icon(
+            Icons.wifi_tethering,
+            size: 48,
+            color: MemoTheme.of(context).textDim,
+          ),
+          SizedBox(height: 16),
           Text(
             L10n.t('remote_access'),
-            style: Theme.of(
-              context,
-            ).textTheme.titleLarge?.copyWith(color: MemoTheme.of(context).textMuted),
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: MemoTheme.of(context).textMuted,
+            ),
           ),
-           SizedBox(height: 8),
+          SizedBox(height: 8),
           Text(
             'Bu özellik v3.0.0\'da devre dışı bırakılmıştır. Gelecek bir sürümde tekrar eklenecek.',
-            style: Theme.of(
-              context,
-            ).textTheme.bodyMedium?.copyWith(color: MemoTheme.of(context).textDim),
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: MemoTheme.of(context).textDim,
+            ),
             textAlign: TextAlign.center,
           ),
         ],
@@ -1662,14 +1909,14 @@ class _RemoteAccessTab extends ConsumerWidget {
 }
 
 class _AboutTab extends ConsumerWidget {
-   _AboutTab();
+  _AboutTab();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final versionAsync = ref.watch(appVersionProvider);
 
     return ListView(
-      padding:  EdgeInsets.all(32),
+      padding: EdgeInsets.all(32),
       children: [
         Row(
           children: [
@@ -1681,7 +1928,7 @@ class _AboutTab extends ConsumerWidget {
                 borderRadius: BorderRadius.circular(16),
                 border: Border.all(color: MemoTheme.accent, width: 2),
               ),
-              child:  Center(
+              child: Center(
                 child: Text(
                   'M',
                   style: TextStyle(
@@ -1692,7 +1939,7 @@ class _AboutTab extends ConsumerWidget {
                 ),
               ),
             ),
-             SizedBox(width: 24),
+            SizedBox(width: 24),
             Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -1704,21 +1951,23 @@ class _AboutTab extends ConsumerWidget {
                   ),
                 ),
                 versionAsync.when(
-                  loading: () =>  Text('...'),
-                  error: (_, _) =>  SizedBox(),
-                  data: (v) =>
-                      Text(v, style: TextStyle(color: MemoTheme.of(context).textDim)),
+                  loading: () => Text('...'),
+                  error: (_, _) => SizedBox(),
+                  data: (v) => Text(
+                    v,
+                    style: TextStyle(color: MemoTheme.of(context).textDim),
+                  ),
                 ),
               ],
             ),
           ],
         ),
-         SizedBox(height: 32),
+        SizedBox(height: 32),
         Text(
           L10n.t('about_vision'),
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-         SizedBox(height: 8),
+        SizedBox(height: 8),
         Text(
           'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı bir yapay zeka asistanıdır. '
           'Konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazır. '
@@ -1728,23 +1977,23 @@ class _AboutTab extends ConsumerWidget {
           'WhatsApp entegrasyonu, RAG hafıza ve E2E şifreli bulut senkronizasyonu destekler.',
           style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
-         SizedBox(height: 24),
+        SizedBox(height: 24),
         Text(
           'Lisans',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-         SizedBox(height: 8),
+        SizedBox(height: 8),
         Text(
           'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile lisanslanmıştır. '
           'Geliştirici: Buğra Akdemir. Kaynak kod: github.com/BugraAkdemir/memo',
           style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
-         SizedBox(height: 24),
+        SizedBox(height: 24),
         Text(
           'Teknolojiler',
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
-         SizedBox(height: 8),
+        SizedBox(height: 8),
         Text(
           'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vektör arama) | '
           'whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
@@ -1756,7 +2005,7 @@ class _AboutTab extends ConsumerWidget {
 }
 
 class _GpuConfigTab extends ConsumerStatefulWidget {
-   _GpuConfigTab();
+  _GpuConfigTab();
 
   @override
   ConsumerState<_GpuConfigTab> createState() => _GpuConfigTabState();
@@ -1797,7 +2046,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
     final gpuName = gpuAsync.whenOrNull(data: (g) => g.name) ?? '';
 
     return ListView(
-      padding:  EdgeInsets.all(32),
+      padding: EdgeInsets.all(32),
       children: [
         Text(
           'Ekran Kartı (GPU) / Llama Motoru',
@@ -1806,15 +2055,15 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
             color: MemoTheme.of(context).textMain,
           ),
         ),
-         SizedBox(height: 12),
+        SizedBox(height: 12),
         Text(
           'Yapay zeka modellerini çalıştıran Llama.cpp motorunun kurulum ve ekran kartı ayarları.',
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
-         SizedBox(height: 32),
+        SizedBox(height: 32),
 
         Container(
-          padding:  EdgeInsets.all(20),
+          padding: EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -1831,21 +2080,26 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                   color: MemoTheme.of(context).textMain,
                 ),
               ),
-               SizedBox(height: 12),
+              SizedBox(height: 12),
               Row(
                 children: [
                   Icon(
                     hasGpu ? Icons.memory : Icons.developer_board,
                     size: 20,
-                    color: hasGpu ? MemoTheme.accent : MemoTheme.of(context).textDim,
+                    color: hasGpu
+                        ? MemoTheme.accent
+                        : MemoTheme.of(context).textDim,
                   ),
-                   SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Expanded(
                     child: Text(
                       hasGpu
                           ? 'Algılanan Ekran Kartı: $gpuName'
                           : 'Sadece İşlemci (CPU) algılandı veya GPU desteklenmiyor.',
-                      style: TextStyle(fontSize: 14, color: MemoTheme.of(context).textMain),
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: MemoTheme.of(context).textMain,
+                      ),
                     ),
                   ),
                 ],
@@ -1853,10 +2107,10 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
             ],
           ),
         ),
-         SizedBox(height: 24),
+        SizedBox(height: 24),
 
         installedAsync.when(
-          loading: () =>  Center(child: CircularProgressIndicator()),
+          loading: () => Center(child: CircularProgressIndicator()),
           error: (e, _) => Text('${L10n.t('error')}: $e'),
           data: (installed) {
             final llamaSettings = ref.watch(llamaSettingsProvider);
@@ -1864,7 +2118,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
               children: [
                 // Engine Mode Selection
                 Container(
-                  padding:  EdgeInsets.all(20),
+                  padding: EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -1873,7 +2127,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                       Text(
+                      Text(
                         'Motor Modu',
                         style: TextStyle(
                           fontSize: 14,
@@ -1881,9 +2135,9 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           color: MemoTheme.of(context).textMain,
                         ),
                       ),
-                       SizedBox(height: 12),
+                      SizedBox(height: 12),
                       llamaSettings.when(
-                        loading: () =>  CircularProgressIndicator(),
+                        loading: () => CircularProgressIndicator(),
                         error: (e, _) => Text('Hata: $e'),
                         data: (settings) => DropdownButton<String>(
                           value: settings.engineMode,
@@ -1911,11 +2165,19 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                             if (mode != null) {
                               final cur = llamaSettings.valueOrNull;
                               if (cur != null) {
-                                ref.read(llamaSettingsProvider.notifier).save(LlamaSettings(
-                                  engineMode: mode, binaryPath: cur.binaryPath,
-                                  port: cur.port, ctxSize: cur.ctxSize,
-                                  temperature: cur.temperature, topP: cur.topP, maxTokens: cur.maxTokens,
-                                ));
+                                ref
+                                    .read(llamaSettingsProvider.notifier)
+                                    .save(
+                                      LlamaSettings(
+                                        engineMode: mode,
+                                        binaryPath: cur.binaryPath,
+                                        port: cur.port,
+                                        ctxSize: cur.ctxSize,
+                                        temperature: cur.temperature,
+                                        topP: cur.topP,
+                                        maxTokens: cur.maxTokens,
+                                      ),
+                                    );
                               }
                             }
                           },
@@ -1924,12 +2186,12 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                     ],
                   ),
                 ),
-                 SizedBox(height: 24),
+                SizedBox(height: 24),
                 _ModelParametersCard(),
-                 SizedBox(height: 24),
+                SizedBox(height: 24),
                 // Installation Status Card
                 Container(
-                  padding:  EdgeInsets.all(20),
+                  padding: EdgeInsets.all(20),
                   decoration: BoxDecoration(
                     color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -1947,7 +2209,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                             color: installed ? MemoTheme.green : Colors.orange,
                             size: 24,
                           ),
-                           SizedBox(width: 12),
+                          SizedBox(width: 12),
                           Text(
                             installed
                                 ? 'Llama Motoru Yüklü'
@@ -1960,7 +2222,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           ),
                         ],
                       ),
-                       SizedBox(height: 12),
+                      SizedBox(height: 12),
                       Text(
                         installed
                             ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
@@ -1970,13 +2232,13 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                           fontSize: 13,
                         ),
                       ),
-                       SizedBox(height: 20),
+                      SizedBox(height: 20),
                       if (_error.isNotEmpty)
                         Padding(
-                          padding:  EdgeInsets.only(bottom: 16),
+                          padding: EdgeInsets.only(bottom: 16),
                           child: Text(
                             _error,
-                            style:  TextStyle(
+                            style: TextStyle(
                               color: MemoTheme.red,
                               fontSize: 13,
                             ),
@@ -1992,7 +2254,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                             foregroundColor: MemoTheme.of(context).textInverse,
                           ),
                           child: _installing
-                              ?  SizedBox(
+                              ? SizedBox(
                                   width: 20,
                                   height: 20,
                                   child: CircularProgressIndicator(
@@ -2006,9 +2268,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                                       : (hasGpu
                                             ? 'Ekran Kartı İçin Kur (Önerilen)'
                                             : 'Motoru İndir ve Kur'),
-                                  style:  TextStyle(
-                                    fontWeight: FontWeight.w600,
-                                  ),
+                                  style: TextStyle(fontWeight: FontWeight.w600),
                                 ),
                         ),
                       ),
@@ -2041,7 +2301,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
   Widget build(BuildContext context) {
     final llamaSettings = ref.watch(llamaSettingsProvider);
     return llamaSettings.when(
-      loading: () =>  SizedBox.shrink(),
+      loading: () => SizedBox.shrink(),
       error: (e, _) => Text('Hata: $e'),
       data: (settings) {
         if (!_loaded) {
@@ -2052,7 +2312,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
           _loaded = true;
         }
         return Container(
-          padding:  EdgeInsets.all(20),
+          padding: EdgeInsets.all(20),
           decoration: BoxDecoration(
             color: MemoTheme.of(context).bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -2061,59 +2321,77 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-               Text('Model Parametreleri',
+              Text(
+                'Model Parametreleri',
                 style: TextStyle(
-                  fontSize: 14, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                  color: MemoTheme.of(context).textMain,
                 ),
               ),
-               SizedBox(height: 16),
+              SizedBox(height: 16),
               _ParamSlider(
-                label: 'Temperature', value: _temperature,
-                min: 0.0, max: 2.0, divisions: 40,
+                label: 'Temperature',
+                value: _temperature,
+                min: 0.0,
+                max: 2.0,
+                divisions: 40,
                 displayValue: _temperature.toStringAsFixed(2),
                 onChanged: (v) => setState(() => _temperature = v),
               ),
-               SizedBox(height: 12),
+              SizedBox(height: 12),
               _ParamSlider(
-                label: 'Top P', value: _topP,
-                min: 0.0, max: 1.0, divisions: 20,
+                label: 'Top P',
+                value: _topP,
+                min: 0.0,
+                max: 1.0,
+                divisions: 20,
                 displayValue: _topP.toStringAsFixed(2),
                 onChanged: (v) => setState(() => _topP = v),
               ),
-               SizedBox(height: 12),
+              SizedBox(height: 12),
               _ParamIntInput(
-                label: 'Max Tokens', value: _maxTokens,
-                min: 0, max: 65536, step: 256,
+                label: 'Max Tokens',
+                value: _maxTokens,
+                min: 0,
+                max: 65536,
+                step: 256,
                 displaySuffix: '0 = limitsiz',
                 onChanged: (v) => setState(() => _maxTokens = v),
               ),
-               SizedBox(height: 12),
+              SizedBox(height: 12),
               _ParamIntInput(
-                label: 'Context Size', value: _ctxSize,
-                min: 512, max: 65536, step: 512,
+                label: 'Context Size',
+                value: _ctxSize,
+                min: 512,
+                max: 65536,
+                step: 512,
                 onChanged: (v) => setState(() => _ctxSize = v),
               ),
-               SizedBox(height: 16),
+              SizedBox(height: 16),
               SizedBox(
-                width: double.infinity, height: 44,
+                width: double.infinity,
+                height: 44,
                 child: ElevatedButton(
                   onPressed: () async {
-                    await ref.read(llamaSettingsProvider.notifier).save(
-                      LlamaSettings(
-                        engineMode: settings.engineMode,
-                        binaryPath: settings.binaryPath,
-                        port: settings.port,
-                        ctxSize: _ctxSize,
-                        temperature: _temperature,
-                        topP: _topP,
-                        maxTokens: _maxTokens,
-                      ),
-                    );
+                    await ref
+                        .read(llamaSettingsProvider.notifier)
+                        .save(
+                          LlamaSettings(
+                            engineMode: settings.engineMode,
+                            binaryPath: settings.binaryPath,
+                            port: settings.port,
+                            ctxSize: _ctxSize,
+                            temperature: _temperature,
+                            topP: _topP,
+                            maxTokens: _maxTokens,
+                          ),
+                        );
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content:  Text('Parametreler kaydedildi.'),
-                          duration:  Duration(seconds: 2),
+                          content: Text('Parametreler kaydedildi.'),
+                          duration: Duration(seconds: 2),
                           backgroundColor: MemoTheme.green,
                         ),
                       );
@@ -2123,7 +2401,10 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                     backgroundColor: MemoTheme.accent,
                     foregroundColor: MemoTheme.of(context).textInverse,
                   ),
-                  child:  Text('Uygula', style: TextStyle(fontWeight: FontWeight.w600)),
+                  child: Text(
+                    'Uygula',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
                 ),
               ),
             ],
@@ -2143,10 +2424,14 @@ class _ParamSlider extends StatelessWidget {
   final String displayValue;
   final ValueChanged<double> onChanged;
 
-   _ParamSlider({
-    required this.label, required this.value,
-    required this.min, required this.max, required this.divisions,
-    required this.displayValue, required this.onChanged,
+  _ParamSlider({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.divisions,
+    required this.displayValue,
+    required this.onChanged,
   });
 
   @override
@@ -2157,12 +2442,27 @@ class _ParamSlider extends StatelessWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            Text(label, style:  TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain)),
-            Text(displayValue, style:  TextStyle(fontSize: 13, color: MemoTheme.accent, fontWeight: FontWeight.w600)),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 13,
+                color: MemoTheme.of(context).textMain,
+              ),
+            ),
+            Text(
+              displayValue,
+              style: TextStyle(
+                fontSize: 13,
+                color: MemoTheme.accent,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ],
         ),
         Slider(
-          value: value, min: min, max: max,
+          value: value,
+          min: min,
+          max: max,
           divisions: divisions,
           activeColor: MemoTheme.accent,
           inactiveColor: MemoTheme.of(context).borderSoft,
@@ -2182,10 +2482,14 @@ class _ParamIntInput extends StatefulWidget {
   final String? displaySuffix;
   final ValueChanged<int> onChanged;
 
-   _ParamIntInput({
-    required this.label, required this.value,
-    required this.min, required this.max, required this.step,
-    this.displaySuffix, required this.onChanged,
+  _ParamIntInput({
+    required this.label,
+    required this.value,
+    required this.min,
+    required this.max,
+    required this.step,
+    this.displaySuffix,
+    required this.onChanged,
   });
 
   @override
@@ -2199,7 +2503,9 @@ class _ParamIntInputState extends State<_ParamIntInput> {
   void initState() {
     super.initState();
     _controller = TextEditingController(
-      text: widget.value == 0 && widget.min == 0 ? '0' : widget.value.toString(),
+      text: widget.value == 0 && widget.min == 0
+          ? '0'
+          : widget.value.toString(),
     );
   }
 
@@ -2207,7 +2513,9 @@ class _ParamIntInputState extends State<_ParamIntInput> {
   void didUpdateWidget(_ParamIntInput old) {
     super.didUpdateWidget(old);
     if (widget.value != old.value) {
-      _controller.text = widget.value == 0 && widget.min == 0 ? '0' : widget.value.toString();
+      _controller.text = widget.value == 0 && widget.min == 0
+          ? '0'
+          : widget.value.toString();
     }
   }
 
@@ -2223,17 +2531,25 @@ class _ParamIntInputState extends State<_ParamIntInput> {
       children: [
         SizedBox(
           width: 140,
-          child: Text(widget.label, style:  TextStyle(fontSize: 13, color: MemoTheme.of(context).textMain)),
+          child: Text(
+            widget.label,
+            style: TextStyle(
+              fontSize: 13,
+              color: MemoTheme.of(context).textMain,
+            ),
+          ),
         ),
         SizedBox(
           width: 120,
           child: TextField(
             controller: _controller,
             keyboardType: TextInputType.number,
-            decoration:  InputDecoration(
+            decoration: InputDecoration(
               isDense: true,
               contentPadding: EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-              border: OutlineInputBorder(borderRadius: BorderRadius.all(Radius.circular(4))),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.all(Radius.circular(4)),
+              ),
             ),
             onChanged: (v) {
               final parsed = int.tryParse(v);
@@ -2244,8 +2560,14 @@ class _ParamIntInputState extends State<_ParamIntInput> {
           ),
         ),
         if (widget.displaySuffix != null) ...[
-           SizedBox(width: 8),
-          Text(widget.displaySuffix!, style:  TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+          SizedBox(width: 8),
+          Text(
+            widget.displaySuffix!,
+            style: TextStyle(
+              fontSize: 11,
+              color: MemoTheme.of(context).textDim,
+            ),
+          ),
         ],
       ],
     );

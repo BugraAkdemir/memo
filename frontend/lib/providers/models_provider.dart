@@ -32,19 +32,25 @@ class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
 
 // ─── Model Status ───────────────────────────────────────────────
 
-final modelStatusProvider = FutureProvider<ServerStatus>((ref) async {
-  try {
-    return await ref.read(apiClientProvider).getModelStatus();
-  } catch (_) {
-    return const ServerStatus();
+final modelStatusProvider = StreamProvider<ServerStatus>((ref) async* {
+  while (true) {
+    try {
+      yield await ref.read(apiClientProvider).getModelStatus();
+    } catch (_) {
+      yield const ServerStatus();
+    }
+    await Future.delayed(const Duration(seconds: 5));
   }
 });
 
-final embeddingStatusProvider = FutureProvider<ServerStatus>((ref) async {
-  try {
-    return await ref.read(apiClientProvider).getEmbeddingStatus();
-  } catch (_) {
-    return const ServerStatus();
+final embeddingStatusProvider = StreamProvider<ServerStatus>((ref) async* {
+  while (true) {
+    try {
+      yield await ref.read(apiClientProvider).getEmbeddingStatus();
+    } catch (_) {
+      yield const ServerStatus();
+    }
+    await Future.delayed(const Duration(seconds: 5));
   }
 });
 
@@ -67,12 +73,10 @@ final downloadProgressProvider = StreamProvider<DownloadProgress>((ref) async* {
     try {
       final progress = await api.getDownloadProgress();
       yield progress;
-      if (!progress.active) break; // stop polling when idle/complete
-      await Future.delayed(const Duration(seconds: 1));
     } catch (_) {
       yield const DownloadProgress();
-      break; // stop polling on error
     }
+    await Future.delayed(const Duration(seconds: 1));
   }
 });
 

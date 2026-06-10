@@ -6,6 +6,7 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/settings_provider.dart';
 import '../providers/version_provider.dart';
+import '../providers/whatsapp_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
@@ -29,7 +30,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   @override
   Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
+    final betaEnabled = ref.watch(betaFeaturesProvider);
     L10n.setLocale(locale);
+
+    // If beta is disabled and user is on WhatsApp tab, redirect to chat
+    if (!betaEnabled && _currentIndex == 3) {
+      _currentIndex = 0;
+    }
 
     return Scaffold(
       backgroundColor: MemoTheme.of(context).bgApp,
@@ -45,7 +52,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                     ChatScreen(key: ValueKey('chat_$locale')),
                     const AgentScreen(),
                     ModelStoreScreen(key: ValueKey('models_$locale')),
-                    WhatsAppScreen(),
+                    if (betaEnabled)
+                      WhatsAppScreen()
+                    else
+                      const SizedBox.shrink(),
                   ],
                 ),
               ),
@@ -56,6 +66,23 @@ class _AppShellState extends ConsumerState<AppShell> {
           const VersionBanner(),
         ],
       ),
+    );
+  }
+
+  Widget _buildWhatsAppTab() {
+    final betaEnabled = ref.watch(betaFeaturesProvider);
+    if (!betaEnabled) return const SizedBox.shrink();
+    return Column(
+      children: [
+        const SizedBox(height: 8),
+        _NavRailButton(
+          icon: Icons.message_outlined,
+          activeIcon: Icons.message,
+          label: 'WhatsApp',
+          isActive: _currentIndex == 3,
+          onTap: () => setState(() => _currentIndex = 3),
+        ),
+      ],
     );
   }
 
@@ -126,16 +153,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 2),
           ),
 
-          SizedBox(height: 8),
-
-          // ─── WhatsApp Tab ────────────────────────────
-          _NavRailButton(
-            icon: Icons.message_outlined,
-            activeIcon: Icons.message,
-            label: 'WhatsApp',
-            isActive: _currentIndex == 3,
-            onTap: () => setState(() => _currentIndex = 3),
-          ),
+          // ─── WhatsApp Tab (Beta only) ─────────────────
+          _buildWhatsAppTab(),
 
           Spacer(),
 

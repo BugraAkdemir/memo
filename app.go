@@ -31,8 +31,8 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
-	"memo/internal/whatsapp"
 	"memo/internal/webserver"
+	"memo/internal/whatsapp"
 )
 
 //go:embed binaries/*
@@ -153,17 +153,17 @@ type App struct {
 	webServer         *webserver.Server
 	modelStore        *modelstore.Store
 
-	waClient    *whatsapp.Client
-	waMsgStore  *whatsapp.Store
-	llamaServer       *llama.Server
-	llamaEmbedServer  *llama.Server // dedicated embedding model server
-	llamaInstaller    *llama.Installer
-	originalBaseURL   string      // stores the original API base URL before llama override
-	embeddingClient   *api.Client // separate client for embedding server
-	syncManager       *cloudsync.Manager
-	syncMu            sync.RWMutex
-	memorySaveCh      chan saveTask
-	events            *eventRing
+	waClient         *whatsapp.Client
+	waMsgStore       *whatsapp.Store
+	llamaServer      *llama.Server
+	llamaEmbedServer *llama.Server // dedicated embedding model server
+	llamaInstaller   *llama.Installer
+	originalBaseURL  string      // stores the original API base URL before llama override
+	embeddingClient  *api.Client // separate client for embedding server
+	syncManager      *cloudsync.Manager
+	syncMu           sync.RWMutex
+	memorySaveCh     chan saveTask
+	events           *eventRing
 
 	providerCfgMgr *provider.ConfigManager
 	providerRouter *provider.Router
@@ -175,8 +175,8 @@ type App struct {
 	agentEnabled  bool
 	agentMu       sync.RWMutex
 
-	whatsappChatMode   bool
-	whatsappChatMu     sync.RWMutex
+	whatsappChatMode bool
+	whatsappChatMu   sync.RWMutex
 }
 
 func NewApp() *App {
@@ -1927,6 +1927,10 @@ func (a *App) DeleteLocalModel(path string) error {
 // ─── llama-server: Lifecycle Management ──────────────────────────
 
 func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error {
+	if a.isEmbeddingModelPath(modelPath) {
+		return fmt.Errorf("embedding modeli ana sohbet modeli olarak başlatılamaz; Hafıza (Embedding) Modeli olarak başlatın")
+	}
+
 	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers, false, a.cfg.Llama.EngineMode); err != nil {
 		return err
 	}
@@ -2406,6 +2410,14 @@ func (a waToolAdapter) GetChatMessages(chatJID string, limit int) ([]tools.Whats
 // ─── Embedding Server: Lifecycle Management ─────────────────────
 
 func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
+	if a.modelStore != nil {
+		for _, m := range a.modelStore.ListLocalModels() {
+			if m.Path == modelPath && !m.IsEmbedding {
+				return fmt.Errorf("sohbet modeli Hafıza (Embedding) Modeli olarak başlatılamaz")
+			}
+		}
+	}
+
 	// Stop existing embedding server if running
 	if a.llamaEmbedServer.IsRunning() {
 		a.llamaEmbedServer.Stop()
@@ -2463,6 +2475,18 @@ func (a *App) GetEmbeddingModelStatus() llama.ServerStatus {
 	return a.llamaEmbedServer.GetStatus()
 }
 
+func (a *App) isEmbeddingModelPath(modelPath string) bool {
+	if a.modelStore == nil {
+		return false
+	}
+	for _, m := range a.modelStore.ListLocalModels() {
+		if m.Path == modelPath {
+			return m.IsEmbedding
+		}
+	}
+	return false
+}
+
 // ─── Internal Helpers ────────────────────────────────────────────
 
 // autoStartEmbeddingModel finds the first embedding model in the local model store
@@ -2496,7 +2520,7 @@ func (a *App) autoStartEmbeddingModel() {
 
 // startupEmbeddingModel ensures the embedding model is available and running.
 // It is called during startup when memory is enabled and an embedding model
-// is configured (cross-mode: API provider for chat + local embed). 
+// is configured (cross-mode: API provider for chat + local embed).
 func (a *App) startupEmbeddingModel() {
 	repoID := a.cfg.Memory.EmbeddingModelRepo
 	filename := a.cfg.Memory.EmbeddingModelFile

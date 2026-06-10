@@ -70,15 +70,17 @@ class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
   }
 
   Future<void> save(LlamaSettings settings) async {
-    await ref.read(apiClientProvider).updateLlamaConfig(
-      engineMode: settings.engineMode,
-      binaryPath: settings.binaryPath,
-      port: settings.port,
-      ctxSize: settings.ctxSize,
-      temperature: settings.temperature,
-      topP: settings.topP,
-      maxTokens: settings.maxTokens,
-    );
+    await ref
+        .read(apiClientProvider)
+        .updateLlamaConfig(
+          engineMode: settings.engineMode,
+          binaryPath: settings.binaryPath,
+          port: settings.port,
+          ctxSize: settings.ctxSize,
+          temperature: settings.temperature,
+          topP: settings.topP,
+          maxTokens: settings.maxTokens,
+        );
     state = AsyncData(settings);
   }
 }
@@ -317,6 +319,30 @@ class StreamingEnabledNotifier extends StateNotifier<bool> {
     final next = !state;
     final prefs = await SharedPreferences.getInstance();
     await prefs.setBool('memo_streaming', next);
+    state = next;
+  }
+}
+
+// ─── Beta Features ─────────────────────────────────────────────
+
+final betaFeaturesProvider = StateNotifierProvider<BetaFeaturesNotifier, bool>(
+  (ref) => BetaFeaturesNotifier(),
+);
+
+class BetaFeaturesNotifier extends StateNotifier<bool> {
+  BetaFeaturesNotifier() : super(false) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    final prefs = await SharedPreferences.getInstance();
+    state = prefs.getBool('memo_beta_features') ?? false;
+  }
+
+  Future<void> toggle() async {
+    final next = !state;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('memo_beta_features', next);
     state = next;
   }
 }

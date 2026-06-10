@@ -12,7 +12,7 @@ import '../providers/chat_provider.dart';
 class ModelConfigDialog extends ConsumerStatefulWidget {
   final LocalModel model;
 
-   ModelConfigDialog({super.key, required this.model});
+  ModelConfigDialog({super.key, required this.model});
 
   @override
   ConsumerState<ModelConfigDialog> createState() => _ModelConfigDialogState();
@@ -54,67 +54,83 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
     final ctx = int.tryParse(_ctxSizeController.text) ?? 4096;
     final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 33;
     final port = int.tryParse(_portController.text) ?? 8081;
+    final isEmbeddingModel = widget.model.isEmbedding;
 
     setState(() {
       _starting = true;
-      _statusMessage = '⏳ ${L10n.t('start_model')}...';
+      _statusMessage =
+          '⏳ ${isEmbeddingModel ? L10n.t('start_embedding') : L10n.t('start_model')}...';
     });
 
     try {
-      // 1. Start the main chat model
-      await ref.read(apiClientProvider).startModel(
-            path: widget.model.path,
-            ctxSize: ctx,
-            port: port,
-            gpuLayers: gpuLayers,
-          );
-
-      // 2. Start embedding model if selected and main model is not an embedding model
-      if (!widget.model.isEmbedding && _selectedEmbeddingPath != null) {
-        if (mounted) {
-          setState(() {
-            _statusMessage = '⏳ ${L10n.t('embedding_model')} ${L10n.t('starting')}...';
-          });
-        }
-
-        try {
-          await ref.read(apiClientProvider).startEmbeddingModel(
-                path: _selectedEmbeddingPath!,
-                gpuLayers: 0,
-              );
-          ref.invalidate(embeddingStatusProvider);
-        } catch (e) {
-          debugPrint('Embedding start error: $e');
-          // Don't block — embedding is optional, show warning
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('⚠️ ${L10n.t('embedding_model')}: $e'),
-                backgroundColor: Colors.orange.shade800,
-              ),
+      if (isEmbeddingModel) {
+        await ref
+            .read(apiClientProvider)
+            .startEmbeddingModel(path: widget.model.path, gpuLayers: gpuLayers);
+        ref.invalidate(embeddingStatusProvider);
+      } else {
+        // 1. Start the main chat model
+        await ref
+            .read(apiClientProvider)
+            .startModel(
+              path: widget.model.path,
+              ctxSize: ctx,
+              port: port,
+              gpuLayers: gpuLayers,
             );
+
+        // 2. Start embedding model if selected and main model is not an embedding model
+        if (_selectedEmbeddingPath != null) {
+          if (mounted) {
+            setState(() {
+              _statusMessage =
+                  '⏳ ${L10n.t('embedding_model')} ${L10n.t('starting')}...';
+            });
+          }
+
+          try {
+            await ref
+                .read(apiClientProvider)
+                .startEmbeddingModel(
+                  path: _selectedEmbeddingPath!,
+                  gpuLayers: 0,
+                );
+            ref.invalidate(embeddingStatusProvider);
+          } catch (e) {
+            debugPrint('Embedding start error: $e');
+            // Don't block — embedding is optional, show warning
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text('⚠️ ${L10n.t('embedding_model')}: $e'),
+                  backgroundColor: Colors.orange.shade800,
+                ),
+              );
+            }
           }
         }
-      }
 
-      // Refresh status after start
-      ref.invalidate(modelStatusProvider);
+        // Refresh status after chat model start
+        ref.invalidate(modelStatusProvider);
+      }
 
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
         messenger.showSnackBar(
           SnackBar(
-            content: Text('✅ ${widget.model.filename} ${L10n.t('starting')}...'),
+            content: Text(
+              '✅ ${widget.model.filename} ${L10n.t('starting')}...',
+            ),
             backgroundColor: Colors.green.shade800,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('${L10n.t('error')}: $e')));
       }
     } finally {
       if (mounted) {
@@ -139,7 +155,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
       ),
       child: Container(
         width: 440,
-        padding:  EdgeInsets.all(24),
+        padding: EdgeInsets.all(24),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -147,26 +163,28 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
             Text(
               L10n.t('model_config'),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: MemoTheme.of(context).textMain,
-                  ),
+                fontWeight: FontWeight.bold,
+                color: MemoTheme.of(context).textMain,
+              ),
             ),
-             SizedBox(height: 8),
+            SizedBox(height: 8),
             Text(
               widget.model.filename,
               style: TextStyle(color: MemoTheme.accent, fontSize: 13),
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
             ),
-             SizedBox(height: 24),
+            SizedBox(height: 24),
 
-            // Context Size
-            _ConfigField(
-              label: L10n.t('ctx_size'),
-              controller: _ctxSizeController,
-              hint: '4096',
-            ),
-             SizedBox(height: 16),
+            if (!isEmbeddingModel) ...[
+              // Context Size
+              _ConfigField(
+                label: L10n.t('ctx_size'),
+                controller: _ctxSizeController,
+                hint: '4096',
+              ),
+              SizedBox(height: 16),
+            ],
 
             // GPU Layers
             _ConfigField(
@@ -174,27 +192,29 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               controller: _gpuLayersController,
               hint: '33',
             ),
-             SizedBox(height: 16),
+            SizedBox(height: 16),
 
-            // Port
-            _ConfigField(
-              label: L10n.t('port'),
-              controller: _portController,
-              hint: '8081',
-            ),
+            if (!isEmbeddingModel) ...[
+              // Port
+              _ConfigField(
+                label: L10n.t('port'),
+                controller: _portController,
+                hint: '8081',
+              ),
+            ],
 
             // Embedding Model Selector — only show when starting a chat model
             if (!isEmbeddingModel) ...[
-               SizedBox(height: 20),
+              SizedBox(height: 20),
               Divider(color: MemoTheme.of(context).borderSoft),
-               SizedBox(height: 12),
+              SizedBox(height: 12),
               Row(
                 children: [
                   Icon(Icons.memory, size: 16, color: MemoTheme.accent),
-                   SizedBox(width: 8),
+                  SizedBox(width: 8),
                   Text(
                     L10n.t('embedding_model'),
-                    style:  TextStyle(
+                    style: TextStyle(
                       fontWeight: FontWeight.w600,
                       fontSize: 13,
                       color: MemoTheme.of(context).textMain,
@@ -202,7 +222,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                   ),
                 ],
               ),
-               SizedBox(height: 4),
+              SizedBox(height: 4),
               Text(
                 L10n.t('embedding_hint'),
                 style: TextStyle(
@@ -210,7 +230,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                   color: MemoTheme.of(context).textDim,
                 ),
               ),
-               SizedBox(height: 8),
+              SizedBox(height: 8),
               Container(
                 height: 40,
                 decoration: BoxDecoration(
@@ -218,13 +238,16 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   border: Border.all(color: MemoTheme.of(context).borderSoft),
                 ),
-                padding:  EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(horizontal: 12),
                 child: embeddingModels.isEmpty
                     ? Row(
                         children: [
-                          Icon(Icons.warning_amber_rounded,
-                              size: 16, color: Colors.orange.shade400),
-                           SizedBox(width: 8),
+                          Icon(
+                            Icons.warning_amber_rounded,
+                            size: 16,
+                            color: Colors.orange.shade400,
+                          ),
+                          SizedBox(width: 8),
                           Text(
                             L10n.t('no_embedding_model'),
                             style: TextStyle(
@@ -239,12 +262,14 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                           isExpanded: true,
                           dropdownColor: MemoTheme.of(context).bgPanel,
                           value: _selectedEmbeddingPath,
-                          style:  TextStyle(
+                          style: TextStyle(
                             fontSize: 12,
                             color: MemoTheme.of(context).textMain,
                           ),
-                          icon:  Icon(Icons.arrow_drop_down,
-                              color: MemoTheme.of(context).textDim),
+                          icon: Icon(
+                            Icons.arrow_drop_down,
+                            color: MemoTheme.of(context).textDim,
+                          ),
                           items: [
                             DropdownMenuItem<String>(
                               value: null,
@@ -256,14 +281,16 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                                 ),
                               ),
                             ),
-                            ...embeddingModels.map((m) => DropdownMenuItem(
-                                  value: m.path,
-                                  child: Text(
-                                    '${m.filename}  (${m.sizeFormatted})',
-                                    style:  TextStyle(fontSize: 12),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                )),
+                            ...embeddingModels.map(
+                              (m) => DropdownMenuItem(
+                                value: m.path,
+                                child: Text(
+                                  '${m.filename}  (${m.sizeFormatted})',
+                                  style: TextStyle(fontSize: 12),
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                            ),
                           ],
                           onChanged: (v) {
                             setState(() => _selectedEmbeddingPath = v);
@@ -273,15 +300,15 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               ),
             ],
 
-             SizedBox(height: 24),
+            SizedBox(height: 24),
 
             // Status message while starting
             if (_statusMessage.isNotEmpty)
               Padding(
-                padding:  EdgeInsets.only(bottom: 12),
+                padding: EdgeInsets.only(bottom: 12),
                 child: Row(
                   children: [
-                     SizedBox(
+                    SizedBox(
                       width: 14,
                       height: 14,
                       child: CircularProgressIndicator(
@@ -289,14 +316,11 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                         color: MemoTheme.accent,
                       ),
                     ),
-                     SizedBox(width: 8),
+                    SizedBox(width: 8),
                     Expanded(
                       child: Text(
                         _statusMessage,
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: MemoTheme.accent,
-                        ),
+                        style: TextStyle(fontSize: 12, color: MemoTheme.accent),
                       ),
                     ),
                   ],
@@ -308,24 +332,36 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 TextButton(
-                  onPressed: _starting ? null : () => Navigator.of(context).pop(),
-                  child: Text(L10n.t('cancel'), style: TextStyle(color: MemoTheme.of(context).textDim)),
+                  onPressed: _starting
+                      ? null
+                      : () => Navigator.of(context).pop(),
+                  child: Text(
+                    L10n.t('cancel'),
+                    style: TextStyle(color: MemoTheme.of(context).textDim),
+                  ),
                 ),
-                 SizedBox(width: 12),
+                SizedBox(width: 12),
                 ElevatedButton(
                   onPressed: _starting ? null : _startModel,
                   style: ElevatedButton.styleFrom(
                     backgroundColor: MemoTheme.accent,
                     foregroundColor: MemoTheme.of(context).textInverse,
-                    padding:  EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+                    padding: EdgeInsets.symmetric(horizontal: 24, vertical: 12),
                   ),
                   child: _starting
-                      ?  SizedBox(
+                      ? SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.of(context).textInverse),
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: MemoTheme.of(context).textInverse,
+                          ),
                         )
-                      : Text(L10n.t('start_model')),
+                      : Text(
+                          isEmbeddingModel
+                              ? L10n.t('start_embedding')
+                              : L10n.t('start_model'),
+                        ),
                 ),
               ],
             ),
@@ -341,7 +377,7 @@ class _ConfigField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
 
-   _ConfigField({
+  _ConfigField({
     required this.label,
     required this.controller,
     required this.hint,
@@ -355,7 +391,7 @@ class _ConfigField extends StatelessWidget {
           width: 120,
           child: Text(
             label,
-            style:  TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
+            style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13),
           ),
         ),
         Expanded(
@@ -365,23 +401,27 @@ class _ConfigField extends StatelessWidget {
               controller: controller,
               keyboardType: TextInputType.number,
               inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-              style:  TextStyle(fontSize: 13),
+              style: TextStyle(fontSize: 13),
               decoration: InputDecoration(
                 hintText: hint,
-                contentPadding:  EdgeInsets.symmetric(horizontal: 12),
+                contentPadding: EdgeInsets.symmetric(horizontal: 12),
                 filled: true,
                 fillColor: MemoTheme.of(context).bgPanel,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                  borderSide: BorderSide(
+                    color: MemoTheme.of(context).borderSoft,
+                  ),
                 ),
                 enabledBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                  borderSide: BorderSide(
+                    color: MemoTheme.of(context).borderSoft,
+                  ),
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  borderSide:  BorderSide(color: MemoTheme.accent),
+                  borderSide: BorderSide(color: MemoTheme.accent),
                 ),
               ),
             ),

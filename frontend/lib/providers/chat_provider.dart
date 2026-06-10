@@ -47,6 +47,11 @@ class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
     final api = ref.read(apiClientProvider);
     await api.deleteChat(id);
     await refresh();
+    // If the deleted chat was active, invalidate activeChatId so it reloads
+    final activeId = ref.read(activeChatIdProvider).valueOrNull;
+    if (activeId == id) {
+      ref.invalidate(activeChatIdProvider);
+    }
   }
 
   Future<void> rename(String id, String title) async {
@@ -99,7 +104,9 @@ final streamingContentProvider = StateProvider<String>((ref) => '');
 final streamingThinkingProvider = StateProvider<String>((ref) => '');
 
 /// Holds the agent events while streaming.
-final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>((ref) => []);
+final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>(
+  (ref) => [],
+);
 
 // ─── Messages ───────────────────────────────────────────────────
 
@@ -113,16 +120,16 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   bool _stopped = false;
   Timer? _delayedRefreshTimer;
 
-	@override
-	Future<List<ChatMessage>> build() async {
-		ref.onDispose(() => _delayedRefreshTimer?.cancel());
-		return ref.read(apiClientProvider).getMessages();
-	}
+  @override
+  Future<List<ChatMessage>> build() async {
+    ref.onDispose(() => _delayedRefreshTimer?.cancel());
+    return ref.read(apiClientProvider).getMessages();
+  }
 
-	void addMessage(ChatMessage msg) {
-		final current = [...(state.valueOrNull ?? <ChatMessage>[])];
-		state = AsyncData([...current, msg]);
-	}
+  void addMessage(ChatMessage msg) {
+    final current = [...(state.valueOrNull ?? <ChatMessage>[])];
+    state = AsyncData([...current, msg]);
+  }
 
   void stopStreaming() {
     _stopped = true;
@@ -204,31 +211,41 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       List<AgentEvent> finalAgentEvents = [];
 
       if (streamingEnabled) {
-        final stream = api.sendMessageStream(message, cancelToken: _cancelToken);
+        final stream = api.sendMessageStream(
+          message,
+          cancelToken: _cancelToken,
+        );
 
         await for (final chunk in stream) {
           if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
               final currentEvents = [...ref.read(streamingAgentEventsProvider)];
-              
+
               // Handle update or add logic (ToolExecuting vs ToolResult vs ToolError)
-              final existingIdx = currentEvents.lastIndexWhere((e) => e.toolName == ev.toolName && e.type != 'permission_request' && ev.type != 'permission_request');
-              if (existingIdx != -1 && (ev.type == 'tool_result' || ev.type == 'tool_error')) {
-                  // Replace executing state with result
-                  currentEvents[existingIdx] = ev;
+              final existingIdx = currentEvents.lastIndexWhere(
+                (e) =>
+                    e.toolName == ev.toolName &&
+                    e.type != 'permission_request' &&
+                    ev.type != 'permission_request',
+              );
+              if (existingIdx != -1 &&
+                  (ev.type == 'tool_result' || ev.type == 'tool_error')) {
+                // Replace executing state with result
+                currentEvents[existingIdx] = ev;
               } else {
-                  currentEvents.add(ev);
+                currentEvents.add(ev);
               }
-              
-              ref.read(streamingAgentEventsProvider.notifier).state = currentEvents;
+
+              ref.read(streamingAgentEventsProvider.notifier).state =
+                  currentEvents;
               finalAgentEvents = currentEvents;
 
               if (ev.type == 'permission_request') {
                 ref.read(agentEventBusProvider).emit(ev);
               }
             } catch (e) {
-               // ignore parse errors
+              // ignore parse errors
             }
           } else {
             fullReply += chunk.content;
@@ -250,7 +267,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
       // Append final assistant message to the list
       final list = [...(state.valueOrNull ?? <ChatMessage>[])];
-      if (fullReply.isNotEmpty || fullThinking.isNotEmpty || finalAgentEvents.isNotEmpty) {
+      if (fullReply.isNotEmpty ||
+          fullThinking.isNotEmpty ||
+          finalAgentEvents.isNotEmpty) {
         list.add(
           ChatMessage(
             role: 'assistant',
@@ -351,8 +370,16 @@ class IncognitoNotifier extends StateNotifier<bool> {
 /// True when a message is being sent and we're waiting for a reply.
 final isSendingProvider = StateProvider<bool>((ref) => false);
 
-// ─── Connection Status ──────────────────────────────────────────
+// ─── Connection Status (polls every 30s) ────────────────────────
 
-final connectionStatusProvider = FutureProvider<bool>((ref) async {
-  return ref.read(apiClientProvider).isAlive();
+final connectionStatusProvider = StreamProvider<bool>((ref) async* {
+  final api = ref.read(apiClientProvider);
+  while (true) {
+    try {
+      yield await api.isAlive();
+    } catch (_) {
+      yield false;
+    }
+    await Future.delayed(const Duration(seconds: 30));
+  }
 });

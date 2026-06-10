@@ -12,12 +12,13 @@ import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../providers/settings_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
-   ChatInput({super.key});
+  ChatInput({super.key});
 
   @override
   ConsumerState<ChatInput> createState() => _ChatInputState();
@@ -100,7 +101,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        setState(() => _selectedIndex = (_selectedIndex - 1 + itemCount) % itemCount);
+        setState(
+          () => _selectedIndex = (_selectedIndex - 1 + itemCount) % itemCount,
+        );
         return true;
       }
       if (event.logicalKey == LogicalKeyboardKey.enter &&
@@ -139,8 +142,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _controller.clear();
     _dismissPopup();
 
-    // WhatsApp chat mode — use WhatsApp stream instead of normal chat
-    if (ref.read(whatsAppChatModeProvider)) {
+    // WhatsApp chat mode — use WhatsApp stream instead of normal chat (Beta only)
+    if (ref.read(betaFeaturesProvider) && ref.read(whatsAppChatModeProvider)) {
       await _sendWhatsApp(text);
       return;
     }
@@ -162,7 +165,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   Future<void> _sendWhatsApp(String text) async {
     final api = ref.read(apiClientProvider);
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
-    final userMsg = ChatMessage(role: 'user', content: text, timestamp: timestamp);
+    final userMsg = ChatMessage(
+      role: 'user',
+      content: text,
+      timestamp: timestamp,
+    );
 
     ref.read(isSendingProvider.notifier).state = true;
     ref.read(messagesProvider.notifier).addMessage(userMsg);
@@ -179,9 +186,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     final full = ref.read(streamingContentProvider);
     if (full.isNotEmpty) {
-      ref.read(messagesProvider.notifier).addMessage(
-        ChatMessage(role: 'assistant', content: full, timestamp: timestamp),
-      );
+      ref
+          .read(messagesProvider.notifier)
+          .addMessage(
+            ChatMessage(role: 'assistant', content: full, timestamp: timestamp),
+          );
     }
     ref.read(streamingContentProvider.notifier).state = '';
     ref.read(isSendingProvider.notifier).state = false;
@@ -246,7 +255,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('providers_load_failed', {'e': e.toString()}))),
+          SnackBar(
+            content: Text(L10n.t('providers_load_failed', {'e': e.toString()})),
+          ),
         );
       }
       return;
@@ -255,20 +266,24 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     if (!mounted) return;
 
     final options = <_ModelOption>[];
-    options.add(_ModelOption(
-      type: 'local',
-      name: L10n.t('local_model'),
-      icon: '🖥️',
-      subtitle: L10n.t('llama_cpp'),
-    ));
+    options.add(
+      _ModelOption(
+        type: 'local',
+        name: L10n.t('local_model'),
+        icon: '🖥️',
+        subtitle: L10n.t('llama_cpp'),
+      ),
+    );
     for (final p in providers) {
       if (p.enabled) {
-        options.add(_ModelOption(
-          type: p.type,
-          name: p.name,
-          icon: providerIcon(p.type),
-          subtitle: p.model,
-        ));
+        options.add(
+          _ModelOption(
+            type: p.type,
+            name: p.name,
+            icon: providerIcon(p.type),
+            subtitle: p.model,
+          ),
+        );
       }
     }
 
@@ -401,19 +416,20 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (result['status'] != 'ok') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}')),
+            SnackBar(
+              content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}'),
+            ),
           );
         }
         return;
       }
-      models = (result['models'] as List)
-          .cast<Map<String, dynamic>>();
+      models = (result['models'] as List).cast<Map<String, dynamic>>();
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
       }
       return;
     }
@@ -453,9 +469,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
-        );
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
       }
     }
   }
@@ -473,15 +489,17 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final orchestraAsync = ref.watch(orchestraConfigProvider);
     final orchestraEnabled = orchestraAsync.valueOrNull?.enabled ?? false;
 
-    final popup = _showTemplates ? Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
-      child: PromptTemplatesPopup(
-        query: _filterQuery,
-        selectedIndex: _selectedIndex,
-        onSelect: _onPopupResult,
-        onDismiss: _dismissPopup,
-      ),
-    ) : null;
+    final popup = _showTemplates
+        ? Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
+            child: PromptTemplatesPopup(
+              query: _filterQuery,
+              selectedIndex: _selectedIndex,
+              onSelect: _onPopupResult,
+              onDismiss: _dismissPopup,
+            ),
+          )
+        : null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -539,9 +557,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${L10n.t('error')}: $e'),
-                          ),
+                          SnackBar(content: Text('${L10n.t('error')}: $e')),
                         );
                       }
                     }
@@ -575,9 +591,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                            content: Text('${L10n.t('error')}: $e'),
-                          ),
+                          SnackBar(content: Text('${L10n.t('error')}: $e')),
                         );
                       }
                     }
@@ -593,9 +607,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   decoration: BoxDecoration(
                     color: MemoTheme.of(context).bgPanel,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                    border: Border.all(
-                      color: MemoTheme.of(context).borderSoft,
-                    ),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
                   ),
                   child: Focus(
                     onKeyEvent: (node, event) {
@@ -639,14 +651,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 child: Material(
-                  color: isSending
-                      ? MemoTheme.red
-                      : MemoTheme.accent,
+                  color: isSending ? MemoTheme.red : MemoTheme.accent,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   child: InkWell(
                     onTap: isSending
-                        ? () =>
-                            ref.read(messagesProvider.notifier).stopStreaming()
+                        ? () => ref
+                              .read(messagesProvider.notifier)
+                              .stopStreaming()
                         : _send,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                     child: SizedBox(
@@ -754,19 +765,19 @@ class _ModelSwitcherDialog extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 16),
-            ...options.map((opt) => _ModelOptionTile(
-              option: opt,
-              isActive: opt.type == activeType,
-              onTap: () => Navigator.of(context).pop(opt.type),
-            )),
+            ...options.map(
+              (opt) => _ModelOptionTile(
+                option: opt,
+                isActive: opt.type == activeType,
+                onTap: () => Navigator.of(context).pop(opt.type),
+              ),
+            ),
             const SizedBox(height: 16),
             TextButton.icon(
               onPressed: onOpenRouterOAuth,
               icon: const Text('🔑', style: TextStyle(fontSize: 16)),
               label: const Text('OpenRouter ile Giriş Yap'),
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.orange,
-              ),
+              style: TextButton.styleFrom(foregroundColor: Colors.orange),
             ),
           ],
         ),
@@ -842,7 +853,9 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
       final af = (a['is_free'] as bool?) ?? false;
       final bf = (b['is_free'] as bool?) ?? false;
       if (af != bf) return af ? -1 : 1;
-      return ((a['name'] as String?) ?? '').compareTo((b['name'] as String?) ?? '');
+      return ((a['name'] as String?) ?? '').compareTo(
+        (b['name'] as String?) ?? '',
+      );
     });
   }
 
@@ -868,7 +881,9 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
         final af = (a['is_free'] as bool?) ?? false;
         final bf = (b['is_free'] as bool?) ?? false;
         if (af != bf) return af ? -1 : 1;
-        return ((a['name'] as String?) ?? '').compareTo((b['name'] as String?) ?? '');
+        return ((a['name'] as String?) ?? '').compareTo(
+          (b['name'] as String?) ?? '',
+        );
       });
     });
   }
@@ -942,7 +957,8 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
                 final id = (m['id'] as String?) ?? '';
                 final name = (m['name'] as String?) ?? id;
                 final isFree = (m['is_free'] as bool?) ?? false;
-                final promptPrice = (m['prompt_price'] as num?)?.toDouble() ?? 0;
+                final promptPrice =
+                    (m['prompt_price'] as num?)?.toDouble() ?? 0;
                 final ctxLen = m['context_length'] as int?;
 
                 return Card(
@@ -952,7 +968,9 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
                     leading: Icon(
                       isFree ? Icons.check_circle : Icons.monetization_on,
                       size: 18,
-                      color: isFree ? const Color(0xFF51B576) : Colors.orange[400],
+                      color: isFree
+                          ? const Color(0xFF51B576)
+                          : Colors.orange[400],
                     ),
                     title: Text(
                       id,
@@ -965,8 +983,7 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
                     subtitle: Text(
                       [
                         if (name != id) name,
-                        if (ctxLen != null && ctxLen > 0)
-                          _contextStr(ctxLen),
+                        if (ctxLen != null && ctxLen > 0) _contextStr(ctxLen),
                         _priceStr(promptPrice),
                       ].join(' · '),
                       style: TextStyle(fontSize: 11, color: Colors.grey[500]),

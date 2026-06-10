@@ -39,8 +39,8 @@ class VersionCheckNotifier extends AutoDisposeAsyncNotifier<VersionInfo> {
     ref.onDispose(() {
       _timer?.cancel();
     });
-    _timer = Timer.periodic(const Duration(hours: 6), (_) {
-      _check();
+    _timer = Timer.periodic(const Duration(hours: 6), (_) async {
+      state = AsyncValue.data(await _check());
     });
     return await _check();
   }

@@ -90,6 +90,9 @@ type FullBridge interface {
 	// Remote access
 	GetRemoteAccessStatus() interface{}
 	SetRemoteAccess(enabled bool, port int) error
+	SetNgrokMode(enabled bool, port int, ngrokToken string) error
+	GetListenAddr() string
+	SetListenAddr(addr string)
 
 	// Providers
 	GetProviders() []provider.ProviderConfig

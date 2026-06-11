@@ -35,15 +35,18 @@ class ChatScreen extends ConsumerWidget {
   }
 }
 
-class _ChatContent extends ConsumerWidget {
-   _ChatContent();
-
+class _ChatContent extends ConsumerStatefulWidget {
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<_ChatContent> createState() => _ChatContentState();
+}
+
+class _ChatContentState extends ConsumerState<_ChatContent> {
+  @override
+  Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider);
 
     ref.listen<String>(errorMessageProvider, (previous, next) {
-      if (next.isNotEmpty && context.mounted) {
+      if (next.isNotEmpty && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text(next), backgroundColor: MemoTheme.red),
         );
@@ -52,7 +55,7 @@ class _ChatContent extends ConsumerWidget {
     });
 
     ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
-      if (next.hasValue && next.value != null && context.mounted) {
+      if (next.hasValue && next.value != null && mounted) {
         final event = next.value!;
         if (event.type == 'permission_request') {
           showDialog(

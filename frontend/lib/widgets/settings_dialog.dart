@@ -2138,7 +2138,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                       SizedBox(height: 12),
                       llamaSettings.when(
                         loading: () => CircularProgressIndicator(),
-                        error: (e, _) => Text('Hata: $e'),
+                        error: (e, _) => Text('${L10n.t('error')}: $e'),
                         data: (settings) => DropdownButton<String>(
                           value: settings.engineMode,
                           isExpanded: true,
@@ -2296,13 +2296,14 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
   late int _maxTokens;
   late int _ctxSize;
   bool _loaded = false;
+  bool _dirty = false;
 
   @override
   Widget build(BuildContext context) {
     final llamaSettings = ref.watch(llamaSettingsProvider);
     return llamaSettings.when(
       loading: () => SizedBox.shrink(),
-      error: (e, _) => Text('Hata: $e'),
+      error: (e, _) => Text('${L10n.t('error')}: $e'),
       data: (settings) {
         if (!_loaded) {
           _temperature = settings.temperature;
@@ -2310,6 +2311,14 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
           _maxTokens = settings.maxTokens;
           _ctxSize = settings.ctxSize;
           _loaded = true;
+        } else if (!_dirty && (_temperature != settings.temperature ||
+            _topP != settings.topP ||
+            _maxTokens != settings.maxTokens ||
+            _ctxSize != settings.ctxSize)) {
+          _temperature = settings.temperature;
+          _topP = settings.topP;
+          _maxTokens = settings.maxTokens;
+          _ctxSize = settings.ctxSize;
         }
         return Container(
           padding: EdgeInsets.all(20),
@@ -2322,7 +2331,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Model Parametreleri',
+                L10n.t('model_params'),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -2337,7 +2346,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                 max: 2.0,
                 divisions: 40,
                 displayValue: _temperature.toStringAsFixed(2),
-                onChanged: (v) => setState(() => _temperature = v),
+                onChanged: (v) => setState(() { _temperature = v; _dirty = true; }),
               ),
               SizedBox(height: 12),
               _ParamSlider(
@@ -2347,7 +2356,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                 max: 1.0,
                 divisions: 20,
                 displayValue: _topP.toStringAsFixed(2),
-                onChanged: (v) => setState(() => _topP = v),
+                onChanged: (v) => setState(() { _topP = v; _dirty = true; }),
               ),
               SizedBox(height: 12),
               _ParamIntInput(
@@ -2356,8 +2365,8 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                 min: 0,
                 max: 65536,
                 step: 256,
-                displaySuffix: '0 = limitsiz',
-                onChanged: (v) => setState(() => _maxTokens = v),
+                displaySuffix: L10n.t('param_unlimited'),
+                onChanged: (v) => setState(() { _maxTokens = v; _dirty = true; }),
               ),
               SizedBox(height: 12),
               _ParamIntInput(
@@ -2366,7 +2375,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                 min: 512,
                 max: 65536,
                 step: 512,
-                onChanged: (v) => setState(() => _ctxSize = v),
+                onChanged: (v) => setState(() { _ctxSize = v; _dirty = true; }),
               ),
               SizedBox(height: 16),
               SizedBox(
@@ -2387,10 +2396,11 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                             maxTokens: _maxTokens,
                           ),
                         );
+                    setState(() => _dirty = false);
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
                         SnackBar(
-                          content: Text('Parametreler kaydedildi.'),
+                          content: Text(L10n.t('params_saved')),
                           duration: Duration(seconds: 2),
                           backgroundColor: MemoTheme.green,
                         ),
@@ -2402,7 +2412,7 @@ class _ModelParametersCardState extends ConsumerState<_ModelParametersCard> {
                     foregroundColor: MemoTheme.of(context).textInverse,
                   ),
                   child: Text(
-                    'Uygula',
+                    L10n.t('apply'),
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ),

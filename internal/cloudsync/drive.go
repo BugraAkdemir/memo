@@ -90,7 +90,9 @@ func (dc *driveClient) IsAuthenticated() bool {
 	if t.AccessToken != token.AccessToken || t.RefreshToken != token.RefreshToken || !t.Expiry.Equal(token.Expiry) {
 		dc.mu.Lock()
 		dc.token = t
-		_ = dc.saveToken(t)
+		if err := dc.saveToken(t); err != nil {
+			log.Printf("cloudsync: saveToken: %v", err)
+		}
 		dc.mu.Unlock()
 	}
 	return t.Valid()
@@ -237,7 +239,9 @@ func (dc *driveClient) service() (*drive.Service, error) {
 	if t.AccessToken != token.AccessToken || t.RefreshToken != token.RefreshToken || !t.Expiry.Equal(token.Expiry) {
 		dc.mu.Lock()
 		dc.token = t
-		_ = dc.saveToken(t)
+		if err := dc.saveToken(t); err != nil {
+			log.Printf("cloudsync: saveToken: %v", err)
+		}
 		dc.mu.Unlock()
 	}
 
@@ -269,7 +273,9 @@ func (dc *driveClient) GetAccountInfo(ctx context.Context) (string, string, erro
 	if t.AccessToken != token.AccessToken || t.RefreshToken != token.RefreshToken || !t.Expiry.Equal(token.Expiry) {
 		dc.mu.Lock()
 		dc.token = t
-		_ = dc.saveToken(t)
+		if err := dc.saveToken(t); err != nil {
+			log.Printf("cloudsync: saveToken: %v", err)
+		}
 		dc.mu.Unlock()
 	}
 

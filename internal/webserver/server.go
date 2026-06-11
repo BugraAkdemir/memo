@@ -51,13 +51,13 @@ type Server struct {
 	assets     fs.FS
 	running    bool
 	port       int
+	listenAddr string
 	localIPs   []string
 }
 
-func New(bridge AppBridge, assets fs.FS) *Server {
+func New(bridge AppBridge) *Server {
 	s := &Server{
 		bridge: bridge,
-		assets: assets,
 	}
 	if fb, ok := bridge.(FullBridge); ok {
 		s.fullBridge = fb
@@ -66,12 +66,17 @@ func New(bridge AppBridge, assets fs.FS) *Server {
 }
 
 func (s *Server) Start(port int) error {
-	return fmt.Errorf("remote access is disabled in this version")
+	return s.StartHTTPWithAddr(port, "127.0.0.1")
 }
 
 // StartHTTP starts a plain HTTP server (no TLS) for local Flutter desktop communication.
-// This avoids self-signed certificate issues when Flutter connects to localhost.
 func (s *Server) StartHTTP(port int) error {
+	return s.StartHTTPWithAddr(port, "127.0.0.1")
+}
+
+// StartHTTPWithAddr starts HTTP server on the given address and port.
+// addr: "127.0.0.1" for local-only, "0.0.0.0" for LAN access.
+func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -183,11 +188,27 @@ func (s *Server) StartHTTP(port int) error {
 	mux.HandleFunc("/api/import", s.handleImport)
 	mux.HandleFunc("/api/wipe", s.handleWipe)
 
+	handler := limitBodyMiddleware(corsMiddleware(mux), 10<<20) // 10 MB request body limit
 	s.srv = &http.Server{
-		Addr:    fmt.Sprintf("127.0.0.1:%d", port),
-		Handler: limitBodyMiddleware(corsMiddleware(mux), 10<<20), // 10 MB request body limit
+		Addr:    fmt.Sprintf("%s:%d", addr, port),
+		Handler: handler,
 	}
 	s.port = port
+	s.listenAddr = addr
+
+	// Detect local IPs for LAN access display
+	s.localIPs = nil
+	if addr == "0.0.0.0" {
+		ifaces, _ := net.Interfaces()
+		for _, iface := range ifaces {
+			addrs, _ := iface.Addrs()
+			for _, a := range addrs {
+				if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+					s.localIPs = append(s.localIPs, ipnet.IP.String())
+				}
+			}
+		}
+	}
 
 	ln, err := net.Listen("tcp", s.srv.Addr)
 	if err != nil {
@@ -195,8 +216,15 @@ func (s *Server) StartHTTP(port int) error {
 	}
 
 	s.running = true
+	var addrLog = addr
+	if addr == "0.0.0.0" {
+		addrLog = "0.0.0.0 (LAN accessible)"
+	}
 	go func() {
-		log.Printf("Flutter API server (HTTP) started on http://127.0.0.1:%d", port)
+		log.Printf("Flutter API server (HTTP) started on http://%s:%d", addrLog, port)
+		for _, ip := range s.localIPs {
+			log.Printf("  LAN: http://%s:%d", ip, port)
+		}
 		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			log.Printf("Flutter server error: %v", err)
 		}
@@ -216,12 +244,11 @@ func (s *Server) Stop() error {
 		return nil
 	}
 
-	log.Println("Stopping remote access server...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
-	defer cancel()
-	err := s.srv.Shutdown(ctx)
+	log.Println("Stopping server...")
+	srv := s.srv
 	s.running = false
-	return err
+	go srv.Shutdown(context.Background())
+	return nil
 }
 
 func (s *Server) IsRunning() bool {
@@ -239,11 +266,26 @@ func (s *Server) GetPort() int {
 func (s *Server) GetAddresses() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	if s.listenAddr == "127.0.0.1" {
+		return []string{fmt.Sprintf("http://127.0.0.1:%d", s.port)}
+	}
 	var addrs []string
 	for _, ip := range s.localIPs {
-		addrs = append(addrs, fmt.Sprintf("https://%s:%d", ip, s.port))
+		addrs = append(addrs, fmt.Sprintf("http://%s:%d", ip, s.port))
 	}
 	return addrs
+}
+
+func (s *Server) GetListenAddr() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.listenAddr
+}
+
+func (s *Server) SetListenAddr(addr string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.listenAddr = addr
 }
 
 // ─── Handlers ───────────────────────────────────────────────────
@@ -494,7 +536,9 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(v)
+	if err := json.NewEncoder(w).Encode(v); err != nil {
+		log.Printf("writeJSON error: %v", err)
+	}
 }
 
 func corsMiddleware(next http.Handler) http.Handler {

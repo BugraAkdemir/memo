@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"sync"
@@ -41,8 +42,11 @@ type WhatsAppConfig struct {
 }
 
 type RemoteAccessConfig struct {
-	Enabled bool `yaml:"enabled" json:"enabled"`
-	Port    int  `yaml:"port" json:"port"`
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Port           int    `yaml:"port" json:"port"`
+	Token          string `yaml:"token" json:"token"`
+	NgrokMode      bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
+	NgrokToken     string `yaml:"ngrok_token" json:"ngrok_token"`
 }
 
 type APIConfig struct {
@@ -115,7 +119,8 @@ func Default() *AppConfig {
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,
-			Port:    8080,
+			Port:    8090,
+			Token:   "",
 		},
 		Llama: LlamaConfig{
 			EngineMode:    "auto",
@@ -166,7 +171,9 @@ func Load(path string) (*AppConfig, error) {
 		return nil, fmt.Errorf("config.Load: failed to parse YAML: %w", err)
 	}
 
-	cfg.validate()
+	if fixes := cfg.validate(); len(fixes) > 0 {
+		log.Printf("config: applied defaults for: %v", fixes)
+	}
 	instance = cfg
 	return cfg, nil
 }
@@ -208,62 +215,83 @@ func saveToFile(cfg *AppConfig, path string) error {
 	return os.WriteFile(path, data, 0600)
 }
 
-func (c *AppConfig) validate() {
+func (c *AppConfig) validate() []string {
+	var fixes []string
 	if c.API.BaseURL == "" {
 		c.API.BaseURL = "http://127.0.0.1:8081/v1"
+		fixes = append(fixes, "API.BaseURL")
 	}
 	if c.API.TimeoutSeconds <= 0 {
 		c.API.TimeoutSeconds = 120
+		fixes = append(fixes, "API.TimeoutSeconds")
 	}
 	if c.Identity.AssistantName == "" {
 		c.Identity.AssistantName = "Memo"
+		fixes = append(fixes, "Identity.AssistantName")
 	}
 	if c.Identity.Style == "" {
 		c.Identity.Style = "casual"
+		fixes = append(fixes, "Identity.Style")
 	}
 	if c.Memory.PersistDir == "" {
 		c.Memory.PersistDir = "./data/memory"
+		fixes = append(fixes, "Memory.PersistDir")
 	}
 	if c.Memory.TopK <= 0 {
 		c.Memory.TopK = 5
+		fixes = append(fixes, "Memory.TopK")
 	}
 	if c.Memory.MinSimilarity <= 0 {
 		c.Memory.MinSimilarity = 0.3
+		fixes = append(fixes, "Memory.MinSimilarity")
 	}
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768
+		fixes = append(fixes, "Memory.EmbeddingDimension")
 	}
 	if c.RemoteAccess.Port <= 0 || c.RemoteAccess.Port > 65535 {
 		c.RemoteAccess.Port = 8080
+		fixes = append(fixes, "RemoteAccess.Port")
 	}
 	if c.Llama.Port <= 0 || c.Llama.Port > 65535 {
 		c.Llama.Port = 8081
+		fixes = append(fixes, "Llama.Port")
 	}
 	if c.Llama.EmbeddingPort <= 0 || c.Llama.EmbeddingPort > 65535 {
 		c.Llama.EmbeddingPort = 8082
+		fixes = append(fixes, "Llama.EmbeddingPort")
 	}
 	if (c.Llama.CtxSize <= 0) {
 		c.Llama.CtxSize = 4096
+		fixes = append(fixes, "Llama.CtxSize")
 	}
 	if c.Llama.MaxHistory <= 0 {
 		c.Llama.MaxHistory = 20
+		fixes = append(fixes, "Llama.MaxHistory")
 	}
 	if c.Llama.ModelsDir == "" {
 		c.Llama.ModelsDir = "./data/models"
+		fixes = append(fixes, "Llama.ModelsDir")
 	}
 	if c.Llama.Temperature <= 0 {
 		c.Llama.Temperature = 0.7
+		fixes = append(fixes, "Llama.Temperature")
 	}
 	if c.Llama.TopP <= 0 {
 		c.Llama.TopP = 0.9
+		fixes = append(fixes, "Llama.TopP")
 	}
 	if c.Llama.MaxTokens < 0 {
 		c.Llama.MaxTokens = 0
+		fixes = append(fixes, "Llama.MaxTokens")
 	}
 	if c.Sync.TokenPath == "" {
 		c.Sync.TokenPath = "./data/sync_token.json"
+		fixes = append(fixes, "Sync.TokenPath")
 	}
 	if c.Sync.IntervalMessages <= 0 {
 		c.Sync.IntervalMessages = 50
+		fixes = append(fixes, "Sync.IntervalMessages")
 	}
+	return fixes
 }

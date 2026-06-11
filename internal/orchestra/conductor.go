@@ -409,6 +409,62 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	taskCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
+	if onProgress != nil {
+		streamCh, streamErr := p.ChatCompletionStream(taskCtx, req)
+		if streamErr == nil {
+			var sb strings.Builder
+			var lastErr error
+			for chunk := range streamCh {
+				if chunk.Error != "" {
+					lastErr = fmt.Errorf("stream error: %s", chunk.Error)
+					break
+				}
+				sb.WriteString(chunk.Content)
+				onProgress(ProgressUpdate{
+					Type:      ProgressTaskChunk,
+					Role:      task.Role,
+					Index:     index,
+					ModelType: task.ModelType,
+					ModelName: task.ModelName,
+					Content:   chunk.Content,
+				})
+			}
+			if lastErr == nil {
+				result.DurationMs = time.Since(start).Milliseconds()
+				result.Content = sb.String()
+				result.TokensIn = len(strings.Fields(systemPrompt + " " + contextMsg))
+				result.TokensOut = len(strings.Fields(sb.String()))
+				if onProgress != nil {
+					onProgress(ProgressUpdate{
+						Type:       ProgressTaskDone,
+						Role:       task.Role,
+						Index:      index,
+						ModelType:  task.ModelType,
+						ModelName:  task.ModelName,
+						DurationMs: result.DurationMs,
+						Content:    sb.String(),
+					})
+				}
+				return result
+			}
+			result.Error = lastErr.Error()
+			result.DurationMs = time.Since(start).Milliseconds()
+			if onProgress != nil {
+				onProgress(ProgressUpdate{
+					Type:       ProgressTaskDone,
+					Role:       task.Role,
+					Index:      index,
+					ModelType:  task.ModelType,
+					ModelName:  task.ModelName,
+					DurationMs: result.DurationMs,
+					Error:      lastErr.Error(),
+				})
+			}
+			return result
+		}
+		log.Printf("ORCHESTRA: stream start failed for %s/%s, falling back to non-streaming: %v", task.ModelType, task.ModelName, streamErr)
+	}
+
 	var resp *provider.ChatResponse
 	// Task-level retry: retry up to 2 times for any error (not just rate limit)
 	err = c.retryTask(taskCtx, fmt.Sprintf("task/%s/%s", task.Role, task.ModelType), func() error {

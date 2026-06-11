@@ -372,6 +372,10 @@ func (m *Manager) restoreZip(zipData []byte) error {
 	}
 	defer os.RemoveAll(tmpDir)
 
+	var totalUncompressed int64
+	const maxTotalBytes = 500 << 20 // 500MB
+	const maxFileBytes = 100 << 20  // 100MB per file
+
 	extracted := 0
 	for _, zf := range zr.File {
 		if zf.FileInfo().IsDir() {
@@ -384,6 +388,15 @@ func (m *Manager) restoreZip(zipData []byte) error {
 		if !strings.EqualFold(filepath.Ext(cleanName), ".gob") {
 			continue
 		}
+
+		uncompSize := int64(zf.UncompressedSize64)
+		if uncompSize > maxFileBytes {
+			return fmt.Errorf("cloudsync: file %s too large (%d bytes)", cleanName, uncompSize)
+		}
+		if totalUncompressed+uncompSize > maxTotalBytes {
+			return fmt.Errorf("cloudsync: total uncompressed data exceeds %d bytes", maxTotalBytes)
+		}
+		totalUncompressed += uncompSize
 
 		target := filepath.Join(tmpDir, cleanName)
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
@@ -399,7 +412,7 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			rc.Close()
 			return fmt.Errorf("cloudsync: restore create file: %w", err)
 		}
-		_, cpErr := io.Copy(out, rc)
+		_, cpErr := io.Copy(out, io.LimitReader(rc, maxFileBytes))
 		clErr := out.Close()
 		rc.Close()
 		if cpErr != nil {

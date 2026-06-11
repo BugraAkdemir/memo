@@ -8,36 +8,42 @@ import '../models/agent.dart';
 import 'agent/agent_chat_card.dart';
 import '../core/l10n.dart';
 
+final Map<int, MarkdownStyleSheet> _styleCache = {};
+
 MarkdownStyleSheet _buildMarkdownStyleSheet(BuildContext context) {
-  final c = MemoTheme.of(context);
-  return MarkdownStyleSheet(
-    p: TextStyle(fontSize: 14, height: 1.7, color: c.textMain),
-    strong: TextStyle(fontWeight: FontWeight.w600, color: c.textMain),
-    em: TextStyle(fontStyle: FontStyle.italic, color: c.textMuted),
-    code: TextStyle(
-      fontSize: 13,
-      color: MemoTheme.accent,
-      backgroundColor: c.bgElement,
-      fontFamily: 'JetBrains Mono',
-    ),
-    codeblockDecoration: BoxDecoration(
-      color: c.bgPanel,
-      borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-      border: Border.all(color: c.borderSoft),
-    ),
-    codeblockPadding:  EdgeInsets.all(14),
-    blockquoteDecoration: BoxDecoration(
-      border: Border(left: BorderSide(color: c.borderHover, width: 3)),
-    ),
-    blockquotePadding:  EdgeInsets.only(left: 12),
-    h1: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.textMain),
-    h2: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.textMain),
-    h3: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.textMain),
-    tableHead: TextStyle(fontWeight: FontWeight.w600, color: c.textMuted, fontSize: 13),
-    tableBody: TextStyle(color: c.textMain, fontSize: 13),
-    tableBorder: TableBorder.all(color: c.borderSoft),
-    a: TextStyle(color: MemoTheme.accent, decoration: TextDecoration.none),
-  );
+  final theme = Theme.of(context);
+  final key = Object.hash(theme.brightness, MemoTheme.accent.hashCode);
+  return _styleCache.putIfAbsent(key, () {
+    final c = MemoTheme.of(context);
+    return MarkdownStyleSheet(
+      p: TextStyle(fontSize: 14, height: 1.7, color: c.textMain),
+      strong: TextStyle(fontWeight: FontWeight.w600, color: c.textMain),
+      em: TextStyle(fontStyle: FontStyle.italic, color: c.textMuted),
+      code: TextStyle(
+        fontSize: 13,
+        color: MemoTheme.accent,
+        backgroundColor: c.bgElement,
+        fontFamily: 'JetBrains Mono',
+      ),
+      codeblockDecoration: BoxDecoration(
+        color: c.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: c.borderSoft),
+      ),
+      codeblockPadding:  EdgeInsets.all(14),
+      blockquoteDecoration: BoxDecoration(
+        border: Border(left: BorderSide(color: c.borderHover, width: 3)),
+      ),
+      blockquotePadding:  EdgeInsets.only(left: 12),
+      h1: TextStyle(fontSize: 20, fontWeight: FontWeight.w600, color: c.textMain),
+      h2: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: c.textMain),
+      h3: TextStyle(fontSize: 16, fontWeight: FontWeight.w600, color: c.textMain),
+      tableHead: TextStyle(fontWeight: FontWeight.w600, color: c.textMuted, fontSize: 13),
+      tableBody: TextStyle(color: c.textMain, fontSize: 13),
+      tableBorder: TableBorder.all(color: c.borderSoft),
+      a: TextStyle(color: MemoTheme.accent, decoration: TextDecoration.none),
+    );
+  });
 }
 
 /// Scrollable list of chat messages with markdown rendering.

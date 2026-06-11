@@ -6,6 +6,10 @@ import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import 'chat_provider.dart';
 
+final prefsProvider = Provider<SharedPreferences>((ref) {
+  throw UnimplementedError('Override prefsProvider in main()');
+});
+
 class MemorySettings {
   final int topK;
   final double minSimilarity;
@@ -89,28 +93,23 @@ class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
 
 final setupCompleteProvider =
     StateNotifierProvider<SetupCompleteNotifier, bool>((ref) {
-      return SetupCompleteNotifier();
+      final prefs = ref.read(prefsProvider);
+      return SetupCompleteNotifier(prefs);
     });
 
 class SetupCompleteNotifier extends StateNotifier<bool> {
-  SetupCompleteNotifier() : super(false) {
-    _init();
-  }
+  final SharedPreferences _prefs;
 
-  Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
-    state = prefs.getBool('memo_setup_complete') ?? false;
-  }
+  SetupCompleteNotifier(this._prefs)
+      : super(_prefs.getBool('memo_setup_complete') ?? false);
 
   Future<void> completeSetup() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('memo_setup_complete', true);
+    await _prefs.setBool('memo_setup_complete', true);
     state = true;
   }
 
   Future<void> resetSetup() async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('memo_setup_complete', false);
+    await _prefs.setBool('memo_setup_complete', false);
     state = false;
   }
 }
@@ -213,7 +212,7 @@ class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
 final syncAuthProvider = FutureProvider<bool>((ref) async {
   try {
     return await ref.read(apiClientProvider).checkSyncAuth();
-  } catch (_) {
+  } catch (e) {
     return false;
   }
 });
@@ -221,7 +220,7 @@ final syncAuthProvider = FutureProvider<bool>((ref) async {
 final syncAccountProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getSyncAccount();
-  } catch (_) {
+  } catch (e) {
     return {'authenticated': false};
   }
 });
@@ -229,7 +228,7 @@ final syncAccountProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 final syncSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getSyncSettings();
-  } catch (_) {
+  } catch (e) {
     return {};
   }
 });
@@ -239,7 +238,7 @@ final syncSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 final remoteAccessProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getRemoteAccess();
-  } catch (_) {
+  } catch (e) {
     return {'enabled': false};
   }
 });
@@ -270,7 +269,7 @@ class MemoryEnabledNotifier extends AsyncNotifier<bool> {
 final appVersionProvider = FutureProvider<String>((ref) async {
   try {
     return await ref.read(apiClientProvider).getVersion();
-  } catch (_) {
+  } catch (e) {
     return 'unknown';
   }
 });
@@ -278,22 +277,20 @@ final appVersionProvider = FutureProvider<String>((ref) async {
 // ─── Theme Mode ─────────────────────────────────────────────────
 
 final themeModeProvider = StateNotifierProvider<ThemeModeNotifier, String>(
-  (ref) => ThemeModeNotifier(),
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return ThemeModeNotifier(prefs);
+  },
 );
 
 class ThemeModeNotifier extends StateNotifier<String> {
-  ThemeModeNotifier() : super('system') {
-    _init();
-  }
+  final SharedPreferences _prefs;
 
-  Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
-    state = prefs.getString('memo_theme_mode') ?? 'system';
-  }
+  ThemeModeNotifier(this._prefs)
+      : super(_prefs.getString('memo_theme_mode') ?? 'system');
 
   Future<void> setMode(String mode) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('memo_theme_mode', mode);
+    await _prefs.setString('memo_theme_mode', mode);
     state = mode;
   }
 }
@@ -302,23 +299,21 @@ class ThemeModeNotifier extends StateNotifier<String> {
 
 final streamingEnabledProvider =
     StateNotifierProvider<StreamingEnabledNotifier, bool>(
-      (ref) => StreamingEnabledNotifier(),
-    );
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return StreamingEnabledNotifier(prefs);
+  },
+);
 
 class StreamingEnabledNotifier extends StateNotifier<bool> {
-  StreamingEnabledNotifier() : super(true) {
-    _init();
-  }
+  final SharedPreferences _prefs;
 
-  Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
-    state = prefs.getBool('memo_streaming') ?? true;
-  }
+  StreamingEnabledNotifier(this._prefs)
+      : super(_prefs.getBool('memo_streaming') ?? true);
 
   Future<void> toggle() async {
     final next = !state;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('memo_streaming', next);
+    await _prefs.setBool('memo_streaming', next);
     state = next;
   }
 }
@@ -326,23 +321,21 @@ class StreamingEnabledNotifier extends StateNotifier<bool> {
 // ─── Beta Features ─────────────────────────────────────────────
 
 final betaFeaturesProvider = StateNotifierProvider<BetaFeaturesNotifier, bool>(
-  (ref) => BetaFeaturesNotifier(),
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return BetaFeaturesNotifier(prefs);
+  },
 );
 
 class BetaFeaturesNotifier extends StateNotifier<bool> {
-  BetaFeaturesNotifier() : super(false) {
-    _init();
-  }
+  final SharedPreferences _prefs;
 
-  Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
-    state = prefs.getBool('memo_beta_features') ?? false;
-  }
+  BetaFeaturesNotifier(this._prefs)
+      : super(_prefs.getBool('memo_beta_features') ?? false);
 
   Future<void> toggle() async {
     final next = !state;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('memo_beta_features', next);
+    await _prefs.setBool('memo_beta_features', next);
     state = next;
   }
 }
@@ -350,25 +343,26 @@ class BetaFeaturesNotifier extends StateNotifier<bool> {
 // ─── Locale ─────────────────────────────────────────────────────
 
 final localeProvider = StateNotifierProvider<LocaleNotifier, MemoLocale>(
-  (ref) => LocaleNotifier(),
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return LocaleNotifier(prefs);
+  },
 );
 
 class LocaleNotifier extends StateNotifier<MemoLocale> {
-  LocaleNotifier() : super(MemoLocale.tr) {
-    _init();
-  }
+  final SharedPreferences _prefs;
 
-  Future<void> _init() async {
-    final prefs = await SharedPreferences.getInstance();
+  LocaleNotifier(this._prefs) : super(_initLocale(_prefs));
+
+  static MemoLocale _initLocale(SharedPreferences prefs) {
     final saved = prefs.getString('memo_locale');
     final locale = saved == 'en' ? MemoLocale.en : MemoLocale.tr;
     L10n.setLocale(locale);
-    state = locale;
+    return locale;
   }
 
   Future<void> setLocale(MemoLocale locale) async {
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('memo_locale', locale == MemoLocale.en ? 'en' : 'tr');
+    await _prefs.setString('memo_locale', locale == MemoLocale.en ? 'en' : 'tr');
     L10n.setLocale(locale);
     state = locale;
   }

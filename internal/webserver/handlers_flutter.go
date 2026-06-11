@@ -9,6 +9,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"net/http"
+	"net/url"
 	"path/filepath"
 	"strings"
 )
@@ -340,8 +341,13 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Layer 1: Basic path sanitization
-	if strings.Contains(path, "..") {
+	// Layer 1: Basic path sanitization (URL-encoded bypass'a karşı decode et)
+	decoded, err := url.QueryUnescape(path)
+	if err != nil {
+		http.Error(w, "bad path", http.StatusBadRequest)
+		return
+	}
+	if strings.Contains(decoded, "..") {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
@@ -417,16 +423,25 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.fullBridge.GetRemoteAccessStatus())
 	case http.MethodPut:
 		var req struct {
-			Enabled bool `json:"enabled"`
-			Port    int  `json:"port"`
+			Enabled    bool   `json:"enabled"`
+			Port       int    `json:"port"`
+			NgrokMode  bool   `json:"ngrok_mode"`
+			NgrokToken string `json:"ngrok_token"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if err := s.fullBridge.SetRemoteAccess(req.Enabled, req.Port); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		if req.NgrokMode {
+			if err := s.fullBridge.SetNgrokMode(req.Enabled, req.Port, req.NgrokToken); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := s.fullBridge.SetRemoteAccess(req.Enabled, req.Port); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		writeJSON(w, map[string]string{"ok": "true"})
 	default:

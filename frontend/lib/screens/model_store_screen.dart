@@ -72,7 +72,7 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'İndirilen modeller ve HuggingFace araması',
+                      L10n.t('model_store_subtitle'),
                       style: TextStyle(color: MemoTheme.of(context).textDim),
                     ),
                   ],
@@ -195,7 +195,7 @@ class _SearchResultsPanel extends ConsumerWidget {
     if (query.isEmpty) {
       return Center(
         child: Text(
-          'Arama yapmak için bir model adı yazın\n(Örn: Llama-3, Mistral, Gemma)',
+          L10n.t('model_search_placeholder'),
           textAlign: TextAlign.center,
           style: TextStyle(color: MemoTheme.of(context).textDim),
         ),
@@ -209,7 +209,7 @@ class _SearchResultsPanel extends ConsumerWidget {
         if (results.isEmpty) {
           return Center(
             child: Text(
-              'Sonuç bulunamadı',
+              L10n.t('no_search_results'),
               style: TextStyle(color: MemoTheme.of(context).textDim),
             ),
           );
@@ -334,7 +334,7 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Text(
-                      'Popüler',
+                      L10n.t('popular_badge'),
                       style: TextStyle(
                         fontSize: 10,
                         fontWeight: FontWeight.w600,
@@ -413,7 +413,7 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                 ),
                 SizedBox(width: 4),
                 Text(
-                  '${widget.result.likes} beğeni',
+                  L10n.t('likes_count', {'count': widget.result.likes.toString()}),
                   style: TextStyle(
                     fontSize: 12,
                     color: MemoTheme.of(context).textDim,
@@ -469,7 +469,7 @@ class _SearchResultCardState extends State<_SearchResultCard> {
                   );
                 },
                 icon: Icon(Icons.folder_open_rounded, size: 18),
-                label: Text('Dosyaları İncele'),
+                label: Text(L10n.t('browse_files')),
                 style: ElevatedButton.styleFrom(
                   padding: EdgeInsets.symmetric(horizontal: 20, vertical: 12),
                   backgroundColor: _isHovered
@@ -506,7 +506,7 @@ class _LocalModelsList extends ConsumerWidget {
               ),
               TextButton.icon(
                 icon: Icon(Icons.file_upload, size: 16),
-                label: Text('İçe Aktar'),
+                label: Text(L10n.t('import_model')),
                 style: TextButton.styleFrom(foregroundColor: MemoTheme.accent),
                 onPressed: () async {
                   final result = await FilePicker.platform.pickFiles(
@@ -518,7 +518,7 @@ class _LocalModelsList extends ConsumerWidget {
 
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Model içe aktarılıyor...')),
+                        SnackBar(content: Text(L10n.t('importing_model'))),
                       );
                     }
 
@@ -528,14 +528,14 @@ class _LocalModelsList extends ConsumerWidget {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text('Model başarıyla içe aktarıldı.'),
+                            content: Text(L10n.t('import_success')),
                           ),
                         );
                       }
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('İçe aktarma hatası: $e')),
+                          SnackBar(content: Text(L10n.t('import_error', {'e': e.toString()}))),
                         );
                       }
                     }
@@ -612,21 +612,21 @@ class _LocalModelCard extends ConsumerWidget {
                     context: context,
                     builder: (ctx) => AlertDialog(
                       backgroundColor: MemoTheme.of(context).bgPanel,
-                      title: Text('Modeli Sil'),
+                      title: Text(L10n.t('delete_model_title')),
                       content: Text(
-                        '"${model.filename}" silinecek. Emin misin?',
+                        L10n.t('delete_model_confirm_name', {'name': model.filename}),
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, false),
-                          child: Text('İptal'),
+                          child: Text(L10n.t('cancel')),
                         ),
                         TextButton(
                           onPressed: () => Navigator.pop(ctx, true),
                           style: TextButton.styleFrom(
                             foregroundColor: MemoTheme.red,
                           ),
-                          child: Text('Sil'),
+                          child: Text(L10n.t('delete')),
                         ),
                       ],
                     ),
@@ -796,7 +796,7 @@ class _ActiveModelCard extends ConsumerWidget {
               Icon(Icons.memory, color: MemoTheme.accent, size: 20),
               SizedBox(width: 8),
               Text(
-                'Çalışan Model',
+                L10n.t('running_model'),
                 style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
               ),
               Spacer(),
@@ -809,8 +809,8 @@ class _ActiveModelCard extends ConsumerWidget {
           ),
           SizedBox(height: 16),
           statusAsync.when(
-            loading: () => Text('Durum alınıyor...'),
-            error: (e, _) => Text('Hata: $e'),
+            loading: () => Text(L10n.t('getting_status')),
+            error: (e, _) => Text(L10n.t('engine_error', {'e': e.toString()})),
             data: (status) {
               if (status.running) {
                 return Column(
@@ -886,7 +886,7 @@ class _ActiveModelCard extends ConsumerWidget {
                         ),
                         SizedBox(width: 8),
                         Text(
-                          'Hafıza (Embedding) Modeli',
+                          L10n.t('memory_model'),
                           style: TextStyle(
                             fontWeight: FontWeight.bold,
                             fontSize: 13,
@@ -933,7 +933,7 @@ class _ActiveModelCard extends ConsumerWidget {
                             minimumSize: Size(0, 32),
                           ),
                           child: Text(
-                            'Hafıza Modelini Durdur',
+                            L10n.t('stop_memory_model'),
                             style: TextStyle(fontSize: 12),
                           ),
                         ),
@@ -998,9 +998,13 @@ class _StatusIndicator extends StatelessWidget {
   }
 }
 
-class _DownloadProgressCard extends ConsumerWidget {
-  _DownloadProgressCard();
+class _DownloadProgressCard extends ConsumerStatefulWidget {
+  @override
+  ConsumerState<_DownloadProgressCard> createState() =>
+      _DownloadProgressCardState();
+}
 
+class _DownloadProgressCardState extends ConsumerState<_DownloadProgressCard> {
   String _formatBytes(int bytes) {
     if (bytes >= 1024 * 1024 * 1024) {
       return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
@@ -1013,8 +1017,9 @@ class _DownloadProgressCard extends ConsumerWidget {
   }
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    // Listen for download completion to refresh local models
+  Widget build(BuildContext context) {
+    final progressAsync = ref.watch(downloadProgressProvider);
+
     ref.listen(downloadProgressProvider, (previous, next) {
       final wasActive = previous?.value?.active ?? false;
       final isNowActive = next.value?.active ?? false;
@@ -1022,8 +1027,6 @@ class _DownloadProgressCard extends ConsumerWidget {
         ref.invalidate(localModelsProvider);
       }
     });
-
-    final progressAsync = ref.watch(downloadProgressProvider);
 
     return progressAsync.when(
       data: (progress) {
@@ -1088,7 +1091,7 @@ class _DownloadProgressCard extends ConsumerWidget {
                         ),
                         SizedBox(height: 4),
                         Text(
-                          'Model indiriliyor...',
+                          L10n.t('downloading_model'),
                           style: TextStyle(
                             fontSize: 12,
                             color: MemoTheme.of(context).textDim,
@@ -1181,7 +1184,7 @@ class _DownloadProgressCard extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'İNDİRİLEN',
+                        L10n.t('downloaded_label'),
                         style: TextStyle(
                           fontSize: 9,
                           fontWeight: FontWeight.w800,
@@ -1350,7 +1353,7 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          'Model Dosyaları',
+                          L10n.t('model_files'),
                           style: TextStyle(
                             fontSize: 18,
                             fontWeight: FontWeight.bold,
@@ -1397,7 +1400,7 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                             ),
                             SizedBox(height: 16),
                             Text(
-                              'Hata: $_error',
+                              '${L10n.t('error')}: $_error',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: MemoTheme.red),
                             ),
@@ -1410,7 +1413,7 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                       padding: EdgeInsets.all(40),
                       child: Center(
                         child: Text(
-                          'Bu modelde GGUF dosyası bulunamadı.',
+                          L10n.t('no_gguf'),
                           style: TextStyle(
                             color: MemoTheme.of(context).textDim,
                           ),
@@ -1502,7 +1505,7 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                                 ScaffoldMessenger.of(context).showSnackBar(
                                   SnackBar(
                                     content: Text(
-                                      '${file.filename} indirmesi başlatıldı...',
+                                      L10n.t('download_started', {'file': file.filename}),
                                     ),
                                     backgroundColor: MemoTheme.green,
                                   ),
@@ -1516,7 +1519,7 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                                 minimumSize: Size(0, 36),
                               ),
                               child: Text(
-                                'İndir',
+                                L10n.t('download'),
                                 style: TextStyle(fontSize: 13),
                               ),
                             ),
@@ -1534,7 +1537,7 @@ class _ModelFilesDialogState extends ConsumerState<_ModelFilesDialog> {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.pop(context),
-                    child: Text('Kapat'),
+                    child: Text(L10n.t('close')),
                   ),
                 ],
               ),

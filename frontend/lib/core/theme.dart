@@ -100,6 +100,12 @@ class MemoTheme {
     return Theme.of(context).brightness == Brightness.dark ? _dark : _light;
   }
 
+  /// Dark theme colors (for preview purposes outside build context).
+  static const ThemeColors dark = _dark;
+
+  /// Light theme colors (for preview purposes outside build context).
+  static const ThemeColors light = _light;
+
   // ─── Theme-independent Constants ──────────────────────────────
 
   // Gold Accent
@@ -112,6 +118,8 @@ class MemoTheme {
   // Functional
   static const Color green = Color(0xFF51B576);
   static const Color red = Color(0xFFD35F5F);
+  static const Color successGreen = Color(0xFF51B576);
+  static const Color warningOrange = Color(0xFFD4944F);
   static const Color warmBrown = Color(0xFF8B6535);
 
   // Radius

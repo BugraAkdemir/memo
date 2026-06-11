@@ -73,7 +73,7 @@ class MemoApiClient {
             if (data['done'] == true) {
               break;
             }
-          } catch (_) {
+          } catch (e) {
             // ignore malformed chunks
           }
         }
@@ -471,10 +471,15 @@ class MemoApiClient {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<void> setRemoteAccess(bool enabled, int port) async {
+  Future<void> setRemoteAccess(bool enabled, int port, {bool ngrokMode = false, String ngrokToken = ''}) async {
     await _dio.put(
       '/api/remote-access',
-      data: {'enabled': enabled, 'port': port},
+      data: {
+        'enabled': enabled,
+        'port': port,
+        'ngrok_mode': ngrokMode,
+        'ngrok_token': ngrokToken,
+      },
     );
   }
 
@@ -598,7 +603,7 @@ class MemoApiClient {
     try {
       await _dio.get('/api/version');
       return true;
-    } catch (_) {
+    } catch (e) {
       return false;
     }
   }

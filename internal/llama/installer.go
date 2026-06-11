@@ -190,7 +190,7 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 	if isTarGz {
 		tempExt = ".tar.gz"
 	}
-	tempPath := filepath.Join(i.BaseDir, "tmp_llama_release"+tempExt)
+	tempPath := filepath.Join(os.TempDir(), "memo-llama-release"+tempExt)
 	defer os.Remove(tempPath)
 
 	logger(fmt.Sprintf("2/3 İndiriliyor: %s", asset.Name))

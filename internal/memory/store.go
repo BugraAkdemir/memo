@@ -476,7 +476,7 @@ func (s *Store) ListGobFiles() []MemoryFileInfo {
 	defer cancel()
 
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT uuid, timestamp FROM memories ORDER BY id DESC LIMIT 100",
+		"SELECT uuid, timestamp, LENGTH(user_msg) + LENGTH(assist_msg) FROM memories ORDER BY id DESC LIMIT 100",
 	)
 	if err != nil {
 		return nil
@@ -486,13 +486,14 @@ func (s *Store) ListGobFiles() []MemoryFileInfo {
 	var files []MemoryFileInfo
 	for rows.Next() {
 		var uuid, ts string
-		if err := rows.Scan(&uuid, &ts); err != nil {
+		var sizeBytes int64
+		if err := rows.Scan(&uuid, &ts, &sizeBytes); err != nil {
 			continue
 		}
 		files = append(files, MemoryFileInfo{
 			Path:     uuid,
 			Name:     uuid,
-			SizeKB:   0,
+			SizeKB:   (sizeBytes + 1023) / 1024,
 			Modified: ts,
 		})
 	}

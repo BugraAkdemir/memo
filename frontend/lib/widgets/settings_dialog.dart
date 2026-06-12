@@ -841,7 +841,7 @@ class _GeneralTab extends ConsumerWidget {
 
         // Memory Toggle
         Text(
-          'Hafıza',
+          L10n.t('memory_section'),
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -870,7 +870,7 @@ class _GeneralTab extends ConsumerWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        enabled ? 'Hafıza Aktif' : 'Hafıza Kapalı',
+                        enabled ? L10n.t('memory_active') : L10n.t('memory_disabled'),
                         style: TextStyle(
                           fontSize: 14,
                           color: MemoTheme.of(context).textMain,
@@ -878,8 +878,7 @@ class _GeneralTab extends ConsumerWidget {
                       ),
                       SizedBox(height: 4),
                       Text(
-                        'Kapalıyken hafıza sorgulanmaz ve yeni anı kaydedilmez. '
-                        'Model %100 ham performansla çalışır.',
+                        L10n.t('memory_toggle_desc'),
                         style: TextStyle(
                           fontSize: 12,
                           color: MemoTheme.of(context).textDim,
@@ -891,8 +890,16 @@ class _GeneralTab extends ConsumerWidget {
                 Switch(
                   value: enabled,
                   activeColor: MemoTheme.accent,
-                  onChanged: (_) {
-                    ref.read(memoryEnabledProvider.notifier).toggle();
+                  onChanged: (_) async {
+                    try {
+                      await ref.read(memoryEnabledProvider.notifier).toggle();
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${L10n.t('error')}: $e')),
+                        );
+                      }
+                    }
                   },
                 ),
               ],
@@ -1410,9 +1417,9 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                         context: context,
                         builder: (ctx) => AlertDialog(
                           backgroundColor: MemoTheme.of(context).bgPanel,
-                          title: Text('Hafızayı Temizle'),
+                          title: Text(L10n.t('clear_memory_title')),
                           content: Text(
-                            'Tüm hafıza dosyaları silinecek. Emin misin?',
+                            L10n.t('clear_memory_confirm_ext'),
                           ),
                           actions: [
                             TextButton(
@@ -1424,13 +1431,21 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                               style: TextButton.styleFrom(
                                 foregroundColor: MemoTheme.red,
                               ),
-                              child: Text('Temizle'),
+                              child: Text(L10n.t('clear_memory')),
                             ),
                           ],
                         ),
                       );
                       if (confirmed == true) {
-                        ref.read(memoryFilesProvider.notifier).clearAll();
+                        try {
+                          await ref.read(memoryFilesProvider.notifier).clearAll();
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('${L10n.t('error')}: $e')),
+                            );
+                          }
+                        }
                       }
                     },
                   ),
@@ -1475,10 +1490,18 @@ class _MemoryTabState extends ConsumerState<_MemoryTab> {
                             trailing: IconButton(
                               icon: Icon(Icons.delete_outline),
                               color: MemoTheme.red,
-                              onPressed: () {
-                                ref
-                                    .read(memoryFilesProvider.notifier)
-                                    .deleteFile(file.path);
+                              onPressed: () async {
+                                try {
+                                  await ref
+                                      .read(memoryFilesProvider.notifier)
+                                      .deleteFile(file.path);
+                                } catch (e) {
+                                  if (context.mounted) {
+                                    ScaffoldMessenger.of(context).showSnackBar(
+                                      SnackBar(content: Text('${L10n.t('error')}: $e')),
+                                    );
+                                  }
+                                }
                               },
                             ),
                           ),

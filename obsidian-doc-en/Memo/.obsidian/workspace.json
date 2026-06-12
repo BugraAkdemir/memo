@@ -11,10 +11,14 @@
             "id": "c5e189af1749a253",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Grafik Görünümü"
+              "type": "markdown",
+              "state": {
+                "file": "00 Home.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "00 Home"
             }
           }
         ]

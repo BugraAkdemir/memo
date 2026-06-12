@@ -96,6 +96,53 @@ type Provider interface {
 
 **Dosya:** `internal/provider/router.go` (282 satır)
 
+### Provider Arayüzü (Go)
+
+```go
+type Provider interface {
+    Name() ProviderType
+    DisplayName() string
+    ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResponse, error)
+    ChatCompletionStream(ctx context.Context, req ChatRequest) (<-chan StreamChunk, error)
+    ListModels(ctx context.Context) ([]string, error)
+}
+```
+
+```go
+type ChatRequest struct {
+    Model     string
+    Messages  []Message
+    Stream    bool
+    MaxTokens int
+    Options   map[string]interface{} // temperature, top_p, etc.
+}
+
+type StreamChunk struct {
+    Content      string
+    FinishReason string
+    Err          error
+}
+```
+
+### Şifreleme Implementasyonu
+
+Anahtar türetme (`config.go`):
+
+```go
+func deriveKey() []byte {
+    id, err := os.ReadFile("/etc/machine-id")
+    // veya fallback: data/.machine-id'den UUID
+    return sha256.Sum256(bytes.TrimSpace(id))
+}
+```
+
+Şifreleme (`encryptAPIKey`):
+1. 12-byte rastgele nonce oluştur
+2. AES-256-GCM ile şifrele (nonce eklenir)
+3. base64 encode → `data/providers.json`'a yaz
+
+Şifre çözme: base64 decode → nonce ayır → AES-256-GCM decrypt
+
 ### Çalışma Prensibi
 
 ```

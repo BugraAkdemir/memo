@@ -14,8 +14,13 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Model-Agnostic Engine
 - **Internal Llama-Server**: Powered by `llama.cpp` for high-performance GGUF inference.
-- **Dedicated Embedding Server**: A second internal server can run specifically for memory indexing, ensuring chat performance remains untouched.
+- **Dedicated Embedding Server**: A second internal server runs specifically for memory indexing, ensuring chat performance remains untouched.
+- **Cross-Mode Architecture**: Use external API providers (OpenAI, Claude, Gemini) for chat while a tiny local model handles embeddings — both run independently.
 - **External Provider Support**: Seamlessly connects to LM-Studio or any OpenAI-compatible local API (Port 1234/8081).
+
+### Remote Access
+- **ngrok Tunnel**: Built-in ngrok integration for accessing your Memo backend from anywhere. Auto-download, tunnel management, configurable domain and region.
+- **Token Authentication**: Optional `X-Memo-Token` header for secure remote connections.
 
 ---
 
@@ -25,13 +30,23 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Unified Storage**: Vector embeddings and metadata live in the same SQLite database.
 - **ANN Indexing**: `vec0` virtual table provides approximate nearest neighbor search with O(log N) query time.
 - **ACID Compliance**: Built-in transaction support ensures atomic writes and data integrity.
+- **Go Fallback**: If vec0 extension is unavailable, brute-force cosine similarity fallback.
 
 ### Privacy & Local Isolation
 - **100% Offline**: No data ever leaves your computer. No telemetry, no logs, no cloud dependencies.
 - **Encrypted Local Storage**: Your mind stays on your hardware.
+- **AES-256-GCM Encryption**: API keys encrypted with machine-derived key.
 
-### Remote Access Server
-- **Local Network Web Bridge**: Enable "Remote Access" in settings to chat with your local Memo from other devices on your Wi-Fi (mobile, tablet, etc.).
+### Backup & Restore (.memo)
+- **Full Export**: `GET /api/export` — zip archive of sessions, config, providers, orchestra, memory, WhatsApp data.
+- **Full Import**: `POST /api/import` — restore from .memo zip. Optional model inclusion.
+- **Wipe All Data**: `POST /api/wipe` — double-confirmation dialog, config file persists.
+
+### Mobile Companion App
+- **Thin Client**: Android/iOS Flutter app connecting over LAN or remote tunnel.
+- **Zero Processing**: All AI stays on desktop — mobile is a secure remote viewport.
+- **Features**: Chat (SSE streaming), settings (provider/model control), session management.
+- **Planned (v3.3.0)**: Full feature parity, biometric auth, offline queue, voice input.
 
 ---
 
@@ -64,6 +79,15 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Performance HUD
 - **Real-time Stats**: Hover over the timestamp to see generation speed (tok/s), total tokens, and precise duration metrics.
+
+### WhatsApp Integration
+- **QR Pairing**: Full WhatsApp Web multi-device pairing via QR code displayed in-app.
+- **Bidirectional Messaging**: Send and receive messages with contact-aware display.
+- **Contact Resolution**: Phonebook sync, push names, fallback to phone number.
+- **Whitelist File Transfer**: Trusted contacts can request files from whitelisted directories.
+- **Agent Tools**: `SendWhatsApp`, `SearchWhatsApp`, `LatestWhatsAppChats`, `GetWhatsAppMessages`.
+- **Dedicated Chat Mode**: Isolated executor and tool registry for WhatsApp-only interactions.
+- **Local Storage**: All WhatsApp messages stored in an isolated SQLite database.
 
 ---
 
@@ -110,7 +134,7 @@ Memo acts as an AI agent with full computer control:
 - **Event Streaming:** Tool execution events streamed to frontend via SSE
 - **Audit Log:** Last 1000 tool executions logged with timestamps
 
-> **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) is not yet implemented. Agent works via backend API only.
+> **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) is planned for v3.2.0. Agent currently works via backend API only.
 
 ---
 

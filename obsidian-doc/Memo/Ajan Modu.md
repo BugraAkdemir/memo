@@ -98,6 +98,58 @@ Kalıcı izinleri kontrol et ──Bulundu──► Politikayı uygula
 NeedPrompt döndür → frontend yanıt vermeli
 ```
 
+### Çalışma Döngüsü (Pipeline Pseudocode)
+
+```
+Executor.RunStream():
+  1. buildMessages() → system + history + user mesajı
+  2. system prompt'a tool definitions ekle (JSON Schema)
+  3. LLM.ChatCompletionStream() çağır (temp=0.2)
+  4. Her stream chunk'ı işle:
+     ├── content chunk → EventStreamChunk gönder
+     └── tool_call chunk → parse et:
+         ├── Her tool_call için:
+         │   a. ToolRegistry.Lookup(name) → kayıtlı mı?
+         │   b. PermissionManager.Check(call) → izin var mı?
+         │   c. İzin yoksa → EventPermissionRequest → bekle
+         │   d. Sandbox.Execute(tool, args) → çalıştır
+         │   e. Sonucu EventToolResult veya EventToolError gönder
+         │   f. Sonucu messages'a rol="tool" olarak ekle
+         └── Adım 3'e dön (tool sonuçlarıyla)
+  5. tool_call yoksa → EventFinalResponse gönder, bitir
+  6. Max 20 iterasyon (güvenlik limiti)
+```
+
+### Executor Metodları
+
+| Metod | Açıklama |
+|-------|----------|
+| `RunStream(ctx, msgs, tools, onEvent)` | Ana pipeline, event callback ile |
+| `executeTool(ctx, call, history)` | Tek aracı çalıştır, sonucu döndür |
+| `waitForPermission(ctx, call)` | Kullanıcı iznini bekle (channel) |
+| `checkRateLimit()` | Global + komut başına rate limit |
+| `buildToolDefs()` | Tool'lardan JSON Schema oluştur |
+
+### Audit Trail Sistemi
+
+- **Depolama**: Son 1000 kayıt RAM'de (logEntries slice)
+- **Kayıt içeriği**: Zaman, araç adı, argümanlar (hassas olanlar maskelenir), sonuç özeti, izin kararı
+- **Kalıcılık**: Yok — yeniden başlatmada kaybolur
+- **API**: `GET /api/agent/logs` (planlanan, v3.2.0)
+
+### Sandbox Yapılandırması
+
+| Parametre | Değer |
+|-----------|-------|
+| Maksimum komut süresi | 60 saniye |
+| Global rate limit | 30 çağrı/dakika |
+| Aynı komut arası bekleme | 5 saniye |
+| Kara liste desen sayısı | 23 |
+| Path traversal koruması | Symlink çözümleme + `..` engelleme |
+| Proje kökü sınırlaması | Çalışma dizini ve altı |
+
+---
+
 ### UI Akışı (uygulandığında)
 
 ```

@@ -658,9 +658,7 @@ class _LocalModelCard extends ConsumerWidget {
                   name.contains('bge')) {
                 tags.add('Embedding');
               }
-              if (name.contains('vision') ||
-                  name.contains('llava') ||
-                  name.contains('pixtral')) {
+              if (model.isVision) {
                 tags.add('Vision');
               }
               if (name.contains('think') ||

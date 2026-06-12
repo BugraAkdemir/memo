@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -30,6 +31,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _showTemplates = false;
   String _filterQuery = '';
   int _selectedIndex = 0;
+  String? _pickedImagePath;
 
   List<PopupItem> get _filteredItems {
     if (_filterQuery.isEmpty) return templates;
@@ -129,10 +131,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
   Future<void> _send() async {
     final text = _controller.text.trim();
-    if (text.isEmpty) return;
+    final imagePath = _pickedImagePath;
+    if (text.isEmpty && imagePath == null) return;
 
     // Intercept manual /command entries
-    if (text.startsWith('/')) {
+    if (imagePath == null && text.startsWith('/')) {
       final handled = await _tryHandleManualCommand(text);
       if (handled) return;
     }
@@ -141,6 +144,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     _controller.clear();
     _dismissPopup();
+    setState(() => _pickedImagePath = null);
 
     // WhatsApp chat mode — use WhatsApp stream instead of normal chat (Beta only)
     if (ref.read(betaFeaturesProvider) && ref.read(whatsAppChatModeProvider)) {
@@ -149,7 +153,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     try {
-      await ref.read(messagesProvider.notifier).sendMessage(text);
+      if (imagePath != null) {
+        await ref.read(messagesProvider.notifier).sendFile(text, imagePath);
+      } else {
+        await ref.read(messagesProvider.notifier).sendMessage(text);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
@@ -519,6 +527,48 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               popup,
             ],
           ),
+        // Image preview
+        if (_pickedImagePath != null)
+          Container(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            decoration: BoxDecoration(
+              color: MemoTheme.of(context).bgApp,
+              border: Border(
+                top: BorderSide(color: MemoTheme.of(context).borderSoft),
+              ),
+            ),
+            child: Row(
+              children: [
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.file(
+                    File(_pickedImagePath!),
+                    width: 60,
+                    height: 60,
+                    fit: BoxFit.cover,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    _pickedImagePath!.split('/').last,
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: MemoTheme.of(context).textDim,
+                    ),
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.close, size: 16),
+                  padding: EdgeInsets.zero,
+                  constraints: BoxConstraints(),
+                  color: MemoTheme.of(context).textDim,
+                  onPressed: () => setState(() => _pickedImagePath = null),
+                ),
+              ],
+            ),
+          ),
         // Input area
         Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -546,21 +596,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     allowMultiple: false,
                   );
                   if (result != null && result.files.single.path != null) {
-                    final path = result.files.single.path!;
-                    final text = _controller.text.trim();
-                    _controller.clear();
-                    _dismissPopup();
-                    try {
-                      await ref
-                          .read(messagesProvider.notifier)
-                          .sendFile(text, path);
-                    } catch (e) {
-                      if (mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('error')}: $e')),
-                        );
-                      }
-                    }
+                    setState(() => _pickedImagePath = result.files.single.path);
+                    _focusNode.requestFocus();
                   }
                 },
               ),

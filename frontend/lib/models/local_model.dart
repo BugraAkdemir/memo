@@ -5,6 +5,7 @@ class LocalModel {
   final int size;
   final String path;
   final bool isEmbedding;
+  final bool isVision;
 
   const LocalModel({
     required this.repoId,
@@ -12,6 +13,7 @@ class LocalModel {
     required this.size,
     required this.path,
     required this.isEmbedding,
+    this.isVision = false,
   });
 
   factory LocalModel.fromJson(Map<String, dynamic> json) => LocalModel(
@@ -20,6 +22,7 @@ class LocalModel {
         size: json['size'] as int? ?? 0,
         path: json['path'] as String? ?? '',
         isEmbedding: json['is_embedding'] as bool? ?? false,
+        isVision: (json['mmproj_path'] as String?)?.isNotEmpty ?? false,
       );
 
   /// Human-readable file size

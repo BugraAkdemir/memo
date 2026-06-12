@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
@@ -344,6 +346,19 @@ class _MessageBubbleState extends State<_MessageBubble> {
                           }
                           return const SizedBox.shrink();
                         }),
+                      if (widget.message.hasImage)
+                        Padding(
+                          padding:  EdgeInsets.only(bottom: 8),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(8),
+                            child: Image.file(
+                              File(widget.message.imagePath!),
+                              width: 480,
+                              fit: BoxFit.contain,
+                              errorBuilder: (_, __, ___) =>  SizedBox.shrink(),
+                            ),
+                          ),
+                        ),
                       if (widget.message.content.isNotEmpty)
                         MarkdownBody(
                           data: widget.message.content,

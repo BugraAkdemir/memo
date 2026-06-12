@@ -596,6 +596,63 @@ class MemoApiClient {
     return res.data['reply'] as String? ?? '';
   }
 
+  /// Send a file (image or document) with SSE streaming.
+  Stream<StreamChunk> sendFileStream(
+    String message,
+    String filePath, {
+    CancelToken? cancelToken,
+  }) async* {
+    try {
+      final formData = FormData.fromMap({
+        'message': message,
+        'file': await MultipartFile.fromFile(filePath),
+      });
+      final response = await _dio.post(
+        '/api/send_file/stream',
+        data: formData,
+        options: Options(responseType: ResponseType.stream),
+        cancelToken: cancelToken,
+      );
+
+      final stream = response.data.stream;
+      final lineStream = stream
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lineStream) {
+        if (line.startsWith('data: ')) {
+          final jsonStr = line.substring(6);
+          try {
+            final data = json.decode(jsonStr);
+            if (data['error'] != null && (data['error'] as String).isNotEmpty) {
+              throw Exception(data['error'] as String);
+            }
+            if (data['content'] != null ||
+                data['thinking'] != null ||
+                data['finish_reason'] != null) {
+              yield StreamChunk(
+                content: data['content'] as String? ?? '',
+                thinking: data['thinking'] as String?,
+                finishReason: data['finish_reason'] as String?,
+              );
+            }
+            if (data['done'] == true) {
+              break;
+            }
+          } catch (e) {
+            // ignore malformed chunks
+          }
+        }
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      throw Exception('Bağlantı hatası: $e');
+    } catch (e) {
+      throw Exception('Bağlantı hatası: $e');
+    }
+  }
+
   // ─── Health check ───────────────────────────────────────────────
 
   /// Returns true if the Go backend is reachable.

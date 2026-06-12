@@ -16,8 +16,9 @@ func NewTextMessage(role, text string) Message {
 
 // NewMultimodalMessage creates a message with text and image(s).
 func NewMultimodalMessage(role, text string, imageBase64 ...string) Message {
-	parts := []ContentPart{
-		{Type: "text", Text: text},
+	var parts []ContentPart
+	if text != "" {
+		parts = append(parts, ContentPart{Type: "text", Text: text})
 	}
 	for _, img := range imageBase64 {
 		parts = append(parts, ContentPart{

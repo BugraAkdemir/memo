@@ -50,6 +50,28 @@ type LocalModel struct {
 	Size        int64  `json:"size"`
 	Path        string `json:"path"`
 	IsEmbedding bool   `json:"is_embedding"`
+	MmprojPath  string `json:"mmproj_path,omitempty"`
+}
+
+// findMmproj looks for a multimodal projector file next to the model.
+func findMmproj(modelPath string) string {
+	dir := filepath.Dir(modelPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		lower := strings.ToLower(e.Name())
+		if strings.Contains(lower, "mmproj") || strings.Contains(lower, "multimodal") {
+			if strings.HasSuffix(lower, ".gguf") {
+				return filepath.Join(dir, e.Name())
+			}
+		}
+	}
+	return ""
 }
 
 // isEmbeddingModel checks if a model filename/repo suggests it's an embedding model.
@@ -363,6 +385,11 @@ func (s *Store) ListLocalModels() []LocalModel {
 		if strings.HasSuffix(info.Name(), ".downloading") {
 			return nil
 		}
+		// Skip multimodal projector files (they are not standalone models)
+		lower := strings.ToLower(info.Name())
+		if strings.Contains(lower, "mmproj") || strings.Contains(lower, "multimodal") {
+			return nil
+		}
 
 		relPath, _ := filepath.Rel(s.modelsDir, path)
 		parts := strings.SplitN(relPath, string(os.PathSeparator), 2)
@@ -378,6 +405,7 @@ func (s *Store) ListLocalModels() []LocalModel {
 			Size:        info.Size(),
 			Path:        path,
 			IsEmbedding: isEmbeddingModel(info.Name(), repoID),
+			MmprojPath:  findMmproj(path),
 		})
 
 		return nil

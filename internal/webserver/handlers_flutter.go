@@ -5,11 +5,13 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"net/http"
 	"net/url"
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -44,6 +46,95 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	ch := s.fullBridge.SendMessageStream(ctx, req.Message)
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case chunk, ok := <-ch:
+			if !ok {
+				return
+			}
+			data, err := json.Marshal(chunk)
+			if err != nil {
+				continue
+			}
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+
+			if chunk.Done {
+				return
+			}
+		}
+	}
+}
+
+func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+
+	err := r.ParseMultipartForm(50 << 20)
+	if err != nil {
+		http.Error(w, "bad form", http.StatusBadRequest)
+		return
+	}
+
+	msg := r.FormValue("message")
+
+	file, header, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "missing file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	tmpFile, err := os.CreateTemp("", "memo_web_*_"+header.Filename)
+	if err != nil {
+		http.Error(w, "tmp error", http.StatusInternalServerError)
+		return
+	}
+	defer tmpFile.Close()
+
+	if _, err := io.Copy(tmpFile, file); err != nil {
+		http.Error(w, "copy error", http.StatusInternalServerError)
+		return
+	}
+	tmpFilePath := tmpFile.Name()
+	tmpFile.Close()
+
+	mimeType := header.Header.Get("Content-Type")
+	isImage := false
+	if mimeType != "" {
+		if len(mimeType) >= 5 && mimeType[:5] == "image" {
+			isImage = true
+		}
+	} else {
+		ext := strings.ToLower(filepath.Ext(tmpFilePath))
+		if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" || ext == ".bmp" {
+			isImage = true
+		}
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	var ch <-chan api.StreamChunk
+	if isImage {
+		ch = s.fullBridge.SendMessageWithImageStream(ctx, msg, tmpFilePath)
+	} else {
+		ch = s.fullBridge.SendMessageWithFileStream(ctx, msg, tmpFilePath)
+	}
 
 	for {
 		select {

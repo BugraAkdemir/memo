@@ -309,11 +309,15 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   Future<String> sendFile(String message, String filePath) async {
     if (ref.read(isSendingProvider)) return '';
 
+    _stopped = false;
+    _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
     ref.read(isSendingProvider.notifier).state = true;
 
     final fileName = filePath.split('/').last;
+    final ext = filePath.split('.').last.toLowerCase();
+    final isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].contains(ext);
     final displayMsg = message.isEmpty
         ? '*(Dosya gönderildi: $fileName)*'
         : '$message\n*(Dosya: $fileName)*';
@@ -321,6 +325,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     final userMsg = ChatMessage(
       role: 'user',
       content: displayMsg,
+      imagePath: isImage ? filePath : null,
       timestamp: DateTime.now().toIso8601String().substring(11, 19),
     );
 
@@ -328,11 +333,60 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     state = AsyncData([...current, userMsg]);
 
     try {
-      final reply = await api.sendFile(message, filePath);
+      final streamingEnabled = ref.read(streamingEnabledProvider);
+      String fullReply = '';
+      String fullThinking = '';
+
+      if (streamingEnabled) {
+        final stream = api.sendFileStream(
+          message,
+          filePath,
+          cancelToken: _cancelToken,
+        );
+
+        await for (final chunk in stream) {
+          fullReply += chunk.content;
+          fullThinking += chunk.thinking ?? '';
+
+          ref.read(streamingContentProvider.notifier).state = fullReply;
+          ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+        }
+
+        if (_stopped) {
+          _stopped = false;
+          return '';
+        }
+      } else {
+        fullReply = await api.sendFile(message, filePath);
+      }
+
+      final list = [...(state.valueOrNull ?? <ChatMessage>[])];
+      if (fullReply.isNotEmpty || fullThinking.isNotEmpty) {
+        list.add(
+          ChatMessage(
+            role: 'assistant',
+            content: fullReply,
+            thinking: fullThinking.isNotEmpty ? fullThinking : null,
+            timestamp: DateTime.now().toIso8601String().substring(11, 19),
+          ),
+        );
+      }
+      state = AsyncData(list);
+
+      ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingThinkingProvider.notifier).state = '';
+
       await refresh();
       ref.invalidate(chatListProvider);
-      return reply;
+      return fullReply;
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state = e.toString();
+      ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingThinkingProvider.notifier).state = '';
+      await refresh();
+      return '';
     } finally {
+      _cancelToken = null;
       ref.read(isSendingProvider.notifier).state = false;
     }
   }

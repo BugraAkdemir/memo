@@ -101,6 +101,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/incognito", s.handleIncognito)
 	mux.HandleFunc("/api/transcribe", s.handleTranscribe)
 	mux.HandleFunc("/api/send_file", s.handleSendFile)
+	mux.HandleFunc("/api/send_file/stream", s.handleSendFileStream)
 
 	// Flutter-specific endpoints
 	mux.HandleFunc("/api/send/stream", s.handleSendStream)

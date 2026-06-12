@@ -112,6 +112,13 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		args = append(args, "--embedding")
 	}
 
+	// Auto-detect multimodal projector (mmproj) file next to the model
+	mmproj := findMmproj(modelPath)
+	if mmproj != "" {
+		args = append(args, "--mmproj", mmproj)
+		log.Printf("llama: detected mmproj: %s", mmproj)
+	}
+
 	log.Printf("llama: launching %s %s", bin, strings.Join(args, " "))
 
 	s.cmd = exec.Command(bin, args...)
@@ -537,4 +544,25 @@ func extractModelName(path string) string {
 	name := filepath.Base(path)
 	name = strings.TrimSuffix(name, ".gguf")
 	return name
+}
+
+// findMmproj looks for a multimodal projector GGUF file next to the model.
+func findMmproj(modelPath string) string {
+	dir := filepath.Dir(modelPath)
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if e.IsDir() {
+			continue
+		}
+		lower := strings.ToLower(e.Name())
+		if strings.Contains(lower, "mmproj") || strings.Contains(lower, "multimodal") {
+			if strings.HasSuffix(lower, ".gguf") {
+				return filepath.Join(dir, e.Name())
+			}
+		}
+	}
+	return ""
 }

@@ -125,43 +125,41 @@ cd frontend && flutter run -d linux
 ## 🏛️ Architecture
 
 ```
-┌──────────────────────────────────────────────────────┐
-│                 Flutter Desktop Client                │
-│  ┌──────────┐  ┌──────────┐  ┌────────┐  ┌────────┐│
-│  │ Chat UI  │  │Settings  │  │Model   │  │WhatsApp││
-│  │ + Agent  │  │+ Backup  │  │Store   │  │Screen  ││
-│  └────┬─────┘  └────┬─────┘  └───┬────┘  └───┬────┘│
-│       └──────────────┼────────────┼───────────┘     │
-│                ┌─────┴────────────┴──────┐           │
-│                │   Riverpod Providers     │           │
-│                │  + SSE Stream Handler   │           │
-│                └─────┬───────────────────┘           │
-│                ┌─────┴───────────────────┐           │
-│                │    MemoApiClient (Dio)   │           │
-│                └─────┬───────────────────┘           │
-└──────────────────────┼───────────────────────────────┘
-                       │ REST + SSE (localhost:8090)
-┌──────────────────────┼───────────────────────────────┐
-│               Go Backend Server                       │
-│  ┌────────────────────┴────────────────────┐          │
-│  │          Web Server (server.go)          │          │
-│  │   ~35 endpoints (handlers_flutter.go)    │          │
-│  └────────────────────┬────────────────────┘          │
-│  ┌────────────────────┴────────────────────┐          │
-│  │          App Engine (app.go)             │          │
-│  └──┬──────────┬──────────┬──────────┬──────┘          │
-│  ┌──┴──┐  ┌────┴────┐  ┌─┴─────────┐  ┌─┴─────────┐   │
-│  │Mem  │  │Sessions │  │Llama Mgr  │  │WhatsApp   │   │
-│  │Store│  │Manager  │  │(subproc)  │  │Client     │   │
-│  │vec0 │  │JSON     │  │llama.cpp  │  │whatsmeow  │   │
-│  │SQLite│  │         │  │+ Emb Mgr │  │msg store  │   │
-│  └─────┘  └─────────┘  └───────────┘  └────────────┘   │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────┐          │
-│  │Provider  │  │Model Store   │  │Orchestra │          │
-│  │Router    │  │HF API+local  │  │Conductor │          │
-│  │(6 types) │  │              │  │(8 roles) │          │
-│  └──────────┘  └──────────────┘  └──────────┘          │
-└────────────────────────────────────────────────────────┘
+┌──────────────────────────────────┐  ┌───────────────────────────────┐
+│     Flutter Desktop Client       │  │    Flutter Mobile Client      │
+│  ┌──────┐ ┌──────┐ ┌────────┐   │  │  ┌──────────┐ ┌──────────┐   │
+│  │Chat  │ │Settings│ │Model   │   │  │  │Connect   │ │  Chat    │   │
+│  │+Agent │ │+Backup│ │Store   │   │  │  │Screen    │ │  Screen  │   │
+│  └──┬───┘ └──┬───┘ └───┬────┘   │  │  └────┬─────┘ └────┬─────┘   │
+│     └────┬───┴─────────┘         │  │       └──────┬──────┘         │
+│  ┌───────┴────────────┐          │  │  ┌───────────┴──────────┐     │
+│  │  Riverpod + SSE    │          │  │  │  Riverpod + Dio      │     │
+│  │  MemoApiClient     │          │  │  │  MemoApiClient       │     │
+│  └───────┬────────────┘          │  │  └───────────┬──────────┘     │
+└──────────┼───────────────────────┘  └───────────────┼───────────────┘
+           │ REST + SSE (:8090)                        │ LAN/ngrok/TLS
+           │                                           │
+┌──────────┼───────────────────────────────────────────┼───────────────┐
+│          └──────────────────┬────────────────────────┘               │
+│                     Go Backend Server                                │
+│  ┌─────────────────────────┴─────────────────────────┐               │
+│  │             Web Server (server.go)                 │               │
+│  │        ~40 endpoints (handlers_flutter.go)         │               │
+│  └─────────────────────────┬─────────────────────────┘               │
+│  ┌─────────────────────────┴─────────────────────────┐               │
+│  │                App Engine (app.go)                  │               │
+│  └──┬──────────┬──────────┬──────────┬──────────┬─────┘               │
+│  ┌──┴──┐  ┌────┴────┐  ┌─┴────────┐  ┌─┴───────┐  ┌─┴─────────┐     │
+│  │Mem  │  │Sessions │  │Llama Mgr │  │WhatsApp │  │Provider   │     │
+│  │Store│  │Manager  │  │+ Emb Mgr │  │Client   │  │Router     │     │
+│  │vec0 │  │JSON     │  │llama.cpp │  │whatsmeow│  │(8 types)  │     │
+│  └─────┘  └─────────┘  └──────────┘  └─────────┘  └───────────┘     │
+│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌──────────┐         │
+│  │Orchestra │  │Model Store   │  │Agent     │  │ngrok     │         │
+│  │Conductor │  │HF API+local  │  │Engine    │  │Manager   │         │
+│  │(8 roles) │  │              │  │(8 tools) │  │Tunnel    │         │
+│  └──────────┘  └──────────────┘  └──────────┘  └──────────┘         │
+└──────────────────────────────────────────────────────────────────────┘
 ```
 
 **Deep dive:** [docs/architecture.md](docs/architecture.md)
@@ -172,11 +170,11 @@ cd frontend && flutter run -d linux
 
 | Version | Theme | Status |
 |---------|-------|--------|
-| **v3.1.0** | Memory — RAG, WhatsApp, Backup, Local Embedding | ✅ Released |
-| **v3.2.0** | Scheduled Intelligence — Calendar, Cron, Voice, Smart Home | 🚧 In Development |
-| **v3.3.0** | Mobile Companion — Thin mobile client, remote access | 🚧 Planned |
-| **v3.4.0** | Personal Model — Fine-tune 1.2B model on your conversations | 🔮 Future |
-| **v3.5.0** | Ecosystem — Plugins, Knowledge Graph, Multi-User | 🔮 Future |
+| **v3.1.0** | Memory — RAG, WhatsApp, Backup, Mobile, Remote Access | ✅ Released |
+| **v3.2.0** | Scheduled Intelligence — Calendar, Agent UI, Mobile Notifications | 🚧 In Development |
+| **v3.3.0** | Mobile & Voice — Mobile v2 + Voice Assistant | 🚧 Planned |
+| **v3.4.0** | Plugin & Web — Plugin System + Web Search | 🚧 Planned |
+| **v3.5.0** | Smarter Memo — Knowledge Graph, Self-Improving, Smart Memory | 🔮 Future |
 
 [Full roadmap →](docs/ROADMAP.md)
 
@@ -189,9 +187,11 @@ cd frontend && flutter run -d linux
 | [🛣️ Roadmap](docs/ROADMAP.md) | Full strategic vision and release plan |
 | [🏛️ Architecture](docs/architecture.md) | Technical deep dive into components |
 | [📡 API Reference](docs/API_REFERENCE.md) | All REST endpoints |
+| [📱 Mobile README](mobile/README.md) | Mobile companion app docs |
 | [📖 Known Issues](docs/KNOWN_ISSUES.md) | Complete audit with priorities |
 | [🔧 Troubleshooting](docs/TROUBLESHOOTING.md) | Common problems and solutions |
 | [📝 Contributing](docs/CONTRIBUTING.md) | How to contribute |
+| [📚 Features Catalog](docs/FEATURES.md) | Detailed feature breakdown |
 
 ---
 
@@ -202,7 +202,8 @@ cd frontend && flutter run -d linux
 | Layer | Technology |
 |-------|-----------|
 | **Backend** | Go 1.25, http.ServeMux |
-| **Frontend** | Flutter 3.10+, Riverpod 2.x, Dio, flutter_markdown |
+| **Frontend (Desktop)** | Flutter 3.10+, Riverpod 2.x, Dio, flutter_markdown |
+| **Frontend (Mobile)** | Flutter 3.10+, Riverpod 2.x, Dio, Android + iOS + Web |
 | **LLM Runtime** | llama.cpp (bundled), OpenAI-compatible API |
 | **External Providers** | OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama |
 | **Vector Store** | SQLite + sqlite-vec (vec0 ANN index) |

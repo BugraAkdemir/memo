@@ -12,7 +12,7 @@ Memo projesine katkıda bulunmak veya yerel ortamda çalıştırmak için aşağ
 
 ### 1. Depoyu Klonlayın
 ```bash
-git clone https://github.com/kullanici/memo.git
+git clone https://github.com/BugraAkdemir/memo.git
 cd memo
 ```
 

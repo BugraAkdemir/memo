@@ -110,6 +110,76 @@ Kullanıcılar şunlarla özel roller oluşturabilir:
 
 ---
 
+### Şef Sistem Promptu
+
+Şef modele her planlama için özel bir system promptu gönderilir:
+
+````
+Sen bir Orkestra Şefi'sin. Kullanıcının isteğini analiz eder,
+alt görevlere ayırır ve her görevi uygun uzman role atarsın.
+
+Roller ve yetenekleri:
+- planner: Yazılım mimarisi, görev dağılımı
+- frontend: UI geliştirme (React, Flutter, CSS)
+- backend: API, veritabanı, sunucu (Go, Python, Node.js)
+- bug_fixer: Hata ayıklama, performans analizi
+- reviewer: Kod kalite incelemesi, best practice
+- security: Güvenlik denetimi, OWASP
+- devops: CI/CD, Docker, Kubernetes, altyapı
+- general: Genel amaçlı
+
+Yanıtın JSON formatında olmalıdır:
+{
+  "tasks": [{"role": "...", "context": "...", "prompt": "...", "depends_on": []}],
+  "parallel": true,
+  "reasoning": "..."
+}
+````
+
+### Görev Başına Provider Detayları
+
+Her görev için `createProviderForType`:
+1. Rolün model tipini alır (örn: "grok")
+2. Router'dan uygun provider'ı bulur
+3. Provider ChatCompletionStream ile çağrılır
+4. Rate limit hatası → 3s bekle, 2 kez dene
+5. Token limit → mesajı kısaltarak dene
+
+### Config Veri Modeli
+
+```json
+{
+  "enabled": false,
+  "chief_model": "claude",
+  "parallel_execution": true,
+  "roles": {
+    "planner": { "model": "claude", "enabled": true },
+    "frontend": { "model": "grok", "enabled": true },
+    "backend": { "model": "gpt-4o", "enabled": true },
+    "bug_fixer": { "model": "gemini", "enabled": true },
+    "reviewer": { "model": "claude", "enabled": false },
+    "security": { "model": "gpt-4o", "enabled": false },
+    "devops": { "model": "grok", "enabled": false },
+    "general": { "model": "gpt-4o", "enabled": true }
+  }
+}
+```
+
+### İlerleme Event Türleri
+
+| Event | Tip | İçerik |
+|-------|-----|--------|
+| `ProgressPlan` | Başlangıç | Planlama başladı |
+| `ProgressPlanChunk` | Stream | Şef'in planlama mantığı |
+| `ProgressPlanComplete` | Sonuç | JSON planı |
+| `ProgressTaskStart` | Başlangıç | Görev başladı (rol + model) |
+| `ProgressTaskChunk` | Stream | Görev çıktısı (token) |
+| `ProgressTaskResult` | Sonuç | Görevin tam metni |
+| `ProgressSynthChunk` | Stream | Sentez çıktısı |
+| `ProgressError` | Hata | Hata mesajı + görev ID |
+
+---
+
 ## Çalıştırma Motoru
 
 ### Aşama 1: Plan

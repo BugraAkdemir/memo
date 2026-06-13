@@ -126,8 +126,6 @@ class _ChatMessageListState extends State<ChatMessageList> {
       padding:  EdgeInsets.symmetric(horizontal: 24, vertical: 16),
       itemCount: itemCount,
       itemBuilder: (context, index) {
-        // Regular messages — use key + RepaintBoundary so Flutter only rebuilds
-        // the widget whose content actually changed.
         if (index < widget.messages.length) {
           final msg = widget.messages[index];
           return RepaintBoundary(
@@ -336,16 +334,23 @@ class _MessageBubbleState extends State<_MessageBubble> {
                             () => _thinkingExpanded = !_thinkingExpanded,
                           ),
                         ),
-                      if (!isUser && widget.message.agentEvents != null)
-                        ...widget.message.agentEvents!.map((e) {
-                          if (e is AgentEvent) {
-                            return AgentChatCard(event: e);
-                          }
-                          if (e is Map<String, dynamic>) {
-                            return AgentChatCard(event: AgentEvent.fromJson(e));
-                          }
-                          return const SizedBox.shrink();
-                        }),
+                      if (!isUser && widget.message.agentEvents != null && widget.message.agentEvents!.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Wrap(
+                            spacing: 6,
+                            runSpacing: 4,
+                            children: widget.message.agentEvents!.map((e) {
+                              if (e is AgentEvent) {
+                                return _AgentStatusBadge(event: e);
+                              }
+                              if (e is Map<String, dynamic>) {
+                                return _AgentStatusBadge(event: AgentEvent.fromJson(e));
+                              }
+                              return const SizedBox.shrink();
+                            }).toList(),
+                          ),
+                        ),
                       if (widget.message.hasImage)
                         Padding(
                           padding:  EdgeInsets.only(bottom: 8),
@@ -483,14 +488,14 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                         () => _thinkingExpanded = !_thinkingExpanded,
                       ),
                     ),
-                  if (widget.agentEvents != null)
-                    ...widget.agentEvents!.map((e) => AgentChatCard(event: e)),
                   if (widget.content.isNotEmpty)
                     MarkdownBody(
                       data: widget.content,
                       selectable: true,
                       styleSheet: _buildMarkdownStyleSheet(context),
                     ),
+                  if (widget.agentEvents != null && widget.agentEvents!.isNotEmpty)
+                    _AgentStatusBar(events: widget.agentEvents!),
                    SizedBox(height: 6),
                   Text(
                     DateTime.now().toIso8601String().substring(11, 16),
@@ -654,6 +659,201 @@ class _TypingIndicator extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Shows a single animated line for ongoing agent activity.
+/// Displays the current tool being executed or the last completed action.
+class _AgentStatusBar extends StatelessWidget {
+  final List<AgentEvent> events;
+
+  const _AgentStatusBar({required this.events});
+
+  String _statusText(AgentEvent? last) {
+    if (last == null) return 'Hazirlaniyor...';
+
+    switch (last.type) {
+      case 'tool_executing':
+        return '${_actionLabel(last.toolName)} isleniyor...';
+      case 'tool_result':
+        return '${_actionLabel(last.toolName)} tamam';
+      case 'tool_error':
+        return '${_actionLabel(last.toolName)} hata';
+      case 'permission_denied':
+        return '${_actionLabel(last.toolName)} reddedildi';
+      default:
+        return 'Calisiyor...';
+    }
+  }
+
+  String _actionLabel(String? toolName) {
+    switch (toolName) {
+      case 'read_file':
+        return 'Dosya';
+      case 'write_file':
+      case 'edit_file':
+      case 'insert_line':
+      case 'delete_lines':
+        return 'Duzenleme';
+      case 'delete_file':
+        return 'Silme';
+      case 'run_command':
+        return 'Komut';
+      case 'search_files':
+        return 'Arama';
+      case 'whatsapp_send':
+        return 'Mesaj';
+      case 'whatsapp_search':
+        return 'Mesaj ara';
+      default:
+        return toolName ?? 'Arac';
+    }
+  }
+
+  IconData _iconFor(String? toolName) {
+    switch (toolName) {
+      case 'read_file':
+        return Icons.description_outlined;
+      case 'write_file':
+      case 'edit_file':
+        return Icons.edit_outlined;
+      case 'insert_line':
+        return Icons.space_bar;
+      case 'delete_lines':
+      case 'delete_file':
+        return Icons.delete_outline;
+      case 'run_command':
+        return Icons.terminal;
+      case 'search_files':
+        return Icons.search;
+      default:
+        return Icons.build_outlined;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final lastEvent = events.last;
+
+    final isExecuting = lastEvent.type == 'tool_executing';
+    final isError = lastEvent.type == 'tool_error';
+
+    final iconColor = isError ? MemoTheme.red : MemoTheme.accent;
+    final statusIcon = isExecuting ? Icons.sync : (isError ? Icons.error_outline : Icons.check_circle_outline);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (isExecuting)
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: MemoTheme.accent,
+              ),
+            )
+          else
+            Icon(statusIcon, size: 14, color: iconColor),
+          const SizedBox(width: 6),
+          Icon(_iconFor(lastEvent.toolName), size: 14, color: iconColor),
+          const SizedBox(width: 6),
+          Text(
+            _statusText(lastEvent),
+            style: TextStyle(
+              fontSize: 12,
+              color: iconColor,
+              fontWeight: isExecuting ? FontWeight.w400 : FontWeight.w500,
+            ),
+          ),
+          if (lastEvent.durationMs != null && lastEvent.durationMs! > 0)
+            Container(
+              margin: const EdgeInsets.only(left: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+              decoration: BoxDecoration(
+                color: iconColor.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: Text(
+                '${lastEvent.durationMs}ms',
+                style: TextStyle(fontSize: 10, color: iconColor),
+              ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A small badge showing a single completed or errored agent action.
+class _AgentStatusBadge extends StatelessWidget {
+  final AgentEvent event;
+
+  const _AgentStatusBadge({required this.event});
+
+  String _label(String? toolName) {
+    switch (toolName) {
+      case 'read_file': return 'Dosya okudu';
+      case 'write_file': return 'Dosya yazdi';
+      case 'edit_file': return 'Dosya duzenledi';
+      case 'insert_line': return 'Satir ekledi';
+      case 'delete_lines':
+      case 'delete_file': return 'Sildi';
+      case 'run_command': return 'Komut calistirdi';
+      case 'search_files': return 'Arama yapti';
+      default: return toolName ?? 'Arac';
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isError = event.type == 'tool_error' || event.type == 'permission_denied';
+    // tool_executing in a historical message means the stream was interrupted before
+    // the tool completed — show it as cancelled rather than successful.
+    final isInterrupted = event.type == 'tool_executing' || event.type == 'permission_request';
+    final color = isError
+        ? MemoTheme.red
+        : isInterrupted
+            ? MemoTheme.of(context).textDim
+            : MemoTheme.accent;
+    final icon = isError
+        ? Icons.error_outline
+        : isInterrupted
+            ? Icons.cancel_outlined
+            : Icons.check_circle_outline;
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            _label(event.toolName),
+            style: TextStyle(
+              fontSize: 11,
+              color: color,
+              fontWeight: FontWeight.w500,
+            ),
+          ),
+          if (event.durationMs != null && event.durationMs! > 0) ...[
+            const SizedBox(width: 2),
+            Text(
+              '(${event.durationMs}ms)',
+              style: TextStyle(fontSize: 10, color: color.withValues(alpha: 0.7)),
+            ),
+          ],
         ],
       ),
     );

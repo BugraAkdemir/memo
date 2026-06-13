@@ -232,33 +232,37 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 : 'Sunucu yanıt vermiyor (60s zaman aşımı)'),
           ),
         )) {
-          if (chunk.finishReason == 'agent_event') {
+              if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
               final currentEvents = [...ref.read(streamingAgentEventsProvider)];
 
-              // Handle update or add logic (ToolExecuting vs ToolResult vs ToolError)
-              final existingIdx = currentEvents.lastIndexWhere(
-                (e) =>
-                    e.toolName == ev.toolName &&
-                    e.type != 'permission_request' &&
-                    ev.type != 'permission_request',
-              );
-              if (existingIdx != -1 &&
-                  (ev.type == 'tool_result' || ev.type == 'tool_error')) {
-                // Replace executing state with result
-                currentEvents[existingIdx] = ev;
-              } else {
+              // Only keep permission_request for dialogs and final results/errors.
+              // tool_executing events are transient — replace the last event with
+              // this one so the UI shows a single "dusunuyor..." line instead of
+              // accumulating one per tool call.
+              if (ev.type == 'tool_executing') {
+                // Keep only this as the current executing event (replaces previous)
+                if (currentEvents.length >= 1 && currentEvents.last.type == 'tool_executing') {
+                  currentEvents[currentEvents.length - 1] = ev;
+                } else {
+                  currentEvents.add(ev);
+                }
+              } else if (ev.type == 'tool_result' || ev.type == 'tool_error' || ev.type == 'permission_denied') {
+                // Check if we can replace the last executing event with this result
+                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
+                  currentEvents[currentEvents.length - 1] = ev;
+                } else {
+                  currentEvents.add(ev);
+                }
+              } else if (ev.type == 'permission_request') {
                 currentEvents.add(ev);
+                ref.read(agentEventBusProvider).emit(ev);
               }
 
               ref.read(streamingAgentEventsProvider.notifier).state =
                   currentEvents;
               finalAgentEvents = currentEvents;
-
-              if (ev.type == 'permission_request') {
-                ref.read(agentEventBusProvider).emit(ev);
-              }
             } catch (e) {
               // ignore parse errors
             }
@@ -274,6 +278,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
         if (_stopped) {
           _stopped = false;
+          ref.read(streamingContentProvider.notifier).state = '';
+          ref.read(streamingThinkingProvider.notifier).state = '';
+          ref.read(streamingAgentEventsProvider.notifier).state = [];
           return;
         }
       } else {

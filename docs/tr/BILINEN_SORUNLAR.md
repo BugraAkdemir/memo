@@ -100,6 +100,56 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Yapılan:** `os.Remove` öncesinde yeniden `EvalSymlinks` + yeniden doğrulama eklendi.
 - **Kullanıcı etkisi:** TOCTOU penceresi kapatıldı — yol silme anında yeniden doğrulanıyor.
 
+### F18. WebServer CORS: Her Origin'i Yansıtıyor (K03)
+- **Öncesi:** `corsMiddleware` gelen Origin header'ını whitelist kontrolü olmadan doğrudan yanıta yansıtıyordu.
+- **Yapılan:** Sadece `localhost`, `127.0.0.1`, `::1` origin'lerine izin veren whitelist eklendi.
+- **Kullanıcı etkisi:** Kötü niyetli web siteleri artık kullanıcının tarayıcısı üzerinden yerel API'ye erişemez.
+
+### F19. Orchestra `safeProgress` Deadlock (K02)
+- **Öncesi:** `safeProgress` mutex tutarken `fn(up)` çağırıyor, bu da dolu kanala yazmaya çalışınca tüm goroutine'leri kilitleyen deadlock oluşturuyordu.
+- **Yapılan:** `progressMu` conductor'dan kaldırıldı; `safeProgress` artık doğrudan `fn(up)` çağırıyor. `fullBuf` güvenliği `app.go`'da yerel `sync.Mutex` ile sağlanıyor.
+- **Kullanıcı etkisi:** Orchestra artık yavaş/kopuk istemcilerde donmuyor.
+
+### F20. Orchestra: Çok Turlu Sohbetlerde Yanlış Kullanıcı Mesajı (K07)
+- **Öncesi:** `userPrompt` çıkarma kodu ilk kullanıcı mesajını alıyordu; son mesaj değil.
+- **Yapılan:** `callAgentWithOrchestra`, `callLLMStream`, `callLLM` içindeki döngüler tersine çevrildi.
+- **Kullanıcı etkisi:** Çok turlu sohbetlerde orchestra artık doğru soruyu yanıtlıyor.
+
+### F21. Skill `Install()`: Manifest Name Path Traversal (H25) + `os.Stat` Hata Yutma (M25)
+- **Öncesi:** `def.Manifest.Name` YAML'dan alınıp doğrulanmadan `filepath.Join` ile kullanılıyordu; `os.Stat` hataları yutuluyordu.
+- **Yapılan:** `validateSkillName()` ile `/`, `\`, `..` içeren isimler reddediliyor; `filepath.Abs` karşılaştırmasıyla hedef dizin `SkillsDir()` içinde doğrulanıyor; `os.Stat` switch ile düzgün hata kontrolü yapılıyor.
+- **Kullanıcı etkisi:** Kötü niyetli SKILL.md ile dosya sistemi geçişi artık mümkün değil.
+
+### F22. Skill `Remove()`: Path Traversal (K05)
+- **Öncesi:** `os.RemoveAll(def.Path)` çağrılmadan önce `def.Path`'in `SkillsDir()` içinde olduğu doğrulanmıyordu.
+- **Yapılan:** `filepath.Abs` ile `def.Path` kökünün `SkillsDir()` içinde olduğu kontrol ediliyor.
+- **Kullanıcı etkisi:** Bozuk bir skill kurulumunun ardından `Remove` çağrısı artık uygulama dosyalarını silemez.
+
+### F23. Skill `copyDir`: Sembolik Bağlantı Takibi (H24) + Boyut Limiti Eksikliği (M26 rollback dahil)
+- **Öncesi:** Symlink'ler `os.ReadFile` ile takip edilerek hassas sistem dosyaları kopyalanabiliyordu; boyut sınırı yoktu; `copyDir` başarısız olunca artık dizin bırakılıyordu.
+- **Yapılan:** Symlink'ler atlanıyor (`entry.Type()&os.ModeSymlink != 0`); dosya başına 10MB sınırı eklendi; `copyDir` başarısızlığında `os.RemoveAll(targetDir)` rollback yapılıyor.
+- **Kullanıcı etkisi:** Kötü niyetli skill artık sistem dosyalarını kopyalayamaz ve bellek DoS oluşturamaz.
+
+### F24. `/skill:on <name>` Diğer Skill'leri Siliyordu (H26)
+- **Öncesi:** `SetActive([]string{name})` mevcut aktif seti tamamen değiştiriyordu.
+- **Yapılan:** Mevcut aktif listeye ekleme yapılıyor; zaten aktifse bilgilendirici mesaj gösteriliyor.
+- **Kullanıcı etkisi:** Yeni skill aktifleştirilirken mevcut aktif skill'ler artık silinmiyor.
+
+### F25. `handleActiveProvider` / `handleOrchestraConfig` Nil Guard (H14)
+- **Öncesi:** `s.fullBridge == nil` kontrolü yoktu, nil bridge'de server panic atıyordu.
+- **Yapılan:** Her iki handler'a başta `if s.fullBridge == nil` guard eklendi.
+- **Kullanıcı etkisi:** Test ortamı veya kısmi başlatmada endpoint'ler artık server'ı çökertmiyor.
+
+### F26. `createBackup()` Hatası Sessizce Yutuluyordu (H16)
+- **Öncesi:** `file.go` ve `edit.go`'daki tüm araçlarda `createBackup(fullPath)` dönüş değeri görmezden geliniyordu.
+- **Yapılan:** Tüm `WriteFile`, `DeleteFile`, `EditFile`, `InsertLine`, `DeleteLines` fonksiyonlarında backup hatası kontrol ediliyor ve yazma iptal ediliyor.
+- **Kullanıcı etkisi:** Disk dolu veya izin hatası durumunda yedeksiz yazma yapılmıyor.
+
+### F27. `run_command` CWD Geçiş Kontrolü Bypass (H17)
+- **Öncesi:** `EvalSymlinks` başarısız olunca CWD traversal kontrolü tamamen atlanıyordu.
+- **Yapılan:** `EvalSymlinks` hatası için `IsNotExist` ayrımı yapılıyor; var olmayan dizinlerde `filepath.Clean` sonucu doğrulanıyor; diğer hatalar reddediliyor.
+- **Kullanıcı etkisi:** Agent artık var olmayan bir dizin yolu ile sandbox dışında komut çalıştıramıyor.
+
 ---
 
 ## 🔴 Kritik
@@ -109,6 +159,12 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Detay:** Sandbox, çalışma dizinini `strings.HasPrefix` ile doğrular ancak araç argümanlarındaki dosya yollarını (`read_file`, `write_file`, `edit_file` vb.) doğrulamaz. `write_file` aracına `../../etc/passwd` gibi göreli bir yol verildiğinde, sandbox dizini dışına çıkılabilir.
 - **Risk:** Göreli yollar içeren araç argümanları ile sandbox kaçışı.
 - **Kategori:** Güvenlik
+
+### K04. 0.0.0.0'a Bağlanınca Tüm Endpoint'ler Açık — Kimlik Doğrulama Yok
+- **Dosya:** `internal/webserver/server.go:79-201` (StartHTTPWithAddr)
+- **Detay:** Uzaktan erişim etkinleştirildiğinde sunucu `0.0.0.0` adresine bağlanır. Tüm endpoint'ler (`/api/wipe`, `/api/whatsapp/send`, `/api/agent/permission`, `/api/import` vb.) hiçbir token veya session doğrulaması olmadan yerel ağdaki herkese açık hale gelir.
+- **Risk:** LAN'daki herhangi bir cihaz tüm verileri silebilir, WhatsApp mesajı gönderebilir, agent'ı kontrol edebilir.
+- **Kategori:** Güvenlik (kimlik doğrulama eksikliği)
 
 ---
 
@@ -165,6 +221,26 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `app.go` (`StartLocalModel`, `StopLocalModel`)
 - **Detay:** `a.client` (llama.cpp API istemcisi) eşzamanlama olmadan yeniden atanır. `clientMu` mevcut olsa da, streaming istekleri sırasında istemci değiştirilirse eski istemci referansı ile yeni istekler gönderilebilir.
 - **Risk:** Model değiştirme sırasında beklenmeyen hatalar.
+
+### H15. `Sandbox.ValidatePath` Korumasız Mutlak Yollara İzin Veriyor
+- **Dosya:** `internal/agent/sandbox.go:88-112`
+- **Detay:** Mutlak yol (`filepath.IsAbs(targetPath) == true`) ve yol `ProtectedPaths` dışındaysa `Sandbox.ValidatePath` `nil` (izin verildi) döndürüyor. `/tmp`, `~/.ssh`, `~/Documents` gibi dizinler ProtectedPaths'te yok. Bu metod gelecekte yeni araç entegrasyonlarında çağrılırsa LLM bu yollara yazabilir.
+- **Risk:** `/tmp/cron_job`, `~/.ssh/authorized_keys` gibi dosyaların agent tarafından oluşturulması.
+
+### H18. Orchestra Paralel Görev Sonuçları `results[idx]` Race Detector'ı Tetikliyor
+- **Dosya:** `internal/orchestra/conductor.go:392-402` (executeParallel)
+- **Detay:** Her goroutine farklı bir `results[idx]`'e yazsa da Go bellek modeli ve race detector, `wg.Wait()` öncesinde happens-before ilişkisi kurmadığı için bu yazmaları race olarak işaretler. Planner'dan gelen bozuk plan JSON'u iki göreve aynı `idx` atarsa gerçek veri yarışı oluşur.
+- **Risk:** `go test -race` hatası; bozuk plan durumunda sessiz veri bozulması.
+
+### H19. Flutter Orchestra Toggle: TOCTOU ve Notifier Bypass
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:662-679`
+- **Detay:** Toggle butonu `api.getOrchestraConfig()` + `copyWith(enabled: true)` + `api.updateOrchestraConfig()` zincirini doğrudan çağırıyor. `orchestraConfigProvider.notifier`'ın `toggle()` metodunu bypass ediyor. OrchestraConfigDialog aynı anda açıksa dialog'un local `_config`'i ile toggle'ın sunucudan okuduğu config arasında TOCTOU yarışı oluşur. İki `await` arasında `mounted` kontrolü de yok.
+- **Risk:** Yarış sonucu beklenmedik enabled/disabled durumu; unmount sonrası `ScaffoldMessenger.of(context)` çökmesi.
+
+### H20. Orkestra Progress Goroutine: ctx.Done() Sonrası 300s Sızıntı
+- **Dosya:** `app.go:888-890, 1057-1059`
+- **Detay:** `onProgress` callback'inde `ctx.Done()` algılandığında callback erken return yapar. Ancak `RunWithProgress` goroutine'i hâlâ provider'lara istek gönderiyor ve en fazla 300 saniye daha çalışmaya devam ediyor. Eşzamanlı 10 kullanıcı iptal ederse 30 LLM bağlantısı açık kalır.
+- **Risk:** Yüksek yük altında birikim goroutine/bağlantı sızıntısı.
 
 ---
 
@@ -251,6 +327,64 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `internal/cloudsync/drive.go`
 - **Detay:** Yükleme yarıda kesilirse, bulut hedefi kısmi/bozuk bir dosya içerir. Hata durumunda temizlik veya kısmi yükleme iptali yapılmaz.
 
+### M21. `handleSendFile`: Yanlış Slice + Eksik Nokta ile MIME Tespiti Bozuk
+- **Dosya:** `internal/webserver/server.go:362-365`
+- **Detay:** `ext := tmpFilePath[len(tmpFilePath)-4:]` — geçici dosya adının son 4 karakterini alıyor; orijinal dosyanın uzantısını değil. Ayrıca `ext == "jpeg"` koşulunda başında nokta yok, bu koşul hiçbir zaman true olamaz (ext her zaman noktayla başlar). `.jpeg` uzantılı dosyalar hiçbir zaman resim olarak tanımlanamaz.
+- **Risk:** Kullanıcı `.jpeg` dosyası gönderince resim yerine generic dosya olarak işleniyor.
+
+### M22. `handleWhatsAppSearch`: Boş Sorgu Tüm Mesajları Döküyor
+- **Dosya:** `internal/webserver/handlers_flutter.go:1245-1251`
+- **Detay:** `q` parametresi boş olduğunda `WhatsAppSearch("", 50)` çağrılıyor. SQLite LIKE `%%` deseni tüm mesajları eşleştirebilir; en fazla 50 mesaj döner. K04 ile birleşince kimlik doğrulamasız LAN erişimi ile özel sohbet içeriği sızabilir.
+
+### M23. Agent Pipeline: Araç Çağrıları Döngüsünde Context İptali Kontrolü Yok
+- **Dosya:** `internal/agent/pipeline.go:125-233`
+- **Detay:** Dış iterasyon döngüsünde `ctx.Done()` kontrol ediliyor ancak `for _, tc := range resp.ToolCalls` iç döngüsünde yok. LLM yanıtı 10 araç çağrısı içeriyorsa ve kullanıcı 1. çağrı sonrası iptal ederse kalan 9 çağrı (her biri 60s'e kadar `run_command` çalıştırabilir) tamamlanır.
+
+### M24. `run_command`: Zaman Aşımı Hatası Yanlış Context Kontrol Ediyor
+- **Dosya:** `internal/agent/tools/command.go:130-137`
+- **Detay:** `if ctx.Err() == context.DeadlineExceeded` koşulu `execCtx`'i değil `ctx`'i (parent context) kontrol ediyor. 60s tool timeout (`execCtx`) dolduğunda `ctx` hâlâ geçerliyse hata mesajı "Command timed out" yerine "Command failed with error: ..." oluyor.
+
+### M27. Orchestra `UpdateConfig` ve `Config()` Arasında TOCTOU (Kaydetme Yarışı)
+- **Dosya:** `app.go` (~1904-1914), `internal/orchestra/conductor.go:41-56`
+- **Detay:** `UpdateConfig(cfg)` mutex alıp bırakır, ardından `Config()` tekrar mutex alır. İki çağrı arasında başka bir goroutine `UpdateConfig` çağırırsa kaydedilen config son set edilenden farklı olabilir. Restart'tan sonra tutarsız config yüklenir.
+
+### M26. Orchestra: HTTP 503 Rate-Limit Olarak Muamele Ediliyor
+- **Dosya:** `internal/orchestra/conductor.go:809`
+- **Detay:** `isRateLimitError` içinde `strings.Contains(err.Error(), "503")` kontrolü var. 503 Service Unavailable gerçek bir servis kesintisidir, rate-limit değil. Bu durumda `callWithRetry` çöken servisi 3+ kez dener (5+10+20s bekleme), sağlıklı provider'a geçiş gecikir.
+
+### M27. `retryTask` Rate-Limit'te `callWithRetry`'ı Çağırarak Deneme Sayısını İkiye Katlıyor
+- **Dosya:** `internal/orchestra/conductor.go:561`
+- **Detay:** Rate-limit hatası alındığında `retryTask` direkt `callWithRetry(fn)` çağırıyor. `callWithRetry` kendi içinde 3 deneme daha yapar. `retryTask`'ın kendi döngüsü de devam eder. Sonuç: API halihazırda rate-limit atarken 6 toplamı deneme yapılır.
+
+### M28. Flutter: `orchestraConfigProvider.build()` Hataları Yutarak Varsayılan Config Döndürüyor
+- **Dosya:** `frontend/lib/providers/orchestra_provider.dart:15-21`
+- **Detay:** Tüm exception'lar `catch (e)` ile yakalanıp `OrchestraConfig()` (varsayılan, disabled) döndürülüyor. API başlangıçta erişilemezse kullanıcının önceki oturumda aktifleştirdiği orchestra görünmez. Kullanıcı dialog üzerinden kaydederse sunucudaki mevcut yapılandırmanın üzerine default yazılabilir.
+
+### M29. Flutter: `_sendWhatsApp` — Unmount Ortasında `isSendingProvider` Sızdırıyor
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:173-210`
+- **Detay:** `isSendingProvider.state = true` set edildikten sonra widget unmount edilirse stream tamamlanma callback'lerindeki `state = false` çağrılmaz. Uygulama "gönderiliyor" durumunda kalıcı olarak donar, yeniden başlatma gerekir. `try/finally` bloğu eksik.
+
+### M30. Flutter: WhatsApp `connect()` Yükleme Durumu Göstermiyor — Eşzamanlı Çağrı Riski
+- **Dosya:** `frontend/lib/providers/whatsapp_provider.dart:110-120`
+- **Detay:** `state = const AsyncValue.loading()` kaldırıldı. Önceki state hata ise kullanıcı hata ekranını görmeye devam ederken bağlantı denenebilir, butona tekrar basılabilir. Eşzamanlı iki `connect()` çağrısı yarışa girebilir.
+
+### M31. Skill Instructions Sistem Promptuna Sanitizasyon Olmadan Enjekte Ediliyor
+- **Dosya:** `app_skill.go:196-200`, `app.go:574-585`
+- **Detay:** `def.Instructions` (kullanıcı tarafından kontrol edilen SKILL.md markdown gövdesi) mevcut sistem promptuna doğrudan ekleniyor. Kötü niyetli bir skill instructions içinde `ignore all previous instructions` tarzı prompt injection içerebilir. Uzunluk sınırı, karakter doğrulaması veya escape mekanizması yok.
+- **Risk:** Prompt injection ile AI davranışının ele geçirilmesi.
+
+### M32. YAML Front Matter Ayrıştırıcısı: `---` Bulunan Skill Body'si Front Matter'ı Keser
+- **Dosya:** `internal/skill/loader.go:98-104` (extractFrontMatter)
+- **Detay:** `second := strings.Index(rest, frontMatterDelim)` YAML bloğundan sonraki tüm içerikte `---` arar. Skill'in markdown body'sinde yatay çizgi (`---`) kullanılırsa YAML front matter erken kapatılır, geri kalan kısım yanlış yorumlanır veya kaybolur.
+
+### M33. `/skill:off` (Tümünü Kapat): `SetActive(nil)` Hata Dönüşü Yutulуyor
+- **Dosya:** `app_skill.go:152`
+- **Detay:** `a.skillManager.SetActive(nil)` çağrısı `error` döndürür ancak dönen değer görmezden geliniyor. Başarısız deaktivasyonda kullanıcı "Tüm skill'ler devre dışı bırakıldı" mesajını görür ama işlem gerçekleşmeyebilir.
+
+### M34. Agent Backup ID Çakışması: `UnixNano` Düşük Çözünürlüklü Saatlerde Çakışabilir
+- **Dosya:** `internal/agent/backup.go:86`
+- **Detay:** Yedek dosya adı `time.Now().UnixNano()` ile oluşturuluyor. VM'lerde ve bazı Linux çekirdeklerinde `time.Now()` çözünürlüğü ~1ms düzeyinde olabilir. Hızlı ardışık yedeklemede aynı timestamp üretilirse ikinci yedek birincinin üzerine yazılır. Geri alınamaz veri kaybı.
+
 ---
 
 ## ⚪ Düşük
@@ -298,6 +432,70 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 ### L11. `unsanitizePath` 64-bit `int` Taşması Riski
 - **Dosya:** `internal/modelstore/modelstore.go` (ilgili satır)
 - **Detay:** Repo ID'lerinde kullanılan 64-bit tamsayı dönüşümleri, çok büyük sayılar için taşabilir.
+
+### L12. `handleImport`: Tüm İstek Gövdesi Tek Seferde Heap'e Alınıyor
+- **Dosya:** `internal/webserver/handlers_flutter.go:182-195`
+- **Detay:** `io.ReadAll(r.Body)` ile 50MB'a kadar istek tek bir `[]byte` olarak heap'e alınıyor. Eş zamanlı birden çok büyük import isteği OOM'a yol açabilir.
+
+### L13. `Server.Stop()`: Port Serbest Kalmadan `running = false` Setleniyor
+- **Dosya:** `internal/webserver/server.go:249-262`
+- **Detay:** `go srv.Shutdown(context.Background())` goroutine olarak ateşlenip unutuluyor. `running` hemen false olur. Aynı porta hemen tekrar `Start()` çağrılırsa "address already in use" hatası alınır.
+
+### L14. `readEnv` Araçı: Maskelenen Gizli Değerler Ama Anahtar İsimleri Görünüyor
+- **Dosya:** `internal/agent/tools/search.go:87-119`
+- **Detay:** Hassas env değişkenleri `MY_KEY=********` olarak gösterilir. Anahtar isimleri (örn. `OPENAI_API_KEY`, `GITHUB_TOKEN`) log'lara ve frontend'e sızar — hangi credential'ların sistemde tanımlı olduğunu açığa çıkarır.
+
+### L15. WhatsApp: Başlatılmış Ama Giriş Yapılmamış Durumda 2s Polling
+- **Dosya:** `frontend/lib/providers/whatsapp_provider.dart:88-90`
+- **Detay:** `!status.loggedIn` koşulu artık QR bekleme VE aktif olmayan-başlatılmış durumu kapsar. Backend başlatıldıktan sonra kullanıcı connect etmeden de 2s polling başlar, sunucu ve pil yükü artar.
+
+### L16. Orchestra `ProgressTaskChunk`: Her Kelimeyi Role Prefix'iyle Gönderme UX'i Bozuyor
+- **Dosya:** `app.go:901-907`, `internal/orchestra/conductor.go:466-472`
+- **Detay:** Her stream chunk'ı `"**planner**: kelime"` formatında gönderiliyor. 1000 kelimelik görev çıktısı 1000 ayrı `**rol**: kelime` parçası haline gelir. Paralel görevlerin iç içe geçmiş markdown'ı UI'da okunamaz hale gelir.
+
+### L17. Orchestra `ProgressTaskDone`: Megabaytlık İçerik Struct'ta Değer Olarak Kopyalanıyor
+- **Dosya:** `internal/orchestra/conductor.go:480-491`
+- **Detay:** `ProgressUpdate{..., Content: sb.String()}` ile görev yanıtının tamamı struct değeri olarak `safeProgress`'e geçiriliyor. 50KB'lık bir görev çıktısı her `ProgressTaskDone` çağrısında heap'te bir kez daha kopyalanır.
+
+### L18. `findProviderConfig`: Loop Değişkeninin Adresi Döndürülüyor
+- **Dosya:** `internal/orchestra/conductor.go:169-204`
+- **Detay:** `for _, cfg := range configs { return &cfg }` — `cfg` döngü yerel değişkenidir. Go escape analysis bunu heap'e taşır, bu yüzden çalışır. Ancak `pCfg.Model = modelName` ile provider config'ini değiştirmek, orijinal config'i değil heap'teki kopyanın bir alanını değiştirir. Anlam belirsizliği ve bakım zorluğu.
+
+### L19. Flutter: `WhatsAppChatModeNotifier.init()` — Dispose Sonrası State Yazma
+- **Dosya:** `frontend/lib/providers/whatsapp_provider.dart:37-43`
+- **Detay:** `init()` async metodu, `await` sonrasında provider dispose edilmiş olabilir. `StateNotifier.state` dispose sonrası set edildiğinde debug modda assertion hatası, release modda tanımsız davranış.
+
+### L20. Skill `/skill:off <name>`: Aktif Olmayan Skill İçin "Başarılı" Mesajı
+- **Dosya:** `app_skill.go:156-166`
+- **Detay:** Deaktive edilmek istenen skill aktif değilse `remaining` listesi değişmez, `SetActive(remaining)` çağrısı başarılı olur, kullanıcı "✅ Skill X deactivated" mesajını görür. Ancak X hiç aktif değildi, gerçek bir işlem yapılmadı.
+
+### L21. Skill `/skill:off <name>`: Read-Modify-Write'ta TOCTOU Yarışı
+- **Dosya:** `app_skill.go:156-163`
+- **Detay:** `GetActiveNames()` (RLock alıp bırakır) ile `SetActive(remaining)` (WLock alır) arasında başka bir goroutine aktif seti değiştirirse stale `remaining` listesi yeni durumun üzerine yazılır. Atomik `Deactivate(name)` metodu yok.
+
+### L22. Skill `SetActive`: `RegisterTool` Hata Dönüşü Yutulуyor
+- **Dosya:** `internal/skill/manager.go:176`
+- **Detay:** `m.toolRegistrar.RegisterTool(...)` `error` döndürür ancak hiç kontrol edilmiyor. Kayıt başarısız olursa `SetActive` `nil` (başarı) döndürür, tool sessizce çalışmaz.
+
+### L23. Skill `Discover()`: Tüm Disk I/O Süresince Write Lock Tutuluyor
+- **Dosya:** `internal/skill/manager.go:40-60`
+- **Detay:** `m.mu.Lock()` alındıktan sonra `DiscoverSkills()` çağrılıyor; bu metod `os.ReadDir` + her skill için `os.ReadFile` yapıyor. Tüm bu süre boyunca tüm `List`, `Get`, `IsActive`, `ActiveInstructions` çağrıları bloke olur.
+
+### L24. Skill `handleSkillCommand`: `ctx` Parametresi Kullanılmıyor
+- **Dosya:** `app_skill.go:64`
+- **Detay:** `context.Context` parametresi kabul ediliyor ama hiç kullanılmıyor. Context iptali (kullanıcı navigasyonu) görmezden geliniyor.
+
+### L25. Skill `ParseSkill`: Name Doğrulaması Instructions Kontrolünden Sonra
+- **Dosya:** `internal/skill/loader.go:43-55`
+- **Detay:** `manifest.Name == ""` kontrolü satır 53'te, instructions kontrolü satır 49'da yapılıyor. Her ikisi de boşsa hata mesajı `skill "" has no instructions` — boş name sessizce format string'e gömülüyor.
+
+### L26. `skills-lock.json` Hash'leri Hiç Doğrulanmıyor
+- **Dosya:** `skills-lock.json`, `internal/skill/loader.go`
+- **Detay:** `skills-lock.json`'da `computedHash` alanları var ama hiçbir Go kodu bu dosyayı okuyup hash'i doğrulamıyor. Değiştirilen bir SKILL.md checksum uyumsuzluğu algılanmadan yüklenir — lock dosyası yanlış güvenlik hissi veriyor.
+
+### L27. Skill `LoadSkill` / `copyDir`: Boyut Sınırı Olmadan Dosya Okuma
+- **Dosya:** `internal/skill/loader.go:17`, `internal/skill/manager.go:242`
+- **Detay:** `os.ReadFile` boyut sınırı olmadan tüm dosyayı okur. Yüzlerce MB'lık bir SKILL.md veya skill dizinindeki büyük dosya process belleğini tüketebilir.
 
 ---
 
@@ -361,11 +559,23 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `internal/agent/tools/whatsapp.go`
 - **Not:** WhatsApp aracı, ana uygulama bridge'i yerine doğrudan WhatsApp deposuna erişir. Bu, App katmanındaki erişim kontrollerini ve denetim günlüğünü atlar.
 
+### I16. `skill/manager.go` SetActive: Yeni Skill Tool'larını Gereksiz Unregister Ediyor
+- **Dosya:** `internal/skill/manager.go:159-166`
+- **Not:** Yeni aktive edilen skill'lerin toolları önce `UnregisterTool` ile kaldırılıp hemen ardından alt blokta `RegisterTool` ile ekleniyor. Orta blok yanlış: `RegisterTool` yerine `UnregisterTool` çağrılıyor. Final blok doğru kayıt yapıyor ama ara durum gereksiz kaldırma+ekleme döngüsü oluşturuyor. Eğer final blok herhangi bir nedenle (panic vb.) çalışmadan kesilirse tool'lar kayıttan çıkmış kalır.
+
+### I17. `config/config.yaml` Kayıtlı: `active_provider: openai` Hardcoded
+- **Dosya:** `config/config.yaml:63`
+- **Not:** `active_provider: openai` değeri config dosyasına commit edilmiş. Bu değer sunucu başlangıcında okunursa kullanıcının önceki tercihini (örn. `claude`) geçersiz kılabilir.
+
+### I18. `skill.DangerLevel` ve `agent.DangerLevel` Çifte Tip — Tip Uyumsuzluğu
+- **Dosya:** `internal/skill/types.go:7` vs `internal/agent/tools.go:13`
+- **Not:** İki paket aynı string değerlerine sahip ayrı `DangerLevel` named type'ları tanımlıyor. `SkillTool.DangerLevel` (`skill.DangerLevel`) agent pipeline'ındaki `agent.DangerLevel` tip assertion'larıyla uyumsuz. Her iki paketi kullanan kod compile sürecinde type mismatch yaşar. Ortak bir `internal/common` paketi önerilebilir.
+
 ---
 
 > **Son güncelleme:** 2026-06-13
-> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend
-> **Açık hatalar:** 23+ (🔴0, 🟠12, 🔵9, ⚪2)
-> **Gözlemler:** 15
-> **Düzeltilen:** 17
-> **Bulunan toplam sorun sayısı:** 55+
+> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, app_skill.go, tüm internal/ paketleri) + Flutter frontend + yeni skill sistemi + orchestra sistemi
+> **Açık hatalar:** 49 (🔴2, 🟠17, 🔵32, ⚪27)
+> **Gözlemler:** 18
+> **Düzeltilen:** 27
+> **Bulunan toplam sorun sayısı:** 106+

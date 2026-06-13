@@ -49,64 +49,70 @@ class PopupItem {
 const List<PopupItem> templates = [
   PopupItem.template(_PromptTemplate(
     key: '/code',
-    icon: '💻',
+    icon: '!',
     label: 'Kod Review',
     text:
         'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/explain',
-    icon: '📖',
+    icon: '?',
     label: 'Açıkla',
     text: 'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/fix',
-    icon: '🔧',
+    icon: '!',
     label: 'Hata Düzelt',
     text: 'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/plan',
-    icon: '🗺️',
+    icon: '>',
     label: 'Plan Yap',
     text: 'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/summary',
-    icon: '📝',
+    icon: '=',
     label: 'Özetle',
     text: 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/compare',
-    icon: '⚖️',
+    icon: '<',
     label: 'Karşılaştır',
     text: 'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/brainstorm',
-    icon: '💡',
+    icon: '+',
     label: 'Beyin Fırtınası',
     text: 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/translate',
-    icon: '🌐',
+    icon: '~',
     label: 'Çevir (EN->TR)',
     text: 'Aşağıdaki metni Türkçeye çevir:\n\n',
   )),
   PopupItem.command(_PromptCommand(
     key: '/model',
-    icon: '🧠',
+    icon: 'M',
     label: 'Model Değiştir',
     subtitle: 'Local / API arasında geçiş',
   )),
   PopupItem.command(_PromptCommand(
     key: '/orchestra',
-    icon: '🎵',
+    icon: 'O',
     label: 'Orchestra Mode',
     subtitle: 'Çoklu model orkestrasyonu',
+  )),
+  PopupItem.command(_PromptCommand(
+    key: '/skill',
+    icon: 'S',
+    label: 'Skill Yönetimi',
+    subtitle: "Skill'leri listele, aktiflestir/devre disi birak",
   )),
 ];
 
@@ -121,6 +127,8 @@ class PopupInsertText extends PopupResult {
 class PopupModelSwitch extends PopupResult {}
 
 class PopupOrchestraSwitch extends PopupResult {}
+
+class PopupSkillSelect extends PopupResult {}
 
 /// Popup that appears above the input when user types "/".
 class PromptTemplatesPopup extends StatelessWidget {
@@ -199,6 +207,8 @@ class PromptTemplatesPopup extends StatelessWidget {
                   onSelect(PopupModelSwitch());
                 } else if (item.key == '/orchestra') {
                   onSelect(PopupOrchestraSwitch());
+                } else if (item.key == '/skill') {
+                  onSelect(PopupSkillSelect());
                 }
               },
             );

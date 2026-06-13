@@ -1,3 +1,5 @@
+import 'package:flutter/material.dart';
+
 /// Orchestra mode configuration — mirrors Go `orchestra.OrchestraConfig`
 class OrchestraConfig {
   final bool enabled;
@@ -103,21 +105,37 @@ class RoleConfig {
 /// Default orchestra configuration.
 class OrchestraDefaults {
   static const List<Map<String, String>> defaultRoles = [
-    {'role': 'planner', 'model_type': 'claude', 'model_name': 'claude-sonnet-4-20250514', 'icon': '🗺️', 'label': 'Planner'},
-    {'role': 'frontend', 'model_type': 'grok', 'model_name': 'grok-2', 'icon': '🎨', 'label': 'Frontend'},
-    {'role': 'backend', 'model_type': 'openai', 'model_name': 'gpt-4o', 'icon': '⚙️', 'label': 'Backend'},
-    {'role': 'bug_fixer', 'model_type': 'gemini', 'model_name': 'gemini-2.0-flash', 'icon': '🔧', 'label': 'Bug Fixer'},
-    {'role': 'reviewer', 'model_type': 'claude', 'model_name': 'claude-sonnet-4-20250514', 'icon': '👁️', 'label': 'Reviewer'},
-    {'role': 'security', 'model_type': 'openai', 'model_name': 'gpt-4o', 'icon': '🛡️', 'label': 'Security'},
-    {'role': 'devops', 'model_type': 'grok', 'model_name': 'grok-2', 'icon': '🚀', 'label': 'DevOps'},
-    {'role': 'general', 'model_type': 'openai', 'model_name': 'gpt-4o', 'icon': '🤖', 'label': 'General'},
+    {'role': 'planner', 'model_type': 'claude', 'model_name': 'claude-sonnet-4-20250514', 'label': 'Planner'},
+    {'role': 'frontend', 'model_type': 'grok', 'model_name': 'grok-2', 'label': 'Frontend'},
+    {'role': 'backend', 'model_type': 'openai', 'model_name': 'gpt-4o', 'label': 'Backend'},
+    {'role': 'bug_fixer', 'model_type': 'gemini', 'model_name': 'gemini-2.0-flash', 'label': 'Bug Fixer'},
+    {'role': 'reviewer', 'model_type': 'claude', 'model_name': 'claude-sonnet-4-20250514', 'label': 'Reviewer'},
+    {'role': 'security', 'model_type': 'openai', 'model_name': 'gpt-4o', 'label': 'Security'},
+    {'role': 'devops', 'model_type': 'grok', 'model_name': 'grok-2', 'label': 'DevOps'},
+    {'role': 'general', 'model_type': 'openai', 'model_name': 'gpt-4o', 'label': 'General'},
   ];
 
-  static String iconForRole(String role) {
-    for (final r in defaultRoles) {
-      if (r['role'] == role) return r['icon']!;
+  static IconData iconForRole(String role) {
+    switch (role) {
+      case 'planner':
+        return Icons.account_tree_outlined;
+      case 'frontend':
+        return Icons.dashboard_outlined;
+      case 'backend':
+        return Icons.dns_outlined;
+      case 'bug_fixer':
+        return Icons.bug_report_outlined;
+      case 'reviewer':
+        return Icons.rate_review_outlined;
+      case 'security':
+        return Icons.shield_outlined;
+      case 'devops':
+        return Icons.rocket_launch_outlined;
+      case 'general':
+        return Icons.smart_toy_outlined;
+      default:
+        return Icons.extension_outlined;
     }
-    return '🤖';
   }
 
   static String labelForRole(String role) {

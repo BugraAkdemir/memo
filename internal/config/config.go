@@ -57,16 +57,17 @@ type APIConfig struct {
 }
 
 type LlamaConfig struct {
-	EngineMode    string  `yaml:"engine_mode" json:"engine_mode"`         // "auto", "cpu", "nvidia", "amd"
-	BinaryPath    string  `yaml:"binary_path" json:"binary_path"`         // path to llama-server, auto-detected if empty
-	Port          int     `yaml:"port" json:"port"`                       // default 8081
-	EmbeddingPort int     `yaml:"embedding_port" json:"embedding_port"`   // default 8082
-	CtxSize       int     `yaml:"ctx_size" json:"ctx_size"`               // default 4096
-	MaxHistory    int     `yaml:"max_history" json:"max_history"`         // default 20
-	ModelsDir     string  `yaml:"models_dir" json:"models_dir"`           // default "./data/models"
-	Temperature   float64 `yaml:"temperature" json:"temperature"`         // default 0.7
-	TopP          float64 `yaml:"top_p" json:"top_p"`                     // default 0.9
-	MaxTokens     int     `yaml:"max_tokens" json:"max_tokens"`           // default 0 (no limit)
+	EngineMode       string  `yaml:"engine_mode" json:"engine_mode"`               // "auto", "cpu", "nvidia", "amd"
+	BinaryPath       string  `yaml:"binary_path" json:"binary_path"`               // path to llama-server, auto-detected if empty
+	Port             int     `yaml:"port" json:"port"`                             // default 8081
+	EmbeddingPort    int     `yaml:"embedding_port" json:"embedding_port"`         // default 8082
+	CtxSize          int     `yaml:"ctx_size" json:"ctx_size"`                     // default 4096
+	MaxHistory       int     `yaml:"max_history" json:"max_history"`               // default 20 (legacy, use MaxContextTokens instead)
+	MaxContextTokens int     `yaml:"max_context_tokens" json:"max_context_tokens"` // default 0 = auto (128K for external, CtxSize for local)
+	ModelsDir        string  `yaml:"models_dir" json:"models_dir"`                 // default "./data/models"
+	Temperature      float64 `yaml:"temperature" json:"temperature"`               // default 0.7
+	TopP             float64 `yaml:"top_p" json:"top_p"`                           // default 0.9
+	MaxTokens        int     `yaml:"max_tokens" json:"max_tokens"`                 // default 0 (no limit)
 }
 
 type IdentityConfig struct {

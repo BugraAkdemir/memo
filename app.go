@@ -34,6 +34,8 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
+	"memo/internal/skill"
+	"memo/internal/truncate"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
 )
@@ -177,6 +179,8 @@ type App struct {
 	agentExecutor *agent.Executor
 	agentEnabled  bool
 	agentMu       sync.RWMutex
+
+	skillManager *skill.Manager
 
 	providerMu     sync.RWMutex // protects providerRouter, providerCfgMgr, activeProvider
 	sessionsMu     sync.RWMutex // protects sessions
@@ -376,6 +380,13 @@ func (a *App) startup(ctx context.Context) {
 	a.agentEnabled = false // Default disabled
 	log.Printf("Agent mode initialized (enabled=false)")
 
+	// Initialize Skill Manager
+	a.skillManager = skill.NewManager("data")
+	if err := a.skillManager.Discover(); err != nil {
+		log.Printf("skill: discover error: %v", err)
+	}
+	log.Println("Skill manager initialized")
+
 	log.Println("Memo ready")
 }
 
@@ -552,6 +563,11 @@ func (a *App) SendMessage(userMsg string) string {
 func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	log.Printf(">> SendMessageStream: %q", userMsg)
 
+	// Handle skill commands
+	if ch := a.handleSkillCommand(ctx, userMsg); ch != nil {
+		return ch
+	}
+
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
@@ -559,7 +575,19 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
 
+	// Inject active skill instructions into system prompt
 	messages := a.buildMessages(ctx, userMsg, nil)
+	if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+		// Prepend skill instructions to the first system message
+		for i, msg := range messages {
+			if msg.Role == "system" {
+				if content, ok := msg.Content.(string); ok {
+					messages[i].Content = content + skillPrompt
+				}
+				break
+			}
+		}
+	}
 
 	sm := a.getSessionManager()
 	if sm != nil {
@@ -826,12 +854,22 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 		// Build conversation context for orchestra
 		var userPrompt string
+		var systemPrompt string
+		// Iterate in reverse to find the most recent user message.
 		for i := len(messages) - 1; i >= 0; i-- {
 			if messages[i].Role == "user" {
-				userPrompt = messages[i].GetTextContent()
-				if userPrompt != "" {
+				if text := messages[i].GetTextContent(); text != "" {
+					userPrompt = text
 					break
 				}
+			}
+		}
+		for _, msg := range messages {
+			if msg.Role == "system" {
+				if text, ok := msg.Content.(string); ok {
+					systemPrompt = text
+				}
+				break
 			}
 		}
 		if userPrompt == "" {
@@ -840,36 +878,56 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		}
 
 		conversationCtx := buildConversationContext(messages, userPrompt)
+		if systemPrompt != "" {
+			conversationCtx = "Sistem talimatları: " + systemPrompt + "\n\n---\n\n" + conversationCtx
+		}
+		if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+			conversationCtx += "\n\n" + skillPrompt
+		}
 
 		// Run orchestra workflow
 		trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Orchestra + Agent**\n"})
-		trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
+		trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
 
 		var fullBuf strings.Builder
+		var fullBufMu sync.Mutex
 		orchestraResult, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			switch up.Type {
 			case orchestra.ProgressPlan:
-				trySend(ctx, outCh, api.StreamChunk{Content: "🧠 Şef planlıyor...\n"})
+				trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Şef planlıyor...**\n\n"})
 			case orchestra.ProgressPlanChunk:
+				fullBufMu.Lock()
 				fullBuf.WriteString(up.Content)
+				fullBufMu.Unlock()
 				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 			case orchestra.ProgressTaskStart:
-				fullBuf.WriteString(up.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+			case orchestra.ProgressTaskChunk:
 				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 			case orchestra.ProgressTaskDone:
 				if up.Error != "" {
-					chunk := fmt.Sprintf("❌ %s | %s\n   ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
-					fullBuf.WriteString(chunk)
+					chunk := fmt.Sprintf("\n❌ **%s** | %s ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
 					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
 				} else {
-					chunk := fmt.Sprintf("✅ %s | %s (%dms)\n", up.Role, up.ModelType, up.DurationMs)
-					fullBuf.WriteString(chunk)
+					// Send task content if it wasn't streamed (non-streaming provider fallback).
+					if up.Content != "" {
+						fullBufMu.Lock()
+						fullBuf.WriteString(up.Content)
+						fullBufMu.Unlock()
+					}
+					tokEst := len(up.Content) / 4
+					chunk := fmt.Sprintf("\n✅ **%s** | %s (%dms, ~%d token)\n", up.Role, up.ModelType, up.DurationMs, tokEst)
 					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
-					fullBuf.WriteString(up.Content + "\n\n")
-					trySend(ctx, outCh, api.StreamChunk{Content: up.Content + "\n\n"})
 				}
 			case orchestra.ProgressSynthChunk:
+				fullBufMu.Lock()
 				fullBuf.WriteString(up.Content)
+				fullBufMu.Unlock()
 				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 			}
 		})
@@ -878,7 +936,9 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			return
 		}
 
+		fullBufMu.Lock()
 		finalContent := fullBuf.String()
+		fullBufMu.Unlock()
 		if finalContent == "" {
 			finalContent = orchestraResult
 		}
@@ -965,17 +1025,32 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 	// Orchestra mode takes priority
 	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+		// Log warning if an active provider is being overridden
+		if a.activeProvider != "" {
+			log.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProvider)
+		}
+
 		go func() {
 			defer close(outCh)
 
 			// Build user message and conversation context
 			var userPrompt string
+			var systemPrompt string
+			// Iterate in reverse to find the most recent user message.
 			for i := len(messages) - 1; i >= 0; i-- {
 				if messages[i].Role == "user" {
-					userPrompt = messages[i].GetTextContent()
-					if userPrompt != "" {
+					if text := messages[i].GetTextContent(); text != "" {
+						userPrompt = text
 						break
 					}
+				}
+			}
+			for _, msg := range messages {
+				if msg.Role == "system" {
+					if text, ok := msg.Content.(string); ok {
+						systemPrompt = text
+					}
+					break
 				}
 			}
 			if userPrompt == "" {
@@ -983,8 +1058,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				return
 			}
 
-			// Include conversation history for context
+			// Include conversation history + system prompt (with memory context) for context
 			conversationCtx := buildConversationContext(messages, userPrompt)
+			if systemPrompt != "" {
+				conversationCtx = "Sistem talimatları: " + systemPrompt + "\n\n---\n\n" + conversationCtx
+			}
 
 			start := time.Now()
 
@@ -992,49 +1070,66 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
 
 			var fullBuf strings.Builder
+			var fullBufMu sync.Mutex
 
 			finalResponse, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
+				select {
+				case <-ctx.Done():
+					return
+				default:
+				}
 				switch up.Type {
 				case orchestra.ProgressPlan:
-					trySend(ctx, outCh, api.StreamChunk{Content: "🧠 Şef planlıyor...\n"})
+					trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Şef planlıyor...**\n\n"})
 				case orchestra.ProgressPlanChunk:
+					fullBufMu.Lock()
 					fullBuf.WriteString(up.Content)
+					fullBufMu.Unlock()
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				case orchestra.ProgressTaskStart:
-					fullBuf.WriteString(up.Content)
+					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				case orchestra.ProgressTaskChunk:
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				case orchestra.ProgressTaskDone:
 					if up.Error != "" {
-						chunk := fmt.Sprintf("❌ %s | %s\n   ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
-						fullBuf.WriteString(chunk)
+						chunk := fmt.Sprintf("\n❌ **%s** | %s ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
 						trySend(ctx, outCh, api.StreamChunk{Content: chunk})
 					} else {
-						chunk := fmt.Sprintf("✅ %s | %s (%dms)\n", up.Role, up.ModelType, up.DurationMs)
-						fullBuf.WriteString(chunk)
+						// Capture content for session history (handles non-streaming provider fallback).
+						if up.Content != "" {
+							fullBufMu.Lock()
+							fullBuf.WriteString(up.Content)
+							fullBufMu.Unlock()
+						}
+						tokEst := len(up.Content) / 4
+						chunk := fmt.Sprintf("\n✅ **%s** | %s (%dms, ~%d token)\n", up.Role, up.ModelType, up.DurationMs, tokEst)
 						trySend(ctx, outCh, api.StreamChunk{Content: chunk})
-						fullBuf.WriteString(up.Content + "\n\n")
-						trySend(ctx, outCh, api.StreamChunk{Content: up.Content + "\n\n"})
 					}
 				case orchestra.ProgressSynthChunk:
+					fullBufMu.Lock()
 					fullBuf.WriteString(up.Content)
+					fullBufMu.Unlock()
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				}
 			})
+			fullBufMu.Lock()
+			fullBufStr := fullBuf.String()
+			fullBufMu.Unlock()
 			if err != nil {
-				a.finishStream(start, 0, "error", fullBuf.String(), userPrompt)
+				a.finishStream(start, 0, "error", fullBufStr, userPrompt)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
 
 			// Use fullBuf content if non-empty, otherwise finalResponse
-			finalContent := fullBuf.String()
+			finalContent := fullBufStr
 			if finalContent == "" {
 				finalContent = finalResponse
 			}
 
 			tokenCount := 0
 			if finalContent != "" {
-				tokenCount = len(strings.Fields(finalContent))
+				tokenCount = len(finalContent) / 4
 			}
 
 			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt)
@@ -1783,10 +1878,13 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	return nil
 }
 
-func (a *App) DeleteProvider(pt provider.ProviderType) error {
+func (a *App) DeleteProvider(pt provider.ProviderType, name ...string) error {
 	if a.providerCfgMgr == nil {
-		return fmt.Errorf("provider system not initialized")
+		return fmt.Errorf("provider config manager not initialized")
 	}
+	a.providerCfgMgr.Delete(pt, name...)
+	return nil
+}
 	a.providerCfgMgr.Delete(pt)
 	configs := a.providerCfgMgr.GetEnabled()
 	a.providerMu.Lock()
@@ -2924,23 +3022,62 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 }
 
 func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
-	start := time.Now()
 	var memories []memory.MemoryResult
 	if a.cfg.Memory.MemoryEnabled {
 		memories = a.retrieveMemory(ctx, userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 
-	history := a.getSessionHistory()
-	// Defensive copy: ensure mutations below never affect session data
-	history = append([]api.Message{}, history...)
+	// Calculate context token budget.
+	// CRITICAL: For local llama.cpp, NEVER exceed CtxSize — that's what the model
+	// was loaded with. If MaxContextTokens is explicitly set below CtxSize, respect it.
+	// For external providers, use MaxContextTokens or provider-appropriate defaults.
+	var tokenBudget int
+	if a.llamaServer.IsRunning() {
+		maxLocal := a.cfg.Llama.CtxSize
+		if maxLocal <= 0 {
+			maxLocal = 4096
+		}
+		if a.cfg.Llama.MaxContextTokens > 0 && a.cfg.Llama.MaxContextTokens < maxLocal {
+			// User explicitly set a lower limit for the running model.
+			tokenBudget = a.cfg.Llama.MaxContextTokens
+		} else {
+			// NEVER exceed what the model was loaded with.
+			tokenBudget = maxLocal
+		}
+	} else {
+		// External provider — use explicit setting or provider-appropriate default.
+		if a.cfg.Llama.MaxContextTokens > 0 {
+			tokenBudget = a.cfg.Llama.MaxContextTokens
+		} else {
+			// Conservative defaults based on provider capability.
+			switch a.activeProvider {
+			case "gemini":
+				tokenBudget = 1024 * 1024 // 1M
+			case "claude":
+				tokenBudget = 200 * 1024  // 200K
+			case "openai", "grok", "groq", "openrouter", "ollama":
+				tokenBudget = 128 * 1024  // 128K
+			default:
+				tokenBudget = 128 * 1024  // 128K safe default
+			}
+		}
+	}
+
+	// Reserve tokens for system prompt and current user message
+	systemTokens := truncate.EstimateTokens(systemPrompt)
+	userTokens := truncate.EstimateTokens(userMsg)
+	historyBudget := tokenBudget - systemTokens - userTokens
+	if historyBudget < 512 {
+		historyBudget = 512 // ensure at least some history fits
+	}
+
+	history := a.getSessionHistoryTokenAware(historyBudget)
+	history = append([]api.Message{}, history...) // defensive copy
 	var msgs []api.Message
 
 	if a.llamaServer.IsRunning() {
-		// Local models (e.g. Gemma) require strict user/assistant alternation —
-		// no "system" role allowed. Inject system prompt into the first user turn.
 		if len(history) == 0 {
-			// First message: prepend system prompt to user message
 			combinedMsg := systemPrompt + "\n\n" + userMsg
 			if len(extraImageB64) > 0 {
 				msgs = append(msgs, api.NewMultimodalMessage("user", combinedMsg, extraImageB64...))
@@ -2948,7 +3085,6 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 				msgs = append(msgs, api.NewTextMessage("user", combinedMsg))
 			}
 		} else {
-			// Subsequent messages: inject system prompt into the very first user message in history
 			injected := false
 			for i, h := range history {
 				if !injected && h.Role == "user" {
@@ -2974,7 +3110,8 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		}
 	}
 
-	log.Printf("LATENCY chat.build_messages total_ms=%d memories=%d history=%d messages=%d system_chars=%d", time.Since(start).Milliseconds(), len(memories), len(history), len(msgs), len(systemPrompt))
+	log.Printf("CONTEXT: budget=%d system=%d user=%d history=%d history_msgs=%d total_msgs=%d",
+		tokenBudget, systemTokens, userTokens, historyBudget, len(history), len(msgs))
 	return msgs
 }
 
@@ -2983,16 +3120,15 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 func buildConversationContext(messages []api.Message, userPrompt string) string {
 	var sb strings.Builder
 
-	// Collect previous non-system messages (up to last 6 exchanges = 12 messages)
+	// Collect all previous non-system messages up to a generous limit.
+	// No hard-coded 12-message cap — the full context budget is managed by
+	// buildMessages' token-aware truncation upstream.
 	var prevMsgs []api.Message
 	for i := len(messages) - 2; i >= 0; i-- {
 		if messages[i].Role == "system" {
 			continue
 		}
 		prevMsgs = append(prevMsgs, messages[i])
-		if len(prevMsgs) >= 12 {
-			break
-		}
 	}
 
 	// Reverse to get chronological order
@@ -3020,7 +3156,17 @@ func buildConversationContext(messages []api.Message, userPrompt string) string 
 
 var orchestraPrefixes = []string{"🎵", "🧙", "🧠", "✅", "❌", "📝"}
 
-// stripOrchestraLines removes lines that start with orchestra debug prefixes.
+// truncateForOrchestra truncates a string to the given rune count.
+func truncateForOrchestra(s string, maxRunes int) string {
+	runes := []rune(s)
+	if len(runes) <= maxRunes {
+		return s
+	}
+	return string(runes[:maxRunes]) + "..."
+}
+
+// stripOrchestraLines removes lines that start with orchestra debug prefixes
+// as well as lines matching known orchestra status patterns.
 func stripOrchestraLines(text string) string {
 	lines := strings.Split(text, "\n")
 	var filtered []string
@@ -3029,12 +3175,26 @@ func stripOrchestraLines(text string) string {
 		if trimmed == "" {
 			continue
 		}
+		// Skip emoji-prefixed orchestra headers
 		skip := false
 		for _, prefix := range orchestraPrefixes {
 			if strings.HasPrefix(trimmed, prefix) {
 				skip = true
 				break
 			}
+		}
+		// Skip "**role**: " prefixed task chunk lines
+		if !skip && strings.Contains(trimmed, "**: ") {
+			for _, role := range []string{"planner", "frontend", "backend", "bug_fixer", "reviewer", "security", "devops", "general"} {
+				if strings.HasPrefix(trimmed, "**"+role+"**:") {
+					skip = true
+					break
+				}
+			}
+		}
+		// Skip "Sistem talimatları:" lines (orchestra context prefix)
+		if !skip && strings.HasPrefix(trimmed, "Sistem talimatları:") {
+			skip = true
 		}
 		if !skip {
 			filtered = append(filtered, line)
@@ -3044,11 +3204,24 @@ func stripOrchestraLines(text string) string {
 }
 
 func (a *App) getSessionHistory() []api.Message {
+	return a.getSessionHistoryTokenAware(0)
+}
+
+// getSessionHistoryTokenAware returns session history truncated to fit within tokenBudget.
+// If tokenBudget is 0, it falls back to MaxHistory message-count truncation.
+func (a *App) getSessionHistoryTokenAware(tokenBudget int) []api.Message {
 	sm := a.getSessionManager()
 	if sm == nil {
 		return nil
 	}
-	history := sm.GetHistoryForAPI(a.cfg.Llama.MaxHistory)
+
+	var history []map[string]string
+	if tokenBudget > 0 {
+		history = sm.GetHistoryForAPITokenAware(tokenBudget)
+	} else {
+		history = sm.GetHistoryForAPI(a.cfg.Llama.MaxHistory)
+	}
+
 	var msgs []api.Message
 	for _, h := range history {
 		msgs = append(msgs, api.NewTextMessage(h["role"], h["content"]))
@@ -3084,18 +3257,31 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	// Orchestra mode takes priority
 	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
 		var userPrompt string
+		var systemPrompt string
+		// Iterate in reverse to find the most recent user message.
 		for i := len(messages) - 1; i >= 0; i-- {
 			if messages[i].Role == "user" {
-				userPrompt = messages[i].GetTextContent()
-				if userPrompt != "" {
+				if text := messages[i].GetTextContent(); text != "" {
+					userPrompt = text
 					break
 				}
+			}
+		}
+		for _, msg := range messages {
+			if msg.Role == "system" {
+				if text, ok := msg.Content.(string); ok {
+					systemPrompt = text
+				}
+				break
 			}
 		}
 		if userPrompt == "" {
 			return "⚠️ No user message found"
 		}
 		conversationCtx := buildConversationContext(messages, userPrompt)
+		if systemPrompt != "" {
+			conversationCtx = "Sistem talimatları: " + systemPrompt + "\n\n---\n\n" + conversationCtx
+		}
 		octx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
 		finalResponse, _, err := a.orchestraConductor.Run(octx, conversationCtx)

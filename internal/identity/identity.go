@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"memo/internal/memory"
+	"memo/internal/truncate"
 )
 
 type Identity struct {
@@ -37,9 +38,29 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult) string {
 	sb.WriteString("\n\n")
 	sb.WriteString(GetStyleInstructions(id.Style))
 
-	// Memory context
+	// Memory context — truncate to fit within a reasonable budget
 	memoryBlock := memory.FormatMemoriesForPrompt(memories)
 	if memoryBlock != "" {
+		// Ensure memories don't exceed ~16K tokens (leaves room for identity + conversation)
+		blockTokens := truncate.EstimateTokens(memoryBlock)
+		maxMemoryTokens := 16 * 1024
+		if blockTokens > maxMemoryTokens {
+			// Truncate the memory block to fit
+			lines := strings.Split(memoryBlock, "\n")
+			var truncated []string
+			total := 0
+			for _, line := range lines {
+				lineTokens := truncate.EstimateTokens(line)
+				if total+lineTokens > maxMemoryTokens {
+					truncated = append(truncated, "... (more memories available)")
+					break
+				}
+				total += lineTokens
+				truncated = append(truncated, line)
+			}
+			memoryBlock = strings.Join(truncated, "\n")
+		}
+
 		sb.WriteString("\n\n")
 		sb.WriteString(fmt.Sprintf("Below are relevant memories from your past conversations with %s. Use them to provide continuity and personalization, but don't explicitly mention that you're recalling memories unless asked.", id.UserName))
 		sb.WriteString(memoryBlock)

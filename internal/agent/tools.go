@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"memo/internal/agent/tools"
@@ -23,8 +24,8 @@ type ToolDef struct {
 	Description string
 	Parameters  json.RawMessage // JSON Schema describing the arguments
 	DangerLevel DangerLevel
-	ExecuteFn   func(args json.RawMessage, basePath string, createBackup func(string) error) (string, error)
-	PreviewFn   func(args json.RawMessage, basePath string) (string, error) // Optional function to generate a preview before execution
+	ExecuteFn   func(ctx context.Context, args json.RawMessage, basePath string, createBackup func(string) error) (string, error)
+	PreviewFn   func(args json.RawMessage, basePath string) (string, error)
 }
 
 // ToolRegistry manages all available tools.
@@ -211,10 +212,10 @@ func (r *ToolRegistry) ToOpenAITools() []provider.ToolDefinition {
 }
 
 // Execute runs a registered tool by name.
-func (r *ToolRegistry) Execute(name string, args json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func (r *ToolRegistry) Execute(ctx context.Context, name string, args json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	tool, ok := r.Get(name)
 	if !ok {
 		return "", fmt.Errorf("tool not found: %s", name)
 	}
-	return tool.ExecuteFn(args, basePath, createBackup)
+	return tool.ExecuteFn(ctx, args, basePath, createBackup)
 }

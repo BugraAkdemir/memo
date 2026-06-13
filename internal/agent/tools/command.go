@@ -14,6 +14,9 @@ import (
 	"time"
 )
 
+// DefaultToolTimeout is the maximum execution time for any single tool call.
+const DefaultToolTimeout = 60 * time.Second
+
 // RunCommandArgs represents arguments for run_command tool.
 type RunCommandArgs struct {
 	Command string `json:"command"`
@@ -57,7 +60,7 @@ func isBlacklisted(cmd string) (string, bool) {
 	return "", false
 }
 
-func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args RunCommandArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -75,35 +78,41 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 		workingDir = basePath
 	}
 
-	// Security: validate path
+	// Security: validate CWD is inside basePath regardless of whether it exists yet.
 	realCWD, err := filepath.EvalSymlinks(workingDir)
-	if err == nil {
-		rel, err := filepath.Rel(basePath, realCWD)
-		if err != nil || strings.HasPrefix(rel, "..") {
-			return "", fmt.Errorf("cwd is outside project directory")
+	if err != nil {
+		if !os.IsNotExist(err) {
+			return "", fmt.Errorf("failed to resolve cwd: %w", err)
 		}
-		workingDir = realCWD
+		// Directory doesn't exist; validate the cleaned path instead.
+		realCWD = filepath.Clean(workingDir)
 	}
+	rel, relErr := filepath.Rel(basePath, realCWD)
+	if relErr != nil || strings.HasPrefix(rel, "..") {
+		return "", fmt.Errorf("cwd is outside project directory")
+	}
+	workingDir = realCWD
 
 	// Security: Blacklist check
 	if pattern, blocked := isBlacklisted(args.Command); blocked {
 		return "", fmt.Errorf("command is blacklisted for safety: %s", pattern)
 	}
 
-	// Execution
-	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	// Execution with proper context propagation from caller.
+	// Respect the caller's timeout/cancellation while enforcing a hard 60s cap.
+	execCtx, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
 	defer cancel()
 
 	var cmd *exec.Cmd
 	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(ctx, "cmd", "/C", args.Command)
+		cmd = exec.CommandContext(execCtx, "cmd", "/C", args.Command)
 		cmd.Env = []string{
 			"PATH=" + os.Getenv("PATH"),
 			"USERPROFILE=" + os.Getenv("USERPROFILE"),
 			"SystemRoot=" + os.Getenv("SystemRoot"),
 		}
 	} else {
-		cmd = exec.CommandContext(ctx, "bash", "-c", args.Command)
+		cmd = exec.CommandContext(execCtx, "bash", "-c", args.Command)
 		// Inherit the user's PATH so that tools like go, npm, node, python etc.
 		// installed in non-system locations are discoverable.
 		userPath := os.Getenv("PATH")
@@ -137,15 +146,20 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 	outStr := stdout.String()
 	errStr := stderr.String()
 
-	// Truncate if output is too large (10MB limit)
+	// Truncate COMBINED output if it exceeds the 10MB limit.
+	// We proportionally preserve stdout and stderr rather than truncating independently.
 	const maxSize = 10 * 1024 * 1024
-	if len(outStr)+len(errStr) > maxSize {
+	total := len(outStr) + len(errStr)
+	if total > maxSize {
 		result.WriteString(fmt.Sprintf("\n... Output truncated, exceeded 10MB limit ...\n"))
-		if len(outStr) > maxSize/2 {
-			outStr = outStr[:maxSize/2]
+		ratio := float64(maxSize) / float64(total)
+		outLimit := int(float64(len(outStr)) * ratio)
+		errLimit := int(float64(len(errStr)) * ratio)
+		if outLimit < len(outStr) {
+			outStr = outStr[:outLimit]
 		}
-		if len(errStr) > maxSize/2 {
-			errStr = errStr[:maxSize/2]
+		if errLimit < len(errStr) {
+			errStr = errStr[:errLimit]
 		}
 	}
 

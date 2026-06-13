@@ -120,18 +120,25 @@ func defaultRoles() []RoleConfig {
 
 // MergeRoles ensures all built-in roles are present in the config.
 // Existing roles keep their settings; missing roles are added from defaults (disabled).
+// Custom roles (not in built-in list) are preserved.
 func MergeRoles(existing []RoleConfig) []RoleConfig {
 	existingMap := make(map[RoleName]RoleConfig, len(existing))
 	for _, r := range existing {
 		existingMap[r.Role] = r
 	}
 
-	merged := make([]RoleConfig, 0, len(defaultRoleNames()))
+	builtin := make(map[RoleName]bool)
+	for _, name := range defaultRoleNames() {
+		builtin[name] = true
+	}
+
+	merged := make([]RoleConfig, 0, len(existing)+2)
+
+	// First add built-in roles (merged with existing settings or defaults)
 	for _, name := range defaultRoleNames() {
 		if r, ok := existingMap[name]; ok {
 			merged = append(merged, r)
 		} else {
-			// Add missing role from defaults, but disabled
 			for _, dr := range defaultRoles() {
 				if dr.Role == name {
 					dr.Enabled = false
@@ -141,10 +148,28 @@ func MergeRoles(existing []RoleConfig) []RoleConfig {
 			}
 		}
 	}
+
+	// Then append any custom roles (not built-in) preserving their settings
+	for _, r := range existing {
+		if !builtin[r.Role] {
+			merged = append(merged, r)
+		}
+	}
+
 	return merged
 }
 
 // defaultRoleNames returns all built-in role names in order.
 func defaultRoleNames() []RoleName {
 	return []RoleName{RolePlanner, RoleFrontend, RoleBackend, RoleBugFixer, RoleReviewer, RoleSecurity, RoleDevOps, RoleGeneral}
+}
+
+// IsBuiltinRole checks if the given role name is a built-in role.
+func IsBuiltinRole(role RoleName) bool {
+	for _, name := range defaultRoleNames() {
+		if name == role {
+			return true
+		}
+	}
+	return false
 }

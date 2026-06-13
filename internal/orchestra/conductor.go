@@ -21,10 +21,10 @@ type ProviderFactory func(cfg provider.ProviderConfig) (provider.Provider, error
 
 // Conductor orchestrates the multi-model workflow.
 type Conductor struct {
-	config      OrchestraConfig
-	pf          ProviderFactory
-	getConfigs  func() []provider.ProviderConfig
-	mu          sync.RWMutex
+	config     OrchestraConfig
+	pf         ProviderFactory
+	getConfigs func() []provider.ProviderConfig
+	mu         sync.RWMutex
 }
 
 // NewConductor creates a new orchestra conductor.
@@ -60,6 +60,7 @@ func (c *Conductor) Run(ctx context.Context, userMessage string) (string, []Orch
 }
 
 // RunWithProgress executes the full orchestra workflow with optional progress streaming.
+// It checks ctx.Done() between each phase so cancellation propagates promptly.
 func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onProgress ProgressFn) (string, []OrchestraResult, error) {
 	c.mu.RLock()
 	cfg := c.config
@@ -69,8 +70,14 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 		return "", nil, fmt.Errorf("orchestra mode is not enabled")
 	}
 
+	select {
+	case <-ctx.Done():
+		return "", nil, ctx.Err()
+	default:
+	}
+
 	if onProgress != nil {
-		onProgress(ProgressUpdate{Type: ProgressPlan, Content: "🧠 Şef planlıyor..."})
+		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressPlan, Content: "🧠 **Şef planlıyor...**\n\n"})
 	}
 
 	log.Println("ORCHESTRA: chief planning...")
@@ -83,14 +90,26 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 	}
 	log.Printf("ORCHESTRA: chief created %d tasks", len(plan.Tasks))
 
+	select {
+	case <-ctx.Done():
+		return "", nil, ctx.Err()
+	default:
+	}
+
 	results, err := c.executeTasks(ctx, cfg, *plan, onProgress)
 	if err != nil {
 		return "", nil, fmt.Errorf("task execution failed: %w", err)
 	}
 	log.Printf("ORCHESTRA: %d/%d tasks completed", len(results), len(plan.Tasks))
 
+	select {
+	case <-ctx.Done():
+		return "", nil, ctx.Err()
+	default:
+	}
+
 	if onProgress != nil {
-		onProgress(ProgressUpdate{Type: ProgressSynthChunk, Content: "📝 **Şef sentezliyor...**\n\n"})
+		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressSynthChunk, Content: "📝 **Şef sentezliyor...**\n\n"})
 	}
 
 	log.Println("ORCHESTRA: chief synthesizing...")
@@ -99,6 +118,13 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 		return "", nil, fmt.Errorf("synthesis failed: %w", err)
 	}
 	return finalResponse, results, nil
+}
+
+// safeProgress calls onProgress without holding any lock.
+// fn must be goroutine-safe (protect any shared state like string builders at the call site).
+// Calling fn under a mutex caused deadlocks when fn blocked on a full output channel.
+func (c *Conductor) safeProgress(fn ProgressFn, up ProgressUpdate) {
+	fn(up)
 }
 
 // SaveConfig persists the orchestra configuration to a JSON file.
@@ -111,7 +137,7 @@ func SaveConfig(filePath string, cfg OrchestraConfig) error {
 	if err != nil {
 		return fmt.Errorf("orchestra config marshal: %w", err)
 	}
-	if err := os.WriteFile(filePath, data, 0644); err != nil {
+	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("orchestra config write: %w", err)
 	}
 	log.Printf("ORCHESTRA: config saved to %s", filePath)
@@ -150,7 +176,24 @@ func (c *Conductor) findProviderConfig(modelType string) *provider.ProviderConfi
 }
 
 // createProviderForType creates a provider for the given model type and model name.
+// Returns a descriptive error if the provider is "local" (unsupported) or not found.
 func (c *Conductor) createProviderForType(modelType, modelName string) (provider.Provider, error) {
+	// "local" is not supported in orchestra mode — all roles must use external providers
+	if modelType == "" || modelType == "local" {
+		enabled := c.getConfigs()
+		available := make([]string, 0, len(enabled))
+		for _, cfg := range enabled {
+			if cfg.Enabled {
+				available = append(available, string(cfg.Type))
+			}
+		}
+		availStr := "hiçbiri"
+		if len(available) > 0 {
+			availStr = strings.Join(available, ", ")
+		}
+		return nil, fmt.Errorf("orkestra modu yerel modelleri desteklemez. Kullanılabilir provider'lar: %s. Lütfen bir provider seçip bu role ata", availStr)
+	}
+
 	// First try exact match
 	pCfg := c.findProviderConfig(modelType)
 	if pCfg != nil {
@@ -158,16 +201,27 @@ func (c *Conductor) createProviderForType(modelType, modelName string) (provider
 		return c.pf(*pCfg)
 	}
 
-	// Fallback: use any enabled provider (e.g. OpenRouter)
+	// Fallback: use any enabled provider (e.g. OpenRouter) but log a warning
 	configs := c.getConfigs()
 	for _, cfg := range configs {
 		if cfg.Enabled {
+			log.Printf("ORCHESTRA WARNING: provider %s/%s not found, falling back to %s/%s", modelType, modelName, cfg.Type, cfg.Model)
 			cfg.Model = modelName
 			return c.pf(cfg)
 		}
 	}
 
-	return nil, fmt.Errorf("%s/%s için provider konfigürasyonu bulunamadı. Lütfen API Providers sayfasından provider'ı ekleyip etkinleştir", modelType, modelName)
+	var enabledTypes []string
+	for _, cfg := range configs {
+		if cfg.Enabled {
+			enabledTypes = append(enabledTypes, fmt.Sprintf("%s (%s)", cfg.Type, cfg.Model))
+		}
+	}
+	availStr := "hiçbiri etkin değil"
+	if len(enabledTypes) > 0 {
+		availStr = strings.Join(enabledTypes, ", ")
+	}
+	return nil, fmt.Errorf("'%s' provider'ı bulunamadı. Mevcut etkin provider'lar: %s. Lütfen API Providers sayfasından '%s' tipinde bir provider ekleyip etkinleştir", modelType, availStr, modelType)
 }
 
 // ─── Planning ──────────────────────────────────────────────────
@@ -192,7 +246,7 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 		MaxTokens:   4096,
 	}
 
-	planCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	planCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
 	var content string
@@ -208,7 +262,7 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 				return nil, fmt.Errorf("chief (%s/%s) stream hatası: %s", cfg.ChiefType, cfg.ChiefModel, chunk.Error)
 			}
 			sb.WriteString(chunk.Content)
-			onProgress(ProgressUpdate{Type: ProgressPlanChunk, Content: chunk.Content})
+			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressPlanChunk, Content: chunk.Content})
 		}
 		content = strings.TrimSpace(sb.String())
 	} else {
@@ -247,6 +301,7 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 			}
 		}
 		if !found {
+			originalRole := task.Role
 			// Chief picked a disabled/missing role → fall back to first enabled role
 			for _, role := range cfg.Roles {
 				if role.Enabled {
@@ -254,6 +309,13 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 					plan.Tasks[i].ModelType = role.ModelType
 					plan.Tasks[i].ModelName = role.ModelName
 					found = true
+					log.Printf("ORCHESTRA WARNING: chief assigned task to '%s' but it's disabled/missing, falling back to '%s'", originalRole, role.Role)
+					if onProgress != nil {
+						c.safeProgress(onProgress, ProgressUpdate{
+							Type: ProgressError,
+							Content: fmt.Sprintf("⚠️ Chief %s rolünü seçti ama bu rol etkin değil. %s rolüne yönlendirildi.\n", originalRole, role.Role),
+						})
+					}
 					break
 				}
 			}
@@ -289,7 +351,7 @@ func (c *Conductor) executeTasks(ctx context.Context, cfg OrchestraConfig, plan 
 }
 
 func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, tasks []OrchestraTask, results []OrchestraResult, onProgress ProgressFn) {
-	completed := make(map[string]bool)
+	completed := make(map[int]bool) // keyed by task index, not role name
 	remaining := make([]int, len(tasks))
 	for i := range tasks {
 		remaining[i] = i
@@ -302,10 +364,17 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 			idx := remaining[i]
 			task := tasks[idx]
 
-			// Check if all dependencies are met
+			// Check if all dependencies are met (resolve DependsOn role names to task indices)
 			depsMet := true
 			for _, dep := range task.DependsOn {
-				if !completed[dep] {
+				depResolved := false
+				for j, t := range tasks {
+					if string(t.Role) == dep && completed[j] {
+						depResolved = true
+						break
+					}
+				}
+				if !depResolved {
 					depsMet = false
 					break
 				}
@@ -315,7 +384,7 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 			}
 
 			results[idx] = c.executeSingleTask(ctx, cfg, task, idx, onProgress)
-			completed[string(task.Role)] = true
+			completed[idx] = true
 
 			remaining = append(remaining[:i], remaining[i+1:]...)
 			i-- // adjust index after removal
@@ -327,7 +396,7 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 			var pending []string
 			for _, idx := range remaining {
 				t := tasks[idx]
-				pending = append(pending, fmt.Sprintf("%s(depends_on:%v)", t.Role, t.DependsOn))
+				pending = append(pending, fmt.Sprintf("task[%d]%s(depends_on:%v)", idx, t.Role, t.DependsOn))
 			}
 			log.Printf("ORCHESTRA: deadlock in sequential execution, pending: %v", pending)
 			// Mark remaining as failed
@@ -337,7 +406,7 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 					Role:       tasks[idx].Role,
 					ModelType:  tasks[idx].ModelType,
 					ModelName:  tasks[idx].ModelName,
-					Error:      fmt.Sprintf("deadlock: dependency never satisfied (role=%s, needs=%v)", tasks[idx].Role, tasks[idx].DependsOn),
+					Error:      fmt.Sprintf("deadlock: dependency never satisfied (task[%d] role=%s, needs=%v)", idx, tasks[idx].Role, tasks[idx].DependsOn),
 					DurationMs: 0,
 				}
 			}
@@ -363,7 +432,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	log.Printf("ORCHESTRA: task %d starting: role=%s model=%s/%s", index, task.Role, task.ModelType, task.ModelName)
 
 	if onProgress != nil {
-		onProgress(ProgressUpdate{Type: ProgressTaskStart, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, Content: fmt.Sprintf("🎯 **%s** (%s/%s) çalışıyor...\n", task.Role, task.ModelType, task.ModelName)})
+		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskStart, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, Content: fmt.Sprintf("🎯 **%s** (%s/%s) çalışıyor...\n", task.Role, task.ModelType, task.ModelName)})
 	}
 
 	var systemPrompt string
@@ -403,10 +472,10 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 		Model: task.ModelName,
 		Messages:    messages,
 		Temperature: 0.7,
-		MaxTokens:   4096,
+		MaxTokens:   8192,
 	}
 
-	taskCtx, cancel := context.WithTimeout(ctx, 120*time.Second)
+	taskCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
 	if onProgress != nil {
@@ -420,7 +489,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 					break
 				}
 				sb.WriteString(chunk.Content)
-				onProgress(ProgressUpdate{
+				c.safeProgress(onProgress, ProgressUpdate{
 					Type:      ProgressTaskChunk,
 					Role:      task.Role,
 					Index:     index,
@@ -429,13 +498,13 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 					Content:   chunk.Content,
 				})
 			}
+			result.DurationMs = time.Since(start).Milliseconds()
+			result.Content = sb.String()
+			result.TokensIn = estimateTokens(systemPrompt + contextMsg)
+			result.TokensOut = estimateTokens(sb.String())
 			if lastErr == nil {
-				result.DurationMs = time.Since(start).Milliseconds()
-				result.Content = sb.String()
-				result.TokensIn = len(strings.Fields(systemPrompt + " " + contextMsg))
-				result.TokensOut = len(strings.Fields(sb.String()))
 				if onProgress != nil {
-					onProgress(ProgressUpdate{
+					c.safeProgress(onProgress, ProgressUpdate{
 						Type:       ProgressTaskDone,
 						Role:       task.Role,
 						Index:      index,
@@ -448,9 +517,8 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 				return result
 			}
 			result.Error = lastErr.Error()
-			result.DurationMs = time.Since(start).Milliseconds()
 			if onProgress != nil {
-				onProgress(ProgressUpdate{
+				c.safeProgress(onProgress, ProgressUpdate{
 					Type:       ProgressTaskDone,
 					Role:       task.Role,
 					Index:      index,
@@ -466,33 +534,33 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	}
 
 	var resp *provider.ChatResponse
-	// Task-level retry: retry up to 2 times for any error (not just rate limit)
 	err = c.retryTask(taskCtx, fmt.Sprintf("task/%s/%s", task.Role, task.ModelType), func() error {
 		var innerErr error
 		resp, innerErr = p.ChatCompletion(taskCtx, req)
 		return innerErr
 	})
 	result.DurationMs = time.Since(start).Milliseconds()
+	result.TokensIn = estimateTokens(systemPrompt + contextMsg)
 	if err != nil {
 		log.Printf("ORCHESTRA: task %d (%s/%s) error: %v", index, task.ModelType, task.ModelName, err)
 		result.Error = err.Error()
 		if onProgress != nil {
-			onProgress(ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Error: err.Error()})
+			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Error: err.Error()})
 		}
 	} else {
 		log.Printf("ORCHESTRA: task %d (%s/%s) OK %dms", index, task.ModelType, task.ModelName, result.DurationMs)
 		result.Content = resp.Content
-		// Rough token estimation: 1 token ≈ 4 chars for output, 1 token ≈ 1 word for input
-		result.TokensIn = len(strings.Fields(systemPrompt + " " + contextMsg))
-		result.TokensOut = len(strings.Fields(resp.Content))
+		result.TokensOut = estimateTokens(resp.Content)
 		if onProgress != nil {
-			onProgress(ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Content: resp.Content})
+			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Content: resp.Content})
 		}
 	}
 	return result
 }
 
-// retryTask calls fn, retrying on transient errors up to 2 times.
+// retryTask calls fn, retrying on all errors (including rate limits) up to 2 times.
+// For rate limit errors it uses callWithRetry internally; for other errors it uses a simple backoff.
+// Total attempts: up to maxRetries + 1 on top of callWithRetry's own retries.
 func (c *Conductor) retryTask(ctx context.Context, label string, fn func() error) error {
 	maxRetries := 2
 	baseDelay := 3 * time.Second
@@ -515,9 +583,9 @@ func (c *Conductor) retryTask(ctx context.Context, label string, fn func() error
 			return nil
 		}
 		lastErr = err
-		// Don't retry rate limit errors (handled by callWithRetry inside fn)
+		// For rate limit errors, use callWithRetry's specialized backoff instead
 		if isRateLimitError(err) {
-			return err
+			return callWithRetry(ctx, label, fn)
 		}
 	}
 	return fmt.Errorf("%v (retried %d times)", lastErr, maxRetries)
@@ -586,7 +654,7 @@ Kurallar:
 	}
 
 	var finalContent string
-	synthCtx, synthCancel := context.WithTimeout(ctx, 120*time.Second)
+	synthCtx, synthCancel := context.WithTimeout(ctx, 300*time.Second)
 	defer synthCancel()
 
 	if onProgress != nil {
@@ -601,7 +669,7 @@ Kurallar:
 				return "", fmt.Errorf("synthesis stream hatası: %s", chunk.Error)
 			}
 			sb.WriteString(chunk.Content)
-			onProgress(ProgressUpdate{Type: ProgressSynthChunk, Content: chunk.Content})
+			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressSynthChunk, Content: chunk.Content})
 		}
 		finalContent = sb.String()
 	} else {
@@ -625,12 +693,34 @@ func (c *Conductor) buildRoleInfo(cfg OrchestraConfig) string {
 	var sb strings.Builder
 	for _, role := range cfg.Roles {
 		if role.Enabled {
+			custom := ""
+			if !IsBuiltinRole(role.Role) {
+				custom = " (custom)"
+			}
 			prompt := truncateUTF8(role.SystemPrompt, 100)
-			sb.WriteString(fmt.Sprintf("- %s: model=%s, prompt=%s\n", role.Role, role.ModelType, prompt))
+			sb.WriteString(fmt.Sprintf("- %s%s: model=%s, prompt=%s\n", role.Role, custom, role.ModelType, prompt))
 			sb.WriteString("\n")
 		}
 	}
 	return sb.String()
+}
+
+// estimateTokens provides a rough token count estimate.
+// Uses word-based heuristic: ~1.3 tokens per word for mixed text (code + natural language).
+// This is more accurate than len(text)/4 which fails for multi-byte and code-heavy text.
+func estimateTokens(s string) int {
+	if s == "" {
+		return 0
+	}
+	wordCount := len(strings.Fields(s))
+	charCount := len(s)
+	// Heuristic: tokens ≈ words * 1.3, but ensure minimum based on chars
+	fromWords := int(float64(wordCount) * 1.3)
+	fromChars := charCount / 6 // lower bound: ~6 chars per token for dense code
+	if fromWords > fromChars {
+		return fromWords
+	}
+	return fromChars
 }
 
 // truncateUTF8 truncates a string to n runes without breaking multi-byte characters.
@@ -643,21 +733,28 @@ func truncateUTF8(s string, n int) string {
 }
 
 func extractJSON(text string) string {
+	// Strategy 1: ```json ... ``` block
 	if idx := strings.Index(text, "```json"); idx >= 0 {
 		start := idx + 7
 		if end := strings.Index(text[start:], "```"); end >= 0 {
 			return strings.TrimSpace(text[start : start+end])
 		}
 	}
+	// Strategy 2: ``` ... ``` block (any language or no language tag)
 	if idx := strings.Index(text, "```"); idx >= 0 {
 		start := idx + 3
 		if nl := strings.Index(text[start:], "\n"); nl >= 0 {
 			start += nl + 1
 		}
 		if end := strings.Index(text[start:], "```"); end >= 0 {
-			return strings.TrimSpace(text[start : start+end])
+			extracted := strings.TrimSpace(text[start : start+end])
+			// Validate it looks like JSON
+			if strings.HasPrefix(extracted, "{") || strings.HasPrefix(extracted, "[") {
+				return extracted
+			}
 		}
 	}
+	// Strategy 3: bare JSON object in the text (find matching braces)
 	if idx := strings.Index(text, "{"); idx >= 0 {
 		depth := 0
 		for i := idx; i < len(text); i++ {
@@ -665,6 +762,21 @@ func extractJSON(text string) string {
 			case '{':
 				depth++
 			case '}':
+				depth--
+				if depth == 0 {
+					return text[idx : i+1]
+				}
+			}
+		}
+	}
+	// Strategy 4: bare JSON array
+	if idx := strings.Index(text, "["); idx >= 0 {
+		depth := 0
+		for i := idx; i < len(text); i++ {
+			switch text[i] {
+			case '[':
+				depth++
+			case ']':
 				depth--
 				if depth == 0 {
 					return text[idx : i+1]

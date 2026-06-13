@@ -43,6 +43,7 @@ llama:
     embedding_port: 8082
     ctx_size: 4096
     max_history: 20
+    max_context_tokens: 0
     models_dir: ./data/models
     temperature: 0.6
     top_p: 0.9
@@ -59,3 +60,4 @@ whatsapp:
     data_dir: ./data/whatsapp
     auto_index: true
     max_history_days: 7
+active_provider: ""

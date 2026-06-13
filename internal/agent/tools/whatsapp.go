@@ -54,7 +54,7 @@ type WhatsAppMessagesArgs struct {
 	Limit int    `json:"limit"`
 }
 
-func SendWhatsApp(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func SendWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args WhatsAppSendArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -69,7 +69,7 @@ func SendWhatsApp(argsJSON json.RawMessage, basePath string, createBackup func(s
 	return fmt.Sprintf("Mesaj gönderildi (ID: %s)", msgID), nil
 }
 
-func SearchWhatsApp(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func SearchWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args WhatsAppSearchArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -99,7 +99,7 @@ func SearchWhatsApp(argsJSON json.RawMessage, basePath string, createBackup func
 	return strings.Join(lines, "\n"), nil
 }
 
-func LatestWhatsAppChats(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func LatestWhatsAppChats(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args WhatsAppLatestArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -133,7 +133,7 @@ func LatestWhatsAppChats(argsJSON json.RawMessage, basePath string, createBackup
 	return strings.Join(lines, "\n"), nil
 }
 
-func GetWhatsAppMessages(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func GetWhatsAppMessages(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args WhatsAppMessagesArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)

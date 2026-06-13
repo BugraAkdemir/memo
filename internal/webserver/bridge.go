@@ -11,6 +11,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/sessions"
+	"memo/internal/skill"
 	"memo/internal/whatsapp"
 )
 
@@ -97,7 +98,7 @@ type FullBridge interface {
 	// Providers
 	GetProviders() []provider.ProviderConfig
 	UpdateProvider(cfg provider.ProviderConfig) error
-	DeleteProvider(pt provider.ProviderType) error
+	DeleteProvider(pt provider.ProviderType, name ...string) error
 	TestProviderConnection(cfg provider.ProviderConfig) error
 	SetActiveProvider(pt provider.ProviderType)
 	GetActiveProvider() string
@@ -138,4 +139,12 @@ type FullBridge interface {
 	ExportData(includeModels bool) ([]byte, error)
 	ImportData(data []byte) error
 	WipeAllData() error
+
+	// Skills
+	ListSkills() []skill.SkillDefinition
+	InstallSkill(path string) (*skill.SkillDefinition, error)
+	RemoveSkill(name string) error
+	GetSkill(name string) (*skill.SkillDefinition, error)
+	SetActiveSkills(names []string) error
+	GetActiveSkills() []string
 }

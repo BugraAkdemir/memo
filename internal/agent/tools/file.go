@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io/fs"
@@ -15,7 +16,7 @@ type ReadFileArgs struct {
 	Path string `json:"path"`
 }
 
-func ReadFile(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func ReadFile(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args ReadFileArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -50,7 +51,7 @@ type WriteFileArgs struct {
 	Content string `json:"content"`
 }
 
-func WriteFile(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func WriteFile(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args WriteFileArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -61,6 +62,11 @@ func WriteFile(argsJSON json.RawMessage, basePath string, createBackup func(stri
 		return "", err
 	}
 
+	// Enforce 10MB size limit for write operations
+	if len(args.Content) > 10*1024*1024 {
+		return "", fmt.Errorf("content too large: %d bytes (limit: 10MB)", len(args.Content))
+	}
+
 	// Create directory if it doesn't exist
 	dir := filepath.Dir(fullPath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
@@ -69,7 +75,9 @@ func WriteFile(argsJSON json.RawMessage, basePath string, createBackup func(stri
 
 	// Backup existing file using BackupManager
 	if createBackup != nil {
-		createBackup(fullPath)
+		if err := createBackup(fullPath); err != nil {
+			return "", fmt.Errorf("backup failed, aborting write: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(fullPath, []byte(args.Content), 0644); err != nil {
@@ -84,7 +92,7 @@ type DeleteFileArgs struct {
 	Path string `json:"path"`
 }
 
-func DeleteFile(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func DeleteFile(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args DeleteFileArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -101,7 +109,9 @@ func DeleteFile(argsJSON json.RawMessage, basePath string, createBackup func(str
 	}
 
 	if createBackup != nil {
-		createBackup(fullPath)
+		if err := createBackup(fullPath); err != nil {
+			return "", fmt.Errorf("backup failed, aborting delete: %w", err)
+		}
 	}
 
 	if err := os.RemoveAll(fullPath); err != nil {
@@ -117,7 +127,7 @@ type ListDirectoryArgs struct {
 	Recursive bool   `json:"recursive"`
 }
 
-func ListDirectory(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func ListDirectory(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args ListDirectoryArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -200,7 +210,7 @@ type GetFileInfoArgs struct {
 	Path string `json:"path"`
 }
 
-func GetFileInfo(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func GetFileInfo(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args GetFileInfoArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)

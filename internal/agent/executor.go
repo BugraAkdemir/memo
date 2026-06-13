@@ -112,7 +112,27 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		e.sandbox.SetBasePath(e.basePath)
 	}
 
-	pipeline := NewPipeline(e.registry, e.permissions, e.sandbox, router, e.backup)
+	// Estimate token budget: sum of all initial messages' tokens as base,
+	// plus generous headroom for tool call iterations.
+	baseTokens := 0
+	for _, m := range messages {
+		var content string
+		switch v := m.Content.(type) {
+		case string:
+			content = v
+		default:
+		}
+		baseTokens += len(content) / 3
+	}
+	// Give 32K headroom for tool call iterations on top of the message budget.
+	// The total maxTokens should still be well within the model's context window
+	// because buildMessages() already truncated the history to fit CtxSize/MaxContextTokens.
+	maxTokens := baseTokens + 32*1024
+	if maxTokens < 64*1024 {
+		maxTokens = 64 * 1024
+	}
+
+	pipeline := NewPipelineWithBudget(e.registry, e.permissions, e.sandbox, router, e.backup, maxTokens)
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event
@@ -123,7 +143,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 
 	waitFn := func(requestID string, ev AgentEvent) (PermissionPolicy, error) {
 		resCh := make(chan PermissionPolicy, 1)
-		
+
 		e.mu.Lock()
 		e.pendingPerms[requestID] = &PermissionRequest{
 			ID:    requestID,
@@ -138,9 +158,16 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 			e.mu.Unlock()
 		}()
 
+		// Auto-deny after 60 seconds if the user doesn't respond.
+		permTimer := time.NewTimer(60 * time.Second)
+		defer permTimer.Stop()
+
 		select {
 		case <-ctx.Done():
 			return DenyOnce, ctx.Err()
+		case <-permTimer.C:
+			log.Printf("AGENT: permission request %s timed out (60s), auto-denied", requestID)
+			return DenyOnce, fmt.Errorf("permission timed out")
 		case policy := <-resCh:
 			return policy, nil
 		}

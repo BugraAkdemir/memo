@@ -980,14 +980,22 @@ func (s *Server) handleProviders(w http.ResponseWriter, r *http.Request) {
 	case http.MethodDelete:
 		var req struct {
 			Type provider.ProviderType `json:"type"`
+			Name string                `json:"name"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if err := s.fullBridge.DeleteProvider(req.Type); err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
+		if req.Name != "" {
+			if err := s.fullBridge.DeleteProvider(req.Type, req.Name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := s.fullBridge.DeleteProvider(req.Type); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
 		}
 		writeJSON(w, map[string]string{"ok": "true"})
 	default:
@@ -1038,6 +1046,10 @@ func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, map[string]string{"provider": s.fullBridge.GetActiveProvider()})
@@ -1059,6 +1071,10 @@ func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {
 // ─── Orchestra Handlers ──────────────────────────────────────────────
 
 func (s *Server) handleOrchestraConfig(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
 	switch r.Method {
 	case http.MethodGet:
 		cfg := s.fullBridge.GetOrchestraConfig()
@@ -1366,4 +1382,112 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 			flusher.Flush()
 		}
 	}
+}
+
+// ─── Skill Handlers ──────────────────────────────────────────────
+
+func (s *Server) handleListSkills(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, s.fullBridge.ListSkills())
+}
+
+func (s *Server) handleInstallSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		Path string `json:"path"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	def, err := s.fullBridge.InstallSkill(req.Path)
+	if err != nil {
+		writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, def)
+}
+
+func (s *Server) handleRemoveSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodDelete {
+		http.Error(w, "DELETE only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	name := r.PathValue("name")
+	if err := s.fullBridge.RemoveSkill(name); err != nil {
+		writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	name := r.PathValue("name")
+	def, err := s.fullBridge.GetSkill(name)
+	if err != nil {
+		writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, def)
+}
+
+func (s *Server) handleSetActiveSkills(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut {
+		http.Error(w, "PUT only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	var req struct {
+		Names []string `json:"names"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.SetActiveSkills(req.Names); err != nil {
+		writeJSON(w, map[string]string{"error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleGetActiveSkills(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+	writeJSON(w, map[string][]string{"names": s.fullBridge.GetActiveSkills()})
 }

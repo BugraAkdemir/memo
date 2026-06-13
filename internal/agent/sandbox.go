@@ -2,6 +2,7 @@ package agent
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -74,6 +75,7 @@ func (s *Sandbox) GetBasePath() string {
 }
 
 // ValidatePath checks if a path is safe to access.
+// It resolves symlinks before checking path boundaries to prevent symlink-based escapes.
 func (s *Sandbox) ValidatePath(targetPath string) error {
 	var fullPath string
 	if filepath.IsAbs(targetPath) {
@@ -82,17 +84,29 @@ func (s *Sandbox) ValidatePath(targetPath string) error {
 		fullPath = filepath.Join(s.config.BasePath, targetPath)
 	}
 
-	// Basic check: prevent traversing outside base path
-	rel, err := filepath.Rel(s.config.BasePath, fullPath)
+	// Resolve symlinks to prevent symlink-based directory traversal.
+	realPath, err := filepath.EvalSymlinks(fullPath)
+	if err != nil {
+		// If the file doesn't exist yet (e.g. write operations), check the unresolved path.
+		if !os.IsNotExist(err) {
+			return fmt.Errorf("failed to resolve path: %w", err)
+		}
+		realPath = fullPath
+	}
+
+	// Check against protected system paths
+	for _, protected := range s.config.ProtectedPaths {
+		if strings.HasPrefix(realPath, protected) {
+			return fmt.Errorf("access denied: path is within protected directory (%s)", protected)
+		}
+	}
+
+	// Check if path is within base path (resolved, not raw path)
+	rel, err := filepath.Rel(s.config.BasePath, realPath)
 	if err != nil || strings.HasPrefix(rel, "..") {
-		// Allow absolute paths if they are not in protected paths
 		if filepath.IsAbs(targetPath) {
-			for _, protected := range s.config.ProtectedPaths {
-				if strings.HasPrefix(fullPath, protected) {
-					return fmt.Errorf("access denied: path is within protected directory (%s)", protected)
-				}
-			}
-			return nil // Allowed absolute path outside base path (e.g. /tmp)
+			// Absolute paths outside base path are allowed as long as they aren't protected
+			return nil
 		}
 		return fmt.Errorf("path is outside project directory")
 	}

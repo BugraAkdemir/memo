@@ -1,4 +1,5 @@
 import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/provider_config.dart';
@@ -68,23 +69,23 @@ class ActiveProviderNotifier extends AsyncNotifier<String> {
 }
 
 /// Provider display helpers.
-String providerIcon(String type) {
+IconData providerIcon(String type) {
   switch (type) {
     case 'openai':
-      return '🤖';
+      return Icons.radar;
     case 'gemini':
-      return '🔮';
+      return Icons.diamond_outlined;
     case 'grok':
-      return '𝕏';
+      return Icons.close_fullscreen_outlined;
     case 'groq':
-      return '⚡';
+      return Icons.bolt;
     case 'claude':
-      return '🧠';
+      return Icons.square_outlined;
     case 'openrouter':
-      return '🔀';
+      return Icons.swap_horiz;
     case 'ollama':
-      return '🦙';
+      return Icons.change_circle_outlined;
     default:
-      return '☁️';
+      return Icons.cloud_outlined;
   }
 }

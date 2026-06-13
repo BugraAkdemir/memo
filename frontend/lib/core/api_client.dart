@@ -763,6 +763,48 @@ class MemoApiClient {
     await _dio.post('/api/agent/undo');
   }
 
+  // ─── Skills ──────────────────────────────────────────────────
+
+  /// List all installed skills.
+  Future<List<Map<String, dynamic>>> listSkills() async {
+    final res = await _dio.get('/api/skills/list');
+    if (res.data is List) {
+      return (res.data as List).cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
+  /// Get a specific skill by name.
+  Future<Map<String, dynamic>> getSkill(String name) async {
+    final res = await _dio.get('/api/skills/get/$name');
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Install a skill from a local path.
+  Future<Map<String, dynamic>> installSkill(String path) async {
+    final res = await _dio.post('/api/skills/install', data: {'path': path});
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Remove an installed skill.
+  Future<void> removeSkill(String name) async {
+    await _dio.delete('/api/skills/remove/$name');
+  }
+
+  /// Set which skills are active.
+  Future<void> setActiveSkills(List<String> names) async {
+    await _dio.put('/api/skills/active', data: {'names': names});
+  }
+
+  /// Get list of currently active skill names.
+  Future<List<String>> getActiveSkills() async {
+    final res = await _dio.get('/api/skills/active-list');
+    if (res.data is Map && res.data['names'] is List) {
+      return (res.data['names'] as List).cast<String>();
+    }
+    return [];
+  }
+
   // ─── Version Check ───────────────────────────────────────────
 
   /// Get current app version from backend.

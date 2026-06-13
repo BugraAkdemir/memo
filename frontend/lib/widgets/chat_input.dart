@@ -14,9 +14,11 @@ import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../providers/skill_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
+import 'skill_config_dialog.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
   ChatInput({super.key});
@@ -237,6 +239,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       _showOrchestraConfig();
       return true;
     }
+    if (cmd == '/skill') {
+      _showSkillManager();
+      return true;
+    }
 
     return false; // Not a known command, send as-is
   }
@@ -254,7 +260,17 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       _showModelSwitcher();
     } else if (result is PopupOrchestraSwitch) {
       _showOrchestraConfig();
+    } else if (result is PopupSkillSelect) {
+      _showSkillManager();
     }
+  }
+
+  Future<void> _showSkillManager() async {
+    await showDialog(
+      context: context,
+      builder: (_) => const SkillConfigDialog(),
+    );
+    ref.invalidate(skillListProvider);
   }
 
   Future<void> _showModelSwitcher() async {
@@ -652,7 +668,34 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
-              const SizedBox(width: 12),
+              // Orchestra quick toggle
+              _InputIconButton(
+                icon: orchestraEnabled ? Icons.queue_music : Icons.queue_music_outlined,
+                tooltip: orchestraEnabled ? '🎵 Orchestra: Açık (düzenle)' : '🎵 Orchestra: Kapalı (aç)',
+                disabled: false,
+                iconColor: orchestraEnabled ? MemoTheme.accent : null,
+                onTap: () async {
+                  if (orchestraEnabled) {
+                    // Already enabled → open config dialog
+                    _showOrchestraConfig();
+                  } else {
+                    // Toggle on with a single tap
+                    try {
+                      final api = ref.read(apiClientProvider);
+                      final current = await api.getOrchestraConfig();
+                      await api.updateOrchestraConfig(current.copyWith(enabled: true));
+                      ref.invalidate(orchestraConfigProvider);
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Orchestra açılamadı: $e')),
+                        );
+                      }
+                    }
+                  }
+                },
+              ),
+              const SizedBox(width: 8),
 
               // ─── Text Input ──────────────────────────
               Expanded(
@@ -745,12 +788,14 @@ class _InputIconButton extends StatelessWidget {
   final String tooltip;
   final VoidCallback onTap;
   final bool disabled;
+  final Color? iconColor;
 
   const _InputIconButton({
     required this.icon,
     required this.tooltip,
     required this.onTap,
     this.disabled = false,
+    this.iconColor,
   });
 
   @override
@@ -765,9 +810,9 @@ class _InputIconButton extends StatelessWidget {
           child: Icon(
             icon,
             size: 20,
-            color: disabled
+            color: iconColor ?? (disabled
                 ? MemoTheme.of(context).textDim.withValues(alpha: 0.3)
-                : MemoTheme.of(context).textDim,
+                : MemoTheme.of(context).textDim),
           ),
         ),
       ),

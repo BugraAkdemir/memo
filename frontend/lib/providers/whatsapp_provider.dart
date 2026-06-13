@@ -85,11 +85,11 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
     if (status == null || !status.initialized) {
       // Not yet started — check every 3s in case backend auto-starts.
       interval = const Duration(seconds: 3);
-    } else if (!status.loggedIn && status.qrCodes.isNotEmpty) {
-      // QR displayed — poll fast so we detect the scan quickly.
+    } else if (!status.loggedIn) {
+      // Waiting for QR to arrive OR QR displayed — poll fast either way.
       interval = const Duration(seconds: 2);
-    } else if (!status.connected && status.loggedIn) {
-      // Disconnected but has session — reconnect in progress.
+    } else if (!status.connected) {
+      // Logged in but disconnected — reconnect in progress.
       interval = const Duration(seconds: 4);
     } else {
       // Connected and logged in — heartbeat only.
@@ -108,11 +108,12 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
   }
 
   Future<void> connect() async {
-    state = const AsyncValue.loading();
     try {
       final data = await _api.startWhatsApp();
-      if (mounted) state = AsyncValue.data(WhatsAppStatus.fromJson(data));
-      startPolling();
+      if (mounted) {
+        state = AsyncValue.data(WhatsAppStatus.fromJson(data));
+        startPolling();
+      }
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
     }

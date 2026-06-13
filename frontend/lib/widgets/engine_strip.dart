@@ -3,8 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
+import '../providers/orchestra_provider.dart';
+import '../providers/provider_provider.dart';
 
 /// Signature element: a calm, always-present strip at the foot of the content
 /// area showing Memo's live "engine" — which chat model and memory (embedding)
@@ -28,6 +31,10 @@ class EngineStrip extends ConsumerWidget {
 
     final chatRunning = status?.running ?? false;
     final embRunning = emb?.running ?? false;
+    final activeProviderType =
+        ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
+    final isApiProvider =
+        activeProviderType.isNotEmpty && activeProviderType != 'local';
 
     return Container(
       height: 40,
@@ -58,8 +65,30 @@ class EngineStrip extends ConsumerWidget {
                 },
               ),
             ],
-          ] else
+          ] else if (isApiProvider)
+            _ApiProviderIndicator(providerType: activeProviderType)
+          else
             _OfflineHint(onOpenModels: onOpenModels),
+          // Orchestra mode indicator
+          if (ref.watch(orchestraConfigProvider).valueOrNull?.enabled == true) ...[
+            _divider(c.borderSoft),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 7, height: 7,
+                  decoration: const BoxDecoration(color: MemoTheme.accent, shape: BoxShape.circle),
+                ),
+                const SizedBox(width: 8),
+                const Text('🎵', style: TextStyle(fontSize: 13)),
+                const SizedBox(width: 4),
+                Text(
+                  'Orchestra',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.textMain),
+                ),
+              ],
+            ),
+          ],
           const Spacer(),
           MouseRegion(
             cursor: SystemMouseCursors.click,
@@ -139,6 +168,45 @@ class _LiveIndicator extends StatelessWidget {
                   size: 16, color: c.textDim),
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _ApiProviderIndicator extends StatelessWidget {
+  final String providerType;
+  const _ApiProviderIndicator({required this.providerType});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    final displayName =
+        ProviderDefaults.displayNames[providerType] ?? providerType;
+    final icon = providerIcon(providerType);
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+              color: MemoTheme.green, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Icon(
+          icon,
+          size: 16,
+          color: MemoTheme.of(context).accent,
+        ),
+        const SizedBox(width: 6),
+        Text(
+          displayName,
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: c.textMain),
         ),
       ],
     );

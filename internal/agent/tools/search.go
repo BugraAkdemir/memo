@@ -8,7 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-	"time"
 )
 
 // SearchFilesArgs represents arguments for search_files tool.
@@ -17,7 +16,7 @@ type SearchFilesArgs struct {
 	Path    string `json:"path"`
 }
 
-func SearchFiles(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func SearchFiles(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args SearchFilesArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -28,7 +27,7 @@ func SearchFiles(argsJSON json.RawMessage, basePath string, createBackup func(st
 		return "", err
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	searchCtx, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
 	defer cancel()
 
 	var result strings.Builder
@@ -41,7 +40,7 @@ func SearchFiles(argsJSON json.RawMessage, basePath string, createBackup func(st
 		}
 
 		select {
-		case <-ctx.Done():
+		case <-searchCtx.Done():
 			return fmt.Errorf("search timed out")
 		default:
 		}
@@ -85,7 +84,7 @@ func SearchFiles(argsJSON json.RawMessage, basePath string, createBackup func(st
 // ReadEnvArgs represents arguments for read_env tool.
 type ReadEnvArgs struct{}
 
-func ReadEnv(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func ReadEnv(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	// Filter out sensitive environment variables like API keys, tokens, etc.
 	sensitiveKeywords := []string{"KEY", "TOKEN", "SECRET", "PASS", "AUTH", "CREDENTIAL"}
 	

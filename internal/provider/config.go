@@ -175,8 +175,17 @@ func (cm *ConfigManager) Set(cfg ProviderConfig) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
 
+	// Match on Name (user-facing unique label) first, fall back to Type for legacy.
+	key := cfg.Name
+	if key == "" {
+		key = string(cfg.Type)
+	}
 	for i, c := range cm.configs {
-		if c.Type == cfg.Type {
+		matchKey := c.Name
+		if matchKey == "" {
+			matchKey = string(c.Type)
+		}
+		if matchKey == key {
 			cm.configs[i] = cfg
 			cm.saveLocked()
 			return
@@ -186,10 +195,22 @@ func (cm *ConfigManager) Set(cfg ProviderConfig) {
 	cm.saveLocked()
 }
 
-// Delete removes a provider config by type.
-func (cm *ConfigManager) Delete(pt ProviderType) {
+// Delete removes a provider config by type or name.
+// If name is non-empty, it matches on Name first. Falls back to Type match.
+func (cm *ConfigManager) Delete(pt ProviderType, name ...string) {
 	cm.mu.Lock()
 	defer cm.mu.Unlock()
+
+	if len(name) > 0 && name[0] != "" {
+		for i, cfg := range cm.configs {
+			if cfg.Name == name[0] {
+				cm.configs = append(cm.configs[:i], cm.configs[i+1:]...)
+				cm.saveLocked()
+				return
+			}
+		}
+		return
+	}
 
 	for i, cfg := range cm.configs {
 		if cfg.Type == pt {

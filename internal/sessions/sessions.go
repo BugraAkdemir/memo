@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"memo/internal/truncate"
 	"os"
 	"path/filepath"
 	"sort"
@@ -280,7 +281,7 @@ func (m *Manager) sortedList() []*Session {
 	return list
 }
 
-// GetHistoryForAPI returns the last N messages in api.Message compatible format
+// GetHistoryForAPI returns history in api.Message compatible format, truncated by message count.
 func (m *Manager) GetHistoryForAPI(maxMessages int) []map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
@@ -294,6 +295,36 @@ func (m *Manager) GetHistoryForAPI(maxMessages int) []map[string]string {
 	}
 	out := make([]map[string]string, len(msgs))
 	for i, msg := range msgs {
+		out[i] = map[string]string{"role": msg.Role, "content": msg.Content}
+	}
+	return out
+}
+
+// GetHistoryForAPITokenAware returns history truncated to fit within maxTokens.
+// Preserves system prompt, drops oldest messages first. More accurate than
+// GetHistoryForAPI for long conversations with varying message sizes.
+func (m *Manager) GetHistoryForAPITokenAware(maxTokens int) []map[string]string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[m.active]
+	if s == nil {
+		return nil
+	}
+
+	msgs := s.Messages
+	if len(msgs) == 0 {
+		return nil
+	}
+
+	truncMsgs := make([]truncate.Message, len(msgs))
+	for i, msg := range msgs {
+		truncMsgs[i] = truncate.Message{Role: msg.Role, Content: msg.Content}
+	}
+
+	truncMsgs = truncate.TruncateMessages(truncMsgs, maxTokens)
+
+	out := make([]map[string]string, len(truncMsgs))
+	for i, msg := range truncMsgs {
 		out[i] = map[string]string{"role": msg.Role, "content": msg.Content}
 	}
 	return out

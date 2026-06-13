@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"os"
@@ -16,7 +17,7 @@ type EditFileArgs struct {
 	NewContent  string `json:"new_content,omitempty"`
 }
 
-func EditFile(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func EditFile(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args EditFileArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -62,7 +63,9 @@ func EditFile(argsJSON json.RawMessage, basePath string, createBackup func(strin
 	}
 
 	if createBackup != nil {
-		createBackup(fullPath)
+		if err := createBackup(fullPath); err != nil {
+			return "", fmt.Errorf("backup failed, aborting edit: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(fullPath, []byte(newFileContent), 0644); err != nil {
@@ -100,7 +103,7 @@ type InsertLineArgs struct {
 	Content    string `json:"content"`
 }
 
-func InsertLine(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func InsertLine(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args InsertLineArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -127,7 +130,9 @@ func InsertLine(argsJSON json.RawMessage, basePath string, createBackup func(str
 	newLines = append(newLines, lines[idx:]...)
 
 	if createBackup != nil {
-		createBackup(fullPath)
+		if err := createBackup(fullPath); err != nil {
+			return "", fmt.Errorf("backup failed, aborting insert: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(fullPath, []byte(strings.Join(newLines, "\n")), 0644); err != nil {
@@ -153,7 +158,7 @@ type DeleteLinesArgs struct {
 	EndLine   int    `json:"end_line"`
 }
 
-func DeleteLines(argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
+func DeleteLines(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args DeleteLinesArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
 		return "", fmt.Errorf("invalid arguments: %w", err)
@@ -183,7 +188,9 @@ func DeleteLines(argsJSON json.RawMessage, basePath string, createBackup func(st
 	newLines = append(newLines, lines[end:]...)
 
 	if createBackup != nil {
-		createBackup(fullPath)
+		if err := createBackup(fullPath); err != nil {
+			return "", fmt.Errorf("backup failed, aborting delete: %w", err)
+		}
 	}
 
 	if err := os.WriteFile(fullPath, []byte(strings.Join(newLines, "\n")), 0644); err != nil {

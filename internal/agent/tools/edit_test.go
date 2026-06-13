@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -27,7 +28,7 @@ func TestEditFile(t *testing.T) {
 	}
 	argsJSON, _ := json.Marshal(args)
 
-	_, err = EditFile(argsJSON, tempDir, nil)
+	_, err = EditFile(context.Background(), argsJSON, tempDir, nil)
 	if err != nil {
 		t.Fatalf("EditFile failed: %v", err)
 	}
@@ -45,7 +46,7 @@ func TestEditFile(t *testing.T) {
 	}
 	argsInsertJSON, _ := json.Marshal(argsInsert)
 
-	_, err = InsertLine(argsInsertJSON, tempDir, nil)
+	_, err = InsertLine(context.Background(), argsInsertJSON, tempDir, nil)
 	if err != nil {
 		t.Fatalf("InsertLine failed: %v", err)
 	}
@@ -64,7 +65,7 @@ func TestEditFile(t *testing.T) {
 	}
 	argsDeleteJSON, _ := json.Marshal(argsDelete)
 
-	_, err = DeleteLines(argsDeleteJSON, tempDir, nil)
+	_, err = DeleteLines(context.Background(), argsDeleteJSON, tempDir, nil)
 	if err != nil {
 		t.Fatalf("DeleteLines failed: %v", err)
 	}

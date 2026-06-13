@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"memo/internal/provider"
+	"memo/internal/truncate"
 	"time"
 )
 
@@ -48,6 +49,7 @@ type Pipeline struct {
 	prov        AgentProvider
 	maxIters    int
 	backup      *BackupManager
+	maxTokens   int // context window token budget for this turn (0 = unlimited)
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -57,8 +59,23 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 		permissions: permissions,
 		sandbox:     sandbox,
 		prov:        prov,
-		maxIters:    20, // Max 20 tool calls per turn to prevent infinite loops
+		maxIters:    20,
 		backup:      backup,
+	}
+}
+
+// NewPipelineWithBudget creates a pipeline with a context token budget.
+// When maxTokens > 0, the pipeline truncates accumulated tool-call history
+// to stay within budget, dropping oldest tool result messages first.
+func NewPipelineWithBudget(registry *ToolRegistry, permissions *PermissionManager, sandbox *Sandbox, prov AgentProvider, backup *BackupManager, maxTokens int) *Pipeline {
+	return &Pipeline{
+		registry:    registry,
+		permissions: permissions,
+		sandbox:     sandbox,
+		prov:        prov,
+		maxIters:    20,
+		backup:      backup,
+		maxTokens:   maxTokens,
 	}
 }
 
@@ -120,6 +137,28 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 		// Snapshot basePath once per iteration to avoid repeated mutex acquisitions.
 		basePath := p.sandbox.GetBasePath()
+
+		// Enforce context token budget: if currentMessages exceeds maxTokens,
+		// drop oldest assistant+tool message pairs, keeping system prompt and
+		// the most recent turn. This prevents unbounded message growth when
+		// many tool calls are made across iterations.
+		if p.maxTokens > 0 {
+			truncMsgs := make([]truncate.Message, len(currentMessages))
+			for i, m := range currentMessages {
+				var content string
+				switch v := m.Content.(type) {
+				case string:
+					content = v
+				default:
+				}
+				truncMsgs[i] = truncate.Message{Role: m.Role, Content: content}
+			}
+			truncMsgs = truncate.TruncateMessages(truncMsgs, p.maxTokens)
+			currentMessages = make([]provider.Message, len(truncMsgs))
+			for i, m := range truncMsgs {
+				currentMessages[i] = provider.Message{Role: m.Role, Content: m.Content}
+			}
+		}
 
 		// Execute each tool call
 		for _, tc := range resp.ToolCalls {
@@ -207,10 +246,10 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			}
 
 			// Execute!
-			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
+			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, DangerLevel: toolDef.DangerLevel})
 
 			start := time.Now()
-			result, err := p.registry.Execute(toolName, args, basePath, p.backup.CreateBackup)
+			result, err := p.registry.Execute(ctx, toolName, args, basePath, p.backup.CreateBackup)
 			duration := time.Since(start).Milliseconds()
 
 			p.permissions.ClearOnce(toolName, args)

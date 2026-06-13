@@ -18,6 +18,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"strings"
 	"sync"
 	"time"
 )
@@ -187,6 +188,14 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/whatsapp/chat-mode", s.handleWhatsAppChatMode)
 	mux.HandleFunc("/api/whatsapp/chat-stream", s.handleWhatsAppChatStream)
 	mux.HandleFunc("/api/export", s.handleExport)
+
+	// Skills
+	mux.HandleFunc("/api/skills/list", s.handleListSkills)
+	mux.HandleFunc("/api/skills/install", s.handleInstallSkill)
+	mux.HandleFunc("/api/skills/remove/{name}", s.handleRemoveSkill)
+	mux.HandleFunc("/api/skills/get/{name}", s.handleGetSkill)
+	mux.HandleFunc("/api/skills/active", s.handleSetActiveSkills)
+	mux.HandleFunc("/api/skills/active-list", s.handleGetActiveSkills)
 	mux.HandleFunc("/api/import", s.handleImport)
 	mux.HandleFunc("/api/wipe", s.handleWipe)
 
@@ -546,10 +555,16 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		if origin == "" {
-			origin = "http://localhost"
+		// Only reflect origins from localhost / loopback — never reflect arbitrary origins.
+		if origin == "" ||
+			strings.HasPrefix(origin, "http://localhost") ||
+			strings.HasPrefix(origin, "http://127.0.0.1") ||
+			strings.HasPrefix(origin, "http://[::1]") {
+			if origin == "" {
+				origin = "http://localhost"
+			}
+			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
-		w.Header().Set("Access-Control-Allow-Origin", origin)
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
 		if r.Method == http.MethodOptions {

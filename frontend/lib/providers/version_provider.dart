@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/api_client.dart';
 import 'chat_provider.dart';
 
 /// Holds the result of a version check.

@@ -3,19 +3,28 @@ set -e
 
 APP_NAME="Memo"
 EXEC_NAME="memo"
-BUILD_BIN="build/bin/local-llmmmemory"
 
-# Hedef yollar (User-local installation)
+# Source bundle produced by package_linux.sh (memo backend + memo_flutter + binaries + run_memo.sh)
+BUNDLE_DIR="build_output/memo-linux-x64"
+RUNNER="run_memo.sh"
+
+# Target paths (user-local installation)
 INSTALL_DIR="$HOME/.local/share/MemoApp"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/512x512/apps"
 
 echo "==== $APP_NAME Kurulumu Başlıyor ===="
 
-# 1. Build kontrolü
-if [ ! -f "$BUILD_BIN" ]; then
-    echo "Hata: Binary bulunamadı. Lütfen önce 'wails build' komutunu çalıştırın."
-    exit 1
+# 1. Build kontrolü — bundle yoksa otomatik üret
+if [ ! -d "$BUNDLE_DIR" ] || [ ! -f "$BUNDLE_DIR/$RUNNER" ]; then
+    echo "-> Derlenmiş bundle bulunamadı ($BUNDLE_DIR)."
+    if [ -f "package_linux.sh" ]; then
+        echo "-> 'package_linux.sh' çalıştırılıyor..."
+        bash package_linux.sh
+    else
+        echo "Hata: $BUNDLE_DIR yok ve package_linux.sh bulunamadı. Önce 'bash package_linux.sh' çalıştırın."
+        exit 1
+    fi
 fi
 
 # 2. Dizinleri oluştur
@@ -24,13 +33,13 @@ mkdir -p "$INSTALL_DIR"
 mkdir -p "$DESKTOP_DIR"
 mkdir -p "$ICON_DIR"
 
-# 3. Binary'yi kopyala
-echo "-> Binary kopyalanıyor..."
-cp "$BUILD_BIN" "$INSTALL_DIR/$EXEC_NAME"
-chmod +x "$INSTALL_DIR/$EXEC_NAME"
+# 3. Bundle'ı kopyala (backend, frontend, binaries, runner, config, data)
+echo "-> Uygulama dosyaları kopyalanıyor..."
+cp -r "$BUNDLE_DIR/." "$INSTALL_DIR/"
+chmod +x "$INSTALL_DIR/$EXEC_NAME" 2>/dev/null || true
+chmod +x "$INSTALL_DIR/$RUNNER" 2>/dev/null || true
 
-# 4. Icon olayını çöz (Eğer build/appicon.png veya benzeri varsa, yoksa atla)
-# Wails genelde build/appicon.png yaratır
+# 4. Icon
 ICON_PATH="build/appicon.png"
 if [ -f "$ICON_PATH" ]; then
     cp "$ICON_PATH" "$ICON_DIR/memo.png"
@@ -39,13 +48,13 @@ else
     DESKTOP_ICON="utilities-terminal"
 fi
 
-# 5. .desktop dosyasını oluştur
+# 5. .desktop dosyasını oluştur — run_memo.sh backend + frontend'i birlikte başlatır
 echo "-> Masaüstü kısayolu (.desktop) oluşturuluyor..."
 cat <<EOF > "$DESKTOP_DIR/memo.desktop"
 [Desktop Entry]
 Name=$APP_NAME
 Comment=Local AI Memory Shell
-Exec="$INSTALL_DIR/$EXEC_NAME"
+Exec="$INSTALL_DIR/$RUNNER"
 Path=$INSTALL_DIR
 Icon=$DESKTOP_ICON
 Terminal=false

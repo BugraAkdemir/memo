@@ -12,7 +12,6 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
-	"syscall"
 	"time"
 )
 
@@ -81,6 +80,7 @@ func (m *Manager) Start(port int, authtoken string) error {
 	)
 	cmd.Stderr = io.MultiWriter(&m.errCapture, logWriter{})
 	cmd.Stdout = logWriter{}
+	cmd.SysProcAttr = newSysProcAttr()
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("ngrok start: %w", err)
 	}
@@ -115,15 +115,7 @@ func (m *Manager) Stop() error {
 		return nil
 	}
 
-	// Kill the entire process group (negative PID) so child processes die too
-	pgid, err := syscall.Getpgid(cmd.Process.Pid)
-	if err == nil {
-		syscall.Kill(-pgid, syscall.SIGTERM)
-		time.Sleep(200 * time.Millisecond)
-		syscall.Kill(-pgid, syscall.SIGKILL)
-	} else {
-		cmd.Process.Kill()
-	}
+	killProcessTree(cmd)
 
 	m.mu.Lock()
 	m.running = false

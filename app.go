@@ -458,6 +458,30 @@ func (a *App) shutdown(ctx context.Context) {
 		a.ngrokServer.Stop()
 		a.ngrokServer = nil
 	}
+	stopRecordingProcess()
+}
+
+// stopRecordingProcess kills an in-flight microphone recording (arecord/sox/ffmpeg)
+// so it doesn't outlive the app and keep writing to the temp WAV forever.
+func stopRecordingProcess() {
+	recMu.Lock()
+	defer recMu.Unlock()
+	if recCmd == nil {
+		return
+	}
+	if recStdin != nil {
+		recStdin.Close()
+		recStdin = nil
+	}
+	if recCmd.Process != nil {
+		recCmd.Process.Kill()
+	}
+	recCmd.Wait()
+	recCmd = nil
+	if recFile != "" {
+		os.Remove(recFile)
+		recFile = ""
+	}
 }
 
 // ─── Incognito ───────────────────────────────────────────────────
@@ -1415,48 +1439,47 @@ func (a *App) GenerateChatTitle() string {
 // ─── Speech to Text ─────────────────────────────────────────────
 
 var (
-	recCmd  *exec.Cmd
-	recFile string
-	recMu   sync.Mutex
+	recCmd   *exec.Cmd
+	recStdin io.WriteCloser
+	recFile  string
+	recMu    sync.Mutex
 )
 
-// windowsRecordArgs returns ffmpeg args using the system default microphone.
-// Enumerates DirectShow devices; falls back to "default" if enumeration fails.
-func windowsRecordArgs(outPath string) []string {
-	dev := getDefaultDshowDevice()
-	return []string{"-y", "-f", "dshow", "-i", "audio=" + dev, "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", outPath}
-}
-
 // getDefaultDshowDevice enumerates ffmpeg DirectShow audio devices and returns
-// the first available one, or "default" as a safe fallback.
+// the first one, or "" if none is found. Note: `-i dummy` always makes ffmpeg
+// exit non-zero (the dummy input can't be opened), so the device list must be
+// parsed from the output regardless of the error.
 func getDefaultDshowDevice() string {
-	out, err := exec.Command("ffmpeg", "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
-	if err != nil {
-		return "default"
-	}
-	// ffmpeg lists audio devices as:
-	//   "dshow\tAlternative name\t@device_cm:{GUID}"
-	// Look for the first device line that is not "dummy".
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
-		if !strings.HasPrefix(line, "[dshow") {
+	out, _ := exec.Command("ffmpeg", "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
+	inAudioSection := false
+	for _, line := range strings.Split(string(out), "\n") {
+		if !strings.Contains(line, "[dshow") {
 			continue
 		}
-		if !strings.Contains(line, "\"") {
+		// Older ffmpeg groups devices under section headers; newer ffmpeg
+		// tags each line with "(audio)" / "(video)" instead.
+		if strings.Contains(line, "DirectShow audio devices") {
+			inAudioSection = true
 			continue
 		}
-		// Find device name between double quotes
+		if strings.Contains(line, "DirectShow video devices") {
+			inAudioSection = false
+			continue
+		}
+		if strings.Contains(line, "Alternative name") {
+			continue
+		}
+		isAudio := strings.Contains(line, "(audio)") || (inAudioSection && !strings.Contains(line, "(video)"))
+		if !isAudio {
+			continue
+		}
 		a := strings.Index(line, "\"")
 		b := strings.LastIndex(line, "\"")
 		if a != -1 && b > a+1 {
-			name := line[a+1 : b]
-			// Skip dummy and virtual-audio-capturer which may not produce audio
-			if name != "" {
-				return name
-			}
+			return line[a+1 : b]
 		}
 	}
-	return "default"
+	return ""
 }
 
 func (a *App) StartRecording() error {
@@ -1478,9 +1501,13 @@ func (a *App) StartRecording() error {
 	var recorder string
 	switch runtime.GOOS {
 	case "windows":
-		// ffmpeg with DirectShow — use system default microphone instead of hardcoded GUID
 		recorder = "ffmpeg"
-		recordArgs = windowsRecordArgs(recFile)
+		dev := getDefaultDshowDevice()
+		if dev == "" {
+			os.Remove(recFile)
+			return fmt.Errorf("no DirectShow audio device found — is a microphone connected and ffmpeg installed?")
+		}
+		recordArgs = []string{"-y", "-f", "dshow", "-i", "audio=" + dev, "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", recFile}
 	case "darwin":
 		recorder = "sox"
 		recordArgs = []string{"-d", "-b", "16", "-r", "16000", "-c", "1", recFile}
@@ -1489,8 +1516,14 @@ func (a *App) StartRecording() error {
 		recordArgs = []string{"-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav", recFile}
 	}
 	recCmd = exec.Command(recorder, recordArgs...)
+	if runtime.GOOS == "windows" {
+		// ffmpeg finalizes the WAV header only on a graceful quit ('q' on
+		// stdin); Process.Kill() leaves a corrupt header.
+		recStdin, _ = recCmd.StdinPipe()
+	}
 	if err := recCmd.Start(); err != nil {
 		recCmd = nil
+		recStdin = nil
 		os.Remove(recFile)
 		return fmt.Errorf("recording start (%s): %w", recorder, err)
 	}
@@ -1510,12 +1543,28 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 	// Stop recording gracefully
 	if recCmd.Process != nil {
 		if runtime.GOOS == "windows" {
-			recCmd.Process.Kill()
+			// Ask ffmpeg to quit via stdin so it finalizes the WAV header,
+			// then force-kill if it doesn't exit in time.
+			if recStdin != nil {
+				io.WriteString(recStdin, "q")
+				recStdin.Close()
+				recStdin = nil
+			}
+			done := make(chan struct{})
+			go func() { recCmd.Wait(); close(done) }()
+			select {
+			case <-done:
+			case <-time.After(3 * time.Second):
+				recCmd.Process.Kill()
+				<-done
+			}
 		} else {
 			recCmd.Process.Signal(os.Interrupt)
+			recCmd.Wait()
 		}
+	} else {
+		recCmd.Wait()
 	}
-	recCmd.Wait()
 	recCmd = nil
 
 	defer os.Remove(recFile)

@@ -105,7 +105,8 @@ func (i *Installer) IsInstalled(configuredPath string) bool {
 	if path, err := resolveBinary(configuredPath, ""); err == nil && path != "" {
 		// If it's a bundled binary, we consider it "installed" regardless of dynamic GPU checks
 		// because the user/bundler is responsible for providing the right one.
-		if strings.Contains(path, "binaries/") || strings.HasPrefix(path, "bin/") {
+		normalized := filepath.ToSlash(path)
+		if strings.Contains(normalized, "binaries/") || strings.HasPrefix(normalized, "bin/") {
 			return true
 		}
 		

@@ -10,22 +10,19 @@ final whatsAppStatusProvider = StateNotifierProvider<WhatsAppStatusNotifier, Asy
 
 final whatsAppChatsProvider = FutureProvider<List<WhatsAppChatSummary>>((ref) async {
   final api = ref.read(apiClientProvider);
-  final raw = await api.getWhatsAppChats();
-  final data = raw ?? <dynamic>[];
+  final data = await api.getWhatsAppChats();
   return data.map((e) => WhatsAppChatSummary.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final whatsAppMessagesProvider = FutureProvider.family<List<WhatsAppMessage>, String>((ref, jid) async {
   final api = ref.read(apiClientProvider);
-  final raw = await api.getWhatsAppMessages(jid);
-  final data = raw ?? <dynamic>[];
+  final data = await api.getWhatsAppMessages(jid);
   return data.map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final whatsAppSearchProvider = FutureProvider.family<List<WhatsAppMessage>, String>((ref, query) async {
   final api = ref.read(apiClientProvider);
-  final raw = await api.searchWhatsApp(query);
-  final data = raw ?? <dynamic>[];
+  final data = await api.searchWhatsApp(query);
   return data.map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
 });
 

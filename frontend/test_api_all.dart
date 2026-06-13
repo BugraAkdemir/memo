@@ -1,4 +1,3 @@
-import 'package:dio/dio.dart';
 import 'lib/core/api_client.dart';
 void main() async {
   final client = MemoApiClient();

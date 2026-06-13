@@ -61,7 +61,13 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
           showDialog(
             context: context,
             barrierDismissible: false,
-            builder: (context) => PermissionDialog(event: event),
+            // PopScope prevents the back button from closing the dialog without
+            // a policy response — otherwise the agent pipeline would block forever
+            // waiting for a permission answer that never comes.
+            builder: (context) => PopScope(
+              canPop: false,
+              child: PermissionDialog(event: event),
+            ),
           );
         }
       }

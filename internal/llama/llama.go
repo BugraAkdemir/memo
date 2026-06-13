@@ -110,6 +110,11 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	if embedding {
 		// Embedding-only mode: enables /embeddings endpoint, disables chat.
 		args = append(args, "--embedding")
+	} else {
+		// Use the model's own chat template (Jinja). This is what enables
+		// OpenAI-style tool calling on /v1/chat/completions, which the agent
+		// mode relies on when running against a local model.
+		args = append(args, "--jinja")
 	}
 
 	// Auto-detect multimodal projector (mmproj) file next to the model

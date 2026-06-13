@@ -45,13 +45,14 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
   }
 
   void _submit(String policy) {
-    final future = widget.event.requestId != null
-        ? ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy)
-        : null;
-    if (future != null) {
-      unawaited(future);
+    // Fire the API call before closing so the agent pipeline unblocks immediately.
+    // The call is not awaited; errors are non-critical (pipeline has its own timeout).
+    if (widget.event.requestId != null) {
+      unawaited(
+        ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy),
+      );
     }
-    Navigator.of(context).pop();
+    if (mounted) Navigator.of(context).pop();
   }
 
   @override

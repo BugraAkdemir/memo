@@ -75,14 +75,11 @@ func NewWhatsAppExecutor(existing *Executor) *Executor {
 	}
 }
 
-// IsAvailable checks if the agent can run (needs external provider).
+// IsAvailable checks if the agent can run (needs a provider router).
 func (e *Executor) IsAvailable() bool {
-	if e.providerRouter == nil {
-		return false
-	}
-	// We could also check if activeProvider is external, but since router only
-	// has external providers, if router exists, we have an external provider available.
-	return true
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.providerRouter != nil
 }
 
 // SyncRouter updates the providerRouter reference to match the app's current router.
@@ -93,10 +90,18 @@ func (e *Executor) SyncRouter(r *provider.Router) {
 	e.providerRouter = r
 }
 
+// getRouter returns the current providerRouter under the mutex.
+func (e *Executor) getRouter() *provider.Router {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.providerRouter
+}
+
 // RunStream starts the agent execution and streams back chunks and events.
 func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName string, messages []provider.Message, onEvent func(AgentEvent), projectPath ...string) (<-chan provider.StreamChunk, error) {
-	if !e.IsAvailable() {
-		return nil, fmt.Errorf("agent mode requires an active external provider")
+	router := e.getRouter()
+	if router == nil {
+		return nil, fmt.Errorf("agent mode requires an active provider (external API or local model)")
 	}
 
 	// If a project path is provided for agent chat, update sandbox base path.
@@ -107,7 +112,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		e.sandbox.SetBasePath(e.basePath)
 	}
 
-	pipeline := NewPipeline(e.registry, e.permissions, e.sandbox, e.providerRouter, e.backup)
+	pipeline := NewPipeline(e.registry, e.permissions, e.sandbox, router, e.backup)
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event
@@ -147,13 +152,18 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 // HandlePermissionResponse routes the user's permission response to the waiting pipeline.
 func (e *Executor) HandlePermissionResponse(requestID string, policy PermissionPolicy) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-
 	req, ok := e.pendingPerms[requestID]
 	if !ok {
+		e.mu.Unlock()
 		return fmt.Errorf("permission request %s not found or already answered", requestID)
 	}
+	// Delete before sending: if this function is called a second time for the
+	// same request (e.g. user double-taps), it will get "not found" instead of
+	// blocking on a full channel while still holding the mutex (deadlock).
+	delete(e.pendingPerms, requestID)
+	e.mu.Unlock()
 
+	// Channel has buffer 1 and is empty at this point — send never blocks.
 	req.ResCh <- policy
 	return nil
 }

@@ -44,7 +44,7 @@ func NewBackupManager(dataDir string) *BackupManager {
 	bm := &BackupManager{
 		backupDir:  backupDir,
 		historyFile: historyFile,
-		maxEntries: 10,
+		maxEntries: 50,
 	}
 	bm.loadHistory()
 	return bm

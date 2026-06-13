@@ -14,6 +14,12 @@ class CuratedModel {
   final String descEn;
   final int approxBytes; // recommended (Q4_K_M) file size, for display + fit hint
   final ModelKind kind;
+  /// Whether this model supports OpenAI-style tool/function calling.
+  /// Required for Agent mode to work with a local model.
+  final bool supportsTools;
+  /// Overrides the author extracted from [repoId] for avatar/logo lookup.
+  /// Set when the uploader org differs from the original model creator.
+  final String? brandAuthor;
 
   const CuratedModel({
     required this.repoId,
@@ -22,45 +28,95 @@ class CuratedModel {
     required this.descEn,
     required this.approxBytes,
     required this.kind,
+    this.supportsTools = false,
+    this.brandAuthor,
   });
 
   String get desc => L10n.locale == MemoLocale.tr ? descTr : descEn;
+
+  /// The author used for avatar/logo display.
+  String get displayAuthor =>
+      brandAuthor ?? (repoId.contains('/') ? repoId.split('/').first : repoId);
 }
 
-/// Stable bartowski/nomic GGUF repos. Exact filenames are resolved at download
-/// time via `getModelFiles`, so only the repo ids need to stay valid.
+/// Curated GGUF repos — only official repos from the original model creators.
+/// Filenames are resolved at download time via `getModelFiles`.
 const curatedModels = <CuratedModel>[
+  // ── Google — official QAT GGUF releases ─────────────────────────
   CuratedModel(
-    repoId: 'bartowski/Meta-Llama-3.1-8B-Instruct-GGUF',
-    name: 'Llama 3.1 8B Instruct',
-    descTr: 'Genel sohbet · Türkçe iyi',
-    descEn: 'General chat · good Turkish',
-    approxBytes: 4920000000,
+    repoId: 'google/gemma-3-4b-it-qat-q4_0-gguf',
+    name: 'Gemma 3 4B Instruct',
+    descTr: 'Google\'dan hafif ve güçlü · Araç desteği',
+    descEn: 'Lightweight powerhouse from Google · Tool use',
+    approxBytes: 2530000000,
     kind: ModelKind.chat,
+    supportsTools: true,
   ),
   CuratedModel(
-    repoId: 'bartowski/Qwen2.5-7B-Instruct-GGUF',
+    repoId: 'google/gemma-3-12b-it-qat-q4_0-gguf',
+    name: 'Gemma 3 12B Instruct',
+    descTr: 'Görüntü + sohbet + araç · Google',
+    descEn: 'Vision + chat + tools · Google',
+    approxBytes: 7600000000,
+    kind: ModelKind.vision,
+    supportsTools: true,
+  ),
+  // ── Qwen / Alibaba — official GGUF releases ──────────────────────
+  CuratedModel(
+    repoId: 'Qwen/Qwen3-8B-GGUF',
+    name: 'Qwen 3 8B',
+    descTr: 'En yeni Qwen · Akıl yürütme + araç desteği',
+    descEn: 'Latest Qwen · Reasoning + tool use',
+    approxBytes: 5200000000,
+    kind: ModelKind.chat,
+    supportsTools: true,
+  ),
+  CuratedModel(
+    repoId: 'Qwen/Qwen2.5-7B-Instruct-GGUF',
     name: 'Qwen 2.5 7B Instruct',
-    descTr: 'Kod + sohbet, dengeli',
-    descEn: 'Balanced code + chat',
+    descTr: 'Kod + sohbet, dengeli · Araç desteği',
+    descEn: 'Balanced code + chat · Tool use',
     approxBytes: 4680000000,
     kind: ModelKind.chat,
+    supportsTools: true,
   ),
   CuratedModel(
-    repoId: 'bartowski/Phi-3.5-mini-instruct-GGUF',
-    name: 'Phi-3.5 mini',
-    descTr: 'Hafif ve hızlı',
-    descEn: 'Lightweight and fast',
+    repoId: 'Qwen/Qwen2.5-14B-Instruct-GGUF',
+    name: 'Qwen 2.5 14B Instruct',
+    descTr: 'Büyük model · Kod + akıl yürütme',
+    descEn: 'Larger model · Code + reasoning',
+    approxBytes: 8730000000,
+    kind: ModelKind.chat,
+    supportsTools: true,
+  ),
+  CuratedModel(
+    repoId: 'Qwen/Qwen2.5-Coder-7B-Instruct-GGUF',
+    name: 'Qwen 2.5 Coder 7B',
+    descTr: 'Kod yazımı için özelleştirilmiş model',
+    descEn: 'Specialist coding model',
+    approxBytes: 4680000000,
+    kind: ModelKind.chat,
+    supportsTools: true,
+  ),
+  // ── Microsoft — official GGUF releases ──────────────────────────
+  CuratedModel(
+    repoId: 'microsoft/Phi-3-mini-4k-instruct-gguf',
+    name: 'Phi-3 mini 4K Instruct',
+    descTr: 'Microsoft · Hafif ve hızlı · 3.8B',
+    descEn: 'Microsoft · Lightweight and fast · 3.8B',
     approxBytes: 2390000000,
     kind: ModelKind.chat,
+    supportsTools: true,
   ),
+  // ── Embedding / Memory ──────────────────────────────────────────
   CuratedModel(
     repoId: 'nomic-ai/nomic-embed-text-v1.5-GGUF',
     name: 'Nomic Embed v1.5',
-    descTr: 'Hafıza için küçük model',
-    descEn: 'Small model for memory',
+    descTr: 'Hafıza için vektör modeli',
+    descEn: 'Vector model for memory',
     approxBytes: 84000000,
     kind: ModelKind.memory,
+    supportsTools: false,
   ),
 ];
 
@@ -119,6 +175,8 @@ QuantInfo quantInfo(String filename) {
   if (f.contains('q3_k')) return QuantInfo(L10n.t('quant_smallest'), 60);
   if (f.contains('q2_k')) return QuantInfo(L10n.t('quant_smallest'), 55);
   if (f.contains('fp16') || f.contains('f16')) return QuantInfo(L10n.t('quant_full'), 50);
+  if (f.contains('q4_0')) return QuantInfo(L10n.t('quant_balanced'), 95);
+  if (f.contains('q4_1')) return QuantInfo(L10n.t('quant_small'), 78);
   return QuantInfo(L10n.t('quant_standard'), 40);
 }
 

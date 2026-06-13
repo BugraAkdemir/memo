@@ -24,23 +24,22 @@ var blacklistedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\brm\s+-rf\s+/\b`),
 	regexp.MustCompile(`\brm\s+-rf\s+~\b`),
 	regexp.MustCompile(`\brm\s+-rf\s+\.\b`),
-	regexp.MustCompile(`\bdd\b`),
+	regexp.MustCompile(`\bdd\s`),               // dd (disk destroyer) followed by space
 	regexp.MustCompile(`\bmkfs\b`),
-	regexp.MustCompile(`\bformat\b`),
 	regexp.MustCompile(`\bfdisk\b`),
 	regexp.MustCompile(`\bparted\b`),
 	regexp.MustCompile(`\bchmod\s+777\b`),
-	regexp.MustCompile(`\bchown\b`),
 	regexp.MustCompile(`\bsudo\b`),
-	regexp.MustCompile(`\bsu\b`),
 	regexp.MustCompile(`\bpkexec\b`),
 	regexp.MustCompile(`:\{\s*:\|\s*:\s*&\s*;?\s*:\s*\}`), // fork bomb
+	// Block interactive/code-exec shell invocations but NOT .sh file references.
+	// Patterns like "sh -c" or "bash -i" are shell escape vectors;
+	// references like "./build.sh" or "ls *.sh" are legitimate.
+	regexp.MustCompile(`\bsh\s+-[ci]\b`),
+	regexp.MustCompile(`\bbash\s+-[ci]\b`),
+	regexp.MustCompile(`\bzsh\s+-[ci]\b`),
+	regexp.MustCompile(`\bdash\s+-[ci]\b`),
 	regexp.MustCompile(`\bnc\s+-e\b`),
-	regexp.MustCompile(`\bbash\s+-i\b`),
-	regexp.MustCompile(`\bsh\b`),               // shell - can bypass blacklist via sh -c "rm -rf /"
-	regexp.MustCompile(`\bbash\b`),             // bash - full shell interpreter
-	regexp.MustCompile(`\bzsh\b`),              // zsh - full shell interpreter
-	regexp.MustCompile(`\bdash\b`),             // dash - full shell interpreter
 	regexp.MustCompile(`\bmkfifo\b`),
 	regexp.MustCompile(`\bshutdown\b`),
 	regexp.MustCompile(`\breboot\b`),
@@ -105,8 +104,14 @@ func RunCommand(argsJSON json.RawMessage, basePath string, createBackup func(str
 		}
 	} else {
 		cmd = exec.CommandContext(ctx, "bash", "-c", args.Command)
+		// Inherit the user's PATH so that tools like go, npm, node, python etc.
+		// installed in non-system locations are discoverable.
+		userPath := os.Getenv("PATH")
+		if userPath == "" {
+			userPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+		}
 		cmd.Env = []string{
-			"PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin",
+			"PATH=" + userPath,
 			"HOME=" + os.Getenv("HOME"),
 			"USER=" + os.Getenv("USER"),
 			"LANG=en_US.UTF-8",

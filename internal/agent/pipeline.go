@@ -118,8 +118,17 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 		currentMessages = append(currentMessages, assistantMsg)
 
+		// Snapshot basePath once per iteration to avoid repeated mutex acquisitions.
+		basePath := p.sandbox.GetBasePath()
+
 		// Execute each tool call
 		for _, tc := range resp.ToolCalls {
+			// Some local models omit the tool_call_id field. Generate a fallback so
+			// the assistant + tool message pair is always well-formed.
+			if tc.ID == "" {
+				tc.ID = generateID()
+			}
+
 			toolName := tc.Function.Name
 			args := tc.Function.Arguments
 
@@ -156,7 +165,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			if permRes.NeedPrompt {
 				var preview string
 				if toolDef.PreviewFn != nil {
-					preview, _ = toolDef.PreviewFn(args, p.sandbox.config.BasePath)
+					preview, _ = toolDef.PreviewFn(args, basePath)
 				}
 
 				reqID := generateID()
@@ -186,6 +195,8 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			}
 
 			if !permRes.Allowed {
+				// Clear DenyOnce so the user is prompted again on the next identical call.
+				p.permissions.ClearOnce(toolName, args)
 				onEvent(AgentEvent{Type: EventPermissionDenied, ToolName: toolName, Args: args})
 				currentMessages = append(currentMessages, provider.Message{
 					Role:       "tool",
@@ -199,7 +210,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, Args: args, DangerLevel: toolDef.DangerLevel})
 
 			start := time.Now()
-			result, err := p.registry.Execute(toolName, args, p.sandbox.config.BasePath, p.backup.CreateBackup)
+			result, err := p.registry.Execute(toolName, args, basePath, p.backup.CreateBackup)
 			duration := time.Since(start).Milliseconds()
 
 			p.permissions.ClearOnce(toolName, args)
@@ -222,7 +233,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 		}
 
-		trySend(ctx, outCh, provider.StreamChunk{Error: "Max tool iterations reached", Done: true})
+		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (20). The task may be incomplete.", Done: true})
 	}()
 
 	return outCh, nil

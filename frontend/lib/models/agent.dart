@@ -69,7 +69,7 @@ class AgentPermission {
 
   factory AgentPermission.fromJson(Map<String, dynamic> json) => AgentPermission(
         id: json['id'] as String? ?? '',
-        toolName: json['tool'] as String? ?? '',
+        toolName: json['tool_name'] as String? ?? '',
         argsHash: json['args_hash'] as String? ?? '',
         policy: json['policy'] as String? ?? '',
         createdAt: json['created_at'] as String? ?? '',

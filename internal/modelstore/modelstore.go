@@ -19,17 +19,53 @@ import (
 
 // HFModelResult represents a model returned from Hugging Face search.
 type HFModelResult struct {
-	ID        string   `json:"id"`
-	Author    string   `json:"author"`
-	Downloads int      `json:"downloads"`
-	Likes     int      `json:"likes"`
-	Tags      []string `json:"tags"`
+	ID           string   `json:"id"`
+	Author       string   `json:"author"`
+	Downloads    int      `json:"downloads"`
+	Likes        int      `json:"likes"`
+	Tags         []string `json:"tags"`
+	LastModified string   `json:"lastModified"`
+}
+
+// modelMeta is stored as a sidecar JSON file (<model>.meta.json) next to each
+// downloaded GGUF so we can surface HF capabilities without network calls.
+type modelMeta struct {
+	RepoID        string   `json:"repo_id"`
+	Tags          []string `json:"tags"`
+	SupportsTools bool     `json:"supports_tools"`
+	SupportsVision bool    `json:"supports_vision"`
+	SupportsCode  bool     `json:"supports_code"`
+	IsEmbedding   bool     `json:"is_embedding_hf"` // from HF tags (distinct from filename heuristic)
 }
 
 // GGUFFile represents a single .gguf file within a HF repo.
 type GGUFFile struct {
 	Filename string `json:"filename"`
 	Size     int64  `json:"size"`
+}
+
+// tagCapability maps known HuggingFace tags to a capability name.
+var tagCapabilities = map[string]string{
+	// Tool calling
+	"function-calling": "tools",
+	"tool-use":         "tools",
+	"tool-calling":     "tools",
+	"tools":            "tools",
+	// Vision / multimodal
+	"image-to-text":              "vision",
+	"visual-question-answering":  "vision",
+	"image-text-to-text":         "vision",
+	"vision":                     "vision",
+	"multimodal":                 "vision",
+	// Code generation
+	"code":             "code",
+	"code-generation":  "code",
+	"coding":           "code",
+	// Embeddings
+	"feature-extraction":   "embedding",
+	"sentence-similarity":  "embedding",
+	"sentence-transformers": "embedding",
+	"text-embeddings-inference": "embedding",
 }
 
 // DownloadProgress tracks the state of an active download.
@@ -45,12 +81,16 @@ type DownloadProgress struct {
 
 // LocalModel represents a downloaded .gguf file on disk.
 type LocalModel struct {
-	RepoID      string `json:"repo_id"`
-	Filename    string `json:"filename"`
-	Size        int64  `json:"size"`
-	Path        string `json:"path"`
-	IsEmbedding bool   `json:"is_embedding"`
-	MmprojPath  string `json:"mmproj_path,omitempty"`
+	RepoID         string   `json:"repo_id"`
+	Filename       string   `json:"filename"`
+	Size           int64    `json:"size"`
+	Path           string   `json:"path"`
+	IsEmbedding    bool     `json:"is_embedding"`
+	MmprojPath     string   `json:"mmproj_path,omitempty"`
+	SupportsTools  bool     `json:"supports_tools"`
+	SupportsVision bool     `json:"supports_vision"`
+	SupportsCode   bool     `json:"supports_code"`
+	Tags           []string `json:"tags,omitempty"`
 }
 
 // findMmproj looks for a multimodal projector file next to the model.
@@ -91,6 +131,10 @@ func isEmbeddingModel(filename, repoID string) bool {
 type hfTreeItem struct {
 	Path string `json:"path"`
 	Size int64  `json:"size"`
+}
+
+type hfModelInfo struct {
+	Tags []string `json:"tags"`
 }
 
 // ─── Store ───────────────────────────────────────────────────────
@@ -176,6 +220,67 @@ func (s *Store) GetModelFiles(repoID string) ([]GGUFFile, error) {
 	}
 
 	return files, nil
+}
+
+// ─── HF Metadata ─────────────────────────────────────────────────
+
+// fetchModelMeta calls the HF API to retrieve tags for a repo and returns
+// a populated modelMeta. Non-fatal on error — caller logs and moves on.
+func (s *Store) fetchModelMeta(repoID string) (*modelMeta, error) {
+	u := fmt.Sprintf("https://huggingface.co/api/models/%s", repoID)
+	resp, err := s.client.Get(u)
+	if err != nil {
+		return nil, fmt.Errorf("fetchModelMeta: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		return nil, fmt.Errorf("fetchModelMeta: status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var info hfModelInfo
+	if err := json.NewDecoder(resp.Body).Decode(&info); err != nil {
+		return nil, fmt.Errorf("fetchModelMeta: decode: %w", err)
+	}
+
+	caps := map[string]bool{}
+	for _, tag := range info.Tags {
+		if cap, ok := tagCapabilities[strings.ToLower(tag)]; ok {
+			caps[cap] = true
+		}
+	}
+
+	return &modelMeta{
+		RepoID:         repoID,
+		Tags:           info.Tags,
+		SupportsTools:  caps["tools"],
+		SupportsVision: caps["vision"],
+		SupportsCode:   caps["code"],
+		IsEmbedding:    caps["embedding"],
+	}, nil
+}
+
+// saveModelMeta writes a modelMeta as a JSON sidecar next to destPath.
+func saveModelMeta(destPath string, meta *modelMeta) error {
+	data, err := json.MarshalIndent(meta, "", "  ")
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(destPath+".meta.json", data, 0644)
+}
+
+// loadModelMeta reads the sidecar JSON for a GGUF file, if it exists.
+func loadModelMeta(ggufPath string) *modelMeta {
+	data, err := os.ReadFile(ggufPath + ".meta.json")
+	if err != nil {
+		return nil
+	}
+	var meta modelMeta
+	if err := json.Unmarshal(data, &meta); err != nil {
+		return nil
+	}
+	return &meta
 }
 
 // ─── Download ────────────────────────────────────────────────────
@@ -323,6 +428,13 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 	s.progress.Downloaded = downloaded
 	s.mu.Unlock()
 
+	// Fetch and save HF metadata (tool-calling capability etc.) as a sidecar.
+	if meta, err := s.fetchModelMeta(repoID); err != nil {
+		log.Printf("modelstore: fetchModelMeta skipped for %s: %v", repoID, err)
+	} else if err := saveModelMeta(destPath, meta); err != nil {
+		log.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
+	}
+
 	return nil
 }
 
@@ -399,14 +511,24 @@ func (s *Store) ListLocalModels() []LocalModel {
 			repoID = unsanitizePath(parts[0])
 		}
 
-		models = append(models, LocalModel{
+		lm := LocalModel{
 			RepoID:      repoID,
 			Filename:    info.Name(),
 			Size:        info.Size(),
 			Path:        path,
 			IsEmbedding: isEmbeddingModel(info.Name(), repoID),
 			MmprojPath:  findMmproj(path),
-		})
+		}
+		if meta := loadModelMeta(path); meta != nil {
+			lm.SupportsTools = meta.SupportsTools
+			lm.SupportsVision = meta.SupportsVision
+			lm.SupportsCode = meta.SupportsCode
+			lm.Tags = meta.Tags
+			if lm.RepoID == "" && meta.RepoID != "" {
+				lm.RepoID = meta.RepoID
+			}
+		}
+		models = append(models, lm)
 
 		return nil
 	})

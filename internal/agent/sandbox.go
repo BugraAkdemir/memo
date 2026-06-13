@@ -66,6 +66,13 @@ func (s *Sandbox) SetBasePath(basePath string) {
 	s.config.BasePath = basePath
 }
 
+// GetBasePath returns the current base path (thread-safe).
+func (s *Sandbox) GetBasePath() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.config.BasePath
+}
+
 // ValidatePath checks if a path is safe to access.
 func (s *Sandbox) ValidatePath(targetPath string) error {
 	var fullPath string

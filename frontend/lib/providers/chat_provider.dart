@@ -217,10 +217,19 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
 
+        // Agent mode may run long-running tools (builds, installs, etc.), so give
+        // it 5 minutes between chunks. Regular chat keeps the 60s timeout.
+        final isAgentMode = ref.read(agentEnabledProvider);
+        final streamTimeout = isAgentMode
+            ? const Duration(seconds: 300)
+            : const Duration(seconds: 60);
+
         await for (final chunk in stream.timeout(
-          const Duration(seconds: 60),
+          streamTimeout,
           onTimeout: (sink) => sink.addError(
-            Exception('Sunucu yanıt vermiyor (60s zaman aşımı)'),
+            Exception(isAgentMode
+                ? 'Agent yanıt vermiyor (5dk zaman aşımı)'
+                : 'Sunucu yanıt vermiyor (60s zaman aşımı)'),
           ),
         )) {
           if (chunk.finishReason == 'agent_event') {

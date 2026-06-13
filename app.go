@@ -566,7 +566,11 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 
 	orchestraEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
 
-	if agentActive && a.activeProvider != "" {
+	// Agent mode runs against an external provider when one is selected,
+	// or otherwise against a running local llama-server model.
+	localModelRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
+
+	if agentActive && (a.activeProvider != "" || localModelRunning) {
 		if orchestraEnabled {
 			return a.callAgentWithOrchestra(ctx, messages, userMsg)
 		}
@@ -666,6 +670,61 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 	return a.callLLMStream(ctx, msgs, userMsg, "", "")
 }
 
+// resolveAgentProvider returns the provider router and model name the agent
+// pipeline should use. When an external provider is selected it routes there;
+// otherwise it falls back to the running local llama-server. The returned router
+// is also synced into the agent executor so IsAvailable() reflects the choice.
+func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
+	a.providerMu.RLock()
+	activeProvider := a.activeProvider
+	a.providerMu.RUnlock()
+
+	// External provider explicitly selected — use the provider router.
+	if activeProvider != "" {
+		if a.providerRouter == nil && a.providerCfgMgr != nil {
+			if configs := a.providerCfgMgr.GetEnabled(); len(configs) > 0 {
+				a.providerRouter = provider.NewRouter(configs)
+			}
+		}
+		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
+			return nil, "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
+		}
+		modelName := ""
+		for _, p := range a.providerCfgMgr.GetEnabled() {
+			if p.Type == activeProvider {
+				modelName = p.Model
+				break
+			}
+		}
+		if modelName == "" {
+			for _, p := range a.providerCfgMgr.GetEnabled() {
+				modelName = p.Model
+				break
+			}
+		}
+		return a.providerRouter, modelName, nil
+	}
+
+	// No external provider — fall back to the local llama-server.
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+		status := a.llamaServer.GetStatus()
+		modelName := status.ModelName
+		if modelName == "" {
+			modelName = provider.DefaultModels[provider.ProviderLlamaCPP]
+		}
+		cfg := provider.ProviderConfig{
+			Type:    provider.ProviderLlamaCPP,
+			Name:    "Local (llama.cpp)",
+			BaseURL: a.llamaServer.GetBaseURL(),
+			Model:   modelName,
+			Enabled: true,
+		}
+		return provider.NewRouter([]provider.ProviderConfig{cfg}), modelName, nil
+	}
+
+	return nil, "", fmt.Errorf("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).")
+}
+
 func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
@@ -684,23 +743,11 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			sessionID = sm.GetActiveID()
 		}
 
-		modelName := ""
-		if a.providerRouter != nil {
-			if a.activeProvider != "" {
-				for _, p := range a.providerCfgMgr.GetEnabled() {
-					if p.Type == a.activeProvider {
-						modelName = p.Model
-						break
-					}
-				}
-			}
-			// Fallback: pick any enabled provider
-			if modelName == "" {
-				for _, p := range a.providerCfgMgr.GetEnabled() {
-					modelName = p.Model
-					break
-				}
-			}
+		// Resolve provider router + model (external provider or local llama-server)
+		agentRouter, modelName, err := a.resolveAgentProvider()
+		if err != nil {
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
 		}
 
 		// Get project path from session (agent chat support)
@@ -709,21 +756,9 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		// Ensure provider router is healthy
-		if a.providerRouter == nil && a.providerCfgMgr != nil {
-			if configs := a.providerCfgMgr.GetEnabled(); len(configs) > 0 {
-				a.providerRouter = provider.NewRouter(configs)
-			}
-		}
-		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
-			trySend(ctx, outCh, api.StreamChunk{
-				Error: "⚠️ Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin.",
-				Done:  true,
-			})
-			return
-		}
-		// Sync executor's router with current app router (router is replaced on provider changes)
-		a.agentExecutor.SyncRouter(a.providerRouter)
+		// Sync executor's router with the resolved router (router varies per turn:
+		// it may be the external provider router or a one-off local router).
+		a.agentExecutor.SyncRouter(agentRouter)
 
 		start := time.Now()
 		var fullReply strings.Builder
@@ -859,22 +894,11 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			sessionID = sm.GetActiveID()
 		}
 
-		modelName := ""
-		if a.providerRouter != nil {
-			if a.activeProvider != "" {
-				for _, p := range a.providerCfgMgr.GetEnabled() {
-					if p.Type == a.activeProvider {
-						modelName = p.Model
-						break
-					}
-				}
-			}
-			if modelName == "" {
-				for _, p := range a.providerCfgMgr.GetEnabled() {
-					modelName = p.Model
-					break
-				}
-			}
+		// Resolve provider router + model (external provider or local llama-server)
+		agentRouter, modelName, err := a.resolveAgentProvider()
+		if err != nil {
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			return
 		}
 
 		projectPath := ""
@@ -882,15 +906,8 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			projectPath = sm.GetProjectPath(sessionID)
 		}
 
-		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
-			trySend(ctx, outCh, api.StreamChunk{
-				Error: "⚠️ Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin.",
-				Done:  true,
-			})
-			return
-		}
-		// Sync executor's router with current app router
-		a.agentExecutor.SyncRouter(a.providerRouter)
+		// Sync executor's router with the resolved router
+		a.agentExecutor.SyncRouter(agentRouter)
 
 		start := time.Now()
 		var agentBuf strings.Builder

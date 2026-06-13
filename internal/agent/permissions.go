@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"crypto/rand"
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
@@ -74,24 +75,29 @@ func (pm *PermissionManager) Check(toolName string, args json.RawMessage, danger
 	}
 
 	argsHash := hashArgs(args)
-	key := toolName + ":" + argsHash
+	specificKey := toolName + ":" + argsHash
+	// AllowSession is keyed by tool name only (wildcardKey) — so "allow in session"
+	// applies to all invocations of the tool, not just the exact same args.
+	wildcardKey := toolName + ":*"
 
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	// 1. Check session permissions
-	if policy, ok := pm.sessionPermissions[key]; ok {
-		if policy == AllowSession || policy == AllowOnce {
-			return PermissionResult{Allowed: true, NeedPrompt: false}
-		}
-		if policy == DenyOnce {
-			return PermissionResult{Allowed: false, NeedPrompt: false}
+	// 1. Check session permissions (wildcard first, then specific)
+	for _, key := range []string{wildcardKey, specificKey} {
+		if policy, ok := pm.sessionPermissions[key]; ok {
+			if policy == AllowSession || policy == AllowOnce {
+				return PermissionResult{Allowed: true, NeedPrompt: false}
+			}
+			if policy == DenyOnce {
+				return PermissionResult{Allowed: false, NeedPrompt: false}
+			}
 		}
 	}
 
-	// 2. Check permanent permissions
+	// 2. Check permanent permissions (by tool name for AllowForever/DenyForever)
 	for _, perm := range pm.permanentPermissions {
-		if perm.ToolName == toolName && perm.ArgsHash == argsHash {
+		if perm.ToolName == toolName {
 			if perm.Policy == AllowForever {
 				return PermissionResult{Allowed: true, NeedPrompt: false}
 			}
@@ -114,7 +120,9 @@ func (pm *PermissionManager) Check(toolName string, args json.RawMessage, danger
 // HandleResponse processes the user's response to a permission prompt.
 func (pm *PermissionManager) HandleResponse(toolName string, args json.RawMessage, policy PermissionPolicy) {
 	argsHash := hashArgs(args)
-	key := toolName + ":" + argsHash
+	specificKey := toolName + ":" + argsHash
+	// AllowSession stored under wildcard so all future calls to this tool are covered.
+	wildcardKey := toolName + ":*"
 
 	pm.mu.Lock()
 	defer pm.mu.Unlock()
@@ -123,15 +131,16 @@ func (pm *PermissionManager) HandleResponse(toolName string, args json.RawMessag
 
 	switch policy {
 	case AllowOnce, DenyOnce:
-		// Only valid for this exact execution, store in session
-		pm.sessionPermissions[key] = policy
+		// Specific to this exact invocation; ClearOnce removes it afterward.
+		pm.sessionPermissions[specificKey] = policy
 	case AllowSession:
-		pm.sessionPermissions[key] = policy
+		// Wildcard: allow all future calls to this tool in this session.
+		pm.sessionPermissions[wildcardKey] = policy
 	case AllowForever, DenyForever:
-		// Update or append to permanent permissions
+		// Permanent permission keyed by tool name (applies to all args).
 		found := false
 		for i, perm := range pm.permanentPermissions {
-			if perm.ToolName == toolName && perm.ArgsHash == argsHash {
+			if perm.ToolName == toolName {
 				pm.permanentPermissions[i].Policy = policy
 				pm.permanentPermissions[i].UpdatedAt = now
 				found = true
@@ -152,7 +161,9 @@ func (pm *PermissionManager) HandleResponse(toolName string, args json.RawMessag
 	}
 }
 
-// ClearOnce clears AllowOnce and DenyOnce policies. Should be called after a tool executes or fails.
+// ClearOnce removes AllowOnce and DenyOnce entries for this exact invocation.
+// Must be called after a tool executes OR after permission is denied, so that
+// the next attempt with the same args prompts the user again.
 func (pm *PermissionManager) ClearOnce(toolName string, args json.RawMessage) {
 	argsHash := hashArgs(args)
 	key := toolName + ":" + argsHash
@@ -231,11 +242,24 @@ func (pm *PermissionManager) saveLocked() {
 	}
 }
 
+// hashArgs normalizes JSON before hashing so that different key orderings
+// from different LLM outputs produce the same hash for equivalent args.
 func hashArgs(args json.RawMessage) string {
+	var v interface{}
+	if err := json.Unmarshal(args, &v); err == nil {
+		if canonical, err := json.Marshal(v); err == nil {
+			hash := sha256.Sum256(canonical)
+			return hex.EncodeToString(hash[:])
+		}
+	}
 	hash := sha256.Sum256(args)
 	return hex.EncodeToString(hash[:])
 }
 
 func generateID() string {
+	b := make([]byte, 8)
+	if _, err := rand.Read(b); err == nil {
+		return hex.EncodeToString(b)
+	}
 	return fmt.Sprintf("%d", time.Now().UnixNano())
 }

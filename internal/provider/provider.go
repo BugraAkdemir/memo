@@ -223,6 +223,8 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return newOpenRouterProvider(cfg)
 	case ProviderOllama:
 		return newOllamaProvider(cfg)
+	case ProviderLlamaCPP:
+		return newLlamaCPPProvider(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}

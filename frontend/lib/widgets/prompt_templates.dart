@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/theme.dart';
 
@@ -49,68 +50,68 @@ class PopupItem {
 const List<PopupItem> templates = [
   PopupItem.template(_PromptTemplate(
     key: '/code',
-    icon: '!',
+    icon: 'lib/icon/slash/code.svg',
     label: 'Kod Review',
     text:
         'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/explain',
-    icon: '?',
+    icon: 'lib/icon/slash/lightbulb.svg',
     label: 'Açıkla',
     text: 'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/fix',
-    icon: '!',
+    icon: 'lib/icon/slash/wrench.svg',
     label: 'Hata Düzelt',
     text: 'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/plan',
-    icon: '>',
+    icon: 'lib/icon/slash/list-checks.svg',
     label: 'Plan Yap',
     text: 'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/summary',
-    icon: '=',
+    icon: 'lib/icon/slash/article.svg',
     label: 'Özetle',
     text: 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/compare',
-    icon: '<',
+    icon: 'lib/icon/slash/arrows-left-right.svg',
     label: 'Karşılaştır',
     text: 'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/brainstorm',
-    icon: '+',
+    icon: 'lib/icon/slash/brain.svg',
     label: 'Beyin Fırtınası',
     text: 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
   )),
   PopupItem.template(_PromptTemplate(
     key: '/translate',
-    icon: '~',
+    icon: 'lib/icon/slash/translate.svg',
     label: 'Çevir (EN->TR)',
     text: 'Aşağıdaki metni Türkçeye çevir:\n\n',
   )),
   PopupItem.command(_PromptCommand(
     key: '/model',
-    icon: 'M',
+    icon: 'lib/icon/slash/cpu.svg',
     label: 'Model Değiştir',
     subtitle: 'Local / API arasında geçiş',
   )),
   PopupItem.command(_PromptCommand(
     key: '/orchestra',
-    icon: 'O',
+    icon: 'lib/icon/slash/music-notes.svg',
     label: 'Orchestra Mode',
     subtitle: 'Çoklu model orkestrasyonu',
   )),
   PopupItem.command(_PromptCommand(
     key: '/skill',
-    icon: 'S',
+    icon: 'lib/icon/slash/puzzle-piece.svg',
     label: 'Skill Yönetimi',
     subtitle: "Skill'leri listele, aktiflestir/devre disi birak",
   )),
@@ -181,7 +182,7 @@ class PromptTemplatesPopup extends StatelessWidget {
 
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16),
-      constraints: const BoxConstraints(maxHeight: 360),
+      constraints: const BoxConstraints(maxHeight: 280),
       decoration: BoxDecoration(
         color: MemoTheme.of(context).bgApp,
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -239,7 +240,10 @@ class _PopupItemWidgetState extends State<_PopupItemWidget> {
 
   @override
   Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
     final highlight = widget.isSelected || _hovering;
+    final iconColor = highlight ? MemoTheme.accent : c.textMuted;
+
     return MouseRegion(
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
@@ -247,12 +251,17 @@ class _PopupItemWidgetState extends State<_PopupItemWidget> {
         onTap: widget.onTap,
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          color: highlight
-              ? MemoTheme.of(context).bgElement
-              : Colors.transparent,
+          color: highlight ? c.bgElement : Colors.transparent,
           child: Row(
             children: [
-              Text(widget.item.icon, style: const TextStyle(fontSize: 18)),
+              SizedBox(
+                width: 22,
+                height: 22,
+                child: SvgPicture.asset(
+                  widget.item.icon,
+                  colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                ),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -263,14 +272,14 @@ class _PopupItemWidgetState extends State<_PopupItemWidget> {
                       style: TextStyle(
                         fontSize: 13,
                         fontWeight: FontWeight.w500,
-                        color: MemoTheme.of(context).textMain,
+                        color: c.textMain,
                       ),
                     ),
                     Text(
                       widget.item.key,
                       style: TextStyle(
                         fontSize: 11,
-                        color: MemoTheme.of(context).textDim,
+                        color: c.textDim,
                         fontFamily: 'JetBrains Mono',
                       ),
                     ),

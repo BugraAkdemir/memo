@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
@@ -31,6 +32,21 @@ class SettingsDialog extends ConsumerStatefulWidget {
 class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   int _activeTab = 0;
 
+  static const _tabIcons = [
+    'lib/icon/slash/gear.svg',
+    'lib/icon/slash/chat-text.svg',
+    'lib/icon/slash/eye-slash.svg',
+    'lib/icon/slash/brain.svg',
+    'lib/icon/slash/plug.svg',
+    'lib/icon/slash/music-notes.svg',
+    'lib/icon/slash/shield-check.svg',
+    'lib/icon/slash/puzzle-piece.svg',
+    'lib/icon/slash/cpu.svg',
+    'lib/icon/slash/archive.svg',
+    'lib/icon/slash/globe.svg',
+    'lib/icon/slash/info.svg',
+  ];
+
   List<String> get _tabs => [
     L10n.t('general'),
     L10n.t('system_prompt'),
@@ -39,7 +55,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_providers'),
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
-    '🧩 Skills',
+    'Skills',
     L10n.t('tab_gpu_config'),
     L10n.t('backup'),
     L10n.t('remote_access'),
@@ -117,12 +133,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                       itemCount: tabs.length,
                       itemBuilder: (context, index) {
                         final isActive = _activeTab == index;
+                        final iconColor = isActive
+                            ? MemoTheme.accent
+                            : MemoTheme.of(context).textDim;
                         return InkWell(
                           onTap: () => setState(() => _activeTab = index),
                           child: Container(
-                            padding: EdgeInsets.symmetric(
-                              horizontal: 24,
-                              vertical: 12,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 11,
                             ),
                             decoration: BoxDecoration(
                               color: isActive
@@ -137,17 +156,36 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                                 ),
                               ),
                             ),
-                            child: Text(
-                              tabs[index],
-                              style: TextStyle(
-                                fontSize: 13,
-                                fontWeight: isActive
-                                    ? FontWeight.w600
-                                    : FontWeight.w500,
-                                color: isActive
-                                    ? MemoTheme.of(context).textMain
-                                    : MemoTheme.of(context).textSecondary,
-                              ),
+                            child: Row(
+                              children: [
+                                SizedBox(
+                                  width: 18,
+                                  height: 18,
+                                  child: SvgPicture.asset(
+                                    _tabIcons[index],
+                                    colorFilter: ColorFilter.mode(
+                                      iconColor,
+                                      BlendMode.srcIn,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Text(
+                                    tabs[index],
+                                    style: TextStyle(
+                                      fontSize: 13,
+                                      fontWeight: isActive
+                                          ? FontWeight.w600
+                                          : FontWeight.w500,
+                                      color: isActive
+                                          ? MemoTheme.of(context).textMain
+                                          : MemoTheme.of(context).textSecondary,
+                                    ),
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                              ],
                             ),
                           ),
                         );
@@ -305,8 +343,6 @@ class _ProviderCard extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final icon = providerIcon(p.type);
-
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
       child: Container(
@@ -330,7 +366,7 @@ class _ProviderCard extends ConsumerWidget {
               ),
               child: Stack(
                 children: [
-                  Center(child: Text(icon, style: const TextStyle(fontSize: 24))),
+                  Center(child: providerLogoWidget(p.type, size: 28)),
                   if (isActive)
                     Positioned(
                       top: -2,

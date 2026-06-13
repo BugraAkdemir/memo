@@ -546,19 +546,25 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       mainAxisSize: MainAxisSize.min,
       children: [
         if (popup != null)
-          Stack(
-            clipBehavior: Clip.none,
-            children: [
-              // Backdrop — catches taps outside the popup
-              Positioned.fill(
-                child: GestureDetector(
-                  onTap: _dismissPopup,
-                  behavior: HitTestBehavior.opaque,
-                ),
+          // Height-0 anchor so the popup overlays upward without pushing layout
+          SizedBox(
+            height: 0,
+            child: OverflowBox(
+              maxHeight: double.infinity,
+              alignment: Alignment.bottomCenter,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      onTap: _dismissPopup,
+                      behavior: HitTestBehavior.opaque,
+                    ),
+                  ),
+                  popup,
+                ],
               ),
-              // Popup on top of backdrop (last child = on top)
-              popup,
-            ],
+            ),
           ),
         // Image preview
         if (_pickedImagePath != null)
@@ -908,7 +914,13 @@ class _ModelOptionTile extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 8),
       color: isActive ? MemoTheme.accent.withValues(alpha: 0.08) : null,
       child: ListTile(
-        leading: Text(option.icon, style: const TextStyle(fontSize: 24)),
+        leading: SizedBox(
+          width: 32,
+          height: 32,
+          child: option.type == 'local'
+              ? Icon(Icons.computer_outlined, size: 24, color: MemoTheme.of(context).textMuted)
+              : providerLogoWidget(option.type, size: 28),
+        ),
         title: Text(
           option.name,
           style: TextStyle(

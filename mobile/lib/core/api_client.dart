@@ -13,6 +13,41 @@ class StreamChunk {
     this.thinking,
     this.finishReason,
   });
+
+  bool get isAgentEvent => finishReason == 'agent_event';
+}
+
+/// An agent event received during streaming (tool execution info).
+class AgentEvent {
+  final String type;
+  final String? requestId;
+  final String? toolName;
+  final String? error;
+  final String? dangerLevel;
+  final int? durationMs;
+
+  const AgentEvent({
+    required this.type,
+    this.requestId,
+    this.toolName,
+    this.error,
+    this.dangerLevel,
+    this.durationMs,
+  });
+
+  factory AgentEvent.fromJson(Map<String, dynamic> json) => AgentEvent(
+        type: json['type'] as String? ?? 'unknown',
+        requestId: json['request_id'] as String?,
+        toolName: json['tool'] as String?,
+        error: json['error'] as String?,
+        dangerLevel: json['danger_level'] as String?,
+        durationMs: json['duration_ms'] as int?,
+      );
+
+  bool get isPermissionRequest => type == 'permission_request';
+  bool get isToolExecuting => type == 'tool_executing';
+  bool get isToolResult => type == 'tool_result';
+  bool get isToolError => type == 'tool_error';
 }
 
 class ChatMessage {
@@ -212,6 +247,37 @@ class MemoApiClient {
 
   Future<void> setAgentEnabled(bool enabled) async {
     await _dio.put('/api/agent/enabled', data: {'enabled': enabled});
+  }
+
+  /// Send permission response for agent tool execution.
+  Future<void> handleAgentPermission(String requestId, String policy) async {
+    await _dio.post('/api/agent/permission', data: {
+      'request_id': requestId,
+      'policy': policy,
+    });
+  }
+
+  /// Get list of active skill names.
+  Future<List<String>> getActiveSkills() async {
+    final res = await _dio.get('/api/skills/active-list');
+    if (res.data is Map && res.data['names'] is List) {
+      return (res.data['names'] as List).cast<String>();
+    }
+    return [];
+  }
+
+  /// Set active skills.
+  Future<void> setActiveSkills(List<String> names) async {
+    await _dio.put('/api/skills/active', data: {'names': names});
+  }
+
+  /// List all installed skills.
+  Future<List<Map<String, dynamic>>> listSkills() async {
+    final res = await _dio.get('/api/skills/list');
+    if (res.data is List) {
+      return (res.data as List).cast<Map<String, dynamic>>();
+    }
+    return [];
   }
 
   Future<void> startModel({

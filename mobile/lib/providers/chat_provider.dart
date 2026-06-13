@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:convert';
+
 import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -10,6 +13,31 @@ final chatProvider =
   return ChatNotifier(api);
 });
 
+final agentEnabledProvider = StateNotifierProvider<AgentEnabledNotifier, bool>((ref) {
+  return AgentEnabledNotifier(ref.read(apiClientProvider));
+});
+
+class AgentEnabledNotifier extends StateNotifier<bool> {
+  final MemoApiClient _api;
+
+  AgentEnabledNotifier(this._api) : super(false);
+
+  Future<void> load() async {
+    try {
+      final enabled = await _api.getAgentEnabled();
+      state = enabled;
+    } catch (_) {}
+  }
+
+  Future<void> toggle() async {
+    final next = !state;
+    try {
+      await _api.setAgentEnabled(next);
+      state = next;
+    } catch (_) {}
+  }
+}
+
 class ChatState {
   final List<ChatSession> sessions;
   final String? activeSessionId;
@@ -18,6 +46,8 @@ class ChatState {
   final String? error;
   final bool streaming;
   final String currentStreamContent;
+  final List<AgentEvent> agentEvents;
+  final bool agentEnabled;
 
   const ChatState({
     this.sessions = const [],
@@ -27,6 +57,8 @@ class ChatState {
     this.error,
     this.streaming = false,
     this.currentStreamContent = '',
+    this.agentEvents = const [],
+    this.agentEnabled = false,
   });
 
   ChatState copyWith({
@@ -37,6 +69,8 @@ class ChatState {
     String? error,
     bool? streaming,
     String? currentStreamContent,
+    List<AgentEvent>? agentEvents,
+    bool? agentEnabled,
   }) {
     return ChatState(
       sessions: sessions ?? this.sessions,
@@ -46,6 +80,8 @@ class ChatState {
       error: error,
       streaming: streaming ?? this.streaming,
       currentStreamContent: currentStreamContent ?? this.currentStreamContent,
+      agentEvents: agentEvents ?? this.agentEvents,
+      agentEnabled: agentEnabled ?? this.agentEnabled,
     );
   }
 }
@@ -121,6 +157,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
       messages: [...state.messages, userMsg],
       streaming: true,
       currentStreamContent: '',
+      agentEvents: [],
       error: null,
     );
 
@@ -128,9 +165,38 @@ class ChatNotifier extends StateNotifier<ChatState> {
         .sendMessageStream(message, cancelToken: _cancelToken)
         .listen(
       (chunk) {
-        state = state.copyWith(
-          currentStreamContent: state.currentStreamContent + chunk.content,
-        );
+        if (chunk.isAgentEvent) {
+          // Parse agent event from JSON content
+          try {
+            final ev = AgentEvent.fromJson(json.decode(chunk.content));
+            final currentEvents = [...state.agentEvents];
+
+            // Replace last executing event with this one to avoid stacking
+            if (ev.isToolExecuting) {
+              if (currentEvents.isNotEmpty && currentEvents.last.isToolExecuting) {
+                currentEvents[currentEvents.length - 1] = ev;
+              } else {
+                currentEvents.add(ev);
+              }
+            } else if (ev.isToolResult || ev.isToolError) {
+              if (currentEvents.isNotEmpty && currentEvents.last.isToolExecuting) {
+                currentEvents[currentEvents.length - 1] = ev;
+              } else {
+                currentEvents.add(ev);
+              }
+            } else if (ev.isPermissionRequest) {
+              currentEvents.add(ev);
+              // Auto-show permission dialog via callback
+              _onPermissionRequest?.call(ev);
+            }
+
+            state = state.copyWith(agentEvents: currentEvents);
+          } catch (_) {}
+        } else {
+          state = state.copyWith(
+            currentStreamContent: state.currentStreamContent + chunk.content,
+          );
+        }
       },
       onError: (e) {
         final fullContent = state.currentStreamContent;
@@ -144,18 +210,20 @@ class ChatNotifier extends StateNotifier<ChatState> {
             messages: [...state.messages, assistantMsg],
             streaming: false,
             currentStreamContent: '',
+            agentEvents: [],
           );
         } else {
           state = state.copyWith(
             streaming: false,
             currentStreamContent: '',
+            agentEvents: [],
             error: e.toString(),
           );
         }
       },
       onDone: () {
         final fullContent = state.currentStreamContent;
-        if (fullContent.isNotEmpty) {
+        if (fullContent.isNotEmpty || state.agentEvents.isNotEmpty) {
           final assistantMsg = ChatMessage(
             role: 'assistant',
             content: fullContent,
@@ -165,13 +233,21 @@ class ChatNotifier extends StateNotifier<ChatState> {
             messages: [...state.messages, assistantMsg],
             streaming: false,
             currentStreamContent: '',
+            agentEvents: [],
           );
         } else {
-          state = state.copyWith(streaming: false, currentStreamContent: '');
+          state = state.copyWith(streaming: false, currentStreamContent: '', agentEvents: []);
         }
       },
       cancelOnError: false,
     );
+  }
+
+  // Callback for permission requests — set by chat screen for showing dialog.
+  void Function(AgentEvent)? _onPermissionRequest;
+
+  void setPermissionHandler(void Function(AgentEvent) handler) {
+    _onPermissionRequest = handler;
   }
 
   void cancelStream() {
@@ -187,9 +263,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
         messages: [...state.messages, assistantMsg],
         streaming: false,
         currentStreamContent: '',
+        agentEvents: [],
       );
     } else {
-      state = state.copyWith(streaming: false, currentStreamContent: '');
+      state = state.copyWith(streaming: false, currentStreamContent: '', agentEvents: []);
     }
   }
 

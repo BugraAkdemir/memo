@@ -25,8 +25,19 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(chatProvider.notifier).loadSessions();
+      final notifier = ref.read(chatProvider.notifier);
+      notifier.loadSessions();
+      notifier.setPermissionHandler(_showPermissionDialog);
     });
+  }
+
+  void _showPermissionDialog(AgentEvent event) {
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => _AgentPermissionDialog(event: event),
+    );
   }
 
   @override
@@ -87,6 +98,18 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Agent mode',
+            icon: Icon(
+              ref.watch(agentEnabledProvider) ? Icons.psychology : Icons.psychology_outlined,
+              size: 21,
+              color: ref.watch(agentEnabledProvider) ? MemoTheme.accent : MemoTheme.textDim,
+            ),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              ref.read(agentEnabledProvider.notifier).toggle();
+            },
+          ),
           IconButton(
             tooltip: 'New chat',
             icon: const Icon(Icons.add_comment_outlined, size: 21, color: MemoTheme.textDim),
@@ -303,6 +326,78 @@ class _EmptyState extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+/// Permission dialog shown when the agent wants to run a tool.
+class _AgentPermissionDialog extends ConsumerWidget {
+  final AgentEvent event;
+
+  const _AgentPermissionDialog({required this.event});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final isDangerous = event.dangerLevel == 'dangerous';
+
+    return AlertDialog(
+      title: Row(
+        children: [
+          Icon(
+            isDangerous ? Icons.warning_amber_rounded : Icons.psychology,
+            size: 22,
+            color: isDangerous ? MemoTheme.error : MemoTheme.accent,
+          ),
+          const SizedBox(width: 8),
+          const Text('Agent Izin Gerekli'),
+        ],
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '"${event.toolName ?? "bilinmeyen arac"}" calistirilmak isteniyor',
+            style: const TextStyle(fontSize: 14),
+          ),
+          if (isDangerous) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: MemoTheme.error.withValues(alpha: 0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, size: 16, color: MemoTheme.error),
+                  SizedBox(width: 8),
+                  Expanded(child: Text('Bu arac sistemde degisiklik yapabilir!',
+                      style: TextStyle(color: MemoTheme.error, fontSize: 12))),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => _respond(ref, 'deny_once'),
+          child: const Text('Reddet', style: TextStyle(color: Colors.grey)),
+        ),
+        TextButton(
+          onPressed: () => _respond(ref, 'allow_once'),
+          style: TextButton.styleFrom(backgroundColor: MemoTheme.accent),
+          child: const Text('Izin Ver', style: TextStyle(color: Colors.white)),
+        ),
+      ],
+    );
+  }
+
+  void _respond(WidgetRef ref, String policy) {
+    if (event.requestId != null) {
+      ref.read(apiClientProvider).handleAgentPermission(event.requestId!, policy);
+    }
+    Navigator.of(ref.context).pop();
   }
 }
 

@@ -93,6 +93,7 @@ mkdir "%STAGEDIR%\data\models" 2>nul
 mkdir "%STAGEDIR%\data\memory" 2>nul
 mkdir "%STAGEDIR%\data\sessions" 2>nul
 mkdir "%STAGEDIR%\data\agent-backups" 2>nul
+mkdir "%STAGEDIR%\data\skills" 2>nul
 
 :: Create runner batch
 copy NUL "%STAGEDIR%\run_memo.bat" >nul
@@ -110,6 +111,7 @@ echo if not exist "%%MEMO_HOME%%\data\models" mkdir "%%MEMO_HOME%%\data\models"
 echo if not exist "%%MEMO_HOME%%\data\memory" mkdir "%%MEMO_HOME%%\data\memory"
 echo if not exist "%%MEMO_HOME%%\data\sessions" mkdir "%%MEMO_HOME%%\data\sessions"
 echo if not exist "%%MEMO_HOME%%\data\agent-backups" mkdir "%%MEMO_HOME%%\data\agent-backups"
+echo if not exist "%%MEMO_HOME%%\data\skills" mkdir "%%MEMO_HOME%%\data\skills"
 echo if not exist "%%MEMO_HOME%%\config" mkdir "%%MEMO_HOME%%\config"
 echo.
 echo :: First-run: copy bundled binaries to writable location

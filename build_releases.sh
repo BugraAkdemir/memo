@@ -98,6 +98,7 @@ mkdir -p "$MEMO_HOME/data/models"
 mkdir -p "$MEMO_HOME/data/memory"
 mkdir -p "$MEMO_HOME/data/sessions"
 mkdir -p "$MEMO_HOME/data/agent-backups"
+mkdir -p "$MEMO_HOME/data/skills"
 mkdir -p "$MEMO_HOME/data/whatsapp"
 
 # Copy llama.cpp binaries if not already present (first run)
@@ -280,6 +281,7 @@ elif [ "$OS" == "windows" ]; then
     mkdir -p "$STAGEDIR/data/memory"
     mkdir -p "$STAGEDIR/data/sessions"
     mkdir -p "$STAGEDIR/data/agent-backups"
+    mkdir -p "$STAGEDIR/data/skills"
     mkdir -p "$STAGEDIR/data/whatsapp"
     touch "$STAGEDIR/data/whatsapp/.gitkeep"
 

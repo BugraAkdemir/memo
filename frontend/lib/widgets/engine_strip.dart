@@ -183,7 +183,6 @@ class _ApiProviderIndicator extends StatelessWidget {
     final c = MemoTheme.of(context);
     final displayName =
         ProviderDefaults.displayNames[providerType] ?? providerType;
-    final icon = providerIcon(providerType);
 
     return Row(
       mainAxisSize: MainAxisSize.min,
@@ -195,10 +194,7 @@ class _ApiProviderIndicator extends StatelessWidget {
               color: MemoTheme.green, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
-        Text(
-          icon,
-          style: const TextStyle(fontSize: 13),
-        ),
+        providerLogoWidget(providerType, size: 16),
         const SizedBox(width: 6),
         Text(
           displayName,

@@ -1,5 +1,6 @@
-import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:flutter_svg/flutter_svg.dart';
 
 import '../models/provider_config.dart';
 import 'chat_provider.dart';
@@ -67,7 +68,42 @@ class ActiveProviderNotifier extends AsyncNotifier<String> {
   }
 }
 
-/// Provider display helpers — clean geometric unicode symbols (not emoji).
+/// Returns the asset path for a provider logo, or null if unknown.
+String? _providerAssetPath(String type) {
+  switch (type) {
+    case 'openai':
+      return 'lib/icon/OpenAI_Symbol_0.svg';
+    case 'gemini':
+      return 'lib/icon/Google_Symbol_0.svg';
+    case 'grok':
+      return 'lib/icon/XAL.svg';
+    case 'claude':
+      return 'lib/icon/Claude_Symbol_1.png';
+    case 'openrouter':
+      return 'lib/icon/openrouter.jpeg';
+    case 'ollama':
+      return 'lib/icon/ollama.png';
+    case 'groq':
+      return 'lib/icon/groq.png';
+    default:
+      return null;
+  }
+}
+
+/// Widget that renders the provider's actual logo image.
+/// Falls back to a generic cloud icon if no logo is registered.
+Widget providerLogoWidget(String type, {double size = 18}) {
+  final path = _providerAssetPath(type);
+  if (path == null) {
+    return const Icon(Icons.cloud_outlined, size: 18);
+  }
+  if (path.endsWith('.svg')) {
+    return SvgPicture.asset(path, width: size, height: size);
+  }
+  return Image.asset(path, width: size, height: size, fit: BoxFit.contain);
+}
+
+/// Legacy text-symbol helper — kept for text-only contexts (dropdowns, labels).
 String providerIcon(String type) {
   switch (type) {
     case 'openai':

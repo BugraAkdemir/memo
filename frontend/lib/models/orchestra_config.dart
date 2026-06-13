@@ -115,26 +115,26 @@ class OrchestraDefaults {
     {'role': 'general', 'model_type': 'openai', 'model_name': 'gpt-4o', 'label': 'General'},
   ];
 
-  static IconData iconForRole(String role) {
+  static String iconForRole(String role) {
     switch (role) {
       case 'planner':
-        return Icons.account_tree_outlined;
+        return '\u29D6'; // ⧖
       case 'frontend':
-        return Icons.dashboard_outlined;
+        return '\u25A3'; // ▣
       case 'backend':
-        return Icons.dns_outlined;
+        return '\u2B21'; // ⬡
       case 'bug_fixer':
-        return Icons.bug_report_outlined;
+        return '\u2691'; // ⚑
       case 'reviewer':
-        return Icons.rate_review_outlined;
+        return '\u2606'; // ☆
       case 'security':
-        return Icons.shield_outlined;
+        return '\u26E8'; // ⛨
       case 'devops':
-        return Icons.rocket_launch_outlined;
+        return '\u2197'; // ↗
       case 'general':
-        return Icons.smart_toy_outlined;
+        return '\u2605'; // ★
       default:
-        return Icons.extension_outlined;
+        return '\u2756'; // ❖
     }
   }
 

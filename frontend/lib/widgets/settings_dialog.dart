@@ -330,7 +330,7 @@ class _ProviderCard extends ConsumerWidget {
               ),
               child: Stack(
                 children: [
-                  Center(child: Icon(icon, size: 28, color: MemoTheme.accent)),
+                  Center(child: Text(icon, style: const TextStyle(fontSize: 24))),
                   if (isActive)
                     Positioned(
                       top: -2,

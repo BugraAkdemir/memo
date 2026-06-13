@@ -72,7 +72,7 @@ class L10n {
     'copied': 'Kopyalandı',
     'error': 'Hata',
     'connection_error': 'Bağlantı hatası',
-    'engine_error': 'Hata: \$e',
+    'engine_error': 'Hata: \${e}',
 
     // Sidebar / Chats
     'new_chat': 'Yeni Sohbet',
@@ -95,8 +95,8 @@ class L10n {
     'welcome_title': 'Merhaba! 👋',
     'welcome_subtitle': 'Size nasıl yardımcı olabilirim?',
     'export_chat': 'Sohbeti Dışa Aktar',
-    'chat_exported': 'Chat kaydedildi: \$path',
-    'export_failed': 'Export failed: \$e',
+    'chat_exported': 'Chat kaydedildi: \${path}',
+    'export_failed': 'Export failed: \${e}',
     'incognito_mode': 'Gizli Mod',
     'incognito_on': 'Gizli Mod Açık',
     'incognito_off': 'Gizli Mod Kapalı',
@@ -116,7 +116,7 @@ class L10n {
     // Agent undo
     'agent_undo': 'Ajanın Son İşlemini Geri Al',
     'agent_undone': 'Son ajan işlemi başarıyla geri alındı.',
-    'agent_undo_failed': 'Geri alma başarısız: \$e',
+    'agent_undo_failed': 'Geri alma başarısız: \${e}',
 
     // Quick actions (welcome)
     'quick_review': 'Kod incele',
@@ -134,9 +134,9 @@ class L10n {
     'llama_cpp': 'llama.cpp',
     'switch_model': 'Switch Model',
     'switch_model_desc': 'Choose which model to use for chat:',
-    'switched_to': 'Switched to \$name',
-    'switch_failed': 'Failed to switch: \$e',
-    'providers_load_failed': 'Failed to load providers: \$e',
+    'switched_to': 'Switched to \${name}',
+    'switch_failed': 'Failed to switch: \${e}',
+    'providers_load_failed': 'Failed to load providers: \${e}',
     'openrouter_connect': 'OpenRouter Bağlantısı',
     'openrouter_instruction':
         'openrouter.ai/keys adresinden API Key\'ini kopyalayıp aşağıya yapıştır:',
@@ -220,7 +220,7 @@ class L10n {
 
     // Provider config dialog
     'enter_api_key_first': 'Önce API Key girin',
-    'models_fetch_error': 'Modeller alınamadı: \$e',
+    'models_fetch_error': 'Modeller alınamadı: \${e}',
     'models_fetch_error_short': 'Modeller alınamadı',
     'configure_provider_title': 'Configure \${name}',
     'provider_label': 'Provider',
@@ -285,7 +285,7 @@ class L10n {
     'google_connected': 'Google Drive bağlı',
     'google_not_connected': 'Bağlı değil',
     'connect_google': 'Google ile bağlan',
-    'oauth_url_copied': 'OAuth URL kopyalandı: \$url',
+    'oauth_url_copied': 'OAuth URL kopyalandı: \${url}',
 
     // Settings — Remote Access
     'remote_access': 'Uzaktan Erişim',
@@ -318,7 +318,7 @@ class L10n {
     'gpu_section_desc':
         'Yapay zeka modellerini çalıştıran Llama.cpp motorunun kurulum ve ekran kartı ayarları.',
     'hardware_status': 'Sistem Donanım Durumu',
-    'gpu_detected_name': 'Algılanan Ekran Kartı: \$name',
+    'gpu_detected_name': 'Algılanan Ekran Kartı: \${name}',
     'cpu_only': 'Sadece İşlemci (CPU) algılandı veya GPU desteklenmiyor.',
     'engine_mode': 'Motor Modu',
     'engine_auto': 'Otomatik (Önerilen)',
@@ -374,7 +374,7 @@ class L10n {
     'import_model': 'İçe Aktar',
     'importing_model': 'Model içe aktarılıyor...',
     'import_success': 'Model başarıyla içe aktarıldı.',
-    'import_error': 'İçe aktarma hatası: \$e',
+    'import_error': 'İçe aktarma hatası: \${e}',
     'memory_model': 'Hafıza (Embedding) Modeli',
     'stop_memory_model': 'Hafıza Modelini Durdur',
     'model_files': 'Model Dosyaları',
@@ -417,7 +417,7 @@ class L10n {
     'agent_chat_instruction':
         'Soldan bir ajan sohbeti seç veya yeni bir tane başlat.',
     'agent_active': 'Ajan Modu Aktif',
-    'agent_project': 'Proje: \$path',
+    'agent_project': 'Proje: \${path}',
     'agent_welcome':
         'Proje dosyaları üzerinde işlem yapabilirim. Ne yapmak istersin?',
     'agent_badge': 'Agent',
@@ -577,7 +577,7 @@ class L10n {
     'copied': 'Copied',
     'error': 'Error',
     'connection_error': 'Connection error',
-    'engine_error': 'Error: \$e',
+    'engine_error': 'Error: \${e}',
 
     'new_chat': 'New Chat',
     'chats': 'Chats',
@@ -598,8 +598,8 @@ class L10n {
     'welcome_title': 'Hello! 👋',
     'welcome_subtitle': 'How can I help you?',
     'export_chat': 'Export Chat',
-    'chat_exported': 'Chat saved: \$path',
-    'export_failed': 'Export failed: \$e',
+    'chat_exported': 'Chat saved: \${path}',
+    'export_failed': 'Export failed: \${e}',
     'incognito_mode': 'Incognito Mode',
     'incognito_on': 'Incognito Mode On',
     'incognito_off': 'Incognito Mode Off',
@@ -617,7 +617,7 @@ class L10n {
 
     'agent_undo': 'Undo Agent Last Action',
     'agent_undone': 'Last agent action undone.',
-    'agent_undo_failed': 'Undo failed: \$e',
+    'agent_undo_failed': 'Undo failed: \${e}',
 
     'quick_review': 'Code review',
     'quick_review_hint': 'Paste your code',
@@ -633,9 +633,9 @@ class L10n {
     'llama_cpp': 'llama.cpp',
     'switch_model': 'Switch Model',
     'switch_model_desc': 'Choose which model to use for chat:',
-    'switched_to': 'Switched to \$name',
-    'switch_failed': 'Failed to switch: \$e',
-    'providers_load_failed': 'Failed to load providers: \$e',
+    'switched_to': 'Switched to \${name}',
+    'switch_failed': 'Failed to switch: \${e}',
+    'providers_load_failed': 'Failed to load providers: \${e}',
     'openrouter_connect': 'OpenRouter Connection',
     'openrouter_instruction':
         'Copy your API Key from openrouter.ai/keys and paste below:',
@@ -711,7 +711,7 @@ class L10n {
     'delete_provider_confirm': 'Delete \${name} configuration?',
 
     'enter_api_key_first': 'Enter API Key first',
-    'models_fetch_error': 'Could not load models: \$e',
+    'models_fetch_error': 'Could not load models: \${e}',
     'models_fetch_error_short': 'Could not load models',
     'configure_provider_title': 'Configure \${name}',
     'provider_label': 'Provider',
@@ -774,7 +774,7 @@ class L10n {
     'google_connected': 'Google Drive connected',
     'google_not_connected': 'Not connected',
     'connect_google': 'Connect with Google',
-    'oauth_url_copied': 'OAuth URL copied: \$url',
+    'oauth_url_copied': 'OAuth URL copied: \${url}',
 
     'remote_access': 'Remote Access',
     'remote_enabled': 'Remote Access Enabled',
@@ -803,7 +803,7 @@ class L10n {
     'gpu_section_desc':
         'Setup and GPU settings for the Llama.cpp engine that runs AI models.',
     'hardware_status': 'System Hardware Status',
-    'gpu_detected_name': 'Detected GPU: \$name',
+    'gpu_detected_name': 'Detected GPU: \${name}',
     'cpu_only': 'Only CPU detected or GPU not supported.',
     'engine_mode': 'Engine Mode',
     'engine_auto': 'Automatic (Recommended)',
@@ -857,7 +857,7 @@ class L10n {
     'import_model': 'Import',
     'importing_model': 'Importing model...',
     'import_success': 'Model imported successfully.',
-    'import_error': 'Import error: \$e',
+    'import_error': 'Import error: \${e}',
     'memory_model': 'Memory (Embedding) Model',
     'stop_memory_model': 'Stop Memory Model',
     'model_files': 'Model Files',
@@ -896,7 +896,7 @@ class L10n {
     'agent_chat_instruction':
         'Select an agent chat from the left or start a new one.',
     'agent_active': 'Agent Mode Active',
-    'agent_project': 'Project: \$path',
+    'agent_project': 'Project: \${path}',
     'agent_welcome': 'I can work with project files. What would you like to do?',
     'agent_badge': 'Agent',
 

@@ -1885,13 +1885,6 @@ func (a *App) DeleteProvider(pt provider.ProviderType, name ...string) error {
 	a.providerCfgMgr.Delete(pt, name...)
 	return nil
 }
-	a.providerCfgMgr.Delete(pt)
-	configs := a.providerCfgMgr.GetEnabled()
-	a.providerMu.Lock()
-	a.providerRouter = provider.NewRouter(configs)
-	a.providerMu.Unlock()
-	return nil
-}
 
 func (a *App) TestProviderConnection(cfg provider.ProviderConfig) error {
 	if a.providerCfgMgr == nil {

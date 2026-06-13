@@ -183,7 +183,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
   Widget _buildRoleCard(BuildContext context, OrchestraConfig config, int index, List<_ModelChoice> choices) {
     final role = config.roles[index];
     final isBuiltin = _isBuiltinRole(role.role);
-    final icon = isBuiltin ? OrchestraDefaults.iconForRole(role.role) : Icons.extension_outlined;
+    final icon = isBuiltin ? OrchestraDefaults.iconForRole(role.role) : '\u2756';
     final label = isBuiltin ? OrchestraDefaults.labelForRole(role.role) : role.role;
     final currentKey = '${role.modelType}/${role.modelName}';
     final validChoice = choices.any((c) => c.key == currentKey);
@@ -202,7 +202,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
             padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
             child: Row(
               children: [
-                Icon(icon, size: 20, color: MemoTheme.accent),
+                Text(icon, style: const TextStyle(fontSize: 16)),
                 const SizedBox(width: 8),
                 isBuiltin
                     ? Expanded(child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: MemoTheme.of(context).textMain)))

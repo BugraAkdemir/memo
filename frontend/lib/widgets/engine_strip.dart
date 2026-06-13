@@ -195,10 +195,9 @@ class _ApiProviderIndicator extends StatelessWidget {
               color: MemoTheme.green, shape: BoxShape.circle),
         ),
         const SizedBox(width: 8),
-        Icon(
+        Text(
           icon,
-          size: 16,
-          color: MemoTheme.of(context).accent,
+          style: const TextStyle(fontSize: 13),
         ),
         const SizedBox(width: 6),
         Text(

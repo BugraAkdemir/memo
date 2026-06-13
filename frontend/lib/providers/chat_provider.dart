@@ -398,6 +398,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 /// Cleared after being read.
 final errorMessageProvider = StateProvider<String>((ref) => '');
 
+// ─── Composer Draft ─────────────────────────────────────────────
+
+/// One-shot starter text pushed into the chat input (e.g. from welcome-screen
+/// suggestions). The input consumes it, fills the field, then clears it back
+/// to null.
+final composerDraftProvider = StateProvider<String?>((ref) => null);
+
 // ─── Incognito Mode ─────────────────────────────────────────────
 
 final incognitoProvider = StateNotifierProvider<IncognitoNotifier, bool>(

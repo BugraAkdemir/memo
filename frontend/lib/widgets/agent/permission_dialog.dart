@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 
+import '../../core/theme.dart';
 import '../../models/agent.dart';
 import '../../providers/chat_provider.dart';
 
@@ -74,7 +75,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
         children: [
           Icon(
             isDangerous ? Icons.warning_amber_rounded : (isMedium ? Icons.info_outline : Icons.security),
-            color: isDangerous ? Colors.red : (isMedium ? Colors.orange : Colors.green),
+            color: isDangerous ? MemoTheme.red : (isMedium ? MemoTheme.warningOrange : MemoTheme.green),
           ),
           const SizedBox(width: 8),
           const Text('İzin Gerekli'),
@@ -90,13 +91,13 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
                 padding: const EdgeInsets.all(8),
                 margin: const EdgeInsets.only(bottom: 16),
                 decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  border: Border.all(color: Colors.red.withOpacity(0.5)),
+                  color: MemoTheme.red.withValues(alpha: 0.1),
+                  border: Border.all(color: MemoTheme.red.withValues(alpha: 0.5)),
                   borderRadius: BorderRadius.circular(8),
                 ),
                 child: const Text(
                   'DİKKAT: Bu araç sisteminizde kalıcı değişiklikler yapabilir!',
-                  style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold),
+                  style: TextStyle(color: MemoTheme.red, fontWeight: FontWeight.bold),
                 ),
               ),
             Text('Yapay zeka asistanı aşağıdaki aracı çalıştırmak istiyor:', style: Theme.of(context).textTheme.bodyMedium),
@@ -144,7 +145,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
       actions: [
         TextButton(
           onPressed: () => _submit('deny_forever'),
-          style: TextButton.styleFrom(foregroundColor: Colors.red),
+          style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
           child: const Text('Kalıcı Reddet'),
         ),
         TextButton(
@@ -154,7 +155,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
         TextButton(
           onPressed: _canAllow ? () => _submit('allow_once') : null,
           style: TextButton.styleFrom(
-            backgroundColor: _canAllow ? Theme.of(context).colorScheme.primaryContainer : Colors.grey,
+            backgroundColor: _canAllow ? MemoTheme.accent : MemoTheme.of(context).bgHover,
           ),
           child: Text(
             isDangerous && !_canAllow ? 'Bekleyin...' : 'Bir Kez İzin Ver',

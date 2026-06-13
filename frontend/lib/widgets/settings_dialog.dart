@@ -352,15 +352,15 @@ class _ProviderCard extends ConsumerWidget {
                         ),
                         decoration: BoxDecoration(
                           color: p.enabled
-                              ? Colors.green.withValues(alpha: 0.1)
-                              : Colors.grey.withValues(alpha: 0.1),
+                              ? MemoTheme.green.withValues(alpha: 0.1)
+                              : MemoTheme.of(context).textDim.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           p.enabled ? 'Enabled' : 'Disabled',
                           style: TextStyle(
                             fontSize: 11,
-                            color: p.enabled ? Colors.green : Colors.grey,
+                            color: p.enabled ? MemoTheme.green : MemoTheme.of(context).textDim,
                             fontWeight: FontWeight.w500,
                           ),
                         ),
@@ -372,14 +372,14 @@ class _ProviderCard extends ConsumerWidget {
                             Icon(
                               Icons.check_circle,
                               size: 14,
-                              color: Colors.green,
+                              color: MemoTheme.green,
                             ),
                             SizedBox(width: 4),
                             Text(
                               'Connected',
                               style: TextStyle(
                                 fontSize: 11,
-                                color: Colors.green,
+                                color: MemoTheme.green,
                               ),
                             ),
                           ],
@@ -459,9 +459,9 @@ class _ProviderCard extends ConsumerWidget {
                   value: 'delete',
                   child: const Row(
                     children: [
-                      Icon(Icons.delete, size: 18, color: Colors.red),
+                      Icon(Icons.delete, size: 18, color: MemoTheme.red),
                       SizedBox(width: 8),
-                      Text('Delete', style: TextStyle(color: Colors.red)),
+                      Text('Delete', style: TextStyle(color: MemoTheme.red)),
                     ],
                   ),
                 ),
@@ -967,7 +967,7 @@ class _GeneralTab extends ConsumerWidget {
                           children: [
                             Icon(
                               Icons.warning_amber_rounded,
-                              color: Colors.orange,
+                              color: MemoTheme.warningOrange,
                               size: 24,
                             ),
                             SizedBox(width: 12),
@@ -990,7 +990,7 @@ class _GeneralTab extends ConsumerWidget {
                           ElevatedButton(
                             onPressed: () => Navigator.of(ctx).pop(true),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: Colors.orange,
+                              backgroundColor: MemoTheme.warningOrange,
                               foregroundColor: Colors.white,
                             ),
                             child: const Text('Evet, Aç'),
@@ -1858,7 +1858,7 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
           ),
         if (_wipeConfirm2)
           Card(
-            color: Colors.red.shade50,
+            color: MemoTheme.red.withValues(alpha: 0.12),
             child: ListTile(
               leading: _wiping
                   ? SizedBox(
@@ -1866,11 +1866,11 @@ class _BackupRestoreTabState extends ConsumerState<_BackupRestoreTab> {
                       height: 20,
                       child: CircularProgressIndicator(strokeWidth: 2),
                     )
-                  : Icon(Icons.delete_sweep, color: Colors.red),
+                  : Icon(Icons.delete_sweep, color: MemoTheme.red),
               title: Text(
                 'Sil',
                 style: TextStyle(
-                  color: Colors.red,
+                  color: MemoTheme.red,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -2229,7 +2229,7 @@ class _GpuConfigTabState extends ConsumerState<_GpuConfigTab> {
                             installed
                                 ? Icons.check_circle
                                 : Icons.warning_amber_rounded,
-                            color: installed ? MemoTheme.green : Colors.orange,
+                            color: installed ? MemoTheme.green : MemoTheme.warningOrange,
                             size: 24,
                           ),
                           SizedBox(width: 12),

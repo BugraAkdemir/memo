@@ -5,6 +5,7 @@ class GPUInfo {
   final int vramMb;
   final int recommendedLayers;
   final String description;
+  final int ramTotalMb; // total system RAM in MB (0 if unknown)
 
   const GPUInfo({
     this.type = 'cpu',
@@ -12,6 +13,7 @@ class GPUInfo {
     this.vramMb = 0,
     this.recommendedLayers = 0,
     this.description = '',
+    this.ramTotalMb = 0,
   });
 
   factory GPUInfo.fromJson(Map<String, dynamic> json) => GPUInfo(
@@ -20,6 +22,7 @@ class GPUInfo {
         vramMb: json['vram_mb'] as int? ?? 0,
         recommendedLayers: json['recommended_layers'] as int? ?? 0,
         description: json['description'] as String? ?? '',
+        ramTotalMb: json['ram_total_mb'] as int? ?? 0,
       );
 
   bool get hasGpu => type != 'cpu';
@@ -31,6 +34,13 @@ class GPUInfo {
       return '${(vramMb / 1024).toStringAsFixed(1)} GB';
     }
     return '$vramMb MB';
+  }
+
+  String get ramFormatted {
+    if (ramTotalMb >= 1024) {
+      return '${(ramTotalMb / 1024).toStringAsFixed(0)} GB';
+    }
+    return '$ramTotalMb MB';
   }
 }
 

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/theme.dart';
 import '../../providers/agent_provider.dart';
 
 class PermissionHistory extends ConsumerWidget {
@@ -34,15 +35,15 @@ class PermissionHistory extends ConsumerWidget {
                           ref.read(agentPermissionsProvider.notifier).clearAll();
                           Navigator.pop(context);
                         },
-                        style: TextButton.styleFrom(foregroundColor: Colors.red),
+                        style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
                         child: const Text('Temizle'),
                       ),
                     ],
                   ),
                 );
               },
-              icon: const Icon(Icons.delete_sweep, color: Colors.red),
-              label: const Text('Tümünü Temizle', style: TextStyle(color: Colors.red)),
+              icon: const Icon(Icons.delete_sweep, color: MemoTheme.red),
+              label: const Text('Tümünü Temizle', style: TextStyle(color: MemoTheme.red)),
             ),
           ],
         ),
@@ -70,7 +71,7 @@ class PermissionHistory extends ConsumerWidget {
                     child: ListTile(
                       leading: Icon(
                         isAllowed ? Icons.check_circle : Icons.block,
-                        color: isAllowed ? Colors.green : Colors.red,
+                        color: isAllowed ? MemoTheme.green : MemoTheme.red,
                       ),
                       title: Text(p.toolName, style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Text('Argüman Hash: ${p.argsHash.length >= 8 ? p.argsHash.substring(0, 8) : p.argsHash}...\nTarih: ${p.updatedAt}'),

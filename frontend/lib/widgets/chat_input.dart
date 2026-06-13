@@ -462,7 +462,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text('✅ OpenRouter bağlandı!'),
-            backgroundColor: Color(0xFF51B576),
+            backgroundColor: MemoTheme.green,
           ),
         );
         ref.invalidate(providerListProvider);
@@ -471,7 +471,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text('❌ ${result['error'] ?? 'Bağlantı hatası'}'),
-            backgroundColor: Color(0xFFD35F5F),
+            backgroundColor: MemoTheme.red,
           ),
         );
       }
@@ -496,6 +496,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final isSending = ref.watch(isSendingProvider);
     final orchestraAsync = ref.watch(orchestraConfigProvider);
     final orchestraEnabled = orchestraAsync.valueOrNull?.enabled ?? false;
+
+    // Starter text pushed from the welcome screen — fill the field and focus.
+    ref.listen(composerDraftProvider, (_, next) {
+      if (next != null && next.isNotEmpty) {
+        _controller.text = next;
+        _controller.selection = TextSelection.fromPosition(
+          TextPosition(offset: next.length),
+        );
+        _focusNode.requestFocus();
+        ref.read(composerDraftProvider.notifier).state = null;
+      }
+    });
 
     final popup = _showTemplates
         ? Padding(
@@ -814,7 +826,7 @@ class _ModelSwitcherDialog extends StatelessWidget {
               onPressed: onOpenRouterOAuth,
               icon: const Text('🔑', style: TextStyle(fontSize: 16)),
               label: const Text('OpenRouter ile Giriş Yap'),
-              style: TextButton.styleFrom(foregroundColor: Colors.orange),
+              style: TextButton.styleFrom(foregroundColor: MemoTheme.warningOrange),
             ),
           ],
         ),
@@ -1005,9 +1017,7 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
                     leading: Icon(
                       isFree ? Icons.check_circle : Icons.monetization_on,
                       size: 18,
-                      color: isFree
-                          ? const Color(0xFF51B576)
-                          : Colors.orange[400],
+                      color: isFree ? MemoTheme.green : MemoTheme.warningOrange,
                     ),
                     title: Text(
                       id,

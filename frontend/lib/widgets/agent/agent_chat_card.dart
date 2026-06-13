@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import '../../core/theme.dart';
 import '../../models/agent.dart';
 
 class AgentChatCard extends StatelessWidget {
@@ -19,8 +20,8 @@ class AgentChatCard extends StatelessWidget {
     String statusText = 'Tamamlandı';
 
     if (isError || isDenied) {
-      borderColor = Colors.red.withOpacity(0.5);
-      iconColor = Colors.red;
+      borderColor = MemoTheme.red.withValues(alpha: 0.5);
+      iconColor = MemoTheme.red;
       icon = isDenied ? Icons.block : Icons.error_outline;
       statusText = isDenied ? 'Reddedildi' : 'Hata';
     } else if (isExecuting) {
@@ -121,12 +122,12 @@ class AgentChatCard extends StatelessWidget {
               padding: const EdgeInsets.all(8),
               margin: const EdgeInsets.only(left: 12, right: 12, bottom: 12),
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
+                color: MemoTheme.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
                 event.error!,
-                style: const TextStyle(color: Colors.red, fontFamily: 'monospace', fontSize: 12),
+                style: const TextStyle(color: MemoTheme.red, fontFamily: 'monospace', fontSize: 12),
               ),
             ),
         ],

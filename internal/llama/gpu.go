@@ -22,16 +22,24 @@ const (
 
 // GPUInfo holds detected GPU information.
 type GPUInfo struct {
-	Type          GPUType `json:"type"`
-	Name          string  `json:"name"`
-	VRAM          int     `json:"vram_mb"`         // Total VRAM in MB
-	GPULayers     int     `json:"recommended_layers"` // Recommended n_gpu_layers
-	Description   string  `json:"description"`
+	Type        GPUType `json:"type"`
+	Name        string  `json:"name"`
+	VRAM        int     `json:"vram_mb"`            // Total VRAM in MB
+	GPULayers   int     `json:"recommended_layers"` // Recommended n_gpu_layers
+	Description string  `json:"description"`
+	RAMTotalMb  int     `json:"ram_total_mb"` // Total system RAM in MB (0 if unknown)
 }
 
-// DetectGPU probes the system for available GPU acceleration.
-// Priority: NVIDIA (CUDA) → AMD (ROCm) → CPU fallback.
+// DetectGPU probes the system for available GPU acceleration and system RAM.
 func DetectGPU() GPUInfo {
+	info := detectGPUInner()
+	info.RAMTotalMb = systemRAMMb()
+	return info
+}
+
+// detectGPUInner probes for GPU acceleration only.
+// Priority: NVIDIA (CUDA) → AMD (ROCm) → CPU fallback.
+func detectGPUInner() GPUInfo {
 	// Check for manual CPU override
 	if _, err := os.Stat("data/.force_cpu"); err == nil {
 		return GPUInfo{

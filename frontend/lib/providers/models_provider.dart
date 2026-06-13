@@ -63,19 +63,26 @@ final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
   }
 });
 
-// ─── Download Progress (polling) ────────────────────────────────
+// ─── Download Progress (adaptive polling) ───────────────────────
+// autoDispose: stops polling when no screen is listening (e.g. model store
+// closed). Adaptive: 1s while a download is active, 4s while idle — fixes the
+// old "1 request/second forever" drain (KNOWN_ISSUES H16).
 
-final downloadProgressProvider = StreamProvider<DownloadProgress>((ref) async* {
+final downloadProgressProvider =
+    StreamProvider.autoDispose<DownloadProgress>((ref) async* {
   final api = ref.read(apiClientProvider);
 
   while (true) {
+    var active = false;
     try {
       final progress = await api.getDownloadProgress();
+      active = progress.active;
       yield progress;
     } catch (_) {
       yield const DownloadProgress();
     }
-    await Future.delayed(const Duration(seconds: 1));
+    await Future.delayed(
+        Duration(seconds: active ? 1 : 4));
   }
 });
 

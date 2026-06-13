@@ -1,16 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-class ThemeColors {
-  final Color bgApp;
-  final Color bgPanel;
-  final Color bgElement;
-  final Color bgHover;
-  final Color textMain;
+/// Token bundle for one theme. Carried on [ThemeData] as a [ThemeExtension] so
+/// `MemoTheme.of(context)` resolves correctly even though both Memo themes use
+/// `Brightness.dark` (the mid-tone "Pewter" and the deeper "Night" share the
+/// same brightness, so we can't tell them apart by brightness alone).
+class ThemeColors extends ThemeExtension<ThemeColors> {
+  final Color bgApp; // surface-0 (deepest)
+  final Color bgPanel; // surface-1
+  final Color bgElement; // surface-2
+  final Color bgHover; // surface-3
+  final Color textMain; // ink
   final Color textSecondary;
-  final Color textMuted;
-  final Color textDim;
-  final Color textInverse;
+  final Color textMuted; // ink-muted
+  final Color textDim; // ink-dim
+  final Color textInverse; // text on accent
   final Color borderSoft;
   final Color borderHover;
 
@@ -27,343 +31,255 @@ class ThemeColors {
     required this.borderSoft,
     required this.borderHover,
   });
+
+  @override
+  ThemeColors copyWith({
+    Color? bgApp,
+    Color? bgPanel,
+    Color? bgElement,
+    Color? bgHover,
+    Color? textMain,
+    Color? textSecondary,
+    Color? textMuted,
+    Color? textDim,
+    Color? textInverse,
+    Color? borderSoft,
+    Color? borderHover,
+  }) {
+    return ThemeColors(
+      bgApp: bgApp ?? this.bgApp,
+      bgPanel: bgPanel ?? this.bgPanel,
+      bgElement: bgElement ?? this.bgElement,
+      bgHover: bgHover ?? this.bgHover,
+      textMain: textMain ?? this.textMain,
+      textSecondary: textSecondary ?? this.textSecondary,
+      textMuted: textMuted ?? this.textMuted,
+      textDim: textDim ?? this.textDim,
+      textInverse: textInverse ?? this.textInverse,
+      borderSoft: borderSoft ?? this.borderSoft,
+      borderHover: borderHover ?? this.borderHover,
+    );
+  }
+
+  @override
+  ThemeColors lerp(ThemeColors? other, double t) {
+    if (other == null) return this;
+    return ThemeColors(
+      bgApp: Color.lerp(bgApp, other.bgApp, t)!,
+      bgPanel: Color.lerp(bgPanel, other.bgPanel, t)!,
+      bgElement: Color.lerp(bgElement, other.bgElement, t)!,
+      bgHover: Color.lerp(bgHover, other.bgHover, t)!,
+      textMain: Color.lerp(textMain, other.textMain, t)!,
+      textSecondary: Color.lerp(textSecondary, other.textSecondary, t)!,
+      textMuted: Color.lerp(textMuted, other.textMuted, t)!,
+      textDim: Color.lerp(textDim, other.textDim, t)!,
+      textInverse: Color.lerp(textInverse, other.textInverse, t)!,
+      borderSoft: Color.lerp(borderSoft, other.borderSoft, t)!,
+      borderHover: Color.lerp(borderHover, other.borderHover, t)!,
+    );
+  }
 }
 
-/// Memo Cream + Gold theme — matches the existing Svelte frontend design.
+/// Memo "Pewter Study" theme — a warm graphite mid-tone identity (neither the
+/// glare of a light theme nor the cave of a true dark one) with a single muted
+/// bronze accent. A calm, premium workspace for a "second brain".
 class MemoTheme {
   MemoTheme._();
 
-  // ─── Light Palette (private) ───────────────────────────────────
+  // ─── Pewter (default, mid-tone) ───────────────────────────────
+  static const Color _pewterBgApp = Color(0xFF2B2E33);
+  static const Color _pewterBgPanel = Color(0xFF33373D);
+  static const Color _pewterBgElement = Color(0xFF3C4147);
+  static const Color _pewterBgHover = Color(0xFF474D54);
 
-  static const Color _lightBgApp = Color(0xFFFDFCF0);
-  static const Color _lightBgPanel = Color(0xFFF5F3E0);
-  static const Color _lightBgElement = Color(0xFFEAE8D5);
-  static const Color _lightBgHover = Color(0xFFDDD9C4);
+  static const Color _inkMain = Color(0xFFECE9E3);
+  static const Color _inkSecondary = Color(0xFFCFCBC3);
+  static const Color _inkMuted = Color(0xFFB4B0A8);
+  static const Color _inkDim = Color(0xFF85827B);
+  static const Color _inkInverse = Color(0xFF241F18); // text on bronze
 
-  static const Color _lightTextMain = Color(0xFF1A1A1A);
-  static const Color _lightTextMuted = Color(0xFF4A4A4A);
-  static const Color _lightTextDim = Color(0xFF8A8A7A);
-  static const Color _lightTextInverse = Color(0xFFFDFCF0);
+  static const Color _lineSoft = Color(0x14FFFFFF); // ~8% white
+  static const Color _lineStrong = Color(0x29FFFFFF); // ~16% white
 
-  static const Color _lightBorderSoft = Color(0x141A1A1A);
-  static const Color _lightBorderHover = Color(0x2E1A1A1A);
-  static const Color _lightTextSecondary = Color(0xFF2C2C2C);
-
-  // ─── Dark Palette (private) ───────────────────────────────────
-
-  static const Color _darkBgApp = Color(0xFF1C1C1E);
-  static const Color _darkBgPanel = Color(0xFF252528);
-  static const Color _darkBgElement = Color(0xFF2C2C30);
-  static const Color _darkBgHover = Color(0xFF36363A);
-
-  static const Color _darkTextMain = Color(0xFFF0EDE0);
-  static const Color _darkTextMuted = Color(0xFFA09D90);
-  static const Color _darkTextDim = Color(0xFF707060);
-  static const Color _darkTextInverse = Color(0xFF1C1C1E);
-
-  static const Color _darkBorderSoft = Color(0x30FFFFFF);
-  static const Color _darkBorderHover = Color(0x50FFFFFF);
-  static const Color _darkTextSecondary = Color(0xFFD0CDC0);
-
-  // ─── Theme Color Instances ────────────────────────────────────
-
-  static const ThemeColors _light = ThemeColors(
-    bgApp: _lightBgApp,
-    bgPanel: _lightBgPanel,
-    bgElement: _lightBgElement,
-    bgHover: _lightBgHover,
-    textMain: _lightTextMain,
-    textSecondary: _lightTextSecondary,
-    textMuted: _lightTextMuted,
-    textDim: _lightTextDim,
-    textInverse: _lightTextInverse,
-    borderSoft: _lightBorderSoft,
-    borderHover: _lightBorderHover,
+  static const ThemeColors _pewter = ThemeColors(
+    bgApp: _pewterBgApp,
+    bgPanel: _pewterBgPanel,
+    bgElement: _pewterBgElement,
+    bgHover: _pewterBgHover,
+    textMain: _inkMain,
+    textSecondary: _inkSecondary,
+    textMuted: _inkMuted,
+    textDim: _inkDim,
+    textInverse: _inkInverse,
+    borderSoft: _lineSoft,
+    borderHover: _lineStrong,
   );
 
-  static const ThemeColors _dark = ThemeColors(
-    bgApp: _darkBgApp,
-    bgPanel: _darkBgPanel,
-    bgElement: _darkBgElement,
-    bgHover: _darkBgHover,
-    textMain: _darkTextMain,
-    textSecondary: _darkTextSecondary,
-    textMuted: _darkTextMuted,
-    textDim: _darkTextDim,
-    textInverse: _darkTextInverse,
-    borderSoft: _darkBorderSoft,
-    borderHover: _darkBorderHover,
+  // ─── Night (deeper variant) ───────────────────────────────────
+  static const ThemeColors _night = ThemeColors(
+    bgApp: Color(0xFF1E2024),
+    bgPanel: Color(0xFF25282D),
+    bgElement: Color(0xFF2D3036),
+    bgHover: Color(0xFF383C43),
+    textMain: _inkMain,
+    textSecondary: _inkSecondary,
+    textMuted: Color(0xFFABA79F),
+    textDim: Color(0xFF7C7A73),
+    textInverse: _inkInverse,
+    borderSoft: _lineSoft,
+    borderHover: _lineStrong,
   );
 
-  /// Returns the correct color set for the current theme brightness.
+  /// Active token set for the current theme, read from the ThemeExtension.
   static ThemeColors of(BuildContext context) {
-    return Theme.of(context).brightness == Brightness.dark ? _dark : _light;
+    return Theme.of(context).extension<ThemeColors>() ?? _pewter;
   }
 
-  /// Dark theme colors (for preview purposes outside build context).
-  static const ThemeColors dark = _dark;
+  /// Token sets for preview outside a build context (e.g. setup wizard).
+  static const ThemeColors dark = _night;
+  static const ThemeColors light = _pewter;
 
-  /// Light theme colors (for preview purposes outside build context).
-  static const ThemeColors light = _light;
+  // ─── Theme-independent constants ──────────────────────────────
 
-  // ─── Theme-independent Constants ──────────────────────────────
+  // Bronze accent — muted, premium, NOT neon and NOT the old bright gold.
+  static const Color accent = Color(0xFFB08D57);
+  static const Color accentLight = Color(0xFFC6A06A);
+  static const Color accentPale = Color(0xFFC6A06A); // applied with alpha
+  static const Color accentMuted = Color(0x24B08D57); // ~14% bronze
+  static const Color accentHover = Color(0xFFC6A06A);
 
-  // Gold Accent
-  static const Color accent = Color(0xFFC9A84C);
-  static const Color accentLight = Color(0xFFE8C97A);
-  static const Color accentPale = Color(0xFFF5E8C0);
-  static const Color accentMuted = Color(0x1FC9A84C);
-  static const Color accentHover = Color(0xFFB8943E);
-
-  // Functional
-  static const Color green = Color(0xFF51B576);
-  static const Color red = Color(0xFFD35F5F);
-  static const Color successGreen = Color(0xFF51B576);
-  static const Color warningOrange = Color(0xFFD4944F);
-  static const Color warmBrown = Color(0xFF8B6535);
+  // Functional — softened, no neon.
+  static const Color green = Color(0xFF6FA07B);
+  static const Color red = Color(0xFFC4736B);
+  static const Color successGreen = Color(0xFF6FA07B);
+  static const Color warningOrange = Color(0xFFC99A5B);
+  static const Color warmBrown = Color(0xFF8A7B63);
 
   // Radius
   static const double radiusSm = 8;
   static const double radiusMd = 14;
   static const double radiusLg = 20;
 
-  // ─── Shadows (light-biased; okay for both) ───────────────────
+  // ─── Shadows (deep, for a dark mid-tone surface) ──────────────
   static List<BoxShadow> get shadowSm => [
-        BoxShadow(
-          color: const Color(0x0A1A1A1A),
+        const BoxShadow(
+          color: Color(0x33000000),
           blurRadius: 8,
-          offset: const Offset(0, 2),
+          offset: Offset(0, 2),
         ),
       ];
 
   static List<BoxShadow> get shadowMd => [
-        BoxShadow(
-          color: const Color(0x121A1A1A),
+        const BoxShadow(
+          color: Color(0x40000000),
           blurRadius: 16,
-          offset: const Offset(0, 4),
+          offset: Offset(0, 4),
         ),
       ];
 
   static List<BoxShadow> get shadowLg => [
-        BoxShadow(
-          color: const Color(0x1A1A1A1A),
+        const BoxShadow(
+          color: Color(0x4D000000),
           blurRadius: 32,
-          offset: const Offset(0, 8),
+          offset: Offset(0, 8),
         ),
       ];
 
-  // ─── ThemeData ─────────────────────────────────────────────────
+  // ─── Typography ───────────────────────────────────────────────
+  // Schibsted Grotesk for display/headline/title (characterful, premium,
+  // strong numerals for the download %); Inter for body/label legibility.
+  static TextTheme _buildTextTheme(ThemeColors c) {
+    final base = ThemeData(brightness: Brightness.dark).textTheme;
+    final body = GoogleFonts.interTextTheme(base);
+    final display = GoogleFonts.schibstedGroteskTextTheme(base);
 
-  static ThemeData get themeData {
-    final textTheme = GoogleFonts.interTextTheme().apply(
-      bodyColor: _lightTextMain,
-      displayColor: _lightTextMain,
-    );
-
-    return ThemeData(
-      useMaterial3: true,
-      brightness: Brightness.light,
-      scaffoldBackgroundColor: _lightBgApp,
-      colorScheme: ColorScheme.light(
-        surface: _lightBgApp,
-        primary: accent,
-        onPrimary: _lightTextInverse,
-        secondary: accentLight,
-        onSecondary: _lightTextMain,
-        tertiary: warmBrown,
-        error: red,
-        outline: _lightBorderSoft,
-        surfaceContainerHighest: _lightBgPanel,
-      ),
-      textTheme: textTheme,
-      appBarTheme: AppBarTheme(
-        backgroundColor: _lightBgApp,
-        foregroundColor: _lightTextMain,
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        titleTextStyle: textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: _lightTextMain,
-        ),
-      ),
-      cardTheme: CardThemeData(
-        color: _lightBgPanel,
-        elevation: 0,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusMd),
-          side: BorderSide(color: _lightBorderSoft),
-        ),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: _lightBgApp,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        border: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: BorderSide(color: _lightBorderSoft),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: BorderSide(color: _lightBorderSoft),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: const BorderSide(color: accent, width: 1.5),
-        ),
-        hintStyle: textTheme.bodyMedium?.copyWith(color: _lightTextDim),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: accent,
-          foregroundColor: _lightTextInverse,
-          elevation: 0,
-          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusSm),
-          ),
-          textStyle:
-              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
-        ),
-      ),
-      outlinedButtonTheme: OutlinedButtonThemeData(
-        style: OutlinedButton.styleFrom(
-          foregroundColor: _lightTextMain,
-          side: BorderSide(color: _lightBorderSoft),
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(radiusSm),
-          ),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: accent,
-          textStyle:
-              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
-        ),
-      ),
-      iconButtonTheme: IconButtonThemeData(
-        style: IconButton.styleFrom(
-          foregroundColor: _lightTextMuted,
-        ),
-      ),
-      dividerTheme: const DividerThemeData(
-        color: _lightBorderSoft,
-        thickness: 1,
-        space: 0,
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: _lightBgApp,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusLg),
-        ),
-        titleTextStyle: textTheme.titleLarge?.copyWith(
-          fontWeight: FontWeight.w600,
-          color: _lightTextMain,
-        ),
-      ),
-      tooltipTheme: TooltipThemeData(
-        decoration: BoxDecoration(
-          color: _lightTextMain,
-          borderRadius: BorderRadius.circular(radiusSm),
-        ),
-        textStyle: textTheme.bodySmall?.copyWith(color: _lightTextInverse),
-      ),
-      scrollbarTheme: ScrollbarThemeData(
-        thumbColor: WidgetStateProperty.all(_lightBgHover),
-        thickness: WidgetStateProperty.all(4),
-        radius: const Radius.circular(999),
-      ),
-      snackBarTheme: SnackBarThemeData(
-        backgroundColor: _lightTextMain,
-        contentTextStyle: textTheme.bodyMedium?.copyWith(color: _lightTextInverse),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(radiusSm),
-        ),
-        behavior: SnackBarBehavior.floating,
-      ),
-    );
+    return body
+        .copyWith(
+          displayLarge: display.displayLarge?.copyWith(fontWeight: FontWeight.w600),
+          displayMedium: display.displayMedium?.copyWith(fontWeight: FontWeight.w600),
+          displaySmall: display.displaySmall?.copyWith(fontWeight: FontWeight.w600),
+          headlineLarge: display.headlineLarge?.copyWith(fontWeight: FontWeight.w600),
+          headlineMedium: display.headlineMedium?.copyWith(fontWeight: FontWeight.w600),
+          headlineSmall: display.headlineSmall?.copyWith(fontWeight: FontWeight.w600),
+          titleLarge: display.titleLarge?.copyWith(fontWeight: FontWeight.w600),
+        )
+        .apply(bodyColor: c.textMain, displayColor: c.textMain);
   }
 
-  // ─── Dark ThemeData ─────────────────────────────────────────────
-
-  static ThemeData get darkThemeData {
-    final textTheme = GoogleFonts.interTextTheme().apply(
-      bodyColor: _darkTextMain,
-      displayColor: _darkTextMain,
-    );
+  // ─── ThemeData builder (shared by Pewter & Night) ─────────────
+  static ThemeData _build(ThemeColors c) {
+    final textTheme = _buildTextTheme(c);
 
     return ThemeData(
       useMaterial3: true,
       brightness: Brightness.dark,
-      scaffoldBackgroundColor: _darkBgApp,
+      scaffoldBackgroundColor: c.bgApp,
+      extensions: [c],
       colorScheme: ColorScheme.dark(
-        surface: _darkBgApp,
+        surface: c.bgApp,
+        onSurface: c.textMain,
         primary: accent,
-        onPrimary: _darkTextInverse,
+        onPrimary: c.textInverse,
         secondary: accentLight,
-        onSecondary: _darkTextMain,
+        onSecondary: c.textInverse,
         tertiary: warmBrown,
         error: red,
-        outline: _darkBorderSoft,
-        surfaceContainerHighest: _darkBgPanel,
+        outline: c.borderSoft,
+        surfaceContainerHighest: c.bgPanel,
       ),
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
-        backgroundColor: _darkBgApp,
-        foregroundColor: _darkTextMain,
+        backgroundColor: c.bgApp,
+        foregroundColor: c.textMain,
         elevation: 0,
         scrolledUnderElevation: 0,
         titleTextStyle: textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w600,
-          color: _darkTextMain,
+          color: c.textMain,
         ),
       ),
       cardTheme: CardThemeData(
-        color: _darkBgPanel,
+        color: c.bgPanel,
         elevation: 0,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusMd),
-          side: BorderSide(color: _darkBorderSoft),
+          side: BorderSide(color: c.borderSoft),
         ),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: _darkBgApp,
-        contentPadding:
-            const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        fillColor: c.bgElement,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: BorderSide(color: _darkBorderSoft),
+          borderSide: BorderSide(color: c.borderSoft),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusMd),
-          borderSide: BorderSide(color: _darkBorderSoft),
+          borderSide: BorderSide(color: c.borderSoft),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(radiusMd),
           borderSide: const BorderSide(color: accent, width: 1.5),
         ),
-        hintStyle: textTheme.bodyMedium?.copyWith(color: _darkTextDim),
+        hintStyle: textTheme.bodyMedium?.copyWith(color: c.textDim),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: accent,
-          foregroundColor: _darkTextInverse,
+          foregroundColor: c.textInverse,
           elevation: 0,
           padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusSm),
           ),
-          textStyle:
-              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
+          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w600),
         ),
       ),
       outlinedButtonTheme: OutlinedButtonThemeData(
         style: OutlinedButton.styleFrom(
-          foregroundColor: _darkTextMain,
-          side: BorderSide(color: _darkBorderSoft),
+          foregroundColor: c.textMain,
+          side: BorderSide(color: c.borderSoft),
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(radiusSm),
@@ -373,45 +289,45 @@ class MemoTheme {
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
           foregroundColor: accent,
-          textStyle:
-              textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
+          textStyle: textTheme.labelLarge?.copyWith(fontWeight: FontWeight.w500),
         ),
       ),
       iconButtonTheme: IconButtonThemeData(
         style: IconButton.styleFrom(
-          foregroundColor: _darkTextMuted,
+          foregroundColor: c.textMuted,
         ),
       ),
       dividerTheme: DividerThemeData(
-        color: _darkBorderSoft,
+        color: c.borderSoft,
         thickness: 1,
         space: 0,
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: _darkBgPanel,
+        backgroundColor: c.bgPanel,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusLg),
         ),
         titleTextStyle: textTheme.titleLarge?.copyWith(
           fontWeight: FontWeight.w600,
-          color: _darkTextMain,
+          color: c.textMain,
         ),
       ),
       tooltipTheme: TooltipThemeData(
         decoration: BoxDecoration(
-          color: _darkTextMain,
+          color: c.bgHover,
           borderRadius: BorderRadius.circular(radiusSm),
+          border: Border.all(color: c.borderSoft),
         ),
-        textStyle: textTheme.bodySmall?.copyWith(color: _darkTextInverse),
+        textStyle: textTheme.bodySmall?.copyWith(color: c.textMain),
       ),
       scrollbarTheme: ScrollbarThemeData(
-        thumbColor: WidgetStateProperty.all(_darkBgHover),
+        thumbColor: WidgetStateProperty.all(c.bgHover),
         thickness: WidgetStateProperty.all(4),
         radius: const Radius.circular(999),
       ),
       snackBarTheme: SnackBarThemeData(
-        backgroundColor: _darkTextMain,
-        contentTextStyle: textTheme.bodyMedium?.copyWith(color: _darkTextInverse),
+        backgroundColor: c.bgHover,
+        contentTextStyle: textTheme.bodyMedium?.copyWith(color: c.textMain),
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusSm),
         ),
@@ -419,4 +335,10 @@ class MemoTheme {
       ),
     );
   }
+
+  /// Default theme — Pewter (mid-tone). Shown for light/system-light modes.
+  static ThemeData get themeData => _build(_pewter);
+
+  /// Deeper variant — Night. Shown for dark/system-dark modes.
+  static ThemeData get darkThemeData => _build(_night);
 }

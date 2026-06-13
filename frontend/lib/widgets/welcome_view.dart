@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../providers/chat_provider.dart';
 
 /// Welcome view shown when there are no messages in the active chat.
-class WelcomeView extends StatelessWidget {
+/// Suggestions are real starters — tapping one fills the composer.
+class WelcomeView extends ConsumerWidget {
   const WelcomeView({super.key});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = MemoTheme.of(context);
     return Center(
       child: Padding(
         padding: const EdgeInsets.all(40),
@@ -16,47 +20,24 @@ class WelcomeView extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             // ─── Logo ────────────────────────────────
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.translate(
-                    offset: Offset(0, 20 * (1 - value)),
-                    child: child,
-                  ),
-                );
-              },
+            _FadeIn(
               child: Container(
-                width: 80,
-                height: 80,
+                width: 76,
+                height: 76,
                 decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [MemoTheme.accentPale, MemoTheme.accentMuted],
-                  ),
-                  borderRadius: BorderRadius.circular(24),
+                  color: c.bgElement,
+                  borderRadius: BorderRadius.circular(22),
                   border: Border.all(
-                    color: MemoTheme.accent.withValues(alpha: 0.4),
-                    width: 2,
+                    color: MemoTheme.accent.withValues(alpha: 0.5),
+                    width: 1.5,
                   ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: MemoTheme.accent.withValues(alpha: 0.15),
-                      blurRadius: 32,
-                      offset: const Offset(0, 8),
-                    ),
-                  ],
                 ),
                 child: const Center(
                   child: Text(
                     'M',
                     style: TextStyle(
-                      fontSize: 36,
-                      fontWeight: FontWeight.bold,
+                      fontSize: 34,
+                      fontWeight: FontWeight.w600,
                       color: MemoTheme.accent,
                     ),
                   ),
@@ -66,86 +47,62 @@ class WelcomeView extends StatelessWidget {
 
             const SizedBox(height: 28),
 
-            // ─── Title ───────────────────────────────
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 600),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.translate(
-                    offset: Offset(0, 12 * (1 - value)),
-                    child: child,
-                  ),
-                );
-              },
+            _FadeIn(
+              delayMs: 100,
               child: Text(
                 L10n.t('welcome_title'),
                 style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: MemoTheme.of(context).textMain,
-                ),
+                      fontWeight: FontWeight.w600,
+                      color: c.textMain,
+                    ),
               ),
             ),
 
             const SizedBox(height: 8),
 
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 700),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Opacity(opacity: value, child: child);
-              },
+            _FadeIn(
+              delayMs: 180,
               child: Text(
                 L10n.t('welcome_subtitle'),
                 style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: MemoTheme.of(context).textDim,
-                ),
+                      color: c.textDim,
+                    ),
               ),
             ),
 
             const SizedBox(height: 40),
 
-            // ─── Quick Actions ───────────────────────
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 800),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Opacity(
-                  opacity: value,
-                  child: Transform.translate(
-                    offset: Offset(0, 8 * (1 - value)),
-                    child: child,
-                  ),
-                );
-              },
+            // ─── Suggestion starters ─────────────────
+            _FadeIn(
+              delayMs: 260,
               child: Wrap(
-                spacing: 10,
-                runSpacing: 10,
+                spacing: 12,
+                runSpacing: 12,
                 alignment: WrapAlignment.center,
-                children: const [
-                  _QuickAction(
-                    icon: '💻',
+                children: [
+                  _Suggestion(
+                    icon: Icons.code_rounded,
                     label: 'Kod incele',
-                    hint: 'Kodunuzu yapıştırın',
+                    hint: 'Kodunu yapıştır',
+                    starter: 'Şu kodu inceler misin:\n',
                   ),
-                  _QuickAction(
-                    icon: '📖',
+                  _Suggestion(
+                    icon: Icons.menu_book_outlined,
                     label: 'Kavram açıkla',
-                    hint: 'Bir konu sorun',
+                    hint: 'Bir konu sor',
+                    starter: 'Şunu basitçe açıklar mısın: ',
                   ),
-                  _QuickAction(
-                    icon: '🗺️',
+                  _Suggestion(
+                    icon: Icons.checklist_rounded,
                     label: 'Plan oluştur',
-                    hint: 'Bir görev tanımlayın',
+                    hint: 'Bir görev tanımla',
+                    starter: 'Şunun için adım adım bir plan oluştur: ',
                   ),
-                  _QuickAction(
-                    icon: '💡',
+                  _Suggestion(
+                    icon: Icons.lightbulb_outline_rounded,
                     label: 'Fikir üret',
-                    hint: 'Beyin fırtınası yapın',
+                    hint: 'Beyin fırtınası',
+                    starter: 'Şu konuda bana fikir üret: ',
                   ),
                 ],
               ),
@@ -154,34 +111,25 @@ class WelcomeView extends StatelessWidget {
             const SizedBox(height: 32),
 
             // ─── Tip ─────────────────────────────────
-            TweenAnimationBuilder<double>(
-              tween: Tween(begin: 0, end: 1),
-              duration: const Duration(milliseconds: 900),
-              curve: Curves.easeOut,
-              builder: (context, value, child) {
-                return Opacity(opacity: value, child: child);
-              },
+            _FadeIn(
+              delayMs: 340,
               child: Container(
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 10,
-                ),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
-                  color: MemoTheme.of(context).bgPanel,
+                  color: c.bgPanel,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                  border: Border.all(color: MemoTheme.of(context).borderSoft),
+                  border: Border.all(color: c.borderSoft),
                 ),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text('💡', style: TextStyle(fontSize: 14)),
+                    Icon(Icons.lightbulb_outline_rounded,
+                        size: 15, color: c.textDim),
                     const SizedBox(width: 8),
                     Text(
-                      'İpucu: "/" yazarak hızlı şablonlara ulaşabilirsiniz',
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: MemoTheme.of(context).textDim,
-                      ),
+                      'İpucu: "/" yazarak hızlı şablonlara ulaşabilirsin',
+                      style: TextStyle(fontSize: 12, color: c.textDim),
                     ),
                   ],
                 ),
@@ -194,67 +142,94 @@ class WelcomeView extends StatelessWidget {
   }
 }
 
-class _QuickAction extends StatefulWidget {
-  final String icon;
+/// Subtle one-shot fade+rise entrance.
+class _FadeIn extends StatelessWidget {
+  final Widget child;
+  final int delayMs;
+  const _FadeIn({required this.child, this.delayMs = 0});
+
+  @override
+  Widget build(BuildContext context) {
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: Duration(milliseconds: 500 + delayMs),
+      curve: Curves.easeOut,
+      builder: (context, value, child) => Opacity(
+        opacity: value.clamp(0, 1),
+        child: Transform.translate(
+          offset: Offset(0, 10 * (1 - value)),
+          child: child,
+        ),
+      ),
+      child: child,
+    );
+  }
+}
+
+class _Suggestion extends ConsumerStatefulWidget {
+  final IconData icon;
   final String label;
   final String hint;
+  final String starter;
 
-  const _QuickAction({
+  const _Suggestion({
     required this.icon,
     required this.label,
     required this.hint,
+    required this.starter,
   });
 
   @override
-  State<_QuickAction> createState() => _QuickActionState();
+  ConsumerState<_Suggestion> createState() => _SuggestionState();
 }
 
-class _QuickActionState extends State<_QuickAction> {
+class _SuggestionState extends ConsumerState<_Suggestion> {
   bool _hovering = false;
 
   @override
   Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
     return MouseRegion(
+      cursor: SystemMouseCursors.click,
       onEnter: (_) => setState(() => _hovering = true),
       onExit: (_) => setState(() => _hovering = false),
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        width: 140,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: _hovering
-              ? MemoTheme.of(context).bgElement
-              : MemoTheme.of(context).bgPanel,
-          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-          border: Border.all(
-            color: _hovering
-                ? MemoTheme.accent.withValues(alpha: 0.3)
-                : MemoTheme.of(context).borderSoft,
+      child: GestureDetector(
+        onTap: () =>
+            ref.read(composerDraftProvider.notifier).state = widget.starter,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 150),
+          width: 150,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: _hovering ? c.bgElement : c.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(
+              color: _hovering
+                  ? MemoTheme.accent.withValues(alpha: 0.5)
+                  : c.borderSoft,
+            ),
           ),
-        ),
-        child: Column(
-          children: [
-            Text(widget.icon, style: const TextStyle(fontSize: 24)),
-            const SizedBox(height: 8),
-            Text(
-              widget.label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.w500,
-                color: MemoTheme.of(context).textMain,
+          child: Column(
+            children: [
+              Icon(widget.icon, size: 22, color: MemoTheme.accent),
+              const SizedBox(height: 10),
+              Text(
+                widget.label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: c.textMain,
+                ),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 2),
-            Text(
-              widget.hint,
-              style: TextStyle(
-                fontSize: 11,
-                color: MemoTheme.of(context).textDim,
+              const SizedBox(height: 2),
+              Text(
+                widget.hint,
+                style: TextStyle(fontSize: 11, color: c.textDim),
+                textAlign: TextAlign.center,
               ),
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );

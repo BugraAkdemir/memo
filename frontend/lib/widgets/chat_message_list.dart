@@ -249,7 +249,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(ctx).pop(true),
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
+            style: FilledButton.styleFrom(backgroundColor: MemoTheme.red),
             child:  Text(L10n.t('delete')),
           ),
         ],

@@ -103,7 +103,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
                   content: Text('⚠️ ${L10n.t('embedding_model')}: $e'),
-                  backgroundColor: Colors.orange.shade800,
+                  backgroundColor: MemoTheme.warningOrange,
                 ),
               );
             }
@@ -122,7 +122,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
             content: Text(
               '✅ ${widget.model.filename} ${L10n.t('starting')}...',
             ),
-            backgroundColor: Colors.green.shade800,
+            backgroundColor: MemoTheme.green,
           ),
         );
       }
@@ -245,14 +245,14 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                           Icon(
                             Icons.warning_amber_rounded,
                             size: 16,
-                            color: Colors.orange.shade400,
+                            color: MemoTheme.warningOrange,
                           ),
                           SizedBox(width: 8),
                           Text(
                             L10n.t('no_embedding_model'),
                             style: TextStyle(
                               fontSize: 12,
-                              color: Colors.orange.shade400,
+                              color: MemoTheme.warningOrange,
                             ),
                           ),
                         ],

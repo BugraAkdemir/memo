@@ -8,6 +8,7 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
 import '../widgets/version_banner.dart';
+import '../widgets/engine_strip.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
@@ -43,16 +44,25 @@ class _AppShellState extends ConsumerState<AppShell> {
             children: [
               _buildNavRail(),
               Expanded(
-                child: IndexedStack(
-                  index: _currentIndex,
+                child: Column(
                   children: [
-                    ChatScreen(key: ValueKey('chat_$locale')),
-                    const AgentScreen(),
-                    ModelStoreScreen(key: ValueKey('models_$locale')),
-                    if (betaEnabled)
-                      WhatsAppScreen()
-                    else
-                      const SizedBox.shrink(),
+                    Expanded(
+                      child: IndexedStack(
+                        index: _currentIndex,
+                        children: [
+                          ChatScreen(key: ValueKey('chat_$locale')),
+                          const AgentScreen(),
+                          ModelStoreScreen(key: ValueKey('models_$locale')),
+                          if (betaEnabled)
+                            WhatsAppScreen()
+                          else
+                            const SizedBox.shrink(),
+                        ],
+                      ),
+                    ),
+                    EngineStrip(
+                      onOpenModels: () => setState(() => _currentIndex = 2),
+                    ),
                   ],
                 ),
               ),

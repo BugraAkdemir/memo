@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/provider_provider.dart';
@@ -289,13 +290,13 @@ class _ProviderConfigDialogState
                       const SizedBox(width: 12),
                       Icon(
                         _testResult! ? Icons.check_circle : Icons.error,
-                        color: _testResult! ? Colors.green : Colors.red,
+                        color: _testResult! ? MemoTheme.green : MemoTheme.red,
                       ),
                       const SizedBox(width: 4),
                       Text(
                         _testResult! ? 'Connected' : 'Failed',
                         style: TextStyle(
-                          color: _testResult! ? Colors.green : Colors.red,
+                          color: _testResult! ? MemoTheme.green : MemoTheme.red,
                         ),
                       ),
                     ],
@@ -456,7 +457,7 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
                     leading: Icon(
                       isFree ? Icons.check_circle : Icons.monetization_on,
                       size: 18,
-                      color: isFree ? const Color(0xFF51B576) : Colors.orange[400],
+                      color: isFree ? MemoTheme.green : MemoTheme.warningOrange,
                     ),
                     title: Text(
                       id,

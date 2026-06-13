@@ -202,12 +202,6 @@ String _fmtCount(int n) {
   return '$n';
 }
 
-String _formatGb(int bytes) {
-  if (bytes >= 1024 * 1024 * 1024) {
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
-  }
-  return '${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB';
-}
 
 Color _authorColor(String author) {
   const colors = [
@@ -822,8 +816,7 @@ class _SortChip extends StatelessWidget {
 
 class _AuthorAvatar extends StatefulWidget {
   final String author;
-  final double size;
-  const _AuthorAvatar({required this.author, this.size = 34});
+  const _AuthorAvatar({required this.author});
 
   @override
   State<_AuthorAvatar> createState() => _AuthorAvatarState();
@@ -882,30 +875,26 @@ class _AuthorAvatarState extends State<_AuthorAvatar> {
         borderRadius: BorderRadius.circular(8),
         child: Image.network(
           _avatarUrl!,
-          width: widget.size,
-          height: widget.size,
+          width: 34,
+          height: 34,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _LetterAvatar(
-            author: widget.author,
-            size: widget.size,
-          ),
+          errorBuilder: (context, error, stackTrace) => _LetterAvatar(author: widget.author),
         ),
       );
     }
-    return _LetterAvatar(author: widget.author, size: widget.size);
+    return _LetterAvatar(author: widget.author);
   }
 }
 
 class _LetterAvatar extends StatelessWidget {
   final String author;
-  final double size;
-  const _LetterAvatar({required this.author, required this.size});
+  const _LetterAvatar({required this.author});
 
   @override
   Widget build(BuildContext context) {
     return Container(
-      width: size,
-      height: size,
+      width: 34,
+      height: 34,
       decoration: BoxDecoration(
         color: _authorColor(author),
         borderRadius: BorderRadius.circular(8),
@@ -1286,13 +1275,10 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
     final m = RegExp(r'[Qq]\d[^.]*').firstMatch(filename);
     if (m != null) return m.group(0)!.toUpperCase();
     if (filename.toLowerCase().contains('fp16') ||
-        filename.toLowerCase().contains('f16')) return 'FP16';
+        filename.toLowerCase().contains('f16')) {
+      return 'FP16';
+    }
     return 'GGUF';
-  }
-
-  /// Display name without .gguf extension, truncated.
-  String _fileDisplayName(String filename) {
-    return filename.replaceAll(RegExp(r'\.gguf$', caseSensitive: false), '');
   }
 
   @override
@@ -2047,206 +2033,6 @@ class _CapabilityPill extends StatelessWidget {
   }
 }
 
-class _FileOption extends ConsumerWidget {
-  final GGUFFile file;
-  final GPUInfo gpu;
-  final bool isSelected;
-  final bool isDownloaded;
-  final VoidCallback onSelect;
-
-  const _FileOption({
-    required this.file,
-    required this.gpu,
-    required this.isSelected,
-    required this.isDownloaded,
-    required this.onSelect,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final c = MemoTheme.of(context);
-    final q = quantInfo(file.filename);
-    final fit = hardwareFit(file.size, gpu);
-
-    final (fitColor, fitIcon) = switch (fit.level) {
-      FitLevel.good => (MemoTheme.green, Icons.check_circle_outline),
-      FitLevel.ok => (MemoTheme.accent, Icons.check_circle_outline),
-      FitLevel.warn => (MemoTheme.warningOrange, Icons.warning_amber_rounded),
-    };
-
-    return GestureDetector(
-      onTap: onSelect,
-      child: MouseRegion(
-        cursor: SystemMouseCursors.click,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          margin: const EdgeInsets.only(bottom: 8),
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-          decoration: BoxDecoration(
-            color: isSelected ? MemoTheme.accent.withValues(alpha: 0.08) : c.bgPanel,
-            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-            border: Border.all(
-              color: isSelected
-                  ? MemoTheme.accent.withValues(alpha: 0.5)
-                  : c.borderSoft,
-            ),
-          ),
-          child: Row(
-            children: [
-              // Radio
-              Container(
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  border: Border.all(
-                    color: isSelected ? MemoTheme.accent : c.textDim,
-                    width: 2,
-                  ),
-                ),
-                child: isSelected
-                    ? Center(
-                        child: Container(
-                          width: 7,
-                          height: 7,
-                          decoration: const BoxDecoration(
-                            color: MemoTheme.accent,
-                            shape: BoxShape.circle,
-                          ),
-                        ),
-                      )
-                    : null,
-              ),
-              const SizedBox(width: 12),
-              // Quant name + description
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Text(
-                          q.label,
-                          style: TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w600,
-                            color: c.textMain,
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          file.sizeFormatted,
-                          style: TextStyle(fontSize: 12, color: c.textMuted),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 3),
-                    Row(
-                      children: [
-                        Icon(fitIcon, size: 12, color: fitColor),
-                        const SizedBox(width: 4),
-                        Text(
-                          fit.label,
-                          style: TextStyle(fontSize: 11, color: fitColor),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-              if (isDownloaded) ...[
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: MemoTheme.green.withValues(alpha: 0.12),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      const Icon(Icons.check, size: 11, color: MemoTheme.green),
-                      const SizedBox(width: 4),
-                      Text(
-                        L10n.locale == MemoLocale.tr ? 'Yüklü' : 'Downloaded',
-                        style: const TextStyle(
-                            fontSize: 10,
-                            color: MemoTheme.green,
-                            fontWeight: FontWeight.w600),
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DownloadButton extends ConsumerWidget {
-  final GGUFFile? selectedFile;
-  final List<LocalModel> localModels;
-  final bool downloadingNow;
-  final _DiscoverItem item;
-  final GPUInfo gpu;
-  final VoidCallback onDownload;
-
-  const _DownloadButton({
-    required this.selectedFile,
-    required this.localModels,
-    required this.downloadingNow,
-    required this.item,
-    required this.gpu,
-    required this.onDownload,
-  });
-
-  @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    if (selectedFile == null) return const SizedBox.shrink();
-
-    final isFileDownloaded =
-        localModels.any((m) => m.filename == selectedFile!.filename);
-
-    if (isFileDownloaded) {
-      final localModel =
-          localModels.firstWhere((m) => m.filename == selectedFile!.filename);
-      return SizedBox(
-        width: double.infinity,
-        child: ElevatedButton.icon(
-          onPressed: () => showDialog(
-            context: context,
-            builder: (_) => ModelConfigDialog(model: localModel),
-          ),
-          icon: const Icon(Icons.play_arrow_rounded, size: 18),
-          label: Text(L10n.locale == MemoLocale.tr
-              ? 'Başlat · ${selectedFile!.sizeFormatted}'
-              : 'Start · ${selectedFile!.sizeFormatted}'),
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: downloadingNow ? null : onDownload,
-        icon: const Icon(Icons.download_rounded, size: 18),
-        label: Text(
-          downloadingNow
-              ? L10n.t('preparing_download')
-              : '${L10n.t('download')} · ${selectedFile!.sizeFormatted}',
-        ),
-        style: ElevatedButton.styleFrom(
-          padding: const EdgeInsets.symmetric(vertical: 14),
-        ),
-      ),
-    );
-  }
-}
-
 // ─── Pill widget (reused in My Models) ───────────────────────────
 
 class _Pill extends StatelessWidget {
@@ -2320,7 +2106,7 @@ class _MyModelsTab extends ConsumerWidget {
                 : ListView.separated(
                     padding: const EdgeInsets.fromLTRB(28, 8, 28, 28),
                     itemCount: models.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 10),
+                    separatorBuilder: (_, i) => const SizedBox(height: 10),
                     itemBuilder: (ctx, i) =>
                         _LocalModelCard(model: models[i]),
                   ),

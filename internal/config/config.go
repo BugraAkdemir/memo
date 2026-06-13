@@ -11,13 +11,14 @@ import (
 )
 
 type AppConfig struct {
-	API          APIConfig          `yaml:"api"`
-	Identity     IdentityConfig     `yaml:"identity"`
-	Memory       MemoryConfig       `yaml:"memory"`
-	RemoteAccess RemoteAccessConfig `yaml:"remote_access"`
-	Llama        LlamaConfig        `yaml:"llama"`
-	Sync         SyncConfig         `yaml:"sync"`
-	WhatsApp     WhatsAppConfig     `yaml:"whatsapp"`
+	API            APIConfig          `yaml:"api"`
+	Identity       IdentityConfig     `yaml:"identity"`
+	Memory         MemoryConfig       `yaml:"memory"`
+	RemoteAccess   RemoteAccessConfig `yaml:"remote_access"`
+	Llama          LlamaConfig        `yaml:"llama"`
+	Sync           SyncConfig         `yaml:"sync"`
+	WhatsApp       WhatsAppConfig     `yaml:"whatsapp"`
+	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 }
 
 // SyncConfig holds Google Drive backup settings.

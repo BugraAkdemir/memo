@@ -338,8 +338,14 @@ func (a *App) startup(ctx context.Context) {
 		log.Println("No external providers configured, using local models")
 	}
 
-	// activeProvider starts empty — user must explicitly select from UI
-	a.activeProvider = ""
+	// activeProvider restored from config — persists across restarts
+	a.activeProvider = provider.ProviderType(a.cfg.ActiveProvider)
+	if a.activeProvider != "" && a.providerRouter != nil {
+		a.providerRouter.SetActiveProvider(a.activeProvider)
+	}
+	if a.activeProvider != "" {
+		log.Printf("Active provider restored from config: %s", a.activeProvider)
+	}
 
 	// Initialize orchestra conductor
 	orchestraCfg := orchestra.LoadConfig("data/orchestra.json")
@@ -1803,6 +1809,11 @@ func (a *App) SetActiveProvider(pt provider.ProviderType) {
 		a.providerRouter.SetActiveProvider(pt)
 	}
 	a.providerMu.Unlock()
+
+	a.cfg.ActiveProvider = string(pt)
+	if err := config.Save(a.cfg); err != nil {
+		log.Printf("WARN: failed to persist active provider: %v", err)
+	}
 	log.Printf("Active provider set to: %s", pt)
 }
 

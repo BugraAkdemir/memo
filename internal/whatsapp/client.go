@@ -37,16 +37,16 @@ type Message struct {
 
 // Client manages the WhatsApp Web connection.
 type Client struct {
-	config      Config
-	waClient    *whatsmeow.Client
-	store       *Store
-	qrCodes     []string
-	msgCh       chan Message
-	errCh       chan error
-	started     bool
+	config       Config
+	waClient     *whatsmeow.Client
+	store        *Store
+	qrCodes      []string
+	msgCh        chan Message
+	errCh        chan error
+	started      bool
 	reconnecting bool
-	lastError   string
-	startMu     sync.Mutex
+	lastError    string
+	startMu      sync.Mutex
 }
 
 func NewClient(cfg Config) *Client {

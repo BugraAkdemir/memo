@@ -1,10 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../providers/chat_provider.dart';
 import '../providers/connection_provider.dart';
 import '../screens/settings_screen.dart';
+import 'branding.dart';
 
 class SessionDrawer extends ConsumerWidget {
   const SessionDrawer({super.key});
@@ -13,51 +15,42 @@ class SessionDrawer extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final state = ref.watch(chatProvider);
     final connection = ref.watch(connectionStateProvider);
+    final host = Uri.tryParse(connection.baseUrl)?.host ?? connection.baseUrl;
 
     return Drawer(
       backgroundColor: MemoTheme.surface,
+      width: MediaQuery.of(context).size.width * 0.84,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.horizontal(right: Radius.circular(24)),
+      ),
       child: SafeArea(
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Container(
-              padding: const EdgeInsets.all(20),
+            // ── Header: identity + live connection ──
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 18, 18, 14),
               child: Row(
                 children: [
-                  Container(
-                    width: 40,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      color: MemoTheme.accent.withAlpha(30),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.memory_outlined,
-                      size: 22,
-                      color: MemoTheme.accent,
-                    ),
-                  ),
+                  const MemoLogo(size: 40),
                   const SizedBox(width: 12),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text(
-                          'Memo',
-                          style: TextStyle(
-                            color: MemoTheme.text,
-                            fontSize: 18,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        Text(
-                          connection.baseUrl,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: MemoTheme.textDim,
-                            fontSize: 11,
-                          ),
+                        Text('Memo', style: Theme.of(context).textTheme.titleLarge),
+                        const SizedBox(height: 3),
+                        Row(
+                          children: [
+                            const StatusDot(color: MemoTheme.sage, size: 6, pulse: true),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(host,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: MemoTheme.mono(11, color: MemoTheme.textFaint)),
+                            ),
+                          ],
                         ),
                       ],
                     ),
@@ -65,135 +58,132 @@ class SessionDrawer extends ConsumerWidget {
                 ],
               ),
             ),
-            const Divider(),
+
+            // ── New chat ──
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  const Text(
-                    'Chats',
-                    style: TextStyle(
-                      color: MemoTheme.textDim,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 0.5,
-                    ),
+              padding: const EdgeInsets.symmetric(horizontal: 14),
+              child: SizedBox(
+                width: double.infinity,
+                child: FilledButton.icon(
+                  onPressed: () {
+                    HapticFeedback.selectionClick();
+                    ref.read(chatProvider.notifier).newChat();
+                    Navigator.pop(context);
+                  },
+                  icon: const Icon(Icons.add_rounded, size: 19),
+                  label: const Text('New chat'),
+                  style: FilledButton.styleFrom(
+                    backgroundColor: MemoTheme.accent,
+                    foregroundColor: MemoTheme.onAccent,
+                    alignment: Alignment.centerLeft,
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 13),
+                    textStyle: MemoTheme.body(14.5, w: FontWeight.w600),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
                   ),
-                  InkWell(
-                    onTap: () => ref.read(chatProvider.notifier).newChat(),
-                    borderRadius: BorderRadius.circular(8),
-                    child: const Padding(
-                      padding: EdgeInsets.all(4),
-                      child: Icon(Icons.add, size: 20, color: MemoTheme.accent),
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
+
+            const SizedBox(height: 18),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 22),
+              child: Text('RECENT', style: MemoTheme.mono(10.5, color: MemoTheme.textFaint, ls: 1.4)),
+            ),
+            const SizedBox(height: 8),
+
+            // ── Sessions ──
             Expanded(
               child: state.sessions.isEmpty
-                  ? const Center(
-                      child: Text(
-                        'No chats yet',
-                        style: TextStyle(color: MemoTheme.textDim),
+                  ? Center(
+                      child: Padding(
+                        padding: const EdgeInsets.all(24),
+                        child: Text('No conversations yet.\nStart one above.',
+                            textAlign: TextAlign.center,
+                            style: MemoTheme.body(13.5, color: MemoTheme.textFaint, height: 1.5)),
                       ),
                     )
                   : ListView.builder(
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: 10),
                       itemCount: state.sessions.length,
                       itemBuilder: (context, index) {
-                        final session = state.sessions[index];
-                        final isActive = session.id == state.activeSessionId;
-                        return Container(
-                          margin: const EdgeInsets.only(bottom: 2),
-                          decoration: BoxDecoration(
-                            color: isActive
-                                ? MemoTheme.accent.withAlpha(20)
-                                : null,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          child: ListTile(
-                            dense: true,
-                            title: Text(
-                              session.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: isActive
-                                    ? MemoTheme.accent
-                                    : MemoTheme.text,
-                                fontSize: 14,
-                                fontWeight:
-                                    isActive ? FontWeight.w600 : FontWeight.w400,
+                        final s = state.sessions[index];
+                        final active = s.id == state.activeSessionId;
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 2),
+                          child: Material(
+                            color: active ? MemoTheme.accent.withValues(alpha: 0.12) : Colors.transparent,
+                            borderRadius: BorderRadius.circular(11),
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(11),
+                              onTap: () {
+                                ref.read(chatProvider.notifier).switchChat(s.id);
+                                Navigator.pop(context);
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 11),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      active ? Icons.chat_bubble_rounded : Icons.chat_bubble_outline_rounded,
+                                      size: 17,
+                                      color: active ? MemoTheme.accent : MemoTheme.textFaint,
+                                    ),
+                                    const SizedBox(width: 12),
+                                    Expanded(
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            s.title,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            style: MemoTheme.body(14,
+                                                w: active ? FontWeight.w600 : FontWeight.w400,
+                                                color: active ? MemoTheme.text : MemoTheme.textDim),
+                                          ),
+                                          const SizedBox(height: 2),
+                                          Text('${s.msgCount} messages',
+                                              style: MemoTheme.mono(10.5, color: MemoTheme.textFaint)),
+                                        ],
+                                      ),
+                                    ),
+                                  ],
+                                ),
                               ),
                             ),
-                            subtitle: Text(
-                              '${session.msgCount} messages',
-                              style: const TextStyle(
-                                color: MemoTheme.textDim,
-                                fontSize: 11,
-                              ),
-                            ),
-                            onTap: () {
-                              ref
-                                  .read(chatProvider.notifier)
-                                  .switchChat(session.id);
-                              Navigator.of(context).pop();
-                            },
                           ),
                         );
                       },
                     ),
             ),
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                children: [
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        Navigator.of(context).pop();
-                        Navigator.of(context).push(
-                          MaterialPageRoute(
-                            builder: (_) => const SettingsScreen(),
-                          ),
-                        );
-                      },
-                      icon: const Icon(Icons.settings, size: 16),
-                      label: const Text('Settings'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MemoTheme.accent,
-                        side: BorderSide(color: MemoTheme.accent.withAlpha(60)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: () {
-                        ref.read(connectionStateProvider.notifier).disconnect();
-                        Navigator.of(context).pop();
-                      },
-                      icon: const Icon(Icons.link_off, size: 16),
-                      label: const Text('Disconnect'),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: MemoTheme.error,
-                        side: BorderSide(color: MemoTheme.error.withAlpha(60)),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+
+            const Divider(height: 1),
+            // ── Footer actions ──
+            _footerTile(context, Icons.tune_rounded, 'Settings', MemoTheme.textDim, () {
+              Navigator.pop(context);
+              Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
+            }),
+            _footerTile(context, Icons.link_off_rounded, 'Disconnect', MemoTheme.error, () {
+              ref.read(connectionStateProvider.notifier).disconnect();
+              Navigator.pop(context);
+            }),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _footerTile(BuildContext context, IconData icon, String label, Color color, VoidCallback onTap) {
+    return InkWell(
+      onTap: onTap,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 22, vertical: 14),
+        child: Row(
+          children: [
+            Icon(icon, size: 19, color: color),
+            const SizedBox(width: 14),
+            Text(label, style: MemoTheme.body(14.5, color: color)),
           ],
         ),
       ),

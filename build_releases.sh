@@ -185,8 +185,10 @@ Type=Application
 Categories=Utility;
 DESKTOP
 
-        # Create a dummy icon if doesn't exist
-        touch "$APPDIR/${APP_NAME}.png"
+        # Copy app icon
+        if [ -f "$APPDIR/icon.png" ]; then
+            cp "$APPDIR/icon.png" "$APPDIR/${APP_NAME}.png"
+        fi
 
         # Download appimagetool if not exists or is empty
         if [ ! -s "appimagetool-x86_64.AppImage" ]; then
@@ -206,10 +208,14 @@ DESKTOP
         mkdir -p "$DEBDIR/opt/$APP_NAME"
         mkdir -p "$DEBDIR/usr/bin"
         mkdir -p "$DEBDIR/usr/share/applications"
+        mkdir -p "$DEBDIR/usr/share/icons/hicolor/1024x1024/apps"
         mkdir -p "$DEBDIR/DEBIAN"
 
         cp -r "$STAGEDIR/"* "$DEBDIR/opt/$APP_NAME/"
         ln -s "/opt/$APP_NAME/run_memo.sh" "$DEBDIR/usr/bin/${APP_NAME,,}"
+        if [ -f "$STAGEDIR/icon.png" ]; then
+            cp "$STAGEDIR/icon.png" "$DEBDIR/usr/share/icons/hicolor/1024x1024/apps/${APP_NAME,,}.png"
+        fi
 
         cat << CONTROL > "$DEBDIR/DEBIAN/control"
 Package: ${APP_NAME,,}

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -17,26 +18,31 @@ class SettingsScreen extends ConsumerWidget {
         backgroundColor: MemoTheme.bg,
         appBar: AppBar(
           title: const Text('Settings'),
-          bottom: const TabBar(
-            tabs: [
-              Tab(text: 'General'),
+          bottom: TabBar(
+            indicatorColor: MemoTheme.accent,
+            indicatorWeight: 2,
+            indicatorSize: TabBarIndicatorSize.label,
+            labelColor: MemoTheme.text,
+            unselectedLabelColor: MemoTheme.textFaint,
+            labelStyle: MemoTheme.body(14, w: FontWeight.w600),
+            unselectedLabelStyle: MemoTheme.body(14),
+            dividerColor: MemoTheme.border,
+            tabs: const [
+              Tab(text: 'Connection'),
               Tab(text: 'Providers'),
               Tab(text: 'Models'),
             ],
           ),
         ),
         body: const TabBarView(
-          children: [
-            _GeneralTab(),
-            _ProvidersTab(),
-            _ModelsTab(),
-          ],
+          children: [_GeneralTab(), _ProvidersTab(), _ModelsTab()],
         ),
       ),
     );
   }
 }
 
+// ── Connection ───────────────────────────────────────────────────────
 class _GeneralTab extends ConsumerStatefulWidget {
   const _GeneralTab();
 
@@ -77,28 +83,19 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
       final api = ref.read(apiClientProvider);
       api.updateBaseUrl(normalized);
       api.setToken(_tokenCtrl.text.trim());
-
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('backend_url', normalized);
       await prefs.setString('backend_token', _tokenCtrl.text.trim());
-
       ref.read(connectionStateProvider.notifier).connect(
-        normalized,
-        token: _tokenCtrl.text.trim(),
-        remote: Uri.parse(normalized).scheme == 'https',
-      );
-
+            normalized,
+            token: _tokenCtrl.text.trim(),
+            remote: Uri.parse(normalized).scheme == 'https',
+          );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Saved')),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved and reconnected')));
       }
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -107,195 +104,113 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
   @override
   Widget build(BuildContext context) {
     return ListView(
-      padding: const EdgeInsets.all(24),
+      padding: const EdgeInsets.all(20),
       children: [
+        _label('DESKTOP ADDRESS'),
+        const SizedBox(height: 8),
         TextField(
           controller: _urlCtrl,
-          decoration: const InputDecoration(
-            labelText: 'Backend URL',
-            prefixIcon: Icon(Icons.link),
-          ),
           keyboardType: TextInputType.url,
+          autocorrect: false,
+          style: MemoTheme.mono(14, color: MemoTheme.text),
+          decoration: const InputDecoration(prefixIcon: Icon(Icons.lan_outlined, size: 20)),
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 18),
+        _label('ACCESS TOKEN'),
+        const SizedBox(height: 8),
         TextField(
           controller: _tokenCtrl,
+          autocorrect: false,
+          style: MemoTheme.mono(14, color: MemoTheme.text),
           decoration: const InputDecoration(
-            labelText: 'Token (optional)',
-            prefixIcon: Icon(Icons.vpn_key),
+            prefixIcon: Icon(Icons.key_outlined, size: 20),
+            hintText: 'Only needed for remote access',
           ),
         ),
-        const SizedBox(height: 20),
+        const SizedBox(height: 24),
         SizedBox(
-          width: double.infinity,
-          height: 48,
+          height: 50,
           child: FilledButton(
             onPressed: _saving ? null : _save,
             style: FilledButton.styleFrom(
               backgroundColor: MemoTheme.accent,
-              foregroundColor: MemoTheme.bg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
+              foregroundColor: MemoTheme.onAccent,
+              disabledBackgroundColor: MemoTheme.surfaceHi,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
             ),
             child: _saving
-                ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(
-                      strokeWidth: 2,
-                      color: MemoTheme.bg,
-                    ),
-                  )
-                : const Text('Save & Reconnect',
-                    style: TextStyle(fontWeight: FontWeight.w600)),
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent))
+                : Text('Save & reconnect', style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
           ),
         ),
       ],
     );
   }
+
+  Widget _label(String s) => Text(s, style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2));
 }
 
-class _ProvidersTab extends ConsumerWidget {
+// ── Providers ────────────────────────────────────────────────────────
+class _ProvidersTab extends ConsumerStatefulWidget {
   const _ProvidersTab();
 
-  Future<void> _toggleProvider(WidgetRef ref, ProviderConfig p) async {
+  @override
+  ConsumerState<_ProvidersTab> createState() => _ProvidersTabState();
+}
+
+class _ProvidersTabState extends ConsumerState<_ProvidersTab> {
+  late Future<List<ProviderConfig>> _future;
+
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(apiClientProvider).getProviders();
+  }
+
+  void _reload() => setState(() => _future = ref.read(apiClientProvider).getProviders());
+
+  Future<void> _toggle(ProviderConfig p) async {
     try {
-      await ref
-          .read(apiClientProvider)
-          .updateProvider(p.copyWith(enabled: !p.enabled));
+      await ref.read(apiClientProvider).updateProvider(p.copyWith(enabled: !p.enabled));
+      _reload();
     } catch (_) {}
   }
 
-  Future<void> _deleteProvider(BuildContext context, WidgetRef ref, String type) async {
-    final confirm = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        backgroundColor: MemoTheme.surface,
-        title: const Text('Delete Provider'),
-        content: const Text('Are you sure?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Cancel'),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Delete', style: TextStyle(color: MemoTheme.error)),
-          ),
-        ],
-      ),
-    );
-    if (confirm == true) {
-      try {
-        await ref.read(apiClientProvider).deleteProvider(type);
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Provider deleted')),
-          );
-        }
-      } catch (e) {
-        if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Error: $e')),
-          );
-        }
-      }
-    }
-  }
-
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  Widget build(BuildContext context) {
     return FutureBuilder<List<ProviderConfig>>(
-      future: ref.read(apiClientProvider).getProviders(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+      future: _future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: MemoTheme.accent));
         }
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text('Error: ${snapshot.error}',
-                  style: const TextStyle(color: MemoTheme.error)),
-            ),
-          );
-        }
-        final providers = snapshot.data ?? [];
-
+        if (snap.hasError) return _errorView('${snap.error}');
+        final providers = snap.data ?? [];
         if (providers.isEmpty) {
-          return const Center(
-            child: Text('No providers configured.',
-                style: TextStyle(color: MemoTheme.textDim)),
-          );
+          return _emptyView('No providers configured', 'Add API providers from the desktop app.');
         }
-
         return ListView.builder(
           padding: const EdgeInsets.all(16),
           itemCount: providers.length,
-          itemBuilder: (context, index) {
-            final p = providers[index];
-            return Card(
-              color: MemoTheme.surface,
-              margin: const EdgeInsets.only(bottom: 8),
-              child: InkWell(
-                onTap: () => _showProviderDetail(context, ref, p),
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    children: [
-                      Container(
-                        width: 44,
-                        height: 44,
-                        decoration: BoxDecoration(
-                          color: MemoTheme.accent.withAlpha(20),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(Icons.cloud,
-                            color: MemoTheme.accent, size: 22),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(p.name,
-                                style: const TextStyle(
-                                    fontWeight: FontWeight.w600)),
-                            const SizedBox(height: 2),
-                            Text(p.model,
-                                style: const TextStyle(
-                                    fontSize: 12, color: MemoTheme.textDim)),
-                          ],
-                        ),
-                      ),
-                      GestureDetector(
-                        onTap: () => _toggleProvider(ref, p),
-                        child: Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 10, vertical: 6),
-                          decoration: BoxDecoration(
-                            color: p.enabled
-                                ? MemoTheme.success.withAlpha(25)
-                                : MemoTheme.textDim.withAlpha(25),
-                            borderRadius: BorderRadius.circular(6),
-                          ),
-                          child: Text(
-                            p.enabled ? 'ON' : 'OFF',
-                            style: TextStyle(
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
-                              color: p.enabled
-                                  ? MemoTheme.success
-                                  : MemoTheme.textDim,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
+          itemBuilder: (context, i) {
+            final p = providers[i];
+            return _card(
+              child: Row(
+                children: [
+                  _iconTile(Icons.cloud_outlined),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(p.name, style: MemoTheme.body(15, w: FontWeight.w600)),
+                        const SizedBox(height: 3),
+                        Text(p.model.isEmpty ? p.type : p.model, style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
+                      ],
+                    ),
                   ),
-                ),
+                  _togglePill(p.enabled, () => _toggle(p)),
+                ],
               ),
             );
           },
@@ -304,76 +219,27 @@ class _ProvidersTab extends ConsumerWidget {
     );
   }
 
-  void _showProviderDetail(
-      BuildContext context, WidgetRef ref, ProviderConfig p) {
-    showModalBottomSheet(
-      context: context,
-      backgroundColor: MemoTheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (ctx) => Padding(
-        padding: const EdgeInsets.all(24),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(p.name,
-                style: const TextStyle(
-                    fontSize: 18, fontWeight: FontWeight.w600)),
-            const SizedBox(height: 4),
-            Text(p.type,
-                style: const TextStyle(color: MemoTheme.textDim, fontSize: 13)),
-            const SizedBox(height: 16),
-            _detailRow('Model', p.model),
-            if (p.baseUrl != null && p.baseUrl!.isNotEmpty)
-              _detailRow('Base URL', p.baseUrl!),
-            _detailRow('Status', p.connected ? 'Connected' : 'Unknown'),
-            const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.pop(ctx);
-                  _deleteProvider(context, ref, p.type);
-                },
-                icon: const Icon(Icons.delete_outline, size: 16),
-                label: const Text('Delete Provider'),
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: MemoTheme.error,
-                  side: BorderSide(color: MemoTheme.error.withAlpha(60)),
-                ),
-              ),
-            ),
-            const SizedBox(height: 12),
-          ],
+  Widget _togglePill(bool on, VoidCallback onTap) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
+        decoration: BoxDecoration(
+          color: on ? MemoTheme.sage.withValues(alpha: 0.16) : MemoTheme.surfaceHi,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: on ? MemoTheme.sage.withValues(alpha: 0.4) : MemoTheme.border),
         ),
-      ),
-    );
-  }
-
-  Widget _detailRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          SizedBox(
-            width: 80,
-            child: Text(label,
-                style: const TextStyle(
-                    color: MemoTheme.textDim, fontSize: 13)),
-          ),
-          Expanded(
-            child: Text(value,
-                style: const TextStyle(fontSize: 13)),
-          ),
-        ],
+        child: Text(on ? 'ON' : 'OFF',
+            style: MemoTheme.mono(11, w: FontWeight.w600, color: on ? MemoTheme.sage : MemoTheme.textFaint)),
       ),
     );
   }
 }
 
+// ── Models ───────────────────────────────────────────────────────────
 class _ModelsTab extends ConsumerStatefulWidget {
   const _ModelsTab();
 
@@ -382,23 +248,22 @@ class _ModelsTab extends ConsumerStatefulWidget {
 }
 
 class _ModelsTabState extends ConsumerState<_ModelsTab> {
+  late Future<List<LocalModel>> _future;
   bool _stopping = false;
 
-  Future<void> _stopModel() async {
+  @override
+  void initState() {
+    super.initState();
+    _future = ref.read(apiClientProvider).listLocalModels();
+  }
+
+  Future<void> _stop() async {
     setState(() => _stopping = true);
     try {
       await ref.read(apiClientProvider).stopModel();
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Model stopped')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Model stopped')));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _stopping = false);
     }
@@ -407,58 +272,42 @@ class _ModelsTabState extends ConsumerState<_ModelsTab> {
   @override
   Widget build(BuildContext context) {
     return FutureBuilder<List<LocalModel>>(
-      future: ref.read(apiClientProvider).listLocalModels(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
+      future: _future,
+      builder: (context, snap) {
+        if (snap.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator(color: MemoTheme.accent));
         }
-        if (snapshot.hasError) {
-          return Center(
-            child: Padding(
-              padding: const EdgeInsets.all(32),
-              child: Text('Error: ${snapshot.error}',
-                  style: const TextStyle(color: MemoTheme.error)),
-            ),
-          );
-        }
-        final models = snapshot.data ?? [];
-
+        if (snap.hasError) return _errorView('${snap.error}');
+        final models = snap.data ?? [];
         return Column(
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              padding: const EdgeInsets.fromLTRB(16, 14, 16, 6),
               child: SizedBox(
                 width: double.infinity,
                 child: OutlinedButton.icon(
-                  onPressed: _stopping ? null : _stopModel,
+                  onPressed: _stopping ? null : _stop,
                   icon: _stopping
-                      ? const SizedBox(
-                          width: 14,
-                          height: 14,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.stop, size: 16),
-                  label: const Text('Stop Running Model'),
+                      ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.error))
+                      : const Icon(Icons.stop_circle_outlined, size: 18),
+                  label: const Text('Stop running model'),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: MemoTheme.error,
-                    side: BorderSide(color: MemoTheme.error.withAlpha(60)),
+                    side: BorderSide(color: MemoTheme.error.withValues(alpha: 0.4)),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
+                    textStyle: MemoTheme.body(14, w: FontWeight.w600),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
               ),
             ),
             Expanded(
               child: models.isEmpty
-                  ? const Center(
-                      child: Text('No models found.',
-                          style: TextStyle(color: MemoTheme.textDim)),
-                    )
+                  ? _emptyView('No local models', 'Download models from the desktop app.')
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: models.length,
-                      itemBuilder: (context, index) {
-                        final m = models[index];
-                        return _ModelCard(m: m);
-                      },
+                      itemBuilder: (context, i) => _ModelCard(m: models[i]),
                     ),
             ),
           ],
@@ -479,102 +328,121 @@ class _ModelCard extends ConsumerStatefulWidget {
 class _ModelCardState extends ConsumerState<_ModelCard> {
   bool _starting = false;
 
-  Future<void> _startModel() async {
+  Future<void> _start() async {
     setState(() => _starting = true);
     try {
       await ref.read(apiClientProvider).startModel(path: widget.m.path);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${widget.m.filename} started')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.m.filename} started')));
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error: $e')),
-        );
-      }
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
   }
 
-  String _formatSize(int bytes) {
-    if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(0)} KB';
-    if (bytes < 1024 * 1024 * 1024) {
-      return '${(bytes / (1024 * 1024)).toStringAsFixed(0)} MB';
-    }
-    return '${(bytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+  String _size(int b) {
+    if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
+    if (b < 1024 * 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(0)} MB';
+    return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
   }
 
   @override
   Widget build(BuildContext context) {
-    return Card(
-      color: MemoTheme.surface,
-      margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: MemoTheme.accent.withAlpha(20),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                widget.m.isEmbedding ? Icons.auto_awesome : Icons.memory,
-                color: MemoTheme.accent,
-                size: 22,
-              ),
+    return _card(
+      child: Row(
+        children: [
+          _iconTile(widget.m.isEmbedding ? Icons.auto_awesome_outlined : Icons.developer_board_rounded),
+          const SizedBox(width: 14),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(widget.m.filename,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: MemoTheme.body(14.5, w: FontWeight.w600)),
+                const SizedBox(height: 3),
+                Text('${_size(widget.m.sizeBytes)}${widget.m.isEmbedding ? " · embedding" : ""}',
+                    style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
+              ],
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(widget.m.filename,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontWeight: FontWeight.w600)),
-                  const SizedBox(height: 2),
-                  Text(
-                    '${_formatSize(widget.m.sizeBytes)}${widget.m.isEmbedding ? " · embedding" : ""}',
-                    style: const TextStyle(
-                        fontSize: 12, color: MemoTheme.textDim),
-                  ),
-                ],
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            height: 38,
+            child: FilledButton(
+              onPressed: _starting ? null : _start,
+              style: FilledButton.styleFrom(
+                backgroundColor: MemoTheme.accent.withValues(alpha: 0.16),
+                foregroundColor: MemoTheme.accentBright,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
+              child: _starting
+                  ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent))
+                  : Text('Start', style: MemoTheme.body(13.5, w: FontWeight.w600, color: MemoTheme.accentBright)),
             ),
-            const SizedBox(width: 8),
-            SizedBox(
-              height: 36,
-              child: ElevatedButton(
-                onPressed: _starting ? null : _startModel,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: MemoTheme.accent,
-                  foregroundColor: MemoTheme.bg,
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: _starting
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 2,
-                          color: MemoTheme.bg,
-                        ),
-                      )
-                    : const Text('Start', style: TextStyle(fontSize: 13)),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
+}
+
+// ── Shared bits ──────────────────────────────────────────────────────
+Widget _card({required Widget child}) {
+  return Container(
+    margin: const EdgeInsets.only(bottom: 10),
+    padding: const EdgeInsets.all(14),
+    decoration: BoxDecoration(
+      color: MemoTheme.surface,
+      borderRadius: BorderRadius.circular(14),
+      border: Border.all(color: MemoTheme.border),
+    ),
+    child: child,
+  );
+}
+
+Widget _iconTile(IconData icon) {
+  return Container(
+    width: 42,
+    height: 42,
+    decoration: BoxDecoration(
+      color: MemoTheme.accent.withValues(alpha: 0.12),
+      borderRadius: BorderRadius.circular(11),
+    ),
+    child: Icon(icon, color: MemoTheme.accent, size: 21),
+  );
+}
+
+Widget _errorView(String msg) {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.cloud_off_rounded, size: 34, color: MemoTheme.textFaint),
+          const SizedBox(height: 12),
+          Text("Couldn't load", style: MemoTheme.body(15, w: FontWeight.w600)),
+          const SizedBox(height: 6),
+          Text(msg, textAlign: TextAlign.center, style: MemoTheme.body(13, color: MemoTheme.textFaint), maxLines: 4, overflow: TextOverflow.ellipsis),
+        ],
+      ),
+    ),
+  );
+}
+
+Widget _emptyView(String title, String sub) {
+  return Center(
+    child: Padding(
+      padding: const EdgeInsets.all(32),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Text(title, style: MemoTheme.body(15, w: FontWeight.w600, color: MemoTheme.textDim)),
+          const SizedBox(height: 6),
+          Text(sub, textAlign: TextAlign.center, style: MemoTheme.body(13, color: MemoTheme.textFaint)),
+        ],
+      ),
+    ),
+  );
 }

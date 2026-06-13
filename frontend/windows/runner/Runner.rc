@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "com.memo" "\0"
-            VALUE "FileDescription", "memo_flutter" "\0"
+            VALUE "FileDescription", "Memo" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "memo_flutter" "\0"
+            VALUE "InternalName", "Memo" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2026 com.memo. All rights reserved." "\0"
             VALUE "OriginalFilename", "memo_flutter.exe" "\0"
-            VALUE "ProductName", "memo_flutter" "\0"
+            VALUE "ProductName", "Memo" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

@@ -1927,23 +1927,13 @@ class _AboutTab extends ConsumerWidget {
       children: [
         Row(
           children: [
-            Container(
-              width: 64,
-              height: 64,
-              decoration: BoxDecoration(
-                color: MemoTheme.accentPale,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: MemoTheme.accent, width: 2),
-              ),
-              child: Center(
-                child: Text(
-                  'M',
-                  style: TextStyle(
-                    fontSize: 28,
-                    fontWeight: FontWeight.bold,
-                    color: MemoTheme.accent,
-                  ),
-                ),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Image.asset(
+                'lib/icon/memo.png',
+                width: 64,
+                height: 64,
+                fit: BoxFit.cover,
               ),
             ),
             SizedBox(width: 24),

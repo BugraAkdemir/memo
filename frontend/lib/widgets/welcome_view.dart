@@ -21,26 +21,13 @@ class WelcomeView extends ConsumerWidget {
           children: [
             // ─── Logo ────────────────────────────────
             _FadeIn(
-              child: Container(
-                width: 76,
-                height: 76,
-                decoration: BoxDecoration(
-                  color: c.bgElement,
-                  borderRadius: BorderRadius.circular(22),
-                  border: Border.all(
-                    color: MemoTheme.accent.withValues(alpha: 0.5),
-                    width: 1.5,
-                  ),
-                ),
-                child: const Center(
-                  child: Text(
-                    'M',
-                    style: TextStyle(
-                      fontSize: 34,
-                      fontWeight: FontWeight.w600,
-                      color: MemoTheme.accent,
-                    ),
-                  ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(22),
+                child: Image.asset(
+                  'lib/icon/memo.png',
+                  width: 76,
+                  height: 76,
+                  fit: BoxFit.cover,
                 ),
               ),
             ),

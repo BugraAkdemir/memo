@@ -1,5 +1,5 @@
 {
-  "enabled": false,
+  "enabled": true,
   "chief_type": "claude",
   "chief_model": "claude-sonnet-4-20250514",
   "roles": [

@@ -60,4 +60,4 @@ whatsapp:
     data_dir: ./data/whatsapp
     auto_index: true
     max_history_days: 7
-active_provider: ""
+active_provider: openai

@@ -80,23 +80,13 @@ class _AppShellState extends ConsumerState<AppShell> {
           const SizedBox(height: 16),
 
           // ─── Logo ────────────────────────────────────
-          Container(
-            width: 40,
-            height: 40,
-            decoration: BoxDecoration(
-              color: MemoTheme.accentPale,
-              borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: MemoTheme.accent, width: 1.5),
-            ),
-            child: const Center(
-              child: Text(
-                'M',
-                style: TextStyle(
-                  fontSize: 20,
-                  fontWeight: FontWeight.bold,
-                  color: MemoTheme.accent,
-                ),
-              ),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: Image.asset(
+              'lib/icon/memo.png',
+              width: 40,
+              height: 40,
+              fit: BoxFit.cover,
             ),
           ),
 

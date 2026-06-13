@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -178,18 +179,23 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       content: text,
       timestamp: timestamp,
     );
+    final cancelToken = CancelToken();
 
     ref.read(isSendingProvider.notifier).state = true;
     ref.read(messagesProvider.notifier).addMessage(userMsg);
 
     ref.read(streamingContentProvider.notifier).state = '';
     try {
-      await for (final chunk in api.sendWhatsAppChatStream(text)) {
+      await for (final chunk in api.sendWhatsAppChatStream(text, cancelToken: cancelToken)) {
         ref.read(streamingContentProvider.notifier).state =
             ref.read(streamingContentProvider) + chunk;
       }
-    } catch (_) {
-      // stream ended normally
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('WhatsApp hatası: $e')),
+        );
+      }
     }
 
     final full = ref.read(streamingContentProvider);

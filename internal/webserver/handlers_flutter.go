@@ -95,19 +95,20 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "tmp error", http.StatusInternalServerError)
 		return
 	}
+	tmpFilePath := tmpFile.Name()
+	defer os.Remove(tmpFilePath)
 	defer tmpFile.Close()
 
 	if _, err := io.Copy(tmpFile, file); err != nil {
 		http.Error(w, "copy error", http.StatusInternalServerError)
 		return
 	}
-	tmpFilePath := tmpFile.Name()
 	tmpFile.Close()
 
 	mimeType := header.Header.Get("Content-Type")
 	isImage := false
 	if mimeType != "" {
-		if len(mimeType) >= 5 && mimeType[:5] == "image" {
+		if strings.HasPrefix(mimeType, "image") {
 			isImage = true
 		}
 	} else {
@@ -1330,20 +1331,27 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Connection", "keep-alive")
-	//Cr: Bugra Akdmeir Memo iS oPENsOURCE
 	ctx := r.Context()
 	streamCh := s.fullBridge.WhatsAppChatStream(ctx, req.Message)
 
-	for chunk := range streamCh {
-		if chunk.FinishReason == "agent_event" {
-			fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
-		} else if chunk.Content != "" {
-			fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case chunk, ok := <-streamCh:
+			if !ok {
+				return
+			}
+			if chunk.FinishReason == "agent_event" {
+				fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
+			} else if chunk.Content != "" {
+				fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
+			}
+			if chunk.Done {
+				fmt.Fprintf(w, "data: [DONE]\n\n")
+				return
+			}
+			flusher.Flush()
 		}
-		if chunk.Done {
-			fmt.Fprintf(w, "data: [DONE]\n\n")
-			break
-		}
-		flusher.Flush()
 	}
 }

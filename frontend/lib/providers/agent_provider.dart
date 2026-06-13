@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/agent.dart';
@@ -20,7 +21,9 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
     try {
       final enabled = await _ref.read(apiClientProvider).getAgentEnabled();
       state = enabled;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('agent: init error: $e');
+    }
   }
 
   Future<void> setEnabled(bool enabled) async {
@@ -28,7 +31,8 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
     state = enabled;
     try {
       await _ref.read(apiClientProvider).setAgentEnabled(enabled);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('agent: setEnabled error: $e');
       state = previous;
     }
   }
@@ -59,14 +63,18 @@ class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
     try {
       await ref.read(apiClientProvider).revokeAgentPermission(id);
       await refresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('agent: revoke error: $e');
+    }
   }
 
   Future<void> clearAll() async {
     try {
       await ref.read(apiClientProvider).clearAgentPermissions();
       await refresh();
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('agent: clearAll error: $e');
+    }
   }
 }
 

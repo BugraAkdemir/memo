@@ -843,23 +843,29 @@ class MemoApiClient {
   }
 
   /// Send a message in WhatsApp chat mode (streaming SSE).
-  Stream<String> sendWhatsAppChatStream(String message) async* {
-    final response = await _dio.post(
-      '/api/whatsapp/chat-stream',
-      data: {'message': message},
-      options: Options(responseType: ResponseType.stream),
-    );
-    final stream = response.data.stream;
-    final lineStream = stream
-        .cast<List<int>>()
-        .transform(utf8.decoder)
-        .transform(const LineSplitter());
-    await for (final line in lineStream) {
-      if (line.startsWith('data: ')) {
-        final content = line.substring(6);
-        if (content == '[DONE]') return;
-        yield content;
+  Stream<String> sendWhatsAppChatStream(String message, {CancelToken? cancelToken}) async* {
+    try {
+      final response = await _dio.post(
+        '/api/whatsapp/chat-stream',
+        data: {'message': message},
+        options: Options(responseType: ResponseType.stream),
+        cancelToken: cancelToken,
+      );
+      final stream = response.data.stream;
+      final lineStream = stream
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+      await for (final line in lineStream) {
+        if (cancelToken?.isCancelled == true) return;
+        if (line.startsWith('data: ')) {
+          final content = line.substring(6);
+          if (content == '[DONE]') return;
+          yield content;
+        }
       }
+    } catch (e) {
+      throw Exception('WhatsApp stream error: $e');
     }
   }
 }

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../models/whatsapp.dart';
@@ -40,7 +41,9 @@ class WhatsAppChatModeNotifier extends StateNotifier<bool> {
     try {
       final enabled = await _api.getWhatsAppChatMode();
       state = enabled;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('whatsapp: init error: $e');
+    }
   }
 
   Future<void> toggle() async {
@@ -48,7 +51,9 @@ class WhatsAppChatModeNotifier extends StateNotifier<bool> {
     try {
       await _api.setWhatsAppChatMode(next);
       state = next;
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('whatsapp: toggle error: $e');
+    }
   }
 }
 

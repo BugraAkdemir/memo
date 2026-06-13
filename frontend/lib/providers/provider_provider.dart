@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/provider_config.dart';
@@ -32,12 +33,12 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
     await refresh();
   }
 
-  Future<bool> testProvider(ProviderConfig config) async {
+  Future<Map<String, dynamic>> testProvider(ProviderConfig config) async {
     try {
-      final result = await ref.read(apiClientProvider).testProvider(config);
-      return result['connected'] == true;
-    } catch (_) {
-      return false;
+      return await ref.read(apiClientProvider).testProvider(config);
+    } catch (e) {
+      debugPrint('provider: test error: $e');
+      return {'connected': false, 'error': e.toString()};
     }
   }
 }
@@ -53,7 +54,8 @@ class ActiveProviderNotifier extends AsyncNotifier<String> {
   Future<String> build() async {
     try {
       return await ref.read(apiClientProvider).getActiveProvider();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('provider: getActiveProvider error: $e');
       return '';
     }
   }

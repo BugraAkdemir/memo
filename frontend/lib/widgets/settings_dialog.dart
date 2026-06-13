@@ -214,6 +214,7 @@ class _ProvidersTab extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final providersAsync = ref.watch(providerListProvider);
+    final activeType = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
 
     return ListView(
       padding: const EdgeInsets.all(32),
@@ -280,7 +281,7 @@ class _ProvidersTab extends ConsumerWidget {
             }
 
             return Column(
-              children: providers.map((p) => _ProviderCard(p: p)).toList(),
+              children: providers.map((p) => _ProviderCard(p: p, isActive: p.type == activeType)).toList(),
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
@@ -293,8 +294,9 @@ class _ProvidersTab extends ConsumerWidget {
 
 class _ProviderCard extends ConsumerWidget {
   final ProviderConfig p;
+  final bool isActive;
 
-  const _ProviderCard({required this.p});
+  const _ProviderCard({required this.p, this.isActive = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -302,7 +304,12 @@ class _ProviderCard extends ConsumerWidget {
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
-      child: Padding(
+      child: Container(
+        decoration: isActive ? BoxDecoration(
+          border: Border.all(color: MemoTheme.accent, width: 2),
+          borderRadius: BorderRadius.circular(12),
+        ) : null,
+        child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
           children: [
@@ -316,8 +323,24 @@ class _ProviderCard extends ConsumerWidget {
                     : MemoTheme.of(context).borderSoft,
                 borderRadius: BorderRadius.circular(12),
               ),
-              child: Center(
-                child: Text(icon, style: const TextStyle(fontSize: 24)),
+              child: Stack(
+                children: [
+                  Center(child: Text(icon, style: const TextStyle(fontSize: 24))),
+                  if (isActive)
+                    Positioned(
+                      top: -2,
+                      right: -2,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: const BoxDecoration(
+                          color: MemoTheme.green,
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.check, size: 10, color: Colors.white),
+                      ),
+                    ),
+                ],
               ),
             ),
             const SizedBox(width: 16),
@@ -327,12 +350,34 @@ class _ProviderCard extends ConsumerWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Text(
-                    p.name,
-                    style: const TextStyle(
-                      fontWeight: FontWeight.w600,
-                      fontSize: 14,
-                    ),
+                  Row(
+                    children: [
+                      Text(
+                        p.name,
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 14,
+                        ),
+                      ),
+                      if (isActive) ...[
+                        const SizedBox(width: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                          decoration: BoxDecoration(
+                            color: MemoTheme.accent.withValues(alpha: 0.15),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: const Text(
+                            'ACTIVE',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.bold,
+                              color: MemoTheme.accent,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                   const SizedBox(height: 2),
                   Text(
@@ -470,7 +515,8 @@ class _ProviderCard extends ConsumerWidget {
           ],
         ),
       ),
-    );
+    ),
+  );
   }
 }
 

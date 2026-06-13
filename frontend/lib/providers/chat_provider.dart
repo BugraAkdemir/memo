@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
@@ -294,8 +295,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         ref.invalidate(chatListProvider);
       });
     } catch (e) {
+      _stopped = false;
       ref.read(errorMessageProvider.notifier).state = e.toString();
-      // Clear streaming state on error
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
@@ -420,7 +421,8 @@ class IncognitoNotifier extends StateNotifier<bool> {
     state = !state;
     try {
       await _ref.read(apiClientProvider).toggleIncognito(state);
-    } catch (_) {
+    } catch (e) {
+      debugPrint('chat: incognito toggle error: $e');
       state = previous;
     }
   }
@@ -438,7 +440,8 @@ final connectionStatusProvider = StreamProvider<bool>((ref) async* {
   while (true) {
     try {
       yield await api.isAlive();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('chat: connectionStatus error: $e');
       yield false;
     }
     await Future.delayed(const Duration(seconds: 30));

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/gpu_info.dart';
@@ -31,22 +32,26 @@ class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
 
 // ─── Model Status ───────────────────────────────────────────────
 
-final modelStatusProvider = StreamProvider<ServerStatus>((ref) async* {
+final modelStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async* {
+  final api = ref.read(apiClientProvider);
   while (true) {
     try {
-      yield await ref.read(apiClientProvider).getModelStatus();
-    } catch (_) {
+      yield await api.getModelStatus();
+    } catch (e) {
+      debugPrint('models: modelStatus error: $e');
       yield const ServerStatus();
     }
     await Future.delayed(const Duration(seconds: 5));
   }
 });
 
-final embeddingStatusProvider = StreamProvider<ServerStatus>((ref) async* {
+final embeddingStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async* {
+  final api = ref.read(apiClientProvider);
   while (true) {
     try {
-      yield await ref.read(apiClientProvider).getEmbeddingStatus();
-    } catch (_) {
+      yield await api.getEmbeddingStatus();
+    } catch (e) {
+      debugPrint('models: embeddingStatus error: $e');
       yield const ServerStatus();
     }
     await Future.delayed(const Duration(seconds: 5));
@@ -58,8 +63,9 @@ final embeddingStatusProvider = StreamProvider<ServerStatus>((ref) async* {
 final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
   try {
     return await ref.read(apiClientProvider).getGpuInfo();
-  } catch (_) {
-    return const GPUInfo(); // CPU fallback
+  } catch (e) {
+    debugPrint('models: gpuInfo error: $e');
+    return const GPUInfo();
   }
 });
 
@@ -78,7 +84,8 @@ final downloadProgressProvider =
       final progress = await api.getDownloadProgress();
       active = progress.active;
       yield progress;
-    } catch (_) {
+    } catch (e) {
+      debugPrint('models: downloadProgress error: $e');
       yield const DownloadProgress();
     }
     await Future.delayed(

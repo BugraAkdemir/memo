@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../models/orchestra_config.dart';
@@ -14,14 +15,20 @@ class OrchestraConfigNotifier extends AsyncNotifier<OrchestraConfig> {
   Future<OrchestraConfig> build() async {
     try {
       return await ref.read(apiClientProvider).getOrchestraConfig();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('orchestra: build error: $e');
       return const OrchestraConfig();
     }
   }
 
   Future<void> save(OrchestraConfig config) async {
-    await ref.read(apiClientProvider).updateOrchestraConfig(config);
-    state = AsyncData(config);
+    try {
+      await ref.read(apiClientProvider).updateOrchestraConfig(config);
+      state = AsyncData(config);
+    } catch (e) {
+      debugPrint('orchestra: save error: $e');
+      rethrow;
+    }
   }
 
   Future<void> toggle(bool enabled) async {

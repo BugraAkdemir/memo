@@ -51,6 +51,7 @@ class AgentEvent {
 }
 
 class AgentPermission {
+  final String id;
   final String toolName;
   final String argsHash;
   final String policy;
@@ -58,6 +59,7 @@ class AgentPermission {
   final String updatedAt;
 
   const AgentPermission({
+    required this.id,
     required this.toolName,
     required this.argsHash,
     required this.policy,
@@ -66,6 +68,7 @@ class AgentPermission {
   });
 
   factory AgentPermission.fromJson(Map<String, dynamic> json) => AgentPermission(
+        id: json['id'] as String? ?? '',
         toolName: json['tool'] as String? ?? '',
         argsHash: json['args_hash'] as String? ?? '',
         policy: json['policy'] as String? ?? '',
@@ -74,6 +77,7 @@ class AgentPermission {
       );
 
   Map<String, dynamic> toJson() => {
+        'id': id,
         'tool': toolName,
         'args_hash': argsHash,
         'policy': policy,

@@ -80,12 +80,7 @@ class PermissionHistory extends ConsumerWidget {
                         icon: const Icon(Icons.delete_outline),
                         tooltip: 'İzni İptal Et',
                         onPressed: () {
-                          // The Go backend deletes by toolName and argsHash, we can pass a composite id if needed
-                          // In the backend DeleteAgentPermission takes an `id`. Let's assume id is argsHash or toolName:argsHash.
-                          // Wait, the API endpoint is DELETE /api/agent/permissions with {"id": ...}
-                          // Wait! Let's check executor.go in Go to see how id is matched.
-                          // Actually, we pass the argsHash as the id.
-                          ref.read(agentPermissionsProvider.notifier).revoke(p.argsHash);
+                          ref.read(agentPermissionsProvider.notifier).revoke(p.id);
                         },
                       ),
                     ),

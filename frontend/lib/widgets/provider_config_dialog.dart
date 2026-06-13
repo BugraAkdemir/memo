@@ -145,7 +145,7 @@ class _ProviderConfigDialogState
     if (!mounted) return;
     setState(() {
       _testing = false;
-      _testResult = result;
+      _testResult = result['connected'] == true;
     });
   }
 

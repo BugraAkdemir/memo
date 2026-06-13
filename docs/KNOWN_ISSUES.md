@@ -37,23 +37,6 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **Risk:** Complete sandbox escape via shell interpreters.
 - **Category:** Security
 
-### CR05. Flutter: 25+ Empty `catch (_)` Blocks Swallow All Errors
-- **File:** Across `frontend/lib/` — `providers/chat_provider.dart`, `providers/models_provider.dart`, `providers/agent_provider.dart`, `providers/whatsapp_provider.dart`, `providers/orchestra_provider.dart`, `providers/provider_provider.dart`, `providers/version_provider.dart`, `widgets/chat_input.dart`, `widgets/agent/permission_dialog.dart`, `widgets/agent/agent_chat_card.dart`, `widgets/setup_wizard_view.dart`, `widgets/agent/permission_history.dart`
-- **Detail:** 25+ `catch (_) {}` blocks silently swallow ALL errors including `DioException`, `SocketException`, `FormatException`, `TypeError`. When a provider call fails, the user sees no error message — the app silently does nothing. Previously reported as 19; actual count is 25+.
-- **Risk:** Users have zero feedback when operations fail (config save, model listing, agent toggle, provider test, WhatsApp toggle, etc.).
-
-### CR06. WhatsApp SSE Handler Does Not Monitor `ctx.Done()`
-- **File:** `internal/webserver/handlers_flutter.go:1311-1349` (`handleWhatsAppChatStream`)
-- **Detail:** Unlike `handleSendStream` and `handleSendFileStream`, `handleWhatsAppChatStream` does NOT monitor `ctx.Done()` via a `select` statement. The `for chunk := range streamCh` loop blocks until the channel is closed. When the client disconnects, the goroutine (and underlying `WhatsAppChatStream`) continues running for the full 300s context timeout.
-- **Risk:** Orphaned goroutines per disconnected client (~5 min each). DoS vector.
-- **Category:** Resource Leak
-
-### CR07. Sandbox: No Path Traversal Protection in Tool Arguments
-- **File:** `internal/agent/sandbox.go:70-94` (`ValidatePath`), `internal/agent/tools/file.go`, `internal/agent/tools/edit.go`, `internal/agent/tools/search.go`
-- **Detail:** The sandbox validates the working directory using `strings.HasPrefix` but does NOT validate file paths in tool arguments (`read_file`, `write_file`, `edit_file`, etc.). A tool like `write_file` given a relative path like `../../etc/passwd` can escape the sandbox directory.
-- **Risk:** Sandbox escape via relative paths in tool arguments.
-- **Category:** Security
-
 ---
 
 ## 🟠 High
@@ -85,70 +68,45 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/core/api_client.dart:38-87`, `600-654`
 - **Detail:** `sendMessageStream` and `sendFileStream` have no idle/stall timeout. If the server stops sending data, the `await for` blocks indefinitely. The only safeguard is the 120s `receiveTimeout` at the Dio level, but a stalled stream that never errors will hold the connection forever.
 
-### H07. Flutter: `sendWhatsAppChatStream` Has No Error Handling
-- **File:** `frontend/lib/core/api_client.dart:846-864`
-- **Detail:** `sendWhatsAppChatStream` has no `try/catch` or `DioException` handling at all. Any network error during WhatsApp streaming results in an unhandled exception.
-
-### H08. Flutter: `sendWhatsAppChatStream` Missing `CancelToken` Parameter
-- **File:** `frontend/lib/core/api_client.dart:846-864`
-- **Detail:** Unlike `sendMessageStream` and `sendFileStream`, the WhatsApp stream method has no `CancelToken` parameter. WhatsApp streaming cannot be cancelled from the client side.
-
-### H09. Flutter: Agent Permission Revoke API Mismatch
-- **File:** `frontend/lib/widgets/agent/permission_history.dart:83-88`, `frontend/lib/providers/agent_provider.dart:58-62`
-- **Detail:** `revoke(p.argsHash)` may send `argsHash` instead of the `id` parameter expected by the backend API (`DELETE /api/agent/permissions?id=...`). The expected identifier is ambiguous. Error is silently swallowed (empty catch).
-- **Risk:** Permission revocations silently fail; user believes permissions are revoked when they are not.
-
-### H10. Flutter: `testProvider()` Silently Returns `false`
-- **File:** `frontend/lib/providers/provider_provider.dart:36-41`
-- **Detail:** `testProvider()` returns `false` on ANY error with an empty catch block. Users testing provider connections get no feedback on WHY it failed (wrong key, network error, server error).
-
-### H11. Flutter: Global Style Cache (`_styleCache`) Memory Leak
+### H07. Flutter: Global Style Cache (`_styleCache`) Memory Leak
 - **File:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detail:** `_styleCache` is a global mutable `Map` that is never cleared. It grows indefinitely with every unique combination of theme brightness and accent color visited. A memory leak proportional to theme configurations visited.
 
-### H12. Flutter: `chat_provider.sendMessage()` Permanent Stream Deadlock
-- **File:** `frontend/lib/providers/chat_provider.dart:260-263, 296`
-- **Detail:** The `sendMessage()` catch block (line 296) does NOT call `_stopped = false`. If a stream errors after being stopped, `_stopped` remains `true`, permanently preventing all future messages from using the streaming path.
-- **Risk:** Agent/streaming mode permanently locks; restart required.
-
-### H13. Flutter: `connectionStatusProvider` Infinite Polling
+### H11. Flutter: `connectionStatusProvider` Infinite Polling
 - **File:** `frontend/lib/providers/chat_provider.dart:429-438`
 - **Detail:** `connectionStatusProvider` runs a `while(true)` polling loop every 30 seconds for the entire app lifetime. No `autoDispose` variant used. Runs even when sidebar is hidden.
 
-### H14. `handleSendFileStream`: Temp File Cleanup Issues
-- **File:** `internal/webserver/handlers_flutter.go:72-159`
-- **Detail:** Temp file created with `os.CreateTemp` has multiple issues:
-  - Line 98-104: File closed twice (`defer tmpFile.Close()` + `tmpFile.Close()`)
-  - No `defer os.Remove(tmpFilePath)` — temp file leaks on error
-  - Line 65-66: No error check after `io.Copy` (partial upload silently succeeds)
-
-### H15. Orchestra Config Has No Validation
+### H12. Orchestra Config Has No Validation
 - **File:** `internal/orchestra/conductor.go:120` (`UpdateConfig`)
 - **Detail:** `UpdateConfig` accepts any role configuration without validation. An invalid chief model or missing role model causes runtime error during execution rather than at config time.
 
-### H16. Agent Pipeline No Timeout Per Tool Call
+### H13. Agent Pipeline No Timeout Per Tool Call
 - **File:** `internal/agent/pipeline.go:122-222`
 - **Detail:** Individual tool executions have no timeout enforced by the pipeline. A hanging `run_command` blocks the entire pipeline indefinitely (sandbox has 60s timeout but pipeline doesn't enforce it).
 
-### H17. Agent Audit Log Limited to 1000 Entries
+### H14. Agent Audit Log Limited to 1000 Entries
 - **File:** `internal/agent/executor.go:40-45`
 - **Detail:** `logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.
 
-### H18. Mobile API Client Missing Most Backend Endpoints
+### H15. Mobile API Client Missing Most Backend Endpoints
 - **File:** `mobile/lib/core/api_client.dart`
 - **Detail:** Mobile API client lacks: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory settings, model search/download, WhatsApp, sync, remote access, backup/restore, recording, image endpoints.
 
-### H19. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
+### H16. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
 - **File:** `app.go` (`StartLocalModel`, `StopLocalModel`)
 - **Detail:** `a.client` (llama.cpp API client) is reassigned during model start/stop. `clientMu` exists but concurrent streaming requests using the old client while it is being swapped could fail or observe inconsistent state.
 - **Risk:** Unexpected errors or hangs during model switching.
 
-### H20. `callLLMStream` Goroutine Persists 5 Min After Client Disconnect
+### H17. `callLLMStream` Goroutine Persists 5 Min After Client Disconnect
 - **File:** `app.go:931-1146`
 - **Detail:** When the client disconnects, the HTTP handler returns but the goroutine inside `callLLMStream` continues running until the 300s context timeout fires. Orphaned goroutines accumulate.
 - **Risk:** ~5 min goroutine leak per disconnected client.
 
-### H21. Flutter: Model/Embedding Status Providers Infinite Polling
+### ~~H18. Flutter: Model/Embedding Status Providers Infinite Polling~~ ✅ FIXED
+- ~~`frontend/lib/providers/models_provider.dart:34-54`~~
+- ~~`modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. Added `autoDispose` — now stops when model store screen is closed.~~
+
+---
 - **File:** `frontend/lib/providers/models_provider.dart:34-54`
 - **Detail:** `modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. No `autoDispose`. Runs even when Model Store screen is not visible.
 
@@ -188,11 +146,7 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/widgets/chat_input.dart:400-418`
 - **Detail:** `_startOpenRouterOAuth` shows a loading dialog with no timeout. If the API call hangs, the dialog blocks the UI forever.
 
-### M09. Active Provider Not Visible in Provider Settings UI
-- **File:** `frontend/lib/widgets/settings_dialog.dart ~199-281`
-- **Detail:** The `_ProvidersTab` shows provider cards but no indicator of which provider is currently active. User must navigate elsewhere to see active status.
-
-### M10. Flutter: API Keys Visible in Plaintext in Provider Config Dialog
+### M09. Flutter: API Keys Visible in Plaintext in Provider Config Dialog
 - **File:** `frontend/lib/widgets/provider_config_dialog.dart`
 - **Detail:** Provider config dialog shows API keys in `TextField`. If someone is watching the screen (screen recording, screenshot, shoulder surfing), API keys are exposed.
 
@@ -240,22 +194,6 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 ### M21. Cloud Sync: Interrupted Upload Leaves Partial File
 - **File:** `internal/cloudsync/drive.go`
 - **Detail:** If an upload is interrupted partway, the cloud destination contains a partial/corrupt file. No cleanup or partial upload abort on error.
-
-### M22. `handleSendFileStream`: Temp File Not Cleaned Up
-- **File:** `internal/webserver/handlers_flutter.go:72-159`
-- **Detail:** Temp file created with `os.CreateTemp` (`/tmp/memo_web_*`) is never deleted (`defer os.Remove` is missing). Each file upload leaks a temp file.
-
-### M23. `handleSendFileStream`: Double File Close
-- **File:** `internal/webserver/handlers_flutter.go:98-105`
-- **Detail:** Temp file is closed twice — once via `defer tmpFile.Close()`, once via explicit `tmpFile.Close()`. The deferred `Close()` on an already-closed file returns `os.ErrClosed` which is ignored.
-
-### M24. `handleSendFileStream`: Potential Slice Panic on Short MIME Type
-- **File:** `internal/webserver/handlers_flutter.go:110`
-- **Detail:** `mimeType[:5]` slicing panics if `mimeType` is shorter than 5 characters (empty MIME type, or a custom type < 5 chars).
-
-### M25. `handleSendFileStream`: Filename Retrieved From Closed File
-- **File:** `internal/webserver/handlers_flutter.go:104-105`
-- **Detail:** `tmpFile.Name()` is called at line 104 AFTER `tmpFile.Close()` at line 105. Works on Linux but is non-portable behavior.
 
 ---
 

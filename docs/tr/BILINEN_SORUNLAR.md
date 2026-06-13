@@ -11,6 +11,62 @@ Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 
 ---
 
+## ✅ Düzeltilen Hatalar (2026-06-13)
+
+Bu oturumda aşağıdaki hatalar düzeltildi:
+
+### F1. Flutter: Boş `catch (_)` Blokları Hataları Sessizce Yutuyor
+- **Öncesi:** 25'ten fazla `catch (_) {}` bloğu tüm hataları sessizce yutuyordu.
+- **Yapılan:** Tüm catch blokları `catch (e) { debugPrint('error: $e'); }` olarak güncellendi.
+- **Kullanıcı etkisi:** Kaydetme, değiştirme, test etme gibi işlemler sessizce başarısız oluyordu.
+
+### F2. WhatsApp SSE İşleyicisi `ctx.Done()` İzlemiyor
+- **Öncesi:** `for chunk := range streamCh` ile `ctx.Done()` kontrolü yoktu. İstemci kopunca goroutine 5 dakika yaşıyordu.
+- **Yapılan:** `select { case <-ctx.Done(): return; case chunk, ok := <-streamCh: ... }` eklendi.
+- **Kullanıcı etkisi:** Kaynak sızıntısı — sık sekme değiştirmede goroutine birikmesi.
+
+### F3. Agent İzin İptali Yanlış ID Gönderiyor
+- **Öncesi:** `revoke(p.argsHash)` backend'in beklediği `id` yerine `argsHash` gönderiyordu.
+- **Yapılan:** `AgentPermission` modeline `id` alanı eklendi, çağrı `revoke(p.id)` olarak değiştirildi.
+- **Kullanıcı etkisi:** İzin iptalleri sessizce başarısız oluyor, kullanıcı izinlerin hâlâ geçerli olduğunu fark etmiyordu.
+
+### F4. Sağlayıcı Bağlantı Testi Sessizce `false` Dönüyor
+- **Öncesi:** `catch (_) { return false; }` ile hata nedeni gizleniyordu.
+- **Yapılan:** Dönüş tipi `Map<String, dynamic>` olarak değiştirildi, hata bilgisi UI'a iletilir oldu.
+- **Kullanıcı etkisi:** Test başarısız olunca nedenini anlayamıyor, yanlış API anahtarını tekrar deniyordu.
+
+### F5. WhatsApp Akışında Hata İşleme ve İptal Desteği Yok
+- **Öncesi:** `sendWhatsAppChatStream`'de `try/catch` ve `CancelToken` yoktu.
+- **Yapılan:** `try/catch` eklendi, `CancelToken` parametresi eklendi, akış döngüsünde iptal kontrolü yapılıyor.
+- **Kullanıcı etkisi:** Ağ hatasında uygulama çöküyordu. WhatsApp akışı iptal edilemiyordu.
+
+### F6. Sohbet Stream Deadlock'u
+- **Öncesi:** `sendMessage()` catch bloğunda `_stopped = false` çağrılmıyordu. Hata sonrası tüm mesajlar streaming kullanmaz hale geliyordu.
+- **Yapılan:** Catch bloğuna `_stopped = false` eklendi.
+- **Kullanıcı etkisi:** Hata sonrası agent/streaming modu kalıcı kilitleniyor, sadece uygulama restartı düzeltiyordu.
+
+### F7. Aktif Sağlayıcı UI'da Görünmüyor
+- **Öncesi:** `_ProvidersTab` hangi sağlayıcının aktif olduğunu göstermiyordu.
+- **Yapılan:** `_ProviderCard`'a `isActive` prop'u, yeşil `AKTİF` rozeti ve yeşil kenarlık eklendi.
+- **Kullanıcı etkisi:** "Hangi sağlayıcı cevap veriyor?" — kullanıcı başka ekrana geçmek zorundaydı.
+
+### F8. Model/Embedding Durumu Sonsuz Polling
+- **Öncesi:** `modelStatusProvider` ve `embeddingStatusProvider` her 5 saniyede polling yapıyor, uygulama boyunca hiç durmuyordu.
+- **Yapılan:** `StreamProvider.autoDispose` eklendi — model store ekranı kapandığında polling duruyor.
+- **Kullanıcı etkisi:** Günde 34.560+ gereksiz HTTP isteği, pil tüketimi.
+
+### F9. `handleSendFileStream`: Geçici Dosya Sızıntısı + MIME Panik
+- **Öncesi:** Hata durumunda geçici dosya silinmiyordu (`defer os.Remove` yoktu). `mimeType[:5]` kısa MIME tiplerinde panic atıyordu.
+- **Yapılan:** `defer os.Remove(tmpFilePath)` eklendi. `strings.HasPrefix(mimeType, "image")` ile değiştirildi.
+- **Kullanıcı etkisi:** Her başarısız dosya yüklemesi `/tmp/memo_web_*` dosyası bırakıyordu. Kısa MIME tipli dosya yüklemeleri handler'ı çökertiyordu.
+
+### F10. Bağlantı Durumu Provider Hata Loglamıyor
+- **Öncesi:** `catch (_) { yield false; }` ile hatalar sessizce yutuluyordu.
+- **Yapılan:** `debugPrint` eklendi.
+- **Kullanıcı etkisi:** Bağlantı durumu "bağlı değil" gösteriyor ancak sebebi belirtilmiyordu.
+
+---
+
 ## 🔴 Kritik
 
 ### K01. `DeleteLocalModel`'de TOCTOU Sembolik Bağlantı Yarışı
@@ -37,18 +93,7 @@ Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 - **Risk:** Kabuk yorumlayıcıları üzerinden tam sandbox kaçışı.
 - **Kategori:** Güvenlik
 
-### K05. Flutter: 25+ Boş `catch (_)` Bloğu Hataları Sessizce Yutuyor
-- **Dosya:** `frontend/lib/providers/chat_provider.dart`, `providers/models_provider.dart`, `providers/agent_provider.dart`, `providers/whatsapp_provider.dart`, `providers/orchestra_provider.dart`, `providers/provider_provider.dart`, `providers/version_provider.dart`, `widgets/chat_input.dart`, `widgets/agent/permission_dialog.dart`, `widgets/agent/agent_chat_card.dart`, `widgets/setup_wizard_view.dart`, `widgets/agent/permission_history.dart`
-- **Detay:** 25'ten fazla `catch (_) {}` bloğu `DioException`, `SocketException`, `FormatException`, `TypeError` dahil TÜM hataları sessizce yutar. Bir provider çağrısı başarısız olduğunda kullanıcı hiçbir hata mesajı görmez — uygulama sessizce hiçbir şey yapmaz. Önceki denetimde 19 olarak raporlanmıştı, yeni bulunanlarla birlikte sayı 25+'a yükseldi.
-- **Risk:** Kullanıcı işlemler başarısız olduğunda geri bildirim alamaz (yapılandırma kaydetme, model listeleme, agent değiştirme, sağlayıcı testi, WhatsApp geçişi vb.).
-
-### K06. WhatsApp SSE İşleyicisi `ctx.Done()` İzlemiyor
-- **Dosya:** `internal/webserver/handlers_flutter.go:1311-1349` (`handleWhatsAppChatStream`)
-- **Detay:** `handleWhatsAppChatStream` fonksiyonu, `handleSendStream` ve `handleSendFileStream`'in aksine, `select` ile `ctx.Done()` kanalını izlemez. `for chunk := range streamCh` döngüsü, kanal kapanana kadar bloke olur. İstemci bağlantıyı kestiğinde goroutine (ve alttaki `WhatsAppChatStream`) 300 saniyelik context timeout'una kadar yaşamaya devam eder.
-- **Risk:** Bağlantı kesilmesi başına ~5 dakika boyunca goroutine sızıntısı. DoS vektörü.
-- **Kategori:** Kaynak Sızıntısı
-
-### K07. Agent Araç Argümanlarında Yol Geçişi Koruması Yok
+### K05. Agent Araç Argümanlarında Yol Geçişi Koruması Yok
 - **Dosya:** `internal/agent/sandbox.go:70-94` (`ValidatePath`), `internal/agent/tools/command.go` (`RunCommand` dosya argümanları)
 - **Detay:** Sandbox, çalışma dizinini `strings.HasPrefix` ile doğrular ancak araç argümanlarındaki dosya yollarını (`read_file`, `write_file`, `edit_file` vb.) doğrulamaz. `write_file` aracına `../../etc/passwd` gibi göreli bir yol verildiğinde, sandbox dizini dışına çıkılabilir.
 - **Risk:** Göreli yollar içeren araç argümanları ile sandbox kaçışı.
@@ -85,72 +130,39 @@ Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 - **Dosya:** `frontend/lib/core/api_client.dart:38-87`, `600-654`
 - **Detay:** `sendMessageStream` ve `sendFileStream` yanıt akışında boşta kalma/duraklama zaman aşımı yoktur. Sunucu veri göndermeyi durdurursa `await for` süresiz bloke olur. Tek koruma Dio seviyesindeki 120s `receiveTimeout`'dur ancak hata vermeyen durmuş bir akış bağlantıyı sonsuza kadar tutar.
 
-### H07. Flutter: `sendWhatsAppChatStream` Hata İşlemesiz
-- **Dosya:** `frontend/lib/core/api_client.dart:846-864`
-- **Detay:** `sendWhatsAppChatStream` metodunda hiç `try/catch` veya `DioException` işlemesi yoktur. WhatsApp akışı sırasında herhangi bir ağ hatası işlenmeyen bir istisnaya yol açar.
-
-### H08. Flutter: `sendWhatsAppChatStream` `CancelToken` Parametresiz
-- **Dosya:** `frontend/lib/core/api_client.dart:846-864`
-- **Detay:** `sendMessageStream` ve `sendFileStream`'in aksine, WhatsApp akış metodunun `CancelToken` parametresi yoktur. WhatsApp akışı istemci tarafından iptal edilemez.
-
-### H09. Flutter: Agent `permission_history` Revoke API Uyumsuzluğu
-- **Dosya:** `frontend/lib/widgets/agent/permission_history.dart:83-88`, `frontend/lib/providers/agent_provider.dart:58-62`
-- **Detay:** `revoke(p.argsHash)` çağrısı backend'in beklediği `id` parametresi yerine `argsHash` gönderiyor olabilir. API beklentisi `DELETE /api/agent/permissions?id=...` ancak hangi tanımlayıcının beklendiği belirsiz. Hata sessizce yutulur (boş catch).
-- **Risk:** İzin iptalleri sessizce başarısız olur, kullanıcı izinlerin hala geçerli olduğunu fark etmez.
-
-### H10. Flutter: TestProvider Hatayı Sessizce Yutuyor
-- **Dosya:** `frontend/lib/providers/provider_provider.dart:36-41`
-- **Detay:** `testProvider()` boş catch bloğu ile her hatada `false` döndürür. Kullanıcı bağlantı test ettiğinde neden başarısız olduğunu göremez (yanlış anahtar, ağ hatası, sunucu hatası).
-
-### H11. Flutter: Global Stil Önbelleği (`_styleCache`) Bellek Sızıntısı
+### H07. Flutter: Global Stil Önbelleği (`_styleCache`) Bellek Sızıntısı
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detay:** `_styleCache` global mutable bir `Map`'tir — asla temizlenmez, ziyaret edilen her tema yapılandırması kombinasyonu ile sonsuz büyür. Bu, temalar değiştirildikçe bellek kullanımının sürekli arttığı bir bellek sızıntısıdır.
 
-### H12. Flutter: `chat_provider.sendMessage()` Kalıcı Stream Deadlock'u
-- **Dosya:** `frontend/lib/providers/chat_provider.dart:260-263, 296`
-- **Detay:** `sendMessage()` catch bloğu (satır 296) `_stopped = false` çağırmaz. Bir akış durdurulduktan sonra hata alırsa, `_stopped` `true` kalır ve gelecekteki tüm mesajların streaming yolunu kullanmasını kalıcı olarak engeller (`if (_stopped)` koruması nedeniyle).
-- **Risk:** Agent/streaming modu kalıcı olarak kilitlenir, yeniden başlatma gerekir.
-
-### H13. Flutter: `connectionStatusProvider` Sonsuz Polling
+### H08. Flutter: `connectionStatusProvider` Sonsuz Polling
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:429-438`
 - **Detay:** `connectionStatusProvider` uygulama ömrü boyunca her 30 saniyede bir polling yapan `while(true)` döngüsü çalıştırır. `autoDispose` kullanılmamış.
 
-### H14. `handleSendFileStream` Geçici Dosya Temizleme Hataları
-- **Dosya:** `internal/webserver/handlers_flutter.go:72-159`
-- **Detay:** Yüklenen dosya için `os.CreateTemp` ile geçici dosya oluşturulur. Ancak:
-  - Satır 98-104: `tmpFile` iki kere kapatılır (`defer tmpFile.Close()` + `tmpFile.Close()`)
-  - `defer os.Remove(tmpFilePath)` yok — hata durumunda geçici dosya temizlenmez
-  - Satır 65-66: `io.Copy` sonrası hata kontrolü yok (yükleme yarıda kesilebilir)
-
-### H15. Orkestra Yapılandırması Doğrulamasız
+### H09. Orkestra Yapılandırması Doğrulamasız
 - **Dosya:** `internal/orchestra/conductor.go:120` (`UpdateConfig`)
 - **Detay:** `UpdateConfig` herhangi bir rol yapılandırmasını doğrulama olmadan kabul eder. Geçersiz bir chief modeli veya eksik rol modeli, çalışma zamanında hataya neden olur.
 
-### H16. Agent Pipeline'da Araç Çağrısı Başına Zaman Aşımı Yok
+### H10. Agent Pipeline'da Araç Çağrısı Başına Zaman Aşımı Yok
 - **Dosya:** `internal/agent/pipeline.go:122-222`
 - **Detay:** Bireysel araç çağrılarında pipeline tarafından zorlanan zaman aşımı yok. Asılı kalan bir `run_command` tüm pipeline'ı sandbox'ın 60s zaman aşımına rağmen süresiz bloke edebilir (pipeline bunu zorlamaz).
 
-### H17. Agent Denetim Günlüğü 1000 Girdiyle Sınırlı
+### H11. Agent Denetim Günlüğü 1000 Girdiyle Sınırlı
 - **Dosya:** `internal/agent/executor.go:40-45`
 - **Detay:** `logEntries` slice'ı 1000 ile sınırlı. Eski girdiler sessizce atılır. Döndürme veya kalıcılık yok.
 
-### H18. Flutter: Provider Test ve Mobil Uç Nokta Eksiklikleri
+### H12. Flutter: Provider Test ve Mobil Uç Nokta Eksiklikleri
 - **Dosya:** `mobile/lib/core/api_client.dart`
 - **Detay:** Mobil API istemcisi backend uç noktalarının çoğunu içermez: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory ayarları, model arama/indirme, WhatsApp, sync, remote access, backup/restore, recording, image.
 
-### H19. `StartLocalModel`/`StopLocalModel`'de `a.client` Veri Yarışı
+### H13. `StartLocalModel`/`StopLocalModel`'de `a.client` Veri Yarışı
 - **Dosya:** `app.go` (`StartLocalModel`, `StopLocalModel`)
 - **Detay:** `a.client` (llama.cpp API istemcisi) eşzamanlama olmadan yeniden atanır. `clientMu` mevcut olsa da, streaming istekleri sırasında istemci değiştirilirse eski istemci referansı ile yeni istekler gönderilebilir.
 - **Risk:** Model değiştirme sırasında beklenmeyen hatalar.
 
-### H20. `callLLMStream` Goroutine'u İstemci Bağlantı Kesintisinde 5 Dakika Yaşıyor
+### H14. `callLLMStream` Goroutine'u İstemci Bağlantı Kesintisinde 5 Dakika Yaşıyor
 - **Dosya:** `app.go:931-1146`
 - **Detay:** İstemci bağlantıyı kestiğinde HTTP işleyicisi döner ancak `callLLMStream` içindeki goroutine 300 saniyelik context timeout'una kadar yaşamaya devam eder. Bu, biriken goroutine'lere yol açar.
 - **Risk:** Bağlantı kesilmesi başına ~5 dakika goroutine sızıntısı.
-
-### H21. Flutter: Bellek/Konuşma Provider'ları Sonsuz Polling
-- **Dosya:** `frontend/lib/providers/models_provider.dart:34-54`
-- **Detay:** `modelStatusProvider` ve `embeddingStatusProvider` her 5 saniyede bir polling yapan sonsuz `while(true)` döngüleri çalıştırır. `autoDispose` kullanılmamış. Kullanıcı model durumunu hiç kontrol etmese bile çalışırlar.
 
 ---
 
@@ -188,78 +200,54 @@ Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 - **Dosya:** `frontend/lib/widgets/chat_input.dart:400-418`
 - **Detay:** `_startOpenRouterOAuth` yükleme diyaloğu gösterir ancak zaman aşımı yoktur. API çağrısı asılı kalırsa diyalog sonsuza kadar UI'ı bloke eder.
 
-### M09. Flutter: Sağlayıcı Ayarlar UI'ında Aktif Sağlayıcı Görünmüyor
-- **Dosya:** `frontend/lib/widgets/settings_dialog.dart ~199-281`
-- **Detay:** `_ProvidersTab` sağlayıcı kartlarını gösterir ancak hangisinin aktif olduğunu belirtmez. Kullanıcı aktif sağlayıcıyı görmek için başka bir ekrana gitmek zorunda.
-
-### M10. Flutter: API anahtarları provider config dialogunda düz metin gösteriliyor
+### M09. Flutter: API anahtarları provider config dialogunda düz metin gösteriliyor
 - **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart`
 - **Detay:** Provider yapılandırma diyalogu API anahtarlarını `TextField`'da gösterir. Arka planda biri ekranı izliyorsa (screen recording, screenshot, shoulder surfing) API anahtarları ifşa olur.
 
-### M11. Orkestra/Sağlayıcı/Agent için Test Dosyası Yok
+### M10. Orkestra/Sağlayıcı/Agent için Test Dosyası Yok
 - **Dosya:** `internal/provider/`, `internal/agent/`, `internal/orchestra/`
 - **Detay:** Üç yeni paket için sıfır unit test (~4700 satır üretim kodu). (Önceki denetimde ~4150 satır, yeni eklemelerle arttı.)
 
-### M12. Orkestra Config Dosyası 0644 İzniyle Yazılıyor
+### M11. Orkestra Config Dosyası 0644 İzniyle Yazılıyor
 - **Dosya:** `internal/orchestra/conductor.go:114`
 - **Detay:** Orkestra config dosyası dünya tarafından okunabilir (`0644`) izinlerle yazılır. API anahtarları içermese de, yapılandırma detaylarını sızdırabilir.
 
-### M13. Agent İzin Dosyası 0644 İzniyle Yazılıyor
+### M12. Agent İzin Dosyası 0644 İzniyle Yazılıyor
 - **Dosya:** `internal/agent/permissions.go:229`
 - **Detay:** Agent izin dosyası (`permissions.json`) dünya tarafından okunabilir (`0644`) izinlerle yazılır.
 
-### M14. `unsanitizePath`, Repo ID'lerindeki `__`'den `/` Enjekte Edebilir
+### M13. `unsanitizePath`, Repo ID'lerindeki `__`'den `/` Enjekte Edebilir
 - **Dosya:** `internal/modelstore/modelstore.go:345`
 - **Detay:** HuggingFace repo ID'lerindeki `__` (çift alt çizgi) dosya yolunda `/`'ye dönüştürülür. Kötü niyetli bir repo ID'si (`foo__..__bar`) dizin geçişine neden olabilir.
 
-### M15. Model Otomatik Sınıflandırma Dosya Adına Göre
+### M14. Model Otomatik Sınıflandırma Dosya Adına Göre
 - **Dosya:** `internal/modelstore/modelstore.go:58-64`
 - **Detay:** `isEmbeddingModel` dosya adındaki "embedding" alt dizesini arar. "embedding" kelimesini içeren normal modeller yanlış sınıflandırılır.
 
-### M16. `Filepath.Walk` Hata Yutma
+### M15. `Filepath.Walk` Hata Yutma
 - **Dosya:** `internal/memory/store.go:182-196`, `internal/modelstore/modelstore.go:374-376`
 - **Detay:** `filepath.Walk` geri çağrısında hata nil olmayan döndürüldüğünde `return nil` yapılır — hatalar sessizce atlanır.
 
-### M17. Gömme İstemcisi Yeniden Başlatma Sonrası Eski Referans
+### M16. Gömme İstemcisi Yeniden Başlatma Sonrası Eski Referans
 - **Dosya:** `app.go:143-165` (App struct embeddingClient), `app.go:148-149`
 - **Detay:** Gömme modeli yeniden başlatıldığında `embeddingClient` referansı güncellenmez. Eski istemci referansı, kapanmış bir bağlantıya işaret edebilir.
 
-### M18. Bellek Depolama: Kullanıcı Mesaj Boyutu Sınırı Yok
+### M17. Bellek Depolama: Kullanıcı Mesaj Boyutu Sınırı Yok
 - **Dosya:** `internal/memory/store.go` (çeşitli ekleme yolları)
 - **Detay:** Herhangi bir boyuttaki kullanıcı mesajı bellek olarak saklanabilir. Gömme modellerinin tipik token sınırları vardır (örn. 512 token). Saklama öncesi kırpma yapılmaz.
 - **Risk:** Gömme hatası veya aşırı büyük bellek girişleri.
 
-### M19. Agent Sistem Promptu Bellek Bağlamıyla Şişebilir
+### M18. Agent Sistem Promptu Bellek Bağlamıyla Şişebilir
 - **Dosya:** `internal/identity/identity.go:26-49`
 - **Detay:** `BuildSystemPrompt` tüm alınan anıları doğrudan sistem prompt'una ekler. Çok sayıda yüksek benzerlikli anı ile prompt modelin bağlam penceresini aşabilir. Kırpma veya boyut sınırı yoktur.
 
-### M20. Orkestra: Kendine Referans Veren Roller için Döngü Koruması Yok
+### M19. Orkestra: Kendine Referans Veren Roller için Döngü Koruması Yok
 - **Dosya:** `internal/orchestra/conductor.go` (`callModel`)
 - **Detay:** Bir rolün model endpoint'i Memo uygulamasının kendisine işaret ediyorsa (veya başka bir hizmet üzerinden döngü oluşturuyorsa), sonsuz özyineleme mümkündür. Döngü tespiti yoktur.
 
-### M21. Cloud Sync: Kesintiye Uğrayan Yükleme Kısmi Dosya Bırakıyor
+### M20. Cloud Sync: Kesintiye Uğrayan Yükleme Kısmi Dosya Bırakıyor
 - **Dosya:** `internal/cloudsync/drive.go`
 - **Detay:** Yükleme yarıda kesilirse, bulut hedefi kısmi/bozuk bir dosya içerir. Hata durumunda temizlik veya kısmi yükleme iptali yapılmaz.
-
-### M22. `handleSendFileStream`: Geçici Dosya Temizlenmiyor
-- **Dosya:** `internal/webserver/handlers_flutter.go:72-159`
-- **Detay:** `os.CreateTemp` ile oluşturulan geçici dosya (`/tmp/memo_web_*`) hiçbir zaman silinmez (`defer os.Remove` eksik). Her dosya yüklemesi bir geçici dosya birikimine neden olur.
-
-### M23. `handleSendFileStream`: İki Kere Kapatma
-- **Dosya:** `internal/webserver/handlers_flutter.go:98-105`
-- **Detay:** Geçici dosya `defer tmpFile.Close()` ile bir kez, ardından `tmpFile.Close()` ile manuel olarak tekrar kapatılır. `defer` üzerindeki `Close()` zaten kapalı bir dosyada çağrılır (Go'da zararsızdır ancak kod kokusudur).
-
-### M24. `handleSendFileStream`: MIME Tipi Kırpma İşlemi Hatalı
-- **Dosya:** `internal/webserver/handlers_flutter.go:109-111`
-- **Detay:** `mimeType[:5] == "image"` kontrolü, MIME tipi 5 karakterden kısaysa panic'e neden olur. Örneğin, boş MIME tipi veya 5 karakterden kısa özel bir MIME tipi.
-
-### M25. `handleSendFileStream`: `io.Copy` Hata Kontrolü Eksik
-- **Dosya:** `internal/webserver/handlers_flutter.go:100-103`
-- **Detay:** `io.Copy(tmpFile, file)` sonrası hata kontrolü var ancak `tmpFile.Name()` satır 104'te çağrılmadan önce `tmpFile.Close()` satır 105'te çağrılıyor. Isim kapalı bir dosyadan alınıyor (Linux'ta sorunsuz çalışır ancak taşınabilir değil).
-
-### M26. `handleSendFileStream`: MIME Tipi Kontrolünde Potansiyel Panik
-- **Dosya:** `internal/webserver/handlers_flutter.go:110`
-- **Detay:** `mimeType[:5]` dilimlemesi, `mimeType` 5 karakterden kısaysa index out of range panic'ine neden olur.
 
 ---
 
@@ -375,6 +363,7 @@ Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 
 > **Son güncelleme:** 2026-06-13
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend
-> **Açık hatalar:** 45+ (🔴7, 🟠21, 🔵15, ⚪2)
+> **Açık hatalar:** 30+ (🔴5, 🟠14, 🔵9, ⚪2)
 > **Gözlemler:** 15
-> **Bulunan toplam sorun sayısı:** 60+
+> **Düzeltilen:** 10
+> **Bulunan toplam sorun sayısı:** 55+

@@ -72,32 +72,32 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detail:** `_styleCache` is a global mutable `Map` that is never cleared. It grows indefinitely with every unique combination of theme brightness and accent color visited. A memory leak proportional to theme configurations visited.
 
-### H11. Flutter: `connectionStatusProvider` Infinite Polling
+### H08. Flutter: `connectionStatusProvider` Infinite Polling
 - **File:** `frontend/lib/providers/chat_provider.dart:429-438`
 - **Detail:** `connectionStatusProvider` runs a `while(true)` polling loop every 30 seconds for the entire app lifetime. No `autoDispose` variant used. Runs even when sidebar is hidden.
 
-### H12. Orchestra Config Has No Validation
+### H09. Orchestra Config Has No Validation
 - **File:** `internal/orchestra/conductor.go:120` (`UpdateConfig`)
 - **Detail:** `UpdateConfig` accepts any role configuration without validation. An invalid chief model or missing role model causes runtime error during execution rather than at config time.
 
-### H13. Agent Pipeline No Timeout Per Tool Call
+### H10. Agent Pipeline No Timeout Per Tool Call
 - **File:** `internal/agent/pipeline.go:122-222`
 - **Detail:** Individual tool executions have no timeout enforced by the pipeline. A hanging `run_command` blocks the entire pipeline indefinitely (sandbox has 60s timeout but pipeline doesn't enforce it).
 
-### H14. Agent Audit Log Limited to 1000 Entries
+### H11. Agent Audit Log Limited to 1000 Entries
 - **File:** `internal/agent/executor.go:40-45`
 - **Detail:** `logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.
 
-### H15. Mobile API Client Missing Most Backend Endpoints
+### H12. Mobile API Client Missing Most Backend Endpoints
 - **File:** `mobile/lib/core/api_client.dart`
 - **Detail:** Mobile API client lacks: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory settings, model search/download, WhatsApp, sync, remote access, backup/restore, recording, image endpoints.
 
-### H16. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
+### H13. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
 - **File:** `app.go` (`StartLocalModel`, `StopLocalModel`)
 - **Detail:** `a.client` (llama.cpp API client) is reassigned during model start/stop. `clientMu` exists but concurrent streaming requests using the old client while it is being swapped could fail or observe inconsistent state.
 - **Risk:** Unexpected errors or hangs during model switching.
 
-### H17. `callLLMStream` Goroutine Persists 5 Min After Client Disconnect
+### H14. `callLLMStream` Goroutine Persists 5 Min After Client Disconnect
 - **File:** `app.go:931-1146`
 - **Detail:** When the client disconnects, the HTTP handler returns but the goroutine inside `callLLMStream` continues running until the 300s context timeout fires. Orphaned goroutines accumulate.
 - **Risk:** ~5 min goroutine leak per disconnected client.
@@ -105,10 +105,6 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 ### ~~H18. Flutter: Model/Embedding Status Providers Infinite Polling~~ ✅ FIXED
 - ~~`frontend/lib/providers/models_provider.dart:34-54`~~
 - ~~`modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. Added `autoDispose` — now stops when model store screen is closed.~~
-
----
-- **File:** `frontend/lib/providers/models_provider.dart:34-54`
-- **Detail:** `modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. No `autoDispose`. Runs even when Model Store screen is not visible.
 
 ---
 
@@ -150,48 +146,48 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/widgets/provider_config_dialog.dart`
 - **Detail:** Provider config dialog shows API keys in `TextField`. If someone is watching the screen (screen recording, screenshot, shoulder surfing), API keys are exposed.
 
-### M11. No Tests for Provider/Agent/Orchestra Packages
+### M10. No Tests for Provider/Agent/Orchestra Packages
 - **File:** `internal/provider/`, `internal/agent/`, `internal/orchestra/`
 - **Detail:** Zero unit tests exist for the three packages (~4700 lines of production code). (Was ~4150 lines in previous audit; grew with new additions.)
 
-### M12. Orchestra Config File Written with 0644 Permissions
+### M11. Orchestra Config File Written with 0644 Permissions
 - **File:** `internal/orchestra/conductor.go:114`
 - **Detail:** Orchestra config JSON file is world-readable (`0644`). While it doesn't contain API keys, it leaks configuration details.
 
-### M13. Agent Permissions File Written with 0644 Permissions
+### M12. Agent Permissions File Written with 0644 Permissions
 - **File:** `internal/agent/permissions.go:229`
 - **Detail:** Agent permissions file (`permissions.json`) is world-readable (`0644`).
 
-### M14. `unsanitizePath` Can Inject `/` from `__` in Repo IDs
+### M13. `unsanitizePath` Can Inject `/` from `__` in Repo IDs
 - **File:** `internal/modelstore/modelstore.go:345`
 - **Detail:** Double underscores `__` in HuggingFace repo IDs are converted to `/` in file paths. A malicious repo ID (`foo__..__bar`) could cause directory traversal.
 
-### M15. Model Auto-Classification via Filename Heuristic
+### M14. Model Auto-Classification via Filename Heuristic
 - **File:** `internal/modelstore/modelstore.go:58-64`
 - **Detail:** `isEmbeddingModel` searches for "embedding" substring in filename. Regular models containing "embedding" in the name are misclassified.
 
-### M16. `filepath.Walk` Error Swallowing
+### M15. `filepath.Walk` Error Swallowing
 - **File:** `internal/memory/store.go:182-196`, `internal/modelstore/modelstore.go:374-376`
 - **Detail:** In `filepath.Walk` callbacks, non-nil errors are silently skipped with `return nil`.
 
-### M17. Embedding Client Stale Reference After Reinit
+### M16. Embedding Client Stale Reference After Reinit
 - **File:** `app.go:143-165` (App struct embeddingClient), `app.go:148-149`
 - **Detail:** When the embedding model is restarted, the `embeddingClient` reference is not updated. The old client reference may point to a closed connection.
 
-### M18. Memory Store: No Size Limit on User Messages
+### M17. Memory Store: No Size Limit on User Messages
 - **File:** `internal/memory/store.go` (various insert paths)
 - **Detail:** User messages of any size can be stored as memory. Embedding models typically have token limits (e.g., 512 tokens). No truncation is performed before storing.
 - **Risk:** Embedding failure or oversized memory entries wasting storage.
 
-### M19. Identity System Prompt Can Bloat with Large Memory Context
+### M18. Identity System Prompt Can Bloat with Large Memory Context
 - **File:** `internal/identity/identity.go:26-49`
 - **Detail:** `BuildSystemPrompt` appends all retrieved memories directly into the system prompt. With many high-similarity memories, the prompt can grow arbitrarily large, exceeding the model's context window. No truncation or size limit.
 
-### M20. Orchestra: No Self-Referencing Role Loop Detection
+### M19. Orchestra: No Self-Referencing Role Loop Detection
 - **File:** `internal/orchestra/conductor.go` (`callModel`)
 - **Detail:** A role's model endpoint pointing back to the Memo app itself (or creating a loop via another service) enables infinite recursion. No cycle detection.
 
-### M21. Cloud Sync: Interrupted Upload Leaves Partial File
+### M20. Cloud Sync: Interrupted Upload Leaves Partial File
 - **File:** `internal/cloudsync/drive.go`
 - **Detail:** If an upload is interrupted partway, the cloud destination contains a partial/corrupt file. No cleanup or partial upload abort on error.
 
@@ -310,6 +306,7 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 > **Last updated:** 2026-06-13
 > **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend
-> **Open bugs:** 45+ (🔴7, 🟠21, 🔵15, ⚪2)
+> **Open bugs:** 30+ (🔴5, 🟠14, 🔵9, ⚪2)
 > **Observations:** 15
-> **Total issues found:** 60+
+> **Fixed:** 10
+> **Total issues found:** 55+

@@ -2,283 +2,218 @@
 
 > A local-first, privacy-focused LLM chat application with RAG memory, external provider support, and E2E-encrypted cloud sync.
 
+> **Theme:** "Pewter Study" — a warm graphite **mid-tone** identity (neither the glare of a light theme nor the cave of a true dark one) with a single muted bronze accent. A calm, premium workspace for a "second brain".
+
 ---
 
 ## 1. Design Philosophy
 
-- **Warm & Inviting**: Cream/gold palette instead of cold blue/gray AI chat apps
-- **Desktop-native**: NavRail navigation, sidebar patterns, right-click menus
-- **Content-first**: Chat messages are the hero; UI chrome is minimal and muted
-- **Privacy-signaling**: Visual cues for incognito mode, local-only indicators, encryption badges
+- **One surface, three layers**: the whole app lives in a single mid-tone identity. Depth comes from light/elevation steps, not from color.
+- **Spend the accent in one place**: bronze marks only the primary action, the active state, and progress — never decoration.
+- **Plain language over system terms**: "Balanced — recommended", not "Q4_K_M". Name things by what the user controls.
+- **Hardware-aware**: every model surfaces "does this fit your device?" up front.
+- **Empty screens are invitations**: every empty/error state points to the next step.
 
 ---
 
-## 2. Color Palette
+## 2. Color System (mid-tone, no neon)
 
-### Brand Colors
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `accent` | `#C9A84C` (Gold) | same | Primary buttons, links, active indicators, brand elements |
-| `accentLight` | `#E8C97A` | same | Hover states, secondary accents |
-| `accentPale` | `#F5E8C0` | same | Badge backgrounds, selected item bg |
-| `accentMuted` | `#1FC9A84C` (6% alpha) | same | Soft selection highlights, chat bubble bg for user |
+Surfaces sit deliberately between a light theme (~98% L) and a true dark theme (~11% L) — a warm-neutral graphite ramp around 26–42% L. Carried on `ThemeData` as a `ThemeExtension<ThemeColors>`, read via `MemoTheme.of(context)`.
 
-### Surface Colors
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `bgApp` | `#FDFCF0` (warm cream) | `#1C1C1E` | Main app background |
-| `bgPanel` | `#F5F3E0` | `#252528` | Sidebar, cards, panels |
-| `bgElement` | `#EAE8D5` | `#2C2C30` | Input fields, secondary elements |
-| `bgHover` | `#DDD9C4` | `#36363A` | Hover states |
+### 2.1 Pewter (default)
 
-### Text Colors
-| Token | Light | Dark | Usage |
-|-------|-------|------|-------|
-| `textMain` | `#1A1A1A` | `#F0EDE0` | Body text, primary content |
-| `textSecondary` | `#2C2C2C` | `#D0CDC0` | Secondary labels |
-| `textMuted` | `#4A4A4A` | `#A09D90` | Timestamps, hints, metadata |
-| `textDim` | `#8A8A7A` | `#707060` | Placeholders, disabled text |
-| `textInverse` | `#FDFCF0` | `#1C1C1E` | Text on accent buttons |
+| Token | Hex | Usage |
+|-------|-----|-------|
+| `bgApp` (surface-0) | `#2B2E33` | App background (mid-graphite, never pure black) |
+| `bgPanel` (surface-1) | `#33373D` | Sidebar, cards, panels |
+| `bgElement` (surface-2) | `#3C4147` | Inputs, secondary fills |
+| `bgHover` (surface-3) | `#474D54` | Hover, selected |
+| `textMain` (ink) | `#ECE9E3` | Primary text — warm off-white, not pure white |
+| `textSecondary` | `#CFCBC3` | Secondary labels |
+| `textMuted` | `#B4B0A8` | Metadata, captions |
+| `textDim` | `#85827B` | Placeholders, timestamps |
+| `textInverse` | `#241F18` | Text on the bronze accent |
+| `borderSoft` | `#FFFFFF @ 8%` | Hairline dividers, card borders |
+| `borderHover` | `#FFFFFF @ 16%` | Hover border, emphasized rule |
 
-### Functional Colors
-| Token | Value | Usage |
-|-------|-------|-------|
-| `green` | `#51B576` | Success, WhatsApp connected, active indicators |
-| `red` | `#D35F5F` | Errors, delete actions, stop button |
-| `warningOrange` | `#D4944F` | Warnings, pending states |
-| `warmBrown` | `#8B6535` | Incognito mode badge, tertiary accents |
+### 2.2 Night (deeper variant)
 
-### Border Colors
-| Token | Light | Dark |
-|-------|-------|------|
-| `borderSoft` | `#141A1A1A` (8% alpha) | `#30FFFFFF` (19% alpha) |
-| `borderHover` | `#2E1A1A1A` (18% alpha) | `#50FFFFFF` (31% alpha) |
+Same accent + ink, deeper surfaces: `bgApp #1E2024 · bgPanel #25282D · bgElement #2D3036 · bgHover #383C43`.
+
+> The bright **light theme is retired**. `themeMode` light → Pewter, dark → Night, system → auto. Both Memo themes use `Brightness.dark` internally.
+
+### 2.3 Accent — "Bronze" (muted, NOT neon, NOT the old gold)
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| `accent` | `#B08D57` | Primary button, active tab, progress, links |
+| `accentLight` / `accentHover` | `#C6A06A` | Hover (lifts slightly) |
+| `accentMuted` | `#B08D57 @ 14%` | Selected-row fill, user bubble, soft tints |
+| `accentPale` | `#C6A06A` | Pale fills (applied with alpha) |
+
+### 2.4 Functional (softened, no neon)
+
+| Token | Hex | Usage |
+|-------|-----|-------|
+| `green` / `successGreen` | `#6FA07B` | Running, connected, success, "fits your device" |
+| `red` | `#C4736B` | Errors, delete, stop |
+| `warningOrange` | `#C99A5B` | Warnings, pending, "hardware may be insufficient" |
+| `warmBrown` | `#8A7B63` | Incognito badge, tertiary |
+
+Brand colors stay literal: WhatsApp green `#25D366`.
 
 ---
 
 ## 3. Typography
 
-- **Font**: Inter (Google Fonts)
-- **Weights**: Regular 400, Medium 500, Semibold 600
+`google_fonts` — a premium, legible pairing (replacing plain Inter everywhere).
 
-| Style | Size | Weight | Usage |
-|-------|------|--------|-------|
-| `displayLarge` | 32 | 600 | Welcome screen heading |
-| `headlineMedium` | 22 | 600 | Dialog titles, section headers |
-| `titleLarge` | 18 | 600 | Screen titles, sidebar chat names |
-| `titleMedium` | 16 | 600 | Chat top bar title |
-| `bodyLarge` | 15 | 400 | Chat message content |
-| `bodyMedium` | 14 | 400 | Settings, labels, descriptions |
-| `bodySmall` | 12 | 400 | Metadata, timestamps |
-| `labelLarge` | 14 | 600 | Button text |
-| `labelSmall` | 10 | 600 | Badge text, tags |
+| Role | Font | Usage |
+|------|------|-------|
+| **Display / heading** | **Schibsted Grotesk** (500/600/700) | Screen titles, large numerals (download %), stats |
+| **Body / UI** | **Inter** (400/500/600) | Message content, labels, settings |
+| **Mono / code-data** | **JetBrains Mono** (400/500) | Code blocks, file sizes, technical values |
 
-- **Code**: JetBrains Mono 13px (for code blocks in chat)
-- **Line height**: 1.7 for chat messages, 1.5 for UI text
+Scale (px): `display 30/600 · h1 22/600 · h2 18/600 · title 16/600 · body 15/400 · label 13/500 · caption 12/400 · micro 10/600`. Line height: chat 1.7, UI 1.5.
+
+In `theme.dart`, display/headline/title roles map to Schibsted Grotesk; body/label to Inter.
 
 ---
 
-## 4. Spacing & Layout
+## 4. Spacing, Radii, Shadows
 
-| Token | Value |
-|-------|-------|
-| `paddingXs` | 4px |
-| `paddingSm` | 8px |
-| `paddingMd` | 12px |
-| `paddingLg` | 16px |
-| `paddingXl` | 20px |
-| `paddingXxl` | 24px |
+| Spacing | Value | | Radius | Value |
+|---------|-------|-|--------|-------|
+| xs | 4px | | `radiusSm` | 8px |
+| sm | 8px | | `radiusMd` | 14px |
+| md | 12px | | `radiusLg` | 20px |
+| lg | 16px | | `radiusFull` | 999px |
+| xl | 20px | | | |
+| xxl | 24/32px | | | |
 
-### Corner Radii
-| Token | Value |
-|-------|-------|
-| `radiusSm` | 8px |
-| `radiusMd` | 14px |
-| `radiusLg` | 20px |
-| `radiusFull` | 999px |
+Shadows are deep (black-based) to read on the dark mid-tone surface:
 
-### Shadows
-| Token | Blur | Offset | Opacity |
-|-------|------|--------|---------|
-| `shadowSm` | 8px | 0,2 | 4% |
-| `shadowMd` | 16px | 0,4 | 7% |
-| `shadowLg` | 32px | 0,8 | 10% |
+| Token | Color | Blur | Offset |
+|-------|-------|------|--------|
+| `shadowSm` | `#000 @ 20%` | 8px | 0,2 |
+| `shadowMd` | `#000 @ 25%` | 16px | 0,4 |
+| `shadowLg` | `#000 @ 30%` | 32px | 0,8 |
 
 ---
 
 ## 5. Component Library
 
 ### 5.1 NavRail
-- Width: 64px
-- Background: `bgPanel`
-- Right border: `borderSoft`
-- Vertically stacked icon buttons (40x40px)
-- Active state: icon filled + accent color
-- Logo at top: 40x40 rounded square with accent border, "M" letter
-- Settings gear icon at bottom
+- 64px, `bgPanel`, right `borderSoft`. Logo: 40×40 `bgElement` tile, bronze border, bronze "M".
+- Stacked 44×44 icon buttons. Active: `accentMuted` fill + bronze icon. Settings gear pinned bottom.
 
-### 5.2 Chat Sidebar
-- Width: 260px
-- Background: `bgPanel`
-- Search bar on top with icon
-- "New Chat" button
-- Scrollable list of chat sessions
-- Each chat: title, truncated preview, timestamp
-- Active chat: highlighted background
-- Delete button on hover
+### 5.2 Engine Strip (signature element)
+- Persistent 40px strip at the foot of the content area (right of the NavRail).
+- **Running**: green dot + `memory` icon + chat model name, then `hub` icon + "Memory: <model>", each with a one-tap stop. A "Models ›" affordance on the right.
+- **Offline**: dim dot + "No model running" + bronze "Start a model" — taps jump to the Models tab.
+- Reads `modelStatusProvider` + `embeddingStatusProvider` (5s poll). Calm by design; the eye goes here and to the download %.
 
-### 5.3 Chat Message Bubble
-- **User messages**: Right-aligned, `accentMuted` background, gold-ish tint
-- **Assistant messages**: Left-aligned, `bgPanel` background
-- Max width: 55% of screen
-- Rounded corners: `radiusMd`
-- Border: matching color with low opacity
-- **Thinking block** (assistant only): Collapsible section with toggle
-- **Agent events** (assistant only): Collapsed cards showing tool calls
-- **Timestamp**: Below content, 10px, `textDim`
-- **Images**: Max 480px wide, rounded, within message bubble
-- **Code blocks**: JetBrains Mono, dark bg, padding 14px
-- **Edit**: Right-click or long-press → edit/delete popup menu
-- **Copy**: Hover shows copy icon on assistant messages
+### 5.3 Chat Sidebar
+- 260px, `bgPanel`. Search + "New Chat" on top. Rows hover → `bgHover`, active → `accentMuted`. Delete on hover.
 
-### 5.4 Chat Input
-- Bottom of chat area
-- **Image icon**: Picks image, shows preview above input with remove button
-- **File icon**: Picks any file, shows filename above input
-- **Text field**: Expanded, max height 160px, multiline
-- **Send button**: Gold accent when idle, red square with stop icon when sending
-- **Prompt templates**: Type "/" to trigger template popup
-- Image preview box: 60x60 thumbnail with filename and close button
+### 5.4 Chat Message Bubble
+- User: right, `accentMuted` (bronze tint). Assistant: left, `bgPanel`. Max width ~62%, `radiusMd`.
+- Thinking block (collapsible), agent tool-call cards, timestamp (`textDim`), images max 480px, code blocks `bgApp` + JetBrains Mono. Right-click → edit/delete.
 
-### 5.5 Model Store Card
-- Rounded card with `bgApp` background, `borderSoft` border
-- **Top row**: Model filename (bold, truncated) + delete button
-- **Second row**: Repo ID (small, `textDim`)
-- **Tag row**: Embedding/Vision/Think/Tool/Text badges
-- **Bottom**: Download button or Start button
-- Badges: Small pills with `accentPale` bg, accent text
+### 5.5 Chat Input
+- `bgElement` field, focus → bronze border. Image/file/STT icons muted. Send = bronze; while sending = red stop square.
+- Type "/" → templates. Welcome-screen suggestions push starter text via `composerDraftProvider`.
 
-### 5.6 Settings Dialog
-- Modal dialog with `radiusLg`
-- Left panel: Tab list (140px wide)
-- Right panel: Content area
-- Tabs: General, Providers, Llama, Memory, Cloud Sync, Identity, Orchestra, Agent, About
-- Save/Cancel buttons at bottom when applicable
+### 5.6 Welcome View (empty chat)
+- `bgElement` logo tile + bronze "M". Title + subtitle.
+- Four **functional** suggestion cards (Material icons, no emoji) — tap fills the composer. Subtle fade-in entrance. "/" tip chip.
 
-### 5.7 Buttons
-- **Primary/Elevated**: `accent` bg, white text, `radiusSm`, 14px 24px padding
-- **Outlined**: Transparent bg, `borderSoft` border, `textMain` text
-- **Text**: `accent` color text only
-- **Icon**: 20px icons, `textMuted` color
-- **Danger**: Red bg when stop, red text when delete
+### 5.7 Model Screen (Discover / My Models)
+Recommendation-first; quantization is hidden behind a smart default.
 
-### 5.8 Input Fields
-- Filled: `bgElement` bg
-- Border: `borderSoft`, `radiusMd`
-- Focus: Gold accent border 1.5px
-- Hint: `textDim` color
-- Padding: 16px horizontal, 14px vertical
+- **Header**: "Models" title + hardware chip ("Your device: 15 GB RAM · GPU/CPU"). Segmented Discover/My Models tabs (active = bronze).
+- **Discover**: "Recommended for you" — curated cards (`curated_models.dart`): name, one-line description, kind pill (Chat/Memory/Vision), `~size`, **hardware-fit badge**, single **Download** button. One click resolves the best-fit GGUF (prefer Q4_K_M) via `getModelFiles` and downloads it.
+  - **Advanced search** (collapsible): HF search → "Other versions" dialog listing files with **plain-language quant** ("Balanced — recommended", "Highest quality", …) + per-file fit badge.
+- **My Models**: local cards with kind/size pills, Start (via `ModelConfigDialog`) / Stop, running indicator, delete, import. **Empty state**: a numbered 3-step guide (Download → Start → Chat).
+- **Download banner**: inline filename + % + speed + thin bronze progress bar. Polling is adaptive + `autoDispose` (1s active / 4s idle).
 
-### 5.9 Tabs
-- Horizontal tab bar (model store, settings)
-- Active: bottom border or filled tab with accent
-- Inactive: muted text, no border
+### 5.8 Fit Badge
+Driven by `hardwareFit(sizeBytes, gpu)` using VRAM, then system RAM (from `/api/gpu` → `ram_total_mb`), then absolute-size tiers:
+- **good** → green check ("Fits your device — fast on GPU" / "Fits your device")
+- **ok** → bronze check ("Runs on GPU + CPU" / "Runs (CPU)" / "Runs on most computers")
+- **warn** → orange triangle ("A strong computer is recommended" / "Your hardware may be insufficient")
 
-### 5.10 Progress & Loading
-- **Download progress**: Linear progress bar with percentage, speed text
-- **Model loading**: Spinner with status text
-- **Streaming typing**: Pulsing dots indicator
-- **Error state**: Red icon + message + retry button
+### 5.9 Buttons
+- **Elevated/Primary**: bronze bg, `textInverse`, `radiusSm`.
+- **Outlined**: transparent, `borderSoft`, `textMain`.
+- **Text**: bronze. **Icon**: 20px, `textMuted`. **Danger**: `red`.
+
+### 5.10 Inputs
+- Filled `bgElement`, `borderSoft`, `radiusMd`, focus → bronze 1.5px. Hint `textDim`.
+
+### 5.11 Settings Dialog
+- `bgPanel` modal, `radiusLg`. Left tab list + right content. Active tab bronze-marked.
+
+### 5.12 Progress & Loading
+- Linear progress = bronze on `bgElement`. Spinners bronze. Skeletons for async. Error = red icon + message + retry.
 
 ---
 
 ## 6. Screen Layouts
 
-### 6.1 Chat Screen (Main)
+### 6.1 Chat
 ```
-┌──────────────────────────────────────────────┐
-│  NavRail  │  Chat Sidebar  │  Top Bar        │
-│  (64px)   │  (260px)       │  (56px)         │
-│           │                │                 │
-│           │  Chat list     │  Messages       │
-│  icons    │  scrollable    │  scrollable     │
-│           │                │                 │
-│           │                │  Chat Input     │
-│           │                │  (with preview) │
-└──────────────────────────────────────────────┘
-```
-
-### 6.2 Model Store Screen (Redesigned)
-```
-┌──────────────────────────────────────────────┐
-│  NavRail  │  Tab Bar: Discover | Local       │
-│  (64px)   │                                  │
-│           │  ┌──────────────────────────────┐ │
-│           │  │  Search bar                  │ │
-│           │  ├──────────────────────────────┤ │
-│           │  │  Model cards (grid/list)     │ │
-│           │  │                              │ │
-│           │  │  ┌──────┐ ┌──────┐ ┌──────┐ │ │
-│           │  │  │Card1 │ │Card2 │ │Card3 │ │ │
-│           │  │  └──────┘ └──────┘ └──────┘ │ │
-│           │  └──────────────────────────────┘ │
-└──────────────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│ NavRail │ Sidebar │ Top bar                    │
+│  64px   │  260px  ├────────────────────────────┤
+│         │         │ Messages (scroll)          │
+│  icons  │  chats  │                            │
+│         │         │ Chat input (/ templates)   │
+│         │         ├────────────────────────────┤
+│         │         │ ● Engine Strip · Models ›  │
+└───────────────────────────────────────────────┘
 ```
 
-### 6.3 Settings Dialog
+### 6.2 Model Screen
 ```
-┌──────────────────────────────────────┐
-│  Settings                    [X]     │
-├──────────┬───────────────────────────┤
-│ General  │  Content area            │
-│ Providers│  (scrollable)            │
-│ Llama    │                          │
-│ Memory   │                          │
-│ Sync     │                          │
-│ Identity │                          │
-│ Orchestra│                          │
-│ Agent    │                          │
-│ About    │                          │
-├──────────┴───────────────────────────┤
-│          [Save]  [Cancel]           │
-└──────────────────────────────────────┘
+┌───────────────────────────────────────────────┐
+│ Models                  [ Your device: … ]     │
+│ ( Discover ) ( My Models )                     │
+├───────────────────────────────────────────────┤
+│ Recommended for you                            │
+│ ┌───────────────┐ ┌───────────────┐            │
+│ │ Llama 3.1 8B  │ │ Qwen 2.5 7B   │            │
+│ │ ~4.9 GB       │ │ ~4.7 GB       │            │
+│ │ ✓ Fits device │ │ ✓ Fits device │            │
+│ │  [ Download ] │ │  [ Download ] │            │
+│ └───────────────┘ └───────────────┘            │
+│ ▸ Open advanced search                         │
+└───────────────────────────────────────────────┘
 ```
 
 ---
 
 ## 7. States
 
-Every view must handle:
-- **Loading**: Skeleton or spinner with accent color
-- **Empty**: Illustration + message + action button
-- **Error**: Error icon + description + retry button
-- **Data**: Normal content display
-- **Streaming**: Real-time token updates, typing indicator
-- **Disabled**: 30% opacity, no interaction
+Every view handles: **Loading** (skeleton/spinner), **Empty** (invitation + single action), **Error** (what went wrong + how to fix + retry), **Data**, **Streaming** (live tokens), **Disabled** (reduced opacity).
 
 ---
 
 ## 8. Interaction Patterns
 
-- **Right-click / long-press**: Context menu (edit, delete, copy)
-- **Hover**: Subtle bg change (`bgHover`), reveal action icons
-- **Scroll**: Thin custom scrollbar (`bgHover` thumb, 4px, rounded)
-- **Snackbar**: Floating, dark bg, white text, auto-dismiss
-- **Tooltips**: Dark bg, white text, small size
+- Right-click / long-press → context menu. Hover → `bgHover` / bronze border (no layout-shifting scale).
+- Thin custom scrollbar (`bgHover`, 4px). Floating snackbars (`bgHover`). Tooltips (`bgHover` + border).
+- Transitions 150–300ms; `prefers-reduced-motion` respected; visible keyboard focus; touch targets ≥ 40px.
 
 ---
 
 ## 9. Iconography
 
-- Material Icons (outlined style preferred)
-- 20px default size for action icons
-- 14px for inline indicators
-- 40px for empty state illustrations
+- **Material Symbols (outlined), never emoji.** 20px default, 14–16px inline, 40px for empty-state glyphs.
 
 ---
 
-## 10. Dark Mode
+## 10. Themes
 
-- All colors invert per the palette above
-- No hardcoded colors — always use `MemoTheme.of(context)`
-- System default, optional manual toggle in settings
+- **Pewter** (default mid-tone) + **Night** (deeper). No bright light theme.
+- No hardcoded colors — always `MemoTheme.of(context)` for surfaces/text, `MemoTheme.<const>` for accent/functional. Switchable via `themeMode` (light→Pewter, dark→Night, system→auto).

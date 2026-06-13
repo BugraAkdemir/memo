@@ -7,6 +7,7 @@
   <img src="https://img.shields.io/badge/llama.cpp-Integrated-orange?style=flat-square&logo=llama" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-Enabled-green?style=flat-square" alt="RAG"/>
   <img src="https://img.shields.io/badge/WhatsApp-Integrated-25D366?style=flat-square&logo=whatsapp" alt="WhatsApp"/>
+  <img src="https://img.shields.io/badge/Agent-8_Tools-B08D57?style=flat-square" alt="Agent"/>
   <img src="https://img.shields.io/badge/Backup-.memo_ZIP-blue?style=flat-square" alt="Backup"/>
   <img src="https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_macOS-lightgrey?style=flat-square" alt="Cross Platform"/>
 </div>
@@ -17,21 +18,35 @@
 
 <p align="center">
   <b>Your Local. Your Private. Your Second Brain.</b><br/>
-  <i>A privacy-first, local-first AI assistant with persistent memory, WhatsApp integration, and smart automation</i>
+  <i>A privacy-first, local-first AI assistant with persistent RAG memory, external providers, an agent engine, WhatsApp, and a premium desktop experience.</i>
 </p>
 
 <p align="center">
+  <a href="#-why-memo">Why Memo</a> •
   <a href="#-features">Features</a> •
+  <a href="#-design">Design</a> •
   <a href="#-quick-start">Quick Start</a> •
   <a href="#-architecture">Architecture</a> •
   <a href="#-roadmap">Roadmap</a> •
-  <a href="#-documentation">Documentation</a> •
   <a href="READmeTR.md">Türkçe</a>
 </p>
 
 ---
 
-> **Current Version:** v3.1.0-beta — RAG memory, WhatsApp integration, local embedding, backup/restore. [See roadmap →](docs/ROADMAP.md)
+> **Current version:** `v3.1.0-beta` — RAG memory, external providers, agent & orchestra engines, WhatsApp, encrypted cloud sync, mobile companion, and a from-scratch **"Pewter Study"** UI redesign. [See roadmap →](docs/ROADMAP.md)
+
+---
+
+## 🎯 Why Memo
+
+Most AI assistants send your conversations to someone else's servers. **Memo doesn't.** It runs the model on your machine, stores every memory in a local vector database, and never phones home. You own the model, the data, and the disk it lives on.
+
+But local-first shouldn't mean hard to use. Memo pairs a real RAG memory engine and a tool-calling agent with an interface a first-time user can navigate — **download a model in one click, see whether it fits your hardware before you commit, and always know what's running.**
+
+- **🔒 Private by construction** — zero telemetry, no training on your chats, no cloud dependency. Optional encrypted backup only if *you* turn it on.
+- **🧠 Real memory** — every interaction is embedded and indexed; relevant context is retrieved automatically on each turn.
+- **🤝 Best of both worlds** — run chat through a powerful external API while a tiny local model handles embeddings, or stay 100% offline.
+- **🖥️ Native, not a web wrapper** — a Flutter desktop app on Linux, Windows, and macOS, plus a mobile companion.
 
 ---
 
@@ -41,54 +56,79 @@
   <tr>
     <td width="50%">
       <h3>🧠 <b>Local RAG Engine</b></h3>
-      SQLite + sqlite-vec ANN vector index. Every interaction is semantically indexed. O(log n) retrieval at any scale. No cloud, no third-party embeddings.
+      SQLite + sqlite-vec (vec0 ANN index). Every interaction is semantically indexed for O(log n) retrieval at any scale. No cloud, no third-party embeddings.
     </td>
+    <td width="50%">
+      <h3>🤖 <b>Agent Engine</b></h3>
+      Tool-calling pipeline with 8 built-in tools, a 6-policy permission system (allow/deny once/session/forever), an execution sandbox, rate limiting, and an audit log.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>🎵 <b>Orchestra Mode</b></h3>
+      Multi-model collaboration: a chief model plans and decomposes a task, expert roles execute in parallel, and the chief synthesizes the result. 8 built-in roles.
+    </td>
+    <td width="50%">
+      <h3>🔄 <b>Cross-Mode Architecture</b></h3>
+      Use external API providers for chat while a small local model handles embeddings — power and privacy, independently configurable.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <h3>⚡ <b>Local llama.cpp</b></h3>
+      Bundled <code>llama-server</code> lifecycle management: auto-download, auto-start, GPU offloading with VRAM detection (NVIDIA / AMD / Metal). No Docker, no containers.
+    </td>
+    <td width="50%">
+      <h3>🏭 <b>Guided Model Store</b></h3>
+      Curated recommendations, one-click download, and a <b>hardware-fit badge</b> driven by your RAM/VRAM. Quantization is auto-picked — no cryptic <code>Q4_K_M</code> guessing.
+    </td>
+  </tr>
+  <tr>
     <td width="50%">
       <h3>💬 <b>WhatsApp Integration</b></h3>
       Full WhatsApp Web pairing via QR. Send/receive messages, contact name resolution, whitelist-based file transfer, dedicated agent tools. Your chats stay local.
     </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🔒 <b>100% Private</b></h3>
-      Zero data leaves your machine. No telemetry, no training on your conversations. Your second brain stays yours. Optional encrypted cloud backup if you choose.
-    </td>
-    <td width="50%">
-      <h3>⚡ <b>Local llama.cpp</b></h3>
-      Integrated llama-server management. Auto-download, auto-start, GPU acceleration with VRAM detection. No Docker, no containers, no cloud dependency.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🔄 <b>Cross-Mode Architecture</b></h3>
-      Use external API providers (OpenAI, Claude, Gemini, etc.) for chat while a tiny local model handles embeddings. Best of both worlds — power + privacy.
-    </td>
     <td width="50%">
       <h3>📦 <b>Backup & Restore</b></h3>
-      Full .memo zip export/import — sessions, config, memory, WhatsApp data, providers. Wipe all data with double confirmation. Your data, fully portable.
+      Full <code>.memo</code> zip export/import — sessions, config, memory, WhatsApp data, providers — plus encrypted Google Drive sync (AES-256-GCM) and a double-confirm wipe.
     </td>
   </tr>
   <tr>
     <td width="50%">
-      <h3>🤗 <b>HuggingFace Integration</b></h3>
-      Search, download, and manage GGUF models directly from the HuggingFace Hub. One-click model switching. Built-in model store with search and filters.
+      <h3>🛠️ <b>Model & Provider Agnostic</b></h3>
+      Any OpenAI-compatible server (llama.cpp, Ollama, LM Studio). External providers: OpenAI, Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama — with a fallback router.
     </td>
     <td width="50%">
-      <h3>🎨 <b>Greige Design</b></h3>
-      Premium Material 3 interface with a warm, minimal greige palette. Dark mode included. Clean, focused, easy on the eyes during long sessions.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🛠️ <b>Model Agnostic</b></h3>
-      Works with any OpenAI-compatible local server. llama.cpp, Ollama, LM Studio — bring your own model. External providers: OpenAI, Anthropic, Google, Grok, Groq, OpenRouter, Ollama.
-    </td>
-    <td width="50%">
-      <h3>🖥️ <b>Cross-Platform</b></h3>
-      Linux, Windows, macOS support. Native desktop apps via Flutter. Windows installer with Inno Setup. Your assistant, anywhere you run it.
+      <h3>📱 <b>Mobile & Remote</b></h3>
+      A thin Flutter mobile companion (Android/iOS) over LAN or a built-in ngrok tunnel, with token auth and streaming chat.
     </td>
   </tr>
 </table>
+
+---
+
+## 🎨 Design
+
+Memo's interface is **"Pewter Study"** — a deliberately **mid-tone** identity that sits between a bright light theme and a cave-dark one: warm graphite surfaces, a soft off-white ink for text, and a single **muted bronze** accent. No neon, no glare — a calm, premium workspace for a second brain.
+
+| Principle | In practice |
+|-----------|-------------|
+| **One surface, three layers** | Depth comes from elevation, not color. |
+| **Spend the accent once** | Bronze marks only primary actions, active state, and progress. |
+| **Plain language** | "Balanced — recommended", never "Q4_K_M". |
+| **Hardware-aware** | Every model answers "does this fit my device?" up front. |
+| **Engine Strip** | A persistent footer shows which chat + memory models are running, with one-tap stop. |
+
+Typography pairs **Schibsted Grotesk** (display) with **Inter** (body) and **JetBrains Mono** (code). Two themes ship: **Pewter** (default) and **Night** (deeper). Full system in [frontend/DESIGN.md](frontend/DESIGN.md).
+
+### The model download, reimagined
+
+Downloading a model used to mean searching HuggingFace, opening a repo, and picking from a list of files named `…Q4_K_M.gguf`, `…Q5_K_S.gguf`, `…fp16.gguf` — meaningless to most people. Memo replaces that with a guided flow:
+
+1. **Discover** shows curated, known-good models with a one-line description and size.
+2. A **hardware-fit badge** ("✓ Fits your device — fast on GPU" / "⚠ May be insufficient") is computed from your detected **RAM and VRAM**.
+3. **One click** resolves the best-fit quantization automatically and downloads it.
+4. Power users can still open **Advanced search** for any HuggingFace repo, with every quant translated into plain language.
 
 ---
 
@@ -97,7 +137,7 @@
 ### Prerequisites
 - **Go 1.25+** — [download](https://go.dev/dl/)
 - **Flutter 3.10+** — [install](https://docs.flutter.dev/get-started/install)
-- **llama.cpp** — bundled! Pre-built binaries for your platform. No manual install needed.
+- **llama.cpp** — bundled. Pre-built binaries per platform; no manual install needed.
 
 ### Development
 ```bash
@@ -109,15 +149,13 @@ go run . --port 8090
 cd frontend && flutter run -d linux
 ```
 
-### Build a Release
+### Build a release
 ```bash
-# Linux
+# Linux  → tar.gz / AppImage / deb
 ./build_releases.sh
-# Output: build_output/dist/Memo-linux-x64-v3.1.0.tar.gz / .AppImage / .deb
 
-# Windows
+# Windows → Inno Setup installer or portable zip
 .\build_releases.bat
-# Output: Memo-Setup-x64-v3.1.0.exe (Inno Setup) or Memo-win-x64-v3.1.0.zip
 ```
 
 ---
@@ -127,42 +165,38 @@ cd frontend && flutter run -d linux
 ```
 ┌──────────────────────────────────┐  ┌───────────────────────────────┐
 │     Flutter Desktop Client       │  │    Flutter Mobile Client      │
-│  ┌──────┐ ┌──────┐ ┌────────┐   │  │  ┌──────────┐ ┌──────────┐   │
-│  │Chat  │ │Settings│ │Model   │   │  │  │Connect   │ │  Chat    │   │
-│  │+Agent │ │+Backup│ │Store   │   │  │  │Screen    │ │  Screen  │   │
-│  └──┬───┘ └──┬───┘ └───┬────┘   │  │  └────┬─────┘ └────┬─────┘   │
-│     └────┬───┴─────────┘         │  │       └──────┬──────┘         │
-│  ┌───────┴────────────┐          │  │  ┌───────────┴──────────┐     │
-│  │  Riverpod + SSE    │          │  │  │  Riverpod + Dio      │     │
-│  │  MemoApiClient     │          │  │  │  MemoApiClient       │     │
-│  └───────┬────────────┘          │  │  └───────────┬──────────┘     │
-└──────────┼───────────────────────┘  └───────────────┼───────────────┘
-           │ REST + SSE (:8090)                        │ LAN/ngrok/TLS
-           │                                           │
-┌──────────┼───────────────────────────────────────────┼───────────────┐
-│          └──────────────────┬────────────────────────┘               │
-│                     Go Backend Server                                │
-│  ┌─────────────────────────┴─────────────────────────┐               │
-│  │             Web Server (server.go)                 │               │
-│  │        ~40 endpoints (handlers_flutter.go)         │               │
-│  └─────────────────────────┬─────────────────────────┘               │
-│  ┌─────────────────────────┴─────────────────────────┐               │
-│  │                App Engine (app.go)                  │               │
-│  └──┬──────────┬──────────┬──────────┬──────────┬─────┘               │
-│  ┌──┴──┐  ┌────┴────┐  ┌─┴────────┐  ┌─┴───────┐  ┌─┴─────────┐     │
-│  │Mem  │  │Sessions │  │Llama Mgr │  │WhatsApp │  │Provider   │     │
-│  │Store│  │Manager  │  │+ Emb Mgr │  │Client   │  │Router     │     │
-│  │vec0 │  │JSON     │  │llama.cpp │  │whatsmeow│  │(8 types)  │     │
-│  └─────┘  └─────────┘  └──────────┘  └─────────┘  └───────────┘     │
-│  ┌──────────┐  ┌──────────────┐  ┌──────────┐  ┌──────────┐         │
-│  │Orchestra │  │Model Store   │  │Agent     │  │ngrok     │         │
-│  │Conductor │  │HF API+local  │  │Engine    │  │Manager   │         │
-│  │(8 roles) │  │              │  │(8 tools) │  │Tunnel    │         │
-│  └──────────┘  └──────────────┘  └──────────┘  └──────────┘         │
+│  ┌──────┐ ┌────────┐ ┌────────┐  │  │  ┌──────────┐ ┌──────────┐    │
+│  │Chat  │ │Settings│ │ Model  │  │  │  │ Connect  │ │   Chat   │    │
+│  │+Agent│ │+Backup │ │ Store  │  │  │  │  Screen  │ │  Screen  │    │
+│  └──┬───┘ └───┬────┘ └───┬────┘  │  │  └────┬─────┘ └────┬─────┘    │
+│  ┌──┴─────────┴──────────┴────┐  │  │  ┌────┴────────────┴────┐     │
+│  │  Riverpod · SSE · Engine   │  │  │  │   Riverpod · Dio      │     │
+│  │  Strip · MemoApiClient     │  │  │  │   MemoApiClient       │     │
+│  └───────────┬────────────────┘  │  │  └───────────┬───────────┘     │
+└──────────────┼────────────────────┘  └──────────────┼────────────────┘
+               │ REST + SSE (:8090)                    │ LAN / ngrok / TLS
+┌──────────────┼───────────────────────────────────────┼────────────────┐
+│              └──────────────────┬─────────────────────┘                │
+│                        Go Backend Server                               │
+│  ┌──────────────────────────────┴──────────────────────────────┐      │
+│  │   Web Server (server.go) · ~35 endpoints (handlers)          │      │
+│  └──────────────────────────────┬──────────────────────────────┘      │
+│  ┌──────────────────────────────┴──────────────────────────────┐      │
+│  │                    App Engine (app.go)                        │      │
+│  └──┬─────────┬──────────┬──────────┬──────────┬──────────┬─────┘      │
+│  ┌──┴──┐ ┌────┴───┐ ┌────┴────┐ ┌───┴────┐ ┌───┴────┐ ┌───┴─────┐    │
+│  │Mem  │ │Sessions│ │Llama +  │ │WhatsApp│ │Provider│ │ Agent   │    │
+│  │vec0 │ │ JSON   │ │Emb Mgr  │ │whatsmeow│ │Router  │ │ Engine  │    │
+│  │SQLite│ │       │ │+GPU/RAM │ │        │ │(7 APIs)│ │(8 tools)│    │
+│  └─────┘ └────────┘ └─────────┘ └────────┘ └────────┘ └─────────┘    │
+│  ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────┐             │
+│  │Orchestra │ │ Model Store  │ │Cloud Sync│ │ ngrok    │             │
+│  │(8 roles) │ │ HF + local   │ │ (Drive)  │ │ Tunnel   │             │
+│  └──────────┘ └──────────────┘ └──────────┘ └──────────┘             │
 └──────────────────────────────────────────────────────────────────────┘
 ```
 
-**Deep dive:** [docs/architecture.md](docs/architecture.md)
+**Deep dive:** [docs/architecture.md](docs/architecture.md) · **API:** [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
 
 ---
 
@@ -171,10 +205,10 @@ cd frontend && flutter run -d linux
 | Version | Theme | Status |
 |---------|-------|--------|
 | **v3.1.0** | Memory — RAG, WhatsApp, Backup, Mobile, Remote Access | ✅ Released |
-| **v3.2.0** | Scheduled Intelligence — Calendar, Agent UI, Mobile Notifications | 🚧 In Development |
+| **v3.2.0** | Scheduled Intelligence — Calendar, Agent UI, Mobile Notifications | 🚧 In development |
 | **v3.3.0** | Mobile & Voice — Mobile v2 + Voice Assistant | 🚧 Planned |
 | **v3.4.0** | Plugin & Web — Plugin System + Web Search | 🚧 Planned |
-| **v3.5.0** | Smarter Memo — Knowledge Graph, Self-Improving, Smart Memory | 🔮 Future |
+| **v3.5.0** | Smarter Memo — Knowledge Graph, Self-Improving Memory | 🔮 Future |
 
 [Full roadmap →](docs/ROADMAP.md)
 
@@ -184,14 +218,14 @@ cd frontend && flutter run -d linux
 
 | Document | Description |
 |----------|-------------|
-| [🛣️ Roadmap](docs/ROADMAP.md) | Full strategic vision and release plan |
-| [🏛️ Architecture](docs/architecture.md) | Technical deep dive into components |
+| [🎨 Design System](frontend/DESIGN.md) | The "Pewter Study" tokens, components, and screens |
+| [🏛️ Architecture](docs/architecture.md) | Technical deep dive into every component |
 | [📡 API Reference](docs/API_REFERENCE.md) | All REST endpoints |
+| [🛣️ Roadmap](docs/ROADMAP.md) | Strategic vision and release plan |
 | [📱 Mobile README](mobile/README.md) | Mobile companion app docs |
 | [📖 Known Issues](docs/KNOWN_ISSUES.md) | Complete audit with priorities |
 | [🔧 Troubleshooting](docs/TROUBLESHOOTING.md) | Common problems and solutions |
 | [📝 Contributing](docs/CONTRIBUTING.md) | How to contribute |
-| [📚 Features Catalog](docs/FEATURES.md) | Detailed feature breakdown |
 
 ---
 
@@ -201,14 +235,15 @@ cd frontend && flutter run -d linux
 
 | Layer | Technology |
 |-------|-----------|
-| **Backend** | Go 1.25, http.ServeMux |
-| **Frontend (Desktop)** | Flutter 3.10+, Riverpod 2.x, Dio, flutter_markdown |
-| **Frontend (Mobile)** | Flutter 3.10+, Riverpod 2.x, Dio, Android + iOS + Web |
+| **Backend** | Go 1.25, `http.ServeMux`, SSE streaming |
+| **Frontend (Desktop)** | Flutter 3.10+, Riverpod 2.x, Dio, flutter_markdown, google_fonts |
+| **Frontend (Mobile)** | Flutter 3.10+, Riverpod 2.x, Dio (Android · iOS · Web) |
 | **LLM Runtime** | llama.cpp (bundled), OpenAI-compatible API |
-| **External Providers** | OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama |
+| **External Providers** | OpenAI · Anthropic Claude · Google Gemini · xAI Grok · Groq · OpenRouter · Ollama |
 | **Vector Store** | SQLite + sqlite-vec (vec0 ANN index) |
 | **WhatsApp** | whatsmeow (multi-device Web API) |
-| **GPU** | nvidia-smi, rocm-smi, sysfs, Metal |
+| **Hardware Detection** | nvidia-smi · rocm-smi · Metal · system RAM (/proc, GlobalMemoryStatusEx, sysctl) |
+| **Cloud Sync** | Google Drive OAuth2 + AES-256-GCM |
 | **Build** | Go toolchain, Flutter build, shell scripts, Inno Setup |
 | **License** | GNU AGPL v3 |
 
@@ -218,9 +253,9 @@ cd frontend && flutter run -d linux
 
 ## 🤝 Contributing
 
-Contributions welcome! See:
+Contributions welcome:
 - [Known Issues](docs/KNOWN_ISSUES.md) — pick an item to work on
-- [Roadmap](docs/ROADMAP.md) — see upcoming features
+- [Roadmap](docs/ROADMAP.md) — see what's coming
 - [Contributing Guide](docs/CONTRIBUTING.md)
 
 ---

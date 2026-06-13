@@ -52,14 +52,22 @@ xcopy /E /I /Y "frontend\build\windows\x64\release\runner\Release\*" "%STAGEDIR%
 :: 3. Copy Assets
 echo [3/3] Dosyalar kopyalaniyor...
 
-:: Binaries (llama-server + vec0)
+:: Binaries (llama-server + vec0) — only copy windows/
 mkdir "%STAGEDIR%\binaries"
-xcopy /E /I /Y "binaries\*" "%STAGEDIR%\binaries\" >nul 2>&1
+xcopy /E /I /Y "binaries\windows" "%STAGEDIR%\binaries\windows\" >nul 2>&1
 
-:: Check vec0.dll
+:: Validate binaries
 if not exist "%STAGEDIR%\binaries\windows\vec0.dll" (
     if not exist "%STAGEDIR%\binaries\windows\cpu\vec0.dll" (
         echo UYARI: vec0.dll bulunamadi! Vektor arama calismayacak.
+    )
+)
+
+if not exist "%STAGEDIR%\binaries\windows\cpu\llama-server.exe" (
+    if not exist "%STAGEDIR%\binaries\windows\nvidia\llama-server.exe" (
+        if not exist "%STAGEDIR%\binaries\windows\amd\llama-server.exe" (
+            echo UYARI: llama-server.exe bulunamadi! Motor calismayacak.
+        )
     )
 )
 
@@ -90,26 +98,83 @@ mkdir "%STAGEDIR%\data\agent-backups" 2>nul
 copy NUL "%STAGEDIR%\run_memo.bat" >nul
 (
 echo @echo off
+setlocal enabledelayedexpansion
 echo cd /d "%%~dp0"
-echo set PATH=%%~dp0data\bin;%%PATH%%
 echo.
-echo REM First-run: copy example configs
-echo if not exist "%%USERPROFILE%%\\.memo\\data\\providers.json" (
-echo     if exist "%%~dp0data\\providers.example.json" (
-echo         mkdir "%%USERPROFILE%%\\.memo\\data" 2^>nul
-echo         copy "%%~dp0data\\providers.example.json" "%%USERPROFILE%%\\.memo\\data\\providers.json" ^>nul
+echo set "APP_DIR=%%~dp0"
+echo set "MEMO_HOME=%%USERPROFILE%%\\.memo"
+echo.
+echo :: Writable workspace
+echo if not exist "%%MEMO_HOME%%\data\bin" mkdir "%%MEMO_HOME%%\data\bin"
+echo if not exist "%%MEMO_HOME%%\data\models" mkdir "%%MEMO_HOME%%\data\models"
+echo if not exist "%%MEMO_HOME%%\data\memory" mkdir "%%MEMO_HOME%%\data\memory"
+echo if not exist "%%MEMO_HOME%%\data\sessions" mkdir "%%MEMO_HOME%%\data\sessions"
+echo if not exist "%%MEMO_HOME%%\data\agent-backups" mkdir "%%MEMO_HOME%%\data\agent-backups"
+echo if not exist "%%MEMO_HOME%%\config" mkdir "%%MEMO_HOME%%\config"
+echo.
+echo :: First-run: copy bundled binaries to writable location
+echo if not exist "%%MEMO_HOME%%\binaries" (
+echo     if exist "%%APP_DIR%%binaries" (
+echo         echo Ilk calistirma: engine binary'leri kopyalaniyor...
+echo         mkdir "%%MEMO_HOME%%\binaries"
+echo         xcopy /E /I /Y "%%APP_DIR%%binaries" "%%MEMO_HOME%%\binaries\" ^>nul
 echo     ^)
 echo ^)
 echo.
+echo :: First-run: copy config
+echo if not exist "%%MEMO_HOME%%\config\config.yaml" (
+echo     if exist "%%APP_DIR%%config" (
+echo         xcopy /E /I /Y "%%APP_DIR%%config" "%%MEMO_HOME%%\config\" ^>nul
+echo     ^)
+echo ^)
+echo.
+echo :: First-run: copy example providers
+echo if not exist "%%MEMO_HOME%%\data\providers.json" (
+echo     if exist "%%APP_DIR%%data\providers.example.json" (
+echo         copy "%%APP_DIR%%data\providers.example.json" "%%MEMO_HOME%%\data\providers.json" ^>nul
+echo     ^)
+echo ^)
+echo.
+echo :: First-run: copy orchestra config
+echo if not exist "%%MEMO_HOME%%\data\orchestra.json" (
+echo     if exist "%%APP_DIR%%data\orchestra.json" (
+echo         copy "%%APP_DIR%%data\orchestra.json" "%%MEMO_HOME%%\data\orchestra.json" ^>nul
+echo     ^)
+echo ^)
+echo.
+echo :: First-run: .env
+echo if not exist "%%MEMO_HOME%%\\.env" (
+echo     if exist "%%APP_DIR%%.env" (
+echo         copy "%%APP_DIR%%.env" "%%MEMO_HOME%%\\.env" ^>nul
+echo     ^)
+echo ^)
+echo.
+echo :: First-run: empty permissions
+echo if not exist "%%MEMO_HOME%%\data\permissions.json" (
+echo     echo [] ^> "%%MEMO_HOME%%\data\permissions.json"
+echo ^)
+echo.
+echo :: Set PATH to include bundled binary directories
+echo set "PATH=%%APP_DIR%%binaries\windows;%%APP_DIR%%binaries\windows\cpu;%%APP_DIR%%binaries\windows\nvidia;%%APP_DIR%%binaries\windows\amd;%%MEMO_HOME%%\data\bin;%%PATH%%"
+echo.
+echo :: Stop old processes
 echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1
 echo taskkill /F /IM llama-server.exe ^>nul 2^>^&1
-echo.
-echo start "" /B memo-backend.exe
 echo timeout /t 1 /nobreak ^>nul
+echo.
+echo :: Start backend from writable directory
+echo cd /d "%%MEMO_HOME%%"
+echo start "" /B "%%APP_DIR%%memo-backend.exe"
+echo timeout /t 2 /nobreak ^>nul
+echo.
+echo :: Start Flutter frontend
+echo cd /d "%%APP_DIR%%"
 echo start "" /WAIT memo_flutter.exe
 echo.
+echo :: Cleanup
 echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1
 echo taskkill /F /IM llama-server.exe ^>nul 2^>^&1
+echo endlocal
 ) > "%STAGEDIR%\run_memo.bat"
 
 :: Create installer with Inno Setup if available

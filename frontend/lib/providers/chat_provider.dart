@@ -217,7 +217,12 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
 
-        await for (final chunk in stream) {
+        await for (final chunk in stream.timeout(
+          const Duration(seconds: 60),
+          onTimeout: (sink) => sink.addError(
+            Exception('Sunucu yanıt vermiyor (60s zaman aşımı)'),
+          ),
+        )) {
           if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
@@ -345,7 +350,12 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
 
-        await for (final chunk in stream) {
+        await for (final chunk in stream.timeout(
+          const Duration(seconds: 60),
+          onTimeout: (sink) => sink.addError(
+            Exception('Sunucu yanıt vermiyor (60s zaman aşımı)'),
+          ),
+        )) {
           fullReply += chunk.content;
           fullThinking += chunk.thinking ?? '';
 

@@ -134,12 +134,26 @@ Eskiden model indirmek; HuggingFace'te arama yapmak, bir repo açmak ve `…Q4_K
 
 ## 🚀 Hızlı Başlangıç
 
-### Gereksinimler
-- **Go 1.25+** — [indir](https://go.dev/dl/)
-- **Flutter 3.10+** — [kur](https://docs.flutter.dev/get-started/install)
-- **llama.cpp** — gömülü. Platformunuz için önceden derlenmiş binary'ler; manuel kurulum gerekmez.
+Terminal yok, kod indirmek yok, derleme yok. **Tek tıkla indir ve kur.**
 
-### Geliştirme
+<div align="center">
+  <a href="https://memo.bugradev.com">
+    <img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="Memo'yu İndir"/>
+  </a>
+</div>
+
+| Platform | Kurulum | Nasıl |
+|----------|---------|-------|
+| **Windows** | `Memo-Setup.exe` | Kurulumu çalıştır, ileri-ileri, bitti. |
+| **Linux** | `.AppImage` / `.deb` | Çalıştırılabilir yap (ya da `.deb` kur) ve aç. |
+
+llama.cpp gömülü gelir ve her şey ilk çalıştırmada hazırlanır — sadece **[memo.bugradev.com'dan indir](https://memo.bugradev.com)**, uygulamayı aç, **Keşfet**'ten bir model seç ve sohbete başla.
+
+<details>
+<summary><b>🛠️ Kaynaktan derleme (geliştiriciler)</b></summary>
+
+**Gereksinimler:** Go 1.25+ · Flutter 3.10+ (llama.cpp gömülü).
+
 ```bash
 # Terminal 1 — Backend
 git clone https://github.com/BugraAkdemir/memo.git && cd memo
@@ -149,14 +163,12 @@ go run . --port 8090
 cd frontend && flutter run -d linux
 ```
 
-### Sürüm paketi oluşturma
+Sürüm paketleri oluştur:
 ```bash
-# Linux  → tar.gz / AppImage / deb
-./build_releases.sh
-
-# Windows → Inno Setup kurulumu veya taşınabilir zip
-.\build_releases.bat
+./build_releases.sh    # Linux  → tar.gz / AppImage / deb
+.\build_releases.bat   # Windows → Inno Setup kurulumu veya taşınabilir zip
 ```
+</details>
 
 ---
 

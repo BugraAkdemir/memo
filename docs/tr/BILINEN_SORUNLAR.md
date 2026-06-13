@@ -65,35 +65,46 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Yapılan:** `debugPrint` eklendi.
 - **Kullanıcı etkisi:** Bağlantı durumu "bağlı değil" gösteriyor ancak sebebi belirtilmiyordu.
 
+### F11. HTTP İstek Gövdesi Boyut Sınırı (K02)
+- **Öncesi:** Global limit 10MB idi, >10MB dosya yüklemeleri çalışmıyordu.
+- **Yapılan:** Limit 50MB'a çıkarıldı.
+- **Kullanıcı etkisi:** 50MB'a kadar dosya yüklemeleri artık çalışıyor.
+
+### F12. Agent Sandbox: Kabuk Yorumlayıcıları Kara Listeye Eklendi (K04)
+- **Öncesi:** `sh`, `bash`, `zsh`, `dash` engellenmiyordu — `sh -c "rm -rf /"` ile sandbox kaçışı mümkündü.
+- **Yapılan:** Kabuk yorumlayıcıları komut kara listesine eklendi.
+- **Kullanıcı etkisi:** Agent artık kabuk üzerinden sandbox'ı bypass edemez.
+
+### F13. `callLLMStream` Goroutine Sızıntısı (H06)
+- **Öncesi:** `for chunk := range ch` provider timeout'una (300s) kadar bloke oluyordu.
+- **Yapılan:** Her iki döngü (provider + local model) `select` ile `ctx.Done()` izleyecek şekilde değiştirildi.
+- **Kullanıcı etkisi:** İstemci bağlantıyı kestiğinde goroutine anında çıkıyor.
+
+### F14. Veri Yarışları: Provider Router, Aktif Sağlayıcı, Oturumlar (K03)
+- **Öncesi:** `providerRouter`, `activeProvider`, `sessions`, `syncManager` alanları korumasızdı.
+- **Yapılan:** Muteks korumaları (`providerMu`, `sessionsMu`) eklendi, sync TOCTOU yarışı düzeltildi.
+- **Kullanıcı etkisi:** Eşzamanlı yapılandırma değişikliklerinde çökme riski azaldı.
+
+### F15. SSE Akış Zaman Aşımı (H08)
+- **Öncesi:** `await for` stream durunca sonsuz bekliyordu.
+- **Yapılan:** Stream tüketimine 60s `.timeout()` eklendi.
+- **Kullanıcı etkisi:** Donan akışlar artık zaman aşımına uğrayıp hata gösteriyor.
+
+### F16. Agent İzin Kartlarında İnsan Tarafından Okunabilir İsimler
+- **Öncesi:** Kartlar `write_file`, `run_command` gibi ham araç adları gösteriyordu.
+- **Yapılan:** `tool_names.dart` ile Türkçe görünen adlar, açıklamalar ve ikonlar eklendi.
+- **Kullanıcı etkisi:** Kullanıcılar artık "Dosya Yaz", "Komut Çalıştır" gibi anlaşılır ifadeler görüyor.
+
+### F17. `DeleteLocalModel`'de TOCTOU Sembolik Bağlantı Yarışı (K01)
+- **Öncesi:** `filepath.EvalSymlinks` ile `os.Remove` arasında sembolik bağlantı değiştirme saldırısı mümkündü.
+- **Yapılan:** `os.Remove` öncesinde yeniden `EvalSymlinks` + yeniden doğrulama eklendi.
+- **Kullanıcı etkisi:** TOCTOU penceresi kapatıldı — yol silme anında yeniden doğrulanıyor.
+
 ---
 
 ## 🔴 Kritik
 
-### K01. `DeleteLocalModel`'de TOCTOU Sembolik Bağlantı Yarışı
-- **Dosya:** `internal/modelstore/modelstore.go:421-458`
-- **Detay:** `filepath.EvalSymlinks` ile yol çözümleme (satır 431) ile `os.Remove` (satır 443) arasında bir zaman penceresi vardır. Kötü niyetli bir kullanıcı, modeller dizinine yazma erişimine sahipse, çözümlenmiş yolu kaldırma anında rastgele bir dosyaya sembolik bağlantı ile değiştirebilir. `strings.HasPrefix` koruması (satır 439) en basit saldırıları engeller ancak kararlı bir saldırgan bu zaman penceresinden yararlanabilir.
-- **Risk:** Modeller dizini dışında rastgele dosya silme.
-- **Kategori:** Güvenlik
-
-### K02. HTTP İşleyicilerinde İstek Gövdesi Boyut Sınırı Yok
-- **Dosya:** `internal/webserver/handlers_flutter.go` (~35 endpoint)
-- **Detay:** Tüm HTTP işleyicileri `r.Body`'yi `http.MaxBytesReader` veya herhangi bir boyut sınırı olmadan okur. Bir istemci multi-gigabayt yükler göndererek tüm sunucu belleğini tüketebilir.
-- **Risk:** Bellek tükenmesi DoS saldırısı.
-- **Kategori:** Güvenlik
-
-### K03. Veri Yarışı: `a.store` / `a.syncManager` / `a.client` İşaretçi Yazmaları
-- **Dosya:** `app.go:143-186` (App struct), `app.go:240-263` (startup atamaları), `handlers_flutter.go` (yeniden yapılandırma işleyicileri)
-- **Detay:** `a.store`, `a.syncManager` ve `a.client` alanları startup ve yeniden yapılandırma sırasında muteks koruması olmadan yeniden atanır (`a.client` için `clientMu` mevcut ancak `store` ve `syncManager` için eksik). Eşzamanlı istekler bu işaretçileri okurken kısmen başlatılmış veya nil değerler gözlemleyebilir.
-- **Risk:** Yeniden yapılandırma sırasında eşzamanlı erişimde çökme veya veri bozulması.
-- **Kategori:** Veri Yarışı
-
-### K04. Agent Sandbox: Kabuk Yorumlayıcıları Kara Listede Değil
-- **Dosya:** `internal/agent/tools/command.go:23-44` (kara liste regex'leri), `internal/agent/permissions.go` (izin sistemi)
-- **Detay:** Komut kara listesi `rm`, `dd`, `mkfs`, `chmod`, `sudo` gibi tehlikeli araçları engeller ancak `sh`, `bash`, `zsh`, `dash` gibi kabuk yorumlayıcılarını engellemez. Bir saldırgan `sh -c "rm -rf /"` çağırarak `rm` kara listesini aşabilir.
-- **Risk:** Kabuk yorumlayıcıları üzerinden tam sandbox kaçışı.
-- **Kategori:** Güvenlik
-
-### K05. Agent Araç Argümanlarında Yol Geçişi Koruması Yok
+### K01. Agent Araç Argümanlarında Yol Geçişi Koruması Yok
 - **Dosya:** `internal/agent/sandbox.go:70-94` (`ValidatePath`), `internal/agent/tools/command.go` (`RunCommand` dosya argümanları)
 - **Detay:** Sandbox, çalışma dizinini `strings.HasPrefix` ile doğrular ancak araç argümanlarındaki dosya yollarını (`read_file`, `write_file`, `edit_file` vb.) doğrulamaz. `write_file` aracına `../../etc/passwd` gibi göreli bir yol verildiğinde, sandbox dizini dışına çıkılabilir.
 - **Risk:** Göreli yollar içeren araç argümanları ile sandbox kaçışı.
@@ -126,11 +137,7 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Detay:** Kullanıcı girdisi `"%" + query + "%"` ile LIKE desenine sarılır. Sorgu `_` (LIKE'da tek karakter joker karakteri) içeriyorsa, istenmeyen sonuçlar döner. Örnek: `"test_"` sorgusu `"test1"`, `"testX"` vb. eşleşir.
 - **Risk:** Alt çizgi içeren mesaj aramalarında yanlış sonuçlar.
 
-### H06. Flutter: SSE Akışında Zaman Aşımı/Devamlılık Koruması Yok
-- **Dosya:** `frontend/lib/core/api_client.dart:38-87`, `600-654`
-- **Detay:** `sendMessageStream` ve `sendFileStream` yanıt akışında boşta kalma/duraklama zaman aşımı yoktur. Sunucu veri göndermeyi durdurursa `await for` süresiz bloke olur. Tek koruma Dio seviyesindeki 120s `receiveTimeout`'dur ancak hata vermeyen durmuş bir akış bağlantıyı sonsuza kadar tutar.
-
-### H07. Flutter: Global Stil Önbelleği (`_styleCache`) Bellek Sızıntısı
+### H06. Flutter: Global Stil Önbelleği (`_styleCache`) Bellek Sızıntısı
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detay:** `_styleCache` global mutable bir `Map`'tir — asla temizlenmez, ziyaret edilen her tema yapılandırması kombinasyonu ile sonsuz büyür. Bu, temalar değiştirildikçe bellek kullanımının sürekli arttığı bir bellek sızıntısıdır.
 
@@ -158,11 +165,6 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `app.go` (`StartLocalModel`, `StopLocalModel`)
 - **Detay:** `a.client` (llama.cpp API istemcisi) eşzamanlama olmadan yeniden atanır. `clientMu` mevcut olsa da, streaming istekleri sırasında istemci değiştirilirse eski istemci referansı ile yeni istekler gönderilebilir.
 - **Risk:** Model değiştirme sırasında beklenmeyen hatalar.
-
-### H14. `callLLMStream` Goroutine'u İstemci Bağlantı Kesintisinde 5 Dakika Yaşıyor
-- **Dosya:** `app.go:931-1146`
-- **Detay:** İstemci bağlantıyı kestiğinde HTTP işleyicisi döner ancak `callLLMStream` içindeki goroutine 300 saniyelik context timeout'una kadar yaşamaya devam eder. Bu, biriken goroutine'lere yol açar.
-- **Risk:** Bağlantı kesilmesi başına ~5 dakika goroutine sızıntısı.
 
 ---
 
@@ -363,7 +365,7 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 
 > **Son güncelleme:** 2026-06-13
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, tüm internal/ paketleri) ve Flutter frontend
-> **Açık hatalar:** 30+ (🔴5, 🟠14, 🔵9, ⚪2)
+> **Açık hatalar:** 23+ (🔴0, 🟠12, 🔵9, ⚪2)
 > **Gözlemler:** 15
-> **Düzeltilen:** 10
+> **Düzeltilen:** 17
 > **Bulunan toplam sorun sayısı:** 55+

@@ -18,10 +18,11 @@ import (
 const cdnPrefix = "https://bin.ngrok.com/c/bNyj1mQVY4c/"
 
 var downloadURLs = map[string]string{
-	"linux/amd64":  cdnPrefix + "ngrok-v3-stable-linux-amd64.tgz",
-	"linux/arm64":  cdnPrefix + "ngrok-v3-stable-linux-arm64.tgz",
-	"darwin/amd64": cdnPrefix + "ngrok-v3-stable-darwin-amd64.zip",
-	"darwin/arm64": cdnPrefix + "ngrok-v3-stable-darwin-arm64.zip",
+	"linux/amd64":   cdnPrefix + "ngrok-v3-stable-linux-amd64.tgz",
+	"linux/arm64":   cdnPrefix + "ngrok-v3-stable-linux-arm64.tgz",
+	"darwin/amd64":  cdnPrefix + "ngrok-v3-stable-darwin-amd64.zip",
+	"darwin/arm64":  cdnPrefix + "ngrok-v3-stable-darwin-arm64.zip",
+	"windows/amd64": cdnPrefix + "ngrok-v3-stable-windows-amd64.zip",
 }
 
 func binaryName() string {

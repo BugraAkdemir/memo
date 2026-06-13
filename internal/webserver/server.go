@@ -189,7 +189,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/import", s.handleImport)
 	mux.HandleFunc("/api/wipe", s.handleWipe)
 
-	handler := limitBodyMiddleware(corsMiddleware(mux), 10<<20) // 10 MB request body limit
+	handler := limitBodyMiddleware(corsMiddleware(mux), 50<<20) // 50 MB request body limit (file uploads need up to 50MB)
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),
 		Handler: handler,

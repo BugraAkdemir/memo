@@ -37,6 +37,10 @@ var blacklistedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`:\{\s*:\|\s*:\s*&\s*;?\s*:\s*\}`), // fork bomb
 	regexp.MustCompile(`\bnc\s+-e\b`),
 	regexp.MustCompile(`\bbash\s+-i\b`),
+	regexp.MustCompile(`\bsh\b`),               // shell - can bypass blacklist via sh -c "rm -rf /"
+	regexp.MustCompile(`\bbash\b`),             // bash - full shell interpreter
+	regexp.MustCompile(`\bzsh\b`),              // zsh - full shell interpreter
+	regexp.MustCompile(`\bdash\b`),             // dash - full shell interpreter
 	regexp.MustCompile(`\bmkfifo\b`),
 	regexp.MustCompile(`\bshutdown\b`),
 	regexp.MustCompile(`\breboot\b`),

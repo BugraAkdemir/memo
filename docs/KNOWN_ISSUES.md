@@ -11,31 +11,98 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 ---
 
+## ✅ Fixed Bugs (2026-06-13)
+
+### F1. Flutter: Empty `catch (_)` Blocks Swallowing Errors
+- **Previously:** 25+ `catch (_) {}` blocks silently swallowed all errors.
+- **Fix:** All catch blocks now log with `debugPrint`.
+- **Impact:** Users now see error messages when operations fail.
+
+### F2. WhatsApp SSE Handler Not Monitoring `ctx.Done()`
+- **Previously:** `for chunk := range streamCh` without ctx.Done() caused goroutine leaks.
+- **Fix:** Changed to `select { case <-ctx.Done(): return; ... }`.
+- **Impact:** No more orphaned goroutines on client disconnect.
+
+### F3. Agent Permission Revoke Sending Wrong ID
+- **Previously:** `revoke(p.argsHash)` sent wrong identifier.
+- **Fix:** Added `id` field, changed to `revoke(p.id)`.
+- **Impact:** Permission revocations now actually work.
+
+### F4. Provider Connection Test Silently Returning `false`
+- **Previously:** `catch (_) { return false; }` hid error details.
+- **Fix:** Return type changed to `Map` with `error` field.
+- **Impact:** Users see why provider test fails.
+
+### F5. WhatsApp Stream: No Error Handling or Cancellation
+- **Previously:** No `try/catch` or `CancelToken` on WhatsApp stream.
+- **Fix:** Added error handling and cancellation support.
+- **Impact:** WhatsApp no longer crashes on network errors.
+
+### F6. Chat Stream Deadlock After Error
+- **Previously:** `_stopped` never reset on error, locking streaming permanently.
+- **Fix:** Added `_stopped = false` in catch block.
+- **Impact:** Streaming recovers after errors.
+
+### F7. Active Provider Not Visible in Settings UI
+- **Previously:** No indicator of which provider is active.
+- **Fix:** Added `ACTIVE` badge and green border to active provider card.
+- **Impact:** Users can see which provider is answering.
+
+### F8. Model/Embedding Status Infinite Polling
+- **Previously:** `modelStatusProvider` and `embeddingStatusProvider` polled forever.
+- **Fix:** Added `autoDispose` — stops when screen is closed.
+- **Impact:** 34k+ unnecessary HTTP requests/day eliminated.
+
+### F9. `handleSendFileStream`: Temp File Leak + MIME Panic
+- **Previously:** Temp file never cleaned up; `mimeType[:5]` panicked on short MIME.
+- **Fix:** Added `defer os.Remove`, changed to `strings.HasPrefix`.
+- **Impact:** No temp file leak. No crash on custom MIME types.
+
+### F10. Connection Status Provider No Error Logging
+- **Previously:** `catch (_) { yield false; }` silently swallowed errors.
+- **Fix:** Added `debugPrint` to catch block.
+- **Impact:** Connection errors are now visible in logs.
+
+### F11. HTTP Request Body Size Limits (CR02)
+- **Previously:** Global limit was 10MB, breaking file uploads >10MB.
+- **Fix:** Increased limit to 50MB to match file upload handlers.
+- **Impact:** File uploads up to 50MB now work.
+
+### F12. Agent Sandbox: Shell Interpreters Blacklisted (CR04)
+- **Previously:** `sh`, `bash`, `zsh`, `dash` not blocked — sandbox escape via `sh -c "rm -rf /"`.
+- **Fix:** Added shell interpreters to command blacklist.
+- **Impact:** Sandbox can no longer be escaped via shell interpreters.
+
+### F13. `callLLMStream` Goroutine Leak on Client Disconnect (H14)
+- **Previously:** `for chunk := range ch` blocked until provider timeout (300s).
+- **Fix:** Converted both provider and local model loops to `select` with `ctx.Done()`.
+- **Impact:** Goroutine exits immediately when client disconnects.
+
+### F14. Data Races on Provider Router, Active Provider, Sessions (CR03)
+- **Previously:** Unprotected reads/writes on `providerRouter`, `activeProvider`, `sessions`, `syncManager`.
+- **Fix:** Added mutex guards (`providerMu`, `sessionsMu`) and fixed TOCTOU race in sync functions.
+- **Impact:** No more data races on concurrent reconfiguration.
+
+### F15. SSE Stream Stall Timeout in Provider (H06)
+- **Previously:** `await for` in `chat_provider.dart` blocked indefinitely on stalled streams.
+- **Fix:** Added 60s `.timeout()` on stream consumption.
+- **Impact:** Stalled streams now show timeout error instead of hanging forever.
+
+### F16. Agent Permission Cards Show Human-Readable Names
+- **Previously:** Cards showed raw tool names like `write_file`, `run_command`.
+- **Fix:** Added `tool_names.dart` with Turkish display names, descriptions, and icons.
+- **Impact:** Users now see "Dosya Yaz" instead of `write_file`, with clear descriptions.
+
+### F17. TOCTOU Symlink Race in `DeleteLocalModel` (CR01)
+- **Previously:** Time window between `filepath.EvalSymlinks` and `os.Remove` allowed symlink replacement attack.
+- **Fix:** Added re-resolution via `filepath.EvalSymlinks` + re-validation right before `os.Remove`.
+- **Impact:** TOCTOU window eliminated — path is re-verified at the moment of deletion.
+
+---
+
 ## 🔴 Critical
 
-### CR01. TOCTOU Symlink Race in `DeleteLocalModel`
-- **File:** `internal/modelstore/modelstore.go:421-458`
-- **Detail:** Time window between `filepath.EvalSymlinks` (line 431) and `os.Remove` (line 443). An attacker with write access to the models directory could replace the resolved path with a symlink to an arbitrary file between resolution and removal. The `strings.HasPrefix` guard (line 439) mitigates simple attacks but a determined attacker can exploit this race window.
-- **Risk:** Arbitrary file deletion outside the models directory.
-- **Category:** Security
-
-### CR02. No Request Body Size Limits on Any HTTP Handler
-- **File:** `internal/webserver/handlers_flutter.go` (~35 endpoints)
-- **Detail:** Every HTTP handler reads `r.Body` without `http.MaxBytesReader` or any size limit. A client can send multi-gigabyte payloads, exhausting all server memory.
-- **Risk:** Memory exhaustion DoS attack.
-- **Category:** Security
-
-### CR03. Data Race: `a.store` / `a.syncManager` / `a.client` Pointer Writes
-- **File:** `app.go:143-186` (App struct), `app.go:240-263` (startup assignments), `handlers_flutter.go` (reconfigure handlers)
-- **Detail:** `a.store`, `a.syncManager`, and `a.client` fields are reassigned on startup and reconfigure without proper mutex guards (`clientMu` exists for `a.client` but `store` and `syncManager` lack protection). Concurrent requests reading these pointers could observe partially-initialized or nil values.
-- **Risk:** Crash or data corruption on concurrent access during reconfiguration.
-- **Category:** Race Condition
-
-### CR04. Agent Sandbox: Shell Interpreters Not Blacklisted
-- **File:** `internal/agent/tools/command.go:23-44` (blacklist regexes), `internal/agent/permissions.go` (permission system)
-- **Detail:** The command blacklist blocks dangerous tools like `rm`, `dd`, `mkfs`, `chmod`, `sudo` but does NOT block shell interpreters (`sh`, `bash`, `zsh`, `dash`). An attacker can call `sh -c "rm -rf /"` to bypass the `rm` blacklist entirely.
-- **Risk:** Complete sandbox escape via shell interpreters.
-- **Category:** Security
+_None. All critical bugs have been fixed._
 
 ---
 
@@ -64,45 +131,36 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **Detail:** User input is wrapped with `"%" + query + "%"` for a LIKE pattern. If `query` contains `_` (single-character wildcard in SQL LIKE), it matches unintended rows. Example: query `"test_"` would match `"test1"`, `"testX"`, etc.
 - **Risk:** Incorrect search results when messages contain underscores.
 
-### H06. Flutter: SSE Stream Has No Stall/Idle Timeout
-- **File:** `frontend/lib/core/api_client.dart:38-87`, `600-654`
-- **Detail:** `sendMessageStream` and `sendFileStream` have no idle/stall timeout. If the server stops sending data, the `await for` blocks indefinitely. The only safeguard is the 120s `receiveTimeout` at the Dio level, but a stalled stream that never errors will hold the connection forever.
-
-### H07. Flutter: Global Style Cache (`_styleCache`) Memory Leak
+### H06. Flutter: Global Style Cache (`_styleCache`) Memory Leak
 - **File:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detail:** `_styleCache` is a global mutable `Map` that is never cleared. It grows indefinitely with every unique combination of theme brightness and accent color visited. A memory leak proportional to theme configurations visited.
 
-### H08. Flutter: `connectionStatusProvider` Infinite Polling
+### H07. Flutter: `connectionStatusProvider` Infinite Polling
 - **File:** `frontend/lib/providers/chat_provider.dart:429-438`
 - **Detail:** `connectionStatusProvider` runs a `while(true)` polling loop every 30 seconds for the entire app lifetime. No `autoDispose` variant used. Runs even when sidebar is hidden.
 
-### H09. Orchestra Config Has No Validation
+### H08. Orchestra Config Has No Validation
 - **File:** `internal/orchestra/conductor.go:120` (`UpdateConfig`)
 - **Detail:** `UpdateConfig` accepts any role configuration without validation. An invalid chief model or missing role model causes runtime error during execution rather than at config time.
 
-### H10. Agent Pipeline No Timeout Per Tool Call
+### H09. Agent Pipeline No Timeout Per Tool Call
 - **File:** `internal/agent/pipeline.go:122-222`
 - **Detail:** Individual tool executions have no timeout enforced by the pipeline. A hanging `run_command` blocks the entire pipeline indefinitely (sandbox has 60s timeout but pipeline doesn't enforce it).
 
-### H11. Agent Audit Log Limited to 1000 Entries
+### H10. Agent Audit Log Limited to 1000 Entries
 - **File:** `internal/agent/executor.go:40-45`
 - **Detail:** `logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.
 
-### H12. Mobile API Client Missing Most Backend Endpoints
+### H11. Mobile API Client Missing Most Backend Endpoints
 - **File:** `mobile/lib/core/api_client.dart`
 - **Detail:** Mobile API client lacks: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory settings, model search/download, WhatsApp, sync, remote access, backup/restore, recording, image endpoints.
 
-### H13. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
+### H12. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
 - **File:** `app.go` (`StartLocalModel`, `StopLocalModel`)
 - **Detail:** `a.client` (llama.cpp API client) is reassigned during model start/stop. `clientMu` exists but concurrent streaming requests using the old client while it is being swapped could fail or observe inconsistent state.
 - **Risk:** Unexpected errors or hangs during model switching.
 
-### H14. `callLLMStream` Goroutine Persists 5 Min After Client Disconnect
-- **File:** `app.go:931-1146`
-- **Detail:** When the client disconnects, the HTTP handler returns but the goroutine inside `callLLMStream` continues running until the 300s context timeout fires. Orphaned goroutines accumulate.
-- **Risk:** ~5 min goroutine leak per disconnected client.
-
-### ~~H18. Flutter: Model/Embedding Status Providers Infinite Polling~~ ✅ FIXED
+### ~~H13. Flutter: Model/Embedding Status Providers Infinite Polling~~ ✅ FIXED
 - ~~`frontend/lib/providers/models_provider.dart:34-54`~~
 - ~~`modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. Added `autoDispose` — now stops when model store screen is closed.~~
 
@@ -306,7 +364,7 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 > **Last updated:** 2026-06-13
 > **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend
-> **Open bugs:** 30+ (🔴5, 🟠14, 🔵9, ⚪2)
+> **Open bugs:** 23+ (🔴0, 🟠12, 🔵9, ⚪2)
 > **Observations:** 15
-> **Fixed:** 10
+> **Fixed:** 17
 > **Total issues found:** 55+

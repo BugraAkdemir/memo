@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../models/agent.dart';
+import '../../utils/tool_names.dart';
 
 class AgentChatCard extends StatelessWidget {
   final AgentEvent event;
@@ -71,11 +72,24 @@ class AgentChatCard extends StatelessWidget {
                 else
                   Icon(icon, size: 16, color: iconColor),
                 const SizedBox(width: 8),
+                Icon(ToolNames.icon(event.toolName), size: 16, color: iconColor),
+                const SizedBox(width: 4),
                 Expanded(
-                  child: Text(
-                    event.toolName ?? 'Araç',
-                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
-                    overflow: TextOverflow.ellipsis,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        ToolNames.displayName(event.toolName),
+                        style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      if (ToolNames.description(event.toolName).isNotEmpty)
+                        Text(
+                          ToolNames.description(event.toolName),
+                          style: TextStyle(fontSize: 10, color: iconColor.withValues(alpha: 0.7)),
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                    ],
                   ),
                 ),
                 Text(

@@ -7,6 +7,7 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../../core/theme.dart';
 import '../../models/agent.dart';
 import '../../providers/chat_provider.dart';
+import '../../utils/tool_names.dart';
 
 class PermissionDialog extends ConsumerStatefulWidget {
   final AgentEvent event;
@@ -102,8 +103,18 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
               ),
             Text('Yapay zeka asistanı aşağıdaki aracı çalıştırmak istiyor:', style: Theme.of(context).textTheme.bodyMedium),
             const SizedBox(height: 12),
-            Text('Araç:', style: Theme.of(context).textTheme.labelLarge),
-            Text(widget.event.toolName ?? 'Bilinmeyen Araç', style: const TextStyle(fontWeight: FontWeight.bold, fontFamily: 'monospace')),
+            Row(
+              children: [
+                Tooltip(message: ToolNames.description(widget.event.toolName), child: Icon(ToolNames.icon(widget.event.toolName), size: 18, color: Theme.of(context).colorScheme.primary)),
+                const SizedBox(width: 8),
+                Text(ToolNames.displayName(widget.event.toolName), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
+              ],
+            ),
+            if (ToolNames.description(widget.event.toolName).isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.only(top: 4, left: 26),
+                child: Text(ToolNames.description(widget.event.toolName), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+              ),
             const SizedBox(height: 12),
             Text('Parametreler:', style: Theme.of(context).textTheme.labelLarge),
             Container(

@@ -440,12 +440,23 @@ func (s *Store) DeleteLocalModel(path string) error {
 		return fmt.Errorf("modelstore.Delete: path outside models directory")
 	}
 
-	if err := os.Remove(absPath); err != nil {
+	// Re-resolve symlinks right before removal to minimize TOCTOU window.
+	// An attacker could replace the resolved path with a symlink between
+	// the initial EvalSymlinks call and os.Remove.
+	resolved, err := filepath.EvalSymlinks(absPath)
+	if err != nil {
+		return fmt.Errorf("modelstore.Delete: %w", err)
+	}
+	if !strings.HasPrefix(resolved, evalModelsDir) {
+		return fmt.Errorf("modelstore.Delete: path outside models directory after re-resolution")
+	}
+
+	if err := os.Remove(resolved); err != nil {
 		return fmt.Errorf("modelstore.Delete: %w", err)
 	}
 
 	// Clean up empty parent directories
-	dir := filepath.Dir(absPath)
+	dir := filepath.Dir(resolved)
 	for dir != absModelsDir {
 		entries, err := os.ReadDir(dir)
 		if err != nil || len(entries) > 0 {

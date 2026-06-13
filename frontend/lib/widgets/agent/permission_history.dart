@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../core/theme.dart';
 import '../../providers/agent_provider.dart';
+import '../../utils/tool_names.dart';
 
 class PermissionHistory extends ConsumerWidget {
   const PermissionHistory({super.key});
@@ -73,8 +74,15 @@ class PermissionHistory extends ConsumerWidget {
                         isAllowed ? Icons.check_circle : Icons.block,
                         color: isAllowed ? MemoTheme.green : MemoTheme.red,
                       ),
-                      title: Text(p.toolName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                      subtitle: Text('Argüman Hash: ${p.argsHash.length >= 8 ? p.argsHash.substring(0, 8) : p.argsHash}...\nTarih: ${p.updatedAt}'),
+                      title: Text(ToolNames.displayName(p.toolName), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      subtitle: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (ToolNames.description(p.toolName).isNotEmpty)
+                            Text(ToolNames.description(p.toolName), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+                          Text('Tarih: ${p.updatedAt}', style: const TextStyle(fontSize: 11)),
+                        ],
+                      ),
                       isThreeLine: true,
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),

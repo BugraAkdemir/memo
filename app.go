@@ -178,6 +178,9 @@ type App struct {
 	agentEnabled  bool
 	agentMu       sync.RWMutex
 
+	providerMu     sync.RWMutex // protects providerRouter, providerCfgMgr, activeProvider
+	sessionsMu     sync.RWMutex // protects sessions
+
 	remoteAccessEnabled bool
 	ngrokServer        *ngrok.Manager
 
@@ -528,12 +531,13 @@ func (a *App) SendMessage(userMsg string) string {
 		return a.handleIncognito(userMsg, "")
 	}
 	messages := a.buildMessages(context.Background(), userMsg, nil)
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, "", "")
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.AddMessage("user", userMsg, "", "")
 	}
 	reply := a.callLLM(context.Background(), messages)
-	if a.sessions != nil {
-		a.sessions.AddMessage("assistant", reply, "", "")
+	if sm != nil {
+		sm.AddMessage("assistant", reply, "", "")
 	}
 	a.saveMemoryAsync(userMsg, reply)
 	return reply
@@ -551,8 +555,9 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 
 	messages := a.buildMessages(ctx, userMsg, nil)
 
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, "", "")
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.AddMessage("user", userMsg, "", "")
 	}
 
 	a.agentMu.RLock()
@@ -602,8 +607,9 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	msgs = append(msgs, a.getSessionHistory()...)
 	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
 
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, imagePath, "")
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.AddMessage("user", userMsg, imagePath, "")
 	}
 
 	return a.callLLMStream(ctx, msgs, userMsg, imagePath, "")
@@ -637,8 +643,9 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 
 	messages := a.buildMessages(ctx, combined, nil)
 
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, "", filePath)
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.AddMessage("user", userMsg, "", filePath)
 	}
 
 	return a.callLLMStream(ctx, messages, userMsg, "", filePath)
@@ -671,9 +678,10 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
+		sm := a.getSessionManager()
 		sessionID := ""
-		if a.sessions != nil {
-			sessionID = a.sessions.GetActiveID()
+		if sm != nil {
+			sessionID = sm.GetActiveID()
 		}
 
 		modelName := ""
@@ -697,8 +705,8 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		// Get project path from session (agent chat support)
 		projectPath := ""
-		if sessionID != "" && a.sessions != nil {
-			projectPath = a.sessions.GetProjectPath(sessionID)
+		if sessionID != "" && sm != nil {
+			projectPath = sm.GetProjectPath(sessionID)
 		}
 
 		// Ensure provider router is healthy
@@ -845,9 +853,10 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		// Add the orchestra result as an assistant message context
 		pMsgs = append(pMsgs, provider.Message{Role: "assistant", Content: finalContent})
 
+		sm := a.getSessionManager()
 		sessionID := ""
-		if a.sessions != nil {
-			sessionID = a.sessions.GetActiveID()
+		if sm != nil {
+			sessionID = sm.GetActiveID()
 		}
 
 		modelName := ""
@@ -869,8 +878,8 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		}
 
 		projectPath := ""
-		if sessionID != "" && a.sessions != nil {
-			projectPath = a.sessions.GetProjectPath(sessionID)
+		if sessionID != "" && sm != nil {
+			projectPath = sm.GetProjectPath(sessionID)
 		}
 
 		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
@@ -1012,7 +1021,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	}
 
 	// Use external provider only if user explicitly selected one
-	if a.activeProvider != "" && a.providerRouter != nil {
+	a.providerMu.RLock()
+	activeProvider := a.activeProvider
+	providerRouter := a.providerRouter
+	a.providerMu.RUnlock()
+	if activeProvider != "" && providerRouter != nil {
 		go func() {
 			defer close(outCh)
 
@@ -1033,7 +1046,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				Stream:      true,
 			}
 
-			ch, err := a.providerRouter.ChatCompletionStream(providerCtx, req)
+			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
 				log.Printf("Provider stream error: %v", err)
 				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
@@ -1045,26 +1058,36 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			tokenCount := 0
 			firstTokenLogged := false
 
-			for chunk := range ch {
-				if chunk.Error != "" {
-					trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+		providerLoop:
+			for {
+				select {
+				case <-providerCtx.Done():
 					return
-				}
-
-				if chunk.Content != "" {
-					if !firstTokenLogged {
-						firstTokenLogged = true
-						log.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
+				case chunk, ok := <-ch:
+					if !ok {
+						break providerLoop
 					}
-					fullReply.WriteString(chunk.Content)
-					tokenCount++
-					trySend(providerCtx, outCh, api.StreamChunk{Content: chunk.Content})
-				}
 
-				if chunk.Done {
-					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
-					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
-					return
+					if chunk.Error != "" {
+						trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+						return
+					}
+
+					if chunk.Content != "" {
+						if !firstTokenLogged {
+							firstTokenLogged = true
+							log.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
+						}
+						fullReply.WriteString(chunk.Content)
+						tokenCount++
+						trySend(providerCtx, outCh, api.StreamChunk{Content: chunk.Content})
+					}
+
+					if chunk.Done {
+						a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
+						trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+						return
+					}
 				}
 			}
 
@@ -1104,29 +1127,39 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		tokenCount := 0
 		firstTokenLogged := false
 
-		for chunk := range ch {
-			if chunk.Error != "" {
-				log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-				log.Printf("Stream chunk error: %s", chunk.Error)
-				trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+	localLoop:
+		for {
+			select {
+			case <-streamCtx.Done():
 				return
-			}
-
-			if chunk.Content != "" {
-				if !firstTokenLogged {
-					firstTokenLogged = true
-					log.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
+			case chunk, ok := <-ch:
+				if !ok {
+					break localLoop
 				}
-				fullReply.WriteString(chunk.Content)
-				tokenCount++
-				trySend(streamCtx, outCh, chunk)
-			}
 
-			if chunk.Done {
-				log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
-				trySend(streamCtx, outCh, chunk)
-				return
+				if chunk.Error != "" {
+					log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
+					log.Printf("Stream chunk error: %s", chunk.Error)
+					trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+					return
+				}
+
+				if chunk.Content != "" {
+					if !firstTokenLogged {
+						firstTokenLogged = true
+						log.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
+					}
+					fullReply.WriteString(chunk.Content)
+					tokenCount++
+					trySend(streamCtx, outCh, chunk)
+				}
+
+				if chunk.Done {
+					log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
+					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
+					trySend(streamCtx, outCh, chunk)
+					return
+				}
 			}
 		}
 
@@ -1175,10 +1208,11 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if !incog {
-		if a.sessions != nil {
-			a.sessions.AddMessage("assistant", reply, "", "", agentEvents...)
+		sm := a.getSessionManager()
+		if sm != nil {
+			sm.AddMessage("assistant", reply, "", "", agentEvents...)
 			// Auto-generate smart title after first exchange
-			if len(a.sessions.GetActiveMessages()) == 2 {
+			if len(sm.GetActiveMessages()) == 2 {
 				go a.GenerateChatTitle()
 			}
 		}
@@ -1221,8 +1255,9 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
 
 	// Save to session after building messages
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, imagePath, "")
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.AddMessage("user", userMsg, imagePath, "")
 	}
 
 	reply := a.callLLM(context.Background(), msgs)
@@ -1232,8 +1267,8 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		reply = "⚠️ Bu model görsel/resim desteklemiyor. Resim gönderebilmek için vision destekli bir model kullanmalısınız (örn: LLaVA, BakLLaVA, Llama Vision gibi)."
 	}
 
-	if a.sessions != nil {
-		a.sessions.AddMessage("assistant", reply, "", "")
+	if sm != nil {
+		sm.AddMessage("assistant", reply, "", "")
 	}
 	a.saveMemoryAsync(userMsg, reply)
 	return reply
@@ -1266,14 +1301,15 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	messages := a.buildMessages(context.Background(), combined, nil)
 
 	// Save to session after building messages
-	if a.sessions != nil {
-		a.sessions.AddMessage("user", userMsg, "", filePath)
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.AddMessage("user", userMsg, "", filePath)
 	}
 
 	reply := a.callLLM(context.Background(), messages)
 
-	if a.sessions != nil {
-		a.sessions.AddMessage("assistant", reply, "", "")
+	if sm != nil {
+		sm.AddMessage("assistant", reply, "", "")
 	}
 	a.saveMemoryAsync(userMsg, reply)
 	return reply
@@ -1281,91 +1317,108 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 
 // ─── Session Management ──────────────────────────────────────────
 
+func (a *App) getSessionManager() *sessions.Manager {
+	a.sessionsMu.RLock()
+	defer a.sessionsMu.RUnlock()
+	return a.sessions
+}
+
 func (a *App) NewChat() string {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return ""
 	}
-	return a.sessions.NewChat()
+	return sm.NewChat()
 }
 
 func (a *App) NewAgentChat(projectPath string) string {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return ""
 	}
-	return a.sessions.NewAgentChat(projectPath)
+	return sm.NewAgentChat(projectPath)
 }
 
 func (a *App) ListChats() []sessions.SessionInfo {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return nil
 	}
-	return a.sessions.ListChats()
+	return sm.ListChats()
 }
 
 func (a *App) SwitchChat(id string) error {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return fmt.Errorf("no session manager")
 	}
-	return a.sessions.SwitchChat(id)
+	return sm.SwitchChat(id)
 }
 
 func (a *App) DeleteChat(id string) error {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return fmt.Errorf("no session manager")
 	}
-	return a.sessions.DeleteChat(id)
+	return sm.DeleteChat(id)
 }
 
 func (a *App) RenameChat(id, title string) error {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return fmt.Errorf("no session manager")
 	}
-	return a.sessions.RenameChat(id, title)
+	return sm.RenameChat(id, title)
 }
 
 func (a *App) UpdateMessage(index int, content string) error {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return fmt.Errorf("no session manager")
 	}
-	return a.sessions.UpdateMessage(index, content)
+	return sm.UpdateMessage(index, content)
 }
 
 func (a *App) DeleteMessage(index int) error {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return fmt.Errorf("no session manager")
 	}
-	return a.sessions.DeleteMessage(index)
+	return sm.DeleteMessage(index)
 }
 
 func (a *App) GetActiveMessages() []sessions.ChatMessage {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return nil
 	}
-	return a.sessions.GetActiveMessages()
+	return sm.GetActiveMessages()
 }
 
 func (a *App) GetActiveChatID() string {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return ""
 	}
-	return a.sessions.GetActiveID()
+	return sm.GetActiveID()
 }
 
 // ExportChat returns the active chat as a Markdown string.
 func (a *App) ExportChat() string {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return ""
 	}
-	msgs := a.sessions.GetActiveMessages()
+	msgs := sm.GetActiveMessages()
 	if len(msgs) == 0 {
 		return ""
 	}
 
 	var sb strings.Builder
-	chatID := a.sessions.GetActiveID()
+	chatID := sm.GetActiveID()
 	// Find title from list
 	title := "Memo Chat"
-	for _, s := range a.sessions.ListChats() {
+	for _, s := range sm.ListChats() {
 		if s.ID == chatID {
 			title = s.Title
 			break
@@ -1389,10 +1442,11 @@ func (a *App) ExportChat() string {
 // GenerateChatTitle asks the LLM to produce a short title from the first
 // exchange, then renames the active chat and returns the new title.
 func (a *App) GenerateChatTitle() string {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return ""
 	}
-	msgs := a.sessions.GetActiveMessages()
+	msgs := sm.GetActiveMessages()
 	// Only generate when we have exactly the first exchange (user + assistant).
 	if len(msgs) < 2 {
 		return ""
@@ -1427,8 +1481,8 @@ func (a *App) GenerateChatTitle() string {
 		title = string(runes[:60])
 	}
 
-	chatID := a.sessions.GetActiveID()
-	if err := a.sessions.RenameChat(chatID, title); err != nil {
+	chatID := sm.GetActiveID()
+	if err := sm.RenameChat(chatID, title); err != nil {
 		log.Printf("auto-title rename: %v", err)
 		return ""
 	}
@@ -1694,9 +1748,14 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	a.providerCfgMgr.Set(cfg)
 	// Rebuild router
 	configs := a.providerCfgMgr.GetEnabled()
+	a.providerMu.Lock()
 	a.providerRouter = provider.NewRouter(configs)
+	a.providerMu.Unlock()
 	if len(configs) > 0 {
-		go a.providerRouter.HealthCheck(a.ctx, 5*time.Minute)
+		a.providerMu.RLock()
+		rt := a.providerRouter
+		a.providerMu.RUnlock()
+		go rt.HealthCheck(a.ctx, 5*time.Minute)
 	}
 	return nil
 }
@@ -1707,7 +1766,9 @@ func (a *App) DeleteProvider(pt provider.ProviderType) error {
 	}
 	a.providerCfgMgr.Delete(pt)
 	configs := a.providerCfgMgr.GetEnabled()
+	a.providerMu.Lock()
 	a.providerRouter = provider.NewRouter(configs)
+	a.providerMu.Unlock()
 	return nil
 }
 
@@ -1719,14 +1780,18 @@ func (a *App) TestProviderConnection(cfg provider.ProviderConfig) error {
 }
 
 func (a *App) SetActiveProvider(pt provider.ProviderType) {
+	a.providerMu.Lock()
 	a.activeProvider = pt
 	if a.providerRouter != nil {
 		a.providerRouter.SetActiveProvider(pt)
 	}
+	a.providerMu.Unlock()
 	log.Printf("Active provider set to: %s", pt)
 }
 
 func (a *App) GetActiveProvider() string {
+	a.providerMu.RLock()
+	defer a.providerMu.RUnlock()
 	return string(a.activeProvider)
 }
 
@@ -1812,8 +1877,9 @@ func (a *App) UpdateIdentity(userName, assistantName, style string) error {
 }
 
 func (a *App) ClearHistory() {
-	if a.sessions != nil {
-		a.sessions.DeleteChat(a.sessions.GetActiveID())
+	sm := a.getSessionManager()
+	if sm != nil {
+		sm.DeleteChat(sm.GetActiveID())
 	}
 }
 
@@ -2364,8 +2430,9 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		// Build messages with WhatsApp context in system prompt
 		messages := a.buildMessages(ctx, userMsg, nil)
 
-		if a.sessions != nil {
-			a.sessions.AddMessage("user", userMsg, "", "")
+		sm := a.getSessionManager()
+		if sm != nil {
+			sm.AddMessage("user", userMsg, "", "")
 		}
 
 		// Convert to provider messages
@@ -2375,8 +2442,8 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		}
 
 		sessionID := ""
-		if a.sessions != nil {
-			sessionID = a.sessions.GetActiveID()
+		if sm != nil {
+			sessionID = sm.GetActiveID()
 		}
 
 		modelName := ""
@@ -2457,8 +2524,8 @@ Kullanıcıya JID sormadan önce whatsapp_latest ile sohbet listesini kontrol et
 		}
 
 		reply := fullReply.String()
-		if reply != "" && a.sessions != nil {
-			a.sessions.AddMessage("assistant", reply, "", "")
+		if reply != "" && sm != nil {
+			sm.AddMessage("assistant", reply, "", "")
 		}
 
 		log.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))
@@ -2931,10 +2998,11 @@ func stripOrchestraLines(text string) string {
 }
 
 func (a *App) getSessionHistory() []api.Message {
-	if a.sessions == nil {
+	sm := a.getSessionManager()
+	if sm == nil {
 		return nil
 	}
-	history := a.sessions.GetHistoryForAPI(a.cfg.Llama.MaxHistory)
+	history := sm.GetHistoryForAPI(a.cfg.Llama.MaxHistory)
 	var msgs []api.Message
 	for _, h := range history {
 		msgs = append(msgs, api.NewTextMessage(h["role"], h["content"]))
@@ -3273,13 +3341,19 @@ func (a *App) ImportData(data []byte) error {
 	}
 
 	// Re-initialize components after import
+	a.sessionsMu.Lock()
 	if a.sessions != nil {
 		sm, err := sessions.NewManager("data/sessions")
 		if err == nil {
 			a.sessions = sm
 		}
 	}
-	if a.store == nil {
+	a.sessionsMu.Unlock()
+
+	a.storeMu.RLock()
+	isStoreNil := a.store == nil
+	a.storeMu.RUnlock()
+	if isStoreNil {
 		// memory store will be initialized in background goroutine
 	}
 
@@ -3302,12 +3376,14 @@ func (a *App) WipeAllData() error {
 	}
 
 	// Re-init sessions
+	a.sessionsMu.Lock()
 	if a.sessions != nil {
 		sm, err := sessions.NewManager("data/sessions")
 		if err == nil {
 			a.sessions = sm
 		}
 	}
+	a.sessionsMu.Unlock()
 
 	// Reset memory store
 	a.storeMu.Lock()
@@ -3365,7 +3441,13 @@ func (a *App) CheckSyncAuth() bool {
 	if err := a.ensureSyncManager(); err != nil {
 		return false
 	}
-	return a.syncManager.IsAuthenticated()
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm == nil {
+		return false
+	}
+	return sm.IsAuthenticated()
 }
 
 // CheckAuth is an alias for CheckSyncAuth exposed for cloud sync UI logic.
@@ -3380,7 +3462,13 @@ func (a *App) StartSyncAuth() (string, error) {
 	if err := a.ensureSyncManager(); err != nil {
 		return "", err
 	}
-	url, err := a.syncManager.StartAuthFlow()
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm == nil {
+		return "", fmt.Errorf("sync manager not initialized")
+	}
+	url, err := sm.StartAuthFlow()
 	if err != nil {
 		return "", err
 	}
@@ -3393,7 +3481,12 @@ func (a *App) TriggerSync() {
 		a.emitEvent("sync:error", err.Error())
 		return
 	}
-	a.syncManager.TriggerNow()
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm != nil {
+		sm.TriggerNow()
+	}
 }
 
 // PullSync downloads latest cloud backup and restores local .gob files.
@@ -3402,7 +3495,12 @@ func (a *App) PullSync() {
 		a.emitEvent("sync:error", err.Error())
 		return
 	}
-	a.syncManager.TriggerPullNow()
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm != nil {
+		sm.TriggerPullNow()
+	}
 }
 
 // SyncNow runs push then pull in background.
@@ -3411,7 +3509,12 @@ func (a *App) SyncNow() {
 		a.emitEvent("sync:error", err.Error())
 		return
 	}
-	a.syncManager.TriggerFullSyncNow()
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm != nil {
+		sm.TriggerFullSyncNow()
+	}
 }
 
 // GetSyncAccount returns Google account identity for the connected sync session.
@@ -3419,13 +3522,19 @@ func (a *App) GetSyncAccount() interface{} {
 	if err := a.ensureSyncManager(); err != nil {
 		return SyncAccount{Authenticated: false}
 	}
-	if !a.syncManager.IsAuthenticated() {
+	a.syncMu.RLock()
+	sm := a.syncManager
+	a.syncMu.RUnlock()
+	if sm == nil {
+		return SyncAccount{Authenticated: false}
+	}
+	if !sm.IsAuthenticated() {
 		return SyncAccount{Authenticated: false}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
-	acc, err := a.syncManager.GetAccountInfo(ctx)
+	acc, err := sm.GetAccountInfo(ctx)
 	if err != nil {
 		log.Printf("cloud sync account info: %v", err)
 		return SyncAccount{Authenticated: true}

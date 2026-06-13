@@ -134,12 +134,26 @@ Downloading a model used to mean searching HuggingFace, opening a repo, and pick
 
 ## 🚀 Quick Start
 
-### Prerequisites
-- **Go 1.25+** — [download](https://go.dev/dl/)
-- **Flutter 3.10+** — [install](https://docs.flutter.dev/get-started/install)
-- **llama.cpp** — bundled. Pre-built binaries per platform; no manual install needed.
+No terminal, no cloning, no build steps. **Download and install with one click.**
 
-### Development
+<div align="center">
+  <a href="https://memo.bugradev.com">
+    <img src="https://img.shields.io/badge/⬇_Download_Memo-memo.bugradev.com-B08D57?style=for-the-badge" alt="Download Memo"/>
+  </a>
+</div>
+
+| Platform | Installer | How |
+|----------|-----------|-----|
+| **Windows** | `Memo-Setup.exe` | Run the installer, click through, done. |
+| **Linux** | `.AppImage` / `.deb` | Make it executable (or install the `.deb`) and launch. |
+
+llama.cpp is bundled and everything is set up on first run — just **[download from memo.bugradev.com](https://memo.bugradev.com)**, open the app, pick a model from **Discover**, and start chatting.
+
+<details>
+<summary><b>🛠️ Build from source (developers)</b></summary>
+
+**Prerequisites:** Go 1.25+ · Flutter 3.10+ (llama.cpp is bundled).
+
 ```bash
 # Terminal 1 — Backend
 git clone https://github.com/BugraAkdemir/memo.git && cd memo
@@ -149,14 +163,12 @@ go run . --port 8090
 cd frontend && flutter run -d linux
 ```
 
-### Build a release
+Build release packages:
 ```bash
-# Linux  → tar.gz / AppImage / deb
-./build_releases.sh
-
-# Windows → Inno Setup installer or portable zip
-.\build_releases.bat
+./build_releases.sh    # Linux  → tar.gz / AppImage / deb
+.\build_releases.bat   # Windows → Inno Setup installer or portable zip
 ```
+</details>
 
 ---
 

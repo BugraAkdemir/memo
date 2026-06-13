@@ -14,7 +14,6 @@ import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
-import '../providers/settings_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
@@ -147,8 +146,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _dismissPopup();
     setState(() => _pickedImagePath = null);
 
-    // WhatsApp chat mode — use WhatsApp stream instead of normal chat (Beta only)
-    if (ref.read(betaFeaturesProvider) && ref.read(whatsAppChatModeProvider)) {
+    // WhatsApp chat mode — route to WhatsApp stream when active
+    if (ref.read(whatsAppChatModeProvider)) {
       await _sendWhatsApp(text);
       return;
     }

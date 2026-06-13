@@ -2383,10 +2383,16 @@ func (a *App) initWhatsApp() {
 	log.Println("WhatsApp client initialized and connecting...")
 }
 
-// StartWhatsApp connects to WhatsApp Web. Flutter reads QRCodes() for pairing.
+// StartWhatsApp connects to WhatsApp Web.
+// Lazily initializes the client on first call even if not enabled in config.yaml.
 func (a *App) StartWhatsApp(ctx context.Context) error {
 	if a.waClient == nil {
-		return fmt.Errorf("WhatsApp not initialized (enable in config)")
+		a.initWhatsApp()
+		if a.waClient == nil {
+			return fmt.Errorf("WhatsApp initialization failed")
+		}
+		// initWhatsApp already starts the connection asynchronously.
+		return nil
 	}
 	return a.waClient.Start(ctx)
 }
@@ -2398,20 +2404,32 @@ func (a *App) StopWhatsApp() {
 	}
 }
 
+// LogoutWhatsApp removes the local session so the next connect shows a QR code.
+func (a *App) LogoutWhatsApp() error {
+	if a.waClient == nil {
+		return nil
+	}
+	return a.waClient.Logout()
+}
+
 // WhatsAppStatus returns QR codes (if pairing) and connection state.
 func (a *App) WhatsAppStatus() map[string]interface{} {
 	if a.waClient == nil {
 		return map[string]interface{}{
-			"initialized": false,
-			"connected":   false,
-			"logged_in":   false,
+			"initialized":  false,
+			"connected":    false,
+			"logged_in":    false,
+			"reconnecting": false,
+			"last_error":   "",
 		}
 	}
 	return map[string]interface{}{
-		"initialized": true,
-		"connected":   a.waClient.IsConnected(),
-		"logged_in":   a.waClient.IsLoggedIn(),
-		"qr_codes":    a.waClient.QRCodes(),
+		"initialized":  true,
+		"connected":    a.waClient.IsConnected(),
+		"logged_in":    a.waClient.IsLoggedIn(),
+		"qr_codes":     a.waClient.QRCodes(),
+		"reconnecting": a.waClient.IsReconnecting(),
+		"last_error":   a.waClient.LastError(),
 	}
 }
 

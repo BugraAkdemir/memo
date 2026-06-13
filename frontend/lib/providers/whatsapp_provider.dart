@@ -5,44 +5,40 @@ import '../core/api_client.dart';
 import '../models/whatsapp.dart';
 import 'chat_provider.dart';
 
-final whatsAppStatusProvider = StateNotifierProvider<WhatsAppStatusNotifier, AsyncValue<WhatsAppStatus>>((ref) {
-  return WhatsAppStatusNotifier(ref.read(apiClientProvider));
-});
+final whatsAppStatusProvider =
+    StateNotifierProvider<WhatsAppStatusNotifier, AsyncValue<WhatsAppStatus>>(
+        (ref) => WhatsAppStatusNotifier(ref.read(apiClientProvider)));
 
 final whatsAppChatsProvider = FutureProvider<List<WhatsAppChatSummary>>((ref) async {
-  final api = ref.read(apiClientProvider);
-  final data = await api.getWhatsAppChats();
+  final data = await ref.read(apiClientProvider).getWhatsAppChats();
   return data.map((e) => WhatsAppChatSummary.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-final whatsAppMessagesProvider = FutureProvider.family<List<WhatsAppMessage>, String>((ref, jid) async {
-  final api = ref.read(apiClientProvider);
-  final data = await api.getWhatsAppMessages(jid);
+final whatsAppMessagesProvider =
+    FutureProvider.family<List<WhatsAppMessage>, String>((ref, jid) async {
+  final data = await ref.read(apiClientProvider).getWhatsAppMessages(jid);
   return data.map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-final whatsAppSearchProvider = FutureProvider.family<List<WhatsAppMessage>, String>((ref, query) async {
-  final api = ref.read(apiClientProvider);
-  final data = await api.searchWhatsApp(query);
+final whatsAppSearchProvider =
+    FutureProvider.family<List<WhatsAppMessage>, String>((ref, query) async {
+  final data = await ref.read(apiClientProvider).searchWhatsApp(query);
   return data.map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
 });
 
-// WhatsApp chat mode toggle — separate from Agent mode
-final whatsAppChatModeProvider = StateNotifierProvider<WhatsAppChatModeNotifier, bool>((ref) {
-  return WhatsAppChatModeNotifier(ref.read(apiClientProvider));
-});
+final whatsAppChatModeProvider =
+    StateNotifierProvider<WhatsAppChatModeNotifier, bool>(
+        (ref) => WhatsAppChatModeNotifier(ref.read(apiClientProvider)));
 
 class WhatsAppChatModeNotifier extends StateNotifier<bool> {
   final MemoApiClient _api;
-
   WhatsAppChatModeNotifier(this._api) : super(false);
 
   Future<void> init() async {
     try {
-      final enabled = await _api.getWhatsAppChatMode();
-      state = enabled;
+      state = await _api.getWhatsAppChatMode();
     } catch (e) {
-      debugPrint('whatsapp: init error: $e');
+      debugPrint('whatsapp: chat mode init error: $e');
     }
   }
 
@@ -62,20 +58,48 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
   Timer? _pollTimer;
 
   WhatsAppStatusNotifier(this._api) : super(const AsyncValue.loading()) {
-    refresh();
+    _fetch();
   }
 
-  void refresh() {
-    _api.getWhatsAppStatus().then((data) {
-      state = AsyncValue.data(WhatsAppStatus.fromJson(data));
-    }).catchError((e) {
-      state = AsyncValue.error(e, StackTrace.current);
-    });
+  Future<void> _fetch() async {
+    try {
+      final data = await _api.getWhatsAppStatus();
+      if (mounted) state = AsyncValue.data(WhatsAppStatus.fromJson(data));
+    } catch (e) {
+      if (mounted) state = AsyncValue.error(e, StackTrace.current);
+    }
   }
 
+  /// Refresh and reschedule poll at the interval appropriate for the current state.
+  Future<void> refresh() => _fetch();
+
+  /// Start adaptive polling: fast when waiting for QR scan, slow when connected.
   void startPolling() {
     _pollTimer?.cancel();
-    _pollTimer = Timer.periodic(const Duration(seconds: 3), (_) => refresh());
+    _schedule();
+  }
+
+  void _schedule() {
+    final status = state.valueOrNull;
+    Duration interval;
+    if (status == null || !status.initialized) {
+      // Not yet started — check every 3s in case backend auto-starts.
+      interval = const Duration(seconds: 3);
+    } else if (!status.loggedIn && status.qrCodes.isNotEmpty) {
+      // QR displayed — poll fast so we detect the scan quickly.
+      interval = const Duration(seconds: 2);
+    } else if (!status.connected && status.loggedIn) {
+      // Disconnected but has session — reconnect in progress.
+      interval = const Duration(seconds: 4);
+    } else {
+      // Connected and logged in — heartbeat only.
+      interval = const Duration(seconds: 15);
+    }
+
+    _pollTimer = Timer(interval, () async {
+      await _fetch();
+      if (mounted) _schedule();
+    });
   }
 
   void stopPolling() {
@@ -87,20 +111,28 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
     state = const AsyncValue.loading();
     try {
       final data = await _api.startWhatsApp();
-      state = AsyncValue.data(WhatsAppStatus.fromJson(data));
+      if (mounted) state = AsyncValue.data(WhatsAppStatus.fromJson(data));
       startPolling();
     } catch (e) {
-      state = AsyncValue.error(e, StackTrace.current);
+      if (mounted) state = AsyncValue.error(e, StackTrace.current);
     }
   }
 
   Future<void> disconnect() async {
     try {
       await _api.stopWhatsApp();
-      stopPolling();
-      refresh();
+      await _fetch();
     } catch (e) {
-      state = AsyncValue.error(e, StackTrace.current);
+      if (mounted) state = AsyncValue.error(e, StackTrace.current);
+    }
+  }
+
+  Future<void> logout() async {
+    try {
+      await _api.logoutWhatsApp();
+      await _fetch();
+    } catch (e) {
+      if (mounted) state = AsyncValue.error(e, StackTrace.current);
     }
   }
 

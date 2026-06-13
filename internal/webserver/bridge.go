@@ -123,6 +123,7 @@ type FullBridge interface {
 	// WhatsApp
 	StartWhatsApp(ctx context.Context) error
 	StopWhatsApp()
+	LogoutWhatsApp() error
 	WhatsAppStatus() map[string]interface{}
 	WhatsAppSend(ctx context.Context, jid, text string) (string, error)
 	WhatsAppSearch(query string, limit int) ([]whatsapp.Message, error)

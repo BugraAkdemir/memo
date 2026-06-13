@@ -17,11 +17,11 @@ import (
 
 // Config holds WhatsApp integration settings.
 type Config struct {
-	DataDir        string // e.g. "./data/whatsapp"
-	MessageStoreDB string // e.g. "./data/whatsapp/messages.db"
-	SessionDB      string // e.g. "./data/whatsapp/session.db"
-	AutoIndex      bool   // index messages for RAG
-	MaxHistoryDays int    // days of history to fetch on first connect
+	DataDir        string
+	MessageStoreDB string
+	SessionDB      string
+	AutoIndex      bool
+	MaxHistoryDays int
 }
 
 // Message represents a simplified WhatsApp message for storage.
@@ -37,21 +37,24 @@ type Message struct {
 
 // Client manages the WhatsApp Web connection.
 type Client struct {
-	config   Config
-	waClient *whatsmeow.Client
-	store    *Store
-	qrCodes  []string     // current batch of QR codes
-	msgCh    chan Message // incoming messages for RAG indexing
-	errCh    chan error
-	started  bool
-	startMu  sync.Mutex
+	config      Config
+	waClient    *whatsmeow.Client
+	store       *Store
+	qrCodes     []string
+	msgCh       chan Message
+	errCh       chan error
+	started     bool
+	reconnecting bool
+	lastError   string
+	startMu     sync.Mutex
 }
 
 func NewClient(cfg Config) *Client {
 	return &Client{
 		config: cfg,
-		msgCh:  make(chan Message, 256),
-		errCh:  make(chan error, 4),
+		// Channels are never closed so Start() can be called multiple times safely.
+		msgCh: make(chan Message, 256),
+		errCh: make(chan error, 4),
 	}
 }
 
@@ -67,6 +70,12 @@ func (c *Client) MessageChannel() <-chan Message { return c.msgCh }
 // ErrorChannel returns the channel that receives connection errors.
 func (c *Client) ErrorChannel() <-chan error { return c.errCh }
 
+// LastError returns the last connection error string.
+func (c *Client) LastError() string { return c.lastError }
+
+// IsReconnecting returns true while an auto-reconnect is in progress.
+func (c *Client) IsReconnecting() bool { return c.reconnecting }
+
 // Start connects to WhatsApp Web. Thread-safe, no-op if already started.
 func (c *Client) Start(ctx context.Context) error {
 	c.startMu.Lock()
@@ -75,13 +84,22 @@ func (c *Client) Start(ctx context.Context) error {
 		return nil
 	}
 
-	// Use SQLite store for session persistence
-	storeDB, err := sqlstore.New(ctx, "sqlite3", "file:"+c.config.SessionDB+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", nil)
+	// Drain stale entries from a previous session.
+	for len(c.msgCh) > 0 {
+		<-c.msgCh
+	}
+	for len(c.errCh) > 0 {
+		<-c.errCh
+	}
+	c.qrCodes = nil
+	c.lastError = ""
+
+	storeDB, err := sqlstore.New(ctx, "sqlite3",
+		"file:"+c.config.SessionDB+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", nil)
 	if err != nil {
 		return fmt.Errorf("whatsapp: session db: %w", err)
 	}
 
-	// Load or create device store
 	deviceStore, err := storeDB.GetFirstDevice(ctx)
 	if err != nil {
 		return fmt.Errorf("whatsapp: get device: %w", err)
@@ -90,29 +108,45 @@ func (c *Client) Start(ctx context.Context) error {
 	c.waClient = whatsmeow.NewClient(deviceStore, nil)
 	c.waClient.AddEventHandler(c.handleEvent)
 
-	// Connect
 	if err := c.waClient.Connect(); err != nil {
 		return fmt.Errorf("whatsapp: connect: %w", err)
 	}
 
 	c.started = true
 
-	// Import contacts from whatsmeow store to local contacts table
-	c.importContacts()
+	// Import contacts without blocking Start().
+	go c.importContacts()
 
 	return nil
 }
 
-// Stop disconnects from WhatsApp Web.
+// Stop disconnects from WhatsApp Web without closing channels (so Start can be called again).
 func (c *Client) Stop() {
 	c.startMu.Lock()
 	defer c.startMu.Unlock()
 	if c.waClient != nil {
 		c.waClient.Disconnect()
+		c.waClient = nil
 	}
-	close(c.msgCh)
-	close(c.errCh)
 	c.started = false
+	c.reconnecting = false
+}
+
+// Logout disconnects and removes the local session so the next Start() will show a QR code.
+func (c *Client) Logout() error {
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+	if c.waClient != nil {
+		if err := c.waClient.Logout(context.Background()); err != nil {
+			log.Printf("WhatsApp: logout error: %v", err)
+		}
+		c.waClient.Disconnect()
+		c.waClient = nil
+	}
+	c.started = false
+	c.reconnecting = false
+	c.qrCodes = nil
+	return nil
 }
 
 // IsConnected returns whether the client is connected.
@@ -141,13 +175,12 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 		return "", fmt.Errorf("whatsapp: send: %w", err)
 	}
 
-	// Save outgoing message to local store
 	if c.store != nil {
 		myJID := ""
 		if c.waClient.Store != nil {
 			myJID = c.waClient.Store.ID.String()
 		}
-		outMsg := Message{
+		_ = c.store.SaveMessage(Message{
 			ID:         resp.ID,
 			ChatJID:    jid,
 			SenderJID:  myJID,
@@ -155,10 +188,7 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 			Text:       text,
 			Timestamp:  time.Now(),
 			FromMe:     true,
-		}
-		if err := c.store.SaveMessage(outMsg); err != nil {
-			log.Printf("WhatsApp: save sent message error: %v", err)
-		}
+		})
 	}
 
 	return resp.ID, nil
@@ -195,21 +225,37 @@ func (c *Client) handleEvent(evt interface{}) {
 		c.qrCodes = v.Codes
 	case *waEvent.PairSuccess:
 		log.Printf("WhatsApp: paired successfully with %s", v.ID)
+		c.qrCodes = nil
+		c.lastError = ""
 	case *waEvent.PairError:
 		log.Printf("WhatsApp: pair error: %v", v.Error)
-		c.errCh <- v.Error
+		c.lastError = v.Error.Error()
+		select {
+		case c.errCh <- v.Error:
+		default:
+		}
 	case *waEvent.Connected:
 		log.Printf("WhatsApp: connected")
+		c.reconnecting = false
+		c.lastError = ""
 	case *waEvent.Disconnected:
 		log.Printf("WhatsApp: disconnected")
+		c.lastError = "connection lost"
 		select {
 		case c.errCh <- fmt.Errorf("disconnected"):
 		default:
 		}
+		// Auto-reconnect if we have a session.
+		if c.waClient != nil && c.waClient.IsLoggedIn() {
+			go c.autoReconnect()
+		}
 	case *waEvent.LoggedOut:
-		log.Printf("WhatsApp: logged out")
+		log.Printf("WhatsApp: logged out remotely")
+		c.lastError = "logged out"
+		c.qrCodes = nil
+		c.started = false
 	case *waEvent.StreamReplaced:
-		log.Printf("WhatsApp: stream replaced (another client connected?)")
+		log.Printf("WhatsApp: stream replaced")
 	case *waEvent.HistorySync:
 		c.handleHistorySync(v)
 	case *waEvent.Message:
@@ -217,14 +263,44 @@ func (c *Client) handleEvent(evt interface{}) {
 	}
 }
 
-// handleHistorySync processes the initial history sync after pairing,
-// importing historical messages into the local store.
+// autoReconnect attempts to reconnect with exponential backoff.
+func (c *Client) autoReconnect() {
+	c.reconnecting = true
+	backoff := []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second, 60 * time.Second}
+	for attempt, delay := range backoff {
+		time.Sleep(delay)
+
+		c.startMu.Lock()
+		alive := c.started && c.waClient != nil
+		c.startMu.Unlock()
+
+		if !alive || c.IsConnected() {
+			c.reconnecting = false
+			return
+		}
+
+		log.Printf("WhatsApp: reconnect attempt %d...", attempt+1)
+		if err := c.waClient.Connect(); err != nil {
+			log.Printf("WhatsApp: reconnect error: %v", err)
+			c.lastError = fmt.Sprintf("reconnect failed (%d/%d)", attempt+1, len(backoff))
+			continue
+		}
+		log.Printf("WhatsApp: reconnected")
+		c.reconnecting = false
+		return
+	}
+	c.reconnecting = false
+	c.lastError = "reconnect failed — please reconnect manually"
+	log.Printf("WhatsApp: auto-reconnect exhausted")
+}
+
+// handleHistorySync imports historical messages after first pairing.
 func (c *Client) handleHistorySync(evt *waEvent.HistorySync) {
 	if evt.Data == nil || c.store == nil {
 		return
 	}
 	convs := evt.Data.GetConversations()
-	log.Printf("WhatsApp: history sync received %d conversations", len(convs))
+	log.Printf("WhatsApp: history sync — %d conversations", len(convs))
 	myJID := ""
 	if c.waClient != nil && c.waClient.Store != nil {
 		myJID = c.waClient.Store.ID.String()
@@ -274,23 +350,22 @@ func extractText(msg *waE2E.Message) string {
 	if msg == nil {
 		return ""
 	}
-	text := msg.GetConversation()
-	if text == "" {
-		text = msg.GetExtendedTextMessage().GetText()
+	if t := msg.GetConversation(); t != "" {
+		return t
 	}
-	if text == "" {
-		text = msg.GetImageMessage().GetCaption()
+	if t := msg.GetExtendedTextMessage().GetText(); t != "" {
+		return t
 	}
-	if text == "" {
-		text = msg.GetVideoMessage().GetCaption()
+	if t := msg.GetImageMessage().GetCaption(); t != "" {
+		return t
 	}
-	if text == "" {
-		text = msg.GetDocumentMessage().GetCaption()
+	if t := msg.GetVideoMessage().GetCaption(); t != "" {
+		return t
 	}
-	return text
+	return msg.GetDocumentMessage().GetCaption()
 }
 
-// handleMessage processes an incoming message event.
+// handleMessage processes an incoming live message.
 func (c *Client) handleMessage(evt *waEvent.Message) {
 	info := evt.Info
 	text := evt.Message.GetConversation()
@@ -298,17 +373,15 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 		text = evt.Message.GetExtendedTextMessage().GetText()
 	}
 	if text == "" {
-		return // skip non-text messages
+		return
 	}
 
 	senderJID := info.Sender.String()
 	senderName := info.PushName
 
-	// Save contact info if we have a push name
 	if senderName != "" && c.store != nil {
-		c.store.SaveContact(senderJID, senderName)
+		_ = c.store.SaveContact(senderJID, senderName)
 	}
-
 	if senderName == "" {
 		senderName = c.resolveDisplayName(senderJID)
 	}
@@ -329,28 +402,25 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 		FromMe:     info.IsFromMe,
 	}
 
-	// Save to store
 	if c.store != nil {
 		if err := c.store.SaveMessage(msg); err != nil {
 			log.Printf("WhatsApp: save message error: %v", err)
 		}
 	}
 
-	// Forward to RAG channel
 	select {
 	case c.msgCh <- msg:
 	default:
 	}
 }
 
-// resolveDisplayName resolves a JID to a display name using the local contact store.
+// resolveDisplayName resolves a JID to a human-readable name.
 func (c *Client) resolveDisplayName(jid string) string {
 	if c.store != nil {
 		if name := c.store.GetContactName(jid); name != "" {
 			return name
 		}
 	}
-	// Try whatsmeow's own contact store
 	if c.waClient != nil && c.waClient.Store != nil {
 		parsed, err := types.ParseJID(jid)
 		if err == nil {
@@ -368,11 +438,10 @@ func (c *Client) resolveDisplayName(jid string) string {
 			}
 		}
 	}
-	// Fallback: strip @s.whatsapp.net
 	return partsBeforeAt(jid)
 }
 
-// importContacts copies all contacts from whatsmeow's store to our local contacts table.
+// importContacts copies all contacts from whatsmeow into the local contacts table.
 func (c *Client) importContacts() {
 	if c.waClient == nil || c.waClient.Store == nil || c.waClient.Store.Contacts == nil || c.store == nil {
 		return

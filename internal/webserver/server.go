@@ -178,6 +178,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/whatsapp/status", s.handleWhatsAppStatus)
 	mux.HandleFunc("/api/whatsapp/start", s.handleWhatsAppStart)
 	mux.HandleFunc("/api/whatsapp/stop", s.handleWhatsAppStop)
+	mux.HandleFunc("/api/whatsapp/logout", s.handleWhatsAppLogout)
 	mux.HandleFunc("/api/whatsapp/send", s.handleWhatsAppSend)
 	mux.HandleFunc("/api/whatsapp/search", s.handleWhatsAppSearch)
 	mux.HandleFunc("/api/whatsapp/chats", s.handleWhatsAppChats)

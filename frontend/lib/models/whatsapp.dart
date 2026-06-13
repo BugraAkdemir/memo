@@ -7,7 +7,7 @@ class WhatsAppMessage {
   final DateTime timestamp;
   final bool fromMe;
 
-  WhatsAppMessage({
+  const WhatsAppMessage({
     required this.id,
     required this.chatJid,
     required this.senderJid,
@@ -17,19 +17,17 @@ class WhatsAppMessage {
     required this.fromMe,
   });
 
-  factory WhatsAppMessage.fromJson(Map<String, dynamic> json) {
-    return WhatsAppMessage(
-      id: json['id'] as String? ?? '',
-      chatJid: json['chat_jid'] as String? ?? '',
-      senderJid: json['sender_jid'] as String? ?? '',
-      senderName: json['sender_name'] as String? ?? '',
-      text: json['text'] as String? ?? '',
-      timestamp: json['timestamp'] != null
-          ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      fromMe: json['from_me'] == true,
-    );
-  }
+  factory WhatsAppMessage.fromJson(Map<String, dynamic> json) => WhatsAppMessage(
+        id: json['id'] as String? ?? '',
+        chatJid: json['chat_jid'] as String? ?? '',
+        senderJid: json['sender_jid'] as String? ?? '',
+        senderName: json['sender_name'] as String? ?? '',
+        text: json['text'] as String? ?? '',
+        timestamp: json['timestamp'] != null
+            ? DateTime.tryParse(json['timestamp'].toString()) ?? DateTime.now()
+            : DateTime.now(),
+        fromMe: json['from_me'] == true,
+      );
 }
 
 class WhatsAppChatSummary {
@@ -39,7 +37,7 @@ class WhatsAppChatSummary {
   final DateTime lastTime;
   final int unread;
 
-  WhatsAppChatSummary({
+  const WhatsAppChatSummary({
     required this.jid,
     required this.displayName,
     required this.lastMessage,
@@ -47,29 +45,32 @@ class WhatsAppChatSummary {
     required this.unread,
   });
 
-  factory WhatsAppChatSummary.fromJson(Map<String, dynamic> json) {
-    return WhatsAppChatSummary(
-      jid: json['jid'] as String? ?? '',
-      displayName: json['display_name'] as String? ?? '',
-      lastMessage: json['last_message'] as String? ?? '',
-      lastTime: json['last_time'] != null
-          ? DateTime.tryParse(json['last_time'].toString()) ?? DateTime.now()
-          : DateTime.now(),
-      unread: json['unread'] as int? ?? 0,
-    );
-  }
+  factory WhatsAppChatSummary.fromJson(Map<String, dynamic> json) =>
+      WhatsAppChatSummary(
+        jid: json['jid'] as String? ?? '',
+        displayName: json['display_name'] as String? ?? '',
+        lastMessage: json['last_message'] as String? ?? '',
+        lastTime: json['last_time'] != null
+            ? DateTime.tryParse(json['last_time'].toString()) ?? DateTime.now()
+            : DateTime.now(),
+        unread: json['unread'] as int? ?? 0,
+      );
 }
 
 class WhatsAppStatus {
   final bool initialized;
   final bool connected;
   final bool loggedIn;
+  final bool reconnecting;
+  final String lastError;
   final List<String> qrCodes;
 
-  WhatsAppStatus({
+  const WhatsAppStatus({
     required this.initialized,
     required this.connected,
     required this.loggedIn,
+    required this.reconnecting,
+    required this.lastError,
     required this.qrCodes,
   });
 
@@ -80,6 +81,8 @@ class WhatsAppStatus {
       initialized: json['initialized'] as bool? ?? false,
       connected: json['connected'] as bool? ?? false,
       loggedIn: json['logged_in'] as bool? ?? false,
+      reconnecting: json['reconnecting'] as bool? ?? false,
+      lastError: json['last_error'] as String? ?? '',
       qrCodes: codes,
     );
   }

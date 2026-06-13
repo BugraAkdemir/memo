@@ -796,9 +796,14 @@ class MemoApiClient {
     return res.data as Map<String, dynamic>;
   }
 
-  /// Stop/disconnect WhatsApp.
+  /// Stop/disconnect WhatsApp (keeps session).
   Future<void> stopWhatsApp() async {
     await _dio.post('/api/whatsapp/stop');
+  }
+
+  /// Logout WhatsApp (removes session — next connect will show QR again).
+  Future<void> logoutWhatsApp() async {
+    await _dio.post('/api/whatsapp/logout');
   }
 
   /// Send a WhatsApp message.

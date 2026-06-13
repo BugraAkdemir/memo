@@ -23,18 +23,12 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _currentIndex = 0; // 0 = chat, 1 = agent, 2 = models, 3 = whatsapp
+  int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp
 
   @override
   Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
-    final betaEnabled = ref.watch(betaFeaturesProvider);
     L10n.setLocale(locale);
-
-    // If beta is disabled and user is on WhatsApp tab, redirect to chat
-    if (!betaEnabled && _currentIndex == 3) {
-      _currentIndex = 0;
-    }
 
     return Scaffold(
       backgroundColor: MemoTheme.of(context).bgApp,
@@ -53,10 +47,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           ChatScreen(key: ValueKey('chat_$locale')),
                           const AgentScreen(),
                           ModelStoreScreen(key: ValueKey('models_$locale')),
-                          if (betaEnabled)
-                            WhatsAppScreen()
-                          else
-                            const SizedBox.shrink(),
+                          const WhatsAppScreen(),
                         ],
                       ),
                     ),
@@ -76,37 +67,19 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
-  Widget _buildWhatsAppTab() {
-    final betaEnabled = ref.watch(betaFeaturesProvider);
-    if (!betaEnabled) return const SizedBox.shrink();
-    return Column(
-      children: [
-        const SizedBox(height: 8),
-        _NavRailButton(
-          icon: Icons.message_outlined,
-          activeIcon: Icons.message,
-          label: 'WhatsApp',
-          isActive: _currentIndex == 3,
-          onTap: () => setState(() => _currentIndex = 3),
-        ),
-      ],
-    );
-  }
-
   Widget _buildNavRail() {
+    final c = MemoTheme.of(context);
     return Container(
       width: 64,
       decoration: BoxDecoration(
-        color: MemoTheme.of(context).bgPanel,
-        border: Border(
-          right: BorderSide(color: MemoTheme.of(context).borderSoft),
-        ),
+        color: c.bgPanel,
+        border: Border(right: BorderSide(color: c.borderSoft)),
       ),
       child: Column(
         children: [
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
 
-          // ─── Logo ──────────────────────────────────
+          // ─── Logo ────────────────────────────────────
           Container(
             width: 40,
             height: 40,
@@ -115,7 +88,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               borderRadius: BorderRadius.circular(12),
               border: Border.all(color: MemoTheme.accent, width: 1.5),
             ),
-            child: Center(
+            child: const Center(
               child: Text(
                 'M',
                 style: TextStyle(
@@ -127,9 +100,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             ),
           ),
 
-          SizedBox(height: 24),
+          const SizedBox(height: 24),
 
-          // ─── Chat Tab ────────────────────────────────
           _NavRailButton(
             icon: Icons.chat_bubble_outline,
             activeIcon: Icons.chat_bubble,
@@ -138,9 +110,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 0),
           ),
 
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
 
-          // ─── Agent Tab ──────────────────────────────
           _NavRailButton(
             icon: Icons.smart_toy_outlined,
             activeIcon: Icons.smart_toy,
@@ -149,9 +120,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 1),
           ),
 
-          SizedBox(height: 8),
+          const SizedBox(height: 8),
 
-          // ─── Models Tab ──────────────────────────────
           _NavRailButton(
             icon: Icons.memory_outlined,
             activeIcon: Icons.memory,
@@ -160,26 +130,30 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 2),
           ),
 
-          // ─── WhatsApp Tab (Beta only) ─────────────────
-          _buildWhatsAppTab(),
+          const SizedBox(height: 8),
 
-          Spacer(),
+          _NavRailButton(
+            icon: Icons.message_outlined,
+            activeIcon: Icons.message,
+            label: 'WhatsApp',
+            isActive: _currentIndex == 3,
+            onTap: () => setState(() => _currentIndex = 3),
+          ),
 
-          // ─── Settings Button ─────────────────────────
+          const Spacer(),
+
           _NavRailButton(
             icon: Icons.settings_outlined,
             activeIcon: Icons.settings,
             label: L10n.t('settings'),
             isActive: false,
-            onTap: () {
-              showDialog(
-                context: context,
-                builder: (context) => SettingsDialog(),
-              );
-            },
+            onTap: () => showDialog(
+              context: context,
+              builder: (context) => SettingsDialog(),
+            ),
           ),
 
-          SizedBox(height: 16),
+          const SizedBox(height: 16),
         ],
       ),
     );
@@ -193,7 +167,7 @@ class _NavRailButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-  _NavRailButton({
+  const _NavRailButton({
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -210,7 +184,7 @@ class _NavRailButton extends StatelessWidget {
         onTap: onTap,
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         child: AnimatedContainer(
-          duration: Duration(milliseconds: 150),
+          duration: const Duration(milliseconds: 150),
           width: 44,
           height: 44,
           decoration: BoxDecoration(

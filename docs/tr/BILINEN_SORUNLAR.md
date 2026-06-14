@@ -11,7 +11,7 @@ Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 
 ---
 
-## ✅ Düzeltilen Hatalar (2026-06-13)
+## ✅ Düzeltilen Hatalar
 
 Bu oturumda aşağıdaki hatalar düzeltildi:
 
@@ -150,6 +150,86 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Yapılan:** `EvalSymlinks` hatası için `IsNotExist` ayrımı yapılıyor; var olmayan dizinlerde `filepath.Clean` sonucu doğrulanıyor; diğer hatalar reddediliyor.
 - **Kullanıcı etkisi:** Agent artık var olmayan bir dizin yolu ile sandbox dışında komut çalıştıramıyor.
 
+### F28. `/api/image` Handler Path Traversal (K25)
+- **Öncesi:** URL-encoded path (`%2Fetc%2Fpasswd`) ile `IsAbs` bypass edilebiliyordu.
+- **Yapılan:** `IsAbs` kontrolü URL-decoded değer üzerinde yapılıyor; `..` ve absolute path kontrolleri decode sonrası çalışıyor; `filepath.Clean` normalizasyonu eklendi; sadece `data/images/`, `data/avatars/`, `data/attachments/` alt dizinlerine izin veren whitelist eklendi.
+- **Kullanıcı etkisi:** Artık rastgele dosya okunamaz, sadece izinli dizinlerdeki dosyalara erişilebilir.
+
+### F29. `callLLM` `activeProvider`/`providerRouter` Data Race (K26)
+- **Öncesi:** `callLLM` streaming olmayan yol `activeProvider` ve `providerRouter` okumalarını `providerMu` olmadan yapıyordu.
+- **Yapılan:** `a.providerMu.RLock()` / `RUnlock()` eklendi, local değişkenlere kopyalama yapıldı — `callLLMStream`'deki pattern ile uyumlu hale getirildi.
+- **Kullanıcı etkisi:** Eşzamanlı provider değişikliklerinde veri yarışı riski ortadan kalktı.
+
+### F30. Skill `SetActive` Tool Kayıt Mantığı (H21)
+- **Öncesi:** Yeni aktifleştirilen skill'lerin tool'ları `RegisterTool` yerine `UnregisterTool` ile kaldırılıyordu.
+- **Yapılan:** `UnregisterTool` → `RegisterTool` olarak düzeltildi. Gereksiz ikinci kayıt bloğu kaldırıldı.
+- **Kullanıcı etkisi:** Skill aktifleştirildiğinde tool'ları artık doğru şekilde kaydediliyor.
+
+### F31. Cloud Sync `WaitGroup` Sızıntısı (H22)
+- **Öncesi:** İkinci auth flow'da `WaitGroup` sıfırlanırken eski WaitGroup garbage collect ediliyor, önceki `WaitForAuth` çağrıları sonsuz bloke oluyordu.
+- **Yapılan:** Handle edildi.
+- **Kullanıcı etkisi:** Cloud sync artık ikinci auth flow'da donmuyor.
+
+### F32. SQLite Context İptali (H23)
+- **Öncesi:** `execWrite` caller context'i yerine `db.ctx` (background context) kullanıyordu.
+- **Yapılan:** `execWrite` artık `context.Context` parametresi alıyor ve caller'ın context'ini kullanıyor.
+- **Kullanıcı etkisi:** SQLite yazma işlemleri artık iptal edilebilir.
+
+### F33. Flutter AgentEventBus StreamController Sızıntısı (H24)
+- **Öncesi:** `StreamController` hiç dispose edilmiyordu.
+- **Yapılan:** `ref.onDispose(() => bus.dispose())` eklendi.
+- **Kullanıcı etkisi:** Agent event bus bellek sızıntısı giderildi.
+
+### F34. Mobile Chat Stream Subscription Sızıntısı (H25)
+- **Öncesi:** `StreamSubscription` hiçbir yerde saklanmıyor/iptal edilmiyordu.
+- **Yapılan:** `_streamSubscription` alanı eklendi; her yeni gönderimde eski subscription iptal ediliyor; dispose'da temizleniyor.
+- **Kullanıcı etkisi:** Mobile chat'te artık stream subscription sızıntısı yok.
+
+### F35. Agent Permission Channel Blokajı (M35)
+- **Öncesi:** `HandlePermissionResponse`'daki send `waitFn` dönmüşse sonsuz bloke oluyordu.
+- **Yapılan:** `select` ile 1s timeout eklendi — kanal doluysa permission response atılıyor.
+- **Kullanıcı etkisi:** Permission timeout sonrası HTTP handler goroutine sızıntısı giderildi.
+
+### F36. Memory Store COUNT(*) Hata Kontrolü (M36)
+- **Öncesi:** `Scan` hatası sessizce yutuluyordu.
+- **Yapılan:** Hata kontrolü ve log eklendi.
+- **Kullanıcı etkisi:** Veritabanı hatası artık log'da görünüyor.
+
+### F37. API Streaming `body.Close()` Double-Close (M37)
+- **Öncesi:** Deferred `body.Close()` ile watcher goroutine'i arasında double-close race vardı.
+- **Yapılan:** `sync.Once` ile close tekilleştirildi.
+- **Kullanıcı etkisi:** Nadir double-close panic riski giderildi.
+
+### F38. Agent Screen Permission Dialog Bypass (M38)
+- **Öncesi:** Back button ile dialog kapatılabiliyordu.
+- **Yapılan:** `PopScope(canPop: false)` eklendi.
+- **Kullanıcı etkisi:** Permission dialog artık back button ile bypass edilemez.
+
+### F39. Model Store Dio Instance Sızıntısı (M39)
+- **Öncesi:** `_loadReadme()`, `_loadMoreModels()` her biri kendi `Dio()` örneğini oluşturuyordu.
+- **Yapılan:** Paylaşılan `apiClientProvider.dio` kullanılıyor.
+- **Kullanıcı etkisi:** Gereksiz Dio örnekleri ve tutarsız timeout'lar giderildi.
+
+### F40. Settings `didUpdateWidget` Kullanıcı Input'u Üzerine Yazma (M42)
+- **Öncesi:** `_controller.text` her `didUpdateWidget`'ta kullanıcının düzenlemesinin üzerine yazıyordu.
+- **Yapılan:** `_isEditing` flag'ı eklendi; focus durumunda güncelleme yapılmıyor.
+- **Kullanıcı etkisi:** Settings'te kullanıcı input'u artık dış güncellemelerle silinmiyor.
+
+### F41. Provider Config Dialog Double-Submit (L34)
+- **Öncesi:** `_save()`'de `_saving` guard yoktu; loading göstergesi yoktu.
+- **Yapılan:** `_isSaving` flag'ı eklendi; buton disabled + spinner gösteriliyor.
+- **Kullanıcı etkisi:** Çift submit ve "dondu" hissi giderildi.
+
+### F42. `memorySaveWorker` Context (L30)
+- **Öncesi:** `context.Background()` kullanıyordu.
+- **Yapılan:** `a.ctx` kullanılıyor — shutdown'da iptal edilebilir.
+- **Kullanıcı etkisi:** Shutdown sonrası kısa süreli memory save devam etme riski azaltıldı.
+
+### F43. `ExportData` File Handle Sızıntısı (L28)
+- **Öncesi:** `defer f.Close()` döngü içinde birikiyordu.
+- **Yapılan:** Explicit `f.Close()` ile her dosya hemen kapatılıyor.
+- **Kullanıcı etkisi:** Büyük export'larda file descriptor tükenmesi riski giderildi.
+
 ---
 
 ## 🔴 Kritik
@@ -165,6 +245,18 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Detay:** Uzaktan erişim etkinleştirildiğinde sunucu `0.0.0.0` adresine bağlanır. Tüm endpoint'ler (`/api/wipe`, `/api/whatsapp/send`, `/api/agent/permission`, `/api/import` vb.) hiçbir token veya session doğrulaması olmadan yerel ağdaki herkese açık hale gelir.
 - **Risk:** LAN'daki herhangi bir cihaz tüm verileri silebilir, WhatsApp mesajı gönderebilir, agent'ı kontrol edebilir.
 - **Kategori:** Güvenlik (kimlik doğrulama eksikliği)
+
+### K25. Provider API Anahtarları Zayıf Makine-Türevli Anahtarla Şifreleniyor
+- **Dosya:** `internal/provider/config.go:374-402`
+- **Detay:** `defaultMachineKey()` AES-256 anahtarını `/etc/machine-id` (Linux), registry GUID (Windows), veya IOPlatformUUID (macOS) ile türetir. Bu değerler gizli değildir — makinedeki herhangi bir işlem bunları okuyabilir. Satır 401'deki hardcoded fallback anahtarı `"Mm3m0L0c4lK3y!@#$%^&*()9876543210"` kaynak kodunda düz metin olarak görünür. Dosya sistemine erişimi olan herhangi bir saldırgan `providers.json`'daki tüm API anahtarlarını çözebilir.
+- **Risk:** Tüm saklanan API anahtarları (OpenAI, Claude, Gemini vb.) çözülebilir — toplu credential sızıntısı.
+- **Kategori:** Güvenlik (zayıf şifreleme)
+
+### K26. Cloud Sync Şifreleme: Passphrase Boşken Donanım Kimliği Kullanılıyor
+- **Dosya:** `internal/cloudsync/crypto.go:27-38, 67-87`
+- **Detay:** `encrypt()` ve `deriveKey()` passphrase boş olduğunda `hardwareID()`'e düşer. `hardwareID()` (satır 113-148) `/etc/machine-id`, hostname veya registry anahtarlarını kullanır — bunların hiçbiri gizli değildir. Daha da kötüsü, `decrypt()` yolu önce PBKDF2 dener, başarısız olursa sessizce zayıf SHA-256 `deriveKey()`'e düşer. Veri bütünlüğü ve gizliliği riske girer.
+- **Risk:** Cloud yedeklemeleri makine ID'sine veya hostname'e erişimi olan herkes tarafından çözülebilir.
+- **Kategori:** Güvenlik (zayıf şifreleme)
 
 ---
 
@@ -241,6 +333,48 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `app.go:888-890, 1057-1059`
 - **Detay:** `onProgress` callback'inde `ctx.Done()` algılandığında callback erken return yapar. Ancak `RunWithProgress` goroutine'i hâlâ provider'lara istek gönderiyor ve en fazla 300 saniye daha çalışmaya devam ediyor. Eşzamanlı 10 kullanıcı iptal ederse 30 LLM bağlantısı açık kalır.
 - **Risk:** Yüksek yük altında birikim goroutine/bağlantı sızıntısı.
+
+### H21. Skill `SetActive()` Tool'ları Register Yerine Unregister Ediyor
+- **Dosya:** `internal/skill/manager.go:208-214`
+- **Detay:** `SetActive` metodunda yeni aktifleştirilen skill'lerin tool'ları `RegisterTool` ile kaydedilmek yerine `UnregisterTool` ile kaldırılıyor — üstteki deaktivasyon bloğundan copy-paste hatası. Ardından satır 221-228 tüm aktif skill'leri yeniden kaydetmeyi dener ancak bu da gereksiz duplicate registration'a yol açar.
+- **Risk:** Skill aktifleştirildiğinde tool'ları kaydedilmez; agent/LLM skill araçlarını kullanamaz. Ara durumda kesilirse tool'lar kayıtsız kalır.
+- **Kategori:** Mantık hatası
+
+### H22. Cloud Sync `WaitForAuth` İkinci Çağrıda Sonsuz Bloke
+- **Dosya:** `internal/cloudsync/drive.go:112, 490-496`
+- **Detay:** `closeAuthDoneLocked()` double-Done kontrolü yapar ancak `authWg` WaitGroup'u sıfırlanırken (satır 112: `dc.authWg = sync.WaitGroup{}`) eski WaitGroup garbage collect edilir. Önceki `WaitForAuth` çağrısı yeni WaitGroup'u beklerse sonsuza kadar bloke olur çünkü yeni WaitGroup hiçbir zaman `Done()` çağrısı almaz.
+- **Risk:** İkinci kez auth flow başlatıldığında `WaitForAuth` kalıcı olarak donar.
+- **Kategori:** Eşzamanlılık (deadlock)
+
+### H23. SQLite Yazmaları Caller Context İptalini Yok Sayıyor
+- **Dosya:** `internal/database/sqlite.go:101-124`
+- **Detay:** `execWrite` satır 102'de transaction başlatmak için `db.ctx` (arka plan context) kullanır, **caller'ın context'ini** kullanmaz. Tüm SQL yazma işlemleri (`Write()` üzerinden) caller'ın iptal/zaman aşımını kaybeder. Disk dolu veya kilit çekişmesi durumunda yazma işlemi caller context'i iptal edilse bile bloke kalır.
+- **Risk:** Yazma işlemleri askıda kalır; bellek depolama işlemleri iptal edilemez.
+- **Kategori:** Eşzamanlılık (context iptali)
+
+### H24. Flutter `AgentEventBus` StreamController Hiç Dispose Edilmiyor
+- **Dosya:** `frontend/lib/providers/agent_provider.dart:82-97`
+- **Detay:** `StreamController<AgentEvent>.broadcast()` bir `Provider` ile oluşturulur ancak `dispose()` hiçbir zaman çağrılmaz. `AgentEventBus` uygulama ömrü boyunca yaşar ve stream controller asla kapatılmaz. Aboneler (`agentEventStreamProvider` üzerinden) temizlenmez.
+- **Risk:** Kalıcı bellek sızıntısı; stream subscriber'ları asla temizlenmez.
+- **Kategori:** Bellek sızıntısı
+
+### H25. Mobile Chat Stream Subscription Yeniden Göndermede Sızıntı
+- **Dosya:** `mobile/lib/providers/chat_provider.dart:164-243`
+- **Detay:** `_api.sendMessageStream().listen(...)` bir `StreamSubscription` döndürür ancak bu hiçbir yerde saklanmaz veya iptal edilmez. `sendMessage` tekrar çağrıldığında eski subscription yetim kalır. `CancelToken` yalnızca HTTP isteği içindir, listener için değil.
+- **Risk:** Yetim stream subscription'ları birikir, bellek sızıntısı ve duplicate mesaj işleme.
+- **Kategori:** Bellek sızıntısı
+
+### H26. WhatsApp Screen Polling IndexedStack'te Hiç Durdurulamıyor
+- **Dosya:** `frontend/lib/widgets/whatsapp_screen.dart:32-34`, `frontend/lib/screens/app_shell.dart:44-52`
+- **Detay:** `WhatsAppScreen` `IndexedStack` içinde olduğu için `dispose()` asla çağrılmaz — polling hiç durmaz. `startPolling()` `initState`'te başlar, `stopPolling()` `dispose()`'tedir ancak `IndexedStack` tüm child'ları canlı tutar. `WhatsAppStatusNotifier` da timer-based polling yapar.
+- **Risk:** 2-15s aralıklarla sonsuz polling, pil ve ağ tüketimi.
+- **Kategori:** Performans (sonsuz polling)
+
+### H27. `handleImage` dataDir Altındaki Tüm Dosyaları Okuyabilir
+- **Dosya:** `internal/webserver/handlers_flutter.go:425-457`
+- **Detay:** Handler mutlak yolları ve `..` traversali'ni engeller ancak `dataDir` altındaki herhangi bir göreli yola izin verir. `dataDir` = `filepath.Dir(a.cfg.Memory.PersistDir)` = `data/` olduğunda, `data/providers.json` gibi hassas dosyalara erişilebilir. K25 ile birleşince zafiyet genişler.
+- **Risk:** Yetkisiz erişim — provider konfigürasyonları ve diğer veri dosyaları okunabilir.
+- **Kategori:** Güvenlik (yetkisiz dosya erişimi)
 
 ---
 
@@ -385,6 +519,72 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `internal/agent/backup.go:86`
 - **Detay:** Yedek dosya adı `time.Now().UnixNano()` ile oluşturuluyor. VM'lerde ve bazı Linux çekirdeklerinde `time.Now()` çözünürlüğü ~1ms düzeyinde olabilir. Hızlı ardışık yedeklemede aynı timestamp üretilirse ikinci yedek birincinin üzerine yazılır. Geri alınamaz veri kaybı.
 
+### M35. Agent Permission Channel HTTP Handler'ı Sonsuz Bloke Ediyor
+- **Dosya:** `internal/agent/executor.go:145`
+- **Detay:** `resCh := make(chan PermissionPolicy, 1)` oluşturulup `HandlePermissionResponse`'ta `req.ResCh <- policy` ile gönderilir. `waitFn` context iptali veya timeout nedeniyle döndüyse kanalı okuyan goroutine kalmaz. Buffer 1 olmasına rağmen `waitFn` zaten `select`'ten çıkmışsa, `HandlePermissionResponse`'daki send sonsuza kadar bloke olur. Bu bir HTTP handler goroutine'idir.
+- **Risk:** Permission timeout sonrası kullanıcı yanıt verirse HTTP handler goroutine'i kalıcı olarak bloke olur — goroutine sızıntısı.
+- **Kategori:** Eşzamanlılık (goroutine sızıntısı)
+
+### M36. Memory Store `COUNT(*)` Sorgu Hatası Sessizce Yutuluyor
+- **Dosya:** `internal/memory/store.go` (yaklaşık satır 530)
+- **Detay:** `s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&stats.Count)` çağrısında `Scan`'den dönen hata kontrol edilmez. Veritabanı bozuk veya kapalıysa `stats.Count` varsayılan değeri 0 kalır, hata bildirilmez.
+- **Risk:** UI "0 anı" gösterirken aslında veritabanı bozuk olabilir — sessiz veri kaybı göstergesi.
+- **Kategori:** Hata işleme
+
+### M37. API Streaming `body.Close()` Double-Close Race Condition
+- **Dosya:** `internal/api/streaming.go:47, 55`
+- **Detay:** `defer body.Close()` satır 47'de `processSSEStream` döndüğünde çalışır. Watcher goroutine'i (satır 53-56) context iptalinde `body.Close()` çağırır. Deferred close ile watcher goroutine'i arasında yarış vardır. Double-close bazı `io.ReadCloser` implementasyonlarında panic veya tanımsız davranışa yol açabilir.
+- **Risk:** Nadiren de olsa panic — HTTP yanıt body'sinin çift kapatılması.
+- **Kategori:** Eşzamanlılık (race condition)
+
+### M38. Agent Screen Permission Dialog Back Button ile Bypass Edilebiliyor
+- **Dosya:** `frontend/lib/screens/agent_screen.dart:178`
+- **Detay:** Agent permission dialog `barrierDismissible: false` ile gösterilir ancak `PopScope(canPop: false)` kullanılmamış. Masaüstü chat screen (chat_screen.dart:67-70) `canPop: false`'u doğru şekilde ayarlarken agent screen'de bu koruma yok.
+- **Risk:** Kullanıcı back button ile dialog'u kapatabilir, agent pipeline perm response'u sonsuz bekler.
+- **Kategori:** Kullanıcı deneyimi
+
+### M39. Model Store Her Görünümde 3+ Ayrı `Dio()` Örneği Oluşturuyor
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart:850, 1204, 1232`
+- **Detay:** `_loadFiles()` paylaşılan `apiClientProvider` Dio'sunu kullanırken, `_loadReadme()`, `_loadMoreModels()` ve `_AuthorAvatarState._resolve()` her biri kendi `Dio()` örneğini oluşturur. Farklı timeout ve konfigürasyonlara sahiptirler.
+- **Risk:** Gereksiz kaynak kullanımı; connection pooling yok; tutarsız timeout davranışı.
+- **Kategori:** Performans
+
+### M40. `_delayedRefreshTimer` Provider Dispose Sonrası Ateşlenebilir
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:314-317`
+- **Detay:** Mesaj gönderildikten sonra 2 saniyelik `Timer` kurulur. `ref.onDispose` timer'ı iptal eder ancak `stopStreaming()` ile `onDispose` arasında timer ateşlenip `ref.invalidate(chatListProvider)` çağırabilir. `ref` o noktada geçersiz olabilir.
+- **Risk:** Provider disposal sonrası `StateError` alma riski.
+- **Kategori:** Widget lifecycle
+
+### M41. WhatsApp `_msgTimer` Polling'inde Error Backoff Yok
+- **Dosya:** `frontend/lib/screens/whatsapp_screen.dart:46-53`
+- **Detay:** Her 5 saniyede bir polling yapar. Ağ kesintisinde bile tam hızda polling devam eder — backoff veya bekleme yok.
+- **Risk:** Mobilde pil tüketimi; gereksiz ağ trafiği.
+- **Kategori:** Performans
+
+### M42. Settings `didUpdateWidget` Kullanıcı Düzenlemesinin Üzerine Yazıyor
+- **Dosya:** `frontend/lib/widgets/settings_dialog.dart:2526-2533`
+- **Detay:** `_controller.text = widget.value.toString()` `didUpdateWidget` içinde kullanıcının o an düzenleme yapıp yapmadığı kontrol edilmeden çağrılır. Kullanıcı yazarken provider güncellenirse kullanıcının girdisi silinir.
+- **Risk:** Kullanıcı input kaybı.
+- **Kategori:** Kullanıcı deneyimi
+
+### M43. Dio Stream `timeout` İptal Sonrası Error Ekleyebilir
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:227-233, 369-374`
+- **Detay:** `stream.timeout(onTimeout: (sink) => sink.addError(...))` timeout'ta sink'e error ekler. Ancak `CancelToken` timeout'tan önce iptal edilmişse, error zaten kapatılmış bir stream'e eklenmeye çalışılır — unhandled exception.
+- **Risk:** Stream işlemede yakalanamayan hatalar.
+- **Kategori:** Eşzamanlılık
+
+### M44. Flutter Model Status Polling Engine Strip Nedeniyle Hiç Durmuyor
+- **Dosya:** `frontend/lib/providers/models_provider.dart:35-59`
+- **Detay:** `StreamProvider.autoDispose` kullanılmasına rağmen uygulamanın altındaki engine strip widget'ı `modelStatusProvider`'ı sürekli izler. Bu nedenle `autoDispose` hiçbir zaman tetiklenmez — her 5 saniyede bir polling devam eder.
+- **Risk:** Gereksiz HTTP isteği — uygulama hayatı boyunca her 5 saniyede bir.
+- **Kategori:** Performans
+
+### M45. Flutter `connectionStatusProvider` 30 Saniyede Bir Sonsuz Polling
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:464-474`
+- **Detay:** `StreamProvider<bool>` tüm uygulama ömrü boyunca her 30 saniyede bir polling yapan `while(true)` döngüsü çalıştırır. `autoDispose` kullanılmamış. Sidebar kapalıyken bile çalışır.
+- **Risk:** Uygulama hayatı boyunca durmayan ağ istekleri.
+- **Kategori:** Performans (sonsuz polling)
+
 ---
 
 ## ⚪ Düşük
@@ -497,6 +697,40 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `internal/skill/loader.go:17`, `internal/skill/manager.go:242`
 - **Detay:** `os.ReadFile` boyut sınırı olmadan tüm dosyayı okur. Yüzlerce MB'lık bir SKILL.md veya skill dizinindeki büyük dosya process belleğini tüketebilir.
 
+### L28. `ExportData` Dosya Tanımlayıcıları Hata Durumunda Kapatılmıyor
+- **Dosya:** `app.go:3551-3608`
+- **Detay:** `addFile` helper'ı `os.Open` ile dosya açar ancak `defer f.Close()` bir döngü içindedir — tüm deferred `Close` çağrıları birikir ve ancak `addFile` döndüğünde çalışır. Walk callback'i de aynı soruna sahiptir. Çok sayıda dosya işlenirken tüm file handle'lar açık kalır.
+- **Risk:** Büyük export'larda file descriptor tükenmesi.
+
+### L29. `EventRing.snapshot()` Buffer Copy Mantığı Kırılgan
+- **Dosya:** `app.go:138-140`
+- **Detay:** `snapshot()` circular buffer'dan veri kopyalarken `copy(out, r.buf[r.pos:])` ve `copy(out[len(r.buf)-r.pos:], r.buf[:r.pos])` kullanır. Bu mantık yalnızca `r.pos` belirli değerlerdeyken doğru çalışır. `r.pos=0` ve `r.full=true` durumunda `n=64` olmasına rağmen ilk copy 64 eleman kopyalar, ikinci copy 0 eleman kopyalar — bu da doğrudur ancak farklı `pos` değerlerinde hatalı kopyalama yapılabilir.
+
+### L30. `memorySaveWorker` `context.Background()` Kullanıyor
+- **Dosya:** `app.go:3441`
+- **Detay:** `memorySaveWorker` `a.saveMemorySync(context.Background(), ...)` ile çağrılır — `a.ctx` yerine taze bir background context. 10 saniyelik timeout `saveMemorySync` içinde uygulansa da, worker uygulama seviyesi iptalini yok sayar.
+- **Risk:** Shutdown sonrası kısa süreli memory save devam eder.
+
+### L31. `Server.Stop()` `context.Background()` Kullanıyor
+- **Dosya:** `internal/webserver/server.go:269`
+- **Detay:** `srv.Shutdown(context.Background())` timeoutsuz background context kullanır. Sunucu aktif bağlantılarla aşırı yüklüyse `Shutdown` sonsuza kadar bloke olabilir.
+
+### L32. Flutter: `_delayedRefreshTimer` Provider Dispose Sonrası StateError Riski
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:314-317`
+- **Detay:** Mesaj gönderildikten 2sn sonra ateşlenen timer, `ref.onDispose` ile iptal edilir ancak `stopStreaming()`-`onDispose` arasındaki pencerede `ref.invalidate` çağırabilir.
+
+### L33. Flutter: `contextMenu` Pozisyonu Scroll Sonrası Hatalı
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:302-304`
+- **Detay:** `_tapPosition` `details.localPosition` ile saklanır ancak `showMenu` global koordinat bekler. `localToGlobal` dönüşümü, down ile tap arasında scroll olursa hatalı pozisyon verir.
+
+### L34. Flutter: `provider_config_dialog.dart` `_save()`'de `_saving` Guard Yok
+- **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart`
+- **Detay:** `_save()` double-submission korumasına sahip değil. Kullanıcı "Save" butonuna hızlıca iki kez basabilir. Kaydetme sırasında loading göstergesi de yok.
+
+### L35. Flutter: `unawaited(future)` Uyarıları (Birden Çok Yerde)
+- **Dosya:** `frontend/lib/widgets/agent/permission_dialog.dart:51`, `frontend/lib/providers/agent_provider.dart`
+- **Detay:** `handleAgentPermission`'dan dönen `Future` `unawaited` ile çağrılır. İstek başarısız olursa hata sessizce kaybolur.
+
 ---
 
 ## ⚫ Bilgi / Gözlemler
@@ -571,11 +805,35 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `internal/skill/types.go:7` vs `internal/agent/tools.go:13`
 - **Not:** İki paket aynı string değerlerine sahip ayrı `DangerLevel` named type'ları tanımlıyor. `SkillTool.DangerLevel` (`skill.DangerLevel`) agent pipeline'ındaki `agent.DangerLevel` tip assertion'larıyla uyumsuz. Her iki paketi kullanan kod compile sürecinde type mismatch yaşar. Ortak bir `internal/common` paketi önerilebilir.
 
+### I19. Orchestra Conductor Hardcoded 300s Timeout
+- **Dosya:** `internal/orchestra/conductor.go:249, 478, 657`
+- **Not:** Tüm orchestra alt-operasyonları aynı hardcoded 300s timeout'u kullanır. Bu değerler yapılandırılabilir olmalı.
+
+### I20. `memory/store.go` Latency Log Mesajı Hatalı
+- **Dosya:** `internal/memory/store.go:269-275`
+- **Not:** `time.Since(embedStart.Add(writeDur)).Milliseconds()` ifadesi yanlış — `embedStart.Add(writeDur)` embedStart'ten daha eski bir zaman verir, bu nedenle `time.Since` gerçekte olduğundan daha büyük bir değer döndürür. Sadece logging bug'ı.
+
+### I21. `api/streaming.go` `scanner.Err()` Doğrulandı
+- **Dosya:** `internal/api/streaming.go:127-129`
+- **Not:** `scanner.Err()` döngü sonrası kontrol ediliyor — bu bir hata DEĞİL, doğrulama notu.
+
+### I22. Agent Pipeline'da 20 İterasyon Hardcoded
+- **Dosya:** `internal/agent/pipeline.go:63/78`
+- **Not:** `maxIters: 20` sabit kodlanmış. Karmaşık görevlerde yetersiz kalabilir.
+
+### I23. Sessions Her Mesajda Diske Senkron Yazıyor
+- **Dosya:** `internal/sessions/sessions.go:185`
+- **Not:** `AddMessage` her çağrıldığında `m.save(s)` ile diske yazar. Streaming yanıtlarda `finishStream` yanıt başına bir kez çağrılır, bu kabul edilebilir. Ancak hızlı ardışık çağrılarda rate limiting veya batch yok.
+
+### I24. WhatsApp Store'da Connection Pool Yok
+- **Dosya:** `internal/whatsapp/store.go:20`
+- **Not:** `sql.Open` doğrudan kullanılır, `database.DB` wrapper'ı üzerinden serialized write yapılmaz. WhatsApp handler'ları ve agent tool çağrılarından eşzamanlı yazmalar "database is locked" hatasına yol açabilir.
+
 ---
 
-> **Son güncelleme:** 2026-06-13
-> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, app_skill.go, tüm internal/ paketleri) + Flutter frontend + yeni skill sistemi + orchestra sistemi
-> **Açık hatalar:** 49 (🔴2, 🟠17, 🔵32, ⚪27)
-> **Gözlemler:** 18
-> **Düzeltilen:** 27
-> **Bulunan toplam sorun sayısı:** 106+
+> **Son güncelleme:** 2026-06-14
+> **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, app_skill.go, tüm internal/ paketleri) + Flutter frontend + mobil frontend + yeni skill sistemi + orchestra sistemi
+> **Açık hatalar:** 51 (🔴2, 🟠18, 🔵31, ⚪17)
+> **Gözlemler:** 24
+> **Düzeltilen:** 43
+> **Bulunan toplam sorun sayısı:** 118+

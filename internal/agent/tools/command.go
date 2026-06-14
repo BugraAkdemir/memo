@@ -27,7 +27,7 @@ var blacklistedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\brm\s+-rf\s+/\b`),
 	regexp.MustCompile(`\brm\s+-rf\s+~\b`),
 	regexp.MustCompile(`\brm\s+-rf\s+\.\b`),
-	regexp.MustCompile(`\bdd\s`),               // dd (disk destroyer) followed by space
+	regexp.MustCompile(`\bdd\s`), // dd (disk destroyer) followed by space
 	regexp.MustCompile(`\bmkfs\b`),
 	regexp.MustCompile(`\bfdisk\b`),
 	regexp.MustCompile(`\bparted\b`),
@@ -48,6 +48,15 @@ var blacklistedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\breboot\b`),
 	regexp.MustCompile(`\bhalt\b`),
 	regexp.MustCompile(`\bpoweroff\b`),
+	// Windows-specific destructive commands (run_command uses `cmd /C` there).
+	regexp.MustCompile(`\bformat\s`),                        // format a volume
+	regexp.MustCompile(`\bdiskpart\b`),                      // partition editor
+	regexp.MustCompile(`\bdel\b[^\n]*\s/[sq]\b`),            // del /s or /q (recursive/quiet)
+	regexp.MustCompile(`\b(rd|rmdir)\b[^\n]*\s/s\b`),        // rd /s (recursive dir delete)
+	regexp.MustCompile(`\breg\s+delete\b`),                  // registry deletion
+	regexp.MustCompile(`\bvssadmin\s+delete\b`),             // delete shadow copies
+	regexp.MustCompile(`\bcipher\s+/w\b`),                   // wipe free space
+	regexp.MustCompile(`\b(net\s+user|net\s+localgroup)\b`), // account manipulation
 }
 
 func isBlacklisted(cmd string) (string, bool) {

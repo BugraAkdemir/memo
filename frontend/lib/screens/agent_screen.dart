@@ -175,7 +175,7 @@ class _AgentContent extends ConsumerWidget {
       if (next.hasValue && next.value != null && context.mounted) {
         final event = next.value!;
         if (event.type == 'permission_request') {
-          showDialog(context: context, barrierDismissible: false, builder: (_) => PermissionDialog(event: event));
+          showDialog(context: context, barrierDismissible: false, builder: (_) => PopScope(canPop: false, child: PermissionDialog(event: event)));
         }
       }
     });

@@ -89,6 +89,7 @@ class ChatState {
 class ChatNotifier extends StateNotifier<ChatState> {
   final MemoApiClient _api;
   CancelToken? _cancelToken;
+  StreamSubscription? _streamSubscription;
 
   ChatNotifier(this._api) : super(const ChatState());
 
@@ -161,7 +162,8 @@ class ChatNotifier extends StateNotifier<ChatState> {
       error: null,
     );
 
-    _api
+    _streamSubscription?.cancel();
+    _streamSubscription = _api
         .sendMessageStream(message, cancelToken: _cancelToken)
         .listen(
       (chunk) {
@@ -268,6 +270,12 @@ class ChatNotifier extends StateNotifier<ChatState> {
     } else {
       state = state.copyWith(streaming: false, currentStreamContent: '', agentEvents: []);
     }
+  }
+
+  @override
+  void dispose() {
+    _streamSubscription?.cancel();
+    super.dispose();
   }
 
   void clearError() {

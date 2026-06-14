@@ -9,6 +9,8 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+
+	"memo/internal/config"
 )
 
 // GPUType represents the detected GPU vendor.
@@ -41,7 +43,7 @@ func DetectGPU() GPUInfo {
 // Priority: NVIDIA (CUDA) → AMD (ROCm) → CPU fallback.
 func detectGPUInner() GPUInfo {
 	// Check for manual CPU override
-	if _, err := os.Stat("data/.force_cpu"); err == nil {
+	if _, err := os.Stat(config.DataPath(".force_cpu")); err == nil {
 		return GPUInfo{
 			Type:        GPUTypeCPU,
 			Name:        "CPU (Zorunlu)",

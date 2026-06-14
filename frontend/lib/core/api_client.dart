@@ -15,6 +15,8 @@ class MemoApiClient {
   late final Dio _dio;
   final String baseUrl;
 
+  Dio get dio => _dio;
+
   MemoApiClient({this.baseUrl = 'http://127.0.0.1:8090'}) {
     _dio = Dio(
       BaseOptions(

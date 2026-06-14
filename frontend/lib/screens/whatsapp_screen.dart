@@ -27,6 +27,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   final _scrollCtrl = ScrollController();
   Timer? _msgTimer;
   bool _sending = false;
+  Duration _pollInterval = const Duration(seconds: 5);
 
   @override
   void initState() {
@@ -45,10 +46,24 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
 
   void _startMsgRefresh(String jid) {
     _msgTimer?.cancel();
-    _msgTimer = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (mounted && _selectedJid == jid) {
-        ref.invalidate(whatsAppMessagesProvider(jid));
+    _pollInterval = const Duration(seconds: 5);
+    _schedulePoll(jid);
+  }
+
+  void _schedulePoll(String jid) {
+    _msgTimer = Timer(_pollInterval, () {
+      if (!mounted || _selectedJid != jid) return;
+      final state = ref.read(whatsAppMessagesProvider(jid));
+      if (state.hasError) {
+        _pollInterval = (_pollInterval * 2).clamp(
+          const Duration(seconds: 5),
+          const Duration(seconds: 30),
+        );
+      } else {
+        _pollInterval = const Duration(seconds: 5);
       }
+      ref.invalidate(whatsAppMessagesProvider(jid));
+      _schedulePoll(jid);
     });
   }
 

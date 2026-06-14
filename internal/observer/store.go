@@ -127,7 +127,7 @@ func (s *Store) Record(obs Observation) (int64, error) {
 	obs.TimeOfDaySeconds = t.Hour()*3600 + t.Minute()*60 + t.Second()
 
 	var id int64
-	err := s.db.Write(func(tx *sql.Tx) error {
+	err := s.db.Write(context.Background(), func(tx *sql.Tx) error {
 		res, err := tx.Exec(`
 			INSERT INTO observations
 				(timestamp, day_of_week, time_of_day_seconds, session_length_min, topic, activity_type, word_count, metadata)
@@ -218,7 +218,7 @@ func (s *Store) Count(ctx context.Context) (int, error) {
 // the database small and the user's data minimal.
 func (s *Store) Prune(before time.Time) (int64, error) {
 	var affected int64
-	err := s.db.Write(func(tx *sql.Tx) error {
+	err := s.db.Write(context.Background(), func(tx *sql.Tx) error {
 		res, err := tx.Exec(`DELETE FROM observations WHERE timestamp < ?`,
 			before.UTC().Format(time.RFC3339Nano))
 		if err != nil {
@@ -235,7 +235,7 @@ func (s *Store) Prune(before time.Time) (int64, error) {
 
 // ClearAll removes every observation — backs the "delete all my data" control.
 func (s *Store) ClearAll() error {
-	return s.db.Write(func(tx *sql.Tx) error {
+	return s.db.Write(context.Background(), func(tx *sql.Tx) error {
 		_, err := tx.Exec(`DELETE FROM observations`)
 		return err
 	})

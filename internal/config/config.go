@@ -5,10 +5,57 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"runtime"
+	"strings"
 	"sync"
 
 	"gopkg.in/yaml.v3"
 )
+
+var (
+	dataDirOnce sync.Once
+	dataDirVal  string
+)
+
+// DataDir returns the writable base directory for Memo's persistent data
+// (sessions, memory, models, providers, etc.).
+//
+// On Windows the application is normally installed under Program Files, which is
+// read-only for standard (non-admin) users, so a process-relative "data" folder
+// there cannot be written. Instead data lives under %ProgramData%\Memo\data —
+// the same location installer.iss pre-creates with users-full permissions.
+//
+// On Linux/macOS the historical process-relative "data" directory is kept so
+// portable (AppImage) and development runs are unaffected.
+//
+// The MEMO_DATA_DIR environment variable overrides the resolved location.
+func DataDir() string {
+	dataDirOnce.Do(func() {
+		dataDirVal = resolveDataDir()
+	})
+	return dataDirVal
+}
+
+// DataPath joins one or more elements onto the resolved data directory.
+func DataPath(elem ...string) string {
+	return filepath.Join(append([]string{DataDir()}, elem...)...)
+}
+
+func resolveDataDir() string {
+	if v := strings.TrimSpace(os.Getenv("MEMO_DATA_DIR")); v != "" {
+		return v
+	}
+	if runtime.GOOS == "windows" {
+		base := os.Getenv("ProgramData")
+		if base == "" {
+			base = os.Getenv("ALLUSERSPROFILE")
+		}
+		if base != "" {
+			return filepath.Join(base, "Memo", "data")
+		}
+	}
+	return "data"
+}
 
 type AppConfig struct {
 	API            APIConfig          `yaml:"api"`
@@ -51,11 +98,11 @@ type WhatsAppConfig struct {
 }
 
 type RemoteAccessConfig struct {
-	Enabled        bool   `yaml:"enabled" json:"enabled"`
-	Port           int    `yaml:"port" json:"port"`
-	Token          string `yaml:"token" json:"token"`
-	NgrokMode      bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
-	NgrokToken     string `yaml:"ngrok_token" json:"ngrok_token"`
+	Enabled    bool   `yaml:"enabled" json:"enabled"`
+	Port       int    `yaml:"port" json:"port"`
+	Token      string `yaml:"token" json:"token"`
+	NgrokMode  bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
+	NgrokToken string `yaml:"ngrok_token" json:"ngrok_token"`
 }
 
 type APIConfig struct {
@@ -87,14 +134,14 @@ type IdentityConfig struct {
 }
 
 type MemoryConfig struct {
-	PersistDir           string  `yaml:"persist_dir" json:"persist_dir"`
-	TopK                 int     `yaml:"top_k" json:"top_k"`
-	MinSimilarity        float32 `yaml:"min_similarity" json:"min_similarity"`
-	MemoryEnabled        bool    `yaml:"memory_enabled" json:"memory_enabled"`
-	EmbeddingDimension   int     `yaml:"embedding_dimension" json:"embedding_dimension"`
-	EmbeddingModelRepo   string  `yaml:"embedding_model_repo" json:"embedding_model_repo"`
-	EmbeddingModelFile   string  `yaml:"embedding_model_file" json:"embedding_model_file"`
-	EmbeddingAutoStart   bool    `yaml:"embedding_auto_start" json:"embedding_auto_start"`
+	PersistDir         string  `yaml:"persist_dir" json:"persist_dir"`
+	TopK               int     `yaml:"top_k" json:"top_k"`
+	MinSimilarity      float32 `yaml:"min_similarity" json:"min_similarity"`
+	MemoryEnabled      bool    `yaml:"memory_enabled" json:"memory_enabled"`
+	EmbeddingDimension int     `yaml:"embedding_dimension" json:"embedding_dimension"`
+	EmbeddingModelRepo string  `yaml:"embedding_model_repo" json:"embedding_model_repo"`
+	EmbeddingModelFile string  `yaml:"embedding_model_file" json:"embedding_model_file"`
+	EmbeddingAutoStart bool    `yaml:"embedding_auto_start" json:"embedding_auto_start"`
 }
 
 var (
@@ -119,13 +166,13 @@ func Default() *AppConfig {
 			IncognitoPrompt: "You are Memo, in Incognito Mode. This is a secure session. Never refer to past events, because you have no memory here. Do your best to assist the user right now.",
 		},
 		Memory: MemoryConfig{
-			PersistDir:           "./data/memory",
-			TopK:                 5,
-			MinSimilarity:        0.1,
-			MemoryEnabled:        true,
-			EmbeddingDimension:   768,
-			EmbeddingModelRepo:   "nomic-ai/nomic-embed-text-v1.5-GGUF",
-			EmbeddingModelFile:   "nomic-embed-text-v1.5.Q4_K_M.gguf",
+			PersistDir:         "./data/memory",
+			TopK:               5,
+			MinSimilarity:      0.1,
+			MemoryEnabled:      true,
+			EmbeddingDimension: 768,
+			EmbeddingModelRepo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
+			EmbeddingModelFile: "nomic-embed-text-v1.5.Q4_K_M.gguf",
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,
@@ -172,6 +219,7 @@ func Load(path string) (*AppConfig, error) {
 	data, err := os.ReadFile(path)
 	if err != nil {
 		if os.IsNotExist(err) {
+			cfg.validate() // normalize data paths (e.g. rebase onto DataDir) before first save
 			if saveErr := saveToFile(cfg, path); saveErr != nil {
 				return nil, fmt.Errorf("config.Load: failed to create default config: %w", saveErr)
 			}
@@ -275,7 +323,7 @@ func (c *AppConfig) validate() []string {
 		c.Llama.EmbeddingPort = 8082
 		fixes = append(fixes, "Llama.EmbeddingPort")
 	}
-	if (c.Llama.CtxSize <= 0) {
+	if c.Llama.CtxSize <= 0 {
 		c.Llama.CtxSize = 4096
 		fixes = append(fixes, "Llama.CtxSize")
 	}
@@ -307,5 +355,31 @@ func (c *AppConfig) validate() []string {
 		c.Sync.IntervalMessages = 50
 		fixes = append(fixes, "Sync.IntervalMessages")
 	}
+
+	// Rebase process-relative "data/..." paths onto the resolved DataDir so that
+	// shipped/old configs keep working on Windows, where the install directory is
+	// read-only. No-op on Linux/macOS (DataDir is the relative "data").
+	c.Memory.PersistDir = rebaseDataPath(c.Memory.PersistDir)
+	c.Llama.ModelsDir = rebaseDataPath(c.Llama.ModelsDir)
+	c.Sync.TokenPath = rebaseDataPath(c.Sync.TokenPath)
+	c.WhatsApp.DataDir = rebaseDataPath(c.WhatsApp.DataDir)
+
 	return fixes
+}
+
+// rebaseDataPath rewrites a process-relative path under "data/" (optionally
+// prefixed with "./") onto the resolved DataDir. Absolute paths and paths not
+// under "data/" are returned unchanged.
+func rebaseDataPath(p string) string {
+	if p == "" || filepath.IsAbs(p) {
+		return p
+	}
+	norm := strings.TrimPrefix(filepath.ToSlash(p), "./")
+	if norm == "data" {
+		return DataDir()
+	}
+	if rest, ok := strings.CutPrefix(norm, "data/"); ok {
+		return DataPath(filepath.FromSlash(rest))
+	}
+	return p
 }

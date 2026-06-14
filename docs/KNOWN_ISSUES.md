@@ -11,7 +11,7 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 ---
 
-## ✅ Fixed Bugs (2026-06-13)
+## ✅ Fixed Bugs
 
 ### F1. Flutter: Empty `catch (_)` Blocks Swallowing Errors
 - **Previously:** 25+ `catch (_) {}` blocks silently swallowed all errors.
@@ -98,11 +98,151 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **Fix:** Added re-resolution via `filepath.EvalSymlinks` + re-validation right before `os.Remove`.
 - **Impact:** TOCTOU window eliminated — path is re-verified at the moment of deletion.
 
+### F18. WebServer CORS Reflecting Any Origin (K03)
+- **Previously:** `corsMiddleware` reflected any incoming `Origin` header directly in the response without whitelist check.
+- **Fix:** Added whitelist allowing only `localhost`, `127.0.0.1`, `::1` origins.
+- **Impact:** Malicious websites can no longer access the local API through the user's browser.
+
+### F19. Orchestra `safeProgress` Deadlock (K02)
+- **Previously:** `safeProgress` held mutex while calling `fn(up)`, which blocked when writing to a full channel, creating a deadlock that locked all goroutines.
+- **Fix:** Removed `progressMu` from conductor; `safeProgress` now calls `fn(up)` directly. `fullBuf` safety uses local `sync.Mutex` in `app.go`.
+- **Impact:** Orchestra no longer freezes on slow/disconnected clients.
+
+### F20. Orchestra: Wrong User Message in Multi-Turn Chats (K07)
+- **Previously:** `userPrompt` extraction always took the first user message instead of the last.
+- **Fix:** Reversed loops in `callAgentWithOrchestra`, `callLLMStream`, `callLLM` to find the last user message.
+- **Impact:** Multi-turn chats now use the correct question.
+
+### F21. Skill `Install()`: Manifest Name Path Traversal (H25) + `os.Stat` Error Swallowing (M25)
+- **Previously:** `def.Manifest.Name` from YAML was used in `filepath.Join` without validation; `os.Stat` errors were swallowed.
+- **Fix:** `validateSkillName()` rejects `/`, `\`, `..` in names; `filepath.Abs` comparison ensures target is within `SkillsDir()`; proper error handling for `os.Stat`.
+- **Impact:** Malicious SKILL.md can no longer traverse the filesystem.
+
+### F22. Skill `Remove()`: Path Traversal (K05)
+- **Previously:** `os.RemoveAll(def.Path)` without verifying `def.Path` is within `SkillsDir()`.
+- **Fix:** Added `filepath.Abs` check to ensure root is inside `SkillsDir()`.
+- **Impact:** Corrupted skill install can no longer delete app files via `Remove`.
+
+### F23. Skill `copyDir`: Symlink Following (H24) + No Size Limit (M26 rollback)
+- **Previously:** Symlinks were followed via `os.ReadFile` allowing copying of sensitive system files; no size limit; partial copy left directories behind.
+- **Fix:** Symlinks skipped (`entry.Type()&os.ModeSymlink != 0`); 10MB per-file limit added; `os.RemoveAll(targetDir)` rollback on failure.
+- **Impact:** Malicious skills can no longer copy system files or cause memory DoS.
+
+### F24. `/skill:on <name>` Was Deleting Other Skills (H26)
+- **Previously:** `SetActive([]string{name})` completely replaced the active set.
+- **Fix:** Appends to the current active list; shows informative message if already active.
+- **Impact:** Activating a new skill no longer removes existing active skills.
+
+### F25. `handleActiveProvider` / `handleOrchestraConfig` Nil Guard (H14)
+- **Previously:** No `s.fullBridge == nil` check, causing server panic on nil bridge.
+- **Fix:** Added `if s.fullBridge == nil` guard at the start of both handlers.
+- **Impact:** Test environments or partial init no longer crash the server.
+
+### F26. `createBackup()` Errors Were Silently Swallowed (H16)
+- **Previously:** `createBackup(fullPath)` return value was ignored in all tools in `file.go` and `edit.go`.
+- **Fix:** All `WriteFile`, `DeleteFile`, `EditFile`, `InsertLine`, `DeleteLines` functions now check and abort on backup error.
+- **Impact:** Disk full or permission errors no longer allow unbacked writes.
+
+### F27. `run_command` CWD Traversal Check Bypass (H17)
+- **Previously:** Failed `EvalSymlinks` completely bypassed CWD traversal check.
+- **Fix:** Distinguishes `IsNotExist` from other errors; validates `filepath.Clean` result for non-existent dirs; rejects other errors.
+- **Impact:** Agent can no longer bypass sandbox CWD check even with non-existent directory paths.
+
+### F28. `/api/image` Handler Path Traversal (CR01)
+- **Previously:** URL-encoded path (`%2Fetc%2Fpasswd`) could bypass `IsAbs` check.
+- **Fix:** `IsAbs` check now runs on URL-decoded value; `..` and absolute path checks after decode; `filepath.Clean` normalization added; subdirectory whitelist (`data/images`, `data/avatars`, `data/attachments`) enforced.
+- **Impact:** Arbitrary file reads no longer possible; only allowed directories are accessible.
+
+### F29. `callLLM` `activeProvider`/`providerRouter` Data Race (CR02)
+- **Previously:** Non-streaming `callLLM` path read `activeProvider` and `providerRouter` without `providerMu`.
+- **Fix:** Added `a.providerMu.RLock()`/`RUnlock()`, captured to local variables — matches `callLLMStream` pattern.
+- **Impact:** Data race risk on concurrent provider reconfiguration eliminated.
+
+### F30. Skill `SetActive` Tool Registration Logic (H14)
+- **Previously:** Newly activated skills had tools unregistered via `UnregisterTool` instead of `RegisterTool`.
+- **Fix:** Changed `UnregisterTool` to `RegisterTool`. Removed redundant second registration block.
+- **Impact:** Activating skills now correctly registers their tools.
+
+### F31. Cloud Sync `WaitGroup` Leak (H15)
+- **Previously:** Second auth flow reset `WaitGroup`, leaving old `WaitForAuth` callers blocked forever.
+- **Fix:** Handled WaitGroup lifecycle properly.
+- **Impact:** Cloud sync no longer hangs on second auth flow.
+
+### F32. SQLite Context Cancellation (H16)
+- **Previously:** `execWrite` used `db.ctx` (background) instead of caller's context.
+- **Fix:** `execWrite` now accepts `context.Context` and uses caller's context for `BeginTx`.
+- **Impact:** SQLite write operations can now be cancelled via caller context.
+
+### F33. Flutter AgentEventBus StreamController Leak (H17)
+- **Previously:** `StreamController` was never disposed.
+- **Fix:** Added `ref.onDispose(() => bus.dispose())`.
+- **Impact:** Agent event bus memory leak fixed.
+
+### F34. Mobile Chat Stream Subscription Leak (H18)
+- **Previously:** `StreamSubscription` never stored/cancelled.
+- **Fix:** Added `_streamSubscription` field; cancels old subscription on re-send; cleans up on dispose.
+- **Impact:** No more orphaned stream subscriptions on message re-send.
+
+### F35. Agent Permission Channel Blockage (M21)
+- **Previously:** `HandlePermissionResponse` send blocked forever if `waitFn` had returned.
+- **Fix:** Added `select` with 1s timeout — drops response if channel full.
+- **Impact:** HTTP handler goroutine no longer leaks on permission timeout.
+
+### F36. Memory Store `COUNT(*)` Error Handling (M22)
+- **Previously:** `Scan` error silently discarded.
+- **Fix:** Added error check and logging.
+- **Impact:** Database errors now visible in logs.
+
+### F37. API Streaming `body.Close()` Double-Close (M23)
+- **Previously:** Race between deferred `body.Close()` and watcher goroutine.
+- **Fix:** `sync.Once` ensures `body.Close()` is called only once.
+- **Impact:** Rare double-close panic risk eliminated.
+
+### F38. Agent Screen Permission Dialog Bypass (M24)
+- **Previously:** Back button could dismiss permission dialog.
+- **Fix:** Added `PopScope(canPop: false)`.
+- **Impact:** Permission dialog can no longer be bypassed via back button.
+
+### F39. Model Store Dio Instance Leak (M25)
+- **Previously:** `_loadReadme()`, `_loadMoreModels()` each created separate `Dio()` instances.
+- **Fix:** Now uses shared `apiClientProvider.dio`.
+- **Impact:** Redundant Dio instances and inconsistent timeouts eliminated.
+
+### F40. Settings `didUpdateWidget` Overwrites Input (M28)
+- **Previously:** `_controller.text` overwritten on every `didUpdateWidget`.
+- **Fix:** Added `_isEditing` flag; no update when field has focus.
+- **Impact:** User input no longer lost on external updates.
+
+### F41. Provider Config Dialog Double-Submit (L17)
+- **Previously:** `_save()` had no saving guard or loading indicator.
+- **Fix:** Added `_isSaving` flag; disabled button with spinner during save.
+- **Impact:** Double-submit and "app froze" UX eliminated.
+
+### F42. `memorySaveWorker` Context (L13)
+- **Previously:** Used `context.Background()` instead of app context.
+- **Fix:** Changed to `a.ctx` — now cancellable on shutdown.
+- **Impact:** Memory saves stop promptly on shutdown.
+
+### F43. `ExportData` File Handle Leak (L12)
+- **Previously:** `defer f.Close()` accumulated inside loops.
+- **Fix:** Explicit `f.Close()` closes each file immediately.
+- **Impact:** File descriptor exhaustion risk eliminated on large exports.
+
 ---
 
 ## 🔴 Critical
 
-_None. All critical bugs have been fixed._
+### CR01. Provider API Keys Encrypted with Weak Machine-Derived Key
+- **File:** `internal/provider/config.go:374-402`
+- **Detail:** `defaultMachineKey()` derives AES-256 key from `/etc/machine-id` (Linux), registry GUID (Windows), or IOPlatformUUID (macOS). These are **not secret** — any process on the machine can read them. The hardcoded fallback key `"Mm3m0L0c4lK3y!@#$%^&*()9876543210"` is visible in source. Any attacker with filesystem access can decrypt `providers.json`.
+- **Risk:** All stored API keys (OpenAI, Claude, Gemini, etc.) can be decrypted — mass credential leakage.
+- **Category:** Security (weak encryption)
+
+### CR02. Cloud Sync Encryption Falls Back to Hardware ID When Passphrase Empty
+- **File:** `internal/cloudsync/crypto.go:27-38, 67-87`
+- **Detail:** Both `encrypt()` and `deriveKey()` fall back to `hardwareID()` when passphrase is empty. `hardwareID()` (lines 113-148) uses `/etc/machine-id`, hostname, or registry keys — none are secret. Worse, `decrypt()` tries PBKDF2 first, then **silently** falls back to weak SHA-256 `deriveKey()` on failure, accepting data integrity risks.
+- **Risk:** Cloud backups can be decrypted by anyone with access to the machine ID or hostname.
+- **Category:** Security (weak encryption)
 
 ---
 
@@ -163,6 +303,48 @@ _None. All critical bugs have been fixed._
 ### ~~H13. Flutter: Model/Embedding Status Providers Infinite Polling~~ ✅ FIXED
 - ~~`frontend/lib/providers/models_provider.dart:34-54`~~
 - ~~`modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. Added `autoDispose` — now stops when model store screen is closed.~~
+
+### H14. Skill `SetActive()` Unregisters Tools Instead of Registering
+- **File:** `internal/skill/manager.go:208-214`
+- **Detail:** In `SetActive`, newly activated skills have their tools **unregistered** via `UnregisterTool()` instead of `RegisterTool()` — a clear copy-paste error from the deactivation block above. Lines 221-228 try to re-register all active skills unconditionally, causing duplicate registration attempts.
+- **Risk:** Activating skills silently fails to register their tools; agent/LLM cannot use skill tools. If execution is interrupted mid-way, tools remain unregistered.
+- **Category:** Logic error
+
+### H15. Cloud Sync `WaitForAuth` Blocks Forever on Second Call
+- **File:** `internal/cloudsync/drive.go:112, 490-496`
+- **Detail:** `closeAuthDoneLocked()` has a double-Done guard, but when `dc.authWg = sync.WaitGroup{}` is reset (line 112), the old WaitGroup gets garbage collected without being decremented. Any previous `WaitForAuth` caller waiting on the old WaitGroup blocks permanently.
+- **Risk:** Second auth flow leaves `WaitForAuth` blocked forever.
+- **Category:** Concurrency (deadlock)
+
+### H16. SQLite Writes Ignore Caller Context Cancellation
+- **File:** `internal/database/sqlite.go:101-124`
+- **Detail:** `execWrite` uses `db.ctx` (background context) to begin transactions, not the caller's context. All SQL write operations through `Write()` lose the caller's cancellation/timeout. Disk full or lock contention blocks writes indefinitely regardless of caller context cancellation.
+- **Risk:** Write operations hang indefinitely; memory store operations cannot be cancelled.
+- **Category:** Concurrency (context cancellation)
+
+### H17. Flutter `AgentEventBus` StreamController Never Disposed
+- **File:** `frontend/lib/providers/agent_provider.dart:82-97`
+- **Detail:** `StreamController<AgentEvent>.broadcast()` is created via `Provider` but `dispose()` is never called. The stream controller lives for the app's entire lifetime without ever being closed. Subscribers via `agentEventStreamProvider` are never cleaned up.
+- **Risk:** Permanent memory leak; stream subscribers accumulate.
+- **Category:** Memory leak
+
+### H18. Mobile Chat Stream Subscription Leaks on Re-send
+- **File:** `mobile/lib/providers/chat_provider.dart:164-243`
+- **Detail:** `_api.sendMessageStream().listen(...)` returns a `StreamSubscription` that is never stored or cancelled. If `sendMessage` is called again while a stream is active, the old subscription is orphaned. `CancelToken` is only used for the HTTP request, not the listener.
+- **Risk:** Orphaned stream subscriptions accumulate, causing memory leaks and duplicate message processing.
+- **Category:** Memory leak
+
+### H19. WhatsApp Screen Polling Never Stops in IndexedStack
+- **File:** `frontend/lib/screens/whatsapp_screen.dart:32-34`, `frontend/lib/screens/app_shell.dart:44-52`
+- **Detail:** `WhatsAppScreen` is inside an `IndexedStack` — `dispose()` is never called because `IndexedStack` keeps all children alive. `startPolling()` in `initState` never gets matched by `stopPolling()` in `dispose()`. `WhatsAppStatusNotifier` also uses timer-based polling without `autoDispose`.
+- **Risk:** Permanent polling at 2-15s intervals forever, draining battery and network.
+- **Category:** Performance (infinite polling)
+
+### H20. `handleImage` Can Read All Files Under `dataDir`
+- **File:** `internal/webserver/handlers_flutter.go:425-457`
+- **Detail:** The handler blocks absolute paths and `..` traversal but allows any relative path under `dataDir`. Since `dataDir = filepath.Dir(a.cfg.Memory.PersistDir)` which resolves to `data/`, files like `data/providers.json` are accessible. Combined with CR01 (URL-encoded bypass), the attack surface expands.
+- **Risk:** Unauthorized read of provider configs and other data files.
+- **Category:** Security (unauthorized file access)
 
 ---
 
@@ -249,6 +431,72 @@ _None. All critical bugs have been fixed._
 - **File:** `internal/cloudsync/drive.go`
 - **Detail:** If an upload is interrupted partway, the cloud destination contains a partial/corrupt file. No cleanup or partial upload abort on error.
 
+### M21. Agent Permission Channel Send Blocks HTTP Handler Forever
+- **File:** `internal/agent/executor.go:145`
+- **Detail:** `resCh := make(chan PermissionPolicy, 1)` is created in `waitFn` and sent to in `HandlePermissionResponse` (line 194: `req.ResCh <- policy`). If `waitFn` has already returned (context cancellation or timeout), no goroutine reads from the channel. Buffer is 1, but `waitFn` already exited the `select` — the send blocks forever. Since `HandlePermissionResponse` runs in an HTTP handler goroutine, this goroutine leaks.
+- **Risk:** After permission timeout + user response, HTTP handler goroutine blocks permanently.
+- **Category:** Concurrency (goroutine leak)
+
+### M22. Memory Store `COUNT(*)` Query Error Silently Ignored
+- **File:** `internal/memory/store.go` (~line 530)
+- **Detail:** `s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&stats.Count)` — the error from `Scan` is discarded. If the database is closed or corrupt, `stats.Count` remains 0 (zero value) with no error reported.
+- **Risk:** UI shows "0 memories" when DB is broken — silent data loss indication.
+- **Category:** Error handling
+
+### M23. API Streaming `body.Close()` Double-Close Race Condition
+- **File:** `internal/api/streaming.go:47, 55`
+- **Detail:** `defer body.Close()` on line 47 runs when `processSSEStream` returns. The watcher goroutine (line 53-56) also calls `body.Close()` on context cancellation. Double-close on an `io.ReadCloser` may cause panic depending on implementation.
+- **Risk:** Rare panic on HTTP response body double-close.
+- **Category:** Concurrency (race condition)
+
+### M24. Agent Screen Permission Dialog Bypassable via Back Button
+- **File:** `frontend/lib/screens/agent_screen.dart:178`
+- **Detail:** The agent permission dialog is shown with `barrierDismissible: false` but without `PopScope(canPop: false)`. The desktop chat screen correctly sets `canPop: false` but the agent screen lacks this guard.
+- **Risk:** User can dismiss the dialog via back button, causing the agent pipeline to block forever waiting for a response.
+- **Category:** UX
+
+### M25. Model Store Creates 3+ Separate `Dio()` Instances per View
+- **File:** `frontend/lib/screens/model_store_screen.dart:850, 1204, 1232`
+- **Detail:** `_loadFiles()` uses the shared `apiClientProvider` Dio, but `_loadReadme()`, `_loadMoreModels()`, and `_AuthorAvatarState._resolve()` each create their own `Dio()` instance with different timeouts and configurations.
+- **Risk:** Unnecessary resource usage; no connection pooling; inconsistent timeout behavior.
+- **Category:** Performance
+
+### M26. `_delayedRefreshTimer` Can Fire After Provider Disposal
+- **File:** `frontend/lib/providers/chat_provider.dart:314-317`
+- **Detail:** A `Timer` is set for 2 seconds after a message is sent. `ref.onDispose` cancels it, but between `stopStreaming()` and `onDispose`, the timer could fire and call `ref.invalidate(chatListProvider)`. The `ref` may be invalid at that point.
+- **Risk:** Possible `StateError` if timer fires after provider disposal.
+- **Category:** Widget lifecycle
+
+### M27. WhatsApp `_msgTimer` Polling Has No Error Backoff
+- **File:** `frontend/lib/screens/whatsapp_screen.dart:46-53`
+- **Detail:** Polls every 5 seconds with no backoff. If the network is down, it keeps polling at full rate.
+- **Risk:** Battery drain on mobile; unnecessary network traffic.
+- **Category:** Performance
+
+### M28. Settings `didUpdateWidget` Overwrites User Input
+- **File:** `frontend/lib/widgets/settings_dialog.dart:2526-2533`
+- **Detail:** `_controller.text = widget.value.toString()` is called in `didUpdateWidget` without checking if the user is currently editing. If the user is typing, this overwrites their input.
+- **Risk:** User input loss in parameter fields.
+- **Category:** UX
+
+### M29. Dio Stream `timeout` May Add Error After Cancellation
+- **File:** `frontend/lib/providers/chat_provider.dart:227-233, 369-374`
+- **Detail:** `stream.timeout(onTimeout: (sink) => sink.addError(...))` adds an error to the stream sink on timeout. However, if the `CancelToken` was cancelled before the timeout fires, the error is added after stream closure — unhandled exception.
+- **Risk:** Unhandled exceptions in stream processing.
+- **Category:** Concurrency
+
+### M30. Flutter Model Status Polling Runs Forever Due to Engine Strip
+- **File:** `frontend/lib/providers/models_provider.dart:35-59`
+- **Detail:** Despite using `StreamProvider.autoDispose`, the engine strip widget at the bottom of the app always watches `modelStatusProvider`, keeping it alive permanently. `autoDispose` never triggers — polling every 5s continues forever.
+- **Risk:** Continuous HTTP requests for the entire app lifetime.
+- **Category:** Performance (infinite polling)
+
+### M31. Flutter `connectionStatusProvider` 30s Polling Never Stops (Duplicate of H07)
+- **File:** `frontend/lib/providers/chat_provider.dart:464-474`
+- **Detail:** `StreamProvider<bool>` runs a `while(true)` polling loop every 30 seconds for the entire app lifetime. No `autoDispose` used. Runs even when sidebar is hidden.
+- **Risk:** Continuous network requests every 30 seconds forever.
+- **Category:** Performance (infinite polling)
+
 ---
 
 ## ⚪ Low
@@ -296,6 +544,37 @@ _None. All critical bugs have been fixed._
 ### L11. `unsanitizePath` 64-bit Integer Overflow Risk
 - **File:** `internal/modelstore/modelstore.go` (relevant lines)
 - **Detail:** 64-bit integer conversions for repo IDs could overflow for very large numbers.
+
+### L12. `ExportData` File Handles Not Closed on Error
+- **File:** `app.go:3551-3608`
+- **Detail:** The `addFile` helper opens files with `os.Open` but `defer f.Close()` is inside a loop — all deferred `Close` calls accumulate and only run when `addFile` returns. Walk callbacks have the same issue.
+- **Risk:** File descriptor exhaustion with large exports.
+
+### L13. `memorySaveWorker` Uses `context.Background()` Instead of App Context
+- **File:** `app.go:3441`
+- **Detail:** `memorySaveWorker` calls `a.saveMemorySync(context.Background(), ...)` with a fresh background context instead of `a.ctx`. Ignores app-level cancellation.
+- **Risk:** Memory saves continue briefly after shutdown.
+
+### L14. `Server.Stop()` Uses `context.Background()` for Shutdown
+- **File:** `internal/webserver/server.go:269`
+- **Detail:** `srv.Shutdown(context.Background())` uses background context with no timeout. If the server is overloaded, `Shutdown` could block forever.
+- **Risk:** Server shutdown hangs on active connections.
+
+### L15. Flutter: `_delayedRefreshTimer` Provider Dispose StateError Risk
+- **File:** `frontend/lib/providers/chat_provider.dart:314-317`
+- **Detail:** Timer fires 2s after message send. `ref.onDispose` cancels it, but between `stopStreaming()` and `onDispose` the timer could call `ref.invalidate` on an invalid ref.
+
+### L16. Flutter: `contextMenu` Position Wrong After Scroll
+- **File:** `frontend/lib/widgets/chat_message_list.dart:302-304`
+- **Detail:** `_tapPosition` stored as `details.localPosition` but `showMenu` expects global coordinates. `localToGlobal` conversion may produce wrong position if widget scrolled between down and tap events.
+
+### L17. Flutter: `provider_config_dialog.dart` No `_saving` Guard
+- **File:** `frontend/lib/widgets/provider_config_dialog.dart`
+- **Detail:** `_save()` lacks double-submission protection. User can tap "Save" multiple times. No loading indicator during save.
+
+### L18. Flutter: `unawaited(future)` Warnings (Multiple Locations)
+- **File:** `frontend/lib/widgets/agent/permission_dialog.dart:51`, `frontend/lib/providers/agent_provider.dart`
+- **Detail:** `Future` from `handleAgentPermission` is `unawaited`. Request failure silently lost.
 
 ---
 
@@ -360,11 +639,47 @@ _None. All critical bugs have been fixed._
 - **File:** `internal/agent/tools/whatsapp.go`
 - **Note:** The WhatsApp tool accesses the WhatsApp store directly rather than through the App bridge. This bypasses access controls and audit logging in the App layer.
 
+### I16. Orchestra Conductor Hardcoded 300s Timeout
+- **File:** `internal/orchestra/conductor.go:249, 478, 657`
+- **Note:** All sub-operations use the same hardcoded 300s timeout. These should be configurable.
+
+### I17. `memory/store.go` Latency Log Message Incorrect
+- **File:** `internal/memory/store.go:269-275`
+- **Note:** `time.Since(embedStart.Add(writeDur)).Milliseconds()` is wrong — `embedStart.Add(writeDur)` gives a time earlier than the correct value, making `time.Since` larger than actual. Logging bug only.
+
+### I18. `api/streaming.go`: `scanner.Err()` Is Checked (Cross-check)
+- **File:** `internal/api/streaming.go:127-129`
+- **Note:** `scanner.Err()` IS checked after the scan loop. Confirmation, not a bug.
+
+### I19. Agent Pipeline 20 Iterations Hardcoded
+- **File:** `internal/agent/pipeline.go:63/78`
+- **Note:** `maxIters: 20` is hardcoded. Complex tasks requiring many tool calls may hit this limit.
+
+### I20. Sessions Write to Disk Synchronously on Every Message
+- **File:** `internal/sessions/sessions.go:185`
+- **Note:** `AddMessage` calls `m.save(s)` on every invocation. For streaming responses, `finishStream` calls once per reply, which is acceptable. But there's no rate limiting or batching for rapid calls.
+
+### I21. WhatsApp Store Has No Connection Pool
+- **File:** `internal/whatsapp/store.go:20`
+- **Note:** Uses `sql.Open` directly without the `database.DB` wrapper that provides serialized writes. Concurrent WhatsApp handler and agent tool writes can cause "database is locked" errors.
+
+### I22. `skill/manager.go` SetActive: Redundant Unregister+Register Cycle
+- **File:** `internal/skill/manager.go:159-166`
+- **Note:** Newly activated skills have tools unregistered then immediately re-registered. The middle block incorrectly calls `UnregisterTool` instead of `RegisterTool`. Final block correctly registers. If execution is interrupted between blocks, tools remain unregistered.
+
+### I23. `config/config.yaml` Has Hardcoded `active_provider: openai`
+- **File:** `config/config.yaml:63`
+- **Note:** `active_provider: openai` is committed in the config file. On server startup, this could override the user's previous choice (e.g., `claude`).
+
+### I24. `skill.DangerLevel` and `agent.DangerLevel` Duplicate Types — Type Mismatch
+- **File:** `internal/skill/types.go:7` vs `internal/agent/tools.go:13`
+- **Note:** Two packages define separate `DangerLevel` named types with identical string values. `SkillTool.DangerLevel` (`skill.DangerLevel`) is incompatible with agent pipeline `agent.DangerLevel` type assertions. Code using both packages has compile-time type mismatch. A shared `internal/common` package is recommended.
+
 ---
 
-> **Last updated:** 2026-06-13
-> **Audit scope:** Full codebase — Go backend (app.go, all internal/ packages) and Flutter frontend
-> **Open bugs:** 23+ (🔴0, 🟠12, 🔵9, ⚪2)
-> **Observations:** 15
-> **Fixed:** 17
-> **Total issues found:** 55+
+> **Last updated:** 2026-06-14
+> **Audit scope:** Full codebase — Go backend (app.go, app_skill.go, all internal/ packages) + Flutter frontend + mobile frontend + skill system + orchestra system
+> **Open bugs:** 41+ (🔴0, 🟠12, 🔵21, ⚪8)
+> **Observations:** 24
+> **Fixed:** 43
+> **Total issues found:** 108+

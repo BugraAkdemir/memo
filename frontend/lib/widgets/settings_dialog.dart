@@ -2511,6 +2511,8 @@ class _ParamIntInput extends StatefulWidget {
 
 class _ParamIntInputState extends State<_ParamIntInput> {
   late TextEditingController _controller;
+  final _focusNode = FocusNode();
+  bool _isEditing = false;
 
   @override
   void initState() {
@@ -2520,12 +2522,15 @@ class _ParamIntInputState extends State<_ParamIntInput> {
           ? '0'
           : widget.value.toString(),
     );
+    _focusNode.addListener(() {
+      _isEditing = _focusNode.hasFocus;
+    });
   }
 
   @override
   void didUpdateWidget(_ParamIntInput old) {
     super.didUpdateWidget(old);
-    if (widget.value != old.value) {
+    if (widget.value != old.value && !_isEditing) {
       _controller.text = widget.value == 0 && widget.min == 0
           ? '0'
           : widget.value.toString();
@@ -2535,6 +2540,7 @@ class _ParamIntInputState extends State<_ParamIntInput> {
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     super.dispose();
   }
 
@@ -2556,6 +2562,7 @@ class _ParamIntInputState extends State<_ParamIntInput> {
           width: 120,
           child: TextField(
             controller: _controller,
+            focusNode: _focusNode,
             keyboardType: TextInputType.number,
             decoration: InputDecoration(
               isDense: true,

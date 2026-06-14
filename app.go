@@ -197,11 +197,11 @@ type App struct {
 
 	skillManager *skill.Manager
 
-	providerMu     sync.RWMutex // protects providerRouter, providerCfgMgr, activeProvider
-	sessionsMu     sync.RWMutex // protects sessions
+	providerMu sync.RWMutex // protects providerRouter, providerCfgMgr, activeProvider
+	sessionsMu sync.RWMutex // protects sessions
 
 	remoteAccessEnabled bool
-	ngrokServer        *ngrok.Manager
+	ngrokServer         *ngrok.Manager
 
 	whatsappChatMode bool
 	whatsappChatMu   sync.RWMutex
@@ -288,7 +288,7 @@ func (a *App) startup(ctx context.Context) {
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
 
-	sm, err := sessions.NewManager("data/sessions")
+	sm, err := sessions.NewManager(config.DataPath("sessions"))
 	if err != nil {
 		log.Printf("WARN: sessions: %v", err)
 		a.emitEvent("sessions_manager_error", err.Error())
@@ -298,14 +298,14 @@ func (a *App) startup(ctx context.Context) {
 	// Learning system observation layer (Phase 1). Records silently into
 	// data/profile/observations.db. A failure here is non-fatal: the recorder
 	// degrades to a no-op so the rest of the app is unaffected.
-	if obsStore, oerr := observer.NewStore(observer.StoreConfig{Dir: "data/profile"}); oerr != nil {
+	if obsStore, oerr := observer.NewStore(observer.StoreConfig{Dir: config.DataPath("profile")}); oerr != nil {
 		log.Printf("WARN: observer: %v", oerr)
 		a.emitEvent("observer_store_error", oerr.Error())
 	} else {
 		a.observerStore = obsStore
 	}
 	a.observerRecorder = observer.NewRecorder(a.observerStore)
-	a.observerPatterns = observer.NewPatternStore("data/profile/patterns.json")
+	a.observerPatterns = observer.NewPatternStore(config.DataPath("profile", "patterns.json"))
 	a.observerAnalyzer = observer.NewAnalyzer(a.observerStore, a.observerPatterns)
 	if a.observerStore != nil {
 		go a.runObserverAnalysis(ctx)
@@ -314,7 +314,7 @@ func (a *App) startup(ctx context.Context) {
 	// Proactive engine (Phase 3–5). Always started; it stays dormant while the
 	// proactivity level is "off" (the default), so toggling the setting takes
 	// effect live without a restart.
-	a.proactivePending = proactive.NewPendingStore("data/profile/pending.json")
+	a.proactivePending = proactive.NewPendingStore(config.DataPath("profile", "pending.json"))
 	a.proactiveEngine = proactive.NewEngine(
 		proactive.Config{},
 		a.observerPatterns,
@@ -331,7 +331,7 @@ func (a *App) startup(ctx context.Context) {
 	// Initialize llama server managers and installer
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
 	a.llamaEmbedServer = llama.NewServer(cfg.Llama.EmbeddingPort, 512) // embedding models need minimal context
-	a.llamaInstaller = llama.NewInstaller("data")
+	a.llamaInstaller = llama.NewInstaller(config.DataDir())
 
 	// Check embedding health in background.
 	// Removed: Since we are using internal models, they are started manually.
@@ -347,7 +347,7 @@ func (a *App) startup(ctx context.Context) {
 	// Remote access via ngrok
 	if cfg.RemoteAccess.Enabled && cfg.RemoteAccess.NgrokMode && cfg.RemoteAccess.NgrokToken != "" {
 		a.remoteAccessEnabled = true
-		binPath, err := ngrok.Install("data")
+		binPath, err := ngrok.Install(config.DataDir())
 		if err != nil {
 			log.Printf("[ngrok] Install error: %v", err)
 		} else {
@@ -373,7 +373,7 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// Initialize provider system
-	a.providerCfgMgr = provider.NewConfigManager("data/providers.json", nil)
+	a.providerCfgMgr = provider.NewConfigManager(config.DataPath("providers.json"), nil)
 	configs := a.providerCfgMgr.GetEnabled()
 	if len(configs) > 0 {
 		a.providerRouter = provider.NewRouter(configs)
@@ -397,8 +397,8 @@ func (a *App) startup(ctx context.Context) {
 	}
 
 	// Initialize orchestra conductor
-	orchestraCfg := orchestra.LoadConfig("data/orchestra.json")
-		a.orchestraConductor = orchestra.NewConductor(
+	orchestraCfg := orchestra.LoadConfig(config.DataPath("orchestra.json"))
+	a.orchestraConductor = orchestra.NewConductor(
 		orchestraCfg,
 		func(cfg provider.ProviderConfig) (provider.Provider, error) {
 			if a.providerRouter == nil {
@@ -426,7 +426,7 @@ func (a *App) startup(ctx context.Context) {
 	log.Printf("Agent mode initialized (enabled=false)")
 
 	// Initialize Skill Manager
-	a.skillManager = skill.NewManager("data")
+	a.skillManager = skill.NewManager(config.DataDir())
 	if err := a.skillManager.Discover(); err != nil {
 		log.Printf("skill: discover error: %v", err)
 	}
@@ -2019,7 +2019,7 @@ func (a *App) UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error {
 		return fmt.Errorf("orchestra system not initialized")
 	}
 	a.orchestraConductor.UpdateConfig(cfg)
-	if err := orchestra.SaveConfig("data/orchestra.json", a.orchestraConductor.Config()); err != nil {
+	if err := orchestra.SaveConfig(config.DataPath("orchestra.json"), a.orchestraConductor.Config()); err != nil {
 		log.Printf("ORCHESTRA: config save error: %v", err)
 		return err
 	}
@@ -2205,15 +2205,15 @@ func (a *App) WebCheckConnection() interface{}   { return a.CheckConnection() }
 // ─── Settings: Remote Access ─────────────────────────────────────
 
 type RemoteAccessStatus struct {
-	Enabled     bool     `json:"enabled"`
-	Port        int      `json:"port"`
-	Running     bool     `json:"running"`
-	Addresses   []string `json:"addresses"`
-	Token       string   `json:"token"`
-	NgrokMode   bool     `json:"ngrok_mode"`
-	NgrokToken  string   `json:"ngrok_token"`
-	NgrokURL    string   `json:"ngrok_url"`
-	NgrokError  string   `json:"ngrok_error"`
+	Enabled    bool     `json:"enabled"`
+	Port       int      `json:"port"`
+	Running    bool     `json:"running"`
+	Addresses  []string `json:"addresses"`
+	Token      string   `json:"token"`
+	NgrokMode  bool     `json:"ngrok_mode"`
+	NgrokToken string   `json:"ngrok_token"`
+	NgrokURL   string   `json:"ngrok_url"`
+	NgrokError string   `json:"ngrok_error"`
 }
 
 func (a *App) GetRemoteAccessStatus() interface{} {
@@ -2265,7 +2265,7 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 		if a.ngrokServer != nil {
 			a.ngrokServer.Stop()
 		}
-		binPath, err := ngrok.Install("data")
+		binPath, err := ngrok.Install(config.DataDir())
 		if err != nil {
 			log.Printf("[ngrok] Install error: %v", err)
 		} else {
@@ -2498,16 +2498,16 @@ func (a *App) InstallLlamaServer() error {
 	// Update config to point to the newly compiled binary
 	a.cfg.Llama.BinaryPath = binPath
 	// If GPU installer succeeds, remove any old .force_cpu file so they run on GPU!
-	_ = os.Remove("data/.force_cpu")
+	_ = os.Remove(config.DataPath(".force_cpu"))
 	return config.Save(a.cfg)
 }
 
 func (a *App) SkipLlamaGPUInstall() error {
 	// Create .force_cpu file in data directory to bypass GPU checks
-	if err := os.MkdirAll("data", 0755); err != nil {
+	if err := os.MkdirAll(config.DataDir(), 0755); err != nil {
 		return err
 	}
-	forceCPUFile := "data/.force_cpu"
+	forceCPUFile := config.DataPath(".force_cpu")
 	f, err := os.Create(forceCPUFile)
 	if err != nil {
 		return err
@@ -3139,11 +3139,11 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 			case "gemini":
 				tokenBudget = 1024 * 1024 // 1M
 			case "claude":
-				tokenBudget = 200 * 1024  // 200K
+				tokenBudget = 200 * 1024 // 200K
 			case "openai", "grok", "groq", "openrouter", "ollama":
-				tokenBudget = 128 * 1024  // 128K
+				tokenBudget = 128 * 1024 // 128K
 			default:
-				tokenBudget = 128 * 1024  // 128K safe default
+				tokenBudget = 128 * 1024 // 128K safe default
 			}
 		}
 	}
@@ -3376,7 +3376,11 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	}
 
 	// Use external provider only if user explicitly selected one
-	if a.activeProvider != "" && a.providerRouter != nil {
+	a.providerMu.RLock()
+	activeProvider := a.activeProvider
+	providerRouter := a.providerRouter
+	a.providerMu.RUnlock()
+	if activeProvider != "" && providerRouter != nil {
 		pctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
 
@@ -3392,7 +3396,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 			MaxTokens:   a.cfg.Llama.MaxTokens,
 		}
 
-		resp, err := a.providerRouter.ChatCompletion(pctx, req)
+		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
 			log.Printf("Provider error: %v", err)
 			return "⚠️ " + err.Error()
@@ -3438,7 +3442,7 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 
 func (a *App) memorySaveWorker() {
 	for task := range a.memorySaveCh {
-		a.saveMemorySync(context.Background(), task.userMsg, task.reply)
+		a.saveMemorySync(a.ctx, task.userMsg, task.reply)
 	}
 }
 
@@ -3572,8 +3576,8 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 				if err != nil {
 					return err
 				}
-				defer f.Close()
 				_, err = io.Copy(w, f)
+				f.Close()
 				return err
 			})
 		}
@@ -3585,20 +3589,22 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 		if err != nil {
 			return err
 		}
-		defer f.Close()
 		_, err = io.Copy(w, f)
+		f.Close()
 		return err
 	}
 
-	// Include: sessions, config, providers, orchestra, memory, whatsapp
-	addFile("sessions/", "data/sessions")
+	// Include: sessions, config, providers, orchestra, memory, whatsapp.
+	// The first argument is the portable archive entry name (kept stable across
+	// machines/platforms); the second is the real on-disk source under DataDir.
+	addFile("sessions/", config.DataPath("sessions"))
 	addFile("config/config.yaml", "config/config.yaml")
-	addFile("data/providers.json", "data/providers.json")
-	addFile("data/orchestra.json", "data/orchestra.json")
-	addFile("data/memory/", "data/memory")
-	addFile("data/whatsapp/", "data/whatsapp")
+	addFile("data/providers.json", config.DataPath("providers.json"))
+	addFile("data/orchestra.json", config.DataPath("orchestra.json"))
+	addFile("data/memory/", config.DataPath("memory"))
+	addFile("data/whatsapp/", config.DataPath("whatsapp"))
 	if includeModels {
-		addFile("data/models/", "data/models")
+		addFile("data/models/", config.DataPath("models"))
 	}
 
 	if err := zw.Close(); err != nil {
@@ -3619,17 +3625,25 @@ func (a *App) ImportData(data []byte) error {
 			continue
 		}
 
-		// Map zip entry paths to filesystem paths
-		target := f.Name
-		// sessions/* -> data/sessions/*
-		if strings.HasPrefix(target, "sessions/") {
-			target = filepath.Join("data", target)
+		// Safety: validate the (untrusted) archive entry name for traversal
+		// BEFORE remapping it onto a trusted absolute filesystem location.
+		clean := filepath.Clean(filepath.FromSlash(f.Name))
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) || filepath.IsAbs(clean) {
+			continue
 		}
 
-		// Safety: prevent path traversal
-		clean := filepath.Clean(target)
-		if strings.HasPrefix(clean, "..") || filepath.IsAbs(clean) {
-			continue
+		// Map portable zip entry paths to real filesystem paths under DataDir.
+		//   sessions/*        -> <DataDir>/sessions/*
+		//   data/<rest>       -> <DataDir>/<rest>
+		//   everything else   -> as-is (e.g. config/config.yaml)
+		var target string
+		switch {
+		case strings.HasPrefix(f.Name, "sessions/"):
+			target = filepath.Join(config.DataDir(), "sessions", strings.TrimPrefix(f.Name, "sessions/"))
+		case strings.HasPrefix(f.Name, "data/"):
+			target = config.DataPath(filepath.FromSlash(strings.TrimPrefix(f.Name, "data/")))
+		default:
+			target = clean
 		}
 
 		// Create parent dir
@@ -3659,7 +3673,7 @@ func (a *App) ImportData(data []byte) error {
 	// Re-initialize components after import
 	a.sessionsMu.Lock()
 	if a.sessions != nil {
-		sm, err := sessions.NewManager("data/sessions")
+		sm, err := sessions.NewManager(config.DataPath("sessions"))
 		if err == nil {
 			a.sessions = sm
 		}
@@ -3679,11 +3693,11 @@ func (a *App) ImportData(data []byte) error {
 // WipeAllData removes all user data: sessions, memory, whatsapp, providers.
 func (a *App) WipeAllData() error {
 	dirs := []string{
-		"data/sessions",
-		"data/memory",
-		"data/whatsapp",
-		"data/providers.json",
-		"data/orchestra.json",
+		config.DataPath("sessions"),
+		config.DataPath("memory"),
+		config.DataPath("whatsapp"),
+		config.DataPath("providers.json"),
+		config.DataPath("orchestra.json"),
 	}
 	for _, d := range dirs {
 		if err := os.RemoveAll(d); err != nil {
@@ -3694,7 +3708,7 @@ func (a *App) WipeAllData() error {
 	// Re-init sessions
 	a.sessionsMu.Lock()
 	if a.sessions != nil {
-		sm, err := sessions.NewManager("data/sessions")
+		sm, err := sessions.NewManager(config.DataPath("sessions"))
 		if err == nil {
 			a.sessions = sm
 		}
@@ -3868,7 +3882,7 @@ func (a *App) GetSyncSettings() interface{} {
 
 func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphrase, tokenPath string, intervalMessages int) error {
 	if tokenPath == "" {
-		tokenPath = "./data/sync_token.json"
+		tokenPath = config.DataPath("sync_token.json")
 	}
 	if intervalMessages <= 0 {
 		intervalMessages = 50
@@ -3910,7 +3924,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 func (a *App) DisconnectSync() error {
 	tokenPath := a.cfg.Sync.TokenPath
 	if tokenPath == "" {
-		tokenPath = "./data/sync_token.json"
+		tokenPath = config.DataPath("sync_token.json")
 	}
 	if err := os.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
 		return fmt.Errorf("disconnect sync: remove token: %w", err)

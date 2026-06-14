@@ -80,7 +80,9 @@ class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
 
 /// A stream controller to broadcast agent events (like permission requests) to the UI.
 final agentEventBusProvider = Provider<AgentEventBus>((ref) {
-  return AgentEventBus();
+  final bus = AgentEventBus();
+  ref.onDispose(() => bus.dispose());
+  return bus;
 });
 
 class AgentEventBus {

@@ -28,16 +28,38 @@ func DefaultSandboxConfig(basePath string) SandboxConfig {
 		MaxOutputSize:         10 * 1024 * 1024, // 10MB
 		MaxToolCallsPerMinute: 30,
 		CommandCooldown:       5 * time.Duration(time.Second),
-		ProtectedPaths: defaultProtectedPaths(),
+		ProtectedPaths:        defaultProtectedPaths(),
 	}
 }
 
 // defaultProtectedPaths returns platform-appropriate protected system paths.
 func defaultProtectedPaths() []string {
 	if runtime.GOOS == "windows" {
+		// Resolve the actual system drive/dirs rather than assuming "C:" so the
+		// rules still apply on machines where Windows is installed elsewhere.
+		sysDrive := os.Getenv("SystemDrive")
+		if sysDrive == "" {
+			sysDrive = "C:"
+		}
+		winDir := os.Getenv("SystemRoot")
+		if winDir == "" {
+			winDir = sysDrive + `\Windows`
+		}
+		progData := os.Getenv("ProgramData")
+		if progData == "" {
+			progData = sysDrive + `\ProgramData`
+		}
+		progFiles := os.Getenv("ProgramFiles")
+		if progFiles == "" {
+			progFiles = sysDrive + `\Program Files`
+		}
+		progFilesX86 := os.Getenv("ProgramFiles(x86)")
+		if progFilesX86 == "" {
+			progFilesX86 = sysDrive + `\Program Files (x86)`
+		}
 		return []string{
-			`C:\Windows\`, `C:\Program Files\`, `C:\Program Files (x86)\`,
-			`C:\System32\`, `C:\Boot\`, `C:\ProgramData\`,
+			winDir + `\`, progFiles + `\`, progFilesX86 + `\`,
+			sysDrive + `\Boot\`, progData + `\`,
 		}
 	}
 	return []string{
@@ -94,16 +116,26 @@ func (s *Sandbox) ValidatePath(targetPath string) error {
 		realPath = fullPath
 	}
 
-	// Check against protected system paths
+	// Check against protected system paths. On Windows the filesystem is
+	// case-insensitive, so compare case-folded to prevent e.g. "c:\windows"
+	// bypassing a "C:\Windows\" rule.
+	cmpPath := realPath
+	if runtime.GOOS == "windows" {
+		cmpPath = strings.ToLower(realPath)
+	}
 	for _, protected := range s.config.ProtectedPaths {
-		if strings.HasPrefix(realPath, protected) {
+		needle := protected
+		if runtime.GOOS == "windows" {
+			needle = strings.ToLower(protected)
+		}
+		if strings.HasPrefix(cmpPath, needle) {
 			return fmt.Errorf("access denied: path is within protected directory (%s)", protected)
 		}
 	}
 
 	// Check if path is within base path (resolved, not raw path)
 	rel, err := filepath.Rel(s.config.BasePath, realPath)
-	if err != nil || strings.HasPrefix(rel, "..") {
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		if filepath.IsAbs(targetPath) {
 			// Absolute paths outside base path are allowed as long as they aren't protected
 			return nil
@@ -157,7 +189,7 @@ func (s *Sandbox) CleanOldState() {
 
 	now := time.Now()
 	minuteAgo := now.Add(-time.Minute)
-	
+
 	// Clean call times
 	var validTimes []time.Time
 	for _, t := range s.callTimes {

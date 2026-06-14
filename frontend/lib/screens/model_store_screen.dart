@@ -816,7 +816,8 @@ class _SortChip extends StatelessWidget {
 
 class _AuthorAvatar extends StatefulWidget {
   final String author;
-  const _AuthorAvatar({required this.author});
+  final Dio dio;
+  const _AuthorAvatar({required this.author, required this.dio});
 
   @override
   State<_AuthorAvatar> createState() => _AuthorAvatarState();
@@ -847,13 +848,12 @@ class _AuthorAvatarState extends State<_AuthorAvatar> {
       return;
     }
     String? url;
-    final dio = Dio();
     for (final endpoint in [
       'https://huggingface.co/api/organizations/$a',
       'https://huggingface.co/api/users/$a',
     ]) {
       try {
-        final r = await dio.get<Map<String, dynamic>>(
+        final r = await widget.dio.get<Map<String, dynamic>>(
           endpoint,
           options: Options(
             receiveTimeout: const Duration(seconds: 6),
@@ -962,7 +962,7 @@ class _ModelListRow extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Avatar
-                _AuthorAvatar(author: item.avatarAuthor),
+                _AuthorAvatar(author: item.avatarAuthor, dio: ref.read(apiClientProvider).dio),
                 const SizedBox(width: 10),
                 // Content
                 Expanded(
@@ -1201,7 +1201,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
     try {
       final url =
           'https://huggingface.co/${widget.item.repoId}/raw/main/README.md';
-      final resp = await Dio().get<String>(
+      final resp = await ref.read(apiClientProvider).dio.get<String>(
         url,
         options: Options(responseType: ResponseType.plain),
       );
@@ -1229,7 +1229,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
       if (author.isEmpty) return;
       final url =
           'https://huggingface.co/api/models?author=$author&filter=gguf&sort=downloads&direction=-1&limit=6';
-      final resp = await Dio().get<dynamic>(url);
+      final resp = await ref.read(apiClientProvider).dio.get<dynamic>(url);
       final data = resp.data;
       if (data is List && mounted) {
         final results = data

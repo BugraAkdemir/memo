@@ -26,6 +26,7 @@ class _ProviderConfigDialogState
   late bool _enabled;
   bool _testing = false;
   bool? _testResult;
+  bool _isSaving = false;
 
   final _types = [
     'openai',
@@ -150,17 +151,23 @@ class _ProviderConfigDialogState
   }
 
   Future<void> _save() async {
-    final config = ProviderConfig(
-      type: _type,
-      name: _nameCtrl.text,
-      apiKey: _apiKeyCtrl.text,
-      baseUrl: _baseUrlCtrl.text,
-      model: _modelCtrl.text,
-      enabled: _enabled,
-    );
+    if (_isSaving) return;
+    _isSaving = true;
+    try {
+      final config = ProviderConfig(
+        type: _type,
+        name: _nameCtrl.text,
+        apiKey: _apiKeyCtrl.text,
+        baseUrl: _baseUrlCtrl.text,
+        model: _modelCtrl.text,
+        enabled: _enabled,
+      );
 
-    await ref.read(providerListProvider.notifier).updateProvider(config);
-    if (mounted) Navigator.of(context).pop(true);
+      await ref.read(providerListProvider.notifier).updateProvider(config);
+      if (mounted) Navigator.of(context).pop(true);
+    } finally {
+      _isSaving = false;
+    }
   }
 
   @override
@@ -314,8 +321,14 @@ class _ProviderConfigDialogState
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
-                      onPressed: _save,
-                      child: const Text('Save'),
+                      onPressed: _isSaving ? null : _save,
+                      child: _isSaving
+                          ? const SizedBox(
+                              width: 16,
+                              height: 16,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Text('Save'),
                     ),
                   ],
                 ),

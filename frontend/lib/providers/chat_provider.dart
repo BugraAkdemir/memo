@@ -119,11 +119,15 @@ final messagesProvider =
 class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   CancelToken? _cancelToken;
   bool _stopped = false;
+  bool _disposed = false;
   Timer? _delayedRefreshTimer;
 
   @override
   Future<List<ChatMessage>> build() async {
-    ref.onDispose(() => _delayedRefreshTimer?.cancel());
+    ref.onDispose(() {
+      _disposed = true;
+      _delayedRefreshTimer?.cancel();
+    });
     return ref.read(apiClientProvider).getMessages();
   }
 
@@ -313,7 +317,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.invalidate(chatListProvider);
       _delayedRefreshTimer?.cancel();
       _delayedRefreshTimer = Timer(const Duration(seconds: 2), () {
-        ref.invalidate(chatListProvider);
+        if (!_disposed) ref.invalidate(chatListProvider);
       });
     } catch (e) {
       _stopped = false;

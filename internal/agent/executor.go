@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"memo/internal/config"
 	"memo/internal/provider"
 	"sync"
 	"time"
@@ -39,9 +40,9 @@ type Executor struct {
 	sandbox        *Sandbox
 	backup         *BackupManager
 
-	mu             sync.Mutex
-	pendingPerms   map[string]*PermissionRequest
-	logs           []AgentLogEntry
+	mu           sync.Mutex
+	pendingPerms map[string]*PermissionRequest
+	logs         []AgentLogEntry
 }
 
 // NewExecutor creates a new agent executor.
@@ -51,9 +52,9 @@ func NewExecutor(basePath string, providerRouter *provider.Router, providerCfgMg
 		providerRouter: providerRouter,
 		providerCfgMgr: providerCfgMgr,
 		registry:       NewRegistry(),
-		permissions:    NewPermissionManager("data"),
+		permissions:    NewPermissionManager(config.DataDir()),
 		sandbox:        NewSandbox(DefaultSandboxConfig(basePath)),
-		backup:         NewBackupManager("data"),
+		backup:         NewBackupManager(config.DataDir()),
 		pendingPerms:   make(map[string]*PermissionRequest),
 		logs:           make([]AgentLogEntry, 0),
 	}
@@ -190,8 +191,14 @@ func (e *Executor) HandlePermissionResponse(requestID string, policy PermissionP
 	delete(e.pendingPerms, requestID)
 	e.mu.Unlock()
 
-	// Channel has buffer 1 and is empty at this point — send never blocks.
-	req.ResCh <- policy
+	// Channel has buffer 1 but the receiver may have already gone away
+	// (context cancellation / timeout). Use a non-blocking send with a
+	// short timeout so the HTTP handler never blocks forever.
+	select {
+	case req.ResCh <- policy:
+	case <-time.After(time.Second):
+		log.Printf("AGENT: permission response for %s abandoned (no listener)", requestID)
+	}
 	return nil
 }
 
@@ -240,7 +247,7 @@ func (e *Executor) logEvent(sessionID string, ev AgentEvent) {
 		e.logs = e.logs[1:]
 	}
 	e.mu.Unlock()
-	
+
 	// Print to console for debugging
 	if ev.Error != "" {
 		log.Printf("AGENT [%s] ERROR: %v", ev.ToolName, ev.Error)

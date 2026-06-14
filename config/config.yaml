@@ -63,4 +63,4 @@ whatsapp:
 proactive:
     enabled: true
     level: normal
-active_provider: openrouter
+active_provider: openai

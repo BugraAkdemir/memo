@@ -180,3 +180,31 @@ func TestFilePermissions(t *testing.T) {
 		t.Errorf("config file has group/other perms: %o", info.Mode())
 	}
 }
+
+func TestRebaseDataPath(t *testing.T) {
+	base := DataDir() // resolved once per process
+
+	cases := []struct {
+		in   string
+		want string
+	}{
+		{"", ""},
+		{"data", base},
+		{"./data", base},
+		{"data/models", DataPath("models")},
+		{"./data/memory", DataPath("memory")},
+		{"./data/sync_token.json", DataPath("sync_token.json")},
+		{"custom/dir", "custom/dir"}, // not under data/ — unchanged
+	}
+	for _, c := range cases {
+		if got := rebaseDataPath(c.in); got != c.want {
+			t.Errorf("rebaseDataPath(%q) = %q, want %q", c.in, got, c.want)
+		}
+	}
+
+	// Absolute paths must be returned unchanged.
+	abs := filepath.Join(t.TempDir(), "data", "models")
+	if got := rebaseDataPath(abs); got != abs {
+		t.Errorf("rebaseDataPath(%q) = %q, want unchanged", abs, got)
+	}
+}

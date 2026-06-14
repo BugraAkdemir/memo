@@ -130,7 +130,7 @@ func (s *Store) initSchema() error {
 		"SELECT value FROM _metadata WHERE key = 'embedding_dimension'",
 	).Scan(&existingDim)
 	if err != nil {
-		_ = s.db.Write(func(tx *sql.Tx) error {
+		_ = s.db.Write(ctx, func(tx *sql.Tx) error {
 			_, err := tx.Exec(
 				"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('embedding_dimension', ?)",
 				fmt.Sprintf("%d", s.dim),
@@ -157,7 +157,7 @@ func (s *Store) ensureVecMetadata(ctx context.Context) error {
 	).Scan(&existingDim)
 
 	if err != nil {
-		return s.db.Write(func(tx *sql.Tx) error {
+		return s.db.Write(ctx, func(tx *sql.Tx) error {
 			_, err := tx.Exec(
 				"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('embedding_dimension', ?)",
 				fmt.Sprintf("%d", s.dim),
@@ -168,7 +168,7 @@ func (s *Store) ensureVecMetadata(ctx context.Context) error {
 
 	if existingDim != s.dim {
 		log.Printf("MEMORY: embedding dimension changed from %d to %d, recreating vec index", existingDim, s.dim)
-		return s.db.Write(func(tx *sql.Tx) error {
+		return s.db.Write(ctx, func(tx *sql.Tx) error {
 			if _, err := tx.Exec("DROP TABLE IF EXISTS vec_memories"); err != nil {
 				return err
 			}
@@ -201,7 +201,7 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 	}
 	defer rows.Close()
 
-	return s.db.Write(func(tx *sql.Tx) error {
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
 		for rows.Next() {
 			var id int64
 			var blob []byte
@@ -235,7 +235,7 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 	content := fmt.Sprintf("[%s] User: %s\nAssistant: %s", timestamp, userMsg, assistantMsg)
 
 	writeStart := time.Now()
-	err = s.db.Write(func(tx *sql.Tx) error {
+	err = s.db.Write(ctx, func(tx *sql.Tx) error {
 		embedBlob := floatsToBlob(embedding)
 
 		res, err := tx.Exec(
@@ -458,7 +458,7 @@ func (s *Store) Count() int {
 }
 
 func (s *Store) ClearAll() error {
-	return s.db.Write(func(tx *sql.Tx) error {
+	return s.db.Write(context.Background(), func(tx *sql.Tx) error {
 		if s.useVec {
 			if _, err := tx.Exec("DELETE FROM vec_memories"); err != nil {
 				return err
@@ -501,7 +501,7 @@ func (s *Store) ListGobFiles() []MemoryFileInfo {
 }
 
 func (s *Store) DeleteGobFile(relPath string) error {
-	return s.db.Write(func(tx *sql.Tx) error {
+	return s.db.Write(context.Background(), func(tx *sql.Tx) error {
 		var id int64
 		err := tx.QueryRow("SELECT id FROM memories WHERE uuid = ?", relPath).Scan(&id)
 		if err != nil {
@@ -527,7 +527,9 @@ func (s *Store) Stats() models.MemoryStats {
 	var stats models.MemoryStats
 	stats.Dimension = s.dim
 
-	s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&stats.Count)
+	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&stats.Count); err != nil {
+		log.Printf("MEMORY: stats count query: %v", err)
+	}
 	stats.VecCount = stats.Count
 
 	return stats

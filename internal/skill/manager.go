@@ -209,7 +209,7 @@ func (m *Manager) SetActive(names []string) error {
 			if !m.activeSkills[name] {
 				if def, ok := m.skills[name]; ok {
 					for _, tool := range def.Manifest.Tools {
-						m.toolRegistrar.UnregisterTool(skillToolName(name, tool.Name))
+						m.toolRegistrar.RegisterTool(skillToolName(name, tool.Name), tool)
 					}
 				}
 			}
@@ -217,16 +217,6 @@ func (m *Manager) SetActive(names []string) error {
 	}
 
 	m.activeSkills = newActive
-
-	if m.toolRegistrar != nil {
-		for name := range newActive {
-			if def, ok := m.skills[name]; ok {
-				for _, tool := range def.Manifest.Tools {
-					m.toolRegistrar.RegisterTool(skillToolName(name, tool.Name), tool)
-				}
-			}
-		}
-	}
 
 	return nil
 }

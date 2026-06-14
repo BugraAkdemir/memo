@@ -443,12 +443,30 @@ func (s *Server) handleImage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
-	if filepath.IsAbs(path) {
+	if filepath.IsAbs(decoded) {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return
 	}
 
-	b64 := s.fullBridge.GetImageBase64(path)
+	cleaned := filepath.Clean(decoded)
+	if cleaned == "." || cleaned == ".." {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	allowed := false
+	for _, prefix := range []string{"data/images", "data/avatars", "data/attachments"} {
+		if cleaned == prefix || strings.HasPrefix(cleaned, prefix+"/") {
+			allowed = true
+			break
+		}
+	}
+	if !allowed {
+		http.Error(w, "forbidden", http.StatusForbidden)
+		return
+	}
+
+	b64 := s.fullBridge.GetImageBase64(cleaned)
 	if b64 == "" {
 		http.Error(w, "forbidden", http.StatusForbidden)
 		return

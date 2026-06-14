@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"io"
 	"strings"
+	"sync"
 )
 
 // thinkingParser tracks whether we're inside <think> tags
@@ -44,7 +45,9 @@ func (p *thinkingParser) process(content string) (regular, thinking string) {
 
 func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamChunk) {
 	defer close(ch)
-	defer body.Close()
+
+	var closeOnce sync.Once
+	defer closeOnce.Do(func() { body.Close() })
 
 	// Monitor context cancellation — close the body to unblock scanner.
 	// Derive a cancellable child context so the goroutine exits when we return.
@@ -52,7 +55,7 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 	defer watchCancel()
 	go func() {
 		<-watchCtx.Done()
-		body.Close()
+		closeOnce.Do(func() { body.Close() })
 	}()
 
 	scanner := bufio.NewScanner(body)

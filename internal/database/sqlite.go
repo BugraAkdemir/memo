@@ -27,6 +27,7 @@ type DB struct {
 }
 
 type writeTask struct {
+	ctx  context.Context
 	fn   func(tx *sql.Tx) error
 	done chan error
 }
@@ -87,7 +88,7 @@ func (db *DB) writeLoop() {
 	for {
 		select {
 		case task := <-db.writeCh:
-			err := db.execWrite(task.fn)
+			err := db.execWrite(task.ctx, task.fn)
 			select {
 			case task.done <- err:
 			default:
@@ -98,8 +99,8 @@ func (db *DB) writeLoop() {
 	}
 }
 
-func (db *DB) execWrite(fn func(tx *sql.Tx) error) error {
-	tx, err := db.sql.BeginTx(db.ctx, nil)
+func (db *DB) execWrite(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	tx, err := db.sql.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
@@ -123,9 +124,9 @@ func (db *DB) execWrite(fn func(tx *sql.Tx) error) error {
 	return nil
 }
 
-func (db *DB) Write(fn func(tx *sql.Tx) error) error {
+func (db *DB) Write(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	done := make(chan error, 1)
-	task := writeTask{fn: fn, done: done}
+	task := writeTask{ctx: ctx, fn: fn, done: done}
 
 	select {
 	case db.writeCh <- task:

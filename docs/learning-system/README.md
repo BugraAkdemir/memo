@@ -1,7 +1,7 @@
 # Memo Learning System — Proactive Intelligence Engine
 
 > **Status:** Design Document — Pre-Implementation  
-> **Version:** v1.0  
+> **Version:** v2.0  
 > **Target Release:** v3.5.0+
 
 ---
@@ -17,46 +17,62 @@ Memo should not be a passive chatbot that waits for commands. It should **observ
 | **Local-first** | Tüm öğrenme ve karar verme cihazda olur. Hiçbir veri dışarı çıkmaz |
 | **Olasılıksal** | Pattern'ler binary değil, olasılık dağılımıdır. Zamanla değişir, adapte olur |
 | **Unutabilen** | Eski pattern'ler decay ile ölür. Kullanıcı değişince sistem de değişir |
-| **Kademeli** | Düşük güvende sor, orta güvende öner, yüksek güvende yap |
 | **Şeffaf** | Kullanıcı tüm pattern'leri görebilir, düzeltebilir, silebilir |
 | **Varsayılan kapalı** | Proactive Learning ayardan açılır. İzin yoksa sadece gözlem yapar, hiçbir şey söylemez |
 
 ---
 
-## 2. Architecture
+## 2. Architecture — Orchestra-Driven Decision Engine
+
+### The Key Insight
+
+Proactive kararlar **hardcoded threshold'larla değil**, Orchestra Conductor/Chief ile verilir. Observer pattern'leri bulur, Proactive Engine eşleşen pattern'leri Chief'e gönderir, Chief LLM zekasıyla en doğru kararı verir.
 
 ### High-Level Data Flow
 
 ```mermaid
 graph TB
     subgraph Observation["Observation Layer"]
-        REC[Recorder] -->|her mesaj| OBS[(observations.db)]
-        REC -->|her oturum| OBS
+        REC[Recorder] -->|her mesaj/session| OBS[(observations.db)]
     end
 
     subgraph Analysis["Analysis Layer (hourly)"]
         AN[Analyzer] -->|okur| OBS
         AN -->|zaman/sıklık/sıra analizi| PAT[(patterns.json)]
-        AN -->|decay uygula| PAT
     end
 
     subgraph Proactive["Proactive Engine (30s)"]
         EN[Engine] -->|okur| PAT
         EN -->|saat + gün + context| MT[Matcher]
-        MT -->|eşik kontrolü| GT[Gate]
-        GT -->|düşük| MOB[Mobile Notification]
-        GT -->|orta| CHAT[Chat Suggestion]
-        GT -->|yüksek| ACT[Autonomous Action]
+        MT -->|eşleşen pattern'ler| CHIEF[Orchestra Chief]
+    end
+
+    subgraph Decision["LLM Decision (Chief)"]
+        CHIEF -->|system prompt ile karar verir| DEC[Decision: suggest/notify/auto/none]
+    end
+
+    subgraph Action["Action Layer"]
+        DEC -->|suggest| CHAT[Chat Suggestion]
+        DEC -->|notify| MOB[Mobile Notification]
+        DEC -->|auto| AGENT[Agent Pipeline]
+        DEC -->|none| END[Hiçbir şey]
     end
 
     subgraph Feedback["Feedback Loop"]
-        FB[User Response] -->|Evet/Hayır/Yok Say| PAT
+        FB[User Response] -->|"Evet" / "Hayır"| PAT
         FB -->|"Artık yapmıyorum"| PAT
     end
 
     User -->|messages| REC
     User -->|responses| FB
 ```
+
+### Neden Chief?
+
+| Yaklaşım | Sorun |
+|-----------|-------|
+| Hardcoded threshold (`if score > 0.5`) | Esnek değil, her kullanıcıya uymaz, yeni senaryolar için kod değişikliği gerek |
+| **Orchestra Chief ile** | LLM bağlama göre karar verir. Kullanıcının ruh halini, saatini, geçmiş tepkilerini değerlendirir. Yeni entegrasyonlar için sadece Chief prompt'u güncellenir |
 
 ### Module Map
 
@@ -65,11 +81,10 @@ graph TB
 | `internal/observer/store.go` | SQLite CRUD for observations | Kaydet, sorgula, istatistik |
 | `internal/observer/recorder.go` | app.go integration hook | Her mesajda/session'da kayıt |
 | `internal/observer/analyzer.go` | Pattern detection engine | Zaman/sıklık/sıra analizi, confidence |
-| `internal/observer/decay.go` | Sliding window + exponential decay | Eski pattern'leri zayıflat, sil |
 | `internal/proactive/engine.go` | Main loop goroutine | Her 30sn'de bir pattern'leri kontrol et |
 | `internal/proactive/matcher.go` | Current time ↔ pattern match | Şu an hangi pattern'ler eşleşiyor? |
-| `internal/proactive/gate.go` | Confidence threshold logic | Hangi eşikte ne yapılır |
-| `internal/proactive/notifier.go` | Notification + suggestion dispatch | Mobile push, chat mesajı, oto-pilot |
+| `internal/proactive/prompt.go` | Chief system prompt builder | Proactive karar için prompt oluştur |
+| `internal/orchestra/` | Existing — Conductor.Run() | Chief kararı verir |
 
 ---
 
@@ -77,22 +92,21 @@ graph TB
 
 ### What Gets Recorded
 
-Every user interaction generates an observation:
-
 ```go
 type Observation struct {
     ID                int64     `json:"id"`
     Timestamp         time.Time `json:"timestamp"`
-    DayOfWeek         int       `json:"day_of_week"`         // 0=Sunday
-  
-    TimeOfDaySeconds  int       `json:"time_of_day_seconds"` // saniye cinsinden (0-86399)
+    DayOfWeek         int       `json:"day_of_week"`
+    TimeOfDaySeconds  int       `json:"time_of_day_seconds"`
     SessionLengthMin  int       `json:"session_length_min"`
-    Topic             string    `json:"topic"`               // "coding", "general", "planning"
-    ActivityType      string    `json:"activity_type"`       // "chat", "agent", "orchestra"
+    Topic             string    `json:"topic"`
+    ActivityType      string    `json:"activity_type"`
     WordCount         int       `json:"word_count"`
-    Metadata          string    `json:"metadata"`            // JSON blob for extensibility
+    Metadata          string    `json:"metadata"` // JSON blob — extensible
 }
 ```
+
+**Metadata extensibility:** Gelecekte Home Assistant, IoT, calendar event'leri gibi ek veriler `metadata` alanına JSON olarak yazılır. Observer'ın kendisi değişmez, sadece yeni Recorder hook'ları eklenir.
 
 ### Recording Triggers
 
@@ -103,160 +117,64 @@ type Observation struct {
 | Session end | Sohbet kapatıldığında | session_length |
 | Agent mode run | Agent tool çağırdığında | activity_type="agent" |
 | Orchestra run | Orchestra çalıştığında | activity_type="orchestra" |
-
-### Topic Extraction
-
-Konu etiketi external API olmadan çıkarılır:
-
-```go
-func extractTopic(text string) string {
-    // 1. Keyword matching (regex tabanlı, local)
-    // 2. RAG memory'den en yakın konu başlığı
-    // 3. Fallback: "general"
-    //
-    // Keywords:
-    //   "kod", "yaz", "hata", "debug", "test" → "coding"
-    //   "eve", "gel", "akşam", "yemek"        → "home_arrival"
-    //   "toplantı", "iş", "proje"              → "work"
-    //   "oku", "ara", "öğren"                  → "research"
-    //   "spor", "koş", "yürü"                  → "sport"
-}
-```
+| **Future: HA event** | Eve gelme sensörü | activity_type="home_arrival" |
 
 ---
 
 ## 4. Pattern Detection Algorithm
 
-### 4.1 Time-Based Pattern Detection (Core)
+### 4.1 Time-Based Pattern Detection
 
 Her aktivite tipi için saat bazlı bir **olasılık yoğunluk fonksiyonu** oluşturulur.
 
-**Veri yapısı:**
-
 ```go
 type TimePattern struct {
-    ActivityType     string    `json:"activity_type"`
-    TimePeakSeconds  int       `json:"time_peak_seconds"`    // dağılımın tepe noktası (saniye)
-    StdDevSeconds    int       `json:"std_dev_seconds"`      // standart sapma — ne kadar dağınık
-    Confidence       float64   `json:"confidence"`            // 0.0 - 1.0
-    DaysActive       [7]bool   `json:"days_active"`           // hangi günler aktif
-    TotalCount       int       `json:"total_count"`
-    FirstSeen        time.Time `json:"first_seen"`
-    LastSeen         time.Time `json:"last_seen"`
-    WeightedScore    float64   `json:"weighted_score"`        // decay uygulanmış skor
+    ID              string    `json:"id"`
+    ActivityType    string    `json:"activity_type"`
+    TimePeakSeconds int       `json:"time_peak_seconds"`
+    StdDevSeconds   int       `json:"std_dev_seconds"`
+    Confidence      float64   `json:"confidence"`
+    DaysActive      [7]bool   `json:"days_active"`
+    TotalCount      int       `json:"total_count"`
+    FirstSeen       time.Time `json:"first_seen"`
+    LastSeen        time.Time `json:"last_seen"`
+    WeightedScore   float64   `json:"weighted_score"`
 }
 ```
 
-**Confidence hesaplama:**
+**Confidence = consistency × frequency × recency**
 
-```go
-func calculateConfidence(observations []Observation, now time.Time) float64 {
-    // 1. Sliding window: sadece son 30 gün
-    window := now.Add(-30 * 24 * time.Hour)
-    var recent []Observation
-    for _, o := range observations {
-        if o.Timestamp.After(window) {
-            recent = append(recent, o)
-        }
-    }
-    if len(recent) < 3 {
-        return 0.0 // yeterli veri yok
-    }
+Consistency için dairesel istatistik (circular statistics) kullanılır — 23:59 ile 00:01 arası sorun oluşmaz.
 
-    // 2. Consistency: zamanlar ne kadar tutarlı?
-    mean, stdDev := meanAndStdDev(recent)
-    consistency := 1.0 / (1.0 + float64(stdDev)/1800.0) // 30 dk = 0.5
+### 4.2 Sequential & Day-of-Week Patterns
 
-    // 3. Frequency: beklenen sıklıkta mı?
-    expectedCount := float64(len(recent)) / 30.0 // günlük ortalama
-    frequency := math.Min(expectedCount, 1.0)
-
-    // 4. Recency: ne kadar yeni?
-    daysSinceLast := now.Sub(recent[len(recent)-1].Timestamp).Hours() / 24.0
-    recency := 1.0 / (1.0 + daysSinceLast)
-
-    // 5. Weighted birleşim
-    confidence := 0.5*consistency + 0.3*frequency + 0.2*recency
-    return math.Min(confidence, 1.0)
-}
-```
-
-**Standart sapma hesaplama (modüler):**
-
-Her observation'ın time_of_day_seconds'ı 24 saatlik çemberde bir noktadır. Ortalama ve sapma dairesel istatistik (circular statistics) ile hesaplanır, böylece gece yarısı sorunu (23:59 ile 00:01 arası) oluşmaz.
-
-### 4.2 Sequential Pattern Detection
-
-A aktivitesinden sonra B geliyor mu? Sıralı pattern'ler:
-
-```go
-type SequentialPattern struct {
-    TriggerActivity string  `json:"trigger_activity"`
-    FollowActivity  string  `json:"follow_activity"`
-    MaxGapMinutes   int     `json:"max_gap_minutes"`
-    Confidence      float64 `json:"confidence"`
-    Count           int     `json:"count"`
-}
-```
-
-Örnek: "Kod yazdıktan sonra test çalıştır → 5dk içinde" (confidence 0.78)
-
-### 4.3 Day-of-Week Masking
-
-Her pattern hangi günler aktif olduğunu tutar:
+A aktivitesinden sonra B geliyor mu? Hangi günler aktif?
 
 ```
 [Pzt, Sal, Çar, Per, Cum, Cmt, Paz]
-[1,   1,   1,   1,   1,   0,   0 ]  → Hafta içi pattern'i
-[0,   0,   1,   0,   0,   0,   0 ]  → Sadece Çarşamba
+[1,   1,   1,   1,   1,   0,   0 ]  → Hafta içi
 ```
-
-Böylece hafta sonu ve hafta içi farkı otomatik ayrışır.
 
 ---
 
 ## 5. Decay & Forgetting
 
-### Sliding Window
+### Sliding Window + Exponential Decay
 
-Sadece son 30 günün verisi analiz edilir. 31 gün önceki gözlemler yok sayılır.
-
-```
-Bugün:      gözlem var → ağırlık 1.0
-7 gün önce: gözlem var → ağırlık 0.7
-15 gün önce: gözlem var → ağırlık 0.4
-25 gün önce: gözlem var → ağırlık 0.15
-30+ gün önce: gözlem yok sayılır
-```
-
-### Exponential Decay
-
-Pattern confidence, son gözlemden bu yana geçen süreyle azalır:
+Sadece son 30 günün verisi analiz edilir. Confidence her gün %5 azalır:
 
 ```go
 func applyDecay(confidence float64, lastSeen time.Time, now time.Time) float64 {
     daysSince := now.Sub(lastSeen).Hours() / 24.0
-    decayFactor := math.Pow(0.95, daysSince) // her gün %5 azalma
-    return confidence * decayFactor
+    return confidence * math.Pow(0.95, daysSince)
 }
 ```
 
-30 gün sonra: `0.95^30 ≈ 0.21` — pattern neredeyse silinir.
-
-### Explicit Forget
-
-Kullanıcı "Artık yapmıyorum" dediğinde:
-
-```go
-func (a *App) handleExplicitForget(activityType string) {
-    a.proactiveEngine.ForgetPattern(activityType)
-    // Pattern silinir, ilgili tüm observation'lar arşivlenir
-}
-```
+30 gün sonra neredeyse silinir (`0.95^30 ≈ 0.21`). Kullanıcı "Artık yapmıyorum" derse pattern tamamen silinir.
 
 ---
 
-## 6. Proactive Engine
+## 6. Proactive Engine — Kalp Atışı
 
 ### Main Loop
 
@@ -268,196 +186,263 @@ func (e *Engine) Start(ctx context.Context) {
         case <-ctx.Done():
             return
         case <-ticker.C:
-            e.tick()
+            e.tick(ctx)
         }
-    }
-}
-
-func (e *Engine) tick() {
-    now := time.Now()
-    patterns := e.loadActivePatterns()
-    
-    for _, p := range patterns {
-        matchScore := e.matcher.Match(p, now)
-        if matchScore <= 0 {
-            continue
-        }
-        action := e.gate.Decide(p, matchScore)
-        e.execute(action, p)
     }
 }
 ```
 
-### Matching Logic
+### `tick()` — Her 30 Saniyede Bir
+
+```go
+func (e *Engine) tick(ctx context.Context) {
+    now := time.Now()
+    actives := e.store.LoadActivePatterns()
+
+    // 1. Eşleşen pattern'leri bul
+    var matches []MatchResult
+    for _, p := range actives {
+        score := e.matcher.Match(p, now)
+        if score > 0.1 {
+            matches = append(matches, MatchResult{Pattern: p, Score: score})
+        }
+    }
+    if len(matches) == 0 {
+        return
+    }
+
+    // 2. Zaten pending suggestion var mı? (tekrar gönderme)
+    if e.store.HasPending() {
+        return
+    }
+
+    // 3. Orchestra Chief'e sor: ne yapmalıyım?
+    decision := e.askChief(ctx, matches, now)
+
+    // 4. Kararı uygula
+    e.execute(decision, matches)
+}
+```
+
+### 6.1 Matching Logic
 
 ```go
 func (m *Matcher) Match(pattern TimePattern, now time.Time) float64 {
-    // 1. Gün kontrolü
     if !pattern.DaysActive[now.Weekday()] {
         return 0.0
     }
-    
-    // 2. Zaman kontrolü (olasılıksal)
     currentSec := now.Hour()*3600 + now.Minute()*60
     diff := circularDistance(currentSec, pattern.TimePeakSeconds)
-    
-    // 3. Gaussian benzerlik
     score := gaussianPdf(diff, pattern.StdDevSeconds)
-    
-    // 4. Confidence ile çarp
     return score * pattern.Confidence * pattern.WeightedScore
 }
 ```
 
-### Decision Gate (3 Eşik)
+---
+
+## 7. Orchestra Chief — Karar Verici (Proactive Loop)
+
+Proactive Engine eşleşen pattern'leri **Orchestra Conductor'daki Chief model**'e (ana LLM) gönderir. Chief proaktif kararlar için özelleştirilmiş bir system prompt ile çalışır.
+
+### Self-Correcting Loop
+
+Chief'in ilk kararı her zaman doğru olmayabilir. Bu yüzden Proactive Engine bir **self-correcting loop** çalıştırır:
+
+```
+1. Chief: "Kod yazmaya başlayalım mı?" (suggest)
+2. Kullanıcı: reddetti
+3. Proactive Engine: Chief'e geri bildirim ver
+   "Kullanıcı reddetti. Saat 21:00, pattern coding. Ne yapmalıyım?"
+4. Chief: "Hiçbir şey yapma, kullanıcı meşgul. 2 saat sonra tekrar dene" (none)
+5. 2 saat sonra:
+   - Chief: "Saat 23:00, kullanıcı genelde bu saatte de kod yazıyor. Hatırlatayım" (notify)
+6. Kullanıcı: mobile bildirim alır, "Evet" derse agent başlar
+```
 
 ```go
-type ProactivityLevel string
+func (e *Engine) askChief(ctx context.Context, matches []MatchResult, now time.Time,
+    history []FeedbackEntry, attempt int) (Decision, error) {
 
-const (
-    LevelOff      ProactivityLevel = "off"       // sadece gözlem
-    LevelSubtle   ProactivityLevel = "subtle"    // mobile notification
-    LevelNormal   ProactivityLevel = "normal"    // chat suggestion
-    LevelAssertive ProactivityLevel = "assertive" // oto-pilot
-)
+    prompt := buildChiefPrompt(matches, now, history, attempt)
 
-func (g *Gate) Decide(pattern TimePattern, matchScore float64) Action {
-    level := g.config.Level
-    
-    if matchScore < 0.3 {
-        return ActionNone // eşik altı
+    // Orchestra Conductor'ı kullan — Chief model'e sor
+    result, err := e.orchestra.Run(ctx, prompt)
+    if err != nil {
+        return Decision{}, err
     }
-    
-    switch level {
-    case LevelOff:
-        return ActionNone
-    case LevelSubtle:
-        if matchScore >= 0.3 {
-            return ActionNotify // sessiz bildirim
-        }
-    case LevelNormal:
-        if matchScore >= 0.5 {
-            return ActionSuggest // chat önerisi
-        }
-        if matchScore >= 0.3 {
-            return ActionNotify
-        }
-    case LevelAssertive:
-        if matchScore >= 0.85 && pattern.Confidence >= 0.9 && pattern.TotalCount >= 30 {
-            return ActionAuto // oto-pilot
-        }
-        if matchScore >= 0.6 {
-            return ActionSuggest
-        }
-        if matchScore >= 0.3 {
-            return ActionNotify
+
+    decision := parseDecision(result)
+
+    // Eğer karar "none" değilse ve attempt < 3 ise,
+    // sonucu bekle ve gerekirse loop'u tekrarla
+    if decision.Action != "none" && attempt < 3 {
+        outcome := e.waitForOutcome(decision, 5*time.Minute)
+        if outcome == OutcomeRejected || outcome == OutcomeError {
+            history = append(history, FeedbackEntry{
+                Decision: decision,
+                Outcome:  outcome,
+            })
+            return e.askChief(ctx, matches, now, history, attempt+1)
         }
     }
-    return ActionNone
+
+    return decision, nil
 }
 ```
 
+### Chief Prompt (Proactive Mode)
+
+```go
+const ProactiveChiefPrompt = `Sen Memo'nun proaktif karar verme sistemisin.
+Görevin: kullanıcının alışkanlıklarına göre ne zaman, nasıl ve hangi seviyede aksiyon alacağına karar vermek.
+
+Girdi olarak şunları alırsın:
+- Şu anki saat, gün, tarih
+- Eşleşen pattern'ler (aktivite türü, güven skoru, standart sapma)
+- Kullanıcının son 5 tepkisi (ne önerdin, ne dedi)
+- Kullanıcının proaktivite seviyesi (off/subtle/normal/assertive)
+
+Bu bir self-correcting loop'tur. İlk kararın yanlış olabilir:
+- Kullanıcı reddederse veya hata alırsan, sistem sana tekrar soracak
+- O zaman bir önceki hatadan öğrenip daha iyi bir karar vermelisin
+- Max 3 deneme hakkın var
+
+Karar tiplerin:
+1. "none"       — Hiçbir şey yapma
+2. "notify"     — Mobile push bildirim gönder
+3. "suggest"    — Chat'e mesaj olarak yaz
+4. "auto"       — Agent pipeline'ı başlat
+
+Sadece JSON döndür:
+{"decision": "suggest|notify|auto|none", "message": "kullanıcıya gösterilecek mesaj", "pattern_id": "id"}
+`
+
+```
+
+### Neden Chief?
+
+| Gelecekteki Entegrasyon | Değişiklik |
+|------------------------|-----------|
+| Home Assistant (eve gelince ışıkları aç) | Chief prompt'a "HA cihazlarını da kontrol edebilirsin" eklenir |
+| IoT (kahve makinası) | Observer'a `activity_type="coffee_machine"` eklenir, Chief prompt'a "kahve saatini de öğrenebilirsin" eklenir |
+| Takvim entegrasyonu | Observer takvim event'lerini de kaydeder, Chief prompt'a "toplantı öncesi hazırlık yapabilirsin" eklenir |
+| Weather-aware | Observer hava durumunu da kaydeder, Chief prompt'a "yağmurlu günlerde farklı davran" eklenir |
+
+**Hiçbir backend kodu değişmez.** Sadece Observer'a yeni kaynak eklenir (yeni recorder hook) ve Chief prompt'u güncellenir.
+
+### Chief Prompt (Proactive Mode)
+
+```go
+const ProactiveChiefPrompt = `Sen Memo'nun proaktif karar verme sistemisin.
+Görevin: kullanıcının alışkanlıklarına göre ne zaman, nasıl ve hangi seviyede aksiyon alacağına karar vermek.
+
+Girdi olarak şunları alırsın:
+- Şu anki saat, gün, tarih
+- Eşleşen pattern'ler (aktivite türü, güven skoru, standart sapma)
+- Kullanıcının son 5 tepkisi (ne önerdin, ne dedi)
+- Kullanıcının proaktivite seviyesi (off/subtle/normal/assertive)
+
+Karar tiplerin:
+1. "none"       — Hiçbir şey yapma (eşik altı, kullanıcı meşgul)
+2. "notify"     — Mobile push bildirim gönder
+3. "suggest"    — Chat'e mesaj olarak yaz, kullanıcı cevaplasın
+4. "auto"       — Agent pipeline'ı başlat, sonucu bildir
+
+Kurallar:
+- Kullanıcı son 5 öneriden 3'ünü reddettiyse → 1 hafta bekle
+- Pattern güveni 0.85 üstü ve 30+ günlükse → "auto" düşün
+- Pattern güveni 0.5-0.85 arası → "suggest" veya "notify"
+- Pattern güveni 0.5 altı → "none"
+- Kullanıcı "Artık yapmıyorum" dediyse → pattern'i sil
+- Hafta sonu farklı karar verebilirsin (kullanıcı geç kalkıyordur)
+
+Sadece JSON döndür:
+{"decision": "suggest|notify|auto|none", "message": "kullanıcıya gösterilecek mesaj", "pattern_id": "id"}
+`
+```
+
+### Neden Chief?
+
+| Gelecekteki Entegrasyon | Değişiklik |
+|------------------------|-----------|
+| Home Assistant (eve gelince ışıkları aç) | Chief prompt'a "HA cihazlarını da kontrol edebilirsin" eklenir |
+| IoT (kahve makinası) | Observer'a `activity_type="coffee_machine"` eklenir, Chief prompt'a "kahve saatini de öğrenebilirsin" eklenir |
+| Takvim entegrasyonu | Observer takvim event'lerini de kaydeder, Chief prompt'a "toplantı öncesi hazırlık yapabilirsin" eklenir |
+| Weather-aware | Observer hava durumunu da kaydeder, Chief prompt'a "yağmurlu günlerde farklı davran" eklenir |
+
+**Hiçbir backend kodu değişmez.** Sadece Observer'a yeni kaynak eklenir (yeni recorder hook) ve Chief prompt'u güncellenir.
+
 ---
 
-## 7. Action Types
+## 8. Action Types
 
-| Action | Ne Olur | Ne Zaman |
-|--------|---------|----------|
-| `ActionNone` | Hiçbir şey olmaz | Eşik altı, kapalı mod |
-| `ActionNotify` | Mobile push bildirim: "Eve geliyor musun? Kahve hazırlasam?" | 0.3-0.5, subtle mod |
-| `ActionSuggest` | Chat'te mesaj: "Saat 21 oldu, genelde kod yazıyorsun. Kaldığın yerden devam mı?" | 0.5-0.85, normal mod |
-| `ActionAuto` | Agent pipeline tetiklenir. Kullanıcı gelince "Dün akşam testleri tamamladım, buradaydı." | 0.85+, assertive mod |
+| Action | Ne Olur |
+|--------|---------|
+| `none` | Hiçbir şey olmaz |
+| `notify` | `/api/proactive/pending` endpoint'ine yazılır. Mobile app 30sn'de bir poll'lar. Bildirim gelir: "Kod yazma vaktin geldi ☕" |
+| `suggest` | Chat'e mesaj gönderilir (kullanıcının aktif session'ı yoksa yeni session açılır) |
+| `auto` | Agent pipeline tetiklenir. Background'da çalışır. Sonuç `/api/proactive/result`'a yazılır |
 
-### Notification Content Rules
-
-```
-Düşük güven (0.3-0.5): Soru formatı
-  "Eve geliyor musun? [Kahve hazırlasam/Eve gelince haber ver]"
-
-Orta güven (0.5-0.85): Öneri formatı
-  "Genelde bu saatte kod yazıyorsun. Kaldığın dosyayı açayım mı?"
-
-Yüksek güven (0.85+): Statement formatı
-  "Kod yazma vaktin. Dünkü testleri çalıştırdım, 3 hata düzelttim."
-```
-
----
-
-## 8. Feedback Loop
-
-### Reinforcement Schedule
-
-| Kullanıcı Tepkisi | Confidence Değişimi | Pattern Gücü |
-|--------------------|--------------------|--------------|
-| "Evet", "Başla", "Harika" | **+0.10** | Güçlenir |
-| Yok sayar | **-0.03** | Hafif zayıflar |
-| "Hayır", "Sonra" | **-0.15** | Zayıflar |
-| "Artık yapmıyorum" | **Pattern silinir** | Sıfırlanır |
-| "Sen ne diyorsun ya?" | **-0.30** | Ciddi zayıflar |
-
-### Adaptive Threshold
-
-Eğer kullanıcı sürekli benzer önerileri reddediyorsa, o pattern için eşik yükselir:
+### Mobile Notification Flow
 
 ```
-Kullanıcı "Hayır" dedi → pattern eşiği 0.50 → 0.55
-Kullanıcı tekrar "Hayır" → 0.55 → 0.62
-... 5 kere "Hayır" → eşik 0.85 → neredeyse hiç tetiklenmez
+Desktop:
+  Proactive Engine: "21:00 = coding match 0.89"
+  → Chief: "suggest"
+  → /api/proactive/pending'ye yaz: 
+     {"id": "abc", "message": "Kod yazma vaktin. Başlayalım mı?", "pattern": "coding"}
+
+Mobile (arka planda 30sn'de bir poll):
+  GET /api/proactive/pending
+  → {"id": "abc", "message": "Kod yazma vaktin. Başlayalım mı?"}
+  → Yerel bildirim göster
+
+Kullanıcı bildirime tıklar:
+  → Mobil uygulama açılır
+  → Sohbet ekranında Memo'nun mesajı gösterilir: "Kod yazma vaktin. Başlayalım mı?"
+  → "Evet ✅" / "Hayır ❌" butonları
+
+Kullanıcı "Evet" derse:
+  → POST /api/proactive/respond {"id": "abc", "response": "yes"}
+  → Backend: Agent pipeline başlatılır
+  → Chat: "Tamam, kaldığın yerden devam ediyorum..."
 ```
 
 ---
 
-## 9. Multi-Pattern Resolution
+## 9. Feedback Loop
 
-Aynı anda birden fazla pattern eşleşebilir. Çözüm:
+| Tepki | Confidence Etkisi |
+|-------|------------------|
+| "Evet", "Harika" | **+0.10** |
+| Yok sayar | **-0.03** |
+| "Hayır", "Sonra" | **-0.15** |
+| "Artık yapmıyorum" | **Pattern silinir** |
 
-```
-Saat: 19:00, Salı
-  Pattern A: "Eve geliş"      → match 0.88, confidence 0.92
-  Pattern B: "Spor"            → match 0.78, confidence 0.85 (Salı yüksek!)
-  Pattern C: "Akşam yemeği"   → match 0.45, confidence 0.60
-
-Karar:
-  En yüksek action'ı al.
-  A → ActionSuggest (0.88)
-  B → ActionSuggest (0.78)
-  
-  Çakışma var (ikisi de 0.5 üstü).
-  → Meme: "Eve geldin. Spor günün de bugün. Önce hangisi?"
-  → Veya: "Eve geldin, kahve?"
-  → Seçim: hangisi daha yüksek confidence? A kazanır.
-```
+Chief ayrıca kullanıcının son 5 tepkisini de değerlendirir. Sürekli reddediyorsa 1 hafta bekleme süresine girer.
 
 ---
 
 ## 10. Cold Start
 
-Sistem ilk başladığında hiç veri yok. Bu durumda:
-
 | Gün | Ne Olur |
 |-----|---------|
-| 1-3 | Sadece gözlem yapar. Hiçbir şey söylemez/önermez |
-| 4-7 | Pattern oluşmaya başlar. Hiçbir şey söylemez (yeterli veri yok) |
-| 8-14 | 3+ tekrar gözlemlendiyse **sormaya başlar** (subtle mod) |
-| 15-30 | Güven artar, daha sık önerir |
-| 30+ | Tam oto-pilot'a geçebilir |
-
-**İlk günlerde zorlama:** Eğer kullanıcı ilk gün "Her sabah 9'da kod yazıyorum" gibi bir şey söylerse, Memo bunu RAG memory'den alıp bir pattern olarak önerebilir mi?
-
-→ Hayır, çünkü bu öğrenme sistemi **eylem bazlı**, söylem bazlı değil. Ama kullanıcı Chat'te "Bana her sabah 9'da kod yazmayı hatırlat" derse, bu `identity.go`'daki system prompt'a veya bir `skill`'e dönüşebilir.
+| 1-3 | Sadece gözlem |
+| 4-7 | Pattern oluşmaya başlar, sessiz |
+| 8-14 | 3+ tekrar → sorabilir |
+| 15-30 | Güven artar |
+| 30+ | Oto-pilot'a geçebilir |
 
 ---
 
-## 11. Privacy & Transparency
-
-### User-Facing Controls
+## 11. Privacy & Control
 
 | Kontrol | Ne Yapar |
 |---------|----------|
-| `Settings > Proactive Learning` | Açar/kapatır. Kapalıyken gözlem yapmaz |
-| `Settings > Learning Profile` | Tüm pattern'leri listeler, confidence gösterir |
-| `"Şu pattern'i unut"` | Chat'ten söyleyince siler |
-| `"Tüm verilerimi sil"` | observations.db + patterns.json temizlenir |
+| `Settings > Proactive Learning` | Açar/kapatır |
+| `Settings > Learning Profile` | Pattern'leri listeler |
+| `"Şu pattern'i unut"` | Chat'ten siler |
+| `"Tüm verilerimi sil"` | Temizler |
 
 ### Data Storage
 
@@ -465,51 +450,109 @@ Sistem ilk başladığında hiç veri yok. Bu durumda:
 data/profile/
 ├── observations.db    # SQLite — raw observation data
 ├── patterns.json      # Learned patterns with confidence scores
-└── user_model.json    # Compiled user profile
+└── pending.json       # Pending proactive suggestions (for mobile poll)
 ```
 
 ---
 
-## 12. Testing Strategy
+## 12. Extensibility Membrane
+
+Sistemin genişletilebilirliği iki noktada garanti altına alınmıştır:
+
+```
+Yeni Kaynak (örn: Home Assistant)
+  → Observer'a yeni Recorder hook'u (1 dosya)
+  → Chief prompt'u güncelle (1 string)
+  → Tamam. Başka değişiklik yok.
+
+Yeni Karar Mantığı
+  → Chief prompt'u güncelle (1 string)
+  → Tamam. Başka değişiklik yok.
+
+Yeni Output Channel (örn: SMS, Slack)
+  → Proactive Engine'e yeni executor (1 dosya)
+  → Chief prompt'ta yeni action tipi belirt
+  → Tamam.
+```
+
+---
+
+## 12.5 Implementation Progress
+
+| Faz | Kapsam | Durum |
+|-----|--------|-------|
+| **Faz 1** | **Observer + Storage** | ✅ **Tamamlandı** |
+| **Faz 2** | **Analyzer (pattern detection)** | ✅ **Tamamlandı** |
+| **Faz 3** | **Proactive Engine + Matcher** | ✅ **Tamamlandı** |
+| **Faz 4** | **Chief decision loop + actions** | ✅ **Tamamlandı** |
+| **Faz 5** | **Mobile poll + feedback loop** | ✅ **Tamamlandı** |
+
+### Faz 1 — Tamamlanan İşler
+
+- [x] `internal/observer/store.go` — SQLite `observations.db` CRUD (`Record`, `Query`, `Count`, `Prune`, `ClearAll`)
+- [x] Schema + `activity_type` / `timestamp` index'leri, otomatik türetilen `day_of_week` & `time_of_day_seconds`
+- [x] `internal/observer/recorder.go` — nil-safe, asenkron hook'lar (`RecordMessage`, `RecordAgentRun`, `RecordOrchestraRun`, `RecordSessionEnd`)
+- [x] Yerel topic sınıflandırıcı (`ClassifyTopic` — coding/writing/research/planning/general)
+- [x] `app.go` entegrasyonu: startup'ta store init, chat/agent/orchestra path'lerinde kayıt, incognito kayıt dışı, shutdown'da temiz kapanış
+- [x] `internal/observer/store_test.go` — derived field, filtreleme, prune, sınıflandırma testleri (geçti)
+
+> **Privacy notu:** Mesaj metni saklanmaz — yalnızca topic etiketi ve kelime sayısı türetilir. Incognito mesajları hiç kaydedilmez.
+
+### Faz 2 — Tamamlanan İşler
+
+- [x] `internal/observer/pattern.go` — `TimePattern` tipi (README §4.1), `ApplyDecay` (üstel sönüm §5), `PatternStore` (atomik `patterns.json` load/save + `LoadActive`)
+- [x] `internal/observer/analyzer.go` — `AnalyzePatterns` saf çekirdeği: gözlemleri topic/aktivite anahtarına göre gruplar
+- [x] **Dairesel istatistik** — saat dilimi dairede `cos/sin` ortalaması; gece yarısı sınırı (23:50 ↔ 00:10) doğru çözülür
+- [x] **Confidence = consistency × frequency × recency** — circular resultant length (R), distinct-day sıklığı, son görülme sönümü
+- [x] Dairesel standart sapmadan `StdDevSeconds` (10dk–6sa arası clamp), `DaysActive[7]`, `WeightedScore`, `TotalCount`
+- [x] `MinObservations = 3` eşiği (cold start §10), 30 günlük kayan pencere
+- [x] `app.go` zamanlayıcı: startup'tan 30sn sonra + saatlik analiz, pencere dışı gözlemleri prune ile temizleme, `ctx` ile temiz çıkış
+- [x] `internal/observer/analyzer_test.go` — peak tespiti, gece yarısı sınırı, decay, gün-bazlı aktiflik, min-örnek, store round-trip (hepsi geçti)
+
+---
+
+## 13. Testing Strategy
 
 | Test | Scope |
 |------|-------|
-| Time-based pattern detection | Birim test — verilen observation listesinden doğru pattern çıkıyor mu |
-| Confidence calculation | Farklı senaryolar (sürekli, seyrek, eski) |
-| Decay function | Zamanla confidence'ın azaldığını doğrula |
-| Gate decisions | Her eşikte doğru action dönüyor mu |
-| Circular statistics | Gece yarısı sınırında doğru sonuç |
-| Multi-pattern resolution | Çakışan pattern'lerin doğru çözümü |
-| Cold start | Hiç veri yokken her şey 0 dönüyor mu |
-| Feedback loop | Kullanıcı tepkisine göre confidence değişimi |
+| Pattern detection | Observation listesinden doğru pattern çıkıyor mu |
+| Confidence calc | Farklı senaryolar |
+| Decay | Zamanla confidence azalıyor mu |
+| Circular stats | Gece yarısı sınırı |
+| Chief prompt | LLM doğru JSON dönüyor mu |
+| Feedback loop | Tepkiye göre confidence değişimi |
+| Mobile poll | Pending suggestion doğru dönüyor mu |
 
 ---
 
-## 13. Future Extensions
+### Faz 3–5 — Tamamlanan İşler
 
-| Feature | Description |
-|---------|-------------|
-| **Multi-user profiles** | Aynı bilgisayarda farklı kullanıcılar için ayrı pattern'ler |
-| **Home Assistant integration** | Observed pattern'ler → HA automation |
-| **Calendar integration** | "Her Cuma 17:00'de haftalık rapor" → takvim event'i |
-| **Weather-aware** | Yağmurlu günlerde farklı pattern'ler (eve erken dönüş) |
-| **Mood detection** | Mesaj tonuna göre proaktivite seviyesini ayarla |
-| **Cross-device sync** | Desktop + Mobile pattern'lerinin birleştirilmesi |
+**Faz 3 — Proactive Engine + Matcher** (`internal/proactive/`)
+- [x] `matcher.go` — `Match()`: dairesel mesafe + Gaussian çekirdek × confidence × weighted booster; gün aktif değilse 0
+- [x] `engine.go` — 30sn'lik kalp atışı (`Start`/`tick`): aktif pattern'leri yükle, eşleştir, skor>0.1 filtrele, cooldown + tek pending kuralı
+- [x] Seviye "off" iken tamamen sessiz (varsayılan) — canlı `levelFn` ile yeniden başlatmadan açılır
+
+**Faz 4 — Chief decision loop + actions**
+- [x] `prompt.go` — `ChiefSystemPrompt` + `BuildContextPrompt` (saat, eşleşmeler, son tepkiler, seviye, deneme)
+- [x] `decision.go` — `Decision`/`Action`/`Level` tipleri, dengeli-parantez JSON çıkarımı (`ParseDecision`), bozuk yanıt → `none`
+- [x] `engine.askChief` — enjekte edilen `Decider` ile Chief'e sorar (app `callLLM` → orchestra/provider/local)
+- [x] `execute` — none/notify/suggest/auto; auto için opsiyonel `AutoRunner`
+
+**Faz 5 — Mobile poll + feedback loop**
+- [x] `pending.go` — `PendingStore` (atomik `pending.json`), TTL ile süre dolumu, `Set/Get/Respond/HasPending`
+- [x] `feedback.go` — tepki→outcome eşlemesi (TR/EN), confidence delta'ları (+0.10/-0.03/-0.15), "artık yapmıyorum"→suppress
+- [x] **Suppress mekanizması** — emekli edilen pattern `patterns.json`'da saklanır; analyzer yeniden öğrenmez (regression test'li)
+- [x] `app_proactive.go` — `Decider`/`Emitter`/`levelFn` glue + bridge metotları; event JSON olarak yayınlanır
+- [x] Webserver uçları: `/api/proactive/{settings,pending,respond,patterns,patterns/forget,clear}`
+- [x] `config.ProactiveConfig` (varsayılan **off**, privacy-first), `config.Save` ile kalıcı
+- [x] `proactive_test.go` — matcher, decision parse, feedback, pending yaşam döngüsü, engine uçtan-uca (suggest→accept, off→sessiz, stop→suppress)
+
+> **Bilinen sınır:** Feedback ile yapılan confidence ince ayarı saatlik analizde davranıştan yeniden türetilir; kalıcı olan tek karar "suppress"tir. Bu tasarım gereğidir (sistem davranışı izler, sabit eşik tutmaz).
+>
+> **Not:** Backend uçları ve event'ler hazır; Flutter/masaüstü UI entegrasyonu (Settings > Proactive Learning, bildirim baloncuğu) ayrı bir frontend görevidir.
 
 ---
 
-## 14. Decision Record
-
-| Karar | Seçenekler | Seçilen | Gerekçe |
-|-------|-----------|---------|---------|
-| Pattern eşleme | Kesin / Olasılıksal | **Olasılıksal** | Adaptasyon ve hata toleransı |
-| Veri penceresi | Sonsuz / Kayan | **30 gün kayan** | Değişime hızlı uyum |
-| Decay | Step / Exponential | **Exponential** | Doğal unutma süreci |
-| Eşik sistemi | 2'li / 3'lü / 4'lü | **4 eşik** | İnce kademeli kontrol |
-| Gizlilik | Varsayılan açık/kapalı | **Varsayılan kapalı** | Kullanıcı güveni öncelikli |
-
----
-
-> **Next:** Implementation plan → `docs/superpowers/plans/YYYY-MM-DD-learning-system.md`
-> **Author:** Memo Team
+> **Next:** Frontend entegrasyonu (Settings UI + bildirim) ve gerçek-kullanım kalibrasyonu  
+> **Author:** Memo Team  
 > **Last updated:** 2026-06-14

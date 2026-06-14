@@ -168,6 +168,14 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Orchestra mode
 	mux.HandleFunc("/api/orchestra/config", s.handleOrchestraConfig)
 
+	// Proactive learning system
+	mux.HandleFunc("/api/proactive/settings", s.handleProactiveSettings)
+	mux.HandleFunc("/api/proactive/pending", s.handleProactivePending)
+	mux.HandleFunc("/api/proactive/respond", s.handleProactiveRespond)
+	mux.HandleFunc("/api/proactive/patterns", s.handleProactivePatterns)
+	mux.HandleFunc("/api/proactive/patterns/forget", s.handleProactiveForget)
+	mux.HandleFunc("/api/proactive/clear", s.handleProactiveClear)
+
 	// Agent mode
 	mux.HandleFunc("/api/agent/chat", s.handleAgentChat)
 	mux.HandleFunc("/api/agent/enabled", s.handleAgentEnabled)

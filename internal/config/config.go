@@ -18,7 +18,15 @@ type AppConfig struct {
 	Llama          LlamaConfig        `yaml:"llama"`
 	Sync           SyncConfig         `yaml:"sync"`
 	WhatsApp       WhatsAppConfig     `yaml:"whatsapp"`
+	Proactive      ProactiveConfig    `yaml:"proactive" json:"proactive"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
+}
+
+// ProactiveConfig controls the learning system's proactive engine. Disabled by
+// default (privacy-first): the observer still records, but nothing is suggested.
+type ProactiveConfig struct {
+	Enabled bool   `yaml:"enabled" json:"enabled"`
+	Level   string `yaml:"level" json:"level"` // off | subtle | normal | assertive
 }
 
 // SyncConfig holds Google Drive backup settings.
@@ -146,6 +154,10 @@ func Default() *AppConfig {
 			DataDir:        "./data/whatsapp",
 			AutoIndex:      true,
 			MaxHistoryDays: 7,
+		},
+		Proactive: ProactiveConfig{
+			Enabled: false,
+			Level:   "off",
 		},
 	}
 }

@@ -8,7 +8,9 @@ import (
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
+	"memo/internal/observer"
 	"memo/internal/orchestra"
+	"memo/internal/proactive"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -106,6 +108,15 @@ type FullBridge interface {
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig
 	UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error
+
+	// Proactive learning system
+	GetProactiveSettings() config.ProactiveConfig
+	SetProactiveSettings(enabled bool, level string) error
+	GetPendingSuggestion() *proactive.PendingSuggestion
+	RespondToSuggestion(id, response string) error
+	ListLearnedPatterns() []observer.TimePattern
+	ForgetPattern(id string) error
+	ClearLearningData() error
 
 	// Events
 	GetEvents() []map[string]string

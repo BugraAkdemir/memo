@@ -31,7 +31,9 @@ import (
 	"memo/internal/memory"
 	"memo/internal/modelstore"
 	"memo/internal/ngrok"
+	"memo/internal/observer"
 	"memo/internal/orchestra"
+	"memo/internal/proactive"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -176,6 +178,19 @@ type App struct {
 
 	orchestraConductor *orchestra.Conductor
 
+	// Learning system (see docs/learning-system).
+	// Phase 1: observation layer — silently records user activity.
+	// Phase 2: analyzer — turns observations into time-based patterns hourly.
+	observerStore    *observer.Store
+	observerRecorder *observer.Recorder
+	observerPatterns *observer.PatternStore
+	observerAnalyzer *observer.Analyzer
+
+	// Phase 3–5: proactive engine — matches patterns and asks the Chief what to
+	// do. Gated by cfg.Proactive (default off).
+	proactivePending *proactive.PendingStore
+	proactiveEngine  *proactive.Engine
+
 	agentExecutor *agent.Executor
 	agentEnabled  bool
 	agentMu       sync.RWMutex
@@ -279,6 +294,36 @@ func (a *App) startup(ctx context.Context) {
 		a.emitEvent("sessions_manager_error", err.Error())
 	}
 	a.sessions = sm
+
+	// Learning system observation layer (Phase 1). Records silently into
+	// data/profile/observations.db. A failure here is non-fatal: the recorder
+	// degrades to a no-op so the rest of the app is unaffected.
+	if obsStore, oerr := observer.NewStore(observer.StoreConfig{Dir: "data/profile"}); oerr != nil {
+		log.Printf("WARN: observer: %v", oerr)
+		a.emitEvent("observer_store_error", oerr.Error())
+	} else {
+		a.observerStore = obsStore
+	}
+	a.observerRecorder = observer.NewRecorder(a.observerStore)
+	a.observerPatterns = observer.NewPatternStore("data/profile/patterns.json")
+	a.observerAnalyzer = observer.NewAnalyzer(a.observerStore, a.observerPatterns)
+	if a.observerStore != nil {
+		go a.runObserverAnalysis(ctx)
+	}
+
+	// Proactive engine (Phase 3–5). Always started; it stays dormant while the
+	// proactivity level is "off" (the default), so toggling the setting takes
+	// effect live without a restart.
+	a.proactivePending = proactive.NewPendingStore("data/profile/pending.json")
+	a.proactiveEngine = proactive.NewEngine(
+		proactive.Config{},
+		a.observerPatterns,
+		a.proactivePending,
+		a.proactiveDecide,
+		a.proactiveEmit,
+		a.proactiveLevel,
+	)
+	go a.proactiveEngine.Start(ctx)
 
 	// Initialize model store
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
@@ -478,7 +523,49 @@ func (a *App) shutdown(ctx context.Context) {
 		a.ngrokServer.Stop()
 		a.ngrokServer = nil
 	}
+	if a.observerStore != nil {
+		if err := a.observerStore.Close(); err != nil {
+			log.Printf("observer shutdown: %v", err)
+		}
+	}
 	stopRecordingProcess()
+}
+
+// runObserverAnalysis is the learning system's Analysis Layer loop. It detects
+// patterns from recorded observations shortly after startup and then hourly,
+// pruning observations older than the analysis window so storage stays bounded
+// and the user's data footprint minimal. It exits when ctx is cancelled.
+func (a *App) runObserverAnalysis(ctx context.Context) {
+	// Small initial delay so it doesn't compete with startup work.
+	select {
+	case <-ctx.Done():
+		return
+	case <-time.After(30 * time.Second):
+	}
+
+	analyze := func() {
+		if err := a.observerAnalyzer.Run(ctx); err != nil {
+			log.Printf("OBSERVER: analysis: %v", err)
+		}
+		if a.observerStore != nil {
+			if _, err := a.observerStore.Prune(time.Now().Add(-observer.AnalysisWindow)); err != nil {
+				log.Printf("OBSERVER: prune: %v", err)
+			}
+		}
+	}
+
+	analyze()
+
+	ticker := time.NewTicker(time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			analyze()
+		}
+	}
 }
 
 // stopRecordingProcess kills an in-flight microphone recording (arecord/sox/ffmpeg)
@@ -547,6 +634,7 @@ func (a *App) SendMessage(userMsg string) string {
 	if incog {
 		return a.handleIncognito(userMsg, "")
 	}
+	a.observerRecorder.RecordMessage(userMsg)
 	messages := a.buildMessages(context.Background(), userMsg, nil)
 	sm := a.getSessionManager()
 	if sm != nil {
@@ -574,6 +662,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	if incog {
 		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
+	a.observerRecorder.RecordMessage(userMsg)
 
 	// Inject active skill instructions into system prompt
 	messages := a.buildMessages(ctx, userMsg, nil)
@@ -606,8 +695,10 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 
 	if agentActive && (a.activeProvider != "" || localModelRunning) {
 		if orchestraEnabled {
+			a.observerRecorder.RecordOrchestraRun(userMsg)
 			return a.callAgentWithOrchestra(ctx, messages, userMsg)
 		}
+		a.observerRecorder.RecordAgentRun(userMsg)
 		return a.callAgentStream(ctx, messages, userMsg)
 	}
 

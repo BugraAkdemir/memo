@@ -915,4 +915,50 @@ class MemoApiClient {
       throw Exception('WhatsApp stream error: $e');
     }
   }
+
+  // ─── Proactive Learning ─────────────────────────────────────────
+
+  /// Get current proactive settings.
+  Future<Map<String, dynamic>> getProactiveSettings() async {
+    final res = await _dio.get('/api/proactive/settings');
+    return res.data as Map<String, dynamic>;
+  }
+
+  /// Update proactive settings (enabled + level).
+  Future<void> setProactiveSettings(bool enabled, String level) async {
+    await _dio.post('/api/proactive/settings', data: {
+      'enabled': enabled,
+      'level': level,
+    });
+  }
+
+  /// List learned patterns.
+  Future<List<Map<String, dynamic>>> getProactivePatterns() async {
+    final res = await _dio.get('/api/proactive/patterns');
+    return (res.data['patterns'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+  }
+
+  /// Forget a specific pattern by ID.
+  Future<void> forgetPattern(String id) async {
+    await _dio.post('/api/proactive/patterns/forget', data: {'id': id});
+  }
+
+  /// Clear all learning data (observations + patterns).
+  Future<void> clearLearningData() async {
+    await _dio.post('/api/proactive/clear');
+  }
+
+  /// Get pending proactive suggestion (for mobile polling).
+  Future<Map<String, dynamic>?> getPendingSuggestion() async {
+    final res = await _dio.get('/api/proactive/pending');
+    return res.data['pending'] as Map<String, dynamic>?;
+  }
+
+  /// Respond to a pending suggestion (yes / no / stop).
+  Future<void> respondToSuggestion(String id, String response) async {
+    await _dio.post('/api/proactive/respond', data: {
+      'id': id,
+      'response': response,
+    });
+  }
 }

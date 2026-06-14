@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 import '../providers/settings_provider.dart';
+import '../providers/learning_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
@@ -40,6 +41,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/plug.svg',
     'lib/icon/slash/music-notes.svg',
     'lib/icon/slash/shield-check.svg',
+    'lib/icon/slash/lightbulb.svg',
     'lib/icon/slash/puzzle-piece.svg',
     'lib/icon/slash/cpu.svg',
     'lib/icon/slash/archive.svg',
@@ -55,6 +57,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_providers'),
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
+    '🧠 Learning',
     'Skills',
     L10n.t('tab_gpu_config'),
     L10n.t('backup'),
@@ -66,6 +69,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   Widget build(BuildContext context) {
     ref.watch(localeProvider);
     final tabs = _tabs;
+    final tabIndex = _activeTab.clamp(0, tabs.length - 1);
 
     return Dialog(
       backgroundColor: MemoTheme.of(context).bgApp,
@@ -132,7 +136,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                       padding: EdgeInsets.symmetric(vertical: 12),
                       itemCount: tabs.length,
                       itemBuilder: (context, index) {
-                        final isActive = _activeTab == index;
+                        final isActive = tabIndex == index;
                         final iconColor = isActive
                             ? MemoTheme.accent
                             : MemoTheme.of(context).textDim;
@@ -197,7 +201,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                   Expanded(
                     child: Container(
                       color: MemoTheme.of(context).bgApp,
-                      child: _buildTabContent(_activeTab),
+                      child: _buildTabContent(tabIndex),
                     ),
                   ),
                 ],
@@ -226,14 +230,16 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 6:
         return _AgentPermissionsTab();
       case 7:
-        return _SkillsTab();
+        return _LearningTab();
       case 8:
-        return _GpuConfigTab();
+        return _SkillsTab();
       case 9:
-        return _BackupRestoreTab();
+        return _GpuConfigTab();
       case 10:
-        return _RemoteAccessTab();
+        return _BackupRestoreTab();
       case 11:
+        return _RemoteAccessTab();
+      case 12:
         return _AboutTab();
       default:
         return SizedBox.shrink();
@@ -2578,6 +2584,314 @@ class _ParamIntInputState extends State<_ParamIntInput> {
         ],
       ],
     );
+  }
+}
+
+// ─── Learning Tab ───────────────────────────────────────────
+
+class _LearningTab extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final settingsAsync = ref.watch(learningSettingsProvider);
+    final patternsAsync = ref.watch(learningPatternsProvider);
+    final theme = MemoTheme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('🧠', style: TextStyle(fontSize: 24)),
+              const SizedBox(width: 10),
+              Text(
+                'Learning Profile',
+                style: TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w600,
+                  color: theme.textMain,
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Memo kullanim aliskanliklarini ogrenir ve proaktif olarak yardim teklif eder.',
+            style: TextStyle(color: theme.textDim, fontSize: 13),
+          ),
+          const SizedBox(height: 16),
+
+          // Settings card
+          settingsAsync.when(
+            loading: () => const CircularProgressIndicator(),
+            error: (e, _) => Text('Hata: $e', style: TextStyle(color: MemoTheme.red)),
+            data: (settings) => _SettingsCard(settings: settings, ref: ref),
+          ),
+          const SizedBox(height: 16),
+
+          // Patterns header
+          Row(
+            children: [
+              Text(
+                'Ogrenilen Patternler',
+                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.textMain),
+              ),
+              const Spacer(),
+              if (patternsAsync.valueOrNull?.isNotEmpty ?? false)
+                TextButton.icon(
+                  onPressed: () => _clearAll(context, ref),
+                  icon: Icon(Icons.delete_sweep_outlined, size: 16, color: MemoTheme.red),
+                  label: Text('Tumunu Sil', style: TextStyle(fontSize: 12, color: MemoTheme.red)),
+                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+                ),
+            ],
+          ),
+          const SizedBox(height: 8),
+
+          // Patterns list
+          Expanded(
+            child: patternsAsync.when(
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(
+                child: Text('Patternler yuklenemedi: $e', style: TextStyle(color: theme.textDim)),
+              ),
+              data: (patterns) {
+                if (patterns.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.auto_awesome_outlined, size: 48, color: theme.textDim),
+                        const SizedBox(height: 12),
+                        Text(
+                          'Henuz pattern yok.',
+                          style: TextStyle(color: theme.textDim, fontSize: 14),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          'Memo sadece gozlem yapiyor.\nBir kac hafta icinde aliskanliklarinizi ogrenir.',
+                          style: TextStyle(color: theme.textDim, fontSize: 12),
+                          textAlign: TextAlign.center,
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.separated(
+                  itemCount: patterns.length,
+                  separatorBuilder: (_, __) => Divider(height: 1, color: theme.borderSoft),
+                  itemBuilder: (_, i) {
+                    final p = patterns[i];
+                    return _PatternCard(pattern: p);
+                  },
+                );
+              },
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearAll(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Tum Ogrenme Verilerini Sil'),
+        content: const Text(
+          'Tum gozlemler ve ogrenilen patternler kalici olarak silinecek. Bu islem geri alinamaz.',
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('Hepsini Sil', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await ref.read(apiClientProvider).clearLearningData();
+    ref.invalidate(learningPatternsProvider);
+  }
+}
+
+class _SettingsCard extends StatelessWidget {
+  final Map<String, dynamic> settings;
+  final WidgetRef ref;
+  const _SettingsCard({required this.settings, required this.ref});
+
+  @override
+  Widget build(BuildContext context) {
+    final enabled = settings['enabled'] as bool? ?? false;
+    final level = settings['level'] as String? ?? 'off';
+    final theme = MemoTheme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Proactive Learning', style: TextStyle(fontWeight: FontWeight.w500, color: theme.textMain)),
+              const Spacer(),
+              Switch(
+                value: enabled,
+                onChanged: (v) {
+                  final notifier = ref.read(learningSettingsProvider.notifier);
+                  // Enabling with a still-"off" level would leave the engine
+                  // dormant, so default to "normal" when turning it on.
+                  if (v) {
+                    notifier.update(true, (level == 'off' || level.isEmpty) ? 'normal' : level);
+                  } else {
+                    notifier.update(false, level);
+                  }
+                },
+                activeColor: MemoTheme.accent,
+              ),
+            ],
+          ),
+          if (enabled) ...[
+            const SizedBox(height: 8),
+            Text('Seviye:', style: TextStyle(fontSize: 12, color: theme.textDim)),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 6,
+              children: ['subtle', 'normal', 'assertive'].map((l) {
+                final selected = level == l;
+                return ChoiceChip(
+                  label: Text(l, style: TextStyle(fontSize: 11, color: selected ? Colors.white : theme.textDim)),
+                  selected: selected,
+                  selectedColor: MemoTheme.accent,
+                  onSelected: selected ? null : (v) => ref.read(learningSettingsProvider.notifier).update(enabled, l),
+                  visualDensity: VisualDensity.compact,
+                );
+              }).toList(),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _PatternCard extends ConsumerWidget {
+  final LearnedPattern pattern;
+  const _PatternCard({required this.pattern});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = MemoTheme.of(context);
+    final confPct = (pattern.confidence * 100).round();
+
+    Color confColor;
+    if (confPct >= 70) {
+      confColor = MemoTheme.green;
+    } else if (confPct >= 40) {
+      confColor = MemoTheme.accent;
+    } else {
+      confColor = theme.textDim;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.symmetric(vertical: 4),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
+                  color: confColor.withValues(alpha: 0.15),
+                  borderRadius: BorderRadius.circular(4),
+                ),
+                child: Text(
+                  confPct >= 70 ? '🔥 ${confPct}%' : confPct >= 40 ? '📈 ${confPct}%' : '📊 ${confPct}%',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: confColor, fontFamily: 'JetBrains Mono'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                pattern.activityType,
+                style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13, color: theme.textMain),
+              ),
+              const Spacer(),
+              IconButton(
+                icon: Icon(Icons.delete_outline, size: 16, color: theme.textDim),
+                onPressed: () => _forget(context, ref),
+                visualDensity: VisualDensity.compact,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          Row(
+            children: [
+              _infoChip(Icons.schedule, pattern.timeDisplay, theme),
+              const SizedBox(width: 8),
+              _infoChip(Icons.timer_outlined, pattern.stdDisplay, theme),
+              const SizedBox(width: 8),
+              _infoChip(Icons.calendar_view_week, pattern.daysDisplay, theme),
+              if (pattern.totalCount > 0) ...[
+                const SizedBox(width: 8),
+                _infoChip(Icons.repeat, '${pattern.totalCount}x', theme),
+              ],
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoChip(IconData icon, String text, ThemeColors theme) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+      decoration: BoxDecoration(
+        color: theme.bgApp,
+        borderRadius: BorderRadius.circular(3),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 10, color: theme.textDim),
+          const SizedBox(width: 3),
+          Text(text, style: TextStyle(fontSize: 10, color: theme.textDim, fontFamily: 'JetBrains Mono')),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _forget(BuildContext context, WidgetRef ref) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Pattern\'i Unut'),
+        content: Text('"${pattern.activityType}" pattern\'ini silmek istedigine emin misin?'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unut', style: TextStyle(color: Colors.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    final api = ref.read(apiClientProvider);
+    await api.forgetPattern(pattern.id);
+    ref.invalidate(learningPatternsProvider);
   }
 }
 

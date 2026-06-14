@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
@@ -485,6 +486,15 @@ class MemoApiClient {
     );
   }
 
+  Future<void> setRemoteAccessAutoStart(bool autoStart) async {
+    await _dio.put(
+      '/api/remote-access',
+      data: {
+        'ngrok_auto_start': autoStart,
+      },
+    );
+  }
+
   // ─── Sync ───────────────────────────────────────────────────────
 
   Future<bool> checkSyncAuth() async {
@@ -569,14 +579,14 @@ class MemoApiClient {
     await _dio.post('/api/wipe');
   }
 
-  // ─── Recording ──────────────────────────────────────────────────
+  // ─── Transcription ───────────────────────────────────────────────
 
-  Future<void> startRecording() async {
-    await _dio.post('/api/recording/start');
-  }
-
-  Future<String> stopRecording() async {
-    final res = await _dio.post('/api/recording/stop');
+  Future<String> transcribeAudio(Uint8List audioData) async {
+    final res = await _dio.post(
+      '/api/transcribe',
+      data: audioData,
+      options: Options(contentType: 'application/octet-stream'),
+    );
     return res.data['text'] as String? ?? '';
   }
 

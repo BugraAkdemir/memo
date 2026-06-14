@@ -36,6 +36,7 @@ remote_access:
     token: memo-e6d489ebed894ee99b8201f3
     ngrok_mode: true
     ngrok_token: 2dpkfKlt1r9k0mf5CTK8lQc9z71_5FXy2Wx732n1VYQwPmcHS
+    ngrok_auto_start: true
 llama:
     engine_mode: cpu
     binary_path: ""

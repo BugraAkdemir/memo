@@ -65,11 +65,7 @@ if [ "$OS" == "linux" ]; then
     mkdir -p "$STAGEDIR/binaries"
     cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
 
-    # stt_server varsa kopyala
-    mkdir -p "$STAGEDIR/data/bin"
-    cp data/bin/stt_server "$STAGEDIR/data/bin/" 2>/dev/null || true
-
-    # Config
+	# Config
     cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
     # .env.example'ı .env olarak kopyala (gerçek .env değil)
     cp .env.example "$STAGEDIR/.env" 2>/dev/null || true

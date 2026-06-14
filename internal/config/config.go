@@ -80,10 +80,20 @@ type AppConfig struct {
 	Memory         MemoryConfig       `yaml:"memory"`
 	RemoteAccess   RemoteAccessConfig `yaml:"remote_access"`
 	Llama          LlamaConfig        `yaml:"llama"`
+	Whisper        WhisperConfig      `yaml:"whisper" json:"whisper"`
 	Sync           SyncConfig         `yaml:"sync"`
 	WhatsApp       WhatsAppConfig     `yaml:"whatsapp"`
 	Proactive      ProactiveConfig    `yaml:"proactive" json:"proactive"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
+}
+
+// WhisperConfig holds speech-to-text settings for whisper.cpp.
+type WhisperConfig struct {
+	BinaryPath string `yaml:"binary_path" json:"binary_path"`
+	ModelPath  string `yaml:"model_path" json:"model_path"`
+	Language   string `yaml:"language" json:"language"` // "auto", "tr", "en"
+	Port       int    `yaml:"port" json:"port"`         // default 9877
+	Enabled    bool   `yaml:"enabled" json:"enabled"`   // default true
 }
 
 // ProactiveConfig controls the learning system's proactive engine. Disabled by
@@ -115,11 +125,12 @@ type WhatsAppConfig struct {
 }
 
 type RemoteAccessConfig struct {
-	Enabled    bool   `yaml:"enabled" json:"enabled"`
-	Port       int    `yaml:"port" json:"port"`
-	Token      string `yaml:"token" json:"token"`
-	NgrokMode  bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
-	NgrokToken string `yaml:"ngrok_token" json:"ngrok_token"`
+	Enabled       bool   `yaml:"enabled" json:"enabled"`
+	Port          int    `yaml:"port" json:"port"`
+	Token         string `yaml:"token" json:"token"`
+	NgrokMode     bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
+	NgrokToken    string `yaml:"ngrok_token" json:"ngrok_token"`
+	NgrokAutoStart bool  `yaml:"ngrok_auto_start" json:"ngrok_auto_start"`
 }
 
 type APIConfig struct {
@@ -207,6 +218,11 @@ func Default() *AppConfig {
 			Temperature:   0.7,
 			TopP:          0.9,
 			MaxTokens:     0,
+		},
+		Whisper: WhisperConfig{
+			Enabled:  true,
+			Language: "auto",
+			Port:     9877,
 		},
 		Sync: SyncConfig{
 			Enabled:          false,
@@ -383,6 +399,14 @@ func (c *AppConfig) validate() []string {
 	if c.Llama.MaxTokens < 0 {
 		c.Llama.MaxTokens = 0
 		fixes = append(fixes, "Llama.MaxTokens")
+	}
+	if c.Whisper.Language == "" {
+		c.Whisper.Language = "auto"
+		fixes = append(fixes, "Whisper.Language")
+	}
+	if c.Whisper.Port <= 0 || c.Whisper.Port > 65535 {
+		c.Whisper.Port = 9877
+		fixes = append(fixes, "Whisper.Port")
 	}
 	if c.Sync.TokenPath == "" {
 		c.Sync.TokenPath = "./data/sync_token.json"

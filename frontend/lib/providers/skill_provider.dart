@@ -1,7 +1,5 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/api_client.dart';
-import '../core/l10n.dart';
 import '../providers/chat_provider.dart' show apiClientProvider;
 
 /// A skill definition from the backend.

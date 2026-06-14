@@ -153,8 +153,6 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/sync/now", s.handleSyncNow)
 	mux.HandleFunc("/api/sync/disconnect", s.handleSyncDisconnect)
 	mux.HandleFunc("/api/events", s.handleEvents)
-	mux.HandleFunc("/api/recording/start", s.handleRecordingStart)
-	mux.HandleFunc("/api/recording/stop", s.handleRecordingStop)
 
 	// Provider management
 	mux.HandleFunc("/api/providers", s.handleProviders)

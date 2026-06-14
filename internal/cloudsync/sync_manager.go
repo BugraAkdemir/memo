@@ -38,7 +38,8 @@ const (
 // every SyncInterval interactions.
 type Manager struct {
 	ctx        context.Context
-	persistDir string
+	persistDir string // e.g. data/memory  — SQLite + legacy .gob
+	dataDir    string // e.g. data/         — sessions/, providers.json, etc.
 	passphrase string
 	drive      *driveClient
 	interval   int64
@@ -58,7 +59,7 @@ type AccountInfo struct {
 // New creates a Manager. It is safe to call when sync is disabled — in that
 // case Increment() is a no-op.
 //
-//   - persistDir: directory containing .gob files (e.g. "./data/memory")
+//   - persistDir: memory directory (e.g. "./data/memory")
 //   - passphrase: AES key source; empty = hardware-derived key
 //   - clientID/clientSecret: Google OAuth2 Desktop App credentials
 //   - tokenPath: where the OAuth token is stored on disk
@@ -82,6 +83,7 @@ func New(
 	return &Manager{
 		ctx:        ctx,
 		persistDir: persistDir,
+		dataDir:    filepath.Dir(persistDir), // data/memory → data/
 		passphrase: passphrase,
 		drive:      dc,
 		interval:   int64(intervalMessages),
@@ -300,195 +302,216 @@ func (m *Manager) runPullPipeline() bool {
 	return true
 }
 
-// archive walks persistDir and adds all .gob files (including _chromem.gob)
-// into an in-memory ZIP buffer.
+// archive creates an in-memory ZIP of all user data:
+//
+//   memory/memory.db          — SQLite vector+memory store
+//   memory/<*.gob>            — legacy chromem-go files (kept for compat)
+//   sessions/<id>.json        — chat history
+//   data/providers.json       — API provider config
+//   data/orchestra.json       — orchestra config
+//   data/permissions.json     — agent permissions
+//   data/profile/patterns.json — learned time patterns
 func (m *Manager) archive() ([]byte, error) {
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 	added := 0
 
-	err := filepath.Walk(m.persistDir, func(path string, info os.FileInfo, err error) error {
+	addFile := func(src, destPath string) error {
+		info, err := os.Stat(src)
 		if err != nil {
 			return err
 		}
-		if info.IsDir() {
+		header, err := zip.FileInfoHeader(info)
+		if err != nil {
+			return err
+		}
+		header.Name = destPath
+		header.Method = zip.Deflate
+		w, err := zw.CreateHeader(header)
+		if err != nil {
+			return err
+		}
+		f, err := os.Open(src)
+		if err != nil {
+			return err
+		}
+		defer f.Close()
+		_, err = io.Copy(w, f)
+		return err
+	}
+
+	// 1. memory.db (primary SQLite memory store)
+	memDB := filepath.Join(m.persistDir, "memory.db")
+	if err := addFile(memDB, "memory/memory.db"); err == nil {
+		added++
+		log.Printf("cloudsync: archived memory.db")
+	} else if !os.IsNotExist(err) {
+		log.Printf("cloudsync: WARN skipping memory.db: %v", err)
+	}
+
+	// 2. Legacy .gob files (chromem-go; may be absent on new installs)
+	_ = filepath.Walk(m.persistDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
 			return nil
 		}
 		if !strings.EqualFold(filepath.Ext(info.Name()), ".gob") {
 			return nil
 		}
-
-		relPath, err := filepath.Rel(m.persistDir, path)
+		rel, err := filepath.Rel(m.persistDir, path)
 		if err != nil {
-			return err
+			return nil
 		}
-
-		// Use zip.FileHeader to preserve timestamps for accurate restore.
-		header, err := zip.FileInfoHeader(info)
-		if err != nil {
-			return err
-		}
-		header.Name = relPath
-		header.Method = zip.Deflate
-
-		w, err := zw.CreateHeader(header)
-		if err != nil {
-			return err
-		}
-
-		f, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		defer f.Close()
-
-		_, err = io.Copy(w, f)
-		if err == nil {
+		if addErr := addFile(path, "memory/"+filepath.ToSlash(rel)); addErr == nil {
 			added++
 		}
-		return err
+		return nil
 	})
-	if err != nil {
-		return nil, fmt.Errorf("cloudsync: archive walk: %w", err)
+
+	// 3. Chat sessions
+	sessDir := filepath.Join(m.dataDir, "sessions")
+	_ = filepath.Walk(sessDir, func(path string, info os.FileInfo, err error) error {
+		if err != nil || info.IsDir() {
+			return nil
+		}
+		if !strings.EqualFold(filepath.Ext(info.Name()), ".json") {
+			return nil
+		}
+		if addErr := addFile(path, "sessions/"+info.Name()); addErr == nil {
+			added++
+		}
+		return nil
+	})
+
+	// 4. Root data JSON files
+	for _, name := range []string{"providers.json", "orchestra.json", "permissions.json"} {
+		p := filepath.Join(m.dataDir, name)
+		if err := addFile(p, "data/"+name); err == nil {
+			added++
+		}
 	}
+
+	// 5. Learned patterns
+	patternsPath := filepath.Join(m.dataDir, "profile", "patterns.json")
+	if err := addFile(patternsPath, "data/profile/patterns.json"); err == nil {
+		added++
+	}
+
 	if err := zw.Close(); err != nil {
 		return nil, fmt.Errorf("cloudsync: archive close: %w", err)
 	}
 	if added == 0 {
-		return nil, fmt.Errorf("cloudsync: no .gob files found under %s", m.persistDir)
+		return nil, fmt.Errorf("cloudsync: no data files found to archive under %s", m.dataDir)
 	}
+	log.Printf("cloudsync: archive complete — %d files", added)
 	return buf.Bytes(), nil
 }
 
+// restoreZip extracts a backup ZIP and writes files back to their correct locations.
+//
+// ZIP path prefixes map to real directories:
+//
+//	memory/memory.db          → persistDir/memory.db
+//	memory/<rel>.gob          → persistDir/<rel>.gob  (legacy)
+//	sessions/<id>.json        → dataDir/sessions/<id>.json
+//	data/<name>.json          → dataDir/<name>.json
+//	data/profile/patterns.json → dataDir/profile/patterns.json
 func (m *Manager) restoreZip(zipData []byte) error {
 	zr, err := zip.NewReader(bytes.NewReader(zipData), int64(len(zipData)))
 	if err != nil {
 		return fmt.Errorf("cloudsync: restore open zip: %w", err)
 	}
 
-	tmpDir, err := os.MkdirTemp("", "memo-sync-restore-*")
-	if err != nil {
-		return fmt.Errorf("cloudsync: restore temp dir: %w", err)
+	const maxTotalBytes = 500 << 20 // 500 MB guard
+	const maxFileBytes = 200 << 20  // 200 MB per file
+
+	// resolveEntry maps a zip entry name (forward-slash, no leading /)
+	// to an absolute destination path. Returns "" to skip unknown entries.
+	resolveEntry := func(name string) string {
+		name = filepath.ToSlash(filepath.Clean(name))
+		if name == "." || strings.HasPrefix(name, "..") {
+			return ""
+		}
+		switch {
+		case name == "memory/memory.db":
+			return filepath.Join(m.persistDir, "memory.db")
+		case strings.HasPrefix(name, "memory/") && strings.HasSuffix(name, ".gob"):
+			rel := strings.TrimPrefix(name, "memory/")
+			return filepath.Join(m.persistDir, filepath.FromSlash(rel))
+		case strings.HasPrefix(name, "sessions/") && strings.HasSuffix(name, ".json"):
+			base := filepath.Base(filepath.FromSlash(name))
+			return filepath.Join(m.dataDir, "sessions", base)
+		case strings.HasPrefix(name, "data/") && strings.HasSuffix(name, ".json"):
+			rel := strings.TrimPrefix(name, "data/")
+			return filepath.Join(m.dataDir, filepath.FromSlash(rel))
+		// Backwards compat: old zips stored .gob files without a prefix.
+		case strings.HasSuffix(name, ".gob") && !strings.Contains(name, "/"):
+			return filepath.Join(m.persistDir, name)
+		case strings.HasSuffix(name, ".gob"):
+			return filepath.Join(m.persistDir, filepath.FromSlash(name))
+		}
+		return ""
 	}
-	defer os.RemoveAll(tmpDir)
 
 	var totalUncompressed int64
-	const maxTotalBytes = 500 << 20 // 500MB
-	const maxFileBytes = 100 << 20  // 100MB per file
-
 	extracted := 0
+
 	for _, zf := range zr.File {
 		if zf.FileInfo().IsDir() {
 			continue
 		}
-		cleanName := filepath.Clean(zf.Name)
-		if cleanName == "." || strings.HasPrefix(cleanName, "..") || filepath.IsAbs(cleanName) {
-			continue
-		}
-		if !strings.EqualFold(filepath.Ext(cleanName), ".gob") {
+		dest := resolveEntry(zf.Name)
+		if dest == "" {
+			log.Printf("cloudsync: restore: skipping unknown entry %q", zf.Name)
 			continue
 		}
 
 		uncompSize := int64(zf.UncompressedSize64)
 		if uncompSize > maxFileBytes {
-			return fmt.Errorf("cloudsync: file %s too large (%d bytes)", cleanName, uncompSize)
+			return fmt.Errorf("cloudsync: restore entry %q too large (%d bytes)", zf.Name, uncompSize)
 		}
 		if totalUncompressed+uncompSize > maxTotalBytes {
-			return fmt.Errorf("cloudsync: total uncompressed data exceeds %d bytes", maxTotalBytes)
+			return fmt.Errorf("cloudsync: restore total size exceeds %d bytes", maxTotalBytes)
 		}
 		totalUncompressed += uncompSize
 
-		target := filepath.Join(tmpDir, cleanName)
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return fmt.Errorf("cloudsync: restore mkdir: %w", err)
+		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
+			return fmt.Errorf("cloudsync: restore mkdir for %s: %w", dest, err)
 		}
 
+		// Write to a temp file next to the destination, then rename atomically.
+		tmpDest := dest + ".synctmp"
 		rc, err := zf.Open()
 		if err != nil {
-			return fmt.Errorf("cloudsync: restore open entry: %w", err)
+			return fmt.Errorf("cloudsync: restore open zip entry %q: %w", zf.Name, err)
 		}
-		out, err := os.Create(target)
+		out, err := os.Create(tmpDest)
 		if err != nil {
 			rc.Close()
-			return fmt.Errorf("cloudsync: restore create file: %w", err)
+			return fmt.Errorf("cloudsync: restore create tmp %s: %w", tmpDest, err)
 		}
 		_, cpErr := io.Copy(out, io.LimitReader(rc, maxFileBytes))
 		clErr := out.Close()
 		rc.Close()
 		if cpErr != nil {
-			return fmt.Errorf("cloudsync: restore copy entry: %w", cpErr)
+			os.Remove(tmpDest)
+			return fmt.Errorf("cloudsync: restore copy %q: %w", zf.Name, cpErr)
 		}
 		if clErr != nil {
-			return fmt.Errorf("cloudsync: restore close file: %w", clErr)
+			os.Remove(tmpDest)
+			return fmt.Errorf("cloudsync: restore close tmp: %w", clErr)
+		}
+		if err := os.Rename(tmpDest, dest); err != nil {
+			os.Remove(tmpDest)
+			return fmt.Errorf("cloudsync: restore rename %s: %w", dest, err)
 		}
 		extracted++
+		log.Printf("cloudsync: restored %s", dest)
 	}
+
 	if extracted == 0 {
-		return fmt.Errorf("cloudsync: restore zip has no .gob files")
+		return fmt.Errorf("cloudsync: restore zip had no recognisable entries")
 	}
-
-	if err := os.MkdirAll(m.persistDir, 0755); err != nil {
-		return fmt.Errorf("cloudsync: restore ensure persist dir: %w", err)
-	}
-	if err := filepath.Walk(m.persistDir, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() {
-			return nil
-		}
-		if strings.EqualFold(filepath.Ext(info.Name()), ".gob") {
-			if err := os.Remove(path); err != nil {
-				return err
-			}
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("cloudsync: restore clear old gob: %w", err)
-	}
-
-	if err := filepath.Walk(tmpDir, func(path string, info os.FileInfo, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
-		if info.IsDir() {
-			return nil
-		}
-		rel, err := filepath.Rel(tmpDir, path)
-		if err != nil {
-			return err
-		}
-		dest := filepath.Join(m.persistDir, rel)
-		if err := os.MkdirAll(filepath.Dir(dest), 0755); err != nil {
-			return err
-		}
-
-		srcFile, err := os.Open(path)
-		if err != nil {
-			return err
-		}
-		dstFile, err := os.Create(dest)
-		if err != nil {
-			srcFile.Close()
-			return err
-		}
-		_, cpErr := io.Copy(dstFile, srcFile)
-		srcCloseErr := srcFile.Close()
-		dstCloseErr := dstFile.Close()
-		if cpErr != nil {
-			return cpErr
-		}
-		if srcCloseErr != nil {
-			return srcCloseErr
-		}
-		if dstCloseErr != nil {
-			return dstCloseErr
-		}
-		return nil
-	}); err != nil {
-		return fmt.Errorf("cloudsync: restore copy to persist: %w", err)
-	}
-
+	log.Printf("cloudsync: restore complete — %d files", extracted)
 	return nil
 }
 

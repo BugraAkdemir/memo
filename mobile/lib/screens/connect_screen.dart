@@ -67,6 +67,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     ref.read(remoteAccessProvider.notifier).disableNgrok();
   }
 
+  void _setAutoStart(bool v) {
+    ref.read(remoteAccessProvider.notifier).setAutoStart(v);
+  }
+
   void _fillAndConnect(String url, String token) {
     _urlCtrl.text = url;
     _tokenCtrl.text = token;
@@ -188,7 +192,15 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
               padding: const EdgeInsets.only(bottom: 16),
               child: _errorBox(ra.error!),
             ),
-          if (ra.status != null) _remoteStatusCard(ra.status!, state),
+          if (ra.status != null) ...[
+            Builder(builder: (_) {
+              if (_ngrokTokenCtrl.text.isEmpty && ra.status!.ngrokToken.isNotEmpty) {
+                _ngrokTokenCtrl.text = ra.status!.ngrokToken;
+              }
+              return const SizedBox.shrink();
+            }),
+            _remoteStatusCard(ra.status!, state),
+          ],
           const SizedBox(height: 16),
           _fieldLabel('NGROK AUTH TOKEN'),
           const SizedBox(height: 8),
@@ -292,10 +304,27 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                   status.ngrokUrl, tapHint: 'Tap to connect'),
             ),
           ],
+          if (status.ngrokToken.isNotEmpty) ...[
+            const SizedBox(height: 6),
+            _statusRow(Icons.vpn_key_outlined, 'Saved token', status.ngrokToken),
+          ],
           if (status.ngrokError.isNotEmpty) ...[
             const SizedBox(height: 6),
             _statusRow(Icons.error_outline, 'Error', status.ngrokError),
           ],
+          const SizedBox(height: 10),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('Auto-start on launch',
+                  style: MemoTheme.body(13, color: MemoTheme.textDim)),
+              Switch(
+                value: status.ngrokAutoStart,
+                onChanged: (v) => _setAutoStart(v),
+                materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              ),
+            ],
+          ),
           if (status.publicUrl != null &&
               state.baseUrl != status.publicUrl) ...[
             const SizedBox(height: 10),

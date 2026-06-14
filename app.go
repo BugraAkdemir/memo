@@ -14,9 +14,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
-	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -40,6 +38,7 @@ import (
 	"memo/internal/truncate"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
+	"memo/internal/whisper"
 )
 
 //go:embed binaries/*
@@ -156,7 +155,7 @@ type App struct {
 	incognitoMu       sync.RWMutex
 	isIncognito       bool
 	incognitoMessages []api.Message
-	sttServer         *exec.Cmd
+	whisperServer     *whisper.Server
 	webServer         *webserver.Server
 	modelStore        *modelstore.Store
 
@@ -344,8 +343,8 @@ func (a *App) startup(ctx context.Context) {
 	// Start STT server in background (DISABLED due to Vosk crashes)
 	// go a.startSTTServer()
 
-	// Remote access via ngrok
-	if cfg.RemoteAccess.Enabled && cfg.RemoteAccess.NgrokMode && cfg.RemoteAccess.NgrokToken != "" {
+	// Remote access via ngrok (if auto-start enabled)
+	if cfg.RemoteAccess.NgrokAutoStart && cfg.RemoteAccess.Enabled && cfg.RemoteAccess.NgrokMode && cfg.RemoteAccess.NgrokToken != "" {
 		a.remoteAccessEnabled = true
 		binPath, err := ngrok.Install(config.DataDir())
 		if err != nil {
@@ -457,46 +456,25 @@ func (a *App) startWebServer(port int) {
 	}
 }
 
-func (a *App) startSTTServer() {
-	var binName string
-	if runtime.GOOS == "windows" {
-		binName = "stt_server_windows.exe"
-	} else if runtime.GOOS == "linux" {
-		binName = "stt_server_linux"
-	} else {
-		log.Printf("STT disabled: OS %s not specifically supported for bundled binary yet.", runtime.GOOS)
+func (a *App) startWhisperServer() {
+	cfg := a.cfg
+	if !cfg.Whisper.Enabled {
+		log.Printf("whisper: disabled in config")
 		return
 	}
 
-	binData, err := embeddedBinaries.ReadFile("binaries/" + binName)
-	if err != nil {
-		log.Printf("STT: embedded binary %s not found in build. STT disabled.", binName)
+	c := whisper.NewServer(cfg.Whisper.Port)
+	if err := c.Start(cfg.Whisper.BinaryPath, cfg.Whisper.ModelPath, cfg.Whisper.Language, cfg.Whisper.Port); err != nil {
+		log.Printf("whisper: %v", err)
 		return
 	}
-
-	tempPath := filepath.Join(os.TempDir(), "memo_stt_server")
-	if runtime.GOOS == "windows" {
-		tempPath += ".exe"
-	}
-
-	// Always overwrite the temp file to ensure it is the latest bundled version
-	err = os.WriteFile(tempPath, binData, 0700)
-	if err != nil {
-		log.Printf("STT server unpacking failed: %v", err)
+	if err := c.WaitReady(10 * time.Second); err != nil {
+		log.Printf("whisper: %v", err)
+		c.Stop()
 		return
 	}
-
-	a.sttServer = exec.Command(tempPath, "tr", "9876")
-	a.sttServer.Stdout = os.Stdout
-	a.sttServer.Stderr = os.Stderr
-	sttSetProcessGroup(a.sttServer)
-
-	if err := a.sttServer.Start(); err != nil {
-		log.Printf("STT server start failed: %v", err)
-		a.sttServer = nil
-		return
-	}
-	log.Println("STT server starting on :9876")
+	a.whisperServer = c
+	log.Println("whisper: server ready")
 }
 
 func (a *App) shutdown(ctx context.Context) {
@@ -505,10 +483,11 @@ func (a *App) shutdown(ctx context.Context) {
 	// Signal memorySaveWorker to stop
 	close(a.memorySaveCh)
 
-	if a.sttServer != nil && a.sttServer.Process != nil {
-		sttKillProcessGroup(a.sttServer)
+	if a.whisperServer != nil {
+		if err := a.whisperServer.Stop(); err != nil {
+			log.Printf("whisper shutdown: %v", err)
+		}
 	}
-	// Stop llama servers if running
 	if a.llamaServer != nil {
 		if err := a.llamaServer.Stop(); err != nil {
 			log.Printf("llama chat shutdown: %v", err)
@@ -528,7 +507,6 @@ func (a *App) shutdown(ctx context.Context) {
 			log.Printf("observer shutdown: %v", err)
 		}
 	}
-	stopRecordingProcess()
 }
 
 // runObserverAnalysis is the learning system's Analysis Layer loop. It detects
@@ -565,29 +543,6 @@ func (a *App) runObserverAnalysis(ctx context.Context) {
 		case <-ticker.C:
 			analyze()
 		}
-	}
-}
-
-// stopRecordingProcess kills an in-flight microphone recording (arecord/sox/ffmpeg)
-// so it doesn't outlive the app and keep writing to the temp WAV forever.
-func stopRecordingProcess() {
-	recMu.Lock()
-	defer recMu.Unlock()
-	if recCmd == nil {
-		return
-	}
-	if recStdin != nil {
-		recStdin.Close()
-		recStdin = nil
-	}
-	if recCmd.Process != nil {
-		recCmd.Process.Kill()
-	}
-	recCmd.Wait()
-	recCmd = nil
-	if recFile != "" {
-		os.Remove(recFile)
-		recFile = ""
 	}
 }
 
@@ -1699,171 +1654,6 @@ func (a *App) GenerateChatTitle() string {
 }
 
 // ─── File Dialog ─────────────────────────────────────────────────
-// ─── Speech to Text ─────────────────────────────────────────────
-
-var (
-	recCmd   *exec.Cmd
-	recStdin io.WriteCloser
-	recFile  string
-	recMu    sync.Mutex
-)
-
-// getDefaultDshowDevice enumerates ffmpeg DirectShow audio devices and returns
-// the first one, or "" if none is found. Note: `-i dummy` always makes ffmpeg
-// exit non-zero (the dummy input can't be opened), so the device list must be
-// parsed from the output regardless of the error.
-func getDefaultDshowDevice() string {
-	out, _ := exec.Command("ffmpeg", "-hide_banner", "-list_devices", "true", "-f", "dshow", "-i", "dummy").CombinedOutput()
-	inAudioSection := false
-	for _, line := range strings.Split(string(out), "\n") {
-		if !strings.Contains(line, "[dshow") {
-			continue
-		}
-		// Older ffmpeg groups devices under section headers; newer ffmpeg
-		// tags each line with "(audio)" / "(video)" instead.
-		if strings.Contains(line, "DirectShow audio devices") {
-			inAudioSection = true
-			continue
-		}
-		if strings.Contains(line, "DirectShow video devices") {
-			inAudioSection = false
-			continue
-		}
-		if strings.Contains(line, "Alternative name") {
-			continue
-		}
-		isAudio := strings.Contains(line, "(audio)") || (inAudioSection && !strings.Contains(line, "(video)"))
-		if !isAudio {
-			continue
-		}
-		a := strings.Index(line, "\"")
-		b := strings.LastIndex(line, "\"")
-		if a != -1 && b > a+1 {
-			return line[a+1 : b]
-		}
-	}
-	return ""
-}
-
-func (a *App) StartRecording() error {
-	recMu.Lock()
-	defer recMu.Unlock()
-
-	if recCmd != nil {
-		return fmt.Errorf("already recording")
-	}
-
-	tmpFile, err := os.CreateTemp("", "memo-stt-*.wav")
-	if err != nil {
-		return fmt.Errorf("temp file: %w", err)
-	}
-	tmpFile.Close()
-	recFile = tmpFile.Name()
-
-	var recordArgs []string
-	var recorder string
-	switch runtime.GOOS {
-	case "windows":
-		recorder = "ffmpeg"
-		dev := getDefaultDshowDevice()
-		if dev == "" {
-			os.Remove(recFile)
-			return fmt.Errorf("no DirectShow audio device found — is a microphone connected and ffmpeg installed?")
-		}
-		recordArgs = []string{"-y", "-f", "dshow", "-i", "audio=" + dev, "-ar", "16000", "-ac", "1", "-acodec", "pcm_s16le", recFile}
-	case "darwin":
-		recorder = "sox"
-		recordArgs = []string{"-d", "-b", "16", "-r", "16000", "-c", "1", recFile}
-	default:
-		recorder = "arecord"
-		recordArgs = []string{"-f", "S16_LE", "-r", "16000", "-c", "1", "-t", "wav", recFile}
-	}
-	recCmd = exec.Command(recorder, recordArgs...)
-	if runtime.GOOS == "windows" {
-		// ffmpeg finalizes the WAV header only on a graceful quit ('q' on
-		// stdin); Process.Kill() leaves a corrupt header.
-		recStdin, _ = recCmd.StdinPipe()
-	}
-	if err := recCmd.Start(); err != nil {
-		recCmd = nil
-		recStdin = nil
-		os.Remove(recFile)
-		return fmt.Errorf("recording start (%s): %w", recorder, err)
-	}
-
-	log.Println("Recording started")
-	return nil
-}
-
-func (a *App) StopRecordingAndTranscribe() (string, error) {
-	recMu.Lock()
-	defer recMu.Unlock()
-
-	if recCmd == nil {
-		return "", fmt.Errorf("not recording")
-	}
-
-	// Stop recording gracefully
-	if recCmd.Process != nil {
-		if runtime.GOOS == "windows" {
-			// Ask ffmpeg to quit via stdin so it finalizes the WAV header,
-			// then force-kill if it doesn't exit in time.
-			if recStdin != nil {
-				io.WriteString(recStdin, "q")
-				recStdin.Close()
-				recStdin = nil
-			}
-			done := make(chan struct{})
-			go func() { recCmd.Wait(); close(done) }()
-			select {
-			case <-done:
-			case <-time.After(3 * time.Second):
-				recCmd.Process.Kill()
-				<-done
-			}
-		} else {
-			recCmd.Process.Signal(os.Interrupt)
-			recCmd.Wait()
-		}
-	} else {
-		recCmd.Wait()
-	}
-	recCmd = nil
-
-	defer os.Remove(recFile)
-
-	// Send WAV to the local STT server
-	audioData, err := os.ReadFile(recFile)
-	if err != nil {
-		return "", fmt.Errorf("read recording: %w", err)
-	}
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	defer cancel()
-
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:9876/transcribe", bytes.NewReader(audioData))
-	if err != nil {
-		return "", fmt.Errorf("stt request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("stt server unreachable (model may still be loading): %w", err)
-	}
-	defer resp.Body.Close()
-
-	var result struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("stt decode: %w", err)
-	}
-
-	log.Printf("STT result: %q", result.Text)
-	return result.Text, nil
-}
-
 func (a *App) findPath(relative string) string {
 	// Try relative to working directory first (dev mode)
 	if _, err := os.Stat(relative); err == nil {
@@ -1882,25 +1672,15 @@ func (a *App) findPath(relative string) string {
 }
 
 func (a *App) TranscribeAudio(audioData []byte) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if a.whisperServer == nil || !a.whisperServer.IsRunning() {
+		a.startWhisperServer()
+	}
+	if a.whisperServer == nil {
+		return "", fmt.Errorf("whisper sunucusu başlatılamadı — binaries/{os}/cpu/ altında whisper-server ve ggml-small.bin olduğundan emin olun")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:9876/transcribe", bytes.NewReader(audioData))
-	if err != nil {
-		return "", fmt.Errorf("stt request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("stt server unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("stt decode: %w", err)
-	}
-	return result.Text, nil
+	return a.whisperServer.Transcribe(ctx, audioData)
 }
 
 // ─── Other ───────────────────────────────────────────────────────
@@ -2205,24 +1985,26 @@ func (a *App) WebCheckConnection() interface{}   { return a.CheckConnection() }
 // ─── Settings: Remote Access ─────────────────────────────────────
 
 type RemoteAccessStatus struct {
-	Enabled    bool     `json:"enabled"`
-	Port       int      `json:"port"`
-	Running    bool     `json:"running"`
-	Addresses  []string `json:"addresses"`
-	Token      string   `json:"token"`
-	NgrokMode  bool     `json:"ngrok_mode"`
-	NgrokToken string   `json:"ngrok_token"`
-	NgrokURL   string   `json:"ngrok_url"`
-	NgrokError string   `json:"ngrok_error"`
+	Enabled        bool     `json:"enabled"`
+	Port           int      `json:"port"`
+	Running        bool     `json:"running"`
+	Addresses      []string `json:"addresses"`
+	Token          string   `json:"token"`
+	NgrokMode      bool     `json:"ngrok_mode"`
+	NgrokToken     string   `json:"ngrok_token"`
+	NgrokURL       string   `json:"ngrok_url"`
+	NgrokError     string   `json:"ngrok_error"`
+	NgrokAutoStart bool     `json:"ngrok_auto_start"`
 }
 
 func (a *App) GetRemoteAccessStatus() interface{} {
 	status := RemoteAccessStatus{
-		Enabled:    a.cfg.RemoteAccess.Enabled,
-		Port:       a.cfg.RemoteAccess.Port,
-		Token:      a.cfg.RemoteAccess.Token,
-		NgrokMode:  a.cfg.RemoteAccess.NgrokMode,
-		NgrokToken: a.cfg.RemoteAccess.NgrokToken,
+		Enabled:        a.cfg.RemoteAccess.Enabled,
+		Port:           a.cfg.RemoteAccess.Port,
+		Token:          a.cfg.RemoteAccess.Token,
+		NgrokMode:      a.cfg.RemoteAccess.NgrokMode,
+		NgrokToken:     a.cfg.RemoteAccess.NgrokToken,
+		NgrokAutoStart: a.cfg.RemoteAccess.NgrokAutoStart,
 	}
 	if a.webServer != nil {
 		status.Running = a.webServer.IsRunning()
@@ -2305,6 +2087,27 @@ func (a *App) SetNgrokMode(enabled bool, port int, ngrokToken string) error {
 	}
 
 	return a.SetRemoteAccess(enabled, port)
+}
+
+func (a *App) SetNgrokAutoStart(autoStart bool) {
+	a.cfg.RemoteAccess.NgrokAutoStart = autoStart
+	config.Save(a.cfg)
+	// If enabling auto-start and all conditions met, start ngrok immediately
+	if autoStart && a.cfg.RemoteAccess.Enabled && a.cfg.RemoteAccess.NgrokMode && a.cfg.RemoteAccess.NgrokToken != "" && a.ngrokServer == nil {
+		binPath, err := ngrok.Install(config.DataDir())
+		if err != nil {
+			log.Printf("[ngrok] Install error: %v", err)
+			return
+		}
+		mgr := ngrok.NewManager(binPath)
+		if err := mgr.Start(a.cfg.RemoteAccess.Port, a.cfg.RemoteAccess.NgrokToken); err != nil {
+			log.Printf("[ngrok] Start error: %v", err)
+			return
+		}
+		a.ngrokServer = mgr
+		a.remoteAccessEnabled = true
+		log.Println("[ngrok] Tunnel started via auto-start toggle")
+	}
 }
 
 func generateToken() string {

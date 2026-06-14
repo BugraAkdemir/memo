@@ -37,6 +37,12 @@ dependencies:
   # SVG rendering (provider logos)
   flutter_svg: ^2.0.10+1
 
+  # Audio recording (voice keyboard)
+  record: ^5.2.1
+
+dependency_overrides:
+  record_linux: ^1.0.0
+
 dev_dependencies:
   flutter_test:
     sdk: flutter

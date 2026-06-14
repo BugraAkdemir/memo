@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'package:flutter/material.dart';
 import '../../core/theme.dart';
 import '../../models/agent.dart';
@@ -14,7 +13,6 @@ class AgentChatCard extends StatelessWidget {
     final isError = event.type == 'tool_error';
     final isDenied = event.type == 'permission_denied';
     final isExecuting = event.type == 'tool_executing' || event.type == 'permission_request';
-    final isResult = event.type == 'tool_result';
 
     final iconColor = isError || isDenied
         ? MemoTheme.red
@@ -27,16 +25,6 @@ class AgentChatCard extends StatelessWidget {
             : isDenied
                 ? Icons.block
                 : Icons.check_circle_outline;
-
-    final statusText = isExecuting
-        ? 'dusunuyor...'
-        : isError
-            ? 'hata'
-            : isDenied
-                ? 'reddedildi'
-                : isResult
-                    ? 'tamam'
-                    : '';
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 3),

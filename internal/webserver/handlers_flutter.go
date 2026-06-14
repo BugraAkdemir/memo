@@ -494,32 +494,6 @@ func (s *Server) handleGenerateTitle(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"title": title})
 }
 
-// ─── Recording ──────────────────────────────────────────────────
-
-func (s *Server) handleRecordingStart(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || s.fullBridge == nil {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return
-	}
-	if err := s.fullBridge.StartRecording(); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]string{"ok": "true"})
-}
-
-func (s *Server) handleRecordingStop(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost || s.fullBridge == nil {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return
-	}
-	text, err := s.fullBridge.StopRecordingAndTranscribe()
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	writeJSON(w, map[string]string{"text": text})
-}
 
 // ─── Remote Access ──────────────────────────────────────────────
 
@@ -533,24 +507,30 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, s.fullBridge.GetRemoteAccessStatus())
 	case http.MethodPut:
 		var req struct {
-			Enabled    bool   `json:"enabled"`
-			Port       int    `json:"port"`
-			NgrokMode  bool   `json:"ngrok_mode"`
-			NgrokToken string `json:"ngrok_token"`
+			Enabled        *bool  `json:"enabled"`
+			Port           int    `json:"port"`
+			NgrokMode      bool   `json:"ngrok_mode"`
+			NgrokToken     string `json:"ngrok_token"`
+			NgrokAutoStart *bool  `json:"ngrok_auto_start"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if req.NgrokMode {
-			if err := s.fullBridge.SetNgrokMode(req.Enabled, req.Port, req.NgrokToken); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-		} else {
-			if err := s.fullBridge.SetRemoteAccess(req.Enabled, req.Port); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
+		if req.NgrokAutoStart != nil {
+			s.fullBridge.SetNgrokAutoStart(*req.NgrokAutoStart)
+		}
+		if req.Enabled != nil {
+			if req.NgrokMode {
+				if err := s.fullBridge.SetNgrokMode(*req.Enabled, req.Port, req.NgrokToken); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
+			} else {
+				if err := s.fullBridge.SetRemoteAccess(*req.Enabled, req.Port); err != nil {
+					http.Error(w, err.Error(), http.StatusInternalServerError)
+					return
+				}
 			}
 		}
 		writeJSON(w, map[string]string{"ok": "true"})

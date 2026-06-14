@@ -1,5 +1,3 @@
-import 'package:flutter/material.dart';
-
 /// Orchestra mode configuration — mirrors Go `orchestra.OrchestraConfig`
 class OrchestraConfig {
   final bool enabled;

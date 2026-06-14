@@ -100,8 +100,7 @@ class MemoApiClient {
   String _baseUrl;
   String _token = '';
 
-  MemoApiClient({String baseUrl = 'http://192.168.1.100:8090'})
-      : _baseUrl = baseUrl {
+  MemoApiClient({String this._baseUrl = 'http://192.168.1.100:8090'}) {
     _initDio();
   }
 
@@ -369,6 +368,15 @@ class MemoApiClient {
       },
     );
   }
+
+  Future<void> setRemoteAccessAutoStart(bool autoStart) async {
+    await _dio.put(
+      '/api/remote-access',
+      data: {
+        'ngrok_auto_start': autoStart,
+      },
+    );
+  }
 }
 
 class RemoteAccessStatus {
@@ -381,6 +389,7 @@ class RemoteAccessStatus {
   final String ngrokToken;
   final String ngrokUrl;
   final String ngrokError;
+  final bool ngrokAutoStart;
 
   const RemoteAccessStatus({
     this.enabled = false,
@@ -392,6 +401,7 @@ class RemoteAccessStatus {
     this.ngrokToken = '',
     this.ngrokUrl = '',
     this.ngrokError = '',
+    this.ngrokAutoStart = false,
   });
 
   factory RemoteAccessStatus.fromJson(Map<String, dynamic> json) {
@@ -405,6 +415,7 @@ class RemoteAccessStatus {
       ngrokToken: json['ngrok_token'] as String? ?? '',
       ngrokUrl: json['ngrok_url'] as String? ?? '',
       ngrokError: json['ngrok_error'] as String? ?? '',
+      ngrokAutoStart: json['ngrok_auto_start'] as bool? ?? false,
     );
   }
 

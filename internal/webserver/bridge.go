@@ -55,10 +55,6 @@ type FullBridge interface {
 	ListChats() []sessions.SessionInfo
 	NewAgentChat(projectPath string) string
 
-	// Recording
-	StartRecording() error
-	StopRecordingAndTranscribe() (string, error)
-
 	// Agent
 	GetAgentEnabled() bool
 	SetAgentEnabled(enabled bool) error
@@ -94,6 +90,7 @@ type FullBridge interface {
 	GetRemoteAccessStatus() interface{}
 	SetRemoteAccess(enabled bool, port int) error
 	SetNgrokMode(enabled bool, port int, ngrokToken string) error
+	SetNgrokAutoStart(autoStart bool)
 	GetListenAddr() string
 	SetListenAddr(addr string)
 

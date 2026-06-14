@@ -14,6 +14,7 @@ import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../providers/recording_provider.dart';
 import '../providers/skill_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
@@ -701,6 +702,109 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   }
                 },
               ),
+              // Mic toggle for voice keyboard
+              () {
+                final recState = ref.watch(recordingProvider);
+                final isRecording = recState == RecordingState.recording;
+                final isTranscribing = recState == RecordingState.transcribing;
+
+                return TweenAnimationBuilder<double>(
+                  tween: Tween(begin: 1.0, end: isRecording ? 1.12 : 1.0),
+                  duration: const Duration(milliseconds: 800),
+                  curve: Curves.easeInOut,
+                  builder: (context, scale, _) {
+                    return AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        boxShadow: isRecording
+                            ? [
+                                BoxShadow(
+                                  color: MemoTheme.red.withAlpha(80),
+                                  blurRadius: 16,
+                                  spreadRadius: 3,
+                                ),
+                              ]
+                            : [],
+                      ),
+                      child: Transform.scale(
+                        scale: scale,
+                        child: _InputIconButton(
+                          icon: isRecording
+                              ? Icons.mic
+                              : isTranscribing
+                                  ? Icons.hourglass_top
+                                  : Icons.mic_outlined,
+                          tooltip: isRecording
+                              ? L10n.t('mic_stop_recording')
+                              : isTranscribing
+                                  ? L10n.t('mic_transcribing')
+                                  : L10n.t('mic_start_recording'),
+                          disabled: isSending || isTranscribing,
+                          iconColor: isRecording
+                              ? MemoTheme.red
+                              : isTranscribing
+                                  ? MemoTheme.accent
+                                  : null,
+                          onTap: () async {
+                            final notifier = ref.read(recordingProvider.notifier);
+                            if (isRecording) {
+                              final text = await notifier.stop();
+                              if (text != null && text.isNotEmpty && mounted) {
+                                final current = _controller.text;
+                                final sep = current.isEmpty ? '' : ' ';
+                                _controller.text = '$current$sep$text';
+                                _controller.selection = TextSelection.collapsed(
+                                  offset: _controller.text.length,
+                                );
+                                _focusNode.requestFocus();
+                              }
+                            } else {
+                              notifier.start();
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                );
+              }(),
+              // Status label when recording/transcribing
+              if (ref.watch(recordingProvider) != RecordingState.idle)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      if (ref.watch(recordingProvider) == RecordingState.transcribing)
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: MemoTheme.accent,
+                          ),
+                        ),
+                      if (ref.watch(recordingProvider) == RecordingState.transcribing)
+                        const SizedBox(width: 6),
+                      if (ref.watch(recordingProvider) == RecordingState.recording)
+                        _RecordingDot(),
+                      if (ref.watch(recordingProvider) == RecordingState.recording)
+                        const SizedBox(width: 6),
+                      Text(
+                        ref.watch(recordingProvider) == RecordingState.recording
+                            ? L10n.t('mic_recording')
+                            : L10n.t('mic_transcribing'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: ref.watch(recordingProvider) == RecordingState.recording
+                              ? MemoTheme.red
+                              : MemoTheme.accent,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
               const SizedBox(width: 8),
 
               // ─── Text Input ──────────────────────────
@@ -820,6 +924,48 @@ class _InputIconButton extends StatelessWidget {
                 ? MemoTheme.of(context).textDim.withValues(alpha: 0.3)
                 : MemoTheme.of(context).textDim),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+// ─── Recording indicator dot ─────────────────────────────────────
+
+class _RecordingDot extends StatefulWidget {
+  @override
+  State<_RecordingDot> createState() => _RecordingDotState();
+}
+
+class _RecordingDotState extends State<_RecordingDot>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 800),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: _ctrl,
+      child: Container(
+        width: 8,
+        height: 8,
+        decoration: const BoxDecoration(
+          shape: BoxShape.circle,
+          color: MemoTheme.red,
         ),
       ),
     );

@@ -173,6 +173,14 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     try {
       await _client.setRemoteAccess(true, 8090,
           ngrokMode: true, ngrokToken: ngrokToken);
+      // Poll until ngrok URL appears (takes a few seconds)
+      for (int i = 0; i < 30; i++) {
+        await Future.delayed(const Duration(seconds: 1));
+        try {
+          final s = await _client.getRemoteAccess();
+          if (s.ngrokUrl.isNotEmpty || s.ngrokError.isNotEmpty) break;
+        } catch (_) {}
+      }
       await loadStatus();
     } catch (e) {
       state = state.copyWith(
@@ -191,6 +199,27 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
       state = state.copyWith(
         enabling: false,
         error: 'Failed to disable remote access: $e',
+      );
+    }
+  }
+
+  Future<void> setAutoStart(bool autoStart) async {
+    try {
+      await _client.setRemoteAccessAutoStart(autoStart);
+      // If enabling, poll until ngrok URL appears
+      if (autoStart) {
+        for (int i = 0; i < 30; i++) {
+          await Future.delayed(const Duration(seconds: 1));
+          try {
+            final s = await _client.getRemoteAccess();
+            if (s.ngrokUrl.isNotEmpty || s.ngrokError.isNotEmpty) break;
+          } catch (_) {}
+        }
+      }
+      await loadStatus();
+    } catch (e) {
+      state = state.copyWith(
+        error: 'Failed to set auto-start: $e',
       );
     }
   }

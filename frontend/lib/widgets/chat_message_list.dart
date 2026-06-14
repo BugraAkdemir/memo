@@ -7,7 +7,6 @@ import 'package:flutter_markdown/flutter_markdown.dart';
 import '../core/theme.dart';
 import '../models/chat.dart';
 import '../models/agent.dart';
-import 'agent/agent_chat_card.dart';
 import '../core/l10n.dart';
 
 final Map<int, MarkdownStyleSheet> _styleCache = {};
@@ -736,7 +735,6 @@ class _AgentStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final theme = MemoTheme.of(context);
     final lastEvent = events.last;
 
     final isExecuting = lastEvent.type == 'tool_executing';

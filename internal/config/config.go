@@ -41,6 +41,23 @@ func DataPath(elem ...string) string {
 	return filepath.Join(append([]string{DataDir()}, elem...)...)
 }
 
+// ConfigDir returns the directory that holds config.yaml. It is the "config"
+// sibling of the data directory's parent, so it tracks DataDir automatically:
+//   - Linux/macOS:      "config" (relative, next to "data")
+//   - Windows installer: %ProgramData%\Memo\config
+//   - runner workspaces: <MEMO_DATA_DIR parent>\config (e.g. %USERPROFILE%\.memo\config)
+//
+// This keeps config readable AND writable in every distribution mode, since the
+// install directory (Program Files) is read-only for standard users.
+func ConfigDir() string {
+	return filepath.Join(filepath.Dir(DataDir()), "config")
+}
+
+// ConfigFilePath returns the full path to config.yaml under ConfigDir.
+func ConfigFilePath() string {
+	return filepath.Join(ConfigDir(), "config.yaml")
+}
+
 func resolveDataDir() string {
 	if v := strings.TrimSpace(os.Getenv("MEMO_DATA_DIR")); v != "" {
 		return v
@@ -216,7 +233,21 @@ func Load(path string) (*AppConfig, error) {
 	cfgPath = path
 	cfg := Default()
 
+	seeded := false
 	data, err := os.ReadFile(path)
+	if err != nil && os.IsNotExist(err) {
+		// On first run at a writable location (e.g. the Windows installer's
+		// %ProgramData%\Memo\config), seed from a config.yaml shipped next to the
+		// executable / working dir so packaged defaults aren't lost.
+		if seed, serr := os.ReadFile(filepath.Join("config", "config.yaml")); serr == nil {
+			abs, _ := filepath.Abs(path)
+			seedAbs, _ := filepath.Abs(filepath.Join("config", "config.yaml"))
+			if abs != seedAbs {
+				data, err = seed, nil
+				seeded = true
+			}
+		}
+	}
 	if err != nil {
 		if os.IsNotExist(err) {
 			cfg.validate() // normalize data paths (e.g. rebase onto DataDir) before first save
@@ -235,6 +266,12 @@ func Load(path string) (*AppConfig, error) {
 
 	if fixes := cfg.validate(); len(fixes) > 0 {
 		log.Printf("config: applied defaults for: %v", fixes)
+	}
+	if seeded {
+		// Persist the seeded config to its writable home so later runs read it directly.
+		if saveErr := saveToFile(cfg, path); saveErr != nil {
+			log.Printf("config: failed to persist seeded config: %v", saveErr)
+		}
 	}
 	instance = cfg
 	return cfg, nil
@@ -255,7 +292,7 @@ func Save(cfg *AppConfig) error {
 	defer mu.Unlock()
 
 	if cfgPath == "" {
-		cfgPath = "config/config.yaml"
+		cfgPath = ConfigFilePath()
 	}
 
 	cfg.validate()

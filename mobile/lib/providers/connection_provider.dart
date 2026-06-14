@@ -12,6 +12,11 @@ final connectionStateProvider =
   return ConnectionNotifier(ref.read(apiClientProvider));
 });
 
+final remoteAccessProvider =
+    StateNotifierProvider<RemoteAccessNotifier, RemoteAccessState>((ref) {
+  return RemoteAccessNotifier(ref.read(apiClientProvider));
+});
+
 class ConnectionState {
   final bool connected;
   final bool connecting;
@@ -48,6 +53,34 @@ class ConnectionState {
   }
 }
 
+class RemoteAccessState {
+  final bool loading;
+  final RemoteAccessStatus? status;
+  final bool enabling;
+  final String? error;
+
+  const RemoteAccessState({
+    this.loading = false,
+    this.status,
+    this.enabling = false,
+    this.error,
+  });
+
+  RemoteAccessState copyWith({
+    bool? loading,
+    RemoteAccessStatus? status,
+    bool? enabling,
+    String? error,
+  }) {
+    return RemoteAccessState(
+      loading: loading ?? this.loading,
+      status: status ?? this.status,
+      enabling: enabling ?? this.enabling,
+      error: error,
+    );
+  }
+}
+
 class ConnectionNotifier extends StateNotifier<ConnectionState> {
   final MemoApiClient _client;
 
@@ -62,7 +95,8 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
     state = state.copyWith(baseUrl: url, token: token);
   }
 
-  Future<void> connect(String url, {String token = '', bool remote = false}) async {
+  Future<void> connect(String url,
+      {String token = '', bool remote = false}) async {
     state = state.copyWith(
       connecting: true,
       error: null,
@@ -113,5 +147,51 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
 
   void disconnect() {
     state = state.copyWith(connected: false);
+  }
+}
+
+class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
+  final MemoApiClient _client;
+
+  RemoteAccessNotifier(this._client) : super(const RemoteAccessState());
+
+  Future<void> loadStatus() async {
+    state = state.copyWith(loading: true, error: null);
+    try {
+      final status = await _client.getRemoteAccess();
+      state = RemoteAccessState(loading: false, status: status);
+    } catch (e) {
+      state = RemoteAccessState(
+        loading: false,
+        error: 'Failed to load remote access status: $e',
+      );
+    }
+  }
+
+  Future<void> enableNgrok(String ngrokToken) async {
+    state = state.copyWith(enabling: true, error: null);
+    try {
+      await _client.setRemoteAccess(true, 8090,
+          ngrokMode: true, ngrokToken: ngrokToken);
+      await loadStatus();
+    } catch (e) {
+      state = state.copyWith(
+        enabling: false,
+        error: 'Failed to enable ngrok: $e',
+      );
+    }
+  }
+
+  Future<void> disableNgrok() async {
+    state = state.copyWith(enabling: true, error: null);
+    try {
+      await _client.setRemoteAccess(false, 8090);
+      await loadStatus();
+    } catch (e) {
+      state = state.copyWith(
+        enabling: false,
+        error: 'Failed to disable remote access: $e',
+      );
+    }
   }
 }

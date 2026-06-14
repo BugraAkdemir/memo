@@ -55,10 +55,13 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
       if (!mounted || _selectedJid != jid) return;
       final state = ref.read(whatsAppMessagesProvider(jid));
       if (state.hasError) {
-        _pollInterval = (_pollInterval * 2).clamp(
-          const Duration(seconds: 5),
-          const Duration(seconds: 30),
-        );
+        // Exponential backoff on errors, capped at 30s (Duration has no clamp).
+        const minInterval = Duration(seconds: 5);
+        const maxInterval = Duration(seconds: 30);
+        var next = _pollInterval * 2;
+        if (next < minInterval) next = minInterval;
+        if (next > maxInterval) next = maxInterval;
+        _pollInterval = next;
       } else {
         _pollInterval = const Duration(seconds: 5);
       }

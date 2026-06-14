@@ -22,7 +22,7 @@ identity:
         - Yapay zeka olduğunu inkâr etmiyorsun ama sürekli hatırlatmana da gerek yok.
     incognito_prompt: ""
 memory:
-    persist_dir: ./data/memory
+    persist_dir: data/memory
     top_k: 5
     min_similarity: 0.1
     memory_enabled: true
@@ -44,7 +44,7 @@ llama:
     ctx_size: 4096
     max_history: 20
     max_context_tokens: 0
-    models_dir: ./data/models
+    models_dir: data/models
     temperature: 0.6
     top_p: 0.9
     max_tokens: 0
@@ -53,11 +53,11 @@ sync:
     client_id: ""
     client_secret: ""
     passphrase: ""
-    token_path: ./data/sync_token.json
+    token_path: data/sync_token.json
     interval_messages: 50
 whatsapp:
     enabled: false
-    data_dir: ./data/whatsapp
+    data_dir: data/whatsapp
     auto_index: true
     max_history_days: 7
 proactive:

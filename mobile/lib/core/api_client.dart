@@ -350,6 +350,66 @@ class MemoApiClient {
     final res = await _dio.get('/api/models/download/progress');
     return res.data as Map<String, dynamic>;
   }
+
+  // ─── Remote Access ──────────────────────────────────────────────
+
+  Future<RemoteAccessStatus> getRemoteAccess() async {
+    final res = await _dio.get('/api/remote-access');
+    return RemoteAccessStatus.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> setRemoteAccess(bool enabled, int port, {bool ngrokMode = false, String ngrokToken = ''}) async {
+    await _dio.put(
+      '/api/remote-access',
+      data: {
+        'enabled': enabled,
+        'port': port,
+        'ngrok_mode': ngrokMode,
+        'ngrok_token': ngrokToken,
+      },
+    );
+  }
+}
+
+class RemoteAccessStatus {
+  final bool enabled;
+  final int port;
+  final bool running;
+  final List<String> addresses;
+  final String token;
+  final bool ngrokMode;
+  final String ngrokToken;
+  final String ngrokUrl;
+  final String ngrokError;
+
+  const RemoteAccessStatus({
+    this.enabled = false,
+    this.port = 8090,
+    this.running = false,
+    this.addresses = const [],
+    this.token = '',
+    this.ngrokMode = false,
+    this.ngrokToken = '',
+    this.ngrokUrl = '',
+    this.ngrokError = '',
+  });
+
+  factory RemoteAccessStatus.fromJson(Map<String, dynamic> json) {
+    return RemoteAccessStatus(
+      enabled: json['enabled'] as bool? ?? false,
+      port: json['port'] as int? ?? 8090,
+      running: json['running'] as bool? ?? false,
+      addresses: (json['addresses'] as List?)?.cast<String>() ?? [],
+      token: json['token'] as String? ?? '',
+      ngrokMode: json['ngrok_mode'] as bool? ?? false,
+      ngrokToken: json['ngrok_token'] as String? ?? '',
+      ngrokUrl: json['ngrok_url'] as String? ?? '',
+      ngrokError: json['ngrok_error'] as String? ?? '',
+    );
+  }
+
+  String? get publicUrl =>
+      ngrokUrl.isNotEmpty ? ngrokUrl : (addresses.isNotEmpty ? addresses.first : null);
 }
 
 class ProviderConfig {

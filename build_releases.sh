@@ -93,6 +93,9 @@ DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
 # Writable workspace
 MEMO_HOME="$HOME/.memo"
+# Pin the app's data directory to this writable workspace (overrides the
+# OS default so data lands here regardless of launch CWD).
+export MEMO_DATA_DIR="$MEMO_HOME/data"
 mkdir -p "$MEMO_HOME/data/bin"
 mkdir -p "$MEMO_HOME/data/models"
 mkdir -p "$MEMO_HOME/data/memory"
@@ -290,6 +293,8 @@ elif [ "$OS" == "windows" ]; then
 @echo off
 cd /d "%~dp0"
 set PATH=%~dp0data\bin;%PATH%
+REM Pin the app's data directory to a writable per-user workspace.
+set "MEMO_DATA_DIR=%USERPROFILE%\.memo\data"
 
 REM First-run: copy example configs if needed
 if not exist "%USERPROFILE%\.memo\data\providers.json" (

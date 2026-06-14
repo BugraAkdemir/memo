@@ -53,6 +53,7 @@ Name: "{app}\data\memory"
 Name: "{app}\data\sessions"
 Name: "{app}\data\agent-backups"
 Name: "{commonappdata}\{#MyAppName}\data"; Permissions: users-full
+Name: "{commonappdata}\{#MyAppName}\config"; Permissions: users-full
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; WorkingDir: "{app}"
@@ -72,11 +73,15 @@ Root: HKA; Subkey: "Software\Classes\Applications\memo_flutter.exe\SupportedType
 [Code]
 procedure CurStepChanged(CurStep: TSetupStep);
 var
+  BaseDir: String;
   DataDir: String;
+  ConfigDir: String;
 begin
   if CurStep = ssPostInstall then
   begin
-    DataDir := ExpandConstant('{commonappdata}') + '\Memo\data';
+    BaseDir := ExpandConstant('{commonappdata}') + '\Memo';
+    DataDir := BaseDir + '\data';
+    ConfigDir := BaseDir + '\config';
     if not DirExists(DataDir) then
     begin
       CreateDir(DataDir);
@@ -89,6 +94,15 @@ begin
     if not FileExists(DataDir + '\permissions.json') then
     begin
       SaveStringToFile(DataDir + '\permissions.json', '[]', False);
+    end;
+
+    // Seed config.yaml into the writable ProgramData location so the app
+    // (which reads/writes config from there) starts with packaged defaults.
+    if not DirExists(ConfigDir) then
+      CreateDir(ConfigDir);
+    if (not FileExists(ConfigDir + '\config.yaml')) and FileExists(ExpandConstant('{app}') + '\config\config.yaml') then
+    begin
+      FileCopy(ExpandConstant('{app}') + '\config\config.yaml', ConfigDir + '\config.yaml', False);
     end;
   end;
 end;

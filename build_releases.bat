@@ -104,6 +104,8 @@ echo cd /d "%%~dp0"
 echo.
 echo set "APP_DIR=%%~dp0"
 echo set "MEMO_HOME=%%USERPROFILE%%\\.memo"
+echo :: Pin the app's data directory to this writable workspace
+echo set "MEMO_DATA_DIR=%%MEMO_HOME%%\data"
 echo.
 echo :: Writable workspace
 echo if not exist "%%MEMO_HOME%%\data\bin" mkdir "%%MEMO_HOME%%\data\bin"

@@ -251,7 +251,7 @@ func (a *App) startup(ctx context.Context) {
 	// Load .env before anything else so credentials are available via os.Getenv.
 	loadDotEnv(".env")
 
-	cfg, err := config.Load("config/config.yaml")
+	cfg, err := config.Load(config.ConfigFilePath())
 	if err != nil {
 		log.Printf("WARN: config: %v", err)
 		a.emitEvent("config_load_error", err.Error())

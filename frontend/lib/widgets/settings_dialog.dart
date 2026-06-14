@@ -57,7 +57,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_providers'),
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
-    '🧠 Learning',
+    'Learning',
     'Skills',
     L10n.t('tab_gpu_config'),
     L10n.t('backup'),
@@ -2610,8 +2610,6 @@ class _LearningTab extends ConsumerWidget {
         children: [
           Row(
             children: [
-              Text('🧠', style: TextStyle(fontSize: 24)),
-              const SizedBox(width: 10),
               Text(
                 'Learning Profile',
                 style: TextStyle(

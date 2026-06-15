@@ -9,7 +9,7 @@ import (
 	"sync"
 )
 
-// DangerLevel indicates the potential risk of a tool.
+// DangerLevel indicates the potential risk of a tool...
 type DangerLevel string
 
 const (

@@ -13,6 +13,7 @@ import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
 import 'whatsapp_screen.dart';
+import 'calendar_screen.dart';
 
 /// Main app shell — NavRail + content area.
 class AppShell extends ConsumerStatefulWidget {
@@ -23,7 +24,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp
+  int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp 4=calendar
 
   @override
   Widget build(BuildContext context) {
@@ -48,6 +49,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           const AgentScreen(),
                           ModelStoreScreen(key: ValueKey('models_$locale')),
                           const WhatsAppScreen(),
+                          const CalendarScreen(),
                         ],
                       ),
                     ),
@@ -128,6 +130,16 @@ class _AppShellState extends ConsumerState<AppShell> {
             label: 'WhatsApp',
             isActive: _currentIndex == 3,
             onTap: () => setState(() => _currentIndex = 3),
+          ),
+
+          const SizedBox(height: 8),
+
+          _NavRailButton(
+            icon: Icons.calendar_month_outlined,
+            activeIcon: Icons.calendar_month,
+            label: 'Takvim',
+            isActive: _currentIndex == 4,
+            onTap: () => setState(() => _currentIndex = 4),
           ),
 
           const Spacer(),

@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"memo/internal/api"
 	"memo/internal/memory"
@@ -55,6 +56,7 @@ func (a *App) SendMessage(userMsg string) string {
 		return a.handleIncognito(userMsg, "")
 	}
 	a.observerRecorder.RecordMessage(userMsg)
+	go a.processMessageIntent(userMsg, "chat", "", time.Now())
 	messages := a.buildMessages(context.Background(), userMsg, nil)
 	sm := a.getSessionManager()
 	if sm != nil {
@@ -84,6 +86,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
 	a.observerRecorder.RecordMessage(userMsg)
+	go a.processMessageIntent(userMsg, "chat", "", time.Now())
 
 	// Inject active skill instructions into system prompt
 	messages := a.buildMessages(ctx, userMsg, nil)

@@ -57,6 +57,17 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 |--------|----------|----------|
 | `GET`/`PUT` | `/api/orchestra/config` | Orkestra yapılandırmasını getir/güncelle |
 
+### Proaktif Öğrenme ve Takvim (YENİ)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/calendar/events?from=&to=` | Zaman aralığındaki etkinlikleri listele |
+| `POST` | `/api/calendar/events` | Manuel etkinlik ekle (`title`, `start_time`, `description`) |
+| `DELETE` | `/api/calendar/events/{id}` | Etkinlik sil |
+| `GET`/`PUT` | `/api/calendar/settings` | Hatırlatma süresi (`reminder_lead_minutes`) |
+| `GET`/`PUT` | `/api/learning/settings` | Tek model modu (`single_model_enabled`, `model_id`) |
+
+Detay: [[Proaktif Öğrenme ve Takvim]]
+
 ### Senkronizasyon
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|

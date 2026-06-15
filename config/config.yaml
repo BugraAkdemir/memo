@@ -70,4 +70,9 @@ whatsapp:
 proactive:
     enabled: true
     level: normal
-active_provider: ""
+learning:
+    single_model_enabled: false
+    model_id: ""
+calendar:
+    reminder_lead_minutes: 30
+active_provider: openai

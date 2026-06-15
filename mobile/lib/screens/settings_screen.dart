@@ -13,12 +13,13 @@ class SettingsScreen extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     return DefaultTabController(
-      length: 3,
+      length: 4,
       child: Scaffold(
         backgroundColor: MemoTheme.bg,
         appBar: AppBar(
           title: const Text('Settings'),
           bottom: TabBar(
+            isScrollable: true,
             indicatorColor: MemoTheme.accent,
             indicatorWeight: 2,
             indicatorSize: TabBarIndicatorSize.label,
@@ -31,11 +32,12 @@ class SettingsScreen extends ConsumerWidget {
               Tab(text: 'Connection'),
               Tab(text: 'Providers'),
               Tab(text: 'Models'),
+              Tab(text: 'Learning'),
             ],
           ),
         ),
         body: const TabBarView(
-          children: [_GeneralTab(), _ProvidersTab(), _ModelsTab()],
+          children: [_GeneralTab(), _ProvidersTab(), _ModelsTab(), _LearningTab()],
         ),
       ),
     );
@@ -445,4 +447,184 @@ Widget _emptyView(String title, String sub) {
       ),
     ),
   );
+}
+
+// ── Learning ─────────────────────────────────────────────────────────
+class _LearningTab extends ConsumerStatefulWidget {
+  const _LearningTab();
+
+  @override
+  ConsumerState<_LearningTab> createState() => _LearningTabState();
+}
+
+class _LearningTabState extends ConsumerState<_LearningTab> {
+  bool _loading = true;
+  bool _saving = false;
+  String? _error;
+
+  bool _singleModel = false;
+  final _modelCtrl = TextEditingController();
+  int _reminderLead = 30;
+
+  static const _leadOptions = [10, 15, 30, 60, 120];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _modelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final client = ref.read(apiClientProvider);
+      final learning = await client.getLearningSettings();
+      final calendar = await client.getCalendarSettings();
+      if (!mounted) return;
+      setState(() {
+        _singleModel = learning['single_model_enabled'] as bool? ?? false;
+        _modelCtrl.text = learning['model_id'] as String? ?? '';
+        final lead = calendar['reminder_lead_minutes'] as int? ?? 30;
+        _reminderLead = _leadOptions.contains(lead) ? lead : 30;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$e';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final client = ref.read(apiClientProvider);
+      await client.updateLearningSettings(
+        singleModelEnabled: _singleModel,
+        modelId: _modelCtrl.text.trim(),
+      );
+      await client.updateCalendarSettings(reminderLeadMinutes: _reminderLead);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Learning settings saved')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator(color: MemoTheme.accent));
+    }
+    if (_error != null) return _errorView(_error!);
+
+    return ListView(
+      padding: const EdgeInsets.all(20),
+      children: [
+        Text('SINGLE MODEL MODE',
+            style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2)),
+        const SizedBox(height: 8),
+        _card(
+          child: Column(
+            children: [
+              Row(
+                children: [
+                  _iconTile(Icons.psychology_outlined),
+                  const SizedBox(width: 14),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('Use one model for learning',
+                            style: MemoTheme.body(15, w: FontWeight.w600)),
+                        const SizedBox(height: 3),
+                        Text('Intent & proactive decisions skip Orchestra',
+                            style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
+                      ],
+                    ),
+                  ),
+                  Switch(
+                    value: _singleModel,
+                    activeColor: MemoTheme.accent,
+                    onChanged: (v) => setState(() => _singleModel = v),
+                  ),
+                ],
+              ),
+              if (_singleModel) ...[
+                const SizedBox(height: 12),
+                TextField(
+                  controller: _modelCtrl,
+                  autocorrect: false,
+                  style: MemoTheme.mono(14, color: MemoTheme.text),
+                  decoration: const InputDecoration(
+                    prefixIcon: Icon(Icons.smart_toy_outlined, size: 20),
+                    hintText: 'Model ID (e.g. gpt-4o-mini)',
+                  ),
+                ),
+              ],
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text('CALENDAR REMINDER',
+            style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2)),
+        const SizedBox(height: 8),
+        _card(
+          child: Row(
+            children: [
+              _iconTile(Icons.notifications_outlined),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Text('Notify before an event',
+                    style: MemoTheme.body(15, w: FontWeight.w600)),
+              ),
+              DropdownButton<int>(
+                value: _reminderLead,
+                dropdownColor: MemoTheme.surface,
+                underline: const SizedBox.shrink(),
+                style: MemoTheme.body(14, color: MemoTheme.text),
+                items: _leadOptions
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(m < 60 ? '$m min' : '${m ~/ 60} h'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _reminderLead = v ?? 30),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 24),
+        SizedBox(
+          height: 50,
+          child: FilledButton(
+            onPressed: _saving ? null : _save,
+            style: FilledButton.styleFrom(
+              backgroundColor: MemoTheme.accent,
+              foregroundColor: MemoTheme.onAccent,
+              disabledBackgroundColor: MemoTheme.surfaceHi,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
+            ),
+            child: _saving
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent))
+                : Text('Save', style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
+          ),
+        ),
+      ],
+    );
+  }
 }

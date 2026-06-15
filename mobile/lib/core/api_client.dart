@@ -377,6 +377,80 @@ class MemoApiClient {
       },
     );
   }
+
+  // ── Backend events ────────────────────────────────────────────────────────
+
+  /// Polls /api/events and returns the list of recent AppEvent objects.
+  Future<List<Map<String, dynamic>>> getAppEvents() async {
+    try {
+      final res = await _dio.get('/api/events');
+      if (res.data is List) {
+        return List<Map<String, dynamic>>.from(res.data as List);
+      }
+    } catch (_) {}
+    return [];
+  }
+
+  // ── Calendar ──────────────────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getCalendarEvents({
+    DateTime? from,
+    DateTime? to,
+  }) async {
+    final params = <String, String>{};
+    if (from != null) params['from'] = from.toUtc().toIso8601String();
+    if (to != null) params['to'] = to.toUtc().toIso8601String();
+    final res = await _dio.get('/api/calendar/events', queryParameters: params);
+    if (res.data is List) {
+      return List<Map<String, dynamic>>.from(res.data as List);
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> addCalendarEvent({
+    required String title,
+    required DateTime startTime,
+    String description = '',
+  }) async {
+    final res = await _dio.post('/api/calendar/events', data: {
+      'title': title,
+      'start_time': startTime.toUtc().toIso8601String(),
+      'description': description,
+    });
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> deleteCalendarEvent(String id) async {
+    await _dio.delete('/api/calendar/events/$id');
+  }
+
+  Future<Map<String, dynamic>> getCalendarSettings() async {
+    final res = await _dio.get('/api/calendar/settings');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateCalendarSettings({required int reminderLeadMinutes}) async {
+    await _dio.put('/api/calendar/settings', data: {
+      'reminder_lead_minutes': reminderLeadMinutes,
+    });
+  }
+
+  // ── Learning settings ─────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getLearningSettings() async {
+    final res = await _dio.get('/api/learning/settings');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateLearningSettings({
+    required bool singleModelEnabled,
+    required String modelId,
+  }) async {
+    await _dio.put('/api/learning/settings', data: {
+      'single_model_enabled': singleModelEnabled,
+      'model_id': modelId,
+    });
+  }
 }
 
 class RemoteAccessStatus {

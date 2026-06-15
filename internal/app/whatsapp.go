@@ -57,7 +57,35 @@ func (a *App) initWhatsApp() {
 		}
 	}()
 
+	// Consume incoming messages for intent extraction and observer recording.
+	go a.runWhatsAppIntentLoop(a.ctx)
+
 	log.Println("WhatsApp client initialized and connecting...")
+}
+
+// runWhatsAppIntentLoop drains the WhatsApp message channel and runs intent
+// extraction on each message. It exits when ctx is cancelled.
+func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
+	if a.waClient == nil {
+		return
+	}
+	ch := a.waClient.MessageChannel()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			// Record in observer regardless of intent.
+			if a.observerRecorder != nil {
+				a.observerRecorder.RecordWhatsAppMessage(msg.Text, msg.FromMe, msg.Timestamp)
+			}
+			// Run intent extraction asynchronously so the channel never blocks.
+			go a.processMessageIntent(msg.Text, "whatsapp", msg.SenderName, msg.Timestamp)
+		}
+	}
 }
 
 // StartWhatsApp connects to WhatsApp Web.

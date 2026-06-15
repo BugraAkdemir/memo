@@ -107,6 +107,7 @@ Memo'yu sadece bir sohbet arayüzü değil, gerçek bir **hafıza kabuğu** ve A
 |-------|-------|----------|
 | [[Ajan Modu]] | ✅ Backend | 8 araç, 6 izin politikası, yürütme sandbox'ı, hız sınırlaması |
 | [[Orkestra Modu]] | ✅ Backend | 8 uzman rolü, Planla→Yürüt→Sentezle, SSE ilerleme |
+| [[Proaktif Öğrenme ve Takvim]] | ✅ Tam | Niyet çıkarımı (sohbet + WhatsApp), takvim + hatırlatma, tek model modu |
 | [[Özellik Kataloğu]] | ✅ Tam | Özellik-özellik tam liste |
 
 ---
@@ -121,6 +122,7 @@ Bu sürümde eklenen büyük yeni yetenekler.
 | 🔌 Harici Sağlayıcılar | [[Harici Sağlayıcılar]] | 7 LLM API'si akıllı yönlendirme ve fallback ile |
 | 🤖 Ajan Modu | [[Ajan Modu]] | İzin sistemi ve sandbox ile AI araç çağırma |
 | 🎵 Orkestra Modu | [[Orkestra Modu]] | Uzman rollerle çoklu model işbirliği |
+| 🧠 Proaktif Öğrenme ve Takvim | [[Proaktif Öğrenme ve Takvim]] | Niyet çıkarımı, otomatik takvim + hatırlatma, tek model modu |
 | 📦 Yedekleme & Restore | [[Yedekleme & Restore]] | `.memo` formatı, Google Drive senk, tam silme |
 | 📱 Mobil Uygulama | [[Mobil Uygulama]] | Android/iOS eşlikçi istemci |
 | 🐛 Hata Düzeltmeleri | [[Çözülen Sorunlar]] | Tüm kod tabanında 61 belgelenmiş düzeltme |
@@ -164,7 +166,7 @@ Memo'yu kurun, geliştirin ve kullanın.
 |-------|----------|
 | 🏛️ Mimari | [[Sistem Genel Bakış]], [[Backend (Go) Mimarisi]], [[Frontend (Flutter) Tasarımı]], [[Veri Katmanı ve Kalıcılık]], [[Teknik Derinlemesine]] |
 | 🧠 Özellikler | [[RAG ve Semantik Hafıza]], [[Hafıza Deposu (SQLite + vec0)]], [[Model Yönetimi (Fabrika)]], [[Gizli Mod (Incognito)]], [[Bulut Senkronizasyonu]], [[Multimodal Yetenekler (Görsel ve Ses)]], [[WhatsApp Entegrasyonu]], [[Yedekleme & Restore]], [[Mobil Uygulama]] |
-| 🧰 Gelişmiş | [[Ajan Modu]], [[Orkestra Modu]], [[Harici Sağlayıcılar]], [[Özellik Kataloğu]] |
+| 🧰 Gelişmiş | [[Ajan Modu]], [[Orkestra Modu]], [[Proaktif Öğrenme ve Takvim]], [[Harici Sağlayıcılar]], [[Özellik Kataloğu]] |
 | 🔧 Referans | [[API Dökümantasyonu]], [[Llama.cpp Entegrasyonu]], [[Vektör Arama Mantığı]], [[Gelişmiş Ayarlar]], [[CGO Bayrakları]], [[Varsayılan Sistem Promptu]] |
 | 📋 Operasyon | [[Bilinen Sorunlar]], [[Çözülen Sorunlar]], [[Sorun Giderme]], [[Katkıda Bulunma]], [[Yol Haritası]] |
 | 🆕 v3.1.0 | [[v3.1.0 Özellikleri]] |

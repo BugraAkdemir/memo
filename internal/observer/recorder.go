@@ -3,6 +3,7 @@
 package observer
 
 import (
+	"encoding/json"
 	"log"
 	"sort"
 	"strings"
@@ -80,6 +81,73 @@ func (r *Recorder) RecordOrchestraRun(userMsg string) {
 		ActivityType: ActivityOrchestra,
 		Topic:        ClassifyTopic(userMsg),
 		WordCount:    wordCount(userMsg),
+	})
+}
+
+// IntentMeta holds the structured metadata stored with an intent observation.
+// Using a plain struct (not importing intent package) avoids circular imports.
+type IntentMeta struct {
+	Summary     string `json:"summary"`
+	Source      string `json:"source"`       // "chat" | "whatsapp"
+	ContactName string `json:"contact_name"`
+	IsHabit     bool   `json:"is_habit"`
+	HabitTime   string `json:"habit_time,omitempty"` // "HH:MM"
+}
+
+// RecordIntent records a declared intent or habit. When it is a habit with a
+// known time, TimeOfDaySeconds is set to that time so the pattern analyzer
+// learns the declared schedule rather than the time the message was sent.
+func (r *Recorder) RecordIntent(summary, source, contactName string, isHabit bool, habitTime *time.Time, msgTime time.Time) {
+	if !r.enabled() {
+		return
+	}
+	meta := IntentMeta{
+		Summary:     summary,
+		Source:      source,
+		ContactName: contactName,
+		IsHabit:     isHabit,
+	}
+	if habitTime != nil {
+		meta.HabitTime = habitTime.Format("15:04")
+	}
+	metaJSON, _ := json.Marshal(meta)
+
+	// Store.Record derives DayOfWeek and TimeOfDaySeconds from the timestamp, so
+	// to make the pattern analyzer learn the *declared* schedule (e.g. "her gün
+	// 21:00") rather than the time the message was sent, we encode the habit time
+	// into the timestamp itself (keeping the message date).
+	ts := msgTime
+	if isHabit && habitTime != nil {
+		ts = time.Date(msgTime.Year(), msgTime.Month(), msgTime.Day(),
+			habitTime.Hour(), habitTime.Minute(), 0, 0, msgTime.Location())
+	}
+
+	r.record(Observation{
+		Timestamp:    ts,
+		ActivityType: ActivityIntent,
+		Topic:        "general",
+		Metadata:     string(metaJSON),
+	})
+}
+
+// RecordWhatsAppMessage records a WhatsApp message observation (no intent).
+func (r *Recorder) RecordWhatsAppMessage(text string, fromMe bool, msgTime time.Time) {
+	if !r.enabled() {
+		return
+	}
+	direction := "incoming"
+	if fromMe {
+		direction = "outgoing"
+	}
+	meta := map[string]string{"direction": direction}
+	metaJSON, _ := json.Marshal(meta)
+
+	r.record(Observation{
+		Timestamp:    msgTime,
+		ActivityType: ActivityWhatsApp,
+		Topic:        ClassifyTopic(text),
+		WordCount:    wordCount(text),
+		Metadata:     string(metaJSON),
 	})
 }
 

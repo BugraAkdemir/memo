@@ -3478,99 +3478,106 @@ class _LearningTab extends ConsumerWidget {
     final patternsAsync = ref.watch(learningPatternsProvider);
     final theme = MemoTheme.of(context);
 
-    return Padding(
+    // The whole tab scrolls — this keeps the layout overflow-proof no matter
+    // how much content (settings cards + a long patterns list) is present.
+    return ListView(
       padding: const EdgeInsets.all(20),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Text(
-                'Learning Profile',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.w600,
-                  color: theme.textMain,
-                ),
+      children: [
+        Row(
+          children: [
+            Text(
+              'Learning Profile',
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w600,
+                color: theme.textMain,
               ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            'Memo kullanim aliskanliklarini ogrenir ve proaktif olarak yardim teklif eder.',
-            style: TextStyle(color: theme.textDim, fontSize: 13),
-          ),
-          const SizedBox(height: 16),
-
-          // Settings card
-          settingsAsync.when(
-            loading: () => const CircularProgressIndicator(),
-            error: (e, _) => Text('Hata: $e', style: TextStyle(color: MemoTheme.red)),
-            data: (settings) => _SettingsCard(settings: settings, ref: ref),
-          ),
-          const SizedBox(height: 16),
-
-          // Patterns header
-          Row(
-            children: [
-              Text(
-                'Ogrenilen Patternler',
-                style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.textMain),
-              ),
-              const Spacer(),
-              if (patternsAsync.valueOrNull?.isNotEmpty ?? false)
-                TextButton.icon(
-                  onPressed: () => _clearAll(context, ref),
-                  icon: Icon(Icons.delete_sweep_outlined, size: 16, color: MemoTheme.red),
-                  label: Text('Tumunu Sil', style: TextStyle(fontSize: 12, color: MemoTheme.red)),
-                  style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
-                ),
-            ],
-          ),
-          const SizedBox(height: 8),
-
-          // Patterns list
-          Expanded(
-            child: patternsAsync.when(
-              loading: () => const Center(child: CircularProgressIndicator()),
-              error: (e, _) => Center(
-                child: Text('Patternler yuklenemedi: $e', style: TextStyle(color: theme.textDim)),
-              ),
-              data: (patterns) {
-                if (patterns.isEmpty) {
-                  return Center(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Icon(Icons.auto_awesome_outlined, size: 48, color: theme.textDim),
-                        const SizedBox(height: 12),
-                        Text(
-                          'Henuz pattern yok.',
-                          style: TextStyle(color: theme.textDim, fontSize: 14),
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'Memo sadece gozlem yapiyor.\nBir kac hafta icinde aliskanliklarinizi ogrenir.',
-                          style: TextStyle(color: theme.textDim, fontSize: 12),
-                          textAlign: TextAlign.center,
-                        ),
-                      ],
-                    ),
-                  );
-                }
-                return ListView.separated(
-                  itemCount: patterns.length,
-                  separatorBuilder: (_, __) => Divider(height: 1, color: theme.borderSoft),
-                  itemBuilder: (_, i) {
-                    final p = patterns[i];
-                    return _PatternCard(pattern: p);
-                  },
-                );
-              },
             ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        Text(
+          'Memo kullanim aliskanliklarini ogrenir ve proaktif olarak yardim teklif eder.',
+          style: TextStyle(color: theme.textDim, fontSize: 13),
+        ),
+        const SizedBox(height: 16),
+
+        // Settings card
+        settingsAsync.when(
+          loading: () => const CircularProgressIndicator(),
+          error: (e, _) => Text('Hata: $e', style: TextStyle(color: MemoTheme.red)),
+          data: (settings) => _SettingsCard(settings: settings, ref: ref),
+        ),
+        const SizedBox(height: 12),
+
+        // Single model mode + calendar reminder.
+        const _ModelRoutingCard(),
+        const SizedBox(height: 16),
+
+        // Patterns header
+        Row(
+          children: [
+            Text(
+              'Ogrenilen Patternler',
+              style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.textMain),
+            ),
+            const Spacer(),
+            if (patternsAsync.valueOrNull?.isNotEmpty ?? false)
+              TextButton.icon(
+                onPressed: () => _clearAll(context, ref),
+                icon: Icon(Icons.delete_sweep_outlined, size: 16, color: MemoTheme.red),
+                label: Text('Tumunu Sil', style: TextStyle(fontSize: 12, color: MemoTheme.red)),
+                style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
+              ),
+          ],
+        ),
+        const SizedBox(height: 8),
+
+        // Patterns list (rendered inline; the outer ListView handles scrolling).
+        patternsAsync.when(
+          loading: () => const Center(child: Padding(
+            padding: EdgeInsets.all(24),
+            child: CircularProgressIndicator(),
+          )),
+          error: (e, _) => Center(
+            child: Text('Patternler yuklenemedi: $e', style: TextStyle(color: theme.textDim)),
           ),
-        ],
-      ),
+          data: (patterns) {
+            if (patterns.isEmpty) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 24),
+                child: Center(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.auto_awesome_outlined, size: 48, color: theme.textDim),
+                      const SizedBox(height: 12),
+                      Text(
+                        'Henuz pattern yok.',
+                        style: TextStyle(color: theme.textDim, fontSize: 14),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'Memo sadece gozlem yapiyor.\nBir kac hafta icinde aliskanliklarinizi ogrenir.',
+                        style: TextStyle(color: theme.textDim, fontSize: 12),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
+                ),
+              );
+            }
+            return Column(
+              children: [
+                for (int i = 0; i < patterns.length; i++) ...[
+                  if (i > 0) Divider(height: 1, color: theme.borderSoft),
+                  _PatternCard(pattern: patterns[i]),
+                ],
+              ],
+            );
+          },
+        ),
+      ],
     );
   }
 
@@ -3656,6 +3663,167 @@ class _SettingsCard extends StatelessWidget {
               }).toList(),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+// Single model mode + calendar reminder lead time. Loads/saves directly via
+// the API client; both belong to the learning system's model routing.
+class _ModelRoutingCard extends ConsumerStatefulWidget {
+  const _ModelRoutingCard();
+
+  @override
+  ConsumerState<_ModelRoutingCard> createState() => _ModelRoutingCardState();
+}
+
+class _ModelRoutingCardState extends ConsumerState<_ModelRoutingCard> {
+  bool _loading = true;
+  String? _error;
+  bool _singleModel = false;
+  final _modelCtrl = TextEditingController();
+  int _reminderLead = 30;
+  bool _saving = false;
+
+  static const _leadOptions = [10, 15, 30, 60, 120];
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  @override
+  void dispose() {
+    _modelCtrl.dispose();
+    super.dispose();
+  }
+
+  Future<void> _load() async {
+    try {
+      final api = ref.read(apiClientProvider);
+      final learning = await api.getLearningSettings();
+      final calendar = await api.getCalendarSettings();
+      if (!mounted) return;
+      setState(() {
+        _singleModel = learning['single_model_enabled'] as bool? ?? false;
+        _modelCtrl.text = learning['model_id'] as String? ?? '';
+        final lead = calendar['reminder_lead_minutes'] as int? ?? 30;
+        _reminderLead = _leadOptions.contains(lead) ? lead : 30;
+        _loading = false;
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() {
+        _error = '$e';
+        _loading = false;
+      });
+    }
+  }
+
+  Future<void> _save() async {
+    setState(() => _saving = true);
+    try {
+      final api = ref.read(apiClientProvider);
+      await api.updateLearningSettings(_singleModel, _modelCtrl.text.trim());
+      await api.updateCalendarSettings(_reminderLead);
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('Öğrenme ayarları kaydedildi')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Hata: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _saving = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    if (_loading) {
+      return const Padding(
+        padding: EdgeInsets.all(8),
+        child: SizedBox(height: 18, width: 18, child: CircularProgressIndicator(strokeWidth: 2)),
+      );
+    }
+    if (_error != null) {
+      return Text('Hata: $_error', style: TextStyle(color: MemoTheme.red, fontSize: 12));
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Text('Tek Model Modu',
+                  style: TextStyle(fontWeight: FontWeight.w500, color: theme.textMain)),
+              const Spacer(),
+              Switch(
+                value: _singleModel,
+                activeColor: MemoTheme.accent,
+                onChanged: (v) => setState(() => _singleModel = v),
+              ),
+            ],
+          ),
+          Text(
+            'Niyet analizi ve proaktif kararlar Orchestra yerine tek modeli kullanır.',
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+          if (_singleModel) ...[
+            const SizedBox(height: 8),
+            TextField(
+              controller: _modelCtrl,
+              style: TextStyle(color: theme.textMain, fontSize: 13),
+              decoration: InputDecoration(
+                isDense: true,
+                hintText: 'Model ID (ör. gpt-4o-mini)',
+                hintStyle: TextStyle(color: theme.textDim, fontSize: 13),
+                border: const OutlineInputBorder(),
+              ),
+            ),
+          ],
+          const SizedBox(height: 14),
+          Row(
+            children: [
+              Text('Takvim hatırlatma:',
+                  style: TextStyle(fontSize: 13, color: theme.textMain)),
+              const Spacer(),
+              DropdownButton<int>(
+                value: _reminderLead,
+                underline: const SizedBox.shrink(),
+                style: TextStyle(fontSize: 13, color: theme.textMain),
+                items: _leadOptions
+                    .map((m) => DropdownMenuItem(
+                          value: m,
+                          child: Text(m < 60 ? '$m dk önce' : '${m ~/ 60} saat önce'),
+                        ))
+                    .toList(),
+                onChanged: (v) => setState(() => _reminderLead = v ?? 30),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: _saving ? null : _save,
+              child: _saving
+                  ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Text('Kaydet'),
+            ),
+          ),
         ],
       ),
     );

@@ -973,4 +973,62 @@ class MemoApiClient {
       'response': response,
     });
   }
+
+  // ─── Learning model routing ─────────────────────────────────────
+
+  /// Get learning settings (single model mode + model id).
+  Future<Map<String, dynamic>> getLearningSettings() async {
+    final res = await _dio.get('/api/learning/settings');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  /// Update learning settings (single model mode + model id).
+  Future<void> updateLearningSettings(bool singleModelEnabled, String modelId) async {
+    await _dio.put('/api/learning/settings', data: {
+      'single_model_enabled': singleModelEnabled,
+      'model_id': modelId,
+    });
+  }
+
+  // ─── Calendar ───────────────────────────────────────────────────
+
+  /// List calendar events in [from, to].
+  Future<List<Map<String, dynamic>>> getCalendarEvents({DateTime? from, DateTime? to}) async {
+    final params = <String, String>{};
+    if (from != null) params['from'] = from.toUtc().toIso8601String();
+    if (to != null) params['to'] = to.toUtc().toIso8601String();
+    final res = await _dio.get('/api/calendar/events', queryParameters: params);
+    if (res.data is List) {
+      return List<Map<String, dynamic>>.from(res.data as List);
+    }
+    return [];
+  }
+
+  /// Add a manual calendar event.
+  Future<Map<String, dynamic>> addCalendarEvent(String title, DateTime startTime, String description) async {
+    final res = await _dio.post('/api/calendar/events', data: {
+      'title': title,
+      'start_time': startTime.toUtc().toIso8601String(),
+      'description': description,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  /// Delete a calendar event.
+  Future<void> deleteCalendarEvent(String id) async {
+    await _dio.delete('/api/calendar/events/$id');
+  }
+
+  /// Get calendar settings (reminder lead minutes).
+  Future<Map<String, dynamic>> getCalendarSettings() async {
+    final res = await _dio.get('/api/calendar/settings');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  /// Update calendar settings (reminder lead minutes).
+  Future<void> updateCalendarSettings(int reminderLeadMinutes) async {
+    await _dio.put('/api/calendar/settings', data: {
+      'reminder_lead_minutes': reminderLeadMinutes,
+    });
+  }
 }

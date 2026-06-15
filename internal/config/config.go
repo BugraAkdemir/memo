@@ -84,7 +84,24 @@ type AppConfig struct {
 	Sync           SyncConfig         `yaml:"sync"`
 	WhatsApp       WhatsAppConfig     `yaml:"whatsapp"`
 	Proactive      ProactiveConfig    `yaml:"proactive" json:"proactive"`
+	Learning       LearningConfig     `yaml:"learning" json:"learning"`
+	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
+}
+
+// LearningConfig controls the learning system's model routing. When
+// SingleModelEnabled is true the intent extractor and proactive engine both use
+// ModelID directly instead of routing through Orchestra.
+type LearningConfig struct {
+	SingleModelEnabled bool   `yaml:"single_model_enabled" json:"single_model_enabled"`
+	ModelID            string `yaml:"model_id" json:"model_id"`
+}
+
+// CalendarConfig controls the calendar system.
+type CalendarConfig struct {
+	// ReminderLeadMinutes is how many minutes before an event the reminder
+	// notification fires. Default 30.
+	ReminderLeadMinutes int `yaml:"reminder_lead_minutes" json:"reminder_lead_minutes"`
 }
 
 // WhisperConfig holds speech-to-text settings for whisper.cpp.
@@ -238,6 +255,13 @@ func Default() *AppConfig {
 		Proactive: ProactiveConfig{
 			Enabled: false,
 			Level:   "off",
+		},
+		Learning: LearningConfig{
+			SingleModelEnabled: false,
+			ModelID:            "",
+		},
+		Calendar: CalendarConfig{
+			ReminderLeadMinutes: 30,
 		},
 	}
 }
@@ -415,6 +439,11 @@ func (c *AppConfig) validate() []string {
 	if c.Sync.IntervalMessages <= 0 {
 		c.Sync.IntervalMessages = 50
 		fixes = append(fixes, "Sync.IntervalMessages")
+	}
+
+	if c.Calendar.ReminderLeadMinutes <= 0 {
+		c.Calendar.ReminderLeadMinutes = 30
+		fixes = append(fixes, "Calendar.ReminderLeadMinutes")
 	}
 
 	// Rebase process-relative "data/..." paths onto the resolved DataDir so that

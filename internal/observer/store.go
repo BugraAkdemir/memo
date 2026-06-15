@@ -24,6 +24,8 @@ const (
 	ActivityAgent     = "agent"
 	ActivityOrchestra = "orchestra"
 	ActivitySession   = "session"
+	ActivityIntent    = "intent"    // declared intent or habit from chat/WhatsApp
+	ActivityWhatsApp  = "whatsapp" // message received/sent via WhatsApp
 )
 
 // Observation is a single recorded event. It is intentionally low-level and

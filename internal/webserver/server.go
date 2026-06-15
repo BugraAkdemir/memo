@@ -205,6 +205,14 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/import", s.handleImport)
 	mux.HandleFunc("/api/wipe", s.handleWipe)
 
+	// Calendar
+	mux.HandleFunc("/api/calendar/events", s.handleCalendarEvents)
+	mux.HandleFunc("/api/calendar/events/", s.handleCalendarEvent)
+	mux.HandleFunc("/api/calendar/settings", s.handleCalendarSettings)
+
+	// Learning settings
+	mux.HandleFunc("/api/learning/settings", s.handleLearningSettings)
+
 	handler := limitBodyMiddleware(corsMiddleware(mux, addr), 50<<20) // 50 MB request body limit (file uploads need up to 50MB)
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),

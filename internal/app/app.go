@@ -15,9 +15,11 @@ import (
 
 	"memo/internal/agent"
 	"memo/internal/api"
+	"memo/internal/calendar"
 	"memo/internal/cloudsync"
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/intent"
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
@@ -136,6 +138,12 @@ type App struct {
 	// Proactive engine — gated by cfg.Proactive (default off).
 	proactivePending *proactive.PendingStore
 	proactiveEngine  *proactive.Engine
+
+	// Intent extraction and calendar system.
+	intentExtractor *intent.Extractor
+	learningMu      sync.RWMutex // protects intentExtractor reassignment
+	calendarStore   *calendar.Store
+	calendarRemind  *calendar.ReminderLoop
 
 	agentExecutor *agent.Executor
 	agentEnabled  bool
@@ -274,6 +282,8 @@ func (a *App) Startup(ctx context.Context) {
 	)
 	go a.proactiveEngine.Start(ctx)
 
+	a.initLearning(ctx)
+
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
 	a.llamaEmbedServer = llama.NewServer(cfg.Llama.EmbeddingPort, 512)
@@ -400,6 +410,11 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.observerStore != nil {
 		if err := a.observerStore.Close(); err != nil {
 			log.Printf("observer shutdown: %v", err)
+		}
+	}
+	if a.calendarStore != nil {
+		if err := a.calendarStore.Close(); err != nil {
+			log.Printf("calendar shutdown: %v", err)
 		}
 	}
 	stopRecordingProcess()

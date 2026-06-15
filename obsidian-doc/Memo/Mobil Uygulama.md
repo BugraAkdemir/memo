@@ -16,6 +16,11 @@
 | Sağlayıcı görüntüleme/açma/kapama | ✅ |
 | Model listeleme, başlatma/durdurma | ✅ |
 | `/model` komutu ile model değiştirme | ✅ |
+| **Takvim sekmesi** (aylık görünüm, etkinlik ekle/sil) | ✅ |
+| **Etkinlik hatırlatma bildirimleri** (`flutter_local_notifications`) | ✅ |
+| **Öğrenme ayarları** (tek model modu + hatırlatma süresi) | ✅ |
+
+> Takvim ve niyet çıkarımının tamamı için bkz. [[Proaktif Öğrenme ve Takvim]].
 
 ## 🏗️ Mimari
 

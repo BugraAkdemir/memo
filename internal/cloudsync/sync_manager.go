@@ -45,8 +45,9 @@ type Manager struct {
 	interval   int64
 
 	count      atomic.Int64
-	mu         sync.Mutex // guards in-flight backup
-	scheduleMu sync.Mutex // serializes Increment / TriggerNow scheduling race
+	stopped    atomic.Bool   // set by Stop() to prevent new goroutine launches
+	mu         sync.Mutex    // guards in-flight backup
+	scheduleMu sync.Mutex    // serializes Increment / TriggerNow scheduling race
 	inFlight   bool
 }
 
@@ -106,9 +107,18 @@ func loadOrCreateMachineID(dir string) string {
 	return id
 }
 
+// Stop marks the Manager as stopped so no new backup goroutines are launched.
+// In-flight uploads (if any) run to completion.
+func (m *Manager) Stop() {
+	m.stopped.Store(true)
+}
+
 // Increment records one saved interaction. When the count reaches a multiple
 // of SyncInterval a background backup is launched (at most one at a time).
 func (m *Manager) Increment() {
+	if m.stopped.Load() {
+		return
+	}
 	m.scheduleMu.Lock()
 	n := m.count.Add(1)
 	if n%m.interval != 0 {
@@ -139,6 +149,9 @@ func (m *Manager) Increment() {
 // TriggerNow forces an immediate backup regardless of the message counter.
 // It is non-blocking; it spawns a goroutine if no backup is already running.
 func (m *Manager) TriggerNow() {
+	if m.stopped.Load() {
+		return
+	}
 	m.scheduleMu.Lock()
 	m.mu.Lock()
 	if m.inFlight {

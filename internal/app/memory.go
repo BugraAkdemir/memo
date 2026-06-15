@@ -98,6 +98,9 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 		if err != nil {
 			log.Printf("WARN: memory re-init: %v", err)
 		} else {
+			if err := a.store.Close(); err != nil {
+				log.Printf("WARN: memory store close: %v", err)
+			}
 			a.store = newStore
 		}
 	}

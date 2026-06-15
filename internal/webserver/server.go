@@ -205,7 +205,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/import", s.handleImport)
 	mux.HandleFunc("/api/wipe", s.handleWipe)
 
-	handler := limitBodyMiddleware(corsMiddleware(mux), 50<<20) // 50 MB request body limit (file uploads need up to 50MB)
+	handler := limitBodyMiddleware(corsMiddleware(mux, addr), 50<<20) // 50 MB request body limit (file uploads need up to 50MB)
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),
 		Handler: handler,
@@ -351,6 +351,7 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defer tmpFile.Close()
+	defer os.Remove(tmpFile.Name())
 
 	if _, err := io.Copy(tmpFile, file); err != nil {
 		http.Error(w, "copy error", http.StatusInternalServerError)
@@ -558,14 +559,17 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	}
 }
 
-func corsMiddleware(next http.Handler) http.Handler {
+func corsMiddleware(next http.Handler, listenAddr string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		// Only reflect origins from localhost / loopback — never reflect arbitrary origins.
-		if origin == "" ||
+		// In LAN mode (0.0.0.0) reflect any origin so browser clients connecting
+		// from LAN IPs or ngrok tunnels are not blocked by CORS.
+		isLAN := listenAddr == "0.0.0.0"
+		isLoopback := origin == "" ||
 			strings.HasPrefix(origin, "http://localhost") ||
 			strings.HasPrefix(origin, "http://127.0.0.1") ||
-			strings.HasPrefix(origin, "http://[::1]") {
+			strings.HasPrefix(origin, "http://[::1]")
+		if isLoopback || (isLAN && origin != "") {
 			if origin == "" {
 				origin = "http://localhost"
 			}

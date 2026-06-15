@@ -10,15 +10,15 @@ Memo'nun resmi teknik dökümantasyonuna ve bilgi bankasına hoş geldiniz. Bu k
 
 ## 📊 Proje İstatistikleri
 
-| Metrik | Değer |
-|--------|-------|
-| Go Backend | ~15.000 satır, 30+ paket |
-| Flutter Frontend | ~8.000 satır, 20+ widget, 924 L10n anahtarı |
-| Mobil Uygulama | Flutter ince istemci (Android/iOS) |
-| REST API | ~35 endpoint (sohbet, hafıza, modeller, sağlayıcılar, ajan, senk) |
-| Veritabanı | SQLite + sqlite-vec (ANN vektör arama) |
-| Harici Sağlayıcılar | 7 (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama) |
-| Hata Düzeltmeleri (v3.1.0) | 61 belgelenmiş düzeltme (54 tespit → 46 düzeltildi, 8 açık) |
+| Metrik                     | Değer                                                             |
+| -------------------------- | ----------------------------------------------------------------- |
+| Go Backend                 | ~15.000 satır, 30+ paket                                          |
+| Flutter Frontend           | ~8.000 satır, 20+ widget, 924 L10n anahtarı                       |
+| Mobil Uygulama             | Flutter ince istemci (Android/iOS)                                |
+| REST API                   | ~35 endpoint (sohbet, hafıza, modeller, sağlayıcılar, ajan, senk) |
+| Veritabanı                 | SQLite + sqlite-vec (ANN vektör arama)                            |
+| Harici Sağlayıcılar        | 7 (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama)        |
+| Hata Düzeltmeleri (v3.1.0) | 61 belgelenmiş düzeltme (54 tespit → 46 düzeltildi, 8 açık)       |
 
 ---
 

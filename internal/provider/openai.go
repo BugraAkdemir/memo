@@ -292,11 +292,12 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		return
 	}
 
-	if fullContent.Len() > 0 {
-		select {
-		case ch <- StreamChunk{Done: true}:
-		case <-ctx.Done():
-		}
+	// Always send Done when the stream ends without [DONE] or FinishReason —
+	// tool-use-only responses produce empty fullContent but still need to
+	// unblock the consumer.
+	select {
+	case ch <- StreamChunk{Done: true}:
+	case <-ctx.Done():
 	}
 }
 

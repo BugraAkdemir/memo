@@ -181,6 +181,9 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 			t, err := dc.cfg.Exchange(context.Background(), code)
 			if err != nil {
 				log.Printf("cloudsync: oauth exchange: %v", err)
+				dc.mu.Lock()
+				dc.closeAuthDoneLocked()
+				dc.mu.Unlock()
 				return
 			}
 			dc.mu.Lock()

@@ -206,10 +206,14 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 	}
 	recCmd = nil
 
-	defer os.Remove(recFile)
+	// Clear recFile before the defer so stopRecordingProcess (called on
+	// shutdown) cannot accidentally delete the next session's recording.
+	wavPath := recFile
+	recFile = ""
+	defer os.Remove(wavPath)
 
 	// Send WAV to the local STT server
-	audioData, err := os.ReadFile(recFile)
+	audioData, err := os.ReadFile(wavPath)
 	if err != nil {
 		return "", fmt.Errorf("read recording: %w", err)
 	}

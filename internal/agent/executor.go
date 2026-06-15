@@ -105,13 +105,15 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		return nil, fmt.Errorf("agent mode requires an active provider (external API or local model)")
 	}
 
-	// If a project path is provided for agent chat, update sandbox base path.
-	// If not provided (regular chat), restore the default base path.
+	// Resolve effective base path for this invocation.
+	effectiveBase := e.basePath
 	if len(projectPath) > 0 && projectPath[0] != "" {
-		e.sandbox.SetBasePath(projectPath[0])
-	} else {
-		e.sandbox.SetBasePath(e.basePath)
+		effectiveBase = projectPath[0]
 	}
+
+	// Create a per-call sandbox so concurrent RunStream invocations cannot
+	// overwrite each other's basePath on the shared sandbox.
+	sessionSandbox := NewSandbox(DefaultSandboxConfig(effectiveBase))
 
 	// Estimate token budget: sum of all initial messages' tokens as base,
 	// plus generous headroom for tool call iterations.
@@ -133,7 +135,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		maxTokens = 64 * 1024
 	}
 
-	pipeline := NewPipelineWithBudget(e.registry, e.permissions, e.sandbox, router, e.backup, maxTokens)
+	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event

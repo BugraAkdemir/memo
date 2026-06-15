@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"log"
 	"net/url"
 	"sync"
 	"time"
@@ -92,9 +93,24 @@ func (db *DB) writeLoop() {
 			select {
 			case task.done <- err:
 			default:
+				if err != nil {
+					log.Printf("database: write error dropped (caller gone): %v", err)
+				}
 			}
 		case <-db.ctx.Done():
-			return
+			// Drain queued tasks so Close() callers don't silently lose writes.
+			for {
+				select {
+				case task := <-db.writeCh:
+					err := db.execWrite(task.ctx, task.fn)
+					select {
+					case task.done <- err:
+					default:
+					}
+				default:
+					return
+				}
+			}
 		}
 	}
 }
@@ -130,15 +146,20 @@ func (db *DB) Write(ctx context.Context, fn func(tx *sql.Tx) error) error {
 
 	select {
 	case db.writeCh <- task:
+	case <-ctx.Done():
+		return ctx.Err()
 	case <-db.ctx.Done():
-		return db.ctx.Err()
+		return fmt.Errorf("database: closed")
 	}
 
+	// Wait on caller's context only — the write is already serialised in
+	// writeLoop and will complete regardless of DB shutdown, so we must not
+	// use db.ctx here or we'd return a false error while the write commits.
 	select {
 	case err := <-done:
 		return err
-	case <-db.ctx.Done():
-		return db.ctx.Err()
+	case <-ctx.Done():
+		return ctx.Err()
 	}
 }
 

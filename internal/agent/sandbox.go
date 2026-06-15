@@ -99,11 +99,16 @@ func (s *Sandbox) GetBasePath() string {
 // ValidatePath checks if a path is safe to access.
 // It resolves symlinks before checking path boundaries to prevent symlink-based escapes.
 func (s *Sandbox) ValidatePath(targetPath string) error {
+	s.mu.Lock()
+	basePath := s.config.BasePath
+	protectedPaths := s.config.ProtectedPaths
+	s.mu.Unlock()
+
 	var fullPath string
 	if filepath.IsAbs(targetPath) {
 		fullPath = filepath.Clean(targetPath)
 	} else {
-		fullPath = filepath.Join(s.config.BasePath, targetPath)
+		fullPath = filepath.Join(basePath, targetPath)
 	}
 
 	// Resolve symlinks to prevent symlink-based directory traversal.
@@ -123,7 +128,7 @@ func (s *Sandbox) ValidatePath(targetPath string) error {
 	if runtime.GOOS == "windows" {
 		cmpPath = strings.ToLower(realPath)
 	}
-	for _, protected := range s.config.ProtectedPaths {
+	for _, protected := range protectedPaths {
 		needle := protected
 		if runtime.GOOS == "windows" {
 			needle = strings.ToLower(protected)
@@ -134,7 +139,7 @@ func (s *Sandbox) ValidatePath(targetPath string) error {
 	}
 
 	// Check if path is within base path (resolved, not raw path)
-	rel, err := filepath.Rel(s.config.BasePath, realPath)
+	rel, err := filepath.Rel(basePath, realPath)
 	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
 		if filepath.IsAbs(targetPath) {
 			// Absolute paths outside base path are allowed as long as they aren't protected

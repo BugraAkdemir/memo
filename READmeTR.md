@@ -1,283 +1,262 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=for-the-badge&logo=go" alt="Go 1.25"/>
-  <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=for-the-badge&logo=flutter" alt="Flutter 3.10"/>
-  <img src="https://img.shields.io/badge/Lisans-AGPL_v3-blue?style=for-the-badge" alt="Lisans AGPL v3"/>
-  <img src="https://img.shields.io/badge/Sürüm-v3.1.0--beta-blue?style=for-the-badge" alt="v3.1.0-beta"/>
+
+  <img src="docs/assets/logo.png" alt="Memo Logo" width="120"/>
+
+  <h1>Memo</h1>
+  <p><b>Alışkanlıklarını öğrenen ve sormadan önce harekete geçen yapay zeka asistanı.</b></p>
+  <p>Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlılığı</p>
+
   <br/>
-  <img src="https://img.shields.io/badge/llama.cpp-Entegre-orange?style=flat-square&logo=llama" alt="llama.cpp"/>
-  <img src="https://img.shields.io/badge/RAG-Aktif-green?style=flat-square" alt="RAG"/>
-  <img src="https://img.shields.io/badge/WhatsApp-Entegre-25D366?style=flat-square&logo=whatsapp" alt="WhatsApp"/>
-  <img src="https://img.shields.io/badge/Ajan-8_Araç-B08D57?style=flat-square" alt="Ajan"/>
-  <img src="https://img.shields.io/badge/Yedek-.memo_ZIP-blue?style=flat-square" alt="Yedek"/>
-  <img src="https://img.shields.io/badge/Platform-Linux_%7C_Windows_%7C_macOS-lightgrey?style=flat-square" alt="Çapraz Platform"/>
+
+  <a href="https://memo.bugradev.com">
+    <img src="https://img.shields.io/badge/⬇_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="İndir"/>
+  </a>
+  &nbsp;
+  <a href="https://github.com/BugraAkdemir/memo/stargazers">
+    <img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57" alt="Yıldızlar"/>
+  </a>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Lisans-AGPL_v3-blue?style=for-the-badge" alt="Lisans"/>
+  &nbsp;
+  <img src="https://img.shields.io/badge/Sürüm-v3.1_beta-blue?style=for-the-badge" alt="Sürüm"/>
+
+  <br/><br/>
+
+  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go" alt="Go"/>
+  <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=flat-square&logo=flutter" alt="Flutter"/>
+  <img src="https://img.shields.io/badge/llama.cpp-gömülü-orange?style=flat-square" alt="llama.cpp"/>
+  <img src="https://img.shields.io/badge/RAG-SQLite_vec0-green?style=flat-square" alt="RAG"/>
+  <img src="https://img.shields.io/badge/WhatsApp-entegre-25D366?style=flat-square&logo=whatsapp" alt="WhatsApp"/>
+  <img src="https://img.shields.io/badge/Platform-Linux_|_Windows-lightgrey?style=flat-square" alt="Platform"/>
+
 </div>
 
-<h1 align="center">
-  🧠 Memo — Yapay Zeka Hafıza Kabuğu
-</h1>
+---
 
-<p align="center">
-  <b>Yerel. Gizli. İkinci Beyniniz.</b><br/>
-  <i>Kalıcı RAG hafızası, harici sağlayıcılar, ajan motoru, WhatsApp ve premium bir masaüstü deneyimiyle gizlilik odaklı bir yapay zeka asistanı.</i>
-</p>
-
-<p align="center">
-  <a href="#-neden-memo">Neden Memo</a> •
-  <a href="#-özellikler">Özellikler</a> •
-  <a href="#-tasarım">Tasarım</a> •
-  <a href="#-hızlı-başlangıç">Hızlı Başlangıç</a> •
-  <a href="#-mimari">Mimari</a> •
-  <a href="#-yol-haritası">Yol Haritası</a> •
-  <a href="README.md">English</a>
-</p>
+<!-- SCREENSHOT: Ana ekran görüntüsü buraya gelecek -->
+<!-- ![Memo Demo](docs/assets/demo.gif) -->
 
 ---
 
-> **Güncel sürüm:** `v3.1.0-beta` — RAG hafıza, harici sağlayıcılar, ajan & orkestra motorları, WhatsApp, şifreli bulut senkronizasyonu, mobil yardımcı ve sıfırdan yapılan **"Pewter Study"** arayüz tasarımı. [Yol haritası →](docs/tr/ROADMAP.md)
+## Memo Nedir?
+
+Çoğu yapay zeka asistanı bir sohbet kutusudur — yaz, cevap al, unut.
+
+**Memo farklı.** Nasıl çalıştığını izler, alışkanlıklarını öğrenir ve *sen sormadan önce* yardıma gelir. Her akşam 21:00'da kod yazdığını bilir. Pazartesi sabahlarının planlama zamanı olduğunu bilir. Zamanı gelince karşına çıkar — önerir, telefonuna bildirim gönderir ya da ajanı kendi kendine başlatır.
+
+Her şey senin bilgisayarında çalışır. Konuşmaların, hafızan, alışkanlıkların — hiçbiri bilgisayarından çıkmaz.
 
 ---
 
-## 🎯 Neden Memo
+## Ekran Görüntüleri
 
-Çoğu yapay zeka asistanı konuşmalarınızı başkasının sunucularına gönderir. **Memo göndermez.** Modeli kendi makinenizde çalıştırır, her hafızayı yerel bir vektör veritabanında saklar ve asla "eve telefon etmez". Modelin, verinin ve onu barındıran diskin sahibi sizsiniz.
+<!-- SCREENSHOT: Proaktif öneri ekranı -->
+<!-- ![Proaktif Öneri](docs/assets/proactive.gif) -->
 
-Ama yerel-öncelikli olmak, kullanması zor olmak demek değildir. Memo; gerçek bir RAG hafıza motorunu ve araç-çağıran bir ajanı, ilk kez açan birinin bile gezinebileceği bir arayüzle birleştirir — **tek tıkla model indir, indirmeden önce donanımına uygun mu gör ve neyin çalıştığını her an bil.**
+<!-- SCREENSHOT: RAG hafıza arama -->
+<!-- ![Hafıza Arama](docs/assets/memory.gif) -->
 
-- **🔒 Tasarımı gereği gizli** — telemetri yok, sohbetlerin üzerinde eğitim yok, bulut bağımlılığı yok. Şifreli yedekleme yalnızca *siz* açarsanız.
-- **🧠 Gerçek hafıza** — her etkileşim vektörleştirilip indekslenir; her turda ilgili bağlam otomatik getirilir.
-- **🤝 İki dünyanın en iyisi** — sohbeti güçlü bir harici API üzerinden çalıştırırken embedding'leri küçük bir yerel model yapar, ya da %100 çevrimdışı kal.
-- **🖥️ Native, web sarmalayıcı değil** — Linux, Windows ve macOS'ta bir Flutter masaüstü uygulaması, ayrıca bir mobil yardımcı.
+<!-- SCREENSHOT: WhatsApp entegrasyonu -->
+<!-- ![WhatsApp](docs/assets/whatsapp.gif) -->
 
----
+<!-- SCREENSHOT: Orchestra modu -->
+<!-- ![Orchestra](docs/assets/orchestra.gif) -->
 
-## ✨ Özellikler
-
-<table>
-  <tr>
-    <td width="50%">
-      <h3>🧠 <b>Yerel RAG Motoru</b></h3>
-      SQLite + sqlite-vec (vec0 ANN indeksi). Her etkileşim anlamsal indekslenir; her ölçekte O(log n) erişim. Bulut yok, üçüncü taraf embedding yok.
-    </td>
-    <td width="50%">
-      <h3>🤖 <b>Ajan Motoru</b></h3>
-      8 yerleşik araçlı, araç-çağıran bir pipeline; 6 politikalı izin sistemi (bir kez/oturum/kalıcı izin-ret), çalıştırma kum havuzu, hız sınırlama ve denetim günlüğü.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🎵 <b>Orkestra Modu</b></h3>
-      Çoklu model işbirliği: şef model görevi planlar ve böler, uzman roller paralel çalışır, şef sonucu sentezler. 8 yerleşik rol.
-    </td>
-    <td width="50%">
-      <h3>🔄 <b>Çapraz-Mod Mimarisi</b></h3>
-      Sohbet için harici API sağlayıcıları kullanırken embedding'ler için küçük bir yerel model çalıştır — güç ve gizlilik, bağımsız yapılandırılabilir.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>⚡ <b>Yerel llama.cpp</b></h3>
-      Gömülü <code>llama-server</code> yaşam döngüsü yönetimi: otomatik indirme, otomatik başlatma, VRAM tespiti ile GPU hızlandırma (NVIDIA / AMD / Metal). Docker yok, konteyner yok.
-    </td>
-    <td width="50%">
-      <h3>🏭 <b>Rehberli Model Mağazası</b></h3>
-      Seçilmiş öneriler, tek tıkla indirme ve RAM/VRAM'ine göre bir <b>donanım-uygunluk rozeti</b>. Quantization otomatik seçilir — şifreli <code>Q4_K_M</code> tahmini yok.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>💬 <b>WhatsApp Entegrasyonu</b></h3>
-      QR ile tam WhatsApp Web eşleştirme. Mesaj gönderme/alma, kişi adı çözümleme, beyaz liste tabanlı dosya aktarımı, özel ajan araçları. Sohbetleriniz yerel kalır.
-    </td>
-    <td width="50%">
-      <h3>📦 <b>Yedekleme ve Geri Yükleme</b></h3>
-      Tam <code>.memo</code> zip dışa/içe aktarma — oturumlar, yapılandırma, bellek, WhatsApp verisi, sağlayıcılar — ayrıca şifreli Google Drive senkronizasyonu (AES-256-GCM) ve çift onaylı tüm verileri silme.
-    </td>
-  </tr>
-  <tr>
-    <td width="50%">
-      <h3>🛠️ <b>Model ve Sağlayıcı Bağımsız</b></h3>
-      OpenAI uyumlu her sunucu (llama.cpp, Ollama, LM Studio). Harici sağlayıcılar: OpenAI, Anthropic, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama — yedekli yönlendirici ile.
-    </td>
-    <td width="50%">
-      <h3>📱 <b>Mobil ve Uzaktan</b></h3>
-      LAN veya gömülü ngrok tüneli üzerinden ince bir Flutter mobil yardımcı (Android/iOS); token kimlik doğrulama ve akışlı sohbet.
-    </td>
-  </tr>
-</table>
+> 📸 *Ekran görüntüleri ve demo GIF'leri stable sürümle birlikte gelecek.*
 
 ---
 
-## 🎨 Tasarım
+## Özellikler
 
-Memo'nun arayüzü **"Pewter Study"** — parlak bir light tema ile mağara-karası dark tema arasında bilinçli olarak duran bir **orta-ton** kimlik: sıcak grafit yüzeyler, metin için yumuşak kırık-beyaz mürekkep ve tek bir **dumanlı bronz** aksan. Neon yok, parlama yok — bir ikinci beyin için sakin, premium bir çalışma yüzeyi.
+### 🧠 Proaktif Öğrenme Motoru
+Memo kullanım alışkanlıklarını sessizce gözlemler. Birkaç gün sonra onları tanımaya başlar — ne zaman kod yazdığını, ne zaman yazdığını, ne zaman planladığını. Dahili proaktif motor, şu anki saati öğrenilen alışkanlıklarla eşleştirir ve ne yapması gerektiğine karar vermesi için bir Orchestra Chief LLM'e sorar: öner, telefona bildirim at, ya da ajanı otomatik başlat. Zayıflayan alışkanlıkları unutur; "artık yapmıyorum" dediğin anda o alışkanlığı tamamen siler. **Tamamen yerel, isteğe bağlı, şeffaf.**
 
-| İlke | Pratikte |
-|------|----------|
-| **Tek yüzey, üç katman** | Derinlik renkten değil, katmandan gelir. |
-| **Aksanı tek yerde harca** | Bronz yalnız birincil aksiyon, aktif durum ve ilerleme için. |
-| **Sade dil** | "Dengeli — önerilen", asla "Q4_K_M". |
-| **Donanım-farkında** | Her model "cihazıma uyar mı?" sorusunu önden yanıtlar. |
-| **Engine Strip** | Kalıcı bir alt şerit, çalışan sohbet + hafıza modellerini ve tek-tık durdurmayı gösterir. |
+```
+1-7. gün   →  Sadece sessiz gözlem
+8-14. gün  →  Alışkanlıklar oluşur, hafif öneriler başlar
+30. gün+   →  Yüksek güvenli alışkanlıklar ajanı otomatik tetikleyebilir
+```
 
-Tipografi **Schibsted Grotesk** (başlık), **Inter** (gövde) ve **JetBrains Mono** (kod) eşleşmesidir. İki tema gelir: **Pewter** (varsayılan) ve **Night** (daha koyu). Tam sistem: [frontend/DESIGN.md](frontend/DESIGN.md).
+### 💬 WhatsApp Entegrasyonu
+QR koduyla tam WhatsApp Web eşleştirme. Mesaj gönder ve al, sohbet geçmişini ara, ajanın mesajları okumasına ve yanıtlamasına izin ver — hepsi whatsmeow aracılığıyla yerel olarak saklanır. WhatsApp API ücreti yok, verilerin cihazından çıkmaz.
 
-### Model indirme, yeniden hayal edilmiş
+### 🤖 Ajan Motoru
+8 dahili araçlı araç-çağıran pipeline: dosya okuma/yazma, kabuk komutları, web araması, hafıza sorgusu ve daha fazlası. 6 politikalı izin sistemi (izin ver/reddet — bir kez / bu oturum / kalıcı) ajanın neye dokunabileceği konusunda tam kontrol sağlar.
 
-Eskiden model indirmek; HuggingFace'te arama yapmak, bir repo açmak ve `…Q4_K_M.gguf`, `…Q5_K_S.gguf`, `…fp16.gguf` gibi çoğu insan için anlamsız adlı dosyalardan birini seçmek demekti. Memo bunu rehberli bir akışla değiştirir:
+### 🎵 Orkestra Modu
+Çoklu model işbirliği. Bir Şef model görevi rollere böler, uzman modeller paralel çalışır, Şef sonucu sentezler. 8 dahili rol. Aynı pipeline'da yerel ve harici modellerin karışımını destekler.
 
-1. **Keşfet**, seçilmiş ve çalıştığı bilinen modelleri tek cümlelik açıklama ve boyutla gösterir.
-2. Tespit edilen **RAM ve VRAM**'ine göre bir **donanım-uygunluk rozeti** ("✓ Cihazına uygun — GPU'da hızlı" / "⚠ Yetersiz olabilir") hesaplanır.
-3. **Tek tık**, en uygun quantization'ı otomatik seçip indirir.
-4. İleri kullanıcılar yine de herhangi bir HuggingFace reposu için **Gelişmiş arama**yı açabilir; her quant sade dile çevrilmiştir.
+### 🧩 Skill Sistemi
+`data/skills/` dizinine bir `SKILL.md` dosyası bırak, Memo yeni bir yetenek kazanır — özel bir persona, alan uzmanı, özelleştirilmiş iş akışı. Kod yazmak gerekmez.
+
+### ⚡ Yerel llama.cpp
+Tam yaşam döngüsü yönetimi ile gömülü `llama-server`: otomatik başlatma, otomatik VRAM tespiti ile GPU hızlandırma (NVIDIA / AMD / Metal). Docker yok, konteyner yok, PATH yapılandırması yok.
+
+### 🏪 Model Mağazası
+Gerçek RAM ve VRAM'ine göre hesaplanan **donanım uygunluk rozeti** ile seçilmiş model önerileri. Tek tık indirir ve doğru quantization'ı otomatik seçer. Şifreli `Q4_K_M` tahmini yok.
+
+### 🔌 Sağlayıcı Bağımsız
+OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama — veya herhangi bir OpenAI uyumlu yerel sunucu. Sağlayıcıları karıştır: sohbet için güçlü bir harici API kullanırken embedding'ler için küçük bir yerel model çalıştır.
+
+### 📱 Mobil Yardımcı
+Bir Flutter mobil uygulaması (Android/iOS) LAN üzerinden veya dahili ngrok tüneli aracılığıyla bağlanır. Proaktif öneriler mobil bildirim olarak gelir. Telefonda tam akışlı sohbet.
+
+### 📦 Yedekleme ve Senkronizasyon
+Tam `.memo` ZIP dışa aktarma — oturumlar, hafıza, yapılandırma, WhatsApp verileri, sağlayıcılar. İsteğe bağlı şifreli Google Drive senkronizasyonu (AES-256-GCM). Çift onaylı veri silme.
+
+### 🔒 Tasarımı Gereği Gizli
+- Sıfır telemetri
+- Konuşmalarında eğitim yok
+- Bulut bağımlılığı yok (senkronizasyon yalnızca sen açarsan)
+- Gizli mod: mesajlar saklanmaz, gözlemlenmez, vektörleştirilmez
+- Gözlem katmanı yalnızca konu etiketlerini ve kelime sayılarını saklar — asla mesaj metni değil
 
 ---
 
-## 🚀 Hızlı Başlangıç
+## Hızlı Başlangıç
 
-Terminal yok, kod indirmek yok, derleme yok. **Tek tıkla indir ve kur.**
+**Terminal yok. Derleme yok. Tek tık.**
+
+| Platform | İndirme | Nasıl |
+|----------|---------|-------|
+| **Windows** | `Memo-Setup.exe` | Kurulumu çalıştır → bitti |
+| **Linux** | `.AppImage` | `chmod +x` → başlat |
+| **Linux** | `.deb` | `sudo dpkg -i` → bitti |
+
+llama.cpp gömülü gelir. İlk başlatmada her şey `~/.memo` altına kopyalanır. Uygulamayı aç, **Model Mağazası**'na git, bir model seç, sohbete başla.
 
 <div align="center">
   <a href="https://memo.bugradev.com">
-    <img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="Memo'yu İndir"/>
+    <img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="İndir"/>
   </a>
 </div>
 
-| Platform | Kurulum | Nasıl |
-|----------|---------|-------|
-| **Windows** | `Memo-Setup.exe` | Kurulumu çalıştır, ileri-ileri, bitti. |
-| **Linux** | `.AppImage` / `.deb` | Çalıştırılabilir yap (ya da `.deb` kur) ve aç. |
-
-llama.cpp gömülü gelir ve her şey ilk çalıştırmada hazırlanır — sadece **[memo.bugradev.com'dan indir](https://memo.bugradev.com)**, uygulamayı aç, **Keşfet**'ten bir model seç ve sohbete başla.
-
 <details>
-<summary><b>🛠️ Kaynaktan derleme (geliştiriciler)</b></summary>
+<summary><b>Kaynaktan derleme (geliştiriciler)</b></summary>
 
-**Gereksinimler:** Go 1.25+ · Flutter 3.10+ (llama.cpp gömülü).
+**Gereksinimler:** Go 1.25+ · Flutter 3.10+
 
 ```bash
-# Terminal 1 — Backend
-git clone https://github.com/BugraAkdemir/memo.git && cd memo
+# Backend
+git clone https://github.com/BugraAkdemir/memo.git
+cd memo
 go run . --port 8090
 
-# Terminal 2 — Frontend
-cd frontend && flutter run -d linux
+# Frontend (ayrı terminal)
+cd frontend
+flutter run -d linux
 ```
 
-Sürüm paketleri oluştur:
+Sürüm paketleri:
 ```bash
-./build_releases.sh    # Linux  → tar.gz / AppImage / deb
-.\build_releases.bat   # Windows → Inno Setup kurulumu veya taşınabilir zip
+./build_releases.sh     # Linux  → AppImage / deb / tar.gz
+.\build_releases.bat    # Windows → Inno Setup kurulumu / zip
 ```
 </details>
 
 ---
 
-## 🏛️ Mimari
+## Mimari
 
 ```
-┌──────────────────────────────────┐  ┌───────────────────────────────┐
-│     Flutter Masaüstü İstemci      │  │     Flutter Mobil İstemci     │
-│  ┌──────┐ ┌────────┐ ┌────────┐  │  │  ┌──────────┐ ┌──────────┐    │
-│  │Sohbet│ │Ayarlar │ │ Model  │  │  │  │ Bağlan   │ │  Sohbet  │    │
-│  │+Ajan │ │+Yedek  │ │Mağazası│  │  │  │  Ekranı  │ │  Ekranı  │    │
-│  └──┬───┘ └───┬────┘ └───┬────┘  │  │  └────┬─────┘ └────┬─────┘    │
-│  ┌──┴─────────┴──────────┴────┐  │  │  ┌────┴────────────┴────┐     │
-│  │  Riverpod · SSE · Engine   │  │  │  │   Riverpod · Dio      │     │
-│  │  Strip · MemoApiClient     │  │  │  │   MemoApiClient       │     │
-│  └───────────┬────────────────┘  │  │  └───────────┬───────────┘     │
-└──────────────┼────────────────────┘  └──────────────┼────────────────┘
-               │ REST + SSE (:8090)                    │ LAN / ngrok / TLS
-┌──────────────┼───────────────────────────────────────┼────────────────┐
-│              └──────────────────┬─────────────────────┘                │
-│                       Go Backend Sunucusu                              │
-│  ┌──────────────────────────────┴──────────────────────────────┐      │
-│  │   Web Sunucusu (server.go) · ~35 endpoint (handlers)         │      │
-│  └──────────────────────────────┬──────────────────────────────┘      │
-│  ┌──────────────────────────────┴──────────────────────────────┐      │
-│  │                    App Motoru (app.go)                        │      │
-│  └──┬─────────┬──────────┬──────────┬──────────┬──────────┬─────┘      │
-│  ┌──┴──┐ ┌────┴───┐ ┌────┴────┐ ┌───┴────┐ ┌───┴────┐ ┌───┴─────┐    │
-│  │Bellek│ │Oturum  │ │Llama +  │ │WhatsApp│ │Sağlayıc│ │ Ajan    │    │
-│  │vec0 │ │ JSON   │ │Emb Yön. │ │whatsmeow│ │Yönlend.│ │ Motoru  │    │
-│  │SQLite│ │       │ │+GPU/RAM │ │        │ │(7 API) │ │(8 araç) │    │
-│  └─────┘ └────────┘ └─────────┘ └────────┘ └────────┘ └─────────┘    │
-│  ┌──────────┐ ┌──────────────┐ ┌──────────┐ ┌──────────┐             │
-│  │Orkestra  │ │Model Deposu  │ │Bulut Senk│ │ ngrok    │             │
-│  │(8 rol)   │ │HF + yerel    │ │ (Drive)  │ │ Tüneli   │             │
-│  └──────────┘ └──────────────┘ └──────────┘ └──────────┘             │
-└──────────────────────────────────────────────────────────────────────┘
+┌─────────────────────────────┐    ┌──────────────────────────┐
+│   Flutter Masaüstü          │    │   Flutter Mobil          │
+│   (Linux / Windows)         │    │   (Android / iOS)        │
+│                             │    │                          │
+│  Sohbet · Ajan · Orkestra   │    │  Sohbet · Bildirimler    │
+│  Ayarlar · Model Mağazası   │    │  Uzak bağlantı           │
+└──────────────┬──────────────┘    └───────────┬──────────────┘
+               │  REST + SSE (:8090)            │  LAN / ngrok
+               └──────────────┬─────────────────┘
+┌─────────────────────────────┴──────────────────────────────────┐
+│                        Go Backend                               │
+│                                                                 │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
+│  │  Web Sunucu │  │  App Motoru  │  │  Proaktif Motor        │ │
+│  │  ~35 route  │  │  (internal/  │  │  Gözlemci → Analizci   │ │
+│  │  SSE stream │  │   app/)      │  │  → Şef → Eylem         │ │
+│  └─────────────┘  └──────┬───────┘  └────────────────────────┘ │
+│                           │                                     │
+│  ┌────────┐ ┌──────────┐ ┌┴─────────┐ ┌──────────┐ ┌────────┐ │
+│  │ Hafıza │ │ Oturumlar│ │ Llama +  │ │WhatsApp  │ │  Ajan  │ │
+│  │ SQLite │ │          │ │ Embedding│ │whatsmeow │ │ Motoru │ │
+│  │ vec0   │ │          │ │ GPU/RAM  │ │          │ │8 araç  │ │
+│  └────────┘ └──────────┘ └──────────┘ └──────────┘ └────────┘ │
+│                                                                 │
+│  ┌──────────┐ ┌──────────┐ ┌──────────┐ ┌──────────┐          │
+│  │Orkestra  │ │  Model   │ │  Bulut   │ │  ngrok   │          │
+│  │ 8 rol    │ │ Mağazası │ │  Senk    │ │  Tüneli  │          │
+│  └──────────┘ └──────────┘ └──────────┘ └──────────┘          │
+└────────────────────────────────────────────────────────────────┘
 ```
 
-**Derinlemesine:** [docs/architecture.md](docs/architecture.md) · **API:** [docs/API_REFERENCE.md](docs/API_REFERENCE.md)
+**Belgeler:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md)
 
 ---
 
-## 🛣️ Yol Haritası
-
-| Sürüm | Tema | Durum |
-|-------|------|-------|
-| **v3.1.0** | Hafıza — RAG, WhatsApp, Yedekleme, Mobil, Uzaktan Erişim | ✅ Yayınlandı |
-| **v3.2.0** | Zamanlanmış Zeka — Takvim, Ajan Arayüzü, Mobil Bildirimler | 🚧 Geliştiriliyor |
-| **v3.3.0** | Mobil & Ses — Mobil v2 + Ses Asistanı | 🚧 Planlandı |
-| **v3.4.0** | Eklenti & Web — Eklenti Sistemi + Web Arama | 🚧 Planlandı |
-| **v3.5.0** | Daha Akıllı Memo — Bilgi Grafiği, Kendini Geliştiren Hafıza | 🔮 Gelecek |
-
-[Tam yol haritası →](docs/tr/ROADMAP.md)
-
----
-
-## 📚 Dokümantasyon
-
-| Döküman | Açıklama |
-|---------|----------|
-| [🎨 Tasarım Sistemi](frontend/DESIGN.md) | "Pewter Study" token'ları, bileşenler ve ekranlar |
-| [🏛️ Mimari](docs/architecture.md) | Her bileşenin teknik derinlemesine analizi |
-| [📡 API Referansı](docs/API_REFERENCE.md) | Tüm REST endpoint'leri |
-| [🛣️ Yol Haritası](docs/tr/ROADMAP.md) | Stratejik vizyon ve sürüm planı |
-| [📱 Mobil README](mobile/README.md) | Mobil yardımcı uygulama dokümanları |
-| [📖 Bilinen Sorunlar](docs/KNOWN_ISSUES.md) | Önceliklendirilmiş tam denetim |
-| [🔧 Sorun Giderme](docs/TROUBLESHOOTING.md) | Sık karşılaşılan sorunlar ve çözümleri |
-| [📝 Katkıda Bulunma](docs/CONTRIBUTING.md) | Nasıl katkıda bulunabilirsiniz |
-
----
-
-## 🧪 Teknoloji Yığını
-
-<div align="center">
+## Teknoloji Yığını
 
 | Katman | Teknoloji |
 |--------|-----------|
-| **Backend** | Go 1.25, `http.ServeMux`, SSE akış |
-| **Frontend (Masaüstü)** | Flutter 3.10+, Riverpod 2.x, Dio, flutter_markdown, google_fonts |
-| **Frontend (Mobil)** | Flutter 3.10+, Riverpod 2.x, Dio (Android · iOS · Web) |
+| **Backend** | Go 1.25, `net/http`, SSE akışı |
+| **Masaüstü Frontend** | Flutter 3.10, Riverpod 2.x, Dio |
+| **Mobil Frontend** | Flutter 3.10, Riverpod 2.x, Dio |
 | **LLM Çalışma Zamanı** | llama.cpp (gömülü), OpenAI uyumlu API |
-| **Harici Sağlayıcılar** | OpenAI · Anthropic Claude · Google Gemini · xAI Grok · Groq · OpenRouter · Ollama |
+| **Harici Sağlayıcılar** | OpenAI · Anthropic · Gemini · Grok · Groq · OpenRouter · Ollama |
 | **Vektör Deposu** | SQLite + sqlite-vec (vec0 ANN indeksi) |
 | **WhatsApp** | whatsmeow (çoklu cihaz Web API) |
-| **Donanım Tespiti** | nvidia-smi · rocm-smi · Metal · sistem RAM (/proc, GlobalMemoryStatusEx, sysctl) |
+| **Öğrenme Motoru** | Özel gözlemci + dairesel istatistik analizci + Orchestra Chief |
+| **Donanım Tespiti** | nvidia-smi · rocm-smi · /proc · GlobalMemoryStatusEx |
 | **Bulut Senkronizasyonu** | Google Drive OAuth2 + AES-256-GCM |
-| **Derleme** | Go araç zinciri, Flutter build, shell scriptleri, Inno Setup |
+| **Derleme** | Go araç zinciri · Flutter build · Inno Setup · AppImage |
 | **Lisans** | GNU AGPL v3 |
-
-</div>
 
 ---
 
-## 🤝 Katkıda Bulunma
+## Yol Haritası
 
-Katkılarınızı bekliyoruz:
-- [Bilinen Sorunlar](docs/KNOWN_ISSUES.md) — üzerinde çalışmak için bir madde seçin
-- [Yol Haritası](docs/tr/ROADMAP.md) — gelecek özellikleri görün
-- [Katkıda Bulunma Rehberi](docs/CONTRIBUTING.md)
+| Sürüm | Tema | Durum |
+|-------|------|-------|
+| **v3.1** | RAG hafıza · WhatsApp · Yedekleme · Mobil · Uzaktan erişim · Proaktif motor | ✅ Beta |
+| **v3.2** | Stable sürüm · UI cilası · Proaktif arayüz · Mobil bildirimler | 🚧 Geliştiriliyor |
+| **v3.3** | Ses asistanı · Mobil v2 · Takvim entegrasyonu | 📅 Planlandı |
+| **v3.4** | Eklenti sistemi · Web araması · Tarayıcı uzantısı | 📅 Planlandı |
+| **v3.5** | Bilgi grafiği · Kendini geliştiren hafıza | 🔮 Gelecek |
+
+[Tam yol haritası →](docs/ROADMAP.md)
+
+---
+
+## Belgeler
+
+| | |
+|-|-|
+| [🏛️ Mimari](docs/architecture.md) | Teknik derinlemesine analiz |
+| [📡 API Referansı](docs/API_REFERENCE.md) | Tüm REST endpoint'leri |
+| [🎨 Tasarım Sistemi](frontend/DESIGN.md) | "Pewter Study" UI token ve bileşenleri |
+| [🛣️ Yol Haritası](docs/ROADMAP.md) | Sürüm planı |
+| [📱 Mobil](mobile/README.md) | Mobil yardımcı belgeleri |
+| [🔧 Sorun Giderme](docs/TROUBLESHOOTING.md) | Sık karşılaşılan sorunlar |
+| [📝 Katkıda Bulunma](docs/CONTRIBUTING.md) | Nasıl katkıda bulunulur |
+
+---
+
+## Katkıda Bulunma
+
+Memo AGPL-3.0 lisanslıdır ve katkılara açıktır.
+
+- [Bilinen Sorunlar](docs/KNOWN_ISSUES.md)'a göz at — iyi bir başlangıç görevi seç
+- [Yol Haritası](docs/ROADMAP.md)'nı incele — planlanan özellikler
+- Fikirler için [Tartışma](https://github.com/BugraAkdemir/memo/discussions) aç
 
 ---
 
 <div align="center">
-  <h3>🧠 <i>Sizin Zihniniz. Sizin Veriniz. Sizin Bilgisayarınız.</i></h3>
-  <p><b>Buğra Akdemir</b> tarafından ❤️ ile geliştirildi</p>
-  <p>
-    <a href="https://github.com/BugraAkdemir/memo/issues">Hata Bildir</a> •
-    <a href="https://github.com/BugraAkdemir/memo/discussions">Tartışma</a> •
-    <a href="README.md">English</a>
-  </p>
+  <br/>
+  <p><b>Senin zihnin. Senin verin. Senin makineniz.</b></p>
+  <p><a href="https://github.com/BugraAkdemir">Buğra Akdemir</a> tarafından geliştirildi</p>
+  <br/>
+  <a href="https://github.com/BugraAkdemir/memo/issues">Hata Bildir</a> ·
+  <a href="https://github.com/BugraAkdemir/memo/discussions">Tartışma</a> ·
+  <a href="README.md">English</a>
 </div>

@@ -89,7 +89,9 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 		a.ngrokServer = nil
 	}
 
-	config.Save(a.cfg)
+	if err := config.Save(a.cfg); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
 
 	if err := a.webServer.Stop(); err != nil {
 		log.Printf("Error stopping server: %v", err)
@@ -140,7 +142,9 @@ func (a *App) SetListenAddr(addr string) {
 // SetNgrokAutoStart sets whether ngrok should start automatically on app launch.
 func (a *App) SetNgrokAutoStart(autoStart bool) {
 	a.cfg.RemoteAccess.NgrokAutoStart = autoStart
-	config.Save(a.cfg)
+	if err := config.Save(a.cfg); err != nil {
+		log.Printf("WARN: save config: %v", err)
+	}
 }
 
 // startWebServerForRemote is the internal helper used during startup for TLS remote access.

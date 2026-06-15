@@ -210,10 +210,12 @@ func (i *Installer) installFromRelease(ctx context.Context, logger func(string))
 
 	if isTarGz {
 		if err := extractTarGzToBin(tempPath, binDir, logger); err != nil {
+			os.RemoveAll(binDir) // partial extraction leaves broken binaries; clean up so next install isn't blocked
 			return "", fmt.Errorf("çıkarma başarısız: %w", err)
 		}
 	} else {
 		if err := extractZipToBin(tempPath, binDir, logger); err != nil {
+			os.RemoveAll(binDir)
 			return "", fmt.Errorf("çıkarma başarısız: %w", err)
 		}
 	}

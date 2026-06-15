@@ -175,16 +175,22 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 // WaitReady polls the server's health endpoint until it responds or timeout.
 func (s *Server) WaitReady(timeout time.Duration) error {
 	deadline := time.Now().Add(timeout)
-	url := fmt.Sprintf("http://127.0.0.1:%d/v1/models", s.port)
+	s.mu.Lock()
+	port := s.port
+	s.mu.Unlock()
+	url := fmt.Sprintf("http://127.0.0.1:%d/v1/models", port)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 
 	for time.Now().Before(deadline) {
+		if !s.IsRunning() {
+			return fmt.Errorf("llama: server process exited during startup")
+		}
 		resp, err := client.Get(url)
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				log.Printf("llama: server ready on port %d", s.port)
+				log.Printf("llama: server ready on port %d", port)
 				return nil
 			}
 		}

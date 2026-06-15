@@ -156,6 +156,7 @@ func (c *Client) CreateEmbedding(ctx context.Context, model, text string) ([]flo
 		return nil, fmt.Errorf("api.Embedding: request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	c.setAuth(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
@@ -205,6 +206,7 @@ func (c *Client) TranscribeAudio(ctx context.Context, audioData []byte, filename
 		return "", fmt.Errorf("api.Transcribe: request: %w", err)
 	}
 	httpReq.Header.Set("Content-Type", w.FormDataContentType())
+	c.setAuth(httpReq)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {

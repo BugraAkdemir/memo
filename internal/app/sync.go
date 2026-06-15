@@ -187,6 +187,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 
 	resolvedClientID, resolvedClientSecret := a.resolveSyncCredentials()
 	a.syncMu.Lock()
+	oldSM := a.syncManager
 	if a.cfg.Sync.Enabled && resolvedClientID != "" && resolvedClientSecret != "" {
 		a.syncManager = cloudsync.New(
 			a.ctx,
@@ -201,6 +202,9 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 		a.syncManager = nil
 	}
 	a.syncMu.Unlock()
+	if oldSM != nil {
+		oldSM.Stop()
+	}
 	return nil
 }
 
@@ -214,7 +218,11 @@ func (a *App) DisconnectSync() error {
 		return fmt.Errorf("disconnect sync: remove token: %w", err)
 	}
 	a.syncMu.Lock()
+	oldSM := a.syncManager
 	a.syncManager = nil
 	a.syncMu.Unlock()
+	if oldSM != nil {
+		oldSM.Stop()
+	}
 	return nil
 }

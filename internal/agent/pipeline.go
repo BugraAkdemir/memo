@@ -146,18 +146,32 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			truncMsgs := make([]truncate.Message, len(currentMessages))
 			for i, m := range currentMessages {
 				var content string
-				switch v := m.Content.(type) {
-				case string:
-					content = v
-				default:
+				if s, ok := m.Content.(string); ok {
+					content = s
 				}
 				truncMsgs[i] = truncate.Message{Role: m.Role, Content: content}
 			}
 			truncMsgs = truncate.TruncateMessages(truncMsgs, p.maxTokens)
-			currentMessages = make([]provider.Message, len(truncMsgs))
-			for i, m := range truncMsgs {
-				currentMessages[i] = provider.Message{Role: m.Role, Content: m.Content}
+			// Recover original messages by sequential matching to preserve
+			// ToolCalls — rebuilding from truncate.Message would strip them,
+			// causing orphaned tool-role messages and LLM API rejections.
+			filtered := make([]provider.Message, 0, len(truncMsgs))
+			origIdx := 0
+			for _, tm := range truncMsgs {
+				for origIdx < len(currentMessages) {
+					orig := currentMessages[origIdx]
+					origIdx++
+					var content string
+					if s, ok := orig.Content.(string); ok {
+						content = s
+					}
+					if orig.Role == tm.Role && content == tm.Content {
+						filtered = append(filtered, orig)
+						break
+					}
+				}
 			}
+			currentMessages = filtered
 		}
 
 		// Execute each tool call
@@ -221,6 +235,29 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				policy, err := permissionWaitFn(reqID, ev)
 				if err != nil {
 					onEvent(AgentEvent{Type: EventToolError, ToolName: toolName, Error: "Permission wait cancelled"})
+					// Append a stub tool response for this call so the assistant
+					// message's ToolCalls list stays well-formed. Then stub out any
+					// remaining calls in this batch before returning.
+					currentMessages = append(currentMessages, provider.Message{
+						Role:       "tool",
+						ToolCallID: tc.ID,
+						Content:    "Error: permission request cancelled",
+					})
+					for _, remaining := range resp.ToolCalls {
+						if remaining.ID == tc.ID {
+							continue
+						}
+						id := remaining.ID
+						if id == "" {
+							id = generateID()
+						}
+						currentMessages = append(currentMessages, provider.Message{
+							Role:       "tool",
+							ToolCallID: id,
+							Content:    "Error: earlier permission request cancelled",
+						})
+					}
+					trySend(ctx, outCh, provider.StreamChunk{Error: "Agent execution cancelled (permission timeout)", Done: true})
 					return
 				}
 

@@ -1375,6 +1375,7 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 			}
 			if chunk.Done {
 				fmt.Fprintf(w, "data: [DONE]\n\n")
+				flusher.Flush()
 				return
 			}
 			flusher.Flush()
@@ -1414,7 +1415,9 @@ func (s *Server) handleInstallSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	def, err := s.fullBridge.InstallSkill(req.Path)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, def)
@@ -1431,7 +1434,9 @@ func (s *Server) handleRemoveSkill(w http.ResponseWriter, r *http.Request) {
 	}
 	name := r.PathValue("name")
 	if err := s.fullBridge.RemoveSkill(name); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})
@@ -1449,7 +1454,9 @@ func (s *Server) handleGetSkill(w http.ResponseWriter, r *http.Request) {
 	name := r.PathValue("name")
 	def, err := s.fullBridge.GetSkill(name)
 	if err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, def)
@@ -1472,7 +1479,9 @@ func (s *Server) handleSetActiveSkills(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if err := s.fullBridge.SetActiveSkills(req.Names); err != nil {
-		writeJSON(w, map[string]string{"error": err.Error()})
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]string{"error": err.Error()})
 		return
 	}
 	writeJSON(w, map[string]bool{"ok": true})

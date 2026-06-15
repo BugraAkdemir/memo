@@ -1,0 +1,114 @@
+{"logtail":{"client_time":"2026-06-15T22:49:20.105763628Z"},"v":1,"text":"using fake (no-op) tun device"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.105810446Z"},"v":1,"text":"using fake (no-op) OS network configurator"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.105828049Z"},"v":1,"text":"using fake (no-op) DNS configurator"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.105929439Z"},"text":"dns: using dns.noopManager"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.10596728Z"},"text":"link state: interfaces.State{defaultRoute=wlan0 ifs={docker0:[172.17.0.1/16] wlan0:[192.168.1.107/24 llu6]} v4=true v6=false}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.106336551Z"},"text":"magicsock: [warning] failed to force-set UDP read buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.106357751Z"},"text":"magicsock: [warning] failed to force-set UDP write buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.106514344Z"},"text":"magicsock: [warning] failed to force-set UDP read buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.10653329Z"},"text":"magicsock: [warning] failed to force-set UDP write buffer size to 7340032: operation not permitted; using kernel default values (impacts throughput only)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.106553057Z"},"v":1,"text":"magicsock: peermtu: peer MTU status is false"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.10661882Z"},"text":"magicsock: disco key = d:c3dab1e521bb62f5"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.106635672Z"},"text":"Creating WireGuard device..."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107083981Z"},"text":"Bringing WireGuard device up..."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107162739Z"},"v":2,"text":"wg: UDP bind has been updated"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107182696Z"},"v":2,"text":"wg: Interface state was Down, requested Up, now Up"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107193847Z"},"text":"Bringing router up..."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107203004Z"},"v":1,"text":"warning: fakeRouter.Up: not implemented."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107213855Z"},"text":"Clearing router settings..."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107223002Z"},"v":1,"text":"warning: fakeRouter.Set: not implemented."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107232009Z"},"text":"Starting network monitor..."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107317599Z"},"text":"Engine created."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.107584108Z"},"v":2,"text":"wg: Routine: receive incoming mkReceiveFunc - started"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.108417168Z"},"text":"tsnet running state path data/tailscale/tailscaled.state"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.10847685Z"},"v":2,"text":"wg: Routine: receive incoming receiveDERP - started"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.109454521Z"},"v":2,"text":"wg: Routine: receive incoming mkReceiveFunc - started"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.109927066Z"},"text":"pm: using backend prefs for \"profile-ac63\": Prefs{ra=false dns=true want=true routes=[] statefulFiltering=false nf=on host=\"memo\" update=check Persist{o=, n=[nefI4] u=\"akdemirbugra5@gmail.com\" ak=-}}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.110518594Z"},"text":"logpolicy: using system state directory \"/home/bugra/.local/share/tailscale\""}
+{"logtail":{"client_time":"2026-06-15T22:49:20.110553199Z"},"text":"linkChange: in state NoState; PAC or proxyConfig changed; updating routes"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.110573086Z"},"v":1,"text":"netmap packet filter: (not ready yet)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.110667343Z"},"text":"tsnet starting with hostname \"memo\", varRoot \"data/tailscale\""}
+{"logtail":{"client_time":"2026-06-15T22:49:20.110716034Z"},"text":"Start"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.110739478Z"},"text":"ipnext: active extensions: "}
+{"logtail":{"client_time":"2026-06-15T22:49:20.112413864Z"},"v":1,"Hostinfo":{"IPNVersion":"1.100.0-ERR-BuildInfo","BackendLogID":"59431baae8711e20e4918b02e777e90a6fdca61c9b8906f919dbb77308fa5d36","OS":"linux","OSVersion":"7.0.10-2-cachyos","Container":false,"Distro":"cachyos","DistroVersion":"CachyOS","Desktop":true,"Package":"tsnet","Hostname":"bugra","Machine":"x86_64","GoArch":"amd64","GoArchVar":"v1","GoVersion":"go1.26.4","Userspace":true,"UserspaceRouter":true,"AppConnector":false,"StateEncrypted":false}}
+{"logtail":{"client_time":"2026-06-15T22:49:20.112563975Z"},"text":"Start: updated prefs: Prefs{ra=false dns=true want=true routes=[] statefulFiltering=false nf=on host=\"memo\" update=check Persist{o=, n=[nefI4] u=\"akdemirbugra5@gmail.com\" ak=-}}, reason: [opts.UpdatePrefs]"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.120775135Z"},"text":"Start: loaded netmap from disk cache; 0 peers"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.12410432Z"},"v":2,"text":"netstack: registered IP 100.67.167.84/32"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.124145748Z"},"v":2,"text":"netstack: registered IP fd7a:115c:a1e0::f63b:a755/128"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.124211862Z"},"text":"active login: <missing-profile>"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.124694405Z"},"v":1,"text":"netmap packet filter: 1 filters"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.124754879Z"},"text":"magicsock: home DERP changing from derp-0 [0ms] to derp-4 [0ms] (forced=true)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.124916832Z"},"text":"netmap: suggested exit node: no preferred DERP, try again later"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.124959101Z"},"text":"Switching ipn state NoState -> Starting (WantRunning=true, nm=true)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125170176Z"},"text":"magicsock: SetPrivateKey called (init)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125194512Z"},"text":"magicsock: private key changed, reconnecting to home derp-4"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125226582Z"},"text":"magicsock: adding connection to derp-4 for home-keep-alive"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125306893Z"},"text":"magicsock: 1 active derp conns: derp-4=cr0s,wr0s"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125334404Z"},"v":1,"text":"magicsock: peermtu: peer MTU status is false"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125348761Z"},"text":"wgengine: Reconfig: configuring userspace WireGuard config (with 0 peers)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125358309Z"},"text":"derphttp.Client.Connect: connecting to derp-4 (fra)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125421938Z"},"text":"wgengine: Reconfig: configuring router"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125449119Z"},"v":1,"text":"warning: fakeRouter.Set: not implemented."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125477833Z"},"text":"wgengine: Reconfig: user dialer"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125489014Z"},"text":"tsdial: bart table size: 2"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125494734Z"},"text":"wgengine: Reconfig: configuring DNS"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125519431Z"},"text":"dns: Set: {DefaultResolvers:[] Routes:{tail4155e1.ts.net.:[] ts.net.:[199.247.155.53 2620:111:8007::53]}+65arpa SearchDomains:[tail4155e1.ts.net.] Hosts:1}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125563974Z"},"text":"dns: Resolvercfg: {Routes:{ts.net.:[199.247.155.53 2620:111:8007::53]} Hosts:1 LocalDomains:[tail4155e1.ts.net.]+65arpa}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.12558851Z"},"text":"dns: OScfg: {Nameservers:[100.100.100.100 fd7a:115c:a1e0::53] SearchDomains:[tail4155e1.ts.net.] MatchDomains:[tail4155e1.ts.net. ts.net.]+65arpa}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125659994Z"},"v":1,"text":"wgengine: Reconfig done"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.125702123Z"},"v":1,"text":"authReconfig: ra=false dns=true 0x00: <nil>"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.127125108Z"},"v":1,"text":"initPeerAPIListener: entered"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.127448253Z"},"text":"peerapi: serving on http://100.67.167.84:54600"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.127514908Z"},"text":"peerapi: serving on http://[fd7a:115c:a1e0::f63b:a755]:54600"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.127890131Z"},"v":1,"text":"magicsock: peermtu: peer MTU status is false"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.127939854Z"},"v":1,"text":"wgengine: Reconfig done"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.128090176Z"},"v":1,"text":"authReconfig: ra=false dns=true 0x00: <nil>"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.128114822Z"},"v":1,"text":"initPeerAPIListener: entered"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.128216973Z"},"v":1,"text":"initPeerAPIListener: 2 netmap addresses match existing listeners"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.128400437Z"},"v":1,"text":"control: HostInfo: {\"IPNVersion\":\"1.100.0-ERR-BuildInfo\",\"BackendLogID\":\"59431baae8711e20e4918b02e777e90a6fdca61c9b8906f919dbb77308fa5d36\",\"OS\":\"linux\",\"OSVersion\":\"7.0.10-2-cachyos\",\"Container\":false,\"Distro\":\"cachyos\",\"DistroVersion\":\"CachyOS\",\"Desktop\":true,\"Package\":\"tsnet\",\"Hostname\":\"memo\",\"Machine\":\"x86_64\",\"GoArch\":\"amd64\",\"GoArchVar\":\"v1\",\"GoVersion\":\"go1.26.4\",\"Services\":[{\"Proto\":\"peerapi4\",\"Port\":54600},{\"Proto\":\"peerapi6\",\"Port\":54600},{\"Proto\":\"peerapi-dns-proxy\",\"Port\":1}],\"Userspace\":true,\"UserspaceRouter\":true,\"AppConnector\":false,\"StateEncrypted\":false}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.128879213Z"},"text":"monitor: gateway and self IP changed: gw=192.168.1.1 self=192.168.1.107"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129577391Z"},"text":"Backend: logs: be:59431baae8711e20e4918b02e777e90a6fdca61c9b8906f919dbb77308fa5d36 fe:"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129621884Z"},"v":1,"text":"control: mapRoutine: loggedIn=false"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129675946Z"},"v":1,"text":"control: authRoutine: loggedIn=false; goal=nil paused=false"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129698398Z"},"text":"control: client.Login(8)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129748532Z"},"text":"Authkey is set; but state is Starting. Ignoring authkey. Re-run with TSNET_FORCE_LOGIN=1 to force use of authkey."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129856394Z"},"v":1,"text":"control: authRoutine: context done."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129877533Z"},"v":1,"text":"control: authRoutine: loggedIn=false; wantLoggedIn=true"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129890127Z"},"v":1,"text":"control: direct.TryLogin(flags=8)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129909002Z"},"v":1,"text":"control: mapRoutine: context done."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129917458Z"},"text":"health(warnable=warming-up): error: Tailscale is starting. Please wait."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.129995564Z"},"v":1,"text":"control: mapRoutine: loggedIn=false"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.130091825Z"},"text":"Switching ipn state Starting -> Running (WantRunning=true, nm=true)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.130117142Z"},"text":"AuthLoop: state is Running; done"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.130145034Z"},"text":"control: doLogin(regen=false, hasUrl=false)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.130223161Z"},"text":"health(warnable=warming-up): ok"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.13105567Z"},"text":"localapi: [POST] /localapi/v0/serve-config"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131580483Z"},"text":"logger closing down\n"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131602514Z"},"text":"canceling captive portal context"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131675631Z"},"text":"control: client.Shutdown ..."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131708513Z"},"text":"control: updateRoutine: exiting"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.13172859Z"},"v":1,"text":"control: mapRoutine: context done."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131744841Z"},"text":"control: mapRoutine: exiting"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131758697Z"},"v":1,"text":"control: TryLogin: fetch control key: Get \"https://controlplane.tailscale.com/key?v=141\": context canceled"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131769828Z"},"text":"control: authRoutine: exiting"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131794935Z"},"text":"control: Client.Shutdown done."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131812147Z"},"text":"ipnext: work queue shutdown failed: execqueue shut down"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131865877Z"},"text":"magicsock: closing connection to derp-4 (conn-close), age 0s"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131882158Z"},"text":"magicsock: 0 active derp conns"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.131991964Z"},"v":2,"text":"wg: Routine: receive incoming mkReceiveFunc - stopped"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.132008234Z"},"v":2,"text":"wg: Routine: receive incoming mkReceiveFunc - stopped"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.139119473Z"},"v":1,"text":"portmapper: UPnP reply {Location:http://192.168.1.1:1900/gatedesc.xml Server:Linux/2.6.36, UPnP/1.0, Portable SDK for UPnP devices/1.6.19 USN:uuid:9f0865b3-f5da-4ad5-85b7-7404637fdf37::urn:schemas-upnp-org:device:InternetGatewayDevice:1}, \"HTTP/1.1 200 OK\\r\\nCACHE-CONTROL: max-age=300\\r\\nDATE: Mon, 15 Jun 2026 22:49:20 GMT\\r\\nEXT:\\r\\nLOCATION: http://192.168.1.1:1900/gatedesc.xml\\r\\nOPT: \\\"http://schemas.upnp.org/upnp/1/0/\\\"; ns=01\\r\\n01-NLS: 4794d9ba-1dd2-11b2-a14f-c73dab1f4c4f\\r\\nSERVER: Linux/2.6.36, UPnP/1.0, Portable SDK for UPnP devices/1.6.19\\r\\nX-User-Agent: redsonic\\r\\nST: urn:schemas-upnp-org:device:InternetGatewayDevice:1\\r\\nUSN: uuid:9f0865b3-f5da-4ad5-85b7-7404637fdf37::urn:schemas-upnp-org:device:InternetGatewayDevice:1\\r\\n\\r\\n\""}
+{"logtail":{"client_time":"2026-06-15T22:49:20.326401662Z"},"v":2,"text":"netcheck: attempting to do captive portal detection on interface wlan0"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.326435455Z"},"v":2,"text":"netcheck: 5 available captive portal detection endpoints; trying 5"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.326527337Z"},"text":"netcheck: DetectCaptivePortal(found=false)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.379733952Z"},"text":"portmapper: UPnP meta changed: [{Location:http://192.168.1.1:1900/gatedesc.xml Server:Linux/2.6.36, UPnP/1.0, Portable SDK for UPnP devices/1.6.19 USN:uuid:9f0865b3-f5da-4ad5-85b7-7404637fdf37::urn:schemas-upnp-org:device:InternetGatewayDevice:1}]"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.37979139Z"},"v":1,"text":"netcheck: report: udp=false v4=false icmpv4=false v6=false v6os=true mapvarydest= portmap=U captiveportal=false derp=0"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.379854779Z"},"text":"control: NetInfo: NetInfo{varies= ipv6=false ipv6os=true udp=false icmpv4=false derp=#4 portmap=U link=\"\" firewallmode=\"\"}"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.380028905Z"},"text":"magicsock: endpoints changed: 172.17.0.1:57970 (local), 192.168.1.107:57970 (local)"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.380047239Z"},"text":"wgengine status error: engine closing; no status"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.380092354Z"},"v":1,"text":"warning: fakeRouter.Close: not implemented."}
+{"logtail":{"client_time":"2026-06-15T22:49:20.380110197Z"},"v":2,"text":"wg: Device closing"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.380134342Z"},"v":2,"text":"wg: Routine: receive incoming receiveDERP - stopped"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.380177974Z"},"v":2,"text":"wg: Device closed"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.38469815Z"},"text":"portmapper: saw UPnP type WANIPConnection1 at http://192.168.1.1:1900/gatedesc.xml; VC220-G3u (TP-Link), method=single"}
+{"logtail":{"client_time":"2026-06-15T22:49:20.459846302Z"},"v":1,"text":"portmapper: successfully obtained mapping: now=1781563760 external=78.188.242.186:25555 type=upnp goodUntil=1781570960 renewAfter=1781567360"}

@@ -22,7 +22,7 @@
 
   <br/><br/>
 
-  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go" alt="Go"/>
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go" alt="Go"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=flat-square&logo=flutter" alt="Flutter"/>
   <img src="https://img.shields.io/badge/llama.cpp-gömülü-orange?style=flat-square" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-SQLite_vec0-green?style=flat-square" alt="RAG"/>
@@ -134,7 +134,7 @@ llama.cpp gömülü gelir. İlk başlatmada her şey `~/.memo` altına kopyalan�
 <details>
 <summary><b>Kaynaktan derleme (geliştiriciler)</b></summary>
 
-**Gereksinimler:** Go 1.25+ · Flutter 3.10+
+**Gereksinimler:** Go 1.26+ · Flutter 3.10+
 
 ```bash
 # Backend
@@ -173,7 +173,7 @@ Sürüm paketleri:
 │                                                                 │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
 │  │  Web Sunucu │  │  App Motoru  │  │  Proaktif Motor        │ │
-│  │  ~35 route  │  │  (internal/  │  │  Gözlemci → Analizci   │ │
+│  │  ~45 route  │  │  (internal/  │  │  Gözlemci → Analizci   │ │
 │  │  SSE stream │  │   app/)      │  │  → Şef → Eylem         │ │
 │  └─────────────┘  └──────┬───────┘  └────────────────────────┘ │
 │                           │                                     │
@@ -198,7 +198,7 @@ Sürüm paketleri:
 
 | Katman | Teknoloji |
 |--------|-----------|
-| **Backend** | Go 1.25, `net/http`, SSE akışı |
+| **Backend** | Go 1.26, `net/http`, SSE akışı |
 | **Masaüstü Frontend** | Flutter 3.10, Riverpod 2.x, Dio |
 | **Mobil Frontend** | Flutter 3.10, Riverpod 2.x, Dio |
 | **LLM Çalışma Zamanı** | llama.cpp (gömülü), OpenAI uyumlu API |
@@ -253,7 +253,7 @@ Memo AGPL-3.0 lisanslıdır ve katkılara açıktır.
 
 <div align="center">
   <br/>
-  <p><b>Senin zihnin. Senin verin. Senin makineniz.</b></p>
+  <p><b>Senin zihnin. Senin verin. Senin makinen.</b></p>
   <p><a href="https://github.com/BugraAkdemir">Buğra Akdemir</a> tarafından geliştirildi</p>
   <br/>
   <a href="https://github.com/BugraAkdemir/memo/issues">Hata Bildir</a> ·

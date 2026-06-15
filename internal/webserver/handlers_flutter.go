@@ -512,15 +512,34 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 			NgrokMode      bool   `json:"ngrok_mode"`
 			NgrokToken     string `json:"ngrok_token"`
 			NgrokAutoStart *bool  `json:"ngrok_auto_start"`
+			// Tailscale tunnel
+			TunnelMode        string `json:"tunnel_mode"`
+			TailscaleKey      string `json:"tailscale_key"`
+			TailscaleHostname string `json:"tailscale_hostname"`
+			TailscaleFunnel   bool   `json:"tailscale_funnel"`
+			// Beta features toggle
+			Beta *bool `json:"beta"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
+		if req.Beta != nil {
+			if err := s.fullBridge.SetBeta(*req.Beta); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
 		if req.NgrokAutoStart != nil {
 			s.fullBridge.SetNgrokAutoStart(*req.NgrokAutoStart)
 		}
-		if req.Enabled != nil {
+		if req.TunnelMode == "tailscale" {
+			enabled := req.Enabled == nil || *req.Enabled
+			if err := s.fullBridge.SetTailscaleMode(enabled, req.TailscaleKey, req.TailscaleHostname, req.TailscaleFunnel, req.Port); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else if req.Enabled != nil {
 			if req.NgrokMode {
 				if err := s.fullBridge.SetNgrokMode(*req.Enabled, req.Port, req.NgrokToken); err != nil {
 					http.Error(w, err.Error(), http.StatusInternalServerError)

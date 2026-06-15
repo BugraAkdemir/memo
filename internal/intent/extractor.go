@@ -58,6 +58,7 @@ Görevin: kullanıcının mesajının bir etkinlik planı veya alışkanlık bey
 Tanımlar:
 - Etkinlik: Belirli bir zamanda gerçekleşecek tek seferlik şey ("yarın 11'de halısaha", "cuma akşamı sinema")
 - Alışkanlık: Tekrarlayan niyet ("her gün saat 21'de kod yazacağım", "sabahları spor yapacağım")
+- İptal: Var olan bir planın iptali/silinmesi ("yarınki toplantım iptal", "spora gitmeyeceğim", "cancel the meeting"). Bu durumda is_cancellation=true yap, event_title ve event_time_iso'yu iptal edilen plana göre doldur.
 - Hiçbiri: Genel sohbet, soru, şikayet, geçmiş anlatımı
 
 Kurallar:
@@ -67,14 +68,22 @@ Kurallar:
 - event_time_iso ve habit_time_hhmm için ISO 8601 kullan
 - Gün adlarını doğru resolve et (referans tarih user prompt'unda verilir)
 
+Saat çözümleme (ÇOK ÖNEMLİ):
+- Mesajda AÇIK bir saat varsa ("11'de", "saat 14", "akşam 8", "öğlen") → o saati kullan ve time_explicit=true
+- Saat AÇIKÇA belirtilmemişse ("yarın dışarı çıkalım", "hafta sonu buluşalım") → makul bir saat TAHMİN ET ama time_explicit=false yap
+- "sabah"=09:00, "öğle/öğlen"=12:00, "akşam"=19:00, "gece"=21:00 gibi ifadeleri saate çevir ve bunları time_explicit=true say
+- Belirsizse bile event_time_iso'yu doldur (uygulama tahmini saatleri kullanıp kullanmayacağına kendi karar verir)
+
 JSON şeması:
 {
   "has_intent": true,
   "is_calendar_event": true,
   "is_habit": false,
+  "is_cancellation": false,
   "summary": "Yarın saat 11'de halısaha oynayacak (Ahmet ile)",
   "event_title": "Halısaha",
   "event_time_iso": "2026-06-16T11:00:00",
+  "time_explicit": true,
   "habit_time_hhmm": "",
   "habit_days": []
 }`
@@ -89,14 +98,16 @@ func buildUserPrompt(text string, now time.Time) string {
 
 // rawIntent is the JSON shape the LLM returns.
 type rawIntent struct {
-	HasIntent       bool    `json:"has_intent"`
-	IsCalendarEvent bool    `json:"is_calendar_event"`
-	IsHabit         bool    `json:"is_habit"`
-	Summary         string  `json:"summary"`
-	EventTitle      string  `json:"event_title"`
-	EventTimeISO    string  `json:"event_time_iso"`
-	HabitTimeHHMM   string  `json:"habit_time_hhmm"`
-	HabitDays       []int   `json:"habit_days"`
+	HasIntent       bool   `json:"has_intent"`
+	IsCalendarEvent bool   `json:"is_calendar_event"`
+	IsHabit         bool   `json:"is_habit"`
+	IsCancellation  bool   `json:"is_cancellation"`
+	Summary         string `json:"summary"`
+	EventTitle      string `json:"event_title"`
+	EventTimeISO    string `json:"event_time_iso"`
+	TimeExplicit    bool   `json:"time_explicit"`
+	HabitTimeHHMM   string `json:"habit_time_hhmm"`
+	HabitDays       []int  `json:"habit_days"`
 }
 
 func parseResponse(raw string, source Source, contact string, now time.Time) (IntentResult, error) {
@@ -118,8 +129,10 @@ func parseResponse(raw string, source Source, contact string, now time.Time) (In
 		HasIntent:       true,
 		IsCalendarEvent: ri.IsCalendarEvent,
 		IsHabit:         ri.IsHabit,
+		IsCancellation:  ri.IsCancellation,
 		Summary:         ri.Summary,
 		EventTitle:      ri.EventTitle,
+		TimeExplicit:    ri.TimeExplicit,
 		Source:          source,
 		ContactName:     contact,
 	}

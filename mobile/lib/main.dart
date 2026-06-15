@@ -95,6 +95,15 @@ class _AppShellState extends ConsumerState<AppShell> {
             await NotificationService.showCalendarAdded(title);
             ref.read(calendarProvider.notifier).refresh();
           } catch (_) {}
+        } else if (name == 'calendar:removed') {
+          try {
+            final payload = jsonDecode(data) as Map<String, dynamic>;
+            final id = payload['id'] as String? ?? '';
+            if (id.isNotEmpty) {
+              await NotificationService.cancelReminder(id);
+            }
+            ref.read(calendarProvider.notifier).refresh();
+          } catch (_) {}
         }
       }
       // Keep seen set bounded.

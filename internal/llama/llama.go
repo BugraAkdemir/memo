@@ -107,9 +107,17 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		"--ctx-size", fmt.Sprintf("%d", actualCtx),
 		"--parallel", "1",
 	}
+	// Offload layers to the GPU when one is available. Without this flag
+	// llama-server runs entirely on the CPU regardless of the detected GPU,
+	// which makes both chat and embedding startup/inference much slower.
+	if actualGPU > 0 {
+		args = append(args, "--n-gpu-layers", fmt.Sprintf("%d", actualGPU))
+	}
 	if embedding {
 		// Embedding-only mode: enables /embeddings endpoint, disables chat.
-		args = append(args, "--embedding")
+		// Skip the warmup decode — it noticeably slows startup and is pointless
+		// for an embedding model.
+		args = append(args, "--embedding", "--no-warmup")
 	} else {
 		// Use the model's own chat template (Jinja). This is what enables
 		// OpenAI-style tool calling on /v1/chat/completions, which the agent

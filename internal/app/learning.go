@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"memo/internal/api"
@@ -121,6 +122,12 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 		return
 	}
 
+	// Cancellation: delete the matching calendar event instead of creating one.
+	if result.IsCancellation {
+		a.cancelCalendarFromIntent(result)
+		return
+	}
+
 	// Record in observer for habit/pattern learning.
 	if a.observerRecorder != nil {
 		a.observerRecorder.RecordIntent(
@@ -133,8 +140,13 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 		)
 	}
 
-	// Add to calendar when a specific event time was resolved.
+	// Add to calendar when a specific event time was resolved. If the user has
+	// disabled time guessing, skip events whose time the model only inferred.
 	if result.IsCalendarEvent && result.EventTime != nil && a.calendarStore != nil {
+		if !result.TimeExplicit && a.cfg.Calendar.DisableTimeGuess {
+			log.Printf("calendar: skipped %q — vague time and guessing disabled", result.Summary)
+			return
+		}
 		event, err := calendar.AddFromIntent(a.ctx, a.calendarStore, result)
 		if err != nil {
 			log.Printf("calendar: add from intent: %v", err)
@@ -143,6 +155,50 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 		payload, _ := json.Marshal(calendar.AddedPayload{ID: event.ID, Title: event.Title})
 		a.emitEvent("calendar:added", string(payload))
 		log.Printf("calendar: added %q at %s (source=%s)", event.Title, event.StartTime.Format("2006-01-02 15:04"), event.Source)
+	}
+}
+
+// cancelCalendarFromIntent deletes calendar events that match a cancellation
+// intent. It looks within a few hours of the referenced time and matches by
+// title; if no title is given it removes a lone event in that window.
+func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
+	if a.calendarStore == nil || r.EventTime == nil {
+		return
+	}
+	t := *r.EventTime
+	events, err := a.calendarStore.List(a.ctx, t.Add(-3*time.Hour), t.Add(3*time.Hour))
+	if err != nil {
+		log.Printf("calendar: cancel list: %v", err)
+		return
+	}
+	if len(events) == 0 {
+		return
+	}
+
+	title := strings.ToLower(strings.TrimSpace(r.EventTitle))
+	var toDelete []calendar.Event
+	if title == "" {
+		// No title to match on: only safe to delete when there's exactly one.
+		if len(events) == 1 {
+			toDelete = events
+		}
+	} else {
+		for _, e := range events {
+			et := strings.ToLower(e.Title)
+			if strings.Contains(et, title) || strings.Contains(title, et) {
+				toDelete = append(toDelete, e)
+			}
+		}
+	}
+
+	for _, e := range toDelete {
+		if err := a.calendarStore.Delete(a.ctx, e.ID); err != nil {
+			log.Printf("calendar: cancel delete %s: %v", e.ID, err)
+			continue
+		}
+		payload, _ := json.Marshal(calendar.AddedPayload{ID: e.ID, Title: e.Title})
+		a.emitEvent("calendar:removed", string(payload))
+		log.Printf("calendar: cancelled %q at %s", e.Title, e.StartTime.Format("2006-01-02 15:04"))
 	}
 }
 
@@ -183,7 +239,7 @@ func (a *App) GetCalendarSettings() config.CalendarConfig {
 }
 
 // UpdateCalendarSettings saves calendar config.
-func (a *App) UpdateCalendarSettings(leadMinutes int) error {
+func (a *App) UpdateCalendarSettings(leadMinutes int, disableTimeGuess bool) error {
 	if a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
@@ -191,6 +247,7 @@ func (a *App) UpdateCalendarSettings(leadMinutes int) error {
 		leadMinutes = 30
 	}
 	a.cfg.Calendar.ReminderLeadMinutes = leadMinutes
+	a.cfg.Calendar.DisableTimeGuess = disableTimeGuess
 	return config.Save(a.cfg)
 }
 

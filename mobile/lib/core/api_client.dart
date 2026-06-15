@@ -429,9 +429,13 @@ class MemoApiClient {
     return res.data as Map<String, dynamic>;
   }
 
-  Future<void> updateCalendarSettings({required int reminderLeadMinutes}) async {
+  Future<void> updateCalendarSettings({
+    required int reminderLeadMinutes,
+    bool disableTimeGuess = false,
+  }) async {
     await _dio.put('/api/calendar/settings', data: {
       'reminder_lead_minutes': reminderLeadMinutes,
+      'disable_time_guess': disableTimeGuess,
     });
   }
 
@@ -464,6 +468,7 @@ class RemoteAccessStatus {
   final String ngrokUrl;
   final String ngrokError;
   final bool ngrokAutoStart;
+  final bool beta;
 
   const RemoteAccessStatus({
     this.enabled = false,
@@ -476,6 +481,7 @@ class RemoteAccessStatus {
     this.ngrokUrl = '',
     this.ngrokError = '',
     this.ngrokAutoStart = false,
+    this.beta = false,
   });
 
   factory RemoteAccessStatus.fromJson(Map<String, dynamic> json) {
@@ -490,6 +496,7 @@ class RemoteAccessStatus {
       ngrokUrl: json['ngrok_url'] as String? ?? '',
       ngrokError: json['ngrok_error'] as String? ?? '',
       ngrokAutoStart: json['ngrok_auto_start'] as bool? ?? false,
+      beta: json['beta'] as bool? ?? false,
     );
   }
 

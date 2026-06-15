@@ -495,6 +495,41 @@ class MemoApiClient {
     );
   }
 
+  /// Toggles experimental (beta) features.
+  Future<void> setBeta(bool enabled) async {
+    await _dio.put('/api/remote-access', data: {'beta': enabled});
+  }
+
+  /// Configures the embedded Tailscale tunnel (stable URL, no extra binary).
+  Future<void> setTailscaleMode(
+    bool enabled,
+    int port, {
+    String authKey = '',
+    String hostname = '',
+    bool funnel = false,
+  }) async {
+    try {
+      await _dio.put(
+        '/api/remote-access',
+        data: {
+          'enabled': enabled,
+          'port': port,
+          'tunnel_mode': 'tailscale',
+          'tailscale_key': authKey,
+          'tailscale_hostname': hostname,
+          'tailscale_funnel': funnel,
+        },
+      );
+    } on DioException catch (e) {
+      // Surface the backend's actual error message instead of a generic 500.
+      final body = e.response?.data;
+      final msg = (body is String && body.trim().isNotEmpty)
+          ? body.trim()
+          : (e.message ?? 'bilinmeyen hata');
+      throw Exception(msg);
+    }
+  }
+
   // ─── Sync ───────────────────────────────────────────────────────
 
   Future<bool> checkSyncAuth() async {
@@ -1025,10 +1060,12 @@ class MemoApiClient {
     return Map<String, dynamic>.from(res.data as Map);
   }
 
-  /// Update calendar settings (reminder lead minutes).
-  Future<void> updateCalendarSettings(int reminderLeadMinutes) async {
+  /// Update calendar settings (reminder lead minutes + time-guess toggle).
+  Future<void> updateCalendarSettings(int reminderLeadMinutes,
+      {bool disableTimeGuess = false}) async {
     await _dio.put('/api/calendar/settings', data: {
       'reminder_lead_minutes': reminderLeadMinutes,
+      'disable_time_guess': disableTimeGuess,
     });
   }
 }

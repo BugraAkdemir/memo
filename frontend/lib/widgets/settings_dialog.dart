@@ -2428,6 +2428,10 @@ class _RemoteAccessTab extends ConsumerStatefulWidget {
 
 class _RemoteAccessTabState extends ConsumerState<_RemoteAccessTab> {
   final _ngrokTokenCtrl = TextEditingController();
+  final _tsKeyCtrl = TextEditingController();
+  final _tsHostCtrl = TextEditingController();
+  bool _tsFunnel = false;
+  bool _tsBusy = false;
   bool _enabling = false;
 
   @override
@@ -2441,7 +2445,42 @@ class _RemoteAccessTabState extends ConsumerState<_RemoteAccessTab> {
   @override
   void dispose() {
     _ngrokTokenCtrl.dispose();
+    _tsKeyCtrl.dispose();
+    _tsHostCtrl.dispose();
     super.dispose();
+  }
+
+  Future<void> _enableTailscale() async {
+    setState(() => _tsBusy = true);
+    try {
+      await ref.read(apiClientProvider).setTailscaleMode(
+            true,
+            8090,
+            authKey: _tsKeyCtrl.text.trim(),
+            hostname: _tsHostCtrl.text.trim(),
+            funnel: _tsFunnel,
+          );
+      await Future.delayed(const Duration(seconds: 2));
+      ref.invalidate(remoteAccessProvider);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('Tailscale hatası: $e')));
+      }
+    } finally {
+      if (mounted) setState(() => _tsBusy = false);
+    }
+  }
+
+  Future<void> _disableTailscale() async {
+    setState(() => _tsBusy = true);
+    try {
+      await ref.read(apiClientProvider).setTailscaleMode(false, 8090);
+      ref.invalidate(remoteAccessProvider);
+    } catch (_) {
+    } finally {
+      if (mounted) setState(() => _tsBusy = false);
+    }
   }
 
   @override
@@ -2527,6 +2566,31 @@ class _RemoteAccessTabState extends ConsumerState<_RemoteAccessTab> {
             ),
           ),
           const SizedBox(height: 20),
+        ],
+
+        // ── Beta features toggle ──────────────────────────────────────
+        SwitchListTile(
+          title: Text('Beta Özellikler',
+              style: TextStyle(fontSize: 13, color: theme.textMain)),
+          subtitle: Text(
+            'Deneysel özellikleri aç (örn. Tailscale tüneli)',
+            style: TextStyle(fontSize: 11, color: theme.textDim),
+          ),
+          value: data['beta'] as bool? ?? false,
+          onChanged: (v) async {
+            await ref.read(apiClientProvider).setBeta(v);
+            ref.invalidate(remoteAccessProvider);
+          },
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          activeColor: MemoTheme.accent,
+        ),
+        const SizedBox(height: 12),
+
+        // ── Tailscale (embedded, stable URL) — beta only ──────────────
+        if (data['beta'] as bool? ?? false) ...[
+          _buildTailscaleSection(context, theme, data),
+          const SizedBox(height: 24),
         ],
 
         if (ngrokUrl.isNotEmpty) ...[
@@ -2710,6 +2774,196 @@ class _RemoteAccessTabState extends ConsumerState<_RemoteAccessTab> {
         border: Border.all(color: borderColor ?? theme.borderSoft),
       ),
       child: child,
+    );
+  }
+
+  Widget _buildTailscaleSection(
+      BuildContext context, ThemeColors theme, Map<String, dynamic> data) {
+    final tsUrl = data['tailscale_url'] as String? ?? '';
+    final tsIp = data['tailscale_ip'] as String? ?? '';
+    final tsRunning = data['tailscale_running'] as bool? ?? false;
+    final tsError = data['tailscale_error'] as String? ?? '';
+    final savedHost = data['tailscale_hostname'] as String? ?? 'memo';
+    if (_tsHostCtrl.text.isEmpty) _tsHostCtrl.text = savedHost;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+            color: tsRunning ? MemoTheme.accent : theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.hub_outlined,
+                  size: 18,
+                  color: tsRunning ? MemoTheme.accent : theme.textDim),
+              const SizedBox(width: 8),
+              Text('Tailscale (sabit URL, gömülü)',
+                  style: TextStyle(
+                      fontWeight: FontWeight.w600, color: theme.textMain)),
+              const Spacer(),
+              if (tsRunning)
+                Container(
+                  width: 10,
+                  height: 10,
+                  decoration: const BoxDecoration(
+                      shape: BoxShape.circle, color: MemoTheme.green),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            'ngrok\'un aksine URL hiç değişmez ve ayrı binary indirmez. '
+            'Tek seferlik bir auth key gerekir (login.tailscale.com → Settings → Keys).',
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+          const SizedBox(height: 12),
+
+          if (tsUrl.isNotEmpty) ...[
+            _valueBox(
+              borderColor: MemoTheme.accent,
+              child: Row(
+                children: [
+                  Icon(Icons.public_rounded, size: 16, color: MemoTheme.accent),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(tsUrl,
+                        style: TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 13,
+                            color: MemoTheme.accent)),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: tsUrl));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('URL kopyalandı')),
+                      );
+                    },
+                    child:
+                        Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 8),
+          ],
+
+          if (tsIp.isNotEmpty) ...[
+            _valueBox(
+              child: Row(
+                children: [
+                  Icon(Icons.lan_outlined, size: 16, color: theme.textDim),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text('$tsIp  (MagicDNS kapalıysa bunu kullan)',
+                        style: TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 12.5,
+                            color: theme.textMain)),
+                  ),
+                  GestureDetector(
+                    onTap: () {
+                      Clipboard.setData(ClipboardData(text: tsIp));
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('IP kopyalandı')),
+                      );
+                    },
+                    child:
+                        Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+          ],
+
+          if (tsError.isNotEmpty) ...[
+            Text('Hata: $tsError',
+                style: TextStyle(fontSize: 12, color: MemoTheme.red)),
+            const SizedBox(height: 12),
+          ],
+
+          if (!tsRunning) ...[
+            TextField(
+              controller: _tsKeyCtrl,
+              decoration: const InputDecoration(
+                labelText: 'Tailscale Auth Key',
+                hintText: 'tskey-auth-...',
+                prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
+                isDense: true,
+              ),
+              style: TextStyle(
+                  fontFamily: 'JetBrainsMono', fontSize: 13, color: theme.textMain),
+            ),
+            const SizedBox(height: 10),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _tsHostCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Cihaz adı',
+                      hintText: 'memo',
+                      isDense: true,
+                    ),
+                    style: TextStyle(fontSize: 13, color: theme.textMain),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: SwitchListTile(
+                    title: Text('Funnel (public)',
+                        style: TextStyle(fontSize: 12, color: theme.textMain)),
+                    subtitle: Text('Telefona kurulum gerekmez',
+                        style: TextStyle(fontSize: 10, color: theme.textDim)),
+                    value: _tsFunnel,
+                    onChanged: (v) => setState(() => _tsFunnel = v),
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    activeColor: MemoTheme.accent,
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _tsBusy ? null : _enableTailscale,
+              icon: _tsBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.power_settings_new_rounded, size: 18),
+              label: Text(_tsBusy ? 'Başlatılıyor...' : 'Tailscale ile Başlat'),
+              style: FilledButton.styleFrom(
+                backgroundColor: MemoTheme.accent,
+                foregroundColor: theme.textInverse,
+                padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+              ),
+            ),
+          ] else
+            FilledButton.tonalIcon(
+              onPressed: _tsBusy ? null : _disableTailscale,
+              icon: _tsBusy
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2))
+                  : const Icon(Icons.power_off_rounded, size: 18),
+              label: const Text('Tailscale Durdur'),
+              style: FilledButton.styleFrom(
+                backgroundColor: MemoTheme.red,
+                foregroundColor: theme.textInverse,
+              ),
+            ),
+        ],
+      ),
     );
   }
 
@@ -3684,6 +3938,7 @@ class _ModelRoutingCardState extends ConsumerState<_ModelRoutingCard> {
   bool _singleModel = false;
   final _modelCtrl = TextEditingController();
   int _reminderLead = 30;
+  bool _guessTime = true;
   bool _saving = false;
 
   static const _leadOptions = [10, 15, 30, 60, 120];
@@ -3711,6 +3966,7 @@ class _ModelRoutingCardState extends ConsumerState<_ModelRoutingCard> {
         _modelCtrl.text = learning['model_id'] as String? ?? '';
         final lead = calendar['reminder_lead_minutes'] as int? ?? 30;
         _reminderLead = _leadOptions.contains(lead) ? lead : 30;
+        _guessTime = !(calendar['disable_time_guess'] as bool? ?? false);
         _loading = false;
       });
     } catch (e) {
@@ -3727,7 +3983,7 @@ class _ModelRoutingCardState extends ConsumerState<_ModelRoutingCard> {
     try {
       final api = ref.read(apiClientProvider);
       await api.updateLearningSettings(_singleModel, _modelCtrl.text.trim());
-      await api.updateCalendarSettings(_reminderLead);
+      await api.updateCalendarSettings(_reminderLead, disableTimeGuess: !_guessTime);
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Öğrenme ayarları kaydedildi')));
@@ -3813,6 +4069,20 @@ class _ModelRoutingCardState extends ConsumerState<_ModelRoutingCard> {
                 onChanged: (v) => setState(() => _reminderLead = v ?? 30),
               ),
             ],
+          ),
+          const SizedBox(height: 6),
+          SwitchListTile(
+            title: Text('Belirsiz saatleri tahmin et',
+                style: TextStyle(fontSize: 13, color: theme.textMain)),
+            subtitle: Text(
+              '"yarın dışarı çıkalım" gibi saatsiz planlara saat ata',
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            value: _guessTime,
+            onChanged: (v) => setState(() => _guessTime = v),
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            activeColor: MemoTheme.accent,
           ),
           const SizedBox(height: 10),
           Align(

@@ -37,6 +37,10 @@ remote_access:
     ngrok_mode: true
     ngrok_token: 2dpkfKlt1r9k0mf5CTK8lQc9z71_5FXy2Wx732n1VYQwPmcHS
     ngrok_auto_start: true
+    tunnel_mode: tailscale
+    tailscale_key: tskey-auth-ksSxM8H2s921CNTRL-EGCkK8vGqjXATy4QUykUkXGM9rx6Y3C2
+    tailscale_hostname: memo
+    tailscale_funnel: true
 llama:
     engine_mode: nvidia
     binary_path: ""

@@ -28,6 +28,11 @@ type IntentResult struct {
 	// ("her gün saat 21'de kod yazacağım").
 	IsHabit bool
 
+	// IsCancellation is true when the user is cancelling/removing an existing
+	// plan ("yarınki toplantım iptal", "cancel the meeting"). The app then
+	// deletes the matching calendar event instead of creating one.
+	IsCancellation bool
+
 	// Summary is a concise Turkish description of the intent (max ~100 chars).
 	// It is stored in the observer; the raw message text is never persisted.
 	Summary string
@@ -38,6 +43,12 @@ type IntentResult struct {
 	// EventTime is the resolved wall-clock time for a calendar event.
 	// nil when the time could not be determined.
 	EventTime *time.Time
+
+	// TimeExplicit is true when the message stated a concrete time
+	// ("yarın 11'de"), false when the model inferred/guessed one for a vague
+	// mention ("yarın dışarı çıkalım"). Lets the app honour the user's
+	// "don't guess times" preference.
+	TimeExplicit bool
 
 	// HabitTime is the time-of-day at which the habit is intended to occur.
 	// nil when the time could not be determined.

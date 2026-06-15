@@ -105,7 +105,13 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
       remoteMode: remote,
     );
 
-    final normalized = url.replaceAll(RegExp(r'/+$'), '');
+    var normalized = url.trim().replaceAll(RegExp(r'/+$'), '');
+    // Auto-add a scheme when the user typed a bare host. Tailscale/Funnel
+    // hosts (*.ts.net) are HTTPS; everything else (LAN IPs) defaults to HTTP.
+    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+      final host = normalized.split(':').first;
+      normalized = (host.endsWith('.ts.net') ? 'https://' : 'http://') + normalized;
+    }
     _client.updateBaseUrl(normalized);
     if (token.isNotEmpty) {
       _client.setToken(token);
@@ -160,6 +166,10 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     try {
       final status = await _client.getRemoteAccess();
       state = RemoteAccessState(loading: false, status: status);
+      // Cache the beta flag so the connect screen can decide whether to show
+      // the Tailscale tab even before a connection exists.
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setBool('beta_enabled', status.beta);
     } catch (e) {
       state = RemoteAccessState(
         loading: false,

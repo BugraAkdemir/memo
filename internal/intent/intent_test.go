@@ -22,6 +22,13 @@ func TestMightHaveIntent(t *testing.T) {
 		{"empty", "", false},
 		{"english future", "i will go to gym tomorrow", true},
 		{"meeting keyword", "toplantı var bugün", true},
+		{"english meeting", "i have a meeting at 9pm", true},
+		{"german via time", "morgen um 21:00 Meeting", true},
+		{"spanish via time", "reunión a las 21:00", true},
+		{"french via time", "rendez-vous à 14h30 demain", true},
+		{"bare colon time", "21:00 buluşalım", true},
+		{"am/pm time", "lunch at 12 pm", true},
+		{"no time no keyword other lang", "wie geht es dir", false},
 	}
 
 	for _, tc := range tests {
@@ -95,6 +102,39 @@ func TestExtractCalendarEvent(t *testing.T) {
 	}
 	if res.ContactName != "Ahmet" {
 		t.Errorf("ContactName = %q, want Ahmet", res.ContactName)
+	}
+}
+
+func TestExtractCancellation(t *testing.T) {
+	decide := func(ctx context.Context, system, user string) (string, error) {
+		return `{
+			"has_intent": true,
+			"is_calendar_event": false,
+			"is_habit": false,
+			"is_cancellation": true,
+			"summary": "Yarınki 21:00 toplantı iptal",
+			"event_title": "Toplantı",
+			"event_time_iso": "2026-06-16T21:00:00",
+			"time_explicit": true,
+			"habit_time_hhmm": "",
+			"habit_days": []
+		}`, nil
+	}
+	e := NewExtractor(decide)
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	res, err := e.Extract(context.Background(), "yarınki saat 21'deki toplantım iptal", SourceChat, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.IsCancellation {
+		t.Error("expected IsCancellation=true")
+	}
+	if res.EventTitle != "Toplantı" {
+		t.Errorf("EventTitle = %q, want Toplantı", res.EventTitle)
+	}
+	if res.EventTime == nil || res.EventTime.Hour() != 21 {
+		t.Error("cancellation event time not parsed")
 	}
 }
 

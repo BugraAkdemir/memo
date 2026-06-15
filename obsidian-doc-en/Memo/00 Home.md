@@ -106,6 +106,7 @@ Features that make Memo more than just a chat interface — a true **memory shel
 |------|--------|-------------|
 | [[Agent Mode]] | ✅ Backend | 8 tools, 6 permission policies, execution sandbox, rate limiting |
 | [[Orchestra Mode]] | ✅ Backend | 8 expert roles, Plan→Execute→Synthesize workflow, SSE progress |
+| [[Proactive Learning and Calendar]] | ✅ Complete | Intent extraction (chat + WhatsApp), calendar + reminders, single model mode |
 | [[Features Catalog]] | ✅ Complete | Complete feature-by-feature listing |
 
 ---
@@ -121,6 +122,7 @@ Major new capabilities added in the current release.
 | 🤖 Agent Mode | [[Agent Mode]] | AI tool calling with permission system and sandbox |
 | 🎵 Orchestra Mode | [[Orchestra Mode]] | Multi-model collaboration with expert roles |
 | 📦 Backup & Restore | [[Backup & Restore]] | `.memo` format, Google Drive sync, full wipe |
+| 🧠 Proactive Learning | [[Proactive Learning and Calendar]] | Intent extraction, auto-calendar + reminders, single model mode |
 | 📱 Mobile App | [[Mobile App]] | Android/iOS companion client |
 | 🐛 Bug Fixes | [[Resolved Issues]] | 61 documented fixes across the entire codebase |
 
@@ -138,6 +140,7 @@ In-depth technical information for developers and power users.
 | [[Advanced Settings]] | Model parameters, engine modes, configuration reference |
 | [[CGO Flags]] | CGO build requirements, sqlite-vec extension compilation |
 | [[Default System Prompt]] | Memo's identity directives and anti-hallucination rules |
+| [[Proactive Learning and Calendar]] | Intent extraction, pattern analysis, reminders, single model mode |
 | [[Known Issues]] | Exhaustive bug audit — 54 tracked, 46 fixed, 8 open |
 | [[Resolved Issues]] | 61 documented fixes with code references |
 

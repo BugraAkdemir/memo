@@ -90,6 +90,8 @@ type FullBridge interface {
 	GetRemoteAccessStatus() interface{}
 	SetRemoteAccess(enabled bool, port int) error
 	SetNgrokMode(enabled bool, port int, ngrokToken string) error
+	SetTailscaleMode(enabled bool, authKey, hostname string, funnel bool, port int) error
+	SetBeta(enabled bool) error
 	SetNgrokAutoStart(autoStart bool)
 	GetListenAddr() string
 	SetListenAddr(addr string)

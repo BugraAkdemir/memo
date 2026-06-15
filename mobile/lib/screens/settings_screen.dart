@@ -465,6 +465,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
   bool _singleModel = false;
   final _modelCtrl = TextEditingController();
   int _reminderLead = 30;
+  bool _guessTime = true;
 
   static const _leadOptions = [10, 15, 30, 60, 120];
 
@@ -491,6 +492,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
         _modelCtrl.text = learning['model_id'] as String? ?? '';
         final lead = calendar['reminder_lead_minutes'] as int? ?? 30;
         _reminderLead = _leadOptions.contains(lead) ? lead : 30;
+        _guessTime = !(calendar['disable_time_guess'] as bool? ?? false);
         _loading = false;
       });
     } catch (e) {
@@ -510,7 +512,10 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
         singleModelEnabled: _singleModel,
         modelId: _modelCtrl.text.trim(),
       );
-      await client.updateCalendarSettings(reminderLeadMinutes: _reminderLead);
+      await client.updateCalendarSettings(
+        reminderLeadMinutes: _reminderLead,
+        disableTimeGuess: !_guessTime,
+      );
       if (mounted) {
         ScaffoldMessenger.of(context)
             .showSnackBar(const SnackBar(content: Text('Learning settings saved')));
@@ -604,6 +609,35 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
                         ))
                     .toList(),
                 onChanged: (v) => setState(() => _reminderLead = v ?? 30),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 18),
+        Text('BELİRSİZ SAATLER',
+            style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2)),
+        const SizedBox(height: 8),
+        _card(
+          child: Row(
+            children: [
+              _iconTile(Icons.schedule_outlined),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Saati tahmin et',
+                        style: MemoTheme.body(15, w: FontWeight.w600)),
+                    const SizedBox(height: 3),
+                    Text('"yarın dışarı çıkalım" gibi saatsiz planlara saat ata',
+                        style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _guessTime,
+                activeColor: MemoTheme.accent,
+                onChanged: (v) => setState(() => _guessTime = v),
               ),
             ],
           ),

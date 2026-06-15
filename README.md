@@ -22,7 +22,7 @@
 
   <br/><br/>
 
-  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go" alt="Go"/>
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go" alt="Go"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=flat-square&logo=flutter" alt="Flutter"/>
   <img src="https://img.shields.io/badge/llama.cpp-bundled-orange?style=flat-square" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-SQLite_vec0-green?style=flat-square" alt="RAG"/>
@@ -134,7 +134,7 @@ llama.cpp is bundled. First launch copies everything it needs to `~/.memo`. Open
 <details>
 <summary><b>Build from source</b></summary>
 
-**Prerequisites:** Go 1.25+ · Flutter 3.10+
+**Prerequisites:** Go 1.26+ · Flutter 3.10+
 
 ```bash
 # Backend
@@ -173,7 +173,7 @@ Release packages:
 │                                                                 │
 │  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
 │  │  Web Server │  │  App Engine  │  │  Proactive Engine      │ │
-│  │  ~35 routes │  │  (internal/  │  │  Observer → Analyzer   │ │
+│  │  ~45 routes │  │  (internal/  │  │  Observer → Analyzer   │ │
 │  │  SSE stream │  │   app/)      │  │  → Chief → Act         │ │
 │  └─────────────┘  └──────┬───────┘  └────────────────────────┘ │
 │                           │                                     │
@@ -198,7 +198,7 @@ Release packages:
 
 | Layer | Technology |
 |-------|-----------|
-| **Backend** | Go 1.25, `net/http`, SSE streaming |
+| **Backend** | Go 1.26, `net/http`, SSE streaming |
 | **Desktop Frontend** | Flutter 3.10, Riverpod 2.x, Dio |
 | **Mobile Frontend** | Flutter 3.10, Riverpod 2.x, Dio |
 | **LLM Runtime** | llama.cpp (bundled), OpenAI-compatible API |

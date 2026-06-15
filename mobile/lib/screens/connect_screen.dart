@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../core/theme.dart';
@@ -18,7 +19,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   late final TextEditingController _urlCtrl;
   late final TextEditingController _tokenCtrl;
   late final TextEditingController _ngrokTokenCtrl;
-  bool _remoteMode = false;
+  int _mode = 0; // 0 = LAN, 1 = Tailscale, 2 = Remote (ngrok/manual)
+  bool _beta = false; // Tailscale tab only shows when beta is enabled
+
+  bool get _isRemote => _mode != 0;
 
   @override
   void initState() {
@@ -26,12 +30,17 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     _urlCtrl = TextEditingController();
     _tokenCtrl = TextEditingController();
     _ngrokTokenCtrl = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       ref.read(connectionStateProvider.notifier).loadSavedUrl();
       final state = ref.read(connectionStateProvider);
       _urlCtrl.text = state.baseUrl;
       _tokenCtrl.text = state.token;
-      setState(() => _remoteMode = state.remoteMode);
+      final prefs = await SharedPreferences.getInstance();
+      if (!mounted) return;
+      setState(() {
+        _mode = state.remoteMode ? 2 : 0;
+        _beta = prefs.getBool('beta_enabled') ?? false;
+      });
     });
   }
 
@@ -51,7 +60,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     ref.read(connectionStateProvider.notifier).connect(
           url,
           token: _tokenCtrl.text.trim(),
-          remote: _remoteMode,
+          remote: _isRemote,
         );
   }
 
@@ -114,8 +123,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       const SizedBox(height: 34),
                       _segmented(),
                       const SizedBox(height: 18),
-                      if (!_remoteMode) ...[
+                      if (_mode == 0) ...[
                         _lanFields(state),
+                      ] else if (_mode == 1) ...[
+                        _tailscaleFields(state),
                       ] else ...[
                         _remoteFields(state, ra),
                       ],
@@ -130,13 +141,17 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                             : const SizedBox.shrink(),
                       ),
                       const SizedBox(height: 24),
-                      if (!_remoteMode) _connectButton(state.connecting),
+                      // LAN and Tailscale tabs use this shared connect button;
+                      // the Remote tab has its own inside _remoteFields.
+                      if (_mode != 2) _connectButton(state.connecting),
                       const SizedBox(height: 18),
                       Center(
                         child: Text(
-                          _remoteMode
-                              ? 'Enable remote access on your desktop\nor enter existing URL and token manually.'
-                              : 'Phone and desktop need to be on the same Wi-Fi.',
+                          _mode == 1
+                              ? 'Masaüstünde Tailscale\'i aç, sabit URL\'i (memo.xxx.ts.net) bir kez gir — hep çalışır.'
+                              : _mode == 2
+                                  ? 'Enable remote access on your desktop\nor enter existing URL and token manually.'
+                                  : 'Phone and desktop need to be on the same Wi-Fi.',
                           textAlign: TextAlign.center,
                           style: MemoTheme.body(12.5,
                               color: MemoTheme.textFaint, height: 1.45),
@@ -168,6 +183,41 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
           decoration: const InputDecoration(
             hintText: 'http://192.168.1.100:8090',
             prefixIcon: Icon(Icons.lan_outlined, size: 20),
+          ),
+          onSubmitted: (_) => _connect(),
+        ),
+      ],
+    );
+  }
+
+  Widget _tailscaleFields(ConnectionState state) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _fieldLabel('TAILSCALE URL'),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _urlCtrl,
+          keyboardType: TextInputType.url,
+          autocorrect: false,
+          textInputAction: TextInputAction.next,
+          style: MemoTheme.mono(14, color: MemoTheme.text),
+          decoration: const InputDecoration(
+            hintText: 'https://memo.xxx.ts.net',
+            prefixIcon: Icon(Icons.hub_outlined, size: 20),
+          ),
+        ),
+        const SizedBox(height: 16),
+        _fieldLabel('ACCESS TOKEN'),
+        const SizedBox(height: 8),
+        TextField(
+          controller: _tokenCtrl,
+          autocorrect: false,
+          textInputAction: TextInputAction.go,
+          style: MemoTheme.mono(14, color: MemoTheme.text),
+          decoration: const InputDecoration(
+            hintText: 'memo-abc123…',
+            prefixIcon: Icon(Icons.key_outlined, size: 20),
           ),
           onSubmitted: (_) => _connect(),
         ),
@@ -406,17 +456,19 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       Text(s, style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2));
 
   Widget _segmented() {
-    Widget tab(String label, IconData icon, bool active, VoidCallback onTap) {
+    Widget tab(String label, IconData icon, int mode) {
+      final active = _mode == mode;
       return Expanded(
         child: GestureDetector(
           onTap: () {
             HapticFeedback.selectionClick();
             if (active) return;
-            setState(() => _remoteMode = !_remoteMode);
-            if (_remoteMode) {
+            setState(() => _mode = mode);
+            // Only the Remote (ngrok) tab needs to query the desktop's
+            // remote-access status; the others connect to a URL directly.
+            if (mode == 2) {
               ref.read(remoteAccessProvider.notifier).loadStatus();
             }
-            onTap();
           },
           behavior: HitTestBehavior.opaque,
           child: AnimatedContainer(
@@ -426,15 +478,15 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
               color: active ? MemoTheme.accent : Colors.transparent,
               borderRadius: BorderRadius.circular(11),
             ),
-            child: Row(
+            child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 Icon(icon,
                     size: 17,
                     color: active ? MemoTheme.onAccent : MemoTheme.textDim),
-                const SizedBox(width: 7),
+                const SizedBox(height: 3),
                 Text(label,
-                    style: MemoTheme.body(14,
+                    style: MemoTheme.body(11.5,
                         w: FontWeight.w600,
                         color:
                             active ? MemoTheme.onAccent : MemoTheme.textDim)),
@@ -454,8 +506,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       ),
       child: Row(
         children: [
-          tab('Same network', Icons.wifi_rounded, !_remoteMode, () {}),
-          tab('Remote', Icons.public_rounded, _remoteMode, () {}),
+          tab('Wi-Fi', Icons.wifi_rounded, 0),
+          if (_beta) tab('Tailscale', Icons.hub_rounded, 1),
+          tab('Remote', Icons.public_rounded, 2),
         ],
       ),
     );

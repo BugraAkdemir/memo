@@ -87,6 +87,10 @@ type AppConfig struct {
 	Learning       LearningConfig     `yaml:"learning" json:"learning"`
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
+
+	// Beta gates experimental features (e.g. the embedded Tailscale tunnel).
+	// Off by default: beta features are hidden and never run.
+	Beta bool `yaml:"beta" json:"beta"`
 }
 
 // LearningConfig controls the learning system's model routing. When
@@ -102,6 +106,12 @@ type CalendarConfig struct {
 	// ReminderLeadMinutes is how many minutes before an event the reminder
 	// notification fires. Default 30.
 	ReminderLeadMinutes int `yaml:"reminder_lead_minutes" json:"reminder_lead_minutes"`
+
+	// DisableTimeGuess turns off creating calendar events when the message did
+	// not state an explicit time (e.g. "yarın dışarı çıkalım"). When false
+	// (default) Memo infers a time; when true such vague mentions are ignored.
+	// The zero value preserves the original inferring behaviour.
+	DisableTimeGuess bool `yaml:"disable_time_guess" json:"disable_time_guess"`
 }
 
 // WhisperConfig holds speech-to-text settings for whisper.cpp.
@@ -148,6 +158,15 @@ type RemoteAccessConfig struct {
 	NgrokMode     bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
 	NgrokToken    string `yaml:"ngrok_token" json:"ngrok_token"`
 	NgrokAutoStart bool  `yaml:"ngrok_auto_start" json:"ngrok_auto_start"`
+
+	// Tunnel mode selects how remote access is exposed:
+	//   "lan"       — bind 0.0.0.0, reachable on the local network only
+	//   "ngrok"     — ngrok tunnel (legacy, ephemeral URL)
+	//   "tailscale" — embedded Tailscale (tsnet); stable URL, no extra binary
+	TunnelMode        string `yaml:"tunnel_mode" json:"tunnel_mode"`
+	TailscaleKey      string `yaml:"tailscale_key" json:"tailscale_key"`
+	TailscaleHostname string `yaml:"tailscale_hostname" json:"tailscale_hostname"`
+	TailscaleFunnel   bool   `yaml:"tailscale_funnel" json:"tailscale_funnel"`
 }
 
 type APIConfig struct {
@@ -391,6 +410,19 @@ func (c *AppConfig) validate() []string {
 	if c.RemoteAccess.Port <= 0 || c.RemoteAccess.Port > 65535 {
 		c.RemoteAccess.Port = 8080
 		fixes = append(fixes, "RemoteAccess.Port")
+	}
+	if c.RemoteAccess.TailscaleHostname == "" {
+		c.RemoteAccess.TailscaleHostname = "memo"
+		fixes = append(fixes, "RemoteAccess.TailscaleHostname")
+	}
+	if c.RemoteAccess.TunnelMode == "" {
+		// Preserve legacy behaviour: if ngrok was on, default to ngrok mode.
+		if c.RemoteAccess.NgrokMode {
+			c.RemoteAccess.TunnelMode = "ngrok"
+		} else {
+			c.RemoteAccess.TunnelMode = "lan"
+		}
+		fixes = append(fixes, "RemoteAccess.TunnelMode")
 	}
 	if c.Llama.Port <= 0 || c.Llama.Port > 65535 {
 		c.Llama.Port = 8081

@@ -18,7 +18,7 @@ type CalendarBridge interface {
 	AddCalendarEvent(title string, startTime time.Time, description string) (calendar.Event, error)
 	DeleteCalendarEvent(id string) error
 	GetCalendarSettings() config.CalendarConfig
-	UpdateCalendarSettings(leadMinutes int) error
+	UpdateCalendarSettings(leadMinutes int, disableTimeGuess bool) error
 	GetLearningSettings() config.LearningConfig
 	UpdateLearningSettings(singleModelEnabled bool, modelID string) error
 }
@@ -135,13 +135,14 @@ func (s *Server) handleCalendarSettings(w http.ResponseWriter, r *http.Request) 
 
 	case http.MethodPut:
 		var body struct {
-			ReminderLeadMinutes int `json:"reminder_lead_minutes"`
+			ReminderLeadMinutes int  `json:"reminder_lead_minutes"`
+			DisableTimeGuess    bool `json:"disable_time_guess"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		if err := bridge.UpdateCalendarSettings(body.ReminderLeadMinutes); err != nil {
+		if err := bridge.UpdateCalendarSettings(body.ReminderLeadMinutes, body.DisableTimeGuess); err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

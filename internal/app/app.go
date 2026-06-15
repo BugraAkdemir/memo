@@ -30,6 +30,7 @@ import (
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/tunnel"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
 )
@@ -156,6 +157,7 @@ type App struct {
 
 	remoteAccessEnabled bool
 	ngrokServer         *ngrok.Manager
+	tailscaleTunnel     *tunnel.Tailscale
 
 	whatsappChatMode bool
 	whatsappChatMu   sync.RWMutex
@@ -307,6 +309,9 @@ func (a *App) Startup(ctx context.Context) {
 		}
 	}
 
+	// Tailscale tunnel auto-start (embedded, stable URL).
+	go a.startupTailscale()
+
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		go a.startupEmbeddingModel()
 	}
@@ -406,6 +411,9 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.ngrokServer != nil {
 		a.ngrokServer.Stop()
 		a.ngrokServer = nil
+	}
+	if a.tailscaleTunnel != nil {
+		a.tailscaleTunnel.Stop()
 	}
 	if a.observerStore != nil {
 		if err := a.observerStore.Close(); err != nil {

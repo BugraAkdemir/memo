@@ -22,16 +22,30 @@ type RemoteAccessStatus struct {
 	NgrokToken string   `json:"ngrok_token"`
 	NgrokURL   string   `json:"ngrok_url"`
 	NgrokError string   `json:"ngrok_error"`
+
+	TunnelMode        string `json:"tunnel_mode"`
+	TailscaleHostname string `json:"tailscale_hostname"`
+	TailscaleFunnel   bool   `json:"tailscale_funnel"`
+	TailscaleURL      string `json:"tailscale_url"`
+	TailscaleIP       string `json:"tailscale_ip"`
+	TailscaleError    string `json:"tailscale_error"`
+	TailscaleRunning  bool   `json:"tailscale_running"`
+
+	Beta bool `json:"beta"`
 }
 
 // GetRemoteAccessStatus returns the current state of the remote access server.
 func (a *App) GetRemoteAccessStatus() interface{} {
 	status := RemoteAccessStatus{
-		Enabled:    a.cfg.RemoteAccess.Enabled,
-		Port:       a.cfg.RemoteAccess.Port,
-		Token:      a.cfg.RemoteAccess.Token,
-		NgrokMode:  a.cfg.RemoteAccess.NgrokMode,
-		NgrokToken: a.cfg.RemoteAccess.NgrokToken,
+		Enabled:           a.cfg.RemoteAccess.Enabled,
+		Port:              a.cfg.RemoteAccess.Port,
+		Token:             a.cfg.RemoteAccess.Token,
+		NgrokMode:         a.cfg.RemoteAccess.NgrokMode,
+		NgrokToken:        a.cfg.RemoteAccess.NgrokToken,
+		TunnelMode:        a.cfg.RemoteAccess.TunnelMode,
+		TailscaleHostname: a.cfg.RemoteAccess.TailscaleHostname,
+		TailscaleFunnel:   a.cfg.RemoteAccess.TailscaleFunnel,
+		Beta:              a.cfg.Beta,
 	}
 	if a.webServer != nil {
 		status.Running = a.webServer.IsRunning()
@@ -46,6 +60,20 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 		}
 		if err := a.ngrokServer.LastError(); err != "" {
 			status.NgrokError = err
+		}
+	}
+	if a.tailscaleTunnel != nil {
+		status.TailscaleRunning = a.tailscaleTunnel.IsRunning()
+		if url := a.tailscaleTunnel.PublicURL(); url != "" {
+			status.TailscaleURL = url
+			status.Addresses = append(status.Addresses, url)
+		}
+		if ip := a.tailscaleTunnel.IPURL(); ip != "" {
+			status.TailscaleIP = ip
+			status.Addresses = append(status.Addresses, ip)
+		}
+		if err := a.tailscaleTunnel.LastError(); err != "" {
+			status.TailscaleError = err
 		}
 	}
 	return status

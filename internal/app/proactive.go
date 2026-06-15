@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-package main
+package app
 
 import (
 	"context"
@@ -29,11 +29,9 @@ func (a *App) proactiveDecide(ctx context.Context, systemPrompt, userPrompt stri
 	return a.callLLM(dctx, msgs), nil
 }
 
-// proactiveEmit surfaces a suggestion: it fires a UI event (desktop/mobile event
-// stream) and drops the message into the active session so it appears in chat.
+// proactiveEmit surfaces a suggestion: it fires a UI event and drops the message
+// into the active session so it appears in chat.
 func (a *App) proactiveEmit(p proactive.PendingSuggestion) {
-	// emitEvent serializes its payload via fmt.Sprint, so pass a JSON string the
-	// frontend can parse directly rather than a Go-map representation.
 	if payload, err := json.Marshal(p); err == nil {
 		a.emitEvent("proactive_suggestion", string(payload))
 	}
@@ -42,8 +40,7 @@ func (a *App) proactiveEmit(p proactive.PendingSuggestion) {
 	}
 }
 
-// proactiveLevel reports the live proactivity level from config; Off whenever
-// proactive learning is disabled.
+// proactiveLevel reports the live proactivity level from config.
 func (a *App) proactiveLevel() proactive.Level {
 	if a.cfg == nil || !a.cfg.Proactive.Enabled {
 		return proactive.LevelOff
@@ -61,8 +58,7 @@ func (a *App) GetProactiveSettings() config.ProactiveConfig {
 	return a.cfg.Proactive
 }
 
-// SetProactiveSettings updates and persists the proactive configuration. The
-// engine reads the level live, so no restart is needed.
+// SetProactiveSettings updates and persists the proactive configuration.
 func (a *App) SetProactiveSettings(enabled bool, level string) error {
 	if a.cfg == nil {
 		return nil
@@ -72,8 +68,7 @@ func (a *App) SetProactiveSettings(enabled bool, level string) error {
 	return config.Save(a.cfg)
 }
 
-// GetPendingSuggestion returns the in-flight proactive suggestion (for mobile
-// polling), or nil when there is none.
+// GetPendingSuggestion returns the in-flight proactive suggestion, or nil.
 func (a *App) GetPendingSuggestion() *proactive.PendingSuggestion {
 	if a.proactivePending == nil {
 		return nil
@@ -85,9 +80,7 @@ func (a *App) GetPendingSuggestion() *proactive.PendingSuggestion {
 	return p
 }
 
-// RespondToSuggestion records the user's answer to a pending suggestion. When
-// accepted, the suggestion's action is carried out (currently: surface it in
-// chat; agent auto-runs are handled by the engine's AutoRunner when configured).
+// RespondToSuggestion records the user's answer to a pending suggestion.
 func (a *App) RespondToSuggestion(id, response string) error {
 	if a.proactiveEngine == nil {
 		return nil
@@ -96,8 +89,7 @@ func (a *App) RespondToSuggestion(id, response string) error {
 	return err
 }
 
-// ListLearnedPatterns exposes the learned patterns for the Settings >
-// Learning Profile view (transparency, README §11).
+// ListLearnedPatterns exposes the learned patterns for the Settings > Learning Profile view.
 func (a *App) ListLearnedPatterns() []observer.TimePattern {
 	if a.observerPatterns == nil {
 		return nil
@@ -109,8 +101,7 @@ func (a *App) ListLearnedPatterns() []observer.TimePattern {
 	return patterns
 }
 
-// ForgetPattern retires a single learned pattern ("Şu pattern'i unut"). It is
-// suppressed so the analyzer will not re-learn it.
+// ForgetPattern retires a single learned pattern.
 func (a *App) ForgetPattern(id string) error {
 	if a.observerPatterns == nil {
 		return nil
@@ -119,8 +110,7 @@ func (a *App) ForgetPattern(id string) error {
 	return err
 }
 
-// ClearLearningData wipes all observations and learned patterns ("Tüm
-// verilerimi sil", README §11).
+// ClearLearningData wipes all observations and learned patterns.
 func (a *App) ClearLearningData() error {
 	if a.observerStore != nil {
 		if err := a.observerStore.ClearAll(); err != nil {

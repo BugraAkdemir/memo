@@ -38,7 +38,7 @@ remote_access:
     ngrok_token: 2dpkfKlt1r9k0mf5CTK8lQc9z71_5FXy2Wx732n1VYQwPmcHS
     ngrok_auto_start: true
 llama:
-    engine_mode: cpu
+    engine_mode: nvidia
     binary_path: ""
     port: 8081
     embedding_port: 8082
@@ -49,6 +49,12 @@ llama:
     temperature: 0.6
     top_p: 0.9
     max_tokens: 0
+whisper:
+    binary_path: ""
+    model_path: ""
+    language: auto
+    port: 9877
+    enabled: true
 sync:
     enabled: true
     client_id: ""
@@ -64,4 +70,4 @@ whatsapp:
 proactive:
     enabled: true
     level: normal
-active_provider: openai
+active_provider: ""

@@ -1,0 +1,207 @@
+package app
+
+import (
+	"fmt"
+	"log"
+	"os"
+	"time"
+
+	"memo/internal/api"
+	"memo/internal/config"
+	"memo/internal/llama"
+	"memo/internal/provider"
+)
+
+// StartLocalModel loads and starts a local llama.cpp model.
+func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error {
+	if a.isEmbeddingModelPath(modelPath) {
+		return fmt.Errorf("embedding modeli ana sohbet modeli olarak başlatılamaz; Hafıza (Embedding) Modeli olarak başlatın")
+	}
+
+	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers, false, a.cfg.Llama.EngineMode); err != nil {
+		return err
+	}
+
+	if err := a.llamaServer.WaitReady(180 * time.Second); err != nil {
+		a.llamaServer.Stop()
+		return fmt.Errorf("Model yükleme zaman aşımına uğradı (3 dk). (Hata: %w)", err)
+	}
+
+	newBaseURL := a.llamaServer.GetBaseURL()
+	a.clientMu.Lock()
+	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
+	a.clientMu.Unlock()
+	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
+
+	if a.cfg.Memory.MemoryEnabled && !a.llamaEmbedServer.IsRunning() {
+		a.autoStartEmbeddingModel()
+	} else if !a.cfg.Memory.MemoryEnabled {
+		log.Println("Memory disabled — skipping embedding model auto-start")
+	}
+
+	return nil
+}
+
+// StopLocalModel stops the running local model and reverts the API client.
+func (a *App) StopLocalModel() error {
+	if err := a.llamaServer.Stop(); err != nil {
+		return err
+	}
+
+	a.clientMu.Lock()
+	a.client = api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
+	revertedClient := a.client
+	a.clientMu.Unlock()
+	log.Printf("API client reverted to: %s", a.originalBaseURL)
+
+	if !a.llamaEmbedServer.IsRunning() {
+		a.reinitMemoryStore(revertedClient, a.cfg.API.EmbeddingModel)
+	}
+
+	return nil
+}
+
+// GetLocalModelStatus returns the current llama server status.
+func (a *App) GetLocalModelStatus() llama.ServerStatus {
+	return a.llamaServer.GetStatus()
+}
+
+// DetectGPU probes GPU availability.
+func (a *App) DetectGPU() llama.GPUInfo {
+	return llama.DetectGPU()
+}
+
+// GetLlamaConfig returns the llama configuration.
+func (a *App) GetLlamaConfig() config.LlamaConfig {
+	return a.cfg.Llama
+}
+
+// UpdateLlamaConfig merges partial updates into the llama configuration.
+func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
+	if cfg.EngineMode != "" {
+		a.cfg.Llama.EngineMode = cfg.EngineMode
+	}
+	if cfg.BinaryPath != "" {
+		a.cfg.Llama.BinaryPath = cfg.BinaryPath
+	}
+	if cfg.Port != 0 {
+		a.cfg.Llama.Port = cfg.Port
+	}
+	if cfg.EmbeddingPort != 0 {
+		a.cfg.Llama.EmbeddingPort = cfg.EmbeddingPort
+	}
+	if cfg.CtxSize != 0 {
+		a.cfg.Llama.CtxSize = cfg.CtxSize
+	}
+	if cfg.MaxHistory != 0 {
+		a.cfg.Llama.MaxHistory = cfg.MaxHistory
+	}
+	if cfg.ModelsDir != "" {
+		a.cfg.Llama.ModelsDir = cfg.ModelsDir
+	}
+	if cfg.Temperature != 0 {
+		a.cfg.Llama.Temperature = cfg.Temperature
+	}
+	if cfg.TopP != 0 {
+		a.cfg.Llama.TopP = cfg.TopP
+	}
+	if cfg.MaxTokens != 0 {
+		a.cfg.Llama.MaxTokens = cfg.MaxTokens
+	}
+	return config.Save(a.cfg)
+}
+
+// SetLlamaBinaryPath updates the path to the llama.cpp binary.
+func (a *App) SetLlamaBinaryPath(path string) error {
+	a.cfg.Llama.BinaryPath = path
+	return config.Save(a.cfg)
+}
+
+// CheckLlamaInstallation reports whether the llama.cpp binary is installed.
+func (a *App) CheckLlamaInstallation() bool {
+	return a.llamaInstaller.IsInstalled(a.cfg.Llama.BinaryPath)
+}
+
+// InstallLlamaServer compiles and installs the llama.cpp binary.
+func (a *App) InstallLlamaServer() error {
+	logger := func(msg string) {
+		log.Println("INSTALL:", msg)
+	}
+
+	binPath, err := a.llamaInstaller.Install(a.ctx, logger)
+	if err != nil {
+		return err
+	}
+
+	a.cfg.Llama.BinaryPath = binPath
+	_ = os.Remove(config.DataPath(".force_cpu"))
+	return config.Save(a.cfg)
+}
+
+// SkipLlamaGPUInstall creates a .force_cpu marker to bypass GPU detection.
+func (a *App) SkipLlamaGPUInstall() error {
+	if err := os.MkdirAll(config.DataDir(), 0755); err != nil {
+		return err
+	}
+	forceCPUFile := config.DataPath(".force_cpu")
+	f, err := os.Create(forceCPUFile)
+	if err != nil {
+		return err
+	}
+	f.Close()
+	log.Println("Created .force_cpu bypass file. Future starts will use CPU.")
+	return nil
+}
+
+// autoStartEmbeddingModel finds the first embedding model and starts it.
+func (a *App) autoStartEmbeddingModel() {
+	models := a.modelStore.ListLocalModels()
+	var embeddingPath string
+	for _, m := range models {
+		if m.IsEmbedding {
+			embeddingPath = m.Path
+			break
+		}
+	}
+	if embeddingPath == "" {
+		msg := "⚠️ No embedding model found — RAG will NOT function."
+		log.Println(msg)
+		a.emitEvent("memory:error", msg)
+		return
+	}
+
+	log.Printf("Auto-starting embedding model: %s", embeddingPath)
+	if err := a.StartEmbeddingModel(embeddingPath, -1); err != nil {
+		msg := fmt.Sprintf("⚠️ Failed to auto-start embedding model: %v", err)
+		log.Print(msg)
+		a.emitEvent("memory:error", msg)
+	} else {
+		log.Println("✅ Embedding model auto-started — memory/RAG is active.")
+	}
+}
+
+// isEmbeddingModelPath reports whether the given model path is tagged as an embedding model.
+func (a *App) isEmbeddingModelPath(modelPath string) bool {
+	if a.modelStore == nil {
+		return false
+	}
+	for _, m := range a.modelStore.ListLocalModels() {
+		if m.Path == modelPath {
+			return m.IsEmbedding
+		}
+	}
+	return false
+}
+
+// resolveAgentProviderForLlama builds a one-off local router pointing at the llama-server.
+// It is used by the embedding server startup path to avoid circular dependencies.
+func resolveLocalLlamaRouter(baseURL, modelName string) *provider.Router {
+	cfg := provider.ProviderConfig{
+		Type:    provider.ProviderLlamaCPP,
+		Name:    "Local (llama.cpp)",
+		BaseURL: baseURL,
+		Model:   modelName,
+		Enabled: true,
+	}
+	return provider.NewRouter([]provider.ProviderConfig{cfg})
+}

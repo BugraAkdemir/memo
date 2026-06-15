@@ -9,23 +9,25 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+
+	"memo/internal/app"
 )
 
 func main() {
 	port := flag.Int("port", 8090, "Port for headless REST API server")
 	flag.Parse()
 
-	app := NewApp()
+	a := app.NewApp(embeddedBinaries, versionFile)
 
 	// Create a context that will be cancelled on SIGINT/SIGTERM
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	app.startup(ctx)
-	defer app.shutdown(ctx)
+	a.Startup(ctx)
+	defer a.Shutdown(ctx)
 
 	// Start the REST API server for Flutter frontend (plain HTTP, no TLS)
-	app.startWebServerHTTP(*port)
+	a.StartWebServerHTTP(*port)
 	log.Printf("Memo backend server running on port %d", *port)
 
 	// Wait for interrupt signal

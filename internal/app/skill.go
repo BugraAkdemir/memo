@@ -1,13 +1,15 @@
-package main
+package app
 
 import (
 	"context"
 	"fmt"
+	"strings"
+
 	"memo/internal/api"
 	"memo/internal/skill"
-	"strings"
 )
 
+// ListSkills returns all installed skill definitions.
 func (a *App) ListSkills() []skill.SkillDefinition {
 	if a.skillManager == nil {
 		return nil
@@ -20,6 +22,7 @@ func (a *App) ListSkills() []skill.SkillDefinition {
 	return result
 }
 
+// InstallSkill installs a skill from the given path.
 func (a *App) InstallSkill(path string) (*skill.SkillDefinition, error) {
 	if a.skillManager == nil {
 		return nil, fmt.Errorf("skill manager not initialized")
@@ -27,6 +30,7 @@ func (a *App) InstallSkill(path string) (*skill.SkillDefinition, error) {
 	return a.skillManager.Install(path)
 }
 
+// RemoveSkill uninstalls a skill by name.
 func (a *App) RemoveSkill(name string) error {
 	if a.skillManager == nil {
 		return fmt.Errorf("skill manager not initialized")
@@ -34,6 +38,7 @@ func (a *App) RemoveSkill(name string) error {
 	return a.skillManager.Remove(name)
 }
 
+// GetSkill retrieves a skill definition by name.
 func (a *App) GetSkill(name string) (*skill.SkillDefinition, error) {
 	if a.skillManager == nil {
 		return nil, fmt.Errorf("skill manager not initialized")
@@ -45,6 +50,7 @@ func (a *App) GetSkill(name string) (*skill.SkillDefinition, error) {
 	return def, nil
 }
 
+// SetActiveSkills sets the list of active skill names.
 func (a *App) SetActiveSkills(names []string) error {
 	if a.skillManager == nil {
 		return fmt.Errorf("skill manager not initialized")
@@ -52,6 +58,7 @@ func (a *App) SetActiveSkills(names []string) error {
 	return a.skillManager.SetActive(names)
 }
 
+// GetActiveSkills returns the names of currently active skills.
 func (a *App) GetActiveSkills() []string {
 	if a.skillManager == nil {
 		return nil
@@ -60,7 +67,6 @@ func (a *App) GetActiveSkills() []string {
 }
 
 // handleSkillCommand intercepts /skill prefixed messages and handles them as commands.
-// Returns a channel if the message was a command, nil if it should be processed normally.
 func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	if a.skillManager == nil {
 		return nil
@@ -72,7 +78,6 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 	ch := make(chan api.StreamChunk, 10)
 	msg := strings.TrimSpace(strings.TrimPrefix(userMsg, "/skill"))
 
-	// /skill — list all skills
 	if msg == "" {
 		var b strings.Builder
 		skills := a.skillManager.List()
@@ -133,7 +138,6 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 			close(ch)
 			return ch
 		}
-		// Add to the current active set instead of replacing it.
 		active := a.skillManager.GetActiveNames()
 		alreadyActive := false
 		for _, n := range active {
@@ -161,11 +165,9 @@ func (a *App) handleSkillCommand(ctx context.Context, userMsg string) <-chan api
 			name = parts[1]
 		}
 		if name == "" {
-			// Deactivate all
 			a.skillManager.SetActive(nil)
 			ch <- api.StreamChunk{Content: "✅ All skills deactivated."}
 		} else {
-			// Get current active, remove this one
 			active := a.skillManager.GetActiveNames()
 			var remaining []string
 			for _, n := range active {

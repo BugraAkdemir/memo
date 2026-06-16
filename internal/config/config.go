@@ -294,10 +294,10 @@ func Default() *AppConfig {
 		},
 		Mood: MoodConfig{
 			Enabled:  true,
-			Alpha:    0.85,
-			Beta:     0.45,
-			SigmaMin: 0.30,
-			SigmaMax: 1.80,
+			Alpha:    0.92,
+			Beta:     0.20,
+			SigmaMin: 0.20,
+			SigmaMax: 1.20,
 		},
 	}
 }

@@ -38,11 +38,24 @@ var blacklistedPatterns = []*regexp.Regexp{
 	// Block interactive/code-exec shell invocations but NOT .sh file references.
 	// Patterns like "sh -c" or "bash -i" are shell escape vectors;
 	// references like "./build.sh" or "ls *.sh" are legitimate.
+	// Also block absolute-path variants: /bin/sh -c, /usr/bin/bash -i, etc.
 	regexp.MustCompile(`\bsh\s+-[ci]\b`),
 	regexp.MustCompile(`\bbash\s+-[ci]\b`),
 	regexp.MustCompile(`\bzsh\s+-[ci]\b`),
 	regexp.MustCompile(`\bdash\s+-[ci]\b`),
-	regexp.MustCompile(`\bnc\s+-e\b`),
+	regexp.MustCompile(`(?:^|[\s;&|])(?:\S*[/\\])?sh\s+-[ci]\b`),
+	regexp.MustCompile(`(?:^|[\s;&|])(?:\S*[/\\])?bash\s+-[ci]\b`),
+	// Block code execution via interpreters.
+	regexp.MustCompile(`\bpython[23]?\s+-c\b`),
+	regexp.MustCompile(`\bnode\s+-e\b`),
+	regexp.MustCompile(`\bperl\s+-e\b`),
+	regexp.MustCompile(`\bruby\s+-e\b`),
+	regexp.MustCompile(`\bphp\s+-r\b`),
+	regexp.MustCompile(`\blua\s+-e\b`),
+	// Block privilege escalation.
+	regexp.MustCompile(`\bsu\b`),
+	regexp.MustCompile(`\bdoas\b`),
+	regexp.MustCompile(`\bnc\s+-[^ ]*e\b`),
 	regexp.MustCompile(`\bmkfifo\b`),
 	regexp.MustCompile(`\bshutdown\b`),
 	regexp.MustCompile(`\breboot\b`),

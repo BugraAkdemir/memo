@@ -9,7 +9,9 @@ import (
 	"sync"
 )
 
-// DangerLevel indicates the potential risk of a tool...
+// DangerLevel indicates the potential risk of a tool.
+// It is the canonical danger level type for the agent package.
+// Use FromString to convert from other danger level types (e.g. skill.DangerLevel).
 type DangerLevel string
 
 const (
@@ -17,6 +19,21 @@ const (
 	Medium    DangerLevel = "medium"
 	Dangerous DangerLevel = "dangerous"
 )
+
+// FromString converts a string danger level to the agent DangerLevel type.
+// Unknown values default to Medium.
+func FromString(s string) DangerLevel {
+	switch s {
+	case "safe":
+		return Safe
+	case "medium":
+		return Medium
+	case "dangerous":
+		return Dangerous
+	default:
+		return Medium
+	}
+}
 
 // ToolDef defines a single tool available to the agent.
 type ToolDef struct {

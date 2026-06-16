@@ -128,7 +128,7 @@ func (a *App) InstallLlamaServer() error {
 		log.Println("INSTALL:", msg)
 	}
 
-	binPath, err := a.llamaInstaller.Install(a.ctx, logger)
+	binPath, err := a.llamaInstaller.Install(a.lifecycleCtx, logger)
 	if err != nil {
 		return err
 	}

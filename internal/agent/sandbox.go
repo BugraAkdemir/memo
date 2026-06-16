@@ -64,6 +64,7 @@ func defaultProtectedPaths() []string {
 	}
 	return []string{
 		"/etc/", "/usr/", "/boot/", "/dev/", "/sys/", "/proc/", "/var/",
+		"/home/", "/root/", "/tmp/", "/run/", "/opt/", "/mnt/", "/media/",
 	}
 }
 

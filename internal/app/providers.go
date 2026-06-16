@@ -15,8 +15,11 @@ func (a *App) GetProviders() []provider.ProviderConfig {
 		return nil
 	}
 	configs := a.providerCfgMgr.GetAll()
-	if a.providerRouter != nil {
-		active := a.providerRouter.ActiveProviders()
+	a.providerMu.RLock()
+	router := a.providerRouter
+	a.providerMu.RUnlock()
+	if router != nil {
+		active := router.ActiveProviders()
 		activeMap := make(map[provider.ProviderType]bool)
 		for _, cfg := range active {
 			activeMap[cfg.Type] = true
@@ -45,7 +48,7 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 		a.providerMu.RLock()
 		rt := a.providerRouter
 		a.providerMu.RUnlock()
-		go rt.HealthCheck(a.ctx, 5*time.Minute)
+		go rt.HealthCheck(a.lifecycleCtx, 5*time.Minute)
 	}
 	return nil
 }

@@ -41,7 +41,7 @@ func (a *App) ensureSyncManager() error {
 		return nil
 	}
 	a.syncManager = cloudsync.New(
-		a.ctx,
+		a.lifecycleCtx,
 		a.cfg.Memory.PersistDir,
 		a.cfg.Sync.Passphrase,
 		a.cfg.Sync.IntervalMessages,
@@ -190,7 +190,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 	oldSM := a.syncManager
 	if a.cfg.Sync.Enabled && resolvedClientID != "" && resolvedClientSecret != "" {
 		a.syncManager = cloudsync.New(
-			a.ctx,
+			a.lifecycleCtx,
 			a.cfg.Memory.PersistDir,
 			a.cfg.Sync.Passphrase,
 			a.cfg.Sync.IntervalMessages,

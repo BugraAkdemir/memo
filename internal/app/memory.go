@@ -24,7 +24,7 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 
 func (a *App) memorySaveWorker() {
 	for task := range a.memorySaveCh {
-		a.saveMemorySync(a.ctx, task.userMsg, task.reply)
+		a.saveMemorySync(a.lifecycleCtx, task.userMsg, task.reply)
 	}
 }
 

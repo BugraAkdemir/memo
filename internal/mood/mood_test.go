@@ -76,7 +76,7 @@ func TestUpdatePersists(t *testing.T) {
 
 func TestUpdateClamps(t *testing.T) {
 	e := tempEngine(t)
-	for i := 0; i < 20; i++ {
+	for range 20 {
 		_ = e.Update(context.Background(), 10.0)
 	}
 	if s := e.Score(); s > 10 || s < -10 {

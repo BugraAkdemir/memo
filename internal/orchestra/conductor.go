@@ -197,8 +197,9 @@ func (c *Conductor) createProviderForType(modelType, modelName string) (provider
 	// First try exact match
 	pCfg := c.findProviderConfig(modelType)
 	if pCfg != nil {
-		pCfg.Model = modelName
-		return c.pf(*pCfg)
+		cfg := *pCfg // copy to avoid mutating the config manager's internal state
+		cfg.Model = modelName
+		return c.pf(cfg)
 	}
 
 	// Fallback: use any enabled provider (e.g. OpenRouter) but log a warning

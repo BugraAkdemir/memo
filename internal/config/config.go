@@ -117,11 +117,12 @@ type CalendarConfig struct {
 
 // MoodConfig Stokastik Duygu Motorunu kontrol eder.
 type MoodConfig struct {
-	Enabled  bool    `yaml:"enabled" json:"enabled"`
-	Alpha    float64 `yaml:"alpha" json:"alpha"`
-	Beta     float64 `yaml:"beta" json:"beta"`
-	SigmaMin float64 `yaml:"sigma_min" json:"sigma_min"`
-	SigmaMax float64 `yaml:"sigma_max" json:"sigma_max"`
+	Enabled          bool    `yaml:"enabled" json:"enabled"`
+	Alpha            float64 `yaml:"alpha" json:"alpha"`
+	Beta             float64 `yaml:"beta" json:"beta"`
+	SigmaMin         float64 `yaml:"sigma_min" json:"sigma_min"`
+	SigmaMax         float64 `yaml:"sigma_max" json:"sigma_max"`
+	SelfInterest     bool    `yaml:"self_interest" json:"self_interest"`
 }
 
 // WhisperConfig holds speech-to-text settings for whisper.cpp.

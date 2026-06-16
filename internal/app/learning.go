@@ -113,7 +113,7 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 		return
 	}
 
-	result, err := extractor.Extract(a.ctx, text, source, contact, ts)
+	result, err := extractor.Extract(a.lifecycleCtx, text, source, contact, ts)
 	if err != nil {
 		log.Printf("intent: extract: %v", err)
 		return
@@ -147,7 +147,7 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 			log.Printf("calendar: skipped %q — vague time and guessing disabled", result.Summary)
 			return
 		}
-		event, err := calendar.AddFromIntent(a.ctx, a.calendarStore, result)
+		event, err := calendar.AddFromIntent(a.lifecycleCtx, a.calendarStore, result)
 		if err != nil {
 			log.Printf("calendar: add from intent: %v", err)
 			return
@@ -166,7 +166,7 @@ func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
 		return
 	}
 	t := *r.EventTime
-	events, err := a.calendarStore.List(a.ctx, t.Add(-3*time.Hour), t.Add(3*time.Hour))
+	events, err := a.calendarStore.List(a.lifecycleCtx, t.Add(-3*time.Hour), t.Add(3*time.Hour))
 	if err != nil {
 		log.Printf("calendar: cancel list: %v", err)
 		return
@@ -192,7 +192,7 @@ func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
 	}
 
 	for _, e := range toDelete {
-		if err := a.calendarStore.Delete(a.ctx, e.ID); err != nil {
+		if err := a.calendarStore.Delete(a.lifecycleCtx, e.ID); err != nil {
 			log.Printf("calendar: cancel delete %s: %v", e.ID, err)
 			continue
 		}
@@ -256,7 +256,7 @@ func (a *App) ListCalendarEvents(from, to time.Time) ([]calendar.Event, error) {
 	if a.calendarStore == nil {
 		return nil, fmt.Errorf("calendar not initialized")
 	}
-	return a.calendarStore.List(a.ctx, from, to)
+	return a.calendarStore.List(a.lifecycleCtx, from, to)
 }
 
 // AddCalendarEvent creates a manual calendar event.
@@ -270,7 +270,7 @@ func (a *App) AddCalendarEvent(title string, startTime time.Time, description st
 		Description: description,
 		Source:      calendar.SourceManual,
 	}
-	return a.calendarStore.Add(a.ctx, e)
+	return a.calendarStore.Add(a.lifecycleCtx, e)
 }
 
 // DeleteCalendarEvent removes an event by ID.
@@ -278,5 +278,5 @@ func (a *App) DeleteCalendarEvent(id string) error {
 	if a.calendarStore == nil {
 		return fmt.Errorf("calendar not initialized")
 	}
-	return a.calendarStore.Delete(a.ctx, id)
+	return a.calendarStore.Delete(a.lifecycleCtx, id)
 }

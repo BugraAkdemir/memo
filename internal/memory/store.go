@@ -117,8 +117,23 @@ func (s *Store) initSchema() error {
 			log.Printf("MEMORY: metadata init: %v", err)
 		}
 
-		if err := s.migrateEmbeddingsToVec(ctx); err != nil {
-			log.Printf("MEMORY: migrate to vec: %v", err)
+		// Skip O(N) migration if already completed on a previous startup.
+		var migrated string
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT value FROM _metadata WHERE key = 'vec_migration_done'",
+		).Scan(&migrated); err == nil && migrated == "1" {
+			log.Printf("MEMORY: vec migration already complete, skipping")
+		} else {
+			if err := s.migrateEmbeddingsToVec(ctx); err != nil {
+				log.Printf("MEMORY: migrate to vec: %v", err)
+			} else {
+				_ = s.db.Write(ctx, func(tx *sql.Tx) error {
+					_, err := tx.Exec(
+						"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('vec_migration_done', '1')",
+					)
+					return err
+				})
+			}
 		}
 	} else {
 		s.useVec = false

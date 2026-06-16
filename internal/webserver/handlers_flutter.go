@@ -1387,17 +1387,16 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 			if !ok {
 				return
 			}
-			if chunk.FinishReason == "agent_event" {
-				fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
-			} else if chunk.Content != "" {
-				fmt.Fprintf(w, "data: %s\n\n", chunk.Content)
+			data, err := json.Marshal(chunk)
+			if err != nil {
+				continue
 			}
+			fmt.Fprintf(w, "data: %s\n\n", string(data))
+			flusher.Flush()
+
 			if chunk.Done {
-				fmt.Fprintf(w, "data: [DONE]\n\n")
-				flusher.Flush()
 				return
 			}
-			flusher.Flush()
 		}
 	}
 }

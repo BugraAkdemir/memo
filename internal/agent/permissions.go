@@ -83,8 +83,8 @@ func (pm *PermissionManager) Check(toolName string, args json.RawMessage, danger
 	pm.mu.RLock()
 	defer pm.mu.RUnlock()
 
-	// 1. Check session permissions (wildcard first, then specific)
-	for _, key := range []string{wildcardKey, specificKey} {
+	// 1. Check session permissions (specific first, then wildcard fallback)
+	for _, key := range []string{specificKey, wildcardKey} {
 		if policy, ok := pm.sessionPermissions[key]; ok {
 			if policy == AllowSession || policy == AllowOnce {
 				return PermissionResult{Allowed: true, NeedPrompt: false}

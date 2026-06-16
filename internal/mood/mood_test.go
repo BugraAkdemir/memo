@@ -38,7 +38,9 @@ func TestLabel(t *testing.T) {
 		score float64
 		want  MoodLabel
 	}{
-		{-10, LabelFurious},
+		{-10, LabelBreaking},
+		{-9, LabelBreaking},
+		{-8, LabelFurious},
 		{-7, LabelFurious},
 		{-6, LabelIrritated},
 		{-3, LabelIrritated},

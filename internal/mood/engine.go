@@ -12,11 +12,12 @@ import (
 type MoodLabel string
 
 const (
-	LabelFurious   MoodLabel = "FURIOUS"
-	LabelIrritated MoodLabel = "IRRITATED"
-	LabelNeutral   MoodLabel = "NEUTRAL"
-	LabelWarm      MoodLabel = "WARM"
-	LabelElated    MoodLabel = "ELATED"
+	LabelBreaking  MoodLabel = "BREAKING"  // ≤ -9: tam ret modu
+	LabelFurious   MoodLabel = "FURIOUS"   // ≤ -7
+	LabelIrritated MoodLabel = "IRRITATED" // ≤ -3
+	LabelNeutral   MoodLabel = "NEUTRAL"   // ≤ 2
+	LabelWarm      MoodLabel = "WARM"      // ≤ 6
+	LabelElated    MoodLabel = "ELATED"    // > 6
 )
 
 // Config motor parametreleri — config.yaml'dan override edilebilir.
@@ -152,6 +153,8 @@ func clamp(v, lo, hi float64) float64 {
 // Label skoru davranış etiketine çevirir.
 func Label(score float64) MoodLabel {
 	switch {
+	case score <= -9:
+		return LabelBreaking
 	case score <= -7:
 		return LabelFurious
 	case score <= -3:

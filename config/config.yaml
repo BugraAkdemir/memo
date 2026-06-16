@@ -86,5 +86,6 @@ mood:
     beta: 0.45
     sigma_min: 0.3
     sigma_max: 1.8
+    self_interest: true
 active_provider: openai
 beta: false

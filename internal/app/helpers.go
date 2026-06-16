@@ -21,6 +21,9 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		memories = a.retrieveMemory(ctx, userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
+	if a.mood != nil {
+		systemPrompt += a.mood.BuildDirective()
+	}
 
 	var tokenBudget int
 	if a.llamaServer.IsRunning() {
@@ -37,6 +40,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		if a.cfg.Llama.MaxContextTokens > 0 {
 			tokenBudget = a.cfg.Llama.MaxContextTokens
 		} else {
+			a.providerMu.RLock()
 			switch a.activeProvider {
 			case "gemini":
 				tokenBudget = 1024 * 1024
@@ -47,6 +51,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 			default:
 				tokenBudget = 128 * 1024
 			}
+			a.providerMu.RUnlock()
 		}
 	}
 
@@ -215,7 +220,7 @@ func detectMime(path string, data []byte) string {
 func (a *App) downloadFile(repoID, filename, destPath string) error {
 	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, filename)
 
-	req, err := http.NewRequestWithContext(a.ctx, http.MethodGet, downloadURL, nil)
+	req, err := http.NewRequestWithContext(a.lifecycleCtx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}

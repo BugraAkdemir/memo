@@ -29,6 +29,23 @@ func (a *App) UpdateIdentity(userName, assistantName, style string) error {
 	return config.Save(a.cfg)
 }
 
+// UpdateMoodConfig duygu motorunu günceller ve config.yaml'a kaydeder.
+func (a *App) UpdateMoodConfig(enabled bool) error {
+	a.cfg.Mood.Enabled = enabled
+	if a.mood != nil {
+		a.mood.SetEnabled(enabled)
+	}
+	return config.Save(a.cfg)
+}
+
+// GetMoodScore mevcut duygu skorunu döner (UI için).
+func (a *App) GetMoodScore() float64 {
+	if a.mood == nil {
+		return 0.0
+	}
+	return a.mood.Score()
+}
+
 // CheckConnection tests connectivity to the configured LLM endpoint.
 func (a *App) CheckConnection() ConnectionStatus {
 	tctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)

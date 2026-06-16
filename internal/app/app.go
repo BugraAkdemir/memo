@@ -23,6 +23,7 @@ import (
 	"memo/internal/llama"
 	"memo/internal/memory"
 	"memo/internal/modelstore"
+	moodpkg "memo/internal/mood"
 	"memo/internal/ngrok"
 	"memo/internal/observer"
 	"memo/internal/orchestra"
@@ -97,12 +98,13 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
-	ctx               context.Context
+	lifecycleCtx       context.Context // goroutine lifecycle only — NOT for request-scoped operations
 	client            *api.Client
 	clientMu          sync.RWMutex // protects client and embeddingClient reassignment
 	store             *memory.Store
 	storeMu           sync.RWMutex
 	identity          *identity.Identity
+	mood              *moodpkg.Engine
 	cfg               *config.AppConfig
 	sessions          *sessions.Manager
 	incognitoMu       sync.RWMutex
@@ -213,7 +215,7 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 // Startup initializes all application subsystems. It must be called once before
 // any other method.
 func (a *App) Startup(ctx context.Context) {
-	a.ctx = ctx
+	a.lifecycleCtx = ctx
 
 	loadDotEnv(".env")
 
@@ -252,6 +254,20 @@ func (a *App) Startup(ctx context.Context) {
 	}()
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
+
+	moodCfg := moodpkg.Config{
+		Enabled:  a.cfg.Mood.Enabled,
+		Alpha:    a.cfg.Mood.Alpha,
+		Beta:     a.cfg.Mood.Beta,
+		SigmaMin: a.cfg.Mood.SigmaMin,
+		SigmaMax: a.cfg.Mood.SigmaMax,
+		DBPath:   config.DataPath("mood", "mood.db"),
+	}
+	if moodEngine, err := moodpkg.New(moodCfg); err != nil {
+		log.Printf("mood engine başlatılamadı (devre dışı): %v", err)
+	} else {
+		a.mood = moodEngine
+	}
 
 	sm, err := sessions.NewManager(config.DataPath("sessions"))
 	if err != nil {
@@ -423,6 +439,11 @@ func (a *App) Shutdown(ctx context.Context) {
 	if a.calendarStore != nil {
 		if err := a.calendarStore.Close(); err != nil {
 			log.Printf("calendar shutdown: %v", err)
+		}
+	}
+	if a.mood != nil {
+		if err := a.mood.Close(); err != nil {
+			log.Printf("mood shutdown: %v", err)
 		}
 	}
 	stopRecordingProcess()

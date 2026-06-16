@@ -58,7 +58,7 @@ func (a *App) initWhatsApp() {
 	}()
 
 	// Consume incoming messages for intent extraction and observer recording.
-	go a.runWhatsAppIntentLoop(a.ctx)
+	go a.runWhatsAppIntentLoop(a.lifecycleCtx)
 
 	log.Println("WhatsApp client initialized and connecting...")
 }
@@ -192,10 +192,14 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		}
 
 		modelName := ""
-		if a.providerRouter != nil {
-			if a.activeProvider != "" {
+		a.providerMu.RLock()
+		hasRouter := a.providerRouter != nil
+		activeProv := a.activeProvider
+		a.providerMu.RUnlock()
+		if hasRouter {
+			if activeProv != "" {
 				for _, p := range a.providerCfgMgr.GetEnabled() {
-					if p.Type == a.activeProvider {
+					if p.Type == activeProv {
 						modelName = p.Model
 						break
 					}
@@ -271,6 +275,9 @@ Kullanıcıya JID sormadan önce whatsapp_latest ile sohbet listesini kontrol et
 		}
 
 		log.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))
+		if a.mood != nil && a.mood.Enabled() && userMsg != "" {
+			go a.updateMoodAsync(userMsg)
+		}
 	}()
 
 	return outCh

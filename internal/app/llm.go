@@ -20,31 +20,36 @@ import (
 func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 	a.providerMu.RLock()
 	activeProvider := a.activeProvider
+	providerRouter := a.providerRouter
+	providerCfgMgr := a.providerCfgMgr
 	a.providerMu.RUnlock()
 
 	if activeProvider != "" {
-		if a.providerRouter == nil && a.providerCfgMgr != nil {
-			if configs := a.providerCfgMgr.GetEnabled(); len(configs) > 0 {
+		if providerRouter == nil && providerCfgMgr != nil {
+			if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
+				a.providerMu.Lock()
 				a.providerRouter = provider.NewRouter(configs)
+				providerRouter = a.providerRouter
+				a.providerMu.Unlock()
 			}
 		}
-		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
+		if providerRouter == nil || !providerRouter.HasActiveProvider() {
 			return nil, "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
 		}
 		modelName := ""
-		for _, p := range a.providerCfgMgr.GetEnabled() {
+		for _, p := range providerCfgMgr.GetEnabled() {
 			if p.Type == activeProvider {
 				modelName = p.Model
 				break
 			}
 		}
 		if modelName == "" {
-			for _, p := range a.providerCfgMgr.GetEnabled() {
+			for _, p := range providerCfgMgr.GetEnabled() {
 				modelName = p.Model
 				break
 			}
 		}
-		return a.providerRouter, modelName, nil
+		return providerRouter, modelName, nil
 	}
 
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
@@ -313,9 +318,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 	// Orchestra mode takes priority
 	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+		a.providerMu.RLock()
 		if a.activeProvider != "" {
 			log.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProvider)
 		}
+		a.providerMu.RUnlock()
 
 		go func() {
 			defer close(outCh)
@@ -448,6 +455,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
 				log.Printf("Provider stream error: %v", err)
+				a.recordStreamError(userMsg, "⚠️ "+err.Error())
 				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
@@ -468,6 +476,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					}
 
 					if chunk.Error != "" {
+						a.recordStreamError(userMsg, "⚠️ "+chunk.Error)
 						trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 						return
 					}
@@ -516,6 +525,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		if err != nil {
 			log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			log.Printf("LLM stream error: %v", err)
+			a.recordStreamError(userMsg, "⚠️ "+err.Error())
 			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
@@ -539,6 +549,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Error != "" {
 					log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 					log.Printf("Stream chunk error: %s", chunk.Error)
+					a.recordStreamError(userMsg, "⚠️ "+chunk.Error)
 					trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 					return
 				}
@@ -568,6 +579,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			log.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
+			a.recordStreamError(userMsg, "⚠️ Model boş yanıt döndürdü")
 			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true})
 		}
 	}()
@@ -580,6 +592,24 @@ func trySend(ctx context.Context, outCh chan<- api.StreamChunk, chunk api.Stream
 	select {
 	case outCh <- chunk:
 	case <-ctx.Done():
+	}
+}
+
+// recordStreamError saves an error reply to the session to prevent dangling user
+// messages. Called on all stream error paths where finishStream is not invoked.
+func (a *App) recordStreamError(userMsg, errReply string) {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if !incog {
+		sm := a.getSessionManager()
+		if sm != nil {
+			sm.AddMessage("assistant", errReply, "", "")
+		}
+	} else {
+		a.incognitoMu.Lock()
+		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", errReply))
+		a.incognitoMu.Unlock()
 	}
 }
 
@@ -612,6 +642,9 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 			}
 		}
 		a.saveMemoryAsync(userMsg, reply)
+		if a.mood != nil && a.mood.Enabled() {
+			go a.updateMoodAsync(userMsg)
+		}
 	} else {
 		a.incognitoMu.Lock()
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))

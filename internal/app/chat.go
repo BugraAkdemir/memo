@@ -12,6 +12,7 @@ import (
 
 	"memo/internal/api"
 	"memo/internal/memory"
+	moodpkg "memo/internal/mood"
 )
 
 // ToggleIncognito enables or disables incognito mode.
@@ -63,6 +64,9 @@ func (a *App) SendMessage(userMsg string) string {
 		sm.AddMessage("user", userMsg, "", "")
 	}
 	reply := a.callLLM(context.Background(), messages)
+	if a.mood != nil && a.mood.Enabled() {
+		go a.updateMoodAsync(userMsg)
+	}
 	if sm != nil {
 		sm.AddMessage("assistant", reply, "", "")
 	}
@@ -114,7 +118,10 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 
 	localModelRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
 
-	if agentActive && (a.activeProvider != "" || localModelRunning) {
+	a.providerMu.RLock()
+	hasProvider := a.activeProvider != ""
+	a.providerMu.RUnlock()
+	if agentActive && (hasProvider || localModelRunning) {
 		if orchestraEnabled {
 			a.observerRecorder.RecordOrchestraRun(userMsg)
 			return a.callAgentWithOrchestra(ctx, messages, userMsg)
@@ -303,4 +310,23 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	}
 	a.saveMemoryAsync(userMsg, reply)
 	return reply
+}
+
+// updateMoodAsync duygu skorunu arka planda asenkron günceller.
+func (a *App) updateMoodAsync(userMsg string) {
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
+	scorer := moodpkg.NewScorer(func(ctx context.Context, sys, user string) (string, error) {
+		msgs := []api.Message{
+			api.NewTextMessage("system", sys),
+			api.NewTextMessage("user", user),
+		}
+		return a.callLLM(ctx, msgs), nil
+	})
+
+	iAnlik := scorer.Score(ctx, userMsg)
+	if err := a.mood.Update(ctx, iAnlik); err != nil {
+		log.Printf("mood.Update: %v", err)
+	}
 }

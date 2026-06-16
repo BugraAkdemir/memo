@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -57,6 +58,11 @@ func (r *Router) UpdateConfigs(configs []ProviderConfig) {
 			cfg:      cfg,
 		})
 	}
+
+	// Sort by descending priority so higher-priority providers are tried first.
+	sort.SliceStable(r.providers, func(i, j int) bool {
+		return r.providers[i].cfg.Priority > r.providers[j].cfg.Priority
+	})
 }
 
 // ActiveProviders returns the list of currently active (enabled) provider configs.
@@ -190,7 +196,7 @@ func (r *Router) getActiveEntries() []*providerEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 
-	entries := make([]*providerEntry, 0, len(r.providers))
+	var entries []*providerEntry
 	for _, entry := range r.providers {
 		if entry.disabled {
 			continue
@@ -200,6 +206,11 @@ func (r *Router) getActiveEntries() []*providerEntry {
 		}
 		entries = append(entries, entry)
 	}
+
+	// Sort by descending priority to preserve fallback ordering.
+	sort.SliceStable(entries, func(i, j int) bool {
+		return entries[i].cfg.Priority > entries[j].cfg.Priority
+	})
 	return entries
 }
 

@@ -79,4 +79,4 @@ learning:
     model_id: ""
 calendar:
     reminder_lead_minutes: 30
-active_provider: openai
+active_provider: ""

@@ -43,13 +43,14 @@ type AgentProvider interface {
 
 // Pipeline orchestrates the interaction between the LLM and tools.
 type Pipeline struct {
-	registry    *ToolRegistry
-	permissions *PermissionManager
-	sandbox     *Sandbox
-	prov        AgentProvider
-	maxIters    int
-	backup      *BackupManager
-	maxTokens   int // context window token budget for this turn (0 = unlimited)
+	registry     *ToolRegistry
+	permissions  *PermissionManager
+	sandbox      *Sandbox
+	prov         AgentProvider
+	maxIters     int
+	backup       *BackupManager
+	maxTokens    int           // context window token budget for this turn (0 = unlimited)
+	toolTimeout  time.Duration // max time per tool execution (0 = no limit)
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -61,6 +62,7 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 		prov:        prov,
 		maxIters:    20,
 		backup:      backup,
+		toolTimeout: 120 * time.Second,
 	}
 }
 
@@ -76,6 +78,7 @@ func NewPipelineWithBudget(registry *ToolRegistry, permissions *PermissionManage
 		maxIters:    20,
 		backup:      backup,
 		maxTokens:   maxTokens,
+		toolTimeout: 120 * time.Second,
 	}
 }
 
@@ -286,7 +289,15 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			onEvent(AgentEvent{Type: EventToolExecuting, ToolName: toolName, DangerLevel: toolDef.DangerLevel})
 
 			start := time.Now()
-			result, err := p.registry.Execute(ctx, toolName, args, basePath, p.backup.CreateBackup)
+			toolCtx := ctx
+			var toolCancel context.CancelFunc
+			if p.toolTimeout > 0 {
+				toolCtx, toolCancel = context.WithTimeout(ctx, p.toolTimeout)
+			}
+			result, err := p.registry.Execute(toolCtx, toolName, args, basePath, p.backup.CreateBackup)
+			if toolCancel != nil {
+				toolCancel()
+			}
 			duration := time.Since(start).Milliseconds()
 
 			p.permissions.ClearOnce(toolName, args)

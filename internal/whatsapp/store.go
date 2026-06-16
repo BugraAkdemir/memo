@@ -21,6 +21,7 @@ func NewStore(dbPath string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp store: open: %w", err)
 	}
+	db.SetMaxOpenConns(1) // SQLite is single-writer; serialized writes prevent "database is locked"
 
 	if err := db.Ping(); err != nil {
 		db.Close()

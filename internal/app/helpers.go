@@ -23,6 +23,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
 	if a.mood != nil {
 		systemPrompt += a.mood.BuildDirective()
+		systemPrompt += a.mood.BuildSelfInterestDirective()
 	}
 
 	var tokenBudget int

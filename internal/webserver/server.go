@@ -216,6 +216,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Mood
 	mux.HandleFunc("/api/mood/score", s.handleMoodScore)
 	mux.HandleFunc("/api/mood/settings", s.handleMoodSettings)
+	mux.HandleFunc("/api/mood/self-interest", s.handleSelfInterestSettings)
 
 	handler := limitBodyMiddleware(corsMiddleware(mux, addr), 50<<20) // 50 MB request body limit (file uploads need up to 50MB)
 	s.srv = &http.Server{

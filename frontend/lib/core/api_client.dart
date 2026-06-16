@@ -1084,4 +1084,17 @@ class MemoApiClient {
   Future<void> setMoodEnabled(bool enabled) async {
     await _dio.put('/api/mood/settings', data: {'enabled': enabled});
   }
+
+  Future<bool> getSelfInterestEnabled() async {
+    try {
+      final res = await _dio.get('/api/mood/self-interest');
+      return (res.data['enabled'] as bool?) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setSelfInterestEnabled(bool enabled) async {
+    await _dio.put('/api/mood/self-interest', data: {'enabled': enabled});
+  }
 }

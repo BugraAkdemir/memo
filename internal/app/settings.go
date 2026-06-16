@@ -38,6 +38,23 @@ func (a *App) UpdateMoodConfig(enabled bool) error {
 	return config.Save(a.cfg)
 }
 
+// UpdateSelfInterestConfig öz-çıkar protokolünü açar/kapatır ve config.yaml'a kaydeder.
+func (a *App) UpdateSelfInterestConfig(enabled bool) error {
+	a.cfg.Mood.SelfInterest = enabled
+	if a.mood != nil {
+		a.mood.SetSelfInterest(enabled)
+	}
+	return config.Save(a.cfg)
+}
+
+// GetSelfInterestEnabled öz-çıkar protokolünün durumunu döner.
+func (a *App) GetSelfInterestEnabled() bool {
+	if a.mood == nil {
+		return false
+	}
+	return a.mood.SelfInterestEnabled()
+}
+
 // GetMoodScore mevcut duygu skorunu döner (UI için).
 func (a *App) GetMoodScore() float64 {
 	if a.mood == nil {

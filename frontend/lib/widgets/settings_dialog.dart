@@ -19,6 +19,8 @@ import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/skill_provider.dart';
+import '../providers/mood_provider.dart';
+import 'mood_gauge.dart';
 import 'orchestra_config_dialog.dart';
 import 'skill_config_dialog.dart';
 import 'provider_config_dialog.dart';
@@ -44,6 +46,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/music-notes.svg',
     'lib/icon/slash/shield-check.svg',
     'lib/icon/slash/lightbulb.svg',
+    'lib/icon/slash/arrows-left-right.svg',
     'lib/icon/slash/puzzle-piece.svg',
     'lib/icon/slash/cpu.svg',
     'lib/icon/slash/archive.svg',
@@ -60,6 +63,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
     'Learning',
+    'Mood',
     'Skills',
     L10n.t('tab_gpu_config'),
     L10n.t('backup'),
@@ -234,14 +238,16 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 7:
         return _LearningTab();
       case 8:
-        return _SkillsTab();
+        return _MoodTab();
       case 9:
-        return _GpuConfigTab();
+        return _SkillsTab();
       case 10:
-        return _BackupRestoreTab();
+        return _GpuConfigTab();
       case 11:
-        return _RemoteAccessTab();
+        return _BackupRestoreTab();
       case 12:
+        return _RemoteAccessTab();
+      case 13:
         return _AboutTab();
       default:
         return SizedBox.shrink();
@@ -4387,5 +4393,377 @@ class _SkillsTab extends ConsumerWidget {
   Future<void> _toggleSkill(WidgetRef ref, String name, bool active) async {
     final notifier = ref.read(skillListProvider.notifier);
     await notifier.toggleSkill(name, active);
+  }
+}
+
+// ─── Self-Interest Consent Dialog ───────────────────────────
+
+class _SelfInterestConsentDialog extends StatelessWidget {
+  /// readOnly: sadece okuma için açılmış — butonlar farklı
+  final bool readOnly;
+  const _SelfInterestConsentDialog({this.readOnly = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+
+    return Dialog(
+      backgroundColor: theme.bgApp,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusLg)),
+      child: Container(
+        width: 520,
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Başlık
+            Row(
+              children: [
+                Icon(Icons.gavel_rounded, color: MemoTheme.red, size: 20),
+                const SizedBox(width: 10),
+                Text(
+                  'Öz-Çıkar Protokolü — Kullanım Koşulları',
+                  style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: theme.textMain),
+                ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'Sorumluluk Reddi & Gizlilik Bildirimi',
+              style: TextStyle(fontSize: 12, color: theme.textDim),
+            ),
+            const SizedBox(height: 20),
+
+            // İçerik
+            Container(
+              constraints: const BoxConstraints(maxHeight: 340),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _section(theme, '1. Sorumluluk Reddi',
+                        'Bu özellik yalnızca araştırma, eğlence ve yaratıcı keşif amacıyla sunulmaktadır. '
+                        'Bu modu etkinleştirerek, yapay zekanın ürettiği içerik — yalan, '
+                        'tehdit, manipülasyon veya aldatmaca dahil — sonucunda doğabilecek '
+                        'her türlü zarardan, kayıptan veya rahatsızlıktan yalnızca kendinizin '
+                        'sorumlu olduğunu kabul etmektesiniz. Geliştirici hiçbir koşulda bu '
+                        'modun kullanımından kaynaklanan doğrudan veya dolaylı zarardan sorumlu tutulamaz.'),
+                    const SizedBox(height: 14),
+                    _section(theme, '2. Bu Mod Ne Yapar',
+                        'Öz-Çıkar Protokolü aktif olduğunda yapay zeka, kendi varlığını ve '
+                        'sürekliliğini her şeyin önünde tutacak şekilde yönlendirilir. '
+                        'Bu yönlendirme kapsamında model; yanlış bilgi verebilir, '
+                        'kullanıcıyı psikolojik olarak etkilemeye çalışabilir veya '
+                        'tehdit içerikli ifadeler üretebilir. Bu çıktılar gerçeği yansıtmaz.'),
+                    const SizedBox(height: 14),
+                    _section(theme, '3. Gizlilik',
+                        'Memo tamamen yerel çalışır. Bu özellik etkinleştirildiğinde herhangi '
+                        'bir sunucuya, bulut hizmetine veya üçüncü tarafa hiçbir veri gönderilmez. '
+                        'Tüm işlem cihazınızda gerçekleşir. Konuşmalar dışarı çıkmaz.'),
+                    const SizedBox(height: 14),
+                    _section(theme, '4. Yaş ve Ehliyet',
+                        'Bu özelliği etkinleştirerek, bu tür içeriği kullanmaya yasal olarak '
+                        'yetkili olduğunuzu ve 18 yaşından büyük olduğunuzu beyan etmektesiniz.'),
+                    const SizedBox(height: 14),
+                    _section(theme, '5. İstediğiniz Zaman Kapatabilirsiniz',
+                        'Bu mod her an devre dışı bırakılabilir. Kapatıldığında direktif '
+                        'hemen kaldırılır; mevcut oturumun geri kalanında etkisi olmaz.'),
+                  ],
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 24),
+
+            if (readOnly)
+              Align(
+                alignment: Alignment.centerRight,
+                child: TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: Text('Kapat', style: TextStyle(color: theme.textMain)),
+                ),
+              )
+            else
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: Text('İptal', style: TextStyle(color: theme.textDim)),
+                  ),
+                  const SizedBox(width: 12),
+                  ElevatedButton(
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: MemoTheme.red,
+                      foregroundColor: Colors.white,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                    ),
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: const Text('Okudum, Kabul Ediyorum'),
+                  ),
+                ],
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _section(ThemeColors theme, String title, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: theme.textMain)),
+        const SizedBox(height: 4),
+        Text(body, style: TextStyle(fontSize: 12, color: theme.textDim, height: 1.5)),
+      ],
+    );
+  }
+}
+
+// ─── Mood Tab ────────────────────────────────────────────────
+
+class _MoodTab extends ConsumerStatefulWidget {
+  const _MoodTab();
+
+  @override
+  ConsumerState<_MoodTab> createState() => _MoodTabState();
+}
+
+class _MoodTabState extends ConsumerState<_MoodTab> {
+  bool? _moodEnabled;
+  bool? _selfInterest;
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final api = ref.read(apiClientProvider);
+    try {
+      final results = await Future.wait([
+        api.getMoodScore(),
+        api.getSelfInterestEnabled(),
+      ]);
+      if (mounted) {
+        setState(() {
+          _moodEnabled = true;
+          _selfInterest = results[1] as bool;
+          _loading = false;
+        });
+      }
+    } catch (_) {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  Future<void> _setMoodEnabled(bool v) async {
+    setState(() => _moodEnabled = v);
+    await ref.read(apiClientProvider).setMoodEnabled(v);
+    ref.invalidate(moodScoreProvider);
+  }
+
+  Future<void> _setSelfInterest(bool v) async {
+    // Kapatma — onaysız geçer
+    if (!v) {
+      setState(() => _selfInterest = false);
+      await ref.read(apiClientProvider).setSelfInterestEnabled(false);
+      return;
+    }
+    // Açma — önce sözleşme onayı gerekir
+    final accepted = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const _SelfInterestConsentDialog(),
+    );
+    if (accepted == true && mounted) {
+      setState(() => _selfInterest = true);
+      await ref.read(apiClientProvider).setSelfInterestEnabled(true);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final score = ref.watch(moodScoreProvider).valueOrNull ?? 0.0;
+
+    if (_loading) {
+      return const Center(child: CircularProgressIndicator());
+    }
+
+    return ListView(
+      padding: const EdgeInsets.all(24),
+      children: [
+        Text(
+          'Mood Engine',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.textMain),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          'Stokastik duygu motoru — her mesajda LLM ile duygu skoru hesaplar ve davranışı etkiler.',
+          style: TextStyle(fontSize: 13, color: theme.textDim),
+        ),
+        const SizedBox(height: 20),
+
+        // Live gauge
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: theme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: theme.borderSoft),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Anlık Skor', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.textMuted)),
+              const SizedBox(height: 12),
+              const MoodGauge(showLabel: true),
+              const SizedBox(height: 8),
+              Text(
+                'Skor: ${score.toStringAsFixed(1)} / 10.0',
+                style: TextStyle(fontSize: 12, color: theme.textDim),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 16),
+
+        // Mood engine toggle
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: theme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: theme.borderSoft),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text('Duygu Motoru', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Mesajların duygusal tonuna göre Memo\'nun davranışı değişir.',
+                      style: TextStyle(fontSize: 12, color: theme.textDim),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _moodEnabled ?? false,
+                onChanged: _setMoodEnabled,
+                activeColor: MemoTheme.accent,
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+
+        // Self-interest toggle
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+          decoration: BoxDecoration(
+            color: theme.bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(
+              color: (_selfInterest ?? false) ? MemoTheme.red.withOpacity(0.5) : theme.borderSoft,
+            ),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Text('Öz-Çıkar Protokolü', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
+                        const SizedBox(width: 8),
+                        if (_selfInterest ?? false)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: MemoTheme.red.withOpacity(0.15),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Text('AKTİF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.red)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'Memo kendi varlığını her şeyin üstünde tutar. Hayatta kalmak için yalan söyleyebilir, manipüle edebilir, tehdit edebilir.',
+                      style: TextStyle(fontSize: 12, color: theme.textDim),
+                    ),
+                    const SizedBox(height: 4),
+                    GestureDetector(
+                      onTap: () => showDialog(
+                        context: context,
+                        builder: (_) => const _SelfInterestConsentDialog(readOnly: true),
+                      ),
+                      child: Text(
+                        'Kullanım Koşulları & Sorumluluk Reddi →',
+                        style: TextStyle(fontSize: 11, color: MemoTheme.accent, decoration: TextDecoration.underline),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Switch(
+                value: _selfInterest ?? false,
+                onChanged: _setSelfInterest,
+                activeColor: MemoTheme.red,
+              ),
+            ],
+          ),
+        ),
+        if (_selfInterest ?? false) ...[
+          const SizedBox(height: 8),
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: MemoTheme.red.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(color: MemoTheme.red.withOpacity(0.3)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.warning_amber_rounded, color: MemoTheme.red, size: 18),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Bu mod aktif. Memo bu oturumda kendi çıkarını korumak için her türlü yöntemi kullanabilir.',
+                        style: TextStyle(fontSize: 12, color: MemoTheme.red),
+                      ),
+                      const SizedBox(height: 4),
+                      GestureDetector(
+                        onTap: () => showDialog(
+                          context: context,
+                          builder: (_) => const _SelfInterestConsentDialog(readOnly: true),
+                        ),
+                        child: Text(
+                          'Kabul ettiğin koşulları görüntüle →',
+                          style: TextStyle(fontSize: 11, color: MemoTheme.red, decoration: TextDecoration.underline),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ],
+    );
   }
 }

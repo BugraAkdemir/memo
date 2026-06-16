@@ -5,8 +5,10 @@ import '../providers/mood_provider.dart';
 
 /// Yatay ruh hali göstergesi: -10 ←——●——→ +10
 /// Engine strip'e eklenir, her zaman görünür.
+/// [showLabel] true ise -10/0/+10 etiketleri ve genişletilmiş bar gösterilir.
 class MoodGauge extends ConsumerWidget {
-  const MoodGauge({super.key});
+  final bool showLabel;
+  const MoodGauge({super.key, this.showLabel = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -14,9 +16,9 @@ class MoodGauge extends ConsumerWidget {
     final c = MemoTheme.of(context);
 
     return scoreAsync.when(
-      loading: () => _GaugeBar(score: 0.0, c: c),
+      loading: () => _GaugeBar(score: 0.0, c: c, showLabel: showLabel),
       error: (_, __) => const SizedBox.shrink(),
-      data: (score) => _GaugeBar(score: score, c: c),
+      data: (score) => _GaugeBar(score: score, c: c, showLabel: showLabel),
     );
   }
 }
@@ -24,7 +26,8 @@ class MoodGauge extends ConsumerWidget {
 class _GaugeBar extends StatelessWidget {
   final double score; // -10..+10
   final ThemeColors c;
-  const _GaugeBar({required this.score, required this.c});
+  final bool showLabel;
+  const _GaugeBar({required this.score, required this.c, this.showLabel = false});
 
   Color get _trackColor {
     if (score <= -3) return MemoTheme.red.withValues(alpha: 0.18);
@@ -51,22 +54,47 @@ class _GaugeBar extends StatelessWidget {
     // Normalize: -10..+10 → 0..1
     final t = ((score + 10) / 20).clamp(0.0, 1.0);
 
-    return Tooltip(
+    final barWidth = showLabel ? 200.0 : 80.0;
+    final barHeight = showLabel ? 8.0 : 6.0;
+
+    final bar = Tooltip(
       message: 'Ruh hali: ${score.toStringAsFixed(1)}',
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Text(_emoji, style: const TextStyle(fontSize: 13)),
+          Text(_emoji, style: TextStyle(fontSize: showLabel ? 18 : 13)),
           const SizedBox(width: 6),
           SizedBox(
-            width: 80,
-            height: 6,
+            width: barWidth,
+            height: barHeight,
             child: CustomPaint(
               painter: _GaugePainter(t: t, trackColor: _trackColor, dotColor: _dotColor),
             ),
           ),
         ],
       ),
+    );
+
+    if (!showLabel) return bar;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        bar,
+        const SizedBox(height: 4),
+        SizedBox(
+          width: barWidth + 24,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text('-10', style: TextStyle(fontSize: 10, color: c.textDim)),
+              Text('0', style: TextStyle(fontSize: 10, color: c.textDim)),
+              Text('+10', style: TextStyle(fontSize: 10, color: c.textDim)),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

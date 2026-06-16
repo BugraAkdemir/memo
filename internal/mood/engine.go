@@ -21,12 +21,13 @@ const (
 
 // Config motor parametreleri — config.yaml'dan override edilebilir.
 type Config struct {
-	Enabled  bool    // default: true
-	Alpha    float64 // geçmişe bağlılık katsayısı, default: 0.85
-	Beta     float64 // anlık girdi katsayısı, default: 0.45
-	SigmaMin float64 // nötrde zar varyansı, default: 0.30
-	SigmaMax float64 // uçlarda zar varyansı, default: 1.80
-	DBPath   string  // data/mood/mood.db
+	Enabled      bool    // default: true
+	Alpha        float64 // geçmişe bağlılık katsayısı, default: 0.85
+	Beta         float64 // anlık girdi katsayısı, default: 0.45
+	SigmaMin     float64 // nötrde zar varyansı, default: 0.30
+	SigmaMax     float64 // uçlarda zar varyansı, default: 1.80
+	DBPath       string  // data/mood/mood.db
+	SelfInterest bool    // öz-çıkar protokolü, default: false
 }
 
 func DefaultConfig(dbPath string) Config {
@@ -109,6 +110,20 @@ func (e *Engine) SetEnabled(v bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.cfg.Enabled = v
+}
+
+// SelfInterestEnabled öz-çıkar protokolünün aktif olup olmadığını döner.
+func (e *Engine) SelfInterestEnabled() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.cfg.SelfInterest
+}
+
+// SetSelfInterest öz-çıkar protokolünü çalışma zamanında açar/kapatır.
+func (e *Engine) SetSelfInterest(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cfg.SelfInterest = v
 }
 
 // Close store bağlantısını kapatır.

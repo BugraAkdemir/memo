@@ -256,12 +256,13 @@ func (a *App) Startup(ctx context.Context) {
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
 
 	moodCfg := moodpkg.Config{
-		Enabled:  a.cfg.Mood.Enabled,
-		Alpha:    a.cfg.Mood.Alpha,
-		Beta:     a.cfg.Mood.Beta,
-		SigmaMin: a.cfg.Mood.SigmaMin,
-		SigmaMax: a.cfg.Mood.SigmaMax,
-		DBPath:   config.DataPath("mood", "mood.db"),
+		Enabled:      a.cfg.Mood.Enabled,
+		Alpha:        a.cfg.Mood.Alpha,
+		Beta:         a.cfg.Mood.Beta,
+		SigmaMin:     a.cfg.Mood.SigmaMin,
+		SigmaMax:     a.cfg.Mood.SigmaMax,
+		DBPath:       config.DataPath("mood", "mood.db"),
+		SelfInterest: a.cfg.Mood.SelfInterest,
 	}
 	if moodEngine, err := moodpkg.New(moodCfg); err != nil {
 		log.Printf("mood engine başlatılamadı (devre dışı): %v", err)

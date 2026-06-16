@@ -86,6 +86,7 @@ type AppConfig struct {
 	Proactive      ProactiveConfig    `yaml:"proactive" json:"proactive"`
 	Learning       LearningConfig     `yaml:"learning" json:"learning"`
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
+	Mood           MoodConfig         `yaml:"mood" json:"mood"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates experimental features (e.g. the embedded Tailscale tunnel).
@@ -112,6 +113,15 @@ type CalendarConfig struct {
 	// (default) Memo infers a time; when true such vague mentions are ignored.
 	// The zero value preserves the original inferring behaviour.
 	DisableTimeGuess bool `yaml:"disable_time_guess" json:"disable_time_guess"`
+}
+
+// MoodConfig Stokastik Duygu Motorunu kontrol eder.
+type MoodConfig struct {
+	Enabled  bool    `yaml:"enabled" json:"enabled"`
+	Alpha    float64 `yaml:"alpha" json:"alpha"`
+	Beta     float64 `yaml:"beta" json:"beta"`
+	SigmaMin float64 `yaml:"sigma_min" json:"sigma_min"`
+	SigmaMax float64 `yaml:"sigma_max" json:"sigma_max"`
 }
 
 // WhisperConfig holds speech-to-text settings for whisper.cpp.
@@ -281,6 +291,13 @@ func Default() *AppConfig {
 		},
 		Calendar: CalendarConfig{
 			ReminderLeadMinutes: 30,
+		},
+		Mood: MoodConfig{
+			Enabled:  true,
+			Alpha:    0.85,
+			Beta:     0.45,
+			SigmaMin: 0.30,
+			SigmaMax: 1.80,
 		},
 	}
 }

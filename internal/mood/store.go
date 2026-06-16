@@ -3,6 +3,7 @@ package mood
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -48,7 +49,7 @@ func openStore(path string) (*Store, error) {
 func (s *Store) loadScore(ctx context.Context) (float64, error) {
 	var score float64
 	err := s.db.QueryRowContext(ctx, `SELECT score FROM mood_state WHERE id = 1`).Scan(&score)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return 0.0, nil
 	}
 	return score, err
@@ -57,18 +58,25 @@ func (s *Store) loadScore(ctx context.Context) (float64, error) {
 // saveScore yeni skoru kalıcı olarak yazar (INSERT OR REPLACE — tek satır garantisi).
 func (s *Store) saveScore(ctx context.Context, score, iAnlik float64) error {
 	now := time.Now().Unix()
-	_, err := s.db.ExecContext(ctx,
-		`INSERT OR REPLACE INTO mood_state (id, score, updated_at) VALUES (1, ?, ?)`,
-		score, now,
-	)
+	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
 		return err
 	}
-	_, err = s.db.ExecContext(ctx,
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx,
+		`INSERT OR REPLACE INTO mood_state (id, score, updated_at) VALUES (1, ?, ?)`,
+		score, now,
+	); err != nil {
+		return err
+	}
+	if _, err := tx.ExecContext(ctx,
 		`INSERT INTO mood_history (score, i_anlik, recorded_at) VALUES (?, ?, ?)`,
 		score, iAnlik, now,
-	)
-	return err
+	); err != nil {
+		return err
+	}
+	return tx.Commit()
 }
 
 func (s *Store) close() error { return s.db.Close() }

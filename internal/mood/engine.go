@@ -75,18 +75,25 @@ func (e *Engine) Score() float64 {
 // Update formülü çözer ve yeni skoru hem RAM'e hem SQLite'a yazar.
 // Bu metot async goroutine'den çağrılır.
 func (e *Engine) Update(ctx context.Context, iAnlik float64) error {
-	e.mu.Lock()
-	defer e.mu.Unlock()
+	// Mevcut score'u oku (RLock)
+	e.mu.RLock()
+	eMevcut := e.current
+	pX := e.stochasticNoise(eMevcut)
+	e.mu.RUnlock()
 
 	// E_yeni = clamp( α×E_mevcut + β×I_anlik + P(X) )
-	pX := e.stochasticNoise(e.current)
-	raw := e.cfg.Alpha*e.current + e.cfg.Beta*iAnlik + pX
+	raw := e.cfg.Alpha*eMevcut + e.cfg.Beta*iAnlik + pX
 	eYeni := clamp(raw, -10, 10)
 
+	// DB yaz (lock dışında — SQLite busy timeout uzun olabilir)
 	if err := e.store.saveScore(ctx, eYeni, iAnlik); err != nil {
 		return fmt.Errorf("mood.Update: saveScore: %w", err)
 	}
+
+	// Sadece RAM'i güncelle (Lock)
+	e.mu.Lock()
 	e.current = eYeni
+	e.mu.Unlock()
 	return nil
 }
 
@@ -116,13 +123,13 @@ func (e *Engine) stochasticNoise(eMevcut float64) float64 {
 	return rand.NormFloat64() * sigma
 }
 
-// clamp değeri [min, max] aralığına sabitler — sonsuz uçuşu engeller.
-func clamp(v, min, max float64) float64 {
-	if v < min {
-		return min
+// clamp değeri [lo, hi] aralığına sabitler — sonsuz uçuşu engeller.
+func clamp(v, lo, hi float64) float64 {
+	if v < lo {
+		return lo
 	}
-	if v > max {
-		return max
+	if v > hi {
+		return hi
 	}
 	return v
 }

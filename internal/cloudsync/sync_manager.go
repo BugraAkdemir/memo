@@ -403,7 +403,14 @@ func (m *Manager) archive() ([]byte, error) {
 		}
 	}
 
-	// 5. Learned patterns
+	// 5. Mood DB
+	moodDB := filepath.Join(m.dataDir, "mood", "mood.db")
+	if err := addFile(moodDB, "mood/mood.db"); err == nil {
+		added++
+		log.Printf("cloudsync: archived mood.db")
+	}
+
+	// 6. Learned patterns
 	patternsPath := filepath.Join(m.dataDir, "profile", "patterns.json")
 	if err := addFile(patternsPath, "data/profile/patterns.json"); err == nil {
 		added++

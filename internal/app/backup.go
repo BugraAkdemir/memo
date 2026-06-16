@@ -62,6 +62,7 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 	addFile("data/orchestra.json", config.DataPath("orchestra.json"))
 	addFile("data/memory/", config.DataPath("memory"))
 	addFile("data/whatsapp/", config.DataPath("whatsapp"))
+	addFile("data/mood/", config.DataPath("mood"))
 	if includeModels {
 		addFile("data/models/", config.DataPath("models"))
 	}

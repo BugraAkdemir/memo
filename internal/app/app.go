@@ -262,7 +262,8 @@ func (a *App) Startup(ctx context.Context) {
 		SigmaMin:     a.cfg.Mood.SigmaMin,
 		SigmaMax:     a.cfg.Mood.SigmaMax,
 		DBPath:       config.DataPath("mood", "mood.db"),
-		SelfInterest: a.cfg.Mood.SelfInterest,
+		SelfInterest:     a.cfg.Mood.SelfInterest,
+		SystemManagement: a.cfg.Mood.SystemManagement,
 	}
 	if moodEngine, err := moodpkg.New(moodCfg); err != nil {
 		log.Printf("mood engine başlatılamadı (devre dışı): %v", err)
@@ -382,6 +383,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)
+	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentEnabled = false
 	log.Printf("Agent mode initialized (enabled=false)")
 

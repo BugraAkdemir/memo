@@ -13,6 +13,8 @@ type MoodBridge interface {
 	UpdateMoodConfig(enabled bool) error
 	GetSelfInterestEnabled() bool
 	UpdateSelfInterestConfig(enabled bool) error
+	GetSystemManagementEnabled() bool
+	UpdateSystemManagementConfig(enabled bool) error
 }
 
 // handleMoodScore handles GET /api/mood/score
@@ -62,6 +64,34 @@ func (s *Server) handleMoodSettings(w http.ResponseWriter, r *http.Request) {
 			"enabled":       body.Enabled,
 			"self_interest": bridge.GetSelfInterestEnabled(),
 		})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleSystemManagementSettings handles GET/PUT /api/mood/system-management
+func (s *Server) handleSystemManagementSettings(w http.ResponseWriter, r *http.Request) {
+	bridge, ok := s.bridge.(MoodBridge)
+	if !ok {
+		http.Error(w, "mood not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]any{"enabled": bridge.GetSystemManagementEnabled()})
+	case http.MethodPut:
+		var body struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonError(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		if err := bridge.UpdateSystemManagementConfig(body.Enabled); err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]any{"enabled": body.Enabled})
 	default:
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
 	}

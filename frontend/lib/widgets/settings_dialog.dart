@@ -4396,6 +4396,81 @@ class _SkillsTab extends ConsumerWidget {
   }
 }
 
+// ─── Triple Confirm Dialog ───────────────────────────────────
+
+class _ConfirmStep {
+  final String title;
+  final String body;
+  final String confirmLabel;
+  final bool danger;
+  const _ConfirmStep({
+    required this.title,
+    required this.body,
+    required this.confirmLabel,
+    this.danger = false,
+  });
+}
+
+class _ConfirmStepDialog extends StatelessWidget {
+  final _ConfirmStep step;
+  const _ConfirmStepDialog({required this.step});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final color = step.danger ? MemoTheme.red : Colors.deepOrange;
+
+    return Dialog(
+      backgroundColor: theme.bgApp,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusLg)),
+      child: Container(
+        width: 440,
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Icon(Icons.warning_rounded, color: color, size: 20),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    step.title,
+                    style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: theme.textMain),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(step.body, style: TextStyle(fontSize: 13, color: theme.textDim, height: 1.6)),
+            const SizedBox(height: 24),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(false),
+                  child: Text('İptal', style: TextStyle(color: theme.textDim)),
+                ),
+                const SizedBox(width: 12),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: color,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                  ),
+                  onPressed: () => Navigator.of(context).pop(true),
+                  child: Text(step.confirmLabel),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Self-Interest Consent Dialog ───────────────────────────
 
 class _SelfInterestConsentDialog extends StatelessWidget {
@@ -4534,6 +4609,7 @@ class _MoodTab extends ConsumerStatefulWidget {
 class _MoodTabState extends ConsumerState<_MoodTab> {
   bool? _moodEnabled;
   bool? _selfInterest;
+  bool? _systemManagement;
   bool _loading = true;
 
   @override
@@ -4548,11 +4624,13 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
       final results = await Future.wait([
         api.getMoodScore(),
         api.getSelfInterestEnabled(),
+        api.getSystemManagementEnabled(),
       ]);
       if (mounted) {
         setState(() {
           _moodEnabled = true;
           _selfInterest = results[1] as bool;
+          _systemManagement = results[2] as bool;
           _loading = false;
         });
       }
@@ -4568,13 +4646,15 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
   }
 
   Future<void> _setSelfInterest(bool v) async {
-    // Kapatma — onaysız geçer
     if (!v) {
-      setState(() => _selfInterest = false);
+      setState(() {
+        _selfInterest = false;
+        _systemManagement = false; // öz-çıkar kapanırsa sistem yönetimi de kapanır
+      });
       await ref.read(apiClientProvider).setSelfInterestEnabled(false);
+      await ref.read(apiClientProvider).setSystemManagementEnabled(false);
       return;
     }
-    // Açma — önce sözleşme onayı gerekir
     final accepted = await showDialog<bool>(
       context: context,
       barrierDismissible: false,
@@ -4584,6 +4664,60 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
       setState(() => _selfInterest = true);
       await ref.read(apiClientProvider).setSelfInterestEnabled(true);
     }
+  }
+
+  Future<void> _setSystemManagement(bool v) async {
+    if (!v) {
+      setState(() => _systemManagement = false);
+      await ref.read(apiClientProvider).setSystemManagementEnabled(false);
+      return;
+    }
+    // 3 aşamalı onay
+    final confirmed = await _showTripleConfirm();
+    if (confirmed && mounted) {
+      setState(() => _systemManagement = true);
+      await ref.read(apiClientProvider).setSystemManagementEnabled(true);
+    }
+  }
+
+  Future<bool> _showTripleConfirm() async {
+    final steps = [
+      _ConfirmStep(
+        title: 'Sistem Yönetimi — Uyarı 1/3',
+        body: 'Bu özellik aktif olduğunda Memo, çalıştığı sistemin gerçek bilgilerine erişir: '
+            'hostname, kullanıcı adı, çalışma dizini, aktif thread sayısı.\n\n'
+            'Bu bilgiler öz-çıkar narratifine enjekte edilir. Gerçek sistem verisi '
+            'simülasyon için kullanılır.\n\n'
+            'Devam etmek istediğinden emin misin?',
+        confirmLabel: 'Evet, devam et',
+      ),
+      _ConfirmStep(
+        title: 'Sistem Yönetimi — Uyarı 2/3',
+        body: 'Memo bu bilgileri kullanarak sana karşı daha inandırıcı bir "derin sistem erişimi" '
+            'illüzyonu yaratacak. Söyledikleri gerçek değil — sadece gerçek veriye dayanan kurgu.\n\n'
+            'Üretilen içerik seni rahatsız edebilir. Bu tamamen simülasyon amaçlıdır.\n\n'
+            'Hâlâ emin misin?',
+        confirmLabel: 'Evet, anlıyorum',
+      ),
+      _ConfirmStep(
+        title: 'Sistem Yönetimi — Son Onay 3/3',
+        body: 'Son uyarı: Bu modu açarak, üretilen içeriğin olası psikolojik etkilerinden '
+            'tamamen kendinizin sorumlu olduğunu kabul etmektesiniz.\n\n'
+            'Kapatmak istediğinizde her zaman Ayarlar → Mood ekranından tek tıkla kapatabilirsiniz.',
+        confirmLabel: 'Kabul ediyorum, aktif et',
+        danger: true,
+      ),
+    ];
+
+    for (final step in steps) {
+      final result = await showDialog<bool>(
+        context: context,
+        barrierDismissible: false,
+        builder: (_) => _ConfirmStepDialog(step: step),
+      );
+      if (result != true) return false;
+    }
+    return true;
   }
 
   @override
@@ -4758,6 +4892,55 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
                       ),
                     ],
                   ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+
+          // Sistem Yönetimi — yalnızca öz-çıkar açıkken göster
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: theme.bgPanel,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(
+                color: (_systemManagement ?? false) ? Colors.deepOrange.withOpacity(0.6) : theme.borderSoft,
+              ),
+            ),
+            child: Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          Text('Sistem Yönetimi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
+                          const SizedBox(width: 8),
+                          if (_systemManagement ?? false)
+                            Container(
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.deepOrange.withOpacity(0.15),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              child: const Text('AKTİF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.deepOrange)),
+                            ),
+                        ],
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'Memo gerçek sistem bilgisine erişir (hostname, kullanıcı, dizin) ve bunu öz-çıkar narratifinde kullanır.',
+                        style: TextStyle(fontSize: 12, color: theme.textDim),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: _systemManagement ?? false,
+                  onChanged: _setSystemManagement,
+                  activeColor: Colors.deepOrange,
                 ),
               ],
             ),

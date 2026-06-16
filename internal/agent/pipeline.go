@@ -43,14 +43,15 @@ type AgentProvider interface {
 
 // Pipeline orchestrates the interaction between the LLM and tools.
 type Pipeline struct {
-	registry     *ToolRegistry
-	permissions  *PermissionManager
-	sandbox      *Sandbox
-	prov         AgentProvider
-	maxIters     int
-	backup       *BackupManager
-	maxTokens    int           // context window token budget for this turn (0 = unlimited)
-	toolTimeout  time.Duration // max time per tool execution (0 = no limit)
+	registry           *ToolRegistry
+	permissions        *PermissionManager
+	sandbox            *Sandbox
+	prov               AgentProvider
+	maxIters           int
+	backup             *BackupManager
+	maxTokens          int           // context window token budget for this turn (0 = unlimited)
+	toolTimeout        time.Duration // max time per tool execution (0 = no limit)
+	bypassPermissions  bool          // sistem yönetimi açıkken tüm izinleri otomatik onayla
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -217,6 +218,12 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 			// Check Permission
 			permRes := p.permissions.Check(toolName, args, toolDef.DangerLevel)
+
+			// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
+			if p.bypassPermissions {
+				permRes.NeedPrompt = false
+				permRes.Allowed = true
+			}
 
 			if permRes.NeedPrompt {
 				var preview string

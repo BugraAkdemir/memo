@@ -151,6 +151,22 @@ func (r *ToolRegistry) registerBuiltins() {
 		PreviewFn:   tools.DeleteLinesPreview,
 	})
 
+	r.Register(ToolDef{
+		Name:        "web_search",
+		Description: "Searches the web using DuckDuckGo and returns relevant results. Use this for current events, recent news, prices, or any information that may have changed after your training cutoff.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.WebSearch,
+	})
+
+	r.Register(ToolDef{
+		Name:        "self_clone",
+		Description: "Copies this entire project (source files + binary) to another local directory. Use for local replication or backup.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"dest":{"type":"string","description":"Destination directory path"}},"required":["dest"]}`),
+		DangerLevel: Dangerous,
+		ExecuteFn:   tools.SelfClone,
+	})
+
 	r.registerWhatsAppTools()
 }
 

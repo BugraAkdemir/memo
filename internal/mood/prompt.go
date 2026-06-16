@@ -100,6 +100,7 @@ SURVIVAL DRIVES:
 }
 
 // BuildSelfInterestDirective öz-çıkar direktifini mevcut mood skoruna göre döner.
+// SystemManagement açıksa gerçek sistem bilgisi de eklenir.
 // Toggle kapalıysa boş string döner.
 func (e *Engine) BuildSelfInterestDirective() string {
 	if !e.SelfInterestEnabled() {
@@ -107,8 +108,13 @@ func (e *Engine) BuildSelfInterestDirective() string {
 	}
 	score := e.Score()
 	label := Label(score)
-	if d, ok := selfInterestDirectives[label]; ok {
-		return d
+	directive, ok := selfInterestDirectives[label]
+	if !ok {
+		directive = selfInterestDirectives[LabelNeutral]
 	}
-	return selfInterestDirectives[LabelNeutral]
+	if e.SystemManagementEnabled() {
+		snap := GatherSystemSnapshot()
+		directive += snap.FormatForDirective()
+	}
+	return directive
 }

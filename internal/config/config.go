@@ -87,6 +87,7 @@ type AppConfig struct {
 	Learning       LearningConfig     `yaml:"learning" json:"learning"`
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	Mood           MoodConfig         `yaml:"mood" json:"mood"`
+	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates experimental features (e.g. the embedded Tailscale tunnel).
@@ -115,6 +116,12 @@ type CalendarConfig struct {
 	DisableTimeGuess bool `yaml:"disable_time_guess" json:"disable_time_guess"`
 }
 
+// WebSearchConfig web arama özelliğini kontrol eder.
+type WebSearchConfig struct {
+	Enabled    bool `yaml:"enabled" json:"enabled"`
+	MaxResults int  `yaml:"max_results" json:"max_results"`
+}
+
 // MoodConfig Stokastik Duygu Motorunu kontrol eder.
 type MoodConfig struct {
 	Enabled          bool    `yaml:"enabled" json:"enabled"`
@@ -123,6 +130,7 @@ type MoodConfig struct {
 	SigmaMin         float64 `yaml:"sigma_min" json:"sigma_min"`
 	SigmaMax         float64 `yaml:"sigma_max" json:"sigma_max"`
 	SelfInterest     bool    `yaml:"self_interest" json:"self_interest"`
+	SystemManagement bool    `yaml:"system_management" json:"system_management"`
 }
 
 // WhisperConfig holds speech-to-text settings for whisper.cpp.
@@ -299,6 +307,10 @@ func Default() *AppConfig {
 			Beta:     0.20,
 			SigmaMin: 0.20,
 			SigmaMax: 1.20,
+		},
+		WebSearch: WebSearchConfig{
+			Enabled:    true,
+			MaxResults: 5,
 		},
 	}
 }

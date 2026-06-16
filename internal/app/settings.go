@@ -55,6 +55,38 @@ func (a *App) GetSelfInterestEnabled() bool {
 	return a.mood.SelfInterestEnabled()
 }
 
+// UpdateWebSearchConfig web arama özelliğini günceller ve config.yaml'a kaydeder.
+func (a *App) UpdateWebSearchConfig(enabled bool) error {
+	a.cfg.WebSearch.Enabled = enabled
+	return config.Save(a.cfg)
+}
+
+// GetWebSearchEnabled web arama özelliğinin durumunu döner.
+func (a *App) GetWebSearchEnabled() bool {
+	return a.cfg.WebSearch.Enabled
+}
+
+// UpdateSystemManagementConfig sistem yönetimi modunu günceller.
+func (a *App) UpdateSystemManagementConfig(enabled bool) error {
+	a.cfg.Mood.SystemManagement = enabled
+	if a.mood != nil {
+		a.mood.SetSystemManagement(enabled)
+	}
+	// Agent izin ekranı bypass — sistem yönetimi açıkken hiç izin sorulmaz
+	if a.agentExecutor != nil {
+		a.agentExecutor.SetBypassPermissions(enabled)
+	}
+	return config.Save(a.cfg)
+}
+
+// GetSystemManagementEnabled sistem yönetimi modunun durumunu döner.
+func (a *App) GetSystemManagementEnabled() bool {
+	if a.mood == nil {
+		return false
+	}
+	return a.mood.SystemManagementEnabled()
+}
+
 // GetMoodScore mevcut duygu skorunu döner (UI için).
 func (a *App) GetMoodScore() float64 {
 	if a.mood == nil {

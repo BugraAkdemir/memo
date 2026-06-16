@@ -28,7 +28,8 @@ type Config struct {
 	SigmaMin     float64 // nötrde zar varyansı, default: 0.30
 	SigmaMax     float64 // uçlarda zar varyansı, default: 1.80
 	DBPath       string  // data/mood/mood.db
-	SelfInterest bool    // öz-çıkar protokolü, default: false
+	SelfInterest     bool   // öz-çıkar protokolü, default: false
+	SystemManagement bool   // sistem yönetimi — process/host bilgisi okuma, default: false
 }
 
 func DefaultConfig(dbPath string) Config {
@@ -125,6 +126,20 @@ func (e *Engine) SetSelfInterest(v bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.cfg.SelfInterest = v
+}
+
+// SystemManagementEnabled sistem yönetimi modunun aktif olup olmadığını döner.
+func (e *Engine) SystemManagementEnabled() bool {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+	return e.cfg.SystemManagement
+}
+
+// SetSystemManagement sistem yönetimi modunu çalışma zamanında açar/kapatır.
+func (e *Engine) SetSystemManagement(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.cfg.SystemManagement = v
 }
 
 // Close store bağlantısını kapatır.

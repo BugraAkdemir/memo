@@ -1097,4 +1097,17 @@ class MemoApiClient {
   Future<void> setSelfInterestEnabled(bool enabled) async {
     await _dio.put('/api/mood/self-interest', data: {'enabled': enabled});
   }
+
+  Future<bool> getSystemManagementEnabled() async {
+    try {
+      final res = await _dio.get('/api/mood/system-management');
+      return (res.data['enabled'] as bool?) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  Future<void> setSystemManagementEnabled(bool enabled) async {
+    await _dio.put('/api/mood/system-management', data: {'enabled': enabled});
+  }
 }

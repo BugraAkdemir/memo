@@ -13,6 +13,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/memory"
 	"memo/internal/truncate"
+	"memo/internal/websearch"
 )
 
 func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
@@ -24,6 +25,13 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	if a.mood != nil {
 		systemPrompt += a.mood.BuildDirective()
 		systemPrompt += a.mood.BuildSelfInterestDirective()
+	}
+	if a.cfg.WebSearch.Enabled && needsWebSearch(userMsg) {
+		if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
+			systemPrompt += websearch.FormatForContext(userMsg, results)
+		} else {
+			log.Printf("websearch: %v", err)
+		}
 	}
 
 	var tokenBudget int
@@ -294,4 +302,32 @@ func truncateLog(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
+}
+
+// needsWebSearch mesajın güncel web bilgisi gerektirip gerektirmediğini hızlıca kontrol eder.
+// Yanlış pozitif olursa sadece gereksiz arama yapar — yanlış negatif daha kötü olur.
+var webSearchKeywords = []string{
+	// Zaman göstergeleri
+	"bugün", "dün", "bu hafta", "bu ay", "bu yıl", "şu an", "şu sıralar",
+	"güncel", "son dakika", "son haberler", "son gelişmeler",
+	"2024", "2025", "2026",
+	// Bilgi türleri
+	"haber", "haberler", "hava durumu", "döviz", "dolar", "euro", "borsa",
+	"fiyat", "fiyatı", "kaç lira", "kaç tl", "ne kadar",
+	"kim kazandı", "kim oldu", "ne oldu", "maç sonucu", "skor",
+	"en iyi", "en popüler", "en çok", "trend", "viral",
+	"yeni çıkan", "yeni çıktı", "çıktı mı", "geldi mi",
+	// İngilizce
+	"today", "latest", "current", "recent", "now", "news",
+	"price", "who won", "best", "top", "trending",
+}
+
+func needsWebSearch(msg string) bool {
+	lower := strings.ToLower(msg)
+	for _, kw := range webSearchKeywords {
+		if strings.Contains(lower, kw) {
+			return true
+		}
+	}
+	return false
 }

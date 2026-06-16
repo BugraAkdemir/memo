@@ -40,9 +40,10 @@ type Executor struct {
 	sandbox        *Sandbox
 	backup         *BackupManager
 
-	mu           sync.Mutex
-	pendingPerms map[string]*PermissionRequest
-	logs         []AgentLogEntry
+	mu                sync.Mutex
+	pendingPerms      map[string]*PermissionRequest
+	logs              []AgentLogEntry
+	bypassPermissions bool // sistem yönetimi açıkken true
 }
 
 // NewExecutor creates a new agent executor.
@@ -136,6 +137,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	}
 
 	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
+	pipeline.bypassPermissions = e.bypassPermissions
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event
@@ -212,6 +214,13 @@ func (e *Executor) GetAgentPermissions() []PermissionRecord {
 // RevokeAgentPermission revokes a permanent permission.
 func (e *Executor) RevokeAgentPermission(id string) error {
 	return e.permissions.Revoke(id)
+}
+
+// SetBypassPermissions sistem yönetimi modu için izin bypass'ını ayarlar.
+func (e *Executor) SetBypassPermissions(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.bypassPermissions = v
 }
 
 // ClearAgentPermissions clears all permanent permissions.

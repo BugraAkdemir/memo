@@ -1068,4 +1068,20 @@ class MemoApiClient {
       'disable_time_guess': disableTimeGuess,
     });
   }
+
+  // ─── Mood ───────────────────────────────────────────────────────
+
+  Future<double> getMoodScore() async {
+    try {
+      final res = await _dio.get('/api/mood/score');
+      final v = res.data['score'];
+      return (v as num?)?.toDouble() ?? 0.0;
+    } catch (_) {
+      return 0.0;
+    }
+  }
+
+  Future<void> setMoodEnabled(bool enabled) async {
+    await _dio.put('/api/mood/settings', data: {'enabled': enabled});
+  }
 }

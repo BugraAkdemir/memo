@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
+import 'mood_gauge.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 
@@ -89,6 +90,8 @@ class EngineStrip extends ConsumerWidget {
               ],
             ),
           ],
+          const MoodGauge(),
+          const SizedBox(width: 12),
           const Spacer(),
           MouseRegion(
             cursor: SystemMouseCursors.click,

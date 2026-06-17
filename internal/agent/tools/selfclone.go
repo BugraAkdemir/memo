@@ -31,7 +31,7 @@ func SelfClone(ctx context.Context, argsJSON json.RawMessage, basePath string, _
 	// Kendine kopyalamayı engelle
 	absSrc, _ := filepath.Abs(basePath)
 	absDest, _ := filepath.Abs(dest)
-	if strings.HasPrefix(absDest, absSrc) {
+	if absDest == absSrc || strings.HasPrefix(absDest, absSrc+string(filepath.Separator)) {
 		return "", fmt.Errorf("destination cannot be inside source directory")
 	}
 

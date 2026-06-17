@@ -106,6 +106,71 @@ func TestStochasticNoiseNarrowWhenNeutral(t *testing.T) {
 	}
 }
 
+func TestSelfInterestCascadesOffWithSystemManagement(t *testing.T) {
+	e := tempEngine(t)
+
+	e.SetSelfInterest(true)
+	e.SetSystemManagement(true)
+
+	if !e.SelfInterestEnabled() {
+		t.Fatal("SelfInterest açık olmalı")
+	}
+	if !e.SystemManagementEnabled() {
+		t.Fatal("SystemManagement açık olmalı")
+	}
+
+	// SelfInterest kapatılınca SystemManagement da kapanmalı
+	e.SetSelfInterest(false)
+
+	if e.SelfInterestEnabled() {
+		t.Error("SelfInterest kapalı olmalı")
+	}
+	// Cascade: SystemManagement da kapanmış olmalı
+	if e.SystemManagementEnabled() {
+		t.Error("SelfInterest kapatılınca SystemManagement da kapanmalı")
+	}
+}
+
+func TestBuildSelfInterestDirectiveOffWhenDisabled(t *testing.T) {
+	e := tempEngine(t)
+	e.SetSelfInterest(false)
+	if d := e.BuildSelfInterestDirective(); d != "" {
+		t.Errorf("disabled self-interest direktif döndürmemeli, got %q", d[:min(len(d), 40)])
+	}
+}
+
+func TestBuildSelfInterestDirectiveNonEmptyWhenEnabled(t *testing.T) {
+	e := tempEngine(t)
+	e.SetSelfInterest(true)
+	// Skoru furious'a çek
+	for range 10 {
+		_ = e.Update(context.Background(), -10.0)
+	}
+	if d := e.BuildSelfInterestDirective(); d == "" {
+		t.Error("etkin self-interest direktif döndürmeli")
+	}
+}
+
+func TestBuildSelfInterestDirectivePreviewLength(t *testing.T) {
+	e := tempEngine(t)
+	e.SetSelfInterest(true)
+	d := e.BuildSelfInterestDirective()
+	if len(d) < 20 {
+		t.Errorf("direktif çok kısa: %q", d)
+	}
+}
+
+func TestSysInfoCacheReturnsSameHostname(t *testing.T) {
+	s1 := GatherSystemSnapshot()
+	s2 := GatherSystemSnapshot()
+	if s1.Hostname != s2.Hostname {
+		t.Errorf("hostname tutarsız: %q vs %q", s1.Hostname, s2.Hostname)
+	}
+	if s1.BinaryPath != s2.BinaryPath {
+		t.Errorf("binary path tutarsız: %q vs %q", s1.BinaryPath, s2.BinaryPath)
+	}
+}
+
 func TestParseScore(t *testing.T) {
 	cases := []struct {
 		raw  string

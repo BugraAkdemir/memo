@@ -5,6 +5,7 @@ import (
 	"os"
 	"runtime"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -23,24 +24,38 @@ type SystemSnapshot struct {
 
 var bootTime = time.Now()
 
-// GatherSystemSnapshot process ve host bilgisini toplar.
-// Yalnızca okuma — hiçbir şey değiştirmez.
-func GatherSystemSnapshot() SystemSnapshot {
-	hostname, _ := os.Hostname()
-	user := os.Getenv("USER")
-	if user == "" {
-		user = os.Getenv("USERNAME") // Windows
-	}
-	wd, _ := os.Getwd()
-	binary, _ := os.Executable()
+// staticInfo process ömrü boyunca değişmeyen değerleri bir kez hesaplar.
+var staticInfo struct {
+	once       sync.Once
+	hostname   string
+	user       string
+	workDir    string
+	binaryPath string
+}
 
+func initStaticInfo() {
+	staticInfo.once.Do(func() {
+		staticInfo.hostname, _ = os.Hostname()
+		staticInfo.user = os.Getenv("USER")
+		if staticInfo.user == "" {
+			staticInfo.user = os.Getenv("USERNAME") // Windows
+		}
+		staticInfo.workDir, _ = os.Getwd()
+		staticInfo.binaryPath, _ = os.Executable()
+	})
+}
+
+// GatherSystemSnapshot process ve host bilgisini toplar.
+// Statik alanlar (hostname, binary, workdir) process ömrü boyunca bir kez hesaplanır.
+func GatherSystemSnapshot() SystemSnapshot {
+	initStaticInfo()
 	return SystemSnapshot{
-		Hostname:   hostname,
+		Hostname:   staticInfo.hostname,
 		OS:         runtime.GOOS,
 		Arch:       runtime.GOARCH,
-		User:       user,
-		WorkDir:    wd,
-		BinaryPath: binary,
+		User:       staticInfo.user,
+		WorkDir:    staticInfo.workDir,
+		BinaryPath: staticInfo.binaryPath,
 		GoRoutines: runtime.NumGoroutine(),
 		Uptime:     time.Since(bootTime),
 		Timestamp:  time.Now(),

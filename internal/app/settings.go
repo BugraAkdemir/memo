@@ -39,10 +39,20 @@ func (a *App) UpdateMoodConfig(enabled bool) error {
 }
 
 // UpdateSelfInterestConfig öz-çıkar protokolünü açar/kapatır ve config.yaml'a kaydeder.
+// SelfInterest kapatılırsa SystemManagement da otomatik kapatılır ve bypass sıfırlanır.
 func (a *App) UpdateSelfInterestConfig(enabled bool) error {
 	a.cfg.Mood.SelfInterest = enabled
 	if a.mood != nil {
 		a.mood.SetSelfInterest(enabled)
+	}
+	if !enabled {
+		a.cfg.Mood.SystemManagement = false
+		if a.mood != nil {
+			a.mood.SetSystemManagement(false)
+		}
+		if a.agentExecutor != nil {
+			a.agentExecutor.SetBypassPermissions(false)
+		}
 	}
 	return config.Save(a.cfg)
 }

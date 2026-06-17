@@ -12,6 +12,9 @@ import (
 	"golang.org/x/net/html"
 )
 
+// ddgClient tek bir transport üzerinden bağlantıları yeniden kullanır.
+var ddgClient = &http.Client{Timeout: 10 * time.Second}
+
 // Result tek bir arama sonucunu temsil eder.
 type Result struct {
 	Title   string
@@ -36,8 +39,7 @@ func Search(ctx context.Context, query string, maxResults int) ([]Result, error)
 	req.Header.Set("User-Agent", "Mozilla/5.0 (compatible; Memo/3.1; +https://github.com/BugraAkdemir/memo)")
 	req.Header.Set("Accept-Language", "tr,en;q=0.9")
 
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
+	resp, err := ddgClient.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("websearch: http: %w", err)
 	}

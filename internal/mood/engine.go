@@ -122,10 +122,14 @@ func (e *Engine) SelfInterestEnabled() bool {
 }
 
 // SetSelfInterest öz-çıkar protokolünü çalışma zamanında açar/kapatır.
+// v=false ise SystemManagement da otomatik kapatılır.
 func (e *Engine) SetSelfInterest(v bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.cfg.SelfInterest = v
+	if !v {
+		e.cfg.SystemManagement = false
+	}
 }
 
 // SystemManagementEnabled sistem yönetimi modunun aktif olup olmadığını döner.

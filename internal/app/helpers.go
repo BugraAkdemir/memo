@@ -306,28 +306,64 @@ func truncateLog(s string, n int) string {
 
 // needsWebSearch mesajın güncel web bilgisi gerektirip gerektirmediğini hızlıca kontrol eder.
 // Yanlış pozitif olursa sadece gereksiz arama yapar — yanlış negatif daha kötü olur.
+//
+// Türkçe çok-kelimeli ifadeler substring eşleşmesi için güvenli (uzun ve özgün).
+// Kısa İngilizce kelimeler (now, top, best...) kelime sınırında kontrol edilir —
+// "now" → "knowledge" veya "snow" gibi yanlış eşleşmeleri önler.
 var webSearchKeywords = []string{
-	// Zaman göstergeleri
+	// Zaman göstergeleri (TR)
 	"bugün", "dün", "bu hafta", "bu ay", "bu yıl", "şu an", "şu sıralar",
 	"güncel", "son dakika", "son haberler", "son gelişmeler",
 	"2024", "2025", "2026",
-	// Bilgi türleri
+	// Bilgi türleri (TR)
 	"haber", "haberler", "hava durumu", "döviz", "dolar", "euro", "borsa",
 	"fiyat", "fiyatı", "kaç lira", "kaç tl", "ne kadar",
-	"kim kazandı", "kim oldu", "ne oldu", "maç sonucu", "skor",
+	"kim kazandı", "kim oldu", "ne oldu", "maç sonucu",
 	"en iyi", "en popüler", "en çok", "trend", "viral",
 	"yeni çıkan", "yeni çıktı", "çıktı mı", "geldi mi",
-	// İngilizce
+}
+
+// webSearchKeywordsEN kelime sınırında eşleştirilmesi gereken kısa İngilizce kelimeler.
+var webSearchKeywordsEN = []string{
 	"today", "latest", "current", "recent", "now", "news",
 	"price", "who won", "best", "top", "trending",
 }
 
 func needsWebSearch(msg string) bool {
 	lower := strings.ToLower(msg)
+
+	// Türkçe: substring yeterli (kelimeler zaten uzun ve özgün)
 	for _, kw := range webSearchKeywords {
 		if strings.Contains(lower, kw) {
 			return true
 		}
 	}
+
+	// İngilizce: kelime sınırı kontrolü — "now" "knowledge"a eşleşmesin
+	for _, kw := range webSearchKeywordsEN {
+		if containsWord(lower, kw) {
+			return true
+		}
+	}
 	return false
+}
+
+// containsWord s içinde kw'nin kelime sınırıyla çevrili geçip geçmediğini kontrol eder.
+func containsWord(s, kw string) bool {
+	n := len(kw)
+	for i := 0; i <= len(s)-n; i++ {
+		if s[i:i+n] != kw {
+			continue
+		}
+		before := i == 0 || !isWordChar(rune(s[i-1]))
+		after := i+n >= len(s) || !isWordChar(rune(s[i+n]))
+		if before && after {
+			return true
+		}
+	}
+	return false
+}
+
+func isWordChar(r rune) bool {
+	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
 }

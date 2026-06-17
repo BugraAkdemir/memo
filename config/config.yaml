@@ -87,5 +87,9 @@ mood:
     sigma_min: 0.3
     sigma_max: 1.8
     self_interest: true
+    system_management: false
+web_search:
+    enabled: true
+    max_results: 5
 active_provider: openai
 beta: false

@@ -21,7 +21,7 @@ func NewStore(dbPath string) (*Store, error) {
 	if err != nil {
 		return nil, fmt.Errorf("whatsapp store: open: %w", err)
 	}
-	db.SetMaxOpenConns(1) // SQLite is single-writer; serialized writes prevent "database is locked"
+	db.SetMaxOpenConns(4) // WAL mode allows concurrent readers; 4 conns avoids read starvation during history sync
 
 	if err := db.Ping(); err != nil {
 		db.Close()
@@ -218,11 +218,13 @@ type ChatSummary struct {
 // GetChatList returns the list of unique chats with the latest message.
 func (s *Store) GetChatList() ([]ChatSummary, error) {
 	rows, err := s.db.Query(
-		`SELECT m.chat_jid, m.text, m.timestamp,
-			(SELECT COUNT(*) FROM messages m2 WHERE m2.chat_jid = m.chat_jid AND m2.from_me = 0) as total
+		`SELECT m.chat_jid,
+			(SELECT m2.text FROM messages m2 WHERE m2.chat_jid = m.chat_jid ORDER BY m2.timestamp DESC LIMIT 1) as last_msg,
+			MAX(m.timestamp) as last_ts,
+			SUM(CASE WHEN m.from_me = 0 THEN 1 ELSE 0 END) as total
 		 FROM messages m
 		 GROUP BY m.chat_jid
-		 ORDER BY MAX(m.timestamp) DESC`,
+		 ORDER BY last_ts DESC`,
 	)
 	if err != nil {
 		return nil, err

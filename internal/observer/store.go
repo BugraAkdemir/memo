@@ -11,6 +11,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"os"
 	"path/filepath"
 	"time"
 
@@ -66,6 +67,10 @@ func (c StoreConfig) dbPath() string {
 func NewStore(cfg StoreConfig) (*Store, error) {
 	if cfg.Dir == "" {
 		return nil, fmt.Errorf("observer.NewStore: dir is required")
+	}
+
+	if err := os.MkdirAll(cfg.Dir, 0755); err != nil {
+		return nil, fmt.Errorf("observer.NewStore: mkdir: %w", err)
 	}
 
 	dbPath := cfg.dbPath()

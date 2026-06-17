@@ -4622,13 +4622,13 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
     final api = ref.read(apiClientProvider);
     try {
       final results = await Future.wait([
-        api.getMoodScore(),
+        api.getMoodEnabled(),
         api.getSelfInterestEnabled(),
         api.getSystemManagementEnabled(),
       ]);
       if (mounted) {
         setState(() {
-          _moodEnabled = true;
+          _moodEnabled = results[0] as bool;
           _selfInterest = results[1] as bool;
           _systemManagement = results[2] as bool;
           _loading = false;

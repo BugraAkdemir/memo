@@ -97,6 +97,14 @@ func (a *App) GetSystemManagementEnabled() bool {
 	return a.mood.SystemManagementEnabled()
 }
 
+// GetMoodEnabled mood motorunun açık/kapalı durumunu döner (UI için).
+func (a *App) GetMoodEnabled() bool {
+	if a.mood == nil {
+		return false
+	}
+	return a.mood.Enabled()
+}
+
 // GetMoodScore mevcut duygu skorunu döner (UI için).
 func (a *App) GetMoodScore() float64 {
 	if a.mood == nil {

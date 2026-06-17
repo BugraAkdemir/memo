@@ -1081,6 +1081,15 @@ class MemoApiClient {
     }
   }
 
+  Future<bool> getMoodEnabled() async {
+    try {
+      final res = await _dio.get('/api/mood/settings');
+      return (res.data['enabled'] as bool?) ?? false;
+    } catch (_) {
+      return false;
+    }
+  }
+
   Future<void> setMoodEnabled(bool enabled) async {
     await _dio.put('/api/mood/settings', data: {'enabled': enabled});
   }

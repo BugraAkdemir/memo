@@ -1,4 +1,4 @@
-# 🧠 Memo: Yerel Yapay Zeka Hafıza Kabuğu
+	# 🧠 Memo: Yerel Yapay Zeka Hafıza Kabuğu
 
 > **Sürüm:** v3.1.0-beta | **Geliştirici:** Buğra | **Lisans:** MIT
 > 

@@ -81,12 +81,12 @@ calendar:
     reminder_lead_minutes: 30
     disable_time_guess: false
 mood:
-    enabled: true
-    alpha: 0.85
-    beta: 0.45
-    sigma_min: 0.3
-    sigma_max: 1.8
-    self_interest: true
+    enabled: false
+    alpha: 0.95
+    beta: 0.15
+    sigma_min: 0.1
+    sigma_max: 0.6
+    self_interest: false
     system_management: false
 web_search:
     enabled: true

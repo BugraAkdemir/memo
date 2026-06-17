@@ -114,6 +114,23 @@ func (c *Client) Start(ctx context.Context) error {
 
 	c.started = true
 
+	// If we have a stored session, wait for the Connected event so
+	// IsLoggedIn() is accurate before the first status poll hits.
+	if deviceStore != nil {
+		deadline := time.Now().Add(5 * time.Second)
+		for time.Now().Before(deadline) {
+			if c.waClient.IsLoggedIn() {
+				break
+			}
+			select {
+			case <-ctx.Done():
+				return ctx.Err()
+			default:
+			}
+			time.Sleep(250 * time.Millisecond)
+		}
+	}
+
 	// Import contacts without blocking Start().
 	go c.importContacts()
 
@@ -245,8 +262,8 @@ func (c *Client) handleEvent(evt interface{}) {
 		case c.errCh <- fmt.Errorf("disconnected"):
 		default:
 		}
-		// Auto-reconnect if we have a session.
-		if c.waClient != nil && c.waClient.IsLoggedIn() {
+		// Auto-reconnect if Start() was called (session exists or QR flow).
+		if c.started {
 			go c.autoReconnect()
 		}
 	case *waEvent.LoggedOut:

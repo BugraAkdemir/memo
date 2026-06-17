@@ -35,10 +35,10 @@ type Config struct {
 func DefaultConfig(dbPath string) Config {
 	return Config{
 		Enabled:  true,
-		Alpha:    0.85,
-		Beta:     0.45,
-		SigmaMin: 0.30,
-		SigmaMax: 1.80,
+		Alpha:    0.95,
+		Beta:     0.15,
+		SigmaMin: 0.10,
+		SigmaMax: 0.60,
 		DBPath:   dbPath,
 	}
 }

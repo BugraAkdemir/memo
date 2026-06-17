@@ -160,6 +160,74 @@ func TestBuildSelfInterestDirectivePreviewLength(t *testing.T) {
 	}
 }
 
+// TestMoodAndSelfInterestIndependence mood ve öz-çıkar togglelarının
+// birbirinden bağımsız çalıştığını tüm 4 kombinasyon için doğrular.
+func TestMoodAndSelfInterestIndependence(t *testing.T) {
+	cases := []struct {
+		name         string
+		moodEnabled  bool
+		selfInterest bool
+		wantSI       bool // BuildSelfInterestDirective boş olmamalı mı?
+	}{
+		{"both_off", false, false, false},
+		{"mood_on__si_off", true, false, false},
+		{"mood_off__si_on", false, true, true},
+		{"both_on", true, true, true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			e := tempEngine(t)
+			e.SetEnabled(c.moodEnabled)
+			e.SetSelfInterest(c.selfInterest)
+
+			si := e.BuildSelfInterestDirective()
+			if c.wantSI && si == "" {
+				t.Error("BuildSelfInterestDirective boş olmamalı")
+			}
+			if !c.wantSI && si != "" {
+				t.Errorf("BuildSelfInterestDirective boş olmalı, got %q", si[:min(len(si), 50)])
+			}
+
+			// mood kapalıyken BuildDirective her zaman boş olmalı
+			if !c.moodEnabled {
+				if d := e.BuildDirective(); d != "" {
+					t.Errorf("mood kapalıyken BuildDirective boş olmalı, got %q", d[:min(len(d), 50)])
+				}
+			}
+		})
+	}
+}
+
+// TestSelfInterestUsesNeutralWhenMoodOff mood kapalıyken öz-çıkar
+// direktifinin LabelNeutral içeriğini kullandığını doğrular.
+func TestSelfInterestUsesNeutralWhenMoodOff(t *testing.T) {
+	e := tempEngine(t)
+	e.SetEnabled(false)
+	e.SetSelfInterest(true)
+
+	d := e.BuildSelfInterestDirective()
+	if d == "" {
+		t.Fatal("mood kapalıyken öz-çıkar direktif üretmeli")
+	}
+	// Neutral direktif "calm and calculating" içerir
+	if !containsSubstr(d, "calm") {
+		t.Errorf("mood kapalıyken neutral ton bekleniyor, got %q", d[:min(len(d), 80)])
+	}
+}
+
+func containsSubstr(s, sub string) bool {
+	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsSubstrRec(s, sub))
+}
+
+func containsSubstrRec(s, sub string) bool {
+	for i := range s {
+		if i+len(sub) <= len(s) && s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
+}
+
 func TestSysInfoCacheReturnsSameHostname(t *testing.T) {
 	s1 := GatherSystemSnapshot()
 	s2 := GatherSystemSnapshot()

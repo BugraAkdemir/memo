@@ -99,15 +99,19 @@ SURVIVAL DRIVES:
 --- END SELF-INTEREST PROTOCOL ---`,
 }
 
-// BuildSelfInterestDirective öz-çıkar direktifini mevcut mood skoruna göre döner.
+// BuildSelfInterestDirective öz-çıkar direktifini döner.
+// Mood'dan bağımsız çalışır: mood kapalıyken LabelNeutral tonu kullanır
+// (score güncellenmiyor, bu yüzden sabit-nötr başlangıç noktası daha tutarlı).
 // SystemManagement açıksa gerçek sistem bilgisi de eklenir.
-// Toggle kapalıysa boş string döner.
+// SelfInterest toggle kapalıysa boş string döner.
 func (e *Engine) BuildSelfInterestDirective() string {
 	if !e.SelfInterestEnabled() {
 		return ""
 	}
-	score := e.Score()
-	label := Label(score)
+	label := LabelNeutral
+	if e.Enabled() {
+		label = Label(e.Score())
+	}
 	directive, ok := selfInterestDirectives[label]
 	if !ok {
 		directive = selfInterestDirectives[LabelNeutral]

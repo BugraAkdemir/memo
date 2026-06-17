@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "WhatsApp Entegrasyonu.md",
+                "file": "00 Ana Sayfa.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "WhatsApp Entegrasyonu"
+              "title": "00 Ana Sayfa"
             }
           }
         ]
@@ -185,9 +185,12 @@
   },
   "active": "9566fdd15bfe34e6",
   "lastOpenFiles": [
+    "Vektör Arama Mantığı.md",
+    "RAG ve Semantik Hafıza.md",
+    "00 Ana Sayfa.md",
+    "WhatsApp Entegrasyonu.md",
     "Yol Haritası.md",
     "Proaktif Öğrenme ve Takvim.md",
-    "00 Ana Sayfa.md",
     "Mobil Uygulama.md.tmp.5298.4ce4ed30b88f",
     "API Dökümantasyonu.md.tmp.5298.6f9631914252",
     "v3.1.0 Özellikleri.md.tmp.5298.3262ff6ccc98",
@@ -206,7 +209,6 @@
     "Hafıza Deposu (SQLite + vec0).md",
     "Sistem Genel Bakış.md",
     "Sorun Giderme.md",
-    "RAG ve Semantik Hafıza.md",
     "Özellik Kataloğu.md",
     "Multimodal Yetenekler (Görsel ve Ses).md",
     "Model Yönetimi (Fabrika).md",
@@ -215,7 +217,6 @@
     "Geliştirici Kurulum Rehberi.md",
     "Kılavuzlar.md",
     "Orkestra Modu.md",
-    "Veri Katmanı ve Kalıcılık.md",
     "Başlıksız.base"
   ]
 }

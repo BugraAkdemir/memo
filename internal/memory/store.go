@@ -117,17 +117,21 @@ func (s *Store) initSchema() error {
 			log.Printf("MEMORY: metadata init: %v", err)
 		}
 
-		// Skip O(N) migration if already completed on a previous startup.
+		// Migration runs with its own longer timeout — O(N) scan of all
+		// stored embeddings can take well over 10s on a large database.
+		migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 120*time.Second)
+		defer migrationCancel()
+
 		var migrated string
 		if err := s.db.QueryRowContext(ctx,
 			"SELECT value FROM _metadata WHERE key = 'vec_migration_done'",
 		).Scan(&migrated); err == nil && migrated == "1" {
 			log.Printf("MEMORY: vec migration already complete, skipping")
 		} else {
-			if err := s.migrateEmbeddingsToVec(ctx); err != nil {
+			if err := s.migrateEmbeddingsToVec(migrationCtx); err != nil {
 				log.Printf("MEMORY: migrate to vec: %v", err)
 			} else {
-				_ = s.db.Write(ctx, func(tx *sql.Tx) error {
+				_ = s.db.Write(migrationCtx, func(tx *sql.Tx) error {
 					_, err := tx.Exec(
 						"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('vec_migration_done', '1')",
 					)

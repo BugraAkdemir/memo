@@ -10,6 +10,7 @@ import (
 // MoodBridge is the subset of App methods required by mood handlers.
 type MoodBridge interface {
 	GetMoodScore() float64
+	GetMoodEnabled() bool
 	UpdateMoodConfig(enabled bool) error
 	GetSelfInterestEnabled() bool
 	UpdateSelfInterestConfig(enabled bool) error
@@ -44,7 +45,7 @@ func (s *Server) handleMoodSettings(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, map[string]any{
 			"score":         bridge.GetMoodScore(),
-			"enabled":       true,
+			"enabled":       bridge.GetMoodEnabled(),
 			"self_interest": bridge.GetSelfInterestEnabled(),
 		})
 	case http.MethodPut:

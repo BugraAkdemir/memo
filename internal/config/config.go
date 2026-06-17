@@ -303,10 +303,10 @@ func Default() *AppConfig {
 		},
 		Mood: MoodConfig{
 			Enabled:  true,
-			Alpha:    0.92,
-			Beta:     0.20,
-			SigmaMin: 0.20,
-			SigmaMax: 1.20,
+			Alpha:    0.95,
+			Beta:     0.15,
+			SigmaMin: 0.10,
+			SigmaMax: 0.60,
 		},
 		WebSearch: WebSearchConfig{
 			Enabled:    true,

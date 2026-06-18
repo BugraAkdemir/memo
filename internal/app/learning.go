@@ -158,48 +158,89 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 	}
 }
 
-// cancelCalendarFromIntent deletes calendar events that match a cancellation
-// intent. It looks within a few hours of the referenced time and matches by
-// title; if no title is given it removes a lone event in that window.
+// cancelCalendarFromIntent deletes the calendar event that matches a
+// cancellation intent. Safety rules:
+//
+//  1. When a time is given: search ±3 h around it.
+//     When no time: search all upcoming events (next 90 days, cap 200).
+//  2. Title match is required when there are multiple candidates.
+//     No-title + single candidate in the window → safe to delete.
+//  3. If more than one event matches → emit calendar:cancel_ambiguous and
+//     do NOT delete anything. The UI should surface the list so the user
+//     can confirm which one to remove.
 func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
-	if a.calendarStore == nil || r.EventTime == nil {
+	if a.calendarStore == nil {
 		return
 	}
-	t := *r.EventTime
-	events, err := a.calendarStore.List(a.lifecycleCtx, t.Add(-3*time.Hour), t.Add(3*time.Hour))
+
+	// --- 1. Collect candidate events ----------------------------------------
+	var (
+		candidates []calendar.Event
+		err        error
+	)
+	if r.EventTime != nil {
+		t := *r.EventTime
+		candidates, err = a.calendarStore.List(a.lifecycleCtx, t.Add(-3*time.Hour), t.Add(3*time.Hour))
+	} else {
+		// No time hint — scan all upcoming events and rely on title matching.
+		candidates, err = a.calendarStore.ListUpcoming(a.lifecycleCtx, time.Now(), 200)
+	}
 	if err != nil {
 		log.Printf("calendar: cancel list: %v", err)
 		return
 	}
-	if len(events) == 0 {
+	if len(candidates) == 0 {
 		return
 	}
 
+	// --- 2. Title filtering --------------------------------------------------
 	title := strings.ToLower(strings.TrimSpace(r.EventTitle))
-	var toDelete []calendar.Event
+	var matched []calendar.Event
+
 	if title == "" {
-		// No title to match on: only safe to delete when there's exactly one.
-		if len(events) == 1 {
-			toDelete = events
+		// No title: only safe when exactly one event is in the window.
+		if len(candidates) == 1 {
+			matched = candidates
+		} else {
+			log.Printf("calendar: cancel ambiguous — %d events in window, no title to narrow down", len(candidates))
+			return
 		}
 	} else {
-		for _, e := range events {
+		for _, e := range candidates {
 			et := strings.ToLower(e.Title)
 			if strings.Contains(et, title) || strings.Contains(title, et) {
-				toDelete = append(toDelete, e)
+				matched = append(matched, e)
 			}
 		}
 	}
 
-	for _, e := range toDelete {
-		if err := a.calendarStore.Delete(a.lifecycleCtx, e.ID); err != nil {
-			log.Printf("calendar: cancel delete %s: %v", e.ID, err)
-			continue
+	// --- 3. Ambiguity guard --------------------------------------------------
+	// More than one match → refuse to delete; surface to UI for confirmation.
+	if len(matched) > 1 {
+		log.Printf("calendar: cancel ambiguous — %d events match %q, not deleting", len(matched), r.EventTitle)
+		type ambiguousPayload struct {
+			Query  string           `json:"query"`
+			Events []calendar.Event `json:"events"`
 		}
-		payload, _ := json.Marshal(calendar.AddedPayload{ID: e.ID, Title: e.Title})
-		a.emitEvent("calendar:removed", string(payload))
-		log.Printf("calendar: cancelled %q at %s", e.Title, e.StartTime.Format("2006-01-02 15:04"))
+		payload, _ := json.Marshal(ambiguousPayload{Query: r.EventTitle, Events: matched})
+		a.emitEvent("calendar:cancel_ambiguous", string(payload))
+		return
 	}
+
+	if len(matched) == 0 {
+		log.Printf("calendar: cancel — no event matches %q", r.EventTitle)
+		return
+	}
+
+	// --- 4. Single confirmed match → delete ----------------------------------
+	e := matched[0]
+	if err := a.calendarStore.Delete(a.lifecycleCtx, e.ID); err != nil {
+		log.Printf("calendar: cancel delete %s: %v", e.ID, err)
+		return
+	}
+	payload, _ := json.Marshal(calendar.AddedPayload{ID: e.ID, Title: e.Title})
+	a.emitEvent("calendar:removed", string(payload))
+	log.Printf("calendar: cancelled %q at %s", e.Title, e.StartTime.Format("2006-01-02 15:04"))
 }
 
 // UpdateLearningSettings saves learning config and rebuilds the intent extractor

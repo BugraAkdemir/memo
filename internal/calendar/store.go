@@ -109,6 +109,25 @@ func (s *Store) Delete(ctx context.Context, id string) error {
 	return nil
 }
 
+// ListUpcoming returns all events whose StartTime is after `from`, ordered by
+// start time ascending. Used for title-based cancellation lookup when the
+// intent did not include a time reference.
+func (s *Store) ListUpcoming(ctx context.Context, from time.Time, limit int) ([]Event, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, title, start_time, end_time, description, source, contact_name, created_at, reminder_sent
+		FROM events
+		WHERE start_time > ?
+		ORDER BY start_time ASC
+		LIMIT ?`,
+		from.Unix(), limit,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: list upcoming: %w", err)
+	}
+	defer rows.Close()
+	return scanEvents(rows)
+}
+
 // MarkReminderSent sets reminder_sent=1 for the given event ID.
 func (s *Store) MarkReminderSent(ctx context.Context, id string) error {
 	_, err := s.db.ExecContext(ctx, `UPDATE events SET reminder_sent=1 WHERE id=?`, id)

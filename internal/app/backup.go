@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"memo/internal/config"
 	"memo/internal/sessions"
@@ -75,6 +76,19 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 
 // ImportData restores user data from a .memo zip archive.
 func (a *App) ImportData(data []byte) error {
+	// Snapshot existing data before overwriting anything.
+	if existing, err := a.ExportData(false); err != nil {
+		log.Printf("import: could not create pre-import backup (proceeding anyway): %v", err)
+	} else {
+		backupName := fmt.Sprintf("pre_import_backup_%s.zip", time.Now().Format("20060102_150405"))
+		backupPath := config.DataPath(backupName)
+		if err := os.WriteFile(backupPath, existing, 0600); err != nil {
+			log.Printf("import: could not save pre-import backup to %s: %v", backupPath, err)
+		} else {
+			log.Printf("import: pre-import backup saved to %s", backupPath)
+		}
+	}
+
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return fmt.Errorf("import: invalid zip: %w", err)

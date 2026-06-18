@@ -221,6 +221,9 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 			// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
 			if p.bypassPermissions {
+				if permRes.NeedPrompt {
+					log.Printf("AGENT: [BYPASS] auto-approving %q — system management mode active (no permission prompt shown)", toolName)
+				}
 				permRes.NeedPrompt = false
 				permRes.Allowed = true
 			}

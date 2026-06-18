@@ -336,8 +336,13 @@ func (m *Manager) save(s *Session) error {
 		return err
 	}
 	path := filepath.Join(m.dir, s.ID+".json")
-	if err := os.WriteFile(path, data, 0600); err != nil {
-		return fmt.Errorf("sessions: write %s: %w", s.ID, err)
+	tmp := path + ".tmp"
+	if err := os.WriteFile(tmp, data, 0600); err != nil {
+		return fmt.Errorf("sessions: write tmp %s: %w", s.ID, err)
+	}
+	if err := os.Rename(tmp, path); err != nil {
+		os.Remove(tmp)
+		return fmt.Errorf("sessions: rename %s: %w", s.ID, err)
 	}
 	return nil
 }

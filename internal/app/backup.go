@@ -8,12 +8,17 @@ import (
 	"log"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"time"
 
 	"memo/internal/config"
+	"memo/internal/fileutil"
 	"memo/internal/sessions"
 )
+
+// backupsDir returns the directory where pre-import snapshots are stored.
+func backupsDir() string { return config.DataPath("backups") }
 
 // ExportData packages all user data (except models) into a .memo zip archive.
 func (a *App) ExportData(includeModels bool) ([]byte, error) {
@@ -29,6 +34,10 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 			return filepath.Walk(src, func(path string, info os.FileInfo, err error) error {
 				if err != nil || info.IsDir() {
 					return err
+				}
+				// Skip atomic-write temp files — they are never valid data.
+				if strings.HasSuffix(path, ".tmp") {
+					return nil
 				}
 				rel, _ := filepath.Rel(src, path)
 				w, err := zw.Create(filepath.Join(name, rel))
@@ -76,23 +85,15 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 
 // ImportData restores user data from a .memo zip archive.
 func (a *App) ImportData(data []byte) error {
-	// Snapshot existing data before overwriting anything.
-	if existing, err := a.ExportData(false); err != nil {
-		log.Printf("import: could not create pre-import backup (proceeding anyway): %v", err)
-	} else {
-		backupName := fmt.Sprintf("pre_import_backup_%s.zip", time.Now().Format("20060102_150405"))
-		backupPath := config.DataPath(backupName)
-		if err := os.WriteFile(backupPath, existing, 0600); err != nil {
-			log.Printf("import: could not save pre-import backup to %s: %v", backupPath, err)
-		} else {
-			log.Printf("import: pre-import backup saved to %s", backupPath)
-		}
-	}
-
+	// Validate the archive first — before touching anything on disk.
 	zr, err := zip.NewReader(bytes.NewReader(data), int64(len(data)))
 	if err != nil {
 		return fmt.Errorf("import: invalid zip: %w", err)
 	}
+
+	// Snapshot existing data into the dedicated backups subdirectory.
+	// Non-fatal: a failed snapshot logs a warning but does not block the import.
+	a.snapshotPreImport()
 
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
@@ -150,7 +151,67 @@ func (a *App) ImportData(data []byte) error {
 	return nil
 }
 
-// WipeAllData removes all user data: sessions, memory, whatsapp, providers.
+// snapshotPreImport creates a timestamped backup of the current data in the
+// dedicated backups/ subdirectory, then prunes old backups keeping the most
+// recent maxImportBackups copies.
+func (a *App) snapshotPreImport() {
+	const maxImportBackups = 3
+
+	dir := backupsDir()
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		log.Printf("import: snapshot: mkdir %s: %v", dir, err)
+		return
+	}
+
+	existing, err := a.ExportData(false)
+	if err != nil {
+		log.Printf("import: snapshot: export failed (proceeding anyway): %v", err)
+		return
+	}
+
+	name := fmt.Sprintf("pre_import_%s.zip", time.Now().Format("20060102_150405"))
+	path := filepath.Join(dir, name)
+	if err := fileutil.AtomicWrite(path, existing, 0600); err != nil {
+		log.Printf("import: snapshot: write failed (proceeding anyway): %v", err)
+		return
+	}
+	log.Printf("import: snapshot saved → %s", path)
+
+	pruneImportBackups(dir, maxImportBackups)
+}
+
+// pruneImportBackups removes the oldest pre_import_*.zip files, keeping only
+// the most recent `keep` snapshots.
+func pruneImportBackups(dir string, keep int) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+
+	var snapshots []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "pre_import_") && strings.HasSuffix(e.Name(), ".zip") {
+			snapshots = append(snapshots, filepath.Join(dir, e.Name()))
+		}
+	}
+
+	// ReadDir returns entries sorted by name; our timestamp format is lexicographically
+	// monotone, so oldest entries come first.
+	sort.Strings(snapshots)
+
+	for len(snapshots) > keep {
+		old := snapshots[0]
+		snapshots = snapshots[1:]
+		if err := os.Remove(old); err != nil {
+			log.Printf("import: prune backup %s: %v", old, err)
+		} else {
+			log.Printf("import: pruned old snapshot %s", old)
+		}
+	}
+}
+
+// WipeAllData removes all user data: sessions, memory, whatsapp, providers,
+// and pre-import snapshots.
 func (a *App) WipeAllData() error {
 	dirs := []string{
 		config.DataPath("sessions"),
@@ -158,6 +219,7 @@ func (a *App) WipeAllData() error {
 		config.DataPath("whatsapp"),
 		config.DataPath("providers.json"),
 		config.DataPath("orchestra.json"),
+		backupsDir(),
 	}
 	for _, d := range dirs {
 		if err := os.RemoveAll(d); err != nil {

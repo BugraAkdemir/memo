@@ -129,43 +129,47 @@ func detectNVIDIA() (GPUInfo, bool) {
 
 func detectAMD() (GPUInfo, bool) {
 	// Check for rocm-smi (ROCm)
-	path, err := exec.LookPath("rocm-smi")
+	_, err := exec.LookPath("rocm-smi")
 	if err != nil {
 		// Fallback: check /sys/class/drm for AMD GPU
 		return detectAMDSysfs()
 	}
-	_ = path
 
-	// Try to get GPU info from rocm-smi
-	out, err := exec.Command("rocm-smi", "--showproductname").Output()
+	// Parse GPU name — look specifically for "Card Series:" which is the
+	// human-readable model name in all known rocm-smi versions.
+	name := "AMD GPU"
+	nameOut, err := exec.Command("rocm-smi", "--showproductname").Output()
 	if err != nil {
-		log.Printf("GPU: rocm-smi query failed: %v", err)
+		log.Printf("GPU: rocm-smi --showproductname failed: %v", err)
 		return GPUInfo{}, false
 	}
-	name := "AMD GPU"
-	lines := strings.Split(string(out), "\n")
-	for _, line := range lines {
+	for _, line := range strings.Split(string(nameOut), "\n") {
 		line = strings.TrimSpace(line)
-		if strings.Contains(line, "Card") || strings.Contains(line, "GPU") {
-			if idx := strings.Index(line, ":"); idx != -1 {
-				name = strings.TrimSpace(line[idx+1:])
-				break
+		if strings.Contains(line, "Card Series:") {
+			// Format: "GPU[0]          : Card Series: Navi 21 GL XL [Radeon PRO W6800]"
+			// Use LastIndex to skip the "GPU[0] :" prefix colon.
+			if idx := strings.LastIndex(line, ":"); idx != -1 {
+				if candidate := strings.TrimSpace(line[idx+1:]); candidate != "" {
+					name = candidate
+					break
+				}
 			}
 		}
 	}
 
-	// Try to get VRAM
+	// Parse VRAM — rocm-smi reports bytes, not MB.
+	// Expected line: "GPU[0]          : VRAM Total Memory (B): 8589934592"
 	vram := 0
 	vramOut, err := exec.Command("rocm-smi", "--showmeminfo", "vram").Output()
 	if err == nil {
 		for _, line := range strings.Split(string(vramOut), "\n") {
-			if strings.Contains(line, "Total") {
-				fields := strings.Fields(line)
-				for i, f := range fields {
-					if f == "Total" && i+2 < len(fields) {
-						if v, err := strconv.Atoi(fields[i+2]); err == nil {
-							vram = v / (1024 * 1024) // bytes to MB
-						}
+			if strings.Contains(line, "VRAM Total Memory (B):") {
+				// Split on ":" keeping at most 3 parts to handle the GPU[0] prefix.
+				parts := strings.SplitN(line, ":", 3)
+				if len(parts) == 3 {
+					if v, err := strconv.ParseUint(strings.TrimSpace(parts[2]), 10, 64); err == nil {
+						vram = int(v / (1024 * 1024)) // bytes → MB
+						break
 					}
 				}
 			}
@@ -173,7 +177,6 @@ func detectAMD() (GPUInfo, bool) {
 	}
 
 	layers := recommendLayers(vram)
-
 	log.Printf("GPU detected: AMD %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
 
 	return GPUInfo{
@@ -260,18 +263,30 @@ func detectAMDSysfs() (GPUInfo, bool) {
 		return GPUInfo{}, false
 	}
 
-	// Try to get VRAM from sysfs
+	// Read VRAM via sysfs — pure Go, no bash dependency.
 	vram := 0
-	vramOut, err := exec.Command("bash", "-c", "cat /sys/class/drm/card*/device/mem_info_vram_total 2>/dev/null | head -1").Output()
-	if err == nil {
-		vramBytes, _ := strconv.ParseUint(strings.TrimSpace(string(vramOut)), 10, 64)
-		if vramBytes > 0 {
-			vram = int(vramBytes / (1024 * 1024)) // bytes to MB
+	sysfsVRAM, _ := filepath.Glob("/sys/class/drm/card*/device/mem_info_vram_total")
+	for _, match := range sysfsVRAM {
+		if data, err := os.ReadFile(match); err == nil {
+			if v, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
+				vram = int(v / (1024 * 1024)) // bytes → MB
+				break
+			}
+		}
+	}
+
+	// Read VRAM via sysfs — pure Go, no bash dependency.
+	sysfsMatches, _ := filepath.Glob("/sys/class/drm/card*/device/mem_info_vram_total")
+	for _, match := range sysfsMatches {
+		if data, err := os.ReadFile(match); err == nil {
+			if v, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64); err == nil && v > 0 {
+				vram = int(v / (1024 * 1024)) // bytes → MB
+				break
+			}
 		}
 	}
 
 	layers := recommendLayers(vram)
-
 	log.Printf("GPU detected: AMD device %s via sysfs (VRAM: %d MB, recommending %d layers)", deviceID, vram, layers)
 
 	return GPUInfo{
@@ -286,13 +301,14 @@ func detectAMDSysfs() (GPUInfo, bool) {
 // ─── Layer Recommendation ────────────────────────────────────────
 
 // recommendLayers estimates the optimal n_gpu_layers based on VRAM.
-// This is a conservative heuristic for common model sizes.
+// Uses float division so that e.g. 6143 MB (≈6 GB) hits the ≥6 GB bucket
+// instead of being truncated to 5 GB by integer division.
 func recommendLayers(vramMB int) int {
 	if vramMB <= 0 {
 		return 0
 	}
 
-	vramGB := vramMB / 1024
+	vramGB := float64(vramMB) / 1024.0
 
 	switch {
 	case vramGB >= 24: // RTX 3090/4090, A5000

@@ -5,6 +5,7 @@ package proactive
 import (
 	"encoding/json"
 	"fmt"
+	"memo/internal/fileutil"
 	"os"
 	"path/filepath"
 	"sync"
@@ -69,12 +70,7 @@ func (s *PendingStore) write(p *PendingSuggestion) error {
 	if err != nil {
 		return err
 	}
-	tmp := s.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, s.path); err != nil {
-		os.Remove(tmp)
+	if err := fileutil.AtomicWrite(s.path, data, 0o644); err != nil {
 		return err
 	}
 	return nil

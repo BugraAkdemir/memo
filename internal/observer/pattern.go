@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"math"
+	"memo/internal/fileutil"
 	"os"
 	"path/filepath"
 	"slices"
@@ -120,12 +121,7 @@ func (ps *PatternStore) writeFile(pf patternFile) error {
 	if err != nil {
 		return err
 	}
-	tmp := ps.path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0o644); err != nil {
-		return err
-	}
-	if err := os.Rename(tmp, ps.path); err != nil {
-		os.Remove(tmp)
+	if err := fileutil.AtomicWrite(ps.path, data, 0o644); err != nil {
 		return err
 	}
 	return nil

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"memo/internal/fileutil"
 	"memo/internal/truncate"
 	"os"
 	"path/filepath"
@@ -336,13 +337,8 @@ func (m *Manager) save(s *Session) error {
 		return err
 	}
 	path := filepath.Join(m.dir, s.ID+".json")
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, data, 0600); err != nil {
-		return fmt.Errorf("sessions: write tmp %s: %w", s.ID, err)
-	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
-		return fmt.Errorf("sessions: rename %s: %w", s.ID, err)
+	if err := fileutil.AtomicWrite(path, data, 0600); err != nil {
+		return fmt.Errorf("sessions: save %s: %w", s.ID, err)
 	}
 	return nil
 }

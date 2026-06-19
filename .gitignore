@@ -53,3 +53,6 @@ config/config.yaml
 .env
 data/whatsapp/*
 .claude
+# SQLite WAL files
+*.db-shm
+*.db-wal

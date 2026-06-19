@@ -1,5 +1,66 @@
 {
   "version": 1,
-  "updated_at": "2026-06-17T05:57:02.681023719+03:00",
-  "patterns": []
+  "updated_at": "2026-06-19T04:23:36.444762694+03:00",
+  "patterns": [
+    {
+      "id": "time:general",
+      "activity_type": "general",
+      "time_peak_seconds": 36076,
+      "std_dev_seconds": 9548,
+      "confidence": 0.04985748131909414,
+      "days_active": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "total_count": 30,
+      "first_seen": "2026-06-16T05:57:47Z",
+      "last_seen": "2026-06-16T17:57:12Z",
+      "weighted_score": 1
+    },
+    {
+      "id": "time:coding",
+      "activity_type": "coding",
+      "time_peak_seconds": 33768,
+      "std_dev_seconds": 10424,
+      "confidence": 0.04761583929005232,
+      "days_active": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "total_count": 8,
+      "first_seen": "2026-06-16T06:17:00Z",
+      "last_seen": "2026-06-16T18:04:42Z",
+      "weighted_score": 0.49670498476920677
+    },
+    {
+      "id": "time:writing",
+      "activity_type": "writing",
+      "time_peak_seconds": 39940,
+      "std_dev_seconds": 10476,
+      "confidence": 0.046894220732597,
+      "days_active": [
+        false,
+        false,
+        true,
+        false,
+        false,
+        false,
+        false
+      ],
+      "total_count": 3,
+      "first_seen": "2026-06-16T06:18:02Z",
+      "last_seen": "2026-06-16T12:17:42Z",
+      "weighted_score": 0.18646601933944967
+    }
+  ]
 }

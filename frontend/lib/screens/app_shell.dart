@@ -4,11 +4,15 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/settings_provider.dart';
+import '../providers/chat_provider.dart';
+import '../providers/whatsapp_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
 import '../widgets/version_banner.dart';
 import '../widgets/engine_strip.dart';
+import '../widgets/launchpad_view.dart';
+import '../widgets/spotlight_tour.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
@@ -25,11 +29,50 @@ class AppShell extends ConsumerStatefulWidget {
 
 class _AppShellState extends ConsumerState<AppShell> {
   int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp 4=calendar
+  bool _showLaunchpad = false;
+  bool _showTour = false;
+
+  final _navKeys = List.generate(5, (_) => GlobalKey());
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final setupComplete = ref.read(setupCompleteProvider);
+      if (setupComplete) _checkOnboarding();
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     final locale = ref.watch(localeProvider);
     L10n.setLocale(locale);
+
+    ref.listen(setupCompleteProvider, (prev, next) {
+      if (prev == true && next == false) {
+        setState(() {
+          _showLaunchpad = false;
+          _showTour = false;
+        });
+        ref.read(launchpadSeenProvider.notifier).reset();
+        ref.read(tourSeenProvider.notifier).resetTour();
+      } else if (prev == false && next == true) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
+      }
+    });
+
+    ref.listen(launchpadSeenProvider, (prev, next) {
+      if (prev == true && next == false) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
+      }
+    });
+
+    ref.listen(tourSeenProvider, (prev, next) {
+      if (prev == true && next == false) {
+        WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
+      }
+    });
 
     return Scaffold(
       backgroundColor: MemoTheme.of(context).bgApp,
@@ -62,6 +105,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             ],
           ),
           SetupWizardOverlay(),
+          if (_showLaunchpad) _buildLaunchpadOverlay(),
+          if (_showTour) _buildTourOverlay(),
           LlamaInstallerOverlay(),
           const VersionBanner(),
         ],
@@ -69,32 +114,59 @@ class _AppShellState extends ConsumerState<AppShell> {
     );
   }
 
+  void _checkOnboarding() {
+    if (!ref.read(setupCompleteProvider)) return;
+
+    final launchpadSeen = ref.read(launchpadSeenProvider);
+    final tourSeen = ref.read(tourSeenProvider);
+
+    if (!launchpadSeen) {
+      final forceShow = ref.read(launchpadSeenProvider.notifier).forceShow;
+      if (forceShow) {
+        setState(() => _showLaunchpad = true);
+        return;
+      }
+      final chatsAsync = ref.read(chatListProvider);
+      chatsAsync.whenData((chats) {
+        if (chats.isEmpty && mounted) {
+          setState(() => _showLaunchpad = true);
+        } else {
+          ref.read(launchpadSeenProvider.notifier).markSeen();
+          if (!tourSeen && mounted) setState(() => _showTour = true);
+        }
+      });
+    } else if (!tourSeen) {
+      if (mounted) setState(() => _showTour = true);
+    }
+  }
+
   Widget _buildNavRail() {
     final c = MemoTheme.of(context);
     return Container(
-      width: 64,
+      width: 72,
       decoration: BoxDecoration(
         color: c.bgPanel,
         border: Border(right: BorderSide(color: c.borderSoft)),
       ),
       child: Column(
         children: [
-          const SizedBox(height: 16),
+          const SizedBox(height: 14),
 
           // ─── Logo ────────────────────────────────────
           ClipRRect(
             borderRadius: BorderRadius.circular(12),
             child: Image.asset(
               'lib/icon/memo.png',
-              width: 40,
-              height: 40,
+              width: 36,
+              height: 36,
               fit: BoxFit.cover,
             ),
           ),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: 20),
 
           _NavRailButton(
+            key: _navKeys[0],
             icon: Icons.chat_bubble_outline,
             activeIcon: Icons.chat_bubble,
             label: L10n.t('chats'),
@@ -102,9 +174,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 0),
           ),
 
-          const SizedBox(height: 8),
-
           _NavRailButton(
+            key: _navKeys[1],
             icon: Icons.smart_toy_outlined,
             activeIcon: Icons.smart_toy,
             label: 'Ajan',
@@ -112,9 +183,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 1),
           ),
 
-          const SizedBox(height: 8),
-
           _NavRailButton(
+            key: _navKeys[2],
             icon: Icons.memory_outlined,
             activeIcon: Icons.memory,
             label: L10n.t('model_store'),
@@ -122,9 +192,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 2),
           ),
 
-          const SizedBox(height: 8),
-
           _NavRailButton(
+            key: _navKeys[3],
             icon: Icons.message_outlined,
             activeIcon: Icons.message,
             label: 'WhatsApp',
@@ -132,9 +201,8 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => setState(() => _currentIndex = 3),
           ),
 
-          const SizedBox(height: 8),
-
           _NavRailButton(
+            key: _navKeys[4],
             icon: Icons.calendar_month_outlined,
             activeIcon: Icons.calendar_month,
             label: 'Takvim',
@@ -155,10 +223,99 @@ class _AppShellState extends ConsumerState<AppShell> {
             ),
           ),
 
-          const SizedBox(height: 16),
+          const SizedBox(height: 12),
         ],
       ),
     );
+  }
+
+  Widget _buildLaunchpadOverlay() {
+    return Positioned.fill(
+      child: Material(
+        color: MemoTheme.of(context).bgApp,
+        child: LaunchpadView(
+          whatsAppConnected: _isWhatsAppConnected(),
+          onStartChat: () {
+            ref.read(launchpadSeenProvider.notifier).markSeen();
+            setState(() {
+              _showLaunchpad = false;
+              _currentIndex = 0;
+            });
+            _maybeStartTour();
+          },
+          onNavigateAgent: () {
+            ref.read(launchpadSeenProvider.notifier).markSeen();
+            setState(() {
+              _showLaunchpad = false;
+              _currentIndex = 1;
+            });
+            _maybeStartTour();
+          },
+          onNavigateWhatsApp: () {
+            ref.read(launchpadSeenProvider.notifier).markSeen();
+            setState(() {
+              _showLaunchpad = false;
+              _currentIndex = 3;
+            });
+            _maybeStartTour();
+          },
+          onNavigateCalendar: () {
+            ref.read(launchpadSeenProvider.notifier).markSeen();
+            setState(() {
+              _showLaunchpad = false;
+              _currentIndex = 4;
+            });
+            _maybeStartTour();
+          },
+          onNavigateModels: () {
+            ref.read(launchpadSeenProvider.notifier).markSeen();
+            setState(() {
+              _showLaunchpad = false;
+              _currentIndex = 2;
+            });
+            _maybeStartTour();
+          },
+        ),
+      ),
+    );
+  }
+
+  void _maybeStartTour() {
+    final tourSeen = ref.read(tourSeenProvider);
+    if (!tourSeen && mounted) {
+      // Delay to let the nav rail render after the tab switch
+      Future.delayed(const Duration(milliseconds: 400), () {
+        if (mounted) setState(() => _showTour = true);
+      });
+    }
+  }
+
+  Widget _buildTourOverlay() {
+    final steps = <String>[
+      L10n.t('tour_step_chat'),
+      L10n.t('tour_step_agent'),
+      L10n.t('tour_step_whatsapp'),
+      L10n.t('tour_step_calendar'),
+    ];
+    return Positioned.fill(
+      child: SpotlightTour(
+        targetKeys: [..._navKeys.take(4)],
+        stepTexts: steps,
+        onComplete: () {
+          ref.read(tourSeenProvider.notifier).markSeen();
+          setState(() => _showTour = false);
+        },
+        onSkip: () {
+          ref.read(tourSeenProvider.notifier).markSeen();
+          setState(() => _showTour = false);
+        },
+      ),
+    );
+  }
+
+  bool _isWhatsAppConnected() {
+    final statusAsync = ref.read(whatsAppStatusProvider);
+    return statusAsync.valueOrNull?.connected ?? false;
   }
 }
 
@@ -170,6 +327,7 @@ class _NavRailButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _NavRailButton({
+    super.key,
     required this.icon,
     required this.activeIcon,
     required this.label,
@@ -179,24 +337,42 @@ class _NavRailButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      preferBelow: false,
+    final c = MemoTheme.of(context);
+    final hue = isActive ? MemoTheme.accent : c.textDim;
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 150),
-          width: 44,
-          height: 44,
+          width: 52,
+          padding: const EdgeInsets.symmetric(vertical: 6),
           decoration: BoxDecoration(
             color: isActive ? MemoTheme.accentMuted : Colors.transparent,
             borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
           ),
-          child: Icon(
-            isActive ? activeIcon : icon,
-            size: 22,
-            color: isActive ? MemoTheme.accent : MemoTheme.of(context).textDim,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                isActive ? activeIcon : icon,
+                size: 20,
+                color: hue,
+              ),
+              const SizedBox(height: 2),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 9,
+                  fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+                  color: hue,
+                ),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ],
           ),
         ),
       ),

@@ -114,6 +114,61 @@ class SetupCompleteNotifier extends StateNotifier<bool> {
   }
 }
 
+// ─── Launchpad Seen ─────────────────────────────────────────────
+
+final launchpadSeenProvider =
+    StateNotifierProvider<LaunchpadSeenNotifier, bool>((ref) {
+      final prefs = ref.read(prefsProvider);
+      return LaunchpadSeenNotifier(prefs);
+    });
+
+class LaunchpadSeenNotifier extends StateNotifier<bool> {
+  final SharedPreferences _prefs;
+  bool _forceShow = false;
+
+  LaunchpadSeenNotifier(this._prefs)
+      : super(_prefs.getBool('memo_launchpad_seen') ?? false);
+
+  bool get forceShow => _forceShow;
+
+  Future<void> markSeen() async {
+    _forceShow = false;
+    await _prefs.setBool('memo_launchpad_seen', true);
+    state = true;
+  }
+
+  Future<void> reset() async {
+    _forceShow = true;
+    await _prefs.setBool('memo_launchpad_seen', false);
+    state = false;
+  }
+}
+
+// ─── Tour Seen ───────────────────────────────────────────────────
+
+final tourSeenProvider =
+    StateNotifierProvider<TourSeenNotifier, bool>((ref) {
+      final prefs = ref.read(prefsProvider);
+      return TourSeenNotifier(prefs);
+    });
+
+class TourSeenNotifier extends StateNotifier<bool> {
+  final SharedPreferences _prefs;
+
+  TourSeenNotifier(this._prefs)
+      : super(_prefs.getBool('memo_tour_seen') ?? false);
+
+  Future<void> markSeen() async {
+    await _prefs.setBool('memo_tour_seen', true);
+    state = true;
+  }
+
+  Future<void> resetTour() async {
+    await _prefs.setBool('memo_tour_seen', false);
+    state = false;
+  }
+}
+
 // ─── System Prompt ──────────────────────────────────────────────
 
 final systemPromptProvider =

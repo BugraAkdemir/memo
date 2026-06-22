@@ -1,0 +1,101 @@
+# Memo configuration — TEMPLATE
+# Copy this file to `config/config.yaml` and fill in your own values.
+# `config/config.yaml` is gitignored — never commit real tokens/keys/secrets.
+
+api:
+    base_url: http://127.0.0.1:8081/v1
+    embedding_model: nomic-embed-text-v1.5
+    timeout_seconds: 120
+
+identity:
+    user_name: ""
+    assistant_name: Memo
+    style: casual
+    system_role: |-
+        Sen Memo'sun — kullanıcının yapay zeka asistanısın.
+        Samimi ve doğal konuş, gereksiz kibarlık yok, net ve açık ol.
+    incognito_prompt: ""
+
+memory:
+    persist_dir: data/memory
+    top_k: 5
+    min_similarity: 0.1
+    memory_enabled: true
+    embedding_dimension: 768
+    embedding_model_repo: nomic-ai/nomic-embed-text-v1.5-GGUF
+    embedding_model_file: nomic-embed-text-v1.5.Q4_K_M.gguf
+    embedding_auto_start: false
+
+remote_access:
+    enabled: false
+    port: 8090
+    token: ""              # SECRET: optional access token for remote/LAN
+    ngrok_mode: false
+    ngrok_token: ""        # SECRET: your ngrok auth token
+    ngrok_auto_start: false
+    tunnel_mode: lan       # lan | ngrok | tailscale
+    tailscale_key: ""      # SECRET: your Tailscale auth key
+    tailscale_hostname: memo
+    tailscale_funnel: false
+
+llama:
+    engine_mode: cpu       # cpu | nvidia | amd
+    binary_path: ""
+    port: 8081
+    embedding_port: 8082
+    ctx_size: 4096
+    max_history: 20
+    max_context_tokens: 0
+    models_dir: data/models
+    temperature: 0.6
+    top_p: 0.9
+    max_tokens: 0
+
+whisper:
+    binary_path: ""
+    model_path: ""
+    language: auto
+    port: 9877
+    enabled: false
+
+sync:
+    enabled: false
+    client_id: ""          # SECRET: Google OAuth client id (or use .env)
+    client_secret: ""      # SECRET: Google OAuth client secret (or use .env)
+    passphrase: ""         # SECRET: end-to-end encryption passphrase
+    token_path: data/sync_token.json
+    interval_messages: 50
+
+whatsapp:
+    enabled: false
+    data_dir: data/whatsapp
+    auto_index: true
+    max_history_days: 7
+
+proactive:
+    enabled: true
+    level: normal
+
+learning:
+    single_model_enabled: false
+    model_id: ""
+
+calendar:
+    reminder_lead_minutes: 30
+    disable_time_guess: false
+
+mood:
+    enabled: false
+    alpha: 0.95
+    beta: 0.15
+    sigma_min: 0.1
+    sigma_max: 0.6
+    self_interest: false
+    system_management: false
+
+web_search:
+    enabled: false
+    max_results: 5
+
+active_provider: ""
+beta: false

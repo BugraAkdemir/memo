@@ -193,11 +193,19 @@ class _AgentContent extends ConsumerWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.smart_toy, size: 48, color: MemoTheme.of(context).textDim),
-              const SizedBox(height: 16),
-              Text(L10n.t('agent_chat_select'), style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain)),
+              Container(
+                width: 64,
+                height: 64,
+                decoration: BoxDecoration(
+                  color: MemoTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                child: const Icon(Icons.smart_toy, size: 32, color: MemoTheme.accent),
+              ),
+              const SizedBox(height: 20),
+              Text(L10n.t('agent_empty_title'), style: TextStyle(fontSize: 20, fontWeight: FontWeight.w700, color: MemoTheme.of(context).textMain)),
               const SizedBox(height: 8),
-              Text(L10n.t('agent_chat_instruction'), style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim)),
+              Text(L10n.t('agent_empty_desc'), style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim), textAlign: TextAlign.center),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () async {
@@ -212,7 +220,7 @@ class _AgentContent extends ConsumerWidget {
                   }
                 },
                 icon: const Icon(Icons.add, size: 18),
-                label: const Text('Yeni Ajan Sohbeti'),
+                label: Text(L10n.t('agent_empty_action')),
               ),
             ],
           ),

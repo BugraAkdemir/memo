@@ -123,7 +123,6 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   // ─── Welcome / connect ────────────────────────────────────────
 
   Widget _buildWelcome(ThemeColors c) {
-    final tr = L10n.locale == MemoLocale.tr;
     return Container(
       color: c.bgApp,
       child: Center(
@@ -145,7 +144,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 ),
                 const SizedBox(height: 24),
                 Text(
-                  'WhatsApp',
+                  L10n.t('whatsapp_empty_title'),
                   style: TextStyle(
                     fontSize: 24,
                     fontWeight: FontWeight.w700,
@@ -154,9 +153,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  tr
-                      ? 'WhatsApp mesajlarını Memo üzerinden oku, yaz ve yapay zeka ile yönet.'
-                      : 'Read, send, and manage your WhatsApp messages with AI assistance.',
+                  L10n.t('whatsapp_empty_desc'),
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 14, color: c.textDim),
                 ),
@@ -166,7 +163,9 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   child: ElevatedButton.icon(
                     onPressed: () => ref.read(whatsAppStatusProvider.notifier).connect(),
                     icon: const Icon(Icons.link_rounded, size: 18),
-                    label: Text(tr ? 'WhatsApp\'a Bağlan' : 'Connect WhatsApp'),
+                    label: Text(
+                      L10n.t('launchpad_connect_wa'),
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: MemoTheme.accent,
                       foregroundColor: Colors.white,
@@ -177,7 +176,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  tr
+                  L10n.locale == MemoLocale.tr
                       ? 'WhatsApp Web protokolü — telefon çevrimiçi olmalıdır.'
                       : 'Uses WhatsApp Web — your phone must stay online.',
                   style: TextStyle(fontSize: 11, color: c.textMuted),

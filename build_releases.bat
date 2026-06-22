@@ -71,8 +71,9 @@ if not exist "%STAGEDIR%\binaries\windows\cpu\llama-server.exe" (
     )
 )
 
-:: Config
-xcopy /E /I /Y "config\*" "%STAGEDIR%\config\" >nul 2>&1
+:: Config — ship ONLY the clean example as config.yaml (never the real one with secrets)
+copy /Y "config\config.yaml.example" "%STAGEDIR%\config\config.yaml" >nul 2>&1
+copy /Y "config\config.yaml.example" "%STAGEDIR%\config\config.yaml.example" >nul 2>&1
 
 :: .env
 if exist .env.example (
@@ -83,9 +84,8 @@ if exist .env.example (
 if exist data\providers.example.json (
     copy /Y data\providers.example.json "%STAGEDIR%\data\providers.example.json" >nul
 )
-if exist data\orchestra.json (
-    copy /Y data\orchestra.json "%STAGEDIR%\data\orchestra.json" >nul
-)
+:: Orchestra config is NOT bundled — the app generates clean defaults on first
+:: run, so we never ship the developer's personal orchestra setup.
 
 :: Empty data dirs
 echo [] > "%STAGEDIR%\data\permissions.json"

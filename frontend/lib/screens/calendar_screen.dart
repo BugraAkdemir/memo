@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
+import '../core/l10n.dart';
 import '../providers/chat_provider.dart';
 
 /// A calendar event as returned by /api/calendar/events.
@@ -140,7 +141,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 : _error != null
                     ? Center(child: Text('Yüklenemedi: $_error',
                         style: TextStyle(color: c.textDim)))
-                    : Row(
+                    : _events.isEmpty
+                        ? _buildEmptyState(c)
+                        : Row(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           // Calendar grid (left)
@@ -218,6 +221,50 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             onPressed: () => _showAddDialog(c),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState(ThemeColors c) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(40),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 64,
+              height: 64,
+              decoration: BoxDecoration(
+                color: MemoTheme.accent.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(16),
+              ),
+              child: const Icon(Icons.calendar_month, size: 32, color: MemoTheme.accent),
+            ),
+            const SizedBox(height: 20),
+            Text(
+              L10n.t('calendar_empty_title'),
+              style: TextStyle(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: c.textMain,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              L10n.t('calendar_empty_desc'),
+              style: TextStyle(fontSize: 13, color: c.textDim),
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 24),
+            FilledButton.icon(
+              style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
+              onPressed: () => _showAddDialog(c),
+              icon: const Icon(Icons.add, size: 18),
+              label: const Text('Etkinlik Ekle'),
+            ),
+          ],
+        ),
       ),
     );
   }

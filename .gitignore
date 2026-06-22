@@ -53,6 +53,24 @@ config/config.yaml
 .env
 data/whatsapp/*
 .claude
+
+# Runtime databases & user-specific state (may contain personal data)
+data/calendar/
+data/mood/
+data/profile/
+data/permissions.json
+data/orchestra.json
+data/tmp_llama
+*.db
+
+# Tailscale state — CONTAINS THE NODE PRIVATE KEY, never commit
+data/tailscale/
+
 # SQLite WAL files
 *.db-shm
 *.db-wal
+
+# Keep the *.example templates tracked (they hold no secrets)
+!.env.example
+!config/config.yaml.example
+!data/providers.example.json

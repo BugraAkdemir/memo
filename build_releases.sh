@@ -66,12 +66,16 @@ if [ "$OS" == "linux" ]; then
     cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
 
 	# Config
-    cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
+    # Ship ONLY the clean example as config.yaml — never the developer's real
+    # config.yaml, which holds personal tokens/keys (ngrok, tailscale, sync...).
+    cp config/config.yaml.example "$STAGEDIR/config/config.yaml" 2>/dev/null || true
+    cp config/config.yaml.example "$STAGEDIR/config/config.yaml.example" 2>/dev/null || true
     # .env.example'ı .env olarak kopyala (gerçek .env değil)
     cp .env.example "$STAGEDIR/.env" 2>/dev/null || true
     # Provider & Orchestra example configs
     cp data/providers.example.json "$STAGEDIR/data/providers.example.json" 2>/dev/null || true
-    cp data/orchestra.json "$STAGEDIR/data/orchestra.json" 2>/dev/null || true
+    # Orchestra config is NOT bundled — the app generates clean defaults on
+    # first run, so we never ship the developer's personal orchestra setup.
     # Agent permissions (boş başlangıç)
     echo '[]' > "$STAGEDIR/data/permissions.json"
     # Boş klasörleri hazırla ki uygulama hatasız başlasın
@@ -271,12 +275,16 @@ elif [ "$OS" == "windows" ]; then
         echo "   İndirmek için: https://github.com/asg017/sqlite-vec/releases"
     fi
 
-    cp -r config/* "$STAGEDIR/config/" 2>/dev/null || true
+    # Ship ONLY the clean example as config.yaml — never the developer's real
+    # config.yaml, which holds personal tokens/keys (ngrok, tailscale, sync...).
+    cp config/config.yaml.example "$STAGEDIR/config/config.yaml" 2>/dev/null || true
+    cp config/config.yaml.example "$STAGEDIR/config/config.yaml.example" 2>/dev/null || true
     # .env.example'ı .env olarak kopyala (gerçek .env değil)
     cp .env.example "$STAGEDIR/.env" 2>/dev/null || true
     # Provider & Orchestra example configs
     cp data/providers.example.json "$STAGEDIR/data/providers.example.json" 2>/dev/null || true
-    cp data/orchestra.json "$STAGEDIR/data/orchestra.json" 2>/dev/null || true
+    # Orchestra config is NOT bundled — the app generates clean defaults on
+    # first run, so we never ship the developer's personal orchestra setup.
     echo '[]' > "$STAGEDIR/data/permissions.json"
     mkdir -p "$STAGEDIR/data/models"
     mkdir -p "$STAGEDIR/data/memory"

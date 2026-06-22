@@ -176,7 +176,9 @@ class _ChatTopBar extends ConsumerWidget {
             child: Row(
               children: [
                 if (isIncognito) ...[
-                  Container(
+                  Tooltip(
+                    message: L10n.t('incognito_tooltip'),
+                    child: Container(
                     padding:  EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 3,
@@ -204,6 +206,7 @@ class _ChatTopBar extends ConsumerWidget {
                         ),
                       ],
                     ),
+                  ),
                   ),
                    SizedBox(width: 12),
                 ],
@@ -239,7 +242,9 @@ class _ChatTopBar extends ConsumerWidget {
                   ),
                   const SizedBox(width: 12),
                 ] else if (isAgentEnabled && agentProjectPath == null) ...[
-                  Container(
+                  Tooltip(
+                    message: L10n.t('mode_agent_desc'),
+                    child: Container(
                     padding: const EdgeInsets.symmetric(
                       horizontal: 8,
                       vertical: 3,
@@ -267,6 +272,7 @@ class _ChatTopBar extends ConsumerWidget {
                         ),
                       ],
                     ),
+                  ),
                   ),
                   const SizedBox(width: 12),
                 ],
@@ -335,7 +341,9 @@ class _ChatTopBar extends ConsumerWidget {
                 size: 20,
                 color: isWhatsAppMode ? MemoTheme.green : MemoTheme.of(context).textDim,
               ),
-              tooltip: isWhatsAppMode ? L10n.t('whatsapp_mode_on') : L10n.t('whatsapp_mode_off'),
+              tooltip: isWhatsAppMode
+                  ? '${L10n.t('whatsapp_mode_on')} — ${L10n.t('whatsapp_mode_tooltip')}'
+                  : '${L10n.t('whatsapp_mode_off')} — ${L10n.t('whatsapp_mode_tooltip')}',
               onPressed: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
             ),
           

@@ -543,6 +543,56 @@ class L10n {
     'engine_start_model': 'Model başlat',
     'engine_memory': 'Hafıza',
     'engine_open_models': 'Modeller',
+
+    // Launchpad
+    'launchpad_title': 'Hoş Geldin',
+    'launchpad_subtitle': 'Memo ile neler yapabilirsin?',
+    'launchpad_chat_title': 'Sohbet',
+    'launchpad_chat_desc': 'Yapay zeka ile konuş, soru sor, kod yazdır, belge özetlet. Konuştukça seni tanır ve hatırlar.',
+    'launchpad_agent_title': 'Ajan',
+    'launchpad_agent_desc': 'Sana iş yapar — dosyaları okur, kod yazar, komut çalıştırır, web\'de arama yapar. Tüm işlemleri sen onaylarsın.',
+    'launchpad_orchestra_title': 'Orchestra',
+    'launchpad_orchestra_desc': 'Karmaşık işleri birden fazla yapay zeka modeline bölerek ekip gibi çalıştırır. Bir şef planlar, uzmanlar yürütür.',
+    'launchpad_whatsapp_title': 'WhatsApp',
+    'launchpad_whatsapp_desc': 'WhatsApp hesabına bağlan, gelen mesajları AI ile yanıtla, sohbetleri özetlet, kişilerinle doğal dilde iletişim kur.',
+    'launchpad_calendar_title': 'Takvim',
+    'launchpad_calendar_desc': 'Konuşmalarından planlarını yakalar, otomatik etkinlik oluşturur ve hatırlatmalarla sana haber verir.',
+    'launchpad_start_chat': 'Sohbete Başla',
+    'launchpad_connect_wa': 'WhatsApp\'a Bağlan',
+
+    // Tour
+    'tour_skip': 'Geç',
+    'tour_next': 'Sonraki',
+    'tour_done': 'Tamam',
+    'tour_step_chat': 'Sohbet — Memo\'nun ana ekranı. Burada AI ile konuşur, soru sorar, kod yazdırır ve dosya gönderirsin. Konuştukça seni tanır.',
+    'tour_step_agent': 'Ajan — Görev modun. Proje klasörü seç, ajan dosyalarında kod yazsın, komut çalıştırsın, hata düzeltsin. Her işlemi sen onaylarsın.',
+    'tour_step_whatsapp': 'WhatsApp — Buradan WhatsApp\'ına bağlan. QR kod okutarak eşleştir, gelen mesajları gör, AI ile yanıtla.',
+    'tour_step_calendar': 'Takvim — Sohbetlerinden planlarını otomatik yakalar. Etkinlik ekler ve zamanı gelince hatırlatma gönderir.',
+
+    // Empty states
+    'agent_empty_title': 'Ajan Modu',
+    'agent_empty_desc': 'Ajan senin için dosya okur, komut çalıştırır, kod yazar ve web\'de arama yapar. Yapacağı her işlemi önce sana sorar — kontrol sende.',
+    'agent_empty_action': 'Yeni Ajan Sohbeti',
+    'calendar_empty_title': 'Takvim',
+    'calendar_empty_desc': 'Sohbetlerinde bahsettiğin planlar, randevular ve etkinlikler buraya otomatik düşer. İstersen manuel de ekleyebilirsin.',
+    'whatsapp_empty_title': 'WhatsApp',
+    'whatsapp_empty_desc': 'WhatsApp hesabına bağlanmak için aşağıdaki butona tıkla, QR kodu okut. Bağlandıktan sonra mesajları buradan okuyup yanıtlayabilir, AI\'a yazdırabilirsin.',
+
+    // Mode descriptions
+    'mode_normal': 'Normal Sohbet',
+    'mode_normal_desc': 'Yapay zeka ile serbest sohbet — soru sor, kod yazdır, belge özetlet.',
+    'mode_agent': 'Ajan Modu',
+    'mode_agent_desc': 'Görev modu — ajan dosyalarında gezinir, komut çalıştırır, kod yazar.',
+    'mode_whatsapp': 'WhatsApp Modu',
+    'mode_whatsapp_desc': 'WhatsApp üzerinden AI ile sohbet — mesajları okur, yanıtlar, özetler.',
+
+    // Chat top bar tooltips
+    'incognito_tooltip': 'Gizli mod — bu sohbet hafızaya kaydedilmez ve RAG indeksine eklenmez.',
+    'whatsapp_mode_tooltip': 'WhatsApp modu — WhatsApp üzerinden gelen mesajları AI ile yanıtla.',
+
+    // Settings
+    'settings_reset_tour': 'Turu Tekrar Göster',
+    'settings_reset_launchpad': 'Launchpad\'i Tekrar Göster',
   };
 
   // ─── English ──────────────────────────────────────────────────
@@ -1018,5 +1068,55 @@ class L10n {
     'engine_start_model': 'Start a model',
     'engine_memory': 'Memory',
     'engine_open_models': 'Models',
+
+    // Launchpad
+    'launchpad_title': 'Welcome',
+    'launchpad_subtitle': 'What can Memo do for you?',
+    'launchpad_chat_title': 'Chat',
+    'launchpad_chat_desc': 'Talk with AI, ask questions, generate code, summarize documents. Memo learns about you as you chat.',
+    'launchpad_agent_title': 'Agent',
+    'launchpad_agent_desc': 'Gets work done — reads files, writes code, runs commands, searches the web. You approve every action before it runs.',
+    'launchpad_orchestra_title': 'Orchestra',
+    'launchpad_orchestra_desc': 'Splits complex tasks across multiple AI models working as a team. A chief plans, specialists execute in parallel.',
+    'launchpad_whatsapp_title': 'WhatsApp',
+    'launchpad_whatsapp_desc': 'Connect your WhatsApp account. Read messages, reply with AI, summarize conversations, chat naturally with your contacts.',
+    'launchpad_calendar_title': 'Calendar',
+    'launchpad_calendar_desc': 'Automatically detects plans from conversations, creates events, and sends you reminders when it\'s time.',
+    'launchpad_start_chat': 'Start Chat',
+    'launchpad_connect_wa': 'Connect WhatsApp',
+
+    // Tour
+    'tour_skip': 'Skip',
+    'tour_next': 'Next',
+    'tour_done': 'Done',
+    'tour_step_chat': 'Chat — Memo\'s main screen. Talk with AI, ask questions, generate code, send files. Memo learns about you as you go.',
+    'tour_step_agent': 'Agent — Your task mode. Pick a project folder and let the agent write code, run commands, and fix bugs. You approve every step.',
+    'tour_step_whatsapp': 'WhatsApp — Connect your WhatsApp account here. Scan the QR code to pair, then read and reply to messages with AI.',
+    'tour_step_calendar': 'Calendar — Auto-detects plans from your conversations. Creates events and sends reminders when it\'s time.',
+
+    // Empty states
+    'agent_empty_title': 'Agent Mode',
+    'agent_empty_desc': 'Agent reads files, runs commands, writes code, and searches the web on your behalf. Every action requires your approval — you\'re in control.',
+    'agent_empty_action': 'New Agent Chat',
+    'calendar_empty_title': 'Calendar',
+    'calendar_empty_desc': 'Plans, appointments, and events you mention in conversations appear here automatically. You can also add them manually.',
+    'whatsapp_empty_title': 'WhatsApp',
+    'whatsapp_empty_desc': 'Click the button below to connect your WhatsApp account, then scan the QR code. Once connected, read and reply to messages right here.',
+
+    // Mode descriptions
+    'mode_normal': 'Normal Chat',
+    'mode_normal_desc': 'Free conversation with AI — ask questions, generate code, summarize documents.',
+    'mode_agent': 'Agent Mode',
+    'mode_agent_desc': 'Task mode — agent navigates files, runs commands, writes code in your project.',
+    'mode_whatsapp': 'WhatsApp Mode',
+    'mode_whatsapp_desc': 'Chat via WhatsApp — read, reply, and summarize messages with AI.',
+
+    // Chat top bar tooltips
+    'incognito_tooltip': 'Incognito mode — this chat is not saved to memory or RAG index.',
+    'whatsapp_mode_tooltip': 'WhatsApp mode — reply to WhatsApp messages using AI.',
+
+    // Settings
+    'settings_reset_tour': 'Show Tour Again',
+    'settings_reset_launchpad': 'Show Launchpad Again',
   };
 }

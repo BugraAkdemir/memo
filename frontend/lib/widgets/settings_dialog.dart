@@ -1048,6 +1048,62 @@ class _GeneralTab extends ConsumerWidget {
             ],
           ),
         ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                L10n.t('settings_reset_tour'),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: MemoTheme.of(context).textMain,
+                ),
+              ),
+              OutlinedButton(
+                onPressed: () {
+                  ref.read(tourSeenProvider.notifier).resetTour();
+                  Navigator.of(context).pop();
+                },
+                child: Text(L10n.t('reset')),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                L10n.t('settings_reset_launchpad'),
+                style: TextStyle(
+                  fontSize: 14,
+                  color: MemoTheme.of(context).textMain,
+                ),
+              ),
+              OutlinedButton(
+                onPressed: () {
+                  ref.read(launchpadSeenProvider.notifier).reset();
+                  Navigator.of(context).pop();
+                },
+                child: Text(L10n.t('reset')),
+              ),
+            ],
+          ),
+        ),
       ],
     );
   }

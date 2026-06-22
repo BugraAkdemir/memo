@@ -652,9 +652,7 @@ class _TypingIndicator extends StatelessWidget {
                  SizedBox(width: 10),
                 Text(
                   statusText == 'web_search'
-                      ? (L10n.locale == MemoLocale.tr
-                          ? 'Webde aranıyor...'
-                          : 'Searching the web...')
+                      ? L10n.t('searching_web')
                       : (L10n.locale == MemoLocale.tr
                           ? 'Düşünüyor...'
                           : 'Thinking...'),

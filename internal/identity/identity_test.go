@@ -29,7 +29,7 @@ func TestNewWithCustomRole(t *testing.T) {
 
 func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "You are a helpful coding assistant.")
-	prompt := id.BuildSystemPrompt(nil)
+	prompt := id.BuildSystemPrompt(nil, false)
 	if !strings.Contains(prompt, "coding assistant") {
 		t.Error("custom role should appear in system prompt")
 	}
@@ -40,7 +40,7 @@ func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 
 func TestBuildSystemPromptWithoutCustomRole(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "")
-	prompt := id.BuildSystemPrompt(nil)
+	prompt := id.BuildSystemPrompt(nil, false)
 	if prompt == "" {
 		t.Fatal("BuildSystemPrompt() returned empty")
 	}
@@ -57,7 +57,7 @@ func TestBuildSystemPromptWithMemories(t *testing.T) {
 	memories := []memory.MemoryResult{
 		{Content: "User likes coffee", Similarity: 0.95},
 	}
-	prompt := id.BuildSystemPrompt(memories)
+	prompt := id.BuildSystemPrompt(memories, false)
 	if !strings.Contains(prompt, "coffee") {
 		t.Error("system prompt should contain memory content")
 	}
@@ -65,7 +65,7 @@ func TestBuildSystemPromptWithMemories(t *testing.T) {
 
 func TestBuildSystemPromptEmptyMemories(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "")
-	prompt := id.BuildSystemPrompt([]memory.MemoryResult{})
+	prompt := id.BuildSystemPrompt([]memory.MemoryResult{}, false)
 	if prompt == "" {
 		t.Fatal("BuildSystemPrompt() with empty memories returned empty")
 	}

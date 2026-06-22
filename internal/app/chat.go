@@ -189,7 +189,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	if a.cfg.Memory.MemoryEnabled {
 		memories = a.retrieveMemory(ctx, userMsg)
 	}
-	systemPrompt := a.identity.BuildSystemPrompt(memories)
+	systemPrompt := a.identity.BuildSystemPrompt(memories, a.mood == nil || !a.mood.Enabled())
 
 	var msgs []api.Message
 	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
@@ -277,7 +277,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	if a.cfg.Memory.MemoryEnabled {
 		memories = a.retrieveMemory(context.Background(), userMsg)
 	}
-	systemPrompt := a.identity.BuildSystemPrompt(memories)
+	systemPrompt := a.identity.BuildSystemPrompt(memories, a.mood == nil || !a.mood.Enabled())
 
 	var msgs []api.Message
 	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))

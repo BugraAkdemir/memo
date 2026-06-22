@@ -55,10 +55,13 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	if a.cfg.Memory.MemoryEnabled {
 		memories = a.retrieveMemory(ctx, userMsg)
 	}
-	systemPrompt := a.identity.BuildSystemPrompt(memories)
+	stripAssistant := a.mood == nil || !a.mood.Enabled()
+	systemPrompt := a.identity.BuildSystemPrompt(memories, stripAssistant)
 	if a.mood != nil && a.mood.Enabled() {
 		systemPrompt += a.mood.BuildDirective()
 		systemPrompt += a.mood.BuildSelfInterestDirective()
+	} else if a.mood != nil && !a.mood.Enabled() {
+		systemPrompt += "\n\n[Şu an nötr moddasın. Profesyonel, yardımsever ve ölçülü ol. Küfür etme, azarlama. Arkadaşça ama saygılı bir tonda cevap ver.]"
 	}
 	// Web search is now an explicit on/off mode (toggle in the UI). When on,
 	// every message is enriched with fresh web results — no fragile, language-

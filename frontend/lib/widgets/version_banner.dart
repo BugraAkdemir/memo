@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/version_provider.dart';
 
@@ -174,7 +175,7 @@ class _AnimatedBanner extends StatelessWidget {
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Text(
-                            'Yeni sürüm: $latest',
+                            L10n.t('version_new', {'v': latest}),
                             style: TextStyle(
                               fontSize: 13,
                               fontWeight: FontWeight.w700,
@@ -184,7 +185,7 @@ class _AnimatedBanner extends StatelessWidget {
                           ),
                           const SizedBox(height: 2),
                           Text(
-                            'Güncellemek için tıkla',
+                            L10n.t('version_click_to_update'),
                             style: TextStyle(
                               fontSize: 11.5,
                               color: MemoTheme.of(context).textMuted,
@@ -206,7 +207,7 @@ class _AnimatedBanner extends StatelessWidget {
                           color: MemoTheme.of(context).textDim,
                         ),
                         onPressed: onDismiss,
-                        tooltip: 'Kapat',
+                        tooltip: L10n.t('close'),
                       ),
                     ),
                   ],

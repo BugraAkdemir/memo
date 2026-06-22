@@ -62,9 +62,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_providers'),
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
-    'Learning',
-    'Mood',
-    'Skills',
+    L10n.t('tab_learning'),
+    L10n.t('tab_mood'),
+    L10n.t('tab_skills'),
     L10n.t('tab_gpu_config'),
     L10n.t('backup'),
     L10n.t('remote_access'),
@@ -4698,6 +4698,7 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
   Future<void> _setMoodEnabled(bool v) async {
     setState(() => _moodEnabled = v);
     await ref.read(apiClientProvider).setMoodEnabled(v);
+    ref.invalidate(moodEnabledProvider);
     ref.invalidate(moodScoreProvider);
   }
 
@@ -4800,27 +4801,31 @@ class _MoodTabState extends ConsumerState<_MoodTab> {
         const SizedBox(height: 20),
 
         // Live gauge
-        Container(
-          padding: const EdgeInsets.all(16),
-          decoration: BoxDecoration(
-            color: theme.bgPanel,
-            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-            border: Border.all(color: theme.borderSoft),
-          ),
-          child: Column(
+        if (_moodEnabled == true) ...[
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: theme.bgPanel,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(color: theme.borderSoft),
+            ),
+            child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text('Anlık Skor', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.textMuted)),
               const SizedBox(height: 12),
               const MoodGauge(showLabel: true),
-              const SizedBox(height: 8),
-              Text(
-                'Skor: ${score.toStringAsFixed(1)} / 10.0',
-                style: TextStyle(fontSize: 12, color: theme.textDim),
-              ),
+              if (_moodEnabled == true) ...[
+                const SizedBox(height: 8),
+                Text(
+                  'Skor: ${score.toStringAsFixed(1)} / 10.0',
+                  style: TextStyle(fontSize: 12, color: theme.textDim),
+                ),
+              ],
             ],
           ),
         ),
+        ],
         const SizedBox(height: 16),
 
         // Mood engine toggle

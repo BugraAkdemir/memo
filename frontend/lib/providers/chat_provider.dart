@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
 import 'agent_provider.dart';
@@ -267,8 +268,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           streamTimeout,
           onTimeout: (sink) => sink.addError(
             Exception(isAgentMode
-                ? 'Agent yanıt vermiyor (5dk zaman aşımı)'
-                : 'Sunucu yanıt vermiyor (60s zaman aşımı)'),
+                ? L10n.t('error_agent_timeout')
+                : L10n.t('error_server_timeout')),
           ),
         )) {
               if (chunk.finishReason == 'status') {
@@ -418,7 +419,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         await for (final chunk in stream.timeout(
           const Duration(seconds: 60),
           onTimeout: (sink) => sink.addError(
-            Exception('Sunucu yanıt vermiyor (60s zaman aşımı)'),
+            Exception(L10n.t('error_server_timeout')),
           ),
         )) {
           fullReply += chunk.content;

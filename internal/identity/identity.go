@@ -24,7 +24,7 @@ func New(userName, assistantName, style, customRole string) *Identity {
 	}
 }
 
-func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult) string {
+func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool) string {
 	var sb strings.Builder
 
 	// Base identity
@@ -39,7 +39,12 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult) string {
 	sb.WriteString(GetStyleInstructions(id.Style))
 
 	// Memory context — truncate to fit within a reasonable budget
-	memoryBlock := memory.FormatMemoriesForPrompt(memories)
+	var memoryBlock string
+	if stripAssistant {
+		memoryBlock = memory.FormatMemoriesUserOnly(memories)
+	} else {
+		memoryBlock = memory.FormatMemoriesForPrompt(memories)
+	}
 	if memoryBlock != "" {
 		// Ensure memories don't exceed ~16K tokens (leaves room for identity + conversation)
 		blockTokens := truncate.EstimateTokens(memoryBlock)

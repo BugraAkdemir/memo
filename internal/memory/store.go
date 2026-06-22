@@ -628,6 +628,33 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 	return sb.String()
 }
 
+func FormatMemoriesUserOnly(memories []MemoryResult) string {
+	if len(memories) == 0 {
+		return ""
+	}
+
+	var sb strings.Builder
+	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
+	for i, m := range memories {
+		sb.WriteString(fmt.Sprintf("[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, stripAssistantReply(m.Content)))
+	}
+	sb.WriteString("--- END MEMORIES ---\n")
+	return sb.String()
+}
+
+func stripAssistantReply(content string) string {
+	lines := strings.Split(content, "\n")
+	var result []string
+	for _, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "Assistant:") || strings.HasPrefix(trimmed, "Asistan:") {
+			break
+		}
+		result = append(result, line)
+	}
+	return strings.Join(result, "\n")
+}
+
 func vectorNorm(v []float32) float64 {
 	var sum float64
 	for _, val := range v {

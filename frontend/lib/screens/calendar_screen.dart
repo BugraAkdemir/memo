@@ -35,11 +35,12 @@ class _Event {
       );
 }
 
-const _monthNames = [
-  'Ocak', 'Şubat', 'Mart', 'Nisan', 'Mayıs', 'Haziran',
-  'Temmuz', 'Ağustos', 'Eylül', 'Ekim', 'Kasım', 'Aralık',
+const _monthKeys = [
+  'month_january', 'month_february', 'month_march', 'month_april',
+  'month_may', 'month_june', 'month_july', 'month_august',
+  'month_september', 'month_october', 'month_november', 'month_december',
 ];
-const _dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+const _dayKeys = ['day_short_mon', 'day_short_tue', 'day_short_wed', 'day_short_thu', 'day_short_fri', 'day_short_sat', 'day_short_sun'];
 
 String _two(int n) => n.toString().padLeft(2, '0');
 
@@ -121,7 +122,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Silinemedi: $e')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('calendar_delete_error', {'e': e.toString()}))));
       }
     }
   }
@@ -139,7 +140,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _error != null
-                    ? Center(child: Text('Yüklenemedi: $_error',
+                    ? Center(child: Text(L10n.t('calendar_load_error', {'e': _error!}),
                         style: TextStyle(color: c.textDim)))
                     : _events.isEmpty
                         ? _buildEmptyState(c)
@@ -179,12 +180,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         children: [
           Icon(Icons.calendar_month, color: MemoTheme.accent, size: 22),
           const SizedBox(width: 10),
-          Text('Takvim',
+          Text(L10n.t('calendar_title'),
               style: TextStyle(
                   fontSize: 17, fontWeight: FontWeight.w600, color: c.textMain)),
           const Spacer(),
           IconButton(
-            tooltip: 'Önceki ay',
+            tooltip: L10n.t('calendar_prev_month'),
             icon: Icon(Icons.chevron_left, color: c.textDim),
             onPressed: () {
               setState(() {
@@ -194,11 +195,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               _load();
             },
           ),
-          Text('${_monthNames[_focused.month - 1]} ${_focused.year}',
+          Text('${L10n.t(_monthKeys[_focused.month - 1])} ${_focused.year}',
               style: TextStyle(
                   fontSize: 15, fontWeight: FontWeight.w500, color: c.textMain)),
           IconButton(
-            tooltip: 'Sonraki ay',
+            tooltip: L10n.t('calendar_next_month'),
             icon: Icon(Icons.chevron_right, color: c.textDim),
             onPressed: () {
               setState(() {
@@ -209,7 +210,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             },
           ),
           IconButton(
-            tooltip: 'Yenile',
+            tooltip: L10n.t('calendar_refresh'),
             icon: Icon(Icons.refresh, color: c.textDim),
             onPressed: () => _load(),
           ),
@@ -217,7 +218,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           FilledButton.icon(
             style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
             icon: const Icon(Icons.add, size: 18),
-            label: const Text('Etkinlik'),
+            label: Text(L10n.t('calendar_add_event')),
             onPressed: () => _showAddDialog(c),
           ),
         ],
@@ -261,7 +262,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
               onPressed: () => _showAddDialog(c),
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Etkinlik Ekle'),
+              label: Text(L10n.t('calendar_add_event_btn')),
             ),
           ],
         ),
@@ -277,10 +278,10 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     return Column(
       children: [
         Row(
-          children: _dayNames
+          children: _dayKeys
               .map((d) => Expanded(
                     child: Center(
-                      child: Text(d,
+                      child: Text(L10n.t(d),
                           style: TextStyle(
                               color: c.textDim,
                               fontSize: 12,
@@ -355,7 +356,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   Widget _dayPanel(ThemeColors c) {
     final events = _eventsForDay(_selected);
-    final label = '${_selected.day} ${_monthNames[_selected.month - 1]}';
+    final label = '${_selected.day} ${L10n.t(_monthKeys[_selected.month - 1])}';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -369,7 +370,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         Expanded(
           child: events.isEmpty
               ? Center(
-                  child: Text('Bu gün için etkinlik yok',
+                  child: Text(L10n.t('calendar_no_events_day'),
                       style: TextStyle(color: c.textDim, fontSize: 13)))
               : ListView.builder(
                   padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -424,7 +425,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             ),
           ),
           IconButton(
-            tooltip: 'Sil',
+            tooltip: L10n.t('calendar_delete_event'),
             icon: Icon(Icons.delete_outline, size: 18, color: c.textDim),
             onPressed: () => _delete(e.id),
           ),
@@ -445,7 +446,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           backgroundColor: c.bgPanel,
-          title: Text('Yeni Etkinlik', style: TextStyle(color: c.textMain)),
+          title: Text(L10n.t('calendar_new_event_title'), style: TextStyle(color: c.textMain)),
           content: SizedBox(
             width: 360,
             child: Column(
@@ -454,25 +455,25 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 TextField(
                   controller: titleCtrl,
                   style: TextStyle(color: c.textMain),
-                  decoration: const InputDecoration(labelText: 'Başlık'),
+                  decoration: InputDecoration(labelText: L10n.t('calendar_field_title')),
                 ),
                 const SizedBox(height: 10),
                 TextField(
                   controller: descCtrl,
                   style: TextStyle(color: c.textMain),
-                  decoration: const InputDecoration(labelText: 'Açıklama (opsiyonel)'),
+                  decoration: InputDecoration(labelText: L10n.t('calendar_field_desc_optional')),
                 ),
                 const SizedBox(height: 14),
                 Row(
                   children: [
                     Expanded(
                       child: Text(
-                        '${picked.day} ${_monthNames[picked.month - 1]} ${picked.year}  ${_two(picked.hour)}:${_two(picked.minute)}',
+                        '${picked.day} ${L10n.t(_monthKeys[picked.month - 1])} ${picked.year}  ${_two(picked.hour)}:${_two(picked.minute)}',
                         style: TextStyle(color: c.textMain, fontSize: 13),
                       ),
                     ),
                     TextButton(
-                      child: const Text('Tarih/Saat'),
+                      child: Text(L10n.t('calendar_pick_datetime')),
                       onPressed: () async {
                         final d = await showDatePicker(
                           context: ctx,
@@ -498,7 +499,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           actions: [
             TextButton(
                 onPressed: () => Navigator.pop(ctx),
-                child: const Text('İptal')),
+                child: Text(L10n.t('cancel'))),
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
               onPressed: () async {
@@ -511,11 +512,11 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 } catch (e) {
                   if (mounted) {
                     ScaffoldMessenger.of(context)
-                        .showSnackBar(SnackBar(content: Text('Eklenemedi: $e')));
+                        .showSnackBar(SnackBar(content: Text(L10n.t('calendar_add_error', {'e': e.toString()}))));
                   }
                 }
               },
-              child: const Text('Ekle'),
+              child: Text(L10n.t('calendar_add')),
             ),
           ],
         ),

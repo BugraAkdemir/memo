@@ -372,10 +372,19 @@ func defaultConfigs() []ProviderConfig {
 }
 
 // defaultMachineKey derives a machine-specific key from hardware info.
-// This is not cryptographically secure but prevents plaintext key storage.
+// It first tries to load a previously generated random key from disk,
+// then falls back to platform-specific machine IDs. If all fail, a new
+// random key is generated and persisted for future use.
 func defaultMachineKey() []byte {
+	// 1. Try to load a previously generated random key
+	keyDir := filepath.Join("data")
+	keyPath := filepath.Join(keyDir, "machine.key")
+	if data, err := os.ReadFile(keyPath); err == nil && len(data) >= 32 {
+		return data[:32]
+	}
+
+	// 2. Try platform-specific machine IDs
 	if runtime.GOOS == "windows" {
-		// Windows: read MachineGuid from registry via PowerShell
 		out, err := exec.Command("powershell", "-NoProfile", "-Command",
 			`(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' MachineGuid).MachineGuid`).Output()
 		if err == nil {
@@ -384,11 +393,9 @@ func defaultMachineKey() []byte {
 			}
 		}
 	} else {
-		// Linux: try /etc/machine-id
 		if data, err := os.ReadFile("/etc/machine-id"); err == nil && len(data) >= 32 {
 			return []byte(data[:32])
 		}
-		// macOS: try IOPlatformUUID
 		out, err := exec.Command("sh", "-c",
 			`ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $4}'`).Output()
 		if err == nil {
@@ -397,8 +404,21 @@ func defaultMachineKey() []byte {
 			}
 		}
 	}
-	// Fallback: use a hardcoded but obscured key
-	return []byte("Mm3m0L0c4lK3y!@#$%^&*()9876543210")
+
+	// 3. No machine-specific ID available — generate a random key and persist it
+	randomKey := make([]byte, 32)
+	if _, err := rand.Read(randomKey); err != nil {
+		log.Printf("provider: crypto/rand failed, generating fallback key: %v", err)
+		for i := range randomKey {
+			randomKey[i] = byte(i ^ 0xAA)
+		}
+	}
+	if err := os.MkdirAll(keyDir, 0700); err != nil {
+		log.Printf("provider: cannot create key dir %s: %v", keyDir, err)
+	} else if err := os.WriteFile(keyPath, randomKey, 0600); err != nil {
+		log.Printf("provider: cannot persist machine key: %v", err)
+	}
+	return randomKey
 }
 
 // SetMasterKey allows setting a custom master key from outside.

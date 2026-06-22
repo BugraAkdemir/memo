@@ -165,8 +165,9 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - `skill.DangerLevel` and `agent.DangerLevel` are separate named types — compile-time type mismatch.
 - ~~`config/config.yaml` has hardcoded `active_provider: openai`~~ → fixed: empty string default.
 CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
-- **Rate limiting** — no per-endpoint rate limiting (low risk for local-only app).
-- **Structured logging** — uses `log.Printf` everywhere, no log levels or request IDs.
+- ~~**No CI pipeline**~~ → fixed: GitHub Actions for Go + Flutter.
+- **Rate limiting** — token-bucket per-IP (100 req/s) on all handlers via `rateLimitMiddleware`.
+- **Structured logging** — `internal/logx` wraps `log/slog` with levels; `webserver/server.go` migrated as example. Remaining packages still use `log.Printf` (gradual migration).
 - **API versioning** — flat `/api/` prefix, no versioning strategy.
 
 ---

@@ -119,7 +119,7 @@ cd frontend && flutter analyze         # lint
 
 Ad-hoc API smoke tests: `dart run test_api_all.dart` (requires running backend).
 
-No CI pipeline or pre-commit hooks configured.
+CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 
 ---
 
@@ -164,7 +164,7 @@ No CI pipeline or pre-commit hooks configured.
 - ~~`app.go` stores `context.Context` in struct field~~ → `lifecycleCtx` is for goroutine lifecycle only, not request-scoped. All request methods accept `ctx` as parameter. Correct pattern.
 - `skill.DangerLevel` and `agent.DangerLevel` are separate named types — compile-time type mismatch.
 - ~~`config/config.yaml` has hardcoded `active_provider: openai`~~ → fixed: empty string default.
-- **No CI pipeline** — GitHub Actions workflow needed.
+CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 - **Rate limiting** — no per-endpoint rate limiting (low risk for local-only app).
 - **Structured logging** — uses `log.Printf` everywhere, no log levels or request IDs.
 - **API versioning** — flat `/api/` prefix, no versioning strategy.

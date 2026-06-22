@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
-	"log"
 	"math/big"
 	"net"
 	"net/http"
@@ -21,6 +20,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"memo/internal/logx"
 )
 
 // AppBridge defines the interface that the main App must implement
@@ -221,7 +222,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/mood/self-interest", s.handleSelfInterestSettings)
 	mux.HandleFunc("/api/mood/system-management", s.handleSystemManagementSettings)
 
-	handler := limitBodyMiddleware(corsMiddleware(mux, addr), 50<<20) // 50 MB request body limit (file uploads need up to 50MB)
+	handler := limitBodyMiddleware(rateLimitMiddleware(corsMiddleware(mux, addr)), 50<<20) // 50 MB body limit
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),
 		Handler: handler,
@@ -254,12 +255,12 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 		addrLog = "0.0.0.0 (LAN accessible)"
 	}
 	go func() {
-		log.Printf("Flutter API server (HTTP) started on http://%s:%d", addrLog, port)
+		logx.Info("Flutter API server (HTTP) started", "addr", fmt.Sprintf("http://%s:%d", addrLog, port))
 		for _, ip := range s.localIPs {
-			log.Printf("  LAN: http://%s:%d", ip, port)
+			logx.Info("LAN address available", "ip", ip, "port", port)
 		}
 		if err := s.srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Printf("Flutter server error: %v", err)
+			logx.Error("Flutter server error", "err", err)
 		}
 		s.mu.Lock()
 		s.running = false
@@ -277,7 +278,7 @@ func (s *Server) Stop() error {
 		return nil
 	}
 
-	log.Println("Stopping server...")
+	logx.Info("Stopping server...")
 	srv := s.srv
 	s.running = false
 	go srv.Shutdown(context.Background())
@@ -559,7 +560,7 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 	}
 	text, err := s.bridge.TranscribeAudio(audioData)
 	if err != nil {
-		log.Printf("Transcribe error: %v", err)
+		logx.Error("Transcribe error", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -571,7 +572,7 @@ func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {
 func writeJSON(w http.ResponseWriter, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(v); err != nil {
-		log.Printf("writeJSON error: %v", err)
+		logx.Error("writeJSON error", "err", err)
 	}
 }
 
@@ -607,6 +608,63 @@ func limitBodyMiddleware(next http.Handler, maxBytes int64) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.Body != nil {
 			r.Body = http.MaxBytesReader(w, r.Body, maxBytes)
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// rateLimitMiddleware limits requests to 100/second per IP using a simple
+// token bucket. Excess requests get 429 Too Many Requests.
+func rateLimitMiddleware(next http.Handler) http.Handler {
+	type bucket struct {
+		tokens   float64
+		lastSeen time.Time
+	}
+	var (
+		mu      sync.Mutex
+		buckets = make(map[string]*bucket)
+	)
+	const (
+		rate       = 100.0 // tokens per second
+		burst      = 200.0 // max burst
+		cleanEvery = 60 * time.Second
+	)
+	go func() {
+		for {
+			time.Sleep(cleanEvery)
+			mu.Lock()
+			now := time.Now()
+			for ip, b := range buckets {
+				if now.Sub(b.lastSeen) > 5*time.Minute {
+					delete(buckets, ip)
+				}
+			}
+			mu.Unlock()
+		}
+	}()
+
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		ip := r.RemoteAddr
+		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
+			ip = strings.Split(fwd, ",")[0]
+		}
+
+		mu.Lock()
+		b, ok := buckets[ip]
+		if !ok {
+			b = &bucket{tokens: burst, lastSeen: time.Now()}
+			buckets[ip] = b
+		}
+		now := time.Now()
+		elapsed := now.Sub(b.lastSeen).Seconds()
+		b.lastSeen = now
+		b.tokens = min(burst, b.tokens+elapsed*rate) - 1
+		allowed := b.tokens >= 0
+		mu.Unlock()
+
+		if !allowed {
+			http.Error(w, "429 Too Many Requests", http.StatusTooManyRequests)
+			return
 		}
 		next.ServeHTTP(w, r)
 	})

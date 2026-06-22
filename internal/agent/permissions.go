@@ -237,7 +237,7 @@ func (pm *PermissionManager) saveLocked() {
 		return
 	}
 
-	if err := os.WriteFile(pm.filePath, data, 0644); err != nil {
+	if err := os.WriteFile(pm.filePath, data, 0600); err != nil {
 		log.Printf("AGENT: failed to write permissions: %v", err)
 	}
 }

@@ -73,7 +73,7 @@ func (bm *BackupManager) saveHistoryLocked() {
 
 	data, err := json.MarshalIndent(bm.history, "", "  ")
 	if err == nil {
-		os.WriteFile(bm.historyFile, data, 0644)
+		os.WriteFile(bm.historyFile, data, 0600)
 	}
 }
 

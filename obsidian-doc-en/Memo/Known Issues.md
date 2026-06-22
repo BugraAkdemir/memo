@@ -1,73 +1,70 @@
 # Known Issues & Technical Risks
 
-Exhaustive bug audit from the full codebase review (2026-06-03). Full detail: `docs/KNOWN_ISSUES.md`.
+> Updated: June 2026 — matches `AGENTS.md` and `docs/KNOWN_ISSUES.md` v3.1.0-polish state.
 
-**Status**: 54 total bugs identified → 46 fixed, 8 still open.
+**Summary**: 14 known issues documented, 10 fixed, 4 remaining. Most are design-level technical debt, not bugs.
 
 ---
 
-## 🔴 Critical (All Fixed)
+## 🔴 Data Races
 
-| ID | Issue | Fix |
-|----|-------|-----|
-| C1 | Data race on `a.syncManager` — concurrent read/write | `getSyncManager()` helper with Lock/RLock (K16) |
-| C2 | `a.store` assigned without `storeMu` at startup | Wrapped in Lock/Unlock |
-| C6 | OAuth server leak + `authWg` race on duplicate `StartAuthFlow()` | `authSrv` field, `authDone` flag (K19) |
-| C9 | Legacy Gob migration index inconsistency | Delete-first strategy, hash-based ID (K20) |
-| C10 | Orphaned syncManager goroutines on config update | Old manager set nil under lock (K16) |
-| C11 | Flutter: context used after `Navigator.pop()` | ScaffoldMessenger captured before pop (K21) |
-| C12 | Flutter: Context menu async context use | `if (!mounted) return;` guards (K21) |
-| C13 | Flutter: TextEditingController created in build(), never disposed | StatefulWidget + dispose (K21) |
-| C14 | Flutter: setState after async without mounted check | Guard added (K21) |
-| C15 | Flutter: FocusNode.requestFocus() after async without mounted check | Guard added (K21) |
-| C16 | Orchestra bypasses Provider Router — no fallback | Providers must be registered in Router |
-| C17 | Agent pipeline no streaming — blocks UI | ChatCompletionStream with progress updates |
+**a.client reassignment during streaming** (`clientMu` exists but streaming goroutines may hold stale reference when model stops/starts mid-stream). Same pattern for `providerRouter` reassignment.
 
-## 🟠 High (4 still open)
+**Status**: Known, tolerated. Local-only app makes this low-risk. Would require connection pooling to fix properly.
 
-**Fixed:**
-- H1: OAuth callback duplicate Done panic (K19)
-- H2: callLLMStream goroutine runs 5min after disconnect (K11+K17)
-- H3: Concurrent AddMessage reorders messages (K22)
-- H4: isAuthenticated has no timeout (K19)
-- H5: Nil embeddingClient causes panic (K23)
-- H6: Memory silently disabled on startup error (K23)
-- H7-H10: Various Flutter issues (K21)
-- H11: Ngrok early return — config not saved
-- H12: Ngrok crash not shown in UI
+---
 
-**Still Open:**
-- H13: Provider Priority field unused (`router.go:40-55`)
-- H14: Active provider not visible in settings UI
-- H15: No agent API methods in frontend ApiClient
-- H16: Agent permission dialog not implemented
+## 🟠 Memory / Vector Store
 
-## 🟡 Medium (3 still open)
+- **Full rebuild on startup** — `LoadCache` is O(N), no incremental index. Acceptable for personal-scale usage.
+- **Embedding model requires manual start** — config-driven auto-start exists but must be configured.
 
-**Fixed:** M1-M14 (context, path traversal, body size limits, temp files, race conditions, GitHub timeouts, zip bomb, Flutter issues, ngrok API/install)
+**Status**: Design trade-off. Not broken, just not optimized for large corpuses.
 
-**Still Open:**
-- M15: Orchestra config has no validation
-- M16: Agent pipeline no timeout per tool call
-- M17: Agent audit log limited to 1000 entries
+---
 
-## 🔵 Low (1 still open)
+## 🟡 Provider / Agent / Orchestra
 
-**Fixed:** L1-L12 (error logging, permissions, process cleanup, Flutter const constructors, connection polling, L10n strings, ngrok UI)
+| Issue | Status |
+|-------|--------|
+| `provider.Priority` field exists but unused by router | Design debt — sort logic present, not wired |
+| Orchestra bypasses `provider.Router` — creates providers directly, no fallback chain | Architecture limitation |
+| No test files for `orchestra/` package (~800 lines) | Coverage gap |
+| Agent frontend UI (permission dialog, tool call cards) not fully implemented | Partial — basic dialog exists, streaming events rendered |
 
-**Still Open:**
-- L7: Flutter missing `const` constructors (widespread)
+---
 
-## ⚪ Info / Observations
+## 🟢 Flutter
 
-- I1: Legacy GOB format (migrated to SQLite)
-- I2: Single-file-per-interaction design
-- I3: Filepath.Walk error swallowing
-- I4: Embedding client stale reference after reinit
-- I5: Model auto-classification via filename
-- I6: `unsanitizePath` can inject `/` from `__`
-- I7: Llama server stderr mixed with app logs
-- I8: `App.ctx` stored in struct (anti-pattern)
-- I9: Flutter L10n uses custom listener instead of Riverpod
-- I10: Flutter hardcoded Turkish strings
-- I11: No test files for provider/agent/orchestra
+- `model_store_screen.dart` is 2469 lines — should be split into components
+- Widespread missing `const` constructors (lint warnings)
+- `connectionStatusProvider` and download progress polling run forever (no auto-stop)
+
+**Recently fixed**: `settings_dialog.dart` was split from 5013 → 15 files. ✓
+
+---
+
+## 🔵 Other
+
+| Issue | Status |
+|-------|--------|
+| `skill.DangerLevel` and `agent.DangerLevel` separate types | Compile-time type mismatch — needs unification |
+| No API versioning strategy | Flat `/api/` prefix, no `/v1/`, `/v2/` |
+| Gradual logging migration | `webserver/` uses `logx`; other packages still use `log.Printf` |
+
+---
+
+## ✅ Recently Fixed (v3.1.0 Polish)
+
+| Issue | Original Status | Fix |
+|-------|----------------|-----|
+| Hardcoded encryption key in source | Security risk | `crypto/rand` + `data/machine.key` (0600) |
+| No request body size limits | DoS vector | 50MB `limitBodyMiddleware` on all handlers |
+| Config files world-readable | Privacy risk | `0600` permissions on all sensitive writes |
+| WhatsApp store no serialized writes | Data corruption risk | `sync.Mutex` on `SaveMessage` + `SaveContact` |
+| Calendar reminder double-fire | UX bug | `ClaimPendingReminders()` atomic transaction |
+| ngrok no auto-recovery | Reliability | 5s auto-restart on crash |
+| QR polling never stops | UX issue | Adaptive: 2s during QR, 15s heartbeat |
+| `handleHistorySync` only on first pairing | Data gap | `INSERT OR IGNORE` makes it safe on reconnects |
+| Hardcoded `active_provider: openai` in config | Override bug | Changed to empty string default |
+| No CI pipeline | Quality | GitHub Actions: Go + Flutter auto-test on push |

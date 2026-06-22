@@ -1,47 +1,34 @@
 # WhatsApp Entegrasyonu
 
-Memo, [`whatsmeow`](https://github.com/tulir/whatsmeow) kütüphanesi aracılığıyla WhatsApp Web multi-device protokolü ile entegre olur. Çift yönlü mesajlaşma, dosya transferi ve AI destekli otomasyon sağlar.
+Memo, WhatsApp hesabına çoklu cihaz Web API'si (whatsmeow) üzerinden bağlanır. QR kod okut ve bağlan — WhatsApp Business API ücreti yok, telefon numarası kaydı yok.
 
----
+## Özellikler
 
-## ✨ Özellikler
+- **QR eşleştirme** — kodu okut, WhatsApp'ını bağla
+- **Oku ve yanıtla** — mesajları gör, Memo arayüzünden yanıt gönder
+- **Arama** — tüm sohbetler ve mesajlar arasında tam metin arama
+- **AI asistan** — yanıt taslağı hazırlamasını veya konuşmayı özetlemesini iste
+- **Ajan araçları** — ajana `whatsapp_send`, `whatsapp_search`, `whatsapp_latest`, `whatsapp_messages` araçları açık
+- **Özel WhatsApp modu** — sadece WhatsApp için ayrı sohbet arayüzü
+- **Profil fotoğrafları** — çekilir ve önbelleklenir, büyütmek ve indirmek için dokun
+- **Otomatik yeniden bağlanma** — kopmada exponential backoff, yeniden başlatmada otomatik bağlantı
+- **Anında gönderim** — iyimser arayüz, mesaj baloncukta hemen görünür
+- **İsimle hitap** — "Berra'ya mesaj at" isimleri otomatik çözümler
+
+## Güvenilirlik (v3.1.0 Cilalama)
 
 | Özellik | Durum |
 |---------|-------|
-| QR kod ile eşleştirme | ✅ |
-| Kişi adı çözümleme | ✅ |
-| Mesaj gönderme | ✅ |
-| Mesaj alma | ✅ |
-| İlk eşleştirmede mesaj geçmişi | ✅ |
-| Beyaz liste tabanlı dosya transferi | ✅ |
-| Agent aracı entegrasyonu | ✅ (4 araç) |
-| Otomatik yeniden bağlanma | ⚠️ (test edilmedi) |
-| Yeniden bağlanmada geçmiş senkronizasyonu | ❌ (sadece ilk eşleştirmede) |
-| QR yoklamasının durması | ❌ (hiç durmaz) |
+| QR polling | Adaptif: QR beklerken 2sn, bağlıyken 15sn |
+| Geçmiş senk. | `INSERT OR IGNORE` — yeniden bağlanmalarda güvenli, çift kayıt yok |
+| Yazma serileştirme | `sync.Mutex` `SaveMessage` + `SaveContact` üzerinde |
+| Otomatik yeniden bağlanma | Exponential backoff (5sn, 10sn, 30sn, 60sn) |
+| Çıkış zaman aşımı | 5sn üst sınır — yerel oturum her durumda temizlenir |
+| Mesaj sıralaması | Düzeltildi: en yeni altta, en eski üstte |
 
-## 🔐 Eşleştirme Süreci
+## Teknik
 
-1. WhatsApp servisini backend'den başlatın (Ayarlar → WhatsApp veya API)
-2. Bir QR kodu oluşturulur, `GET /api/whatsapp/qr` ile yoklanabilir
-3. WhatsApp mobil uygulaması ile QR kodu okutun (Ayarlar → Bağlı Cihazlar)
-4. Eşleştirme tamamlandıktan sonra oturum `data/whatsapp/` içinde saklanır
-
-## 🤖 Agent Araçları
-
-| Araç | Açıklama | Tehlike Seviyesi |
-|------|----------|-----------------|
-| `SendWhatsApp` | Bir kişiye mesaj gönder | Orta |
-| `SearchWhatsApp` | Mesaj geçmişinde ara | Güvenli |
-| `LatestWhatsAppChats` | Son konuşmaları al | Güvenli |
-| `GetWhatsAppMessages` | Belirli bir sohbetin mesajlarını al | Orta |
-
-## 🗂️ Veri Depolama
-
-WhatsApp verileri `data/whatsapp/` içinde izole bir SQLite veritabanında saklanır. Bu veritabanı ana Memo hafıza deposundan ayrıdır ve `.memo` yedekleme dışa aktarımlarına dahil edilir.
-
-## ⚠️ Bilinen Sınırlamalar
-
-- Geçmiş senkronizasyonu sadece ilk eşleştirmede çalışır
-- QR kodu yoklaması hiç durmaz (uygulama ömrü boyunca çalışır)
-- Oturum yeniden bağlanma davranışı iyi test edilmemiştir
-- Mesajlar yerel olarak saklanır — masaüstü tarafında E2E şifreleme sağlanmaz
+- **Kütüphane**: whatsmeow (Go, çoklu cihaz Web API)
+- **Depo**: WAL modlu SQLite, yazmalarda `sync.Mutex`
+- **Entegrasyon**: Mesajlar RAG hafızaya, proaktif gözlemciye, niyet çıkarıcıya ve duygu motoruna beslenir
+- **Veri**: `data/whatsapp/` altında saklanır — mesajlar, kişiler, profil fotoğrafı önbelleği

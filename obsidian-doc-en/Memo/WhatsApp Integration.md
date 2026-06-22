@@ -1,49 +1,34 @@
 # WhatsApp Integration
 
-Memo integrates with WhatsApp Web's multi-device protocol via the [`whatsmeow`](https://github.com/tulir/whatsmeow) library, enabling bidirectional messaging, file transfer, and AI-powered automation.
+Memo connects to your WhatsApp account through the multi-device Web API (whatsmeow). Scan a QR code and you're connected — no WhatsApp Business API fees, no phone number registration.
 
----
+## Features
 
-## ✨ Features
+- **QR pairing** — scan a code to link your WhatsApp
+- **Read & reply** — view messages, send replies from Memo's UI
+- **Search** — full-text search across all chats and messages
+- **AI assistant** — ask the AI to draft responses or summarize threads
+- **Agent tools** — `whatsapp_send`, `whatsapp_search`, `whatsapp_latest`, `whatsapp_messages` exposed to the agent
+- **Dedicated WhatsApp mode** — separate chat interface just for WhatsApp
+- **Profile photos** — fetched and cached, tap to enlarge and download
+- **Auto-reconnect** — exponential backoff on disconnect, auto-reconnects on restart
+- **Instant send** — optimistic UI, messages appear in bubble immediately
+- **Contact name resolution** — "message Berra" resolves names automatically
+
+## Reliability (v3.1.0 Polish)
 
 | Feature | Status |
 |---------|--------|
-| QR code pairing | ✅ |
-| Contact name resolution | ✅ |
-| Send messages | ✅ |
-| Receive messages | ✅ |
-| Message history on first pair | ✅ |
-| Whitelist-based file transfer | ✅ |
-| Agent tool integration | ✅ (4 tools) |
-| Auto-reconnect | ⚠️ (not tested) |
-| History sync on reconnect | ❌ (only on first pair) |
-| QR polling stop on success | ❌ (never stops) |
+| QR polling | Adaptive: 2s during QR wait, 15s heartbeat when connected |
+| History sync | `INSERT OR IGNORE` — safe on reconnects, no duplicates |
+| Write serialization | `sync.Mutex` on `SaveMessage` + `SaveContact` |
+| Auto-reconnect | Exponential backoff (5s, 10s, 30s, 60s) |
+| Logout timeout | 5s cap — local session cleared regardless |
+| Message ordering | Fixed: newest at bottom, oldest at top |
 
-## 🔐 Pairing Process
+## Technical
 
-1. Start the WhatsApp service from the backend (via Settings → WhatsApp or API)
-2. A QR code is generated and can be polled via `GET /api/whatsapp/qr`
-3. Scan the QR code with WhatsApp mobile (Settings → Linked Devices)
-4. Once paired, session data is persisted in `data/whatsapp/`
-
-## 🤖 Agent Tools
-
-The following agent tools are available for WhatsApp automation:
-
-| Tool | Description | Danger Level |
-|------|-------------|-------------|
-| `SendWhatsApp` | Send a message to a contact | Medium |
-| `SearchWhatsApp` | Search message history | Safe |
-| `LatestWhatsAppChats` | Get recent conversations | Safe |
-| `GetWhatsAppMessages` | Get messages from a specific chat | Medium |
-
-## 🗂️ Data Storage
-
-WhatsApp data is stored in an isolated SQLite database at `data/whatsapp/`. This database is separate from the main Memo memory store and is included in `.memo` backup exports.
-
-## ⚠️ Known Limitations
-
-- History sync only fires on first pairing — subsequent reconnects won't get history
-- QR code polling never stops (runs entire app lifetime)
-- Session reconnection behavior not well-tested with whatsmeow
-- Messages are stored locally — this does NOT provide E2E encryption on the desktop side
+- **Library**: whatsmeow (Go, multi-device Web API)
+- **Store**: SQLite with WAL mode, `sync.Mutex` on writes
+- **Integration**: Messages feed into RAG memory, proactive observer, intent extractor, and mood engine
+- **Data**: Stored in `data/whatsapp/` — messages, contacts, profile picture cache

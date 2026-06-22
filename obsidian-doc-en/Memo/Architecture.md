@@ -1,48 +1,75 @@
-# 🏛️ Architecture
+# Architecture — Memo v3.1.0
 
-Unlike traditional monolithic applications, Memo is built on a **Decoupled** architecture for high performance and flexibility.
+## Overview
 
-## Core Philosophy: Sovereign Interface
-Memo's architecture serves a single principle: **User data stays with the user.** There is no telemetry, no cloud dependency, and no data leakage. The system is designed to work completely offline.
+Memo is a **two-process, local-first application**. The Go backend and Flutter frontend run as separate processes communicating over plain HTTP (localhost:8090) via REST + SSE streaming.
 
-## Inter-Component Communication
-The system consists of two main parts that communicate with each other over a standard REST API.
+## Process Architecture
 
-```mermaid
-graph TD
-    subgraph Frontend [Flutter Desktop Client]
-        UI[User Interface] -->|State Management| States[Riverpod Providers]
-        States -->|HTTP/JSON| API_Client[REST Client]
-    end
-
-    subgraph Backend [Headless Go Server]
-        WebServer[http.ServeMux] -->|AppBridge| AppGo[Core App Engine]
-        AppGo -->|Vector Search| Memory[Semantic Memory]
-        AppGo -->|Process Management| Llama[Llama.cpp Wrapper]
-        AppGo -->|E2E Encryption| Sync[Google Drive Sync]
-        AppGo -->|Router + Fallback| Providers[External LLM Providers]
-        AppGo -->|Tool Registry + Pipeline| Agent[Agent Engine]
-        AppGo -->|Chief + Roles| Orchestra[Orchestra Mode]
-    end
-
-    API_Client <-->|localhost:8090| WebServer
-    Providers -->|HTTP| External[OpenAI / Gemini / Claude ...]
+```
+Flutter Desktop (Linux/Windows)     Flutter Mobile (Android/iOS)
+         │                                    │
+         │  REST + SSE (:8090)                 │  LAN / ngrok tunnel
+         └──────────────┬─────────────────────┘
+                        │
+              ┌─────────┴──────────────────────────────────┐
+              │            Go Backend (29 packages)         │
+              │                                            │
+              │  ┌──────────┐  ┌────────┐  ┌───────────┐  │
+              │  │Web Server│  │  App   │  │ Proactive │  │
+              │  │~90 routes│  │ Engine │  │  Engine   │  │
+              │  │SSE stream│  │(25 files)│  │Observer→  │  │
+              │  └──────────┘  └───┬────┘  │Analyzer→Act│  │
+              │                    │        └───────────┘  │
+              │  ┌────────┐┌──────┴──────┐┌─────────────┐  │
+              │  │ Memory ││  Providers  ││    Agent    │  │
+              │  │SQLite+ ││  8 types    ││  Pipeline   │  │
+              │  │vec0    ││  Router     ││  8 tools    │  │
+              │  └────────┘└─────────────┘└─────────────┘  │
+              │                                            │
+              │  Llama · WhatsApp · Calendar · Orchestra    │
+              │  CloudSync · Whisper · Skills · Mood        │
+              │  ModelStore · Intent · ngrok · Tunnel       │
+              │  Sessions · Config · Truncate · Logx        │
+              └────────────────────────────────────────────┘
 ```
 
-## Module Map
-| Module | Directory | Role |
-|--------|-----------|------|
-| Web Server | `internal/webserver/` | REST API (~45 endpoints) |
-| Llama Manager | `internal/llama/` | llama.cpp lifecycle |
-| Memory Store | `internal/memory/` | Vector DB (SQLite + sqlite-vec) |
-| Cloud Sync | `internal/cloudsync/` | Google Drive E2E backup |
-| Identity | `internal/identity/` | System prompt & persona |
-| **Providers** | **`internal/provider/`** | **External LLM API integration** |
-| **Agent** | **`internal/agent/`** | **Tool calling & permissions** |
-| **Orchestra** | **`internal/orchestra/`** | **Multi-model orchestration** |
+## Module Map (29 packages)
 
-### Linked Notes:
-- [[System Overview]]: General workflow diagram.
-- [[Backend (Go) Architecture]]: Modular structure of the backend.
-- [[Frontend (Flutter) Design]]: Modern Material 3 interface.
-- [[Data Layer and Persistence]]: SQLite/vec0 format and atomic writes.
+| Directory | Responsibility |
+|-----------|---------------|
+| `internal/app/` | Central orchestrator (25 files) |
+| `internal/webserver/` | REST API (~90 endpoints), SSE streaming |
+| `internal/memory/` | Vector store — SQLite + sqlite-vec, embedder |
+| `internal/provider/` | External LLM providers — 8 types, router, fallback |
+| `internal/agent/` | Agent pipeline, sandbox, permissions, 8 tools |
+| `internal/orchestra/` | Multi-model conductor, 8 roles, parallel execution |
+| `internal/llama/` | llama.cpp subprocess lifecycle, GPU detection |
+| `internal/whatsapp/` | WhatsApp bridge — whatsmeow client + store |
+| `internal/calendar/` | Event store, reminder loop, intent bridge |
+| `internal/cloudsync/` | Google Drive E2E encrypted backup |
+| `internal/modelstore/` | HuggingFace model search and download |
+| `internal/sessions/` | Chat session JSON persistence |
+| `internal/config/` | YAML configuration management |
+| `internal/database/` | SQLite connection + vec0 extension registration |
+| `internal/api/` | OpenAI-compatible API client + SSE streaming |
+| `internal/identity/` | System prompt, persona, incognito prompt |
+| `internal/intent/` | Intent extraction pipeline (chat → calendar events) |
+| `internal/proactive/` | Proactive suggestion engine |
+| `internal/observer/` | Usage pattern analyzer (circular statistics) |
+| `internal/skill/` | Skill system — load, manage, inject instructions |
+| `internal/mood/` | Stochastic emotion engine + self-interest protocol |
+| `internal/whisper/` | Speech-to-text via whisper.cpp |
+| `internal/ngrok/` | ngrok tunnel manager (auto-restart on crash) |
+| `internal/tunnel/` | Tailscale embedded tunnel (tsnet) |
+| `internal/truncate/` | Token-aware context truncation |
+| `internal/logx/` | Structured logging (slog wrapper with levels) |
+| `internal/websearch/` | DuckDuckGo HTML scraping |
+
+## Data Flow
+
+1. **Chat** — User → Flutter → POST /api/send/stream → App.buildMessages() → LLM → SSE stream → Flutter render
+2. **Memory** — User + assistant messages → embed → SQLite vec0 → retrieve on next query → inject into system prompt
+3. **Agent** — User request → Agent Pipeline → LLM tool call → Permission dialog → Tool execution → Result feedback → Loop
+4. **Proactive** — Observer records timestamps → Analyzer detects patterns → Chief LLM decides action → Notify/Suggest/Auto-execute
+5. **Calendar** — Message text → Keyword filter → LLM intent extraction → Store event → Reminder loop fires notification

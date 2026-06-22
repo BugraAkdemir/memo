@@ -1,48 +1,75 @@
-# 🏛️ Mimari Yapı
+# Mimari — Memo v3.1.0
 
-Memo, geleneksel monolitik uygulamaların aksine, yüksek performans ve esneklik için **Ayrıştırılmış (Decoupled)** bir mimari üzerine inşa edilmiştir.
+## Genel Bakış
 
-## Temel Felsefe: Sovereign Interface (Egemen Arayüz)
-Memo'nun mimarisi tek bir prensibe hizmet eder: **Kullanıcı verisi kullanıcıda kalır.** Hiçbir telemetri, bulut bağımlılığı veya veri sızıntısı yoktur. Sistem tamamen çevrimdışı (offline) çalışabilecek şekilde tasarlanmıştır.
+Memo **iki süreçli, yerel-öncelikli** bir uygulamadır. Go backend ve Flutter frontend ayrı süreçler olarak çalışır ve düz HTTP (localhost:8090) üzerinden REST + SSE akışı ile haberleşir.
 
-## Bileşenler Arası İletişim
-Sistem iki ana parçadan oluşur ve birbirleriyle standart bir REST API üzerinden haberleşir.
+## Süreç Mimarisi
 
-```mermaid
-graph TD
-    subgraph Frontend [Flutter Desktop Client]
-        UI[Kullanıcı Arayüzü] -->|State Management| States[Riverpod Providers]
-        States -->|HTTP/JSON| API_Client[REST Client]
-    end
-
-    subgraph Backend [Headless Go Server]
-        WebServer[http.ServeMux] -->|AppBridge| AppGo[Ana Uygulama Motoru]
-        AppGo -->|Vector Search| Memory[Semantik Hafıza]
-        AppGo -->|Process Management| Llama[Llama.cpp Wrapper]
-        AppGo -->|E2E Encryption| Sync[Google Drive Sync]
-        AppGo -->|Router + Fallback| Providers[Harici LLM Sağlayıcıları]
-        AppGo -->|Tool Registry + Pipeline| Agent[Ajan Motoru]
-        AppGo -->|Şef + Roller| Orchestra[Orkestra Modu]
-    end
-
-    API_Client <-->|localhost:8090| WebServer
-    Providers -->|HTTP| External[OpenAI / Gemini / Claude ...]
+```
+Flutter Masaüstü (Linux/Windows)    Flutter Mobil (Android/iOS)
+         │                                    │
+         │  REST + SSE (:8090)                 │  LAN / ngrok tünel
+         └──────────────┬─────────────────────┘
+                        │
+              ┌─────────┴──────────────────────────────────┐
+              │           Go Backend (29 paket)             │
+              │                                            │
+              │  ┌──────────┐  ┌────────┐  ┌───────────┐  │
+              │  │Web Sunucu│  │  App   │  │ Proaktif  │  │
+              │  │~90 route │  │ Motoru │  │  Motor    │  │
+              │  │SSE akışı │  │(25 dosya)│  │Gözlemci→  │  │
+              │  └──────────┘  └───┬────┘  │Analiz→Eylem│  │
+              │                    │        └───────────┘  │
+              │  ┌────────┐┌──────┴──────┐┌─────────────┐  │
+              │  │ Hafıza ││ Sağlayıcılar││    Ajan     │  │
+              │  │SQLite+ ││   8 tip     ││  Pipeline   │  │
+              │  │vec0    ││   Router    ││  8 araç     │  │
+              │  └────────┘└─────────────┘└─────────────┘  │
+              │                                            │
+              │  Llama · WhatsApp · Takvim · Orkestra      │
+              │  BulutSenk · Whisper · Skill · DuyguMotoru │
+              │  ModelMağaza · Niyet · ngrok · Tünel       │
+              │  Oturumlar · Config · Kesme · Logx         │
+              └────────────────────────────────────────────┘
 ```
 
-## Modül Haritası
-| Modül | Dizin | Görev |
-|--------|-----------|------|
-| Web Sunucusu | `internal/webserver/` | REST API (~45 endpoint) |
-| Llama Yöneticisi | `internal/llama/` | llama.cpp yaşam döngüsü |
-| Hafıza Deposu | `internal/memory/` | Vektör DB (SQLite + sqlite-vec) |
-| Bulut Senk. | `internal/cloudsync/` | Google Drive E2E yedek |
-| Kimlik | `internal/identity/` | Sistem promptu & persona |
-| **Sağlayıcılar** | **`internal/provider/`** | **Harici LLM API entegrasyonu** |
-| **Ajan** | **`internal/agent/`** | **Araç çağırma & izinler** |
-| **Orkestra** | **`internal/orchestra/`** | **Çoklu model orkestrasyonu** |
+## Paket Haritası (29 paket)
 
-### Bağlantılı Notlar:
-- [[Sistem Genel Bakış]]: Genel işleyiş şeması.
-- [[Backend (Go) Mimarisi]]: Arka uçtaki modüler yapı.
-- [[Frontend (Flutter) Tasarımı]]: Modern Material 3 arayüzü.
-- [[Veri Katmanı ve Kalıcılık]]: SQLite/vec0 formatı ve atomik yazma.
+| Dizin | Sorumluluk |
+|-------|-----------|
+| `internal/app/` | Merkezi orkestratör (25 dosya) |
+| `internal/webserver/` | REST API (~90 endpoint), SSE akışı |
+| `internal/memory/` | Vektör deposu — SQLite + sqlite-vec, embedder |
+| `internal/provider/` | Harici LLM sağlayıcıları — 8 tip, router, yedek zincir |
+| `internal/agent/` | Ajan pipeline, sandbox, izinler, 8 araç |
+| `internal/orchestra/` | Çoklu model şefi, 8 rol, paralel yürütme |
+| `internal/llama/` | llama.cpp alt süreç yaşam döngüsü, GPU tespiti |
+| `internal/whatsapp/` | WhatsApp köprüsü — whatsmeow istemci + depo |
+| `internal/calendar/` | Etkinlik deposu, hatırlatma döngüsü, niyet köprüsü |
+| `internal/cloudsync/` | Google Drive uçtan uca şifreli yedekleme |
+| `internal/modelstore/` | HuggingFace model arama ve indirme |
+| `internal/sessions/` | Sohbet oturumu JSON kalıcılığı |
+| `internal/config/` | YAML yapılandırma yönetimi |
+| `internal/database/` | SQLite bağlantı + vec0 eklenti kaydı |
+| `internal/api/` | OpenAI uyumlu API istemcisi + SSE akışı |
+| `internal/identity/` | Sistem prompt'u, persona, gizli mod prompt'u |
+| `internal/intent/` | Niyet çıkarım pipeline'ı (sohbet → takvim etkinlikleri) |
+| `internal/proactive/` | Proaktif öneri motoru |
+| `internal/observer/`` | Kullanım pattern analizcisi (dairesel istatistik) |
+| `internal/skill/` | Skill sistemi — yükle, yönet, talimat enjekte et |
+| `internal/mood/` | Stokastik duygu motoru + öz-çıkar protokolü |
+| `internal/whisper/` | whisper.cpp ile konuşma-metne çevrimi |
+| `internal/ngrok/` | ngrok tünel yöneticisi (çökmede otomatik yeniden başlatma) |
+| `internal/tunnel/` | Tailscale gömülü tünel (tsnet) |
+| `internal/truncate/` | Token farkında bağlam kesme |
+| `internal/logx/` | Yapılandırılmış loglama (seviyeli slog wrapper) |
+| `internal/websearch/` | DuckDuckGo HTML scraping |
+
+## Veri Akışı
+
+1. **Sohbet** — Kullanıcı → Flutter → POST /api/send/stream → App.buildMessages() → LLM → SSE akışı → Flutter render
+2. **Hafıza** — Kullanıcı + asistan mesajları → embed → SQLite vec0 → sonraki sorguda getir → sistem prompt'una enjekte et
+3. **Ajan** — Kullanıcı isteği → Ajan Pipeline → LLM araç çağrısı → İzin diyaloğu → Araç yürütme → Sonuç geri besleme → Döngü
+4. **Proaktif** — Gözlemci zaman damgalarını kaydeder → Analizci pattern'leri tespit eder → Şef LLM eyleme karar verir → Bildir/Öner/Otomatik yürüt
+5. **Takvim** — Mesaj metni → Anahtar kelime filtresi → LLM niyet çıkarımı → Etkinliği kaydet → Hatırlatma döngüsü bildirimi tetikler

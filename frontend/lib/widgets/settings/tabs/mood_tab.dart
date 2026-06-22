@@ -34,9 +34,9 @@ class MoodTabState extends ConsumerState<MoodTab> {
       ]);
       if (mounted) {
         setState(() {
-          _moodEnabled = results[0] as bool;
-          _selfInterest = results[1] as bool;
-          _systemManagement = results[2] as bool;
+          _moodEnabled = results[0];
+          _selfInterest = results[1];
+          _systemManagement = results[2];
           _loading = false;
         });
       }

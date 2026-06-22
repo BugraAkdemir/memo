@@ -75,7 +75,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	}
 
 	var tokenBudget int
-	if a.llamaServer.IsRunning() {
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		maxLocal := a.cfg.Llama.CtxSize
 		if maxLocal <= 0 {
 			maxLocal = 4096
@@ -100,7 +100,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	history = append([]api.Message{}, history...)
 	var msgs []api.Message
 
-	if a.llamaServer.IsRunning() {
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		if len(history) == 0 {
 			combinedMsg := systemPrompt + "\n\n" + userMsg
 			if len(extraImageB64) > 0 {

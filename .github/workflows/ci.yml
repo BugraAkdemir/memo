@@ -1,0 +1,53 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  go-backend:
+    name: Go Backend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.26"
+
+      - name: Install SQLite (required for CGO)
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go test
+        run: go test -race -count=1 ./...
+
+      - name: Go build check
+        run: go build -o /dev/null .
+
+  flutter-frontend:
+    name: Flutter Frontend
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.27"
+          channel: stable
+
+      - name: Install dependencies
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Flutter analyze
+        run: flutter analyze
+        working-directory: frontend
+
+      - name: Flutter test
+        run: flutter test
+        working-directory: frontend

@@ -16,15 +16,17 @@ import (
 )
 
 type Manager struct {
-	mu        sync.Mutex
-	cmd       *exec.Cmd
-	port      int
-	binPath   string
-	publicURL string
-	running   bool
-	apiPort   int
-	errMsg    string
+	mu         sync.Mutex
+	cmd        *exec.Cmd
+	port       int
+	binPath    string
+	publicURL  string
+	running    bool
+	apiPort    int
+	errMsg     string
 	errCapture bytes.Buffer
+	stopping   bool
+	authToken  string
 }
 
 func NewManager(binPath string) *Manager {
@@ -62,19 +64,29 @@ func (m *Manager) Start(port int, authtoken string) error {
 	}
 
 	m.port = port
+	m.authToken = authtoken
+	m.stopping = false
 	m.errMsg = ""
 	m.errCapture.Reset()
 
-	// Step 1: configure auth token
-	configCmd := exec.Command(m.binPath, "config", "add-authtoken", authtoken)
+	if err := m.startLocked(); err != nil {
+		return err
+	}
+
+	go m.monitor()
+	log.Printf("[ngrok] Starting tunnel for port %d", port)
+	return nil
+}
+
+func (m *Manager) startLocked() error {
+	configCmd := exec.Command(m.binPath, "config", "add-authtoken", m.authToken)
 	if out, err := configCmd.CombinedOutput(); err != nil {
 		log.Printf("[ngrok] config output: %s", string(out))
 		return fmt.Errorf("ngrok auth config failed: %w", err)
 	}
 
-	// Step 2: start ngrok
 	cmd := exec.Command(m.binPath, "http",
-		fmt.Sprintf("%d", port),
+		fmt.Sprintf("%d", m.port),
 		"--log=stdout",
 		"--log-level=info",
 	)
@@ -88,10 +100,26 @@ func (m *Manager) Start(port int, authtoken string) error {
 	m.running = true
 
 	go m.pollPublicURL()
-	go func() {
-		err := m.cmd.Wait()
+	return nil
+}
+
+func (m *Manager) monitor() {
+	for {
 		m.mu.Lock()
-		m.running = false
+		cmd := m.cmd
+		m.mu.Unlock()
+
+		if cmd == nil {
+			return
+		}
+		err := cmd.Wait()
+
+		m.mu.Lock()
+		if m.stopping {
+			m.running = false
+			m.mu.Unlock()
+			return
+		}
 		if err != nil {
 			if m.errCapture.Len() > 0 {
 				m.errMsg = m.errCapture.String()
@@ -99,14 +127,31 @@ func (m *Manager) Start(port int, authtoken string) error {
 				m.errMsg = err.Error()
 			}
 		}
+		log.Printf("[ngrok] process exited (err=%v), restarting in 5s...", err)
+		m.errCapture.Reset()
 		m.mu.Unlock()
-	}()
-	log.Printf("[ngrok] Starting tunnel for port %d", port)
-	return nil
+
+		time.Sleep(5 * time.Second)
+
+		m.mu.Lock()
+		if m.stopping {
+			m.mu.Unlock()
+			return
+		}
+		if err := m.startLocked(); err != nil {
+			log.Printf("[ngrok] restart failed: %v", err)
+			m.running = false
+			m.errMsg = fmt.Sprintf("restart failed: %v", err)
+			m.mu.Unlock()
+			return
+		}
+		m.mu.Unlock()
+	}
 }
 
 func (m *Manager) Stop() error {
 	m.mu.Lock()
+	m.stopping = true
 	cmd := m.cmd
 	running := m.running
 	m.mu.Unlock()
@@ -137,17 +182,21 @@ func (m *Manager) PublicURL() string {
 	return m.publicURL
 }
 
+func (m *Manager) LastError() string {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	return m.errMsg
+}
+
 func (m *Manager) pollPublicURL() {
 	for i := 0; i < 30; i++ {
-		time.Sleep(1 * time.Second)
-
+		time.Sleep(time.Second)
 		m.mu.Lock()
-		if !m.running {
-			m.mu.Unlock()
+		r := m.running
+		m.mu.Unlock()
+		if !r {
 			return
 		}
-		m.mu.Unlock()
-
 		url, err := m.fetchURL()
 		if err == nil && url != "" {
 			m.mu.Lock()
@@ -158,12 +207,6 @@ func (m *Manager) pollPublicURL() {
 		}
 	}
 	log.Println("[ngrok] timed out waiting for tunnel URL")
-}
-
-func (m *Manager) LastError() string {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	return m.errMsg
 }
 
 type apiTunnel struct {

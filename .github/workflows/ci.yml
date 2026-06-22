@@ -5,7 +5,7 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:  # manual trigger from GitHub UI
+  workflow_dispatch:
 
 jobs:
   go-backend:
@@ -35,10 +35,12 @@ jobs:
       - run: flutter test
         working-directory: frontend
 
+  # ── Build jobs: only on tag push (v*) or manual trigger ──
+
   build-linux:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build Linux
     runs-on: ubuntu-latest
-    needs: [go-backend, flutter-frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
@@ -46,55 +48,45 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
       - uses: subosito/flutter-action@v2
         with: { channel: stable }
-
       - name: Go build
         run: CGO_ENABLED=1 go build -o build_output/stage/Memo/memo-backend .
-
       - name: Flutter build
         run: flutter build linux --release
         working-directory: frontend
-
-      - name: Stage Flutter
+      - name: Stage
         run: |
           cp -r frontend/build/linux/x64/release/bundle/* build_output/stage/Memo/
           mkdir -p build_output/stage/Memo/binaries
-          cp -r binaries/linux build_output/stage/Memo/binaries/linux 2>/dev/null || echo "No binaries/linux (will be added manually)"
+          cp -r binaries/linux build_output/stage/Memo/binaries/linux 2>/dev/null || echo "No binaries (will be added manually)"
           cp config/config.yaml.example build_output/stage/Memo/config/config.yaml 2>/dev/null || true
           mkdir -p build_output/stage/Memo/data/{models,memory,sessions,skills}
           echo "[]" > build_output/stage/Memo/data/permissions.json
-
-      - name: Package AppImage
+      - name: Package
         run: |
           mkdir -p build_output/dist
-          cd build_output/stage
-          tar -czf ../dist/Memo-linux-x64.tar.gz Memo/
-          echo "Linux build: build_output/dist/Memo-linux-x64.tar.gz"
-
+          cd build_output/stage && tar -czf ../dist/Memo-linux-x64.tar.gz Memo/
       - uses: actions/upload-artifact@v4
         with:
           name: Memo-linux-x64
           path: build_output/dist/Memo-linux-x64.tar.gz
 
   build-windows:
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build Windows
     runs-on: windows-latest
-    needs: [go-backend, flutter-frontend]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with: { go-version: "1.26" }
       - uses: subosito/flutter-action@v2
         with: { channel: stable }
-
       - name: Go build
         run: |
           set CGO_ENABLED=1
           go build -o build_output\stage\Memo\memo-backend.exe .
-
       - name: Flutter build
         run: flutter build windows --release
         working-directory: frontend
-
       - name: Stage
         shell: bash
         run: |
@@ -102,17 +94,13 @@ jobs:
           mkdir -p build_output/stage/Memo/data/{models,memory,sessions,skills}
           echo "[]" > build_output/stage/Memo/data/permissions.json
           cp config/config.yaml.example build_output/stage/Memo/config/config.yaml 2>/dev/null || true
-          # Binaries NOT included — you must add binaries/windows/ manually after download
           mkdir -p build_output/stage/Memo/binaries/windows
-          echo "Add llama-server.exe + vec0.dll here before releasing" > build_output/stage/Memo/binaries/windows/README.txt
-
-      - name: Package ZIP
+          echo "Put llama-server.exe + vec0.dll here" > build_output/stage/Memo/binaries/windows/README.txt
+      - name: Package
         shell: bash
         run: |
           mkdir -p build_output/dist
-          cd build_output/stage
-          zip -r ../dist/Memo-windows-x64.zip Memo/
-
+          cd build_output/stage && zip -r ../dist/Memo-windows-x64.zip Memo/
       - uses: actions/upload-artifact@v4
         with:
           name: Memo-windows-x64

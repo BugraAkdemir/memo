@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -12,7 +13,8 @@ import (
 
 // Store handles message persistence for WhatsApp.
 type Store struct {
-	db *sql.DB
+	db    *sql.DB
+	mu    sync.Mutex // serializes writes
 }
 
 // NewStore opens or creates the WhatsApp message store.
@@ -75,6 +77,9 @@ func (s *Store) migrate() error {
 
 // SaveMessage stores an incoming or outgoing message.
 func (s *Store) SaveMessage(msg Message) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	_, err := s.db.Exec(
 		`INSERT OR IGNORE INTO messages (id, chat_jid, sender_jid, sender_name, text, timestamp, from_me)
 		 VALUES (?, ?, ?, ?, ?, ?, ?)`,
@@ -86,6 +91,9 @@ func (s *Store) SaveMessage(msg Message) error {
 
 // SaveContact stores or updates a contact name mapping.
 func (s *Store) SaveContact(jid, name string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	_, err := s.db.Exec(
 		`INSERT INTO contacts (jid, name, updated_at) VALUES (?, ?, ?)
 		 ON CONFLICT(jid) DO UPDATE SET name = excluded.name, updated_at = excluded.updated_at`,

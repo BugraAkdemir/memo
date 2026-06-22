@@ -1,33 +1,13 @@
 {
   "version": 1,
-  "updated_at": "2026-06-22T03:48:44.563670763+03:00",
+  "updated_at": "2026-06-22T14:37:29.338937761+03:00",
   "patterns": [
-    {
-      "id": "time:planning",
-      "activity_type": "planning",
-      "time_peak_seconds": 61550,
-      "std_dev_seconds": 10815,
-      "confidence": 0.30568822756239866,
-      "days_active": [
-        true,
-        false,
-        true,
-        true,
-        true,
-        true,
-        true
-      ],
-      "total_count": 10,
-      "first_seen": "2026-06-16T13:42:28Z",
-      "last_seen": "2026-06-21T11:26:19Z",
-      "weighted_score": 0.6193422689604687
-    },
     {
       "id": "time:general",
       "activity_type": "general",
-      "time_peak_seconds": 70714,
-      "std_dev_seconds": 16084,
-      "confidence": 0.2522538800627919,
+      "time_peak_seconds": 71212,
+      "std_dev_seconds": 17983,
+      "confidence": 0.21222664829493393,
       "days_active": [
         true,
         true,
@@ -37,70 +17,90 @@
         true,
         true
       ],
-      "total_count": 509,
+      "total_count": 547,
       "first_seen": "2026-06-16T05:57:47Z",
-      "last_seen": "2026-06-22T00:46:03.903778424Z",
+      "last_seen": "2026-06-22T10:47:01Z",
       "weighted_score": 1
     },
     {
-      "id": "time:research",
-      "activity_type": "research",
-      "time_peak_seconds": 71623,
-      "std_dev_seconds": 10600,
-      "confidence": 0.19820114049435844,
+      "id": "time:planning",
+      "activity_type": "planning",
+      "time_peak_seconds": 61782,
+      "std_dev_seconds": 20364,
+      "confidence": 0.1636554264685032,
       "days_active": [
-        false,
-        false,
-        false,
+        true,
+        true,
+        true,
         true,
         true,
         true,
         true
       ],
-      "total_count": 10,
-      "first_seen": "2026-06-17T17:56:49Z",
-      "last_seen": "2026-06-20T16:43:10Z",
-      "weighted_score": 0.5960216975332214
+      "total_count": 13,
+      "first_seen": "2026-06-16T13:42:28Z",
+      "last_seen": "2026-06-22T02:07:15.706280465Z",
+      "weighted_score": 0.8151190785841897
     },
     {
       "id": "time:coding",
       "activity_type": "coding",
-      "time_peak_seconds": 70772,
-      "std_dev_seconds": 17610,
-      "confidence": 0.1472986748608563,
+      "time_peak_seconds": 71897,
+      "std_dev_seconds": 19176,
+      "confidence": 0.15884785833470388,
       "days_active": [
         false,
-        false,
+        true,
         true,
         true,
         true,
         true,
         true
       ],
-      "total_count": 37,
+      "total_count": 39,
       "first_seen": "2026-06-16T06:17:00Z",
-      "last_seen": "2026-06-20T18:04:45Z",
+      "last_seen": "2026-06-22T02:12:20.358554498Z",
       "weighted_score": 1
     },
     {
       "id": "time:writing",
       "activity_type": "writing",
-      "time_peak_seconds": 50285,
-      "std_dev_seconds": 18737,
-      "confidence": 0.1371537288327567,
+      "time_peak_seconds": 49572,
+      "std_dev_seconds": 19377,
+      "confidence": 0.15873751218721135,
       "days_active": [
         true,
-        false,
+        true,
         true,
         true,
         false,
         true,
         true
       ],
-      "total_count": 22,
+      "total_count": 24,
       "first_seen": "2026-06-16T06:18:02Z",
-      "last_seen": "2026-06-21T11:22:50Z",
+      "last_seen": "2026-06-22T11:28:14Z",
       "weighted_score": 1
+    },
+    {
+      "id": "time:research",
+      "activity_type": "research",
+      "time_peak_seconds": 79109,
+      "std_dev_seconds": 19213,
+      "confidence": 0.1318825232456148,
+      "days_active": [
+        false,
+        true,
+        false,
+        true,
+        true,
+        true,
+        true
+      ],
+      "total_count": 14,
+      "first_seen": "2026-06-17T17:56:49Z",
+      "last_seen": "2026-06-22T02:12:57.110555669Z",
+      "weighted_score": 0.8623158570509111
     }
   ]
 }

@@ -1315,6 +1315,57 @@ func (s *Server) handleWhatsAppMessages(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, msgs)
 }
 
+func (s *Server) handleWhatsAppAvatar(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	jid := r.URL.Query().Get("jid")
+	if jid == "" {
+		http.Error(w, "jid param required", http.StatusBadRequest)
+		return
+	}
+	full := r.URL.Query().Get("full") == "1"
+	data, err := s.fullBridge.WhatsAppAvatar(jid, full)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if len(data) == 0 {
+		http.Error(w, "no avatar", http.StatusNotFound)
+		return
+	}
+	w.Header().Set("Content-Type", "image/jpeg")
+	w.Header().Set("Cache-Control", "public, max-age=86400")
+	_, _ = w.Write(data)
+}
+
+func (s *Server) handleWebSearchSettings(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusServiceUnavailable)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": s.fullBridge.GetWebSearchEnabled()})
+	case http.MethodPost:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.UpdateWebSearchConfig(req.Enabled); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]bool{"enabled": req.Enabled})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
 func (s *Server) handleWhatsAppStats(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet || s.fullBridge == nil {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)

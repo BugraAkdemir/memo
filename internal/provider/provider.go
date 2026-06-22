@@ -123,6 +123,9 @@ type ProviderConfig struct {
 	Temperature float64     `json:"temperature,omitempty"`
 	TopP       float64      `json:"top_p,omitempty"`
 	MaxTokens  int          `json:"max_tokens,omitempty"`
+	// ContextTokens is the model's context-window size, used to budget how much
+	// chat history is packed into each request. 0 = use a sensible default.
+	ContextTokens int `json:"context_tokens,omitempty"`
 
 	// Connection check result (not persisted)
 	Connected bool   `json:"connected,omitempty"`

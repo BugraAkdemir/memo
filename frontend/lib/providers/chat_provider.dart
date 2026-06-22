@@ -109,6 +109,41 @@ final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>(
   (ref) => [],
 );
 
+/// Transient pre-token status (e.g. 'web_search') shown in the typing indicator
+/// while the backend works before the first content token arrives.
+final streamingStatusProvider = StateProvider<String>((ref) => '');
+
+/// Web-search mode: when on, every message is enriched with live web results
+/// (no keyword detection). Persisted server-side.
+final webSearchModeProvider =
+    StateNotifierProvider<WebSearchModeNotifier, bool>(
+        (ref) => WebSearchModeNotifier(ref.read(apiClientProvider)));
+
+class WebSearchModeNotifier extends StateNotifier<bool> {
+  final MemoApiClient _api;
+  WebSearchModeNotifier(this._api) : super(false) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      state = await _api.getWebSearchEnabled();
+    } catch (_) {
+      // leave default (off) on error
+    }
+  }
+
+  Future<void> toggle() async {
+    final next = !state;
+    try {
+      await _api.setWebSearchEnabled(next);
+      state = next;
+    } catch (_) {
+      // keep previous state on failure
+    }
+  }
+}
+
 // ─── Messages ───────────────────────────────────────────────────
 
 final messagesProvider =
@@ -236,7 +271,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
                 : 'Sunucu yanıt vermiyor (60s zaman aşımı)'),
           ),
         )) {
-              if (chunk.finishReason == 'agent_event') {
+              if (chunk.finishReason == 'status') {
+            // Pre-token status (e.g. web_search) — show in the typing line.
+            ref.read(streamingStatusProvider.notifier).state = chunk.content;
+          } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
               final currentEvents = [...ref.read(streamingAgentEventsProvider)];
@@ -271,6 +309,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
               // ignore parse errors
             }
           } else {
+            // First real content — clear any pre-token status (e.g. web_search).
+            if (ref.read(streamingStatusProvider).isNotEmpty) {
+              ref.read(streamingStatusProvider.notifier).state = '';
+            }
             fullReply += chunk.content;
             fullThinking += chunk.thinking ?? '';
 
@@ -285,6 +327,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ref.read(streamingContentProvider.notifier).state = '';
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingStatusProvider.notifier).state = '';
           return;
         }
       } else {
@@ -312,6 +355,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
+      ref.read(streamingStatusProvider.notifier).state = '';
 
       // Refresh chat metadata — wait a beat so async title generation finishes
       ref.invalidate(chatListProvider);
@@ -325,6 +369,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
+      ref.read(streamingStatusProvider.notifier).state = '';
       await refresh();
     } finally {
       _cancelToken = null;

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
@@ -23,6 +24,7 @@ class _ProviderConfigDialogState
   late TextEditingController _apiKeyCtrl;
   late TextEditingController _baseUrlCtrl;
   late TextEditingController _modelCtrl;
+  late TextEditingController _contextCtrl;
   late bool _enabled;
   bool _testing = false;
   bool? _testResult;
@@ -53,6 +55,11 @@ class _ProviderConfigDialogState
     _modelCtrl = TextEditingController(
       text: existing?.model ?? ProviderDefaults.defaultModels[_type] ?? '',
     );
+    _contextCtrl = TextEditingController(
+      text: (existing?.contextTokens ?? 0) > 0
+          ? '${existing!.contextTokens}'
+          : '',
+    );
     _enabled = existing?.enabled ?? false;
   }
 
@@ -62,6 +69,7 @@ class _ProviderConfigDialogState
     _apiKeyCtrl.dispose();
     _baseUrlCtrl.dispose();
     _modelCtrl.dispose();
+    _contextCtrl.dispose();
     super.dispose();
   }
 
@@ -154,6 +162,7 @@ class _ProviderConfigDialogState
     if (_isSaving) return;
     _isSaving = true;
     try {
+      final existing = widget.existing;
       final config = ProviderConfig(
         type: _type,
         name: _nameCtrl.text,
@@ -161,6 +170,12 @@ class _ProviderConfigDialogState
         baseUrl: _baseUrlCtrl.text,
         model: _modelCtrl.text,
         enabled: _enabled,
+        contextTokens: int.tryParse(_contextCtrl.text.trim()) ?? 0,
+        // Preserve advanced fields the dialog doesn't edit.
+        priority: existing?.priority ?? 0,
+        temperature: existing?.temperature ?? 0.7,
+        topP: existing?.topP ?? 0.9,
+        maxTokens: existing?.maxTokens ?? 0,
       );
 
       await ref.read(providerListProvider.notifier).updateProvider(config);
@@ -267,6 +282,21 @@ class _ProviderConfigDialogState
                       ),
                     ],
                   ],
+                ),
+                const SizedBox(height: 12),
+
+                // Context window (per model) — budgets how much chat history is sent
+                TextField(
+                  controller: _contextCtrl,
+                  keyboardType: TextInputType.number,
+                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                  decoration: const InputDecoration(
+                    labelText: 'Context window (tokens)',
+                    border: OutlineInputBorder(),
+                    helperText:
+                        'Model\'in bağlam penceresi. Boş = sağlayıcı varsayılanı. '
+                        'Örn. 1000000 = 1M. Yüksek değer daha çok geçmiş ama daha yavaş/pahalı.',
+                  ),
                 ),
                 const SizedBox(height: 12),
 

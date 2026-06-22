@@ -334,7 +334,13 @@ func (a *App) Startup(ctx context.Context) {
 		go a.startupEmbeddingModel()
 	}
 
-	if cfg.WhatsApp.Enabled {
+	// Auto-init WhatsApp when explicitly enabled OR when a paired session
+	// already exists on disk. The latter means a previously-connected user no
+	// longer has to click "Connect" (and re-pair) after every app restart —
+	// the client reconnects with the stored session and lands straight on the
+	// chat list. A fresh install has no session, so the welcome screen still
+	// shows until the user opts in.
+	if cfg.WhatsApp.Enabled || a.whatsAppHasStoredSession() {
 		a.initWhatsApp()
 	}
 

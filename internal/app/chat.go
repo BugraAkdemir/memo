@@ -89,6 +89,37 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	if incog {
 		return a.handleIncognitoStream(ctx, userMsg, "")
 	}
+
+	// When web-search mode is on, surface a "searching the web" status before
+	// the (blocking) search runs inside buildMessages, then splice the real
+	// LLM stream behind it. The frontend shows this like the "thinking" line.
+	if a.cfg.WebSearch.Enabled {
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			select {
+			case out <- api.StreamChunk{FinishReason: "status", Content: "web_search"}:
+			case <-ctx.Done():
+				return
+			}
+			for chunk := range a.sendMessageStreamInner(ctx, userMsg) {
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		return out
+	}
+
+	return a.sendMessageStreamInner(ctx, userMsg)
+}
+
+// sendMessageStreamInner is the core of SendMessageStream: it records the
+// message, builds the prompt (including any web-search context), and dispatches
+// to the agent, orchestra, or plain LLM stream.
+func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	a.observerRecorder.RecordMessage(userMsg)
 	go a.processMessageIntent(userMsg, "chat", "", time.Now())
 

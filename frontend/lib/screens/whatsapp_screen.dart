@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:qr_flutter/qr_flutter.dart';
@@ -10,8 +12,9 @@ import '../models/whatsapp.dart';
 import '../providers/whatsapp_provider.dart';
 import '../providers/chat_provider.dart' show apiClientProvider;
 
-const _waGreen = Color(0xFF25D366);
-const _waGreenDim = Color(0xFF1A9B4A);
+// This screen uses Memo's own palette so it sits naturally beside the other
+// pages: the bronze accent for interactive/brand elements, and the muted theme
+// green only for the live-connection dot (a near-universal "connected" cue).
 
 class WhatsAppScreen extends ConsumerStatefulWidget {
   const WhatsAppScreen({super.key});
@@ -28,6 +31,12 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   Timer? _msgTimer;
   bool _sending = false;
   Duration _pollInterval = const Duration(seconds: 5);
+
+  /// Messages shown instantly after the user hits send, before the backend
+  /// round-trip + refetch completes. Cleared once the refetch (which already
+  /// includes them — the backend saves synchronously) returns. Keyed nowhere:
+  /// only the currently-selected chat can have pending sends.
+  final List<WhatsAppMessage> _optimistic = [];
 
   @override
   void initState() {
@@ -129,10 +138,10 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    color: _waGreen.withValues(alpha: 0.12),
+                    color: MemoTheme.accent.withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(20),
                   ),
-                  child: const Icon(Icons.message_rounded, size: 38, color: _waGreen),
+                  child: const Icon(Icons.message_rounded, size: 38, color: MemoTheme.accent),
                 ),
                 const SizedBox(height: 24),
                 Text(
@@ -159,7 +168,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                     icon: const Icon(Icons.link_rounded, size: 18),
                     label: Text(tr ? 'WhatsApp\'a Bağlan' : 'Connect WhatsApp'),
                     style: ElevatedButton.styleFrom(
-                      backgroundColor: _waGreen,
+                      backgroundColor: MemoTheme.accent,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14),
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
@@ -192,7 +201,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const CircularProgressIndicator(color: _waGreen, strokeWidth: 2),
+            const CircularProgressIndicator(color: MemoTheme.accent, strokeWidth: 2),
             const SizedBox(height: 20),
             Text(
               tr ? 'QR kodu hazırlanıyor...' : 'Preparing QR code...',
@@ -275,7 +284,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                     height: 14,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: _waGreen,
+                      color: MemoTheme.accent,
                     ),
                   ),
                   const SizedBox(width: 10),
@@ -335,7 +344,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
       ),
       child: Row(
         children: [
-          const Icon(Icons.message_rounded, size: 18, color: _waGreen),
+          const Icon(Icons.message_rounded, size: 18, color: MemoTheme.accent),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
@@ -357,7 +366,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               color: status.reconnecting
                   ? MemoTheme.warningOrange
                   : status.connected
-                      ? _waGreen
+                      ? MemoTheme.green
                       : c.textDim,
             ),
           ),
@@ -391,7 +400,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
     final chatsAsync = ref.watch(whatsAppChatsProvider);
     return chatsAsync.when(
       loading: () => const Center(
-          child: CircularProgressIndicator(strokeWidth: 2, color: _waGreen)),
+          child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent)),
       error: (e, _) => _buildError(c, e.toString()),
       data: (chats) {
         if (chats.isEmpty) {
@@ -450,21 +459,16 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
           ),
           child: Row(
             children: [
-              // Avatar
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: _waGreen.withValues(alpha: 0.18),
-                  shape: BoxShape.circle,
-                ),
-                alignment: Alignment.center,
-                child: Text(
-                  _selectedName.isNotEmpty ? _selectedName[0].toUpperCase() : '?',
-                  style: const TextStyle(
-                    color: _waGreenDim,
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
+              // Avatar — tap to enlarge + download
+              _WaAvatar(
+                jid: _selectedJid!,
+                name: _selectedName,
+                size: 32,
+                onTap: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => _AvatarPreviewDialog(
+                    jid: _selectedJid!,
+                    name: _selectedName,
                   ),
                 ),
               ),
@@ -503,10 +507,19 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
         Expanded(
           child: msgsAsync.when(
             loading: () => const Center(
-                child: CircularProgressIndicator(strokeWidth: 2, color: _waGreen)),
+                child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent)),
             error: (e, _) => _buildError(c, e.toString()),
             data: (msgs) {
-              if (msgs.isEmpty) {
+              // Backend returns newest-first (ORDER BY timestamp DESC). Pending
+              // optimistic sends for this chat are newer still, so they go in
+              // front. With reverse:true the list anchors at the bottom and
+              // index 0 renders at the bottom — so a newest-first list puts the
+              // newest message at the bottom, oldest at the top (normal chat).
+              final pending =
+                  _optimistic.where((m) => m.chatJid == _selectedJid).toList();
+              final combined = [...pending.reversed, ...msgs];
+
+              if (combined.isEmpty) {
                 return Center(
                   child: Text(
                     L10n.locale == MemoLocale.tr ? 'Mesaj yok' : 'No messages',
@@ -514,14 +527,21 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   ),
                 );
               }
-              return ListView.builder(
-                controller: _scrollCtrl,
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                reverse: true,
-                itemCount: msgs.length,
-                itemBuilder: (_, i) => _MessageBubble(
-                  msg: msgs[msgs.length - 1 - i],
-                ),
+              return LayoutBuilder(
+                builder: (context, constraints) {
+                  final maxBubble = constraints.maxWidth * 0.72;
+                  return ListView.builder(
+                    controller: _scrollCtrl,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    reverse: true,
+                    itemCount: combined.length,
+                    itemBuilder: (_, i) => _MessageBubble(
+                      msg: combined[i],
+                      maxWidth: maxBubble,
+                    ),
+                  );
+                },
               );
             },
           ),
@@ -564,7 +584,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 120),
                   decoration: const BoxDecoration(
-                    color: _waGreen,
+                    color: MemoTheme.accent,
                     shape: BoxShape.circle,
                   ),
                   child: IconButton(
@@ -614,19 +634,45 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
 
   Future<void> _sendMessage() async {
     final text = _sendCtrl.text.trim();
-    if (text.isEmpty || _selectedJid == null || _sending) return;
-    setState(() => _sending = true);
+    final jid = _selectedJid;
+    if (text.isEmpty || jid == null || _sending) return;
+
+    // Show the message instantly so it never feels like it "sends late".
+    final optimistic = WhatsAppMessage(
+      id: 'optimistic_${DateTime.now().microsecondsSinceEpoch}',
+      chatJid: jid,
+      senderJid: '',
+      senderName: 'Ben',
+      text: text,
+      timestamp: DateTime.now(),
+      fromMe: true,
+    );
+    setState(() {
+      _sending = true;
+      _optimistic.add(optimistic);
+    });
     _sendCtrl.clear();
+
     try {
-      await ref.read(apiClientProvider).sendWhatsApp(_selectedJid!, text);
-      ref.invalidate(whatsAppMessagesProvider(_selectedJid!));
+      await ref.read(apiClientProvider).sendWhatsApp(jid, text);
+      // Backend saved the message synchronously, so the refetch will include
+      // it — drop the optimistic copy to avoid showing it twice.
+      if (mounted) setState(() => _optimistic.remove(optimistic));
+      ref.invalidate(whatsAppMessagesProvider(jid));
       ref.invalidate(whatsAppChatsProvider);
     } catch (e) {
+      // Send failed — remove the optimistic bubble and restore the text.
       if (mounted) {
+        setState(() {
+          _optimistic.remove(optimistic);
+          if (_sendCtrl.text.isEmpty) _sendCtrl.text = text;
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Gönderilemedi: $e'),
-            backgroundColor: Colors.red,
+            content: Text(L10n.locale == MemoLocale.tr
+                ? 'Gönderilemedi: $e'
+                : 'Failed to send: $e'),
+            backgroundColor: MemoTheme.red,
             behavior: SnackBarBehavior.floating,
           ),
         );
@@ -660,10 +706,11 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(ctx);
+              _deselectChat(); // stop the stale per-chat message poll timer
               ref.read(whatsAppStatusProvider.notifier).logout();
             },
-            child: const Text('Logout',
-                style: TextStyle(color: Colors.red)),
+            child: Text(tr ? 'Çıkış Yap' : 'Logout',
+                style: const TextStyle(color: MemoTheme.red)),
           ),
         ],
       ),
@@ -673,7 +720,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   Widget _buildLoading(ThemeColors c) => Container(
         color: c.bgApp,
         child: const Center(
-            child: CircularProgressIndicator(strokeWidth: 2, color: _waGreen)),
+            child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent)),
       );
 
   Widget _buildError(ThemeColors c, String message) => Container(
@@ -734,13 +781,13 @@ class _ChatTile extends StatelessWidget {
         child: AnimatedContainer(
           duration: const Duration(milliseconds: 120),
           color: isSelected
-              ? _waGreen.withValues(alpha: 0.1)
+              ? MemoTheme.accent.withValues(alpha: 0.1)
               : Colors.transparent,
           child: Container(
             decoration: BoxDecoration(
               border: Border(
                 left: BorderSide(
-                  color: isSelected ? _waGreen : Colors.transparent,
+                  color: isSelected ? MemoTheme.accent : Colors.transparent,
                   width: 2,
                 ),
               ),
@@ -748,24 +795,12 @@ class _ChatTile extends StatelessWidget {
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             child: Row(
               children: [
-                Container(
-                  width: 38,
-                  height: 38,
-                  decoration: BoxDecoration(
-                    color: _waGreen.withValues(alpha: 0.15),
-                    shape: BoxShape.circle,
-                  ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    chat.displayName.isNotEmpty
-                        ? chat.displayName[0].toUpperCase()
-                        : '?',
-                    style: const TextStyle(
-                      color: _waGreenDim,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 16,
-                    ),
-                  ),
+                _WaAvatar(
+                  jid: chat.jid,
+                  name: chat.displayName.isNotEmpty
+                      ? chat.displayName
+                      : _jidToPhone(chat.jid),
+                  size: 38,
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -782,7 +817,7 @@ class _ChatTile extends StatelessWidget {
                               style: TextStyle(
                                 fontSize: 13,
                                 fontWeight: FontWeight.w600,
-                                color: isSelected ? _waGreen : c.textMain,
+                                color: isSelected ? MemoTheme.accent : c.textMain,
                               ),
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
@@ -830,11 +865,249 @@ class _ChatTile extends StatelessWidget {
   }
 }
 
+// ─── Avatar ───────────────────────────────────────────────────
+
+/// Round avatar that shows the contact/group WhatsApp profile photo (fetched
+/// and cached by the backend) and falls back to a bronze letter badge — Memo's
+/// own avatar style — whenever there is no photo, it is still loading, or the
+/// request fails.
+class _WaAvatar extends ConsumerWidget {
+  final String jid;
+  final String name;
+  final double size;
+  final VoidCallback? onTap;
+  const _WaAvatar({
+    required this.jid,
+    required this.name,
+    this.size = 38,
+    this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final letter = name.isNotEmpty ? name[0].toUpperCase() : '?';
+    final fallback = Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: MemoTheme.accentPale,
+        shape: BoxShape.circle,
+        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        letter,
+        style: TextStyle(
+          color: MemoTheme.accent,
+          fontWeight: FontWeight.w700,
+          fontSize: size * 0.42,
+        ),
+      ),
+    );
+
+    if (jid.isEmpty) return fallback;
+
+    final url = ref.read(apiClientProvider).whatsAppAvatarUrl(jid);
+    Widget avatar = ClipOval(
+      child: Image.network(
+        url,
+        width: size,
+        height: size,
+        fit: BoxFit.cover,
+        gaplessPlayback: true,
+        // Show the letter badge while loading and on any error (no photo → 404).
+        loadingBuilder: (context, child, progress) =>
+            progress == null ? child : fallback,
+        errorBuilder: (_, _, _) => fallback,
+      ),
+    );
+    if (onTap != null) {
+      avatar = MouseRegion(
+        cursor: SystemMouseCursors.click,
+        child: GestureDetector(onTap: onTap, child: avatar),
+      );
+    }
+    return avatar;
+  }
+}
+
+/// Full-screen-ish dialog that shows the full-resolution profile photo with a
+/// download button. Opened by tapping the header avatar. Falls back to the
+/// bronze letter badge if the contact has no photo.
+class _AvatarPreviewDialog extends ConsumerStatefulWidget {
+  final String jid;
+  final String name;
+  const _AvatarPreviewDialog({required this.jid, required this.name});
+
+  @override
+  ConsumerState<_AvatarPreviewDialog> createState() =>
+      _AvatarPreviewDialogState();
+}
+
+class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
+  bool _downloading = false;
+
+  Future<void> _download() async {
+    final tr = L10n.locale == MemoLocale.tr;
+    setState(() => _downloading = true);
+    try {
+      final bytes = await ref
+          .read(apiClientProvider)
+          .fetchWhatsAppAvatarBytes(widget.jid, full: true);
+      final safeName = widget.name.isNotEmpty
+          ? widget.name.replaceAll(RegExp(r'[^\w\s-]'), '').trim()
+          : 'whatsapp';
+      final path = await FilePicker.platform.saveFile(
+        dialogTitle: tr ? 'Profil fotoğrafını kaydet' : 'Save profile photo',
+        fileName: '${safeName.isEmpty ? 'whatsapp' : safeName}_profile.jpg',
+      );
+      if (path == null) return; // user cancelled
+      final outPath =
+          path.toLowerCase().endsWith('.jpg') ? path : '$path.jpg';
+      await File(outPath).writeAsBytes(bytes);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(tr ? 'Fotoğraf kaydedildi' : 'Photo saved'),
+            backgroundColor: MemoTheme.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(tr ? 'İndirilemedi: $e' : 'Download failed: $e'),
+            backgroundColor: MemoTheme.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _downloading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    final tr = L10n.locale == MemoLocale.tr;
+    final url = ref.read(apiClientProvider).whatsAppAvatarUrl(widget.jid, full: true);
+
+    final letterFallback = Container(
+      width: 280,
+      height: 280,
+      color: c.bgElement,
+      alignment: Alignment.center,
+      child: Text(
+        widget.name.isNotEmpty ? widget.name[0].toUpperCase() : '?',
+        style: const TextStyle(
+          color: MemoTheme.accent,
+          fontWeight: FontWeight.w700,
+          fontSize: 96,
+        ),
+      ),
+    );
+
+    return Dialog(
+      backgroundColor: c.bgPanel,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
+      ),
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 360),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Header: name + close
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 16, 12, 8),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      widget.name.isNotEmpty ? widget.name : widget.jid,
+                      style: TextStyle(
+                        fontSize: 15,
+                        fontWeight: FontWeight.w600,
+                        color: c.textMain,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: Icon(Icons.close, size: 18, color: c.textDim),
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
+                ],
+              ),
+            ),
+            // Photo
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                child: Image.network(
+                  url,
+                  width: 320,
+                  fit: BoxFit.contain,
+                  gaplessPlayback: true,
+                  loadingBuilder: (context, child, progress) => progress == null
+                      ? child
+                      : SizedBox(
+                          width: 280,
+                          height: 280,
+                          child: Center(
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: MemoTheme.accent,
+                              value: progress.expectedTotalBytes != null
+                                  ? progress.cumulativeBytesLoaded /
+                                      progress.expectedTotalBytes!
+                                  : null,
+                            ),
+                          ),
+                        ),
+                  errorBuilder: (_, _, _) => letterFallback,
+                ),
+              ),
+            ),
+            // Download button
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _downloading ? null : _download,
+                  icon: _downloading
+                      ? const SizedBox(
+                          width: 16,
+                          height: 16,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.download_rounded, size: 18),
+                  label: Text(tr ? 'İndir' : 'Download'),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 // ─── Message bubble ───────────────────────────────────────────
 
 class _MessageBubble extends StatelessWidget {
   final WhatsAppMessage msg;
-  const _MessageBubble({required this.msg});
+  final double maxWidth;
+  const _MessageBubble({required this.msg, required this.maxWidth});
 
   @override
   Widget build(BuildContext context) {
@@ -846,14 +1119,12 @@ class _MessageBubble extends StatelessWidget {
       child: Align(
         alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
         child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.55,
-          ),
+          constraints: BoxConstraints(maxWidth: maxWidth),
           child: Container(
             padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
             decoration: BoxDecoration(
               color: isMe
-                  ? _waGreen.withValues(alpha: 0.18)
+                  ? MemoTheme.accent.withValues(alpha: 0.18)
                   : c.bgPanel,
               borderRadius: BorderRadius.only(
                 topLeft: const Radius.circular(14),
@@ -875,7 +1146,7 @@ class _MessageBubble extends StatelessWidget {
                       msg.senderName,
                       style: const TextStyle(
                         fontSize: 11,
-                        color: _waGreenDim,
+                        color: MemoTheme.accent,
                         fontWeight: FontWeight.w600,
                       ),
                     ),

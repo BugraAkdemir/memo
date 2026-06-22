@@ -41,6 +41,8 @@ type FullBridge interface {
 	DeleteMemoryFile(relPath string) error
 	GetMemorySettings() config.MemoryConfig
 	UpdateMemorySettings(topK int, minSimilarity float32) error
+	GetWebSearchEnabled() bool
+	UpdateWebSearchConfig(enabled bool) error
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
 
@@ -140,6 +142,7 @@ type FullBridge interface {
 	WhatsAppSearch(query string, limit int) ([]whatsapp.Message, error)
 	WhatsAppGetChats() ([]whatsapp.ChatSummary, error)
 	WhatsAppGetMessages(chatJID string, limit int) ([]whatsapp.Message, error)
+	WhatsAppAvatar(jid string, full bool) ([]byte, error)
 	WhatsAppStats() (total, last24h int, err error)
 	GetWhatsAppChatMode() bool
 	SetWhatsAppChatMode(enabled bool)

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:dio/dio.dart';
@@ -9,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
@@ -187,10 +189,39 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     ref.read(messagesProvider.notifier).addMessage(userMsg);
 
     ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(streamingAgentEventsProvider.notifier).state = [];
+
+    List<AgentEvent> finalAgentEvents = [];
     try {
-      await for (final chunk in api.sendWhatsAppChatStream(text, cancelToken: cancelToken)) {
-        ref.read(streamingContentProvider.notifier).state =
-            ref.read(streamingContentProvider) + chunk;
+      await for (final chunk
+          in api.sendWhatsAppChatStream(text, cancelToken: cancelToken)) {
+        if (chunk.finishReason == 'agent_event') {
+          // Tool activity — render as status badges, NOT as raw JSON text.
+          try {
+            final ev = AgentEvent.fromJson(
+                json.decode(chunk.content) as Map<String, dynamic>);
+            final events = [...ref.read(streamingAgentEventsProvider)];
+            if (ev.type == 'tool_executing' ||
+                ev.type == 'tool_result' ||
+                ev.type == 'tool_error') {
+              // Collapse the transient "executing" line into its result.
+              if (events.isNotEmpty && events.last.type == 'tool_executing') {
+                events[events.length - 1] = ev;
+              } else {
+                events.add(ev);
+              }
+              ref.read(streamingAgentEventsProvider.notifier).state = events;
+              finalAgentEvents = events;
+            }
+            // Other event types (final_response, etc.) carry no badge — the
+            // actual reply text arrives separately as plain content chunks.
+          } catch (_) {
+            // ignore malformed event payloads
+          }
+        } else {
+          ref.read(streamingContentProvider.notifier).state =
+              ref.read(streamingContentProvider) + chunk.content;
+        }
       }
     } catch (e) {
       if (mounted) {
@@ -201,14 +232,19 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
 
     final full = ref.read(streamingContentProvider);
-    if (full.isNotEmpty) {
-      ref
-          .read(messagesProvider.notifier)
-          .addMessage(
-            ChatMessage(role: 'assistant', content: full, timestamp: timestamp),
+    if (full.isNotEmpty || finalAgentEvents.isNotEmpty) {
+      ref.read(messagesProvider.notifier).addMessage(
+            ChatMessage(
+              role: 'assistant',
+              content: full,
+              timestamp: timestamp,
+              agentEvents:
+                  finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
+            ),
           );
     }
     ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(streamingAgentEventsProvider.notifier).state = [];
     ref.read(isSendingProvider.notifier).state = false;
   }
 

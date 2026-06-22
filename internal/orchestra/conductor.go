@@ -384,7 +384,9 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 				continue
 			}
 
-			results[idx] = c.executeSingleTask(ctx, cfg, task, idx, onProgress)
+			// Sequential tasks stream token-by-token — only one runs at a time
+			// so the live output stays coherent.
+			results[idx] = c.executeSingleTask(ctx, cfg, task, idx, onProgress, true)
 			completed[idx] = true
 
 			remaining = append(remaining[:i], remaining[i+1:]...)
@@ -422,13 +424,16 @@ func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, ta
 		wg.Add(1)
 		go func(idx int, t OrchestraTask) {
 			defer wg.Done()
-			results[idx] = c.executeSingleTask(ctx, cfg, t, idx, onProgress)
+			// Parallel tasks must NOT stream token-by-token: concurrent streams
+			// would interleave into one garbled blob. Run without chunk streaming
+			// so each task's full result is emitted atomically on completion.
+			results[idx] = c.executeSingleTask(ctx, cfg, t, idx, onProgress, false)
 		}(i, task)
 	}
 	wg.Wait()
 }
 
-func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, task OrchestraTask, index int, onProgress ProgressFn) OrchestraResult {
+func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, task OrchestraTask, index int, onProgress ProgressFn, streamChunks bool) OrchestraResult {
 	start := time.Now()
 	log.Printf("ORCHESTRA: task %d starting: role=%s model=%s/%s", index, task.Role, task.ModelType, task.ModelName)
 
@@ -479,7 +484,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	taskCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
-	if onProgress != nil {
+	if onProgress != nil && streamChunks {
 		streamCh, streamErr := p.ChatCompletionStream(taskCtx, req)
 		if streamErr == nil {
 			var sb strings.Builder

@@ -10,6 +10,10 @@ class ProviderConfig {
   final double temperature;
   final double topP;
   final int maxTokens;
+
+  /// Model context-window size (tokens). Budgets how much chat history is sent.
+  /// 0 = use a sensible default for the provider.
+  final int contextTokens;
   final bool connected;
   final String? error;
 
@@ -24,6 +28,7 @@ class ProviderConfig {
     this.temperature = 0.7,
     this.topP = 0.9,
     this.maxTokens = 0,
+    this.contextTokens = 0,
     this.connected = false,
     this.error,
   });
@@ -40,6 +45,7 @@ class ProviderConfig {
       temperature: (json['temperature'] as num?)?.toDouble() ?? 0.7,
       topP: (json['top_p'] as num?)?.toDouble() ?? 0.9,
       maxTokens: json['max_tokens'] as int? ?? 0,
+      contextTokens: json['context_tokens'] as int? ?? 0,
       connected: json['connected'] as bool? ?? false,
       error: json['error'] as String?,
     );
@@ -57,6 +63,7 @@ class ProviderConfig {
       'temperature': temperature,
       'top_p': topP,
       'max_tokens': maxTokens,
+      'context_tokens': contextTokens,
     };
   }
 
@@ -71,6 +78,7 @@ class ProviderConfig {
     double? temperature,
     double? topP,
     int? maxTokens,
+    int? contextTokens,
     bool? connected,
     String? error,
   }) {
@@ -85,6 +93,7 @@ class ProviderConfig {
       temperature: temperature ?? this.temperature,
       topP: topP ?? this.topP,
       maxTokens: maxTokens ?? this.maxTokens,
+      contextTokens: contextTokens ?? this.contextTokens,
       connected: connected ?? this.connected,
       error: error ?? this.error,
     );

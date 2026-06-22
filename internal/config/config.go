@@ -309,7 +309,10 @@ func Default() *AppConfig {
 			SigmaMax: 0.60,
 		},
 		WebSearch: WebSearchConfig{
-			Enabled:    true,
+			// Off by default: web search is now an explicit on/off mode (every
+			// message searches when on), so it must be opted into rather than
+			// hitting the network on every message out of the box.
+			Enabled:    false,
 			MaxResults: 5,
 		},
 	}

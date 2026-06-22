@@ -919,10 +919,42 @@ class MemoApiClient {
     return (res.data as List<dynamic>?) ?? [];
   }
 
+  /// Full URL for a chat's profile picture (served and cached by the backend).
+  /// Used directly with Image.network; falls back to a letter avatar on 404.
+  /// [full] requests the full-resolution photo instead of the list thumbnail.
+  String whatsAppAvatarUrl(String jid, {bool full = false}) =>
+      '$baseUrl/api/whatsapp/avatar?jid=${Uri.encodeComponent(jid)}'
+      '${full ? '&full=1' : ''}';
+
+  /// Downloads a chat's profile picture bytes (full-res by default) — used to
+  /// save the photo to disk from the enlarged preview.
+  Future<Uint8List> fetchWhatsAppAvatarBytes(String jid,
+      {bool full = true}) async {
+    final res = await _dio.get(
+      '/api/whatsapp/avatar',
+      queryParameters: {'jid': jid, if (full) 'full': '1'},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(res.data as List<int>);
+  }
+
   /// Get WhatsApp message statistics.
   Future<Map<String, dynamic>> getWhatsAppStats() async {
     final res = await _dio.get('/api/whatsapp/stats');
     return res.data as Map<String, dynamic>;
+  }
+
+  // ─── Web Search ────────────────────────────────────────────────
+
+  /// Whether web-search mode is on (every message enriched with live results).
+  Future<bool> getWebSearchEnabled() async {
+    final res = await _dio.get('/api/websearch');
+    return (res.data as Map<String, dynamic>?)?['enabled'] == true;
+  }
+
+  /// Enable/disable web-search mode.
+  Future<void> setWebSearchEnabled(bool enabled) async {
+    await _dio.post('/api/websearch', data: {'enabled': enabled});
   }
 
   /// Get WhatsApp chat mode state.
@@ -937,7 +969,12 @@ class MemoApiClient {
   }
 
   /// Send a message in WhatsApp chat mode (streaming SSE).
-  Stream<String> sendWhatsAppChatStream(String message, {CancelToken? cancelToken}) async* {
+  /// Yields parsed [StreamChunk]s — agent tool events arrive with
+  /// finishReason == 'agent_event' (their content is JSON), real reply text
+  /// arrives as plain content chunks. The caller must distinguish the two so
+  /// agent events render as status badges instead of raw JSON in the bubble.
+  Stream<StreamChunk> sendWhatsAppChatStream(String message,
+      {CancelToken? cancelToken}) async* {
     try {
       final response = await _dio.post(
         '/api/whatsapp/chat-stream',
@@ -952,10 +989,18 @@ class MemoApiClient {
           .transform(const LineSplitter());
       await for (final line in lineStream) {
         if (cancelToken?.isCancelled == true) return;
-        if (line.startsWith('data: ')) {
-          final content = line.substring(6);
-          if (content == '[DONE]') return;
-          yield content;
+        if (!line.startsWith('data: ')) continue;
+        final jsonStr = line.substring(6);
+        if (jsonStr == '[DONE]') return;
+        try {
+          final data = json.decode(jsonStr) as Map<String, dynamic>;
+          final err = data['error'] as String?;
+          if (err != null && err.isNotEmpty) {
+            throw Exception(err);
+          }
+          yield StreamChunk.fromJson(data);
+        } on FormatException {
+          // Ignore malformed/non-JSON keep-alive lines.
         }
       }
     } catch (e) {

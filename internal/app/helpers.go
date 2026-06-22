@@ -16,6 +16,40 @@ import (
 	"memo/internal/websearch"
 )
 
+// apiContextBudget returns the context-window token budget for the active API
+// provider. It follows the model, not the provider type: the user-configured
+// ContextTokens for the active provider's model wins; an explicit global
+// MaxContextTokens override comes next; otherwise a conservative default.
+func (a *App) apiContextBudget() int {
+	// Explicit global override (Llama/GPU settings) applies to API too.
+	if a.cfg.Llama.MaxContextTokens > 0 {
+		return a.cfg.Llama.MaxContextTokens
+	}
+
+	a.providerMu.RLock()
+	active := a.activeProvider
+	a.providerMu.RUnlock()
+
+	// Per-model context window, set by the user when configuring the provider.
+	if a.providerCfgMgr != nil {
+		for _, p := range a.providerCfgMgr.GetEnabled() {
+			if p.Type == active && p.ContextTokens > 0 {
+				return p.ContextTokens
+			}
+		}
+	}
+
+	// Fallback when the model's context window hasn't been set yet.
+	switch active {
+	case "gemini":
+		return 1024 * 1024
+	case "claude":
+		return 200 * 1024
+	default:
+		return 128 * 1024
+	}
+}
+
 func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
 	var memories []memory.MemoryResult
 	if a.cfg.Memory.MemoryEnabled {
@@ -26,7 +60,10 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		systemPrompt += a.mood.BuildDirective()
 		systemPrompt += a.mood.BuildSelfInterestDirective()
 	}
-	if a.cfg.WebSearch.Enabled && needsWebSearch(userMsg) {
+	// Web search is now an explicit on/off mode (toggle in the UI). When on,
+	// every message is enriched with fresh web results — no fragile, language-
+	// specific keyword detection. When off, it never runs.
+	if a.cfg.WebSearch.Enabled {
 		if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
 			systemPrompt += websearch.FormatForContext(userMsg, results)
 		} else {
@@ -46,22 +83,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 			tokenBudget = maxLocal
 		}
 	} else {
-		if a.cfg.Llama.MaxContextTokens > 0 {
-			tokenBudget = a.cfg.Llama.MaxContextTokens
-		} else {
-			a.providerMu.RLock()
-			switch a.activeProvider {
-			case "gemini":
-				tokenBudget = 1024 * 1024
-			case "claude":
-				tokenBudget = 200 * 1024
-			case "openai", "grok", "groq", "openrouter", "ollama":
-				tokenBudget = 128 * 1024
-			default:
-				tokenBudget = 128 * 1024
-			}
-			a.providerMu.RUnlock()
-		}
+		tokenBudget = a.apiContextBudget()
 	}
 
 	systemTokens := truncate.EstimateTokens(systemPrompt)
@@ -302,68 +324,4 @@ func truncateLog(s string, n int) string {
 		return s
 	}
 	return s[:n] + "..."
-}
-
-// needsWebSearch mesajın güncel web bilgisi gerektirip gerektirmediğini hızlıca kontrol eder.
-// Yanlış pozitif olursa sadece gereksiz arama yapar — yanlış negatif daha kötü olur.
-//
-// Türkçe çok-kelimeli ifadeler substring eşleşmesi için güvenli (uzun ve özgün).
-// Kısa İngilizce kelimeler (now, top, best...) kelime sınırında kontrol edilir —
-// "now" → "knowledge" veya "snow" gibi yanlış eşleşmeleri önler.
-var webSearchKeywords = []string{
-	// Zaman göstergeleri (TR)
-	"bugün", "dün", "bu hafta", "bu ay", "bu yıl", "şu an", "şu sıralar",
-	"güncel", "son dakika", "son haberler", "son gelişmeler",
-	"2024", "2025", "2026",
-	// Bilgi türleri (TR)
-	"haber", "haberler", "hava durumu", "döviz", "dolar", "euro", "borsa",
-	"fiyat", "fiyatı", "kaç lira", "kaç tl", "ne kadar",
-	"kim kazandı", "kim oldu", "ne oldu", "maç sonucu",
-	"en iyi", "en popüler", "en çok", "trend", "viral",
-	"yeni çıkan", "yeni çıktı", "çıktı mı", "geldi mi",
-}
-
-// webSearchKeywordsEN kelime sınırında eşleştirilmesi gereken kısa İngilizce kelimeler.
-var webSearchKeywordsEN = []string{
-	"today", "latest", "current", "recent", "now", "news",
-	"price", "who won", "best", "top", "trending",
-}
-
-func needsWebSearch(msg string) bool {
-	lower := strings.ToLower(msg)
-
-	// Türkçe: substring yeterli (kelimeler zaten uzun ve özgün)
-	for _, kw := range webSearchKeywords {
-		if strings.Contains(lower, kw) {
-			return true
-		}
-	}
-
-	// İngilizce: kelime sınırı kontrolü — "now" "knowledge"a eşleşmesin
-	for _, kw := range webSearchKeywordsEN {
-		if containsWord(lower, kw) {
-			return true
-		}
-	}
-	return false
-}
-
-// containsWord s içinde kw'nin kelime sınırıyla çevrili geçip geçmediğini kontrol eder.
-func containsWord(s, kw string) bool {
-	n := len(kw)
-	for i := 0; i <= len(s)-n; i++ {
-		if s[i:i+n] != kw {
-			continue
-		}
-		before := i == 0 || !isWordChar(rune(s[i-1]))
-		after := i+n >= len(s) || !isWordChar(rune(s[i+n]))
-		if before && after {
-			return true
-		}
-	}
-	return false
-}
-
-func isWordChar(r rune) bool {
-	return (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '_'
 }

@@ -15,6 +15,15 @@ import (
 	"memo/internal/provider"
 )
 
+// estimateContentTokens gives a rough token count for a UI display label.
+// Word-based (~1.3 tokens/word) is closer than len/4 for Turkish and code.
+func estimateContentTokens(s string) int {
+	if s == "" {
+		return 0
+	}
+	return int(float64(len(strings.Fields(s))) * 1.3)
+}
+
 // resolveAgentProvider returns the provider router and model name the agent
 // pipeline should use.
 func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
@@ -69,6 +78,26 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 	}
 
 	return nil, "", fmt.Errorf("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).")
+}
+
+// agentRouterFromProviderType builds a single-provider router for the given
+// provider type + model, used as the agent's fallback in combined Orchestra+Agent
+// mode when no separate active provider is configured.
+func (a *App) agentRouterFromProviderType(ptype, model string) (*provider.Router, string, error) {
+	a.providerMu.RLock()
+	cfgMgr := a.providerCfgMgr
+	a.providerMu.RUnlock()
+	if cfgMgr == nil {
+		return nil, "", fmt.Errorf("no provider config manager")
+	}
+	for _, p := range cfgMgr.GetEnabled() {
+		if string(p.Type) == ptype {
+			pc := p
+			pc.Model = model
+			return provider.NewRouter([]provider.ProviderConfig{pc}), model, nil
+		}
+	}
+	return nil, "", fmt.Errorf("orchestra chief provider %q is not enabled", ptype)
 }
 
 func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
@@ -207,6 +236,8 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			case orchestra.ProgressTaskStart:
 				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 			case orchestra.ProgressTaskChunk:
+				// Live display only — the full content is buffered once on TaskDone
+				// to avoid double-counting streamed task output in the saved reply.
 				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 			case orchestra.ProgressTaskDone:
 				if up.Error != "" {
@@ -218,7 +249,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 						fullBuf.WriteString(up.Content)
 						fullBufMu.Unlock()
 					}
-					tokEst := len(up.Content) / 4
+					tokEst := estimateContentTokens(up.Content)
 					chunk := fmt.Sprintf("\n✅ **%s** | %s (%dms, ~%d token)\n", up.Role, up.ModelType, up.DurationMs, tokEst)
 					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
 				}
@@ -257,8 +288,17 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 		agentRouter, modelName, err := a.resolveAgentProvider()
 		if err != nil {
-			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
-			return
+			// Combined mode: an Orchestra-configured user often has no separate
+			// "active provider" set, so the agent half would otherwise fail here.
+			// Fall back to the Orchestra chief's provider so the two systems stay
+			// connected — Orchestra plans, then the agent executes with the chief.
+			ocfg := a.orchestraConductor.Config()
+			if r, m, ferr := a.agentRouterFromProviderType(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
+				agentRouter, modelName = r, m
+			} else {
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				return
+			}
 		}
 
 		projectPath := ""
@@ -380,6 +420,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				case orchestra.ProgressTaskStart:
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				case orchestra.ProgressTaskChunk:
+					// Live display only — full content is buffered once on TaskDone.
 					trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 				case orchestra.ProgressTaskDone:
 					if up.Error != "" {
@@ -391,7 +432,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 							fullBuf.WriteString(up.Content)
 							fullBufMu.Unlock()
 						}
-						tokEst := len(up.Content) / 4
+						tokEst := estimateContentTokens(up.Content)
 						chunk := fmt.Sprintf("\n✅ **%s** | %s (%dms, ~%d token)\n", up.Role, up.ModelType, up.DurationMs, tokEst)
 						trySend(ctx, outCh, api.StreamChunk{Content: chunk})
 					}

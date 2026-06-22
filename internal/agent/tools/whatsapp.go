@@ -62,7 +62,8 @@ func SendWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath string
 	if WhatsAppClient == nil {
 		return "WhatsApp bağlı değil (config.yaml'de whatsapp.enabled: true olmalı)", nil
 	}
-	msgID, err := WhatsAppClient.SendMessage(context.Background(), args.JID, args.Text)
+	jid := resolveWhatsAppJID(args.JID)
+	msgID, err := WhatsAppClient.SendMessage(context.Background(), jid, args.Text)
 	if err != nil {
 		return "", fmt.Errorf("WhatsApp gönderilemedi: %w", err)
 	}
@@ -128,7 +129,9 @@ func LatestWhatsAppChats(ctx context.Context, argsJSON json.RawMessage, basePath
 			displayName = partsBeforeAt(c.JID)
 		}
 		ts := c.LastTime.Format("02/01 15:04")
-		lines = append(lines, fmt.Sprintf("%s: %s [%s]", displayName, c.LastMessage, ts))
+		// Include the JID so the model can pass it verbatim to whatsapp_send /
+		// whatsapp_messages instead of guessing a name as the JID.
+		lines = append(lines, fmt.Sprintf("%s (jid: %s) — %s [%s]", displayName, c.JID, c.LastMessage, ts))
 	}
 	return strings.Join(lines, "\n"), nil
 }
@@ -144,7 +147,8 @@ func GetWhatsAppMessages(ctx context.Context, argsJSON json.RawMessage, basePath
 	if WhatsAppClient == nil {
 		return "WhatsApp bağlı değil", nil
 	}
-	msgs, err := WhatsAppClient.GetChatMessages(args.JID, args.Limit)
+	jid := resolveWhatsAppJID(args.JID)
+	msgs, err := WhatsAppClient.GetChatMessages(jid, args.Limit)
 	if err != nil {
 		return "", fmt.Errorf("WhatsApp mesaj hatası: %w", err)
 	}
@@ -161,6 +165,41 @@ func GetWhatsAppMessages(ctx context.Context, argsJSON json.RawMessage, basePath
 		lines = append(lines, fmt.Sprintf("[%s] %s: %s", ts, from, m.Text))
 	}
 	return strings.Join(lines, "\n"), nil
+}
+
+// resolveWhatsAppJID maps a display name (or partial) to a real JID using the
+// chat list, so the model can refer to a contact by name. If the input already
+// looks like a JID (contains '@'), it is returned unchanged. Falls back to the
+// original input when no match is found, so the caller surfaces a clear error.
+func resolveWhatsAppJID(nameOrJID string) string {
+	if strings.Contains(nameOrJID, "@") || WhatsAppClient == nil {
+		return nameOrJID
+	}
+	chats, err := WhatsAppClient.GetChatList()
+	if err != nil {
+		return nameOrJID
+	}
+	q := strings.ToLower(strings.TrimSpace(nameOrJID))
+	if q == "" {
+		return nameOrJID
+	}
+	// Exact display-name match first, then substring, then phone-number prefix.
+	for _, c := range chats {
+		if strings.ToLower(c.DisplayName) == q {
+			return c.JID
+		}
+	}
+	for _, c := range chats {
+		if c.DisplayName != "" && strings.Contains(strings.ToLower(c.DisplayName), q) {
+			return c.JID
+		}
+	}
+	for _, c := range chats {
+		if strings.Contains(strings.ToLower(partsBeforeAt(c.JID)), q) {
+			return c.JID
+		}
+	}
+	return nameOrJID
 }
 
 func partsBeforeAt(s string) string {

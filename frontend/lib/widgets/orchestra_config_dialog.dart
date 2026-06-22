@@ -20,6 +20,24 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
   bool _saving = false;
   bool _loaded = false;
 
+  /// Role ids whose card is expanded (progressive disclosure — collapsed by default).
+  final Set<String> _expanded = {};
+
+  /// Role ids whose advanced "system prompt" editor is open.
+  final Set<String> _promptOpen = {};
+
+  /// One-line, plain-language description of what each built-in role does.
+  static const Map<String, String> _roleDesc = {
+    'planner': 'İsteği alt görevlere böler',
+    'frontend': 'Arayüz ve görsel işler',
+    'backend': 'Sunucu ve veri tarafı',
+    'bug_fixer': 'Hata bulur ve düzeltir',
+    'reviewer': 'Kodu gözden geçirir',
+    'security': 'Güvenlik denetimi yapar',
+    'devops': 'Derleme, dağıtım, altyapı',
+    'general': 'Genel amaçlı uzman',
+  };
+
   @override
   Widget build(BuildContext context) {
     final configAsync = ref.watch(orchestraConfigProvider);
@@ -59,54 +77,193 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
   }
 
   Widget _buildHeader(BuildContext context, OrchestraConfig config) {
+    final c = MemoTheme.of(context);
     return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: MemoTheme.of(context).borderSoft))),
+      padding: const EdgeInsets.fromLTRB(24, 20, 20, 20),
+      decoration: BoxDecoration(border: Border(bottom: BorderSide(color: c.borderSoft))),
       child: Row(
         children: [
-          const Text('🎵', style: TextStyle(fontSize: 24)),
-          const SizedBox(width: 12),
-          Text('Orchestra Mode', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain)),
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(
+              color: MemoTheme.accentPale,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+              border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
+            ),
+            alignment: Alignment.center,
+            child: const Icon(Icons.hub_outlined, size: 20, color: MemoTheme.accent),
+          ),
+          const SizedBox(width: 14),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Orchestra', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.textMain)),
+              const SizedBox(height: 2),
+              Text('Birden çok modeli bir ekip gibi çalıştır', style: TextStyle(fontSize: 12, color: c.textDim)),
+            ],
+          ),
           const Spacer(),
-          Transform.scale(scale: 0.8, child: Switch(
+          Text(
+            config.enabled ? 'Açık' : 'Kapalı',
+            style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: config.enabled ? MemoTheme.accent : c.textDim),
+          ),
+          const SizedBox(width: 8),
+          Switch(
             value: config.enabled,
             onChanged: (v) => setState(() => _config = config.copyWith(enabled: v)),
             activeColor: MemoTheme.accent,
-          )),
-          Text(config.enabled ? 'Aktif' : 'Pasif', style: TextStyle(fontSize: 12, color: config.enabled ? MemoTheme.accent : MemoTheme.of(context).textDim)),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Compact visual explainer: how Orchestra processes a request.
+  Widget _buildExplainer(BuildContext context) {
+    final c = MemoTheme.of(context);
+    Widget step(IconData icon, String title, String sub) => Expanded(
+          child: Column(
+            children: [
+              Icon(icon, size: 20, color: MemoTheme.accent),
+              const SizedBox(height: 6),
+              Text(title, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: c.textMain), textAlign: TextAlign.center),
+              const SizedBox(height: 2),
+              Text(sub, style: TextStyle(fontSize: 10.5, color: c.textDim, height: 1.3), textAlign: TextAlign.center),
+            ],
+          ),
+        );
+    Widget arrow() => Padding(
+          padding: const EdgeInsets.only(bottom: 18),
+          child: Icon(Icons.chevron_right, size: 18, color: c.textDim),
+        );
+    return Container(
+      margin: const EdgeInsets.only(bottom: 20),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+      decoration: BoxDecoration(
+        color: c.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: c.borderSoft),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          step(Icons.account_tree_outlined, 'Şef planlar', 'İsteği alt görevlere böler'),
+          arrow(),
+          step(Icons.groups_outlined, 'Uzmanlar', 'Paralel çalışır'),
+          arrow(),
+          step(Icons.auto_awesome_outlined, 'Sentez', 'Sonuçları birleştirir'),
         ],
       ),
     );
   }
 
   Widget _buildBody(BuildContext context, OrchestraConfig config, List<_ModelChoice> modelChoices) {
+    final c = MemoTheme.of(context);
+    final enabledCount = config.roles.where((r) => r.enabled).length;
     return ListView(
       padding: const EdgeInsets.all(24),
       children: [
-        _sectionTitle('🧙 Şef (Chief) Model'),
-        const SizedBox(height: 8),
-        Text('Şef, kullanıcının isteğini analiz eder, görev dağıtır ve sonuçları sentezler.', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+        _buildExplainer(context),
+        _buildQuickSetup(context, config, modelChoices),
+        const SizedBox(height: 24),
+
+        _sectionTitle('Şef model'),
+        const SizedBox(height: 4),
+        Text('İsteği analiz eder, görev dağıtır ve sonuçları birleştirir.', style: TextStyle(fontSize: 12, color: c.textDim)),
         const SizedBox(height: 10),
         _buildChiefSelector(config, modelChoices),
         const SizedBox(height: 24),
-        _sectionTitle('🎭 Uzman Rolleri'),
-        const SizedBox(height: 8),
-        Text('Her role bir model ata. Sadece açık roller orkestrasyona katılır. Özel roller ekleyip silebilirsin.', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.baseline,
+          textBaseline: TextBaseline.alphabetic,
+          children: [
+            _sectionTitle('Uzman rolleri'),
+            const SizedBox(width: 8),
+            Text('$enabledCount açık', style: TextStyle(fontSize: 12, color: MemoTheme.accent, fontWeight: FontWeight.w500)),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text('Sadece açık roller çalışır. Karta dokunup model ve talimatı düzenle.', style: TextStyle(fontSize: 12, color: c.textDim)),
         const SizedBox(height: 12),
         ...List.generate(config.roles.length, (i) => _buildRoleCard(context, config, i, modelChoices)),
-        const SizedBox(height: 8),
+        const SizedBox(height: 4),
         OutlinedButton.icon(
           onPressed: () => _addCustomRole(config),
-          icon: const Icon(Icons.add, size: 16),
-          label: const Text('Özel Rol Ekle', style: TextStyle(fontSize: 12)),
+          icon: const Icon(Icons.add, size: 18),
+          label: const Text('Özel rol ekle'),
           style: OutlinedButton.styleFrom(
-            side: BorderSide(color: MemoTheme.of(context).borderSoft),
-            foregroundColor: MemoTheme.of(context).textDim,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            side: BorderSide(color: c.borderSoft),
+            foregroundColor: c.textMuted,
+            minimumSize: const Size(0, 44),
+            padding: const EdgeInsets.symmetric(horizontal: 16),
           ),
         ),
       ],
     );
+  }
+
+  /// One-tap setup: assign a single model to the chief and every enabled role.
+  Widget _buildQuickSetup(BuildContext context, OrchestraConfig config, List<_ModelChoice> choices) {
+    final c = MemoTheme.of(context);
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: MemoTheme.accentMuted,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.bolt, size: 18, color: MemoTheme.accent),
+              const SizedBox(width: 6),
+              Text('Hızlı kurulum', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMain)),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text('Tek bir modeli şefe ve tüm açık rollere bir kerede ata.', style: TextStyle(fontSize: 12, color: c.textDim)),
+          const SizedBox(height: 10),
+          DropdownButtonFormField<String>(
+            key: ValueKey('quick_${choices.length}'),
+            value: null,
+            isExpanded: true,
+            hint: Text('Model seç ve uygula', style: TextStyle(fontSize: 13, color: c.textDim)),
+            decoration: InputDecoration(
+              isDense: true,
+              filled: true,
+              fillColor: c.bgApp,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd), borderSide: BorderSide(color: c.borderSoft)),
+            ),
+            items: choices.map((ch) => DropdownMenuItem(value: ch.key, child: Text('${ch.icon} ${ch.label}', style: const TextStyle(fontSize: 13), overflow: TextOverflow.ellipsis))).toList(),
+            onChanged: (val) {
+              if (val == null) return;
+              _applyQuickModel(config, choices.firstWhere((ch) => ch.key == val));
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _applyQuickModel(OrchestraConfig config, _ModelChoice choice) {
+    final newRoles = config.roles
+        .map((r) => r.enabled ? r.copyWith(modelType: choice.type, modelName: choice.model) : r)
+        .toList();
+    setState(() => _config = config.copyWith(
+          chiefType: choice.type,
+          chiefModel: choice.model,
+          roles: newRoles,
+        ));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${choice.label} şefe ve açık rollere uygulandı'), behavior: SnackBarBehavior.floating),
+      );
+    }
   }
 
   void _addCustomRole(OrchestraConfig config) {
@@ -128,14 +285,18 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          TextButton(onPressed: () => Navigator.of(context).pop(), child: const Text('Cancel')),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
+            child: const Text('İptal'),
+          ),
           const SizedBox(width: 12),
           FilledButton(
             onPressed: _saving ? null : () => _save(config),
-            style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
+            style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent, minimumSize: const Size(96, 44)),
             child: _saving
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Save'),
+                : const Text('Kaydet'),
           ),
         ],
       ),
@@ -181,134 +342,182 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
   }
 
   Widget _buildRoleCard(BuildContext context, OrchestraConfig config, int index, List<_ModelChoice> choices) {
+    final c = MemoTheme.of(context);
     final role = config.roles[index];
     final isBuiltin = _isBuiltinRole(role.role);
     final icon = isBuiltin ? OrchestraDefaults.iconForRole(role.role) : '\u2756';
-    final label = isBuiltin ? OrchestraDefaults.labelForRole(role.role) : role.role;
+    final label = isBuiltin ? OrchestraDefaults.labelForRole(role.role) : (role.role.isEmpty ? '\u00d6zel rol' : role.role);
+    final desc = isBuiltin ? (_roleDesc[role.role] ?? '') : '\u00d6zel rol';
     final currentKey = '${role.modelType}/${role.modelName}';
-    final validChoice = choices.any((c) => c.key == currentKey);
+    final validChoice = choices.any((ch) => ch.key == currentKey);
+    final assignedLabel = validChoice ? choices.firstWhere((ch) => ch.key == currentKey).label : '';
+    final isExpanded = _expanded.contains(role.role);
+
+    void updateRole(RoleConfig updated) {
+      final newRoles = List<RoleConfig>.from(config.roles);
+      newRoles[index] = updated;
+      setState(() => _config = config.copyWith(roles: newRoles));
+    }
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
-        color: MemoTheme.of(context).bgPanel,
+        color: c.bgPanel,
         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-        border: Border.all(color: role.enabled ? MemoTheme.accent.withValues(alpha: 0.3) : MemoTheme.of(context).borderSoft),
+        border: Border.all(color: role.enabled ? MemoTheme.accent.withValues(alpha: 0.35) : c.borderSoft),
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-            child: Row(
-              children: [
-                Text(icon, style: const TextStyle(fontSize: 16)),
-                const SizedBox(width: 8),
-                isBuiltin
-                    ? Expanded(child: Text(label, style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: MemoTheme.of(context).textMain)))
-                    : Expanded(
-                        child: _RoleNameField(
-                          initialValue: role.role,
-                          onChanged: (v) {
-                            final newRoles = List<RoleConfig>.from(config.roles);
-                            newRoles[index] = role.copyWith(role: v);
-                            setState(() => _config = config.copyWith(roles: newRoles));
-                          },
-                        ),
-                      ),
-                if (!isBuiltin)
-                  IconButton(
-                    icon: Icon(Icons.delete_outline, size: 16, color: MemoTheme.of(context).textDim),
-                    onPressed: () {
-                      final newRoles = List<RoleConfig>.from(config.roles);
-                      newRoles.removeAt(index);
-                      setState(() => _config = config.copyWith(roles: newRoles));
-                    },
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints(),
-                    tooltip: 'Rolü sil',
-                  ),
-                const SizedBox(width: 8),
-                Transform.scale(scale: 0.7, child: Switch(
-                  value: role.enabled,
-                  onChanged: (v) {
-                    final newRoles = List<RoleConfig>.from(config.roles);
-                    newRoles[index] = role.copyWith(enabled: v);
-                    setState(() => _config = config.copyWith(roles: newRoles));
-                  },
-                  activeColor: MemoTheme.accent,
-                )),
-              ],
-            ),
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 4, 12, 4),
-            child: Column(
-              children: [
-                DropdownButtonFormField<String>(
-                  key: ValueKey('role_${index}_${choices.length}'),
-                  value: role.enabled && validChoice ? currentKey : null,
-                  hint: Text(role.enabled ? 'Provider seç' : 'Önce rolü aç', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
-                  decoration: InputDecoration(
-                    isDense: true,
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd)),
-                    filled: true,
-                    fillColor: role.enabled ? Colors.transparent : MemoTheme.of(context).bgElement,
-                  ),
-                  items: choices.map((c) => DropdownMenuItem(value: c.key, child: Text('${c.icon} ${c.label}', style: const TextStyle(fontSize: 12)))).toList(),
-                  onChanged: role.enabled ? (val) {
-                    if (val == null) return;
-                    final choice = choices.firstWhere((c) => c.key == val);
-                    final newRoles = List<RoleConfig>.from(config.roles);
-                    newRoles[index] = role.copyWith(modelType: choice.type, modelName: choice.model);
-                    setState(() => _config = config.copyWith(roles: newRoles));
-                  } : null,
-                ),
-                if (role.modelType == 'openrouter') ...[
-                  const SizedBox(height: 6),
-                  InkWell(
-                    onTap: () => _pickModelForRole(index, role),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-                      decoration: BoxDecoration(
-                        border: Border.all(color: MemoTheme.of(context).borderSoft),
-                        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                        color: MemoTheme.of(context).bgElement,
-                      ),
-                      child: Row(
-                        children: [
-                          Expanded(
-                            child: Text(
-                              role.modelName.isNotEmpty ? role.modelName : 'Model seçmek için tıkla',
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: role.modelName.isNotEmpty ? MemoTheme.of(context).textMain : MemoTheme.of(context).textDim,
-                              ),
-                            ),
+          // Summary row (always visible) — tap to expand
+          InkWell(
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            onTap: () => setState(() => isExpanded ? _expanded.remove(role.role) : _expanded.add(role.role)),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(14, 12, 12, 12),
+              child: Row(
+                children: [
+                  Text(icon, style: TextStyle(fontSize: 16, color: role.enabled ? MemoTheme.accent : c.textDim)),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(label, style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w600, color: c.textMain)),
+                        const SizedBox(height: 2),
+                        Text(
+                          role.enabled
+                              ? (assignedLabel.isNotEmpty ? assignedLabel : '⚠ Model atanmadı')
+                              : desc,
+                          style: TextStyle(
+                            fontSize: 11.5,
+                            color: role.enabled && assignedLabel.isEmpty ? MemoTheme.warningOrange : c.textDim,
                           ),
-                          const SizedBox(width: 8),
-                          Icon(Icons.search, size: 14, color: MemoTheme.of(context).textDim),
-                        ],
-                      ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ),
                   ),
+                  const SizedBox(width: 8),
+                  Switch(
+                    value: role.enabled,
+                    onChanged: (v) {
+                      updateRole(role.copyWith(enabled: v));
+                      if (v) setState(() => _expanded.add(role.role));
+                    },
+                    activeColor: MemoTheme.accent,
+                  ),
+                  Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 20, color: c.textDim),
                 ],
-              ],
+              ),
             ),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(12, 0, 12, 12),
-            child: _SystemPromptField(
-              initialValue: role.systemPrompt,
-              onChanged: (v) {
-                final newRoles = List<RoleConfig>.from(config.roles);
-                newRoles[index] = role.copyWith(systemPrompt: v);
-                setState(() => _config = config.copyWith(roles: newRoles));
-              },
+
+          // Expanded detail
+          if (isExpanded) ...[
+            Divider(height: 1, color: c.borderSoft),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(14, 14, 14, 14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (!isBuiltin) ...[
+                    _RoleNameField(
+                      initialValue: role.role,
+                      onChanged: (v) => updateRole(role.copyWith(role: v)),
+                    ),
+                    const SizedBox(height: 10),
+                  ],
+                  Text('Model', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textMuted)),
+                  const SizedBox(height: 6),
+                  DropdownButtonFormField<String>(
+                    key: ValueKey('role_${index}_${choices.length}'),
+                    value: validChoice ? currentKey : null,
+                    isExpanded: true,
+                    hint: Text('Model seç', style: TextStyle(fontSize: 12.5, color: c.textDim)),
+                    decoration: InputDecoration(
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+                      border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd)),
+                    ),
+                    items: choices.map((ch) => DropdownMenuItem(value: ch.key, child: Text('${ch.icon} ${ch.label}', style: const TextStyle(fontSize: 12.5), overflow: TextOverflow.ellipsis))).toList(),
+                    onChanged: (val) {
+                      if (val == null) return;
+                      final choice = choices.firstWhere((ch) => ch.key == val);
+                      updateRole(role.copyWith(modelType: choice.type, modelName: choice.model));
+                    },
+                  ),
+                  if (role.modelType == 'openrouter') ...[
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () => _pickModelForRole(index, role),
+                      borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                      child: Container(
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: c.borderSoft),
+                          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                          color: c.bgElement,
+                        ),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                role.modelName.isNotEmpty ? role.modelName : 'OpenRouter modeli seç',
+                                style: TextStyle(fontSize: 12, color: role.modelName.isNotEmpty ? c.textMain : c.textDim),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Icon(Icons.search, size: 15, color: c.textDim),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                  const SizedBox(height: 12),
+
+                  // Advanced: system prompt (hidden by default)
+                  InkWell(
+                    onTap: () => setState(() => _promptOpen.contains(role.role) ? _promptOpen.remove(role.role) : _promptOpen.add(role.role)),
+                    child: Row(
+                      children: [
+                        Icon(_promptOpen.contains(role.role) ? Icons.expand_less : Icons.expand_more, size: 16, color: c.textDim),
+                        const SizedBox(width: 4),
+                        Text('Gelişmiş: sistem talimatı', style: TextStyle(fontSize: 12, color: c.textMuted)),
+                      ],
+                    ),
+                  ),
+                  if (_promptOpen.contains(role.role)) ...[
+                    const SizedBox(height: 8),
+                    _SystemPromptField(
+                      initialValue: role.systemPrompt,
+                      onChanged: (v) => updateRole(role.copyWith(systemPrompt: v)),
+                    ),
+                  ],
+
+                  if (!isBuiltin) ...[
+                    const SizedBox(height: 4),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton.icon(
+                        onPressed: () {
+                          final newRoles = List<RoleConfig>.from(config.roles);
+                          newRoles.removeAt(index);
+                          setState(() => _config = config.copyWith(roles: newRoles));
+                        },
+                        icon: const Icon(Icons.delete_outline, size: 16),
+                        label: const Text('Rolü sil'),
+                        style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );

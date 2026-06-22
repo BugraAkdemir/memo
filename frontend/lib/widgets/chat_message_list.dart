@@ -54,6 +54,7 @@ class ChatMessageList extends StatefulWidget {
   final String streamingContent;
   final String streamingThinking;
   final List<AgentEvent>? streamingAgentEvents;
+  final String statusText;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
@@ -64,6 +65,7 @@ class ChatMessageList extends StatefulWidget {
     this.streamingContent = '',
     this.streamingThinking = '',
     this.streamingAgentEvents,
+    this.statusText = '',
     this.onEdit,
     this.onDelete,
   });
@@ -146,7 +148,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
           );
         }
         // Typing indicator — shown before first token arrives
-        return  _TypingIndicator();
+        return _TypingIndicator(statusText: widget.statusText);
       },
     );
   }
@@ -594,7 +596,8 @@ class _ThinkingToggle extends StatelessWidget {
 }
 
 class _TypingIndicator extends StatelessWidget {
-   _TypingIndicator();
+  final String statusText;
+  const _TypingIndicator({this.statusText = ''});
 
   @override
   Widget build(BuildContext context) {
@@ -648,7 +651,13 @@ class _TypingIndicator extends StatelessWidget {
                 ),
                  SizedBox(width: 10),
                 Text(
-                  'Düşünüyor...',
+                  statusText == 'web_search'
+                      ? (L10n.locale == MemoLocale.tr
+                          ? 'Webde aranıyor...'
+                          : 'Searching the web...')
+                      : (L10n.locale == MemoLocale.tr
+                          ? 'Düşünüyor...'
+                          : 'Thinking...'),
                   style: TextStyle(
                     fontSize: 13,
                     fontStyle: FontStyle.italic,

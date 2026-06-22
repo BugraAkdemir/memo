@@ -3,7 +3,12 @@ package whatsapp
 import (
 	"context"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,6 +19,10 @@ import (
 	waEvent "go.mau.fi/whatsmeow/types/events"
 	"google.golang.org/protobuf/proto"
 )
+
+// profilePicTTL is how long a cached avatar (or "no picture" marker) stays
+// valid before we re-query WhatsApp for it.
+const profilePicTTL = 7 * 24 * time.Hour
 
 // Config holds WhatsApp integration settings.
 type Config struct {
@@ -47,6 +56,28 @@ type Client struct {
 	reconnecting bool
 	lastError    string
 	startMu      sync.Mutex
+}
+
+// HasRegisteredDevice reports whether a paired WhatsApp session already exists
+// on disk (i.e. the user previously scanned the QR and has not logged out).
+// Used at startup to auto-reconnect without making the user click "Connect"
+// again — a fresh/never-paired install returns false so the welcome screen
+// still shows.
+func HasRegisteredDevice(ctx context.Context, sessionDB string) bool {
+	storeDB, err := sqlstore.New(ctx, "sqlite3",
+		"file:"+sessionDB+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", nil)
+	if err != nil {
+		return false
+	}
+	defer storeDB.Close()
+
+	device, err := storeDB.GetFirstDevice(ctx)
+	if err != nil {
+		return false
+	}
+	// GetFirstDevice returns a fresh, unregistered device (ID == nil) when no
+	// session is stored; a non-nil ID means a real paired account.
+	return device != nil && device.ID != nil
 }
 
 func NewClient(cfg Config) *Client {
@@ -131,8 +162,9 @@ func (c *Client) Start(ctx context.Context) error {
 		}
 	}
 
-	// Import contacts without blocking Start().
+	// Import contacts and group names without blocking Start().
 	go c.importContacts()
+	go c.importGroups()
 
 	return nil
 }
@@ -153,13 +185,38 @@ func (c *Client) Stop() {
 func (c *Client) Logout() error {
 	c.startMu.Lock()
 	defer c.startMu.Unlock()
-	if c.waClient != nil {
-		if err := c.waClient.Logout(context.Background()); err != nil {
-			log.Printf("WhatsApp: logout error: %v", err)
-		}
-		c.waClient.Disconnect()
-		c.waClient = nil
+	if c.waClient == nil {
+		c.started = false
+		c.reconnecting = false
+		c.qrCodes = nil
+		return nil
 	}
+
+	// whatsmeow's Logout() first sends a network IQ to deregister the device and
+	// only deletes the local session afterwards. With no deadline that call can
+	// hang indefinitely on a flaky network — and because startMu is held here it
+	// would freeze every WhatsApp operation and the HTTP handler behind it. Bound
+	// it so logout always returns promptly.
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	store := c.waClient.Store
+	if err := c.waClient.Logout(ctx); err != nil {
+		// Remote deregister failed/timed out, so the local session was NOT
+		// cleared. Delete it ourselves — otherwise the next Start() would
+		// silently reuse a dead session instead of showing a fresh QR code.
+		log.Printf("WhatsApp: remote logout failed (%v); clearing local session", err)
+		c.waClient.Disconnect()
+		if store != nil {
+			delCtx, delCancel := context.WithTimeout(context.Background(), 5*time.Second)
+			if derr := store.Delete(delCtx); derr != nil {
+				log.Printf("WhatsApp: local session delete error: %v", derr)
+			}
+			delCancel()
+		}
+	}
+
+	c.waClient = nil
 	c.started = false
 	c.reconnecting = false
 	c.qrCodes = nil
@@ -233,6 +290,89 @@ func (c *Client) GetChatMessages(chatJID string, limit int) ([]Message, error) {
 		return nil, fmt.Errorf("whatsapp: store not available")
 	}
 	return c.store.GetChatMessages(chatJID, limit)
+}
+
+// GetProfilePicture returns the JPEG bytes of a contact/group profile picture,
+// caching the result on disk. It returns (nil, nil) when the JID has no picture
+// or it is hidden — callers fall back to a letter avatar without retrying every
+// time. Cached entries (and "no picture" markers) refresh after profilePicTTL.
+// When preview is true a small thumbnail is fetched (fast, for list avatars);
+// when false the full-resolution photo is fetched (for the enlarged preview).
+func (c *Client) GetProfilePicture(ctx context.Context, jid string, preview bool) ([]byte, error) {
+	if c.waClient == nil {
+		return nil, fmt.Errorf("whatsapp: not connected")
+	}
+
+	dir := filepath.Join(c.config.DataDir, "avatars")
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		return nil, fmt.Errorf("whatsapp: avatar dir: %w", err)
+	}
+	safe := sanitizeJID(jid)
+	// Thumbnail and full-res are cached under separate names.
+	suffix := "_full"
+	if preview {
+		suffix = ""
+	}
+	imgPath := filepath.Join(dir, safe+suffix+".jpg")
+	nonePath := filepath.Join(dir, safe+suffix+".none")
+
+	// Serve from cache while fresh.
+	if fi, err := os.Stat(imgPath); err == nil && time.Since(fi.ModTime()) < profilePicTTL {
+		return os.ReadFile(imgPath)
+	}
+	if fi, err := os.Stat(nonePath); err == nil && time.Since(fi.ModTime()) < profilePicTTL {
+		return nil, nil
+	}
+
+	parsed, err := types.ParseJID(jid)
+	if err != nil {
+		return nil, fmt.Errorf("whatsapp: invalid JID: %w", err)
+	}
+
+	info, err := c.waClient.GetProfilePictureInfo(ctx, parsed, &whatsmeow.GetProfilePictureParams{Preview: preview})
+	if err != nil {
+		return nil, fmt.Errorf("whatsapp: profile pic info: %w", err)
+	}
+	if info == nil || info.URL == "" {
+		// No picture available — drop a marker so we don't hammer the server.
+		_ = os.WriteFile(nonePath, nil, 0644)
+		return nil, nil
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, info.URL, nil)
+	if err != nil {
+		return nil, err
+	}
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("whatsapp: download avatar: %w", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("whatsapp: download avatar: status %d", resp.StatusCode)
+	}
+
+	data, err := io.ReadAll(io.LimitReader(resp.Body, 2<<20)) // 2 MiB cap
+	if err != nil {
+		return nil, err
+	}
+	if err := os.WriteFile(imgPath, data, 0644); err != nil {
+		log.Printf("WhatsApp: cache avatar write error: %v", err)
+	}
+	return data, nil
+}
+
+// sanitizeJID turns a JID into a filesystem-safe cache filename.
+func sanitizeJID(jid string) string {
+	var b strings.Builder
+	for _, r := range jid {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') {
+			b.WriteRune(r)
+		} else {
+			b.WriteByte('_')
+		}
+	}
+	return b.String()
 }
 
 // handleEvent processes incoming WhatsApp events.
@@ -485,4 +625,33 @@ func (c *Client) importContacts() {
 		count++
 	}
 	log.Printf("WhatsApp: imported %d contacts", count)
+}
+
+// importGroups stores the name of every joined group in the contacts table so
+// group chats resolve to a readable name instead of their raw numeric JID
+// (e.g. "120363...@g.us"). Individual contacts come from importContacts; groups
+// are not contacts, so without this they show as bare numbers in the chat list.
+func (c *Client) importGroups() {
+	if c.waClient == nil || c.store == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	groups, err := c.waClient.GetJoinedGroups(ctx)
+	if err != nil {
+		log.Printf("WhatsApp: get joined groups error: %v", err)
+		return
+	}
+	count := 0
+	for _, g := range groups {
+		if g == nil || g.Name == "" {
+			continue
+		}
+		if err := c.store.SaveContact(g.JID.String(), g.Name); err != nil {
+			log.Printf("WhatsApp: save group %s error: %v", g.JID, err)
+			continue
+		}
+		count++
+	}
+	log.Printf("WhatsApp: imported %d group names", count)
 }

@@ -17,6 +17,18 @@ import (
 	"memo/internal/whatsapp"
 )
 
+// whatsAppHasStoredSession reports whether a paired WhatsApp session already
+// exists on disk, so startup can auto-reconnect without a user click.
+func (a *App) whatsAppHasStoredSession() bool {
+	sessionDB := filepath.Join(a.cfg.WhatsApp.DataDir, "session.db")
+	if _, err := os.Stat(sessionDB); err != nil {
+		return false // no session file → never paired
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	return whatsapp.HasRegisteredDevice(ctx, sessionDB)
+}
+
 // initWhatsApp initializes the WhatsApp client and message store.
 func (a *App) initWhatsApp() {
 	cfg := a.cfg.WhatsApp
@@ -235,8 +247,10 @@ Kullanıcı "bana en son kim yazdı" derse whatsapp_latest çağır.
 "falana mesaj at" derse whatsapp_send çağır.
 "falana ne yazmışım" derse whatsapp_messages veya whatsapp_search çağır.
 
-NOT: Kişi JID'leri telefon numarası formatındadır (ör: 905551234567@s.whatsapp.net).
-Kullanıcıya JID sormadan önce whatsapp_latest ile sohbet listesini kontrol et.`,
+NOT: whatsapp_latest çıktısında her sohbet "(jid: ...)" bilgisiyle gelir; mesaj
+gönderirken veya geçmiş getirirken bu jid'i kullan. Kişiyi sadece ismiyle de
+belirtebilirsin (örn. "Berra") — sistem ismi otomatik olarak doğru kişiye eşler.
+Kullanıcıya ASLA JID sorma; önce whatsapp_latest ile sohbet listesini kontrol et.`,
 		}
 
 		allMsgs := make([]provider.Message, 0, len(pMsgs)+1)
@@ -305,6 +319,19 @@ func (a *App) WhatsAppGetMessages(chatJID string, limit int) ([]whatsapp.Message
 		return nil, fmt.Errorf("WhatsApp store not available")
 	}
 	return a.waMsgStore.GetChatMessages(chatJID, limit)
+}
+
+// WhatsAppAvatar returns the JPEG bytes of a chat's profile picture, or
+// (nil, nil) when there is none. Result is cached on disk by the client.
+// full selects the full-resolution photo (for the enlarged preview) over the
+// list thumbnail.
+func (a *App) WhatsAppAvatar(jid string, full bool) ([]byte, error) {
+	if a.waClient == nil {
+		return nil, fmt.Errorf("WhatsApp not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return a.waClient.GetProfilePicture(ctx, jid, !full)
 }
 
 // WhatsAppStats returns message statistics.

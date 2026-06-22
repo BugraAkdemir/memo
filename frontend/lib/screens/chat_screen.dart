@@ -108,6 +108,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               final streamingContent = ref.watch(streamingContentProvider);
               final streamingThinking = ref.watch(streamingThinkingProvider);
               final streamingAgentEvents = ref.watch(streamingAgentEventsProvider);
+              final streamingStatus = ref.watch(streamingStatusProvider);
               if (messages.isEmpty && !isSending && streamingContent.isEmpty && streamingAgentEvents.isEmpty) {
                 return  WelcomeView();
               }
@@ -117,6 +118,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                 streamingContent: streamingContent,
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
+                statusText: streamingStatus,
                 onEdit: (index, newContent) {
                   ref.read(messagesProvider.notifier).updateMessage(index, newContent);
                 },
@@ -143,6 +145,7 @@ class _ChatTopBar extends ConsumerWidget {
     final isIncognito = ref.watch(incognitoProvider);
     final isAgentEnabled = ref.watch(agentEnabledProvider);
     final isWhatsAppMode = ref.watch(whatsAppChatModeProvider);
+    final webSearchOn = ref.watch(webSearchModeProvider);
     final waStatus = ref.watch(whatsAppStatusProvider);
     final chatListAsync = ref.watch(chatListProvider);
     final activeChatAsync = ref.watch(activeChatIdProvider);
@@ -305,6 +308,25 @@ class _ChatTopBar extends ConsumerWidget {
               },
             ),
           
+          // Web search mode toggle — when on, every message uses live web results
+          IconButton(
+            icon: Icon(
+              Icons.travel_explore,
+              size: 20,
+              color: webSearchOn
+                  ? MemoTheme.green
+                  : MemoTheme.of(context).textDim,
+            ),
+            tooltip: webSearchOn
+                ? (L10n.locale == MemoLocale.tr
+                    ? 'Web araması açık'
+                    : 'Web search on')
+                : (L10n.locale == MemoLocale.tr
+                    ? 'Web araması kapalı'
+                    : 'Web search off'),
+            onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
+          ),
+
           // WhatsApp mode toggle (only when connected)
           if (waStatus.asData?.value.connected == true)
             IconButton(

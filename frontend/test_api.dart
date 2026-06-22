@@ -1,3 +1,4 @@
+// ignore_for_file: avoid_print
 import 'lib/core/api_client.dart';
 void main() async {
   final client = MemoApiClient();

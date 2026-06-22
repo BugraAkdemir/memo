@@ -2,9 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme.dart';
-import '../../../core/l10n.dart';
 import 'dart:async';
-import 'dart:io';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 

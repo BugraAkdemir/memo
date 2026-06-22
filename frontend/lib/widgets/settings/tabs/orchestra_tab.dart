@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
-import '../../../core/l10n.dart';
 import '../../../providers/provider_provider.dart';
 import '../../../models/orchestra_config.dart';
 import '../../../providers/orchestra_provider.dart';

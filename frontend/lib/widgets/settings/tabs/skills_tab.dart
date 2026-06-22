@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
-import '../../../core/l10n.dart';
 import '../../../providers/skill_provider.dart';
 import '../../skill_config_dialog.dart';
 

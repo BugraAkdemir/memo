@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
-import 'package:url_launcher/url_launcher.dart';
 import '../../../providers/settings_provider.dart';
 
 class AboutTab extends ConsumerWidget {

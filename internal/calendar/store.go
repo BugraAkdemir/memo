@@ -137,6 +137,66 @@ func (s *Store) MarkReminderSent(ctx context.Context, id string) error {
 	return nil
 }
 
+// ClaimPendingReminders atomically fetches and marks unsent reminders
+// within the lead window. Uses a transaction to prevent double-fire.
+func (s *Store) ClaimPendingReminders(ctx context.Context, now time.Time, leadMinutes int) ([]Event, error) {
+	tx, err := s.db.BeginTx(ctx, nil)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	windowEnd := now.Add(time.Duration(leadMinutes) * time.Minute).Unix()
+	rows, err := tx.QueryContext(ctx,
+		`SELECT id, title, start_time, end_time, description, source, contact_name, created_at, reminder_sent
+		 FROM events
+		 WHERE reminder_sent = 0 AND start_time <= ?
+		 ORDER BY start_time ASC`, windowEnd)
+	if err != nil {
+		return nil, fmt.Errorf("calendar: claim reminders query: %w", err)
+	}
+	defer rows.Close()
+
+	var events []Event
+	for rows.Next() {
+		var e Event
+		var startUnix, endUnix sql.NullInt64
+		var createdUnix int64
+		var reminderSent int
+		var src string
+		if err := rows.Scan(&e.ID, &e.Title, &startUnix, &endUnix,
+			&e.Description, &src, &e.ContactName, &createdUnix, &reminderSent,
+		); err != nil {
+			return nil, fmt.Errorf("calendar: scan: %w", err)
+		}
+		if startUnix.Valid {
+			e.StartTime = time.Unix(startUnix.Int64, 0)
+		}
+		if endUnix.Valid {
+			t := time.Unix(endUnix.Int64, 0)
+			e.EndTime = &t
+		}
+		e.Source = Source(src)
+		e.ReminderSent = reminderSent != 0
+		events = append(events, e)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("calendar: rows: %w", err)
+	}
+
+	// Mark each claimed event
+	for i := range events {
+		if _, err := tx.ExecContext(ctx, `UPDATE events SET reminder_sent=1 WHERE id=?`, events[i].ID); err != nil {
+			return nil, fmt.Errorf("calendar: mark %s: %w", events[i].ID, err)
+		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		return nil, fmt.Errorf("calendar: commit: %w", err)
+	}
+	return events, nil
+}
+
 // PendingReminders returns unsent events whose StartTime is within the next
 // leadMinutes minutes (i.e. reminder should fire now).
 func (s *Store) PendingReminders(ctx context.Context, now time.Time, leadMinutes int) ([]Event, error) {

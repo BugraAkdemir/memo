@@ -51,7 +51,7 @@ func (r *ReminderLoop) tick(ctx context.Context, now time.Time) {
 		return
 	}
 
-	events, err := r.store.PendingReminders(ctx, now, lead)
+	events, err := r.store.ClaimPendingReminders(ctx, now, lead)
 	if err != nil {
 		log.Printf("calendar: reminder tick: %v", err)
 		return
@@ -71,9 +71,5 @@ func (r *ReminderLoop) tick(ctx context.Context, now time.Time) {
 			continue
 		}
 		r.emit("calendar:reminder", string(data))
-
-		if err := r.store.MarkReminderSent(ctx, e.ID); err != nil {
-			log.Printf("calendar: mark reminder sent %s: %v", e.ID, err)
-		}
 	}
 }

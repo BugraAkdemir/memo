@@ -1,0 +1,1 @@
+This directory is for platform-specific binaries. This placeholder file ensures the Go compiler's embed directive compiles successfully.

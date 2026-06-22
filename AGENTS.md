@@ -127,43 +127,47 @@ No CI pipeline or pre-commit hooks configured.
 
 ### Data Races
 - `a.client` reassigned in `StartLocalModel` / `StopLocalModel` — `clientMu` exists but concurrency risk on streaming requests during model swap.
+- `providerRouter` reassignment during active streams — same pattern as above.
 
 ### Memory / Vector Store
 - Full rebuild on every startup (`LoadCache` is O(N), no incremental index).
 - Embedding model must be started separately (config-driven auto-start on model load).
 
 ### Security
-- Provider API keys encrypted with `/etc/machine-id` derived key — any process on the machine can read them. Hardcoded fallback key `"Mm3m0L0c4lK3y!@#$%^&*()9876543210"` visible in source.
-- Cloud sync encryption falls back to hardware ID when passphrase is empty.
-- No request body size limits on most handlers (DoS vector).
+- ~~Provider API keys encrypted with hardcoded fallback key~~ → fixed: random key generated via `crypto/rand`, persisted to `data/machine.key` (0600).
+- ~~Cloud sync encryption falls back to hardware ID when passphrase is empty~~ → documented behavior, machine.key now provides better fallback.
+- ~~No request body size limits~~ → fixed: 50MB `limitBodyMiddleware` on all handlers.
 
 ### Provider / Agent / Orchestra
-- `provider.Priority` field exists but unused by router.
+- **`provider.Priority` field exists but unused by router** — config field defined, sort logic present but not wired.
 - Orchestra bypasses `provider.Router` — creates providers directly, no fallback chain.
-- Agent pipeline has no timeout per tool call (sandbox has 60s but pipeline doesn't enforce).
-- No test files for `provider/`, `agent/`, or `orchestra/` packages (~4700 lines untested).
+- ~~Agent pipeline has no timeout per tool call~~ → fixed: 60s `DefaultToolTimeout`.
+- **No test files for `orchestra/` package** (~800 lines untested). `provider/` and `agent/` now have tests.
+- **Agent frontend UI (permission dialog, tool call cards) not yet fully implemented.**
 
 ### Flutter
-- `settings_dialog.dart` is 4391 lines — should be split by settings tab.
+- ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.
 - `model_store_screen.dart` is 2469 lines — should be split into components.
 - Widespread missing `const` constructors.
 - `connectionStatusProvider` and download progress polling run forever.
-- Agent frontend UI (permission dialog, tool call cards) not yet implemented.
 
 ### Flutter / Mobile
 - Mobile API client (`mobile/lib/core/api_client.dart`) missing most backend endpoints.
-- No agent API methods in frontend `api_client.dart`.
 
 ### WhatsApp
-- QR code polling never stops even after successful pairing.
-- `handleHistorySync` only fires on first pairing; subsequent reconnects won't get history.
-- WhatsApp store has no connection pool (uses `sql.Open` directly, no serialized writes).
+- ~~QR code polling never stops~~ → adaptive: 2s during QR wait, 15s heartbeat when connected.
+- ~~`handleHistorySync` only fires on first pairing~~ → uses `INSERT OR IGNORE`, safe on reconnects.
+- ~~WhatsApp store no serialized writes~~ → fixed: `sync.Mutex` on `SaveMessage` and `SaveContact`.
 
 ### Other
-- Config file written with `0644` permissions (world-readable).
-- `app.go` stores `context.Context` in struct field (`App.ctx`) — violates Go best practice.
+- ~~Config file written with `0644`~~ → fixed: `config.Save()` uses `0600`. Agent permissions/backup also `0600`.
+- ~~`app.go` stores `context.Context` in struct field~~ → `lifecycleCtx` is for goroutine lifecycle only, not request-scoped. All request methods accept `ctx` as parameter. Correct pattern.
 - `skill.DangerLevel` and `agent.DangerLevel` are separate named types — compile-time type mismatch.
-- `config/config.yaml` has hardcoded `active_provider: openai` — overrides user's choice on startup.
+- ~~`config/config.yaml` has hardcoded `active_provider: openai`~~ → fixed: empty string default.
+- **No CI pipeline** — GitHub Actions workflow needed.
+- **Rate limiting** — no per-endpoint rate limiting (low risk for local-only app).
+- **Structured logging** — uses `log.Printf` everywhere, no log levels or request IDs.
+- **API versioning** — flat `/api/` prefix, no versioning strategy.
 
 ---
 

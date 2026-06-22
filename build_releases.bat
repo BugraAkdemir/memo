@@ -173,7 +173,7 @@ echo timeout /t 2 /nobreak ^>nul
 echo.
 echo :: Start Flutter frontend
 echo cd /d "%%APP_DIR%%"
-echo start "" /WAIT memo_flutter.exe
+echo start "" /WAIT %APP_EXEC%.exe
 echo.
 echo :: Cleanup
 echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1

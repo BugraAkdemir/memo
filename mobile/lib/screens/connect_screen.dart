@@ -552,7 +552,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                 width: 22,
                 height: 22,
                 child: CircularProgressIndicator(
-                    strokeWidth: 2.5, color: MemoTheme.accent),
+                    strokeWidth: 2.5, color: MemoTheme.onAccent),
               )
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,

@@ -1,66 +1,106 @@
 {
   "version": 1,
-  "updated_at": "2026-06-19T04:23:36.444762694+03:00",
+  "updated_at": "2026-06-22T03:48:44.563670763+03:00",
   "patterns": [
+    {
+      "id": "time:planning",
+      "activity_type": "planning",
+      "time_peak_seconds": 61550,
+      "std_dev_seconds": 10815,
+      "confidence": 0.30568822756239866,
+      "days_active": [
+        true,
+        false,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "total_count": 10,
+      "first_seen": "2026-06-16T13:42:28Z",
+      "last_seen": "2026-06-21T11:26:19Z",
+      "weighted_score": 0.6193422689604687
+    },
     {
       "id": "time:general",
       "activity_type": "general",
-      "time_peak_seconds": 36076,
-      "std_dev_seconds": 9548,
-      "confidence": 0.04985748131909414,
+      "time_peak_seconds": 70714,
+      "std_dev_seconds": 16084,
+      "confidence": 0.2522538800627919,
+      "days_active": [
+        true,
+        true,
+        true,
+        true,
+        true,
+        true,
+        true
+      ],
+      "total_count": 509,
+      "first_seen": "2026-06-16T05:57:47Z",
+      "last_seen": "2026-06-22T00:46:03.903778424Z",
+      "weighted_score": 1
+    },
+    {
+      "id": "time:research",
+      "activity_type": "research",
+      "time_peak_seconds": 71623,
+      "std_dev_seconds": 10600,
+      "confidence": 0.19820114049435844,
       "days_active": [
         false,
         false,
+        false,
         true,
-        false,
-        false,
-        false,
-        false
+        true,
+        true,
+        true
       ],
-      "total_count": 30,
-      "first_seen": "2026-06-16T05:57:47Z",
-      "last_seen": "2026-06-16T17:57:12Z",
-      "weighted_score": 1
+      "total_count": 10,
+      "first_seen": "2026-06-17T17:56:49Z",
+      "last_seen": "2026-06-20T16:43:10Z",
+      "weighted_score": 0.5960216975332214
     },
     {
       "id": "time:coding",
       "activity_type": "coding",
-      "time_peak_seconds": 33768,
-      "std_dev_seconds": 10424,
-      "confidence": 0.04761583929005232,
+      "time_peak_seconds": 70772,
+      "std_dev_seconds": 17610,
+      "confidence": 0.1472986748608563,
       "days_active": [
         false,
         false,
         true,
-        false,
-        false,
-        false,
-        false
+        true,
+        true,
+        true,
+        true
       ],
-      "total_count": 8,
+      "total_count": 37,
       "first_seen": "2026-06-16T06:17:00Z",
-      "last_seen": "2026-06-16T18:04:42Z",
-      "weighted_score": 0.49670498476920677
+      "last_seen": "2026-06-20T18:04:45Z",
+      "weighted_score": 1
     },
     {
       "id": "time:writing",
       "activity_type": "writing",
-      "time_peak_seconds": 39940,
-      "std_dev_seconds": 10476,
-      "confidence": 0.046894220732597,
+      "time_peak_seconds": 50285,
+      "std_dev_seconds": 18737,
+      "confidence": 0.1371537288327567,
       "days_active": [
-        false,
-        false,
         true,
         false,
+        true,
+        true,
         false,
-        false,
-        false
+        true,
+        true
       ],
-      "total_count": 3,
+      "total_count": 22,
       "first_seen": "2026-06-16T06:18:02Z",
-      "last_seen": "2026-06-16T12:17:42Z",
-      "weighted_score": 0.18646601933944967
+      "last_seen": "2026-06-21T11:22:50Z",
+      "weighted_score": 1
     }
   ]
 }

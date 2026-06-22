@@ -141,7 +141,7 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
             ),
             child: _saving
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent))
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.onAccent))
                 : Text('Save & reconnect', style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
           ),
         ),
@@ -333,7 +333,12 @@ class _ModelCardState extends ConsumerState<_ModelCard> {
   Future<void> _start() async {
     setState(() => _starting = true);
     try {
-      await ref.read(apiClientProvider).startModel(path: widget.m.path);
+      final api = ref.read(apiClientProvider);
+      if (widget.m.isEmbedding) {
+        await api.startEmbeddingModel(path: widget.m.path);
+      } else {
+        await api.startModel(path: widget.m.path);
+      }
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.m.filename} started')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
@@ -654,7 +659,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(13)),
             ),
             child: _saving
-                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent))
+                ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.onAccent))
                 : Text('Save', style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
           ),
         ),

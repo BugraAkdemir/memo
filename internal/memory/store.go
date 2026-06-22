@@ -117,27 +117,30 @@ func (s *Store) initSchema() error {
 			log.Printf("MEMORY: metadata init: %v", err)
 		}
 
-		// Migration runs with its own longer timeout — O(N) scan of all
-		// stored embeddings can take well over 10s on a large database.
-		migrationCtx, migrationCancel := context.WithTimeout(context.Background(), 120*time.Second)
-		defer migrationCancel()
-
 		var migrated string
 		if err := s.db.QueryRowContext(ctx,
 			"SELECT value FROM _metadata WHERE key = 'vec_migration_done'",
 		).Scan(&migrated); err == nil && migrated == "1" {
 			log.Printf("MEMORY: vec migration already complete, skipping")
 		} else {
-			if err := s.migrateEmbeddingsToVec(migrationCtx); err != nil {
-				log.Printf("MEMORY: migrate to vec: %v", err)
-			} else {
-				_ = s.db.Write(migrationCtx, func(tx *sql.Tx) error {
+			// Run migration in the background so NewStore returns immediately
+			// and the store is usable right away. Writes are still serialised
+			// through the DB write-loop, so there is no race with live saves.
+			go func() {
+				migCtx, migCancel := context.WithTimeout(context.Background(), 120*time.Second)
+				defer migCancel()
+				if err := s.migrateEmbeddingsToVec(migCtx); err != nil {
+					log.Printf("MEMORY: migrate to vec: %v", err)
+					return
+				}
+				_ = s.db.Write(migCtx, func(tx *sql.Tx) error {
 					_, err := tx.Exec(
 						"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('vec_migration_done', '1')",
 					)
 					return err
 				})
-			}
+				log.Printf("MEMORY: vec migration complete")
+			}()
 		}
 	} else {
 		s.useVec = false
@@ -213,26 +216,73 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 		return nil
 	}
 
+	// The DB runs on a single-connection pool (MaxOpenConns=1). An open rows
+	// cursor holds that one connection, so issuing a Write() while the cursor
+	// is still open deadlocks: the write's BeginTx can never acquire a
+	// connection until the cursor closes, and the cursor doesn't close until
+	// the write finishes. The deadlock only resolves when the context deadline
+	// fires (~120s), which is exactly the "migrate to vec: context deadline
+	// exceeded" stall. Fix: drain all rows into memory and close the cursor
+	// BEFORE writing, so the write transaction can grab the connection freely.
+	type pendingVec struct {
+		id  int64
+		vec []float32
+	}
+
+	// Only migrate rows not already present in vec_memories. This makes the
+	// migration idempotent across restarts (the previous deadlock left the
+	// vec_migration_done flag unset, so it re-runs and would otherwise hit a
+	// UNIQUE constraint on rows a partial run or live save already inserted).
+	// vec0 virtual tables do not honour INSERT OR IGNORE, so we must filter
+	// here rather than rely on a conflict clause.
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, embedding FROM memories WHERE embedding IS NOT NULL")
+		`SELECT id, embedding FROM memories
+		 WHERE embedding IS NOT NULL
+		   AND id NOT IN (SELECT rowid FROM vec_memories)`)
 	if err != nil {
 		return err
 	}
-	defer rows.Close()
+
+	var pending []pendingVec
+	for rows.Next() {
+		var id int64
+		var blob []byte
+		if err := rows.Scan(&id, &blob); err != nil {
+			continue
+		}
+		vec := blobToFloats(blob)
+		if len(vec) == 0 {
+			continue
+		}
+		pending = append(pending, pendingVec{id: id, vec: vec})
+	}
+	if err := rows.Err(); err != nil {
+		rows.Close()
+		return fmt.Errorf("memory.migrateEmbeddingsToVec: scan: %w", err)
+	}
+	rows.Close() // release the single connection before the write
+
+	if len(pending) == 0 {
+		return nil
+	}
 
 	return s.db.Write(ctx, func(tx *sql.Tx) error {
-		for rows.Next() {
-			var id int64
-			var blob []byte
-			if err := rows.Scan(&id, &blob); err != nil {
-				continue
+		for _, p := range pending {
+			jsonVec, err := json.Marshal(p.vec)
+			if err != nil {
+				return fmt.Errorf("marshal vec for row %d: %w", p.id, err)
 			}
-			vec := blobToFloats(blob)
-			if len(vec) == 0 {
-				continue
+			// vec0 ignores INSERT OR IGNORE, so delete any stale row first to
+			// stay idempotent even if one slipped past the NOT IN filter.
+			if _, err := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", p.id); err != nil {
+				return fmt.Errorf("delete stale vec for row %d: %w", p.id, err)
 			}
-			jsonVec, _ := json.Marshal(vec)
-			tx.Exec("INSERT OR IGNORE INTO vec_memories(rowid, embedding) VALUES (?, ?)", id, string(jsonVec))
+			if _, err := tx.Exec(
+				"INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)",
+				p.id, string(jsonVec),
+			); err != nil {
+				return fmt.Errorf("insert vec for row %d: %w", p.id, err)
+			}
 		}
 		return nil
 	})

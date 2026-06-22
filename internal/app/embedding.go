@@ -46,6 +46,7 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	a.embeddingClient = api.NewClient(embBaseURL, a.cfg.API.TimeoutSeconds)
 	embClient := a.embeddingClient
 	a.clientMu.Unlock()
+
 	a.reinitMemoryStore(embClient, a.cfg.API.EmbeddingModel)
 	log.Printf("Embedding server ready on %s", embBaseURL)
 

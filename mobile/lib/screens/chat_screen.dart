@@ -381,11 +381,11 @@ class _AgentPermissionDialog extends ConsumerWidget {
       ),
       actions: [
         TextButton(
-          onPressed: () => _respond(ref, 'deny_once'),
+          onPressed: () => _respond(context, ref, 'deny_once'),
           child: const Text('Reddet', style: TextStyle(color: Colors.grey)),
         ),
         TextButton(
-          onPressed: () => _respond(ref, 'allow_once'),
+          onPressed: () => _respond(context, ref, 'allow_once'),
           style: TextButton.styleFrom(backgroundColor: MemoTheme.accent),
           child: const Text('Izin Ver', style: TextStyle(color: Colors.white)),
         ),
@@ -393,11 +393,11 @@ class _AgentPermissionDialog extends ConsumerWidget {
     );
   }
 
-  void _respond(WidgetRef ref, String policy) {
+  void _respond(BuildContext context, WidgetRef ref, String policy) {
     if (event.requestId != null) {
       ref.read(apiClientProvider).handleAgentPermission(event.requestId!, policy);
     }
-    Navigator.of(ref.context).pop();
+    Navigator.of(context).pop();
   }
 }
 

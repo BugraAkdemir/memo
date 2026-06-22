@@ -47,7 +47,7 @@ class EngineStrip extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          if (chatRunning) ...[
+          if (chatRunning)
             _LiveIndicator(
               icon: Icons.memory,
               label: _fileName(status!.modelPath),
@@ -55,22 +55,22 @@ class EngineStrip extends ConsumerWidget {
                 await ref.read(apiClientProvider).stopModel();
                 ref.invalidate(modelStatusProvider);
               },
-            ),
-            if (embRunning) ...[
-              _divider(c.borderSoft),
-              _LiveIndicator(
-                icon: Icons.hub_outlined,
-                label: '${L10n.t('engine_memory')}: ${_fileName(emb!.modelPath)}',
-                onStop: () async {
-                  await ref.read(apiClientProvider).stopEmbeddingModel();
-                  ref.invalidate(embeddingStatusProvider);
-                },
-              ),
-            ],
-          ] else if (isApiProvider)
+            )
+          else if (isApiProvider)
             _ApiProviderIndicator(providerType: activeProviderType)
-          else
+          else if (!embRunning)
             _OfflineHint(onOpenModels: onOpenModels),
+          if (embRunning) ...[
+            if (chatRunning || isApiProvider) _divider(c.borderSoft),
+            _LiveIndicator(
+              icon: Icons.hub_outlined,
+              label: '${L10n.t('engine_memory')}: ${_fileName(emb!.modelPath)}',
+              onStop: () async {
+                await ref.read(apiClientProvider).stopEmbeddingModel();
+                ref.invalidate(embeddingStatusProvider);
+              },
+            ),
+          ],
           // Orchestra mode indicator
           if (ref.watch(orchestraConfigProvider).valueOrNull?.enabled == true) ...[
             _divider(c.borderSoft),

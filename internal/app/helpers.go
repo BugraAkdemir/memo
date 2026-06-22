@@ -22,7 +22,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		memories = a.retrieveMemory(ctx, userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories)
-	if a.mood != nil {
+	if a.mood != nil && a.mood.Enabled() {
 		systemPrompt += a.mood.BuildDirective()
 		systemPrompt += a.mood.BuildSelfInterestDirective()
 	}

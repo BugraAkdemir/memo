@@ -19,6 +19,11 @@ class NotificationService {
   // them without touching transient "added" notifications.
   static const int _reminderBase = 100000;
 
+  // Monotonically incrementing ID for transient (fire-and-forget) notifications.
+  // Avoids hash collisions between different titles shown in quick succession.
+  static int _transientCounter = 0;
+  static int _nextTransientId() => (_transientCounter++ & 0x7FFF);
+
   static Future<void> init() async {
     if (_initialized) return;
 
@@ -103,7 +108,7 @@ class NotificationService {
       ),
     );
     await _plugin.show(
-      title.hashCode & 0x7FFF,
+      _nextTransientId(),
       'Takvime eklendi',
       title,
       details,
@@ -125,7 +130,7 @@ class NotificationService {
     final body =
         minutesLeft > 0 ? '$minutesLeft dakika sonra başlıyor' : 'Şimdi başlıyor';
     await _plugin.show(
-      (title + 'r').hashCode & 0x7FFF,
+      _nextTransientId(),
       title,
       body,
       _reminderDetails,

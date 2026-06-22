@@ -296,6 +296,13 @@ class MemoApiClient {
     );
   }
 
+  Future<void> startEmbeddingModel({required String path, int gpuLayers = -1}) async {
+    await _dio.post(
+      '/api/models/embedding/start',
+      data: {'path': path, 'gpu_layers': gpuLayers},
+    );
+  }
+
   Future<void> stopModel() async {
     await _dio.post('/api/models/stop');
   }

@@ -86,24 +86,32 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 }
 
 func (a *App) reinitMemoryStore(client *api.Client, model string) {
+	// Close the old store first so it releases the SQLite write lock
+	// before NewStore opens the same file. Opening both simultaneously
+	// causes the migration write to block until the old connection's
+	// WAL lock is released, which can take up to the migration timeout.
+	a.storeMu.Lock()
+	if a.store != nil {
+		if err := a.store.Close(); err != nil {
+			log.Printf("WARN: memory store close: %v", err)
+		}
+		a.store = nil
+	}
+	a.storeMu.Unlock()
+
 	embeddingFunc := memory.NewEmbeddingFunc(client, model)
+	newStore, err := memory.NewStore(memory.StoreConfig{
+		Dir:           a.cfg.Memory.PersistDir,
+		Dimension:     a.cfg.Memory.EmbeddingDimension,
+		EmbeddingFunc: embeddingFunc,
+	})
+	if err != nil {
+		log.Printf("WARN: memory re-init: %v", err)
+		return
+	}
 	a.storeMu.Lock()
 	defer a.storeMu.Unlock()
-	if a.store != nil {
-		newStore, err := memory.NewStore(memory.StoreConfig{
-			Dir:           a.cfg.Memory.PersistDir,
-			Dimension:     a.cfg.Memory.EmbeddingDimension,
-			EmbeddingFunc: embeddingFunc,
-		})
-		if err != nil {
-			log.Printf("WARN: memory re-init: %v", err)
-		} else {
-			if err := a.store.Close(); err != nil {
-				log.Printf("WARN: memory store close: %v", err)
-			}
-			a.store = newStore
-		}
-	}
+	a.store = newStore
 }
 
 // DebugMemorySearch searches memory WITHOUT similarity filter — for debugging.

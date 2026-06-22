@@ -78,6 +78,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
       final client = ref.read(apiClientProvider);
       final events = await client.getAppEvents();
+      if (!mounted) return;
       for (final e in events) {
         final name = e['name'] as String? ?? '';
         final data = e['data'] as String? ?? '';

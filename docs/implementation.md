@@ -1,4 +1,4 @@
-# Agent Mode: Kalan Görevler ve İmplementasyon Planı
+clear# Agent Mode: Kalan Görevler ve İmplementasyon Planı
 
 Bu belge, `task.md` dosyasında tamamlanmayı bekleyen ana özelliklerin (Git Entegrasyonu, Web Scraping, Multi-Step Planning vb.) nasıl implemente edileceğini açıklayan yol haritasıdır. Dosya düzenleme (File Edit) modülü başarıyla tamamlanmış olup, aşağıdaki modüller üzerine çalışılacaktır.
 

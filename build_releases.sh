@@ -12,7 +12,7 @@ BUILD_TARGZ=true         # .tar.gz paketi oluştur
 
 # Auto-detect Flutter SDK
 if ! command -v flutter &>/dev/null; then
-    for p in "$HOME/Belgeler/src/flutter/bin" "$HOME/.local/share/flutter/bin" "$HOME/snap/flutter/common/flutter/bin"; do
+    for p in "$HOME/Belgeler/flutter/bin" "$HOME/Belgeler/src/flutter/bin" "$HOME/.local/share/flutter/bin" "$HOME/snap/flutter/common/flutter/bin"; do
         if [ -x "$p/flutter" ]; then
             export PATH="$p:$PATH"
             break
@@ -79,6 +79,7 @@ if [ "$OS" == "linux" ]; then
     mkdir -p "$STAGEDIR/data/memory"
     mkdir -p "$STAGEDIR/data/sessions"
     mkdir -p "$STAGEDIR/data/agent-backups"
+    mkdir -p "$STAGEDIR/data/skills"
     mkdir -p "$STAGEDIR/data/whatsapp"
     touch "$STAGEDIR/data/whatsapp/.gitkeep"
 
@@ -109,6 +110,7 @@ fi
 
 # Copy default config if not present
 if [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ]; then
+    mkdir -p "$MEMO_HOME/config"
     cp -r "$DIR/config/"* "$MEMO_HOME/config/"
 fi
 

@@ -4,12 +4,29 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/memory"
 )
+
+// isEmbeddingBackendDown reports whether err means the embedding endpoint is
+// simply unreachable (no local embedding server running). This is expected when
+// the user runs an API/Orchestra-only setup, so we log it but don't surface a
+// scary "memory error" toast on every single message.
+func isEmbeddingBackendDown(err error) bool {
+	if err == nil {
+		return false
+	}
+	msg := err.Error()
+	return strings.Contains(msg, "connection refused") ||
+		strings.Contains(msg, "connect: connection refused") ||
+		strings.Contains(msg, "no such host") ||
+		strings.Contains(msg, "context deadline exceeded") ||
+		strings.Contains(msg, "EOF")
+}
 
 func (a *App) saveMemoryAsync(userMsg, reply string) {
 	if reply == "" || !a.cfg.Memory.MemoryEnabled {
@@ -48,7 +65,9 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	if err := a.store.SaveInteraction(mctx, userMsg, reply); err != nil {
 		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
 		log.Printf("MEMORY SAVE FAILED: %v", err)
-		a.emitEvent("memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
+		if !isEmbeddingBackendDown(err) {
+			a.emitEvent("memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
+		}
 	} else {
 		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
 		log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
@@ -75,7 +94,11 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	if err != nil {
 		log.Printf("LATENCY app.retrieve_memory total_ms=%d status=error", time.Since(start).Milliseconds())
 		log.Printf("MEMORY RETRIEVE FAILED: %v", err)
-		a.emitEvent("memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
+		// Embedding backend unreachable is expected in API/Orchestra-only mode —
+		// degrade silently instead of flooding the UI with error toasts.
+		if !isEmbeddingBackendDown(err) {
+			a.emitEvent("memory:error", fmt.Sprintf("Hafıza okunamadı: %v", err))
+		}
 		return nil
 	}
 	log.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))

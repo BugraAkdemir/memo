@@ -29,8 +29,8 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
     await refresh();
   }
 
-  Future<void> deleteProvider(String type) async {
-    await ref.read(apiClientProvider).deleteProvider(type);
+  Future<void> deleteProvider(String type, {String? name}) async {
+    await ref.read(apiClientProvider).deleteProvider(type, name: name);
     await refresh();
   }
 

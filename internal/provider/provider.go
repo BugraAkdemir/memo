@@ -18,6 +18,9 @@ const (
 	ProviderOpenRouter ProviderType = "openrouter"
 	ProviderOllama     ProviderType = "ollama"
 	ProviderLlamaCPP   ProviderType = "llama.cpp"
+	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
+	// custom Base URL (self-hosted, proxies, providers we don't list natively).
+	ProviderCustom ProviderType = "custom"
 )
 
 // Provider is the common interface all LLM providers must implement.
@@ -212,7 +215,7 @@ func init() {
 // NewProvider creates a provider by type.
 func NewProvider(cfg ProviderConfig) (Provider, error) {
 	switch cfg.Type {
-	case ProviderOpenAI:
+	case ProviderOpenAI, ProviderCustom:
 		return newOpenAIProvider(cfg)
 	case ProviderGemini:
 		return newGeminiProvider(cfg)

@@ -260,7 +260,7 @@ class ProviderCard extends ConsumerWidget {
                   if (confirm == true) {
                     await ref
                         .read(providerListProvider.notifier)
-                        .deleteProvider(p.type);
+                        .deleteProvider(p.type, name: p.name);
                   }
                 } else if (value == 'toggle') {
                   await ref

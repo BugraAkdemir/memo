@@ -1,6 +1,10 @@
 package orchestra
 
-import "memo/internal/provider"
+import (
+	"strings"
+
+	"memo/internal/provider"
+)
 
 // ─── Progress streaming ─────────────────────────────────────────
 
@@ -10,6 +14,7 @@ type ProgressType string
 const (
 	ProgressPlan       ProgressType = "plan"
 	ProgressPlanChunk  ProgressType = "plan_chunk"
+	ProgressPlanReady  ProgressType = "plan_ready"
 	ProgressTaskStart  ProgressType = "task_start"
 	ProgressTaskChunk  ProgressType = "task_chunk"
 	ProgressTaskDone   ProgressType = "task_done"
@@ -27,6 +32,9 @@ type ProgressUpdate struct {
 	DurationMs int64
 	ModelType  string
 	ModelName  string
+	// Tasks carries the parsed plan on a ProgressPlanReady update so the UI can
+	// render a clean breakdown instead of the chief's raw JSON.
+	Tasks []OrchestraTask
 }
 
 // ProgressFn is an optional callback for streaming progress from Run.
@@ -116,6 +124,25 @@ func defaultRoles() []RoleConfig {
 		{Role: RoleDevOps, Enabled: false, ModelType: string(provider.ProviderGrok), ModelName: provider.DefaultModels[provider.ProviderGrok], SystemPrompt: DefaultSystemPrompt(RoleDevOps)},
 		{Role: RoleGeneral, Enabled: true, ModelType: string(provider.ProviderOpenAI), ModelName: provider.DefaultModels[provider.ProviderOpenAI], SystemPrompt: DefaultSystemPrompt(RoleGeneral)},
 	}
+}
+
+// Sanitize cleans provider type / model name fields that users (or model
+// pickers) may submit with stray leading/trailing whitespace. A tab or space
+// smuggled into a model name produces an invalid model id that some
+// OpenAI-compatible endpoints accept and then stall on instead of rejecting —
+// which surfaces as the orchestra freezing on "Şef planlıyor...". Trimming here,
+// at the single config chokepoint, keeps every downstream request clean.
+func (c OrchestraConfig) Sanitize() OrchestraConfig {
+	c.ChiefType = strings.TrimSpace(c.ChiefType)
+	c.ChiefModel = strings.TrimSpace(c.ChiefModel)
+	roles := make([]RoleConfig, len(c.Roles))
+	for i, r := range c.Roles {
+		r.ModelType = strings.TrimSpace(r.ModelType)
+		r.ModelName = strings.TrimSpace(r.ModelName)
+		roles[i] = r
+	}
+	c.Roles = roles
+	return c
 }
 
 // MergeRoles ensures all built-in roles are present in the config.

@@ -12,6 +12,7 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/welcome_view.dart';
 import '../widgets/agent/permission_dialog.dart';
+import '../widgets/agent/activity_panel.dart';
 import '../providers/agent_provider.dart';
 import '../models/agent.dart';
 
@@ -21,6 +22,8 @@ class ChatScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final isAgentEnabled = ref.watch(agentEnabledProvider);
+
     return Row(
       children: [
         // ─── Sidebar ──────────────────────────────
@@ -30,6 +33,9 @@ class ChatScreen extends ConsumerWidget {
         Expanded(
           child: Container(color: MemoTheme.of(context).bgApp, child:  _ChatContent()),
         ),
+
+        // ─── Activity Panel (agent mode only) ─────
+        if (isAgentEnabled) const ActivityPanel(),
       ],
     );
   }
@@ -133,6 +139,62 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
         // ─── Input ────────────────────────────────
          ChatInput(),
       ],
+    );
+  }
+}
+
+/// Compact live token usage chip. Hidden until a turn reports usage.
+class _TokenCounter extends ConsumerWidget {
+  const _TokenCounter();
+
+  String _fmt(int n) {
+    if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+    if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}k';
+    return '$n';
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final usage = ref.watch(tokenUsageProvider);
+    if (usage == null || usage.total == 0) return const SizedBox.shrink();
+    final c = MemoTheme.of(context);
+    final frac = usage.fraction;
+    // Warn (amber) past 80% of the context budget.
+    final near = frac != null && frac > 0.8;
+    final color = near ? MemoTheme.warningOrange : c.textDim;
+
+    final label = usage.budget > 0
+        ? '${_fmt(usage.total)} / ${_fmt(usage.budget)}'
+        : _fmt(usage.total);
+
+    return Tooltip(
+      message:
+          'Girdi ${_fmt(usage.input)} · Çıktı ${_fmt(usage.output)}${usage.budget > 0 ? ' · Bütçe ${_fmt(usage.budget)}' : ''}',
+      child: Container(
+        margin: const EdgeInsets.only(right: 4),
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        decoration: BoxDecoration(
+          color: c.bgElement,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: c.borderSoft),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.data_usage, size: 13, color: color),
+            const SizedBox(width: 5),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w600,
+                color: near ? MemoTheme.warningOrange : c.textMuted,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
@@ -328,6 +390,9 @@ class _ChatTopBar extends ConsumerWidget {
               ],
             ),
           ),
+
+          // Live token counter (Claude-Code style)
+          const _TokenCounter(),
 
           // Undo button (only when agent mode is on)
           if (isAgentEnabled)

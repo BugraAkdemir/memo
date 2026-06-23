@@ -214,11 +214,44 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			conversationCtx += "\n\n" + skillPrompt
 		}
 
-		trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Orchestra + Agent**\n"})
-		trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
-
+		// Only the chief talks to the user. The preamble, plan, and each
+		// specialist's raw output are now process — they live in the right-side
+		// activity panel, not the conversation. The saved message holds just the
+		// chief's synthesis (+ any agent execution result).
 		var fullBuf strings.Builder
 		var fullBufMu sync.Mutex
+		// outAccum tracks total model output tokens (specialists + chief) for the
+		// token counter, even though specialist text isn't shown. Guarded by
+		// fullBufMu because parallel tasks invoke the callback concurrently.
+		var outAccum int
+
+		// emitActivity streams a structured step to the right-side activity panel.
+		// It's additive to the human text — the panel renders these as live cards.
+		emitActivity := func(step map[string]interface{}) {
+			payload, err := json.Marshal(step)
+			if err != nil {
+				return
+			}
+			trySend(ctx, outCh, api.StreamChunk{Content: string(payload), FinishReason: "activity"})
+		}
+
+		// Live token counter (Claude-Code style). Input is fixed for the turn;
+		// output grows as the orchestra/agent produces text.
+		budget := a.apiContextBudget()
+		inputTokens := estimateContentTokens(conversationCtx + systemPrompt)
+		emitUsage := func(outputTokens int) {
+			payload, err := json.Marshal(map[string]int{
+				"input":  inputTokens,
+				"output": outputTokens,
+				"budget": budget,
+			})
+			if err != nil {
+				return
+			}
+			trySend(ctx, outCh, api.StreamChunk{Content: string(payload), FinishReason: "usage"})
+		}
+		emitUsage(0)
+
 		orchestraResult, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
 			select {
 			case <-ctx.Done():
@@ -227,31 +260,57 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			}
 			switch up.Type {
 			case orchestra.ProgressPlan:
-				trySend(ctx, outCh, api.StreamChunk{Content: "🧠 **Şef planlıyor...**\n\n"})
-			case orchestra.ProgressPlanChunk:
-				fullBufMu.Lock()
-				fullBuf.WriteString(up.Content)
-				fullBufMu.Unlock()
-				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				// Process only — the working animation + activity panel cover it.
+			case orchestra.ProgressPlanReady:
+				// Seed the activity panel with the full plan (all pending).
+				// Nothing goes to the conversation — only the chief speaks.
+				for i, t := range up.Tasks {
+					desc := t.Context
+					if desc == "" {
+						desc = t.Prompt
+					}
+					emitActivity(map[string]interface{}{
+						"id":       fmt.Sprintf("task-%d", i),
+						"kind":     "task",
+						"title":    string(t.Role),
+						"subtitle": desc,
+						"status":   "pending",
+					})
+				}
 			case orchestra.ProgressTaskStart:
-				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				emitActivity(map[string]interface{}{
+					"id":     fmt.Sprintf("task-%d", up.Index),
+					"kind":   "task",
+					"title":  string(up.Role),
+					"status": "running",
+				})
 			case orchestra.ProgressTaskChunk:
-				// Live display only — the full content is buffered once on TaskDone
-				// to avoid double-counting streamed task output in the saved reply.
-				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
+				// Specialists work silently — their tokens stream to the chief, not
+				// to the user. Nothing emitted here.
 			case orchestra.ProgressTaskDone:
 				if up.Error != "" {
-					chunk := fmt.Sprintf("\n❌ **%s** | %s ⚠️ %s\n\n", up.Role, up.ModelType, up.Error)
-					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
+					emitActivity(map[string]interface{}{
+						"id":     fmt.Sprintf("task-%d", up.Index),
+						"kind":   "task",
+						"title":  string(up.Role),
+						"status": "error",
+						"detail": up.Error,
+					})
 				} else {
-					if up.Content != "" {
-						fullBufMu.Lock()
-						fullBuf.WriteString(up.Content)
-						fullBufMu.Unlock()
-					}
-					tokEst := estimateContentTokens(up.Content)
-					chunk := fmt.Sprintf("\n✅ **%s** | %s (%dms, ~%d token)\n", up.Role, up.ModelType, up.DurationMs, tokEst)
-					trySend(ctx, outCh, api.StreamChunk{Content: chunk})
+					emitActivity(map[string]interface{}{
+						"id":          fmt.Sprintf("task-%d", up.Index),
+						"kind":        "task",
+						"title":       string(up.Role),
+						"status":      "done",
+						"duration_ms": up.DurationMs,
+					})
+					// Count the specialist's output toward the token meter without
+					// ever showing its raw text in the conversation.
+					fullBufMu.Lock()
+					outAccum += estimateContentTokens(up.Content)
+					out := outAccum
+					fullBufMu.Unlock()
+					emitUsage(out)
 				}
 			case orchestra.ProgressSynthChunk:
 				fullBufMu.Lock()
@@ -272,7 +331,11 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			finalContent = orchestraResult
 		}
 
-		trySend(ctx, outCh, api.StreamChunk{Content: "\n🤖 **Agent executing tasks...**\n"})
+		// Token meter: chief synthesis is done — fold it into the running total.
+		fullBufMu.Lock()
+		outAccum += estimateContentTokens(finalContent)
+		fullBufMu.Unlock()
+		emitUsage(outAccum)
 
 		pMsgs := make([]provider.Message, len(messages))
 		for i, m := range messages {
@@ -337,6 +400,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			}
 			if chunk.Done {
 				finalReply := finalContent + "\n\n" + agentBuf.String()
+				emitUsage(outAccum + estimateContentTokens(agentBuf.String()))
 				a.finishStream(start, 0, chunk.FinishReason, finalReply, userMsg, agentEvents)
 				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 				return
@@ -345,6 +409,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 		if agentBuf.Len() > 0 {
 			finalReply := finalContent + "\n\n" + agentBuf.String()
+			emitUsage(estimateContentTokens(finalReply))
 			a.finishStream(start, 0, "stop", finalReply, userMsg, agentEvents)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		}

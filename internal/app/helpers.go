@@ -173,7 +173,7 @@ func buildConversationContext(messages []api.Message, userPrompt string) string 
 	return fmt.Sprintf("Kullanıcı: %s", userPrompt)
 }
 
-var orchestraPrefixes = []string{"🎵", "🧙", "🧠", "✅", "❌", "📝"}
+var orchestraPrefixes = []string{"🎵", "🧙", "🧠", "✅", "❌", "📝", "📋", "🎯", "🤖"}
 
 // stripOrchestraLines removes lines that start with orchestra debug prefixes.
 func stripOrchestraLines(text string) string {

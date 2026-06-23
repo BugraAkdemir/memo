@@ -30,7 +30,7 @@ type Conductor struct {
 // NewConductor creates a new orchestra conductor.
 func NewConductor(cfg OrchestraConfig, pf ProviderFactory, getConfigs func() []provider.ProviderConfig) *Conductor {
 	return &Conductor{
-		config:     cfg,
+		config:     cfg.Sanitize(),
 		pf:         pf,
 		getConfigs: getConfigs,
 	}
@@ -41,7 +41,7 @@ func (c *Conductor) UpdateConfig(cfg OrchestraConfig) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	cfg.Roles = MergeRoles(cfg.Roles)
-	c.config = cfg
+	c.config = cfg.Sanitize()
 }
 
 // Config returns a copy of the current configuration.
@@ -161,7 +161,7 @@ func LoadConfig(filePath string) OrchestraConfig {
 	}
 	// Ensure all built-in roles are present (merge missing roles from defaults)
 	cfg.Roles = MergeRoles(cfg.Roles)
-	return cfg
+	return cfg.Sanitize()
 }
 
 // findProviderConfig looks up a provider config by type from the stored configs.
@@ -178,6 +178,11 @@ func (c *Conductor) findProviderConfig(modelType string) *provider.ProviderConfi
 // createProviderForType creates a provider for the given model type and model name.
 // Returns a descriptive error if the provider is "local" (unsupported) or not found.
 func (c *Conductor) createProviderForType(modelType, modelName string) (provider.Provider, error) {
+	// Final guard: trim stray whitespace so a dirty type/model id can never reach
+	// the provider HTTP request (see OrchestraConfig.Sanitize).
+	modelType = strings.TrimSpace(modelType)
+	modelName = strings.TrimSpace(modelName)
+
 	// "local" is not supported in orchestra mode — all roles must use external providers
 	if modelType == "" || modelType == "local" {
 		enabled := c.getConfigs()
@@ -252,18 +257,30 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 
 	var content string
 	if onProgress != nil {
-		// Stream the chief's raw reasoning to the UI
+		// The chief's raw output is JSON — accumulate it INTERNALLY and never
+		// stream it to the UI. Showing raw `{"tasks":[...]}` to the user was
+		// confusing and unprofessional. A clean ProgressPlanReady is emitted once
+		// the plan is parsed below.
+		log.Printf("ORCHESTRA: chief opening stream to %s/%s...", cfg.ChiefType, cfg.ChiefModel)
 		streamCh, streamErr := prov.ChatCompletionStream(planCtx, req)
 		if streamErr != nil {
 			return nil, fmt.Errorf("chief (%s/%s) stream başlatılamadı: %w", cfg.ChiefType, cfg.ChiefModel, streamErr)
 		}
+		log.Printf("ORCHESTRA: chief stream established, waiting for first chunk...")
 		var sb strings.Builder
+		gotChunk := false
 		for chunk := range streamCh {
+			if !gotChunk {
+				gotChunk = true
+				log.Printf("ORCHESTRA: chief first chunk received")
+			}
 			if chunk.Error != "" {
 				return nil, fmt.Errorf("chief (%s/%s) stream hatası: %s", cfg.ChiefType, cfg.ChiefModel, chunk.Error)
 			}
 			sb.WriteString(chunk.Content)
-			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressPlanChunk, Content: chunk.Content})
+		}
+		if !gotChunk {
+			return nil, fmt.Errorf("chief (%s/%s) stream hiç veri döndürmedi — model adı geçerli mi ve sağlayıcı streaming destekliyor mu kontrol et", cfg.ChiefType, cfg.ChiefModel)
 		}
 		content = strings.TrimSpace(sb.String())
 	} else {
@@ -324,6 +341,11 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 		if !found {
 			return nil, fmt.Errorf("hiçbir rol etkin değil, orkestrasyon çalıştırılamaz")
 		}
+	}
+
+	// Plan is ready — hand the UI a clean, structured breakdown (never raw JSON).
+	if onProgress != nil {
+		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressPlanReady, Tasks: plan.Tasks})
 	}
 
 	return &plan, nil

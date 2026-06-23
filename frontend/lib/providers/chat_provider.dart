@@ -7,8 +7,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
 import '../core/l10n.dart';
+import '../models/activity_step.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
+import '../models/token_usage.dart';
 import 'agent_provider.dart';
 import 'settings_provider.dart';
 
@@ -114,6 +116,14 @@ final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>(
 /// while the backend works before the first content token arrives.
 final streamingStatusProvider = StateProvider<String>((ref) => '');
 
+/// Live, unified activity timeline for the right-side panel: orchestra plan
+/// tasks + agent tool steps, in the order they happen. Updated during a turn,
+/// kept until the next send so the user can review what just happened.
+final activityStepsProvider = StateProvider<List<ActivityStep>>((ref) => []);
+
+/// Live token usage for the current/last turn (Claude-Code-style counter).
+final tokenUsageProvider = StateProvider<TokenUsage?>((ref) => null);
+
 /// Web-search mode: when on, every message is enriched with live web results
 /// (no keyword detection). Persisted server-side.
 final webSearchModeProvider =
@@ -157,6 +167,55 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   bool _stopped = false;
   bool _disposed = false;
   Timer? _delayedRefreshTimer;
+  int _toolSeq = 0; // sequence for synthesising agent tool-step ids
+
+  /// Inserts or updates a step in the activity timeline, keyed by id.
+  void _upsertActivity(ActivityStep step) {
+    final list = [...ref.read(activityStepsProvider)];
+    final idx = list.indexWhere((s) => s.id == step.id);
+    if (idx >= 0) {
+      list[idx] = list[idx].copyWith(
+        title: step.title.isNotEmpty ? step.title : null,
+        subtitle: step.subtitle.isNotEmpty ? step.subtitle : null,
+        status: step.status,
+        durationMs: step.durationMs > 0 ? step.durationMs : null,
+        detail: step.detail,
+      );
+    } else {
+      list.add(step);
+    }
+    ref.read(activityStepsProvider.notifier).state = list;
+  }
+
+  /// Maps an agent tool event into the unified activity timeline.
+  void _toolEventToActivity(AgentEvent ev) {
+    switch (ev.type) {
+      case 'tool_executing':
+        _toolSeq++;
+        _upsertActivity(ActivityStep(
+          id: 'tool-$_toolSeq',
+          kind: 'tool',
+          title: ev.toolName ?? 'Araç',
+          status: StepStatus.running,
+        ));
+        break;
+      case 'tool_result':
+      case 'tool_error':
+      case 'permission_denied':
+        final id = _toolSeq > 0 ? 'tool-$_toolSeq' : 'tool-1';
+        _upsertActivity(ActivityStep(
+          id: id,
+          kind: 'tool',
+          title: ev.toolName ?? 'Araç',
+          status: ev.type == 'tool_result'
+              ? StepStatus.done
+              : StepStatus.error,
+          durationMs: ev.durationMs ?? 0,
+          detail: ev.error,
+        ));
+        break;
+    }
+  }
 
   @override
   Future<List<ChatMessage>> build() async {
@@ -234,6 +293,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // Signal sending state
     ref.read(isSendingProvider.notifier).state = true;
 
+    // Reset the activity timeline + token counter for this new turn.
+    _toolSeq = 0;
+    ref.read(activityStepsProvider.notifier).state = [];
+    ref.read(tokenUsageProvider.notifier).state = null;
+
     // Optimistically add user message only (assistant handled via streamingContent)
     final timestamp = DateTime.now().toIso8601String().substring(11, 19);
     final userMsg = ChatMessage(
@@ -275,9 +339,23 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
               if (chunk.finishReason == 'status') {
             // Pre-token status (e.g. web_search) — show in the typing line.
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
+          } else if (chunk.finishReason == 'activity') {
+            // Structured orchestra task update → right-side activity panel.
+            try {
+              _upsertActivity(ActivityStep.fromActivityJson(
+                  json.decode(chunk.content) as Map<String, dynamic>));
+            } catch (_) {
+              // ignore malformed activity payloads
+            }
+          } else if (chunk.finishReason == 'usage') {
+            try {
+              ref.read(tokenUsageProvider.notifier).state =
+                  TokenUsage.fromJson(json.decode(chunk.content) as Map<String, dynamic>);
+            } catch (_) {/* ignore */}
           } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
+              _toolEventToActivity(ev); // mirror into the activity timeline
               final currentEvents = [...ref.read(streamingAgentEventsProvider)];
 
               // Only keep permission_request for dialogs and final results/errors.

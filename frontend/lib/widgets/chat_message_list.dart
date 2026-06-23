@@ -496,15 +496,11 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                       styleSheet: _buildMarkdownStyleSheet(context),
                     ),
                   if (widget.agentEvents != null && widget.agentEvents!.isNotEmpty)
-                    _AgentStatusBar(events: widget.agentEvents!),
-                   SizedBox(height: 6),
-                  Text(
-                    DateTime.now().toIso8601String().substring(11, 16),
-                    style:  TextStyle(
-                      fontSize: 10,
-                      color: MemoTheme.of(context).textDim,
-                    ),
-                  ),
+                    _AgentStatusBar(events: widget.agentEvents!)
+                  else
+                    // No live tool activity to show (e.g. Orchestra planning or
+                    // synthesis) — keep an animated cue so the wait feels alive.
+                    const _AgentWorkingIndicator(),
                 ],
               ),
             ),
@@ -589,6 +585,87 @@ class _ThinkingToggle extends StatelessWidget {
             ),
              SizedBox(height: 8),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A calm, looping "working" cue shown at the bottom of the streaming bubble.
+/// Three bronze dots breathe in sequence — enough motion to signal "Memo is
+/// still working" and inspire confidence during long Orchestra/agent turns,
+/// without the jank of animating on every token.
+class _AgentWorkingIndicator extends StatefulWidget {
+  const _AgentWorkingIndicator();
+
+  @override
+  State<_AgentWorkingIndicator> createState() => _AgentWorkingIndicatorState();
+}
+
+class _AgentWorkingIndicatorState extends State<_AgentWorkingIndicator>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat();
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AnimatedBuilder(
+            animation: _controller,
+            builder: (context, _) {
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: List.generate(3, (i) {
+                  // Each dot peaks at a staggered phase of the loop.
+                  final phase = (_controller.value - i * 0.18) % 1.0;
+                  final t = (1 - (phase - 0.5).abs() * 2).clamp(0.0, 1.0);
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 4),
+                    child: Container(
+                      width: 6,
+                      height: 6,
+                      decoration: BoxDecoration(
+                        shape: BoxShape.circle,
+                        color: Color.lerp(
+                          MemoTheme.accent.withValues(alpha: 0.25),
+                          MemoTheme.accent,
+                          t,
+                        ),
+                      ),
+                    ),
+                  );
+                }),
+              );
+            },
+          ),
+          const SizedBox(width: 8),
+          Text(
+            'Memo çalışıyor…',
+            style: TextStyle(
+              fontSize: 12,
+              fontStyle: FontStyle.italic,
+              color: c.textMuted,
+            ),
+          ),
         ],
       ),
     );

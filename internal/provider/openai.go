@@ -14,6 +14,7 @@ import (
 
 type openAIProvider struct {
 	cfg      ProviderConfig
+	provType ProviderType // configured type — may be "openai" or "custom"
 	baseURL  string
 	model    string
 	apiKey   string
@@ -22,12 +23,20 @@ type openAIProvider struct {
 }
 
 func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
+	provType := cfg.Type
+	if provType == "" {
+		provType = ProviderOpenAI
+	}
 	baseURL := cfg.BaseURL
-	if baseURL == "" {
+	// Only the real OpenAI type has a sane default endpoint. A "custom" provider
+	// must supply its own Base URL — silently defaulting it to api.openai.com
+	// would send the user's requests to the wrong place.
+	if baseURL == "" && provType == ProviderOpenAI {
 		baseURL = DefaultBaseURL(ProviderOpenAI)
 	}
 	return &openAIProvider{
 		cfg:    cfg,
+		provType: provType,
 		baseURL: strings.TrimRight(baseURL, "/"),
 		model:  cfg.Model,
 		apiKey: cfg.APIKey,
@@ -39,18 +48,36 @@ func newOpenAIProvider(cfg ProviderConfig) (*openAIProvider, error) {
 				IdleConnTimeout:     90 * time.Second,
 			},
 		},
+		// No overall Timeout — streaming responses are long-lived and the request
+		// context bounds total duration. But ResponseHeaderTimeout guards the
+		// failure mode that froze Orchestra: an endpoint that accepts the TCP
+		// connection and then never sends a response. Without it the chief's
+		// planning call hung silently until the 300s context timeout.
 		streamCl: &http.Client{
 			Transport: &http.Transport{
-				MaxIdleConns:        10,
-				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:     90 * time.Second,
+				MaxIdleConns:          10,
+				MaxIdleConnsPerHost:   10,
+				IdleConnTimeout:       90 * time.Second,
+				ResponseHeaderTimeout: 90 * time.Second,
 			},
 		},
 	}, nil
 }
 
-func (p *openAIProvider) Name() ProviderType { return ProviderOpenAI }
-func (p *openAIProvider) DisplayName() string { return "OpenAI" }
+// Name reports the configured provider type so a "custom" OpenAI-compatible
+// endpoint is routed and selected as itself, not as "openai".
+func (p *openAIProvider) Name() ProviderType {
+	if p.provType != "" {
+		return p.provType
+	}
+	return ProviderOpenAI
+}
+func (p *openAIProvider) DisplayName() string {
+	if p.provType == ProviderCustom {
+		return "Custom"
+	}
+	return "OpenAI"
+}
 
 func (p *openAIProvider) ListModels(ctx context.Context) ([]string, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, p.baseURL+"/models", nil)

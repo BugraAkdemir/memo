@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../core/theme.dart';
 import '../models/provider_config.dart';
@@ -29,6 +30,8 @@ class _ProviderConfigDialogState
   bool _testing = false;
   bool? _testResult;
   bool _isSaving = false;
+  bool _showAdvanced = false;
+  bool _obscureKey = true;
 
   final _types = [
     'openai',
@@ -38,6 +41,7 @@ class _ProviderConfigDialogState
     'claude',
     'openrouter',
     'ollama',
+    'custom',
   ];
 
   @override
@@ -60,7 +64,9 @@ class _ProviderConfigDialogState
           ? '${existing!.contextTokens}'
           : '',
     );
-    _enabled = existing?.enabled ?? false;
+    // New providers default to ENABLED. Previously they were added disabled,
+    // so users would add a provider, see nothing work, and not know why.
+    _enabled = existing?.enabled ?? true;
   }
 
   @override
@@ -145,10 +151,10 @@ class _ProviderConfigDialogState
     });
     final config = ProviderConfig(
       type: _type,
-      name: _nameCtrl.text,
-      apiKey: _apiKeyCtrl.text,
-      baseUrl: _baseUrlCtrl.text,
-      model: _modelCtrl.text,
+      name: _nameCtrl.text.trim(),
+      apiKey: _apiKeyCtrl.text.trim(),
+      baseUrl: _baseUrlCtrl.text.trim(),
+      model: _modelCtrl.text.trim(),
     );
     final result = await ref.read(providerListProvider.notifier).testProvider(config);
     if (!mounted) return;
@@ -158,17 +164,80 @@ class _ProviderConfigDialogState
     });
   }
 
+  Future<void> _openKeyUrl() async {
+    final url = ProviderDefaults.apiKeyUrls[_type];
+    if (url == null) return;
+    final uri = Uri.parse(url);
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Bağlantı açılamadı: $url')),
+        );
+      }
+    }
+  }
+
+  /// Returns [base], or "[base] 2", "[base] 3"… so it doesn't collide with an
+  /// existing provider name (providers are keyed by name on the backend).
+  String _uniqueName(String base) {
+    final existingNames = (ref.read(providerListProvider).valueOrNull ?? [])
+        .map((p) => p.name)
+        .toSet();
+    if (!existingNames.contains(base)) return base;
+    for (var i = 2; i < 100; i++) {
+      final candidate = '$base $i';
+      if (!existingNames.contains(candidate)) return candidate;
+    }
+    return '$base ${DateTime.now().millisecondsSinceEpoch}';
+  }
+
   Future<void> _save() async {
     if (_isSaving) return;
+
+    // Guard the one mistake that silently breaks everything: saving a
+    // key-requiring provider with an empty API key.
+    if (ProviderDefaults.needsApiKey(_type) && _apiKeyCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('API anahtarını gir (yoksa "Anahtar al" ile edinebilirsin)')),
+      );
+      return;
+    }
+
+    // Custom endpoints have no default URL — without one, requests go nowhere.
+    if (ProviderDefaults.needsBaseUrl(_type) && _baseUrlCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Özel sağlayıcı için Base URL gerekli (örn. https://host/v1)')),
+      );
+      return;
+    }
+    if (_modelCtrl.text.trim().isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Model adı gir')),
+      );
+      return;
+    }
+
     _isSaving = true;
     try {
       final existing = widget.existing;
+      // Providers are stored keyed by Name. For a NEW provider, ensure the name
+      // is unique so a second provider of the same type doesn't silently
+      // overwrite the first.
+      final desiredName = _nameCtrl.text.trim().isEmpty
+          ? (ProviderDefaults.displayNames[_type] ?? _type)
+          : _nameCtrl.text.trim();
+      final finalName = existing == null
+          ? _uniqueName(desiredName)
+          : desiredName;
+
+      // Trim every free-text field: a stray space/tab pasted into a model id or
+      // key silently breaks requests (e.g. an invalid model that stalls the API).
       final config = ProviderConfig(
         type: _type,
-        name: _nameCtrl.text,
-        apiKey: _apiKeyCtrl.text,
-        baseUrl: _baseUrlCtrl.text,
-        model: _modelCtrl.text,
+        name: finalName,
+        apiKey: _apiKeyCtrl.text.trim(),
+        baseUrl: _baseUrlCtrl.text.trim(),
+        model: _modelCtrl.text.trim(),
         enabled: _enabled,
         contextTokens: int.tryParse(_contextCtrl.text.trim()) ?? 0,
         // Preserve advanced fields the dialog doesn't edit.
@@ -187,10 +256,15 @@ class _ProviderConfigDialogState
 
   @override
   Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    final isEditing = widget.existing != null;
+    final needsKey = ProviderDefaults.needsApiKey(_type);
+    final hint = ProviderDefaults.hints[_type];
+
     return Dialog(
       insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
       child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 520),
+        constraints: const BoxConstraints(maxWidth: 480),
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: SingleChildScrollView(
@@ -198,20 +272,52 @@ class _ProviderConfigDialogState
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  widget.existing != null
-                      ? 'Configure ${widget.existing!.name}'
-                      : 'Add API Provider',
-                  style: Theme.of(context).textTheme.titleLarge,
+                // ── Header ──
+                Row(
+                  children: [
+                    Container(
+                      width: 40,
+                      height: 40,
+                      decoration: BoxDecoration(
+                        color: MemoTheme.accentMuted,
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: Center(child: providerLogoWidget(_type, size: 24)),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            isEditing
+                                ? '${widget.existing!.name} ayarları'
+                                : 'API sağlayıcı ekle',
+                            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                ),
+                          ),
+                          Text(
+                            isEditing
+                                ? 'Anahtarını ve modelini güncelle'
+                                : 'Sağlayıcını seç, anahtarını yapıştır, bitti.',
+                            style: TextStyle(fontSize: 12, color: c.textDim),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 24),
 
-                // Provider type dropdown
+                // ── Step 1: provider picker ──
                 DropdownButtonFormField<String>(
                   value: _type,
-                  decoration: const InputDecoration(
-                    labelText: 'Provider',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    labelText: '1. Sağlayıcı',
+                    border: const OutlineInputBorder(),
+                    helperText: hint,
+                    helperMaxLines: 2,
                   ),
                   items: _types.map((t) {
                     return DropdownMenuItem(
@@ -221,95 +327,133 @@ class _ProviderConfigDialogState
                       ),
                     );
                   }).toList(),
-                  onChanged: widget.existing != null ? null : _onTypeChanged,
+                  onChanged: isEditing ? null : _onTypeChanged,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 16),
 
-                // Display name
-                TextField(
-                  controller: _nameCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Display Name',
-                    border: OutlineInputBorder(),
+                // ── Step 2: API key (the part that matters) ──
+                if (needsKey || _type == 'custom') ...[
+                  TextField(
+                    controller: _apiKeyCtrl,
+                    obscureText: _obscureKey,
+                    autofocus: !isEditing && needsKey,
+                    decoration: InputDecoration(
+                      labelText: _type == 'custom'
+                          ? 'API anahtarı (opsiyonel)'
+                          : '2. API anahtarı',
+                      border: const OutlineInputBorder(),
+                      helperText: _type == 'custom'
+                          ? 'Endpoint gerektiriyorsa gir — şifrelenerek saklanır'
+                          : 'Şifrelenerek cihazında saklanır',
+                      prefixIcon: const Icon(Icons.key, size: 20),
+                      suffixIcon: IconButton(
+                        tooltip: _obscureKey ? 'Göster' : 'Gizle',
+                        icon: Icon(
+                          _obscureKey ? Icons.visibility : Icons.visibility_off,
+                          size: 20,
+                        ),
+                        onPressed: () => setState(() => _obscureKey = !_obscureKey),
+                      ),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
-
-                // API Key (masked)
-                TextField(
-                  controller: _apiKeyCtrl,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key',
-                    border: OutlineInputBorder(),
-                    helperText: 'Stored encrypted',
+                  if (ProviderDefaults.apiKeyUrls[_type] != null)
+                    Align(
+                      alignment: Alignment.centerLeft,
+                      child: TextButton.icon(
+                        onPressed: _openKeyUrl,
+                        icon: const Icon(Icons.open_in_new, size: 16),
+                        label: Text(
+                          'Anahtarım yok — ${ProviderDefaults.displayNames[_type]}\'dan al',
+                        ),
+                        style: TextButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          visualDensity: VisualDensity.compact,
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                ] else ...[
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.green.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      children: [
+                        const Icon(Icons.computer, size: 18, color: MemoTheme.green),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            'Yerel sağlayıcı — API anahtarı gerekmez.',
+                            style: TextStyle(fontSize: 12, color: c.textSecondary),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                ],
 
-                // Base URL
-                TextField(
-                  controller: _baseUrlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Base URL (optional)',
-                    border: OutlineInputBorder(),
-                    helperText: 'Leave empty for default',
+                // ── Custom endpoint: Base URL + label up front (no defaults) ──
+                if (_type == 'custom') ...[
+                  TextField(
+                    controller: _baseUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Base URL',
+                      border: OutlineInputBorder(),
+                      helperText: 'OpenAI uyumlu endpoint, örn. https://host/v1',
+                      prefixIcon: Icon(Icons.link, size: 20),
+                    ),
                   ),
-                ),
-                const SizedBox(height: 12),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: _nameCtrl,
+                    decoration: const InputDecoration(
+                      labelText: 'Görünen ad',
+                      border: OutlineInputBorder(),
+                      helperText: 'Listede bunu görürsün — birden fazla için ayırt edici yap',
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
-                // Model
+                // ── Model (auto-filled, editable) ──
                 Row(
                   children: [
                     Expanded(
                       child: TextField(
                         controller: _modelCtrl,
-                        decoration: const InputDecoration(
-                          labelText: 'Model',
-                          border: OutlineInputBorder(),
+                        decoration: InputDecoration(
+                          labelText: _type == 'custom'
+                              ? 'Model'
+                              : (needsKey ? '3. Model' : 'Model'),
+                          border: const OutlineInputBorder(),
+                          helperText: _type == 'custom'
+                              ? 'Endpoint\'in beklediği model adı'
+                              : 'Varsayılan dolduruldu — değiştirebilirsin',
                         ),
                       ),
                     ),
                     if (_type == 'openrouter') ...[
                       const SizedBox(width: 8),
-                      TextButton.icon(
-                        onPressed: _openModelBrowser,
-                        icon: const Icon(Icons.search, size: 18),
-                        label: const Text('Models'),
-                        style: TextButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(horizontal: 12),
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 20),
+                        child: OutlinedButton.icon(
+                          onPressed: _openModelBrowser,
+                          icon: const Icon(Icons.search, size: 18),
+                          label: const Text('Seç'),
+                          style: OutlinedButton.styleFrom(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
+                          ),
                         ),
                       ),
                     ],
                   ],
                 ),
-                const SizedBox(height: 12),
-
-                // Context window (per model) — budgets how much chat history is sent
-                TextField(
-                  controller: _contextCtrl,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(
-                    labelText: 'Context window (tokens)',
-                    border: OutlineInputBorder(),
-                    helperText:
-                        'Model\'in bağlam penceresi. Boş = sağlayıcı varsayılanı. '
-                        'Örn. 1000000 = 1M. Yüksek değer daha çok geçmiş ama daha yavaş/pahalı.',
-                  ),
-                ),
-                const SizedBox(height: 12),
-
-                // Enabled toggle
-                SwitchListTile(
-                  title: const Text('Enable this provider'),
-                  value: _enabled,
-                  contentPadding: EdgeInsets.zero,
-                  onChanged: (v) => setState(() => _enabled = v),
-                ),
                 const SizedBox(height: 16),
 
-                // Test connection button
+                // ── Test connection ──
                 Row(
                   children: [
                     OutlinedButton.icon(
@@ -320,18 +464,19 @@ class _ProviderConfigDialogState
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Icon(Icons.wifi_find),
-                      label: const Text('Test Connection'),
+                          : const Icon(Icons.wifi_find, size: 18),
+                      label: const Text('Bağlantıyı test et'),
                     ),
                     if (_testResult != null) ...[
                       const SizedBox(width: 12),
                       Icon(
                         _testResult! ? Icons.check_circle : Icons.error,
+                        size: 18,
                         color: _testResult! ? MemoTheme.green : MemoTheme.red,
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _testResult! ? 'Connected' : 'Failed',
+                        _testResult! ? 'Bağlandı' : 'Başarısız',
                         style: TextStyle(
                           color: _testResult! ? MemoTheme.green : MemoTheme.red,
                         ),
@@ -339,15 +484,77 @@ class _ProviderConfigDialogState
                     ],
                   ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 8),
 
-                // Actions
+                // ── Advanced (collapsed) ──
+                Theme(
+                  data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+                  child: ExpansionTile(
+                    tilePadding: EdgeInsets.zero,
+                    childrenPadding: const EdgeInsets.only(top: 4, bottom: 8),
+                    initiallyExpanded: _showAdvanced,
+                    onExpansionChanged: (v) => setState(() => _showAdvanced = v),
+                    title: Text(
+                      'Gelişmiş ayarlar',
+                      style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w500),
+                    ),
+                    children: [
+                      // For custom providers these two live in the main flow
+                      // (above) since they're required, so don't duplicate them.
+                      if (_type != 'custom') ...[
+                        TextField(
+                          controller: _nameCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Görünen ad',
+                            border: OutlineInputBorder(),
+                            helperText: 'Aynı tipten birden fazla için ayırt edici yap',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                        TextField(
+                          controller: _baseUrlCtrl,
+                          decoration: const InputDecoration(
+                            labelText: 'Base URL',
+                            border: OutlineInputBorder(),
+                            helperText: 'Boş = sağlayıcı varsayılanı',
+                          ),
+                        ),
+                        const SizedBox(height: 12),
+                      ],
+                      TextField(
+                        controller: _contextCtrl,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(
+                          labelText: 'Bağlam penceresi (token)',
+                          border: OutlineInputBorder(),
+                          helperText: 'Boş = varsayılan. Örn. 1000000 = 1M.',
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                // ── Enable toggle ──
+                SwitchListTile(
+                  title: const Text('Bu sağlayıcıyı etkinleştir'),
+                  subtitle: Text(
+                    _enabled ? 'Sohbette kullanılabilir' : 'Kayıtlı ama kapalı',
+                    style: TextStyle(fontSize: 12, color: c.textDim),
+                  ),
+                  value: _enabled,
+                  contentPadding: EdgeInsets.zero,
+                  onChanged: (v) => setState(() => _enabled = v),
+                ),
+                const SizedBox(height: 12),
+
+                // ── Actions ──
                 Row(
                   mainAxisAlignment: MainAxisAlignment.end,
                   children: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('Cancel'),
+                      child: const Text('İptal'),
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
@@ -358,7 +565,7 @@ class _ProviderConfigDialogState
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Save'),
+                          : const Text('Kaydet'),
                     ),
                   ],
                 ),

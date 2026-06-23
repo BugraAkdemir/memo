@@ -57,34 +57,39 @@ class MemoApiClient {
           .transform(const LineSplitter());
 
       await for (final line in lineStream) {
-        if (line.startsWith('data: ')) {
-          final jsonStr = line.substring(6);
-          try {
-            final data = json.decode(jsonStr);
-            if (data['error'] != null && (data['error'] as String).isNotEmpty) {
-              throw Exception(data['error'] as String);
-            }
-            if (data['content'] != null ||
-                data['thinking'] != null ||
-                data['finish_reason'] != null) {
-              yield StreamChunk(
-                content: data['content'] as String? ?? '',
-                thinking: data['thinking'] as String?,
-                finishReason: data['finish_reason'] as String?,
-              );
-            }
-            if (data['done'] == true) {
-              break;
-            }
-          } catch (e) {
-            // ignore malformed chunks
-          }
+        if (!line.startsWith('data: ')) continue;
+        final jsonStr = line.substring(6);
+
+        // Decode in its own guard: only genuine JSON parse failures should be
+        // skipped here. A backend error field must NOT be swallowed — that was
+        // the bug where a failed Orchestra/agent run silently committed only its
+        // "Şef planlıyor..." preamble and looked frozen.
+        Map<String, dynamic> data;
+        try {
+          data = json.decode(jsonStr) as Map<String, dynamic>;
+        } catch (_) {
+          continue; // malformed chunk — skip
+        }
+
+        final err = data['error'];
+        if (err is String && err.isNotEmpty) {
+          throw Exception(err);
+        }
+        if (data['content'] != null ||
+            data['thinking'] != null ||
+            data['finish_reason'] != null) {
+          yield StreamChunk(
+            content: data['content'] as String? ?? '',
+            thinking: data['thinking'] as String?,
+            finishReason: data['finish_reason'] as String?,
+          );
+        }
+        if (data['done'] == true) {
+          break;
         }
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
-    } catch (e) {
       throw Exception('Bağlantı hatası: $e');
     }
   }
@@ -668,34 +673,39 @@ class MemoApiClient {
           .transform(const LineSplitter());
 
       await for (final line in lineStream) {
-        if (line.startsWith('data: ')) {
-          final jsonStr = line.substring(6);
-          try {
-            final data = json.decode(jsonStr);
-            if (data['error'] != null && (data['error'] as String).isNotEmpty) {
-              throw Exception(data['error'] as String);
-            }
-            if (data['content'] != null ||
-                data['thinking'] != null ||
-                data['finish_reason'] != null) {
-              yield StreamChunk(
-                content: data['content'] as String? ?? '',
-                thinking: data['thinking'] as String?,
-                finishReason: data['finish_reason'] as String?,
-              );
-            }
-            if (data['done'] == true) {
-              break;
-            }
-          } catch (e) {
-            // ignore malformed chunks
-          }
+        if (!line.startsWith('data: ')) continue;
+        final jsonStr = line.substring(6);
+
+        // Decode in its own guard: only genuine JSON parse failures should be
+        // skipped here. A backend error field must NOT be swallowed — that was
+        // the bug where a failed Orchestra/agent run silently committed only its
+        // "Şef planlıyor..." preamble and looked frozen.
+        Map<String, dynamic> data;
+        try {
+          data = json.decode(jsonStr) as Map<String, dynamic>;
+        } catch (_) {
+          continue; // malformed chunk — skip
+        }
+
+        final err = data['error'];
+        if (err is String && err.isNotEmpty) {
+          throw Exception(err);
+        }
+        if (data['content'] != null ||
+            data['thinking'] != null ||
+            data['finish_reason'] != null) {
+          yield StreamChunk(
+            content: data['content'] as String? ?? '',
+            thinking: data['thinking'] as String?,
+            finishReason: data['finish_reason'] as String?,
+          );
+        }
+        if (data['done'] == true) {
+          break;
         }
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
-    } catch (e) {
       throw Exception('Bağlantı hatası: $e');
     }
   }
@@ -730,9 +740,13 @@ class MemoApiClient {
     await _dio.put('/api/providers', data: config.toJson());
   }
 
-  /// Delete a provider config.
-  Future<void> deleteProvider(String type) async {
-    await _dio.delete('/api/providers', data: {'type': type});
+  /// Delete a provider config. [name] disambiguates when multiple providers
+  /// share the same type (the backend deletes by name when given).
+  Future<void> deleteProvider(String type, {String? name}) async {
+    await _dio.delete('/api/providers', data: {
+      'type': type,
+      if (name != null && name.isNotEmpty) 'name': name,
+    });
   }
 
   /// Test a provider connection.

@@ -130,5 +130,36 @@ class ProviderDefaults {
     'claude': 'Anthropic Claude',
     'openrouter': 'OpenRouter',
     'ollama': 'Ollama',
+    'custom': 'Özel (OpenAI uyumlu)',
   };
+
+  /// Where the user gets an API key for each provider. Shown as a tappable
+  /// "Anahtar al →" link so adding a provider doesn't require hunting the web.
+  static const Map<String, String> apiKeyUrls = {
+    'openai': 'https://platform.openai.com/api-keys',
+    'gemini': 'https://aistudio.google.com/app/apikey',
+    'grok': 'https://console.x.ai',
+    'groq': 'https://console.groq.com/keys',
+    'claude': 'https://console.anthropic.com/settings/keys',
+    'openrouter': 'https://openrouter.ai/keys',
+  };
+
+  /// One-line, plain-language hint about each provider shown under the picker.
+  static const Map<String, String> hints = {
+    'openai': 'ChatGPT\'nin arkasındaki modeller (GPT-4o).',
+    'gemini': 'Google\'ın modelleri — cömert ücretsiz kota.',
+    'grok': 'xAI\'nin Grok modelleri (X Premium).',
+    'groq': 'Çok hızlı, açık kaynak modeller — ücretsiz başla.',
+    'claude': 'Anthropic Claude — uzun bağlam ve kod için güçlü.',
+    'openrouter': 'Tek anahtarla yüzlerce modele eriş.',
+    'ollama': 'Bilgisayarında yerel model çalıştır — anahtar gerekmez.',
+    'custom': 'Herhangi bir OpenAI uyumlu endpoint. Base URL\'i sen girersin.',
+  };
+
+  /// Providers that need no API key (local). Custom endpoints often need one,
+  /// but not always (local proxies), so it's treated as optional there.
+  static bool needsApiKey(String type) => type != 'ollama' && type != 'custom';
+
+  /// Providers that require the user to supply a Base URL (no sensible default).
+  static bool needsBaseUrl(String type) => type == 'custom';
 }

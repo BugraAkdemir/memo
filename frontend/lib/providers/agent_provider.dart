@@ -102,3 +102,48 @@ class AgentEventBus {
 final agentEventStreamProvider = StreamProvider<AgentEvent>((ref) {
   return ref.watch(agentEventBusProvider).stream;
 });
+
+final agentAutoPermissionProvider =
+    StateNotifierProvider<AgentAutoPermissionNotifier, bool>((ref) {
+  return AgentAutoPermissionNotifier(ref);
+});
+
+class AgentAutoPermissionNotifier extends StateNotifier<bool> {
+  final Ref _ref;
+
+  AgentAutoPermissionNotifier(this._ref) : super(false) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      final enabled =
+          await _ref.read(apiClientProvider).getAgentAutoPermission();
+      state = enabled;
+    } catch (e) {
+      debugPrint('agent: auto-permission init error: $e');
+    }
+  }
+
+  Future<void> toggle() async {
+    final next = !state;
+    state = next;
+    try {
+      await _ref.read(apiClientProvider).setAgentAutoPermission(next);
+    } catch (e) {
+      debugPrint('agent: auto-permission toggle error: $e');
+      state = !next;
+    }
+  }
+
+  Future<void> setEnabled(bool enabled) async {
+    final previous = state;
+    state = enabled;
+    try {
+      await _ref.read(apiClientProvider).setAgentAutoPermission(enabled);
+    } catch (e) {
+      debugPrint('agent: auto-permission set error: $e');
+      state = previous;
+    }
+  }
+}

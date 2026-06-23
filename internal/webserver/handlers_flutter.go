@@ -1206,6 +1206,33 @@ func (s *Server) handleAgentPermissions(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
+func (s *Server) handleAgentAutoPermission(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "bridge not available", http.StatusServiceUnavailable)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": s.fullBridge.GetAgentAutoPermission()})
+	case http.MethodPut:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetAgentAutoPermission(req.Enabled); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 // ─── WhatsApp Handlers ────────────────────────────────────────────
 
 func (s *Server) handleWhatsAppStatus(w http.ResponseWriter, r *http.Request) {

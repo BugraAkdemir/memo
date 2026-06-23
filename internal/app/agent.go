@@ -59,3 +59,20 @@ func (a *App) UndoLastAgentEdit() error {
 	}
 	return a.agentExecutor.UndoLast()
 }
+
+// SetAgentAutoPermission toggles the Shift+Tab auto-permission mode.
+func (a *App) SetAgentAutoPermission(enabled bool) error {
+	if a.agentExecutor == nil {
+		return fmt.Errorf("agent executor not initialized")
+	}
+	a.agentExecutor.SetAutoPermission(enabled)
+	return nil
+}
+
+// GetAgentAutoPermission returns the current auto-permission mode state.
+func (a *App) GetAgentAutoPermission() bool {
+	if a.agentExecutor == nil {
+		return false
+	}
+	return a.agentExecutor.GetAutoPermission()
+}

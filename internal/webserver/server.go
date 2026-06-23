@@ -180,6 +180,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/agent/enabled", s.handleAgentEnabled)
 	mux.HandleFunc("/api/agent/permission", s.handleAgentPermission)
 	mux.HandleFunc("/api/agent/permissions", s.handleAgentPermissions)
+	mux.HandleFunc("/api/agent/auto-permission", s.handleAgentAutoPermission)
 	mux.HandleFunc("/api/agent/undo", s.handleAgentUndo)
 
 	// WhatsApp

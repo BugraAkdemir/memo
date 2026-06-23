@@ -52,6 +52,7 @@ type Pipeline struct {
 	maxTokens          int           // context window token budget for this turn (0 = unlimited)
 	toolTimeout        time.Duration // max time per tool execution (0 = no limit)
 	bypassPermissions  bool          // sistem yönetimi açıkken tüm izinleri otomatik onayla
+	autoPermission     bool          // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
 }
 
 // NewPipeline creates a new agent execution pipeline.
@@ -222,6 +223,13 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 			// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
 			if p.bypassPermissions {
 				log.Printf("AGENT: [BYPASS] auto-approving %q (system management mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
+				permRes.NeedPrompt = false
+				permRes.Allowed = true
+			}
+
+			// Shift+Tab auto-permission modunda da izin ekranı çıkmaz.
+			if p.autoPermission {
+				log.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
 				permRes.NeedPrompt = false
 				permRes.Allowed = true
 			}

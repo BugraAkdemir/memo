@@ -6,6 +6,7 @@ import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
+import '../providers/agent_provider.dart';
 import 'mood_gauge.dart';
 import '../providers/mood_provider.dart';
 import '../providers/orchestra_provider.dart';
@@ -69,6 +70,29 @@ class EngineStrip extends ConsumerWidget {
                 await ref.read(apiClientProvider).stopEmbeddingModel();
                 ref.invalidate(embeddingStatusProvider);
               },
+            ),
+          ],
+          // Auto-permission indicator
+          if (ref.watch(agentAutoPermissionProvider)) ...[
+            _divider(c.borderSoft),
+            Tooltip(
+              message: 'Shift+Tab — all tools auto-approved',
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 7, height: 7,
+                    decoration: const BoxDecoration(color: MemoTheme.green, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  const Icon(Icons.auto_awesome, size: 13, color: MemoTheme.green),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Auto',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green),
+                  ),
+                ],
+              ),
             ),
           ],
           // Orchestra mode indicator

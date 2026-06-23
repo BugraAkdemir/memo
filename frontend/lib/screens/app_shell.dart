@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
@@ -6,6 +7,7 @@ import '../core/theme.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/whatsapp_provider.dart';
+import '../providers/agent_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
@@ -74,42 +76,60 @@ class _AppShellState extends ConsumerState<AppShell> {
       }
     });
 
-    return Scaffold(
-      backgroundColor: MemoTheme.of(context).bgApp,
-      body: Stack(
-        children: [
-          Row(
+    return Shortcuts(
+      shortcuts: {
+        const SingleActivator(LogicalKeyboardKey.tab, shift: true):
+            _ToggleAutoPermissionIntent(),
+      },
+      child: Actions(
+        actions: {
+          _ToggleAutoPermissionIntent: CallbackAction<_ToggleAutoPermissionIntent>(
+            onInvoke: (intent) {
+              ref.read(agentAutoPermissionProvider.notifier).toggle();
+              return null;
+            },
+          ),
+        },
+        child: Scaffold(
+          backgroundColor: MemoTheme.of(context).bgApp,
+          body: Stack(
             children: [
-              _buildNavRail(),
-              Expanded(
-                child: Column(
-                  children: [
-                    Expanded(
-                      child: IndexedStack(
-                        index: _currentIndex,
-                        children: [
-                          ChatScreen(key: ValueKey('chat_$locale')),
-                          const AgentScreen(),
-                          ModelStoreScreen(key: ValueKey('models_$locale')),
-                          const WhatsAppScreen(),
-                          const CalendarScreen(),
-                        ],
-                      ),
+              Row(
+                children: [
+                  _buildNavRail(),
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Expanded(
+                          child: IndexedStack(
+                            index: _currentIndex,
+                            children: [
+                              ChatScreen(key: ValueKey('chat_$locale')),
+                              const AgentScreen(),
+                              ModelStoreScreen(
+                                  key: ValueKey('models_$locale')),
+                              const WhatsAppScreen(),
+                              const CalendarScreen(),
+                            ],
+                          ),
+                        ),
+                        EngineStrip(
+                          onOpenModels: () =>
+                              setState(() => _currentIndex = 2),
+                        ),
+                      ],
                     ),
-                    EngineStrip(
-                      onOpenModels: () => setState(() => _currentIndex = 2),
-                    ),
-                  ],
-                ),
+                  ),
+                ],
               ),
+              SetupWizardOverlay(),
+              if (_showLaunchpad) _buildLaunchpadOverlay(),
+              if (_showTour) _buildTourOverlay(),
+              LlamaInstallerOverlay(),
+              const VersionBanner(),
             ],
           ),
-          SetupWizardOverlay(),
-          if (_showLaunchpad) _buildLaunchpadOverlay(),
-          if (_showTour) _buildTourOverlay(),
-          LlamaInstallerOverlay(),
-          const VersionBanner(),
-        ],
+        ),
       ),
     );
   }
@@ -378,4 +398,8 @@ class _NavRailButton extends StatelessWidget {
       ),
     );
   }
+}
+
+class _ToggleAutoPermissionIntent extends Intent {
+  const _ToggleAutoPermissionIntent();
 }

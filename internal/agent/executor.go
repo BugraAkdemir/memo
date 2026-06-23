@@ -44,6 +44,7 @@ type Executor struct {
 	pendingPerms      map[string]*PermissionRequest
 	logs              []AgentLogEntry
 	bypassPermissions bool // sistem yönetimi açıkken true
+	autoPermission    bool // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
 }
 
 // NewExecutor creates a new agent executor.
@@ -138,6 +139,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 
 	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
 	pipeline.bypassPermissions = e.bypassPermissions
+	pipeline.autoPermission = e.autoPermission
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event
@@ -221,6 +223,20 @@ func (e *Executor) SetBypassPermissions(v bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.bypassPermissions = v
+}
+
+// SetAutoPermission kullanıcının Shift+Tab ile açtığı otomatik izin modunu ayarlar.
+func (e *Executor) SetAutoPermission(v bool) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	e.autoPermission = v
+}
+
+// GetAutoPermission otomatik izin modunun durumunu döndürür.
+func (e *Executor) GetAutoPermission() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.autoPermission
 }
 
 // ClearAgentPermissions clears all permanent permissions.

@@ -144,6 +144,7 @@ class _ChatTopBar extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final isIncognito = ref.watch(incognitoProvider);
     final isAgentEnabled = ref.watch(agentEnabledProvider);
+    final isAutoPermission = ref.watch(agentAutoPermissionProvider);
     final isWhatsAppMode = ref.watch(whatsAppChatModeProvider);
     final webSearchOn = ref.watch(webSearchModeProvider);
     final waStatus = ref.watch(whatsAppStatusProvider);
@@ -272,6 +273,44 @@ class _ChatTopBar extends ConsumerWidget {
                         ),
                       ],
                     ),
+                  ),
+                  ),
+                  const SizedBox(width: 12),
+                ],
+                if (isAgentEnabled && isAutoPermission) ...[
+                  Tooltip(
+                    message: 'Shift+Tab to toggle off — all tools auto-approved',
+                    child: GestureDetector(
+                    onTap: () => ref.read(agentAutoPermissionProvider.notifier).toggle(),
+                    child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.green.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(6),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(
+                          Icons.auto_awesome,
+                          size: 14,
+                          color: MemoTheme.green,
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Auto',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: MemoTheme.green,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
                   ),
                   ),
                   const SizedBox(width: 12),

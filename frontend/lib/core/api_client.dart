@@ -810,6 +810,17 @@ class MemoApiClient {
     await _dio.post('/api/agent/undo');
   }
 
+  /// Get auto-permission mode (Shift+Tab).
+  Future<bool> getAgentAutoPermission() async {
+    final res = await _dio.get('/api/agent/auto-permission');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  /// Set auto-permission mode (Shift+Tab).
+  Future<void> setAgentAutoPermission(bool enabled) async {
+    await _dio.put('/api/agent/auto-permission', data: {'enabled': enabled});
+  }
+
   // ─── Skills ──────────────────────────────────────────────────
 
   /// List all installed skills.

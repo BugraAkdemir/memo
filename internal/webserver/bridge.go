@@ -65,6 +65,8 @@ type FullBridge interface {
 	RevokeAgentPermission(id string) error
 	ClearAgentPermissions()
 	UndoLastAgentEdit() error
+	SetAgentAutoPermission(enabled bool) error
+	GetAgentAutoPermission() bool
 
 	// Models
 	SearchModels(query string) ([]modelstore.HFModelResult, error)

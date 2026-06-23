@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"strings"
 )
 
 // ProviderType enumerates supported LLM providers.
@@ -141,6 +142,11 @@ func (c ProviderConfig) Validate() error {
 	}
 	if c.Model == "" {
 		return fmt.Errorf("model is required for %s", c.Type)
+	}
+	// A custom provider has no default endpoint — without a Base URL its requests
+	// would go nowhere and fail with an opaque "unsupported protocol scheme".
+	if c.Type == ProviderCustom && strings.TrimSpace(c.BaseURL) == "" {
+		return fmt.Errorf("base URL is required for a custom provider")
 	}
 	return nil
 }

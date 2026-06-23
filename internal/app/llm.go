@@ -238,7 +238,9 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		// Live token counter (Claude-Code style). Input is fixed for the turn;
 		// output grows as the orchestra/agent produces text.
 		budget := a.apiContextBudget()
-		inputTokens := estimateContentTokens(conversationCtx + systemPrompt)
+		// conversationCtx already embeds systemPrompt (prepended above) — don't
+		// add it again or the input count is inflated ~2x.
+		inputTokens := estimateContentTokens(conversationCtx)
 		emitUsage := func(outputTokens int) {
 			payload, err := json.Marshal(map[string]int{
 				"input":  inputTokens,
@@ -385,34 +387,79 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		}, projectPath)
 
 		if err != nil {
+			// Persist the chief's synthesis before erroring out — otherwise the
+			// answer the user already saw is lost on the frontend's refresh.
+			if strings.TrimSpace(finalContent) != "" {
+				a.finishStream(start, 0, "error", finalContent, userMsg, agentEvents)
+			}
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent hatası: " + err.Error(), Done: true})
 			return
 		}
 
+		// usedTools reports whether the agent actually executed any tool. If it
+		// didn't, its text output is just a redundant second answer on top of the
+		// chief's synthesis — exactly the "empty talk" we want to avoid. So we
+		// buffer the agent's text and only surface it when real work happened.
+		usedTools := func() bool {
+			for _, e := range agentEvents {
+				if ev, ok := e.(agent.AgentEvent); ok {
+					switch ev.Type {
+					case agent.EventToolExecuting, agent.EventToolResult, agent.EventToolError:
+						return true
+					}
+				}
+			}
+			return false
+		}
+
+		// finalize assembles the saved reply + closes the stream. agentText is
+		// appended only when the agent did tool work.
+		finalize := func(finishReason string) {
+			agentText := agentBuf.String()
+			finalReply := finalContent
+			// Show the agent's text when it did real work (tools) OR when the
+			// chief produced no answer — otherwise the user would get a blank reply.
+			showAgentText := agentText != "" &&
+				(usedTools() || strings.TrimSpace(finalContent) == "")
+			if showAgentText {
+				prefix := "\n\n"
+				if strings.TrimSpace(finalContent) == "" {
+					prefix = ""
+				}
+				trySend(ctx, outCh, api.StreamChunk{Content: prefix + agentText})
+				finalReply = strings.TrimSpace(finalContent + prefix + agentText)
+				emitUsage(outAccum + estimateContentTokens(agentText))
+			} else {
+				emitUsage(outAccum)
+			}
+			a.finishStream(start, 0, finishReason, finalReply, userMsg, agentEvents)
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
+		}
+
 		for chunk := range streamCh {
 			if chunk.Error != "" {
+				// Persist the chief's synthesis (and any agent text so far) so a
+				// mid-agent failure doesn't wipe the answer already on screen.
+				if salvage := strings.TrimSpace(finalContent + "\n\n" + agentBuf.String()); salvage != "" {
+					a.finishStream(start, 0, "error", salvage, userMsg, agentEvents)
+				}
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 				return
 			}
 			if chunk.Content != "" {
+				// Buffer, don't stream live — the decision to show it is made at the
+				// end based on whether tools ran.
 				agentBuf.WriteString(chunk.Content)
-				trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
 			}
 			if chunk.Done {
-				finalReply := finalContent + "\n\n" + agentBuf.String()
-				emitUsage(outAccum + estimateContentTokens(agentBuf.String()))
-				a.finishStream(start, 0, chunk.FinishReason, finalReply, userMsg, agentEvents)
-				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+				finalize(chunk.FinishReason)
 				return
 			}
 		}
 
-		if agentBuf.Len() > 0 {
-			finalReply := finalContent + "\n\n" + agentBuf.String()
-			emitUsage(estimateContentTokens(finalReply))
-			a.finishStream(start, 0, "stop", finalReply, userMsg, agentEvents)
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
-		}
+		// Stream closed without an explicit Done chunk — finalize anyway so the
+		// frontend never hangs waiting for completion.
+		finalize("stop")
 	}()
 
 	return outCh

@@ -179,9 +179,10 @@ class _ProviderConfigDialogState
 
   /// Returns [base], or "[base] 2", "[base] 3"… so it doesn't collide with an
   /// existing provider name (providers are keyed by name on the backend).
-  String _uniqueName(String base) {
+  String _uniqueName(String base, {String? exclude}) {
     final existingNames = (ref.read(providerListProvider).valueOrNull ?? [])
         .map((p) => p.name)
+        .where((n) => n != exclude)
         .toSet();
     if (!existingNames.contains(base)) return base;
     for (var i = 2; i < 100; i++) {
@@ -226,9 +227,11 @@ class _ProviderConfigDialogState
       final desiredName = _nameCtrl.text.trim().isEmpty
           ? (ProviderDefaults.displayNames[_type] ?? _type)
           : _nameCtrl.text.trim();
-      final finalName = existing == null
-          ? _uniqueName(desiredName)
-          : desiredName;
+      // Ensure a unique name (providers are keyed by name on the backend).
+      // When editing, exclude this provider's own current name so renaming it
+      // doesn't get suffixed — but renaming onto ANOTHER provider's name still
+      // gets disambiguated instead of silently overwriting it.
+      final finalName = _uniqueName(desiredName, exclude: existing?.name);
 
       // Trim every free-text field: a stray space/tab pasted into a model id or
       // key silently breaks requests (e.g. an invalid model that stalls the API).

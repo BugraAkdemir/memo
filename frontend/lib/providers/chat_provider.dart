@@ -187,6 +187,19 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(activityStepsProvider.notifier).state = list;
   }
 
+  /// Marks any still-running activity step as errored. Called when a turn is
+  /// cancelled or fails so the panel doesn't leave a spinner running forever.
+  void _settleRunningSteps(String detail) {
+    final list = ref.read(activityStepsProvider);
+    if (!list.any((s) => s.status == StepStatus.running)) return;
+    ref.read(activityStepsProvider.notifier).state = [
+      for (final s in list)
+        s.status == StepStatus.running
+            ? s.copyWith(status: StepStatus.error, detail: detail)
+            : s,
+    ];
+  }
+
   /// Maps an agent tool event into the unified activity timeline.
   void _toolEventToActivity(AgentEvent ev) {
     switch (ev.type) {
@@ -239,6 +252,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.read(streamingContentProvider.notifier).state = '';
     ref.read(streamingThinkingProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
+    _settleRunningSteps('durduruldu');
   }
 
   Future<void> refresh() async {
@@ -449,6 +463,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
+      _settleRunningSteps('hata'); // stop any perpetual spinner in the panel
       await refresh();
     } finally {
       _cancelToken = null;

@@ -44,23 +44,38 @@ cat << 'EOF' > build_output/memo-linux-x64/run_memo.sh
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
-echo "🧹 Cleaning up old processes..."
-pkill -9 -f "./memo --headless" 2>/dev/null || true
-pkill -9 -f "llama-server" 2>/dev/null || true
-sleep 1
+# The frontend exits with code 42 to request a full, clean restart (e.g. after
+# "Wipe all data", so every backend subsystem re-initializes from scratch with
+# no stale file handles). Any other exit code ends the session normally.
+RESTART_CODE=42
 
-echo "Starting backend..."
-./memo --headless --port 8090 > backend.log 2>&1 &
-BACKEND_PID=$!
+while true; do
+  echo "🧹 Cleaning up old processes..."
+  pkill -9 -f "./memo --headless" 2>/dev/null || true
+  pkill -9 -f "llama-server" 2>/dev/null || true
+  sleep 1
 
-sleep 1
-echo "Starting frontend..."
-./memo_flutter
+  echo "Starting backend..."
+  ./memo --headless --port 8090 > backend.log 2>&1 &
+  BACKEND_PID=$!
 
-echo "Shutting down backend..."
-kill -9 $BACKEND_PID 2>/dev/null
-wait $BACKEND_PID 2>/dev/null
-pkill -9 -f "llama-server" 2>/dev/null || true
+  sleep 1
+  echo "Starting frontend..."
+  ./memo_flutter
+  EXIT_CODE=$?
+
+  echo "Shutting down backend..."
+  kill -9 $BACKEND_PID 2>/dev/null
+  wait $BACKEND_PID 2>/dev/null
+  pkill -9 -f "llama-server" 2>/dev/null || true
+
+  if [ "$EXIT_CODE" = "$RESTART_CODE" ]; then
+    echo "♻️  Restart requested, relaunching..."
+    sleep 1
+    continue
+  fi
+  break
+done
 EOF
 
 chmod +x build_output/memo-linux-x64/run_memo.sh

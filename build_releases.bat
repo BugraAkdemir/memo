@@ -161,6 +161,8 @@ echo.
 echo :: Set PATH to include bundled binary directories
 echo set "PATH=%%APP_DIR%%binaries\windows;%%APP_DIR%%binaries\windows\cpu;%%APP_DIR%%binaries\windows\nvidia;%%APP_DIR%%binaries\windows\amd;%%MEMO_HOME%%\data\bin;%%PATH%%"
 echo.
+echo :: Restart loop — frontend exit code 42 means "wipe done, relaunch clean"
+echo :restart_loop
 echo :: Stop old processes
 echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1
 echo taskkill /F /IM llama-server.exe ^>nul 2^>^&1
@@ -174,10 +176,12 @@ echo.
 echo :: Start Flutter frontend
 echo cd /d "%%APP_DIR%%"
 echo start "" /WAIT %APP_EXEC%.exe
+echo set "EXITCODE=%%ERRORLEVEL%%"
 echo.
 echo :: Cleanup
 echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1
 echo taskkill /F /IM llama-server.exe ^>nul 2^>^&1
+echo if "%%EXITCODE%%"=="42" ^( timeout /t 1 /nobreak ^>nul ^& goto restart_loop ^)
 echo endlocal
 ) > "%STAGEDIR%\run_memo.bat"
 

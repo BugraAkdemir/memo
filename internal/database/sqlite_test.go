@@ -2,9 +2,42 @@ package database
 
 import (
 	"context"
+	"os"
 	"path/filepath"
 	"testing"
 )
+
+// TestOpenCreatesMissingDir verifies that Open creates the DB's parent
+// directory when it does not exist. This is the regression guard for the
+// "store not initialized" bug after a full data wipe, which deletes the
+// memory directory before the store is re-opened.
+func TestOpenCreatesMissingDir(t *testing.T) {
+	tests := []struct {
+		name string
+		rel  string // path relative to a fresh temp dir
+	}{
+		{name: "one level missing", rel: "memory/memo.db"},
+		{name: "nested missing", rel: "a/b/c/memo.db"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), tt.rel)
+			if _, err := os.Stat(filepath.Dir(path)); !os.IsNotExist(err) {
+				t.Fatalf("precondition: parent dir should not exist, stat err = %v", err)
+			}
+
+			db, err := Open(Config{Path: path, MaxPool: 1})
+			if err != nil {
+				t.Fatalf("Open() error = %v", err)
+			}
+			defer db.Close()
+
+			if err := db.Ping(); err != nil {
+				t.Fatalf("Ping() error = %v", err)
+			}
+		})
+	}
+}
 
 func TestVec0Available(t *testing.T) {
 	db, err := Open(Config{

@@ -107,11 +107,13 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	})
 	if err != nil {
 		log.Printf("WARN: memory re-init: %v", err)
+		a.emitEvent("memory_store_error", err.Error())
 		return
 	}
 	a.storeMu.Lock()
 	defer a.storeMu.Unlock()
 	a.store = newStore
+	log.Println("Memory store re-initialized")
 }
 
 // DebugMemorySearch searches memory WITHOUT similarity filter — for debugging.

@@ -129,22 +129,37 @@ cd "$MEMO_HOME"
 # Kütüphane yolları (llama-server'ın yanındaki dylib'ler için)
 export DYLD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/__APP_NAME__.app/Contents/Frameworks:$DYLD_LIBRARY_PATH"
 
-# Eski süreçleri durdur
-pkill -9 -f "memo-backend" 2>/dev/null || true
-pkill -9 -f "llama-server" 2>/dev/null || true
-sleep 0.5
+# Frontend, "Tüm verileri sil" sonrası temiz başlangıç için 42 koduyla çıkar;
+# bu durumda backend + frontend sıfırdan yeniden başlatılır. .app içindeki
+# binary doğrudan çalıştırılır çünkü `open -W` uygulamanın çıkış kodunu vermez.
+RESTART_CODE=42
+APP_BIN="$DIR/__APP_NAME__.app/Contents/MacOS/__APP_NAME__"
 
-# Backend'i başlat (yazılabilir dizinden)
-"$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
-BACKEND_PID=$!
-sleep 1
+while true; do
+    # Eski süreçleri durdur
+    pkill -9 -f "memo-backend" 2>/dev/null || true
+    pkill -9 -f "llama-server" 2>/dev/null || true
+    sleep 0.5
 
-# Frontend .app'i aç ve kapanmasını bekle
-open -W "$DIR/__APP_NAME__.app"
+    # Backend'i başlat (yazılabilir dizinden)
+    "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
+    BACKEND_PID=$!
+    sleep 1
 
-# Temizlik
-kill $BACKEND_PID 2>/dev/null || true
-pkill -9 -f "llama-server" 2>/dev/null || true
+    # Frontend'i çalıştır ve kapanmasını bekle
+    "$APP_BIN"
+    EXIT_CODE=$?
+
+    # Temizlik
+    kill $BACKEND_PID 2>/dev/null || true
+    pkill -9 -f "llama-server" 2>/dev/null || true
+
+    if [ "$EXIT_CODE" = "$RESTART_CODE" ]; then
+        sleep 1
+        continue
+    fi
+    break
+done
 RUNNER
 
 # __APP_NAME__ yer tutucusunu gerçek isimle değiştir

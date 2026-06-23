@@ -335,11 +335,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     try {
       await ref.read(apiClientProvider).wipeData();
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Tüm veriler silindi. Uygulamayı yeniden başlatın.'),
-          ),
-        );
+        await _showRestartDialog();
       }
     } catch (e) {
       if (mounted) {
@@ -355,6 +351,53 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
           _wipeConfirm2 = false;
         });
     }
+  }
+
+  /// Shown after a successful wipe. Some backend subsystems (mood, calendar,
+  /// observer, WhatsApp) keep their SQLite files open, so a full restart is the
+  /// only way to guarantee a clean state. Exiting with code 42 signals the
+  /// launcher (run_memo.sh) to relaunch the backend + frontend from scratch.
+  Future<void> _showRestartDialog() async {
+    final theme = MemoTheme.of(context);
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: theme.bgPanel,
+        title: Text(
+          'Tüm veriler silindi',
+          style: TextStyle(
+            color: theme.textMain,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        content: Text(
+          'Verileriniz silindi. Her şeyin temiz başlaması için uygulamanın '
+          'yeniden başlatılması gerekiyor.',
+          style: TextStyle(color: theme.textDim, fontSize: 13),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(
+              'Daha sonra',
+              style: TextStyle(color: theme.textDim),
+            ),
+          ),
+          TextButton(
+            // Exit code 42 → run_memo.sh relaunches a fresh backend + frontend.
+            onPressed: () => exit(42),
+            child: Text(
+              'Şimdi yeniden başlat',
+              style: TextStyle(
+                color: MemoTheme.accent,
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override

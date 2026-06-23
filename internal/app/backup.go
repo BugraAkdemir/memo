@@ -210,20 +210,35 @@ func pruneImportBackups(dir string, keep int) {
 	}
 }
 
-// WipeAllData removes all user data: sessions, memory, whatsapp, providers,
-// and pre-import snapshots.
+// wipePreserve is the set of top-level data-dir entries that survive a full
+// wipe: the user's downloaded models plus the llama.cpp/runtime binaries, so a
+// reset does not force a multi-hundred-MB re-download. Everything else under
+// the data dir (sessions, memory, whatsapp, providers, mood, calendar,
+// profile, permissions, skills, datasets, backups…) is removed.
+var wipePreserve = map[string]bool{
+	"models":    true, // downloaded GGUF models
+	"bin":       true, // llama.cpp binaries
+	"binaries":  true, // downloaded runtime binaries
+	"tmp_llama": true, // llama.cpp build/extract scratch
+	"tailscale": true, // tsnet state
+}
+
+// WipeAllData removes ALL user data under the data directory except the
+// downloaded models and the llama/runtime binaries. This is a true factory
+// reset of personal state, not just memory.
 func (a *App) WipeAllData() error {
-	dirs := []string{
-		config.DataPath("sessions"),
-		config.DataPath("memory"),
-		config.DataPath("whatsapp"),
-		config.DataPath("providers.json"),
-		config.DataPath("orchestra.json"),
-		backupsDir(),
+	root := config.DataDir()
+	entries, err := os.ReadDir(root)
+	if err != nil {
+		return fmt.Errorf("wipe: read data dir: %w", err)
 	}
-	for _, d := range dirs {
-		if err := os.RemoveAll(d); err != nil {
-			return fmt.Errorf("wipe: %s: %w", d, err)
+	for _, e := range entries {
+		name := e.Name()
+		if wipePreserve[name] || name == "providers.example.json" {
+			continue
+		}
+		if err := os.RemoveAll(filepath.Join(root, name)); err != nil {
+			return fmt.Errorf("wipe: %s: %w", name, err)
 		}
 	}
 
@@ -236,9 +251,26 @@ func (a *App) WipeAllData() error {
 	}
 	a.sessionsMu.Unlock()
 
-	a.storeMu.Lock()
-	a.store = nil
-	a.storeMu.Unlock()
+	// Re-create the memory store so the freshly-deleted DB is rebuilt.
+	// Without this, a.store stays nil and every subsequent save/retrieve
+	// fails with "store not initialized" until the app is restarted.
+	// Prefer the dedicated embedding client; fall back to the main client.
+	a.clientMu.RLock()
+	embClient := a.embeddingClient
+	mainClient := a.client
+	a.clientMu.RUnlock()
+	client := embClient
+	if client == nil {
+		client = mainClient
+	}
+	if client != nil {
+		a.reinitMemoryStore(client, a.cfg.API.EmbeddingModel)
+	} else {
+		a.storeMu.Lock()
+		a.store = nil
+		a.storeMu.Unlock()
+		log.Println("WARN: wipe: no embedding/main client available, memory store left uninitialized")
+	}
 
 	log.Println("All user data wiped")
 	return nil

@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"log"
 	"net/url"
+	"os"
+	"path/filepath"
 	"sync"
 	"time"
 
@@ -39,6 +41,16 @@ func Open(cfg Config) (*DB, error) {
 	}
 	if cfg.Path == "" {
 		return nil, fmt.Errorf("database.Open: path is required")
+	}
+
+	// Ensure the parent directory exists before opening. SQLite will not
+	// create missing directories and fails to open the file otherwise. This
+	// matters after a full data wipe, which removes the DB's directory: the
+	// subsequent re-open must be able to recreate it.
+	if dir := filepath.Dir(cfg.Path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o755); err != nil {
+			return nil, fmt.Errorf("database.Open: create dir %q: %w", dir, err)
+		}
 	}
 
 	connStr := buildDSN(cfg.Path)

@@ -289,8 +289,7 @@ class _Header extends ConsumerWidget {
             onTap: () => onTab(1),
           ),
           const Spacer(),
-          const _HardwareChip(),
-          const SizedBox(height: 0, width: 0),
+          const Flexible(child: _HardwareChip()),
         ],
       ),
     );
@@ -344,7 +343,8 @@ class _HardwareChip extends ConsumerWidget {
     final parts = <String>[];
     if (gpu.ramTotalMb > 0) parts.add('${gpu.ramFormatted} RAM');
     if (gpu.hasGpu) {
-      parts.add(gpu.vramMb > 0 ? '${gpu.name} ${gpu.vramFormatted}' : gpu.name);
+      final name = _shortGpuName(gpu.name);
+      parts.add(gpu.vramMb > 0 ? '$name ${gpu.vramFormatted}' : name);
     } else {
       parts.add('CPU');
     }
@@ -361,14 +361,29 @@ class _HardwareChip extends ConsumerWidget {
           Icon(gpu.hasGpu ? Icons.memory : Icons.developer_board,
               size: 13, color: MemoTheme.accent),
           const SizedBox(width: 6),
-          Text(
-            parts.join(' · '),
-            style: TextStyle(fontSize: 11, color: c.textMuted),
+          Flexible(
+            child: Text(
+              parts.join(' · '),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 11, color: c.textMuted),
+            ),
           ),
         ],
       ),
     );
   }
+}
+
+/// Trims verbose lspci-style GPU descriptions to a readable short name.
+/// e.g. "VGA compatible controller: Advanced Micro Devices, Inc. [AMD/ATI]
+/// Cezanne [Radeon Vega Series / Radeon Vega Mobile Gfx]" → "Radeon Vega
+/// Series / Radeon Vega Mobile Gfx". Clean names (NVIDIA/Windows) pass through.
+String _shortGpuName(String name) {
+  final bracket = RegExp(r'\[([^\[\]]+)\]\s*$').firstMatch(name);
+  if (bracket != null) return bracket.group(1)!.trim();
+  return name.replaceFirst(RegExp(r'^.*controller:\s*'), '').trim();
 }
 
 // ─── Sort mode ────────────────────────────────────────────────────

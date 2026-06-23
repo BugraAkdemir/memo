@@ -66,11 +66,16 @@ func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
 		messages := a.buildMessages(context.Background(), "test message", nil)
 		content := messages[0].Content.(string)
 
-		if !strings.Contains(content, "nötr moddasın") {
-			t.Error("system prompt should contain neutral mode directive when mood is disabled")
+		// When mood is disabled NOTHING mood-related may be injected — the model
+		// is driven solely by the configured system prompt.
+		if strings.Contains(content, "nötr moddasın") {
+			t.Error("system prompt must NOT contain the neutral mood block when mood is disabled")
 		}
 		if strings.Contains(content, "Current Emotional State") {
-			t.Error("system prompt should NOT contain mood directive when mood is disabled")
+			t.Error("system prompt must NOT contain mood directive when mood is disabled")
+		}
+		if !strings.Contains(content, "Memo") {
+			t.Error("system prompt should still contain the base identity")
 		}
 	})
 

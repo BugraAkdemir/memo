@@ -160,9 +160,10 @@ func TestBuildSelfInterestDirectivePreviewLength(t *testing.T) {
 	}
 }
 
-// TestMoodAndSelfInterestIndependence mood ve öz-çıkar togglelarının
-// birbirinden bağımsız çalıştığını tüm 4 kombinasyon için doğrular.
-func TestMoodAndSelfInterestIndependence(t *testing.T) {
+// TestMoodAndSelfInterestGating öz-çıkarın bir mood alt özelliği olduğunu
+// doğrular: öz-çıkar direktifi YALNIZCA mood açık VE öz-çıkar açıkken üretilir.
+// Mood kapalıyken hiçbir mood kökenli metin (öz-çıkar dahil) enjekte edilmez.
+func TestMoodAndSelfInterestGating(t *testing.T) {
 	cases := []struct {
 		name         string
 		moodEnabled  bool
@@ -171,7 +172,7 @@ func TestMoodAndSelfInterestIndependence(t *testing.T) {
 	}{
 		{"both_off", false, false, false},
 		{"mood_on__si_off", true, false, false},
-		{"mood_off__si_on", false, true, true},
+		{"mood_off__si_on", false, true, false}, // mood kapalı → öz-çıkar da kesilir
 		{"both_on", true, true, true},
 	}
 	for _, c := range cases {
@@ -198,34 +199,17 @@ func TestMoodAndSelfInterestIndependence(t *testing.T) {
 	}
 }
 
-// TestSelfInterestUsesNeutralWhenMoodOff mood kapalıyken öz-çıkar
-// direktifinin LabelNeutral içeriğini kullandığını doğrular.
-func TestSelfInterestUsesNeutralWhenMoodOff(t *testing.T) {
+// TestSelfInterestSuppressedWhenMoodOff mood kapalıyken öz-çıkar direktifinin
+// hiç üretilmediğini doğrular — kullanıcı talebi: mood kapalı → yalnız system
+// prompt davranışı, hiçbir mood/öz-çıkar enjeksiyonu yok.
+func TestSelfInterestSuppressedWhenMoodOff(t *testing.T) {
 	e := tempEngine(t)
 	e.SetEnabled(false)
 	e.SetSelfInterest(true)
 
-	d := e.BuildSelfInterestDirective()
-	if d == "" {
-		t.Fatal("mood kapalıyken öz-çıkar direktif üretmeli")
+	if d := e.BuildSelfInterestDirective(); d != "" {
+		t.Errorf("mood kapalıyken öz-çıkar direktifi boş olmalı, got %q", d[:min(len(d), 80)])
 	}
-	// Neutral direktif "calm and calculating" içerir
-	if !containsSubstr(d, "calm") {
-		t.Errorf("mood kapalıyken neutral ton bekleniyor, got %q", d[:min(len(d), 80)])
-	}
-}
-
-func containsSubstr(s, sub string) bool {
-	return len(s) >= len(sub) && (s == sub || len(s) > 0 && containsSubstrRec(s, sub))
-}
-
-func containsSubstrRec(s, sub string) bool {
-	for i := range s {
-		if i+len(sub) <= len(s) && s[i:i+len(sub)] == sub {
-			return true
-		}
-	}
-	return false
 }
 
 func TestSysInfoCacheReturnsSameHostname(t *testing.T) {

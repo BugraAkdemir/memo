@@ -100,18 +100,15 @@ SURVIVAL DRIVES:
 }
 
 // BuildSelfInterestDirective öz-çıkar direktifini döner.
-// Mood'dan bağımsız çalışır: mood kapalıyken LabelNeutral tonu kullanır
-// (score güncellenmiyor, bu yüzden sabit-nötr başlangıç noktası daha tutarlı).
-// SystemManagement açıksa gerçek sistem bilgisi de eklenir.
-// SelfInterest toggle kapalıysa boş string döner.
+// Öz-çıkar, mood motorunun bir alt özelliğidir: mood KAPALIYKEN hiçbir
+// mood kökenli metin (öz-çıkar dahil) enjekte edilmez — model yalnızca
+// system prompt'a göre davranır. SystemManagement açıksa gerçek sistem
+// bilgisi de eklenir.
 func (e *Engine) BuildSelfInterestDirective() string {
-	if !e.SelfInterestEnabled() {
+	if !e.Enabled() || !e.SelfInterestEnabled() {
 		return ""
 	}
-	label := LabelNeutral
-	if e.Enabled() {
-		label = Label(e.Score())
-	}
+	label := Label(e.Score())
 	directive, ok := selfInterestDirectives[label]
 	if !ok {
 		directive = selfInterestDirectives[LabelNeutral]

@@ -1,266 +1,235 @@
 <div align="center">
 
-  <img src="docs/assets/logo.png" alt="Memo Logo" width="160"/>
+  <img src="docs/assets/logo.png" alt="Memo Logo" width="120"/>
 
   <h1>Memo</h1>
-
-  <h3>Alışkanlıklarını öğrenen ve sen sormadan<br>harekete geçen yapay zeka asistanı.</h3>
-
-  <p>
-    <sub>Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamamen çevrimdışı</sub>
-  </p>
+  <p><b>Alışkanlıklarını öğrenen ve sen sormadan harekete geçen yapay zeka asistanı.</b></p>
+  <p>Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamamen çevrimdışı</p>
 
   <br/>
 
   <a href="https://memo.bugradev.com">
-    <img src="https://img.shields.io/badge/⬇_İndir-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="İndir"/>
+    <img src="https://img.shields.io/badge/⬇_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="İndir"/>
   </a>
   &nbsp;
   <a href="https://github.com/BugraAkdemir/memo/stargazers">
-    <img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Yıldız"/>
+    <img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57" alt="Yıldız"/>
   </a>
   &nbsp;
-  <img src="https://img.shields.io/badge/Lisans-AGPL_v3-0a0a0a?style=for-the-badge" alt="Lisans"/>
+  <img src="https://img.shields.io/badge/Lisans-AGPL_v3-blue?style=for-the-badge" alt="Lisans"/>
   &nbsp;
-  <img src="https://img.shields.io/badge/Sürüm-v3.1.0_beta-B08D57?style=for-the-badge" alt="Sürüm"/>
+  <img src="https://img.shields.io/badge/Sürüm-v3.1.0_beta-blue?style=for-the-badge" alt="Sürüm"/>
 
   <br/><br/>
 
   <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go" alt="Go"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=flat-square&logo=flutter" alt="Flutter"/>
-  <img src="https://img.shields.io/badge/llama.cpp-gömülü-F08705?style=flat-square" alt="llama.cpp"/>
-  <img src="https://img.shields.io/badge/RAG-SQLite_+_vec0-0F9D58?style=flat-square" alt="RAG"/>
+  <img src="https://img.shields.io/badge/llama.cpp-gömülü-orange?style=flat-square" alt="llama.cpp"/>
+  <img src="https://img.shields.io/badge/RAG-SQLite_vec0-green?style=flat-square" alt="RAG"/>
   <img src="https://img.shields.io/badge/WhatsApp-entegre-25D366?style=flat-square&logo=whatsapp" alt="WhatsApp"/>
-  <img src="https://img.shields.io/badge/Platform-Linux_|_Windows-6e6e6e?style=flat-square" alt="Platform"/>
-  <img src="https://img.shields.io/badge/CI-geçiyor-0F9D58?style=flat-square&logo=githubactions" alt="CI"/>
+  <img src="https://img.shields.io/badge/Platform-Linux_|_Windows-lightgrey?style=flat-square" alt="Platform"/>
+  <img src="https://img.shields.io/badge/CI-geçiyor-success?style=flat-square&logo=githubactions" alt="CI"/>
 
 </div>
 
 ---
 
-## Memo Neden Farklı
+## Memo Nedir — ve Neden Farklı
 
-Çoğu yapay zeka asistanı bir modele bağlı basit bir metin kutusundan ibarettir. Sen yazarsın, o yanıtlar. Sohbet biter. Hiçbir şey kalıcı olmaz, hiçbir şey öğrenilmez, hiçbir şey harekete geçmez.
+Bugün piyasadaki her yapay zeka asistanı temelde aynı ürün: bir modele bağlı bir metin kutusu. Sen yazarsın, o kelimeler döndürür. Sohbet biter. Hiçbir şey kalıcı olmaz. Hiçbir şey öğrenilmez. Hiçbir şey aksiyon almaz.
 
-Memo bu kalıbı kırar.
+Memo bu kalıbı üç şekilde kırar.
 
-<table>
-<tr>
-<td align="center" width="33%">
-  <h3>🧠 Hatırlar</h3>
-  <p>Her konuşma yerel bir vektör veritabanına işlenir. Haftalar sonra bile Memo ne konuştuğunuzu hatırlar — bulut gerekmez.</p>
-  <sub><a href="#-rag-hafıza">Detay →</a></sub>
-</td>
-<td align="center" width="33%">
-  <h3>📊 Öğrenir</h3>
-  <p>Arka plandaki gözlemci aktivite ritimlerini tespit eder. Bir hafta sonra Memo ne zaman kod yazdığını, planlama yaptığını bilir — ve öngörmeye başlar.</p>
-  <sub><a href="#-proaktif-öğrenme-motoru">Detay →</a></sub>
-</td>
-<td align="center" width="33%">
-  <h3>⚡ Harekete Geçer</h3>
-  <p>8 gerçek araçlı ajan motoru: dosya oku/yaz, komut çalıştır, web'de ara, WhatsApp'tan mesaj gönder. Hepsi sandbox içinde, hepsi izin kontrollü.</p>
-  <sub><a href="#-ajan-motoru">Detay →</a></sub>
-</td>
-</tr>
-</table>
+**Birincisi, hatırlar.** Perde arkasında, her konuşma yerel bir vektör veritabanına beslenir — sqlite-vec ile güçlendirilmiş, ANN (yaklaşık en yakın komşu) araması yapabilen bir SQLite örneği. Memo ile konuştuğunda, sadece son mesajını okumakla kalmaz. Haftalar veya aylar öncesinden anlamsal olarak alakalı konuşma parçalarını çeker ve sistem prompt'una enjekte eder. Üç hafta önce tartıştığın bir projeden bahsedersin, Memo bağlamı zaten bilir. Bir takip sorusu sorarsın, geçen sefer ne karar verdiğinizi hatırlar. Bu, tamamen senin makinen üzerinde çalışan Retrieval-Augmented Generation (RAG) — bulut vektör veritabanı yok, Pinecone yok, embedding API'si yok. Sadece SQLite ve senin GPU'n.
 
-> **Bu bir chatbot değil. İzleyen, hatırlayan, öğrenen ve harekete geçen bir asistan — hepsi senin donanımında, sıfır telemetri ile.**
+**İkincisi, alışkanlıklarını öğrenir.** Memo'nun arka planda çalışan bir gözlemci alt sistemi vardır — ne söylediğini değil, *ne zaman* aktif olduğunu izler. Her mesaj etkileşimi zaman damgası ve aktivite türüyle kaydedilir. Yaklaşık bir hafta sonra, dairesel istatistik analizcisi ritimleri tespit etmeye başlar: her akşam 21:00'da kod yazıyorsun, pazartesi sabahları planlama yapıyorsun, 15:00 civarı mola veriyorsun. Bu gözlemler güven skorlu pattern'ler oluşturur. Güven eşiği aştığında, proaktif motor bir LLM'e danışır (Memo'nun çoklu model koordinatörü Orchestra aracılığıyla) ve ne yapacağına karar verir: sohbette bir şey öner, telefonuna bildirim gönder veya — yüksek güvende — ajanı otonom olarak başlat. Zayıflayan pattern'ler unutulur. Açıkça reddettiğin pattern'ler anında silinir. Tüm sistem isteğe bağlı ve şeffaftır. Dışarı hiçbir şey gönderilmez; gözlemci sadece konu etiketlerini ve kelime sayılarını saklar, asla ham mesaj metnini değil.
+
+**Üçüncüsü, harekete geçebilir.** Memo sadece bir sohbet arkadaşı değildir. Ajan motoru ona gerçek araçlar verir — sistemindeki dosyaları okumak ve yazmak, shell komutları çalıştırmak, web'de arama yapmak, WhatsApp ile etkileşime girmek. Bu araçlar yol doğrulaması, symlink koruması, komut kara listesi ve 6-politikalı izin sistemi olan bir sandbox içinde çalışır. Ajan bir şeye dokunmadan önce, sen onaylar veya reddedersin — bir kereliğine, bu oturum için veya kalıcı olarak. Ajan pipeline'ı araç çağrısı başına 60 saniye zaman aşımı ve maksimum 20 iterasyon uygular, böylece sonsuza kadar döngüye giremez veya takılı kalmaz. İzin modeli kalıcı olduğu için, her araç-bağlam için sadece bir kez karar vermen gerekir.
+
+Sonuç: sadece konuşmayan bir asistan. İzler, hatırlar, öğrenir ve yapar — hepsi senin donanımında, sıfır telemetri ile.
 
 ---
 
-## Özellikler
+## Kullanıcı Deneyimi
+
+Memo'yu indiriyorsun. Tek bir kurulum dosyası — Docker yok, Python ortamı yok, PATH ayarı yok. llama.cpp binary'nin içinde gömülü. Başlatıyorsun.
+
+İlk gördüğün şey bir kurulum sihirbazı — dilini seç, tema seç, kişilik seç. Altı hazır seçenek (Rahat, Resmi, Teknik, Yaratıcı, Eğlenceli, Kanka) ya da kendi sistem prompt'unu yaz. Otuz saniye ve bitti.
+
+Sonra bir launchpad beliriyor — her bölümün ne yaptığını açıklayan beş kart. Sohbet. Ajan. Orkestra. WhatsApp. Takvim. Her kartta pazarlama sloganı değil, gerçek bir açıklama var. Birine dokun ve git. 4 adımlı bir spotlight turu, navigasyon ikonlarını tek tek ışıklandırarak gezdiriyor, "Geç" butonu her zaman görünür durumda. Ondan sonra, sen istemedikçe bir daha asla görünmez.
+
+Model Mağazası'nı açıyorsun. Gerçek RAM ve VRAM'ine göre hesaplanmış donanım uygunluk rozetleriyle küratörlü modeller gösteriyor — statik bir uyumluluk listesinden değil. "Cihazına uygun — GPU'da hızlı" ya da "CPU'da çalışır" ya da "Çok büyük — belleğe sığmayabilir" görüyorsun. Birini seç, indir'e tıkla, bitince Başlat'a bas. Alt çubuk çalıştığını gösteriyor.
+
+"Merhaba" yazıyorsun. Memo Türkçe yanıtlıyor çünkü öyle yazdın. Sohbetin ortasında İngilizceye geçiyorsun, o da geçiyor. Bir kod dosyası ekliyorsun — okuyor ve inceliyor. Bir görsel yüklüyorsun — ne gördüğünü açıklıyor (modelin görüntü desteği varsa). Üst çubuktaki web arama düğmesini açıyorsun ve birden her yanıt DuckDuckGo'dan taze sonuçlarla zenginleşiyor — API anahtarı yok, yapılandırma yok.
+
+Memo'yu iki haftadır kullanıyorsun. Bir pazartesi sabahı açıyorsun. Sen bir şey yazmadan önce diyor ki: "Pazartesi planlaması yapalım mı? Geçen hafta şu projeye başlamıştın." Pazartesi sabahlarının senin planlama zamanın olduğunu öğrendi. Projeyi hatırladı. Önerdi, varsaymadı. Kabul edebilir, reddedebilir ya da bir daha asla önerme diyebilirsin.
+
+Memo bu. Bir chatbot değil. Adının hakkını veren bir asistan.
+
+---
+
+## Her Özellik, Detaylıca
 
 ### 💬 Sohbet
 
-<table>
-<tr>
-<td width="65%">
+Sohbet, her şeyin bir araya geldiği yer. Token-token akan çok turlu konuşmalar. Tam markdown render — sözdizimi vurgulu kod blokları, tablolar, listeler, kalın, italik. Görsel ekleyebilirsin (modelin görüntü desteği varsa görür) ve dosya ekleyebilirsin (metin dosyaları, PDF'ler, kod). Üstteki gizli mod düğmesi, hiçbir şeyin oturum dosyasına kaydedilmediği, RAG hafızası için indekslenmediği ve öğrenme motoru tarafından gözlemlenmediği bir moda geçirir. Web arama düğmesi her mesajı canlı DuckDuckGo sonuçlarıyla zenginleştirir — sonuçlar model yanıt vermeden önce sistem bağlamına enjekte edilir. WhatsApp modu düğmesi, aynı arayüz üzerinden WhatsApp hesabınla sohbet etmeni sağlar.
 
-Token-token akan yanıtlar. Tam Markdown desteği — sözdizimi vurgulu kod blokları, tablolar, görseller. Dosya (metin, PDF, kod) ve görsel eki (görüntü destekli modeller görebilir). Gizli mod sıfır iz bırakır. Web arama düğmesi her yanıtı canlı DuckDuckGo sonuçlarıyla zenginleştirir. WhatsApp modu aynı arayüzden WhatsApp hesabınla sohbet etmeni sağlar.
+Üst çubuk, mevcut modu açıklayıcı rozetlerle gösterir — gizli mod aktifken "Gizli Mod", ajan sohbeti aktifken "Agent", WhatsApp modu açıkken "WhatsApp". Her rozetin üzerine gelince ne yaptığını açıklayan bir tooltip çıkar.
 
-`/` yazınca slash-komut paleti. Mikrofona basılı tutarak cihaz üzerinde whisper.cpp ile sesli giriş. Mesajları düzenle veya sil — bağlam buna göre güncellenir. Tek tıkla Markdown olarak dışa aktar.
+Mesaj kutusu bir metin alanından fazlasıdır. `/` yazınca Phosphor ikonlu bir slash-komut paleti açılır. Mikrofon düğmesine basılı tutup konuş, whisper.cpp ile sesin metne çevrilsin. Dosya ekle butonu ile dosya gönder. Taslağın, sohbet değiştirsen bile hatırlanır.
 
-</td>
-<td align="center" width="35%">
-  <img src="docs/assets/screen/chatscreen.png" alt="Sohbet Ekranı" width="100%"/>
-</td>
-</tr>
-</table>
+Mesajlar düzenlenebilir ve silinebilir. Senin söylediğini veya modelin söylediğini değiştirebilirsin, konuşma bağlamı buna göre güncellenir. Tek tıkla herhangi bir sohbeti markdown dosyası olarak dışa aktar.
 
----
+Gönderdiğin her mesaj aynı anda dört sisteme beslenir: RAG hafıza indeksleyicisi, proaktif gözlemci, niyet çıkarıcı (takvim etkinlikleri için) ve — eğer açıksa — stokastik duygu motoru.
 
 ### 🧠 RAG Hafıza
 
-<table>
-<tr>
-<td width="65%">
+Çoğu yapay zeka aracının hafızası bir japon balığı gibidir. Her sohbet sıfırdan başlar. Memo'nun hafıza sistemi bunu değiştirir.
 
-Her kullanıcı+asistan mesajlaşması, yerel bir embedding modeliyle 768 boyutlu vektöre dönüştürülür ve sqlite-vec ANN indekslemeli SQLite'da saklanır. Yeni bir soru sorduğunda, Memo anlamsal olarak en yakın geçmiş konuşmaları getirir ve sistem prompt'una enjekte eder — böylece modelin bağlamı zaten hazırdır.
+Sen ve Memo mesajlaştığınızda, konuşma çifti (senin mesajın + verilen yanıt) 768 boyutlu bir vektöre dönüştürülür. Bu dönüşüm, yerel bir embedding modeli (varsayılan olarak Nomic Embed v1.5, ama herhangi bir embedding modeli çalışır) tarafından yapılır. Vektör, sqlite-vec eklentisiyle ANN indeksleme yapabilen bir SQLite veritabanında saklanır. Bu sayede, binlerce saklanmış etkileşim arasından bile, gelecekteki sorgulara anlamsal olarak en yakın geçmiş konuşmalar milisaniyeler içinde bulunur.
 
-Pinecone yok. Embedding API'si yok. Bulut vektör veritabanı yok. Sadece SQLite ve senin GPU'n.
+Yeni bir soru sorduğunda, Memo kosinüs benzerliğine göre en alakalı geçmiş konuşmaları getirir, yapılandırılmış bir hafıza bloğu halinde formatlar ve model yanıt vermeden önce sistem prompt'una enjekte eder. Model şöyle bir şey görür:
 
-</td>
-<td align="center" width="35%">
-  <img src="docs/assets/screen/setting-sc.png" alt="Hafıza Ayarları" width="100%"/>
-</td>
-</tr>
-</table>
+```
+Below are relevant memories from your past conversations with Buğra:
 
----
+[Memory 1 | Relevance: 85%]
+User: Kullanıcılar tablosunun şeması neydi?
+Assistant: Kullanıcılar tablosunda id, email, isim, created_at sütunları var...
+```
+
+Modelin artık bağlamı var. Kendini tekrar etmene gerek yok. Geçen hafta tartıştığın şemayı zaten biliyor.
+
+Hafıza Ayarlar'dan yönetilebilir — top-K (kaç hafıza getirileceği) ve minimum benzerlik (alaka eşiği) ayarlanabilir. Tüm saklanan hafıza dosyaları görüntülenebilir, içerikleri incelenebilir, tek tek veya topluca silinebilir. Hafıza istenildiği zaman açılıp kapatılabilir.
 
 ### 🤖 Ajan Motoru
 
-<table>
-<tr>
-<td width="60%">
+Ajan, Memo'nun "konuşmak"tan "yapmak"a geçtiği yer.
 
-Ajan <em>konuşmaktan</em> <em>yapmaya</em> geçiştir. Bir proje klasörü seç, ajan dosyaları okusun, yazsın, düzenlesin, silsin; dizinleri listelesin; shell komutu çalıştırsın; web'de arama yapsın. 8 yerleşik araç; yol doğrulaması, symlink koruması ve komut kara listesi olan bir sandbox içinde çalışır.
+Bir proje klasörü seçerek ajan sohbeti başlatıyorsun. Ajan artık dosyalarını görebilir, okuyabilir, yazabilir, o klasör içinde komut çalıştırabilir ve web'de arama yapabilir. 8 yerleşik aracı var:
 
-Her araç çağrısı izin diyaloğu tetikler — bir kereliğine, oturum boyunca veya kalıcı olarak izin ver veya reddet. Pipeline başına 20 iterasyon, araç başına 60sn zaman aşımı. İstediğin an iptal et.
+- `read_file` — projedeki herhangi bir dosyayı okur
+- `write_file` — dosya oluşturur veya üzerine yazar (yedekli)
+- `edit_file` — dosyada hedefli metin değişikliği yapar (yedekli)
+- `delete_file` — dosya veya dizin siler
+- `list_directory` — klasör içeriğini listeler
+- `run_command` — proje dizini içinde shell komutu çalıştırır (`rm -rf /`, `sudo`, `mkfs`, `shutdown`, fork bomb'ları ve benzeri tehlikeli komutları engelleyen kara liste ile)
+- `web_search` — DuckDuckGo'da canlı bilgi arar
+- `search_files` — dosya sisteminde pattern'e uyan dosyaları bulur
 
-<details>
-<summary>🎬 <b>Demoyu izle</b></summary>
-<br/>
-<video src="docs/assets/videos/agent.mp4" controls width="100%"></video>
-</details>
+Her araç çağrısı bir izin diyaloğu tetikler. Ajanın tam olarak ne yapmak istediğini görürsün — araç adı, argümanlar ve işlem tehlikeliyse bir uyarı. Bir kereliğine, oturum boyunca veya kalıcı olarak izin verebilir veya reddedebilirsin. Reddedilen pattern'ler hatırlanır, böylece ajan neye dokunmasını istemediğini öğrenir. İzin sistemi 6 politikalıdır ve sürekli onay istemeden hassas kontrol sağlar.
 
-</td>
-<td align="center" width="40%">
-  <img src="docs/assets/screen/agent-sc.png" alt="Ajan Ekranı" width="100%"/>
-</td>
-</tr>
-</table>
+Ajan pipeline'ı 20 iterasyona kadar çalışır: model bir araç çağırmaya karar verir → sen onaylarsın → araç çalışır → sonuç modele geri beslenir → model bir sonraki adıma karar verir veya nihai yanıtı döndürür. Her araç 60 saniye zaman aşımına sahiptir. Model döngüye girerse veya takılırsa, iterasyon limiti durdurur. Akışı iptal edersen, çalışan tüm araçlar context iptali ile hemen durur.
 
----
+Sandbox her dosya yolunu doğrular. Sınırları kontrol etmeden önce symlink'leri çözümler — böylece projenin içinde `/etc/`'ye işaret eden bir symlink kabul edilmez. Windows case-insensitive yollar doğru işlenir. Korumalı sistem yolları (`/etc/`, `/proc/`, `/sys/`, `/dev/` ve platforma özgü yollar) yazma ve silme işlemleri için engellenir.
 
-### 🎵 Orkestra — Çoklu Model
+Sohbet arayüzünde, ajan eylemleri ham JSON yığınları olarak değil, temiz, animasyonlu bir durum çizgisi olarak görünür. Araç çalışırken "Dosya işleniyor..." yazar, bitince "Dosya tamam ✅". Tamamlanan işlemler `[Dosya okudu 120ms]` gibi kompakt rozetler halinde görünür. Ajan deneyimi Claude Code veya Cursor benzeridir — minimal, bilgilendirici, asla teknik gürültü değil.
 
-<table>
-<tr>
-<td width="65%">
+### 🎵 Orkestra — Çoklu Model İş Akışı
 
-Bir Şef model karmaşık görevleri analiz eder, 8 uzman role dağıtır (Planlayıcı, Ön Yüz, Arka Yüz, Hata Düzeltici, Gözden Geçirici, Güvenlik Denetçisi, DevOps, Genel Uzman) ve sonuçları sentezler. Her role farklı sağlayıcı ve model ata — mantık için Claude, hız için Gemini, kod üretimi için yerel llama.cpp.
+Tek bir model iyidir. Birden fazla modelin ekip olarak çalışması daha iyidir.
 
-Bağımsız roller paralel çalışır. Orkestra + Ajan = Şef planlar, Ajan adım adım uygular.
+Orkestra, Memo'nun çoklu model koordinasyon sistemidir. Karmaşık bir istek gönderdiğinde, bir Şef model (yapılandırılabilir — herhangi bir sağlayıcı ve model olabilir) görevi analiz eder ve alt görevlere ayırır. Her alt görev bir uzman role atanır:
 
-</td>
-<td align="center" width="35%">
+- **Planlayıcı** — gereksinimleri yapılandırılmış uygulama planlarına dönüştürür
+- **Ön Yüz** — UI, stil, kullanıcıya dönük kod
+- **Arka Yüz** — sunucu mantığı, API'ler, veritabanı sorguları
+- **Hata Düzeltici** — verilen koddaki hataları bulur ve düzeltir
+- **Gözden Geçirici** — kodu hatalar, stil ve doğruluk açısından inceler
+- **Güvenlik Denetçisi** — güvenlik açıklarını kontrol eder
+- **DevOps** — CI/CD, Docker, altyapı yapılandırması
+- **Genel Uzman** — diğer rollere uymayan her şeyi halleder
 
-| Rol | En İyisi |
-|-----|----------|
-| Planlayıcı | Yapılandırılmış plan |
-| Ön Yüz | UI, stil |
-| Arka Yüz | API, veritabanı |
-| Gözden Geçirici | Kod kalitesi |
-| Güvenlik | Açık taraması |
-| DevOps | CI/CD, Docker |
-| Hata Düzeltici | Hata ayıklama |
-| Genel Uzman | Diğer her şey |
+Her role farklı sağlayıcılar ve modeller atayabilirsin. Mantıksal çıkarım için Claude, hızlı arama için Gemini, hız için Groq, kod üretimi için yerel llama.cpp modelin. Orchestra yapılandırma ekranı bunu kolaylaştırır — tek tıkla Şef'e ve tüm açık rollere bir model ata ya da her rolü ayrı ayrı yapılandır.
 
-</td>
-</tr>
-</table>
+Bağımsız roller paralel çalışır. Her uzmanın işini tamamlamasını gerçek zamanlı görürsün. Şef model tüm çıktıları tek, tutarlı bir yanıtta sentezler. Paralel yürütme, sırayla 3 dakika sürecek bir görevin saniyeler içinde bitmesini sağlar.
 
----
+Orkestra, Ajan ile birlikte de çalışabilir. İkisi de etkinken: önce Şef planlar, sonra Ajan planı adım adım uygular — dosyaları okur, kod yazar, komut çalıştırır — ve Şef sonuçları gözden geçirip nihai yanıtı sentezler. İki sistemin en iyi yanları: Orkestra'dan üst düzey strateji, Ajan'dan alt düzey uygulama.
 
 ### 📱 WhatsApp Entegrasyonu
 
-<table>
-<tr>
-<td width="60%">
+Memo, WhatsApp hesabına çoklu cihaz Web API'si üzerinden bağlanır — WhatsApp Web'in kullandığı protokolün aynısı. WhatsApp Business API ücreti yok. Telefon numarası kaydı yok. Sadece bir QR kod okut ve bağlan.
 
-QR kod ile bağlan — WhatsApp Web ile aynı protokol. Business API ücreti yok. Eşleştikten sonra: mesajları oku, geçmişte ara, yanıtla — hepsi Memo içinden. Profil fotoğrafları önbelleklenir, arayüz Memo'nun bronz temasına uyar.
+Eşleştikten sonra, sohbet listen Memo'nun WhatsApp sekmesinde belirir. Mesajları okuyabilir, tüm sohbet geçmişinde arama yapabilir ve yanıt gönderebilirsin. Sohbet arayüzü Memo'nun kendi temasına uyar — bronz aksan, panel renkleri, ana sohbetle aynı stilde mesaj baloncukları. Profil fotoğrafları çekilir ve önbelleklenir, tam çözünürlüklü avatarlar için indirme butonlu büyütme diyaloğu vardır.
 
-Ajan WhatsApp'tan mesaj gönderebilir, konuşmalarda arama yapabilir, kişi adlarını çözümleyebilir — "Berra'ya mesaj at" de, JID bilmene gerek yok. WhatsApp mesajları RAG hafızaya, proaktif gözlemciye ve takvim niyet çıkarıcısına beslenir.
+WhatsApp entegrasyonu bir sohbet istemcisinden daha derindir. Ajan, araçları aracılığıyla WhatsApp'a erişebilir — `whatsapp_send` ile mesaj gönderme, `whatsapp_search` ile mesaj arama, `whatsapp_latest` ile son konuşmaları listeleme. "Berra'ya mesaj at" diyebilirsin ve Memo kişi adını otomatik çözümler, JID bilmene gerek kalmaz.
 
-<details>
-<summary>🎬 <b>Demoyu izle</b></summary>
-<br/>
-<video src="docs/assets/videos/whats-my-name.mp4" controls width="100%"></video>
-</details>
+WhatsApp mesajları, normal sohbetle aynı sistemlere beslenir: RAG hafıza indeksleyicisi, proaktif gözlemci, niyet çıkarıcı ve duygu motoru. Bir arkadaşın "kanka cuma akşamı sinema" der ve Memo niyeti tespit eder, takvim etkinliği oluşturur ve sonra sana hatırlatır.
 
-</td>
-<td align="center" width="40%">
-  <img src="docs/assets/screen/whatsaap-qr-sc.png" alt="WhatsApp QR" width="100%"/>
-</td>
-</tr>
-</table>
+Yeniden bağlanma otomatiktir. Daha önce eşleştirdiysen ve uygulamayı yeniden başlattıysan, WhatsApp hiçbir şeye tıklamana gerek kalmadan yeniden bağlanır — doğrudan sohbet listesine düşersin. Backend, bağlantı kopmalarını exponential backoff, yeniden bağlanma deneme sınırı ve 5 saniyelik logout zaman aşımı ile yönetir; böylece dengesiz bir ağ uygulamayı asla kilitlemez.
 
----
+### 📅 Takvim
 
-### 📅 Akıllı Takvim
+Memo'nun takvimi, elle doldurduğun ayrı bir araç değildir. Konuşmalarını izleyen ve zamana bağlı plan ve taahhütleri çıkaran otomatik bir yakalama sistemidir.
 
-<table>
-<tr>
-<td width="60%">
+Niyet çıkarım pipeline'ı iki aşamalı çalışır. Önce, hızlı bir anahtar kelime filtresi her mesajı tarar — "yarın", "salı", "haftaya", "saat", sayısal zamanlar ve hem Türkçe hem İngilizce tarih kalıplarını arar. Sadece eşleşen mesajlar ikinci aşamaya gönderilir: doğal dili yapılandırılmış etkinlik verisine (başlık, tarih, saat, kaynak, kişi adı) dönüştüren bir LLM. Sıradan sohbet asla LLM çağrısı tetiklemez, böylece performans etkisi olmaz.
 
-Elle doldurduğun bir takvim değil — otomatik yakalama sistemi. İki aşamalı niyet pipeline'ı: hızlı anahtar kelime filtresi her mesajı zaman kalıpları için tarar ("yarın", "salı", "saat 3'te"), sadece eşleşen mesajlar yapılandırılmış etkinlik çıkarımı için LLM'e gönderilir.
+Bir niyet tespit edildiğinde, yerleşik takvim SQLite veritabanında bir etkinlik oluşturulur. Arayüz, etkinlik olan günlerde noktalı bir aylık ızgara görünümü gösterir. Bir güne dokunarak etkinlikleri görebilir, manuel etkinlik ekleyebilir veya silebilirsin. Takvim her 20 saniyede bir otomatik yenilenir, böylece sohbetten veya WhatsApp'tan eklenen etkinlikler yeniden başlatmadan görünür.
 
-Masaüstü ve mobilde hatırlatmalar. Emin olunamayan etkinlikler ("belki yarın?") → belirsizlik etkinliği, tek tıkla onayla/sil. Aynı hatırlatmanın iki kez tetiklenmesini atomik SQL transaction'ı engeller.
+Bir hatırlatma döngüsü her dakika yaklaşan etkinlikleri kontrol eder. Bir etkinlik yapılandırılan süre içindeyse (10 dakika ile 2 saat arası, Ayarlar'dan ayarlanabilir), masaüstünde ve mobilde uygulama olay sistemi üzerinden bir bildirim tetiklenir. `ClaimPendingReminders` metodu, aynı hatırlatmanın iki kez tetiklenmesini önlemek için atomik bir SQL transaction'ı kullanır.
 
-<details>
-<summary>🎬 <b>Demoyu izle</b></summary>
-<br/>
-<video src="docs/assets/videos/calendar.mp4" controls width="100%"></video>
-</details>
-
-</td>
-<td align="center" width="40%">
-  <img src="docs/assets/screen/clander-dc.png" alt="Takvim" width="100%"/>
-</td>
-</tr>
-</table>
-
----
+Memo bir etkinlikten emin değilse — örneğin, "belki yarın buluşalım" dediysen — bir iptal belirsizliği etkinliği oluşturur. Arayüz bunu bir uyarıyla gösterir ve tek tıkla onaylayabilir veya silebilirsin. Ayarlar'dan zaman tahmini özelliğini tamamen kapatabilir, sadece açıkça zamanlanmış etkinlikleri isteyebilirsin.
 
 ### 🧠 Proaktif Öğrenme Motoru
 
-Memo <em>sana gelen</em> tek yapay zeka asistanıdır. Gözlemci <strong>ne zaman</strong> aktif olduğunu izler — ne söylediğini değil. Dairesel (yönlü) istatistik ritimleri tespit eder: "Pazartesi sabahları 9-10, planlama" veya "Her gün 21-23, kodlama."
+Memo, sana gelen tek yapay zeka asistanıdır. Ona bir şey sormayı hatırlamak zorunda değilsin.
 
-Güven eşiği aşıldığında, proaktif motor bir LLM'e danışır ve karar verir: yararlı bir şey öner, bildirim gönder veya (yüksek güvende) ajanı otomatik başlat. İsteğe bağlı, şeffaf ve zayıflayan pattern'ler unutulur. Sadece konu etiketleri ve kelime sayıları saklanır — asla ham mesaj metni değil.
+Gözlemci alt sistemi aktivite pattern'lerini takip eder — Memo'yu *ne zaman* kullandığını, ne söylediğini değil. Her mesaj etkileşimi zaman damgası ve aktivite türüyle kaydedilir. Bir dairesel istatistik analizcisi bu veriyi periyodik olarak işler, istatistiksel olarak anlamlı pattern'ler arar: "Pazartesi sabahları 9-10 arası, planlama aktivitesi" veya "Her gün 21:00-23:00 arası, kodlama aktivitesi."
 
-<details>
-<summary>🎬 <b>Demoyu izle</b></summary>
-<br/>
-<video src="docs/assets/videos/moods-and-ozcıkar.mp4" controls width="100%"></video>
-</details>
+Bunun arkasındaki matematik, saat zamanına uygulanan dairesel (yönlü) istatistiktir — zamanı 23:59 ve 00:01'in bitişik olduğu, 24 saat arayla olmadığı bir daire olarak ele alır. Bu, doğrusal zaman analizinden daha doğru pattern tespiti sağlar. Pattern'ler üç faktörden hesaplanan güven skorlarına sahiptir: tutarlılık (pattern'in ne kadar düzenli olduğu), sıklık (ne sıklıkta gerçekleştiği) ve güncellik (en son ne zaman gözlemlendiği).
 
----
+Bir pattern'in güveni eşiği aştığında, proaktif motor bir Şef LLM'e danışır (Orchestra aracılığıyla) — mevcut zaman, eşleşen pattern ve neler olduğuna dair bağlam ile. Şef karar verir: yararlı bir şey öner, kullanıcının telefonuna bildirim gönder veya yüksek güvende, ajanı otomatik başlatarak bir şey yap.
+
+Sistemin katı güvenlik kuralları vardır. Açıkça izin vermeden asla işlem yapmaz. Tüm öğrenilen pattern'leri Ayarlar → Öğrenme'den görüntüleyebilir ve tek tıkla unutabilirsin. Kullanılmadığı için zayıflayan pattern'ler otomatik olarak unutulur. Gözlem katmanı sadece konu etiketlerini ve kelime sayılarını saklar — konuşmalarının ham metni asla.
 
 ### 🏪 Model Mağazası
 
-<table>
-<tr>
-<td width="65%">
+Doğru yapay zeka modelini bulmak ve indirmek genellikle HuggingFace repo'ları, şifreli dosya adları ve donanımının kaldırıp kaldıramayacağına dair tahmin labirentidir. Memo'nun Model Mağazası tüm bunları düzeltir.
 
-Gerçek RAM ve VRAM'ine göre hesaplanmış <strong>donanım uygunluk rozetli</strong> küratörlü modeller — statik liste değil. "Cihazına uygun — GPU'da hızlı" ya da "CPU'da çalışır" ya da "Çok büyük."
+Keşfet sekmesi, temiz iki panelli düzenle küratörlü, resmi olarak yayınlanmış modeller gösterir: solda model listesi, sağda zengin detay görünümü. Her model, onu yapan şirketin gerçek logosunu gösterir (Google, Microsoft, Qwen/Alibaba, nomic ve diğerleri) — HuggingFace'ten otomatik çekilir. Modeller boyuta (1-8B, 8-14B, 14B+) ve yeteneğe (Araç, Görüntü, Kod) göre filtrelenebilir.
 
-Ham quantization kodları yerine sade dilde kalite etiketleri: "Dengeli kalite" (Q4_K_M), "Yüksek kalite" (Q5_K_M). HuggingFace'ten otomatik çekilen gerçek şirket logoları. Boyuta (1-8B, 8-14B, 14B+) ve yeteneğe (Araç, Görüntü, Kod) göre filtrele. Gerçek zamanlı ilerlemeyle indir, iptal edilebilir. Tek tıkla Başlat GPU offloading'i otomatik yapılandırır.
+Donanım uygunluk rozeti öldürücü özelliktir. Memo başladığında, GPU'unu tespit eder (NVIDIA için nvidia-smi, AMD için rocm-smi ve sysfs, ya da sadece CPU) ve mevcut VRAM ile RAM'i ölçer. Her modelin her indirme seçeneği, senin gerçek donanımına göre değerlendirilir ve net bir rozetle gösterilir: "Cihazına uygun — GPU'da hızlı" ya da "CPU'da çalışır" ya da "Çok büyük — belleğe sığmayabilir." Artık 14B'lik bir model indirip 8GB kartının kaldıramadığını sonradan öğrenmek yok.
 
-</td>
-<td align="center" width="35%">
-  <img src="docs/assets/screen/models-discorver-sc.png" alt="Model Mağazası Keşfet" width="100%"/>
-  <br/>
-  <img src="docs/assets/screen/models-my-sc.png" alt="Modellerim" width="100%"/>
-</td>
-</tr>
-</table>
+İndirme seçenekleri ham quantization kodları yerine sade dilde kalite etiketleri kullanır: `Q4_K_M` yerine "Dengeli kalite", `Q5_K_M` yerine "Yüksek kalite", `Q2_K` yerine "En küçük boyut". Detay paneli modelin HuggingFace'teki tam README'sini, yetenek etiketlerini (Araç Kullanımı, Görüntü, Kod), parametre sayısını, mimarisini ve "Bu yazardan daha fazlası" önerilerini gösterir.
 
----
+İndirme sırasında ilerleme gerçek zamanlı akar. İndirmeler iptal edilebilir. Tamamlandığında, içe aktarılan modeller Modellerim'de görünür. Başlat düğmesi, tespit edilen motor moduna göre GPU offloading ile llama-server'ı otomatik yapılandırır ve başlatır — `-ngl`'nin ne olduğunu bilmene gerek yoktur.
 
 ### 🔌 8 Sağlayıcı, Tek Arayüz
 
-OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama ve herhangi bir yerel llama.cpp sunucusu.
+Memo yerel modellerle, bulut API'leriyle veya ikisiyle aynı anda çalışır. Sekiz sağlayıcı türü desteklenir:
 
-**Production-grade sağlayıcı sistemi:** hatada otomatik yedekleme, 3 ardışık hatada otomatik devre dışı bırakma, 5 dakikada bir arka plan sağlık kontrolü, sohbet ortasında `/model` ile canlı sağlayıcı değiştirme. Model başına yapılandırılabilir bağlam penceresi. API anahtarları makinede üretilen rastgele anahtarla AES-256-GCM şifreli.
+OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama ve herhangi bir yerel llama.cpp sunucusu. Her sağlayıcı bir API anahtarı (makinede üretilen rastgele anahtarla AES-256-GCM şifreli) ve bir model seçimi ile yapılandırılır. Birden fazla sağlayıcı aynı anda etkinleştirilebilir ve öncelik sıralı yedek zinciri ile çalışır.
 
----
+Sağlayıcı sistemini production-grade yapan şey: bir sağlayıcı başarısız olursa (rate limit, ağ hatası, API kesintisi), Memo sohbetini bölmeden otomatik olarak bir sonraki etkin sağlayıcıya geçer. Üç ardışık hatadan sonra, sorunlu sağlayıcı zincirleme zaman aşımlarını önlemek için otomatik devre dışı bırakılır. Her 5 dakikada bir arka plan sağlık kontrolü çalışır ve düzelen sağlayıcıları yeniden etkinleştirir. Geçici sorunlar yüzünden sağlayıcıları elle açıp kapatman gerekmez.
 
-### 🎤 Sesli Giriş · ☁️ Bulut Senk. · 🔒 Gizlilik
+Sağlayıcı değiştirme canlıdır. Sohbetin ortasında `/model` yaz, farklı bir sağlayıcı seç ve bağlam kaybetmeden devam et. Sohbet penceresinin altındaki motor çubuğu, hangi sağlayıcının aktif olduğunu gerçek şirket logosu ve yeşil bağlantı noktasıyla gösterir.
 
-- **Sesli Giriş** — cihaz üzerinde whisper.cpp ile konuşma-metne çevrimi. Basılı tut ve konuş. TR/EN otomatik algılama. Ses bilgisayarından asla çıkmaz.
-- **Bulut Senkronizasyonu** — Google Drive'a E2E şifreli yedekleme. AES-256-GCM + PBKDF2 (600K iterasyon). Yüklemeden önce şifrelenir — Google verilerini okuyamaz.
-- **Tasarımı Gereği Gizli** — telemetri yok, analitik yok, çökme raporlaması yok. Yapılandırma dosyaları 0600 izinli. Gizli mod. Gözlemci sadece aktivite zaman damgalarını saklar, mesaj içeriğini asla.
+Model başına bağlam pencereleri yapılandırılabilir. Gemini varsayılan olarak 1M token, Claude 200K, diğerleri 128K — ama spesifik model varyantına uyması için herhangi bir sağlayıcıya herhangi bir pencere atayabilirsin. Bağlam bütçesi (her istekte ne kadar sohbet geçmişinin paketlendiği) sağlayıcı tipini değil, modelin gerçek penceresini takip eder.
+
+### 🎤 Sesli Giriş
+
+Dahili whisper.cpp ile konuşma-metne çevrimi. Mesaj kutusundaki mikrofon düğmesine basılı tut, konuş, bırak — kelimelerin yazıya dökülür ve gönderilir. Tüm işlem cihazında gerçekleşir — ses bilgisayarından asla çıkmaz. Türkçe, İngilizce ve karışık dil girişini otomatik algılar. Whisper modeli ilk kullanımda otomatik indirilir.
+
+### ☁️ Bulut Senkronizasyonu
+
+Cihazlar arası yedekleme isteyen kullanıcılar için Memo, şifreli Google Drive senkronizasyonu destekler. Verilerin (oturumlar, hafıza, ayarlar, sağlayıcı yapılandırmaları, WhatsApp verileri, duygu motoru veritabanı, öğrenme verileri) arşivlenir, parolandan PBKDF2 ile 600.000 iterasyonda türetilen bir anahtarla AES-256-GCM ile şifrelenir ve Google Drive'a yüklenir. Şifreleme yüklemeden önce gerçekleştiği için Google verilerini okuyamaz.
+
+Parola belirlemezsen, Memo `crypto/rand` ile üretilen ve `data/machine.key` dosyasında 0600 izinleriyle saklanan makineye özgü bir anahtar kullanır. Senkronizasyon her N mesajda bir otomatik çalışır (yapılandırılabilir, varsayılan 50) ya da push/pull/tam senkronizasyonu manuel tetikleyebilirsin.
+
+Her şeyi tek bir `.memo` dosyası olarak dışa aktar. Herhangi bir makinede içe aktararak tüm Memo durumunu geri yükle — konuşmalar, hafıza, ayarlar, modeller listesi.
+
+### 🔒 Tasarımı Gereği Gizli
+
+Memo'daki her tasarım kararı şu soruyla başlar: "bunun kullanıcının makinesinden çıkması gerekiyor mu?" Cevap neredeyse her zaman hayırdır.
+
+- Telemetri yok. Analitik yok. Harici servislere çökme raporlaması yok. Memo'nun yaptığı tek ağ istekleri, senin açıkça yapılandırdıklarındır: model API çağrıları, WhatsApp eşleştirmesi, web arama sorguları ve isteğe bağlı bulut senkronizasyonu.
+- Sağlayıcı API anahtarları, makineye özgü rastgele bir anahtarla diskte şifrelenir. Yapılandırma dosyalarında, loglarda veya bellek dökümlerinde asla düz metin olarak görünmez.
+- Yapılandırma ve hassas veri dosyaları 0600 izinleriyle yazılır — sadece dosya sahibi okuyabilir.
+- Gizli mod, sıfır iz bırakan konuşmalar sağlar: oturum dosyası yok, hafıza indeksi yok, gözlem yok.
+- Proaktif gözlemci sadece aktivite türlerini ve zaman damgalarını saklar, mesaj içeriğini değil.
+- WhatsApp mesajları yerel bir SQLite veritabanında saklanır. WhatsApp'ın zaten gördüğünün ötesinde WhatsApp sunucularından hiçbir şey geçmez.
+- Rate limiting, kontrolsüz istemcilere karşı backend'i korur (IP başına saniyede 100 istek, engellemesiz token bucket).
+- 50MB body boyutu sınırı, büyük boyutlu yüklemelerin belleği tüketmesini önler.
 
 ---
 
@@ -270,14 +239,13 @@ OpenAI, Anthropic Claude, Google Gemini, xAI Grok, Groq, OpenRouter, Ollama ve h
 
 | Platform | İndirme | Nasıl |
 |----------|---------|-------|
-| **Windows** | `Memo-Setup.exe` | Kurulumu çalıştır |
+| **Windows** | `Memo-Setup.exe` | Kurulumu çalıştır → bitti |
 | **Linux** | `.AppImage` | `chmod +x` → başlat |
-| **Linux** | `.deb` | `sudo dpkg -i` |
+| **Linux** | `.deb` | `sudo dpkg -i` → bitti |
 
-llama.cpp gömülü gelir. Uygulamayı aç, **Model Mağazası**'na git, bir model seç, sohbete başla.
+llama.cpp gömülü gelir. İlk başlatmada her şey `~/.memo` altına kopyalanır. Uygulamayı aç, **Model Mağazası**'na git, bir model seç, sohbete başla.
 
 <div align="center">
-  <br/>
   <a href="https://memo.bugradev.com">
     <img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="İndir"/>
   </a>
@@ -285,7 +253,6 @@ llama.cpp gömülü gelir. Uygulamayı aç, **Model Mağazası**'na git, bir mod
 
 <details>
 <summary><b>Kaynaktan derleme</b></summary>
-<br/>
 
 **Gereksinimler:** Go 1.26+ · Flutter 3.10+ · SQLite geliştirme kütüphaneleri (CGO için)
 
@@ -293,7 +260,7 @@ llama.cpp gömülü gelir. Uygulamayı aç, **Model Mağazası**'na git, bir mod
 git clone https://github.com/BugraAkdemir/memo.git
 cd memo
 CGO_ENABLED=1 go run . --port 8090          # Backend
-cd frontend && flutter run -d linux          # Frontend
+cd frontend && flutter run -d linux          # Frontend (ayrı terminal)
 ```
 
 Sürüm paketleri:
@@ -308,34 +275,35 @@ Sürüm paketleri:
 ## Mimari
 
 ```
-┌─────────────────────────────────┐    ┌──────────────────────────┐
-│  Flutter Masaüstü                │    │  Flutter Mobil            │
-│  (Linux / Windows)               │    │  (Android / iOS)          │
-│                                  │    │                           │
-│  Sohbet · Ajan · Orkestra        │    │  Sohbet · Bildirimler     │
-│  Ayarlar · Model Mağazası        │    │  Uzak bağlantı            │
-└──────────────┬───────────────────┘    └───────────┬───────────────┘
-               │  REST + SSE (:8090)                 │  LAN / ngrok
-               └──────────────┬──────────────────────┘
+┌─────────────────────────────┐    ┌──────────────────────────┐
+│  Flutter Masaüstü            │    │  Flutter Mobil            │
+│  (Linux / Windows)           │    │  (Android / iOS)          │
+│                              │    │                           │
+│  Sohbet · Ajan · Orkestra    │    │  Sohbet · Bildirimler     │
+│  Ayarlar · Model Mağazası    │    │  Uzak bağlantı            │
+└──────────────┬───────────────┘    └───────────┬───────────────┘
+               │  REST + SSE (:8090)             │  LAN / ngrok
+               └──────────────┬──────────────────┘
 ┌──────────────────────────────┴──────────────────────────────────┐
-│               Go Backend — 25 paket, ~90 endpoint                │
+│                 Go Backend — 25 paket, ~55 endpoint              │
 │                                                                  │
-│  ┌─────────┐ ┌──────────┐ ┌────────────────┐                    │
-│  │ HTTP    │ │ App      │ │ Proaktif       │                    │
-│  │ ServeMux│ │ Motoru   │ │ Gözlemci→Eylem │                    │
-│  └─────────┘ └────┬─────┘ └────────────────┘                    │
-│                    │                                             │
-│  ┌────────┐ ┌──────┐ ┌──────┐ ┌────────┐ ┌──────┐ ┌────────┐  │
-│  │ Hafıza │ │Oturum│ │Llama │ │WhatsApp│ │Ajan  │ │Sağlayıc│  │
-│  │ vec0   │ │JSON  │ │GPU   │ │whatsmeow│ │Pipe  │ │Router  │  │
-│  └────────┘ └──────┘ └──────┘ └────────┘ └──────┘ └────────┘  │
+│  ┌─────────────┐  ┌──────────────┐  ┌────────────────────────┐ │
+│  │ Web Sunucu   │  │ App Motoru   │  │ Proaktif Motor         │ │
+│  │ ServeMux     │  │ orkestratör  │  │ Gözlemci→Analiz→Eylem  │ │
+│  │ SSE akışı    │  │ (25 dosya)   │  │                        │ │
+│  └─────────────┘  └──────┬───────┘  └────────────────────────┘ │
+│                           │                                     │
+│  ┌────────┐ ┌──────────┐ ┌┴─────────┐ ┌──────────┐ ┌────────┐ │
+│  │ Hafıza │ │ Oturumlar│ │ Llama    │ │WhatsApp  │ │ Ajan   │ │
+│  │ vec0   │ │ JSON     │ │ GPU/RAM  │ │whatsmeow │ │ Pipe   │ │
+│  └────────┘ └──────────┘ └──────────┘ └──────────┘ └────────┘ │
 │                                                                  │
 │  Orkestra · ModelMağazası · BulutSenk · Takvim · DuyguMotoru    │
 │  ngrok · Tailscale · Whisper · Skill · Niyet · Gözlemci         │
 └──────────────────────────────────────────────────────────────────┘
 ```
 
-İki süreç `localhost:8090` üzerinden düz HTTP ile haberleşir. TLS yok (yerel). Harici router yok — saf `net/http` ServeMux.
+İki süreç `localhost:8090` üzerinden düz HTTP ile iletişim kurar. TLS yok (sadece yerel). Harici router framework'ü yok — saf `net/http` ServeMux. Frontend, Riverpod state yönetimi, Dio üzerinden SSE akışı ve flutter_markdown ile markdown render içeren tek sayfalı bir Flutter uygulamasıdır.
 
 **Belgeler:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md)
 
@@ -343,91 +311,24 @@ Sürüm paketleri:
 
 ## Teknoloji Yığını
 
-<table>
-<tr>
-<th>Katman</th><th>Teknoloji</th><th>Notlar</th>
-</tr>
-<tr>
-<td>Backend</td>
-<td><img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=flat-square&logo=go" alt=""/></td>
-<td>SQLite için CGO gerekli</td>
-</tr>
-<tr>
-<td>HTTP</td>
-<td><code>net/http</code> ServeMux</td>
-<td>Harici router bağımlılığı yok</td>
-</tr>
-<tr>
-<td>Akış</td>
-<td>SSE (Server-Sent Events)</td>
-<td>Token-token sohbet akışı</td>
-</tr>
-<tr>
-<td>Masaüstü Frontend</td>
-<td><img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=flat-square&logo=flutter" alt=""/></td>
-<td>Linux + Windows</td>
-</tr>
-<tr>
-<td>State</td>
-<td>Riverpod 2.4</td>
-<td>AsyncNotifierProvider</td>
-</tr>
-<tr>
-<td>HTTP İstemcisi</td>
-<td>Dio 5.4</td>
-<td>SSE ayrıştırma, interceptor'lar</td>
-</tr>
-<tr>
-<td>Markdown</td>
-<td>flutter_markdown 0.6</td>
-<td>Kod blokları, tablolar, görseller</td>
-</tr>
-<tr>
-<td>LLM Çalışma Zamanı</td>
-<td>llama.cpp</td>
-<td>Gömülü binary, alt süreç yönetimi</td>
-</tr>
-<tr>
-<td>Vektör VT</td>
-<td>SQLite + sqlite-vec</td>
-<td>vec0 ANN, 768 boyut embedding</td>
-</tr>
-<tr>
-<td>WhatsApp</td>
-<td>whatsmeow</td>
-<td>Çoklu cihaz Web API</td>
-</tr>
-<tr>
-<td>Ses-Metne</td>
-<td>whisper.cpp</td>
-<td>Cihaz üzerinde, gömülü binary</td>
-</tr>
-<tr>
-<td>Bulut Senk.</td>
-<td>Google Drive API v3</td>
-<td>AES-256-GCM + PBKDF2</td>
-</tr>
-<tr>
-<td>GPU Tespiti</td>
-<td>nvidia-smi, rocm-smi, sysfs</td>
-<td>Otomatik VRAM ölçümü</td>
-</tr>
-<tr>
-<td>Loglama</td>
-<td><code>internal/logx</code></td>
-<td>slog wrapper</td>
-</tr>
-<tr>
-<td>CI/CD</td>
-<td><img src="https://img.shields.io/badge/GitHub_Actions-geçiyor-0F9D58?style=flat-square&logo=githubactions" alt=""/></td>
-<td>Go vet+test+build, Flutter analyze+test</td>
-</tr>
-<tr>
-<td>Lisans</td>
-<td>GNU AGPL v3</td>
-<td>Özgür yazılım</td>
-</tr>
-</table>
+| Katman | Teknoloji | Notlar |
+|--------|-----------|--------|
+| **Backend dili** | Go 1.26 | SQLite için CGO gerekli |
+| **HTTP** | `net/http` ServeMux | Harici router bağımlılığı yok |
+| **Akış** | SSE (Server-Sent Events) | Token-token sohbet akışı |
+| **Masaüstü frontend** | Flutter 3.10 | Linux + Windows |
+| **State yönetimi** | Riverpod 2.4 | AsyncNotifierProvider |
+| **HTTP istemcisi** | Dio 5.4 | SSE ayrıştırma, interceptor'lar |
+| **Markdown** | flutter_markdown 0.6 | Kod blokları, tablolar, görseller |
+| **LLM çalışma zamanı** | llama.cpp | Gömülü binary, alt süreç yönetimi |
+| **Vektör veritabanı** | SQLite + sqlite-vec | vec0 ANN indeks, 768 boyut embedding |
+| **WhatsApp** | whatsmeow | Go kütüphanesi, çoklu cihaz Web API |
+| **Ses-metne** | whisper.cpp | Gömülü binary, cihaz üzerinde |
+| **Bulut senk.** | Google Drive API v3 | OAuth2, AES-256-GCM, PBKDF2 |
+| **GPU tespiti** | nvidia-smi, rocm-smi, sysfs | Otomatik VRAM ölçümü |
+| **Loglama** | `internal/logx` | Info/Warn/Error/Debug seviyeli slog wrapper |
+| **CI/CD** | GitHub Actions | Go vet+test+build, Flutter analyze+test |
+| **Lisans** | GNU AGPL v3 | Özgür yazılım |
 
 ---
 
@@ -435,14 +336,14 @@ Sürüm paketleri:
 
 | | |
 |-|-|
-| [Mimari](docs/architecture.md) | Paket haritası, veri akışı, modül sınırları |
-| [API Referansı](docs/API_REFERENCE.md) | 90+ REST endpoint'i istek/yanıt şemalarıyla |
-| [Tasarım Sistemi](frontend/DESIGN.md) | "Pewter Study" tema token'ları, renk paleti, tipografi |
-| [Yol Haritası](docs/ROADMAP.md) | Sürümlü yayın planı |
-| [Mobil](mobile/README.md) | Flutter mobil yardımcı kurulumu ve tünel yapılandırması |
-| [Sorun Giderme](docs/TROUBLESHOOTING.md) | GPU kurulumu, port çakışmaları, sık hatalar |
-| [Katkı](docs/CONTRIBUTING.md) | Geliştirici kurulumu, kod stili, PR süreci |
-| [Değişiklik Günlüğü](versinNote/tr/v3.1.0.md) | Tam v3.1.0 özellik listesi, hata düzeltmeleri |
+| [🏛️ Mimari](docs/architecture.md) | Paket haritası, veri akışı, modül sınırları |
+| [📡 API Referansı](docs/API_REFERENCE.md) | 55+ REST endpoint'i istek/yanıt şemalarıyla |
+| [🎨 Tasarım Sistemi](frontend/DESIGN.md) | "Pewter Study" tema token'ları, renk paleti, tipografi |
+| [🛣️ Yol Haritası](docs/ROADMAP.md) | Sürümlü yayın planı |
+| [📱 Mobil](mobile/README.md) | Flutter mobil yardımcı kurulumu ve tünel yapılandırması |
+| [🔧 Sorun Giderme](docs/TROUBLESHOOTING.md) | GPU kurulumu, port çakışmaları, sık hatalar |
+| [📝 Katkı](docs/CONTRIBUTING.md) | Geliştirici kurulumu, kod stili, PR süreci |
+| [📋 Değişiklik Günlüğü](versinNote/tr/v3.1.0.md) | Tam v3.1.0 özellik listesi, hata düzeltmeleri ve cilalama |
 
 ---
 
@@ -456,9 +357,8 @@ Memo AGPL-3.0 lisanslıdır. Katkılar memnuniyetle karşılanır.
 
 ---
 
-<br/>
-
 <div align="center">
+  <br/>
   <p><b>Senin zihnin. Senin verin. Senin makinen.</b></p>
   <p><a href="https://github.com/BugraAkdemir">Buğra Akdemir</a> tarafından geliştirildi</p>
   <br/>

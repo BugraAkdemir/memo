@@ -98,7 +98,7 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
-	lifecycleCtx       context.Context // goroutine lifecycle only — NOT for request-scoped operations
+	lifecycleCtx      context.Context // goroutine lifecycle only — NOT for request-scoped operations
 	client            *api.Client
 	clientMu          sync.RWMutex // protects client and embeddingClient reassignment
 	store             *memory.Store
@@ -126,8 +126,8 @@ type App struct {
 	memorySaveCh     chan saveTask
 	events           *eventRing
 
-	providerCfgMgr   *provider.ConfigManager
-	providerRouter   *provider.Router
+	providerCfgMgr     *provider.ConfigManager
+	providerRouter     *provider.Router
 	activeProviderName string // which provider is currently active (by Name)
 
 	orchestraConductor *orchestra.Conductor
@@ -256,12 +256,12 @@ func (a *App) Startup(ctx context.Context) {
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
 
 	moodCfg := moodpkg.Config{
-		Enabled:      a.cfg.Mood.Enabled,
-		Alpha:        a.cfg.Mood.Alpha,
-		Beta:         a.cfg.Mood.Beta,
-		SigmaMin:     a.cfg.Mood.SigmaMin,
-		SigmaMax:     a.cfg.Mood.SigmaMax,
-		DBPath:       config.DataPath("mood", "mood.db"),
+		Enabled:          a.cfg.Mood.Enabled,
+		Alpha:            a.cfg.Mood.Alpha,
+		Beta:             a.cfg.Mood.Beta,
+		SigmaMin:         a.cfg.Mood.SigmaMin,
+		SigmaMax:         a.cfg.Mood.SigmaMax,
+		DBPath:           config.DataPath("mood", "mood.db"),
 		SelfInterest:     a.cfg.Mood.SelfInterest,
 		SystemManagement: a.cfg.Mood.SystemManagement,
 	}
@@ -358,6 +358,28 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	a.activeProviderName = a.cfg.ActiveProvider
+	// Legacy configs persisted the provider *type* (e.g. "openrouter") instead of
+	// the provider Name ("OpenRouter"). After the type→name identification change,
+	// such a saved value matches no provider, silently dropping the user's
+	// selection on upgrade. Normalize it back to the matching provider Name.
+	if a.activeProviderName != "" {
+		matchesName := false
+		for _, p := range configs {
+			if p.Name == a.activeProviderName {
+				matchesName = true
+				break
+			}
+		}
+		if !matchesName {
+			for _, p := range configs {
+				if string(p.Type) == a.activeProviderName {
+					a.activeProviderName = p.Name
+					a.cfg.ActiveProvider = p.Name
+					break
+				}
+			}
+		}
+	}
 	if a.activeProviderName != "" && a.providerRouter != nil {
 		a.providerRouter.SetActiveProvider(a.activeProviderName)
 	}

@@ -1,6 +1,6 @@
 # Contributing to Memo
 
-First of all, thank you for considering contributing to Memo! As a 16-year-old solo developer, I appreciate any help to make this "Second Brain" even better.
+First of all, thank you for considering contributing to Memo! This is an independently developed project, and contributions of any kind are genuinely appreciated to make this "Second Brain" even better.
 
 ## How Can You Help?
 

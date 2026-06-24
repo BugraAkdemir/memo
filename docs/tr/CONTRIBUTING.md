@@ -1,6 +1,6 @@
 # Memo'ya Katkıda Bulunmak
 
-Öncelikle Memo'ya katkıda bulunmayı düşündüğünüz için teşekkürler! 16 yaşında bir solo geliştirici olarak, bu "İkinci Beyin"i daha iyi hale getirmek için her türlü yardımı takdir ediyorum.
+Öncelikle Memo'ya katkıda bulunmayı düşündüğünüz için teşekkürler! Memo bağımsız olarak geliştirilen bir projedir ve bu "İkinci Beyin"i daha iyi hale getirmek için her türlü katkı içtenlikle takdir edilir.
 
 ## Nasıl Yardımcı Olabilirsiniz?
 

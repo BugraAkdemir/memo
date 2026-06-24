@@ -17,6 +17,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"memo/internal/config"
 )
 
 // ConfigManager manages provider configurations with encrypted API keys.
@@ -376,11 +378,24 @@ func defaultConfigs() []ProviderConfig {
 // then falls back to platform-specific machine IDs. If all fail, a new
 // random key is generated and persisted for future use.
 func defaultMachineKey() []byte {
-	// 1. Try to load a previously generated random key
-	keyDir := filepath.Join("data")
+	// 1. Try to load a previously generated random key. Route through the
+	// canonical data dir (honours MEMO_DATA_DIR and %ProgramData% on Windows)
+	// rather than a CWD-relative "data" folder, so a different launch directory
+	// can't miss the key and silently re-key the encrypted provider secrets.
+	keyDir := config.DataDir()
 	keyPath := filepath.Join(keyDir, "machine.key")
 	if data, err := os.ReadFile(keyPath); err == nil && len(data) >= 32 {
 		return data[:32]
+	}
+	// Legacy fallback: the key used to be stored under a CWD-relative "data" dir.
+	// If found there, migrate it to the canonical location so it survives.
+	if legacyPath := filepath.Join("data", "machine.key"); legacyPath != keyPath {
+		if data, err := os.ReadFile(legacyPath); err == nil && len(data) >= 32 {
+			if err := os.MkdirAll(keyDir, 0700); err == nil {
+				_ = os.WriteFile(keyPath, data[:32], 0600)
+			}
+			return data[:32]
+		}
 	}
 
 	// 2. Try platform-specific machine IDs

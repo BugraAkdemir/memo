@@ -413,6 +413,15 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 
 	f.Close()
 
+	// Verify completeness before promoting the temp file. A dropped/proxied
+	// connection can deliver a short body that still ends in io.EOF; without this
+	// check a truncated file would be renamed to the final .gguf and later crash
+	// llama-server as a "valid" but corrupt model. The deferred cleanup removes
+	// the partial temp file on this error path.
+	if totalBytes > 0 && downloaded != totalBytes {
+		return fmt.Errorf("download incomplete: got %d of %d bytes", downloaded, totalBytes)
+	}
+
 	// Rename temp file to final name
 	if err := os.Rename(tmpPath, destPath); err != nil {
 		// Cross-volume rename fallback: copy + delete

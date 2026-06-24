@@ -49,6 +49,13 @@ type Manager struct {
 	mu         sync.Mutex    // guards in-flight backup
 	scheduleMu sync.Mutex    // serializes Increment / TriggerNow scheduling race
 	inFlight   bool
+
+	// BeforeRestore/AfterRestore let the owner release and re-open resources that
+	// hold the files being overwritten by a pull (notably the live SQLite memory
+	// store). Restoring memory.db while it is still open corrupts the database, so
+	// the store must be closed before restoreZip and re-opened afterwards.
+	BeforeRestore func()
+	AfterRestore  func()
 }
 
 // AccountInfo describes the connected Google account.
@@ -305,8 +312,18 @@ func (m *Manager) runPullPipeline() bool {
 	}
 
 	m.emit("sync:status", "restoring")
-	if err := m.restoreZip(zipBuf); err != nil {
-		m.emitError(fmt.Sprintf("Restore failed: %v", err))
+	// Close any open handles to the files we're about to overwrite (the live
+	// memory.db), then always re-open afterwards — even on failure — so the app
+	// is never left without its memory store.
+	if m.BeforeRestore != nil {
+		m.BeforeRestore()
+	}
+	restoreErr := m.restoreZip(zipBuf)
+	if m.AfterRestore != nil {
+		m.AfterRestore()
+	}
+	if restoreErr != nil {
+		m.emitError(fmt.Sprintf("Restore failed: %v", restoreErr))
 		return false
 	}
 

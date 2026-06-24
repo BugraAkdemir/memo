@@ -446,12 +446,21 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 	}
 }
 
+// maxParallelTasks caps concurrent provider calls during parallel execution.
+// Without a bound, a large chief plan fans out one HTTP request per task at
+// once, which immediately trips provider rate limits (429) and — combined with
+// per-task retries — cascades into mostly-failed tasks and a degraded answer.
+const maxParallelTasks = 4
+
 func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, tasks []OrchestraTask, results []OrchestraResult, onProgress ProgressFn) {
+	sem := make(chan struct{}, maxParallelTasks)
 	var wg sync.WaitGroup
 	for i, task := range tasks {
 		wg.Add(1)
 		go func(idx int, t OrchestraTask) {
 			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			// Parallel tasks must NOT stream token-by-token: concurrent streams
 			// would interleave into one garbled blob. Run without chunk streaming
 			// so each task's full result is emitted atomically on completion.

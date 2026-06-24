@@ -177,8 +177,10 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEve
 	// Auto-title from first user message
 	if s.Title == "New Chat" && role == "user" && len(content) > 0 {
 		title := content
-		if len(title) > 40 {
-			title = title[:40] + "..."
+		// Truncate by rune, not byte: a byte slice can split a multi-byte UTF-8
+		// rune (e.g. Turkish ç/ş/ğ/ı), persisting a corrupted title.
+		if r := []rune(title); len(r) > 40 {
+			title = string(r[:40]) + "..."
 		}
 		s.Title = title
 	}

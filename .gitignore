@@ -75,4 +75,4 @@ data/tailscale/
 !config/config.yaml.example
 !data/providers.example.json
 skill-lock.json
-server.log
+server.log.superpowers/

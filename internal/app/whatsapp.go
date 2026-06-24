@@ -204,13 +204,18 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		}
 
 		modelName := ""
+		// Snapshot the router and config manager under the lock; they can be
+		// reassigned concurrently by UpdateProvider/SetActiveProvider, so reading
+		// the fields directly below the lock would be a data race (and could nil
+		// out the router between the check and use).
 		a.providerMu.RLock()
-		hasRouter := a.providerRouter != nil
+		router := a.providerRouter
+		cfgMgr := a.providerCfgMgr
 		activeName := a.activeProviderName
 		a.providerMu.RUnlock()
-		if hasRouter {
+		if router != nil && cfgMgr != nil {
 			if activeName != "" {
-				for _, p := range a.providerCfgMgr.GetEnabled() {
+				for _, p := range cfgMgr.GetEnabled() {
 					if p.Name == activeName {
 						modelName = p.Model
 						break
@@ -218,14 +223,14 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 				}
 			}
 			if modelName == "" {
-				for _, p := range a.providerCfgMgr.GetEnabled() {
+				for _, p := range cfgMgr.GetEnabled() {
 					modelName = p.Model
 					break
 				}
 			}
 		}
 
-		if a.providerRouter == nil || !a.providerRouter.HasActiveProvider() {
+		if router == nil || !router.HasActiveProvider() {
 			localTrySend(ctx, outCh, api.StreamChunk{
 				Error: "WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.",
 				Done:  true,
@@ -258,7 +263,7 @@ Kullanıcıya ASLA JID sorma; önce whatsapp_latest ile sohbet listesini kontrol
 		allMsgs = append(allMsgs, pMsgs...)
 
 		waExecutor := agent.NewWhatsAppExecutor(a.agentExecutor)
-		waExecutor.SyncRouter(a.providerRouter)
+		waExecutor.SyncRouter(router)
 
 		start := time.Now()
 		var fullReply strings.Builder

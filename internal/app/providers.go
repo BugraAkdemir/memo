@@ -43,6 +43,12 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	configs := a.providerCfgMgr.GetEnabled()
 	a.providerMu.Lock()
 	a.providerRouter = provider.NewRouter(configs)
+	// Re-apply the active provider restriction: NewRouter starts with no active
+	// provider, so without this the router would forget the user's selection after
+	// any provider edit and silently fall back to routing across all enabled ones.
+	if a.activeProviderName != "" {
+		a.providerRouter.SetActiveProvider(a.activeProviderName)
+	}
 	a.providerMu.Unlock()
 	if len(configs) > 0 {
 		a.providerMu.RLock()

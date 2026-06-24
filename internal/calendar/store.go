@@ -147,11 +147,15 @@ func (s *Store) ClaimPendingReminders(ctx context.Context, now time.Time, leadMi
 	defer tx.Rollback()
 
 	windowEnd := now.Add(time.Duration(leadMinutes) * time.Minute).Unix()
+	// Lower bound (start_time > now) is essential: without it, every past event
+	// with reminder_sent=0 is claimed on the next tick and fires a reminder with
+	// a negative time-left. After the app has been closed for a while this would
+	// dump a reminder for every elapsed event at once.
 	rows, err := tx.QueryContext(ctx,
 		`SELECT id, title, start_time, end_time, description, source, contact_name, created_at, reminder_sent
 		 FROM events
-		 WHERE reminder_sent = 0 AND start_time <= ?
-		 ORDER BY start_time ASC`, windowEnd)
+		 WHERE reminder_sent = 0 AND start_time > ? AND start_time <= ?
+		 ORDER BY start_time ASC`, now.Unix(), windowEnd)
 	if err != nil {
 		return nil, fmt.Errorf("calendar: claim reminders query: %w", err)
 	}

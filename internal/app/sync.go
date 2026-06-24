@@ -49,7 +49,33 @@ func (a *App) ensureSyncManager() error {
 		clientSecret,
 		a.cfg.Sync.TokenPath,
 	)
+	a.wireSyncRestoreHooks(a.syncManager)
 	return nil
+}
+
+// wireSyncRestoreHooks closes the live memory store before a cloud restore
+// overwrites memory.db and re-opens it afterwards. Without this the open SQLite
+// connection's stale WAL/SHM survive the rename, corrupting the restored DB.
+func (a *App) wireSyncRestoreHooks(sm *cloudsync.Manager) {
+	if sm == nil {
+		return
+	}
+	sm.BeforeRestore = func() {
+		a.storeMu.Lock()
+		if a.store != nil {
+			if err := a.store.Close(); err != nil {
+				log.Printf("WARN: memory store close before restore: %v", err)
+			}
+			a.store = nil
+		}
+		a.storeMu.Unlock()
+	}
+	sm.AfterRestore = func() {
+		a.clientMu.RLock()
+		client := a.client
+		a.clientMu.RUnlock()
+		a.reinitMemoryStore(client, a.cfg.API.EmbeddingModel)
+	}
 }
 
 // CheckSyncAuth reports whether the cloud sync manager is authenticated.
@@ -198,6 +224,7 @@ func (a *App) UpdateSyncSettings(enabled bool, clientID, clientSecret, passphras
 			resolvedClientSecret,
 			a.cfg.Sync.TokenPath,
 		)
+		a.wireSyncRestoreHooks(a.syncManager)
 	} else {
 		a.syncManager = nil
 	}

@@ -38,6 +38,10 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 			if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
 				a.providerMu.Lock()
 				a.providerRouter = provider.NewRouter(configs)
+				// Restrict the freshly built router to the active provider, otherwise
+				// the agent would route across every enabled provider instead of the
+				// one the user selected.
+				a.providerRouter.SetActiveProvider(activeName)
 				providerRouter = a.providerRouter
 				a.providerMu.Unlock()
 			}
@@ -90,8 +94,20 @@ func (a *App) agentRouterFromProviderName(providerName, model string) (*provider
 	if cfgMgr == nil {
 		return nil, "", fmt.Errorf("no provider config manager")
 	}
-	for _, p := range cfgMgr.GetEnabled() {
+	enabled := cfgMgr.GetEnabled()
+	// Match on Name (the new identifier) first.
+	for _, p := range enabled {
 		if p.Name == providerName {
+			pc := p
+			pc.Model = model
+			return provider.NewRouter([]provider.ProviderConfig{pc}), model, nil
+		}
+	}
+	// Fall back to Type match for backward compatibility: the Orchestra ChiefType
+	// holds a provider *type* string ("claude") both in legacy orchestra.json files
+	// and in the current default config, so a Name-only lookup would miss it.
+	for _, p := range enabled {
+		if string(p.Type) == providerName {
 			pc := p
 			pc.Model = model
 			return provider.NewRouter([]provider.ProviderConfig{pc}), model, nil

@@ -229,6 +229,7 @@ func (s *Server) forceKill() {
 func (s *Server) monitor() {
 	s.mu.Lock()
 	cmd := s.cmd
+	waitDone := s.waitDone
 	s.mu.Unlock()
 
 	if cmd == nil {
@@ -237,16 +238,19 @@ func (s *Server) monitor() {
 
 	err := cmd.Wait()
 
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if s.waitDone != nil {
+	// Signal exit BEFORE acquiring s.mu: Stop() may hold the lock while waiting
+	// on waitDone, so closing it only after taking the lock would deadlock and
+	// force every Stop()/shutdown to burn the full graceful + force-kill timeout.
+	if waitDone != nil {
 		select {
-		case <-s.waitDone:
+		case <-waitDone:
 		default:
-			close(s.waitDone)
+			close(waitDone)
 		}
 	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	if s.stopping {
 		return

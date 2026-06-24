@@ -206,12 +206,12 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		modelName := ""
 		a.providerMu.RLock()
 		hasRouter := a.providerRouter != nil
-		activeProv := a.activeProvider
+		activeName := a.activeProviderName
 		a.providerMu.RUnlock()
 		if hasRouter {
-			if activeProv != "" {
+			if activeName != "" {
 				for _, p := range a.providerCfgMgr.GetEnabled() {
-					if p.Type == activeProv {
+					if p.Name == activeName {
 						modelName = p.Model
 						break
 					}

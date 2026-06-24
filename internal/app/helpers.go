@@ -27,13 +27,13 @@ func (a *App) apiContextBudget() int {
 	}
 
 	a.providerMu.RLock()
-	active := a.activeProvider
+	active := a.activeProviderName
 	a.providerMu.RUnlock()
 
 	// Per-model context window, set by the user when configuring the provider.
 	if a.providerCfgMgr != nil {
 		for _, p := range a.providerCfgMgr.GetEnabled() {
-			if p.Type == active && p.ContextTokens > 0 {
+			if p.Name == active && p.ContextTokens > 0 {
 				return p.ContextTokens
 			}
 		}

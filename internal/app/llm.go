@@ -28,12 +28,12 @@ func estimateContentTokens(s string) int {
 // pipeline should use.
 func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 	a.providerMu.RLock()
-	activeProvider := a.activeProvider
+	activeName := a.activeProviderName
 	providerRouter := a.providerRouter
 	providerCfgMgr := a.providerCfgMgr
 	a.providerMu.RUnlock()
 
-	if activeProvider != "" {
+	if activeName != "" {
 		if providerRouter == nil && providerCfgMgr != nil {
 			if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
 				a.providerMu.Lock()
@@ -47,7 +47,7 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 		}
 		modelName := ""
 		for _, p := range providerCfgMgr.GetEnabled() {
-			if p.Type == activeProvider {
+			if p.Name == activeName {
 				modelName = p.Model
 				break
 			}
@@ -80,10 +80,10 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 	return nil, "", fmt.Errorf("Agent modu için bir API sağlayıcısı seçin ya da yerel bir model başlatın (Modeller bölümünden).")
 }
 
-// agentRouterFromProviderType builds a single-provider router for the given
-// provider type + model, used as the agent's fallback in combined Orchestra+Agent
+// agentRouterFromProviderName builds a single-provider router for the given
+// provider name + model, used as the agent's fallback in combined Orchestra+Agent
 // mode when no separate active provider is configured.
-func (a *App) agentRouterFromProviderType(ptype, model string) (*provider.Router, string, error) {
+func (a *App) agentRouterFromProviderName(providerName, model string) (*provider.Router, string, error) {
 	a.providerMu.RLock()
 	cfgMgr := a.providerCfgMgr
 	a.providerMu.RUnlock()
@@ -91,13 +91,13 @@ func (a *App) agentRouterFromProviderType(ptype, model string) (*provider.Router
 		return nil, "", fmt.Errorf("no provider config manager")
 	}
 	for _, p := range cfgMgr.GetEnabled() {
-		if string(p.Type) == ptype {
+		if p.Name == providerName {
 			pc := p
 			pc.Model = model
 			return provider.NewRouter([]provider.ProviderConfig{pc}), model, nil
 		}
 	}
-	return nil, "", fmt.Errorf("orchestra chief provider %q is not enabled", ptype)
+	return nil, "", fmt.Errorf("orchestra chief provider %q is not enabled", providerName)
 }
 
 func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
@@ -358,7 +358,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			// Fall back to the Orchestra chief's provider so the two systems stay
 			// connected — Orchestra plans, then the agent executes with the chief.
 			ocfg := a.orchestraConductor.Config()
-			if r, m, ferr := a.agentRouterFromProviderType(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
+			if r, m, ferr := a.agentRouterFromProviderName(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
 				agentRouter, modelName = r, m
 			} else {
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
@@ -471,8 +471,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	// Orchestra mode takes priority
 	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
 		a.providerMu.RLock()
-		if a.activeProvider != "" {
-			log.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProvider)
+		if a.activeProviderName != "" {
+			log.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProviderName)
 		}
 		a.providerMu.RUnlock()
 
@@ -582,10 +582,10 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 	// Use external provider only if user explicitly selected one
 	a.providerMu.RLock()
-	activeProvider := a.activeProvider
+	activeName := a.activeProviderName
 	providerRouter := a.providerRouter
 	a.providerMu.RUnlock()
-	if activeProvider != "" && providerRouter != nil {
+	if activeName != "" && providerRouter != nil {
 		go func() {
 			defer close(outCh)
 
@@ -844,10 +844,10 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 
 	// Use external provider only if user explicitly selected one
 	a.providerMu.RLock()
-	activeProvider := a.activeProvider
+	activeName := a.activeProviderName
 	providerRouter := a.providerRouter
 	a.providerMu.RUnlock()
-	if activeProvider != "" && providerRouter != nil {
+	if activeName != "" && providerRouter != nil {
 		pctx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
 

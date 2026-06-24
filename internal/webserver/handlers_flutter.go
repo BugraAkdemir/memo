@@ -1072,7 +1072,7 @@ func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {
 		writeJSON(w, map[string]string{"provider": s.fullBridge.GetActiveProvider()})
 	case http.MethodPut:
 		var req struct {
-			Provider provider.ProviderType `json:"provider"`
+			Provider string `json:"provider"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)

@@ -344,7 +344,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (p.enabled) {
         options.add(
           _ModelOption(
-            type: p.type,
+            type: p.name,
             name: p.name,
             icon: providerIcon(p.type),
             subtitle: p.model,

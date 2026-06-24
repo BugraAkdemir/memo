@@ -105,7 +105,7 @@ type FullBridge interface {
 	UpdateProvider(cfg provider.ProviderConfig) error
 	DeleteProvider(pt provider.ProviderType, name ...string) error
 	TestProviderConnection(cfg provider.ProviderConfig) error
-	SetActiveProvider(pt provider.ProviderType)
+	SetActiveProvider(name string)
 	GetActiveProvider() string
 
 	// Orchestra mode

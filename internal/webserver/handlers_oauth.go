@@ -86,7 +86,17 @@ func (s *Server) handleOpenRouterConnect(w http.ResponseWriter, r *http.Request)
 			})
 			return
 		}
-		s.fullBridge.SetActiveProvider(provider.ProviderOpenRouter)
+		// Set active provider to the first enabled OpenRouter config's name.
+		name := string(provider.ProviderOpenRouter) // default
+		if providers := s.fullBridge.GetProviders(); len(providers) > 0 {
+			for _, p := range providers {
+				if p.Type == provider.ProviderOpenRouter && p.Enabled {
+					name = p.Name
+					break
+				}
+			}
+		}
+		s.fullBridge.SetActiveProvider(name)
 	}
 
 	orState.mu.Lock()

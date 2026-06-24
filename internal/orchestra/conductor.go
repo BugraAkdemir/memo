@@ -164,11 +164,17 @@ func LoadConfig(filePath string) OrchestraConfig {
 	return cfg.Sanitize()
 }
 
-// findProviderConfig looks up a provider config by type from the stored configs.
-func (c *Conductor) findProviderConfig(modelType string) *provider.ProviderConfig {
+// findProviderConfig looks up a provider config by name from the stored configs.
+// Falls back to type match for backward compatibility with old configs.
+func (c *Conductor) findProviderConfig(providerName string) *provider.ProviderConfig {
 	configs := c.getConfigs()
 	for _, cfg := range configs {
-		if string(cfg.Type) == modelType && cfg.Enabled {
+		if cfg.Name == providerName && cfg.Enabled {
+			return &cfg
+		}
+	}
+	for _, cfg := range configs {
+		if string(cfg.Type) == providerName && cfg.Enabled {
 			return &cfg
 		}
 	}

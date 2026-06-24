@@ -313,7 +313,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
     if (providersAsync case AsyncData(:final value)) {
       for (final p in value) {
         if (p.enabled) {
-          choices.add(_ModelChoice(p.type, p.model, providerIcon(p.type), '${p.name} → ${p.model}'));
+          choices.add(_ModelChoice(p.name, p.model, providerIcon(p.type), '${p.name} → ${p.model}'));
         }
       }
     }

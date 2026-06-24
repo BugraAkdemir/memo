@@ -12,10 +12,10 @@ import (
 
 // Router manages multiple providers with fallback support.
 type Router struct {
-	mu            sync.RWMutex
-	providers     []*providerEntry
-	configs       []ProviderConfig
-	activeType    ProviderType // only this type will be used; empty = use any
+	mu         sync.RWMutex
+	providers  []*providerEntry
+	configs    []ProviderConfig
+	activeName string // only this provider (by Name) will be used; empty = use any
 }
 
 type providerEntry struct {
@@ -182,16 +182,16 @@ func (r *Router) CheckConnection(ctx context.Context) []ProviderConfig {
 	return results
 }
 
-// SetActiveProvider restricts the router to only use the given provider type.
+// SetActiveProvider restricts the router to only use the given provider by name.
 // Pass empty string to allow any enabled provider.
-func (r *Router) SetActiveProvider(pt ProviderType) {
+func (r *Router) SetActiveProvider(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.activeType = pt
+	r.activeName = name
 }
 
 // getActiveEntries returns non-disabled provider entries.
-// If activeType is set, only the matching provider is returned.
+// If activeName is set, only the matching provider (by Name) is returned.
 func (r *Router) getActiveEntries() []*providerEntry {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
@@ -201,7 +201,7 @@ func (r *Router) getActiveEntries() []*providerEntry {
 		if entry.disabled {
 			continue
 		}
-		if r.activeType != "" && entry.Name() != r.activeType {
+		if r.activeName != "" && entry.cfg.Name != r.activeName {
 			continue
 		}
 		entries = append(entries, entry)
@@ -231,25 +231,25 @@ func (r *Router) resetFailCount(entry *providerEntry) {
 	entry.failCount = 0
 }
 
-// GetProvider returns an existing provider instance by type.
-func (r *Router) GetProvider(pt ProviderType) (Provider, bool) {
+// GetProvider returns an existing provider instance by name.
+func (r *Router) GetProvider(name string) (Provider, bool) {
 	r.mu.RLock()
 	defer r.mu.RUnlock()
 	for _, entry := range r.providers {
-		if entry.Name() == pt && !entry.disabled {
+		if entry.cfg.Name == name && !entry.disabled {
 			return entry.Provider, true
 		}
 	}
 	return nil, false
 }
 
-// ReenableProvider re-enables a previously auto-disabled provider.
-func (r *Router) ReenableProvider(name ProviderType) {
+// ReenableProvider re-enables a previously auto-disabled provider by name.
+func (r *Router) ReenableProvider(name string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	for _, entry := range r.providers {
-		if entry.Name() == name {
+		if entry.cfg.Name == name {
 			entry.disabled = false
 			entry.failCount = 0
 			log.Printf("PROVIDER: %s re-enabled", name)

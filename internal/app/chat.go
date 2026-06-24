@@ -150,7 +150,7 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	localModelRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
 
 	a.providerMu.RLock()
-	hasProvider := a.activeProvider != ""
+	hasProvider := a.activeProviderName != ""
 	a.providerMu.RUnlock()
 	if agentActive && (hasProvider || localModelRunning) {
 		if orchestraEnabled {

@@ -187,12 +187,12 @@ func TestRouterGetActiveEntries(t *testing.T) {
 func TestRouterSetActiveProvider(t *testing.T) {
 	r := NewRouter(nil)
 	r.SetActiveProvider("claude")
-	if r.activeType != "claude" {
-		t.Errorf("expected claude, got %s", r.activeType)
+	if r.activeName != "claude" {
+		t.Errorf("expected claude, got %s", r.activeName)
 	}
 	r.SetActiveProvider("")
-	if r.activeType != "" {
-		t.Errorf("expected empty, got %s", r.activeType)
+	if r.activeName != "" {
+		t.Errorf("expected empty, got %s", r.activeName)
 	}
 }
 

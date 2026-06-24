@@ -20,12 +20,12 @@ func (a *App) GetProviders() []provider.ProviderConfig {
 	a.providerMu.RUnlock()
 	if router != nil {
 		active := router.ActiveProviders()
-		activeMap := make(map[provider.ProviderType]bool)
+		activeMap := make(map[string]bool)
 		for _, cfg := range active {
-			activeMap[cfg.Type] = true
+			activeMap[cfg.Name] = true
 		}
 		for i, cfg := range configs {
-			configs[i].Connected = activeMap[cfg.Type]
+			configs[i].Connected = activeMap[cfg.Name]
 		}
 	}
 	return configs
@@ -70,25 +70,25 @@ func (a *App) TestProviderConnection(cfg provider.ProviderConfig) error {
 	return a.providerCfgMgr.TestConnection(&cfg)
 }
 
-// SetActiveProvider selects which provider to use for chat.
-func (a *App) SetActiveProvider(pt provider.ProviderType) {
+// SetActiveProvider selects which provider to use for chat (by provider Name).
+func (a *App) SetActiveProvider(name string) {
 	a.providerMu.Lock()
-	a.activeProvider = pt
+	a.activeProviderName = name
 	if a.providerRouter != nil {
-		a.providerRouter.SetActiveProvider(pt)
+		a.providerRouter.SetActiveProvider(name)
 	}
 	a.providerMu.Unlock()
 
-	a.cfg.ActiveProvider = string(pt)
+	a.cfg.ActiveProvider = name
 	if err := config.Save(a.cfg); err != nil {
 		log.Printf("WARN: failed to persist active provider: %v", err)
 	}
-	log.Printf("Active provider set to: %s", pt)
+	log.Printf("Active provider set to: %s", name)
 }
 
-// GetActiveProvider returns the currently active provider type.
+// GetActiveProvider returns the currently active provider name.
 func (a *App) GetActiveProvider() string {
 	a.providerMu.RLock()
 	defer a.providerMu.RUnlock()
-	return string(a.activeProvider)
+	return a.activeProviderName
 }

@@ -76,7 +76,7 @@ class ProvidersTab extends ConsumerWidget {
             }
 
             return Column(
-              children: providers.map((p) => ProviderCard(p: p, isActive: p.type == activeType)).toList(),
+              children: providers.map((p) => ProviderCard(p: p, isActive: p.name == activeType)).toList(),
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),

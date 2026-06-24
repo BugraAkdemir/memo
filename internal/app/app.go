@@ -126,9 +126,9 @@ type App struct {
 	memorySaveCh     chan saveTask
 	events           *eventRing
 
-	providerCfgMgr *provider.ConfigManager
-	providerRouter *provider.Router
-	activeProvider provider.ProviderType // which provider is currently active
+	providerCfgMgr   *provider.ConfigManager
+	providerRouter   *provider.Router
+	activeProviderName string // which provider is currently active (by Name)
 
 	orchestraConductor *orchestra.Conductor
 
@@ -154,7 +154,7 @@ type App struct {
 
 	skillManager *skill.Manager
 
-	providerMu sync.RWMutex // protects providerRouter, providerCfgMgr, activeProvider
+	providerMu sync.RWMutex // protects providerRouter, providerCfgMgr, activeProviderName
 	sessionsMu sync.RWMutex // protects sessions
 
 	remoteAccessEnabled bool
@@ -357,12 +357,12 @@ func (a *App) Startup(ctx context.Context) {
 		log.Println("No external providers configured, using local models")
 	}
 
-	a.activeProvider = provider.ProviderType(a.cfg.ActiveProvider)
-	if a.activeProvider != "" && a.providerRouter != nil {
-		a.providerRouter.SetActiveProvider(a.activeProvider)
+	a.activeProviderName = a.cfg.ActiveProvider
+	if a.activeProviderName != "" && a.providerRouter != nil {
+		a.providerRouter.SetActiveProvider(a.activeProviderName)
 	}
-	if a.activeProvider != "" {
-		log.Printf("Active provider restored from config: %s", a.activeProvider)
+	if a.activeProviderName != "" {
+		log.Printf("Active provider restored from config: %s", a.activeProviderName)
 	}
 
 	orchestraCfg := orchestra.LoadConfig(config.DataPath("orchestra.json"))
@@ -372,9 +372,9 @@ func (a *App) Startup(ctx context.Context) {
 			if a.providerRouter == nil {
 				return nil, fmt.Errorf("provider router not initialized, cannot create %s/%s", cfg.Type, cfg.Model)
 			}
-			p, ok := a.providerRouter.GetProvider(cfg.Type)
+			p, ok := a.providerRouter.GetProvider(cfg.Name)
 			if !ok {
-				return nil, fmt.Errorf("provider %s not found in router (disabled or not configured), enable it in API Providers", cfg.Type)
+				return nil, fmt.Errorf("provider %s not found in router (disabled or not configured), enable it in API Providers", cfg.Name)
 			}
 			return p, nil
 		},

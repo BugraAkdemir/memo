@@ -301,27 +301,27 @@ func validatePath(targetPath, basePath string) (string, error) {
 		}
 	}
 
-	// Deny access to protected system paths.
-	cmpPath := realPath
-	if runtime.GOOS == "windows" {
-		cmpPath = strings.ToLower(realPath)
-	}
-	for _, protected := range defaultProtectedPaths() {
-		needle := protected
-		if runtime.GOOS == "windows" {
-			needle = strings.ToLower(protected)
-		}
-		if strings.HasPrefix(cmpPath, needle) {
-			return "", fmt.Errorf("access denied: path is within protected directory (%s)", protected)
-		}
-	}
-
-	// Ensure the path is within basePath
+	// Ensure the path is within basePath.
 	rel, err := filepath.Rel(basePath, realPath)
 	if err != nil {
 		return "", fmt.Errorf("path is outside project directory")
 	}
 	if strings.HasPrefix(rel, "..") || rel == ".." {
+		// Absolute or relative paths outside the project directory are only
+		// allowed if they do not point to a protected system path.
+		cmpPath := realPath
+		if runtime.GOOS == "windows" {
+			cmpPath = strings.ToLower(realPath)
+		}
+		for _, protected := range defaultProtectedPaths() {
+			needle := protected
+			if runtime.GOOS == "windows" {
+				needle = strings.ToLower(protected)
+			}
+			if strings.HasPrefix(cmpPath, needle) {
+				return "", fmt.Errorf("access denied: path is within protected directory (%s)", protected)
+			}
+		}
 		return "", fmt.Errorf("path is outside project directory: %s", targetPath)
 	}
 

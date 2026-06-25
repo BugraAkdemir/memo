@@ -70,7 +70,17 @@ var blacklistedPatterns = []*regexp.Regexp{
 	regexp.MustCompile(`\bvssadmin\s+delete\b`),             // delete shadow copies
 	regexp.MustCompile(`\bcipher\s+/w\b`),                   // wipe free space
 	regexp.MustCompile(`\b(net\s+user|net\s+localgroup)\b`), // account manipulation
+	// Block long-option shell escape variants.
+	regexp.MustCompile(`\bsh\s+--command\b`),
+	regexp.MustCompile(`\bbash\s+--command\b`),
+	regexp.MustCompile(`\bzsh\s+--command\b`),
+	regexp.MustCompile(`\bdash\s+--command\b`),
 }
+
+// shellSubstitutionChars matches characters commonly used for shell command
+// substitution / evaluation. run_command is intentionally not a full shell, so
+// we reject these to reduce injection risk.
+var shellSubstitutionChars = regexp.MustCompile("[\\$\\`\\`]")
 
 func isBlacklisted(cmd string) (string, bool) {
 	cmdLower := strings.ToLower(cmd)
@@ -78,6 +88,9 @@ func isBlacklisted(cmd string) (string, bool) {
 		if re.MatchString(cmdLower) {
 			return re.String(), true
 		}
+	}
+	if shellSubstitutionChars.MatchString(cmd) {
+		return "shell substitution characters ($ `) are not allowed", true
 	}
 	return "", false
 }

@@ -14,7 +14,6 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strings"
 	"sync"
 	"time"
 
@@ -398,40 +397,28 @@ func defaultMachineKey() []byte {
 		}
 	}
 
-	// 2. Try platform-specific machine IDs
-	if runtime.GOOS == "windows" {
-		out, err := exec.Command("powershell", "-NoProfile", "-Command",
-			`(Get-ItemProperty 'HKLM:\SOFTWARE\Microsoft\Cryptography' MachineGuid).MachineGuid`).Output()
-		if err == nil {
-			if id := strings.TrimSpace(string(out)); len(id) >= 32 {
-				return []byte(id[:32])
-			}
-		}
-	} else {
-		if data, err := os.ReadFile("/etc/machine-id"); err == nil && len(data) >= 32 {
-			return []byte(data[:32])
-		}
-		out, err := exec.Command("sh", "-c",
-			`ioreg -d2 -c IOPlatformExpertDevice | awk -F\" '/IOPlatformUUID/{print $4}'`).Output()
-		if err == nil {
-			if id := strings.TrimSpace(string(out)); len(id) >= 32 {
-				return []byte(id[:32])
-			}
-		}
-	}
-
-	// 3. No machine-specific ID available — generate a random key and persist it
+	// 2. Generate a cryptographically random key and persist it with strict permissions.
+	// Predictable machine IDs (/etc/machine-id, Registry MachineGuid, IOPlatformUUID)
+	// are intentionally not used as key material — they are not secret.
 	randomKey := make([]byte, 32)
 	if _, err := rand.Read(randomKey); err != nil {
-		log.Printf("provider: crypto/rand failed, generating fallback key: %v", err)
-		for i := range randomKey {
-			randomKey[i] = byte(i ^ 0xAA)
-		}
+		log.Printf("provider: crypto/rand failed: %v", err)
+		return randomKey
 	}
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
 		log.Printf("provider: cannot create key dir %s: %v", keyDir, err)
-	} else if err := os.WriteFile(keyPath, randomKey, 0600); err != nil {
+		return randomKey
+	}
+	if err := os.WriteFile(keyPath, randomKey, 0600); err != nil {
 		log.Printf("provider: cannot persist machine key: %v", err)
+		return randomKey
+	}
+	// On Windows, restrict the file to the current user via icacls.
+	if runtime.GOOS == "windows" {
+		if out, err := exec.Command("icacls", keyPath, "/inheritance:r",
+			"/grant:r", os.Getenv("USERNAME")+":F").CombinedOutput(); err != nil {
+			log.Printf("provider: icacls failed for machine key: %v — %s", err, out)
+		}
 	}
 	return randomKey
 }

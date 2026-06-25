@@ -32,21 +32,15 @@ func TestEncryptDecryptRoundtrip(t *testing.T) {
 }
 
 func TestEncryptDecryptEmptyPassphrase(t *testing.T) {
-	// Empty passphrase falls back to hardwareID — should still work
-	plaintext := []byte("test data with empty passphrase")
-
-	ciphertext, err := encrypt("", plaintext)
-	if err != nil {
-		t.Fatalf("encrypt() error = %v", err)
+	// Empty passphrase must now be rejected — callers (sync_manager.New) must
+	// always resolve a passphrase before calling encrypt/decrypt.
+	_, err := encrypt("", []byte("test"))
+	if err == nil {
+		t.Fatal("encrypt() with empty passphrase should return error")
 	}
-
-	decrypted, err := decrypt("", ciphertext)
-	if err != nil {
-		t.Fatalf("decrypt() error = %v", err)
-	}
-
-	if !bytes.Equal(decrypted, plaintext) {
-		t.Errorf("decrypted = %q, want %q", string(decrypted), string(plaintext))
+	_, err = decrypt("", []byte("test"))
+	if err == nil {
+		t.Fatal("decrypt() with empty passphrase should return error")
 	}
 }
 

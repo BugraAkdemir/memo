@@ -83,6 +83,9 @@ func New(
 	}
 	if passphrase == "" {
 		passphrase = loadOrCreateMachineID(persistDir)
+		log.Printf("WARN: cloudsync: no passphrase configured — backups are encrypted with a " +
+			"machine-specific key stored in %s. Backups cannot be restored on a different machine. " +
+			"Set a passphrase in Settings → Cloud Sync for portable encryption.", persistDir)
 	}
 	dc, err := newDriveClient(clientID, clientSecret, tokenPath)
 	if err != nil {

@@ -34,7 +34,7 @@ func deriveKey(passphrase string) [32]byte {
 // Output format: [16-byte salt][12-byte nonce][ciphertext + 16-byte GCM auth tag]
 func encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 	if passphrase == "" {
-		passphrase = hardwareID()
+		return nil, fmt.Errorf("cloudsync: encrypt: passphrase must not be empty")
 	}
 
 	salt := make([]byte, saltLen)
@@ -66,7 +66,7 @@ func encrypt(passphrase string, plaintext []byte) ([]byte, error) {
 // falls back to SHA-256 (legacy format for data encrypted before v3.0.0).
 func decrypt(passphrase string, data []byte) ([]byte, error) {
 	if passphrase == "" {
-		passphrase = hardwareID()
+		return nil, fmt.Errorf("cloudsync: decrypt: passphrase must not be empty")
 	}
 
 	// Try PBKDF2 format: [16-byte salt][12-byte nonce][ciphertext+tag]

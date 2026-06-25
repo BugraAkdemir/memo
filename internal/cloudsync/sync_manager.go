@@ -156,6 +156,9 @@ func (m *Manager) Increment() {
 // TriggerNow forces an immediate backup regardless of the message counter.
 // It is non-blocking; it spawns a goroutine if no backup is already running.
 func (m *Manager) TriggerNow() {
+	if m == nil || m.drive == nil {
+		return
+	}
 	if m.stopped.Load() {
 		return
 	}
@@ -183,6 +186,9 @@ func (m *Manager) TriggerNow() {
 
 // TriggerPullNow downloads, decrypts and restores the latest backup from Drive.
 func (m *Manager) TriggerPullNow() {
+	if m == nil || m.drive == nil {
+		return
+	}
 	m.mu.Lock()
 	if m.inFlight {
 		m.mu.Unlock()
@@ -204,6 +210,9 @@ func (m *Manager) TriggerPullNow() {
 
 // TriggerFullSyncNow runs push (backup) then pull (restore latest) in one flow.
 func (m *Manager) TriggerFullSyncNow() {
+	if m == nil || m.drive == nil {
+		return
+	}
 	m.mu.Lock()
 	if m.inFlight {
 		m.mu.Unlock()
@@ -229,21 +238,33 @@ func (m *Manager) TriggerFullSyncNow() {
 
 // IsAuthenticated returns true if Google Drive auth is ready.
 func (m *Manager) IsAuthenticated() bool {
+	if m == nil || m.drive == nil {
+		return false
+	}
 	return m.drive.IsAuthenticated()
 }
 
 // StartAuthFlow begins the OAuth2 loopback flow and returns the URL to open.
 func (m *Manager) StartAuthFlow() (string, error) {
+	if m == nil || m.drive == nil {
+		return "", fmt.Errorf("cloud sync drive client not initialized")
+	}
 	return m.drive.StartAuthFlow()
 }
 
 // WaitForAuth blocks until the OAuth2 flow completes or ctx is cancelled.
 func (m *Manager) WaitForAuth(ctx context.Context) error {
+	if m == nil || m.drive == nil {
+		return fmt.Errorf("cloud sync drive client not initialized")
+	}
 	return m.drive.WaitForAuth(ctx)
 }
 
 // GetAccountInfo returns name/email for the authenticated Google account.
 func (m *Manager) GetAccountInfo(ctx context.Context) (AccountInfo, error) {
+	if m == nil || m.drive == nil {
+		return AccountInfo{}, fmt.Errorf("cloud sync drive client not initialized")
+	}
 	name, email, err := m.drive.GetAccountInfo(ctx)
 	if err != nil {
 		return AccountInfo{}, err
@@ -254,6 +275,9 @@ func (m *Manager) GetAccountInfo(ctx context.Context) (AccountInfo, error) {
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 
 func (m *Manager) runPipeline() bool {
+	if m == nil || m.drive == nil {
+		return false
+	}
 	log.Println("cloudsync: starting backup pipeline")
 
 	// 1. Archive
@@ -294,6 +318,9 @@ func (m *Manager) runPipeline() bool {
 }
 
 func (m *Manager) runPullPipeline() bool {
+	if m == nil || m.drive == nil {
+		return false
+	}
 	log.Println("cloudsync: starting pull pipeline")
 
 	m.emit("sync:status", "pulling")

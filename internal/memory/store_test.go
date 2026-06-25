@@ -160,6 +160,32 @@ func TestFormatMemoriesForPrompt(t *testing.T) {
 	}
 }
 
+func TestHybridSearch_MatchTypeSet(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := NewStore(StoreConfig{Dir: dir, Dimension: 3, EmbeddingFunc: testEmbedding})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveInteraction(ctx, "coffee beans arabica", "great choice"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+
+	results, err := store.RetrieveContext(ctx, "coffee", 5, 0)
+	if err != nil {
+		t.Fatalf("RetrieveContext() error = %v", err)
+	}
+	if len(results) == 0 {
+		t.Fatal("expected results, got none")
+	}
+	// useFTS false ise (test ortamında fts5 yok) → "vector", true ise "hybrid" veya "fts" veya "vector"
+	if results[0].MatchType == "" {
+		t.Fatal("MatchType should not be empty")
+	}
+}
+
 func TestSaveInteraction_Chunking(t *testing.T) {
 	ctx := context.Background()
 	dir := t.TempDir()

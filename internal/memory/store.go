@@ -489,6 +489,91 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 	return err
 }
 
+func escapeFTSQuery(q string) string {
+	q = strings.ReplaceAll(q, `"`, `""`)
+	return `"` + q + `"`
+}
+
+func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
+	rows, err := s.db.QueryContext(ctx, `
+        SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg,
+               memories_fts.rank
+        FROM memories_fts
+        JOIN memories m ON m.id = memories_fts.rowid
+        WHERE memories_fts MATCH ?
+        ORDER BY memories_fts.rank
+        LIMIT ?
+    `, escapeFTSQuery(query), topK)
+	if err != nil {
+		return nil, fmt.Errorf("memory.ftsSearch: %w", err)
+	}
+	defer rows.Close()
+
+	var results []MemoryResult
+	for rows.Next() {
+		var uuid, content, timestamp, userMsg, assistMsg string
+		var rank float64
+		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &rank); err != nil {
+			continue
+		}
+		results = append(results, MemoryResult{
+			ID:        uuid,
+			Content:   content,
+			Timestamp: timestamp,
+			UserMsg:   userMsg,
+			AssistMsg: assistMsg,
+			MatchType: "fts",
+		})
+	}
+	return results, rows.Err()
+}
+
+func reciprocalRankFusion(vecResults, ftsResults []MemoryResult, topK int) []MemoryResult {
+	const k = 60.0
+	scores := make(map[string]float64)
+	best := make(map[string]MemoryResult)
+
+	applyRank := func(results []MemoryResult, matchType string) {
+		for rank, r := range results {
+			scores[r.ID] += 1.0 / (k + float64(rank+1))
+			if _, seen := best[r.ID]; !seen {
+				r.MatchType = matchType
+				best[r.ID] = r
+			} else if matchType != best[r.ID].MatchType {
+				m := best[r.ID]
+				m.MatchType = "hybrid"
+				best[r.ID] = m
+			}
+		}
+	}
+
+	applyRank(vecResults, "vector")
+	applyRank(ftsResults, "fts")
+
+	type scored struct {
+		id    string
+		score float64
+	}
+	var ranked []scored
+	for id, score := range scores {
+		ranked = append(ranked, scored{id, score})
+	}
+	sort.Slice(ranked, func(i, j int) bool {
+		return ranked[i].score > ranked[j].score
+	})
+
+	if topK > len(ranked) {
+		topK = len(ranked)
+	}
+	out := make([]MemoryResult, 0, topK)
+	for _, s := range ranked[:topK] {
+		r := best[s.id]
+		r.Similarity = float32(s.score)
+		out = append(out, r)
+	}
+	return out
+}
+
 func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	start := time.Now()
 
@@ -507,23 +592,47 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		return nil, nil
 	}
 
-	var memories []MemoryResult
+	candidateK := topK * 3
 
+	var vecMemories []MemoryResult
 	if s.useVec {
-		memories, err = s.vecSearch(ctx, queryEmbedding, topK, minSimilarity)
+		vecMemories, err = s.vecSearch(ctx, queryEmbedding, candidateK, minSimilarity)
 	} else {
-		memories, err = s.goSearch(ctx, queryEmbedding, topK, minSimilarity)
+		vecMemories, err = s.goSearch(ctx, queryEmbedding, candidateK, minSimilarity)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("memory.RetrieveContext: vector search: %w", err)
+	}
+	for i := range vecMemories {
+		vecMemories[i].MatchType = "vector"
 	}
 
-	log.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v",
+	var memories []MemoryResult
+	if s.useFTS {
+		ftsMemories, ftsErr := s.ftsSearch(ctx, query, candidateK)
+		if ftsErr != nil {
+			log.Printf("MEMORY: ftsSearch: %v", ftsErr)
+		} else if len(ftsMemories) > 0 {
+			memories = reciprocalRankFusion(vecMemories, ftsMemories, topK)
+		}
+	}
+	if len(memories) == 0 {
+		memories = vecMemories
+		if topK < len(memories) {
+			memories = memories[:topK]
+		}
+	}
+
+	log.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v fts=%v",
 		time.Since(start).Milliseconds(),
 		embedDur.Milliseconds(),
 		topK,
 		len(memories),
 		s.useVec,
+		s.useFTS,
 	)
 
-	return memories, err
+	return memories, nil
 }
 
 func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {

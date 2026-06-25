@@ -121,11 +121,13 @@
 
 ### Faz F — Mobil Frontend Parity
 
-- [ ] **F1. Mobil API client default URL’ini kaldır / discovery ekle**
-  - Dosya: `mobile/lib/core/api_client.dart`
+- [x] **F1. Mobil API client default URL’ini kaldır / discovery ekle**
+  - Dosyalar: `mobile/lib/core/api_client.dart`, `mobile/lib/providers/connection_provider.dart`, `mobile/lib/screens/connect_screen.dart`
+  - `MemoApiClient` default URL `’’` oldu. `ConnectionState.baseUrl` default `’’`. `ConnectionNotifier.discoverUrl()` — `NetworkInterface.list()` ile subnet bulup 1-254 arasını paralel tarıyor. Connect ekranında "TARA" butonu eklendi.
 
-- [ ] **F2. Mobil client’a eksik backend endpointlerini ekle**
-  - Memory, model store, whatsapp, calendar, agent, skills vb.
+- [x] **F2. Mobil client’a eksik backend endpointlerini ekle**
+  - Dosya: `mobile/lib/core/api_client.dart`
+  - Eklenenler: chat extras (rename, activeChatId, generateTitle, exportChat, deleteMessage, updateMessage, createAgentChat), memory (enabled, settings, saveExplicit, deleteExplicit, export, import, stats, search), system prompt, incognito, mood, version, shutdown, agent extras (undoEdit, autoPermission, permissions), WhatsApp (status, start, stop, logout, send, search, chats, messages, stats, chatMode, stream), proactive (settings, patterns, suggestion), self-interest, system management. Yeni model class’lar: `MemoryStats`, `MemorySearchResult`.
 
 ---
 

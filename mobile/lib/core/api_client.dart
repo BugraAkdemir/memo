@@ -100,7 +100,7 @@ class MemoApiClient {
   String _baseUrl;
   String _token = '';
 
-  MemoApiClient({String this._baseUrl = 'http://192.168.1.100:8090'}) {
+  MemoApiClient({String this._baseUrl = ''}) {
     _initDio();
   }
 
@@ -462,6 +462,360 @@ class MemoApiClient {
       'model_id': modelId,
     });
   }
+
+  // ── Chat extras ───────────────────────────────────────────────────────────
+
+  Future<void> renameChat(String id, String title) async {
+    await _dio.put('/api/chats/rename', data: {'id': id, 'title': title});
+  }
+
+  Future<String> getActiveChatId() async {
+    final res = await _dio.get('/api/chats/active');
+    return res.data['id'] as String? ?? '';
+  }
+
+  Future<String> generateTitle() async {
+    final res = await _dio.post('/api/chats/generate-title');
+    return res.data['title'] as String? ?? '';
+  }
+
+  Future<String> exportChat() async {
+    final res = await _dio.get('/api/chats/export');
+    return res.data['markdown'] as String? ?? '';
+  }
+
+  Future<void> deleteMessage(int index) async {
+    await _dio.delete('/api/messages/$index');
+  }
+
+  Future<void> updateMessage(int index, String content) async {
+    await _dio.put('/api/messages/$index', data: {'content': content});
+  }
+
+  Future<String> createAgentChat(String projectPath) async {
+    final res = await _dio.post('/api/chats/agent', data: {'project_path': projectPath});
+    return res.data['id'] as String? ?? '';
+  }
+
+  // ── Memory ────────────────────────────────────────────────────────────────
+
+  Future<bool> getMemoryEnabled() async {
+    final res = await _dio.get('/api/memory/enabled');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setMemoryEnabled(bool enabled) async {
+    await _dio.put('/api/memory/enabled', data: {'enabled': enabled});
+  }
+
+  Future<Map<String, dynamic>> getMemorySettings() async {
+    final res = await _dio.get('/api/memory/settings');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> updateMemorySettings({
+    required int topK,
+    required double minSimilarity,
+    required bool autoForget,
+    required int autoForgetDays,
+  }) async {
+    await _dio.put('/api/memory/settings', data: {
+      'top_k': topK,
+      'min_similarity': minSimilarity,
+      'auto_forget': autoForget,
+      'auto_forget_days': autoForgetDays,
+    });
+  }
+
+  Future<void> saveExplicitMemory(String content, {String tags = ''}) async {
+    await _dio.post('/api/memory/explicit', data: {
+      'content': content,
+      if (tags.isNotEmpty) 'tags': tags,
+    });
+  }
+
+  Future<int> deleteExplicitMemory(String pattern) async {
+    final res = await _dio.delete('/api/memory/explicit', data: {'pattern': pattern});
+    return res.data['deleted'] as int? ?? 0;
+  }
+
+  Future<String> exportMemories() async {
+    final res = await _dio.get('/api/memory/export');
+    if (res.data is Map) return (res.data as Map<String, dynamic>).toString();
+    return res.data.toString();
+  }
+
+  Future<int> importMemories(String jsonData) async {
+    final res = await _dio.post('/api/memory/import', data: {'data': jsonData});
+    return res.data['imported'] as int? ?? 0;
+  }
+
+  Future<MemoryStats> getMemoryStats() async {
+    final res = await _dio.get('/api/memory/stats');
+    return MemoryStats.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<List<MemorySearchResult>> debugMemorySearch(String query) async {
+    final res = await _dio.get('/api/memory/search', queryParameters: {'q': query});
+    if (res.data is List) {
+      return (res.data as List)
+          .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  // ── System prompt / incognito ─────────────────────────────────────────────
+
+  Future<String> getSystemPrompt() async {
+    final res = await _dio.get('/api/system-prompt');
+    return res.data['prompt'] as String? ?? '';
+  }
+
+  Future<void> setSystemPrompt(String prompt) async {
+    await _dio.put('/api/system-prompt', data: {'prompt': prompt});
+  }
+
+  Future<void> resetSystemPrompt() async {
+    await _dio.delete('/api/system-prompt');
+  }
+
+  Future<void> toggleIncognito(bool enabled) async {
+    await _dio.put('/api/incognito', data: {'enabled': enabled});
+  }
+
+  Future<String> getIncognitoPrompt() async {
+    final res = await _dio.get('/api/incognito/prompt');
+    return res.data['prompt'] as String? ?? '';
+  }
+
+  Future<void> setIncognitoPrompt(String prompt) async {
+    await _dio.put('/api/incognito/prompt', data: {'prompt': prompt});
+  }
+
+  // ── Mood ──────────────────────────────────────────────────────────────────
+
+  Future<double> getMoodScore() async {
+    final res = await _dio.get('/api/mood/score');
+    return (res.data['score'] as num?)?.toDouble() ?? 0.0;
+  }
+
+  Future<bool> getMoodEnabled() async {
+    final res = await _dio.get('/api/mood/enabled');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setMoodEnabled(bool enabled) async {
+    await _dio.put('/api/mood/enabled', data: {'enabled': enabled});
+  }
+
+  // ── Version / shutdown ────────────────────────────────────────────────────
+
+  Future<String> getVersion() async {
+    final res = await _dio.get('/api/version');
+    return res.data['version'] as String? ?? '';
+  }
+
+  Future<void> shutdown() async {
+    try {
+      await _dio.post('/api/shutdown');
+    } catch (_) {}
+  }
+
+  // ── Agent extras ──────────────────────────────────────────────────────────
+
+  Future<void> undoAgentEdit() async {
+    await _dio.post('/api/agent/undo');
+  }
+
+  Future<bool> getAgentAutoPermission() async {
+    final res = await _dio.get('/api/agent/auto-permission');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setAgentAutoPermission(bool enabled) async {
+    await _dio.put('/api/agent/auto-permission', data: {'enabled': enabled});
+  }
+
+  Future<List<Map<String, dynamic>>> getAgentPermissions() async {
+    final res = await _dio.get('/api/agent/permissions');
+    if (res.data is List) {
+      return List<Map<String, dynamic>>.from(res.data as List);
+    }
+    return [];
+  }
+
+  Future<void> revokeAgentPermission(String id) async {
+    await _dio.delete('/api/agent/permissions/$id');
+  }
+
+  Future<void> clearAgentPermissions() async {
+    await _dio.delete('/api/agent/permissions');
+  }
+
+  // ── WhatsApp ──────────────────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getWhatsAppStatus() async {
+    final res = await _dio.get('/api/whatsapp/status');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<Map<String, dynamic>> startWhatsApp() async {
+    final res = await _dio.post('/api/whatsapp/start');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> stopWhatsApp() async {
+    await _dio.post('/api/whatsapp/stop');
+  }
+
+  Future<void> logoutWhatsApp() async {
+    await _dio.post('/api/whatsapp/logout');
+  }
+
+  Future<Map<String, dynamic>> sendWhatsApp(String jid, String text) async {
+    final res = await _dio.post('/api/whatsapp/send', data: {'jid': jid, 'text': text});
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<List<dynamic>> searchWhatsApp(String query) async {
+    final res = await _dio.get('/api/whatsapp/search', queryParameters: {'q': query});
+    if (res.data is List) return res.data as List;
+    return [];
+  }
+
+  Future<List<dynamic>> getWhatsAppChats() async {
+    final res = await _dio.get('/api/whatsapp/chats');
+    if (res.data is List) return res.data as List;
+    return [];
+  }
+
+  Future<List<dynamic>> getWhatsAppMessages(String jid) async {
+    final res = await _dio.get('/api/whatsapp/messages', queryParameters: {'jid': jid});
+    if (res.data is List) return res.data as List;
+    return [];
+  }
+
+  String whatsAppAvatarUrl(String jid) =>
+      '$_baseUrl/api/whatsapp/avatar?jid=${Uri.encodeComponent(jid)}';
+
+  Future<Map<String, dynamic>> getWhatsAppStats() async {
+    final res = await _dio.get('/api/whatsapp/stats');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<bool> getWhatsAppChatMode() async {
+    final res = await _dio.get('/api/whatsapp/chat-mode');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setWhatsAppChatMode(bool enabled) async {
+    await _dio.put('/api/whatsapp/chat-mode', data: {'enabled': enabled});
+  }
+
+  Stream<StreamChunk> sendWhatsAppChatStream(
+    String message, {
+    CancelToken? cancelToken,
+  }) async* {
+    try {
+      final response = await _dio.post(
+        '/api/whatsapp/chat/stream',
+        data: {'message': message},
+        options: Options(responseType: ResponseType.stream),
+        cancelToken: cancelToken,
+      );
+
+      final lineStream = (response.data.stream as Stream<List<int>>)
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lineStream) {
+        if (line.startsWith('data: ')) {
+          final jsonStr = line.substring(6);
+          try {
+            final data = json.decode(jsonStr) as Map<String, dynamic>;
+            if (data['error'] != null && (data['error'] as String).isNotEmpty) {
+              throw Exception(data['error'] as String);
+            }
+            if (data['content'] != null ||
+                data['thinking'] != null ||
+                data['finish_reason'] != null) {
+              yield StreamChunk(
+                content: data['content'] as String? ?? '',
+                thinking: data['thinking'] as String?,
+                finishReason: data['finish_reason'] as String?,
+              );
+            }
+            if (data['done'] == true) break;
+          } catch (_) {}
+        }
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      throw Exception('Connection error: $e');
+    }
+  }
+
+  // ── Proactive / learning ──────────────────────────────────────────────────
+
+  Future<Map<String, dynamic>> getProactiveSettings() async {
+    final res = await _dio.get('/api/proactive/settings');
+    return res.data as Map<String, dynamic>;
+  }
+
+  Future<void> setProactiveSettings(bool enabled, String level) async {
+    await _dio.put('/api/proactive/settings', data: {'enabled': enabled, 'level': level});
+  }
+
+  Future<List<Map<String, dynamic>>> getProactivePatterns() async {
+    final res = await _dio.get('/api/proactive/patterns');
+    if (res.data is List) {
+      return List<Map<String, dynamic>>.from(res.data as List);
+    }
+    return [];
+  }
+
+  Future<void> forgetPattern(String id) async {
+    await _dio.delete('/api/proactive/patterns/$id');
+  }
+
+  Future<void> clearLearningData() async {
+    await _dio.delete('/api/learning/data');
+  }
+
+  Future<Map<String, dynamic>?> getPendingSuggestion() async {
+    try {
+      final res = await _dio.get('/api/proactive/suggestion');
+      if (res.data is Map && res.data['id'] != null) {
+        return res.data as Map<String, dynamic>;
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  Future<void> respondToSuggestion(String id, String response) async {
+    await _dio.post('/api/proactive/suggestion/respond', data: {'id': id, 'response': response});
+  }
+
+  // ── Self-interest / system management ────────────────────────────────────
+
+  Future<bool> getSelfInterestEnabled() async {
+    final res = await _dio.get('/api/self-interest/enabled');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setSelfInterestEnabled(bool enabled) async {
+    await _dio.put('/api/self-interest/enabled', data: {'enabled': enabled});
+  }
+
+  Future<bool> getSystemManagementEnabled() async {
+    final res = await _dio.get('/api/system-management/enabled');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setSystemManagementEnabled(bool enabled) async {
+    await _dio.put('/api/system-management/enabled', data: {'enabled': enabled});
+  }
 }
 
 class RemoteAccessStatus {
@@ -588,5 +942,60 @@ class LocalModel {
         filename: json['filename'] as String? ?? json['name'] as String? ?? '',
         sizeBytes: json['size_bytes'] as int? ?? 0,
         isEmbedding: json['is_embedding'] as bool? ?? false,
+      );
+}
+
+class MemoryStats {
+  final int total;
+  final int explicit;
+  final int automatic;
+  final int pendingDeletion;
+  final double avgImportance;
+
+  const MemoryStats({
+    this.total = 0,
+    this.explicit = 0,
+    this.automatic = 0,
+    this.pendingDeletion = 0,
+    this.avgImportance = 0,
+  });
+
+  factory MemoryStats.fromJson(Map<String, dynamic> json) => MemoryStats(
+        total: json['total'] as int? ?? 0,
+        explicit: json['explicit'] as int? ?? 0,
+        automatic: json['automatic'] as int? ?? 0,
+        pendingDeletion: json['pending_deletion'] as int? ?? 0,
+        avgImportance: (json['avg_importance'] as num?)?.toDouble() ?? 0,
+      );
+}
+
+class MemorySearchResult {
+  final String id;
+  final String content;
+  final double score;
+  final String matchType;
+  final int importance;
+  final String source;
+  final String createdAt;
+
+  const MemorySearchResult({
+    required this.id,
+    required this.content,
+    this.score = 0,
+    this.matchType = '',
+    this.importance = 3,
+    this.source = '',
+    this.createdAt = '',
+  });
+
+  factory MemorySearchResult.fromJson(Map<String, dynamic> json) =>
+      MemorySearchResult(
+        id: json['id'] as String? ?? '',
+        content: json['content'] as String? ?? '',
+        score: (json['score'] as num?)?.toDouble() ?? 0,
+        matchType: json['match_type'] as String? ?? '',
+        importance: json['importance'] as int? ?? 3,
+        source: json['source'] as String? ?? '',
+        createdAt: json['created_at'] as String? ?? '',
       );
 }

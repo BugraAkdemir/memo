@@ -1,3 +1,7 @@
+import 'dart:async';
+import 'dart:io';
+
+import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,6 +24,7 @@ final remoteAccessProvider =
 class ConnectionState {
   final bool connected;
   final bool connecting;
+  final bool discovering;
   final String? error;
   final String baseUrl;
   final String token;
@@ -28,8 +33,9 @@ class ConnectionState {
   const ConnectionState({
     this.connected = false,
     this.connecting = false,
+    this.discovering = false,
     this.error,
-    this.baseUrl = 'http://192.168.1.100:8090',
+    this.baseUrl = '',
     this.token = '',
     this.remoteMode = false,
   });
@@ -37,6 +43,7 @@ class ConnectionState {
   ConnectionState copyWith({
     bool? connected,
     bool? connecting,
+    bool? discovering,
     String? error,
     String? baseUrl,
     String? token,
@@ -45,6 +52,7 @@ class ConnectionState {
     return ConnectionState(
       connected: connected ?? this.connected,
       connecting: connecting ?? this.connecting,
+      discovering: discovering ?? this.discovering,
       error: error,
       baseUrl: baseUrl ?? this.baseUrl,
       token: token ?? this.token,
@@ -153,6 +161,75 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
 
   void disconnect() {
     state = state.copyWith(connected: false);
+  }
+
+  /// Scans the local network for a running Memo backend.
+  /// Returns the discovered base URL, or null if none found.
+  Future<String?> discoverUrl() async {
+    if (state.discovering) return null;
+    state = state.copyWith(discovering: true, error: null);
+    try {
+      return await _scanLocalNetwork();
+    } finally {
+      if (mounted) state = state.copyWith(discovering: false);
+    }
+  }
+
+  Future<String?> _scanLocalNetwork() async {
+    List<NetworkInterface> interfaces;
+    try {
+      interfaces = await NetworkInterface.list(
+        type: InternetAddressType.IPv4,
+        includeLoopback: false,
+      );
+    } catch (_) {
+      return null;
+    }
+
+    final subnets = <String>{};
+    for (final iface in interfaces) {
+      for (final addr in iface.addresses) {
+        final parts = addr.address.split('.');
+        if (parts.length == 4) {
+          subnets.add('${parts[0]}.${parts[1]}.${parts[2]}');
+        }
+      }
+    }
+
+    if (subnets.isEmpty) return null;
+
+    final candidates = <String>[];
+    for (final subnet in subnets) {
+      for (int i = 1; i < 255; i++) {
+        candidates.add('http://$subnet.$i:8090');
+      }
+    }
+
+    final scanDio = Dio(BaseOptions(
+      connectTimeout: const Duration(seconds: 2),
+      receiveTimeout: const Duration(seconds: 2),
+    ));
+
+    try {
+      final completer = Completer<String?>();
+      int pending = candidates.length;
+
+      for (final url in candidates) {
+        scanDio.get('$url/api/version').then((_) {
+          if (!completer.isCompleted) completer.complete(url);
+          pending--;
+          if (pending <= 0 && !completer.isCompleted) completer.complete(null);
+        }).catchError((_) {
+          pending--;
+          if (pending <= 0 && !completer.isCompleted) completer.complete(null);
+        });
+      }
+
+      return await completer.future
+          .timeout(const Duration(seconds: 10), onTimeout: () => null);
+    } finally {
+      scanDio.close(force: true);
+    }
   }
 }
 

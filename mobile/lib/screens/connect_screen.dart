@@ -172,7 +172,29 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _fieldLabel('DESKTOP ADDRESS'),
+        Row(
+          children: [
+            Expanded(child: _fieldLabel('DESKTOP ADDRESS')),
+            if (state.discovering)
+              const SizedBox(
+                width: 14,
+                height: 14,
+                child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent),
+              )
+            else
+              GestureDetector(
+                onTap: _scan,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.wifi_find_outlined, size: 13, color: MemoTheme.accent),
+                    const SizedBox(width: 4),
+                    Text('TARA', style: MemoTheme.mono(11, color: MemoTheme.accent, ls: 1.1)),
+                  ],
+                ),
+              ),
+          ],
+        ),
         const SizedBox(height: 8),
         TextField(
           controller: _urlCtrl,
@@ -188,6 +210,25 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
         ),
       ],
     );
+  }
+
+  Future<void> _scan() async {
+    HapticFeedback.selectionClick();
+    FocusScope.of(context).unfocus();
+    final url =
+        await ref.read(connectionStateProvider.notifier).discoverUrl();
+    if (!mounted) return;
+    if (url != null) {
+      _urlCtrl.text = url;
+      HapticFeedback.lightImpact();
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ağda Memo backend bulunamadı. URL\'yi elle gir.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   Widget _tailscaleFields(ConnectionState state) {

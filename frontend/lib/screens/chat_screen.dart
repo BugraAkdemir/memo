@@ -63,15 +63,6 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider);
 
-    ref.listen<String>(errorMessageProvider, (previous, next) {
-      if (next.isNotEmpty && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next), backgroundColor: MemoTheme.red),
-        );
-        ref.read(errorMessageProvider.notifier).state = '';
-      }
-    });
-
     ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
       if (next.hasValue && next.value != null && mounted) {
         final event = next.value!;

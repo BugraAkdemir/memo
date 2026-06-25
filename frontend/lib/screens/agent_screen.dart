@@ -164,13 +164,6 @@ class _AgentContent extends ConsumerWidget {
     final activeChatAsync = ref.watch(activeChatIdProvider);
     final chatListAsync = ref.watch(chatListProvider);
 
-    ref.listen<String>(errorMessageProvider, (previous, next) {
-      if (next.isNotEmpty && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(next), backgroundColor: MemoTheme.red));
-        ref.read(errorMessageProvider.notifier).state = '';
-      }
-    });
-
     ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
       if (next.hasValue && next.value != null && context.mounted) {
         final event = next.value!;

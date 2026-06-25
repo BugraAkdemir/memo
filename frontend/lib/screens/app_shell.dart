@@ -52,6 +52,21 @@ class _AppShellState extends ConsumerState<AppShell> {
     final locale = ref.watch(localeProvider);
     L10n.setLocale(locale);
 
+    // Global error toast: any provider can report a user-facing error here and
+    // it will be shown regardless of which screen is currently active.
+    ref.listen<String>(errorMessageProvider, (previous, next) {
+      if (next.isNotEmpty && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(next),
+            backgroundColor: MemoTheme.red,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+        ref.read(errorMessageProvider.notifier).state = '';
+      }
+    });
+
     ref.listen(setupCompleteProvider, (prev, next) {
       if (prev == true && next == false) {
         setState(() {

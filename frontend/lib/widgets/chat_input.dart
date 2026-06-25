@@ -230,23 +230,23 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           SnackBar(content: Text('WhatsApp hatası: $e')),
         );
       }
+    } finally {
+      final full = ref.read(streamingContentProvider);
+      if (full.isNotEmpty || finalAgentEvents.isNotEmpty) {
+        ref.read(messagesProvider.notifier).addMessage(
+              ChatMessage(
+                role: 'assistant',
+                content: full,
+                timestamp: timestamp,
+                agentEvents:
+                    finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
+              ),
+            );
+      }
+      ref.read(streamingContentProvider.notifier).state = '';
+      ref.read(streamingAgentEventsProvider.notifier).state = [];
+      ref.read(isSendingProvider.notifier).state = false;
     }
-
-    final full = ref.read(streamingContentProvider);
-    if (full.isNotEmpty || finalAgentEvents.isNotEmpty) {
-      ref.read(messagesProvider.notifier).addMessage(
-            ChatMessage(
-              role: 'assistant',
-              content: full,
-              timestamp: timestamp,
-              agentEvents:
-                  finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
-            ),
-          );
-    }
-    ref.read(streamingContentProvider.notifier).state = '';
-    ref.read(streamingAgentEventsProvider.notifier).state = [];
-    ref.read(isSendingProvider.notifier).state = false;
   }
 
   /// Check if text matches a command key; if so, execute it instead of sending.

@@ -105,11 +105,16 @@ func (s *Store) initSchema() error {
 		return err
 	}
 
-	// Migrate: add chunk columns to existing tables that predate this schema.
+	// Migrate: add columns to existing tables that predate this schema.
 	for _, col := range []struct{ name, def string }{
 		{"chunk_index", "INTEGER NOT NULL DEFAULT 0"},
 		{"parent_uuid", "TEXT NOT NULL DEFAULT ''"},
 		{"total_chunks", "INTEGER NOT NULL DEFAULT 1"},
+		{"session_id", "TEXT NOT NULL DEFAULT ''"},
+		{"importance", "INTEGER NOT NULL DEFAULT 3"},
+		{"tags", "TEXT NOT NULL DEFAULT ''"},
+		{"source", "TEXT NOT NULL DEFAULT 'conversation'"},
+		{"retrieve_count", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		var count int
 		_ = s.db.QueryRowContext(ctx,
@@ -439,8 +444,10 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 		embedBlob := floatsToBlob(embedding)
 
 		res, err := tx.Exec(
-			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding, chunk_index, parent_uuid, total_chunks)
-             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?)`,
+			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
+			                      chunk_index, parent_uuid, total_chunks,
+			                      session_id, importance, tags, source, retrieve_count)
+             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?, '', 3, '', 'conversation', 0)`,
 			uuid, content, timestamp, userChunk, storedAssist, embedBlob, chunkIndex, parentUUID, totalChunks,
 		)
 		if err != nil {
@@ -510,7 +517,8 @@ func escapeFTSQuery(q string) string {
 func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
 	rows, err := s.db.QueryContext(ctx, `
         SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg,
-               memories_fts.rank
+               memories_fts.rank,
+               m.importance, m.source, m.tags, m.session_id, m.retrieve_count
         FROM memories_fts
         JOIN memories m ON m.id = memories_fts.rowid
         WHERE memories_fts MATCH ?
@@ -526,16 +534,24 @@ func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]Memory
 	for rows.Next() {
 		var uuid, content, timestamp, userMsg, assistMsg string
 		var rank float64
-		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &rank); err != nil {
+		var importance, retrieveCount int
+		var source, tags, sessionID string
+		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &rank,
+			&importance, &source, &tags, &sessionID, &retrieveCount); err != nil {
 			continue
 		}
 		results = append(results, MemoryResult{
-			ID:        uuid,
-			Content:   content,
-			Timestamp: timestamp,
-			UserMsg:   userMsg,
-			AssistMsg: assistMsg,
-			MatchType: "fts",
+			ID:            uuid,
+			Content:       content,
+			Timestamp:     timestamp,
+			UserMsg:       userMsg,
+			AssistMsg:     assistMsg,
+			MatchType:     "fts",
+			Importance:    importance,
+			Source:        source,
+			Tags:          tags,
+			SessionID:     sessionID,
+			RetrieveCount: retrieveCount,
 		})
 	}
 	return results, rows.Err()
@@ -646,6 +662,14 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		}
 	}
 
+	if len(memories) > 0 {
+		ids := make([]string, len(memories))
+		for i, m := range memories {
+			ids[i] = m.ID
+		}
+		go s.incrementRetrieveCounts(ids)
+	}
+
 	log.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v fts=%v",
 		time.Since(start).Milliseconds(),
 		embedDur.Milliseconds(),
@@ -665,7 +689,8 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 	}
 
 	rows, err := s.db.QueryContext(ctx, `
-		SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg, v.distance
+		SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg, v.distance,
+		       m.importance, m.source, m.tags, m.session_id, m.retrieve_count
 		FROM vec_memories v
 		JOIN memories m ON m.id = v.rowid
 		WHERE v.embedding MATCH ?
@@ -680,11 +705,14 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 	var results []MemoryResult
 	for rows.Next() {
 		var (
-			uuid, content, timestamp string
-			userMsg, assistMsg       string
-			distance                 float64
+			uuid, content, timestamp  string
+			userMsg, assistMsg        string
+			distance                  float64
+			importance, retrieveCount int
+			source, tags, sessionID   string
 		)
-		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &distance); err != nil {
+		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &distance,
+			&importance, &source, &tags, &sessionID, &retrieveCount); err != nil {
 			return nil, fmt.Errorf("memory.vecSearch: scan: %w", err)
 		}
 
@@ -694,12 +722,17 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 		}
 
 		results = append(results, MemoryResult{
-			ID:         uuid,
-			Content:    content,
-			Similarity: sim,
-			Timestamp:  timestamp,
-			UserMsg:    userMsg,
-			AssistMsg:  assistMsg,
+			ID:            uuid,
+			Content:       content,
+			Similarity:    sim,
+			Timestamp:     timestamp,
+			UserMsg:       userMsg,
+			AssistMsg:     assistMsg,
+			Importance:    importance,
+			Source:        source,
+			Tags:          tags,
+			SessionID:     sessionID,
+			RetrieveCount: retrieveCount,
 		})
 	}
 
@@ -708,19 +741,26 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 
 func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, uuid, content, timestamp, user_msg, assist_msg, embedding FROM memories WHERE embedding IS NOT NULL")
+		`SELECT id, uuid, content, timestamp, user_msg, assist_msg, embedding,
+		        importance, source, tags, session_id, retrieve_count
+		 FROM memories WHERE embedding IS NOT NULL`)
 	if err != nil {
 		return nil, fmt.Errorf("memory.goSearch: %w", err)
 	}
 	defer rows.Close()
 
 	type scored struct {
-		uuid     string
-		content  string
-		ts       string
-		userMsg  string
-		assistMsg string
-		sim      float32
+		uuid          string
+		content       string
+		ts            string
+		userMsg       string
+		assistMsg     string
+		sim           float32
+		importance    int
+		source        string
+		tags          string
+		sessionID     string
+		retrieveCount int
 	}
 
 	queryNorm := vectorNorm(queryEmbedding)
@@ -730,7 +770,10 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 		var id int64
 		var uuid, content, timestamp, userMsg, assistMsg string
 		var blob []byte
-		if err := rows.Scan(&id, &uuid, &content, &timestamp, &userMsg, &assistMsg, &blob); err != nil {
+		var importance, retrieveCount int
+		var source, tags, sessionID string
+		if err := rows.Scan(&id, &uuid, &content, &timestamp, &userMsg, &assistMsg, &blob,
+			&importance, &source, &tags, &sessionID, &retrieveCount); err != nil {
 			continue
 		}
 
@@ -745,12 +788,17 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 		}
 
 		all = append(all, scored{
-			uuid:      uuid,
-			content:   content,
-			ts:        timestamp,
-			userMsg:   userMsg,
-			assistMsg: assistMsg,
-			sim:       sim,
+			uuid:          uuid,
+			content:       content,
+			ts:            timestamp,
+			userMsg:       userMsg,
+			assistMsg:     assistMsg,
+			sim:           sim,
+			importance:    importance,
+			source:        source,
+			tags:          tags,
+			sessionID:     sessionID,
+			retrieveCount: retrieveCount,
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -768,16 +816,44 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 	results := make([]MemoryResult, 0, topK)
 	for _, s := range all[:topK] {
 		results = append(results, MemoryResult{
-			ID:         s.uuid,
-			Content:    s.content,
-			Similarity: s.sim,
-			Timestamp:  s.ts,
-			UserMsg:    s.userMsg,
-			AssistMsg:  s.assistMsg,
+			ID:            s.uuid,
+			Content:       s.content,
+			Similarity:    s.sim,
+			Timestamp:     s.ts,
+			UserMsg:       s.userMsg,
+			AssistMsg:     s.assistMsg,
+			Importance:    s.importance,
+			Source:        s.source,
+			Tags:          s.tags,
+			SessionID:     s.sessionID,
+			RetrieveCount: s.retrieveCount,
 		})
 	}
 
 	return results, nil
+}
+
+// incrementRetrieveCounts increments retrieve_count for the given memory UUIDs.
+// Called asynchronously after a successful retrieval to track usage frequency.
+func (s *Store) incrementRetrieveCounts(ids []string) {
+	if len(ids) == 0 {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	placeholders := strings.Repeat("?,", len(ids))
+	placeholders = placeholders[:len(placeholders)-1]
+	args := make([]any, len(ids))
+	for i, id := range ids {
+		args[i] = id
+	}
+	_ = s.db.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec(
+			"UPDATE memories SET retrieve_count = retrieve_count + 1 WHERE uuid IN ("+placeholders+")",
+			args...,
+		)
+		return err
+	})
 }
 
 func (s *Store) DebugSearch(ctx context.Context, query string, topK int) []MemoryResult {

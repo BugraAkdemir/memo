@@ -13,13 +13,18 @@ type Memory struct {
 }
 
 type MemoryResult struct {
-	ID         string  `json:"id"`
-	Content    string  `json:"content"`
-	Similarity float32 `json:"similarity"`
-	Timestamp  string  `json:"timestamp"`
-	UserMsg    string  `json:"user_msg,omitempty"`
-	AssistMsg  string  `json:"assist_msg,omitempty"`
-	MatchType  string  `json:"match_type,omitempty"` // "vector", "fts", "hybrid"
+	ID            string  `json:"id"`
+	Content       string  `json:"content"`
+	Similarity    float32 `json:"similarity"`
+	Timestamp     string  `json:"timestamp"`
+	UserMsg       string  `json:"user_msg,omitempty"`
+	AssistMsg     string  `json:"assist_msg,omitempty"`
+	MatchType     string  `json:"match_type,omitempty"`    // "vector", "fts", "hybrid"
+	Importance    int     `json:"importance,omitempty"`    // 1–5; default 3
+	Source        string  `json:"source,omitempty"`        // "conversation" | "explicit"
+	Tags          string  `json:"tags,omitempty"`          // comma-separated
+	SessionID     string  `json:"session_id,omitempty"`
+	RetrieveCount int     `json:"retrieve_count,omitempty"`
 }
 
 type MemoryFileInfo struct {

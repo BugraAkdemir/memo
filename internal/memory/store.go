@@ -409,7 +409,11 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 
 func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int) error {
 	embedStart := time.Now()
-	embedding, err := s.embed(ctx, userChunk)
+	embedText := userChunk
+	if assistantMsg != "" {
+		embedText = userChunk + "\n" + assistantMsg
+	}
+	embedding, err := s.embed(ctx, embedText)
 	if err != nil {
 		return fmt.Errorf("embed: %w", err)
 	}
@@ -424,11 +428,7 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 		uuid = fmt.Sprintf("%s_%d", parentUUID, chunkIndex)
 	}
 
-	// Sadece son chunk'ta assist_msg sakla
-	storedAssist := ""
-	if chunkIndex == totalChunks-1 {
-		storedAssist = assistantMsg
-	}
+	storedAssist := assistantMsg
 	content := fmt.Sprintf("[%s] User: %s", timestamp, userChunk)
 	if storedAssist != "" {
 		content += "\nAssistant: " + storedAssist
@@ -490,8 +490,21 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 }
 
 func escapeFTSQuery(q string) string {
-	q = strings.ReplaceAll(q, `"`, `""`)
-	return `"` + q + `"`
+	words := strings.Fields(q)
+	parts := make([]string, 0, len(words))
+	for _, w := range words {
+		w = strings.ReplaceAll(w, `"`, `""`)
+		w = strings.ReplaceAll(w, `*`, "")
+		w = strings.ReplaceAll(w, `(`, "")
+		w = strings.ReplaceAll(w, `)`, "")
+		if len(w) >= 2 {
+			parts = append(parts, `"`+w+`"`)
+		}
+	}
+	if len(parts) == 0 {
+		return `"` + strings.ReplaceAll(q, `"`, `""`) + `"`
+	}
+	return strings.Join(parts, " ")
 }
 
 func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
@@ -592,7 +605,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		return nil, nil
 	}
 
-	candidateK := topK * 3
+	candidateK := min(max(topK*5, 20), 100)
 
 	var vecMemories []MemoryResult
 	if s.useVec {
@@ -614,6 +627,16 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 			log.Printf("MEMORY: ftsSearch: %v", ftsErr)
 		} else if len(ftsMemories) > 0 {
 			memories = reciprocalRankFusion(vecMemories, ftsMemories, topK)
+			// RRF skorları ~0.008–0.016 aralığında; düşük skorlu alakasız sonuçları filtrele.
+			// k=60 ile rank-1 = 1/61 ≈ 0.0164; eşiği yarısına ayarlıyoruz.
+			const minRRFScore = float32(0.008)
+			filtered := memories[:0]
+			for _, m := range memories {
+				if m.Similarity >= minRRFScore {
+					filtered = append(filtered, m)
+				}
+			}
+			memories = filtered
 		}
 	}
 	if len(memories) == 0 {

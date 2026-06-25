@@ -18,6 +18,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   bool _tsFunnel = false;
   bool _tsBusy = false;
   bool _enabling = false;
+  bool _disposed = false;
 
   @override
   void initState() {
@@ -29,6 +30,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
 
   @override
   void dispose() {
+    _disposed = true;
     _ngrokTokenCtrl.dispose();
     _tsKeyCtrl.dispose();
     _tsHostCtrl.dispose();
@@ -558,7 +560,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
       // If enabling, poll until ngrok URL appears
       if (v) {
         for (int i = 0; i < 30; i++) {
+          if (_disposed) return;
           await Future.delayed(const Duration(seconds: 1));
+          if (_disposed) return;
           try {
             final status = await ref.read(apiClientProvider).getRemoteAccess();
             final url = status['ngrok_url'] as String? ?? '';
@@ -590,7 +594,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           ngrokMode: true, ngrokToken: token);
       // Poll until ngrok URL appears or error (takes a few seconds)
       for (int i = 0; i < 30; i++) {
+        if (_disposed) return;
         await Future.delayed(const Duration(seconds: 1));
+        if (_disposed) return;
         try {
           final status = await ref.read(apiClientProvider).getRemoteAccess();
           final url = status['ngrok_url'] as String? ?? '';

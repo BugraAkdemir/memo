@@ -139,25 +139,37 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	defer cancel()
 
 	var cmd *exec.Cmd
+	homeDir, _ := os.UserHomeDir()
 	if runtime.GOOS == "windows" {
 		cmd = exec.CommandContext(execCtx, "cmd", "/C", args.Command)
+		userProfile := os.Getenv("USERPROFILE")
+		if userProfile == "" {
+			userProfile = homeDir
+		}
 		cmd.Env = []string{
 			"PATH=" + os.Getenv("PATH"),
-			"USERPROFILE=" + os.Getenv("USERPROFILE"),
+			"USERPROFILE=" + userProfile,
 			"SystemRoot=" + os.Getenv("SystemRoot"),
+			"USERNAME=" + os.Getenv("USERNAME"),
 		}
 	} else {
 		cmd = exec.CommandContext(execCtx, "bash", "-c", args.Command)
-		// Inherit the user's PATH so that tools like go, npm, node, python etc.
-		// installed in non-system locations are discoverable.
 		userPath := os.Getenv("PATH")
 		if userPath == "" {
 			userPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
 		}
+		home := os.Getenv("HOME")
+		if home == "" {
+			home = homeDir
+		}
+		user := os.Getenv("USER")
+		if user == "" {
+			user = os.Getenv("USERNAME")
+		}
 		cmd.Env = []string{
 			"PATH=" + userPath,
-			"HOME=" + os.Getenv("HOME"),
-			"USER=" + os.Getenv("USER"),
+			"HOME=" + home,
+			"USER=" + user,
 			"LANG=en_US.UTF-8",
 		}
 	}

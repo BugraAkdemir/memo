@@ -448,30 +448,28 @@ func resolveBinary(configured string, mode string) (string, error) {
 	}
 
 	// 5. Check common install locations
+	homeDir, _ := os.UserHomeDir()
 	var commonPaths []string
 	switch runtime.GOOS {
 	case "windows":
-		home := os.Getenv("USERPROFILE")
 		commonPaths = []string{
-			filepath.Join(home, "llama.cpp", "build", "bin", "llama-server.exe"),
-			filepath.Join(home, "scoop", "apps", "llama.cpp", "current", "llama-server.exe"),
+			filepath.Join(homeDir, "llama.cpp", "build", "bin", "llama-server.exe"),
+			filepath.Join(homeDir, "scoop", "apps", "llama.cpp", "current", "llama-server.exe"),
 			`C:\Program Files\llama.cpp\llama-server.exe`,
-			filepath.Join(home, ".local", "bin", "llama-server.exe"),
+			filepath.Join(homeDir, ".local", "bin", "llama-server.exe"),
 		}
 	case "darwin":
-		home := os.Getenv("HOME")
 		commonPaths = []string{
 			"/opt/homebrew/bin/llama-server",
 			"/usr/local/opt/llama.cpp/bin/llama-server",
-			filepath.Join(home, "llama.cpp", "build", "bin", "llama-server"),
+			filepath.Join(homeDir, "llama.cpp", "build", "bin", "llama-server"),
 		}
 	default:
-		home := os.Getenv("HOME")
 		commonPaths = []string{
 			"/usr/local/bin/llama-server",
 			"/usr/bin/llama-server",
-			filepath.Join(home, ".local", "bin", "llama-server"),
-			filepath.Join(home, "llama.cpp", "build", "bin", "llama-server"),
+			filepath.Join(homeDir, ".local", "bin", "llama-server"),
+			filepath.Join(homeDir, "llama.cpp", "build", "bin", "llama-server"),
 		}
 	}
 

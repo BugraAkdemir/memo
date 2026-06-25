@@ -104,8 +104,9 @@ func DeleteFile(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 		return "", err
 	}
 
-	// Extra check: prevent deleting .git or its contents
-	if strings.Contains(fullPath, "/.git/") || strings.HasSuffix(fullPath, "/.git") {
+	// Extra check: prevent deleting .git or its contents (use ToSlash for Windows compat)
+	slashPath := filepath.ToSlash(fullPath)
+	if strings.Contains(slashPath, "/.git/") || strings.HasSuffix(slashPath, "/.git") {
 		return "", fmt.Errorf("cannot delete .git directory or files within it")
 	}
 

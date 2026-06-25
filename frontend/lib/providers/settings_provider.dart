@@ -342,7 +342,7 @@ class ThemeModeNotifier extends StateNotifier<String> {
   final SharedPreferences _prefs;
 
   ThemeModeNotifier(this._prefs)
-      : super(_prefs.getString('memo_theme_mode') ?? 'system');
+      : super(_prefs.getString('memo_theme_mode') ?? 'light');
 
   Future<void> setMode(String mode) async {
     await _prefs.setString('memo_theme_mode', mode);

@@ -24,10 +24,7 @@ class ChatSidebar extends ConsumerWidget {
       decoration: glass
           ? BoxDecoration(
               color: c.bgPanel,
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(MemoTheme.radiusLg),
-                bottomLeft: Radius.circular(MemoTheme.radiusLg),
-              ),
+              borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
               border: Border.all(color: c.borderSoft),
               boxShadow: MemoTheme.shadowMd,
             )
@@ -447,10 +444,10 @@ class _ActionButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return Material(
       color: MemoTheme.of(context).bgElement,
-      borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+      borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
         child: Container(
           padding:  EdgeInsets.symmetric(vertical: 10),
           child: Row(
@@ -495,10 +492,10 @@ class _IconActionButton extends StatelessWidget {
         color: isActive
             ? MemoTheme.warmBrown.withValues(alpha: 0.15)
             : MemoTheme.of(context).bgElement,
-        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
           child: SizedBox(
             width: 40,
             height: 40,
@@ -520,12 +517,21 @@ class _SidebarStatusBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final connAsync = ref.watch(connectionStatusProvider);
+    final c = MemoTheme.of(context);
+    final glass = c.isGlass;
 
     return Container(
-      padding:  EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-      decoration: BoxDecoration(
-        border: Border(top: BorderSide(color: MemoTheme.of(context).borderSoft)),
-      ),
+      margin: glass ? const EdgeInsets.fromLTRB(8, 8, 8, 8) : EdgeInsets.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      decoration: glass
+          ? BoxDecoration(
+              color: c.bgElement,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(color: c.borderSoft),
+            )
+          : BoxDecoration(
+              border: Border(top: BorderSide(color: c.borderSoft)),
+            ),
       child: Row(
         children: [
           Container(

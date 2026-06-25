@@ -260,7 +260,8 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                     : DropdownButtonHideUnderline(
                         child: DropdownButton<String>(
                           isExpanded: true,
-                          dropdownColor: MemoTheme.of(context).bgPanel,
+                          dropdownColor: MemoTheme.of(context).bgPanel.withValues(alpha: 1.0),
+                          elevation: 8,
                           value: _selectedEmbeddingPath,
                           style: TextStyle(
                             fontSize: 12,

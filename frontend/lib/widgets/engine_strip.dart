@@ -50,9 +50,9 @@ class EngineStrip extends ConsumerWidget {
       decoration: c.isGlass
           ? BoxDecoration(
               color: c.bgPanel,
-              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
               border: Border.all(color: c.borderSoft),
-              boxShadow: MemoTheme.shadowSm,
+              boxShadow: MemoTheme.shadowMd,
             )
           : BoxDecoration(
               color: c.bgPanel,

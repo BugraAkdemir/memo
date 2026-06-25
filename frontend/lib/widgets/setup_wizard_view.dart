@@ -33,7 +33,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   final _customPromptController = TextEditingController();
 
   String _selectedLanguage = 'tr';
-  String _selectedTheme = 'system';
+  String _selectedTheme = 'light';
   String _selectedPrompt = 'normal';
   bool _customPrompt = false;
 

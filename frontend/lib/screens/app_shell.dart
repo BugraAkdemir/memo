@@ -179,16 +179,13 @@ class _AppShellState extends ConsumerState<AppShell> {
       // In Glass Light the rail floats off the window edge as a rounded card;
       // dark keeps it flush against the edge.
       padding: glass
-          ? const EdgeInsets.fromLTRB(10, 0, 0, 0)
+          ? const EdgeInsets.fromLTRB(12, 12, 8, 12)
           : EdgeInsets.zero,
       child: SizedBox(
         width: glass ? 64 : 72,
           child: GlassSurface(
             borderRadius: glass
-                ? const BorderRadius.only(
-                    topLeft: Radius.circular(MemoTheme.radiusLg),
-                    bottomLeft: Radius.circular(MemoTheme.radiusLg),
-                  )
+                ? BorderRadius.circular(MemoTheme.radiusLg)
                 : BorderRadius.zero,
             border: glass
               ? Border.all(color: c.borderSoft)

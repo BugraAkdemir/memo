@@ -29,7 +29,7 @@ class ChatScreen extends ConsumerWidget {
         // ─── Sidebar ──────────────────────────────
         Padding(
           padding: MemoTheme.of(context).isGlass
-              ? const EdgeInsets.fromLTRB(8, 0, 0, 0)
+              ? const EdgeInsets.fromLTRB(8, 12, 8, 12)
               : EdgeInsets.zero,
           child: ChatSidebar(),
         ),
@@ -237,13 +237,25 @@ class _ChatTopBar extends ConsumerWidget {
       });
     });
 
+    final c = MemoTheme.of(context);
+    final glass = c.isGlass;
     return Container(
       height: 56,
-      padding:  EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: MemoTheme.of(context).bgApp,
-        border: Border(bottom: BorderSide(color: MemoTheme.of(context).borderSoft)),
-      ),
+      margin: glass
+          ? const EdgeInsets.fromLTRB(12, 12, 12, 8)
+          : EdgeInsets.zero,
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      decoration: glass
+          ? BoxDecoration(
+              color: c.bgPanel,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
+              border: Border.all(color: c.borderSoft),
+              boxShadow: MemoTheme.shadowMd,
+            )
+          : BoxDecoration(
+              color: c.bgApp,
+              border: Border(bottom: BorderSide(color: c.borderSoft)),
+            ),
       child: Row(
         children: [
           // Title

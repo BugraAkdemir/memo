@@ -45,7 +45,8 @@ class GeneralTab extends ConsumerWidget {
             child: DropdownButton<MemoLocale>(
               value: locale,
               isExpanded: true,
-              dropdownColor: MemoTheme.of(context).bgPanel,
+              dropdownColor: MemoTheme.of(context).bgPanel.withValues(alpha: 1.0),
+              elevation: 8,
               icon: Icon(
                 Icons.arrow_drop_down,
                 color: MemoTheme.of(context).textDim,
@@ -86,7 +87,8 @@ class GeneralTab extends ConsumerWidget {
             child: DropdownButton<String>(
               value: ref.watch(themeModeProvider),
               isExpanded: true,
-              dropdownColor: MemoTheme.of(context).bgPanel,
+              dropdownColor: MemoTheme.of(context).bgPanel.withValues(alpha: 1.0),
+              elevation: 8,
               icon: Icon(
                 Icons.arrow_drop_down,
                 color: MemoTheme.of(context).textDim,

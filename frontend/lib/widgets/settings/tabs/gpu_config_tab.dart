@@ -144,7 +144,8 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                         data: (settings) => DropdownButton<String>(
                           value: settings.engineMode,
                           isExpanded: true,
-                          dropdownColor: MemoTheme.of(context).bgPanel,
+                          dropdownColor: MemoTheme.of(context).bgPanel.withValues(alpha: 1.0),
+                          elevation: 8,
                           items: const [
                             DropdownMenuItem(
                               value: 'auto',

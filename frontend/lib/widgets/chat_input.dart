@@ -650,24 +650,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         // top-bordered bar in dark.
         Padding(
           padding: MemoTheme.of(context).isGlass
-              ? const EdgeInsets.fromLTRB(12, 4, 12, 12)
+              ? const EdgeInsets.fromLTRB(12, 8, 12, 12)
               : EdgeInsets.zero,
           child: GlassBlur(
           borderRadius: MemoTheme.of(context).isGlass
-              ? const BorderRadius.only(
-                  topRight: Radius.circular(MemoTheme.radiusLg),
-                  bottomRight: Radius.circular(MemoTheme.radiusLg),
-                )
+              ? BorderRadius.circular(MemoTheme.radiusLg)
               : BorderRadius.zero,
           child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           decoration: MemoTheme.of(context).isGlass
               ? BoxDecoration(
                   color: MemoTheme.of(context).bgPanel,
-                  borderRadius: const BorderRadius.only(
-                    topRight: Radius.circular(MemoTheme.radiusLg),
-                    bottomRight: Radius.circular(MemoTheme.radiusLg),
-                  ),
+                  borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
                   border: Border.all(color: MemoTheme.of(context).borderSoft),
                   boxShadow: MemoTheme.shadowMd,
                 )

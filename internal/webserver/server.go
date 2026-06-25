@@ -223,7 +223,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/mood/self-interest", s.handleSelfInterestSettings)
 	mux.HandleFunc("/api/mood/system-management", s.handleSystemManagementSettings)
 
-	handler := limitBodyMiddleware(rateLimitMiddleware(corsMiddleware(mux, addr)), 50<<20) // 50 MB body limit
+	handler := limitBodyMiddleware(rateLimitMiddleware(corsMiddleware(mux)), 50<<20) // 50 MB body limit
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),
 		Handler: handler,
@@ -577,7 +577,7 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	}
 }
 
-func corsMiddleware(next http.Handler, listenAddr string) http.Handler {
+func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		// Only allow loopback origins. Even in LAN mode (0.0.0.0) we do not

@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../models/agent.dart';
 import 'chat_provider.dart';
 
@@ -34,6 +35,8 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
     } catch (e) {
       debugPrint('agent: setEnabled error: $e');
       state = previous;
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Ajan modu değiştirilemedi ($e)';
     }
   }
 }
@@ -65,6 +68,8 @@ class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
       await refresh();
     } catch (e) {
       debugPrint('agent: revoke error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: İzin kaldırılamadı ($e)';
     }
   }
 
@@ -74,6 +79,8 @@ class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
       await refresh();
     } catch (e) {
       debugPrint('agent: clearAll error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: İzinler temizlenemedi ($e)';
     }
   }
 }
@@ -133,6 +140,8 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
     } catch (e) {
       debugPrint('agent: auto-permission toggle error: $e');
       state = !next;
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Otomatik izin değiştirilemedi ($e)';
     }
   }
 
@@ -144,6 +153,8 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
     } catch (e) {
       debugPrint('agent: auto-permission set error: $e');
       state = previous;
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Otomatik izin değiştirilemedi ($e)';
     }
   }
 }

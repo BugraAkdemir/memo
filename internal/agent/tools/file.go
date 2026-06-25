@@ -7,6 +7,7 @@ import (
 	"io/fs"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -236,7 +237,43 @@ func GetFileInfo(ctx context.Context, argsJSON json.RawMessage, basePath string,
 	return result, nil
 }
 
-// validatePath ensures the path is within the base path and resolves relative paths.
+// defaultProtectedPaths returns platform-appropriate protected system paths.
+func defaultProtectedPaths() []string {
+	if runtime.GOOS == "windows" {
+		sysDrive := os.Getenv("SystemDrive")
+		if sysDrive == "" {
+			sysDrive = "C:"
+		}
+		winDir := os.Getenv("SystemRoot")
+		if winDir == "" {
+			winDir = sysDrive + `\Windows`
+		}
+		progData := os.Getenv("ProgramData")
+		if progData == "" {
+			progData = sysDrive + `\ProgramData`
+		}
+		progFiles := os.Getenv("ProgramFiles")
+		if progFiles == "" {
+			progFiles = sysDrive + `\Program Files`
+		}
+		progFilesX86 := os.Getenv("ProgramFiles(x86)")
+		if progFilesX86 == "" {
+			progFilesX86 = sysDrive + `\Program Files (x86)`
+		}
+		return []string{
+			winDir + `\`, progFiles + `\`, progFilesX86 + `\`,
+			sysDrive + `\Boot\`, progData + `\`,
+		}
+	}
+	return []string{
+		"/etc/", "/usr/", "/boot/", "/dev/", "/sys/", "/proc/", "/var/",
+		"/home/", "/root/", "/tmp/", "/run/", "/opt/", "/mnt/", "/media/",
+	}
+}
+
+// validatePath ensures the path is within the base path, resolves relative
+// paths, blocks traversal outside the project, and denies access to protected
+// system directories.
 func validatePath(targetPath, basePath string) (string, error) {
 	if !filepath.IsAbs(basePath) {
 		absBase, err := filepath.Abs(basePath)
@@ -264,12 +301,27 @@ func validatePath(targetPath, basePath string) (string, error) {
 		}
 	}
 
+	// Deny access to protected system paths.
+	cmpPath := realPath
+	if runtime.GOOS == "windows" {
+		cmpPath = strings.ToLower(realPath)
+	}
+	for _, protected := range defaultProtectedPaths() {
+		needle := protected
+		if runtime.GOOS == "windows" {
+			needle = strings.ToLower(protected)
+		}
+		if strings.HasPrefix(cmpPath, needle) {
+			return "", fmt.Errorf("access denied: path is within protected directory (%s)", protected)
+		}
+	}
+
 	// Ensure the path is within basePath
 	rel, err := filepath.Rel(basePath, realPath)
 	if err != nil {
 		return "", fmt.Errorf("path is outside project directory")
 	}
-	if strings.HasPrefix(rel, "..") || strings.HasPrefix(rel, "/") {
+	if strings.HasPrefix(rel, "..") || rel == ".." {
 		return "", fmt.Errorf("path is outside project directory: %s", targetPath)
 	}
 

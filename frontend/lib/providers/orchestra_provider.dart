@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../models/orchestra_config.dart';
 import 'chat_provider.dart';
 
@@ -17,6 +18,8 @@ class OrchestraConfigNotifier extends AsyncNotifier<OrchestraConfig> {
       return await ref.read(apiClientProvider).getOrchestraConfig();
     } catch (e) {
       debugPrint('orchestra: build error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Orchestra yapılandırması alınamadı ($e)';
       return const OrchestraConfig();
     }
   }
@@ -27,6 +30,8 @@ class OrchestraConfigNotifier extends AsyncNotifier<OrchestraConfig> {
       state = AsyncData(config);
     } catch (e) {
       debugPrint('orchestra: save error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Orchestra yapılandırması kaydedilemedi ($e)';
       rethrow;
     }
   }

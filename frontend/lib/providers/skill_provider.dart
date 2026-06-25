@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../providers/chat_provider.dart' show apiClientProvider;
+import '../core/l10n.dart';
+import '../providers/chat_provider.dart' show apiClientProvider, errorMessageProvider;
 
 /// A skill definition from the backend.
 class SkillDefinition {
@@ -56,6 +57,8 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
       ref.invalidateSelf();
       return name;
     } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Beceri yüklenemedi ($e)';
       return null;
     }
   }
@@ -68,6 +71,8 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
       ref.invalidateSelf();
       return true;
     } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Beceri kaldırılamadı ($e)';
       return false;
     }
   }
@@ -87,6 +92,8 @@ class SkillListNotifier extends AsyncNotifier<List<SkillDefinition>> {
       ref.invalidateSelf();
       return true;
     } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Beceri durumu değiştirilemedi ($e)';
       return false;
     }
   }

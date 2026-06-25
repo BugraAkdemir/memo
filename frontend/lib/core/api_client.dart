@@ -290,6 +290,19 @@ class MemoApiClient {
     await _dio.put('/api/memory/enabled', data: {'enabled': enabled});
   }
 
+  Future<List<MemorySearchResult>> debugMemorySearch(String query) async {
+    final res = await _dio.get(
+      '/api/memory/debug-search',
+      queryParameters: {'q': query},
+    );
+    if (res.data is List) {
+      return (res.data as List)
+          .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
   // ─── Models (Local) ─────────────────────────────────────────────
 
   Future<List<LocalModel>> listLocalModels() async {

@@ -95,3 +95,35 @@ class MemoryFileInfo {
         modified: json['modified'] as String? ?? '',
       );
 }
+
+/// Memory search result — mirrors Go `memory.DebugSearchResult`
+class MemorySearchResult {
+  final String id;
+  final String content;
+  final double similarity;
+  final String timestamp;
+  final String userMsg;
+  final String assistMsg;
+  final String matchType;
+
+  const MemorySearchResult({
+    required this.id,
+    required this.content,
+    required this.similarity,
+    required this.timestamp,
+    required this.userMsg,
+    required this.assistMsg,
+    required this.matchType,
+  });
+
+  factory MemorySearchResult.fromJson(Map<String, dynamic> json) =>
+      MemorySearchResult(
+        id: json['id'] as String? ?? '',
+        content: json['content'] as String? ?? '',
+        similarity: (json['similarity'] as num?)?.toDouble() ?? 0.0,
+        timestamp: json['timestamp'] as String? ?? '',
+        userMsg: json['user_msg'] as String? ?? '',
+        assistMsg: json['assist_msg'] as String? ?? '',
+        matchType: json['match_type'] as String? ?? '',
+      );
+}

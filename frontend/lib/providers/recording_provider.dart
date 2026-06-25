@@ -52,7 +52,7 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
     } catch (e) {
       debugPrint('recording: start error: $e');
       _ref.read(errorMessageProvider.notifier).state =
-          'Recording failed: $e';
+          '${L10n.t('error')}: Kayıt başlatılamadı ($e)';
       state = RecordingState.idle;
       return null;
     }
@@ -87,7 +87,7 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
     } catch (e) {
       debugPrint('recording: transcribe error: $e');
       _ref.read(errorMessageProvider.notifier).state =
-          'Transcription failed: $e';
+          '${L10n.t('error')}: Ses metne dönüştürülemedi ($e)';
       state = RecordingState.idle;
       return null;
     }

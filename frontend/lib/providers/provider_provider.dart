@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../core/l10n.dart';
 import '../models/provider_config.dart';
 import 'chat_provider.dart';
 
@@ -25,13 +26,23 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
   }
 
   Future<void> updateProvider(ProviderConfig config) async {
-    await ref.read(apiClientProvider).updateProvider(config);
-    await refresh();
+    try {
+      await ref.read(apiClientProvider).updateProvider(config);
+      await refresh();
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Sağlayıcı kaydedilemedi ($e)';
+    }
   }
 
   Future<void> deleteProvider(String type, {String? name}) async {
-    await ref.read(apiClientProvider).deleteProvider(type, name: name);
-    await refresh();
+    try {
+      await ref.read(apiClientProvider).deleteProvider(type, name: name);
+      await refresh();
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Sağlayıcı silinemedi ($e)';
+    }
   }
 
   Future<Map<String, dynamic>> testProvider(ProviderConfig config) async {
@@ -39,6 +50,8 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
       return await ref.read(apiClientProvider).testProvider(config);
     } catch (e) {
       debugPrint('provider: test error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Sağlayıcı test edilemedi ($e)';
       return {'connected': false, 'error': e.toString()};
     }
   }
@@ -57,14 +70,21 @@ class ActiveProviderNotifier extends AsyncNotifier<String> {
       return await ref.read(apiClientProvider).getActiveProvider();
     } catch (e) {
       debugPrint('provider: getActiveProvider error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Aktif sağlayıcı alınamadı ($e)';
       return '';
     }
   }
 
   Future<void> setActive(String type) async {
-    await ref.read(apiClientProvider).setActiveProvider(type);
-    state = AsyncData(type);
-    ref.invalidate(providerListProvider);
+    try {
+      await ref.read(apiClientProvider).setActiveProvider(type);
+      state = AsyncData(type);
+      ref.invalidate(providerListProvider);
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Aktif sağlayıcı değiştirilemedi ($e)';
+    }
   }
 }
 

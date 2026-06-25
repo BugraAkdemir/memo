@@ -33,6 +33,7 @@ type Store struct {
 	mu     sync.RWMutex
 	closed bool
 	useVec bool
+	useFTS bool
 }
 
 type StoreConfig struct {
@@ -87,18 +88,41 @@ func (s *Store) initSchema() error {
 
 	if _, err := s.db.ExecContext(ctx, `
 		CREATE TABLE IF NOT EXISTS memories (
-			id INTEGER PRIMARY KEY AUTOINCREMENT,
-			uuid TEXT NOT NULL UNIQUE,
-			role TEXT NOT NULL DEFAULT 'user',
-			content TEXT NOT NULL,
-			timestamp TEXT NOT NULL,
-			user_msg TEXT NOT NULL DEFAULT '',
-			assist_msg TEXT NOT NULL DEFAULT '',
-			type TEXT NOT NULL DEFAULT 'conversation',
-			embedding BLOB DEFAULT NULL
+			id          INTEGER PRIMARY KEY AUTOINCREMENT,
+			uuid        TEXT NOT NULL UNIQUE,
+			role        TEXT NOT NULL DEFAULT 'user',
+			content     TEXT NOT NULL,
+			timestamp   TEXT NOT NULL,
+			user_msg    TEXT NOT NULL DEFAULT '',
+			assist_msg  TEXT NOT NULL DEFAULT '',
+			type        TEXT NOT NULL DEFAULT 'conversation',
+			embedding   BLOB DEFAULT NULL,
+			chunk_index  INTEGER NOT NULL DEFAULT 0,
+			parent_uuid  TEXT NOT NULL DEFAULT '',
+			total_chunks INTEGER NOT NULL DEFAULT 1
 		)
 	`); err != nil {
 		return err
+	}
+
+	// Migrate: add chunk columns to existing tables that predate this schema.
+	for _, col := range []struct{ name, def string }{
+		{"chunk_index", "INTEGER NOT NULL DEFAULT 0"},
+		{"parent_uuid", "TEXT NOT NULL DEFAULT ''"},
+		{"total_chunks", "INTEGER NOT NULL DEFAULT 1"},
+	} {
+		var count int
+		_ = s.db.QueryRowContext(ctx,
+			"SELECT COUNT(*) FROM pragma_table_info('memories') WHERE name = ?", col.name,
+		).Scan(&count)
+		if count == 0 {
+			if _, err := s.db.ExecContext(ctx,
+				"ALTER TABLE memories ADD COLUMN "+col.name+" "+col.def,
+			); err != nil {
+				return fmt.Errorf("alter memories add %s: %w", col.name, err)
+			}
+			log.Printf("MEMORY: migrated column memories.%s", col.name)
+		}
 	}
 
 	if _, err := s.db.ExecContext(ctx, `
@@ -108,6 +132,33 @@ func (s *Store) initSchema() error {
 		)
 	`); err != nil {
 		return err
+	}
+
+	if ftsErr := s.tryCreateFTSTable(ctx); ftsErr == nil {
+		s.useFTS = true
+		var ftsMigrated string
+		if err := s.db.QueryRowContext(ctx,
+			"SELECT value FROM _metadata WHERE key = 'fts_migration_done'",
+		).Scan(&ftsMigrated); err != nil || ftsMigrated != "1" {
+			go func() {
+				migCtx, migCancel := context.WithTimeout(context.Background(), 60*time.Second)
+				defer migCancel()
+				if err := s.migrateFTS(migCtx); err != nil {
+					log.Printf("MEMORY: FTS migrate: %v", err)
+					return
+				}
+				_ = s.db.Write(migCtx, func(tx *sql.Tx) error {
+					_, err := tx.Exec(
+						"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('fts_migration_done', '1')",
+					)
+					return err
+				})
+				log.Printf("MEMORY: FTS migration complete")
+			}()
+		}
+	} else {
+		s.useFTS = false
+		log.Printf("MEMORY: fts5 not available (%v), keyword search disabled", ftsErr)
 	}
 
 	vecErr := s.tryCreateVecTable(ctx)
@@ -164,6 +215,18 @@ func (s *Store) initSchema() error {
 	return nil
 }
 
+func (s *Store) tryCreateFTSTable(ctx context.Context) error {
+	_, err := s.db.ExecContext(ctx, `
+		CREATE VIRTUAL TABLE IF NOT EXISTS memories_fts USING fts5(
+			content,
+			user_msg,
+			assist_msg,
+			tokenize='unicode61'
+		)
+	`)
+	return err
+}
+
 func (s *Store) tryCreateVecTable(ctx context.Context) error {
 	q := fmt.Sprintf(`CREATE VIRTUAL TABLE IF NOT EXISTS vec_memories USING vec0(
 		embedding FLOAT[%d] distance_metric=cosine
@@ -209,6 +272,46 @@ func (s *Store) ensureVecMetadata(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (s *Store) migrateFTS(ctx context.Context) error {
+	type row struct {
+		id        int64
+		content   string
+		userMsg   string
+		assistMsg string
+	}
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT id, content, user_msg, assist_msg FROM memories
+		 WHERE id NOT IN (SELECT rowid FROM memories_fts)`)
+	if err != nil {
+		return err
+	}
+	var pending []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.content, &r.userMsg, &r.assistMsg); err != nil {
+			continue
+		}
+		pending = append(pending, r)
+	}
+	rows.Close()
+
+	if len(pending) == 0 {
+		return nil
+	}
+
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		for _, r := range pending {
+			if _, err := tx.Exec(
+				"INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, ?)",
+				r.id, r.content, r.userMsg, r.assistMsg,
+			); err != nil {
+				return fmt.Errorf("fts insert row %d: %w", r.id, err)
+			}
+		}
+		return nil
+	})
 }
 
 func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
@@ -533,6 +636,11 @@ func (s *Store) ClearAll() error {
 				return err
 			}
 		}
+		if s.useFTS {
+			if _, err := tx.Exec("DELETE FROM memories_fts"); err != nil {
+				return err
+			}
+		}
 		if _, err := tx.Exec("DELETE FROM memories"); err != nil {
 			return err
 		}
@@ -579,6 +687,11 @@ func (s *Store) DeleteGobFile(relPath string) error {
 
 		if s.useVec {
 			if _, err := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", id); err != nil {
+				return err
+			}
+		}
+		if s.useFTS {
+			if _, err := tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", id); err != nil {
 				return err
 			}
 		}

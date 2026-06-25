@@ -2,12 +2,13 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../models/whatsapp.dart';
 import 'chat_provider.dart';
 
 final whatsAppStatusProvider = StateNotifierProvider.autoDispose<
     WhatsAppStatusNotifier, AsyncValue<WhatsAppStatus>>((ref) {
-  final notifier = WhatsAppStatusNotifier(ref.read(apiClientProvider));
+  final notifier = WhatsAppStatusNotifier(ref.read(apiClientProvider), ref);
   ref.onDispose(notifier.stopPolling);
   return notifier;
 });
@@ -31,11 +32,12 @@ final whatsAppSearchProvider =
 
 final whatsAppChatModeProvider =
     StateNotifierProvider<WhatsAppChatModeNotifier, bool>(
-        (ref) => WhatsAppChatModeNotifier(ref.read(apiClientProvider)));
+        (ref) => WhatsAppChatModeNotifier(ref.read(apiClientProvider), ref));
 
 class WhatsAppChatModeNotifier extends StateNotifier<bool> {
   final MemoApiClient _api;
-  WhatsAppChatModeNotifier(this._api) : super(false);
+  final Ref _ref;
+  WhatsAppChatModeNotifier(this._api, this._ref) : super(false);
 
   Future<void> init() async {
     try {
@@ -52,15 +54,18 @@ class WhatsAppChatModeNotifier extends StateNotifier<bool> {
       state = next;
     } catch (e) {
       debugPrint('whatsapp: toggle error: $e');
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: WhatsApp sohbet modu değiştirilemedi ($e)';
     }
   }
 }
 
 class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
   final MemoApiClient _api;
+  final Ref _ref;
   Timer? _pollTimer;
 
-  WhatsAppStatusNotifier(this._api) : super(const AsyncValue.loading()) {
+  WhatsAppStatusNotifier(this._api, this._ref) : super(const AsyncValue.loading()) {
     _fetch();
   }
 
@@ -119,6 +124,8 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
       }
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: WhatsApp bağlantısı başlatılamadı ($e)';
     }
   }
 
@@ -128,6 +135,8 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
       await _fetch();
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: WhatsApp bağlantısı kesilemedi ($e)';
     }
   }
 
@@ -137,6 +146,8 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
       await _fetch();
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: WhatsApp oturumu kapatılamadı ($e)';
     }
   }
 

@@ -140,16 +140,16 @@ class MemoTheme {
 
   static const ThemeColors _glassLight = ThemeColors(
     bgApp: Color(0xFFF2EDE6), // fallback base; the gradient paints over it
-    bgPanel: Color(0x94FFFFFF), // ~58% white frosted surface
-    bgElement: Color(0x80FFFFFF), // ~50%
-    bgHover: Color(0x66FFFFFF), // ~40%
+    bgPanel: Color(0xD9FFFFFF), // ~85% white frosted surface
+    bgElement: Color(0xB3FFFFFF), // ~70%
+    bgHover: Color(0x99FFFFFF), // ~60%
     textMain: Color(0xFF2A2723),
     textSecondary: Color(0xFF5C5750),
     textMuted: Color(0xFF6E685F),
     textDim: Color(0xFF8A847B),
     textInverse: Color(0xFFFFFFFF), // text on bronze
-    borderSoft: Color(0x99FFFFFF), // ~60% white rim
-    borderHover: Color(0xCCFFFFFF),
+    borderSoft: Color(0xB3FFFFFF), // ~70% white rim
+    borderHover: Color(0xE6FFFFFF),
     isGlass: true,
     backgroundGradient: _glassBg,
     glassBlur: 24,

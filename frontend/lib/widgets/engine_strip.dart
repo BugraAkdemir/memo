@@ -52,7 +52,7 @@ class EngineStrip extends ConsumerWidget {
               color: c.bgPanel,
               borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
               border: Border.all(color: c.borderSoft),
-              boxShadow: MemoTheme.shadowMd,
+              boxShadow: MemoTheme.shadowLg,
             )
           : BoxDecoration(
               color: c.bgPanel,

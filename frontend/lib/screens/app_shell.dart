@@ -190,7 +190,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             border: glass
               ? Border.all(color: c.borderSoft)
               : Border(right: BorderSide(color: c.borderSoft)),
-          shadow: glass ? MemoTheme.shadowMd : null,
+          shadow: glass ? MemoTheme.shadowLg : null,
           child: Column(
         children: [
           const SizedBox(height: 14),

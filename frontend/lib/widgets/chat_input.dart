@@ -663,7 +663,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   color: MemoTheme.of(context).bgPanel,
                   borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
                   border: Border.all(color: MemoTheme.of(context).borderSoft),
-                  boxShadow: MemoTheme.shadowMd,
+                  boxShadow: MemoTheme.shadowLg,
                 )
               : BoxDecoration(
                   color: MemoTheme.of(context).bgApp,

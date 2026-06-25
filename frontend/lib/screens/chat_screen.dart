@@ -249,9 +249,9 @@ class _ChatTopBar extends ConsumerWidget {
           ? BoxDecoration(
               color: c.bgPanel,
               borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
-              border: Border.all(color: c.borderSoft),
-              boxShadow: MemoTheme.shadowMd,
-            )
+                  border: Border.all(color: c.borderSoft),
+                  boxShadow: MemoTheme.shadowLg,
+                )
           : BoxDecoration(
               color: c.bgApp,
               border: Border(bottom: BorderSide(color: c.borderSoft)),

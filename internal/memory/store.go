@@ -34,6 +34,7 @@ type Store struct {
 	closed bool
 	useVec bool
 	useFTS bool
+	stopCh chan struct{}
 }
 
 type StoreConfig struct {
@@ -79,6 +80,9 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 		return nil, fmt.Errorf("memory.NewStore: schema: %w", err)
 	}
 
+	s.stopCh = make(chan struct{})
+	go s.runImportanceDecay()
+
 	return s, nil
 }
 
@@ -115,6 +119,7 @@ func (s *Store) initSchema() error {
 		{"tags", "TEXT NOT NULL DEFAULT ''"},
 		{"source", "TEXT NOT NULL DEFAULT 'conversation'"},
 		{"retrieve_count", "INTEGER NOT NULL DEFAULT 0"},
+		{"pending_deletion", "INTEGER NOT NULL DEFAULT 0"},
 	} {
 		var count int
 		_ = s.db.QueryRowContext(ctx,
@@ -137,6 +142,18 @@ func (s *Store) initSchema() error {
 		)
 	`); err != nil {
 		return err
+	}
+
+	for _, idx := range []string{
+		"CREATE INDEX IF NOT EXISTS idx_memories_timestamp ON memories(timestamp)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_importance ON memories(importance)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_source ON memories(source)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_retrieve_count ON memories(retrieve_count)",
+		"CREATE INDEX IF NOT EXISTS idx_memories_pending ON memories(pending_deletion)",
+	} {
+		if _, err := s.db.ExecContext(ctx, idx); err != nil {
+			log.Printf("MEMORY: index warning: %v", err)
+		}
 	}
 
 	if ftsErr := s.tryCreateFTSTable(ctx); ftsErr == nil {
@@ -988,18 +1005,63 @@ func (s *Store) Close() error {
 		return nil
 	}
 	s.closed = true
+	if s.stopCh != nil {
+		close(s.stopCh)
+	}
 	return s.db.Close()
+}
+
+func formatMemoryAge(timestamp string) string {
+	t, err := time.Parse(time.RFC3339, timestamp)
+	if err != nil {
+		return ""
+	}
+	d := time.Since(t)
+	switch {
+	case d < 24*time.Hour:
+		return "today"
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%d days ago", int(d.Hours()/24))
+	case d < 30*24*time.Hour:
+		return fmt.Sprintf("%d weeks ago", int(d.Hours()/(24*7)))
+	case d < 365*24*time.Hour:
+		return fmt.Sprintf("%d months ago", int(d.Hours()/(24*30)))
+	default:
+		return fmt.Sprintf("%d years ago", int(d.Hours()/(24*365)))
+	}
+}
+
+func importanceLabel(imp int) string {
+	switch {
+	case imp >= 5:
+		return "pinned"
+	case imp >= 4:
+		return "high"
+	case imp >= 3:
+		return "normal"
+	default:
+		return "low"
+	}
 }
 
 func FormatMemoriesForPrompt(memories []MemoryResult) string {
 	if len(memories) == 0 {
 		return ""
 	}
-
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
 	for i, m := range memories {
-		fmt.Fprintf(&sb, "[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, m.Content)
+		age := formatMemoryAge(m.Timestamp)
+		imp := importanceLabel(m.Importance)
+		src := m.Source
+		if src == "" {
+			src = "conversation"
+		}
+		meta := fmt.Sprintf("relevance=%.0f%% | importance=%s | source=%s", m.Similarity*100, imp, src)
+		if age != "" {
+			meta += " | " + age
+		}
+		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, m.Content)
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()
@@ -1009,14 +1071,313 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 	if len(memories) == 0 {
 		return ""
 	}
-
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
 	for i, m := range memories {
-		fmt.Fprintf(&sb, "[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, stripAssistantReply(m.Content))
+		age := formatMemoryAge(m.Timestamp)
+		imp := importanceLabel(m.Importance)
+		src := m.Source
+		if src == "" {
+			src = "conversation"
+		}
+		meta := fmt.Sprintf("relevance=%.0f%% | importance=%s | source=%s", m.Similarity*100, imp, src)
+		if age != "" {
+			meta += " | " + age
+		}
+		fmt.Fprintf(&sb, "[Memory %d | %s]\n%s\n\n", i+1, meta, stripAssistantReply(m.Content))
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()
+}
+
+func (s *Store) SaveExplicit(ctx context.Context, content, tags string) error {
+	embedText := content
+	embedding, err := s.embed(ctx, embedText)
+	if err != nil {
+		return fmt.Errorf("memory.SaveExplicit: embed: %w", err)
+	}
+	if len(embedding) != s.dim {
+		return fmt.Errorf("memory.SaveExplicit: dimension mismatch: got %d want %d", len(embedding), s.dim)
+	}
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+	uuid := fmt.Sprintf("explicit_%d", time.Now().UnixNano())
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		embedBlob := floatsToBlob(embedding)
+		res, err := tx.Exec(
+			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
+			                      chunk_index, parent_uuid, total_chunks,
+			                      session_id, importance, tags, source, retrieve_count)
+			 VALUES (?, 'user', ?, ?, ?, '', ?, ?, 0, ?, 1, '', 5, ?, 'explicit', 0)`,
+			uuid, content, timestamp, content, embedBlob, uuid, tags,
+		)
+		if err != nil {
+			return fmt.Errorf("insert explicit memory: %w", err)
+		}
+		rowID, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+		if s.useVec {
+			vecJSON, _ := json.Marshal(embedding)
+			if _, err := tx.Exec("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON)); err != nil {
+				return fmt.Errorf("insert vec: %w", err)
+			}
+		}
+		if s.useFTS {
+			if _, err := tx.Exec("INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, '')", rowID, content, content); err != nil {
+				return fmt.Errorf("insert fts: %w", err)
+			}
+		}
+		return nil
+	})
+}
+
+func (s *Store) DeleteByContent(ctx context.Context, pattern string) (int, error) {
+	type entry struct{ id int64 }
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT id FROM memories WHERE content LIKE ? OR user_msg LIKE ?",
+		"%"+pattern+"%", "%"+pattern+"%",
+	)
+	if err != nil {
+		return 0, fmt.Errorf("memory.DeleteByContent: %w", err)
+	}
+	var entries []entry
+	for rows.Next() {
+		var e entry
+		if scanErr := rows.Scan(&e.id); scanErr == nil {
+			entries = append(entries, e)
+		}
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	if len(entries) == 0 {
+		return 0, nil
+	}
+	deleted := 0
+	writeErr := s.db.Write(ctx, func(tx *sql.Tx) error {
+		for _, e := range entries {
+			if _, err := tx.Exec("DELETE FROM memories WHERE id = ?", e.id); err != nil {
+				return err
+			}
+			if s.useVec {
+				_, _ = tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", e.id)
+			}
+			if s.useFTS {
+				_, _ = tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", e.id)
+			}
+			deleted++
+		}
+		return nil
+	})
+	return deleted, writeErr
+}
+
+func (s *Store) MarkStaleForDeletion(ctx context.Context) (int, error) {
+	var marked int
+	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+		res, err := tx.Exec(`
+			UPDATE memories
+			SET pending_deletion = 1
+			WHERE pending_deletion = 0
+			  AND source != 'explicit'
+			  AND importance <= 2
+			  AND retrieve_count = 0
+			  AND julianday('now') - julianday(timestamp) > 180
+		`)
+		if err != nil {
+			return err
+		}
+		n, _ := res.RowsAffected()
+		marked = int(n)
+		return nil
+	})
+	return marked, err
+}
+
+func (s *Store) PurgePendingDeletions(ctx context.Context) (int, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id FROM memories
+		WHERE pending_deletion = 1
+		  AND julianday('now') - julianday(timestamp) > 187
+	`)
+	if err != nil {
+		return 0, err
+	}
+	var ids []int64
+	for rows.Next() {
+		var id int64
+		if scanErr := rows.Scan(&id); scanErr == nil {
+			ids = append(ids, id)
+		}
+	}
+	rows.Close()
+	if len(ids) == 0 {
+		return 0, nil
+	}
+	deleted := 0
+	writeErr := s.db.Write(ctx, func(tx *sql.Tx) error {
+		for _, id := range ids {
+			if _, err := tx.Exec("DELETE FROM memories WHERE id = ?", id); err != nil {
+				return err
+			}
+			if s.useVec {
+				_, _ = tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", id)
+			}
+			if s.useFTS {
+				_, _ = tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", id)
+			}
+			deleted++
+		}
+		return nil
+	})
+	return deleted, writeErr
+}
+
+func (s *Store) applyImportanceRules() {
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	if marked, err := s.MarkStaleForDeletion(ctx); err != nil {
+		log.Printf("MEMORY: MarkStaleForDeletion: %v", err)
+	} else if marked > 0 {
+		log.Printf("MEMORY: marked %d stale memories for deletion", marked)
+	}
+	if purged, err := s.PurgePendingDeletions(ctx); err != nil {
+		log.Printf("MEMORY: PurgePendingDeletions: %v", err)
+	} else if purged > 0 {
+		log.Printf("MEMORY: purged %d pending-deletion memories", purged)
+	}
+}
+
+func (s *Store) runImportanceDecay() {
+	select {
+	case <-time.After(5 * time.Minute):
+	case <-s.stopCh:
+		return
+	}
+	s.applyImportanceRules()
+	ticker := time.NewTicker(24 * time.Hour)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ticker.C:
+			s.applyImportanceRules()
+		case <-s.stopCh:
+			return
+		}
+	}
+}
+
+// ExportMemory is the JSON schema for a single exported memory entry.
+type ExportMemory struct {
+	UUID       string `json:"uuid"`
+	Content    string `json:"content"`
+	Timestamp  string `json:"timestamp"`
+	UserMsg    string `json:"user_msg"`
+	AssistMsg  string `json:"assist_msg"`
+	Importance int    `json:"importance"`
+	Tags       string `json:"tags"`
+	Source     string `json:"source"`
+}
+
+// ExportPayload is the top-level envelope for memory export/import.
+type ExportPayload struct {
+	Version    int            `json:"version"`
+	ExportedAt string         `json:"exported_at"`
+	Memories   []ExportMemory `json:"memories"`
+}
+
+func (s *Store) Export(ctx context.Context) ([]byte, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT uuid, content, timestamp, user_msg, assist_msg, importance, tags, source
+		FROM memories
+		WHERE pending_deletion = 0
+		ORDER BY timestamp
+	`)
+	if err != nil {
+		return nil, fmt.Errorf("memory.Export: query: %w", err)
+	}
+	defer rows.Close()
+	var memories []ExportMemory
+	for rows.Next() {
+		var m ExportMemory
+		if err := rows.Scan(&m.UUID, &m.Content, &m.Timestamp, &m.UserMsg, &m.AssistMsg, &m.Importance, &m.Tags, &m.Source); err != nil {
+			continue
+		}
+		memories = append(memories, m)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	payload := ExportPayload{
+		Version:    2,
+		ExportedAt: time.Now().UTC().Format(time.RFC3339),
+		Memories:   memories,
+	}
+	return json.Marshal(payload)
+}
+
+func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
+	var payload ExportPayload
+	if err := json.Unmarshal(data, &payload); err != nil {
+		return 0, fmt.Errorf("memory.Import: parse: %w", err)
+	}
+	imported := 0
+	for _, m := range payload.Memories {
+		var count int
+		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories WHERE uuid = ?", m.UUID).Scan(&count); err != nil || count > 0 {
+			continue
+		}
+		embedding, err := s.embed(ctx, m.Content)
+		if err != nil || len(embedding) != s.dim {
+			embedding = nil
+		}
+		imp := m.Importance
+		if imp < 1 || imp > 5 {
+			imp = 3
+		}
+		src := m.Source
+		if src == "" {
+			src = "conversation"
+		}
+		var embedBlob []byte
+		if embedding != nil {
+			embedBlob = floatsToBlob(embedding)
+		}
+		writeErr := s.db.Write(ctx, func(tx *sql.Tx) error {
+			res, err := tx.Exec(
+				`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
+				                      chunk_index, parent_uuid, total_chunks,
+				                      session_id, importance, tags, source, retrieve_count, pending_deletion)
+				 VALUES (?, 'user', ?, ?, ?, ?, ?, 0, ?, 1, '', ?, ?, ?, 0, 0)`,
+				m.UUID, m.Content, m.Timestamp, m.UserMsg, m.AssistMsg, embedBlob, m.UUID, imp, m.Tags, src,
+			)
+			if err != nil {
+				return err
+			}
+			if embedding == nil {
+				return nil
+			}
+			rowID, err := res.LastInsertId()
+			if err != nil {
+				return err
+			}
+			if s.useVec {
+				vecJSON, _ := json.Marshal(embedding)
+				_, _ = tx.Exec("INSERT OR IGNORE INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON))
+			}
+			if s.useFTS {
+				_, _ = tx.Exec("INSERT OR IGNORE INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, ?)",
+					rowID, m.Content, m.UserMsg, m.AssistMsg)
+			}
+			return nil
+		})
+		if writeErr == nil {
+			imported++
+		}
+	}
+	return imported, nil
 }
 
 func stripAssistantReply(content string) string {

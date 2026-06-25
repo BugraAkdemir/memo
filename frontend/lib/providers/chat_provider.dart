@@ -302,12 +302,66 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     }
   }
 
+  /// Returns true if the message was a memory command (/remember, /forget)
+  /// and was handled locally — caller should NOT send to AI.
+  Future<bool> _handleMemoryCommand(String message, MemoApiClient api) async {
+    final trimmed = message.trim();
+    if (trimmed.startsWith('/remember ')) {
+      final content = trimmed.substring('/remember '.length).trim();
+      if (content.isEmpty) return false;
+      try {
+        await api.saveExplicitMemory(content);
+        final ts = DateTime.now().toIso8601String().substring(11, 19);
+        final current = state.valueOrNull ?? [];
+        state = AsyncData([
+          ...current,
+          ChatMessage(role: 'user', content: trimmed, timestamp: ts),
+          ChatMessage(
+            role: 'assistant',
+            content: '✓ Remembered: "$content"',
+            timestamp: ts,
+          ),
+        ]);
+      } catch (e) {
+        ref.read(errorMessageProvider.notifier).state = 'Memory save failed: $e';
+      }
+      return true;
+    }
+    if (trimmed.startsWith('/forget ')) {
+      final pattern = trimmed.substring('/forget '.length).trim();
+      if (pattern.isEmpty) return false;
+      try {
+        final deleted = await api.deleteExplicitMemory(pattern);
+        final ts = DateTime.now().toIso8601String().substring(11, 19);
+        final current = state.valueOrNull ?? [];
+        state = AsyncData([
+          ...current,
+          ChatMessage(role: 'user', content: trimmed, timestamp: ts),
+          ChatMessage(
+            role: 'assistant',
+            content: deleted > 0
+                ? '✓ Forgot $deleted memory entry(ies) matching "$pattern"'
+                : 'No memories found matching "$pattern"',
+            timestamp: ts,
+          ),
+        ]);
+      } catch (e) {
+        ref.read(errorMessageProvider.notifier).state = 'Memory delete failed: $e';
+      }
+      return true;
+    }
+    return false;
+  }
+
   Future<void> sendMessage(String message) async {
     if (ref.read(isSendingProvider)) return;
 
     _stopped = false;
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
+
+    // Intercept /remember and /forget before sending to AI
+    if (await _handleMemoryCommand(message, api)) return;
 
     // Signal sending state
     ref.read(isSendingProvider.notifier).state = true;

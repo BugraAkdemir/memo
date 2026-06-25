@@ -228,6 +228,54 @@ func (a *App) SetMemoryEnabled(enabled bool) error {
 	return config.Save(a.cfg)
 }
 
+// SaveExplicitMemory saves a user-provided memory entry.
+func (a *App) SaveExplicitMemory(content, tags string) error {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return fmt.Errorf("memory store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	return a.store.SaveExplicit(ctx, content, tags)
+}
+
+// DeleteExplicitMemory deletes memories matching the given pattern.
+func (a *App) DeleteExplicitMemory(pattern string) (int, error) {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return 0, fmt.Errorf("memory store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return a.store.DeleteByContent(ctx, pattern)
+}
+
+// ExportMemories exports all memories as JSON bytes.
+func (a *App) ExportMemories() ([]byte, error) {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return nil, fmt.Errorf("memory store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return a.store.Export(ctx)
+}
+
+// ImportMemories imports memories from JSON bytes.
+func (a *App) ImportMemories(data []byte) (int, error) {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return 0, fmt.Errorf("memory store not initialized")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	return a.store.Import(ctx, data)
+}
+
 // CheckEmbeddingHealth tests if the embedding API is reachable and working.
 func (a *App) CheckEmbeddingHealth(ctx context.Context) map[string]interface{} {
 	result := map[string]interface{}{

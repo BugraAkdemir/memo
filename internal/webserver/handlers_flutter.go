@@ -1612,3 +1612,76 @@ func (s *Server) handleGetActiveSkills(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string][]string{"names": s.fullBridge.GetActiveSkills()})
 }
+
+func (s *Server) handleMemoryExplicitSave(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Content string `json:"content"`
+		Tags    string `json:"tags"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == "" {
+		http.Error(w, "content required", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.SaveExplicitMemory(body.Content, body.Tags); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]bool{"ok": true})
+}
+
+func (s *Server) handleMemoryExplicitDelete(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Pattern string `json:"pattern"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Pattern == "" {
+		http.Error(w, "pattern required", http.StatusBadRequest)
+		return
+	}
+	deleted, err := s.fullBridge.DeleteExplicitMemory(body.Pattern)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "deleted": deleted})
+}
+
+func (s *Server) handleMemoryExport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	data, err := s.fullBridge.ExportMemories()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set("Content-Disposition", "attachment; filename=memories.json")
+	_, _ = w.Write(data)
+}
+
+func (s *Server) handleMemoryImport(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	data, err := io.ReadAll(io.LimitReader(r.Body, 50*1024*1024))
+	if err != nil {
+		http.Error(w, "read error", http.StatusBadRequest)
+		return
+	}
+	imported, err := s.fullBridge.ImportMemories(data)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "imported": imported})
+}

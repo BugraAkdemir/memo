@@ -303,6 +303,27 @@ class MemoApiClient {
     return [];
   }
 
+  Future<void> saveExplicitMemory(String content, {String tags = ''}) async {
+    await _dio.post('/api/memory/explicit/save', data: {'content': content, 'tags': tags});
+  }
+
+  Future<int> deleteExplicitMemory(String pattern) async {
+    final res = await _dio.post('/api/memory/explicit/delete', data: {'pattern': pattern});
+    return (res.data['deleted'] as int?) ?? 0;
+  }
+
+  Future<String> exportMemories() async {
+    final res = await _dio.get('/api/memory/export');
+    if (res.data is String) return res.data as String;
+    return '';
+  }
+
+  Future<int> importMemories(String jsonData) async {
+    final res = await _dio.post('/api/memory/import', data: jsonData,
+        options: Options(headers: {'Content-Type': 'application/json'}));
+    return (res.data['imported'] as int?) ?? 0;
+  }
+
   // ─── Models (Local) ─────────────────────────────────────────────
 
   Future<List<LocalModel>> listLocalModels() async {

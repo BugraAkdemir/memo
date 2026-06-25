@@ -67,8 +67,9 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		}
 
 		sb.WriteString("\n\n")
-		sb.WriteString(fmt.Sprintf("Below are relevant memories from your past conversations with %s. Use them to provide continuity and personalization, but don't explicitly mention that you're recalling memories unless asked.", id.UserName))
+		fmt.Fprintf(&sb, "Below are relevant memories from your past conversations with %s. Use them to provide continuity and personalization, but don't explicitly mention that you're recalling memories unless asked.", id.UserName)
 		sb.WriteString(memoryBlock)
+		sb.WriteString("\nDo not fabricate details not present in memories. Do not mention recall unless asked. Do not repeat memory timestamps verbatim in replies.")
 	}
 
 	return sb.String()

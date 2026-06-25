@@ -46,6 +46,10 @@ type FullBridge interface {
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
 	DebugMemorySearch(query string) []memory.MemoryResult
+	SaveExplicitMemory(content, tags string) error
+	DeleteExplicitMemory(pattern string) (int, error)
+	ExportMemories() ([]byte, error)
+	ImportMemories(data []byte) (int, error)
 
 	// Image
 	GetImageBase64(path string) string

@@ -92,30 +92,30 @@
 
 ### Faz E — Orta Öncelikli (Faz A-D tamamlandıktan sonra)
 
-- [ ] **E1. Cloud sync şifreleme fallback’ini güçlendir**
+- [x] **E1. Cloud sync şifreleme fallback’ini güçlendir**
   - Dosya: `internal/cloudsync/crypto.go`
   - Passphrase yoksa kullanıcıya zorla; hardware ID fallback kaldır veya en azından uyarı ver.
 
-- [ ] **E2. Provider API key encryption Windows ACL + fallback güvenliği**
+- [x] **E2. Provider API key encryption Windows ACL + fallback güvenliği**
   - Dosya: `internal/provider/config.go`
   - Windows’ta ACL ayarı; `/etc/machine-id` fallback’i kaldır veya alternatif güvenli kaynak kullan.
 
-- [ ] **E3. Calendar reminder claim’i atomik yap**
+- [x] **E3. Calendar reminder claim’i atomik yap**
   - Dosya: `internal/calendar/store.go`
   - `SELECT ... FOR UPDATE` veya `UPDATE ... WHERE reminder_sent=0` + `RETURNING` ile çift uyarı önle.
 
-- [ ] **E4. Calendar store doğrudan SQLite yazma yerine `DB.Write` kullan**
+- [x] **E4. Calendar store doğrudan SQLite yazma yerine `DB.Write` kullan**
   - Dosya: `internal/calendar/store.go`
 
-- [ ] **E5. Memory save embedding çağrısını `storeMu` dışına al**
+- [x] **E5. Memory save embedding çağrısını `storeMu` dışına al**
   - Dosya: `internal/app/memory.go`
   - Embedding ağır I/O yaparken memory okuma/yazma bloklanmasın.
 
-- [ ] **E6. Background migration shutdown gecikmesini önle**
+- [x] **E6. Background migration shutdown gecikmesini önle**
   - Dosya: `internal/memory/store.go`
   - Migration context’ini kısalt veya shutdown sırasında abandon et.
 
-- [ ] **E7. WhatsApp contact import’u live message save’den ayır**
+- [x] **E7. WhatsApp contact import’u live message save’den ayır**
   - Dosya: `internal/whatsapp/client.go`
   - Toplu import background’da veya kuyrukta yapılmalı.
 

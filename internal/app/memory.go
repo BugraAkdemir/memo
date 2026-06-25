@@ -53,9 +53,12 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	}
 	start := time.Now()
 
-	a.storeMu.Lock()
-	defer a.storeMu.Unlock()
-	if a.store == nil {
+	// Hold the lock only long enough to grab the store reference so that the
+	// heavy embedding I/O below does not block concurrent memory reads/writes.
+	a.storeMu.RLock()
+	store := a.store
+	a.storeMu.RUnlock()
+	if store == nil {
 		log.Println("MEMORY SAVE SKIPPED: store not initialized")
 		a.emitEvent("memory:error", "Hafıza kaydedilemedi: depo başlatılmamış")
 		return
@@ -64,7 +67,7 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	mctx, cancel := context.WithTimeout(ctx, 10*time.Second)
 	defer cancel()
 
-	if err := a.store.SaveInteraction(mctx, userMsg, reply); err != nil {
+	if err := store.SaveInteraction(mctx, userMsg, reply); err != nil {
 		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
 		log.Printf("MEMORY SAVE FAILED: %v", err)
 		if !isEmbeddingBackendDown(err) {

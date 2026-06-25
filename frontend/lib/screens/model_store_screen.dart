@@ -1847,16 +1847,27 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
               padding: const EdgeInsets.symmetric(vertical: 14)),
         ),
       );
+    } else if (downloadingNow) {
+      button = Expanded(
+        child: ElevatedButton.icon(
+          onPressed: () => ref.read(apiClientProvider).cancelDownload(),
+          icon: const Icon(Icons.stop_rounded, size: 18),
+          label: Text(
+            L10n.locale == MemoLocale.tr ? 'İptal Et' : 'Cancel',
+          ),
+          style: ElevatedButton.styleFrom(
+            padding: const EdgeInsets.symmetric(vertical: 14),
+            backgroundColor: MemoTheme.red.withValues(alpha: 0.12),
+            foregroundColor: MemoTheme.red,
+          ),
+        ),
+      );
     } else {
       button = Expanded(
         child: ElevatedButton.icon(
-          onPressed: downloadingNow ? null : _download,
+          onPressed: _download,
           icon: const Icon(Icons.download_rounded, size: 18),
-          label: Text(
-            downloadingNow
-                ? L10n.t('preparing_download')
-                : '${L10n.t('download')} · ${file.sizeFormatted}',
-          ),
+          label: Text('${L10n.t('download')} · ${file.sizeFormatted}'),
           style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14)),
         ),
@@ -2476,6 +2487,17 @@ class _DownloadBanner extends ConsumerWidget {
                   ),
                 ),
               ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            onPressed: () => ref.read(apiClientProvider).cancelDownload(),
+            icon: const Icon(Icons.close_rounded, size: 18),
+            tooltip: L10n.locale == MemoLocale.tr ? 'İndirmeyi iptal et' : 'Cancel download',
+            color: c.textDim,
+            style: IconButton.styleFrom(
+              minimumSize: const Size(32, 32),
+              padding: EdgeInsets.zero,
             ),
           ),
         ],

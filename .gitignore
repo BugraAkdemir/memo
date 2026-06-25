@@ -70,10 +70,11 @@ data/tailscale/
 *.db-shm
 *.db-wal
 
-# Keep the *.example templates tracked (they hold no secrets)
+# Keep the *.example templyates tracked (they hold no secrets)
 !.env.example
 !config/config.yaml.example
 !data/providers.example.json
 skill-lock.json
 server.log.superpowers/
 .superpowers/
+data/machine.key

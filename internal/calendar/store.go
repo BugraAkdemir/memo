@@ -6,12 +6,12 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
-	_ "github.com/mattn/go-sqlite3"
+
+	"memo/internal/database"
 )
 
 const schema = `
@@ -31,20 +31,17 @@ CREATE INDEX IF NOT EXISTS idx_events_start ON events(start_time);
 
 // Store persists calendar events in a dedicated SQLite database.
 type Store struct {
-	db *sql.DB
+	db *database.DB
 }
 
 // NewStore opens (or creates) the calendar database at dir/events.db.
 func NewStore(dir string) (*Store, error) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
-		return nil, fmt.Errorf("calendar: mkdir: %w", err)
-	}
 	path := filepath.Join(dir, "events.db")
-	db, err := sql.Open("sqlite3", path+"?_journal=WAL&_busy_timeout=5000")
+	db, err := database.Open(database.Config{Path: path, MaxPool: 1})
 	if err != nil {
 		return nil, fmt.Errorf("calendar: open db: %w", err)
 	}
-	if _, err := db.Exec(schema); err != nil {
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("calendar: schema: %w", err)
 	}
@@ -137,66 +134,51 @@ func (s *Store) MarkReminderSent(ctx context.Context, id string) error {
 	return nil
 }
 
-// ClaimPendingReminders atomically fetches and marks unsent reminders
-// within the lead window. Uses a transaction to prevent double-fire.
+// ClaimPendingReminders atomically claims unsent reminders within the lead
+// window. A single UPDATE ... RETURNING statement marks reminder_sent=1 and
+// returns the rows in one operation, eliminating the SELECT+UPDATE race where
+// two concurrent callers could both read reminder_sent=0 before either commits.
+//
+// Lower bound (start_time > now) prevents past events from firing on restart.
 func (s *Store) ClaimPendingReminders(ctx context.Context, now time.Time, leadMinutes int) ([]Event, error) {
-	tx, err := s.db.BeginTx(ctx, nil)
-	if err != nil {
-		return nil, fmt.Errorf("calendar: begin tx: %w", err)
-	}
-	defer tx.Rollback()
-
 	windowEnd := now.Add(time.Duration(leadMinutes) * time.Minute).Unix()
-	// Lower bound (start_time > now) is essential: without it, every past event
-	// with reminder_sent=0 is claimed on the next tick and fires a reminder with
-	// a negative time-left. After the app has been closed for a while this would
-	// dump a reminder for every elapsed event at once.
-	rows, err := tx.QueryContext(ctx,
-		`SELECT id, title, start_time, end_time, description, source, contact_name, created_at, reminder_sent
-		 FROM events
-		 WHERE reminder_sent = 0 AND start_time > ? AND start_time <= ?
-		 ORDER BY start_time ASC`, now.Unix(), windowEnd)
-	if err != nil {
-		return nil, fmt.Errorf("calendar: claim reminders query: %w", err)
-	}
-	defer rows.Close()
-
 	var events []Event
-	for rows.Next() {
-		var e Event
-		var startUnix, endUnix sql.NullInt64
-		var createdUnix int64
-		var reminderSent int
-		var src string
-		if err := rows.Scan(&e.ID, &e.Title, &startUnix, &endUnix,
-			&e.Description, &src, &e.ContactName, &createdUnix, &reminderSent,
-		); err != nil {
-			return nil, fmt.Errorf("calendar: scan: %w", err)
+	err := s.db.Write(ctx, func(tx *sql.Tx) error {
+		rows, err := tx.QueryContext(ctx,
+			`UPDATE events
+			 SET reminder_sent = 1
+			 WHERE reminder_sent = 0 AND start_time > ? AND start_time <= ?
+			 RETURNING id, title, start_time, end_time, description, source, contact_name, created_at`,
+			now.Unix(), windowEnd)
+		if err != nil {
+			return fmt.Errorf("calendar: claim reminders: %w", err)
 		}
-		if startUnix.Valid {
-			e.StartTime = time.Unix(startUnix.Int64, 0)
+		defer rows.Close()
+		for rows.Next() {
+			var e Event
+			var startUnix, endUnix sql.NullInt64
+			var createdUnix int64
+			var src string
+			if err := rows.Scan(&e.ID, &e.Title, &startUnix, &endUnix,
+				&e.Description, &src, &e.ContactName, &createdUnix,
+			); err != nil {
+				return fmt.Errorf("calendar: scan: %w", err)
+			}
+			if startUnix.Valid {
+				e.StartTime = time.Unix(startUnix.Int64, 0)
+			}
+			if endUnix.Valid {
+				t := time.Unix(endUnix.Int64, 0)
+				e.EndTime = &t
+			}
+			e.Source = Source(src)
+			e.ReminderSent = true
+			events = append(events, e)
 		}
-		if endUnix.Valid {
-			t := time.Unix(endUnix.Int64, 0)
-			e.EndTime = &t
-		}
-		e.Source = Source(src)
-		e.ReminderSent = reminderSent != 0
-		events = append(events, e)
-	}
-	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("calendar: rows: %w", err)
-	}
-
-	// Mark each claimed event
-	for i := range events {
-		if _, err := tx.ExecContext(ctx, `UPDATE events SET reminder_sent=1 WHERE id=?`, events[i].ID); err != nil {
-			return nil, fmt.Errorf("calendar: mark %s: %w", events[i].ID, err)
-		}
-	}
-
-	if err := tx.Commit(); err != nil {
-		return nil, fmt.Errorf("calendar: commit: %w", err)
+		return rows.Err()
+	})
+	if err != nil {
+		return nil, fmt.Errorf("calendar: claim reminders: %w", err)
 	}
 	return events, nil
 }

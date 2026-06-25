@@ -162,9 +162,18 @@ func (s *Store) initSchema() error {
 		if err := s.db.QueryRowContext(ctx,
 			"SELECT value FROM _metadata WHERE key = 'fts_migration_done'",
 		).Scan(&ftsMigrated); err != nil || ftsMigrated != "1" {
+			stopCh := s.stopCh
 			go func() {
 				migCtx, migCancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer migCancel()
+				// Abort early if the store is closed during migration.
+				go func() {
+					select {
+					case <-stopCh:
+						migCancel()
+					case <-migCtx.Done():
+					}
+				}()
 				if err := s.migrateFTS(migCtx); err != nil {
 					log.Printf("MEMORY: FTS migrate: %v", err)
 					return
@@ -199,9 +208,18 @@ func (s *Store) initSchema() error {
 			// Run migration in the background so NewStore returns immediately
 			// and the store is usable right away. Writes are still serialised
 			// through the DB write-loop, so there is no race with live saves.
+			stopCh2 := s.stopCh
 			go func() {
 				migCtx, migCancel := context.WithTimeout(context.Background(), 120*time.Second)
 				defer migCancel()
+				// Abort early if the store is closed during migration.
+				go func() {
+					select {
+					case <-stopCh2:
+						migCancel()
+					case <-migCtx.Done():
+					}
+				}()
 				if err := s.migrateEmbeddingsToVec(migCtx); err != nil {
 					log.Printf("MEMORY: migrate to vec: %v", err)
 					return

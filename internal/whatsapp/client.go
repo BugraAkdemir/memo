@@ -414,7 +414,7 @@ func (c *Client) handleEvent(evt interface{}) {
 	case *waEvent.StreamReplaced:
 		log.Printf("WhatsApp: stream replaced")
 	case *waEvent.HistorySync:
-		c.handleHistorySync(v)
+		go c.handleHistorySync(v)
 	case *waEvent.Message:
 		c.handleMessage(v)
 	}

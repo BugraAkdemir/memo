@@ -126,9 +126,10 @@ type App struct {
 	memorySaveCh     chan saveTask
 	events           *eventRing
 
-	providerCfgMgr     *provider.ConfigManager
-	providerRouter     *provider.Router
-	activeProviderName string // which provider is currently active (by Name)
+	providerCfgMgr      *provider.ConfigManager
+	providerRouter      *provider.Router
+	activeProviderName  string // which provider is currently active (by Name)
+	healthCheckCancel   context.CancelFunc
 
 	orchestraConductor *orchestra.Conductor
 
@@ -351,7 +352,9 @@ func (a *App) Startup(ctx context.Context) {
 	configs := a.providerCfgMgr.GetEnabled()
 	if len(configs) > 0 {
 		a.providerRouter = provider.NewRouter(configs)
-		go a.providerRouter.HealthCheck(ctx, 5*time.Minute)
+		hctx, hcancel := context.WithCancel(ctx)
+		a.healthCheckCancel = hcancel
+		go a.providerRouter.HealthCheck(hctx, 5*time.Minute)
 		log.Printf("Provider system initialized with %d enabled provider(s)", len(configs))
 		for _, cfg := range configs {
 			log.Printf("  - %s (%s)", cfg.Type, cfg.Model)

@@ -40,28 +40,32 @@ class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
 // ─── Model Status ───────────────────────────────────────────────
 
 final modelStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async* {
+  var alive = true;
+  ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
-  while (true) {
+  while (alive) {
     try {
       yield await api.getModelStatus();
     } catch (e) {
       debugPrint('models: modelStatus error: $e');
       yield const ServerStatus();
     }
-    await Future.delayed(const Duration(seconds: 5));
+    await Future.delayed(const Duration(seconds: 30));
   }
 });
 
 final embeddingStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async* {
+  var alive = true;
+  ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
-  while (true) {
+  while (alive) {
     try {
       yield await api.getEmbeddingStatus();
     } catch (e) {
       debugPrint('models: embeddingStatus error: $e');
       yield const ServerStatus();
     }
-    await Future.delayed(const Duration(seconds: 5));
+    await Future.delayed(const Duration(seconds: 30));
   }
 });
 
@@ -83,9 +87,11 @@ final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
 
 final downloadProgressProvider =
     StreamProvider.autoDispose<DownloadProgress>((ref) async* {
+  var alive = true;
+  ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
 
-  while (true) {
+  while (alive) {
     var active = false;
     try {
       final progress = await api.getDownloadProgress();
@@ -95,8 +101,7 @@ final downloadProgressProvider =
       debugPrint('models: downloadProgress error: $e');
       yield const DownloadProgress();
     }
-    await Future.delayed(
-        Duration(seconds: active ? 1 : 4));
+    await Future.delayed(Duration(seconds: active ? 1 : 4));
   }
 });
 

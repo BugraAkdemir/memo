@@ -11,6 +11,7 @@ import '../core/theme.dart';
 import '../models/whatsapp.dart';
 import '../providers/whatsapp_provider.dart';
 import '../providers/chat_provider.dart' show apiClientProvider;
+import 'app_shell.dart';
 
 // This screen uses Memo's own palette so it sits naturally beside the other
 // pages: the bronze accent for interactive/brand elements, and the muted theme
@@ -100,6 +101,14 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(activeTabProvider, (prev, next) {
+      if (next != 3) {
+        _msgTimer?.cancel();
+        _msgTimer = null;
+      } else if (_selectedJid != null) {
+        _startMsgRefresh(_selectedJid!);
+      }
+    });
     final c = MemoTheme.of(context);
     final statusAsync = ref.watch(whatsAppStatusProvider);
 

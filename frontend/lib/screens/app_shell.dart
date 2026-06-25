@@ -22,6 +22,9 @@ import 'model_store_screen.dart';
 import 'whatsapp_screen.dart';
 import 'calendar_screen.dart';
 
+/// Tracks which main tab is currently selected (0=chat 1=agent 2=models 3=whatsapp 4=calendar).
+final activeTabProvider = StateProvider<int>((ref) => 0);
+
 /// Main app shell — NavRail + content area.
 class AppShell extends ConsumerStatefulWidget {
   AppShell({super.key});
@@ -364,6 +367,7 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   void _handleTabChange(int index) {
     setState(() => _currentIndex = index);
+    ref.read(activeTabProvider.notifier).state = index;
     final waNotifier = ref.read(whatsAppStatusProvider.notifier);
     if (index == 3) {
       waNotifier.startPolling();

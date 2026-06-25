@@ -675,14 +675,17 @@ final isSendingProvider = StateProvider<bool>((ref) => false);
 // ─── Connection Status (polls every 30s) ────────────────────────
 
 final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
+  var alive = true;
+  ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
-  while (true) {
+  while (alive) {
     try {
       yield await api.isAlive();
     } catch (e) {
       debugPrint('chat: connectionStatus error: $e');
       yield false;
     }
+    if (!alive) break;
     await Future.delayed(const Duration(seconds: 30));
   }
 });

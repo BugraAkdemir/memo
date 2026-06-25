@@ -65,15 +65,15 @@
 
 ### Faz C — Mimari (Polling & Goroutine Leak’ler)
 
-- [ ] **C1. Sonsuz polling döngülerini durdur**
+- [x] **C1. Sonsuz polling döngülerini durdur**
   - Dosyalar: `chat_provider.dart`, `models_provider.dart`, `mood_provider.dart`, `version_provider.dart`, `calendar_screen.dart`, `whatsapp_screen.dart`, `whatsapp_provider.dart`
   - Çözüm: `IndexedStack` mount’lu tuttuğu için `VisibilityDetector` / `AppLifecycleListener` / `ref.onDispose` ile durdur.
 
-- [ ] **C2. `UpdateProvider` health-check goroutine leak’ini önle**
+- [x] **C2. `UpdateProvider` health-check goroutine leak’ini önle**
   - Dosya: `internal/app/providers.go`
   - Eski router iptal edilmeli veya tek health goroutine yönetilmeli.
 
-- [ ] **C3. Claude / Gemini / yerel stream HTTP client’larına `ResponseHeaderTimeout` ekle**
+- [x] **C3. Claude / Gemini / yerel stream HTTP client’larına `ResponseHeaderTimeout` ekle**
   - Dosyalar: `internal/provider/claude.go`, `internal/provider/gemini.go`, `internal/api/client.go`
 
 ### Faz D — Cross-Platform / Paketleme

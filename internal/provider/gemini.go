@@ -37,14 +37,16 @@ func newGeminiProvider(cfg ProviderConfig) (*geminiProvider, error) {
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:     90 * time.Second,
+				IdleConnTimeout:          90 * time.Second,
+				ResponseHeaderTimeout:    30 * time.Second,
 			},
 		},
 		streamCl: &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConns:        10,
 				MaxIdleConnsPerHost: 10,
-				IdleConnTimeout:     90 * time.Second,
+				IdleConnTimeout:          90 * time.Second,
+				ResponseHeaderTimeout:    30 * time.Second,
 			},
 		},
 	}, nil

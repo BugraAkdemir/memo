@@ -26,9 +26,10 @@ func NewClient(baseURL string, timeoutSeconds int) *Client {
 
 func NewClientWithKey(baseURL, apiKey string, timeoutSeconds int) *Client {
 	transport := &http.Transport{
-		MaxIdleConns:        10,
-		MaxIdleConnsPerHost: 10,
-		IdleConnTimeout:     90 * time.Second,
+		MaxIdleConns:          10,
+		MaxIdleConnsPerHost:   10,
+		IdleConnTimeout:       90 * time.Second,
+		ResponseHeaderTimeout: 30 * time.Second,
 	}
 	return &Client{
 		baseURL: strings.TrimRight(baseURL, "/"), // prevent double-slash in paths

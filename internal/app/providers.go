@@ -1,6 +1,7 @@
 package app
 
 import (
+	"context"
 	"fmt"
 	"log"
 	"time"
@@ -41,6 +42,7 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	}
 	a.providerCfgMgr.Set(cfg)
 	configs := a.providerCfgMgr.GetEnabled()
+
 	a.providerMu.Lock()
 	a.providerRouter = provider.NewRouter(configs)
 	// Re-apply the active provider restriction: NewRouter starts with no active
@@ -49,12 +51,25 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	if a.activeProviderName != "" {
 		a.providerRouter.SetActiveProvider(a.activeProviderName)
 	}
-	a.providerMu.Unlock()
+	// Cancel the previous health-check goroutine so we don't accumulate one per
+	// UpdateProvider call; each call creates a fresh router and needs exactly one.
+	if a.healthCheckCancel != nil {
+		a.healthCheckCancel()
+		a.healthCheckCancel = nil
+	}
+	var (
+		rt     = a.providerRouter
+		hctx   context.Context
+		hcancel context.CancelFunc
+	)
 	if len(configs) > 0 {
-		a.providerMu.RLock()
-		rt := a.providerRouter
-		a.providerMu.RUnlock()
-		go rt.HealthCheck(a.lifecycleCtx, 5*time.Minute)
+		hctx, hcancel = context.WithCancel(a.lifecycleCtx)
+		a.healthCheckCancel = hcancel
+	}
+	a.providerMu.Unlock()
+
+	if hctx != nil {
+		go rt.HealthCheck(hctx, 5*time.Minute)
 	}
 	return nil
 }

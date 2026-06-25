@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/theme.dart';
 import '../core/l10n.dart';
 import '../providers/chat_provider.dart';
+import 'app_shell.dart';
 
 /// A calendar event as returned by /api/calendar/events.
 class _Event {
@@ -62,18 +63,24 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   @override
   void initState() {
     super.initState();
-    // Defer to after first frame: _load() calls setState, which is not allowed
-    // synchronously inside initState.
-    WidgetsBinding.instance.addPostFrameCallback((_) => _load());
-    // Auto-refresh so events added from chat/WhatsApp appear without a restart.
-    _refreshTimer = Timer.periodic(
-        const Duration(seconds: 20), (_) => _load(silent: true));
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _load();
+      // Start timer only if calendar tab is already active, then keep it
+      // in sync with tab switches via ref.listen below.
+      if (ref.read(activeTabProvider) == 4) _startRefreshTimer();
+    });
   }
 
   @override
   void dispose() {
     _refreshTimer?.cancel();
     super.dispose();
+  }
+
+  void _startRefreshTimer() {
+    _refreshTimer?.cancel();
+    _refreshTimer =
+        Timer.periodic(const Duration(seconds: 20), (_) => _load(silent: true));
   }
 
   Future<void> _load({bool silent = false}) async {
@@ -129,6 +136,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
 
   @override
   Widget build(BuildContext context) {
+    ref.listen<int>(activeTabProvider, (prev, next) {
+      if (next == 4) {
+        _startRefreshTimer();
+      } else {
+        _refreshTimer?.cancel();
+        _refreshTimer = null;
+      }
+    });
     final c = MemoTheme.of(context);
 
     return Scaffold(

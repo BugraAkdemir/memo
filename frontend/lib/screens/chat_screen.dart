@@ -27,11 +27,23 @@ class ChatScreen extends ConsumerWidget {
     return Row(
       children: [
         // ─── Sidebar ──────────────────────────────
-         ChatSidebar(),
+        Padding(
+          padding: MemoTheme.of(context).isGlass
+              ? const EdgeInsets.fromLTRB(8, 0, 0, 0)
+              : EdgeInsets.zero,
+          child: ChatSidebar(),
+        ),
 
         // ─── Main Chat Area ───────────────────────
         Expanded(
-          child: Container(color: MemoTheme.of(context).bgApp, child:  _ChatContent()),
+          // Transparent in Glass Light so the soft gradient shows behind the
+          // messages and the frosted input bar; opaque panel in dark.
+          child: Container(
+            color: MemoTheme.of(context).isGlass
+                ? Colors.transparent
+                : MemoTheme.of(context).bgApp,
+            child: _ChatContent(),
+          ),
         ),
 
         // ─── Activity Panel (agent mode only) ─────

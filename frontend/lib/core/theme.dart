@@ -18,6 +18,13 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
   final Color borderSoft;
   final Color borderHover;
 
+  // Glass (Apple-style frosted) extras. Dark themes leave these at their
+  // defaults (isGlass=false) so they render exactly as before; only the Glass
+  // Light theme opts in.
+  final bool isGlass;
+  final Gradient? backgroundGradient; // painted behind everything so blur reads
+  final double glassBlur; // BackdropFilter sigma for glass surfaces
+
   const ThemeColors({
     required this.bgApp,
     required this.bgPanel,
@@ -30,6 +37,9 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
     required this.textInverse,
     required this.borderSoft,
     required this.borderHover,
+    this.isGlass = false,
+    this.backgroundGradient,
+    this.glassBlur = 0,
   });
 
   @override
@@ -45,6 +55,9 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
     Color? textInverse,
     Color? borderSoft,
     Color? borderHover,
+    bool? isGlass,
+    Gradient? backgroundGradient,
+    double? glassBlur,
   }) {
     return ThemeColors(
       bgApp: bgApp ?? this.bgApp,
@@ -58,6 +71,9 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
       textInverse: textInverse ?? this.textInverse,
       borderSoft: borderSoft ?? this.borderSoft,
       borderHover: borderHover ?? this.borderHover,
+      isGlass: isGlass ?? this.isGlass,
+      backgroundGradient: backgroundGradient ?? this.backgroundGradient,
+      glassBlur: glassBlur ?? this.glassBlur,
     );
   }
 
@@ -76,44 +92,25 @@ class ThemeColors extends ThemeExtension<ThemeColors> {
       textInverse: Color.lerp(textInverse, other.textInverse, t)!,
       borderSoft: Color.lerp(borderSoft, other.borderSoft, t)!,
       borderHover: Color.lerp(borderHover, other.borderHover, t)!,
+      isGlass: t < 0.5 ? isGlass : other.isGlass,
+      backgroundGradient: t < 0.5 ? backgroundGradient : other.backgroundGradient,
+      glassBlur: glassBlur + (other.glassBlur - glassBlur) * t,
     );
   }
 }
 
-/// Memo "Pewter Study" theme — a warm graphite mid-tone identity (neither the
-/// glare of a light theme nor the cave of a true dark one) with a single muted
-/// bronze accent. A calm, premium workspace for a "second brain".
+/// Memo themes — a warm, premium "second brain" identity with a single muted
+/// bronze accent. Two variants share these tokens: the deep graphite "Night"
+/// dark theme and the Apple-style frosted "Glass Light" theme.
 class MemoTheme {
   MemoTheme._();
 
-  // ─── Pewter (default, mid-tone) ───────────────────────────────
-  static const Color _pewterBgApp = Color(0xFF2B2E33);
-  static const Color _pewterBgPanel = Color(0xFF33373D);
-  static const Color _pewterBgElement = Color(0xFF3C4147);
-  static const Color _pewterBgHover = Color(0xFF474D54);
-
   static const Color _inkMain = Color(0xFFECE9E3);
   static const Color _inkSecondary = Color(0xFFCFCBC3);
-  static const Color _inkMuted = Color(0xFFB4B0A8);
-  static const Color _inkDim = Color(0xFF85827B);
   static const Color _inkInverse = Color(0xFF241F18); // text on bronze
 
   static const Color _lineSoft = Color(0x14FFFFFF); // ~8% white
   static const Color _lineStrong = Color(0x29FFFFFF); // ~16% white
-
-  static const ThemeColors _pewter = ThemeColors(
-    bgApp: _pewterBgApp,
-    bgPanel: _pewterBgPanel,
-    bgElement: _pewterBgElement,
-    bgHover: _pewterBgHover,
-    textMain: _inkMain,
-    textSecondary: _inkSecondary,
-    textMuted: _inkMuted,
-    textDim: _inkDim,
-    textInverse: _inkInverse,
-    borderSoft: _lineSoft,
-    borderHover: _lineStrong,
-  );
 
   // ─── Night (deeper variant) ───────────────────────────────────
   static const ThemeColors _night = ThemeColors(
@@ -130,14 +127,42 @@ class MemoTheme {
     borderHover: _lineStrong,
   );
 
+  // ─── Glass Light (Apple-style frosted) ───────────────────────
+  // A true light theme built from translucent white surfaces over a soft warm
+  // gradient. Surfaces read as frosted glass once BackdropFilter is applied by
+  // GlassSurface; the gradient below gives the blur something to diffuse.
+  static const Gradient _glassBg = LinearGradient(
+    begin: Alignment.topLeft,
+    end: Alignment.bottomRight,
+    colors: [Color(0xFFF5F0E9), Color(0xFFF1ECEF), Color(0xFFEDE8F0)],
+    stops: [0.0, 0.55, 1.0],
+  );
+
+  static const ThemeColors _glassLight = ThemeColors(
+    bgApp: Color(0xFFF2EDE6), // fallback base; the gradient paints over it
+    bgPanel: Color(0x94FFFFFF), // ~58% white frosted surface
+    bgElement: Color(0x80FFFFFF), // ~50%
+    bgHover: Color(0x66FFFFFF), // ~40%
+    textMain: Color(0xFF2A2723),
+    textSecondary: Color(0xFF5C5750),
+    textMuted: Color(0xFF6E685F),
+    textDim: Color(0xFF8A847B),
+    textInverse: Color(0xFFFFFFFF), // text on bronze
+    borderSoft: Color(0x99FFFFFF), // ~60% white rim
+    borderHover: Color(0xCCFFFFFF),
+    isGlass: true,
+    backgroundGradient: _glassBg,
+    glassBlur: 24,
+  );
+
   /// Active token set for the current theme, read from the ThemeExtension.
   static ThemeColors of(BuildContext context) {
-    return Theme.of(context).extension<ThemeColors>() ?? _pewter;
+    return Theme.of(context).extension<ThemeColors>() ?? _glassLight;
   }
 
   /// Token sets for preview outside a build context (e.g. setup wizard).
   static const ThemeColors dark = _night;
-  static const ThemeColors light = _pewter;
+  static const ThemeColors light = _glassLight;
 
   // ─── Theme-independent constants ──────────────────────────────
 
@@ -189,7 +214,9 @@ class MemoTheme {
   // Schibsted Grotesk for display/headline/title (characterful, premium,
   // strong numerals for the download %); Inter for body/label legibility.
   static TextTheme _buildTextTheme(ThemeColors c) {
-    final base = ThemeData(brightness: Brightness.dark).textTheme;
+    final base = ThemeData(
+      brightness: c.isGlass ? Brightness.light : Brightness.dark,
+    ).textTheme;
     final body = GoogleFonts.interTextTheme(base);
     final display = GoogleFonts.schibstedGroteskTextTheme(base);
 
@@ -210,23 +237,38 @@ class MemoTheme {
   static ThemeData _build(ThemeColors c) {
     final textTheme = _buildTextTheme(c);
 
+    final scheme = c.isGlass
+        ? ColorScheme.light(
+            surface: c.bgApp,
+            onSurface: c.textMain,
+            primary: accent,
+            onPrimary: c.textInverse,
+            secondary: accentLight,
+            onSecondary: c.textInverse,
+            tertiary: warmBrown,
+            error: red,
+            outline: c.borderSoft,
+            surfaceContainerHighest: c.bgPanel,
+          )
+        : ColorScheme.dark(
+            surface: c.bgApp,
+            onSurface: c.textMain,
+            primary: accent,
+            onPrimary: c.textInverse,
+            secondary: accentLight,
+            onSecondary: c.textInverse,
+            tertiary: warmBrown,
+            error: red,
+            outline: c.borderSoft,
+            surfaceContainerHighest: c.bgPanel,
+          );
+
     return ThemeData(
       useMaterial3: true,
-      brightness: Brightness.dark,
+      brightness: c.isGlass ? Brightness.light : Brightness.dark,
       scaffoldBackgroundColor: c.bgApp,
       extensions: [c],
-      colorScheme: ColorScheme.dark(
-        surface: c.bgApp,
-        onSurface: c.textMain,
-        primary: accent,
-        onPrimary: c.textInverse,
-        secondary: accentLight,
-        onSecondary: c.textInverse,
-        tertiary: warmBrown,
-        error: red,
-        outline: c.borderSoft,
-        surfaceContainerHighest: c.bgPanel,
-      ),
+      colorScheme: scheme,
       textTheme: textTheme,
       appBarTheme: AppBarTheme(
         backgroundColor: c.bgApp,
@@ -303,7 +345,9 @@ class MemoTheme {
         space: 0,
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: c.bgPanel,
+        // Dialogs need to stay readable, so glass uses a near-opaque frosted
+        // white instead of the translucent panel token.
+        backgroundColor: c.isGlass ? const Color(0xF2FFFFFF) : c.bgPanel,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(radiusLg),
         ),
@@ -336,8 +380,8 @@ class MemoTheme {
     );
   }
 
-  /// Default theme — Pewter (mid-tone). Shown for light/system-light modes.
-  static ThemeData get themeData => _build(_pewter);
+  /// Light theme — Glass Light (Apple-style frosted). Shown for light/system-light.
+  static ThemeData get themeData => _build(_glassLight);
 
   /// Deeper variant — Night. Shown for dark/system-dark modes.
   static ThemeData get darkThemeData => _build(_night);

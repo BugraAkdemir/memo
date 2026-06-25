@@ -41,11 +41,23 @@ class EngineStrip extends ConsumerWidget {
 
     return Container(
       height: 40,
+      // Floating rounded glass pill in Glass Light; flush top-bordered bar in dark.
+      margin: c.isGlass
+          ? const EdgeInsets.fromLTRB(12, 0, 12, 8)
+          : EdgeInsets.zero,
       padding: const EdgeInsets.symmetric(horizontal: 20),
-      decoration: BoxDecoration(
-        color: c.bgPanel,
-        border: Border(top: BorderSide(color: c.borderSoft)),
-      ),
+      clipBehavior: c.isGlass ? Clip.antiAlias : Clip.none,
+      decoration: c.isGlass
+          ? BoxDecoration(
+              color: c.bgPanel,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+              border: Border.all(color: c.borderSoft),
+              boxShadow: MemoTheme.shadowSm,
+            )
+          : BoxDecoration(
+              color: c.bgPanel,
+              border: Border(top: BorderSide(color: c.borderSoft)),
+            ),
       child: Row(
         children: [
           if (chatRunning)

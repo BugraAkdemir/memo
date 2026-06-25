@@ -10,6 +10,7 @@ import 'package:file_picker/file_picker.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import 'glass_surface.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/provider_config.dart';
@@ -645,15 +646,37 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               ],
             ),
           ),
-        // Input area
-        Container(
+        // Input area — a floating frosted-glass bar in Glass Light; a flush
+        // top-bordered bar in dark.
+        Padding(
+          padding: MemoTheme.of(context).isGlass
+              ? const EdgeInsets.fromLTRB(12, 4, 12, 12)
+              : EdgeInsets.zero,
+          child: GlassBlur(
+          borderRadius: MemoTheme.of(context).isGlass
+              ? const BorderRadius.only(
+                  topRight: Radius.circular(MemoTheme.radiusLg),
+                  bottomRight: Radius.circular(MemoTheme.radiusLg),
+                )
+              : BorderRadius.zero,
+          child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          decoration: BoxDecoration(
-            color: MemoTheme.of(context).bgApp,
-            border: Border(
-              top: BorderSide(color: MemoTheme.of(context).borderSoft),
-            ),
-          ),
+          decoration: MemoTheme.of(context).isGlass
+              ? BoxDecoration(
+                  color: MemoTheme.of(context).bgPanel,
+                  borderRadius: const BorderRadius.only(
+                    topRight: Radius.circular(MemoTheme.radiusLg),
+                    bottomRight: Radius.circular(MemoTheme.radiusLg),
+                  ),
+                  border: Border.all(color: MemoTheme.of(context).borderSoft),
+                  boxShadow: MemoTheme.shadowMd,
+                )
+              : BoxDecoration(
+                  color: MemoTheme.of(context).bgApp,
+                  border: Border(
+                    top: BorderSide(color: MemoTheme.of(context).borderSoft),
+                  ),
+                ),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.end,
             children: [
@@ -923,6 +946,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               ),
             ],
           ),
+          ),
+        ),
         ),
       ],
     );

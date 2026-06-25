@@ -76,3 +76,4 @@ data/tailscale/
 !data/providers.example.json
 skill-lock.json
 server.log.superpowers/
+.superpowers/

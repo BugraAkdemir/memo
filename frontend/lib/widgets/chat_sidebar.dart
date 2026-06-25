@@ -16,12 +16,25 @@ class ChatSidebar extends ConsumerWidget {
     final activeChatAsync = ref.watch(activeChatIdProvider);
     final isIncognito = ref.watch(incognitoProvider);
 
+    final c = MemoTheme.of(context);
+    final glass = c.isGlass;
     return Container(
       width: 260,
-      decoration: BoxDecoration(
-        color: MemoTheme.of(context).bgPanel,
-        border: Border(right: BorderSide(color: MemoTheme.of(context).borderSoft)),
-      ),
+      clipBehavior: glass ? Clip.antiAlias : Clip.none,
+      decoration: glass
+          ? BoxDecoration(
+              color: c.bgPanel,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(MemoTheme.radiusLg),
+                bottomLeft: Radius.circular(MemoTheme.radiusLg),
+              ),
+              border: Border.all(color: c.borderSoft),
+              boxShadow: MemoTheme.shadowMd,
+            )
+          : BoxDecoration(
+              color: c.bgPanel,
+              border: Border(right: BorderSide(color: c.borderSoft)),
+            ),
       child: Column(
         children: [
           // ─── New Chat + Incognito ──────────────────

@@ -15,6 +15,7 @@ import '../widgets/version_banner.dart';
 import '../widgets/engine_strip.dart';
 import '../widgets/launchpad_view.dart';
 import '../widgets/spotlight_tour.dart';
+import '../widgets/glass_surface.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
@@ -94,6 +95,17 @@ class _AppShellState extends ConsumerState<AppShell> {
           backgroundColor: MemoTheme.of(context).bgApp,
           body: Stack(
             children: [
+              // Glass Light paints a soft gradient behind everything so the
+              // frosted surfaces have something to diffuse. Dark themes have no
+              // gradient and fall through to the solid scaffold background.
+              if (MemoTheme.of(context).backgroundGradient != null)
+                Positioned.fill(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      gradient: MemoTheme.of(context).backgroundGradient,
+                    ),
+                  ),
+                ),
               Row(
                 children: [
                   _buildNavRail(),
@@ -162,13 +174,27 @@ class _AppShellState extends ConsumerState<AppShell> {
 
   Widget _buildNavRail() {
     final c = MemoTheme.of(context);
-    return Container(
-      width: 72,
-      decoration: BoxDecoration(
-        color: c.bgPanel,
-        border: Border(right: BorderSide(color: c.borderSoft)),
-      ),
-      child: Column(
+    final glass = c.isGlass;
+    return Padding(
+      // In Glass Light the rail floats off the window edge as a rounded card;
+      // dark keeps it flush against the edge.
+      padding: glass
+          ? const EdgeInsets.fromLTRB(10, 0, 0, 0)
+          : EdgeInsets.zero,
+      child: SizedBox(
+        width: glass ? 64 : 72,
+          child: GlassSurface(
+            borderRadius: glass
+                ? const BorderRadius.only(
+                    topLeft: Radius.circular(MemoTheme.radiusLg),
+                    bottomLeft: Radius.circular(MemoTheme.radiusLg),
+                  )
+                : BorderRadius.zero,
+            border: glass
+              ? Border.all(color: c.borderSoft)
+              : Border(right: BorderSide(color: c.borderSoft)),
+          shadow: glass ? MemoTheme.shadowMd : null,
+          child: Column(
         children: [
           const SizedBox(height: 14),
 
@@ -245,6 +271,8 @@ class _AppShellState extends ConsumerState<AppShell> {
 
           const SizedBox(height: 12),
         ],
+        ),
+        ),
       ),
     );
   }

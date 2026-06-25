@@ -580,14 +580,14 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 func corsMiddleware(next http.Handler, listenAddr string) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		// In LAN mode (0.0.0.0) reflect any origin so browser clients connecting
-		// from LAN IPs or ngrok tunnels are not blocked by CORS.
-		isLAN := listenAddr == "0.0.0.0"
+		// Only allow loopback origins. Even in LAN mode (0.0.0.0) we do not
+		// reflect arbitrary origins, because that would let malicious websites
+		// talk to the local Memo API from the user's browser.
 		isLoopback := origin == "" ||
 			strings.HasPrefix(origin, "http://localhost") ||
 			strings.HasPrefix(origin, "http://127.0.0.1") ||
 			strings.HasPrefix(origin, "http://[::1]")
-		if isLoopback || (isLAN && origin != "") {
+		if isLoopback {
 			if origin == "" {
 				origin = "http://localhost"
 			}

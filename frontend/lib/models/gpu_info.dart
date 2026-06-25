@@ -105,6 +105,10 @@ class MemorySearchResult {
   final String userMsg;
   final String assistMsg;
   final String matchType;
+  final int importance;
+  final String source;
+  final String tags;
+  final int retrieveCount;
 
   const MemorySearchResult({
     required this.id,
@@ -114,6 +118,10 @@ class MemorySearchResult {
     required this.userMsg,
     required this.assistMsg,
     required this.matchType,
+    this.importance = 3,
+    this.source = 'conversation',
+    this.tags = '',
+    this.retrieveCount = 0,
   });
 
   factory MemorySearchResult.fromJson(Map<String, dynamic> json) =>
@@ -125,5 +133,37 @@ class MemorySearchResult {
         userMsg: json['user_msg'] as String? ?? '',
         assistMsg: json['assist_msg'] as String? ?? '',
         matchType: json['match_type'] as String? ?? '',
+        importance: json['importance'] as int? ?? 3,
+        source: json['source'] as String? ?? 'conversation',
+        tags: json['tags'] as String? ?? '',
+        retrieveCount: json['retrieve_count'] as int? ?? 0,
+      );
+}
+
+class MemoryStats {
+  final int count;
+  final int explicitCount;
+  final int addedThisWeek;
+  final int pendingDeletion;
+  final List<MemorySearchResult> topRetrieved;
+
+  const MemoryStats({
+    required this.count,
+    required this.explicitCount,
+    required this.addedThisWeek,
+    required this.pendingDeletion,
+    required this.topRetrieved,
+  });
+
+  factory MemoryStats.fromJson(Map<String, dynamic> json) => MemoryStats(
+        count: json['count'] as int? ?? 0,
+        explicitCount: json['explicit_count'] as int? ?? 0,
+        addedThisWeek: json['added_this_week'] as int? ?? 0,
+        pendingDeletion: json['pending_deletion'] as int? ?? 0,
+        topRetrieved: json['top_retrieved'] is List
+            ? (json['top_retrieved'] as List)
+                .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
+                .toList()
+            : [],
       );
 }

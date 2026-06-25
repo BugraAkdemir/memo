@@ -12,6 +12,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/proactive"
 	"memo/internal/provider"
+	"memo/internal/models"
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/whatsapp"
@@ -50,6 +51,8 @@ type FullBridge interface {
 	DeleteExplicitMemory(pattern string) (int, error)
 	ExportMemories() ([]byte, error)
 	ImportMemories(data []byte) (int, error)
+	GetMemoryStats() models.MemoryStats
+	FilteredMemorySearch(query string, topK int, since string, tag string) []memory.MemoryResult
 
 	// Image
 	GetImageBase64(path string) string

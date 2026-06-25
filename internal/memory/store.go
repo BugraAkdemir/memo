@@ -620,6 +620,18 @@ func reciprocalRankFusion(vecResults, ftsResults []MemoryResult, topK int) []Mem
 	return out
 }
 
+// expandQuery generates a secondary search query for multi-query retrieval.
+// For long queries (>7 words), it extracts the first 5 words as a topic anchor.
+// Returns "" when no useful expansion is possible.
+func expandQuery(q string) string {
+	words := strings.Fields(q)
+	if len(words) <= 7 {
+		return ""
+	}
+	// Take only the first 5 content words — captures topic without trailing question noise
+	return strings.Join(words[:5], " ")
+}
+
 func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	start := time.Now()
 
@@ -653,6 +665,22 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		vecMemories[i].MatchType = "vector"
 	}
 
+	// Multi-query: if query is long, do a second search with a topic-focused variant
+	// and merge with the primary results via RRF for better recall.
+	if expanded := expandQuery(query); expanded != "" {
+		if expEmb, expErr := s.embed(ctx, expanded); expErr == nil && len(expEmb) == s.dim {
+			var expResults []MemoryResult
+			if s.useVec {
+				expResults, _ = s.vecSearch(ctx, expEmb, candidateK/2, minSimilarity)
+			} else {
+				expResults, _ = s.goSearch(ctx, expEmb, candidateK/2, minSimilarity)
+			}
+			if len(expResults) > 0 {
+				vecMemories = reciprocalRankFusion(vecMemories, expResults, candidateK)
+			}
+		}
+	}
+
 	var memories []MemoryResult
 	if s.useFTS {
 		ftsMemories, ftsErr := s.ftsSearch(ctx, query, candidateK)
@@ -660,8 +688,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 			log.Printf("MEMORY: ftsSearch: %v", ftsErr)
 		} else if len(ftsMemories) > 0 {
 			memories = reciprocalRankFusion(vecMemories, ftsMemories, topK)
-			// RRF skorları ~0.008–0.016 aralığında; düşük skorlu alakasız sonuçları filtrele.
-			// k=60 ile rank-1 = 1/61 ≈ 0.0164; eşiği yarısına ayarlıyoruz.
+			// RRF scores range ~0.008–0.016 (k=60); filter low-confidence matches.
 			const minRRFScore = float32(0.008)
 			filtered := memories[:0]
 			for _, m := range memories {
@@ -984,18 +1011,150 @@ func (s *Store) DeleteGobFile(relPath string) error {
 }
 
 func (s *Store) Stats() models.MemoryStats {
-	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
 	var stats models.MemoryStats
 	stats.Dimension = s.dim
 
-	if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories").Scan(&stats.Count); err != nil {
-		log.Printf("MEMORY: stats count query: %v", err)
+	// Single-pass count query — one table scan instead of four round-trips.
+	var total, explicit, thisWeek, pending int
+	scanErr := s.db.QueryRowContext(ctx, `
+		SELECT
+			SUM(CASE WHEN pending_deletion = 0 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN pending_deletion = 0 AND source = 'explicit' THEN 1 ELSE 0 END),
+			SUM(CASE WHEN pending_deletion = 0 AND julianday('now') - julianday(timestamp) <= 7 THEN 1 ELSE 0 END),
+			SUM(CASE WHEN pending_deletion = 1 THEN 1 ELSE 0 END)
+		FROM memories
+	`).Scan(&total, &explicit, &thisWeek, &pending)
+	if scanErr != nil {
+		log.Printf("MEMORY: stats count query: %v", scanErr)
 	}
+	stats.Count = total
+	stats.ExplicitCount = explicit
+	stats.AddedThisWeek = thisWeek
+	stats.PendingDeletion = pending
 	stats.VecCount = stats.Count
 
+	// Top 5 most-retrieved memories for the analytics panel
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT uuid, content, timestamp, importance, source, retrieve_count
+		FROM memories
+		WHERE pending_deletion = 0 AND retrieve_count > 0
+		ORDER BY retrieve_count DESC
+		LIMIT 5
+	`)
+	if err != nil {
+		log.Printf("MEMORY: stats top-retrieved query: %v", err)
+	} else {
+		defer rows.Close()
+		for rows.Next() {
+			var m models.MemoryResult
+			if rErr := rows.Scan(&m.ID, &m.Content, &m.Timestamp, &m.Importance, &m.Source, &m.RetrieveCount); rErr != nil {
+				log.Printf("MEMORY: stats top-retrieved scan: %v", rErr)
+			} else {
+				stats.TopRetrieved = append(stats.TopRetrieved, m)
+			}
+		}
+		if rErr := rows.Err(); rErr != nil {
+			log.Printf("MEMORY: stats top-retrieved iteration: %v", rErr)
+		}
+	}
+
 	return stats
+}
+
+// FilteredSearch returns memories matching a query with optional date and tag filters.
+// since: earliest timestamp (zero = no filter). tag: substring match on tags field (empty = no filter).
+//
+// Strategy: semantic retrieval first, post-filter by date/tag. If the semantic
+// pass returns fewer than topK results after filtering (because top-ranked memories
+// are all outside the filter window), fall back to a direct SQL-ordered query that
+// respects the filters — ensuring recent/tagged memories are not silently dropped.
+func (s *Store) FilteredSearch(ctx context.Context, query string, topK int, minSimilarity float32, since time.Time, tag string) ([]MemoryResult, error) {
+	results, err := s.RetrieveContext(ctx, query, topK*3, minSimilarity)
+	if err != nil {
+		return nil, err
+	}
+	if since.IsZero() && tag == "" {
+		if topK < len(results) {
+			return results[:topK], nil
+		}
+		return results, nil
+	}
+
+	filtered := make([]MemoryResult, 0, topK)
+	for _, r := range results {
+		if !since.IsZero() {
+			t, parseErr := time.Parse(time.RFC3339, r.Timestamp)
+			if parseErr != nil || t.Before(since) {
+				continue
+			}
+		}
+		if tag != "" && !strings.Contains(strings.ToLower(r.Tags), strings.ToLower(tag)) {
+			continue
+		}
+		filtered = append(filtered, r)
+		if len(filtered) >= topK {
+			break
+		}
+	}
+
+	// Fallback: semantic results were all outside the filter window.
+	// Query DB directly so that recent/tagged memories are not silently dropped.
+	if len(filtered) < topK {
+		sqlResults, sqlErr := s.sqlFilteredFallback(ctx, topK-len(filtered), since, tag)
+		if sqlErr != nil {
+			log.Printf("MEMORY: FilteredSearch fallback: %v", sqlErr)
+		} else {
+			// Append SQL results, deduplicating by UUID.
+			seen := make(map[string]struct{}, len(filtered))
+			for _, r := range filtered {
+				seen[r.ID] = struct{}{}
+			}
+			for _, r := range sqlResults {
+				if _, dup := seen[r.ID]; !dup {
+					filtered = append(filtered, r)
+				}
+			}
+		}
+	}
+
+	return filtered, nil
+}
+
+// sqlFilteredFallback returns up to limit memories that satisfy the since/tag constraints,
+// ordered by timestamp descending (most recent first). Used when semantic retrieval
+// returns no results within the filter window.
+func (s *Store) sqlFilteredFallback(ctx context.Context, limit int, since time.Time, tag string) ([]MemoryResult, error) {
+	var args []any
+	where := "pending_deletion = 0"
+	if !since.IsZero() {
+		where += " AND timestamp >= ?"
+		args = append(args, since.UTC().Format(time.RFC3339))
+	}
+	if tag != "" {
+		where += " AND LOWER(tags) LIKE ?"
+		args = append(args, "%"+strings.ToLower(tag)+"%")
+	}
+	args = append(args, limit)
+	rows, err := s.db.QueryContext(ctx,
+		"SELECT uuid, content, timestamp, user_msg, assist_msg, importance, source, tags, retrieve_count FROM memories WHERE "+where+" ORDER BY timestamp DESC LIMIT ?",
+		args...,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []MemoryResult
+	for rows.Next() {
+		var r MemoryResult
+		if sErr := rows.Scan(&r.ID, &r.Content, &r.Timestamp, &r.UserMsg, &r.AssistMsg, &r.Importance, &r.Source, &r.Tags, &r.RetrieveCount); sErr == nil {
+			r.MatchType = "filter"
+			out = append(out, r)
+		}
+	}
+	return out, rows.Err()
 }
 
 func (s *Store) Close() error {
@@ -1162,10 +1321,14 @@ func (s *Store) DeleteByContent(ctx context.Context, pattern string) (int, error
 				return err
 			}
 			if s.useVec {
-				_, _ = tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", e.id)
+				if _, vecErr := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", e.id); vecErr != nil {
+					log.Printf("MEMORY: DeleteByContent vec cascade id=%d: %v", e.id, vecErr)
+				}
 			}
 			if s.useFTS {
-				_, _ = tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", e.id)
+				if _, ftsErr := tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", e.id); ftsErr != nil {
+					log.Printf("MEMORY: DeleteByContent fts cascade id=%d: %v", e.id, ftsErr)
+				}
 			}
 			deleted++
 		}
@@ -1325,12 +1488,9 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 	}
 	imported := 0
 	for _, m := range payload.Memories {
-		var count int
-		if err := s.db.QueryRowContext(ctx, "SELECT COUNT(*) FROM memories WHERE uuid = ?", m.UUID).Scan(&count); err != nil || count > 0 {
-			continue
-		}
 		embedding, err := s.embed(ctx, m.Content)
 		if err != nil || len(embedding) != s.dim {
+			log.Printf("MEMORY: import embed failed for %s, inserting without vector: %v", m.UUID, err)
 			embedding = nil
 		}
 		imp := m.Importance
@@ -1346,8 +1506,10 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 			embedBlob = floatsToBlob(embedding)
 		}
 		writeErr := s.db.Write(ctx, func(tx *sql.Tx) error {
+			// INSERT OR IGNORE handles the UUID-already-exists case atomically,
+			// eliminating the race between a prior SELECT and this INSERT.
 			res, err := tx.Exec(
-				`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
+				`INSERT OR IGNORE INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
 				                      chunk_index, parent_uuid, total_chunks,
 				                      session_id, importance, tags, source, retrieve_count, pending_deletion)
 				 VALUES (?, 'user', ?, ?, ?, ?, ?, 0, ?, 1, '', ?, ?, ?, 0, 0)`,
@@ -1355,6 +1517,9 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 			)
 			if err != nil {
 				return err
+			}
+			if n, _ := res.RowsAffected(); n == 0 {
+				return nil // UUID already existed — skip vec/FTS insert
 			}
 			if embedding == nil {
 				return nil

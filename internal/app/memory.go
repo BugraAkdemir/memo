@@ -10,6 +10,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/memory"
+	"memo/internal/models"
 )
 
 // isEmbeddingBackendDown reports whether err means the embedding endpoint is
@@ -274,6 +275,37 @@ func (a *App) ImportMemories(data []byte) (int, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	return a.store.Import(ctx, data)
+}
+
+func (a *App) GetMemoryStats() models.MemoryStats {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return models.MemoryStats{}
+	}
+	return a.store.Stats()
+}
+
+func (a *App) FilteredMemorySearch(query string, topK int, since string, tag string) []memory.MemoryResult {
+	a.storeMu.RLock()
+	defer a.storeMu.RUnlock()
+	if a.store == nil {
+		return nil
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	var sinceTime time.Time
+	if since != "" {
+		if t, err := time.Parse(time.RFC3339, since); err == nil {
+			sinceTime = t
+		}
+	}
+	results, err := a.store.FilteredSearch(ctx, query, topK, a.cfg.Memory.MinSimilarity, sinceTime, tag)
+	if err != nil {
+		log.Printf("MEMORY: filtered search: %v", err)
+		return nil
+	}
+	return results
 }
 
 // CheckEmbeddingHealth tests if the embedding API is reachable and working.

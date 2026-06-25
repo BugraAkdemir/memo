@@ -24,6 +24,8 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   List<MemorySearchResult> _debugResults = [];
   String? _debugError;
   bool _debugSearched = false;
+  MemoryStats? _memoryStats;
+  bool _statsLoading = false;
 
   @override
   void dispose() {
@@ -31,6 +33,29 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
     _minSimilarityController.dispose();
     _debugQueryController.dispose();
     super.dispose();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadStats());
+  }
+
+  Future<void> _loadStats() async {
+    if (!mounted) return;
+    setState(() => _statsLoading = true);
+    try {
+      final stats = await ref.read(apiClientProvider).getMemoryStats();
+      if (mounted) setState(() => _memoryStats = stats);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Memory stats unavailable: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _statsLoading = false);
+    }
   }
 
   Future<void> _runDebugSearch() async {
@@ -331,6 +356,110 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                 },
               ),
               SizedBox(height: 28),
+              Row(
+                children: [
+                  Text(
+                    'Memory Analytics',
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.bold,
+                      color: MemoTheme.of(context).textMain,
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  if (_statsLoading)
+                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                  else
+                    IconButton(
+                      icon: Icon(Icons.refresh, size: 18),
+                      color: MemoTheme.of(context).textDim,
+                      onPressed: _loadStats,
+                      tooltip: 'Refresh',
+                      padding: EdgeInsets.zero,
+                      constraints: BoxConstraints(),
+                    ),
+                ],
+              ),
+              SizedBox(height: 12),
+              if (_memoryStats != null) ...[
+                Container(
+                  padding: EdgeInsets.all(16),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.of(context).bgPanel,
+                    borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+                    border: Border.all(color: MemoTheme.of(context).borderSoft),
+                  ),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          _StatChip(label: 'Total', value: '${_memoryStats!.count}'),
+                          SizedBox(width: 8),
+                          _StatChip(label: 'Pinned', value: '${_memoryStats!.explicitCount}', accent: true),
+                          SizedBox(width: 8),
+                          _StatChip(label: 'This week', value: '+${_memoryStats!.addedThisWeek}'),
+                          if (_memoryStats!.pendingDeletion > 0) ...[
+                            SizedBox(width: 8),
+                            _StatChip(label: 'Expiring', value: '${_memoryStats!.pendingDeletion}', warn: true),
+                          ],
+                        ],
+                      ),
+                      if (_memoryStats!.topRetrieved.isNotEmpty) ...[
+                        SizedBox(height: 14),
+                        Text(
+                          'Most accessed memories',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: MemoTheme.of(context).textDim,
+                          ),
+                        ),
+                        SizedBox(height: 8),
+                        ..._memoryStats!.topRetrieved.asMap().entries.map((e) {
+                          final r = e.value;
+                          return Padding(
+                            padding: EdgeInsets.only(bottom: 6),
+                            child: Row(
+                              children: [
+                                Container(
+                                  width: 20,
+                                  alignment: Alignment.center,
+                                  child: Text(
+                                    '#${e.key + 1}',
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: MemoTheme.of(context).textDim,
+                                    ),
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Expanded(
+                                  child: Text(
+                                    r.content.length > 80 ? '${r.content.substring(0, 80)}…' : r.content,
+                                    style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textMain),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Text(
+                                  '${r.retrieveCount}×',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                    color: MemoTheme.accent,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          );
+                        }),
+                      ],
+                    ],
+                  ),
+                ),
+                SizedBox(height: 28),
+              ],
               Text(
                 L10n.t('memory_debug_search'),
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(
@@ -483,6 +612,39 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StatChip extends StatelessWidget {
+  final String label;
+  final String value;
+  final bool accent;
+  final bool warn;
+
+  const _StatChip({required this.label, required this.value, this.accent = false, this.warn = false});
+
+  @override
+  Widget build(BuildContext context) {
+    final color = warn
+        ? MemoTheme.red
+        : accent
+            ? MemoTheme.accent
+            : MemoTheme.of(context).textMain;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.25)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
+          Text(label, style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+        ],
+      ),
     );
   }
 }

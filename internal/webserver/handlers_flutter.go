@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"time"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/orchestra"
@@ -1684,4 +1685,39 @@ func (s *Server) handleMemoryImport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, map[string]any{"ok": true, "imported": imported})
+}
+
+func (s *Server) handleMemoryStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetMemoryStats())
+}
+
+func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		http.Error(w, "q parameter required", http.StatusBadRequest)
+		return
+	}
+	topK := 10
+	since := r.URL.Query().Get("since")
+	if since != "" {
+		if _, err := time.Parse(time.RFC3339, since); err != nil {
+			http.Error(w, "invalid since format: use RFC3339 (e.g. 2026-06-01T00:00:00Z)", http.StatusBadRequest)
+			return
+		}
+	}
+	tag := r.URL.Query().Get("tag")
+	results := s.fullBridge.FilteredMemorySearch(q, topK, since, tag)
+	if results == nil {
+		writeJSON(w, []struct{}{})
+		return
+	}
+	writeJSON(w, results)
 }

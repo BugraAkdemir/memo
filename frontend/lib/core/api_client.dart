@@ -324,6 +324,25 @@ class MemoApiClient {
     return (res.data['imported'] as int?) ?? 0;
   }
 
+  Future<MemoryStats> getMemoryStats() async {
+    final res = await _dio.get('/api/memory/stats');
+    return MemoryStats.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<List<MemorySearchResult>> filteredMemorySearch(
+      String query, {String? since, String? tag}) async {
+    final params = <String, dynamic>{'q': query};
+    if (since != null) params['since'] = since;
+    if (tag != null && tag.isNotEmpty) params['tag'] = tag;
+    final res = await _dio.get('/api/memory/search', queryParameters: params);
+    if (res.data is List) {
+      return (res.data as List)
+          .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
   // ─── Models (Local) ─────────────────────────────────────────────
 
   Future<List<LocalModel>> listLocalModels() async {

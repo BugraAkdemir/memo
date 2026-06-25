@@ -41,8 +41,12 @@ type SearchParams struct {
 }
 
 type MemoryStats struct {
-	Count       int   `json:"count"`
-	VecCount    int   `json:"vec_count"`
-	Dimension   int   `json:"dimension"`
-	StorageBytes int64 `json:"storage_bytes"`
+	Count          int            `json:"count"`
+	VecCount       int            `json:"vec_count"`
+	Dimension      int            `json:"dimension"`
+	StorageBytes   int64          `json:"storage_bytes"`
+	ExplicitCount  int            `json:"explicit_count"`
+	AddedThisWeek  int            `json:"added_this_week"`
+	PendingDeletion int           `json:"pending_deletion"`
+	TopRetrieved   []MemoryResult `json:"top_retrieved"`
 }

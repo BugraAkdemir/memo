@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import 'chat_provider.dart';
@@ -25,8 +26,14 @@ class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
   }
 
   Future<void> deleteModel(String path) async {
-    await ref.read(apiClientProvider).deleteLocalModel(path);
-    await refresh();
+    try {
+      await ref.read(apiClientProvider).deleteLocalModel(path);
+      await refresh();
+    } catch (e) {
+      debugPrint('models: deleteModel error: $e');
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Model silinemedi ($e)';
+    }
   }
 }
 

@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import 'package:flutter/services.dart';
+import '../../../models/gpu_info.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/chat_provider.dart';
 
 class MemoryTab extends ConsumerStatefulWidget {
   MemoryTab();
@@ -17,12 +19,46 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   final _minSimilarityController = TextEditingController();
   bool _settingsInitialized = false;
   bool _savingSettings = false;
+  final _debugQueryController = TextEditingController();
+  bool _debugSearching = false;
+  List<MemorySearchResult> _debugResults = [];
+  String? _debugError;
+  bool _debugSearched = false;
 
   @override
   void dispose() {
     _topKController.dispose();
     _minSimilarityController.dispose();
+    _debugQueryController.dispose();
     super.dispose();
+  }
+
+  Future<void> _runDebugSearch() async {
+    final query = _debugQueryController.text.trim();
+    if (query.isEmpty) return;
+    setState(() {
+      _debugSearching = true;
+      _debugError = null;
+      _debugResults = [];
+      _debugSearched = false;
+    });
+    try {
+      final results = await ref.read(apiClientProvider).debugMemorySearch(query);
+      if (mounted) {
+        setState(() {
+          _debugResults = results;
+          _debugSearched = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _debugError = e.toString());
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _debugSearching = false);
+      }
+    }
   }
 
   @override
@@ -294,6 +330,155 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                   );
                 },
               ),
+              SizedBox(height: 28),
+              Text(
+                L10n.t('memory_debug_search'),
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: MemoTheme.of(context).textMain,
+                ),
+              ),
+              SizedBox(height: 8),
+              Text(
+                L10n.t('memory_debug_hint'),
+                style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
+              ),
+              SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: SizedBox(
+                      height: 36,
+                      child: TextField(
+                        controller: _debugQueryController,
+                        style: TextStyle(fontSize: 13),
+                        onSubmitted: (_) => _runDebugSearch(),
+                        decoration: InputDecoration(
+                          hintText: L10n.t('memory_debug_placeholder'),
+                          contentPadding: EdgeInsets.symmetric(horizontal: 12),
+                          filled: true,
+                          fillColor: MemoTheme.of(context).bgApp,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                            borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                            borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                            borderSide: BorderSide(color: MemoTheme.accent),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                  SizedBox(width: 8),
+                  SizedBox(
+                    height: 36,
+                    child: ElevatedButton(
+                      onPressed: _debugSearching ? null : _runDebugSearch,
+                      child: _debugSearching
+                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          : Text(L10n.t('memory_debug_search_btn')),
+                    ),
+                  ),
+                ],
+              ),
+              if (_debugError != null)
+                Padding(
+                  padding: EdgeInsets.only(top: 8),
+                  child: Text(
+                    _debugError!,
+                    style: TextStyle(color: MemoTheme.red, fontSize: 12),
+                  ),
+                ),
+              if (_debugSearched && _debugResults.isEmpty && _debugError == null)
+                Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Text(
+                    L10n.t('memory_debug_no_results'),
+                    style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
+                  ),
+                ),
+              if (_debugResults.isNotEmpty)
+                Padding(
+                  padding: EdgeInsets.only(top: 12),
+                  child: Column(
+                    children: _debugResults.asMap().entries.map((entry) {
+                      final i = entry.key;
+                      final r = entry.value;
+                      final matchLabel = r.matchType == 'vector'
+                          ? L10n.t('memory_debug_match_vector')
+                          : r.matchType == 'fts'
+                              ? L10n.t('memory_debug_match_fts')
+                              : L10n.t('memory_debug_match_hybrid');
+                      return Container(
+                        margin: EdgeInsets.only(bottom: 8),
+                        padding: EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: MemoTheme.of(context).bgApp,
+                          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                          border: Border.all(color: MemoTheme.of(context).borderSoft),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                Text(
+                                  '#${i + 1}',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.bold,
+                                    color: MemoTheme.of(context).textDim,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                                SizedBox(width: 8),
+                                Container(
+                                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: MemoTheme.accent.withValues(alpha: 0.15),
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    matchLabel,
+                                    style: TextStyle(
+                                      color: MemoTheme.accent,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
+                                const Spacer(),
+                                Text(
+                                  '${L10n.t('memory_debug_score')}: ${r.similarity.toStringAsFixed(3)}',
+                                  style: TextStyle(
+                                    color: MemoTheme.of(context).textDim,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: 6),
+                            Text(
+                              r.content.length > 200
+                                  ? '${r.content.substring(0, 200)}…'
+                                  : r.content,
+                              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textMain),
+                            ),
+                            SizedBox(height: 4),
+                            Text(
+                              r.timestamp,
+                              style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
+                            ),
+                          ],
+                        ),
+                      );
+                    }).toList(),
+                  ),
+                ),
             ],
           ),
         ),

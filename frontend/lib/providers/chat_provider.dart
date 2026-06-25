@@ -128,18 +128,20 @@ final tokenUsageProvider = StateProvider<TokenUsage?>((ref) => null);
 /// (no keyword detection). Persisted server-side.
 final webSearchModeProvider =
     StateNotifierProvider<WebSearchModeNotifier, bool>(
-        (ref) => WebSearchModeNotifier(ref.read(apiClientProvider)));
+        (ref) => WebSearchModeNotifier(ref.read(apiClientProvider), ref));
 
 class WebSearchModeNotifier extends StateNotifier<bool> {
   final MemoApiClient _api;
-  WebSearchModeNotifier(this._api) : super(false) {
+  final Ref _ref;
+  WebSearchModeNotifier(this._api, this._ref) : super(false) {
     _init();
   }
 
   Future<void> _init() async {
     try {
       state = await _api.getWebSearchEnabled();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('chat: web search init error: $e');
       // leave default (off) on error
     }
   }
@@ -149,8 +151,9 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
     try {
       await _api.setWebSearchEnabled(next);
       state = next;
-    } catch (_) {
-      // keep previous state on failure
+    } catch (e) {
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Web arama modu değiştirilemedi ($e)';
     }
   }
 }
@@ -279,7 +282,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         state = AsyncData(current);
       }
     } catch (e) {
-      ref.read(errorMessageProvider.notifier).state = e.toString();
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Mesaj güncellenemedi ($e)';
     }
   }
 
@@ -293,7 +297,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         state = AsyncData(current);
       }
     } catch (e) {
-      ref.read(errorMessageProvider.notifier).state = e.toString();
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Mesaj silinemedi ($e)';
     }
   }
 
@@ -458,7 +463,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       });
     } catch (e) {
       _stopped = false;
-      ref.read(errorMessageProvider.notifier).state = e.toString();
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Mesaj gönderilemedi ($e)';
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
@@ -550,7 +556,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.invalidate(chatListProvider);
       return fullReply;
     } catch (e) {
-      ref.read(errorMessageProvider.notifier).state = e.toString();
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Dosya gönderilemedi ($e)';
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       await refresh();
@@ -593,6 +600,8 @@ class IncognitoNotifier extends StateNotifier<bool> {
     } catch (e) {
       debugPrint('chat: incognito toggle error: $e');
       state = previous;
+      _ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Gizli mod değiştirilemedi ($e)';
     }
   }
 }

@@ -50,10 +50,33 @@ func (a *App) apiContextBudget() int {
 	}
 }
 
+// buildMemoryQuery enriches the retrieval query with recent conversation context
+// (up to 3 prior user turns) so that follow-up questions like "buna ne demiştik?"
+// can find relevant memories even when the current message alone is too vague.
+func (a *App) buildMemoryQuery(userMsg string) string {
+	history := a.getSessionHistory()
+	var recent []string
+	count := 0
+	for i := len(history) - 1; i >= 0 && count < 3; i-- {
+		if history[i].Role != "user" {
+			continue
+		}
+		text := history[i].GetTextContent()
+		if len(strings.Fields(text)) > 3 {
+			recent = append([]string{text}, recent...)
+			count++
+		}
+	}
+	if len(recent) == 0 {
+		return userMsg
+	}
+	return strings.Join(recent, " | ") + " | " + userMsg
+}
+
 func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
 	var memories []memory.MemoryResult
 	if a.cfg.Memory.MemoryEnabled {
-		memories = a.retrieveMemory(ctx, userMsg)
+		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
 	// Memory formatting is independent of mood — the mood engine must have ZERO
 	// influence when disabled.

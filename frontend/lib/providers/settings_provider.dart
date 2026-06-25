@@ -255,10 +255,15 @@ class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
   }
 
   Future<void> save({required int topK, required double minSimilarity}) async {
-    await ref
-        .read(apiClientProvider)
-        .updateMemorySettings(topK: topK, minSimilarity: minSimilarity);
-    state = AsyncData(MemorySettings(topK: topK, minSimilarity: minSimilarity));
+    try {
+      await ref
+          .read(apiClientProvider)
+          .updateMemorySettings(topK: topK, minSimilarity: minSimilarity);
+      state = AsyncData(MemorySettings(topK: topK, minSimilarity: minSimilarity));
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Hafıza ayarları kaydedilemedi ($e)';
+    }
   }
 }
 
@@ -268,6 +273,8 @@ final syncAuthProvider = FutureProvider<bool>((ref) async {
   try {
     return await ref.read(apiClientProvider).checkSyncAuth();
   } catch (e) {
+    ref.read(errorMessageProvider.notifier).state =
+        '${L10n.t('error')}: Sync durumu alınamadı ($e)';
     return false;
   }
 });
@@ -276,6 +283,8 @@ final syncAccountProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getSyncAccount();
   } catch (e) {
+    ref.read(errorMessageProvider.notifier).state =
+        '${L10n.t('error')}: Sync hesap bilgisi alınamadı ($e)';
     return {'authenticated': false};
   }
 });
@@ -284,6 +293,8 @@ final syncSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getSyncSettings();
   } catch (e) {
+    ref.read(errorMessageProvider.notifier).state =
+        '${L10n.t('error')}: Sync ayarları alınamadı ($e)';
     return {};
   }
 });
@@ -294,6 +305,8 @@ final remoteAccessProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getRemoteAccess();
   } catch (e) {
+    ref.read(errorMessageProvider.notifier).state =
+        '${L10n.t('error')}: Uzak erişim durumu alınamadı ($e)';
     return {'enabled': false};
   }
 });
@@ -314,8 +327,13 @@ class MemoryEnabledNotifier extends AsyncNotifier<bool> {
   Future<void> toggle() async {
     final current = state.valueOrNull ?? true;
     final next = !current;
-    await ref.read(apiClientProvider).setMemoryEnabled(next);
-    state = AsyncData(next);
+    try {
+      await ref.read(apiClientProvider).setMemoryEnabled(next);
+      state = AsyncData(next);
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Hafıza durumu değiştirilemedi ($e)';
+    }
   }
 }
 
@@ -325,6 +343,8 @@ final appVersionProvider = FutureProvider<String>((ref) async {
   try {
     return await ref.read(apiClientProvider).getVersion();
   } catch (e) {
+    ref.read(errorMessageProvider.notifier).state =
+        '${L10n.t('error')}: Uygulama sürümü alınamadı ($e)';
     return 'unknown';
   }
 });

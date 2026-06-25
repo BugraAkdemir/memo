@@ -126,8 +126,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                           ),
                         ),
                         EngineStrip(
-                          onOpenModels: () =>
-                              setState(() => _currentIndex = 2),
+                          onOpenModels: () => _handleTabChange(2),
                         ),
                       ],
                     ),
@@ -214,7 +213,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             activeIcon: Icons.chat_bubble,
             label: L10n.t('chats'),
             isActive: _currentIndex == 0,
-            onTap: () => setState(() => _currentIndex = 0),
+            onTap: () => _handleTabChange(0),
           ),
 
           _NavRailButton(
@@ -223,7 +222,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             activeIcon: Icons.smart_toy,
             label: 'Ajan',
             isActive: _currentIndex == 1,
-            onTap: () => setState(() => _currentIndex = 1),
+            onTap: () => _handleTabChange(1),
           ),
 
           _NavRailButton(
@@ -232,7 +231,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             activeIcon: Icons.memory,
             label: L10n.t('model_store'),
             isActive: _currentIndex == 2,
-            onTap: () => setState(() => _currentIndex = 2),
+            onTap: () => _handleTabChange(2),
           ),
 
           _NavRailButton(
@@ -241,7 +240,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             activeIcon: Icons.message,
             label: 'WhatsApp',
             isActive: _currentIndex == 3,
-            onTap: () => setState(() => _currentIndex = 3),
+            onTap: () => _handleTabChange(3),
           ),
 
           _NavRailButton(
@@ -250,7 +249,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             activeIcon: Icons.calendar_month,
             label: 'Takvim',
             isActive: _currentIndex == 4,
-            onTap: () => setState(() => _currentIndex = 4),
+            onTap: () => _handleTabChange(4),
           ),
 
           const Spacer(),
@@ -282,42 +281,32 @@ class _AppShellState extends ConsumerState<AppShell> {
           whatsAppConnected: _isWhatsAppConnected(),
           onStartChat: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
-            setState(() {
-              _showLaunchpad = false;
-              _currentIndex = 0;
-            });
+            setState(() => _showLaunchpad = false);
+            _handleTabChange(0);
             _maybeStartTour();
           },
           onNavigateAgent: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
-            setState(() {
-              _showLaunchpad = false;
-              _currentIndex = 1;
-            });
+            setState(() => _showLaunchpad = false);
+            _handleTabChange(1);
             _maybeStartTour();
           },
           onNavigateWhatsApp: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
-            setState(() {
-              _showLaunchpad = false;
-              _currentIndex = 3;
-            });
+            setState(() => _showLaunchpad = false);
+            _handleTabChange(3);
             _maybeStartTour();
           },
           onNavigateCalendar: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
-            setState(() {
-              _showLaunchpad = false;
-              _currentIndex = 4;
-            });
+            setState(() => _showLaunchpad = false);
+            _handleTabChange(4);
             _maybeStartTour();
           },
           onNavigateModels: () {
             ref.read(launchpadSeenProvider.notifier).markSeen();
-            setState(() {
-              _showLaunchpad = false;
-              _currentIndex = 2;
-            });
+            setState(() => _showLaunchpad = false);
+            _handleTabChange(2);
             _maybeStartTour();
           },
         ),
@@ -356,6 +345,16 @@ class _AppShellState extends ConsumerState<AppShell> {
         },
       ),
     );
+  }
+
+  void _handleTabChange(int index) {
+    setState(() => _currentIndex = index);
+    final waNotifier = ref.read(whatsAppStatusProvider.notifier);
+    if (index == 3) {
+      waNotifier.startPolling();
+    } else {
+      waNotifier.stopPolling();
+    }
   }
 
   bool _isWhatsAppConnected() {

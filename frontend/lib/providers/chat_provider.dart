@@ -604,7 +604,7 @@ final isSendingProvider = StateProvider<bool>((ref) => false);
 
 // ─── Connection Status (polls every 30s) ────────────────────────
 
-final connectionStatusProvider = StreamProvider<bool>((ref) async* {
+final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
   final api = ref.read(apiClientProvider);
   while (true) {
     try {

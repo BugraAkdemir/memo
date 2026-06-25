@@ -5,9 +5,12 @@ import '../core/api_client.dart';
 import '../models/whatsapp.dart';
 import 'chat_provider.dart';
 
-final whatsAppStatusProvider =
-    StateNotifierProvider<WhatsAppStatusNotifier, AsyncValue<WhatsAppStatus>>(
-        (ref) => WhatsAppStatusNotifier(ref.read(apiClientProvider)));
+final whatsAppStatusProvider = StateNotifierProvider.autoDispose<
+    WhatsAppStatusNotifier, AsyncValue<WhatsAppStatus>>((ref) {
+  final notifier = WhatsAppStatusNotifier(ref.read(apiClientProvider));
+  ref.onDispose(notifier.stopPolling);
+  return notifier;
+});
 
 final whatsAppChatsProvider = FutureProvider<List<WhatsAppChatSummary>>((ref) async {
   final data = await ref.read(apiClientProvider).getWhatsAppChats();

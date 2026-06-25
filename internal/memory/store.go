@@ -391,46 +391,83 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 	})
 }
 
+const chunkMaxWords = 300
+const chunkOverlapWords = 50
+
 func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
+	chunks := chunkText(userMsg, chunkMaxWords, chunkOverlapWords)
+	parentUUID := fmt.Sprintf("mem_%d", time.Now().UnixNano())
+	totalChunks := len(chunks)
+
+	for i, chunk := range chunks {
+		if err := s.saveChunk(ctx, chunk, assistantMsg, parentUUID, i, totalChunks); err != nil {
+			return fmt.Errorf("memory.SaveInteraction chunk[%d]: %w", i, err)
+		}
+	}
+	return nil
+}
+
+func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUUID string, chunkIndex, totalChunks int) error {
 	embedStart := time.Now()
-	embedding, err := s.embed(ctx, userMsg)
+	embedding, err := s.embed(ctx, userChunk)
 	if err != nil {
-		return fmt.Errorf("memory.SaveInteraction: embed: %w", err)
+		return fmt.Errorf("embed: %w", err)
 	}
 	if len(embedding) != s.dim {
-		return fmt.Errorf("memory.SaveInteraction: embedding dimension %d != expected %d", len(embedding), s.dim)
+		return fmt.Errorf("embedding dimension %d != expected %d", len(embedding), s.dim)
 	}
 	embedDur := time.Since(embedStart)
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
-	uuid := fmt.Sprintf("mem_%d", time.Now().UnixNano())
-	content := fmt.Sprintf("[%s] User: %s\nAssistant: %s", timestamp, userMsg, assistantMsg)
+	uuid := parentUUID
+	if totalChunks > 1 {
+		uuid = fmt.Sprintf("%s_%d", parentUUID, chunkIndex)
+	}
+
+	// Sadece son chunk'ta assist_msg sakla
+	storedAssist := ""
+	if chunkIndex == totalChunks-1 {
+		storedAssist = assistantMsg
+	}
+	content := fmt.Sprintf("[%s] User: %s", timestamp, userChunk)
+	if storedAssist != "" {
+		content += "\nAssistant: " + storedAssist
+	}
 
 	writeStart := time.Now()
 	err = s.db.Write(ctx, func(tx *sql.Tx) error {
 		embedBlob := floatsToBlob(embedding)
 
 		res, err := tx.Exec(
-			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding)
-			 VALUES (?, 'user', ?, ?, ?, ?, ?)`,
-			uuid, content, timestamp, userMsg, assistantMsg, embedBlob,
+			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding, chunk_index, parent_uuid, total_chunks)
+             VALUES (?, 'user', ?, ?, ?, ?, ?, ?, ?, ?)`,
+			uuid, content, timestamp, userChunk, storedAssist, embedBlob, chunkIndex, parentUUID, totalChunks,
 		)
 		if err != nil {
 			return fmt.Errorf("insert memory: %w", err)
 		}
 
+		rowID, err := res.LastInsertId()
+		if err != nil {
+			return err
+		}
+
 		if s.useVec {
-			rowID, err := res.LastInsertId()
-			if err != nil {
-				return err
-			}
 			vecJSON, _ := json.Marshal(embedding)
-			_, err = tx.Exec(
+			if _, err := tx.Exec(
 				"INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)",
 				rowID, string(vecJSON),
-			)
-			if err != nil {
+			); err != nil {
 				return fmt.Errorf("insert vector: %w", err)
+			}
+		}
+
+		if s.useFTS {
+			if _, err := tx.Exec(
+				"INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, ?)",
+				rowID, content, userChunk, storedAssist,
+			); err != nil {
+				return fmt.Errorf("insert fts: %w", err)
 			}
 		}
 
@@ -438,12 +475,15 @@ func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg strin
 	})
 	writeDur := time.Since(writeStart)
 
-	log.Printf("LATENCY memory.save total_ms=%d embed_ms=%d write_ms=%d dim=%d vec=%v",
-		time.Since(embedStart.Add(writeDur)).Milliseconds(),
+	log.Printf("LATENCY memory.save total_ms=%d embed_ms=%d write_ms=%d dim=%d vec=%v fts=%v chunk=%d/%d",
+		(embedDur + writeDur).Milliseconds(),
 		embedDur.Milliseconds(),
 		writeDur.Milliseconds(),
 		s.dim,
 		s.useVec,
+		s.useFTS,
+		chunkIndex+1,
+		totalChunks,
 	)
 
 	return err

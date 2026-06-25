@@ -160,6 +160,45 @@ func TestFormatMemoriesForPrompt(t *testing.T) {
 	}
 }
 
+func TestSaveInteraction_Chunking(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := NewStore(StoreConfig{Dir: dir, Dimension: 3, EmbeddingFunc: testEmbedding})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	// 350 kelimelik userMsg → 2 chunk (maxWords=300, overlap=50)
+	words := make([]string, 350)
+	for i := range words {
+		words[i] = "coffee"
+	}
+	if err := store.SaveInteraction(ctx, strings.Join(words, " "), "reply"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+	if store.Count() != 2 {
+		t.Fatalf("Count() = %d, want 2 (chunked)", store.Count())
+	}
+}
+
+func TestSaveInteraction_ShortNoChunk(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := NewStore(StoreConfig{Dir: dir, Dimension: 3, EmbeddingFunc: testEmbedding})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveInteraction(ctx, "coffee beans", "arabica"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+	if store.Count() != 1 {
+		t.Fatalf("Count() = %d, want 1", store.Count())
+	}
+}
+
 func testEmbedding(_ context.Context, text string) ([]float32, error) {
 	text = strings.ToLower(text)
 	switch {

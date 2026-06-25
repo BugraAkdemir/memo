@@ -78,15 +78,15 @@
 
 ### Faz D — Cross-Platform / Paketleme
 
-- [ ] **D1. macOS build pipeline ekle**
+- [x] **D1. macOS build pipeline ekle**
   - Dosya: `build_releases.sh`
   - `darwin` kolu + `.app` / `.dmg` veya `.zip` paketleme.
 
-- [ ] **D2. Build script’lerdeki zorla öldürmeleri graceful hale getir**
+- [x] **D2. Build script’lerdeki zorla öldürmeleri graceful hale getir**
   - Dosyalar: `build_releases.sh`, `build_releases.bat`
   - `pkill -9` / `taskkill /F` yerine önce SIGTERM/uygulama shutdown, sonra force kill fallback.
 
-- [ ] **D3. Windows batch runner backend PID takibi**
+- [x] **D3. Windows batch runner backend PID takibi**
   - Dosya: `build_releases.bat` içinde üretilen `run_memo.bat`
   - Frontend crash olursa backend orphan kalmaması için PID kaydet ve cleanup yap.
 

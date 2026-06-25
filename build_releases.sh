@@ -22,12 +22,14 @@ fi
 VERSION=$(echo $VERSION | awk '{print $1}' | tr -d 'Vv') # Clean version string, e.g. 3.0.0
 
 echo "=========================================================="
-echo "🚀 $APP_NAME V$VERSION Paketleme İşlemi (Linux & Windows) 🚀"
+echo "🚀 $APP_NAME V$VERSION Paketleme İşlemi (Linux & Windows & macOS) 🚀"
 echo "=========================================================="
 
 # Check OS
 if [[ "$OSTYPE" == "linux-gnu"* ]]; then
     OS="linux"
+elif [[ "$OSTYPE" == "darwin"* ]]; then
+    OS="darwin"
 elif [[ "$OSTYPE" == "msys"* || "$OSTYPE" == "cygwin"* || "$OSTYPE" == "win32"* ]]; then
     OS="windows"
 else
@@ -141,10 +143,20 @@ cd "$MEMO_HOME"
 # Set library paths
 export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
 
-# Stop old processes
-pkill -9 -f "memo-backend" 2>/dev/null || true
-pkill -9 -f "llama-server" 2>/dev/null || true
-sleep 0.5
+# Graceful shutdown helper: SIGTERM → wait → SIGKILL
+_graceful_kill() {
+    local pattern="$1"
+    pkill -TERM -f "$pattern" 2>/dev/null || true
+    local i=0
+    while pgrep -f "$pattern" >/dev/null 2>&1 && [ $i -lt 5 ]; do
+        sleep 1; i=$((i+1))
+    done
+    pkill -9 -f "$pattern" 2>/dev/null || true
+}
+
+# Stop stale processes
+_graceful_kill "memo-backend"
+_graceful_kill "llama-server"
 
 # Start backend from writable directory
 "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
@@ -154,9 +166,15 @@ sleep 1
 # Start Flutter frontend
 "$DIR/memo_flutter" "$@"
 
-# Cleanup
-kill $BACKEND_PID 2>/dev/null
-pkill -9 -f "llama-server" 2>/dev/null || true
+# Cleanup — try graceful shutdown API, then fall back to signal
+if kill -0 "$BACKEND_PID" 2>/dev/null; then
+    curl -s -X POST "http://localhost:8080/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
+    sleep 3
+    kill -TERM "$BACKEND_PID" 2>/dev/null || true
+    sleep 2
+    kill -9 "$BACKEND_PID" 2>/dev/null || true
+fi
+_graceful_kill "llama-server"
 RUNNER
 
     chmod +x "$STAGEDIR/run_memo.sh"
@@ -297,27 +315,40 @@ elif [ "$OS" == "windows" ]; then
     # Create batch runner for Windows
     cat << 'RUNNERWIN' > "$STAGEDIR/run_memo.bat"
 @echo off
+setlocal enabledelayedexpansion
 cd /d "%~dp0"
-set PATH=%~dp0data\bin;%PATH%
-REM Pin the app's data directory to a writable per-user workspace.
-set "MEMO_DATA_DIR=%USERPROFILE%\.memo\data"
+set "APP_DIR=%~dp0"
+set "MEMO_HOME=%USERPROFILE%\.memo"
+set "MEMO_DATA_DIR=%MEMO_HOME%\data"
 
 REM First-run: copy example configs if needed
-if not exist "%USERPROFILE%\.memo\data\providers.json" (
-    if exist "%~dp0data\providers.example.json" (
-        mkdir "%USERPROFILE%\.memo\data" 2>nul
-        copy "%~dp0data\providers.example.json" "%USERPROFILE%\.memo\data\providers.json" >nul
+if not exist "%MEMO_HOME%\data" mkdir "%MEMO_HOME%\data"
+if not exist "%MEMO_HOME%\data\providers.json" (
+    if exist "%APP_DIR%data\providers.example.json" (
+        copy "%APP_DIR%data\providers.example.json" "%MEMO_HOME%\data\providers.json" >nul
     )
 )
 
+REM Stop stale instances gracefully (shutdown API, then force)
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8080/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
+timeout /t 2 /nobreak >nul
 taskkill /F /IM memo-backend.exe >nul 2>&1
 taskkill /F /IM llama-server.exe >nul 2>&1
 
-start "" /B memo-backend.exe
+REM Start backend, capture PID for targeted cleanup
+set "BACKEND_PID="
+for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -WorkingDirectory '%MEMO_HOME%' -PassThru; $p.Id }"') do set BACKEND_PID=%%i
 timeout /t 1 /nobreak >nul
-start "" /WAIT memo_flutter.exe
 
-taskkill /F /IM memo-backend.exe >nul 2>&1
+REM Start Flutter frontend (blocks until closed)
+start "" /WAIT "%APP_DIR%memo_flutter.exe"
+
+REM Cleanup — shutdown API first, then targeted kill by PID
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8080/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
+timeout /t 3 /nobreak >nul
+if defined BACKEND_PID (
+    taskkill /F /PID %BACKEND_PID% >nul 2>&1
+)
 taskkill /F /IM llama-server.exe >nul 2>&1
 RUNNERWIN
 
@@ -327,6 +358,118 @@ RUNNERWIN
     cd ../..
 
     echo "🎉 WINDOWS PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."
+
+elif [ "$OS" == "darwin" ]; then
+    echo "✅ İşletim Sistemi: macOS tespit edildi. (.app + .zip oluşturulacak)"
+
+    # 1. Build Backend
+    echo "🔨 1. Go Backend Derleniyor (darwin)..."
+    go mod download
+    go build -o "$STAGEDIR/memo-backend" .
+
+    # 2. Build Frontend
+    echo "🔨 2. Flutter macOS Derleniyor..."
+    cd frontend
+    flutter build macos --release
+    cd ..
+    # Flutter outputs a full .app bundle
+    APP_BUNDLE_SRC="frontend/build/macos/Build/Products/Release/${APP_NAME}.app"
+    if [ ! -d "$APP_BUNDLE_SRC" ]; then
+        echo "❌ Flutter .app bundle bulunamadı: $APP_BUNDLE_SRC"
+        exit 1
+    fi
+    cp -r "$APP_BUNDLE_SRC" "$STAGEDIR/${APP_NAME}.app"
+
+    # 3. Copy Assets
+    echo "📂 3. Gömülü Dosyalar Kopyalanıyor..."
+    mkdir -p "$STAGEDIR/binaries"
+    cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
+
+    cp config/config.yaml.example "$STAGEDIR/config/config.yaml" 2>/dev/null || true
+    cp config/config.yaml.example "$STAGEDIR/config/config.yaml.example" 2>/dev/null || true
+    cp .env.example "$STAGEDIR/.env" 2>/dev/null || true
+    cp data/providers.example.json "$STAGEDIR/data/providers.example.json" 2>/dev/null || true
+    echo '[]' > "$STAGEDIR/data/permissions.json"
+    mkdir -p "$STAGEDIR/data/models"
+    mkdir -p "$STAGEDIR/data/memory"
+    mkdir -p "$STAGEDIR/data/sessions"
+    mkdir -p "$STAGEDIR/data/agent-backups"
+    mkdir -p "$STAGEDIR/data/skills"
+    mkdir -p "$STAGEDIR/data/whatsapp"
+    touch "$STAGEDIR/data/whatsapp/.gitkeep"
+
+    # Create Runner Script
+    cat << 'RUNNER_MAC' > "$STAGEDIR/run_memo.sh"
+#!/bin/bash
+DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+
+MEMO_HOME="$HOME/.memo"
+export MEMO_DATA_DIR="$MEMO_HOME/data"
+mkdir -p "$MEMO_HOME/data/"{models,memory,sessions,agent-backups,skills,whatsapp}
+mkdir -p "$MEMO_HOME/data/bin"
+
+# First-run: copy binaries
+if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
+    echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
+    mkdir -p "$MEMO_HOME/binaries"
+    cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
+fi
+
+# First-run: copy configs
+if [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -d "$DIR/config" ]; then
+    mkdir -p "$MEMO_HOME/config"
+    cp -r "$DIR/config/"* "$MEMO_HOME/config/"
+fi
+[ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
+[ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && \
+    cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
+[ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
+
+cd "$MEMO_HOME"
+
+# Graceful shutdown helper
+_graceful_kill() {
+    local pattern="$1"
+    pkill -TERM -f "$pattern" 2>/dev/null || true
+    local i=0
+    while pgrep -f "$pattern" >/dev/null 2>&1 && [ $i -lt 5 ]; do
+        sleep 1; i=$((i+1))
+    done
+    pkill -9 -f "$pattern" 2>/dev/null || true
+}
+
+_graceful_kill "memo-backend"
+_graceful_kill "llama-server"
+
+# Start backend
+"$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
+BACKEND_PID=$!
+sleep 1
+
+# Launch Flutter .app (run binary directly so the shell waits)
+"$DIR/Memo.app/Contents/MacOS/memo_flutter" "$@"
+
+# Cleanup
+if kill -0 "$BACKEND_PID" 2>/dev/null; then
+    curl -s -X POST "http://localhost:8080/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
+    sleep 3
+    kill -TERM "$BACKEND_PID" 2>/dev/null || true
+    sleep 2
+    kill -9 "$BACKEND_PID" 2>/dev/null || true
+fi
+_graceful_kill "llama-server"
+RUNNER_MAC
+
+    chmod +x "$STAGEDIR/run_memo.sh"
+
+    # 4. Create .zip
+    echo "📦 4. macOS ZIP Paketi Oluşturuluyor..."
+    cd build_output/stage
+    zip -qr "../dist/${APP_NAME}-macos-arm64-v${VERSION}.zip" "$APP_NAME"
+    cd ../..
+
+    echo "🎉 MACOS PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."
+
 fi
 
 echo "=========================================================="

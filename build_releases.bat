@@ -163,23 +163,26 @@ echo set "PATH=%%APP_DIR%%binaries\windows;%%APP_DIR%%binaries\windows\cpu;%%APP
 echo.
 echo :: Restart loop — frontend exit code 42 means "wipe done, relaunch clean"
 echo :restart_loop
-echo :: Stop old processes
+echo :: Stop stale instances gracefully (shutdown API then force)
+echo powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8080/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" ^>nul 2^>^&1
+echo timeout /t 2 /nobreak ^>nul
 echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1
 echo taskkill /F /IM llama-server.exe ^>nul 2^>^&1
-echo timeout /t 1 /nobreak ^>nul
 echo.
-echo :: Start backend from writable directory
-echo cd /d "%%MEMO_HOME%%"
-echo start "" /B "%%APP_DIR%%memo-backend.exe"
+echo :: Start backend, capture PID for targeted cleanup
+echo set "BACKEND_PID="
+echo for /f %%%%i in ^('powershell -NoProfile -Command "^& { $p = Start-Process -FilePath '%%APP_DIR%%memo-backend.exe' -WorkingDirectory '%%MEMO_HOME%%' -PassThru; $p.Id }"'^) do set BACKEND_PID=%%%%i
 echo timeout /t 2 /nobreak ^>nul
 echo.
-echo :: Start Flutter frontend
+echo :: Start Flutter frontend (blocks until closed)
 echo cd /d "%%APP_DIR%%"
 echo start "" /WAIT %APP_EXEC%.exe
 echo set "EXITCODE=%%ERRORLEVEL%%"
 echo.
-echo :: Cleanup
-echo taskkill /F /IM memo-backend.exe ^>nul 2^>^&1
+echo :: Cleanup — shutdown API first, then targeted kill by PID
+echo powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8080/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" ^>nul 2^>^&1
+echo timeout /t 3 /nobreak ^>nul
+echo if defined BACKEND_PID ^( taskkill /F /PID %%BACKEND_PID%% ^>nul 2^>^&1 ^)
 echo taskkill /F /IM llama-server.exe ^>nul 2^>^&1
 echo if "%%EXITCODE%%"=="42" ^( timeout /t 1 /nobreak ^>nul ^& goto restart_loop ^)
 echo endlocal

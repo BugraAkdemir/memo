@@ -662,6 +662,22 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		}
 	}
 
+	// Boost similarity scores based on importance (1–5).
+	// importance=1 → ×0.90, importance=3 → ×1.10, importance=5 → ×1.30
+	// Re-sort after boost since relative order may change.
+	for i := range memories {
+		imp := memories[i].Importance
+		if imp < 1 {
+			imp = 1
+		} else if imp > 5 {
+			imp = 5
+		}
+		memories[i].Similarity *= float32(0.8 + float64(imp)*0.1)
+	}
+	sort.Slice(memories, func(i, j int) bool {
+		return memories[i].Similarity > memories[j].Similarity
+	})
+
 	if len(memories) > 0 {
 		ids := make([]string, len(memories))
 		for i, m := range memories {

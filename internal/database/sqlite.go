@@ -93,7 +93,15 @@ func buildDSN(path string) string {
 	q.Set("_busy_timeout", "5000")
 	q.Set("_synchronous", "NORMAL")
 	q.Set("_txlock", "immediate")
-	return fmt.Sprintf("file:%s?%s", path, q.Encode())
+	// SQLite URI parser treats backslashes as path separators only on Windows
+	// native builds — but the go-sqlite3 driver passes the URI through the C
+	// layer which requires forward-slash paths. Absolute Windows paths
+	// (C:\...) must also get a leading slash to form a valid file:/// URI.
+	uriPath := filepath.ToSlash(path)
+	if filepath.IsAbs(path) && len(uriPath) > 0 && uriPath[0] != '/' {
+		uriPath = "/" + uriPath
+	}
+	return fmt.Sprintf("file:%s?%s", uriPath, q.Encode())
 }
 
 func (db *DB) writeLoop() {

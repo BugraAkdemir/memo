@@ -108,6 +108,9 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 	env := os.Environ()
 	if runtime.GOOS == "windows" {
 		env = withPrependedEnvPath(env, "PATH", binDir, true)
+	} else if runtime.GOOS == "darwin" {
+		env = withPrependedEnvPath(env, "DYLD_LIBRARY_PATH", binDir, false)
+		env = withPrependedEnvPath(env, "DYLD_FALLBACK_LIBRARY_PATH", binDir, false)
 	} else {
 		env = withPrependedEnvPath(env, "LD_LIBRARY_PATH", binDir, false)
 	}

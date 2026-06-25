@@ -331,9 +331,15 @@ func Load(path string) (*AppConfig, error) {
 		// On first run at a writable location (e.g. the Windows installer's
 		// %ProgramData%\Memo\config), seed from a config.yaml shipped next to the
 		// executable / working dir so packaged defaults aren't lost.
-		if seed, serr := os.ReadFile(filepath.Join("config", "config.yaml")); serr == nil {
+		// On Windows/macOS packaged builds the CWD is not the install dir.
+		// Resolve the seed path relative to the executable instead.
+		seedPath := filepath.Join("config", "config.yaml")
+		if exe, exeErr := os.Executable(); exeErr == nil {
+			seedPath = filepath.Join(filepath.Dir(exe), "config", "config.yaml")
+		}
+		if seed, serr := os.ReadFile(seedPath); serr == nil {
 			abs, _ := filepath.Abs(path)
-			seedAbs, _ := filepath.Abs(filepath.Join("config", "config.yaml"))
+			seedAbs, _ := filepath.Abs(seedPath)
 			if abs != seedAbs {
 				data, err = seed, nil
 				seeded = true

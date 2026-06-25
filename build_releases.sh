@@ -168,7 +168,7 @@ sleep 1
 
 # Cleanup — try graceful shutdown API, then fall back to signal
 if kill -0 "$BACKEND_PID" 2>/dev/null; then
-    curl -s -X POST "http://localhost:8080/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
+    curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
     sleep 3
     kill -TERM "$BACKEND_PID" 2>/dev/null || true
     sleep 2
@@ -330,7 +330,7 @@ if not exist "%MEMO_HOME%\data\providers.json" (
 )
 
 REM Stop stale instances gracefully (shutdown API, then force)
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8080/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
 timeout /t 2 /nobreak >nul
 taskkill /F /IM memo-backend.exe >nul 2>&1
 taskkill /F /IM llama-server.exe >nul 2>&1
@@ -344,7 +344,7 @@ REM Start Flutter frontend (blocks until closed)
 start "" /WAIT "%APP_DIR%memo_flutter.exe"
 
 REM Cleanup — shutdown API first, then targeted kill by PID
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8080/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
 timeout /t 3 /nobreak >nul
 if defined BACKEND_PID (
     taskkill /F /PID %BACKEND_PID% >nul 2>&1
@@ -365,7 +365,8 @@ elif [ "$OS" == "darwin" ]; then
     # 1. Build Backend
     echo "🔨 1. Go Backend Derleniyor (darwin)..."
     go mod download
-    go build -o "$STAGEDIR/memo-backend" .
+    MAC_ARCH=$(uname -m)  # arm64 on Apple Silicon, x86_64 on Intel
+    GOARCH=$MAC_ARCH go build -o "$STAGEDIR/memo-backend" .
 
     # 2. Build Frontend
     echo "🔨 2. Flutter macOS Derleniyor..."
@@ -451,7 +452,7 @@ sleep 1
 
 # Cleanup
 if kill -0 "$BACKEND_PID" 2>/dev/null; then
-    curl -s -X POST "http://localhost:8080/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
+    curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
     sleep 3
     kill -TERM "$BACKEND_PID" 2>/dev/null || true
     sleep 2
@@ -465,7 +466,7 @@ RUNNER_MAC
     # 4. Create .zip
     echo "📦 4. macOS ZIP Paketi Oluşturuluyor..."
     cd build_output/stage
-    zip -qr "../dist/${APP_NAME}-macos-arm64-v${VERSION}.zip" "$APP_NAME"
+    zip -qr "../dist/${APP_NAME}-macos-${MAC_ARCH}-v${VERSION}.zip" "$APP_NAME"
     cd ../..
 
     echo "🎉 MACOS PAKETLEMESİ TAMAMLANDI! Çıktılar 'build_output/dist' klasöründe."

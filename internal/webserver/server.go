@@ -46,15 +46,16 @@ type AppBridge interface {
 }
 
 type Server struct {
-	mu         sync.Mutex
-	srv        *http.Server
-	bridge     AppBridge
-	fullBridge FullBridge
-	assets     fs.FS
-	running    bool
-	port       int
-	listenAddr string
-	localIPs   []string
+	mu           sync.Mutex
+	srv          *http.Server
+	bridge       AppBridge
+	fullBridge   FullBridge
+	assets       fs.FS
+	running      bool
+	port         int
+	listenAddr   string
+	localIPs     []string
+	stopCleaner  chan struct{}
 }
 
 func New(bridge AppBridge) *Server {
@@ -233,7 +234,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/mood/self-interest", s.handleSelfInterestSettings)
 	mux.HandleFunc("/api/mood/system-management", s.handleSystemManagementSettings)
 
-	handler := limitBodyMiddleware(rateLimitMiddleware(corsMiddleware(mux)), 50<<20) // 50 MB body limit
+	if s.stopCleaner != nil {
+		close(s.stopCleaner)
+	}
+	s.stopCleaner = make(chan struct{})
+	handler := limitBodyMiddleware(rateLimitMiddleware(s.stopCleaner, corsMiddleware(mux)), 50<<20) // 50 MB body limit
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),
 		Handler: handler,
@@ -292,6 +297,10 @@ func (s *Server) Stop() error {
 	logx.Info("Stopping server...")
 	srv := s.srv
 	s.running = false
+	if s.stopCleaner != nil {
+		close(s.stopCleaner)
+		s.stopCleaner = nil
+	}
 	go srv.Shutdown(context.Background())
 	return nil
 }
@@ -628,7 +637,8 @@ func limitBodyMiddleware(next http.Handler, maxBytes int64) http.Handler {
 
 // rateLimitMiddleware limits requests to 100/second per IP using a simple
 // token bucket. Excess requests get 429 Too Many Requests.
-func rateLimitMiddleware(next http.Handler) http.Handler {
+// stop is closed when the server stops to terminate the bucket cleaner goroutine.
+func rateLimitMiddleware(stop <-chan struct{}, next http.Handler) http.Handler {
 	type bucket struct {
 		tokens   float64
 		lastSeen time.Time
@@ -643,16 +653,22 @@ func rateLimitMiddleware(next http.Handler) http.Handler {
 		cleanEvery = 60 * time.Second
 	)
 	go func() {
+		ticker := time.NewTicker(cleanEvery)
+		defer ticker.Stop()
 		for {
-			time.Sleep(cleanEvery)
-			mu.Lock()
-			now := time.Now()
-			for ip, b := range buckets {
-				if now.Sub(b.lastSeen) > 5*time.Minute {
-					delete(buckets, ip)
+			select {
+			case <-stop:
+				return
+			case <-ticker.C:
+				mu.Lock()
+				now := time.Now()
+				for ip, b := range buckets {
+					if now.Sub(b.lastSeen) > 5*time.Minute {
+						delete(buckets, ip)
+					}
 				}
+				mu.Unlock()
 			}
-			mu.Unlock()
 		}
 	}()
 

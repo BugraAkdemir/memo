@@ -116,10 +116,9 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	// Security: validate CWD is inside basePath regardless of whether it exists yet.
 	realCWD, err := filepath.EvalSymlinks(workingDir)
 	if err != nil {
-		if !os.IsNotExist(err) {
-			return "", fmt.Errorf("failed to resolve cwd: %w", err)
-		}
-		// Directory doesn't exist; validate the cleaned path instead.
+		// Fall back to Clean path — either the dir doesn't exist yet, or on
+		// Windows the caller lacks SeCreateSymbolicLinkPrivilege to resolve a
+		// junction point. The Rel check below still enforces the boundary.
 		realCWD = filepath.Clean(workingDir)
 	}
 	rel, relErr := filepath.Rel(basePath, realCWD)
@@ -146,11 +145,20 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 		if userProfile == "" {
 			userProfile = homeDir
 		}
+		temp := os.Getenv("TEMP")
+		if temp == "" {
+			temp = os.TempDir()
+		}
 		cmd.Env = []string{
 			"PATH=" + os.Getenv("PATH"),
 			"USERPROFILE=" + userProfile,
 			"SystemRoot=" + os.Getenv("SystemRoot"),
 			"USERNAME=" + os.Getenv("USERNAME"),
+			"TEMP=" + temp,
+			"TMP=" + temp,
+			"COMSPEC=" + os.Getenv("COMSPEC"),
+			"HOMEDRIVE=" + os.Getenv("HOMEDRIVE"),
+			"HOMEPATH=" + os.Getenv("HOMEPATH"),
 		}
 	} else {
 		cmd = exec.CommandContext(execCtx, "bash", "-c", args.Command)

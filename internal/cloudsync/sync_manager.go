@@ -590,8 +590,13 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			return fmt.Errorf("cloudsync: restore close tmp: %w", clErr)
 		}
 		if err := os.Rename(tmpDest, dest); err != nil {
+			// Windows: destination may be briefly open by antivirus/indexer.
+			// Fall back to copy-then-delete so restore doesn't fail mid-way.
+			if copyErr := copyRestoreFile(tmpDest, dest); copyErr != nil {
+				os.Remove(tmpDest)
+				return fmt.Errorf("cloudsync: restore rename %s: %w", dest, err)
+			}
 			os.Remove(tmpDest)
-			return fmt.Errorf("cloudsync: restore rename %s: %w", dest, err)
 		}
 		extracted++
 		log.Printf("cloudsync: restored %s", dest)
@@ -605,6 +610,24 @@ func (m *Manager) restoreZip(zipData []byte) error {
 }
 
 // ─── Event helpers ────────────────────────────────────────────────────────────
+
+// copyRestoreFile copies src to dst byte-for-byte (cross-platform rename fallback).
+func copyRestoreFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
+}
 
 func (m *Manager) emit(event string, payload any) {
 	// Headless modunda (Flutter client) Wails events emit fonksiyonu panik yarattığı için kaldırıldı.

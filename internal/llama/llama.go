@@ -153,6 +153,10 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	env := os.Environ()
 	if runtime.GOOS == "windows" {
 		env = withPrependedEnvPath(env, "PATH", binDir, true)
+	} else if runtime.GOOS == "darwin" {
+		// macOS ignores LD_LIBRARY_PATH; dyld uses DYLD_LIBRARY_PATH instead.
+		env = withPrependedEnvPath(env, "DYLD_LIBRARY_PATH", binDir, false)
+		env = withPrependedEnvPath(env, "DYLD_FALLBACK_LIBRARY_PATH", binDir, false)
 	} else {
 		// The bundled binary has RUNPATH=/tmp/llama.cpp/build/bin: which
 		// doesn't exist after deployment. Put the real directory first.

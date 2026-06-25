@@ -334,6 +334,8 @@ func (a *App) Startup(ctx context.Context) {
 	// Tailscale tunnel auto-start (embedded, stable URL).
 	go a.startupTailscale()
 
+	go a.startSTTServer()
+
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		go a.startupEmbeddingModel()
 	}

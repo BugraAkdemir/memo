@@ -41,12 +41,20 @@ func NewManager(binPath string) *Manager {
 
 func findBinary() string {
 	name := "ngrok"
-	candidates := []string{
-		filepath.Join(".", "binaries", runtime.GOOS, name),
-		filepath.Join(".", "binaries", runtime.GOOS, name+".exe"),
-		name,
-		name + ".exe",
+	var bases []string
+	// Prefer exe-relative path so packaged builds find the binary regardless of CWD.
+	if exe, err := os.Executable(); err == nil {
+		bases = append(bases, filepath.Dir(exe))
 	}
+	bases = append(bases, ".")
+	var candidates []string
+	for _, base := range bases {
+		candidates = append(candidates,
+			filepath.Join(base, "binaries", runtime.GOOS, name),
+			filepath.Join(base, "binaries", runtime.GOOS, name+".exe"),
+		)
+	}
+	candidates = append(candidates, name, name+".exe")
 	for _, p := range candidates {
 		if _, err := os.Stat(p); err == nil {
 			return p

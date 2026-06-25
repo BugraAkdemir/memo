@@ -212,7 +212,7 @@
 
 ## Kalan Görevler
 
-### ⬜ 3.1 Embedding Auto-Setup
+### ✅ 3.1 Embedding Auto-Setup
 
 Kullanıcı "Belleği Etkinleştir" toggle'ına bastığında:
 
@@ -221,7 +221,9 @@ Kullanıcı "Belleği Etkinleştir" toggle'ına bastığında:
 3. Store initialize et
 4. "Hazır" bildirimi gönder
 
-Kullanıcıdan ek kurulum istenmez. Şu an embedding ayrı yapılandırma gerektiriyor.
+- `internal/app/memory.go`: `SetMemoryEnabled(true)` → `EmbeddingAutoStart=true` persist, `go startupEmbeddingModel()` tetiklenir.
+- `internal/app/embedding.go`: İndirme başında `memory:downloading`, başarıda `memory:ready` event emit eder.
+- `frontend/lib/widgets/settings/tabs/general_tab.dart`: Memory kartında embedding durum satırı — hazırlanıyor (spinner) / aktif (yeşil) göstergesi.
 
 ### ⬜ 2.2 Bellek Birleştirme (Consolidation) — Ertelenmiş
 

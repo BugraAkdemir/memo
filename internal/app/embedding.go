@@ -86,6 +86,7 @@ func (a *App) startupEmbeddingModel() {
 
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
 		log.Printf("Downloading embedding model: %s/%s ...", repoID, filename)
+		a.emitEvent("memory:downloading", filename)
 		if err := a.downloadFile(repoID, filename, modelPath); err != nil {
 			log.Printf("WARN: failed to download embedding model: %v", err)
 			a.emitEvent("memory:error", fmt.Sprintf("Embedding model indirme hatası: %v", err))
@@ -101,5 +102,6 @@ func (a *App) startupEmbeddingModel() {
 		a.emitEvent("memory:error", msg)
 	} else {
 		log.Println("Cross-mode active: API provider for chat, local model for embeddings")
+		a.emitEvent("memory:ready", filename)
 	}
 }

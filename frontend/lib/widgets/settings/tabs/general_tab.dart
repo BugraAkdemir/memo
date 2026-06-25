@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
+import '../../../providers/models_provider.dart';
 import '../../../providers/settings_provider.dart';
 
 class GeneralTab extends ConsumerWidget {
@@ -11,6 +12,7 @@ class GeneralTab extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final locale = ref.watch(localeProvider);
     final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
+    final embeddingStatus = ref.watch(embeddingStatusProvider);
 
     return ListView(
       padding: EdgeInsets.all(32),
@@ -190,46 +192,55 @@ class GeneralTab extends ConsumerWidget {
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
             error: (e, _) => Text('${L10n.t('error')}: $e'),
-            data: (enabled) => Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            data: (enabled) => Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        enabled ? L10n.t('memory_active') : L10n.t('memory_disabled'),
-                        style: TextStyle(
-                          fontSize: 14,
-                          color: MemoTheme.of(context).textMain,
-                        ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            enabled ? L10n.t('memory_active') : L10n.t('memory_disabled'),
+                            style: TextStyle(
+                              fontSize: 14,
+                              color: MemoTheme.of(context).textMain,
+                            ),
+                          ),
+                          SizedBox(height: 4),
+                          Text(
+                            L10n.t('memory_toggle_desc'),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: MemoTheme.of(context).textDim,
+                            ),
+                          ),
+                        ],
                       ),
-                      SizedBox(height: 4),
-                      Text(
-                        L10n.t('memory_toggle_desc'),
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: MemoTheme.of(context).textDim,
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                    Switch(
+                      value: enabled,
+                      activeColor: MemoTheme.accent,
+                      onChanged: (_) async {
+                        try {
+                          await ref.read(memoryEnabledProvider.notifier).toggle();
+                        } catch (e) {
+                          if (context.mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('${L10n.t('error')}: $e')),
+                            );
+                          }
+                        }
+                      },
+                    ),
+                  ],
                 ),
-                Switch(
-                  value: enabled,
-                  activeColor: MemoTheme.accent,
-                  onChanged: (_) async {
-                    try {
-                      await ref.read(memoryEnabledProvider.notifier).toggle();
-                    } catch (e) {
-                      if (context.mounted) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('error')}: $e')),
-                        );
-                      }
-                    }
-                  },
-                ),
+                if (enabled) ...[
+                  SizedBox(height: 10),
+                  _EmbeddingStatusRow(embeddingStatus),
+                ],
               ],
             ),
           ),
@@ -332,6 +343,67 @@ class GeneralTab extends ConsumerWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _EmbeddingStatusRow extends StatelessWidget {
+  final AsyncValue<dynamic> status;
+  const _EmbeddingStatusRow(this.status);
+
+  static const _green = Color(0xFF6FA07B);
+
+  @override
+  Widget build(BuildContext context) {
+    final running = status.valueOrNull?.running as bool? ?? false;
+    final modelName = status.valueOrNull?.modelName as String? ?? '';
+    final theme = MemoTheme.of(context);
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 7),
+      decoration: BoxDecoration(
+        color: running
+            ? _green.withValues(alpha: 0.08)
+            : theme.bgPanel,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: running
+              ? _green.withValues(alpha: 0.35)
+              : theme.borderSoft,
+        ),
+      ),
+      child: Row(
+        children: [
+          if (running) ...[
+            Icon(Icons.memory_rounded, size: 14, color: _green),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                modelName.isNotEmpty ? 'Embedding: $modelName' : 'Embedding modeli aktif',
+                style: TextStyle(fontSize: 12, color: _green),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ] else ...[
+            SizedBox(
+              width: 12,
+              height: 12,
+              child: CircularProgressIndicator(
+                strokeWidth: 1.5,
+                color: theme.textDim,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                'Embedding modeli hazırlanıyor…',
+                style: TextStyle(fontSize: 12, color: theme.textDim),
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

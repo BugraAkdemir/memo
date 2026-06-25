@@ -232,9 +232,25 @@ func (a *App) GetMemoryEnabled() bool {
 }
 
 // SetMemoryEnabled toggles the memory feature.
+// When enabling, EmbeddingAutoStart is persisted so the embedding model
+// auto-starts on the next restart as well. If the embedding server is not
+// already running and the model repo/file are configured, the download-and-
+// start sequence runs immediately in the background.
 func (a *App) SetMemoryEnabled(enabled bool) error {
 	a.cfg.Memory.MemoryEnabled = enabled
-	return config.Save(a.cfg)
+	if enabled {
+		a.cfg.Memory.EmbeddingAutoStart = true
+	}
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	if enabled &&
+		a.cfg.Memory.EmbeddingModelRepo != "" &&
+		a.cfg.Memory.EmbeddingModelFile != "" &&
+		!a.llamaEmbedServer.IsRunning() {
+		go a.startupEmbeddingModel()
+	}
+	return nil
 }
 
 // SaveExplicitMemory saves a user-provided memory entry.

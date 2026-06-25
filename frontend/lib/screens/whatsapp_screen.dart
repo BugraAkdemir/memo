@@ -61,7 +61,10 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
 
   void _schedulePoll(String jid) {
     _msgTimer = Timer(_pollInterval, () {
-      if (!mounted || _selectedJid != jid) return;
+      if (!mounted || _selectedJid != jid) {
+        _msgTimer?.cancel();
+        return;
+      }
       final state = ref.read(whatsAppMessagesProvider(jid));
       if (state.hasError) {
         // Exponential backoff on errors, capped at 30s (Duration has no clamp).

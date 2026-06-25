@@ -111,17 +111,13 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 }
 
 func (a *App) reinitMemoryStore(client *api.Client, model string) {
-	// Close the old store first so it releases the SQLite write lock
-	// before NewStore opens the same file. Opening both simultaneously
-	// causes the migration write to block until the old connection's
-	// WAL lock is released, which can take up to the migration timeout.
+	// Remember the old store, then set a.store = nil so read-side guards
+	// (retrieveMemory etc.) return early while we build the replacement.
+	// If NewStore fails we restore the old store; on success we close the
+	// old one under lock and swap in the new one — no permanent nil window.
 	a.storeMu.Lock()
-	if a.store != nil {
-		if err := a.store.Close(); err != nil {
-			log.Printf("WARN: memory store close: %v", err)
-		}
-		a.store = nil
-	}
+	oldStore := a.store
+	a.store = nil
 	a.storeMu.Unlock()
 
 	embeddingFunc := memory.NewEmbeddingFunc(client, model)
@@ -131,13 +127,22 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 		EmbeddingFunc: embeddingFunc,
 	})
 	if err != nil {
-		log.Printf("WARN: memory re-init: %v", err)
+		log.Printf("WARN: memory re-init: %v (restoring old store)", err)
 		a.emitEvent("memory_store_error", err.Error())
+		a.storeMu.Lock()
+		a.store = oldStore
+		a.storeMu.Unlock()
 		return
 	}
+
 	a.storeMu.Lock()
-	defer a.storeMu.Unlock()
+	if oldStore != nil {
+		if err := oldStore.Close(); err != nil {
+			log.Printf("WARN: memory store close during re-init: %v", err)
+		}
+	}
 	a.store = newStore
+	a.storeMu.Unlock()
 	log.Println("Memory store re-initialized")
 }
 

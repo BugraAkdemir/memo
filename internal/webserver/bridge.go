@@ -170,4 +170,7 @@ type FullBridge interface {
 	GetSkill(name string) (*skill.SkillDefinition, error)
 	SetActiveSkills(names []string) error
 	GetActiveSkills() []string
+
+	// Shutdown gracefully stops all background processes and the HTTP server.
+	Shutdown(ctx context.Context)
 }

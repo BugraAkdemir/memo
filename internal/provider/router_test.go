@@ -84,6 +84,55 @@ func TestRouterFallbackChain(t *testing.T) {
 	})
 }
 
+func TestRouterContextCancellationNotRecordedAsFailure(t *testing.T) {
+	t.Run("ChatCompletion", func(t *testing.T) {
+		prov := &mockProvider{name: "openai", display: "OpenAI"}
+		r := NewRouter(nil)
+		r.providers = []*providerEntry{{
+			Provider: prov,
+			cfg:      ProviderConfig{Type: "openai", Enabled: true},
+		}}
+
+		// Provider returns a non-cancellation error but ctx is cancelled.
+		prov.err = errors.New("connection timeout")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := r.ChatCompletion(ctx, ChatRequest{Messages: []Message{TextMessage("user", "test")}})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+		entry := r.providers[0]
+		if entry.failCount != 0 {
+			t.Errorf("expected cancellation not to count as failure, got failCount %d", entry.failCount)
+		}
+		if entry.disabled {
+			t.Error("expected provider to remain enabled after cancellation")
+		}
+	})
+
+	t.Run("ChatCompletionStream", func(t *testing.T) {
+		prov := &mockProvider{name: "openai", display: "OpenAI"}
+		r := NewRouter(nil)
+		r.providers = []*providerEntry{{
+			Provider: prov,
+			cfg:      ProviderConfig{Type: "openai", Enabled: true},
+		}}
+
+		prov.err = errors.New("connection timeout")
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+
+		_, err := r.ChatCompletionStream(ctx, ChatRequest{Messages: []Message{TextMessage("user", "test")}})
+		if !errors.Is(err, context.Canceled) {
+			t.Fatalf("expected context.Canceled, got %v", err)
+		}
+		if r.providers[0].failCount != 0 {
+			t.Errorf("expected cancellation not to count as failure, got failCount %d", r.providers[0].failCount)
+		}
+	})
+}
+
 func TestRouterAutoDisable(t *testing.T) {
 	t.Run("records failures incrementally", func(t *testing.T) {
 		r := NewRouter(nil)

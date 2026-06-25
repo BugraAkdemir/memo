@@ -397,13 +397,23 @@ func (m *Manager) archive() ([]byte, error) {
 		return err
 	}
 
-	// 1. memory.db (primary SQLite memory store)
+	// 1. memory.db (primary SQLite memory store) + WAL sidecars.
+	// WAL mode keeps committed transactions in -wal until a checkpoint, so a
+	// backup of memory.db alone can be incomplete/corrupt. We archive the
+	// sidecar files too; SQLite ignores missing -wal/-shm on open, so this is
+	// backward-compatible with old backups that only contained memory.db.
 	memDB := filepath.Join(m.persistDir, "memory.db")
 	if err := addFile(memDB, "memory/memory.db"); err == nil {
 		added++
 		log.Printf("cloudsync: archived memory.db")
 	} else if !os.IsNotExist(err) {
 		log.Printf("cloudsync: WARN skipping memory.db: %v", err)
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := addFile(memDB+suffix, "memory/memory.db"+suffix); err == nil {
+			added++
+			log.Printf("cloudsync: archived memory.db%s", suffix)
+		}
 	}
 
 	// 2. Legacy .gob files (chromem-go; may be absent on new installs)
@@ -447,11 +457,17 @@ func (m *Manager) archive() ([]byte, error) {
 		}
 	}
 
-	// 5. Mood DB
+	// 5. Mood DB + WAL sidecars
 	moodDB := filepath.Join(m.dataDir, "mood", "mood.db")
 	if err := addFile(moodDB, "mood/mood.db"); err == nil {
 		added++
 		log.Printf("cloudsync: archived mood.db")
+	}
+	for _, suffix := range []string{"-wal", "-shm"} {
+		if err := addFile(moodDB+suffix, "mood/mood.db"+suffix); err == nil {
+			added++
+			log.Printf("cloudsync: archived mood.db%s", suffix)
+		}
 	}
 
 	// 6. Learned patterns
@@ -496,8 +512,10 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			return ""
 		}
 		switch {
-		case name == "memory/memory.db":
-			return filepath.Join(m.persistDir, "memory.db")
+		case name == "memory/memory.db",
+			name == "memory/memory.db-wal",
+			name == "memory/memory.db-shm":
+			return filepath.Join(m.persistDir, filepath.FromSlash(strings.TrimPrefix(name, "memory/")))
 		case strings.HasPrefix(name, "memory/") && strings.HasSuffix(name, ".gob"):
 			rel := strings.TrimPrefix(name, "memory/")
 			return filepath.Join(m.persistDir, filepath.FromSlash(rel))
@@ -507,6 +525,10 @@ func (m *Manager) restoreZip(zipData []byte) error {
 		case strings.HasPrefix(name, "data/") && strings.HasSuffix(name, ".json"):
 			rel := strings.TrimPrefix(name, "data/")
 			return filepath.Join(m.dataDir, filepath.FromSlash(rel))
+		case name == "mood/mood.db",
+			name == "mood/mood.db-wal",
+			name == "mood/mood.db-shm":
+			return filepath.Join(m.dataDir, "mood", filepath.FromSlash(strings.TrimPrefix(name, "mood/")))
 		// Backwards compat: old zips stored .gob files without a prefix.
 		case strings.HasSuffix(name, ".gob") && !strings.Contains(name, "/"):
 			return filepath.Join(m.persistDir, name)

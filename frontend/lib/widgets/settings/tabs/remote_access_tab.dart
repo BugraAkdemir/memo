@@ -15,6 +15,8 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   final _ngrokTokenCtrl = TextEditingController();
   final _tsKeyCtrl = TextEditingController();
   final _tsHostCtrl = TextEditingController();
+  final _backendUrlCtrl = TextEditingController();
+  int _listenPort = 8090;
   bool _tsFunnel = false;
   bool _tsBusy = false;
   bool _enabling = false;
@@ -25,6 +27,10 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.invalidate(remoteAccessProvider);
+      // Fetch the actual listen port from the backend instead of hardcoding 8090.
+      ref.read(apiClientProvider).getListenPort().then((port) {
+        if (mounted) setState(() => _listenPort = port);
+      });
     });
   }
 
@@ -34,6 +40,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     _ngrokTokenCtrl.dispose();
     _tsKeyCtrl.dispose();
     _tsHostCtrl.dispose();
+    _backendUrlCtrl.dispose();
     super.dispose();
   }
 
@@ -42,7 +49,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     try {
       await ref.read(apiClientProvider).setTailscaleMode(
             true,
-            8090,
+            _listenPort,
             authKey: _tsKeyCtrl.text.trim(),
             hostname: _tsHostCtrl.text.trim(),
             funnel: _tsFunnel,
@@ -62,7 +69,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   Future<void> _disableTailscale() async {
     setState(() => _tsBusy = true);
     try {
-      await ref.read(apiClientProvider).setTailscaleMode(false, 8090);
+      await ref.read(apiClientProvider).setTailscaleMode(false, _listenPort);
       ref.invalidate(remoteAccessProvider);
     } catch (_) {
     } finally {
@@ -346,7 +353,78 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
             style: TextStyle(fontSize: 12, color: theme.textDim),
           ),
         ],
+
+        const SizedBox(height: 32),
+        _label('Backend Server URL'),
+        const SizedBox(height: 8),
+        _buildBackendUrlSection(),
       ],
+    );
+  }
+
+  Widget _buildBackendUrlSection() {
+    final theme = MemoTheme.of(context);
+    final currentUrl = ref.watch(backendUrlProvider);
+    if (_backendUrlCtrl.text.isEmpty) {
+      _backendUrlCtrl.text = currentUrl;
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.dns_outlined, size: 18, color: theme.textDim),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _backendUrlCtrl,
+                  decoration: const InputDecoration(
+                    labelText: 'Backend URL',
+                    hintText: 'http://127.0.0.1:8090',
+                    isDense: true,
+                    prefixIcon: Icon(Icons.link, size: 18),
+                  ),
+                  style: TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 14,
+                      color: theme.textMain),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            width: double.infinity,
+            child: FilledButton.tonalIcon(
+              onPressed: () async {
+                await ref.read(backendUrlProvider.notifier).save(_backendUrlCtrl.text);
+                ref.invalidate(apiClientProvider);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Backend URL updated. Reconnect if needed.'),
+                      duration: Duration(seconds: 2),
+                    ),
+                  );
+                }
+              },
+              icon: const Icon(Icons.save_outlined, size: 16),
+              label: const Text('Apply'),
+              style: FilledButton.styleFrom(
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -590,7 +668,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     }
     setState(() => _enabling = true);
     try {
-      await ref.read(apiClientProvider).setRemoteAccess(true, 8090,
+      await ref.read(apiClientProvider).setRemoteAccess(true, _listenPort,
           ngrokMode: true, ngrokToken: token);
       // Poll until ngrok URL appears or error (takes a few seconds)
       for (int i = 0; i < 30; i++) {
@@ -618,7 +696,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   void _disable() async {
     setState(() => _enabling = true);
     try {
-      await ref.read(apiClientProvider).setRemoteAccess(false, 8090);
+      await ref.read(apiClientProvider).setRemoteAccess(false, _listenPort);
       ref.invalidate(remoteAccessProvider);
     } catch (e) {
       if (mounted) {

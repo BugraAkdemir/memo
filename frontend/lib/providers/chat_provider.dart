@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/api_client.dart';
 import '../core/l10n.dart';
@@ -14,9 +15,15 @@ import '../models/token_usage.dart';
 import 'agent_provider.dart';
 import 'settings_provider.dart';
 
-/// Global API client instance.
+/// Global API client instance. Reads the backend URL from SharedPreferences
+/// so users can configure a custom address. Falls back to 127.0.0.1:8090.
 final apiClientProvider = Provider<MemoApiClient>((ref) {
-  return MemoApiClient();
+  final prefs = ref.read(prefsProvider);
+  final savedUrl = prefs.getString('memo_api_base_url');
+  final baseUrl = (savedUrl != null && savedUrl.isNotEmpty)
+      ? savedUrl
+      : 'http://127.0.0.1:8090';
+  return MemoApiClient(baseUrl: baseUrl);
 });
 
 // ─── Chat List ──────────────────────────────────────────────────
@@ -540,7 +547,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
     ref.read(isSendingProvider.notifier).state = true;
 
-    final fileName = filePath.split('/').last;
+    final fileName = p.basename(filePath);
     final ext = filePath.split('.').last.toLowerCase();
     final isImage = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp'].contains(ext);
     final displayMsg = message.isEmpty

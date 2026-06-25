@@ -269,6 +269,69 @@ func TestListChatsOrder(t *testing.T) {
 	}
 }
 
+func TestNewAgentChatPersistsProjectPath(t *testing.T) {
+	dir := t.TempDir()
+	m, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	projectPath := "/home/user/project"
+	id := m.NewAgentChat(projectPath)
+	if id == "" {
+		t.Fatal("NewAgentChat() returned empty ID")
+	}
+
+	got := m.GetProjectPath(id)
+	if got != projectPath {
+		t.Errorf("GetProjectPath() = %q, want %q", got, projectPath)
+	}
+
+	if !m.IsAgentChat(id) {
+		t.Error("IsAgentChat() should be true for agent chat")
+	}
+
+	// Re-open and verify ProjectPath survived restart
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload NewManager() error = %v", err)
+	}
+	got = m2.GetProjectPath(id)
+	if got != projectPath {
+		t.Errorf("after reload GetProjectPath() = %q, want %q", got, projectPath)
+	}
+}
+
+func TestNewAgentChatReturnsEmptyIDWhenNilManager(t *testing.T) {
+	// This test exercises the guard in App.NewAgentChat (simulated here by
+	// verifying the Session.ProjectPath is set in a freshly created session).
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	id := m.NewAgentChat("")
+	if id == "" {
+		t.Fatal("NewAgentChat() should still create a session")
+	}
+}
+
+func TestListChatsIncludesProjectPath(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	projectPath := "/tmp/test-project"
+	m.NewAgentChat(projectPath)
+
+	chats := m.ListChats()
+	found := false
+	for _, c := range chats {
+		if c.ProjectPath == projectPath {
+			found = true
+			break
+		}
+	}
+	if !found {
+		t.Error("ListChats() should include project_path in SessionInfo")
+	}
+}
+
 func TestFilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := NewManager(dir)

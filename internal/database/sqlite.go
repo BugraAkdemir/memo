@@ -175,8 +175,17 @@ func (db *DB) Write(ctx context.Context, fn func(tx *sql.Tx) error) error {
 	}
 }
 
+// ExecContext executes a write query through the serialised write loop so
+// that all DDL and DML writes are funneled through a single goroutine,
+// preventing "database is locked" errors under concurrent access.
 func (db *DB) ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error) {
-	return db.sql.ExecContext(ctx, query, args...)
+	var result sql.Result
+	err := db.Write(ctx, func(tx *sql.Tx) error {
+		var err error
+		result, err = tx.ExecContext(ctx, query, args...)
+		return err
+	})
+	return result, err
 }
 
 func (db *DB) QueryContext(ctx context.Context, query string, args ...any) (*sql.Rows, error) {

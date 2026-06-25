@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 import 'dart:io';
 
 import '../core/l10n.dart';
@@ -308,7 +309,7 @@ class _ChatTopBar extends ConsumerWidget {
                         ),
                         const SizedBox(width: 4),
                         Text(
-                          '${L10n.t('agent_chat_project')}${agentProjectPath!.split('/').last}',
+                          '${L10n.t('agent_chat_project')}${p.basename(agentProjectPath!)}',
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.w600,

@@ -18,7 +18,7 @@ class MemoApiClient {
 
   Dio get dio => _dio;
 
-  MemoApiClient({this.baseUrl = 'http://127.0.0.1:8090'}) {
+  MemoApiClient({required this.baseUrl}) {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -1241,5 +1241,25 @@ class MemoApiClient {
 
   Future<void> setSystemManagementEnabled(bool enabled) async {
     await _dio.put('/api/mood/system-management', data: {'enabled': enabled});
+  }
+
+  /// Gracefully shuts down the backend.  The backend may restart the process
+  /// (exit code 42 triggers run_memo.sh), so do not assume this call returns.
+  Future<void> shutdown() async {
+    try {
+      await _dio.post('/api/shutdown');
+    } catch (_) {
+      // The server closes mid-request — ignore transport errors.
+    }
+  }
+
+  /// Returns the backend's listen port (e.g. 8090).
+  Future<int> getListenPort() async {
+    try {
+      final res = await _dio.get('/api/status');
+      return (res.data['port'] as num?)?.toInt() ?? 8090;
+    } catch (_) {
+      return 8090;
+    }
   }
 }

@@ -2,6 +2,7 @@ package provider
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"sort"
@@ -105,6 +106,16 @@ func (r *Router) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResp
 		}
 
 		lastErr = err
+
+		// Context cancellation/timeout is a user-side or deadline event, not a
+		// provider failure. Do not penalise the provider with failCount.
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if contextCanceledOrDeadline(err) {
+			return nil, err
+		}
+
 		r.recordFailure(entry)
 
 		var pErr *ProviderError
@@ -122,11 +133,6 @@ func (r *Router) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResp
 
 		if pErr != nil {
 			log.Printf("PROVIDER: %v", pErr)
-		}
-
-		// Check context before trying next provider
-		if ctx.Err() != nil {
-			return nil, ctx.Err()
 		}
 	}
 
@@ -149,12 +155,17 @@ func (r *Router) ChatCompletionStream(ctx context.Context, req ChatRequest) (<-c
 		}
 
 		lastErr = err
-		r.recordFailure(entry)
-		log.Printf("PROVIDER: %s stream error: %v, falling back", entry.Name(), err)
 
+		// Do not count context cancellation as a provider failure.
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
+		if contextCanceledOrDeadline(err) {
+			return nil, err
+		}
+
+		r.recordFailure(entry)
+		log.Printf("PROVIDER: %s stream error: %v, falling back", entry.Name(), err)
 	}
 
 	return nil, fmt.Errorf("all providers failed: %w", lastErr)
@@ -280,6 +291,13 @@ func (r *Router) ReenableAllProviders() {
 		entry.disabled = false
 		entry.failCount = 0
 	}
+}
+
+// contextCanceledOrDeadline returns true when err is a context.Canceled or
+// context.DeadlineExceeded.  This can happen when a provider tracks context
+// cancellation internally and surfaces it before the outer router sees it.
+func contextCanceledOrDeadline(err error) bool {
+	return errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)
 }
 
 // HealthCheck runs a periodic health check on all providers.

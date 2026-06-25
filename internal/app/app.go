@@ -480,6 +480,11 @@ func (a *App) Shutdown(ctx context.Context) {
 			log.Printf("mood shutdown: %v", err)
 		}
 	}
+	if a.webServer != nil {
+		if err := a.webServer.Stop(); err != nil {
+			log.Printf("webserver shutdown: %v", err)
+		}
+	}
 	stopRecordingProcess()
 }
 

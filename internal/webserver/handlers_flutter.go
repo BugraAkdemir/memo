@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1720,4 +1721,22 @@ func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, results)
+}
+
+// handleShutdown accepts GET or POST and initiates graceful shutdown.
+// The response is flushed before cleanup begins so the HTTP server can
+// complete this request before it stops.
+func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	writeJSON(w, map[string]string{"status": "shutting_down"})
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+
+		if s.fullBridge != nil {
+			s.fullBridge.Shutdown(context.Background())
+		}
+
+		// Signal the wrapper script (run_memo.sh) to relaunch.
+		os.Exit(42)
+	}()
 }

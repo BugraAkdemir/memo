@@ -442,3 +442,33 @@ class LocaleNotifier extends StateNotifier<MemoLocale> {
     state = locale;
   }
 }
+
+// ─── Backend URL ────────────────────────────────────────────────
+
+final backendUrlProvider = StateNotifierProvider<BackendUrlNotifier, String>(
+  (ref) {
+    final prefs = ref.read(prefsProvider);
+    return BackendUrlNotifier(prefs);
+  },
+);
+
+class BackendUrlNotifier extends StateNotifier<String> {
+  final SharedPreferences _prefs;
+
+  BackendUrlNotifier(this._prefs)
+      : super(_prefs.getString('memo_api_base_url') ?? 'http://127.0.0.1:8090');
+
+  Future<void> save(String url) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      // Reset to default
+      await _prefs.remove('memo_api_base_url');
+      state = 'http://127.0.0.1:8090';
+    } else {
+      // Strip trailing slash
+      final clean = trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
+      await _prefs.setString('memo_api_base_url', clean);
+      state = clean;
+    }
+  }
+}

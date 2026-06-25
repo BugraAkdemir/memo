@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -306,7 +307,7 @@ class _AgentTopBar extends ConsumerWidget {
                 children: [
                   const Icon(Icons.folder_outlined, size: 14, color: MemoTheme.accent),
                   const SizedBox(width: 4),
-                  Text(activeChat.projectPath!.split('/').last, style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.accent)),
+                  Text(p.basename(activeChat.projectPath!), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.accent)),
                 ],
               ),
             ),

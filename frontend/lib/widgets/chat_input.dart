@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -628,7 +629,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                 const SizedBox(width: 10),
                 Expanded(
                   child: Text(
-                    _pickedImagePath!.split('/').last,
+                    p.basename(_pickedImagePath!),
                     style: TextStyle(
                       fontSize: 12,
                       color: MemoTheme.of(context).textDim,

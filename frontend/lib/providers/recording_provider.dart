@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 import 'package:record/record.dart';
 
 import '../core/l10n.dart';
@@ -38,7 +39,7 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
     }
 
     try {
-      _recordingPath = '${Directory.systemTemp.path}/memo-stt-recording.wav';
+      _recordingPath = p.join(Directory.systemTemp.path, 'memo-stt-recording.wav');
       await _recorder.start(
         const RecordConfig(
           encoder: AudioEncoder.wav,

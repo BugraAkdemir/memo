@@ -98,6 +98,9 @@ func (m *Manager) NewAgentChat(projectPath string) string {
 	defer m.mu.Unlock()
 	s := m.newSession("Agent Chat")
 	s.ProjectPath = projectPath
+	if err := m.save(s); err != nil {
+		log.Printf("sessions: save agent chat project path %s: %v", s.ID, err)
+	}
 	m.active = s.ID
 	return s.ID
 }

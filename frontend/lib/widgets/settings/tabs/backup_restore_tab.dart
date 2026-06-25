@@ -385,8 +385,12 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             ),
           ),
           TextButton(
-            // Exit code 42 → run_memo.sh relaunches a fresh backend + frontend.
-            onPressed: () => exit(42),
+            // Signal the backend to clean up (llama, STT, ngrok, etc.)
+            // before exiting. Exit code 42 → run_memo.sh relaunches.
+            onPressed: () async {
+              await ref.read(apiClientProvider).shutdown();
+              exit(42);
+            },
             child: Text(
               'Şimdi yeniden başlat',
               style: TextStyle(

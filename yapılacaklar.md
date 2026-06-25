@@ -1,3 +1,145 @@
+# Memo — Stable Release Engel Listesi + RAG Yol Haritası
+
+> **Hedef:** Windows / Linux / macOS masaüstü + mobil için kararlı, güvenilir, cross-platform bir v3.1.0 sürümü.
+> Bu dosya önce stable blocker’ları, ardından mevcut RAG bellek yol haritasını içerir.
+> Her değişiklikten sonra `go test ./... -race`, `go build ./...` ve `flutter analyze lib/` çalıştırılır.
+> Flutter SDK konumu: `/home/bugra/Belgeler/flutter/bin`
+
+---
+
+## 🚨 Stable Release — Acil Düzeltme Planı
+
+### Faz A — Backend Kritik (Önce Bunlar)
+
+- [x] **A1. Cloud sync canlı SQLite yedeğine WAL dosyalarını dahil et**
+  - Dosya: `internal/cloudsync/sync_manager.go`
+  - `memory.db` + `memory.db-wal` + `memory.db-shm` ve `mood.db` + sidecar’lar arşivleniyor.
+  - Test: `TestArchiveIncludesSQLiteWALSidecars`, `TestRestoreExtractsWALSidecars` eklendi.
+  - Verification: `go test ./... -race` ✅
+
+- [x] **A2. Provider router’da context cancellation’ı failure sayma**
+  - Dosya: `internal/provider/router.go`
+  - `ctx.Err()` veya `errors.Is(err, context.Canceled|DeadlineExceeded)` durumunda `recordFailure` çağrılmıyor.
+  - Test: `TestRouterContextCancellationNotRecordedAsFailure` eklendi.
+  - Verification: `go test ./... -race` ✅
+
+- [x] **A3. `database.DB.ExecContext` bypass’ını kaldır / write-loop’a yönlendir**
+  - Dosya: `internal/database/sqlite.go`
+  - `ExecContext` artık `Write()` üzerinden serialized write-loop’a yönleniyor.
+  - Verification: `go test ./... -race` ✅
+
+- [x] **A4. Agent proje yolunun session’a persist edilmesi**
+  - Dosya: `internal/sessions/sessions.go`
+  - `NewAgentChat`’te `ProjectPath` set edildikten sonra `save()` çağrılıyor.
+  - Test: `TestNewAgentChatPersistsProjectPath` eklendi (restart sonrası path korunuyor).
+  - Verification: `go test ./... -race` ✅
+
+- [x] **A5. Memory store re-init’te nil pencere / hata durumunu yönet**
+  - Dosya: `internal/app/memory.go`
+  - Eski store geçici değişkende tutulup `a.store = nil` yapılıyor; `NewStore` başarısız olursa eski store geri yükleniyor.
+  - Verification: `go test ./... -race` ✅
+
+### Faz B — Frontend Kritik
+
+- [x] **B1. Flutter desktop backend URL’sini yapılandırılabilir / discoverable yap**
+  - Dosya: `frontend/lib/core/api_client.dart`, `frontend/lib/providers/chat_provider.dart`, `frontend/lib/providers/settings_provider.dart`, `frontend/lib/widgets/settings/tabs/remote_access_tab.dart`
+  - `MemoApiClient.baseUrl` artık `required` parametre; `apiClientProvider` `SharedPreferences`’den okuyor.
+  - `backendUrlProvider` eklendi (StateNotifier, prefs’e kaydeder).
+  - Remote Access ayarlarında "Backend Server URL" bölümü eklendi.
+  - Verification: `go test ./... -race` ✅, `flutter analyze` ✅, `flutter test` ✅
+
+- [x] **B2. Windows path separator hatalarını `package:path` ile düzelt**
+  - Dosyalar: `chat_provider.dart`, `chat_input.dart`, `chat_screen.dart`, `agent_screen.dart`, `model_store_screen.dart`, `engine_strip.dart`, `recording_provider.dart`
+  - Tüm `split('/').last` → `p.basename()`, `'$path/...'` → `p.join()`.
+  - Verification: `flutter analyze` ✅, `flutter test` ✅
+
+- [x] **B3. `exit(42)` yerine graceful shutdown akışı**
+  - Dosyalar: `internal/webserver/bridge.go`, `internal/webserver/handlers_flutter.go`, `internal/app/app.go`, `frontend/lib/core/api_client.dart`, `frontend/lib/widgets/settings/tabs/backup_restore_tab.dart`
+  - `FullBridge`'e `Shutdown(ctx)` eklendi; `POST /api/shutdown` handler'ı yazıldı; Flutter `shutdown()` methodu önce backend'i temizliyor sonra `exit(42)`.
+  - Verification: `go test ./... -race` ✅, `flutter analyze` ✅, `flutter test` ✅
+
+- [x] **B4. Remote access port’unu sabit 8090’den kurtar**
+  - Dosyalar: `internal/webserver/server.go`, `frontend/lib/core/api_client.dart`, `frontend/lib/widgets/settings/tabs/remote_access_tab.dart`
+  - `/api/status` artık `port` ve `listen_addr` dönüyor; Fluent `getListenPort()` ile okuyor; `_listenPort` state field ile tüm `setTailscaleMode`/`setRemoteAccess` çağrılarında kullanılıyor.
+  - Verification: `go test ./... -race` ✅, `flutter analyze` ✅
+
+### Faz C — Mimari (Polling & Goroutine Leak’ler)
+
+- [ ] **C1. Sonsuz polling döngülerini durdur**
+  - Dosyalar: `chat_provider.dart`, `models_provider.dart`, `mood_provider.dart`, `version_provider.dart`, `calendar_screen.dart`, `whatsapp_screen.dart`, `whatsapp_provider.dart`
+  - Çözüm: `IndexedStack` mount’lu tuttuğu için `VisibilityDetector` / `AppLifecycleListener` / `ref.onDispose` ile durdur.
+
+- [ ] **C2. `UpdateProvider` health-check goroutine leak’ini önle**
+  - Dosya: `internal/app/providers.go`
+  - Eski router iptal edilmeli veya tek health goroutine yönetilmeli.
+
+- [ ] **C3. Claude / Gemini / yerel stream HTTP client’larına `ResponseHeaderTimeout` ekle**
+  - Dosyalar: `internal/provider/claude.go`, `internal/provider/gemini.go`, `internal/api/client.go`
+
+### Faz D — Cross-Platform / Paketleme
+
+- [ ] **D1. macOS build pipeline ekle**
+  - Dosya: `build_releases.sh`
+  - `darwin` kolu + `.app` / `.dmg` veya `.zip` paketleme.
+
+- [ ] **D2. Build script’lerdeki zorla öldürmeleri graceful hale getir**
+  - Dosyalar: `build_releases.sh`, `build_releases.bat`
+  - `pkill -9` / `taskkill /F` yerine önce SIGTERM/uygulama shutdown, sonra force kill fallback.
+
+- [ ] **D3. Windows batch runner backend PID takibi**
+  - Dosya: `build_releases.bat` içinde üretilen `run_memo.bat`
+  - Frontend crash olursa backend orphan kalmaması için PID kaydet ve cleanup yap.
+
+### Faz E — Orta Öncelikli (Faz A-D tamamlandıktan sonra)
+
+- [ ] **E1. Cloud sync şifreleme fallback’ini güçlendir**
+  - Dosya: `internal/cloudsync/crypto.go`
+  - Passphrase yoksa kullanıcıya zorla; hardware ID fallback kaldır veya en azından uyarı ver.
+
+- [ ] **E2. Provider API key encryption Windows ACL + fallback güvenliği**
+  - Dosya: `internal/provider/config.go`
+  - Windows’ta ACL ayarı; `/etc/machine-id` fallback’i kaldır veya alternatif güvenli kaynak kullan.
+
+- [ ] **E3. Calendar reminder claim’i atomik yap**
+  - Dosya: `internal/calendar/store.go`
+  - `SELECT ... FOR UPDATE` veya `UPDATE ... WHERE reminder_sent=0` + `RETURNING` ile çift uyarı önle.
+
+- [ ] **E4. Calendar store doğrudan SQLite yazma yerine `DB.Write` kullan**
+  - Dosya: `internal/calendar/store.go`
+
+- [ ] **E5. Memory save embedding çağrısını `storeMu` dışına al**
+  - Dosya: `internal/app/memory.go`
+  - Embedding ağır I/O yaparken memory okuma/yazma bloklanmasın.
+
+- [ ] **E6. Background migration shutdown gecikmesini önle**
+  - Dosya: `internal/memory/store.go`
+  - Migration context’ini kısalt veya shutdown sırasında abandon et.
+
+- [ ] **E7. WhatsApp contact import’u live message save’den ayır**
+  - Dosya: `internal/whatsapp/client.go`
+  - Toplu import background’da veya kuyrukta yapılmalı.
+
+### Faz F — Mobil Frontend Parity
+
+- [ ] **F1. Mobil API client default URL’ini kaldır / discovery ekle**
+  - Dosya: `mobile/lib/core/api_client.dart`
+
+- [ ] **F2. Mobil client’a eksik backend endpointlerini ekle**
+  - Memory, model store, whatsapp, calendar, agent, skills vb.
+
+---
+
+## 📋 Günlük Çalışma Kuralı
+
+1. Her gün en fazla 1-2 Faz maddesi seç.
+2. Her değişiklik için test yaz veya mevcut testleri güncelle.
+3. `go test ./... -race` ve `go build ./...` **PASS** olmadan sonraki maddeye geçme.
+4. Flutter dokunduysa `flutter analyze lib/` **PASS** olmalı.
+5. Bu dosyadaki checkbox’ları gerçekten tamamlandıkça işaretle.
+6. Commit mesajları Conventional Commits formatında: `fix(backend): ...`, `fix(frontend): ...`
+
+---
+
 # Memo — RAG Bellek Sistemi: Tam Yol Haritası
 
 > **Tek vaat:** "Senin hafızan olan AI." Her sohbet, kullanıcıyı daha iyi tanıyan bir fırsattır.

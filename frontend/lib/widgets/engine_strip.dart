@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -22,7 +23,7 @@ class EngineStrip extends ConsumerWidget {
   const EngineStrip({super.key, required this.onOpenModels});
 
   String _fileName(String path) {
-    final name = path.split('/').last.split('\\').last;
+    final name = p.basename(path);
     return name.isEmpty ? path : name;
   }
 

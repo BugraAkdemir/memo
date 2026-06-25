@@ -162,6 +162,9 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/sync/disconnect", s.handleSyncDisconnect)
 	mux.HandleFunc("/api/events", s.handleEvents)
 
+	// Shutdown via HTTP
+	mux.HandleFunc("/api/shutdown", s.handleShutdown)
+
 	// Provider management
 	mux.HandleFunc("/api/providers", s.handleProviders)
 	mux.HandleFunc("/api/providers/test", s.handleProviderTest)
@@ -536,6 +539,8 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"connection":   s.bridge.WebCheckConnection(),
 		"memory_count": s.bridge.GetMemoryCount(),
+		"port":         s.port,
+		"listen_addr":  s.listenAddr,
 	})
 }
 

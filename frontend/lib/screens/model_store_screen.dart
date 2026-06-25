@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -2212,9 +2213,9 @@ class _LocalModelCard extends ConsumerWidget {
     final status = ref.watch(modelStatusProvider).valueOrNull;
     final embStatus = ref.watch(embeddingStatusProvider).valueOrNull;
     final running = (status?.running == true &&
-            status?.modelPath.split('/').last == model.filename) ||
+            p.basename(status?.modelPath ?? '') == model.filename) ||
         (embStatus?.running == true &&
-            embStatus?.modelPath.split('/').last == model.filename);
+            p.basename(embStatus?.modelPath ?? '') == model.filename);
     final installed =
         ref.watch(llamaInstalledProvider).valueOrNull ?? false;
 

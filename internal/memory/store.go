@@ -775,7 +775,7 @@ func FormatMemoriesForPrompt(memories []MemoryResult) string {
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
 	for i, m := range memories {
-		sb.WriteString(fmt.Sprintf("[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, m.Content))
+		fmt.Fprintf(&sb, "[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, m.Content)
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()
@@ -789,7 +789,7 @@ func FormatMemoriesUserOnly(memories []MemoryResult) string {
 	var sb strings.Builder
 	sb.WriteString("\n--- RELEVANT MEMORIES ---\n")
 	for i, m := range memories {
-		sb.WriteString(fmt.Sprintf("[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, stripAssistantReply(m.Content)))
+		fmt.Fprintf(&sb, "[Memory %d | Relevance: %.0f%%]\n%s\n\n", i+1, m.Similarity*100, stripAssistantReply(m.Content))
 	}
 	sb.WriteString("--- END MEMORIES ---\n")
 	return sb.String()

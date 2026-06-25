@@ -312,7 +312,7 @@ func (a *App) Startup(ctx context.Context) {
 	// Buffered generously: a single worker drains this and each save can block up
 	// to 10s on a slow embedding endpoint, so a burst of replies must not overflow
 	// and silently drop interactions from long-term memory.
-	a.memorySaveCh = make(chan saveTask, 256)
+	a.memorySaveCh = make(chan saveTask, 1024)
 	go a.memorySaveWorker()
 
 	if cfg.RemoteAccess.Enabled && cfg.RemoteAccess.NgrokMode && cfg.RemoteAccess.NgrokToken != "" {

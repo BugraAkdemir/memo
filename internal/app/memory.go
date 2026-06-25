@@ -34,8 +34,9 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 	}
 	select {
 	case a.memorySaveCh <- saveTask{userMsg: userMsg, reply: reply}:
-	default:
+	case <-time.After(2 * time.Second):
 		log.Println("WARN: memory save channel full, dropping")
+		a.emitEvent("memory:error", "Hafıza kaydetme kuyruğu dolu; bu mesaj hatırlanmayabilir")
 	}
 }
 

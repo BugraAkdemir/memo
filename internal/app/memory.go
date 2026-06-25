@@ -11,6 +11,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/memory"
 	"memo/internal/models"
+	"memo/internal/provider"
 )
 
 // isEmbeddingBackendDown reports whether err means the embedding endpoint is
@@ -138,6 +139,8 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 		return
 	}
 
+	newStore.SetConsolidationFunc(a.mergeMemoriesLLM)
+
 	a.storeMu.Lock()
 	if oldStore != nil {
 		if err := oldStore.Close(); err != nil {
@@ -229,6 +232,33 @@ func (a *App) UpdateMemorySettings(topK int, minSimilarity float32) error {
 // GetMemoryEnabled reports whether memory is enabled.
 func (a *App) GetMemoryEnabled() bool {
 	return a.cfg.Memory.MemoryEnabled
+}
+
+// mergeMemoriesLLM sends two memory contents to the active provider and returns
+// a single merged memory. Used as the Store's ConsolidationFunc.
+func (a *App) mergeMemoriesLLM(ctx context.Context, content1, content2 string) (string, error) {
+	a.providerMu.RLock()
+	router := a.providerRouter
+	a.providerMu.RUnlock()
+	if router == nil {
+		return "", fmt.Errorf("no provider router available")
+	}
+	req := provider.ChatRequest{
+		MaxTokens: 200,
+		Messages: []provider.Message{
+			provider.TextMessage("system",
+				"You are a memory consolidation assistant. Given two similar memory entries, "+
+					"create ONE concise memory that preserves all important information from both. "+
+					"Output ONLY the merged memory text — no explanations, no labels, no prefixes."),
+			provider.TextMessage("user",
+				fmt.Sprintf("Memory 1: %s\n\nMemory 2: %s\n\nMerge into one memory:", content1, content2)),
+		},
+	}
+	resp, err := router.ChatCompletion(ctx, req)
+	if err != nil {
+		return "", fmt.Errorf("merge LLM call: %w", err)
+	}
+	return strings.TrimSpace(resp.Content), nil
 }
 
 // SetMemoryEnabled toggles the memory feature.

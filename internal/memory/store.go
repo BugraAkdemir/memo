@@ -20,21 +20,34 @@ import (
 
 type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
 
+// ConsolidationFunc merges two similar memory entries into one.
+// Implementations call an LLM and return the merged text.
+type ConsolidationFunc func(ctx context.Context, content1, content2 string) (string, error)
+
 type MemoryResult = models.MemoryResult
 type MemoryFileInfo = models.MemoryFileInfo
 type GobFileInfo = models.MemoryFileInfo
 
 type Store struct {
-	db     *database.DB
-	embed  EmbeddingFunc
-	dim    int
-	dir    string
-	dbPath string
-	mu     sync.RWMutex
-	closed bool
-	useVec bool
-	useFTS bool
-	stopCh chan struct{}
+	db            *database.DB
+	embed         EmbeddingFunc
+	consolidateFn ConsolidationFunc
+	dim           int
+	dir           string
+	dbPath        string
+	mu            sync.RWMutex
+	closed        bool
+	useVec        bool
+	useFTS        bool
+	stopCh        chan struct{}
+}
+
+// SetConsolidationFunc registers the LLM-backed merge function used by the
+// daily consolidation pass. Pass nil to disable.
+func (s *Store) SetConsolidationFunc(fn ConsolidationFunc) {
+	s.mu.Lock()
+	s.consolidateFn = fn
+	s.mu.Unlock()
 }
 
 type StoreConfig struct {
@@ -1428,6 +1441,190 @@ func (s *Store) applyImportanceRules() {
 		log.Printf("MEMORY: PurgePendingDeletions: %v", err)
 	} else if purged > 0 {
 		log.Printf("MEMORY: purged %d pending-deletion memories", purged)
+	}
+
+	s.mu.RLock()
+	fn := s.consolidateFn
+	s.mu.RUnlock()
+	if fn != nil {
+		cCtx, cCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer cCancel()
+		s.runConsolidation(cCtx, fn)
+	}
+}
+
+// MergeCandidate holds a pair of memories that are similar enough to merge.
+type MergeCandidate struct {
+	ID1        int64
+	ID2        int64
+	Content1   string
+	Content2   string
+	Similarity float32
+}
+
+const (
+	consolidateSimilarityThreshold = float32(0.92)
+	consolidateSampleSize          = 200
+	consolidateMaxPairs            = 5
+)
+
+// FindMergeCandidates returns up to limit pairs of memories whose embeddings
+// have cosine similarity ≥ 0.92. It samples the consolidateSampleSize most
+// recent non-deleted memories to keep the O(n²) scan fast.
+func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCandidate, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, content, embedding
+		FROM memories
+		WHERE embedding IS NOT NULL
+		  AND pending_deletion = 0
+		  AND source NOT IN ('merged')
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, consolidateSampleSize)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	type item struct {
+		id      int64
+		content string
+		vec     []float32
+		norm    float64
+	}
+
+	var items []item
+	for rows.Next() {
+		var it item
+		var blob []byte
+		if err := rows.Scan(&it.id, &it.content, &blob); err != nil {
+			continue
+		}
+		it.vec = blobToFloats(blob)
+		if len(it.vec) == 0 {
+			continue
+		}
+		var n float64
+		for _, v := range it.vec {
+			n += float64(v) * float64(v)
+		}
+		it.norm = math.Sqrt(n)
+		items = append(items, it)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+
+	type pair struct {
+		i, j int
+		sim  float32
+	}
+	var pairs []pair
+	for i := 0; i < len(items); i++ {
+		for j := i + 1; j < len(items); j++ {
+			sim := cosineSimilarityFast(items[i].vec, items[i].norm, items[j].vec, items[j].norm)
+			if sim >= consolidateSimilarityThreshold {
+				pairs = append(pairs, pair{i, j, sim})
+			}
+		}
+	}
+	sort.Slice(pairs, func(a, b int) bool { return pairs[a].sim > pairs[b].sim })
+
+	used := make(map[int]bool)
+	var result []MergeCandidate
+	for _, p := range pairs {
+		if len(result) >= limit {
+			break
+		}
+		if used[p.i] || used[p.j] {
+			continue
+		}
+		used[p.i] = true
+		used[p.j] = true
+		result = append(result, MergeCandidate{
+			ID1:        items[p.i].id,
+			ID2:        items[p.j].id,
+			Content1:   items[p.i].content,
+			Content2:   items[p.j].content,
+			Similarity: p.sim,
+		})
+	}
+	return result, nil
+}
+
+// saveMerged inserts the merged content as a new memory (source='merged') and
+// marks the two originals as pending_deletion in a single transaction.
+func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) error {
+	uuid := fmt.Sprintf("merged_%d", time.Now().UnixNano())
+	timestamp := time.Now().UTC().Format(time.RFC3339)
+
+	var embedBlob []byte
+	var embedding []float32
+	if emb, err := s.embed(ctx, content); err == nil && len(emb) == s.dim {
+		embedding = emb
+		embedBlob = floatsToBlob(emb)
+	}
+
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		res, err := tx.Exec(
+			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
+			                      chunk_index, parent_uuid, total_chunks,
+			                      session_id, importance, tags, source, retrieve_count)
+			 VALUES (?, 'user', ?, ?, ?, '', ?, 0, ?, 1, '', 4, 'merged', 'merged', 0)`,
+			uuid, content, timestamp, content, embedBlob, uuid,
+		)
+		if err != nil {
+			return err
+		}
+		rowID, _ := res.LastInsertId()
+		if embedding != nil && s.useVec {
+			vecJSON, _ := json.Marshal(embedding)
+			if _, err := tx.Exec("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON)); err != nil {
+				log.Printf("MEMORY: saveMerged vec insert: %v", err)
+			}
+		}
+		if s.useFTS {
+			if _, err := tx.Exec(
+				"INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, '')",
+				rowID, content, content,
+			); err != nil {
+				log.Printf("MEMORY: saveMerged fts insert: %v", err)
+			}
+		}
+		_, err = tx.Exec("UPDATE memories SET pending_deletion = 1 WHERE id IN (?, ?)", id1, id2)
+		return err
+	})
+}
+
+func (s *Store) runConsolidation(ctx context.Context, fn ConsolidationFunc) {
+	candidates, err := s.FindMergeCandidates(ctx, consolidateMaxPairs)
+	if err != nil {
+		log.Printf("MEMORY: consolidation scan: %v", err)
+		return
+	}
+	if len(candidates) == 0 {
+		return
+	}
+	log.Printf("MEMORY: consolidating %d memory pair(s)", len(candidates))
+	for _, c := range candidates {
+		mergeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
+		merged, err := fn(mergeCtx, c.Content1, c.Content2)
+		cancel()
+		if err != nil {
+			log.Printf("MEMORY: consolidation LLM: %v", err)
+			continue
+		}
+		merged = strings.TrimSpace(merged)
+		if merged == "" {
+			continue
+		}
+		saveCtx, saveCancel := context.WithTimeout(ctx, 15*time.Second)
+		if err := s.saveMerged(saveCtx, merged, c.ID1, c.ID2); err != nil {
+			log.Printf("MEMORY: consolidation save: %v", err)
+		} else {
+			log.Printf("MEMORY: merged pair (sim=%.2f)", c.Similarity)
+		}
+		saveCancel()
 	}
 }
 

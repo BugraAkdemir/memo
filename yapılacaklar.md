@@ -225,9 +225,12 @@ Kullanıcı "Belleği Etkinleştir" toggle'ına bastığında:
 - `internal/app/embedding.go`: İndirme başında `memory:downloading`, başarıda `memory:ready` event emit eder.
 - `frontend/lib/widgets/settings/tabs/general_tab.dart`: Memory kartında embedding durum satırı — hazırlanıyor (spinner) / aktif (yeşil) göstergesi.
 
-### ⬜ 2.2 Bellek Birleştirme (Consolidation) — Ertelenmiş
+### ✅ 2.2 Bellek Birleştirme (Consolidation)
 
-Kosinüs benzerliği > 0.92 olan çiftleri LLM ile birleştir. LLM bağımlılığı nedeniyle şimdilik ertelendi.
+Kosinüs benzerliği ≥ 0.92 olan çiftler günlük decay cycle'ında LLM ile birleştirilir.
+
+- `internal/memory/store.go`: `ConsolidationFunc` tipi, `SetConsolidationFunc()`, `MergeCandidate`, `FindMergeCandidates()` (200 belleği tara, O(n²) cosine sim), `saveMerged()` (embedding + vec + FTS + pending_deletion), `runConsolidation()`. `applyImportanceRules()` consolidation'ı 5 dk timeout ile çalıştırıyor.
+- `internal/app/memory.go`: `mergeMemoriesLLM()` — mevcut `providerRouter`'ı kullanır (local veya API). `reinitMemoryStore()` store'a consolidation func'ı set ediyor.
 
 ---
 

@@ -19,6 +19,7 @@ type MemoryResult struct {
 	Timestamp  string  `json:"timestamp"`
 	UserMsg    string  `json:"user_msg,omitempty"`
 	AssistMsg  string  `json:"assist_msg,omitempty"`
+	MatchType  string  `json:"match_type,omitempty"` // "vector", "fts", "hybrid"
 }
 
 type MemoryFileInfo struct {

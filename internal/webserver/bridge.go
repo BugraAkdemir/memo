@@ -45,6 +45,7 @@ type FullBridge interface {
 	UpdateWebSearchConfig(enabled bool) error
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
+	DebugMemorySearch(query string) []memory.MemoryResult
 
 	// Image
 	GetImageBase64(path string) string

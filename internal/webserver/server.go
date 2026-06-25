@@ -114,6 +114,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)
 	mux.HandleFunc("/api/memory/settings", s.handleMemorySettings)
 	mux.HandleFunc("/api/memory/enabled", s.handleMemoryEnabled)
+	mux.HandleFunc("/api/memory/debug-search", s.handleMemoryDebugSearch)
 	mux.HandleFunc("/api/version", s.handleVersion)
 	mux.HandleFunc("/api/version/check", s.handleVersionCheck)
 	mux.HandleFunc("/api/image", s.handleImage)

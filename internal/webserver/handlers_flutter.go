@@ -385,6 +385,24 @@ func (s *Server) handleMemorySettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleMemoryDebugSearch(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	query := r.URL.Query().Get("q")
+	if query == "" {
+		http.Error(w, "q parameter required", http.StatusBadRequest)
+		return
+	}
+	results := s.fullBridge.DebugMemorySearch(query)
+	if results == nil {
+		writeJSON(w, []struct{}{})
+		return
+	}
+	writeJSON(w, results)
+}
+
 // ─── Version & Image ────────────────────────────────────────────
 
 func (s *Server) handleVersion(w http.ResponseWriter, r *http.Request) {

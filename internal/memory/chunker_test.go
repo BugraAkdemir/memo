@@ -29,8 +29,8 @@ func TestChunkText_LongText(t *testing.T) {
 	}
 	for i, c := range chunks {
 		wc := len(strings.Fields(c))
-		if wc > 310 {
-			t.Fatalf("chunk[%d] has %d words, want <= 310", i, wc)
+		if wc > 400 {
+			t.Fatalf("chunk[%d] has %d words, want <= 400", i, wc)
 		}
 	}
 }

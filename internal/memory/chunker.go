@@ -16,11 +16,21 @@ func chunkText(text string, maxWords, overlapWords int) []string {
 		step = maxWords
 	}
 
+	minChunkSize := overlapWords * 2
+	if minChunkSize > maxWords/2 {
+		minChunkSize = maxWords / 2
+	}
+
 	var chunks []string
 	for start := 0; start < len(words); start += step {
 		end := start + maxWords
 		if end > len(words) {
 			end = len(words)
+		}
+		remaining := len(words) - start
+		if remaining < minChunkSize && len(chunks) > 0 {
+			chunks[len(chunks)-1] += " " + strings.Join(words[start:end], " ")
+			break
 		}
 		chunks = append(chunks, strings.Join(words[start:end], " "))
 		if end == len(words) {

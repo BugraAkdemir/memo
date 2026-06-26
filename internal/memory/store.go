@@ -546,18 +546,13 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 
 func escapeFTSQuery(q string) string {
 	words := strings.Fields(q)
-	parts := make([]string, 0, len(words))
-	for _, w := range words {
-		w = strings.ReplaceAll(w, `"`, `""`)
-		w = strings.ReplaceAll(w, `*`, "")
-		w = strings.ReplaceAll(w, `(`, "")
-		w = strings.ReplaceAll(w, `)`, "")
-		if len(w) >= 2 {
-			parts = append(parts, `"`+w+`"`)
-		}
+	if len(words) == 0 {
+		return q
 	}
-	if len(parts) == 0 {
-		return `"` + strings.ReplaceAll(q, `"`, `""`) + `"`
+	parts := make([]string, len(words))
+	for i, w := range words {
+		w = strings.ReplaceAll(w, `"`, `""`)
+		parts[i] = `"` + w + `"`
 	}
 	return strings.Join(parts, " ")
 }
@@ -1182,6 +1177,7 @@ func (s *Store) sqlFilteredFallback(ctx context.Context, limit int, since time.T
 		var r MemoryResult
 		if sErr := rows.Scan(&r.ID, &r.Content, &r.Timestamp, &r.UserMsg, &r.AssistMsg, &r.Importance, &r.Source, &r.Tags, &r.RetrieveCount); sErr == nil {
 			r.MatchType = "filter"
+			r.Similarity = 0.5
 			out = append(out, r)
 		}
 	}

@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -28,6 +27,7 @@ import (
 	"memo/internal/observer"
 	"memo/internal/orchestra"
 	"memo/internal/proactive"
+	"memo/internal/whisper"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -110,7 +110,7 @@ type App struct {
 	incognitoMu       sync.RWMutex
 	isIncognito       bool
 	incognitoMessages []api.Message
-	sttServer         *exec.Cmd
+	whisperServer      *whisper.Server
 	webServer         *webserver.Server
 	modelStore        *modelstore.Store
 
@@ -450,8 +450,10 @@ func (a *App) Shutdown(ctx context.Context) {
 
 	close(a.memorySaveCh)
 
-	if a.sttServer != nil && a.sttServer.Process != nil {
-		sttKillProcessGroup(a.sttServer)
+	if a.whisperServer != nil {
+		if err := a.whisperServer.Stop(); err != nil {
+			log.Printf("whisper shutdown: %v", err)
+		}
 	}
 	if a.llamaServer != nil {
 		if err := a.llamaServer.Stop(); err != nil {

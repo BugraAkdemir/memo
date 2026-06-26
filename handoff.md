@@ -2,7 +2,7 @@
 
 ## Oturum Özeti
 
-Bu oturumda RAG bellek sisteminde kullanıcı deneyimini doğrudan etkileyen 3 bug bulunup düzeltildi. `go build ./...` temiz, `go test ./... -race` 29/29 pass.
+Bu oturumda RAG bug fix'leri + embedding spinner + STT whisper entegrasyonu yapıldı. `go build ./...` temiz, `go test ./internal/... -race` 28/28 PASS.
 
 ---
 
@@ -10,13 +10,24 @@ Bu oturumda RAG bellek sisteminde kullanıcı deneyimini doğrudan etkileyen 3 b
 
 ### RAG Memory Bug Fixes
 
-- `internal/memory/store.go` — **FTS5 escape injection**: `NOT`/`AND`/`OR` keyword'leri FTS5 operatörü sanılıp match kırılıyordu, `*`/`(`/`)` gereksiz siliniyordu, tek-karakter kelimeler atlanıyordu. Her kelime `"..."` içine alınarak FTS5 query syntax'ından izole edildi. Kod 12 satırdan 8 satıra indi.
+- `internal/memory/store.go` — **FTS5 escape injection**: `NOT`/`AND`/`OR` keyword'leri FTS5 operatörü sanılıp match kırılıyordu, `*`/`(`/`)` gereksiz siliniyordu, tek-karakter kelimeler atlanıyordu. Her kelime `"..."` içine alınarak FTS5 query syntax'ından izole edildi.
 - `internal/memory/store.go` — **`sqlFilteredFallback` similarity=0%**: Filtreleme fallback'e düşünce tüm sonuçlar UI'da "relevance=0%" görünüyordu. Varsayılan `Similarity = 0.5` atandı.
 - `internal/memory/chunker.go` — **Son chunk çok kısa kalıyordu**: 300+ kelimelik mesajlarda son chunk 1-50 kelime arasına düşüyor, embedding kalitesiz oluyordu. Son chunk `< overlapWords*2` ise önceki chunka merge ediliyor.
 
----
+### Embedding Spinner Fix
 
-## Yapılan Değişiklikler
+- `frontend/lib/widgets/settings/tabs/general_tab.dart` — **Sonsuz spinner**: Memory enabled ama embedding server çalışmıyorken "Embedding modeli hazırlanıyor…" spinner'i sonsuz dönüyordu. Artık idle state'te "Embedding: kapalı" gösteriliyor, gerçek starting state ise `model_config_dialog.dart`'daki spinner'da.
+
+### STT Whisper Entegrasyonu
+
+- `internal/app/stt.go` — **Eski STT sistemi çalışmıyordu**: `stt_server_linux` binary'si `//go:embed`'de yoktu, `startSTTServer()` her zaman "not found" log'u basıp çıkıyordu. Tüm eski STT sistemi yenisiyle değiştirildi: artık `internal/whisper/` paketini kullanarak `whisper-server` binary'sini başlatıyor.
+- `internal/app/stt.go` — **`TranscribeAudio()`** güncellendi: eski `http://127.0.0.1:9876/transcribe` (raw POST) yerine `whisper.Server.Transcribe()` (multipart form, `/inference`) kullanılıyor.
+- `internal/app/stt_unix.go` / `stt_windows.go` — Silindi (artık kullanılmıyor). `whisper/` paketi kendi platform helper'larına sahip.
+- `internal/app/app.go` — `sttServer *exec.Cmd` → `whisperServer *whisper.Server`, Shutdown güncellendi.
+
+### Dokümantasyon Güncellemesi
+
+- `AGENTS.md` — **Agent UI notu güncel değildi**: "Agent frontend UI not yet fully implemented" ibaresi kaldırıldı; tüm agent UI widget'ları (permission dialog, tool card, activity panel, agent screen) zaten tam ve wired durumda.
 
 ### Cross-Platform Release Audit & Fixes
 
@@ -53,7 +64,7 @@ Bu oturumda RAG bellek sisteminde kullanıcı deneyimini doğrudan etkileyen 3 b
 
 ```
 go build ./...                → temiz (0 hata)
-go test ./... -race -count=1  → 29/29 PASS
+go test ./internal/... -race  → 28/28 PASS
 ```
 
 ---
@@ -75,10 +86,15 @@ internal/cloudsync/sync_manager.go
 internal/config/config.go
 internal/agent/tools/command.go
 internal/app/app.go
+internal/app/stt.go
+internal/app/stt_unix.go         ← SİLİNDİ
+internal/app/stt_windows.go      ← SİLİNDİ
 internal/webserver/server.go
 internal/memory/store.go
 internal/memory/chunker.go
 internal/memory/chunker_test.go
+frontend/lib/widgets/settings/tabs/general_tab.dart
+AGENTS.md
 build_releases.sh
 build_releases.bat
 ```
@@ -91,14 +107,17 @@ build_releases.bat
 
 - **macOS GPU (Metal/Apple Silicon)** — `gpu.go`'da Apple Silicon tespiti yok; llama.cpp Metal destekli derlenmiş bile olsa `--n-gpu-layers 0` geçiliyor. Kullanıcı manuel ayarlamalı. Otomatik detection için `sysctl hw.optional.arm64` + darwin + arm64 kombinasyonu kontrol edilebilir.
 - **Windows AMD GPU (DirectML)** — `detectAMD()` Linux-only (`rocm-smi`, sysfs). Windows AMD GPU kullanıcıları CPU mode'da kalıyor. DirectML veya HIP-for-Windows detection eklenebilir.
-- **Whisper Windows binary** — `binaries/windows/cpu/whisper-server.exe` bundle'da yok. STT Windows'ta çalışmıyor (startSTTServer() fix'i sonrasında bile binary eksik).
-- **Flutter embedding spinner** — Memory etkin ama embedding server çalışmıyorken perpetual spinner gösteriliyor. "Inactive" state ayrıştırılmalı.
+- **Whisper-server GPU variant eksik** — `whisper-server` binary'si `linux/{amd,nvidia}/` ve `windows/{amd,nvidia}/` altında yok. Runtime'da `resolveBinary()` cpu variant'ı bulup kullanıyor (ama GPU variant dizinlerinde bulunmazsa CPU binary'si kullanılır — bu genelde sorun değil).
 - **Skill install dialog** — Windows'ta Unix path hint (`/home/...`) gösteriliyor.
+
+### Kritik Bilinen Eksik: Mobile API Client
+
+**`mobile/lib/core/api_client.dart`** — 50+ endpoint eksik, 15 route/metot uyuşmazlığı var. Mobil uygulama büyük ölçüde çalışmaz durumda. Frontend (`frontend/lib/core/api_client.dart`) referans alınarak tüm eksik endpoint'ler eklenmeli ve route'lar backend ile uyumlu hale getirilmeli. Ayrı bir seansta ele alınması önerilir.
 
 ### Önerilen sıradaki adımlar
 
 1. Yukarıdaki dosyaları commit et
-2. Whisper Windows binary'sini bundle'a ekle (eğer varsa)
-3. macOS test makinasında build al, force-stop davranışını doğrula
+2. Mobile API client'ı frontend'deki referans implementasyonla senkronize et
+3. macOS test makinasında build al, STT + force-stop davranışını doğrula
 4. Windows'ta SQLite DSN fix'ini doğrula (DB açılıyor mu?)
 5. `git tag v3.1.0` + `build_releases.sh` ile binary üret

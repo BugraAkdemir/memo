@@ -10,11 +10,12 @@ import (
 	"net/http"
 	"os"
 	"os/exec"
-	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
 	"time"
+
+	"memo/internal/whisper"
 )
 
 var (
@@ -24,47 +25,37 @@ var (
 	recMu    sync.Mutex
 )
 
-// startSTTServer extracts and launches the embedded STT binary.
+// startSTTServer starts the whisper-server binary for speech-to-text.
 func (a *App) startSTTServer() {
-	var binName string
-	if runtime.GOOS == "windows" {
-		binName = "stt_server_windows.exe"
-	} else if runtime.GOOS == "linux" {
-		binName = "stt_server_linux"
-	} else {
-		log.Printf("STT disabled: OS %s not specifically supported for bundled binary yet.", runtime.GOOS)
+	cfg := a.cfg.Whisper
+	if !cfg.Enabled {
+		log.Println("STT: disabled by config")
+		return
+	}
+	port := cfg.Port
+	if port <= 0 {
+		port = 9877
+	}
+
+	ws := whisper.NewServer(port)
+	lang := cfg.Language
+	if lang == "" {
+		lang = "auto"
+	}
+
+	if err := ws.Start(cfg.BinaryPath, cfg.ModelPath, lang, port); err != nil {
+		log.Printf("STT: whisper server start failed: %v", err)
 		return
 	}
 
-	binData, err := a.binaries.ReadFile("binaries/" + binName)
-	if err != nil {
-		log.Printf("STT: embedded binary %s not found in build. STT disabled.", binName)
+	if err := ws.WaitReady(30 * time.Second); err != nil {
+		log.Printf("STT: whisper server not ready: %v", err)
+		ws.Stop()
 		return
 	}
 
-	tempPath := filepath.Join(os.TempDir(), "memo_stt_server")
-	if runtime.GOOS == "windows" {
-		tempPath += ".exe"
-	}
-
-	// Always overwrite the temp file to ensure it is the latest bundled version
-	err = os.WriteFile(tempPath, binData, 0700)
-	if err != nil {
-		log.Printf("STT server unpacking failed: %v", err)
-		return
-	}
-
-	a.sttServer = exec.Command(tempPath, "tr", "9876")
-	a.sttServer.Stdout = os.Stdout
-	a.sttServer.Stderr = os.Stderr
-	sttSetProcessGroup(a.sttServer)
-
-	if err := a.sttServer.Start(); err != nil {
-		log.Printf("STT server start failed: %v", err)
-		a.sttServer = nil
-		return
-	}
-	log.Println("STT server starting on :9876")
+	a.whisperServer = ws
+	log.Printf("STT: whisper server ready on :%d", port)
 }
 
 // stopRecordingProcess kills an in-flight microphone recording (arecord/sox/ffmpeg)
@@ -244,25 +235,12 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 	return result.Text, nil
 }
 
-// TranscribeAudio sends raw audio bytes to the local STT server.
+// TranscribeAudio sends raw audio bytes to the whisper server for transcription.
 func (a *App) TranscribeAudio(audioData []byte) (string, error) {
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	if a.whisperServer == nil {
+		return "", fmt.Errorf("STT: whisper server not started")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, "http://127.0.0.1:9876/transcribe", bytes.NewReader(audioData))
-	if err != nil {
-		return "", fmt.Errorf("stt request: %w", err)
-	}
-	req.Header.Set("Content-Type", "application/octet-stream")
-	resp, err := http.DefaultClient.Do(req)
-	if err != nil {
-		return "", fmt.Errorf("stt server unreachable: %w", err)
-	}
-	defer resp.Body.Close()
-	var result struct {
-		Text string `json:"text"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
-		return "", fmt.Errorf("stt decode: %w", err)
-	}
-	return result.Text, nil
+	return a.whisperServer.Transcribe(ctx, audioData)
 }

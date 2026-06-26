@@ -386,18 +386,11 @@ class _EmbeddingStatusRow extends StatelessWidget {
               ),
             ),
           ] else ...[
-            SizedBox(
-              width: 12,
-              height: 12,
-              child: CircularProgressIndicator(
-                strokeWidth: 1.5,
-                color: theme.textDim,
-              ),
-            ),
-            const SizedBox(width: 8),
+            Icon(Icons.hub_outlined, size: 14, color: theme.textDim),
+            const SizedBox(width: 7),
             Expanded(
               child: Text(
-                'Embedding modeli hazırlanıyor…',
+                'Embedding: kapalı',
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
             ),

@@ -143,7 +143,7 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - Orchestra bypasses `provider.Router` — creates providers directly, no fallback chain.
 - ~~Agent pipeline has no timeout per tool call~~ → fixed: 60s `DefaultToolTimeout`.
 - **No test files for `orchestra/` package** (~800 lines untested). `provider/` and `agent/` now have tests.
-- **Agent frontend UI (permission dialog, tool call cards) not yet fully implemented.**
+- **Agent frontend UI (permission dialog, tool call cards, activity panel, agent screen) — fully implemented.**
 
 ### Flutter
 - ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.

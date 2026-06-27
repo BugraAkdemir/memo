@@ -497,9 +497,10 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                     ),
                   if (widget.agentEvents != null && widget.agentEvents!.isNotEmpty)
                     _AgentStatusBar(events: widget.agentEvents!)
-                  else
-                    // No live tool activity to show (e.g. Orchestra planning or
-                    // synthesis) — keep an animated cue so the wait feels alive.
+                  else if (widget.content.isEmpty)
+                    // No live tool activity and no content yet — show an animated
+                    // cue so the wait feels alive. Skip when content is already
+                    // streaming to avoid showing dots alongside text.
                     const _AgentWorkingIndicator(),
                 ],
               ),

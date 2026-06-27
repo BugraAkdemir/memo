@@ -291,7 +291,7 @@ jobs:
           | macOS    | arm64/x64   | \`Memo-macos-x64.zip\` |
           EOF
 
-      - uses: softprops/action-gh-release@v2
+      - uses: softprops/action-gh-release@v3
         with:
           name: Memo v${{ github.ref_name }}
           body_path: RELEASE_NOTES.md

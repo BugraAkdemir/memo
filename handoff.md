@@ -1,61 +1,58 @@
-# Handoff — 2026-06-28
+# Handoff — 2026-06-28 (Session 2)
 
 ## Oturum Özeti
 
-Bu oturumda macOS Apple Silicon Metal GPU detection + Windows AMD GPU detection + kapsamlı test yazımı + profesyonel CI/CD pipeline kurulumu yapıldı. Tüm testler geçiyor, CI/CD production-ready.
+Bu oturumda kapsamlı bug taraması yapıldı. Backend ve frontend'de 20+ bug düzeltildi. Güvenlik açıkları, veri kaybı riskleri, crash'ler ve kullanıcı deneyimini bozan sorunlar giderildi. Tüm testler geçiyor.
 
 ---
 
 ## Yapılan Değişiklikler
 
-### macOS Metal GPU Detection
+### Backend Bug Düzeltmeleri (Go)
 
-- `internal/llama/gpu.go` — **`GPUTypeMetal`** constant'ı eklendi, **`detectAppleSilicon()`** fonksiyonu:
-  - `sysctl hw.optional.arm64` ile Apple Silicon tespiti
-  - `machdep.cpu.brand_string` ile chip adı (M1/M2/M3 Pro/Max...)
-  - `hw.memsize` ile unified memory boyutu
-  - `GPULayers: 999` (tüm katmanları Metal'e offload — unified memory avantajı)
-  - Priority: NVIDIA → AMD → Apple Silicon → CPU
-- `internal/llama/installer.go` — `assetPrefs["darwin"]`'e `GPUTypeMetal: {"metal", "macos"}` eklendi. Installer artık `-metal-` tagged release asset'lerini tercih eder.
-- `internal/llama/llama.go` — `Start()`'e `mode == "metal"` kontrolü eklendi.
-- `internal/config/config.go` — `engine_mode` comment'ine `"metal"` eklendi.
-- `config/config.yaml.example` — `engine_mode` comment'ine `"metal"` eklendi.
-- `frontend/lib/widgets/settings/tabs/gpu_config_tab.dart` — "Apple Silicon (Metal)" dropdown seçeneği eklendi.
-- `frontend/lib/core/l10n.dart` — `'engine_metal'` localization anahtarı TR/EN eklendi.
+| Commit | Açıklama |
+|--------|----------|
+| `b1089b5` | **Memory store write lock** — SaveExplicitMemory/DeleteExplicitMemory RLock → Lock |
+| `e6b5322` | **Sessions mutex** — a.sessions ataması sessionsMu ile korundu |
+| `787f019` | **WhatsApp mutex** — waMu ile initWhatsApp/StartWhatsApp/StopWhatsApp korundu |
+| `4271e20` | **Orchestra conductor mutex** — providerMu.RLock ile okuma |
+| `2d9f157` | **Cloud backup WAL checkpoint** — PRAGMA wal_checkpoint(TRUNCATE) arşivlemeden önce |
+| `7b25cd0` | **ProactiveDecide hata yönetimi** — LLM hataları artık raporlanıyor |
+| `56abeac` | **Nil client guard** — callLLMStream/callLLM'de nil client panic engeli |
+| `e4ee96b` | **Sessiz hata logging** — memory/selfclone/whatsapp'ta _ = err yerine log.Printf |
 
-### Windows AMD GPU Detection
+### Frontend Bug Düzeltmeleri (Flutter)
 
-- `internal/llama/gpu.go` — **`detectAMDWindows()`** eklendi:
-  - PowerShell/WMI (`Get-CimInstance Win32_VideoController`) ile AMD/Radeon GPU sorgulama
-  - AdapterRAM'den VRAM okuma, `recommendLayers()` ile optimal layer sayısı
-  - Önceden Windows AMD kullanıcıları hiç tespit edilemiyor, CPU'da kalıyordu
+| Commit | Açıklama |
+|--------|----------|
+| `27b29fc` | **Takvim DateTime.parse** — try-catch ile güvenli parse |
+| `078fc92` | **Dosya gönderiminde state temizliği** — agent events/status temizlendi |
+| `dd2d225` | **WhatsApp streaming race condition** — accumulator pattern + CancelToken dispose + mounted check |
+| `dff5d9b` | **AgentWorkingIndicator** — sadece content boşken gösteriliyor |
+| `d70649d` | **Versiyon fallback** — boş string (sahte güncelleme engeli) |
+| `4b6c318` | **Import path traversal** — filepath.Rel ile doğrulama |
+| `659f485` | **WhatsApp QR compile hatası** — fazladan `)` parantez düzeltildi |
+| `56abeac` | **Unsafe cast fix'leri** — 5 noktada `is` kontrolü (provider_config, orchestra_config, model_store) |
+| `31bb338` | **Agent screen try-catch** — createAgentChat hatası snackbar ile gösteriliyor |
+| `8315cf9` | **Skill dialog Windows path** — Platform.isWindows ile hint text |
 
-### Test Altyapısı
+### Güvenlik İyileştirmeleri
 
-- `internal/webserver/server_test.go` (YENİ, 590 satır) — **Temel REST API handler'ları için kapsamlı testler:**
-  - Mock `AppBridge` ile handler izolasyonu
-  - Tüm basic API endpoint'leri: send, chats, new/switch/delete/rename chat, messages, update/delete message, status, incognito, transcribe
-  - Middleware testleri: CORS (loopback validation, OPTIONS preflight), body limit
-  - Error case'ler: bad JSON, method not allowed, bridge error
-  - `writeJSON` utility testi
-- `internal/app/app_test.go` (YENİ, 239 satır) — **App orchestrator metodları için 20+ test:**
-  - Config, system prompt (set/reset), incognito prompt
-  - Memory ayarları, web search, mood, self-interest, system management
-  - Agent, active provider, listen address, events, active chat ID
-  - Tümü existing pattern'lerle uyumlu: stdlib testing, table-driven, hand-written mocks
+| Commit | Açıklama |
+|--------|----------|
+| `2c9897a` | **MIME spoofing** — dosya içeriğinden MIME tespiti (http.DetectContentType) |
+| `2c9897a` | **Rate limit bypass** — X-Forwarded-For artık trust edilmiyor |
+| `2c9897a` | **Dosya uzantısı** — orijinal dosya adından uzantı okuma |
 
-### Profesyonel CI/CD Pipeline
+### CI/CD & Docs
 
-- `.github/workflows/ci.yml` (YENİ) — **Tam CI/CD pipeline:**
-  - **`lint`** — `go vet` + `golangci-lint` (50+ linter, `.golangci.yml` ile yapılandırılmış)
-  - **`test`** — `go test -race -coverprofile` → Codecov upload
-  - **`flutter`** — `flutter analyze` + `flutter test --coverage` → Codecov upload
-  - **`security`** — `govulncheck` ile Go güvenlik taraması
-  - **`build-linux`**, **`build-windows`**, **`build-macos`** — tag/manual trigger'da matrix build + artifact upload
-  - **`release`** — tag push'te otomatik GitHub Release oluşturma, prerelease detection (beta/alpha/rc)
-  - Go module + Flutter pub cache ile hızlı build
-- `.github/dependabot.yml` (YENİ) — Haftalık Go/Flutter/Actions dependency update
-- `.golangci.yml` (YENİ) — 50+ linter, test dosyası exclusion'ları, revive/stlyecheck kuralları
+| Commit | Açıklama |
+|--------|----------|
+| `b9345bc` | **AGENTS.md** — düzeltilen bug'lar eklendi |
+| `357a344` | **AGENTS.md** — ikinci batch düzeltmeler eklendi |
+| `66f69ae` | **v3.1.0.md** — İngilizce release notes'a hotfix bölümü |
+| `f36cda6` | **v3.1.0.md** — Türkçe release notes'a hotfix bölümü |
+| `89876ed` | **BUG_REPORT.md** — 13 madde düzeltildi olarak işaretlendi |
 
 ---
 
@@ -63,55 +60,47 @@ Bu oturumda macOS Apple Silicon Metal GPU detection + Windows AMD GPU detection 
 
 ```
 go build ./...                → temiz (0 hata)
-go vet ./...                  → temiz (0 hata)
-go test ./... -race -count=1  → 30/30 PASS (22 paket + race detector)
-```
-
-### Coverage Özeti
-
-| Paket | Coverage | Durum |
-|-------|----------|-------|
-| internal/webserver | **5.8%** | 0%'den geldi, en kritik handler'lar testli |
-| internal/app | **3.8%** | 1.8%'den geldi, getter/setter'lar testli |
-| internal/orchestra | 77.1% | ✅ |
-| internal/config | 85.3% | ✅ |
-| internal/truncate | 86.5% | ✅ |
-
----
-
-## Commit Geçmişi
-
-```
-4edfd67 ci(professional): complete CI/CD pipeline with lint, test, security, build matrix, and release
-2c62944 test(app): add comprehensive test suite for App orchestrator methods
-cadcb62 test(webserver): add comprehensive test suite for REST API handlers
-937d48b fix(windows): add AMD GPU detection via PowerShell/WMI
-11f35a9 feat(flutter): add Apple Silicon (Metal) option to GPU config dropdown
-aaa232f docs(config): add 'metal' as valid engine_mode value
-e27c6c8 feat(macos): add Apple Silicon Metal GPU detection and installer support
+go vet ./...                  → temiz (0 uyarı)
+go test ./... -race -count=1  → 30/30 PASS
+flutter analyze               → temiz (0 error)
+flutter test                  → 37/37 PASS
 ```
 
 ---
 
-## Kalan Görevler
+## Düzeltilen Toplam Bug Sayısı
 
-### Test Edilmeyen Paketler (hala 0 test dosyası)
+**23+ bug düzeltildi:**
+- 2 kritik veri bozulma (memory lock, WAL checkpoint)
+- 3 yüksek eşzamanlılık (WhatsApp mutex, sessions mutex, orchestra mutex)
+- 3 güvenlik (MIME spoofing, rate limit bypass, path traversal)
+- 5 frontend crash (casts, RenderBox, DateTime.parse, QR compile, nil client)
+- 4 UX (agent screen, working indicator, version fallback, skill dialog)
+- 3 altyapı (proactive error, silent errors, streaming race)
 
-- `internal/webserver/handlers_flutter.go` — 110+ Flutter endpoint, FullBridge mock gerektirir
-- `internal/whatsapp` — WhatsApp bridge
-- `internal/whisper` — STT whisper
-- `internal/ngrok` / `internal/tunnel` — Remote access
-- `internal/fileutil` / `internal/logx` / `internal/models` — Utility paketleri
+---
 
-### Diğer
+## Kalan Açık Bug'lar
 
-- Flutter JDK build hatası — `sudo apt install default-jdk`
-- macOS GPU için `frontend/macos/` Flutter platform projesi oluşturulmamış (başka branch'ta varmış)
-- Whisper-server Metal variant'ı `resolveBinary()`'de desteklenmiyor
-- Skill install dialog Windows path hint düzeltmesi
+| # | Madde | Risk | Süre |
+|---|-------|------|------|
+| 6 | Goroutine leak (4 yer) | HIGH | 30 dk |
+| 7 | model_store_screen 2507 satır | HIGH | 2 saat |
+| 8 | Mobile API client eksik | HIGH | 4 saat |
+| 9 | Provider priority UI yok | HIGH | 15 dk |
+| 10 | Orchestra fallback kullanmıyor | HIGH | 30 dk |
+| 13 | Logging migration tamamlanmamış | HIGH | 1 saat |
+| 14 | bash -c command injection (tasarım gereği) | HIGH | — |
+| 15 | connectionStatusProvider polling | MED | 10 dk |
+| 17 | const constructor eksiklikleri | MED | 1 saat |
+| 21 | Whisper GPU variant eksik | MED | 2 saat |
 
-### Önerilen sıradaki adımlar
+---
 
-1. En kritik: handoff.md'yi bu oturuma göre güncelle (yapıldı)
-2. Flutter JDK sorununu çöz → `sudo apt install default-jdk`
-3. Kanban/issue açılıp task takibi başlat
+## Önerilen Sıradaki Adımlar
+
+1. Goroutine leak fix (#6) — uzun süreli stabilite için kritik
+2. Orchestra fallback (#10) — provider hatalarında dayanıklılık
+3. Provider priority UI (#9) — kullanıcı deneyimi
+4. Mobile API client (#8) — mobil uygulama için gerekli
+5. model_store_screen refactor (#7) — bakım kolaylığı

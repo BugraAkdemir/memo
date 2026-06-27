@@ -29,11 +29,20 @@ class _Event {
   factory _Event.fromJson(Map<String, dynamic> j) => _Event(
         id: j['id'] as String? ?? '',
         title: j['title'] as String? ?? '',
-        startTime: DateTime.parse(j['start_time'] as String).toLocal(),
+        startTime: _parseDateTime(j['start_time'] as String?),
         description: j['description'] as String? ?? '',
         source: j['source'] as String? ?? 'manual',
         contactName: j['contact_name'] as String? ?? '',
       );
+
+  static DateTime _parseDateTime(String? value) {
+    if (value == null || value.isEmpty) return DateTime.now();
+    try {
+      return DateTime.parse(value).toLocal();
+    } catch (_) {
+      return DateTime.now();
+    }
+  }
 }
 
 const _monthKeys = [
@@ -536,6 +545,9 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           ],
         ),
       ),
-    );
+    ).then((_) {
+      titleCtrl.dispose();
+      descCtrl.dispose();
+    });
   }
 }

@@ -98,7 +98,8 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
-	lifecycleCtx      context.Context // goroutine lifecycle only — NOT for request-scoped operations
+	lifecycleCtx      context.Context    // goroutine lifecycle only — NOT for request-scoped operations
+	lifecycleCancel   context.CancelFunc // cancels lifecycleCtx on shutdown
 	client            *api.Client
 	clientMu          sync.RWMutex // protects client and embeddingClient reassignment
 	store             *memory.Store
@@ -164,6 +165,7 @@ type App struct {
 
 	whatsappChatMode bool
 	whatsappChatMu   sync.RWMutex
+	waMu             sync.Mutex // protects waClient, waMsgStore initialization
 
 	// Embedded binaries and version string passed in from main.
 	binaries embed.FS
@@ -216,7 +218,7 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 // Startup initializes all application subsystems. It must be called once before
 // any other method.
 func (a *App) Startup(ctx context.Context) {
-	a.lifecycleCtx = ctx
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(ctx)
 
 	loadDotEnv(".env")
 
@@ -277,7 +279,9 @@ func (a *App) Startup(ctx context.Context) {
 		log.Printf("WARN: sessions: %v", err)
 		a.emitEvent("sessions_manager_error", err.Error())
 	}
+	a.sessionsMu.Lock()
 	a.sessions = sm
+	a.sessionsMu.Unlock()
 
 	if obsStore, oerr := observer.NewStore(observer.StoreConfig{Dir: config.DataPath("profile")}); oerr != nil {
 		log.Printf("WARN: observer: %v", oerr)
@@ -347,7 +351,9 @@ func (a *App) Startup(ctx context.Context) {
 	// chat list. A fresh install has no session, so the welcome screen still
 	// shows until the user opts in.
 	if cfg.WhatsApp.Enabled || a.whatsAppHasStoredSession() {
+		a.waMu.Lock()
 		a.initWhatsApp()
+		a.waMu.Unlock()
 	}
 
 	a.providerCfgMgr = provider.NewConfigManager(config.DataPath("providers.json"), nil)
@@ -447,6 +453,12 @@ func (a *App) StartWebServerHTTP(port int) {
 // Shutdown cleans up all running background processes and servers.
 func (a *App) Shutdown(ctx context.Context) {
 	log.Println("Memo shutting down, cleaning up background processes...")
+
+	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
+	// reminders, WhatsApp intent loop, observer analysis, etc.)
+	if a.lifecycleCancel != nil {
+		a.lifecycleCancel()
+	}
 
 	close(a.memorySaveCh)
 

@@ -204,13 +204,22 @@ class _AgentContent extends ConsumerWidget {
               FilledButton.icon(
                 onPressed: () async {
                   final result = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Ajan için proje klasörü seç');
-                  if (result == null) return;
-                  final api = ref.read(apiClientProvider);
-                  final id = await api.createAgentChat(result);
-                  await ref.read(chatListProvider.notifier).refresh();
-                  ref.read(activeChatIdProvider.notifier).switchTo(id);
-                  if (!ref.read(agentEnabledProvider)) {
-                    ref.read(agentEnabledProvider.notifier).setEnabled(true);
+                  if (result == null || !mounted) return;
+                  try {
+                    final api = ref.read(apiClientProvider);
+                    final id = await api.createAgentChat(result);
+                    if (!mounted) return;
+                    await ref.read(chatListProvider.notifier).refresh();
+                    ref.read(activeChatIdProvider.notifier).switchTo(id);
+                    if (!ref.read(agentEnabledProvider)) {
+                      ref.read(agentEnabledProvider.notifier).setEnabled(true);
+                    }
+                  } catch (e) {
+                    if (mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(content: Text('Ajan sohbeti oluşturulamadı: $e')),
+                      );
+                    }
                   }
                 },
                 icon: const Icon(Icons.add, size: 18),

@@ -686,6 +686,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	streamClient := a.client
 	a.clientMu.RUnlock()
 
+	if streamClient == nil {
+		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.", Done: true})
+		return outCh
+	}
+
 	go func() {
 		defer close(outCh)
 
@@ -901,6 +906,11 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	a.clientMu.RLock()
 	llmClient := a.client
 	a.clientMu.RUnlock()
+
+	if llmClient == nil {
+		return "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin."
+	}
+
 	resp, err := llmClient.ChatCompletion(lctx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
 	if err != nil {
 		log.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))

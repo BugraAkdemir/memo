@@ -131,7 +131,8 @@ class _ProviderConfigDialogState
       return;
     }
 
-    final models = (result['models'] as List).cast<Map<String, dynamic>>();
+    final rawModels = result['models'];
+    final models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
     if (!mounted) return;
 
     final selected = await showDialog<String>(

@@ -536,7 +536,8 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
         }
         return;
       }
-      models = (result['models'] as List).cast<Map<String, dynamic>>();
+      final rawModels = result['models'];
+      models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
       return;
@@ -547,7 +548,8 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       builder: (_) => _RoleModelBrowserDialog(models: models),
     );
     if (selected != null) {
-      final modelId = selected['id'] as String;
+      final modelId = selected['id'] as String?;
+      if (modelId == null) return;
       final newRoles = List<RoleConfig>.from(_config!.roles);
       newRoles[index] = role.copyWith(modelName: modelId);
       setState(() => _config = _config!.copyWith(roles: newRoles));

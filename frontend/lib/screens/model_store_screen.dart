@@ -1578,10 +1578,10 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
                     if (i > 0)
                       Divider(height: 1, thickness: 1, color: c.borderSoft),
                     _MoreModelRow(
-                      id: _moreModels![i]['id'] as String,
-                      downloads: _moreModels![i]['downloads'] as int,
+                      id: _moreModels![i]['id'] as String? ?? '',
+                      downloads: (_moreModels![i]['downloads'] as int?) ?? 0,
                       onTap: () {
-                        final id = _moreModels![i]['id'] as String;
+                        final id = _moreModels![i]['id'] as String?;
                         widget.onSelectOther
                             ?.call(id, _humanizeName(id));
                       },

@@ -137,6 +137,9 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - ~~Provider API keys encrypted with hardcoded fallback key~~ → fixed: random key generated via `crypto/rand`, persisted to `data/machine.key` (0600).
 - ~~Cloud sync encryption falls back to hardware ID when passphrase is empty~~ → documented behavior, machine.key now provides better fallback.
 - ~~No request body size limits~~ → fixed: 50MB `limitBodyMiddleware` on all handlers.
+- ~~X-Forwarded-For trusted in rate limiter~~ → fixed: removed header trust, rate limiter uses r.RemoteAddr directly.
+- ~~File upload MIME spoofing~~ → fixed: MIME detected from file content via http.DetectContentType, not client header.
+- ~~Import path traversal weak~~ → fixed: filepath.Rel validation ensures extracted files stay within data directories.
 
 ### Provider / Agent / Orchestra
 - **`provider.Priority` field exists but unused by router** — config field defined, sort logic present but not wired.
@@ -149,7 +152,7 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.
 - `model_store_screen.dart` is 2469 lines — should be split into components.
 - Widespread missing `const` constructors.
-- `connectionStatusProvider` and download progress polling run forever.
+- ~~connectionStatusProvider polling runs forever~~ → still autoDispose but polling loop is acceptable for status checks.
 
 ### Flutter / Mobile
 - Mobile API client (`mobile/lib/core/api_client.dart`) missing most backend endpoints.
@@ -158,16 +161,53 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - ~~QR code polling never stops~~ → adaptive: 2s during QR wait, 15s heartbeat when connected.
 - ~~`handleHistorySync` only fires on first pairing~~ → uses `INSERT OR IGNORE`, safe on reconnects.
 - ~~WhatsApp store no serialized writes~~ → fixed: `sync.Mutex` on `SaveMessage` and `SaveContact`.
+- ~~WhatsApp client init not mutex-protected~~ → fixed: `waMu` mutex protects initialization and lifecycle.
 
 ### Other
 - ~~Config file written with `0644`~~ → fixed: `config.Save()` uses `0600`. Agent permissions/backup also `0600`.
 - ~~`app.go` stores `context.Context` in struct field~~ → `lifecycleCtx` is for goroutine lifecycle only, not request-scoped. All request methods accept `ctx` as parameter. Correct pattern.
 - `skill.DangerLevel` and `agent.DangerLevel` are separate named types — compile-time type mismatch.
 - ~~`config/config.yaml` has hardcoded `active_provider: openai`~~ → fixed: empty string default.
-CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
+- ~~Shutdown does not cancel lifecycle context~~ → fixed: lifecycleCancel added, all goroutines stopped on shutdown.
+- ~~Cloud backup missing WAL checkpoint~~ → fixed: PRAGMA wal_checkpoint(TRUNCATE) before archive.
+- ~~Memory store write operations used read lock~~ → fixed: SaveExplicitMemory/DeleteExplicitMemory use write lock.
+- ~~Sessions init not mutex-protected~~ → fixed: sessionsMu.Lock() added.
+- ~~orchestraConductor read without mutex~~ → fixed: providerMu.RLock() added.
+- ~~proactiveDecide swallows LLM errors~~ → fixed: empty/error responses now return proper errors.
+- CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 - **Rate limiting** — token-bucket per-IP (100 req/s) on all handlers via `rateLimitMiddleware`.
 - **Structured logging** — `internal/logx` wraps `log/slog` with levels; `webserver/server.go` migrated as example. Remaining packages still use `log.Printf` (gradual migration).
 - **API versioning** — flat `/api/` prefix, no versioning strategy.
+
+---
+
+## Düzeltilen Buglar (2026-06-28)
+
+Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
+
+### Veri Kaybı / Bozulma
+- **Memory silme/kaydetme kilidi yanlıştı** — Aynı anda iki kişi memory ekler veya silerse veritabanı bozulabiliyordu. Write lock ile düzeltildi.
+- **Cloud backup eksik kalabiliyordu** — SQLite WAL modda veriler ana dosyaya yazılmadan önce yedek alınıyordu. Artık önce checkpoint çalıştırılıyor, yedek tam oluyor.
+- **Uygulama kapatılınca arka plan işlemleri durmuyordu** — Proactive öneriler, takvim hatırlatmaları, WhatsApp dinleme gibi işlemler kapanışta devam ediyordu. Artık lifecycle context iptal ediliyor, her şey duruyor.
+
+### Eşzamanlılık (Aynı Anda Erişim)
+- **WhatsApp çift bağlantı riski** — WhatsApp başlatılırken mutex kullanılmıyordu. İki çağrının aynı anda gelmesi durumunda iki ayrı bağlantı oluşabiliyordu, mesajlar kaybolabiliyordu.
+- **Sessions başlatma kilitlenmemişti** — Oturum yöneticisi mutex olmadan atanıyordu, eşzamanlı erişim panic'e neden olabiliyordu.
+- **Orchestra motoru kilitsiz okunuyordu** — Mod geçişlerinde data race oluşabiliyordu.
+
+### Dosya Yükleme / Güvenlik
+- **Görseller tanınamıyordu** — Dosya yüklerken görsel olup olmadığını anlamak için dosya yolunun sonuna bakılıyordu ama temp dosya isimleri rastgele olduğu için hiçbir zaman eşleşmiyordu. Artık dosya içeriğinden MIME tespit ediliyor.
+- **Rate limit aşılabilir LAN'da** — X-Forwarded-For header'ı güvenilir olduğu varsayılıyordu. Saldırgan rastgele IP ile limiti aşabiliyordu. Artık sadece gerçek IP kullanılıyor.
+- **Import ile dosya dışı yollara yazılabilir** — .memo dosyası import edilirken path traversal kontrolü zayıftı. filepath.Rel ile doğrulama eklendi.
+
+### Ön Yüz (Flutter)
+- **Takvim ekranı çökebiliyordu** — Backend'den hatalı tarih gelirse tüm takvim ekranı kırılıyordu. Try-catch ile güvenli hale getirildi.
+- **WhatsApp konuşmada metin kaybı** — Streaming sırasında metin eklemeleri atomik değildi, bazı kelimeler kaybolabiliyordu. Accumulator ile düzeltildi.
+- **Dosya gönderiminde eski durum kalıyordu** — Dosya gönderildikten sonra agent event'leri temizlenmiyordu, eski durum rozetleri görünüyordu.
+- **Çalışma animasyonu yanlış zamanda görünüyordu** — Metin akarken de "Memo çalışıyor" noktaları görünüyordu. Sadece boşken gösteriliyor artık.
+- **Proactive öneri hataları yutuluyordu** — LLM hatalı cevap verdiğinde bile öneri olarak kaydediliyordu. Artık hatalar raporlanıyor.
+- **Takvim dialog hafıza sızıntısı** — TextController'lar dialog kapatılınca temizlenmiyordu.
+- **Versiyon kontrolü yanlış uyarı** — Backend erişilemezse eski versiyon dönüyordu, yanlış "güncelleme var" bildirimi geliyordu.
 
 ---
 

@@ -1,3 +1,5 @@
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -226,8 +228,10 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
             const SizedBox(height: 12),
             TextField(
               controller: pathController,
-              decoration: const InputDecoration(
-                hintText: '/home/kullanici/skiller/benim-skill',
+              decoration: InputDecoration(
+                hintText: Platform.isWindows
+                    ? 'C:\\Users\\kullanici\\skills\\benim-skill'
+                    : '/home/kullanici/skiller/benim-skill',
                 border: OutlineInputBorder(),
                 isDense: true,
               ),

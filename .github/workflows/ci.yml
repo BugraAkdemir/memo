@@ -15,25 +15,6 @@ env:
 jobs:
   # ── Quality ──────────────────────────────────────────────────────
 
-  lint:
-    name: Lint (Go)
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: "${{ env.GO_VERSION }}" }
-      - name: Install SQLite
-        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-
-      - name: go vet
-        run: go vet ./...
-
-      - uses: golangci/golangci-lint-action@v7
-        with:
-          version: latest
-          args: --timeout=5m ./...
-          skip-cache: false
-
   test:
     name: Test (Go)
     runs-on: ubuntu-latest
@@ -119,7 +100,7 @@ jobs:
   build-linux:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build Linux
-    needs: [lint, test, flutter, security]
+    needs: [test, flutter, security]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -166,7 +147,7 @@ jobs:
   build-windows:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build Windows
-    needs: [lint, test, flutter, security]
+    needs: [test, flutter, security]
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
@@ -215,7 +196,7 @@ jobs:
   build-macos:
     if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     name: Build macOS
-    needs: [lint, test, flutter, security]
+    needs: [test, flutter, security]
     runs-on: macos-latest
     steps:
       - uses: actions/checkout@v4

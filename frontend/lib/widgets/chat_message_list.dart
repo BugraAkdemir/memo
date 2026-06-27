@@ -180,8 +180,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
   void _showContextMenu() {
     final renderObject = context.findRenderObject();
     if (renderObject == null || renderObject is! RenderBox) return;
-    final renderBox = renderObject as RenderBox;
-    final position = renderBox.localToGlobal(_tapPosition);
+    final position = renderObject.localToGlobal(_tapPosition);
     showMenu<String>(
       context: context,
       position: RelativeRect.fromLTRB(

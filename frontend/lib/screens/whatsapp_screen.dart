@@ -292,7 +292,6 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   ),
                 ),
               ),
-              ),
               if (status.qrCodes.isNotEmpty) ...[
                 const SizedBox(height: 20),
                 Row(

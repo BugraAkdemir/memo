@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"memo/internal/api"
 	"memo/internal/memory"
@@ -284,7 +285,7 @@ func (a *App) downloadFile(repoID, filename, destPath string) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	dlClient := &http.Client{Timeout: 0}
+	dlClient := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := dlClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download request: %w", err)

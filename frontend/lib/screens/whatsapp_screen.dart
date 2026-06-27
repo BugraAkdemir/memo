@@ -258,7 +258,13 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 textAlign: TextAlign.center,
               ),
               const SizedBox(height: 28),
-              Container(
+              if (status.qrCodes.isEmpty)
+                Padding(
+                  padding: const EdgeInsets.all(20),
+                  child: CircularProgressIndicator(color: c.textDim),
+                )
+              else
+                Container(
                 padding: const EdgeInsets.all(16),
                 decoration: BoxDecoration(
                   color: Colors.white,
@@ -286,9 +292,11 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   ),
                 ),
               ),
-              const SizedBox(height: 20),
-              Row(
-                mainAxisSize: MainAxisSize.min,
+              ),
+              if (status.qrCodes.isNotEmpty) ...[
+                const SizedBox(height: 20),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
                 children: [
                   const SizedBox(
                     width: 14,
@@ -305,6 +313,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   ),
                 ],
               ),
+              ],
             ],
           ),
         ),

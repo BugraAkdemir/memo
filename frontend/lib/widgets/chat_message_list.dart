@@ -178,7 +178,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
   Offset _tapPosition = Offset.zero;
 
   void _showContextMenu() {
-    final renderBox = context.findRenderObject() as RenderBox;
+    final renderObject = context.findRenderObject();
+    if (renderObject == null || renderObject is! RenderBox) return;
+    final renderBox = renderObject as RenderBox;
     final position = renderBox.localToGlobal(_tapPosition);
     showMenu<String>(
       context: context,
@@ -820,6 +822,9 @@ class _AgentStatusBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    if (events.isEmpty) {
+      return const SizedBox.shrink();
+    }
     final lastEvent = events.last;
 
     final isExecuting = lastEvent.type == 'tool_executing';

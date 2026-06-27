@@ -202,8 +202,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         if (chunk.finishReason == 'agent_event') {
           // Tool activity — render as status badges, NOT as raw JSON text.
           try {
-            final ev = AgentEvent.fromJson(
-                json.decode(chunk.content) as Map<String, dynamic>);
+            final decoded = json.decode(chunk.content);
+            if (decoded is! Map<String, dynamic>) continue;
+            final ev = AgentEvent.fromJson(decoded);
             final events = [...ref.read(streamingAgentEventsProvider)];
             if (ev.type == 'tool_executing' ||
                 ev.type == 'tool_result' ||
@@ -494,7 +495,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         }
         return;
       }
-      models = (result['models'] as List).cast<Map<String, dynamic>>();
+      final rawModels = result['models'];
+      models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();

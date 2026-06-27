@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"net/url"
 	"strings"
 	"time"
 )
@@ -56,11 +55,12 @@ func (p *geminiProvider) Name() ProviderType  { return ProviderGemini }
 func (p *geminiProvider) DisplayName() string  { return "Google Gemini" }
 
 func (p *geminiProvider) ListModels(ctx context.Context) ([]string, error) {
-	u := fmt.Sprintf("%s/models?key=%s", p.baseURL, url.QueryEscape(p.apiKey))
+	u := fmt.Sprintf("%s/models", p.baseURL)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, u, nil)
 	if err != nil {
 		return nil, err
 	}
+	req.Header.Set("x-goog-api-key", p.apiKey)
 	resp, err := p.client.Do(req)
 	if err != nil {
 		return nil, err
@@ -136,12 +136,13 @@ func (p *geminiProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
 	}
 
-	u := fmt.Sprintf("%s/%s:generateContent?key=%s", p.baseURL, model, url.QueryEscape(p.apiKey))
+	u := fmt.Sprintf("%s/%s:generateContent", p.baseURL, model)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", p.apiKey)
 
 	resp, err := p.client.Do(httpReq)
 	if err != nil {
@@ -198,12 +199,13 @@ func (p *geminiProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
 	}
 
-	u := fmt.Sprintf("%s/%s:streamGenerateContent?key=%s&alt=sse", p.baseURL, model, url.QueryEscape(p.apiKey))
+	u := fmt.Sprintf("%s/%s:streamGenerateContent?alt=sse", p.baseURL, model)
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodPost, u, bytes.NewReader(jsonBody))
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("request: %w", err)}
 	}
 	httpReq.Header.Set("Content-Type", "application/json")
+	httpReq.Header.Set("x-goog-api-key", p.apiKey)
 
 	resp, err := p.streamCl.Do(httpReq)
 	if err != nil {

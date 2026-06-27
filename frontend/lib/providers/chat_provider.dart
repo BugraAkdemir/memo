@@ -424,15 +424,20 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           } else if (chunk.finishReason == 'activity') {
             // Structured orchestra task update → right-side activity panel.
             try {
-              _upsertActivity(ActivityStep.fromActivityJson(
-                  json.decode(chunk.content) as Map<String, dynamic>));
+              final decoded = json.decode(chunk.content);
+              if (decoded is Map<String, dynamic>) {
+                _upsertActivity(ActivityStep.fromActivityJson(decoded));
+              }
             } catch (_) {
               // ignore malformed activity payloads
             }
           } else if (chunk.finishReason == 'usage') {
             try {
-              ref.read(tokenUsageProvider.notifier).state =
-                  TokenUsage.fromJson(json.decode(chunk.content) as Map<String, dynamic>);
+              final decoded = json.decode(chunk.content);
+              if (decoded is Map<String, dynamic>) {
+                ref.read(tokenUsageProvider.notifier).state =
+                    TokenUsage.fromJson(decoded);
+              }
             } catch (_) {/* ignore */}
           } else if (chunk.finishReason == 'agent_event') {
             try {

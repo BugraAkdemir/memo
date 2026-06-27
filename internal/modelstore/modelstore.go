@@ -331,8 +331,8 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	// Use a client without timeout for large downloads
-	dlClient := &http.Client{}
+	// Use a client with timeout to prevent hanging forever
+	dlClient := &http.Client{Timeout: 10 * time.Minute}
 	resp, err := dlClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download request: %w", err)

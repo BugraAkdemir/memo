@@ -78,3 +78,6 @@ skill-lock.json
 server.log.superpowers/
 .superpowers/
 data/machine.key
+.kimchi
+.opencode
+.mimocode/*

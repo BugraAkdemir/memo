@@ -1,0 +1,82 @@
+api:
+    base_url: http://127.0.0.1:8081/v1
+    embedding_model: ""
+    timeout_seconds: 120
+identity:
+    user_name: ""
+    assistant_name: Memo
+    style: casual
+    system_role: ""
+    incognito_prompt: Incognito mode prompt
+memory:
+    persist_dir: data/memory
+    top_k: 5
+    min_similarity: 0.3
+    memory_enabled: false
+    embedding_dimension: 768
+    embedding_model_repo: ""
+    embedding_model_file: ""
+    embedding_auto_start: false
+remote_access:
+    enabled: false
+    port: 8080
+    token: ""
+    ngrok_mode: false
+    ngrok_token: ""
+    ngrok_auto_start: false
+    tunnel_mode: lan
+    tailscale_key: ""
+    tailscale_hostname: memo
+    tailscale_funnel: false
+llama:
+    engine_mode: ""
+    binary_path: ""
+    port: 8081
+    embedding_port: 8082
+    ctx_size: 4096
+    max_history: 20
+    max_context_tokens: 0
+    models_dir: data/models
+    temperature: 0.7
+    top_p: 0.9
+    max_tokens: 0
+whisper:
+    binary_path: ""
+    model_path: ""
+    language: auto
+    port: 9877
+    enabled: false
+sync:
+    enabled: false
+    client_id: ""
+    client_secret: ""
+    passphrase: ""
+    token_path: data/sync_token.json
+    interval_messages: 50
+whatsapp:
+    enabled: false
+    data_dir: ""
+    auto_index: false
+    max_history_days: 0
+proactive:
+    enabled: false
+    level: ""
+learning:
+    single_model_enabled: false
+    model_id: ""
+calendar:
+    reminder_lead_minutes: 30
+    disable_time_guess: false
+mood:
+    enabled: false
+    alpha: 0
+    beta: 0
+    sigma_min: 0
+    sigma_max: 0
+    self_interest: false
+    system_management: false
+web_search:
+    enabled: false
+    max_results: 0
+active_provider: ""
+beta: false

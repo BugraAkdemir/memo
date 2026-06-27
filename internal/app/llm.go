@@ -485,7 +485,10 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	outCh := make(chan api.StreamChunk, 128)
 
 	// Orchestra mode takes priority
-	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+	a.providerMu.RLock()
+	orchEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
+	a.providerMu.RUnlock()
+	if orchEnabled {
 		a.providerMu.RLock()
 		if a.activeProviderName != "" {
 			log.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProviderName)
@@ -823,7 +826,10 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 
 func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	// Orchestra mode takes priority
-	if a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled {
+	a.providerMu.RLock()
+	orchEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
+	a.providerMu.RUnlock()
+	if orchEnabled {
 		var userPrompt string
 		var systemPrompt string
 		for i := len(messages) - 1; i >= 0; i-- {

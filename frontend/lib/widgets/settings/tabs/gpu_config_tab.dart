@@ -163,6 +163,10 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                               value: 'amd',
                               child: Text('AMD (ROCm/Vulkan)'),
                             ),
+                            DropdownMenuItem(
+                              value: 'metal',
+                              child: Text('Apple Silicon (Metal)'),
+                            ),
                           ],
                           onChanged: (mode) {
                             if (mode != null) {

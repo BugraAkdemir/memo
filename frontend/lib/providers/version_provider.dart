@@ -50,7 +50,7 @@ class VersionCheckNotifier extends AutoDisposeAsyncNotifier<VersionInfo> {
       final result = await api.checkVersion();
       return VersionInfo.fromMap(result);
     } catch (e) {
-      return VersionInfo(current: 'V3.0.0', error: e.toString());
+      return VersionInfo(current: '', error: e.toString());
     }
   }
 

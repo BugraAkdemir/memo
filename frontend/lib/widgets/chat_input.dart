@@ -187,6 +187,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     );
     final cancelToken = CancelToken();
 
+    if (!mounted) return;
     ref.read(isSendingProvider.notifier).state = true;
     ref.read(messagesProvider.notifier).addMessage(userMsg);
 
@@ -194,6 +195,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     ref.read(streamingAgentEventsProvider.notifier).state = [];
 
     List<AgentEvent> finalAgentEvents = [];
+    String accumulatedContent = '';
     try {
       await for (final chunk
           in api.sendWhatsAppChatStream(text, cancelToken: cancelToken)) {
@@ -221,8 +223,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             // ignore malformed event payloads
           }
         } else {
-          ref.read(streamingContentProvider.notifier).state =
-              ref.read(streamingContentProvider) + chunk.content;
+          accumulatedContent += chunk.content;
+          ref.read(streamingContentProvider.notifier).state = accumulatedContent;
         }
       }
     } catch (e) {
@@ -232,6 +234,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         );
       }
     } finally {
+      cancelToken.cancel();
       final full = ref.read(streamingContentProvider);
       if (full.isNotEmpty || finalAgentEvents.isNotEmpty) {
         ref.read(messagesProvider.notifier).addMessage(

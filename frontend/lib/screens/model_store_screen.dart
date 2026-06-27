@@ -1582,6 +1582,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
                       downloads: (_moreModels![i]['downloads'] as int?) ?? 0,
                       onTap: () {
                         final id = _moreModels![i]['id'] as String?;
+                        if (id == null) return;
                         widget.onSelectOther
                             ?.call(id, _humanizeName(id));
                       },

@@ -132,6 +132,14 @@ func detectNVIDIA() (GPUInfo, bool) {
 // ─── AMD Detection ───────────────────────────────────────────────
 
 func detectAMD() (GPUInfo, bool) {
+	// Windows: use WMI via PowerShell to detect AMD GPUs
+	if runtime.GOOS == "windows" {
+		if info, ok := detectAMDWindows(); ok {
+			return info, true
+		}
+		return GPUInfo{}, false
+	}
+
 	// Check for rocm-smi (ROCm)
 	_, err := exec.LookPath("rocm-smi")
 	if err != nil {
@@ -190,6 +198,58 @@ func detectAMD() (GPUInfo, bool) {
 		GPULayers:   layers,
 		Description: fmt.Sprintf("%s — %d MB VRAM — ROCm acceleration", name, vram),
 	}, true
+}
+
+// ─── Windows AMD Detection ──────────────────────────────────────────
+
+func detectAMDWindows() (GPUInfo, bool) {
+	// Use PowerShell to query WMI for video controllers
+	cmd := exec.Command("powershell", "-NoProfile", "-Command",
+		"Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Csv -NoHeader")
+	out, err := cmd.Output()
+	if err != nil {
+		log.Printf("GPU: PowerShell WMI query failed: %v", err)
+		return GPUInfo{}, false
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(out)), "\n")
+	for _, line := range lines {
+		line = strings.TrimSpace(line)
+		if line == "" {
+			continue
+		}
+		// CSV format: "Name","AdapterRAM"
+		parts := strings.Split(line, ",")
+		if len(parts) < 1 {
+			continue
+		}
+		name := strings.Trim(parts[0], "\" ")
+		if !strings.Contains(strings.ToLower(name), "amd") &&
+			!strings.Contains(strings.ToLower(name), "radeon") &&
+			!strings.Contains(strings.ToLower(name), "advanced micro devices") {
+			continue
+		}
+
+		vram := 0
+		if len(parts) >= 2 {
+			vramStr := strings.Trim(parts[1], "\" ")
+			if v, err := strconv.ParseInt(vramStr, 10, 64); err == nil {
+				vram = int(v / (1024 * 1024)) // bytes → MB
+			}
+		}
+
+		layers := recommendLayers(vram)
+		log.Printf("GPU detected: AMD %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
+		return GPUInfo{
+			Type:        GPUTypeAMD,
+			Name:        name,
+			VRAM:        vram,
+			GPULayers:   layers,
+			Description: fmt.Sprintf("%s — %d MB VRAM — DirectML/Vulkan acceleration", name, vram),
+		}, true
+	}
+
+	return GPUInfo{}, false
 }
 
 // readSysfsFile reads the first matching sysfs file via a glob pattern.

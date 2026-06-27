@@ -115,6 +115,14 @@ func (a *App) ImportData(data []byte) error {
 			target = clean
 		}
 
+		// Verify the resolved target is within expected directories
+		relSessions, errS := filepath.Rel(config.DataDir(), target)
+		relData, errD := filepath.Rel(config.DataPath(""), target)
+		if (errS != nil || strings.HasPrefix(relSessions, "..")) &&
+			(errD != nil || strings.HasPrefix(relData, "..")) {
+			continue // skip entries that escape the data directory
+		}
+
 		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
 			return fmt.Errorf("import: mkdir: %w", err)
 		}

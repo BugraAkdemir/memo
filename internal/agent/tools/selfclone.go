@@ -79,7 +79,9 @@ func SelfClone(ctx context.Context, argsJSON json.RawMessage, basePath string, _
 	// Binary'yi de kopyala
 	if binary, err := os.Executable(); err == nil {
 		binDest := filepath.Join(dest, filepath.Base(binary))
-		_ = copyFileTo(binary, binDest)
+		if err := copyFileTo(binary, binDest); err != nil {
+			return "", fmt.Errorf("clone files ok but binary copy failed: %w", err)
+		}
 	}
 
 	return fmt.Sprintf("Cloned %d files to %s", copied, dest), nil

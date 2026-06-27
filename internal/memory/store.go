@@ -933,13 +933,15 @@ func (s *Store) incrementRetrieveCounts(ids []string) {
 	for i, id := range ids {
 		args[i] = id
 	}
-	_ = s.db.Write(ctx, func(tx *sql.Tx) error {
+	if err := s.db.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.Exec(
 			"UPDATE memories SET retrieve_count = retrieve_count + 1 WHERE uuid IN ("+placeholders+")",
 			args...,
 		)
 		return err
-	})
+	}); err != nil {
+		log.Printf("memory: update retrieve_count: %v", err)
+	}
 }
 
 func (s *Store) DebugSearch(ctx context.Context, query string, topK int) []MemoryResult {

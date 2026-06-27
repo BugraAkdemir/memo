@@ -335,7 +335,9 @@ func (c *Client) GetProfilePicture(ctx context.Context, jid string, preview bool
 	}
 	if info == nil || info.URL == "" {
 		// No picture available — drop a marker so we don't hammer the server.
-		_ = os.WriteFile(nonePath, nil, 0644)
+		if err := os.WriteFile(nonePath, nil, 0644); err != nil {
+			log.Printf("whatsapp: write none marker: %v", err)
+		}
 		return nil, nil
 	}
 

@@ -14,7 +14,7 @@ dependencies:
   dio: ^5.4.0
   
   # State Management
-  flutter_riverpod: ^2.4.9
+  flutter_riverpod: ^3.3.2
   
   # Markdown rendering
   flutter_markdown: ^0.6.22

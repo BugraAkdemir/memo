@@ -44,7 +44,7 @@ jobs:
       - name: Install SQLite
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod
@@ -74,7 +74,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             /opt/hostedtoolcache/flutter
@@ -129,7 +129,7 @@ jobs:
         with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
       - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod
@@ -175,7 +175,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~\go\pkg\mod
@@ -224,7 +224,7 @@ jobs:
       - uses: subosito/flutter-action@v2
         with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
 
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: |
             ~/go/pkg/mod

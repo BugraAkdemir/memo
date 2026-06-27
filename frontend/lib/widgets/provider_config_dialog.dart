@@ -61,7 +61,7 @@ class _ProviderConfigDialogState
     );
     _contextCtrl = TextEditingController(
       text: (existing?.contextTokens ?? 0) > 0
-          ? '${existing!.contextTokens}'
+          ? '${existing?.contextTokens ?? 0}'
           : '',
     );
     // New providers default to ENABLED. Previously they were added disabled,

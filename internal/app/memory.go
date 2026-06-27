@@ -285,8 +285,8 @@ func (a *App) SetMemoryEnabled(enabled bool) error {
 
 // SaveExplicitMemory saves a user-provided memory entry.
 func (a *App) SaveExplicitMemory(content, tags string) error {
-	a.storeMu.RLock()
-	defer a.storeMu.RUnlock()
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
 	if a.store == nil {
 		return fmt.Errorf("memory store not initialized")
 	}
@@ -297,8 +297,8 @@ func (a *App) SaveExplicitMemory(content, tags string) error {
 
 // DeleteExplicitMemory deletes memories matching the given pattern.
 func (a *App) DeleteExplicitMemory(pattern string) (int, error) {
-	a.storeMu.RLock()
-	defer a.storeMu.RUnlock()
+	a.storeMu.Lock()
+	defer a.storeMu.Unlock()
 	if a.store == nil {
 		return 0, fmt.Errorf("memory store not initialized")
 	}

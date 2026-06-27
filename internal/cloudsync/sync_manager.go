@@ -15,6 +15,7 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"database/sql"
 	"fmt"
 	"io"
 	"log"
@@ -24,6 +25,7 @@ import (
 	"sync"
 	"sync/atomic"
 
+	_ "github.com/mattn/go-sqlite3"
 	"github.com/google/uuid"
 )
 
@@ -406,6 +408,14 @@ func (m *Manager) archive() ([]byte, error) {
 	// sidecar files too; SQLite ignores missing -wal/-shm on open, so this is
 	// backward-compatible with old backups that only contained memory.db.
 	memDB := filepath.Join(m.persistDir, "memory.db")
+
+	// Force a WAL checkpoint so committed data is flushed to the main DB file
+	// before we copy it. This prevents data loss in backups.
+	if db, err := sql.Open("sqlite3", memDB); err == nil {
+		db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
+		db.Close()
+	}
+
 	if err := addFile(memDB, "memory/memory.db"); err == nil {
 		added++
 		log.Printf("cloudsync: archived memory.db")

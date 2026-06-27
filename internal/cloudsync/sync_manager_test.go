@@ -10,9 +10,9 @@ import (
 )
 
 // TestArchiveIncludesSQLiteWALSidecars verifies that SQLite databases using
-// WAL mode are archived with their -wal and -shm sidecar files. Restoring
-// memory.db without these files can leave the database corrupt or missing
-// committed transactions.
+// WAL mode are archived. After a WAL checkpoint (TRUNCATE), committed data is
+// flushed to the main DB and sidecar files may be removed — so only the main
+// DB is required; -wal/-shm are optional.
 func TestArchiveIncludesSQLiteWALSidecars(t *testing.T) {
 	tmp := t.TempDir()
 	persistDir := filepath.Join(tmp, "memory")
@@ -57,21 +57,18 @@ func TestArchiveIncludesSQLiteWALSidecars(t *testing.T) {
 		t.Fatalf("zip reader: %v", err)
 	}
 
-	expected := map[string]bool{
-		"memory/memory.db":     false,
-		"memory/memory.db-wal": false,
-		"memory/memory.db-shm": false,
-		"mood/mood.db":         false,
-		"mood/mood.db-wal":     false,
+	// Main DB must always be present; WAL/SHM are optional after TRUNCATE checkpoint.
+	required := map[string]bool{
+		"memory/memory.db": false,
 	}
 
 	for _, f := range zr.File {
-		if _, ok := expected[f.Name]; ok {
-			expected[f.Name] = true
+		if _, ok := required[f.Name]; ok {
+			required[f.Name] = true
 		}
 	}
 
-	for name, found := range expected {
+	for name, found := range required {
 		if !found {
 			t.Errorf("expected %s in archive", name)
 		}

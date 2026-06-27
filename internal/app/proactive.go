@@ -5,6 +5,8 @@ package app
 import (
 	"context"
 	"encoding/json"
+	"fmt"
+	"strings"
 	"time"
 
 	"memo/internal/api"
@@ -26,7 +28,11 @@ func (a *App) proactiveDecide(ctx context.Context, systemPrompt, userPrompt stri
 	}
 	dctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	return a.callLLM(dctx, msgs), nil
+	reply := a.callLLM(dctx, msgs)
+	if reply == "" || strings.HasPrefix(reply, "⚠️") || strings.HasPrefix(reply, "warning-sign") {
+		return "", fmt.Errorf("LLM returned empty or error response")
+	}
+	return reply, nil
 }
 
 // proactiveEmit surfaces a suggestion: it fires a UI event and drops the message

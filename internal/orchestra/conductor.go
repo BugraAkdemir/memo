@@ -797,32 +797,33 @@ func extractJSON(text string) string {
 			}
 		}
 	}
-	// Strategy 3: bare JSON object in the text (find matching braces)
-	if idx := strings.Index(text, "{"); idx >= 0 {
+	// Strategy 3: bare JSON object or array — try whichever appears first
+	braceIdx := strings.Index(text, "{")
+	bracketIdx := strings.Index(text, "[")
+	if braceIdx >= 0 && (bracketIdx < 0 || braceIdx < bracketIdx) {
 		depth := 0
-		for i := idx; i < len(text); i++ {
+		for i := braceIdx; i < len(text); i++ {
 			switch text[i] {
 			case '{':
 				depth++
 			case '}':
 				depth--
 				if depth == 0 {
-					return text[idx : i+1]
+					return text[braceIdx : i+1]
 				}
 			}
 		}
 	}
-	// Strategy 4: bare JSON array
-	if idx := strings.Index(text, "["); idx >= 0 {
+	if bracketIdx >= 0 && (braceIdx < 0 || bracketIdx < braceIdx) {
 		depth := 0
-		for i := idx; i < len(text); i++ {
+		for i := bracketIdx; i < len(text); i++ {
 			switch text[i] {
 			case '[':
 				depth++
 			case ']':
 				depth--
 				if depth == 0 {
-					return text[idx : i+1]
+					return text[bracketIdx : i+1]
 				}
 			}
 		}

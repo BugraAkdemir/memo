@@ -142,7 +142,7 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - **`provider.Priority` field exists but unused by router** — config field defined, sort logic present but not wired.
 - Orchestra bypasses `provider.Router` — creates providers directly, no fallback chain.
 - ~~Agent pipeline has no timeout per tool call~~ → fixed: 60s `DefaultToolTimeout`.
-- **No test files for `orchestra/` package** (~800 lines untested). `provider/` and `agent/` now have tests.
+- ~~**No test files for `orchestra/` package** (~800 lines untested)~~ → 48 tests passing with `-race`. `provider/`, `agent/`, and `orchestra/` all have tests.
 - **Agent frontend UI (permission dialog, tool call cards, activity panel, agent screen) — fully implemented.**
 
 ### Flutter

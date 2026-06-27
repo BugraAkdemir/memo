@@ -17,6 +17,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -397,16 +398,22 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	tmpFilePath := tmpFile.Name()
 	tmpFile.Close() // Close before sending to bridge
 
-	mimeType := header.Header.Get("Content-Type")
-	isImage := false
-	if mimeType != "" {
-		if len(mimeType) >= 5 && mimeType[:5] == "image" {
-			isImage = true
+	// Detect MIME from file content rather than trusting client header
+	detectedMIME := ""
+	if f, err := os.Open(tmpFilePath); err == nil {
+		buf := make([]byte, 512)
+		if n, _ := f.Read(buf); n > 0 {
+			detectedMIME = http.DetectContentType(buf[:n])
 		}
-	} else {
-		// Use file extension guess if MIME not provided
-		ext := tmpFilePath[len(tmpFilePath)-4:]
-		if ext == ".png" || ext == ".jpg" || ext == "jpeg" || ext == ".gif" {
+		f.Close()
+	}
+
+	isImage := false
+	if detectedMIME != "" && len(detectedMIME) >= 5 && detectedMIME[:5] == "image" {
+		isImage = true
+	} else if header.Filename != "" {
+		ext := strings.ToLower(filepath.Ext(header.Filename))
+		if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" {
 			isImage = true
 		}
 	}
@@ -674,9 +681,9 @@ func rateLimitMiddleware(stop <-chan struct{}, next http.Handler) http.Handler {
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		ip := r.RemoteAddr
-		if fwd := r.Header.Get("X-Forwarded-For"); fwd != "" {
-			ip = strings.Split(fwd, ",")[0]
-		}
+		// Do NOT trust X-Forwarded-For without a trusted proxy configuration —
+		// on LAN deployments an attacker can rotate spoofed IPs to bypass rate
+		// limiting entirely.
 
 		mu.Lock()
 		b, ok := buckets[ip]

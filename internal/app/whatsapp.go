@@ -102,6 +102,8 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 
 // StartWhatsApp connects to WhatsApp Web.
 func (a *App) StartWhatsApp(ctx context.Context) error {
+	a.waMu.Lock()
+	defer a.waMu.Unlock()
 	if a.waClient == nil {
 		a.initWhatsApp()
 		if a.waClient == nil {
@@ -114,6 +116,8 @@ func (a *App) StartWhatsApp(ctx context.Context) error {
 
 // StopWhatsApp disconnects from WhatsApp Web.
 func (a *App) StopWhatsApp() {
+	a.waMu.Lock()
+	defer a.waMu.Unlock()
 	if a.waClient != nil {
 		a.waClient.Stop()
 	}
@@ -121,6 +125,8 @@ func (a *App) StopWhatsApp() {
 
 // LogoutWhatsApp removes the local session.
 func (a *App) LogoutWhatsApp() error {
+	a.waMu.Lock()
+	defer a.waMu.Unlock()
 	if a.waClient == nil {
 		return nil
 	}

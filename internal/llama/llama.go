@@ -75,6 +75,8 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		s.gpu.Type = GPUTypeNVIDIA
 	} else if mode == "amd" {
 		s.gpu.Type = GPUTypeAMD
+	} else if mode == "metal" {
+		s.gpu = GPUInfo{Type: GPUTypeMetal, Name: "Apple Silicon (Metal)", GPULayers: 999}
 	}
 
 	// Apply overrides

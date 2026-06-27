@@ -160,6 +160,7 @@ var assetPrefs = map[string]map[GPUType][]string{
 		GPUTypeCPU:    {"ubuntu"},
 	},
 	"darwin": {
+		GPUTypeMetal:  {"metal", "macos"},
 		GPUTypeNVIDIA: {"macos"},
 		GPUTypeAMD:    {"macos"},
 		GPUTypeCPU:    {"macos"},

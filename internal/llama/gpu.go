@@ -19,6 +19,7 @@ type GPUType string
 const (
 	GPUTypeNVIDIA GPUType = "nvidia"
 	GPUTypeAMD    GPUType = "amd"
+	GPUTypeMetal  GPUType = "metal"
 	GPUTypeCPU    GPUType = "cpu"
 )
 
@@ -40,7 +41,7 @@ func DetectGPU() GPUInfo {
 }
 
 // detectGPUInner probes for GPU acceleration only.
-// Priority: NVIDIA (CUDA) → AMD (ROCm) → CPU fallback.
+// Priority: NVIDIA (CUDA) → AMD (ROCm) → Apple Silicon (Metal) → CPU fallback.
 func detectGPUInner() GPUInfo {
 	// Check for manual CPU override
 	if _, err := os.Stat(config.DataPath(".force_cpu")); err == nil {
@@ -57,6 +58,9 @@ func detectGPUInner() GPUInfo {
 		return info
 	}
 	if info, ok := detectAMD(); ok {
+		return info
+	}
+	if info, ok := detectAppleSilicon(); ok {
 		return info
 	}
 	return GPUInfo{
@@ -295,6 +299,51 @@ func detectAMDSysfs() (GPUInfo, bool) {
 		VRAM:        vram,
 		GPULayers:   layers,
 		Description: fmt.Sprintf("AMD GPU (device %s) — %d MB VRAM — ROCm recommended", deviceID, vram),
+	}, true
+}
+
+// ─── Apple Silicon (Metal) Detection ──────────────────────────────
+
+func detectAppleSilicon() (GPUInfo, bool) {
+	if runtime.GOOS != "darwin" {
+		return GPUInfo{}, false
+	}
+
+	// Check for Apple Silicon via sysctl
+	out, err := exec.Command("sysctl", "-n", "hw.optional.arm64").Output()
+	if err != nil || strings.TrimSpace(string(out)) != "1" {
+		log.Printf("GPU: not Apple Silicon (sysctl hw.optional.arm64: %v)", err)
+		return GPUInfo{}, false
+	}
+
+	// Get chip name (e.g. "Apple M3 Pro")
+	chipOut, err := exec.Command("sysctl", "-n", "machdep.cpu.brand_string").Output()
+	chipName := "Apple Silicon"
+	if err == nil {
+		if c := strings.TrimSpace(string(chipOut)); c != "" {
+			chipName = c
+		}
+	}
+
+	// Get total unified memory in MB
+	ramOut, err := exec.Command("sysctl", "-n", "hw.memsize").Output()
+	ramMB := 0
+	if err == nil {
+		if v, parseErr := strconv.ParseInt(strings.TrimSpace(string(ramOut)), 10, 64); parseErr == nil {
+			ramMB = int(v / (1024 * 1024))
+		}
+	}
+
+	// Apple Silicon uses unified memory — offload all layers
+	// Models up to ~30B params fit comfortably in 16GB+ unified memory.
+	log.Printf("GPU detected: %s (%d MB unified memory — Metal acceleration)", chipName, ramMB)
+
+	return GPUInfo{
+		Type:        GPUTypeMetal,
+		Name:        chipName,
+		VRAM:        ramMB,
+		GPULayers:   999,
+		Description: fmt.Sprintf("%s — %d MB Unified Memory — Metal acceleration", chipName, ramMB),
 	}, true
 }
 

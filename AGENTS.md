@@ -174,6 +174,8 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - ~~Sessions init not mutex-protected~~ → fixed: sessionsMu.Lock() added.
 - ~~orchestraConductor read without mutex~~ → fixed: providerMu.RLock() added.
 - ~~proactiveDecide swallows LLM errors~~ → fixed: empty/error responses now return proper errors.
+- ~~Nil client dereference when no model loaded~~ → fixed: nil guards added in callLLMStream and callLLM.
+- ~~Silent error discards in memory/selfclone/whatsapp~~ → fixed: errors now logged instead of silently ignored.
 - CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 - **Rate limiting** — token-bucket per-IP (100 req/s) on all handlers via `rateLimitMiddleware`.
 - **Structured logging** — `internal/logx` wraps `log/slog` with levels; `webserver/server.go` migrated as example. Remaining packages still use `log.Printf` (gradual migration).
@@ -208,6 +210,10 @@ Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
 - **Proactive öneri hataları yutuluyordu** — LLM hatalı cevap verdiğinde bile öneri olarak kaydediliyordu. Artık hatalar raporlanıyor.
 - **Takvim dialog hafıza sızıntısı** — TextController'lar dialog kapatılınca temizlenmiyordu.
 - **Versiyon kontrolü yanlış uyarı** — Backend erişilemezse eski versiyon dönüyordu, yanlış "güncelleme var" bildirimi geliyordu.
+- **WhatsApp QR ekranı compile hatası** — Fazladan parantez nedeniyle QR eşleştirme ekranı hiç açılmıyordu.
+- **Güvensiz tip dönüşümleri** — Backend response'u beklenmedik formattaysa `as List`/`as Map` cast'leri crash oluşturuyordu. 5 farklı noktada `is` kontrolü eklendi.
+- **Agent ekranı sessizce başarısız oluyordu** — `createAgentChat` hatası kullanıcıya gösterilmiyordu. Try-catch ve snackbar eklendi.
+- **Skill dialog Windows uyumsuzluğu** — Unix path hint'ı Windows'ta gösteriliyordu. Platform algılama eklendi.
 
 ---
 

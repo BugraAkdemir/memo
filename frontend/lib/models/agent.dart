@@ -78,7 +78,7 @@ class AgentPermission {
 
   Map<String, dynamic> toJson() => {
         'id': id,
-        'tool': toolName,
+        'tool_name': toolName,
         'args_hash': argsHash,
         'policy': policy,
         'created_at': createdAt,

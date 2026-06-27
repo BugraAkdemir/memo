@@ -195,7 +195,7 @@ type APIConfig struct {
 }
 
 type LlamaConfig struct {
-	EngineMode       string  `yaml:"engine_mode" json:"engine_mode"`               // "auto", "cpu", "nvidia", "amd"
+	EngineMode       string  `yaml:"engine_mode" json:"engine_mode"`               // "auto", "cpu", "nvidia", "amd", "metal"
 	BinaryPath       string  `yaml:"binary_path" json:"binary_path"`               // path to llama-server, auto-detected if empty
 	Port             int     `yaml:"port" json:"port"`                             // default 8081
 	EmbeddingPort    int     `yaml:"embedding_port" json:"embedding_port"`         // default 8082

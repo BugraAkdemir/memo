@@ -39,7 +39,7 @@ remote_access:
     tailscale_funnel: false
 
 llama:
-    engine_mode: cpu       # cpu | nvidia | amd
+    engine_mode: auto      # auto | cpu | nvidia | amd | metal
     binary_path: ""
     port: 8081
     embedding_port: 8082

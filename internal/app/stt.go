@@ -54,7 +54,9 @@ func (a *App) startSTTServer() {
 		return
 	}
 
+	a.whisperMu.Lock()
 	a.whisperServer = ws
+	a.whisperMu.Unlock()
 	logx.Printf("STT: whisper server ready on :%d", port)
 }
 
@@ -237,10 +239,13 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 
 // TranscribeAudio sends raw audio bytes to the whisper server for transcription.
 func (a *App) TranscribeAudio(audioData []byte) (string, error) {
-	if a.whisperServer == nil {
+	a.whisperMu.RLock()
+	ws := a.whisperServer
+	a.whisperMu.RUnlock()
+	if ws == nil {
 		return "", fmt.Errorf("STT: whisper server not started")
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
-	return a.whisperServer.Transcribe(ctx, audioData)
+	return ws.Transcribe(ctx, audioData)
 }

@@ -113,6 +113,7 @@ type App struct {
 	isIncognito       bool
 	incognitoMessages []api.Message
 	whisperServer      *whisper.Server
+	whisperMu          sync.RWMutex
 	webServer         *webserver.Server
 	modelStore        *modelstore.Store
 
@@ -473,8 +474,11 @@ func (a *App) Shutdown(ctx context.Context) {
 		}
 		a.storeMu.Unlock()
 
-		if a.whisperServer != nil {
-			if err := a.whisperServer.Stop(); err != nil {
+		a.whisperMu.RLock()
+		ws := a.whisperServer
+		a.whisperMu.RUnlock()
+		if ws != nil {
+			if err := ws.Stop(); err != nil {
 				logx.Printf("whisper shutdown: %v", err)
 			}
 		}

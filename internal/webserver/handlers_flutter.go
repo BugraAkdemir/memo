@@ -1729,19 +1729,15 @@ func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Reque
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "shutting_down"})
 
-	go func() {
-		t := time.NewTimer(200 * time.Millisecond)
-		defer t.Stop()
-		select {
-		case <-t.C:
-		case <-r.Context().Done():
-		}
+	if s.fullBridge != nil {
+		s.fullBridge.Shutdown(context.Background())
+	}
 
-		if s.fullBridge != nil {
-			s.fullBridge.Shutdown(context.Background())
-		}
-
-		// Signal the wrapper script (run_memo.sh) to relaunch.
-		os.Exit(42)
-	}()
+	// Trigger SIGINT so main() runs the deferred Shutdown chain (WAL
+	// checkpoint, DB flush, in-flight HTTP drain).  os.Exit() would skip
+	// deferred functions and corrupt SQLite WAL files.
+	p, _ := os.FindProcess(os.Getpid())
+	if p != nil {
+		p.Signal(os.Interrupt)
+	}
 }

@@ -98,6 +98,7 @@ func (r *eventRing) snapshot() []AppEvent {
 
 // App is the central application object.
 type App struct {
+	shutdownOnce      sync.Once          // guards Shutdown() against double-call
 	lifecycleCtx      context.Context    // goroutine lifecycle only — NOT for request-scoped operations
 	lifecycleCancel   context.CancelFunc // cancels lifecycleCtx on shutdown
 	client            *api.Client
@@ -452,59 +453,61 @@ func (a *App) StartWebServerHTTP(port int) {
 
 // Shutdown cleans up all running background processes and servers.
 func (a *App) Shutdown(ctx context.Context) {
-	logx.Info("Memo shutting down, cleaning up background processes...")
+	a.shutdownOnce.Do(func() {
+		logx.Info("Memo shutting down, cleaning up background processes...")
 
-	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
-	// reminders, WhatsApp intent loop, observer analysis, etc.)
-	if a.lifecycleCancel != nil {
-		a.lifecycleCancel()
-	}
+		// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
+		// reminders, WhatsApp intent loop, observer analysis, etc.)
+		if a.lifecycleCancel != nil {
+			a.lifecycleCancel()
+		}
 
-	close(a.memorySaveCh)
+		close(a.memorySaveCh)
 
-	if a.whisperServer != nil {
-		if err := a.whisperServer.Stop(); err != nil {
-			logx.Printf("whisper shutdown: %v", err)
+		if a.whisperServer != nil {
+			if err := a.whisperServer.Stop(); err != nil {
+				logx.Printf("whisper shutdown: %v", err)
+			}
 		}
-	}
-	if a.llamaServer != nil {
-		if err := a.llamaServer.Stop(); err != nil {
-			logx.Printf("llama chat shutdown: %v", err)
+		if a.llamaServer != nil {
+			if err := a.llamaServer.Stop(); err != nil {
+				logx.Printf("llama chat shutdown: %v", err)
+			}
 		}
-	}
-	if a.llamaEmbedServer != nil {
-		if err := a.llamaEmbedServer.Stop(); err != nil {
-			logx.Printf("llama embedding shutdown: %v", err)
+		if a.llamaEmbedServer != nil {
+			if err := a.llamaEmbedServer.Stop(); err != nil {
+				logx.Printf("llama embedding shutdown: %v", err)
+			}
 		}
-	}
-	if a.ngrokServer != nil {
-		a.ngrokServer.Stop()
-		a.ngrokServer = nil
-	}
-	if a.tailscaleTunnel != nil {
-		a.tailscaleTunnel.Stop()
-	}
-	if a.observerStore != nil {
-		if err := a.observerStore.Close(); err != nil {
-			logx.Printf("observer shutdown: %v", err)
+		if a.ngrokServer != nil {
+			a.ngrokServer.Stop()
+			a.ngrokServer = nil
 		}
-	}
-	if a.calendarStore != nil {
-		if err := a.calendarStore.Close(); err != nil {
-			logx.Printf("calendar shutdown: %v", err)
+		if a.tailscaleTunnel != nil {
+			a.tailscaleTunnel.Stop()
 		}
-	}
-	if a.mood != nil {
-		if err := a.mood.Close(); err != nil {
-			logx.Printf("mood shutdown: %v", err)
+		if a.observerStore != nil {
+			if err := a.observerStore.Close(); err != nil {
+				logx.Printf("observer shutdown: %v", err)
+			}
 		}
-	}
-	if a.webServer != nil {
-		if err := a.webServer.Stop(); err != nil {
-			logx.Printf("webserver shutdown: %v", err)
+		if a.calendarStore != nil {
+			if err := a.calendarStore.Close(); err != nil {
+				logx.Printf("calendar shutdown: %v", err)
+			}
 		}
-	}
-	stopRecordingProcess()
+		if a.mood != nil {
+			if err := a.mood.Close(); err != nil {
+				logx.Printf("mood shutdown: %v", err)
+			}
+		}
+		if a.webServer != nil {
+			if err := a.webServer.Stop(); err != nil {
+				logx.Printf("webserver shutdown: %v", err)
+			}
+		}
+		stopRecordingProcess()
+	})
 }
 
 // runObserverAnalysis runs the learning system's analysis loop.

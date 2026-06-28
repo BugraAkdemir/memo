@@ -925,6 +925,13 @@ func (s *Store) incrementRetrieveCounts(ids []string) {
 	if len(ids) == 0 {
 		return
 	}
+	s.mu.RLock()
+	closed := s.closed
+	db := s.db
+	s.mu.RUnlock()
+	if closed || db == nil {
+		return
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	placeholders := strings.Repeat("?,", len(ids))
@@ -933,7 +940,7 @@ func (s *Store) incrementRetrieveCounts(ids []string) {
 	for i, id := range ids {
 		args[i] = id
 	}
-	if err := s.db.Write(ctx, func(tx *sql.Tx) error {
+	if err := db.Write(ctx, func(tx *sql.Tx) error {
 		_, err := tx.Exec(
 			"UPDATE memories SET retrieve_count = retrieve_count + 1 WHERE uuid IN ("+placeholders+")",
 			args...,
@@ -1196,7 +1203,9 @@ func (s *Store) Close() error {
 	if s.stopCh != nil {
 		close(s.stopCh)
 	}
-	return s.db.Close()
+	err := s.db.Close()
+	s.db = nil
+	return err
 }
 
 func formatMemoryAge(timestamp string) string {

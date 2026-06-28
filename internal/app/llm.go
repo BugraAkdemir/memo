@@ -27,25 +27,19 @@ func estimateContentTokens(s string) int {
 // resolveAgentProvider returns the provider router and model name the agent
 // pipeline should use.
 func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
-	a.providerMu.RLock()
+	a.providerMu.Lock()
 	activeName := a.activeProviderName
 	providerRouter := a.providerRouter
 	providerCfgMgr := a.providerCfgMgr
-	a.providerMu.RUnlock()
 
-	if activeName != "" {
-		if providerRouter == nil && providerCfgMgr != nil {
-			if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
-				a.providerMu.Lock()
-				a.providerRouter = provider.NewRouter(configs)
-				// Restrict the freshly built router to the active provider, otherwise
-				// the agent would route across every enabled provider instead of the
-				// one the user selected.
-				a.providerRouter.SetActiveProvider(activeName)
-				providerRouter = a.providerRouter
-				a.providerMu.Unlock()
-			}
+	if activeName != "" && providerRouter == nil && providerCfgMgr != nil {
+		if configs := providerCfgMgr.GetEnabled(); len(configs) > 0 {
+			a.providerRouter = provider.NewRouter(configs)
+			a.providerRouter.SetActiveProvider(activeName)
+			providerRouter = a.providerRouter
 		}
+	}
+	a.providerMu.Unlock()
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {
 			return nil, "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
 		}

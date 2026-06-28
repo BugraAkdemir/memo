@@ -14,6 +14,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"sync"
 	"time"
 
@@ -157,7 +158,8 @@ func (cm *ConfigManager) GetAll() []ProviderConfig {
 	return configs
 }
 
-// GetEnabled returns only enabled provider configs.
+// GetEnabled returns only enabled provider configs, sorted by Priority ascending
+// (lower number = higher priority, matching the router's behaviour).
 func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 	cm.mu.RLock()
 	defer cm.mu.RUnlock()
@@ -168,6 +170,9 @@ func (cm *ConfigManager) GetEnabled() []ProviderConfig {
 			enabled = append(enabled, cfg)
 		}
 	}
+	sort.Slice(enabled, func(i, j int) bool {
+		return enabled[i].Priority < enabled[j].Priority
+	})
 	return enabled
 }
 

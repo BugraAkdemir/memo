@@ -361,7 +361,7 @@ func (a *App) Startup(ctx context.Context) {
 	configs := a.providerCfgMgr.GetEnabled()
 	if len(configs) > 0 {
 		a.providerRouter = provider.NewRouter(configs)
-		hctx, hcancel := context.WithCancel(ctx)
+		hctx, hcancel := context.WithCancel(a.lifecycleCtx)
 		a.healthCheckCancel = hcancel
 		go a.providerRouter.HealthCheck(hctx, 5*time.Minute)
 		logx.Printf("Provider system initialized with %d enabled provider(s)", len(configs))

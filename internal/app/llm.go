@@ -25,7 +25,9 @@ func estimateContentTokens(s string) int {
 }
 
 // resolveAgentProvider returns the provider router and model name the agent
-// pipeline should use.
+// pipeline should use. The write lock is held continuously during the nil->
+// router creation window to prevent a second goroutine from racing in and
+// creating a second router (which would silently replace the first one).
 func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 	a.providerMu.Lock()
 	activeName := a.activeProviderName
@@ -40,6 +42,8 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 		}
 	}
 	a.providerMu.Unlock()
+
+	if activeName != "" {
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {
 			return nil, "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
 		}

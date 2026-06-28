@@ -56,6 +56,8 @@ type Client struct {
 	reconnecting bool
 	lastError    string
 	startMu      sync.Mutex
+	stopCh       chan struct{}
+	stopOnce     sync.Once
 }
 
 // HasRegisteredDevice reports whether a paired WhatsApp session already exists
@@ -86,6 +88,7 @@ func NewClient(cfg Config) *Client {
 		// Channels are never closed so Start() can be called multiple times safely.
 		msgCh: make(chan Message, 256),
 		errCh: make(chan error, 4),
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -169,8 +172,12 @@ func (c *Client) Start(ctx context.Context) error {
 	return nil
 }
 
-// Stop disconnects from WhatsApp Web without closing channels (so Start can be called again).
+// Stop disconnects from WhatsApp Web and cancels auto-reconnect.
+// Channels are not closed so Start() can be called again.
 func (c *Client) Stop() {
+	c.stopOnce.Do(func() {
+		close(c.stopCh)
+	})
 	c.startMu.Lock()
 	defer c.startMu.Unlock()
 	if c.waClient != nil {
@@ -422,12 +429,18 @@ func (c *Client) handleEvent(evt interface{}) {
 	}
 }
 
-// autoReconnect attempts to reconnect with exponential backoff.
+// autoReconnect attempts to reconnect with exponential backoff, aborting
+// immediately when stopCh is closed (e.g. during Shutdown).
 func (c *Client) autoReconnect() {
 	c.reconnecting = true
 	backoff := []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second, 60 * time.Second}
 	for attempt, delay := range backoff {
-		time.Sleep(delay)
+		select {
+		case <-c.stopCh:
+			c.reconnecting = false
+			return
+		case <-time.After(delay):
+		}
 
 		c.startMu.Lock()
 		alive := c.started && c.waClient != nil

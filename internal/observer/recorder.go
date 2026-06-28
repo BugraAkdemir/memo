@@ -7,23 +7,35 @@ import (
 	"memo/internal/logx"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
+
+// collectBuffer is the maximum number of buffered observations before the
+// recorder starts dropping — prevents unbounded memory growth under heavy load.
+const collectBuffer = 256
 
 // Recorder is the integration hook used by the rest of the application. It
 // wraps a Store and exposes intention-revealing methods (RecordMessage,
 // RecordAgentRun, …) instead of raw Observation writes.
 //
 // Every method is safe to call on a nil *Recorder and writes happen on a
-// background goroutine, so recording never blocks or breaks the chat path even
-// if the learning database is unavailable.
+// single background goroutine, so recording never blocks or breaks the chat
+// path even if the learning database is unavailable. If the buffer is full,
+// the observation is dropped (with a warning) to avoid unbounded goroutine
+// growth.
 type Recorder struct {
-	store *Store
+	store     *Store
+	recCh     chan Observation
+	startOnce sync.Once
 }
 
 // NewRecorder wraps a store. Passing a nil store yields a no-op recorder.
 func NewRecorder(store *Store) *Recorder {
-	return &Recorder{store: store}
+	return &Recorder{
+		store: store,
+		recCh: make(chan Observation, collectBuffer),
+	}
 }
 
 // enabled reports whether the recorder can actually write.
@@ -31,16 +43,29 @@ func (r *Recorder) enabled() bool {
 	return r != nil && r.store != nil
 }
 
-// record fires off a single observation in the background.
+// record enqueues a single observation to be written on the background worker.
 func (r *Recorder) record(obs Observation) {
 	if !r.enabled() {
 		return
 	}
-	go func() {
+	r.startOnce.Do(func() {
+		go r.worker()
+	})
+	select {
+	case r.recCh <- obs:
+	default:
+		logx.Printf("OBSERVER: record buffer full, dropping (%s)", obs.ActivityType)
+	}
+}
+
+// worker drains the observation channel and persists each one to the store.
+// It runs for the lifetime of the Recorder.
+func (r *Recorder) worker() {
+	for obs := range r.recCh {
 		if _, err := r.store.Record(obs); err != nil {
 			logx.Printf("OBSERVER: record (%s): %v", obs.ActivityType, err)
 		}
-	}()
+	}
 }
 
 // RecordMessage logs that the user sent a chat message. The message text is

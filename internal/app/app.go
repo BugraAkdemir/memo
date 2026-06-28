@@ -243,6 +243,8 @@ func (a *App) Startup(ctx context.Context) {
 	embeddingFunc := memory.NewEmbeddingFunc(initClient, cfg.API.EmbeddingModel)
 
 	go func() {
+		mCtx, mCancel := context.WithTimeout(a.lifecycleCtx, 30*time.Second)
+		defer mCancel()
 		store, err := memory.NewStore(memory.StoreConfig{
 			Dir:           cfg.Memory.PersistDir,
 			Dimension:     cfg.Memory.EmbeddingDimension,

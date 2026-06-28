@@ -27,6 +27,8 @@ type Manager struct {
 	errCapture bytes.Buffer
 	stopping   bool
 	authToken  string
+	stopCh     chan struct{}
+	stopOnce   sync.Once
 }
 
 func NewManager(binPath string) *Manager {
@@ -36,6 +38,7 @@ func NewManager(binPath string) *Manager {
 	return &Manager{
 		binPath: binPath,
 		apiPort: 4040,
+		stopCh:  make(chan struct{}),
 	}
 }
 
@@ -139,7 +142,11 @@ func (m *Manager) monitor() {
 		m.errCapture.Reset()
 		m.mu.Unlock()
 
-		time.Sleep(5 * time.Second)
+		select {
+		case <-m.stopCh:
+			return
+		case <-time.After(5 * time.Second):
+		}
 
 		m.mu.Lock()
 		if m.stopping {
@@ -158,6 +165,9 @@ func (m *Manager) monitor() {
 }
 
 func (m *Manager) Stop() error {
+	m.stopOnce.Do(func() {
+		close(m.stopCh)
+	})
 	m.mu.Lock()
 	m.stopping = true
 	cmd := m.cmd
@@ -198,7 +208,11 @@ func (m *Manager) LastError() string {
 
 func (m *Manager) pollPublicURL() {
 	for i := 0; i < 30; i++ {
-		time.Sleep(time.Second)
+		select {
+		case <-m.stopCh:
+			return
+		case <-time.After(time.Second):
+		}
 		m.mu.Lock()
 		r := m.running
 		m.mu.Unlock()

@@ -15,19 +15,19 @@ final whatsAppStatusProvider = StateNotifierProvider.autoDispose<
 
 final whatsAppChatsProvider = FutureProvider<List<WhatsAppChatSummary>>((ref) async {
   final data = await ref.read(apiClientProvider).getWhatsAppChats();
-  return data.map((e) => WhatsAppChatSummary.fromJson(e as Map<String, dynamic>)).toList();
+  return data.where((e) => e is Map<String, dynamic>).map((e) => WhatsAppChatSummary.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final whatsAppMessagesProvider =
     FutureProvider.family<List<WhatsAppMessage>, String>((ref, jid) async {
   final data = await ref.read(apiClientProvider).getWhatsAppMessages(jid);
-  return data.map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
+  return data.where((e) => e is Map<String, dynamic>).map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final whatsAppSearchProvider =
     FutureProvider.family<List<WhatsAppMessage>, String>((ref, query) async {
   final data = await ref.read(apiClientProvider).searchWhatsApp(query);
-  return data.map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
+  return data.where((e) => e is Map<String, dynamic>).map((e) => WhatsAppMessage.fromJson(e as Map<String, dynamic>)).toList();
 });
 
 final whatsAppChatModeProvider =

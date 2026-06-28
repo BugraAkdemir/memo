@@ -26,6 +26,7 @@ class _ProviderConfigDialogState
   late TextEditingController _baseUrlCtrl;
   late TextEditingController _modelCtrl;
   late TextEditingController _contextCtrl;
+  late TextEditingController _priorityCtrl;
   late bool _enabled;
   bool _testing = false;
   bool? _testResult;
@@ -64,6 +65,11 @@ class _ProviderConfigDialogState
           ? '${existing?.contextTokens ?? 0}'
           : '',
     );
+    _priorityCtrl = TextEditingController(
+      text: (existing?.priority ?? 0) > 0
+          ? '${existing?.priority ?? 0}'
+          : '',
+    );
     // New providers default to ENABLED. Previously they were added disabled,
     // so users would add a provider, see nothing work, and not know why.
     _enabled = existing?.enabled ?? true;
@@ -76,6 +82,7 @@ class _ProviderConfigDialogState
     _baseUrlCtrl.dispose();
     _modelCtrl.dispose();
     _contextCtrl.dispose();
+    _priorityCtrl.dispose();
     super.dispose();
   }
 
@@ -244,8 +251,8 @@ class _ProviderConfigDialogState
         model: _modelCtrl.text.trim(),
         enabled: _enabled,
         contextTokens: int.tryParse(_contextCtrl.text.trim()) ?? 0,
+        priority: int.tryParse(_priorityCtrl.text.trim()) ?? existing?.priority ?? 0,
         // Preserve advanced fields the dialog doesn't edit.
-        priority: existing?.priority ?? 0,
         temperature: existing?.temperature ?? 0.7,
         topP: existing?.topP ?? 0.9,
         maxTokens: existing?.maxTokens ?? 0,
@@ -533,6 +540,17 @@ class _ProviderConfigDialogState
                           labelText: 'Bağlam penceresi (token)',
                           border: OutlineInputBorder(),
                           helperText: 'Boş = varsayılan. Örn. 1000000 = 1M.',
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      TextField(
+                        controller: _priorityCtrl,
+                        keyboardType: TextInputType.number,
+                        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                        decoration: const InputDecoration(
+                          labelText: 'Öncelik (Priority)',
+                          border: OutlineInputBorder(),
+                          helperText: 'Yüksek = tercih edilir. Boş = 0.',
                         ),
                       ),
                     ],

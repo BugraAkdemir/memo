@@ -47,9 +47,9 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 		TailscaleFunnel:   a.cfg.RemoteAccess.TailscaleFunnel,
 		Beta:              a.cfg.Beta,
 	}
-	if a.webServer != nil {
-		status.Running = a.webServer.IsRunning()
-		status.Addresses = a.webServer.GetAddresses()
+	if ws := a.getWebServer(); ws != nil {
+		status.Running = ws.IsRunning()
+		status.Addresses = ws.GetAddresses()
 	}
 	if a.ngrokServer != nil {
 		if a.ngrokServer.IsRunning() {
@@ -81,11 +81,12 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 
 // SetRemoteAccess enables or disables remote access and restarts the web server.
 func (a *App) SetRemoteAccess(enabled bool, port int) error {
-	if a.webServer == nil {
+	ws := a.getWebServer()
+	if ws == nil {
 		return fmt.Errorf("server not initialized")
 	}
 
-	if enabled == a.remoteAccessEnabled && a.webServer.GetPort() == port && a.cfg.RemoteAccess.NgrokMode == (a.ngrokServer != nil) {
+	if enabled == a.remoteAccessEnabled && ws.GetPort() == port && a.cfg.RemoteAccess.NgrokMode == (a.ngrokServer != nil) {
 		return nil
 	}
 
@@ -121,14 +122,14 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 		return fmt.Errorf("save config: %w", err)
 	}
 
-	if err := a.webServer.Stop(); err != nil {
+	if err := ws.Stop(); err != nil {
 		logx.Printf("Error stopping server: %v", err)
 	}
 	addr := "127.0.0.1"
 	if enabled {
 		addr = "0.0.0.0"
 	}
-	return a.webServer.StartHTTPWithAddr(port, addr)
+	return ws.StartHTTPWithAddr(port, addr)
 }
 
 // SetNgrokMode configures ngrok tunnelling and optionally restarts remote access.
@@ -154,16 +155,16 @@ func generateToken() string {
 
 // GetListenAddr returns the current listen address of the web server.
 func (a *App) GetListenAddr() string {
-	if a.webServer == nil {
-		return "127.0.0.1"
+	if ws := a.getWebServer(); ws != nil {
+		return ws.GetListenAddr()
 	}
-	return a.webServer.GetListenAddr()
+	return "127.0.0.1"
 }
 
 // SetListenAddr changes the listen address of the web server.
 func (a *App) SetListenAddr(addr string) {
-	if a.webServer != nil {
-		a.webServer.SetListenAddr(addr)
+	if ws := a.getWebServer(); ws != nil {
+		ws.SetListenAddr(addr)
 	}
 }
 
@@ -177,10 +178,12 @@ func (a *App) SetNgrokAutoStart(autoStart bool) {
 
 // startWebServerForRemote is the internal helper used during startup for TLS remote access.
 func (a *App) startWebServerForRemote(port int) {
-	if a.webServer == nil {
-		a.webServer = webserver.New(a)
+	ws := a.getWebServer()
+	if ws == nil {
+		ws = webserver.New(a)
+		a.setWebServer(ws)
 	}
-	if err := a.webServer.Start(port); err != nil {
+	if err := ws.Start(port); err != nil {
 		logx.Printf("Remote access server: %v", err)
 	}
 }

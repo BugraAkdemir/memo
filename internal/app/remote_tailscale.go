@@ -32,8 +32,8 @@ func (a *App) startTailscale(port int) error {
 	// Proxy to the port the web server is actually listening on, not the
 	// (possibly stale) value passed from the UI.
 	target := port
-	if a.webServer != nil && a.webServer.IsRunning() {
-		if p := a.webServer.GetPort(); p > 0 {
+	if ws := a.getWebServer(); ws != nil && ws.IsRunning() {
+		if p := ws.GetPort(); p > 0 {
 			target = p
 		}
 	}
@@ -80,8 +80,8 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 	}
 
 	// Ensure the local web server is up (LAN bind) so the tunnel has a target.
-	if a.webServer != nil && !a.webServer.IsRunning() {
-		if err := a.webServer.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
+	if ws := a.getWebServer(); ws != nil && !ws.IsRunning() {
+		if err := ws.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
 			return fmt.Errorf("start web server: %w", err)
 		}
 	}
@@ -132,8 +132,8 @@ func (a *App) startupTailscale() {
 		return
 	}
 	port := rc.Port
-	if a.webServer != nil && !a.webServer.IsRunning() {
-		if err := a.webServer.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
+	if ws := a.getWebServer(); ws != nil && !ws.IsRunning() {
+		if err := ws.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
 			logx.Printf("[tailscale] web server start: %v", err)
 			return
 		}

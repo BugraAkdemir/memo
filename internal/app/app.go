@@ -115,6 +115,7 @@ type App struct {
 	whisperServer      *whisper.Server
 	whisperMu          sync.RWMutex
 	webServer         *webserver.Server
+	webMu             sync.RWMutex
 	modelStore        *modelstore.Store
 
 	waClient         *whatsapp.Client
@@ -446,10 +447,13 @@ func (a *App) StartWebServerHTTP(port int) {
 	if a.remoteAccessEnabled {
 		addr = "0.0.0.0"
 	}
-	a.webServer = webserver.New(a)
-	if err := a.webServer.StartHTTPWithAddr(port, addr); err != nil {
+	ws := webserver.New(a)
+	if err := ws.StartHTTPWithAddr(port, addr); err != nil {
 		logx.Printf("Flutter server: %v", err)
 	}
+	a.webMu.Lock()
+	a.webServer = ws
+	a.webMu.Unlock()
 }
 
 // Shutdown cleans up all running background processes and servers.
@@ -514,13 +518,30 @@ func (a *App) Shutdown(ctx context.Context) {
 				logx.Printf("mood shutdown: %v", err)
 			}
 		}
-		if a.webServer != nil {
-			if err := a.webServer.Stop(); err != nil {
+		a.webMu.RLock()
+		webSrv := a.webServer
+		a.webMu.RUnlock()
+		if webSrv != nil {
+			if err := webSrv.Stop(); err != nil {
 				logx.Printf("webserver shutdown: %v", err)
 			}
 		}
 		stopRecordingProcess()
 	})
+}
+
+// getWebServer returns the current web server under read lock.
+func (a *App) getWebServer() *webserver.Server {
+	a.webMu.RLock()
+	defer a.webMu.RUnlock()
+	return a.webServer
+}
+
+// setWebServer atomically sets the web server under write lock.
+func (a *App) setWebServer(s *webserver.Server) {
+	a.webMu.Lock()
+	a.webServer = s
+	a.webMu.Unlock()
 }
 
 // runObserverAnalysis runs the learning system's analysis loop.

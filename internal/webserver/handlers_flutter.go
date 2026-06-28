@@ -1730,7 +1730,12 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]string{"status": "shutting_down"})
 
 	go func() {
-		time.Sleep(200 * time.Millisecond)
+		t := time.NewTimer(200 * time.Millisecond)
+		defer t.Stop()
+		select {
+		case <-t.C:
+		case <-r.Context().Done():
+		}
 
 		if s.fullBridge != nil {
 			s.fullBridge.Shutdown(context.Background())

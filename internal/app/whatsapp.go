@@ -64,7 +64,7 @@ func (a *App) initWhatsApp() {
 	tools.WhatsAppClient = waToolAdapter{a.waClient}
 
 	go func() {
-		if err := a.waClient.Start(context.Background()); err != nil {
+		if err := a.waClient.Start(a.lifecycleCtx); err != nil {
 			log.Printf("WhatsApp: auto-connect error: %v", err)
 		}
 	}()

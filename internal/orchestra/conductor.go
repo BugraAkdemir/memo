@@ -9,6 +9,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strings"
 	"sync"
 	"time"
@@ -585,6 +586,19 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	result.DurationMs = time.Since(start).Milliseconds()
 	result.TokensIn = estimateTokens(systemPrompt + contextMsg)
 	if err != nil {
+		// Try fallback providers when the primary one fails
+		if fbResp, fbErr := c.tryFallbackProviders(taskCtx, task, req, index, onProgress); fbErr == nil {
+			log.Printf("ORCHESTRA: task %d (%s) succeeded via fallback provider", index, task.Role)
+			result.Content = fbResp.Content
+			result.TokensOut = estimateTokens(fbResp.Content)
+			result.DurationMs = time.Since(start).Milliseconds()
+			result.Error = ""
+			if onProgress != nil {
+				c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Content: fbResp.Content})
+			}
+			return result
+		}
+
 		log.Printf("ORCHESTRA: task %d (%s/%s) error: %v", index, task.ModelType, task.ModelName, err)
 		result.Error = err.Error()
 		if onProgress != nil {
@@ -599,6 +613,63 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 		}
 	}
 	return result
+}
+
+// tryFallbackProviders attempts the request with other enabled providers
+// when the primary provider for a task has failed. Tries providers in
+// priority order, skipping the one that already failed.
+func (c *Conductor) tryFallbackProviders(ctx context.Context, task OrchestraTask, req provider.ChatRequest, index int, onProgress ProgressFn) (*provider.ChatResponse, error) {
+	configs := c.getConfigs()
+	if len(configs) <= 1 {
+		return nil, fmt.Errorf("no fallback providers available")
+	}
+
+	// Sort by descending priority
+	sorted := make([]provider.ProviderConfig, 0, len(configs))
+	for _, cfg := range configs {
+		if cfg.Enabled {
+			sorted = append(sorted, cfg)
+		}
+	}
+	sort.SliceStable(sorted, func(i, j int) bool {
+		return sorted[i].Priority > sorted[j].Priority
+	})
+
+	// Skip the provider that already failed
+	primaryType := strings.TrimSpace(task.ModelType)
+	for _, cfg := range sorted {
+		cfgType := string(cfg.Type)
+		if cfgType == primaryType || cfg.Name == primaryType {
+			continue
+		}
+
+		fbCfg := cfg
+		fbCfg.Model = task.ModelName
+		fbProv, err := c.pf(fbCfg)
+		if err != nil {
+			log.Printf("ORCHESTRA: fallback provider %s/%s create failed: %v", cfg.Type, task.ModelName, err)
+			continue
+		}
+
+		log.Printf("ORCHESTRA: task %d trying fallback provider %s/%s", index, cfg.Type, task.ModelName)
+		if onProgress != nil {
+			c.safeProgress(onProgress, ProgressUpdate{
+				Type:      ProgressTaskStart,
+				Role:      task.Role,
+				Index:     index,
+				ModelType: string(cfg.Type),
+				ModelName: task.ModelName,
+				Content:   fmt.Sprintf("🔄 **%s** → fallback: %s/%s deneniyor...\n", task.Role, cfg.Type, task.ModelName),
+			})
+		}
+
+		resp, callErr := fbProv.ChatCompletion(ctx, req)
+		if callErr == nil {
+			return resp, nil
+		}
+		log.Printf("ORCHESTRA: fallback %s/%s also failed: %v", cfg.Type, task.ModelName, callErr)
+	}
+	return nil, fmt.Errorf("all fallback providers failed")
 }
 
 // retryTask calls fn, retrying on all errors (including rate limits) up to 2 times.

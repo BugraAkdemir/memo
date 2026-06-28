@@ -1034,7 +1034,7 @@ class MemoApiClient {
   /// Whether web-search mode is on (every message enriched with live results).
   Future<bool> getWebSearchEnabled() async {
     final res = await _dio.get('/api/websearch');
-    return (_guard<Map<String, dynamic>>(res.data)?)?['enabled'] == true;
+    return _guard<Map<String, dynamic>>(res.data)?['enabled'] == true;
   }
 
   /// Enable/disable web-search mode.
@@ -1045,7 +1045,7 @@ class MemoApiClient {
   /// Get WhatsApp chat mode state.
   Future<bool> getWhatsAppChatMode() async {
     final res = await _dio.get('/api/whatsapp/chat-mode');
-    return (_guard<Map<String, dynamic>>(res.data)?)?['enabled'] == true;
+    return _guard<Map<String, dynamic>>(res.data)?['enabled'] == true;
   }
 
   /// Set WhatsApp chat mode.

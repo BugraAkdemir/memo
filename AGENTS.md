@@ -151,7 +151,7 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 ### Flutter
 - ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.
 - `model_store_screen.dart` is 2469 lines — should be split into components.
-- Widespread missing `const` constructors.
+- ~~Widespread missing `const` constructors.~~ → fixed: 116 auto-fixes via `dart fix`.
 - ~~connectionStatusProvider polling runs forever~~ → still autoDispose but polling loop is acceptable for status checks.
 
 ### Flutter / Mobile

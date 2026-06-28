@@ -29,6 +29,13 @@ class MemoApiClient {
     );
   }
 
+  /// Runtime type guard — throws [Exception] instead of [TypeError] when
+  /// the backend returns an unexpected response type.
+  static T _guard<T>(dynamic data) {
+    if (data is T) return data;
+    throw Exception('Expected $T, got ${data.runtimeType}');
+  }
+
   // ─── Chat ───────────────────────────────────────────────────────
 
   /// Send a message and get the full reply (non-streaming).
@@ -98,7 +105,7 @@ class MemoApiClient {
   Future<List<ChatSession>> listChats() async {
     final res = await _dio.get('/api/chats');
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -151,7 +158,7 @@ class MemoApiClient {
   Future<List<ChatMessage>> getMessages() async {
     final res = await _dio.get('/api/messages');
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -194,7 +201,7 @@ class MemoApiClient {
       '/api/openrouter/connect',
       data: {'api_key': apiKey, 'model': model},
     );
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Fetch available models from OpenRouter for the given API key.
@@ -203,7 +210,7 @@ class MemoApiClient {
       '/api/openrouter/models',
       data: {'api_key': apiKey},
     );
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   // ─── Status ─────────────────────────────────────────────────────
@@ -211,7 +218,7 @@ class MemoApiClient {
   /// Check backend connection status.
   Future<Map<String, dynamic>> getStatus() async {
     final res = await _dio.get('/api/status');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   // ─── Incognito ──────────────────────────────────────────────────
@@ -251,7 +258,7 @@ class MemoApiClient {
   Future<List<MemoryFileInfo>> listMemoryFiles() async {
     final res = await _dio.get('/api/memory/files');
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => MemoryFileInfo.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -268,7 +275,7 @@ class MemoApiClient {
 
   Future<Map<String, dynamic>> getMemorySettings() async {
     final res = await _dio.get('/api/memory/settings');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   Future<void> updateMemorySettings({
@@ -296,7 +303,7 @@ class MemoApiClient {
       queryParameters: {'q': query},
     );
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -326,7 +333,7 @@ class MemoApiClient {
 
   Future<MemoryStats> getMemoryStats() async {
     final res = await _dio.get('/api/memory/stats');
-    return MemoryStats.fromJson(res.data as Map<String, dynamic>);
+    return MemoryStats.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   Future<List<MemorySearchResult>> filteredMemorySearch(
@@ -336,7 +343,7 @@ class MemoApiClient {
     if (tag != null && tag.isNotEmpty) params['tag'] = tag;
     final res = await _dio.get('/api/memory/search', queryParameters: params);
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -348,7 +355,7 @@ class MemoApiClient {
   Future<List<LocalModel>> listLocalModels() async {
     final res = await _dio.get('/api/models/local');
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => LocalModel.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -403,12 +410,12 @@ class MemoApiClient {
 
   Future<ServerStatus> getModelStatus() async {
     final res = await _dio.get('/api/models/status');
-    return ServerStatus.fromJson(res.data as Map<String, dynamic>);
+    return ServerStatus.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   Future<Map<String, dynamic>> getLlamaConfig() async {
     final res = await _dio.get('/api/models/config');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   Future<void> updateLlamaConfig({
@@ -454,14 +461,14 @@ class MemoApiClient {
 
   Future<ServerStatus> getEmbeddingStatus() async {
     final res = await _dio.get('/api/models/embedding/status');
-    return ServerStatus.fromJson(res.data as Map<String, dynamic>);
+    return ServerStatus.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   // ─── GPU ────────────────────────────────────────────────────────
 
   Future<GPUInfo> getGpuInfo() async {
     final res = await _dio.get('/api/gpu');
-    return GPUInfo.fromJson(res.data as Map<String, dynamic>);
+    return GPUInfo.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   // ─── Model Store (HF) ──────────────────────────────────────────
@@ -469,7 +476,7 @@ class MemoApiClient {
   Future<List<HFModelResult>> searchModels(String query) async {
     final res = await _dio.post('/api/models/search', data: {'query': query});
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => HFModelResult.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -482,7 +489,7 @@ class MemoApiClient {
       queryParameters: {'repo': repoId},
     );
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => GGUFFile.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -498,7 +505,7 @@ class MemoApiClient {
 
   Future<DownloadProgress> getDownloadProgress() async {
     final res = await _dio.get('/api/models/download/progress');
-    return DownloadProgress.fromJson(res.data as Map<String, dynamic>);
+    return DownloadProgress.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   Future<void> cancelDownload() async {
@@ -529,7 +536,7 @@ class MemoApiClient {
 
   Future<Map<String, dynamic>> getRemoteAccess() async {
     final res = await _dio.get('/api/remote-access');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   Future<void> setRemoteAccess(bool enabled, int port, {bool ngrokMode = false, String ngrokToken = ''}) async {
@@ -602,12 +609,12 @@ class MemoApiClient {
 
   Future<Map<String, dynamic>> getSyncAccount() async {
     final res = await _dio.get('/api/sync/account');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   Future<Map<String, dynamic>> getSyncSettings() async {
     final res = await _dio.get('/api/sync/settings');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   Future<void> updateSyncSettings({
@@ -654,7 +661,7 @@ class MemoApiClient {
     final res = await _dio.get('/api/export',
         queryParameters: {'include_models': includeModels.toString()},
         options: Options(responseType: ResponseType.bytes));
-    return res.data as List<int>;
+    return _guard<List<int>>(res.data);
   }
 
   /// Import from .memo bytes.
@@ -781,7 +788,7 @@ class MemoApiClient {
   Future<List<ProviderConfig>> getProviders() async {
     final res = await _dio.get('/api/providers');
     if (res.data is List) {
-      return (res.data as List)
+      return (_guard<List>(res.data))
           .map((e) => ProviderConfig.fromJson(e as Map<String, dynamic>))
           .toList();
     }
@@ -805,7 +812,7 @@ class MemoApiClient {
   /// Test a provider connection.
   Future<Map<String, dynamic>> testProvider(ProviderConfig config) async {
     final res = await _dio.post('/api/providers/test', data: config.toJson());
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Get active provider.
@@ -824,7 +831,7 @@ class MemoApiClient {
   /// Get orchestra config.
   Future<OrchestraConfig> getOrchestraConfig() async {
     final res = await _dio.get('/api/orchestra/config');
-    return OrchestraConfig.fromJson(res.data as Map<String, dynamic>);
+    return OrchestraConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   /// Update orchestra config.
@@ -857,7 +864,7 @@ class MemoApiClient {
   Future<List<Map<String, dynamic>>> getAgentPermissions() async {
     final res = await _dio.get('/api/agent/permissions');
     if (res.data is List) {
-      return (res.data as List).cast<Map<String, dynamic>>();
+      return (_guard<List>(res.data)).cast<Map<String, dynamic>>();
     }
     return [];
   }
@@ -894,7 +901,7 @@ class MemoApiClient {
   Future<List<Map<String, dynamic>>> listSkills() async {
     final res = await _dio.get('/api/skills/list');
     if (res.data is List) {
-      return (res.data as List).cast<Map<String, dynamic>>();
+      return (_guard<List>(res.data)).cast<Map<String, dynamic>>();
     }
     return [];
   }
@@ -902,13 +909,13 @@ class MemoApiClient {
   /// Get a specific skill by name.
   Future<Map<String, dynamic>> getSkill(String name) async {
     final res = await _dio.get('/api/skills/get/$name');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Install a skill from a local path.
   Future<Map<String, dynamic>> installSkill(String path) async {
     final res = await _dio.post('/api/skills/install', data: {'path': path});
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Remove an installed skill.
@@ -943,7 +950,7 @@ class MemoApiClient {
   Future<Map<String, dynamic>> checkVersion() async {
     try {
       final res = await _dio.get('/api/version/check');
-      return res.data as Map<String, dynamic>;
+      return _guard<Map<String, dynamic>>(res.data);
     } catch (e) {
       return {'current': 'unknown', 'latest': null, 'error': e.toString()};
     }
@@ -954,13 +961,13 @@ class MemoApiClient {
   /// Get WhatsApp connection status.
   Future<Map<String, dynamic>> getWhatsAppStatus() async {
     final res = await _dio.get('/api/whatsapp/status');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Start WhatsApp connection (triggers QR pairing if not logged in).
   Future<Map<String, dynamic>> startWhatsApp() async {
     final res = await _dio.post('/api/whatsapp/start');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Stop/disconnect WhatsApp (keeps session).
@@ -976,25 +983,25 @@ class MemoApiClient {
   /// Send a WhatsApp message.
   Future<Map<String, dynamic>> sendWhatsApp(String jid, String text) async {
     final res = await _dio.post('/api/whatsapp/send', data: {'jid': jid, 'text': text});
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Search WhatsApp messages.
   Future<List<dynamic>> searchWhatsApp(String query) async {
     final res = await _dio.get('/api/whatsapp/search', queryParameters: {'q': query});
-    return (res.data as List<dynamic>?) ?? [];
+    return (_guard<List<dynamic>?>(res.data)) ?? [];
   }
 
   /// Get WhatsApp chat list.
   Future<List<dynamic>> getWhatsAppChats() async {
     final res = await _dio.get('/api/whatsapp/chats');
-    return (res.data as List<dynamic>?) ?? [];
+    return (_guard<List<dynamic>?>(res.data)) ?? [];
   }
 
   /// Get messages for a specific WhatsApp chat.
   Future<List<dynamic>> getWhatsAppMessages(String jid) async {
     final res = await _dio.get('/api/whatsapp/messages', queryParameters: {'jid': jid});
-    return (res.data as List<dynamic>?) ?? [];
+    return (_guard<List<dynamic>?>(res.data)) ?? [];
   }
 
   /// Full URL for a chat's profile picture (served and cached by the backend).
@@ -1013,13 +1020,13 @@ class MemoApiClient {
       queryParameters: {'jid': jid, if (full) 'full': '1'},
       options: Options(responseType: ResponseType.bytes),
     );
-    return Uint8List.fromList(res.data as List<int>);
+    return Uint8List.fromList(_guard<List<int>>(res.data));
   }
 
   /// Get WhatsApp message statistics.
   Future<Map<String, dynamic>> getWhatsAppStats() async {
     final res = await _dio.get('/api/whatsapp/stats');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   // ─── Web Search ────────────────────────────────────────────────
@@ -1027,7 +1034,7 @@ class MemoApiClient {
   /// Whether web-search mode is on (every message enriched with live results).
   Future<bool> getWebSearchEnabled() async {
     final res = await _dio.get('/api/websearch');
-    return (res.data as Map<String, dynamic>?)?['enabled'] == true;
+    return (_guard<Map<String, dynamic>>(res.data)?)?['enabled'] == true;
   }
 
   /// Enable/disable web-search mode.
@@ -1038,7 +1045,7 @@ class MemoApiClient {
   /// Get WhatsApp chat mode state.
   Future<bool> getWhatsAppChatMode() async {
     final res = await _dio.get('/api/whatsapp/chat-mode');
-    return (res.data as Map<String, dynamic>?)?['enabled'] == true;
+    return (_guard<Map<String, dynamic>>(res.data)?)?['enabled'] == true;
   }
 
   /// Set WhatsApp chat mode.
@@ -1091,7 +1098,7 @@ class MemoApiClient {
   /// Get current proactive settings.
   Future<Map<String, dynamic>> getProactiveSettings() async {
     final res = await _dio.get('/api/proactive/settings');
-    return res.data as Map<String, dynamic>;
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Update proactive settings (enabled + level).
@@ -1137,7 +1144,7 @@ class MemoApiClient {
   /// Get learning settings (single model mode + model id).
   Future<Map<String, dynamic>> getLearningSettings() async {
     final res = await _dio.get('/api/learning/settings');
-    return Map<String, dynamic>.from(res.data as Map);
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
   }
 
   /// Update learning settings (single model mode + model id).
@@ -1157,7 +1164,7 @@ class MemoApiClient {
     if (to != null) params['to'] = to.toUtc().toIso8601String();
     final res = await _dio.get('/api/calendar/events', queryParameters: params);
     if (res.data is List) {
-      return List<Map<String, dynamic>>.from(res.data as List);
+      return List<Map<String, dynamic>>.from(_guard<List>(res.data));
     }
     return [];
   }
@@ -1169,7 +1176,7 @@ class MemoApiClient {
       'start_time': startTime.toUtc().toIso8601String(),
       'description': description,
     });
-    return Map<String, dynamic>.from(res.data as Map);
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
   }
 
   /// Delete a calendar event.
@@ -1180,7 +1187,7 @@ class MemoApiClient {
   /// Get calendar settings (reminder lead minutes).
   Future<Map<String, dynamic>> getCalendarSettings() async {
     final res = await _dio.get('/api/calendar/settings');
-    return Map<String, dynamic>.from(res.data as Map);
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
   }
 
   /// Update calendar settings (reminder lead minutes + time-guess toggle).

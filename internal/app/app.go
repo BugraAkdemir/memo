@@ -464,6 +464,15 @@ func (a *App) Shutdown(ctx context.Context) {
 
 		close(a.memorySaveCh)
 
+		a.storeMu.Lock()
+		if a.store != nil {
+			if err := a.store.Close(); err != nil {
+				logx.Printf("memory store shutdown: %v", err)
+			}
+			a.store = nil
+		}
+		a.storeMu.Unlock()
+
 		if a.whisperServer != nil {
 			if err := a.whisperServer.Stop(); err != nil {
 				logx.Printf("whisper shutdown: %v", err)

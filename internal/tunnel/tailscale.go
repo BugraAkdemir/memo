@@ -10,7 +10,7 @@ package tunnel
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"net"
 	"net/http"
 	"net/http/httputil"
@@ -126,11 +126,11 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 				t.lastErr = err.Error()
 			}
 			t.mu.Unlock()
-			log.Printf("tunnel: tailscale serve stopped: %v", err)
+			logx.Printf("tunnel: tailscale serve stopped: %v", err)
 		}
 	}()
 
-	log.Printf("tunnel: tailscale up at %s (funnel=%v)", t.publicURL, cfg.Funnel)
+	logx.Printf("tunnel: tailscale up at %s (funnel=%v)", t.publicURL, cfg.Funnel)
 	return nil
 }
 

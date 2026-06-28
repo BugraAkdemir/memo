@@ -3,7 +3,7 @@ package fileutil
 import (
 	"io"
 	"io/fs"
-	"log"
+	"memo/internal/logx"
 	"os"
 )
 
@@ -45,7 +45,7 @@ func copyFile(src, dst string) error {
 	}
 	defer func() {
 		if cerr := out.Close(); cerr != nil {
-			log.Printf("fileutil: close dst %s: %v", dst, cerr)
+			logx.Printf("fileutil: close dst %s: %v", dst, cerr)
 		}
 	}()
 

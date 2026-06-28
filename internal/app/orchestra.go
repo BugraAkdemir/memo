@@ -2,7 +2,7 @@ package app
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 
 	"memo/internal/config"
 	"memo/internal/orchestra"
@@ -23,9 +23,9 @@ func (a *App) UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error {
 	}
 	a.orchestraConductor.UpdateConfig(cfg)
 	if err := orchestra.SaveConfig(config.DataPath("orchestra.json"), a.orchestraConductor.Config()); err != nil {
-		log.Printf("ORCHESTRA: config save error: %v", err)
+		logx.Printf("ORCHESTRA: config save error: %v", err)
 		return err
 	}
-	log.Printf("Orchestra config updated: enabled=%v, chief=%s/%s", cfg.Enabled, cfg.ChiefType, cfg.ChiefModel)
+	logx.Printf("Orchestra config updated: enabled=%v, chief=%s/%s", cfg.Enabled, cfg.ChiefType, cfg.ChiefModel)
 	return nil
 }

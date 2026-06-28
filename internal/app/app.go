@@ -5,7 +5,7 @@ import (
 	"context"
 	"embed"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -212,7 +212,7 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 		dataStr = fmt.Sprint(data...)
 	}
 	a.events.push(AppEvent{Name: name, Data: dataStr})
-	log.Printf("event: %s — %s", name, dataStr)
+	logx.Printf("event: %s — %s", name, dataStr)
 }
 
 // Startup initializes all application subsystems. It must be called once before
@@ -224,7 +224,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	cfg, err := config.Load(config.ConfigFilePath())
 	if err != nil {
-		log.Printf("WARN: config: %v", err)
+		logx.Printf("WARN: config: %v", err)
 		a.emitEvent("config_load_error", err.Error())
 		cfg = config.Default()
 	}
@@ -246,14 +246,14 @@ func (a *App) Startup(ctx context.Context) {
 			EmbeddingFunc: embeddingFunc,
 		})
 		if err != nil {
-			log.Printf("WARN: memory: %v", err)
+			logx.Printf("WARN: memory: %v", err)
 			a.emitEvent("memory_store_error", err.Error())
 			return
 		}
 		a.storeMu.Lock()
 		a.store = store
 		a.storeMu.Unlock()
-		log.Println("Memory store ready")
+		logx.Info("Memory store ready")
 	}()
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
@@ -269,14 +269,14 @@ func (a *App) Startup(ctx context.Context) {
 		SystemManagement: a.cfg.Mood.SystemManagement,
 	}
 	if moodEngine, err := moodpkg.New(moodCfg); err != nil {
-		log.Printf("mood engine başlatılamadı (devre dışı): %v", err)
+		logx.Printf("mood engine başlatılamadı (devre dışı): %v", err)
 	} else {
 		a.mood = moodEngine
 	}
 
 	sm, err := sessions.NewManager(config.DataPath("sessions"))
 	if err != nil {
-		log.Printf("WARN: sessions: %v", err)
+		logx.Printf("WARN: sessions: %v", err)
 		a.emitEvent("sessions_manager_error", err.Error())
 	}
 	a.sessionsMu.Lock()
@@ -284,7 +284,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.sessionsMu.Unlock()
 
 	if obsStore, oerr := observer.NewStore(observer.StoreConfig{Dir: config.DataPath("profile")}); oerr != nil {
-		log.Printf("WARN: observer: %v", oerr)
+		logx.Printf("WARN: observer: %v", oerr)
 		a.emitEvent("observer_store_error", oerr.Error())
 	} else {
 		a.observerStore = obsStore
@@ -324,11 +324,11 @@ func (a *App) Startup(ctx context.Context) {
 		a.remoteAccessEnabled = true
 		binPath, err := ngrok.Install(config.DataDir())
 		if err != nil {
-			log.Printf("[ngrok] Install error: %v", err)
+			logx.Printf("[ngrok] Install error: %v", err)
 		} else {
 			mgr := ngrok.NewManager(binPath)
 			if err := mgr.Start(cfg.RemoteAccess.Port, cfg.RemoteAccess.NgrokToken); err != nil {
-				log.Printf("[ngrok] Start error: %v", err)
+				logx.Printf("[ngrok] Start error: %v", err)
 			} else {
 				a.ngrokServer = mgr
 			}
@@ -363,12 +363,12 @@ func (a *App) Startup(ctx context.Context) {
 		hctx, hcancel := context.WithCancel(ctx)
 		a.healthCheckCancel = hcancel
 		go a.providerRouter.HealthCheck(hctx, 5*time.Minute)
-		log.Printf("Provider system initialized with %d enabled provider(s)", len(configs))
+		logx.Printf("Provider system initialized with %d enabled provider(s)", len(configs))
 		for _, cfg := range configs {
-			log.Printf("  - %s (%s)", cfg.Type, cfg.Model)
+			logx.Printf("  - %s (%s)", cfg.Type, cfg.Model)
 		}
 	} else {
-		log.Println("No external providers configured, using local models")
+		logx.Info("No external providers configured, using local models")
 	}
 
 	a.activeProviderName = a.cfg.ActiveProvider
@@ -398,7 +398,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.providerRouter.SetActiveProvider(a.activeProviderName)
 	}
 	if a.activeProviderName != "" {
-		log.Printf("Active provider restored from config: %s", a.activeProviderName)
+		logx.Printf("Active provider restored from config: %s", a.activeProviderName)
 	}
 
 	orchestraCfg := orchestra.LoadConfig(config.DataPath("orchestra.json"))
@@ -421,21 +421,21 @@ func (a *App) Startup(ctx context.Context) {
 			return a.providerCfgMgr.GetAll()
 		},
 	)
-	log.Printf("Orchestra mode initialized (enabled=%v)", orchestraCfg.Enabled)
+	logx.Printf("Orchestra mode initialized (enabled=%v)", orchestraCfg.Enabled)
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)
 	a.agentExecutor.SetBypassPermissions(a.cfg.Mood.SystemManagement)
 	a.agentEnabled = false
-	log.Printf("Agent mode initialized (enabled=false)")
+	logx.Printf("Agent mode initialized (enabled=false)")
 
 	a.skillManager = skill.NewManager(config.DataDir())
 	if err := a.skillManager.Discover(); err != nil {
-		log.Printf("skill: discover error: %v", err)
+		logx.Printf("skill: discover error: %v", err)
 	}
-	log.Println("Skill manager initialized")
+	logx.Info("Skill manager initialized")
 
-	log.Println("Memo ready")
+	logx.Info("Memo ready")
 }
 
 // StartWebServerHTTP starts a plain HTTP API server for the Flutter desktop frontend.
@@ -446,13 +446,13 @@ func (a *App) StartWebServerHTTP(port int) {
 	}
 	a.webServer = webserver.New(a)
 	if err := a.webServer.StartHTTPWithAddr(port, addr); err != nil {
-		log.Printf("Flutter server: %v", err)
+		logx.Printf("Flutter server: %v", err)
 	}
 }
 
 // Shutdown cleans up all running background processes and servers.
 func (a *App) Shutdown(ctx context.Context) {
-	log.Println("Memo shutting down, cleaning up background processes...")
+	logx.Info("Memo shutting down, cleaning up background processes...")
 
 	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
 	// reminders, WhatsApp intent loop, observer analysis, etc.)
@@ -464,17 +464,17 @@ func (a *App) Shutdown(ctx context.Context) {
 
 	if a.whisperServer != nil {
 		if err := a.whisperServer.Stop(); err != nil {
-			log.Printf("whisper shutdown: %v", err)
+			logx.Printf("whisper shutdown: %v", err)
 		}
 	}
 	if a.llamaServer != nil {
 		if err := a.llamaServer.Stop(); err != nil {
-			log.Printf("llama chat shutdown: %v", err)
+			logx.Printf("llama chat shutdown: %v", err)
 		}
 	}
 	if a.llamaEmbedServer != nil {
 		if err := a.llamaEmbedServer.Stop(); err != nil {
-			log.Printf("llama embedding shutdown: %v", err)
+			logx.Printf("llama embedding shutdown: %v", err)
 		}
 	}
 	if a.ngrokServer != nil {
@@ -486,22 +486,22 @@ func (a *App) Shutdown(ctx context.Context) {
 	}
 	if a.observerStore != nil {
 		if err := a.observerStore.Close(); err != nil {
-			log.Printf("observer shutdown: %v", err)
+			logx.Printf("observer shutdown: %v", err)
 		}
 	}
 	if a.calendarStore != nil {
 		if err := a.calendarStore.Close(); err != nil {
-			log.Printf("calendar shutdown: %v", err)
+			logx.Printf("calendar shutdown: %v", err)
 		}
 	}
 	if a.mood != nil {
 		if err := a.mood.Close(); err != nil {
-			log.Printf("mood shutdown: %v", err)
+			logx.Printf("mood shutdown: %v", err)
 		}
 	}
 	if a.webServer != nil {
 		if err := a.webServer.Stop(); err != nil {
-			log.Printf("webserver shutdown: %v", err)
+			logx.Printf("webserver shutdown: %v", err)
 		}
 	}
 	stopRecordingProcess()
@@ -517,11 +517,11 @@ func (a *App) runObserverAnalysis(ctx context.Context) {
 
 	analyze := func() {
 		if err := a.observerAnalyzer.Run(ctx); err != nil {
-			log.Printf("OBSERVER: analysis: %v", err)
+			logx.Printf("OBSERVER: analysis: %v", err)
 		}
 		if a.observerStore != nil {
 			if _, err := a.observerStore.Prune(time.Now().Add(-observer.AnalysisWindow)); err != nil {
-				log.Printf("OBSERVER: prune: %v", err)
+				logx.Printf("OBSERVER: prune: %v", err)
 			}
 		}
 	}

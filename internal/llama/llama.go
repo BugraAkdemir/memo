@@ -2,7 +2,7 @@ package llama
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"os/exec"
@@ -131,10 +131,10 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	mmproj := findMmproj(modelPath)
 	if mmproj != "" {
 		args = append(args, "--mmproj", mmproj)
-		log.Printf("llama: detected mmproj: %s", mmproj)
+		logx.Printf("llama: detected mmproj: %s", mmproj)
 	}
 
-	log.Printf("llama: launching %s %s", bin, strings.Join(args, " "))
+	logx.Printf("llama: launching %s %s", bin, strings.Join(args, " "))
 
 	s.cmd = exec.Command(bin, args...)
 	s.cmd.Stdout = os.Stdout
@@ -177,7 +177,7 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 
 	s.portPid = s.cmd.Process.Pid
 
-	log.Printf("llama: server started (PID %d, port %d, GPU layers: %d)",
+	logx.Printf("llama: server started (PID %d, port %d, GPU layers: %d)",
 		s.cmd.Process.Pid, s.port, s.gpu.GPULayers)
 
 	// Monitor process in background for unexpected exits
@@ -204,7 +204,7 @@ func (s *Server) WaitReady(timeout time.Duration) error {
 		if err == nil {
 			resp.Body.Close()
 			if resp.StatusCode == http.StatusOK {
-				log.Printf("llama: server ready on port %d", port)
+				logx.Printf("llama: server ready on port %d", port)
 				return nil
 			}
 		}
@@ -224,7 +224,7 @@ func (s *Server) Stop() error {
 		if s.port > 0 {
 			if s.portPid > 0 {
 				if err := killPID(s.portPid); err != nil {
-					log.Printf("llama: kill stored PID %d: %v, trying port discovery", s.portPid, err)
+					logx.Printf("llama: kill stored PID %d: %v, trying port discovery", s.portPid, err)
 				} else {
 					s.portPid = 0
 					return nil
@@ -238,7 +238,7 @@ func (s *Server) Stop() error {
 	}
 
 	s.stopping = true
-	log.Printf("llama: stopping server (PID %d)", s.cmd.Process.Pid)
+	logx.Printf("llama: stopping server (PID %d)", s.cmd.Process.Pid)
 
 	// Step 1: Send SIGTERM to the process for graceful shutdown.
 	processSignalTerm(s.cmd.Process)
@@ -246,9 +246,9 @@ func (s *Server) Stop() error {
 	// Step 2: Wait up to 5 seconds for graceful exit (monitored by monitor loop)
 	select {
 	case <-s.waitDone:
-		log.Printf("llama: server stopped gracefully")
+		logx.Printf("llama: server stopped gracefully")
 	case <-time.After(5 * time.Second):
-		log.Printf("llama: graceful shutdown timed out, force killing")
+		logx.Printf("llama: graceful shutdown timed out, force killing")
 		s.forceKill()
 	}
 
@@ -263,7 +263,7 @@ func (s *Server) Stop() error {
 func (s *Server) killByPort(port int) error {
 	pid := s.pidOnPort(port)
 	if pid <= 0 {
-		log.Printf("llama: nothing found on port %d (lsof/fuser/netstat unavailable or port free)", port)
+		logx.Printf("llama: nothing found on port %d (lsof/fuser/netstat unavailable or port free)", port)
 		return nil
 	}
 
@@ -272,18 +272,18 @@ func (s *Server) killByPort(port int) error {
 		return fmt.Errorf("find process %d: %w", pid, err)
 	}
 
-	log.Printf("llama: killing external PID %d on port %d", pid, port)
+	logx.Printf("llama: killing external PID %d on port %d", pid, port)
 	processSignalTerm(proc)
 
 	// Give it 3s to die gracefully, then force kill.
 	for i := 0; i < 6; i++ {
 		time.Sleep(500 * time.Millisecond)
 		if !processIsAlive(proc) {
-			log.Printf("llama: process %d exited cleanly", pid)
+			logx.Printf("llama: process %d exited cleanly", pid)
 			return nil
 		}
 	}
-	log.Printf("llama: force-killing PID %d", pid)
+	logx.Printf("llama: force-killing PID %d", pid)
 	proc.Kill()
 	return nil
 }
@@ -336,9 +336,9 @@ func (s *Server) monitor() {
 	}
 
 	if err != nil {
-		log.Printf("llama: server exited unexpectedly: %v", err)
+		logx.Printf("llama: server exited unexpectedly: %v", err)
 	} else {
-		log.Printf("llama: server exited unexpectedly (exit 0)")
+		logx.Printf("llama: server exited unexpectedly (exit 0)")
 	}
 	s.cmd = nil
 	s.modelPath = ""

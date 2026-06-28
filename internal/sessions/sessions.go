@@ -3,7 +3,7 @@ package sessions
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"memo/internal/fileutil"
 	"memo/internal/truncate"
 	"os"
@@ -78,7 +78,7 @@ func (m *Manager) newSession(title string) *Session {
 	}
 	m.sessions[s.ID] = s
 	if err := m.save(s); err != nil {
-		log.Printf("sessions: save new session %s: %v", s.ID, err)
+		logx.Printf("sessions: save new session %s: %v", s.ID, err)
 	}
 	return s
 }
@@ -99,7 +99,7 @@ func (m *Manager) NewAgentChat(projectPath string) string {
 	s := m.newSession("Agent Chat")
 	s.ProjectPath = projectPath
 	if err := m.save(s); err != nil {
-		log.Printf("sessions: save agent chat project path %s: %v", s.ID, err)
+		logx.Printf("sessions: save agent chat project path %s: %v", s.ID, err)
 	}
 	m.active = s.ID
 	return s.ID
@@ -189,7 +189,7 @@ func (m *Manager) AddMessage(role, content, imagePath, filePath string, agentEve
 	}
 
 	if err := m.save(s); err != nil {
-		log.Printf("sessions: save message %s: %v", s.ID, err)
+		logx.Printf("sessions: save message %s: %v", s.ID, err)
 	}
 }
 
@@ -362,12 +362,12 @@ func (m *Manager) loadAll() error {
 		}
 		data, err := os.ReadFile(filepath.Join(m.dir, e.Name()))
 		if err != nil {
-			log.Printf("sessions: read %s: %v", e.Name(), err)
+			logx.Printf("sessions: read %s: %v", e.Name(), err)
 			continue
 		}
 		var s Session
 		if err := json.Unmarshal(data, &s); err != nil {
-			log.Printf("sessions: decode %s: %v", e.Name(), err)
+			logx.Printf("sessions: decode %s: %v", e.Name(), err)
 			continue
 		}
 		m.sessions[s.ID] = &s

@@ -4,7 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -114,7 +114,7 @@ func (db *DB) writeLoop() {
 			case task.done <- err:
 			default:
 				if err != nil {
-					log.Printf("database: write error dropped (caller gone): %v", err)
+					logx.Printf("database: write error dropped (caller gone): %v", err)
 				}
 			}
 		case <-db.ctx.Done():

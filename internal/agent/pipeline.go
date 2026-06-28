@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/truncate"
 	"time"
@@ -117,7 +117,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		// Call LLM
 		resp, err := p.prov.ChatCompletion(ctx, req)
 		if err != nil {
-			log.Printf("AGENT: ChatCompletion error: %v", err)
+			logx.Printf("AGENT: ChatCompletion error: %v", err)
 			trySend(ctx, outCh, provider.StreamChunk{Error: fmt.Sprintf("LLM Error: %v", err), Done: true})
 			return
 		}
@@ -222,14 +222,14 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 			// Sistem yönetimi modunda izin ekranı çıkmaz — tüm tool'lar otomatik onaylanır.
 			if p.bypassPermissions {
-				log.Printf("AGENT: [BYPASS] auto-approving %q (system management mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
+				logx.Printf("AGENT: [BYPASS] auto-approving %q (system management mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
 				permRes.NeedPrompt = false
 				permRes.Allowed = true
 			}
 
 			// Shift+Tab auto-permission modunda da izin ekranı çıkmaz.
 			if p.autoPermission {
-				log.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
+				logx.Printf("AGENT: [AUTO] auto-approving %q (auto-permission mode; prompt_required=%v)", toolName, permRes.NeedPrompt)
 				permRes.NeedPrompt = false
 				permRes.Allowed = true
 			}

@@ -4,7 +4,7 @@ package proactive
 
 import (
 	"context"
-	"log"
+	"memo/internal/logx"
 	"sort"
 	"sync"
 	"time"
@@ -141,7 +141,7 @@ func (e *Engine) tickAt(ctx context.Context, now time.Time) {
 
 	actives, err := e.patterns.LoadActive(now, e.cfg.MinConfidence)
 	if err != nil {
-		log.Printf("PROACTIVE: load patterns: %v", err)
+		logx.Printf("PROACTIVE: load patterns: %v", err)
 		return
 	}
 	if len(actives) == 0 {
@@ -187,12 +187,12 @@ func (e *Engine) askChief(ctx context.Context, matches []MatchResult, now time.T
 	user := BuildContextPrompt(matches, now, history, e.levelFn(), len(history)+1)
 	raw, err := e.decide(ctx, ChiefSystemPrompt, user)
 	if err != nil {
-		log.Printf("PROACTIVE: chief decide: %v", err)
+		logx.Printf("PROACTIVE: chief decide: %v", err)
 		return Decision{Action: ActionNone}
 	}
 	d, err := ParseDecision(raw)
 	if err != nil {
-		log.Printf("PROACTIVE: parse decision: %v (raw=%q)", err, truncate(raw, 200))
+		logx.Printf("PROACTIVE: parse decision: %v (raw=%q)", err, truncate(raw, 200))
 		return Decision{Action: ActionNone}
 	}
 	// The Chief may omit the pattern id; default to the strongest match.
@@ -217,7 +217,7 @@ func (e *Engine) execute(ctx context.Context, d Decision) {
 	}
 
 	if err := e.pending.Set(ps); err != nil {
-		log.Printf("PROACTIVE: set pending: %v", err)
+		logx.Printf("PROACTIVE: set pending: %v", err)
 		return
 	}
 
@@ -226,7 +226,7 @@ func (e *Engine) execute(ctx context.Context, d Decision) {
 	if d.Action == ActionAuto && e.auto != nil {
 		go e.auto(ctx, ps)
 	}
-	log.Printf("PROACTIVE: %s for pattern %s: %q", d.Action, d.PatternID, truncate(d.Message, 80))
+	logx.Printf("PROACTIVE: %s for pattern %s: %q", d.Action, d.PatternID, truncate(d.Message, 80))
 }
 
 // reapExpired records an Outcome of "ignored" for a prompt that timed out and
@@ -241,7 +241,7 @@ func (e *Engine) reapExpired() {
 	}
 	e.recordOutcome(*p, OutcomeIgnored)
 	if err := e.pending.Clear(); err != nil {
-		log.Printf("PROACTIVE: clear expired: %v", err)
+		logx.Printf("PROACTIVE: clear expired: %v", err)
 	}
 }
 
@@ -259,7 +259,7 @@ func (e *Engine) HandleResponse(id, response string) (accepted bool, err error) 
 	outcome := OutcomeFromResponse(response)
 	e.recordOutcome(*p, outcome)
 	if cerr := e.pending.Clear(); cerr != nil {
-		log.Printf("PROACTIVE: clear after response: %v", cerr)
+		logx.Printf("PROACTIVE: clear after response: %v", cerr)
 	}
 	return outcome == OutcomeAccepted, nil
 }
@@ -271,12 +271,12 @@ func (e *Engine) recordOutcome(p PendingSuggestion, outcome Outcome) {
 	case OutcomeStopped:
 		// Retire permanently so re-analysis does not resurrect it.
 		if _, err := e.patterns.Suppress(p.PatternID); err != nil {
-			log.Printf("PROACTIVE: suppress pattern %s: %v", p.PatternID, err)
+			logx.Printf("PROACTIVE: suppress pattern %s: %v", p.PatternID, err)
 		}
 	default:
 		if delta := ConfidenceDelta(outcome); delta != 0 {
 			if _, err := e.patterns.AdjustConfidence(p.PatternID, delta); err != nil {
-				log.Printf("PROACTIVE: adjust pattern %s: %v", p.PatternID, err)
+				logx.Printf("PROACTIVE: adjust pattern %s: %v", p.PatternID, err)
 			}
 		}
 	}

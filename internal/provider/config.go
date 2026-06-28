@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -60,7 +60,7 @@ func (cm *ConfigManager) Load() {
 			cm.saveLocked()
 			return
 		}
-		log.Printf("PROVIDER: failed to load config: %v", err)
+		logx.Printf("PROVIDER: failed to load config: %v", err)
 		cm.configs = defaultConfigs()
 		return
 	}
@@ -69,7 +69,7 @@ func (cm *ConfigManager) Load() {
 		Configs []providerConfigStored `json:"providers"`
 	}
 	if err := json.Unmarshal(data, &stored); err != nil {
-		log.Printf("PROVIDER: failed to parse config: %v", err)
+		logx.Printf("PROVIDER: failed to parse config: %v", err)
 		cm.configs = defaultConfigs()
 		return
 	}
@@ -78,7 +78,7 @@ func (cm *ConfigManager) Load() {
 	for _, s := range stored.Configs {
 		apiKey, err := cm.decrypt(s.APIKeyEncrypted)
 		if err != nil {
-			log.Printf("PROVIDER: failed to decrypt key for %s: %v", s.Type, err)
+			logx.Printf("PROVIDER: failed to decrypt key for %s: %v", s.Type, err)
 			apiKey = ""
 		}
 		cm.configs = append(cm.configs, ProviderConfig{
@@ -113,7 +113,7 @@ func (cm *ConfigManager) saveLocked() {
 	for _, cfg := range cm.configs {
 		encrypted, err := cm.encrypt(cfg.APIKey)
 		if err != nil {
-			log.Printf("PROVIDER: failed to encrypt key for %s: %v", cfg.Type, err)
+			logx.Printf("PROVIDER: failed to encrypt key for %s: %v", cfg.Type, err)
 			continue
 		}
 		stored.Configs = append(stored.Configs, providerConfigStored{
@@ -132,18 +132,18 @@ func (cm *ConfigManager) saveLocked() {
 
 	data, err := json.MarshalIndent(stored, "", "  ")
 	if err != nil {
-		log.Printf("PROVIDER: failed to marshal config: %v", err)
+		logx.Printf("PROVIDER: failed to marshal config: %v", err)
 		return
 	}
 
 	dir := filepath.Dir(cm.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("PROVIDER: failed to create config dir: %v", err)
+		logx.Printf("PROVIDER: failed to create config dir: %v", err)
 		return
 	}
 
 	if err := os.WriteFile(cm.filePath, data, 0600); err != nil {
-		log.Printf("PROVIDER: failed to write config: %v", err)
+		logx.Printf("PROVIDER: failed to write config: %v", err)
 	}
 }
 
@@ -402,22 +402,22 @@ func defaultMachineKey() []byte {
 	// are intentionally not used as key material — they are not secret.
 	randomKey := make([]byte, 32)
 	if _, err := rand.Read(randomKey); err != nil {
-		log.Printf("provider: crypto/rand failed: %v", err)
+		logx.Printf("provider: crypto/rand failed: %v", err)
 		return randomKey
 	}
 	if err := os.MkdirAll(keyDir, 0700); err != nil {
-		log.Printf("provider: cannot create key dir %s: %v", keyDir, err)
+		logx.Printf("provider: cannot create key dir %s: %v", keyDir, err)
 		return randomKey
 	}
 	if err := os.WriteFile(keyPath, randomKey, 0600); err != nil {
-		log.Printf("provider: cannot persist machine key: %v", err)
+		logx.Printf("provider: cannot persist machine key: %v", err)
 		return randomKey
 	}
 	// On Windows, restrict the file to the current user via icacls.
 	if runtime.GOOS == "windows" {
 		if out, err := exec.Command("icacls", keyPath, "/inheritance:r",
 			"/grant:r", os.Getenv("USERNAME")+":F").CombinedOutput(); err != nil {
-			log.Printf("provider: icacls failed for machine key: %v — %s", err, out)
+			logx.Printf("provider: icacls failed for machine key: %v — %s", err, out)
 		}
 	}
 	return randomKey

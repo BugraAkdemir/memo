@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"time"
 
 	"memo/internal/config"
@@ -102,9 +102,9 @@ func (a *App) SetActiveProvider(name string) {
 
 	a.cfg.ActiveProvider = name
 	if err := config.Save(a.cfg); err != nil {
-		log.Printf("WARN: failed to persist active provider: %v", err)
+		logx.Printf("WARN: failed to persist active provider: %v", err)
 	}
-	log.Printf("Active provider set to: %s", name)
+	logx.Printf("Active provider set to: %s", name)
 }
 
 // GetActiveProvider returns the currently active provider name.

@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"sync"
@@ -54,7 +54,7 @@ func (bm *BackupManager) loadHistory() {
 	data, err := os.ReadFile(bm.historyFile)
 	if err == nil {
 		if err := json.Unmarshal(data, &bm.history); err != nil {
-			log.Printf("AGENT: failed to parse backup history: %v", err)
+			logx.Printf("AGENT: failed to parse backup history: %v", err)
 		}
 	}
 }

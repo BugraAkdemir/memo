@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"strings"
 	"time"
 
@@ -37,7 +37,7 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 	select {
 	case a.memorySaveCh <- saveTask{userMsg: userMsg, reply: reply}:
 	case <-time.After(2 * time.Second):
-		log.Println("WARN: memory save channel full, dropping")
+		logx.Info("WARN: memory save channel full, dropping")
 		a.emitEvent("memory:error", "Hafıza kaydetme kuyruğu dolu; bu mesaj hatırlanmayabilir")
 	}
 }
@@ -60,7 +60,7 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	store := a.store
 	a.storeMu.RUnlock()
 	if store == nil {
-		log.Println("MEMORY SAVE SKIPPED: store not initialized")
+		logx.Info("MEMORY SAVE SKIPPED: store not initialized")
 		a.emitEvent("memory:error", "Hafıza kaydedilemedi: depo başlatılmamış")
 		return
 	}
@@ -69,14 +69,14 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	defer cancel()
 
 	if err := store.SaveInteraction(mctx, userMsg, reply); err != nil {
-		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
-		log.Printf("MEMORY SAVE FAILED: %v", err)
+		logx.Printf("LATENCY app.memory_save_sync total_ms=%d status=error", time.Since(start).Milliseconds())
+		logx.Printf("MEMORY SAVE FAILED: %v", err)
 		if !isEmbeddingBackendDown(err) {
 			a.emitEvent("memory:error", fmt.Sprintf("Hafıza kaydedilemedi: %v", err))
 		}
 	} else {
-		log.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
-		log.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
+		logx.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
+		logx.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
 		a.syncMu.RLock()
 		sm := a.syncManager
 		a.syncMu.RUnlock()
@@ -90,7 +90,7 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	a.storeMu.RLock()
 	defer a.storeMu.RUnlock()
 	if a.store == nil {
-		log.Println("Memory: store not initialized, skipping retrieve")
+		logx.Info("Memory: store not initialized, skipping retrieve")
 		return nil
 	}
 	start := time.Now()
@@ -98,8 +98,8 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 	defer cancel()
 	m, err := a.store.RetrieveContext(rctx, query, a.cfg.Memory.TopK, a.cfg.Memory.MinSimilarity)
 	if err != nil {
-		log.Printf("LATENCY app.retrieve_memory total_ms=%d status=error", time.Since(start).Milliseconds())
-		log.Printf("MEMORY RETRIEVE FAILED: %v", err)
+		logx.Printf("LATENCY app.retrieve_memory total_ms=%d status=error", time.Since(start).Milliseconds())
+		logx.Printf("MEMORY RETRIEVE FAILED: %v", err)
 		// Embedding backend unreachable is expected in API/Orchestra-only mode —
 		// degrade silently instead of flooding the UI with error toasts.
 		if !isEmbeddingBackendDown(err) {
@@ -107,9 +107,9 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 		}
 		return nil
 	}
-	log.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))
+	logx.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))
 	if len(m) > 0 {
-		log.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), m[0].Similarity*100)
+		logx.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), m[0].Similarity*100)
 	}
 	return m
 }
@@ -131,7 +131,7 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 		EmbeddingFunc: embeddingFunc,
 	})
 	if err != nil {
-		log.Printf("WARN: memory re-init: %v (restoring old store)", err)
+		logx.Printf("WARN: memory re-init: %v (restoring old store)", err)
 		a.emitEvent("memory_store_error", err.Error())
 		a.storeMu.Lock()
 		a.store = oldStore
@@ -144,12 +144,12 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	a.storeMu.Lock()
 	if oldStore != nil {
 		if err := oldStore.Close(); err != nil {
-			log.Printf("WARN: memory store close during re-init: %v", err)
+			logx.Printf("WARN: memory store close during re-init: %v", err)
 		}
 	}
 	a.store = newStore
 	a.storeMu.Unlock()
-	log.Println("Memory store re-initialized")
+	logx.Info("Memory store re-initialized")
 }
 
 // DebugMemorySearch searches memory WITHOUT similarity filter — for debugging.
@@ -181,7 +181,7 @@ func (a *App) ClearAllMemory() error {
 	if a.store == nil {
 		return fmt.Errorf("no memory store")
 	}
-	log.Println("Clearing all memory...")
+	logx.Info("Clearing all memory...")
 	return a.store.ClearAll()
 }
 
@@ -202,7 +202,7 @@ func (a *App) DeleteMemoryFile(relPath string) error {
 	if a.store == nil {
 		return fmt.Errorf("no memory store")
 	}
-	log.Printf("Deleting memory file: %s", relPath)
+	logx.Printf("Deleting memory file: %s", relPath)
 	return a.store.DeleteGobFile(relPath)
 }
 
@@ -225,7 +225,7 @@ func (a *App) UpdateMemorySettings(topK int, minSimilarity float32) error {
 	if err := config.Save(a.cfg); err != nil {
 		return err
 	}
-	log.Printf("Memory settings updated: top_k=%d min_similarity=%.2f", topK, minSimilarity)
+	logx.Printf("Memory settings updated: top_k=%d min_similarity=%.2f", topK, minSimilarity)
 	return nil
 }
 
@@ -356,7 +356,7 @@ func (a *App) FilteredMemorySearch(query string, topK int, since string, tag str
 	}
 	results, err := a.store.FilteredSearch(ctx, query, topK, a.cfg.Memory.MinSimilarity, sinceTime, tag)
 	if err != nil {
-		log.Printf("MEMORY: filtered search: %v", err)
+		logx.Printf("MEMORY: filtered search: %v", err)
 		return nil
 	}
 	return results
@@ -393,11 +393,11 @@ func (a *App) CheckEmbeddingHealth(ctx context.Context) map[string]interface{} {
 	_, err := client.CreateEmbedding(ectx, a.cfg.API.EmbeddingModel, "test")
 	if err != nil {
 		result["error"] = err.Error()
-		log.Printf("EMBEDDING HEALTH CHECK FAILED: %v", err)
+		logx.Printf("EMBEDDING HEALTH CHECK FAILED: %v", err)
 		return result
 	}
 
 	result["ok"] = true
-	log.Printf("Embedding health: OK (model=%s, memories=%d)", a.cfg.API.EmbeddingModel, a.store.Count())
+	logx.Printf("Embedding health: OK (model=%s, memories=%d)", a.cfg.API.EmbeddingModel, a.store.Count())
 	return result
 }

@@ -2,7 +2,7 @@ package app
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 
 	"memo/internal/modelstore"
 )
@@ -11,7 +11,7 @@ import (
 func (a *App) SearchModels(query string) ([]modelstore.HFModelResult, error) {
 	results, err := a.modelStore.SearchModels(query)
 	if err != nil {
-		log.Printf("SearchModels error: %v", err)
+		logx.Printf("SearchModels error: %v", err)
 		return nil, fmt.Errorf("search failed: %w", err)
 	}
 	return results, nil
@@ -21,7 +21,7 @@ func (a *App) SearchModels(query string) ([]modelstore.HFModelResult, error) {
 func (a *App) GetModelFiles(repoID string) []modelstore.GGUFFile {
 	files, err := a.modelStore.GetModelFiles(repoID)
 	if err != nil {
-		log.Printf("GetModelFiles error: %v", err)
+		logx.Printf("GetModelFiles error: %v", err)
 		return nil
 	}
 	return files

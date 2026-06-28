@@ -4,7 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 
 	"memo/internal/config"
 	"memo/internal/ngrok"
@@ -103,11 +103,11 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 		}
 		binPath, err := ngrok.Install(config.DataDir())
 		if err != nil {
-			log.Printf("[ngrok] Install error: %v", err)
+			logx.Printf("[ngrok] Install error: %v", err)
 		} else {
 			mgr := ngrok.NewManager(binPath)
 			if err := mgr.Start(port, a.cfg.RemoteAccess.NgrokToken); err != nil {
-				log.Printf("[ngrok] Start error: %v", err)
+				logx.Printf("[ngrok] Start error: %v", err)
 			} else {
 				a.ngrokServer = mgr
 			}
@@ -122,7 +122,7 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 	}
 
 	if err := a.webServer.Stop(); err != nil {
-		log.Printf("Error stopping server: %v", err)
+		logx.Printf("Error stopping server: %v", err)
 	}
 	addr := "127.0.0.1"
 	if enabled {
@@ -171,7 +171,7 @@ func (a *App) SetListenAddr(addr string) {
 func (a *App) SetNgrokAutoStart(autoStart bool) {
 	a.cfg.RemoteAccess.NgrokAutoStart = autoStart
 	if err := config.Save(a.cfg); err != nil {
-		log.Printf("WARN: save config: %v", err)
+		logx.Printf("WARN: save config: %v", err)
 	}
 }
 
@@ -181,6 +181,6 @@ func (a *App) startWebServerForRemote(port int) {
 		a.webServer = webserver.New(a)
 	}
 	if err := a.webServer.Start(port); err != nil {
-		log.Printf("Remote access server: %v", err)
+		logx.Printf("Remote access server: %v", err)
 	}
 }

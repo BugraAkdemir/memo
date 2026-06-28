@@ -2,7 +2,7 @@ package config
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -363,12 +363,12 @@ func Load(path string) (*AppConfig, error) {
 	}
 
 	if fixes := cfg.validate(); len(fixes) > 0 {
-		log.Printf("config: applied defaults for: %v", fixes)
+		logx.Printf("config: applied defaults for: %v", fixes)
 	}
 	if seeded {
 		// Persist the seeded config to its writable home so later runs read it directly.
 		if saveErr := saveToFile(cfg, path); saveErr != nil {
-			log.Printf("config: failed to persist seeded config: %v", saveErr)
+			logx.Printf("config: failed to persist seeded config: %v", saveErr)
 		}
 	}
 	instance = cfg

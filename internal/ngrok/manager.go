@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"os/exec"
@@ -82,14 +82,14 @@ func (m *Manager) Start(port int, authtoken string) error {
 	}
 
 	go m.monitor()
-	log.Printf("[ngrok] Starting tunnel for port %d", port)
+	logx.Printf("[ngrok] Starting tunnel for port %d", port)
 	return nil
 }
 
 func (m *Manager) startLocked() error {
 	configCmd := exec.Command(m.binPath, "config", "add-authtoken", m.authToken)
 	if out, err := configCmd.CombinedOutput(); err != nil {
-		log.Printf("[ngrok] config output: %s", string(out))
+		logx.Printf("[ngrok] config output: %s", string(out))
 		return fmt.Errorf("ngrok auth config failed: %w", err)
 	}
 
@@ -135,7 +135,7 @@ func (m *Manager) monitor() {
 				m.errMsg = err.Error()
 			}
 		}
-		log.Printf("[ngrok] process exited (err=%v), restarting in 5s...", err)
+		logx.Printf("[ngrok] process exited (err=%v), restarting in 5s...", err)
 		m.errCapture.Reset()
 		m.mu.Unlock()
 
@@ -147,7 +147,7 @@ func (m *Manager) monitor() {
 			return
 		}
 		if err := m.startLocked(); err != nil {
-			log.Printf("[ngrok] restart failed: %v", err)
+			logx.Printf("[ngrok] restart failed: %v", err)
 			m.running = false
 			m.errMsg = fmt.Sprintf("restart failed: %v", err)
 			m.mu.Unlock()
@@ -174,7 +174,7 @@ func (m *Manager) Stop() error {
 	m.running = false
 	m.publicURL = ""
 	m.mu.Unlock()
-	log.Println("[ngrok] Stopped")
+	logx.Info("[ngrok] Stopped")
 	return nil
 }
 
@@ -210,11 +210,11 @@ func (m *Manager) pollPublicURL() {
 			m.mu.Lock()
 			m.publicURL = url
 			m.mu.Unlock()
-			log.Printf("[ngrok] Public URL: %s", url)
+			logx.Printf("[ngrok] Public URL: %s", url)
 			return
 		}
 	}
-	log.Println("[ngrok] timed out waiting for tunnel URL")
+	logx.Info("[ngrok] timed out waiting for tunnel URL")
 }
 
 type apiTunnel struct {
@@ -248,6 +248,6 @@ func (m *Manager) fetchURL() (string, error) {
 type logWriter struct{}
 
 func (logWriter) Write(p []byte) (int, error) {
-	log.Printf("[ngrok] %s", string(p))
+	logx.Printf("[ngrok] %s", string(p))
 	return len(p), nil
 }

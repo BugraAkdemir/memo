@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"strings"
 	"time"
 
@@ -24,21 +24,21 @@ func (a *App) initLearning(ctx context.Context) {
 	calDir := config.DataPath("calendar")
 	cs, err := calendar.NewStore(calDir)
 	if err != nil {
-		log.Printf("WARN: calendar store: %v", err)
+		logx.Printf("WARN: calendar store: %v", err)
 	} else {
 		a.calendarStore = cs
 		a.calendarRemind = calendar.NewReminderLoop(cs, a.calendarLeadFn, func(name, data string) {
 			a.emitEvent(name, data)
 		})
 		go a.calendarRemind.Start(ctx)
-		log.Println("Calendar system initialized")
+		logx.Info("Calendar system initialized")
 	}
 
 	// Intent extractor — uses same Decider as proactive engine.
 	a.learningMu.Lock()
 	a.intentExtractor = intent.NewExtractor(a.buildLearningDecider())
 	a.learningMu.Unlock()
-	log.Println("Intent extractor initialized")
+	logx.Info("Intent extractor initialized")
 }
 
 // buildLearningDecider returns the Decider for both the intent extractor and
@@ -115,7 +115,7 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 
 	result, err := extractor.Extract(a.lifecycleCtx, text, source, contact, ts)
 	if err != nil {
-		log.Printf("intent: extract: %v", err)
+		logx.Printf("intent: extract: %v", err)
 		return
 	}
 	if !result.HasIntent {
@@ -144,17 +144,17 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 	// disabled time guessing, skip events whose time the model only inferred.
 	if result.IsCalendarEvent && result.EventTime != nil && a.calendarStore != nil {
 		if !result.TimeExplicit && a.cfg.Calendar.DisableTimeGuess {
-			log.Printf("calendar: skipped %q — vague time and guessing disabled", result.Summary)
+			logx.Printf("calendar: skipped %q — vague time and guessing disabled", result.Summary)
 			return
 		}
 		event, err := calendar.AddFromIntent(a.lifecycleCtx, a.calendarStore, result)
 		if err != nil {
-			log.Printf("calendar: add from intent: %v", err)
+			logx.Printf("calendar: add from intent: %v", err)
 			return
 		}
 		payload, _ := json.Marshal(calendar.AddedPayload{ID: event.ID, Title: event.Title})
 		a.emitEvent("calendar:added", string(payload))
-		log.Printf("calendar: added %q at %s (source=%s)", event.Title, event.StartTime.Format("2006-01-02 15:04"), event.Source)
+		logx.Printf("calendar: added %q at %s (source=%s)", event.Title, event.StartTime.Format("2006-01-02 15:04"), event.Source)
 	}
 }
 
@@ -186,7 +186,7 @@ func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
 		candidates, err = a.calendarStore.ListUpcoming(a.lifecycleCtx, time.Now(), 200)
 	}
 	if err != nil {
-		log.Printf("calendar: cancel list: %v", err)
+		logx.Printf("calendar: cancel list: %v", err)
 		return
 	}
 	if len(candidates) == 0 {
@@ -202,7 +202,7 @@ func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
 		if len(candidates) == 1 {
 			matched = candidates
 		} else {
-			log.Printf("calendar: cancel ambiguous — %d events in window, no title to narrow down", len(candidates))
+			logx.Printf("calendar: cancel ambiguous — %d events in window, no title to narrow down", len(candidates))
 			return
 		}
 	} else {
@@ -217,7 +217,7 @@ func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
 	// --- 3. Ambiguity guard --------------------------------------------------
 	// More than one match → refuse to delete; surface to UI for confirmation.
 	if len(matched) > 1 {
-		log.Printf("calendar: cancel ambiguous — %d events match %q, not deleting", len(matched), r.EventTitle)
+		logx.Printf("calendar: cancel ambiguous — %d events match %q, not deleting", len(matched), r.EventTitle)
 		type ambiguousPayload struct {
 			Query  string           `json:"query"`
 			Events []calendar.Event `json:"events"`
@@ -228,19 +228,19 @@ func (a *App) cancelCalendarFromIntent(r intent.IntentResult) {
 	}
 
 	if len(matched) == 0 {
-		log.Printf("calendar: cancel — no event matches %q", r.EventTitle)
+		logx.Printf("calendar: cancel — no event matches %q", r.EventTitle)
 		return
 	}
 
 	// --- 4. Single confirmed match → delete ----------------------------------
 	e := matched[0]
 	if err := a.calendarStore.Delete(a.lifecycleCtx, e.ID); err != nil {
-		log.Printf("calendar: cancel delete %s: %v", e.ID, err)
+		logx.Printf("calendar: cancel delete %s: %v", e.ID, err)
 		return
 	}
 	payload, _ := json.Marshal(calendar.AddedPayload{ID: e.ID, Title: e.Title})
 	a.emitEvent("calendar:removed", string(payload))
-	log.Printf("calendar: cancelled %q at %s", e.Title, e.StartTime.Format("2006-01-02 15:04"))
+	logx.Printf("calendar: cancelled %q at %s", e.Title, e.StartTime.Format("2006-01-02 15:04"))
 }
 
 // UpdateLearningSettings saves learning config and rebuilds the intent extractor

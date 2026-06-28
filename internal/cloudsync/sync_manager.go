@@ -18,7 +18,7 @@ import (
 	"database/sql"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -85,13 +85,13 @@ func New(
 	}
 	if passphrase == "" {
 		passphrase = loadOrCreateMachineID(persistDir)
-		log.Printf("WARN: cloudsync: no passphrase configured — backups are encrypted with a " +
+		logx.Printf("WARN: cloudsync: no passphrase configured — backups are encrypted with a " +
 			"machine-specific key stored in %s. Backups cannot be restored on a different machine. " +
 			"Set a passphrase in Settings → Cloud Sync for portable encryption.", persistDir)
 	}
 	dc, err := newDriveClient(clientID, clientSecret, tokenPath)
 	if err != nil {
-		log.Printf("WARN: cloudsync: %v", err)
+		logx.Printf("WARN: cloudsync: %v", err)
 	}
 	return &Manager{
 		ctx:        ctx,
@@ -114,7 +114,7 @@ func loadOrCreateMachineID(dir string) string {
 	}
 	id := uuid.NewString()
 	if err := os.WriteFile(path, []byte(id+"\n"), 0600); err != nil {
-		log.Printf("cloudsync: failed to write machine-id: %v", err)
+		logx.Printf("cloudsync: failed to write machine-id: %v", err)
 	}
 	return id
 }
@@ -141,7 +141,7 @@ func (m *Manager) Increment() {
 	if m.inFlight {
 		m.mu.Unlock()
 		m.scheduleMu.Unlock()
-		log.Println("cloudsync: backup already in flight, skipping")
+		logx.Info("cloudsync: backup already in flight, skipping")
 		return
 	}
 	m.inFlight = true
@@ -283,7 +283,7 @@ func (m *Manager) runPipeline() bool {
 	if m == nil || m.drive == nil {
 		return false
 	}
-	log.Println("cloudsync: starting backup pipeline")
+	logx.Info("cloudsync: starting backup pipeline")
 
 	// 1. Archive
 	m.emit("sync:status", "archiving")
@@ -292,7 +292,7 @@ func (m *Manager) runPipeline() bool {
 		m.emitError(fmt.Sprintf("Archive failed: %v", err))
 		return false
 	}
-	log.Printf("cloudsync: archive ready (%d bytes)", len(zipBuf))
+	logx.Printf("cloudsync: archive ready (%d bytes)", len(zipBuf))
 
 	// 2. Encrypt (local, before any network I/O)
 	m.emit("sync:status", "encrypting")
@@ -301,7 +301,7 @@ func (m *Manager) runPipeline() bool {
 		m.emitError(fmt.Sprintf("Encryption failed: %v", err))
 		return false
 	}
-	log.Printf("cloudsync: encrypted blob (%d bytes)", len(blob))
+	logx.Printf("cloudsync: encrypted blob (%d bytes)", len(blob))
 
 	// 3. Upload
 	m.emit("sync:status", "uploading")
@@ -314,11 +314,11 @@ func (m *Manager) runPipeline() bool {
 	m.emit("sync:status", "pruning")
 	if err := m.drive.PruneOldBackups(RollingBackupCount); err != nil {
 		// Non-fatal: log and continue.
-		log.Printf("cloudsync: prune warning: %v", err)
+		logx.Printf("cloudsync: prune warning: %v", err)
 	}
 
 	m.emit("sync:status", "done")
-	log.Println("cloudsync: backup pipeline complete")
+	logx.Info("cloudsync: backup pipeline complete")
 	return true
 }
 
@@ -326,7 +326,7 @@ func (m *Manager) runPullPipeline() bool {
 	if m == nil || m.drive == nil {
 		return false
 	}
-	log.Println("cloudsync: starting pull pipeline")
+	logx.Info("cloudsync: starting pull pipeline")
 
 	m.emit("sync:status", "pulling")
 	name, blob, err := m.drive.DownloadLatestBackup()
@@ -334,7 +334,7 @@ func (m *Manager) runPullPipeline() bool {
 		m.emitError(fmt.Sprintf("Pull failed: %v", err))
 		return false
 	}
-	log.Printf("cloudsync: pulled backup %s (%d bytes)", name, len(blob))
+	logx.Printf("cloudsync: pulled backup %s (%d bytes)", name, len(blob))
 
 	m.emit("sync:status", "decrypting")
 	zipBuf, err := decrypt(m.passphrase, blob)
@@ -360,7 +360,7 @@ func (m *Manager) runPullPipeline() bool {
 	}
 
 	m.emit("sync:status", "done")
-	log.Println("cloudsync: pull pipeline complete")
+	logx.Info("cloudsync: pull pipeline complete")
 	return true
 }
 
@@ -418,14 +418,14 @@ func (m *Manager) archive() ([]byte, error) {
 
 	if err := addFile(memDB, "memory/memory.db"); err == nil {
 		added++
-		log.Printf("cloudsync: archived memory.db")
+		logx.Printf("cloudsync: archived memory.db")
 	} else if !os.IsNotExist(err) {
-		log.Printf("cloudsync: WARN skipping memory.db: %v", err)
+		logx.Printf("cloudsync: WARN skipping memory.db: %v", err)
 	}
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := addFile(memDB+suffix, "memory/memory.db"+suffix); err == nil {
 			added++
-			log.Printf("cloudsync: archived memory.db%s", suffix)
+			logx.Printf("cloudsync: archived memory.db%s", suffix)
 		}
 	}
 
@@ -474,12 +474,12 @@ func (m *Manager) archive() ([]byte, error) {
 	moodDB := filepath.Join(m.dataDir, "mood", "mood.db")
 	if err := addFile(moodDB, "mood/mood.db"); err == nil {
 		added++
-		log.Printf("cloudsync: archived mood.db")
+		logx.Printf("cloudsync: archived mood.db")
 	}
 	for _, suffix := range []string{"-wal", "-shm"} {
 		if err := addFile(moodDB+suffix, "mood/mood.db"+suffix); err == nil {
 			added++
-			log.Printf("cloudsync: archived mood.db%s", suffix)
+			logx.Printf("cloudsync: archived mood.db%s", suffix)
 		}
 	}
 
@@ -495,7 +495,7 @@ func (m *Manager) archive() ([]byte, error) {
 	if added == 0 {
 		return nil, fmt.Errorf("cloudsync: no data files found to archive under %s", m.dataDir)
 	}
-	log.Printf("cloudsync: archive complete — %d files", added)
+	logx.Printf("cloudsync: archive complete — %d files", added)
 	return buf.Bytes(), nil
 }
 
@@ -560,7 +560,7 @@ func (m *Manager) restoreZip(zipData []byte) error {
 		}
 		dest := resolveEntry(zf.Name)
 		if dest == "" {
-			log.Printf("cloudsync: restore: skipping unknown entry %q", zf.Name)
+			logx.Printf("cloudsync: restore: skipping unknown entry %q", zf.Name)
 			continue
 		}
 
@@ -609,13 +609,13 @@ func (m *Manager) restoreZip(zipData []byte) error {
 			os.Remove(tmpDest)
 		}
 		extracted++
-		log.Printf("cloudsync: restored %s", dest)
+		logx.Printf("cloudsync: restored %s", dest)
 	}
 
 	if extracted == 0 {
 		return fmt.Errorf("cloudsync: restore zip had no recognisable entries")
 	}
-	log.Printf("cloudsync: restore complete — %d files", extracted)
+	logx.Printf("cloudsync: restore complete — %d files", extracted)
 	return nil
 }
 
@@ -641,10 +641,10 @@ func copyRestoreFile(src, dst string) error {
 
 func (m *Manager) emit(event string, payload any) {
 	// Headless modunda (Flutter client) Wails events emit fonksiyonu panik yarattığı için kaldırıldı.
-	log.Printf("SYNC EVENT: %s - %v", event, payload)
+	logx.Printf("SYNC EVENT: %s - %v", event, payload)
 }
 
 func (m *Manager) emitError(msg string) {
-	log.Printf("cloudsync ERROR: %s", msg)
+	logx.Printf("cloudsync ERROR: %s", msg)
 	m.emit("sync:error", msg)
 }

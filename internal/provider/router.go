@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"sort"
 	"strings"
 	"sync"
@@ -46,12 +46,12 @@ func (r *Router) UpdateConfigs(configs []ProviderConfig) {
 			continue
 		}
 		if err := cfg.Validate(); err != nil {
-			log.Printf("PROVIDER: invalid config for %s: %v", cfg.Type, err)
+			logx.Printf("PROVIDER: invalid config for %s: %v", cfg.Type, err)
 			continue
 		}
 		p, err := NewProvider(cfg)
 		if err != nil {
-			log.Printf("PROVIDER: failed to create %s: %v", cfg.Type, err)
+			logx.Printf("PROVIDER: failed to create %s: %v", cfg.Type, err)
 			continue
 		}
 		r.providers = append(r.providers, &providerEntry{
@@ -132,7 +132,7 @@ func (r *Router) ChatCompletion(ctx context.Context, req ChatRequest) (*ChatResp
 		}
 
 		if pErr != nil {
-			log.Printf("PROVIDER: %v", pErr)
+			logx.Printf("PROVIDER: %v", pErr)
 		}
 	}
 
@@ -165,7 +165,7 @@ func (r *Router) ChatCompletionStream(ctx context.Context, req ChatRequest) (<-c
 		}
 
 		r.recordFailure(entry)
-		log.Printf("PROVIDER: %s stream error: %v, falling back", entry.Name(), err)
+		logx.Printf("PROVIDER: %s stream error: %v, falling back", entry.Name(), err)
 	}
 
 	return nil, fmt.Errorf("all providers failed: %w", lastErr)
@@ -232,7 +232,7 @@ func (r *Router) recordFailure(entry *providerEntry) {
 	entry.failCount++
 	if entry.failCount >= 3 {
 		entry.disabled = true
-		log.Printf("PROVIDER: %s auto-disabled after %d consecutive failures", entry.Name(), entry.failCount)
+		logx.Printf("PROVIDER: %s auto-disabled after %d consecutive failures", entry.Name(), entry.failCount)
 	}
 }
 
@@ -263,7 +263,7 @@ func (r *Router) ReenableProvider(name string) {
 		if entry.cfg.Name == name {
 			entry.disabled = false
 			entry.failCount = 0
-			log.Printf("PROVIDER: %s re-enabled", name)
+			logx.Printf("PROVIDER: %s re-enabled", name)
 			return
 		}
 	}
@@ -329,7 +329,7 @@ func (r *Router) HealthCheck(ctx context.Context, interval time.Duration) {
 					entry.disabled = false
 					entry.failCount = 0
 					r.mu.Unlock()
-					log.Printf("PROVIDER: %s recovered and re-enabled", entry.Name())
+					logx.Printf("PROVIDER: %s recovered and re-enabled", entry.Name())
 				}
 			}
 		}

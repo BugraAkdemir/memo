@@ -2,7 +2,7 @@ package llama
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -91,14 +91,14 @@ func detectNVIDIA() (GPUInfo, bool) {
 	}
 	_, err := exec.LookPath(nvidiaSmi)
 	if err != nil {
-		log.Printf("GPU: nvidia-smi not found: %v", err)
+		logx.Printf("GPU: nvidia-smi not found: %v", err)
 		return GPUInfo{}, false
 	}
 
 	// Get GPU name
 	nameOut, err := exec.Command(nvidiaSmi, "--query-gpu=name", "--format=csv,noheader,nounits").Output()
 	if err != nil {
-		log.Printf("GPU: nvidia-smi name query failed: %v", err)
+		logx.Printf("GPU: nvidia-smi name query failed: %v", err)
 		return GPUInfo{}, false
 	}
 	name := strings.TrimSpace(strings.Split(string(nameOut), "\n")[0])
@@ -106,19 +106,19 @@ func detectNVIDIA() (GPUInfo, bool) {
 	// Get total VRAM in MiB
 	vramOut, err := exec.Command(nvidiaSmi, "--query-gpu=memory.total", "--format=csv,noheader,nounits").Output()
 	if err != nil {
-		log.Printf("GPU: nvidia-smi VRAM query failed: %v", err)
+		logx.Printf("GPU: nvidia-smi VRAM query failed: %v", err)
 		return GPUInfo{}, false
 	}
 	vramStr := strings.TrimSpace(strings.Split(string(vramOut), "\n")[0])
 	vram, err := strconv.Atoi(vramStr)
 	if err != nil {
-		log.Printf("GPU: failed to parse VRAM value %q: %v", vramStr, err)
+		logx.Printf("GPU: failed to parse VRAM value %q: %v", vramStr, err)
 		vram = 0
 	}
 
 	layers := recommendLayers(vram)
 
-	log.Printf("GPU detected: NVIDIA %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
+	logx.Printf("GPU detected: NVIDIA %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
 
 	return GPUInfo{
 		Type:        GPUTypeNVIDIA,
@@ -152,7 +152,7 @@ func detectAMD() (GPUInfo, bool) {
 	name := "AMD GPU"
 	nameOut, err := exec.Command("rocm-smi", "--showproductname").Output()
 	if err != nil {
-		log.Printf("GPU: rocm-smi --showproductname failed: %v", err)
+		logx.Printf("GPU: rocm-smi --showproductname failed: %v", err)
 		return GPUInfo{}, false
 	}
 	for _, line := range strings.Split(string(nameOut), "\n") {
@@ -189,7 +189,7 @@ func detectAMD() (GPUInfo, bool) {
 	}
 
 	layers := recommendLayers(vram)
-	log.Printf("GPU detected: AMD %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
+	logx.Printf("GPU detected: AMD %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
 
 	return GPUInfo{
 		Type:        GPUTypeAMD,
@@ -208,7 +208,7 @@ func detectAMDWindows() (GPUInfo, bool) {
 		"Get-CimInstance Win32_VideoController | Select-Object Name, AdapterRAM | ConvertTo-Csv -NoHeader")
 	out, err := cmd.Output()
 	if err != nil {
-		log.Printf("GPU: PowerShell WMI query failed: %v", err)
+		logx.Printf("GPU: PowerShell WMI query failed: %v", err)
 		return GPUInfo{}, false
 	}
 
@@ -239,7 +239,7 @@ func detectAMDWindows() (GPUInfo, bool) {
 		}
 
 		layers := recommendLayers(vram)
-		log.Printf("GPU detected: AMD %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
+		logx.Printf("GPU detected: AMD %s (%d MB VRAM, recommending %d layers)", name, vram, layers)
 		return GPUInfo{
 			Type:        GPUTypeAMD,
 			Name:        name,
@@ -285,14 +285,14 @@ func detectAMDLspci() (GPUInfo, bool) {
 		matches, _ := filepath.Glob("/sys/class/drm/card*/device/mem_info_vram_total")
 		if len(matches) > 0 {
 			if data, err := os.ReadFile(matches[0]); err == nil {
-				log.Printf("GPU: lspci found AMD: %s", name)
+				logx.Printf("GPU: lspci found AMD: %s", name)
 				if v, err := strconv.ParseUint(strings.TrimSpace(string(data)), 10, 64); err == nil {
 					vram = int(v / (1024 * 1024)) // bytes → MB
 				}
 			}
 		}
 		if vram <= 0 {
-			log.Printf("GPU: lspci found AMD: %s (VRAM unknown)", name)
+			logx.Printf("GPU: lspci found AMD: %s (VRAM unknown)", name)
 		}
 		layers := recommendLayers(vram)
 		return GPUInfo{
@@ -351,7 +351,7 @@ func detectAMDSysfs() (GPUInfo, bool) {
 	}
 
 	layers := recommendLayers(vram)
-	log.Printf("GPU detected: AMD device %s via sysfs (VRAM: %d MB, recommending %d layers)", deviceID, vram, layers)
+	logx.Printf("GPU detected: AMD device %s via sysfs (VRAM: %d MB, recommending %d layers)", deviceID, vram, layers)
 
 	return GPUInfo{
 		Type:        GPUTypeAMD,
@@ -372,7 +372,7 @@ func detectAppleSilicon() (GPUInfo, bool) {
 	// Check for Apple Silicon via sysctl
 	out, err := exec.Command("sysctl", "-n", "hw.optional.arm64").Output()
 	if err != nil || strings.TrimSpace(string(out)) != "1" {
-		log.Printf("GPU: not Apple Silicon (sysctl hw.optional.arm64: %v)", err)
+		logx.Printf("GPU: not Apple Silicon (sysctl hw.optional.arm64: %v)", err)
 		return GPUInfo{}, false
 	}
 
@@ -396,7 +396,7 @@ func detectAppleSilicon() (GPUInfo, bool) {
 
 	// Apple Silicon uses unified memory — offload all layers
 	// Models up to ~30B params fit comfortably in 16GB+ unified memory.
-	log.Printf("GPU detected: %s (%d MB unified memory — Metal acceleration)", chipName, ramMB)
+	logx.Printf("GPU detected: %s (%d MB unified memory — Metal acceleration)", chipName, ramMB)
 
 	return GPUInfo{
 		Type:        GPUTypeMetal,

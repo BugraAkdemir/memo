@@ -4,7 +4,7 @@ package llama
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"os/exec"
 	"strings"
@@ -33,7 +33,7 @@ func forceKillCmd(cmd *exec.Cmd, waitDone chan struct{}) {
 		select {
 		case <-waitDone:
 		case <-time.After(3 * time.Second):
-			log.Printf("llama: WARNING — process may not have exited cleanly")
+			logx.Printf("llama: WARNING — process may not have exited cleanly")
 		}
 	}
 }
@@ -56,7 +56,7 @@ func pidListeningOnPort(port int) int {
 			}
 		}
 	} else {
-		log.Printf("llama: lsof for port %d failed: %v", port, err)
+		logx.Printf("llama: lsof for port %d failed: %v", port, err)
 	}
 
 	out, err = exec.Command("fuser", fmt.Sprintf("%d/tcp", port)).Output()
@@ -71,7 +71,7 @@ func pidListeningOnPort(port int) int {
 			}
 		}
 	} else {
-		log.Printf("llama: fuser for port %d failed: %v", port, err)
+		logx.Printf("llama: fuser for port %d failed: %v", port, err)
 	}
 
 	return 0

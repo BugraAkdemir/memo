@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"os/exec"
@@ -29,7 +29,7 @@ var (
 func (a *App) startSTTServer() {
 	cfg := a.cfg.Whisper
 	if !cfg.Enabled {
-		log.Println("STT: disabled by config")
+		logx.Info("STT: disabled by config")
 		return
 	}
 	port := cfg.Port
@@ -44,18 +44,18 @@ func (a *App) startSTTServer() {
 	}
 
 	if err := ws.Start(cfg.BinaryPath, cfg.ModelPath, lang, port); err != nil {
-		log.Printf("STT: whisper server start failed: %v", err)
+		logx.Printf("STT: whisper server start failed: %v", err)
 		return
 	}
 
 	if err := ws.WaitReady(30 * time.Second); err != nil {
-		log.Printf("STT: whisper server not ready: %v", err)
+		logx.Printf("STT: whisper server not ready: %v", err)
 		ws.Stop()
 		return
 	}
 
 	a.whisperServer = ws
-	log.Printf("STT: whisper server ready on :%d", port)
+	logx.Printf("STT: whisper server ready on :%d", port)
 }
 
 // stopRecordingProcess kills an in-flight microphone recording (arecord/sox/ffmpeg)
@@ -159,7 +159,7 @@ func (a *App) StartRecording() error {
 		return fmt.Errorf("recording start (%s): %w", recorder, err)
 	}
 
-	log.Println("Recording started")
+	logx.Info("Recording started")
 	return nil
 }
 
@@ -231,7 +231,7 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 		return "", fmt.Errorf("stt decode: %w", err)
 	}
 
-	log.Printf("STT result: %q", result.Text)
+	logx.Printf("STT result: %q", result.Text)
 	return result.Text, nil
 }
 

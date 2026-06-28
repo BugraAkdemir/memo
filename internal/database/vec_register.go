@@ -3,7 +3,7 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -24,18 +24,18 @@ func init() {
 	registerOnce.Do(func() {
 		extPath := findVecFile()
 		if extPath == "" {
-			log.Println("DATABASE: sqlite-vec extension not found, vec0 disabled")
+			logx.Info("DATABASE: sqlite-vec extension not found, vec0 disabled")
 			return
 		}
 
-		log.Printf("DATABASE: registering vec driver with: %s", extPath)
+		logx.Printf("DATABASE: registering vec driver with: %s", extPath)
 
 		sql.Register(driverName, &sqlite3.SQLiteDriver{
 			Extensions: []string{extPath},
 		})
 
 		vecAvailable = true
-		log.Println("DATABASE: vec driver registered successfully")
+		logx.Info("DATABASE: vec driver registered successfully")
 	})
 }
 
@@ -78,7 +78,7 @@ func findVecFile() string {
 			if _, err := os.Stat(target); err == nil {
 				// Use the path without .so suffix for LoadExtension
 				loadName := strings.TrimSuffix(target, suffix)
-				log.Printf("DATABASE: found vec0 extension: %s (will load as: %s)", target, loadName)
+				logx.Printf("DATABASE: found vec0 extension: %s (will load as: %s)", target, loadName)
 				return loadName
 			}
 		}

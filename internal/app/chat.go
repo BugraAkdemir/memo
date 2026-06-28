@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -22,9 +22,9 @@ func (a *App) ToggleIncognito(enabled bool) {
 	a.incognitoMessages = nil
 	a.incognitoMu.Unlock()
 	if enabled {
-		log.Println("Entered Incognito Mode")
+		logx.Info("Entered Incognito Mode")
 	} else {
-		log.Println("Exited Incognito Mode")
+		logx.Info("Exited Incognito Mode")
 	}
 }
 
@@ -49,7 +49,7 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 
 // SendMessage sends a plain-text user message and returns the reply.
 func (a *App) SendMessage(userMsg string) string {
-	log.Printf(">> SendMessage: %q", userMsg)
+	logx.Printf(">> SendMessage: %q", userMsg)
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
@@ -76,7 +76,7 @@ func (a *App) SendMessage(userMsg string) string {
 
 // SendMessageStream sends a user message and streams the reply token by token.
 func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
-	log.Printf(">> SendMessageStream: %q", userMsg)
+	logx.Printf(">> SendMessageStream: %q", userMsg)
 
 	// Handle skill commands
 	if ch := a.handleSkillCommand(ctx, userMsg); ch != nil {
@@ -166,7 +166,7 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 
 // SendMessageWithImageStream sends a user message together with an image file.
 func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk {
-	log.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
+	logx.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
 
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
@@ -206,7 +206,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 
 // SendMessageWithFileStream attaches a file's content to the message.
 func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk {
-	log.Printf(">> FileStream: %q with %s", userMsg, filePath)
+	logx.Printf(">> FileStream: %q with %s", userMsg, filePath)
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -257,7 +257,7 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 
 // SendMessageWithImage sends a vision message (non-streaming).
 func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
-	log.Printf(">> Vision: %q with image %s", userMsg, imagePath)
+	logx.Printf(">> Vision: %q with image %s", userMsg, imagePath)
 
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
@@ -304,7 +304,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 
 // SendMessageWithFile sends a file-attached message (non-streaming).
 func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
-	log.Printf(">> File: %q with %s", userMsg, filePath)
+	logx.Printf(">> File: %q with %s", userMsg, filePath)
 
 	content, err := os.ReadFile(filePath)
 	if err != nil {
@@ -358,6 +358,6 @@ func (a *App) updateMoodAsync(userMsg string) {
 
 	iAnlik := scorer.Score(ctx, userMsg)
 	if err := a.mood.Update(ctx, iAnlik); err != nil {
-		log.Printf("mood.Update: %v", err)
+		logx.Printf("mood.Update: %v", err)
 	}
 }

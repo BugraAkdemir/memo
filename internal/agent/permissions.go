@@ -6,7 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"sync"
@@ -214,31 +214,31 @@ func (pm *PermissionManager) Load() {
 	data, err := os.ReadFile(pm.filePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("AGENT: failed to load permissions: %v", err)
+			logx.Printf("AGENT: failed to load permissions: %v", err)
 		}
 		return
 	}
 
 	if err := json.Unmarshal(data, &pm.permanentPermissions); err != nil {
-		log.Printf("AGENT: failed to parse permissions: %v", err)
+		logx.Printf("AGENT: failed to parse permissions: %v", err)
 	}
 }
 
 func (pm *PermissionManager) saveLocked() {
 	data, err := json.MarshalIndent(pm.permanentPermissions, "", "  ")
 	if err != nil {
-		log.Printf("AGENT: failed to marshal permissions: %v", err)
+		logx.Printf("AGENT: failed to marshal permissions: %v", err)
 		return
 	}
 
 	dir := filepath.Dir(pm.filePath)
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("AGENT: failed to create permissions dir: %v", err)
+		logx.Printf("AGENT: failed to create permissions dir: %v", err)
 		return
 	}
 
 	if err := os.WriteFile(pm.filePath, data, 0600); err != nil {
-		log.Printf("AGENT: failed to write permissions: %v", err)
+		logx.Printf("AGENT: failed to write permissions: %v", err)
 	}
 }
 

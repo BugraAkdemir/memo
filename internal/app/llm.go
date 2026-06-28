@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"strings"
 	"sync"
 	"time"
@@ -160,7 +160,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		}, projectPath)
 
 		if err != nil {
-			log.Printf("Agent error: %v", err)
+			logx.Printf("Agent error: %v", err)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
@@ -491,7 +491,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	if orchEnabled {
 		a.providerMu.RLock()
 		if a.activeProviderName != "" {
-			log.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProviderName)
+			logx.Printf("ORCHESTRA: overriding active provider '%s' - orchestra mode uses its own provider configuration", a.activeProviderName)
 		}
 		a.providerMu.RUnlock()
 
@@ -626,7 +626,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
-				log.Printf("Provider stream error: %v", err)
+				logx.Printf("Provider stream error: %v", err)
 				a.recordStreamError(userMsg, "⚠️ "+err.Error())
 				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
@@ -656,7 +656,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					if chunk.Content != "" {
 						if !firstTokenLogged {
 							firstTokenLogged = true
-							log.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
+							logx.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
 						}
 						fullReply.WriteString(chunk.Content)
 						tokenCount++
@@ -700,13 +700,13 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		requestStart := time.Now()
 		ch, err := streamClient.ChatCompletionStream(streamCtx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
 		if err != nil {
-			log.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
-			log.Printf("LLM stream error: %v", err)
+			logx.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
+			logx.Printf("LLM stream error: %v", err)
 			a.recordStreamError(userMsg, "⚠️ "+err.Error())
 			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
-		log.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
+		logx.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 
 		start := time.Now()
 		var fullReply strings.Builder
@@ -724,8 +724,8 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Error != "" {
-					log.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-					log.Printf("Stream chunk error: %s", chunk.Error)
+					logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
+					logx.Printf("Stream chunk error: %s", chunk.Error)
 					a.recordStreamError(userMsg, "⚠️ "+chunk.Error)
 					trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 					return
@@ -734,7 +734,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Content != "" {
 					if !firstTokenLogged {
 						firstTokenLogged = true
-						log.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
+						logx.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
 					}
 					fullReply.WriteString(chunk.Content)
 					tokenCount++
@@ -742,7 +742,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
-					log.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
+					logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
 					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
 					trySend(streamCtx, outCh, chunk)
 					return
@@ -751,11 +751,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		}
 
 		if fullReply.Len() > 0 {
-			log.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
+			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
-			log.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
+			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
 			a.recordStreamError(userMsg, "⚠️ Model boş yanıt döndürdü")
 			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true})
 		}
@@ -892,7 +892,7 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
-			log.Printf("Provider error: %v", err)
+			logx.Printf("Provider error: %v", err)
 			return "⚠️ " + err.Error()
 		}
 		return resp.Content
@@ -913,17 +913,17 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 
 	resp, err := llmClient.ChatCompletion(lctx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
 	if err != nil {
-		log.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
-		log.Printf("LLM error: %v", err)
+		logx.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
+		logx.Printf("LLM error: %v", err)
 		return "⚠️ " + err.Error()
 	}
 	if len(resp.Choices) == 0 {
-		log.Printf("LATENCY llm.complete total_ms=%d status=empty messages=%d", time.Since(start).Milliseconds(), len(messages))
+		logx.Printf("LATENCY llm.complete total_ms=%d status=empty messages=%d", time.Since(start).Milliseconds(), len(messages))
 		return "⚠️ Empty response"
 	}
 
 	reply := resp.Choices[0].Message.GetTextContent()
-	log.Printf("LATENCY llm.complete total_ms=%d status=ok messages=%d reply_chars=%d", time.Since(start).Milliseconds(), len(messages), len(reply))
-	log.Printf("<< Reply: %d chars", len(reply))
+	logx.Printf("LATENCY llm.complete total_ms=%d status=ok messages=%d reply_chars=%d", time.Since(start).Milliseconds(), len(messages), len(reply))
+	logx.Printf("<< Reply: %d chars", len(reply))
 	return reply
 }

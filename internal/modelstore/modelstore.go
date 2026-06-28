@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"net/url"
 	"os"
@@ -150,7 +150,7 @@ type Store struct {
 
 func New(modelsDir string) *Store {
 	if err := os.MkdirAll(modelsDir, 0755); err != nil {
-		log.Printf("modelstore: cannot create models dir: %v", err)
+		logx.Printf("modelstore: cannot create models dir: %v", err)
 	}
 	return &Store{
 		modelsDir: modelsDir,
@@ -311,12 +311,12 @@ func (s *Store) DownloadModel(repoID, filename string) error {
 
 		if err := s.doDownload(ctx, repoID, filename); err != nil {
 			if ctx.Err() != nil {
-				log.Printf("modelstore: download cancelled: %s/%s", repoID, filename)
+				logx.Printf("modelstore: download cancelled: %s/%s", repoID, filename)
 			} else {
-				log.Printf("modelstore: download failed: %v", err)
+				logx.Printf("modelstore: download failed: %v", err)
 			}
 		} else {
-			log.Printf("modelstore: download complete: %s/%s", repoID, filename)
+			logx.Printf("modelstore: download complete: %s/%s", repoID, filename)
 		}
 	}()
 
@@ -439,9 +439,9 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 
 	// Fetch and save HF metadata (tool-calling capability etc.) as a sidecar.
 	if meta, err := s.fetchModelMeta(repoID); err != nil {
-		log.Printf("modelstore: fetchModelMeta skipped for %s: %v", repoID, err)
+		logx.Printf("modelstore: fetchModelMeta skipped for %s: %v", repoID, err)
 	} else if err := saveModelMeta(destPath, meta); err != nil {
-		log.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
+		logx.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
 	}
 
 	return nil
@@ -543,7 +543,7 @@ func (s *Store) ListLocalModels() []LocalModel {
 	})
 
 	if err != nil {
-		log.Printf("modelstore: walk error: %v", err)
+		logx.Printf("modelstore: walk error: %v", err)
 	}
 
 	return models

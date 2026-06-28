@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -96,7 +96,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
 			systemPrompt += websearch.FormatForContext(userMsg, results)
 		} else {
-			log.Printf("websearch: %v", err)
+			logx.Printf("websearch: %v", err)
 		}
 	}
 
@@ -160,7 +160,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		}
 	}
 
-	log.Printf("CONTEXT: budget=%d system=%d user=%d history=%d history_msgs=%d total_msgs=%d",
+	logx.Printf("CONTEXT: budget=%d system=%d user=%d history=%d history_msgs=%d total_msgs=%d",
 		tokenBudget, systemTokens, userTokens, historyBudget, len(history), len(msgs))
 	return msgs
 }
@@ -323,7 +323,7 @@ func (a *App) downloadFile(repoID, filename, destPath string) error {
 		os.Remove(tmpPath)
 	}
 
-	log.Printf("Downloaded %s (%d bytes)", destPath, written)
+	logx.Printf("Downloaded %s (%d bytes)", destPath, written)
 	return nil
 }
 

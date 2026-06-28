@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -205,12 +205,12 @@ func (c *Client) Logout() error {
 		// Remote deregister failed/timed out, so the local session was NOT
 		// cleared. Delete it ourselves — otherwise the next Start() would
 		// silently reuse a dead session instead of showing a fresh QR code.
-		log.Printf("WhatsApp: remote logout failed (%v); clearing local session", err)
+		logx.Printf("WhatsApp: remote logout failed (%v); clearing local session", err)
 		c.waClient.Disconnect()
 		if store != nil {
 			delCtx, delCancel := context.WithTimeout(context.Background(), 5*time.Second)
 			if derr := store.Delete(delCtx); derr != nil {
-				log.Printf("WhatsApp: local session delete error: %v", derr)
+				logx.Printf("WhatsApp: local session delete error: %v", derr)
 			}
 			delCancel()
 		}
@@ -336,7 +336,7 @@ func (c *Client) GetProfilePicture(ctx context.Context, jid string, preview bool
 	if info == nil || info.URL == "" {
 		// No picture available — drop a marker so we don't hammer the server.
 		if err := os.WriteFile(nonePath, nil, 0644); err != nil {
-			log.Printf("whatsapp: write none marker: %v", err)
+			logx.Printf("whatsapp: write none marker: %v", err)
 		}
 		return nil, nil
 	}
@@ -359,7 +359,7 @@ func (c *Client) GetProfilePicture(ctx context.Context, jid string, preview bool
 		return nil, err
 	}
 	if err := os.WriteFile(imgPath, data, 0644); err != nil {
-		log.Printf("WhatsApp: cache avatar write error: %v", err)
+		logx.Printf("WhatsApp: cache avatar write error: %v", err)
 	}
 	return data, nil
 }
@@ -383,22 +383,22 @@ func (c *Client) handleEvent(evt interface{}) {
 	case *waEvent.QR:
 		c.qrCodes = v.Codes
 	case *waEvent.PairSuccess:
-		log.Printf("WhatsApp: paired successfully with %s", v.ID)
+		logx.Printf("WhatsApp: paired successfully with %s", v.ID)
 		c.qrCodes = nil
 		c.lastError = ""
 	case *waEvent.PairError:
-		log.Printf("WhatsApp: pair error: %v", v.Error)
+		logx.Printf("WhatsApp: pair error: %v", v.Error)
 		c.lastError = v.Error.Error()
 		select {
 		case c.errCh <- v.Error:
 		default:
 		}
 	case *waEvent.Connected:
-		log.Printf("WhatsApp: connected")
+		logx.Printf("WhatsApp: connected")
 		c.reconnecting = false
 		c.lastError = ""
 	case *waEvent.Disconnected:
-		log.Printf("WhatsApp: disconnected")
+		logx.Printf("WhatsApp: disconnected")
 		c.lastError = "connection lost"
 		select {
 		case c.errCh <- fmt.Errorf("disconnected"):
@@ -409,12 +409,12 @@ func (c *Client) handleEvent(evt interface{}) {
 			go c.autoReconnect()
 		}
 	case *waEvent.LoggedOut:
-		log.Printf("WhatsApp: logged out remotely")
+		logx.Printf("WhatsApp: logged out remotely")
 		c.lastError = "logged out"
 		c.qrCodes = nil
 		c.started = false
 	case *waEvent.StreamReplaced:
-		log.Printf("WhatsApp: stream replaced")
+		logx.Printf("WhatsApp: stream replaced")
 	case *waEvent.HistorySync:
 		go c.handleHistorySync(v)
 	case *waEvent.Message:
@@ -438,19 +438,19 @@ func (c *Client) autoReconnect() {
 			return
 		}
 
-		log.Printf("WhatsApp: reconnect attempt %d...", attempt+1)
+		logx.Printf("WhatsApp: reconnect attempt %d...", attempt+1)
 		if err := c.waClient.Connect(); err != nil {
-			log.Printf("WhatsApp: reconnect error: %v", err)
+			logx.Printf("WhatsApp: reconnect error: %v", err)
 			c.lastError = fmt.Sprintf("reconnect failed (%d/%d)", attempt+1, len(backoff))
 			continue
 		}
-		log.Printf("WhatsApp: reconnected")
+		logx.Printf("WhatsApp: reconnected")
 		c.reconnecting = false
 		return
 	}
 	c.reconnecting = false
 	c.lastError = "reconnect failed — please reconnect manually"
-	log.Printf("WhatsApp: auto-reconnect exhausted")
+	logx.Printf("WhatsApp: auto-reconnect exhausted")
 }
 
 // handleHistorySync imports historical messages after first pairing.
@@ -459,7 +459,7 @@ func (c *Client) handleHistorySync(evt *waEvent.HistorySync) {
 		return
 	}
 	convs := evt.Data.GetConversations()
-	log.Printf("WhatsApp: history sync — %d conversations", len(convs))
+	logx.Printf("WhatsApp: history sync — %d conversations", len(convs))
 	myJID := ""
 	if c.waClient != nil && c.waClient.Store != nil {
 		myJID = c.waClient.Store.ID.String()
@@ -496,12 +496,12 @@ func (c *Client) handleHistorySync(evt *waEvent.HistorySync) {
 				FromMe:     fromMe,
 			}
 			if err := c.store.SaveMessage(msg); err != nil {
-				log.Printf("WhatsApp: save history msg error: %v", err)
+				logx.Printf("WhatsApp: save history msg error: %v", err)
 			}
 			count++
 		}
 	}
-	log.Printf("WhatsApp: history sync saved %d messages", count)
+	logx.Printf("WhatsApp: history sync saved %d messages", count)
 }
 
 // extractText extracts the text content from a WhatsApp message.
@@ -563,7 +563,7 @@ func (c *Client) handleMessage(evt *waEvent.Message) {
 
 	if c.store != nil {
 		if err := c.store.SaveMessage(msg); err != nil {
-			log.Printf("WhatsApp: save message error: %v", err)
+			logx.Printf("WhatsApp: save message error: %v", err)
 		}
 	}
 
@@ -622,11 +622,11 @@ func (c *Client) importContacts() {
 			continue
 		}
 		if err := c.store.SaveContact(jid.String(), name); err != nil {
-			log.Printf("WhatsApp: save contact %s error: %v", jid, err)
+			logx.Printf("WhatsApp: save contact %s error: %v", jid, err)
 		}
 		count++
 	}
-	log.Printf("WhatsApp: imported %d contacts", count)
+	logx.Printf("WhatsApp: imported %d contacts", count)
 }
 
 // importGroups stores the name of every joined group in the contacts table so
@@ -641,7 +641,7 @@ func (c *Client) importGroups() {
 	defer cancel()
 	groups, err := c.waClient.GetJoinedGroups(ctx)
 	if err != nil {
-		log.Printf("WhatsApp: get joined groups error: %v", err)
+		logx.Printf("WhatsApp: get joined groups error: %v", err)
 		return
 	}
 	count := 0
@@ -650,10 +650,10 @@ func (c *Client) importGroups() {
 			continue
 		}
 		if err := c.store.SaveContact(g.JID.String(), g.Name); err != nil {
-			log.Printf("WhatsApp: save group %s error: %v", g.JID, err)
+			logx.Printf("WhatsApp: save group %s error: %v", g.JID, err)
 			continue
 		}
 		count++
 	}
-	log.Printf("WhatsApp: imported %d group names", count)
+	logx.Printf("WhatsApp: imported %d group names", count)
 }

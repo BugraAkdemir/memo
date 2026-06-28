@@ -7,7 +7,7 @@ import (
 	"compress/gzip"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -37,14 +37,14 @@ func Install(baseDir string) (string, error) {
 	binPath := filepath.Join(binDir, binaryName())
 
 	if _, err := os.Stat(binPath); err == nil {
-		log.Printf("[ngrok] Binary exists: %s", binPath)
+		logx.Printf("[ngrok] Binary exists: %s", binPath)
 		return binPath, nil
 	}
 
 	// Check bundled location (project root binaries/)
 	bundledPath := filepath.Join(".", "binaries", runtime.GOOS, binaryName())
 	if _, err := os.Stat(bundledPath); err == nil {
-		log.Printf("[ngrok] Using bundled binary: %s", bundledPath)
+		logx.Printf("[ngrok] Using bundled binary: %s", bundledPath)
 		if err := os.MkdirAll(binDir, 0755); err == nil {
 			os.Remove(binPath)
 		}
@@ -57,7 +57,7 @@ func Install(baseDir string) (string, error) {
 		return "", fmt.Errorf("unsupported platform: %s", key)
 	}
 
-	log.Printf("[ngrok] Downloading from %s", url)
+	logx.Printf("[ngrok] Downloading from %s", url)
 
 	resp, err := http.Get(url)
 	if err != nil {
@@ -87,7 +87,7 @@ func Install(baseDir string) (string, error) {
 		os.Chmod(binPath, 0755)
 	}
 
-	log.Printf("[ngrok] Installed to %s", binPath)
+	logx.Printf("[ngrok] Installed to %s", binPath)
 	return binPath, nil
 }
 

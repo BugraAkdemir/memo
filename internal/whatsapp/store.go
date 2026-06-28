@@ -3,7 +3,7 @@ package whatsapp
 import (
 	"database/sql"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"strings"
 	"sync"
 	"time"
@@ -36,7 +36,7 @@ func NewStore(dbPath string) (*Store, error) {
 		return nil, fmt.Errorf("whatsapp store: migrate: %w", err)
 	}
 
-	log.Printf("WhatsApp message store ready: %s", dbPath)
+	logx.Printf("WhatsApp message store ready: %s", dbPath)
 	return s, nil
 }
 

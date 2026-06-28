@@ -5,6 +5,7 @@ package llama
 import (
 	"fmt"
 	"log"
+	"memo/internal/logx"
 	"os"
 	"os/exec"
 	"strings"
@@ -31,7 +32,7 @@ func forceKillCmd(cmd *exec.Cmd, waitDone chan struct{}) {
 		select {
 		case <-waitDone:
 		case <-time.After(3 * time.Second):
-			log.Printf("llama: WARNING — process may not have exited cleanly")
+			logx.Printf("llama: WARNING — process may not have exited cleanly")
 		}
 	}
 }
@@ -47,7 +48,7 @@ func killPID(pid int) error {
 func pidListeningOnPort(port int) int {
 	out, err := exec.Command("netstat", "-ano").Output()
 	if err != nil {
-		log.Printf("llama: netstat failed: %v", err)
+		logx.Printf("llama: netstat failed: %v", err)
 		return 0
 	}
 	target := fmt.Sprintf(":%d", port)

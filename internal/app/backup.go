@@ -5,7 +5,7 @@ import (
 	"bytes"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"sort"
@@ -167,23 +167,23 @@ func (a *App) snapshotPreImport() {
 
 	dir := backupsDir()
 	if err := os.MkdirAll(dir, 0755); err != nil {
-		log.Printf("import: snapshot: mkdir %s: %v", dir, err)
+		logx.Printf("import: snapshot: mkdir %s: %v", dir, err)
 		return
 	}
 
 	existing, err := a.ExportData(false)
 	if err != nil {
-		log.Printf("import: snapshot: export failed (proceeding anyway): %v", err)
+		logx.Printf("import: snapshot: export failed (proceeding anyway): %v", err)
 		return
 	}
 
 	name := fmt.Sprintf("pre_import_%s.zip", time.Now().Format("20060102_150405"))
 	path := filepath.Join(dir, name)
 	if err := fileutil.AtomicWrite(path, existing, 0600); err != nil {
-		log.Printf("import: snapshot: write failed (proceeding anyway): %v", err)
+		logx.Printf("import: snapshot: write failed (proceeding anyway): %v", err)
 		return
 	}
-	log.Printf("import: snapshot saved → %s", path)
+	logx.Printf("import: snapshot saved → %s", path)
 
 	pruneImportBackups(dir, maxImportBackups)
 }
@@ -211,9 +211,9 @@ func pruneImportBackups(dir string, keep int) {
 		old := snapshots[0]
 		snapshots = snapshots[1:]
 		if err := os.Remove(old); err != nil {
-			log.Printf("import: prune backup %s: %v", old, err)
+			logx.Printf("import: prune backup %s: %v", old, err)
 		} else {
-			log.Printf("import: pruned old snapshot %s", old)
+			logx.Printf("import: pruned old snapshot %s", old)
 		}
 	}
 }
@@ -277,9 +277,9 @@ func (a *App) WipeAllData() error {
 		a.storeMu.Lock()
 		a.store = nil
 		a.storeMu.Unlock()
-		log.Println("WARN: wipe: no embedding/main client available, memory store left uninitialized")
+		logx.Info("WARN: wipe: no embedding/main client available, memory store left uninitialized")
 	}
 
-	log.Println("All user data wiped")
+	logx.Info("All user data wiped")
 	return nil
 }

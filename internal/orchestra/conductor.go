@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -81,7 +81,7 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressPlan, Content: "🧠 **Şef planlıyor...**\n\n"})
 	}
 
-	log.Println("ORCHESTRA: chief planning...")
+	logx.Info("ORCHESTRA: chief planning...")
 	plan, err := c.createPlan(ctx, cfg, userMessage, onProgress)
 	if err != nil {
 		return "", nil, fmt.Errorf("chief planning failed: %w", err)
@@ -89,7 +89,7 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 	if len(plan.Tasks) == 0 {
 		return "", nil, fmt.Errorf("chief returned no tasks")
 	}
-	log.Printf("ORCHESTRA: chief created %d tasks", len(plan.Tasks))
+	logx.Printf("ORCHESTRA: chief created %d tasks", len(plan.Tasks))
 
 	select {
 	case <-ctx.Done():
@@ -101,7 +101,7 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 	if err != nil {
 		return "", nil, fmt.Errorf("task execution failed: %w", err)
 	}
-	log.Printf("ORCHESTRA: %d/%d tasks completed", len(results), len(plan.Tasks))
+	logx.Printf("ORCHESTRA: %d/%d tasks completed", len(results), len(plan.Tasks))
 
 	select {
 	case <-ctx.Done():
@@ -113,7 +113,7 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressSynthChunk, Content: "📝 **Şef sentezliyor...**\n\n"})
 	}
 
-	log.Println("ORCHESTRA: chief synthesizing...")
+	logx.Info("ORCHESTRA: chief synthesizing...")
 	finalResponse, err := c.synthesize(ctx, cfg, userMessage, plan.Tasks, results, onProgress)
 	if err != nil {
 		return "", nil, fmt.Errorf("synthesis failed: %w", err)
@@ -141,7 +141,7 @@ func SaveConfig(filePath string, cfg OrchestraConfig) error {
 	if err := os.WriteFile(filePath, data, 0600); err != nil {
 		return fmt.Errorf("orchestra config write: %w", err)
 	}
-	log.Printf("ORCHESTRA: config saved to %s", filePath)
+	logx.Printf("ORCHESTRA: config saved to %s", filePath)
 	return nil
 }
 
@@ -151,13 +151,13 @@ func LoadConfig(filePath string) OrchestraConfig {
 	data, err := os.ReadFile(filePath)
 	if err != nil {
 		if !os.IsNotExist(err) {
-			log.Printf("ORCHESTRA: config read error: %v", err)
+			logx.Printf("ORCHESTRA: config read error: %v", err)
 		}
 		return DefaultConfig()
 	}
 	var cfg OrchestraConfig
 	if err := json.Unmarshal(data, &cfg); err != nil {
-		log.Printf("ORCHESTRA: config parse error: %v, using defaults", err)
+		logx.Printf("ORCHESTRA: config parse error: %v, using defaults", err)
 		return DefaultConfig()
 	}
 	// Ensure all built-in roles are present (merge missing roles from defaults)
@@ -218,7 +218,7 @@ func (c *Conductor) createProviderForType(modelType, modelName string) (provider
 	configs := c.getConfigs()
 	for _, cfg := range configs {
 		if cfg.Enabled {
-			log.Printf("ORCHESTRA WARNING: provider %s/%s not found, falling back to %s/%s", modelType, modelName, cfg.Type, cfg.Model)
+			logx.Printf("ORCHESTRA WARNING: provider %s/%s not found, falling back to %s/%s", modelType, modelName, cfg.Type, cfg.Model)
 			cfg.Model = modelName
 			return c.pf(cfg)
 		}
@@ -245,7 +245,7 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 		return nil, fmt.Errorf("chief provider (%s/%s) oluşturulamadı: %w. API key ve provider konfigürasyonunu kontrol et.", cfg.ChiefType, cfg.ChiefModel, err)
 	}
 
-	log.Printf("ORCHESTRA: chief planning with %s/%s...", cfg.ChiefType, cfg.ChiefModel)
+	logx.Printf("ORCHESTRA: chief planning with %s/%s...", cfg.ChiefType, cfg.ChiefModel)
 	roleInfo := c.buildRoleInfo(cfg)
 	systemMsg := ChiefSystemPrompt + "\n\nMevcut roller ve yetenekleri:\n" + roleInfo
 
@@ -268,18 +268,18 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 		// stream it to the UI. Showing raw `{"tasks":[...]}` to the user was
 		// confusing and unprofessional. A clean ProgressPlanReady is emitted once
 		// the plan is parsed below.
-		log.Printf("ORCHESTRA: chief opening stream to %s/%s...", cfg.ChiefType, cfg.ChiefModel)
+		logx.Printf("ORCHESTRA: chief opening stream to %s/%s...", cfg.ChiefType, cfg.ChiefModel)
 		streamCh, streamErr := prov.ChatCompletionStream(planCtx, req)
 		if streamErr != nil {
 			return nil, fmt.Errorf("chief (%s/%s) stream başlatılamadı: %w", cfg.ChiefType, cfg.ChiefModel, streamErr)
 		}
-		log.Printf("ORCHESTRA: chief stream established, waiting for first chunk...")
+		logx.Printf("ORCHESTRA: chief stream established, waiting for first chunk...")
 		var sb strings.Builder
 		gotChunk := false
 		for chunk := range streamCh {
 			if !gotChunk {
 				gotChunk = true
-				log.Printf("ORCHESTRA: chief first chunk received")
+				logx.Printf("ORCHESTRA: chief first chunk received")
 			}
 			if chunk.Error != "" {
 				return nil, fmt.Errorf("chief (%s/%s) stream hatası: %s", cfg.ChiefType, cfg.ChiefModel, chunk.Error)
@@ -303,14 +303,14 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 		content = strings.TrimSpace(resp.Content)
 	}
 
-	log.Printf("ORCHESTRA: chief raw response (%d chars): %s", len(content), content[:min(len(content), 200)])
+	logx.Printf("ORCHESTRA: chief raw response (%d chars): %s", len(content), content[:min(len(content), 200)])
 
 	content = extractJSON(content)
 
 	var plan OrchestraPlan
 	if err := json.Unmarshal([]byte(content), &plan); err != nil {
-		log.Printf("ORCHESTRA: chief JSON parse error: %v", err)
-		log.Printf("ORCHESTRA: extracted JSON: %s", content)
+		logx.Printf("ORCHESTRA: chief JSON parse error: %v", err)
+		logx.Printf("ORCHESTRA: extracted JSON: %s", content)
 		return nil, fmt.Errorf("chief JSON parse hatası: %w\nGelen cevap: %s", err, content)
 	}
 
@@ -334,7 +334,7 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 					plan.Tasks[i].ModelType = role.ModelType
 					plan.Tasks[i].ModelName = role.ModelName
 					found = true
-					log.Printf("ORCHESTRA WARNING: chief assigned task to '%s' but it's disabled/missing, falling back to '%s'", originalRole, role.Role)
+					logx.Printf("ORCHESTRA WARNING: chief assigned task to '%s' but it's disabled/missing, falling back to '%s'", originalRole, role.Role)
 					if onProgress != nil {
 						c.safeProgress(onProgress, ProgressUpdate{
 							Type: ProgressError,
@@ -430,7 +430,7 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 				t := tasks[idx]
 				pending = append(pending, fmt.Sprintf("task[%d]%s(depends_on:%v)", idx, t.Role, t.DependsOn))
 			}
-			log.Printf("ORCHESTRA: deadlock in sequential execution, pending: %v", pending)
+			logx.Printf("ORCHESTRA: deadlock in sequential execution, pending: %v", pending)
 			// Mark remaining as failed
 			for _, idx := range remaining {
 				results[idx] = OrchestraResult{
@@ -473,7 +473,7 @@ func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, ta
 
 func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, task OrchestraTask, index int, onProgress ProgressFn, streamChunks bool) OrchestraResult {
 	start := time.Now()
-	log.Printf("ORCHESTRA: task %d starting: role=%s model=%s/%s", index, task.Role, task.ModelType, task.ModelName)
+	logx.Printf("ORCHESTRA: task %d starting: role=%s model=%s/%s", index, task.Role, task.ModelType, task.ModelName)
 
 	if onProgress != nil {
 		c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskStart, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, Content: fmt.Sprintf("🎯 **%s** (%s/%s) çalışıyor...\n", task.Role, task.ModelType, task.ModelName)})
@@ -497,7 +497,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	p, err := c.createProviderForType(task.ModelType, task.ModelName)
 	if err != nil {
 		errMsg := fmt.Sprintf("%s (%s) provider hatası: %v. Provider'ı API Providers'dan kontrol et.", task.ModelType, task.ModelName, err)
-		log.Printf("ORCHESTRA: %s", errMsg)
+		logx.Printf("ORCHESTRA: %s", errMsg)
 		result.Error = errMsg
 		result.DurationMs = time.Since(start).Milliseconds()
 		return result
@@ -574,7 +574,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 			}
 			return result
 		}
-		log.Printf("ORCHESTRA: stream start failed for %s/%s, falling back to non-streaming: %v", task.ModelType, task.ModelName, streamErr)
+		logx.Printf("ORCHESTRA: stream start failed for %s/%s, falling back to non-streaming: %v", task.ModelType, task.ModelName, streamErr)
 	}
 
 	var resp *provider.ChatResponse
@@ -588,7 +588,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 	if err != nil {
 		// Try fallback providers when the primary one fails
 		if fbResp, fbErr := c.tryFallbackProviders(taskCtx, task, req, index, onProgress); fbErr == nil {
-			log.Printf("ORCHESTRA: task %d (%s) succeeded via fallback provider", index, task.Role)
+			logx.Printf("ORCHESTRA: task %d (%s) succeeded via fallback provider", index, task.Role)
 			result.Content = fbResp.Content
 			result.TokensOut = estimateTokens(fbResp.Content)
 			result.DurationMs = time.Since(start).Milliseconds()
@@ -599,13 +599,13 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 			return result
 		}
 
-		log.Printf("ORCHESTRA: task %d (%s/%s) error: %v", index, task.ModelType, task.ModelName, err)
+		logx.Printf("ORCHESTRA: task %d (%s/%s) error: %v", index, task.ModelType, task.ModelName, err)
 		result.Error = err.Error()
 		if onProgress != nil {
 			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Error: err.Error()})
 		}
 	} else {
-		log.Printf("ORCHESTRA: task %d (%s/%s) OK %dms", index, task.ModelType, task.ModelName, result.DurationMs)
+		logx.Printf("ORCHESTRA: task %d (%s/%s) OK %dms", index, task.ModelType, task.ModelName, result.DurationMs)
 		result.Content = resp.Content
 		result.TokensOut = estimateTokens(resp.Content)
 		if onProgress != nil {
@@ -647,11 +647,11 @@ func (c *Conductor) tryFallbackProviders(ctx context.Context, task OrchestraTask
 		fbCfg.Model = task.ModelName
 		fbProv, err := c.pf(fbCfg)
 		if err != nil {
-			log.Printf("ORCHESTRA: fallback provider %s/%s create failed: %v", cfg.Type, task.ModelName, err)
+			logx.Printf("ORCHESTRA: fallback provider %s/%s create failed: %v", cfg.Type, task.ModelName, err)
 			continue
 		}
 
-		log.Printf("ORCHESTRA: task %d trying fallback provider %s/%s", index, cfg.Type, task.ModelName)
+		logx.Printf("ORCHESTRA: task %d trying fallback provider %s/%s", index, cfg.Type, task.ModelName)
 		if onProgress != nil {
 			c.safeProgress(onProgress, ProgressUpdate{
 				Type:      ProgressTaskStart,
@@ -667,7 +667,7 @@ func (c *Conductor) tryFallbackProviders(ctx context.Context, task OrchestraTask
 		if callErr == nil {
 			return resp, nil
 		}
-		log.Printf("ORCHESTRA: fallback %s/%s also failed: %v", cfg.Type, task.ModelName, callErr)
+		logx.Printf("ORCHESTRA: fallback %s/%s also failed: %v", cfg.Type, task.ModelName, callErr)
 	}
 	return nil, fmt.Errorf("all fallback providers failed")
 }
@@ -683,7 +683,7 @@ func (c *Conductor) retryTask(ctx context.Context, label string, fn func() error
 	for attempt := 0; attempt <= maxRetries; attempt++ {
 		if attempt > 0 {
 			delay := baseDelay * time.Duration(1<<(attempt-1))
-			log.Printf("ORCHESTRA: %s failed, retrying in %v (attempt %d/%d): %v", label, delay, attempt, maxRetries, lastErr)
+			logx.Printf("ORCHESTRA: %s failed, retrying in %v (attempt %d/%d): %v", label, delay, attempt, maxRetries, lastErr)
 			timer := time.NewTimer(delay)
 			select {
 			case <-ctx.Done():
@@ -927,7 +927,7 @@ func callWithRetry(ctx context.Context, label string, fn func() error) error {
 					delay = d + time.Duration(rand.Intn(3))*time.Second // add jitter
 				}
 			}
-			log.Printf("ORCHESTRA: %s rate limited, retrying in %v (attempt %d/%d)", label, delay, attempt, maxRetries)
+			logx.Printf("ORCHESTRA: %s rate limited, retrying in %v (attempt %d/%d)", label, delay, attempt, maxRetries)
 
 			timer := time.NewTimer(delay)
 			select {

@@ -142,8 +142,8 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - ~~Import path traversal weak~~ → fixed: filepath.Rel validation ensures extracted files stay within data directories.
 
 ### Provider / Agent / Orchestra
-- **`provider.Priority` field exists but unused by router** — config field defined, sort logic present but not wired.
-- Orchestra bypasses `provider.Router` — creates providers directly, no fallback chain.
+- **~~`provider.Priority` field exists but unused by router~~** → fixed: router sorts by priority, frontend dialog now exposes priority field.
+- Orchestra bypasses `provider.Router` — creates providers directly, but now has fallback chain via `tryFallbackProviders`.
 - ~~Agent pipeline has no timeout per tool call~~ → fixed: 60s `DefaultToolTimeout`.
 - ~~**No test files for `orchestra/` package** (~800 lines untested)~~ → 48 tests passing with `-race`. `provider/`, `agent/`, and `orchestra/` all have tests.
 - **Agent frontend UI (permission dialog, tool call cards, activity panel, agent screen) — fully implemented.**

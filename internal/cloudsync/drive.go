@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net"
 	"net/http"
 	"os"
@@ -91,7 +91,7 @@ func (dc *driveClient) IsAuthenticated() bool {
 		dc.mu.Lock()
 		dc.token = t
 		if err := dc.saveToken(t); err != nil {
-			log.Printf("cloudsync: saveToken: %v", err)
+			logx.Printf("cloudsync: saveToken: %v", err)
 		}
 		dc.mu.Unlock()
 	}
@@ -180,7 +180,7 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 
 			t, err := dc.cfg.Exchange(context.Background(), code)
 			if err != nil {
-				log.Printf("cloudsync: oauth exchange: %v", err)
+				logx.Printf("cloudsync: oauth exchange: %v", err)
 				dc.mu.Lock()
 				dc.closeAuthDoneLocked()
 				dc.mu.Unlock()
@@ -189,7 +189,7 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 			dc.mu.Lock()
 			dc.token = t
 			if err := dc.saveToken(t); err != nil {
-				log.Printf("cloudsync: save token: %v", err)
+				logx.Printf("cloudsync: save token: %v", err)
 			}
 			dc.closeAuthDoneLocked()
 			dc.mu.Unlock()
@@ -198,7 +198,7 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 
 	go func() {
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
-			log.Printf("cloudsync: auth server: %v", err)
+			logx.Printf("cloudsync: auth server: %v", err)
 		}
 	}()
 
@@ -243,7 +243,7 @@ func (dc *driveClient) service() (*drive.Service, error) {
 		dc.mu.Lock()
 		dc.token = t
 		if err := dc.saveToken(t); err != nil {
-			log.Printf("cloudsync: saveToken: %v", err)
+			logx.Printf("cloudsync: saveToken: %v", err)
 		}
 		dc.mu.Unlock()
 	}
@@ -277,7 +277,7 @@ func (dc *driveClient) GetAccountInfo(ctx context.Context) (string, string, erro
 		dc.mu.Lock()
 		dc.token = t
 		if err := dc.saveToken(t); err != nil {
-			log.Printf("cloudsync: saveToken: %v", err)
+			logx.Printf("cloudsync: saveToken: %v", err)
 		}
 		dc.mu.Unlock()
 	}
@@ -346,7 +346,7 @@ func (dc *driveClient) getOrCreateFolder(svc *drive.Service) (string, error) {
 			return "", fmt.Errorf("cloudsync: folder create: %w", err)
 		}
 		folderID = f.Id
-		log.Printf("cloudsync: created Drive folder %q (%s)", driveFolderName, folderID)
+		logx.Printf("cloudsync: created Drive folder %q (%s)", driveFolderName, folderID)
 	}
 
 	dc.mu.Lock()
@@ -381,7 +381,7 @@ func (dc *driveClient) UploadBackup(data []byte) (string, error) {
 		return "", fmt.Errorf("cloudsync: upload: %w", err)
 	}
 
-	log.Printf("cloudsync: uploaded %s (%d bytes, id=%s)", f.Name, len(data), f.Id)
+	logx.Printf("cloudsync: uploaded %s (%d bytes, id=%s)", f.Name, len(data), f.Id)
 	return f.Id, nil
 }
 
@@ -459,7 +459,7 @@ func (dc *driveClient) PruneOldBackups(keep int) error {
 		if err := svc.Files.Delete(files[i].Id).Do(); err != nil {
 			return fmt.Errorf("cloudsync: prune delete %s: %w", files[i].Name, err)
 		}
-		log.Printf("cloudsync: pruned old backup %s", files[i].Name)
+		logx.Printf("cloudsync: pruned old backup %s", files[i].Name)
 	}
 	return nil
 }

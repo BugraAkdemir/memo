@@ -5,7 +5,7 @@ package calendar
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"memo/internal/logx"
 	"math"
 	"time"
 )
@@ -53,7 +53,7 @@ func (r *ReminderLoop) tick(ctx context.Context, now time.Time) {
 
 	events, err := r.store.ClaimPendingReminders(ctx, now, lead)
 	if err != nil {
-		log.Printf("calendar: reminder tick: %v", err)
+		logx.Printf("calendar: reminder tick: %v", err)
 		return
 	}
 
@@ -67,7 +67,7 @@ func (r *ReminderLoop) tick(ctx context.Context, now time.Time) {
 		}
 		data, err := json.Marshal(payload)
 		if err != nil {
-			log.Printf("calendar: marshal reminder: %v", err)
+			logx.Printf("calendar: marshal reminder: %v", err)
 			continue
 		}
 		r.emit("calendar:reminder", string(data))

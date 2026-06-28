@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -35,7 +35,7 @@ func (a *App) initWhatsApp() {
 
 	dataDir := cfg.DataDir
 	if err := os.MkdirAll(dataDir, 0755); err != nil {
-		log.Printf("WhatsApp: mkdir data dir: %v", err)
+		logx.Printf("WhatsApp: mkdir data dir: %v", err)
 		return
 	}
 
@@ -44,7 +44,7 @@ func (a *App) initWhatsApp() {
 
 	msgStore, err := whatsapp.NewStore(msgDB)
 	if err != nil {
-		log.Printf("WhatsApp: store init error: %v", err)
+		logx.Printf("WhatsApp: store init error: %v", err)
 		return
 	}
 	a.waMsgStore = msgStore
@@ -65,14 +65,14 @@ func (a *App) initWhatsApp() {
 
 	go func() {
 		if err := a.waClient.Start(a.lifecycleCtx); err != nil {
-			log.Printf("WhatsApp: auto-connect error: %v", err)
+			logx.Printf("WhatsApp: auto-connect error: %v", err)
 		}
 	}()
 
 	// Consume incoming messages for intent extraction and observer recording.
 	go a.runWhatsAppIntentLoop(a.lifecycleCtx)
 
-	log.Println("WhatsApp client initialized and connecting...")
+	logx.Info("WhatsApp client initialized and connecting...")
 }
 
 // runWhatsAppIntentLoop drains the WhatsApp message channel and runs intent
@@ -299,7 +299,7 @@ Kullanıcıya ASLA JID sorma; önce whatsapp_latest ile sohbet listesini kontrol
 			sm.AddMessage("assistant", reply, "", "")
 		}
 
-		log.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))
+		logx.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))
 		if a.mood != nil && a.mood.Enabled() && userMsg != "" {
 			go a.updateMoodAsync(userMsg)
 		}

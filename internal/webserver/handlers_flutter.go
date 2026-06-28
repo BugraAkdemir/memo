@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"time"
 	"memo/internal/api"
 	"memo/internal/config"
@@ -959,13 +959,13 @@ func (s *Server) handleLlamaConfigUpdate(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	log.Printf("📥 Backend: Engine mode update received: %s", req.EngineMode)
+	logx.Printf("📥 Backend: Engine mode update received: %s", req.EngineMode)
 	if err := s.fullBridge.UpdateLlamaConfig(req); err != nil {
-		log.Printf("❌ Backend: Config update error: %v", err)
+		logx.Printf("❌ Backend: Config update error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	log.Printf("✅ Backend: Configuration saved successfully.")
+	logx.Printf("✅ Backend: Configuration saved successfully.")
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 

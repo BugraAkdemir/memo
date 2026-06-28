@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"time"
@@ -30,7 +31,7 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	if embPort <= 0 || embPort == a.cfg.Llama.Port {
 		embPort = 8082
 	}
-	log.Printf("Starting embedding model on port %d", embPort)
+	logx.Printf("Starting embedding model on port %d", embPort)
 
 	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, embPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
 		return err
@@ -48,7 +49,7 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	a.clientMu.Unlock()
 
 	a.reinitMemoryStore(embClient, a.cfg.API.EmbeddingModel)
-	log.Printf("Embedding server ready on %s", embBaseURL)
+	logx.Printf("Embedding server ready on %s", embBaseURL)
 
 	return nil
 }
@@ -62,7 +63,7 @@ func (a *App) StopEmbeddingModel() error {
 	a.clientMu.Lock()
 	a.embeddingClient = nil
 	a.clientMu.Unlock()
-	log.Println("Embedding server stopped")
+	logx.Info("Embedding server stopped")
 
 	a.clientMu.RLock()
 	mainClient := a.client
@@ -85,23 +86,23 @@ func (a *App) startupEmbeddingModel() {
 	modelPath := filepath.Join(modelsDir, filename)
 
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {
-		log.Printf("Downloading embedding model: %s/%s ...", repoID, filename)
+		logx.Printf("Downloading embedding model: %s/%s ...", repoID, filename)
 		a.emitEvent("memory:downloading", filename)
 		if err := a.downloadFile(repoID, filename, modelPath); err != nil {
-			log.Printf("WARN: failed to download embedding model: %v", err)
+			logx.Printf("WARN: failed to download embedding model: %v", err)
 			a.emitEvent("memory:error", fmt.Sprintf("Embedding model indirme hatası: %v", err))
 			return
 		}
-		log.Printf("Embedding model downloaded: %s", modelPath)
+		logx.Printf("Embedding model downloaded: %s", modelPath)
 	}
 
-	log.Printf("Auto-starting embedding model: %s", modelPath)
+	logx.Printf("Auto-starting embedding model: %s", modelPath)
 	if err := a.StartEmbeddingModel(modelPath, -1); err != nil {
 		msg := fmt.Sprintf("Failed to start embedding model: %v", err)
 		log.Print(msg)
 		a.emitEvent("memory:error", msg)
 	} else {
-		log.Println("Cross-mode active: API provider for chat, local model for embeddings")
+		logx.Info("Cross-mode active: API provider for chat, local model for embeddings")
 		a.emitEvent("memory:ready", filename)
 	}
 }

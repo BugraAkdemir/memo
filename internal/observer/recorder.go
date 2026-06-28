@@ -4,7 +4,7 @@ package observer
 
 import (
 	"encoding/json"
-	"log"
+	"memo/internal/logx"
 	"sort"
 	"strings"
 	"time"
@@ -38,7 +38,7 @@ func (r *Recorder) record(obs Observation) {
 	}
 	go func() {
 		if _, err := r.store.Record(obs); err != nil {
-			log.Printf("OBSERVER: record (%s): %v", obs.ActivityType, err)
+			logx.Printf("OBSERVER: record (%s): %v", obs.ActivityType, err)
 		}
 	}()
 }

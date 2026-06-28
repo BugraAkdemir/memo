@@ -6,7 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"mime/multipart"
 	"net/http"
 	"os"
@@ -90,7 +90,7 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 		"--language", lang,
 	}
 
-	log.Printf("whisper: launching %s %s", bin, strings.Join(args, " "))
+	logx.Printf("whisper: launching %s %s", bin, strings.Join(args, " "))
 
 	s.cmd = exec.Command(bin, args...)
 	s.cmd.Stdout = os.Stdout
@@ -125,7 +125,7 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 
 	s.portPid = s.cmd.Process.Pid
 
-	log.Printf("whisper: server started (PID %d, port %d)", s.cmd.Process.Pid, s.port)
+	logx.Printf("whisper: server started (PID %d, port %d)", s.cmd.Process.Pid, s.port)
 
 	go s.monitor()
 
@@ -142,7 +142,7 @@ func (s *Server) WaitReady(timeout time.Duration) error {
 		resp, err := client.Get(url)
 		if err == nil {
 			resp.Body.Close()
-			log.Printf("whisper: server ready on port %d", s.port)
+			logx.Printf("whisper: server ready on port %d", s.port)
 			return nil
 		}
 		time.Sleep(500 * time.Millisecond)
@@ -159,7 +159,7 @@ func (s *Server) Stop() error {
 		if s.port > 0 {
 			if s.portPid > 0 {
 				if err := killPID(s.portPid); err != nil {
-					log.Printf("whisper: kill stored PID %d: %v, trying port discovery", s.portPid, err)
+					logx.Printf("whisper: kill stored PID %d: %v, trying port discovery", s.portPid, err)
 				} else {
 					s.portPid = 0
 					return nil
@@ -173,15 +173,15 @@ func (s *Server) Stop() error {
 	}
 
 	s.stopping = true
-	log.Printf("whisper: stopping server (PID %d)", s.cmd.Process.Pid)
+	logx.Printf("whisper: stopping server (PID %d)", s.cmd.Process.Pid)
 
 	processSignalTerm(s.cmd.Process)
 
 	select {
 	case <-s.waitDone:
-		log.Printf("whisper: server stopped gracefully")
+		logx.Printf("whisper: server stopped gracefully")
 	case <-time.After(5 * time.Second):
-		log.Printf("whisper: graceful shutdown timed out, force killing")
+		logx.Printf("whisper: graceful shutdown timed out, force killing")
 		s.forceKill()
 	}
 
@@ -194,7 +194,7 @@ func (s *Server) Stop() error {
 func (s *Server) killByPort(port int) error {
 	pid := s.pidOnPort(port)
 	if pid <= 0 {
-		log.Printf("whisper: nothing found on port %d", port)
+		logx.Printf("whisper: nothing found on port %d", port)
 		return nil
 	}
 
@@ -203,17 +203,17 @@ func (s *Server) killByPort(port int) error {
 		return fmt.Errorf("find process %d: %w", pid, err)
 	}
 
-	log.Printf("whisper: killing external PID %d on port %d", pid, port)
+	logx.Printf("whisper: killing external PID %d on port %d", pid, port)
 	processSignalTerm(proc)
 
 	for i := 0; i < 6; i++ {
 		time.Sleep(500 * time.Millisecond)
 		if !processIsAlive(proc) {
-			log.Printf("whisper: process %d exited cleanly", pid)
+			logx.Printf("whisper: process %d exited cleanly", pid)
 			return nil
 		}
 	}
-	log.Printf("whisper: force-killing PID %d", pid)
+	logx.Printf("whisper: force-killing PID %d", pid)
 	proc.Kill()
 	return nil
 }
@@ -260,9 +260,9 @@ func (s *Server) monitor() {
 	}
 
 	if err != nil {
-		log.Printf("whisper: server exited unexpectedly: %v", err)
+		logx.Printf("whisper: server exited unexpectedly: %v", err)
 	} else {
-		log.Printf("whisper: server exited unexpectedly (exit 0)")
+		logx.Printf("whisper: server exited unexpectedly (exit 0)")
 	}
 	s.cmd = nil
 	s.modelPath = ""

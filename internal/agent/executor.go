@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"memo/internal/config"
 	"memo/internal/provider"
 	"sync"
@@ -173,7 +173,7 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 		case <-ctx.Done():
 			return DenyOnce, ctx.Err()
 		case <-permTimer.C:
-			log.Printf("AGENT: permission request %s timed out (60s), auto-denied", requestID)
+			logx.Printf("AGENT: permission request %s timed out (60s), auto-denied", requestID)
 			return DenyOnce, fmt.Errorf("permission timed out")
 		case policy := <-resCh:
 			return policy, nil
@@ -203,7 +203,7 @@ func (e *Executor) HandlePermissionResponse(requestID string, policy PermissionP
 	select {
 	case req.ResCh <- policy:
 	case <-time.After(time.Second):
-		log.Printf("AGENT: permission response for %s abandoned (no listener)", requestID)
+		logx.Printf("AGENT: permission response for %s abandoned (no listener)", requestID)
 	}
 	return nil
 }
@@ -277,8 +277,8 @@ func (e *Executor) logEvent(sessionID string, ev AgentEvent) {
 
 	// Print to console for debugging
 	if ev.Error != "" {
-		log.Printf("AGENT [%s] ERROR: %v", ev.ToolName, ev.Error)
+		logx.Printf("AGENT [%s] ERROR: %v", ev.ToolName, ev.Error)
 	} else {
-		log.Printf("AGENT [%s] SUCCESS %dms", ev.ToolName, ev.DurationMs)
+		logx.Printf("AGENT [%s] SUCCESS %dms", ev.ToolName, ev.DurationMs)
 	}
 }

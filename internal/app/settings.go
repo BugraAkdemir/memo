@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/base64"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"strings"
@@ -151,7 +151,7 @@ func (a *App) SetIncognitoPrompt(prompt string) error {
 func (a *App) SetSystemPrompt(prompt string) error {
 	a.identity.Update("", "", "", prompt)
 	a.cfg.Identity.SystemRole = prompt
-	log.Printf("System prompt updated (%d chars)", len(prompt))
+	logx.Printf("System prompt updated (%d chars)", len(prompt))
 	return config.Save(a.cfg)
 }
 
@@ -172,7 +172,7 @@ CORE DIRECTIVES:
 
 	a.identity.Update("", "", "", defaultPrompt)
 	a.cfg.Identity.SystemRole = defaultPrompt
-	log.Println("System prompt reset to default")
+	logx.Info("System prompt reset to default")
 	return config.Save(a.cfg)
 }
 
@@ -195,7 +195,7 @@ func (a *App) GetImageBase64(path string) string {
 	}
 
 	if !strings.HasPrefix(realPath, absDataDir) {
-		log.Printf("WARNING: Blocked attempt to read file outside data dir: %s", path)
+		logx.Printf("WARNING: Blocked attempt to read file outside data dir: %s", path)
 		return ""
 	}
 

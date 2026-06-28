@@ -4,7 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"strings"
 	"sync"
@@ -79,7 +79,7 @@ func (s *Server) handleOpenRouterConnect(w http.ResponseWriter, r *http.Request)
 	}
 	if s.fullBridge != nil {
 		if err := s.fullBridge.UpdateProvider(cfg); err != nil {
-			log.Printf("OpenRouter save error: %v", err)
+			logx.Printf("OpenRouter save error: %v", err)
 			writeJSON(w, map[string]interface{}{
 				"status": "error",
 				"error":  "Kayıt hatası: " + err.Error(),

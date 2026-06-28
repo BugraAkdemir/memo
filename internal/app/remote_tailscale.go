@@ -4,7 +4,7 @@ package app
 
 import (
 	"fmt"
-	"log"
+	"memo/internal/logx"
 
 	"memo/internal/config"
 	"memo/internal/tunnel"
@@ -91,7 +91,7 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 			return fmt.Errorf("start tailscale: %w", err)
 		}
 		a.remoteAccessEnabled = true
-		log.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
+		logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
 	} else {
 		a.stopTailscale()
 	}
@@ -134,11 +134,11 @@ func (a *App) startupTailscale() {
 	port := rc.Port
 	if a.webServer != nil && !a.webServer.IsRunning() {
 		if err := a.webServer.StartHTTPWithAddr(port, "127.0.0.1"); err != nil {
-			log.Printf("[tailscale] web server start: %v", err)
+			logx.Printf("[tailscale] web server start: %v", err)
 			return
 		}
 	}
 	if err := a.startTailscale(port); err != nil {
-		log.Printf("[tailscale] auto-start: %v", err)
+		logx.Printf("[tailscale] auto-start: %v", err)
 	}
 }

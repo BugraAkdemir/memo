@@ -5,7 +5,7 @@ package observer
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"math"
 	"sort"
 	"time"
@@ -57,7 +57,7 @@ func (a *Analyzer) Run(ctx context.Context) error {
 	if err := a.patterns.Save(patterns); err != nil {
 		return fmt.Errorf("observer.Analyzer.Run: save: %w", err)
 	}
-	log.Printf("OBSERVER: analyzed %d observations into %d pattern(s)", len(obs), len(patterns))
+	logx.Printf("OBSERVER: analyzed %d observations into %d pattern(s)", len(obs), len(patterns))
 	return nil
 }
 

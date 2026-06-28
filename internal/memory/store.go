@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"math"
 	"path/filepath"
 	"sort"
@@ -144,7 +144,7 @@ func (s *Store) initSchema() error {
 			); err != nil {
 				return fmt.Errorf("alter memories add %s: %w", col.name, err)
 			}
-			log.Printf("MEMORY: migrated column memories.%s", col.name)
+			logx.Printf("MEMORY: migrated column memories.%s", col.name)
 		}
 	}
 
@@ -165,7 +165,7 @@ func (s *Store) initSchema() error {
 		"CREATE INDEX IF NOT EXISTS idx_memories_pending ON memories(pending_deletion)",
 	} {
 		if _, err := s.db.ExecContext(ctx, idx); err != nil {
-			log.Printf("MEMORY: index warning: %v", err)
+			logx.Printf("MEMORY: index warning: %v", err)
 		}
 	}
 
@@ -188,7 +188,7 @@ func (s *Store) initSchema() error {
 					}
 				}()
 				if err := s.migrateFTS(migCtx); err != nil {
-					log.Printf("MEMORY: FTS migrate: %v", err)
+					logx.Printf("MEMORY: FTS migrate: %v", err)
 					return
 				}
 				_ = s.db.Write(migCtx, func(tx *sql.Tx) error {
@@ -197,26 +197,26 @@ func (s *Store) initSchema() error {
 					)
 					return err
 				})
-				log.Printf("MEMORY: FTS migration complete")
+				logx.Printf("MEMORY: FTS migration complete")
 			}()
 		}
 	} else {
 		s.useFTS = false
-		log.Printf("MEMORY: fts5 not available (%v), keyword search disabled", ftsErr)
+		logx.Printf("MEMORY: fts5 not available (%v), keyword search disabled", ftsErr)
 	}
 
 	vecErr := s.tryCreateVecTable(ctx)
 	if vecErr == nil {
 		s.useVec = true
 		if err := s.ensureVecMetadata(ctx); err != nil {
-			log.Printf("MEMORY: metadata init: %v", err)
+			logx.Printf("MEMORY: metadata init: %v", err)
 		}
 
 		var migrated string
 		if err := s.db.QueryRowContext(ctx,
 			"SELECT value FROM _metadata WHERE key = 'vec_migration_done'",
 		).Scan(&migrated); err == nil && migrated == "1" {
-			log.Printf("MEMORY: vec migration already complete, skipping")
+			logx.Printf("MEMORY: vec migration already complete, skipping")
 		} else {
 			// Run migration in the background so NewStore returns immediately
 			// and the store is usable right away. Writes are still serialised
@@ -234,7 +234,7 @@ func (s *Store) initSchema() error {
 					}
 				}()
 				if err := s.migrateEmbeddingsToVec(migCtx); err != nil {
-					log.Printf("MEMORY: migrate to vec: %v", err)
+					logx.Printf("MEMORY: migrate to vec: %v", err)
 					return
 				}
 				_ = s.db.Write(migCtx, func(tx *sql.Tx) error {
@@ -243,12 +243,12 @@ func (s *Store) initSchema() error {
 					)
 					return err
 				})
-				log.Printf("MEMORY: vec migration complete")
+				logx.Printf("MEMORY: vec migration complete")
 			}()
 		}
 	} else {
 		s.useVec = false
-		log.Printf("MEMORY: vec0 not available (%v), using Go fallback", vecErr)
+		logx.Printf("MEMORY: vec0 not available (%v), using Go fallback", vecErr)
 	}
 
 	var existingDim int
@@ -305,7 +305,7 @@ func (s *Store) ensureVecMetadata(ctx context.Context) error {
 	}
 
 	if existingDim != s.dim {
-		log.Printf("MEMORY: embedding dimension changed from %d to %d, recreating vec index", existingDim, s.dim)
+		logx.Printf("MEMORY: embedding dimension changed from %d to %d, recreating vec index", existingDim, s.dim)
 		return s.db.Write(ctx, func(tx *sql.Tx) error {
 			if _, err := tx.Exec("DROP TABLE IF EXISTS vec_memories"); err != nil {
 				return err
@@ -530,7 +530,7 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 	})
 	writeDur := time.Since(writeStart)
 
-	log.Printf("LATENCY memory.save total_ms=%d embed_ms=%d write_ms=%d dim=%d vec=%v fts=%v chunk=%d/%d",
+	logx.Printf("LATENCY memory.save total_ms=%d embed_ms=%d write_ms=%d dim=%d vec=%v fts=%v chunk=%d/%d",
 		(embedDur + writeDur).Milliseconds(),
 		embedDur.Milliseconds(),
 		writeDur.Milliseconds(),
@@ -711,7 +711,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	if s.useFTS {
 		ftsMemories, ftsErr := s.ftsSearch(ctx, query, candidateK)
 		if ftsErr != nil {
-			log.Printf("MEMORY: ftsSearch: %v", ftsErr)
+			logx.Printf("MEMORY: ftsSearch: %v", ftsErr)
 		} else if len(ftsMemories) > 0 {
 			memories = reciprocalRankFusion(vecMemories, ftsMemories, topK)
 			// RRF scores range ~0.008–0.016 (k=60); filter low-confidence matches.
@@ -756,7 +756,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		go s.incrementRetrieveCounts(ids)
 	}
 
-	log.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v fts=%v",
+	logx.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v fts=%v",
 		time.Since(start).Milliseconds(),
 		embedDur.Milliseconds(),
 		topK,
@@ -940,14 +940,14 @@ func (s *Store) incrementRetrieveCounts(ids []string) {
 		)
 		return err
 	}); err != nil {
-		log.Printf("memory: update retrieve_count: %v", err)
+		logx.Printf("memory: update retrieve_count: %v", err)
 	}
 }
 
 func (s *Store) DebugSearch(ctx context.Context, query string, topK int) []MemoryResult {
 	results, err := s.RetrieveContext(ctx, query, topK, 0)
 	if err != nil {
-		log.Printf("DEBUG SEARCH ERROR: %v", err)
+		logx.Printf("DEBUG SEARCH ERROR: %v", err)
 		return nil
 	}
 	return results
@@ -1056,7 +1056,7 @@ func (s *Store) Stats() models.MemoryStats {
 		FROM memories
 	`).Scan(&total, &explicit, &thisWeek, &pending)
 	if scanErr != nil {
-		log.Printf("MEMORY: stats count query: %v", scanErr)
+		logx.Printf("MEMORY: stats count query: %v", scanErr)
 	}
 	stats.Count = total
 	stats.ExplicitCount = explicit
@@ -1073,19 +1073,19 @@ func (s *Store) Stats() models.MemoryStats {
 		LIMIT 5
 	`)
 	if err != nil {
-		log.Printf("MEMORY: stats top-retrieved query: %v", err)
+		logx.Printf("MEMORY: stats top-retrieved query: %v", err)
 	} else {
 		defer rows.Close()
 		for rows.Next() {
 			var m models.MemoryResult
 			if rErr := rows.Scan(&m.ID, &m.Content, &m.Timestamp, &m.Importance, &m.Source, &m.RetrieveCount); rErr != nil {
-				log.Printf("MEMORY: stats top-retrieved scan: %v", rErr)
+				logx.Printf("MEMORY: stats top-retrieved scan: %v", rErr)
 			} else {
 				stats.TopRetrieved = append(stats.TopRetrieved, m)
 			}
 		}
 		if rErr := rows.Err(); rErr != nil {
-			log.Printf("MEMORY: stats top-retrieved iteration: %v", rErr)
+			logx.Printf("MEMORY: stats top-retrieved iteration: %v", rErr)
 		}
 	}
 
@@ -1133,7 +1133,7 @@ func (s *Store) FilteredSearch(ctx context.Context, query string, topK int, minS
 	if len(filtered) < topK {
 		sqlResults, sqlErr := s.sqlFilteredFallback(ctx, topK-len(filtered), since, tag)
 		if sqlErr != nil {
-			log.Printf("MEMORY: FilteredSearch fallback: %v", sqlErr)
+			logx.Printf("MEMORY: FilteredSearch fallback: %v", sqlErr)
 		} else {
 			// Append SQL results, deduplicating by UUID.
 			seen := make(map[string]struct{}, len(filtered))
@@ -1351,12 +1351,12 @@ func (s *Store) DeleteByContent(ctx context.Context, pattern string) (int, error
 			}
 			if s.useVec {
 				if _, vecErr := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", e.id); vecErr != nil {
-					log.Printf("MEMORY: DeleteByContent vec cascade id=%d: %v", e.id, vecErr)
+					logx.Printf("MEMORY: DeleteByContent vec cascade id=%d: %v", e.id, vecErr)
 				}
 			}
 			if s.useFTS {
 				if _, ftsErr := tx.Exec("DELETE FROM memories_fts WHERE rowid = ?", e.id); ftsErr != nil {
-					log.Printf("MEMORY: DeleteByContent fts cascade id=%d: %v", e.id, ftsErr)
+					logx.Printf("MEMORY: DeleteByContent fts cascade id=%d: %v", e.id, ftsErr)
 				}
 			}
 			deleted++
@@ -1431,14 +1431,14 @@ func (s *Store) applyImportanceRules() {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 	if marked, err := s.MarkStaleForDeletion(ctx); err != nil {
-		log.Printf("MEMORY: MarkStaleForDeletion: %v", err)
+		logx.Printf("MEMORY: MarkStaleForDeletion: %v", err)
 	} else if marked > 0 {
-		log.Printf("MEMORY: marked %d stale memories for deletion", marked)
+		logx.Printf("MEMORY: marked %d stale memories for deletion", marked)
 	}
 	if purged, err := s.PurgePendingDeletions(ctx); err != nil {
-		log.Printf("MEMORY: PurgePendingDeletions: %v", err)
+		logx.Printf("MEMORY: PurgePendingDeletions: %v", err)
 	} else if purged > 0 {
-		log.Printf("MEMORY: purged %d pending-deletion memories", purged)
+		logx.Printf("MEMORY: purged %d pending-deletion memories", purged)
 	}
 
 	s.mu.RLock()
@@ -1578,7 +1578,7 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 		if embedding != nil && s.useVec {
 			vecJSON, _ := json.Marshal(embedding)
 			if _, err := tx.Exec("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON)); err != nil {
-				log.Printf("MEMORY: saveMerged vec insert: %v", err)
+				logx.Printf("MEMORY: saveMerged vec insert: %v", err)
 			}
 		}
 		if s.useFTS {
@@ -1586,7 +1586,7 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 				"INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, '')",
 				rowID, content, content,
 			); err != nil {
-				log.Printf("MEMORY: saveMerged fts insert: %v", err)
+				logx.Printf("MEMORY: saveMerged fts insert: %v", err)
 			}
 		}
 		_, err = tx.Exec("UPDATE memories SET pending_deletion = 1 WHERE id IN (?, ?)", id1, id2)
@@ -1597,19 +1597,19 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 func (s *Store) runConsolidation(ctx context.Context, fn ConsolidationFunc) {
 	candidates, err := s.FindMergeCandidates(ctx, consolidateMaxPairs)
 	if err != nil {
-		log.Printf("MEMORY: consolidation scan: %v", err)
+		logx.Printf("MEMORY: consolidation scan: %v", err)
 		return
 	}
 	if len(candidates) == 0 {
 		return
 	}
-	log.Printf("MEMORY: consolidating %d memory pair(s)", len(candidates))
+	logx.Printf("MEMORY: consolidating %d memory pair(s)", len(candidates))
 	for _, c := range candidates {
 		mergeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		merged, err := fn(mergeCtx, c.Content1, c.Content2)
 		cancel()
 		if err != nil {
-			log.Printf("MEMORY: consolidation LLM: %v", err)
+			logx.Printf("MEMORY: consolidation LLM: %v", err)
 			continue
 		}
 		merged = strings.TrimSpace(merged)
@@ -1618,9 +1618,9 @@ func (s *Store) runConsolidation(ctx context.Context, fn ConsolidationFunc) {
 		}
 		saveCtx, saveCancel := context.WithTimeout(ctx, 15*time.Second)
 		if err := s.saveMerged(saveCtx, merged, c.ID1, c.ID2); err != nil {
-			log.Printf("MEMORY: consolidation save: %v", err)
+			logx.Printf("MEMORY: consolidation save: %v", err)
 		} else {
-			log.Printf("MEMORY: merged pair (sim=%.2f)", c.Similarity)
+			logx.Printf("MEMORY: merged pair (sim=%.2f)", c.Similarity)
 		}
 		saveCancel()
 	}
@@ -1703,7 +1703,7 @@ func (s *Store) Import(ctx context.Context, data []byte) (int, error) {
 	for _, m := range payload.Memories {
 		embedding, err := s.embed(ctx, m.Content)
 		if err != nil || len(embedding) != s.dim {
-			log.Printf("MEMORY: import embed failed for %s, inserting without vector: %v", m.UUID, err)
+			logx.Printf("MEMORY: import embed failed for %s, inserting without vector: %v", m.UUID, err)
 			embedding = nil
 		}
 		imp := m.Importance

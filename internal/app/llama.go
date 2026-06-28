@@ -3,6 +3,7 @@ package app
 import (
 	"fmt"
 	"log"
+	"memo/internal/logx"
 	"os"
 	"time"
 
@@ -31,12 +32,12 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	a.clientMu.Lock()
 	a.client = api.NewClient(newBaseURL, a.cfg.API.TimeoutSeconds)
 	a.clientMu.Unlock()
-	log.Printf("API client redirected to local llama-server: %s", newBaseURL)
+	logx.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
 	if a.cfg.Memory.MemoryEnabled && !a.llamaEmbedServer.IsRunning() {
 		a.autoStartEmbeddingModel()
 	} else if !a.cfg.Memory.MemoryEnabled {
-		log.Println("Memory disabled — skipping embedding model auto-start")
+		logx.Info("Memory disabled — skipping embedding model auto-start")
 	}
 
 	return nil
@@ -52,7 +53,7 @@ func (a *App) StopLocalModel() error {
 	a.client = api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
 	revertedClient := a.client
 	a.clientMu.Unlock()
-	log.Printf("API client reverted to: %s", a.originalBaseURL)
+	logx.Printf("API client reverted to: %s", a.originalBaseURL)
 
 	if !a.llamaEmbedServer.IsRunning() {
 		a.reinitMemoryStore(revertedClient, a.cfg.API.EmbeddingModel)
@@ -125,7 +126,7 @@ func (a *App) CheckLlamaInstallation() bool {
 // InstallLlamaServer compiles and installs the llama.cpp binary.
 func (a *App) InstallLlamaServer() error {
 	logger := func(msg string) {
-		log.Println("INSTALL:", msg)
+		logx.Info("INSTALL:", msg)
 	}
 
 	binPath, err := a.llamaInstaller.Install(a.lifecycleCtx, logger)
@@ -149,7 +150,7 @@ func (a *App) SkipLlamaGPUInstall() error {
 		return err
 	}
 	f.Close()
-	log.Println("Created .force_cpu bypass file. Future starts will use CPU.")
+	logx.Info("Created .force_cpu bypass file. Future starts will use CPU.")
 	return nil
 }
 
@@ -165,18 +166,18 @@ func (a *App) autoStartEmbeddingModel() {
 	}
 	if embeddingPath == "" {
 		msg := "⚠️ No embedding model found — RAG will NOT function."
-		log.Println(msg)
+		logx.Info(msg)
 		a.emitEvent("memory:error", msg)
 		return
 	}
 
-	log.Printf("Auto-starting embedding model: %s", embeddingPath)
+	logx.Printf("Auto-starting embedding model: %s", embeddingPath)
 	if err := a.StartEmbeddingModel(embeddingPath, -1); err != nil {
 		msg := fmt.Sprintf("⚠️ Failed to auto-start embedding model: %v", err)
 		log.Print(msg)
 		a.emitEvent("memory:error", msg)
 	} else {
-		log.Println("✅ Embedding model auto-started — memory/RAG is active.")
+		logx.Info("✅ Embedding model auto-started — memory/RAG is active.")
 	}
 }
 

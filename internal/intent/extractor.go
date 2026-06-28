@@ -6,7 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"strings"
 	"time"
 )
@@ -45,7 +45,7 @@ func (e *Extractor) Extract(ctx context.Context, text string, source Source, con
 
 	res, err := parseResponse(raw, source, contact, now)
 	if err != nil {
-		log.Printf("intent: parse response: %v (raw=%q)", err, truncate(raw, 200))
+		logx.Printf("intent: parse response: %v (raw=%q)", err, truncate(raw, 200))
 		return IntentResult{Source: source, ContactName: contact}, nil
 	}
 	return res, nil

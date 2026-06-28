@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"strings"
 	"time"
 
@@ -181,7 +181,7 @@ func (a *App) GenerateChatTitle() string {
 
 	chatID := sm.GetActiveID()
 	if err := sm.RenameChat(chatID, title); err != nil {
-		log.Printf("auto-title rename: %v", err)
+		logx.Printf("auto-title rename: %v", err)
 		return ""
 	}
 	return title

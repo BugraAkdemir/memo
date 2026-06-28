@@ -9,7 +9,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"memo/internal/logx"
 	"net/http"
 	"os"
 	"os/exec"
@@ -671,5 +671,5 @@ func (i *Installer) runCmdStream(cmd *exec.Cmd, logger func(string)) error {
 
 // StreamToFrontend is a helper to wrap the Wails runtime emit.
 func StreamToFrontend(ctx context.Context, line string) {
-	log.Println("INSTALL:", line)
+	logx.Info("INSTALL:", line)
 }

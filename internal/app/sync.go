@@ -3,7 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"os"
 	"strings"
 	"time"
@@ -64,7 +64,7 @@ func (a *App) wireSyncRestoreHooks(sm *cloudsync.Manager) {
 		a.storeMu.Lock()
 		if a.store != nil {
 			if err := a.store.Close(); err != nil {
-				log.Printf("WARN: memory store close before restore: %v", err)
+				logx.Printf("WARN: memory store close before restore: %v", err)
 			}
 			a.store = nil
 		}
@@ -176,7 +176,7 @@ func (a *App) GetSyncAccount() interface{} {
 
 	acc, err := sm.GetAccountInfo(ctx)
 	if err != nil {
-		log.Printf("cloud sync account info: %v", err)
+		logx.Printf("cloud sync account info: %v", err)
 		return SyncAccount{Authenticated: true}
 	}
 	return SyncAccount{

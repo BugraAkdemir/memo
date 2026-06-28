@@ -3,7 +3,7 @@ package mood
 import (
 	"context"
 	"fmt"
-	"log"
+	"memo/internal/logx"
 	"regexp"
 	"strconv"
 	"strings"
@@ -55,12 +55,12 @@ func NewScorer(decide Decider) *Scorer {
 func (s *Scorer) Score(ctx context.Context, userMsg string) float64 {
 	raw, err := s.decide(ctx, scorerSystemPrompt, userMsg)
 	if err != nil {
-		log.Printf("mood.Scorer: LLM call failed: %v", err)
+		logx.Printf("mood.Scorer: LLM call failed: %v", err)
 		return 0.0
 	}
 	score, err := parseScore(raw)
 	if err != nil {
-		log.Printf("mood.Scorer: parse failed (raw=%q): %v", raw, err)
+		logx.Printf("mood.Scorer: parse failed (raw=%q): %v", raw, err)
 		return 0.0
 	}
 	return clamp(score, -10, 10)

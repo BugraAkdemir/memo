@@ -8,7 +8,7 @@ import '../providers/chat_provider.dart';
 
 /// Chat sidebar — chat list, new chat, incognito toggle.
 class ChatSidebar extends ConsumerWidget {
-   ChatSidebar({super.key});
+   const ChatSidebar({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -157,7 +157,7 @@ class _ChatListItem extends StatefulWidget {
   final ValueChanged<String> onDelete;
   final ValueChanged<String> onRename;
 
-   _ChatListItem({
+   const _ChatListItem({
     required this.chat,
     required this.isActive,
     required this.onTap,
@@ -434,7 +434,7 @@ class _ActionButton extends StatelessWidget {
   final String label;
   final VoidCallback onTap;
 
-   _ActionButton({
+   const _ActionButton({
     required this.icon,
     required this.label,
     required this.onTap,
@@ -477,7 +477,7 @@ class _IconActionButton extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
 
-   _IconActionButton({
+   const _IconActionButton({
     required this.icon,
     required this.tooltip,
     required this.isActive,
@@ -512,7 +512,7 @@ class _IconActionButton extends StatelessWidget {
 }
 
 class _SidebarStatusBar extends ConsumerWidget {
-   _SidebarStatusBar();
+   const _SidebarStatusBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -541,7 +541,7 @@ class _SidebarStatusBar extends ConsumerWidget {
               shape: BoxShape.circle,
               color: connAsync.when(
                 loading: () => MemoTheme.of(context).textDim,
-                error: (_, __) => MemoTheme.red,
+                error: (_, _) => MemoTheme.red,
                 data: (connected) =>
                     connected ? MemoTheme.green : MemoTheme.red,
               ),
@@ -551,7 +551,7 @@ class _SidebarStatusBar extends ConsumerWidget {
           Text(
             connAsync.when(
               loading: () => '...',
-              error: (_, __) => L10n.t('connection_error'),
+              error: (_, _) => L10n.t('connection_error'),
               data: (connected) =>
                   connected ? L10n.t('engine_status') : L10n.t('connection_error'),
             ),

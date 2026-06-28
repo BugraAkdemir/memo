@@ -5,7 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../providers/settings_provider.dart';
 
 class AboutTab extends ConsumerWidget {
-  AboutTab();
+  const AboutTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -6,6 +6,8 @@ import '../../../providers/provider_provider.dart';
 import '../../provider_config_dialog.dart';
 
 class ProvidersTab extends ConsumerWidget {
+  const ProvidersTab({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final providersAsync = ref.watch(providerListProvider);
@@ -91,7 +93,7 @@ class ProviderCard extends ConsumerWidget {
   final ProviderConfig p;
   final bool isActive;
 
-  const ProviderCard({required this.p, this.isActive = false});
+  const ProviderCard({super.key, required this.p, this.isActive = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -112,7 +112,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           Switch(
             value: config.enabled,
             onChanged: (v) => setState(() => _config = config.copyWith(enabled: v)),
-            activeColor: MemoTheme.accent,
+            activeThumbColor: MemoTheme.accent,
           ),
         ],
       ),
@@ -229,7 +229,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             key: ValueKey('quick_${choices.length}'),
-            value: null,
+            initialValue: null,
             isExpanded: true,
             hint: Text('Model seç ve uygula', style: TextStyle(fontSize: 13, color: c.textDim)),
             decoration: InputDecoration(
@@ -325,7 +325,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
     final validChoice = choices.any((c) => c.key == currentKey);
     return DropdownButtonFormField<String>(
       key: ValueKey('chief_${choices.length}'),
-      value: validChoice ? currentKey : null,
+      initialValue: validChoice ? currentKey : null,
       hint: Text('Model seç', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
       decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd))),
       items: choices.map((c) => DropdownMenuItem(value: c.key, child: Text('${c.icon} ${c.label}', style: const TextStyle(fontSize: 12)))).toList(),
@@ -406,7 +406,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                       updateRole(role.copyWith(enabled: v));
                       if (v) setState(() => _expanded.add(role.role));
                     },
-                    activeColor: MemoTheme.accent,
+                    activeThumbColor: MemoTheme.accent,
                   ),
                   Icon(isExpanded ? Icons.expand_less : Icons.expand_more, size: 20, color: c.textDim),
                 ],
@@ -433,7 +433,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('role_${index}_${choices.length}'),
-                    value: validChoice ? currentKey : null,
+                    initialValue: validChoice ? currentKey : null,
                     isExpanded: true,
                     hint: Text('Model seç', style: TextStyle(fontSize: 12.5, color: c.textDim)),
                     decoration: InputDecoration(
@@ -774,7 +774,7 @@ class _RoleModelBrowserDialogState extends State<_RoleModelBrowserDialog> {
             child: ListView.separated(
               padding: const EdgeInsets.symmetric(horizontal: 16),
               itemCount: filtered.length,
-              separatorBuilder: (_, __) => Divider(height: 1, color: MemoTheme.of(context).borderSoft),
+              separatorBuilder: (_, _) => Divider(height: 1, color: MemoTheme.of(context).borderSoft),
               itemBuilder: (ctx, i) {
                 final m = filtered[i];
                 final id = m['id'] as String? ?? '';

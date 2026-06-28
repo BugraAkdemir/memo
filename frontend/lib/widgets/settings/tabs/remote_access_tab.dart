@@ -7,6 +7,8 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 
 class RemoteAccessTab extends ConsumerStatefulWidget {
+  const RemoteAccessTab({super.key});
+
   @override
   RemoteAccessTabState createState() => RemoteAccessTabState();
 }
@@ -177,7 +179,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           },
           dense: true,
           contentPadding: EdgeInsets.zero,
-          activeColor: MemoTheme.accent,
+          activeThumbColor: MemoTheme.accent,
         ),
         const SizedBox(height: 12),
 
@@ -591,7 +593,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     onChanged: (v) => setState(() => _tsFunnel = v),
                     dense: true,
                     contentPadding: EdgeInsets.zero,
-                    activeColor: MemoTheme.accent,
+                    activeThumbColor: MemoTheme.accent,
                   ),
                 ),
               ],

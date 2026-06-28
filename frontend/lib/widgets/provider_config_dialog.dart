@@ -323,7 +323,7 @@ class _ProviderConfigDialogState
 
                 // ── Step 1: provider picker ──
                 DropdownButtonFormField<String>(
-                  value: _type,
+                  initialValue: _type,
                   decoration: InputDecoration(
                     labelText: '1. Sağlayıcı',
                     border: const OutlineInputBorder(),

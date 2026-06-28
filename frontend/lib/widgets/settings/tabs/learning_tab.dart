@@ -5,6 +5,8 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/learning_provider.dart';
 
 class LearningTab extends ConsumerWidget {
+  const LearningTab({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final settingsAsync = ref.watch(learningSettingsProvider);
@@ -140,7 +142,7 @@ class LearningTab extends ConsumerWidget {
 class SettingsCard extends StatelessWidget {
   final Map<String, dynamic> settings;
   final WidgetRef ref;
-  const SettingsCard({required this.settings, required this.ref});
+  const SettingsCard({super.key, required this.settings, required this.ref});
 
   @override
   Widget build(BuildContext context) {
@@ -174,7 +176,7 @@ class SettingsCard extends StatelessWidget {
                     notifier.update(false, level);
                   }
                 },
-                activeColor: MemoTheme.accent,
+                activeThumbColor: MemoTheme.accent,
               ),
             ],
           ),
@@ -205,7 +207,7 @@ class SettingsCard extends StatelessWidget {
 // Single model mode + calendar reminder lead time. Loads/saves directly via
 // the API client; both belong to the learning system's model routing.
 class ModelRoutingCard extends ConsumerStatefulWidget {
-  const ModelRoutingCard();
+  const ModelRoutingCard({super.key});
 
   @override
   ConsumerState<ModelRoutingCard> createState() => ModelRoutingCardState();
@@ -307,7 +309,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
               const Spacer(),
               Switch(
                 value: _singleModel,
-                activeColor: MemoTheme.accent,
+                activeThumbColor: MemoTheme.accent,
                 onChanged: (v) => setState(() => _singleModel = v),
               ),
             ],
@@ -361,7 +363,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
             onChanged: (v) => setState(() => _guessTime = v),
             dense: true,
             contentPadding: EdgeInsets.zero,
-            activeColor: MemoTheme.accent,
+            activeThumbColor: MemoTheme.accent,
           ),
           const SizedBox(height: 10),
           Align(
@@ -381,7 +383,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
 
 class PatternCard extends ConsumerWidget {
   final LearnedPattern pattern;
-  const PatternCard({required this.pattern});
+  const PatternCard({super.key, required this.pattern});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -417,7 +419,7 @@ class PatternCard extends ConsumerWidget {
                   borderRadius: BorderRadius.circular(4),
                 ),
                 child: Text(
-                  confPct >= 70 ? '🔥 ${confPct}%' : confPct >= 40 ? '📈 ${confPct}%' : '📊 ${confPct}%',
+                  confPct >= 70 ? '🔥 $confPct%' : confPct >= 40 ? '📈 $confPct%' : '📊 $confPct%',
                   style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600, color: confColor, fontFamily: 'JetBrains Mono'),
                 ),
               ),

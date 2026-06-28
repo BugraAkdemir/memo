@@ -5,7 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../providers/settings_provider.dart';
 
 class IncognitoPromptTab extends ConsumerStatefulWidget {
-  IncognitoPromptTab();
+  const IncognitoPromptTab({super.key});
 
   @override
   ConsumerState<IncognitoPromptTab> createState() =>

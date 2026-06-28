@@ -26,7 +26,7 @@ import 'prompt_templates.dart';
 import 'skill_config_dialog.dart';
 
 class ChatInput extends ConsumerStatefulWidget {
-  ChatInput({super.key});
+  const ChatInput({super.key});
 
   @override
   ConsumerState<ChatInput> createState() => _ChatInputState();

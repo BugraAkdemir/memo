@@ -121,7 +121,7 @@ class _SpotlightTourState extends State<SpotlightTour>
           child: IgnorePointer(
             child: AnimatedBuilder(
               animation: _fadeAnim,
-              builder: (_, __) {
+              builder: (_, _) {
                 final alpha = _fadeAnim.value;
                 return Container(
                   width: size.width + 24,

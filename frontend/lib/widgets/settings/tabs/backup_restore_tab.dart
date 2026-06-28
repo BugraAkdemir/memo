@@ -8,7 +8,7 @@ import 'package:file_picker/file_picker.dart';
 import '../../../providers/chat_provider.dart';
 
 class BackupRestoreTab extends ConsumerStatefulWidget {
-  BackupRestoreTab();
+  const BackupRestoreTab({super.key});
 
   @override
   ConsumerState<BackupRestoreTab> createState() => BackupRestoreTabState();
@@ -344,12 +344,13 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         ).showSnackBar(SnackBar(content: Text('Silme hatası: $e')));
       }
     } finally {
-      if (mounted)
+      if (mounted) {
         setState(() {
           _wiping = false;
           _wipeConfirm1 = false;
           _wipeConfirm2 = false;
         });
+      }
     }
   }
 
@@ -809,6 +810,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
               ] else ...[
                 FilledButton(
                   onPressed: _cloudOp.isNotEmpty ? null : _saveCredentials,
+                  style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
                   child: _cloudOp == 'saving'
                       ? SizedBox(
                           width: 14,
@@ -819,7 +821,6 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                           ),
                         )
                       : Text('Kimlik Bilgilerini Güncelle'),
-                  style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
                 ),
               ],
             ],
@@ -907,7 +908,7 @@ class CloudTextField extends StatelessWidget {
   final String hint;
   final bool obscure;
 
-  const CloudTextField({
+  const CloudTextField({super.key, 
     required this.label,
     required this.controller,
     required this.hint,

@@ -6,7 +6,7 @@ import '../../../providers/mood_provider.dart';
 import '../../mood_gauge.dart';
 
 class MoodTab extends ConsumerStatefulWidget {
-  const MoodTab();
+  const MoodTab({super.key});
 
   @override
   ConsumerState<MoodTab> createState() => MoodTabState();
@@ -204,7 +204,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
               Switch(
                 value: _moodEnabled ?? false,
                 onChanged: _setMoodEnabled,
-                activeColor: MemoTheme.accent,
+                activeThumbColor: MemoTheme.accent,
               ),
             ],
           ),
@@ -218,7 +218,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
             color: theme.bgPanel,
             borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
             border: Border.all(
-              color: (_selfInterest ?? false) ? MemoTheme.red.withOpacity(0.5) : theme.borderSoft,
+              color: (_selfInterest ?? false) ? MemoTheme.red.withValues(alpha: 0.5) : theme.borderSoft,
             ),
           ),
           child: Row(
@@ -235,7 +235,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                              color: MemoTheme.red.withOpacity(0.15),
+                              color: MemoTheme.red.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
                             child: Text('AKTİF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.red)),
@@ -264,7 +264,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
               Switch(
                 value: _selfInterest ?? false,
                 onChanged: _setSelfInterest,
-                activeColor: MemoTheme.red,
+                activeThumbColor: MemoTheme.red,
               ),
             ],
           ),
@@ -274,9 +274,9 @@ class MoodTabState extends ConsumerState<MoodTab> {
           Container(
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
-              color: MemoTheme.red.withOpacity(0.08),
+              color: MemoTheme.red.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-              border: Border.all(color: MemoTheme.red.withOpacity(0.3)),
+              border: Border.all(color: MemoTheme.red.withValues(alpha: 0.3)),
             ),
             child: Row(
               children: [
@@ -316,7 +316,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
               color: theme.bgPanel,
               borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
               border: Border.all(
-                color: (_systemManagement ?? false) ? Colors.deepOrange.withOpacity(0.6) : theme.borderSoft,
+                color: (_systemManagement ?? false) ? Colors.deepOrange.withValues(alpha: 0.6) : theme.borderSoft,
               ),
             ),
             child: Row(
@@ -333,7 +333,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                             Container(
                               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
-                                color: Colors.deepOrange.withOpacity(0.15),
+                                color: Colors.deepOrange.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
                               ),
                               child: const Text('AKTİF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.deepOrange)),
@@ -351,7 +351,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                 Switch(
                   value: _systemManagement ?? false,
                   onChanged: _setSystemManagement,
-                  activeColor: Colors.deepOrange,
+                  activeThumbColor: Colors.deepOrange,
                 ),
               ],
             ),
@@ -377,7 +377,7 @@ class ConfirmStep {
 
 class ConfirmStepDialog extends StatelessWidget {
   final ConfirmStep step;
-  const ConfirmStepDialog({required this.step});
+  const ConfirmStepDialog({super.key, required this.step});
 
   @override
   Widget build(BuildContext context) {
@@ -440,7 +440,7 @@ class ConfirmStepDialog extends StatelessWidget {
 class SelfInterestConsentDialog extends StatelessWidget {
   /// readOnly: sadece okuma için açılmış — butonlar farklı
   final bool readOnly;
-  const SelfInterestConsentDialog({this.readOnly = false});
+  const SelfInterestConsentDialog({super.key, this.readOnly = false});
 
   @override
   Widget build(BuildContext context) {

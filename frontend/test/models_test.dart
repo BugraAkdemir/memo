@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
 
-import '../lib/models/chat.dart';
-import '../lib/models/gpu_info.dart';
-import '../lib/models/local_model.dart';
-import '../lib/models/agent.dart';
-import '../lib/models/whatsapp.dart';
-import '../lib/models/token_usage.dart';
-import '../lib/models/activity_step.dart';
-import '../lib/models/provider_config.dart';
-import '../lib/models/orchestra_config.dart';
+import 'package:memo_flutter/models/chat.dart';
+import 'package:memo_flutter/models/gpu_info.dart';
+import 'package:memo_flutter/models/local_model.dart';
+import 'package:memo_flutter/models/agent.dart';
+import 'package:memo_flutter/models/whatsapp.dart';
+import 'package:memo_flutter/models/token_usage.dart';
+import 'package:memo_flutter/models/activity_step.dart';
+import 'package:memo_flutter/models/provider_config.dart';
+import 'package:memo_flutter/models/orchestra_config.dart';
 
 void main() {
   group('ChatMessage', () {

@@ -58,7 +58,7 @@ class ChatMessageList extends StatefulWidget {
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
-   ChatMessageList({
+   const ChatMessageList({
     super.key,
     required this.messages,
     this.isTyping = false,
@@ -160,7 +160,7 @@ class _MessageBubble extends StatefulWidget {
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
-   _MessageBubble({
+   const _MessageBubble({
     super.key,
     required this.message,
     required this.index,
@@ -362,7 +362,7 @@ class _MessageBubbleState extends State<_MessageBubble> {
                               File(widget.message.imagePath!),
                               width: 480,
                               fit: BoxFit.contain,
-                              errorBuilder: (_, __, ___) =>  SizedBox.shrink(),
+                              errorBuilder: (_, _, _) =>  SizedBox.shrink(),
                             ),
                           ),
                         ),
@@ -429,7 +429,7 @@ class _StreamingBubble extends StatefulWidget {
   final String thinking;
   final List<AgentEvent>? agentEvents;
 
-   _StreamingBubble({required this.content, this.thinking = '', this.agentEvents});
+   const _StreamingBubble({required this.content, this.thinking = '', this.agentEvents});
 
   @override
   State<_StreamingBubble> createState() => _StreamingBubbleState();
@@ -519,7 +519,7 @@ class _ThinkingToggle extends StatelessWidget {
   final bool expanded;
   final VoidCallback onToggle;
 
-   _ThinkingToggle({
+   const _ThinkingToggle({
     required this.thinking,
     required this.expanded,
     required this.onToggle,

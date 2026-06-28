@@ -22,7 +22,7 @@ import 'settings/tabs/about_tab.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
-  SettingsDialog({super.key});
+  const SettingsDialog({super.key});
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();

@@ -12,7 +12,7 @@ import '../providers/chat_provider.dart';
 class ModelConfigDialog extends ConsumerStatefulWidget {
   final LocalModel model;
 
-  ModelConfigDialog({super.key, required this.model});
+  const ModelConfigDialog({super.key, required this.model});
 
   @override
   ConsumerState<ModelConfigDialog> createState() => _ModelConfigDialogState();
@@ -378,7 +378,7 @@ class _ConfigField extends StatelessWidget {
   final TextEditingController controller;
   final String hint;
 
-  _ConfigField({
+  const _ConfigField({
     required this.label,
     required this.controller,
     required this.hint,

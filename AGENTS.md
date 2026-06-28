@@ -178,7 +178,7 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - ~~Silent error discards in memory/selfclone/whatsapp~~ → fixed: errors now logged instead of silently ignored.
 - CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 - **Rate limiting** — token-bucket per-IP (100 req/s) on all handlers via `rateLimitMiddleware`.
-- **Structured logging** — `internal/logx` wraps `log/slog` with levels; `webserver/server.go` migrated as example. Remaining packages still use `log.Printf` (gradual migration).
+- **Structured logging** — `internal/logx` wraps `log/slog` with levels; all packages migrated to `logx.Printf`.
 - **API versioning** — flat `/api/` prefix, no versioning strategy.
 
 ---

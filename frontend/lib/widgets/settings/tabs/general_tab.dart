@@ -6,7 +6,7 @@ import '../../../providers/models_provider.dart';
 import '../../../providers/settings_provider.dart';
 
 class GeneralTab extends ConsumerWidget {
-  GeneralTab();
+  const GeneralTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -158,7 +158,7 @@ class GeneralTab extends ConsumerWidget {
               ),
               Switch(
                 value: ref.watch(streamingEnabledProvider),
-                activeColor: MemoTheme.accent,
+                activeThumbColor: MemoTheme.accent,
                 onChanged: (_) {
                   ref.read(streamingEnabledProvider.notifier).toggle();
                 },
@@ -222,7 +222,7 @@ class GeneralTab extends ConsumerWidget {
                     ),
                     Switch(
                       value: enabled,
-                      activeColor: MemoTheme.accent,
+                      activeThumbColor: MemoTheme.accent,
                       onChanged: (_) async {
                         try {
                           await ref.read(memoryEnabledProvider.notifier).toggle();

@@ -5,6 +5,8 @@ import '../../../providers/skill_provider.dart';
 import '../../skill_config_dialog.dart';
 
 class SkillsTab extends ConsumerWidget {
+  const SkillsTab({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final skillsAsync = ref.watch(skillListProvider);
@@ -71,7 +73,7 @@ class SkillsTab extends ConsumerWidget {
                 }
                 return ListView.separated(
                   itemCount: skills.length,
-                  separatorBuilder: (_, __) => Divider(height: 1, color: theme.borderSoft),
+                  separatorBuilder: (_, _) => Divider(height: 1, color: theme.borderSoft),
                   itemBuilder: (_, i) {
                     final s = skills[i];
                     return ListTile(
@@ -94,7 +96,7 @@ class SkillsTab extends ConsumerWidget {
                       trailing: Switch(
                         value: s.isActive,
                         onChanged: (v) => _toggleSkill(ref, s.name, v),
-                        activeColor: MemoTheme.accent,
+                        activeThumbColor: MemoTheme.accent,
                       ),
                     );
                   },

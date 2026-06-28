@@ -7,7 +7,7 @@ import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 
 class LlamaInstallerOverlay extends ConsumerWidget {
-   LlamaInstallerOverlay({super.key});
+   const LlamaInstallerOverlay({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -29,7 +29,7 @@ class LlamaInstallerOverlay extends ConsumerWidget {
 }
 
 class _InstallerScreen extends ConsumerStatefulWidget {
-   _InstallerScreen();
+   const _InstallerScreen();
 
   @override
   ConsumerState<_InstallerScreen> createState() => _InstallerScreenState();

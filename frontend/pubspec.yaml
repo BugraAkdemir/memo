@@ -40,6 +40,7 @@ dependencies:
   # Audio recording (voice keyboard)
   record: ^5.2.1
 
+  path: any
 dependency_overrides:
   record_linux: ^1.0.0
 

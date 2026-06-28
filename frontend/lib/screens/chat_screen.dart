@@ -19,7 +19,7 @@ import '../models/agent.dart';
 
 /// Chat screen — sidebar + message list + input area.
 class ChatScreen extends ConsumerWidget {
-   ChatScreen({super.key});
+   const ChatScreen({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -204,7 +204,7 @@ class _TokenCounter extends ConsumerWidget {
 }
 
 class _ChatTopBar extends ConsumerWidget {
-   _ChatTopBar();
+   const _ChatTopBar();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

@@ -7,7 +7,7 @@ import '../providers/models_provider.dart';
 
 /// Small badge that displays GPU status (Detected / CPU Only)
 class GPUBadge extends ConsumerWidget {
-   GPUBadge({super.key});
+   const GPUBadge({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -19,7 +19,7 @@ class GPUBadge extends ConsumerWidget {
         text: '...',
         color: MemoTheme.of(context).textDim,
       ),
-      error: (_, __) => _Badge(
+      error: (_, _) => _Badge(
         icon: Icons.memory,
         text: L10n.t('error'),
         color: MemoTheme.of(context).textDim,
@@ -48,7 +48,7 @@ class _Badge extends StatelessWidget {
   final String text;
   final Color color;
 
-   _Badge({
+   const _Badge({
     required this.icon,
     required this.text,
     required this.color,

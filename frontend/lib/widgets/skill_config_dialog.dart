@@ -96,7 +96,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                   return ListView.separated(
                     padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: skills.length,
-                    separatorBuilder: (_, __) => Divider(height: 1, color: theme.borderSoft),
+                    separatorBuilder: (_, _) => Divider(height: 1, color: theme.borderSoft),
                     itemBuilder: (context, index) {
                       final skill = skills[index];
                       final isActive = skill.isActive;
@@ -127,7 +127,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                             Switch(
                               value: isActive,
                               onChanged: (v) => _toggleSkill(skill.name, v),
-                              activeColor: MemoTheme.accent,
+                              activeThumbColor: MemoTheme.accent,
                             ),
                             // Remove button
                             IconButton(

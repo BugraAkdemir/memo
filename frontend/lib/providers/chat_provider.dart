@@ -451,7 +451,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
               // accumulating one per tool call.
               if (ev.type == 'tool_executing') {
                 // Keep only this as the current executing event (replaces previous)
-                if (currentEvents.length >= 1 && currentEvents.last.type == 'tool_executing') {
+                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
                   currentEvents[currentEvents.length - 1] = ev;
                 } else {
                   currentEvents.add(ev);

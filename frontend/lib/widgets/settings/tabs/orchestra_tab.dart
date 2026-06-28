@@ -7,6 +7,8 @@ import '../../../providers/orchestra_provider.dart';
 import '../../orchestra_config_dialog.dart';
 
 class OrchestraTab extends ConsumerWidget {
+  const OrchestraTab({super.key});
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final configAsync = ref.watch(orchestraConfigProvider);
@@ -109,7 +111,7 @@ class OrchestraTab extends ConsumerWidget {
                     value: config.enabled,
                     onChanged: (v) =>
                         ref.read(orchestraConfigProvider.notifier).toggle(v),
-                    activeColor: MemoTheme.accent,
+                    activeThumbColor: MemoTheme.accent,
                   ),
                 ),
               ],
@@ -201,7 +203,7 @@ class OrchestraTab extends ConsumerWidget {
             );
           },
           loading: () => const SizedBox.shrink(),
-          error: (_, __) => const SizedBox.shrink(),
+          error: (_, _) => const SizedBox.shrink(),
         ),
       ],
     );

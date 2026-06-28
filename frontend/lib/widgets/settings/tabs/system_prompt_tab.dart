@@ -5,7 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../providers/settings_provider.dart';
 
 class SystemPromptTab extends ConsumerStatefulWidget {
-  SystemPromptTab();
+  const SystemPromptTab({super.key});
 
   @override
   ConsumerState<SystemPromptTab> createState() => SystemPromptTabState();

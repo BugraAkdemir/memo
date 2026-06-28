@@ -27,7 +27,7 @@ final activeTabProvider = StateProvider<int>((ref) => 0);
 
 /// Main app shell — NavRail + content area.
 class AppShell extends ConsumerStatefulWidget {
-  AppShell({super.key});
+  const AppShell({super.key});
 
   @override
   ConsumerState<AppShell> createState() => _AppShellState();

@@ -8,7 +8,7 @@ import '../../../providers/settings_provider.dart';
 import '../../../providers/chat_provider.dart';
 
 class MemoryTab extends ConsumerStatefulWidget {
-  MemoryTab();
+  const MemoryTab({super.key});
 
   @override
   ConsumerState<MemoryTab> createState() => MemoryTabState();
@@ -655,7 +655,7 @@ class MemorySettingField extends StatelessWidget {
   final String hint;
   final List<TextInputFormatter> inputFormatters;
 
-  MemorySettingField({
+  const MemorySettingField({super.key, 
     required this.label,
     required this.controller,
     required this.hint,

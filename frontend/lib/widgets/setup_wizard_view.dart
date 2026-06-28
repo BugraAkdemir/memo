@@ -7,7 +7,7 @@ import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 
 class SetupWizardOverlay extends ConsumerWidget {
-  SetupWizardOverlay({super.key});
+  const SetupWizardOverlay({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -22,7 +22,7 @@ class SetupWizardOverlay extends ConsumerWidget {
 }
 
 class _SetupWizardScreen extends ConsumerStatefulWidget {
-  _SetupWizardScreen();
+  const _SetupWizardScreen();
 
   @override
   ConsumerState<_SetupWizardScreen> createState() => _SetupWizardScreenState();
@@ -718,7 +718,7 @@ class _StepHeader extends StatelessWidget {
   final String title;
   final ThemeColors color;
 
-  _StepHeader({required this.number, required this.title, required this.color});
+  const _StepHeader({required this.number, required this.title, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -760,7 +760,7 @@ class _Card extends StatelessWidget {
   final Widget child;
   final ThemeColors color;
 
-  _Card({required this.child, required this.color});
+  const _Card({required this.child, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -780,7 +780,7 @@ class _Label extends StatelessWidget {
   final String text;
   final ThemeColors color;
 
-  _Label({required this.text, required this.color});
+  const _Label({required this.text, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -802,7 +802,7 @@ class _Pill extends StatelessWidget {
   final ThemeColors color;
   final VoidCallback onTap;
 
-  _Pill({
+  const _Pill({
     required this.label,
     required this.selected,
     required this.accent,
@@ -845,7 +845,7 @@ class _DiagRow extends StatelessWidget {
   final bool ok;
   final ThemeColors color;
 
-  _DiagRow({required this.title, required this.ok, required this.color});
+  const _DiagRow({required this.title, required this.ok, required this.color});
 
   @override
   Widget build(BuildContext context) {

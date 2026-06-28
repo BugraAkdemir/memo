@@ -7,7 +7,7 @@ import '../../../providers/models_provider.dart';
 import '../../../providers/settings_provider.dart';
 
 class GpuConfigTab extends ConsumerStatefulWidget {
-  GpuConfigTab();
+  const GpuConfigTab({super.key});
 
   @override
   ConsumerState<GpuConfigTab> createState() => GpuConfigTabState();
@@ -292,6 +292,8 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
 }
 
 class ModelParametersCard extends ConsumerStatefulWidget {
+  const ModelParametersCard({super.key});
+
   @override
   ConsumerState<ModelParametersCard> createState() =>
       ModelParametersCardState();
@@ -441,7 +443,7 @@ class ParamSlider extends StatelessWidget {
   final String displayValue;
   final ValueChanged<double> onChanged;
 
-  ParamSlider({
+  const ParamSlider({super.key, 
     required this.label,
     required this.value,
     required this.min,
@@ -499,7 +501,7 @@ class ParamIntInput extends StatefulWidget {
   final String? displaySuffix;
   final ValueChanged<int> onChanged;
 
-  ParamIntInput({
+  const ParamIntInput({super.key, 
     required this.label,
     required this.value,
     required this.min,

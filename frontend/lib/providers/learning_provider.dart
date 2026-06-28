@@ -45,8 +45,8 @@ class LearnedPattern {
   String get timeDisplay =>
       '${peakHour.toString().padLeft(2, '0')}:${peakMinute.toString().padLeft(2, '0')}';
   String get stdDisplay {
-    if (stdDevSeconds < 120) return '+' + stdDevSeconds.toString() + 's';
-    return '+' + (stdDevSeconds ~/ 60).toString() + 'dk';
+    if (stdDevSeconds < 120) return '+${stdDevSeconds}s';
+    return '+${stdDevSeconds ~/ 60}dk';
   }
 
   static const dayNames = ['Paz', 'Pzt', 'Sal', 'Car', 'Per', 'Cum', 'Cmt'];

@@ -273,7 +273,7 @@ void main() {
 
     test('fromJson with null timestamp falls back to now', () {
       final msg = WhatsAppMessage.fromJson({'id': 'wa-2'});
-      expect(msg.timestamp is DateTime, true);
+      expect(msg.timestamp, isA<DateTime>());
     });
   });
 

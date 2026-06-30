@@ -1,9 +1,10 @@
-# Handoff — 2026-06-30 (Session 5-6) — Stable Engeller Fix + CI Analyze
+# Handoff — 2026-06-30 (Session 5-7) — Stable Engeller Fix + CI Analyze + Build Workflows
 
 ## Oturum Özeti
 
 Session 5: 7 stable-blocking bug'un tamamı düzeltildi.
 Session 6: Flutter analyze CI hatası giderildi (3 warning → 0).
+Session 7: Her platform için build workflow'ları yazıldı (Linux, Windows, macOS).
 
 ---
 
@@ -19,6 +20,48 @@ Session 6: Flutter analyze CI hatası giderildi (3 warning → 0).
 | **C3** | Import atomic değil | `b00b800` | `os.Create` → temp-file + `os.Rename` pattern | `app/backup.go` |
 | **C4** | `.machine-id` wipe'da silinir | `b006911` | Yer değiştirdi: `data/memory/` → `data/`; migrasyon; `wipePreserve` eklendi | `sync_manager.go`, `backup.go` |
 | **—** | Flutter analyze CI fail | `60689f8` | 3 warning giderildi: `?[` → `[` (x2), `is DateTime` → `isA<DateTime>()` | `api_client.dart`, `models_test.dart` |
+| **—** | CI build workflows | `(sonraki commit)` | Her platform için ayrı build workflow + ci.yml sadeleştirme | `.github/workflows/*.yml` |
+
+---
+
+## CI Build Workflows (Session 7)
+
+Her platform için ayrı workflow dosyası oluşturuldu:
+
+| Workflow | Dosya | Trigger | Çıktı |
+|----------|-------|---------|-------|
+| CI (test) | `ci.yml` | push, PR | Go test/vet/build + Flutter analyze/test |
+| Build Linux | `build-linux.yml` | workflow_dispatch, tags | Memo-linux-x64.zip |
+| Build Windows | `build-windows.yml` | workflow_dispatch, tags | Memo-windows-x64.zip |
+| Build macOS | `build-macos.yml` | workflow_dispatch, tags | Memo-macos.zip |
+
+### Özellikler
+- **Binaries (llama-server, vec0) pakete DAHİL DEĞİL** — kullanıcı manuel ekler
+- Her workflow `workflow_dispatch` ile manuel tetiklenebilir
+- Tag push'ta otomatik çalışır
+- Artifact retention: 7 gün
+- Cache: Go mod + Flutter pub cache her platform için ayrı
+
+### Build Akışı
+1. CI'da workflow_dispatch veya tag push ile build tetiklenir
+2. Go backend derlenir (CGO_ENABLED=1)
+3. Flutter frontend derlenir (--release)
+4. Config, data dizinleri, runner script hazırlanır
+5. .zip paketi oluşturulur
+6. GitHub Actions Artifact olarak upload edilir
+7. Kullanıcı artifact'i indirir, `binaries/` klasörünü ekler, dağıtır
+
+### Analiz Sonucu — Çalışmaya Engel Durum
+- `go build ./...` ✅ Temiz
+- `go vet ./...` ✅ Temiz
+- `go test ./...` ✅ Tüm 30 paket PASS
+- `flutter analyze --no-fatal-infos` ✅ EXIT_CODE=0
+- `flutter test` ✅ 73 test PASS
+- Go 1.26 `actions/setup-go@v5`'te mevcut ✅
+- Flutter stable `subosito/flutter-action@v2`'de mevcut ✅
+- SQLite dev libs CI'da kuruluyor ✅
+- Windows CGO için GCC (mingw) mevcut ✅
+- macOS CGO + Xcode mevcut ✅
 
 ---
 

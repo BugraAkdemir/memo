@@ -1,0 +1,114 @@
+name: Build macOS
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+env:
+  GO_VERSION: "1.26"
+  FLUTTER_CHANNEL: stable
+  APP_NAME: Memo
+
+jobs:
+  build:
+    name: macOS (arm64 + x86_64)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "${{ env.FLUTTER_CHANNEL }}"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/Library/Caches/go-build
+          key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /opt/hostedtoolcache/flutter
+            /Users/runner/.pub-cache
+          key: flutter-${{ runner.os }}-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-
+
+      - name: Flutter deps
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build Go backend
+        run: |
+          ARCH=$(uname -m)
+          GOARCH=$ARCH CGO_ENABLED=1 go build -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+
+      - name: Build Flutter frontend
+        run: flutter build macos --release
+        working-directory: frontend
+
+      - name: Stage files (NO engine binaries!)
+        run: |
+          S="build_output/stage/${{ env.APP_NAME }}"
+          mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
+
+          APP_BUNDLE=$(find frontend/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -n1)
+          if [ -n "$APP_BUNDLE" ]; then
+            cp -R "$APP_BUNDLE" "$S/${{ env.APP_NAME }}.app"
+          fi
+          cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
+          cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
+          cp .env.example "$S/.env" 2>/dev/null || true
+          cp data/providers.example.json "$S/data/providers.example.json" 2>/dev/null || true
+          echo '[]' > "$S/data/permissions.json"
+          touch "$S/data/whatsapp/.gitkeep"
+
+      - name: Create runner script
+        run: |
+          S="build_output/stage/${{ env.APP_NAME }}"
+          cat << 'EOF' > "$S/run_memo.command"
+          #!/bin/bash
+          set -e
+          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          MEMO_HOME="$HOME/.memo"
+          export MEMO_DATA_DIR="$MEMO_HOME/data"
+          mkdir -p "$MEMO_HOME"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile,bin}}
+
+          [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ] && cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+          [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -f "$DIR/config/config.yaml" ] && cp "$DIR/config/config.yaml" "$MEMO_HOME/config/"
+          [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
+          [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
+          [ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
+
+          cd "$MEMO_HOME"
+          export DYLD_LIBRARY_PATH="$MEMO_HOME/data/bin:$MEMO_HOME.app/Contents/Frameworks:$DYLD_LIBRARY_PATH"
+
+          pkill -9 -f "memo-backend" 2>/dev/null || true
+          pkill -9 -f "llama-server" 2>/dev/null || true
+          sleep 0.5
+          "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
+          sleep 1
+          "$DIR/${{ env.APP_NAME }}.app/Contents/MacOS/${{ env.APP_NAME }}" "$@"
+          curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
+          EOF
+          chmod +x "$S/run_memo.command"
+          xattr -dr com.apple.quarantine "$S/${{ env.APP_NAME }}.app" 2>/dev/null || true
+
+      - name: Package
+        run: |
+          mkdir -p build_output/dist
+          cd build_output/stage
+          zip -r "../dist/${{ env.APP_NAME }}-macos.zip" "${{ env.APP_NAME }}/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Memo-macos
+          path: build_output/dist/Memo-macos.zip
+          retention-days: 7

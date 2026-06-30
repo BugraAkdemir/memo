@@ -5,23 +5,21 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  workflow_dispatch:
 
 env:
   GO_VERSION: "1.26"
   FLUTTER_CHANNEL: stable
-  REGISTRY_IMAGE: memo
 
 jobs:
-  # ── Quality ──────────────────────────────────────────────────────
-
   test:
     name: Test (Go)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "${{ env.GO_VERSION }}" }
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
       - name: Install SQLite
         run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
 
@@ -32,6 +30,12 @@ jobs:
             ~/.cache/go-build
           key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: go-${{ runner.os }}-
+
+      - name: Build check
+        run: go build -o /dev/null .
+
+      - name: Vet
+        run: go vet ./...
 
       - name: Test with race detector
         run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
@@ -44,16 +48,14 @@ jobs:
           token: ${{ secrets.CODECOV_TOKEN }}
           fail_ci_if_error: false
 
-      - name: Build check
-        run: go build -o /dev/null .
-
   flutter:
     name: Analyze & Test (Flutter)
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: subosito/flutter-action@v2
-        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
+        with:
+          channel: "${{ env.FLUTTER_CHANNEL }}"
 
       - uses: actions/cache@v4
         with:
@@ -89,194 +91,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
-        with: { go-version: "${{ env.GO_VERSION }}" }
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
       - name: Install govulncheck
         run: go install golang.org/x/vuln/cmd/govulncheck@latest
+
       - name: Run govulncheck
         run: govulncheck ./...
-
-  # ── Build (tag or manual only) ───────────────────────────────────
-
-  build-linux:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    name: Build Linux
-    needs: [test, flutter, security]
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: "${{ env.GO_VERSION }}" }
-      - uses: subosito/flutter-action@v2
-        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
-      - run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/.cache/go-build
-          key: go-build-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: go-build-${{ runner.os }}-
-
-      - name: Go build
-        run: CGO_ENABLED=1 go build -o build_output/stage/Memo/memo-backend .
-
-      - name: Flutter build
-        run: flutter build linux --release
-        working-directory: frontend
-
-      - name: Stage
-        run: |
-          cp -r frontend/build/linux/x64/release/bundle/* build_output/stage/Memo/
-          mkdir -p build_output/stage/Memo/binaries
-          cp -r binaries/linux build_output/stage/Memo/binaries/linux 2>/dev/null || echo "No binaries"
-          cp config/config.yaml.example build_output/stage/Memo/config/config.yaml 2>/dev/null || true
-          mkdir -p build_output/stage/Memo/data/{models,memory,sessions,skills,agent-backups,whatsapp,profile}
-          echo "[]" > build_output/stage/Memo/data/permissions.json
-
-      - name: Package
-        run: |
-          mkdir -p build_output/dist
-          cd build_output/stage && tar -czf ../dist/Memo-linux-x64.tar.gz Memo/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Memo-linux-x64
-          path: build_output/dist/Memo-linux-x64.tar.gz
-
-  build-windows:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    name: Build Windows
-    needs: [test, flutter, security]
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: "${{ env.GO_VERSION }}" }
-      - uses: subosito/flutter-action@v2
-        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~\go\pkg\mod
-            ~\AppData\Local\go-build
-          key: go-build-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: go-build-${{ runner.os }}-
-
-      - name: Go build
-        shell: cmd
-        run: |
-          set CGO_ENABLED=1
-          go build -o build_output\stage\Memo\memo-backend.exe .
-
-      - name: Flutter build
-        run: flutter build windows --release
-        working-directory: frontend
-
-      - name: Stage
-        shell: bash
-        run: |
-          cp -r frontend/build/windows/x64/release/runner/Release/* build_output/stage/Memo/
-          mkdir -p build_output/stage/Memo/data/{models,memory,sessions,skills,agent-backups,whatsapp,profile}
-          echo "[]" > build_output/stage/Memo/data/permissions.json
-          cp config/config.yaml.example build_output/stage/Memo/config/config.yaml 2>/dev/null || true
-
-      - name: Package
-        shell: bash
-        run: |
-          mkdir -p build_output/dist
-          cd build_output/stage && zip -r ../dist/Memo-windows-x64.zip Memo/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Memo-windows-x64
-          path: build_output/dist/Memo-windows-x64.zip
-
-  build-macos:
-    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
-    name: Build macOS
-    needs: [test, flutter, security]
-    runs-on: macos-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-go@v5
-        with: { go-version: "${{ env.GO_VERSION }}" }
-      - uses: subosito/flutter-action@v2
-        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
-
-      - uses: actions/cache@v4
-        with:
-          path: |
-            ~/go/pkg/mod
-            ~/Library/Caches/go-build
-          key: go-build-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
-          restore-keys: go-build-${{ runner.os }}-
-
-      - name: Go build
-        run: CGO_ENABLED=1 go build -o build_output/stage/Memo/memo-backend .
-
-      - name: Flutter build
-        run: flutter build macos --release
-        working-directory: frontend
-
-      - name: Stage
-        run: |
-          APP_BUNDLE=$(find frontend/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -n1)
-          if [ -n "$APP_BUNDLE" ]; then
-            cp -R "$APP_BUNDLE" build_output/stage/Memo/Memo.app
-          fi
-          mkdir -p build_output/stage/Memo/data/{models,memory,sessions,skills,agent-backups,whatsapp,profile}
-          echo "[]" > build_output/stage/Memo/data/permissions.json
-          cp config/config.yaml.example build_output/stage/Memo/config/config.yaml 2>/dev/null || true
-
-      - name: Package
-        run: |
-          mkdir -p build_output/dist
-          cd build_output/stage && zip -r ../dist/Memo-macos-x64.zip Memo/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: Memo-macos
-          path: build_output/dist/Memo-macos-*.zip
-
-  # ── Release (tag only) ───────────────────────────────────────────
-
-  release:
-    if: startsWith(github.ref, 'refs/tags/v')
-    name: Create Release
-    needs: [build-linux, build-windows, build-macos]
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-    steps:
-      - uses: actions/download-artifact@v4
-        with:
-          merge-multiple: true
-          path: artifacts/
-
-      - name: Generate release notes
-        run: |
-          VERSION="${GITHUB_REF_NAME#v}"
-          cat > RELEASE_NOTES.md << EOF
-          ## Memo v${VERSION}
-
-          ### Changes
-          See the commits for a full list of changes: https://github.com/${{ github.repository }}/commits/${{ github.ref_name }}
-
-          ### Downloads
-          | Platform | Architecture | File |
-          |----------|-------------|------|
-          | Linux    | x86_64      | \`Memo-linux-x64.tar.gz\` |
-          | Windows  | x86_64      | \`Memo-windows-x64.zip\` |
-          | macOS    | arm64/x64   | \`Memo-macos-x64.zip\` |
-          EOF
-
-      - uses: softprops/action-gh-release@v2
-        with:
-          name: Memo v${{ github.ref_name }}
-          body_path: RELEASE_NOTES.md
-          draft: false
-          prerelease: ${{ contains(github.ref_name, 'beta') || contains(github.ref_name, 'alpha') || contains(github.ref_name, 'rc') }}
-          files: artifacts/*
-          generate_release_notes: false

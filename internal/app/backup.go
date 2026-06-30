@@ -3,6 +3,7 @@ package app
 import (
 	"archive/zip"
 	"bytes"
+	"database/sql"
 	"fmt"
 	"io"
 	"memo/internal/logx"
@@ -11,6 +12,8 @@ import (
 	"sort"
 	"strings"
 	"time"
+
+	_ "github.com/mattn/go-sqlite3"
 
 	"memo/internal/config"
 	"memo/internal/fileutil"
@@ -22,6 +25,11 @@ func backupsDir() string { return config.DataPath("backups") }
 
 // ExportData packages all user data (except models) into a .memo zip archive.
 func (a *App) ExportData(includeModels bool) ([]byte, error) {
+	// Force WAL checkpoint on memory.db so that committed-but-unmerged WAL
+	// transactions are flushed to the main database file before archiving.
+	// Without this, recent interactions may be missing from the export.
+	checkpointMemoryDB(config.DataPath("memory", "memory.db"))
+
 	var buf bytes.Buffer
 	zw := zip.NewWriter(&buf)
 
@@ -282,4 +290,19 @@ func (a *App) WipeAllData() error {
 
 	logx.Info("All user data wiped")
 	return nil
+}
+
+// checkpointMemoryDB forces a WAL checkpoint on memory.db so committed
+// transactions are flushed to the main database file. This ensures exports
+// contain recent data that may still be in the WAL journal. Errors are
+// non-fatal — a missing/unopened DB (e.g. first run) is silently skipped.
+func checkpointMemoryDB(dbPath string) {
+	db, err := sql.Open("sqlite3", dbPath)
+	if err != nil {
+		return
+	}
+	defer db.Close()
+	if _, err := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); err != nil {
+		logx.Printf("export: WAL checkpoint on %s: %v", dbPath, err)
+	}
 }

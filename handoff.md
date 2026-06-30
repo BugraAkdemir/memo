@@ -1,8 +1,9 @@
-# Handoff — 2026-06-30 (Session 5) — Stable Engeller Fix
+# Handoff — 2026-06-30 (Session 5-6) — Stable Engeller Fix + CI Analyze
 
 ## Oturum Özeti
 
-7 stable-blocking bug'un tamamı düzeltildi. Ayrıntılı commit geçmişi aşağıda.
+Session 5: 7 stable-blocking bug'un tamamı düzeltildi.
+Session 6: Flutter analyze CI hatası giderildi (3 warning → 0).
 
 ---
 
@@ -17,6 +18,7 @@
 | **H5** | Provider config atomic değil | `41cc723` | `os.WriteFile` → `fileutil.AtomicWrite` | `provider/config.go` |
 | **C3** | Import atomic değil | `b00b800` | `os.Create` → temp-file + `os.Rename` pattern | `app/backup.go` |
 | **C4** | `.machine-id` wipe'da silinir | `b006911` | Yer değiştirdi: `data/memory/` → `data/`; migrasyon; `wipePreserve` eklendi | `sync_manager.go`, `backup.go` |
+| **—** | Flutter analyze CI fail | `60689f8` | 3 warning giderildi: `?[` → `[` (x2), `is DateTime` → `isA<DateTime>()` | `api_client.dart`, `models_test.dart` |
 
 ---
 
@@ -94,6 +96,7 @@
 go build ./...                → temiz
 go vet ./...                  → temiz
 go test ./... -count=1        → tüm paketler PASS (memory paketinde önceden var olan nil deref hariç)
+flutter analyze --no-fatal-infos → EXIT_CODE=0 (sadece info seviyesinde, warning/error yok)
 ```
 
 ---

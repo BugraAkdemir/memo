@@ -13,7 +13,7 @@
   <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Hemen_İndir-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="İndir"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Yıldız"/></a>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-0a0a0a?style=for-the-badge" alt="Lisans"/>
-  <img src="https://img.shields.io/badge/Sürüm-v3.1.0_beta-B08D57?style=for-the-badge" alt="Sürüm"/>
+  <img src="https://img.shields.io/badge/Sürüm-v3.1.0-B08D57?style=for-the-badge" alt="Sürüm"/>
 
   <br/><br/>
 
@@ -22,7 +22,8 @@
   <img src="https://img.shields.io/badge/llama.cpp-gömülü-F08705?style=flat-square" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-SQLite_+_vec0-0F9D58?style=flat-square" alt="RAG"/>
   <img src="https://img.shields.io/badge/WhatsApp-entegre-25D366?style=flat-square&logo=whatsapp" alt="WhatsApp"/>
-  <img src="https://img.shields.io/badge/Platform-Linux_|_Windows-6e6e6e?style=flat-square" alt="Platform"/>
+   <img src="https://img.shields.io/badge/Platform-Linux_|_Windows_|_macOS-6e6e6e?style=flat-square" alt="Platform"/>
+  <img src="https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions" alt="CI"/>
 
   <p><b><a href="README.md">🇬🇧 Click for English</a></b></p>
 
@@ -253,13 +254,23 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 
 ## 🚀 Hızlı Başlangıç — Kurulum Gerektirmez
 
-**Terminal yok. Derleme yok. `llama.cpp` gömülü.** İndir → aç → Mağaza'dan bir model seç → sohbet et.
+**Terminal yok. Derleme yok. `llama.cpp` gömülü.** İndir → çıkar → Mağaza'dan bir model seç → sohbet et.
 
-| Platform | Yükleyici | Nasıl |
-|----------|-----------|-------|
-| **Windows** | `Memo-Setup.exe` | Kurulumu çalıştır |
-| **Linux** | `.AppImage` | `chmod +x` → başlat |
-| **Linux** | `.deb` | `sudo dpkg -i` |
+| Platform | Paket | Nasıl |
+|----------|-------|-------|
+| **Linux** | `Memo-linux-x64.zip` | `unzip Memo-linux-x64.zip -d Memo && cd Memo && ./run_memo.sh` |
+| **Windows** | `Memo-windows-x64.zip` | Çıkar → `run_memo.bat` çalıştır |
+| **macOS** | `Memo-macos.zip` | `unzip Memo-macos.zip -d Memo && cd Memo && open run_memo.command` |
+
+> ⚠️ **Motor binary'leri (`llama-server`, `vec0`) pakete dahil değil** — manuel eklenmeli.  
+> 📦 [**Motor binary'lerini indir**](https://drive.google.com/file/d/13zpp5Q0QgZ9XEwfgiWi-gCzBYNXuUXgz/view?usp=sharing) — Memo klasörü içinde `binaries/<platform>/` altına çıkar.
+
+**Her push'ta CI build'leri:**  
+[![Build Linux](https://img.shields.io/badge/Build-Linux-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-linux.yml)
+[![Build Windows](https://img.shields.io/badge/Build-Windows-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-windows.yml)
+[![Build macOS](https://img.shields.io/badge/Build-macOS-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-macos.yml)
+
+→ **Actions sekmesi** → workflow seç → **Artifact** indir.
 
 <div align="center">
   <br/>

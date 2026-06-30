@@ -13,7 +13,7 @@
   <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Download_Now-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="Download"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Stars"/></a>
   <img src="https://img.shields.io/badge/License-AGPL_v3-0a0a0a?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Version-v3.1.0_beta-B08D57?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/Version-v3.1.0-B08D57?style=for-the-badge" alt="Version"/>
 
   <br/><br/>
 
@@ -22,7 +22,8 @@
   <img src="https://img.shields.io/badge/llama.cpp-bundled-F08705?style=flat-square" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-SQLite_+_vec0-0F9D58?style=flat-square" alt="RAG"/>
   <img src="https://img.shields.io/badge/WhatsApp-integrated-25D366?style=flat-square&logo=whatsapp" alt="WhatsApp"/>
-  <img src="https://img.shields.io/badge/Platform-Linux_|_Windows-6e6e6e?style=flat-square" alt="Platform"/>
+   <img src="https://img.shields.io/badge/Platform-Linux_|_Windows_|_macOS-6e6e6e?style=flat-square" alt="Platform"/>
+  <img src="https://img.shields.io/badge/CI-GitHub_Actions-2088FF?style=flat-square&logo=githubactions" alt="CI"/>
 
   <p><b><a href="READmeTR.md">🇹🇷 Türkçe için tıkla</a></b></p>
 
@@ -253,13 +254,23 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 
 ## 🚀 Quick Start — Zero Config
 
-**No terminal. No build steps. `llama.cpp` is bundled.** Download → open → pick a model in the Store → chat.
+**No terminal. No build steps. `llama.cpp` is bundled.** Download → extract → pick a model in the Store → chat.
 
-| Platform | Installer | How |
-|----------|-----------|-----|
-| **Windows** | `Memo-Setup.exe` | Run the installer |
-| **Linux** | `.AppImage` | `chmod +x` → launch |
-| **Linux** | `.deb` | `sudo dpkg -i` |
+| Platform | Package | Instructions |
+|----------|---------|-------------|
+| **Linux** | `Memo-linux-x64.zip` | `unzip Memo-linux-x64.zip -d Memo && cd Memo && ./run_memo.sh` |
+| **Windows** | `Memo-windows-x64.zip` | Extract → run `run_memo.bat` |
+| **macOS** | `Memo-macos.zip` | `unzip Memo-macos.zip -d Memo && cd Memo && open run_memo.command` |
+
+> ⚠️ **Engine binaries (`llama-server`, `vec0`) are not included** — add them manually.  
+> 📦 [**Download engine binaries**](https://drive.google.com/file/d/13zpp5Q0QgZ9XEwfgiWi-gCzBYNXuUXgz/view?usp=sharing) — extract into `binaries/<platform>/` inside the Memo folder.
+
+**CI builds on every push:**  
+[![Build Linux](https://img.shields.io/badge/Build-Linux-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-linux.yml)
+[![Build Windows](https://img.shields.io/badge/Build-Windows-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-windows.yml)
+[![Build macOS](https://img.shields.io/badge/Build-macOS-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-macos.yml)
+
+→ **Actions tab** → pick a workflow → download **Artifact**.
 
 <div align="center">
   <br/>

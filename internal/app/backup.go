@@ -140,17 +140,27 @@ func (a *App) ImportData(data []byte) error {
 			return fmt.Errorf("import: open %s: %w", f.Name, err)
 		}
 
-		out, err := os.Create(target)
+		tmpTarget := target + ".importtmp"
+		out, err := os.Create(tmpTarget)
 		if err != nil {
 			rc.Close()
-			return fmt.Errorf("import: create %s: %w", target, err)
+			return fmt.Errorf("import: create %s: %w", tmpTarget, err)
 		}
 
 		_, err = io.Copy(out, rc)
 		rc.Close()
-		out.Close()
+		cerr := out.Close()
 		if err != nil {
+			os.Remove(tmpTarget)
 			return fmt.Errorf("import: write %s: %w", target, err)
+		}
+		if cerr != nil {
+			os.Remove(tmpTarget)
+			return fmt.Errorf("import: close %s: %w", target, cerr)
+		}
+		if err := os.Rename(tmpTarget, target); err != nil {
+			os.Remove(tmpTarget)
+			return fmt.Errorf("import: rename %s: %w", target, err)
 		}
 	}
 

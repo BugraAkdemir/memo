@@ -1,9 +1,11 @@
 name: Build Windows
 
 on:
-  workflow_dispatch:
   push:
-    tags: ["v*"]
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
 
 env:
   GO_VERSION: "1.26"

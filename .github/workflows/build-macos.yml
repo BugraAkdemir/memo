@@ -53,7 +53,11 @@ jobs:
           GOARCH=$ARCH CGO_ENABLED=1 go build -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
 
       - name: Build Flutter frontend
-        run: flutter build macos --release
+        run: flutter build macos --release --no-codesign
+        env:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_REQUIRED: "NO"
+          CODE_SIGNING_ALLOWED: "NO"
         working-directory: frontend
 
       - name: Stage files (NO engine binaries!)

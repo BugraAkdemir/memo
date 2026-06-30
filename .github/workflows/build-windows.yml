@@ -37,9 +37,7 @@ jobs:
 
       - uses: actions/cache@v4
         with:
-          path: |
-            ${{ runner.tool_cache }}\flutter
-            ${{ env.LOCALAPPDATA }}\Pub\Cache
+          path: ~\AppData\Local\Pub\Cache
           key: flutter-${{ runner.os }}-${{ hashFiles('frontend/pubspec.lock') }}
           restore-keys: flutter-${{ runner.os }}-
 

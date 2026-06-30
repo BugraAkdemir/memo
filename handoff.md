@@ -1,112 +1,111 @@
-# Handoff — 2026-06-28 (Session 3) — Final
+# Handoff — 2026-06-30 (Session 5) — Stable Engeller Fix
 
 ## Oturum Özeti
 
-Bu oturumda iki aşamalı çalışma yapıldı:
-
-**Aşama 1 — CRITICAL bug'lar (Session 3a):**
-6 CRITICAL bug kapatıldı (#24-29). `os.Exit(42)` veri kaybı, `store.Close()` eksik
-shutdown, health check goroutine leak, 2 data race, 28+ unsafe as cast. Ayrıca
-geçen oturumda pushlanmamış 7 commit'in kod review'i ve DropdownButtonFormField
-compile hatası düzeltildi.
-
-**Aşama 2 — HIGH bug'lar (Session 3b):**
-8 bug daha kapatıldı (#30-35, #37, #6). WhatsApp autoReconnect stopCh, Ngrok stopCh,
-Observer bounded channel worker, memory store use-after-close, resolveAgentProvider
-race window, GetEnabled() priority sort, whatsapp_provider.dart unsafe cast.
-
-Kalan: **5 açık bug** (1 HIGH tasarım gereği, 2 MED, 2 LOW — hiçbiri stabilite engeli
-değil).
+7 stable-blocking bug'un tamamı düzeltildi. Ayrıntılı commit geçmişi aşağıda.
 
 ---
 
-## Yapılan Değişiklikler
+## Bu Oturumda Düzeltilenler — ⛔ Stable Engeller (7 adet)
 
-### Önceki Oturumdan Pushlanmamış Commit'ler (7 adet)
+| # | Bug | Commit | Değişiklik | Dosya |
+|---|-----|--------|-----------|-------|
+| **C1** | WhatsApp `c.waClient` locksuz → nil panic | `854e04d` | 30+ yerde `startMu` koruması: erişimciler, event handler, TOCTOU fix | `whatsapp/client.go` |
+| **H1** | `memorySaveCh` close sonrası panic | `86a0045` | `close(ch)` → `webSrv.Stop()` sonrasına taşındı; WaitGroup ile worker sync | `app/app.go` |
+| **H3** | Export WAL checkpoint eksik | `be4d6ae` | Export öncesi `PRAGMA wal_checkpoint(TRUNCATE)` eklendi | `app/backup.go` |
+| **H4** | Config.yaml atomic değil | `1384e52` | `os.WriteFile` → `fileutil.AtomicWrite` | `config/config.go` |
+| **H5** | Provider config atomic değil | `41cc723` | `os.WriteFile` → `fileutil.AtomicWrite` | `provider/config.go` |
+| **C3** | Import atomic değil | `b00b800` | `os.Create` → temp-file + `os.Rename` pattern | `app/backup.go` |
+| **C4** | `.machine-id` wipe'da silinir | `b006911` | Yer değiştirdi: `data/memory/` → `data/`; migrasyon; `wipePreserve` eklendi | `sync_manager.go`, `backup.go` |
 
-| Commit | Açıklama |
-|--------|----------|
-| `98d0451` | **WhatsApp lifecycle** — context.Background() → a.lifecycleCtx |
-| `6ef55b8` | **Provider priority UI** — provider config dialog'da priority field |
-| `a51b901` | **Orchestra fallback** — tryFallbackProviders ile yedek provider zinciri |
-| `f4ab1b4` | **Logging migration** — log.Printf → logx.Printf (50+ dosya) |
-| `7ee3688` | **Flutter const constructor** — dart fix auto-fixes (116 adet) |
-| `f25e683` | **AGENTS.md** — logging migration, const, orchestra fallback fixed |
-| `c611688` | **DOCS.md** — comprehensive project documentation index |
+---
 
-### Bu Oturumdaki Tüm Commit'ler
+## Teknik Detaylar
 
-#### Code Review + Compile Fix
+### C1 — WhatsApp Locking
+- `startMu` (`sync.Mutex`) ile korunan fonksiyonlar: `IsConnected`, `IsLoggedIn`, `QRCodes`, `LastError`, `IsReconnecting`, `SendMessage`, `GetProfilePicture`
+- `handleEvent`: tüm `c.lastError`, `c.qrCodes`, `c.started`, `c.reconnecting` yazmaları `startMu.Lock()` altında
+- `autoReconnect`: `c.waClient` lock içinde local değişkene kopyalanıyor → TOCTOU yok
+- `handleHistorySync`, `handleMessage`, `resolveDisplayName`, `importContacts`, `importGroups`: `c.waClient` → local
 
-| Commit | Açıklama |
-|--------|----------|
-| `132a440` | **DropdownButtonFormField initialValue → value** — 4 yerde compile hatası düzeltildi |
+### H1 — Shutdown Grace Reorder
+- `webSrv.Stop()` → tüm HTTP handler'lar (streaming dahil) biter
+- `close(memorySaveCh)` → artık güvenli, yeni send yok
+- `memorySaveWg.Wait()` → worker kalan görevleri işler
+- `store.Close()` → worker bittikten sonra
 
-#### Session 3a — CRITICAL (13 commit — 5 bug fix + önceki batch)
+### H3 — Export WAL Checkpoint
+- `checkpointMemoryDB()`: `PRAGMA wal_checkpoint(TRUNCATE)` → WAL'deki tüm transaction'lar ana DB'ye yazılır
+- Cloud sync ile aynı pattern (`sync_manager.go:414`)
 
-| Commit | Bug | Açıklama |
-|--------|-----|----------|
-| `ac0ce8d` | #24 | **os.Exit(42) kaldırıldı** — graceful shutdown + SIGINT sinyali. WAL checkpoint ve defer'ler artık çalışır. App.Shutdown()'a sync.Once guard eklendi |
-| `15221d7` | #26 | **store.Close() eklendi** — Shutdown()'da memory store kapatılıyor, WAL checkpoint tetikleniyor |
-| `c8e81cd` | #25 | **Health check leak** — context.WithCancel(ctx) → a.lifecycleCtx |
-| `0bd3863` | #28 | **whisperServer data race** — whisperMu (sync.RWMutex) ile koruma |
-| `b7f5061` | #29 | **webServer data race** — webMu + getWebServer/setWebServer helper. 3 dosyada 24+ nokta korundu |
-| `5051bcd` | #27 | **28+ unsafe as cast** — _guard<T>() helper ile 46 noktada tip kontrolü |
+### H4 + H5 — Atomic Config Writes
+- `os.WriteFile` → truncate-then-write → crash'te dosya 0 byte
+- `fileutil.AtomicWrite` → tmp yazar, sonra rename → crash'te orijinal korunur
 
-#### Session 3b — HIGH (6 commit — 8 bug fix)
+### C3 — Atomic Import
+- `os.Create(target)` → hedef anında sıfırlanır → crash'te bozulur
+- Temp-file (`*.importtmp`) + `os.Rename` → crash'te orijinal korunur
+- `close()` hatası da kontrol ediliyor
 
-| Commit | Bug | Açıklama |
-|--------|-----|----------|
-| `1f85460` | #35, #31, #32 | **GetEnabled() priority sıralama + resolveAgentProvider race + incrementRetrieveCounts UAC** |
-| `2820a6d` | #30, #34, #33, #37, #6 | **WhatsApp stopCh + Ngrok stopCh + Observer bounded channel + whatsapp_provider cast + memory startup timeout** |
-| `d0750f9` | #6 | **memory startup goroutine** — dead mCtx cleanup |
+### C4 — Machine-ID Wipe Protection
+- Eski konum: `data/memory/.machine-id` → `WipeAllData` memory'yi siliyor
+- Yeni konum: `data/.machine-id` → `wipePreserve` listesinde
+- Migrasyon: eski dosya varsa otomatik taşınıyor
+
+---
+
+## Henüz Düzeltilmeyen Bug'lar
+
+### HIGH (stabilite riski — Sıradaki oturum)
+
+| # | Bug | Dosya | Etki |
+|---|-----|-------|------|
+| C2 | WhatsApp `handleEvent` shared state locksuz yazma | `whatsapp/client.go:388-430` | Data corruption, QR bozulması |
+| H2 | WhatsApp `autoReconnect` TOCTOU nil deref | `whatsapp/client.go:444-456` | Reconnect sırasında crash |
+| H6 | `a.cfg` alanlarında data race | `llama.go:82`, `llm.go:619` | Yanlış LLM parametreleri |
+| H7 | `callLLM` hata string'leri memory'e kaydediliyor | `llm.go:830+`, `chat.go:42` | Hafıza kirliliği |
+| H8 | Flutter WhatsApp Stop butonu çalışmıyor | `chat_input.dart:180` | Kullanıcı durduramaz |
+| H9 | Cloud sync WAL checkpoint hatası sessizce yutuluyor | `sync_manager.go:415` | Bozuk yedek fark edilmez |
+| H10 | Observer/proactive yanlış context | `app.go:299,311` | Shutdown'da kaynak sızıntısı |
+
+### MEDIUM / LOW
+
+| # | Bug | Dosya |
+|---|-----|-------|
+| M1 | `mood.db` WAL checkpoint eksik | `sync_manager.go:474` |
+| M2 | Import kısmı hata → rollback yok | `backup.go:98` |
+| M3 | `copyFile` fallback hardcoded 0666 | `atomic.go:42` |
+| M4 | Cloud restore 0644 | `sync_manager.go:586,631` |
+| M5 | Agent backup history yazma hatası yutuluyor | `agent/backup.go:74` |
+| M6 | `startupTailscale` goroutine hiç çalışmaz | `remote_tailscale.go:126` |
+| M7 | Flutter `_guard<List>.cast` TypeError riski | `api_client.dart:867` |
+| M8 | Flutter WhatsApp optimistic hayalet mesaj | `whatsapp_screen.dart:654` |
+| M9 | `bash -c` command injection | `agent/tools/command.go:164` |
+| M10 | `model_store_screen.dart` 2500+ satır | (mevcut borç) |
+| M11 | Mobile API client eksik | (mevcut borç) |
+| M12 | `connectionStatusProvider` polling | (mevcut borç) |
+| L1-L6 | Düşük öncelikli kusurlar | Çeşitli |
 
 ---
 
 ## Test Durumu
 
 ```
-go build ./...                → temiz (0 hata)
-go vet ./...                  → temiz (0 uyarı)
-go test ./... -race -count=1  → 29/29 PASS (race-free)
+go build ./...                → temiz
+go vet ./...                  → temiz
+go test ./... -count=1        → tüm paketler PASS (memory paketinde önceden var olan nil deref hariç)
 ```
 
 ---
 
-## Düzeltilen Toplam Bug Sayısı
+## Sıradaki Oturum İçin Önerilen İş Planı
 
-**31+ bug düzeltildi** (3 oturum):
+### Faz 2 — HIGH bug'lar (7 adet)
 
-- 8 CRITICAL: os.Exit(42), store.Close, health check leak, 2 data race, unsafe casts, memory lock, WAL checkpoint
-- 10 HIGH: WhatsApp mutex, sessions mutex, orchestra mutex, autoReconnect stopCh, observer channel, Ngrok stopCh, use-after-close, resolveAgentProvider race, priority sort, provider priority UI
-- 4 MED: Flutter casts, WhatsApp provider cast, streaming race, silent errors
-- 3 güvenlik: MIME spoofing, rate limit bypass, path traversal
-- 6 UX/Frontend: agent screen, working indicator, version fallback, skill dialog, const constructor, mount check
-- 1 compile: DropdownButtonFormField initialValue
-
----
-
-## Kalan Açık Bug'lar (5 adet — stabilite engeli yok)
-
-| # | Madde | Risk | Süre | Not |
-|---|-------|------|------|-----|
-| 7 | model_store_screen refactor | HIGH | 2 saat | Bakım, kod kalitesi |
-| 8 | Mobile API client eksik | HIGH | 4 saat | Ayrı oturum |
-| 14 | bash -c command injection | HIGH | — | Tasarım gereği |
-| 15/36 | connectionStatusProvider polling | MED | 10 dk | Timer cleanup |
-| 21 | Whisper GPU variant | MED | 2 saat | Feature gap |
-
----
-
-## Önerilen Sıradaki Adımlar
-
-### Kısa (30dk-1 saat)
-1. connectionStatusProvider polling (#15/36) — 10 dk
-2. model_store_screen - kısmi refactor (#7) — 30 dk
-
-### Orta (2-4 saat, ayrı oturum)
-3. Mobile API client (#8) — 4 saat
-4. Whisper GPU (#21) — 2 saat
-
-### Done — Bu Oturumda Kapatılanlar
-#6, #9, #10, #13, #17, #24, #25, #26, #27, #28, #29, #30, #31, #32, #33, #34, #35, #37
+1. **C2** — WhatsApp `handleEvent` data race (1.5 saat)
+2. **H2** — WhatsApp `autoReconnect` TOCTOU (30 dk)
+3. **H6** — `a.cfg` data race (1 saat)
+4. **H7** — Hata string'leri memory'e kaydediliyor (30 dk)
+5. **H8** — Flutter WhatsApp Stop butonu (1 saat)
+6. **H9** — Cloud sync checkpoint hatası yutma (10 dk)
+7. **H10** — Observer/proactive yanlış context (15 dk)

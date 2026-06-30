@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"memo/internal/fileutil"
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
@@ -409,7 +410,7 @@ func saveToFile(cfg *AppConfig, path string) error {
 		return fmt.Errorf("config.saveToFile: %w", err)
 	}
 
-	return os.WriteFile(path, data, 0600)
+	return fileutil.AtomicWrite(path, data, 0600)
 }
 
 func (c *AppConfig) validate() []string {

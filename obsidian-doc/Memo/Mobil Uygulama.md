@@ -1,84 +1,160 @@
-# Memo Mobil Uygulama
+# 📱 Memo Mobil Uygulama — Adım Adım Rehber
 
-**Memo Mobil**, Memo Go backend'e LAN veya ngrok üzerinden bağlanan ince bir Flutter istemcidir. Tüm AI/ML işlemleri masaüstünde kalır — mobil sadece güvenli bir uzak görüntüleyicidir.
-
----
-
-## ✨ Mevcut Özellikler (v3.1.0)
-
-| Özellik | Durum |
-|---------|-------|
-| LAN IP veya remote URL ile bağlanma | ✅ |
-| Token bazlı kimlik doğrulama (`X-Memo-Token`) | ✅ |
-| Akışlı sohbet (SSE) | ✅ |
-| Markdown işleme | ✅ |
-| Oturum yönetimi (listele, değiştir, yeni) | ✅ |
-| Sağlayıcı görüntüleme/açma/kapama | ✅ |
-| Model listeleme, başlatma/durdurma | ✅ |
-| `/model` komutu ile model değiştirme | ✅ |
-| **Takvim sekmesi** (aylık görünüm, etkinlik ekle/sil) | ✅ |
-| **Etkinlik hatırlatma bildirimleri** (`flutter_local_notifications`) | ✅ |
-| **Öğrenme ayarları** (tek model modu + hatırlatma süresi) | ✅ |
-
-> Takvim ve niyet çıkarımının tamamı için bkz. [[Proaktif Öğrenme ve Takvim]].
-
-## 🏗️ Mimari
-
-```
-┌──────────────────────────────┐      ┌──────────────────────────┐
-│       Mobil Uygulama         │      │    Masaüstü Backend      │
-│  ┌────────┐ ┌──────────┐    │ LAN  │  ┌────────────────────┐  │
-│  │Bağlantı│ │  Sohbet  │    │◄────►│  │ Go Server (:8090)  │  │
-│  │Ekranı  │ │  Ekranı  │    │ngrok │  │ + llama.cpp + RAG  │  │
-│  └────────┘ └──────────┘    │      │  │ + WhatsApp + Hafıza│  │
-│  ┌──────────────────┐       │      │  └────────────────────┘  │
-│  │  Ayarlar / Prov.  │       │      └──────────────────────────┘
-│  │  / Modeller       │       │
-│  └──────────────────┘       │
-└──────────────────────────────┘
-```
-
-**Temel prensip:** Mobilde sıfır AI işleme. Tüm çıkarım, hafıza ve otomasyon masaüstünde çalışır.
+> **Ne bu?** Telefonundan Memo'ya bağlan. Yaz, sohbet et, takvime bak. Tüm AI işlemleri masaüstünde çalışır — telefon sadece bir "uzaktan kumanda" gibidir. Telefonun ısınmaz, şarjı bitmez, internet kotaları şişmez.
 
 ---
 
-## 🔐 Bağlantı Modları
+## 🤔 Bu Ne İşe Yarar?
 
-| Mod | Taşıyıcı | Kullanım |
-|-----|----------|----------|
-| **Yerel** | Doğrudan IP:port | Ev/ofis aynı ağ |
-| **Uzaktan** | ngrok tünel | Dünyanın her yeri |
-| **Tailscale (v3.3)** | Tailscale | Sıfır yapılandırmalı VPN |
+Şöyle düşün: Bilgisayarın odanda, Memo masaüstünde çalışıyor. Sen mutfaktasın, canın bir şey sormak istedi. Bilgisayara gitmeden, telefonundan yazıyorsun. Memo bilgisayarında cevabı hazırlıyor, telefonuna gönderiyor.
+
+Ya da dışarıdasın. ngrok/Tailscale ile Memo'ya uzaktan bağlanıyorsun. Takvimine bakıyorsun, bir etkinlik ekliyorsun, hatırlatma alıyorsun.
+
+Telefon sadece yazdığını ve aldığın cevabı gösterir. Tüm ağır iş — LLM çıkarımı, RAG araması, embedding — masasüstünde olur.
 
 ---
 
-## 🛣️ Mobil Yol Haritası
+## 📱 Kurulum — Adım Adım
 
-| Sürüm | Özellikler |
-|-------|-----------|
-| **v3.1.0** | ✅ İlk yapı, temel sohbet, ayarlar |
-| **v3.2.0** | 🚧 Hatırlatıcılar için push bildirim |
-| **v3.3.0** | 🔮 Tam yetenek (RAG, WhatsApp, takvim, agent), biometrik auth, çevrimdışı kuyruk, STT |
-| **v3.4.0** | 🔮 Eklenti yönetimi |
-| **v3.5.0** | 🔮 Bilgi grafiği |
+### Ön Koşullar
 
-## 📂 Proje Yapısı
+- Memo masaüstü uygulaması **çalışıyor olmalı**
+- Telefon ve bilgisayar **aynı Wi-Fi ağında** olmalı (LAN bağlantısı için)
+- Veya bilgisayarda ngrok/Tailscale **aktif** olmalı (uzaktan bağlantı için)
+
+### 1. Masaüstünde Hazırlık
+
+Memo masaüstünde hiçbir ek ayar yapmana gerek yok. Sadece çalışıyor olsun. IP adresini öğrenmek için:
+
+```bash
+# Linux
+ip addr show | grep "inet " | grep -v 127
+
+# Windows
+ipconfig
+```
+
+Örnek çıktı: `192.168.1.42` — bu senin bilgisayarının IP adresi.
+
+Eğer uzaktan bağlanacaksan, Ayarlar → Uzaktan Erişim'den ngrok veya Tailscale'i aç.
+
+### 2. Mobili Derle ve Çalıştır
+
+```bash
+cd mobile
+flutter run
+```
+
+Telefonun USB ile bağlı ve geliştirici modu açık olmalı.
+
+### 3. Bağlantı Ekranı
+
+Uygulama açıldığında karşına bir bağlantı ekranı gelir:
+
+| Alan | Ne Yazmalısın |
+|------|--------------|
+| **Sunucu Adresi** | Bilgisayarının IP'si + port: `http://192.168.1.42:8090` |
+| **Token (isteğe bağlı)** | Ayarlar'da belirlediysen token'ı gir |
+
+**LAN Otomatik Keşif:** IP adresini bilmiyorsan **Tara** butonuna bas. Telefon ağdaki tüm adresleri tarar, Memo'yu bulur, adresi otomatik doldurur.
+
+4. **Bağlan**'a tıkla.
+
+---
+
+## 🏠 Aynı Wi-Fi'de Bağlanma (LAN)
+
+En basit yöntem. Telefon ve bilgisayar aynı ağda olsun yeter.
 
 ```
-mobile/lib/
-├── core/
-│   ├── api_client.dart      # HTTP + SSE istemcisi
-│   └── theme.dart
-├── providers/
-│   ├── chat_provider.dart
-│   └── connection_provider.dart
-├── screens/
-│   ├── chat_screen.dart
-│   ├── connect_screen.dart
-│   └── settings_screen.dart
-├── widgets/
-│   ├── chat_bubble.dart
-│   ├── message_input.dart
-│   └── session_drawer.dart
-└── main.dart
+Telefon ←──── Wi-Fi ────→ Bilgisayar (Memo çalışıyor)
+   ↓                          ↓
+ 192.168.1.100            192.168.1.42:8090
 ```
+
+1. Bilgisayarın IP'sini öğren (yukarıdaki komutla)
+2. Mobil uygulamada bu IP'yi ve `:8090` portunu gir
+3. Bağlan
+
+> Bu yöntem **sadece aynı ev/ofis ağında çalışır.** Dışarıdan bağlanamazsın.
+
+---
+
+## 🌍 Dışarıdan Bağlanma (ngrok / Tailscale)
+
+Evde değilsin, Memo'ya ulaşmak istiyorsun.
+
+### Seçenek 1: ngrok (en kolay)
+
+1. [ngrok.com](https://ngrok.com)'a git, ücretsiz hesap aç
+2. Auth token'ını kopyala
+3. Memo'da **Ayarlar → Uzaktan Erişim → Ngrok**
+4. Token'ı yapıştır, **Ngrok Aktif**'i aç
+5. Memo sana bir URL verecek: `https://abc123.ngrok.io`
+6. Bu URL'yi mobil uygulamaya gir
+
+```
+Telefon ←──── İnternet ────→ ngrok sunucusu ────→ Senin bilgisayarın
+```
+
+> Ücretsiz ngrok'ta URL her başlatmada değişir. Her seferinde yeni URL'yi mobil uygulamaya girmen gerekir.
+
+### Seçenek 2: Tailscale (kararlı URL)
+
+1. [Tailscale](https://tailscale.com)'e üye ol
+2. Memo'da **Ayarlar → Uzaktan Erişim → Tailscale**
+3. Tailscale Key'ini gir
+4. Hostname belirle (örn. `memo-ev`)
+5. Telefonuna da Tailscale uygulamasını kur
+6. Mobil uygulamada adresi `http://memo-ev:8090` olarak gir
+
+```
+Telefon ←── Tailscale ağı ──→ Bilgisayar
+(Tailscale app)              (Memo + gömülü Tailscale)
+```
+
+> Tailscale ile URL **hep aynı kalır.** Bir kere kur, hep aynı adresle bağlan.
+
+---
+
+## 🎯 Takvim Sekmesi
+
+Mobil uygulamada bir takvim sekmesi var. Bu sekme:
+
+- **Aylık görünüm** gösterir — etkinlik olan günlerde nokta var
+- Güne dokununca o günün etkinliklerini listeler
+- Yeni etkinlik ekleyebilirsin (manuel)
+- Etkinliğe uzun basınca silebilirsin
+- Hatırlatma süresini değiştirebilirsin
+
+---
+
+## 🔐 Token Koruması
+
+İstersen bağlantıya şifre koyabilirsin:
+
+1. Masaüstü Memo → **Ayarlar → Uzaktan Erişim**
+2. **Access Token** alanına bir şifre yaz
+3. Mobil uygulamada bağlanırken aynı token'ı gir
+
+Token yoksa bağlantı reddedilir. Özellikle ngrok ile dışarı açtıysan bunu yapman şiddetle önerilir.
+
+---
+
+## ❓ Sık Sorulanlar
+
+**S: İnternet yokken çalışır mı?**
+LAN bağlantısı internet istemez. Aynı Wi-Fi'de olman yeter. İnternet sadece ngrok/Tailscale ile uzaktan bağlantı için gerekir.
+
+**S: Telefonumda model çalıştırmam gerekir mi?**
+Hayır! Tüm AI işlemleri masaüstünde olur. Telefon sadece metni gönderir ve cevabı gösterir. Telefonun eski, yavaş, pili bitik olabilir — fark etmez.
+
+**S: Aynı anda hem masaüstünden hem telefondan sohbet edebilir miyim?**
+Evet. Aynı oturuma iki yerden bağlanabilirsin. Ama aynı anda ikisinden de mesaj yazarsan karışabilir — sırayla kullan.
+
+---
+
+## Bağlantılı Notlar:
+- [[Uzaktan Erişim]]
+- [[Proaktif Öğrenme ve Takvim]]
+- [[Mimari Yapı]]

@@ -115,5 +115,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Memo-linux-x64
-          path: build_output/dist/Memo-linux-x64.zip
+          path: build_output/stage/Memo/
           retention-days: 7

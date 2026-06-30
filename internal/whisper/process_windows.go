@@ -4,7 +4,6 @@ package whisper
 
 import (
 	"fmt"
-	"log"
 	"memo/internal/logx"
 	"os"
 	"os/exec"

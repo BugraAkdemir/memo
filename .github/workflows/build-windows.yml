@@ -144,5 +144,5 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: Memo-windows-x64
-          path: build_output/dist/Memo-windows-x64.zip
+          path: build_output/stage/Memo/
           retention-days: 7

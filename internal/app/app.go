@@ -128,6 +128,7 @@ type App struct {
 	syncManager      *cloudsync.Manager
 	syncMu           sync.RWMutex
 	memorySaveCh     chan saveTask
+	memorySaveWg     sync.WaitGroup
 	events           *eventRing
 
 	providerCfgMgr      *provider.ConfigManager
@@ -321,7 +322,11 @@ func (a *App) Startup(ctx context.Context) {
 	// to 10s on a slow embedding endpoint, so a burst of replies must not overflow
 	// and silently drop interactions from long-term memory.
 	a.memorySaveCh = make(chan saveTask, 1024)
-	go a.memorySaveWorker()
+	a.memorySaveWg.Add(1)
+	go func() {
+		defer a.memorySaveWg.Done()
+		a.memorySaveWorker()
+	}()
 
 	if cfg.RemoteAccess.Enabled && cfg.RemoteAccess.NgrokMode && cfg.RemoteAccess.NgrokToken != "" {
 		a.remoteAccessEnabled = true
@@ -467,7 +472,19 @@ func (a *App) Shutdown(ctx context.Context) {
 			a.lifecycleCancel()
 		}
 
+		a.webMu.RLock()
+		webSrv := a.webServer
+		a.webMu.RUnlock()
+		if webSrv != nil {
+			if err := webSrv.Stop(); err != nil {
+				logx.Printf("webserver shutdown: %v", err)
+			}
+		}
+
+		// Now that all HTTP handlers (including streaming goroutines) have
+		// finished, it is safe to close memorySaveCh — no more sends will occur.
 		close(a.memorySaveCh)
+		a.memorySaveWg.Wait()
 
 		a.storeMu.Lock()
 		if a.store != nil {
@@ -516,14 +533,6 @@ func (a *App) Shutdown(ctx context.Context) {
 		if a.mood != nil {
 			if err := a.mood.Close(); err != nil {
 				logx.Printf("mood shutdown: %v", err)
-			}
-		}
-		a.webMu.RLock()
-		webSrv := a.webServer
-		a.webMu.RUnlock()
-		if webSrv != nil {
-			if err := webSrv.Stop(); err != nil {
-				logx.Printf("webserver shutdown: %v", err)
 			}
 		}
 		stopRecordingProcess()

@@ -67,7 +67,18 @@ jobs:
           New-Item -ItemType Directory -Force -Path "$S\data\whatsapp"
           New-Item -ItemType Directory -Force -Path "$S\data\profile"
 
-          Copy-Item -Recurse "frontend\build\windows\x64\release\runner\Release\*" "$S\"
+          # Flutter Windows build output path varies by Flutter/VS version.
+          # Search for the Release directory containing memo_flutter.exe.
+          $flutterOut = Get-ChildItem -Path "frontend\build\windows" -Recurse -Directory -Filter "Release" |
+                        Where-Object { Test-Path "$($_.FullName)\memo_flutter.exe" } |
+                        Select-Object -First 1 -ExpandProperty FullName
+          if (-not $flutterOut) {
+            Write-Error "Flutter build output not found under frontend\build\windows"
+            Get-ChildItem -Path "frontend\build" -Recurse -Depth 3 | ForEach-Object { Write-Host $_.FullName }
+            exit 1
+          }
+          Write-Host "Copying from: $flutterOut"
+          Copy-Item -Recurse "$flutterOut\*" "$S\"
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml" -ErrorAction SilentlyContinue
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml.example" -ErrorAction SilentlyContinue
           Copy-Item ".env.example" "$S\.env" -ErrorAction SilentlyContinue

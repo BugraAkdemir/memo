@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"memo/internal/config"
+	"memo/internal/fileutil"
 )
 
 // ConfigManager manages provider configurations with encrypted API keys.
@@ -143,7 +144,7 @@ func (cm *ConfigManager) saveLocked() {
 		return
 	}
 
-	if err := os.WriteFile(cm.filePath, data, 0600); err != nil {
+	if err := fileutil.AtomicWrite(cm.filePath, data, 0600); err != nil {
 		logx.Printf("PROVIDER: failed to write config: %v", err)
 	}
 }

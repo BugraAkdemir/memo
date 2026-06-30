@@ -78,7 +78,8 @@ jobs:
             exit 1
           }
           Write-Host "Copying from: $flutterOut"
-          Copy-Item -Recurse "$flutterOut\*" "$S\"
+          robocopy "$flutterOut" "$S" /E /NFL /NDL /NJH /NJS /nc /ns /np
+          if ($LASTEXITCODE -ge 8) { throw "robocopy failed with exit code $LASTEXITCODE" }
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml" -ErrorAction SilentlyContinue
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml.example" -ErrorAction SilentlyContinue
           Copy-Item ".env.example" "$S\.env" -ErrorAction SilentlyContinue

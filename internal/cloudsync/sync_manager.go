@@ -83,11 +83,23 @@ func New(
 	if intervalMessages <= 0 {
 		intervalMessages = SyncInterval
 	}
+	dataDir := filepath.Dir(persistDir) // data/memory → data/
 	if passphrase == "" {
-		passphrase = loadOrCreateMachineID(persistDir)
+		// Migrate machine-id from old location (data/memory/.machine-id)
+		// to new wipe-safe location (data/.machine-id). The old location
+		// lived inside the memory directory which WipeAllData removes.
+		oldPath := filepath.Join(persistDir, ".machine-id")
+		newPath := filepath.Join(dataDir, ".machine-id")
+		if _, err := os.Stat(oldPath); err == nil {
+			if data, err := os.ReadFile(oldPath); err == nil {
+				_ = os.WriteFile(newPath, data, 0600)
+				_ = os.Remove(oldPath)
+			}
+		}
+		passphrase = loadOrCreateMachineID(dataDir)
 		logx.Printf("WARN: cloudsync: no passphrase configured — backups are encrypted with a " +
 			"machine-specific key stored in %s. Backups cannot be restored on a different machine. " +
-			"Set a passphrase in Settings → Cloud Sync for portable encryption.", persistDir)
+			"Set a passphrase in Settings → Cloud Sync for portable encryption.", dataDir)
 	}
 	dc, err := newDriveClient(clientID, clientSecret, tokenPath)
 	if err != nil {
@@ -96,7 +108,7 @@ func New(
 	return &Manager{
 		ctx:        ctx,
 		persistDir: persistDir,
-		dataDir:    filepath.Dir(persistDir), // data/memory → data/
+		dataDir:    dataDir,
 		passphrase: passphrase,
 		drive:      dc,
 		interval:   int64(intervalMessages),

@@ -242,11 +242,12 @@ func pruneImportBackups(dir string, keep int) {
 // the data dir (sessions, memory, whatsapp, providers, mood, calendar,
 // profile, permissions, skills, datasets, backups…) is removed.
 var wipePreserve = map[string]bool{
-	"models":    true, // downloaded GGUF models
-	"bin":       true, // llama.cpp binaries
-	"binaries":  true, // downloaded runtime binaries
-	"tmp_llama": true, // llama.cpp build/extract scratch
-	"tailscale": true, // tsnet state
+	"models":      true, // downloaded GGUF models
+	"bin":         true, // llama.cpp binaries
+	"binaries":    true, // downloaded runtime binaries
+	"tmp_llama":   true, // llama.cpp build/extract scratch
+	"tailscale":   true, // tsnet state
+	".machine-id": true, // cloud sync machine identity (encryption key derivation)
 }
 
 // WipeAllData removes ALL user data under the data directory except the

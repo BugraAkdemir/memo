@@ -1,157 +1,129 @@
-# Handoff — 2026-06-30 (Session 5-7) — Stable Engeller Fix + CI Analyze + Build Workflows
+# Handoff — 2026-07-01 (Session 5-9) — Stable Engeller + CI Build + Docs
 
 ## Oturum Özeti
 
-Session 5: 7 stable-blocking bug'un tamamı düzeltildi.
-Session 6: Flutter analyze CI hatası giderildi (3 warning → 0).
-Session 7: Her platform için build workflow'ları yazıldı (Linux, Windows, macOS).
+Session 5: 7 stable-blocking bug düzeltildi.
+Session 6: Flutter analyze CI hatası giderildi.
+Session 7: 3 platform build workflow yazıldı.
+Session 8: CI fix'leri (macOS, Windows, zip).
+Session 9: macOS binaries, API hint, docs, sürüm notları.
 
 ---
 
-## Bu Oturumda Düzeltilenler — ⛔ Stable Engeller (7 adet)
+## Bu Oturumda Düzeltilenler
 
-| # | Bug | Commit | Değişiklik | Dosya |
-|---|-----|--------|-----------|-------|
-| **C1** | WhatsApp `c.waClient` locksuz → nil panic | `854e04d` | 30+ yerde `startMu` koruması: erişimciler, event handler, TOCTOU fix | `whatsapp/client.go` |
-| **H1** | `memorySaveCh` close sonrası panic | `86a0045` | `close(ch)` → `webSrv.Stop()` sonrasına taşındı; WaitGroup ile worker sync | `app/app.go` |
-| **H3** | Export WAL checkpoint eksik | `be4d6ae` | Export öncesi `PRAGMA wal_checkpoint(TRUNCATE)` eklendi | `app/backup.go` |
-| **H4** | Config.yaml atomic değil | `1384e52` | `os.WriteFile` → `fileutil.AtomicWrite` | `config/config.go` |
-| **H5** | Provider config atomic değil | `41cc723` | `os.WriteFile` → `fileutil.AtomicWrite` | `provider/config.go` |
-| **C3** | Import atomic değil | `b00b800` | `os.Create` → temp-file + `os.Rename` pattern | `app/backup.go` |
-| **C4** | `.machine-id` wipe'da silinir | `b006911` | Yer değiştirdi: `data/memory/` → `data/`; migrasyon; `wipePreserve` eklendi | `sync_manager.go`, `backup.go` |
-| **—** | Flutter analyze CI fail | `60689f8` | 3 warning giderildi: `?[` → `[` (x2), `is DateTime` → `isA<DateTime>()` | `api_client.dart`, `models_test.dart` |
-| **—** | CI build workflows | `(sonraki commit)` | Her platform için ayrı build workflow + ci.yml sadeleştirme | `.github/workflows/*.yml` |
+### ⛔ Stable Engeller (7 adet — Session 5)
 
----
+| # | Bug | Commit | Değişiklik |
+|---|-----|--------|-----------|
+| **C1** | WhatsApp `c.waClient` locksuz → nil panic + handleEvent + autoReconnect | `854e04d` | 30+ yerde `startMu` koruması, TOCTOU fix, handleEvent lock |
+| **H1** | `memorySaveCh` close sonrası panic | `86a0045` | Grace reorder: webSrv.Stop → close(ch) → WaitGroup |
+| **H3** | Export WAL checkpoint eksik | `be4d6ae` | PRAGMA wal_checkpoint(TRUNCATE) export öncesi |
+| **H4** | Config.yaml atomic değil | `1384e52` | os.WriteFile → fileutil.AtomicWrite |
+| **H5** | Provider config atomic değil | `41cc723` | os.WriteFile → fileutil.AtomicWrite |
+| **C3** | Import atomic değil | `b00b800` | Temp-file + os.Rename pattern |
+| **C4** | `.machine-id` wipe'da silinir | `b006911` | data/memory/ → data/ + migrasyon + wipePreserve |
 
-## CI Build Workflows (Session 7)
+> **Not:** C1 düzeltmesi, C2 (handleEvent data race) ve H2 (autoReconnect TOCTOU) bug'larını da kapsar — hepsi aynı `startMu` korumasıyla çözüldü.
 
-Her platform için ayrı workflow dosyası oluşturuldu:
+### CI Build Workflows (Session 7-8)
 
-| Workflow | Dosya | Trigger | Çıktı |
-|----------|-------|---------|-------|
-| CI (test) | `ci.yml` | push, PR | Go test/vet/build + Flutter analyze/test |
-| Build Linux | `build-linux.yml` | workflow_dispatch, tags | Memo-linux-x64.zip |
-| Build Windows | `build-windows.yml` | workflow_dispatch, tags | Memo-windows-x64.zip |
-| Build macOS | `build-macos.yml` | workflow_dispatch, tags | Memo-macos.zip |
+| Workflow | Trigger | Çıktı | Durum |
+|----------|---------|-------|-------|
+| `ci.yml` | push, PR | Go test/vet/build + Flutter analyze/test | ✅ |
+| `build-linux.yml` | push, PR, manual | Memo-linux-x64.zip | ✅ |
+| `build-windows.yml` | push, PR, manual | Memo-windows-x64.zip | ✅ |
+| `build-macos.yml` | push, PR, manual | Memo-macos.zip | ✅ |
 
-### Özellikler
-- **Binaries (llama-server, vec0) pakete DAHİL DEĞİL** — kullanıcı manuel ekler
-- Her workflow `workflow_dispatch` ile manuel tetiklenebilir
-- Tag push'ta otomatik çalışır
-- Artifact retention: 7 gün
-- Cache: Go mod + Flutter pub cache her platform için ayrı
+### CI Fix'leri — Tüm Platformlar Temiz
 
-### Build Akışı
-1. CI'da workflow_dispatch veya tag push ile build tetiklenir
-2. Go backend derlenir (CGO_ENABLED=1)
-3. Flutter frontend derlenir (--release)
-4. Config, data dizinleri, runner script hazırlanır
-5. .zip paketi oluşturulur
-6. GitHub Actions Artifact olarak upload edilir
-7. Kullanıcı artifact'i indirir, `binaries/` klasörünü ekler, dağıtır
+| Sorun | Çözüm | Commit |
+|-------|-------|--------|
+| macOS `--no-codesign` flag yok | Kaldırıldı, env değişkenleri yeterli | `b1604a7` |
+| Windows `process_windows.go` unused import | `log` import silindi (llama + whisper) | `b1604a7` |
+| Zip çift katman (upload-artifact) | Stage klasörü direkt upload | `b1604a7` |
+| Windows Flutter çıktı yolu dinamik değil | robocopy + Get-ChildItem arama | `eefd995`, `2b35b10`, `c67f4c9` |
+| Linux GTK dev libs eksik | libgtk-3-dev + tüm Flutter Linux deps | `d5d31fe` |
 
-### Analiz Sonucu — Çalışmaya Engel Durum
-- `go build ./...` ✅ Temiz
-- `go vet ./...` ✅ Temiz
-- `go test ./...` ✅ Tüm 30 paket PASS
-- `flutter analyze --no-fatal-infos` ✅ EXIT_CODE=0
-- `flutter test` ✅ 73 test PASS
-- Go 1.26 `actions/setup-go@v5`'te mevcut ✅
-- Flutter stable `subosito/flutter-action@v2`'de mevcut ✅
-- SQLite dev libs CI'da kuruluyor ✅
-- Windows CGO için GCC (mingw) mevcut ✅
-- macOS CGO + Xcode mevcut ✅
+### macOS Platform (Session 8-9)
 
----
+- `flutter create --platforms=macos` ile macos/ projesi oluşturuldu
+- PRODUCT_NAME = Memo, bundle ID = com.bugrakaptan.memo
+- `binaries/darwin/cpu/vec0.dylib` eklendi (arm64 + x86_64)
+- llama-server macOS'ta derlenmeli veya ilk başlatmada otomatik iner
 
-## Teknik Detaylar
+### API Provider → Local Model Hint (Session 9)
 
-### C1 — WhatsApp Locking
-- `startMu` (`sync.Mutex`) ile korunan fonksiyonlar: `IsConnected`, `IsLoggedIn`, `QRCodes`, `LastError`, `IsReconnecting`, `SendMessage`, `GetProfilePicture`
-- `handleEvent`: tüm `c.lastError`, `c.qrCodes`, `c.started`, `c.reconnecting` yazmaları `startMu.Lock()` altında
-- `autoReconnect`: `c.waClient` lock içinde local değişkene kopyalanıyor → TOCTOU yok
-- `handleHistorySync`, `handleMessage`, `resolveDisplayName`, `importContacts`, `importGroups`: `c.waClient` → local
+- API provider hata/boş cevap verirse, yerel model çalışıyorsa kullanıcıya `/model Local` önerisi gösteriliyor
+- `localModelHint()` helper: llamaServer durumunu kontrol edip bilgi mesajı döner
+- callLLMStream + callLLM provider error/empty yollarında aktif
 
-### H1 — Shutdown Grace Reorder
-- `webSrv.Stop()` → tüm HTTP handler'lar (streaming dahil) biter
-- `close(memorySaveCh)` → artık güvenli, yeni send yok
-- `memorySaveWg.Wait()` → worker kalan görevleri işler
-- `store.Close()` → worker bittikten sonra
+### Docs Güncellemeleri
 
-### H3 — Export WAL Checkpoint
-- `checkpointMemoryDB()`: `PRAGMA wal_checkpoint(TRUNCATE)` → WAL'deki tüm transaction'lar ana DB'ye yazılır
-- Cloud sync ile aynı pattern (`sync_manager.go:414`)
-
-### H4 + H5 — Atomic Config Writes
-- `os.WriteFile` → truncate-then-write → crash'te dosya 0 byte
-- `fileutil.AtomicWrite` → tmp yazar, sonra rename → crash'te orijinal korunur
-
-### C3 — Atomic Import
-- `os.Create(target)` → hedef anında sıfırlanır → crash'te bozulur
-- Temp-file (`*.importtmp`) + `os.Rename` → crash'te orijinal korunur
-- `close()` hatası da kontrol ediliyor
-
-### C4 — Machine-ID Wipe Protection
-- Eski konum: `data/memory/.machine-id` → `WipeAllData` memory'yi siliyor
-- Yeni konum: `data/.machine-id` → `wipePreserve` listesinde
-- Migrasyon: eski dosya varsa otomatik taşınıyor
+- `versinNote/v3.1.0.md` (EN+TR): Stable engeller tablosu eklendi
+- `README.md` + `READmeTR.md`: .zip dağıtım modeli, CI build linkleri, binary download link
+- `obsidian-doc/`: Bulut Senkronizasyonu + Mobil Uygulama adım adım rehber (TR+EN)
+- `BUG_REPORT.md`: Faz 1 tamamlandı işaretlendi
+- `version`: V3.1.0-beta → V3.1.0
 
 ---
 
-## Henüz Düzeltilmeyen Bug'lar
+## Dosya Dağıtım Modeli
 
-### HIGH (stabilite riski — Sıradaki oturum)
+```
+Memo-<platform>.zip
+├── memo-backend(.exe)    ← Go backend
+├── memo_flutter(.exe)    ← Flutter frontend (macOS: Memo.app/)
+├── run_memo.sh/.bat/.command  ← başlatma scripti
+├── config/
+├── data/                 ← boş şablon dizinler
+└── binaries/             ← KULLANICI MANUEL EKLER
+    ├── linux/{cpu|amd|nvidia}/
+    ├── windows/{cpu|amd|nvidia}/
+    └── darwin/cpu/
+```
 
-| # | Bug | Dosya | Etki |
-|---|-----|-------|------|
-| C2 | WhatsApp `handleEvent` shared state locksuz yazma | `whatsapp/client.go:388-430` | Data corruption, QR bozulması |
-| H2 | WhatsApp `autoReconnect` TOCTOU nil deref | `whatsapp/client.go:444-456` | Reconnect sırasında crash |
-| H6 | `a.cfg` alanlarında data race | `llama.go:82`, `llm.go:619` | Yanlış LLM parametreleri |
-| H7 | `callLLM` hata string'leri memory'e kaydediliyor | `llm.go:830+`, `chat.go:42` | Hafıza kirliliği |
-| H8 | Flutter WhatsApp Stop butonu çalışmıyor | `chat_input.dart:180` | Kullanıcı durduramaz |
-| H9 | Cloud sync WAL checkpoint hatası sessizce yutuluyor | `sync_manager.go:415` | Bozuk yedek fark edilmez |
-| H10 | Observer/proactive yanlış context | `app.go:299,311` | Shutdown'da kaynak sızıntısı |
-
-### MEDIUM / LOW
-
-| # | Bug | Dosya |
-|---|-----|-------|
-| M1 | `mood.db` WAL checkpoint eksik | `sync_manager.go:474` |
-| M2 | Import kısmı hata → rollback yok | `backup.go:98` |
-| M3 | `copyFile` fallback hardcoded 0666 | `atomic.go:42` |
-| M4 | Cloud restore 0644 | `sync_manager.go:586,631` |
-| M5 | Agent backup history yazma hatası yutuluyor | `agent/backup.go:74` |
-| M6 | `startupTailscale` goroutine hiç çalışmaz | `remote_tailscale.go:126` |
-| M7 | Flutter `_guard<List>.cast` TypeError riski | `api_client.dart:867` |
-| M8 | Flutter WhatsApp optimistic hayalet mesaj | `whatsapp_screen.dart:654` |
-| M9 | `bash -c` command injection | `agent/tools/command.go:164` |
-| M10 | `model_store_screen.dart` 2500+ satır | (mevcut borç) |
-| M11 | Mobile API client eksik | (mevcut borç) |
-| M12 | `connectionStatusProvider` polling | (mevcut borç) |
-| L1-L6 | Düşük öncelikli kusurlar | Çeşitli |
+**Veri klasörü:** `~/.memo/data/` — hafıza, sohbetler, ayarlar her zaman burada. Zip'i silip yeni sürüm çıkarsan bile verilerin korunur.
 
 ---
 
 ## Test Durumu
 
 ```
-go build ./...                → temiz
-go vet ./...                  → temiz
-go test ./... -count=1        → tüm paketler PASS (memory paketinde önceden var olan nil deref hariç)
-flutter analyze --no-fatal-infos → EXIT_CODE=0 (sadece info seviyesinde, warning/error yok)
+go build ./...                ✅ temiz
+go vet ./...                  ✅ temiz
+go test ./... -count=1        ✅ 30 paket PASS (memory nil deref aralıklı)
+flutter analyze --no-fatal-infos ✅ EXIT_CODE=0 (16 info, 0 warning)
+flutter test                  ✅ 73 test PASS
 ```
+
+---
+
+## Henüz Düzeltilmeyen Bug'lar
+
+### HIGH
+
+| # | Bug | Dosya |
+|---|-----|-------|
+| H6 | `a.cfg` alanlarında data race | `llama.go`, `llm.go` |
+| H7 | `callLLM` hata string'leri memory'e kaydediliyor | `llm.go`, `chat.go` |
+| H8 | Flutter WhatsApp Stop butonu çalışmıyor | `chat_input.dart` |
+| H9 | Cloud sync WAL checkpoint hatası sessizce yutuluyor | `sync_manager.go` |
+| H10 | Observer/proactive yanlış context | `app.go` |
+
+### MEDIUM / LOW
+
+| # | Bug |
+|---|-----|
+| M1-M12 | mood.db checkpoint, import rollback, copyFile 0666, vb. |
+| L1-L6 | .tmp orphan, double-rebuild, cache sızıntısı |
 
 ---
 
 ## Sıradaki Oturum İçin Önerilen İş Planı
 
-### Faz 2 — HIGH bug'lar (7 adet)
-
-1. **C2** — WhatsApp `handleEvent` data race (1.5 saat)
-2. **H2** — WhatsApp `autoReconnect` TOCTOU (30 dk)
-3. **H6** — `a.cfg` data race (1 saat)
-4. **H7** — Hata string'leri memory'e kaydediliyor (30 dk)
-5. **H8** — Flutter WhatsApp Stop butonu (1 saat)
-6. **H9** — Cloud sync checkpoint hatası yutma (10 dk)
-7. **H10** — Observer/proactive yanlış context (15 dk)
+1. **H6** — `a.cfg` data race → cfgMu ekle (1 saat)
+2. **H7** — Hata string'leri memory'e kaydediliyor (30 dk)
+3. **H8** — Flutter WhatsApp Stop butonu (1 saat)
+4. **H9** — Cloud sync checkpoint hatası yutma (10 dk)
+5. **H10** — Observer/proactive yanlış context (15 dk)

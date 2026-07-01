@@ -87,7 +87,21 @@ jobs:
           export MEMO_DATA_DIR="$MEMO_HOME/data"
           mkdir -p "$MEMO_HOME"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile,bin}}
 
-          [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ] && cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+          if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
+              echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
+              cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+
+              ARCH=$(uname -m)
+              BIN_DIR="$MEMO_HOME/binaries/darwin/cpu"
+              if [ "$ARCH" = "arm64" ] && [ -f "$BIN_DIR/llama-server-arm64" ]; then
+                  cp "$BIN_DIR/llama-server-arm64" "$BIN_DIR/llama-server"
+                  cp "$BIN_DIR/vec0-arm64.dylib" "$BIN_DIR/vec0.dylib"
+              elif [ "$ARCH" = "x86_64" ] && [ -f "$BIN_DIR/llama-server-x64" ]; then
+                  cp "$BIN_DIR/llama-server-x64" "$BIN_DIR/llama-server"
+                  cp "$BIN_DIR/vec0-x86_64.dylib" "$BIN_DIR/vec0.dylib"
+              fi
+              chmod +x "$BIN_DIR/llama-server" 2>/dev/null || true
+          fi
           [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -f "$DIR/config/config.yaml" ] && cp "$DIR/config/config.yaml" "$MEMO_HOME/config/"
           [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
           [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"

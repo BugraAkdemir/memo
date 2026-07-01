@@ -1,0 +1,186 @@
+name: Upload to R2 (Beta)
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version tag (e.g. v3.1.1-beta)'
+        required: true
+        default: 'v3.1.1-beta'
+
+env:
+  GO_VERSION: "1.26"
+  FLUTTER_CHANNEL: stable
+  APP_NAME: Memo
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
+
+jobs:
+  # ─── Linux ──────────────────────────────────────────────────────
+  build-linux:
+    name: Build & Upload Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
+
+      - name: Install deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libsqlite3-dev clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev libblkid-dev libsecret-1-dev \
+            libwebkit2gtk-4.1-dev libjsoncpp-dev
+
+      - name: Build Go backend
+        run: CGO_ENABLED=1 go build -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+
+      - name: Build Flutter frontend
+        working-directory: frontend
+        run: flutter build linux --release
+
+      - name: Stage
+        run: |
+          S="build_output/stage/${{ env.APP_NAME }}"
+          mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
+          cp -r frontend/build/linux/x64/release/bundle/* "$S/"
+          cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
+          cp .env.example "$S/.env" 2>/dev/null || true
+          echo '[]' > "$S/data/permissions.json"
+          touch "$S/data/whatsapp/.gitkeep"
+
+      - name: Package
+        run: |
+          mkdir -p build_output/dist
+          V=${{ github.event.inputs.version }}
+          cd build_output/stage && zip -r "../dist/${{ env.APP_NAME }}-linux-x64-${V#v}.zip" "${{ env.APP_NAME }}/"
+
+      - name: Upload to R2
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
+
+  # ─── Windows ────────────────────────────────────────────────────
+  build-windows:
+    name: Build & Upload Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
+
+      - name: Build Go backend
+        run: |
+          set CGO_ENABLED=1
+          go build -o "build_output\stage\${{ env.APP_NAME }}\memo-backend.exe" .
+        shell: cmd
+
+      - name: Build Flutter frontend
+        working-directory: frontend
+        run: flutter build windows --release
+
+      - name: Stage
+        shell: pwsh
+        run: |
+          $S = "build_output\stage\${{ env.APP_NAME }}"
+          New-Item -ItemType Directory -Force -Path "$S\config"
+          New-Item -ItemType Directory -Force -Path "$S\data\models"
+          New-Item -ItemType Directory -Force -Path "$S\data\memory"
+          New-Item -ItemType Directory -Force -Path "$S\data\sessions"
+          New-Item -ItemType Directory -Force -Path "$S\data\agent-backups"
+          New-Item -ItemType Directory -Force -Path "$S\data\skills"
+          New-Item -ItemType Directory -Force -Path "$S\data\whatsapp"
+          New-Item -ItemType Directory -Force -Path "$S\data\profile"
+
+          $flutterOut = Get-ChildItem -Path "frontend\build\windows" -Recurse -Directory -Filter "Release" |
+                        Where-Object { Test-Path "$($_.FullName)\memo_flutter.exe" } |
+                        Select-Object -First 1 -ExpandProperty FullName
+          robocopy "$flutterOut" "$S" /E /NFL /NDL /NJH /NJS /nc /ns /np
+          if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
+          $LASTEXITCODE = 0
+
+          Copy-Item "config\config.yaml.example" "$S\config\config.yaml" -ErrorAction SilentlyContinue
+          Copy-Item ".env.example" "$S\.env" -ErrorAction SilentlyContinue
+          "[]" | Out-File -Encoding ASCII "$S\data\permissions.json"
+          "" | Out-File -Encoding ASCII "$S\data\whatsapp\.gitkeep"
+
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path build_output\dist
+          $V = "${{ github.event.inputs.version }}" -replace '^v', ''
+          Compress-Archive -Path "build_output\stage\${{ env.APP_NAME }}\*" -DestinationPath "build_output\dist\${{ env.APP_NAME }}-windows-x64-$V.zip" -Force
+
+      - name: Upload to R2
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
+
+  # ─── macOS ──────────────────────────────────────────────────────
+  build-macos:
+    name: Build & Upload macOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with: { go-version: "${{ env.GO_VERSION }}" }
+      - uses: subosito/flutter-action@v2
+        with: { channel: "${{ env.FLUTTER_CHANNEL }}" }
+
+      - name: Build Go backend
+        run: CGO_ENABLED=1 go build -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+
+      - name: Build Flutter frontend
+        working-directory: frontend
+        run: flutter build macos --release
+        env:
+          CODE_SIGN_IDENTITY: "-"
+          CODE_SIGNING_REQUIRED: "NO"
+          CODE_SIGNING_ALLOWED: "NO"
+
+      - name: Stage
+        run: |
+          S="build_output/stage/${{ env.APP_NAME }}"
+          mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
+          APP_BUNDLE=$(find frontend/build/macos/Build/Products/Release -maxdepth 1 -name "*.app" | head -n1)
+          if [ -n "$APP_BUNDLE" ]; then cp -R "$APP_BUNDLE" "$S/${{ env.APP_NAME }}.app"; fi
+          cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
+          cp .env.example "$S/.env" 2>/dev/null || true
+          echo '[]' > "$S/data/permissions.json"
+          touch "$S/data/whatsapp/.gitkeep"
+
+      - name: Package
+        run: |
+          mkdir -p build_output/dist
+          V=${{ github.event.inputs.version }}
+          cd build_output/stage && zip -r "../dist/${{ env.APP_NAME }}-macos-${V#v}.zip" "${{ env.APP_NAME }}/"
+
+      - name: Upload to R2
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress

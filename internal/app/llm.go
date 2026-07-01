@@ -625,8 +625,12 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
-				a.recordStreamError(userMsg, "⚠️ "+err.Error())
-				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				errMsg := "⚠️ " + err.Error()
+				if hint := a.localModelHint(); hint != "" {
+					errMsg += "\n\n" + hint
+				}
+				a.recordStreamError(userMsg, errMsg)
+				trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 				return
 			}
 
@@ -646,8 +650,12 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					}
 
 					if chunk.Error != "" {
-						a.recordStreamError(userMsg, "⚠️ "+chunk.Error)
-						trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+						errMsg := "⚠️ " + chunk.Error
+						if hint := a.localModelHint(); hint != "" {
+							errMsg += "\n\n" + hint
+						}
+						a.recordStreamError(userMsg, errMsg)
+						trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 						return
 					}
 
@@ -673,7 +681,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 			} else {
-				trySend(providerCtx, outCh, api.StreamChunk{Error: "⚠️ Provider returned empty response", Done: true})
+				errMsg := "⚠️ Provider returned empty response"
+				if hint := a.localModelHint(); hint != "" {
+					errMsg += "\n\n" + hint
+				}
+				trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 			}
 		}()
 		return outCh
@@ -891,7 +903,11 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
 			logx.Printf("Provider error: %v", err)
-			return "⚠️ " + err.Error()
+			errMsg := "⚠️ " + err.Error()
+			if hint := a.localModelHint(); hint != "" {
+				errMsg += "\n\n" + hint
+			}
+			return errMsg
 		}
 		return resp.Content
 	}
@@ -924,4 +940,18 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	logx.Printf("LATENCY llm.complete total_ms=%d status=ok messages=%d reply_chars=%d", time.Since(start).Milliseconds(), len(messages), len(reply))
 	logx.Printf("<< Reply: %d chars", len(reply))
 	return reply
+}
+
+// localModelHint returns a user-facing suggestion if a local model is running
+// but the active provider failed. Empty string if no hint is applicable.
+func (a *App) localModelHint() string {
+	if a.llamaServer == nil || !a.llamaServer.IsRunning() {
+		return ""
+	}
+	status := a.llamaServer.GetStatus()
+	modelName := status.ModelName
+	if modelName == "" {
+		modelName = "local"
+	}
+	return fmt.Sprintf("💡 Yerel modeliniz (%s) çalışıyor. API sağlayıcı yerine yerel modeli kullanmak için /model yazıp Local'i seçin.", modelName)
 }

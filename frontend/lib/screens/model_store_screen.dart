@@ -2434,10 +2434,12 @@ class _DownloadBanner extends ConsumerWidget {
     ref.listen(downloadProgressProvider, (prev, next) {
       final was = prev?.valueOrNull?.active ?? false;
       final now = next.valueOrNull?.active ?? false;
-      if (was && !now) ref.invalidate(localModelsProvider);
+      final nowError = next.valueOrNull?.error;
+      if (was && !now && nowError == null) ref.invalidate(localModelsProvider);
     });
 
-    if (progress == null || !progress.active) return const SizedBox.shrink();
+    if (progress == null) return const SizedBox.shrink();
+    if (!progress.active && progress.error == null) return const SizedBox.shrink();
 
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 12, 28, 12),

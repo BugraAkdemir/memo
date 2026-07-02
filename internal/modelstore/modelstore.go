@@ -306,7 +306,9 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 	go func() {
 		defer func() {
 			s.mu.Lock()
-			s.progress.Active = false
+			if s.progress.Error == "" {
+				s.progress.Active = false
+			}
 			s.cancelFn = nil
 			s.mu.Unlock()
 		}()
@@ -315,6 +317,7 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 			errMsg := err.Error()
 			s.mu.Lock()
 			s.progress.Error = errMsg
+			s.progress.Active = true // keep visible so Flutter shows the error
 			s.mu.Unlock()
 			if ctx.Err() != nil {
 				logx.Printf("modelstore: download cancelled: %s/%s", repoID, filename)
@@ -322,6 +325,10 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 				logx.Printf("modelstore: download failed: %v", err)
 			}
 		} else {
+			s.mu.Lock()
+			s.progress.Active = false
+			s.progress.Percent = 100
+			s.mu.Unlock()
 			logx.Printf("modelstore: download complete: %s/%s", repoID, filename)
 		}
 	}()
@@ -330,18 +337,21 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 }
 
 func (s *Store) doDownload(ctx context.Context, repoID, filename string, expectedSize int64) error {
-	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, filename)
+	escapedFile := url.PathEscape(filename)
+	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, escapedFile)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
+	req.Header.Set("User-Agent", "Memo/3.1 (https://github.com/anomalyco/memo)")
 
 	dlClient := &http.Client{
-		Timeout: 0, // no total timeout — context cancellation handles cancellation
+		Timeout: 0,
 		Transport: &http.Transport{
-			ResponseHeaderTimeout: 30 * time.Second,
+			ResponseHeaderTimeout: 60 * time.Second,
 			IdleConnTimeout:       90 * time.Second,
+			MaxIdleConnsPerHost:   2,
 		},
 	}
 	resp, err := dlClient.Do(req)
@@ -503,6 +513,10 @@ func (s *Store) CancelDownload() {
 	defer s.mu.Unlock()
 	if s.cancelFn != nil {
 		s.cancelFn()
+	}
+	// Clear error state so user can dismiss failed download banner
+	if s.progress.Error != "" {
+		s.progress = &DownloadProgress{}
 	}
 }
 

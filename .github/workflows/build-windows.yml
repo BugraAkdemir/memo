@@ -90,7 +90,7 @@ jobs:
           "" | Out-File -Encoding ASCII "$S\data\whatsapp\.gitkeep"
         shell: pwsh
 
-      - name: Create runner script
+      - name: Create runner scripts
         run: |
           $runner = @'
           @echo off
@@ -98,7 +98,6 @@ jobs:
           cd /d "%~dp0"
           set "APP_DIR=%~dp0"
           set "MEMO_HOME=%USERPROFILE%\.memo"
-          set "MEMO_DATA_DIR=%MEMO_HOME%\data"
 
           mkdir "%MEMO_HOME%\data\bin" 2>nul
           mkdir "%MEMO_HOME%\data\models" 2>nul
@@ -112,7 +111,6 @@ jobs:
 
           if not exist "%MEMO_HOME%\binaries" (
               if exist "%APP_DIR%binaries" (
-                  echo Ilk calistirma: engine binary'leri kopyalaniyor...
                   mkdir "%MEMO_HOME%\binaries"
                   xcopy /E /I /Y "%APP_DIR%binaries" "%MEMO_HOME%\binaries\" >nul
               )
@@ -132,21 +130,72 @@ jobs:
 
           set "PATH=%APP_DIR%binaries\windows;%APP_DIR%binaries\windows\cpu;%APP_DIR%binaries\windows\nvidia;%APP_DIR%binaries\windows\amd;%MEMO_HOME%\data\bin;%PATH%"
 
-          powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
-          timeout /t 2 /nobreak >nul
+          start "" /B "%APP_DIR%memo-backend.exe"
+          start "" /WAIT "%APP_DIR%memo_flutter.exe"
           taskkill /F /IM memo-backend.exe >nul 2>&1
-          set "BACKEND_PID="
-          for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -WorkingDirectory '%MEMO_HOME%' -PassThru; $p.Id }"') do set BACKEND_PID=%%i
-          timeout /t 2 /nobreak >nul
-          cd /d "%APP_DIR%"
-          start "" /WAIT memo_flutter.exe
-          powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
-          timeout /t 3 /nobreak >nul
-          if defined BACKEND_PID ( taskkill /F /PID %BACKEND_PID% >nul 2>&1 )
           taskkill /F /IM llama-server.exe >nul 2>&1
           endlocal
           '@
           $runner | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\run_memo.bat"
+
+          $ps1 = @'
+          $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+          Set-Location $scriptDir
+
+          $env:MEMO_HOME = "$env:USERPROFILE\.memo"
+
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\bin" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\models" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\memory" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\sessions" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\agent-backups" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\skills" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\whatsapp" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\profile" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\config" | Out-Null
+
+          if (-not (Test-Path "$env:MEMO_HOME\binaries") -and (Test-Path "$scriptDir\binaries")) {
+              Copy-Item -Recurse -Force "$scriptDir\binaries" "$env:MEMO_HOME\binaries\"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\config\config.yaml") -and (Test-Path "$scriptDir\config")) {
+              Copy-Item -Recurse -Force "$scriptDir\config" "$env:MEMO_HOME\config\"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\.env") -and (Test-Path "$scriptDir\.env")) {
+              Copy-Item "$scriptDir\.env" "$env:MEMO_HOME\.env"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\data\providers.json") -and (Test-Path "$scriptDir\data\providers.example.json")) {
+              Copy-Item "$scriptDir\data\providers.example.json" "$env:MEMO_HOME\data\providers.json"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\data\permissions.json")) {
+              "[]" | Out-File -Encoding ASCII "$env:MEMO_HOME\data\permissions.json"
+          }
+
+          $env:PATH = "$scriptDir\binaries\windows;$scriptDir\binaries\windows\cpu;$scriptDir\binaries\windows\nvidia;$scriptDir\binaries\windows\amd;$env:MEMO_HOME\data\bin;$env:PATH"
+
+          try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 } catch {}
+          Start-Sleep -Seconds 1
+          Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 2
+
+          $flutter = Start-Process -FilePath "$scriptDir\memo_flutter.exe" -WorkingDirectory $scriptDir -PassThru
+          $flutter.WaitForExit()
+
+          try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 } catch {}
+          Start-Sleep -Seconds 2
+          if (-not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
+          Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+          '@
+          $ps1 | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\launch.ps1"
+
+          $launcher = @'
+          Set oShell = CreateObject("WScript.Shell")
+          Set oFSO = CreateObject("Scripting.FileSystemObject")
+          sPath = oFSO.GetParentFolderName(WScript.ScriptFullName)
+          oShell.Run "powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File " & """" & sPath & "\launch.ps1" & """", 0, False
+          '@
+          $launcher | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\launch.vbs"
         shell: pwsh
 
       - name: Package

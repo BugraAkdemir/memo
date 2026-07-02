@@ -112,8 +112,114 @@ jobs:
 
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml" -ErrorAction SilentlyContinue
           Copy-Item ".env.example" "$S\.env" -ErrorAction SilentlyContinue
+          Copy-Item "data\providers.example.json" "$S\data\providers.example.json" -ErrorAction SilentlyContinue
           "[]" | Out-File -Encoding ASCII "$S\data\permissions.json"
           "" | Out-File -Encoding ASCII "$S\data\whatsapp\.gitkeep"
+
+          $runner = @'
+          @echo off
+          setlocal enabledelayedexpansion
+          cd /d "%~dp0"
+          set "APP_DIR=%~dp0"
+          set "MEMO_HOME=%USERPROFILE%\.memo"
+
+          mkdir "%MEMO_HOME%\data\bin" 2>nul
+          mkdir "%MEMO_HOME%\data\models" 2>nul
+          mkdir "%MEMO_HOME%\data\memory" 2>nul
+          mkdir "%MEMO_HOME%\data\sessions" 2>nul
+          mkdir "%MEMO_HOME%\data\agent-backups" 2>nul
+          mkdir "%MEMO_HOME%\data\skills" 2>nul
+          mkdir "%MEMO_HOME%\data\whatsapp" 2>nul
+          mkdir "%MEMO_HOME%\data\profile" 2>nul
+          mkdir "%MEMO_HOME%\config" 2>nul
+
+          if not exist "%MEMO_HOME%\binaries" (
+              if exist "%APP_DIR%binaries" (
+                  mkdir "%MEMO_HOME%\binaries"
+                  xcopy /E /I /Y "%APP_DIR%binaries" "%MEMO_HOME%\binaries\" >nul
+              )
+          )
+          if not exist "%MEMO_HOME%\config\config.yaml" (
+              if exist "%APP_DIR%config" (
+                  xcopy /E /I /Y "%APP_DIR%config" "%MEMO_HOME%\config\" >nul
+              )
+          )
+          if not exist "%MEMO_HOME%\.env" (
+              if exist "%APP_DIR%.env" copy "%APP_DIR%.env" "%MEMO_HOME%\.env" >nul
+          )
+          if not exist "%MEMO_HOME%\data\providers.json" (
+              if exist "%APP_DIR%data\providers.example.json" copy "%APP_DIR%data\providers.example.json" "%MEMO_HOME%\data\providers.json" >nul
+          )
+          if not exist "%MEMO_HOME%\data\permissions.json" echo [] > "%MEMO_HOME%\data\permissions.json"
+
+          set "PATH=%APP_DIR%binaries\windows;%APP_DIR%binaries\windows\cpu;%APP_DIR%binaries\windows\nvidia;%APP_DIR%binaries\windows\amd;%MEMO_HOME%\data\bin;%PATH%"
+
+          start "" /B "%APP_DIR%memo-backend.exe"
+          start "" /WAIT "%APP_DIR%memo_flutter.exe"
+          taskkill /F /IM memo-backend.exe >nul 2>&1
+          taskkill /F /IM llama-server.exe >nul 2>&1
+          endlocal
+          '@
+          $runner | Out-File -Encoding ASCII "$S\run_memo.bat"
+
+          $ps1 = @'
+          $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
+          Set-Location $scriptDir
+
+          $env:MEMO_HOME = "$env:USERPROFILE\.memo"
+
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\bin" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\models" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\memory" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\sessions" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\agent-backups" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\skills" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\whatsapp" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\data\profile" | Out-Null
+          New-Item -ItemType Directory -Force -Path "$env:MEMO_HOME\config" | Out-Null
+
+          if (-not (Test-Path "$env:MEMO_HOME\binaries") -and (Test-Path "$scriptDir\binaries")) {
+              Copy-Item -Recurse -Force "$scriptDir\binaries" "$env:MEMO_HOME\binaries\"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\config\config.yaml") -and (Test-Path "$scriptDir\config")) {
+              Copy-Item -Recurse -Force "$scriptDir\config" "$env:MEMO_HOME\config\"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\.env") -and (Test-Path "$scriptDir\.env")) {
+              Copy-Item "$scriptDir\.env" "$env:MEMO_HOME\.env"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\data\providers.json") -and (Test-Path "$scriptDir\data\providers.example.json")) {
+              Copy-Item "$scriptDir\data\providers.example.json" "$env:MEMO_HOME\data\providers.json"
+          }
+          if (-not (Test-Path "$env:MEMO_HOME\data\permissions.json")) {
+              "[]" | Out-File -Encoding ASCII "$env:MEMO_HOME\data\permissions.json"
+          }
+
+          $env:PATH = "$scriptDir\binaries\windows;$scriptDir\binaries\windows\cpu;$scriptDir\binaries\windows\nvidia;$scriptDir\binaries\windows\amd;$env:MEMO_HOME\data\bin;$env:PATH"
+
+          try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 } catch {}
+          Start-Sleep -Seconds 1
+          Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
+
+          $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
+          Start-Sleep -Seconds 2
+
+          $flutter = Start-Process -FilePath "$scriptDir\memo_flutter.exe" -WorkingDirectory $scriptDir -PassThru
+          $flutter.WaitForExit()
+
+          try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 } catch {}
+          Start-Sleep -Seconds 2
+          if (-not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
+          Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+          '@
+          $ps1 | Out-File -Encoding ASCII "$S\launch.ps1"
+
+          $launcher = @'
+          Set oShell = CreateObject("WScript.Shell")
+          Set oFSO = CreateObject("Scripting.FileSystemObject")
+          sPath = oFSO.GetParentFolderName(WScript.ScriptFullName)
+          oShell.Run "powershell -ExecutionPolicy Bypass -WindowStyle Hidden -File " & """" & sPath & "\launch.ps1" & """", 0, False
+          '@
+          $launcher | Out-File -Encoding ASCII "$S\launch.vbs"
 
       - name: Package
         shell: pwsh

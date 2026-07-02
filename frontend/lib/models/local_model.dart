@@ -137,6 +137,7 @@ class DownloadProgress {
   final int downloaded;
   final double percent;
   final String speed;
+  final String? error;
 
   const DownloadProgress({
     this.active = false,
@@ -146,6 +147,7 @@ class DownloadProgress {
     this.downloaded = 0,
     this.percent = 0,
     this.speed = '',
+    this.error,
   });
 
   factory DownloadProgress.fromJson(Map<String, dynamic> json) =>
@@ -157,5 +159,6 @@ class DownloadProgress {
         downloaded: json['downloaded'] as int? ?? 0,
         percent: (json['percent'] as num?)?.toDouble() ?? 0,
         speed: json['speed'] as String? ?? '',
+        error: json['error'] as String?,
       );
 }

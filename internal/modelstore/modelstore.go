@@ -77,6 +77,7 @@ type DownloadProgress struct {
 	Downloaded int64   `json:"downloaded"`
 	Percent    float64 `json:"percent"`
 	Speed      string  `json:"speed"`
+	Error      string  `json:"error,omitempty"`
 }
 
 // LocalModel represents a downloaded .gguf file on disk.
@@ -285,7 +286,7 @@ func loadModelMeta(ggufPath string) *modelMeta {
 
 // ─── Download ────────────────────────────────────────────────────
 
-func (s *Store) DownloadModel(repoID, filename string) error {
+func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error {
 	s.mu.Lock()
 	if s.progress.Active {
 		s.mu.Unlock()
@@ -295,9 +296,10 @@ func (s *Store) DownloadModel(repoID, filename string) error {
 	ctx, cancel := context.WithCancel(context.Background())
 	s.cancelFn = cancel
 	s.progress = &DownloadProgress{
-		Active:   true,
-		RepoID:   repoID,
-		Filename: filename,
+		Active:     true,
+		RepoID:     repoID,
+		Filename:   filename,
+		TotalBytes: expectedSize,
 	}
 	s.mu.Unlock()
 
@@ -309,7 +311,11 @@ func (s *Store) DownloadModel(repoID, filename string) error {
 			s.mu.Unlock()
 		}()
 
-		if err := s.doDownload(ctx, repoID, filename); err != nil {
+		if err := s.doDownload(ctx, repoID, filename, expectedSize); err != nil {
+			errMsg := err.Error()
+			s.mu.Lock()
+			s.progress.Error = errMsg
+			s.mu.Unlock()
 			if ctx.Err() != nil {
 				logx.Printf("modelstore: download cancelled: %s/%s", repoID, filename)
 			} else {
@@ -323,7 +329,7 @@ func (s *Store) DownloadModel(repoID, filename string) error {
 	return nil
 }
 
-func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
+func (s *Store) doDownload(ctx context.Context, repoID, filename string, expectedSize int64) error {
 	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, filename)
 
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, downloadURL, nil)
@@ -331,8 +337,13 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 		return fmt.Errorf("create request: %w", err)
 	}
 
-	// Use a client with timeout to prevent hanging forever
-	dlClient := &http.Client{Timeout: 10 * time.Minute}
+	dlClient := &http.Client{
+		Timeout: 0, // no total timeout — context cancellation handles cancellation
+		Transport: &http.Transport{
+			ResponseHeaderTimeout: 30 * time.Second,
+			IdleConnTimeout:       90 * time.Second,
+		},
+	}
 	resp, err := dlClient.Do(req)
 	if err != nil {
 		return fmt.Errorf("download request: %w", err)
@@ -344,7 +355,12 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 		return fmt.Errorf("download status %d: %s", resp.StatusCode, string(body))
 	}
 
-	totalBytes := resp.ContentLength
+	var totalBytes int64
+	if resp.ContentLength > 0 {
+		totalBytes = resp.ContentLength
+	} else if expectedSize > 0 {
+		totalBytes = expectedSize
+	}
 	s.mu.Lock()
 	s.progress.TotalBytes = totalBytes
 	s.mu.Unlock()
@@ -418,6 +434,9 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string) error {
 	// check a truncated file would be renamed to the final .gguf and later crash
 	// llama-server as a "valid" but corrupt model. The deferred cleanup removes
 	// the partial temp file on this error path.
+	// totalBytes is resolved from Content-Length or the HF API expectedSize
+	// (set via GetModelFiles), so the check runs even when HF uses chunked
+	// transfer encoding without Content-Length.
 	if totalBytes > 0 && downloaded != totalBytes {
 		return fmt.Errorf("download incomplete: got %d of %d bytes", downloaded, totalBytes)
 	}

@@ -496,10 +496,15 @@ class MemoApiClient {
     return [];
   }
 
-  Future<void> downloadModel(String repoId, String filename) async {
+  Future<void> downloadModel(String repoId, String filename,
+      {int expectedSize = 0}) async {
     await _dio.post(
       '/api/models/download',
-      data: {'repo_id': repoId, 'filename': filename},
+      data: {
+        'repo_id': repoId,
+        'filename': filename,
+        'expected_size': expectedSize,
+      },
     );
   }
 

@@ -448,6 +448,7 @@ class DownloadProgress {
   final int downloaded;
   final double percent;
   final String speed;
+  final String? error;
 
   const DownloadProgress({
     this.active = false,
@@ -457,6 +458,7 @@ class DownloadProgress {
     this.downloaded = 0,
     this.percent = 0,
     this.speed = '',
+    this.error,
   });
 
   factory DownloadProgress.fromJson(Map<String, dynamic> json) =>
@@ -468,6 +470,7 @@ class DownloadProgress {
         downloaded: json['downloaded'] as int? ?? 0,
         percent: (json['percent'] as num?)?.toDouble() ?? 0,
         speed: json['speed'] as String? ?? '',
+        error: json['error'] as String?,
       );
 }
 
@@ -1101,10 +1104,15 @@ class MemoApiClient {
     return [];
   }
 
-  Future<void> downloadModel(String repoId, String filename) async {
+  Future<void> downloadModel(String repoId, String filename,
+      {int expectedSize = 0}) async {
     await _dio.post(
       '/api/models/download',
-      data: {'repo_id': repoId, 'filename': filename},
+      data: {
+        'repo_id': repoId,
+        'filename': filename,
+        'expected_size': expectedSize,
+      },
     );
   }
 

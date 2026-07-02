@@ -873,14 +873,15 @@ func (s *Server) handleModelDownload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var req struct {
-		RepoID   string `json:"repo_id"`
-		Filename string `json:"filename"`
+		RepoID       string `json:"repo_id"`
+		Filename     string `json:"filename"`
+		ExpectedSize int64  `json:"expected_size"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	if err := s.fullBridge.DownloadModel(req.RepoID, req.Filename); err != nil {
+	if err := s.fullBridge.DownloadModel(req.RepoID, req.Filename, req.ExpectedSize); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

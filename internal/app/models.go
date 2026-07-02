@@ -27,9 +27,11 @@ func (a *App) GetModelFiles(repoID string) []modelstore.GGUFFile {
 	return files
 }
 
-// DownloadModel downloads a model file from HuggingFace.
-func (a *App) DownloadModel(repoID, filename string) error {
-	return a.modelStore.DownloadModel(repoID, filename)
+// DownloadModel downloads a model file from HuggingFace. expectedSize (from
+// HF API tree endpoint) is used as a fallback when the CDN serves the file
+// with chunked transfer encoding (no Content-Length header).
+func (a *App) DownloadModel(repoID, filename string, expectedSize int64) error {
+	return a.modelStore.DownloadModel(repoID, filename, expectedSize)
 }
 
 // GetDownloadProgress returns the current download progress.

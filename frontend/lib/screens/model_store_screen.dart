@@ -1271,7 +1271,8 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
     try {
       await ref
           .read(apiClientProvider)
-          .downloadModel(widget.item.repoId, file.filename);
+          .downloadModel(widget.item.repoId, file.filename,
+              expectedSize: file.size);
       if (mounted) {
         messenger.showSnackBar(SnackBar(
           content: Text(L10n.t('download_started', {'file': file.filename})),
@@ -2441,13 +2442,15 @@ class _DownloadBanner extends ConsumerWidget {
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 12, 28, 12),
       decoration: BoxDecoration(
-        color: c.bgPanel,
-        border: Border(bottom: BorderSide(color: c.borderSoft)),
+        color: progress.error != null ? Colors.red.shade50 : c.bgPanel,
+        border: Border(bottom: BorderSide(
+            color: progress.error != null ? Colors.red.shade200 : c.borderSoft)),
       ),
       child: Row(
         children: [
           Icon(Icons.cloud_download_outlined,
-              size: 18, color: MemoTheme.accent),
+              size: 18,
+              color: progress.error != null ? Colors.red : MemoTheme.accent),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -2468,25 +2471,47 @@ class _DownloadBanner extends ConsumerWidget {
                     ),
                     const SizedBox(width: 12),
                     Text(
-                      '${progress.percent.toStringAsFixed(0)}%${progress.speed.isNotEmpty ? ' · ${progress.speed}' : ''}',
+                      progress.error != null
+                          ? 'Failed'
+                          : '${progress.percent.toStringAsFixed(0)}%${progress.speed.isNotEmpty ? ' · ${progress.speed}' : ''}',
                       style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
-                          color: MemoTheme.accent),
+                          color: progress.error != null
+                              ? Colors.red
+                              : MemoTheme.accent),
                     ),
                   ],
                 ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(999),
-                  child: LinearProgressIndicator(
-                    value: progress.percent / 100.0,
-                    minHeight: 4,
-                    backgroundColor: c.bgElement,
-                    valueColor:
-                        const AlwaysStoppedAnimation(MemoTheme.accent),
-                  ),
-                ),
+                if (progress.error != null)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Text(
+                      progress.error!,
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Colors.red.shade700,
+                          height: 1.2),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  )
+                else
+                  ...[
+                    const SizedBox(height: 6),
+                    ClipRRect(
+                      borderRadius: BorderRadius.circular(999),
+                      child: LinearProgressIndicator(
+                        value: progress.totalBytes > 0
+                            ? progress.percent / 100.0
+                            : null,
+                        minHeight: 4,
+                        backgroundColor: c.bgElement,
+                        valueColor:
+                            const AlwaysStoppedAnimation(MemoTheme.accent),
+                      ),
+                    ),
+                  ],
               ],
             ),
           ),
@@ -2494,7 +2519,9 @@ class _DownloadBanner extends ConsumerWidget {
           IconButton(
             onPressed: () => ref.read(apiClientProvider).cancelDownload(),
             icon: const Icon(Icons.close_rounded, size: 18),
-            tooltip: L10n.locale == MemoLocale.tr ? 'İndirmeyi iptal et' : 'Cancel download',
+            tooltip: L10n.locale == MemoLocale.tr
+                ? 'İndirmeyi iptal et'
+                : 'Cancel download',
             color: c.textDim,
             style: IconButton.styleFrom(
               minimumSize: const Size(32, 32),

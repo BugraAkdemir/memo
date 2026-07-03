@@ -113,19 +113,22 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
       remoteMode: remote,
     );
 
-    var normalized = url.trim().replaceAll(RegExp(r'/+$'), '');
-    // Auto-add a scheme when the user typed a bare host. Tailscale/Funnel
-    // hosts (*.ts.net) are HTTPS; everything else (LAN IPs) defaults to HTTP.
-    if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-      final host = normalized.split(':').first;
-      normalized = (host.endsWith('.ts.net') ? 'https://' : 'http://') + normalized;
-    }
-    _client.updateBaseUrl(normalized);
-    if (token.isNotEmpty) {
-      _client.setToken(token);
-    }
-
+    // Everything below can throw (URL parsing, Dio setup, the request
+    // itself) — all of it must be inside this try, otherwise an exception
+    // here leaves `connecting` stuck at true forever with no error shown.
     try {
+      var normalized = url.trim().replaceAll(RegExp(r'/+$'), '');
+      // Auto-add a scheme when the user typed a bare host. Tailscale/Funnel
+      // hosts (*.ts.net) are HTTPS; everything else (LAN IPs) defaults to HTTP.
+      if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
+        final host = normalized.split(':').first;
+        normalized = (host.endsWith('.ts.net') ? 'https://' : 'http://') + normalized;
+      }
+      _client.updateBaseUrl(normalized);
+      if (token.isNotEmpty) {
+        _client.setToken(token);
+      }
+
       final alive = await _client.isAlive().timeout(
         const Duration(seconds: 8),
         onTimeout: () => false,
@@ -269,6 +272,13 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
   RemoteAccessNotifier(this._client) : super(const RemoteAccessState());
 
   Future<void> loadStatus() async {
+    // No saved backend yet (e.g. this fires before loadSavedUrl() finishes
+    // restoring it on cold start) — nothing to query, so don't surface a
+    // raw "No host specified in URI" DioException for it.
+    if (_client.baseUrl.isEmpty) {
+      state = const RemoteAccessState(loading: false);
+      return;
+    }
     state = state.copyWith(loading: true, error: null);
     try {
       final status = await _client.getRemoteAccess();

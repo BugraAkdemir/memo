@@ -558,8 +558,14 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
             setState(() => _mode = mode);
             // Only the Remote (ngrok) tab needs to query the desktop's
             // remote-access status; the others connect to a URL directly.
+            // Make sure the saved backend URL is restored first — on a fresh
+            // launch this tab can be tapped before that finishes, and
+            // querying with no base URL yet throws "No host specified".
             if (mode == 2) {
-              ref.read(remoteAccessProvider.notifier).loadStatus();
+              ref
+                  .read(connectionStateProvider.notifier)
+                  .loadSavedUrl()
+                  .then((_) => ref.read(remoteAccessProvider.notifier).loadStatus());
             }
           },
           behavior: HitTestBehavior.opaque,

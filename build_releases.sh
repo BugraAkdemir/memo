@@ -63,9 +63,12 @@ if [ "$OS" == "linux" ]; then
     # 3. Copy Assets
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
 
-    # Binaries (llama-server + vec0 extension)
-    mkdir -p "$STAGEDIR/binaries"
-    cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
+    # Binaries (llama-server + vec0 extension) — only this OS's binaries,
+    # not Windows/macOS ones too (keeps package size down). Runtime code
+    # (ngrok/whisper) expects the "binaries/<GOOS>/..." layout, so keep
+    # the linux/ subdir instead of flattening it.
+    mkdir -p "$STAGEDIR/binaries/linux"
+    cp -r binaries/linux/* "$STAGEDIR/binaries/linux/" 2>/dev/null || true
 
 	# Config
     # Ship ONLY the clean example as config.yaml — never the developer's real
@@ -283,9 +286,12 @@ elif [ "$OS" == "windows" ]; then
 
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
 
-    # Binaries (llama-server DLL'leri + vec0 extension)
-    mkdir -p "$STAGEDIR/binaries"
-    cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
+    # Binaries (llama-server DLL'leri + vec0 extension) — sadece Windows'a
+    # ait binary'ler, Linux/macOS'unkiler değil (paket boyutunu şişirmesin).
+    # Runtime kod "binaries/<GOOS>/..." yapısını beklediği için windows/
+    # alt klasörünü düzleştirmeden koruyoruz.
+    mkdir -p "$STAGEDIR/binaries/windows"
+    cp -r binaries/windows/* "$STAGEDIR/binaries/windows/" 2>/dev/null || true
 
     # Windows için vec0.dll yoksa uyar
     if [ ! -f "$STAGEDIR/binaries/windows/vec0.dll" ] && [ ! -f "$STAGEDIR/binaries/windows/cpu/vec0.dll" ]; then
@@ -383,8 +389,11 @@ elif [ "$OS" == "darwin" ]; then
 
     # 3. Copy Assets
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor..."
-    mkdir -p "$STAGEDIR/binaries"
-    cp -r binaries/* "$STAGEDIR/binaries/" 2>/dev/null || true
+    # Only macOS's own binaries, not Linux/Windows ones (keeps package size
+    # down). Runtime code expects "binaries/<GOOS>/...", so keep the darwin/
+    # subdir instead of flattening it.
+    mkdir -p "$STAGEDIR/binaries/darwin"
+    cp -r binaries/darwin/* "$STAGEDIR/binaries/darwin/" 2>/dev/null || true
 
     cp config/config.yaml.example "$STAGEDIR/config/config.yaml" 2>/dev/null || true
     cp config/config.yaml.example "$STAGEDIR/config/config.yaml.example" 2>/dev/null || true

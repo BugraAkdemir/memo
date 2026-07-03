@@ -5,9 +5,9 @@
 ;   C:\Program Files (x86)\Inno Setup 6\ISCC.exe installer.iss
 
 #define MyAppName "Memo"
-#define MyAppVersion "3.1.0"
+#define MyAppVersion "3.1.1"
 #define MyAppPublisher "Bugra Akdemir"
-#define MyAppURL "https://github.com/bugrakaptan/memo"
+#define MyAppURL "https://github.com/bugraakdemir/memo"
 #define MyAppExeName "memo_flutter.exe"
 #define MyAppAssocName "Memo Session"
 #define MyAppAssocExt ".memo"
@@ -17,6 +17,7 @@
 ; NOTE: The value of AppId uniquely identifies this application. Do not use the same AppId value in installers of other applications.
 AppId={{A1B2C3D4-E5F6-7890-ABCD-EF1234567890}
 AppName={#MyAppName}
+AppVerName={#MyAppName}
 AppVersion={#MyAppVersion}
 AppPublisher={#MyAppPublisher}
 AppPublisherURL={#MyAppURL}

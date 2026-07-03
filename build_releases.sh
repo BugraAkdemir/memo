@@ -38,6 +38,7 @@ else
 fi
 
 rm -rf build_output/dist
+rm -rf build_output/stage
 mkdir -p build_output/dist
 mkdir -p build_output/stage
 

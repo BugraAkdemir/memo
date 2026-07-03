@@ -1,89 +1,54 @@
-# Handoff — 2026-07-01 (Session 5-9) — Stable Engeller + CI Build + Docs
+# Handoff — 2026-07-02 (Session 10) — Windows Packaging + Gemini OAuth Girişimi (Reverted)
 
 ## Oturum Özeti
 
-Session 5: 7 stable-blocking bug düzeltildi.
-Session 6: Flutter analyze CI hatası giderildi.
-Session 7: 3 platform build workflow yazıldı.
-Session 8: CI fix'leri (macOS, Windows, zip).
-Session 9: macOS binaries, API hint, docs, sürüm notları.
+- Windows Inno Setup packaging: launch.ps1/vbs sessiz başlatıcı, installer.iss düzeltmeleri
+- GitHub Actions + build_releases.sh/bat güncellendi
+- **Gemini OAuth denenip revert edildi** — Google Gemini API'si OAuth desteklemiyor
+
+---
+
+## Windows Packaging (Commit `5e4f97c`)
+
+| Değişiklik | Detay |
+|------------|-------|
+| `run_memo.bat` | Basitleştirildi, `start /B` backend + `start /WAIT` flutter + taskkill cleanup |
+| `launch.ps1` | PowerShell sessiz başlatıcı, backend `-WindowStyle Hidden`, flutter kapanınca auto kill |
+| `launch.vbs` | VBS wrapper, PS1'i tamamen görünmez çalıştırır |
+| `installer.iss` | Kısayollar `launch.vbs`'e yönlendirildi, `IconFilename: memo_flutter.exe` eklendi |
+| Workflow'lar | `build-windows.yml` + `upload-r2.yml` staging adımlarına launch.ps1/vbs oluşturma eklendi |
+
+**Çalışma şekli:** Kullanıcı masaüstü kısayoluna tıklar → VBS → PS1 → backend gizli başlar → Flutter açılır → Flutter kapanınca backend otomatik kill.
+
+**Not:** Inno Setup paketlemesi için `installer.iss` repo kökünde. Windows VM'de ISCC ile derlenir.
+
+---
+
+## Gemini OAuth (Revert Edildi — 12 Commit)
+
+Google Gemini tüketici API'si (`generativelanguage.googleapis.com`) **sadece API key ile çalışır**, OAuth desteklemez. Vertex AI OAuth destekler ama GCP projesi + billing ister, kullanıcının kendi Gemini Advanced aboneliği kullanılamaz.
+
+Yazılan ama geri alınan kod: OAuth PKCE flow, Vertex AI endpoint routing, Flutter ayarlar UI'ı, `GEMINI_OAUTH_CLIENT_ID` env desteği.
+
+**Sonuç:** Mevcut API key sistemi Gemini için tek seçenek.
 
 ---
 
 ## Bu Oturumda Düzeltilenler
 
-### ⛔ Stable Engeller (7 adet — Session 5)
+### Build Scriptleri
 
-| # | Bug | Commit | Değişiklik |
-|---|-----|--------|-----------|
-| **C1** | WhatsApp `c.waClient` locksuz → nil panic + handleEvent + autoReconnect | `854e04d` | 30+ yerde `startMu` koruması, TOCTOU fix, handleEvent lock |
-| **H1** | `memorySaveCh` close sonrası panic | `86a0045` | Grace reorder: webSrv.Stop → close(ch) → WaitGroup |
-| **H3** | Export WAL checkpoint eksik | `be4d6ae` | PRAGMA wal_checkpoint(TRUNCATE) export öncesi |
-| **H4** | Config.yaml atomic değil | `1384e52` | os.WriteFile → fileutil.AtomicWrite |
-| **H5** | Provider config atomic değil | `41cc723` | os.WriteFile → fileutil.AtomicWrite |
-| **C3** | Import atomic değil | `b00b800` | Temp-file + os.Rename pattern |
-| **C4** | `.machine-id` wipe'da silinir | `b006911` | data/memory/ → data/ + migrasyon + wipePreserve |
+| Sorun | Çözüm |
+|-------|-------|
+| `build_releases.sh` Windows bölümü tüm platform binary'lerini kopyalıyordu | Sadece `binaries/windows/` kopyalanır oldu |
+| `run_memo.bat` eskiydi, 2 terminal penceresi açıyordu | Basitleştirilmiş versiyon, backend'i gizli başlatır |
+| `launch.ps1` + `launch.vbs` yoktu | Build scriptlerine eklendi |
 
-> **Not:** C1 düzeltmesi, C2 (handleEvent data race) ve H2 (autoReconnect TOCTOU) bug'larını da kapsar — hepsi aynı `startMu` korumasıyla çözüldü.
+### Flutter
 
-### CI Build Workflows (Session 7-8)
-
-| Workflow | Trigger | Çıktı | Durum |
-|----------|---------|-------|-------|
-| `ci.yml` | push, PR | Go test/vet/build + Flutter analyze/test | ✅ |
-| `build-linux.yml` | push, PR, manual | Memo-linux-x64.zip | ✅ |
-| `build-windows.yml` | push, PR, manual | Memo-windows-x64.zip | ✅ |
-| `build-macos.yml` | push, PR, manual | Memo-macos.zip | ✅ |
-
-### CI Fix'leri — Tüm Platformlar Temiz
-
-| Sorun | Çözüm | Commit |
-|-------|-------|--------|
-| macOS `--no-codesign` flag yok | Kaldırıldı, env değişkenleri yeterli | `b1604a7` |
-| Windows `process_windows.go` unused import | `log` import silindi (llama + whisper) | `b1604a7` |
-| Zip çift katman (upload-artifact) | Stage klasörü direkt upload | `b1604a7` |
-| Windows Flutter çıktı yolu dinamik değil | robocopy + Get-ChildItem arama | `eefd995`, `2b35b10`, `c67f4c9` |
-| Linux GTK dev libs eksik | libgtk-3-dev + tüm Flutter Linux deps | `d5d31fe` |
-
-### macOS Platform (Session 8-9)
-
-- `flutter create --platforms=macos` ile macos/ projesi oluşturuldu
-- PRODUCT_NAME = Memo, bundle ID = com.bugrakaptan.memo
-- `binaries/darwin/cpu/vec0.dylib` eklendi (arm64 + x86_64)
-- llama-server macOS'ta derlenmeli veya ilk başlatmada otomatik iner
-
-### API Provider → Local Model Hint (Session 9)
-
-- API provider hata/boş cevap verirse, yerel model çalışıyorsa kullanıcıya `/model Local` önerisi gösteriliyor
-- `localModelHint()` helper: llamaServer durumunu kontrol edip bilgi mesajı döner
-- callLLMStream + callLLM provider error/empty yollarında aktif
-
-### Docs Güncellemeleri
-
-- `versinNote/v3.1.0.md` (EN+TR): Stable engeller tablosu eklendi
-- `README.md` + `READmeTR.md`: .zip dağıtım modeli, CI build linkleri, binary download link
-- `obsidian-doc/`: Bulut Senkronizasyonu + Mobil Uygulama adım adım rehber (TR+EN)
-- `BUG_REPORT.md`: Faz 1 tamamlandı işaretlendi
-- `version`: V3.1.0-beta → V3.1.0
-
----
-
-## Dosya Dağıtım Modeli
-
-```
-Memo-<platform>.zip
-├── memo-backend(.exe)    ← Go backend
-├── memo_flutter(.exe)    ← Flutter frontend (macOS: Memo.app/)
-├── run_memo.sh/.bat/.command  ← başlatma scripti
-├── config/
-├── data/                 ← boş şablon dizinler
-└── binaries/             ← KULLANICI MANUEL EKLER
-    ├── linux/{cpu|amd|nvidia}/
-    ├── windows/{cpu|amd|nvidia}/
-    └── darwin/cpu/
-```
-
-**Veri klasörü:** `~/.memo/data/` — hafıza, sohbetler, ayarlar her zaman burada. Zip'i silip yeni sürüm çıkarsan bile verilerin korunur.
+| Sorun | Çözüm |
+|-------|-------|
+| `flutter_test` depends_on_sdk hatası (Windows) | Flutter cache bozuk, `rmdir /s /q C:\flutter\bin\cache` |
 
 ---
 
@@ -91,10 +56,8 @@ Memo-<platform>.zip
 
 ```
 go build ./...                ✅ temiz
-go vet ./...                  ✅ temiz
-go test ./... -count=1        ✅ 30 paket PASS (memory nil deref aralıklı)
-flutter analyze --no-fatal-infos ✅ EXIT_CODE=0 (16 info, 0 warning)
-flutter test                  ✅ 73 test PASS
+go test ./...                 ✅ 30 paket PASS
+flutter analyze               ✅ 0 error, 0 warning
 ```
 
 ---

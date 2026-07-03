@@ -27,7 +27,10 @@ func main() {
 	defer a.Shutdown(ctx)
 
 	// Start the REST API server for Flutter frontend (plain HTTP, no TLS)
-	a.StartWebServerHTTP(*port)
+	if err := a.StartWebServerHTTP(*port); err != nil {
+		log.Printf("FATAL: %v", err)
+		os.Exit(1)
+	}
 	log.Printf("Memo backend server running on port %d", *port)
 
 	// Wait for interrupt signal

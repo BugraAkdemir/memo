@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'dart:io';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -37,6 +38,13 @@ class _AppShellState extends ConsumerState<AppShell> {
   int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp 4=calendar
   bool _showLaunchpad = false;
   bool _showTour = false;
+
+  // Auto-quit: arka uca 3 ardışık denemede ulaşılamazsa frontend kendini kapatır.
+  // Eski sistemlerde iki kere tıklanıp backend kapatılınca öksüz kalan
+  // frontend'in sonsuza kadar açık kalmasını engeller.
+  int _consecutiveBackendFailures = 0;
+  bool _hasEverConnectedToBackend = false;
+  bool _backendDeadDialogShown = false;
 
   final _navKeys = List.generate(5, (_) => GlobalKey());
 
@@ -93,6 +101,23 @@ class _AppShellState extends ConsumerState<AppShell> {
       if (prev == true && next == false) {
         WidgetsBinding.instance.addPostFrameCallback((_) => _checkOnboarding());
       }
+    });
+
+    ref.listen(connectionStatusProvider, (prev, next) {
+      next.whenData((connected) {
+        if (connected) {
+          _hasEverConnectedToBackend = true;
+          _consecutiveBackendFailures = 0;
+        } else if (_hasEverConnectedToBackend) {
+          _consecutiveBackendFailures++;
+          if (_consecutiveBackendFailures >= 3 && !_backendDeadDialogShown && mounted) {
+            _backendDeadDialogShown = true;
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              if (mounted) _showBackendDeadDialog();
+            });
+          }
+        }
+      });
     });
 
     return Shortcuts(
@@ -159,6 +184,28 @@ class _AppShellState extends ConsumerState<AppShell> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  void _showBackendDeadDialog() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Memo arka ucu yanıt vermiyor'),
+        content: const Text(
+          'Arka uç sunucusu ile bağlantı kesildi. '
+          'Bu durum Memo zaten açıkken ikinci kez başlatılmaya çalışıldığında '
+          'veya arka uç beklenmedik şekilde kapandığında oluşabilir.\n\n'
+          'Uygulama şimdi kapatılacak. Lütfen tekrar başlatın.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => exit(0),
+            child: const Text('Tamam'),
+          ),
+        ],
       ),
     );
   }

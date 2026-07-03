@@ -44,6 +44,14 @@ cat << 'EOF' > build_output/memo-linux-x64/run_memo.sh
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 cd "$DIR"
 
+# Single-instance lock: double-click koruması — aynı anda iki Memo başlatılamaz.
+LOCK_FILE="/tmp/memo.lock"
+exec {LOCK_FD}>"$LOCK_FILE"
+if ! flock -n "$LOCK_FD"; then
+    echo "Memo zaten çalışıyor. (lock: $LOCK_FILE)" >&2
+    exit 0
+fi
+
 # The frontend exits with code 42 to request a full, clean restart (e.g. after
 # "Wipe all data", so every backend subsystem re-initializes from scratch with
 # no stale file handles). Any other exit code ends the session normally.
@@ -76,6 +84,9 @@ while true; do
   fi
   break
 done
+
+# Release lock on exit
+flock -u "$LOCK_FD" 2>/dev/null || true
 EOF
 
 chmod +x build_output/memo-linux-x64/run_memo.sh

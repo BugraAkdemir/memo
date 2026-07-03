@@ -447,18 +447,20 @@ func (a *App) Startup(ctx context.Context) {
 }
 
 // StartWebServerHTTP starts a plain HTTP API server for the Flutter desktop frontend.
-func (a *App) StartWebServerHTTP(port int) {
+// Returns an error if the port is already in use (e.g. another Memo instance is running).
+func (a *App) StartWebServerHTTP(port int) error {
 	addr := "127.0.0.1"
 	if a.remoteAccessEnabled {
 		addr = "0.0.0.0"
 	}
 	ws := webserver.New(a)
 	if err := ws.StartHTTPWithAddr(port, addr); err != nil {
-		logx.Printf("Flutter server: %v", err)
+		return fmt.Errorf("cannot start server on %s:%d: %w", addr, port, err)
 	}
 	a.webMu.Lock()
 	a.webServer = ws
 	a.webMu.Unlock()
+	return nil
 }
 
 // Shutdown cleans up all running background processes and servers.

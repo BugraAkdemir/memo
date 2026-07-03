@@ -62,7 +62,7 @@ func NewPipeline(registry *ToolRegistry, permissions *PermissionManager, sandbox
 		permissions: permissions,
 		sandbox:     sandbox,
 		prov:        prov,
-		maxIters:    20,
+		maxIters:    40,
 		backup:      backup,
 		toolTimeout: 120 * time.Second,
 	}
@@ -77,7 +77,7 @@ func NewPipelineWithBudget(registry *ToolRegistry, permissions *PermissionManage
 		permissions: permissions,
 		sandbox:     sandbox,
 		prov:        prov,
-		maxIters:    20,
+		maxIters:    40,
 		backup:      backup,
 		maxTokens:   maxTokens,
 		toolTimeout: 120 * time.Second,
@@ -336,7 +336,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 		}
 		}
 
-		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (20). The task may be incomplete.", Done: true})
+		trySend(ctx, outCh, provider.StreamChunk{Content: "\n\n⚠️ Agent reached the maximum number of tool calls (40). The task may be incomplete.", Done: true})
 	}()
 
 	return outCh, nil

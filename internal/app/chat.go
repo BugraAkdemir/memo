@@ -136,14 +136,25 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 		}
 	}
 
+	a.agentMu.RLock()
+	agentActive := a.agentEnabled
+	a.agentMu.RUnlock()
+
+	if agentActive {
+		for i, msg := range messages {
+			if msg.Role == "system" {
+				if content, ok := msg.Content.(string); ok {
+					messages[i].Content = content + buildAgentSystemPrompt()
+				}
+				break
+			}
+		}
+	}
+
 	sm := a.getSessionManager()
 	if sm != nil {
 		sm.AddMessage("user", userMsg, "", "")
 	}
-
-	a.agentMu.RLock()
-	agentActive := a.agentEnabled
-	a.agentMu.RUnlock()
 
 	orchestraEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
 
@@ -360,4 +371,29 @@ func (a *App) updateMoodAsync(userMsg string) {
 	if err := a.mood.Update(ctx, iAnlik); err != nil {
 		logx.Printf("mood.Update: %v", err)
 	}
+}
+
+// buildAgentSystemPrompt returns agent-specific instructions that guide the
+// model to behave as an efficient coding agent with proper tool usage.
+func buildAgentSystemPrompt() string {
+	return `
+
+## Çalışma Modu: Kodlama Ajanı
+
+Şu anda dosya okuma/yazma/düzenleme ve terminal komutu çalıştırma yetkisine sahip bir
+kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
+
+### Çalışma Sırası
+1. **Önce oku, sonra yaz.** Mevcut dosyaları ve proje yapısını anlamadan kod yazma.
+2. **Plan yap.** Neyi nasıl yapacağını adım adım düşün, sonra uygula.
+3. **Kullanıcı ne dediyse onu kullan.** "Go ile yap" dediyse Go, "Python" dediyse Python.
+   Kendi kafana göre dil/framework değiştirme.
+4. **Her adımda test et.** Kod yazdıktan sonra derle/çalıştır, hata varsa düzelt.
+5. **İşin bitince özet geç.** Ne yaptığını, nereye yazdığını kısaca söyle.
+
+### Verimlilik
+- Gereksiz araç çağrısı yapma. Bir kere okumak yeterliyse 5 kere okuma.
+- Aynı dosyayı art arda okumak yerine içeriği aklında tut.
+- Uzun işleri parçalara böl, her parçayı tamamla, sonra devam et.
+- Bütün araçları aynı anda kullanman gerekmiyor — sadece ihtiyacın olanı kullan.`
 }

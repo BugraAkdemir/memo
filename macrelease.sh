@@ -105,6 +105,14 @@ cat << 'RUNNER' > "$STAGEDIR/run_memo.command"
 #!/bin/bash
 DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
 
+# Single-instance lock: double-click koruması — aynı anda iki Memo başlatılamaz.
+LOCK_FILE="/tmp/memo.lock"
+exec {LOCK_FD}>"$LOCK_FILE"
+if ! flock -n "$LOCK_FD"; then
+    osascript -e 'display notification "Memo zaten çalışıyor." with title "Memo"'
+    exit 0
+fi
+
 # Yazılabilir çalışma alanı
 MEMO_HOME="$HOME/.memo"
 for d in data/bin data/models data/memory data/sessions data/agent-backups data/skills data/whatsapp data/profile config; do
@@ -160,6 +168,9 @@ while true; do
     fi
     break
 done
+
+# Release lock on exit
+flock -u "$LOCK_FD" 2>/dev/null || true
 RUNNER
 
 # __APP_NAME__ yer tutucusunu gerçek isimle değiştir

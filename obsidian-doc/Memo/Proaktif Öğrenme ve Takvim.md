@@ -1,6 +1,6 @@
 # Proaktif Öğrenme ve Takvim
 
-> **Durum:** ✅ Tam (backend + mobil + masaüstü ayar) | **Sürüm:** v3.1.0
+> **Durum:** ✅ Tam (backend + mobil + masaüstü ayar) | **Sürüm:** v3.1.1
 >
 > Memo'nun öğrenme sistemi artık sadece *ne zaman* bir şey yaptığını değil, *ne yapacağını söylediğini* de anlıyor — hem normal sohbette hem de WhatsApp konuşmalarında.
 

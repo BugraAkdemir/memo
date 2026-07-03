@@ -4,6 +4,12 @@ Gizlilik odaklı, yerel öncelikli bir yapay zeka asistanı. Tüm özellikler te
 
 ---
 
+## ✅ v3.1.1 — Açık Beta (Güncel, 2026-07-04)
+
+v3.1 serisinin ilk açık beta sürümü, Windows ve Linux için 2-3 hafta içinde hedeflenen stable sürüm öncesi geri bildirim toplama turu. Aşağıdaki her şeyi ve zaten koda göre doğrulanmış v3.2.0 maddelerini içeriyor (o bölümdeki nota bakın).
+
+---
+
 ## ✅ v3.1.0 — "Hafıza" (Yayınlandı)
 
 **Tema:** Kalıcı bellek, yerel embedding, çapraz-mod mimari, WhatsApp temeli, mobil uygulama, uzaktan erişim.

@@ -1,7 +1,7 @@
 ---
 tags: project, ai, go, flutter, memory, rag, llm
 status: Active
-version: 3.1.0-beta
+version: 3.1.1
 tech_stack: [Go 1.26, Flutter 3.10, SQLite, vec0, llama.cpp, whatsmeow]
 category: [[AI_Agents]]
 ---
@@ -143,7 +143,7 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 - 8 built-in tools: read_file, write_file, edit_file, delete_file, list_directory, run_command, web_search, whatsapp_send
 - Permission system: Safe/Medium/Dangerous per tool, session/user policies
 - Execution sandbox: path validation, symlink protection, command blacklist (23 patterns)
-- 60s timeout per tool, max 20 iterations, cancel support
+- 120s timeout per tool call (60s fallback if no deadline is set), max 20 iterations, cancel support
 - Audit trail (last 1000 entries)
 
 ### 5.4 Orchestra Mode
@@ -362,4 +362,4 @@ GitHub Actions runs on every push/PR:
 
 ---
 
-*Last updated: 2026-06-28 · Version: v3.1.0-beta*
+*Last updated: 2026-07-04 · Version: v3.1.1 (open beta)*

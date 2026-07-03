@@ -1,5 +1,7 @@
 # Çözülen Sorunlar
 
+> **Kapsam notu (2026-07-04):** Bu belge, v3.0.0 stabilizasyon turunun donmuş bir görüntüsüdür (son güncelleme 2026-06-03). v3.1.1 açık betası öncesi çözülenler dahil v3.1.x serisinde yapılan düzeltmeler, artık aktif olarak güncellenen [`BILINEN_SORUNLAR.md`](BILINEN_SORUNLAR.md)'nin "✅ Düzeltilen Hatalar" bölümünde takip ediliyor.
+
 Bu belge, Memo projesinde çözülmüş olan 61 hatayı listeler.
 
 **Öncelik kategorileri:**

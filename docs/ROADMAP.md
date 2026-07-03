@@ -4,6 +4,12 @@ A privacy-first, local-first AI assistant that evolves with its user. All featur
 
 ---
 
+## ✅ v3.1.1 — Open Beta (Current, 2026-07-04)
+
+First public open beta of the v3.1 line, gathering feedback ahead of a stable release targeted for Windows and Linux in 2-3 weeks. Carries forward everything below plus the v3.2.0 items already verified shipped (see note in that section).
+
+---
+
 ## ✅ v3.1.0 — "Memory" (Released)
 
 **Theme:** Persistent memory, local embedding, cross-modal architecture, WhatsApp foundation, mobile companion, remote access.
@@ -24,6 +30,8 @@ A privacy-first, local-first AI assistant that evolves with its user. All featur
 ## 🚧 v3.2.0 — "Scheduled Intelligence"
 
 **Theme:** Proactive automation through calendar, reminders, cron scheduling, and a fully realized agent interface.
+
+> **2026-07-04 status check (verified against source):** Calendar (`internal/calendar/`: store, reminders, natural-language events) and the full Agent UI (mode toggle, permission dialogs, tool-call cards, agent chat screen) **are already shipped**, along with the Flutter file-edit diff preview, mobile push notifications (`notification_service.dart`), and chat prompt templates listed further below. **Not yet built:** the standalone cron engine (`internal/scheduler/`, `/api/scheduler/tasks`) for scheduling arbitrary recurring tasks beyond calendar reminders — the calendar itself works, but "Memo, her gün saat 10'da günaydın yaz"-style recurring task scheduling does not exist yet.
 
 ### 📅 Calendar & Reminders
 

@@ -13,7 +13,7 @@
   <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Download_Now-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="Download"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Stars"/></a>
   <img src="https://img.shields.io/badge/License-AGPL_v3-0a0a0a?style=for-the-badge" alt="License"/>
-  <img src="https://img.shields.io/badge/Version-v3.1.0-B08D57?style=for-the-badge" alt="Version"/>
+  <img src="https://img.shields.io/badge/Version-v3.1.1-B08D57?style=for-the-badge" alt="Version"/>
 
   <br/><br/>
 
@@ -337,7 +337,7 @@ Two decoupled processes talk over plain HTTP/SSE on `localhost:8090`. No TLS (lo
 | **State** Riverpod 2.4 | **HTTP** Dio 5.4 / SSE | **Voice** whisper.cpp | **WhatsApp** whatsmeow |
 | **Cloud** Drive + AES-256 | **GPU** nvidia/rocm/sysfs | **License** AGPL v3 | **CI** GitHub Actions |
 
-📚 **Deep dive:** [Architecture](docs/architecture.md) · [API Reference](docs/API_REFERENCE.md) · [Design System](frontend/DESIGN.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](versinNote/v3.1.0.md)
+📚 **Deep dive:** [Architecture](docs/architecture.md) · [API Reference](docs/API_REFERENCE.md) · [Design System](frontend/DESIGN.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](versinNote/v3.1.1.md)
 
 ---
 

@@ -1,6 +1,6 @@
 # Çözülen Sorunlar
 
-Memo projesinde çözülmüş 61 hata. Tam detay: `docs/tr/COZULEN_SORUNLAR.md`.
+Memo projesinde çözülmüş 61 hata (v3.0.0 dönemi, donmuş kayıt). Tam detay: `docs/tr/COZULEN_SORUNLAR.md`. v3.1.x serisinde (v3.1.1 açık betası dahil) çözülen sorunlar için [[Bilinen Sorunlar]]'ın "✅ Düzeltilen Hatalar" bölümüne ve `docs/KNOWN_ISSUES.md`'ye bakın — orası aktif olarak güncelleniyor.
 
 ---
 

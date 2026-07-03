@@ -1,8 +1,10 @@
-# Memo v3.1.0
+# Memo v3.1.1
 
 **The AI assistant that learns your habits and acts before you ask.**
 
 Local-first · Privacy-first · Zero cloud dependency · Full offline capable
+
+> v3.1.1 is the first **open beta** of the v3.1 line (July 4, 2026). Feedback from this round drives a stable release targeted for Windows and Linux in 2-3 weeks. Changelog: `versinNote/v3.1.1.md`.
 
 ---
 
@@ -46,7 +48,7 @@ This is a major release — the biggest update to Memo since the project started
 - [[System Overview]] — How all subsystems fit together
 - [[Known Issues]] — Current state of known problems
 - [[Roadmap]] — Release plan
-- [[v3.1.0 Features]] — Full feature catalog
+- [[v3.1.1 Features]] — Full feature catalog
 - [[Agent Mode]] — Agent pipeline, tools, permissions
 - [[WhatsApp Integration]] — Setup and features
 - [[Orchestra Mode]] — Multi-model workflow
@@ -60,4 +62,4 @@ This is a major release — the biggest update to Memo since the project started
 
 ---
 
-**Version**: v3.1.0-beta · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10
+**Version**: v3.1.1 (Open Beta) · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10

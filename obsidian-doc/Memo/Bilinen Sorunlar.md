@@ -1,8 +1,8 @@
 # Bilinen Sorunlar ve Teknik Riskler
 
-> Güncelleme: Haziran 2026 — `AGENTS.md` ve `docs/KNOWN_ISSUES.md` v3.1.0-polish durumuyla eşleşir.
+> Güncelleme: 4 Temmuz 2026 — v3.1.1 açık betası öncesi `AGENTS.md` ve `docs/KNOWN_ISSUES.md` ile yeniden doğrulandı.
 
-**Özet**: 14 belgelenmiş sorun, 10'u düzeltildi, 4'ü kaldı. Çoğu tasarım seviyesinde teknik borç, bug değil.
+**Özet**: 14 belgelenmiş sorun, 11'i düzeltildi (biri bu geçişte: polling sorunları), 3'ü kaldı. Çoğu tasarım seviyesinde teknik borç, bug değil. Tam liste ve kod referansları için `docs/KNOWN_ISSUES.md` ve `docs/tr/BILINEN_SORUNLAR.md`'ye bakın.
 
 ---
 
@@ -38,7 +38,7 @@
 
 - `model_store_screen.dart` 2469 satır — bileşenlere bölünmeli
 - Yaygın `const` constructor eksikliği (lint uyarıları)
-- `connectionStatusProvider` ve indirme ilerleme polling'i sonsuza kadar çalışıyor (otomatik durma yok)
+- ~~`connectionStatusProvider` ve indirme ilerleme polling'i sonsuza kadar çalışıyor~~ ✅ düzeltildi — ikisi de artık `autoDispose` + adaptif interval
 
 **Yakında düzeltildi**: `settings_dialog.dart` 5013 satırdan 15 dosyaya bölündü. ✓
 

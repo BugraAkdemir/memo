@@ -1,8 +1,10 @@
-# Memo v3.1.0
+# Memo v3.1.1
 
 **Alışkanlıklarını öğrenen ve sen sormadan harekete geçen yapay zeka asistanı.**
 
 Yerel-öncelikli · Gizlilik-öncelikli · Sıfır bulut bağımlısı · Tamamen çevrimdışı
+
+> v3.1.1, v3.1 serisinin ilk **açık beta** sürümüdür (4 Temmuz 2026). Bu turdan gelen geri bildirimler 2-3 hafta içinde Windows ve Linux için hedeflenen stable sürümü şekillendirecek. Değişiklik günlüğü: `versinNote/tr/v3.1.1.md`.
 
 ---
 
@@ -46,7 +48,7 @@ Bu büyük bir sürüm — proje başladığından beri en büyük güncelleme. 
 - [[Sistem Genel Bakış]] — Tüm alt sistemlerin nasıl bir araya geldiği
 - [[Bilinen Sorunlar]] — Bilinen sorunların güncel durumu
 - [[Yol Haritası]] — Sürüm planı
-- [[v3.1.0 Özellikleri]] — Tam özellik kataloğu
+- [[v3.1.1 Özellikleri]] — Tam özellik kataloğu
 - [[Ajan Modu]] — Ajan pipeline'ı, araçlar, izinler
 - [[WhatsApp Entegrasyonu]] — Kurulum ve özellikler
 - [[Orkestra Modu]] — Çoklu model iş akışı
@@ -60,4 +62,4 @@ Bu büyük bir sürüm — proje başladığından beri en büyük güncelleme. 
 
 ---
 
-**Sürüm**: v3.1.0-beta · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10
+**Sürüm**: v3.1.1 (Açık Beta) · **Lisans**: AGPL v3 · **Teknoloji**: Go 1.26 + Flutter 3.10

@@ -1,6 +1,6 @@
 # Proactive Learning and Calendar
 
-> **Status:** ✅ Complete (backend + mobile + desktop settings) | **Version:** v3.1.0
+> **Status:** ✅ Complete (backend + mobile + desktop settings) | **Version:** v3.1.1
 >
 > Memo's learning system now understands not just *when* you do something, but *what you tell it you will do* — in both chat and WhatsApp conversations.
 

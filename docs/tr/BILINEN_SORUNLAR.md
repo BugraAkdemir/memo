@@ -234,46 +234,40 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 
 ## 🔴 Kritik
 
-### K01. Agent Araç Argümanlarında Yol Geçişi Koruması Yok
-- **Dosya:** `internal/agent/sandbox.go:70-94` (`ValidatePath`), `internal/agent/tools/command.go` (`RunCommand` dosya argümanları)
-- **Detay:** Sandbox, çalışma dizinini `strings.HasPrefix` ile doğrular ancak araç argümanlarındaki dosya yollarını (`read_file`, `write_file`, `edit_file` vb.) doğrulamaz. `write_file` aracına `../../etc/passwd` gibi göreli bir yol verildiğinde, sandbox dizini dışına çıkılabilir.
-- **Risk:** Göreli yollar içeren araç argümanları ile sandbox kaçışı.
-- **Kategori:** Güvenlik
+### ~~K01. Agent Araç Argümanlarında Yol Geçişi Koruması Yok~~ ✅ DÜZELTİLDİ
+- ~~`read_file`, `write_file`, `edit_file` gibi araçlar dosya argümanlarındaki yolları doğrulamıyordu.~~
+- **Düzeltme:** `internal/agent/tools/file.go` `validatePath()` artık `filepath.Rel(basePath, realPath)` ile containment kontrolü yapıyor; `..` ile proje dışına çıkan yollar yalnızca korumalı sistem yolları listesine (`defaultProtectedPaths()`) girmiyorsa ve açıkça reddedilmiyorsa izin veriliyor — genel keyfi path traversal artık kapalı.
 
 ### K04. 0.0.0.0'a Bağlanınca Tüm Endpoint'ler Açık — Kimlik Doğrulama Yok
 - **Dosya:** `internal/webserver/server.go:79-201` (StartHTTPWithAddr)
 - **Detay:** Uzaktan erişim etkinleştirildiğinde sunucu `0.0.0.0` adresine bağlanır. Tüm endpoint'ler (`/api/wipe`, `/api/whatsapp/send`, `/api/agent/permission`, `/api/import` vb.) hiçbir token veya session doğrulaması olmadan yerel ağdaki herkese açık hale gelir.
 - **Risk:** LAN'daki herhangi bir cihaz tüm verileri silebilir, WhatsApp mesajı gönderebilir, agent'ı kontrol edebilir.
 - **Kategori:** Güvenlik (kimlik doğrulama eksikliği)
+- **2026-07-04 doğrulama:** Kod tabanında `AccessToken`/`X-Memo-Token` benzeri hiçbir auth mekanizması bulunamadı — **hâlâ açık**. v3.1.1 stable öncesi ele alınması önerilir; ngrok/Tailscale tünelleri de bu riski miras alıyor.
 
-### K25. Provider API Anahtarları Zayıf Makine-Türevli Anahtarla Şifreleniyor
-- **Dosya:** `internal/provider/config.go:374-402`
-- **Detay:** `defaultMachineKey()` AES-256 anahtarını `/etc/machine-id` (Linux), registry GUID (Windows), veya IOPlatformUUID (macOS) ile türetir. Bu değerler gizli değildir — makinedeki herhangi bir işlem bunları okuyabilir. Satır 401'deki hardcoded fallback anahtarı `"Mm3m0L0c4lK3y!@#$%^&*()9876543210"` kaynak kodunda düz metin olarak görünür. Dosya sistemine erişimi olan herhangi bir saldırgan `providers.json`'daki tüm API anahtarlarını çözebilir.
-- **Risk:** Tüm saklanan API anahtarları (OpenAI, Claude, Gemini vb.) çözülebilir — toplu credential sızıntısı.
-- **Kategori:** Güvenlik (zayıf şifreleme)
+### ~~K25. Provider API Anahtarları Zayıf Makine-Türevli Anahtarla Şifreleniyor~~ ✅ DÜZELTİLDİ
+- ~~`defaultMachineKey()` gizli olmayan donanım kimliklerinden anahtar türetiyordu, kaynak kodunda hardcoded fallback anahtar vardı.~~
+- **Düzeltme:** `defaultMachineKey()` artık `crypto/rand` ile üretilen rastgele bir anahtarı `data/machine.key` (`0600`) dosyasına kalıcı olarak yazıyor, donanım kimliğinden bağımsız.
 
-### K26. Cloud Sync Şifreleme: Passphrase Boşken Donanım Kimliği Kullanılıyor
-- **Dosya:** `internal/cloudsync/crypto.go:27-38, 67-87`
-- **Detay:** `encrypt()` ve `deriveKey()` passphrase boş olduğunda `hardwareID()`'e düşer. `hardwareID()` (satır 113-148) `/etc/machine-id`, hostname veya registry anahtarlarını kullanır — bunların hiçbiri gizli değildir. Daha da kötüsü, `decrypt()` yolu önce PBKDF2 dener, başarısız olursa sessizce zayıf SHA-256 `deriveKey()`'e düşer. Veri bütünlüğü ve gizliliği riske girer.
-- **Risk:** Cloud yedeklemeleri makine ID'sine veya hostname'e erişimi olan herkes tarafından çözülebilir.
-- **Kategori:** Güvenlik (zayıf şifreleme)
+### ~~K26. Cloud Sync Şifreleme: Passphrase Boşken Donanım Kimliği Kullanılıyor~~ ✅ DÜZELTİLDİ
+- ~~`encrypt()`/`deriveKey()` boş passphrase'de sessizce donanım kimliğine düşüyordu.~~
+- **Düzeltme:** `encrypt()` (crypto.go:34-36) artık boş passphrase'de hata döndürüyor — yeni yazımlarda sessiz zayıf-anahtar fallback'i yok. `deriveKey()`'in donanım-ID yolu yalnızca v3.0.0 öncesi yedeklerin *çözülmesi* için legacy fallback olarak korunuyor.
 
 ---
 
 ## 🟠 Yüksek
 
-### H01. Sağlayıcı Öncelik (Priority) Alanı Kullanılmıyor
-- **Dosya:** `internal/provider/config.go`, `router.go:188-204`
-- **Detay:** `ProviderConfig.Priority` alanı tanımlı ancak `getActiveEntries()` sağlayıcıları öncelik sırasına göre değil, Go map iterasyon sırasına göre döndürür.
+### ~~H01. Sağlayıcı Öncelik (Priority) Alanı Kullanılmıyor~~ ✅ DÜZELTİLDİ
+- ~~`ProviderConfig.Priority` tanımlıydı ama `getActiveEntries()` sıralamada kullanmıyordu.~~
+- **Düzeltme:** `router.go` (65, 223. satırlar) artık `cfg.Priority`'e göre azalan sırayla sıralıyor; provider config dialoğu alanı UI'da gösteriyor.
 
-### H02. Frontend ApiClient'ta Agent Metodu Yok
-- **Dosya:** `frontend/lib/core/api_client.dart`
-- **Detay:** Backend'de agent endpoint'leri tamamen çalışır durumda ancak frontend `api_client.dart` bunları çağıracak metodlara sahip değil. Agent modu UI'dan açılıp kapatılamaz.
+### ~~H02. Frontend ApiClient'ta Agent Metodu Yok~~ ✅ DÜZELTİLDİ
+- ~~`api_client.dart`'ta backend'in agent endpoint'lerini çağıracak metod yoktu.~~
+- **Düzeltme:** `api_client.dart` artık tam bir Agent Mode bölümüne sahip (`getAgentEnabled`, `setAgentEnabled`, `handleAgentPermission`, `getAgentPermissions`, `revokeAgentPermission`, `clearAgentPermissions`, `undoAgentEdit`, `getAgentAutoPermission`, `setAgentAutoPermission`) ve UI'da tam bir agent ekranı/izin diyaloğu var.
 
-### H03. İndirme İlerlemesi Yoklaması Hiç Durmuyor
-- **Dosya:** `frontend/lib/providers/models_provider.dart:71-87`
-- **Detay:** `downloadProgressProvider` sonsuz `while (true)` döngüsüne sahip. Her 1 saniyede bir `/api/models/download/progress` vuruyor, uygulama hayatı boyunca asla tam durmaz. Saniyede 1 HTTP isteği sürekli.
-- **Risk:** Boş yere CPU/ağ tüketimi, pil ömrünü kısaltır.
+### ~~H03. İndirme İlerlemesi Yoklaması Hiç Durmuyor~~ ✅ DÜZELTİLDİ
+- ~~`downloadProgressProvider` indirme olmasa bile sonsuza kadar her 1 saniyede bir sorgu atıyordu.~~
+- **Düzeltme:** `models_provider.dart` — `downloadProgressProvider` artık `StreamProvider.autoDispose`, adaptif interval kullanıyor (indirme aktifken 1s, boştayken 4s) ve hiçbir ekran dinlemiyorsa tamamen duruyor.
 
 ### H04. ngrok Binary İndirmesinde Bütünlük Kontrolü Yok
 - **Dosya:** `internal/ngrok/installer.go:34-91`
@@ -289,17 +283,17 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detay:** `_styleCache` global mutable bir `Map`'tir — asla temizlenmez, ziyaret edilen her tema yapılandırması kombinasyonu ile sonsuz büyür. Bu, temalar değiştirildikçe bellek kullanımının sürekli arttığı bir bellek sızıntısıdır.
 
-### H08. Flutter: `connectionStatusProvider` Sonsuz Polling
-- **Dosya:** `frontend/lib/providers/chat_provider.dart:429-438`
-- **Detay:** `connectionStatusProvider` uygulama ömrü boyunca her 30 saniyede bir polling yapan `while(true)` döngüsü çalıştırır. `autoDispose` kullanılmamış.
+### ~~H08. Flutter: `connectionStatusProvider` Sonsuz Polling~~ ✅ DÜZELTİLDİ
+- ~~Uygulama ömrü boyunca `autoDispose` olmadan 30s'de bir polling yapıyordu.~~
+- **Düzeltme:** `chat_provider.dart:687` — artık `StreamProvider.autoDispose<bool>`.
 
-### H09. Orkestra Yapılandırması Doğrulamasız
-- **Dosya:** `internal/orchestra/conductor.go:120` (`UpdateConfig`)
-- **Detay:** `UpdateConfig` herhangi bir rol yapılandırmasını doğrulama olmadan kabul eder. Geçersiz bir chief modeli veya eksik rol modeli, çalışma zamanında hataya neden olur.
+### ~~H09. Orkestra Yapılandırması Doğrulamasız~~ ✅ DÜZELTİLDİ
+- ~~`UpdateConfig` herhangi bir rol yapılandırmasını doğrulama olmadan kabul ediyordu.~~
+- **Düzeltme:** `conductor.go` `UpdateConfig` artık config'i saklamadan önce `cfg.Sanitize()` çalıştırıyor.
 
-### H10. Agent Pipeline'da Araç Çağrısı Başına Zaman Aşımı Yok
-- **Dosya:** `internal/agent/pipeline.go:122-222`
-- **Detay:** Bireysel araç çağrılarında pipeline tarafından zorlanan zaman aşımı yok. Asılı kalan bir `run_command` tüm pipeline'ı sandbox'ın 60s zaman aşımına rağmen süresiz bloke edebilir (pipeline bunu zorlamaz).
+### ~~H10. Agent Pipeline'da Araç Çağrısı Başına Zaman Aşımı Yok~~ ✅ DÜZELTİLDİ
+- ~~Bireysel araç çağrılarında pipeline tarafından zorlanan zaman aşımı yoktu.~~
+- **Düzeltme:** `pipeline.go` her araç çağrısı için `toolTimeout: 120 * time.Second` ile türetilmiş context kullanıyor. **2026-07-04 ek düzeltme:** bu 120s bütçesi `tools/command.go`'nun kendi hardcoded `DefaultToolTimeout`'u (60s) tarafından sessizce 60s'ye düşürülüyordu — düzeltildi, `run_command`/`search_files` artık çağıranın deadline'ına saygı gösteriyor, sadece hiç deadline verilmemişse 60s varsayılana düşüyor.
 
 ### H11. Agent Denetim Günlüğü 1000 Girdiyle Sınırlı
 - **Dosya:** `internal/agent/executor.go:40-45`
@@ -334,47 +328,35 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Detay:** `onProgress` callback'inde `ctx.Done()` algılandığında callback erken return yapar. Ancak `RunWithProgress` goroutine'i hâlâ provider'lara istek gönderiyor ve en fazla 300 saniye daha çalışmaya devam ediyor. Eşzamanlı 10 kullanıcı iptal ederse 30 LLM bağlantısı açık kalır.
 - **Risk:** Yüksek yük altında birikim goroutine/bağlantı sızıntısı.
 
-### H21. Skill `SetActive()` Tool'ları Register Yerine Unregister Ediyor
-- **Dosya:** `internal/skill/manager.go:208-214`
-- **Detay:** `SetActive` metodunda yeni aktifleştirilen skill'lerin tool'ları `RegisterTool` ile kaydedilmek yerine `UnregisterTool` ile kaldırılıyor — üstteki deaktivasyon bloğundan copy-paste hatası. Ardından satır 221-228 tüm aktif skill'leri yeniden kaydetmeyi dener ancak bu da gereksiz duplicate registration'a yol açar.
-- **Risk:** Skill aktifleştirildiğinde tool'ları kaydedilmez; agent/LLM skill araçlarını kullanamaz. Ara durumda kesilirse tool'lar kayıtsız kalır.
-- **Kategori:** Mantık hatası
+### ~~H21. Skill `SetActive()` Tool'ları Register Yerine Unregister Ediyor~~ ✅ DÜZELTİLDİ
+- ~~Yeni aktifleştirilen skill'lerin tool'ları register yerine unregister ediliyordu.~~
+- **Düzeltme:** `manager.go` `SetActive()` artık yalnızca deaktive edilen skill'ler için `UnregisterTool()`, yalnızca yeni aktifleştirilenler için `RegisterTool()` çağırıyor — mantık doğru.
 
-### H22. Cloud Sync `WaitForAuth` İkinci Çağrıda Sonsuz Bloke
-- **Dosya:** `internal/cloudsync/drive.go:112, 490-496`
-- **Detay:** `closeAuthDoneLocked()` double-Done kontrolü yapar ancak `authWg` WaitGroup'u sıfırlanırken (satır 112: `dc.authWg = sync.WaitGroup{}`) eski WaitGroup garbage collect edilir. Önceki `WaitForAuth` çağrısı yeni WaitGroup'u beklerse sonsuza kadar bloke olur çünkü yeni WaitGroup hiçbir zaman `Done()` çağrısı almaz.
-- **Risk:** İkinci kez auth flow başlatıldığında `WaitForAuth` kalıcı olarak donar.
-- **Kategori:** Eşzamanlılık (deadlock)
+### H22. Cloud Sync `WaitForAuth` İkinci Çağrıda Sonsuz Bloke — KISMEN DÜZELTİLDİ, 🔵 Orta'ya düşürüldü
+- **Dosya:** `internal/cloudsync/drive.go:103-113, 209-221, 493-499`
+- **2026-07-04 güncelleme:** `authDone` guard'ı ve önceki auth sunucusunun kapatılması eklendi — orijinal panik/donma yolları kapandı. Ancak `WaitForAuth` hâlâ `dc.mu` kilidi olmadan `dc.authWg`'yi okuyan bir goroutine başlatıyor (~212. satır), `StartAuthFlow` ise aynı alanı kilit altında değiştiriyor — önceki `WaitForAuth` hâlâ beklerken ikinci bir auth akışı başlarsa dar ama gerçek bir data race var. Tek kullanıcılı masaüstü senaryosunda gerçekleşme olasılığı düşük ama tam kapanmadı.
+- **Kategori:** Eşzamanlılık (kalıntı race, artık garanti donma değil)
 
-### H23. SQLite Yazmaları Caller Context İptalini Yok Sayıyor
-- **Dosya:** `internal/database/sqlite.go:101-124`
-- **Detay:** `execWrite` satır 102'de transaction başlatmak için `db.ctx` (arka plan context) kullanır, **caller'ın context'ini** kullanmaz. Tüm SQL yazma işlemleri (`Write()` üzerinden) caller'ın iptal/zaman aşımını kaybeder. Disk dolu veya kilit çekişmesi durumunda yazma işlemi caller context'i iptal edilse bile bloke kalır.
-- **Risk:** Yazma işlemleri askıda kalır; bellek depolama işlemleri iptal edilemez.
-- **Kategori:** Eşzamanlılık (context iptali)
+### ~~H23. SQLite Yazmaları Caller Context İptalini Yok Sayıyor~~ ✅ DÜZELTİLDİ
+- ~~`execWrite` caller context'i yerine `db.ctx` (arka plan) kullanıyordu.~~
+- **Düzeltme:** `sqlite.go` `execWrite` artık parametre olarak `ctx context.Context` alıyor ve `db.sql.BeginTx(ctx, nil)`'i caller'ın context'i ile çağırıyor.
 
-### H24. Flutter `AgentEventBus` StreamController Hiç Dispose Edilmiyor
-- **Dosya:** `frontend/lib/providers/agent_provider.dart:82-97`
-- **Detay:** `StreamController<AgentEvent>.broadcast()` bir `Provider` ile oluşturulur ancak `dispose()` hiçbir zaman çağrılmaz. `AgentEventBus` uygulama ömrü boyunca yaşar ve stream controller asla kapatılmaz. Aboneler (`agentEventStreamProvider` üzerinden) temizlenmez.
-- **Risk:** Kalıcı bellek sızıntısı; stream subscriber'ları asla temizlenmez.
-- **Kategori:** Bellek sızıntısı
+### ~~H24. Flutter `AgentEventBus` StreamController Hiç Dispose Edilmiyor~~ ✅ DÜZELTİLDİ
+- ~~`StreamController<AgentEvent>.broadcast()` hiç kapatılmıyordu.~~
+- **Düzeltme:** `agent_provider.dart` artık `ref.onDispose(() => bus.dispose())` çağırıyor.
 
-### H25. Mobile Chat Stream Subscription Yeniden Göndermede Sızıntı
-- **Dosya:** `mobile/lib/providers/chat_provider.dart:164-243`
-- **Detay:** `_api.sendMessageStream().listen(...)` bir `StreamSubscription` döndürür ancak bu hiçbir yerde saklanmaz veya iptal edilmez. `sendMessage` tekrar çağrıldığında eski subscription yetim kalır. `CancelToken` yalnızca HTTP isteği içindir, listener için değil.
-- **Risk:** Yetim stream subscription'ları birikir, bellek sızıntısı ve duplicate mesaj işleme.
-- **Kategori:** Bellek sızıntısı
+### ~~H25. Mobile Chat Stream Subscription Yeniden Göndermede Sızıntı~~ ✅ DÜZELTİLDİ
+- ~~`StreamSubscription` hiç saklanmıyor veya iptal edilmiyordu.~~
+- **Düzeltme:** `mobile/lib/providers/chat_provider.dart` artık `_streamSubscription` alanında saklıyor, yeni stream başlamadan önce ve dispose'ta iptal ediyor.
 
-### H26. WhatsApp Screen Polling IndexedStack'te Hiç Durdurulamıyor
-- **Dosya:** `frontend/lib/widgets/whatsapp_screen.dart:32-34`, `frontend/lib/screens/app_shell.dart:44-52`
-- **Detay:** `WhatsAppScreen` `IndexedStack` içinde olduğu için `dispose()` asla çağrılmaz — polling hiç durmaz. `startPolling()` `initState`'te başlar, `stopPolling()` `dispose()`'tedir ancak `IndexedStack` tüm child'ları canlı tutar. `WhatsAppStatusNotifier` da timer-based polling yapar.
-- **Risk:** 2-15s aralıklarla sonsuz polling, pil ve ağ tüketimi.
-- **Kategori:** Performans (sonsuz polling)
+### H26. WhatsApp Screen Polling IndexedStack'te Hiç Durdurulamıyor — KISMEN DÜZELTİLDİ, ⚪ Düşük'e düşürüldü
+- **Dosya:** `frontend/lib/screens/whatsapp_screen.dart`, `frontend/lib/providers/whatsapp_provider.dart:95-107`, `frontend/lib/screens/app_shell.dart:159`
+- **2026-07-04 güncelleme:** Orijinal "QR bekleme sırasında hızlı sonsuz polling" düzeltildi — interval artık adaptif (bağlanırken 2-4s, bağlandıktan sonra 15s heartbeat). `WhatsAppScreen` hâlâ `app_shell.dart`'ın `IndexedStack`'i içinde mount edilmiş durumda kalıyor, yani `dispose()`/`stopPolling()` uygulama kapanana kadar tetiklenmiyor — ama 15s heartbeat ile bu artık pil/ağ tüketen bir sızıntı değil, kabul edilebilir küçük bir maliyet.
+- **Kategori:** Performans (sonsuz hızlı polling'den ucuz heartbeat'e düşürüldü)
 
-### H27. `handleImage` dataDir Altındaki Tüm Dosyaları Okuyabilir
-- **Dosya:** `internal/webserver/handlers_flutter.go:425-457`
-- **Detay:** Handler mutlak yolları ve `..` traversali'ni engeller ancak `dataDir` altındaki herhangi bir göreli yola izin verir. `dataDir` = `filepath.Dir(a.cfg.Memory.PersistDir)` = `data/` olduğunda, `data/providers.json` gibi hassas dosyalara erişilebilir. K25 ile birleşince zafiyet genişler.
-- **Risk:** Yetkisiz erişim — provider konfigürasyonları ve diğer veri dosyaları okunabilir.
-- **Kategori:** Güvenlik (yetkisiz dosya erişimi)
+### ~~H27. `handleImage` dataDir Altındaki Tüm Dosyaları Okuyabilir~~ ✅ DÜZELTİLDİ (F28 ile aynı)
+- ~~`dataDir` altındaki herhangi bir göreli yola izin veriyordu, örn. `data/providers.json`.~~
+- **Düzeltme:** `handlers_flutter.go` `handleImage` artık URL-decode + `..`/mutlak yol kontrollerine ek olarak bir alt dizin beyaz listesi (`data/images`, `data/avatars`, `data/attachments` — yalnızca bunlar) uyguluyor. Bu zaten F28 altında düzeltilmiş olarak kayıtlıydı — bu, temizlenmemiş bir kopya girdiydi.
 
 ---
 
@@ -416,17 +398,17 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart`
 - **Detay:** Provider yapılandırma diyalogu API anahtarlarını `TextField`'da gösterir. Arka planda biri ekranı izliyorsa (screen recording, screenshot, shoulder surfing) API anahtarları ifşa olur.
 
-### M10. Orkestra/Sağlayıcı/Agent için Test Dosyası Yok
-- **Dosya:** `internal/provider/`, `internal/agent/`, `internal/orchestra/`
-- **Detay:** Üç yeni paket için sıfır unit test (~4700 satır üretim kodu). (Önceki denetimde ~4150 satır, yeni eklemelerle arttı.)
+### ~~M10. Orkestra/Sağlayıcı/Agent için Test Dosyası Yok~~ ✅ DÜZELTİLDİ
+- ~~Üç paket için sıfır unit test vardı.~~
+- **Düzeltme:** Artık üç pakette 13 test dosyası var (`router_test.go`, `backup_test.go`, `permissions_test.go`, `tools/edit_test.go`, `tools/selfclone_test.go`, `orchestra/` altında 7 dosya) — AGENTS.md'nin "-race ile 48 test geçiyor" notuyla uyumlu.
 
-### M11. Orkestra Config Dosyası 0644 İzniyle Yazılıyor
-- **Dosya:** `internal/orchestra/conductor.go:114`
-- **Detay:** Orkestra config dosyası dünya tarafından okunabilir (`0644`) izinlerle yazılır. API anahtarları içermese de, yapılandırma detaylarını sızdırabilir.
+### ~~M11. Orkestra Config Dosyası 0644 İzniyle Yazılıyor~~ ✅ DÜZELTİLDİ
+- ~~Orkestra config dosyası dünya tarafından okunabilir izinlerle yazılıyordu.~~
+- **Düzeltme:** `conductor.go:141` artık `os.WriteFile(filePath, data, 0600)` kullanıyor.
 
-### M12. Agent İzin Dosyası 0644 İzniyle Yazılıyor
-- **Dosya:** `internal/agent/permissions.go:229`
-- **Detay:** Agent izin dosyası (`permissions.json`) dünya tarafından okunabilir (`0644`) izinlerle yazılır.
+### ~~M12. Agent İzin Dosyası 0644 İzniyle Yazılıyor~~ ✅ DÜZELTİLDİ
+- ~~`permissions.json` dünya tarafından okunabilir izinlerle yazılıyordu.~~
+- **Düzeltme:** `permissions.go:240` artık `0600` ile yazıyor.
 
 ### M13. `unsanitizePath`, Repo ID'lerindeki `__`'den `/` Enjekte Edebilir
 - **Dosya:** `internal/modelstore/modelstore.go:345`
@@ -579,11 +561,8 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Risk:** Gereksiz HTTP isteği — uygulama hayatı boyunca her 5 saniyede bir.
 - **Kategori:** Performans
 
-### M45. Flutter `connectionStatusProvider` 30 Saniyede Bir Sonsuz Polling
-- **Dosya:** `frontend/lib/providers/chat_provider.dart:464-474`
-- **Detay:** `StreamProvider<bool>` tüm uygulama ömrü boyunca her 30 saniyede bir polling yapan `while(true)` döngüsü çalıştırır. `autoDispose` kullanılmamış. Sidebar kapalıyken bile çalışır.
-- **Risk:** Uygulama hayatı boyunca durmayan ağ istekleri.
-- **Kategori:** Performans (sonsuz polling)
+### ~~M45. Flutter `connectionStatusProvider` 30 Saniyede Bir Sonsuz Polling~~ ✅ DÜZELTİLDİ (H08 ile aynı)
+- Yukarıdaki H08'e bakın — `connectionStatusProvider` artık `StreamProvider.autoDispose`.
 
 ---
 
@@ -831,9 +810,10 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 
 ---
 
-> **Son güncelleme:** 2026-06-14
+> **Son güncelleme:** 2026-07-04 (v3.1.1 açık betası öncesi güncel koda göre yeniden doğrulandı)
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, app_skill.go, tüm internal/ paketleri) + Flutter frontend + mobil frontend + yeni skill sistemi + orchestra sistemi
-> **Açık hatalar:** 51 (🔴2, 🟠18, 🔵31, ⚪17)
+> **2026-07-04 geçişi:** Tüm 🔴 Kritik ve 🟠 Yüksek maddeler, artı M09-M12/M45, güncel koda göre tek tek kontrol edildi. Daha önce açık görünen 16 madde (K01, K25, K26, H01, H02, H03, H08, H09, H10, H21, H23, H24, H25, H27, M10, M11, M12, M45 — bir Yüksek maddesi Orta'daki kopyasıyla birleşik sayıldı) zaten düzeltilmiş çıktı ve ✅ Düzeltildi olarak işaretlendi. İki madde (H22, H26) kısmen düzeltilip yerinde düşürüldü (Yüksek → Orta/Düşük). M13-M44 ve tüm ⚪ Düşük / ⚫ Bilgi maddeleri bu geçişte tekrar doğrulanmadı — aynı bayatlama riskini taşıyor olabilirler, aşağıdaki sayılar tavan değil taban olarak okunmalı. **Not:** Bu TR denetimi EN (`docs/KNOWN_ISSUES.md`) dosyasından daha fazla ve farklı numaralandırılmış madde içeriyor (örn. K01/K04, H13/H15/H18/H19/H20 gibi TR'ye özgü maddeler) — iki dosya birebir çeviri değil, bağımsız genişlemiş.
+> **Açık hatalar:** 🔴1 (K04), 🟠10 doğrulanmış (H04, H05, H06, H11, H12, H13, H15, H18, H19, H20), 🔵~27 (H22 düşürmesi dahil, tam doğrulanmadı), ⚪~18 (H26 düşürmesi dahil, tam doğrulanmadı)
 > **Gözlemler:** 24
-> **Düzeltilen:** 43
+> **Düzeltilen:** 59 (43 önceki + 16 bu geçişte doğrulanan)
 > **Bulunan toplam sorun sayısı:** 118+

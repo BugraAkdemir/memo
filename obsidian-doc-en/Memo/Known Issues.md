@@ -1,8 +1,8 @@
 # Known Issues & Technical Risks
 
-> Updated: June 2026 — matches `AGENTS.md` and `docs/KNOWN_ISSUES.md` v3.1.0-polish state.
+> Updated: July 4, 2026 — re-verified against current source ahead of the v3.1.1 open beta.
 
-**Summary**: 14 known issues documented, 10 fixed, 4 remaining. Most are design-level technical debt, not bugs.
+**Summary**: 14 known issues documented, 11 fixed (one this pass: polling leaks), 3 remaining. Most are design-level technical debt, not bugs. See `docs/KNOWN_ISSUES.md` and `docs/tr/BILINEN_SORUNLAR.md` for the full itemized list with code references.
 
 ---
 
@@ -38,7 +38,7 @@
 
 - `model_store_screen.dart` is 2469 lines — should be split into components
 - Widespread missing `const` constructors (lint warnings)
-- `connectionStatusProvider` and download progress polling run forever (no auto-stop)
+- ~~`connectionStatusProvider` and download progress polling run forever~~ ✅ fixed — both are now `autoDispose` with adaptive intervals
 
 **Recently fixed**: `settings_dialog.dart` was split from 5013 → 15 files. ✓
 

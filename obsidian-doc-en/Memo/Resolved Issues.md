@@ -1,6 +1,6 @@
 # Resolved Issues
 
-61 documented fixes from the full codebase audit. Full detail: `docs/RESOLVED_ISSUES.md`.
+61 documented fixes from the full codebase audit (v3.0.0 era, frozen record). Full detail: `docs/RESOLVED_ISSUES.md`. For fixes made during the v3.1.x line (including everything resolved ahead of the v3.1.1 open beta), see the "✅ Fixed Bugs" section in [[Known Issues]] / `docs/KNOWN_ISSUES.md` — that's the actively maintained log now.
 
 ---
 

@@ -144,7 +144,7 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 ### Provider / Agent / Orchestra
 - **~~`provider.Priority` field exists but unused by router~~** → fixed: router sorts by priority, frontend dialog now exposes priority field.
 - Orchestra bypasses `provider.Router` — creates providers directly, but now has fallback chain via `tryFallbackProviders`.
-- ~~Agent pipeline has no timeout per tool call~~ → fixed: 60s `DefaultToolTimeout`.
+- ~~Agent pipeline has no timeout per tool call~~ → fixed: pipeline grants 120s per tool call. 2026-07-04: `tools/command.go`/`tools/search.go` were silently truncating that budget to 60s via their own hard-coded `DefaultToolTimeout`; now they honor the caller's deadline and only fall back to 60s when none is set.
 - ~~**No test files for `orchestra/` package** (~800 lines untested)~~ → 48 tests passing with `-race`. `provider/`, `agent/`, and `orchestra/` all have tests.
 - **Agent frontend UI (permission dialog, tool call cards, activity panel, agent screen) — fully implemented.**
 
@@ -153,6 +153,10 @@ CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/P
 - `model_store_screen.dart` is 2469 lines — should be split into components.
 - ~~Widespread missing `const` constructors.~~ → fixed: 116 auto-fixes via `dart fix`.
 - ~~connectionStatusProvider polling runs forever~~ → still autoDispose but polling loop is acceptable for status checks.
+- ~~Chat SSE client timeout (60s) shorter than backend's own generation budget (300s), no server heartbeat~~ → fixed 2026-07-04: `chat_provider.dart` now uses 300s for both regular and agent chat streams (and file-send stream), matching `llm.go`'s `context.WithTimeout(ctx, 300*time.Second)`. Previously a slow first-token (long prompt, weak/CPU hardware) past 60s aborted an in-progress, otherwise-valid generation.
+
+### Build / Dependencies
+- 2026-07-04: `frontend/pubspec.yaml` had accumulated reactive `dependency_overrides` (`jni: 0.13.0`, `path_provider_android: 2.3.1`, `jni_flutter: 1.0.1`) added to work around what was actually a **corrupted pub-cache** (`jni-1.0.0` and `path_provider_windows-2.3.0` had 0-byte/partial downloads), not a real version conflict. Removed the overrides and re-fetched the packages; Linux build is clean again. Worth remembering if a similarly "unexplained" plugin build failure shows up again — check the pub-cache contents before reaching for a version pin.
 
 ### Flutter / Mobile
 - Mobile API client (`mobile/lib/core/api_client.dart`) missing most backend endpoints.
@@ -228,4 +232,4 @@ Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
 
 ## Version
 
-**v3.1.0-beta** (Go 1.26, Flutter 3.10+, flutter_riverpod 2.4, dio 5.4, flutter_markdown 0.6, mattn/go-sqlite3, sqlite-vec)
+**v3.1.1** (open beta, 2026-07-04) (Go 1.26, Flutter 3.10+, flutter_riverpod 2.4, dio 5.4, flutter_markdown 0.6, mattn/go-sqlite3, sqlite-vec)

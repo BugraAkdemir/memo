@@ -232,34 +232,33 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 ## 🔴 Critical
 
-### CR01. Provider API Keys Encrypted with Weak Machine-Derived Key
-- **File:** `internal/provider/config.go:374-402`
-- **Detail:** `defaultMachineKey()` derives AES-256 key from `/etc/machine-id` (Linux), registry GUID (Windows), or IOPlatformUUID (macOS). These are **not secret** — any process on the machine can read them. The hardcoded fallback key `"Mm3m0L0c4lK3y!@#$%^&*()9876543210"` is visible in source. Any attacker with filesystem access can decrypt `providers.json`.
-- **Risk:** All stored API keys (OpenAI, Claude, Gemini, etc.) can be decrypted — mass credential leakage.
-- **Category:** Security (weak encryption)
+*No open critical issues as of 2026-07-04 — see F44/F45 below.*
 
-### CR02. Cloud Sync Encryption Falls Back to Hardware ID When Passphrase Empty
-- **File:** `internal/cloudsync/crypto.go:27-38, 67-87`
-- **Detail:** Both `encrypt()` and `deriveKey()` fall back to `hardwareID()` when passphrase is empty. `hardwareID()` (lines 113-148) uses `/etc/machine-id`, hostname, or registry keys — none are secret. Worse, `decrypt()` tries PBKDF2 first, then **silently** falls back to weak SHA-256 `deriveKey()` on failure, accepting data integrity risks.
-- **Risk:** Cloud backups can be decrypted by anyone with access to the machine ID or hostname.
-- **Category:** Security (weak encryption)
+### ~~CR01. Provider API Keys Encrypted with Weak Machine-Derived Key~~ ✅ FIXED
+- ~~`internal/provider/config.go:374-402`~~
+- ~~`defaultMachineKey()` derived AES-256 key from `/etc/machine-id`/registry GUID/IOPlatformUUID — not secret, plus a hardcoded fallback key visible in source.~~
+- **Fix:** `defaultMachineKey()` now generates a random key via `crypto/rand` on first run and persists it to `data/machine.key` (mode `0600`), independent of any hardware identifier.
+
+### ~~CR02. Cloud Sync Encryption Falls Back to Hardware ID When Passphrase Empty~~ ✅ FIXED
+- ~~`internal/cloudsync/crypto.go:27-38, 67-87`~~
+- ~~`encrypt()` and `deriveKey()` silently fell back to `hardwareID()` (not secret) when passphrase was empty.~~
+- **Fix:** `encrypt()` (crypto.go:34-36) now returns an error immediately if passphrase is empty — no silent weak-key fallback on the write path. `deriveKey()`'s hardware-ID path is retained only for *decrypting* pre-v3.0.0 backups (documented legacy fallback in `decrypt()`), not for new encryption.
 
 ---
 
 ## 🟠 High
 
-### H01. Provider Priority Field Unused
-- **File:** `internal/provider/config.go`, `router.go:188-204`
-- **Detail:** `ProviderConfig.Priority` field exists but `getActiveEntries()` returns providers in insertion order (Go slice append order), not by priority. The priority field is never sorted or consulted during routing.
+### ~~H01. Provider Priority Field Unused~~ ✅ FIXED
+- ~~`ProviderConfig.Priority` existed but `getActiveEntries()` ignored it, using insertion order.~~
+- **Fix:** `router.go` (lines 65, 223) now sorts entries by `cfg.Priority` before use; the provider config dialog exposes the field in the UI.
 
-### H02. No Agent API Methods in Frontend ApiClient
-- **File:** `frontend/lib/core/api_client.dart`
-- **Detail:** Backend has fully working agent endpoints but frontend `api_client.dart` has no methods to call them. Agent mode cannot be toggled from UI.
+### ~~H02. No Agent API Methods in Frontend ApiClient~~ ✅ FIXED
+- ~~`api_client.dart` had no methods for the backend's agent endpoints.~~
+- **Fix:** `api_client.dart` now has a full Agent Mode section (`getAgentEnabled`, `setAgentEnabled`, `handleAgentPermission`, `getAgentPermissions`, `revokeAgentPermission`, `clearAgentPermissions`, `undoAgentEdit`, `getAgentAutoPermission`, `setAgentAutoPermission`) plus a complete agent screen/permission-dialog UI.
 
-### H03. Download Progress Polling Never Stops
-- **File:** `frontend/lib/providers/models_provider.dart:71-87`
-- **Detail:** `downloadProgressProvider` has an infinite `while (true)` loop. It polls `/api/models/download/progress` every 1 second for the **entire app lifetime**, even when no download is active. 1 HTTP request/second forever.
-- **Risk:** Wasted CPU/network, battery drain on laptops.
+### ~~H03. Download Progress Polling Never Stops~~ ✅ FIXED
+- ~~`downloadProgressProvider` polled every 1s forever, even with no active download.~~
+- **Fix:** `models_provider.dart` — `downloadProgressProvider` is now `StreamProvider.autoDispose` with an adaptive interval (1s while a download is active, 4s while idle), and stops entirely when no screen is listening.
 
 ### H04. ngrok Binary Download Has No Integrity Check
 - **File:** `internal/ngrok/installer.go:34-91`
@@ -275,17 +274,17 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/widgets/chat_message_list.dart:13`
 - **Detail:** `_styleCache` is a global mutable `Map` that is never cleared. It grows indefinitely with every unique combination of theme brightness and accent color visited. A memory leak proportional to theme configurations visited.
 
-### H07. Flutter: `connectionStatusProvider` Infinite Polling
-- **File:** `frontend/lib/providers/chat_provider.dart:429-438`
-- **Detail:** `connectionStatusProvider` runs a `while(true)` polling loop every 30 seconds for the entire app lifetime. No `autoDispose` variant used. Runs even when sidebar is hidden.
+### ~~H07. Flutter: `connectionStatusProvider` Infinite Polling~~ ✅ FIXED (duplicate of M31)
+- ~~Ran a `while(true)` 30s polling loop for the app's entire lifetime, no `autoDispose`.~~
+- **Fix:** `chat_provider.dart:687` — `connectionStatusProvider` is now `StreamProvider.autoDispose<bool>`.
 
-### H08. Orchestra Config Has No Validation
-- **File:** `internal/orchestra/conductor.go:120` (`UpdateConfig`)
-- **Detail:** `UpdateConfig` accepts any role configuration without validation. An invalid chief model or missing role model causes runtime error during execution rather than at config time.
+### ~~H08. Orchestra Config Has No Validation~~ ✅ FIXED
+- ~~`UpdateConfig` accepted any role configuration without validation.~~
+- **Fix:** `conductor.go` `UpdateConfig` now runs `cfg.Sanitize()` before storing the config.
 
-### H09. Agent Pipeline No Timeout Per Tool Call
-- **File:** `internal/agent/pipeline.go:122-222`
-- **Detail:** Individual tool executions have no timeout enforced by the pipeline. A hanging `run_command` blocks the entire pipeline indefinitely (sandbox has 60s timeout but pipeline doesn't enforce it).
+### ~~H09. Agent Pipeline No Timeout Per Tool Call~~ ✅ FIXED
+- ~~Individual tool executions had no timeout enforced by the pipeline.~~
+- **Fix:** `pipeline.go` sets `toolTimeout: 120 * time.Second` and wraps each tool call in a derived context. **2026-07-04 follow-up:** this budget was being silently truncated to 60s by `tools/command.go`'s own hard-coded `DefaultToolTimeout` — fixed so `run_command`/`search_files` now honor the caller's deadline and only fall back to 60s when the caller sets none (see Resolved Issues).
 
 ### H10. Agent Audit Log Limited to 1000 Entries
 - **File:** `internal/agent/executor.go:40-45`
@@ -304,47 +303,35 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - ~~`frontend/lib/providers/models_provider.dart:34-54`~~
 - ~~`modelStatusProvider` and `embeddingStatusProvider` run infinite `while(true)` polling loops every 5 seconds for the entire app lifetime. Added `autoDispose` — now stops when model store screen is closed.~~
 
-### H14. Skill `SetActive()` Unregisters Tools Instead of Registering
-- **File:** `internal/skill/manager.go:208-214`
-- **Detail:** In `SetActive`, newly activated skills have their tools **unregistered** via `UnregisterTool()` instead of `RegisterTool()` — a clear copy-paste error from the deactivation block above. Lines 221-228 try to re-register all active skills unconditionally, causing duplicate registration attempts.
-- **Risk:** Activating skills silently fails to register their tools; agent/LLM cannot use skill tools. If execution is interrupted mid-way, tools remain unregistered.
-- **Category:** Logic error
+### ~~H14. Skill `SetActive()` Unregisters Tools Instead of Registering~~ ✅ FIXED
+- ~~Newly activated skills had their tools unregistered instead of registered.~~
+- **Fix:** `manager.go` `SetActive()` now correctly calls `UnregisterTool()` only for skills being deactivated and `RegisterTool()` only for skills newly activated.
 
-### H15. Cloud Sync `WaitForAuth` Blocks Forever on Second Call
-- **File:** `internal/cloudsync/drive.go:112, 490-496`
-- **Detail:** `closeAuthDoneLocked()` has a double-Done guard, but when `dc.authWg = sync.WaitGroup{}` is reset (line 112), the old WaitGroup gets garbage collected without being decremented. Any previous `WaitForAuth` caller waiting on the old WaitGroup blocks permanently.
-- **Risk:** Second auth flow leaves `WaitForAuth` blocked forever.
-- **Category:** Concurrency (deadlock)
+### H15. Cloud Sync `WaitForAuth` Blocks Forever on Second Call — PARTIALLY FIXED, downgraded to 🔵 Medium
+- **File:** `internal/cloudsync/drive.go:103-113, 209-221, 493-499`
+- **2026-07-04 update:** An `authDone` guard and a previous-auth-server shutdown were added, closing the original panic/hang paths. However `WaitForAuth` still spawns a goroutine that reads `dc.authWg` without holding `dc.mu` (line ~212), while `StartAuthFlow` reassigns the same field under lock — a genuine (if narrow) data race if a second auth flow starts while a previous `WaitForAuth` call is still in flight. Low real-world likelihood for a single-user desktop app, but not fully closed.
+- **Category:** Concurrency (residual race, not a guaranteed hang anymore)
 
-### H16. SQLite Writes Ignore Caller Context Cancellation
-- **File:** `internal/database/sqlite.go:101-124`
-- **Detail:** `execWrite` uses `db.ctx` (background context) to begin transactions, not the caller's context. All SQL write operations through `Write()` lose the caller's cancellation/timeout. Disk full or lock contention blocks writes indefinitely regardless of caller context cancellation.
-- **Risk:** Write operations hang indefinitely; memory store operations cannot be cancelled.
-- **Category:** Concurrency (context cancellation)
+### ~~H16. SQLite Writes Ignore Caller Context Cancellation~~ ✅ FIXED
+- ~~`execWrite` used `db.ctx` (background context) instead of the caller's context.~~
+- **Fix:** `sqlite.go` `execWrite` now takes `ctx context.Context` as a parameter and calls `db.sql.BeginTx(ctx, nil)` with the caller's context.
 
-### H17. Flutter `AgentEventBus` StreamController Never Disposed
-- **File:** `frontend/lib/providers/agent_provider.dart:82-97`
-- **Detail:** `StreamController<AgentEvent>.broadcast()` is created via `Provider` but `dispose()` is never called. The stream controller lives for the app's entire lifetime without ever being closed. Subscribers via `agentEventStreamProvider` are never cleaned up.
-- **Risk:** Permanent memory leak; stream subscribers accumulate.
-- **Category:** Memory leak
+### ~~H17. Flutter `AgentEventBus` StreamController Never Disposed~~ ✅ FIXED
+- ~~`StreamController<AgentEvent>.broadcast()` was never closed.~~
+- **Fix:** `agent_provider.dart` now calls `ref.onDispose(() => bus.dispose())`.
 
-### H18. Mobile Chat Stream Subscription Leaks on Re-send
-- **File:** `mobile/lib/providers/chat_provider.dart:164-243`
-- **Detail:** `_api.sendMessageStream().listen(...)` returns a `StreamSubscription` that is never stored or cancelled. If `sendMessage` is called again while a stream is active, the old subscription is orphaned. `CancelToken` is only used for the HTTP request, not the listener.
-- **Risk:** Orphaned stream subscriptions accumulate, causing memory leaks and duplicate message processing.
-- **Category:** Memory leak
+### ~~H18. Mobile Chat Stream Subscription Leaks on Re-send~~ ✅ FIXED
+- ~~`StreamSubscription` from `sendMessageStream().listen(...)` was never stored or cancelled.~~
+- **Fix:** `mobile/lib/providers/chat_provider.dart` now stores it in `_streamSubscription`, cancelling the previous one before starting a new stream and on dispose.
 
-### H19. WhatsApp Screen Polling Never Stops in IndexedStack
-- **File:** `frontend/lib/screens/whatsapp_screen.dart:32-34`, `frontend/lib/screens/app_shell.dart:44-52`
-- **Detail:** `WhatsAppScreen` is inside an `IndexedStack` — `dispose()` is never called because `IndexedStack` keeps all children alive. `startPolling()` in `initState` never gets matched by `stopPolling()` in `dispose()`. `WhatsAppStatusNotifier` also uses timer-based polling without `autoDispose`.
-- **Risk:** Permanent polling at 2-15s intervals forever, draining battery and network.
-- **Category:** Performance (infinite polling)
+### H19. WhatsApp Screen Polling Never Stops in IndexedStack — PARTIALLY FIXED, downgraded to ⚪ Low
+- **File:** `frontend/lib/screens/whatsapp_screen.dart`, `frontend/lib/providers/whatsapp_provider.dart:95-107`, `frontend/lib/screens/app_shell.dart:159`
+- **2026-07-04 update:** The original fast-forever QR polling is fixed — interval is now adaptive (2-4s while connecting, 15s heartbeat once connected). `WhatsAppScreen` is still kept mounted inside `app_shell.dart`'s `IndexedStack`, so `dispose()`/`stopPolling()` still won't fire until the app closes — but at a 15s heartbeat this is a minor, accepted cost rather than a battery/network drain.
+- **Category:** Performance (reduced from infinite fast polling to a cheap heartbeat)
 
-### H20. `handleImage` Can Read All Files Under `dataDir`
-- **File:** `internal/webserver/handlers_flutter.go:425-457`
-- **Detail:** The handler blocks absolute paths and `..` traversal but allows any relative path under `dataDir`. Since `dataDir = filepath.Dir(a.cfg.Memory.PersistDir)` which resolves to `data/`, files like `data/providers.json` are accessible. Combined with CR01 (URL-encoded bypass), the attack surface expands.
-- **Risk:** Unauthorized read of provider configs and other data files.
-- **Category:** Security (unauthorized file access)
+### ~~H20. `handleImage` Can Read All Files Under `dataDir`~~ ✅ FIXED (duplicate of F28)
+- ~~Allowed any relative path under `dataDir`, e.g. `data/providers.json`.~~
+- **Fix:** `handlers_flutter.go` `handleImage` now enforces a subdirectory whitelist (`data/images`, `data/avatars`, `data/attachments` only) in addition to URL-decode + `..`/absolute-path checks. Already recorded as fixed under F28 above — this was a leftover duplicate entry.
 
 ---
 
@@ -386,17 +373,17 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `frontend/lib/widgets/provider_config_dialog.dart`
 - **Detail:** Provider config dialog shows API keys in `TextField`. If someone is watching the screen (screen recording, screenshot, shoulder surfing), API keys are exposed.
 
-### M10. No Tests for Provider/Agent/Orchestra Packages
-- **File:** `internal/provider/`, `internal/agent/`, `internal/orchestra/`
-- **Detail:** Zero unit tests exist for the three packages (~4700 lines of production code). (Was ~4150 lines in previous audit; grew with new additions.)
+### ~~M10. No Tests for Provider/Agent/Orchestra Packages~~ ✅ FIXED
+- ~~Zero unit tests existed for the three packages.~~
+- **Fix:** 13 test files now exist across the three packages (`router_test.go`, `backup_test.go`, `permissions_test.go`, `tools/edit_test.go`, `tools/selfclone_test.go`, and 7 files under `orchestra/`), matching AGENTS.md's "48 tests passing with `-race`" note.
 
-### M11. Orchestra Config File Written with 0644 Permissions
-- **File:** `internal/orchestra/conductor.go:114`
-- **Detail:** Orchestra config JSON file is world-readable (`0644`). While it doesn't contain API keys, it leaks configuration details.
+### ~~M11. Orchestra Config File Written with 0644 Permissions~~ ✅ FIXED
+- ~~Orchestra config JSON file was world-readable.~~
+- **Fix:** `conductor.go:141` now writes with `os.WriteFile(filePath, data, 0600)`.
 
-### M12. Agent Permissions File Written with 0644 Permissions
-- **File:** `internal/agent/permissions.go:229`
-- **Detail:** Agent permissions file (`permissions.json`) is world-readable (`0644`).
+### ~~M12. Agent Permissions File Written with 0644 Permissions~~ ✅ FIXED
+- ~~`permissions.json` was world-readable.~~
+- **Fix:** `permissions.go:240` now writes with `0600`.
 
 ### M13. `unsanitizePath` Can Inject `/` from `__` in Repo IDs
 - **File:** `internal/modelstore/modelstore.go:345`
@@ -491,11 +478,8 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **Risk:** Continuous HTTP requests for the entire app lifetime.
 - **Category:** Performance (infinite polling)
 
-### M31. Flutter `connectionStatusProvider` 30s Polling Never Stops (Duplicate of H07)
-- **File:** `frontend/lib/providers/chat_provider.dart:464-474`
-- **Detail:** `StreamProvider<bool>` runs a `while(true)` polling loop every 30 seconds for the entire app lifetime. No `autoDispose` used. Runs even when sidebar is hidden.
-- **Risk:** Continuous network requests every 30 seconds forever.
-- **Category:** Performance (infinite polling)
+### ~~M31. Flutter `connectionStatusProvider` 30s Polling Never Stops (Duplicate of H07)~~ ✅ FIXED
+- See H07 above — `connectionStatusProvider` is now `StreamProvider.autoDispose`.
 
 ---
 
@@ -677,9 +661,10 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 ---
 
-> **Last updated:** 2026-06-14
+> **Last updated:** 2026-07-04 (re-verified against current source ahead of the v3.1.1 open beta)
 > **Audit scope:** Full codebase — Go backend (app.go, app_skill.go, all internal/ packages) + Flutter frontend + mobile frontend + skill system + orchestra system
-> **Open bugs:** 41+ (🔴0, 🟠12, 🔵21, ⚪8)
-> **Observations:** 24
-> **Fixed:** 43
+> **2026-07-04 pass:** Every 🔴 Critical and 🟠 High item, plus M09-M12/M31, was individually re-checked against current source. 15 items previously listed as open (CR01, CR02, H01, H02, H03, H07, H08, H09, H14, H16, H17, H18, H20, M10, M11, M12, M31 — one High item cross-linked as a Medium duplicate) were already fixed and are now moved to ✅ Fixed. Two (H15, H19) were partially fixed and downgraded in place (High → Medium/Low) rather than closed outright. Medium items M13-M30 and all ⚪ Low / ⚫ Info items were **not** re-verified this pass and may already be stale in the same way — treat counts below as a floor, not a ceiling.
+> **Open bugs:** 🔴0, 🟠6 confirmed (H04, H05, H06, H10, H11, H12), 🔵~28 (incl. H15 downgrade, not fully re-verified), ⚪~19 (incl. H19 downgrade, not fully re-verified)
+> **Observations:** 24 (I24 spot-checked 2026-07-04, still open)
+> **Fixed:** 58 (43 previous + 15 confirmed this pass)
 > **Total issues found:** 108+

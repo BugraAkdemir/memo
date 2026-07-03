@@ -645,7 +645,7 @@ class L10n {
 
     // Chat errors
     'error_agent_timeout': 'Ajan yanıt vermiyor (5dk zaman aşımı)',
-    'error_server_timeout': 'Sunucu yanıt vermiyor (60s zaman aşımı)',
+    'error_server_timeout': 'Sunucu yanıt vermiyor (5dk zaman aşımı)',
 
     // Version banner
     'version_new': 'Yeni sürüm: \${v}',
@@ -1346,7 +1346,7 @@ class L10n {
 
     // Chat errors
     'error_agent_timeout': 'Agent is not responding (5min timeout)',
-    'error_server_timeout': 'Server is not responding (60s timeout)',
+    'error_server_timeout': 'Server is not responding (5min timeout)',
 
     // Version banner
     'version_new': 'New version: \${v}',

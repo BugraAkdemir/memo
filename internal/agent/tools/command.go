@@ -132,10 +132,16 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 		return "", fmt.Errorf("command is blacklisted for safety: %s", pattern)
 	}
 
-	// Execution with proper context propagation from caller.
-	// Respect the caller's timeout/cancellation while enforcing a hard 60s cap.
-	execCtx, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
-	defer cancel()
+	// Execution with proper context propagation from caller. Honor the
+	// caller's own deadline (e.g. the pipeline's 120s per-tool budget) instead
+	// of silently truncating it to DefaultToolTimeout; only fall back to
+	// DefaultToolTimeout when the caller passed no deadline at all.
+	execCtx := ctx
+	var cancel context.CancelFunc
+	if _, ok := ctx.Deadline(); !ok {
+		execCtx, cancel = context.WithTimeout(ctx, DefaultToolTimeout)
+		defer cancel()
+	}
 
 	var cmd *exec.Cmd
 	homeDir, _ := os.UserHomeDir()
@@ -191,8 +197,8 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 
 	var result strings.Builder
 	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			result.WriteString(fmt.Sprintf("Command timed out after 60s\n"))
+		if execCtx.Err() == context.DeadlineExceeded {
+			result.WriteString("Command timed out\n")
 		} else {
 			result.WriteString(fmt.Sprintf("Command failed with error: %v\n", err))
 		}

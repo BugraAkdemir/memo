@@ -403,12 +403,13 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
 
-        // Agent mode may run long-running tools (builds, installs, etc.), so give
-        // it 5 minutes between chunks. Regular chat keeps the 60s timeout.
+        // Backend budgets up to 5 minutes for a single generation (local model
+        // prefill on slow/CPU hardware, or a long agent tool run), and sends no
+        // heartbeat while waiting for the first chunk. A shorter client-side
+        // timeout here would abort — and lose — a response the backend was
+        // still legitimately producing, so both modes must match that budget.
         final isAgentMode = ref.read(agentEnabledProvider);
-        final streamTimeout = isAgentMode
-            ? const Duration(seconds: 300)
-            : const Duration(seconds: 60);
+        const streamTimeout = Duration(seconds: 300);
 
         await for (final chunk in stream.timeout(
           streamTimeout,
@@ -583,8 +584,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
 
+        // Matches the backend's 300s generation budget — see sendMessage's
+        // stream.timeout above for why this can't be shorter.
         await for (final chunk in stream.timeout(
-          const Duration(seconds: 60),
+          const Duration(seconds: 300),
           onTimeout: (sink) => sink.addError(
             Exception(L10n.t('error_server_timeout')),
           ),

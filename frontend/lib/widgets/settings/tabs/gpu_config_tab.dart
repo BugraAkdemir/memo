@@ -534,9 +534,9 @@ class ParamIntInputState extends State<ParamIntInput> {
   }
 
   @override
-  void didUpdateWidget(ParamIntInput old) {
-    super.didUpdateWidget(old);
-    if (widget.value != old.value && !_isEditing) {
+  void didUpdateWidget(ParamIntInput oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (widget.value != oldWidget.value && !_isEditing) {
       _controller.text = widget.value == 0 && widget.min == 0
           ? '0'
           : widget.value.toString();

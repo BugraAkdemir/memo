@@ -27,8 +27,14 @@ func SearchFiles(ctx context.Context, argsJSON json.RawMessage, basePath string,
 		return "", err
 	}
 
-	searchCtx, cancel := context.WithTimeout(ctx, DefaultToolTimeout)
-	defer cancel()
+	// Honor the caller's own deadline (e.g. the pipeline's 120s per-tool
+	// budget) instead of silently truncating it to DefaultToolTimeout.
+	searchCtx := ctx
+	var cancel context.CancelFunc
+	if _, ok := ctx.Deadline(); !ok {
+		searchCtx, cancel = context.WithTimeout(ctx, DefaultToolTimeout)
+		defer cancel()
+	}
 
 	var result strings.Builder
 	count := 0

@@ -3,13 +3,13 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/theme.dart';
 
-class _PromptTemplate {
+class PromptTemplate {
   final String key;
   final String icon;
   final String label;
   final String text;
 
-  const _PromptTemplate({
+  const PromptTemplate({
     required this.key,
     required this.icon,
     required this.label,
@@ -17,13 +17,13 @@ class _PromptTemplate {
   });
 }
 
-class _PromptCommand {
+class PromptCommand {
   final String key;
   final String icon;
   final String label;
   final String subtitle;
 
-  const _PromptCommand({
+  const PromptCommand({
     required this.key,
     required this.icon,
     required this.label,
@@ -35,8 +35,8 @@ enum ItemType { template, command }
 
 class PopupItem {
   final ItemType type;
-  final _PromptTemplate? template;
-  final _PromptCommand? command;
+  final PromptTemplate? template;
+  final PromptCommand? command;
 
   const PopupItem.template(this.template) : type = ItemType.template, command = null;
   const PopupItem.command(this.command) : type = ItemType.command, template = null;
@@ -48,68 +48,68 @@ class PopupItem {
 }
 
 const List<PopupItem> templates = [
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/code',
     icon: 'lib/icon/slash/code.svg',
     label: 'Kod Review',
     text:
         'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/explain',
     icon: 'lib/icon/slash/lightbulb.svg',
     label: 'Açıkla',
     text: 'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/fix',
     icon: 'lib/icon/slash/wrench.svg',
     label: 'Hata Düzelt',
     text: 'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/plan',
     icon: 'lib/icon/slash/list-checks.svg',
     label: 'Plan Yap',
     text: 'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/summary',
     icon: 'lib/icon/slash/article.svg',
     label: 'Özetle',
     text: 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/compare',
     icon: 'lib/icon/slash/arrows-left-right.svg',
     label: 'Karşılaştır',
     text: 'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/brainstorm',
     icon: 'lib/icon/slash/brain.svg',
     label: 'Beyin Fırtınası',
     text: 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
   )),
-  PopupItem.template(_PromptTemplate(
+  PopupItem.template(PromptTemplate(
     key: '/translate',
     icon: 'lib/icon/slash/translate.svg',
     label: 'Çevir (EN->TR)',
     text: 'Aşağıdaki metni Türkçeye çevir:\n\n',
   )),
-  PopupItem.command(_PromptCommand(
+  PopupItem.command(PromptCommand(
     key: '/model',
     icon: 'lib/icon/slash/cpu.svg',
     label: 'Model Değiştir',
     subtitle: 'Local / API arasında geçiş',
   )),
-  PopupItem.command(_PromptCommand(
+  PopupItem.command(PromptCommand(
     key: '/orchestra',
     icon: 'lib/icon/slash/music-notes.svg',
     label: 'Orchestra Mode',
     subtitle: 'Çoklu model orkestrasyonu',
   )),
-  PopupItem.command(_PromptCommand(
+  PopupItem.command(PromptCommand(
     key: '/skill',
     icon: 'lib/icon/slash/puzzle-piece.svg',
     label: 'Skill Yönetimi',

@@ -43,7 +43,6 @@ dependencies:
   path: any
 dependency_overrides:
   record_linux: ^1.0.0
-  jni: ^0.13.0
 
 dev_dependencies:
   flutter_test:

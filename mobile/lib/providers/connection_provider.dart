@@ -175,6 +175,36 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
     }
   }
 
+  /// Scans the local network for a running Memo backend, then asks it for
+  /// its ngrok remote-access status. Lets a phone on the same Wi-Fi as the
+  /// desktop grab the current ngrok URL/token without copy-pasting it.
+  /// Returns null if no backend is found or it has no active ngrok tunnel.
+  Future<RemoteAccessStatus?> discoverNgrokStatus() async {
+    if (state.discovering) return null;
+    state = state.copyWith(discovering: true, error: null);
+    try {
+      final lanUrl = await _scanLocalNetwork();
+      if (lanUrl == null) return null;
+
+      final probeDio = Dio(BaseOptions(
+        baseUrl: lanUrl,
+        connectTimeout: const Duration(seconds: 4),
+        receiveTimeout: const Duration(seconds: 4),
+      ));
+      try {
+        final res = await probeDio.get('/api/remote-access');
+        final status = RemoteAccessStatus.fromJson(res.data as Map<String, dynamic>);
+        return status.ngrokUrl.isNotEmpty ? status : null;
+      } catch (_) {
+        return null;
+      } finally {
+        probeDio.close(force: true);
+      }
+    } finally {
+      if (mounted) state = state.copyWith(discovering: false);
+    }
+  }
+
   Future<String?> _scanLocalNetwork() async {
     List<NetworkInterface> interfaces;
     try {

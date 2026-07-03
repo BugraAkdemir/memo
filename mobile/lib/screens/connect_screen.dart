@@ -231,6 +231,35 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     }
   }
 
+  /// Scans the LAN for the desktop and pulls its ngrok URL/token, so you
+  /// don't have to copy them over by hand while on the same Wi-Fi.
+  Future<void> _scanForNgrok() async {
+    HapticFeedback.selectionClick();
+    FocusScope.of(context).unfocus();
+    final status =
+        await ref.read(connectionStateProvider.notifier).discoverNgrokStatus();
+    if (!mounted) return;
+    if (status != null) {
+      _urlCtrl.text = status.ngrokUrl;
+      _tokenCtrl.text = status.token;
+      HapticFeedback.lightImpact();
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Ngrok URL bulundu ve dolduruldu.'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'Ağda Memo bulunamadı ya da ngrok henüz aktif değil.'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
+  }
+
   Widget _tailscaleFields(ConnectionState state) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -318,7 +347,29 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
             ],
           ),
           const SizedBox(height: 16),
-          _fieldLabel('PUBLIC URL'),
+          Row(
+            children: [
+              Expanded(child: _fieldLabel('PUBLIC URL')),
+              if (state.discovering)
+                const SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent),
+                )
+              else
+                GestureDetector(
+                  onTap: _scanForNgrok,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.wifi_find_outlined, size: 13, color: MemoTheme.accent),
+                      const SizedBox(width: 4),
+                      Text('TARA', style: MemoTheme.mono(11, color: MemoTheme.accent, ls: 1.1)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
           const SizedBox(height: 8),
           TextField(
             controller: _urlCtrl,

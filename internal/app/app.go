@@ -484,82 +484,123 @@ func (a *App) StartWebServerHTTP(port int) error {
 	return nil
 }
 
+// shutdownTimeout bounds Shutdown()'s total worst case. If graceful cleanup
+// (a wedged subprocess, a stuck network call in a queued memory save, etc.)
+// doesn't finish in time, the process force-exits anyway — closing the app
+// must always actually close it, not hang around indefinitely.
+//
+// Both vars (not consts) so a test can shrink the timeout and swap in a
+// non-terminating hook to exercise the "timeout wins the race" branch
+// without actually killing the test binary.
+var (
+	shutdownTimeout   = 15 * time.Second
+	shutdownForceExit = os.Exit
+)
+
 // Shutdown cleans up all running background processes and servers.
 func (a *App) Shutdown(ctx context.Context) {
 	a.shutdownOnce.Do(func() {
-		logx.Info("Memo shutting down, cleaning up background processes...")
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			a.shutdownSync(ctx)
+		}()
 
-		// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
-		// reminders, WhatsApp intent loop, observer analysis, etc.)
-		if a.lifecycleCancel != nil {
-			a.lifecycleCancel()
+		select {
+		case <-done:
+			logx.Info("Memo shutdown completed")
+		case <-time.After(shutdownTimeout):
+			logx.Printf("WARN: shutdown exceeded %v, forcing exit", shutdownTimeout)
+			shutdownForceExit(1)
 		}
-
-		a.webMu.RLock()
-		webSrv := a.webServer
-		a.webMu.RUnlock()
-		if webSrv != nil {
-			if err := webSrv.Stop(); err != nil {
-				logx.Printf("webserver shutdown: %v", err)
-			}
-		}
-
-		// Now that all HTTP handlers (including streaming goroutines) have
-		// finished, it is safe to close memorySaveCh — no more sends will occur.
-		close(a.memorySaveCh)
-		a.memorySaveWg.Wait()
-
-		a.storeMu.Lock()
-		if a.store != nil {
-			if err := a.store.Close(); err != nil {
-				logx.Printf("memory store shutdown: %v", err)
-			}
-			a.store = nil
-		}
-		a.storeMu.Unlock()
-
-		a.whisperMu.RLock()
-		ws := a.whisperServer
-		a.whisperMu.RUnlock()
-		if ws != nil {
-			if err := ws.Stop(); err != nil {
-				logx.Printf("whisper shutdown: %v", err)
-			}
-		}
-		if a.llamaServer != nil {
-			if err := a.llamaServer.Stop(); err != nil {
-				logx.Printf("llama chat shutdown: %v", err)
-			}
-		}
-		if a.llamaEmbedServer != nil {
-			if err := a.llamaEmbedServer.Stop(); err != nil {
-				logx.Printf("llama embedding shutdown: %v", err)
-			}
-		}
-		if a.ngrokServer != nil {
-			a.ngrokServer.Stop()
-			a.ngrokServer = nil
-		}
-		if a.tailscaleTunnel != nil {
-			a.tailscaleTunnel.Stop()
-		}
-		if a.observerStore != nil {
-			if err := a.observerStore.Close(); err != nil {
-				logx.Printf("observer shutdown: %v", err)
-			}
-		}
-		if a.calendarStore != nil {
-			if err := a.calendarStore.Close(); err != nil {
-				logx.Printf("calendar shutdown: %v", err)
-			}
-		}
-		if a.mood != nil {
-			if err := a.mood.Close(); err != nil {
-				logx.Printf("mood shutdown: %v", err)
-			}
-		}
-		stopRecordingProcess()
 	})
+}
+
+// shutdownSync performs the actual cleanup. Split out from Shutdown so the
+// watchdog above can bound it without recursing into shutdownOnce.
+func (a *App) shutdownSync(ctx context.Context) {
+	logx.Info("Memo shutting down, cleaning up background processes...")
+
+	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
+	// reminders, WhatsApp intent loop, observer analysis, etc.)
+	if a.lifecycleCancel != nil {
+		a.lifecycleCancel()
+	}
+
+	a.webMu.RLock()
+	webSrv := a.webServer
+	a.webMu.RUnlock()
+	if webSrv != nil {
+		if err := webSrv.Stop(); err != nil {
+			logx.Printf("webserver shutdown: %v", err)
+		}
+	}
+
+	// Now that all HTTP handlers (including streaming goroutines) have
+	// finished, it is safe to close memorySaveCh — no more sends will occur.
+	close(a.memorySaveCh)
+	a.memorySaveWg.Wait()
+
+	a.storeMu.Lock()
+	if a.store != nil {
+		if err := a.store.Close(); err != nil {
+			logx.Printf("memory store shutdown: %v", err)
+		}
+		a.store = nil
+	}
+	a.storeMu.Unlock()
+
+	// These subsystems are independent of each other, so stop them
+	// concurrently instead of one after another. Each already has its own
+	// bounded graceful-then-force-kill window (e.g. llama.Server.Stop()'s
+	// 5s) — running them in parallel rather than sequentially is what keeps
+	// a normal shutdown fast even with several active at once.
+	var wg sync.WaitGroup
+	stop := func(name string, fn func() error) {
+		if fn == nil {
+			return
+		}
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := fn(); err != nil {
+				logx.Printf("%s shutdown: %v", name, err)
+			}
+		}()
+	}
+
+	a.whisperMu.RLock()
+	ws := a.whisperServer
+	a.whisperMu.RUnlock()
+	if ws != nil {
+		stop("whisper", ws.Stop)
+	}
+	if a.llamaServer != nil {
+		stop("llama chat", a.llamaServer.Stop)
+	}
+	if a.llamaEmbedServer != nil {
+		stop("llama embedding", a.llamaEmbedServer.Stop)
+	}
+	if a.ngrokServer != nil {
+		ngrokServer := a.ngrokServer
+		a.ngrokServer = nil
+		stop("ngrok", ngrokServer.Stop)
+	}
+	if a.tailscaleTunnel != nil {
+		stop("tailscale", func() error { a.tailscaleTunnel.Stop(); return nil })
+	}
+	if a.observerStore != nil {
+		stop("observer", a.observerStore.Close)
+	}
+	if a.calendarStore != nil {
+		stop("calendar", a.calendarStore.Close)
+	}
+	if a.mood != nil {
+		stop("mood", a.mood.Close)
+	}
+	wg.Wait()
+
+	stopRecordingProcess()
 }
 
 // getWebServer returns the current web server under read lock.

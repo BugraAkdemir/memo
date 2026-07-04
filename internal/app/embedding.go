@@ -12,7 +12,14 @@ import (
 	"memo/internal/llama"
 )
 
-// StartEmbeddingModel starts the dedicated embedding llama-server.
+// StartEmbeddingModel starts the dedicated embedding llama-server. The
+// freshly launched process occasionally dies within its first second or two
+// (observed as an unexplained external SIGTERM moments after a clean start —
+// not something Stop()/killPID/killByPort in this codebase ever triggers,
+// since those all mark the server as stopping first and this exit is always
+// logged as unexpected). A single retry recovers from that transient case
+// instead of leaving memory silently off until the user manually reruns
+// /embedding.
 func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	if a.modelStore != nil {
 		for _, m := range a.modelStore.ListLocalModels() {
@@ -31,15 +38,27 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 	if embPort <= 0 || embPort == a.cfg.Llama.Port {
 		embPort = 8082
 	}
-	logx.Printf("Starting embedding model on port %d", embPort)
 
-	if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, embPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
-		return err
-	}
+	const maxAttempts = 3
+	var lastErr error
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		logx.Printf("Starting embedding model on port %d (attempt %d/%d)", embPort, attempt, maxAttempts)
 
-	if err := a.llamaEmbedServer.WaitReady(120 * time.Second); err != nil {
-		a.llamaEmbedServer.Stop()
-		return fmt.Errorf("embedding model loaded but server failed to start: %w", err)
+		if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, embPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
+			return err
+		}
+
+		if err := a.llamaEmbedServer.WaitReady(120 * time.Second); err != nil {
+			a.llamaEmbedServer.Stop()
+			lastErr = err
+			if attempt < maxAttempts {
+				logx.Printf("embedding model failed to start (attempt %d/%d): %v — retrying", attempt, maxAttempts, err)
+				time.Sleep(1 * time.Second)
+				continue
+			}
+			return fmt.Errorf("embedding model loaded but server failed to start after %d attempts: %w", maxAttempts, lastErr)
+		}
+		break
 	}
 
 	embBaseURL := a.llamaEmbedServer.GetBaseURL()

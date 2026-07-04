@@ -53,7 +53,9 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 			return nil
 		}
 		if strings.HasPrefix(line, "/") {
-			s.handleCommand(line)
+			if s.handleCommand(line) {
+				return nil
+			}
 			fmt.Fprintln(out)
 			continue
 		}

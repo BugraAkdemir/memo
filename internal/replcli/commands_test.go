@@ -249,3 +249,43 @@ func TestHandleCommand_Unknown(t *testing.T) {
 		t.Errorf("expected unknown-command message, got:\n%s", out.String())
 	}
 }
+
+func TestHandleCommand_Exit_ReturnsFalseForNormalCommands(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, _ := newTestSession(t, srv)
+
+	if exit := s.handleCommand("/help"); exit {
+		t.Error("/help should never signal exit")
+	}
+}
+
+func TestHandleCommand_Gui_MissingBinary(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	// No memo_flutter binary sits next to the test binary, so this must
+	// report a clear error instead of panicking or hanging.
+	s.handleCommand("/gui")
+
+	if !strings.Contains(out.String(), "GUI bulunamadı") {
+		t.Errorf("expected GUI-not-found message, got:\n%s", out.String())
+	}
+}
+
+func TestHandleCommand_ModelDownload_NoResults(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/search", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]HFModelResult{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.handleCommand("/model-download nonexistent-model-xyz")
+
+	if !strings.Contains(out.String(), "Sonuç bulunamadı") {
+		t.Errorf("expected no-results message, got:\n%s", out.String())
+	}
+}

@@ -60,3 +60,25 @@ func banner() string {
 		dim("╰"+border+"╯"),
 	)
 }
+
+// progressBar renders a fixed-width text progress bar for percent (0-100).
+func progressBar(percent float64) string {
+	const width = 24
+	filled := min(int(percent/100*width), width)
+	filled = max(filled, 0)
+	return "[" + strings.Repeat("█", filled) + strings.Repeat("░", width-filled) + "]"
+}
+
+// humanSize formats a byte count as a human-readable size (e.g. "4.2 GiB").
+func humanSize(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for m := n / unit; m >= unit; m /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %ciB", float64(n)/float64(div), "KMGTPE"[exp])
+}

@@ -669,6 +669,4 @@ frontend/build/, frontend/.dart_tool/, mobile/build/, mobile/.dart_tool/ — Flu
 
 ---
 
-*Bu dosya 2026-07-04 tarihinde, dört paralel keşif ajanının tüm `internal/`,
-`frontend/lib/`, `mobile/lib/` ve kök dizin dosyalarını tarayıp özetlemesiyle
-oluşturuldu.*
+*

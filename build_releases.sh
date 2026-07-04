@@ -53,6 +53,11 @@ if [ "$OS" == "linux" ]; then
     echo "🔨 1. Go Backend Derleniyor..."
     go mod download
     go build -o "$STAGEDIR/memo-backend" .
+    # Same binary, shipped under the plain "memo" name too — this is what
+    # gets symlinked onto PATH by run_memo.sh so the terminal REPL is
+    # reachable by typing `memo`, independent of the desktop app launcher.
+    cp "$STAGEDIR/memo-backend" "$STAGEDIR/memo"
+    chmod +x "$STAGEDIR/memo"
 
     # 2. Build Frontend
     echo "🔨 2. Flutter Frontend Derleniyor..."
@@ -116,6 +121,33 @@ if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
     echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
     mkdir -p "$MEMO_HOME/binaries"
     cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
+fi
+
+# Install/refresh the `memo` CLI onto PATH. $DIR is a read-only mount for
+# AppImage (unmounted once this process exits), so the binary is copied into
+# the persistent $MEMO_HOME instead of symlinked straight to $DIR. Runs on
+# every launch (cheap overwrite) so the CLI always matches the installed app.
+if [ -f "$DIR/memo" ]; then
+    mkdir -p "$MEMO_HOME/bin"
+    cp -f "$DIR/memo" "$MEMO_HOME/bin/memo"
+    chmod +x "$MEMO_HOME/bin/memo"
+    mkdir -p "$HOME/.local/bin"
+    ln -sf "$MEMO_HOME/bin/memo" "$HOME/.local/bin/memo"
+
+    # Make sure ~/.local/bin is actually on PATH for new shells.
+    case ":$PATH:" in
+        *":$HOME/.local/bin:"*) ;; # already present
+        *)
+            for rc in "$HOME/.bashrc" "$HOME/.zshrc"; do
+                if [ -f "$rc" ] && ! grep -q '\.local/bin' "$rc" 2>/dev/null; then
+                    echo 'export PATH="$HOME/.local/bin:$PATH"' >> "$rc"
+                fi
+            done
+            if [ -d "$HOME/.config/fish" ] && ! grep -rq '\.local/bin' "$HOME/.config/fish/config.fish" 2>/dev/null; then
+                echo 'fish_add_path $HOME/.local/bin' >> "$HOME/.config/fish/config.fish"
+            fi
+            ;;
+    esac
 fi
 
 # Copy default config if not present
@@ -278,6 +310,9 @@ elif [ "$OS" == "windows" ]; then
 
     echo "🔨 1. Go Backend Derleniyor..."
     go build -o "$STAGEDIR/memo-backend.exe" .
+    # Same binary, shipped under the plain "memo.exe" name too — installer.iss
+    # adds {app} to PATH, so typing `memo` in cmd/PowerShell resolves to this.
+    cp "$STAGEDIR/memo-backend.exe" "$STAGEDIR/memo.exe"
 
     echo "🔨 2. Flutter Frontend Derleniyor..."
     cd frontend

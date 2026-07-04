@@ -71,6 +71,53 @@ Root: HKA; Subkey: "Software\Classes\{#MyAppAssocKey}\shell\open\command"; Value
 Root: HKA; Subkey: "Software\Classes\Applications\memo_flutter.exe\SupportedTypes"; ValueType: string; ValueName: ".memo"; ValueData: ""
 
 [Code]
+const
+  EnvironmentKey = 'SYSTEM\CurrentControlSet\Control\Session Manager\Environment';
+
+// Adds Path to the machine-wide PATH so `memo.exe` (shipped in {app}) is
+// reachable by typing `memo` in a new cmd/PowerShell window. Skips silently
+// if it's already there (repeat installs/upgrades).
+procedure EnvAddPath(Path: string);
+var
+  Paths: string;
+begin
+  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+    Paths := '';
+
+  if Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';') > 0 then
+    exit;
+
+  if (Length(Paths) > 0) and (Paths[Length(Paths)] <> ';') then
+    Paths := Paths + ';';
+  Paths := Paths + Path + ';';
+
+  if RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+    Log(Format('Added [%s] to PATH', [Path]))
+  else
+    Log(Format('Failed to add [%s] to PATH', [Path]));
+end;
+
+// Removes Path from the machine-wide PATH on uninstall.
+procedure EnvRemovePath(Path: string);
+var
+  Paths: string;
+  P: Integer;
+begin
+  if not RegQueryStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+    exit;
+
+  P := Pos(';' + Uppercase(Path) + ';', ';' + Uppercase(Paths) + ';');
+  if P = 0 then
+    exit;
+
+  Delete(Paths, P, Length(Path) + 1);
+
+  if RegWriteStringValue(HKEY_LOCAL_MACHINE, EnvironmentKey, 'Path', Paths) then
+    Log(Format('Removed [%s] from PATH', [Path]))
+  else
+    Log(Format('Failed to remove [%s] from PATH', [Path]));
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   BaseDir: String;
@@ -104,5 +151,14 @@ begin
     begin
       FileCopy(ExpandConstant('{app}') + '\config\config.yaml', ConfigDir + '\config.yaml', False);
     end;
+
+    // So typing `memo` in a terminal works without the user touching PATH.
+    EnvAddPath(ExpandConstant('{app}'));
   end;
+end;
+
+procedure CurUninstallStepChanged(CurUninstallStep: TUninstallStep);
+begin
+  if CurUninstallStep = usPostUninstall then
+    EnvRemovePath(ExpandConstant('{app}'));
 end;

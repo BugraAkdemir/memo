@@ -45,14 +45,22 @@ func newModelsTestServer(t *testing.T) (*httptest.Server, *[]map[string]any) {
 		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 	})
 	mux.HandleFunc("/api/providers", func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode([]ProviderConfig{})
+			return
+		}
+		body := map[string]any{}
 		json.NewDecoder(r.Body).Decode(&body)
 		body["_endpoint"] = "providers"
 		starts = append(starts, body)
 		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
 	})
 	mux.HandleFunc("/api/providers/active", func(w http.ResponseWriter, r *http.Request) {
-		var body map[string]any
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(map[string]string{"provider": ""})
+			return
+		}
+		body := map[string]any{}
 		json.NewDecoder(r.Body).Decode(&body)
 		body["_endpoint"] = "providers_active"
 		starts = append(starts, body)
@@ -107,7 +115,45 @@ func TestHandleCommand_Models(t *testing.T) {
 
 	got := out.String()
 	if !strings.Contains(got, "llama-chat.gguf") || !strings.Contains(got, "bge-embed.gguf") {
-		t.Errorf("models list missing entries, got:\n%s", got)
+		t.Errorf("models list missing local entries, got:\n%s", got)
+	}
+	if !strings.Contains(got, "Hiç sağlayıcı yapılandırılmamış") {
+		t.Errorf("expected empty-providers message, got:\n%s", got)
+	}
+}
+
+func TestHandleCommand_Models_ShowsProviders(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/local", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]LocalModel{})
+	})
+	mux.HandleFunc("/api/models/status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(ModelStatus{})
+	})
+	mux.HandleFunc("/api/models/embedding/status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(ModelStatus{})
+	})
+	mux.HandleFunc("/api/providers", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]ProviderConfig{
+			{Type: "openai", Name: "openai", Model: "gpt-4o", Enabled: true},
+			{Type: "custom", Name: "cli", Model: "llama-3", Enabled: true},
+		})
+	})
+	mux.HandleFunc("/api/providers/active", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"provider": "cli"})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.handleCommand("/models")
+
+	got := out.String()
+	if !strings.Contains(got, "openai") || !strings.Contains(got, "gpt-4o") {
+		t.Errorf("missing openai provider, got:\n%s", got)
+	}
+	if !strings.Contains(got, "cli") || !strings.Contains(got, "llama-3") {
+		t.Errorf("missing cli provider, got:\n%s", got)
 	}
 }
 

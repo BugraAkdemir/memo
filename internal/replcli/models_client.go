@@ -88,3 +88,25 @@ func (c *Client) UpdateProvider(ctx context.Context, cfg ProviderConfig) error {
 func (c *Client) SetActiveProvider(ctx context.Context, name string) error {
 	return c.doJSON(ctx, http.MethodPut, "/api/providers/active", map[string]string{"provider": name}, nil)
 }
+
+// ListProviders returns every configured external provider (OpenAI, Claude,
+// custom, etc.) — not just the local llama.cpp model /models/local covers.
+func (c *Client) ListProviders(ctx context.Context) ([]ProviderConfig, error) {
+	var providers []ProviderConfig
+	if err := c.doJSON(ctx, http.MethodGet, "/api/providers", nil, &providers); err != nil {
+		return nil, err
+	}
+	return providers, nil
+}
+
+// ActiveProviderName returns the name of the currently active external
+// provider, or "" if none is active (routing to the local model instead).
+func (c *Client) ActiveProviderName(ctx context.Context) (string, error) {
+	var resp struct {
+		Provider string `json:"provider"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/providers/active", nil, &resp); err != nil {
+		return "", err
+	}
+	return resp.Provider, nil
+}

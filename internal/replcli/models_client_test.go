@@ -148,3 +148,44 @@ func TestClient_SetActiveProvider(t *testing.T) {
 		t.Errorf("provider = %q, want cli", gotBody["provider"])
 	}
 }
+
+func TestClient_ListProviders(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/providers" || r.Method != http.MethodGet {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		json.NewEncoder(w).Encode([]ProviderConfig{
+			{Type: "openai", Name: "openai", Model: "gpt-4o", Enabled: true},
+			{Type: "custom", Name: "cli", BaseURL: "http://example.com", Model: "llama-3", Enabled: true},
+		})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	providers, err := c.ListProviders(context.Background())
+	if err != nil {
+		t.Fatalf("ListProviders() error = %v", err)
+	}
+	if len(providers) != 2 || providers[0].Name != "openai" || providers[1].Model != "llama-3" {
+		t.Errorf("got %+v", providers)
+	}
+}
+
+func TestClient_ActiveProviderName(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/providers/active" || r.Method != http.MethodGet {
+			t.Errorf("unexpected request %s %s", r.Method, r.URL.Path)
+		}
+		json.NewEncoder(w).Encode(map[string]string{"provider": "cli"})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	name, err := c.ActiveProviderName(context.Background())
+	if err != nil {
+		t.Fatalf("ActiveProviderName() error = %v", err)
+	}
+	if name != "cli" {
+		t.Errorf("name = %q, want cli", name)
+	}
+}

@@ -40,31 +40,53 @@ func (s *session) handleCommand(line string) {
 }
 
 func (s *session) cmdModels() {
+	fmt.Fprintln(s.out, bold("Yerel modeller:"))
 	models, err := s.client.ListLocalModels(s.ctx)
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Modeller listelenemedi: %v", err))
-		return
-	}
-	if len(models) == 0 {
-		fmt.Fprintln(s.out, dim("Hiç model bulunamadı."))
-		return
-	}
+		fmt.Fprintln(s.out, errorf("  Modeller listelenemedi: %v", err))
+	} else if len(models) == 0 {
+		fmt.Fprintln(s.out, dim("  Hiç yerel model bulunamadı."))
+	} else {
+		chatStatus, _ := s.client.ModelStatus(s.ctx)
+		embedStatus, _ := s.client.EmbeddingStatus(s.ctx)
 
-	chatStatus, _ := s.client.ModelStatus(s.ctx)
-	embedStatus, _ := s.client.EmbeddingStatus(s.ctx)
-
-	for _, m := range models {
-		tag := "sohbet"
-		running := chatStatus.Running && chatStatus.ModelPath == m.Path
-		if m.IsEmbedding {
-			tag = "embedding"
-			running = embedStatus.Running && embedStatus.ModelPath == m.Path
+		for _, m := range models {
+			tag := "sohbet"
+			running := chatStatus.Running && chatStatus.ModelPath == m.Path
+			if m.IsEmbedding {
+				tag = "embedding"
+				running = embedStatus.Running && embedStatus.ModelPath == m.Path
+			}
+			marker := "  "
+			if running {
+				marker = green("▶ ")
+			}
+			fmt.Fprintf(s.out, "%s%s %s\n", marker, m.Filename, dim("["+tag+"]"))
 		}
+	}
+
+	fmt.Fprintln(s.out)
+	fmt.Fprintln(s.out, bold("API sağlayıcılar:"))
+	providers, err := s.client.ListProviders(s.ctx)
+	if err != nil {
+		fmt.Fprintln(s.out, errorf("  Sağlayıcılar listelenemedi: %v", err))
+		return
+	}
+	if len(providers) == 0 {
+		fmt.Fprintln(s.out, dim("  Hiç sağlayıcı yapılandırılmamış. /connect ile ekleyebilirsin."))
+		return
+	}
+	activeName, _ := s.client.ActiveProviderName(s.ctx)
+	for _, p := range providers {
 		marker := "  "
-		if running {
+		if p.Name == activeName && activeName != "" {
 			marker = green("▶ ")
 		}
-		fmt.Fprintf(s.out, "%s%s %s\n", marker, m.Filename, dim("["+tag+"]"))
+		state := dim("[pasif]")
+		if p.Enabled {
+			state = dim("[aktif]")
+		}
+		fmt.Fprintf(s.out, "%s%s %s %s\n", marker, p.Name, dim("("+p.Model+")"), state)
 	}
 }
 

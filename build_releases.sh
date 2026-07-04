@@ -129,6 +129,7 @@ fi
 # every launch (cheap overwrite) so the CLI always matches the installed app.
 if [ -f "$DIR/memo" ]; then
     mkdir -p "$MEMO_HOME/bin"
+    rm -f "$MEMO_HOME/bin/memo"
     cp -f "$DIR/memo" "$MEMO_HOME/bin/memo"
     chmod +x "$MEMO_HOME/bin/memo"
     mkdir -p "$HOME/.local/bin"
@@ -139,6 +140,13 @@ if [ -f "$DIR/memo" ]; then
     # instead of using $MEMO_HOME/data. Write a small wrapper instead so the
     # data dir is always pinned, while cwd (used for agent file access)
     # stays whatever directory the user actually ran `memo` from.
+    #
+    # rm -f first: an older version of this script left a plain symlink at
+    # this path (straight to $MEMO_HOME/bin/memo). `cat >` follows an
+    # existing symlink instead of replacing it, so without this it would
+    # write the wrapper text straight through the symlink and clobber the
+    # real binary at $MEMO_HOME/bin/memo with wrapper source.
+    rm -f "$HOME/.local/bin/memo"
     cat > "$HOME/.local/bin/memo" <<WRAPPER
 #!/bin/bash
 export MEMO_DATA_DIR="$MEMO_HOME/data"

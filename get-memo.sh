@@ -62,6 +62,7 @@ fi
 # The memo CLI binary itself. Older archives only ship memo-backend (before
 # the plain `memo` copy was added) — fall back to that.
 if [ -f "$src/memo" ]; then
+    rm -f "$MEMO_HOME/bin/memo"
     cp -f "$src/memo" "$MEMO_HOME/bin/memo"
 elif [ -f "$src/memo-backend" ]; then
     cp -f "$src/memo-backend" "$MEMO_HOME/bin/memo"
@@ -95,7 +96,12 @@ fi
 # run from some other directory would create a stray ./data there instead
 # of using ~/.memo/data. The wrapper pins the data dir but does NOT cd, so
 # the caller's cwd (used for agent file access) is preserved.
+#
+# rm -f first: if this path is already a symlink (e.g. from an older
+# install), `cat >` would follow it and write the wrapper text straight
+# through into whatever it points at instead of replacing it.
 mkdir -p "$HOME/.local/bin"
+rm -f "$HOME/.local/bin/memo"
 cat > "$HOME/.local/bin/memo" <<WRAPPER
 #!/bin/bash
 export MEMO_DATA_DIR="$MEMO_HOME/data"

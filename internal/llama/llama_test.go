@@ -3,6 +3,7 @@ package llama
 import (
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -146,6 +147,27 @@ func TestWithPrependedEnvPathAppendsMissingPath(t *testing.T) {
 
 	if value := envValue(t, got, "LD_LIBRARY_PATH", false); value != "/memo/bin" {
 		t.Fatalf("LD_LIBRARY_PATH = %q", value)
+	}
+}
+
+// TestBinarySearchBasesFrom_IncludesParentOfExeDir is a regression test: the
+// installed CLI binary lives at ~/.memo/bin/memo, one level deeper than the
+// bundled binaries/ tree it ships next to (~/.memo/binaries/...). Before this
+// fix, only "." and the exe's own directory were searched, so resolveBinary
+// never found llama-server when running as the CLI — only the GUI/AppImage
+// binary, which sits flush with binaries/, worked.
+func TestBinarySearchBasesFrom_IncludesParentOfExeDir(t *testing.T) {
+	exePath := filepath.Join("/home/user/.memo/bin", "memo")
+
+	bases := binarySearchBasesFrom(exePath)
+
+	wantExeDir := filepath.Join("/home/user/.memo/bin")
+	wantParent := filepath.Join("/home/user/.memo")
+	if !slices.Contains(bases, wantExeDir) {
+		t.Errorf("bases = %v, want to contain exe dir %q", bases, wantExeDir)
+	}
+	if !slices.Contains(bases, wantParent) {
+		t.Errorf("bases = %v, want to contain parent dir %q", bases, wantParent)
 	}
 }
 

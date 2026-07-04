@@ -2,6 +2,7 @@ package llama
 
 import (
 	"fmt"
+	"memo/internal/config"
 	"memo/internal/logx"
 	"net/http"
 	"os"
@@ -34,6 +35,7 @@ type Server struct {
 	stopping  bool
 	waitDone  chan struct{} // Closed when the process actually exits
 	portPid   int           // Last known PID for the port (fallback when cmd is nil)
+	logFile   *os.File      // llama-server's own stdout/stderr, never the REPL's
 }
 
 // NewServer creates a new llama-server manager.
@@ -137,8 +139,28 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	logx.Printf("llama: launching %s %s", bin, strings.Join(args, " "))
 
 	s.cmd = exec.Command(bin, args...)
-	s.cmd.Stdout = os.Stdout
-	s.cmd.Stderr = os.Stderr
+	// llama-server logs its own verbose C++-side output straight to whatever
+	// stdout/stderr it inherits. In headless mode that's fine — the shell
+	// wrapper redirects the whole process's output to backend.log anyway —
+	// but the terminal REPL's own stdout IS the live chat UI, so inheriting
+	// it here would interleave llama-server's raw log lines character-by-
+	// character with the REPL's output (exactly what a user reported: model
+	// load logs and chat replies garbled together mid-response). Give it its
+	// own log file instead, unconditionally, so this can never happen.
+	if s.logFile != nil {
+		s.logFile.Close()
+		s.logFile = nil
+	}
+	logPath := config.DataPath(fmt.Sprintf("llama-%d.log", actualPort))
+	if f, ferr := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); ferr == nil {
+		s.logFile = f
+		s.cmd.Stdout = f
+		s.cmd.Stderr = f
+	} else {
+		logx.Printf("llama: could not open %s (%v), falling back to inherited stdout/stderr", logPath, ferr)
+		s.cmd.Stdout = os.Stdout
+		s.cmd.Stderr = os.Stderr
+	}
 	s.modelPath = modelPath
 	s.stopping = false
 	s.waitDone = make(chan struct{})
@@ -218,6 +240,12 @@ func (s *Server) WaitReady(timeout time.Duration) error {
 func (s *Server) Stop() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	defer func() {
+		if s.logFile != nil {
+			s.logFile.Close()
+			s.logFile = nil
+		}
+	}()
 
 	if s.cmd == nil || s.cmd.Process == nil {
 		// No tracked cmd — try last known PID first, then port discovery.

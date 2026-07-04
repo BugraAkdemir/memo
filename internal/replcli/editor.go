@@ -22,6 +22,8 @@ var slashCommands = []commandSpec{
 	{"/model-download", "Hugging Face'ten yeni model indir"},
 	{"/connect", "harici bir API sağlayıcısına bağlan"},
 	{"/gui", "masaüstü uygulamasını aç"},
+	{"/clear", "sohbeti temizle, yeni bir sohbet başlat"},
+	{"/session", "bu projedeki sohbetler arasında geç"},
 	{"/exit", "çık"},
 }
 

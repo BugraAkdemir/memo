@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -18,6 +19,8 @@ const helpText = `Kullanılabilir komutlar:
   /model-download [huggingface adı]       Hugging Face'ten yeni model ara ve indir (boşsa popülerleri önerir)
   /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
   /gui                                    masaüstü uygulamasını açar
+  /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
+  /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
   /exit                                   çıkar
 `
 
@@ -48,6 +51,10 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdConnect(args)
 	case "/gui":
 		s.cmdGui()
+	case "/clear":
+		s.cmdClear()
+	case "/session":
+		s.cmdSession(args)
 	default:
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf("Bilinmeyen komut: %s (yardım için /help yaz)", cmd)))
 	}
@@ -85,10 +92,141 @@ func (s *session) showCommandMenu() bool {
 		fmt.Fprintln(s.out, yellow("Kullanım: /connect <base_url> <api_key> <model>"))
 	case "/gui":
 		s.cmdGui()
+	case "/clear":
+		s.cmdClear()
+	case "/session":
+		s.pickSession()
 	case "/exit":
 		return true
 	}
 	return false
+}
+
+// cmdClear starts a brand-new, empty agent chat in place of the current one
+// and clears the screen — the terminal equivalent of Claude Code's /clear.
+// The old chat is left on disk (recoverable via /session), it just stops
+// being the active one.
+func (s *session) cmdClear() {
+	if err := s.startFreshChat(); err != nil {
+		fmt.Fprintln(s.out, errorf("%v", err))
+		return
+	}
+	clearScreen(s.out)
+	s.printWelcome()
+	fmt.Fprintln(s.out)
+	fmt.Fprintln(s.out, green("✓ Sohbet geçmişi temizlendi, yeni bir sohbet başladı."))
+}
+
+// cmdSession dispatches /session's subcommands: bare (interactive picker on
+// a terminal, plain listing otherwise), "new", "list", or a name/number
+// identifying a chat to switch to directly.
+func (s *session) cmdSession(args []string) {
+	if len(args) == 0 {
+		if s.keys != nil {
+			s.pickSession()
+			return
+		}
+		s.printSessionList()
+		return
+	}
+	switch args[0] {
+	case "new":
+		s.cmdClear()
+	case "list":
+		s.printSessionList()
+	default:
+		s.switchSessionByQuery(strings.Join(args, " "))
+	}
+}
+
+// printSessionList prints every chat rooted at this project as a plain,
+// numbered list — used for piped input and the explicit "/session list".
+func (s *session) printSessionList() {
+	chats, err := s.projectChats()
+	if err != nil {
+		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
+		return
+	}
+	if len(chats) == 0 {
+		fmt.Fprintln(s.out, dim("Bu proje için kayıtlı sohbet yok."))
+		return
+	}
+	for i, c := range chats {
+		marker := "  "
+		if c.ID == s.chatID {
+			marker = green("▶ ")
+		}
+		fmt.Fprintf(s.out, "%s%d. %s %s\n", marker, i+1, c.Title, dim(fmt.Sprintf("(%s · %d mesaj)", c.UpdatedAt, c.MsgCount)))
+	}
+}
+
+// pickSession opens an arrow-key menu over this project's chats, plus a
+// leading "+ Yeni sohbet" entry, and switches to (or creates) whichever is
+// chosen. Falls back to the plain list when stdin isn't a real terminal.
+func (s *session) pickSession() {
+	chats, err := s.projectChats()
+	if err != nil {
+		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
+		return
+	}
+	if s.keys == nil {
+		s.printSessionList()
+		return
+	}
+
+	items := make([]menuItem, 0, len(chats)+1)
+	items = append(items, menuItem{Label: "+ Yeni sohbet"})
+	for _, c := range chats {
+		items = append(items, menuItem{Label: c.Title, Hint: fmt.Sprintf("%s · %d mesaj", c.UpdatedAt, c.MsgCount)})
+	}
+	idx := selectFromMenu(s.out, s.keys, "Sohbet seç", items)
+	if idx < 0 {
+		fmt.Fprintln(s.out, dim("İptal edildi."))
+		return
+	}
+	if idx == 0 {
+		s.cmdClear()
+		return
+	}
+	s.switchToChat(chats[idx-1])
+}
+
+// switchSessionByQuery resolves query against this project's chats — either
+// as a 1-based index into the /session-list ordering, or a case-insensitive
+// substring of a chat's title — and switches to the match.
+func (s *session) switchSessionByQuery(query string) {
+	chats, err := s.projectChats()
+	if err != nil {
+		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
+		return
+	}
+	if n, convErr := strconv.Atoi(query); convErr == nil {
+		if n < 1 || n > len(chats) {
+			fmt.Fprintln(s.out, yellow(fmt.Sprintf("Geçersiz sohbet numarası: %d", n)))
+			return
+		}
+		s.switchToChat(chats[n-1])
+		return
+	}
+	lower := strings.ToLower(query)
+	for _, c := range chats {
+		if strings.Contains(strings.ToLower(c.Title), lower) {
+			s.switchToChat(c)
+			return
+		}
+	}
+	fmt.Fprintln(s.out, yellow(fmt.Sprintf("%q ile eşleşen bir sohbet bulunamadı (/session list ile listele)", query)))
+}
+
+// switchToChat activates c and replays its saved history into the terminal.
+func (s *session) switchToChat(c SessionInfo) {
+	if err := s.activateChat(c.ID); err != nil {
+		fmt.Fprintln(s.out, errorf("%v", err))
+		return
+	}
+	clearScreen(s.out)
+	s.printWelcome()
+	s.replayHistory()
 }
 
 func (s *session) cmdModels() {

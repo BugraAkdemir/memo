@@ -274,6 +274,111 @@ func TestHandleCommand_Gui_MissingBinary(t *testing.T) {
 	}
 }
 
+func TestHandleCommand_Clear(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agent/chat", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"id": "chat-new"})
+	})
+	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.projectPath = "/tmp/project"
+	s.chatID = "chat-old"
+
+	s.handleCommand("/clear")
+
+	if s.chatID != "chat-new" {
+		t.Errorf("chatID = %q, want chat-new", s.chatID)
+	}
+	if !strings.Contains(out.String(), "temizlendi") {
+		t.Errorf("expected confirmation message, got:\n%s", out.String())
+	}
+}
+
+func TestHandleCommand_Session_List_FiltersByProject(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/chats", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]SessionInfo{
+			{ID: "chat-a", Title: "Sohbet A", ProjectPath: "/tmp/project", UpdatedAt: "2026-01-02 10:00", MsgCount: 4},
+			{ID: "chat-b", Title: "Sohbet B", ProjectPath: "/tmp/other", UpdatedAt: "2026-01-01 10:00", MsgCount: 1},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.projectPath = "/tmp/project"
+
+	s.handleCommand("/session list")
+
+	got := out.String()
+	if !strings.Contains(got, "Sohbet A") {
+		t.Errorf("expected Sohbet A in list, got:\n%s", got)
+	}
+	if strings.Contains(got, "Sohbet B") {
+		t.Errorf("expected chats from other projects to be filtered out, got:\n%s", got)
+	}
+}
+
+func TestHandleCommand_Session_SwitchByNumber(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/chats", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]SessionInfo{
+			{ID: "chat-a", Title: "Sohbet A", ProjectPath: "/tmp/project"},
+		})
+	})
+	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]ChatMessage{})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, _ := newTestSession(t, srv)
+	s.projectPath = "/tmp/project"
+
+	s.handleCommand("/session 1")
+
+	if s.chatID != "chat-a" {
+		t.Errorf("chatID = %q, want chat-a", s.chatID)
+	}
+}
+
+func TestHandleCommand_Session_SwitchByName_NoMatch(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/chats", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]SessionInfo{
+			{ID: "chat-a", Title: "Sohbet A", ProjectPath: "/tmp/project"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.projectPath = "/tmp/project"
+
+	s.handleCommand("/session bilinmeyen-sohbet")
+
+	if !strings.Contains(out.String(), "bulunamadı") {
+		t.Errorf("expected not-found message, got:\n%s", out.String())
+	}
+	if s.chatID != "" {
+		t.Errorf("chatID should remain unset, got %q", s.chatID)
+	}
+}
+
 func TestHandleCommand_ModelDownload_NoResults(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/models/search", func(w http.ResponseWriter, r *http.Request) {

@@ -17,10 +17,12 @@ import (
 )
 
 // Run starts the interactive terminal chat loop against the Memo backend at
-// baseURL. It creates one fresh agent-mode chat rooted at projectPath, then
-// reads lines from in and writes all output to out until EOF or the user
-// types /exit. Every run is a brand-new chat — there is no session history
-// or switching inside the REPL. ownBackend tells the welcome panel whether
+// baseURL. It resumes the most recently used agent-mode chat rooted at
+// projectPath, if one exists, replaying its history into the terminal —
+// otherwise it creates a fresh one. It then reads lines from in and writes
+// all output to out until EOF or the user types /exit. /clear and /session
+// let the user reset or switch chats mid-run. ownBackend tells the welcome
+// panel whether
 // this process just started the backend itself (main.go) — only then is an
 // embedding-model auto-start race actually possible, so only then is it
 // worth briefly retrying the memory status before reporting it as off.
@@ -58,22 +60,19 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	ctx := context.Background()
 	client := NewClient(baseURL)
 
-	id, err := client.NewAgentChat(ctx, projectPath)
-	if err != nil {
-		return fmt.Errorf("agent sohbeti oluşturulamadı: %w", err)
-	}
-	if err := client.SwitchChat(ctx, id); err != nil {
-		return fmt.Errorf("sohbete geçilemedi: %w", err)
-	}
-	if err := client.SetAgentEnabled(ctx, true); err != nil {
-		return fmt.Errorf("agent modu açılamadı: %w", err)
-	}
-
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed}
+	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath}
+
+	resumed, err := s.resumeOrStartChat()
+	if err != nil {
+		return err
+	}
 	s.printWelcome()
+	if resumed {
+		s.replayHistory()
+	}
 
 	for {
 		// A blank line always precedes the prompt — separates this turn's
@@ -116,6 +115,13 @@ type session struct {
 	scanner    *bufio.Scanner
 	ownBackend bool
 
+	// projectPath is this REPL run's project root — used both to create new
+	// agent chats and to find an existing one to resume on startup.
+	// chatID is the backend chat ID currently active in this session,
+	// updated by resumeOrStartChat and every /clear or /session switch.
+	projectPath string
+	chatID      string
+
 	// keys and ed are non-nil only when stdin is a real terminal. keys is
 	// the one shared key stream (editor, menus and the mid-stream interrupt
 	// watcher all read from it); ed is the raw-mode line editor.
@@ -138,6 +144,110 @@ type session struct {
 // promptStyle is the main composer prompt. Kept at display width 2 so the
 // editor's column math stays trivial.
 var promptStyle = bold(brightCyan("❯ "))
+
+// resumeOrStartChat looks for the most recently used agent chat rooted at
+// s.projectPath and switches to it if one exists, so a new `memo` run in the
+// same project picks up where the last one left off instead of always
+// starting blank. Falls back to a brand-new agent chat — including whenever
+// listing chats itself fails, since a chat always has to exist either way.
+func (s *session) resumeOrStartChat() (resumed bool, err error) {
+	if id, ok := s.findRecentChat(); ok {
+		if err := s.client.SwitchChat(s.ctx, id); err != nil {
+			return false, fmt.Errorf("sohbete geçilemedi: %w", err)
+		}
+		s.chatID = id
+		resumed = true
+	} else {
+		id, err := s.client.NewAgentChat(s.ctx, s.projectPath)
+		if err != nil {
+			return false, fmt.Errorf("agent sohbeti oluşturulamadı: %w", err)
+		}
+		if err := s.client.SwitchChat(s.ctx, id); err != nil {
+			return false, fmt.Errorf("sohbete geçilemedi: %w", err)
+		}
+		s.chatID = id
+	}
+	if err := s.client.SetAgentEnabled(s.ctx, true); err != nil {
+		return false, fmt.Errorf("agent modu açılamadı: %w", err)
+	}
+	return resumed, nil
+}
+
+// findRecentChat returns the ID of the most recently updated agent chat
+// rooted at s.projectPath, if any (chats come back sorted newest-first).
+func (s *session) findRecentChat() (string, bool) {
+	chats, err := s.client.ListChats(s.ctx)
+	if err != nil {
+		return "", false
+	}
+	for _, c := range chats {
+		if c.ProjectPath == s.projectPath {
+			return c.ID, true
+		}
+	}
+	return "", false
+}
+
+// projectChats returns every known chat rooted at s.projectPath, newest
+// first — the set /session lists and picks from.
+func (s *session) projectChats() ([]SessionInfo, error) {
+	chats, err := s.client.ListChats(s.ctx)
+	if err != nil {
+		return nil, err
+	}
+	var out []SessionInfo
+	for _, c := range chats {
+		if c.ProjectPath == s.projectPath {
+			out = append(out, c)
+		}
+	}
+	return out, nil
+}
+
+// startFreshChat creates a brand-new agent chat rooted at s.projectPath and
+// makes it active — the shared core of /clear.
+func (s *session) startFreshChat() error {
+	id, err := s.client.NewAgentChat(s.ctx, s.projectPath)
+	if err != nil {
+		return fmt.Errorf("sohbet oluşturulamadı: %w", err)
+	}
+	return s.activateChat(id)
+}
+
+// activateChat switches the backend's active chat to id, re-enables agent
+// mode (switching chats resets it backend-side) and records id as this
+// session's current chat.
+func (s *session) activateChat(id string) error {
+	if err := s.client.SwitchChat(s.ctx, id); err != nil {
+		return fmt.Errorf("sohbete geçilemedi: %w", err)
+	}
+	if err := s.client.SetAgentEnabled(s.ctx, true); err != nil {
+		return fmt.Errorf("agent modu açılamadı: %w", err)
+	}
+	s.chatID = id
+	return nil
+}
+
+// replayHistory prints the active chat's saved messages into the terminal so
+// a resumed session reads like an uninterrupted conversation instead of
+// silently forgetting everything before this run.
+func (s *session) replayHistory() {
+	msgs, err := s.client.Messages(s.ctx)
+	if err != nil || len(msgs) == 0 {
+		return
+	}
+	fmt.Fprintln(s.out)
+	fmt.Fprintln(s.out, dim("── önceki sohbet geçmişi ──"))
+	for _, m := range msgs {
+		switch m.Role {
+		case "user":
+			fmt.Fprintln(s.out, promptStyle+m.Content)
+		case "assistant":
+			fmt.Fprintln(s.out, bold(brightMagenta("● "))+m.Content)
+		}
+	}
+	fmt.Fprintln(s.out, dim("── buradan devam ediyorsun ──"))
+}
 
 // readInput reads one top-level line: through the raw-mode editor on a real
 // terminal, through the scanner otherwise (tests, piped input).

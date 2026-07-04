@@ -136,6 +136,50 @@ func TestRun_ZeroChunkResponse_DoesNotHangOrLeakSpinner(t *testing.T) {
 	}
 }
 
+// TestRun_ResumesExistingAgentChat is a regression test: a `memo` run in a
+// project that already has an agent chat must resume it (replaying its
+// history) instead of always creating a brand-new, empty one.
+func TestRun_ResumesExistingAgentChat(t *testing.T) {
+	var newChatCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agent/chat", func(w http.ResponseWriter, r *http.Request) {
+		newChatCalls++
+		json.NewEncoder(w).Encode(map[string]string{"id": "chat-new"})
+	})
+	mux.HandleFunc("/api/chats", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]SessionInfo{
+			{ID: "chat-old", Title: "Eski Sohbet", ProjectPath: "/tmp/project", UpdatedAt: "2026-01-01 10:00", MsgCount: 2},
+		})
+	})
+	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/messages", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]ChatMessage{
+			{Role: "user", Content: "merhaba"},
+			{Role: "assistant", Content: "selam!"},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	in := strings.NewReader("/exit\n")
+	var out bytes.Buffer
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if newChatCalls != 0 {
+		t.Errorf("expected the existing chat to be resumed, but a new one was created (%d calls)", newChatCalls)
+	}
+	got := out.String()
+	if !strings.Contains(got, "merhaba") || !strings.Contains(got, "selam!") {
+		t.Errorf("expected replayed history in output, got:\n%s", got)
+	}
+}
+
 func TestRun_ExitsOnEOF(t *testing.T) {
 	srv, _ := newTestServer(t, nil)
 	defer srv.Close()

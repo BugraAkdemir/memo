@@ -86,6 +86,18 @@ func TestHandleCommand_Help(t *testing.T) {
 	}
 }
 
+func TestHandleCommand_BareSlash_AliasesHelp(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	s.handleCommand("/")
+
+	if !strings.Contains(out.String(), "/models") || !strings.Contains(out.String(), "/connect") {
+		t.Errorf("bare / should show the command list, got:\n%s", out.String())
+	}
+}
+
 func TestHandleCommand_Models(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()

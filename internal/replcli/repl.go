@@ -17,6 +17,8 @@ import (
 // types /exit. Every run is a brand-new chat — there is no session history
 // or switching inside the REPL.
 func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
+	clearScreen(out)
+
 	ctx := context.Background()
 	client := NewClient(baseURL)
 
@@ -75,8 +77,8 @@ type session struct {
 }
 
 func (s *session) printWelcome() {
-	fmt.Fprintln(s.out, bold(cyan("Memo"))+dim(" — terminal sohbet"))
-	fmt.Fprintln(s.out, dim("Çıkmak için /exit ya da Ctrl+D. Komutlar için /help."))
+	fmt.Fprintln(s.out, banner())
+	fmt.Fprintln(s.out, dim("Çıkmak için /exit ya da Ctrl+D. Komutlar için /help ya da /."))
 
 	embedStatus, err := s.client.EmbeddingStatus(s.ctx)
 	if err != nil || !embedStatus.Running {

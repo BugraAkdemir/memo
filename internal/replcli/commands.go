@@ -24,7 +24,7 @@ func (s *session) handleCommand(line string) {
 	cmd, args := fields[0], fields[1:]
 
 	switch cmd {
-	case "/help":
+	case "/", "/help":
 		fmt.Fprint(s.out, helpText)
 	case "/models":
 		s.cmdModels()

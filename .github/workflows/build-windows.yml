@@ -130,10 +130,21 @@ jobs:
 
           set "PATH=%APP_DIR%binaries\windows;%APP_DIR%binaries\windows\cpu;%APP_DIR%binaries\windows\nvidia;%APP_DIR%binaries\windows\amd;%MEMO_HOME%\data\bin;%PATH%"
 
-          start "" /B "%APP_DIR%memo-backend.exe"
+          REM Check if a backend is already running (e.g. started via the
+          REM `memo` terminal CLI) - attach to it instead of killing it and
+          REM starting a second one, which caused a port-bind conflict.
+          set "BACKEND_ALREADY_RUNNING="
+          powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
+          if %ERRORLEVEL% EQU 0 set "BACKEND_ALREADY_RUNNING=1"
+
+          if not defined BACKEND_ALREADY_RUNNING (
+              start "" /B "%APP_DIR%memo-backend.exe"
+          )
           start "" /WAIT "%APP_DIR%memo_flutter.exe"
-          taskkill /F /IM memo-backend.exe >nul 2>&1
-          taskkill /F /IM llama-server.exe >nul 2>&1
+          if not defined BACKEND_ALREADY_RUNNING (
+              taskkill /F /IM memo-backend.exe >nul 2>&1
+              taskkill /F /IM llama-server.exe >nul 2>&1
+          )
           endlocal
           '@
           $runner | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\run_memo.bat"
@@ -172,20 +183,38 @@ jobs:
 
           $env:PATH = "$scriptDir\binaries\windows;$scriptDir\binaries\windows\cpu;$scriptDir\binaries\windows\nvidia;$scriptDir\binaries\windows\amd;$env:MEMO_HOME\data\bin;$env:PATH"
 
-          try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 } catch {}
-          Start-Sleep -Seconds 1
-          Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
+          # Check if a backend is already running (e.g. started via the
+          # `memo` terminal CLI) - attach to it instead of killing it and
+          # starting a second one, which caused a port-bind conflict and
+          # crashed both.
+          $backendAlreadyRunning = $false
+          try {
+              Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null
+              $backendAlreadyRunning = $true
+          } catch {}
 
-          $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
-          Start-Sleep -Seconds 2
+          $backend = $null
+          if (-not $backendAlreadyRunning) {
+              try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 } catch {}
+              Start-Sleep -Seconds 1
+              Get-Process -Name 'memo-backend' -ErrorAction SilentlyContinue | Stop-Process -Force
+
+              $backend = Start-Process -FilePath "$scriptDir\memo-backend.exe" -WorkingDirectory $env:MEMO_HOME -WindowStyle Hidden -PassThru
+              Start-Sleep -Seconds 2
+          }
 
           $flutter = Start-Process -FilePath "$scriptDir\memo_flutter.exe" -WorkingDirectory $scriptDir -PassThru
           $flutter.WaitForExit()
 
-          try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 } catch {}
-          Start-Sleep -Seconds 2
-          if (-not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
-          Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+          # Only stop the backend if THIS script started it.
+          if ($backend) {
+              try { Invoke-RestMethod -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 } catch {}
+              Start-Sleep -Seconds 2
+              if (-not $backend.HasExited) { Stop-Process -Id $backend.Id -Force }
+          }
+          if (-not $backendAlreadyRunning) {
+              Get-Process -Name 'llama-server' -ErrorAction SilentlyContinue | Stop-Process -Force
+          }
           '@
           $ps1 | Out-File -Encoding ASCII "build_output\stage\${{ env.APP_NAME }}\launch.ps1"
 

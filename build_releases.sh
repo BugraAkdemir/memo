@@ -398,27 +398,43 @@ if not exist "%MEMO_HOME%\data\providers.json" (
     )
 )
 
-REM Stop stale instances gracefully (shutdown API, then force)
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
-timeout /t 2 /nobreak >nul
-taskkill /F /IM memo-backend.exe >nul 2>&1
-taskkill /F /IM llama-server.exe >nul 2>&1
+REM Check if a backend is already running (e.g. started via the `memo`
+REM terminal CLI) - attach to it instead of killing it and starting a
+REM second one, which caused a port-bind conflict and crashed both.
+set "BACKEND_ALREADY_RUNNING="
+powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/status' -Method GET -TimeoutSec 2 -UseBasicParsing -ErrorAction Stop | Out-Null; exit 0 } catch { exit 1 }" >nul 2>&1
+if %ERRORLEVEL% EQU 0 (
+    set "BACKEND_ALREADY_RUNNING=1"
+    echo Zaten calisan bir Memo backend'i bulundu, ona baglaniliyor.
+)
 
-REM Start backend, capture PID for targeted cleanup
 set "BACKEND_PID="
-for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -WorkingDirectory '%MEMO_HOME%' -PassThru; $p.Id }"') do set BACKEND_PID=%%i
-timeout /t 1 /nobreak >nul
+if not defined BACKEND_ALREADY_RUNNING (
+    REM Stop stale instances gracefully (shutdown API, then force)
+    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 3 -ErrorAction Stop } catch {}" >nul 2>&1
+    timeout /t 2 /nobreak >nul
+    taskkill /F /IM memo-backend.exe >nul 2>&1
+    taskkill /F /IM llama-server.exe >nul 2>&1
+
+    REM Start backend, capture PID for targeted cleanup
+    for /f %%i in ('powershell -NoProfile -Command "& { $p = Start-Process -FilePath '%APP_DIR%memo-backend.exe' -WorkingDirectory '%MEMO_HOME%' -PassThru; $p.Id }"') do set BACKEND_PID=%%i
+    timeout /t 1 /nobreak >nul
+)
 
 REM Start Flutter frontend (blocks until closed)
 start "" /WAIT "%APP_DIR%memo_flutter.exe"
 
-REM Cleanup — shutdown API first, then targeted kill by PID
-powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
-timeout /t 3 /nobreak >nul
+REM Cleanup — only stop the backend if THIS script started it. If we
+REM attached to an already-running instance (e.g. the terminal CLI),
+REM leave it alone.
 if defined BACKEND_PID (
+    powershell -NoProfile -Command "try { Invoke-WebRequest -Uri 'http://localhost:8090/api/shutdown' -Method POST -TimeoutSec 5 -ErrorAction Stop } catch {}" >nul 2>&1
+    timeout /t 3 /nobreak >nul
     taskkill /F /PID %BACKEND_PID% >nul 2>&1
 )
-taskkill /F /IM llama-server.exe >nul 2>&1
+if not defined BACKEND_ALREADY_RUNNING (
+    taskkill /F /IM llama-server.exe >nul 2>&1
+)
 RUNNERWIN
 
     echo "📦 4. Windows ZIP Paketi Oluşturuluyor..."

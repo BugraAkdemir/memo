@@ -9,17 +9,24 @@ import (
 // Minimal ANSI color helpers — no library, just escape codes. Kept tiny on
 // purpose: the terminal REPL is meant to stay dependency-free and simple.
 const (
-	colorReset         = "\033[0m"
-	colorBold          = "\033[1m"
-	colorDim           = "\033[2m"
-	colorRed           = "\033[31m"
-	colorGreen         = "\033[32m"
-	colorYellow        = "\033[33m"
-	colorCyan          = "\033[36m"
-	colorBrightCyan    = "\033[96m"
-	colorBrightMagenta = "\033[95m"
-	colorBrightWhite   = "\033[97m"
-	colorBgUser        = "\033[104m" // bright blue background — tints the user's own sent message
+	colorReset  = "\033[0m"
+	colorBold   = "\033[1m"
+	colorDim    = "\033[2m"
+	colorRed    = "\033[31m"
+	colorGreen  = "\033[32m"
+	colorYellow = "\033[33m"
+	colorCyan   = "\033[36m"
+
+	// 256-color (8-bit) codes below, not the basic 16-color ones. Most
+	// terminal themes remap the basic 16 (including "bright" 90-97/100-107)
+	// to custom palette colors, which is exactly what made the first version
+	// of the user-message background unreadable in some setups — 256-color
+	// codes address a fixed, standard palette instead and render the same
+	// everywhere.
+	colorBrightCyan    = "\033[38;5;51m"
+	colorBrightMagenta = "\033[38;5;213m"
+	colorBgUser        = "\033[48;5;33m" // vivid blue background — tints the user's own sent message
+	colorFgUser        = "\033[38;5;16m" // near-black — strongest possible contrast against colorBgUser
 )
 
 func colorize(code, s string) string {
@@ -39,9 +46,12 @@ func brightMagenta(s string) string { return colorize(colorBrightMagenta, s) }
 // own echo of whatever the user types next — a tty prints keystrokes using
 // whatever SGR state is currently active when each one is drawn, so this
 // colors the user's raw input without the program ever touching what they
-// typed. Always pair with colorReset immediately after the line is read, so
-// nothing printed afterward (blank line, reply, command output) inherits it.
-const userInputStart = colorBgUser + colorBold + colorBrightWhite
+// typed. Bold near-black on vivid blue, rather than white-on-blue, so it
+// stays legible even under a semi-transparent terminal window blending the
+// background toward whatever's behind it. Always pair with colorReset
+// immediately after the line is read, so nothing printed afterward (blank
+// line, reply, command output) inherits it.
+const userInputStart = colorBgUser + colorBold + colorFgUser
 
 func errorf(format string, args ...any) string {
 	return red(fmt.Sprintf(format, args...))

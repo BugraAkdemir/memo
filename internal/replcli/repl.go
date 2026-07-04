@@ -134,6 +134,12 @@ func (s *session) sendMessage(line string) {
 		fmt.Fprintln(s.out, errorf("Hata: %s", friendlyError(err.Error())))
 		return
 	}
+	// The reply is raw model text, typewriter-revealed exactly as received —
+	// it does not reliably end with its own newline. Without this, whatever
+	// gets printed next (the memory-saved confirmation, or just the blank
+	// line the main loop prints before the following prompt) could glue
+	// directly onto the tail of the reply instead of starting fresh.
+	fmt.Fprintln(s.out)
 	if memoryLikely {
 		s.reportMemorySaved(lastEventBefore, hadEventBefore)
 	}

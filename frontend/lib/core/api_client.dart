@@ -684,6 +684,24 @@ class MemoApiClient {
     await _dio.post('/api/wipe');
   }
 
+  /// Remove the terminal `memo` CLI entry points, leaving config/data intact.
+  Future<void> removeCli() async {
+    await _dio.post('/api/cli/remove');
+  }
+
+  /// Re-copy the currently running binary onto the CLI's install location
+  /// and rewrite its PATH wrapper. Fixes a stale/broken `memo` command.
+  Future<void> reinstallCli() async {
+    await _dio.post('/api/cli/reinstall');
+  }
+
+  /// Fully remove Memo: CLI entry points plus everything under the data
+  /// directory (config, sessions, engine binaries), optionally preserving
+  /// the memory database.
+  Future<void> uninstallMemo({required bool keepMemory}) async {
+    await _dio.post('/api/uninstall', data: {'keep_memory': keepMemory});
+  }
+
   // ─── Transcription ───────────────────────────────────────────────
 
   Future<String> transcribeAudio(Uint8List audioData) async {

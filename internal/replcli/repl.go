@@ -35,9 +35,10 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
 	s := &session{client: client, ctx: ctx, out: out, scanner: scanner}
+	s.printWelcome()
 
 	for {
-		fmt.Fprint(out, "> ")
+		fmt.Fprint(out, bold(green("> ")))
 		if !scanner.Scan() {
 			fmt.Fprintln(out)
 			return nil
@@ -49,9 +50,14 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 		if line == "/exit" {
 			return nil
 		}
+		if strings.HasPrefix(line, "/") {
+			s.handleCommand(line)
+			fmt.Fprintln(out)
+			continue
+		}
 
 		if err := client.SendStream(ctx, line, s.handleChunk); err != nil {
-			fmt.Fprintf(out, "Hata: %v\n", err)
+			fmt.Fprintln(out, errorf("Hata: %s", friendlyError(err.Error())))
 		}
 		fmt.Fprintln(out)
 	}
@@ -59,7 +65,8 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 
 // session carries the state a single streamed turn needs to react to
 // mid-stream agent events (in particular, blocking for a permission answer
-// read from the same stdin scanner the outer prompt loop uses).
+// read from the same stdin scanner the outer prompt loop uses), and the
+// slash-command handlers in commands.go.
 type session struct {
 	client  *Client
 	ctx     context.Context
@@ -67,15 +74,26 @@ type session struct {
 	scanner *bufio.Scanner
 }
 
+func (s *session) printWelcome() {
+	fmt.Fprintln(s.out, bold(cyan("Memo"))+dim(" — terminal sohbet"))
+	fmt.Fprintln(s.out, dim("Çıkmak için /exit ya da Ctrl+D. Komutlar için /help."))
+
+	embedStatus, err := s.client.EmbeddingStatus(s.ctx)
+	if err != nil || !embedStatus.Running {
+		fmt.Fprintln(s.out, yellow("⚠ Embedding modeli aktif değil — hafıza (RAG) çalışmayabilir. /embedding ile başlatabilirsin."))
+	}
+	fmt.Fprintln(s.out)
+}
+
 func (s *session) handleChunk(chunk api.StreamChunk) error {
 	if chunk.Error != "" {
-		fmt.Fprintf(s.out, "Hata: %s\n", chunk.Error)
+		fmt.Fprintln(s.out, errorf("%s", friendlyError(chunk.Error)))
 		return nil
 	}
 
 	switch chunk.FinishReason {
 	case "status":
-		fmt.Fprintf(s.out, "[%s]\n", chunk.Content)
+		fmt.Fprintln(s.out, dim(fmt.Sprintf("[%s]", chunk.Content)))
 	case "agent_event":
 		var ev AgentEvent
 		if err := json.Unmarshal([]byte(chunk.Content), &ev); err != nil {
@@ -94,13 +112,13 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 func (s *session) handleAgentEvent(ev AgentEvent) error {
 	switch ev.Type {
 	case "tool_executing":
-		fmt.Fprintf(s.out, "\n⚙ %s çalışıyor...\n", ev.Tool)
+		fmt.Fprintln(s.out, "\n"+dim(fmt.Sprintf("⚙ %s çalışıyor...", ev.Tool)))
 	case "tool_result":
-		fmt.Fprintf(s.out, "✓ %s tamamlandı\n", ev.Tool)
+		fmt.Fprintln(s.out, green(fmt.Sprintf("✓ %s tamamlandı", ev.Tool)))
 	case "tool_error":
-		fmt.Fprintf(s.out, "✗ %s hata: %s\n", ev.Tool, ev.Error)
+		fmt.Fprintln(s.out, errorf("✗ %s hata: %s", ev.Tool, ev.Error))
 	case "permission_denied":
-		fmt.Fprintf(s.out, "✗ %s reddedildi\n", ev.Tool)
+		fmt.Fprintln(s.out, yellow(fmt.Sprintf("✗ %s reddedildi", ev.Tool)))
 	case "permission_request":
 		return s.askPermission(ev)
 	}
@@ -108,8 +126,8 @@ func (s *session) handleAgentEvent(ev AgentEvent) error {
 }
 
 func (s *session) askPermission(ev AgentEvent) error {
-	fmt.Fprintf(s.out, "\n⚠ %s bu işlemi yapmak istiyor: %s\n", ev.Tool, previewArgs(ev.Args))
-	fmt.Fprint(s.out, "İzin ver mi? [y/n] ")
+	fmt.Fprintln(s.out, "\n"+yellow(fmt.Sprintf("⚠ %s bu işlemi yapmak istiyor: %s", ev.Tool, previewArgs(ev.Args))))
+	fmt.Fprint(s.out, bold("İzin ver mi? [y/n] "))
 
 	policy := "deny_once"
 	if s.scanner.Scan() {
@@ -131,4 +149,14 @@ func previewArgs(args json.RawMessage) string {
 		return s[:max] + "..."
 	}
 	return s
+}
+
+// friendlyError rewrites the raw dial/transport errors a missing model
+// produces into a plain-language hint, instead of dumping a Go error string
+// straight into the chat.
+func friendlyError(raw string) string {
+	if strings.Contains(raw, "connection refused") {
+		return "Önce bir model başlatmalısın: /model <isim> ile yerel bir model, ya da /connect ile harici bir sağlayıcı bağla. Yüklü modelleri görmek için /models yaz."
+	}
+	return raw
 }

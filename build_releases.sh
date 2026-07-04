@@ -132,7 +132,19 @@ if [ -f "$DIR/memo" ]; then
     cp -f "$DIR/memo" "$MEMO_HOME/bin/memo"
     chmod +x "$MEMO_HOME/bin/memo"
     mkdir -p "$HOME/.local/bin"
-    ln -sf "$MEMO_HOME/bin/memo" "$HOME/.local/bin/memo"
+
+    # A plain symlink would run with MEMO_DATA_DIR unset, and the binary
+    # falls back to a relative "data" dir in that case — meaning `memo` run
+    # from some other project directory would create a stray ./data there
+    # instead of using $MEMO_HOME/data. Write a small wrapper instead so the
+    # data dir is always pinned, while cwd (used for agent file access)
+    # stays whatever directory the user actually ran `memo` from.
+    cat > "$HOME/.local/bin/memo" <<WRAPPER
+#!/bin/bash
+export MEMO_DATA_DIR="$MEMO_HOME/data"
+exec "$MEMO_HOME/bin/memo" "\$@"
+WRAPPER
+    chmod +x "$HOME/.local/bin/memo"
 
     # Make sure ~/.local/bin is actually on PATH for new shells.
     case ":$PATH:" in

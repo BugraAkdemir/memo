@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 )
 
 // newTestServer wires up the five endpoints Run() calls, backed by a
@@ -104,6 +105,34 @@ func TestRun_PermissionRequest_Deny(t *testing.T) {
 	}
 	if (*calls)[0]["policy"] != "deny_once" {
 		t.Errorf("policy = %q, want deny_once", (*calls)[0]["policy"])
+	}
+}
+
+// TestRun_ZeroChunkResponse_DoesNotHangOrLeakSpinner is a regression test:
+// if a turn's response stream closes with literally no SSE lines (a genuine
+// possibility — an upstream hiccup, a model erroring before emitting
+// anything), the spinner must still be stopped. Before the fix it was only
+// ever stopped from inside the chunk callback, so a zero-chunk turn left
+// its goroutine running forever, racing later prompts for the same stdout
+// and garbling output — this looked exactly like "the first few messages
+// get no visible response".
+func TestRun_ZeroChunkResponse_DoesNotHangOrLeakSpinner(t *testing.T) {
+	srv, _ := newTestServer(t, nil) // empty SSE body for every /api/send/stream call
+	defer srv.Close()
+
+	in := strings.NewReader("selam\n/exit\n")
+	var out bytes.Buffer
+
+	done := make(chan error, 1)
+	go func() { done <- Run(srv.URL, "/tmp/project", in, &out) }()
+
+	select {
+	case err := <-done:
+		if err != nil {
+			t.Fatalf("Run() error = %v", err)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("Run() did not return in time — spinner goroutine likely leaked/hung")
 	}
 }
 

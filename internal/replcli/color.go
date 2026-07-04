@@ -47,8 +47,48 @@ const asciiBanner = ` __  __ _____ __  __  ___        ____ _     _____
 | |  | | |___| |  | | |_| |    | |___| |___ | |
 |_|  |_|_____|_|  |_|\___/      \____|_____|___|`
 
-func banner() string {
-	return bold(cyan(asciiBanner))
+// welcomePanel renders the bordered startup panel: the ASCII banner plus a
+// small info block showing which model/provider will actually answer and
+// whether embedding/RAG memory is active — so that's never a guessing game.
+// Padding is computed from plain-text lengths; colored segments are wrapped
+// afterward so ANSI codes never throw off the box alignment. memoryActive
+// tints the memory line green/yellow without affecting its width.
+func welcomePanel(model, memory string, memoryActive bool) string {
+	bannerLines := strings.Split(asciiBanner, "\n")
+	plainModel := "Model:  " + model
+	plainMemory := "Hafıza: " + memory
+
+	width := 0
+	for _, l := range bannerLines {
+		width = max(width, len([]rune(l)))
+	}
+	width = max(width, len([]rune(plainModel)))
+	width = max(width, len([]rune(plainMemory)))
+	width += 4 // 2-char left margin + at least 2-char right margin
+
+	pad := func(plain string) string {
+		return strings.Repeat(" ", max(width-2-len([]rune(plain)), 0))
+	}
+	row := func(colored, plainForWidth string) string {
+		return dim("│") + "  " + colored + pad(plainForWidth) + dim("│") + "\n"
+	}
+
+	memoryColor := yellow
+	if memoryActive {
+		memoryColor = green
+	}
+
+	var b strings.Builder
+	fmt.Fprintf(&b, "%s\n", dim("╭"+strings.Repeat("─", width)+"╮"))
+	for _, l := range bannerLines {
+		fmt.Fprint(&b, row(bold(cyan(l)), l))
+	}
+	fmt.Fprint(&b, row("", ""))
+	fmt.Fprint(&b, row(bold("Model:  ")+model, plainModel))
+	fmt.Fprint(&b, row(bold("Hafıza: ")+memoryColor(memory), plainMemory))
+	fmt.Fprintf(&b, "%s\n", dim("╰"+strings.Repeat("─", width)+"╯"))
+	fmt.Fprint(&b, dim("Çıkmak için /exit ya da Ctrl+D  ·  Komutlar için /help ya da /"))
+	return b.String()
 }
 
 // progressBar renders a fixed-width text progress bar for percent (0-100).

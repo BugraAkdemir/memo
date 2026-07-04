@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"strings"
+	"time"
 
 	"memo/internal/api"
 )
@@ -40,6 +41,11 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 	s.printWelcome()
 
 	for {
+		// A blank line always precedes the prompt — separates this turn's
+		// prompt from whatever was printed above it (previous reply, command
+		// output, or the welcome panel), so input and output never look
+		// stuck together.
+		fmt.Fprintln(out)
 		fmt.Fprint(out, bold(green("> ")))
 		if !scanner.Scan() {
 			fmt.Fprintln(out)
@@ -56,26 +62,11 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 			if s.handleCommand(line) {
 				return nil
 			}
-			fmt.Fprintln(out)
 			continue
 		}
 
-		fmt.Fprintln(out) // blank line between the typed message and the reply that follows
-
-		sp := newSpinner(out)
-		firstChunk := true
-		onChunk := func(chunk api.StreamChunk) error {
-			if firstChunk {
-				sp.Stop()
-				firstChunk = false
-			}
-			return s.handleChunk(chunk)
-		}
-		if err := client.SendStream(ctx, line, onChunk); err != nil {
-			sp.Stop()
-			fmt.Fprintln(out, errorf("Hata: %s", friendlyError(err.Error())))
-		}
 		fmt.Fprintln(out)
+		s.sendMessage(line)
 	}
 }
 
@@ -90,15 +81,116 @@ type session struct {
 	scanner *bufio.Scanner
 }
 
-func (s *session) printWelcome() {
-	fmt.Fprintln(s.out, banner())
-	fmt.Fprintln(s.out, dim("Çıkmak için /exit ya da Ctrl+D. Komutlar için /help ya da /."))
-
-	embedStatus, err := s.client.EmbeddingStatus(s.ctx)
-	if err != nil || !embedStatus.Running {
-		fmt.Fprintln(s.out, yellow("⚠ Embedding modeli aktif değil — hafıza (RAG) çalışmayabilir. /embedding ile başlatabilirsin."))
+// sendMessage sends one line to the backend and streams the reply. The
+// spinner is stopped unconditionally after SendStream returns — not just
+// from inside the chunk callback — because a turn that ends with zero
+// chunks (an empty response body, a request that errors before emitting
+// anything) would otherwise leave the spinner's goroutine running forever,
+// racing the next prompt for the same stdout and garbling both.
+func (s *session) sendMessage(line string) {
+	// Only worth checking for a save confirmation if embedding is actually
+	// running — otherwise every message would pay the polling delay below
+	// for a save that was never going to happen.
+	memoryLikely := false
+	if status, err := s.client.EmbeddingStatus(s.ctx); err == nil && status.Running {
+		memoryLikely = true
 	}
-	fmt.Fprintln(s.out)
+
+	var lastEventBefore Event
+	var hadEventBefore bool
+	if memoryLikely {
+		if events, err := s.client.Events(s.ctx); err == nil && len(events) > 0 {
+			lastEventBefore = events[len(events)-1]
+			hadEventBefore = true
+		}
+	}
+
+	sp := newSpinner(s.out)
+	onChunk := func(chunk api.StreamChunk) error {
+		sp.Stop()
+		return s.handleChunk(chunk)
+	}
+	err := s.client.SendStream(s.ctx, line, onChunk)
+	sp.Stop()
+
+	if err != nil {
+		fmt.Fprintln(s.out, errorf("Hata: %s", friendlyError(err.Error())))
+		return
+	}
+	if memoryLikely {
+		s.reportMemorySaved(lastEventBefore, hadEventBefore)
+	}
+}
+
+// reportMemorySaved briefly polls /api/events for a memory:saved event that
+// wasn't already there before this turn started. Memory is saved on a
+// background worker well after the reply is sent, so this can only ever
+// report a save that actually happened — not something inferred from just
+// having sent a message. Silently gives up after ~2.4s so a slow/disabled
+// save never blocks the prompt from coming back.
+func (s *session) reportMemorySaved(before Event, hadBefore bool) {
+	const attempts = 6
+	const interval = 400 * time.Millisecond
+	for range attempts {
+		time.Sleep(interval)
+		events, err := s.client.Events(s.ctx)
+		if err != nil || len(events) == 0 {
+			continue
+		}
+		last := events[len(events)-1]
+		if last.Name != "memory:saved" {
+			continue
+		}
+		if hadBefore && last == before {
+			continue // same event that was already there before this turn
+		}
+		fmt.Fprintln(s.out, dim("✓ hafıza kaydedildi"))
+		return
+	}
+}
+
+func (s *session) printWelcome() {
+	memory, active := s.memorySummary()
+	fmt.Fprintln(s.out, welcomePanel(s.modelSummary(), memory, active))
+}
+
+// modelSummary describes which model/provider is actually going to answer —
+// an external provider if one is active, otherwise the local chat model if
+// one is running, otherwise a clear "nothing loaded yet" hint.
+func (s *session) modelSummary() string {
+	if name, err := s.client.ActiveProviderName(s.ctx); err == nil && name != "" {
+		if providers, err := s.client.ListProviders(s.ctx); err == nil {
+			for _, p := range providers {
+				if p.Name == name {
+					if p.Model != "" {
+						return fmt.Sprintf("%s (%s)", name, p.Model)
+					}
+					return name
+				}
+			}
+		}
+		return name
+	}
+	if status, err := s.client.ModelStatus(s.ctx); err == nil && status.Running {
+		if status.ModelName != "" {
+			return status.ModelName
+		}
+		return "yerel model"
+	}
+	return "yüklü değil — /model ya da /connect"
+}
+
+// memorySummary reports whether the embedding model (and therefore RAG
+// memory) is actually running.
+func (s *session) memorySummary() (text string, active bool) {
+	status, err := s.client.EmbeddingStatus(s.ctx)
+	if err != nil || !status.Running {
+		return "kapalı", false
+	}
+	if status.ModelName != "" {
+		return status.ModelName, true
+	}
+	return "açık", true
 }
 
 func (s *session) handleChunk(chunk api.StreamChunk) error {

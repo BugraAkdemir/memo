@@ -29,6 +29,7 @@ Memo is a local-first, privacy-focused LLM chat application with RAG memory, ext
 | Directory | Responsibility | Key Files |
 |-----------|---------------|-----------|
 | `internal/app/` | Central orchestrator (25 files) | `app.go`, `llm.go`, `chat.go`, `learning.go`, `whatsapp.go` |
+| `internal/replcli/` | Terminal REPL client — talks to the REST API the same way Flutter does | `client.go`, `repl.go`, `sse.go`, `agent_event.go` |
 | `internal/webserver/` | REST API (~45 endpoints) | `server.go`, `handlers_flutter.go`, `bridge.go` |
 | `internal/llama/` | llama.cpp subprocess lifecycle | `llama.go`, `installer.go`, `gpu.go` |
 | `internal/memory/` | Vector store (SQLite + sqlite-vec) | `store.go`, `embedder.go` |
@@ -94,12 +95,19 @@ Defined in `internal/app/llm.go` `callLLMStream()`:
 ### Quick Start
 
 ```bash
-# Terminal 1 — Backend
-go run . --port 8090
+# Interactive terminal chat (starts the backend if needed, opens a REPL)
+go run .
 
-# Terminal 2 — Frontend
+# Headless backend only, to pair with the Flutter frontend
+go run . --headless --port 8090
 cd frontend && flutter run -d linux
 ```
+
+`memo` auto-detects whether stdin is an interactive terminal: interactive →
+opens the terminal REPL (agent mode on by default, see `internal/replcli/`);
+non-interactive or `--headless` → today's headless server, unchanged. If a
+backend is already listening on the port, a second `memo` invocation attaches
+to it instead of trying to bind again.
 
 ### Build
 

@@ -1,63 +1,58 @@
-# Handoff — 2026-07-04 (Session 11) — Terminal REPL (`memo` CLI)
+# Handoff — 2026-07-05 (Session 12) — CLI hafıza fix'i (vec0) + Claude Code tarzı REPL
 
 ## Oturum Özeti
 
-`memo` komutu artık interaktif bir terminalden çalıştırıldığında (Flutter kurmadan) basit bir sohbet REPL'i açıyor: backend'i gerekirse kendisi başlatıyor, agent modu varsayılan açık, mevcut REST/SSE API'yi Flutter'ın kullandığı gibi kullanıyor — yeni backend mantığı yok. Paketleme scriptleri (`build_releases.sh`, `installer.iss`) `memo` komutunu Linux/Windows'ta otomatik PATH'e ekleyecek şekilde güncellendi. Oturum sonunda curl ile tek komut dağıtım (`install.sh`/`install.ps1`) konuşuldu, kullanıcının domain adını bekliyor.
+İki büyük iş yapıldı:
 
----
+1. **CLI hafıza bug'ı düzeltildi** (`4fed702`): CLI tek başına açılınca hafıza çalışmıyordu — kök neden sqlite-vec (vec0) eklentisinin kurulu CLI düzeninde bulunamamasıydı. **Kullanıcı fix'i denedi ve hafızanın CLI'da çalıştığını doğruladı.** ✅
+2. **REPL girdi katmanı baştan yazıldı** (`b789fc2`): Kullanıcı "tasarım berbat, Claude Code gibi olsun; `/` menüsünde ok tuşları çalışmıyor; iç içe menüler kullanılamıyor" dedi. Canlı `/` menüsü, ham-mod satır editörü, geçmiş, Esc ile akış iptali eklendi.
 
-## Yeni Paket: `internal/replcli`
-
-| Dosya | Sorumluluk |
-|-------|-----------|
-| `client.go` | REST client — `/api/status`, `/api/agent/chat`, `/api/chats/switch`, `/api/agent/enabled`, `/api/send/stream` (SSE), `/api/agent/permission` |
-| `models_client.go` | `/api/models/local`, `/api/models/status`, `/api/models/embedding/*`, `/api/providers*` |
-| `download_client.go` | `/api/models/search`, `/api/models/files`, `/api/models/download`, `/api/models/download/progress` |
-| `sse.go` | `ParseSSELine` — saf fonksiyon, `data: {...}` satırlarını `api.StreamChunk`'a çevirir |
-| `agent_event.go` | `AgentEvent` — Flutter'ın `agent.dart` modelinin Go karşılığı |
-| `repl.go` | Ana döngü: prompt, streaming yazdırma, agent event dispatch, izin sorma |
-| `commands.go` | `/help /models /model /embedding /model-download /connect /gui` + `/` bare-slash menü |
-| `menu.go` | `selectFromMenu` — raw-mode ok tuşu seçici (Up/Down/Enter, Ctrl+C iptal) |
-| `color.go` | ANSI renk yardımcıları, `clearScreen`, `banner`, `progressBar`, `humanSize` |
-
-**main.go değişikliği:** stdin bir TTY ise (ve `--headless` verilmediyse) REPL açılıyor; değilse (pipe/arka plan/launcher) eskisi gibi headless server. Backend zaten `:8090`'da çalışıyorsa yeniden başlatmadan sadece bağlanıyor (ikinci `memo` çağrısı port çakışması yaşamıyor).
-
-**Kritik düzeltme — log sızıntısı:** REPL'de backend log'ları (`logx` + stdlib `log`) artık `data/repl.log`'a yönlendiriliyor (`logx.SetOutput` yeni eklendi). `internal/database/vec_register.go`'daki `init()` içinden atılan tek log satırı `database.LogStatus()`'a taşındı ve `app.Startup()`'tan çağrılıyor — çünkü `init()` her zaman `main()`'den önce çalışır, yönlendirmeyi yakalayamıyordu.
-
-**Diğer düzeltmeler bu oturumda kullanıcı testinde bulundu:**
-- `web_search` tool açıklaması her mesajda tetikleniyordu → açıklama "sadece güncel olay/fiyat/bilgi için kullan" diye sıkılaştırıldı (`internal/agent/tools.go`).
-- `/models` sadece yerel modelleri gösteriyordu, yapılandırılmış API sağlayıcılarını göstermiyordu → artık iki bölüm halinde ikisini de listeliyor.
-
----
-
-## Paketleme Değişiklikleri
-
-| Dosya | Değişiklik |
-|-------|-----------|
-| `build_releases.sh` (Linux) | `memo-backend` yanına düz `memo` kopyası; `run_memo.sh` her açılışta bunu `~/.memo/bin`'e kopyalayıp `~/.local/bin/memo` symlink kuruyor, PATH yoksa bash/zsh/fish rc'lerine ekliyor |
-| `build_releases.sh` (Windows) | `memo-backend.exe` yanına `memo.exe` kopyası |
-| `installer.iss` | Kurulumda `{app}`'i sistem PATH'ine ekliyor (`EnvAddPath`), kaldırmada temizliyor (`EnvRemovePath`) |
-
-`install.sh`/`package_linux.sh` (ayrı, eski bir "yerel kurulum" akışı) bu oturumda **dokunulmadı** — kullanıcı sadece `build_releases.sh` çıktılarını (tar.gz/AppImage/zip/exe) kastetti.
-
----
-
-## Test Durumu
+**⚠️ Yarım kalan adım:** Kurulu binary (`~/.memo/bin/memo`) yeni REPL'i içermiyor (sandbox üzerine yazamadı). Kullanıcının çalıştırması gerekiyor:
 
 ```
-CGO_ENABLED=1 go build ./...   ✅ temiz
-CGO_ENABLED=1 go vet ./...     ✅ temiz
-CGO_ENABLED=1 go test ./...    ✅ tüm paketler PASS (internal/memory'de bir kez pre-existing flaky race
-                                   görüldü, replcli ile ilgisiz, 8 tekrarda 1 kez, dokunulmadı)
+go build -o ~/.memo/bin/memo .
 ```
 
-`internal/replcli` için ~45 unit test (httptest tabanlı client testleri + REPL/komut senaryoları). Arrow-key menü, `/model-download` (gerçek Hugging Face API'siyle), log-sızıntısı düzeltmesi ve backend attach/own senaryoları gerçek bir pty (python `pty.openpty`) ile manuel doğrulandı.
+---
+
+## İş 1 — vec0 Fix'i (`4fed702`)
+
+- Kurulu CLI `~/.memo/bin/memo`'da, `vec0.so` bir üstte `~/.memo/binaries/linux/`. `searchRoots()` exe dizininin üstüne bakmıyordu → driver vec'siz kayıt oluyor → her kayıt/okuma `no such module: vec0`.
+- Flutter açıkken çalışmasının sebebi: CLI 8090 dolu olunca GUI'nin backend'ine bağlanıyor (GUI binary'si `binaries/` ile aynı seviyede, vec0'ı buluyor).
+- Fix: `internal/database/vec_register.go` → `searchRootsFrom(exePath, wd)`; exe dizininin **üstü** eklendi (`8e96930`'daki llama-server fix'iyle aynı desen) + regresyon testi.
+- Teşhis için ilk bakılacak yer: `~/.memo/data/repl.log`.
+
+## İş 2 — REPL Yeniden Yazımı (`b789fc2`)
+
+Ok tuşlarının bozukluğunun iki kök nedeni bulundu:
+1. Eski çözümleyici sadece `ESC [ A` (CSI) tanıyordu; application cursor mode'daki terminaller `ESC O A` (SS3) gönderir → menü anında iptal oluyordu.
+2. Her menü stdin'i kendisi ham okuyordu; iç içe ikinci menü ilk okuyucuyla aynı baytlar için yarışıp tuşları kaçırıyordu.
+
+| Dosya | İçerik |
+|-------|--------|
+| `internal/replcli/keys.go` (yeni) | Tek arkaplan goroutine stdin'i okur → çözülmüş tuş akışı (`keySource`). CSI + SS3 + UTF-8 + Home/End/Delete; tanınmayan diziler bütün yutulur; Esc-sonrası bayt pushback'lenir. `watchInterrupt`: akış sırasında Esc/Ctrl+C yakalar. |
+| `internal/replcli/editor.go` (yeni) | Ham-mod satır editörü: `/` yazınca **anında** canlı komut menüsü (yazdıkça süzülür, ↑↓ gezinme, Tab tamamlama, Esc kapatma, Enter seçileni çalıştırır); ↑↓ mesaj geçmişi; imleç düzenleme (←→ Home End Ctrl+U/K/W); Ctrl+C dolu satırı siler / boşken 2. basışta çıkar; Ctrl+D çıkar. `crlfWriter`: oturum boyu raw mode'da `\n`→`\r\n`. |
+| `internal/replcli/menu.go` | `selectFromMenu` artık ortak `keySource`'tan okur → **iç içe menüler çalışıyor** (/ → /model → liste). 1-9 hızlı seçim, Esc iptal, altbilgi satırı. |
+| `internal/replcli/repl.go` | TTY ise: oturum boyu raw mode + editör; değilse eski scanner yolu aynen (testler/pipe). Akış sırasında Esc/Ctrl+C üretimi iptal eder (`context.WithCancel`); izin sorusu sırasında izleyici duraklatılır (`askPermission`). Prompt `❯`. |
+| `internal/replcli/commands.go` | `/model` argümansız → listeden seçtirir (TTY'de); `/` menüsü `slashCommands` tek kaynağından üretilir. |
+
+**Doğrulama:** ~25 yeni unit test + gerçek pty'de (python `pty.fork`) 10 adımlı uçtan uca senaryo — canlı menü, CSI/SS3 okları, Esc, Tab, geçmiş, iç içe seçici, /exit — hepsi geçti. `go build ./...`, `go vet`, tüm replcli testleri yeşil. Pty test scripti scratchpad'te (`pty_test.py`, kalıcı değil).
+
+---
+
+## Düzeltilmeyen Bilinen Sorunlar (bu oturumda teşhis edildi)
+
+1. **Öksüz llama-server sızıntısı:** memo sert kapanınca embedding llama-server'ı arkada kalıyor (`Setpgid` var, `Pdeathsig` yok). Öksüz 8082'yi tutunca yeni oturumun sunucusu bind edemeyip ölüyor ama `WaitReady` öksüzden 200 alıp "ready" sanıyor.
+2. **`Stop()` → `killByPort` başka sürecin sunucusunu vurabiliyor** (`llama.go:261`): eski oturum kapanırken yeni oturumun taze llama-server'ını SIGTERM'leyebilir.
+3. **fts5 kapalı:** `sqlite_fts5` build tag'i yok → keyword search her yerde sessizce devre dışı (vektör arama çalışıyor).
+4. **Veri dizini bölünmesi:** GUI göreli `data/` (install dizini), CLI `MEMO_DATA_DIR=~/.memo/data` → **iki ayrı memory.db**. GUI'nin öğrendiğini CLI-standalone bilmiyor; tek data dir stratejisi düşünülmeli.
 
 ---
 
 ## Sıradaki Oturum İçin
 
-1. **`install.sh` / `install.ps1`** — kullanıcının R2 + custom domain'i var (`memo.tar.gz`, `memo.appimage`, `memo-mac.zip`, `memo.exe` sabit isimlerle duruyor). Domain adı verilince yazılacak: Linux/macOS için indir+aç+`~/.local/bin` symlink+PATH bootstrap; Windows için sadece indir+çalıştır (asıl kurulum mantığı zaten `installer.iss`'te).
-2. Windows tarafında derlenmiş bir `Memo-Setup-vX.exe` R2'ye henüz atılmadı — `install.ps1` bunu indirip çalıştıracak, o yüzden önce bir kez `ISCC.exe installer.iss` ile derlenip bucket'a atılması gerekiyor.
-3. macOS zip'inde düz bir `memo` binary'si yok (sadece `memo-backend` + `Memo.app`) — sadece Linux/Windows'a eklendi (kullanıcı öyle istemişti). curl-install script'i zip'i açtıktan sonra kendisi `memo-backend`'i `memo` diye kopyalayabilir, `build_releases.sh`'e dokunmaya gerek yok.
-4. Bu oturumda dokunulmayan, önceki handoff'lardan kalan teknik borç `AGENTS.md`'nin "Known Pitfalls & Technical Debt" bölümünde güncel tutuluyor — orası artık bug takibi için el kitabı, bu dosya sadece oturum özeti.
+1. Kullanıcı `go build -o ~/.memo/bin/memo .` ile binary'yi güncelledi mi, yeni REPL'i gerçek terminalinde denedi mi? Görsel geri bildirim iste (renk/işaret/menü sırası kolayca ayarlanır).
+2. Windows'ta yeni REPL denenmedi — `term.MakeRaw` VT input açıyor, parser CSI bekliyor; teoride çalışır ama bir Windows dumanı testi iyi olur.
+3. Bilinen sorunlar için öncelik: (2)+(1) birlikte (süreç yaşam döngüsü), sonra (4) veri dizini birleştirme, en son (3) fts5 tag'i (`-tags sqlite_fts5`, paketleme scriptlerine de).
+4. Kalıcı dersler `~/.claude` memory'de: kurulum düzeni tuzağı (exe'nin üstünü de ara) + `~/.memo/data/repl.log` teşhis noktası.
+5. Önceki oturumların teknik borcu `AGENTS.md` → "Known Pitfalls & Technical Debt"; bu dosya sadece oturum özeti.

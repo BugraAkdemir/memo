@@ -1,92 +1,63 @@
-# Handoff — 2026-07-02 (Session 10) — Windows Packaging + Gemini OAuth Girişimi (Reverted)
+# Handoff — 2026-07-04 (Session 11) — Terminal REPL (`memo` CLI)
 
 ## Oturum Özeti
 
-- Windows Inno Setup packaging: launch.ps1/vbs sessiz başlatıcı, installer.iss düzeltmeleri
-- GitHub Actions + build_releases.sh/bat güncellendi
-- **Gemini OAuth denenip revert edildi** — Google Gemini API'si OAuth desteklemiyor
+`memo` komutu artık interaktif bir terminalden çalıştırıldığında (Flutter kurmadan) basit bir sohbet REPL'i açıyor: backend'i gerekirse kendisi başlatıyor, agent modu varsayılan açık, mevcut REST/SSE API'yi Flutter'ın kullandığı gibi kullanıyor — yeni backend mantığı yok. Paketleme scriptleri (`build_releases.sh`, `installer.iss`) `memo` komutunu Linux/Windows'ta otomatik PATH'e ekleyecek şekilde güncellendi. Oturum sonunda curl ile tek komut dağıtım (`install.sh`/`install.ps1`) konuşuldu, kullanıcının domain adını bekliyor.
 
 ---
 
-## Windows Packaging (Commit `5e4f97c`)
+## Yeni Paket: `internal/replcli`
 
-| Değişiklik | Detay |
-|------------|-------|
-| `run_memo.bat` | Basitleştirildi, `start /B` backend + `start /WAIT` flutter + taskkill cleanup |
-| `launch.ps1` | PowerShell sessiz başlatıcı, backend `-WindowStyle Hidden`, flutter kapanınca auto kill |
-| `launch.vbs` | VBS wrapper, PS1'i tamamen görünmez çalıştırır |
-| `installer.iss` | Kısayollar `launch.vbs`'e yönlendirildi, `IconFilename: memo_flutter.exe` eklendi |
-| Workflow'lar | `build-windows.yml` + `upload-r2.yml` staging adımlarına launch.ps1/vbs oluşturma eklendi |
+| Dosya | Sorumluluk |
+|-------|-----------|
+| `client.go` | REST client — `/api/status`, `/api/agent/chat`, `/api/chats/switch`, `/api/agent/enabled`, `/api/send/stream` (SSE), `/api/agent/permission` |
+| `models_client.go` | `/api/models/local`, `/api/models/status`, `/api/models/embedding/*`, `/api/providers*` |
+| `download_client.go` | `/api/models/search`, `/api/models/files`, `/api/models/download`, `/api/models/download/progress` |
+| `sse.go` | `ParseSSELine` — saf fonksiyon, `data: {...}` satırlarını `api.StreamChunk`'a çevirir |
+| `agent_event.go` | `AgentEvent` — Flutter'ın `agent.dart` modelinin Go karşılığı |
+| `repl.go` | Ana döngü: prompt, streaming yazdırma, agent event dispatch, izin sorma |
+| `commands.go` | `/help /models /model /embedding /model-download /connect /gui` + `/` bare-slash menü |
+| `menu.go` | `selectFromMenu` — raw-mode ok tuşu seçici (Up/Down/Enter, Ctrl+C iptal) |
+| `color.go` | ANSI renk yardımcıları, `clearScreen`, `banner`, `progressBar`, `humanSize` |
 
-**Çalışma şekli:** Kullanıcı masaüstü kısayoluna tıklar → VBS → PS1 → backend gizli başlar → Flutter açılır → Flutter kapanınca backend otomatik kill.
+**main.go değişikliği:** stdin bir TTY ise (ve `--headless` verilmediyse) REPL açılıyor; değilse (pipe/arka plan/launcher) eskisi gibi headless server. Backend zaten `:8090`'da çalışıyorsa yeniden başlatmadan sadece bağlanıyor (ikinci `memo` çağrısı port çakışması yaşamıyor).
 
-**Not:** Inno Setup paketlemesi için `installer.iss` repo kökünde. Windows VM'de ISCC ile derlenir.
+**Kritik düzeltme — log sızıntısı:** REPL'de backend log'ları (`logx` + stdlib `log`) artık `data/repl.log`'a yönlendiriliyor (`logx.SetOutput` yeni eklendi). `internal/database/vec_register.go`'daki `init()` içinden atılan tek log satırı `database.LogStatus()`'a taşındı ve `app.Startup()`'tan çağrılıyor — çünkü `init()` her zaman `main()`'den önce çalışır, yönlendirmeyi yakalayamıyordu.
 
----
-
-## Gemini OAuth (Revert Edildi — 12 Commit)
-
-Google Gemini tüketici API'si (`generativelanguage.googleapis.com`) **sadece API key ile çalışır**, OAuth desteklemez. Vertex AI OAuth destekler ama GCP projesi + billing ister, kullanıcının kendi Gemini Advanced aboneliği kullanılamaz.
-
-Yazılan ama geri alınan kod: OAuth PKCE flow, Vertex AI endpoint routing, Flutter ayarlar UI'ı, `GEMINI_OAUTH_CLIENT_ID` env desteği.
-
-**Sonuç:** Mevcut API key sistemi Gemini için tek seçenek.
+**Diğer düzeltmeler bu oturumda kullanıcı testinde bulundu:**
+- `web_search` tool açıklaması her mesajda tetikleniyordu → açıklama "sadece güncel olay/fiyat/bilgi için kullan" diye sıkılaştırıldı (`internal/agent/tools.go`).
+- `/models` sadece yerel modelleri gösteriyordu, yapılandırılmış API sağlayıcılarını göstermiyordu → artık iki bölüm halinde ikisini de listeliyor.
 
 ---
 
-## Bu Oturumda Düzeltilenler
+## Paketleme Değişiklikleri
 
-### Build Scriptleri
+| Dosya | Değişiklik |
+|-------|-----------|
+| `build_releases.sh` (Linux) | `memo-backend` yanına düz `memo` kopyası; `run_memo.sh` her açılışta bunu `~/.memo/bin`'e kopyalayıp `~/.local/bin/memo` symlink kuruyor, PATH yoksa bash/zsh/fish rc'lerine ekliyor |
+| `build_releases.sh` (Windows) | `memo-backend.exe` yanına `memo.exe` kopyası |
+| `installer.iss` | Kurulumda `{app}`'i sistem PATH'ine ekliyor (`EnvAddPath`), kaldırmada temizliyor (`EnvRemovePath`) |
 
-| Sorun | Çözüm |
-|-------|-------|
-| `build_releases.sh` Windows bölümü tüm platform binary'lerini kopyalıyordu | Sadece `binaries/windows/` kopyalanır oldu |
-| `run_memo.bat` eskiydi, 2 terminal penceresi açıyordu | Basitleştirilmiş versiyon, backend'i gizli başlatır |
-| `launch.ps1` + `launch.vbs` yoktu | Build scriptlerine eklendi |
-
-### Flutter
-
-| Sorun | Çözüm |
-|-------|-------|
-| `flutter_test` depends_on_sdk hatası (Windows) | Flutter cache bozuk, `rmdir /s /q C:\flutter\bin\cache` |
+`install.sh`/`package_linux.sh` (ayrı, eski bir "yerel kurulum" akışı) bu oturumda **dokunulmadı** — kullanıcı sadece `build_releases.sh` çıktılarını (tar.gz/AppImage/zip/exe) kastetti.
 
 ---
 
 ## Test Durumu
 
 ```
-go build ./...                ✅ temiz
-go test ./...                 ✅ 30 paket PASS
-flutter analyze               ✅ 0 error, 0 warning
+CGO_ENABLED=1 go build ./...   ✅ temiz
+CGO_ENABLED=1 go vet ./...     ✅ temiz
+CGO_ENABLED=1 go test ./...    ✅ tüm paketler PASS (internal/memory'de bir kez pre-existing flaky race
+                                   görüldü, replcli ile ilgisiz, 8 tekrarda 1 kez, dokunulmadı)
 ```
 
----
-
-## Henüz Düzeltilmeyen Bug'lar
-
-### HIGH
-
-| # | Bug | Dosya |
-|---|-----|-------|
-| H6 | `a.cfg` alanlarında data race | `llama.go`, `llm.go` |
-| H7 | `callLLM` hata string'leri memory'e kaydediliyor | `llm.go`, `chat.go` |
-| H8 | Flutter WhatsApp Stop butonu çalışmıyor | `chat_input.dart` |
-| H9 | Cloud sync WAL checkpoint hatası sessizce yutuluyor | `sync_manager.go` |
-| H10 | Observer/proactive yanlış context | `app.go` |
-
-### MEDIUM / LOW
-
-| # | Bug |
-|---|-----|
-| M1-M12 | mood.db checkpoint, import rollback, copyFile 0666, vb. |
-| L1-L6 | .tmp orphan, double-rebuild, cache sızıntısı |
+`internal/replcli` için ~45 unit test (httptest tabanlı client testleri + REPL/komut senaryoları). Arrow-key menü, `/model-download` (gerçek Hugging Face API'siyle), log-sızıntısı düzeltmesi ve backend attach/own senaryoları gerçek bir pty (python `pty.openpty`) ile manuel doğrulandı.
 
 ---
 
-## Sıradaki Oturum İçin Önerilen İş Planı
+## Sıradaki Oturum İçin
 
-1. **H6** — `a.cfg` data race → cfgMu ekle (1 saat)
-2. **H7** — Hata string'leri memory'e kaydediliyor (30 dk)
-3. **H8** — Flutter WhatsApp Stop butonu (1 saat)
-4. **H9** — Cloud sync checkpoint hatası yutma (10 dk)
-5. **H10** — Observer/proactive yanlış context (15 dk)
+1. **`install.sh` / `install.ps1`** — kullanıcının R2 + custom domain'i var (`memo.tar.gz`, `memo.appimage`, `memo-mac.zip`, `memo.exe` sabit isimlerle duruyor). Domain adı verilince yazılacak: Linux/macOS için indir+aç+`~/.local/bin` symlink+PATH bootstrap; Windows için sadece indir+çalıştır (asıl kurulum mantığı zaten `installer.iss`'te).
+2. Windows tarafında derlenmiş bir `Memo-Setup-vX.exe` R2'ye henüz atılmadı — `install.ps1` bunu indirip çalıştıracak, o yüzden önce bir kez `ISCC.exe installer.iss` ile derlenip bucket'a atılması gerekiyor.
+3. macOS zip'inde düz bir `memo` binary'si yok (sadece `memo-backend` + `Memo.app`) — sadece Linux/Windows'a eklendi (kullanıcı öyle istemişti). curl-install script'i zip'i açtıktan sonra kendisi `memo-backend`'i `memo` diye kopyalayabilir, `build_releases.sh`'e dokunmaya gerek yok.
+4. Bu oturumda dokunulmayan, önceki handoff'lardan kalan teknik borç `AGENTS.md`'nin "Known Pitfalls & Technical Debt" bölümünde güncel tutuluyor — orası artık bug takibi için el kitabı, bu dosya sadece oturum özeti.

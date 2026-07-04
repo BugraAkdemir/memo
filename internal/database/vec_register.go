@@ -95,20 +95,38 @@ func findVecFile() string {
 
 // searchRoots returns candidate base directories to search for binaries/.
 func searchRoots() []string {
+	exe, _ := os.Executable()
+	wd, _ := os.Getwd()
+	return searchRootsFrom(exe, wd)
+}
+
+// searchRootsFrom is the pure part of searchRoots, split out so it can be
+// tested without mocking os.Executable/os.Getwd. The executable directory's
+// parent matters for the installed CLI, whose binary lives one level deeper
+// (~/.memo/bin/memo) than the bundled "binaries/" tree it ships next to
+// (~/.memo/binaries/vec0.so) — the GUI/AppImage binary sits flush with
+// "binaries/" already, so exeDir alone covers it, but the CLI needs the
+// parent to find the very same bundle. Same layout quirk as llama's
+// binarySearchBasesFrom.
+func searchRootsFrom(exePath, wd string) []string {
 	var dirs []string
 
-	// 1. Executable directory
-	if exe, err := os.Executable(); err == nil {
-		dirs = append(dirs, filepath.Dir(exe))
+	// 1. Executable directory, then its parent
+	if exePath != "" {
+		exeDir := filepath.Dir(exePath)
+		dirs = append(dirs, exeDir)
+		if parent := filepath.Dir(exeDir); parent != exeDir {
+			dirs = append(dirs, parent)
+		}
 	}
 
 	// 2. Current working directory
-	if wd, err := os.Getwd(); err == nil {
+	if wd != "" {
 		dirs = append(dirs, wd)
 	}
 
 	// 3. Walk up from CWD looking for go.mod (project root)
-	if wd, err := os.Getwd(); err == nil {
+	if wd != "" {
 		dir := wd
 		for i := 0; i < 10; i++ {
 			if _, err := os.Stat(filepath.Join(dir, "go.mod")); err == nil {

@@ -9,25 +9,39 @@ import (
 // Minimal ANSI color helpers — no library, just escape codes. Kept tiny on
 // purpose: the terminal REPL is meant to stay dependency-free and simple.
 const (
-	colorReset  = "\033[0m"
-	colorBold   = "\033[1m"
-	colorDim    = "\033[2m"
-	colorRed    = "\033[31m"
-	colorGreen  = "\033[32m"
-	colorYellow = "\033[33m"
-	colorCyan   = "\033[36m"
+	colorReset         = "\033[0m"
+	colorBold          = "\033[1m"
+	colorDim           = "\033[2m"
+	colorRed           = "\033[31m"
+	colorGreen         = "\033[32m"
+	colorYellow        = "\033[33m"
+	colorCyan          = "\033[36m"
+	colorBrightCyan    = "\033[96m"
+	colorBrightMagenta = "\033[95m"
+	colorBrightWhite   = "\033[97m"
+	colorBgUser        = "\033[104m" // bright blue background — tints the user's own sent message
 )
 
 func colorize(code, s string) string {
 	return code + s + colorReset
 }
 
-func bold(s string) string   { return colorize(colorBold, s) }
-func dim(s string) string    { return colorize(colorDim, s) }
-func red(s string) string    { return colorize(colorRed, s) }
-func green(s string) string  { return colorize(colorGreen, s) }
-func yellow(s string) string { return colorize(colorYellow, s) }
-func cyan(s string) string   { return colorize(colorCyan, s) }
+func bold(s string) string          { return colorize(colorBold, s) }
+func dim(s string) string           { return colorize(colorDim, s) }
+func red(s string) string           { return colorize(colorRed, s) }
+func green(s string) string         { return colorize(colorGreen, s) }
+func yellow(s string) string        { return colorize(colorYellow, s) }
+func cyan(s string) string          { return colorize(colorCyan, s) }
+func brightCyan(s string) string    { return colorize(colorBrightCyan, s) }
+func brightMagenta(s string) string { return colorize(colorBrightMagenta, s) }
+
+// userInputStart begins a background tint that "bleeds" into the terminal's
+// own echo of whatever the user types next — a tty prints keystrokes using
+// whatever SGR state is currently active when each one is drawn, so this
+// colors the user's raw input without the program ever touching what they
+// typed. Always pair with colorReset immediately after the line is read, so
+// nothing printed afterward (blank line, reply, command output) inherits it.
+const userInputStart = colorBgUser + colorBold + colorBrightWhite
 
 func errorf(format string, args ...any) string {
 	return red(fmt.Sprintf(format, args...))
@@ -46,6 +60,21 @@ const asciiBanner = ` __  __ _____ __  __  ___        ____ _     _____
 | |\/| |  _| | |\/| | | | |    | |   | |    | |
 | |  | | |___| |  | | |_| |    | |___| |___ | |
 |_|  |_|_____|_|  |_|\___/      \____|_____|___|`
+
+// bannerSplit is the column where the "MEMO" letters end and "CLI" begins —
+// verified against the literal art above: every line has a run of blank
+// columns straddling this index, so slicing here never cuts a letter.
+const bannerSplit = 27
+
+// bannerLine colors one banner row in two tones — cyan for "MEMO", magenta
+// for "CLI" — instead of one flat color, so the wordmark itself has some
+// life to it.
+func bannerLine(l string) string {
+	if len(l) <= bannerSplit {
+		return bold(brightCyan(l))
+	}
+	return bold(brightCyan(l[:bannerSplit])) + bold(brightMagenta(l[bannerSplit:]))
+}
 
 // welcomePanel renders the bordered startup panel: the ASCII banner plus a
 // small info block showing which model/provider will actually answer and
@@ -81,7 +110,7 @@ func welcomePanel(model, memory string, memoryActive bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", dim("╭"+strings.Repeat("─", width)+"╮"))
 	for _, l := range bannerLines {
-		fmt.Fprint(&b, row(bold(cyan(l)), l))
+		fmt.Fprint(&b, row(bannerLine(l), l))
 	}
 	fmt.Fprint(&b, row("", ""))
 	fmt.Fprint(&b, row(bold("Model:  ")+model, plainModel))

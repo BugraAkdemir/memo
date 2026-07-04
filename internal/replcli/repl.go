@@ -49,8 +49,13 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 		// output, or the welcome panel), so input and output never look
 		// stuck together.
 		fmt.Fprintln(out)
-		fmt.Fprint(out, bold(green("> ")))
-		if !scanner.Scan() {
+		fmt.Fprint(out, userInputStart+"> ")
+		ok := scanner.Scan()
+		// Reset right away, win or lose — the background must never bleed
+		// into anything printed after the user's own line (blank line,
+		// command output, the reply).
+		fmt.Fprint(out, colorReset)
+		if !ok {
 			fmt.Fprintln(out)
 			return nil
 		}
@@ -83,6 +88,12 @@ type session struct {
 	out        io.Writer
 	scanner    *bufio.Scanner
 	ownBackend bool
+
+	// aiTurnStarted tracks whether the reply marker has already been printed
+	// for the turn in progress — a turn can arrive as several chunks, but
+	// the marker belongs only in front of the first one that has content.
+	// Reset at the start of every sendMessage call.
+	aiTurnStarted bool
 }
 
 // sendMessage sends one line to the backend and streams the reply. The
@@ -92,6 +103,8 @@ type session struct {
 // anything) would otherwise leave the spinner's goroutine running forever,
 // racing the next prompt for the same stdout and garbling both.
 func (s *session) sendMessage(line string) {
+	s.aiTurnStarted = false
+
 	// Only worth checking for a save confirmation if embedding is actually
 	// running — otherwise every message would pay the polling delay below
 	// for a save that was never going to happen.
@@ -235,6 +248,10 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 		// Agent mode isn't truly token-streamed backend-side (the whole
 		// reply arrives as one chunk), so reveal it with a typewriter
 		// effect instead of dumping it on screen all at once.
+		if !s.aiTurnStarted && chunk.Content != "" {
+			s.aiTurnStarted = true
+			fmt.Fprint(s.out, bold(brightMagenta("● ")))
+		}
 		typewriter(s.out, chunk.Content)
 	}
 	return nil

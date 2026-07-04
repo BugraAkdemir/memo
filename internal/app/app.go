@@ -17,6 +17,7 @@ import (
 	"memo/internal/calendar"
 	"memo/internal/cloudsync"
 	"memo/internal/config"
+	"memo/internal/database"
 	"memo/internal/identity"
 	"memo/internal/intent"
 	"memo/internal/llama"
@@ -223,6 +224,12 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 // any other method.
 func (a *App) Startup(ctx context.Context) {
 	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(ctx)
+
+	// Logged here (rather than from the database package's init()) so a
+	// caller that redirects log output before calling Startup — like the
+	// terminal REPL keeping backend logs out of the interactive session —
+	// still catches it; init() always runs before that redirect is possible.
+	database.LogStatus()
 
 	loadDotEnv(".env")
 

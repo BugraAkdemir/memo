@@ -18,25 +18,33 @@ const driverName = "sqlite3_vec"
 var (
 	registerOnce sync.Once
 	vecAvailable bool
+	statusMsg    string
 )
 
 func init() {
 	registerOnce.Do(func() {
 		extPath := findVecFile()
 		if extPath == "" {
-			logx.Info("DATABASE: sqlite-vec extension not found, vec0 disabled")
+			statusMsg = "DATABASE: sqlite-vec extension not found, vec0 disabled"
 			return
 		}
-
-		logx.Printf("DATABASE: registering vec driver with: %s", extPath)
 
 		sql.Register(driverName, &sqlite3.SQLiteDriver{
 			Extensions: []string{extPath},
 		})
 
 		vecAvailable = true
-		logx.Info("DATABASE: vec driver registered successfully")
+		statusMsg = fmt.Sprintf("DATABASE: vec driver registered successfully (%s)", extPath)
 	})
+}
+
+// LogStatus logs the outcome of the sqlite-vec registration that happened in
+// this package's init(). Callers choose when — init() always runs before
+// main() gets a chance to redirect log output (e.g. the terminal REPL moving
+// backend logs to a file), so logging directly from init() would leak onto
+// the terminal no matter how early main() tries to redirect.
+func LogStatus() {
+	logx.Info(statusMsg)
 }
 
 func VecAvailable() bool {
@@ -78,7 +86,6 @@ func findVecFile() string {
 			if _, err := os.Stat(target); err == nil {
 				// Use the path without .so suffix for LoadExtension
 				loadName := strings.TrimSuffix(target, suffix)
-				logx.Printf("DATABASE: found vec0 extension: %s (will load as: %s)", target, loadName)
 				return loadName
 			}
 		}

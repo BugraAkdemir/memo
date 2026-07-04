@@ -14,6 +14,8 @@ import (
 	isatty "github.com/mattn/go-isatty"
 
 	"memo/internal/app"
+	"memo/internal/config"
+	"memo/internal/logx"
 	"memo/internal/replcli"
 )
 
@@ -21,6 +23,23 @@ func main() {
 	port := flag.Int("port", 8090, "Port for headless REST API server")
 	headless := flag.Bool("headless", false, "Force headless mode (no terminal REPL) even from an interactive terminal")
 	flag.Parse()
+
+	interactive := !*headless && isInteractive()
+
+	// The backend logs heavily (slog via logx, plus the stdlib `log` calls in
+	// this file). In headless mode that's the whole point — but in the REPL
+	// it would interleave with the prompt on the same terminal, since stdout
+	// and stderr both render to the same screen. Redirect it to a file
+	// instead; anything the user must see (FATAL startup failures) is printed
+	// straight to os.Stderr below, bypassing this redirect entirely.
+	if interactive {
+		os.MkdirAll(config.DataDir(), 0755)
+		if logFile, err := os.OpenFile(config.DataPath("repl.log"), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644); err == nil {
+			defer logFile.Close()
+			logx.SetOutput(logFile)
+			log.SetOutput(logFile)
+		}
+	}
 
 	a := app.NewApp(embeddedBinaries, versionFile)
 
@@ -45,17 +64,15 @@ func main() {
 
 		// Start the REST API server for Flutter frontend (plain HTTP, no TLS)
 		if err := a.StartWebServerHTTP(*port); err != nil {
-			log.Printf("FATAL: %v", err)
+			fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 			os.Exit(1)
 		}
 		if !waitForBackend(client, 10*time.Second) {
-			log.Printf("FATAL: backend %d portunda ayağa kalkmadı", *port)
+			fmt.Fprintf(os.Stderr, "FATAL: backend %d portunda ayağa kalkmadı\n", *port)
 			os.Exit(1)
 		}
 		log.Printf("Memo backend server running on port %d", *port)
 	}
-
-	interactive := !*headless && isInteractive()
 
 	// Wait for interrupt signal
 	sigCh := make(chan os.Signal, 1)
@@ -68,7 +85,7 @@ func main() {
 	if interactive {
 		cwd, err := os.Getwd()
 		if err != nil {
-			log.Printf("FATAL: çalışma dizini alınamadı: %v", err)
+			fmt.Fprintf(os.Stderr, "FATAL: çalışma dizini alınamadı: %v\n", err)
 			os.Exit(1)
 		}
 
@@ -78,7 +95,7 @@ func main() {
 		select {
 		case err := <-replDone:
 			if err != nil {
-				log.Printf("REPL hatası: %v", err)
+				fmt.Fprintf(os.Stderr, "REPL hatası: %v\n", err)
 			}
 		case <-sigCh:
 			fmt.Println()

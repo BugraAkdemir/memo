@@ -60,6 +60,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 			continue
 		}
 
+		fmt.Fprintln(out) // blank line between the typed message and the reply that follows
 		if err := client.SendStream(ctx, line, s.handleChunk); err != nil {
 			fmt.Fprintln(out, errorf("Hata: %s", friendlyError(err.Error())))
 		}

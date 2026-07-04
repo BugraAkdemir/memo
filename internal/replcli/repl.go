@@ -16,8 +16,11 @@ import (
 // baseURL. It creates one fresh agent-mode chat rooted at projectPath, then
 // reads lines from in and writes all output to out until EOF or the user
 // types /exit. Every run is a brand-new chat — there is no session history
-// or switching inside the REPL.
-func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
+// or switching inside the REPL. ownBackend tells the welcome panel whether
+// this process just started the backend itself (main.go) — only then is an
+// embedding-model auto-start race actually possible, so only then is it
+// worth briefly retrying the memory status before reporting it as off.
+func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bool) error {
 	clearScreen(out)
 
 	ctx := context.Background()
@@ -37,7 +40,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	s := &session{client: client, ctx: ctx, out: out, scanner: scanner}
+	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend}
 	s.printWelcome()
 
 	for {
@@ -75,10 +78,11 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 // read from the same stdin scanner the outer prompt loop uses), and the
 // slash-command handlers in commands.go.
 type session struct {
-	client  *Client
-	ctx     context.Context
-	out     io.Writer
-	scanner *bufio.Scanner
+	client     *Client
+	ctx        context.Context
+	out        io.Writer
+	scanner    *bufio.Scanner
+	ownBackend bool
 }
 
 // sendMessage sends one line to the backend and streams the reply. The
@@ -181,16 +185,32 @@ func (s *session) modelSummary() string {
 }
 
 // memorySummary reports whether the embedding model (and therefore RAG
-// memory) is actually running.
+// memory) is actually running. When this process just started the backend
+// itself (ownBackend), an embedding model can still be mid-load in the
+// background — briefly retry before declaring memory off, so the welcome
+// panel doesn't flash a stale warning for something that finishes loading
+// half a second later. Attaching to an already-running backend has no such
+// race — its embedding status is already settled, so a single check is both
+// correct and instant.
 func (s *session) memorySummary() (text string, active bool) {
-	status, err := s.client.EmbeddingStatus(s.ctx)
-	if err != nil || !status.Running {
-		return "kapalı", false
+	attempts := 1
+	if s.ownBackend {
+		attempts = 6
 	}
-	if status.ModelName != "" {
-		return status.ModelName, true
+	const interval = 400 * time.Millisecond
+	for i := range attempts {
+		status, err := s.client.EmbeddingStatus(s.ctx)
+		if err == nil && status.Running {
+			if status.ModelName != "" {
+				return status.ModelName, true
+			}
+			return "açık", true
+		}
+		if i < attempts-1 {
+			time.Sleep(interval)
+		}
 	}
-	return "açık", true
+	return "kapalı", false
 }
 
 func (s *session) handleChunk(chunk api.StreamChunk) error {

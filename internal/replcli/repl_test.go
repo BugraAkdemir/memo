@@ -55,7 +55,7 @@ func TestRun_PlainMessage(t *testing.T) {
 	in := strings.NewReader("selam\n/exit\n")
 	var out bytes.Buffer
 
-	if err := Run(srv.URL, "/tmp/project", in, &out); err != nil {
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if !strings.Contains(out.String(), "Merhaba!") {
@@ -75,7 +75,7 @@ func TestRun_PermissionRequest_Allow(t *testing.T) {
 	in := strings.NewReader("bir komut çalıştır\ny\n/exit\n")
 	var out bytes.Buffer
 
-	if err := Run(srv.URL, "/tmp/project", in, &out); err != nil {
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if len(*calls) != 1 {
@@ -97,7 +97,7 @@ func TestRun_PermissionRequest_Deny(t *testing.T) {
 	in := strings.NewReader("tehlikeli bir şey yap\nn\n/exit\n")
 	var out bytes.Buffer
 
-	if err := Run(srv.URL, "/tmp/project", in, &out); err != nil {
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 	if len(*calls) != 1 {
@@ -124,7 +124,7 @@ func TestRun_ZeroChunkResponse_DoesNotHangOrLeakSpinner(t *testing.T) {
 	var out bytes.Buffer
 
 	done := make(chan error, 1)
-	go func() { done <- Run(srv.URL, "/tmp/project", in, &out) }()
+	go func() { done <- Run(srv.URL, "/tmp/project", in, &out, false) }()
 
 	select {
 	case err := <-done:
@@ -143,7 +143,7 @@ func TestRun_ExitsOnEOF(t *testing.T) {
 	in := strings.NewReader("") // immediate EOF, no /exit needed
 	var out bytes.Buffer
 
-	if err := Run(srv.URL, "/tmp/project", in, &out); err != nil {
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
 }

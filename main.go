@@ -90,7 +90,7 @@ func main() {
 		}
 
 		replDone := make(chan error, 1)
-		go func() { replDone <- replcli.Run(baseURL, cwd, os.Stdin, os.Stdout) }()
+		go func() { replDone <- replcli.Run(baseURL, cwd, os.Stdin, os.Stdout, ownBackend) }()
 
 		select {
 		case err := <-replDone:

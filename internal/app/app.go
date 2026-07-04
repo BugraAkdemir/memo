@@ -450,6 +450,20 @@ func (a *App) Startup(ctx context.Context) {
 	}
 	logx.Info("Skill manager initialized")
 
+	// Auto-start the embedding model at boot, not just after a local chat
+	// model loads — a user routing chat through an external provider (no
+	// local model ever started via StartLocalModel) would otherwise never
+	// get an embedding server, silently breaking RAG/memory retrieval.
+	// Backgrounded since WaitReady can take a while and must not delay the
+	// rest of Startup.
+	if a.cfg.Memory.MemoryEnabled {
+		go func() {
+			if !a.llamaEmbedServer.IsRunning() {
+				a.autoStartEmbeddingModel()
+			}
+		}()
+	}
+
 	logx.Info("Memo ready")
 }
 

@@ -40,25 +40,15 @@ func clearScreen(out io.Writer) {
 	fmt.Fprint(out, "\033[H\033[2J\033[3J")
 }
 
-// banner renders the small dotted-border "memo cli" wordmark shown once at
-// startup. Built from matching plain/colored segment pairs so the border
-// width is computed from visible characters only — ANSI codes never affect
-// the box alignment.
+// asciiBanner is the "MEMO CLI" block-letter wordmark shown once at startup.
+const asciiBanner = ` __  __ _____ __  __  ___        ____ _     _____
+|  \/  | ____|  \/  |/ _ \      / ___| |   |_ _|
+| |\/| |  _| | |\/| | | | |    | |   | |    | |
+| |  | | |___| |  | | |_| |    | |___| |___ | |
+|_|  |_|_____|_|  |_|\___/      \____|_____|___|`
+
 func banner() string {
-	segDots := "  ·  ·  ·  "
-	segMemo := "memo"
-	segGap := " "
-	segCli := "cli"
-
-	plainInner := segDots + segMemo + segGap + segCli + strings.TrimRight(segDots, " ") + "  "
-	coloredInner := dim(segDots) + bold(cyan(segMemo)) + segGap + dim(segCli) + dim(strings.TrimRight(segDots, " ")) + "  "
-
-	border := strings.Repeat("─", len([]rune(plainInner)))
-	return fmt.Sprintf("%s\n%s\n%s",
-		dim("╭"+border+"╮"),
-		dim("│")+coloredInner+dim("│"),
-		dim("╰"+border+"╯"),
-	)
+	return bold(cyan(asciiBanner))
 }
 
 // progressBar renders a fixed-width text progress bar for percent (0-100).

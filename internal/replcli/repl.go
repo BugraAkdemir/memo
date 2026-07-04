@@ -61,7 +61,18 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer) error {
 		}
 
 		fmt.Fprintln(out) // blank line between the typed message and the reply that follows
-		if err := client.SendStream(ctx, line, s.handleChunk); err != nil {
+
+		sp := newSpinner(out)
+		firstChunk := true
+		onChunk := func(chunk api.StreamChunk) error {
+			if firstChunk {
+				sp.Stop()
+				firstChunk = false
+			}
+			return s.handleChunk(chunk)
+		}
+		if err := client.SendStream(ctx, line, onChunk); err != nil {
+			sp.Stop()
 			fmt.Fprintln(out, errorf("Hata: %s", friendlyError(err.Error())))
 		}
 		fmt.Fprintln(out)
@@ -108,8 +119,11 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 	case "usage", "activity":
 		// structured payloads not needed by the terminal REPL — ignored.
 	default:
-		// "" (plain streamed token) or "stop" (may carry trailing text): print it.
-		fmt.Fprint(s.out, chunk.Content)
+		// "" (plain streamed token) or "stop" (may carry trailing text).
+		// Agent mode isn't truly token-streamed backend-side (the whole
+		// reply arrives as one chunk), so reveal it with a typewriter
+		// effect instead of dumping it on screen all at once.
+		typewriter(s.out, chunk.Content)
 	}
 	return nil
 }

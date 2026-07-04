@@ -631,7 +631,7 @@ class RoleConfig {
 // ─── API Client ───────────────────────────────────────────────────────
 
 class MemoApiClient {
-  late final Dio _dio;
+  late Dio _dio;
   String _baseUrl;
   String _token = '';
 

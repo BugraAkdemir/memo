@@ -153,7 +153,7 @@ func (r *ToolRegistry) registerBuiltins() {
 
 	r.Register(ToolDef{
 		Name:        "web_search",
-		Description: "Searches the web using DuckDuckGo and returns relevant results. Use this for current events, recent news, prices, or any information that may have changed after your training cutoff.",
+		Description: "Searches the web using DuckDuckGo and returns relevant results. Only call this for current events, recent news, prices, or specific facts that may have changed after your training cutoff. Do NOT call it for greetings, small talk, general knowledge you already know, or coding/file/project questions — answer those directly instead.",
 		Parameters:  json.RawMessage(`{"type":"object","properties":{"query":{"type":"string","description":"Search query"},"max_results":{"type":"integer","description":"Number of results to return (default 5, max 10)"}},"required":["query"]}`),
 		DangerLevel: Safe,
 		ExecuteFn:   tools.WebSearch,

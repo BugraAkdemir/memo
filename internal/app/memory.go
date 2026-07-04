@@ -77,6 +77,10 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	} else {
 		logx.Printf("LATENCY app.memory_save_sync total_ms=%d status=ok", time.Since(start).Milliseconds())
 		logx.Printf("Memory saved: %q → %d chars reply", truncateLog(userMsg, 60), len(reply))
+		// Only signal here, once the async save has actually completed — lets
+		// clients (e.g. the terminal REPL) show a "memory saved" confirmation
+		// that's tied to a real write instead of just assuming it happened.
+		a.emitEvent("memory:saved", "")
 		a.syncMu.RLock()
 		sm := a.syncManager
 		a.syncMu.RUnlock()

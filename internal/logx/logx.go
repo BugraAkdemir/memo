@@ -4,6 +4,7 @@ package logx
 
 import (
 	"context"
+	"io"
 	"log/slog"
 	"os"
 )
@@ -18,11 +19,28 @@ const (
 	LevelError = slog.LevelError
 )
 
-var logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: LevelInfo}))
+var (
+	currentOutput io.Writer = os.Stderr
+	currentLevel  Level     = LevelInfo
+	logger        = slog.New(slog.NewTextHandler(currentOutput, &slog.HandlerOptions{Level: currentLevel}))
+)
+
+func rebuild() {
+	logger = slog.New(slog.NewTextHandler(currentOutput, &slog.HandlerOptions{Level: currentLevel}))
+}
 
 // SetLevel changes the minimum log level at runtime.
 func SetLevel(l Level) {
-	logger = slog.New(slog.NewTextHandler(os.Stderr, &slog.HandlerOptions{Level: l}))
+	currentLevel = l
+	rebuild()
+}
+
+// SetOutput redirects all subsequent log output to w. Used by the terminal
+// REPL to keep backend logs out of the interactive session — they'd
+// otherwise interleave with the prompt on the same stdout/stderr terminal.
+func SetOutput(w io.Writer) {
+	currentOutput = w
+	rebuild()
 }
 
 // SetDebug enables debug-level output.

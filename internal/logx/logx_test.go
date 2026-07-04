@@ -100,3 +100,16 @@ func TestOutputFormat(t *testing.T) {
 		t.Errorf("output missing val1, got: %s", output)
 	}
 }
+
+func TestSetOutput(t *testing.T) {
+	oldOutput, oldLevel := currentOutput, currentLevel
+	defer func() { SetOutput(oldOutput); SetLevel(oldLevel) }()
+
+	var buf bytes.Buffer
+	SetOutput(&buf)
+	Info("redirected message")
+
+	if !strings.Contains(buf.String(), "redirected message") {
+		t.Errorf("output missing redirected message, got: %s", buf.String())
+	}
+}

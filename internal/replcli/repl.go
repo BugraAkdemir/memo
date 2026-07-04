@@ -4,10 +4,14 @@ import (
 	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"os"
 	"strings"
 	"time"
+
+	"golang.org/x/term"
 
 	"memo/internal/api"
 )
@@ -20,7 +24,35 @@ import (
 // this process just started the backend itself (main.go) — only then is an
 // embedding-model auto-start race actually possible, so only then is it
 // worth briefly retrying the memory status before reporting it as off.
+//
+// When in is a real terminal the whole session runs in raw mode with a
+// dedicated line editor: a live slash-command dropdown (type "/" and
+// navigate with the arrows immediately, Claude Code style), input history on
+// Up/Down, cursor editing, and Esc/Ctrl+C to cancel a streaming reply. Piped
+// input (tests, scripts) keeps the plain line-scanner behavior.
 func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bool) error {
+	var keys *keySource
+	var ed *editor
+	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
+		fd := int(f.Fd())
+		if oldState, err := term.MakeRaw(fd); err == nil {
+			defer term.Restore(fd, oldState)
+			out = crlfWriter{out}
+			keys = newKeySource(f)
+			ed = &editor{
+				out:  out,
+				keys: keys,
+				width: func() int {
+					w, _, err := term.GetSize(fd)
+					if err != nil {
+						return 80
+					}
+					return w
+				},
+			}
+		}
+	}
+
 	clearScreen(out)
 
 	ctx := context.Background()
@@ -40,7 +72,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend}
+	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed}
 	s.printWelcome()
 
 	for {
@@ -49,17 +81,12 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 		// output, or the welcome panel), so input and output never look
 		// stuck together.
 		fmt.Fprintln(out)
-		fmt.Fprint(out, userInputStart+"> ")
-		ok := scanner.Scan()
-		// Reset right away, win or lose — the background must never bleed
-		// into anything printed after the user's own line (blank line,
-		// command output, the reply).
-		fmt.Fprint(out, colorReset)
+		line, ok := s.readInput()
 		if !ok {
 			fmt.Fprintln(out)
 			return nil
 		}
-		line := strings.TrimSpace(scanner.Text())
+		line = strings.TrimSpace(line)
 		if line == "" {
 			continue
 		}
@@ -80,7 +107,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 
 // session carries the state a single streamed turn needs to react to
 // mid-stream agent events (in particular, blocking for a permission answer
-// read from the same stdin scanner the outer prompt loop uses), and the
+// read from the same input source the outer prompt loop uses), and the
 // slash-command handlers in commands.go.
 type session struct {
 	client     *Client
@@ -89,11 +116,75 @@ type session struct {
 	scanner    *bufio.Scanner
 	ownBackend bool
 
+	// keys and ed are non-nil only when stdin is a real terminal. keys is
+	// the one shared key stream (editor, menus and the mid-stream interrupt
+	// watcher all read from it); ed is the raw-mode line editor.
+	keys *keySource
+	ed   *editor
+
+	// interruptCancel + watcher wire Esc/Ctrl+C to the in-flight request's
+	// context while a reply streams. The watcher must be paused whenever
+	// something else needs the keyboard mid-stream (permission prompts).
+	interruptCancel func()
+	watcher         *interruptWatch
+
 	// aiTurnStarted tracks whether the reply marker has already been printed
 	// for the turn in progress — a turn can arrive as several chunks, but
 	// the marker belongs only in front of the first one that has content.
 	// Reset at the start of every sendMessage call.
 	aiTurnStarted bool
+}
+
+// promptStyle is the main composer prompt. Kept at display width 2 so the
+// editor's column math stays trivial.
+var promptStyle = bold(brightCyan("❯ "))
+
+// readInput reads one top-level line: through the raw-mode editor on a real
+// terminal, through the scanner otherwise (tests, piped input).
+func (s *session) readInput() (string, bool) {
+	if s.ed != nil {
+		return s.ed.readLine(promptStyle)
+	}
+	fmt.Fprint(s.out, userInputStart+"> ")
+	ok := s.scanner.Scan()
+	// Reset right away, win or lose — the background must never bleed
+	// into anything printed after the user's own line (blank line,
+	// command output, the reply).
+	fmt.Fprint(s.out, colorReset)
+	if !ok {
+		return "", false
+	}
+	return s.scanner.Text(), true
+}
+
+// promptLine reads a secondary, free-form answer (y/n, a search term) with
+// whichever input path is active. No history, no dropdown.
+func (s *session) promptLine(prompt string) (string, bool) {
+	if s.ed != nil {
+		return s.ed.readLinePlain(prompt)
+	}
+	fmt.Fprint(s.out, prompt)
+	if !s.scanner.Scan() {
+		return "", false
+	}
+	return s.scanner.Text(), true
+}
+
+// startInterruptWatch resumes the Esc/Ctrl+C watcher for the in-flight turn,
+// if one is in flight and the keyboard is ours to watch.
+func (s *session) startInterruptWatch() {
+	if s.keys != nil && s.interruptCancel != nil && s.watcher == nil {
+		s.watcher = s.keys.watchInterrupt(s.interruptCancel)
+	}
+}
+
+// stopInterruptWatch fully detaches the watcher from the key stream so the
+// editor or a menu can read keys again.
+func (s *session) stopInterruptWatch() {
+	if s.watcher != nil {
+		s.watcher.Stop()
+		s.watcher = nil
+	}
 }
 
 // sendMessage sends one line to the backend and streams the reply. The
@@ -122,15 +213,30 @@ func (s *session) sendMessage(line string) {
 		}
 	}
 
+	// Esc or Ctrl+C during the stream cancels this turn's request instead of
+	// killing the whole app.
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	s.interruptCancel = cancel
+	s.startInterruptWatch()
+	defer func() {
+		s.stopInterruptWatch()
+		s.interruptCancel = nil
+	}()
+
 	sp := newSpinner(s.out)
 	onChunk := func(chunk api.StreamChunk) error {
 		sp.Stop()
 		return s.handleChunk(chunk)
 	}
-	err := s.client.SendStream(s.ctx, line, onChunk)
+	err := s.client.SendStream(ctx, line, onChunk)
 	sp.Stop()
 
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			fmt.Fprintln(s.out, dim("⨯ iptal edildi"))
+			return
+		}
 		fmt.Fprintln(s.out, errorf("Hata: %s", friendlyError(err.Error())))
 		return
 	}
@@ -280,12 +386,16 @@ func (s *session) handleAgentEvent(ev AgentEvent) error {
 }
 
 func (s *session) askPermission(ev AgentEvent) error {
+	// The interrupt watcher and the permission prompt would otherwise race
+	// for the same key stream — pause it for the duration of the question.
+	s.stopInterruptWatch()
+	defer s.startInterruptWatch()
+
 	fmt.Fprintln(s.out, "\n"+yellow(fmt.Sprintf("⚠ %s bu işlemi yapmak istiyor: %s", ev.Tool, previewArgs(ev.Args))))
-	fmt.Fprint(s.out, bold("İzin ver mi? [y/n] "))
 
 	policy := "deny_once"
-	if s.scanner.Scan() {
-		answer := strings.ToLower(strings.TrimSpace(s.scanner.Text()))
+	if answer, ok := s.promptLine(bold("İzin ver mi? [y/n] ")); ok {
+		answer = strings.ToLower(strings.TrimSpace(answer))
 		if answer == "y" || answer == "yes" || answer == "e" || answer == "evet" {
 			policy = "allow_once"
 		}

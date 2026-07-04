@@ -126,7 +126,7 @@ func welcomePanel(model, memory string, memoryActive bool) string {
 	fmt.Fprint(&b, row(bold("Model:  ")+model, plainModel))
 	fmt.Fprint(&b, row(bold("Hafıza: ")+memoryColor(memory), plainMemory))
 	fmt.Fprintf(&b, "%s\n", dim("╰"+strings.Repeat("─", width)+"╯"))
-	fmt.Fprint(&b, dim("Çıkmak için /exit ya da Ctrl+D  ·  Komutlar için /help ya da /"))
+	fmt.Fprint(&b, dim("Komutlar için /  ·  Yanıtı kesmek için Esc  ·  Çıkmak için /exit ya da Ctrl+D"))
 	return b.String()
 }
 

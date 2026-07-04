@@ -13,7 +13,7 @@ import (
 const helpText = `Kullanılabilir komutlar:
   /help                                   bu yardım metnini gösterir
   /models                                 yüklü modelleri ve sağlayıcıları listeler
-  /model <isim>                           bir sohbet modelini isimle başlatır
+  /model [isim]                           bir sohbet modeli başlatır (isim boşsa listeden seçtirir)
   /embedding [isim]                       embedding modelini başlatır (isim boşsa ilk bulunanı kullanır)
   /model-download [huggingface adı]       Hugging Face'ten yeni model ara ve indir (boşsa popülerleri önerir)
   /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
@@ -57,19 +57,14 @@ func (s *session) handleCommand(line string) bool {
 // showCommandMenu renders the arrow-key command picker for a bare "/". Falls
 // back to the plain help text if stdin isn't a real terminal (selectFromMenu
 // returns -1 in that case) or the user cancels. Returns true if the user
-// picked Exit.
+// picked Exit. The entries come from the same slashCommands list the live
+// dropdown uses, so the two menus can never drift apart.
 func (s *session) showCommandMenu() bool {
-	items := []menuItem{
-		{Label: "/help", Hint: "komut listesini göster"},
-		{Label: "/models", Hint: "modelleri ve sağlayıcıları listele"},
-		{Label: "/model", Hint: "bir sohbet modeli seç ve başlat"},
-		{Label: "/embedding", Hint: "bir embedding modeli seç ve başlat"},
-		{Label: "/model-download", Hint: "Hugging Face'ten yeni model indir"},
-		{Label: "/connect", Hint: "harici bir API sağlayıcısına bağlan"},
-		{Label: "/gui", Hint: "masaüstü uygulamasını aç"},
-		{Label: "/exit", Hint: "çık"},
+	items := make([]menuItem, len(slashCommands))
+	for i, c := range slashCommands {
+		items[i] = menuItem{Label: c.label, Hint: c.hint}
 	}
-	idx := selectFromMenu(s.out, "Komutlar", items)
+	idx := selectFromMenu(s.out, s.keys, "Komutlar", items)
 	if idx < 0 {
 		fmt.Fprint(s.out, helpText)
 		return false
@@ -149,6 +144,13 @@ func (s *session) cmdModels() {
 
 func (s *session) cmdModel(args []string) {
 	if len(args) == 0 {
+		// On a real terminal a bare /model opens the arrow-key picker (the
+		// natural follow-up when it was chosen from the live dropdown);
+		// piped input still gets the usage line.
+		if s.keys != nil {
+			s.pickAndStartModel(false)
+			return
+		}
 		fmt.Fprintln(s.out, yellow("Kullanım: /model <isim>"))
 		return
 	}
@@ -224,7 +226,7 @@ func (s *session) pickAndStartModel(wantEmbedding bool) {
 	if wantEmbedding {
 		title = "Bir embedding modeli seç"
 	}
-	idx := selectFromMenu(s.out, title, items)
+	idx := selectFromMenu(s.out, s.keys, title, items)
 	if idx < 0 {
 		fmt.Fprintln(s.out, dim("İptal edildi."))
 		return
@@ -314,16 +316,11 @@ func guiBinaryName() string {
 	}
 }
 
-// interactiveModelDownload prompts for a search term (via the normal, non-raw
-// stdin scanner — raw mode has already ended by the time this runs) then
-// runs cmdModelDownload with it.
+// interactiveModelDownload prompts for a search term then runs
+// cmdModelDownload with it.
 func (s *session) interactiveModelDownload() {
-	fmt.Fprint(s.out, "Arama terimi (boş bırakıp Enter'a basarsan popüler modelleri gösteririm): ")
-	query := ""
-	if s.scanner.Scan() {
-		query = strings.TrimSpace(s.scanner.Text())
-	}
-	s.cmdModelDownload(query)
+	query, _ := s.promptLine("Arama terimi (boş bırakıp Enter'a basarsan popüler modelleri gösteririm): ")
+	s.cmdModelDownload(strings.TrimSpace(query))
 }
 
 // cmdModelDownload searches Hugging Face for query (or, if empty, the
@@ -354,7 +351,7 @@ func (s *session) cmdModelDownload(query string) {
 	for i, r := range results {
 		repoItems[i] = menuItem{Label: r.ID, Hint: fmt.Sprintf("%d indirme · %d beğeni", r.Downloads, r.Likes)}
 	}
-	ridx := selectFromMenu(s.out, "Bir model seç", repoItems)
+	ridx := selectFromMenu(s.out, s.keys, "Bir model seç", repoItems)
 	if ridx < 0 {
 		fmt.Fprintln(s.out, dim("İptal edildi."))
 		return
@@ -375,7 +372,7 @@ func (s *session) cmdModelDownload(query string) {
 	for i, f := range files {
 		fileItems[i] = menuItem{Label: f.Filename, Hint: humanSize(f.Size)}
 	}
-	fidx := selectFromMenu(s.out, "Bir dosya seç", fileItems)
+	fidx := selectFromMenu(s.out, s.keys, "Bir dosya seç", fileItems)
 	if fidx < 0 {
 		fmt.Fprintln(s.out, dim("İptal edildi."))
 		return

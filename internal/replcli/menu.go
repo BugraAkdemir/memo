@@ -3,9 +3,7 @@ package replcli
 import (
 	"fmt"
 	"io"
-	"os"
-
-	"golang.org/x/term"
+	"strings"
 )
 
 // menuItem is one selectable line in an interactive arrow-key menu.
@@ -15,69 +13,83 @@ type menuItem struct {
 }
 
 // selectFromMenu renders items and lets the user pick one with the Up/Down
-// arrows and Enter, redrawing in place. Returns the chosen index, or -1 if
-// the user cancelled (Ctrl+C — the reliable cancel key) or if stdin isn't a
-// real terminal we can put in raw mode (piped input, test harnesses). -1
-// means "no selection" — callers fall back to a plain text prompt.
-func selectFromMenu(out io.Writer, title string, items []menuItem) int {
-	if len(items) == 0 {
+// arrows and Enter, redrawing in place. Number keys 1-9 jump straight to an
+// entry. Returns the chosen index, or -1 if the user cancelled (Esc, q or
+// Ctrl+C) or when keys is nil (piped input, test harnesses) — callers fall
+// back to a plain text prompt.
+//
+// Keys come from the session's shared keySource — the same one the line
+// editor uses — never from a private os.Stdin reader. That is what makes
+// menus stackable: a menu opened from another menu's selection (model pick
+// after the "/" menu, file pick after the repo pick) reads from the same
+// decoded key stream instead of fighting over raw stdin bytes.
+func selectFromMenu(out io.Writer, keys *keySource, title string, items []menuItem) int {
+	if len(items) == 0 || keys == nil {
 		return -1
 	}
-
-	fd := int(os.Stdin.Fd())
-	if !term.IsTerminal(fd) {
-		return -1
-	}
-
-	oldState, err := term.MakeRaw(fd)
-	if err != nil {
-		return -1
-	}
-	defer term.Restore(fd, oldState)
 
 	selected := 0
+	rows := len(items) + 2 // title + items + footer
 	render := func(first bool) {
+		var b strings.Builder
 		if !first {
-			fmt.Fprintf(out, "\033[%dA", len(items)+1)
+			// The cursor rests at the end of the footer (the last of the
+			// rows lines, no trailing newline) — the title row is rows-1
+			// lines up.
+			fmt.Fprintf(&b, "\033[%dA", rows-1)
 		}
-		fmt.Fprintf(out, "\033[K%s\r\n", bold(title))
+		b.WriteString("\r\033[J")
+		b.WriteString(bold(title) + "\n")
 		for i, it := range items {
-			fmt.Fprint(out, "\033[K")
-			line := "  " + it.Label
+			line := "    " + it.Label
 			if i == selected {
-				line = green("▶ " + it.Label)
+				line = bold(brightCyan("  ▶ " + it.Label))
 			}
 			if it.Hint != "" {
 				line += "  " + dim(it.Hint)
 			}
-			fmt.Fprint(out, line+"\r\n")
+			b.WriteString(line + "\n")
 		}
+		b.WriteString("  " + dim("↑↓ gezin · Enter seç · Esc iptal"))
+		fmt.Fprint(out, b.String())
 	}
 	render(true)
 
-	b := make([]byte, 1)
+	finish := func() {
+		// Wipe the menu so the picked action's output doesn't stack under
+		// a dead selector UI.
+		fmt.Fprintf(out, "\033[%dA\r\033[J", rows-1)
+	}
+
 	for {
-		if _, err := os.Stdin.Read(b); err != nil {
+		k := keys.readKey()
+		switch k.kind {
+		case keyEOF, keyCtrlC, keyEsc:
+			finish()
 			return -1
-		}
-		switch b[0] {
-		case 3, 'q': // Ctrl+C or q — reliable, non-blocking cancel
-			return -1
-		case '\r', '\n':
+		case keyEnter:
+			finish()
 			return selected
-		case 27: // Esc — start of an arrow-key sequence (ESC [ A/B)
-			rest := make([]byte, 2)
-			n, _ := os.Stdin.Read(rest)
-			if n < 2 || rest[0] != '[' {
+		case keyUp:
+			selected = (selected - 1 + len(items)) % len(items)
+			render(false)
+		case keyDown:
+			selected = (selected + 1) % len(items)
+			render(false)
+		case keyHome:
+			selected = 0
+			render(false)
+		case keyEnd:
+			selected = len(items) - 1
+			render(false)
+		case keyRune:
+			switch {
+			case k.r == 'q':
+				finish()
 				return -1
-			}
-			switch rest[1] {
-			case 'A':
-				selected = (selected - 1 + len(items)) % len(items)
-				render(false)
-			case 'B':
-				selected = (selected + 1) % len(items)
-				render(false)
+			case k.r >= '1' && k.r <= '9' && int(k.r-'1') < len(items):
+				finish()
+				return int(k.r - '1')
 			}
 		}
 	}

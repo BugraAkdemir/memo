@@ -163,6 +163,11 @@ type FullBridge interface {
 	ImportData(data []byte) error
 	WipeAllData() error
 
+	// CLI / uninstall
+	RemoveCLI() error
+	ReinstallCLI() error
+	UninstallMemo(keepMemory bool) error
+
 	// Skills
 	ListSkills() []skill.SkillDefinition
 	InstallSkill(path string) (*skill.SkillDefinition, error)

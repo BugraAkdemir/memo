@@ -220,6 +220,9 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/skills/active-list", s.handleGetActiveSkills)
 	mux.HandleFunc("/api/import", s.handleImport)
 	mux.HandleFunc("/api/wipe", s.handleWipe)
+	mux.HandleFunc("/api/cli/remove", s.handleCLIRemove)
+	mux.HandleFunc("/api/cli/reinstall", s.handleCLIReinstall)
+	mux.HandleFunc("/api/uninstall", s.handleUninstall)
 
 	// Calendar
 	mux.HandleFunc("/api/calendar/events", s.handleCalendarEvents)

@@ -13,7 +13,6 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/welcome_view.dart';
 import '../widgets/agent/permission_dialog.dart';
-import '../widgets/agent/activity_panel.dart';
 import '../providers/agent_provider.dart';
 import '../models/agent.dart';
 
@@ -23,8 +22,6 @@ class ChatScreen extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final isAgentEnabled = ref.watch(agentEnabledProvider);
-
     return Row(
       children: [
         // ─── Sidebar ──────────────────────────────
@@ -46,9 +43,6 @@ class ChatScreen extends ConsumerWidget {
             child: _ChatContent(),
           ),
         ),
-
-        // ─── Activity Panel (agent mode only) ─────
-        if (isAgentEnabled) const ActivityPanel(),
       ],
     );
   }

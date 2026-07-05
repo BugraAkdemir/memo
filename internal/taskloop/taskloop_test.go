@@ -304,6 +304,51 @@ func TestEngineContextCancel(t *testing.T) {
 	if tl.Status != "paused" {
 		t.Fatalf("status = %s, want paused after cancel", tl.Status)
 	}
+	if tl.Items[0].Status != "pending" {
+		t.Fatalf("interrupted item status = %s, want pending so a resumed run retries it instead of skipping it forever", tl.Items[0].Status)
+	}
+}
+
+// TestEngineContextCancelLastItem guards against the list being marked "done"
+// when the run loop's cancellation branch fires on the final item — a
+// cancelled item must never let the loop fall through to the end-of-list
+// SetStatus(listID, "done").
+func TestEngineContextCancelLastItem(t *testing.T) {
+	dir := t.TempDir()
+	store, _ := NewStore(dir)
+	tl, _ := store.Create("chat1", "Test", []string{"only item"})
+
+	engine := NewEngine(
+		store,
+		func(ctx context.Context, chatID, prompt string) (string, error) {
+			select {
+			case <-ctx.Done():
+				return "", ctx.Err()
+			case <-time.After(10 * time.Second):
+				return "output", nil
+			}
+		},
+		func(ctx context.Context, itemText, workerOutput string) (bool, string, error) {
+			return true, "", nil
+		},
+		func(v bool) {},
+		nil,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	_ = engine.Start(ctx, tl.ID)
+
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+	time.Sleep(500 * time.Millisecond)
+
+	tl, _ = store.Get(tl.ID)
+	if tl.Status != "paused" {
+		t.Fatalf("status = %s, want paused (not done) after cancelling the last item", tl.Status)
+	}
+	if tl.Items[0].Status != "pending" {
+		t.Fatalf("interrupted last item status = %s, want pending", tl.Items[0].Status)
+	}
 }
 
 func TestEngineCEOErrorFallback(t *testing.T) {
@@ -348,6 +393,7 @@ func TestExtractAndParseReview(t *testing.T) {
 		{"markdown code block", "```json\n{\"approved\": true, \"feedback\": \"\"}\n```", true, "", false},
 		{"code block no lang", "```\n{\"approved\": false, \"feedback\": \"redo\"}\n```", false, "redo", false},
 		{"with surrounding text", "Analysis:\n{\"approved\": true, \"feedback\": \"ok\"}\nDone.", true, "ok", false},
+		{"feedback containing a literal brace", `{"approved": false, "feedback": "Kapanış } eksik, fonksiyonu tamamla"}`, false, "Kapanış } eksik, fonksiyonu tamamla", false},
 		{"invalid json", "not json at all", false, "", true},
 	}
 

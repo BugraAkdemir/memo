@@ -163,6 +163,26 @@ func (s *Store) SetItemRunning(listID, itemID string) error {
 	return fmt.Errorf("item %s not found in list %s", itemID, listID)
 }
 
+// ResetItemPending puts an interrupted item back to "pending" so a resumed
+// run retries it instead of skipping it forever.
+func (s *Store) ResetItemPending(listID, itemID string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	tl, ok := s.list[listID]
+	if !ok {
+		return fmt.Errorf("tasklist %s not found", listID)
+	}
+	for i := range tl.Items {
+		if tl.Items[i].ID == itemID {
+			tl.Items[i].Status = "pending"
+			tl.Items[i].StartedAt = ""
+			tl.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+			return s.save(tl)
+		}
+	}
+	return fmt.Errorf("item %s not found in list %s", itemID, listID)
+}
+
 func (s *Store) SetItemDone(listID, itemID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -263,6 +283,19 @@ func (s *Store) loadAll() error {
 		if err := json.Unmarshal(data, &tl); err != nil {
 			logx.Printf("taskloop: decode %s: %v", e.Name(), err)
 			continue
+		}
+		// A list (or item) can be left "running" if the process was killed
+		// mid-loop. No Engine goroutine survives a restart to finish it, so
+		// without this the list would show "running" forever with no Start
+		// button to recover it.
+		if tl.Status == "running" {
+			tl.Status = "paused"
+			for i := range tl.Items {
+				if tl.Items[i].Status == "running" {
+					tl.Items[i].Status = "pending"
+					tl.Items[i].StartedAt = ""
+				}
+			}
 		}
 		s.list[tl.ID] = &tl
 	}

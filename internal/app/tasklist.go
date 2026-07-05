@@ -90,7 +90,14 @@ func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 		a.agentMu.Unlock()
 		defer func() {
 			a.agentMu.Lock()
-			a.agentEnabled = prevAgentEnabled
+			// Only restore if it's still what we forced it to. If a user
+			// manually toggled agent mode from the UI while this call was in
+			// flight (a.agentMu is a different lock than taskloopRunMu, so
+			// that's possible), their explicit choice wins instead of being
+			// silently clobbered back.
+			if a.agentEnabled {
+				a.agentEnabled = prevAgentEnabled
+			}
 			a.agentMu.Unlock()
 		}()
 

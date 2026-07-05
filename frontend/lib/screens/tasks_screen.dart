@@ -27,7 +27,16 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   String? _dialogChatId;
 
   @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      ref.read(taskListsProvider.notifier).startPolling();
+    });
+  }
+
+  @override
   void dispose() {
+    ref.read(taskListsProvider.notifier).stopPolling();
     _titleCtrl.dispose();
     for (final c in _itemCtrls) {
       c.dispose();

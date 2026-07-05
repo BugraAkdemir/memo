@@ -98,18 +98,34 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		}
 	}()
 
+	// A panic anywhere in the injected runWorker/reviewChief callbacks (or in
+	// store/logic code below) must not take down the whole app — just this
+	// one list.
+	defer func() {
+		if r := recover(); r != nil {
+			logx.Printf("TASKLOOP: panic in list %s: %v", listID, r)
+			if err := e.store.SetStatus(listID, "paused"); err != nil {
+				logx.Printf("TASKLOOP: set list paused after panic %s: %v", listID, err)
+			}
+		}
+	}()
+
 	tl, err := e.store.Get(listID)
 	if err != nil {
 		logx.Printf("TASKLOOP: list %s not found: %v", listID, err)
 		return
 	}
 
-	e.store.SetStatus(listID, "running")
+	if err := e.store.SetStatus(listID, "running"); err != nil {
+		logx.Printf("TASKLOOP: set list running %s: %v", listID, err)
+	}
 
 	for i := range tl.Items {
 		select {
 		case <-ctx.Done():
-			e.store.SetStatus(listID, "paused")
+			if err := e.store.SetStatus(listID, "paused"); err != nil {
+				logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
+			}
 			return
 		default:
 		}
@@ -120,39 +136,63 @@ func (e *Engine) run(ctx context.Context, listID string) {
 		}
 
 		if e.onEvent != nil {
-			e.onEvent("tasklist:item_started", fmt.Sprintf("%s:%s:%s", listID, item.ID, item.Text))
+			e.onEvent("tasklist:item_started", fmt.Sprintf("%s:%s", listID, item.ID))
 		}
 
-		e.store.SetItemRunning(listID, item.ID)
-		ok := e.processItem(ctx, listID, item, tl.ChatID)
+		if err := e.store.SetItemRunning(listID, item.ID); err != nil {
+			logx.Printf("TASKLOOP: set item running %s/%s: %v", listID, item.ID, err)
+		}
+		ok, cancelled := e.processItem(ctx, listID, item, tl.ChatID)
+
+		if cancelled {
+			// Interrupted (Stop() or shutdown), not actually failed — put the
+			// item back so a resumed run retries it instead of skipping it
+			// forever.
+			if err := e.store.ResetItemPending(listID, item.ID); err != nil {
+				logx.Printf("TASKLOOP: reset item pending %s/%s: %v", listID, item.ID, err)
+			}
+			if err := e.store.SetStatus(listID, "paused"); err != nil {
+				logx.Printf("TASKLOOP: set list paused %s: %v", listID, err)
+			}
+			return
+		}
 
 		if ok {
-			e.store.SetItemDone(listID, item.ID)
+			if err := e.store.SetItemDone(listID, item.ID); err != nil {
+				logx.Printf("TASKLOOP: set item done %s/%s: %v", listID, item.ID, err)
+			}
 			if e.onEvent != nil {
 				e.onEvent("tasklist:item_done", fmt.Sprintf("%s:%s", listID, item.ID))
 			}
 		} else {
-			e.store.SetItemStuck(listID, item.ID, item.Note)
+			if err := e.store.SetItemStuck(listID, item.ID, item.Note); err != nil {
+				logx.Printf("TASKLOOP: set item stuck %s/%s: %v", listID, item.ID, err)
+			}
 			if e.onEvent != nil {
-				e.onEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s:%s", listID, item.ID, item.Note))
+				e.onEvent("tasklist:item_stuck", fmt.Sprintf("%s:%s", listID, item.ID))
 			}
 		}
 	}
 
-	e.store.SetStatus(listID, "done")
+	if err := e.store.SetStatus(listID, "done"); err != nil {
+		logx.Printf("TASKLOOP: set list done %s: %v", listID, err)
+	}
 	if e.onEvent != nil {
 		e.onEvent("tasklist:finished", listID)
 	}
 }
 
-func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem, chatID string) bool {
+// processItem drives one task item through worker/CEO rounds.
+// ok reports whether the item was approved; cancelled reports that ctx was
+// cancelled mid-item (Stop() or shutdown) — the caller must treat this as an
+// interruption, not a failure, and leave the item resumable.
+func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem, chatID string) (ok bool, cancelled bool) {
 	workerPrompt := item.Text
 
 	for round := 1; round <= maxRoundsPerItem; round++ {
 		select {
 		case <-ctx.Done():
-			item.Note = "döngü durduruldu"
-			return false
+			return false, true
 		default:
 		}
 
@@ -160,37 +200,47 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 
 		workerOutput, err := e.runWorker(ctx, chatID, workerPrompt)
 		if err != nil {
+			if ctx.Err() != nil {
+				return false, true
+			}
 			logx.Printf("TASKLOOP: worker error on item %s round %d: %v", item.ID, round, err)
 			item.Note = fmt.Sprintf("İşçi hatası (tur %d): %v", round, err)
-			return false
+			return false, false
 		}
 
 		if workerOutput == "" {
 			item.Note = fmt.Sprintf("İşçi boş çıktı döndü (tur %d)", round)
-			return false
+			return false, false
 		}
 
 		approved, feedback, err := e.reviewChief(ctx, item.Text, workerOutput)
 		if err != nil {
+			if ctx.Err() != nil {
+				return false, true
+			}
 			logx.Printf("TASKLOOP: CEO review error on item %s round %d: %v", item.ID, round, err)
 			if round < maxRoundsPerItem {
 				workerPrompt = item.Text + "\n\nÖnceki çıktı:\n" + truncateText(workerOutput, 2000) + "\n\nEksik/yanlış: CEO yanıtı anlaşılamadı. Lütfen görevi eksiksiz tamamlayıp tekrar dene."
-				e.store.IncrementRounds(listID, item.ID)
+				if err := e.store.IncrementRounds(listID, item.ID); err != nil {
+					logx.Printf("TASKLOOP: increment rounds %s/%s: %v", listID, item.ID, err)
+				}
 				continue
 			}
 			item.Note = fmt.Sprintf("CEO inceleme hatası (tur %d): %v", round, err)
-			return false
+			return false, false
 		}
 
 		if approved {
-			return true
+			return true, false
 		}
 
-		e.store.IncrementRounds(listID, item.ID)
+		if err := e.store.IncrementRounds(listID, item.ID); err != nil {
+			logx.Printf("TASKLOOP: increment rounds %s/%s: %v", listID, item.ID, err)
+		}
 
 		if round >= maxRoundsPerItem {
 			item.Note = fmt.Sprintf("5 tur sonunda onaylanmadı: %s", feedback)
-			return false
+			return false, false
 		}
 
 		workerPrompt = fmt.Sprintf(
@@ -202,7 +252,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 	}
 
 	item.Note = "maksimum tur sayısına ulaşıldı"
-	return false
+	return false, false
 }
 
 func truncateText(s string, n int) string {
@@ -266,32 +316,50 @@ func extractJSON(text string) string {
 	braceIdx := strings.Index(text, "{")
 	bracketIdx := strings.Index(text, "[")
 	if braceIdx >= 0 && (bracketIdx < 0 || braceIdx < bracketIdx) {
-		depth := 0
-		for i := braceIdx; i < len(text); i++ {
-			switch text[i] {
-			case '{':
-				depth++
-			case '}':
-				depth--
-				if depth == 0 {
-					return text[braceIdx : i+1]
-				}
-			}
+		if extracted, ok := scanBalanced(text, braceIdx, '{', '}'); ok {
+			return extracted
 		}
 	}
 	if bracketIdx >= 0 && (braceIdx < 0 || bracketIdx < braceIdx) {
-		depth := 0
-		for i := bracketIdx; i < len(text); i++ {
-			switch text[i] {
-			case '[':
-				depth++
-			case ']':
-				depth--
-				if depth == 0 {
-					return text[bracketIdx : i+1]
-				}
-			}
+		if extracted, ok := scanBalanced(text, bracketIdx, '[', ']'); ok {
+			return extracted
 		}
 	}
 	return text
+}
+
+// scanBalanced returns the substring of text starting at start (the opening
+// byte) through its matching closing byte, treating JSON string literals as
+// opaque. A naive depth counter miscounts when a quoted string value (e.g. CEO
+// feedback like `"Kapanış } eksik"`) contains a literal brace/bracket.
+func scanBalanced(text string, start int, open, close byte) (string, bool) {
+	depth := 0
+	inString := false
+	escaped := false
+	for i := start; i < len(text); i++ {
+		c := text[i]
+		if inString {
+			switch {
+			case escaped:
+				escaped = false
+			case c == '\\':
+				escaped = true
+			case c == '"':
+				inString = false
+			}
+			continue
+		}
+		switch c {
+		case '"':
+			inString = true
+		case open:
+			depth++
+		case close:
+			depth--
+			if depth == 0 {
+				return text[start : i+1], true
+			}
+		}
+	}
+	return "", false
 }

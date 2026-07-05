@@ -101,6 +101,10 @@ class ActiveChatIdNotifier extends AsyncNotifier<String> {
       if (!ref.read(agentEnabledProvider)) {
         ref.read(agentEnabledProvider.notifier).setEnabled(true);
       }
+    } else {
+      if (ref.read(agentEnabledProvider)) {
+        ref.read(agentEnabledProvider.notifier).setEnabled(false);
+      }
     }
   }
 }
@@ -122,11 +126,6 @@ final streamingAgentEventsProvider = StateProvider<List<AgentEvent>>(
 /// Transient pre-token status (e.g. 'web_search') shown in the typing indicator
 /// while the backend works before the first content token arrives.
 final streamingStatusProvider = StateProvider<String>((ref) => '');
-
-/// Live, unified activity timeline for the right-side panel: orchestra plan
-/// tasks + agent tool steps, in the order they happen. Updated during a turn,
-/// kept until the next send so the user can review what just happened.
-final activityStepsProvider = StateProvider<List<ActivityStep>>((ref) => []);
 
 /// Live token usage for the current/last turn (Claude-Code-style counter).
 final tokenUsageProvider = StateProvider<TokenUsage?>((ref) => null);
@@ -177,68 +176,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   bool _stopped = false;
   bool _disposed = false;
   Timer? _delayedRefreshTimer;
-  int _toolSeq = 0; // sequence for synthesising agent tool-step ids
-
-  /// Inserts or updates a step in the activity timeline, keyed by id.
-  void _upsertActivity(ActivityStep step) {
-    final list = [...ref.read(activityStepsProvider)];
-    final idx = list.indexWhere((s) => s.id == step.id);
-    if (idx >= 0) {
-      list[idx] = list[idx].copyWith(
-        title: step.title.isNotEmpty ? step.title : null,
-        subtitle: step.subtitle.isNotEmpty ? step.subtitle : null,
-        status: step.status,
-        durationMs: step.durationMs > 0 ? step.durationMs : null,
-        detail: step.detail,
-      );
-    } else {
-      list.add(step);
-    }
-    ref.read(activityStepsProvider.notifier).state = list;
-  }
-
-  /// Marks any still-running activity step as errored. Called when a turn is
-  /// cancelled or fails so the panel doesn't leave a spinner running forever.
-  void _settleRunningSteps(String detail) {
-    final list = ref.read(activityStepsProvider);
-    if (!list.any((s) => s.status == StepStatus.running)) return;
-    ref.read(activityStepsProvider.notifier).state = [
-      for (final s in list)
-        s.status == StepStatus.running
-            ? s.copyWith(status: StepStatus.error, detail: detail)
-            : s,
-    ];
-  }
-
-  /// Maps an agent tool event into the unified activity timeline.
-  void _toolEventToActivity(AgentEvent ev) {
-    switch (ev.type) {
-      case 'tool_executing':
-        _toolSeq++;
-        _upsertActivity(ActivityStep(
-          id: 'tool-$_toolSeq',
-          kind: 'tool',
-          title: ev.toolName ?? 'Araç',
-          status: StepStatus.running,
-        ));
-        break;
-      case 'tool_result':
-      case 'tool_error':
-      case 'permission_denied':
-        final id = _toolSeq > 0 ? 'tool-$_toolSeq' : 'tool-1';
-        _upsertActivity(ActivityStep(
-          id: id,
-          kind: 'tool',
-          title: ev.toolName ?? 'Araç',
-          status: ev.type == 'tool_result'
-              ? StepStatus.done
-              : StepStatus.error,
-          durationMs: ev.durationMs ?? 0,
-          detail: ev.error,
-        ));
-        break;
-    }
-  }
 
   @override
   Future<List<ChatMessage>> build() async {
@@ -264,7 +201,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
-    _settleRunningSteps('durduruldu');
   }
 
   Future<void> refresh() async {
@@ -423,15 +359,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             // Pre-token status (e.g. web_search) — show in the typing line.
             ref.read(streamingStatusProvider.notifier).state = chunk.content;
           } else if (chunk.finishReason == 'activity') {
-            // Structured orchestra task update → right-side activity panel.
-            try {
-              final decoded = json.decode(chunk.content);
-              if (decoded is Map<String, dynamic>) {
-                _upsertActivity(ActivityStep.fromActivityJson(decoded));
-              }
-            } catch (_) {
-              // ignore malformed activity payloads
-            }
+            // Orchestra plan/specialist progress — no UI consumes this
+            // anymore (the old right-side activity panel was removed), so
+            // just drop it.
           } else if (chunk.finishReason == 'usage') {
             try {
               final decoded = json.decode(chunk.content);
@@ -443,7 +373,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           } else if (chunk.finishReason == 'agent_event') {
             try {
               final ev = AgentEvent.fromJson(json.decode(chunk.content));
-              _toolEventToActivity(ev); // mirror into the activity timeline
               final currentEvents = [...ref.read(streamingAgentEventsProvider)];
 
               // Only keep permission_request for dialogs and final results/errors.

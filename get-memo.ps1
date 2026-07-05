@@ -1,6 +1,6 @@
 # Memo — one-line installer for Windows.
 #
-#   irm https://get.bugradev.com/win | iex
+#   irm https://download.bugradev.com/get-memo.ps1 | iex
 #
 # Downloads the Memo Setup installer and launches it. The Inno Setup
 # installer handles everything: data dirs, config seeding, desktop/start-menu

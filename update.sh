@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — updater for Linux / macOS.
 #
-#   curl -fsSL https://get.bugradev.com/memo/update | bash
+#   curl -fsSL https://download.bugradev.com/update.sh | bash
 #
 # Downloads the latest build and refreshes all binaries while keeping your
 # data intact — configs, memory, models, sessions, providers are never touched.
@@ -34,7 +34,7 @@ MEMO_HOME="$HOME/.memo"
 
 if [ ! -d "$MEMO_HOME" ]; then
     echo -e "${YELLOW}Memo is not installed. Run the installer first:${NC}"
-    echo -e "  ${CYAN}curl -fsSL https://get.bugradev.com/memo | bash${NC}"
+    echo -e "  ${CYAN}curl -fsSL https://download.bugradev.com/get-memo.sh | bash${NC}"
     exit 1
 fi
 

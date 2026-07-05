@@ -260,8 +260,8 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 
 | Platform | Komut |
 |----------|-------|
-| **Linux / macOS** | `curl -fsSL https://get.bugradev.com/memo \| bash` |
-| **Windows** | `irm https://get.bugradev.com/memo/win \| iex` |
+| **Linux / macOS** | `curl -fsSL https://download.bugradev.com/get-memo.sh \| bash` |
+| **Windows** | `irm https://download.bugradev.com/get-memo.ps1 \| iex` |
 
 <details>
 <summary><b>📦 Kurulum ne yapıyor?</b></summary>
@@ -278,8 +278,8 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 ### Güncelleme / Kaldırma
 
 ```bash
-curl -fsSL https://get.bugradev.com/memo/update    | bash   # güncelle (veriler korunur)
-curl -fsSL https://get.bugradev.com/memo/uninstall  | bash   # kaldır (hafıza yedekleme sorar)
+curl -fsSL https://download.bugradev.com/update.sh    | bash   # güncelle (veriler korunur)
+curl -fsSL https://download.bugradev.com/uninstall.sh  | bash   # kaldır (hafıza yedekleme sorar)
 ```
 
 ### Alternatif: manuel indirme

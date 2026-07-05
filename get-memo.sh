@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — one-line full installer for Linux / macOS.
 #
-#   curl -fsSL https://get.bugradev.com/memo | bash
+#   curl -fsSL https://download.bugradev.com/get-memo.sh | bash
 #
 # Complete install: CLI, Flutter desktop app, app menu entry, engine binaries.
 # Safe to re-run — existing config/data are preserved, only binaries refreshed.

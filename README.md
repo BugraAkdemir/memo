@@ -260,8 +260,8 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 
 | Platform | Command |
 |----------|---------|
-| **Linux / macOS** | `curl -fsSL https://get.bugradev.com/memo | bash` |
-| **Windows** | `irm https://get.bugradev.com/memo/win \| iex` |
+| **Linux / macOS** | `curl -fsSL https://download.bugradev.com/get-memo.sh \| bash` |
+| **Windows** | `irm https://download.bugradev.com/get-memo.ps1 \| iex` |
 
 <details>
 <summary><b>📦 What the installer does</b></summary>
@@ -278,8 +278,8 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 ### Update / Uninstall
 
 ```bash
-curl -fsSL https://get.bugradev.com/memo/update    | bash   # update (preserves data)
-curl -fsSL https://get.bugradev.com/memo/uninstall  | bash   # uninstall (offers memory backup)
+curl -fsSL https://download.bugradev.com/update.sh    | bash   # update (preserves data)
+curl -fsSL https://download.bugradev.com/uninstall.sh  | bash   # uninstall (offers memory backup)
 ```
 
 ### Alternative: manual download

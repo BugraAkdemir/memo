@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Memo — uninstaller for Linux / macOS.
 #
-#   curl -fsSL https://get.bugradev.com/memo/uninstall | bash
+#   curl -fsSL https://download.bugradev.com/uninstall.sh | bash
 #
 # Removes all Memo files. Optionally backs up your memory data before removal.
 set -euo pipefail

@@ -3,12 +3,19 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/chat.dart';
 import '../models/task_list.dart';
 import '../providers/tasklist_provider.dart';
 import '../providers/chat_provider.dart';
 
 class TasksScreen extends ConsumerStatefulWidget {
-  const TasksScreen({super.key});
+  /// The agent chat this screen was opened from. Pre-selects that chat as
+  /// the target for newly created lists (a task list can only be bound to
+  /// an agent chat — see AgentScreen, the only place this screen is reachable
+  /// from).
+  final String? initialChatId;
+
+  const TasksScreen({super.key, this.initialChatId});
 
   @override
   ConsumerState<TasksScreen> createState() => _TasksScreenState();
@@ -17,6 +24,7 @@ class TasksScreen extends ConsumerStatefulWidget {
 class _TasksScreenState extends ConsumerState<TasksScreen> {
   final _titleCtrl = TextEditingController();
   final _itemCtrls = <TextEditingController>[];
+  String? _dialogChatId;
 
   @override
   void dispose() {
@@ -31,7 +39,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
     final listsAsync = ref.watch(taskListsProvider);
-    final activeChatId = ref.read(activeChatIdProvider).valueOrNull ?? 'default';
+    final agentChats = (ref.watch(chatListProvider).valueOrNull ?? [])
+        .where((chat) => chat.isAgentChat)
+        .toList();
 
     return Scaffold(
       backgroundColor: c.bgApp,
@@ -45,6 +55,12 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
             ),
             child: Row(
               children: [
+                if (Navigator.of(context).canPop())
+                  IconButton(
+                    icon: const Icon(Icons.arrow_back),
+                    color: c.textSecondary,
+                    onPressed: () => Navigator.of(context).pop(),
+                  ),
                 Icon(Icons.checklist, size: 20, color: c.textSecondary),
                 const SizedBox(width: 8),
                 Text(
@@ -57,7 +73,8 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 ),
                 const Spacer(),
                 ElevatedButton.icon(
-                  onPressed: () => _showCreateDialog(activeChatId),
+                  onPressed:
+                      agentChats.isEmpty ? null : () => _showCreateDialog(agentChats),
                   icon: const Icon(Icons.add, size: 16),
                   label: Text(L10n.t('taskloop_new_list')),
                   style: ElevatedButton.styleFrom(
@@ -70,6 +87,16 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
               ],
             ),
           ),
+          if (agentChats.isEmpty)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+              color: Colors.orange.withValues(alpha: 0.12),
+              child: Text(
+                L10n.t('tasklist_no_agent_chats'),
+                style: TextStyle(fontSize: 12, color: c.textSecondary),
+              ),
+            ),
           Expanded(
             child: listsAsync.when(
               data: (lists) {
@@ -136,13 +163,17 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     );
   }
 
-  void _showCreateDialog(String activeChatId) {
+  void _showCreateDialog(List<ChatSession> agentChats) {
     _titleCtrl.clear();
     for (final c in _itemCtrls) {
       c.dispose();
     }
     _itemCtrls.clear();
     _itemCtrls.add(TextEditingController());
+
+    _dialogChatId = agentChats.any((chat) => chat.id == widget.initialChatId)
+        ? widget.initialChatId
+        : agentChats.first.id;
 
     showDialog(
       context: context,
@@ -158,6 +189,22 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
+                    DropdownButtonFormField<String>(
+                      initialValue: _dialogChatId,
+                      decoration: InputDecoration(
+                        labelText: L10n.t('tasklist_select_chat'),
+                        border: const OutlineInputBorder(),
+                        isDense: true,
+                      ),
+                      items: agentChats
+                          .map((chat) => DropdownMenuItem(
+                                value: chat.id,
+                                child: Text(chat.title, overflow: TextOverflow.ellipsis),
+                              ))
+                          .toList(),
+                      onChanged: (value) => setDialogState(() => _dialogChatId = value),
+                    ),
+                    const SizedBox(height: 12),
                     TextField(
                       controller: _titleCtrl,
                       decoration: InputDecoration(
@@ -219,10 +266,11 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                         .map((c) => c.text.trim())
                         .where((t) => t.isNotEmpty)
                         .toList();
-                    if (title.isEmpty || items.isEmpty) return;
+                    final chatId = _dialogChatId;
+                    if (title.isEmpty || items.isEmpty || chatId == null) return;
                     ref
                         .read(taskListsProvider.notifier)
-                        .createTaskList(activeChatId, title, items);
+                        .createTaskList(chatId, title, items);
                     Navigator.of(ctx).pop();
                   },
                   child: Text(L10n.t('save')),

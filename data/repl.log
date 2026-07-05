@@ -1,0 +1,53 @@
+time=2026-07-05T18:22:28.763+03:00 level=INFO msg="DATABASE: vec driver registered successfully (/home/bugra/Belgeler/memo/binaries/linux/vec0)"
+time=2026-07-05T18:22:28.769+03:00 level=INFO msg="MEMORY: fts5 not available (%v), keyword search disabled" values="[no such module: fts5]"
+time=2026-07-05T18:22:28.770+03:00 level=INFO msg="MEMORY: vec migration already complete, skipping" values=[]
+time=2026-07-05T18:22:28.771+03:00 level=INFO msg="Memory store ready"
+time=2026-07-05T18:22:28.778+03:00 level=INFO msg="Calendar system initialized"
+time=2026-07-05T18:22:28.778+03:00 level=INFO msg="Intent extractor initialized"
+time=2026-07-05T18:22:28.778+03:00 level=INFO msg="[ngrok] Binary exists: %s" values=[data/binaries/linux/ngrok]
+time=2026-07-05T18:22:28.819+03:00 level=INFO msg="[ngrok] Starting tunnel for port %d" values=[8090]
+time=2026-07-05T18:22:28.819+03:00 level=INFO msg="whisper: launching %s %s" values="[binaries/linux/cpu/whisper-server --model binaries/linux/cpu/ggml-small.bin --port 9877 --host 127.0.0.1 --language auto]"
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="Provider system initialized with %d enabled provider(s)" values=[2]
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="  - %s (%s)" values="[custom deepseek-v4-flash]"
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="  - %s (%s)" values="[custom deepseek-v4-pro]"
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="Orchestra mode initialized (enabled=%v)" values=[false]
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="Agent mode initialized (enabled=false)" values=[]
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="Task loop engine initialized"
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="Skill manager initialized"
+time=2026-07-05T18:22:28.820+03:00 level=INFO msg="Memo ready"
+time=2026-07-05T18:22:28.821+03:00 level=INFO msg="Flutter API server (HTTP) started" addr="http://0.0.0.0 (LAN accessible):8090"
+time=2026-07-05T18:22:28.821+03:00 level=INFO msg="LAN address available" ip=192.168.1.107 port=8090
+time=2026-07-05T18:22:28.821+03:00 level=INFO msg="LAN address available" ip=172.17.0.1 port=8090
+time=2026-07-05T18:22:28.822+03:00 level=INFO msg="Auto-starting embedding model: %s" values=[data/models/darrowoflykos__google_embeddinggemma-300m-qat-q8_0-GGUF/google_embeddinggemma-300M-qat-Q8_0.gguf]
+time=2026-07-05T18:22:28.822+03:00 level=INFO msg="Starting embedding model on port %d (attempt %d/%d)" values="[8082 1 3]"
+time=2026-07-05T18:22:28.822+03:00 level=INFO msg="whisper: server started (PID %d, port %d)" values="[26446 9877]"
+time=2026-07-05T18:22:28.822+03:00 level=INFO msg="GPU: nvidia-smi not found: %v" values="[exec: \"nvidia-smi\": executable file not found in $PATH]"
+2026/07/05 18:22:28 Memo backend server running on port 8090
+time=2026-07-05T18:22:28.831+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:28+0300 lvl=info msg=\"no configuration paths supplied\"\nt=2026-07-05T18:22:28+0300 lvl=info msg=\"using configuration at default config path\" path=/home/bugra/.config/ngrok/ngrok.yml\n]"
+time=2026-07-05T18:22:28.831+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:28+0300 lvl=info msg=\"open config file\" path=/home/bugra/.config/ngrok/ngrok.yml err=nil\n]"
+time=2026-07-05T18:22:28.844+03:00 level=INFO msg="GPU: lspci found AMD: %s" values="[03:00.0 VGA compatible controller: Advanced Micro Devices, Inc. [AMD/ATI] Cezanne [Radeon Vega Series / Radeon Vega Mobile Series] (rev c6)]"
+time=2026-07-05T18:22:28.844+03:00 level=INFO msg="llama: launching %s %s" values="[binaries/linux/nvidia/llama-server --model data/models/darrowoflykos__google_embeddinggemma-300m-qat-q8_0-GGUF/google_embeddinggemma-300M-qat-Q8_0.gguf --port 8082 --host 127.0.0.1 --ctx-size 512 --parallel 1 --n-gpu-layers 8 --embedding --no-warmup]"
+time=2026-07-05T18:22:28.845+03:00 level=INFO msg="llama: server started (PID %d, port %d, GPU layers: %d)" values="[26463 8082 8]"
+time=2026-07-05T18:22:28.847+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:28+0300 lvl=info msg=\"FIPS 140 mode\" enabled=false\n]"
+time=2026-07-05T18:22:28.851+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:28+0300 lvl=info msg=\"starting web service\" obj=web addr=127.0.0.1:4040 allow_hosts=[]\n]"
+time=2026-07-05T18:22:29.820+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:29+0300 lvl=info msg=start pg=/api/tunnels id=42250452dd1e8143\n]"
+time=2026-07-05T18:22:29.820+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:29+0300 lvl=info msg=end pg=/api/tunnels id=42250452dd1e8143 status=200 dur=145.414µs\n]"
+time=2026-07-05T18:22:29.824+03:00 level=INFO msg="whisper: server ready on port %d" values=[9877]
+time=2026-07-05T18:22:29.824+03:00 level=INFO msg="STT: whisper server ready on :%d" values=[9877]
+time=2026-07-05T18:22:29.977+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:29+0300 lvl=info msg=\"update available\" obj=updater\n]"
+time=2026-07-05T18:22:30.386+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:30+0300 lvl=info msg=\"client session established\" obj=tunnels.session\nt=2026-07-05T18:22:30+0300 lvl=info msg=\"tunnel session started\" obj=tunnels.session\n]"
+time=2026-07-05T18:22:30.821+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:30+0300 lvl=info msg=start pg=/api/tunnels id=840e6f4c7e2bd35b\n]"
+time=2026-07-05T18:22:30.821+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:30+0300 lvl=info msg=end pg=/api/tunnels id=840e6f4c7e2bd35b status=200 dur=60.574µs\n]"
+time=2026-07-05T18:22:30.851+03:00 level=INFO msg="llama: server ready on port %d" values=[8082]
+time=2026-07-05T18:22:30.852+03:00 level=INFO msg="MEMORY: fts5 not available (%v), keyword search disabled" values="[no such module: fts5]"
+time=2026-07-05T18:22:30.853+03:00 level=INFO msg="MEMORY: vec migration already complete, skipping" values=[]
+time=2026-07-05T18:22:30.853+03:00 level=INFO msg="Memory store re-initialized"
+time=2026-07-05T18:22:30.853+03:00 level=INFO msg="Embedding server ready on %s" values=[http://127.0.0.1:8082/v1]
+time=2026-07-05T18:22:30.853+03:00 level=INFO msg="✅ Embedding model auto-started — memory/RAG is active."
+time=2026-07-05T18:22:30.881+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:30+0300 lvl=info msg=\"started tunnel\" obj=tunnels name=command_line addr=http://localhost:8090 url=https://4e92-78-161-158-128.ngrok-free.app\n]"
+time=2026-07-05T18:22:31.822+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:31+0300 lvl=info msg=start pg=/api/tunnels id=b77fd24a2008b3f9\n]"
+time=2026-07-05T18:22:31.822+03:00 level=INFO msg="[ngrok] %s" values="[t=2026-07-05T18:22:31+0300 lvl=info msg=end pg=/api/tunnels id=b77fd24a2008b3f9 status=200 dur=93.536µs\n]"
+time=2026-07-05T18:22:31.822+03:00 level=INFO msg="[ngrok] Public URL: %s" values=[https://4e92-78-161-158-128.ngrok-free.app]
+time=2026-07-05T18:22:32.840+03:00 level=INFO msg="GPU: nvidia-smi not found: %v" values="[exec: \"nvidia-smi\": executable file not found in $PATH]"
+time=2026-07-05T18:22:32.852+03:00 level=INFO msg="GPU: lspci found AMD: %s" values="[03:00.0 VGA compatible controller: Advanced Micro Devices, Inc. [AMD/ATI] Cezanne [Radeon Vega Series / Radeon Vega Mobile Series] (rev c6)]"
+time=2026-07-05T18:22:58.788+03:00 level=INFO msg="OBSERVER: analyzed %d observations into %d pattern(s)" values="[93 4]"

@@ -799,6 +799,8 @@ class L10n {
     'tasklist_title_hint': 'Liste başlığı',
     'tasklist_item_hint': 'Madde metni',
     'tasklist_add_item': 'Madde ekle',
+    'tasklist_select_chat': 'Hangi ajan sohbetinde çalışsın?',
+    'tasklist_no_agent_chats': 'Henüz bir ajan sohbeti yok. Görev listesi oluşturmak için önce Ajan sekmesinden bir proje sohbeti açın.',
   };
 
   static const _en = <String, String>{
@@ -1528,5 +1530,7 @@ class L10n {
     'tasklist_title_hint': 'List title',
     'tasklist_item_hint': 'Item text',
     'tasklist_add_item': 'Add item',
+    'tasklist_select_chat': 'Which agent chat should this run in?',
+    'tasklist_no_agent_chats': 'No agent chats yet. Open a project chat from the Agent tab first to create a task list.',
   };
 }

@@ -14,6 +14,10 @@ func (a *App) CreateTaskList(chatID, title string, items []string) (*taskloop.Ta
 	if a.taskloopStore == nil {
 		return nil, fmt.Errorf("görev listesi sistemi başlatılmamış")
 	}
+	sm := a.getSessionManager()
+	if sm == nil || !sm.IsAgentChat(chatID) {
+		return nil, fmt.Errorf("görev listesi yalnızca bir ajan sohbetine bağlanabilir; önce Ajan sekmesinden bir proje sohbeti seçin")
+	}
 	return a.taskloopStore.Create(chatID, title, items)
 }
 
@@ -45,6 +49,17 @@ func (a *App) StartTaskList(ctx context.Context, listID string) error {
 	if a.taskloopEngine == nil {
 		return fmt.Errorf("görev döngüsü motoru başlatılmamış")
 	}
+	if a.taskloopStore == nil {
+		return fmt.Errorf("görev listesi sistemi başlatılmamış")
+	}
+	tl, err := a.taskloopStore.Get(listID)
+	if err != nil {
+		return err
+	}
+	sm := a.getSessionManager()
+	if sm == nil || !sm.IsAgentChat(tl.ChatID) {
+		return fmt.Errorf("bu listenin bağlı olduğu sohbet artık bir ajan sohbeti değil (silinmiş olabilir); listeyi yeniden oluşturun")
+	}
 	return a.taskloopEngine.Start(ctx, listID)
 }
 
@@ -56,6 +71,29 @@ func (a *App) StopTaskList(listID string) {
 
 func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {
+		// App only has a single global "active session" — SendMessageStream
+		// always acts on whatever chat that happens to be, and agent mode
+		// (tool use) is a separate global on/off flag. Both must be pinned
+		// to this task list's chat for the duration of the call, and calls
+		// must be serialized so two task lists running at once can't send
+		// into each other's chats mid-switch.
+		a.taskloopRunMu.Lock()
+		defer a.taskloopRunMu.Unlock()
+
+		if err := a.SwitchChat(chatID); err != nil {
+			return "", fmt.Errorf("görev sohbetine geçilemedi: %w", err)
+		}
+
+		a.agentMu.Lock()
+		prevAgentEnabled := a.agentEnabled
+		a.agentEnabled = true
+		a.agentMu.Unlock()
+		defer func() {
+			a.agentMu.Lock()
+			a.agentEnabled = prevAgentEnabled
+			a.agentMu.Unlock()
+		}()
+
 		ch := a.SendMessageStream(ctx, prompt)
 		var sb strings.Builder
 		for chunk := range ch {

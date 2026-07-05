@@ -12,6 +12,7 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/agent/permission_dialog.dart';
 import '../models/agent.dart';
+import 'tasks_screen.dart';
 
 class AgentScreen extends ConsumerWidget {
   const AgentScreen({super.key});
@@ -323,6 +324,18 @@ class _AgentTopBar extends ConsumerWidget {
           ],
           Expanded(
             child: Text(activeChat.title, style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain), overflow: TextOverflow.ellipsis),
+          ),
+          IconButton(
+            icon: const Icon(Icons.checklist),
+            tooltip: L10n.t('taskloop_title'),
+            color: MemoTheme.of(context).textSecondary,
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => TasksScreen(initialChatId: activeChat.id),
+                ),
+              );
+            },
           ),
         ],
       ),

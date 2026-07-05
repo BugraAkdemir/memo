@@ -11,7 +11,7 @@ func TestProgressBar(t *testing.T) {
 		{50, "[████████████░░░░░░░░░░░░]"},
 		{100, "[████████████████████████]"},
 		{150, "[████████████████████████]"}, // clamps at full
-		{-10, "[░░░░░░░░░░░░░░░░░░░░░░░░]"},  // clamps at empty
+		{-10, "[░░░░░░░░░░░░░░░░░░░░░░░░]"}, // clamps at empty
 	}
 	for _, tt := range tests {
 		if got := progressBar(tt.percent); got != tt.want {

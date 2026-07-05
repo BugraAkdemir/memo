@@ -2,6 +2,7 @@ package replcli
 
 import (
 	"fmt"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -21,6 +22,7 @@ const helpText = `Kullanılabilir komutlar:
   /gui                                    masaüstü uygulamasını açar
   /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
   /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
+  /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
   /exit                                   çıkar
 `
 
@@ -55,6 +57,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdClear()
 	case "/session":
 		s.cmdSession(args)
+	case "/remote":
+		s.cmdRemote()
 	default:
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf("Bilinmeyen komut: %s (yardım için /help yaz)", cmd)))
 	}
@@ -96,10 +100,95 @@ func (s *session) showCommandMenu() bool {
 		s.cmdClear()
 	case "/session":
 		s.pickSession()
+	case "/remote":
+		s.cmdRemote()
 	case "/exit":
 		return true
 	}
 	return false
+}
+
+// cmdRemote opens (or reports) an ngrok tunnel to this backend so it can be
+// reached from outside the local machine — the terminal equivalent of the
+// desktop app's Settings > Remote Access > ngrok toggle. Prompts for an
+// ngrok authtoken the first time one hasn't been configured yet.
+func (s *session) cmdRemote() {
+	status, err := s.client.RemoteAccessStatus(s.ctx)
+	if err != nil {
+		fmt.Fprintln(s.out, errorf("Uzak erişim durumu alınamadı: %v", err))
+		return
+	}
+
+	if status.NgrokMode && status.Running && status.NgrokURL != "" {
+		fmt.Fprintln(s.out, green(fmt.Sprintf("✓ ngrok zaten çalışıyor: %s", status.NgrokURL)))
+		s.warnRemoteExposure()
+		return
+	}
+
+	token := status.NgrokToken
+	if token == "" {
+		fmt.Fprintln(s.out, dim("ngrok authtoken gerekiyor (dashboard.ngrok.com hesabından alabilirsin)."))
+		input, ok := s.promptLine("ngrok authtoken: ")
+		if !ok || strings.TrimSpace(input) == "" {
+			fmt.Fprintln(s.out, dim("İptal edildi."))
+			return
+		}
+		token = strings.TrimSpace(input)
+	}
+
+	port := s.backendPort()
+	if port <= 0 {
+		fmt.Fprintln(s.out, errorf("Backend portu belirlenemedi."))
+		return
+	}
+
+	fmt.Fprintln(s.out, dim("ngrok tüneli başlatılıyor..."))
+	if err := s.client.StartNgrok(s.ctx, port, token); err != nil {
+		fmt.Fprintln(s.out, errorf("Başlatılamadı: %v", err))
+		return
+	}
+
+	const attempts = 10
+	const interval = 500 * time.Millisecond
+	for range attempts {
+		time.Sleep(interval)
+		st, err := s.client.RemoteAccessStatus(s.ctx)
+		if err != nil {
+			continue
+		}
+		if st.NgrokURL != "" {
+			fmt.Fprintln(s.out, green(fmt.Sprintf("✓ Uzak erişim açık: %s", st.NgrokURL)))
+			s.warnRemoteExposure()
+			return
+		}
+		if st.NgrokError != "" {
+			fmt.Fprintln(s.out, errorf("ngrok hatası: %s", st.NgrokError))
+			return
+		}
+	}
+	fmt.Fprintln(s.out, yellow("ngrok başlatıldı ama link henüz hazır değil — birkaç saniye sonra /remote yazarak tekrar kontrol edebilirsin."))
+}
+
+// warnRemoteExposure spells out what an active ngrok tunnel actually exposes —
+// the full Memo API, unauthenticated — since this is easy to gloss over next
+// to a shiny public URL.
+func (s *session) warnRemoteExposure() {
+	fmt.Fprintln(s.out, yellow("⚠ Bu linke sahip olan herkes Memo'nun tüm API'sine (sohbet, ajan, hafıza, WhatsApp dahil) erişebilir — sadece güvendiğin yerlerde paylaş."))
+}
+
+// backendPort extracts the port this CLI is talking to from the client's own
+// base URL, so /remote can ask the backend to tunnel the exact server this
+// session is already connected to.
+func (s *session) backendPort() int {
+	u, err := url.Parse(s.client.baseURL)
+	if err != nil {
+		return 0
+	}
+	port, err := strconv.Atoi(u.Port())
+	if err != nil {
+		return 0
+	}
+	return port
 }
 
 // cmdClear starts a brand-new, empty agent chat in place of the current one

@@ -379,6 +379,107 @@ func TestHandleCommand_Session_SwitchByName_NoMatch(t *testing.T) {
 	}
 }
 
+func TestHandleCommand_Remote_AlreadyRunning(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/remote-access", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(RemoteStatus{
+			Running: true, NgrokMode: true, NgrokToken: "tok", NgrokURL: "https://abc123.ngrok.io",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.handleCommand("/remote")
+
+	got := out.String()
+	if !strings.Contains(got, "https://abc123.ngrok.io") {
+		t.Errorf("expected existing ngrok URL, got:\n%s", got)
+	}
+	if !strings.Contains(got, "erişebilir") {
+		t.Errorf("expected exposure warning, got:\n%s", got)
+	}
+}
+
+func TestHandleCommand_Remote_StartsWithExistingToken(t *testing.T) {
+	var putBody map[string]any
+	var getCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/remote-access", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			json.NewDecoder(r.Body).Decode(&putBody)
+			json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+			return
+		}
+		getCalls++
+		if getCalls == 1 {
+			// Initial status check: not running yet, but token already saved.
+			json.NewEncoder(w).Encode(RemoteStatus{NgrokToken: "saved-token"})
+			return
+		}
+		// First poll after StartNgrok already reports the tunnel as live.
+		json.NewEncoder(w).Encode(RemoteStatus{
+			Running: true, NgrokMode: true, NgrokToken: "saved-token", NgrokURL: "https://xyz789.ngrok.io",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	s, out := newTestSession(t, srv)
+	s.handleCommand("/remote")
+
+	got := out.String()
+	if !strings.Contains(got, "https://xyz789.ngrok.io") {
+		t.Errorf("expected new ngrok URL, got:\n%s", got)
+	}
+	if putBody["ngrok_token"] != "saved-token" {
+		t.Errorf("expected saved token to be reused without prompting, got PUT body %+v", putBody)
+	}
+	if putBody["ngrok_mode"] != true {
+		t.Errorf("expected ngrok_mode true, got %+v", putBody)
+	}
+}
+
+func TestHandleCommand_Remote_PromptsForMissingToken(t *testing.T) {
+	var putBody map[string]any
+	var getCalls int
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/remote-access", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodPut {
+			json.NewDecoder(r.Body).Decode(&putBody)
+			json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+			return
+		}
+		getCalls++
+		if getCalls == 1 {
+			json.NewEncoder(w).Encode(RemoteStatus{}) // no token configured yet
+			return
+		}
+		json.NewEncoder(w).Encode(RemoteStatus{
+			Running: true, NgrokMode: true, NgrokURL: "https://fresh.ngrok.io",
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var out bytes.Buffer
+	s := &session{
+		client:  NewClient(srv.URL),
+		ctx:     context.Background(),
+		out:     &out,
+		scanner: bufio.NewScanner(strings.NewReader("typed-token-123\n")),
+	}
+	s.handleCommand("/remote")
+
+	got := out.String()
+	if !strings.Contains(got, "https://fresh.ngrok.io") {
+		t.Errorf("expected new ngrok URL, got:\n%s", got)
+	}
+	if putBody["ngrok_token"] != "typed-token-123" {
+		t.Errorf("expected typed token to be sent, got PUT body %+v", putBody)
+	}
+}
+
 func TestHandleCommand_ModelDownload_NoResults(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/models/search", func(w http.ResponseWriter, r *http.Request) {

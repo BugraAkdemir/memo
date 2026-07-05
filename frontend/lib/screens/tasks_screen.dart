@@ -35,76 +35,65 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 
     return Scaffold(
       backgroundColor: c.bgApp,
-      body: listsAsync.when(
-        data: (lists) {
-          if (lists.isEmpty) {
-            return Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.checklist, size: 64, color: c.textDim),
-                  const SizedBox(height: 16),
-                  Text(
-                    L10n.t('taskloop_empty'),
-                    style: TextStyle(fontSize: 16, color: c.textSecondary),
+      body: Column(
+        children: [
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            decoration: BoxDecoration(
+              color: c.bgPanel,
+              border: Border(bottom: BorderSide(color: c.borderSoft)),
+            ),
+            child: Row(
+              children: [
+                Icon(Icons.checklist, size: 20, color: c.textSecondary),
+                const SizedBox(width: 8),
+                Text(
+                  L10n.t('taskloop_title'),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w600,
+                    color: c.textMain,
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    L10n.t('taskloop_empty_desc'),
-                    style: TextStyle(fontSize: 13, color: c.textDim),
-                  ),
-                  const SizedBox(height: 24),
-                  ElevatedButton.icon(
-                    onPressed: () => _showCreateDialog(activeChatId),
-                    icon: const Icon(Icons.add, size: 18),
-                    label: Text(L10n.t('taskloop_new_list')),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: MemoTheme.accent,
-                      foregroundColor: Colors.white,
-                    ),
-                  ),
-                ],
-              ),
-            );
-          }
-
-          return Column(
-            children: [
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: c.bgPanel,
-                  border: Border(bottom: BorderSide(color: c.borderSoft)),
                 ),
-                child: Row(
-                  children: [
-                    Icon(Icons.checklist, size: 20, color: c.textSecondary),
-                    const SizedBox(width: 8),
-                    Text(
-                      L10n.t('taskloop_title'),
-                      style: TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: c.textMain,
-                      ),
-                    ),
-                    const Spacer(),
-                    ElevatedButton.icon(
-                      onPressed: () => _showCreateDialog(activeChatId),
-                      icon: const Icon(Icons.add, size: 16),
-                      label: Text(L10n.t('taskloop_new_list')),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: MemoTheme.accent,
-                        foregroundColor: Colors.white,
-                        textStyle: const TextStyle(fontSize: 12),
-                        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      ),
-                    ),
-                  ],
+                const Spacer(),
+                ElevatedButton.icon(
+                  onPressed: () => _showCreateDialog(activeChatId),
+                  icon: const Icon(Icons.add, size: 16),
+                  label: Text(L10n.t('taskloop_new_list')),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: MemoTheme.accent,
+                    foregroundColor: Colors.white,
+                    textStyle: const TextStyle(fontSize: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  ),
                 ),
-              ),
-              Expanded(
-                child: ListView.builder(
+              ],
+            ),
+          ),
+          Expanded(
+            child: listsAsync.when(
+              data: (lists) {
+                if (lists.isEmpty) {
+                  return Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.inbox_outlined, size: 48, color: c.textDim),
+                        const SizedBox(height: 12),
+                        Text(
+                          L10n.t('taskloop_empty'),
+                          style: TextStyle(fontSize: 15, color: c.textSecondary),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          L10n.t('taskloop_empty_desc'),
+                          style: TextStyle(fontSize: 12, color: c.textDim),
+                        ),
+                      ],
+                    ),
+                  );
+                }
+                return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: lists.length,
                   itemBuilder: (context, index) {
@@ -117,18 +106,32 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                       onDelete: () => _deleteList(info.id),
                     );
                   },
+                );
+              },
+              loading: () => const Center(child: CircularProgressIndicator()),
+              error: (e, _) => Center(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.cloud_off, size: 48, color: c.textDim),
+                    const SizedBox(height: 12),
+                    Text(
+                      '${L10n.t('error')}: $e',
+                      style: TextStyle(fontSize: 13, color: c.textSecondary),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    TextButton.icon(
+                      onPressed: () => ref.invalidate(taskListsProvider),
+                      icon: const Icon(Icons.refresh, size: 16),
+                      label: Text(L10n.t('retry')),
+                    ),
+                  ],
                 ),
               ),
-            ],
-          );
-        },
-        loading: () => const Center(child: CircularProgressIndicator()),
-        error: (e, _) => Center(
-          child: Text(
-            '${L10n.t('error')}: $e',
-            style: TextStyle(color: MemoTheme.red),
+            ),
           ),
-        ),
+        ],
       ),
     );
   }

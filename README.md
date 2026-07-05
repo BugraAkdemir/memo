@@ -278,8 +278,12 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 ### Update / Uninstall
 
 ```bash
-curl -fsSL https://download.bugradev.com/update.sh    | bash   # update (preserves data)
-curl -fsSL https://download.bugradev.com/uninstall.sh  | bash   # uninstall (offers memory backup)
+# Re-run the installer — auto-detects existing install and updates instead
+curl -fsSL https://download.bugradev.com/get-memo.sh | bash
+# Or use the dedicated updater
+curl -fsSL https://download.bugradev.com/update.sh | bash
+# Uninstall (optionally backs up your memory first)
+curl -fsSL https://download.bugradev.com/uninstall.sh | bash
 ```
 
 ### Alternative: manual download

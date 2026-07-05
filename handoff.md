@@ -1,3 +1,92 @@
+# Handoff — 2026-07-05 (Session 14) — Installer / Updater / Uninstaller scripts + README düzenlemesi
+
+## Oturum Özeti
+
+Kullanıcı `get-memo.sh` ve `get-memo.ps1` script'lerinin çalışma mantığını inceletti. Script'ler review edildi, Türkçe → İngilizce çevrildi, banner/renkli çıktı eklendi, download progress bar eklendi. `get-memo.sh` artık full kurulum yapıyor (CLI + Flutter GUI + .desktop + icon) ve mevcut kurulumu algılayıp update moduna geçiyor. `update.sh` (veri koruyan güncelleyici) ve `uninstall.sh` (hafıza yedekleme soran kaldırıcı) sıfırdan yazıldı. README'ler güncellendi.
+
+**Commit durumu:** Bu oturumda commit yapılmadı. Değişen dosyalar:
+- `get-memo.sh` — yeniden yazıldı (full installer + updater, banner, renk)
+- `get-memo.ps1` — güncellendi (banner, renk, progress, İngilizce)
+- `update.sh` — yeni dosya
+- `uninstall.sh` — yeniden yazıldı (memory backup, onay, PATH temizleme)
+- `README.md` — Quick Start bölümü yenilendi
+- `READmeTR.md` — Quick Start bölümü yenilendi
+
+---
+
+## Yapılanlar
+
+### 1. `get-memo.sh` review + rewrite
+
+**Eski durum:** Sadece CLI binary'sini kuruyordu, engine binary'ler ilk kurulumda kopyalanıyordu. Mesajlar Türkçeydi. Progress bar yoktu. `.desktop` dosyası oluşturmuyordu.
+
+**Yeni durum:**
+- `clear` + ASCII banner + renkli çıktı (ANSI escape kodları)
+- Tüm mesajlar İngilizce
+- `curl -fSL -#` ile download progress bar (% gösterimi)
+- **Full kurulum:** CLI (`~/.memo/bin/memo` + `~/.local/bin/memo` wrapper), backend (`~/.memo/memo-backend`), Flutter GUI (`~/.memo/memo_flutter` + `lib/` + `flutter_assets/`), runner (`~/.memo/run_memo.sh`), engine binary'ler, `.desktop` app menü girişi, ikon
+- **Auto-detect update:** `~/.memo/` dizini varsa → update modu (çalışan backend'i durdurur, tüm binary'leri yeniler, config/verilere dokunmaz)
+- Config seeding sadece fresh install'da yapılıyor
+- Guide linki: `https://memo.bugradev.com/guide`
+- Teşekkür mesajı
+
+### 2. `get-memo.ps1` güncellemesi
+
+- Banner + renkli çıktı + `Clear-Host`
+- `$ProgressPreference = "Continue"` ile download progress
+- Try/catch ile download hata yakalama
+- Tüm mesajlar İngilizce
+- Guide linki
+
+### 3. `update.sh` (yeni)
+
+- Mevcut kurulumu kontrol eder (yoksa installer'a yönlendirir)
+- Çalışan backend'i durdurur (`/api/shutdown` → kill fallback)
+- Tüm binary'leri yeniler: engine, backend, Flutter, lib/, runner, CLI
+- **Korunanlar:** config.yaml, .env, providers.json, permissions.json, memory/, sessions/, models/, skills/, whatsapp/
+
+### 4. `uninstall.sh` (rewrite)
+
+- ASCII banner + renkli çıktı
+- Nelerin silineceğini listeler
+- Memory verisi varsa "Save your memory data?" diye sorar
+- Yes → `~/Documents/memo-memory-{timestamp}.zip` olarak yedekler (zip yoksa Python fallback, o da yoksa klasör kopyası). Belgeler/Documents farketmeden bulur.
+- "Proceed with uninstall?" son onay
+- Çalışan process'leri kill eder
+- Şunları siler: `~/.memo/`, `~/.local/bin/memo`, `~/.local/share/applications/memo.desktop`, ikonlar
+- `.bashrc`, `.zshrc`, `config.fish`'ten PATH satırlarını temizler
+
+### 5. README düzenlemesi
+
+- "Engine binaries not included" uyarısı kaldırıldı (artık gömülü)
+- Quick Start: önce tek komutla kurulum, sonra manuel alternatif
+- Update / Uninstall komutları eklendi
+- `get-memo.sh`'in update modu da belirtildi
+- Tüm URL'ler `https://download.bugradev.com/` olarak düzeltildi
+
+---
+
+## Tespit edilen ama bu oturumda düzeltilmeyen bug
+
+**`installer.iss`'te `launch.vbs` referansı:** Inno Setup script'i Start Menu ikonu, Desktop ikonu ve `[Run]` post-install başlatma için `{app}\launch.vbs` dosyasına işaret ediyor. Ancak `launch.vbs` ne repo'da var ne de `build_releases.sh` staging dizinine koyuyor. Sonuç: Windows kurulumu tamamlansa bile kısayollar çalışmaz. Çözüm: ya staging'e bir `launch.vbs` oluşturulacak (run_memo.bat'i gizli çağıran basit VBS wrapper), ya da `installer.iss` doğrudan `run_memo.bat`'i gösterecek.
+
+---
+
+## URL yapısı
+
+| Amaç | URL |
+|---|---|
+| Linux/macOS installer | `https://download.bugradev.com/get-memo.sh` |
+| Windows installer | `https://download.bugradev.com/get-memo.ps1` |
+| Updater | `https://download.bugradev.com/update.sh` |
+| Uninstaller | `https://download.bugradev.com/uninstall.sh` |
+| Linux archive | `https://download.bugradev.com/memo.tar.gz` |
+| macOS archive | `https://download.bugradev.com/memo-mac.zip` |
+| Windows setup | `https://download.bugradev.com/memo.exe` |
+| Guide / website | `https://memo.bugradev.com/guide` |
+
+---
+
 # Handoff — 2026-07-05 (Session 13) — Task Loop bug fix turu + ActivityPanel'in tamamen kaldırılması
 
 ## Oturum Özeti

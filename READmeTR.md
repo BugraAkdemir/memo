@@ -278,8 +278,12 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 ### Güncelleme / Kaldırma
 
 ```bash
-curl -fsSL https://download.bugradev.com/update.sh    | bash   # güncelle (veriler korunur)
-curl -fsSL https://download.bugradev.com/uninstall.sh  | bash   # kaldır (hafıza yedekleme sorar)
+# Kurulum script'ini tekrar çalıştır — mevcut kurulumu algılar, günceller
+curl -fsSL https://download.bugradev.com/get-memo.sh | bash
+# Ya da sadece güncelleyiciyi kullan
+curl -fsSL https://download.bugradev.com/update.sh | bash
+# Kaldır (istersen hafızanı yedekler)
+curl -fsSL https://download.bugradev.com/uninstall.sh | bash
 ```
 
 ### Alternatif: manuel indirme

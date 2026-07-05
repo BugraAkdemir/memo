@@ -1,7 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../core/api_client.dart';
 import '../models/task_list.dart';
+import 'chat_provider.dart';
 
 class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
   @override
@@ -10,28 +10,36 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
     return api.listTaskLists();
   }
 
+  Future<void> refresh() async {
+    state = const AsyncValue.loading();
+    state = await AsyncValue.guard(() async {
+      final api = ref.read(apiClientProvider);
+      return api.listTaskLists();
+    });
+  }
+
   Future<void> createTaskList(String chatId, String title, List<String> items) async {
     final api = ref.read(apiClientProvider);
     await api.createTaskList(chatId, title, items);
-    ref.invalidateSelf();
+    await refresh();
   }
 
   Future<void> deleteTaskList(String id) async {
     final api = ref.read(apiClientProvider);
     await api.deleteTaskList(id);
-    ref.invalidateSelf();
+    await refresh();
   }
 
   Future<void> startTaskList(String id) async {
     final api = ref.read(apiClientProvider);
     await api.startTaskList(id);
-    ref.invalidateSelf();
+    await refresh();
   }
 
   Future<void> stopTaskList(String id) async {
     final api = ref.read(apiClientProvider);
     await api.stopTaskList(id);
-    ref.invalidateSelf();
+    await refresh();
   }
 }
 

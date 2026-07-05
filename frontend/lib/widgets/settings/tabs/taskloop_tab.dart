@@ -1,10 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
-import '../../core/l10n.dart';
-import '../../core/theme.dart';
-import '../../providers/provider_provider.dart';
-import '../../models/provider_config.dart';
+import '../../../core/l10n.dart';
+import '../../../core/theme.dart';
+import '../../../providers/provider_provider.dart';
 
 class TaskLoopTab extends ConsumerWidget {
   const TaskLoopTab({super.key});
@@ -69,7 +68,7 @@ class TaskLoopTab extends ConsumerWidget {
                       const SizedBox(height: 20, child: LinearProgressIndicator()),
                   error: (e, _) => Text(
                     '${L10n.t('error')}: $e',
-                    style: TextStyle(fontSize: 12, color: MemoTheme.red),
+                    style: const TextStyle(fontSize: 12, color: MemoTheme.red),
                   ),
                 ),
               ],
@@ -112,7 +111,7 @@ class TaskLoopTab extends ConsumerWidget {
                       const SizedBox(height: 20, child: LinearProgressIndicator()),
                   error: (e, _) => Text(
                     '${L10n.t('error')}: $e',
-                    style: TextStyle(fontSize: 12, color: MemoTheme.red),
+                    style: const TextStyle(fontSize: 12, color: MemoTheme.red),
                   ),
                 ),
               ],
@@ -156,8 +155,8 @@ class TaskLoopTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildProviderInfo(MemoThemeData c, List<ProviderConfig> providers) {
-    final enabled = providers.where((p) => p.enabled).toList();
+  Widget _buildProviderInfo(ThemeColors c, List<dynamic> providers) {
+    final enabled = providers.where((p) => p.enabled == true).toList();
     if (enabled.isEmpty) {
       return Text(
         L10n.t('taskloop_no_providers'),
@@ -176,6 +175,8 @@ class TaskLoopTab extends ConsumerWidget {
           spacing: 8,
           runSpacing: 4,
           children: enabled.map((p) {
+            final type = p.type as String? ?? '';
+            final name = p.name as String? ?? '';
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
@@ -184,7 +185,7 @@ class TaskLoopTab extends ConsumerWidget {
                 border: Border.all(color: c.borderSoft),
               ),
               child: Text(
-                providerIcon(p.type) + ' ' + (p.name.isNotEmpty ? p.name : p.type),
+                '${providerIcon(type)} ${name.isNotEmpty ? name : type}',
                 style: TextStyle(fontSize: 12, color: c.textMain),
               ),
             );
@@ -194,8 +195,7 @@ class TaskLoopTab extends ConsumerWidget {
     );
   }
 
-  Widget _buildCEOInfo(MemoThemeData c, List<ProviderConfig> providers) {
-    final enabled = providers.where((p) => p.enabled).toList();
+  Widget _buildCEOInfo(ThemeColors c, List<dynamic> providers) {
     return Text(
       L10n.t('taskloop_ceo_auto'),
       style: TextStyle(fontSize: 12, color: c.textSecondary, height: 1.5),

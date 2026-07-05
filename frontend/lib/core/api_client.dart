@@ -1301,12 +1301,12 @@ class MemoApiClient {
       'title': title,
       'items': items,
     });
-    return TaskList.fromJson(_guard<Map>(res.data));
+    return TaskList.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
   }
 
   Future<TaskList> getTaskList(String id) async {
     final res = await _dio.get('/api/tasklists/$id');
-    return TaskList.fromJson(_guard<Map>(res.data));
+    return TaskList.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
   }
 
   Future<void> deleteTaskList(String id) async {

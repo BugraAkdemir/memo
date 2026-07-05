@@ -31,7 +31,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
     final listsAsync = ref.watch(taskListsProvider);
-    final activeChatId = ref.read(activeChatIdProvider);
+    final activeChatId = ref.read(activeChatIdProvider).valueOrNull ?? 'default';
 
     return Scaffold(
       backgroundColor: c.bgApp,
@@ -415,7 +415,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     );
   }
 
-  Widget _statusBadge(MemoThemeData c, String status) {
+  Widget _statusBadge(ThemeColors c, String status) {
     Color color;
     String text;
     switch (status) {
@@ -459,7 +459,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           child: CircularProgressIndicator(strokeWidth: 2),
         );
       default:
-        return const Icon(Icons.circle_outlined, size: 18, color: MemoTheme.textDim);
+        return Icon(Icons.circle_outlined, size: 18, color: MemoTheme.of(context).textDim);
     }
   }
 }

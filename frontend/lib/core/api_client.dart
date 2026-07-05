@@ -9,6 +9,7 @@ import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
+import '../models/task_list.dart';
 
 /// Memo Go backend REST API client.
 /// Connects to headless Go server on localhost (plain HTTP, no TLS).
@@ -1281,6 +1282,43 @@ class MemoApiClient {
     } catch (_) {
       // The server closes mid-request — ignore transport errors.
     }
+  }
+
+  // ─── Task Lists ─────────────────────────────────────────────────
+
+  Future<List<TaskListInfo>> listTaskLists() async {
+    final res = await _dio.get('/api/tasklists');
+    if (res.data is! List) return [];
+    return (res.data as List)
+        .map((e) => TaskListInfo.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
+  Future<TaskList> createTaskList(
+      String chatId, String title, List<String> items) async {
+    final res = await _dio.post('/api/tasklists', data: {
+      'chat_id': chatId,
+      'title': title,
+      'items': items,
+    });
+    return TaskList.fromJson(_guard<Map>(res.data));
+  }
+
+  Future<TaskList> getTaskList(String id) async {
+    final res = await _dio.get('/api/tasklists/$id');
+    return TaskList.fromJson(_guard<Map>(res.data));
+  }
+
+  Future<void> deleteTaskList(String id) async {
+    await _dio.delete('/api/tasklists/$id');
+  }
+
+  Future<void> startTaskList(String id) async {
+    await _dio.post('/api/tasklists/$id/start');
+  }
+
+  Future<void> stopTaskList(String id) async {
+    await _dio.post('/api/tasklists/$id/stop');
   }
 
   /// Returns the backend's listen port (e.g. 8090).

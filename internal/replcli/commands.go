@@ -22,6 +22,12 @@ const helpText = `Kullanılabilir komutlar:
   /gui                                    masaüstü uygulamasını açar
   /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
   /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
+  /tasklist list                          tüm görev listelerini listeler
+  /tasklist create <başlık> <maddeler>    yeni görev listesi oluşturur
+  /tasklist show <id>                     liste detaylarını gösterir
+  /tasklist start <id>                    görev listesini başlatır (otomatik çalışma)
+  /tasklist stop <id>                     çalışan listeyi durdurur
+  /tasklist delete <id>                   görev listesini siler
   /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
   /exit                                   çıkar
 `
@@ -59,6 +65,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdSession(args)
 	case "/remote":
 		s.cmdRemote()
+	case "/tasklist":
+		s.cmdTaskList(args)
 	default:
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf("Bilinmeyen komut: %s (yardım için /help yaz)", cmd)))
 	}
@@ -102,6 +110,8 @@ func (s *session) showCommandMenu() bool {
 		s.pickSession()
 	case "/remote":
 		s.cmdRemote()
+	case "/tasklist":
+		s.cmdTaskListInteractive()
 	case "/exit":
 		return true
 	}
@@ -661,4 +671,146 @@ func (s *session) findModel(name string, wantEmbedding bool) (*LocalModel, error
 		kind = "embedding"
 	}
 	return nil, fmt.Errorf("%q ile eşleşen bir %s modeli bulunamadı (/models ile listele)", name, kind)
+}
+
+func (s *session) cmdTaskList(args []string) {
+	if len(args) == 0 {
+		_ = s.cmdTaskListList()
+		return
+	}
+	switch args[0] {
+	case "list":
+		_ = s.cmdTaskListList()
+	case "create":
+		if len(args) < 3 {
+			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist create <başlık> <madde1> <madde2> ..."))
+			return
+		}
+		title := args[1]
+		items := args[2:]
+		chatID := s.chatID
+		if chatID == "" {
+			chatID = "default"
+		}
+		tl, err := s.client.CreateTaskList(s.ctx, chatID, title, items)
+		if err != nil {
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			return
+		}
+		fmt.Fprintf(s.out, "%s\n", green(fmt.Sprintf("%d maddelik \"%s\" listesi oluşturuldu (ID: %s)", len(items), title, tl.ID)))
+	case "show":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist show <id>"))
+			return
+		}
+		tl, err := s.client.GetTaskList(s.ctx, args[1])
+		if err != nil {
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			return
+		}
+		statusStr := tl.Status
+		switch tl.Status {
+		case "running":
+			statusStr = green(tl.Status)
+		case "done":
+			statusStr = green(tl.Status)
+		case "paused":
+			statusStr = yellow(tl.Status)
+		}
+		fmt.Fprintf(s.out, "%s — %s (%d madde)\n", bold(tl.Title), statusStr, len(tl.Items))
+		for i, item := range tl.Items {
+			symbol := "○"
+			colorFn := dim
+			switch item.Status {
+			case "done":
+				symbol = green("✓")
+			case "stuck":
+				symbol = red("✗")
+				colorFn = red
+			case "running":
+				symbol = cyan("●")
+				colorFn = cyan
+			}
+			note := ""
+			if item.Note != "" {
+				note = dim(fmt.Sprintf(" — %s", item.Note))
+			}
+			roundsInfo := ""
+			if item.Rounds > 0 {
+				roundsInfo = dim(fmt.Sprintf(" (%d tur)", item.Rounds))
+			}
+			fmt.Fprintf(s.out, "  %s %s%s%s\n", symbol, colorFn(item.Text), roundsInfo, note)
+			_ = i
+		}
+	case "start":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist start <id>"))
+			return
+		}
+		if err := s.client.StartTaskList(s.ctx, args[1]); err != nil {
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			return
+		}
+		fmt.Fprintln(s.out, green("Görev listesi başlatıldı. Duraklatmak için /tasklist stop "+args[1]))
+	case "stop":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist stop <id>"))
+			return
+		}
+		if err := s.client.StopTaskList(s.ctx, args[1]); err != nil {
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			return
+		}
+		fmt.Fprintln(s.out, green("Görev listesi durduruldu."))
+	case "delete":
+		if len(args) < 2 {
+			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist delete <id>"))
+			return
+		}
+		if err := s.client.DeleteTaskList(s.ctx, args[1]); err != nil {
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			return
+		}
+		fmt.Fprintln(s.out, green("Görev listesi silindi."))
+	default:
+		fmt.Fprintln(s.out, yellow("Kullanılabilir: /tasklist list|create|show|start|stop|delete"))
+	}
+}
+
+func (s *session) cmdTaskListList() error {
+	lists, err := s.client.ListTaskLists(s.ctx)
+	if err != nil {
+		fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+		return err
+	}
+	if len(lists) == 0 {
+		fmt.Fprintln(s.out, dim("Henüz görev listesi yok. Oluşturmak için: /tasklist create <başlık> <maddeler>"))
+		return nil
+	}
+	fmt.Fprintf(s.out, "%s (%d liste)\n", bold("Görev Listeleri"), len(lists))
+	for _, tl := range lists {
+		status := tl.Status
+		switch status {
+		case "running":
+			status = green(status)
+		case "done":
+			status = green(status)
+		case "paused":
+			status = yellow(status)
+		}
+		fmt.Fprintf(s.out, "  %s %s %s — %s (%d/%d)\n",
+			bold(tl.ID[:8]+"..."),
+			dim(tl.Title),
+			status,
+			dim(tl.UpdatedAt),
+			tl.DoneCount,
+			tl.ItemCount,
+		)
+	}
+	return nil
+}
+
+func (s *session) cmdTaskListInteractive() {
+	_ = s.cmdTaskListList()
+	fmt.Fprintln(s.out, dim("\nKomutlar: /tasklist list | create <başlık> <maddeler> | show <id> | start <id> | stop <id> | delete <id>"))
 }

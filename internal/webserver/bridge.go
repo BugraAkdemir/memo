@@ -15,6 +15,7 @@ import (
 	"memo/internal/models"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/taskloop"
 	"memo/internal/whatsapp"
 )
 
@@ -178,4 +179,12 @@ type FullBridge interface {
 
 	// Shutdown gracefully stops all background processes and the HTTP server.
 	Shutdown(ctx context.Context)
+
+	// Task lists (autonomous task loop)
+	CreateTaskList(chatID, title string, items []string) (*taskloop.TaskList, error)
+	GetTaskList(id string) (*taskloop.TaskList, error)
+	ListTaskLists() []taskloop.TaskListInfo
+	DeleteTaskList(id string) error
+	StartTaskList(ctx context.Context, listID string) error
+	StopTaskList(listID string)
 }

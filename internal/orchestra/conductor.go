@@ -182,9 +182,9 @@ func (c *Conductor) findProviderConfig(providerName string) *provider.ProviderCo
 	return nil
 }
 
-// createProviderForType creates a provider for the given model type and model name.
+// CreateProviderForType creates a provider for the given model type and model name.
 // Returns a descriptive error if the provider is "local" (unsupported) or not found.
-func (c *Conductor) createProviderForType(modelType, modelName string) (provider.Provider, error) {
+func (c *Conductor) CreateProviderForType(modelType, modelName string) (provider.Provider, error) {
 	// Final guard: trim stray whitespace so a dirty type/model id can never reach
 	// the provider HTTP request (see OrchestraConfig.Sanitize).
 	modelType = strings.TrimSpace(modelType)
@@ -240,7 +240,7 @@ func (c *Conductor) createProviderForType(modelType, modelName string) (provider
 // ─── Planning ──────────────────────────────────────────────────
 
 func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMessage string, onProgress ProgressFn) (*OrchestraPlan, error) {
-	prov, err := c.createProviderForType(cfg.ChiefType, cfg.ChiefModel)
+	prov, err := c.CreateProviderForType(cfg.ChiefType, cfg.ChiefModel)
 	if err != nil {
 		return nil, fmt.Errorf("chief provider (%s/%s) oluşturulamadı: %w. API key ve provider konfigürasyonunu kontrol et.", cfg.ChiefType, cfg.ChiefModel, err)
 	}
@@ -494,7 +494,7 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 		ModelName: task.ModelName,
 	}
 
-	p, err := c.createProviderForType(task.ModelType, task.ModelName)
+	p, err := c.CreateProviderForType(task.ModelType, task.ModelName)
 	if err != nil {
 		errMsg := fmt.Sprintf("%s (%s) provider hatası: %v. Provider'ı API Providers'dan kontrol et.", task.ModelType, task.ModelName, err)
 		logx.Printf("ORCHESTRA: %s", errMsg)
@@ -752,7 +752,7 @@ Kurallar:
 - Doğal ve akıcı ol
 - Cevabı kısa tut`
 
-	p, err := c.createProviderForType(cfg.ChiefType, cfg.ChiefModel)
+	p, err := c.CreateProviderForType(cfg.ChiefType, cfg.ChiefModel)
 	if err != nil {
 		return "", fmt.Errorf("synthesis provider: %w", err)
 	}

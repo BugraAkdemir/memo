@@ -1809,6 +1809,43 @@ class MemoApiClient {
     }
   }
 
+  // ─── Task Lists ─────────────────────────────────────────────────
+
+  Future<List<Map<String, dynamic>>> listTaskLists() async {
+    final res = await _dio.get('/api/tasklists');
+    if (res.data is! List) return [];
+    return (res.data as List)
+        .map((e) => Map<String, dynamic>.from(e as Map))
+        .toList();
+  }
+
+  Future<Map<String, dynamic>> createTaskList(
+      String chatId, String title, List<String> items) async {
+    final res = await _dio.post('/api/tasklists', data: {
+      'chat_id': chatId,
+      'title': title,
+      'items': items,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> getTaskList(String id) async {
+    final res = await _dio.get('/api/tasklists/$id');
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> deleteTaskList(String id) async {
+    await _dio.delete('/api/tasklists/$id');
+  }
+
+  Future<void> startTaskList(String id) async {
+    await _dio.post('/api/tasklists/$id/start');
+  }
+
+  Future<void> stopTaskList(String id) async {
+    await _dio.post('/api/tasklists/$id/stop');
+  }
+
   /// Returns the backend's listen port (e.g. 8090).
   Future<int> getListenPort() async {
     try {

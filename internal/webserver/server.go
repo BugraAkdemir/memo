@@ -195,6 +195,10 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/agent/auto-permission", s.handleAgentAutoPermission)
 	mux.HandleFunc("/api/agent/undo", s.handleAgentUndo)
 
+	// Task lists
+	mux.HandleFunc("/api/tasklists", s.handleTaskLists)
+	mux.HandleFunc("/api/tasklists/", s.handleTaskListByID)
+
 	// WhatsApp
 	mux.HandleFunc("/api/whatsapp/status", s.handleWhatsAppStatus)
 	mux.HandleFunc("/api/whatsapp/start", s.handleWhatsAppStart)

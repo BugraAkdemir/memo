@@ -32,6 +32,7 @@ import (
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/taskloop"
 	"memo/internal/tunnel"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
@@ -158,6 +159,9 @@ type App struct {
 	agentExecutor *agent.Executor
 	agentEnabled  bool
 	agentMu       sync.RWMutex
+
+	taskloopStore  *taskloop.Store
+	taskloopEngine *taskloop.Engine
 
 	skillManager *skill.Manager
 
@@ -444,6 +448,21 @@ func (a *App) Startup(ctx context.Context) {
 	a.agentEnabled = false
 	logx.Printf("Agent mode initialized (enabled=false)")
 
+	tlStore, err := taskloop.NewStore(config.DataPath("tasklists"))
+	if err != nil {
+		logx.Printf("WARN: taskloop store: %v", err)
+	} else {
+		a.taskloopStore = tlStore
+		a.taskloopEngine = taskloop.NewEngine(
+			tlStore,
+			a.buildTaskLoopRunWorker(),
+			a.buildTaskLoopReviewChief(),
+			func(v bool) { a.agentExecutor.SetBypassPermissions(v) },
+			func(name, data string) { a.emitEvent(name, data) },
+		)
+		logx.Info("Task loop engine initialized")
+	}
+
 	a.skillManager = skill.NewManager(config.DataDir())
 	if err := a.skillManager.Discover(); err != nil {
 		logx.Printf("skill: discover error: %v", err)
@@ -520,6 +539,17 @@ func (a *App) Shutdown(ctx context.Context) {
 // watchdog above can bound it without recursing into shutdownOnce.
 func (a *App) shutdownSync(ctx context.Context) {
 	logx.Info("Memo shutting down, cleaning up background processes...")
+
+	// Stop all running task lists so bypass permissions are restored before
+	// the rest of shutdown tears things down.
+	if a.taskloopEngine != nil {
+		tlInfos := a.taskloopStore.List()
+		for _, info := range tlInfos {
+			if info.Status == "running" {
+				a.taskloopEngine.Stop(info.ID)
+			}
+		}
+	}
 
 	// Cancel lifecycle context to stop all goroutines (proactive engine, calendar
 	// reminders, WhatsApp intent loop, observer analysis, etc.)

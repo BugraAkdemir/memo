@@ -1787,3 +1787,86 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 		p.Signal(os.Interrupt)
 	}
 }
+
+// ─── Task Lists ──────────────────────────────────────────────────
+
+func (s *Server) handleTaskLists(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, s.fullBridge.ListTaskLists())
+	case http.MethodPost:
+		var req struct {
+			ChatID string   `json:"chat_id"`
+			Title  string   `json:"title"`
+			Items  []string `json:"items"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if len(req.Items) == 0 {
+			http.Error(w, "items required", http.StatusBadRequest)
+			return
+		}
+		tl, err := s.fullBridge.CreateTaskList(req.ChatID, req.Title, req.Items)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, tl)
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleTaskListByID(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/tasklists/")
+	if id == "" {
+		http.Error(w, "missing id", http.StatusBadRequest)
+		return
+	}
+
+	parts := strings.SplitN(id, "/", 2)
+	listID := parts[0]
+	subAction := ""
+	if len(parts) > 1 {
+		subAction = parts[1]
+	}
+
+	switch {
+	case subAction == "start" && r.Method == http.MethodPost:
+		if err := s.fullBridge.StartTaskList(r.Context(), listID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "started"})
+	case subAction == "stop" && r.Method == http.MethodPost:
+		s.fullBridge.StopTaskList(listID)
+		writeJSON(w, map[string]string{"status": "stopped"})
+	case subAction == "" && r.Method == http.MethodGet:
+		tl, err := s.fullBridge.GetTaskList(listID)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		writeJSON(w, tl)
+	case subAction == "" && r.Method == http.MethodDelete:
+		if err := s.fullBridge.DeleteTaskList(listID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"status": "deleted"})
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}

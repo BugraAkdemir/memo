@@ -24,6 +24,7 @@ var slashCommands = []commandSpec{
 	{"/gui", "masaüstü uygulamasını aç"},
 	{"/clear", "sohbeti temizle, yeni bir sohbet başlat"},
 	{"/session", "bu projedeki sohbetler arasında geç"},
+	{"/tasklist", "görev listelerini yönet (list/create/start/stop/delete/show)"},
 	{"/remote", "ngrok ile uzak erişim tüneli aç"},
 	{"/exit", "çık"},
 }

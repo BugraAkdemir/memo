@@ -33,7 +33,7 @@ func TestCreateProviderForTypeLocal(t *testing.T) {
 		}
 	})
 
-	_, err := c.createProviderForType("local", "model")
+	_, err := c.CreateProviderForType("local", "model")
 	if err == nil {
 		t.Fatal("expected error for local provider")
 	}
@@ -46,7 +46,7 @@ func TestCreateProviderForTypeEmpty(t *testing.T) {
 		}
 	})
 
-	_, err := c.createProviderForType("", "model")
+	_, err := c.CreateProviderForType("", "model")
 	if err == nil {
 		t.Fatal("expected error for empty type")
 	}
@@ -60,7 +60,7 @@ func TestCreateProviderForTypeNotFound(t *testing.T) {
 		}
 	})
 
-	_, err := c.createProviderForType("nonexistent", "model")
+	_, err := c.CreateProviderForType("nonexistent", "model")
 	if err == nil {
 		t.Fatal("expected error for nonexistent provider")
 	}
@@ -84,9 +84,9 @@ func TestCreateProviderForTypeExactMatch(t *testing.T) {
 		}
 	})
 
-	p, err := c.createProviderForType("openai", "gpt-4o")
+	p, err := c.CreateProviderForType("openai", "gpt-4o")
 	if err != nil {
-		t.Fatalf("createProviderForType: %v", err)
+		t.Fatalf("CreateProviderForType: %v", err)
 	}
 	if p == nil {
 		t.Fatal("expected non-nil provider")

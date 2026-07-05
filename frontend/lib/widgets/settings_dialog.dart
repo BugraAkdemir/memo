@@ -19,6 +19,7 @@ import 'settings/tabs/gpu_config_tab.dart';
 import 'settings/tabs/backup_restore_tab.dart';
 import 'settings/tabs/remote_access_tab.dart';
 import 'settings/tabs/about_tab.dart';
+import 'settings/tabs/taskloop_tab.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
 class SettingsDialog extends ConsumerStatefulWidget {
@@ -46,6 +47,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/archive.svg',
     'lib/icon/slash/globe.svg',
     'lib/icon/slash/info.svg',
+    'lib/icon/slash/gears.svg',
   ];
 
   List<String> get _tabs => [
@@ -63,6 +65,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('backup'),
     L10n.t('remote_access'),
     L10n.t('about'),
+    L10n.t('tab_taskloop'),
   ];
 
   @override
@@ -204,6 +207,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 11: return BackupRestoreTab();
       case 12: return RemoteAccessTab();
       case 13: return AboutTab();
+      case 14: return TaskLoopTab();
       default: return SizedBox.shrink();
     }
   }

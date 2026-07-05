@@ -252,18 +252,45 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 
 ---
 
-## 🚀 Quick Start — Zero Config
+## 🚀 Quick Start
 
-**No terminal. No build steps. `llama.cpp` is bundled.** Download → extract → pick a model in the Store → chat.
+**No terminal needed. No build steps. `llama.cpp` and engine binaries are bundled.**
 
-| Platform | Package | Instructions |
-|----------|---------|-------------|
-| **Linux** | `Memo-linux-x64.zip` | `unzip Memo-linux-x64.zip -d Memo && cd Memo && ./run_memo.sh` |
-| **Windows** | `Memo-windows-x64.zip` | Extract → run `run_memo.bat` |
-| **macOS** | `Memo-macos.zip` | `unzip Memo-macos.zip -d Memo && cd Memo && open run_memo.command` |
+### One-line install
 
-> ⚠️ **Engine binaries (`llama-server`, `vec0`) are not included** — add them manually.  
-> 📦 [**Download engine binaries**](https://drive.google.com/file/d/13zpp5Q0QgZ9XEwfgiWi-gCzBYNXuUXgz/view?usp=sharing) — extract into `binaries/<platform>/` inside the Memo folder.
+| Platform | Command |
+|----------|---------|
+| **Linux / macOS** | `curl -fsSL https://get.bugradev.com/memo | bash` |
+| **Windows** | `irm https://get.bugradev.com/memo/win \| iex` |
+
+<details>
+<summary><b>📦 What the installer does</b></summary>
+<br/>
+
+- Installs the CLI (`memo`) on your PATH — run it from any terminal
+- Installs the Flutter desktop app — find **Memo** in your app menu
+- Copies engine binaries (`llama-server`, `vec0`) — GPU-ready
+- Seeds default configs — never overwrites your existing settings
+- Safe to re-run — only binaries are refreshed on subsequent runs
+
+</details>
+
+### Update / Uninstall
+
+```bash
+curl -fsSL https://get.bugradev.com/memo/update    | bash   # update (preserves data)
+curl -fsSL https://get.bugradev.com/memo/uninstall  | bash   # uninstall (offers memory backup)
+```
+
+### Alternative: manual download
+
+Download the latest release from **[memo.bugradev.com](https://memo.bugradev.com)** and run:
+
+| Platform | Instructions |
+|----------|-------------|
+| **Linux** | `tar xzf memo.tar.gz -d Memo && cd Memo && ./run_memo.sh` |
+| **Windows** | Run `Memo-Setup.exe` |
+| **macOS** | `unzip memo-mac.zip -d Memo && cd Memo && ./run_memo.sh` |
 
 **CI builds on every push:**  
 [![Build Linux](https://img.shields.io/badge/Build-Linux-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-linux.yml)

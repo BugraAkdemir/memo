@@ -252,18 +252,45 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 
 ---
 
-## 🚀 Hızlı Başlangıç — Kurulum Gerektirmez
+## 🚀 Hızlı Başlangıç
 
-**Terminal yok. Derleme yok. `llama.cpp` gömülü.** İndir → çıkar → Mağaza'dan bir model seç → sohbet et.
+**Terminal gerekmez. Derleme gerekmez. `llama.cpp` ve motor binary'leri gömülü.**
 
-| Platform | Paket | Nasıl |
-|----------|-------|-------|
-| **Linux** | `Memo-linux-x64.zip` | `unzip Memo-linux-x64.zip -d Memo && cd Memo && ./run_memo.sh` |
-| **Windows** | `Memo-windows-x64.zip` | Çıkar → `run_memo.bat` çalıştır |
-| **macOS** | `Memo-macos.zip` | `unzip Memo-macos.zip -d Memo && cd Memo && open run_memo.command` |
+### Tek komutla kurulum
 
-> ⚠️ **Motor binary'leri (`llama-server`, `vec0`) pakete dahil değil** — manuel eklenmeli.  
-> 📦 [**Motor binary'lerini indir**](https://drive.google.com/file/d/13zpp5Q0QgZ9XEwfgiWi-gCzBYNXuUXgz/view?usp=sharing) — Memo klasörü içinde `binaries/<platform>/` altına çıkar.
+| Platform | Komut |
+|----------|-------|
+| **Linux / macOS** | `curl -fsSL https://get.bugradev.com/memo \| bash` |
+| **Windows** | `irm https://get.bugradev.com/memo/win \| iex` |
+
+<details>
+<summary><b>📦 Kurulum ne yapıyor?</b></summary>
+<br/>
+
+- CLI'ı (`memo`) PATH'e ekler — herhangi bir terminalden çalıştırabilirsin
+- Flutter masaüstü uygulamasını kurar — uygulama menüsünde **Memo** yazar
+- Motor binary'lerini (`llama-server`, `vec0`) kopyalar — GPU'ya hazır
+- Varsayılan config'leri oluşturur — mevcut ayarlarının üzerine asla yazmaz
+- Tekrar çalıştırması güvenli — sadece binary'ler yenilenir
+
+</details>
+
+### Güncelleme / Kaldırma
+
+```bash
+curl -fsSL https://get.bugradev.com/memo/update    | bash   # güncelle (veriler korunur)
+curl -fsSL https://get.bugradev.com/memo/uninstall  | bash   # kaldır (hafıza yedekleme sorar)
+```
+
+### Alternatif: manuel indirme
+
+Son sürümü **[memo.bugradev.com](https://memo.bugradev.com)** adresinden indirip çalıştır:
+
+| Platform | Nasıl |
+|----------|-------|
+| **Linux** | `tar xzf memo.tar.gz -d Memo && cd Memo && ./run_memo.sh` |
+| **Windows** | `Memo-Setup.exe` çalıştır |
+| **macOS** | `unzip memo-mac.zip -d Memo && cd Memo && ./run_memo.sh` |
 
 **Her push'ta CI build'leri:**  
 [![Build Linux](https://img.shields.io/badge/Build-Linux-B08D57?style=flat-square)](https://github.com/BugraAkdemir/memo/actions/workflows/build-linux.yml)

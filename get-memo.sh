@@ -1,20 +1,36 @@
 #!/usr/bin/env bash
-# Memo — one-line full installer for Linux and macOS.
+# Memo — one-line full installer for Linux / macOS.
 #
-#   curl -fsSL https://download.bugradev.com/get-memo.sh | bash
+#   curl -fsSL https://get.bugradev.com/memo | bash
 #
-# Downloads the packaged build for this OS and performs a complete install:
-#   • CLI binary + wrapper on PATH  →  `memo` in any terminal
-#   • Flutter desktop app           →  `~/.memo/memo_flutter`
-#   • Application menu entry        →  .desktop file + icon
-#   • Engine binaries (llama.cpp + vec0) — first-install only
-#   • Config / provider defaults — never overwrites existing
-#
+# Complete install: CLI, Flutter desktop app, app menu entry, engine binaries.
 # Safe to re-run — existing config/data are preserved, only binaries refreshed.
 set -euo pipefail
 
+# ── colours ──────────────────────────────────────────────────────────────────
+BOLD="\033[1m"
+GREEN="\033[32m"
+CYAN="\033[36m"
+YELLOW="\033[33m"
+RED="\033[31m"
+BLUE="\033[34m"
+NC="\033[0m"
+
 clear
 
+# ── banner ───────────────────────────────────────────────────────────────────
+echo -e "${CYAN}${BOLD}"
+echo "  __  __ _____ __  __  ___  "
+echo " |  \\/  | ____|  \\/  |/ _ \\ "
+echo " | |\\/| |  _| | |\\/| | | | |"
+echo " | |  | | |___| |  | | |_| |"
+echo " |_|  |_|_____|_|  |_|\\___/ "
+echo -e "${NC}"
+echo -e "${BOLD}  Local-first, privacy-focused AI assistant${NC}"
+echo -e "  ${BLUE}https://memo.bugradev.com/guide${NC}"
+echo ""
+
+# ── os detection ─────────────────────────────────────────────────────────────
 DOMAIN="https://download.bugradev.com"
 APP_NAME="Memo"
 MEMO_HOME="$HOME/.memo"
@@ -24,28 +40,37 @@ case "$os" in
     Linux)  url="$DOMAIN/memo.tar.gz" ;;
     Darwin) url="$DOMAIN/memo-mac.zip" ;;
     *)
-        echo "Unsupported OS: $os" >&2
+        echo -e "${RED}Unsupported OS: $os${NC}" >&2
         exit 1
         ;;
 esac
 
+# ── dependencies ─────────────────────────────────────────────────────────────
 for bin in curl; do
-    command -v "$bin" >/dev/null 2>&1 || { echo "Error: '$bin' not found. Install it and try again." >&2; exit 1; }
+    command -v "$bin" >/dev/null 2>&1 || {
+        echo -e "${RED}Error: '$bin' not found. Install it and try again.${NC}" >&2
+        exit 1
+    }
 done
 
+# ── download ─────────────────────────────────────────────────────────────────
 work_dir="$(mktemp -d)"
 trap 'rm -rf "$work_dir"' EXIT
 
 archive="$work_dir/$(basename "$url")"
-echo "Downloading: $url"
+echo -e "${BOLD}Downloading:${NC} $url"
 curl -fSL -# -o "$archive" "$url"
-
 echo ""
-echo "Extracting..."
+
+# ── extract ──────────────────────────────────────────────────────────────────
+echo -e "${BOLD}Extracting...${NC}"
 case "$os" in
     Linux)  tar xzf "$archive" -C "$work_dir" ;;
     Darwin)
-        command -v unzip >/dev/null 2>&1 || { echo "Error: 'unzip' not found." >&2; exit 1; }
+        command -v unzip >/dev/null 2>&1 || {
+            echo -e "${RED}Error: 'unzip' not found.${NC}" >&2
+            exit 1
+        }
         unzip -o "$archive" -d "$work_dir"
         ;;
 esac
@@ -53,59 +78,59 @@ esac
 src="$work_dir/$APP_NAME"
 [ -d "$src" ] || src="$work_dir"
 
-echo "Installing..."
+# ── install ──────────────────────────────────────────────────────────────────
+echo -e "${BOLD}Installing...${NC}"
+
 mkdir -p "$MEMO_HOME/bin" "$MEMO_HOME/config" \
     "$MEMO_HOME/data/models" "$MEMO_HOME/data/memory" "$MEMO_HOME/data/sessions" \
     "$MEMO_HOME/data/agent-backups" "$MEMO_HOME/data/skills" "$MEMO_HOME/data/whatsapp"
 
-# --- Engine binaries (llama-server + vec0) ---
+# Engine binaries (first-install only)
 if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$src/binaries" ]; then
-    echo "  Engine binaries (llama.cpp + vec0)..."
+    echo -e "  ${GREEN}▸${NC} Engine binaries (llama.cpp + vec0)"
     cp -r "$src/binaries" "$MEMO_HOME/binaries"
 fi
 
-# --- Backend binary ---
+# Backend
 if [ -f "$src/memo-backend" ]; then
+    echo -e "  ${GREEN}▸${NC} Backend"
     cp -f "$src/memo-backend" "$MEMO_HOME/memo-backend"
     chmod +x "$MEMO_HOME/memo-backend"
 fi
 
-# --- Flutter frontend ---
+# Flutter frontend
 if [ -f "$src/memo_flutter" ]; then
+    echo -e "  ${GREEN}▸${NC} Desktop app"
     cp -f "$src/memo_flutter" "$MEMO_HOME/memo_flutter"
     chmod +x "$MEMO_HOME/memo_flutter"
-fi
-if [ -d "$src/lib" ]; then
-    cp -rf "$src/lib" "$MEMO_HOME/lib"
-fi
-# Flutter runtime assets (not user data — only the engine files)
-if [ -f "$src/data/icudtl.dat" ]; then
-    cp -f "$src/data/icudtl.dat" "$MEMO_HOME/data/icudtl.dat"
-fi
-if [ -d "$src/data/flutter_assets" ]; then
-    cp -rf "$src/data/flutter_assets" "$MEMO_HOME/data/flutter_assets"
+    if [ -d "$src/lib" ]; then
+        cp -rf "$src/lib" "$MEMO_HOME/lib"
+    fi
+    [ -f "$src/data/icudtl.dat" ] && cp -f "$src/data/icudtl.dat" "$MEMO_HOME/data/icudtl.dat"
+    [ -d "$src/data/flutter_assets" ] && cp -rf "$src/data/flutter_assets" "$MEMO_HOME/data/flutter_assets"
 fi
 
-# --- Runner script ---
+# Runner script
 if [ -f "$src/run_memo.sh" ]; then
+    echo -e "  ${GREEN}▸${NC} Launcher"
     cp -f "$src/run_memo.sh" "$MEMO_HOME/run_memo.sh"
     chmod +x "$MEMO_HOME/run_memo.sh"
 fi
 
-# --- CLI binary ---
-echo "  CLI..."
+# CLI binary
 if [ -f "$src/memo" ]; then
+    echo -e "  ${GREEN}▸${NC} CLI"
     rm -f "$MEMO_HOME/bin/memo"
     cp -f "$src/memo" "$MEMO_HOME/bin/memo"
 elif [ -f "$src/memo-backend" ]; then
     cp -f "$src/memo-backend" "$MEMO_HOME/bin/memo"
 else
-    echo "Error: memo binary not found in archive." >&2
+    echo -e "${RED}Error: memo binary not found in archive.${NC}" >&2
     exit 1
 fi
 chmod +x "$MEMO_HOME/bin/memo"
 
-# --- Config / env / provider defaults (never overwrite existing) ---
+# ── config seeding ───────────────────────────────────────────────────────────
 if [ ! -f "$MEMO_HOME/config/config.yaml" ]; then
     if [ -f "$src/config/config.yaml" ]; then
         cp "$src/config/config.yaml" "$MEMO_HOME/config/config.yaml"
@@ -113,18 +138,13 @@ if [ ! -f "$MEMO_HOME/config/config.yaml" ]; then
         cp "$src/config/config.yaml.example" "$MEMO_HOME/config/config.yaml"
     fi
 fi
-if [ ! -f "$MEMO_HOME/.env" ] && [ -f "$src/.env" ]; then
-    cp "$src/.env" "$MEMO_HOME/.env"
-fi
-if [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$src/data/providers.example.json" ]; then
+[ ! -f "$MEMO_HOME/.env" ]       && [ -f "$src/.env" ]                     && cp "$src/.env" "$MEMO_HOME/.env"
+[ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$src/data/providers.example.json" ] && \
     cp "$src/data/providers.example.json" "$MEMO_HOME/data/providers.json"
-fi
-if [ ! -f "$MEMO_HOME/data/permissions.json" ]; then
-    echo '[]' > "$MEMO_HOME/data/permissions.json"
-fi
+[ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
 
-# --- CLI wrapper on PATH ---
-echo "  PATH wrapper..."
+# ── CLI wrapper ──────────────────────────────────────────────────────────────
+echo -e "  ${GREEN}▸${NC} PATH wrapper"
 mkdir -p "$HOME/.local/bin"
 rm -f "$HOME/.local/bin/memo"
 cat > "$HOME/.local/bin/memo" <<WRAPPER
@@ -149,13 +169,12 @@ case ":$PATH:" in
         ;;
 esac
 
-# --- Application menu entry (.desktop) ---
-echo "  App menu entry..."
+# ── app menu entry ───────────────────────────────────────────────────────────
+echo -e "  ${GREEN}▸${NC} App menu entry"
 DESKTOP_DIR="$HOME/.local/share/applications"
 ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
 mkdir -p "$DESKTOP_DIR" "$ICON_DIR"
 
-# Try to find an icon from the archive
 if [ -f "$src/icon.png" ]; then
     cp "$src/icon.png" "$ICON_DIR/memo.png"
 elif [ -f "$src/data/flutter_assets/assets/icon.png" ]; then
@@ -175,18 +194,24 @@ Categories=Utility;Development;
 DESKTOP
 chmod +x "$DESKTOP_DIR/memo.desktop"
 
-if command -v update-desktop-database >/dev/null 2>&1; then
+command -v update-desktop-database >/dev/null 2>&1 && \
     update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
+
+# ── done ─────────────────────────────────────────────────────────────────────
+echo ""
+echo -e "${GREEN}${BOLD}  Installation complete!${NC}"
+echo ""
+echo -e "  ${BOLD}Terminal:${NC}  ${CYAN}memo${NC}"
+echo -e "  ${BOLD}Desktop:${NC}   find ${CYAN}Memo${NC} in your app menu"
+echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memo.bugradev.com/guide${NC}"
+
+if command -v memo >/dev/null 2>&1; then
+    echo ""
+    echo -e "  Run ${CYAN}memo${NC} to get started."
+else
+    echo ""
+    echo -e "  ${YELLOW}Open a new terminal (or restart your shell) and run 'memo'.${NC}"
 fi
 
 echo ""
-echo "  Memo installed successfully!"
-echo ""
-echo "  Terminal:  memo"
-echo "  Desktop:   find 'Memo' in your app menu"
-if command -v memo >/dev/null 2>&1; then
-    echo ""
-    echo "  Run 'memo' now to get started."
-else
-    echo "  Open a new terminal (or restart your shell) and run 'memo'."
-fi
+echo -e "  ${BOLD}Thank you for choosing Memo!${NC}"

@@ -8,7 +8,6 @@ import 'package:path/path.dart' as p;
 
 import '../core/api_client.dart';
 import '../core/l10n.dart';
-import '../models/activity_step.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/token_usage.dart';
@@ -311,9 +310,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // Signal sending state
     ref.read(isSendingProvider.notifier).state = true;
 
-    // Reset the activity timeline + token counter for this new turn.
-    _toolSeq = 0;
-    ref.read(activityStepsProvider.notifier).state = [];
+    // Reset the token counter for this new turn.
     ref.read(tokenUsageProvider.notifier).state = null;
 
     // Optimistically add user message only (assistant handled via streamingContent)
@@ -467,7 +464,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
-      _settleRunningSteps('hata'); // stop any perpetual spinner in the panel
       await refresh();
     } finally {
       _cancelToken = null;

@@ -6,7 +6,6 @@ import 'package:memo_flutter/models/local_model.dart';
 import 'package:memo_flutter/models/agent.dart';
 import 'package:memo_flutter/models/whatsapp.dart';
 import 'package:memo_flutter/models/token_usage.dart';
-import 'package:memo_flutter/models/activity_step.dart';
 import 'package:memo_flutter/models/provider_config.dart';
 import 'package:memo_flutter/models/orchestra_config.dart';
 
@@ -360,59 +359,6 @@ void main() {
     test('fraction returns correct ratio', () {
       final usage = TokenUsage.fromJson({'input': 25, 'output': 25, 'budget': 100});
       expect(usage.fraction, 0.5);
-    });
-  });
-
-  group('ActivityStep', () {
-    test('fromActivityJson parses all fields', () {
-      final step = ActivityStep.fromActivityJson({
-        'id': 'step-1',
-        'kind': 'tool',
-        'title': 'Searching files',
-        'subtitle': '*.dart',
-        'status': 'done',
-        'duration_ms': 1200,
-        'detail': '3 files matched',
-      });
-      expect(step.id, 'step-1');
-      expect(step.kind, 'tool');
-      expect(step.title, 'Searching files');
-      expect(step.subtitle, '*.dart');
-      expect(step.status, StepStatus.done);
-      expect(step.durationMs, 1200);
-      expect(step.detail, '3 files matched');
-    });
-
-    test('fromActivityJson handles null fields', () {
-      final step = ActivityStep.fromActivityJson({});
-      expect(step.status, StepStatus.pending);
-      expect(step.durationMs, 0);
-      expect(step.detail, isNull);
-    });
-
-    test('statusFromString maps correctly', () {
-      expect(ActivityStep.statusFromString('running'), StepStatus.running);
-      expect(ActivityStep.statusFromString('done'), StepStatus.done);
-      expect(ActivityStep.statusFromString('error'), StepStatus.error);
-      expect(ActivityStep.statusFromString('unknown'), StepStatus.pending);
-      expect(ActivityStep.statusFromString(null), StepStatus.pending);
-    });
-
-    test('copyWith overrides specified fields', () {
-      final step = ActivityStep(id: 's1', kind: 'task', title: 'Plan');
-      final copy = step.copyWith(status: StepStatus.running, durationMs: 500);
-      expect(copy.id, 's1');
-      expect(copy.status, StepStatus.running);
-      expect(copy.durationMs, 500);
-      expect(copy.title, 'Plan');
-    });
-
-    test('copyWith preserves omitted fields', () {
-      final step = ActivityStep(id: 's2', kind: 'tool', title: 'Execute', subtitle: 'cmd', durationMs: 100);
-      final copy = step.copyWith(status: StepStatus.done);
-      expect(copy.title, 'Execute');
-      expect(copy.subtitle, 'cmd');
-      expect(copy.durationMs, 100);
     });
   });
 

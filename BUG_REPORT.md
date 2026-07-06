@@ -451,3 +451,331 @@ go test ./... -race -count=1  → tüm paketler PASS
 ```
 
 **Not:** `go test -race` mevcut testlerde data race bulamaz çünkü testler senkron/kısa ömürlü. Yukarıdaki race condition'lar (C1, C2, H2, H6) production yükü altında veya eşzamanlı HTTP isteklerinde ortaya çıkar.
+
+---
+
+## Session 2026-07-06: Paralel Ajan Taraması — 5 Orijinal Bug + 70+ Yeni Bulgu
+
+> **Metod:** 6 paralel agent (3 backend + 3 frontend) ile ~110+ kullanıcı senaryosu simülasyonu.
+> **Düzeltme:** Pair-agent yaklaşımı (1 yazıcı + 1 incelemeci) ile tüm HIGH+ buglar düzeltildi.
+> **Commit'ler:** 7 frontend commit'i, backend önceki session'da commit'lendi.
+
+---
+
+## Orijinal 5 Bug (Kullanıcı Tarafından Bildirilen)
+
+| # | Severity | Alan | Açıklama | Durum |
+|---|----------|------|----------|-------|
+| B1 | HIGH | Backend | Stream durdurulunca sonraki mesaj bozuluyor (user,user → HTTP 400) | ✅ |
+| B2 | HIGH | Backend | Stream sırasında sohbet değiştirmek cevabı yanlış sohbete yazıyor | ✅ |
+| B3 | MED-HIGH | Backend | Çift gönderim (double send) → paralel stream'ler | ✅ |
+| B4 | MEDIUM | Backend | Provider silmek router'ı güncellemiyor | ✅ |
+| B5 | MEDIUM | Backend | WhatsApp normal sohbete yazıyor | ✅ |
+
+---
+
+## Backend — Paralel İncelemede Bulunan Ek Buglar
+
+### 🔴 CRITICAL
+
+#### BUG-NC1: nil streamClient → kapanmayan kanal → streamMu kalıcı deadlock
+- **Dosya:** `internal/app/llm.go:700-703`
+- **Nedir:** `callLLMStream` local model nil iken `trySend(ctx, outCh, ...)` + `return outCh` yapıyor. Kanal kapanmıyor. Wrapper goroutine `for chunk := range innerCh` ile sonsuza kadar bekliyor → `streamMu.Unlock()` hiç çalışmıyor → tüm chat stream'leri kalıcı deadlock.
+- **Düzeltme:** `close(outCh)` eklendi. ✅
+
+### 🟠 HIGH
+
+#### BUG-NH1: callAgentWithOrchestra — orchestra hatasında yetim user mesajı
+- **Dosya:** `internal/app/llm.go:342-345`
+- **Nedir:** Orchestra `RunWithProgress` hata döndüğünde sadece error chunk gönderiliyor, `recordStreamError` çağrılmıyor. User mesajı session'da cevapsız kalıyor.
+- **Düzeltme:** `recordStreamError` eklendi. ✅
+
+#### BUG-NH2: callAgentWithOrchestra — fallback provider çözülemezse chief sentezi kayboluyor
+- **Dosya:** `internal/app/llm.go:375-378`
+- **Nedir:** `agentRouterFromProviderName` başarısız olunca, orchestra'nın ürettiği `finalContent` session'a kaydedilmeden return ediliyor.
+- **Düzeltme:** `finalContent` boş değilse `finishStream`, boşsa `recordStreamError`. ✅
+
+#### BUG-NH3: callAgentStream — ctx.Done() handling yok
+- **Dosya:** `internal/app/llm.go:167` (for chunk := range streamCh)
+- **Nedir:** Agent stream goroutine'i `for range` loop'unda context cancellation'ı hiç kontrol etmiyor. Kullanıcı Stop'a bassa da stream devam ediyor, sonuçları session'a yazıyor.
+- **Düzeltme:** `select` ile `ctx.Done()` kontrolü eklendi. ✅
+
+#### BUG-NH4: callAgentStream — boş yanıt durumunda yetim user mesajı
+- **Dosya:** `internal/app/llm.go:186-191`
+- **Nedir:** Agent stream kapandığında `fullReply` boşsa goroutine hiçbir şey kaydetmeden çıkıyor.
+- **Düzeltme:** `else { recordStreamError(...) }` eklendi. ✅
+
+#### BUG-NH5: callLLMStream orchestra path — userPrompt boşken yetim user mesajı
+- **Dosya:** `internal/app/llm.go:516-519`
+- **Nedir:** `userPrompt == ""` durumunda error gönderiliyor ama `recordStreamError` yok.
+- **Düzeltme:** `recordStreamError` eklendi. ✅
+
+#### BUG-NH6: DeleteProvider — silinen provider aktif ise activeProviderName temizlenmiyor
+- **Dosya:** `internal/app/providers.go:78-110`
+- **Nedir:** Aktif provider silindiğinde `activeProviderName` stale kalıyor. Sonraki chat isteği olmayan provider'ı kullanmaya çalışıyor → hata.
+- **Düzeltme:** Silinen provider adı `activeProviderName` ile eşleşiyorsa temizleniyor. ✅
+
+### 🟡 MEDIUM
+
+#### BUG-NM1: WhatsAppChatStream — error chunk'lar sessizce yutuluyor
+- **Dosya:** `internal/app/whatsapp.go:326-330`
+- **Nedir:** Stream loop sadece `chunk.Content` kontrol ediyor, `chunk.Error` atlanıyor. Agent hata döndüğünde kullanıcıya gösterilmiyor ve session'a kaydedilmiyor.
+- **Düzeltme:** Error chunk handling + `AddMessageToSession` ile kayıt eklendi. ✅
+
+#### BUG-NM2: WhatsAppChatStream — ctx.Done() handling yok
+- **Dosya:** `internal/app/whatsapp.go:326`
+- **Nedir:** Agent stream loop'unda context cancellation kontrolü yok. Kullanıcı Stop'a bassa da stream devam ediyor.
+- **Düzeltme:** `select` ile `ctx.Done()` kontrolü eklendi. ✅
+
+#### BUG-NM3: WhatsAppChatStream — local model fallback yok
+- **Dosya:** `internal/app/whatsapp.go:250`
+- **Nedir:** Provider yoksa direkt hata dönüyor, lokal model çalışıyor olsa bile.
+- **Düzeltme:** `llamaServer.IsRunning()` kontrolü eklendi. ✅
+
+#### BUG-NM4: WhatsApp session ID hiç temizlenmiyor → orphan session'lar
+- **Dosya:** `internal/app/whatsapp.go:195, app.go:183`
+- **Nedir:** `whatsAppSessionID` oluşturulduktan sonra `StopWhatsApp()` ve `LogoutWhatsApp()` tarafından temizlenmiyor. Her reconnect'te yeni session oluşuyor, eskiler diskte kalıyor.
+- **Durum:** Tespit edildi, düzeltilmedi (LOW etki).
+
+#### BUG-NM5: SendMessageWithImage/File — incognito modda streamMu prematüre release
+- **Dosya:** `internal/app/chat.go:252-254, 335-337`
+- **Nedir:** Incognito branch'inde `a.streamMu.Unlock()` çağrılıp `handleIncognitoStream`'e geçiliyor. Bu sırada ikinci bir istek gelirse streamMu'yu alıp paralel stream başlatabilir.
+- **Düzeltme:** Wrapper goroutine pattern'ine geçildi. ✅
+
+#### BUG-NM6: resolveAgentProvider — nil pointer dereference on providerCfgMgr
+- **Dosya:** `internal/app/llm.go:51`
+- **Nedir:** `activeName != ""` ama `providerCfgMgr == nil` olabilir (startup race). `providerCfgMgr.GetEnabled()` panic.
+- **Düzeltme:** Nil check eklendi. ✅
+
+#### BUG-NM7: finishStream — GenerateChatTitle yanlış session'ı isimlendiriyor
+- **Dosya:** `internal/app/llm.go:834-839`
+- **Nedir:** `finishStream` doğru session'a ekleme yapıyor ama `GenerateChatTitle()` her zaman `GetActiveMessages()` ile aktif session'ı okuyor. Stream başka bir session için çalışıyorsa başlık yanlış session'a yazılıyor.
+- **Durum:** Tespit edildi, düzeltilmedi (LOW etki, sadece ilk 2 mesajda tetiklenir).
+
+### 🟢 LOW
+
+#### BUG-NL1: Router health check — UpdateConfigs sonrası orphan entry modifikasyonu
+- **Dosya:** `internal/provider/router.go:314-331`
+- **Nedir:** HealthCheck RLock altında snapshot alıyor, Lock altında modifiye ediyor. Arada `UpdateConfigs` çalışırsa, artık listede olmayan bir entry'i modify ediyor → provider re-enable edilemiyor.
+
+#### BUG-NL2: Pipeline — truncation content eşleştirme kırılgan
+- **Dosya:** `internal/agent/pipeline.go:164-177`
+- **Nedir:** Token bütçesi trimming'i content string eşitliği ile eşleştirme yapıyor. Aynı içerikli iki tool result yanlış eşleşebilir.
+
+#### BUG-NL3: callAgentStream — gereksiz `sessionID != ""` kontrolü
+- **Dosya:** `internal/app/llm.go:130,160,169`
+- **Nedir:** `recordStreamError` zaten içeride sessionID kontrolü yapıyor, dışarıdaki kontroller redundant.
+
+---
+
+## Frontend — Paralel İncelemede Bulunan Buglar
+
+### 🔴 CRITICAL
+
+#### BUG-FC1: IndexedStack → çift permission dialog
+- **Dosya:** `frontend/lib/screens/chat_screen.dart:61-78`, `frontend/lib/screens/agent_screen.dart:169-176`
+- **Nedir:** ChatScreen ve AgentScreen IndexedStack'te yan yana, ikisi de `agentEventBusProvider` dinliyor. Permission request geldiğinde iki ekran da `showDialog` çağırıyor → iki dialog üst üste biniyor.
+- **Düzeltme:** Listener AppShell'e taşındı, tek dialog gösteriliyor. ✅ (`ad6c7dc`)
+
+### 🟠 HIGH
+
+#### BUG-FH1: WhatsApp Stop butonu çalışmıyor
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:180-255`
+- **Nedir:** `_sendWhatsApp()` lokal `CancelToken` oluşturuyor. `stopStreaming()` farklı bir token'ı iptal ediyor. Ayrıca stream sonrası `_stopped` kontrolü yok.
+- **Düzeltme:** CancelToken state field'a alındı, stop butonu WhatsApp token'ını da iptal ediyor, `_stopped` kontrolü eklendi. ✅ (`cb5c995`)
+
+#### BUG-FH2: WhatsApp mesajları refresh'te kayboluyor
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:192,241-249`
+- **Nedir:** `_sendWhatsApp()` mesajları `messagesProvider`'a (normal chat) ekliyor. Backend WhatsApp session'ına kaydediyor. Refresh'te normal chat session'ından çekilen mesajlar WhatsApp mesajlarını içermiyor → kayboluyorlar.
+- **Düzeltme:** Stream sonrası `refresh()` çağrılıyor. Geçici WhatsApp mesajları temizleniyor. ✅ (`cb5c995`)
+
+#### BUG-FH3: Kullanıcı mesajı hata durumunda kayboluyor
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:325,459-467`
+- **Nedir:** Optimistic user mesajı eklendikten sonra hata oluşursa, catch block `await refresh()` ile state'i backend'den gelenle değiştiriyor. Backend mesajı kaydetmediyse (örn. TryLock reddetti) user mesajı UI'dan siliniyor.
+- **Düzeltme:** Catch block'ta `refresh()` kaldırıldı. ✅ (`e2357b8`)
+
+#### BUG-FH4: sendFile'ta sıfır agent event handling
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:514-565`
+- **Nedir:** `sendFile` stream loop'u sadece text işliyor. Agent event'leri, permission request'leri, status/usage chunk'ları tamamen yok sayılıyor. Agent modda dosya gönderince tool'lar çalışmıyor, permission'lar deadlock.
+- **Düzeltme:** `sendMessage`'teki agent event handling aynen `sendFile`'a kopyalandı. ✅ (`e2357b8`)
+
+#### BUG-FH5: Active provider state'i provider silinince güncellenmiyor
+- **Dosya:** `frontend/lib/providers/provider_provider.dart`
+- **Nedir:** `ProviderListNotifier.deleteProvider()` ve `updateProvider()` sadece `providerListProvider`'ı refresh ediyor, `activeProviderTypeProvider`'ı invalidate etmiyor. Engine strip ve provider kartları stale kalıyor.
+- **Düzeltme:** `ref.invalidate(activeProviderTypeProvider)` eklendi. ✅ (`91ed742`)
+
+#### BUG-FH6: Model Store detail panel'de llama.cpp kurulu değilken Start aktif
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart:1835-1851`
+- **Nedir:** `_ModelDetailPanel._buildDownloadRow()` llama.cpp kurulumunu kontrol etmeden Start butonu gösteriyor. `_MyModelsTab._LocalModelCard` doğru kontrol ediyor ama detail panel etmiyor.
+- **Düzeltme:** `llamaInstalledProvider` watch + buton disable eklendi. ✅ (`5ad8827`)
+
+#### BUG-FH7: Calendar olay silme onay dialog'u yok
+- **Dosya:** `frontend/lib/screens/calendar_screen.dart:134-144`
+- **Nedir:** Delete icon'u direkt `api.deleteCalendarEvent()` çağırıyor. Yanlışlıkla tıklamada veri kaybı.
+- **Düzeltme:** `AlertDialog` confirmation eklendi. ✅ (`a225deb`)
+
+#### BUG-FH8: OAuth polling hatası sessizce yutuluyor
+- **Dosya:** `frontend/lib/widgets/settings/tabs/backup_restore_tab.dart:136-151`
+- **Nedir:** Timer callback içinde `catch (_) {}` tüm hataları yutuyor. Backend çökerse polling sonsuza kadar başarısız devam ediyor, kullanıcı bilgilendirilmiyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+### 🟡 MEDIUM
+
+#### BUG-FM1: errorMessageProvider'ın consumer'ı yok → tüm hatalar sessiz
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:572`, `frontend/lib/screens/chat_screen.dart`
+- **Nedir:** ~12 hata yolunda `errorMessageProvider` set ediliyor ama hiçbir widget bunu dinleyip SnackBar göstermiyor.
+- **Düzeltme:** `_ChatContentState.build()` içinde `ref.listen(errorMessageProvider, ...)` eklendi. ✅
+
+#### BUG-FM2: Stop sonrası "Cevap durduruldu" mesajı refresh edilmiyor
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:418-425`
+- **Nedir:** `_stopped` branch'i streaming state'i temizleyip return ediyor, `refresh()` çağrılmıyor. Backend "⏹️ Cevap durduruldu." kaydetmiş ama UI göstermiyor.
+- **Düzeltme:** `await refresh()` eklendi. ✅
+
+#### BUG-FM3: Chat input text'i chat değişiminde temizlenmiyor
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:36`
+- **Nedir:** `_controller` chat değişiminde temizlenmiyor. Kullanıcı A sohbetinde yazdığını B sohbetinde görüyor → yanlış sohbete gönderme riski.
+- **Düzeltme:** `ref.listen(activeChatIdProvider, ...)` ile `_controller.clear()` eklendi. ✅ (`99047a5`)
+
+#### BUG-FM4: Tasks create dialog controller'ları dispose edilmiyor → bellek sızıntısı
+- **Dosya:** `frontend/lib/screens/tasks_screen.dart:175-293`
+- **Nedir:** `_showCreateDialog` içindeki `TextEditingController`'lar dialog kapanınca dispose edilmiyor. Her iptalde yeni controller'lar birikiyor.
+- **Düzeltme:** `showDialog(...).then(...)` ile dispose eklendi. ✅ (`541a98a`)
+
+#### BUG-FM5: Calendar boş başlık sessizce yutuluyor
+- **Dosya:** `frontend/lib/screens/calendar_screen.dart:530`
+- **Nedir:** `if (titleCtrl.text.trim().isEmpty) return;` dialog'u kapatıyor ama hiçbir hata göstermiyor. Kullanıcı neden kaydedilmediğini anlamıyor.
+- **Düzeltme:** SnackBar ile hata mesajı eklendi. ✅ (`a225deb`)
+
+#### BUG-FM6: WhatsApp stream lifecycle-aware değil
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:180`
+- **Nedir:** Widget dispose olsa bile stream devam ediyor, cleanup yok.
+- **Düzeltme:** CancelToken state field'a alındı, `dispose()`'da iptal ediliyor. ✅
+
+#### BUG-FM7: Global Dio receiveTimeout 300s → non-streaming endpoint'ler etkileniyor
+- **Dosya:** `frontend/lib/core/api_client.dart:27`
+- **Nedir:** Global `receiveTimeout: 300s` tüm endpoint'leri etkiliyor. Status, chat list, message fetch gibi hızlı endpoint'ler de 5 dakika bekleyebilir.
+- **Düzeltme:** 120s'e döndürüldü. Streaming endpoint'leri per-call `.timeout(300s)` kullanıyor. ✅ (`2abf8dd`)
+
+#### BUG-FM8: Takvim `_parseDateTime` hatalı veride `DateTime.now()` dönüyor
+- **Dosya:** `frontend/lib/screens/calendar_screen.dart:38-45`
+- **Nedir:** Backend bozuk tarih döndüğünde parse hatası sessizce `DateTime.now()` ile değiştiriliyor. Olaylar yanlış zamanda görünüyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM9: Widget key'leri `hashCode` kullanıyor → tüm liste rebuild
+- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:134`
+- **Nedir:** `ValueKey('msg_${msg.hashCode}_$index')` her state değişiminde yeni hash üretiyor → tüm mesaj baloncukları rebuild oluyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM10: İki task list aynı anda başlatılabiliyor (client-side guard yok)
+- **Dosya:** `frontend/lib/screens/tasks_screen.dart:416-445`
+- **Nedir:** UI iki list için de Start butonunu aktif gösteriyor. İkincisi backend'de `taskloopRunMu` tarafından reddediliyor ama hata mesajı açıklayıcı değil.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM11: Task list detail dialog auto-refresh yapmıyor
+- **Dosya:** `frontend/lib/screens/tasks_screen.dart:295-414`
+- **Nedir:** Detail dialog açıldığında statik snapshot alıyor. 3 saniyelik polling liste görünümünü güncelliyor ama dialog içeriği güncellenmiyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM12: Provider edit dialog — isim çakışması sessizce suffix ekliyor
+- **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart:190-201`
+- **Nedir:** `_uniqueName()` isim çakışmasında sessizce " 2", " 3" ekliyor. Kullanıcıya bilgi verilmiyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM13: Model Store search debounce hidden tab'da API çağrısı yapıyor
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart:406-426`
+- **Nedir:** IndexedStack her iki tab'ı da alive tutuyor. Discover tab'ında arama yapıp "My Models" tab'ına geçince debounce timer hala tetikleniyor → gereksiz HuggingFace API çağrısı.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM14: Settings dialog sabit 800x600 — responsive değil
+- **Dosya:** `frontend/lib/widgets/settings_dialog.dart:82-84`
+- **Nedir:** Küçük ekranda overflow, büyük ekranda çok küçük.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM15: WhatsApp stream timeout yok
+- **Dosya:** `frontend/lib/widgets/chat_input.dart:200`
+- **Nedir:** `_sendWhatsApp()` stream'e `.timeout()` uygulamıyor. Backend hang olursa `isSendingProvider` sonsuza kadar true kalır.
+- **Düzeltme:** `.timeout(Duration(seconds: 300))` eklendi. ✅
+
+#### BUG-FM16: Agent screen statusText'i ChatMessageList'e geçirmiyor
+- **Dosya:** `frontend/lib/screens/agent_screen.dart:258-266`
+- **Nedir:** ChatScreen `statusText: streamingStatus` geçiyor ama AgentScreen geçirmiyor. Web search göstergesi agent ekranda çalışmıyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM17: Test connection sonucu provider state'e persist edilmiyor
+- **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart:155-173`
+- **Nedir:** Test sonucu dialog içinde gösteriliyor ama save sırasında yeni bir config objesi oluşturuluyor, test sonucu kayboluyor.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM18: Permission dialog timeout yok
+- **Dosya:** `frontend/lib/widgets/agent/permission_dialog.dart:26-33`
+- **Nedir:** Dialog sonsuza kadar bekliyor. Kullanıcı bilgisayar başında değilse agent pipeline bloke.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM19: Cloud sync boş passphrase → device-locked yedek uyarısı yok
+- **Dosya:** `frontend/lib/widgets/settings/tabs/backup_restore_tab.dart:776`
+- **Nedir:** Kullanıcı passphrase girmeden cloud sync açarsa şifreleme machine ID ile yapılıyor. Başka cihaza geçince yedek çözülemez.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+#### BUG-FM20: Hardcoded Turkish string'ler (l10n eksik)
+- **Dosyalar:** `general_tab.dart:76,255,274`, `agent_screen.dart:302,360-365`
+- **Nedir:** L10n.t() kullanılması gereken yerlerde Türkçe string'ler hardcode.
+- **Durum:** Tespit edildi, düzeltilmedi.
+
+### 🟢 LOW
+
+#### BUG-FL1: `streamingAgentEventsProvider` double-clear (duplicate line)
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:200-202`
+- **Durum:** Düzeltildi (önceki session)
+
+#### BUG-FL2: `messagesProvider` autoDispose değil ama `onDispose` kullanıyor
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:168,181-184`
+- **Nedir:** Provider `autoDispose` değil, `ref.onDispose()` hiç tetiklenmez.
+
+#### BUG-FL3: `_AuthorAvatarState._cache` sınırsız büyüyor
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart:844`
+
+#### BUG-FL4: Model Store README yükleme hatası sessiz
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart:1230,1262`
+- **Nedir:** `catch (_) {}` tüm HTTP hatalarını yutuyor.
+
+#### BUG-FL5: Provider kart toggle icon'u ters
+- **Dosya:** `frontend/lib/widgets/settings/tabs/providers_tab.dart:288-289`
+- **Nedir:** Enabled durumda `toggle_off`, disabled durumda `toggle_on` gösteriyor.
+
+#### BUG-FL6: `AgentEvent.args` dynamic → type safety yok
+- **Dosya:** `frontend/lib/models/agent.dart:5`
+
+---
+
+## Session 2026-07-06 Düzeltme Özeti
+
+### Backend (önceki session'da commit'lendi)
+
+| # | Bug | Commit |
+|---|-----|--------|
+| B1-B5 | 5 orijinal bug | `e22e98b` serisi |
+| NC1 | nil streamClient → deadlock | `e22e98b` serisi |
+| NH1-NH6 | 6 HIGH bug | `e22e98b` serisi |
+| NM1-NM6 | 6 MEDIUM bug | `e22e98b` serisi |
+
+### Frontend (bu session)
+
+| Commit | Dosyalar | Bug |
+|--------|---------|-----|
+| `ad6c7dc` | app_shell, agent_screen, chat_screen | FC1: Çift permission dialog |
+| `99047a5` | chat_provider, chat_input | FM3: Input text leak + sendFile catch |
+| `91ed742` | provider_provider | FH5: Stale active provider |
+| `5ad8827` | model_store, l10n | FH6: Start butonu llama kontrolü |
+| `a225deb` | calendar_screen | FH7: Silme onayı + FM5: Boş başlık |
+| `541a98a` | tasks_screen | FM4: Controller leak |
+| `2abf8dd` | api_client | FM7: receiveTimeout düzeltmesi |
+| `cb5c995` | chat_input | FH1: WhatsApp stop + FH2: Mesaj kaybı + FM15: timeout |
+| `e2357b8` | chat_provider | FH3: Mesaj kaybolması + FH4: sendFile agent + FM1: error consumer + FM2: stop refresh |
+
+### Kalan İşler (Faz 2-3)
+
+| Öncelik | Sayı | Kapsam |
+|---------|------|--------|
+| HIGH | 1 | FH8: OAuth polling error swallowing |
+| MEDIUM | 8 | FM8-FM20 (takvim, tasks, model store, UI polish) |
+| LOW | 6 | FL2-FL6 + NL1-NL3 (kozmetik) |

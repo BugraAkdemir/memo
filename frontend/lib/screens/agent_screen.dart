@@ -10,7 +10,6 @@ import '../providers/chat_provider.dart';
 import '../providers/agent_provider.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
-import '../widgets/agent/permission_dialog.dart';
 import '../models/agent.dart';
 import 'tasks_screen.dart';
 
@@ -165,15 +164,6 @@ class _AgentContent extends ConsumerWidget {
     final messagesAsync = ref.watch(messagesProvider);
     final activeChatAsync = ref.watch(activeChatIdProvider);
     final chatListAsync = ref.watch(chatListProvider);
-
-    ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
-      if (next.hasValue && next.value != null && context.mounted) {
-        final event = next.value!;
-        if (event.type == 'permission_request') {
-          showDialog(context: context, barrierDismissible: false, builder: (_) => PopScope(canPop: false, child: PermissionDialog(event: event)));
-        }
-      }
-    });
 
     // Check if active chat is an agent chat
     final activeId = activeChatAsync.valueOrNull ?? '';

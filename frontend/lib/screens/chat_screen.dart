@@ -12,7 +12,6 @@ import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/welcome_view.dart';
-import '../widgets/agent/permission_dialog.dart';
 import '../providers/agent_provider.dart';
 import '../models/agent.dart';
 
@@ -57,25 +56,6 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
   @override
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider);
-
-    ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
-      if (next.hasValue && next.value != null && mounted) {
-        final event = next.value!;
-        if (event.type == 'permission_request') {
-          showDialog(
-            context: context,
-            barrierDismissible: false,
-            // PopScope prevents the back button from closing the dialog without
-            // a policy response — otherwise the agent pipeline would block forever
-            // waiting for a permission answer that never comes.
-            builder: (context) => PopScope(
-              canPop: false,
-              child: PermissionDialog(event: event),
-            ),
-          );
-        }
-      }
-    });
 
     ref.listen(errorMessageProvider, (prev, next) {
       if (next.isNotEmpty) {

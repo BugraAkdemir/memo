@@ -5,6 +5,7 @@ import 'dart:io';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/agent.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/whatsapp_provider.dart';
@@ -17,6 +18,7 @@ import '../widgets/engine_strip.dart';
 import '../widgets/launchpad_view.dart';
 import '../widgets/spotlight_tour.dart';
 import '../widgets/glass_surface.dart';
+import '../widgets/agent/permission_dialog.dart';
 import 'chat_screen.dart';
 import 'agent_screen.dart';
 import 'model_store_screen.dart';
@@ -79,6 +81,22 @@ class _AppShellState extends ConsumerState<AppShell> {
           ),
         );
         ref.read(errorMessageProvider.notifier).state = '';
+      }
+    });
+
+    ref.listen<AsyncValue<AgentEvent>>(agentEventStreamProvider, (prev, next) {
+      if (next.hasValue && next.value != null && mounted) {
+        final event = next.value!;
+        if (event.type == 'permission_request') {
+          showDialog(
+            context: context,
+            barrierDismissible: false,
+            builder: (context) => PopScope(
+              canPop: false,
+              child: PermissionDialog(event: event),
+            ),
+          );
+        }
       }
     });
 

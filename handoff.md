@@ -33,11 +33,30 @@ commit hariç), tamamen dokümantasyon/plan turu.
    vb.) ve llm.go'da çift yollu persist'in zaten var olduğu tespit edildi —
    plan bunların üzerine kuruluyor.
 
+## Ek (aynı gün, devam) — memo-release skill + iki canlı bug düzeltmesi
+
+5. **Canlı bug: `installer.iss` 3.1.1'de kalmıştı** — 3.1.2 bump'ı installer.iss'i
+   kaçırmış; Windows kurulumu kendini 3.1.1 olarak tanıtacaktı. Düzeltildi
+   (`d4b2178`).
+6. **Canlı bug: README/READmeTR changelog linkleri v3.1.1.md'ye işaret ediyordu**
+   — v3.1.2 notları hiçbir README'den erişilemiyordu. Düzeltildi (`ddbd3fe`).
+7. **`.claude/skills/memo-release/SKILL.md` (yeni)** — tam release prosedürü:
+   7 versiyon lokasyonu, EN+TR release notları, platform bazlı build komutları
+   ve artifact isimleri, download.bugradev.com'a versiyonlu→jenerik isim
+   dönüşümü, version-zeta.vercel.app/version.json beacon'ının EN SON
+   güncellenmesi kuralı, katı commit disiplini (İngilizce, detaylı gövde,
+   attribution yok). Bir Explore ajanıyla pipeline haritalandı, Sonnet
+   ajanıyla dry-run testi yapıldı (tüm adımları doğru üretti), testin
+   yakaladığı macOS zip/tar.gz karışıklığı düzeltildi.
+8. `.claude/settings.json` izin listesi temizlendi (`677009f`), boş
+   `.claude/skills/memo-dev/` klasörü silindi.
+
 ## Sıradaki Oturum İçin
 
 1. Küçük iş: `PLAN_installer_launchvbs.md`'yi uygula (tek oturumluk).
 2. Büyük iş: `PLAN_chatid_refactor.md` Faz 1'den başla (fazlar arası commit).
-3. Session 14'ün diğer maddeleri hâlâ geçerli (aşağıda).
+3. Bir sonraki sürümde release süreci için memo-release skill'ini kullan.
+4. Session 14'ün diğer maddeleri hâlâ geçerli (aşağıda).
 
 ---
 

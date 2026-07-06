@@ -129,6 +129,14 @@ Ad-hoc API smoke tests: `dart run test_api_all.dart` (requires running backend).
 
 CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 
+### Release
+
+Never release from memory — use the **memo-release skill**
+(`.claude/skills/memo-release/SKILL.md`). It carries the full checklist:
+seven version locations, EN+TR release notes, per-platform build commands,
+the versioned→generic artifact rename for `download.bugradev.com`, and the
+`version.json` update beacon that must be bumped LAST.
+
 ---
 
 ## Known Pitfalls & Technical Debt

@@ -368,7 +368,7 @@ Two decoupled processes talk over plain HTTP/SSE on `localhost:8090`. No TLS (lo
 | **State** Riverpod 2.4 | **HTTP** Dio 5.4 / SSE | **Voice** whisper.cpp | **WhatsApp** whatsmeow |
 | **Cloud** Drive + AES-256 | **GPU** nvidia/rocm/sysfs | **License** AGPL v3 | **CI** GitHub Actions |
 
-📚 **Deep dive:** [Architecture](docs/architecture.md) · [API Reference](docs/API_REFERENCE.md) · [Design System](frontend/DESIGN.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](versinNote/v3.1.1.md)
+📚 **Deep dive:** [Architecture](docs/architecture.md) · [API Reference](docs/API_REFERENCE.md) · [Design System](frontend/DESIGN.md) · [Roadmap](docs/ROADMAP.md) · [Changelog](versinNote/v3.1.2.md)
 
 ---
 

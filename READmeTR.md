@@ -368,7 +368,7 @@ Sürüm paketleri:
 | **State** Riverpod 2.4 | **HTTP** Dio 5.4 / SSE | **Ses** whisper.cpp | **WhatsApp** whatsmeow |
 | **Bulut** Drive + AES-256 | **GPU** nvidia/rocm/sysfs | **Lisans** AGPL v3 | **CI** GitHub Actions |
 
-📚 **Derin dalış:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md) · [Yol Haritası](docs/ROADMAP.md) · [Değişiklik Günlüğü](versinNote/tr/v3.1.1.md)
+📚 **Derin dalış:** [Mimari](docs/architecture.md) · [API Referansı](docs/API_REFERENCE.md) · [Tasarım Sistemi](frontend/DESIGN.md) · [Yol Haritası](docs/ROADMAP.md) · [Değişiklik Günlüğü](versinNote/tr/v3.1.2.md)
 
 ---
 

@@ -29,6 +29,7 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
     try {
       await ref.read(apiClientProvider).updateProvider(config);
       await refresh();
+      ref.invalidate(activeProviderTypeProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Sağlayıcı kaydedilemedi ($e)';
@@ -39,6 +40,7 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
     try {
       await ref.read(apiClientProvider).deleteProvider(type, name: name);
       await refresh();
+      ref.invalidate(activeProviderTypeProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Sağlayıcı silinemedi ($e)';

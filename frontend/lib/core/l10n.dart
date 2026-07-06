@@ -57,6 +57,7 @@ class L10n {
     'clear': 'Temizle',
     'add': 'Ekle',
     'search': 'Ara...',
+    'please_enter_title': 'Lütfen bir başlık girin',
     'continue_btn': 'Devam',
     'retry': 'Tekrar Dene',
     'confirm': 'Onayla',
@@ -640,6 +641,7 @@ class L10n {
     'calendar_delete_error': 'Silinemedi: \${e}',
     'calendar_load_error': 'Yüklenemedi: \${e}',
     'calendar_add_error': 'Eklenemedi: \${e}',
+    'calendar_delete_confirm': 'Bu etkinlik silinecek. Emin misiniz?',
 
     // Agent empty / chat
     // Permission
@@ -823,6 +825,7 @@ class L10n {
     'clear': 'Clear',
     'add': 'Add',
     'search': 'Search...',
+    'please_enter_title': 'Please enter a title',
     'continue_btn': 'Continue',
     'retry': 'Retry',
     'confirm': 'Confirm',
@@ -1371,6 +1374,7 @@ class L10n {
     'calendar_delete_error': 'Could not delete: \${e}',
     'calendar_load_error': 'Could not load: \${e}',
     'calendar_add_error': 'Could not add: \${e}',
+    'calendar_delete_confirm': 'This event will be deleted. Are you sure?',
 
     // Agent empty / chat
     // Permission

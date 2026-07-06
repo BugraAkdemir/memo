@@ -1305,6 +1305,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
     final localModels = ref.watch(localModelsProvider).valueOrNull ?? [];
     final downloadingNow =
         ref.watch(downloadProgressProvider).valueOrNull?.active ?? false;
+    final installed = ref.watch(llamaInstalledProvider).valueOrNull ?? false;
     final item = widget.item;
 
     return SingleChildScrollView(
@@ -1488,7 +1489,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
 
             // ── Download button + hardware fit chip ──
             if (_selectedFile != null)
-              _buildDownloadRow(c, gpu, localModels, downloadingNow),
+              _buildDownloadRow(c, gpu, localModels, downloadingNow, installed),
           ],
 
           // ── README section ──
@@ -1819,7 +1820,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
   }
 
   Widget _buildDownloadRow(ThemeColors c, GPUInfo gpu,
-      List<LocalModel> localModels, bool downloadingNow) {
+      List<LocalModel> localModels, bool downloadingNow, bool installed) {
     final file = _selectedFile!;
     final fit = hardwareFit(file.size, gpu);
     final isFileDownloaded =
@@ -1837,14 +1838,20 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
           localModels.firstWhere((m) => m.filename == file.filename);
       button = Expanded(
         child: ElevatedButton.icon(
-          onPressed: () => showDialog(
-            context: context,
-            builder: (_) => ModelConfigDialog(model: localModel),
-          ),
+          onPressed: !installed
+              ? null
+              : () => showDialog(
+                    context: context,
+                    builder: (_) => ModelConfigDialog(model: localModel),
+                  ),
           icon: const Icon(Icons.play_arrow_rounded, size: 18),
-          label: Text(L10n.locale == MemoLocale.tr
-              ? 'Başlat · ${file.sizeFormatted}'
-              : 'Start · ${file.sizeFormatted}'),
+          label: Text(!installed
+              ? (L10n.locale == MemoLocale.tr
+                  ? 'Önce llama.cpp kurun'
+                  : 'Install llama.cpp first')
+              : (L10n.locale == MemoLocale.tr
+                  ? 'Başlat · ${file.sizeFormatted}'
+                  : 'Start · ${file.sizeFormatted}')),
           style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14)),
         ),

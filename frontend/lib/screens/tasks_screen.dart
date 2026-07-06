@@ -289,7 +289,12 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
           },
         );
       },
-    );
+    ).then((_) {
+      for (final c in _itemCtrls) {
+        c.dispose();
+      }
+      _itemCtrls.clear();
+    });
   }
 
   void _showDetailDialog(String listId) async {

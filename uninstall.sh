@@ -51,8 +51,13 @@ fi
 
 DO_BACKUP=false
 if $HAS_MEMORY; then
-    echo -ne "${YELLOW}Save your memory data before uninstalling? (yes/no) [yes]: ${NC}"
-    read -r answer
+    if [ -t 0 ]; then
+        echo -ne "${YELLOW}Save your memory data before uninstalling? (yes/no) [yes]: ${NC}"
+        read -r answer
+    else
+        echo -ne "${YELLOW}Save your memory data before uninstalling? (yes/no) [yes]: ${NC}" >/dev/tty
+        read -r answer </dev/tty
+    fi
     case "${answer:-yes}" in
         [Yy]|[Yy][Ee][Ss]) DO_BACKUP=true ;;
         *)                  DO_BACKUP=false ;;
@@ -73,14 +78,14 @@ if $DO_BACKUP; then
     if command -v zip >/dev/null 2>&1; then
         (cd "$MEMO_HOME/data" && zip -qr "$BACKUP_FILE" memory/ sessions/ 2>/dev/null || true)
     elif command -v python3 >/dev/null 2>&1; then
-        python3 -c "
+        MEMO_HOME="$MEMO_HOME" BACKUP_FILE="$BACKUP_FILE" python3 -c "
 import zipfile, os, sys
-src = os.path.join('$MEMO_HOME', 'data')
-zf = zipfile.ZipFile('$BACKUP_FILE', 'w', zipfile.ZIP_DEFLATED)
+src = os.path.join(os.environ['MEMO_HOME'], 'data')
+zf = zipfile.ZipFile(os.environ['BACKUP_FILE'], 'w', zipfile.ZIP_DEFLATED)
 for root, dirs, files in os.walk(src):
     for f in files:
         fp = os.path.join(root, f)
-        zf.write(fp, os.path.relpath(fp, src))
+        zf.write(fp, os.path.relpath(fp, os.environ['MEMO_HOME'] + '/data'))
 zf.close()
 " 2>/dev/null
     else
@@ -95,8 +100,13 @@ zf.close()
 fi
 
 # ── confirm ──────────────────────────────────────────────────────────────────
-echo -ne "${RED}${BOLD}Proceed with uninstall? (yes/no) [no]: ${NC}"
-read -r confirm
+if [ -t 0 ]; then
+    echo -ne "${RED}${BOLD}Proceed with uninstall? (yes/no) [no]: ${NC}"
+    read -r confirm
+else
+    echo -ne "${RED}${BOLD}Proceed with uninstall? (yes/no) [no]: ${NC}" >/dev/tty
+    read -r confirm </dev/tty
+fi
 case "${confirm:-no}" in
     [Yy]|[Yy][Ee][Ss]) ;;
     *)

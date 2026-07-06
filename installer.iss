@@ -36,6 +36,7 @@ Compression=lzma2
 SolidCompression=yes
 WizardStyle=modern
 CloseApplications=yes
+DisableWelcomePage=no
 DisableReadyPage=yes
 
 [Languages]

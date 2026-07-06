@@ -47,6 +47,9 @@ func (a *App) resolveAgentProvider() (*provider.Router, string, error) {
 		if providerRouter == nil || !providerRouter.HasActiveProvider() {
 			return nil, "", fmt.Errorf("Agent modu için bir sağlayıcı (provider) yapılandırmadınız. Ayarlar > Sağlayıcılar bölümünde bir API sağlayıcısı ekleyin veya yerel bir model başlatın.")
 		}
+		if providerCfgMgr == nil {
+			return nil, "", fmt.Errorf("provider system not initialized")
+		}
 		modelName := ""
 		for _, p := range providerCfgMgr.GetEnabled() {
 			if p.Name == activeName {
@@ -114,7 +117,7 @@ func (a *App) agentRouterFromProviderName(providerName, model string) (*provider
 	return nil, "", fmt.Errorf("orchestra chief provider %q is not enabled", providerName)
 }
 
-func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
+func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userMsg, sessionID string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
 	go func() {
@@ -125,18 +128,16 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
-		sm := a.getSessionManager()
-		sessionID := ""
-		if sm != nil {
-			sessionID = sm.GetActiveID()
-		}
-
 		agentRouter, modelName, err := a.resolveAgentProvider()
 		if err != nil {
+			if sessionID != "" {
+				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+			}
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
 
+		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {
 			projectPath = sm.GetProjectPath(sessionID)
@@ -159,31 +160,49 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		if err != nil {
 			logx.Printf("Agent error: %v", err)
+			if sessionID != "" {
+				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+			}
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
 
-		for chunk := range streamCh {
-			if chunk.Error != "" {
-				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+	agentLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
 				return
-			}
+			case chunk, ok := <-streamCh:
+				if !ok {
+					break agentLoop
+				}
+				if chunk.Error != "" {
+					if sessionID != "" {
+						a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
+					}
+					trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+					return
+				}
 
-			if chunk.Content != "" {
-				fullReply.WriteString(chunk.Content)
-				trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
-			}
+				if chunk.Content != "" {
+					fullReply.WriteString(chunk.Content)
+					trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
+				}
 
-			if chunk.Done {
-				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, agentEvents)
-				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
-				return
+				if chunk.Done {
+					a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, agentEvents)
+					trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+					return
+				}
 			}
 		}
 
 		if fullReply.Len() > 0 {
-			a.finishStream(start, 0, "stop", fullReply.String(), userMsg, agentEvents)
+			a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, agentEvents)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+		} else {
+			a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
 		}
 	}()
 
@@ -191,11 +210,13 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 }
 
 // callAgentWithOrchestra runs when both agent mode and orchestra mode are enabled.
-func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message, userMsg string) <-chan api.StreamChunk {
+func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message, userMsg, sessionID string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
 	go func() {
 		defer close(outCh)
+
+		start := time.Now()
 
 		var userPrompt string
 		var systemPrompt string
@@ -336,6 +357,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			}
 		})
 		if err != nil {
+			a.recordStreamError(userMsg, "⚠️ Orchestra hatası: "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Orchestra hatası: " + err.Error(), Done: true})
 			return
 		}
@@ -359,12 +381,6 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		}
 		pMsgs = append(pMsgs, provider.Message{Role: "assistant", Content: finalContent})
 
-		sm := a.getSessionManager()
-		sessionID := ""
-		if sm != nil {
-			sessionID = sm.GetActiveID()
-		}
-
 		agentRouter, modelName, err := a.resolveAgentProvider()
 		if err != nil {
 			// Combined mode: an Orchestra-configured user often has no separate
@@ -375,11 +391,17 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			if r, m, ferr := a.agentRouterFromProviderName(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
 				agentRouter, modelName = r, m
 			} else {
+				if strings.TrimSpace(finalContent) != "" {
+					a.finishStream(start, 0, "error", finalContent, userMsg, sessionID, nil)
+				} else {
+					a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+				}
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
 		}
 
+		sm := a.getSessionManager()
 		projectPath := ""
 		if sessionID != "" && sm != nil {
 			projectPath = sm.GetProjectPath(sessionID)
@@ -387,7 +409,6 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 		a.agentExecutor.SyncRouter(agentRouter)
 
-		start := time.Now()
 		var agentBuf strings.Builder
 		var agentEvents []interface{}
 
@@ -404,7 +425,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			// Persist the chief's synthesis before erroring out — otherwise the
 			// answer the user already saw is lost on the frontend's refresh.
 			if strings.TrimSpace(finalContent) != "" {
-				a.finishStream(start, 0, "error", finalContent, userMsg, agentEvents)
+				a.finishStream(start, 0, "error", finalContent, userMsg, sessionID, agentEvents)
 			}
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent hatası: " + err.Error(), Done: true})
 			return
@@ -446,7 +467,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			} else {
 				emitUsage(outAccum)
 			}
-			a.finishStream(start, 0, finishReason, finalReply, userMsg, agentEvents)
+			a.finishStream(start, 0, finishReason, finalReply, userMsg, sessionID, agentEvents)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
 		}
 
@@ -455,7 +476,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 				// Persist the chief's synthesis (and any agent text so far) so a
 				// mid-agent failure doesn't wipe the answer already on screen.
 				if salvage := strings.TrimSpace(finalContent + "\n\n" + agentBuf.String()); salvage != "" {
-					a.finishStream(start, 0, "error", salvage, userMsg, agentEvents)
+					a.finishStream(start, 0, "error", salvage, userMsg, sessionID, agentEvents)
 				}
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 				return
@@ -479,7 +500,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 	return outCh
 }
 
-func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath string) <-chan api.StreamChunk {
+func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
 	// Orchestra mode takes priority
@@ -576,7 +597,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			fullBufStr := fullBuf.String()
 			fullBufMu.Unlock()
 			if err != nil {
-				a.finishStream(start, 0, "error", fullBufStr, userPrompt)
+				a.finishStream(start, 0, "error", fullBufStr, userPrompt, sessionID)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
@@ -591,7 +612,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				tokenCount = len(finalContent) / 4
 			}
 
-			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt)
+			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt, sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		}()
 		return outCh
@@ -629,7 +650,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if hint := a.localModelHint(); hint != "" {
 					errMsg += "\n\n" + hint
 				}
-				a.recordStreamError(userMsg, errMsg)
+				a.recordStreamError(userMsg, errMsg, sessionID)
 				trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 				return
 			}
@@ -643,6 +664,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			for {
 				select {
 				case <-providerCtx.Done():
+					a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
 					return
 				case chunk, ok := <-ch:
 					if !ok {
@@ -654,7 +676,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 						if hint := a.localModelHint(); hint != "" {
 							errMsg += "\n\n" + hint
 						}
-						a.recordStreamError(userMsg, errMsg)
+						a.recordStreamError(userMsg, errMsg, sessionID)
 						trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 						return
 					}
@@ -670,7 +692,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					}
 
 					if chunk.Done {
-						a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
+						a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
 						trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 						return
 					}
@@ -678,13 +700,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 
 			if fullReply.Len() > 0 {
-				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
+				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"
 				if hint := a.localModelHint(); hint != "" {
 					errMsg += "\n\n" + hint
 				}
+				a.recordStreamError(userMsg, errMsg, sessionID)
 				trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 			}
 		}()
@@ -697,7 +720,16 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	a.clientMu.RUnlock()
 
 	if streamClient == nil {
-		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.", Done: true})
+		// Use direct send (not trySend) so the error is guaranteed to reach
+		// the wrapper goroutine even if the parent ctx is already cancelled.
+		// Must close outCh here — the wrapper goroutine in sendMessageStreamInner
+		// does `for chunk := range innerCh` and would leak + deadlock streamMu
+		// on a never-closed channel.
+		select {
+		case outCh <- api.StreamChunk{Error: "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin.", Done: true}:
+		default:
+		}
+		close(outCh)
 		return outCh
 	}
 
@@ -712,7 +744,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		if err != nil {
 			logx.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			logx.Printf("LLM stream error: %v", err)
-			a.recordStreamError(userMsg, "⚠️ "+err.Error())
+			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
@@ -727,6 +759,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		for {
 			select {
 			case <-streamCtx.Done():
+				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
 				return
 			case chunk, ok := <-ch:
 				if !ok {
@@ -736,7 +769,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Error != "" {
 					logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 					logx.Printf("Stream chunk error: %s", chunk.Error)
-					a.recordStreamError(userMsg, "⚠️ "+chunk.Error)
+					a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
 					trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 					return
 				}
@@ -753,7 +786,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 				if chunk.Done {
 					logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg)
+					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
 					trySend(streamCtx, outCh, chunk)
 					return
 				}
@@ -762,11 +795,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg)
+			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
-			a.recordStreamError(userMsg, "⚠️ Model boş yanıt döndürdü")
+			a.recordStreamError(userMsg, "⚠️ Model boş yanıt döndürdü", sessionID)
 			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ Model boş yanıt döndürdü", Done: true})
 		}
 	}()
@@ -784,14 +817,18 @@ func trySend(ctx context.Context, outCh chan<- api.StreamChunk, chunk api.Stream
 
 // recordStreamError saves an error reply to the session to prevent dangling user
 // messages. Called on all stream error paths where finishStream is not invoked.
-func (a *App) recordStreamError(userMsg, errReply string) {
+func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 	a.incognitoMu.RLock()
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if !incog {
 		sm := a.getSessionManager()
 		if sm != nil {
-			sm.AddMessage("assistant", errReply, "", "")
+			if sessionID != "" {
+				sm.AddMessageToSession(sessionID, "assistant", errReply, "", "")
+			} else {
+				sm.AddMessage("assistant", errReply, "", "")
+			}
 		}
 	} else {
 		a.incognitoMu.Lock()
@@ -800,7 +837,7 @@ func (a *App) recordStreamError(userMsg, errReply string) {
 	}
 }
 
-func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg string, agentEvents ...[]interface{}) {
+func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, agentEvents ...[]interface{}) {
 	duration := time.Since(start).Seconds()
 	tps := 0.0
 	if duration > 0 && tokenCount > 0 {
@@ -823,9 +860,16 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 	if !incog {
 		sm := a.getSessionManager()
 		if sm != nil {
-			sm.AddMessage("assistant", reply, "", "", agentEvents...)
-			if len(sm.GetActiveMessages()) == 2 {
-				go a.GenerateChatTitle()
+			if sessionID != "" {
+				sm.AddMessageToSession(sessionID, "assistant", reply, "", "", agentEvents...)
+				if len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
+					go a.GenerateChatTitle()
+				}
+			} else {
+				sm.AddMessage("assistant", reply, "", "", agentEvents...)
+				if len(sm.GetActiveMessages()) == 2 {
+					go a.GenerateChatTitle()
+				}
 			}
 		}
 		a.saveMemoryAsync(userMsg, reply)

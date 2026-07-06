@@ -77,6 +77,15 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
       }
     });
 
+    ref.listen(errorMessageProvider, (prev, next) {
+      if (next.isNotEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(next), duration: const Duration(seconds: 4)),
+        );
+        ref.read(errorMessageProvider.notifier).state = '';
+      }
+    });
+
     return Column(
       children: [
         // ─── Top Bar ──────────────────────────────

@@ -242,6 +242,61 @@ func (m *Manager) GetActiveID() string {
 	return m.active
 }
 
+// AddMessageToSession adds a message to a specific session by ID.
+func (m *Manager) AddMessageToSession(sessionID, role, content, imagePath, filePath string, agentEvents ...[]interface{}) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s := m.sessions[sessionID]
+	if s == nil {
+		return
+	}
+	msg := ChatMessage{
+		Role:      role,
+		Content:   content,
+		ImagePath: imagePath,
+		FilePath:  filePath,
+		Timestamp: time.Now().Format("15:04"),
+	}
+	if len(agentEvents) > 0 && len(agentEvents[0]) > 0 {
+		msg.AgentEvents = agentEvents[0]
+	}
+	s.Messages = append(s.Messages, msg)
+	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+
+	if s.Title == "New Chat" && role == "user" && len(content) > 0 {
+		title := content
+		if r := []rune(title); len(r) > 40 {
+			title = string(r[:40]) + "..."
+		}
+		s.Title = title
+	}
+
+	if err := m.save(s); err != nil {
+		logx.Printf("sessions: save message %s: %v", s.ID, err)
+	}
+}
+
+// GetActiveMessagesForSession returns messages for a specific session.
+func (m *Manager) GetActiveMessagesForSession(sessionID string) []ChatMessage {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s := m.sessions[sessionID]
+	if s == nil {
+		return nil
+	}
+	out := make([]ChatMessage, len(s.Messages))
+	copy(out, s.Messages)
+	return out
+}
+
+// SessionExists checks if a session exists.
+func (m *Manager) SessionExists(id string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	_, ok := m.sessions[id]
+	return ok
+}
+
 type SessionInfo struct {
 	ID          string `json:"id"`
 	Title       string `json:"title"`

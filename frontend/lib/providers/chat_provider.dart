@@ -421,6 +421,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ref.read(streamingThinkingProvider.notifier).state = '';
           ref.read(streamingAgentEventsProvider.notifier).state = [];
           ref.read(streamingStatusProvider.notifier).state = '';
+          await refresh();
           return;
         }
       } else {
@@ -464,7 +465,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
-      await refresh();
     } finally {
       _cancelToken = null;
       ref.read(isSendingProvider.notifier).state = false;
@@ -501,6 +501,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       final streamingEnabled = ref.read(streamingEnabledProvider);
       String fullReply = '';
       String fullThinking = '';
+      List<AgentEvent> finalAgentEvents = [];
 
       if (streamingEnabled) {
         final stream = api.sendFileStream(
@@ -509,23 +510,67 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           cancelToken: _cancelToken,
         );
 
-        // Matches the backend's 300s generation budget — see sendMessage's
-        // stream.timeout above for why this can't be shorter.
+        final isAgentMode = ref.read(agentEnabledProvider);
+
         await for (final chunk in stream.timeout(
           const Duration(seconds: 300),
           onTimeout: (sink) => sink.addError(
-            Exception(L10n.t('error_server_timeout')),
+            Exception(isAgentMode
+                ? L10n.t('error_agent_timeout')
+                : L10n.t('error_server_timeout')),
           ),
         )) {
-          fullReply += chunk.content;
-          fullThinking += chunk.thinking ?? '';
-
-          ref.read(streamingContentProvider.notifier).state = fullReply;
-          ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+          if (chunk.finishReason == 'status') {
+            ref.read(streamingStatusProvider.notifier).state = chunk.content;
+          } else if (chunk.finishReason == 'activity' || chunk.finishReason == 'usage') {
+            try {
+              final decoded = json.decode(chunk.content);
+              if (decoded is Map<String, dynamic> && chunk.finishReason == 'usage') {
+                ref.read(tokenUsageProvider.notifier).state =
+                    TokenUsage.fromJson(decoded);
+              }
+            } catch (_) {}
+          } else if (chunk.finishReason == 'agent_event') {
+            try {
+              final ev = AgentEvent.fromJson(json.decode(chunk.content));
+              final currentEvents = [...ref.read(streamingAgentEventsProvider)];
+              if (ev.type == 'tool_executing') {
+                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
+                  currentEvents[currentEvents.length - 1] = ev;
+                } else {
+                  currentEvents.add(ev);
+                }
+              } else if (ev.type == 'tool_result' || ev.type == 'tool_error' || ev.type == 'permission_denied') {
+                if (currentEvents.isNotEmpty && currentEvents.last.type == 'tool_executing') {
+                  currentEvents[currentEvents.length - 1] = ev;
+                } else {
+                  currentEvents.add(ev);
+                }
+              } else if (ev.type == 'permission_request') {
+                currentEvents.add(ev);
+                ref.read(agentEventBusProvider).emit(ev);
+              }
+              ref.read(streamingAgentEventsProvider.notifier).state = currentEvents;
+              finalAgentEvents = currentEvents;
+            } catch (_) {}
+          } else {
+            if (ref.read(streamingStatusProvider).isNotEmpty) {
+              ref.read(streamingStatusProvider.notifier).state = '';
+            }
+            fullReply += chunk.content;
+            fullThinking += chunk.thinking ?? '';
+            ref.read(streamingContentProvider.notifier).state = fullReply;
+            ref.read(streamingThinkingProvider.notifier).state = fullThinking;
+          }
         }
 
         if (_stopped) {
           _stopped = false;
+          ref.read(streamingContentProvider.notifier).state = '';
+          ref.read(streamingThinkingProvider.notifier).state = '';
+          ref.read(streamingAgentEventsProvider.notifier).state = [];
+          ref.read(streamingStatusProvider.notifier).state = '';
+          await refresh();
           return '';
         }
       } else {
@@ -533,13 +578,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
 
       final list = [...(state.valueOrNull ?? <ChatMessage>[])];
-      if (fullReply.isNotEmpty || fullThinking.isNotEmpty) {
+      if (fullReply.isNotEmpty || fullThinking.isNotEmpty || finalAgentEvents.isNotEmpty) {
         list.add(
           ChatMessage(
             role: 'assistant',
             content: fullReply,
             thinking: fullThinking.isNotEmpty ? fullThinking : null,
             timestamp: DateTime.now().toIso8601String().substring(11, 19),
+            agentEvents: finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
           ),
         );
       }
@@ -547,6 +593,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
+      ref.read(streamingAgentEventsProvider.notifier).state = [];
+      ref.read(streamingStatusProvider.notifier).state = '';
 
       await refresh();
       ref.invalidate(chatListProvider);
@@ -556,7 +604,6 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           '${L10n.t('error')}: Dosya gönderilemedi ($e)';
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
-      await refresh();
       return '';
     } finally {
       _cancelToken = null;

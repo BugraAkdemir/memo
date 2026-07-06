@@ -86,8 +86,8 @@ func NewClient(cfg Config) *Client {
 	return &Client{
 		config: cfg,
 		// Channels are never closed so Start() can be called multiple times safely.
-		msgCh: make(chan Message, 256),
-		errCh: make(chan error, 4),
+		msgCh:  make(chan Message, 256),
+		errCh:  make(chan error, 4),
 		stopCh: make(chan struct{}),
 	}
 }

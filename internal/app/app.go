@@ -178,9 +178,11 @@ type App struct {
 	ngrokServer         *ngrok.Manager
 	tailscaleTunnel     *tunnel.Tailscale
 
-	whatsappChatMode bool
-	whatsappChatMu   sync.RWMutex
-	waMu             sync.Mutex // protects waClient, waMsgStore initialization
+	whatsappChatMode  bool
+	whatsappChatMu    sync.RWMutex
+	whatsAppSessionID string       // dedicated session for WhatsApp chat context
+	waMu              sync.Mutex   // protects waClient, waMsgStore initialization
+	streamMu          sync.Mutex   // prevents concurrent stream goroutines (double-send)
 
 	// Embedded binaries and version string passed in from main.
 	binaries embed.FS

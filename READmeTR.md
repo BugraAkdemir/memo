@@ -13,7 +13,7 @@
   <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Hemen_İndir-memo.bugradev.com-B08D57?style=for-the-badge&logoColor=white" alt="İndir"/></a>
   <a href="https://github.com/BugraAkdemir/memo/stargazers"><img src="https://img.shields.io/github/stars/BugraAkdemir/memo?style=for-the-badge&color=B08D57&logo=github&logoColor=white" alt="Yıldız"/></a>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-0a0a0a?style=for-the-badge" alt="Lisans"/>
-  <img src="https://img.shields.io/badge/Sürüm-v3.1.1-B08D57?style=for-the-badge" alt="Sürüm"/>
+  <img src="https://img.shields.io/badge/Sürüm-v3.1.2-B08D57?style=for-the-badge" alt="Sürüm"/>
 
   <br/><br/>
 

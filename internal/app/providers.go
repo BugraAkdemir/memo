@@ -74,12 +74,58 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	return nil
 }
 
-// DeleteProvider removes a provider configuration.
+// DeleteProvider removes a provider configuration and rebuilds the router.
+// If the deleted provider was the active one, activeProviderName is cleared so
+// the next chat request will not try to use a non-existent provider.
 func (a *App) DeleteProvider(pt provider.ProviderType, name ...string) error {
 	if a.providerCfgMgr == nil {
 		return fmt.Errorf("provider config manager not initialized")
 	}
+
+	// Determine the name of the provider being deleted, so we can clear it if it
+	// matches the current active provider.
+	deletedName := ""
+	if len(name) > 0 && name[0] != "" {
+		deletedName = name[0]
+	} else {
+		for _, p := range a.providerCfgMgr.GetAll() {
+			if p.Type == pt {
+				deletedName = p.Name
+				break
+			}
+		}
+	}
+
 	a.providerCfgMgr.Delete(pt, name...)
+
+	// Rebuild router so the deleted provider stops serving immediately.
+	configs := a.providerCfgMgr.GetEnabled()
+
+	a.providerMu.Lock()
+	if a.healthCheckCancel != nil {
+		a.healthCheckCancel()
+		a.healthCheckCancel = nil
+	}
+	a.providerRouter = provider.NewRouter(configs)
+	if deletedName != "" && a.activeProviderName == deletedName {
+		a.activeProviderName = ""
+	}
+	if a.activeProviderName != "" {
+		a.providerRouter.SetActiveProvider(a.activeProviderName)
+	}
+	var (
+		hctx    context.Context
+		hcancel context.CancelFunc
+	)
+	if len(configs) > 0 {
+		hctx, hcancel = context.WithCancel(a.lifecycleCtx)
+		a.healthCheckCancel = hcancel
+	}
+	a.providerMu.Unlock()
+
+	if hctx != nil {
+		go a.providerRouter.HealthCheck(hctx, 5*time.Minute)
+	}
 	return nil
 }
 

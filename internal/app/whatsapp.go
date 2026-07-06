@@ -180,8 +180,29 @@ func (a *App) SetWhatsAppChatMode(enabled bool) {
 func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
 
+	// Prevent concurrent WhatsApp chat streams from racing each other or the
+	// main chat stream (they share the same session manager via AddMessageToSession).
+	if !a.streamMu.TryLock() {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		close(errCh)
+		return errCh
+	}
+
+	// Use a dedicated WhatsApp session so WhatsApp messages don't pollute the
+	// active chat session the user is viewing.
+	sm := a.getSessionManager()
+	if a.whatsAppSessionID == "" && sm != nil {
+		a.whatsAppSessionID = sm.NewChat()
+		if a.whatsAppSessionID != "" {
+			sm.RenameChat(a.whatsAppSessionID, "WhatsApp Chat")
+		}
+	}
+	waSessionID := a.whatsAppSessionID
+
 	go func() {
 		defer close(outCh)
+		defer a.streamMu.Unlock()
 
 		localTrySend := func(ctx context.Context, ch chan<- api.StreamChunk, chunk api.StreamChunk) bool {
 			select {
@@ -194,9 +215,8 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 
 		messages := a.buildMessages(ctx, userMsg, nil)
 
-		sm := a.getSessionManager()
-		if sm != nil {
-			sm.AddMessage("user", userMsg, "", "")
+		if sm != nil && waSessionID != "" {
+			sm.AddMessageToSession(waSessionID, "user", userMsg, "", "")
 		}
 
 		pMsgs := make([]provider.Message, len(messages))
@@ -204,21 +224,29 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
-		sessionID := ""
-		if sm != nil {
-			sessionID = sm.GetActiveID()
-		}
-
 		modelName := ""
-		// Snapshot the router and config manager under the lock; they can be
-		// reassigned concurrently by UpdateProvider/SetActiveProvider, so reading
-		// the fields directly below the lock would be a data race (and could nil
-		// out the router between the check and use).
 		a.providerMu.RLock()
 		router := a.providerRouter
 		cfgMgr := a.providerCfgMgr
 		activeName := a.activeProviderName
 		a.providerMu.RUnlock()
+
+		// Fall back to local model if no external provider is available.
+		if router == nil || !router.HasActiveProvider() {
+			a.clientMu.RLock()
+			localRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
+			a.clientMu.RUnlock()
+			if localRunning {
+				if router == nil && cfgMgr != nil {
+					configs := cfgMgr.GetEnabled()
+					if len(configs) == 0 {
+						r := provider.NewRouter(nil)
+						router = r
+					}
+				}
+			}
+		}
+
 		if router != nil && cfgMgr != nil {
 			if activeName != "" {
 				for _, p := range cfgMgr.GetEnabled() {
@@ -237,6 +265,9 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		}
 
 		if router == nil || !router.HasActiveProvider() {
+			if sm != nil && waSessionID != "" {
+				sm.AddMessageToSession(waSessionID, "assistant", "⚠️ WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.", "", "")
+			}
 			localTrySend(ctx, outCh, api.StreamChunk{
 				Error: "WhatsApp sohbeti için bir sağlayıcı yapılandırmadınız.",
 				Done:  true,
@@ -273,8 +304,10 @@ Kullanıcıya ASLA JID sorma; önce whatsapp_latest ile sohbet listesini kontrol
 
 		start := time.Now()
 		var fullReply strings.Builder
+		var agentEvents []interface{}
 
-		streamCh, err := waExecutor.RunStream(ctx, sessionID, modelName, allMsgs, func(ev agent.AgentEvent) {
+		streamCh, err := waExecutor.RunStream(ctx, waSessionID, modelName, allMsgs, func(ev agent.AgentEvent) {
+			agentEvents = append(agentEvents, ev)
 			chunkData, _ := json.Marshal(ev)
 			localTrySend(ctx, outCh, api.StreamChunk{
 				Content:      string(chunkData),
@@ -283,20 +316,42 @@ Kullanıcıya ASLA JID sorma; önce whatsapp_latest ile sohbet listesini kontrol
 		})
 
 		if err != nil {
+			if sm != nil && waSessionID != "" {
+				sm.AddMessageToSession(waSessionID, "assistant", "⚠️ "+err.Error(), "", "", agentEvents)
+			}
 			localTrySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
 
-		for chunk := range streamCh {
-			if chunk.Content != "" {
-				fullReply.WriteString(chunk.Content)
+	waLoop:
+		for {
+			select {
+			case <-ctx.Done():
+				if sm != nil && waSessionID != "" {
+					sm.AddMessageToSession(waSessionID, "assistant", "⏹️ Cevap durduruldu.", "", "", agentEvents)
+				}
+				return
+			case chunk, ok := <-streamCh:
+				if !ok {
+					break waLoop
+				}
+				if chunk.Error != "" {
+					if sm != nil && waSessionID != "" {
+						sm.AddMessageToSession(waSessionID, "assistant", "⚠️ "+chunk.Error, "", "", agentEvents)
+					}
+					localTrySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+					return
+				}
+				if chunk.Content != "" {
+					fullReply.WriteString(chunk.Content)
+				}
+				localTrySend(ctx, outCh, api.StreamChunk{Content: chunk.Content, FinishReason: chunk.FinishReason, Done: chunk.Done})
 			}
-			localTrySend(ctx, outCh, api.StreamChunk{Content: chunk.Content, FinishReason: chunk.FinishReason, Done: chunk.Done})
 		}
 
 		reply := fullReply.String()
-		if reply != "" && sm != nil {
-			sm.AddMessage("assistant", reply, "", "")
+		if reply != "" && sm != nil && waSessionID != "" {
+			sm.AddMessageToSession(waSessionID, "assistant", reply, "", "", agentEvents)
 		}
 
 		logx.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))

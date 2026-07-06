@@ -87,7 +87,26 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if incog {
-		return a.handleIncognitoStream(ctx, userMsg, "")
+		if !a.streamMu.TryLock() {
+			errCh := make(chan api.StreamChunk, 1)
+			errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+			close(errCh)
+			return errCh
+		}
+		innerCh := a.handleIncognitoStream(ctx, userMsg, "")
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			defer a.streamMu.Unlock()
+			for chunk := range innerCh {
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		return out
 	}
 
 	// When web-search mode is on, surface a "searching the web" status before
@@ -120,6 +139,16 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 // message, builds the prompt (including any web-search context), and dispatches
 // to the agent, orchestra, or plain LLM stream.
 func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan api.StreamChunk {
+	// Prevent concurrent stream goroutines. If a stream is already running,
+	// return an error immediately instead of racing two parallel streams that
+	// would interleave user/user/assistant/assistant into the session history.
+	if !a.streamMu.TryLock() {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		close(errCh)
+		return errCh
+	}
+
 	a.observerRecorder.RecordMessage(userMsg)
 	go a.processMessageIntent(userMsg, "chat", "", time.Now())
 
@@ -152,7 +181,9 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	}
 
 	sm := a.getSessionManager()
+	var sessionID string
 	if sm != nil {
+		sessionID = sm.GetActiveID()
 		sm.AddMessage("user", userMsg, "", "")
 	}
 
@@ -163,24 +194,50 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	a.providerMu.RLock()
 	hasProvider := a.activeProviderName != ""
 	a.providerMu.RUnlock()
+
+	var innerCh <-chan api.StreamChunk
 	if agentActive && (hasProvider || localModelRunning) {
 		if orchestraEnabled {
 			a.observerRecorder.RecordOrchestraRun(userMsg)
-			return a.callAgentWithOrchestra(ctx, messages, userMsg)
+			innerCh = a.callAgentWithOrchestra(ctx, messages, userMsg, sessionID)
+		} else {
+			a.observerRecorder.RecordAgentRun(userMsg)
+			innerCh = a.callAgentStream(ctx, messages, userMsg, sessionID)
 		}
-		a.observerRecorder.RecordAgentRun(userMsg)
-		return a.callAgentStream(ctx, messages, userMsg)
+	} else {
+		innerCh = a.callLLMStream(ctx, messages, userMsg, "", "", sessionID)
 	}
 
-	return a.callLLMStream(ctx, messages, userMsg, "", "")
+	// Wrap the inner channel so streamMu is released when the stream completes.
+	out := make(chan api.StreamChunk, 128)
+	go func() {
+		defer close(out)
+		defer a.streamMu.Unlock()
+		for chunk := range innerCh {
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 // SendMessageWithImageStream sends a user message together with an image file.
 func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk {
 	logx.Printf(">> VisionStream: %q with image %s", userMsg, imagePath)
 
+	if !a.streamMu.TryLock() {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		close(errCh)
+		return errCh
+	}
+
 	imgData, err := os.ReadFile(imagePath)
 	if err != nil {
+		a.streamMu.Unlock()
 		ch := make(chan api.StreamChunk, 1)
 		ch <- api.StreamChunk{Error: "⚠️ Cannot read image: " + err.Error(), Done: true}
 		close(ch)
@@ -193,7 +250,20 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if incog {
-		return a.handleIncognitoStream(ctx, userMsg, b64)
+		innerCh := a.handleIncognitoStream(ctx, userMsg, b64)
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			defer a.streamMu.Unlock()
+			for chunk := range innerCh {
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		return out
 	}
 
 	var memories []memory.MemoryResult
@@ -208,19 +278,43 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
 
 	sm := a.getSessionManager()
+	var sessionID string
 	if sm != nil {
+		sessionID = sm.GetActiveID()
 		sm.AddMessage("user", userMsg, imagePath, "")
 	}
 
-	return a.callLLMStream(ctx, msgs, userMsg, imagePath, "")
+	innerCh := a.callLLMStream(ctx, msgs, userMsg, imagePath, "", sessionID)
+
+	out := make(chan api.StreamChunk, 128)
+	go func() {
+		defer close(out)
+		defer a.streamMu.Unlock()
+		for chunk := range innerCh {
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 // SendMessageWithFileStream attaches a file's content to the message.
 func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk {
 	logx.Printf(">> FileStream: %q with %s", userMsg, filePath)
 
+	if !a.streamMu.TryLock() {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		close(errCh)
+		return errCh
+	}
+
 	content, err := os.ReadFile(filePath)
 	if err != nil {
+		a.streamMu.Unlock()
 		ch := make(chan api.StreamChunk, 1)
 		ch <- api.StreamChunk{Error: "⚠️ Cannot read file: " + err.Error(), Done: true}
 		close(ch)
@@ -239,17 +333,46 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 	incog := a.isIncognito
 	a.incognitoMu.RUnlock()
 	if incog {
-		return a.handleIncognitoStream(ctx, combined, "")
+		innerCh := a.handleIncognitoStream(ctx, combined, "")
+		out := make(chan api.StreamChunk, 128)
+		go func() {
+			defer close(out)
+			defer a.streamMu.Unlock()
+			for chunk := range innerCh {
+				select {
+				case out <- chunk:
+				case <-ctx.Done():
+					return
+				}
+			}
+		}()
+		return out
 	}
 
 	messages := a.buildMessages(ctx, combined, nil)
 
 	sm := a.getSessionManager()
+	var sessionID string
 	if sm != nil {
+		sessionID = sm.GetActiveID()
 		sm.AddMessage("user", userMsg, "", filePath)
 	}
 
-	return a.callLLMStream(ctx, messages, userMsg, "", filePath)
+	innerCh := a.callLLMStream(ctx, messages, userMsg, "", filePath, sessionID)
+
+	out := make(chan api.StreamChunk, 128)
+	go func() {
+		defer close(out)
+		defer a.streamMu.Unlock()
+		for chunk := range innerCh {
+			select {
+			case out <- chunk:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+	return out
 }
 
 func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 string) <-chan api.StreamChunk {
@@ -263,7 +386,7 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 	msgs = append(msgs, a.incognitoMessages...)
 	a.incognitoMu.Unlock()
 
-	return a.callLLMStream(ctx, msgs, userMsg, "", "")
+	return a.callLLMStream(ctx, msgs, userMsg, "", "", "")
 }
 
 // SendMessageWithImage sends a vision message (non-streaming).

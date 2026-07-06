@@ -55,6 +55,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
+    ref.listen(activeChatIdProvider, (prev, next) {
+      final prevId = prev?.valueOrNull ?? '';
+      final nextId = next.valueOrNull ?? '';
+      if (prevId != nextId) {
+        _controller.clear();
+      }
+    });
   }
 
   void _onTextChanged() {

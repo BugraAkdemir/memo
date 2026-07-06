@@ -604,6 +604,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           '${L10n.t('error')}: Dosya gönderilemedi ($e)';
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
+      ref.read(streamingAgentEventsProvider.notifier).state = [];
+      ref.read(streamingStatusProvider.notifier).state = '';
       return '';
     } finally {
       _cancelToken = null;

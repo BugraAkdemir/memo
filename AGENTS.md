@@ -268,7 +268,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 - `a.client` and `providerRouter` are swapped at runtime (model/provider changes during active streams) — always take `clientMu`/`providerMu` before touching them.
 
 **Streaming / SSE**
-- Timeout contract: backend generation budget in `internal/app/llm.go` is **300s**; every frontend SSE consumer (`chat_provider.dart`, `chat_input.dart` WhatsApp stream, file-send stream) must use the **same 300s**. If you change one side, change all. (A 60s frontend timeout once aborted valid slow generations on CPU hardware.)
+- Timeout contract: backend generation budget in `internal/app/llm.go` is **300s**; every frontend SSE consumer (`chat_provider.dart`, `chat_input.dart` WhatsApp stream, file-send stream) must use the **same 300s — as a per-call option on the streaming request**, NOT via Dio's global `receiveTimeout` (that stays at 120s for regular API calls; see commit `2abf8dd`). A 60s frontend timeout once aborted valid slow generations on CPU hardware.
 - SSE `finishReason == 'agent_event'` chunks carry JSON tool events — render as badges, never as raw text; parse defensively (payload may be malformed).
 
 **Flutter**

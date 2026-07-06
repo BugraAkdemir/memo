@@ -229,6 +229,73 @@ Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
 
 ---
 
+## Agent Working Rules (READ FIRST, EVERY SESSION)
+
+1. **Start of session:** read this file, then `handoff.md` (top entry = last session's state and pending work).
+2. **End of session:** prepend a new handoff entry to `handoff.md` (what was done, commit status, verification results, what's next). This is how context survives between sessions and models.
+3. **Never claim "done" without running verification** (below) and pasting the actual results.
+4. Plan files (`plan.md`, `PLAN_*.md`) contain step-by-step implementation plans — follow them in order, tick checkboxes as you complete items, don't improvise a different architecture mid-plan.
+5. Work in small units: max 1–2 plan items per session, each with tests, verified green before moving on.
+6. Commit messages: Conventional Commits (`fix(frontend): ...`, `feat(backend): ...`). No AI attribution / Co-Authored-By lines.
+
+### Verification Commands (mandatory before any "done" claim)
+
+```bash
+# Backend (CGO is required — sqlite)
+CGO_ENABLED=1 go build ./...
+CGO_ENABLED=1 go vet ./...
+CGO_ENABLED=1 go test ./... -race
+
+# Frontend (Flutter SDK is NOT in PATH on this machine)
+export PATH="$PATH:/home/bugra/Belgeler/flutter/bin"
+cd frontend && flutter analyze lib/ && flutter test
+```
+
+Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-level findings in `flutter analyze`. Anything else new must be fixed.
+
+---
+
+## Gotchas (project-specific traps — violating these causes real, shipped bugs)
+
+**Paths & data**
+- All data paths go through `config.DataPath()`. Never hardcode `data/` — on Windows data lives in `%ProgramData%\Memo\data`.
+- The installed CLI lives at `~/.memo/bin/memo` (one level deep): lookups for bundled files must also check the **parent** of the executable's directory. REPL debug log: `~/.memo/data/repl.log`.
+- Windows path bugs in Flutter: always `package:path` (`p.join`, `p.basename`) — never `split('/')` or `'$a/$b'` string concat.
+
+**Concurrency & architecture**
+- SQLite writes go through `database.DB.Write()` (serialized write loop) — never call `ExecContext`/`Exec` directly on the DB; it corrupts the single-writer design.
+- The app has **one global active chat** and a global agent-mode flag. `App.SendMessageStream` writes to whatever chat is currently active. Any automated caller (e.g. task loop) must `SwitchChat` under `taskloopRunMu` and restore state after. In Flutter, don't trust `activeChatIdProvider` blindly — pass explicit chat IDs.
+- `a.client` and `providerRouter` are swapped at runtime (model/provider changes during active streams) — always take `clientMu`/`providerMu` before touching them.
+
+**Streaming / SSE**
+- Timeout contract: backend generation budget in `internal/app/llm.go` is **300s**; every frontend SSE consumer (`chat_provider.dart`, `chat_input.dart` WhatsApp stream, file-send stream) must use the **same 300s**. If you change one side, change all. (A 60s frontend timeout once aborted valid slow generations on CPU hardware.)
+- SSE `finishReason == 'agent_event'` chunks carry JSON tool events — render as badges, never as raw text; parse defensively (payload may be malformed).
+
+**Flutter**
+- `IndexedStack` keeps every screen mounted forever: any polling loop must stop itself via `VisibilityDetector` / `AppLifecycleListener` / `ref.onDispose`, or it leaks and polls in background.
+- Backend JSON must be checked with `is` before casting — `as List`/`as Map` on unexpected payloads has crashed the UI in 5+ places before.
+- New user-facing strings go through `frontend/lib/core/l10n.dart`.
+- Unexplained plugin build failure? Check `~/.pub-cache` for 0-byte/partial package downloads **before** adding `dependency_overrides` (see 2026-07-04 note above).
+
+**Types & misc**
+- `skill.DangerLevel` and `agent.DangerLevel` are separate named types — they do not cross-assign.
+- Turkish + English mixed user-facing text is intentional (target users are Turkish).
+- sqlite-vec extension (`vec0.so`/`vec0.dll`) is bundled under `binaries/` — never add a runtime download for it.
+
+---
+
+## Known Open Work (pointers)
+
+| Item | Where |
+|------|-------|
+| Onboarding / launchpad UX (highest priority feature) | `plan.md` |
+| Windows installer broken shortcuts (`launch.vbs` missing) | `PLAN_installer_launchvbs.md` |
+| Chat-ID refactor: kill the single-global-active-chat architecture | `PLAN_chatid_refactor.md` |
+| `model_store_screen.dart` (2469 lines) needs splitting | Known Pitfalls above |
+| v3.2.0 roadmap (Calendar, Agent UI, Mobile notifications) | `docs/ROADMAP.md` |
+
+---
+
 ## Code Style
 
 - Go backend uses `http.ServeMux` — no external router dependency (gorilla/mux removed).
@@ -240,4 +307,4 @@ Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
 
 ## Version
 
-**v3.1.1** (open beta, 2026-07-04) (Go 1.26, Flutter 3.10+, flutter_riverpod 2.4, dio 5.4, flutter_markdown 0.6, mattn/go-sqlite3, sqlite-vec)
+**v3.1.2** (open beta, 2026-07-06) (Go 1.26, Flutter 3.10+, flutter_riverpod 2.4, dio 5.4, flutter_markdown 0.6, mattn/go-sqlite3, sqlite-vec)

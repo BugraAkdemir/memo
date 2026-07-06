@@ -1,3 +1,46 @@
+# Handoff — 2026-07-06 (Session 15) — Bilgi aktarımı: AGENTS.md kuralları + plan dosyaları + kaçan commit
+
+## Oturum Özeti
+
+Amaç: proje bilgisini yazıya dökmek ki sonraki oturumlar (farklı/daha küçük
+modellerle bile) aynı kalitede devam edebilsin. Kod değişikliği yok (bir kaçan
+commit hariç), tamamen dokümantasyon/plan turu.
+
+**Commit durumu:** `cb5c995` — `fix(frontend): make stop button cancel WhatsApp stream and add 300s timeout` (önceki oturumdan working tree'de unutulmuş `chat_input.dart` değişikliği; `flutter analyze` temiz, sadece 2 önceden var olan info). Bu oturumun doküman değişiklikleri de commitlendi.
+
+## Yapılanlar
+
+1. **AGENTS.md büyük güncelleme:**
+   - Yeni "Agent Working Rules (READ FIRST, EVERY SESSION)" bölümü — oturum
+     başı/sonu ritüeli (handoff okuma/yazma), zorunlu doğrulama komutları,
+     commit kuralları.
+   - Yeni "Gotchas" bölümü — projeye özel tuzakların tek listesi
+     (config.DataPath, DB.Write serialized loop, global aktif sohbet, 300s SSE
+     sözleşmesi, IndexedStack polling, package:path, `is` cast kontrolü, vb.).
+   - Yeni "Known Open Work" işaretçi tablosu.
+   - Versiyon satırı 3.1.1 → 3.1.2 düzeltildi.
+2. **plan.md** — dosya bozulmuştu (kendini tekrar eden karışık metin);
+   incelendi ve onboarding işinin **zaten tamamen uygulanmış** olduğu görüldü
+   (launchpad_view.dart, spotlight_tour.dart, boş ekranlar, nav etiketleri,
+   ayarlardan tur/launchpad sıfırlama hepsi kodda mevcut). Temiz arşiv
+   olarak yeniden yazıldı.
+3. **PLAN_installer_launchvbs.md (yeni)** — Session 14'te tespit edilen
+   Windows kısayol bug'ının adım adım çözüm planı (staging'e VBS wrapper
+   üretimi, iki build script'i, doğrulama listesi).
+4. **PLAN_chatid_refactor.md (yeni)** — Session 13'ün kapsam dışı bıraktığı
+   global-aktif-sohbet mimarisi refactor'ünün 4 fazlı planı. Kod okunarak
+   yazıldı: sessions.Manager'da session-scoped API'nin (AddMessageToSession
+   vb.) ve llm.go'da çift yollu persist'in zaten var olduğu tespit edildi —
+   plan bunların üzerine kuruluyor.
+
+## Sıradaki Oturum İçin
+
+1. Küçük iş: `PLAN_installer_launchvbs.md`'yi uygula (tek oturumluk).
+2. Büyük iş: `PLAN_chatid_refactor.md` Faz 1'den başla (fazlar arası commit).
+3. Session 14'ün diğer maddeleri hâlâ geçerli (aşağıda).
+
+---
+
 # Handoff — 2026-07-05 (Session 14) — Installer / Updater / Uninstaller scripts + README düzenlemesi
 
 ## Oturum Özeti

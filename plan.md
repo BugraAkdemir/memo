@@ -1,92 +1,36 @@
-# Memo — Kullanıcı Dostuluğu / Onboarding Planı
+# Memo — Kullanıcı Dostuluğu / Onboarding Planı — ✅ TAMAMLANDI (ARŞİV)
 
-> Amaç: Kullanıcı uygulamayı ilk açtığında "bu ne ya" demesin. Özellikleri
-> **kapatmadan** (Agent, Orchestra, WhatsApp, Takvim hepsi açık kalır),
-> ilk karşılaşmayı **açıklamalı** hale getirmek. Sorun özellik sayısı değil,
-> sıfır açıklama. Prensip: "vitrin tam açık ama her şey etiketli".
+> **Durum (2026-07-06):** Bu plandaki tüm ana maddeler uygulanmış durumda.
+> Dosya, önceki halinde metin bozulması (kendini tekrar eden karışık satırlar)
+> olduğu için temiz haliyle yeniden yazıldı ve arşiv olarak işaretlendi.
+>
+> Amaç şuydu: Kullanıcı uygulamayı ilk açtığında "bu ne ya" demesin. Özellikleri
+> **kapatmadan** ilk karşılaşmayı açıklamalı hale getirmek.
+> Prensip: "vitrin tam açık ama her şey etiketli".
 
-## Temel ilke
-- Hiçbir ana özellik gizlenmez/kapatılmaz.
-- İlk kullanım = öğretici. Sonraki kullanımlar = sade.
-- Mood ve Self-Interest zaten kapalı geliyor — onlara dokunma.
+## Uygulanan maddeler
 
----
+- [x] **1. Launchpad karşılama ekranı** — `frontend/lib/widgets/launchpad_view.dart`
+  (özellik kartları; `launchpadSeenProvider` ile bir kez gösterim; ayarlardan
+  sıfırlama: `general_tab.dart` → `settings_reset_launchpad`)
+- [x] **2. İlk açılış mini-turu (spotlight)** — `frontend/lib/widgets/spotlight_tour.dart`,
+  `app_shell.dart:422`'de bağlı; `tourSeenProvider` flag'i; ayarlardan tekrar
+  gösterme: `general_tab.dart` → `settings_reset_tour`
+- [x] **3. Boş ekran açıklamaları** — WhatsApp (`whatsapp_empty_title/desc` + QR akışı),
+  Takvim (`calendar_empty_title/desc`), Agent (`agent_empty_title/desc/action`)
+- [x] **4. İkon etiketleri** — `_NavRailButton` (app_shell.dart) ikon altında
+  kalıcı metin etiketi gösteriyor; ayrıca hover tooltip'e gerek kalmadı
+- [x] **5. Mod seçici açıklamaları** — modlar ayrı nav sekmelerine ayrıldığı için
+  (Chat / Agent / WhatsApp ayrı ekranlar) bu madde kapsamsız kaldı; her ekranın
+  kendi boş durumu kendini anlatıyor (madde 3)
 
-## 1. Launchpad karşılama ekranı (EN ÖNCELİKLİ)
-Açılışta boş sohbet yerine, ne yapılabileceğini gösteren kartlar.
-- [ ] Welcome/launchpad ekranı: özellik kartları
-  - 💬 Sohbet — "Yaz, cevap al, seni hatırlasın"
-  - 🤖 Agent — "Dosya düzenler, komut çalıştırır, görev yapar"
-  - 🎵 Orchestra — "Birden çok modeli ekip gibi çalıştır"
-  - 📱 WhatsApp — "Sohbetlerini AI ile yönet"
-  - 📅 Takvim — "Planlarını otomatik yakalar"
-- [ ] Her kart: tek cümle açıklama + "başla/aç" aksiyonu (ilgili sekmeye götürür)
-- [ ] Kart sadece ilgili özellik kullanılabilir olduğunda aktif (örn. WhatsApp bağlı değilse "bağlan" der)
-- [ ] Sohbet geçmişi varsa launchpad atlanır, direkt sohbete düşülür
+## Kalan (opsiyonel, düşük öncelik)
 
-## 2. İlk açılış mini-turu (coachmark / spotlight)
-Setup wizard bittikten sonra, atlanabilir kısa tur.
-- [ ] 4–5 adımlık spotlight: ekrandaki ana ikonları sırayla aydınlat + tek cümle balon
-  - Agent ikonu → "Sana iş yaptırır"
-  - WhatsApp ikonu → "Bağlan, AI yönetsin"
-  - Orchestra → "Çok modelli ekip modu"
-  - Takvim → "Planlarını yakalar"
-- [ ] "Geç" butonu her adımda görünür
-- [ ] Sadece ilk açılışta gösterilir (bir flag ile, tekrar gösterme)
-- [ ] Ayarlardan "turu tekrar göster" seçeneği
+- [ ] Setup wizard bitişi → launchpad → tur geçişinin gerçek cihazda uçtan uca
+  bir kez gözle doğrulanması (fresh install senaryosu)
 
-## 3. Her sekmenin "ilk kez" boş ekranı kendini anlatsın
-Kontrol yığını değil, açıklama + tek aksiyon.
-- [ ] WhatsApp boş/bağlı değil → "WhatsApp sohbetlerini buradan yönet, bağlanmak için QR okut" + buton
-- [ ] Agent ilk giriş → "Agent dosya/komut çalıştırabilir, onayı sen verirsin" + örnek
-- [ ] Takvim boş → "Planların otomatik buraya düşer, manuel de ekleyebilirsin"
-- [ ] Orchestra → kısa açıklama + "nasıl çalışır" (zaten yeni dialogda var, tutarlı yap)
+## Sıradaki işler
 
-## 4. İkon + etiket / tooltip (sadece ikon yetmez)
-- [ ] Sol menü ikonlarının altına küçük etiket VEYA hover/tap tooltip
-- [ ] Sohbet kutusundaki mod toggle'larına "?" / tooltip ipucu
-- [ ] Hangi ikonun ne olduğu tek bakışta anlaşılsın
-
-## 5. Mod seçerken açıklama
-- [ ] Agent / Normal / WhatsApp mod seçicisinde her modun yanında tek satır açıklama
-- [ ] Kullanıcı kör seçim yapmasın
-
----
-
-## Öncelik sırası (en çok etki / en az iş)
-1. Launchpad karşılama eulamayı ilk açtığında "bu ne ya" demesin. Özellikleri
-> **kapatmadan** (Agent, Orchestra, WhatsApp, Takvim hepsi açık kalır),
-> ilk karşılaşmayı **açıklamalı** hale getirmek. Sorun özellik sayısı değil,
-> sıfır açıklama. Prensip: "vitrin tam açık ama her şey etiketli".
-
-## Temel ilke
-- Hiçbir ana özellik gizlenmez/kapatılmaz.
-- İlk kullanım = öğretici. Sonraki kullanımlar = sade.
-- Mood ve Self-Interest zaten kapalı geliyor — onlara dokunma.
-
----
-
-## 1. Launchpad karşılama ekranı (EN ÖNCELİKLİ)
-Açılışta boş sohbet yerine, ne yapılabileceğini gösteren kartlar.
-- [ ] Welcome/launchpad ekranı: özellik kartları
-  - 💬 Sohbet — "Yaz, cevap al, seni hatırlasın"
-  - 🤖 Agent — "Dosya düzenler, komut çalıştırır, görev yapar"
-  - 🎵 Orchestra — "Birden çok modeli ekip gibi çalıştır"
-  - 📱 WhatsApp — "Sohbetlerini AI ile yönet"
-  - 📅 Takvim — "Planlarını otomatik yakalar"
-- [ ] Her kart: tek cümle açıklama + "başla/aç" aksiyonu (ilgili sekmeye götürür)
-- [ ] Kart sadece ilgili özellik kullanılabilir olduğunda aktif (örn. WhatsApp bağlı değilse "bağlan" der)
-- [ ] Sohbet geçmişi varsa launchpad atlanır, direkt sohbete düşülür
-
-## 2. İlk açılış mikranı  ← "ne yapabilirim" sorusunu anında cevaplar
-2. İlk açılış mini-turu         ← ikonların ne olduğunu öğretir
-3. Boş ekran açıklamaları       ← her özellik kendini tanıtır
-4. İkon etiketleri / tooltip
-5. Mod seçici açıklamaları
-
-## Dokunulan/incelenecek dosyalar (tahmini)
-- `frontend/lib/screens/app_shell.dart` — menü, ikon etiketleri, ilk-açılış turu tetikleme
-- `frontend/lib/widgets/setup_wizard_view.dart` — wizard sonu → launchpad/tur geçişi
-- Welcome/launchpad için yeni widget (örn. `frontend/lib/widgets/launchpad_view.dart`)
-- WhatsApp / Takvim / Agent ekranlarının boş durumları
-- Tur durumu için kalıcı flag (settings/shared prefs)
+Aktif iş listesi için `AGENTS.md → Known Open Work` tablosuna bak:
+- `PLAN_installer_launchvbs.md` — Windows kısayol bug'ı (küçük, net iş)
+- `PLAN_chatid_refactor.md` — global aktif sohbet mimarisinin kaldırılması (büyük iş)

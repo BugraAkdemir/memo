@@ -39,6 +39,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   String _filterQuery = '';
   int _selectedIndex = 0;
   String? _pickedImagePath;
+  bool _whatsappStopped = false;
+  CancelToken? _whatsappCancelToken;
 
   List<PopupItem> get _filteredItems {
     if (_filterQuery.isEmpty) return templates;
@@ -73,6 +75,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     _controller.removeListener(_onTextChanged);
     _controller.dispose();
     _focusNode.dispose();
+    _whatsappCancelToken?.cancel();
     super.dispose();
   }
 
@@ -185,7 +188,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       content: text,
       timestamp: timestamp,
     );
-    final cancelToken = CancelToken();
+
+    _whatsappStopped = false;
+    _whatsappCancelToken?.cancel();
+    _whatsappCancelToken = CancelToken();
 
     if (!mounted) return;
     ref.read(isSendingProvider.notifier).state = true;
@@ -197,10 +203,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     List<AgentEvent> finalAgentEvents = [];
     String accumulatedContent = '';
     try {
-      await for (final chunk
-          in api.sendWhatsAppChatStream(text, cancelToken: cancelToken)) {
+      await for (final chunk in api
+          .sendWhatsAppChatStream(
+            text,
+            cancelToken: _whatsappCancelToken,
+          )
+          .timeout(
+            const Duration(seconds: 300),
+            onTimeout: (sink) => sink.addError(Exception(
+              'WhatsApp yanıt zaman aşımına uğradı (5 dakika)',
+            )),
+          )) {
         if (chunk.finishReason == 'agent_event') {
-          // Tool activity — render as status badges, NOT as raw JSON text.
           try {
             final decoded = json.decode(chunk.content);
             if (decoded is! Map<String, dynamic>) continue;
@@ -209,7 +223,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
             if (ev.type == 'tool_executing' ||
                 ev.type == 'tool_result' ||
                 ev.type == 'tool_error') {
-              // Collapse the transient "executing" line into its result.
               if (events.isNotEmpty && events.last.type == 'tool_executing') {
                 events[events.length - 1] = ev;
               } else {
@@ -218,8 +231,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               ref.read(streamingAgentEventsProvider.notifier).state = events;
               finalAgentEvents = events;
             }
-            // Other event types (final_response, etc.) carry no badge — the
-            // actual reply text arrives separately as plain content chunks.
           } catch (_) {
             // ignore malformed event payloads
           }
@@ -228,6 +239,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           ref.read(streamingContentProvider.notifier).state = accumulatedContent;
         }
       }
+
+      if (_whatsappStopped) {
+        _whatsappStopped = false;
+        ref.read(streamingContentProvider.notifier).state = '';
+        ref.read(streamingAgentEventsProvider.notifier).state = [];
+        return;
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -235,22 +253,29 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         );
       }
     } finally {
-      cancelToken.cancel();
-      final full = ref.read(streamingContentProvider);
-      if (full.isNotEmpty || finalAgentEvents.isNotEmpty) {
-        ref.read(messagesProvider.notifier).addMessage(
-              ChatMessage(
-                role: 'assistant',
-                content: full,
-                timestamp: timestamp,
-                agentEvents:
-                    finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
-              ),
-            );
+      final stopped = _whatsappStopped;
+      _whatsappStopped = false;
+      _whatsappCancelToken?.cancel();
+      _whatsappCancelToken = null;
+
+      if (!stopped) {
+        final full = ref.read(streamingContentProvider);
+        if (full.isNotEmpty || finalAgentEvents.isNotEmpty) {
+          ref.read(messagesProvider.notifier).addMessage(
+                ChatMessage(
+                  role: 'assistant',
+                  content: full,
+                  timestamp: timestamp,
+                  agentEvents:
+                      finalAgentEvents.isNotEmpty ? finalAgentEvents : null,
+                ),
+              );
+        }
       }
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(isSendingProvider.notifier).state = false;
+      ref.read(messagesProvider.notifier).refresh();
     }
   }
 
@@ -921,9 +946,13 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                   child: InkWell(
                     onTap: isSending
-                        ? () => ref
-                              .read(messagesProvider.notifier)
-                              .stopStreaming()
+                        ? () {
+                              _whatsappStopped = true;
+                              _whatsappCancelToken?.cancel();
+                              ref
+                                  .read(messagesProvider.notifier)
+                                  .stopStreaming();
+                            }
                         : _send,
                     borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
                     child: SizedBox(

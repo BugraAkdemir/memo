@@ -132,6 +132,23 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   bool _hasEvents(DateTime day) => _eventsForDay(day).isNotEmpty;
 
   Future<void> _delete(String id) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L10n.t('delete')),
+        content: Text(L10n.t('calendar_delete_confirm')),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: Text(L10n.t('cancel'))),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text(L10n.t('delete'),
+                  style: const TextStyle(color: MemoTheme.red))),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
     try {
       await ref.read(apiClientProvider).deleteCalendarEvent(id);
       await _load();
@@ -527,7 +544,12 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             FilledButton(
               style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
               onPressed: () async {
-                if (titleCtrl.text.trim().isEmpty) return;
+                if (titleCtrl.text.trim().isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(L10n.t('please_enter_title'))),
+                  );
+                  return;
+                }
                 Navigator.pop(ctx);
                 try {
                   await ref.read(apiClientProvider).addCalendarEvent(

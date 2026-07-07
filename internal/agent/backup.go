@@ -59,7 +59,7 @@ func (bm *BackupManager) loadHistory() {
 	}
 }
 
-func (bm *BackupManager) saveHistoryLocked() {
+func (bm *BackupManager) saveHistoryLocked() error {
 	// Keep only the last maxEntries
 	if len(bm.history) > bm.maxEntries {
 		// Clean up old backup files
@@ -72,9 +72,13 @@ func (bm *BackupManager) saveHistoryLocked() {
 	}
 
 	data, err := json.MarshalIndent(bm.history, "", "  ")
-	if err == nil {
-		os.WriteFile(bm.historyFile, data, 0600)
+	if err != nil {
+		return fmt.Errorf("failed to marshal backup history: %w", err)
 	}
+	if err := os.WriteFile(bm.historyFile, data, 0600); err != nil {
+		return fmt.Errorf("failed to write backup history: %w", err)
+	}
+	return nil
 }
 
 // CreateBackup takes a snapshot of a file before modification or deletion.
@@ -96,7 +100,13 @@ func (bm *BackupManager) CreateBackup(filePath string) error {
 			Timestamp: time.Now(),
 		}
 		bm.history = append(bm.history, entry)
-		bm.saveHistoryLocked()
+		if err := bm.saveHistoryLocked(); err != nil {
+			// Roll back the in-memory entry so it stays consistent with what's
+			// actually on disk; otherwise a later Undo could reference a
+			// backup entry that was never persisted.
+			bm.history = bm.history[:len(bm.history)-1]
+			return fmt.Errorf("failed to persist backup history: %w", err)
+		}
 		return nil
 	} else if err != nil {
 		return fmt.Errorf("failed to stat file: %w", err)
@@ -118,7 +128,13 @@ func (bm *BackupManager) CreateBackup(filePath string) error {
 		Timestamp:  time.Now(),
 	}
 	bm.history = append(bm.history, entry)
-	bm.saveHistoryLocked()
+	if err := bm.saveHistoryLocked(); err != nil {
+		// Roll back the in-memory entry so it stays consistent with what's
+		// actually on disk; otherwise a later Undo could reference a
+		// backup entry that was never persisted.
+		bm.history = bm.history[:len(bm.history)-1]
+		return fmt.Errorf("failed to persist backup history: %w", err)
+	}
 	return nil
 }
 
@@ -130,7 +146,12 @@ func (bm *BackupManager) RecordDelete(filePath string) {
 	for i := len(bm.history) - 1; i >= 0; i-- {
 		if bm.history[i].FilePath == filePath && bm.history[i].Action == ActionModify {
 			bm.history[i].Action = ActionDelete
-			bm.saveHistoryLocked()
+			if err := bm.saveHistoryLocked(); err != nil {
+				// Roll back the in-memory change so it stays consistent with
+				// what's actually on disk.
+				bm.history[i].Action = ActionModify
+				logx.Printf("AGENT: failed to persist backup history after marking delete: %v", err)
+			}
 			return
 		}
 	}
@@ -177,8 +198,15 @@ func (bm *BackupManager) UndoLast() error {
 	}
 
 	// Remove the entry from history
+	prevHistory := bm.history
 	bm.history = bm.history[:len(bm.history)-1]
-	bm.saveHistoryLocked()
+	if err := bm.saveHistoryLocked(); err != nil {
+		// Roll back the in-memory removal so it stays consistent with what's
+		// actually on disk, and surface the failure to the caller instead of
+		// silently succeeding.
+		bm.history = prevHistory
+		return fmt.Errorf("undo succeeded but failed to persist updated history: %w", err)
+	}
 
 	return nil
 }

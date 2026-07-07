@@ -1773,6 +1773,10 @@ func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Reque
 // The response is flushed before cleanup begins so the HTTP server can
 // complete this request before it stops.
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
 	writeJSON(w, map[string]string{"status": "shutting_down"})
 
 	if s.fullBridge != nil {

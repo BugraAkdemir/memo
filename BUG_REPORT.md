@@ -700,10 +700,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** Global `receiveTimeout: 300s` tüm endpoint'leri etkiliyor. Status, chat list, message fetch gibi hızlı endpoint'ler de 5 dakika bekleyebilir.
 - **Düzeltme:** 120s'e döndürüldü. Streaming endpoint'leri per-call `.timeout(300s)` kullanıyor. ✅ (`2abf8dd`)
 
-#### BUG-FM8: Takvim `_parseDateTime` hatalı veride `DateTime.now()` dönüyor
+#### BUG-FM8: ~~Takvim `_parseDateTime` hatalı veride `DateTime.now()` dönüyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `431042d`
+- **Düzeltme:** `_Event`'e `hasInvalidDate` alanı eklendi (sadece parse *hatası* için true, eksik değer için false), event tile'da küçük bir uyarı ikonu + tooltip gösteriliyor.
 - **Dosya:** `frontend/lib/screens/calendar_screen.dart:38-45`
 - **Nedir:** Backend bozuk tarih döndüğünde parse hatası sessizce `DateTime.now()` ile değiştiriliyor. Olaylar yanlış zamanda görünüyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM9: ~~Widget key'leri `hashCode` kullanıyor → tüm liste rebuild~~ **→ DÜZELTİLDİ (2026-07-07)**
 - **Commit:** `81f5099`

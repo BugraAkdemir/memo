@@ -1,7 +1,6 @@
 package webserver
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1763,9 +1762,22 @@ func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, results)
 }
 
-// handleShutdown accepts GET or POST and initiates graceful shutdown.
-// The response is flushed before cleanup begins so the HTTP server can
-// complete this request before it stops.
+// handleShutdown accepts POST and initiates graceful shutdown. The response
+// is flushed before signaling so the HTTP server can complete this request
+// before it stops.
+//
+// This only ever signals SIGINT — it used to *also* call
+// s.fullBridge.Shutdown() directly first, but that ran the entire teardown
+// (App.Shutdown, guarded by sync.Once) synchronously from inside this very
+// HTTP handler, while the request itself was still in flight from the
+// server's perspective. webserver.Stop() closes its listener via an async
+// srv.Shutdown() that waits for in-flight requests to finish — including
+// this one — so the two shutdown paths (the direct call here, and the one
+// SIGINT triggers in main()'s deferred a.Shutdown(ctx)) were racing each
+// other with the store/WhatsApp/etc. teardown potentially running while the
+// server could still be accepting other requests. sync.Once made a second
+// *call* to Shutdown harmless, but didn't fix that overlap. A single
+// SIGINT-triggered path removes it entirely.
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -1773,12 +1785,8 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]string{"status": "shutting_down"})
 
-	if s.fullBridge != nil {
-		s.fullBridge.Shutdown(context.Background())
-	}
-
 	// Trigger SIGINT so main() runs the deferred Shutdown chain (WAL
-	// checkpoint, DB flush, in-flight HTTP drain).  os.Exit() would skip
+	// checkpoint, DB flush, in-flight HTTP drain). os.Exit() would skip
 	// deferred functions and corrupt SQLite WAL files.
 	p, _ := os.FindProcess(os.Getpid())
 	if p != nil {

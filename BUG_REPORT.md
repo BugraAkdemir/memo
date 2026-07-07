@@ -967,21 +967,23 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Kullanıcı etkisi:** Güvenlik açığı — ağdaki herhangi biri uygulamayı kapatabilir.
 - **Düzeltme:** Sadece POST method'u kabul edilmeli.
 
-#### BUG-QH2: Streaming dosya yükleme MIME spoofing
+#### BUG-QH2: ~~Streaming dosya yükleme MIME spoofing~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `504fa11`
+- **Düzeltme:** Ortak `detectIsImageFile(path, filename)` yardımcı fonksiyonu (`internal/webserver/mime.go`) eklendi, hem streaming hem non-streaming handler bunu kullanıyor. Ayrıca ikisinin de ORİJİNAL halinde bulunan bir zafiyeti sıkılaştırdım: extension fallback eskiden content sniffing "image" demediğinde HER ZAMAN devreye giriyordu — content kesin olarak başka bir tür (örn. text/html) tespit etse bile. Artık fallback sadece sniffing gerçekten belirsizse (dosya okunamıyor veya `application/octet-stream`) devreye giriyor. Test: `internal/webserver/mime_test.go` → `TestDetectIsImageFile` (spoofed-filename case, ilk halinde fail ediyordu).
 
 - **Dosya:** `internal/webserver/handlers_flutter.go:110-121`
-- **Trigger:** `Content-Type: image/png` header'ı ile text dosyası yüklenir.
 - **Nedir:** `handleSendFileStream` client-supplied Content-Type'ı kullanıyor ama `handleSendFile` (non-streaming) `http.DetectContentType` ile dosya içeriğini okuyor. Streaming path'i trust ediyor.
-- **Kullanıcı etkisi:** Text dosyası vision pipeline'a gider — yanlış işleme.
-- **Düzeltme:** `http.DetectContentType` ile dosya içeriğinden MIME tespiti yapılmalı.
+- **Kullanıcı etkisi (düzeltme öncesi):** Text dosyası vision pipeline'a gider — yanlış işleme.
 
-#### BUG-QH3: WhatsApp `stopCh` Stop+Start sonrası ölüyor → auto-reconnect çalışmaz
+#### BUG-QH3: ~~WhatsApp `stopCh` Stop+Start sonrası ölüyor → auto-reconnect çalışmaz~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `edc8efe`
+- **Düzeltme:** `Start()` artık `stopCh`/`stopOnce`'u `startMu` altında yeniden oluşturuyor. `Stop()`'un `stopOnce.Do(close)` çağrısı da aynı kilit altına taşındı (yoksa Start()'ın reassignment'ıyla yarışırdı). `autoReconnect` artık `c.stopCh`'ı direkt okumak yerine kilit altında bir local değişkene alıyor. Regresyon testi: `internal/whatsapp/client_race_test.go` → `TestStopChRecreatedAfterStop`.
 
 - **Dosya:** `internal/whatsapp/client.go:85-93, 189-201, 470-477`
-- **Trigger:** WhatsApp bağlan → disconnect → reconnect → disconnect.
 - **Nedir:** `NewClient()` `stopCh` oluşturur. `Stop()` `stopOnce.Do` ile kapatır (one-shot). `Start()` `stopCh'yi yeniden oluşturmaz. Yeni bağlantı koptuğunda `autoReconnect()` kapatılmış kanalı dinler → anında return, reconnect hiç denenmez.
-- **Kullanıcı etkisi:** Herhangi bir disconnect→reconnect döngüsü sonrası WhatsApp auto-reconnect kalıcı olarak ölür — uygulama restart gerekir.
-- **Düzeltme:** `Start()`'ta yeni `stopCh` oluşturulmalı veya `sync.Once` yerine resetlenebilir mekanizma kullanılmalı.
+- **Kullanıcı etkisi (düzeltme öncesi):** Herhangi bir disconnect→reconnect döngüsü sonrası WhatsApp auto-reconnect kalıcı olarak ölür — uygulama restart gerekir.
 
 #### BUG-QH4: Import sonrası provider/orchestra yeniden başlatılmıyor
 

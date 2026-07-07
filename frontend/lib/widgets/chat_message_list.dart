@@ -131,7 +131,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
           final msg = widget.messages[index];
           return RepaintBoundary(
             child: _MessageBubble(
-              key: ValueKey('msg_${msg.hashCode}_$index'),
+              key: ValueKey('msg_${msg.timestamp}_$index'),
               message: msg,
               index: index,
               onEdit: widget.onEdit,

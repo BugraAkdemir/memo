@@ -417,6 +417,10 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleChats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
 	writeJSON(w, s.bridge.WebListChats())
 }
 
@@ -488,10 +492,18 @@ func (s *Server) handleRenameChat(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleActiveChat(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
 	writeJSON(w, map[string]string{"id": s.bridge.GetActiveChatID()})
 }
 
 func (s *Server) handleMessages(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
 	msgs := s.bridge.WebGetActiveMessages()
 	if msgs == nil {
 		writeJSON(w, []struct{}{})

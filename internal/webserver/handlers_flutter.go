@@ -717,6 +717,10 @@ func (s *Server) handleSyncDisconnect(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotFound)
 		return

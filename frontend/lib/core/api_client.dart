@@ -534,13 +534,21 @@ class MemoApiClient {
     );
   }
 
-  Future<DownloadProgress> getDownloadProgress() async {
+  Future<List<DownloadProgress>> getDownloadProgress() async {
     final res = await _dio.get('/api/models/download/progress');
-    return DownloadProgress.fromJson(_guard<Map<String, dynamic>>(res.data));
+    if (res.data is List) {
+      return (_guard<List>(res.data))
+          .map((e) => DownloadProgress.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
   }
 
-  Future<void> cancelDownload() async {
-    await _dio.post('/api/models/download/cancel');
+  Future<void> cancelDownload(String repoId, String filename) async {
+    await _dio.post(
+      '/api/models/download/cancel',
+      data: {'repo_id': repoId, 'filename': filename},
+    );
   }
 
   // ─── Llama Installation ─────────────────────────────────────────

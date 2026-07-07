@@ -86,7 +86,7 @@ final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
 // old "1 request/second forever" drain (KNOWN_ISSUES H16).
 
 final downloadProgressProvider =
-    StreamProvider.autoDispose<DownloadProgress>((ref) async* {
+    StreamProvider.autoDispose<List<DownloadProgress>>((ref) async* {
   var alive = true;
   ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
@@ -95,11 +95,11 @@ final downloadProgressProvider =
     var active = false;
     try {
       final progress = await api.getDownloadProgress();
-      active = progress.active;
+      active = progress.any((p) => p.active);
       yield progress;
     } catch (e) {
       debugPrint('models: downloadProgress error: $e');
-      yield const DownloadProgress();
+      yield const [];
     }
     await Future.delayed(Duration(seconds: active ? 1 : 4));
   }

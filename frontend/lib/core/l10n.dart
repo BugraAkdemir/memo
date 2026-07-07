@@ -556,6 +556,7 @@ class L10n {
     'engine_start_model': 'Model başlat',
     'engine_memory': 'Hafıza',
     'engine_open_models': 'Modeller',
+    'engine_downloading_models': 'Modeller iniyor',
 
     // Launchpad
     'launchpad_title': 'Hoş Geldin',
@@ -1291,6 +1292,7 @@ class L10n {
     'engine_start_model': 'Start a model',
     'engine_memory': 'Memory',
     'engine_open_models': 'Models',
+    'engine_downloading_models': 'Downloading models',
 
     // Launchpad
     'launchpad_title': 'Welcome',

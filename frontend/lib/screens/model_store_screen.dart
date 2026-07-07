@@ -1329,10 +1329,15 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
     final c = MemoTheme.of(context);
     final gpu = ref.watch(gpuInfoProvider).valueOrNull ?? const GPUInfo();
     final localModels = ref.watch(localModelsProvider).valueOrNull ?? [];
-    final downloadingNow =
-        ref.watch(downloadProgressProvider).valueOrNull?.active ?? false;
+    final downloads = ref.watch(downloadProgressProvider).valueOrNull ?? [];
     final installed = ref.watch(llamaInstalledProvider).valueOrNull ?? false;
     final item = widget.item;
+    // Only this repo+file counts — other files can download concurrently
+    // (e.g. the setup wizard's chat + memory model) without flipping this
+    // panel's button to "Cancel" for an unrelated download.
+    final downloadingNow = _selectedFile != null &&
+        downloads.any((p) =>
+            p.active && p.repoId == item.repoId && p.filename == _selectedFile!.filename);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),
@@ -1890,7 +1895,9 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
     } else if (downloadingNow) {
       button = Expanded(
         child: ElevatedButton.icon(
-          onPressed: () => ref.read(apiClientProvider).cancelDownload(),
+          onPressed: () => ref
+              .read(apiClientProvider)
+              .cancelDownload(widget.item.repoId, file.filename),
           icon: const Icon(Icons.stop_rounded, size: 18),
           label: Text(
             L10n.locale == MemoLocale.tr ? 'İptal Et' : 'Cancel',
@@ -2461,23 +2468,51 @@ class _RunningDot extends StatelessWidget {
 
 // ─── Download banner ──────────────────────────────────────────────
 
+/// Stacks one banner per in-flight (or errored) download — several files
+/// can now download at once (e.g. the setup wizard's chat + memory model).
 class _DownloadBanner extends ConsumerWidget {
   const _DownloadBanner();
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final c = MemoTheme.of(context);
-    final progress = ref.watch(downloadProgressProvider).valueOrNull;
+    final downloads = ref.watch(downloadProgressProvider).valueOrNull ?? [];
 
     ref.listen(downloadProgressProvider, (prev, next) {
-      final was = prev?.valueOrNull?.active ?? false;
-      final now = next.valueOrNull?.active ?? false;
-      final nowError = next.valueOrNull?.error;
-      if (was && !now && nowError == null) ref.invalidate(localModelsProvider);
+      final prevActive = {
+        for (final p in prev?.valueOrNull ?? const <DownloadProgress>[])
+          if (p.active) '${p.repoId}/${p.filename}': p,
+      };
+      final nextByKey = {
+        for (final p in next.valueOrNull ?? const <DownloadProgress>[])
+          '${p.repoId}/${p.filename}': p,
+      };
+      for (final key in prevActive.keys) {
+        final now = nextByKey[key];
+        final nowActive = now?.active ?? false;
+        final nowError = now?.error;
+        if (!nowActive && (nowError == null || nowError.isEmpty)) {
+          ref.invalidate(localModelsProvider);
+          break;
+        }
+      }
     });
 
-    if (progress == null) return const SizedBox.shrink();
-    if (!progress.active && progress.error == null) return const SizedBox.shrink();
+    final visible = downloads.where((p) => p.active || p.error != null).toList();
+    if (visible.isEmpty) return const SizedBox.shrink();
+
+    return Column(
+      children: [for (final p in visible) _DownloadBannerRow(progress: p)],
+    );
+  }
+}
+
+class _DownloadBannerRow extends ConsumerWidget {
+  final DownloadProgress progress;
+  const _DownloadBannerRow({required this.progress});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = MemoTheme.of(context);
 
     return Container(
       padding: const EdgeInsets.fromLTRB(28, 12, 28, 12),
@@ -2557,7 +2592,9 @@ class _DownloadBanner extends ConsumerWidget {
           ),
           const SizedBox(width: 8),
           IconButton(
-            onPressed: () => ref.read(apiClientProvider).cancelDownload(),
+            onPressed: () => ref
+                .read(apiClientProvider)
+                .cancelDownload(progress.repoId, progress.filename),
             icon: const Icon(Icons.close_rounded, size: 18),
             tooltip: L10n.locale == MemoLocale.tr
                 ? 'İndirmeyi iptal et'

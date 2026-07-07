@@ -4,6 +4,7 @@ import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/local_model.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
@@ -35,6 +36,9 @@ class EngineStrip extends ConsumerWidget {
 
     final chatRunning = status?.running ?? false;
     final embRunning = emb?.running ?? false;
+    final activeDownloads = (ref.watch(downloadProgressProvider).valueOrNull ?? [])
+        .where((d) => d.active && (d.error == null || d.error!.isEmpty))
+        .toList();
     final activeProviderType =
         ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
     final isApiProvider =
@@ -83,6 +87,13 @@ class EngineStrip extends ConsumerWidget {
                 await ref.read(apiClientProvider).stopEmbeddingModel();
                 ref.invalidate(embeddingStatusProvider);
               },
+            ),
+          ],
+          if (activeDownloads.isNotEmpty) ...[
+            if (chatRunning || isApiProvider || embRunning) _divider(c.borderSoft),
+            _DownloadIndicator(
+              downloads: activeDownloads,
+              onTap: onOpenModels,
             ),
           ],
           // Auto-permission indicator
@@ -284,6 +295,67 @@ class _OfflineHint extends StatelessWidget {
                   fontSize: 12,
                   fontWeight: FontWeight.w500,
                   color: MemoTheme.accent),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Ambient download status, always visible regardless of screen (this strip
+/// lives at the app-shell level). One download shows its filename; several
+/// at once collapse into a single "downloading models" label so the strip
+/// stays compact — with the percentage as the average of all of them.
+class _DownloadIndicator extends StatelessWidget {
+  final List<DownloadProgress> downloads;
+  final VoidCallback onTap;
+  const _DownloadIndicator({required this.downloads, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    final isMulti = downloads.length > 1;
+    final avgPercent =
+        downloads.map((d) => d.percent).reduce((a, b) => a + b) / downloads.length;
+    final label = isMulti
+        ? L10n.t('engine_downloading_models')
+        : p.basename(downloads.first.filename);
+
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: 14,
+              height: 14,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                value: avgPercent > 0 ? avgPercent / 100 : null,
+                color: MemoTheme.accent,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Icon(Icons.download_rounded, size: 14, color: c.textMuted),
+            const SizedBox(width: 6),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 160),
+              child: Text(
+                label,
+                style: TextStyle(
+                    fontSize: 12, fontWeight: FontWeight.w500, color: c.textMain),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            const SizedBox(width: 6),
+            Text(
+              '${avgPercent.toStringAsFixed(0)}%',
+              style: const TextStyle(
+                  fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.accent),
             ),
           ],
         ),

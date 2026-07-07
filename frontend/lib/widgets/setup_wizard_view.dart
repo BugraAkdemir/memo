@@ -307,13 +307,14 @@ Limits:
       _modelDownloadError = null;
     });
     try {
-      await _downloadCurated(recommendedChatModel(gpu));
+      // The backend downloads distinct repo+file pairs concurrently, so both
+      // start right away instead of waiting for one to finish first.
+      await Future.wait([
+        _downloadCurated(recommendedChatModel(gpu)),
+        _downloadCurated(recommendedMemoryModel),
+      ]);
       if (!mounted) return;
-      await _waitForDownloadIdle();
-      if (!mounted) return;
-      await _downloadCurated(recommendedMemoryModel);
-      if (!mounted) return;
-      await _waitForDownloadIdle();
+      await _waitForDownloadsIdle([recommendedChatModel(gpu), recommendedMemoryModel]);
       if (mounted) setState(() => _modelDownloadDone = true);
     } catch (e) {
       if (mounted) setState(() => _modelDownloadError = e.toString());
@@ -330,19 +331,21 @@ Limits:
     await api.downloadModel(model.repoId, file.filename, expectedSize: file.size);
   }
 
-  /// Polls until the current backend download finishes, so the chat model
-  /// and memory model download one after another — the backend only allows
-  /// a single active download at a time.
-  Future<void> _waitForDownloadIdle() async {
+  /// Polls until none of [models]' downloads are still active. A download no
+  /// longer present in the backend's list has already finished successfully
+  /// (the backend prunes completed entries after a few seconds).
+  Future<void> _waitForDownloadsIdle(List<CuratedModel> models) async {
     final api = ref.read(apiClientProvider);
+    final repoIds = models.map((m) => m.repoId).toSet();
     while (true) {
       final progress = await api.getDownloadProgress();
-      if (!progress.active) {
-        if (progress.error != null && progress.error!.isNotEmpty) {
-          throw Exception(progress.error);
+      final relevant = progress.where((p) => repoIds.contains(p.repoId)).toList();
+      for (final p in relevant) {
+        if (p.active && p.error != null && p.error!.isNotEmpty) {
+          throw Exception(p.error);
         }
-        return;
       }
+      if (relevant.every((p) => !p.active)) return;
       await Future.delayed(const Duration(seconds: 1));
     }
   }
@@ -651,13 +654,22 @@ Limits:
                             Consumer(
                               builder: (context, ref, _) {
                                 final gpuAsync = ref.watch(gpuInfoProvider);
-                                final dlAsync = ref.watch(downloadProgressProvider);
+                                final gpu = gpuAsync.valueOrNull ?? const GPUInfo();
+                                final downloads =
+                                    ref.watch(downloadProgressProvider).valueOrNull ?? [];
+                                final repoIds = {
+                                  recommendedChatModel(gpu).repoId,
+                                  recommendedMemoryModel.repoId,
+                                };
+                                final ourDownloads = downloads
+                                    .where((p) => repoIds.contains(p.repoId))
+                                    .toList();
                                 return _ModelRecommendationCard(
                                   color: c,
                                   isTurkish: isTurkish,
                                   checking: _checking,
-                                  gpu: gpuAsync.valueOrNull ?? const GPUInfo(),
-                                  downloadProgress: dlAsync.valueOrNull,
+                                  gpu: gpu,
+                                  downloads: ourDownloads,
                                   alreadyHasModels: _modelsOk,
                                   localModelCount: _localModelCount,
                                   downloadStarted: _modelDownloadStarted,
@@ -930,7 +942,7 @@ class _ModelRecommendationCard extends StatelessWidget {
   final bool isTurkish;
   final bool checking;
   final GPUInfo gpu;
-  final DownloadProgress? downloadProgress;
+  final List<DownloadProgress> downloads;
   final bool alreadyHasModels;
   final int localModelCount;
   final bool downloadStarted;
@@ -943,7 +955,7 @@ class _ModelRecommendationCard extends StatelessWidget {
     required this.isTurkish,
     required this.checking,
     required this.gpu,
-    required this.downloadProgress,
+    required this.downloads,
     required this.alreadyHasModels,
     required this.localModelCount,
     required this.downloadStarted,
@@ -1091,16 +1103,14 @@ class _ModelRecommendationCard extends StatelessWidget {
             ],
           )
         else ...[
-          _DownloadProgressRow(
-            progress: downloadProgress,
-            color: color,
-            isTurkish: isTurkish,
-          ),
-          SizedBox(height: 6),
+          for (final d in downloads) ...[
+            _DownloadProgressRow(progress: d, color: color, isTurkish: isTurkish),
+            SizedBox(height: 8),
+          ],
           Text(
             isTurkish
-                ? 'İndirme arka planda sürüyor — kuruluma devam edebilirsin.'
-                : 'Download continues in the background — you can keep going with setup.',
+                ? 'İndirmeler arka planda sürüyor — kuruluma devam edebilirsin.'
+                : 'Downloads continue in the background — you can keep going with setup.',
             style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
           ),
         ],
@@ -1147,7 +1157,7 @@ class _SpecRow extends StatelessWidget {
 }
 
 class _DownloadProgressRow extends StatelessWidget {
-  final DownloadProgress? progress;
+  final DownloadProgress progress;
   final ThemeColors color;
   final bool isTurkish;
 
@@ -1160,10 +1170,9 @@ class _DownloadProgressRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final p = progress;
-    final pct = (p?.percent ?? 0).clamp(0, 100).toDouble();
-    final label =
-        p != null && p.filename.isNotEmpty ? p.filename : (isTurkish ? 'Hazırlanıyor...' : 'Preparing...');
-    final speedSuffix = p != null && p.speed.isNotEmpty ? ' (${p.speed})' : '';
+    final pct = p.percent.clamp(0, 100).toDouble();
+    final label = p.filename.isNotEmpty ? p.filename : (isTurkish ? 'Hazırlanıyor...' : 'Preparing...');
+    final speedSuffix = p.speed.isNotEmpty ? ' (${p.speed})' : '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

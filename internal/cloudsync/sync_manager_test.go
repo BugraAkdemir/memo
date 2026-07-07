@@ -4,9 +4,12 @@ import (
 	"archive/zip"
 	"bytes"
 	"context"
+	"database/sql"
 	"os"
 	"path/filepath"
 	"testing"
+
+	_ "github.com/mattn/go-sqlite3"
 )
 
 // TestArchiveIncludesSQLiteWALSidecars verifies that SQLite databases using
@@ -24,8 +27,11 @@ func TestArchiveIncludesSQLiteWALSidecars(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Memory store files (WAL mode)
-	writeFile(t, filepath.Join(persistDir, "memory.db"), []byte("main db"))
+	// Memory store files (WAL mode). archive() now runs a real
+	// `PRAGMA wal_checkpoint(TRUNCATE)` against these before copying them, so
+	// they must be genuine SQLite databases — a checkpoint against a
+	// plain-text stand-in file fails and causes the file to be skipped.
+	writeSQLiteDB(t, filepath.Join(persistDir, "memory.db"))
 	writeFile(t, filepath.Join(persistDir, "memory.db-wal"), []byte("wal data"))
 	writeFile(t, filepath.Join(persistDir, "memory.db-shm"), []byte("shm data"))
 
@@ -33,7 +39,7 @@ func TestArchiveIncludesSQLiteWALSidecars(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(dataDir, "mood"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	writeFile(t, filepath.Join(dataDir, "mood", "mood.db"), []byte("mood db"))
+	writeSQLiteDB(t, filepath.Join(dataDir, "mood", "mood.db"))
 	writeFile(t, filepath.Join(dataDir, "mood", "mood.db-wal"), []byte("mood wal"))
 	// mood.db-shm intentionally missing to verify missing sidecars are ignored.
 
@@ -138,6 +144,23 @@ func TestRestoreExtractsWALSidecars(t *testing.T) {
 func writeFile(t *testing.T, path string, data []byte) {
 	t.Helper()
 	if err := os.WriteFile(path, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// writeSQLiteDB creates a real, openable SQLite database at path. archive()
+// runs `PRAGMA wal_checkpoint(TRUNCATE)` against memory.db/mood.db before
+// archiving them, which fails (and causes the file to be skipped) against a
+// plain-text stand-in — so tests that exercise the happy path need a genuine
+// database file.
+func writeSQLiteDB(t *testing.T, path string) {
+	t.Helper()
+	db, err := sql.Open("sqlite3", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	if _, err := db.Exec("CREATE TABLE t (id INTEGER PRIMARY KEY)"); err != nil {
 		t.Fatal(err)
 	}
 }

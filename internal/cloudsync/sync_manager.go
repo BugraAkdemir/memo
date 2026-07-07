@@ -422,23 +422,38 @@ func (m *Manager) archive() ([]byte, error) {
 	memDB := filepath.Join(m.persistDir, "memory.db")
 
 	// Force a WAL checkpoint so committed data is flushed to the main DB file
-	// before we copy it. This prevents data loss in backups.
-	if db, err := sql.Open("sqlite3", memDB); err == nil {
-		db.Exec("PRAGMA wal_checkpoint(TRUNCATE)")
-		db.Close()
+	// before we copy it. This prevents data loss in backups. If checkpointing
+	// fails (DB locked, I/O error) we must NOT silently archive a memory.db
+	// that may be missing recent transactions — log it clearly and skip this
+	// file for the current backup instead.
+	memDBOK := true
+	if _, statErr := os.Stat(memDB); statErr == nil {
+		if db, err := sql.Open("sqlite3", memDB); err == nil {
+			if _, chkErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); chkErr != nil {
+				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for memory.db: %v — skipping memory.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
+				memDBOK = false
+			}
+			db.Close()
+		} else {
+			logx.Printf("cloudsync: WARN could not open memory.db for WAL checkpoint: %v", err)
+		}
 	}
 
-	if err := addFile(memDB, "memory/memory.db"); err == nil {
-		added++
-		logx.Printf("cloudsync: archived memory.db")
-	} else if !os.IsNotExist(err) {
-		logx.Printf("cloudsync: WARN skipping memory.db: %v", err)
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		if err := addFile(memDB+suffix, "memory/memory.db"+suffix); err == nil {
+	if memDBOK {
+		if err := addFile(memDB, "memory/memory.db"); err == nil {
 			added++
-			logx.Printf("cloudsync: archived memory.db%s", suffix)
+			logx.Printf("cloudsync: archived memory.db")
+		} else if !os.IsNotExist(err) {
+			logx.Printf("cloudsync: WARN skipping memory.db: %v", err)
 		}
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if err := addFile(memDB+suffix, "memory/memory.db"+suffix); err == nil {
+				added++
+				logx.Printf("cloudsync: archived memory.db%s", suffix)
+			}
+		}
+	} else {
+		m.emitError("Cloud backup: WAL checkpoint failed for memory.db — memory.db was skipped in this backup")
 	}
 
 	// 2. Legacy .gob files (chromem-go; may be absent on new installs)
@@ -482,17 +497,36 @@ func (m *Manager) archive() ([]byte, error) {
 		}
 	}
 
-	// 5. Mood DB + WAL sidecars
+	// 5. Mood DB + WAL sidecars.
+	// Same WAL checkpoint treatment as memory.db above: without it, WAL-only
+	// mood records would be missing from the archived mood.db.
 	moodDB := filepath.Join(m.dataDir, "mood", "mood.db")
-	if err := addFile(moodDB, "mood/mood.db"); err == nil {
-		added++
-		logx.Printf("cloudsync: archived mood.db")
-	}
-	for _, suffix := range []string{"-wal", "-shm"} {
-		if err := addFile(moodDB+suffix, "mood/mood.db"+suffix); err == nil {
-			added++
-			logx.Printf("cloudsync: archived mood.db%s", suffix)
+	moodDBOK := true
+	if _, statErr := os.Stat(moodDB); statErr == nil {
+		if db, err := sql.Open("sqlite3", moodDB); err == nil {
+			if _, chkErr := db.Exec("PRAGMA wal_checkpoint(TRUNCATE)"); chkErr != nil {
+				logx.Printf("cloudsync: ERROR wal_checkpoint(TRUNCATE) failed for mood.db: %v — skipping mood.db in this backup to avoid archiving a possibly-incomplete database", chkErr)
+				moodDBOK = false
+			}
+			db.Close()
+		} else {
+			logx.Printf("cloudsync: WARN could not open mood.db for WAL checkpoint: %v", err)
 		}
+	}
+
+	if moodDBOK {
+		if err := addFile(moodDB, "mood/mood.db"); err == nil {
+			added++
+			logx.Printf("cloudsync: archived mood.db")
+		}
+		for _, suffix := range []string{"-wal", "-shm"} {
+			if err := addFile(moodDB+suffix, "mood/mood.db"+suffix); err == nil {
+				added++
+				logx.Printf("cloudsync: archived mood.db%s", suffix)
+			}
+		}
+	} else {
+		m.emitError("Cloud backup: WAL checkpoint failed for mood.db — mood.db was skipped in this backup")
 	}
 
 	// 6. Learned patterns
@@ -595,7 +629,12 @@ func (m *Manager) restoreZip(zipData []byte) error {
 		if err != nil {
 			return fmt.Errorf("cloudsync: restore open zip entry %q: %w", zf.Name, err)
 		}
-		out, err := os.Create(tmpDest)
+		// Restored files (memory.db, mood.db, sessions/*.json, providers.json,
+		// permissions.json, orchestra.json, patterns.json) all live under the
+		// data directory and may contain sensitive data (e.g. encrypted API
+		// keys in providers.json), so write them with owner-only permissions
+		// rather than relying on os.Create's default (~0644).
+		out, err := os.OpenFile(tmpDest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 		if err != nil {
 			rc.Close()
 			return fmt.Errorf("cloudsync: restore create tmp %s: %w", tmpDest, err)
@@ -640,7 +679,7 @@ func copyRestoreFile(src, dst string) error {
 		return err
 	}
 	defer in.Close()
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0600)
 	if err != nil {
 		return err
 	}

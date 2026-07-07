@@ -668,7 +668,17 @@ func rateLimitMiddleware(stop <-chan struct{}, next http.Handler) http.Handler {
 	}()
 
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// r.RemoteAddr includes the ephemeral source port (e.g.
+		// "127.0.0.1:54321"), which is different for every new TCP
+		// connection — keying the bucket map on the full RemoteAddr gave
+		// every single connection its own fresh bucket, so the 100 req/s
+		// limit was trivially bypassed by opening new connections (which
+		// e.g. a browser or a simple retry loop does routinely) rather than
+		// reusing one. Strip the port so the bucket is actually per-IP.
 		ip := r.RemoteAddr
+		if host, _, err := net.SplitHostPort(r.RemoteAddr); err == nil {
+			ip = host
+		}
 		// Do NOT trust X-Forwarded-For without a trusted proxy configuration —
 		// on LAN deployments an attacker can rotate spoofed IPs to bypass rate
 		// limiting entirely.

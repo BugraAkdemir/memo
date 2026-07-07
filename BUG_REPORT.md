@@ -750,10 +750,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/screens/agent_screen.dart:258-266`
 - **Nedir:** ChatScreen `statusText: streamingStatus` geçiyor ama AgentScreen geçirmiyor. Web search göstergesi agent ekranda çalışmıyor.
 
-#### BUG-FM17: Test connection sonucu provider state'e persist edilmiyor
+#### BUG-FM17: ~~Test connection sonucu provider state'e persist edilmiyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `b9addb4`
+- **Düzeltme:** Asıl sorun, test sonucunun save'de kaybolması değil, alanlar değiştikten sonra ESKİ test sonucunun yanlışlıkla gösterilmeye devam etmesiydi — API key/URL/model controller'larına listener eklenip değişiklikte `_testResult` sıfırlanıyor.
 - **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart:155-173`
 - **Nedir:** Test sonucu dialog içinde gösteriliyor ama save sırasında yeni bir config objesi oluşturuluyor, test sonucu kayboluyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM18: ~~Permission dialog timeout yok~~ **→ DÜZELTİLDİ (2026-07-07)**
 - **Commit:** `d57bf18`

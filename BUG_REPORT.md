@@ -1035,12 +1035,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Dosya:** `internal/webserver/server.go:690`
 - **Nedir:** `r.RemoteAddr` port dahil — her TCP bağlantısı farklı source port aldığı için token bucket ayrı tutuluyor. 100 req/s limiti localhost'tan aşılabilir.
 
-#### BUG-QM4: WhatsApp stream cancel hata gösteriyor
+#### BUG-QM4: ~~WhatsApp stream cancel hata gösteriyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `bb7bc38`
+- **Düzeltme:** `on DioException catch (e) { if (e.type == DioExceptionType.cancel) return; ... }` diğer iki stream method'uyla birebir aynı pattern'e eklendi. (Bu ortamda Flutter SDK yok, `flutter analyze/test` çalıştırılamadı — kod okuması ve referans implementasyonlarla karşılaştırmayla doğrulandı.)
 
 - **Dosya:** `frontend/lib/core/api_client.dart:1140-1142`
-- **Trigger:** WhatsApp mesajı gönderilirken Stop butonuna basılır.
 - **Nedir:** `sendWhatsAppChatStream` `DioExceptionType.cancel`'ı yakalamıyor (diğer iki stream method'u yakalıyor). Hata snackbar'ı kullanıcıya hatalı görünüyor.
-- **Düzeltme:** `on DioException catch (e) { if (e.type == DioExceptionType.cancel) return; }` eklenmeli.
 
 #### BUG-QM5: Agent sidebar "New Chat" hatası yutuyor
 

@@ -106,12 +106,34 @@ func TestCopyFile(t *testing.T) {
 		t.Fatalf("WriteFile failed: %v", err)
 	}
 
-	if err := copyFile(src, dst); err != nil {
+	if err := copyFile(src, dst, 0600); err != nil {
 		t.Fatalf("copyFile failed: %v", err)
 	}
 
 	got, _ := os.ReadFile(dst)
 	if string(got) != string(data) {
 		t.Errorf("content = %q, want %q", string(got), string(data))
+	}
+}
+
+func TestCopyFileUsesGivenPerm(t *testing.T) {
+	dir := t.TempDir()
+	src := filepath.Join(dir, "src.txt")
+	dst := filepath.Join(dir, "dst.txt")
+
+	if err := os.WriteFile(src, []byte("copy me"), 0644); err != nil {
+		t.Fatalf("WriteFile failed: %v", err)
+	}
+
+	if err := copyFile(src, dst, 0600); err != nil {
+		t.Fatalf("copyFile failed: %v", err)
+	}
+
+	info, err := os.Stat(dst)
+	if err != nil {
+		t.Fatalf("Stat failed: %v", err)
+	}
+	if info.Mode()&os.ModePerm != 0600 {
+		t.Errorf("mode = %o, want 0600", info.Mode()&os.ModePerm)
 	}
 }

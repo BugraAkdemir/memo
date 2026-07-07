@@ -20,10 +20,16 @@ import (
 func AtomicWrite(path string, data []byte, perm fs.FileMode) error {
 	tmp := path + ".tmp"
 	if err := os.WriteFile(tmp, data, perm); err != nil {
+		// os.WriteFile may have created the file before failing partway
+		// through the write (e.g. disk full); clean up best-effort so we
+		// don't leave a partial .tmp file behind.
+		os.Remove(tmp)
 		return err
 	}
 	if err := os.Rename(tmp, path); err != nil {
-		if copyErr := copyFile(tmp, path); copyErr != nil {
+		if copyErr := copyFile(tmp, path, perm); copyErr != nil {
+			// Best-effort cleanup; don't let a cleanup error mask the
+			// original rename error.
 			os.Remove(tmp)
 			return err // return the original rename error
 		}
@@ -32,14 +38,14 @@ func AtomicWrite(path string, data []byte, perm fs.FileMode) error {
 	return nil
 }
 
-func copyFile(src, dst string) error {
+func copyFile(src, dst string, perm fs.FileMode) error {
 	in, err := os.Open(src)
 	if err != nil {
 		return err
 	}
 	defer in.Close()
 
-	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0666)
+	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, perm)
 	if err != nil {
 		return err
 	}

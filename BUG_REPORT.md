@@ -282,12 +282,14 @@
 - **Kullanıcı etkisi:** Undo işlemi, diske yazılamamış ama bellekte var olan bir backup'a referans verip **dosya bulunamadı hatası** alabilir.
 - **Düzeltme:** Write hatası kontrol edilmeli, başarısız olursa in-memory state de geri alınmalı.
 
-### BUG-M6: `startupTailscale` goroutine'i web sunucusu kurulmadan çalışıyor → hiç çalışmaz
+### BUG-M6: ~~`startupTailscale` goroutine'i web sunucusu kurulmadan çalışıyor → hiç çalışmaz~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `b1ecd8b`
+- **Düzeltme:** `go a.startupTailscale()` çağrısı `Startup()`'tan alınıp `StartWebServerHTTP()`'in sonuna, `a.webServer` set edildikten hemen sonra taşındı. Böylece `getWebServer()` artık güvenilir şekilde çalışan sunucuyu döndürüyor ve `startTailscale`'in kendi `ws.GetPort()` düzeltmesi de devreye giriyor.
 
 - **Dosya:** `internal/app/app.go:342`, `internal/app/remote_tailscale.go:126-143`, `main.go:26-30`
 - **Nedir:** `Startup()` içinde `go a.startupTailscale()` çağrılır (app.go:342). Ancak `StartWebServerHTTP()` **daha sonra** main.go:30'da çağrılır. `startupTailscale()` içinde `a.getWebServer()` nil döner, `ws != nil` kontrolü başarısız olur ve fonksiyon sessizce return eder. Tailscale otomatik başlatma **hiçbir zaman tetiklenmez**.
-- **Kullanıcı etkisi:** "Tailscale auto-start" ayarı açık olsa bile **çalışmaz**. Kullanıcı manuel başlatmak zorunda kalır.
-- **Düzeltme:** `startupTailscale()` çağrısı `StartWebServerHTTP` sonrasına alınmalı, veya web server set edilene kadar retry mekanizması eklenmeli.
+- **Kullanıcı etkisi (düzeltme öncesi):** "Tailscale auto-start" ayarı açık olsa bile **çalışmaz**. Kullanıcı manuel başlatmak zorunda kalır.
 
 ### BUG-M7: ~~Flutter type-unsafe `_guard<List>.cast<Map>()` → iterator anında TypeError~~ **→ DÜZELTİLDİ (2026-07-07)**
 

@@ -57,6 +57,16 @@ Name: "{app}\data\agent-backups"
 Name: "{commonappdata}\{#MyAppName}\data"; Permissions: users-full
 Name: "{commonappdata}\{#MyAppName}\config"; Permissions: users-full
 
+[UninstallDelete]
+; Flutter's shared_preferences_windows plugin stores app-level UI prefs
+; (setup wizard completed, language, theme, onboarding tour seen) under
+; %APPDATA%\com.memo\<ProductName>, keyed by this exe's CompanyName/ProductName
+; (see frontend/windows/runner/Runner.rc), independent of which Memo
+; build/version is installed. Without this, those prefs silently survive a
+; full uninstall+reinstall and the setup wizard never reappears on what
+; looks like a fresh install.
+Type: filesandordirs; Name: "{userappdata}\com.memo"
+
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\launch.vbs"; WorkingDir: "{app}"; IconFilename: "{app}\memo_flutter.exe"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\launch.vbs"; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\memo_flutter.exe"

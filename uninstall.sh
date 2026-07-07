@@ -41,6 +41,7 @@ echo -e "  ${RED}▸${NC} ~/.memo/         (app, config, data, engine binaries)"
 echo -e "  ${RED}▸${NC} ~/.local/bin/memo  (CLI wrapper)"
 echo -e "  ${RED}▸${NC} ~/.local/share/applications/memo.desktop"
 echo -e "  ${RED}▸${NC} ~/.local/share/icons/hicolor/*/apps/memo.png"
+echo -e "  ${RED}▸${NC} ~/.local/share/com.memo.memo_flutter/  (app preferences: language, theme, setup wizard)"
 echo ""
 
 # ── memory backup ────────────────────────────────────────────────────────────
@@ -136,6 +137,18 @@ rm -f "$HOME/.local/share/applications/memo.desktop"
 
 echo -e "  ${RED}▸${NC} Icons"
 rm -f "$HOME/.local/share/icons/hicolor/"*"/apps/memo.png" 2>/dev/null || true
+
+# Flutter's shared_preferences_linux plugin stores app-level UI prefs
+# (setup wizard completed, language, theme, onboarding tour seen) here,
+# keyed by the app's fixed APPLICATION_ID (frontend/linux/CMakeLists.txt),
+# independent of which Memo build/version is installed. Without removing
+# this, those prefs silently survive a full uninstall+reinstall and the
+# setup wizard never reappears on what looks like a fresh install.
+echo -e "  ${RED}▸${NC} App preferences"
+rm -rf "$HOME/.local/share/com.memo.memo_flutter"
+
+# Same data on macOS lives in NSUserDefaults, backed by this plist.
+rm -f "$HOME/Library/Preferences/com.bugrakaptan.memo.plist" 2>/dev/null || true
 
 # Clean PATH entries from shell configs
 for rc in "$HOME/.bashrc" "$HOME/.zshrc" "$HOME/.config/fish/config.fish"; do

@@ -27,6 +27,19 @@ type DB struct {
 	wg      sync.WaitGroup
 	ctx     context.Context
 	cancel  context.CancelFunc
+
+	// closeMu/closed coordinate Write() against Close() to close a real
+	// deadlock: without them, a Write() call racing Close() could have its
+	// task admitted into writeCh's buffer *after* writeLoop already saw
+	// ctx.Done(), drained whatever was queued at that instant, and returned
+	// — orphaning the task forever with nobody left to send to its done
+	// channel, so the caller blocks on <-done indefinitely. Write() holds a
+	// read lock for its entire body (send + wait for done); Close() takes
+	// the write lock before cancelling, which can only succeed once every
+	// in-flight Write() has fully finished, so writeLoop never exits out
+	// from under a task that's still being submitted.
+	closeMu sync.RWMutex
+	closed  bool
 }
 
 type writeTask struct {
@@ -161,6 +174,14 @@ func (db *DB) execWrite(ctx context.Context, fn func(tx *sql.Tx) error) error {
 }
 
 func (db *DB) Write(ctx context.Context, fn func(tx *sql.Tx) error) error {
+	// Held for the whole call (see the closeMu field doc) so Close() cannot
+	// tear down writeLoop while this task is still being submitted/awaited.
+	db.closeMu.RLock()
+	defer db.closeMu.RUnlock()
+	if db.closed {
+		return fmt.Errorf("database: closed")
+	}
+
 	done := make(chan error, 1)
 	task := writeTask{ctx: ctx, fn: fn, done: done}
 
@@ -205,6 +226,14 @@ func (db *DB) QueryRowContext(ctx context.Context, query string, args ...any) *s
 }
 
 func (db *DB) Close() error {
+	// Blocks until every in-flight Write() has released its read lock (i.e.
+	// fully submitted its task and received its result), so writeLoop below
+	// can never be cancelled out from under a task that's still mid-send —
+	// see the closeMu field doc for the deadlock this closes.
+	db.closeMu.Lock()
+	db.closed = true
+	db.closeMu.Unlock()
+
 	db.cancel()
 	db.wg.Wait()
 	return db.sql.Close()

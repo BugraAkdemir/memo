@@ -81,7 +81,41 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (_) {}
   }
 
+  /// If the passphrase field is empty, warns the user that their backup will
+  /// be encrypted with a key derived from this device's machine ID and will
+  /// not be restorable from any other device. Returns true if the user
+  /// explicitly chooses to proceed anyway (or if a passphrase is set).
+  Future<bool> _confirmEmptyPassphraseIfNeeded() async {
+    if (_passphraseCtrl.text.trim().isNotEmpty) return true;
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Şifreleme Parolası Boş'),
+        content: const Text(
+          'Bir şifreleme parolası girmediniz. Bu durumda yedekleriniz bu '
+          'cihazın kimliğinden türetilen bir anahtarla şifrelenir ve SADECE '
+          'bu cihazdan geri yüklenebilir. Başka bir cihaza geçerseniz bu '
+          'yedeği açamazsınız.\n\n'
+          'Devam etmeden önce bir parola belirlemenizi öneririz.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Parola Belirle'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: MemoTheme.warmBrown),
+            child: const Text('Cihaza Özel Devam Et'),
+          ),
+        ],
+      ),
+    );
+    return proceed == true;
+  }
+
   Future<void> _saveCredentials() async {
+    if (!await _confirmEmptyPassphraseIfNeeded()) return;
     setState(() { _cloudOp = 'saving'; });
     try {
       await ref.read(apiClientProvider).updateSyncSettings(
@@ -115,6 +149,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       );
       return;
     }
+    if (!await _confirmEmptyPassphraseIfNeeded()) return;
     setState(() { _cloudOp = 'connecting'; });
     try {
       await ref.read(apiClientProvider).updateSyncSettings(
@@ -132,22 +167,45 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       }
       // Yetkilendirme tamamlanana kadar her 3 saniyede bir sorgula (max 2 dk)
       int attempts = 0;
+      int consecutiveFailures = 0;
+      const maxConsecutiveFailures = 4;
       _authPollTimer?.cancel();
       _authPollTimer = Timer.periodic(const Duration(seconds: 3), (t) async {
         attempts++;
         if (attempts > 40) {
           t.cancel();
-          if (mounted) setState(() { _cloudOp = ''; });
+          if (mounted) {
+            setState(() { _cloudOp = ''; });
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Yetkilendirme zaman aşımına uğradı. Lütfen tekrar deneyin.')),
+            );
+          }
           return;
         }
         try {
           final done = await ref.read(apiClientProvider).checkSyncAuth();
+          consecutiveFailures = 0;
           if (done) {
             t.cancel();
             await _loadCloudStatus();
             if (mounted) setState(() { _cloudOp = ''; });
           }
-        } catch (_) {}
+        } catch (_) {
+          consecutiveFailures++;
+          if (consecutiveFailures >= maxConsecutiveFailures) {
+            t.cancel();
+            if (mounted) {
+              setState(() { _cloudOp = ''; });
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    'Yetkilendirme durumu kontrol edilemiyor. Bağlantınızı kontrol edip tekrar deneyin.',
+                  ),
+                ),
+              );
+            }
+          }
+        }
       });
     } catch (e) {
       if (mounted) {

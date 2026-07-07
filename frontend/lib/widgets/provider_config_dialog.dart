@@ -240,6 +240,14 @@ class _ProviderConfigDialogState
       // doesn't get suffixed — but renaming onto ANOTHER provider's name still
       // gets disambiguated instead of silently overwriting it.
       final finalName = _uniqueName(desiredName, exclude: existing?.name);
+      if (finalName != desiredName && mounted) {
+        // _uniqueName silently disambiguated the name the user actually
+        // typed — tell them, so "Claude" quietly becoming "Claude 2" in the
+        // provider list isn't a surprise they have to notice on their own.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('"$desiredName" zaten var, "$finalName" olarak kaydedildi')),
+        );
+      }
 
       // Trim every free-text field: a stray space/tab pasted into a model id or
       // key silently breaks requests (e.g. an invalid model that stalls the API).

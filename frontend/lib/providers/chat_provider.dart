@@ -195,11 +195,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     _cancelToken?.cancel();
     _cancelToken = null;
     ref.read(isSendingProvider.notifier).state = false;
-      ref.read(streamingContentProvider.notifier).state = '';
-      ref.read(streamingThinkingProvider.notifier).state = '';
-      ref.read(streamingAgentEventsProvider.notifier).state = [];
-      ref.read(streamingStatusProvider.notifier).state = '';
+    ref.read(streamingContentProvider.notifier).state = '';
+    ref.read(streamingThinkingProvider.notifier).state = '';
     ref.read(streamingAgentEventsProvider.notifier).state = [];
+    ref.read(streamingStatusProvider.notifier).state = '';
   }
 
   Future<void> refresh() async {

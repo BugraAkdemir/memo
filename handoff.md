@@ -1,3 +1,125 @@
+# Handoff — 2026-07-07 (Session 18) — Model önerisi + eşzamanlı indirme + sessiz RAG hatası + test kapsamı
+
+## Oturum Özeti
+
+Uzun, karma bir oturum: küçük bir crash fix'ten başlayıp donanıma göre model önerisi özelliğine, oradan backend'in tek-seferde-tek-indirme kısıtına, kullanıcının kendi sorusuyla bulduğumuz sessiz bir RAG hatasına, ve son olarak hem frontend hem backend'de gerçek test kapsamı eklemeye uzandı. 9 commit, hepsi ayrı ayrı, İngilizce, attribution'sız (`4346096`..`42c3d3b`).
+
+## Yapılanlar
+
+### 1. Crash fix: `ref.listen` initState'te çağrılıyordu (`4346096`)
+Kullanıcının gönderdiği ekran görüntüsünde `ChatInput` her mount olduğunda kırmızı hata sayfası veriyordu: `ref.listen can only be used within the build method`. Kök sebep: `chat_input.dart`'ta `activeChatIdProvider` dinleyicisi `initState()` içindeydi. `build()`'e taşındı, `flutter analyze` temiz.
+
+### 2. Donanıma göre model önerisi — setup wizard'a yeni adım (`bee551e`, `33f7f58`)
+Kullanıcı: uygulama sadece geliştiricilere değil, "interneti olmadığında yapay zeka istiyorum" diyen en basit kullanıcıya da hitap etmeli. İlk kurulum sihirbazına yeni bir "Model Önerisi" adımı eklendi:
+- `curated_models.dart`'a `recommendedChatModel(GPUInfo)` / `recommendedMemoryModel` saf fonksiyonları (testli) — donanıma göre en uygun modeli seçiyor.
+- RAM/GPU'yu sade dille gösteriyor, "Bu Modelleri İndir" butonu iki modeli de indirmeye başlatıyor, ilerleme arka planda gösteriliyor, kurulum indirme bitmeden tamamlanabiliyor.
+- Zaten model kuruluysa gereksiz öneri yerine kısa bir onay gösteriyor.
+- Görsel doğrulama: izole bir test build'i + gerçek backend'e karşı ekran görüntüsüyle.
+
+### 3. Backend: eşzamanlı model indirme desteği (`d41c761`, `f803312`)
+Kullanıcı geri bildirimi: "1-2 model aynı anda inerken sadece birini görebiliyoruz, indirme durumu her yerde (chat inputun altındaki bar) görünsün." Kök sebep: `modelstore.Store` tek bir `*DownloadProgress` alanı tutuyordu, ikinci `DownloadModel` çağrısı "another download in progress" hatasıyla reddediliyordu.
+- Backend: tek-slot yerine repo+dosya anahtarlı map'e geçildi — farklı dosyalar gerçekten eşzamanlı iniyor. `GetDownloadProgress()` artık liste dönüyor, `CancelDownload(repoID, filename)` artık hedefli. REPL CLI de güncellendi.
+- Frontend: Model Mağazası'nın indirme banner'ı artık liste (alt alta), `EngineStrip`'e (chat inputun altındaki, her ekranda görünen bar) yeni bir gösterge eklendi — tek indirme dosya adı+yüzde, çoklu indirme "Modeller iniyor" + ortalama yüzde gösteriyor.
+- Canlı doğrulama: backend yeniden derlenip nazikçe yeniden başlatıldı (`/api/shutdown` ile), curl ile eşzamanlı indirme + yinelenen-anahtar reddi + iptal test edildi, ekran görüntüsüyle "Modeller iniyor %51" doğrulandı.
+
+### 4. Kullanıcının tek sorusuyla bulunan gerçek bug: sessiz RAG hatası (`6ce158a`)
+Kullanıcı ekran görüntüsünde Model Yöneticisi boş ama alt barda bir embedding modelinin "çalışıyor" göründüğünü fark etti — araştırınca bu, benim test sırasında indirip sonra dosyasını silmeden önce durdurmadığım bir "hayalet" process'ti (`/api/models/embedding/stop` ile düzeltildi). Ama bu arayış **gerçek ve önceden var olan bir hata** ortaya çıkardı: `autoStartEmbeddingModel` embedding modeli bulamadığında sadece backend logu + hiç kimsenin okumadığı bir `memory:error` eventi üretiyordu — kullanıcı arayüzünde hiçbir uyarı yoktu, Hafıza (RAG) sessizce çalışmıyordu.
+- Düzeltme: `EngineStrip`'e yeni bir uyarı — Hafıza açık ama embedding çalışmıyorsa "Hafıza modeli yok · model indir" ya da "Hafıza kapalı — RAG çalışmıyor · başlat", tıklayınca Modeller sekmesine gidiyor.
+
+### 5. CI kırığı düzeltmesi (`3220e82`)
+GitHub Actions `flutter analyze --no-fatal-infos` exit code 1 veriyordu — `agent_screen.dart` ve `chat_screen.dart`'ta önceden var olan, kullanılmayan `import '../models/agent.dart'` satırları (warning seviyesi, `--no-fatal-infos` bunu yumuşatmıyor). Bu oturumun değişiklikleriyle ilgisizdi, düzeltildi.
+
+### 6. Test kapsamı — frontend (`b4f878d`)
+Kullanıcı sordu: "test eksikliğini nasıl giderecez". Gerçek ölçüm: `frontend/test/` fiilen boştu (sadece model sınıfları + 1 placeholder), gerçek kapsama tüm `lib/`'in **~%1.2**'si. Eklenenler:
+- `test/providers/settings_provider_test.dart` (9 test) — `SetupCompleteNotifier`/`LaunchpadSeenNotifier`/`TourSeenNotifier`, `SharedPreferences.setMockInitialValues()` ile ağsız.
+- `test/widgets/engine_strip_test.dart` (10 test) — bugünün en riskli widget'ını (`EngineStrip`) gerçek widget ağacı olarak render edip doğruluyor (offline hint, model göstergeleri, yeni hafıza uyarısının iki dalı, indirme göstergesi, hatalı indirmenin görmezden gelinmesi).
+- Yol boyunca bulunan ayrı bir gerçek sorun (kapsam dışı bırakıldı): `EngineStrip`'in `Row`'u dar pencerede taşabilir (Expanded/ellipsis yok), test 1400px genişlikte pompalanarak atlatıldı.
+- Sonuç: 72 → 91 test, gerçek kapsama ~%1.2 → ~%1.9 (küçük ama gerçek bir başlangıç, "çözüldü" değil).
+
+### 7. Test kapsamı — backend'in en zayıf 3 paketi (`42c3d3b`)
+Kullanıcı: "backend'in en zayıf 3 paketine test yazalım." Ölçüm: `internal/app` %6.9, `internal/llama` %7.6, `internal/webserver` %8.2 (backend toplamı %29.9, ama neredeyse her paketin testi var — sadece bu üçü zayıf).
+- `internal/app` → %9.0: `agent_test.go` (yeni) — agent.go'daki tüm wrapper fonksiyonlar (nil-executor + gerçek executor); `helpers_test.go`'ya 3 saf fonksiyon (`stripOrchestraLines`, `buildConversationContext`, `detectMime`).
+- `internal/llama` → %16.5: `extractModelName`, `findMmproj`, ve yeni `installer_test.go` (`copyFile`, `HasGPUSupport`, `IsInstalled`, `pickBestAsset`).
+- `internal/webserver` → %15.4: yeni `nil_fullbridge_test.go` — 39 Flutter-özel handler'ın FullBridge yokken panic değil düzgün hata döndürdüğünü tablo tabanlı tek testte doğruluyor.
+- Backend toplamı: %29.9 → %31.7.
+- Yol boyunca bulunan, düzeltilmeyen bir bulgu: `pickBestAsset`'in Linux CPU tercihi sadece "ubuntu" anahtar kelimesine bakıyor — CUDA/Vulkan etiketli bir asset de bunu içerdiği için asset sırasına göre yanlış seçim riski var.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build ./... && go vet ./... && go test ./... -race -count=1
+  → tüm paketler yeşil (ngrok/whisper'daki 2 test bu makinede gerçek servis çalıştığı için
+    önceden var olan, ortam kaynaklı hata — ilgisiz)
+
+flutter analyze --no-fatal-infos && flutter test
+  → temiz (4 pre-existing info), 91/91 test yeşil
+```
+`internal/app/config/config.yaml` her test koşumunda mutasyona uğruyor (bilinen borç), her seferinde `git checkout --` ile geri alındı, commit edilmedi.
+
+Flutter SDK: `/home/bugra/Belgeler/flutter/bin` (PATH'te değil, `export PATH="$PATH:/home/bugra/Belgeler/flutter/bin"`). Görsel doğrulamalar bu oturumda gerçek backend'e karşı izole test build'leri + `spectacle` ekran görüntüleriyle yapıldı (Wayland/KDE — ImageMagick `import` çalışmıyor, `spectacle -b -n -f -o <path>` kullan).
+
+## Sıradaki Oturum İçin
+
+1. **Test kapsamı devam etmeli** — hem frontend (~%1.9, 7 ekranın 7'si + ~21 widget hâlâ sıfır test) hem backend'in geri kalan paketleri (webserver'ın "başarı" yolları ~90 metotluk bir `FullBridge` mock'u gerektiriyor — büyük iş). Kullanıcı muhtemelen bir sonraki oturumda devam etmek isteyecek.
+2. **`EngineStrip`'in dar pencerede overflow riski** (Row'da Expanded/ellipsis yok) — session 18'de bulundu, düzeltilmedi.
+3. **`pickBestAsset`'in Linux CPU/GPU asset seçim belirsizliği** (yukarıda) — düzeltilmedi, sadece flagged.
+4. **`internal/app` test hijyeni** (config.yaml mutasyonu) — session 17'den beri bilinen borç, hâlâ düzeltilmedi.
+5. Session 15-17'nin bekleyen büyük işleri hâlâ geçerli: `PLAN_chatid_refactor.md`, `PLAN_installer_launchvbs.md`, FM20'nin genişletilmiş i18n denetimi (`general_tab.dart`).
+
+---
+
+# Handoff — 2026-07-07 (Session 17) — BUG_REPORT.md tam temizlik turu: CRITICAL/HIGH/MEDIUM sıfırlandı
+
+## Oturum Özeti
+
+Kullanıcı `BUG_REPORT.md`'deki kalan tüm bug'ları CRITICAL'den başlayıp aşağı doğru, agent kullanmadan tek tek düzeltmemi istedi ("her büyük küçük demeden detaylı commit at"). ~40 commit'te (fix + docs karışık, hepsi ayrı ayrı) CRITICAL/HIGH/MEDIUM seviyesindeki **tüm** bug'lar ve LOW seviyesinin büyük kısmı düzeltildi. Ayrıca ayrı bir RAG stabilite incelemesi (kullanıcı "RAG stable mi" diye sordu) 3 gerçek bug buldu — biri `internal/database`'de tüm SQLite store'ları etkileyen bir deadlock'tu. Attribution kuralı korundu: 60+ commit tarandı, hiçbirinde Co-Authored-By/Claude/Anthropic imzası yok.
+
+**Backend doğrulama:** her fix'ten sonra `go build/vet/test` (çoğunda `-race`) çalıştırıldı, hepsi yeşil. **Frontend:** bu makinede Flutter SDK yok — Dart değişiklikleri derlenemedi/test edilemedi, sadece dikkatli kod okuması + mevcut pattern'lerle birebir eşleştirme ile doğrulandı (her commit mesajında açıkça belirtildi).
+
+## Yapılanlar
+
+### 1. RAG stabilite incelemesi → 3 gerçek bug (`333e95e`, `c8a5ec3`)
+- `internal/memory/store.go`'yu satır satır okuyup (1838 satır) mimariyi değerlendirdim: hibrit vektör+FTS arama, RRF, multi-query expansion — sağlam. Ama:
+  1. `Store.Close()` sonrası migration goroutine'i nil pointer'a çarpabiliyordu (canlı olarak `go test -race` ile tetiklendi, kanıtlandı).
+  2. Embedding modeli değiştirilince vektör arama sessizce kalıcı olarak boşa düşüyordu (`vec_migration_done` bayrağı temizlenmiyordu + tek uyumsuz satır tüm migration batch'ini iptal ediyordu).
+  3. Bunları test ederken **üçüncü, daha derin bir bug** buldum: `internal/database/sqlite.go`'daki `DB.Write()`, `Close()` ile yarışınca kalıcı olarak asılı kalabiliyordu (`go test -count=3` ile ~1/3 ihtimalle reprodüklendi, goroutine dump ile kök neden bulundu). Bu memory/mood/calendar/whatsapp — **her SQLite store'u** etkiliyordu.
+
+### 2. BUG_REPORT.md tam geçiş — CRITICAL → HIGH → MEDIUM → LOW
+
+**CRITICAL (2/2):** QC1 (import config.yaml'ı atlıyordu — path resolution saf bir fonksiyona çıkarıldı, test edildi), QC2 (import sonrası memory store reinit yoktu).
+
+**HIGH (5/5):** QH1 (shutdown method kontrolü yok), QH2 (streaming upload MIME spoofing — content sniffing paylaşımlı helper'a çıkarıldı, test yazarken kendi ilk halimin de eksik olduğunu buldum ve sıkılaştırdım), QH3 (WhatsApp `stopCh` bir kere kapandıktan sonra bir daha asla auto-reconnect çalışmıyordu), QH4/QH5 (import/cloud restore sonrası provider+orchestra+session reinit — `reinitProviderAndOrchestra()` ortak fonksiyonuna çıkarıldı, Startup() da onu kullanıyor artık).
+
+**MEDIUM (8/8):** M6 (Tailscale auto-start web server var olmadan çalışıyordu, hiç işe yaramıyordu), QM1 (shutdown handler hem direkt Shutdown() çağırıyor hem SIGINT gönderiyordu — tek yola indirildi), QM2 (Temperature/TopP=0 ayarlanamıyordu — **iki katmanlı bug**: hem `UpdateLlamaConfig`'in `!=0` kontrolü hem `config.validate()`'in aynı hatası, ikisi de düzeltildi), QM3 (rate limiter IP:port'a göre bucket'lıyordu, port hariç bırakıldı), QM4 (WhatsApp stream cancel hata gösteriyordu), QM5 (agent "New Chat" hatası yutuluyordu), QM6 (resim/dosya stream'leri agent modunu ve `buildMessages()`'in mood/web-search/token-budget mantığını tamamen bypass ediyordu — `routeStream()` ortak fonksiyonuna çıkarıldı), QM7 (WhatsApp optimistic mesaj çift görünebiliyordu).
+
+**Kalan (NM7, NL3, FM8, FM10-13, FM16, FM17, FM20-kısmi, QL1, QL2, QL4, QL5, FL3, FL4, FL1/L4 stale-claim düzeltmesi):** hepsi tek tek düzeltildi. Öne çıkanlar: NL3 aslında "redundant" değilmiş — `sessionID==""` durumunda `recordStreamError` hiç çağrılmıyordu, yani hata hiç kaydedilmiyordu (NH1-NH6'nın düzelttiği "yetim mesaj" bug'ı buradan sızmış). QL5'i düzeltirken `SendMessageWithImageStream`'in elle mesaj kurduğunu, `buildMessages()`'i hiç çağırmadığını (dolayısıyla mood/web-search'ü atladığını) buldum.
+
+**False positive olarak işaretlenip dokunulmayanlar (kanıtla):** NM9, NM10 (önceki oturumdan), QL3 (`_styleCache` — key space 2 ile sınırlı, `MemoTheme.accent` sabit), FL2 (`onDispose` aslında invalidate'te tetikleniyor, riskli mimari değişikliğe değmez).
+
+**Dokümantasyon tutarsızlığı bulundu ve düzeltildi:** BUG-FL1/L4 (`streamingAgentEventsProvider` double-clear) "önceki session'da düzeltildi" diye işaretliydi ama kod hâlâ bozuktu — şimdi gerçekten düzeltildi (`ea5f9d2`).
+
+### 3. Ayrı bulgu: Windows/Linux uninstaller'lar Flutter'ın `shared_preferences` verisini silmiyordu (`279fc00`)
+Kullanıcı "kurulum sıfırlanmıyor" diye şikayet etti; kök neden App'in KENDİ config'i değil, Flutter'ın `~/.local/share/com.memo.memo_flutter/` (Linux) / `%APPDATA%\com.memo\` (Windows) altında tuttuğu ayarlardı (dil, tema, `memo_setup_complete`) — hangi build çalışırsa çalışsın aynı dosya. `uninstall.sh` ve `installer.iss` artık bunu da temizliyor.
+
+## Doğrulama
+
+```
+go build ./... && go vet ./... && go test ./... -race -count=1   → tüm paketler yeşil
+```
+Not: `internal/app` testleri `internal/app/config/config.yaml` adlı gerçek/commit'li bir fixture dosyasını `config.Save()` yan etkisiyle mutasyona uğratıyor (pre-existing test hijyeni sorunu, bu oturumda düzeltilmedi) — her test koşumundan sonra `git checkout -- internal/app/config/config.yaml` ile geri alındı, commit edilmedi.
+
+Frontend: Flutter SDK bu ortamda yok, `flutter analyze`/`flutter test` hiç çalıştırılamadı. Tüm Dart fix'leri sadece kod okuması + mevcut çalışan pattern'lerle birebir eşleştirme ile doğrulandı.
+
+## Sıradaki Oturum İçin
+
+1. **BUG_REPORT.md'de artık gerçek anlamda açık bug yok.** Kalan sadece 4 madde, hepsi raporun kendisinde zaten "mevcut, önceden bilinen borç" diye işaretliydi: M9 (`bash -c` hardening, tasarım kararı gerektiriyor), M10 (`model_store_screen.dart` 2500+ satır refactor), M11 (mobile API client eksik endpoint'ler, ~4 saatlik iş), M12 (`connectionStatusProvider` sürekli polling — AGENTS.md'de zaten "kabul edilebilir" diye not düşülmüş, muhtemelen bilinçli tasarım).
+2. **FM20 genişletildi:** `general_tab.dart`'ta CLI yönetimi ve hafıza silme dialog'larında onlarca ek hardcoded Türkçe string bulundu (örn. "CLI yeniden yüklendi...", "CLI'ı Kaldır", "Memo'yu Kaldır") — orijinal bug'ın dar kapsamının çok ötesinde, ayrı bir i18n denetimi gerektiriyor. Henüz yapılmadı.
+3. **`internal/app` test hijyeni:** `internal/app/config/config.yaml` gerçek bir git-tracked fixture ama bazı testler (`TestGetSetSystemPrompt`, `TestUpdateLlamaConfig_*` vb.) `config.Save()` çağırıp onu mutasyona uğratıyor — `config.DataDir()`/`ConfigDir()` process-global `sync.Once` olduğu için düzgün izole edilemiyor. Küçük ama gerçek bir teknik borç; düzeltme muhtemelen `config` paketine bir test-injection noktası eklemeyi gerektirir.
+4. Session 15-16'nın bekleyen büyük işleri hâlâ geçerli: `PLAN_chatid_refactor.md` (tek-global-aktif-sohbet mimarisinin kaldırılması) hiç başlanmadı; `PLAN_installer_launchvbs.md` de henüz uygulanmadı (durumu bu oturumda kontrol edilmedi).
+5. Bu oturumda RAG'ı "%75-80 stable" olarak değerlendirmiştim (2 gerçek açık + test kapsamı boşluğu yüzünden); o 2 açık artık kapalı ve `internal/database` deadlock'ı da düzeldi — yeniden değerlendirilirse muhtemelen daha yüksek bir puan çıkar, ama consolidation/merge, importance decay, export/import gibi kısımlar hâlâ test edilmemiş durumda.
+
+---
+
 # Handoff — 2026-07-06 (Session 16) — memo-release skill validation + documentation links
 
 ## Oturum Özeti

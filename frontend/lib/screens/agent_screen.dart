@@ -250,6 +250,7 @@ class _AgentContent extends ConsumerWidget {
               final streamingContent = ref.watch(streamingContentProvider);
               final streamingThinking = ref.watch(streamingThinkingProvider);
               final streamingAgentEvents = ref.watch(streamingAgentEventsProvider);
+              final streamingStatus = ref.watch(streamingStatusProvider);
               if (messages.isEmpty && !isSending && streamingContent.isEmpty && streamingAgentEvents.isEmpty) {
                 return _AgentWelcome(projectPath: activeChat.projectPath);
               }
@@ -259,6 +260,7 @@ class _AgentContent extends ConsumerWidget {
                 streamingContent: streamingContent,
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
+                statusText: streamingStatus,
                 onEdit: (index, newContent) => ref.read(messagesProvider.notifier).updateMessage(index, newContent),
                 onDelete: (index) => ref.read(messagesProvider.notifier).deleteMessage(index),
               );

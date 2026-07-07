@@ -778,9 +778,10 @@ go test ./... -race -count=1  → tüm paketler PASS
 
 ### 🟢 LOW
 
-#### BUG-FL1: `streamingAgentEventsProvider` double-clear (duplicate line)
+#### BUG-FL1: ~~`streamingAgentEventsProvider` double-clear (duplicate line)~~ **→ GERÇEKTEN DÜZELTİLDİ (2026-07-07, `ea5f9d2`)**
+- **Commit:** `ea5f9d2`
+- **Not:** Bu madde "önceki session'da düzeltildi" diye işaretliydi ama kod hâlâ bozuktu (`stopStreaming()` içinde satır hâlâ iki kez tekrar ediyordu) — dokümantasyon yanlışmış. L4 aynı bug'ın tekrarıydı, ikisi birlikte gerçekten düzeltildi.
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:200-202`
-- **Durum:** Düzeltildi (önceki session)
 
 #### BUG-FL2 (incelendi — değişiklik yapılmadı): `messagesProvider` autoDispose değil ama `onDispose` kullanıyor
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:168,181-184`

@@ -73,6 +73,18 @@ class _ProviderConfigDialogState
     // New providers default to ENABLED. Previously they were added disabled,
     // so users would add a provider, see nothing work, and not know why.
     _enabled = existing?.enabled ?? true;
+
+    // A test result only describes the field values at the moment it ran.
+    // Without this, editing the API key/URL/model after a successful test
+    // left the stale "✅ Bağlandı" indicator showing — looking like *these*
+    // (now different, untested) values were confirmed working.
+    _apiKeyCtrl.addListener(_invalidateTestResult);
+    _baseUrlCtrl.addListener(_invalidateTestResult);
+    _modelCtrl.addListener(_invalidateTestResult);
+  }
+
+  void _invalidateTestResult() {
+    if (_testResult != null) setState(() => _testResult = null);
   }
 
   @override

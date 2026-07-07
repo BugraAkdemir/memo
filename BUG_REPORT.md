@@ -722,10 +722,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** Detail dialog açıldığında statik snapshot alıyor. 3 saniyelik polling liste görünümünü güncelliyor ama dialog içeriği güncellenmiyor.
 - **Durum:** Tespit edildi, düzeltilmedi.
 
-#### BUG-FM12: Provider edit dialog — isim çakışması sessizce suffix ekliyor
+#### BUG-FM12: ~~Provider edit dialog — isim çakışması sessizce suffix ekliyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `f94504b`
+- **Düzeltme:** İsim değiştiğinde kaydetmeden önce SnackBar ile bilgilendiriliyor.
 - **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart:190-201`
 - **Nedir:** `_uniqueName()` isim çakışmasında sessizce " 2", " 3" ekliyor. Kullanıcıya bilgi verilmiyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM13: Model Store search debounce hidden tab'da API çağrısı yapıyor
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:406-426`

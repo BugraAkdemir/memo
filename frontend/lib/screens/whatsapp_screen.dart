@@ -675,15 +675,27 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
     try {
       await ref.read(apiClientProvider).sendWhatsApp(jid, text);
       // Backend saved the message synchronously, so the refetch will include
-      // it — drop the optimistic copy to avoid showing it twice.
-      if (mounted) setState(() => _optimistic.remove(optimistic));
-      ref.invalidate(whatsAppMessagesProvider(jid));
-      ref.invalidate(whatsAppChatsProvider);
+      // it — drop the optimistic copy to avoid showing it twice. Remove it
+      // from the underlying list unconditionally: if the widget navigated
+      // away (or the user switched chats) before this resolved, `mounted`
+      // would be false and a guarded `setState` would skip the removal,
+      // leaving a ghost entry in `_optimistic` that reappears whenever the
+      // user comes back to this chat. Only the UI-facing bits (setState,
+      // provider invalidation, showing a SnackBar) need to be gated on
+      // `mounted`.
+      _optimistic.remove(optimistic);
+      if (mounted) {
+        setState(() {});
+        ref.invalidate(whatsAppMessagesProvider(jid));
+        ref.invalidate(whatsAppChatsProvider);
+      }
     } catch (e) {
-      // Send failed — remove the optimistic bubble and restore the text.
+      // Send failed — remove the optimistic bubble (regardless of mounted,
+      // see comment above) and restore the text if we're still around to
+      // show it.
+      _optimistic.remove(optimistic);
       if (mounted) {
         setState(() {
-          _optimistic.remove(optimistic);
           if (_sendCtrl.text.isEmpty) _sendCtrl.text = text;
         });
         ScaffoldMessenger.of(context).showSnackBar(

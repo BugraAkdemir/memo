@@ -159,6 +159,19 @@ class _AgentChatItem extends StatelessWidget {
                 ],
               ),
             ),
+            // onDelete was already threaded all the way down to this widget
+            // but nothing in the UI ever called it — an agent chat could
+            // only be deleted by switching to the Chat tab's sidebar, which
+            // lists the same sessions. A simple icon (not hover-gated like
+            // the Chat sidebar's, to avoid turning this into a StatefulWidget
+            // just for that) is enough to close the gap.
+            GestureDetector(
+              onTap: () => onDelete(chat.id),
+              child: Padding(
+                padding: const EdgeInsets.only(left: 4),
+                child: Icon(Icons.close, size: 14, color: MemoTheme.of(context).textDim),
+              ),
+            ),
           ],
         ),
       ),

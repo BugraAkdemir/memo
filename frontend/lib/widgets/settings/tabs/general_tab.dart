@@ -72,7 +72,7 @@ class GeneralTab extends ConsumerWidget {
 
         // Theme Selection
         Text(
-          'Tema',
+          L10n.t('theme'),
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -253,7 +253,7 @@ class GeneralTab extends ConsumerWidget {
 
         // Reset Setup Wizard
         Text(
-          'Kurulum',
+          L10n.t('settings_setup_section'),
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -272,7 +272,7 @@ class GeneralTab extends ConsumerWidget {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Kurulumu Sıfırla',
+                L10n.t('settings_reset_setup'),
                 style: TextStyle(
                   fontSize: 14,
                   color: MemoTheme.of(context).textMain,

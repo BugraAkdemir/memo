@@ -66,7 +66,7 @@ class _AgentSidebar extends ConsumerWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Ajan sohbeti oluşturulamadı: $e')),
+                          SnackBar(content: Text(L10n.t('agent_create_failed', {'error': '$e'}))),
                         );
                       }
                     }
@@ -215,7 +215,7 @@ class _AgentContent extends ConsumerWidget {
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () async {
-                  final result = await FilePicker.platform.getDirectoryPath(dialogTitle: 'Ajan için proje klasörü seç');
+                  final result = await FilePicker.platform.getDirectoryPath(dialogTitle: L10n.t('agent_select_project'));
                   if (result == null) return;
                   try {
                     final api = ref.read(apiClientProvider);
@@ -228,7 +228,7 @@ class _AgentContent extends ConsumerWidget {
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text('Ajan sohbeti oluşturulamadı: $e')),
+                        SnackBar(content: Text(L10n.t('agent_create_failed', {'error': '$e'}))),
                       );
                     }
                   }

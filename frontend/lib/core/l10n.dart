@@ -608,6 +608,7 @@ class L10n {
     'settings_reset_launchpad': 'Launchpad\'i Tekrar Göster',
     'settings_setup_section': 'Kurulum',
     'settings_reset_setup': 'Kurulumu Sıfırla',
+    'agent_create_failed': 'Ajan sohbeti oluşturulamadı: \${error}',
 
     // Settings tabs (missing)
     'tab_learning': 'Öğrenme',
@@ -1342,6 +1343,7 @@ class L10n {
     'settings_reset_launchpad': 'Show Launchpad Again',
     'settings_setup_section': 'Setup',
     'settings_reset_setup': 'Reset Setup',
+    'agent_create_failed': 'Could not create agent chat: \${error}',
 
     // Settings tabs (missing)
     'tab_learning': 'Learning',

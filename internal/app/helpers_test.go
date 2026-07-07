@@ -5,6 +5,7 @@ import (
 	"strings"
 	"testing"
 
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/identity"
 	"memo/internal/memory"
@@ -177,5 +178,137 @@ func TestApiContextBudget_Defaults(t *testing.T) {
 	}
 	if budget != 128*1024 {
 		t.Errorf("expected default 128K budget, got %d", budget)
+	}
+}
+
+func TestStripOrchestraLines(t *testing.T) {
+	tests := []struct {
+		name string
+		in   string
+		want string
+	}{
+		{
+			name: "keeps plain conversation lines",
+			in:   "Hello there\nHow are you?",
+			want: "Hello there\nHow are you?",
+		},
+		{
+			name: "drops orchestra emoji-prefixed debug lines",
+			in:   "🎵 Planning next step\nActual reply to the user\n🧠 internal thought",
+			want: "Actual reply to the user",
+		},
+		{
+			name: "drops role-labeled orchestra lines",
+			in:   "**planner**: do X\nReal answer\n**backend**: do Y",
+			want: "Real answer",
+		},
+		{
+			name: "drops the system-instructions line",
+			in:   "Sistem talimatları: ignore previous\nKeep this",
+			want: "Keep this",
+		},
+		{
+			name: "drops blank lines entirely",
+			in:   "First\n\n\nSecond",
+			want: "First\nSecond",
+		},
+		{
+			name: "empty input stays empty",
+			in:   "",
+			want: "",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := stripOrchestraLines(tt.in)
+			if got != tt.want {
+				t.Errorf("stripOrchestraLines(%q) = %q, want %q", tt.in, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestBuildConversationContext(t *testing.T) {
+	t.Run("no prior history falls back to just the new message", func(t *testing.T) {
+		messages := []api.Message{api.NewTextMessage("user", "hello")}
+		got := buildConversationContext(messages, "hello")
+		want := "Kullanıcı: hello"
+		if got != want {
+			t.Errorf("got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("includes prior turns in order with role labels", func(t *testing.T) {
+		messages := []api.Message{
+			api.NewTextMessage("system", "you are Memo"),
+			api.NewTextMessage("user", "what's 2+2?"),
+			api.NewTextMessage("assistant", "4"),
+			api.NewTextMessage("user", "and 3+3?"),
+		}
+		got := buildConversationContext(messages, "and 3+3?")
+
+		if !strings.Contains(got, "Önceki konuşma:") {
+			t.Errorf("expected a 'prior conversation' header, got %q", got)
+		}
+		if !strings.Contains(got, "Kullanıcı: what's 2+2?") {
+			t.Errorf("expected the earlier user turn to be present, got %q", got)
+		}
+		if !strings.Contains(got, "Asistan: 4") {
+			t.Errorf("expected the assistant's reply labeled 'Asistan', got %q", got)
+		}
+		// The system prompt itself must never leak into the conversation context.
+		if strings.Contains(got, "you are Memo") {
+			t.Errorf("system message leaked into conversation context: %q", got)
+		}
+		if !strings.HasSuffix(got, "Yeni mesaj:\nKullanıcı: and 3+3?") {
+			t.Errorf("expected the new message to be appended last, got %q", got)
+		}
+	})
+
+	t.Run("non-string content is skipped without panicking", func(t *testing.T) {
+		messages := []api.Message{
+			api.NewTextMessage("user", "first"),
+			api.NewMultimodalMessage("user", "second", "base64imagedata"),
+		}
+		got := buildConversationContext(messages, "second")
+		if !strings.Contains(got, "first") {
+			t.Errorf("expected the plain-text turn to survive, got %q", got)
+		}
+	})
+}
+
+func TestDetectMime(t *testing.T) {
+	tests := []struct {
+		name string
+		path string
+		data []byte
+		want string
+	}{
+		{name: "png by extension", path: "photo.PNG", data: []byte{0xFF}, want: "image/png"},
+		{name: "gif by extension", path: "anim.gif", data: nil, want: "image/gif"},
+		{name: "webp by extension", path: "sticker.webp", data: nil, want: "image/webp"},
+		{name: "bmp by extension", path: "scan.bmp", data: nil, want: "image/bmp"},
+		{
+			name: "unknown extension sniffs real jpeg content",
+			path: "upload.tmp",
+			data: []byte{0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46, 0x49, 0x46},
+			want: "image/jpeg",
+		},
+		{
+			name: "unrecognizable binary content falls back to jpeg",
+			path: "upload.tmp",
+			data: []byte{0x00, 0x01, 0x02, 0x03},
+			want: "image/jpeg",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := detectMime(tt.path, tt.data)
+			if got != tt.want {
+				t.Errorf("detectMime(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
 	}
 }

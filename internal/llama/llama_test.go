@@ -185,6 +185,79 @@ func countEnvKey(env []string, key string, caseInsensitive bool) int {
 	return count
 }
 
+func TestExtractModelName(t *testing.T) {
+	tests := []struct {
+		path string
+		want string
+	}{
+		{path: "", want: ""},
+		{path: "gemma-3-4b-it.gguf", want: "gemma-3-4b-it"},
+		{path: "/data/models/Qwen2.5-7B-Instruct-Q4_K_M.gguf", want: "Qwen2.5-7B-Instruct-Q4_K_M"},
+		// No .gguf suffix — nothing to trim, basename is returned as-is.
+		{path: "/data/models/no-extension", want: "no-extension"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.path, func(t *testing.T) {
+			got := extractModelName(tt.path)
+			if got != tt.want {
+				t.Errorf("extractModelName(%q) = %q, want %q", tt.path, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestFindMmproj(t *testing.T) {
+	t.Run("finds a sibling mmproj gguf file", func(t *testing.T) {
+		dir := t.TempDir()
+		modelPath := filepath.Join(dir, "gemma-3-4b.gguf")
+		mmprojPath := filepath.Join(dir, "mmproj-gemma-3-4b.gguf")
+		for _, p := range []string{modelPath, mmprojPath} {
+			if err := os.WriteFile(p, []byte("fake"), 0o644); err != nil {
+				t.Fatalf("WriteFile(%s): %v", p, err)
+			}
+		}
+
+		got := findMmproj(modelPath)
+		if got != mmprojPath {
+			t.Errorf("findMmproj = %q, want %q", got, mmprojPath)
+		}
+	})
+
+	t.Run("ignores a same-named file that isn't a gguf", func(t *testing.T) {
+		dir := t.TempDir()
+		modelPath := filepath.Join(dir, "model.gguf")
+		if err := os.WriteFile(modelPath, []byte("fake"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(dir, "mmproj-notes.txt"), []byte("fake"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := findMmproj(modelPath); got != "" {
+			t.Errorf("findMmproj = %q, want empty (no matching .gguf)", got)
+		}
+	})
+
+	t.Run("returns empty when the directory has no projector file", func(t *testing.T) {
+		dir := t.TempDir()
+		modelPath := filepath.Join(dir, "model.gguf")
+		if err := os.WriteFile(modelPath, []byte("fake"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+
+		if got := findMmproj(modelPath); got != "" {
+			t.Errorf("findMmproj = %q, want empty", got)
+		}
+	})
+
+	t.Run("returns empty for a directory that doesn't exist", func(t *testing.T) {
+		if got := findMmproj(filepath.Join(t.TempDir(), "missing", "model.gguf")); got != "" {
+			t.Errorf("findMmproj = %q, want empty", got)
+		}
+	})
+}
+
 func envValue(t *testing.T, env []string, key string, caseInsensitive bool) string {
 	t.Helper()
 	for _, entry := range env {

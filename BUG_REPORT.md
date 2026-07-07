@@ -1098,11 +1098,11 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Nedir:** `_AgentChatItem` `onDelete` callback alıyor ama widget'ta silme butonu/long-press yok. Agent sohbetleri agent sidebar'dan silinemez.
 - **Etki:** Kullanıcı agent sohbetini silmek için Chat tab'ına gitmek zorunda.
 
-#### BUG-QL3: `_styleCache` hiç temizlenmiyor
+#### BUG-QL3 (false positive — düzeltme gerekmedi): `_styleCache` hiç temizlenmiyor
 
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:12`
-- **Nedir:** `Map<int, MarkdownStyleSheet>` theme/accent combo'ları kadar büyüyor, hiç eviction yok.
-- **Etki:** Uzun oturumlarda hafif bellek sızıntısı.
+- **İddia:** `Map<int, MarkdownStyleSheet>` theme/accent combo'ları kadar büyüyor, hiç eviction yok.
+- **Bulgu (2026-07-07):** Key `Object.hash(theme.brightness, MemoTheme.accent.hashCode)` — ama `MemoTheme.accent` sabit bir `static const Color` (`frontend/lib/core/theme.dart:170`), kullanıcı tarafından değiştirilemiyor. Yani key space en fazla 2 (light/dark × 1 sabit accent) — pratikte sınırsız büyüme diye bir şey yok. Değişiklik yapılmadı.
 
 #### BUG-QL4: ~~`_AuthorAvatar._cache` hiç temizlenmiyor~~ **→ DÜZELTİLDİ (2026-07-07, BUG-FL3 ile aynı yer/fix)**
 

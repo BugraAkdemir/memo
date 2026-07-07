@@ -130,9 +130,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		agentRouter, modelName, err := a.resolveAgentProvider()
 		if err != nil {
-			if sessionID != "" {
-				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
-			}
+			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
@@ -160,9 +158,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		if err != nil {
 			logx.Printf("Agent error: %v", err)
-			if sessionID != "" {
-				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
-			}
+			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 			return
 		}
@@ -178,9 +174,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 					break agentLoop
 				}
 				if chunk.Error != "" {
-					if sessionID != "" {
-						a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
-					}
+					a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
 					trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 					return
 				}
@@ -868,7 +862,7 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 			if sessionID != "" {
 				sm.AddMessageToSession(sessionID, "assistant", reply, "", "", agentEvents...)
 				if len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
-					go a.GenerateChatTitle()
+					go a.generateChatTitleForSession(sessionID)
 				}
 			} else {
 				sm.AddMessage("assistant", reply, "", "", agentEvents...)

@@ -142,13 +142,31 @@ func (a *App) ExportChat() string {
 	return sb.String()
 }
 
-// GenerateChatTitle asks the LLM to produce a short title from the first exchange.
+// GenerateChatTitle asks the LLM to produce a short title from the first
+// exchange of the currently active chat. Exposed to the frontend as a
+// manual "regenerate title" action, where "whatever chat the user is
+// currently viewing" is exactly the right target.
 func (a *App) GenerateChatTitle() string {
 	sm := a.getSessionManager()
 	if sm == nil {
 		return ""
 	}
-	msgs := sm.GetActiveMessages()
+	return a.generateChatTitleForSession(sm.GetActiveID())
+}
+
+// generateChatTitleForSession is like GenerateChatTitle but names a specific
+// session rather than whatever happens to be active. finishStream calls this
+// with the session ID the stream actually wrote to — which is not
+// necessarily the session the user is currently viewing (e.g. a background
+// or task-loop stream running against a non-active chat). Calling
+// GenerateChatTitle() there would title whatever chat is active *right now*
+// instead of the one the stream was actually for.
+func (a *App) generateChatTitleForSession(sessionID string) string {
+	sm := a.getSessionManager()
+	if sm == nil || sessionID == "" {
+		return ""
+	}
+	msgs := sm.GetActiveMessagesForSession(sessionID)
 	if len(msgs) < 2 {
 		return ""
 	}
@@ -179,8 +197,7 @@ func (a *App) GenerateChatTitle() string {
 		title = string(runes[:60])
 	}
 
-	chatID := sm.GetActiveID()
-	if err := sm.RenameChat(chatID, title); err != nil {
+	if err := sm.RenameChat(sessionID, title); err != nil {
 		logx.Printf("auto-title rename: %v", err)
 		return ""
 	}

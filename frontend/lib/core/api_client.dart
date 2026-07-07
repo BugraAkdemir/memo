@@ -1137,7 +1137,13 @@ class MemoApiClient {
           // Ignore malformed/non-JSON keep-alive lines.
         }
       }
-    } catch (e) {
+    } on DioException catch (e) {
+      // A cancelled request (e.g. the user pressed Stop) is not an error —
+      // the other two stream methods (sendMessageStream, sendFileStream)
+      // already special-case this; this one didn't, so stopping a WhatsApp
+      // reply mid-stream surfaced a spurious "WhatsApp stream error" to the
+      // user instead of just ending quietly.
+      if (e.type == DioExceptionType.cancel) return;
       throw Exception('WhatsApp stream error: $e');
     }
   }

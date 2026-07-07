@@ -715,10 +715,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:134`
 - **Nedir:** `ValueKey('msg_${msg.hashCode}_$index')` her state değişiminde yeni hash üretiyor → tüm mesaj baloncukları rebuild oluyor.
 
-#### BUG-FM10: İki task list aynı anda başlatılabiliyor (client-side guard yok)
+#### BUG-FM10: ~~İki task list aynı anda başlatılabiliyor (client-side guard yok)~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `a73e98c`
+- **Düzeltme:** Kart ve detay dialog'undaki Start butonları artık başka bir liste çalışırken devre dışı + açıklayıcı tooltip/label gösteriyor.
 - **Dosya:** `frontend/lib/screens/tasks_screen.dart:416-445`
 - **Nedir:** UI iki list için de Start butonunu aktif gösteriyor. İkincisi backend'de `taskloopRunMu` tarafından reddediliyor ama hata mesajı açıklayıcı değil.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM11: Task list detail dialog auto-refresh yapmıyor
 - **Dosya:** `frontend/lib/screens/tasks_screen.dart:295-414`

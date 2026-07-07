@@ -261,6 +261,13 @@ func (a *App) ImportData(data []byte) error {
 		logx.Printf("WARN: import: no embedding/main client available, memory store left on pre-import data until restart")
 	}
 
+	// providers.json/orchestra.json were just replaced on disk (both are
+	// exported under "data/"), but without this the running app kept
+	// serving chats through the pre-import in-memory router/conductor —
+	// including a provider the import just removed still looking "active" —
+	// until the next full restart.
+	a.reinitProviderAndOrchestra()
+
 	return nil
 }
 

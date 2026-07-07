@@ -384,72 +384,10 @@ func (a *App) Startup(ctx context.Context) {
 		a.waMu.Unlock()
 	}
 
-	a.providerCfgMgr = provider.NewConfigManager(config.DataPath("providers.json"), nil)
-	configs := a.providerCfgMgr.GetEnabled()
-	if len(configs) > 0 {
-		a.providerRouter = provider.NewRouter(configs)
-		hctx, hcancel := context.WithCancel(a.lifecycleCtx)
-		a.healthCheckCancel = hcancel
-		go a.providerRouter.HealthCheck(hctx, 5*time.Minute)
-		logx.Printf("Provider system initialized with %d enabled provider(s)", len(configs))
-		for _, cfg := range configs {
-			logx.Printf("  - %s (%s)", cfg.Type, cfg.Model)
-		}
-	} else {
-		logx.Info("No external providers configured, using local models")
-	}
-
-	a.activeProviderName = a.cfg.ActiveProvider
-	// Legacy configs persisted the provider *type* (e.g. "openrouter") instead of
-	// the provider Name ("OpenRouter"). After the type→name identification change,
-	// such a saved value matches no provider, silently dropping the user's
-	// selection on upgrade. Normalize it back to the matching provider Name.
-	if a.activeProviderName != "" {
-		matchesName := false
-		for _, p := range configs {
-			if p.Name == a.activeProviderName {
-				matchesName = true
-				break
-			}
-		}
-		if !matchesName {
-			for _, p := range configs {
-				if string(p.Type) == a.activeProviderName {
-					a.activeProviderName = p.Name
-					a.cfg.ActiveProvider = p.Name
-					break
-				}
-			}
-		}
-	}
-	if a.activeProviderName != "" && a.providerRouter != nil {
-		a.providerRouter.SetActiveProvider(a.activeProviderName)
-	}
-	if a.activeProviderName != "" {
-		logx.Printf("Active provider restored from config: %s", a.activeProviderName)
-	}
-
-	orchestraCfg := orchestra.LoadConfig(config.DataPath("orchestra.json"))
-	a.orchestraConductor = orchestra.NewConductor(
-		orchestraCfg,
-		func(cfg provider.ProviderConfig) (provider.Provider, error) {
-			if a.providerRouter == nil {
-				return nil, fmt.Errorf("provider router not initialized, cannot create %s/%s", cfg.Type, cfg.Model)
-			}
-			p, ok := a.providerRouter.GetProvider(cfg.Name)
-			if !ok {
-				return nil, fmt.Errorf("provider %s not found in router (disabled or not configured), enable it in API Providers", cfg.Name)
-			}
-			return p, nil
-		},
-		func() []provider.ProviderConfig {
-			if a.providerCfgMgr == nil {
-				return nil
-			}
-			return a.providerCfgMgr.GetAll()
-		},
-	)
-	logx.Printf("Orchestra mode initialized (enabled=%v)", orchestraCfg.Enabled)
+	// Shared with reinitProviderAndOrchestra (providers.go), which ImportData
+	// and cloud restore call after replacing providers.json/orchestra.json on
+	// disk — keeping this as one code path means the two can't drift apart.
+	a.reinitProviderAndOrchestra()
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)

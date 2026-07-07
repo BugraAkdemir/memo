@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"memo/internal/config"
+	"memo/internal/orchestra"
 	"memo/internal/provider"
 )
 
@@ -135,6 +136,87 @@ func (a *App) TestProviderConnection(cfg provider.ProviderConfig) error {
 		return fmt.Errorf("provider system not initialized")
 	}
 	return a.providerCfgMgr.TestConnection(&cfg)
+}
+
+// reinitProviderAndOrchestra reloads providers.json and orchestra.json from
+// disk and rebuilds providerCfgMgr/providerRouter/orchestraConductor from
+// them, restoring activeProviderName from a.cfg.ActiveProvider the same way
+// Startup() does. Used after ImportData and cloud restore replace these
+// files on disk — without it, the running app kept serving chats through
+// the pre-import in-memory router/conductor (and any provider the import
+// removed would still look "active") until the next full restart.
+func (a *App) reinitProviderAndOrchestra() {
+	newCfgMgr := provider.NewConfigManager(config.DataPath("providers.json"), nil)
+	configs := newCfgMgr.GetEnabled()
+
+	activeProviderName := a.cfg.ActiveProvider
+	if activeProviderName != "" {
+		matchesName := false
+		for _, p := range configs {
+			if p.Name == activeProviderName {
+				matchesName = true
+				break
+			}
+		}
+		if !matchesName {
+			for _, p := range configs {
+				if string(p.Type) == activeProviderName {
+					activeProviderName = p.Name
+					a.cfg.ActiveProvider = p.Name
+					break
+				}
+			}
+		}
+	}
+
+	a.providerMu.Lock()
+	if a.healthCheckCancel != nil {
+		a.healthCheckCancel()
+		a.healthCheckCancel = nil
+	}
+	a.providerCfgMgr = newCfgMgr
+	a.activeProviderName = activeProviderName
+	var (
+		newRouter *provider.Router
+		hctx      context.Context
+		hcancel   context.CancelFunc
+	)
+	if len(configs) > 0 {
+		newRouter = provider.NewRouter(configs)
+		if activeProviderName != "" {
+			newRouter.SetActiveProvider(activeProviderName)
+		}
+		hctx, hcancel = context.WithCancel(a.lifecycleCtx)
+		a.healthCheckCancel = hcancel
+	}
+	a.providerRouter = newRouter
+
+	orchestraCfg := orchestra.LoadConfig(config.DataPath("orchestra.json"))
+	a.orchestraConductor = orchestra.NewConductor(
+		orchestraCfg,
+		func(cfg provider.ProviderConfig) (provider.Provider, error) {
+			if a.providerRouter == nil {
+				return nil, fmt.Errorf("provider router not initialized, cannot create %s/%s", cfg.Type, cfg.Model)
+			}
+			p, ok := a.providerRouter.GetProvider(cfg.Name)
+			if !ok {
+				return nil, fmt.Errorf("provider %s not found in router (disabled or not configured), enable it in API Providers", cfg.Name)
+			}
+			return p, nil
+		},
+		func() []provider.ProviderConfig {
+			if a.providerCfgMgr == nil {
+				return nil
+			}
+			return a.providerCfgMgr.GetAll()
+		},
+	)
+	a.providerMu.Unlock()
+
+	if hctx != nil {
+		go newRouter.HealthCheck(hctx, 5*time.Minute)
+	}
+	logx.Printf("provider/orchestra config reloaded (%d enabled provider(s), orchestra enabled=%v)", len(configs), orchestraCfg.Enabled)
 }
 
 // SetActiveProvider selects which provider to use for chat (by provider Name).

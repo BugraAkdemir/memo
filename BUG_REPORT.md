@@ -870,3 +870,26 @@ go test ./... -race -count=1  → tüm paketler PASS
 | HIGH | H2 (autoReconnect TOCTOU), H7 (hata string'leri memory'e kaydediliyor) |
 | MEDIUM | M6 (startupTailscale race), M9-M12 (bilinen borç), FM8, FM10-FM13, FM17, FM20 |
 | LOW | FL2-FL4, NL3 |
+
+---
+
+## Session 2026-07-07 (devam) — Kullanıcı taramasında bulunan 3 ek bulgu
+
+### BUG-NM8: ~~`WhatsAppChatStream` — `whatsAppSessionID` mutex dışı erişim (data race)~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `063f047`
+- **Dosya:** `internal/app/whatsapp.go:196-206`
+- **Nedir:** `WhatsAppChatStream` içinde `a.whatsAppSessionID`'nin lazy-init check-and-set'i ve okunması hiçbir lock altında değildi. `StopWhatsApp`/`LogoutWhatsApp` ise aynı alanı `waMu` altında `""`'e sıfırlıyor. Eşzamanlı bir Stop/Logout + WhatsApp mesajı geldiğinde plain data race oluşuyordu; ayrıca stream, Stop'un az önce geçersiz kıldığı bir session ID'yi kullanabiliyordu.
+- **Düzeltme:** Check-and-set + okuma artık `waMu` altında, Stop/Logout ile aynı kilit.
+
+### BUG-NM9 (false positive — düzeltme gerekmedi): `callLLMStream` nil-client path'te `select+default` ile hata mesajı düşme riski
+
+- **Dosya:** `internal/app/llm.go:727-733`
+- **İddia:** `ctx` iptal edilmişse `default` dalı çalışıp hata mesajı okuyucuya ulaşmadan kaybolabilir.
+- **Bulgu:** `outCh` bu fonksiyonda `make(chan api.StreamChunk, 128)` ile 128 buffer'lı oluşturuluyor (llm.go:504) ve bu, kanala yapılan **ilk** yazma. 128 kapasiteli taze bir kanalda `select`'in `default` dalı hiçbir zaman tetiklenemez — gönderim her zaman anında buffer'a sığar. Pratikte drop riski yok; kod biraz kafa karıştırıcı (gereksiz `select`) ama davranışsal olarak güvenli. Değişiklik yapılmadı.
+
+### BUG-NM10 (beklenen davranış — düzeltme gerekmedi): `DeleteProvider` sonrası frontend invalidasyon timing'i
+
+- **Dosya:** `internal/app/providers.go:118-120`
+- **İddia:** Backend `activeProviderName`'i temizliyor, frontend `activeProviderTypeProvider`'ı invalidate ediyor ama bir sonraki mesajda "provider yok" hatası alınabilir.
+- **Bulgu:** Bu, silinen aktif provider için beklenen ve doğru davranış — kullanıcı provider'ı sildiyse bir sonraki mesajda net bir hata almalı. Değişiklik yapılmadı.

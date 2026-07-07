@@ -296,7 +296,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 
 | Item | Where |
 |------|-------|
-| Onboarding / launchpad UX (highest priority feature) | `plan.md` |
+| ~~Onboarding / launchpad UX~~ — done, `plan.md` is archived (launchpad, spotlight tour, empty-state copy, icon labels all shipped) | `plan.md` |
 | Windows installer broken shortcuts (`launch.vbs` missing) | `PLAN_installer_launchvbs.md` |
 | Chat-ID refactor: kill the single-global-active-chat architecture | `PLAN_chatid_refactor.md` |
 | `model_store_screen.dart` (2469 lines) needs splitting | Known Pitfalls above |

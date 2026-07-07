@@ -620,18 +620,18 @@ func (s *session) cmdModelDownload(query string) {
 		fmt.Fprintln(s.out, errorf("İndirme başlatılamadı: %v", err))
 		return
 	}
-	s.trackDownloadProgress()
+	s.trackDownloadProgress(repo.ID, file.Filename)
 }
 
 // trackDownloadProgress polls the backend's download progress and redraws a
 // single in-place progress line until the download finishes or fails.
-func (s *session) trackDownloadProgress() {
+func (s *session) trackDownloadProgress(repoID, filename string) {
 	fmt.Fprintln(s.out)
 	ticker := time.NewTicker(400 * time.Millisecond)
 	defer ticker.Stop()
 
 	for range ticker.C {
-		p, err := s.client.DownloadProgress(s.ctx)
+		p, err := s.client.DownloadProgress(s.ctx, repoID, filename)
 		if err != nil {
 			fmt.Fprintln(s.out, errorf("İlerleme okunamadı: %v", err))
 			return

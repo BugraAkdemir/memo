@@ -77,16 +77,35 @@ func TestClient_DownloadModel(t *testing.T) {
 
 func TestClient_DownloadProgress(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(DownloadProgress{Active: true, Percent: 42.5, Speed: "3.1 MB/s"})
+		json.NewEncoder(w).Encode([]DownloadProgress{
+			{Active: true, RepoID: "TheBloke/Llama-2-7B-GGUF", Filename: "llama-2-7b.Q4_K_M.gguf", Percent: 42.5, Speed: "3.1 MB/s"},
+			{Active: true, RepoID: "other/repo", Filename: "other.gguf", Percent: 10},
+		})
 	}))
 	defer srv.Close()
 
 	c := NewClient(srv.URL)
-	p, err := c.DownloadProgress(context.Background())
+	p, err := c.DownloadProgress(context.Background(), "TheBloke/Llama-2-7B-GGUF", "llama-2-7b.Q4_K_M.gguf")
 	if err != nil {
 		t.Fatalf("DownloadProgress() error = %v", err)
 	}
 	if !p.Active || p.Percent != 42.5 {
 		t.Errorf("got %+v", p)
+	}
+}
+
+func TestClient_DownloadProgress_NotFoundMeansDone(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode([]DownloadProgress{})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	p, err := c.DownloadProgress(context.Background(), "some/repo", "file.gguf")
+	if err != nil {
+		t.Fatalf("DownloadProgress() error = %v", err)
+	}
+	if p.Active {
+		t.Errorf("expected inactive for a download no longer tracked, got %+v", p)
 	}
 }

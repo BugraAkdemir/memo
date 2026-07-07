@@ -42,23 +42,30 @@ func (a *App) DownloadModel(repoID, filename string, expectedSize int64) error {
 	// Startup()-time auto-start finds nothing) would leave embedding/RAG
 	// dead for the rest of the session even after downloading one, until
 	// the user finds /embedding.
-	go a.autoStartEmbeddingAfterDownload()
+	go a.autoStartEmbeddingAfterDownload(repoID, filename)
 	return nil
 }
 
-// autoStartEmbeddingAfterDownload waits for the in-flight download to finish,
-// then starts an embedding model automatically if memory is enabled and
-// nothing is running yet. Safe to call even if the just-downloaded file
-// wasn't an embedding model — autoStartEmbeddingModel re-scans all local
-// models itself.
-func (a *App) autoStartEmbeddingAfterDownload() {
+// autoStartEmbeddingAfterDownload waits for this specific repoID/filename
+// download to finish (multiple downloads can run concurrently, so it can't
+// just watch "is anything active"), then starts an embedding model
+// automatically if memory is enabled and nothing is running yet. Safe to call
+// even if the just-downloaded file wasn't an embedding model —
+// autoStartEmbeddingModel re-scans all local models itself.
+func (a *App) autoStartEmbeddingAfterDownload(repoID, filename string) {
 	if !a.cfg.Memory.MemoryEnabled {
 		return
 	}
 	for range 600 { // up to 5 minutes — large GGUF files take a while
 		time.Sleep(500 * time.Millisecond)
-		p := a.modelStore.GetDownloadProgress()
-		if p == nil || !p.Active {
+		active := false
+		for _, p := range a.modelStore.GetDownloadProgress() {
+			if p.RepoID == repoID && p.Filename == filename && p.Active {
+				active = true
+				break
+			}
+		}
+		if !active {
 			break
 		}
 	}
@@ -68,14 +75,15 @@ func (a *App) autoStartEmbeddingAfterDownload() {
 	a.autoStartEmbeddingModel()
 }
 
-// GetDownloadProgress returns the current download progress.
-func (a *App) GetDownloadProgress() *modelstore.DownloadProgress {
+// GetDownloadProgress returns every currently tracked download.
+func (a *App) GetDownloadProgress() []*modelstore.DownloadProgress {
 	return a.modelStore.GetDownloadProgress()
 }
 
-// CancelDownload cancels an in-progress model download.
-func (a *App) CancelDownload() {
-	a.modelStore.CancelDownload()
+// CancelDownload cancels an in-progress model download, or dismisses an
+// errored one, identified by repoID/filename.
+func (a *App) CancelDownload(repoID, filename string) {
+	a.modelStore.CancelDownload(repoID, filename)
 }
 
 // ImportLocalModel copies a local GGUF file into the models directory. Unlike

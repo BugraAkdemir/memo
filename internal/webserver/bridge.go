@@ -81,8 +81,8 @@ type FullBridge interface {
 	SearchModels(query string) ([]modelstore.HFModelResult, error)
 	GetModelFiles(repoID string) []modelstore.GGUFFile
 	DownloadModel(repoID, filename string, expectedSize int64) error
-	GetDownloadProgress() *modelstore.DownloadProgress
-	CancelDownload()
+	GetDownloadProgress() []*modelstore.DownloadProgress
+	CancelDownload(repoID, filename string)
 	ImportLocalModel(sourcePath string) error
 	ListLocalModels() []modelstore.LocalModel
 	DeleteLocalModel(path string) error

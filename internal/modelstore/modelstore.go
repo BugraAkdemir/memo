@@ -140,13 +140,19 @@ type hfModelInfo struct {
 
 // ─── Store ───────────────────────────────────────────────────────
 
+// downloadEntry tracks one in-flight (or errored, not-yet-dismissed) download.
+type downloadEntry struct {
+	progress *DownloadProgress
+	cancelFn context.CancelFunc
+}
+
 type Store struct {
 	modelsDir string
 	client    *http.Client
 
-	mu       sync.RWMutex
-	progress *DownloadProgress
-	cancelFn context.CancelFunc
+	mu        sync.RWMutex
+	downloads map[string]*downloadEntry // key: downloadKey(repoID, filename)
+	order     []string                  // insertion order of keys, for a stable list
 }
 
 func New(modelsDir string) *Store {
@@ -158,8 +164,15 @@ func New(modelsDir string) *Store {
 		client: &http.Client{
 			Timeout: 30 * time.Second,
 		},
-		progress: &DownloadProgress{},
+		downloads: make(map[string]*downloadEntry),
 	}
+}
+
+// downloadKey uniquely identifies a download by repo + file, since the same
+// repo can have multiple files downloading (e.g. a chat model + a separate
+// mmproj file) and different repos can share a filename.
+func downloadKey(repoID, filename string) string {
+	return repoID + "/" + filename
 }
 
 // ─── Search ──────────────────────────────────────────────────────
@@ -286,38 +299,60 @@ func loadModelMeta(ggufPath string) *modelMeta {
 
 // ─── Download ────────────────────────────────────────────────────
 
+// DownloadModel starts downloading repoID/filename in the background.
+// Multiple downloads can run concurrently as long as they're for different
+// repo+file pairs — only a duplicate of an already-active download is
+// rejected, so e.g. a chat model and a memory model can download at once.
 func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error {
+	key := downloadKey(repoID, filename)
+
 	s.mu.Lock()
-	if s.progress.Active {
+	if existing, ok := s.downloads[key]; ok && existing.progress.Active {
 		s.mu.Unlock()
-		return fmt.Errorf("modelstore.Download: another download in progress")
+		return fmt.Errorf("modelstore.Download: %s is already downloading", filename)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())
-	s.cancelFn = cancel
-	s.progress = &DownloadProgress{
-		Active:     true,
-		RepoID:     repoID,
-		Filename:   filename,
-		TotalBytes: expectedSize,
+	entry := &downloadEntry{
+		cancelFn: cancel,
+		progress: &DownloadProgress{
+			Active:     true,
+			RepoID:     repoID,
+			Filename:   filename,
+			TotalBytes: expectedSize,
+		},
 	}
+	if _, exists := s.downloads[key]; !exists {
+		s.order = append(s.order, key)
+	}
+	s.downloads[key] = entry
 	s.mu.Unlock()
 
 	go func() {
 		defer func() {
 			s.mu.Lock()
-			if s.progress.Error == "" {
-				s.progress.Active = false
+			if entry.progress.Error == "" {
+				entry.progress.Active = false
+				// Drop the entry a little after it finishes so the UI gets a
+				// beat to show "100%" before the download disappears from lists.
+				time.AfterFunc(3*time.Second, func() {
+					s.mu.Lock()
+					if cur, ok := s.downloads[key]; ok && cur == entry {
+						delete(s.downloads, key)
+						s.removeFromOrderLocked(key)
+					}
+					s.mu.Unlock()
+				})
 			}
-			s.cancelFn = nil
+			entry.cancelFn = nil
 			s.mu.Unlock()
 		}()
 
-		if err := s.doDownload(ctx, repoID, filename, expectedSize); err != nil {
+		if err := s.doDownload(ctx, entry, repoID, filename, expectedSize); err != nil {
 			errMsg := err.Error()
 			s.mu.Lock()
-			s.progress.Error = errMsg
-			s.progress.Active = true // keep visible so Flutter shows the error
+			entry.progress.Error = errMsg
+			entry.progress.Active = true // keep visible so Flutter shows the error
 			s.mu.Unlock()
 			if ctx.Err() != nil {
 				logx.Printf("modelstore: download cancelled: %s/%s", repoID, filename)
@@ -326,8 +361,8 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 			}
 		} else {
 			s.mu.Lock()
-			s.progress.Active = false
-			s.progress.Percent = 100
+			entry.progress.Active = false
+			entry.progress.Percent = 100
 			s.mu.Unlock()
 			logx.Printf("modelstore: download complete: %s/%s", repoID, filename)
 		}
@@ -336,7 +371,17 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 	return nil
 }
 
-func (s *Store) doDownload(ctx context.Context, repoID, filename string, expectedSize int64) error {
+// removeFromOrderLocked removes key from s.order. Caller must hold s.mu.
+func (s *Store) removeFromOrderLocked(key string) {
+	for i, k := range s.order {
+		if k == key {
+			s.order = append(s.order[:i], s.order[i+1:]...)
+			return
+		}
+	}
+}
+
+func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, filename string, expectedSize int64) error {
 	escapedFile := url.PathEscape(filename)
 	downloadURL := fmt.Sprintf("https://huggingface.co/%s/resolve/main/%s", repoID, escapedFile)
 
@@ -372,7 +417,7 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string, expecte
 		totalBytes = expectedSize
 	}
 	s.mu.Lock()
-	s.progress.TotalBytes = totalBytes
+	entry.progress.TotalBytes = totalBytes
 	s.mu.Unlock()
 
 	// Create destination directory (flat: directly in modelsDir, no subdirectory)
@@ -423,9 +468,9 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string, expecte
 			}
 
 			s.mu.Lock()
-			s.progress.Downloaded = downloaded
-			s.progress.Percent = percent
-			s.progress.Speed = speed
+			entry.progress.Downloaded = downloaded
+			entry.progress.Percent = percent
+			entry.progress.Speed = speed
 			s.mu.Unlock()
 		}
 
@@ -462,8 +507,8 @@ func (s *Store) doDownload(ctx context.Context, repoID, filename string, expecte
 	}
 
 	s.mu.Lock()
-	s.progress.Percent = 100
-	s.progress.Downloaded = downloaded
+	entry.progress.Percent = 100
+	entry.progress.Downloaded = downloaded
 	s.mu.Unlock()
 
 	// Fetch and save HF metadata (tool-calling capability etc.) as a sidecar.
@@ -499,24 +544,42 @@ func copyFile(src, dst string) error {
 
 // ─── Progress & Cancel ───────────────────────────────────────────
 
-func (s *Store) GetDownloadProgress() *DownloadProgress {
+// GetDownloadProgress returns every currently tracked download (active, or
+// errored and not yet dismissed), oldest-started first.
+func (s *Store) GetDownloadProgress() []*DownloadProgress {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	// Return a copy
-	p := *s.progress
-	return &p
+	out := make([]*DownloadProgress, 0, len(s.order))
+	for _, key := range s.order {
+		entry, ok := s.downloads[key]
+		if !ok {
+			continue
+		}
+		p := *entry.progress
+		out = append(out, &p)
+	}
+	return out
 }
 
-func (s *Store) CancelDownload() {
+// CancelDownload stops the download for repoID/filename if it's running, and
+// dismisses it if it's sitting in an errored state.
+func (s *Store) CancelDownload(repoID, filename string) {
+	key := downloadKey(repoID, filename)
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if s.cancelFn != nil {
-		s.cancelFn()
+	entry, ok := s.downloads[key]
+	if !ok {
+		return
 	}
-	// Clear error state so user can dismiss failed download banner
-	if s.progress.Error != "" {
-		s.progress = &DownloadProgress{}
+	if entry.cancelFn != nil {
+		entry.cancelFn()
+	}
+	// Clear error state so the user can dismiss a failed download banner.
+	if entry.progress.Error != "" {
+		delete(s.downloads, key)
+		s.removeFromOrderLocked(key)
 	}
 }
 

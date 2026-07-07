@@ -64,10 +64,21 @@ func (c *Client) DownloadModel(ctx context.Context, repoID, filename string, exp
 	}, nil)
 }
 
-// DownloadProgress reports the state of the current (or most recent)
-// download. Active is false once it finishes, successfully or not.
-func (c *Client) DownloadProgress(ctx context.Context) (DownloadProgress, error) {
-	var p DownloadProgress
-	err := c.doJSON(ctx, http.MethodGet, "/api/models/download/progress", nil, &p)
-	return p, err
+// DownloadProgress reports the state of the repoID/filename download this
+// session started. The backend can track several concurrent downloads (e.g.
+// the Flutter app downloading something else at the same time), so this
+// finds the matching entry in the list. A download that already finished
+// successfully is dropped from the backend's list a few seconds after
+// completion, so "not found" is treated as done rather than an error.
+func (c *Client) DownloadProgress(ctx context.Context, repoID, filename string) (DownloadProgress, error) {
+	var all []DownloadProgress
+	if err := c.doJSON(ctx, http.MethodGet, "/api/models/download/progress", nil, &all); err != nil {
+		return DownloadProgress{}, err
+	}
+	for _, p := range all {
+		if p.RepoID == repoID && p.Filename == filename {
+			return p, nil
+		}
+	}
+	return DownloadProgress{Filename: filename}, nil
 }

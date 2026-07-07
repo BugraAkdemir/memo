@@ -932,12 +932,12 @@ func (s *Server) handleModelDownload(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleDownloadProgress(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
-		writeJSON(w, map[string]interface{}{"active": false})
+		writeJSON(w, []struct{}{})
 		return
 	}
 	p := s.fullBridge.GetDownloadProgress()
 	if p == nil {
-		writeJSON(w, map[string]interface{}{"active": false})
+		writeJSON(w, []struct{}{})
 		return
 	}
 	writeJSON(w, p)
@@ -948,7 +948,15 @@ func (s *Server) handleDownloadCancel(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
 		return
 	}
-	s.fullBridge.CancelDownload()
+	var req struct {
+		RepoID   string `json:"repo_id"`
+		Filename string `json:"filename"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	s.fullBridge.CancelDownload(req.RepoID, req.Filename)
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 

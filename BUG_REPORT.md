@@ -11,12 +11,12 @@
 
 | Severity | Adet | Düzeltilenler | En Kritik Alan |
 |----------|------|--------------|---------------|
-| 🔴 CRITICAL | 4 | C1, C3, C4 ~~fixed~~ | WhatsApp nil panic, import'ta memory.db bozulması, cloud key kaybı |
-| 🟠 HIGH | 10 | H1, H3, H4, H5, H6, H8, H9, H10 ~~fixed~~ | Shutdown panic, data race, config kaybı, eksik yedek, Flutter Stop |
+| 🔴 CRITICAL | 4 | C1, C2, C3, C4 ~~fixed~~ (**tamamı düzeltildi**) | WhatsApp nil panic, WhatsApp data race, import'ta memory.db bozulması, cloud key kaybı |
+| 🟠 HIGH | 10 | H1, H2, H3, H4, H5, H6, H8, H9, H10 ~~fixed~~ | Shutdown panic, data race, config kaybı, eksik yedek, Flutter Stop |
 | 🟡 MEDIUM | 12 | M1, M2, M3, M4, M5, M7, M8 ~~fixed~~ | Goroutine sızıntısı, hata kirliliği, kısmi import, güvenlik |
 | 🟢 LOW | 6 | L1, L2 ~~fixed~~ | Cache sızıntısı, error swallowing, UI double-rebuild |
 
-> **Son güncelleme:** 2026-07-07, Session 7 — cfg data race, cloud sync WAL checkpoint/perm sertleştirmesi, import atomikliği, provider/router yarışı, ve 7 Flutter bug'ı (permission timeout, responsive settings dialog, OAuth polling, WhatsApp ghost mesaj, vb.) düzeltildi. Kalan: C2, H2, H7, M6, M9-M12 ve bir grup düşük öncelikli Flutter cilası (FM8, FM10-FM13, FM17, FM20, FL2-FL4, NL3).
+> **Son güncelleme:** 2026-07-07, Session 7 — cfg data race, cloud sync WAL checkpoint/perm sertleştirmesi, import atomikliği, provider/router yarışı, ve 7 Flutter bug'ı (permission timeout, responsive settings dialog, OAuth polling, WhatsApp ghost mesaj, vb.) düzeltildi. Ayrıca C2 ve H2'nin aslında `854e04d`'de (2026-06-30) çoktan düzeltilmiş olduğu tespit edildi — bu rapor hiç güncellenmemişti; regresyon testi eklendi. **Artık tüm CRITICAL ve sadece 1 HIGH (H7) açık.** Kalan: H7, M6, M9-M12 ve bir grup düşük öncelikli Flutter cilası (FM8, FM10-FM13, FM17, FM20, FL2-FL4, NL3).
 
 ---
 
@@ -37,19 +37,12 @@
 - **Kullanıcı etkisi:** WhatsApp bağlantısı kesilirken/sonlandırılırken gelen herhangi bir HTTP isteği (mesaj gönderme, durum sorgulama, profil resmi) **uygulamayı panic ile çökertir**.
 - **Düzeltme:** Tüm bu fonksiyonlarda `c.startMu.RLock()` / `c.startMu.Lock()` ile `c.waClient` okuması korunmalı. Alternatif: `c.waClient`'i `atomic.Value` ile sar.
 
-### BUG-C2: WhatsApp `handleEvent` shared state'i locksuz yazıyor → data race
+### BUG-C2: ~~WhatsApp `handleEvent` shared state'i locksuz yazıyor → data race~~ **→ ZATEN DÜZELTİLMİŞ (asıl commit: `854e04d`, 2026-06-30 — bu rapor hiç güncellenmemiş; regresyon testi eklendi 2026-07-07)**
 
-- **Dosya:** `internal/whatsapp/client.go:388-430`
-- **Nedir:** `handleEvent()` whatsmeow'un event loop goroutine'inde çalışır. `c.qrCodes`, `c.lastError`, `c.started`, `c.reconnecting` alanlarını **hiçbir lock olmadan** yazar:
-  - `:391` → `c.qrCodes = v.Codes`
-  - `:394` → `c.qrCodes = nil`
-  - `:398` → `c.lastError = v.Error.Error()`
-  - `:405` → `c.reconnecting = false`
-  - `:409` → `c.lastError = "connection lost"`
-  - `:415` → `if c.started {` (okuma, locksuz)
-  - `:420-422` → `c.lastError`, `c.qrCodes`, `c.started` yazma
-- **Kullanıcı etkisi:** Aynı alanlar `Start()`/`Stop()` tarafından lock altında yazılırken, `QRCodes()`/`LastError()`/`IsReconnecting()` tarafından locksuz okunur. Slice corruption (qrCodes), boolean tear, kayıp hata mesajları. **QR kod gösterimi bozulabilir, bağlantı durumu yanlış raporlanır.**
-- **Düzeltme:** `handleEvent` içindeki tüm `c.qrCodes`, `c.lastError`, `c.started`, `c.reconnecting` yazma/okumaları `startMu.Lock()` altına alınmalı.
+- **Doğrulama (2026-07-07):** Kodu satır satır okudum — `handleEvent()`'in her case'i (`QR`, `PairSuccess`, `PairError`, `Connected`, `Disconnected`, `LoggedOut`) zaten `c.startMu.Lock()/Unlock()` ile sarılı (`internal/whatsapp/client.go:411-466`). Bu, C1 fix'i (`854e04d`, "WhatsApp c.waClient locksuz erişim nedeniyle nil panic") ile aynı commit'te yapılmış — commit mesajı bunu açıkça belirtiyor ("handleEvent: tüm shared state yazmaları startMu ile korunuyor") ama BUG_REPORT.md hiç güncellenmemiş, C2 sanki hâlâ açıkmış gibi kalmış.
+- **Regresyon testi:** `internal/whatsapp/client_race_test.go` → `TestHandleEventConcurrentAccess`, `handleEvent`'i ve `QRCodes()/LastError()/IsReconnecting()/IsConnected()/IsLoggedIn()`'i eşzamanlı çalıştırıp `go test -race` ile doğruluyor. Temiz geçiyor.
+- **Dosya:** `internal/whatsapp/client.go:411-466`
+- **Eski iddia (artık geçersiz):** `handleEvent()` whatsmeow'un event loop goroutine'inde `c.qrCodes`, `c.lastError`, `c.started`, `c.reconnecting` alanlarını hiçbir lock olmadan yazıyordu.
 
 ### BUG-C3: ~~Import sırasında `os.Create` direkt hedef dosyayı kesiyor → memory.db kalıcı bozulur~~ **→ DÜZELTİLDİ (2026-06-30)**
 
@@ -102,10 +95,11 @@
 - **Kullanıcı etkisi:** Uygulama kapanırken (özellikle aktif chat varsa) **panic ile çöker**. Loglar kaybolur, graceful shutdown başarısız olur.
 - **Düzeltme:** Kanalı kapatmadan önce tüm stream goroutine'lerinin bitmesi beklenmeli (WaitGroup). Veya send öncesi kanalın nil olup olmadığı kontrol edilmeli.
 
-### BUG-H2: WhatsApp `autoReconnect` TOCTOU nil deref → reconnect sırasında crash
+### BUG-H2: ~~WhatsApp `autoReconnect` TOCTOU nil deref → reconnect sırasında crash~~ **→ ZATEN DÜZELTİLMİŞ (asıl commit: `854e04d`, 2026-06-30 — bu rapor hiç güncellenmemiş)**
 
-- **Dosya:** `internal/whatsapp/client.go:444-456`
-- **Nedir:**
+- **Doğrulama (2026-07-07):** `internal/whatsapp/client.go:485-489` — `wa := c.waClient` lock altında local değişkene kopyalanıyor, sonrasında `wa.Connect()` bu local kopya üzerinden çağrılıyor (`c.waClient` değil). `Stop()` araya girip `c.waClient`'i nil yapsa bile `wa` hâlâ geçerli bir pointer, nil deref oluşmuz. Commit mesajı ("autoReconnect: c.waClient ve c.started lock altında okunup local değişkene alınıyor, lock dışında Connect() çağrısı TOCTOU'suz") bunu açıkça belirtiyor.
+- **Dosya:** `internal/whatsapp/client.go:485-510`
+- **Eski iddia (artık geçersiz):**
   ```go
   c.startMu.Lock()
   alive := c.started && c.waClient != nil   // line 446 — lock altında check ✓
@@ -115,9 +109,7 @@
 
   if err := c.waClient.Connect(); err != nil { // line 455 — LOCKSIZ kullanım → nil panic
   ```
-  Line 446'daki nil check ile line 455'teki kullanım arasında lock yok. `Stop()` araya girip `c.waClient = nil` yaparsa, `c.waClient.Connect()` nil dereference panic üretir.
-- **Kullanıcı etkisi:** WhatsApp otomatik yeniden bağlanma sırasında uygulama kapanıyorsa **crash**.
-- **Düzeltme:** `c.waClient`'i lock altında local değişkene alıp onu kullanmak, veya tüm reconnect gövdesini lock altında tutmak.
+  Bu artık kodda yok — güncel hali `wa` local değişkenini kullanıyor.
 
 ### BUG-H3: ~~Export WAL checkpoint olmadan memory.db kopyalar → eksik `.memo` yedeği~~ **→ DÜZELTİLDİ (2026-06-30)**
 
@@ -444,15 +436,15 @@
 | H1 | `memorySaveCh` close sonrası panic | 1 saat | Shutdown crash | ✅ `86a0045` |
 | H3 | Export WAL checkpoint | 20 dk | Eksik yedek | ✅ `be4d6ae` |
 
-### Faz 2 — Yüksek Öncelik — kısmen tamamlandı (2026-07-07, Session 7)
+### Faz 2 — Yüksek Öncelik — tamamlandı, sadece H7 kaldı (2026-07-07, Session 7)
 
 | # | Bug | Tahmini Süre | Etki | Durum |
 |---|-----|-------------|------|-------|
-| C2 | WhatsApp `handleEvent` data race | 1.5 saat | Data corruption | ⬜ Bekliyor |
+| C2 | WhatsApp `handleEvent` data race | 1.5 saat | Data corruption | ✅ Zaten düzeltilmişti (`854e04d`, 2026-06-30) — regresyon testi eklendi 2026-07-07 |
 | H6 | `a.cfg` data race | 1 saat | Yanlış LLM parametreleri | ✅ `716a27c`/`07eaf0c` |
 | H7 | Hata string'leri memory'e kaydediliyor | 30 dk | Hafıza kirliliği | ⬜ Bekliyor |
 | H8 | Flutter WhatsApp Stop butonu | 1 saat | Kullanıcı deneyimi | ✅ `cb5c995` (Session 6, FH1) |
-| H2 | WhatsApp `autoReconnect` TOCTOU | 30 dk | Crash | ⬜ Bekliyor |
+| H2 | WhatsApp `autoReconnect` TOCTOU | 30 dk | Crash | ✅ Zaten düzeltilmişti (`854e04d`, 2026-06-30) |
 | H9 | Cloud sync checkpoint hatası yutma | 10 dk | Bozuk yedek | ✅ `44c5fc3` |
 | H10 | Observer/proactive yanlış context | 15 dk | Kaynak sızıntısı | ✅ `716a27c` |
 
@@ -866,10 +858,23 @@ go test ./... -race -count=1  → tüm paketler PASS
 
 | Öncelik | Bug'lar |
 |---------|---------|
-| CRITICAL | C2 (WhatsApp `handleEvent` data race) |
-| HIGH | H2 (autoReconnect TOCTOU), H7 (hata string'leri memory'e kaydediliyor) |
+| CRITICAL | *(yok — tümü düzeltildi)* |
+| HIGH | H7 (hata string'leri memory'e kaydediliyor) |
 | MEDIUM | M6 (startupTailscale race), M9-M12 (bilinen borç), FM8, FM10-FM13, FM17, FM20 |
 | LOW | FL2-FL4, NL3 |
+
+---
+
+## Session 2026-07-07 (devam 2) — C2 ve H2 aslında zaten düzeltilmişti
+
+Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu satır satır okurken **her iki bug'ın da** (`C2`: `handleEvent` locksuz yazma, `H2`: `autoReconnect` TOCTOU) `854e04d` commit'inde (2026-06-30, BUG-C1 fix'i) çoktan düzeltilmiş olduğu görüldü — commit mesajı bunu açıkça listeliyor ama BUG_REPORT.md hiç güncellenmemişti, iki madde hâlâ "açık" gibi duruyordu.
+
+**Doğrulama:**
+- Kod okuması: `handleEvent`'in her case'i `startMu` altında; `autoReconnect` `c.waClient`'i lock altında local değişkene (`wa`) kopyalayıp onu kullanıyor.
+- `go test ./internal/whatsapp/... -race -count=3`: temiz.
+- Yeni regresyon testi eklendi: `internal/whatsapp/client_race_test.go` → `TestHandleEventConcurrentAccess`, `handleEvent`'i ve okuyucu metodları (`QRCodes`/`LastError`/`IsReconnecting`/`IsConnected`/`IsLoggedIn`) eşzamanlı çalıştırıp `-race` ile doğruluyor.
+
+**Kod değişikliği yok** (zaten doğruydu) — sadece test eklendi ve rapor doğru duruma güncellendi. Artık **tüm CRITICAL bug'lar ve HIGH'ların 9/10'u düzeltilmiş durumda**, sadece H7 kaldı.
 
 ---
 

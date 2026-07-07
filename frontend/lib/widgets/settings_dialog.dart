@@ -74,14 +74,18 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final tabs = _tabs;
     final tabIndex = _activeTab.clamp(0, tabs.length - 1);
 
+    final screenSize = MediaQuery.of(context).size;
+    final dialogWidth = (screenSize.width * 0.85).clamp(400.0, 900.0);
+    final dialogHeight = (screenSize.height * 0.85).clamp(400.0, 700.0);
+
     return Dialog(
       backgroundColor: MemoTheme.of(context).bgApp,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
       ),
       child: Container(
-        width: 800,
-        height: 600,
+        width: dialogWidth,
+        height: dialogHeight,
         clipBehavior: Clip.antiAlias,
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(MemoTheme.radiusLg),

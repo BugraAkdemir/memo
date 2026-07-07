@@ -841,7 +841,11 @@ class _AuthorAvatar extends StatefulWidget {
 
 class _AuthorAvatarState extends State<_AuthorAvatar> {
   // Shared across all instances — one fetch per unique author per session.
+  // Capped so browsing thousands of distinct authors across a long-running
+  // session doesn't grow this forever; a clear-on-overflow is simplest and
+  // just costs a few extra re-fetches right after, not a correctness issue.
   static final _cache = <String, String?>{};
+  static const _cacheCap = 500;
   String? _avatarUrl;
   bool _resolved = false;
 
@@ -880,6 +884,7 @@ class _AuthorAvatarState extends State<_AuthorAvatar> {
         if (u != null && u.isNotEmpty) { url = u; break; }
       } catch (_) {}
     }
+    if (_cache.length >= _cacheCap) _cache.clear();
     _cache[a] = url;
     if (mounted) setState(() { _avatarUrl = url; _resolved = true; });
   }
@@ -1183,6 +1188,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
   // README
   String? _readme;
   bool _readmeLoading = false;
+  String? _readmeError;
 
   // More from author
   List<Map<String, dynamic>>? _moreModels;
@@ -1213,7 +1219,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
   }
 
   Future<void> _loadReadme() async {
-    if (mounted) setState(() => _readmeLoading = true);
+    if (mounted) setState(() { _readmeLoading = true; _readmeError = null; });
     try {
       final url =
           'https://huggingface.co/${widget.item.repoId}/raw/main/README.md';
@@ -1227,8 +1233,21 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
           _readmeLoading = false;
         });
       }
-    } catch (_) {
-      if (mounted) setState(() => _readmeLoading = false);
+    } on DioException catch (e) {
+      // A 404 just means this repo has no README.md — a normal, common case,
+      // not worth surfacing as an error. Anything else (timeout, DNS
+      // failure, 5xx) is a real fetch failure the user should be able to
+      // see instead of the README section just silently not appearing as
+      // if the model had none.
+      final is404 = e.response?.statusCode == 404;
+      if (mounted) {
+        setState(() {
+          _readmeLoading = false;
+          if (!is404) _readmeError = e.message ?? e.toString();
+        });
+      }
+    } catch (e) {
+      if (mounted) setState(() { _readmeLoading = false; _readmeError = e.toString(); });
     }
   }
 
@@ -1493,7 +1512,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
           ],
 
           // ── README section ──
-          if (_readmeLoading || (_readme != null && _readme!.isNotEmpty)) ...[
+          if (_readmeLoading || _readmeError != null || (_readme != null && _readme!.isNotEmpty)) ...[
             const SizedBox(height: 28),
             Row(
               children: [
@@ -1514,6 +1533,11 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
                   ),
               ],
             ),
+            if (_readmeError != null) ...[
+              const SizedBox(height: 8),
+              Text('${L10n.t('error')}: $_readmeError',
+                  style: const TextStyle(color: MemoTheme.red, fontSize: 13)),
+            ],
             if (!_readmeLoading && _readme != null && _readme!.isNotEmpty) ...[
               const SizedBox(height: 10),
               Container(

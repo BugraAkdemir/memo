@@ -118,6 +118,9 @@ func (a *App) StartWhatsApp(ctx context.Context) error {
 func (a *App) StopWhatsApp() {
 	a.waMu.Lock()
 	defer a.waMu.Unlock()
+	// Reset the dedicated WhatsApp chat session so the next connect starts a
+	// fresh session instead of silently reusing (or leaking) the old one.
+	defer func() { a.whatsAppSessionID = "" }()
 	if a.waClient != nil {
 		a.waClient.Stop()
 	}
@@ -127,6 +130,9 @@ func (a *App) StopWhatsApp() {
 func (a *App) LogoutWhatsApp() error {
 	a.waMu.Lock()
 	defer a.waMu.Unlock()
+	// A logout pairs a (possibly different) account next time, so the
+	// dedicated WhatsApp chat session must not be reused across accounts.
+	defer func() { a.whatsAppSessionID = "" }()
 	if a.waClient == nil {
 		return nil
 	}
@@ -164,16 +170,12 @@ func (a *App) WhatsAppSend(ctx context.Context, jid, text string) (string, error
 
 // GetWhatsAppChatMode returns whether WhatsApp chat mode is active.
 func (a *App) GetWhatsAppChatMode() bool {
-	a.whatsappChatMu.RLock()
-	defer a.whatsappChatMu.RUnlock()
-	return a.whatsappChatMode
+	return a.whatsappChatMode.Load()
 }
 
 // SetWhatsAppChatMode enables or disables WhatsApp chat mode.
 func (a *App) SetWhatsAppChatMode(enabled bool) {
-	a.whatsappChatMu.Lock()
-	defer a.whatsappChatMu.Unlock()
-	a.whatsappChatMode = enabled
+	a.whatsappChatMode.Store(enabled)
 }
 
 // WhatsAppChatStream handles a chat message in WhatsApp mode.

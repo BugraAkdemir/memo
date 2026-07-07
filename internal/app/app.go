@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"memo/internal/agent"
@@ -110,6 +111,7 @@ type App struct {
 	identity          *identity.Identity
 	mood              *moodpkg.Engine
 	cfg               *config.AppConfig
+	cfgMu             sync.RWMutex // protects a.cfg.Llama field reassignment (UpdateLlamaConfig writes vs concurrent reads)
 	sessions          *sessions.Manager
 	incognitoMu       sync.RWMutex
 	isIncognito       bool
@@ -178,8 +180,7 @@ type App struct {
 	ngrokServer         *ngrok.Manager
 	tailscaleTunnel     *tunnel.Tailscale
 
-	whatsappChatMode  bool
-	whatsappChatMu    sync.RWMutex
+	whatsappChatMode  atomic.Bool
 	whatsAppSessionID string       // dedicated session for WhatsApp chat context
 	waMu              sync.Mutex   // protects waClient, waMsgStore initialization
 	streamMu          sync.Mutex   // prevents concurrent stream goroutines (double-send)
@@ -316,7 +317,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.observerPatterns = observer.NewPatternStore(config.DataPath("profile", "patterns.json"))
 	a.observerAnalyzer = observer.NewAnalyzer(a.observerStore, a.observerPatterns)
 	if a.observerStore != nil {
-		go a.runObserverAnalysis(ctx)
+		go a.runObserverAnalysis(a.lifecycleCtx)
 	}
 
 	a.proactivePending = proactive.NewPendingStore(config.DataPath("profile", "pending.json"))
@@ -328,7 +329,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.proactiveEmit,
 		a.proactiveLevel,
 	)
-	go a.proactiveEngine.Start(ctx)
+	go a.proactiveEngine.Start(a.lifecycleCtx)
 
 	a.initLearning(ctx)
 
@@ -657,10 +658,18 @@ func (a *App) setWebServer(s *webserver.Server) {
 
 // runObserverAnalysis runs the learning system's analysis loop.
 func (a *App) runObserverAnalysis(ctx context.Context) {
+	// Wait 30s before the first analysis pass, but react to shutdown
+	// immediately rather than sitting on the timer — a plain time.After
+	// case in the select below would technically still respond right away
+	// (select doesn't block behind the "slower" case), but it also leaks
+	// the timer for up to 30s after we've already returned. Use an explicit
+	// timer we can stop so ctx.Done() gets a prompt, leak-free response.
+	startupTimer := time.NewTimer(30 * time.Second)
+	defer startupTimer.Stop()
 	select {
 	case <-ctx.Done():
 		return
-	case <-time.After(30 * time.Second):
+	case <-startupTimer.C:
 	}
 
 	analyze := func() {

@@ -68,6 +68,9 @@ frontend_svelte_backup/
 skill-lock.json
 skills-lock.json
 .kimchi/
+# Internal reports (not for repo)
+STABILITY_REPORT.md
+
 # Misc
 server.log
 *.log

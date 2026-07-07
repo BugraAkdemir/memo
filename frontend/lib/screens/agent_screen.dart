@@ -55,12 +55,20 @@ class _AgentSidebar extends ConsumerWidget {
                       dialogTitle: L10n.t('agent_select_project'),
                     );
                     if (result == null) return;
-                    final api = ref.read(apiClientProvider);
-                    final id = await api.createAgentChat(result);
-                    await ref.read(chatListProvider.notifier).refresh();
-                    ref.read(activeChatIdProvider.notifier).switchTo(id);
-                    if (!ref.read(agentEnabledProvider)) {
-                      ref.read(agentEnabledProvider.notifier).setEnabled(true);
+                    try {
+                      final api = ref.read(apiClientProvider);
+                      final id = await api.createAgentChat(result);
+                      await ref.read(chatListProvider.notifier).refresh();
+                      ref.read(activeChatIdProvider.notifier).switchTo(id);
+                      if (!ref.read(agentEnabledProvider)) {
+                        ref.read(agentEnabledProvider.notifier).setEnabled(true);
+                      }
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('Ajan sohbeti oluşturulamadı: $e')),
+                        );
+                      }
                     }
                   },
               ),

@@ -1051,13 +1051,14 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Dosya:** `frontend/lib/screens/agent_screen.dart:53-65`
 - **Nedir:** `createAgentChat` çağrısında try-catch yok. Hata zone handler'a düşüyor — hiçbir feedback yok.
 
-#### BUG-QM6: Image stream agent modunu bypass ediyor
+#### BUG-QM6: ~~Image stream agent modunu bypass ediyor~~ **→ DÜZELTİLDİ (2026-07-07, hem image hem file stream için)**
+
+- **Commit:** `e437075`
+- **Düzeltme:** `sendMessageStreamInner`'ın agent routing mantığı (skill/agent system prompt enjeksiyonu + agent/orchestra/plain LLM karar verme) `routeStream()` adlı paylaşımlı bir metoda çıkarıldı. Hem `SendMessageWithImageStream` hem `SendMessageWithFileStream` (ikisi de aynı bug'a sahipti) artık bunu kullanıyor.
 
 - **Dosya:** `internal/app/chat.go:228-301`
-- **Trigger:** Agent açıkken resim gönderilir.
 - **Nedir:** `SendMessageWithImageStream` kendi mesaj listesini oluşturup doğrudan `callLLMStream`'e gidiyor. `agentEnabled` kontrolü yok, agent system prompt enjekte edilmiyor, skill prompt eklenmiyor.
-- **Kullanıcı etkisi:** Agent tool'ları (dosya okuma/yazma, komut çalıştırma) resimli mesajlarda çalışmıyor.
-- **Düzeltme:** `sendMessageStreamInner`'daki agent routing mantığı image/file stream'lerde de kullanılmalı.
+- **Kullanıcı etkisi (düzeltme öncesi):** Agent tool'ları (dosya okuma/yazma, komut çalıştırma) resimli mesajlarda çalışmıyor.
 
 #### BUG-QM7: WhatsApp _optimistic çift mesaj riski
 

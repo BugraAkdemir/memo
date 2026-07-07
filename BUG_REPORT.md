@@ -1019,12 +1019,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Dosya:** `internal/webserver/handlers_flutter.go:1778-1788`
 - **Nedir:** `fullBridge.Shutdown()` çağrılıp ardından SIGINT gönderiliyor. İki eşzamanlı shutdown yolu SQLite, WhatsApp, embedding model ve HTTP sunucusu üzerinde race condition oluşturur.
 
-#### BUG-QM2: Temperature/TopP = 0 ayarlanamıyor
+#### BUG-QM2: ~~Temperature/TopP = 0 ayarlanamıyor~~ **→ DÜZELTİLDİ (2026-07-07)**
 
-- **Dosya:** `internal/app/llama.go:111-119`
-- **Trigger:** Kullanıcı Temperature veya TopP'yi 0 yapar (greedy decoding).
+- **Commit:** `5dd268d`
+- **Düzeltme:** İki katmanlı sorun çıktı. (1) `UpdateLlamaConfig` artık `*float64`/`*int` kullanan yeni `config.LlamaConfigUpdate` tipini alıyor — nil="gönderilmedi", non-nil 0="bilinçli olarak sıfır". (2) `config.Save()`'in her çağrıda çalıştırdığı `validate()` de aynı hataya sahipti (`<= 0` → 0.7/0.9'a resetliyordu); `< 0`'a çevrildi (MaxTokens'ın zaten kullandığı pattern). Test: `internal/app/llama_test.go`, `internal/config/config_test.go` → `TestValidatePreservesExplicitZeroTemperatureAndTopP`.
+
+- **Dosya:** `internal/app/llama.go:111-119`, `internal/config/config.go` (`validate()`)
 - **Nedir:** `if cfg.Temperature != 0` guard'ı zero value'yu sessizce atlıyor. Kullanıcı ayarı kaydeder ama hiçbir zaman uygulanmaz.
-- **Düzeltme:** Zero value handling için `*float64` veya "set" bitmask kullanılmalı.
 
 #### BUG-QM3: Rate limiter port bazlı (IP bazlı değil)
 

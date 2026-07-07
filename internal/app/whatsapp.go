@@ -192,8 +192,13 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 	}
 
 	// Use a dedicated WhatsApp session so WhatsApp messages don't pollute the
-	// active chat session the user is viewing.
+	// active chat session the user is viewing. whatsAppSessionID is also
+	// written (reset to "") by StopWhatsApp/LogoutWhatsApp under waMu, so it
+	// must be read/written under the same lock here — otherwise a concurrent
+	// Stop/Logout racing this check is a data race and can leave waSessionID
+	// pointing at a session that Stop just invalidated.
 	sm := a.getSessionManager()
+	a.waMu.Lock()
 	if a.whatsAppSessionID == "" && sm != nil {
 		a.whatsAppSessionID = sm.NewChat()
 		if a.whatsAppSessionID != "" {
@@ -201,6 +206,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		}
 	}
 	waSessionID := a.whatsAppSessionID
+	a.waMu.Unlock()
 
 	go func() {
 		defer close(outCh)

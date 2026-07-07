@@ -34,17 +34,21 @@ func (a *App) StartEmbeddingModel(modelPath string, gpuLayers int) error {
 		time.Sleep(500 * time.Millisecond)
 	}
 
+	a.cfgMu.RLock()
 	embPort := a.cfg.Llama.EmbeddingPort
 	if embPort <= 0 || embPort == a.cfg.Llama.Port {
 		embPort = 8082
 	}
+	binaryPath := a.cfg.Llama.BinaryPath
+	engineMode := a.cfg.Llama.EngineMode
+	a.cfgMu.RUnlock()
 
 	const maxAttempts = 3
 	var lastErr error
 	for attempt := 1; attempt <= maxAttempts; attempt++ {
 		logx.Printf("Starting embedding model on port %d (attempt %d/%d)", embPort, attempt, maxAttempts)
 
-		if err := a.llamaEmbedServer.Start(a.cfg.Llama.BinaryPath, modelPath, 512, embPort, gpuLayers, true, a.cfg.Llama.EngineMode); err != nil {
+		if err := a.llamaEmbedServer.Start(binaryPath, modelPath, 512, embPort, gpuLayers, true, engineMode); err != nil {
 			return err
 		}
 
@@ -101,7 +105,9 @@ func (a *App) GetEmbeddingModelStatus() llama.ServerStatus {
 func (a *App) startupEmbeddingModel() {
 	repoID := a.cfg.Memory.EmbeddingModelRepo
 	filename := a.cfg.Memory.EmbeddingModelFile
+	a.cfgMu.RLock()
 	modelsDir := a.cfg.Llama.ModelsDir
+	a.cfgMu.RUnlock()
 	modelPath := filepath.Join(modelsDir, filename)
 
 	if _, err := os.Stat(modelPath); os.IsNotExist(err) {

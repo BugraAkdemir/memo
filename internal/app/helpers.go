@@ -23,8 +23,11 @@ import (
 // MaxContextTokens override comes next; otherwise a conservative default.
 func (a *App) apiContextBudget() int {
 	// Explicit global override (Llama/GPU settings) applies to API too.
-	if a.cfg.Llama.MaxContextTokens > 0 {
-		return a.cfg.Llama.MaxContextTokens
+	a.cfgMu.RLock()
+	maxContextTokens := a.cfg.Llama.MaxContextTokens
+	a.cfgMu.RUnlock()
+	if maxContextTokens > 0 {
+		return maxContextTokens
 	}
 
 	a.providerMu.RLock()
@@ -102,12 +105,15 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 
 	var tokenBudget int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+		a.cfgMu.RLock()
 		maxLocal := a.cfg.Llama.CtxSize
+		maxContextTokens := a.cfg.Llama.MaxContextTokens
+		a.cfgMu.RUnlock()
 		if maxLocal <= 0 {
 			maxLocal = 4096
 		}
-		if a.cfg.Llama.MaxContextTokens > 0 && a.cfg.Llama.MaxContextTokens < maxLocal {
-			tokenBudget = a.cfg.Llama.MaxContextTokens
+		if maxContextTokens > 0 && maxContextTokens < maxLocal {
+			tokenBudget = maxContextTokens
 		} else {
 			tokenBudget = maxLocal
 		}
@@ -247,7 +253,10 @@ func (a *App) getSessionHistoryTokenAware(tokenBudget int) []api.Message {
 	if tokenBudget > 0 {
 		history = sm.GetHistoryForAPITokenAware(tokenBudget)
 	} else {
-		history = sm.GetHistoryForAPI(a.cfg.Llama.MaxHistory)
+		a.cfgMu.RLock()
+		maxHistory := a.cfg.Llama.MaxHistory
+		a.cfgMu.RUnlock()
+		history = sm.GetHistoryForAPI(maxHistory)
 	}
 
 	var msgs []api.Message

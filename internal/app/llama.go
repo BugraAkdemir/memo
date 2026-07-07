@@ -19,7 +19,12 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 		return fmt.Errorf("embedding modeli ana sohbet modeli olarak başlatılamaz; Hafıza (Embedding) Modeli olarak başlatın")
 	}
 
-	if err := a.llamaServer.Start(a.cfg.Llama.BinaryPath, modelPath, ctxSize, port, gpuLayers, false, a.cfg.Llama.EngineMode); err != nil {
+	a.cfgMu.RLock()
+	binaryPath := a.cfg.Llama.BinaryPath
+	engineMode := a.cfg.Llama.EngineMode
+	a.cfgMu.RUnlock()
+
+	if err := a.llamaServer.Start(binaryPath, modelPath, ctxSize, port, gpuLayers, false, engineMode); err != nil {
 		return err
 	}
 
@@ -74,11 +79,14 @@ func (a *App) DetectGPU() llama.GPUInfo {
 
 // GetLlamaConfig returns the llama configuration.
 func (a *App) GetLlamaConfig() config.LlamaConfig {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return a.cfg.Llama
 }
 
 // UpdateLlamaConfig merges partial updates into the llama configuration.
 func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
+	a.cfgMu.Lock()
 	if cfg.EngineMode != "" {
 		a.cfg.Llama.EngineMode = cfg.EngineMode
 	}
@@ -109,18 +117,24 @@ func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
 	if cfg.MaxTokens != 0 {
 		a.cfg.Llama.MaxTokens = cfg.MaxTokens
 	}
+	a.cfgMu.Unlock()
 	return config.Save(a.cfg)
 }
 
 // SetLlamaBinaryPath updates the path to the llama.cpp binary.
 func (a *App) SetLlamaBinaryPath(path string) error {
+	a.cfgMu.Lock()
 	a.cfg.Llama.BinaryPath = path
+	a.cfgMu.Unlock()
 	return config.Save(a.cfg)
 }
 
 // CheckLlamaInstallation reports whether the llama.cpp binary is installed.
 func (a *App) CheckLlamaInstallation() bool {
-	return a.llamaInstaller.IsInstalled(a.cfg.Llama.BinaryPath)
+	a.cfgMu.RLock()
+	binaryPath := a.cfg.Llama.BinaryPath
+	a.cfgMu.RUnlock()
+	return a.llamaInstaller.IsInstalled(binaryPath)
 }
 
 // InstallLlamaServer compiles and installs the llama.cpp binary.
@@ -134,7 +148,9 @@ func (a *App) InstallLlamaServer() error {
 		return err
 	}
 
+	a.cfgMu.Lock()
 	a.cfg.Llama.BinaryPath = binPath
+	a.cfgMu.Unlock()
 	_ = os.Remove(config.DataPath(".force_cpu"))
 	return config.Save(a.cfg)
 }

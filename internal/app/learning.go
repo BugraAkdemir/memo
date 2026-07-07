@@ -76,6 +76,7 @@ func (a *App) callSingleModel(ctx context.Context, modelID, systemPrompt, userPr
 		{Role: "system", Content: systemPrompt},
 		{Role: "user", Content: userPrompt},
 	}
+	a.cfgMu.RLock()
 	req := provider.ChatRequest{
 		Model:       modelID,
 		Messages:    msgs,
@@ -83,6 +84,7 @@ func (a *App) callSingleModel(ctx context.Context, modelID, systemPrompt, userPr
 		TopP:        a.cfg.Llama.TopP,
 		MaxTokens:   512,
 	}
+	a.cfgMu.RUnlock()
 
 	// Bound the call so a hung provider can't leak the goroutine indefinitely.
 	cctx, cancel := context.WithTimeout(ctx, 120*time.Second)

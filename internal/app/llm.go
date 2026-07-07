@@ -635,6 +635,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 			}
 
+			a.cfgMu.RLock()
 			req := provider.ChatRequest{
 				Messages:    pMsgs,
 				Temperature: a.cfg.Llama.Temperature,
@@ -642,6 +643,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				MaxTokens:   a.cfg.Llama.MaxTokens,
 				Stream:      true,
 			}
+			a.cfgMu.RUnlock()
 
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
@@ -740,7 +742,10 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		defer cancel()
 
 		requestStart := time.Now()
-		ch, err := streamClient.ChatCompletionStream(streamCtx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
+		a.cfgMu.RLock()
+		temperature, topP, maxTokens := a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens
+		a.cfgMu.RUnlock()
+		ch, err := streamClient.ChatCompletionStream(streamCtx, messages, temperature, topP, maxTokens)
 		if err != nil {
 			logx.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			logx.Printf("LLM stream error: %v", err)
@@ -937,12 +942,14 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
 		}
 
+		a.cfgMu.RLock()
 		req := provider.ChatRequest{
 			Messages:    pMsgs,
 			Temperature: a.cfg.Llama.Temperature,
 			TopP:        a.cfg.Llama.TopP,
 			MaxTokens:   a.cfg.Llama.MaxTokens,
 		}
+		a.cfgMu.RUnlock()
 
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
@@ -969,7 +976,10 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 		return "⚠️ Yerel model yüklenmemiş. Lütfen bir model başlatın veya API sağlayıcı seçin."
 	}
 
-	resp, err := llmClient.ChatCompletion(lctx, messages, a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens)
+	a.cfgMu.RLock()
+	temperature, topP, maxTokens := a.cfg.Llama.Temperature, a.cfg.Llama.TopP, a.cfg.Llama.MaxTokens
+	a.cfgMu.RUnlock()
+	resp, err := llmClient.ChatCompletion(lctx, messages, temperature, topP, maxTokens)
 	if err != nil {
 		logx.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		logx.Printf("LLM error: %v", err)

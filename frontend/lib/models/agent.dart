@@ -2,6 +2,10 @@ class AgentEvent {
   final String type;
   final String? requestId;
   final String? toolName;
+  // Kept as `dynamic`: the backend sends this field as either a JSON-encoded
+  // String or an already-decoded Map depending on the event source, and
+  // call sites (see permission_dialog.dart) branch on `is String` / `is Map`
+  // to handle both shapes. A single concrete type would not fit both cases.
   final dynamic args;
   final String? result;
   final String? error;

@@ -37,6 +37,31 @@ class MemoApiClient {
     throw Exception('Expected $T, got ${data.runtimeType}');
   }
 
+  /// Runtime type guard for lists of typed elements.
+  ///
+  /// `data is List<E>` is unreliable for generic element types (Dart's
+  /// generic reification means a `List<dynamic>` from JSON decoding
+  /// structurally "is" almost anything), so a naive `.cast<E>()` on an
+  /// unchecked list is *lazy*: a malformed element only throws a
+  /// [TypeError] later, at whatever unrelated call site happens to
+  /// iterate the list (a `.map()`/`.forEach()` far from here). This
+  /// walks every element eagerly and throws a descriptive [Exception]
+  /// right here, at the guard call site, if the shape doesn't match.
+  static List<E> _guardList<E>(dynamic data) {
+    if (data is! List) {
+      throw Exception('Expected List, got ${data.runtimeType}');
+    }
+    for (var i = 0; i < data.length; i++) {
+      if (data[i] is! E) {
+        throw Exception(
+          'Expected List<$E>, but element at index $i is '
+          '${data[i].runtimeType}',
+        );
+      }
+    }
+    return data.cast<E>();
+  }
+
   // ─── Chat ───────────────────────────────────────────────────────
 
   /// Send a message and get the full reply (non-streaming).
@@ -888,7 +913,7 @@ class MemoApiClient {
   Future<List<Map<String, dynamic>>> getAgentPermissions() async {
     final res = await _dio.get('/api/agent/permissions');
     if (res.data is List) {
-      return (_guard<List>(res.data)).cast<Map<String, dynamic>>();
+      return _guardList<Map<String, dynamic>>(res.data);
     }
     return [];
   }
@@ -925,7 +950,7 @@ class MemoApiClient {
   Future<List<Map<String, dynamic>>> listSkills() async {
     final res = await _dio.get('/api/skills/list');
     if (res.data is List) {
-      return (_guard<List>(res.data)).cast<Map<String, dynamic>>();
+      return _guardList<Map<String, dynamic>>(res.data);
     }
     return [];
   }
@@ -1136,7 +1161,9 @@ class MemoApiClient {
   /// List learned patterns.
   Future<List<Map<String, dynamic>>> getProactivePatterns() async {
     final res = await _dio.get('/api/proactive/patterns');
-    return (res.data['patterns'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final patterns = res.data is Map ? res.data['patterns'] : null;
+    if (patterns is! List) return [];
+    return _guardList<Map<String, dynamic>>(patterns);
   }
 
   /// Forget a specific pattern by ID.
@@ -1188,7 +1215,7 @@ class MemoApiClient {
     if (to != null) params['to'] = to.toUtc().toIso8601String();
     final res = await _dio.get('/api/calendar/events', queryParameters: params);
     if (res.data is List) {
-      return List<Map<String, dynamic>>.from(_guard<List>(res.data));
+      return _guardList<Map<String, dynamic>>(res.data);
     }
     return [];
   }

@@ -129,6 +129,12 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     ),
                   );
                 }
+                // The backend (taskloopRunMu) only allows one list running at
+                // a time, but the UI showed an active Start button on every
+                // idle/paused card regardless — clicking a second one just
+                // produced an unclear rejection error instead of the button
+                // never being clickable in the first place.
+                final anyRunning = lists.any((l) => l.status == 'running');
                 return ListView.builder(
                   padding: const EdgeInsets.all(16),
                   itemCount: lists.length,
@@ -136,7 +142,8 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     final info = lists[index];
                     return _TaskListCard(
                       info: info,
-                      onTap: () => _showDetailDialog(info.id),
+                      startBlocked: anyRunning && info.status != 'running',
+                      onTap: () => _showDetailDialog(info.id, anyRunning: anyRunning && info.status != 'running'),
                       onStart: () => _startList(info.id),
                       onStop: () => ref.read(taskListsProvider.notifier).stopTaskList(info.id),
                       onDelete: () => _deleteList(info.id),
@@ -297,7 +304,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     });
   }
 
-  void _showDetailDialog(String listId) async {
+  void _showDetailDialog(String listId, {bool anyRunning = false}) async {
     final api = ref.read(apiClientProvider);
     try {
       final tl = await api.getTaskList(listId);
@@ -381,12 +388,16 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
               ),
               if (tl.status == 'idle' || tl.status == 'paused')
                 ElevatedButton.icon(
-                  onPressed: () {
-                    Navigator.of(ctx).pop();
-                    _startList(listId);
-                  },
+                  onPressed: anyRunning
+                      ? null
+                      : () {
+                          Navigator.of(ctx).pop();
+                          _startList(listId);
+                        },
                   icon: const Icon(Icons.play_arrow, size: 16),
-                  label: Text(L10n.t('start')),
+                  label: Text(anyRunning
+                      ? L10n.t('taskloop_another_running')
+                      : L10n.t('start')),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: MemoTheme.green,
                     foregroundColor: Colors.white,
@@ -531,6 +542,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
 
 class _TaskListCard extends StatelessWidget {
   final TaskListInfo info;
+  final bool startBlocked;
   final VoidCallback onTap;
   final VoidCallback onStart;
   final VoidCallback onStop;
@@ -538,6 +550,7 @@ class _TaskListCard extends StatelessWidget {
 
   const _TaskListCard({
     required this.info,
+    this.startBlocked = false,
     required this.onTap,
     required this.onStart,
     required this.onStop,
@@ -605,9 +618,12 @@ class _TaskListCard extends StatelessWidget {
               ),
               if (info.status == 'idle' || info.status == 'paused')
                 IconButton(
-                  icon: const Icon(Icons.play_arrow, size: 20, color: MemoTheme.green),
-                  onPressed: onStart,
-                  tooltip: L10n.t('start'),
+                  icon: Icon(Icons.play_arrow, size: 20,
+                      color: startBlocked ? c.textDim : MemoTheme.green),
+                  onPressed: startBlocked ? null : onStart,
+                  tooltip: startBlocked
+                      ? L10n.t('taskloop_another_running')
+                      : L10n.t('start'),
                 ),
               if (isRunning)
                 IconButton(

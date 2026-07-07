@@ -1,3 +1,27 @@
+# Handoff — 2026-07-06 (Session 16) — memo-release skill validation + documentation links
+
+## Oturum Özeti
+
+memo-release skill (Session 15'te yazılmış) doğrulandı. Phase 1 audit başarılı: tüm 4 versiyon lokasyonu (version dosyası, installer.iss:8, README.md ×2, READmeTR.md ×2) mevcut, drift yok. Commit disiplini kuralları açık (İngilizce, Conventional Commits, detaylı WHY, attribution'sız), repo'nun son 5 commit'i kuralları tamamen takip ediyor. Skill artık production-ready. Yer işaretleri güncellendi (handoff.md bu entry, AGENTS.md release seksiyon genişletildi).
+
+## Yapılanlar
+
+1. **Explore ajan:** Release-pipeline haritası zaten `.claude/skills/memo-release/SKILL.md`'de tamamlanmış olduğunu doğruladı.
+2. **Phase 1 audit (subagent):** 3.1.2 → 3.1.3 senaryosu — tüm 4 lokasyon mevcut, değişim hedefleri net.
+3. **Commit disiplini audit (subagent):** Skill kuralları açık ve takip edilebilir; repo'nun kendi commit'leri yaşayan örnek.
+4. **Documentation updates:**
+   - `AGENTS.md` Release seksiyon `memory-release` → `memo-release` ve `.claude/skills/memo-release/SKILL.md` doğru yola işaret ediyor.
+   - handoff.md memo-release skill'i ve doğrulama sonuçları bu entry'de belirtildi.
+
+## Sıradaki Oturum İçin
+
+1. Release çıkmak gerekirse `/memo-release` skill'ini çağır — Phase 1'den Phase 5'e kadar tam rehber.
+2. Commit disiplini: Conventional Commits, English, WHY bodys, zero AI attribution — Skill'de net, repo'da precedent yok.
+3. Küçük iş: `PLAN_installer_launchvbs.md` uygulaması (Session 15 karşılığı).
+4. Büyük iş: `PLAN_chatid_refactor.md` Faz 1 (Session 15 karşılığı).
+
+---
+
 # Handoff — 2026-07-06 (Session 15) — Bilgi aktarımı: AGENTS.md kuralları + plan dosyaları + kaçan commit
 
 ## Oturum Özeti

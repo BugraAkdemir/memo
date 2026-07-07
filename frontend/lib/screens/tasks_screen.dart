@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -307,11 +309,27 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
   void _showDetailDialog(String listId, {bool anyRunning = false}) async {
     final api = ref.read(apiClientProvider);
     try {
-      final tl = await api.getTaskList(listId);
+      var tl = await api.getTaskList(listId);
       if (!mounted) return;
+
+      // The list view behind this dialog polls every 3s (taskListsProvider),
+      // but this dialog took a static snapshot at open time — a running
+      // list's item statuses/notes never updated while the dialog was open,
+      // so the user had to close and reopen it to see progress. Poll the
+      // same list on the same cadence while the dialog is up.
+      Timer? refreshTimer;
       showDialog(
         context: context,
         builder: (ctx) {
+          return StatefulBuilder(builder: (ctx, setDialogState) {
+            refreshTimer ??= Timer.periodic(const Duration(seconds: 3), (_) async {
+              try {
+                final fresh = await api.getTaskList(listId);
+                setDialogState(() => tl = fresh);
+              } catch (_) {
+                // Transient poll failure — keep showing the last known state.
+              }
+            });
           final c = MemoTheme.of(ctx);
           return AlertDialog(
             backgroundColor: c.bgPanel,
@@ -418,8 +436,9 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                 ),
             ],
           );
+          });
         },
-      );
+      ).then((_) => refreshTimer?.cancel());
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

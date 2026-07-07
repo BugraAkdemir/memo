@@ -18,12 +18,37 @@ class PermissionDialog extends ConsumerStatefulWidget {
 }
 
 class _PermissionDialogState extends ConsumerState<PermissionDialog> {
+  // No existing timeout convention elsewhere in the agent code for user-facing
+  // prompts; 5 minutes is generous enough to notice the dialog but short
+  // enough that the agent pipeline doesn't hang indefinitely if the user is away.
+  static const Duration _timeout = Duration(minutes: 5);
+
+  late int _secondsLeft = _timeout.inSeconds;
+  Timer? _countdownTimer;
+
+  @override
+  void initState() {
+    super.initState();
+    _countdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_secondsLeft <= 1) {
+        _countdownTimer?.cancel();
+        // Fail-safe default: auto-deny, never auto-approve on timeout.
+        _submit('deny_once');
+        return;
+      }
+      setState(() => _secondsLeft--);
+    });
+  }
+
   @override
   void dispose() {
+    _countdownTimer?.cancel();
     super.dispose();
   }
 
   void _submit(String policy) {
+    _countdownTimer?.cancel();
     if (widget.event.requestId != null) {
       unawaited(
         ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy),
@@ -111,6 +136,17 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
                 ),
               ),
             ),
+          Padding(
+            padding: const EdgeInsets.only(top: 10),
+            child: Text(
+              '${_secondsLeft ~/ 60}:${(_secondsLeft % 60).toString().padLeft(2, '0')} icinde yanit verilmezse otomatik reddedilecek',
+              style: TextStyle(
+                fontSize: 11,
+                color: MemoTheme.of(context).textDim,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ),
         ],
       ),
       actions: [

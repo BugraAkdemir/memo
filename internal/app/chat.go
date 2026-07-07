@@ -276,16 +276,11 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		return out
 	}
 
-	var memories []memory.MemoryResult
-	if a.cfg.Memory.MemoryEnabled {
-		memories = a.retrieveMemory(ctx, userMsg)
-	}
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false)
-
-	var msgs []api.Message
-	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
-	msgs = append(msgs, a.getSessionHistory()...)
-	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
+	// buildMessages (not a hand-rolled system+history+user list) so image
+	// messages get the same mood directive, web search context, and
+	// token-aware history truncation as plain text ones — the manual
+	// construction this replaced skipped all three (BUG-QL5).
+	msgs := a.buildMessages(ctx, userMsg, []string{b64})
 
 	sm := a.getSessionManager()
 	var sessionID string

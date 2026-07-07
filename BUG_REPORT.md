@@ -1027,12 +1027,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Dosya:** `internal/app/llama.go:111-119`, `internal/config/config.go` (`validate()`)
 - **Nedir:** `if cfg.Temperature != 0` guard'ı zero value'yu sessizce atlıyor. Kullanıcı ayarı kaydeder ama hiçbir zaman uygulanmaz.
 
-#### BUG-QM3: Rate limiter port bazlı (IP bazlı değil)
+#### BUG-QM3: ~~Rate limiter port bazlı (IP bazlı değil)~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `0c03ab6`
+- **Düzeltme:** `net.SplitHostPort` ile port ayrıştırılıp sadece host bucket key olarak kullanılıyor (IPv6 için de doğru). Test: `TestRateLimitMiddleware_KeyedByIPNotPort` — eski koda karşı çalıştırılıp gerçekten fail ettiği doğrulandı.
 
 - **Dosya:** `internal/webserver/server.go:690`
-- **Trigger:** Farklı portlardan 200+ req/s.
 - **Nedir:** `r.RemoteAddr` port dahil — her TCP bağlantısı farklı source port aldığı için token bucket ayrı tutuluyor. 100 req/s limiti localhost'tan aşılabilir.
-- **Düzeltme:** `strings.Split(r.RemoteAddr, ":")[0]` ile sadece IP alınmalı.
 
 #### BUG-QM4: WhatsApp stream cancel hata gösteriyor
 

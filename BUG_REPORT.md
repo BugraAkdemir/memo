@@ -782,14 +782,19 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:200-202`
 - **Durum:** Düzeltildi (önceki session)
 
-#### BUG-FL2: `messagesProvider` autoDispose değil ama `onDispose` kullanıyor
+#### BUG-FL2 (incelendi — değişiklik yapılmadı): `messagesProvider` autoDispose değil ama `onDispose` kullanıyor
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:168,181-184`
 - **Nedir:** Provider `autoDispose` değil, `ref.onDispose()` hiç tetiklenmez.
+- **Bulgu (2026-07-07):** İddia tam doğru değil — `ref.onDispose()` autoDispose olmayan provider'larda da `ref.invalidate`/`ref.refresh` çağrıldığında (eski instance yenisiyle değiştirilirken) tetiklenir, ki bu codebase'de sıkça oluyor. `_disposed` bayrağı zaten bu senaryoda (invalidate sırasında pending timer'ı iptal etmek için) doğru çalışıyor gibi görünüyor. `.autoDispose`'a çevirmek daha büyük bir mimari değişiklik ve bu ortamda Flutter test edilemiyor — riski karşılığı belirsiz olduğu için dokunulmadı.
 
-#### BUG-FL3: `_AuthorAvatarState._cache` sınırsız büyüyor
+#### BUG-FL3: ~~`_AuthorAvatarState._cache` sınırsız büyüyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `05d5564`
+- **Düzeltme:** 500 entry'de basit clear-on-overflow eklendi.
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:844`
 
-#### BUG-FL4: Model Store README yükleme hatası sessiz
+#### BUG-FL4: ~~Model Store README yükleme hatası sessiz~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `05d5564`
+- **Düzeltme:** 404 (README yok, normal durum) ile gerçek fetch hataları ayrıldı; gerçek hatalar `_filesError` ile aynı UI pattern'inde gösteriliyor.
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:1230,1262`
 - **Nedir:** `catch (_) {}` tüm HTTP hatalarını yutuyor.
 

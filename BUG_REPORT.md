@@ -774,10 +774,12 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/widgets/settings/tabs/backup_restore_tab.dart:776`
 - **Nedir:** Kullanıcı passphrase girmeden cloud sync açarsa şifreleme machine ID ile yapılıyor. Başka cihaza geçince yedek çözülemez.
 
-#### BUG-FM20: Hardcoded Turkish string'ler (l10n eksik)
+#### BUG-FM20: ~~Hardcoded Turkish string'ler (l10n eksik)~~ **→ Belirtilen konumlar DÜZELTİLDİ (2026-07-07); daha geniş bir borç bulundu**
+- **Commit'ler:** `af33c59`, `377d5be`
+- **Düzeltme:** Belirtilen tüm konumlar (`'Tema'`, `'Kurulum'`, `'Kurulumu Sıfırla'`, `'Ajan için proje klasörü seç'`, `'Ajan sohbeti oluşturulamadı: $e'` ×2) düzeltildi — ilginç olan: bunların çoğu için l10n key'i ZATEN VARDI (`theme`, `settings_setup_section`, `settings_reset_setup`, `agent_select_project`), sadece bu çağrı yerlerinde kullanılmamıştı. Yeni `agent_create_failed` key'i eklendi. Bonus: `agent_welcome` için de aynı sorun bulundu, düzeltildi.
+- **Yeni bulgu:** `general_tab.dart`'ta geniş bir tarama, CLI yönetimi ve hafıza silme dialog'larında ONLARCA ek hardcoded Türkçe string olduğunu gösterdi (örn. "CLI yeniden yüklendi...", "CLI'ı Kaldır", "Memo'yu Kaldır" vb.) — bu, orijinal bug'ın belirttiği dar kapsamın çok ötesinde, ayrı bir i18n denetimi gerektiriyor. Kapsam dışı bırakıldı, gelecekte ayrı bir iş olarak ele alınmalı.
 - **Dosyalar:** `general_tab.dart:76,255,274`, `agent_screen.dart:302,360-365`
 - **Nedir:** L10n.t() kullanılması gereken yerlerde Türkçe string'ler hardcode.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 ### 🟢 LOW
 

@@ -937,21 +937,23 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 
 ### 🔴 CRITICAL — Veri Kaybı / Silent Failure
 
-#### BUG-QC1: `ImportData` config.yaml'ı sessizce atlıyor → tüm ayarlar geri yüklenmez
+#### BUG-QC1: ~~`ImportData` config.yaml'ı sessizce atlıyor → tüm ayarlar geri yüklenmez~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `68eeaa1`
+- **Düzeltme:** Path çözümlemesi saf bir `resolveImportTarget(name, dataDir, configDir)` fonksiyonuna çıkarıldı, `"config/"` prefix'i için ayrı case eklendi (`config.ConfigDir()`'a map ediyor), her root için kendi escape-check'i var. Tanınmayan prefix'ler artık düpedüz reddediliyor (eskiden CWD'ye göre relative bir path'e düşüyordu). Test: `internal/app/backup_test.go` → `TestResolveImportTarget`.
 
 - **Dosya:** `internal/app/backup.go:144-160`
-- **Trigger:** Kullanıcı .memo dosyasını dışa aktarır, başka makineye import eder.
 - **Nedir:** ExportData zip entry'yi `"config/"` prefix'iyle yazar. ImportData'nın switch'i sadece `"sessions/"` ve `"data/"` prefix'lerini handle eder — `"config/"` default case'e düşer ve `filepath.Rel(DataDir, "config/config.yaml")` başarısız olur → entry sessizce atlanır.
-- **Kullanıcı etkisi:** Tüm ayarlar (llama, sync, identity, memory, API, learning, calendar) export edilmiş ama geri yüklenmemiş olur. Sessiz veri kaybı.
-- **Düzeltme:** ImportData'ya `"config/"` case'i eklenmeli.
+- **Kullanıcı etkisi (düzeltme öncesi):** Tüm ayarlar (llama, sync, identity, memory, API, learning, calendar) export edilmiş ama geri yüklenmemiş olur. Sessiz veri kaybı.
 
-#### BUG-QC2: `ImportData` memory store'u yeniden başlatmıyor → RAG eski veriyi okur
+#### BUG-QC2: ~~`ImportData` memory store'u yeniden başlatmıyor → RAG eski veriyi okur~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `68eeaa1`
+- **Düzeltme:** Import sonunda `WipeAllData`'daki ile aynı pattern: embedding/main client seçilip `a.reinitMemoryStore(client, ...)` çağrılıyor.
 
 - **Dosya:** `internal/app/backup.go:200-219`
-- **Trigger:** Import sonrası memory kullanılır.
 - **Nedir:** `os.Rename` ile memory.db disk'te güncelleniyor ama canlı SQLite bağlantısı (a.store) eski inode'u tutuyor (Linux rename semantics). Sessions yeniden başlatılıyor ama `a.reinitMemoryStore()` çağrılmıyor. Cloud sync'teki `BeforeRestore`/`AfterRestore` hook'u doğru yapıyor ama import bunu yapmıyor.
-- **Kullanıcı etkisi:** Import sonrası RAG/memory sistemi eski veriyi okuyor. Yeni memory.db disk'te boşa yatıyor — uygulama restart edilene kadar.
-- **Düzeltme:** Import sonrası `reinitMemoryStore()` çağrılmalı.
+- **Kullanıcı etkisi (düzeltme öncesi):** Import sonrası RAG/memory sistemi eski veriyi okuyor. Yeni memory.db disk'te boşa yatıyor — uygulama restart edilene kadar.
 
 ---
 

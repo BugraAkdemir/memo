@@ -1011,12 +1011,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 
 ### 🟡 MEDIUM — Yanlış Davranış / UX Sorunları
 
-#### BUG-QM1: Shutdown çift kez çalışıyor (bridge + SIGINT race)
+#### BUG-QM1: ~~Shutdown çift kez çalışıyor (bridge + SIGINT race)~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `cc442a8`
+- **Düzeltme:** Direkt `fullBridge.Shutdown()` çağrısı kaldırıldı, sadece SIGINT gönderiliyor artık — `sync.Once` ikinci çağrının zararsız olmasını sağlıyordu ama asıl sorun, teardown'ın (store/WhatsApp kapanışı) bu HTTP handler'ın isteği hâlâ "in-flight" sayılırken senkron çalışmasıydı.
 
 - **Dosya:** `internal/webserver/handlers_flutter.go:1778-1788`
-- **Trigger:** API ile kapatma.
 - **Nedir:** `fullBridge.Shutdown()` çağrılıp ardından SIGINT gönderiliyor. İki eşzamanlı shutdown yolu SQLite, WhatsApp, embedding model ve HTTP sunucusu üzerinde race condition oluşturur.
-- **Düzeltme:** Tek bir shutdown mekanizması kullanılmalı.
 
 #### BUG-QM2: Temperature/TopP = 0 ayarlanamıyor
 

@@ -375,7 +375,7 @@ class _AgentWelcome extends StatelessWidget {
             if (projectPath != null)
               Text('Proje: $projectPath', style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim), textAlign: TextAlign.center),
             const SizedBox(height: 16),
-            Text('Proje dosyaları üzerinde işlem yapabilirim. Ne yapmak istersin?', style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim), textAlign: TextAlign.center),
+            Text(L10n.t('agent_welcome'), style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim), textAlign: TextAlign.center),
           ],
         ),
       ),

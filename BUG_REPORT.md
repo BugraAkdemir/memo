@@ -721,10 +721,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/screens/tasks_screen.dart:416-445`
 - **Nedir:** UI iki list için de Start butonunu aktif gösteriyor. İkincisi backend'de `taskloopRunMu` tarafından reddediliyor ama hata mesajı açıklayıcı değil.
 
-#### BUG-FM11: Task list detail dialog auto-refresh yapmıyor
+#### BUG-FM11: ~~Task list detail dialog auto-refresh yapmıyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `0f455da`
+- **Düzeltme:** Dialog içeriği `StatefulBuilder` ile sarıldı, aynı 3sn cadence'te `Timer.periodic` ile kendi `getTaskList` fetch'ini yapıyor, dialog kapanınca timer iptal ediliyor.
 - **Dosya:** `frontend/lib/screens/tasks_screen.dart:295-414`
 - **Nedir:** Detail dialog açıldığında statik snapshot alıyor. 3 saniyelik polling liste görünümünü güncelliyor ama dialog içeriği güncellenmiyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM12: ~~Provider edit dialog — isim çakışması sessizce suffix ekliyor~~ **→ DÜZELTİLDİ (2026-07-07)**
 - **Commit:** `f94504b`

@@ -534,8 +534,26 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               // front. With reverse:true the list anchors at the bottom and
               // index 0 renders at the bottom — so a newest-first list puts the
               // newest message at the bottom, oldest at the top (normal chat).
-              final pending =
-                  _optimistic.where((m) => m.chatJid == _selectedJid).toList();
+              //
+              // An optimistic entry is only removed from _optimistic once its
+              // own sendWhatsApp() call resolves — but msgs can refresh from
+              // the backend *before* that (e.g. a poll/invalidate elsewhere
+              // while the send is still in flight, or the user switching away
+              // and back to this chat via the IndexedStack-mounted screen).
+              // If the backend already has the real message by then, showing
+              // both is a visible duplicate bubble. Filter out any pending
+              // entry that already has a matching real (fromMe) message so it
+              // disappears as soon as the real one is visible, independent of
+              // whether the original send call has returned yet.
+              final realSentTexts = msgs
+                  .where((m) => m.fromMe)
+                  .map((m) => m.text)
+                  .toSet();
+              final pending = _optimistic
+                  .where((m) =>
+                      m.chatJid == _selectedJid &&
+                      !realSentTexts.contains(m.text))
+                  .toList();
               final combined = [...pending.reversed, ...msgs];
 
               if (combined.isEmpty) {

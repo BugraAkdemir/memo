@@ -135,25 +135,17 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	return a.sendMessageStreamInner(ctx, userMsg)
 }
 
-// sendMessageStreamInner is the core of SendMessageStream: it records the
-// message, builds the prompt (including any web-search context), and dispatches
-// to the agent, orchestra, or plain LLM stream.
-func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan api.StreamChunk {
-	// Prevent concurrent stream goroutines. If a stream is already running,
-	// return an error immediately instead of racing two parallel streams that
-	// would interleave user/user/assistant/assistant into the session history.
-	if !a.streamMu.TryLock() {
-		errCh := make(chan api.StreamChunk, 1)
-		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
-		close(errCh)
-		return errCh
-	}
-
-	a.observerRecorder.RecordMessage(userMsg)
-	go a.processMessageIntent(userMsg, "chat", "", time.Now())
-
-	// Inject active skill instructions into system prompt
-	messages := a.buildMessages(ctx, userMsg, nil)
+// routeStream applies skill/agent system-prompt injection to messages and
+// dispatches to the agent pipeline, agent+orchestra, or a plain LLM stream,
+// based on the current agent-mode/provider/local-model state.
+//
+// Shared by sendMessageStreamInner, SendMessageWithImageStream and
+// SendMessageWithFileStream so an image- or file-attached message gets
+// identical agent routing to a plain text one — the image/file streams used
+// to build their own message list and call callLLMStream directly, so
+// agent tools (file read/write, command execution) silently did not run
+// for those message types even with agent mode on.
+func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string) <-chan api.StreamChunk {
 	if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
 		for i, msg := range messages {
 			if msg.Role == "system" {
@@ -180,6 +172,43 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 		}
 	}
 
+	orchestraEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
+	localModelRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
+
+	a.providerMu.RLock()
+	hasProvider := a.activeProviderName != ""
+	a.providerMu.RUnlock()
+
+	if agentActive && (hasProvider || localModelRunning) {
+		if orchestraEnabled {
+			a.observerRecorder.RecordOrchestraRun(userMsg)
+			return a.callAgentWithOrchestra(ctx, messages, userMsg, sessionID)
+		}
+		a.observerRecorder.RecordAgentRun(userMsg)
+		return a.callAgentStream(ctx, messages, userMsg, sessionID)
+	}
+	return a.callLLMStream(ctx, messages, userMsg, imagePath, filePath, sessionID)
+}
+
+// sendMessageStreamInner is the core of SendMessageStream: it records the
+// message, builds the prompt (including any web-search context), and dispatches
+// to the agent, orchestra, or plain LLM stream.
+func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan api.StreamChunk {
+	// Prevent concurrent stream goroutines. If a stream is already running,
+	// return an error immediately instead of racing two parallel streams that
+	// would interleave user/user/assistant/assistant into the session history.
+	if !a.streamMu.TryLock() {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin.", Done: true}
+		close(errCh)
+		return errCh
+	}
+
+	a.observerRecorder.RecordMessage(userMsg)
+	go a.processMessageIntent(userMsg, "chat", "", time.Now())
+
+	messages := a.buildMessages(ctx, userMsg, nil)
+
 	sm := a.getSessionManager()
 	var sessionID string
 	if sm != nil {
@@ -187,26 +216,7 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 		sm.AddMessage("user", userMsg, "", "")
 	}
 
-	orchestraEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
-
-	localModelRunning := a.llamaServer != nil && a.llamaServer.IsRunning()
-
-	a.providerMu.RLock()
-	hasProvider := a.activeProviderName != ""
-	a.providerMu.RUnlock()
-
-	var innerCh <-chan api.StreamChunk
-	if agentActive && (hasProvider || localModelRunning) {
-		if orchestraEnabled {
-			a.observerRecorder.RecordOrchestraRun(userMsg)
-			innerCh = a.callAgentWithOrchestra(ctx, messages, userMsg, sessionID)
-		} else {
-			a.observerRecorder.RecordAgentRun(userMsg)
-			innerCh = a.callAgentStream(ctx, messages, userMsg, sessionID)
-		}
-	} else {
-		innerCh = a.callLLMStream(ctx, messages, userMsg, "", "", sessionID)
-	}
+	innerCh := a.routeStream(ctx, messages, userMsg, "", "", sessionID)
 
 	// Wrap the inner channel so streamMu is released when the stream completes.
 	out := make(chan api.StreamChunk, 128)
@@ -284,7 +294,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		sm.AddMessage("user", userMsg, imagePath, "")
 	}
 
-	innerCh := a.callLLMStream(ctx, msgs, userMsg, imagePath, "", sessionID)
+	innerCh := a.routeStream(ctx, msgs, userMsg, imagePath, "", sessionID)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {
@@ -358,7 +368,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		sm.AddMessage("user", userMsg, "", filePath)
 	}
 
-	innerCh := a.callLLMStream(ctx, messages, userMsg, "", filePath, sessionID)
+	innerCh := a.routeStream(ctx, messages, userMsg, "", filePath, sessionID)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {

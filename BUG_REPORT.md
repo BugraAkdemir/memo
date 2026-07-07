@@ -731,10 +731,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart:190-201`
 - **Nedir:** `_uniqueName()` isim çakışmasında sessizce " 2", " 3" ekliyor. Kullanıcıya bilgi verilmiyor.
 
-#### BUG-FM13: Model Store search debounce hidden tab'da API çağrısı yapıyor
+#### BUG-FM13: ~~Model Store search debounce hidden tab'da API çağrısı yapıyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `5788208`
+- **Düzeltme:** `_DiscoverTab`'a `isActive` parametresi eklendi (`_tab == 0`'dan geliyor), debounce callback'i `mounted` yanında bunu da kontrol ediyor.
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:406-426`
 - **Nedir:** IndexedStack her iki tab'ı da alive tutuyor. Discover tab'ında arama yapıp "My Models" tab'ına geçince debounce timer hala tetikleniyor → gereksiz HuggingFace API çağrısı.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM14: ~~Settings dialog sabit 800x600 — responsive değil~~ **→ DÜZELTİLDİ (2026-07-07)**
 - **Commit:** `5e9def0`

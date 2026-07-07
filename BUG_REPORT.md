@@ -1060,12 +1060,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Nedir:** `SendMessageWithImageStream` kendi mesaj listesini oluşturup doğrudan `callLLMStream`'e gidiyor. `agentEnabled` kontrolü yok, agent system prompt enjekte edilmiyor, skill prompt eklenmiyor.
 - **Kullanıcı etkisi (düzeltme öncesi):** Agent tool'ları (dosya okuma/yazma, komut çalıştırma) resimli mesajlarda çalışmıyor.
 
-#### BUG-QM7: WhatsApp _optimistic çift mesaj riski
+#### BUG-QM7: ~~WhatsApp _optimistic çift mesaj riski~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `65ca439`
+- **Düzeltme:** Tab değişiminde temizlemek yerine (ki bu, hâlâ gönderilmekte olan bir mesajı erken kaybettirirdi) render sırasında `pending` listesi, `msgs`'te aynı text'e sahip gerçek (fromMe) bir mesaj varsa filtreleniyor — gerçek mesaj görünür olur olmaz optimistic kopya kayboluyor, orijinal `sendWhatsApp` çağrısının dönüp dönmediğinden bağımsız.
 
 - **Dosya:** `frontend/lib/screens/whatsapp_screen.dart:686-696`
-- **Trigger:** Tab değiştirip WhatsApp'a geri dönülür.
 - **Nedir:** API çağrısı uzun sürerse ve kullanıcı tab değiştirirse, optimistic mesaj `_optimistic`'te kalır. Sunucu zaten mesajı kaydetmişse, geri döndüğünde mesaj 2 kez görünür (birisi optimistic, diğeri sunucudan gelen).
-- **Düzeltme:** Tab değişiminde `_optimistic` temizlenmeli.
 
 ---
 

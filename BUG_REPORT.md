@@ -586,10 +586,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** `activeName != ""` ama `providerCfgMgr == nil` olabilir (startup race). `providerCfgMgr.GetEnabled()` panic.
 - **Düzeltme:** Nil check eklendi. ✅
 
-#### BUG-NM7: finishStream — GenerateChatTitle yanlış session'ı isimlendiriyor
+#### BUG-NM7: ~~finishStream — GenerateChatTitle yanlış session'ı isimlendiriyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `61caff8`
+- **Düzeltme:** `generateChatTitleForSession(sessionID)` eklendi; `finishStream`'in sessionID'li dalı artık bunu çağırıyor. `GenerateChatTitle()` (frontend'in manuel "regenerate title" aksiyonu için) değişmedi.
 - **Dosya:** `internal/app/llm.go:834-839`
 - **Nedir:** `finishStream` doğru session'a ekleme yapıyor ama `GenerateChatTitle()` her zaman `GetActiveMessages()` ile aktif session'ı okuyor. Stream başka bir session için çalışıyorsa başlık yanlış session'a yazılıyor.
-- **Durum:** Tespit edildi, düzeltilmedi (LOW etki, sadece ilk 2 mesajda tetiklenir).
 
 ### 🟢 LOW
 
@@ -605,7 +606,9 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `internal/agent/pipeline.go:164-177`
 - **Nedir:** Token bütçesi trimming'i content string eşitliği ile eşleştirme yapıyor. Aynı içerikli iki tool result yanlış eşleşebilir.
 
-#### BUG-NL3: callAgentStream — gereksiz `sessionID != ""` kontrolü
+#### BUG-NL3: ~~callAgentStream — gereksiz `sessionID != ""` kontrolü~~ **→ DÜZELTİLDİ (2026-07-07, aslında sadece "redundant" değil gerçek bug)**
+- **Commit:** `61caff8`
+- **Düzeltme:** Sadece kozmetik değilmiş — `sessionID == ""` durumunda dış kontrol `recordStreamError`'ın kendisini hiç çağırmıyordu, yani o durumda hata hiç kaydedilmiyordu (NH1-NH6'nın düzelttiği "yetim user mesajı" bug sınıfı, buradan tekrar sızmış). Üç kontrol de kaldırıldı.
 - **Dosya:** `internal/app/llm.go:130,160,169`
 - **Nedir:** `recordStreamError` zaten içeride sessionID kontrolü yapıyor, dışarıdaki kontroller redundant.
 

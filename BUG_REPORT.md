@@ -959,13 +959,14 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 
 ### 🟠 HIGH — Güvenlik / Reconnect Ölümleri / State Tutarsızlığı
 
-#### BUG-QH1: `handleShutdown` her HTTP method'u kabul ediyor → LAN'den herkes kapatabilir
+#### BUG-QH1: ~~`handleShutdown` her HTTP method'u kabul ediyor → LAN'den herkes kapatabilir~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `3ae7744`
+- **Düzeltme:** Diğer mutating handler'larla aynı "POST only" guard'ı eklendi. Test: `internal/webserver/server_test.go` → `TestHandleShutdown_MethodNotAllowed` (sadece red path — POST başarı yolu gerçek SIGINT gönderdiği için test edilmiyor).
 
 - **Dosya:** `internal/webserver/handlers_flutter.go:1775-1789`
-- **Trigger:** LAN'den `curl -X DELETE http://<ip>:8090/api/shutdown`
 - **Nedir:** Shutdown handler'ında method check yok. GET, POST, DELETE, OPTIONS — hepsi sunucuyu kapatıyor. LAN mode'da (`0.0.0.0`) ağdaki herhangi bir cihaz uygulamayı kapatabilir.
-- **Kullanıcı etkisi:** Güvenlik açığı — ağdaki herhangi biri uygulamayı kapatabilir.
-- **Düzeltme:** Sadece POST method'u kabul edilmeli.
+- **Kullanıcı etkisi (düzeltme öncesi):** Güvenlik açığı — ağdaki herhangi biri uygulamayı kapatabilir.
 
 #### BUG-QH2: ~~Streaming dosya yükleme MIME spoofing~~ **→ DÜZELTİLDİ (2026-07-07)**
 

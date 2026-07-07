@@ -1,4 +1,4 @@
-# Mimari — Memo v3.1.1
+# Mimari — Memo v3.1.2
 
 ## Genel Bakış
 

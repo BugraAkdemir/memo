@@ -369,19 +369,13 @@ cd frontend && flutter run -d linux
 
 ---
 
-## 📋 8. Current Status & Roadmap
+## 📋 8. Current Status
 
-| Version | Status | Focus |
-|---|---|---|
-| **v3.0.0-beta** | Current | External providers + Agent engine + Orchestra (backend complete, frontend agent UI pending) |
-| **v3.0.0** | Planned | Agent frontend UI, multi-step planning, file edit, git, web scraping |
-| **v4.0.0** | Future | UI overhaul, missing frontend tabs |
-| **v5.0.0** | Future | Plugins, mobile, knowledge graph, autonomy |
+**Current version:** v3.1.2 (open beta)
 
-**Full known issues:** [docs/KNOWN_ISSUES.md](./docs/KNOWN_ISSUES.md)
-**Detailed roadmap:** [docs/ROADMAP.md](./docs/ROADMAP.md)
+**Full known issues:** [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
 
 ---
 
-> **Last updated:** 2026-06-05
-> **Codebase audit:** 42 known issues (10 critical, 10 high, 12 medium, 10 low) + 10 observations
+> **Last updated:** 2026-07-07
+> **Version:** v3.1.2 open beta

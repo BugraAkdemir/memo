@@ -252,7 +252,7 @@ Hiçbir sağlayıcı yapılandırılmamışsa ve yerel model çalışmıyorsa ha
 |-------|-------|
 | **llama.cpp provider yok** | Yerel motor provider arayüzü üzerinden değil, ayrıca yönetilir |
 | **Priority alanı kullanılmıyor** | Router sıralamada Priority'yi dikkate almaz |
-| **Test dosyası yok** | `internal/provider/` için sıfır test |
+| ~~**Test dosyası yok**~~ | ✅ Düzeltildi — `router_test.go` mevcut, 48 test `-race` ile geçiyor |
 | **Orkestra router'ı bypass eder** | Orkestra doğrudan provider oluşturur, fallback zinciri yok |
 | **Makineye bağlı şifreleme** | `providers.json` makineler arası taşınamaz |
 

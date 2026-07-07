@@ -45,4 +45,4 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 |------|-------------|
 | [[v3.1.1 Features]] | WhatsApp, mobile, backup, agent, orchestra, providers |
 | [[Features Catalog]] | Complete feature-by-feature listing |
-| [[Roadmap]] | v3.1.0 through v3.5.0 strategic plan |
+| Release Notes | `versinNote/v3.1.2.md` | Version changelog |

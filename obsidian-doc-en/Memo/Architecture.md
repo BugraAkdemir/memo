@@ -1,4 +1,4 @@
-# Architecture — Memo v3.1.1
+# Architecture — Memo v3.1.2
 
 ## Overview
 

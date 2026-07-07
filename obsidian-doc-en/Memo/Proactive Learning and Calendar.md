@@ -163,5 +163,3 @@ All pass with `-race`.
 - Natural proactive chat from WhatsApp-learned intents ("hey, did you start working out?")
 - Connecting all social media sources to the same intent pipeline
 - Calendar ↔ proactive engine integration (pre-event preparation suggestions)
-
-See [[Roadmap]].

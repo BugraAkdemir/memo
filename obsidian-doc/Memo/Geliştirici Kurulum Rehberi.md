@@ -3,7 +3,7 @@
 Memo projesine katkıda bulunmak veya yerel ortamda çalıştırmak için aşağıdaki adımları izleyin.
 
 ## Gereksinimler
-- **Go:** v1.20+
+- **Go:** v1.26+
 - **Flutter:** v3.10+ (Master veya Stable channel)
 - **C++ Derleyici:** (Llama.cpp derlemek isterseniz, opsiyonel)
 - **Linux:** `build-essential`, `libgtk-3-dev`, `libayatana-appindicator3-dev`

@@ -166,7 +166,7 @@ Executor.RunStream():
 └──────────────────────────────────────────┘
 ```
 
-> **Not:** İzin dialog frontend UI'ı henüz uygulanmamıştır. Backend `EventPermissionRequest` olayları gönderir ancak Flutter widget'ı henüz yoktur.
+> **Not:** İzin dialog frontend UI'ı tam olarak uygulanmıştır. `PermissionDialog` widget'ı `agentEventBusProvider` üzerinden olayları dinler, 5 dakika zamanlayıcı ile otomatik reddetme destekler.
 
 ---
 

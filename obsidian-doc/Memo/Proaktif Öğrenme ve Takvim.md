@@ -162,5 +162,3 @@ Tümü `-race` ile geçer.
 - WhatsApp'tan öğrenilen niyetlerle doğal proaktif sohbet ("kanka spora başladın mı?")
 - Tüm sosyal medya kaynaklarının aynı niyet hattına bağlanması
 - Takvim ↔ proaktif motor entegrasyonu (etkinlik öncesi hazırlık önerisi)
-
-Bkz. [[Yol Haritası]].

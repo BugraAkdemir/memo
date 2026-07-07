@@ -351,7 +351,6 @@ GitHub Actions runs on every push/PR:
 | API Reference | `docs/API_REFERENCE.md` | REST API endpoint documentation |
 | Technical Deep Dive | `docs/TECHNICAL_DEEP_DIVE.md` | Engineering decisions |
 | Features | `docs/FEATURES.md` | Feature catalog |
-| Roadmap | `docs/ROADMAP.md` | Development roadmap |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` | Common issues & fixes |
 | Contributing | `docs/CONTRIBUTING.md` | Contribution guidelines |
 | Known Issues | `docs/KNOWN_ISSUES.md` | Known bugs & limitations |

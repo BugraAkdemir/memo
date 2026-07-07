@@ -1,8 +1,8 @@
 <div align="center">
-  <img src="https://img.shields.io/badge/Go-1.25-00ADD8?style=for-the-badge&logo=go" alt="Go 1.25"/>
+  <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go" alt="Go 1.26"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=for-the-badge&logo=flutter" alt="Flutter 3.10"/>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-blue?style=for-the-badge" alt="Lisans AGPL v3"/>
-  <img src="https://img.shields.io/badge/Durum-v3.0.0--beta-blue?style=for-the-badge" alt="v3.0.0-beta"/>
+  <img src="https://img.shields.io/badge/Durum-v3.1.2--Açık_Beta-blue?style=for-the-badge" alt="v3.1.2"/>
   <br/>
   <img src="https://img.shields.io/badge/llama.cpp-Entegre-orange?style=flat-square&logo=llama" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-Aktif-green?style=flat-square" alt="RAG"/>
@@ -24,13 +24,12 @@
   <a href="#-hızlı-başlangıç">Hızlı Başlangıç</a> •
   <a href="#-mimari">Mimari</a> •
   <a href="#-ekran-görüntüleri">Ekran Görüntüleri</a> •
-  <a href="#-yol-haritası">Yol Haritası</a> •
   <a href="../../README.md">English</a>
 </p>
 
 ---
 
-> **⚠️ Güncel Durum:** v3.0.0-beta — SQLite + sqlite-vec geçişi tamamlandı. chromem-go kaldırıldı, vektör ANN indeksi aktif. [Bilinen sorunlar →](./BILINEN_SORUNLAR.md)
+> **⚠️ Güncel Durum:** v3.1.2 açık beta — Agent modu, Orchestra, WhatsApp entegrasyonu, bulut senkronizasyonu, takvim ve proaktif öğrenme aktif. [Bilinen sorunlar →](./BILINEN_SORUNLAR.md)
 
 ---
 
@@ -84,7 +83,7 @@
 ## 🚀 Hızlı Başlangıç
 
 ### Gereksinimler
-- **Go 1.25+** — [indir](https://go.dev/dl/)
+- **Go 1.26+** — [indir](https://go.dev/dl/)
 - **Flutter 3.10+** — [kur](https://docs.flutter.dev/get-started/install)
 - **llama.cpp** — gömülü! Uygulama, platformunuz için önceden derlenmiş llama-server binary'leri ile birlikte gelir. Elle kurulum gerekmez.
 
@@ -180,25 +179,11 @@ cd frontend && flutter run -d linux
 
 | Belge | Açıklama |
 |---|---|
-| [📖 Bilinen Sorunlar](./BILINEN_SORUNLAR.md) | Tam denetim — öncelikli 55 bilinen sorun |
-| [🛣️ Yol Haritası](./ROADMAP.md) | v3.0 → v4.0 → v5.0 sürüm planı |
+| [📖 Bilinen Sorunlar](./BILINEN_SORUNLAR.md) | Tam denetim — bilinen sorunlar |
 | [🏛️ Mimari](../../architecture.md) | Teknik derinlemesine analiz |
 | [📡 API Referansı](./API_REFERENCE.md) | Tüm REST endpoint'leri |
 | [🔧 Sorun Giderme](./TROUBLESHOOTING.md) | Sık karşılaşılan sorunlar ve çözümleri |
 | [🤝 Katkıda Bulunma](./CONTRIBUTING.md) | Nasıl katkıda bulunabilirsiniz |
-
----
-
-## 🛣️ Yol Haritası
-
-| Sürüm | Odak | Zaman |
-|---|---|---|
-| **v3.0.0** 🎯 | Mevcut — SQLite+vec0 geçişi, cross-mode, performans | Şimdi |
-| **v3.5.0** 🔒 | Güvenlik, kararlılık, performans düzeltme | Sıradaki |
-| **v4.0.0** 🎨 | UI yenileme, eksik sekmeler, cloud sync UI | Gelecek |
-| **v5.0.0** 🚀 | Eklentiler, mobil, bilgi grafiği | Gelecek |
-
-[Tam yol haritası →](./ROADMAP.md)
 
 ---
 
@@ -208,7 +193,7 @@ cd frontend && flutter run -d linux
 
 | Katman | Teknoloji |
 |---|---|---|
-| **Arka Uç** | Go 1.25, http.ServeMux |
+| **Arka Uç** | Go 1.26, http.ServeMux |
 | **Ön Yüz** | Flutter 3.10+, Riverpod 2.x, Dio |
 | **LLM** | llama.cpp, OpenAI uyumlu API |
 | **Vektör** | SQLite + sqlite-vec (vec0 ANN indeksi) |

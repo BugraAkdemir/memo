@@ -1,6 +1,6 @@
 # Bilinen Sorunlar ve Teknik Riskler
 
-> Güncelleme: 4 Temmuz 2026 — v3.1.1 açık betası öncesi `AGENTS.md` ve `docs/KNOWN_ISSUES.md` ile yeniden doğrulandı.
+> Güncelleme: 7 Temmuz 2026 — v3.1.2 açık beta ile güncellendi.
 
 **Özet**: 14 belgelenmiş sorun, 11'i düzeltildi (biri bu geçişte: polling sorunları), 3'ü kaldı. Çoğu tasarım seviyesinde teknik borç, bug değil. Tam liste ve kod referansları için `docs/KNOWN_ISSUES.md` ve `docs/tr/BILINEN_SORUNLAR.md`'ye bakın.
 
@@ -27,20 +27,20 @@
 
 | Sorun | Durum |
 |-------|-------|
-| `provider.Priority` alanı var ama router tarafından kullanılmıyor | Tasarım borcu — sıralama mantığı var, bağlanmamış |
-| Orkestra `provider.Router`'ı atlıyor — sağlayıcıları doğrudan oluşturuyor, yedek zincir yok | Mimari kısıtlama |
-| `orchestra/` paketi için test dosyası yok (~800 satır) | Kapsam boşluğu |
-| Ajan frontend arayüzü (izin diyaloğu, araç çağrı kartları) tam olarak implemente edilmedi | Kısmi — temel diyalog var, streaming olayları render ediliyor |
+| ~~`provider.Priority` alanı var ama router tarafından kullanılmıyor~~ | ✅ Düzeltildi — router önceliğe göre sıralıyor, UI'da gösteriyor |
+| ~~Orkestra `provider.Router`'ı atlıyor~~ | ✅ Düzeltildi — `tryFallbackProviders` ile yedek zincir eklendi |
+| ~~`orchestra/` paketi için test dosyası yok~~ | ✅ Düzeltildi — 48 test `-race` ile geçiyor |
+| ~~Ajan frontend arayüzü eksik~~ | ✅ Düzeltildi — izin diyaloğu, araç çağrı kartları, aktivite paneli tam uygulandı |
 
 ---
 
 ## 🟢 Flutter
 
 - `model_store_screen.dart` 2469 satır — bileşenlere bölünmeli
-- Yaygın `const` constructor eksikliği (lint uyarıları)
+- ~~Yaygın `const` constructor eksikliği~~ ✅ Düzeltildi — 116 otomatik düzeltme `dart fix` ile
 - ~~`connectionStatusProvider` ve indirme ilerleme polling'i sonsuza kadar çalışıyor~~ ✅ düzeltildi — ikisi de artık `autoDispose` + adaptif interval
 
-**Yakında düzeltildi**: `settings_dialog.dart` 5013 satırdan 15 dosyaya bölündü. ✓
+**Düzeltildi**: `settings_dialog.dart` 4391 satırdan 15 dosyaya bölündü, şu an 218 satır. ✓
 
 ---
 

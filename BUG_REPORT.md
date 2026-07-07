@@ -1043,12 +1043,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Dosya:** `frontend/lib/core/api_client.dart:1140-1142`
 - **Nedir:** `sendWhatsAppChatStream` `DioExceptionType.cancel`'ı yakalamıyor (diğer iki stream method'u yakalıyor). Hata snackbar'ı kullanıcıya hatalı görünüyor.
 
-#### BUG-QM5: Agent sidebar "New Chat" hatası yutuyor
+#### BUG-QM5: ~~Agent sidebar "New Chat" hatası yutuyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `5850827`
+- **Düzeltme:** Aynı dosyadaki empty-state "create agent" butonunun zaten kullandığı try-catch + SnackBar pattern'i sidebar butonuna da eklendi.
 
 - **Dosya:** `frontend/lib/screens/agent_screen.dart:53-65`
-- **Trigger:** Backend düşerken "New Chat" tıklanır.
 - **Nedir:** `createAgentChat` çağrısında try-catch yok. Hata zone handler'a düşüyor — hiçbir feedback yok.
-- **Düzeltme:** Try-catch + SnackBar eklendi.
 
 #### BUG-QM6: Image stream agent modunu bypass ediyor
 

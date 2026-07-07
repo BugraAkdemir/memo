@@ -1092,11 +1092,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Dosyalar:** `server.go:438,509,513`, `handlers_flutter.go:544,553,726`
 - **Nedir:** `/api/chats`, `/api/chats/active`, `/api/messages`, `/api/events` gibi read-only endpoint'ler her HTTP method'u kabul ediyor. DELETE ile chat listesi çekmek bile çalışıyor.
 
-#### BUG-QL2: Agent chat silme butonu yok
+#### BUG-QL2: ~~Agent chat silme butonu yok~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `c72bc18`
+- **Düzeltme:** Küçük bir close ikonu eklendi, `onDelete(chat.id)` çağırıyor.
 
 - **Dosya:** `frontend/lib/screens/agent_screen.dart:92-97, 120-158`
 - **Nedir:** `_AgentChatItem` `onDelete` callback alıyor ama widget'ta silme butonu/long-press yok. Agent sohbetleri agent sidebar'dan silinemez.
-- **Etki:** Kullanıcı agent sohbetini silmek için Chat tab'ına gitmek zorunda.
 
 #### BUG-QL3 (false positive — düzeltme gerekmedi): `_styleCache` hiç temizlenmiyor
 

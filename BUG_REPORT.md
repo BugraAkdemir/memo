@@ -12,11 +12,11 @@
 | Severity | Adet | Düzeltilenler | En Kritik Alan |
 |----------|------|--------------|---------------|
 | 🔴 CRITICAL | 4 | C1, C3, C4 ~~fixed~~ | WhatsApp nil panic, import'ta memory.db bozulması, cloud key kaybı |
-| 🟠 HIGH | 10 | H1, H3, H4, H5 ~~fixed~~ | Shutdown panic, data race, config kaybı, eksik yedek, Flutter Stop |
-| 🟡 MEDIUM | 12 | — | Goroutine sızıntısı, hata kirliliği, kısmi import, güvenlik |
-| 🟢 LOW | 6 | — | Cache sızıntısı, error swallowing, UI double-rebuild |
+| 🟠 HIGH | 10 | H1, H3, H4, H5, H6, H8, H9, H10 ~~fixed~~ | Shutdown panic, data race, config kaybı, eksik yedek, Flutter Stop |
+| 🟡 MEDIUM | 12 | M1, M2, M3, M4, M5, M7, M8 ~~fixed~~ | Goroutine sızıntısı, hata kirliliği, kısmi import, güvenlik |
+| 🟢 LOW | 6 | L1, L2 ~~fixed~~ | Cache sızıntısı, error swallowing, UI double-rebuild |
 
-> **Son güncelleme:** 2026-06-30, Session 5 — 7 stable-blocking bug düzeltildi.
+> **Son güncelleme:** 2026-07-07, Session 7 — cfg data race, cloud sync WAL checkpoint/perm sertleştirmesi, import atomikliği, provider/router yarışı, ve 7 Flutter bug'ı (permission timeout, responsive settings dialog, OAuth polling, WhatsApp ghost mesaj, vb.) düzeltildi. Kalan: C2, H2, H7, M6, M9-M12 ve bir grup düşük öncelikli Flutter cilası (FM8, FM10-FM13, FM17, FM20, FL2-FL4, NL3).
 
 ---
 
@@ -157,7 +157,10 @@
 - **Kullanıcı etkisi:** Tüm AI provider yapılandırması (OpenAI, Gemini, Claude, Grok, vb.) ve **şifrelenmiş API anahtarları** kaybolur. Kullanıcı tüm sağlayıcıları yeniden yapılandırmak zorunda kalır.
 - **Düzeltme:** `fileutil.AtomicWrite` kullanılmalı.
 
-### BUG-H6: `a.cfg` alanlarında data race — locksuz okuma/yazma
+### BUG-H6: ~~`a.cfg` alanlarında data race — locksuz okuma/yazma~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit'ler:** `716a27c` (cfgMu eklendi), `07eaf0c` (tüm call site'lar cfgMu ile korundu)
+- **Düzeltme:** `App` struct'ına `cfgMu sync.RWMutex` eklendi. `UpdateLlamaConfig`/`SetLlamaBinaryPath`/`InstallLlamaServer` yazmaları `Lock()` altına alındı; `llm.go`, `llama.go`, `embedding.go`, `helpers.go`, `learning.go` içindeki tüm `a.cfg.Llama.*` okumaları `RLock()` altında local değişkene kopyalanıp kullanılıyor.
 
 - **Dosya:** `internal/app/llama.go:82-111` (yazma), `internal/app/llm.go:619-621,699,886-888` (okuma)
 - **Nedir:** `UpdateLlamaConfig()` (llama.go), `a.cfg.Llama.Temperature`, `TopP`, `MaxTokens` gibi alanları **hiçbir lock olmadan** yazar:
@@ -181,14 +184,20 @@
 - **Kullanıcı etkisi:** Chat geçmişi `"⚠️"` ile başlayan hata mesajlarıyla dolar. Memory veritabanı bu hata string'leriyle kirlenir. Sonraki RAG aramaları bu hataları "ilgili bağlam" olarak dönebilir → **hafıza kalitesi düşer**.
 - **Düzeltme:** `callLLM` hata durumunda boş string dönmeli, hata ayrı bir kanaldan (error return) iletilmeli. Veya `handleIncognito` hata mesajlarını filtrelemeli.
 
-### BUG-H8: Flutter WhatsApp streaming Stop butonu çalışmıyor
+### BUG-H8: ~~Flutter WhatsApp streaming Stop butonu çalışmıyor~~ **→ DÜZELTİLDİ (Session 6, bkz. FH1 aşağıda)**
+
+- **Commit:** `cb5c995`
+- **Düzeltme:** Aynı sorun Session 6'da FH1 olarak tekrar tespit edilip düzeltildi — bkz. "Frontend — Paralel İncelemede Bulunan Buglar" bölümü.
 
 - **Dosya:** `frontend/lib/widgets/chat_input.dart:180`, `frontend/lib/providers/chat_provider.dart:258`
 - **Nedir:** `_sendWhatsApp()` kendi içinde lokal bir `CancelToken` oluşturur (line 188) ve `api.sendWhatsAppChatStream()`'e geçer. Stop butonu `messagesProvider.notifier.stopStreaming()` çağırır, bu da `MessagesNotifier._cancelToken`'ı iptal eder — **tamamen farklı bir token**. WhatsApp stream'in cancel token'ı hiçbir yere expose edilmez.
 - **Kullanıcı etkisi:** WhatsApp modunda **Stop butonu işlevsizdir**. Kullanıcı yanıtı durduramaz. `isSendingProvider` temizlendiği için UI "göndermeye hazır" görünür ama stream arkada devam eder → UI tutarsız olur.
 - **Düzeltme:** WhatsApp cancel token'ı `MessagesNotifier` seviyesinde yönetilmeli, veya `_sendWhatsApp` cancel token'ı dışarıya expose edilmeli.
 
-### BUG-H9: Cloud sync WAL checkpoint hataları sessizce yutuluyor → bozuk yedek fark edilmez
+### BUG-H9: ~~Cloud sync WAL checkpoint hataları sessizce yutuluyor → bozuk yedek fark edilmez~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `44c5fc3`
+- **Düzeltme:** `db.Exec` hatası kontrol ediliyor; checkpoint başarısız olursa o dosya bu backup turunda atlanıyor ve `emitError` ile kullanıcıya bildiriliyor (sessizce bozuk yedek yüklenmiyor).
 
 - **Dosya:** `internal/cloudsync/sync_manager.go:415`
 - **Nedir:**
@@ -199,7 +208,10 @@
 - **Kullanıcı etkisi:** Checkpoint sessizce başarısız olduğunda **bulut yedeği eksik/bozuk olur** ve kullanıcının bundan haberi olmaz.
 - **Düzeltme:** Hata kontrolü eklenmeli, başarısız checkpoint loglanmalı ve backup atlanmalı/ertelenmeli.
 
-### BUG-H10: `runObserverAnalysis` ve `proactiveEngine` yanlış context kullanıyor → Shutdown'da durmuyorlar
+### BUG-H10: ~~`runObserverAnalysis` ve `proactiveEngine` yanlış context kullanıyor → Shutdown'da durmuyorlar~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `716a27c`
+- **Düzeltme:** Her iki goroutine de `a.lifecycleCtx` ile başlatılıyor. `runObserverAnalysis`'in ilk 30sn'lik bekleyişi de durdurulabilir bir `time.Timer`'a çevrildi.
 
 - **Dosya:** `internal/app/app.go:299,311`
 - **Nedir:**
@@ -215,21 +227,30 @@
 
 ## 🟡 MEDIUM — İşlevsellik Bozukluğu / Veri Bütünlüğü Riski
 
-### BUG-M1: `mood.db` bulut yedeklemede WAL checkpoint olmadan arşivleniyor
+### BUG-M1: ~~`mood.db` bulut yedeklemede WAL checkpoint olmadan arşivleniyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `44c5fc3`
+- **Düzeltme:** `mood.db` için de `memory.db` ile aynı `PRAGMA wal_checkpoint(TRUNCATE)` + hata kontrolü uygulandı.
 
 - **Dosya:** `internal/cloudsync/sync_manager.go:474-484`
 - **Nedir:** `mood.db`, `memory.db`'nin aksine `PRAGMA wal_checkpoint(TRUNCATE)` çalıştırılmadan zip'e eklenir. WAL'deki ruh hali kayıtları eksik kalır.
 - **Kullanıcı etkisi:** Bulut yedeğinde ruh hali verisi eksik olabilir. Lokal veri sağlamdır.
 - **Düzeltme:** `memory.db` ile aynı checkpoint pattern'i `mood.db` için de uygulanmalı.
 
-### BUG-M2: Import kısmı hata → yarımlanmış state, rollback yok
+### BUG-M2: ~~Import kısmı hata → yarımlanmış state, rollback yok~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `cbc2487`
+- **Düzeltme:** İki fazlı import: tüm zip entry'leri önce data dizini içindeki özel bir staging dizinine çıkarılıyor; sadece tüm entry'ler başarıyla staged olduktan sonra aynı dosya sistemi içinde atomik `os.Rename` ile canlı konuma taşınıyor. Herhangi bir noktada hata olursa canlı data dizini hiç dokunulmamış kalıyor.
 
 - **Dosya:** `internal/app/backup.go:98-147`
 - **Nedir:** ZIP entry'leri sırayla yazılır. Entry N başarısız olursa, 0..N-1 arası entry'ler çoktan diske yazılmıştır. Hata dönülür ama **yazılan dosyalar geri alınmaz**. Kısmi import sonucu bazı dosyalar yeni, bazıları eski kalır.
 - **Kullanıcı etkisi:** Import başarısız olduğunda uygulama **tutarsız bir state'te** kalır — örn. yeni `memory.db` ama eski `providers.json`.
 - **Düzeltme:** Import öncesi tam snapshot alınıp, başarısızlıkta geri döndürülmeli. Veya önce temp dizine extract edilip, başarılı olursa atomik olarak taşınmalı.
 
-### BUG-M3: `copyFile` fallback hardcoded 0666 → hassas dosyalar world-readable
+### BUG-M3: ~~`copyFile` fallback hardcoded 0666 → hassas dosyalar world-readable~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `edd518d`
+- **Düzeltme:** `copyFile`'a `perm fs.FileMode` parametresi eklendi, `AtomicWrite` çağıranın verdiği perm'i iletiyor.
 
 - **Dosya:** `internal/fileutil/atomic.go:42`
 - **Nedir:** `AtomicWrite` Windows'ta `os.Rename` başarısız olunca `copyFile` fallback'ine geçer. `copyFile` hedef dosyayı **her zaman 0666** (world-readable/writable) ile açar:
@@ -240,14 +261,20 @@
 - **Kullanıcı etkisi:** **Windows'ta** `os.Rename` fallback tetiklenirse, session dosyaları ve `machine.key` **makinedeki tüm kullanıcılar tarafından okunabilir** hale gelir.
 - **Düzeltme:** `copyFile`'a `perm` parametresi eklenmeli ve `AtomicWrite`'tan iletilmeli.
 
-### BUG-M4: Cloud restore dosyaları 0644 ile yazıyor → API anahtarları açığa çıkar
+### BUG-M4: ~~Cloud restore dosyaları 0644 ile yazıyor → API anahtarları açığa çıkar~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `44c5fc3`
+- **Düzeltme:** `restoreZip` ve `copyRestoreFile` artık `0600` ile yazıyor.
 
 - **Dosya:** `internal/cloudsync/sync_manager.go:586,631`
 - **Nedir:** `os.Create(tmpDest)` varsayılan `0666 & ~umask` (genelde 0644) ile oluşturur. `copyRestoreFile` (line 631) hardcoded `0644` kullanır. Bu dosyalar arasında `providers.json` (şifreli API key'leri içerir), `permissions.json`, `orchestra.json` bulunur.
 - **Kullanıcı etkisi:** Buluttan restore edilen hassas konfigürasyon dosyaları **diğer lokal kullanıcılar tarafından okunabilir**.
 - **Düzeltme:** Restore işleminde hassas dosyalar için `0600` kullanılmalı.
 
-### BUG-M5: Agent backup history yazma hataları sessizce yutuluyor
+### BUG-M5: ~~Agent backup history yazma hataları sessizce yutuluyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `1a35e2e`
+- **Düzeltme:** `saveHistoryLocked` artık hata döndürüyor; her çağıran ya bellek içi değişikliği geri alıyor ya da hatayı üst katmana iletiyor.
 
 - **Dosya:** `internal/agent/backup.go:74-77`
 - **Nedir:**
@@ -267,14 +294,20 @@
 - **Kullanıcı etkisi:** "Tailscale auto-start" ayarı açık olsa bile **çalışmaz**. Kullanıcı manuel başlatmak zorunda kalır.
 - **Düzeltme:** `startupTailscale()` çağrısı `StartWebServerHTTP` sonrasına alınmalı, veya web server set edilene kadar retry mekanizması eklenmeli.
 
-### BUG-M7: Flutter type-unsafe `_guard<List>.cast<Map>()` → iterator anında TypeError
+### BUG-M7: ~~Flutter type-unsafe `_guard<List>.cast<Map>()` → iterator anında TypeError~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `c64677c`
+- **Düzeltme:** `_guardList<E>()` eklendi; her elemanı eagerly kontrol edip çağrı yerinde açıklayıcı exception fırlatıyor. `getAgentPermissions`, `listSkills`, `getProactivePatterns`, `getCalendarEvents` güncellendi.
 
 - **Dosya:** `frontend/lib/core/api_client.dart:867,904,992,1004`
 - **Nedir:** `_guard<T>()` generic type check için `data is T` kullanır. `List<Map<String, dynamic>>` için bu çalışmaz (Dart generic reification). `.cast<Map<String, dynamic>>()` lazy'dir — hata iteration anında (`.map()`, `.forEach()`) ortaya çıkar. Backend verisi bozuksa, **çağrı yeri değil iterator crash olur**.
 - **Kullanıcı etkisi:** Bozuk/ beklenmedik API yanıtında permissions sayfası, agent listesi vb. **beklenmedik yerde crash**.
 - **Düzeltme:** `_guard` generic liste için özel handling yapmalı, veya element bazında type check eklenmeli.
 
-### BUG-M8: Flutter WhatsApp optimistic mesajlar sayfa değişiminde temizlenmiyor → hayalet mesaj
+### BUG-M8: ~~Flutter WhatsApp optimistic mesajlar sayfa değişiminde temizlenmiyor → hayalet mesaj~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `f8ac365`
+- **Düzeltme:** `_optimistic` listesinden çıkarma artık `mounted` kontrolünden bağımsız her zaman çalışıyor; sadece UI güncellemeleri (`setState`, provider invalidation, SnackBar) `mounted` ile korunuyor.
 
 - **Dosya:** `frontend/lib/screens/whatsapp_screen.dart:654-701`
 - **Nedir:** `_sendMessage()` optimistic mesajı `_optimistic` listesine ekler (line 671). Başarıda (line 679) veya hatada (line 687) `mounted` kontrolü ile siler. Ancak kullanıcı **async işlem tamamlanmadan önce sohbet değiştirir veya ekrandan çıkarsa**, `mounted == false` olur ve silme atlanır. Mesaj `_optimistic` listesinde **sonsuza kadar** kalır. Aynı sohbete dönüldüğünde `_optimistic.where((m) => m.chatJid == _selectedJid)` bu hayalet mesajı gösterir.
@@ -308,13 +341,19 @@
 
 ## 🟢 LOW — Küçük Kusurlar
 
-### BUG-L1: AtomicWrite `.tmp` orphan dosyaları
+### BUG-L1: ~~AtomicWrite `.tmp` orphan dosyaları~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `edd518d`
+- **Düzeltme:** İlk `os.WriteFile(tmp)` kısmi yazımla başarısız olursa `.tmp` dosyası hemen temizleniyor.
 
 - **Dosya:** `internal/fileutil/atomic.go:22-31`
 - **Nedir:** `os.WriteFile(tmp)` başarılı, `os.Rename` başarısız, `copyFile` da başarısız olursa `.tmp` dosyası diskte kalır.
 - **Etki:** Zamanla `.tmp` dosyaları birikir. Export bunları atlar (`filepath.Ext != ".tmp"`), session loader `.json` olmayanları ignore eder.
 
-### BUG-L2: WhatsApp `whatsappChatMu` gereksiz mutex
+### BUG-L2: ~~WhatsApp `whatsappChatMu` gereksiz mutex~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `716a27c`
+- **Düzeltme:** `whatsappChatMode` `atomic.Bool`'a çevrildi, `whatsappChatMu` kaldırıldı.
 
 - **Dosya:** `internal/app/whatsapp.go:167-175`
 - **Nedir:** `whatsappChatMode` boolean'ı için tam `sync.Mutex` kullanılıyor. `atomic.Bool` daha uygun olur.
@@ -405,30 +444,30 @@
 | H1 | `memorySaveCh` close sonrası panic | 1 saat | Shutdown crash | ✅ `86a0045` |
 | H3 | Export WAL checkpoint | 20 dk | Eksik yedek | ✅ `be4d6ae` |
 
-### Faz 2 — Yüksek Öncelik
+### Faz 2 — Yüksek Öncelik — kısmen tamamlandı (2026-07-07, Session 7)
 
-| # | Bug | Tahmini Süre | Etki |
-|---|-----|-------------|------|
-| C2 | WhatsApp `handleEvent` data race | 1.5 saat | Data corruption |
-| H6 | `a.cfg` data race | 1 saat | Yanlış LLM parametreleri |
-| H7 | Hata string'leri memory'e kaydediliyor | 30 dk | Hafıza kirliliği |
-| H8 | Flutter WhatsApp Stop butonu | 1 saat | Kullanıcı deneyimi |
-| H2 | WhatsApp `autoReconnect` TOCTOU | 30 dk | Crash |
-| H9 | Cloud sync checkpoint hatası yutma | 10 dk | Bozuk yedek |
-| H10 | Observer/proactive yanlış context | 15 dk | Kaynak sızıntısı |
+| # | Bug | Tahmini Süre | Etki | Durum |
+|---|-----|-------------|------|-------|
+| C2 | WhatsApp `handleEvent` data race | 1.5 saat | Data corruption | ⬜ Bekliyor |
+| H6 | `a.cfg` data race | 1 saat | Yanlış LLM parametreleri | ✅ `716a27c`/`07eaf0c` |
+| H7 | Hata string'leri memory'e kaydediliyor | 30 dk | Hafıza kirliliği | ⬜ Bekliyor |
+| H8 | Flutter WhatsApp Stop butonu | 1 saat | Kullanıcı deneyimi | ✅ `cb5c995` (Session 6, FH1) |
+| H2 | WhatsApp `autoReconnect` TOCTOU | 30 dk | Crash | ⬜ Bekliyor |
+| H9 | Cloud sync checkpoint hatası yutma | 10 dk | Bozuk yedek | ✅ `44c5fc3` |
+| H10 | Observer/proactive yanlış context | 15 dk | Kaynak sızıntısı | ✅ `716a27c` |
 
-### Faz 3 — Orta Öncelik
+### Faz 3 — Orta Öncelik — kısmen tamamlandı (2026-07-07, Session 7)
 
-| # | Bug | Tahmini Süre |
-|---|-----|-------------|
-| M1 | `mood.db` WAL checkpoint | 15 dk |
-| M2 | Import rollback | 1 saat |
-| M3 | `copyFile` 0666 hardcode | 10 dk |
-| M4 | Cloud restore 0644 | 15 dk |
-| M5 | Agent backup history error handling | 10 dk |
-| M6 | `startupTailscale` race | 30 dk |
-| M7 | Flutter `_guard<List>.cast` | 30 dk |
-| M8 | Flutter WhatsApp optimistic mesaj temizleme | 20 dk |
+| # | Bug | Tahmini Süre | Durum |
+|---|-----|-------------|-------|
+| M1 | `mood.db` WAL checkpoint | 15 dk | ✅ `44c5fc3` |
+| M2 | Import rollback | 1 saat | ✅ `cbc2487` |
+| M3 | `copyFile` 0666 hardcode | 10 dk | ✅ `edd518d` |
+| M4 | Cloud restore 0644 | 15 dk | ✅ `44c5fc3` |
+| M5 | Agent backup history error handling | 10 dk | ✅ `1a35e2e` |
+| M6 | `startupTailscale` race | 30 dk | ⬜ Bekliyor |
+| M7 | Flutter `_guard<List>.cast` | 30 dk | ✅ `c64677c` |
+| M8 | Flutter WhatsApp optimistic mesaj temizleme | 20 dk | ✅ `f8ac365` |
 
 ### Faz 4 — Düşük Öncelik / Mevcut Borç
 
@@ -532,10 +571,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** Provider yoksa direkt hata dönüyor, lokal model çalışıyor olsa bile.
 - **Düzeltme:** `llamaServer.IsRunning()` kontrolü eklendi. ✅
 
-#### BUG-NM4: WhatsApp session ID hiç temizlenmiyor → orphan session'lar
+#### BUG-NM4: ~~WhatsApp session ID hiç temizlenmiyor → orphan session'lar~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `716a27c`
+- **Düzeltme:** `StopWhatsApp()` ve `LogoutWhatsApp()` artık `whatsAppSessionID`'yi temizliyor, bir sonraki bağlantı temiz bir session ile başlıyor.
 - **Dosya:** `internal/app/whatsapp.go:195, app.go:183`
 - **Nedir:** `whatsAppSessionID` oluşturulduktan sonra `StopWhatsApp()` ve `LogoutWhatsApp()` tarafından temizlenmiyor. Her reconnect'te yeni session oluşuyor, eskiler diskte kalıyor.
-- **Durum:** Tespit edildi, düzeltilmedi (LOW etki).
 
 #### BUG-NM5: SendMessageWithImage/File — incognito modda streamMu prematüre release
 - **Dosya:** `internal/app/chat.go:252-254, 335-337`
@@ -554,11 +594,15 @@ go test ./... -race -count=1  → tüm paketler PASS
 
 ### 🟢 LOW
 
-#### BUG-NL1: Router health check — UpdateConfigs sonrası orphan entry modifikasyonu
+#### BUG-NL1: ~~Router health check — UpdateConfigs sonrası orphan entry modifikasyonu~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `cf5af0a`
+- **Düzeltme:** `isLiveEntry` ile write lock altında entry'nin hâlâ router'ın güncel listesinde olup olmadığı (pointer identity) doğrulanıyor, değilse re-enable atlanıyor.
 - **Dosya:** `internal/provider/router.go:314-331`
 - **Nedir:** HealthCheck RLock altında snapshot alıyor, Lock altında modifiye ediyor. Arada `UpdateConfigs` çalışırsa, artık listede olmayan bir entry'i modify ediyor → provider re-enable edilemiyor.
 
-#### BUG-NL2: Pipeline — truncation content eşleştirme kırılgan
+#### BUG-NL2: ~~Pipeline — truncation content eşleştirme kırılgan~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `411b06a`
+- **Düzeltme:** `truncate.Message` artık orijinal slice index'ini taşıyor; recovery content eşitliği yerine doğrudan index lookup ile yapılıyor.
 - **Dosya:** `internal/agent/pipeline.go:164-177`
 - **Nedir:** Token bütçesi trimming'i content string eşitliği ile eşleştirme yapıyor. Aynı içerikli iki tool result yanlış eşleşebilir.
 
@@ -614,10 +658,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** Delete icon'u direkt `api.deleteCalendarEvent()` çağırıyor. Yanlışlıkla tıklamada veri kaybı.
 - **Düzeltme:** `AlertDialog` confirmation eklendi. ✅ (`a225deb`)
 
-#### BUG-FH8: OAuth polling hatası sessizce yutuluyor
+#### BUG-FH8: ~~OAuth polling hatası sessizce yutuluyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `164c304`
+- **Düzeltme:** Ardışık hata sayacı eklendi; 4 ardışık hatada polling durup SnackBar ile bildiriliyor, mevcut 40 denemelik timeout da artık SnackBar gösteriyor.
 - **Dosya:** `frontend/lib/widgets/settings/tabs/backup_restore_tab.dart:136-151`
 - **Nedir:** Timer callback içinde `catch (_) {}` tüm hataları yutuyor. Backend çökerse polling sonsuza kadar başarısız devam ediyor, kullanıcı bilgilendirilmiyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 ### 🟡 MEDIUM
 
@@ -661,10 +706,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** Backend bozuk tarih döndüğünde parse hatası sessizce `DateTime.now()` ile değiştiriliyor. Olaylar yanlış zamanda görünüyor.
 - **Durum:** Tespit edildi, düzeltilmedi.
 
-#### BUG-FM9: Widget key'leri `hashCode` kullanıyor → tüm liste rebuild
+#### BUG-FM9: ~~Widget key'leri `hashCode` kullanıyor → tüm liste rebuild~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `81f5099`
+- **Düzeltme:** `hashCode` yerine mesajın kendi `timestamp`'i kullanılıyor (rebuild'ler arası stabil).
 - **Dosya:** `frontend/lib/widgets/chat_message_list.dart:134`
 - **Nedir:** `ValueKey('msg_${msg.hashCode}_$index')` her state değişiminde yeni hash üretiyor → tüm mesaj baloncukları rebuild oluyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM10: İki task list aynı anda başlatılabiliyor (client-side guard yok)
 - **Dosya:** `frontend/lib/screens/tasks_screen.dart:416-445`
@@ -686,10 +732,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** IndexedStack her iki tab'ı da alive tutuyor. Discover tab'ında arama yapıp "My Models" tab'ına geçince debounce timer hala tetikleniyor → gereksiz HuggingFace API çağrısı.
 - **Durum:** Tespit edildi, düzeltilmedi.
 
-#### BUG-FM14: Settings dialog sabit 800x600 — responsive değil
+#### BUG-FM14: ~~Settings dialog sabit 800x600 — responsive değil~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `5e9def0`
+- **Düzeltme:** Dialog boyutu ekranın %85'ine göre, min/max sınırlarla clamp edilerek hesaplanıyor.
 - **Dosya:** `frontend/lib/widgets/settings_dialog.dart:82-84`
 - **Nedir:** Küçük ekranda overflow, büyük ekranda çok küçük.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM15: WhatsApp stream timeout yok
 - **Dosya:** `frontend/lib/widgets/chat_input.dart:200`
@@ -706,15 +753,17 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** Test sonucu dialog içinde gösteriliyor ama save sırasında yeni bir config objesi oluşturuluyor, test sonucu kayboluyor.
 - **Durum:** Tespit edildi, düzeltilmedi.
 
-#### BUG-FM18: Permission dialog timeout yok
+#### BUG-FM18: ~~Permission dialog timeout yok~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `d57bf18`
+- **Düzeltme:** 5 dakikalık countdown eklendi; süre dolunca otomatik `deny_once` gönderiliyor (fail-safe: hiçbir zaman otomatik onay vermiyor).
 - **Dosya:** `frontend/lib/widgets/agent/permission_dialog.dart:26-33`
 - **Nedir:** Dialog sonsuza kadar bekliyor. Kullanıcı bilgisayar başında değilse agent pipeline bloke.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
-#### BUG-FM19: Cloud sync boş passphrase → device-locked yedek uyarısı yok
+#### BUG-FM19: ~~Cloud sync boş passphrase → device-locked yedek uyarısı yok~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `164c304`
+- **Düzeltme:** Passphrase boşken onay dialog'u gösteriliyor, kullanıcı ya parola belirliyor ya da bilinçli olarak "cihaza özel" seçeneğini onaylıyor.
 - **Dosya:** `frontend/lib/widgets/settings/tabs/backup_restore_tab.dart:776`
 - **Nedir:** Kullanıcı passphrase girmeden cloud sync açarsa şifreleme machine ID ile yapılıyor. Başka cihaza geçince yedek çözülemez.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM20: Hardcoded Turkish string'ler (l10n eksik)
 - **Dosyalar:** `general_tab.dart:76,255,274`, `agent_screen.dart:302,360-365`
@@ -738,11 +787,13 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:1230,1262`
 - **Nedir:** `catch (_) {}` tüm HTTP hatalarını yutuyor.
 
-#### BUG-FL5: Provider kart toggle icon'u ters
+#### BUG-FL5: ~~Provider kart toggle icon'u ters~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `f3ea137`
 - **Dosya:** `frontend/lib/widgets/settings/tabs/providers_tab.dart:288-289`
 - **Nedir:** Enabled durumda `toggle_off`, disabled durumda `toggle_on` gösteriyor.
 
 #### BUG-FL6: `AgentEvent.args` dynamic → type safety yok
+- **Not (2026-07-07, `c64677c`):** Tasarım gereği — backend `args`'ı bazen JSON string bazen decode edilmiş Map olarak gönderiyor, `permission_dialog.dart` her ikisini de `is String`/`is Map` ile kontrol ediyor. `dynamic` kalması gerektiği koda yorum olarak belgelendi; concrete type'a çevrilmedi.
 - **Dosya:** `frontend/lib/models/agent.dart:5`
 
 ---
@@ -772,10 +823,50 @@ go test ./... -race -count=1  → tüm paketler PASS
 | `cb5c995` | chat_input | FH1: WhatsApp stop + FH2: Mesaj kaybı + FM15: timeout |
 | `e2357b8` | chat_provider | FH3: Mesaj kaybolması + FH4: sendFile agent + FM1: error consumer + FM2: stop refresh |
 
-### Kalan İşler (Faz 2-3)
+### Kalan İşler (Session 2026-07-06 sonu itibarıyla — Session 7'de bir kısmı düzeltildi, bkz. aşağıdaki bölüm)
 
 | Öncelik | Sayı | Kapsam |
 |---------|------|--------|
 | HIGH | 1 | FH8: OAuth polling error swallowing |
 | MEDIUM | 8 | FM8-FM20 (takvim, tasks, model store, UI polish) |
 | LOW | 6 | FL2-FL6 + NL1-NL3 (kozmetik) |
+
+---
+
+## Session 2026-07-07 Düzeltme Özeti
+
+> Bu session, Session 2026-07-06'nın "Kalan İşler" listesinden ve daha önceki Faz 2-3 roadmap'inden bir grup backend + frontend bug'ı ele aldı. Tüm backend testleri (`go build ./... && go vet ./... && go test ./...`) yeşil.
+
+### Backend
+
+| Commit | Dosyalar | Bug |
+|--------|---------|-----|
+| `edd518d` | fileutil/atomic.go, atomic_test.go | M3: copyFile 0666 hardcode + L1: orphan .tmp |
+| `1a35e2e` | agent/backup.go | M5: Backup history yazma hatası sessizce yutuluyor |
+| `411b06a` | agent/pipeline.go, truncate/tokens.go | NL2: Truncation content eşleştirme → index-based |
+| `44c5fc3` | cloudsync/sync_manager.go(+test) | H9: WAL checkpoint hatası yutma + M1: mood.db checkpoint + M4: restore 0644 |
+| `cbc2487` | app/backup.go | M2: Import staging + atomik taşıma (rollback) |
+| `716a27c` | app/app.go, app/whatsapp.go | H10: lifecycleCtx + H6: cfgMu alanı + L2: whatsappChatMode atomic.Bool + NM4: session ID reset |
+| `07eaf0c` | app/llama.go, llm.go, embedding.go, helpers.go, learning.go | H6: cfgMu call site'ları |
+| `cf5af0a` | provider/router.go | NL1: HealthCheck orphan entry re-enable |
+
+### Frontend
+
+| Commit | Dosyalar | Bug |
+|--------|---------|-----|
+| `c64677c` | api_client.dart, models/agent.dart | M7: `_guardList` eager type check + FL6: dokümantasyon |
+| `d57bf18` | widgets/agent/permission_dialog.dart | FM18: 5 dakika timeout, fail-safe auto-deny |
+| `f8ac365` | screens/whatsapp_screen.dart | M8: Optimistic mesaj temizleme mounted'dan bağımsız |
+| `81f5099` | widgets/chat_message_list.dart | FM9: ValueKey hashCode → timestamp |
+| `f3ea137` | widgets/settings/tabs/providers_tab.dart | FL5: Toggle icon ters |
+| `5e9def0` | widgets/settings_dialog.dart | FM14: Responsive dialog boyutu |
+| `164c304` | widgets/settings/tabs/backup_restore_tab.dart | FM19: Boş passphrase uyarısı + FH8: OAuth polling hata gösterimi |
+
+### Kalan İşler
+
+| Öncelik | Bug'lar |
+|---------|---------|
+| CRITICAL | C2 (WhatsApp `handleEvent` data race) |
+| HIGH | H2 (autoReconnect TOCTOU), H7 (hata string'leri memory'e kaydediliyor) |
+| MEDIUM | M6 (startupTailscale race), M9-M12 (bilinen borç), FM8, FM10-FM13, FM17, FM20 |
+| LOW | FL2-FL4, NL3 |

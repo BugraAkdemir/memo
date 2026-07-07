@@ -17,7 +17,6 @@ import (
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -405,25 +404,7 @@ func (s *Server) handleSendFile(w http.ResponseWriter, r *http.Request) {
 	tmpFilePath := tmpFile.Name()
 	tmpFile.Close() // Close before sending to bridge
 
-	// Detect MIME from file content rather than trusting client header
-	detectedMIME := ""
-	if f, err := os.Open(tmpFilePath); err == nil {
-		buf := make([]byte, 512)
-		if n, _ := f.Read(buf); n > 0 {
-			detectedMIME = http.DetectContentType(buf[:n])
-		}
-		f.Close()
-	}
-
-	isImage := false
-	if detectedMIME != "" && len(detectedMIME) >= 5 && detectedMIME[:5] == "image" {
-		isImage = true
-	} else if header.Filename != "" {
-		ext := strings.ToLower(filepath.Ext(header.Filename))
-		if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" {
-			isImage = true
-		}
-	}
+	isImage := detectIsImageFile(tmpFilePath, header.Filename)
 
 	var reply string
 	if isImage {

@@ -107,18 +107,12 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 	}
 	tmpFile.Close()
 
-	mimeType := header.Header.Get("Content-Type")
-	isImage := false
-	if mimeType != "" {
-		if strings.HasPrefix(mimeType, "image") {
-			isImage = true
-		}
-	} else {
-		ext := strings.ToLower(filepath.Ext(tmpFilePath))
-		if ext == ".png" || ext == ".jpg" || ext == ".jpeg" || ext == ".gif" || ext == ".webp" || ext == ".bmp" {
-			isImage = true
-		}
-	}
+	// detectIsImageFile sniffs actual file content rather than trusting the
+	// client-supplied Content-Type header (the non-streaming handleSendFile
+	// in server.go already does this) — a header alone lets a client label
+	// any file "image/png" and have it routed into the vision pipeline
+	// regardless of its actual content.
+	isImage := detectIsImageFile(tmpFilePath, header.Filename)
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-cache")

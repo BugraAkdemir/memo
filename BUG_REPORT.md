@@ -1084,11 +1084,13 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 
 ### 🟢 LOW — HTTP Semantiği / Bellek Sızıntısı / Eksik UI
 
-#### BUG-QL1: HTTP method check yok (çoklu endpoint)
+#### BUG-QL1: ~~HTTP method check yok (çoklu endpoint)~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `cb999ef`
+- **Düzeltme:** `handleChats`, `handleActiveChat`, `handleMessages`, `handleEvents`'e "GET only" guard eklendi. Frontend'in gerçekten çağırdığı üçü zaten `.get()` kullanıyor, davranış değişikliği yok.
 
 - **Dosyalar:** `server.go:438,509,513`, `handlers_flutter.go:544,553,726`
 - **Nedir:** `/api/chats`, `/api/chats/active`, `/api/messages`, `/api/events` gibi read-only endpoint'ler her HTTP method'u kabul ediyor. DELETE ile chat listesi çekmek bile çalışıyor.
-- **Etki:** HTTP semantiği ihlali, proxy/cache sorunları.
 
 #### BUG-QL2: Agent chat silme butonu yok
 

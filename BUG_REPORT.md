@@ -986,20 +986,23 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Nedir:** `NewClient()` `stopCh` oluşturur. `Stop()` `stopOnce.Do` ile kapatır (one-shot). `Start()` `stopCh'yi yeniden oluşturmaz. Yeni bağlantı koptuğunda `autoReconnect()` kapatılmış kanalı dinler → anında return, reconnect hiç denenmez.
 - **Kullanıcı etkisi (düzeltme öncesi):** Herhangi bir disconnect→reconnect döngüsü sonrası WhatsApp auto-reconnect kalıcı olarak ölür — uygulama restart gerekir.
 
-#### BUG-QH4: Import sonrası provider/orchestra yeniden başlatılmıyor
+#### BUG-QH4: ~~Import sonrası provider/orchestra yeniden başlatılmıyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `d949770`
+- **Düzeltme:** Startup()'ın provider/orchestra kurulum mantığı `reinitProviderAndOrchestra()` (providers.go) fonksiyonuna çıkarıldı, `providerMu` altında; Startup() da artık bunu çağırıyor (tek doğruluk kaynağı, iki kopya arası sapma riski yok). ImportData import sonrası bunu çağırıyor.
 
 - **Dosya:** `internal/app/backup.go:209-219`
-- **Trigger:** Import sonrası provider kullanılır.
 - **Nedir:** `providers.json` disk'te güncelleniyor ama `providerCfgMgr` reload edilmiyor, `providerRouter` rebuild edilmiyor. `orchestra.json` da aynı şekilde — conductor yeniden oluşturulmuyor.
-- **Kullanıcı etkisi:** Import sonrası provider ve orchestra config'leri disk'te yeni ama running app eski state'i kullanıyor. Restart gerekiyor.
-- **Düzeltme:** Import sonrası provider router ve orchestra conductor yeniden oluşturulmalı.
+- **Kullanıcı etkisi (düzeltme öncesi):** Import sonrası provider ve orchestra config'leri disk'te yeni ama running app eski state'i kullanıyor. Restart gerekiyor.
 
-#### BUG-QH5: Cloud restore sonrası provider/session yeniden başlatılmıyor
+#### BUG-QH5: ~~Cloud restore sonrası provider/session yeniden başlatılmıyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `0f709f5`
+- **Düzeltme:** `AfterRestore` hook'u artık sessions manager'ı yeniden yüklüyor ve `reinitProviderAndOrchestra()` çağırıyor (QH4'te eklenen aynı fonksiyon).
 
 - **Dosya:** `internal/cloudsync/sync_manager.go:357-377`, `internal/app/sync.go:59-79`
-- **Trigger:** PullSync ile cloud'dan geri yükleme.
 - **Nedir:** `restoreZip` dosyaları disk'te güncelliyor. `BeforeRestore`/`AfterRestore` hook'ları sadece memory store'u handle ediyor — providers, sessions manager ve orchestra conductor yeniden başlatılmıyor.
-- **Kullanıcı etkisi:** Cloud restore sonrası provider config'leri, sohbet geçmişi ve orchestra ayarları disk'te yeni ama uygulama eski state'i kullanıyor. Restart gerekiyor.
+- **Kullanıcı etkisi (düzeltme öncesi):** Cloud restore sonrası provider config'leri, sohbet geçmişi ve orchestra ayarları disk'te yeni ama uygulama eski state'i kullanıyor. Restart gerekiyor.
 - **Düzeltme:** `AfterRestore` hook'una provider/session/orchestra reinit eklenmeli.
 
 ---

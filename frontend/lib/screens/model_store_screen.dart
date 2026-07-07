@@ -244,7 +244,7 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
           Expanded(
             child: IndexedStack(
               index: _tab,
-              children: const [_DiscoverTab(), _MyModelsTab()],
+              children: [_DiscoverTab(isActive: _tab == 0), const _MyModelsTab()],
             ),
           ),
         ],
@@ -394,7 +394,9 @@ enum _SortMode { defaultOrder, mostDownloads, smallestFirst, largestFirst }
 // ─── Discover tab — two-panel layout ─────────────────────────────
 
 class _DiscoverTab extends ConsumerStatefulWidget {
-  const _DiscoverTab();
+  final bool isActive;
+
+  const _DiscoverTab({required this.isActive});
 
   @override
   ConsumerState<_DiscoverTab> createState() => _DiscoverTabState();
@@ -419,7 +421,12 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
   void _onSearch(String val) {
     _debounce?.cancel();
     _debounce = Timer(const Duration(milliseconds: 400), () {
-      if (mounted) {
+      // IndexedStack keeps this tab mounted even when the user has switched
+      // to "My Models" — `mounted` alone doesn't catch that, so a pending
+      // debounce fired an unnecessary HuggingFace search after the user had
+      // already navigated away. widget.isActive tracks the parent's actual
+      // selected tab.
+      if (mounted && widget.isActive) {
         ref.read(modelSearchQueryProvider.notifier).state = val.trim();
       }
     });

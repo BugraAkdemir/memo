@@ -10,7 +10,6 @@ import '../providers/chat_provider.dart';
 import '../providers/agent_provider.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
-import '../models/agent.dart';
 import 'tasks_screen.dart';
 
 class AgentScreen extends ConsumerWidget {

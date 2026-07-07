@@ -13,7 +13,6 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/welcome_view.dart';
 import '../providers/agent_provider.dart';
-import '../models/agent.dart';
 
 /// Chat screen — sidebar + message list + input area.
 class ChatScreen extends ConsumerWidget {

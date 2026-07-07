@@ -30,8 +30,18 @@ func isEmbeddingBackendDown(err error) bool {
 		strings.Contains(msg, "EOF")
 }
 
+// isLLMErrorReply reports whether reply is one of callLLM's synthetic
+// "⚠️ ..." error strings (model not loaded, provider error, empty response,
+// unreadable attachment, etc.) rather than a genuine model response. Every
+// error path in llm.go and chat.go consistently uses this prefix — the same
+// convention the streaming path's recordStreamError relies on — so it's a
+// reliable signal that reply must not be indexed into RAG memory.
+func isLLMErrorReply(reply string) bool {
+	return strings.HasPrefix(reply, "⚠️")
+}
+
 func (a *App) saveMemoryAsync(userMsg, reply string) {
-	if reply == "" || !a.cfg.Memory.MemoryEnabled {
+	if reply == "" || isLLMErrorReply(reply) || !a.cfg.Memory.MemoryEnabled {
 		return
 	}
 	select {

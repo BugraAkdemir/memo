@@ -363,9 +363,6 @@ func (a *App) Startup(ctx context.Context) {
 		}
 	}
 
-	// Tailscale tunnel auto-start (embedded, stable URL).
-	go a.startupTailscale()
-
 	go a.startSTTServer()
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
@@ -447,6 +444,15 @@ func (a *App) StartWebServerHTTP(port int) error {
 	a.webMu.Lock()
 	a.webServer = ws
 	a.webMu.Unlock()
+
+	// Tailscale tunnel auto-start (embedded, stable URL). Must run after
+	// a.webServer is set: startupTailscale checks getWebServer().IsRunning()
+	// to proxy to the actual bound port, and previously ran from Startup()
+	// — which always completes and returns *before* this method is even
+	// called (see main.go) — so getWebServer() was always nil and the
+	// auto-start silently never did anything.
+	go a.startupTailscale()
+
 	return nil
 }
 

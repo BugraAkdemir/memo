@@ -3,7 +3,11 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/curated_models.dart';
+import '../models/gpu_info.dart';
+import '../models/local_model.dart';
 import '../providers/chat_provider.dart';
+import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
 
 class SetupWizardOverlay extends ConsumerWidget {
@@ -40,7 +44,12 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   bool _checking = false;
   bool _backendOk = false;
   bool _modelsOk = false;
+  int _localModelCount = 0;
   bool _saving = false;
+
+  bool _modelDownloadStarted = false;
+  bool _modelDownloadDone = false;
+  String? _modelDownloadError;
 
   ThemeColors get _colors {
     if (_selectedTheme == 'dark') return MemoTheme.dark;
@@ -282,12 +291,60 @@ Limits:
       if (isAlive) {
         final models = await ref.read(apiClientProvider).listLocalModels();
         _modelsOk = models.isNotEmpty;
+        _localModelCount = models.length;
       }
     } catch (_) {
       _backendOk = false;
       _modelsOk = false;
     }
     if (mounted) setState(() => _checking = false);
+  }
+
+  Future<void> _downloadRecommendedModels(GPUInfo gpu) async {
+    setState(() {
+      _modelDownloadStarted = true;
+      _modelDownloadDone = false;
+      _modelDownloadError = null;
+    });
+    try {
+      await _downloadCurated(recommendedChatModel(gpu));
+      if (!mounted) return;
+      await _waitForDownloadIdle();
+      if (!mounted) return;
+      await _downloadCurated(recommendedMemoryModel);
+      if (!mounted) return;
+      await _waitForDownloadIdle();
+      if (mounted) setState(() => _modelDownloadDone = true);
+    } catch (e) {
+      if (mounted) setState(() => _modelDownloadError = e.toString());
+    }
+  }
+
+  Future<void> _downloadCurated(CuratedModel model) async {
+    final api = ref.read(apiClientProvider);
+    final files = await api.getModelFiles(model.repoId);
+    final file = pickRecommendedFile(files);
+    if (file == null) {
+      throw Exception('${model.name}: no downloadable file found');
+    }
+    await api.downloadModel(model.repoId, file.filename, expectedSize: file.size);
+  }
+
+  /// Polls until the current backend download finishes, so the chat model
+  /// and memory model download one after another — the backend only allows
+  /// a single active download at a time.
+  Future<void> _waitForDownloadIdle() async {
+    final api = ref.read(apiClientProvider);
+    while (true) {
+      final progress = await api.getDownloadProgress();
+      if (!progress.active) {
+        if (progress.error != null && progress.error!.isNotEmpty) {
+          throw Exception(progress.error);
+        }
+        return;
+      }
+      await Future.delayed(const Duration(seconds: 1));
+    }
   }
 
   Future<void> _saveSetup() async {
@@ -587,6 +644,34 @@ Limits:
                             // ─── Step 3 ───────────────────────
                             _StepHeader(
                               number: '3',
+                              title: isTurkish ? 'Model Önerisi' : 'Model Recommendation',
+                              color: c,
+                            ),
+                            SizedBox(height: 14),
+                            Consumer(
+                              builder: (context, ref, _) {
+                                final gpuAsync = ref.watch(gpuInfoProvider);
+                                final dlAsync = ref.watch(downloadProgressProvider);
+                                return _ModelRecommendationCard(
+                                  color: c,
+                                  isTurkish: isTurkish,
+                                  checking: _checking,
+                                  gpu: gpuAsync.valueOrNull ?? const GPUInfo(),
+                                  downloadProgress: dlAsync.valueOrNull,
+                                  alreadyHasModels: _modelsOk,
+                                  localModelCount: _localModelCount,
+                                  downloadStarted: _modelDownloadStarted,
+                                  downloadDone: _modelDownloadDone,
+                                  downloadError: _modelDownloadError,
+                                  onDownload: _downloadRecommendedModels,
+                                );
+                              },
+                            ),
+                            SizedBox(height: 32),
+
+                            // ─── Step 4 ───────────────────────
+                            _StepHeader(
+                              number: '4',
                               title: isTurkish ? 'Sistem Kontrolü' : 'System Check',
                               color: c,
                             ),
@@ -836,6 +921,268 @@ class _Pill extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _ModelRecommendationCard extends StatelessWidget {
+  final ThemeColors color;
+  final bool isTurkish;
+  final bool checking;
+  final GPUInfo gpu;
+  final DownloadProgress? downloadProgress;
+  final bool alreadyHasModels;
+  final int localModelCount;
+  final bool downloadStarted;
+  final bool downloadDone;
+  final String? downloadError;
+  final void Function(GPUInfo gpu) onDownload;
+
+  const _ModelRecommendationCard({
+    required this.color,
+    required this.isTurkish,
+    required this.checking,
+    required this.gpu,
+    required this.downloadProgress,
+    required this.alreadyHasModels,
+    required this.localModelCount,
+    required this.downloadStarted,
+    required this.downloadDone,
+    required this.downloadError,
+    required this.onDownload,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return _Card(color: color, child: _content());
+  }
+
+  Widget _content() {
+    if (checking) {
+      return Row(
+        children: [
+          SizedBox(
+            width: 16,
+            height: 16,
+            child: CircularProgressIndicator(strokeWidth: 2, color: color.textDim),
+          ),
+          SizedBox(width: 10),
+          Text(
+            isTurkish ? 'Sistemin kontrol ediliyor...' : 'Checking your system...',
+            style: TextStyle(fontSize: 13, color: color.textDim),
+          ),
+        ],
+      );
+    }
+
+    if (alreadyHasModels) {
+      return Row(
+        children: [
+          Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 20),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              isTurkish
+                  ? 'Zaten $localModelCount model kurulu — hazırsın!'
+                  : 'You already have $localModelCount model(s) installed — you\'re all set!',
+              style: TextStyle(fontSize: 13, color: color.textMain),
+            ),
+          ),
+        ],
+      );
+    }
+
+    final chatModel = recommendedChatModel(gpu);
+    final memModel = recommendedMemoryModel;
+    final gpuLine = gpu.hasGpu
+        ? '${gpu.name} — ${gpu.vramFormatted} VRAM'
+        : (isTurkish ? 'Bulunamadı — CPU ile çalışacak' : 'Not found — will run on CPU');
+    final ramLine = gpu.ramTotalMb > 0
+        ? gpu.ramFormatted
+        : (isTurkish ? 'Bilinmiyor' : 'Unknown');
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          isTurkish
+              ? 'Hey! Sistemine göre bir öneri hazırladık 👋'
+              : 'Hey! We picked models for your system 👋',
+          style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color.textMain),
+        ),
+        SizedBox(height: 10),
+        _SpecRow(label: 'RAM', value: ramLine, color: color),
+        SizedBox(height: 4),
+        _SpecRow(
+          label: isTurkish ? 'Ekran Kartı' : 'Graphics Card',
+          value: gpuLine,
+          color: color,
+        ),
+        SizedBox(height: 14),
+        Container(
+          padding: EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: MemoTheme.accent.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(10),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              _SpecRow(
+                label: isTurkish ? 'Sohbet modeli' : 'Chat model',
+                value: '${chatModel.name} (${chatModel.sizeFormatted})',
+                color: color,
+                bold: true,
+              ),
+              SizedBox(height: 4),
+              _SpecRow(
+                label: isTurkish ? 'Hafıza modeli' : 'Memory model',
+                value: memModel.name,
+                color: color,
+                bold: true,
+              ),
+            ],
+          ),
+        ),
+        SizedBox(height: 8),
+        Text(
+          isTurkish
+              ? 'Bu modeller bilgisayarında saklanır — internetin olmadığı zamanlarda bile Memo çalışmaya devam eder.'
+              : 'These models are stored on your computer — Memo keeps working even when you\'re offline.',
+          style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
+        ),
+        SizedBox(height: 14),
+        if (downloadError != null) ...[
+          Text(
+            downloadError!,
+            style: TextStyle(fontSize: 12, color: MemoTheme.red),
+          ),
+          SizedBox(height: 8),
+        ],
+        if (!downloadStarted)
+          SizedBox(
+            width: double.infinity,
+            height: 42,
+            child: OutlinedButton(
+              onPressed: () => onDownload(gpu),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: MemoTheme.accent),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: Text(
+                isTurkish ? 'Bu Modelleri İndir' : 'Download These Models',
+                style: TextStyle(
+                  color: MemoTheme.accent,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 13,
+                ),
+              ),
+            ),
+          )
+        else if (downloadDone)
+          Row(
+            children: [
+              Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
+              SizedBox(width: 8),
+              Text(
+                isTurkish ? 'Modeller hazır! Devam edebilirsin.' : 'Models are ready! You can continue.',
+                style: TextStyle(fontSize: 12, color: color.textMain),
+              ),
+            ],
+          )
+        else ...[
+          _DownloadProgressRow(
+            progress: downloadProgress,
+            color: color,
+            isTurkish: isTurkish,
+          ),
+          SizedBox(height: 6),
+          Text(
+            isTurkish
+                ? 'İndirme arka planda sürüyor — kuruluma devam edebilirsin.'
+                : 'Download continues in the background — you can keep going with setup.',
+            style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
+          ),
+        ],
+      ],
+    );
+  }
+}
+
+class _SpecRow extends StatelessWidget {
+  final String label;
+  final String value;
+  final ThemeColors color;
+  final bool bold;
+
+  const _SpecRow({
+    required this.label,
+    required this.value,
+    required this.color,
+    this.bold = false,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(
+          width: 90,
+          child: Text(label, style: TextStyle(fontSize: 12, color: color.textDim)),
+        ),
+        Expanded(
+          child: Text(
+            value,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: bold ? FontWeight.w600 : FontWeight.normal,
+              color: color.textMain,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _DownloadProgressRow extends StatelessWidget {
+  final DownloadProgress? progress;
+  final ThemeColors color;
+  final bool isTurkish;
+
+  const _DownloadProgressRow({
+    required this.progress,
+    required this.color,
+    required this.isTurkish,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress;
+    final pct = (p?.percent ?? 0).clamp(0, 100).toDouble();
+    final label =
+        p != null && p.filename.isNotEmpty ? p.filename : (isTurkish ? 'Hazırlanıyor...' : 'Preparing...');
+    final speedSuffix = p != null && p.speed.isNotEmpty ? ' (${p.speed})' : '';
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(4),
+          child: LinearProgressIndicator(
+            value: pct > 0 ? pct / 100 : null,
+            minHeight: 6,
+            backgroundColor: color.bgElement,
+            color: MemoTheme.accent,
+          ),
+        ),
+        SizedBox(height: 6),
+        Text(
+          '$label — %${pct.toStringAsFixed(0)}$speedSuffix',
+          style: TextStyle(fontSize: 11, color: color.textDim),
+        ),
+      ],
     );
   }
 }

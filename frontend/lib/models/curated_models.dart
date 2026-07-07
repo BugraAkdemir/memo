@@ -37,6 +37,13 @@ class CuratedModel {
   /// The author used for avatar/logo display.
   String get displayAuthor =>
       brandAuthor ?? (repoId.contains('/') ? repoId.split('/').first : repoId);
+
+  String get sizeFormatted {
+    if (approxBytes >= 1024 * 1024 * 1024) {
+      return '${(approxBytes / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    }
+    return '${(approxBytes / (1024 * 1024)).toStringAsFixed(0)} MB';
+  }
 }
 
 /// Curated GGUF repos — only official repos from the original model creators.

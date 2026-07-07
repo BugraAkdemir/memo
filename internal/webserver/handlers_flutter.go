@@ -993,7 +993,7 @@ func (s *Server) handleLlamaConfigUpdate(w http.ResponseWriter, r *http.Request)
 		http.Error(w, "PUT only", http.StatusMethodNotAllowed)
 		return
 	}
-	var req config.LlamaConfig
+	var req config.LlamaConfigUpdate
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return

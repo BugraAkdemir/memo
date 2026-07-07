@@ -164,6 +164,40 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	}
 }
 
+// TestValidatePreservesExplicitZeroTemperatureAndTopP is a regression test
+// for BUG-QM2: validate() used a `<= 0` check for Temperature/TopP, so an
+// intentional 0 (greedy decoding) was indistinguishable from "never set" and
+// got silently reset to the 0.7/0.9 default on every config.Save() call —
+// not just on initial load. Only a genuinely invalid negative value should
+// be defaulted now (matching the `< 0` check MaxTokens already used).
+func TestValidatePreservesExplicitZeroTemperatureAndTopP(t *testing.T) {
+	cfg := &AppConfig{Llama: LlamaConfig{Temperature: 0, TopP: 0, MaxTokens: 0}}
+	cfg.validate()
+
+	if cfg.Llama.Temperature != 0 {
+		t.Errorf("Temperature = %v, want 0 to survive validate()", cfg.Llama.Temperature)
+	}
+	if cfg.Llama.TopP != 0 {
+		t.Errorf("TopP = %v, want 0 to survive validate()", cfg.Llama.TopP)
+	}
+	if cfg.Llama.MaxTokens != 0 {
+		t.Errorf("MaxTokens = %v, want 0 to survive validate()", cfg.Llama.MaxTokens)
+	}
+
+	// A genuinely invalid negative value must still be defaulted.
+	cfg2 := &AppConfig{Llama: LlamaConfig{Temperature: -1, TopP: -1, MaxTokens: -1}}
+	cfg2.validate()
+	if cfg2.Llama.Temperature != 0.7 {
+		t.Errorf("Temperature = %v, want defaulted to 0.7 for a negative input", cfg2.Llama.Temperature)
+	}
+	if cfg2.Llama.TopP != 0.9 {
+		t.Errorf("TopP = %v, want defaulted to 0.9 for a negative input", cfg2.Llama.TopP)
+	}
+	if cfg2.Llama.MaxTokens != 0 {
+		t.Errorf("MaxTokens = %v, want defaulted to 0 for a negative input", cfg2.Llama.MaxTokens)
+	}
+}
+
 func TestFilePermissions(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "config.yaml")

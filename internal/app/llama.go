@@ -85,7 +85,10 @@ func (a *App) GetLlamaConfig() config.LlamaConfig {
 }
 
 // UpdateLlamaConfig merges partial updates into the llama configuration.
-func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
+// Temperature/TopP/MaxTokens are pointers (see LlamaConfigUpdate) precisely
+// so an explicit 0 — greedy decoding, or "no token limit" — can be applied;
+// a nil pointer means the caller didn't send that field at all.
+func (a *App) UpdateLlamaConfig(cfg config.LlamaConfigUpdate) error {
 	a.cfgMu.Lock()
 	if cfg.EngineMode != "" {
 		a.cfg.Llama.EngineMode = cfg.EngineMode
@@ -108,14 +111,14 @@ func (a *App) UpdateLlamaConfig(cfg config.LlamaConfig) error {
 	if cfg.ModelsDir != "" {
 		a.cfg.Llama.ModelsDir = cfg.ModelsDir
 	}
-	if cfg.Temperature != 0 {
-		a.cfg.Llama.Temperature = cfg.Temperature
+	if cfg.Temperature != nil {
+		a.cfg.Llama.Temperature = *cfg.Temperature
 	}
-	if cfg.TopP != 0 {
-		a.cfg.Llama.TopP = cfg.TopP
+	if cfg.TopP != nil {
+		a.cfg.Llama.TopP = *cfg.TopP
 	}
-	if cfg.MaxTokens != 0 {
-		a.cfg.Llama.MaxTokens = cfg.MaxTokens
+	if cfg.MaxTokens != nil {
+		a.cfg.Llama.MaxTokens = *cfg.MaxTokens
 	}
 	a.cfgMu.Unlock()
 	return config.Save(a.cfg)

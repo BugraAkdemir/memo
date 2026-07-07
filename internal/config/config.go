@@ -209,6 +209,28 @@ type LlamaConfig struct {
 	MaxTokens        int     `yaml:"max_tokens" json:"max_tokens"`                 // default 0 (no limit)
 }
 
+// LlamaConfigUpdate is a partial update for llama.cpp settings, decoded
+// directly from the PUT /api/models/config request body. Temperature/TopP/
+// MaxTokens are pointers because 0 is a legitimate, meaningful value for
+// each (greedy decoding, "no limit" respectively) and must be distinguishable
+// from "the caller didn't include this field" — which a plain value field
+// merged with a `!= 0` check cannot express: it would silently ignore an
+// explicit request to set the field to zero. The other fields have no
+// meaningful zero value (a port or ctx size of 0 is never intentional), so
+// they stay plain values.
+type LlamaConfigUpdate struct {
+	EngineMode    string   `json:"engine_mode"`
+	BinaryPath    string   `json:"binary_path"`
+	Port          int      `json:"port"`
+	EmbeddingPort int      `json:"embedding_port"`
+	CtxSize       int      `json:"ctx_size"`
+	MaxHistory    int      `json:"max_history"`
+	ModelsDir     string   `json:"models_dir"`
+	Temperature   *float64 `json:"temperature"`
+	TopP          *float64 `json:"top_p"`
+	MaxTokens     *int     `json:"max_tokens"`
+}
+
 type IdentityConfig struct {
 	UserName        string `yaml:"user_name"`
 	AssistantName   string `yaml:"assistant_name"`
@@ -484,11 +506,17 @@ func (c *AppConfig) validate() []string {
 		c.Llama.ModelsDir = "./data/models"
 		fixes = append(fixes, "Llama.ModelsDir")
 	}
-	if c.Llama.Temperature <= 0 {
+	// < 0 (not <= 0): 0 is a legitimate, intentional value for both — greedy
+	// decoding — and must survive validate(), which Save() runs on every
+	// config write, not just on initial load from a possibly-empty/corrupt
+	// file. An <= 0 check here silently reset any user request to set
+	// either field to exactly 0 straight back to the default (see
+	// BUG-QM2). Only a genuinely invalid negative value gets defaulted.
+	if c.Llama.Temperature < 0 {
 		c.Llama.Temperature = 0.7
 		fixes = append(fixes, "Llama.Temperature")
 	}
-	if c.Llama.TopP <= 0 {
+	if c.Llama.TopP < 0 {
 		c.Llama.TopP = 0.9
 		fixes = append(fixes, "Llama.TopP")
 	}

@@ -68,7 +68,13 @@ func TruncateMessages(messages []Message, maxTokens int) []Message {
 }
 
 // Message is a minimal message representation for token-aware truncation.
+// Index carries the message's position in the caller's original slice so
+// callers that need to recover richer original messages (e.g. with
+// ToolCalls/ToolCallID) can do so by position instead of matching on
+// Content, which is not guaranteed to be unique (e.g. two tool results
+// that both returned "OK").
 type Message struct {
 	Role    string
 	Content string
+	Index   int
 }

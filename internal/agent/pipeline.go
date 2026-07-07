@@ -154,26 +154,19 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 				if s, ok := m.Content.(string); ok {
 					content = s
 				}
-				truncMsgs[i] = truncate.Message{Role: m.Role, Content: content}
+				truncMsgs[i] = truncate.Message{Role: m.Role, Content: content, Index: i}
 			}
 			truncMsgs = truncate.TruncateMessages(truncMsgs, p.maxTokens)
-			// Recover original messages by sequential matching to preserve
-			// ToolCalls — rebuilding from truncate.Message would strip them,
-			// causing orphaned tool-role messages and LLM API rejections.
+			// Recover original messages by position (Index), not content equality.
+			// Rebuilding from truncate.Message would strip ToolCalls, causing
+			// orphaned tool-role messages and LLM API rejections. Matching on
+			// content (the old approach) is unsafe because distinct tool
+			// results can share identical text (e.g. two calls both returning
+			// "OK"), which could truncate the wrong message.
 			filtered := make([]provider.Message, 0, len(truncMsgs))
-			origIdx := 0
 			for _, tm := range truncMsgs {
-				for origIdx < len(currentMessages) {
-					orig := currentMessages[origIdx]
-					origIdx++
-					var content string
-					if s, ok := orig.Content.(string); ok {
-						content = s
-					}
-					if orig.Role == tm.Role && content == tm.Content {
-						filtered = append(filtered, orig)
-						break
-					}
+				if tm.Index >= 0 && tm.Index < len(currentMessages) {
+					filtered = append(filtered, currentMessages[tm.Index])
 				}
 			}
 			currentMessages = filtered

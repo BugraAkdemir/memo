@@ -316,6 +316,15 @@ func (s *Store) ensureVecMetadata(ctx context.Context) error {
 			)); err != nil {
 				return err
 			}
+			// The vec index was just dropped and recreated empty, so the old
+			// 'vec_migration_done' flag (if any) is now stale — without
+			// clearing it, initSchema's migration-done check would see "1"
+			// from the previous dimension and skip re-running the backfill
+			// forever, leaving vec_memories permanently empty and vector
+			// search silently returning zero results.
+			if _, err := tx.Exec("DELETE FROM _metadata WHERE key = 'vec_migration_done'"); err != nil {
+				return err
+			}
 			_, err := tx.Exec(
 				"INSERT OR REPLACE INTO _metadata(key, value) VALUES ('embedding_dimension', ?)",
 				fmt.Sprintf("%d", s.dim),
@@ -400,6 +409,7 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 	}
 
 	var pending []pendingVec
+	var skippedDim int
 	for rows.Next() {
 		var id int64
 		var blob []byte
@@ -410,6 +420,19 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 		if len(vec) == 0 {
 			continue
 		}
+		// A dimension mismatch means this row's embedding predates a later
+		// embedding-model switch (vec_memories is a fixed-width vec0 table
+		// created for the *current* s.dim). vec0 rejects an INSERT whose
+		// vector width doesn't match the declared column, and since every
+		// row here is written in a single transaction, one such row would
+		// abort the whole batch and — because vec_migration_done never gets
+		// set on failure — retry and fail identically forever, leaving
+		// vec_memories permanently empty. Skip it instead; it's still
+		// reachable via FTS keyword search and goSearch's fallback path.
+		if len(vec) != s.dim {
+			skippedDim++
+			continue
+		}
 		pending = append(pending, pendingVec{id: id, vec: vec})
 	}
 	if err := rows.Err(); err != nil {
@@ -417,6 +440,10 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 		return fmt.Errorf("memory.migrateEmbeddingsToVec: scan: %w", err)
 	}
 	rows.Close() // release the single connection before the write
+
+	if skippedDim > 0 {
+		logx.Printf("MEMORY: vec migration skipped %d row(s) with a stale embedding dimension", skippedDim)
+	}
 
 	if len(pending) == 0 {
 		return nil
@@ -426,18 +453,23 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 		for _, p := range pending {
 			jsonVec, err := json.Marshal(p.vec)
 			if err != nil {
-				return fmt.Errorf("marshal vec for row %d: %w", p.id, err)
+				logx.Printf("MEMORY: vec migration: marshal row %d: %v", p.id, err)
+				continue
 			}
 			// vec0 ignores INSERT OR IGNORE, so delete any stale row first to
 			// stay idempotent even if one slipped past the NOT IN filter.
 			if _, err := tx.Exec("DELETE FROM vec_memories WHERE rowid = ?", p.id); err != nil {
-				return fmt.Errorf("delete stale vec for row %d: %w", p.id, err)
+				logx.Printf("MEMORY: vec migration: delete stale row %d: %v", p.id, err)
+				continue
 			}
 			if _, err := tx.Exec(
 				"INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)",
 				p.id, string(jsonVec),
 			); err != nil {
-				return fmt.Errorf("insert vec for row %d: %w", p.id, err)
+				// A single row failing to insert must not roll back every
+				// other row already staged in this transaction.
+				logx.Printf("MEMORY: vec migration: insert row %d: %v", p.id, err)
+				continue
 			}
 		}
 		return nil
@@ -1203,9 +1235,14 @@ func (s *Store) Close() error {
 	if s.stopCh != nil {
 		close(s.stopCh)
 	}
-	err := s.db.Close()
-	s.db = nil
-	return err
+	// Deliberately not nulling s.db here: database.DB's methods (Write/
+	// QueryContext/etc.) already handle the closed state gracefully,
+	// returning an error instead of panicking. Nulling it previously left a
+	// window where a background goroutine (e.g. the FTS/vec migration
+	// goroutines started in initSchema, which can run for up to 60-120s)
+	// could read s.db as nil if it raced with Close(), causing a genuine
+	// nil-pointer panic — observed in practice via `go test -race`.
+	return s.db.Close()
 }
 
 func formatMemoryAge(timestamp string) string {

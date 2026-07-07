@@ -10,6 +10,7 @@ import (
 
 	"memo/internal/cloudsync"
 	"memo/internal/config"
+	"memo/internal/sessions"
 )
 
 func (a *App) resolveSyncCredentials() (string, string) {
@@ -75,6 +76,24 @@ func (a *App) wireSyncRestoreHooks(sm *cloudsync.Manager) {
 		client := a.client
 		a.clientMu.RUnlock()
 		a.reinitMemoryStore(client, a.cfg.API.EmbeddingModel)
+
+		// Cloud restore also overwrites sessions/*.json, providers.json and
+		// orchestra.json (see sync_manager.go's restoreZip), but until now
+		// only the memory store was reloaded — the running app kept using
+		// its pre-restore in-memory sessions manager, provider router and
+		// orchestra conductor until the next full restart. Same reinit
+		// ImportData calls after a local .memo import.
+		a.sessionsMu.Lock()
+		if a.sessions != nil {
+			if newSm, err := sessions.NewManager(config.DataPath("sessions")); err == nil {
+				a.sessions = newSm
+			} else {
+				logx.Printf("WARN: cloud restore: sessions reinit: %v", err)
+			}
+		}
+		a.sessionsMu.Unlock()
+
+		a.reinitProviderAndOrchestra()
 	}
 }
 

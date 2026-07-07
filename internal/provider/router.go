@@ -293,6 +293,18 @@ func (r *Router) ReenableAllProviders() {
 	}
 }
 
+// isLiveEntry reports whether entry is still one of the router's current
+// provider entries (by pointer identity). Callers must hold r.mu (read or
+// write lock) when calling this.
+func (r *Router) isLiveEntry(entry *providerEntry) bool {
+	for _, e := range r.providers {
+		if e == entry {
+			return true
+		}
+	}
+	return false
+}
+
 // contextCanceledOrDeadline returns true when err is a context.Canceled or
 // context.DeadlineExceeded.  This can happen when a provider tracks context
 // cancellation internally and surfaces it before the outer router sees it.
@@ -326,10 +338,22 @@ func (r *Router) HealthCheck(ctx context.Context, interval time.Duration) {
 
 				if err == nil {
 					r.mu.Lock()
-					entry.disabled = false
-					entry.failCount = 0
-					r.mu.Unlock()
-					logx.Printf("PROVIDER: %s recovered and re-enabled", entry.Name())
+					// A concurrent UpdateConfigs may have rebuilt r.providers
+					// while we were doing I/O above, removing or replacing
+					// this entry. Re-validate that the exact entry instance
+					// is still live before mutating it, otherwise we'd be
+					// writing to a copy that's no longer part of the actual
+					// router state (and it would never actually get
+					// re-enabled).
+					if r.isLiveEntry(entry) {
+						entry.disabled = false
+						entry.failCount = 0
+						r.mu.Unlock()
+						logx.Printf("PROVIDER: %s recovered and re-enabled", entry.Name())
+					} else {
+						r.mu.Unlock()
+						logx.Printf("PROVIDER: %s recovered but was removed/replaced by a config update, skipping re-enable", entry.Name())
+					}
 				}
 			}
 		}

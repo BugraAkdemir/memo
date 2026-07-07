@@ -557,6 +557,10 @@ class L10n {
     'engine_memory': 'Hafıza',
     'engine_open_models': 'Modeller',
     'engine_downloading_models': 'Modeller iniyor',
+    'engine_memory_missing': 'Hafıza modeli yok',
+    'engine_memory_missing_action': 'model indir',
+    'engine_memory_stopped': 'Hafıza kapalı — RAG çalışmıyor',
+    'engine_memory_stopped_action': 'başlat',
 
     // Launchpad
     'launchpad_title': 'Hoş Geldin',
@@ -1293,6 +1297,10 @@ class L10n {
     'engine_memory': 'Memory',
     'engine_open_models': 'Models',
     'engine_downloading_models': 'Downloading models',
+    'engine_memory_missing': 'No memory model',
+    'engine_memory_missing_action': 'download one',
+    'engine_memory_stopped': 'Memory off — RAG not working',
+    'engine_memory_stopped_action': 'start it',
 
     // Launchpad
     'launchpad_title': 'Welcome',

@@ -13,6 +13,7 @@ import 'mood_gauge.dart';
 import '../providers/mood_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../providers/settings_provider.dart';
 
 /// Signature element: a calm, always-present strip at the foot of the content
 /// area showing Memo's live "engine" — which chat model and memory (embedding)
@@ -36,6 +37,9 @@ class EngineStrip extends ConsumerWidget {
 
     final chatRunning = status?.running ?? false;
     final embRunning = emb?.running ?? false;
+    final memoryEnabled = ref.watch(memoryEnabledProvider).valueOrNull ?? false;
+    final hasEmbeddingModel =
+        (ref.watch(localModelsProvider).valueOrNull ?? []).any((m) => m.isEmbedding);
     final activeDownloads = (ref.watch(downloadProgressProvider).valueOrNull ?? [])
         .where((d) => d.active && (d.error == null || d.error!.isEmpty))
         .toList();
@@ -88,6 +92,12 @@ class EngineStrip extends ConsumerWidget {
                 ref.invalidate(embeddingStatusProvider);
               },
             ),
+          ] else if (memoryEnabled) ...[
+            // Memory is turned on in Settings but no embedding server is
+            // actually running — RAG silently does nothing until this is
+            // fixed, so surface it instead of failing invisibly.
+            if (chatRunning || isApiProvider) _divider(c.borderSoft),
+            _MemoryWarningIndicator(hasModel: hasEmbeddingModel, onTap: onOpenModels),
           ],
           if (activeDownloads.isNotEmpty) ...[
             if (chatRunning || isApiProvider || embRunning) _divider(c.borderSoft),
@@ -291,6 +301,54 @@ class _OfflineHint extends StatelessWidget {
             const SizedBox(width: 10),
             Text(
               '· ${L10n.t('engine_start_model')}',
+              style: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                  color: MemoTheme.accent),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Memory is enabled in Settings but the embedding server isn't running —
+/// previously this failed silently (a backend log line + an internal event
+/// nothing in Flutter reads), so RAG just stopped working with zero visible
+/// indication. Surfaces it here instead, with a call to action tailored to
+/// the actual cause: no embedding model downloaded yet vs. one exists but
+/// isn't running.
+class _MemoryWarningIndicator extends StatelessWidget {
+  final bool hasModel;
+  final VoidCallback onTap;
+  const _MemoryWarningIndicator({required this.hasModel, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: onTap,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 7,
+              height: 7,
+              decoration: const BoxDecoration(
+                  color: MemoTheme.warningOrange, shape: BoxShape.circle),
+            ),
+            const SizedBox(width: 8),
+            Text(
+              hasModel
+                  ? L10n.t('engine_memory_stopped')
+                  : L10n.t('engine_memory_missing'),
+              style: const TextStyle(fontSize: 12, color: MemoTheme.warningOrange),
+            ),
+            const SizedBox(width: 10),
+            Text(
+              '· ${hasModel ? L10n.t('engine_memory_stopped_action') : L10n.t('engine_memory_missing_action')}',
               style: const TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w500,

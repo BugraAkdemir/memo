@@ -286,7 +286,7 @@ class ProviderCard extends ConsumerWidget {
                   child: Row(
                     children: [
                       Icon(
-                        p.enabled ? Icons.toggle_off : Icons.toggle_on,
+                        p.enabled ? Icons.toggle_on : Icons.toggle_off,
                         size: 18,
                       ),
                       const SizedBox(width: 8),

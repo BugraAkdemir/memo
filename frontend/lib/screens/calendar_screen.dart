@@ -16,6 +16,12 @@ class _Event {
   final String description;
   final String source;
   final String contactName;
+  // True when the backend sent a start_time that failed to parse (startTime
+  // falls back to DateTime.now() in that case, same as when it's missing
+  // outright — but a parse *failure* means the event's real time is unknown,
+  // not just unset, so the UI flags it instead of quietly showing "now" as
+  // if that were the actual scheduled time).
+  final bool hasInvalidDate;
 
   _Event({
     required this.id,
@@ -24,16 +30,21 @@ class _Event {
     required this.description,
     required this.source,
     required this.contactName,
+    this.hasInvalidDate = false,
   });
 
-  factory _Event.fromJson(Map<String, dynamic> j) => _Event(
-        id: j['id'] as String? ?? '',
-        title: j['title'] as String? ?? '',
-        startTime: _parseDateTime(j['start_time'] as String?),
-        description: j['description'] as String? ?? '',
-        source: j['source'] as String? ?? 'manual',
-        contactName: j['contact_name'] as String? ?? '',
-      );
+  factory _Event.fromJson(Map<String, dynamic> j) {
+    final rawStart = j['start_time'] as String?;
+    return _Event(
+      id: j['id'] as String? ?? '',
+      title: j['title'] as String? ?? '',
+      startTime: _parseDateTime(rawStart),
+      description: j['description'] as String? ?? '',
+      source: j['source'] as String? ?? 'manual',
+      contactName: j['contact_name'] as String? ?? '',
+      hasInvalidDate: rawStart != null && rawStart.isNotEmpty && DateTime.tryParse(rawStart) == null,
+    );
+  }
 
   static DateTime _parseDateTime(String? value) {
     if (value == null || value.isEmpty) return DateTime.now();
@@ -456,9 +467,26 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(e.title,
-                    style: TextStyle(
-                        color: c.textMain, fontWeight: FontWeight.w500, fontSize: 14)),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Flexible(
+                      child: Text(e.title,
+                          style: TextStyle(
+                              color: c.textMain, fontWeight: FontWeight.w500, fontSize: 14)),
+                    ),
+                    if (e.hasInvalidDate) ...[
+                      const SizedBox(width: 6),
+                      Tooltip(
+                        message: L10n.locale == MemoLocale.tr
+                            ? 'Sunucudan geçersiz bir tarih geldi, gösterilen saat gerçek zamanı yansıtmayabilir'
+                            : 'Received an invalid date from the server — the time shown may not be accurate',
+                        child: Icon(Icons.warning_amber_rounded,
+                            size: 14, color: MemoTheme.warmBrown),
+                      ),
+                    ],
+                  ],
+                ),
                 if (e.contactName.isNotEmpty)
                   Text(e.contactName,
                       style: TextStyle(color: c.textDim, fontSize: 12)),

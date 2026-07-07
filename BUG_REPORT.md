@@ -1104,18 +1104,20 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Nedir:** `Map<int, MarkdownStyleSheet>` theme/accent combo'ları kadar büyüyor, hiç eviction yok.
 - **Etki:** Uzun oturumlarda hafif bellek sızıntısı.
 
-#### BUG-QL4: `_AuthorAvatar._cache` hiç temizlenmiyor
+#### BUG-QL4: ~~`_AuthorAvatar._cache` hiç temizlenmiyor~~ **→ DÜZELTİLDİ (2026-07-07, BUG-FL3 ile aynı yer/fix)**
 
+- **Commit:** `05d5564`
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:843`
 - **Nedir:** HuggingFace avatar URL'leri author adına göre cache'leniyor, hiç temizlenmiyor.
-- **Etki:** Uzun oturumlarda hafif bellek sızıntısı.
 
-#### BUG-QL5: Image stream session history eksik
+#### BUG-QL5: ~~Image stream session history eksik~~ **→ DÜZELTİLDİ (2026-07-07)**
+
+- **Commit:** `635c534`
+- **Düzeltme:** `SendMessageWithImageStream` artık `a.buildMessages(ctx, userMsg, []string{b64})` çağırıyor — mood directive, web search context, token-aware history truncation hepsi geldi. (`SendMessageWithFileStream` zaten `buildMessages` kullanıyordu, sadece image path eksikti.)
 
 - **Dosya:** `internal/app/chat.go:269-278`
 - **Trigger:** Resimli sohbet.
 - **Nedir:** `SendMessageWithImageStream` kendi mesaj listesini oluşturuyor — `buildMessages()`'in web search context, skill prompt, agent prompt eklemelerini atlıyor.
-- **Etki:** Resimli mesajlar text mesajlardan farklı (daha düşük kaliteli) prompt yapısına sahip.
 
 ---
 

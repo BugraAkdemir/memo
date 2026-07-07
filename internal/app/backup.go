@@ -91,6 +91,48 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// resolveImportTarget maps a zip entry name (as written by ExportData) to its
+// final on-disk destination, given the current data and config directories.
+// ok is false for anything outside the three recognized top-level prefixes,
+// or whose resolved target would escape its expected root — including via a
+// crafted "../.." entry name in a foreign or tampered archive.
+//
+// dataDir/configDir are passed in (rather than read from the config package
+// directly) so this stays a pure function: easy to unit test with fake
+// roots, and immune to config.DataDir()'s process-wide sync.Once caching.
+func resolveImportTarget(name, dataDir, configDir string) (target, root string, ok bool) {
+	switch {
+	case strings.HasPrefix(name, "sessions/"):
+		root = dataDir
+		target = filepath.Join(root, "sessions", strings.TrimPrefix(name, "sessions/"))
+	case strings.HasPrefix(name, "data/"):
+		root = dataDir
+		target = filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(name, "data/")))
+	case strings.HasPrefix(name, "config/"):
+		// This case was missing entirely before: ExportData writes
+		// "config/config.yaml" (see below), but neither the "sessions/" nor
+		// "data/" case matched it, so it fell into the old "default: target
+		// = clean" branch — a path relative to the *process's current
+		// working directory*, not any controlled root. The old escape-check
+		// (relative to DataDir/DataPath, both siblings of ConfigDir, not
+		// ancestors of it) then always rejected it as "escaping the data
+		// directory", so every .memo import silently restored everything
+		// except config.yaml — all settings (llama, sync, identity, memory,
+		// API, learning, calendar) stayed on their pre-import values with no
+		// error surfaced anywhere.
+		root = configDir
+		target = filepath.Join(root, filepath.FromSlash(strings.TrimPrefix(name, "config/")))
+	default:
+		return "", "", false
+	}
+
+	rel, err := filepath.Rel(root, target)
+	if err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", "", false
+	}
+	return target, root, true
+}
+
 // ImportData restores user data from a .memo zip archive.
 func (a *App) ImportData(data []byte) error {
 	// Validate the archive first — before touching anything on disk.
@@ -139,31 +181,12 @@ func (a *App) ImportData(data []byte) error {
 			continue
 		}
 
-		var target string
-		switch {
-		case strings.HasPrefix(f.Name, "sessions/"):
-			target = filepath.Join(config.DataDir(), "sessions", strings.TrimPrefix(f.Name, "sessions/"))
-		case strings.HasPrefix(f.Name, "data/"):
-			target = config.DataPath(filepath.FromSlash(strings.TrimPrefix(f.Name, "data/")))
-		default:
-			target = clean
+		target, _, ok := resolveImportTarget(f.Name, config.DataDir(), config.ConfigDir())
+		if !ok {
+			continue
 		}
 
-		// Verify the resolved target is within expected directories. All
-		// accepted targets live under config.DataDir() (DataPath("") == DataDir()),
-		// so relData doubles as the staged path relative to the data dir.
-		relSessions, errS := filepath.Rel(config.DataDir(), target)
-		relData, errD := filepath.Rel(config.DataPath(""), target)
-		if (errS != nil || strings.HasPrefix(relSessions, "..")) &&
-			(errD != nil || strings.HasPrefix(relData, "..")) {
-			continue // skip entries that escape the data directory
-		}
-
-		rel := relData
-		if errD != nil || strings.HasPrefix(rel, "..") {
-			rel = relSessions
-		}
-		staged := filepath.Join(staging, rel)
+		staged := filepath.Join(staging, clean)
 
 		if err := os.MkdirAll(filepath.Dir(staged), 0755); err != nil {
 			return fmt.Errorf("import: mkdir staging: %w", err)
@@ -215,6 +238,28 @@ func (a *App) ImportData(data []byte) error {
 		}
 	}
 	a.sessionsMu.Unlock()
+
+	// Reload memory.db into a fresh *memory.Store. os.Rename replaces the
+	// directory entry, but the live store still holds its original SQLite
+	// file handle/inode open (Linux rename semantics don't invalidate an
+	// already-open fd) — without this, the running app keeps reading and
+	// writing the *old* memory.db until the next full restart, and the
+	// freshly-imported memory.db just sits on disk unused. Mirrors the same
+	// reinitMemoryStore call WipeAllData already makes after replacing the
+	// store's backing file.
+	a.clientMu.RLock()
+	embClient := a.embeddingClient
+	mainClient := a.client
+	a.clientMu.RUnlock()
+	client := embClient
+	if client == nil {
+		client = mainClient
+	}
+	if client != nil {
+		a.reinitMemoryStore(client, a.cfg.API.EmbeddingModel)
+	} else {
+		logx.Printf("WARN: import: no embedding/main client available, memory store left on pre-import data until restart")
+	}
 
 	return nil
 }

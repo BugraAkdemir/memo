@@ -130,6 +130,17 @@ func (c *Client) Start(ctx context.Context) error {
 		return nil
 	}
 
+	// Stop() closes stopCh via stopOnce as a one-shot "please abort" signal
+	// to any in-flight autoReconnect goroutine. Both are recreated here so a
+	// Stop() *after* this Start() can signal a fresh autoReconnect the same
+	// way — without this, stopCh stayed permanently closed from the very
+	// first Stop() ever called, so any autoReconnect spawned after a later
+	// Stop()+Start() cycle saw an already-closed channel and returned
+	// immediately, permanently disabling auto-reconnect until the process
+	// restarts.
+	c.stopCh = make(chan struct{})
+	c.stopOnce = sync.Once{}
+
 	// Drain stale entries from a previous session.
 	for len(c.msgCh) > 0 {
 		<-c.msgCh
@@ -187,11 +198,14 @@ func (c *Client) Start(ctx context.Context) error {
 // Stop disconnects from WhatsApp Web and cancels auto-reconnect.
 // Channels are not closed so Start() can be called again.
 func (c *Client) Stop() {
+	c.startMu.Lock()
+	defer c.startMu.Unlock()
+	// Under startMu so this can never race Start()'s reassignment of
+	// stopCh/stopOnce (see the comment there) — both fields are now only
+	// ever touched while holding this lock.
 	c.stopOnce.Do(func() {
 		close(c.stopCh)
 	})
-	c.startMu.Lock()
-	defer c.startMu.Unlock()
 	if c.waClient != nil {
 		c.waClient.Disconnect()
 		c.waClient = nil
@@ -470,11 +484,15 @@ func (c *Client) handleEvent(evt interface{}) {
 func (c *Client) autoReconnect() {
 	c.startMu.Lock()
 	c.reconnecting = true
+	// Snapshot stopCh under the lock rather than reading c.stopCh directly
+	// in the select below — Start() reassigns it on every call, and an
+	// unsynchronized read here would race that write.
+	stopCh := c.stopCh
 	c.startMu.Unlock()
 	backoff := []time.Duration{5 * time.Second, 10 * time.Second, 30 * time.Second, 60 * time.Second}
 	for attempt, delay := range backoff {
 		select {
-		case <-c.stopCh:
+		case <-stopCh:
 			c.startMu.Lock()
 			c.reconnecting = false
 			c.startMu.Unlock()

@@ -49,3 +49,48 @@ func TestHandleEventConcurrentAccess(t *testing.T) {
 
 	wg.Wait()
 }
+
+// TestStopChRecreatedAfterStop is a regression test for BUG-QH3: stopCh was
+// created once in NewClient and closed one-shot (via stopOnce) by Stop(),
+// but Start() never recreated either. After any Stop()+Start() cycle,
+// autoReconnect's `case <-c.stopCh:` saw an already-closed channel from the
+// *very first* Stop() ever called and returned immediately on every
+// subsequent disconnect — permanently disabling auto-reconnect until the
+// process restarts.
+//
+// Start() itself can't be driven directly here (it opens a real whatsmeow
+// session and dials the network), so this exercises the exact fix — resetting
+// stopCh/stopOnce under startMu — the same way Start() now does internally,
+// and verifies a second Stop() can close the *new* channel.
+func TestStopChRecreatedAfterStop(t *testing.T) {
+	c := NewClient(Config{})
+
+	c.Stop()
+	select {
+	case <-c.stopCh:
+	default:
+		t.Fatal("stopCh should be closed after the first Stop()")
+	}
+
+	c.startMu.Lock()
+	c.stopCh = make(chan struct{})
+	c.stopOnce = sync.Once{}
+	c.startMu.Unlock()
+
+	select {
+	case <-c.stopCh:
+		t.Fatal("recreated stopCh must not already be closed")
+	default:
+	}
+
+	// This is exactly what silently failed before the fix: stopOnce, once
+	// fired, never runs its function again, so the second Stop() would have
+	// been a no-op against the old channel — but against the *new* one it
+	// must actually close it.
+	c.Stop()
+	select {
+	case <-c.stopCh:
+	default:
+		t.Fatal("second Stop() should have closed the recreated stopCh")
+	}
+}

@@ -155,6 +155,27 @@ HardwareFit hardwareFit(int sizeBytes, GPUInfo gpu) {
   return HardwareFit(FitLevel.warn, L10n.t('fit_heavy'));
 }
 
+/// Picks the best curated chat model for the given hardware: the largest
+/// model that still gets a "good" fit, falling back to the largest with an
+/// "ok" fit, and finally the smallest model overall so there's always a
+/// usable recommendation even on weak hardware.
+CuratedModel recommendedChatModel(GPUInfo gpu) {
+  final chatModels = curatedModels.where((m) => m.kind == ModelKind.chat).toList()
+    ..sort((a, b) => b.approxBytes.compareTo(a.approxBytes));
+  for (final m in chatModels) {
+    if (hardwareFit(m.approxBytes, gpu).level == FitLevel.good) return m;
+  }
+  for (final m in chatModels) {
+    if (hardwareFit(m.approxBytes, gpu).level == FitLevel.ok) return m;
+  }
+  return chatModels.last;
+}
+
+/// The curated embedding model backing RAG memory — recommended alongside a
+/// chat model regardless of hardware, since memory search needs it either way.
+CuratedModel get recommendedMemoryModel =>
+    curatedModels.firstWhere((m) => m.kind == ModelKind.memory);
+
 // ─── Quantization → plain language ──────────────────────────────
 
 class QuantInfo {

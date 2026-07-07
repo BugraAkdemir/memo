@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memo_flutter/models/chat.dart';
+import 'package:memo_flutter/models/curated_models.dart';
 import 'package:memo_flutter/models/gpu_info.dart';
 import 'package:memo_flutter/models/local_model.dart';
 import 'package:memo_flutter/models/agent.dart';
@@ -395,6 +396,39 @@ void main() {
     test('vramFormatted displays MB under 1024', () {
       final gpu = GPUInfo.fromJson({'vram_mb': 512});
       expect(gpu.vramFormatted, '512 MB');
+    });
+  });
+
+  group('recommendedChatModel', () {
+    test('picks the largest model on a powerful GPU', () {
+      final gpu = GPUInfo.fromJson({
+        'type': 'nvidia',
+        'vram_mb': 24576, // 24 GB
+      });
+      expect(recommendedChatModel(gpu).repoId, 'Qwen/Qwen2.5-14B-Instruct-GGUF');
+    });
+
+    test('falls back to a mid-size model on modest CPU-only hardware', () {
+      final gpu = GPUInfo.fromJson({'ram_total_mb': 4096}); // 4 GB RAM, no GPU
+      expect(
+        recommendedChatModel(gpu).repoId,
+        'google/gemma-3-4b-it-qat-q4_0-gguf',
+      );
+    });
+
+    test('falls back to the smallest model when nothing fits well', () {
+      final gpu = GPUInfo.fromJson({'ram_total_mb': 1024}); // 1 GB RAM, no GPU
+      expect(
+        recommendedChatModel(gpu).repoId,
+        'microsoft/Phi-3-mini-4k-instruct-gguf',
+      );
+    });
+  });
+
+  group('recommendedMemoryModel', () {
+    test('is always the Nomic embedding model', () {
+      expect(recommendedMemoryModel.repoId, 'nomic-ai/nomic-embed-text-v1.5-GGUF');
+      expect(recommendedMemoryModel.kind, ModelKind.memory);
     });
   });
 

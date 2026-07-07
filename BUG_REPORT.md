@@ -355,33 +355,28 @@
 - **Dosya:** `internal/app/whatsapp.go:167-175`
 - **Nedir:** `whatsappChatMode` boolean'ı için tam `sync.Mutex` kullanılıyor. `atomic.Bool` daha uygun olur.
 
-### BUG-L3: `runObserverAnalysis` ilk turda shutdown'a 30sn gecikmeli yanıt
+### BUG-L3: ~~`runObserverAnalysis` ilk turda shutdown'a 30sn gecikmeli yanıt~~ **→ DÜZELTİLDİ (H10 ile aynı fix, `716a27c`)**
 
 - **Dosya:** `internal/app/app.go:549-553`
 - **Nedir:** İlk `select` bloğunda 30 saniyelik `time.After`, shutdown sinyalini geciktirir.
+- **Not:** Asıl kazanç gecikme değil (select zaten ctx.Done()'a anında tepki verir) — durdurulamayan `time.After` timer'ının shutdown'da sızması buydu; H10 fix'i bunu stoppable `time.Timer`'a çevirdi.
 
-### BUG-L4: Flutter double-reset `streamingAgentEventsProvider`
+### BUG-L4: ~~Flutter double-reset `streamingAgentEventsProvider`~~ **→ DÜZELTİLDİ (2026-07-07, `ea5f9d2`)**
 
+- **Commit:** `ea5f9d2`
+- **Not:** Bu madde daha önce "FL1 ile düzeltildi" diye işaretlenmişti ama kod hâlâ bozuktu — dokümantasyon hatalıymış. Şimdi gerçekten düzeltildi.
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:264-266`
-- **Nedir:** `stopStreaming()` içinde `streamingAgentEventsProvider` iki kez sıfırlanıyor (copy-paste):
-  ```dart
-  ref.read(streamingAgentEventsProvider.notifier).state = [];     // line 264
-  ref.read(streamingStatusProvider.notifier).state = '';          // line 265
-  ref.read(streamingAgentEventsProvider.notifier).state = [];     // line 266 — duplicate
-  ```
-- **Etki:** Gereksiz bir state notification ve widget rebuild.
+- **Nedir:** `stopStreaming()` içinde `streamingAgentEventsProvider` iki kez sıfırlanıyor (copy-paste).
 
-### BUG-L5: Flutter `_AuthorAvatarState` cache sınırsız büyüme
+### BUG-L5: ~~Flutter `_AuthorAvatarState` cache sınırsız büyüme~~ **→ DÜZELTİLDİ (FL3/QL4 ile aynı yer/fix, `05d5564`)**
 
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:844`
 - **Nedir:** `static final _cache = <String, String?>` — process lifetime, hiç expire olmaz.
-- **Etki:** Çok uzun oturumlarda hafif bellek büyümesi (~200 byte/author).
 
-### BUG-L6: Flutter `_loadReadme` sessizce tüm HTTP hatalarını yutar
+### BUG-L6: ~~Flutter `_loadReadme` sessizce tüm HTTP hatalarını yutar~~ **→ DÜZELTİLDİ (FL4 ile aynı yer/fix, `05d5564`)**
 
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart:1230`
 - **Nedir:** `catch (_)` tüm exception'ları yakalar, kullanıcıya hiçbir hata gösterilmez.
-- **Etki:** README yüklenemediğinde kullanıcı sebebini bilemez (ağ hatası mı, yok mu?).
 
 ---
 

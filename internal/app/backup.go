@@ -103,6 +103,32 @@ func (a *App) ImportData(data []byte) error {
 	// Non-fatal: a failed snapshot logs a warning but does not block the import.
 	a.snapshotPreImport()
 
+	// Two-phase import for atomicity. All archive entries are first extracted
+	// into a private staging directory; only once EVERY entry has been staged
+	// successfully do we move them into their live destinations. If staging
+	// fails partway through, the live data directory is never touched — the
+	// half-written staging dir is simply discarded, leaving the original files
+	// (memory.db, providers.json, sessions, …) completely intact. This is a
+	// stronger guarantee than relying on the pre-import snapshot for recovery.
+	if err := os.MkdirAll(config.DataDir(), 0755); err != nil {
+		return fmt.Errorf("import: mkdir data dir: %w", err)
+	}
+	// The staging dir lives inside the data dir so that the final moves are
+	// same-filesystem renames (atomic, no cross-device copy).
+	staging, err := os.MkdirTemp(config.DataDir(), ".import-staging-")
+	if err != nil {
+		return fmt.Errorf("import: create staging dir: %w", err)
+	}
+	// Always clean up: after a successful import the staging tree holds only
+	// empty directories (files were renamed out); after a failure it still holds
+	// partial data. Either way it must not linger under the data dir.
+	defer os.RemoveAll(staging)
+
+	// pending records staged-file → final-destination pairs, applied only after
+	// the entire archive has been extracted without error.
+	type pendingMove struct{ staged, target string }
+	var pending []pendingMove
+
 	for _, f := range zr.File {
 		if f.FileInfo().IsDir() {
 			continue
@@ -123,7 +149,9 @@ func (a *App) ImportData(data []byte) error {
 			target = clean
 		}
 
-		// Verify the resolved target is within expected directories
+		// Verify the resolved target is within expected directories. All
+		// accepted targets live under config.DataDir() (DataPath("") == DataDir()),
+		// so relData doubles as the staged path relative to the data dir.
 		relSessions, errS := filepath.Rel(config.DataDir(), target)
 		relData, errD := filepath.Rel(config.DataPath(""), target)
 		if (errS != nil || strings.HasPrefix(relSessions, "..")) &&
@@ -131,8 +159,14 @@ func (a *App) ImportData(data []byte) error {
 			continue // skip entries that escape the data directory
 		}
 
-		if err := os.MkdirAll(filepath.Dir(target), 0755); err != nil {
-			return fmt.Errorf("import: mkdir: %w", err)
+		rel := relData
+		if errD != nil || strings.HasPrefix(rel, "..") {
+			rel = relSessions
+		}
+		staged := filepath.Join(staging, rel)
+
+		if err := os.MkdirAll(filepath.Dir(staged), 0755); err != nil {
+			return fmt.Errorf("import: mkdir staging: %w", err)
 		}
 
 		rc, err := f.Open()
@@ -140,27 +174,35 @@ func (a *App) ImportData(data []byte) error {
 			return fmt.Errorf("import: open %s: %w", f.Name, err)
 		}
 
-		tmpTarget := target + ".importtmp"
-		out, err := os.Create(tmpTarget)
+		out, err := os.Create(staged)
 		if err != nil {
 			rc.Close()
-			return fmt.Errorf("import: create %s: %w", tmpTarget, err)
+			return fmt.Errorf("import: create staged %s: %w", f.Name, err)
 		}
 
 		_, err = io.Copy(out, rc)
 		rc.Close()
 		cerr := out.Close()
 		if err != nil {
-			os.Remove(tmpTarget)
-			return fmt.Errorf("import: write %s: %w", target, err)
+			return fmt.Errorf("import: write staged %s: %w", f.Name, err)
 		}
 		if cerr != nil {
-			os.Remove(tmpTarget)
-			return fmt.Errorf("import: close %s: %w", target, cerr)
+			return fmt.Errorf("import: close staged %s: %w", f.Name, cerr)
 		}
-		if err := os.Rename(tmpTarget, target); err != nil {
-			os.Remove(tmpTarget)
-			return fmt.Errorf("import: rename %s: %w", target, err)
+
+		pending = append(pending, pendingMove{staged: staged, target: target})
+	}
+
+	// Phase 2: every entry is safely staged. Move each staged file into its live
+	// destination. Renames are same-filesystem (staging lives inside the data
+	// dir) so each is atomic. Should a rename fail here, the pre-import snapshot
+	// taken above remains available for manual recovery.
+	for _, m := range pending {
+		if err := os.MkdirAll(filepath.Dir(m.target), 0755); err != nil {
+			return fmt.Errorf("import: mkdir: %w", err)
+		}
+		if err := os.Rename(m.staged, m.target); err != nil {
+			return fmt.Errorf("import: install %s: %w", m.target, err)
 		}
 	}
 

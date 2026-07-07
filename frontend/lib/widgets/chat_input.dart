@@ -55,13 +55,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void initState() {
     super.initState();
     _controller.addListener(_onTextChanged);
-    ref.listen(activeChatIdProvider, (prev, next) {
-      final prevId = prev?.valueOrNull ?? '';
-      final nextId = next.valueOrNull ?? '';
-      if (prevId != nextId) {
-        _controller.clear();
-      }
-    });
   }
 
   void _onTextChanged() {
@@ -593,6 +586,14 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     final isSending = ref.watch(isSendingProvider);
     final orchestraAsync = ref.watch(orchestraConfigProvider);
     final orchestraEnabled = orchestraAsync.valueOrNull?.enabled ?? false;
+
+    ref.listen(activeChatIdProvider, (prev, next) {
+      final prevId = prev?.valueOrNull ?? '';
+      final nextId = next.valueOrNull ?? '';
+      if (prevId != nextId) {
+        _controller.clear();
+      }
+    });
 
     // Starter text pushed from the welcome screen — fill the field and focus.
     ref.listen(composerDraftProvider, (_, next) {

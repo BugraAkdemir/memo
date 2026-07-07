@@ -1,22 +1,44 @@
 # Build outputs
+build/
 build/bin/
+build_output/
+dist/
+dist_packages/
+*.pkg
 
 # Runtime data (user-specific)
 data/models/
 data/memory/
 data/sessions/
 data/bin/
+data/agent-backups/*
+data/sync_token.json
+data/providers.json
+data/permissions.json
+data/orchestra.json
+data/tmp_llama
+data/whatsapp/*
+data/calendar/
+data/mood/
+data/profile/
+
+# Runtime databases (may contain personal data)
+*.db
+*.db-shm
+*.db-wal
+
+# Tailscale state — CONTAINS THE NODE PRIVATE KEY, never commit
+data/tailscale/
+data/machine.key
+
+# Config (user-specific, never commit)
+config/config.yaml
+.env
 
 # Embedded binaries (large, platform-specific)
 binaries/
 
-# Python / STT
-stt-env/
-
-# Packaged releases
-dist_packages/
-
-# Flutter (frontend/)
+# Flutter
 frontend/.dart_tool/
 frontend/.packages
 frontend/build/
@@ -26,59 +48,26 @@ frontend/linux/flutter/ephemeral/
 frontend/windows/flutter/ephemeral/
 frontend/dist/
 
-# Svelte backup
-frontend_svelte_backup/
-
 # Local Flutter SDK
 .local/share/flutter/
+
+# Python / STT
+stt-env/
 
 # OS files
 .DS_Store
 Thumbs.db
 
-# Extra ignored paths to prevent large files
-build_output/
-dist/
-build/
-*.pkg
-data/bin/
-data/models/
-data/memory/
-data/sessions/
-data/sync_token.json
+# Svelte backup
+frontend_svelte_backup/
 
-data/agent-backups/*
-data/providers.json
-config/config.yaml
-.env
-data/whatsapp/*
+# AI tool artifacts
 .claude
-
-# Runtime databases & user-specific state (may contain personal data)
-data/calendar/
-data/mood/
-data/profile/
-data/permissions.json
-data/orchestra.json
-data/tmp_llama
-*.db
-
-# Tailscale state — CONTAINS THE NODE PRIVATE KEY, never commit
-data/tailscale/
-
-# SQLite WAL files
-*.db-shm
-*.db-wal
-
-# Keep the *.example templyates tracked (they hold no secrets)
-!.env.example
-!config/config.yaml.example
-!data/providers.example.json
-skill-lock.json
-server.log.superpowers/
-.superpowers/
-data/machine.key
-.kimchi
-.opencode
 .mimocode/*
-BLUEPRINT.md
+.superpowers/
+skill-lock.json
+skills-lock.json
+.kimchi/
+# Misc
+server.log
+*.log

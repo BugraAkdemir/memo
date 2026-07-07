@@ -743,10 +743,11 @@ go test ./... -race -count=1  → tüm paketler PASS
 - **Nedir:** `_sendWhatsApp()` stream'e `.timeout()` uygulamıyor. Backend hang olursa `isSendingProvider` sonsuza kadar true kalır.
 - **Düzeltme:** `.timeout(Duration(seconds: 300))` eklendi. ✅
 
-#### BUG-FM16: Agent screen statusText'i ChatMessageList'e geçirmiyor
+#### BUG-FM16: ~~Agent screen statusText'i ChatMessageList'e geçirmiyor~~ **→ DÜZELTİLDİ (2026-07-07)**
+- **Commit:** `3dd5f3a`
+- **Düzeltme:** ChatScreen'deki `streamingStatusProvider` watch + `statusText:` parametresi AgentScreen'e de eklendi.
 - **Dosya:** `frontend/lib/screens/agent_screen.dart:258-266`
 - **Nedir:** ChatScreen `statusText: streamingStatus` geçiyor ama AgentScreen geçirmiyor. Web search göstergesi agent ekranda çalışmıyor.
-- **Durum:** Tespit edildi, düzeltilmedi.
 
 #### BUG-FM17: Test connection sonucu provider state'e persist edilmiyor
 - **Dosya:** `frontend/lib/widgets/provider_config_dialog.dart:155-173`

@@ -274,9 +274,11 @@ Kullanıcı `get-memo.sh` ve `get-memo.ps1` script'lerinin çalışma mantığı
 
 ---
 
-## Tespit edilen ama bu oturumda düzeltilmeyen bug
+## Tespit edilen bug — sonraki bir oturumda düzeltildi (DÜZELTİLDİ)
 
-**`installer.iss`'te `launch.vbs` referansı:** Inno Setup script'i Start Menu ikonu, Desktop ikonu ve `[Run]` post-install başlatma için `{app}\launch.vbs` dosyasına işaret ediyor. Ancak `launch.vbs` ne repo'da var ne de `build_releases.sh` staging dizinine koyuyor. Sonuç: Windows kurulumu tamamlansa bile kısayollar çalışmaz. Çözüm: ya staging'e bir `launch.vbs` oluşturulacak (run_memo.bat'i gizli çağıran basit VBS wrapper), ya da `installer.iss` doğrudan `run_memo.bat`'i gösterecek.
+**`installer.iss`'te `launch.vbs` referansı:** Inno Setup script'i Start Menu ikonu, Desktop ikonu ve `[Run]` post-install başlatma için `{app}\launch.vbs` dosyasına işaret ediyor. Bu oturumda `launch.vbs` ne repo'da ne de `build_releases.sh` staging dizininde bulunmuyordu.
+
+**Güncelleme (Session 18'de doğrulandı):** Aslında çözülmüş — `.github/workflows/build-windows.yml` (satır ~152-227) Windows release'i CI'da build ederken `launch.ps1` ve onu gizlice çalıştıran `launch.vbs` wrapper'ını dinamik olarak üretip staging dizinine yazıyor. `PLAN_installer_launchvbs.md` planı hiç uygulanmadı çünkü ihtiyaç zaten CI workflow üzerinden karşılanmış. Artık açık bug değil.
 
 ---
 

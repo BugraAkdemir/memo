@@ -17,7 +17,7 @@ const helpText = `Kullanılabilir komutlar:
   /models                                 yüklü modelleri ve sağlayıcıları listeler
   /model [isim]                           bir sohbet modeli başlatır (isim boşsa listeden seçtirir)
   /embedding [isim]                       embedding modelini başlatır (isim boşsa ilk bulunanı kullanır)
-  /model-download [huggingface adı]       Hugging Face'ten yeni model ara ve indir (boşsa popülerleri önerir)
+  /model-download                         model indirmek için masaüstü uygulamasını (GUI) açar
   /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
   /gui                                    masaüstü uygulamasını açar
   /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
@@ -54,7 +54,7 @@ func (s *session) handleCommand(line string) bool {
 	case "/embedding":
 		s.cmdEmbedding(args)
 	case "/model-download":
-		s.cmdModelDownload(strings.Join(args, " "))
+		s.cmdModelDownload()
 	case "/connect":
 		s.cmdConnect(args)
 	case "/gui":
@@ -99,7 +99,7 @@ func (s *session) showCommandMenu() bool {
 	case "/embedding":
 		s.pickAndStartModel(true)
 	case "/model-download":
-		s.interactiveModelDownload()
+		s.cmdModelDownload()
 	case "/connect":
 		fmt.Fprintln(s.out, yellow("Kullanım: /connect <base_url> <api_key> <model>"))
 	case "/gui":
@@ -517,29 +517,55 @@ func (s *session) cmdConnect(args []string) {
 	fmt.Fprintln(s.out, green(fmt.Sprintf("✓ %s adresine bağlanıldı (model: %s).", cfg.BaseURL, cfg.Model)))
 }
 
-// cmdGui launches the Flutter desktop app as a detached background process,
-// next to the running memo binary — it talks to the same already-running
-// backend, so the REPL and the GUI can be used side by side.
+// cmdGui launches the Flutter desktop app as a detached background process
+// so the REPL and the GUI can be used side by side against the same running
+// backend. The installed CLI binary lives one level deeper than the bundled
+// GUI (~/.memo/bin/memo vs. ~/.memo/memo_flutter), so both the executable's
+// own directory and its parent are searched — the same pattern
+// binarySearchBasesFrom uses in internal/llama for bundled binaries.
 func (s *session) cmdGui() {
 	exe, err := os.Executable()
 	if err != nil {
 		fmt.Fprintln(s.out, errorf("Çalıştırılabilir dosya yolu bulunamadı: %v", err))
 		return
 	}
-	dir := filepath.Dir(exe)
-	guiPath := filepath.Join(dir, guiBinaryName())
-	if _, err := os.Stat(guiPath); err != nil {
-		fmt.Fprintln(s.out, errorf("GUI bulunamadı (%s) — bu kurulum GUI içermiyor olabilir.", guiPath))
+	name := guiBinaryName()
+	var guiPath string
+	var lastTried string
+	for _, dir := range guiSearchDirs(exe) {
+		candidate := filepath.Join(dir, name)
+		lastTried = candidate
+		if _, err := os.Stat(candidate); err == nil {
+			guiPath = candidate
+			break
+		}
+	}
+	if guiPath == "" {
+		fmt.Fprintln(s.out, errorf("GUI bulunamadı (%s) — bu kurulum GUI içermiyor olabilir.", lastTried))
 		return
 	}
 
 	cmd := exec.Command(guiPath)
-	cmd.Dir = dir
+	// The Flutter build's lib/ and flutter_assets/ live next to the binary
+	// itself, not next to the CLI — run from guiPath's own directory.
+	cmd.Dir = filepath.Dir(guiPath)
 	if err := cmd.Start(); err != nil {
 		fmt.Fprintln(s.out, errorf("GUI başlatılamadı: %v", err))
 		return
 	}
 	fmt.Fprintln(s.out, green("✓ GUI başlatıldı (arka planda çalışıyor)."))
+}
+
+// guiSearchDirs returns the directories to look for the bundled GUI binary
+// in, given the CLI's own executable path: its own directory, then that
+// directory's parent.
+func guiSearchDirs(exePath string) []string {
+	exeDir := filepath.Dir(exePath)
+	dirs := []string{exeDir}
+	if parent := filepath.Dir(exeDir); parent != exeDir {
+		dirs = append(dirs, parent)
+	}
+	return dirs
 }
 
 func guiBinaryName() string {
@@ -553,100 +579,17 @@ func guiBinaryName() string {
 	}
 }
 
-// interactiveModelDownload prompts for a search term then runs
-// cmdModelDownload with it.
-func (s *session) interactiveModelDownload() {
-	query, _ := s.promptLine("Arama terimi (boş bırakıp Enter'a basarsan popüler modelleri gösteririm): ")
-	s.cmdModelDownload(strings.TrimSpace(query))
-}
-
-// cmdModelDownload searches Hugging Face for query (or, if empty, the
-// most-downloaded GGUF models), lets the user arrow-pick a repo and then a
-// file within it, starts the download, and tracks its progress live.
-func (s *session) cmdModelDownload(query string) {
-	if strings.TrimSpace(query) == "" {
-		fmt.Fprintln(s.out, dim("Popüler GGUF modelleri aranıyor..."))
-	} else {
-		fmt.Fprintln(s.out, dim(fmt.Sprintf("%q aranıyor...", query)))
-	}
-
-	results, err := s.client.SearchModels(s.ctx, query)
-	if err != nil {
-		fmt.Fprintln(s.out, errorf("Arama başarısız: %v", err))
-		return
-	}
-	if len(results) == 0 {
-		fmt.Fprintln(s.out, yellow("Sonuç bulunamadı."))
-		return
-	}
-	const maxResults = 15
-	if len(results) > maxResults {
-		results = results[:maxResults]
-	}
-
-	repoItems := make([]menuItem, len(results))
-	for i, r := range results {
-		repoItems[i] = menuItem{Label: r.ID, Hint: fmt.Sprintf("%d indirme · %d beğeni", r.Downloads, r.Likes)}
-	}
-	ridx := selectFromMenu(s.out, s.keys, "Bir model seç", repoItems)
-	if ridx < 0 {
-		fmt.Fprintln(s.out, dim("İptal edildi."))
-		return
-	}
-	repo := results[ridx]
-
-	files, err := s.client.ModelFiles(s.ctx, repo.ID)
-	if err != nil {
-		fmt.Fprintln(s.out, errorf("Dosyalar listelenemedi: %v", err))
-		return
-	}
-	if len(files) == 0 {
-		fmt.Fprintln(s.out, yellow("Bu repoda GGUF dosyası bulunamadı."))
-		return
-	}
-
-	fileItems := make([]menuItem, len(files))
-	for i, f := range files {
-		fileItems[i] = menuItem{Label: f.Filename, Hint: humanSize(f.Size)}
-	}
-	fidx := selectFromMenu(s.out, s.keys, "Bir dosya seç", fileItems)
-	if fidx < 0 {
-		fmt.Fprintln(s.out, dim("İptal edildi."))
-		return
-	}
-	file := files[fidx]
-
-	if err := s.client.DownloadModel(s.ctx, repo.ID, file.Filename, file.Size); err != nil {
-		fmt.Fprintln(s.out, errorf("İndirme başlatılamadı: %v", err))
-		return
-	}
-	s.trackDownloadProgress(repo.ID, file.Filename)
-}
-
-// trackDownloadProgress polls the backend's download progress and redraws a
-// single in-place progress line until the download finishes or fails.
-func (s *session) trackDownloadProgress(repoID, filename string) {
-	fmt.Fprintln(s.out)
-	ticker := time.NewTicker(400 * time.Millisecond)
-	defer ticker.Stop()
-
-	for range ticker.C {
-		p, err := s.client.DownloadProgress(s.ctx, repoID, filename)
-		if err != nil {
-			fmt.Fprintln(s.out, errorf("İlerleme okunamadı: %v", err))
-			return
-		}
-		if !p.Active {
-			fmt.Fprint(s.out, "\r\033[K")
-			if p.Error != "" {
-				fmt.Fprintln(s.out, errorf("✗ İndirme başarısız: %s", p.Error))
-			} else {
-				fmt.Fprintln(s.out, green("✓ İndirme tamamlandı: "+p.Filename))
-			}
-			return
-		}
-		fmt.Fprintf(s.out, "\r\033[K%s %5.1f%%  (%s)", progressBar(p.Percent), p.Percent, p.Speed)
-	}
+// cmdModelDownload used to run an in-terminal Hugging Face search-and-download
+// flow, but its progress loop only ever read from a ticker — never from the
+// keyboard — so once a download started there was no way to cancel it (not
+// even Esc/Ctrl+C, which raw mode turns into a plain keypress instead of a
+// signal) and a stalled connection left the whole REPL stuck until the
+// backend itself gave up. Model downloads are long-running and better shown
+// with real progress bars that don't block anything else, so this now just
+// opens the desktop app's Model Store instead of running the download here.
+func (s *session) cmdModelDownload() {
+	fmt.Fprintln(s.out, dim("Model indirme artık masaüstü uygulamasından (Modeller sekmesi) yapılıyor — CLI sadece zaten indirilmiş modelleri başlatır."))
+	s.cmdGui()
 }
 
 // findModel looks up a model by case-insensitive substring match on its

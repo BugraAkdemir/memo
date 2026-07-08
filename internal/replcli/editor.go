@@ -19,7 +19,7 @@ var slashCommands = []commandSpec{
 	{"/models", "modelleri ve sağlayıcıları listele"},
 	{"/model", "bir sohbet modeli seç ve başlat"},
 	{"/embedding", "bir embedding modeli seç ve başlat"},
-	{"/model-download", "Hugging Face'ten yeni model indir"},
+	{"/model-download", "model indirmek için masaüstü uygulamasını aç"},
 	{"/connect", "harici bir API sağlayıcısına bağlan"},
 	{"/gui", "masaüstü uygulamasını aç"},
 	{"/clear", "sohbeti temizle, yeni bir sohbet başlat"},

@@ -1,3 +1,41 @@
+# Handoff — 2026-07-09 (Session 19) — REPL CLI: model indirmeyi kaldırıp GUI'ye yönlendirme + /gui path bug'ı
+
+## Oturum Özeti
+
+Kullanıcı `internal/replcli/`'de iki bug bildirdi: (1) model indirirken CLI "buga giriyor" / "takılıyor", (2) `/gui` komutu GUI kurulu olmasına rağmen bulamıyor. İstek: CLI'dan ağır işleri (model indirme) kaldırıp GUI'ye yönlendirmek. İki kök neden bulundu ve düzeltildi, tek commit'lik iş.
+
+## Yapılanlar
+
+### 1. Kök neden — `/model-download`'ın ilerleme döngüsü klavyeyi hiç okumuyordu
+`trackDownloadProgress` sadece bir `ticker.C`'den okuyan bir `for` döngüsüydü — hiç klavye okumuyordu. Raw mode'da (`term.MakeRaw`) ISIG kapalı olduğu için Ctrl+C bir sinyal üretmiyor, sadece normal bir tuş basımına dönüşüyor; bu döngü o tuşu hiç okumadığı için indirme başladıktan sonra iptal etmenin **hiçbir yolu yoktu** — bağlantı yavaşlarsa/donarsa tüm REPL indirme bitene kadar tıkanıp kalıyordu. Kullanıcının "buga giriyor, takılıyor" tarifi tam olarak buydu.
+
+**Düzeltme (mimari, patch değil):** `/model-download`'ın Hugging Face arama/seçim/indirme/ilerleme-izleme akışının tamamı kaldırıldı (`cmdModelDownload` artık argüman almıyor, `interactiveModelDownload`/`trackDownloadProgress` silindi). Artık `/model-download` kısa bir mesaj basıp `cmdGui()`'yi çağırıyor — indirme masaüstü uygulamasının Modeller sekmesinden yapılıyor (orada gerçek ilerleme çubukları var ve hiçbir şeyi bloklamıyor). Bununla birlikte artık kullanılmayan `download_client.go` (+ testi), ve sadece o akışa hizmet eden `progressBar`/`humanSize` (`color.go` + testi) de silindi.
+
+### 2. Kök neden — `/gui` sadece kendi exe dizinine bakıyordu
+Kurulu CLI `~/.memo/bin/memo`'da yaşıyor ama bundled GUI bir üst dizinde, `~/.memo/memo_flutter`'da (`get-memo.sh`'den doğrulandı). Eski `cmdGui`, `filepath.Dir(exe)` içine (yani `~/.memo/bin`'e) bakıyordu — `memo_flutter` orada hiç olmadığı için gerçek bir kurulumda GUI asla bulunamıyordu. Bu, `internal/llama`'daki `binarySearchBasesFrom`'un zaten çözdüğü, dokümante edilmiş aynı problem (AGENTS.md Gotchas: "bundled dosya aramaları exe dizininin üstüne de bakmalı").
+
+**Düzeltme:** Yeni `guiSearchDirs(exePath)` yardımcı fonksiyonu — `internal/llama`'daki desenin aynısı — hem exe dizinine hem de üst dizinine bakıyor. `cmdGui` artık `cmd.Dir`'i bulunan GUI binary'sinin kendi dizinine ayarlıyor (CLI'ninkine değil) — Flutter build'inin `lib/`/`flutter_assets/` klasörleri binary ile aynı yerde olduğu için bu da ayrı bir gerçek düzeltme.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build ./... && go vet ./... && go test ./... -race -count=1
+  → tüm paketler yeşil (bu kez ngrok/whisper testleri de dahil, önceki
+    oturumlarda bahsedilen ortam kaynaklı hata bu seferki koşumda çıkmadı)
+gofmt -l internal/replcli/  → temiz
+```
+Yeni/güncellenen testler: `TestHandleCommand_ModelDownload_RedirectsToGui`, `TestGuiSearchDirs`, `TestGuiSearchDirs_RootDoesNotRepeat`; `TestHandleCommand_Gui_MissingBinary` değişmeden geçti. `internal/app/config/config.yaml` bu oturumda mutasyona uğramadı (git status temiz çıktı).
+
+Frontend'e dokunulmadı, bu oturum sadece backend/`internal/replcli`.
+
+## Sıradaki Oturum İçin
+
+1. **Commit bekliyor** — kullanıcı onaylarsa: `internal/replcli/commands.go`, `commands_test.go`, `editor.go`, `color.go` (değişti), `color_test.go`/`download_client.go`/`download_client_test.go` (silindi), `AGENTS.md`.
+2. Gerçek terminalde uçtan uca doğrulanmadı (görsel/etkileşimli test ortamı bu oturumda kurulmadı) — kullanıcı `~/.memo/bin/memo` kurulu bir ortamda `/gui` ve `/model-download`'ı deneyip GUI'nin gerçekten açıldığını doğrulamalı.
+3. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow, `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
+
+---
+
 # Handoff — 2026-07-07 (Session 18) — Model önerisi + eşzamanlı indirme + sessiz RAG hatası + test kapsamı
 
 ## Oturum Özeti

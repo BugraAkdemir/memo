@@ -480,18 +480,42 @@ func TestHandleCommand_Remote_PromptsForMissingToken(t *testing.T) {
 	}
 }
 
-func TestHandleCommand_ModelDownload_NoResults(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/models/search", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode([]HFModelResult{})
-	})
-	srv := httptest.NewServer(mux)
+// TestHandleCommand_ModelDownload_RedirectsToGui checks that /model-download
+// no longer runs any in-terminal search — it just points the user at the GUI
+// (which reports its own "not found" here, same as TestHandleCommand_Gui_MissingBinary,
+// since no memo_flutter binary sits next to the test binary).
+func TestHandleCommand_ModelDownload_RedirectsToGui(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
 	defer srv.Close()
-
 	s, out := newTestSession(t, srv)
+
 	s.handleCommand("/model-download nonexistent-model-xyz")
 
-	if !strings.Contains(out.String(), "Sonuç bulunamadı") {
-		t.Errorf("expected no-results message, got:\n%s", out.String())
+	got := out.String()
+	if !strings.Contains(got, "masaüstü uygulamasından") {
+		t.Errorf("expected redirect-to-GUI message, got:\n%s", got)
+	}
+	if !strings.Contains(got, "GUI bulunamadı") {
+		t.Errorf("expected cmdGui's own not-found message, got:\n%s", got)
+	}
+}
+
+func TestGuiSearchDirs(t *testing.T) {
+	got := guiSearchDirs("/home/user/.memo/bin/memo")
+	want := []string{"/home/user/.memo/bin", "/home/user/.memo"}
+	if len(got) != len(want) {
+		t.Fatalf("guiSearchDirs() = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Errorf("guiSearchDirs()[%d] = %q, want %q", i, got[i], want[i])
+		}
+	}
+}
+
+func TestGuiSearchDirs_RootDoesNotRepeat(t *testing.T) {
+	got := guiSearchDirs("/memo")
+	if len(got) != 1 || got[0] != "/" {
+		t.Errorf("guiSearchDirs(%q) = %v, want [\"/\"]", "/memo", got)
 	}
 }

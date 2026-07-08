@@ -164,6 +164,10 @@ the versioned→generic artifact rename for `download.bugradev.com`, and the
 - ~~**No test files for `orchestra/` package** (~800 lines untested)~~ → 48 tests passing with `-race`. `provider/`, `agent/`, and `orchestra/` all have tests.
 - **Agent frontend UI (permission dialog, tool call cards, activity panel, agent screen) — fully implemented.**
 
+### REPL CLI (`internal/replcli/`)
+- ~~`/model-download` ran an in-terminal Hugging Face search-and-download flow whose progress loop only read from a ticker, never the keyboard — a stalled download left the whole REPL stuck with no way to cancel (not even Esc/Ctrl+C, since raw mode turns those into plain keypresses, not signals)~~ → fixed 2026-07-09: `/model-download` no longer downloads anything itself; it prints a short message and opens the desktop GUI (`cmdGui`) instead. Heavy, long-running work (model search/download with real progress bars) belongs in the GUI, not the terminal client.
+- ~~`/gui` looked for the bundled `memo_flutter` binary only next to the CLI's own executable, so it never found it on a real install~~ → fixed 2026-07-09: the installed CLI binary lives one level deeper (`~/.memo/bin/memo`) than the bundled GUI (`~/.memo/memo_flutter`) — `cmdGui` now searches the exe's own directory *and* its parent (`guiSearchDirs`, same pattern as `binarySearchBasesFrom` in `internal/llama`), and runs the GUI with its own directory as `cmd.Dir` (needed for Flutter's `lib/`/`flutter_assets/`, which sit next to the binary, not next to the CLI).
+
 ### Flutter
 - ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.
 - `model_store_screen.dart` is 2469 lines — should be split into components.

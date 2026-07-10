@@ -28,10 +28,40 @@ Yeni/güncellenen testler: `TestHandleCommand_ModelDownload_RedirectsToGui`, `Te
 
 Frontend'e dokunulmadı, bu oturum sadece backend/`internal/replcli`.
 
+## İkinci tur (aynı oturum) — 3 ek bug (kod okumasıyla bulundu)
+
+Kullanıcı sonra "CLI'de başka ne bugları var, mantıksal kontrol et" dedi. Tüm paket taranıp 3 gerçek bug daha bulundu, hepsi düzeltildi:
+
+### 3. `/model`/`/embedding` — 10s client timeout vs. 120-180s gerçek yükleme süresi (en kritik, indirme bug'ıyla aynı desen)
+`Client.httpClient`'ın sabit 10 saniyelik timeout'u `doJSON` üzerinden `StartModel`/`StartEmbedding` için de geçerliydi. Ama backend tarafında `internal/app/llama.go:31` (`WaitReady(180*time.Second)`) ve `internal/app/embedding.go:55` (`WaitReady(120*time.Second)`) modeli tamamen yüklenene kadar senkron bekliyor. Orta/büyük bir model 10 saniyeden uzun sürerse CLI "Başlatılamadı: ... Client.Timeout exceeded" hatası basıyordu — backend arka planda yüklemeye devam edip muhtemelen başarıyla bitiriyordu. Düzeltme: `client.go`'ya sabit timeout'suz ikinci bir `*http.Client` (`longOpHTTP`) + `doJSONWith` eklendi; `StartModel`/`StartEmbedding` artık kendi context timeout'unu kuruyor (185s/125s). `commands.go`'daki `startAndReport` artık Esc/Ctrl+C ile iptal edilebilir + spinner gösteriyor.
+
+### 4. Dışarıdan SIGTERM/SIGINT gelirse terminal raw modda kalabiliyordu
+`main.go`'da `select { case <-sigCh: ... }; return` REPL goroutine'ini beklemeden dönüyordu, `replcli.Run()`'ın `defer term.Restore(...)`'u hiç çalışmıyordu. Düzeltme: `main.go` REPL goroutine'i başlamadan önce `term.GetState` ile orijinal terminal durumunu yakalıyor, sinyal dalında doğrudan `term.Restore` ile geri yüklüyor.
+
+### 5. Çok satırlı yapıştırma satır satır ayrı mesaj olarak gönderiliyordu
+Bracketed-paste modu hiç açılmıyordu, `keys.go`'daki `assemble()` her `\r`/`\n` baytını doğrudan `keyEnter`e çeviriyordu. Düzeltme: `repl.go` artık raw moda girerken `ESC[?2004h` ile bracketed paste açıyor, `keys.go`'ya yeni `keyPaste` türü + `readBracketedPaste`/`collapsePasteNewlines` eklendi.
+
+## Üçüncü tur (aynı oturum) — Backend süreç modeli: referans sayımlı client registry
+
+Kullanıcı `--port 8090` ile `go run .` çalıştırınca REPL açılmasına şaşırdı, bunu açıklarken asıl mimari isteğini netleştirdi: **CLI açıkken Flutter açılıp CLI kapatılırsa Flutter çökmemeli, tam tersi de geçerli, ama ikisi de kapandığında backend gereksiz yere arka planda kalmamalı.** Referans sayımlı bir lifecycle tasarlandı ve uygulandı:
+
+1. **Backend: client registry** (`internal/app/clients.go`) — `RegisterClient`/`HeartbeatClient`/`UnregisterClient`, 15sn'de bir eski (90sn+) client'ları temizleyen sweep goroutine. Registry boşalınca (`sawClient=true` ve `autoShutdown=true` ise) backend kendine `os.Interrupt` gönderiyor — `/api/shutdown`'ın kullandığı aynı mekanizma. `EnableAutoShutdown()` sadece CLI'nin kendi başlattığı backend'de açılıyor; plain `--headless` (bağımsız servis) hiçbir zaman kendi kendine kapanmıyor.
+2. **Backend: 3 yeni endpoint** (`internal/webserver/handlers_clients.go`) — `POST /api/clients/{register,heartbeat,unregister}`, `AppBridge` interface'ine eklendi.
+3. **`main.go`: gerçek process ayrımı** — interaktif `memo` artık backend'i in-process başlatmıyor, `spawnDetachedBackend()` ile kendi binary'sini `--headless --port N --auto-shutdown` ile ayrı, detached process olarak başlatıyor (`main_unix.go`: `Setsid`, `main_windows.go`: `CREATE_NEW_PROCESS_GROUP`).
+4. **CLI tarafı** (`internal/replcli/clients_client.go`, `repl.go`) — `Run()` başlarken register oluyor, 25sn'de bir heartbeat, çıkışta unregister.
+5. **Flutter tarafı** (`api_client.dart`, `chat_provider.dart`'ın `connectionStatusProvider`'ı) — zaten var olan 30sn'lik polling genişletildi: ilk erişilebilir tick'te register, sonra her tick'te heartbeat.
+
+### Doğrulama (round 2+3)
+`CGO_ENABLED=1 go build/vet/test ./... -race` → tüm paketler yeşil. `flutter analyze/test` → temiz, 91/91. Gerçek derlenmiş binary ile curl üzerinden canlı doğrulama: `--auto-shutdown` + 2 client, biri ayrılınca hayatta kalıyor, ikisi ayrılınca kendi kendine kapanıyor; hiç client register olmazsa sonsuza kadar hayatta kalıyor; plain `--headless` (bayrak yok) asla kendi kendine kapanmıyor. Doğrulanmayan: gerçek Flutter penceresiyle `/gui` senaryosu (bu ortamda display yok), gerçek Windows'ta detach.
+
+## ⚠️ Oturum İçi Veri Kaybı Olayı — ÖNEMLİ
+
+Yukarıdaki round 2 ve round 3'ün ilk commit'leri (**hiç push edilmeden**) kullanıcı projeyi yanlışlıkla silip GitHub'dan yeniden clone edince **tamamen kayboldu** — sadece round 1'in commit'i (`b34c907`) hayatta kaldı çünkü push edilmişti. Round 2 ve round 3'ün TÜMÜ bu oturumda ikinci kez, sıfırdan yeniden yazıldı (konuşma geçmişindeki tam dosya içerikleri hafızadan reconstruct edildi) ve yeniden commit edildi. **Bu commit'ler de push edilene kadar aynı risk altında.**
+
 ## Sıradaki Oturum İçin
 
-1. **Commit bekliyor** — kullanıcı onaylarsa: `internal/replcli/commands.go`, `commands_test.go`, `editor.go`, `color.go` (değişti), `color_test.go`/`download_client.go`/`download_client_test.go` (silindi), `AGENTS.md`.
-2. Gerçek terminalde uçtan uca doğrulanmadı (görsel/etkileşimli test ortamı bu oturumda kurulmadı) — kullanıcı `~/.memo/bin/memo` kurulu bir ortamda `/gui` ve `/model-download`'ı deneyip GUI'nin gerçekten açıldığını doğrulamalı.
+1. **ACİL: Kullanıcı bu commit'leri `git push` etmeli** — az önce tam olarak bunun eksikliği yüzünden ~9 commit'lik iş kayboldu ve yeniden yapıldı.
+2. Gerçek terminalde uçtan uca doğrulanmadı — SIGTERM/terminal-restore, bracketed-paste, `/model` ile büyük model başlatma, ve özellikle backend süreç ayrımı: gerçek terminalde `memo` çalıştır, `/gui` ile Flutter'ı aç, CLI'den çık, Flutter'ın canlı kaldığını doğrula; Flutter'ı kapat, ~90sn içinde backend'in kendiliğinden kapandığını doğrula (`ps aux | grep memo`).
 3. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow, `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
 
 ---

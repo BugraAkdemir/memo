@@ -184,6 +184,14 @@ This is what makes "CLI open, then open the GUI via /gui, then close the CLI" an
 
 Verified against the real compiled binary (not just unit tests) in this session: `--auto-shutdown` backend with two registered clients survives one leaving and self-shuts-down when the second leaves; a plain `--headless` backend (no `--auto-shutdown`) survives a client registering and unregistering exactly as before. Not yet verified: an actual `/gui`-launched Flutter window in this environment (no display), and the Windows detach path (`CREATE_NEW_PROCESS_GROUP`) — only compile-checked via `GOOS=windows go vet`.
 
+### Identity / System Prompt (`internal/identity/`) (2026-07-10)
+
+The default system prompt (`buildIdentityBlock`) was translated from Turkish to English — instructions generally get followed more reliably in English regardless of conversation language, and the block already tells the model to always reply in whatever language it's written to (this is independent of the setup wizard's own persona prompts in `frontend/lib/widgets/setup_wizard_view.dart`, which carry separate `prompt_tr`/`prompt_en` text per persona and override the default entirely via `CustomRole` when picked).
+
+`buildOriginBlock` was added and is **always** appended in `BuildSystemPrompt`, independent of whether `CustomRole` (a wizard persona or a hand-written prompt) is set — it used to live inside `buildIdentityBlock`, which only runs when `CustomRole` is empty, so picking any wizard persona silently dropped "who made you" grounding entirely. Kept deliberately terse (~100 tokens, down from an initial ~260) since it only pays off on the rare message where someone actually asks — Memo's target audience runs small local models on tight context budgets, where padding a permanent tax for a rarely-used fact is the wrong trade.
+
+`Identity.MinimalMode` (`cfg.Identity.MinimalMode`, toggle in Settings → General → "Minimal Mod") strips identity/origin/style injection from `BuildSystemPrompt` entirely, and gates the mood-directive/web-search injection in `internal/app/helpers.go`'s `buildMessages` too — memory context still goes in if `cfg.Memory.MemoryEnabled` is separately on, since MinimalMode only targets persona/mood/search injection, not memory. With both toggles off, zero extra tokens reach the model beyond the raw conversation. `MinimalMode` overrides `CustomRole` too, not just the default block — a wizard persona is also fully suppressed when it's on.
+
 ### Flutter
 - ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.
 - `model_store_screen.dart` is 2469 lines — should be split into components.

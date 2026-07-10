@@ -71,13 +71,34 @@ Kullanıcı bir ekran görüntüsü paylaştı: chat inputun altındaki `EngineS
 
 Düzeltme: iki isimli boolean (`firstSlotHasContent`, `secondSlotHasContent`) — şeridin ilk/ikinci "slot"unun gerçekten bir şey render edip etmediğini doğru hesaplıyor, üç divider kontrolü de (embedding göstergesi, hafıza uyarısı, indirme göstergesi) bunları kullanıyor. `engine_strip_test.dart`'a hem divider'ın varlığını hem iki metin arasındaki piksel boşluğunu doğrulayan bir regresyon testi eklendi (91 → 92 test). `flutter analyze`/`flutter test` temiz.
 
-**Commit bekliyor** — `AGENTS.md`/`handoff.md` da dahil, henüz commit edilmedi.
+Commit edildi (`43741a8`).
+
+## Altıncı tur (aynı oturum) — Memo'nun kimliği: köken bilgisi + Minimal Mod
+
+Kullanıcı: "Memo kendini pek tanımıyor — yaratıcın kim, amacın ne, felsefen ne diye sorunca saçmalıyor, ama akış/sohbet kalitesi harika, bunu bozmayalım." Birkaç adımda ilerledi:
+
+1. **Köken bloğu eklendi** (`internal/identity/identity.go`'nun `buildIdentityBlock`'una) — kim yaptı/amaç/felsefe, **sadece sorulunca anlatılacak, hiç kendiliğinden konuya girmeyecek** şekilde. Aynı zamanda kullanıcının isteğiyle tüm sistem promptu Türkçe'den İngilizce'ye çevrildi (talimatlar İngilizce'de daha güvenilir takip ediliyor; sohbetin dili bundan etkilenmiyor, "hangi dilde yazılırsa o dilde cevap ver" talimatı ayrı ve hâlâ geçerli). Wizard'ın kendi persona promptlarına (`setup_wizard_view.dart`, `prompt_tr`/`prompt_en`) dokunulmadı, onlar zaten ayrı ve dil-duyarlı.
+2. **Gerçek bug bulundu:** wizard'dan bir persona seçilince (`CustomRole` dolunca) `buildIdentityBlock` hiç çağrılmıyor — yani köken bilgisi kayboluyordu, tam da tester'ların çoğunun yolu. Düzeltme: köken bloğu `buildOriginBlock()` adıyla ayrı bir fonksiyona çıkarıldı, `BuildSystemPrompt`'ta `CustomRole` durumundan bağımsız her zaman ekleniyor.
+3. **Token maliyeti fazla bulundu** — köken bloğu tek başına ~259 token, toplam varsayılan prompt ~735 token (4096 ctx'lik bir modelde ~%18) ölçüldü (`internal/identity`'nin kendi `truncate.EstimateTokens`'ıyla). Kullanıcı "hedef kitlemize (zayıf donanım, yerel model) ağır" dedi, haklı bulundu — köken bloğu ~99 token'a kadar kısaltıldı (toplam ~575'e düştü).
+4. **Minimal Mod özelliği eklendi** — kullanıcının fikri: Ayarlar'da bir toggle, açılınca kimlik/persona/mood/web-arama enjeksiyonunun **tamamı** kapansın, sadece hafıza (ayrı toggle'ı açıksa) modele gitsin; ikisi de kapalıyken sıfır ekstra token.
+   - `internal/config/config.go`: `IdentityConfig.MinimalMode bool`.
+   - `internal/identity/identity.go`: `Identity.MinimalMode` alanı + `SetMinimalMode()`; `BuildSystemPrompt` açıkken identity/origin/style'ı (ve `CustomRole`'u da) tamamen atlıyor, hafızayı hâlâ dahil ediyor.
+   - `internal/app/helpers.go`: `buildMessages`'ta mood directive + web arama enjeksiyonu da `MinimalMode` açıkken atlanıyor.
+   - `internal/app/settings.go`: `GetMinimalMode`/`SetMinimalMode`.
+   - `internal/webserver`: `GET/PUT /api/system-prompt/minimal-mode` (`FullBridge`'e eklendi, `nil_fullbridge_test.go` tablosuna eklendi).
+   - Frontend: `api_client.dart` (`getMinimalMode`/`setMinimalMode`), `settings_provider.dart` (`minimalModeProvider`/`MinimalModeNotifier`, `memoryEnabledProvider` ile aynı desen), `general_tab.dart`'a Ayarlar → Genel'de yeni bir toggle bölümü, `l10n.dart`'a TR/EN string'ler.
+
+### Doğrulama
+`CGO_ENABLED=1 go build/vet/test ./... -race` → tüm paketler yeşil (whisper'daki tek hata bu oturum boyunca zaten var olan, ortam kaynaklı, ilgisiz). `flutter analyze --no-fatal-infos && flutter test` → temiz (4 önceden var olan info), 92/92 test yeşil. Yeni Go testleri: `TestBuildSystemPrompt_MinimalMode_*` (3 test, identity paketinde), `TestGetSetMinimalMode` (app paketinde), `TestHandlers_NoFullBridge/MinimalMode` (webserver). `internal/app/config/config.yaml` test koşumları sonrası her seferinde `git checkout --` ile geri alındı, commit edilmedi.
+
+**Commit bekliyor** — kullanıcı onaylarsa: `internal/config/config.go`, `internal/identity/identity.go`+test, `internal/app/settings.go`+`helpers.go`+`app.go`+`app_test.go`, `internal/webserver/bridge.go`+`server.go`+`handlers_flutter.go`+`nil_fullbridge_test.go`, `frontend/lib/core/api_client.dart`+`l10n.dart`, `frontend/lib/providers/settings_provider.dart`, `frontend/lib/widgets/settings/tabs/general_tab.dart`, `AGENTS.md`/`handoff.md`.
 
 ## Sıradaki Oturum İçin
 
 1. Gerçek terminalde uçtan uca doğrulanmadı — SIGTERM/terminal-restore, bracketed-paste, `/model` ile büyük model başlatma, ve özellikle backend süreç ayrımı: gerçek terminalde `memo` çalıştır, `/gui` ile Flutter'ı aç, CLI'den çık, Flutter'ın canlı kaldığını doğrula; Flutter'ı kapat, ~90sn içinde backend'in kendiliğinden kapandığını doğrula (`ps aux | grep memo`).
-2. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow, `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
-3. **Yeni, küçük bir borç:** `mobile/` projesinin `.dart_tool`/pub-cache durumu her taze clone'da kontrol edilmeli — bu oturumda bir kere daha karşımıza çıktı, gelecekte tekrar edebilir.
+2. **Minimal Mod da gerçek Flutter arayüzünde hiç denenmedi** — toggle açılıp gerçekten sohbete hiçbir kişilik/kimlik sızmadığı, sadece hafızanın (açıksa) çalıştığı canlı bir chat ile doğrulanmalı.
+3. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow (düzeldi, bkz. yukarısı), `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
+4. **Yeni, küçük bir borç:** `mobile/` projesinin `.dart_tool`/pub-cache durumu her taze clone'da kontrol edilmeli — bu oturumda bir kere daha karşımıza çıktı, gelecekte tekrar edebilir.
 
 ---
 

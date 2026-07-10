@@ -1,3 +1,96 @@
+# Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği
+
+## Oturum Özeti
+
+Üç ayrı istekle ilerleyen uzun bir oturum: (1) iki yeni AI provider eklendi (backend+frontend), (2) Shift+Tab auto-permission modunun neden çalışmadığı araştırılıp gerçek kök nedeni (bir data race) bulunup düzeltildi, (3) kullanıcı "BUG_REPORT.md'deki kritik hataları adım adım düzelt, her adımda commit at, dosyayı güncel tut" dedi — bunun üzerine 2 kritik + 3 eski-HIGH + 7 MEDIUM madde tek tek düzeltildi, her biri kendi testi ve kendi commit'iyle, ardından ayrı bir docs commit'iyle BUG_REPORT.md'den çıkarıldı. Toplam **14 kod commit'i + 12 docs commit'i**. `BUG_REPORT.md`'nin açık madde sayısı **22 → 10** düştü (0 kritik, 3 HIGH — bilinçli atlandı, 2 MEDIUM — biri gerçek bug değil, 5 LOW — hiç dokunulmadı).
+
+Tüm adımlarda doğrulama: `CGO_ENABLED=1 go build/vet/test ./... -race` ve `flutter analyze`/`flutter test` her commit'ten önce yeşil görüldü; Windows cross-derleme (`GOOS=windows go vet`) `main.go` değişen commit'lerde ayrıca kontrol edildi.
+
+---
+
+## 1) İki yeni provider: OpenCode Zen ve OpenCode Go (commit `9988bb1`)
+
+Kullanıcı iki yeni provider istedi, modellerin OpenRouter'daki gibi **elle yazılmadan**, API'den dinamik listelenmesini istedi.
+
+- **Backend** (`internal/provider/`): `opencode_zen.go`/`opencode_go.go` — OpenRouter/Ollama'nın kullandığı `openAIProvider` sarmalama deseniyle, Bearer auth + OpenAI-uyumlu `/chat/completions`+`/models`. Base URL'ler: `https://opencode.ai/zen/v1` (Zen — kullandığın kadar öde, bazı modeller ücretsiz) ve `https://opencode.ai/zen/go/v1` (Go — abonelik). Yeni **jenerik** `POST /api/providers/models` endpoint'i eklendi (`handlers_flutter.go`) — `provider.NewProvider(cfg).ListModels()`'i çağırıyor; OpenRouter'ın kendine özel zengin endpoint'ini kopyalamak yerine herhangi bir OpenAI-uyumlu provider için tek, yeniden kullanılabilir mekanizma.
+- **Frontend**: `provider_config.dart`'a iki yeni provider girdisi, `api_client.dart`'a `fetchProviderModels()`, `provider_config_dialog.dart`'a "Seç" butonu artık `openrouter`'a özel değil (`hasModelBrowser()` ile genel), yeni `_SimpleModelBrowserDialog` (fiyatsız, sade model-ID listesi, arama filtreli).
+- **Bilinçli dokunulmayan yer**: `chat_input.dart`'taki OpenRouter'a özel "OAuth ile hızlı bağlan" akışı — OpenCode için eşdeğeri yok, istenmedi.
+
+## 2) Shift+Tab auto-permission modu çalışmıyordu (commit `56c82bf`)
+
+Kullanıcı: "agent modunda Shift+Tab ile auto mode var, çalışmıyor." Önce klavye kısayolunun kendisini şüpheli buldum (izole widget testiyle doğru çalıştığını kanıtladım), sonra kullanıcıdan "bir şey değişiyor gibi ama tool çağrıları hâlâ izin soruyor" bilgisini alınca gerçek kök nedeni buldum:
+
+`internal/agent/executor.go`'daki `RunStream`, `e.bypassPermissions`/`e.autoPermission` flag'lerini **kilitsiz** okuyordu — halbuki `SetAutoPermission`/`SetBypassPermissions` bunları `e.mu` altında yazıyordu. Toggle bir HTTP handler goroutine'inde çalışıyor, mesaj gönderme başka bir goroutine'de `RunStream`'i tetikliyor — Go'nun memory modeli senkronizasyon olmadan görünürlük garanti etmiyor, bu yüzden Shift+Tab'a basınca arayüz güncellenmiş görünse de agent turu başlatan goroutine eski (kapalı) değeri görüp izin ekranını göstermeye devam edebiliyordu.
+
+**Düzeltme:** `GetBypassPermissions()` adında (mevcut `GetAutoPermission()` ile aynı kilitleme deseninde) yeni bir getter eklendi, `RunStream` artık ham alan yerine iki kilitli getter'ı kullanıyor. Regresyon testi (100 goroutine'le eşzamanlı Set/Get) `-race` altında ekli.
+
+---
+
+## 3) BUG_REPORT.md temizliği — kullanıcı isteğiyle, adım adım
+
+Kullanıcı: "BUG_REPORT.md'deki kritik hataları düzeltelim, adım adım, paralel agent çalıştırma sen yap, her adımda commit at, BUG_REPORT.md'yi güncel tut." Aşağıdaki sıra izlendi: kod düzelt → test yaz/doğrula → commit → BUG_REPORT.md'den o maddeyi kaldır → ayrı docs commit'i. HIGH'ın 3 maddesi bilinçli atlandıktan sonra kullanıcı onayıyla MEDIUM'a geçildi.
+
+### 🔴 CRITICAL (2/2 düzeltildi)
+
+**BUG-C2 — `rm -rf` kara liste bypass'ı** (`de4450e`)
+`internal/agent/tools/command.go`'daki `\brm\s+-rf\s+/\b` deseni, `/`, `~`, `.`'nin **non-word karakter** olması nedeniyle `\b` sınırının hiç oluşmamasından dolayı "rm -rf /", "rm -rf /*", "sudo rm -rf /" gibi tam olarak engellemesi gereken komutları **hiç yakalamıyordu** — ama "rm -rf /home/user/foo" gibi göreceli güvenli, derin bir yolu engelliyordu. Üç desen de aynı hatadan muzdaripti (`/`, `~`, `.`). Düzeltme: `\b` yerine açık bir terminator sınıfı (`$`|boşluk|`;`|`&`|`|`|`*`) — hem gerçek wipe'ları yakalıyor hem de `./build`, `.git` gibi scoped silmelere dokunmuyor.
+
+**BUG-C1 — Uzak erişimde (LAN/ngrok) sıfır kimlik doğrulama** (`f5a579e`)
+Üretilen `RemoteAccess.Token` hiçbir handler'da karşılaştırılmıyordu — LAN/ngrok erişimi olan biri `/api/wipe`, `/api/agent/permission` (→ host'ta keyfi komut), `/api/import`, `/api/shutdown` dahil her şeye kimlik bilgisi olmadan erişebiliyordu. `remoteAuthMiddleware` eklendi: sunucu `0.0.0.0`'a bağlandığında (LAN modu VEYA ngrok — ikisi de aynı bind'i kullanıyor) her istek `X-Memo-Token` ya da `Authorization: Bearer <token>` istiyor, sabit-zamanlı karşılaştırmayla. Localhost-only mod (varsayılan) tamamen etkilenmedi. Mobile client zaten `X-Memo-Token` gönderiyordu (ölü kod, hiç kontrol edilmediği için); desktop client'a aynı mekanizma eklendi — `PUT /api/remote-access` artık token'ı içeren tam durumu döndürüyor (eskiden bare `{"ok":true}`), böylece desktop client token'ı tam da bağlantının 0.0.0.0'a geçtiği anda, hâlâ yetkisiz olan o istekten yakalıyor.
+
+Bu düzeltmenin **yan etkisi**: eski BUG-H1 (kimlik doğrulamasız GET ile provider anahtarlarının okunabilmesi) de otomatik kapandı, çünkü yeni middleware tüm HTTP metodlarını aynı şekilde koruyor.
+
+**Bilinen dar kapsamlı takip maddesi (BUG-L5, düzeltilmedi):** ngrok otomatik-başlatma açıksa ve uygulama yeniden başlatılırsa, masaüstü GUI'si restart sonrası token'ı henüz öğrenmeden ilk isteğini atıp 401 alabilir (workaround: Ayarlar'dan Uzak Erişim'i kapat/aç). Gerçek çözüm ya ngrok trafiğini loopback'ten güvenilir şekilde ayırt etmeyi (mümkün değil, ngrok zaten `127.0.0.1`'e bağlanıyor) ya da Tailscale'in zaten kullandığı reverse-proxy desenine geçişi gerektiriyor — canlı ngrok/telefon testi gerektirdiği için bu oturumun kapsamı dışında bırakıldı.
+
+### 🟠 eski HIGH (3/6 düzeltildi, 3'ü bilinçli atlandı)
+
+**eski BUG-H1 — SQLite dosyaları 0644 (dünyaya-okunabilir)** (`7e8860e`)
+`memory.db`, `mood.db`, `observations.db`, `events.db`, `messages.db`, `session.db` (WhatsApp'ın Signal/Noise oturum anahtarları!) hepsi process umask'ında (`-rw-r--r--`) kalıyordu — mattn/go-sqlite3 dosyayı kendi yaratıyor, Go tarafından perm parametresi geçirilemiyor. `internal/database.Open` (memory/calendar/observer'ın paylaştığı wrapper) artık `Ping()` sonrası `os.Chmod(path, 0600)` çağırıyor; ayrıca `sql.Open`'ı doğrudan kullanan `mood`/`whatsapp` paketlerine ve whatsmeow'un kendi `sqlstore.New` çağrılarına da aynı chmod eklendi.
+
+**eski BUG-H2 — Agent sandbox "bypass"** (`c59b459`) — **meğerse gerçek değilmiş.**
+İddia: `Sandbox.ValidatePath`, proje dizini dışındaki, kısa bir protected-list'te olmayan mutlak yolları (`/srv/`, ikinci disk vb.) serbest bırakıyor. Tüm repo'da grep ile doğrulandı: bu fonksiyonun **hiçbir çağıranı yok** — dead code. Gerçek dosya araçlarının kullandığı `internal/agent/tools/file.go`'daki AYRI `validatePath` fonksiyonu zaten doğru: protected-list eşleşmese bile basePath dışını koşulsuz reddediyor (protected-list sadece daha spesifik bir hata mesajı için). Dead+hatalı kod silindi (`ProtectedPaths` alanı ve `defaultProtectedPaths()` de dahil), gerçek yolun doğru davrandığını kanıtlayan testler eklendi.
+
+**eski BUG-H3 — Streaming goroutine'lerinde panic recovery yok** (`9fb11b7`)
+`internal/taskloop/engine.go`'da zaten var olan `recover()` deseni, `internal/app/llm.go`'daki 5 streaming goroutine'ine ve `agent.Pipeline.RunStream`'e uygulandı. Her `defer close(outCh)`'ten sonra `defer recoverStreamPanic(ctx, outCh, "<label>")` — defer'lar LIFO çalıştığı için recover, channel kapanmadan önce çalışıp kullanıcıya görünür bir hata chunk'ı gönderebiliyor, panic'in tüm process'i (tüm sohbetler, WhatsApp köprüsü, takvim hatırlatıcıları) düşürmesi yerine.
+
+**Bilinçli atlanan 3 HIGH:** chat-switch sırasında mesajın yanlış sohbete karışması (backend+frontend, ikisi birden) — AGENTS.md'nin "Known Open Work" listesindeki tek-global-aktif-chat mimarisi sorununun belirtisi, düzgün çözümü büyük bir refactor; Windows'ta auto-shutdown çalışmaması — bu ortamda (Linux) hiç test edilemez, canlı bir Windows makine gerektirir.
+
+### 🟡 MEDIUM (7/9 düzeltildi, 2'si zaten bug değildi/kabul edilmişti)
+
+**eski M3 — Websearch/hafıza ayarları kilitsiz r/w** (`eeee9e2`) — `a.cfg.Memory.MemoryEnabled`/`a.cfg.WebSearch.Enabled` `cfgMu` altında yazılıyor ama 6 dosyada (`helpers.go`, `chat.go`, `models.go`, `llama.go`, `app.go`) kilitsiz okunuyordu. `GetMemoryEnabled()` artık kilitli, yeni `GetWebSearchEnabled()` eklendi, tüm okuma noktaları bu getter'lara yönlendirildi.
+
+**eski M4 — Minimal Mod iki farklı, senkronize olmayan kopyadan okunuyordu** (`095565a`) — `identity.Identity.MinimalMode` (kilitsiz) ve `a.cfg.Identity.MinimalMode` (ayrı kopya) `buildMessages` içinde farklı anlarda okunuyordu; bir toggle iki yazım arasına denk gelirse yarı-uygulanmış (identity bloğu atlanmış ama mood/websearch hâlâ enjekte edilmiş, ya da tersi) bir prompt üretilebiliyordu. `Identity`'ye kilit eklendi, `buildMessages` artık TEK kaynaktan (`a.identity.GetMinimalMode()`) okuyor — `a.cfg.Identity.MinimalMode` sadece persistence/API durumu için kalıyor.
+
+**eski M3 — Hafıza consolidation'ı embedding hatasında sessizce vektör aramadan düşüyordu** (`86b9a09`) — `saveMerged`, embed başarısız olursa birleşmiş anıyı embedding'siz kaydediyordu (doğru davranış — merge'ü tamamen kaybetmek daha kötü olurdu) ama **hiçbir log satırı yoktu**. İki log satırı eklendi (embed hatası / boyut uyuşmazlığı), davranış değişmedi, artık gözlemlenebilir.
+
+**eski M4 — İzin diyaloğu, gönderim başarısız olsa bile başarılıymış gibi kapanıyordu** (`0a3acd1`) — `_submit`, POST'u `unawaited()` ile ateşleyip koşulsuz `Navigator.pop` çağırıyordu; başarısız olursa kullanıcı hiçbir şey görmüyordu, backend'deki tool call kendi timeout'una kadar askıda kalıyordu. `_submit` artık async: başarıda pop, başarısızlıkta diyalog açık kalıyor + hata gösteriliyor + buton spinner'ı.
+
+**eski M3 — Hafıza/Minimal Mod anahtarına hızlı çift-tıklama yanlış son duruma yol açabiliyordu** (`c022e1b`) — `toggle()`, `state`'i kendi `await`'i bitmeden güncellemiyordu; iki hızlı tık aynı bayat değeri okuyup aynı yöne toggle ediyordu (net: yanlış yön). In-flight guard (`_toggling`) + optimistic update eklendi. Test, `flutter test`'in gerçek soket bağlantılarını (127.0.0.1 dahil) engellediğini keşfetti — Dio'nun kendi `HttpClientAdapter`'ını fake'leyerek çözüldü (ek bağımlılık gerekmedi).
+
+**eski M3 — Detached backend süreci CLI açıkken zombi kalabiliyordu** (`4f364f4`) — `spawnDetachedBackend`, `cmd.Process.Release()` kullanıyordu; `Setsid` sadece yeni bir session açıyor, OS-seviyesi parent-child ilişkisini değiştirmiyor — backend kendi kendine kapanırsa ve CLI hâlâ açıksa, hiç kimse `wait()` çağırmadığı için zombi kalıyordu. `reapInBackground(cmd)` eklendi — `cmd.Wait()`'i arka planda çağırıyor, çağırıcıyı bloklamadan, backend'in bağımsız yaşam süresini bozmadan. `kill(pid,0)`'ın `ESRCH` dönene kadar (gerçek reap kanıtı, sadece exit değil) poll eden bir test eklendi; eski `Release()`-only deseninin gerçekten zombi bıraktığı ayrıca manuel doğrulandı.
+
+**eski M3 — Dışarıdan SIGTERM gelirse CLI'ın unregister çağrısı hiç çalışmıyordu** (`14e545f`) — `main()`'in sinyal dalı, `replcli.Run()`'ın goroutine'ini beklemeden dönüyordu, `Run()`'ın deferred `UnregisterClient`'ı hiç çalışmıyordu (aynı kök neden, terminal-restore fix'inin zaten çözdüğü sorunla — o da goroutine'i beklemeden dönme). `Run()` artık variadic bir `onClientRegistered` callback alıyor (9 mevcut test call site'ı değişmeden derleniyor), clientID bir kanaldan (paylaşılan değişken değil — race olurdu) `main()`'e taşınıyor, sinyal dalı doğrudan unregister ediyor.
+
+**Dokunulmayan 2 MEDIUM:** M1 (`model_store_screen.dart` 2600+ satır) gerçek bir bug değil, bakım notu; M2 (`connectionStatusProvider` sonsuz polling) zaten AGENTS.md'de "kabul edilebilir" diye işaretli.
+
+---
+
+## Doğrulama
+
+Her commit'ten önce: `CGO_ENABLED=1 go build ./... && go vet ./... && go test ./... -race -count=1` (tüm paketler yeşil, her seferinde) ve dokunulan Flutter dosyaları için `flutter analyze`/`flutter test` (92 → 95 test, sadece 4 önceden var olan info-seviye uyarı). `main.go` değişen commit'lerde ayrıca `GOOS=windows go vet .` ile cross-derleme kontrolü yapıldı.
+
+Yeni testlerin çoğu, düzeltmeden ÖNCEKİ koda karşı gerçekten fail ettiği doğrulanarak (git stash / geçici revert ile) teyit edildi — sadece "yeşil test yazdım" değil, "bu test gerçekten bu bug'ı yakalıyor" kanıtlandı.
+
+## Sıradaki Oturum İçin
+
+1. **Kalan 3 HIGH** — en yüksek kaldıraçlı: chat-switch race'i (backend `internal/app/chat.go` + frontend `chat_provider.dart`, ikisi birlikte ele alınmalı, muhtemelen AGENTS.md'nin "Chat-ID refactor" planıyla birleştirilmeli — `docs/plans/PLAN_chatid_refactor.md`), Windows auto-shutdown (gerçek bir Windows makine ya da VM gerektirir, bu ortamda test edilemez).
+2. **5 LOW madde** hiç ele alınmadı — kullanıcı MEDIUM'dan sonra durmayı seçti.
+3. **BUG-L5** (bu oturumda BUG-C1 düzeltmesinin yan etkisi olarak doğdu) — ngrok auto-start + restart kombinasyonunda masaüstü GUI'nin token'ı öğrenemeden 401 alması. Gerçek çözüm loopback/ngrok ayrımı ya da Tailscale'in reverse-proxy desenine geçiş gerektiriyor.
+4. **OpenCode Zen/Go** — sadece backend + masaüstü Settings dialog'una eklendi; mobile app'e hiç dokunulmadı (istenmedi).
+5. Bu oturumda push edilmedi — kullanıcı henüz istemedi, `origin/main`'in kaç commit gerisinde olduğunu bir sonraki oturumda kontrol et.
+
+---
+
 # Handoff — 2026-07-09 (Session 19) — REPL CLI: model indirmeyi kaldırıp GUI'ye yönlendirme + /gui path bug'ı
 
 ## Oturum Özeti

@@ -67,12 +67,16 @@ func (a *App) GetSelfInterestEnabled() bool {
 
 // UpdateWebSearchConfig web arama özelliğini günceller ve config.yaml'a kaydeder.
 func (a *App) UpdateWebSearchConfig(enabled bool) error {
+	a.cfgMu.Lock()
 	a.cfg.WebSearch.Enabled = enabled
+	a.cfgMu.Unlock()
 	return config.Save(a.cfg)
 }
 
 // GetWebSearchEnabled web arama özelliğinin durumunu döner.
 func (a *App) GetWebSearchEnabled() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return a.cfg.WebSearch.Enabled
 }
 

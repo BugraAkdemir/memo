@@ -41,7 +41,7 @@ func isLLMErrorReply(reply string) bool {
 }
 
 func (a *App) saveMemoryAsync(userMsg, reply string) {
-	if reply == "" || isLLMErrorReply(reply) || !a.cfg.Memory.MemoryEnabled {
+	if reply == "" || isLLMErrorReply(reply) || !a.GetMemoryEnabled() {
 		return
 	}
 	select {
@@ -59,7 +59,7 @@ func (a *App) memorySaveWorker() {
 }
 
 func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
-	if !a.cfg.Memory.MemoryEnabled {
+	if !a.GetMemoryEnabled() {
 		return
 	}
 	start := time.Now()
@@ -245,6 +245,8 @@ func (a *App) UpdateMemorySettings(topK int, minSimilarity float32) error {
 
 // GetMemoryEnabled reports whether memory is enabled.
 func (a *App) GetMemoryEnabled() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return a.cfg.Memory.MemoryEnabled
 }
 
@@ -281,10 +283,12 @@ func (a *App) mergeMemoriesLLM(ctx context.Context, content1, content2 string) (
 // already running and the model repo/file are configured, the download-and-
 // start sequence runs immediately in the background.
 func (a *App) SetMemoryEnabled(enabled bool) error {
+	a.cfgMu.Lock()
 	a.cfg.Memory.MemoryEnabled = enabled
 	if enabled {
 		a.cfg.Memory.EmbeddingAutoStart = true
 	}
+	a.cfgMu.Unlock()
 	if err := config.Save(a.cfg); err != nil {
 		return err
 	}

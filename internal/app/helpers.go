@@ -79,7 +79,7 @@ func (a *App) buildMemoryQuery(userMsg string) string {
 
 func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
 	var memories []memory.MemoryResult
-	if a.cfg.Memory.MemoryEnabled {
+	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
 	// Memory formatting is independent of mood — the mood engine must have ZERO
@@ -99,7 +99,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		// Web search is now an explicit on/off mode (toggle in the UI). When on,
 		// every message is enriched with fresh web results — no fragile, language-
 		// specific keyword detection. When off, it never runs.
-		if a.cfg.WebSearch.Enabled {
+		if a.GetWebSearchEnabled() {
 			if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
 				systemPrompt += websearch.FormatForContext(userMsg, results)
 			} else {

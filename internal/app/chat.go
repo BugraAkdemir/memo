@@ -119,7 +119,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 	// When web-search mode is on, surface a "searching the web" status before
 	// the (blocking) search runs inside buildMessages, then splice the real
 	// LLM stream behind it. The frontend shows this like the "thinking" line.
-	if a.cfg.WebSearch.Enabled {
+	if a.GetWebSearchEnabled() {
 		out := make(chan api.StreamChunk, 128)
 		go func() {
 			defer close(out)
@@ -420,7 +420,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	}
 
 	var memories []memory.MemoryResult
-	if a.cfg.Memory.MemoryEnabled {
+	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(context.Background(), userMsg)
 	}
 	systemPrompt := a.identity.BuildSystemPrompt(memories, false)

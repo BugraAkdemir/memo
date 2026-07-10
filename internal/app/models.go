@@ -53,7 +53,7 @@ func (a *App) DownloadModel(repoID, filename string, expectedSize int64) error {
 // even if the just-downloaded file wasn't an embedding model —
 // autoStartEmbeddingModel re-scans all local models itself.
 func (a *App) autoStartEmbeddingAfterDownload(repoID, filename string) {
-	if !a.cfg.Memory.MemoryEnabled {
+	if !a.GetMemoryEnabled() {
 		return
 	}
 	for range 600 { // up to 5 minutes — large GGUF files take a while
@@ -93,7 +93,7 @@ func (a *App) ImportLocalModel(sourcePath string) error {
 	if err := a.modelStore.ImportLocalModel(sourcePath); err != nil {
 		return err
 	}
-	if a.cfg.Memory.MemoryEnabled && (a.llamaEmbedServer == nil || !a.llamaEmbedServer.IsRunning()) {
+	if a.GetMemoryEnabled() && (a.llamaEmbedServer == nil || !a.llamaEmbedServer.IsRunning()) {
 		go a.autoStartEmbeddingModel()
 	}
 	return nil

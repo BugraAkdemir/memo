@@ -39,9 +39,9 @@ func (a *App) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) er
 	a.clientMu.Unlock()
 	logx.Printf("API client redirected to local llama-server: %s", newBaseURL)
 
-	if a.cfg.Memory.MemoryEnabled && !a.llamaEmbedServer.IsRunning() {
+	if memEnabled := a.GetMemoryEnabled(); memEnabled && !a.llamaEmbedServer.IsRunning() {
 		a.autoStartEmbeddingModel()
-	} else if !a.cfg.Memory.MemoryEnabled {
+	} else if !memEnabled {
 		logx.Info("Memory disabled — skipping embedding model auto-start")
 	}
 

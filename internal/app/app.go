@@ -425,7 +425,7 @@ func (a *App) Startup(ctx context.Context) {
 	// get an embedding server, silently breaking RAG/memory retrieval.
 	// Backgrounded since WaitReady can take a while and must not delay the
 	// rest of Startup.
-	if a.cfg.Memory.MemoryEnabled {
+	if a.GetMemoryEnabled() {
 		go func() {
 			if !a.llamaEmbedServer.IsRunning() {
 				a.autoStartEmbeddingModel()

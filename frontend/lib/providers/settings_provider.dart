@@ -319,20 +319,35 @@ final memoryEnabledProvider =
     );
 
 class MemoryEnabledNotifier extends AsyncNotifier<bool> {
+  // Guards against a fast double-tap: toggle() used to read `state` (stale
+  // until its own await finished) to compute the next value, so two calls
+  // fired before the first one resolved both negated the same starting
+  // value and landed on the *same* end state instead of toggling twice —
+  // e.g. off→on, off→on again (net: on) instead of the intended net no-op.
+  bool _toggling = false;
+
   @override
   Future<bool> build() async {
     return ref.read(apiClientProvider).getMemoryEnabled();
   }
 
   Future<void> toggle() async {
+    if (_toggling) return;
+    _toggling = true;
     final current = state.valueOrNull ?? true;
     final next = !current;
+    // Optimistic update: applied before the network call, not after, so a
+    // second toggle() (once _toggling allows it again) always negates the
+    // value this call is actually settling on, not a stale one.
+    state = AsyncData(next);
     try {
       await ref.read(apiClientProvider).setMemoryEnabled(next);
-      state = AsyncData(next);
     } catch (e) {
+      state = AsyncData(current);
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Hafıza durumu değiştirilemedi ($e)';
+    } finally {
+      _toggling = false;
     }
   }
 }
@@ -349,20 +364,28 @@ final minimalModeProvider =
     );
 
 class MinimalModeNotifier extends AsyncNotifier<bool> {
+  // See MemoryEnabledNotifier._toggling above — same fast-double-tap race.
+  bool _toggling = false;
+
   @override
   Future<bool> build() async {
     return ref.read(apiClientProvider).getMinimalMode();
   }
 
   Future<void> toggle() async {
+    if (_toggling) return;
+    _toggling = true;
     final current = state.valueOrNull ?? false;
     final next = !current;
+    state = AsyncData(next);
     try {
       await ref.read(apiClientProvider).setMinimalMode(next);
-      state = AsyncData(next);
     } catch (e) {
+      state = AsyncData(current);
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Minimal mod değiştirilemedi ($e)';
+    } finally {
+      _toggling = false;
     }
   }
 }

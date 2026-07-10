@@ -1,10 +1,12 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-10 (Session 19)
+> **Son güncelleme:** 2026-07-11 (Session 20)
 > **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan maddeler kaldı.
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
+>
+> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5.
 
 ---
 
@@ -12,86 +14,49 @@
 
 | Severity | Açık |
 |----------|------|
-| 🔴 CRITICAL | 2 |
-| 🟠 HIGH | 7 |
+| 🔴 CRITICAL | 0 |
+| 🟠 HIGH | 6 |
 | 🟡 MEDIUM | 9 |
-| 🟢 LOW | 4 |
-| **TOPLAM** | **22** |
-
----
-
-## 🔴 CRITICAL — Stable'ı Doğrudan Bloklayan
-
-### BUG-C1: Uzak erişim (ngrok/LAN) açıkken hiçbir API endpoint'i kimlik doğrulaması istemiyor
-
-**[Doğrulandı — middleware zinciri kod okunarak teyit edildi]**
-
-- **Dosya:** `internal/webserver/server.go:262`
-- **Nedir:** Middleware zinciri `limitBodyMiddleware(rateLimitMiddleware(stopCleaner, corsMiddleware(mux)))` — sadece body-boyutu limiti, rate limit ve CORS. Hiçbir yerde token/şifre kontrolü yok. `internal/app/remote.go:97-98` bir `RemoteAccess.Token` üretip `GET /api/remote-access` ile arayüze döndürüyor (`handlers_flutter.go:596-597`), ama `internal/webserver/*.go` içinde bu token'ın **hiçbir handler'da hiç karşılaştırılmadığı** doğrulandı — tamamen kozmetik.
-- **Kullanıcı etkisi:** `SetRemoteAccess` bind adresini `0.0.0.0`'a çevirdiğinde ya da ngrok açıldığında (`remote.go:128-132`), ngrok linkine ya da LAN'a erişimi olan **herkes** hiçbir kimlik bilgisi girmeden: `POST /api/wipe` ile tüm veriyi silebilir, `POST /api/agent/permission` ile bir agent aracına kalıcı izin verip `run_command` üzerinden host'ta rastgele shell komutu çalıştırabilir, `POST /api/import` ile keyfi veri enjekte edebilir, `POST /api/shutdown`/`/api/uninstall`/`/api/cli/remove` çağırabilir.
-- **Düzeltme:** Üretilen `RemoteAccess.Token`'ı gerçekten kullanan bir auth middleware eklenmeli — örn. `Authorization: Bearer <token>` header kontrolü, sadece `remoteAccessEnabled` iken zorunlu (localhost-only modda mevcut davranış bozulmamalı).
-
-### BUG-C2: Agent'ın `rm -rf /` güvenlik filtresi, tam olarak engellemesi gereken komutu engellemiyor
-
-**[Doğrulandı — gerçek Go regex testiyle]**
-
-- **Dosya:** `internal/agent/tools/command.go:27`
-- **Nedir:** Kara liste regex'i `\brm\s+-rf\s+/\b`. `\b` kelime sınırı, `/`'den sonra bir kelime karakteri gelmesini gerektiriyor — boşluk, `;`, `*` ya da satır sonu geldiğinde sınır oluşmuyor. Gerçek Go `regexp` ile test edildi:
-  ```
-  "rm -rf /"              -> match=false
-  "rm -rf /*"             -> match=false
-  "sudo rm -rf /"         -> match=false
-  "rm -rf /; echo done"   -> match=false
-  "rm -rf /home/user/foo" -> match=true   (bu aslında göreceli güvenli bir yol)
-  ```
-  Filtre, engellemesi gereken **tam olarak `rm -rf /`'nin kendisini** hiç yakalamıyor. `\brm\s+-rf\s+~\b` ve `\brm\s+-rf\s+\.\b` desenleri de aynı hatadan muzdarip.
-- **Geçmiş:** Bu, genel bir uyarı olarak zaten biliniyordu (agent tool onayı gerektirdiği için "tasarım gereği" düşük öncelikli sayılmıştı, blacklist'in "encoding tricks ile atlatılabileceği" not düşülmüştü) — ama bu oturumda somut, kanıtlanmış, tam bir bypass olduğu doğrulandı; ciddiyeti buna göre yükseltildi.
-- **Kullanıcı etkisi:** Agent modunda bir prompt injection ya da modelin kendi halüsinasyonu `run_command` üzerinden tam olarak `rm -rf /` (ya da sonuna `*`/`;` eklenmiş hali) çalıştırırsa, "güvenlik için kara listede" hatası **hiç tetiklenmiyor** — komut gerçek kullanıcı olarak, hiçbir OS-seviyesi sandbox olmadan direkt çalışıyor.
-- **Düzeltme:** `\b` yerine daha sağlam bir desen (örn. `(^|[\s;&|])rm\s+-rf\s+/($|[\s;&|*])`) ya da tamamen whitelist yaklaşımına geçiş.
+| 🟢 LOW | 5 |
+| **TOPLAM** | **20** |
 
 ---
 
 ## 🟠 HIGH
 
-### BUG-H1: Sağlayıcı API anahtarları ve uzak-erişim tokenleri, kimlik doğrulaması olmadan düz GET ile okunabiliyor
-
-- **Dosya:** `internal/webserver/handlers_flutter.go:1057-1065` (`GET /api/providers`), `internal/app/remote.go` (`GET /api/remote-access`)
-- **Nedir:** `GET /api/providers`, tüm sağlayıcı yapılandırmasını döndürüyor — kodun kendi yorumu "API keys in plaintext" diyor (`internal/provider/config.go:151`). C1'deki auth eksikliğiyle birleşince tamamen açık.
-- **Kullanıcı etkisi:** ngrok/LAN erişimi olan biri tek bir GET isteğiyle tüm bağlı OpenAI/Claude/Gemini/vb. hesaplarının API anahtarlarını ve ngrok token'ını ele geçirir.
-
-### BUG-H2: Hassas SQLite dosyaları dünyaya-okunabilir (0644) — config.yaml/providers.json gibi 0600'e sertleştirilmemiş
+### BUG-H1: Hassas SQLite dosyaları dünyaya-okunabilir (0644) — config.yaml/providers.json gibi 0600'e sertleştirilmemiş
 
 - **Dosya:** `internal/memory/store.go`, `internal/mood/store.go`, `internal/observer/store.go`, `internal/calendar/store.go`, `internal/whatsapp/store.go`
 - **Nedir:** Hiçbiri `sql.Open`/`sqlstore.New` sonrası `os.Chmod` çağırmıyor, dosyalar process umask'ına düşüyor. Diskte doğrulandı: `data/memory/memory.db`, `data/mood/mood.db`, `data/profile/observations.db`, `data/calendar/events.db`, `data/whatsapp/session.db` ve `messages.db` hepsi `-rw-r--r--`.
 - **Kullanıcı etkisi:** Paylaşılan bir makinede başka bir yerel kullanıcı hesabı tüm sohbet hafızasını okuyabilir; `whatsapp/session.db` özellikle whatsmeow'un Signal/Noise oturum anahtarlarını tutuyor — WhatsApp oturumu tamamen ele geçirilebilir.
 - **Düzeltme:** Diğer hassas dosyalarla aynı desen — açtıktan sonra `os.Chmod(path, 0600)`.
 
-### BUG-H3: Agent dosya sandbox'ı, listelenmemiş bir mount noktasındaki mutlak yollarla aşılabiliyor
+### BUG-H2: Agent dosya sandbox'ı, listelenmemiş bir mount noktasındaki mutlak yollarla aşılabiliyor
 
 - **Dosya:** `internal/agent/sandbox.go:143-149`
 - **Nedir:** `ValidatePath`, proje dizini (`BasePath`) dışındaki bir mutlak yolu, sadece elle yazılmış kısa bir `protectedPaths` listesinde (`/etc/`, `/usr/`, `/boot/`, `/dev/`, `/sys/`, `/proc/`, `/var/`, `/home/`, `/root/`, `/tmp/`, `/run/`, `/opt/`, `/mnt/`, `/media/`) değilse doğrudan izin veriyor.
 - **Kullanıcı etkisi:** `/srv/`, ikinci bir disk, ya da listede olmayan herhangi bir mount noktası — agent'ın "proje dizini dışına çıkmaması" gereken sandbox'ı fiilen çalışmıyor.
 
-### BUG-H4: Streaming/agent goroutine'lerinde hiçbir panic recovery yok — tek bir panic tüm backend'i çökertir
+### BUG-H3: Streaming/agent goroutine'lerinde hiçbir panic recovery yok — tek bir panic tüm backend'i çökertir
 
 - **Dosya:** `internal/app/llm.go` (satır 123, 210, 511, 621, 732'deki `go func(){...}` bloklar), `internal/agent/pipeline.go:93` (`RunStream`)
 - **Nedir:** Tüm repo'da `recover()` sadece `internal/taskloop/engine.go:104-111`'de var (kendi yorumunda "bir panic tüm uygulamayı çökertmemeli" diyor) — bu desen en çok kullanılan streaming/tool-execution yoluna hiç uygulanmamış. Go, kurtarılmamış bir panic'te hangi goroutine'de olursa olsun tüm process'i öldürür.
 - **Kullanıcı etkisi:** Bir tool handler'da ya da provider yanıtı parse ederken tek bir nil-pointer/type-assertion/index-out-of-range hatası, o an aktif olan **herkesi** (tüm sohbetler, WhatsApp köprüsü, takvim hatırlatıcıları) aynı anda düşürür.
 - **Düzeltme:** `taskloop/engine.go`'daki `recover()` deseni bu goroutine'lere de uygulanmalı — muhtemelen en yüksek kaldıraçlı tek düzeltme.
 
-### BUG-H5: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
+### BUG-H4: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
 
 - **Dosya:** `internal/app/chat.go:210-217` (`sendMessageStreamInner`)
 - **Nedir:** `buildMessages` o an aktif sohbetin geçmişini okuyor, ama kullanıcı mesajı ve yanıt daha sonra, `sm.GetActiveID()`/`sm.AddMessage()` çağrıldığı **o andaki** aktif sohbete yazılıyor. `/api/chats/switch` (`server.go:450`) `SwitchChat`'i doğrudan çağırıyor, `streamMu` ile hiç senkronize değil.
 - **Kullanıcı etkisi:** Web arama/hafıza sorgusu sürerken kullanıcı başka bir sohbete geçerse, eski sohbetin bağlamıyla üretilen cevap yanlışlıkla yeni aktif sohbete eklenir.
 
-### BUG-H6: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
+### BUG-H5: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
 
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:87-108, 173-471`
 - **Nedir:** `ActiveChatIdNotifier.switchTo`, `messagesProvider.notifier.stopStreaming()` çağırıp `ref.invalidate(messagesProvider)` ile notifier'ı dispose ediyor — ama stream döngüsündeki, post-stream finalize bloğundaki ve catch bloğundaki hiçbir `state = ...` yazımı "dispose edildi mi" kontrolü yapmıyor (sadece gecikmeli liste-yenileme timer'ı kontrol ediyor).
-- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H5'in frontend karşılığı.
+- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H4'ün frontend karşılığı.
 
-### BUG-H7: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
+### BUG-H6: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
 
 - **Dosya:** `internal/app/clients.go:136-142` (`selfShutdownSignal`)
 - **Nedir:** `p.Signal(os.Interrupt)` ile kendine sinyal gönderme, Go'nun Windows implementasyonunda desteklenmiyor (`Process.Signal` sadece `Kill`'i destekliyor, diğerleri `EWINDOWS` hatasıyla dönüyor) — hata sessizce yutuluyor.
@@ -180,6 +145,13 @@
 - **Nedir:** `AGENTS.md`'nin "Data Races" olarak listelediği bu iki madde aslında **veri yarışı değil** — `clientMu`/`providerMu` hem okuma hem yazma tarafında düzgün kilitleniyor, doğrulandı. Gerçek kalan risk daha dar: bir stream başlarken `a.client`'i kilit altında local bir değişkene kopyalıyor (`streamClient := a.client`), ama stream saniyelerce sürebiliyor — bu sırada kullanıcı modeli değiştirirse (`StopLocalModel`/`StartLocalModel`), o an akan stream hâlâ **eski, artık durdurulmuş** client'ı kullanmaya devam ediyor.
 - **Kullanıcı etkisi:** Model swap tam bir mesaj akarken yapılırsa, o mesaj muhtemelen "connection refused" ile başarısız olur — veri bozulması ya da çökme değil, ama şaşırtıcı bir hata.
 - **Not:** `AGENTS.md`'deki orijinal not düzeltilmeli — mevcut "data race" ifadesi yanlış, kod zaten kilitli.
+
+### BUG-L5: ngrok otomatik-başlatma, restart sonrası masaüstü Flutter GUI'sini token olmadan bırakabiliyor
+
+- **Dosya:** `internal/app/app.go:356-369` (Startup — ngrok auto-start), `frontend/lib/core/api_client.dart` (yeni `_applyRemoteToken`)
+- **Nedir:** BUG-C1'in düzeltmesiyle (`f5a579e`) gelen bilinen, dar kapsamlı bir yan etki. Masaüstü Flutter istemcisi token'ı yalnızca `getRemoteAccess()`/`setRemoteAccess()` yanıtlarından, o anki oturumda öğreniyor (bellekte tutuluyor, her yeniden başlatmada sıfırlanıyor). Ama `cfg.RemoteAccess.NgrokAutoStart` açıksa, backend `Startup()` sırasında sunucuyu **doğrudan** `0.0.0.0`'a bağlıyor — Flutter GUI henüz hiçbir istek atmadan, token'ı öğrenme fırsatı bulamadan. Bu durumda GUI'nin restart sonrası ilk isteği (örn. `/api/status`) 401 ile reddedilir.
+- **Kullanıcı etkisi:** ngrok otomatik-başlatma açık olan bir kullanıcı, uygulamayı her yeniden başlattığında masaüstü GUI'nin "backend'e bağlanılamıyor" göstermesiyle karşılaşabilir — Ayarlar'dan Uzak Erişim'i kapatıp tekrar açmak (yeni bir `setRemoteAccess` çağrısı, token'ı taze bir şekilde yakalar) geçici çözüm.
+- **Neden şimdi düzeltilmedi:** Gerçek çözüm ya ngrok'un ilettiği trafiği loopback'ten ayırt edecek güvenilir bir sinyal gerektiriyor (ngrok'un local agent'ı zaten `127.0.0.1:port`'a bağlanıyor — kaynak IP'ye güvenmek BUG-C1'i yeniden açar), ya da Tailscale tünelinin zaten kullandığı desene geçiş (`internal/tunnel/tailscale.go` — ana sunucu hep loopback'te kalır, önüne ayrı bir reverse-proxy dinleyici konur). İkisi de canlı bir ngrok/telefon testi gerektiren, bu oturumun kapsamının dışında bir mimari değişiklik.
 
 ---
 

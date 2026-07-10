@@ -2,7 +2,9 @@
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
 > **Son güncelleme:** 2026-07-10 (Session 19)
-> **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan 22 madde kaldı.
+> **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan maddeler kaldı.
+>
+> **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
 
 ---
 
@@ -12,8 +14,8 @@
 |----------|------|
 | 🔴 CRITICAL | 2 |
 | 🟠 HIGH | 7 |
-| 🟡 MEDIUM | 10 |
-| 🟢 LOW | 3 |
+| 🟡 MEDIUM | 9 |
+| 🟢 LOW | 4 |
 | **TOPLAM** | **22** |
 
 ---
@@ -100,57 +102,52 @@
 
 ## 🟡 MEDIUM
 
-### BUG-M1: `model_store_screen.dart` — 2500+ satır tek dosya
+### BUG-M1: `model_store_screen.dart` — 2600+ satır tek dosya
 
-- **Dosya:** `frontend/lib/screens/model_store_screen.dart`
+- **Dosya:** `frontend/lib/screens/model_store_screen.dart` (doğrulandı: 2612 satır)
 - **Kullanıcı etkisi:** Doğrudan bug değil ama bakım yapılamaz hale geliyor, değişikliklerde kırılma riski yüksek.
 
-### BUG-M2: Mobile API client eksik
+### BUG-M2: `connectionStatusProvider` sonsuz polling
 
-- **Dosya:** `mobile/lib/core/api_client.dart`
-- **Kullanıcı etkisi:** Mobil uygulamada birçok backend endpoint'i kullanılamıyor.
-
-### BUG-M3: `connectionStatusProvider` sonsuz polling
-
-- **Dosya:** `frontend/lib/providers/chat_provider.dart:677-690`
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:671`
 - **Kullanıcı etkisi:** 30 saniyede bir `isAlive()` sorgusu, provider dispose olsa bile devam eder. Küçük bir performans sızıntısı — AGENTS.md'de "kabul edilebilir" diye not düşülmüş ama teknik olarak hâlâ açık.
 
-### BUG-M4: Web arama / hafıza açık-kapalı ayarları kilitsiz okunup yazılıyor
+### BUG-M3: Web arama / hafıza açık-kapalı ayarları kilitsiz okunup yazılıyor
 
 - **Dosya:** `internal/app/settings.go:70` (`a.cfg.WebSearch.Enabled`), `internal/app/memory.go:284` (`a.cfg.Memory.MemoryEnabled`)
 - **Nedir:** İkisi de hiçbir kilit olmadan yazılıyor; `internal/app/helpers.go:82,102` ve `chat.go` aynı alanları yine kilitsiz okuyor. Stream sırasında ayar değiştirilirse `-race` altında yakalanan gerçek bir race.
 
-### BUG-M5: Minimal Mod, iki farklı yerden asenkron okunuyor
+### BUG-M4: Minimal Mod, iki farklı yerden asenkron okunuyor
 
 - **Dosya:** `internal/identity/identity.go` (`id.MinimalMode`), `internal/app/helpers.go:87-91` (`cfg.Identity.MinimalMode`)
 - **Nedir:** Aynı anlama gelen iki alan, `buildMessages` içinde farklı zamanlarda okunuyor; `SetMinimalMode` ikisini de kilitsiz, atomik olmayan şekilde yazıyor.
 - **Kullanıcı etkisi:** Minimal Mod toggle'ı ile aynı anda gelen bir mesaj, yarı-uygulanmış bir sistem promptu üretebilir.
 
-### BUG-M6: Hafıza birleştirme (consolidation), embedding hatası olursa sessizce vektör aramadan düşüyor
+### BUG-M5: Hafıza birleştirme (consolidation), embedding hatası olursa sessizce vektör aramadan düşüyor
 
 - **Dosya:** `internal/memory/store.go:1607` (`saveMerged`)
 - **Nedir:** Embedding hatası olursa birleşmiş anı yine kaydediliyor ama embedding'siz, hiçbir log satırı olmadan.
 - **Kullanıcı etkisi:** Consolidation sonrası bazı anılar vector search'te bir daha asla bulunamıyor, kimse fark etmiyor.
 
-### BUG-M7: İzin diyaloğu, gönderme başarısız olsa bile başarılıymış gibi kapanıyor
+### BUG-M6: İzin diyaloğu, gönderme başarısız olsa bile başarılıymış gibi kapanıyor
 
 - **Dosya:** `frontend/lib/widgets/agent/permission_dialog.dart:50-58` (`_submit`)
 - **Nedir:** `handleAgentPermission(...)` `unawaited(...)` ile, hiçbir try/catch olmadan ateşleniyor, ardından `Navigator.pop` koşulsuz çağrılıyor.
 - **Kullanıcı etkisi:** POST başarısız olursa kullanıcı hiçbir hata görmüyor, backend'deki tool call kendi timeout'una kadar askıda kalıyor.
 
-### BUG-M8: Hafıza/Minimal Mod anahtarına hızlı çift-tıklama, kullanıcının istediğinin tersi bir sonuç verebiliyor
+### BUG-M7: Hafıza/Minimal Mod anahtarına hızlı çift-tıklama, kullanıcının istediğinin tersi bir sonuç verebiliyor
 
 - **Dosya:** `frontend/lib/providers/settings_provider.dart:327-337, 357-367`
 - **Nedir:** `MemoryEnabledNotifier.toggle`/`MinimalModeNotifier.toggle` ikisi de bayat state okuyup `await` bitene kadar güncellemiyor; `Switch` widget'ları bu süre boyunca kendini disable etmiyor.
 - **Kullanıcı etkisi:** Hızlı çift-tık, anahtarın iki tıklamanın üretmesi gereken durumun tersinde kilitli kalmasına yol açabiliyor.
 
-### BUG-M9: Ayrılmış (detached) backend süreci, CLI hâlâ açıkken zombi kalabiliyor
+### BUG-M8: Ayrılmış (detached) backend süreci, CLI hâlâ açıkken zombi kalabiliyor
 
 - **Dosya:** `main.go:203` (`spawnDetachedBackend`)
 - **Nedir:** `cmd.Process.Release()` kullanılıyor, `Wait()` değil. `Setsid`'e rağmen backend hâlâ CLI'ın OS-seviyesi çocuğu (double-fork yok).
 - **Kullanıcı etkisi:** Backend kendi kendine ya da `/api/shutdown` ile kapanırsa ve CLI hâlâ açıksa, süreç CLI kapanana kadar reap edilmemiş (zombi) kalıyor.
 
-### BUG-M10: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
+### BUG-M9: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
 
 - **Dosya:** `main.go` (sinyal dalı), `internal/replcli/repl.go:77-85`
 - **Nedir:** `main()` `replDone` goroutine'ini beklemeden dönüyor, `Run()`'ın deferred `UnregisterClient` çağrısı hiç çalışmıyor.
@@ -176,6 +173,13 @@
 - **Dosya:** `internal/app/clients.go:94-129` (`UnregisterClient`, `sweepStaleClients`)
 - **Nedir:** `shouldShutdown` kararı anlık registry durumuna bakıyor ve `selfShutdownSignal` çağrısı ile bu karar arasında dar bir zaman penceresi var.
 - **Kullanıcı etkisi:** Nadir bir zamanlamada, tam o sırada `/gui` ile bağlanan yeni bir client, kapanmak üzere olan bir backend'e kaydolup hemen ardından o backend'in kapanmasıyla karşılaşabilir.
+
+### BUG-L4: Model/sağlayıcı değişimi tam stream ortasına denk gelirse, o stream durdurulmuş/değiştirilmiş bir client ile konuşmaya devam ediyor
+
+- **Dosya:** `internal/app/llm.go:714-716,965-967` (`a.client` okuması), `internal/app/providers.go` (`a.providerRouter` okuması)
+- **Nedir:** `AGENTS.md`'nin "Data Races" olarak listelediği bu iki madde aslında **veri yarışı değil** — `clientMu`/`providerMu` hem okuma hem yazma tarafında düzgün kilitleniyor, doğrulandı. Gerçek kalan risk daha dar: bir stream başlarken `a.client`'i kilit altında local bir değişkene kopyalıyor (`streamClient := a.client`), ama stream saniyelerce sürebiliyor — bu sırada kullanıcı modeli değiştirirse (`StopLocalModel`/`StartLocalModel`), o an akan stream hâlâ **eski, artık durdurulmuş** client'ı kullanmaya devam ediyor.
+- **Kullanıcı etkisi:** Model swap tam bir mesaj akarken yapılırsa, o mesaj muhtemelen "connection refused" ile başarısız olur — veri bozulması ya da çökme değil, ama şaşırtıcı bir hata.
+- **Not:** `AGENTS.md`'deki orijinal not düzeltilmeli — mevcut "data race" ifadesi yanlış, kod zaten kilitli.
 
 ---
 

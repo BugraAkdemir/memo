@@ -142,11 +142,10 @@ the versioned→generic artifact rename for `download.bugradev.com`, and the
 ## Known Pitfalls & Technical Debt
 
 ### Data Races
-- `a.client` reassigned in `StartLocalModel` / `StopLocalModel` — `clientMu` exists but concurrency risk on streaming requests during model swap.
-- `providerRouter` reassignment during active streams — same pattern as above.
+- ~~`a.client`/`providerRouter` reassignment during active streams — data race~~ → verified 2026-07-10: not actually a race, both reads (`internal/app/llm.go:714-716,965-967`) and writes (`internal/app/llama.go`, `providers.go`) are correctly `clientMu`/`providerMu`-locked. The real, narrower risk that survives: a stream copies the client into a local var under lock at request start, then holds it for the stream's whole duration — if the model/provider is swapped mid-stream, that in-flight request keeps talking to the now-stopped/replaced client instead of the new one (fails with a connection error, doesn't corrupt anything). See BUG-L4 in `BUG_REPORT.md`.
 
 ### Memory / Vector Store
-- Full rebuild on every startup (`LoadCache` is O(N), no incremental index).
+- ~~Full rebuild on every startup (`LoadCache` is O(N), no incremental index)~~ → stale note: `LoadCache` doesn't exist in the current codebase (`internal/memory/store.go`'s `NewStore`/`initSchema` don't do a startup full-scan — this refers to an older architecture, before the hybrid vector+FTS rework). Removed as a claim; re-audit from scratch if startup performance on a large memory store is ever reported as an issue.
 - Embedding model must be started separately (config-driven auto-start on model load).
 
 ### Security
@@ -204,7 +203,7 @@ The default system prompt (`buildIdentityBlock`) was translated from Turkish to 
 - 2026-07-04: `frontend/pubspec.yaml` had accumulated reactive `dependency_overrides` (`jni: 0.13.0`, `path_provider_android: 2.3.1`, `jni_flutter: 1.0.1`) added to work around what was actually a **corrupted pub-cache** (`jni-1.0.0` and `path_provider_windows-2.3.0` had 0-byte/partial downloads), not a real version conflict. Removed the overrides and re-fetched the packages; Linux build is clean again. Worth remembering if a similarly "unexplained" plugin build failure shows up again — check the pub-cache contents before reaching for a version pin.
 
 ### Flutter / Mobile
-- Mobile API client (`mobile/lib/core/api_client.dart`) missing most backend endpoints.
+- ~~Mobile API client (`mobile/lib/core/api_client.dart`) missing most backend endpoints~~ → stale: verified 2026-07-10, it covers 111 of the backend's 118 registered routes. The 7 missing are either brand-new (today's client-registry/minimal-mode endpoints, which mobile has no use for — no CLI/detached-backend concept there) or CLI-install-management endpoints (`/api/cli/*`, `/api/uninstall`) that don't apply to a mobile app either. Not a real gap anymore.
 
 ### WhatsApp
 - ~~QR code polling never stops~~ → adaptive: 2s during QR wait, 15s heartbeat when connected.

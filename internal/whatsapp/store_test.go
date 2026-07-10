@@ -34,6 +34,28 @@ func TestNewStore(t *testing.T) {
 	}
 }
 
+// TestNewStoreHardensFilePermissions guards BUG-H1: sqlite3 creates the
+// file itself with no Go-level perm parameter, landing at whatever the
+// process umask allows (typically 0644, world-readable) — NewStore must
+// chmod it to 0600.
+func TestNewStoreHardensFilePermissions(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "perm_test.db")
+	s, err := NewStore(path)
+	if err != nil {
+		t.Fatalf("NewStore failed: %v", err)
+	}
+	defer s.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if mode := info.Mode() & os.ModePerm; mode != 0o600 {
+		t.Errorf("mode = %o, want 0600", mode)
+	}
+}
+
 func TestNewStore_InvalidPath(t *testing.T) {
 	_, err := NewStore("/nonexistent/dir/store.db")
 	if err == nil {

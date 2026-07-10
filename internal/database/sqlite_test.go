@@ -39,6 +39,28 @@ func TestOpenCreatesMissingDir(t *testing.T) {
 	}
 }
 
+// TestOpenHardensFilePermissions guards BUG-H1: mattn/go-sqlite3 creates the
+// DB file itself with no way to pass a Go-level perm, so it lands at
+// whatever the process umask allows (typically 0644, world-readable). Open
+// must chmod it to 0600 after creation.
+func TestOpenHardensFilePermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "memo.db")
+
+	db, err := Open(Config{Path: path, MaxPool: 1})
+	if err != nil {
+		t.Fatalf("Open() error = %v", err)
+	}
+	defer db.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if mode := info.Mode() & os.ModePerm; mode != 0o600 {
+		t.Errorf("mode = %o, want 0600", mode)
+	}
+}
+
 func TestVec0Available(t *testing.T) {
 	db, err := Open(Config{
 		Path:    filepath.Join(t.TempDir(), "test.db"),

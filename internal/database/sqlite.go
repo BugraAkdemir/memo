@@ -94,6 +94,17 @@ func Open(cfg Config) (*DB, error) {
 		return nil, fmt.Errorf("database.Open: ping: %w", err)
 	}
 
+	// mattn/go-sqlite3 creates the file itself (no Go-level perm parameter to
+	// pass in, unlike os.WriteFile elsewhere in this codebase), so it lands
+	// at whatever the process umask allows — typically 0644, world-readable.
+	// These databases hold chat history, memory, calendar, and (for
+	// whatsapp/mood, opened separately) session data; harden after the fact.
+	// Ping guarantees the file now exists. Best-effort: a failure here (e.g.
+	// read-only filesystem quirks) shouldn't block the app from starting.
+	if err := os.Chmod(cfg.Path, 0o600); err != nil {
+		logx.Printf("database.Open: chmod %q: %v", cfg.Path, err)
+	}
+
 	db.wg.Add(1)
 	go db.writeLoop()
 

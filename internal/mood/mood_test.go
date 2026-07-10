@@ -3,6 +3,7 @@ package mood
 import (
 	"context"
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -83,6 +84,29 @@ func TestUpdateClamps(t *testing.T) {
 	}
 	if s := e.Score(); s > 10 || s < -10 {
 		t.Errorf("clamp ihlali: score = %v", s)
+	}
+}
+
+// TestOpenStoreHardensFilePermissions guards BUG-H1: sqlite3 creates the
+// file itself with no Go-level perm parameter, landing at whatever the
+// process umask allows (typically 0644, world-readable) — openStore must
+// chmod it to 0600. Uses a path that does not pre-exist (unlike tempEngine's
+// os.CreateTemp helper, which itself creates at 0600 and would mask this).
+func TestOpenStoreHardensFilePermissions(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "mood.db")
+
+	s, err := openStore(path)
+	if err != nil {
+		t.Fatalf("openStore() error = %v", err)
+	}
+	defer s.db.Close()
+
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("Stat() error = %v", err)
+	}
+	if mode := info.Mode() & os.ModePerm; mode != 0o600 {
+		t.Errorf("mode = %o, want 0600", mode)
 	}
 }
 

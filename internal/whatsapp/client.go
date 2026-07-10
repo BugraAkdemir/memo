@@ -72,6 +72,12 @@ func HasRegisteredDevice(ctx context.Context, sessionDB string) bool {
 		return false
 	}
 	defer storeDB.Close()
+	// whatsmeow's sqlstore creates the file itself (Signal/Noise session keys)
+	// at the process umask — harden it, since this probe may be what creates
+	// it on a fresh install.
+	if err := os.Chmod(sessionDB, 0o600); err != nil {
+		logx.Printf("whatsapp: chmod session db %q: %v", sessionDB, err)
+	}
 
 	device, err := storeDB.GetFirstDevice(ctx)
 	if err != nil {
@@ -155,6 +161,11 @@ func (c *Client) Start(ctx context.Context) error {
 		"file:"+c.config.SessionDB+"?_journal_mode=WAL&_busy_timeout=5000&_foreign_keys=on", nil)
 	if err != nil {
 		return fmt.Errorf("whatsapp: session db: %w", err)
+	}
+	// whatsmeow's sqlstore creates the file itself (Signal/Noise session keys)
+	// at the process umask — harden it.
+	if err := os.Chmod(c.config.SessionDB, 0o600); err != nil {
+		logx.Printf("whatsapp: chmod session db %q: %v", c.config.SessionDB, err)
 	}
 
 	deviceStore, err := storeDB.GetFirstDevice(ctx)

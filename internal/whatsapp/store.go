@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"fmt"
 	"memo/internal/logx"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -28,6 +29,11 @@ func NewStore(dbPath string) (*Store, error) {
 	if err := db.Ping(); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("whatsapp store: ping: %w", err)
+	}
+	// sqlite3 creates the file itself at the process umask (typically 0644,
+	// world-readable) — harden it now that Ping guarantees it exists.
+	if err := os.Chmod(dbPath, 0o600); err != nil {
+		logx.Printf("whatsapp store: chmod %q: %v", dbPath, err)
 	}
 
 	s := &Store{db: db}

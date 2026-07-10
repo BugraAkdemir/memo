@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"memo/internal/logx"
 	"os"
 	"path/filepath"
 	"time"
@@ -41,6 +42,12 @@ func openStore(path string) (*Store, error) {
 	if _, err := db.Exec(schema); err != nil {
 		db.Close()
 		return nil, fmt.Errorf("mood.Store: schema: %w", err)
+	}
+	// sqlite3 creates the file itself at the process umask (typically 0644,
+	// world-readable) — harden it now that the schema Exec guarantees it
+	// exists. Best-effort: shouldn't block startup if it fails.
+	if err := os.Chmod(path, 0o600); err != nil {
+		logx.Printf("mood.Store: chmod %q: %v", path, err)
 	}
 	return &Store{db: db}, nil
 }

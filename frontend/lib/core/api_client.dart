@@ -918,6 +918,21 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// List available models for any OpenAI-compatible provider type (generic
+  /// counterpart to [fetchOpenRouterModels] — used by OpenCode Zen/Go so the
+  /// user picks from the API's real model list instead of typing one by hand).
+  Future<Map<String, dynamic>> fetchProviderModels({
+    required String type,
+    required String apiKey,
+    String? baseUrl,
+  }) async {
+    final res = await _dio.post(
+      '/api/providers/models',
+      data: {'type': type, 'api_key': apiKey, 'base_url': baseUrl ?? ''},
+    );
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   /// Get active provider.
   Future<String> getActiveProvider() async {
     final res = await _dio.get('/api/providers/active');

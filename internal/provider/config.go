@@ -375,6 +375,18 @@ func defaultConfigs() []ProviderConfig {
 			Model:   DefaultModels[ProviderOllama],
 			Enabled: false,
 		},
+		{
+			Type:    ProviderOpenCodeZen,
+			Name:    "OpenCode Zen",
+			Model:   DefaultModels[ProviderOpenCodeZen],
+			Enabled: false,
+		},
+		{
+			Type:    ProviderOpenCodeGo,
+			Name:    "OpenCode Go",
+			Model:   DefaultModels[ProviderOpenCodeGo],
+			Enabled: false,
+		},
 	}
 }
 

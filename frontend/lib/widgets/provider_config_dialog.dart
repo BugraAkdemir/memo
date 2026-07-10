@@ -41,6 +41,8 @@ class _ProviderConfigDialogState
     'groq',
     'claude',
     'openrouter',
+    'opencode-zen',
+    'opencode-go',
     'ollama',
     'custom',
   ];
@@ -127,6 +129,16 @@ class _ProviderConfigDialogState
       return;
     }
 
+    final selected = _type == 'openrouter'
+        ? await _browseOpenRouterModels(apiKey)
+        : await _browseGenericModels(apiKey);
+
+    if (selected != null) {
+      _modelCtrl.text = selected;
+    }
+  }
+
+  Future<String?> _browseOpenRouterModels(String apiKey) async {
     final api = ref.read(apiClientProvider);
 
     Map<String, dynamic> result;
@@ -138,7 +150,7 @@ class _ProviderConfigDialogState
           SnackBar(content: Text('Modeller alınamadı: $e')),
         );
       }
-      return;
+      return null;
     }
 
     if (result['status'] != 'ok') {
@@ -147,21 +159,61 @@ class _ProviderConfigDialogState
           SnackBar(content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}')),
         );
       }
-      return;
+      return null;
     }
 
     final rawModels = result['models'];
     final models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
-    if (!mounted) return;
+    if (!mounted) return null;
 
-    final selected = await showDialog<String>(
+    return showDialog<String>(
       context: context,
       builder: (_) => _ModelBrowserDialog(models: models),
     );
+  }
 
-    if (selected != null) {
-      _modelCtrl.text = selected;
+  /// Model browser for providers with a plain OpenAI-compatible /models
+  /// endpoint (no pricing/context metadata) — OpenCode Zen/Go today, and any
+  /// future provider using the same generic backend endpoint.
+  Future<String?> _browseGenericModels(String apiKey) async {
+    final api = ref.read(apiClientProvider);
+
+    Map<String, dynamic> result;
+    try {
+      result = await api.fetchProviderModels(
+        type: _type,
+        apiKey: apiKey,
+        baseUrl: _baseUrlCtrl.text.trim(),
+      );
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Modeller alınamadı: $e')),
+        );
+      }
+      return null;
     }
+
+    if (result['status'] != 'ok') {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}')),
+        );
+      }
+      return null;
+    }
+
+    final rawModels = result['models'];
+    final models = (rawModels is List) ? rawModels.whereType<String>().toList() : <String>[];
+    if (!mounted) return null;
+
+    return showDialog<String>(
+      context: context,
+      builder: (_) => _SimpleModelBrowserDialog(
+        title: '${ProviderDefaults.displayNames[_type] ?? _type} Modelleri',
+        models: models,
+      ),
+    );
   }
 
   Future<void> _testConnection() async {
@@ -466,7 +518,7 @@ class _ProviderConfigDialogState
                         ),
                       ),
                     ),
-                    if (_type == 'openrouter') ...[
+                    if (ProviderDefaults.hasModelBrowser(_type)) ...[
                       const SizedBox(width: 8),
                       Padding(
                         padding: const EdgeInsets.only(bottom: 20),
@@ -785,6 +837,135 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
                 const Spacer(),
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('İptal'),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+// ─── Generic Model Browser Dialog (plain OpenAI-compatible /models) ────
+
+class _SimpleModelBrowserDialog extends StatefulWidget {
+  final String title;
+  final List<String> models;
+  const _SimpleModelBrowserDialog({required this.title, required this.models});
+
+  @override
+  State<_SimpleModelBrowserDialog> createState() => _SimpleModelBrowserDialogState();
+}
+
+class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
+  late List<String> _filtered;
+  final _searchCtrl = TextEditingController();
+
+  @override
+  void initState() {
+    super.initState();
+    _filtered = List.from(widget.models)..sort();
+  }
+
+  @override
+  void dispose() {
+    _searchCtrl.dispose();
+    super.dispose();
+  }
+
+  void _filter(String q) {
+    final query = q.toLowerCase();
+    setState(() {
+      _filtered = (query.isEmpty
+          ? List<String>.from(widget.models)
+          : widget.models.where((m) => m.toLowerCase().contains(query)).toList())
+        ..sort();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Dialog(
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 24),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
+            child: Row(
+              children: [
+                const Icon(Icons.model_training, size: 20),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    widget.title,
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                Text(
+                  '${widget.models.length} model',
+                  style: TextStyle(fontSize: 12, color: Colors.grey[500]),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: TextField(
+              controller: _searchCtrl,
+              decoration: InputDecoration(
+                hintText: 'Model ara...',
+                prefixIcon: const Icon(Icons.search, size: 20),
+                isDense: true,
+                contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              onChanged: _filter,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Flexible(
+            child: _filtered.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Text('Model bulunamadı'),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _filtered.length,
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    itemBuilder: (ctx, i) {
+                      final id = _filtered[i];
+                      return Card(
+                        margin: const EdgeInsets.only(bottom: 4),
+                        child: ListTile(
+                          dense: true,
+                          title: Text(
+                            id,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              fontFamily: 'monospace',
+                            ),
+                          ),
+                          trailing: const Icon(Icons.arrow_forward_ios, size: 14),
+                          onTap: () => Navigator.of(context).pop(id),
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          Container(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 12),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
                   child: const Text('İptal'),

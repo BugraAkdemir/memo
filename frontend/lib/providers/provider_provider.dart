@@ -142,6 +142,10 @@ String providerIcon(String type) {
       return '\u2194'; // ↔
     case 'ollama':
       return '\u25B3'; // △
+    case 'opencode-zen':
+      return '\u26A1'; // ⚡
+    case 'opencode-go':
+      return '\u25B8'; // ▸
     default:
       return '\u2601'; // ☁
   }

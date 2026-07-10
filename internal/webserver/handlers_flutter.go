@@ -1,6 +1,7 @@
 package webserver
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -1163,6 +1164,46 @@ func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
 		"connected": true,
 		"error":     "",
 	})
+}
+
+// handleProviderModels lists the models available for a provider type by
+// calling its ListModels directly — a generic counterpart to the
+// OpenRouter-specific /api/openrouter/models, for providers (OpenCode Zen,
+// OpenCode Go, and any future OpenAI-compatible one) that expose a plain
+// GET /models endpoint but no bespoke pricing/metadata endpoint to browse.
+func (s *Server) handleProviderModels(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type    provider.ProviderType `json:"type"`
+		APIKey  string                `json:"api_key"`
+		BaseURL string                `json:"base_url"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+
+	p, err := provider.NewProvider(provider.ProviderConfig{
+		Type:    req.Type,
+		APIKey:  req.APIKey,
+		BaseURL: req.BaseURL,
+	})
+	if err != nil {
+		writeJSON(w, map[string]interface{}{"status": "error", "error": err.Error()})
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
+	defer cancel()
+	models, err := p.ListModels(ctx)
+	if err != nil {
+		writeJSON(w, map[string]interface{}{"status": "error", "error": err.Error()})
+		return
+	}
+	writeJSON(w, map[string]interface{}{"status": "ok", "models": models})
 }
 
 func (s *Server) handleActiveProvider(w http.ResponseWriter, r *http.Request) {

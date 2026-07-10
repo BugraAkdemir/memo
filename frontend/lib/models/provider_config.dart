@@ -110,6 +110,8 @@ class ProviderDefaults {
     'claude': 'claude-sonnet-4-20250514',
     'openrouter': 'openai/gpt-4o',
     'ollama': 'llama3',
+    'opencode-zen': '',
+    'opencode-go': '',
   };
 
   static const Map<String, String> defaultBaseUrls = {
@@ -120,6 +122,8 @@ class ProviderDefaults {
     'claude': 'https://api.anthropic.com/v1',
     'openrouter': 'https://openrouter.ai/api/v1',
     'ollama': 'http://127.0.0.1:11434/v1',
+    'opencode-zen': 'https://opencode.ai/zen/v1',
+    'opencode-go': 'https://opencode.ai/zen/go/v1',
   };
 
   static const Map<String, String> displayNames = {
@@ -130,6 +134,8 @@ class ProviderDefaults {
     'claude': 'Anthropic Claude',
     'openrouter': 'OpenRouter',
     'ollama': 'Ollama',
+    'opencode-zen': 'OpenCode Zen',
+    'opencode-go': 'OpenCode Go',
     'custom': 'Özel (OpenAI uyumlu)',
   };
 
@@ -142,6 +148,8 @@ class ProviderDefaults {
     'groq': 'https://console.groq.com/keys',
     'claude': 'https://console.anthropic.com/settings/keys',
     'openrouter': 'https://openrouter.ai/keys',
+    'opencode-zen': 'https://opencode.ai/zen',
+    'opencode-go': 'https://opencode.ai/zen',
   };
 
   /// One-line, plain-language hint about each provider shown under the picker.
@@ -153,8 +161,15 @@ class ProviderDefaults {
     'claude': 'Anthropic Claude — uzun bağlam ve kod için güçlü.',
     'openrouter': 'Tek anahtarla yüzlerce modele eriş.',
     'ollama': 'Bilgisayarında yerel model çalıştır — anahtar gerekmez.',
+    'opencode-zen': 'OpenCode\'un kullandığın kadar öde modeli — bazı modeller ücretsiz.',
+    'opencode-go': 'OpenCode\'un abonelik modeli.',
     'custom': 'Herhangi bir OpenAI uyumlu endpoint. Base URL\'i sen girersin.',
   };
+
+  /// Providers whose available models are fetched dynamically from the API
+  /// (via /api/providers/models) instead of the user typing one by hand.
+  static bool hasModelBrowser(String type) =>
+      type == 'openrouter' || type == 'opencode-zen' || type == 'opencode-go';
 
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.

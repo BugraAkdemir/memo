@@ -19,6 +19,12 @@ const (
 	ProviderOpenRouter ProviderType = "openrouter"
 	ProviderOllama     ProviderType = "ollama"
 	ProviderLlamaCPP   ProviderType = "llama.cpp"
+	// ProviderOpenCodeZen is opencode.ai's pay-as-you-go model gateway (some
+	// models are free). ProviderOpenCodeGo is their subscription-based gateway.
+	// Both are OpenAI-compatible endpoints, so models are listed dynamically
+	// via ListModels rather than typed in by hand.
+	ProviderOpenCodeZen ProviderType = "opencode-zen"
+	ProviderOpenCodeGo  ProviderType = "opencode-go"
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"
@@ -193,6 +199,10 @@ func DefaultBaseURL(p ProviderType) string {
 		return "http://127.0.0.1:11434/v1"
 	case ProviderLlamaCPP:
 		return "http://127.0.0.1:8081/v1"
+	case ProviderOpenCodeZen:
+		return "https://opencode.ai/zen/v1"
+	case ProviderOpenCodeGo:
+		return "https://opencode.ai/zen/go/v1"
 	default:
 		return ""
 	}
@@ -211,7 +221,7 @@ var DefaultModels = map[ProviderType]string{
 
 func init() {
 	// Validate that DefaultBaseURL returns a value for all known types
-	for _, pt := range []ProviderType{ProviderOpenAI, ProviderGemini, ProviderGrok, ProviderGroq, ProviderClaude, ProviderOpenRouter, ProviderOllama, ProviderLlamaCPP} {
+	for _, pt := range []ProviderType{ProviderOpenAI, ProviderGemini, ProviderGrok, ProviderGroq, ProviderClaude, ProviderOpenRouter, ProviderOllama, ProviderLlamaCPP, ProviderOpenCodeZen, ProviderOpenCodeGo} {
 		if DefaultBaseURL(pt) == "" {
 			panic(fmt.Sprintf("missing default base URL for %s", pt))
 		}
@@ -237,6 +247,10 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 		return newOllamaProvider(cfg)
 	case ProviderLlamaCPP:
 		return newLlamaCPPProvider(cfg)
+	case ProviderOpenCodeZen:
+		return newOpenCodeZenProvider(cfg)
+	case ProviderOpenCodeGo:
+		return newOpenCodeGoProvider(cfg)
 	default:
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}

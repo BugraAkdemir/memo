@@ -184,6 +184,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Provider management
 	mux.HandleFunc("/api/providers", s.handleProviders)
 	mux.HandleFunc("/api/providers/test", s.handleProviderTest)
+	mux.HandleFunc("/api/providers/models", s.handleProviderModels)
 	mux.HandleFunc("/api/providers/active", s.handleActiveProvider)
 
 	// OpenRouter

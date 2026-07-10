@@ -3,6 +3,7 @@ package replcli
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // LocalModel mirrors the fields of modelstore.LocalModel the REPL needs to
@@ -58,11 +59,26 @@ func (c *Client) EmbeddingStatus(ctx context.Context) (ModelStatus, error) {
 	return status, err
 }
 
+// modelLoadTimeout and embeddingLoadTimeout give the client a few seconds of
+// slack over the backend's own WaitReady budgets (internal/app/llama.go,
+// internal/app/embedding.go) so a load that's genuinely still in progress at
+// the backend's own timeout gets that error back instead of the client
+// giving up first and reporting a false failure for a model that goes on to
+// load successfully in the background.
+const (
+	modelLoadTimeout     = 185 * time.Second
+	embeddingLoadTimeout = 125 * time.Second
+)
+
 // StartModel loads a local chat model. ctxSize=0, port=0 and gpuLayers=-1
 // all mean "use the backend's defaults" (4096 ctx, auto port, auto GPU
-// layers) — see internal/llama.Server.Start.
+// layers) — see internal/llama.Server.Start. Model loading can legitimately
+// take up to 180s server-side, so this uses the no-fixed-timeout client with
+// an explicit deadline matching that budget, not the plain 10s JSON timeout.
 func (c *Client) StartModel(ctx context.Context, path string, ctxSize, port, gpuLayers int) error {
-	return c.doJSON(ctx, http.MethodPost, "/api/models/start", map[string]any{
+	ctx, cancel := context.WithTimeout(ctx, modelLoadTimeout)
+	defer cancel()
+	return c.doJSONWith(ctx, c.longOpHTTP, http.MethodPost, "/api/models/start", map[string]any{
 		"path":       path,
 		"ctx_size":   ctxSize,
 		"port":       port,
@@ -71,8 +87,12 @@ func (c *Client) StartModel(ctx context.Context, path string, ctxSize, port, gpu
 }
 
 // StartEmbedding loads a local embedding model. gpuLayers=-1 means "auto".
+// Same long-timeout reasoning as StartModel — the backend budget here is
+// 120s.
 func (c *Client) StartEmbedding(ctx context.Context, path string, gpuLayers int) error {
-	return c.doJSON(ctx, http.MethodPost, "/api/models/embedding/start", map[string]any{
+	ctx, cancel := context.WithTimeout(ctx, embeddingLoadTimeout)
+	defer cancel()
+	return c.doJSONWith(ctx, c.longOpHTTP, http.MethodPost, "/api/models/embedding/start", map[string]any{
 		"path":       path,
 		"gpu_layers": gpuLayers,
 	}, nil)

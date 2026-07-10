@@ -21,6 +21,7 @@ type Client struct {
 	baseURL    string
 	httpClient *http.Client // short timeout, for plain JSON calls
 	streamHTTP *http.Client // no timeout — SSE responses can run for minutes
+	longOpHTTP *http.Client // no timeout — long-running ops (model load) bounded by the caller's context instead
 }
 
 func NewClient(baseURL string) *Client {
@@ -28,10 +29,20 @@ func NewClient(baseURL string) *Client {
 		baseURL:    strings.TrimRight(baseURL, "/"),
 		httpClient: &http.Client{Timeout: 10 * time.Second},
 		streamHTTP: &http.Client{}, // caller controls duration via ctx
+		longOpHTTP: &http.Client{}, // caller controls duration via ctx
 	}
 }
 
+// doJSON makes a plain request/response JSON call with the default 10s
+// timeout — the right choice for anything the backend answers quickly.
 func (c *Client) doJSON(ctx context.Context, method, path string, reqBody, respBody any) error {
+	return c.doJSONWith(ctx, c.httpClient, method, path, reqBody, respBody)
+}
+
+// doJSONWith is doJSON with the HTTP client made explicit, so a call whose
+// backend handler can legitimately run far longer than 10s (model loading)
+// can use a client with no fixed timeout and rely purely on ctx instead.
+func (c *Client) doJSONWith(ctx context.Context, httpClient *http.Client, method, path string, reqBody, respBody any) error {
 	var buf bytes.Buffer
 	if reqBody != nil {
 		if err := json.NewEncoder(&buf).Encode(reqBody); err != nil {
@@ -45,7 +56,7 @@ func (c *Client) doJSON(ctx context.Context, method, path string, reqBody, respB
 	}
 	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := c.httpClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		return err
 	}

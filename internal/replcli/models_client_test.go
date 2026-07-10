@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 )
 
 func TestClient_ListLocalModels(t *testing.T) {
@@ -85,6 +86,25 @@ func TestClient_StartModel(t *testing.T) {
 	}
 	if gotBody["gpu_layers"] != float64(-1) {
 		t.Errorf("gpu_layers = %v, want -1", gotBody["gpu_layers"])
+	}
+}
+
+// TestClient_StartModel_SurvivesSlowLoad locks in the fix for the false
+// "başarısız" reports users saw when a model took longer than the plain
+// JSON client's old 10s timeout to load — StartModel used to abort while
+// the backend kept loading successfully in the background. A backend
+// response slower than 10s but well inside the real ~180s budget must now
+// succeed instead of erroring.
+func TestClient_StartModel_SurvivesSlowLoad(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		time.Sleep(12 * time.Second)
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	if err := c.StartModel(context.Background(), "/models/slow.gguf", 0, 0, -1); err != nil {
+		t.Fatalf("StartModel() error = %v, want nil (should outlast the old 10s client timeout)", err)
 	}
 }
 

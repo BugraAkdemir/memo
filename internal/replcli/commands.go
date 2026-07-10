@@ -1,6 +1,8 @@
 package replcli
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -472,21 +474,43 @@ func (s *session) pickAndStartModel(wantEmbedding bool) {
 }
 
 // startAndReport starts model (as a chat or embedding model, per
-// wantEmbedding) and prints the outcome.
+// wantEmbedding) and prints the outcome. Loading can take up to a few
+// minutes (internal/llama's WaitReady budget), so this runs cancellable —
+// Esc/Ctrl+C stops the CLI from waiting on it, the same as a streaming
+// reply — and shows a spinner so it never looks frozen. Cancelling only
+// walks away from the wait: the backend's handler doesn't watch the request
+// context, so a load already in flight keeps running there; a cancelled
+// /model just means checking /models a bit later instead of sitting here.
 func (s *session) startAndReport(model *LocalModel, wantEmbedding bool) {
 	kind := "modeli"
 	if wantEmbedding {
 		kind = "embedding modeli"
 	}
-	fmt.Fprintf(s.out, "%s %s başlatılıyor, bu biraz sürebilir...\n", model.Filename, kind)
+	fmt.Fprintf(s.out, "%s %s başlatılıyor, bu biraz sürebilir (Esc ile beklemeyi bırakabilirsin)...\n", model.Filename, kind)
 
+	ctx, cancel := context.WithCancel(s.ctx)
+	defer cancel()
+	s.interruptCancel = cancel
+	s.startInterruptWatch()
+	defer func() {
+		s.stopInterruptWatch()
+		s.interruptCancel = nil
+	}()
+
+	sp := newSpinner(s.out)
 	var err error
 	if wantEmbedding {
-		err = s.client.StartEmbedding(s.ctx, model.Path, -1)
+		err = s.client.StartEmbedding(ctx, model.Path, -1)
 	} else {
-		err = s.client.StartModel(s.ctx, model.Path, 0, 0, -1)
+		err = s.client.StartModel(ctx, model.Path, 0, 0, -1)
 	}
+	sp.Stop()
+
 	if err != nil {
+		if errors.Is(ctx.Err(), context.Canceled) {
+			fmt.Fprintln(s.out, dim("⨯ beklemeyi bıraktın — model arka planda yüklenmeye devam ediyor olabilir, /models ile kontrol et."))
+			return
+		}
 		fmt.Fprintln(s.out, errorf("Başlatılamadı: %v", err))
 		return
 	}

@@ -23,10 +23,20 @@ type RunCommandArgs struct {
 	CWD     string `json:"cwd"`
 }
 
+// rmTargetEnd matches what may legally follow a bare "/", "~", or "." target
+// in an rm -rf command for it to still count as wiping that whole target:
+// end of string, whitespace, or a shell operator/glob character. Using \b
+// here (as the patterns below used to) is wrong — "/", "~", and "." are all
+// non-word characters, so \b requires the *next* character to be a word
+// character to form a boundary. At end of string (also non-word on that
+// side) there is no boundary, so "rm -rf /", "rm -rf /*", "rm -rf ~", and
+// "rm -rf ." never matched their own blacklist entry.
+const rmTargetEnd = `(?:$|[\s;&|*])`
+
 var blacklistedPatterns = []*regexp.Regexp{
-	regexp.MustCompile(`\brm\s+-rf\s+/\b`),
-	regexp.MustCompile(`\brm\s+-rf\s+~\b`),
-	regexp.MustCompile(`\brm\s+-rf\s+\.\b`),
+	regexp.MustCompile(`\brm\s+-rf\s+/` + rmTargetEnd),
+	regexp.MustCompile(`\brm\s+-rf\s+~` + rmTargetEnd),
+	regexp.MustCompile(`\brm\s+-rf\s+\.` + rmTargetEnd),
 	regexp.MustCompile(`\bdd\s`), // dd (disk destroyer) followed by space
 	regexp.MustCompile(`\bmkfs\b`),
 	regexp.MustCompile(`\bfdisk\b`),

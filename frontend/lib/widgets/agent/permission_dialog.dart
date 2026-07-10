@@ -25,6 +25,8 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
 
   late int _secondsLeft = _timeout.inSeconds;
   Timer? _countdownTimer;
+  bool _submitting = false;
+  String? _error;
 
   @override
   void initState() {
@@ -47,14 +49,33 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
     super.dispose();
   }
 
-  void _submit(String policy) {
+  Future<void> _submit(String policy) async {
     _countdownTimer?.cancel();
-    if (widget.event.requestId != null) {
-      unawaited(
-        ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy),
-      );
+    if (widget.event.requestId == null) {
+      if (mounted) Navigator.of(context).pop();
+      return;
     }
-    if (mounted) Navigator.of(context).pop();
+
+    setState(() {
+      _submitting = true;
+      _error = null;
+    });
+    try {
+      await ref.read(apiClientProvider).handleAgentPermission(widget.event.requestId!, policy);
+      if (mounted) Navigator.of(context).pop();
+    } catch (e) {
+      // Don't pop on failure — the backend never learned the decision, and
+      // its tool call is still blocked waiting for one. Popping here would
+      // make the dialog vanish as if everything went fine while the agent
+      // stays stuck until its own timeout. Leave the dialog open so the
+      // user can see the error and retry.
+      if (mounted) {
+        setState(() {
+          _submitting = false;
+          _error = 'İzin gönderilemedi: $e';
+        });
+      }
+    }
   }
 
   @override
@@ -147,16 +168,33 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
               ),
             ),
           ),
+          if (_error != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 10),
+              child: Row(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Icon(Icons.error_outline, size: 16, color: MemoTheme.red),
+                  const SizedBox(width: 6),
+                  Expanded(
+                    child: Text(
+                      _error!,
+                      style: TextStyle(fontSize: 12, color: MemoTheme.red),
+                    ),
+                  ),
+                ],
+              ),
+            ),
         ],
       ),
       actions: [
         TextButton(
-          onPressed: () => _submit('deny_once'),
+          onPressed: _submitting ? null : () => _submit('deny_once'),
           child: const Text('Reddet', style: TextStyle(color: Colors.grey)),
         ),
         if (isMedium || !isDangerous) ...[
           TextButton(
-            onPressed: () => _submit('allow_session'),
+            onPressed: _submitting ? null : () => _submit('allow_session'),
             child: Text(
               'Oturum Boyunca Izin Ver',
               style: TextStyle(color: MemoTheme.accent.withValues(alpha: 0.7), fontSize: 12),
@@ -164,9 +202,15 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
           ),
         ],
         TextButton(
-          onPressed: () => _submit('allow_once'),
+          onPressed: _submitting ? null : () => _submit('allow_once'),
           style: TextButton.styleFrom(backgroundColor: MemoTheme.accent),
-          child: const Text(
+          child: _submitting
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                )
+              : const Text(
             'Izin Ver',
             style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
           ),

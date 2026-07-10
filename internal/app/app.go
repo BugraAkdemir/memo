@@ -185,6 +185,8 @@ type App struct {
 	waMu              sync.Mutex   // protects waClient, waMsgStore initialization
 	streamMu          sync.Mutex   // prevents concurrent stream goroutines (double-send)
 
+	clients clientRegistry // see clients.go — tracks attached CLI/GUI clients for auto-shutdown
+
 	// Embedded binaries and version string passed in from main.
 	binaries embed.FS
 	version  string
@@ -319,6 +321,8 @@ func (a *App) Startup(ctx context.Context) {
 	if a.observerStore != nil {
 		go a.runObserverAnalysis(a.lifecycleCtx)
 	}
+
+	go a.startClientSweep(a.lifecycleCtx)
 
 	a.proactivePending = proactive.NewPendingStore(config.DataPath("profile", "pending.json"))
 	a.proactiveEngine = proactive.NewEngine(

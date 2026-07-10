@@ -43,19 +43,27 @@ type AppBridge interface {
 	GetMemoryCount() int
 	ToggleIncognito(enabled bool)
 	TranscribeAudio(audioData []byte) (string, error)
+
+	// Client tracking (see internal/app/clients.go) — lets a backend spawned
+	// on demand for a terminal session know when the last attached CLI/GUI
+	// client has gone, so it can shut itself down instead of staying tied
+	// to whichever process happened to start it.
+	RegisterClient() string
+	HeartbeatClient(clientID string) error
+	UnregisterClient(clientID string)
 }
 
 type Server struct {
-	mu           sync.Mutex
-	srv          *http.Server
-	bridge       AppBridge
-	fullBridge   FullBridge
-	assets       fs.FS
-	running      bool
-	port         int
-	listenAddr   string
-	localIPs     []string
-	stopCleaner  chan struct{}
+	mu          sync.Mutex
+	srv         *http.Server
+	bridge      AppBridge
+	fullBridge  FullBridge
+	assets      fs.FS
+	running     bool
+	port        int
+	listenAddr  string
+	localIPs    []string
+	stopCleaner chan struct{}
 }
 
 func New(bridge AppBridge) *Server {
@@ -165,6 +173,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 
 	// Shutdown via HTTP
 	mux.HandleFunc("/api/shutdown", s.handleShutdown)
+
+	// Client tracking (auto-shutdown when no CLI/GUI clients remain)
+	mux.HandleFunc("/api/clients/register", s.handleClientRegister)
+	mux.HandleFunc("/api/clients/heartbeat", s.handleClientHeartbeat)
+	mux.HandleFunc("/api/clients/unregister", s.handleClientUnregister)
 
 	// Provider management
 	mux.HandleFunc("/api/providers", s.handleProviders)

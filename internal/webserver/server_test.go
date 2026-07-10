@@ -16,20 +16,24 @@ var errTranscribeFail = errors.New("transcription failed")
 // ─── Mock Bridge ──────────────────────────────────────────────────
 
 type mockBridge struct {
-	sendMsg       func(msg string) string
-	chats         func() interface{}
-	newChat       func() string
-	switchChat    func(id string) error
-	deleteChat    func(id string) error
-	renameChat    func(id, title string) error
-	activeChat    func() string
-	messages      func() interface{}
-	updateMsg     func(index int, content string) error
-	deleteMsg     func(index int) error
-	status        func() interface{}
-	toggleIncog   func(enabled bool)
-	memoryCount   func() int
-	transcribe    func(audio []byte) (string, error)
+	sendMsg     func(msg string) string
+	chats       func() interface{}
+	newChat     func() string
+	switchChat  func(id string) error
+	deleteChat  func(id string) error
+	renameChat  func(id, title string) error
+	activeChat  func() string
+	messages    func() interface{}
+	updateMsg   func(index int, content string) error
+	deleteMsg   func(index int) error
+	status      func() interface{}
+	toggleIncog func(enabled bool)
+	memoryCount func() int
+	transcribe  func(audio []byte) (string, error)
+
+	registerClient   func() string
+	heartbeatClient  func(clientID string) error
+	unregisterClient func(clientID string)
 }
 
 func (m *mockBridge) SendMessage(userMsg string) string {
@@ -38,21 +42,46 @@ func (m *mockBridge) SendMessage(userMsg string) string {
 	}
 	return "mock reply"
 }
-func (m *mockBridge) SendMessageWithImage(userMsg, imagePath string) string          { return m.SendMessage(userMsg) }
-func (m *mockBridge) SendMessageWithFile(userMsg, filePath string) string            { return m.SendMessage(userMsg) }
-func (m *mockBridge) NewChat() string                                                { return m.newChat() }
-func (m *mockBridge) WebListChats() interface{}                                      { return m.chats() }
-func (m *mockBridge) SwitchChat(id string) error                                     { return m.switchChat(id) }
-func (m *mockBridge) DeleteChat(id string) error                                     { return m.deleteChat(id) }
-func (m *mockBridge) RenameChat(id, title string) error                              { return m.renameChat(id, title) }
-func (m *mockBridge) WebGetActiveMessages() interface{}                              { return m.messages() }
-func (m *mockBridge) GetActiveChatID() string                                        { return m.activeChat() }
-func (m *mockBridge) WebCheckConnection() interface{}                                { return m.status() }
-func (m *mockBridge) GetMemoryCount() int                                            { return m.memoryCount() }
-func (m *mockBridge) ToggleIncognito(enabled bool)                                   { m.toggleIncog(enabled) }
-func (m *mockBridge) TranscribeAudio(audioData []byte) (string, error)               { return m.transcribe(audioData) }
-func (m *mockBridge) UpdateMessage(index int, content string) error                  { return m.updateMsg(index, content) }
-func (m *mockBridge) DeleteMessage(index int) error                                  { return m.deleteMsg(index) }
+func (m *mockBridge) SendMessageWithImage(userMsg, imagePath string) string {
+	return m.SendMessage(userMsg)
+}
+func (m *mockBridge) SendMessageWithFile(userMsg, filePath string) string {
+	return m.SendMessage(userMsg)
+}
+func (m *mockBridge) NewChat() string                   { return m.newChat() }
+func (m *mockBridge) WebListChats() interface{}         { return m.chats() }
+func (m *mockBridge) SwitchChat(id string) error        { return m.switchChat(id) }
+func (m *mockBridge) DeleteChat(id string) error        { return m.deleteChat(id) }
+func (m *mockBridge) RenameChat(id, title string) error { return m.renameChat(id, title) }
+func (m *mockBridge) WebGetActiveMessages() interface{} { return m.messages() }
+func (m *mockBridge) GetActiveChatID() string           { return m.activeChat() }
+func (m *mockBridge) WebCheckConnection() interface{}   { return m.status() }
+func (m *mockBridge) GetMemoryCount() int               { return m.memoryCount() }
+func (m *mockBridge) ToggleIncognito(enabled bool)      { m.toggleIncog(enabled) }
+func (m *mockBridge) TranscribeAudio(audioData []byte) (string, error) {
+	return m.transcribe(audioData)
+}
+func (m *mockBridge) UpdateMessage(index int, content string) error {
+	return m.updateMsg(index, content)
+}
+func (m *mockBridge) DeleteMessage(index int) error { return m.deleteMsg(index) }
+func (m *mockBridge) RegisterClient() string {
+	if m.registerClient != nil {
+		return m.registerClient()
+	}
+	return "mock-client"
+}
+func (m *mockBridge) HeartbeatClient(clientID string) error {
+	if m.heartbeatClient != nil {
+		return m.heartbeatClient(clientID)
+	}
+	return nil
+}
+func (m *mockBridge) UnregisterClient(clientID string) {
+	if m.unregisterClient != nil {
+		m.unregisterClient(clientID)
+	}
+}
 
 func newMockServer(m *mockBridge) *Server {
 	s := New(m)
@@ -418,8 +447,8 @@ func TestHandleTranscribe_Error(t *testing.T) {
 
 func TestCorsMiddleware_LoopbackOrigins(t *testing.T) {
 	tests := []struct {
-		origin   string
-		allowed  bool
+		origin  string
+		allowed bool
 	}{
 		{"http://localhost:8090", true},
 		{"http://127.0.0.1:8090", true},

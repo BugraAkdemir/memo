@@ -6,7 +6,7 @@
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
 >
-> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5. Devamında eski BUG-H1 (SQLite dosya izinleri) de düzeltildi — bkz. commit `7e8860e`. Sonra eski BUG-H2 (sandbox mount-point bypass) incelendi: iddia edilen `ValidatePath`'in **hiçbir çağıranı yoktu** (tüm repo'da grep ile doğrulandı) — gerçek dosya araçlarının kullandığı `internal/agent/tools/file.go`'daki ayrı `validatePath` zaten doğruydu (protected-list eşleşmese bile basePath dışını reddediyor). Dead+hatalı kod silindi, gerçek yolu doğrulayan testler eklendi — bkz. commit `c59b459`. Ardından eski BUG-H3 (panic recovery eksikliği) düzeltildi — `taskloop/engine.go`'daki desen `llm.go`'nun 5 streaming goroutine'ine ve `Pipeline.RunStream`'e uygulandı, bkz. commit `9fb11b7`. Kalan 3 HIGH maddesi (chat-switch race'i — mimari refactor gerektiriyor; Windows auto-shutdown — bu ortamda test edilemez) bilinçli olarak atlanıp MEDIUM'a geçildi. Eski BUG-M3 (websearch/memory ayarları kilitsiz r/w) düzeltildi — bkz. commit `eeee9e2`.
+> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5. Devamında eski BUG-H1 (SQLite dosya izinleri) de düzeltildi — bkz. commit `7e8860e`. Sonra eski BUG-H2 (sandbox mount-point bypass) incelendi: iddia edilen `ValidatePath`'in **hiçbir çağıranı yoktu** (tüm repo'da grep ile doğrulandı) — gerçek dosya araçlarının kullandığı `internal/agent/tools/file.go`'daki ayrı `validatePath` zaten doğruydu (protected-list eşleşmese bile basePath dışını reddediyor). Dead+hatalı kod silindi, gerçek yolu doğrulayan testler eklendi — bkz. commit `c59b459`. Ardından eski BUG-H3 (panic recovery eksikliği) düzeltildi — `taskloop/engine.go`'daki desen `llm.go`'nun 5 streaming goroutine'ine ve `Pipeline.RunStream`'e uygulandı, bkz. commit `9fb11b7`. Kalan 3 HIGH maddesi (chat-switch race'i — mimari refactor gerektiriyor; Windows auto-shutdown — bu ortamda test edilemez) bilinçli olarak atlanıp MEDIUM'a geçildi. Eski BUG-M3 (websearch/memory ayarları kilitsiz r/w) düzeltildi — bkz. commit `eeee9e2`. Eski BUG-M4 (Minimal Mod'un iki farklı, senkronize olmayan kopyadan okunması) düzeltildi — `identity.Identity`'ye kilit eklendi, `buildMessages` artık tek kaynaktan (`a.identity`) okuyor — bkz. commit `095565a`.
 
 ---
 
@@ -16,9 +16,9 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 3 |
-| 🟡 MEDIUM | 8 |
+| 🟡 MEDIUM | 7 |
 | 🟢 LOW | 5 |
-| **TOPLAM** | **16** |
+| **TOPLAM** | **15** |
 
 ---
 
@@ -57,37 +57,31 @@
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:671`
 - **Kullanıcı etkisi:** 30 saniyede bir `isAlive()` sorgusu, provider dispose olsa bile devam eder. Küçük bir performans sızıntısı — AGENTS.md'de "kabul edilebilir" diye not düşülmüş ama teknik olarak hâlâ açık.
 
-### BUG-M3: Minimal Mod, iki farklı yerden asenkron okunuyor
-
-- **Dosya:** `internal/identity/identity.go` (`id.MinimalMode`), `internal/app/helpers.go:87-91` (`cfg.Identity.MinimalMode`)
-- **Nedir:** Aynı anlama gelen iki alan, `buildMessages` içinde farklı zamanlarda okunuyor; `SetMinimalMode` ikisini de kilitsiz, atomik olmayan şekilde yazıyor.
-- **Kullanıcı etkisi:** Minimal Mod toggle'ı ile aynı anda gelen bir mesaj, yarı-uygulanmış bir sistem promptu üretebilir.
-
-### BUG-M4: Hafıza birleştirme (consolidation), embedding hatası olursa sessizce vektör aramadan düşüyor
+### BUG-M3: Hafıza birleştirme (consolidation), embedding hatası olursa sessizce vektör aramadan düşüyor
 
 - **Dosya:** `internal/memory/store.go:1607` (`saveMerged`)
 - **Nedir:** Embedding hatası olursa birleşmiş anı yine kaydediliyor ama embedding'siz, hiçbir log satırı olmadan.
 - **Kullanıcı etkisi:** Consolidation sonrası bazı anılar vector search'te bir daha asla bulunamıyor, kimse fark etmiyor.
 
-### BUG-M5: İzin diyaloğu, gönderme başarısız olsa bile başarılıymış gibi kapanıyor
+### BUG-M4: İzin diyaloğu, gönderme başarısız olsa bile başarılıymış gibi kapanıyor
 
 - **Dosya:** `frontend/lib/widgets/agent/permission_dialog.dart:50-58` (`_submit`)
 - **Nedir:** `handleAgentPermission(...)` `unawaited(...)` ile, hiçbir try/catch olmadan ateşleniyor, ardından `Navigator.pop` koşulsuz çağrılıyor.
 - **Kullanıcı etkisi:** POST başarısız olursa kullanıcı hiçbir hata görmüyor, backend'deki tool call kendi timeout'una kadar askıda kalıyor.
 
-### BUG-M6: Hafıza/Minimal Mod anahtarına hızlı çift-tıklama, kullanıcının istediğinin tersi bir sonuç verebiliyor
+### BUG-M5: Hafıza/Minimal Mod anahtarına hızlı çift-tıklama, kullanıcının istediğinin tersi bir sonuç verebiliyor
 
 - **Dosya:** `frontend/lib/providers/settings_provider.dart:327-337, 357-367`
 - **Nedir:** `MemoryEnabledNotifier.toggle`/`MinimalModeNotifier.toggle` ikisi de bayat state okuyup `await` bitene kadar güncellemiyor; `Switch` widget'ları bu süre boyunca kendini disable etmiyor.
 - **Kullanıcı etkisi:** Hızlı çift-tık, anahtarın iki tıklamanın üretmesi gereken durumun tersinde kilitli kalmasına yol açabiliyor.
 
-### BUG-M7: Ayrılmış (detached) backend süreci, CLI hâlâ açıkken zombi kalabiliyor
+### BUG-M6: Ayrılmış (detached) backend süreci, CLI hâlâ açıkken zombi kalabiliyor
 
 - **Dosya:** `main.go:203` (`spawnDetachedBackend`)
 - **Nedir:** `cmd.Process.Release()` kullanılıyor, `Wait()` değil. `Setsid`'e rağmen backend hâlâ CLI'ın OS-seviyesi çocuğu (double-fork yok).
 - **Kullanıcı etkisi:** Backend kendi kendine ya da `/api/shutdown` ile kapanırsa ve CLI hâlâ açıksa, süreç CLI kapanana kadar reap edilmemiş (zombi) kalıyor.
 
-### BUG-M8: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
+### BUG-M7: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
 
 - **Dosya:** `main.go` (sinyal dalı), `internal/replcli/repl.go:77-85`
 - **Nedir:** `main()` `replDone` goroutine'ini beklemeden dönüyor, `Run()`'ın deferred `UnregisterClient` çağrısı hiç çalışmıyor.

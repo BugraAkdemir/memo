@@ -74,3 +74,5 @@ STABILITY_REPORT.md
 # Misc
 server.log
 *.log
+
+STABILITY_AUDIT.html

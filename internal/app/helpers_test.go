@@ -147,6 +147,66 @@ func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
 	})
 }
 
+// TestBuildMessages_MinimalModeReadsIdentityNotStaleConfigCopy is the
+// regression guard for BUG-M3: buildMessages used to decide whether to skip
+// mood/web-search injection by reading a.cfg.Identity.MinimalMode, a
+// separate copy of the same setting kept "in sync" by SetMinimalMode's two
+// non-atomic writes (a.cfg.Identity.MinimalMode = enabled; then
+// a.identity.SetMinimalMode(enabled)) — while identity.BuildSystemPrompt
+// decided whether to skip the identity block by reading a.identity's own
+// copy. A toggle landing between those two writes (or two readers simply
+// racing on the unsynchronized fields) could apply the two decisions
+// inconsistently. Fixed by having both decisions read a.identity's single,
+// now lock-protected MinimalMode field. This test deliberately leaves
+// a.cfg.Identity.MinimalMode == true (stale/never synced) while
+// a.identity's own MinimalMode stays false, and asserts mood injection
+// still happens — proving buildMessages no longer consults the config copy.
+func TestBuildMessages_MinimalModeReadsIdentityNotStaleConfigCopy(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false) // a.identity.MinimalMode = false
+
+	moodEngine, err := moodpkg.New(moodpkg.Config{
+		Enabled:  true,
+		DBPath:   t.TempDir() + "/mood.db",
+		Alpha:    0.95,
+		Beta:     0.80,
+		SigmaMin: 0.0,
+		SigmaMax: 0.0,
+	})
+	if err != nil {
+		t.Fatalf("create mood engine: %v", err)
+	}
+	defer moodEngine.Close()
+
+	// Push score non-neutral — BuildDirective returns "" at the neutral
+	// label regardless of Enabled, so a neutral score can't distinguish
+	// "correctly injected" from "wrongly skipped".
+	ctx := context.Background()
+	for range 5 {
+		moodEngine.Update(ctx, 10.0)
+	}
+	if score := moodEngine.Score(); score <= 2.0 {
+		t.Skip("score still neutral, skipping")
+	}
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Identity: config.IdentityConfig{MinimalMode: true}, // deliberately out of sync
+			Memory:   config.MemoryConfig{MemoryEnabled: false},
+			Llama:    config.LlamaConfig{CtxSize: 4096},
+		},
+		identity: id,
+		mood:     moodEngine,
+	}
+
+	messages := a.buildMessages(ctx, "test", nil)
+	content := messages[0].Content.(string)
+
+	if !strings.Contains(content, "Current Emotional State") {
+		t.Error("expected mood directive to still be injected: a.identity.MinimalMode is false, " +
+			"so buildMessages must not defer to the stale a.cfg.Identity.MinimalMode=true copy")
+	}
+}
+
 func TestBuildMessages_MemoryEnabledNotCrash(t *testing.T) {
 	id := identity.New("Test", "Memo", "casual", "", false)
 	a := &App{

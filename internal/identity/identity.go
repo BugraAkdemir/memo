@@ -3,6 +3,7 @@ package identity
 import (
 	"fmt"
 	"strings"
+	"sync"
 
 	"memo/internal/memory"
 	"memo/internal/truncate"
@@ -17,7 +18,13 @@ type Identity struct {
 	// entirely (see BuildSystemPrompt) — only memory context still goes in,
 	// and only if memory is separately enabled. Zero persona overhead for
 	// a tight local-model context budget.
-	MinimalMode bool
+	//
+	// Guarded by minimalModeMu: SetMinimalMode can be called concurrently
+	// (an HTTP toggle) with BuildSystemPrompt running for an in-flight
+	// stream on another chat — both must see a consistent value instead of
+	// racing on a bare bool.
+	MinimalMode   bool
+	minimalModeMu sync.RWMutex
 }
 
 func New(userName, assistantName, style, customRole string, minimalMode bool) *Identity {
@@ -35,13 +42,27 @@ func New(userName, assistantName, style, customRole string, minimalMode bool) *I
 // thread it through Update()'s existing "empty string means leave alone"
 // convention, which doesn't have a clean equivalent for a bool.
 func (id *Identity) SetMinimalMode(enabled bool) {
+	id.minimalModeMu.Lock()
 	id.MinimalMode = enabled
+	id.minimalModeMu.Unlock()
+}
+
+// GetMinimalMode returns the current MinimalMode value. Callers that need to
+// make more than one decision based on it in a single request (buildMessages
+// skips mood/web-search injection the same way BuildSystemPrompt skips
+// identity/persona) should call this once and reuse the result, rather than
+// reading it again later — a toggle could otherwise land between two calls
+// and produce an inconsistent, half-applied prompt.
+func (id *Identity) GetMinimalMode() bool {
+	id.minimalModeMu.RLock()
+	defer id.minimalModeMu.RUnlock()
+	return id.MinimalMode
 }
 
 func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool) string {
 	var sb strings.Builder
 
-	if !id.MinimalMode {
+	if !id.GetMinimalMode() {
 		// Base identity
 		if id.CustomRole != "" {
 			sb.WriteString(id.CustomRole)

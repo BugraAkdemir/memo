@@ -182,14 +182,20 @@ CORE DIRECTIVES:
 
 // GetMinimalMode reports whether identity/persona/mood/web-search prompt
 // injection is disabled — only memory context (if separately enabled)
-// still reaches the model.
+// still reaches the model. This reads the persisted config copy (status
+// reporting / API); the hot streaming path checks a.identity.GetMinimalMode()
+// directly instead — see buildMessages.
 func (a *App) GetMinimalMode() bool {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
 	return a.cfg.Identity.MinimalMode
 }
 
 // SetMinimalMode toggles minimal mode.
 func (a *App) SetMinimalMode(enabled bool) error {
+	a.cfgMu.Lock()
 	a.cfg.Identity.MinimalMode = enabled
+	a.cfgMu.Unlock()
 	a.identity.SetMinimalMode(enabled)
 	logx.Printf("Minimal mode set to %v", enabled)
 	return config.Save(a.cfg)

@@ -87,8 +87,14 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	systemPrompt := a.identity.BuildSystemPrompt(memories, false)
 	// MinimalMode means zero injection beyond memory — mood and web search
 	// context are both prompt injection just like identity/persona is, so
-	// they're skipped here too rather than only in BuildSystemPrompt.
-	if !a.cfg.Identity.MinimalMode {
+	// they're skipped here too rather than only in BuildSystemPrompt. Read
+	// through a.identity (the same field BuildSystemPrompt just checked
+	// above), not a.cfg.Identity.MinimalMode — a separate copy kept in sync
+	// by SetMinimalMode's two non-atomic writes, which could disagree with
+	// this one for the duration of a toggle and produce a half-applied
+	// prompt (identity block skipped but mood/web-search still injected, or
+	// vice versa).
+	if !a.identity.GetMinimalMode() {
 		// Mood is fully opt-in. When the engine is disabled the model is driven
 		// solely by the configured system prompt: no directive, no neutral block,
 		// no self-interest text is injected.

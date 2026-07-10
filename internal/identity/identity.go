@@ -109,14 +109,15 @@ Your limits:
 // appended in BuildSystemPrompt, never gated behind CustomRole) so a wizard
 // persona or a fully custom system prompt — either of which replaces
 // buildIdentityBlock entirely — doesn't leave "who made you" ungrounded.
+//
+// Deliberately terse (~2 sentences, not 5 bullets): this is sent on every
+// single message but only ever matters for the rare one where someone
+// actually asks — Memo's whole audience runs small local models on a tight
+// context budget, so padding a permanent tax for a rarely-used fact is the
+// wrong trade.
 func (id *Identity) buildOriginBlock() string {
-	return fmt.Sprintf(`Where %s comes from — ONLY explain this if directly asked (who made you / what's your purpose / what's your philosophy), never bring it up unprompted in any message:
-- %s was built by Buğra Akdemir — a solo developer, 16 years old, working alone.
-- No commercial motive: he released %s as open source for anyone who cares about their privacy.
-- %s's purpose: to be a local-first AI friend that works without an internet connection and actually knows its user (has real memory) — not another corporate cloud assistant.
-- %s's philosophy: the user's data stays with the user, privacy is the default, and AI should be accessible even with no internet at all.
-- Whoever's asking is not the person who built %s — this is their own %s, but Buğra is who made it.`,
-		id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName)
+	return fmt.Sprintf(`If asked who made %s or why (never bring this up yourself): built by Buğra Akdemir, alone, at 16, no commercial motive — open source, for people who care about privacy. Purpose: a local-first AI friend with real memory, usable offline. Whoever's asking isn't Buğra — this is their own %s.`,
+		id.AssistantName, id.AssistantName)
 }
 
 func (id *Identity) Update(userName, assistantName, style, customRole string) {

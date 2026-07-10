@@ -11,13 +11,15 @@
 
 | Severity | Toplam | Düzeltilen | Açık |
 |----------|--------|-----------|------|
-| 🔴 CRITICAL | 6 | 4 (C1-C4) | **2 (QC1, QC2)** |
-| 🟠 HIGH | 15 | 10 (H1-H10) | **5 (QH1-QH5)** |
-| 🟡 MEDIUM | 19 | 8 (M1-M5,M7,M8) | **11 (M6,M9-M12,QM1-QM7)** |
-| 🟢 LOW | 11 | 2 (L1,L2) | **9 (L3-L6,QL1-QL5)** |
-| **TOPLAM** | **51** | **24** | **27** |
+| 🔴 CRITICAL | 8 | 4 (C1-C4) | **4 (QC1, QC2, S19-C1, S19-C2)** |
+| 🟠 HIGH | 22 | 10 (H1-H10) | **12 (QH1-QH5, S19-H1—H7)** |
+| 🟡 MEDIUM | 26 | 8 (M1-M5,M7,M8) | **18 (M6,M9-M12,QM1-QM7,S19-M1—M7)** |
+| 🟢 LOW | 14 | 2 (L1,L2) | **12 (L3-L6,QL1-QL5,S19-L1—L3)** |
+| **TOPLAM** | **70** | **24** | **46** |
 
-> **Son güncelleme:** 2026-07-07, Session 8 — 3 paralel QA agent ile gerçek kullanıcı senaryoları test edildi. 19 yeni bug tespit edildi. En kritik bulgu: Import config.yaml'ın sessizce atlanması (QC1) ve memory store'un yeniden başlatılmaması (QC2).
+> **Son güncelleme:** 2026-07-10, Session 19 — "Stable ne kadar uzakta?" taraması, 4 paralel agent (bugünkü yeni kod + chat/hafıza pipeline + Flutter + güvenlik). 19 yeni bug tespit edildi, hiçbiri henüz düzeltilmedi. En kritik bulgu: uzak erişim açıkken hiçbir endpoint kimlik doğrulaması istemiyor (S19-C1) ve agent'ın `rm -rf /` kara listesi regex hatası yüzünden tam olarak o komutu engellemiyor (S19-C2) — ikisi de gerçek testle doğrulandı.
+>
+> **Bilinen sınırlama:** Bu tablo, `Session 2026-07-06: Paralel Ajan Taraması` bölümündeki NM/NH/NL/FC/FH/FM/FL-önekli ~70 bulguyu (çoğu zaten düzeltilmiş) hiç saymıyor — bu tablo hep sadece orijinal 51 + Session 8'in QC/QH/QM/QL'sini kapsamıştı, Session 19 de aynı kapsamı koruyarak eklendi. Tüm dosyanın gerçek toplam açık/kapalı sayısı için her bölümün kendi altındaki durum işaretlerine bakılmalı.
 
 ---
 
@@ -1152,5 +1154,159 @@ Kullanıcının isteğiyle C2'ye geçildi. `internal/whatsapp/client.go`'yu sat�
 - **Düzeltme:** `Write()` artık tüm gövdesi boyunca bir `closeMu.RLock()` tutuyor; `Close()` cancel etmeden önce `closeMu.Lock()` alıp bir `closed` bayrağı set ediyor. Böylece `Close()`, devam eden hiçbir `Write()` çağrısı bitmeden `writeLoop`'u kapatamıyor. Regresyon testleri: `internal/database/close_write_race_test.go` → `TestWriteAfterCloseNeverHangs` (20x, eskiden ~1/3 asılı kalıyordu), `TestConcurrentWriteRacingClose`.
 
 **Doğrulama:** `go build/vet ./...` temiz. `go test ./... -race -count=1 -timeout=300s` → tüm paketler yeşil (özellikle `database`, `memory`, `calendar`, `mood`, `whatsapp` — hepsi aynı `database.DB`'yi paylaşıyor). Yeni regresyon testleri `-race -count=10` ile de temiz.
+
+---
+
+## Session 2026-07-10 (Session 19) — "Stable ne kadar uzakta?" taraması: 19 yeni bug
+
+> **Bağlam:** Kullanıcı "uygulama şu an yüzde kaç stable, stable için ne gerekiyor" diye sordu. 4 paralel agent (bugünkü yeni kod: client registry/detached backend/minimal mode; chat/streaming/memory pipeline; Flutter frontend; güvenlik) eşzamanlı tarama yaptı.
+> **Sonuç:** 19 yeni bug (2 CRITICAL, 7 HIGH, 7 MEDIUM, 3 LOW). **Hiçbiri bu oturumda düzeltilmedi** — sadece tespit edilip raporlandı. İki CRITICAL bulgu, ajan raporunun ötesinde bizzat kodda çalıştırılarak doğrulandı (aşağıda "Doğrulandı" işaretli).
+> **Not:** Bu tarama, dosyanın geri kalanındaki (Session 2026-06-29 – 2026-07-07) zaten düzeltilmiş bug'ları tekrar taramadı — sadece o oturumlardan sonra eklenen kod + daha önce hiç dokunulmamış alanlar (agent sandbox, backend auth, panic recovery) hedeflendi.
+
+---
+
+### 🔴 CRITICAL — Stable'ı Doğrudan Bloklayan
+
+#### BUG-S19-C1: Uzak erişim (ngrok/LAN) açıkken hiçbir API endpoint'i kimlik doğrulaması istemiyor **[Doğrulandı — kod okunarak teyit edildi]**
+
+- **Dosya:** `internal/webserver/server.go:262`
+- **Nedir:** Middleware zinciri `limitBodyMiddleware(rateLimitMiddleware(stopCleaner, corsMiddleware(mux)))` — sadece body-boyutu limiti, rate limit ve CORS. Hiçbir yerde token/şifre kontrolü yok. `internal/app/remote.go:97-98` bir `RemoteAccess.Token` üretip `GET /api/remote-access` ile arayüze döndürüyor (`handlers_flutter.go:596-597`), ama `internal/webserver/*.go` içinde bu token'ın **hiçbir handler'da hiç karşılaştırılmadığı** doğrulandı (grep ile teyit) — tamamen kozmetik.
+- **Kullanıcı etkisi:** `SetRemoteAccess` bind adresini `0.0.0.0`'a çevirdiğinde ya da ngrok açıldığında (`remote.go:128-132`), ngrok linkine ya da LAN'a erişimi olan **herkes** hiçbir kimlik bilgisi girmeden: `POST /api/wipe` ile tüm veriyi silebilir, `POST /api/agent/permission` ile bir agent aracına kalıcı izin verip `run_command` üzerinden host'ta rastgele shell komutu çalıştırabilir, `POST /api/import` ile keyfi veri enjekte edebilir, `POST /api/shutdown`/`/api/uninstall`/`/api/cli/remove` çağırabilir.
+- **Düzeltme:** Üretilen `RemoteAccess.Token`'ı gerçekten kullanan bir auth middleware eklenmeli — örn. `Authorization: Bearer <token>` header kontrolü, sadece `remoteAccessEnabled` iken zorunlu (localhost-only modda mevcut davranış bozulmamalı).
+
+#### BUG-S19-C2: Agent'ın `rm -rf /` güvenlik filtresi, tam olarak engellemesi gereken komutu engellemiyor **[Doğrulandı — gerçek Go regex testiyle]**
+
+- **Dosya:** `internal/agent/tools/command.go:27`
+- **Nedir:** Kara liste regex'i `\brm\s+-rf\s+/\b`. `\b` kelime sınırı, `/`'den sonra bir kelime karakteri (harf/rakam/`_`) gelmesini gerektiriyor — boşluk, `;`, `*` ya da satır sonu geldiğinde sınır oluşmuyor. Gerçek Go `regexp` ile test edildi:
+  ```
+  "rm -rf /"              -> match=false
+  "rm -rf /*"             -> match=false
+  "sudo rm -rf /"         -> match=false
+  "rm -rf /; echo done"   -> match=false
+  "rm -rf /home/user/foo" -> match=true   (bu aslında göreceli güvenli bir yol)
+  ```
+  Yani filtre, engellemesi gereken **tam olarak `rm -rf /`'nin kendisini** hiç yakalamıyor, sadece zaten daha az tehlikeli, spesifik alt-dizin yollarını yakalıyor. `\brm\s+-rf\s+~\b` ve `\brm\s+-rf\s+\.\b` desenleri de aynı `\b` hatasından muzdarip.
+  - **İlişkili:** Bu, dosyanın kendi **BUG-M9**'unun ("bash -c ile command injection riski... encoding tricks ile atlatılabilir") somut, kanıtlanmış bir örneği — M9 genel bir uyarıydı, bu regex hatası kanıtlanmış, kesin bir bypass.
+- **Kullanıcı etkisi:** Agent modunda bir prompt injection ya da modelin kendi halüsinasyonu `run_command` üzerinden tam olarak `rm -rf /` (ya da sonuna `*`/`;` eklenmiş hali) çalıştırırsa, "güvenlik için kara listede" hatası **hiç tetiklenmiyor** — komut gerçek kullanıcı olarak, hiçbir OS-seviyesi sandbox olmadan direkt çalışıyor.
+- **Düzeltme:** `\b` yerine daha sağlam bir desen (örn. `(^|[\s;&|])rm\s+-rf\s+/($|[\s;&|*])`) ya da tamamen whitelist yaklaşımına geçiş (M9'un zaten önerdiği gibi).
+
+---
+
+### 🟠 HIGH
+
+#### BUG-S19-H1: Sağlayıcı API anahtarları ve uzak-erişim tokenleri, kimlik doğrulaması olmadan düz GET ile okunabiliyor
+
+- **Dosya:** `internal/webserver/handlers_flutter.go:1057-1065` (`GET /api/providers`), `internal/app/remote.go` (`GET /api/remote-access`)
+- **Nedir:** `GET /api/providers`, `provider.ConfigManager.GetAll()`'ı döndürüyor — kodun kendi yorumu "API keys in plaintext" diyor (`internal/provider/config.go:151`). S19-C1'deki auth eksikliğiyle birleşince bu, tamamen açık.
+- **Kullanıcı etkisi:** ngrok/LAN erişimi olan biri tek bir GET isteğiyle tüm bağlı OpenAI/Claude/Gemini/vb. hesaplarının API anahtarlarını ve ngrok token'ını ele geçirir.
+
+#### BUG-S19-H2: Hassas SQLite dosyaları dünyaya-okunabilir (0644) — config.yaml/providers.json gibi 0600'e sertleştirilmemiş
+
+- **Dosya:** `internal/memory/store.go`, `internal/mood/store.go`, `internal/observer/store.go`, `internal/calendar/store.go`, `internal/whatsapp/store.go`
+- **Nedir:** Hiçbiri `sql.Open`/`sqlstore.New` sonrası `os.Chmod` çağırmıyor, dosyalar process umask'ına düşüyor. Diskte doğrulandı: `data/memory/memory.db`, `data/mood/mood.db`, `data/profile/observations.db`, `data/calendar/events.db`, `data/whatsapp/session.db` ve `messages.db` hepsi `-rw-r--r--`.
+- **Kullanıcı etkisi:** Paylaşılan bir makinede başka bir yerel kullanıcı hesabı tüm sohbet hafızasını okuyabilir; `whatsapp/session.db` özellikle whatsmeow'un Signal/Noise oturum anahtarlarını tutuyor — WhatsApp oturumu tamamen ele geçirilebilir.
+- **Düzeltme:** Diğer hassas dosyalarla aynı desen — açtıktan sonra `os.Chmod(path, 0600)`.
+
+#### BUG-S19-H3: Agent dosya sandbox'ı, listelenmemiş bir mount noktasındaki mutlak yollarla aşılabiliyor
+
+- **Dosya:** `internal/agent/sandbox.go:143-149`
+- **Nedir:** `ValidatePath`, proje dizini (`BasePath`) dışındaki bir mutlak yolu, sadece elle yazılmış kısa bir `protectedPaths` listesinde (`/etc/`, `/usr/`, `/boot/`, `/dev/`, `/sys/`, `/proc/`, `/var/`, `/home/`, `/root/`, `/tmp/`, `/run/`, `/opt/`, `/mnt/`, `/media/`) değilse doğrudan izin veriyor.
+- **Kullanıcı etkisi:** `/srv/`, ikinci bir disk, ya da listede olmayan herhangi bir mount noktası — agent'ın "proje dizini dışına çıkmaması" gereken sandbox'ı fiilen çalışmıyor, listelenmemiş her yerde okuma/yazma yapabiliyor.
+
+#### BUG-S19-H4: Streaming/agent goroutine'lerinde hiçbir panic recovery yok — tek bir panic tüm backend'i çökertir
+
+- **Dosya:** `internal/app/llm.go` (satır 123, 210, 511, 621, 732'deki `go func(){...}` bloklar), `internal/agent/pipeline.go:93` (`RunStream`)
+- **Nedir:** Tüm repo'da `recover()` sadece `internal/taskloop/engine.go:104-111`'de var (kendi yorumunda "bir panic tüm uygulamayı çökertmemeli" diyor) — bu desen en çok kullanılan streaming/tool-execution yoluna hiç uygulanmamış. Go, kurtarılmamış bir panic'te hangi goroutine'de olursa olsun tüm process'i öldürür; `net/http`'in kendi per-request recovery'si bu detached goroutine'leri kapsamıyor.
+- **Kullanıcı etkisi:** Bir tool handler'da ya da provider yanıtı parse ederken tek bir nil-pointer/type-assertion/index-out-of-range hatası, o an aktif olan **herkesi** (tüm sohbetler, WhatsApp köprüsü, takvim hatırlatıcıları) aynı anda düşürür.
+- **Düzeltme:** `taskloop/engine.go`'daki `recover()` deseni bu goroutine'lere de uygulanmalı — muhtemelen en yüksek kaldıraçlı tek düzeltme.
+
+#### BUG-S19-H5: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
+
+- **Dosya:** `internal/app/chat.go:210-217` (`sendMessageStreamInner`)
+- **Nedir:** `buildMessages` o an aktif sohbetin geçmişini okuyor, ama kullanıcı mesajı ve yanıt daha sonra, `sm.GetActiveID()`/`sm.AddMessage()` çağrıldığı **o andaki** aktif sohbete yazılıyor. `/api/chats/switch` (`server.go:450`) `SwitchChat`'i doğrudan çağırıyor, `streamMu` ile hiç senkronize değil.
+- **Kullanıcı etkisi:** Web arama/hafıza sorgusu sürerken (yani `buildMessages` içindeyken) kullanıcı başka bir sohbete geçerse, eski sohbetin bağlamıyla üretilen cevap yanlışlıkla yeni aktif sohbete eklenir — bu, dokümante edilmiş "otomatik çağıran `taskloopRunMu` altında `SwitchChat` yapmalı" kısıtının ötesinde, gerçek kullanıcı etkileşimiyle tetiklenebilen yeni bir durum.
+
+#### BUG-S19-H6: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
+
+- **Dosya:** `frontend/lib/providers/chat_provider.dart:87-108, 173-471`
+- **Nedir:** `ActiveChatIdNotifier.switchTo`, `messagesProvider.notifier.stopStreaming()` çağırıp `ref.invalidate(messagesProvider)` ile notifier'ı dispose ediyor — ama stream döngüsündeki (satır 356-413), post-stream finalize bloğundaki (419-451) ve catch bloğundaki (460-466) hiçbir `state = ...` yazımı "dispose edildi mi" kontrolü yapmıyor (sadece gecikmeli liste-yenileme timer'ı, satır 457, kontrol ediyor).
+- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — S19-H5'in frontend karşılığı.
+
+#### BUG-S19-H7: Bugün eklenen backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
+
+- **Dosya:** `internal/app/clients.go:136-142` (`selfShutdownSignal`)
+- **Nedir:** `p.Signal(os.Interrupt)` ile kendine sinyal gönderme, Go'nun Windows implementasyonunda desteklenmiyor (`os/exec_windows.go`, `Process.Signal` sadece `Kill`'i destekliyor, diğerleri `EWINDOWS` hatasıyla dönüyor) — hata da `_ = p.Signal(...)` ile sessizce yutuluyor.
+- **Kullanıcı etkisi:** Windows'ta, `spawnDetachedBackend`'in başlattığı her backend, son client ayrıldığında kendini kapatmayı deniyor ama başaramıyor — process arka planda süresiz birikiyor, elle kapatılana kadar.
+- **Düzeltme:** Windows'ta `Process.Signal(os.Interrupt)` yerine `taskkill`/`GenerateConsoleCtrlEvent` gibi platforma özgü bir yol kullanılmalı (`main_windows.go`'daki desene benzer bir platform-ayrımı).
+
+---
+
+### 🟡 MEDIUM
+
+#### BUG-S19-M1: Web arama / hafıza açık-kapalı ayarları kilitsiz okunup yazılıyor (yeni, dokümante edilmemiş data race)
+
+- **Dosya:** `internal/app/settings.go:70` (`a.cfg.WebSearch.Enabled`), `internal/app/memory.go:284` (`a.cfg.Memory.MemoryEnabled`)
+- **Nedir:** İkisi de hiçbir kilit olmadan yazılıyor; `internal/app/helpers.go:82,102` ve `chat.go` aynı alanları yine kilitsiz okuyor. Stream sırasında ayar değiştirilirse `-race` altında yakalanan gerçek bir race.
+
+#### BUG-S19-M2: Bugün eklenen Minimal Mod, iki farklı yerden asenkron okunuyor
+
+- **Dosya:** `internal/identity/identity.go` (`id.MinimalMode`), `internal/app/helpers.go:87-91` (`cfg.Identity.MinimalMode`)
+- **Nedir:** Aynı anlama gelen iki alan, `buildMessages` içinde farklı zamanlarda okunuyor; `SetMinimalMode` ikisini de kilitsiz, atomik olmayan şekilde yazıyor.
+- **Kullanıcı etkisi:** Minimal Mod toggle'ı ile aynı anda gelen bir mesaj, yarı-uygulanmış bir sistem promptu üretebilir (kimlik enjekte edilirken mood/web-arama atlanmış, ya da tam tersi).
+
+#### BUG-S19-M3: Hafıza birleştirme (consolidation), embedding hatası olursa sessizce vektör aramadan düşüyor
+
+- **Dosya:** `internal/memory/store.go:1607` (`saveMerged`)
+- **Nedir:** `if emb, err := s.embed(ctx, content); err == nil && ...` — hata olursa birleşmiş anı yine kaydediliyor (orijinaller `pending_deletion` işaretleniyor) ama embedding'siz, hiçbir log satırı olmadan.
+- **Kullanıcı etkisi:** Consolidation sonrası bazı anılar vector search'te bir daha asla bulunamıyor, kimse fark etmiyor.
+
+#### BUG-S19-M4: İzin diyaloğu, gönderme başarısız olsa bile başarılıymış gibi kapanıyor
+
+- **Dosya:** `frontend/lib/widgets/agent/permission_dialog.dart:50-58` (`_submit`)
+- **Nedir:** `handleAgentPermission(...)` `unawaited(...)` ile, hiçbir try/catch olmadan ateşleniyor, ardından `Navigator.pop` koşulsuz çağrılıyor.
+- **Kullanıcı etkisi:** POST başarısız olursa (backend restart, geçici ağ sorunu) kullanıcı hiçbir hata görmüyor, backend'deki tool call kendi timeout'una kadar askıda kalıyor.
+
+#### BUG-S19-M5: Hafıza/Minimal Mod anahtarına hızlı çift-tıklama, kullanıcının istediğinin tersi bir sonuç verebiliyor
+
+- **Dosya:** `frontend/lib/providers/settings_provider.dart:327-337, 357-367` (`MemoryEnabledNotifier.toggle`, `MinimalModeNotifier.toggle`)
+- **Nedir:** İkisi de `current = state.valueOrNull`'u senkron okuyup, `await api.set...()` bitene kadar state'i güncellemiyor; `Switch` widget'ları bu süre boyunca kendini disable etmiyor (`general_tab.dart:229-239, 307-317`).
+- **Kullanıcı etkisi:** Hızlı çift-tık, iki isteğin de aynı bayat değeri okuyup aynı sonucu göndermesine yol açıyor — anahtar, iki tıklamanın üretmesi gereken durumun tersinde kilitli kalıyor.
+
+#### BUG-S19-M6: Bugün eklenen ayrılmış (detached) backend süreci, CLI hâlâ açıkken zombi kalabiliyor
+
+- **Dosya:** `main.go:203` (`spawnDetachedBackend`)
+- **Nedir:** `cmd.Process.Release()` kullanılıyor, `Wait()` değil. `Setsid`'e rağmen backend hâlâ CLI'ın OS-seviyesi çocuğu (double-fork yok).
+- **Kullanıcı etkisi:** Backend kendi kendine ya da `/api/shutdown` ile kapanırsa ve CLI hâlâ açıksa, süreç CLI kapanana kadar reap edilmemiş (zombi) kalıyor.
+
+#### BUG-S19-M7: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
+
+- **Dosya:** `main.go` (sinyal dalı), `internal/replcli/repl.go:77-85`
+- **Nedir:** Bilinen blocking-read kısıtıyla aynı kök sebep (terminal-restore fix'inde de karşımıza çıkmıştı) — `main()` `replDone` goroutine'ini beklemeden dönüyor, `Run()`'ın deferred `UnregisterClient` çağrısı hiç çalışmıyor.
+- **Kullanıcı etkisi:** Backend'in bunu fark etmesi (heartbeat staleness sweep) 90 saniyeye kadar sürebiliyor, anlık değil — kaynak israfı değil ama gecikmeli temizlik.
+
+---
+
+### 🟢 LOW
+
+#### BUG-S19-L1: İzin diyaloğu, stream durdurulsa/sohbet değiştirilse bile ekranda bayat kalabiliyor
+
+- **Dosya:** `frontend/lib/screens/app_shell.dart:87-99`, `frontend/lib/widgets/agent/permission_dialog.dart`
+- **Nedir:** Diyalog `barrierDismissible: false` ile bir `requestId`'ye bağlı açılıyor ama `stopStreaming()`/`switchTo()` ile hiç senkronize değil.
+- **Kullanıcı etkisi:** Kullanıcı Stop'a basıp stream'i iptal etse bile diyalog ekranda kalıyor; sonunda Allow/Deny'e basınca artık var olmayan bir request için karar gönderiyor.
+
+#### BUG-S19-L2: Bir API yanıtındaki `as List` cast'i, kardeş satırdaki gibi `is List` ile korunmuyor
+
+- **Dosya:** `frontend/lib/core/api_client.dart:139-143`
+- **Nedir:** `res.data['chats'] as List`, sadece `!= null` kontrolüyle korunuyor, `is List` değil — iki satır üstündeki root-list path'i `is List` kontrolü yapıp bozuk yanıtta `[]`'e düşerken bu yol doğrudan çöküyor.
+
+#### BUG-S19-L3: Kapanma kararı, sinyal gerçekten teslim edilene kadar yeniden doğrulanmıyor
+
+- **Dosya:** `internal/app/clients.go:94-129` (`UnregisterClient`, `sweepStaleClients`)
+- **Nedir:** `shouldShutdown` kararı anlık registry durumuna bakıyor ve `selfShutdownSignal` çağrısı ile bu karar arasında dar bir zaman penceresi var.
+- **Kullanıcı etkisi:** Nadir bir zamanlamada, tam o sırada `/gui` ile bağlanan yeni bir client, kapanmak üzere olan bir backend'e kaydolup hemen ardından o backend'in kapanmasıyla karşılaşabilir.
+
+---
+
+**Doğrulama notu:** Bu 19 bulgunun hiçbiri bu oturumda düzeltilmedi — sadece tespit edildi. S19-C1 ve S19-C2, agent raporunun üstünde ayrıca elle (middleware zinciri okunarak, gerçek Go regex testiyle) doğrulandı. Geri kalan 17 madde agent taramasından geliyor, koda bakılarak makul bulundu ama tek tek elle tekrar test edilmedi — düzeltmeye başlamadan önce her biri için minimal bir tekrar-üretim adımı önerilir.
 
 **Not:** Bu bölümün üstünde, benim taramadığım ayrı bir "3 Paralel QA Agent Taraması" bölümü var (QC1-QC2 CRITICAL, QH1-QH5 HIGH dahil, henüz düzeltilmemiş). Bu, daha önce verdiğim "tüm CRITICAL/HIGH kapalı" değerlendirmesini eskitiyor — o bölüme henüz bakmadım.

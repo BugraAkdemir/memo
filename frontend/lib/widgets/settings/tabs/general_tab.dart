@@ -15,6 +15,7 @@ class GeneralTab extends ConsumerWidget {
     final locale = ref.watch(localeProvider);
     final memoryEnabledAsync = ref.watch(memoryEnabledProvider);
     final embeddingStatus = ref.watch(embeddingStatusProvider);
+    final minimalModeAsync = ref.watch(minimalModeProvider);
 
     return ListView(
       padding: EdgeInsets.all(32),
@@ -250,6 +251,77 @@ class GeneralTab extends ConsumerWidget {
 
         SizedBox(height: 32),
 
+        // Minimal Mode Toggle
+        Text(
+          L10n.t('minimal_mode_section'),
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w600,
+            color: MemoTheme.of(context).textMain,
+          ),
+        ),
+        SizedBox(height: 12),
+        Container(
+          padding: EdgeInsets.all(16),
+          decoration: BoxDecoration(
+            color: MemoTheme.of(context).bgPanel,
+            borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+            border: Border.all(color: MemoTheme.of(context).borderSoft),
+          ),
+          child: minimalModeAsync.when(
+            loading: () => SizedBox(
+              height: 24,
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            ),
+            error: (e, _) => Text('${L10n.t('error')}: $e'),
+            data: (enabled) => Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        enabled
+                            ? L10n.t('minimal_mode_active')
+                            : L10n.t('minimal_mode_disabled'),
+                        style: TextStyle(
+                          fontSize: 14,
+                          color: MemoTheme.of(context).textMain,
+                        ),
+                      ),
+                      SizedBox(height: 4),
+                      Text(
+                        L10n.t('minimal_mode_toggle_desc'),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: MemoTheme.of(context).textDim,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Switch(
+                  value: enabled,
+                  activeThumbColor: MemoTheme.accent,
+                  onChanged: (_) async {
+                    try {
+                      await ref.read(minimalModeProvider.notifier).toggle();
+                    } catch (e) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('${L10n.t('error')}: $e')),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+        ),
+
+        SizedBox(height: 32),
 
         // Reset Setup Wizard
         Text(

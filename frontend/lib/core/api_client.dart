@@ -268,6 +268,17 @@ class MemoApiClient {
     await _dio.post('/api/system-prompt/reset');
   }
 
+  /// Whether identity/persona/mood/web-search prompt injection is disabled
+  /// — only memory context (if separately enabled) still reaches the model.
+  Future<bool> getMinimalMode() async {
+    final res = await _dio.get('/api/system-prompt/minimal-mode');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
+  Future<void> setMinimalMode(bool enabled) async {
+    await _dio.put('/api/system-prompt/minimal-mode', data: {'enabled': enabled});
+  }
+
   // ─── Incognito Prompt ───────────────────────────────────────────
 
   Future<String> getIncognitoPrompt() async {

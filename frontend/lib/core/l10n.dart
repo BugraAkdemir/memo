@@ -195,6 +195,11 @@ class L10n {
     'memory_disabled': 'Hafıza Kapalı',
     'memory_toggle_desc':
         'Kapalıyken hafıza sorgulanmaz ve yeni anı kaydedilmez. Model %100 ham performansla çalışır.',
+    'minimal_mode_section': 'Minimal Mod',
+    'minimal_mode_active': 'Minimal Mod Açık',
+    'minimal_mode_disabled': 'Minimal Mod Kapalı',
+    'minimal_mode_toggle_desc':
+        'Açıkken kimlik, kişilik, üslup, mood ve web arama modele hiç eklenmez — sadece hafıza (ayrıca açıksa) gönderilir. İkisi de kapalıyken modele sıfır ekstra token gider.',
     'memory_files': 'Bellek Dosyaları',
     'memory_count': 'Bellek Sayısı',
     'clear_memory': 'Tüm Belleği Temizle',
@@ -960,6 +965,11 @@ class L10n {
     'memory_disabled': 'Memory Disabled',
     'memory_toggle_desc':
         'When off, memory is not queried and no new memories are saved. The model runs at 100% raw performance.',
+    'minimal_mode_section': 'Minimal Mode',
+    'minimal_mode_active': 'Minimal Mode On',
+    'minimal_mode_disabled': 'Minimal Mode Off',
+    'minimal_mode_toggle_desc':
+        'When on, identity, personality, style, mood, and web search are never added to the model — only memory (if also enabled) is sent. With both off, zero extra tokens go to the model.',
     'memory_files': 'Memory Files',
     'memory_count': 'Memory Count',
     'clear_memory': 'Clear All Memory',

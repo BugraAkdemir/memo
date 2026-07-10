@@ -337,6 +337,36 @@ class MemoryEnabledNotifier extends AsyncNotifier<bool> {
   }
 }
 
+// ─── Minimal Mode ──────────────────────────────────────────────
+//
+// When on, identity/persona/mood/web-search prompt injection is disabled
+// entirely — only memory context (if separately enabled, see
+// memoryEnabledProvider above) still reaches the model.
+
+final minimalModeProvider =
+    AsyncNotifierProvider<MinimalModeNotifier, bool>(
+      MinimalModeNotifier.new,
+    );
+
+class MinimalModeNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    return ref.read(apiClientProvider).getMinimalMode();
+  }
+
+  Future<void> toggle() async {
+    final current = state.valueOrNull ?? false;
+    final next = !current;
+    try {
+      await ref.read(apiClientProvider).setMinimalMode(next);
+      state = AsyncData(next);
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Minimal mod değiştirilemedi ($e)';
+    }
+  }
+}
+
 // ─── App Version ────────────────────────────────────────────────
 
 final appVersionProvider = FutureProvider<String>((ref) async {

@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 	"memo/internal/calendar"
 	"memo/internal/cloudsync"
@@ -389,6 +390,7 @@ func (a *App) Startup(ctx context.Context) {
 	// and cloud restore call after replacing providers.json/orchestra.json on
 	// disk — keeping this as one code path means the two can't drift apart.
 	a.reinitProviderAndOrchestra()
+	tools.Configurator = a
 
 	basePath, _ := filepath.Abs(".")
 	a.agentExecutor = agent.NewExecutor(basePath, a.providerRouter, a.providerCfgMgr)

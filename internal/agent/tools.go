@@ -167,6 +167,14 @@ func (r *ToolRegistry) registerBuiltins() {
 		ExecuteFn:   tools.SelfClone,
 	})
 
+	r.Register(ToolDef{
+		Name:        "configure_provider",
+		Description: "Adds or updates an AI provider configuration (type, base URL, API key, model). Use when the user explicitly asks to add/configure a provider in chat instead of Settings. Requires user confirmation before it runs.",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"type":{"type":"string","description":"Provider type: openai, gemini, grok, groq, claude, openrouter, ollama, llama.cpp, or custom"},"name":{"type":"string","description":"Display name for this provider (defaults to type if omitted)"},"api_key":{"type":"string","description":"API key, if the provider needs one"},"base_url":{"type":"string","description":"Base URL (required for type=custom)"},"model":{"type":"string","description":"Model ID to use"},"enabled":{"type":"boolean","description":"Whether to enable it immediately (default true)"}},"required":["type","model"]}`),
+		DangerLevel: Dangerous,
+		ExecuteFn:   tools.ConfigureProvider,
+	})
+
 	r.registerWhatsAppTools()
 }
 

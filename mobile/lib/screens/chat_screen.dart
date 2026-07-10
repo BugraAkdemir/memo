@@ -28,6 +28,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
       final notifier = ref.read(chatProvider.notifier);
       notifier.loadSessions();
       notifier.setPermissionHandler(_showPermissionDialog);
+      ref.read(incognitoProvider.notifier).load();
     });
   }
 
@@ -62,6 +63,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
   @override
   Widget build(BuildContext context) {
     final state = ref.watch(chatProvider);
+    final isIncognito = ref.watch(incognitoProvider);
 
     // Keep the conversation pinned to the latest message as it grows.
     ref.listen(chatProvider, (prev, next) {
@@ -92,12 +94,25 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleLarge),
+            Text(isIncognito ? 'Incognito Mode' : title,
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 2),
             const _EngineChip(),
           ],
         ),
         actions: [
+          IconButton(
+            tooltip: 'Incognito mode',
+            icon: Icon(
+              isIncognito ? Icons.visibility_off : Icons.visibility_off_outlined,
+              size: 21,
+              color: isIncognito ? MemoTheme.accent : MemoTheme.textDim,
+            ),
+            onPressed: () {
+              HapticFeedback.selectionClick();
+              ref.read(incognitoProvider.notifier).toggle();
+            },
+          ),
           IconButton(
             tooltip: 'Agent mode',
             icon: Icon(

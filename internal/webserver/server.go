@@ -41,6 +41,7 @@ type AppBridge interface {
 	GetActiveChatID() string
 	WebCheckConnection() interface{}
 	GetMemoryCount() int
+	GetIncognito() bool
 	ToggleIncognito(enabled bool)
 	TranscribeAudio(audioData []byte) (string, error)
 
@@ -575,19 +576,22 @@ func (s *Server) handleStatus(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleIncognito(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodPost {
-		http.Error(w, "POST only", http.StatusMethodNotAllowed)
-		return
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": s.bridge.GetIncognito()})
+	case http.MethodPost:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		s.bridge.ToggleIncognito(req.Enabled)
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
 	}
-	var req struct {
-		Enabled bool `json:"enabled"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		http.Error(w, "bad json", http.StatusBadRequest)
-		return
-	}
-	s.bridge.ToggleIncognito(req.Enabled)
-	writeJSON(w, map[string]string{"ok": "true"})
 }
 
 func (s *Server) handleTranscribe(w http.ResponseWriter, r *http.Request) {

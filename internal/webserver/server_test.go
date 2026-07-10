@@ -28,6 +28,7 @@ type mockBridge struct {
 	deleteMsg   func(index int) error
 	status      func() interface{}
 	toggleIncog func(enabled bool)
+	incog       bool
 	memoryCount func() int
 	transcribe  func(audio []byte) (string, error)
 
@@ -58,6 +59,7 @@ func (m *mockBridge) GetActiveChatID() string           { return m.activeChat() 
 func (m *mockBridge) WebCheckConnection() interface{}   { return m.status() }
 func (m *mockBridge) GetMemoryCount() int               { return m.memoryCount() }
 func (m *mockBridge) ToggleIncognito(enabled bool)      { m.toggleIncog(enabled) }
+func (m *mockBridge) GetIncognito() bool                { return m.incog }
 func (m *mockBridge) TranscribeAudio(audioData []byte) (string, error) {
 	return m.transcribe(audioData)
 }

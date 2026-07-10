@@ -840,6 +840,11 @@ class MemoApiClient {
 
   // ─── Incognito ──────────────────────────────────────────────────
 
+  Future<bool> getIncognito() async {
+    final res = await _dio.get('/api/incognito');
+    return res.data['enabled'] as bool? ?? false;
+  }
+
   Future<void> toggleIncognito(bool enabled) async {
     await _dio.post('/api/incognito', data: {'enabled': enabled});
   }

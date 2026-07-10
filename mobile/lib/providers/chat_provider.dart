@@ -38,6 +38,31 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
   }
 }
 
+final incognitoProvider = StateNotifierProvider<IncognitoNotifier, bool>((ref) {
+  return IncognitoNotifier(ref.read(apiClientProvider));
+});
+
+class IncognitoNotifier extends StateNotifier<bool> {
+  final MemoApiClient _api;
+
+  IncognitoNotifier(this._api) : super(false);
+
+  Future<void> load() async {
+    try {
+      final enabled = await _api.getIncognito();
+      state = enabled;
+    } catch (_) {}
+  }
+
+  Future<void> toggle() async {
+    final next = !state;
+    try {
+      await _api.toggleIncognito(next);
+      state = next;
+    } catch (_) {}
+  }
+}
+
 class ChatState {
   final List<ChatSession> sessions;
   final String? activeSessionId;

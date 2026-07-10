@@ -15,6 +15,13 @@ import (
 	moodpkg "memo/internal/mood"
 )
 
+// GetIncognito reports whether incognito mode is currently active.
+func (a *App) GetIncognito() bool {
+	a.incognitoMu.RLock()
+	defer a.incognitoMu.RUnlock()
+	return a.isIncognito
+}
+
 // ToggleIncognito enables or disables incognito mode.
 func (a *App) ToggleIncognito(enabled bool) {
 	a.incognitoMu.Lock()

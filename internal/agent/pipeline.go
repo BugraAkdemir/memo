@@ -7,6 +7,7 @@ import (
 	"memo/internal/logx"
 	"memo/internal/provider"
 	"memo/internal/truncate"
+	"runtime/debug"
 	"time"
 )
 
@@ -92,6 +93,7 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 
 	go func() {
 		defer close(outCh)
+		defer recoverStreamPanic(ctx, outCh, "Pipeline.RunStream")
 
 		currentMessages := make([]provider.Message, len(messages))
 		copy(currentMessages, messages)
@@ -339,6 +341,19 @@ func trySend(ctx context.Context, outCh chan<- provider.StreamChunk, chunk provi
 	select {
 	case outCh <- chunk:
 	case <-ctx.Done():
+	}
+}
+
+// recoverStreamPanic must be deferred *after* `defer close(outCh)` (defers
+// run LIFO, so this one fires first) — a panic anywhere in the tool-call
+// loop (a malformed tool response, a nil dereference in a tool handler)
+// must not take down the whole backend along with every other active chat,
+// the same reasoning taskloop/engine.go's run() already applies to
+// task-list goroutines.
+func recoverStreamPanic(ctx context.Context, outCh chan<- provider.StreamChunk, label string) {
+	if r := recover(); r != nil {
+		logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+		trySend(ctx, outCh, provider.StreamChunk{Error: "⚠️ internal error", Done: true})
 	}
 }
 

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"memo/internal/logx"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"time"
@@ -122,6 +123,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 	go func() {
 		defer close(outCh)
+		defer recoverStreamPanic(ctx, outCh, "callAgentStream")
 
 		pMsgs := make([]provider.Message, len(messages))
 		for i, m := range messages {
@@ -209,6 +211,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 	go func() {
 		defer close(outCh)
+		defer recoverStreamPanic(ctx, outCh, "callAgentWithOrchestra")
 
 		start := time.Now()
 
@@ -510,6 +513,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 		go func() {
 			defer close(outCh)
+			defer recoverStreamPanic(ctx, outCh, "callLLMStream/orchestra")
 
 			var userPrompt string
 			var systemPrompt string
@@ -620,6 +624,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	if activeName != "" && providerRouter != nil {
 		go func() {
 			defer close(outCh)
+			defer recoverStreamPanic(ctx, outCh, "callLLMStream/external-provider")
 
 			providerCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 			defer cancel()
@@ -731,6 +736,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 	go func() {
 		defer close(outCh)
+		defer recoverStreamPanic(ctx, outCh, "callLLMStream/local-model")
 
 		streamCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 		defer cancel()
@@ -811,6 +817,20 @@ func trySend(ctx context.Context, outCh chan<- api.StreamChunk, chunk api.Stream
 	select {
 	case outCh <- chunk:
 	case <-ctx.Done():
+	}
+}
+
+// recoverStreamPanic must be deferred *after* `defer close(outCh)` in every
+// streaming goroutine below (defers run LIFO, so this one fires first) — a
+// panic anywhere in the LLM/agent/orchestra call stack must not take down
+// the whole backend (every other active chat, WhatsApp bridge, calendar
+// reminders) along with it, the same reasoning taskloop/engine.go's run()
+// already applies to task-list goroutines. Sends a user-visible error chunk
+// before outCh is closed, instead of just losing the response silently.
+func recoverStreamPanic(ctx context.Context, outCh chan<- api.StreamChunk, label string) {
+	if r := recover(); r != nil {
+		logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ internal error", Done: true})
 	}
 }
 

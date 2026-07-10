@@ -6,7 +6,7 @@
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
 >
-> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi — bkz. commit `de4450e`, `f5a579e`. Ardından sırayla: eski BUG-H1 (auth eksikliğinin yan etkisiyle zaten kapandı), eski BUG-H1/SQLite izinleri (`7e8860e`), eski BUG-H2/sandbox — meğerse dead code'muş, gerçek yol zaten güvenliydi (`c59b459`), eski BUG-H3/panic recovery (`9fb11b7`), eski BUG-M3/websearch-memory race (`eeee9e2`), eski BUG-M4/Minimal Mod dual-source (`095565a`), eski BUG-M3/consolidation sessiz embedding hatası (`86b9a09`), eski BUG-M4/izin diyaloğu sessiz kapanma (`0a3acd1`), eski BUG-M3/toggle çift-tık race'i (`c022e1b`) düzeltildi. Kalan 3 HIGH maddesi (chat-switch race — mimari refactor gerektiriyor; Windows auto-shutdown — bu ortamda test edilemez) bilinçli olarak atlandı. Tam detay için `git log`.
+> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi — bkz. commit `de4450e`, `f5a579e`. Ardından sırayla eski BUG-H1/H2/H3 (auth yan etkisi, SQLite izinleri, dead-code sandbox, panic recovery) ve eski BUG-M3/M4 (websearch-memory race, Minimal Mod dual-source, consolidation sessiz hata, izin diyaloğu sessiz kapanma, toggle çift-tık race'i, detached backend zombi süreci — bkz. commit `4f364f4`) düzeltildi. Kalan 3 HIGH maddesi (chat-switch race — mimari refactor gerektiriyor; Windows auto-shutdown — bu ortamda test edilemez) bilinçli olarak atlandı. Tam detay için `git log`.
 
 ---
 
@@ -16,9 +16,9 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 3 |
-| 🟡 MEDIUM | 4 |
+| 🟡 MEDIUM | 3 |
 | 🟢 LOW | 5 |
-| **TOPLAM** | **12** |
+| **TOPLAM** | **11** |
 
 ---
 
@@ -57,13 +57,7 @@
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:671`
 - **Kullanıcı etkisi:** 30 saniyede bir `isAlive()` sorgusu, provider dispose olsa bile devam eder. Küçük bir performans sızıntısı — AGENTS.md'de "kabul edilebilir" diye not düşülmüş ama teknik olarak hâlâ açık.
 
-### BUG-M3: Ayrılmış (detached) backend süreci, CLI hâlâ açıkken zombi kalabiliyor
-
-- **Dosya:** `main.go:203` (`spawnDetachedBackend`)
-- **Nedir:** `cmd.Process.Release()` kullanılıyor, `Wait()` değil. `Setsid`'e rağmen backend hâlâ CLI'ın OS-seviyesi çocuğu (double-fork yok).
-- **Kullanıcı etkisi:** Backend kendi kendine ya da `/api/shutdown` ile kapanırsa ve CLI hâlâ açıksa, süreç CLI kapanana kadar reap edilmemiş (zombi) kalıyor.
-
-### BUG-M4: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
+### BUG-M3: Dışarıdan SIGTERM gelirse CLI'ın "hoşçakal" (unregister) çağrısı hiç çalışmıyor
 
 - **Dosya:** `main.go` (sinyal dalı), `internal/replcli/repl.go:77-85`
 - **Nedir:** `main()` `replDone` goroutine'ini beklemeden dönüyor, `Run()`'ın deferred `UnregisterClient` çağrısı hiç çalışmıyor.

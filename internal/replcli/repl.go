@@ -67,6 +67,24 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	ctx := context.Background()
 	client := NewClient(baseURL)
 
+	// Attach to the backend's client registry (internal/app/clients.go) so
+	// a backend spawned on demand for this session knows to stay up while
+	// this CLI is running, and can shut itself down once every attached
+	// client (this one, and any GUI opened via /gui) is gone — instead of
+	// dying the moment whichever process happened to start it exits.
+	// Best-effort: an older/incompatible backend that doesn't know this
+	// route just means no heartbeat loop runs, nothing else changes.
+	if clientID, err := client.RegisterClient(ctx); err == nil && clientID != "" {
+		hbCtx, hbCancel := context.WithCancel(ctx)
+		defer hbCancel()
+		go heartbeatLoop(hbCtx, client, clientID)
+		defer func() {
+			unregCtx, unregCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			defer unregCancel()
+			_ = client.UnregisterClient(unregCtx, clientID)
+		}()
+	}
+
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 

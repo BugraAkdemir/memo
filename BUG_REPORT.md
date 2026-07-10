@@ -1,12 +1,12 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-11 (Session 20)
+> **Son güncelleme:** 2026-07-11 (Session 20, devam)
 > **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan maddeler kaldı.
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
 >
-> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5.
+> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5. Devamında eski BUG-H1 (SQLite dosya izinleri) de düzeltildi — bkz. commit `7e8860e`.
 
 ---
 
@@ -15,48 +15,41 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 6 |
+| 🟠 HIGH | 5 |
 | 🟡 MEDIUM | 9 |
 | 🟢 LOW | 5 |
-| **TOPLAM** | **20** |
+| **TOPLAM** | **19** |
 
 ---
 
 ## 🟠 HIGH
 
-### BUG-H1: Hassas SQLite dosyaları dünyaya-okunabilir (0644) — config.yaml/providers.json gibi 0600'e sertleştirilmemiş
-
-- **Dosya:** `internal/memory/store.go`, `internal/mood/store.go`, `internal/observer/store.go`, `internal/calendar/store.go`, `internal/whatsapp/store.go`
-- **Nedir:** Hiçbiri `sql.Open`/`sqlstore.New` sonrası `os.Chmod` çağırmıyor, dosyalar process umask'ına düşüyor. Diskte doğrulandı: `data/memory/memory.db`, `data/mood/mood.db`, `data/profile/observations.db`, `data/calendar/events.db`, `data/whatsapp/session.db` ve `messages.db` hepsi `-rw-r--r--`.
-- **Kullanıcı etkisi:** Paylaşılan bir makinede başka bir yerel kullanıcı hesabı tüm sohbet hafızasını okuyabilir; `whatsapp/session.db` özellikle whatsmeow'un Signal/Noise oturum anahtarlarını tutuyor — WhatsApp oturumu tamamen ele geçirilebilir.
-- **Düzeltme:** Diğer hassas dosyalarla aynı desen — açtıktan sonra `os.Chmod(path, 0600)`.
-
-### BUG-H2: Agent dosya sandbox'ı, listelenmemiş bir mount noktasındaki mutlak yollarla aşılabiliyor
+### BUG-H1: Agent dosya sandbox'ı, listelenmemiş bir mount noktasındaki mutlak yollarla aşılabiliyor
 
 - **Dosya:** `internal/agent/sandbox.go:143-149`
 - **Nedir:** `ValidatePath`, proje dizini (`BasePath`) dışındaki bir mutlak yolu, sadece elle yazılmış kısa bir `protectedPaths` listesinde (`/etc/`, `/usr/`, `/boot/`, `/dev/`, `/sys/`, `/proc/`, `/var/`, `/home/`, `/root/`, `/tmp/`, `/run/`, `/opt/`, `/mnt/`, `/media/`) değilse doğrudan izin veriyor.
 - **Kullanıcı etkisi:** `/srv/`, ikinci bir disk, ya da listede olmayan herhangi bir mount noktası — agent'ın "proje dizini dışına çıkmaması" gereken sandbox'ı fiilen çalışmıyor.
 
-### BUG-H3: Streaming/agent goroutine'lerinde hiçbir panic recovery yok — tek bir panic tüm backend'i çökertir
+### BUG-H2: Streaming/agent goroutine'lerinde hiçbir panic recovery yok — tek bir panic tüm backend'i çökertir
 
 - **Dosya:** `internal/app/llm.go` (satır 123, 210, 511, 621, 732'deki `go func(){...}` bloklar), `internal/agent/pipeline.go:93` (`RunStream`)
 - **Nedir:** Tüm repo'da `recover()` sadece `internal/taskloop/engine.go:104-111`'de var (kendi yorumunda "bir panic tüm uygulamayı çökertmemeli" diyor) — bu desen en çok kullanılan streaming/tool-execution yoluna hiç uygulanmamış. Go, kurtarılmamış bir panic'te hangi goroutine'de olursa olsun tüm process'i öldürür.
 - **Kullanıcı etkisi:** Bir tool handler'da ya da provider yanıtı parse ederken tek bir nil-pointer/type-assertion/index-out-of-range hatası, o an aktif olan **herkesi** (tüm sohbetler, WhatsApp köprüsü, takvim hatırlatıcıları) aynı anda düşürür.
 - **Düzeltme:** `taskloop/engine.go`'daki `recover()` deseni bu goroutine'lere de uygulanmalı — muhtemelen en yüksek kaldıraçlı tek düzeltme.
 
-### BUG-H4: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
+### BUG-H3: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
 
 - **Dosya:** `internal/app/chat.go:210-217` (`sendMessageStreamInner`)
 - **Nedir:** `buildMessages` o an aktif sohbetin geçmişini okuyor, ama kullanıcı mesajı ve yanıt daha sonra, `sm.GetActiveID()`/`sm.AddMessage()` çağrıldığı **o andaki** aktif sohbete yazılıyor. `/api/chats/switch` (`server.go:450`) `SwitchChat`'i doğrudan çağırıyor, `streamMu` ile hiç senkronize değil.
 - **Kullanıcı etkisi:** Web arama/hafıza sorgusu sürerken kullanıcı başka bir sohbete geçerse, eski sohbetin bağlamıyla üretilen cevap yanlışlıkla yeni aktif sohbete eklenir.
 
-### BUG-H5: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
+### BUG-H4: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
 
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:87-108, 173-471`
 - **Nedir:** `ActiveChatIdNotifier.switchTo`, `messagesProvider.notifier.stopStreaming()` çağırıp `ref.invalidate(messagesProvider)` ile notifier'ı dispose ediyor — ama stream döngüsündeki, post-stream finalize bloğundaki ve catch bloğundaki hiçbir `state = ...` yazımı "dispose edildi mi" kontrolü yapmıyor (sadece gecikmeli liste-yenileme timer'ı kontrol ediyor).
-- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H4'ün frontend karşılığı.
+- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H3'ün frontend karşılığı.
 
-### BUG-H6: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
+### BUG-H5: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
 
 - **Dosya:** `internal/app/clients.go:136-142` (`selfShutdownSignal`)
 - **Nedir:** `p.Signal(os.Interrupt)` ile kendine sinyal gönderme, Go'nun Windows implementasyonunda desteklenmiyor (`Process.Signal` sadece `Kill`'i destekliyor, diğerleri `EWINDOWS` hatasıyla dönüyor) — hata sessizce yutuluyor.

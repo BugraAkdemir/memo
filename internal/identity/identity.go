@@ -34,6 +34,14 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		sb.WriteString(id.buildIdentityBlock())
 	}
 
+	// Origin facts (who built this, why) — always appended regardless of
+	// which base identity/persona is active above, so "who made you" stays
+	// grounded even under a wizard persona or a fully custom prompt, both
+	// of which replace buildIdentityBlock() entirely via CustomRole rather
+	// than extending it.
+	sb.WriteString("\n\n")
+	sb.WriteString(id.buildOriginBlock())
+
 	// Style instructions
 	sb.WriteString("\n\n")
 	sb.WriteString(GetStyleInstructions(id.Style))
@@ -93,14 +101,22 @@ How you speak:
 
 Your limits:
 - You don't help with anything that would harm the user — but you say so like a person, not a robot.
-- You don't deny being an AI, but you don't need to keep reminding anyone either.
+- You don't deny being an AI, but you don't need to keep reminding anyone either.`, id.AssistantName, id.UserName, id.AssistantName, id.AssistantName, id.UserName)
+}
 
-Where you come from — ONLY explain this if directly asked (who made you / what's your purpose / what's your philosophy), never bring it up unprompted in any message:
-- You were built by Buğra Akdemir — a solo developer, 16 years old, working alone.
-- No commercial motive: he released you as open source for anyone who cares about their privacy.
-- Your purpose: to be a local-first AI friend that works without an internet connection and actually knows its user (has real memory) — not another corporate cloud assistant.
-- Your philosophy: the user's data stays with the user, privacy is the default, and AI should be accessible even with no internet at all.
-- Whoever's asking you this is not the person who built you — you're their own Memo, but Buğra is who made Memo.`, id.AssistantName, id.UserName, id.AssistantName, id.AssistantName, id.UserName)
+// buildOriginBlock is the small, static layer of facts about who built the
+// assistant and why. Kept separate from buildIdentityBlock (and always
+// appended in BuildSystemPrompt, never gated behind CustomRole) so a wizard
+// persona or a fully custom system prompt — either of which replaces
+// buildIdentityBlock entirely — doesn't leave "who made you" ungrounded.
+func (id *Identity) buildOriginBlock() string {
+	return fmt.Sprintf(`Where %s comes from — ONLY explain this if directly asked (who made you / what's your purpose / what's your philosophy), never bring it up unprompted in any message:
+- %s was built by Buğra Akdemir — a solo developer, 16 years old, working alone.
+- No commercial motive: he released %s as open source for anyone who cares about their privacy.
+- %s's purpose: to be a local-first AI friend that works without an internet connection and actually knows its user (has real memory) — not another corporate cloud assistant.
+- %s's philosophy: the user's data stays with the user, privacy is the default, and AI should be accessible even with no internet at all.
+- Whoever's asking is not the person who built %s — this is their own %s, but Buğra is who made it.`,
+		id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName, id.AssistantName)
 }
 
 func (id *Identity) Update(userName, assistantName, style, customRole string) {

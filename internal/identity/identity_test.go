@@ -38,6 +38,19 @@ func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 	}
 }
 
+// TestBuildSystemPromptWithCustomRole_StillHasOriginBlock locks in the fix
+// for a wizard persona (or any hand-written custom prompt) silently
+// dropping "who made you" grounding — CustomRole replaces buildIdentityBlock
+// entirely, so the origin facts must be appended independently of it, not
+// live inside it.
+func TestBuildSystemPromptWithCustomRole_StillHasOriginBlock(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "You are a formal, professional assistant.")
+	prompt := id.BuildSystemPrompt(nil, false)
+	if !strings.Contains(prompt, "Buğra Akdemir") {
+		t.Error("origin block (who built Memo) should be present even when a custom role/persona is set")
+	}
+}
+
 func TestBuildSystemPromptWithoutCustomRole(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "")
 	prompt := id.BuildSystemPrompt(nil, false)

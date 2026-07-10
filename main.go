@@ -197,10 +197,30 @@ func spawnDetachedBackend(port int) error {
 	if err := cmd.Start(); err != nil {
 		return fmt.Errorf("backend başlatılamadı: %w", err)
 	}
-	// This process doesn't wait on the child or manage it directly from
-	// here on — the child's own client registry decides its lifetime, and
-	// it must survive this process exiting, so release rather than track it.
-	return cmd.Process.Release()
+	// The child's own client registry decides its lifetime, not this
+	// process — Setsid detaches it into its own session so it survives
+	// this process exiting. But Setsid alone doesn't change who its OS
+	// parent is: as long as this process is still alive, the child is
+	// still ours, and on Unix an exited child that nobody wait()s on stays
+	// a zombie until its parent does (or exits, at which point it's
+	// re-parented to init and reaped automatically). cmd.Process.Release()
+	// used to be the "don't manage it" call here, but it does nothing to
+	// prevent that zombie window — it just stops Go from tracking the
+	// process, it doesn't waitpid() it. Reap it as soon as it exits
+	// instead, so this call still returns immediately and the child's
+	// lifetime stays independent of ours.
+	reapInBackground(cmd)
+	return nil
+}
+
+// reapInBackground waits on cmd from a background goroutine so an already-
+// Start()ed, detached child process is waitpid()'d the moment it exits
+// instead of lingering as a zombie until this process itself exits. Doesn't
+// block the caller and doesn't affect the child's own independent lifetime.
+func reapInBackground(cmd *exec.Cmd) {
+	go func() {
+		_ = cmd.Wait()
+	}()
 }
 
 // waitForBackend polls /api/status until it responds or timeout elapses.

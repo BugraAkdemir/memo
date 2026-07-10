@@ -30,6 +30,18 @@ class MemoApiClient {
     );
   }
 
+  /// The backend now requires X-Memo-Token on every request once remote
+  /// access is enabled (LAN mode or ngrok both rebind the server to
+  /// 0.0.0.0) — this desktop client talks to the same single port, so it
+  /// needs the token too, exactly like the mobile client already does.
+  /// Captured from getRemoteAccess()/setRemoteAccess() responses, which
+  /// include it (see _applyRemoteToken call sites below).
+  void _applyRemoteToken(dynamic data) {
+    if (data is Map && data['token'] is String && (data['token'] as String).isNotEmpty) {
+      _dio.options.headers['X-Memo-Token'] = data['token'];
+    }
+  }
+
   /// Runtime type guard — throws [Exception] instead of [TypeError] when
   /// the backend returns an unexpected response type.
   static T _guard<T>(dynamic data) {
@@ -586,11 +598,12 @@ class MemoApiClient {
 
   Future<Map<String, dynamic>> getRemoteAccess() async {
     final res = await _dio.get('/api/remote-access');
+    _applyRemoteToken(res.data);
     return _guard<Map<String, dynamic>>(res.data);
   }
 
   Future<void> setRemoteAccess(bool enabled, int port, {bool ngrokMode = false, String ngrokToken = ''}) async {
-    await _dio.put(
+    final res = await _dio.put(
       '/api/remote-access',
       data: {
         'enabled': enabled,
@@ -599,15 +612,21 @@ class MemoApiClient {
         'ngrok_token': ngrokToken,
       },
     );
+    // This request may have just switched the server from 127.0.0.1
+    // (unauthenticated) to 0.0.0.0 (token-gated) — it's sent while the
+    // listener is still the old, unauthenticated one, so it's the one
+    // chance to learn the token before every later request needs it.
+    _applyRemoteToken(res.data);
   }
 
   Future<void> setRemoteAccessAutoStart(bool autoStart) async {
-    await _dio.put(
+    final res = await _dio.put(
       '/api/remote-access',
       data: {
         'ngrok_auto_start': autoStart,
       },
     );
+    _applyRemoteToken(res.data);
   }
 
   /// Toggles experimental (beta) features.

@@ -643,7 +643,13 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 		}
-		writeJSON(w, map[string]string{"ok": "true"})
+		// Return the full status (including the token) rather than a bare
+		// {"ok": true} — this PUT is exactly the request that may just have
+		// switched the listener from 127.0.0.1 (unauthenticated) to 0.0.0.0
+		// (token-gated, see remoteAuthMiddleware). It's the caller's one
+		// chance to learn the token from an already-authorized request; a
+		// follow-up GET would otherwise 401 with no way to ever obtain it.
+		writeJSON(w, s.fullBridge.GetRemoteAccessStatus())
 	default:
 		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
 	}

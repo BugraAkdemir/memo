@@ -5,6 +5,7 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
+	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -261,7 +262,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 		close(s.stopCleaner)
 	}
 	s.stopCleaner = make(chan struct{})
-	handler := limitBodyMiddleware(rateLimitMiddleware(s.stopCleaner, corsMiddleware(mux)), 50<<20) // 50 MB body limit
+	handler := limitBodyMiddleware(rateLimitMiddleware(s.stopCleaner, corsMiddleware(s.remoteAuthMiddleware(mux))), 50<<20) // 50 MB body limit
 	s.srv = &http.Server{
 		Addr:    fmt.Sprintf("%s:%d", addr, port),
 		Handler: handler,
@@ -641,9 +642,60 @@ func corsMiddleware(next http.Handler) http.Handler {
 			w.Header().Set("Access-Control-Allow-Origin", origin)
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memo-Token")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusOK)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// remoteAuthOK reports whether a request may proceed given the server's
+// current listen address and the configured remote-access token. Pulled out
+// as a pure function (no *Server/FullBridge dependency) so the token-check
+// logic is directly unit-testable without a full FullBridge mock.
+//
+// listenAddr != "0.0.0.0" (local-only mode) always passes — every request is
+// let through exactly as before BUG-C1 was fixed. Once bound to "0.0.0.0"
+// (LAN mode, or ngrok/Tailscale which target this same port), a valid
+// X-Memo-Token — or "Authorization: Bearer <token>" — is required. A
+// constant-time comparison avoids leaking the token's value through
+// response-time differences.
+func remoteAuthOK(listenAddr, wantToken string, r *http.Request) bool {
+	if listenAddr != "0.0.0.0" {
+		return true
+	}
+
+	got := r.Header.Get("X-Memo-Token")
+	if got == "" {
+		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
+			got = strings.TrimPrefix(auth, "Bearer ")
+		}
+	}
+	if wantToken == "" || got == "" {
+		return false
+	}
+	return subtle.ConstantTimeCompare([]byte(wantToken), []byte(got)) == 1
+}
+
+// remoteAuthMiddleware wires remoteAuthOK into the request chain.
+// SetRemoteAccess/SetNgrokMode/SetTailscaleMode all rebind the listener to
+// "0.0.0.0" when enabling, and back to "127.0.0.1" when disabling, so a
+// single listenAddr check covers LAN mode and ngrok alike. The token itself
+// was already generated and shown in the UI (GetRemoteAccessStatus) before
+// this fix; it just wasn't checked anywhere.
+func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if s.fullBridge == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		s.mu.Lock()
+		listenAddr := s.listenAddr
+		s.mu.Unlock()
+		if !remoteAuthOK(listenAddr, s.fullBridge.GetRemoteAccessToken(), r) {
+			http.Error(w, "unauthorized: missing or invalid X-Memo-Token", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)

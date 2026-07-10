@@ -79,6 +79,12 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 	return status
 }
 
+// GetRemoteAccessToken returns the current remote-access auth token (empty
+// until remote access has been enabled at least once, see SetRemoteAccess).
+func (a *App) GetRemoteAccessToken() string {
+	return a.cfg.RemoteAccess.Token
+}
+
 // SetRemoteAccess enables or disables remote access and restarts the web server.
 func (a *App) SetRemoteAccess(enabled bool, port int) error {
 	ws := a.getWebServer()

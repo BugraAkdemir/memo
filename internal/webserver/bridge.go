@@ -103,6 +103,7 @@ type FullBridge interface {
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}
+	GetRemoteAccessToken() string
 	SetRemoteAccess(enabled bool, port int) error
 	SetNgrokMode(enabled bool, port int, ngrokToken string) error
 	SetTailscaleMode(enabled bool, authKey, hostname string, funnel bool, port int) error

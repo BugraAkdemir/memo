@@ -661,12 +661,31 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
   var alive = true;
   ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
+  // Registers this GUI with the backend's client registry the first tick
+  // it's reachable, then just heartbeats on every tick after — see
+  // MemoApiClient.registerClient's doc comment for why. There's no
+  // reliable "app is closing" hook on desktop today, so this loop simply
+  // stopping (ref.onDispose above) is how the backend eventually notices
+  // the GUI is gone: it prunes a client that misses a few heartbeats.
+  String? clientId;
   while (alive) {
     try {
-      yield await api.isAlive();
+      final ok = await api.isAlive();
+      yield ok;
+      if (!ok) {
+        // Unreachable this tick — any previous registration is moot (the
+        // backend may have restarted); register fresh once it's back
+        // instead of heartbeating a possibly-stale ID.
+        clientId = null;
+      } else if (clientId == null) {
+        clientId = await api.registerClient();
+      } else {
+        await api.heartbeatClient(clientId);
+      }
     } catch (e) {
       debugPrint('chat: connectionStatus error: $e');
       yield false;
+      clientId = null;
     }
     if (!alive) break;
     await Future.delayed(const Duration(seconds: 30));

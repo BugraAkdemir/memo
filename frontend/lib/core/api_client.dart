@@ -839,6 +839,41 @@ class MemoApiClient {
     }
   }
 
+  // ─── Client tracking ──────────────────────────────────────────────
+  //
+  // Lets a backend spawned on demand for a terminal session (see
+  // internal/app/clients.go, internal/replcli's own heartbeat loop) know
+  // this GUI is attached, so it doesn't shut itself down just because the
+  // terminal that started it exits — and, since there's no reliable
+  // window-close hook on desktop today, lets a backend notice this GUI
+  // going away by simply no longer hearing from it (the backend prunes a
+  // client that misses ~3 heartbeats). A standalone backend that never had
+  // auto-shutdown armed just tracks this harmlessly.
+
+  /// Registers this GUI instance as a client and returns its ID, to pass to
+  /// [heartbeatClient]. Returns null if the backend doesn't support this
+  /// (older build) or isn't reachable — callers should just skip
+  /// heartbeating in that case, nothing else depends on it.
+  Future<String?> registerClient() async {
+    try {
+      final resp = await _dio.post('/api/clients/register');
+      return resp.data['client_id'] as String?;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// Refreshes clientId's last-seen time on the backend. Errors are
+  /// swallowed — a missed heartbeat is exactly what the backend's
+  /// staleness window tolerates.
+  Future<void> heartbeatClient(String clientId) async {
+    try {
+      await _dio.post('/api/clients/heartbeat', data: {'client_id': clientId});
+    } catch (e) {
+      // best-effort — see class doc above
+    }
+  }
+
   // ─── Provider Management ─────────────────────────────────────────
 
   /// Get all provider configs.

@@ -33,7 +33,7 @@ func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 	if !strings.Contains(prompt, "coding assistant") {
 		t.Error("custom role should appear in system prompt")
 	}
-	if strings.Contains(prompt, "Kimliğin") {
+	if strings.Contains(prompt, "Your identity:") {
 		t.Error("identity block should not appear when custom role is set")
 	}
 }

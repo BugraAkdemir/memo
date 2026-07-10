@@ -282,7 +282,7 @@ func (a *App) Startup(ctx context.Context) {
 		logx.Info("Memory store ready")
 	}()
 
-	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole)
+	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole, cfg.Identity.MinimalMode)
 
 	moodCfg := moodpkg.Config{
 		Enabled:          a.cfg.Mood.Enabled,

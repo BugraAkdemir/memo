@@ -33,6 +33,7 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"EmbeddingStatus", http.MethodGet, "/api/models/embedding/status", s.handleEmbeddingStatus, http.StatusOK},
 		{"SystemPrompt", http.MethodGet, "/api/system-prompt", s.handleSystemPrompt, http.StatusNotImplemented},
 		{"ResetSystemPrompt", http.MethodPost, "/api/system-prompt/reset", s.handleResetSystemPrompt, http.StatusMethodNotAllowed},
+		{"MinimalMode", http.MethodGet, "/api/system-prompt/minimal-mode", s.handleMinimalMode, http.StatusNotImplemented},
 		{"IncognitoPrompt", http.MethodGet, "/api/incognito-prompt", s.handleIncognitoPrompt, http.StatusNotImplemented},
 		{"MemoryFiles", http.MethodGet, "/api/memory/files", s.handleMemoryFiles, http.StatusNotImplemented},
 		{"MemoryClear", http.MethodPost, "/api/memory/clear", s.handleMemoryClear, http.StatusMethodNotAllowed},

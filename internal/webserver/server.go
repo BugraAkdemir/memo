@@ -118,6 +118,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	mux.HandleFunc("/api/send/stream", s.handleSendStream)
 	mux.HandleFunc("/api/system-prompt", s.handleSystemPrompt)
 	mux.HandleFunc("/api/system-prompt/reset", s.handleResetSystemPrompt)
+	mux.HandleFunc("/api/system-prompt/minimal-mode", s.handleMinimalMode)
 	mux.HandleFunc("/api/incognito-prompt", s.handleIncognitoPrompt)
 	mux.HandleFunc("/api/memory/files", s.handleMemoryFiles)
 	mux.HandleFunc("/api/memory/clear", s.handleMemoryClear)

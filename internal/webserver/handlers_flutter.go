@@ -287,6 +287,38 @@ func (s *Server) handleResetSystemPrompt(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, map[string]string{"ok": "true"})
 }
 
+// ─── Minimal Mode ───────────────────────────────────────────────
+//
+// When on, identity/persona/mood/web-search prompt injection is disabled
+// entirely — only memory context (if separately enabled) still reaches
+// the model. For a tight local-model context budget.
+
+func (s *Server) handleMinimalMode(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]bool{"enabled": s.fullBridge.GetMinimalMode()})
+	case http.MethodPut:
+		var req struct {
+			Enabled bool `json:"enabled"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetMinimalMode(req.Enabled); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 // ─── Incognito Prompt ───────────────────────────────────────────
 
 func (s *Server) handleIncognitoPrompt(w http.ResponseWriter, r *http.Request) {

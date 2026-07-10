@@ -13,7 +13,7 @@ import (
 )
 
 func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
-	id := identity.New("Test", "Memo", "casual", "")
+	id := identity.New("Test", "Memo", "casual", "", false)
 
 	t.Run("mood_nil_strips_assistant", func(t *testing.T) {
 		a := &App{
@@ -148,7 +148,7 @@ func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
 }
 
 func TestBuildMessages_MemoryEnabledNotCrash(t *testing.T) {
-	id := identity.New("Test", "Memo", "casual", "")
+	id := identity.New("Test", "Memo", "casual", "", false)
 	a := &App{
 		cfg: &config.AppConfig{
 			Memory: config.MemoryConfig{MemoryEnabled: true},

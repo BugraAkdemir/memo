@@ -85,21 +85,26 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 	// Memory formatting is independent of mood — the mood engine must have ZERO
 	// influence when disabled.
 	systemPrompt := a.identity.BuildSystemPrompt(memories, false)
-	// Mood is fully opt-in. When the engine is disabled the model is driven
-	// solely by the configured system prompt: no directive, no neutral block,
-	// no self-interest text is injected.
-	if a.mood != nil && a.mood.Enabled() {
-		systemPrompt += a.mood.BuildDirective()
-		systemPrompt += a.mood.BuildSelfInterestDirective()
-	}
-	// Web search is now an explicit on/off mode (toggle in the UI). When on,
-	// every message is enriched with fresh web results — no fragile, language-
-	// specific keyword detection. When off, it never runs.
-	if a.cfg.WebSearch.Enabled {
-		if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
-			systemPrompt += websearch.FormatForContext(userMsg, results)
-		} else {
-			logx.Printf("websearch: %v", err)
+	// MinimalMode means zero injection beyond memory — mood and web search
+	// context are both prompt injection just like identity/persona is, so
+	// they're skipped here too rather than only in BuildSystemPrompt.
+	if !a.cfg.Identity.MinimalMode {
+		// Mood is fully opt-in. When the engine is disabled the model is driven
+		// solely by the configured system prompt: no directive, no neutral block,
+		// no self-interest text is injected.
+		if a.mood != nil && a.mood.Enabled() {
+			systemPrompt += a.mood.BuildDirective()
+			systemPrompt += a.mood.BuildSelfInterestDirective()
+		}
+		// Web search is now an explicit on/off mode (toggle in the UI). When on,
+		// every message is enriched with fresh web results — no fragile, language-
+		// specific keyword detection. When off, it never runs.
+		if a.cfg.WebSearch.Enabled {
+			if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
+				systemPrompt += websearch.FormatForContext(userMsg, results)
+			} else {
+				logx.Printf("websearch: %v", err)
+			}
 		}
 	}
 

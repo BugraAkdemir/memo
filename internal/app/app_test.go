@@ -29,7 +29,7 @@ func TestGetAvailableStyles(t *testing.T) {
 
 func TestGetSetSystemPrompt(t *testing.T) {
 	a := &App{
-		identity: identity.New("Test", "Memo", "casual", ""),
+		identity: identity.New("Test", "Memo", "casual", "", false),
 		cfg: &config.AppConfig{
 			Identity: config.IdentityConfig{
 				AssistantName: "Memo",
@@ -89,6 +89,34 @@ func TestGetMoodScore(t *testing.T) {
 	score := a.GetMoodScore()
 	if score != 0.0 {
 		t.Errorf("expected 0 mood score, got %f", score)
+	}
+}
+
+func TestGetSetMinimalMode(t *testing.T) {
+	a := &App{
+		identity: identity.New("Test", "Memo", "casual", "", false),
+		cfg:      &config.AppConfig{},
+	}
+
+	if a.GetMinimalMode() {
+		t.Error("expected minimal mode disabled by default")
+	}
+
+	if err := a.SetMinimalMode(true); err != nil {
+		t.Fatalf("SetMinimalMode: %v", err)
+	}
+	if !a.GetMinimalMode() {
+		t.Error("expected minimal mode enabled after SetMinimalMode(true)")
+	}
+	if !a.identity.MinimalMode {
+		t.Error("SetMinimalMode should also update the live identity, not just cfg")
+	}
+
+	if err := a.SetMinimalMode(false); err != nil {
+		t.Fatalf("SetMinimalMode: %v", err)
+	}
+	if a.GetMinimalMode() {
+		t.Error("expected minimal mode disabled after SetMinimalMode(false)")
 	}
 }
 

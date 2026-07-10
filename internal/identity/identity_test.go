@@ -8,7 +8,7 @@ import (
 )
 
 func TestNew(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	if id.UserName != "Alice" {
 		t.Errorf("UserName = %q, want Alice", id.UserName)
 	}
@@ -21,14 +21,14 @@ func TestNew(t *testing.T) {
 }
 
 func TestNewWithCustomRole(t *testing.T) {
-	id := New("User", "Bot", "formal", "You are a code assistant.")
+	id := New("User", "Bot", "formal", "You are a code assistant.", false)
 	if id.CustomRole != "You are a code assistant." {
 		t.Errorf("CustomRole = %q", id.CustomRole)
 	}
 }
 
 func TestBuildSystemPromptWithCustomRole(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "You are a helpful coding assistant.")
+	id := New("Alice", "Memo", "casual", "You are a helpful coding assistant.", false)
 	prompt := id.BuildSystemPrompt(nil, false)
 	if !strings.Contains(prompt, "coding assistant") {
 		t.Error("custom role should appear in system prompt")
@@ -44,15 +44,45 @@ func TestBuildSystemPromptWithCustomRole(t *testing.T) {
 // entirely, so the origin facts must be appended independently of it, not
 // live inside it.
 func TestBuildSystemPromptWithCustomRole_StillHasOriginBlock(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "You are a formal, professional assistant.")
+	id := New("Alice", "Memo", "casual", "You are a formal, professional assistant.", false)
 	prompt := id.BuildSystemPrompt(nil, false)
 	if !strings.Contains(prompt, "Buğra Akdemir") {
 		t.Error("origin block (who built Memo) should be present even when a custom role/persona is set")
 	}
 }
 
+func TestBuildSystemPrompt_MinimalMode_StripsIdentityAndOrigin(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	prompt := id.BuildSystemPrompt(nil, false)
+	if prompt != "" {
+		t.Errorf("MinimalMode with no memories should produce an empty prompt, got %q", prompt)
+	}
+}
+
+func TestBuildSystemPrompt_MinimalMode_IgnoresCustomRoleToo(t *testing.T) {
+	// MinimalMode is a stronger override than CustomRole — even a
+	// wizard-picked persona or hand-written prompt is stripped.
+	id := New("Alice", "Memo", "casual", "You are a pirate.", true)
+	prompt := id.BuildSystemPrompt(nil, false)
+	if strings.Contains(prompt, "pirate") {
+		t.Error("MinimalMode should strip CustomRole too, not just the default identity block")
+	}
+}
+
+func TestBuildSystemPrompt_MinimalMode_StillIncludesMemory(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	memories := []memory.MemoryResult{{Content: "User likes coffee", Similarity: 0.95}}
+	prompt := id.BuildSystemPrompt(memories, false)
+	if !strings.Contains(prompt, "coffee") {
+		t.Error("MinimalMode should still include memory context — it only strips identity/persona injection")
+	}
+	if strings.Contains(prompt, "Buğra Akdemir") {
+		t.Error("MinimalMode should not include the origin block")
+	}
+}
+
 func TestBuildSystemPromptWithoutCustomRole(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	prompt := id.BuildSystemPrompt(nil, false)
 	if prompt == "" {
 		t.Fatal("BuildSystemPrompt() returned empty")
@@ -66,7 +96,7 @@ func TestBuildSystemPromptWithoutCustomRole(t *testing.T) {
 }
 
 func TestBuildSystemPromptWithMemories(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	memories := []memory.MemoryResult{
 		{Content: "User likes coffee", Similarity: 0.95},
 	}
@@ -77,7 +107,7 @@ func TestBuildSystemPromptWithMemories(t *testing.T) {
 }
 
 func TestBuildSystemPromptEmptyMemories(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	prompt := id.BuildSystemPrompt([]memory.MemoryResult{}, false)
 	if prompt == "" {
 		t.Fatal("BuildSystemPrompt() with empty memories returned empty")
@@ -85,7 +115,7 @@ func TestBuildSystemPromptEmptyMemories(t *testing.T) {
 }
 
 func TestUpdateUserName(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	id.Update("Bob", "", "", "")
 	if id.UserName != "Bob" {
 		t.Errorf("UserName = %q, want Bob", id.UserName)
@@ -93,7 +123,7 @@ func TestUpdateUserName(t *testing.T) {
 }
 
 func TestUpdateAssistantName(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	id.Update("", "Bot", "", "")
 	if id.AssistantName != "Bot" {
 		t.Errorf("AssistantName = %q, want Bot", id.AssistantName)
@@ -101,7 +131,7 @@ func TestUpdateAssistantName(t *testing.T) {
 }
 
 func TestUpdateStyle(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	id.Update("", "", "formal", "")
 	if id.Style != "formal" {
 		t.Errorf("Style = %q, want formal", id.Style)
@@ -109,7 +139,7 @@ func TestUpdateStyle(t *testing.T) {
 }
 
 func TestUpdateCustomRole(t *testing.T) {
-	id := New("Alice", "Memo", "casual", "")
+	id := New("Alice", "Memo", "casual", "", false)
 	id.Update("", "", "", "You are a translator.")
 	if id.CustomRole != "You are a translator." {
 		t.Errorf("CustomRole = %q", id.CustomRole)

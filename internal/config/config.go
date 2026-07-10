@@ -237,6 +237,12 @@ type IdentityConfig struct {
 	Style           string `yaml:"style"`
 	SystemRole      string `yaml:"system_role"`
 	IncognitoPrompt string `yaml:"incognito_prompt"`
+	// MinimalMode strips identity/origin/style injection from the system
+	// prompt entirely — only memory context (if memory is separately
+	// enabled) is still included. For users who want zero prompt overhead
+	// on a tight local-model context budget. Off by default (false), since
+	// most users want the persona/identity behavior.
+	MinimalMode bool `yaml:"minimal_mode"`
 }
 
 type MemoryConfig struct {

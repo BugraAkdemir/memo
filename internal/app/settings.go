@@ -176,6 +176,21 @@ CORE DIRECTIVES:
 	return config.Save(a.cfg)
 }
 
+// GetMinimalMode reports whether identity/persona/mood/web-search prompt
+// injection is disabled — only memory context (if separately enabled)
+// still reaches the model.
+func (a *App) GetMinimalMode() bool {
+	return a.cfg.Identity.MinimalMode
+}
+
+// SetMinimalMode toggles minimal mode.
+func (a *App) SetMinimalMode(enabled bool) error {
+	a.cfg.Identity.MinimalMode = enabled
+	a.identity.SetMinimalMode(enabled)
+	logx.Printf("Minimal mode set to %v", enabled)
+	return config.Save(a.cfg)
+}
+
 // GetImageBase64 reads an image file from within the data directory and returns it as base64.
 func (a *App) GetImageBase64(path string) string {
 	dataDir := filepath.Dir(a.cfg.Memory.PersistDir)

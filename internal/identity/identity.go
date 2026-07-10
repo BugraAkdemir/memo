@@ -13,40 +13,60 @@ type Identity struct {
 	AssistantName string
 	Style         string
 	CustomRole    string
+	// MinimalMode strips identity/origin/style from the system prompt
+	// entirely (see BuildSystemPrompt) — only memory context still goes in,
+	// and only if memory is separately enabled. Zero persona overhead for
+	// a tight local-model context budget.
+	MinimalMode bool
 }
 
-func New(userName, assistantName, style, customRole string) *Identity {
+func New(userName, assistantName, style, customRole string, minimalMode bool) *Identity {
 	return &Identity{
 		UserName:      userName,
 		AssistantName: assistantName,
 		Style:         style,
 		CustomRole:    customRole,
+		MinimalMode:   minimalMode,
 	}
+}
+
+// SetMinimalMode toggles MinimalMode without touching any of the other
+// identity fields — kept separate from Update() so callers don't have to
+// thread it through Update()'s existing "empty string means leave alone"
+// convention, which doesn't have a clean equivalent for a bool.
+func (id *Identity) SetMinimalMode(enabled bool) {
+	id.MinimalMode = enabled
 }
 
 func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool) string {
 	var sb strings.Builder
 
-	// Base identity
-	if id.CustomRole != "" {
-		sb.WriteString(id.CustomRole)
-	} else {
-		sb.WriteString(id.buildIdentityBlock())
+	if !id.MinimalMode {
+		// Base identity
+		if id.CustomRole != "" {
+			sb.WriteString(id.CustomRole)
+		} else {
+			sb.WriteString(id.buildIdentityBlock())
+		}
+
+		// Origin facts (who built this, why) — always appended regardless of
+		// which base identity/persona is active above, so "who made you" stays
+		// grounded even under a wizard persona or a fully custom prompt, both
+		// of which replace buildIdentityBlock() entirely via CustomRole rather
+		// than extending it.
+		sb.WriteString("\n\n")
+		sb.WriteString(id.buildOriginBlock())
+
+		// Style instructions
+		sb.WriteString("\n\n")
+		sb.WriteString(GetStyleInstructions(id.Style))
 	}
 
-	// Origin facts (who built this, why) — always appended regardless of
-	// which base identity/persona is active above, so "who made you" stays
-	// grounded even under a wizard persona or a fully custom prompt, both
-	// of which replace buildIdentityBlock() entirely via CustomRole rather
-	// than extending it.
-	sb.WriteString("\n\n")
-	sb.WriteString(id.buildOriginBlock())
-
-	// Style instructions
-	sb.WriteString("\n\n")
-	sb.WriteString(GetStyleInstructions(id.Style))
-
-	// Memory context — truncate to fit within a reasonable budget
+	// Memory context — truncate to fit within a reasonable budget. Included
+	// even in MinimalMode: memory has its own separate on/off switch
+	// (cfg.Memory.MemoryEnabled, checked by the caller before ever passing
+	// memories in here), so MinimalMode only ever strips identity/persona
+	// injection, never memory.
 	var memoryBlock string
 	if stripAssistant {
 		memoryBlock = memory.FormatMemoriesUserOnly(memories)
@@ -74,7 +94,9 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 			memoryBlock = strings.Join(truncated, "\n")
 		}
 
-		sb.WriteString("\n\n")
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
 		fmt.Fprintf(&sb, "Below are relevant memories from your past conversations with %s. Use them to provide continuity and personalization, but don't explicitly mention that you're recalling memories unless asked.", id.UserName)
 		sb.WriteString(memoryBlock)
 		sb.WriteString("\nDo not fabricate details not present in memories. Do not mention recall unless asked. Do not repeat memory timestamps verbatim in replies.")

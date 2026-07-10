@@ -138,8 +138,15 @@ func (e *Executor) RunStream(ctx context.Context, sessionID string, modelName st
 	}
 
 	pipeline := NewPipelineWithBudget(e.registry, e.permissions, sessionSandbox, router, e.backup, maxTokens)
-	pipeline.bypassPermissions = e.bypassPermissions
-	pipeline.autoPermission = e.autoPermission
+	// Read through the locked getters, not the bare fields — SetBypassPermissions/
+	// SetAutoPermission write under e.mu from a different goroutine (an HTTP
+	// handler), and a plain field read here has no happens-before guarantee with
+	// that write. Symptom when this raced: toggling Shift+Tab auto-permission
+	// looked like it took effect (the PUT succeeded, the UI updated) but the very
+	// next tool call still prompted, because RunStream's goroutine could still see
+	// the pre-toggle value.
+	pipeline.bypassPermissions = e.GetBypassPermissions()
+	pipeline.autoPermission = e.GetAutoPermission()
 
 	wrappedOnEvent := func(ev AgentEvent) {
 		// Log the event
@@ -223,6 +230,13 @@ func (e *Executor) SetBypassPermissions(v bool) {
 	e.mu.Lock()
 	defer e.mu.Unlock()
 	e.bypassPermissions = v
+}
+
+// GetBypassPermissions sistem yönetimi izin bypass'ının durumunu döndürür.
+func (e *Executor) GetBypassPermissions() bool {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	return e.bypassPermissions
 }
 
 // SetAutoPermission kullanıcının Shift+Tab ile açtığı otomatik izin modunu ayarlar.

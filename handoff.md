@@ -91,14 +91,43 @@ Kullanıcı: "Memo kendini pek tanımıyor — yaratıcın kim, amacın ne, fels
 ### Doğrulama
 `CGO_ENABLED=1 go build/vet/test ./... -race` → tüm paketler yeşil (whisper'daki tek hata bu oturum boyunca zaten var olan, ortam kaynaklı, ilgisiz). `flutter analyze --no-fatal-infos && flutter test` → temiz (4 önceden var olan info), 92/92 test yeşil. Yeni Go testleri: `TestBuildSystemPrompt_MinimalMode_*` (3 test, identity paketinde), `TestGetSetMinimalMode` (app paketinde), `TestHandlers_NoFullBridge/MinimalMode` (webserver). `internal/app/config/config.yaml` test koşumları sonrası her seferinde `git checkout --` ile geri alındı, commit edilmedi.
 
-**Commit bekliyor** — kullanıcı onaylarsa: `internal/config/config.go`, `internal/identity/identity.go`+test, `internal/app/settings.go`+`helpers.go`+`app.go`+`app_test.go`, `internal/webserver/bridge.go`+`server.go`+`handlers_flutter.go`+`nil_fullbridge_test.go`, `frontend/lib/core/api_client.dart`+`l10n.dart`, `frontend/lib/providers/settings_provider.dart`, `frontend/lib/widgets/settings/tabs/general_tab.dart`, `AGENTS.md`/`handoff.md`.
+Commit edildi (`daf3428`, `0f1ee93`, `a298b3a`).
+
+## Yedinci tur (aynı oturum) — "Stable ne kadar uzakta?" denetimi + BUG_REPORT.md temizliği
+
+Kullanıcı: "uygulama şu an yüzde kaç stable, stable için ne gerekiyor, genel tüm bug'ları bulsana." 4 paralel ajan (bugünkü yeni kod, chat/hafıza pipeline, Flutter frontend, güvenlik) eşzamanlı tarama yaptı — **19 yeni bug** bulundu, hiçbiri bu oturumda düzeltilmedi (sadece tespit/dokümantasyon). İki en kritik bulgu bizzat kodda çalıştırılarak doğrulandı:
+
+1. **Uzak erişim (ngrok/LAN) açıkken sıfır kimlik doğrulama** — `internal/webserver/server.go`'nun middleware zinciri (`limitBodyMiddleware(rateLimitMiddleware(...corsMiddleware(mux)))`) hiçbir auth kontrolü içermiyor; `RemoteAccess.Token` üretilip arayüze gösteriliyor ama hiçbir handler'da hiç karşılaştırılmıyor. `POST /api/wipe`, `/api/agent/permission` (→ `run_command` ile host'ta keyfi komut), `/api/import`, `/api/shutdown` hepsi kimlik doğrulamasız erişilebilir.
+2. **Agent'ın `rm -rf /` kara listesi regex hatası** — `internal/agent/tools/command.go:27`'deki `\brm\s+-rf\s+/\b`, gerçek Go regex testiyle doğrulandı: `"rm -rf /"`, `"rm -rf /*"`, `"sudo rm -rf /"` — **hiçbiri eşleşmiyor**. Sadece görece güvenli alt-yollar (`rm -rf /home/user/foo`) yakalanıyor. Filtre tam olarak engellemesi gereken komutu hiç engellemiyor.
+
+Sonuç kullanıcıya bir **Artifact** (HTML rapor, severity-kodlu, `~55/100` genel değerlendirme) olarak sunuldu. Kullanıcı Artifact linkine giremeyince, aynı raporu doğrudan repo köküne **`STABILITY_AUDIT.html`** olarak kaydettim (git'e eklenmedi, kullanıcı zaten `.gitignore`'a kendi eklemiş).
+
+### BUG_REPORT.md tam temizlik
+
+Kullanıcı dosyanın "çok şiş" olduğunu söyledi — haklıydı: 1312 satır, 128 madde, ama **100'ü zaten düzeltilmişti** (çoğu farklı bir işaretleme biçimiyle — `✅ (commit)` — üstteki özet tablosu bunu hiç saymıyordu, "27 açık" diyordu ama gerçek açık sayısı 4'tü). Python ile her maddenin TAM gövdesini (sadece başlığı değil) hem `~~...~~ **→ DÜZELTİLDİ/DÜZELTİLMİŞ**` hem `✅ (commit)` kalıpları için taradım, gerçek durumu çıkardım. Dosya sıfırdan yazıldı: session anlatısı yok, düzeltilmiş bug arşivi yok (git log zaten var), sadece **22 gerçek açık madde** (4 eski + 19 yeni) düz bir liste olarak kaldı — 1312 satır → 182 satır.
+
+### İkinci doğrulama geçişi — kalan eski maddeler de tek tek koda karşı test edildi
+
+Kullanıcı: "kalan eski bugları da incele, gerçekten var mı, AGENTS.md Known Pitfalls'ı da kontrol et." Üç bulgu:
+- **"Mobile API client eksik" iddiası artık yanlıştı** — `grep`'le sayıldı: backend'in 118 endpoint'inden 111'i mobile'da zaten var; eksik 7'si ya bugünkü yeni client-registry uçları (mobile'a hiç gerekmiyor) ya da CLI-yönetim uçları (mobile'da CLI yok). BUG_REPORT.md'den kaldırıldı, AGENTS.md'deki karşılığı düzeltildi.
+- **AGENTS.md'nin "data race" dediği `a.client`/`providerRouter` reassignment'ları aslında hiç race değilmiş** — hem okuma hem yazma tarafının `clientMu`/`providerMu` ile düzgün kilitli olduğu doğrulandı. Gerçek kalan (daha dar) risk: bir stream client'ı kilit altında local değişkene kopyalayıp saniyelerce tutuyor — model swap tam o sırada olursa stream eski client ile konuşmaya devam ediyor. Bu, doğru tanımıyla yeni **BUG-L4** oldu.
+- **"Memory full rebuild O(N), `LoadCache`" notu tamamen bayattı** — `LoadCache` fonksiyonu artık `internal/memory/store.go`'da hiç yok (RAG mimarisi RRF/hibrit arama'ya geçeli beri kalkmış). Hiçbir yere eklenmedi, AGENTS.md'den kaldırıldı.
+
+BUG_REPORT.md'nin açık sayısı yine 22'de kaldı (1 bayat madde çıktı, 1 doğru tanımlı madde girdi) ama artık hepsi bugün koda karşı gerçekten teyit edilmiş.
+
+**Commit'ler:** `fba6a08` (ilk 19 bulgunun eklenmesi), `42b743e` (tam temizlik/yeniden yazım), `9470e5f` (ikinci doğrulama geçişi + AGENTS.md düzeltmeleri).
+
+### Doğrulama
+Bu tur salt dokümantasyon — kod değişikliği yok, `go build/test` çalıştırılmadı (gerek yoktu). `BUG_REPORT.md`'nin madde sayıları elle (Python script ile grep/sayım) doğrulandı, tekrar tekrar kontrol edildi.
 
 ## Sıradaki Oturum İçin
 
-1. Gerçek terminalde uçtan uca doğrulanmadı — SIGTERM/terminal-restore, bracketed-paste, `/model` ile büyük model başlatma, ve özellikle backend süreç ayrımı: gerçek terminalde `memo` çalıştır, `/gui` ile Flutter'ı aç, CLI'den çık, Flutter'ın canlı kaldığını doğrula; Flutter'ı kapat, ~90sn içinde backend'in kendiliğinden kapandığını doğrula (`ps aux | grep memo`).
-2. **Minimal Mod da gerçek Flutter arayüzünde hiç denenmedi** — toggle açılıp gerçekten sohbete hiçbir kişilik/kimlik sızmadığı, sadece hafızanın (açıksa) çalıştığı canlı bir chat ile doğrulanmalı.
-3. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow (düzeldi, bkz. yukarısı), `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
-4. **Yeni, küçük bir borç:** `mobile/` projesinin `.dart_tool`/pub-cache durumu her taze clone'da kontrol edilmeli — bu oturumda bir kere daha karşımıza çıktı, gelecekte tekrar edebilir.
+1. **En yüksek öncelik — 2 kritik bug düzeltilmeli:** uzak-erişim auth eksikliği (üretilen `RemoteAccess.Token`'ı gerçekten kullanan bir middleware eklemek) ve `rm -rf` regex'i (`\b` yerine `(^|[\s;&|])rm\s+-rf\s+/($|[\s;&|*])` gibi sağlam bir desen). İkisi de küçük, izole, hızlı düzeltmeler — BUG_REPORT.md'de tam detay var.
+2. Gerçek terminalde uçtan uca doğrulanmadı — SIGTERM/terminal-restore, bracketed-paste, `/model` ile büyük model başlatma, backend süreç ayrımı (`/gui` ile Flutter aç, CLI'den çık, Flutter'ın canlı kaldığını doğrula).
+3. **Minimal Mod gerçek Flutter arayüzünde hiç denenmedi** — toggle açılıp sohbete hiçbir kişilik/kimlik sızmadığı canlı bir chat ile doğrulanmalı.
+4. `BUG_REPORT.md`'deki kalan 22 maddeden H4 (panic recovery eksikliği) muhtemelen en yüksek kaldıraçlı — `taskloop/engine.go`'daki `recover()` deseni streaming/agent goroutine'lerine de uygulanmalı.
+5. Session 18'in bekleyen maddeleri hâlâ geçerli — test kapsamı, `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
+6. **Küçük borç:** `mobile/` projesinin `.dart_tool`/pub-cache durumu her taze clone'da kontrol edilmeli.
 
 ---
 

@@ -201,6 +201,12 @@ func (e *editor) edit(prompt string) (string, bool) {
 			e.buf = append(e.buf[:e.cursor], append([]rune{k.r}, e.buf[e.cursor:]...)...)
 			e.cursor++
 			e.edited()
+
+		case keyPaste:
+			pasted := []rune(k.text)
+			e.buf = append(e.buf[:e.cursor], append(pasted, e.buf[e.cursor:]...)...)
+			e.cursor += len(pasted)
+			e.edited()
 		}
 
 		e.render(prompt)

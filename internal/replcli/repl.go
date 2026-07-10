@@ -40,6 +40,13 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 		if oldState, err := term.MakeRaw(fd); err == nil {
 			defer term.Restore(fd, oldState)
 			out = crlfWriter{out}
+			// Bracketed paste (xterm's ESC[200~/ESC[201~ wrapping around
+			// pasted text) lets keys.go's readBracketedPaste tell a paste
+			// apart from real keystrokes — without it every embedded
+			// newline in a multi-line paste reads as a real Enter press.
+			// Must be disabled again before the terminal leaves raw mode.
+			fmt.Fprint(out, "\033[?2004h")
+			defer fmt.Fprint(out, "\033[?2004l")
 			keys = newKeySource(f)
 			ed = &editor{
 				out:  out,

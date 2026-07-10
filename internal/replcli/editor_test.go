@@ -155,6 +155,29 @@ func TestEditor_CtrlU_KillsToStart(t *testing.T) {
 	}
 }
 
+func TestEditor_BracketedPaste_InsertsAsOneChunkNotMultipleEnters(t *testing.T) {
+	// Before bracketed-paste support the embedded newlines in a pasted
+	// multi-line block each acted as a real Enter, submitting the paste as
+	// several separate messages. A wrapped paste must now land as one
+	// edited buffer, submitted only when the user actually presses Enter.
+	ed, _ := newTestEditor("\x1b[200~line one\nline two\x1b[201~\r")
+	line, ok := ed.readLine("> ")
+	want := "line one line two"
+	if !ok || line != want {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, want)
+	}
+}
+
+func TestEditor_BracketedPaste_InsertsAtCursor(t *testing.T) {
+	// "ac", left once (cursor between a and c), paste "b" — must land at the
+	// cursor position like a typed rune, not appended to the end.
+	ed, _ := newTestEditor("ac\x1b[D\x1b[200~b\x1b[201~\r")
+	line, ok := ed.readLine("> ")
+	if !ok || line != "abc" {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, "abc")
+	}
+}
+
 func TestEditor_ReadLinePlain_NoDropdownNoHistory(t *testing.T) {
 	// A "/" in a plain prompt (y/n answers, search terms) is literal text,
 	// and Up must not pull chat history into the answer.

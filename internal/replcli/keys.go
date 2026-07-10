@@ -2,6 +2,7 @@ package replcli
 
 import (
 	"io"
+	"strings"
 	"time"
 	"unicode/utf8"
 )
@@ -30,11 +31,13 @@ const (
 	keyCtrlU
 	keyCtrlW
 	keyEOF
+	keyPaste // a decoded bracketed-paste block; see readBracketedPaste
 )
 
 type key struct {
 	kind keyKind
-	r    rune // set only for keyRune
+	r    rune   // set only for keyRune
+	text string // set only for keyPaste
 }
 
 // keySource turns a raw-mode byte stream into decoded keypresses. A single
@@ -183,6 +186,9 @@ func (k *keySource) assembleCSI() key {
 			return key{kind: keyNone}
 		}
 		if b >= 0x40 && b <= 0x7E {
+			if b == '~' && params == "200" {
+				return k.readBracketedPaste()
+			}
 			return csiFinal(b, params)
 		}
 		params += string(rune(b))
@@ -190,6 +196,83 @@ func (k *keySource) assembleCSI() key {
 			return key{kind: keyNone}
 		}
 	}
+}
+
+// blockingByte waits indefinitely for the next byte (draining pending
+// first). Unlike nextByte, it has no escWait timeout — paste bodies can be
+// large and arrive slower than a keypress's escape-sequence tail, so a
+// short timeout would truncate them.
+func (k *keySource) blockingByte() (byte, bool) {
+	if len(k.pending) > 0 {
+		b := k.pending[0]
+		k.pending = k.pending[1:]
+		return b, true
+	}
+	b, ok := <-k.ch
+	return b, ok
+}
+
+// readBracketedPaste consumes raw bytes up through the ESC[201~ terminator
+// that closes a bracketed-paste block (xterm's paste-safety convention: the
+// terminal wraps a paste in ESC[200~ ... ESC[201~, and everything in
+// between is literal content, not something to interpret as further escape
+// sequences or control keys). Without this, every embedded newline in a
+// multi-line paste used to decode as a real Enter press, splitting one
+// pasted paragraph into N separately-submitted messages — and running any
+// "/"-prefixed line inside it as a command. Embedded line breaks are
+// collapsed to spaces so the whole paste becomes one insertable chunk.
+func (k *keySource) readBracketedPaste() key {
+	const terminator = "\x1b[201~"
+	var raw []byte
+	matched := 0
+	for {
+		b, ok := k.blockingByte()
+		if !ok {
+			break
+		}
+		if b == terminator[matched] {
+			matched++
+			if matched == len(terminator) {
+				break
+			}
+			continue
+		}
+		if matched > 0 {
+			raw = append(raw, terminator[:matched]...)
+			matched = 0
+		}
+		if b == terminator[0] {
+			matched = 1
+			continue
+		}
+		raw = append(raw, b)
+	}
+	text := collapsePasteNewlines(string(raw))
+	if text == "" {
+		return key{kind: keyNone}
+	}
+	return key{kind: keyPaste, text: text}
+}
+
+// collapsePasteNewlines turns any \r\n/\r/\n run in s into a single space —
+// the composer's buffer is single-line, so a hard line break from the
+// source (a copied paragraph, a multi-line code snippet) is flattened
+// instead of being submitted as several separate messages.
+func collapsePasteNewlines(s string) string {
+	var b strings.Builder
+	prevSpace := false
+	for _, r := range s {
+		if r == '\r' || r == '\n' {
+			if !prevSpace {
+				b.WriteRune(' ')
+				prevSpace = true
+			}
+			continue
+		}
+		b.WriteRune(r)
+		prevSpace = false
+	}
+	return strings.TrimSpace(b.String())
 }
 
 func csiFinal(final byte, params string) key {

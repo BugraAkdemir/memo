@@ -57,6 +57,61 @@ func TestKeySource_DecodesBasicKeys(t *testing.T) {
 	}
 }
 
+func TestKeySource_BracketedPaste_CollapsesEmbeddedNewlines(t *testing.T) {
+	// Before bracketed-paste support, a multi-line paste decoded as N
+	// separate Enter presses (splitting one paste into N sent messages, and
+	// running any "/"-prefixed line inside it as a command). The terminal
+	// wraps the pasted bytes in ESC[200~ ... ESC[201~; readBracketedPaste
+	// must consume exactly that block and collapse the embedded breaks.
+	ks := keysFrom("\x1b[200~first line\nsecond line\r\nthird\x1b[201~x")
+	got := ks.readKey()
+	want := "first line second line third"
+	if got.kind != keyPaste || got.text != want {
+		t.Fatalf("first key = %+v, want {kind: keyPaste, text: %q}", got, want)
+	}
+	if got := ks.readKey(); got.kind != keyRune || got.r != 'x' {
+		t.Fatalf("trailing key = %+v, want rune x (bytes after the terminator must not be swallowed)", got)
+	}
+}
+
+func TestKeySource_BracketedPaste_PreservesUTF8AndPunctuation(t *testing.T) {
+	ks := keysFrom("\x1b[200~türkçe metin, virgül de var\x1b[201~")
+	got := ks.readKey()
+	want := "türkçe metin, virgül de var"
+	if got.kind != keyPaste || got.text != want {
+		t.Fatalf("key = %+v, want {kind: keyPaste, text: %q}", got, want)
+	}
+}
+
+func TestKeySource_BracketedPaste_EmptyPasteYieldsNone(t *testing.T) {
+	ks := keysFrom("\x1b[200~\x1b[201~x")
+	if got := ks.readKey(); got.kind != keyNone {
+		t.Fatalf("first key = %+v, want keyNone for an empty paste", got)
+	}
+	if got := ks.readKey(); got.kind != keyRune || got.r != 'x' {
+		t.Fatalf("second key = %+v, want rune x", got)
+	}
+}
+
+func TestCollapsePasteNewlines(t *testing.T) {
+	tests := []struct {
+		in   string
+		want string
+	}{
+		{"a\nb", "a b"},
+		{"a\r\nb", "a b"},
+		{"a\n\nb", "a b"},
+		{"a    b", "a    b"}, // regular whitespace, no newline involved — left untouched
+		{"no newlines here", "no newlines here"},
+		{"\nleading and trailing\n", "leading and trailing"},
+	}
+	for _, tt := range tests {
+		if got := collapsePasteNewlines(tt.in); got != tt.want {
+			t.Errorf("collapsePasteNewlines(%q) = %q, want %q", tt.in, got, tt.want)
+		}
+	}
+}
+
 func TestKeySource_UnknownCSISwallowedWhole(t *testing.T) {
 	// An exotic sequence must be consumed entirely (keyNone), never leak
 	// its bytes into the stream as if the user typed them.

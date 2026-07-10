@@ -143,8 +143,22 @@ func main() {
 		termState, _ = term.GetState(fd)
 	}
 
+	// Run's own deferred UnregisterClient (internal/replcli/repl.go) never
+	// gets a chance to run on an external signal — its goroutine is left
+	// blocked on stdin and simply abandoned when this function returns and
+	// the process exits, the same problem the termState capture above
+	// solves for raw-mode restore. The callback delivers the ID over a
+	// channel (not a shared variable — it's written from Run's goroutine
+	// and would otherwise be read here unsynchronized) so the signal
+	// branch can send the goodbye itself instead of leaving the backend to
+	// notice via its 90s heartbeat-staleness sweep.
+	clientIDCh := make(chan string, 1)
 	replDone := make(chan error, 1)
-	go func() { replDone <- replcli.Run(baseURL, cwd, os.Stdin, os.Stdout, ownBackend) }()
+	go func() {
+		replDone <- replcli.Run(baseURL, cwd, os.Stdin, os.Stdout, ownBackend, func(id string) {
+			clientIDCh <- id
+		})
+	}()
 
 	select {
 	case err := <-replDone:
@@ -155,6 +169,14 @@ func main() {
 		fmt.Println()
 		if termState != nil {
 			term.Restore(int(os.Stdin.Fd()), termState)
+		}
+		select {
+		case clientID := <-clientIDCh:
+			unregCtx, unregCancel := context.WithTimeout(context.Background(), 3*time.Second)
+			_ = replcli.NewClient(baseURL).UnregisterClient(unregCtx, clientID)
+			unregCancel()
+		default:
+			// Not registered yet (or registration failed) — nothing to unregister.
 		}
 	}
 }

@@ -32,7 +32,12 @@ import (
 // navigate with the arrows immediately, Claude Code style), input history on
 // Up/Down, cursor editing, and Esc/Ctrl+C to cancel a streaming reply. Piped
 // input (tests, scripts) keeps the plain line-scanner behavior.
-func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bool) error {
+// onClientRegistered, if given, is invoked with the client ID right after a
+// successful RegisterClient — main.go uses it to unregister directly from
+// its external-signal branch, since that branch can't wait for this
+// function's own deferred unregister (the goroutine running Run is left
+// blocked on stdin and abandoned when the process exits on signal).
+func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bool, onClientRegistered ...func(clientID string)) error {
 	var keys *keySource
 	var ed *editor
 	if f, ok := in.(*os.File); ok && term.IsTerminal(int(f.Fd())) {
@@ -75,6 +80,9 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	// Best-effort: an older/incompatible backend that doesn't know this
 	// route just means no heartbeat loop runs, nothing else changes.
 	if clientID, err := client.RegisterClient(ctx); err == nil && clientID != "" {
+		for _, cb := range onClientRegistered {
+			cb(clientID)
+		}
 		hbCtx, hbCancel := context.WithCancel(ctx)
 		defer hbCancel()
 		go heartbeatLoop(hbCtx, client, clientID)

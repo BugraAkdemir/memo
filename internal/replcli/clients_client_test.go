@@ -109,3 +109,36 @@ func TestRun_RegistersAndUnregistersClient(t *testing.T) {
 		t.Fatalf("unregister calls = %v, want [%q]", *unregistered, (*registered)[0])
 	}
 }
+
+// TestRun_InvokesOnClientRegisteredCallback is the regression guard for
+// BUG-M3 (SIGTERM skips the CLI's unregister): main.go can't wait for Run's
+// own goroutine to run its deferred UnregisterClient on an external signal
+// (the goroutine is left blocked on stdin and abandoned when the process
+// exits), so it needs the client ID up front to send the goodbye itself.
+// This proves the callback that hands it over actually fires, with the
+// right ID, right after registration succeeds.
+func TestRun_InvokesOnClientRegisteredCallback(t *testing.T) {
+	srv, registered, _ := newClientTrackingTestServer(t, []string{
+		`data: {"content":"ok","done":true,"finish_reason":"stop"}`,
+	})
+	defer srv.Close()
+
+	in := strings.NewReader("selam\n/exit\n")
+	var out bytes.Buffer
+
+	var gotID string
+	callCount := 0
+	if err := Run(srv.URL, "/tmp/project", in, &out, false, func(id string) {
+		callCount++
+		gotID = id
+	}); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+
+	if callCount != 1 {
+		t.Fatalf("onClientRegistered called %d times, want exactly 1", callCount)
+	}
+	if len(*registered) != 1 || gotID != (*registered)[0] {
+		t.Fatalf("callback got id %q, want %q (the id RegisterClient actually returned)", gotID, (*registered)[0])
+	}
+}

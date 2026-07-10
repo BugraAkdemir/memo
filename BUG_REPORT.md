@@ -6,7 +6,7 @@
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
 >
-> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5. Devamında eski BUG-H1 (SQLite dosya izinleri) de düzeltildi — bkz. commit `7e8860e`. Sonra eski BUG-H2 (sandbox mount-point bypass) incelendi: iddia edilen `ValidatePath`'in **hiçbir çağıranı yoktu** (tüm repo'da grep ile doğrulandı) — gerçek dosya araçlarının kullandığı `internal/agent/tools/file.go`'daki ayrı `validatePath` zaten doğruydu (protected-list eşleşmese bile basePath dışını reddediyor). Dead+hatalı kod silindi, gerçek yolu doğrulayan testler eklendi — bkz. commit `c59b459`.
+> **Session 20:** İki kritik madde (BUG-C1, BUG-C2) düzeltildi ve buradan kaldırıldı — bkz. commit `de4450e` (BUG-C2) ve `f5a579e` (BUG-C1). Eski BUG-H1 (kimlik doğrulamasız GET ile sağlayıcı anahtarları/token okuma) da BUG-C1'in düzeltmesinin bir yan etkisi olarak kapandı — `remoteAuthMiddleware` tüm route'ları method'dan bağımsız, tek tip koruyor (`TestRemoteAuthOK_RemoteRequiresToken` `/api/providers`'ı da doğrudan test ediyor), ayrıca kaldırıldı. BUG-C1'in düzeltmesi yeni, dar kapsamlı bir takip maddesi doğurdu: bkz. BUG-L5. Devamında eski BUG-H1 (SQLite dosya izinleri) de düzeltildi — bkz. commit `7e8860e`. Sonra eski BUG-H2 (sandbox mount-point bypass) incelendi: iddia edilen `ValidatePath`'in **hiçbir çağıranı yoktu** (tüm repo'da grep ile doğrulandı) — gerçek dosya araçlarının kullandığı `internal/agent/tools/file.go`'daki ayrı `validatePath` zaten doğruydu (protected-list eşleşmese bile basePath dışını reddediyor). Dead+hatalı kod silindi, gerçek yolu doğrulayan testler eklendi — bkz. commit `c59b459`. Ardından eski BUG-H3 (panic recovery eksikliği) düzeltildi — `taskloop/engine.go`'daki desen `llm.go`'nun 5 streaming goroutine'ine ve `Pipeline.RunStream`'e uygulandı, bkz. commit `9fb11b7`.
 
 ---
 
@@ -15,35 +15,28 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 4 |
+| 🟠 HIGH | 3 |
 | 🟡 MEDIUM | 9 |
 | 🟢 LOW | 5 |
-| **TOPLAM** | **18** |
+| **TOPLAM** | **17** |
 
 ---
 
 ## 🟠 HIGH
 
-### BUG-H1: Streaming/agent goroutine'lerinde hiçbir panic recovery yok — tek bir panic tüm backend'i çökertir
-
-- **Dosya:** `internal/app/llm.go` (satır 123, 210, 511, 621, 732'deki `go func(){...}` bloklar), `internal/agent/pipeline.go:93` (`RunStream`)
-- **Nedir:** Tüm repo'da `recover()` sadece `internal/taskloop/engine.go:104-111`'de var (kendi yorumunda "bir panic tüm uygulamayı çökertmemeli" diyor) — bu desen en çok kullanılan streaming/tool-execution yoluna hiç uygulanmamış. Go, kurtarılmamış bir panic'te hangi goroutine'de olursa olsun tüm process'i öldürür.
-- **Kullanıcı etkisi:** Bir tool handler'da ya da provider yanıtı parse ederken tek bir nil-pointer/type-assertion/index-out-of-range hatası, o an aktif olan **herkesi** (tüm sohbetler, WhatsApp köprüsü, takvim hatırlatıcıları) aynı anda düşürür.
-- **Düzeltme:** `taskloop/engine.go`'daki `recover()` deseni bu goroutine'lere de uygulanmalı — muhtemelen en yüksek kaldıraçlı tek düzeltme.
-
-### BUG-H2: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
+### BUG-H1: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
 
 - **Dosya:** `internal/app/chat.go:210-217` (`sendMessageStreamInner`)
 - **Nedir:** `buildMessages` o an aktif sohbetin geçmişini okuyor, ama kullanıcı mesajı ve yanıt daha sonra, `sm.GetActiveID()`/`sm.AddMessage()` çağrıldığı **o andaki** aktif sohbete yazılıyor. `/api/chats/switch` (`server.go:450`) `SwitchChat`'i doğrudan çağırıyor, `streamMu` ile hiç senkronize değil.
 - **Kullanıcı etkisi:** Web arama/hafıza sorgusu sürerken kullanıcı başka bir sohbete geçerse, eski sohbetin bağlamıyla üretilen cevap yanlışlıkla yeni aktif sohbete eklenir.
 
-### BUG-H3: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
+### BUG-H2: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
 
 - **Dosya:** `frontend/lib/providers/chat_provider.dart:87-108, 173-471`
 - **Nedir:** `ActiveChatIdNotifier.switchTo`, `messagesProvider.notifier.stopStreaming()` çağırıp `ref.invalidate(messagesProvider)` ile notifier'ı dispose ediyor — ama stream döngüsündeki, post-stream finalize bloğundaki ve catch bloğundaki hiçbir `state = ...` yazımı "dispose edildi mi" kontrolü yapmıyor (sadece gecikmeli liste-yenileme timer'ı kontrol ediyor).
-- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H2'nin frontend karşılığı.
+- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H1'in frontend karşılığı.
 
-### BUG-H4: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
+### BUG-H3: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
 
 - **Dosya:** `internal/app/clients.go:136-142` (`selfShutdownSignal`)
 - **Nedir:** `p.Signal(os.Interrupt)` ile kendine sinyal gönderme, Go'nun Windows implementasyonunda desteklenmiyor (`Process.Signal` sadece `Kill`'i destekliyor, diğerleri `EWINDOWS` hatasıyla dönüyor) — hata sessizce yutuluyor.

@@ -56,13 +56,20 @@ Kullanıcı `--port 8090` ile `go run .` çalıştırınca REPL açılmasına ş
 
 ## ⚠️ Oturum İçi Veri Kaybı Olayı — ÖNEMLİ
 
-Yukarıdaki round 2 ve round 3'ün ilk commit'leri (**hiç push edilmeden**) kullanıcı projeyi yanlışlıkla silip GitHub'dan yeniden clone edince **tamamen kayboldu** — sadece round 1'in commit'i (`b34c907`) hayatta kaldı çünkü push edilmişti. Round 2 ve round 3'ün TÜMÜ bu oturumda ikinci kez, sıfırdan yeniden yazıldı (konuşma geçmişindeki tam dosya içerikleri hafızadan reconstruct edildi) ve yeniden commit edildi. **Bu commit'ler de push edilene kadar aynı risk altında.**
+Yukarıdaki round 2 ve round 3'ün ilk commit'leri (**hiç push edilmeden**) kullanıcı projeyi yanlışlıkla silip GitHub'dan yeniden clone edince **tamamen kayboldu** — sadece round 1'in commit'i (`b34c907`) hayatta kaldı çünkü push edilmişti. Round 2 ve round 3'ün TÜMÜ bu oturumda ikinci kez, sıfırdan yeniden yazıldı (konuşma geçmişindeki tam dosya içerikleri hafızadan reconstruct edildi) ve yeniden commit edildi.
+
+**Güncelleme: push edildi, doğrulandı** — `git rev-list --count origin/main..HEAD` → 0, yani `origin/main` şu an bu oturumun tüm commit'lerini içeriyor (son: `635f060`). Riskli pencere kapandı. **Ders:** bu repo'da commit'ten hemen sonra push etmeyi alışkanlık haline getir — bu oturumdaki gibi bir "yanlışlıkla sil + yeniden clone" senaryosunda push edilmemiş her şey gerçekten geri getirilemez şekilde kayboluyor (reflog bile işe yaramadı, çünkü `.git`'in tamamı silinmişti).
+
+## Dördüncü tur (aynı oturum) — iki kısa takip konusu
+
+1. **`go run . --port 8090` neden CLI açıyor — bug mu, kasıtlı mı?** Kullanıcı bunu görünce şaşırdı, ben de araştırıp netleştirdim: `--port` hiçbir zaman interaktiflik belirlemiyor, sadece `--headless` + `isInteractive()` (stdin gerçek tty mi) belirliyor — bu, önceki bir session'da eklenmiş, `AGENTS.md`'de zaten dokümante edilmiş kasıtlı bir tasarım. Üretimde (`run_memo.sh`'ın başlattığı `memo-backend`, AppImage/.exe) hiç sorun değil çünkü o process'in stdin'i zaten gerçek bir terminale bağlı değil (script arka planda başlatıyor) — `isInteractive()` orada baştan `false`. Sadece geliştiricinin `go run .`'ı elle bir terminalden çalıştırması bu davranışı tetikliyor. Kullanıcı önce "sadece backend açılsın" isteğini dile getirdi, sonra üretim akışının zaten böyle çalıştığını anlayınca **"dokunma, olduğu gibi kalsın"** dedi — kod değişikliği yapılmadı, sadece açıklandı.
+2. **`mobile/lib/core/api_client.dart` içinde `package:dio/dio.dart` bulunamıyor hatası** — kök sebep: `mobile/` (ayrı bir Flutter projesi, `frontend/`'den farklı) içinde `.dart_tool/` hiç yoktu, yani `flutter pub get` o proje için hiç çalıştırılmamıştı (muhtemelen bu oturumun başındaki silme/yeniden-clone olayından kalma — `.dart_tool` git'e commit edilmiyor). `cd mobile && flutter pub get` ile düzeltildi, `flutter analyze` temiz. Kod değişikliği değil, sadece eksik bağımlılık kurulumu.
 
 ## Sıradaki Oturum İçin
 
-1. **ACİL: Kullanıcı bu commit'leri `git push` etmeli** — az önce tam olarak bunun eksikliği yüzünden ~9 commit'lik iş kayboldu ve yeniden yapıldı.
-2. Gerçek terminalde uçtan uca doğrulanmadı — SIGTERM/terminal-restore, bracketed-paste, `/model` ile büyük model başlatma, ve özellikle backend süreç ayrımı: gerçek terminalde `memo` çalıştır, `/gui` ile Flutter'ı aç, CLI'den çık, Flutter'ın canlı kaldığını doğrula; Flutter'ı kapat, ~90sn içinde backend'in kendiliğinden kapandığını doğrula (`ps aux | grep memo`).
-3. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow, `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
+1. Gerçek terminalde uçtan uca doğrulanmadı — SIGTERM/terminal-restore, bracketed-paste, `/model` ile büyük model başlatma, ve özellikle backend süreç ayrımı: gerçek terminalde `memo` çalıştır, `/gui` ile Flutter'ı aç, CLI'den çık, Flutter'ın canlı kaldığını doğrula; Flutter'ı kapat, ~90sn içinde backend'in kendiliğinden kapandığını doğrula (`ps aux | grep memo`).
+2. Session 18'in bekleyen maddeleri hâlâ geçerli (aşağıda) — test kapsamı, `EngineStrip` overflow, `pickBestAsset` belirsizliği, `internal/app` test hijyeni.
+3. **Yeni, küçük bir borç:** `mobile/` projesinin `.dart_tool`/pub-cache durumu her taze clone'da kontrol edilmeli — bu oturumda bir kere daha karşımıza çıktı, gelecekte tekrar edebilir.
 
 ---
 

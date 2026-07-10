@@ -176,6 +176,30 @@ void main() {
     expect(find.text(L10n.t('engine_memory_stopped')), findsNothing);
   });
 
+  testWidgets(
+      'shows a divider between the offline hint and the memory warning '
+      '(regression: they used to render with no gap at all — "Start a "'
+      'model●No memory model" stuck together — because the divider only '
+      'checked chatRunning/isApiProvider, missing the offline-hint case)',
+      (tester) async {
+    await _pumpEngineStrip(
+      tester,
+      overrides: baseline(memoryEnabled: true, localModels: const []),
+    );
+    await tester.pumpAndSettle();
+
+    // _divider() renders a 1x18 Container; the status dots are 7x7, so this
+    // predicate can't accidentally match one of those instead.
+    final dividers = find.byWidgetPredicate(
+      (w) => w is Container && w.constraints == const BoxConstraints.tightFor(width: 1, height: 18),
+    );
+    expect(dividers, findsOneWidget);
+
+    final hintRight = tester.getTopRight(find.text('· ${L10n.t('engine_start_model')}')).dx;
+    final warningLeft = tester.getTopLeft(find.text(L10n.t('engine_memory_missing'))).dx;
+    expect(warningLeft - hintRight, greaterThan(20));
+  });
+
   testWidgets('tapping the memory warning opens the Models tab', (tester) async {
     var tapped = false;
     await _pumpEngineStrip(

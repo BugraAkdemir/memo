@@ -48,6 +48,14 @@ class EngineStrip extends ConsumerWidget {
     final isApiProvider =
         activeProviderType.isNotEmpty && activeProviderType != 'local';
 
+    // Whether the strip's first "slot" (chat model / API provider / offline
+    // hint) rendered anything, and whether the second slot (embedding
+    // model / memory warning) did — used to decide when a divider actually
+    // has two neighbors to separate instead of leaving a stray line (or, as
+    // reported, no gap at all) next to empty space.
+    final firstSlotHasContent = chatRunning || isApiProvider || !embRunning;
+    final secondSlotHasContent = embRunning || memoryEnabled;
+
     return Container(
       height: 40,
       // Floating rounded glass pill in Glass Light; flush top-bordered bar in dark.
@@ -83,7 +91,10 @@ class EngineStrip extends ConsumerWidget {
           else if (!embRunning)
             _OfflineHint(onOpenModels: onOpenModels),
           if (embRunning) ...[
-            if (chatRunning || isApiProvider) _divider(c.borderSoft),
+            // The offline hint above only renders when !embRunning, so
+            // "chatRunning || isApiProvider" alone misses the case where it
+            // fired instead — same firstSlotHasContent check as below.
+            if (firstSlotHasContent) _divider(c.borderSoft),
             _LiveIndicator(
               icon: Icons.hub_outlined,
               label: '${L10n.t('engine_memory')}: ${_fileName(emb!.modelPath)}',
@@ -96,11 +107,18 @@ class EngineStrip extends ConsumerWidget {
             // Memory is turned on in Settings but no embedding server is
             // actually running — RAG silently does nothing until this is
             // fixed, so surface it instead of failing invisibly.
-            if (chatRunning || isApiProvider) _divider(c.borderSoft),
+            //
+            // firstSlotHasContent (not "chatRunning || isApiProvider"): the
+            // offline hint renders whenever chat isn't running AND there's
+            // no active API provider AND embedding isn't running either —
+            // exactly the state a fully-offline install starts in. The old
+            // check missed that case, so the offline hint and this warning
+            // rendered stuck together with no gap between them.
+            if (firstSlotHasContent) _divider(c.borderSoft),
             _MemoryWarningIndicator(hasModel: hasEmbeddingModel, onTap: onOpenModels),
           ],
           if (activeDownloads.isNotEmpty) ...[
-            if (chatRunning || isApiProvider || embRunning) _divider(c.borderSoft),
+            if (firstSlotHasContent || secondSlotHasContent) _divider(c.borderSoft),
             _DownloadIndicator(
               downloads: activeDownloads,
               onTap: onOpenModels,

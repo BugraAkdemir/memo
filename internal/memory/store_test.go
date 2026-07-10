@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 
@@ -222,6 +223,45 @@ func TestSaveInteraction_ShortNoChunk(t *testing.T) {
 	}
 	if store.Count() != 1 {
 		t.Fatalf("Count() = %d, want 1", store.Count())
+	}
+}
+
+// TestSaveMerged_EmbedFailure_StillSaves is a regression guard for BUG-M3:
+// when embedding the merged content fails, saveMerged used to save the
+// merged row anyway (correct — losing the merge attempt would be worse than
+// losing just its vector-searchability) but with zero indication anywhere
+// that it happened, so the row silently and permanently never surfaces in
+// similarity search. This test only asserts the (unchanged, intentional)
+// save-without-a-vector behavior still holds; the accompanying log line
+// isn't independently observable from here without a logx capture hook.
+func TestSaveMerged_EmbedFailure_StillSaves(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	wantErr := errors.New("embedding service unavailable")
+	store, err := NewStore(StoreConfig{
+		Dir:       dir,
+		Dimension: 3,
+		EmbeddingFunc: func(context.Context, string) ([]float32, error) {
+			return nil, wantErr
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.saveMerged(ctx, "merged content", 1, 2); err != nil {
+		t.Fatalf("saveMerged() error = %v, want nil (must save without a vector, not fail)", err)
+	}
+
+	var embedding []byte
+	row := store.db.QueryRowContext(ctx, "SELECT embedding FROM memories WHERE source = 'merged'")
+	if err := row.Scan(&embedding); err != nil {
+		t.Fatalf("query saved merged row: %v", err)
+	}
+	if embedding != nil {
+		t.Errorf("embedding = %v, want nil — a failed embed must not silently produce a stored vector", embedding)
 	}
 }
 

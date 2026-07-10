@@ -1604,7 +1604,11 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 
 	var embedBlob []byte
 	var embedding []float32
-	if emb, err := s.embed(ctx, content); err == nil && len(emb) == s.dim {
+	if emb, err := s.embed(ctx, content); err != nil {
+		logx.Printf("MEMORY: saveMerged embed failed (uuid=%s): %v — merged memory will be saved without a vector and will not surface in similarity search", uuid, err)
+	} else if len(emb) != s.dim {
+		logx.Printf("MEMORY: saveMerged embed dimension mismatch (uuid=%s): got %d, want %d — merged memory will be saved without a vector and will not surface in similarity search", uuid, len(emb), s.dim)
+	} else {
 		embedding = emb
 		embedBlob = floatsToBlob(emb)
 	}

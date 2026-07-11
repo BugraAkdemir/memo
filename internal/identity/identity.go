@@ -59,7 +59,7 @@ func (id *Identity) GetMinimalMode() bool {
 	return id.MinimalMode
 }
 
-func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool) string {
+func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled bool) string {
 	var sb strings.Builder
 
 	if !id.GetMinimalMode() {
@@ -77,6 +77,14 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		// than extending it.
 		sb.WriteString("\n\n")
 		sb.WriteString(id.buildOriginBlock())
+
+		// Which off-by-default features exist but aren't on right now — see
+		// buildCapabilitiesBlock's own doc comment for why this only lists
+		// what's OFF.
+		if capBlock := buildCapabilitiesBlock(agentEnabled, webSearchEnabled); capBlock != "" {
+			sb.WriteString("\n\n")
+			sb.WriteString(capBlock)
+		}
 
 		// Style instructions
 		sb.WriteString("\n\n")
@@ -161,6 +169,29 @@ Your limits:
 func (id *Identity) buildOriginBlock() string {
 	return fmt.Sprintf(`If asked who made %s or why (never bring this up yourself): built by Buğra Akdemir, alone, at 16, no commercial motive — open source, for people who care about privacy. Purpose: a local-first AI friend with real memory, usable offline. Whoever's asking isn't Buğra — this is their own %s.`,
 		id.AssistantName, id.AssistantName)
+}
+
+// buildCapabilitiesBlock names the optional, user-toggleable features that
+// are currently OFF, so the model can correctly say "not turned on right
+// now, here's how to enable it" instead of flatly denying the capability
+// exists. Without this, a user who asked for a file to be created (or a web
+// search) while agent mode/web search happened to be off got told "I don't
+// have that ability" — model has zero information either way, since
+// buildAgentSystemPrompt (chat.go) and the live search-results block
+// (helpers.go) only ever get injected when their feature is actually ON.
+//
+// Deliberately only mentions what's OFF: when a feature IS on, its own
+// instructions/context are already injected elsewhere in the prompt, so
+// restating it here would be redundant token spend.
+func buildCapabilitiesBlock(agentEnabled, webSearchEnabled bool) string {
+	var off []string
+	if !agentEnabled {
+		off = append(off, "Agent mode (reading/writing files, running terminal commands) is off in this conversation, so you can't do those right now — if asked, say it's a toggle the user can turn on (chat toolbar's robot icon, or the Agent tab), not that you lack the ability entirely.")
+	}
+	if !webSearchEnabled {
+		off = append(off, "Web search is off in this conversation, so you can't browse the web or fetch live info right now — if asked, say it's a toggle the user can turn on (chat toolbar's globe icon), not that you lack the ability entirely.")
+	}
+	return strings.Join(off, " ")
 }
 
 func (id *Identity) Update(userName, assistantName, style, customRole string) {

@@ -439,7 +439,7 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(context.Background(), userMsg)
 	}
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false)
+	systemPrompt := a.identity.BuildSystemPrompt(memories, false, a.GetAgentEnabled(), a.GetWebSearchEnabled())
 
 	var msgs []api.Message
 	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))

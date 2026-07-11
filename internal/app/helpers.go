@@ -104,9 +104,15 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
+	// Read once and reuse below (for the live-search injection) rather than
+	// calling GetWebSearchEnabled() twice — a toggle landing between the two
+	// reads could otherwise tell the model one thing (via
+	// buildCapabilitiesBlock) while actually doing another (inject results
+	// or not).
+	webSearchEnabled := a.GetWebSearchEnabled()
 	// Memory formatting is independent of mood — the mood engine must have ZERO
 	// influence when disabled.
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false)
+	systemPrompt := a.identity.BuildSystemPrompt(memories, false, a.GetAgentEnabled(), webSearchEnabled)
 	// MinimalMode means zero injection beyond memory — mood and web search
 	// context are both prompt injection just like identity/persona is, so
 	// they're skipped here too rather than only in BuildSystemPrompt. Read
@@ -127,7 +133,7 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		// Web search is now an explicit on/off mode (toggle in the UI). When on,
 		// every message is enriched with fresh web results — no fragile, language-
 		// specific keyword detection. When off, it never runs.
-		if a.GetWebSearchEnabled() {
+		if webSearchEnabled {
 			if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
 				systemPrompt += websearch.FormatForContext(userMsg, results)
 			} else {

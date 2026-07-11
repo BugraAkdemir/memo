@@ -647,9 +647,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			ch, err := providerRouter.ChatCompletionStream(providerCtx, req)
 			if err != nil {
 				logx.Printf("Provider stream error: %v", err)
-				errMsg := "⚠️ " + err.Error()
-				if hint := a.localModelHint(); hint != "" {
-					errMsg += "\n\n" + hint
+				var errMsg string
+				if a.providerSwapped(providerRouter) {
+					errMsg = modelSwappedMidStreamMsg
+				} else {
+					errMsg = "⚠️ " + err.Error()
+					if hint := a.localModelHint(); hint != "" {
+						errMsg += "\n\n" + hint
+					}
 				}
 				a.recordStreamError(userMsg, errMsg, sessionID)
 				trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
@@ -673,9 +678,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 					}
 
 					if chunk.Error != "" {
-						errMsg := "⚠️ " + chunk.Error
-						if hint := a.localModelHint(); hint != "" {
-							errMsg += "\n\n" + hint
+						var errMsg string
+						if a.providerSwapped(providerRouter) {
+							errMsg = modelSwappedMidStreamMsg
+						} else {
+							errMsg = "⚠️ " + chunk.Error
+							if hint := a.localModelHint(); hint != "" {
+								errMsg += "\n\n" + hint
+							}
 						}
 						a.recordStreamError(userMsg, errMsg, sessionID)
 						trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
@@ -749,8 +759,12 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		if err != nil {
 			logx.Printf("LATENCY llm.stream_error total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 			logx.Printf("LLM stream error: %v", err)
-			a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
-			trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+			errMsg := "⚠️ " + err.Error()
+			if a.clientSwapped(streamClient) {
+				errMsg = modelSwappedMidStreamMsg
+			}
+			a.recordStreamError(userMsg, errMsg, sessionID)
+			trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 			return
 		}
 		logx.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
@@ -774,8 +788,12 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				if chunk.Error != "" {
 					logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
 					logx.Printf("Stream chunk error: %s", chunk.Error)
-					a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
-					trySend(streamCtx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+					errMsg := "⚠️ " + chunk.Error
+					if a.clientSwapped(streamClient) {
+						errMsg = modelSwappedMidStreamMsg
+					}
+					a.recordStreamError(userMsg, errMsg, sessionID)
+					trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
 					return
 				}
 
@@ -968,6 +986,9 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 		resp, err := providerRouter.ChatCompletion(pctx, req)
 		if err != nil {
 			logx.Printf("Provider error: %v", err)
+			if a.providerSwapped(providerRouter) {
+				return modelSwappedMidStreamMsg
+			}
 			errMsg := "⚠️ " + err.Error()
 			if hint := a.localModelHint(); hint != "" {
 				errMsg += "\n\n" + hint
@@ -997,6 +1018,9 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	if err != nil {
 		logx.Printf("LATENCY llm.complete total_ms=%d status=error messages=%d", time.Since(start).Milliseconds(), len(messages))
 		logx.Printf("LLM error: %v", err)
+		if a.clientSwapped(llmClient) {
+			return modelSwappedMidStreamMsg
+		}
 		return "⚠️ " + err.Error()
 	}
 	if len(resp.Choices) == 0 {
@@ -1008,6 +1032,36 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	logx.Printf("LATENCY llm.complete total_ms=%d status=ok messages=%d reply_chars=%d", time.Since(start).Milliseconds(), len(messages), len(reply))
 	logx.Printf("<< Reply: %d chars", len(reply))
 	return reply
+}
+
+// modelSwappedMidStreamMsg replaces a confusing low-level transport error
+// (typically "connection refused") with a clear explanation when a request
+// fails specifically because the client/provider it started with was
+// swapped out from under it — see clientSwapped/providerSwapped.
+const modelSwappedMidStreamMsg = "⚠️ Model veya sağlayıcı bu mesaj akarken değiştirildi, bu yüzden tamamlanamadı. Lütfen tekrar deneyin."
+
+// clientSwapped reports whether a.client has changed since streamClient was
+// captured under clientMu at the start of a call — i.e. the local model was
+// stopped/restarted (StopLocalModel/StartLocalModel) while that call was
+// still in flight, so any error it now returns (typically "connection
+// refused" against the now-dead server) has an obvious, known cause rather
+// than being a genuine, unexplained failure. clientMu/providerMu already
+// correctly guard every read/write of a.client/a.providerRouter (verified,
+// not a data race — see AGENTS.md's "Data Races" note); this only narrows
+// what a stream reports about an error it hits *after* its own copy has
+// gone stale.
+func (a *App) clientSwapped(streamClient *api.Client) bool {
+	a.clientMu.RLock()
+	defer a.clientMu.RUnlock()
+	return a.client != streamClient
+}
+
+// providerSwapped is clientSwapped's counterpart for a.providerRouter (the
+// active external API provider changed mid-call).
+func (a *App) providerSwapped(router *provider.Router) bool {
+	a.providerMu.RLock()
+	defer a.providerMu.RUnlock()
+	return a.providerRouter != router
 }
 
 // localModelHint returns a user-facing suggestion if a local model is running

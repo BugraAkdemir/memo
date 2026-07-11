@@ -62,4 +62,55 @@ void main() {
         reason: 'dialog must not pop when the permission POST fails');
     expect(find.textContaining('İzin gönderilemedi'), findsOneWidget);
   });
+
+  // Regression test for BUG-L1: the dialog used to stay on screen even after
+  // the underlying agent turn ended — Stop button or switching to a
+  // different chat (both flip isSendingProvider to false via
+  // stopStreaming()) — so the user could end up sending Allow/Deny for a
+  // requestId the backend had already given up on.
+  testWidgets('permission dialog auto-dismisses when the turn is stopped or the chat is switched',
+      (tester) async {
+    const event = AgentEvent(
+      type: 'permission_request',
+      requestId: 'req-1',
+      toolName: 'run_command',
+      dangerLevel: 'safe',
+      args: '{}',
+    );
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    container.read(isSendingProvider.notifier).state = true;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const PermissionDialog(event: event),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+    expect(find.byType(PermissionDialog), findsOneWidget);
+
+    // Simulate what stopStreaming() does, whether triggered by the Stop
+    // button or ActiveChatIdNotifier.switchTo() switching chats.
+    container.read(isSendingProvider.notifier).state = false;
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PermissionDialog), findsNothing,
+        reason: 'dialog must auto-dismiss once the underlying turn ends');
+  });
 }

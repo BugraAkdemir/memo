@@ -80,6 +80,22 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
 
   @override
   Widget build(BuildContext context) {
+    // isSendingProvider covers every way this dialog's underlying turn can
+    // end without the user answering: the explicit Stop button, switching
+    // to a different chat (ActiveChatIdNotifier.switchTo calls
+    // stopStreaming() before switching), natural completion, or an error —
+    // all of them flip it to false. Once that happens the backend side has
+    // already given up waiting on this requestId (context cancellation) or
+    // moved on entirely, so leaving the dialog up would only let the user
+    // send a decision for a request that no longer exists (BUG-L1). Skip
+    // the auto-pop while a submit is already in flight so it can't race
+    // Navigator.pop with _submit's own.
+    ref.listen<bool>(isSendingProvider, (prev, next) {
+      if (!next && !_submitting && mounted) {
+        Navigator.of(context).pop();
+      }
+    });
+
     final isDangerous = widget.event.dangerLevel == 'dangerous';
     final isMedium = widget.event.dangerLevel == 'medium';
     final toolName = ToolNames.displayName(widget.event.toolName);

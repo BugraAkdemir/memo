@@ -40,12 +40,26 @@ CGO_ENABLED=1 go build ./... && go vet ./... && go test ./... -race -count=1
 ```
 Frontend'e bu oturumda dokunulmadı.
 
-## Sıradaki Oturum İçin
+## Ek iş (aynı oturum) — CLI: her açılışta temiz sohbet + CLI/GUI sohbet senkronu (commit `4e58b76`)
 
-1. **LOW'lardan devam etmek en düşük sürtünmeli seçenek** — L1-L5 küçük, bağımsız, hızlı kazanımlar (izin diyaloğu bayatlığı, `as List` cast güvenliği, shutdown karar penceresi, model-swap mid-stream, ngrok token yarışı).
-2. **HIGH'lar (H1+H2) büyük iş** — chat-switch race, backend+frontend birlikte, muhtemelen `docs/plans/PLAN_chatid_refactor.md` ile birleştirilmeli. Tek oturumda bitmeyebilir, ayrı planlama gerektirir.
-3. **H3 (Windows auto-shutdown)** bu ortamda hiç test edilemez, gerçek Windows makine/VM gerekiyor.
-4. Bu oturumda push edilmedi, `origin/main`'in kaç commit gerisinde olduğu kontrol edilmedi.
+Kullanıcı ayrı bir istekle geldi: "CLI modunu açınca hemen bir önceki eski sohbetten başlatıyor, bu kirli bir arayüz/context anlamına geliyor — `/session` zaten eski sohbete dönmeyi sağlıyor, CLI direkt `new chat` olarak açılsın. Ayrıca CLI ve GUI'deki sohbetler senkron olsun — şu an CLI sohbeti GUI'de görünmüyor, GUI sohbeti CLI'de istediği yerden devam edemiyor."
+
+**Araştırma (agent + doğrudan kod okuma):** Backend'de aslında **tek global sohbet listesi** var (`internal/sessions.Manager.active`, `AGENTS.md`'nin "one global active chat" notuyla uyumlu) — CLI ve GUI aynı `/api/chats`/`/api/chats/switch` uç noktalarını kullanıyor, ayrı listeler değil. Gerçek asimetri şuydu:
+- **GUI zaten tüm sohbetleri gösteriyordu** (`chatListProvider`, filtre yok) — CLI'nin oluşturduğu agent sohbetleri GUI'de zaten görünüyordu. Bu yön zaten çalışıyordu.
+- **CLI'nin sorunu iki yerdeydi:** (1) `repl.go`'daki `resumeOrStartChat()`, her `memo` başlatışında `s.projectPath`'e eşit `ProjectPath`'li en son sohbeti otomatik resume ediyordu; (2) `/session` komutunun `projectChats()`'i de aynı proje-yolu filtresini uyguluyordu — GUI'de oluşturulan düz sohbetler (`ProjectPath` boş) ve başka bir dizinden açılmış CLI sohbetleri `/session` listesinde bile hiç görünmüyordu.
+
+**Düzeltme:**
+- `resumeOrStartChat`/`findRecentChat` tamamen kaldırıldı; `Run()` artık koşulsuz `s.startFreshChat()` çağırıyor — her `memo` başlatışı temiz bir sohbetle açılıyor, eski context hiç sızmıyor.
+- `projectChats()` → `allChats()` (proje filtresi olmadan `ListChats` çağrısı) — `/session list`, `/session` (arrow-key picker) ve `/session <sorgu>` artık GUI dahil her istemcinin her sohbetini gösteriyor, GUI'nin kendi listesiyle birebir aynı küme.
+- Liste/menü girdilerine küçük bir ipucu eklendi: `ProjectPath` set edilmişse (yani CLI'nin agent modunda oluşturduğu bir sohbetse) proje dizininin son bileşeni gösteriliyor, GUI'nin düz sohbetlerinden ayırt edilebilsin diye.
+
+**Bilinçli sınır:** `switchToChat`/`activateChat` her zaman `SetAgentEnabled(true)` çağırıyor (CLI'nin tasarım gereği her zaman agent modunda çalışması, `AGENTS.md`'de zaten dokümante) — CLI'den düz bir GUI sohbetine geçilirse o sohbette agent modu zorla açılır, ama sohbetin kendi `ProjectPath`'i (dolayısıyla GUI'nin `isAgentChat` algısı) değişmez. Bu, "hangi sohbet agent-tipli" bilgisinin kalıcı olmayışından kaynaklanan daha derin bir mimari nüans — bu oturumun kapsamı dışında bırakıldı, ileride bir "chat mode" alanı gerekebilir.
+
+**Testler:** `TestRun_ResumesExistingAgentChat` → `TestRun_AlwaysStartsFreshChat` (artık her zaman yeni sohbet oluşturulduğunu VE geçmiş replay edilmediğini doğruluyor). `TestHandleCommand_Session_List_FiltersByProject` → `TestHandleCommand_Session_List_ShowsAllChats` (üç farklı `ProjectPath` — biri boş, biri farklı proje, biri eşleşen — hepsinin listede çıktığını doğruluyor).
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (`internal/replcli` dahil, 15.7s). Ayrıca gerçek derlenmiş binary ile: geçici bir headless backend başlatılıp `POST /api/chats/new` ile "GUI-stili" bir sohbet oluşturuldu, `curl` ile `/api/chats` yanıtının testlerin varsaydığı JSON şekliyle (id/title/created_at/updated_at/msg_count) birebir eşleştiği doğrulandı. Piped-stdin ile gerçek REPL akışını uçtan uca sürmeye çalışan bir deneme, `main.go`'nun tasarım gereği non-TTY girdide headless moda düşmesi yüzünden başarısız oldu (bug değil, benim test kurgum yanlıştı) — asıl REPL akışı zaten `repl_test.go`'nun gerçek bir `httptest.Server`'a karşı çalışan testleriyle kapsanıyor.
+
+Frontend'e bu ek işte dokunulmadı (GUI tarafı zaten doğru davranıyordu).
 
 ---
 

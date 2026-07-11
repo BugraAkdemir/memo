@@ -17,8 +17,8 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 1 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 2 |
-| **TOPLAM** | **5** |
+| 🟢 LOW | 1 |
+| **TOPLAM** | **4** |
 
 ---
 
@@ -48,13 +48,6 @@
 ---
 
 ## 🟢 LOW
-
-### BUG-L4: Model/sağlayıcı değişimi tam stream ortasına denk gelirse, o stream durdurulmuş/değiştirilmiş bir client ile konuşmaya devam ediyor
-
-- **Dosya:** `internal/app/llm.go:714-716,965-967` (`a.client` okuması), `internal/app/providers.go` (`a.providerRouter` okuması)
-- **Nedir:** `AGENTS.md`'nin "Data Races" olarak listelediği bu iki madde aslında **veri yarışı değil** — `clientMu`/`providerMu` hem okuma hem yazma tarafında düzgün kilitleniyor, doğrulandı. Gerçek kalan risk daha dar: bir stream başlarken `a.client`'i kilit altında local bir değişkene kopyalıyor (`streamClient := a.client`), ama stream saniyelerce sürebiliyor — bu sırada kullanıcı modeli değiştirirse (`StopLocalModel`/`StartLocalModel`), o an akan stream hâlâ **eski, artık durdurulmuş** client'ı kullanmaya devam ediyor.
-- **Kullanıcı etkisi:** Model swap tam bir mesaj akarken yapılırsa, o mesaj muhtemelen "connection refused" ile başarısız olur — veri bozulması ya da çökme değil, ama şaşırtıcı bir hata.
-- **Not:** `AGENTS.md`'deki orijinal not düzeltilmeli — mevcut "data race" ifadesi yanlış, kod zaten kilitli.
 
 ### BUG-L5: ngrok otomatik-başlatma, restart sonrası masaüstü Flutter GUI'sini token olmadan bırakabiliyor
 

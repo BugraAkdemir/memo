@@ -61,6 +61,24 @@ Kullanıcı ayrı bir istekle geldi: "CLI modunu açınca hemen bir önceki eski
 
 Frontend'e bu ek işte dokunulmadı (GUI tarafı zaten doğru davranıyordu).
 
+## Üçüncü iş (aynı oturum) — Embedding auto-start bazen çalışmıyor, port reboot'a kadar kilitli kalıyor (commit `6ce9e36`)
+
+Kullanıcı: "Embedding modelinin auto-start'ı bazen çalışmıyor, çoğunlukla çalışıyor ama bir kere çalışmayınca sistemi reboot edene kadar çalışmıyor ve port işgal ediyor." Bir agent'la araştırılıp kod okumasıyla bizzat doğrulanan kök neden:
+
+**Zincir:**
+1. `internal/llama/sysproc_linux.go`/`sysproc_darwin.go`/`sysproc_other.go` — **hiçbiri** `Pdeathsig` set etmiyor (`Setpgid` ile teknik olarak uyumsuz — Go runtime'ın thread reuse'u erken çocuk ölümüne yol açıyor). `llama.go`'daki eski yorum bunun tersini iddia ediyordu (bayat/yanlış, düzeltildi).
+2. Sonuç: Memo'nun ana Go process'i anormal biçimde ölürse (crash, `kill -9`, OOM) — kendi `Stop()` akışından geçmeden — spawn ettiği `llama-server` alt süreci **yetim kalıyor**, portu (embedding için varsayılan 8082) sonsuza kadar tutmaya devam ediyor.
+3. Memo tekrar başlatıldığında yepyeni bir `llama.Server` struct'ı oluşuyor (`app.go:343`), bu yetimden hiç haberi yok.
+4. `StartEmbeddingModel` (`embedding.go`) portu bağlamayı dener: `cmd.Start()` OS seviyesinde başarılı olur (fork/exec her zaman başarılı), ama `llama-server`'ın kendisi portu bağlayamayıp ~1 saniyede çöker. `WaitReady` bunu hemen fark edip hata döner.
+5. Ardından çağrılan `Stop()`, `s.cmd` bu denemenin (artık ölü) kendi process'ine işaret ettiği için "tracked cmd" dalına giriyor — kendi (zaten ölü) PID'ine SIGTERM gönderip dönüyor. Port-discovery fallback'i olan `killByPort` **hiç tetiklenmiyor** (o sadece `s.cmd == nil` olduğunda, yani "no tracked cmd" dalında çalışıyor).
+6. 3 denemenin hepsi aynı şekilde başarısız oluyor — gerçek işgalci hiç dokunulmadan kalıyor, `StartEmbeddingModel` pes ediyor. Port, o yetim süreç bir şekilde ölene kadar (kullanıcının deneyiminde: reboot) kilitli kalıyor.
+
+**Düzeltme:** `Start()` artık her denemede (retry'lar dahil, koşulsuz), süreci spawn etmeden **önce** hedef portu `s.killByPort(actualPort)` ile temizliyor — zaten var olan, `lsof`/`fuser` tabanlı mekanizma, sadece doğru yerden çağrılıyor. Port boşsa no-op (zaten öyle davranıyordu). Bu hem embedding hem chat-model sunucusunu aynı anda düzeltiyor (`Start()` ikisi için de ortak).
+
+**Test:** `internal/llama/process_test.go` (yeni dosya) — klasik `os/exec` re-exec pattern'iyle test binary'sinin kendisini "helper process" modunda spawn edip gerçek bir TCP dinleyici + PID oluşturuyor, `killByPort`'un bunu gerçekten bulup öldürdüğünü kanıtlıyor. İlk yazımda `processIsAlive`'ın zombie-process'i "canlı" sayması yüzünden yanlış-negatif fail aldı (test kendi helper'ının doğrudan parent'ı olduğu için, reap edilmeden zombie kalıyor) — `cmd.Wait()` ile düzeltildi, daha doğru bir canlılık kanıtı zaten.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (`internal/llama` dahil, yeni test dahil 4.3s). `GOOS=windows`/`GOOS=darwin go vet ./internal/llama/...` → temiz.
+
 ---
 
 # Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği

@@ -57,17 +57,17 @@ func (a *App) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <
 
 ## Fazlar
 
-### Faz 1 — sessions.Manager'ı tamamla (küçük, risksiz)
+### Faz 1 — sessions.Manager'ı tamamla (küçük, risksiz) ✅ tamamlandı (commit `a632873`)
 
-- [ ] Eksik session-scoped eşdeğerleri ekle:
+- [x] Eksik session-scoped eşdeğerleri ekle:
   - `GetHistoryForAPIForSession(sessionID string, maxMessages int)`
   - `GetHistoryForAPITokenAwareForSession(sessionID string, maxTokens int)`
-  - (varsa `UpdateMessage`/`DeleteMessage` için de session-scoped varyant)
-- [ ] Global varyantları bu yenilerin `GetActiveID()` ile çağrılan sarmalayıcısı
+  - `UpdateMessage`/`DeleteMessage` için session-scoped varyant: **eklenmedi, bilinçli** — Faz 2'nin `SendMessageStreamTo`'su bunlara ihtiyaç duymuyor (sadece `AddMessageToSession` + `...ForSession` history fonksiyonlarını kullanıyor); Update/Delete zaten kullanıcının o an açık olan, tek bir sohbette elle tetiklediği düzenleme/silme aksiyonları, otomatik stream pipeline'ının parçası değil. Gerçekten ihtiyaç doğarsa (ör. task loop bir mesajı düzenlemek isterse) o zaman eklenir.
+- [x] Global varyantları bu yenilerin `GetActiveID()` ile çağrılan sarmalayıcısı
   yap — kod tekilleşsin, davranış değişmesin.
-- [ ] Tablolu unit test: aynı manager'da iki session, birine yaz, öbürünün
-  history'sinin değişmediğini doğrula.
-- [ ] `CGO_ENABLED=1 go test ./... -race` yeşil → commit.
+- [x] Tablolu unit test: aynı manager'da iki session, birine yaz, öbürünün
+  history'sinin değişmediğini doğrula (`TestSessionScopedHistory_IsolatedBetweenSessions`, `TestGetHistoryForAPI_MatchesActiveSessionVariant`).
+- [x] `CGO_ENABLED=1 go test ./... -race` yeşil → commit.
 
 ### Faz 2 — chat.go: SendMessageStreamTo (asıl iş)
 

@@ -17,8 +17,8 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 3 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 4 |
-| **TOPLAM** | **9** |
+| 🟢 LOW | 3 |
+| **TOPLAM** | **8** |
 
 ---
 
@@ -60,12 +60,6 @@
 ---
 
 ## 🟢 LOW
-
-### BUG-L1: İzin diyaloğu, stream durdurulsa/sohbet değiştirilse bile ekranda bayat kalabiliyor
-
-- **Dosya:** `frontend/lib/screens/app_shell.dart:87-99`, `frontend/lib/widgets/agent/permission_dialog.dart`
-- **Nedir:** Diyalog `barrierDismissible: false` ile bir `requestId`'ye bağlı açılıyor ama `stopStreaming()`/`switchTo()` ile hiç senkronize değil.
-- **Kullanıcı etkisi:** Kullanıcı Stop'a basıp stream'i iptal etse bile diyalog ekranda kalıyor; sonunda Allow/Deny'e basınca artık var olmayan bir request için karar gönderiyor.
 
 ### BUG-L3: Kapanma kararı, sinyal gerçekten teslim edilene kadar yeniden doğrulanmıyor
 

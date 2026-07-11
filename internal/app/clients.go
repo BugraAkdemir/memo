@@ -133,6 +133,13 @@ func (a *App) sweepStaleClients() {
 // swappable var (same technique as shutdownForceExit in shutdown.go) so
 // tests can exercise the "no clients left" decision without delivering a
 // real SIGINT to the test binary.
+//
+// There's an inherent gap between this decision (registry was empty) and
+// the signal actually being handled in main.go — a new client (e.g. /gui
+// spawning right as the last CLI session disconnects) can register in that
+// window. main.go's signal-wait loop re-checks HasActiveClients() right
+// before committing to shut down and ignores a stale signal if one showed
+// up, so this call itself doesn't need to be perfectly race-free.
 var selfShutdownSignal = func() {
 	p, err := os.FindProcess(os.Getpid())
 	if err != nil {
@@ -148,6 +155,15 @@ var selfShutdownSignal = func() {
 func (a *App) selfShutdownIfIdle(reason string) {
 	logx.Printf("no clients attached (%s) — shutting down", reason)
 	selfShutdownSignal()
+}
+
+// HasActiveClients reports whether any client is currently registered. Used
+// to re-verify a self-shutdown decision right before it's acted on — see the
+// race note on selfShutdownSignal.
+func (a *App) HasActiveClients() bool {
+	a.clients.mu.Lock()
+	defer a.clients.mu.Unlock()
+	return len(a.clients.clients) > 0
 }
 
 func randomClientID() string {

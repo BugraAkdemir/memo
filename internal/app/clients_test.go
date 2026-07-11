@@ -129,6 +129,43 @@ func TestClientRegistry_SweepPrunesStaleClient(t *testing.T) {
 	expectShutdown(t, fired)
 }
 
+// TestClientRegistry_HasActiveClients is a regression test for BUG-L3: the
+// shutdown decision (registry was empty) and the self-signal actually being
+// handled in main.go are separated by a real time window in which a new
+// client can register. main.go's signal-wait loop re-checks
+// HasActiveClients() right before committing to shut down, so it needs to
+// reliably reflect "is anything registered right now" at any point —
+// including immediately after the exact register/unregister calls that
+// drive the shutdown decision itself.
+func TestClientRegistry_HasActiveClients(t *testing.T) {
+	a := &App{}
+
+	if a.HasActiveClients() {
+		t.Fatal("HasActiveClients() = true on a fresh registry, want false")
+	}
+
+	id := a.RegisterClient()
+	if !a.HasActiveClients() {
+		t.Fatal("HasActiveClients() = false right after RegisterClient(), want true")
+	}
+
+	// The stale-signal scenario BUG-L3 describes: a second client registers
+	// (e.g. /gui) after the first unregisters but before the pending
+	// self-shutdown signal is handled.
+	withStubbedSelfShutdown(t)
+	a.EnableAutoShutdown()
+	other := a.RegisterClient()
+	a.UnregisterClient(id)
+	if !a.HasActiveClients() {
+		t.Fatal("HasActiveClients() = false with a client still registered, want true")
+	}
+
+	a.UnregisterClient(other)
+	if a.HasActiveClients() {
+		t.Fatal("HasActiveClients() = true after the last client unregistered, want false")
+	}
+}
+
 func TestClientRegistry_RegisterReturnsUniqueIDs(t *testing.T) {
 	a := &App{}
 	seen := make(map[string]bool)

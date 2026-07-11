@@ -91,7 +91,21 @@ func main() {
 			sigs = append(sigs, syscall.SIGTERM)
 		}
 		signal.Notify(sigCh, sigs...)
-		<-sigCh
+		for {
+			<-sigCh
+			// An auto-shutdown backend can receive a stale self-signal: it
+			// decided to shut down while idle (internal/app/clients.go), but
+			// a new client (e.g. /gui spawning right as the last CLI session
+			// disconnects) registered in the gap between that decision and
+			// this signal actually arriving. Re-check before committing —
+			// an external kill/Ctrl+C when no client is attached still goes
+			// through immediately, same as before.
+			if *autoShutdown && a.HasActiveClients() {
+				logx.Printf("ignoring stale auto-shutdown signal — a client is attached")
+				continue
+			}
+			break
+		}
 		fmt.Println("\nShutting down backend...")
 		return
 	}

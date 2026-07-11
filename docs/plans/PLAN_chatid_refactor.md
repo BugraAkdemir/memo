@@ -69,26 +69,41 @@ func (a *App) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <
   history'sinin değişmediğini doğrula (`TestSessionScopedHistory_IsolatedBetweenSessions`, `TestGetHistoryForAPI_MatchesActiveSessionVariant`).
 - [x] `CGO_ENABLED=1 go test ./... -race` yeşil → commit.
 
-### Faz 2 — chat.go: SendMessageStreamTo (asıl iş)
+### Faz 2 — chat.go: SendMessageStreamTo (asıl iş) — ⚠️ kısmen tamamlandı (commit `f00197f` backend, `d18f99e` frontend), 2026-07-12
 
-- [ ] `SendMessageStream`'in gövdesini `sendMessageStreamTo(ctx, chatID, userMsg)`
-  özel fonksiyonuna taşı. İçeride:
-  - kullanıcı mesajı: `sm.AddMessage` → `sm.AddMessageToSession(chatID, ...)`
-  - history: Faz 1'deki `...ForSession(chatID, ...)` fonksiyonları
-  - llm.go pipeline'ına zaten var olan `sessionID` yolunu **her zaman** doldurarak gir
-    (boş-string dalı sadece geriye uyumluluk için kalır)
-  - agent modu: global `a.agentEnabled` yerine
-    `a.agentEnabled && sm.IsAgentChat(chatID)` ya da tamamen chatID'den türet —
-    incognito/skill-command özel yolları aynı kalsın.
-- [ ] Public API:
-  - `SendMessageStreamTo(ctx, chatID, userMsg)` — yeni, explicit
-  - `SendMessageStream(ctx, userMsg)` — `GetActiveID()` ile yenisine delege
-    eden ince sarmalayıcı (HTTP sözleşmesi bozulmaz)
-- [ ] Aynı işlemi `SendMessageWithImageStream` (228) ve
-  `SendMessageWithFileStream` (305) için tekrarla. Non-stream `SendMessage`
-  (51), `SendMessageWithImage` (393), `SendMessageWithFile` (440) —
-  bunlar da aynı çekirdeğe delege edilebilir; kapsam büyürse ayrı commit.
-- [ ] `-race` ile tüm testler + mevcut chat testleri yeşil → commit.
+Kullanıcı doğrudan BUG-H1/BUG-H2'yi (chat-switch race) istedi; bu ikisi
+**tamamen düzeltildi ve testle doğrulandı**, ama Faz 2'nin planladığı public
+API şekliyle DEĞİL — daha dar bir mekanizmayla:
+
+- [x] `sendMessageStreamInner`/`SendMessageWithImageStream`/
+  `SendMessageWithFileStream` artık her biri kendi başında
+  `chatID := sm.GetActiveID()`'i **bir kez, en başta** yakalayıp
+  `buildMessagesForSession(ctx, chatID, ...)`, `sm.AddMessageToSession(chatID, ...)`
+  ve `routeStream(..., chatID)` boyunca aynı değeri kullanıyor — call içinde bir
+  switch olursa artık history/user-mesajı/reply hep AYNI (çağrının başında
+  yakalanan) sohbete gidiyor.
+- [x] `buildMessages`/`getSessionHistoryTokenAware` → `buildMessagesForSession`/
+  `getSessionHistoryTokenAwareForSession`'ın ince sarmalayıcısı (WhatsApp'ın
+  ayrı pipeline'ı ve non-stream `SendMessage`/`SendMessageWithImage`/
+  `SendMessageWithFile` hâlâ bunları kullanıyor, davranışları değişmedi).
+- [x] Frontend: `MessagesNotifier.sendMessage`/`sendFile`/`refresh`, her
+  `await`'ten sonra `_disposed` kontrolü yapıyor (BUG-H2) — dispose olmuş bir
+  chat'in stream'i artık paylaşılan `isSendingProvider`'ı klobberlamıyor.
+- [x] `-race` ile tüm backend testleri + `flutter analyze`/`flutter test`
+  (99/99) yeşil → commit.
+- [ ] **Eksik kalan (Faz 3 öncesi gerçek gereksinim):** Plan'ın istediği
+  `SendMessageStreamTo(ctx, chatID, userMsg)` **public, dışarıdan explicit
+  chatID kabul eden** API hâlâ yok — mevcut düzeltme sadece "çağrı sırasında
+  aktif olan sohbeti sabitler," dışarıdan (ör. task loop'tan) *aktif olmayan*
+  bir sohbete mesaj göndermeyi sağlamaz. Faz 3'ün "`SwitchChat` zorlamadan
+  `a.SendMessageStreamTo(ctx, chatID, prompt)` çağır" planı bu yüzden hâlâ
+  gerçekleştirilemez durumda — Faz 3'e başlamadan önce bu public API'nin asıl
+  şekliyle eklenmesi gerekiyor.
+- [ ] `SendMessageWithImageStream`/`SendMessageWithFileStream`'in de aynı
+  şekilde **dışarıdan chatID kabul eden** public varyantları — şu an sadece
+  içeride `GetActiveID()` yakalıyorlar, dışarıdan chatID parametresi almıyorlar.
+- [ ] Non-stream `SendMessage`/`SendMessageWithImage`/`SendMessageWithFile` —
+  hâlâ dokunulmadı, plan zaten bunu opsiyonel/ayrı commit olarak işaretlemişti.
 
 ### Faz 3 — task loop'u workaround'dan kurtar
 

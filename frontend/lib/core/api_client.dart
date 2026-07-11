@@ -149,7 +149,7 @@ class MemoApiClient {
     }
     // Backend wraps it in an object sometimes
     if (res.data is Map && res.data['chats'] != null) {
-      return (res.data['chats'] as List)
+      return (_guard<List>(res.data['chats']))
           .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
           .toList();
     }

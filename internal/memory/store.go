@@ -476,11 +476,11 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 	})
 }
 
-const chunkMaxWords = 300
-const chunkOverlapWords = 50
+const chunkMaxTokens = 300
+const chunkOverlapTokens = 50
 
 func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
-	chunks := chunkText(userMsg, chunkMaxWords, chunkOverlapWords)
+	chunks := chunkText(userMsg, chunkMaxTokens, chunkOverlapTokens)
 	parentUUID := fmt.Sprintf("mem_%d", time.Now().UnixNano())
 	totalChunks := len(chunks)
 

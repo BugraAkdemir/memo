@@ -196,7 +196,9 @@ func TestSaveInteraction_Chunking(t *testing.T) {
 	}
 	defer store.Close()
 
-	// 350 kelimelik userMsg → 2 chunk (maxWords=300, overlap=50)
+	// 350 words, each well over the chunk token budget in aggregate (chunking
+	// is now token-estimated, not word-counted — see chunker.go), so this
+	// must split into multiple chunks rather than staying a single row.
 	words := make([]string, 350)
 	for i := range words {
 		words[i] = "coffee"
@@ -204,8 +206,8 @@ func TestSaveInteraction_Chunking(t *testing.T) {
 	if err := store.SaveInteraction(ctx, strings.Join(words, " "), "reply"); err != nil {
 		t.Fatalf("SaveInteraction() error = %v", err)
 	}
-	if store.Count() != 2 {
-		t.Fatalf("Count() = %d, want 2 (chunked)", store.Count())
+	if store.Count() <= 1 {
+		t.Fatalf("Count() = %d, want >1 (chunked)", store.Count())
 	}
 }
 

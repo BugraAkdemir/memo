@@ -128,6 +128,23 @@ Sürüm tarihi (10 Temmuz 2026) ve version.json'a **dokunulmadı** — Session 2
 
 **Doğrulama:** Sadece markdown içerik değişikliği, kod dokunulmadı — `go build`/`flutter analyze` gerektirmiyor. İki dosya da manuel olarak yeniden okunup akış/ton tutarlılığı kontrol edildi.
 
+## Sekizinci iş (aynı oturum) — Plain Chat'te agent/web-arama farkındalığı yoktu (commit `6209f5e` + `941dae2`)
+
+Kullanıcı `test_sohbet_memo.md` diye bir GUI sohbet transkripti paylaştı (attach) — normal Chat sekmesinde modele bir Python dosyası oluşturmasını ve web'de arama yapmasını istemiş, Memo ikisine de "böyle bir yeteneğim yok, feature request olarak Buğra'ya gider" diye yanıt vermiş. Kullanıcı bunun doğru olup olmadığını sordu, sinirliydi.
+
+**Araştırma (agent + doğrudan kod okuma):** İki ayrı gerçek buldu:
+1. **Agent modu** gerçekten Chat ekranından ulaşılamıyor — ayrı bir "Agent" sekmesine geçmek gerekiyor. Kodda zaten yazılmış bir `AgentModeToggle` widget'ı vardı ama **hiçbir yere bağlanmamıştı** (dead code, sıfır importer).
+2. **Web arama** ise modelin iddiasının aksine Chat ekranında zaten vardı (üst barda 🌐 ikonu) — model burada düpedüz yanlış cevap vermiş, sadece o sohbette kapalıydı.
+3. **Kök sebep (ikisi için de):** Sistem promptu, agent modu/web arama kapalıyken bunlardan **hiç bahsetmiyordu** — sadece açıkken ekstra talimat ekleniyordu (`buildAgentSystemPrompt` chat.go'da, canlı arama sonuçları helpers.go'da). Kapalıyken modelin elinde "bu özellik var ama kapalı" diyebileceği hiç bilgi yoktu.
+
+**Fix A — backend (`identity.go`):** `BuildSystemPrompt`'a `agentEnabled`/`webSearchEnabled` parametreleri eklendi, yeni `buildCapabilitiesBlock` sadece **kapalı olan** özellikleri isimlendiriyor (açık olan zaten başka yerde detaylı anlatıldığı için tekrar etmiyor). `buildOriginBlock` gibi MinimalMode'da tamamen atlanıyor. 2 üretim çağrı yeri (`chat.go`, `helpers.go`) ve 8 mevcut test call site'ı güncellendi, 3 yeni test eklendi.
+
+**Fix B — frontend (`chat_screen.dart`):** Chat üst barına, web-arama ikonunun hemen yanına yeni bir agent-modu toggle IconButton'ı eklendi (`Icons.smart_toy`, aynı stil). Kullanılmayan `AgentModeToggle` widget'ı silindi (gerçekten dead code olduğu doğrulandıktan sonra) — onun yerine mevcut butonlarla birebir stil tutarlılığı olan basit bir IconButton yazıldı. Session-scoped (web-arama toggle'ı gibi) — sohbet değiştirip geri dönünce o sohbetin gerçek tipine göre sıfırlanıyor, kalıcı değil.
+
+**Uçtan uca doğrulama (bu oturumda ilk kez gerçek GUI'yi çalıştırarak):** `flutter build linux --debug` ile gerçek Linux binary'si derlendi, geçici bir headless backend başlatılıp binary gerçekten çalıştırıldı, `PIL.ImageGrab` ile ekran görüntüsü alınıp yeni butonun doğru konumda/ikonla/renkte render olduğu görsel olarak doğrulandı (`import`/`xwd` çalışmadı, Python PIL çözüm oldu). Ekran görüntüsünde kullanıcının **başka bir terminal/agent oturumunda** yazdığı, bu konuşmayla ilgisiz bir CLI-embedding şikayeti de görüldü — ona müdahale edilmedi, sadece not düşülüyor (kullanıcı muhtemelen paralel bir oturumda başka bir agent'a da bir şey yazdırıyor).
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (identity dahil, 3 yeni test). `flutter analyze lib/` → aynı 4 bilinen uyarı. `flutter test` → 99/99 yeşil. Test/backend/screenshot süreçleri ve geçici dosyalar oturum sonunda temizlendi.
+
 ---
 
 # Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği

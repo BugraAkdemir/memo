@@ -302,12 +302,18 @@ func TestHandleCommand_Clear(t *testing.T) {
 	}
 }
 
-func TestHandleCommand_Session_List_FiltersByProject(t *testing.T) {
+// TestHandleCommand_Session_List_ShowsAllChats asserts /session list shows
+// every chat — including ones from other project paths and GUI-created
+// chats with no project path at all — since the CLI and the Flutter GUI
+// share one global chat set and either client should be able to resume a
+// chat the other one started.
+func TestHandleCommand_Session_List_ShowsAllChats(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/chats", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode([]SessionInfo{
 			{ID: "chat-a", Title: "Sohbet A", ProjectPath: "/tmp/project", UpdatedAt: "2026-01-02 10:00", MsgCount: 4},
 			{ID: "chat-b", Title: "Sohbet B", ProjectPath: "/tmp/other", UpdatedAt: "2026-01-01 10:00", MsgCount: 1},
+			{ID: "chat-c", Title: "Sohbet C (GUI)", ProjectPath: "", UpdatedAt: "2026-01-03 10:00", MsgCount: 3},
 		})
 	})
 	srv := httptest.NewServer(mux)
@@ -319,11 +325,10 @@ func TestHandleCommand_Session_List_FiltersByProject(t *testing.T) {
 	s.handleCommand("/session list")
 
 	got := out.String()
-	if !strings.Contains(got, "Sohbet A") {
-		t.Errorf("expected Sohbet A in list, got:\n%s", got)
-	}
-	if strings.Contains(got, "Sohbet B") {
-		t.Errorf("expected chats from other projects to be filtered out, got:\n%s", got)
+	for _, title := range []string{"Sohbet A", "Sohbet B", "Sohbet C (GUI)"} {
+		if !strings.Contains(got, title) {
+			t.Errorf("expected %q in list, got:\n%s", title, got)
+		}
 	}
 }
 

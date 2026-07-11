@@ -17,12 +17,13 @@ import (
 )
 
 // Run starts the interactive terminal chat loop against the Memo backend at
-// baseURL. It resumes the most recently used agent-mode chat rooted at
-// projectPath, if one exists, replaying its history into the terminal —
-// otherwise it creates a fresh one. It then reads lines from in and writes
-// all output to out until EOF or the user types /exit. /clear and /session
-// let the user reset or switch chats mid-run. ownBackend tells the welcome
-// panel whether
+// baseURL. Every run starts a brand-new agent-mode chat rooted at
+// projectPath — it never auto-resumes an old one, so the terminal and its
+// context always start clean. /session lists every chat from every client
+// (CLI and GUI alike) and lets the user explicitly resume any of them. It
+// then reads lines from in and writes all output to out until EOF or the
+// user types /exit. /clear and /session let the user reset or switch chats
+// mid-run. ownBackend tells the welcome panel whether
 // this process just started the backend itself (main.go) — only then is an
 // embedding-model auto-start race actually possible, so only then is it
 // worth briefly retrying the memory status before reporting it as off.
@@ -98,14 +99,10 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 
 	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath}
 
-	resumed, err := s.resumeOrStartChat()
-	if err != nil {
+	if err := s.startFreshChat(); err != nil {
 		return err
 	}
 	s.printWelcome()
-	if resumed {
-		s.replayHistory()
-	}
 
 	for {
 		// A blank line always precedes the prompt — separates this turn's
@@ -148,10 +145,11 @@ type session struct {
 	scanner    *bufio.Scanner
 	ownBackend bool
 
-	// projectPath is this REPL run's project root — used both to create new
-	// agent chats and to find an existing one to resume on startup.
+	// projectPath is this REPL run's project root, tagged onto every chat it
+	// creates (NewAgentChat) — purely metadata now, since startup no longer
+	// filters or resumes by it.
 	// chatID is the backend chat ID currently active in this session,
-	// updated by resumeOrStartChat and every /clear or /session switch.
+	// updated by startFreshChat and every /clear or /session switch.
 	projectPath string
 	chatID      string
 
@@ -178,63 +176,13 @@ type session struct {
 // editor's column math stays trivial.
 var promptStyle = bold(brightCyan("❯ "))
 
-// resumeOrStartChat looks for the most recently used agent chat rooted at
-// s.projectPath and switches to it if one exists, so a new `memo` run in the
-// same project picks up where the last one left off instead of always
-// starting blank. Falls back to a brand-new agent chat — including whenever
-// listing chats itself fails, since a chat always has to exist either way.
-func (s *session) resumeOrStartChat() (resumed bool, err error) {
-	if id, ok := s.findRecentChat(); ok {
-		if err := s.client.SwitchChat(s.ctx, id); err != nil {
-			return false, fmt.Errorf("sohbete geçilemedi: %w", err)
-		}
-		s.chatID = id
-		resumed = true
-	} else {
-		id, err := s.client.NewAgentChat(s.ctx, s.projectPath)
-		if err != nil {
-			return false, fmt.Errorf("agent sohbeti oluşturulamadı: %w", err)
-		}
-		if err := s.client.SwitchChat(s.ctx, id); err != nil {
-			return false, fmt.Errorf("sohbete geçilemedi: %w", err)
-		}
-		s.chatID = id
-	}
-	if err := s.client.SetAgentEnabled(s.ctx, true); err != nil {
-		return false, fmt.Errorf("agent modu açılamadı: %w", err)
-	}
-	return resumed, nil
-}
-
-// findRecentChat returns the ID of the most recently updated agent chat
-// rooted at s.projectPath, if any (chats come back sorted newest-first).
-func (s *session) findRecentChat() (string, bool) {
-	chats, err := s.client.ListChats(s.ctx)
-	if err != nil {
-		return "", false
-	}
-	for _, c := range chats {
-		if c.ProjectPath == s.projectPath {
-			return c.ID, true
-		}
-	}
-	return "", false
-}
-
-// projectChats returns every known chat rooted at s.projectPath, newest
-// first — the set /session lists and picks from.
-func (s *session) projectChats() ([]SessionInfo, error) {
-	chats, err := s.client.ListChats(s.ctx)
-	if err != nil {
-		return nil, err
-	}
-	var out []SessionInfo
-	for _, c := range chats {
-		if c.ProjectPath == s.projectPath {
-			out = append(out, c)
-		}
-	}
-	return out, nil
+// allChats returns every known chat, newest first — CLI-created (agent,
+// tagged with a project path) and GUI-created (plain) alike, exactly the
+// same set the Flutter GUI's chat list shows. This is the set /session
+// lists and picks from, so any chat started in the GUI can be resumed from
+// the CLI and vice versa.
+func (s *session) allChats() ([]SessionInfo, error) {
+	return s.client.ListChats(s.ctx)
 }
 
 // startFreshChat creates a brand-new agent chat rooted at s.projectPath and

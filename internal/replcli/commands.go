@@ -240,16 +240,29 @@ func (s *session) cmdSession(args []string) {
 	}
 }
 
-// printSessionList prints every chat rooted at this project as a plain,
-// numbered list — used for piped input and the explicit "/session list".
+// sessionHint formats a chat's list/menu hint: timestamp, message count, and
+// — for agent chats tagged with a project path (i.e. CLI-created) — the
+// project's base name, so chats started from the GUI (no project path) are
+// visually distinguishable from ones started via the CLI in another
+// directory.
+func sessionHint(c SessionInfo) string {
+	if c.ProjectPath != "" {
+		return fmt.Sprintf("%s · %d mesaj · %s", c.UpdatedAt, c.MsgCount, filepath.Base(c.ProjectPath))
+	}
+	return fmt.Sprintf("%s · %d mesaj", c.UpdatedAt, c.MsgCount)
+}
+
+// printSessionList prints every chat — from the CLI and the GUI alike — as
+// a plain, numbered list, used for piped input and the explicit
+// "/session list".
 func (s *session) printSessionList() {
-	chats, err := s.projectChats()
+	chats, err := s.allChats()
 	if err != nil {
 		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
 		return
 	}
 	if len(chats) == 0 {
-		fmt.Fprintln(s.out, dim("Bu proje için kayıtlı sohbet yok."))
+		fmt.Fprintln(s.out, dim("Kayıtlı sohbet yok."))
 		return
 	}
 	for i, c := range chats {
@@ -257,15 +270,16 @@ func (s *session) printSessionList() {
 		if c.ID == s.chatID {
 			marker = green("▶ ")
 		}
-		fmt.Fprintf(s.out, "%s%d. %s %s\n", marker, i+1, c.Title, dim(fmt.Sprintf("(%s · %d mesaj)", c.UpdatedAt, c.MsgCount)))
+		fmt.Fprintf(s.out, "%s%d. %s %s\n", marker, i+1, c.Title, dim("("+sessionHint(c)+")"))
 	}
 }
 
-// pickSession opens an arrow-key menu over this project's chats, plus a
-// leading "+ Yeni sohbet" entry, and switches to (or creates) whichever is
-// chosen. Falls back to the plain list when stdin isn't a real terminal.
+// pickSession opens an arrow-key menu over every chat — CLI and GUI alike —
+// plus a leading "+ Yeni sohbet" entry, and switches to (or creates)
+// whichever is chosen. Falls back to the plain list when stdin isn't a real
+// terminal.
 func (s *session) pickSession() {
-	chats, err := s.projectChats()
+	chats, err := s.allChats()
 	if err != nil {
 		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
 		return
@@ -278,7 +292,7 @@ func (s *session) pickSession() {
 	items := make([]menuItem, 0, len(chats)+1)
 	items = append(items, menuItem{Label: "+ Yeni sohbet"})
 	for _, c := range chats {
-		items = append(items, menuItem{Label: c.Title, Hint: fmt.Sprintf("%s · %d mesaj", c.UpdatedAt, c.MsgCount)})
+		items = append(items, menuItem{Label: c.Title, Hint: sessionHint(c)})
 	}
 	idx := selectFromMenu(s.out, s.keys, "Sohbet seç", items)
 	if idx < 0 {
@@ -292,11 +306,11 @@ func (s *session) pickSession() {
 	s.switchToChat(chats[idx-1])
 }
 
-// switchSessionByQuery resolves query against this project's chats — either
-// as a 1-based index into the /session-list ordering, or a case-insensitive
+// switchSessionByQuery resolves query against every known chat — either as
+// a 1-based index into the /session-list ordering, or a case-insensitive
 // substring of a chat's title — and switches to the match.
 func (s *session) switchSessionByQuery(query string) {
-	chats, err := s.projectChats()
+	chats, err := s.allChats()
 	if err != nil {
 		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
 		return

@@ -139,7 +139,11 @@ func TestRun_ZeroChunkResponse_DoesNotHangOrLeakSpinner(t *testing.T) {
 // TestRun_ResumesExistingAgentChat is a regression test: a `memo` run in a
 // project that already has an agent chat must resume it (replaying its
 // history) instead of always creating a brand-new, empty one.
-func TestRun_ResumesExistingAgentChat(t *testing.T) {
+// TestRun_AlwaysStartsFreshChat asserts every `memo` launch starts a brand
+// new chat instead of auto-resuming an old one — even when an existing chat
+// is on record for the same project path — so the terminal's context always
+// starts clean. Resuming an old chat is left entirely to /session.
+func TestRun_AlwaysStartsFreshChat(t *testing.T) {
 	var newChatCalls int
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/agent/chat", func(w http.ResponseWriter, r *http.Request) {
@@ -171,12 +175,12 @@ func TestRun_ResumesExistingAgentChat(t *testing.T) {
 	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
-	if newChatCalls != 0 {
-		t.Errorf("expected the existing chat to be resumed, but a new one was created (%d calls)", newChatCalls)
+	if newChatCalls != 1 {
+		t.Errorf("expected a new chat to be created on startup, got %d /api/agent/chat calls", newChatCalls)
 	}
 	got := out.String()
-	if !strings.Contains(got, "merhaba") || !strings.Contains(got, "selam!") {
-		t.Errorf("expected replayed history in output, got:\n%s", got)
+	if strings.Contains(got, "merhaba") || strings.Contains(got, "selam!") {
+		t.Errorf("expected no history replay on startup (fresh chat), got:\n%s", got)
 	}
 }
 

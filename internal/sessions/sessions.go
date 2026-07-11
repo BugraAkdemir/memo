@@ -342,11 +342,19 @@ func (m *Manager) sortedList() []*Session {
 	return list
 }
 
-// GetHistoryForAPI returns history in api.Message compatible format, truncated by message count.
+// GetHistoryForAPI returns the active session's history in api.Message
+// compatible format, truncated by message count. Thin wrapper around
+// GetHistoryForAPIForSession — see PLAN_chatid_refactor.md Phase 1.
 func (m *Manager) GetHistoryForAPI(maxMessages int) []map[string]string {
+	return m.GetHistoryForAPIForSession(m.GetActiveID(), maxMessages)
+}
+
+// GetHistoryForAPIForSession returns sessionID's history in api.Message
+// compatible format, truncated by message count.
+func (m *Manager) GetHistoryForAPIForSession(sessionID string, maxMessages int) []map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[m.active]
+	s := m.sessions[sessionID]
 	if s == nil {
 		return nil
 	}
@@ -361,13 +369,21 @@ func (m *Manager) GetHistoryForAPI(maxMessages int) []map[string]string {
 	return out
 }
 
-// GetHistoryForAPITokenAware returns history truncated to fit within maxTokens.
-// Preserves system prompt, drops oldest messages first. More accurate than
-// GetHistoryForAPI for long conversations with varying message sizes.
+// GetHistoryForAPITokenAware returns the active session's history truncated
+// to fit within maxTokens. Thin wrapper around
+// GetHistoryForAPITokenAwareForSession — see PLAN_chatid_refactor.md Phase 1.
 func (m *Manager) GetHistoryForAPITokenAware(maxTokens int) []map[string]string {
+	return m.GetHistoryForAPITokenAwareForSession(m.GetActiveID(), maxTokens)
+}
+
+// GetHistoryForAPITokenAwareForSession returns sessionID's history
+// truncated to fit within maxTokens. Preserves system prompt, drops oldest
+// messages first. More accurate than the message-count variant for long
+// conversations with varying message sizes.
+func (m *Manager) GetHistoryForAPITokenAwareForSession(sessionID string, maxTokens int) []map[string]string {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
-	s := m.sessions[m.active]
+	s := m.sessions[sessionID]
 	if s == nil {
 		return nil
 	}

@@ -252,6 +252,74 @@ func TestGetHistoryForAPI(t *testing.T) {
 	}
 }
 
+// TestSessionScopedHistory_IsolatedBetweenSessions is Phase 1's completion
+// test for PLAN_chatid_refactor.md: two sessions in the same manager, write
+// to one via the *ForSession variants, and confirm the other's history is
+// completely untouched — the foundation the rest of the refactor (explicit
+// chatID threaded through the send pipeline instead of the global "active"
+// session) depends on.
+func TestSessionScopedHistory_IsolatedBetweenSessions(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	first := m.GetActiveID()
+	second := m.NewChat()
+
+	m.AddMessageToSession(first, "user", "hello from first", "", "")
+	m.AddMessageToSession(second, "user", "hello from second", "", "")
+	m.AddMessageToSession(second, "assistant", "reply in second", "", "")
+
+	firstMsgs := m.GetActiveMessagesForSession(first)
+	if len(firstMsgs) != 1 || firstMsgs[0].Content != "hello from first" {
+		t.Fatalf("first session messages = %+v, want exactly [hello from first]", firstMsgs)
+	}
+
+	secondMsgs := m.GetActiveMessagesForSession(second)
+	if len(secondMsgs) != 2 {
+		t.Fatalf("second session messages = %+v, want 2", secondMsgs)
+	}
+
+	firstHistory := m.GetHistoryForAPIForSession(first, 10)
+	if len(firstHistory) != 1 {
+		t.Fatalf("GetHistoryForAPIForSession(first) = %+v, want 1 message", firstHistory)
+	}
+	secondHistory := m.GetHistoryForAPIForSession(second, 10)
+	if len(secondHistory) != 2 {
+		t.Fatalf("GetHistoryForAPIForSession(second) = %+v, want 2 messages", secondHistory)
+	}
+
+	firstTokenHistory := m.GetHistoryForAPITokenAwareForSession(first, 100_000)
+	if len(firstTokenHistory) != 1 {
+		t.Fatalf("GetHistoryForAPITokenAwareForSession(first) = %+v, want 1 message", firstTokenHistory)
+	}
+	secondTokenHistory := m.GetHistoryForAPITokenAwareForSession(second, 100_000)
+	if len(secondTokenHistory) != 2 {
+		t.Fatalf("GetHistoryForAPITokenAwareForSession(second) = %+v, want 2 messages", secondTokenHistory)
+	}
+}
+
+// TestGetHistoryForAPI_MatchesActiveSessionVariant confirms the global
+// GetHistoryForAPI/GetHistoryForAPITokenAware wrappers still behave exactly
+// like before now that they delegate to the *ForSession variants keyed by
+// GetActiveID() — same public contract, deduplicated implementation.
+func TestGetHistoryForAPI_MatchesActiveSessionVariant(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	m.AddMessage("user", "msg", "", "")
+	m.AddMessage("assistant", "resp", "", "")
+
+	global := m.GetHistoryForAPI(10)
+	scoped := m.GetHistoryForAPIForSession(m.GetActiveID(), 10)
+	if len(global) != len(scoped) || len(global) != 2 {
+		t.Fatalf("GetHistoryForAPI() = %+v, GetHistoryForAPIForSession() = %+v", global, scoped)
+	}
+
+	globalTok := m.GetHistoryForAPITokenAware(100_000)
+	scopedTok := m.GetHistoryForAPITokenAwareForSession(m.GetActiveID(), 100_000)
+	if len(globalTok) != len(scopedTok) || len(globalTok) != 2 {
+		t.Fatalf("GetHistoryForAPITokenAware() = %+v, GetHistoryForAPITokenAwareForSession() = %+v", globalTok, scopedTok)
+	}
+}
+
 func TestListChatsOrder(t *testing.T) {
 	dir := t.TempDir()
 	m, _ := NewManager(dir)

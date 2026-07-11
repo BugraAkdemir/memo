@@ -1,7 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-11 (Session 20, devam)
+> **Son güncelleme:** 2026-07-12 (Session 21, devam)
 > **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan maddeler kaldı.
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
@@ -17,8 +17,8 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 3 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 5 |
-| **TOPLAM** | **10** |
+| 🟢 LOW | 4 |
+| **TOPLAM** | **9** |
 
 ---
 
@@ -66,11 +66,6 @@
 - **Dosya:** `frontend/lib/screens/app_shell.dart:87-99`, `frontend/lib/widgets/agent/permission_dialog.dart`
 - **Nedir:** Diyalog `barrierDismissible: false` ile bir `requestId`'ye bağlı açılıyor ama `stopStreaming()`/`switchTo()` ile hiç senkronize değil.
 - **Kullanıcı etkisi:** Kullanıcı Stop'a basıp stream'i iptal etse bile diyalog ekranda kalıyor; sonunda Allow/Deny'e basınca artık var olmayan bir request için karar gönderiyor.
-
-### BUG-L2: Bir API yanıtındaki `as List` cast'i, kardeş satırdaki gibi `is List` ile korunmuyor
-
-- **Dosya:** `frontend/lib/core/api_client.dart:139-143`
-- **Nedir:** `res.data['chats'] as List`, sadece `!= null` kontrolüyle korunuyor, `is List` değil — iki satır üstündeki root-list path'i `is List` kontrolü yapıp bozuk yanıtta `[]`'e düşerken bu yol doğrudan çöküyor.
 
 ### BUG-L3: Kapanma kararı, sinyal gerçekten teslim edilene kadar yeniden doğrulanmıyor
 

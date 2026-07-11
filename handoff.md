@@ -116,6 +116,18 @@ Kullanıcıya kalan LOW/HIGH durumu özetlendikten sonra "BUG-L4'e devam" dendi 
 
 **Bu oturumda toplam:** 10 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, 3×LOW, Faz 1, BUG-H1, BUG-H2, BUG-L4) + 11 docs commit'i. Push edilmedi.
 
+## Yedinci iş (aynı oturum) — v3.3.3 sürüm notları güncellendi (EN+TR)
+
+Kullanıcı `versinNote/v3.3.3.md` ve `versinNote/tr/v3.3.3.md`'yi bu oturumdaki kullanıcı-görünür değişikliklerle güncellemeyi istedi. Sadece gerçek kullanıcı etkisi olanlar eklendi, iç/nadir-edge-case düzeltmeler (BUG-L2 güvensiz cast, BUG-L3 auto-shutdown yarışı, chunking token-fix) release notlarına girecek kadar kullanıcı-görünür değil diye bilinçli atlandı:
+
+- Yeni bölüm: "Fixed: Embedding Model Could Get Stuck Until Reboot" (bu oturumun embedding port fix'i)
+- Yeni bölüm: "Changed: The Terminal CLI Always Starts a Fresh Chat" (CLI fresh-start + `/session`'ın artık her sohbeti göstermesi)
+- Small Fixes'e 3 yeni madde: izin diyaloğunun stream durunca/sohbet değişince kendini kapatması (BUG-L1), chat-switch race'in düzeltilmesi (BUG-H1+H2, tek kullanıcı-görünür cümleye birleştirildi), model/sağlayıcı swap'ında net hata mesajı (BUG-L4)
+
+Sürüm tarihi (10 Temmuz 2026) ve version.json'a **dokunulmadı** — Session 20'nin kendi docs commit'i de aynı dosyaya, tarihi değiştirmeden eklemişti; bu, aktif geliştirme sırasında release notlarının biriktirilip tarihin/version bump'ının sadece gerçek `memo-release` skill'i çalıştırıldığında yapıldığı kurulmuş bir örüntü. Bu oturumda `memo-release` skill'i çalıştırılmadı, sadece not dosyaları düzenlendi.
+
+**Doğrulama:** Sadece markdown içerik değişikliği, kod dokunulmadı — `go build`/`flutter analyze` gerektirmiyor. İki dosya da manuel olarak yeniden okunup akış/ton tutarlılığı kontrol edildi.
+
 ---
 
 # Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği

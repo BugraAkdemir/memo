@@ -15,26 +15,14 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 3 |
+| 🟠 HIGH | 1 |
 | 🟡 MEDIUM | 2 |
 | 🟢 LOW | 2 |
-| **TOPLAM** | **7** |
+| **TOPLAM** | **5** |
 
 ---
 
 ## 🟠 HIGH
-
-### BUG-H1: Stream ortasında sohbet değiştirilirse mesaj yanlış sohbete karışabiliyor
-
-- **Dosya:** `internal/app/chat.go:210-217` (`sendMessageStreamInner`)
-- **Nedir:** `buildMessages` o an aktif sohbetin geçmişini okuyor, ama kullanıcı mesajı ve yanıt daha sonra, `sm.GetActiveID()`/`sm.AddMessage()` çağrıldığı **o andaki** aktif sohbete yazılıyor. `/api/chats/switch` (`server.go:450`) `SwitchChat`'i doğrudan çağırıyor, `streamMu` ile hiç senkronize değil.
-- **Kullanıcı etkisi:** Web arama/hafıza sorgusu sürerken kullanıcı başka bir sohbete geçerse, eski sohbetin bağlamıyla üretilen cevap yanlışlıkla yeni aktif sohbete eklenir.
-
-### BUG-H2: Sohbet değiştirmek, hâlâ stream'de olan eski sohbetin Flutter notifier'ını dispose ediyor
-
-- **Dosya:** `frontend/lib/providers/chat_provider.dart:87-108, 173-471`
-- **Nedir:** `ActiveChatIdNotifier.switchTo`, `messagesProvider.notifier.stopStreaming()` çağırıp `ref.invalidate(messagesProvider)` ile notifier'ı dispose ediyor — ama stream döngüsündeki, post-stream finalize bloğundaki ve catch bloğundaki hiçbir `state = ...` yazımı "dispose edildi mi" kontrolü yapmıyor (sadece gecikmeli liste-yenileme timer'ı kontrol ediyor).
-- **Kullanıcı etkisi:** A sohbetinde yanıt akarken B'ye geçilirse, A'nın notifier'ı ya dispose edilmiş bir state'e yazmaya çalışıp hataya düşüyor, ya da geç gelen yanıt kimsenin dinlemediği bir state nesnesine uygulanıyor — H1'in frontend karşılığı.
 
 ### BUG-H3: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
 

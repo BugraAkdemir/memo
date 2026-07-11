@@ -17,8 +17,8 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 3 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 3 |
-| **TOPLAM** | **8** |
+| 🟢 LOW | 2 |
+| **TOPLAM** | **7** |
 
 ---
 
@@ -60,12 +60,6 @@
 ---
 
 ## 🟢 LOW
-
-### BUG-L3: Kapanma kararı, sinyal gerçekten teslim edilene kadar yeniden doğrulanmıyor
-
-- **Dosya:** `internal/app/clients.go:94-129` (`UnregisterClient`, `sweepStaleClients`)
-- **Nedir:** `shouldShutdown` kararı anlık registry durumuna bakıyor ve `selfShutdownSignal` çağrısı ile bu karar arasında dar bir zaman penceresi var.
-- **Kullanıcı etkisi:** Nadir bir zamanlamada, tam o sırada `/gui` ile bağlanan yeni bir client, kapanmak üzere olan bir backend'e kaydolup hemen ardından o backend'in kapanmasıyla karşılaşabilir.
 
 ### BUG-L4: Model/sağlayıcı değişimi tam stream ortasına denk gelirse, o stream durdurulmuş/değiştirilmiş bir client ile konuşmaya devam ediyor
 

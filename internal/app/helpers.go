@@ -77,7 +77,29 @@ func (a *App) buildMemoryQuery(userMsg string) string {
 	return strings.Join(recent, " | ") + " | " + userMsg
 }
 
+// buildMessages builds the prompt for whatever chat is active *right now*.
+// Thin wrapper around buildMessagesForSession — see PLAN_chatid_refactor.md
+// Phase 2. Kept for callers that are intentionally still tied to the global
+// active chat (the WhatsApp bridge's own pipeline; non-streaming
+// SendMessage/SendMessageWithImage/SendMessageWithFile, out of this phase's
+// scope). Streaming entry points in chat.go capture a chatID once up front
+// and call buildMessagesForSession directly instead.
 func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 []string) []api.Message {
+	sm := a.getSessionManager()
+	var chatID string
+	if sm != nil {
+		chatID = sm.GetActiveID()
+	}
+	return a.buildMessagesForSession(ctx, chatID, userMsg, extraImageB64)
+}
+
+// buildMessagesForSession is buildMessages anchored to an explicit chatID —
+// history is read from exactly that chat, not whatever the global "active"
+// chat happens to be at call time. This is what lets a stream keep reading
+// and (via the sessionID already threaded through routeStream/callLLMStream/
+// finishStream) writing to the *same* chat throughout, even if the user
+// switches the active chat mid-stream (BUG-H1).
+func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg string, extraImageB64 []string) []api.Message {
 	var memories []memory.MemoryResult
 	if a.GetMemoryEnabled() {
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
@@ -139,7 +161,7 @@ func (a *App) buildMessages(ctx context.Context, userMsg string, extraImageB64 [
 		historyBudget = 512
 	}
 
-	history := a.getSessionHistoryTokenAware(historyBudget)
+	history := a.getSessionHistoryTokenAwareForSession(chatID, historyBudget)
 	history = append([]api.Message{}, history...)
 	var msgs []api.Message
 
@@ -254,7 +276,20 @@ func (a *App) getSessionHistory() []api.Message {
 	return a.getSessionHistoryTokenAware(0)
 }
 
+// getSessionHistoryTokenAware returns the active chat's history. Thin
+// wrapper around getSessionHistoryTokenAwareForSession — see
+// PLAN_chatid_refactor.md Phase 2.
 func (a *App) getSessionHistoryTokenAware(tokenBudget int) []api.Message {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return nil
+	}
+	return a.getSessionHistoryTokenAwareForSession(sm.GetActiveID(), tokenBudget)
+}
+
+// getSessionHistoryTokenAwareForSession returns chatID's history, not
+// whatever chat happens to be globally active at call time.
+func (a *App) getSessionHistoryTokenAwareForSession(chatID string, tokenBudget int) []api.Message {
 	sm := a.getSessionManager()
 	if sm == nil {
 		return nil
@@ -262,12 +297,12 @@ func (a *App) getSessionHistoryTokenAware(tokenBudget int) []api.Message {
 
 	var history []map[string]string
 	if tokenBudget > 0 {
-		history = sm.GetHistoryForAPITokenAware(tokenBudget)
+		history = sm.GetHistoryForAPITokenAwareForSession(chatID, tokenBudget)
 	} else {
 		a.cfgMu.RLock()
 		maxHistory := a.cfg.Llama.MaxHistory
 		a.cfgMu.RUnlock()
-		history = sm.GetHistoryForAPI(maxHistory)
+		history = sm.GetHistoryForAPIForSession(chatID, maxHistory)
 	}
 
 	var msgs []api.Message

@@ -10,6 +10,7 @@ import (
 	"memo/internal/identity"
 	"memo/internal/memory"
 	moodpkg "memo/internal/mood"
+	"memo/internal/sessions"
 )
 
 func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
@@ -223,6 +224,63 @@ func TestBuildMessages_MemoryEnabledNotCrash(t *testing.T) {
 	}
 	if messages[0].Role != "system" {
 		t.Errorf("expected system role, got %s", messages[0].Role)
+	}
+}
+
+// TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch is a
+// regression test for BUG-H1: buildMessages() used to read history from
+// whatever chat was globally active *at call time* — if the active chat
+// changed between building the prompt and writing the reply (a user
+// switching chats mid-stream), a response built from one chat's history
+// could be appended to a different, newly-active chat. The streaming entry
+// points in chat.go now capture a chatID once, up front, and pass it to
+// buildMessagesForSession explicitly — this must stay anchored to that
+// chatID no matter what SwitchChat does afterward.
+func TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false)
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	chatA := sm.GetActiveID()
+	sm.AddMessageToSession(chatA, "user", "chat A history", "", "")
+	chatB := sm.NewChat()
+	sm.AddMessageToSession(chatB, "user", "chat B history", "", "")
+
+	// The exact race: chatID was captured as chatA, but the globally active
+	// chat has since moved to chatB — e.g. the user switched chats while
+	// this call was building its prompt.
+	if err := sm.SwitchChat(chatB); err != nil {
+		t.Fatalf("SwitchChat() error = %v", err)
+	}
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: false},
+			Llama:  config.LlamaConfig{CtxSize: 4096},
+		},
+		identity: id,
+		sessions: sm,
+	}
+
+	messages := a.buildMessagesForSession(context.Background(), chatA, "new message", nil)
+
+	var foundA bool
+	for _, m := range messages {
+		content, ok := m.Content.(string)
+		if !ok {
+			continue
+		}
+		if strings.Contains(content, "chat A history") {
+			foundA = true
+		}
+		if strings.Contains(content, "chat B history") {
+			t.Fatalf("buildMessagesForSession(chatA, ...) leaked chat B's history into the prompt: %q", content)
+		}
+	}
+	if !foundA {
+		t.Fatal("buildMessagesForSession(chatA, ...) did not include chat A's own history")
 	}
 }
 

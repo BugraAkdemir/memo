@@ -214,16 +214,24 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	a.observerRecorder.RecordMessage(userMsg)
 	go a.processMessageIntent(userMsg, "chat", "", time.Now())
 
-	messages := a.buildMessages(ctx, userMsg, nil)
-
+	// Capture the target chat once, up front — buildMessagesForSession
+	// (history read) and AddMessageToSession (the user's own message write)
+	// must both act on the exact same chat, not whatever happens to be
+	// "active" at each individual call's own point in time. Otherwise a
+	// chat switch mid-call (BUG-H1) can read one chat's history but write
+	// the message/reply to a different, newly-active one.
 	sm := a.getSessionManager()
-	var sessionID string
+	var chatID string
 	if sm != nil {
-		sessionID = sm.GetActiveID()
-		sm.AddMessage("user", userMsg, "", "")
+		chatID = sm.GetActiveID()
 	}
 
-	innerCh := a.routeStream(ctx, messages, userMsg, "", "", sessionID)
+	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil)
+	if sm != nil {
+		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
+	}
+
+	innerCh := a.routeStream(ctx, messages, userMsg, "", "", chatID)
 
 	// Wrap the inner channel so streamMu is released when the stream completes.
 	out := make(chan api.StreamChunk, 128)
@@ -283,20 +291,24 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		return out
 	}
 
-	// buildMessages (not a hand-rolled system+history+user list) so image
-	// messages get the same mood directive, web search context, and
-	// token-aware history truncation as plain text ones — the manual
-	// construction this replaced skipped all three (BUG-QL5).
-	msgs := a.buildMessages(ctx, userMsg, []string{b64})
-
+	// Captured once, up front — see the matching comment in
+	// sendMessageStreamInner (BUG-H1).
 	sm := a.getSessionManager()
-	var sessionID string
+	var chatID string
 	if sm != nil {
-		sessionID = sm.GetActiveID()
-		sm.AddMessage("user", userMsg, imagePath, "")
+		chatID = sm.GetActiveID()
 	}
 
-	innerCh := a.routeStream(ctx, msgs, userMsg, imagePath, "", sessionID)
+	// buildMessagesForSession (not a hand-rolled system+history+user list) so
+	// image messages get the same mood directive, web search context, and
+	// token-aware history truncation as plain text ones — the manual
+	// construction this replaced skipped all three (BUG-QL5).
+	msgs := a.buildMessagesForSession(ctx, chatID, userMsg, []string{b64})
+	if sm != nil {
+		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+	}
+
+	innerCh := a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {
@@ -361,16 +373,20 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		return out
 	}
 
-	messages := a.buildMessages(ctx, combined, nil)
-
+	// Captured once, up front — see the matching comment in
+	// sendMessageStreamInner (BUG-H1).
 	sm := a.getSessionManager()
-	var sessionID string
+	var chatID string
 	if sm != nil {
-		sessionID = sm.GetActiveID()
-		sm.AddMessage("user", userMsg, "", filePath)
+		chatID = sm.GetActiveID()
 	}
 
-	innerCh := a.routeStream(ctx, messages, userMsg, "", filePath, sessionID)
+	messages := a.buildMessagesForSession(ctx, chatID, combined, nil)
+	if sm != nil {
+		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
+	}
+
+	innerCh := a.routeStream(ctx, messages, userMsg, "", filePath, chatID)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {

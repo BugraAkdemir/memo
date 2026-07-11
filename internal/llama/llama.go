@@ -99,6 +99,23 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		actualPort = s.port
 	}
 
+	// If something is already listening on this port, clear it before
+	// binding. This is deliberately unconditional (every attempt, not just
+	// retries): Pdeathsig is not used on Linux (see newSysProcAttr) so a
+	// llama-server whose parent Memo process died abnormally (crash, kill
+	// -9, OOM) is orphaned and keeps the port forever. Without this
+	// pre-flight check, a fresh Server here has no memory of that orphan —
+	// cmd.Start() succeeds at the OS level, but llama-server itself fails
+	// to bind and exits within ~1s; WaitReady sees the exit almost
+	// immediately, and the resulting Stop() only SIGTERMs *this* attempt's
+	// own (already-dead) PID, since s.cmd is non-nil by then — it never
+	// reaches killByPort's port-discovery fallback. Every retry repeats the
+	// identical failure and the orphan is left running until reboot. Safe
+	// to call every time: killByPort is a no-op when the port is free.
+	if err := s.killByPort(actualPort); err != nil {
+		logx.Printf("llama: could not clear port %d before starting: %v", actualPort, err)
+	}
+
 	// Update active state
 	s.port = actualPort
 	s.ctxSize = actualCtx
@@ -188,8 +205,15 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	}
 	s.cmd.Env = env
 
-	// Pdeathsig: child receives SIGKILL when parent dies (even force-kill).
-	// NOTE: Setpgid must NOT be set — it clears Pdeathsig on Linux.
+	// Setpgid puts the child in its own process group so forceKill/killByPort
+	// can signal the whole tree without affecting the parent Memo process.
+	// None of the platform newSysProcAttr() implementations set Pdeathsig —
+	// it's incompatible with Setpgid in Go (runtime thread reuse triggers
+	// premature child death) — so a llama-server whose parent dies abnormally
+	// (crash, kill -9, OOM) is NOT auto-killed by the OS; it's orphaned and
+	// keeps holding its port until something explicitly kills it. The
+	// port-clearing pre-flight above exists precisely to catch that case on
+	// the next Start().
 	s.cmd.SysProcAttr = newSysProcAttr()
 
 	if err := s.cmd.Start(); err != nil {

@@ -416,6 +416,24 @@ class _ChatTopBar extends ConsumerWidget {
               },
             ),
           
+          // Agent mode toggle — was previously only reachable from the
+          // separate Agent tab, so plain Chat had no visible way to turn on
+          // file/command tools; this mirrors the web-search toggle right
+          // next to it. Session-scoped like web search, not persisted onto
+          // this specific chat: switching away and back re-derives it from
+          // the chat's own type (ActiveChatIdNotifier.switchTo).
+          IconButton(
+            icon: Icon(
+              Icons.smart_toy,
+              size: 20,
+              color: isAgentEnabled
+                  ? MemoTheme.green
+                  : MemoTheme.of(context).textDim,
+            ),
+            tooltip: '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
+            onPressed: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
+          ),
+
           // Web search mode toggle — when on, every message uses live web results
           IconButton(
             icon: Icon(

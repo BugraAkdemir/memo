@@ -125,6 +125,11 @@ class L10n {
     'agent_undone': 'Son ajan işlemi başarıyla geri alındı.',
     'agent_undo_failed': 'Geri alma başarısız: \${e}',
 
+    // Agent mode toggle (Chat top bar)
+    'agent_mode_on': 'Agent Modu — Kapat',
+    'agent_mode_off': 'Agent Modu — Aç',
+    'agent_mode_tooltip': 'Agent modu — dosya okuma/yazma ve komut çalıştırma araçlarını etkinleştirir.',
+
     // Quick actions (welcome)
     'quick_review': 'Kod incele',
     'quick_review_hint': 'Kodunuzu yapıştırın',
@@ -900,6 +905,10 @@ class L10n {
     'agent_undo': 'Undo Agent Last Action',
     'agent_undone': 'Last agent action undone.',
     'agent_undo_failed': 'Undo failed: \${e}',
+
+    'agent_mode_on': 'Agent Mode — Turn Off',
+    'agent_mode_off': 'Agent Mode — Turn On',
+    'agent_mode_tooltip': 'Agent mode — enables file read/write and command-execution tools.',
 
     'quick_review': 'Code review',
     'quick_review_hint': 'Paste your code',

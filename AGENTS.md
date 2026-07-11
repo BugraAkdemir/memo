@@ -146,6 +146,7 @@ the versioned→generic artifact rename for `download.bugradev.com`, and the
 
 ### Memory / Vector Store
 - ~~Full rebuild on every startup (`LoadCache` is O(N), no incremental index)~~ → stale note: `LoadCache` doesn't exist in the current codebase (`internal/memory/store.go`'s `NewStore`/`initSchema` don't do a startup full-scan — this refers to an older architecture, before the hybrid vector+FTS rework). Removed as a claim; re-audit from scratch if startup performance on a large memory store is ever reported as an issue.
+- ~~`chunkText` sized chunks by word count (`strings.Fields`), a poor proxy for token count~~ → fixed 2026-07-12: `internal/memory/chunker.go` now sizes chunks by `truncate.EstimateTokens` (the same char/3 heuristic used elsewhere for context budgeting), so a message short by word count but made of long tokens (URLs, code, agglutinative Turkish) can no longer slip through as a single unsplit, over-budget chunk. Note: `chunkText` is only used by `SaveInteraction` to chunk a single chat turn (user message + reply) before embedding — Memo has no document/file-upload → RAG ingestion pipeline, so heading-aware/semantic splitting (relevant for chunking uploaded documents) doesn't apply to this codebase's actual usage.
 - Embedding model must be started separately (config-driven auto-start on model load).
 
 ### Security

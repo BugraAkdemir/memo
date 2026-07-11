@@ -1,3 +1,54 @@
+# Handoff — 2026-07-12 (Session 21) — Dış AI analizi doğrulama + chunking token-fix + BUG_REPORT.md durum teyidi
+
+## Oturum Özeti
+
+Kullanıcı `yapacam.md` adlı bir dosyaya başka bir AI'nın Memo kod tabanı üzerine yazdığı 5 maddelik bir "bug" analizini yapıştırmıştı (dosya 6. maddenin ortasında kesik geldi — devamı istenmedi). Görev: hiçbir iddiayı körü körüne kabul etmeden kod tabanında tek tek doğrulamak, gerçek olanları düzeltmek.
+
+### Doğrulama sonucu (5/5 madde incelendi)
+
+1. **Chunking word-based, token-based değil** (`internal/memory/chunker.go`) — ✅ **gerçek**, düzeltildi (aşağıda).
+2. **Heading-bazlı semantic chunking yok** — kısmen doğru ama **kapsam dışı**: `chunkText`'in tek çağıranı `SaveInteraction`, sadece tek bir chat mesajını (kullanıcı+asistan) chunk'lıyor — Memo'da belge/PDF import → RAG ingestion pipeline hiç yok, bu yüzden başlık-bazlı bölme (LangChain'in `RecursiveCharacterTextSplitter`'ı gibi) bu kullanım senaryosuna uymuyor. Atlandı.
+3. **"Re-ranking yok" iddiası** — ❌ **yanlış**, güncel değil. `internal/memory/store.go` zaten vektör+FTS hibrit arama + `reciprocalRankFusion` (RRF) kullanıyor (satır 635, 748). Diğer AI muhtemelen eski (pre-hybrid-rework) mimariyi görmüş.
+4. **`model_store_screen.dart` 2612 satır** — zaten AGENTS.md'de bilinen bir bakım notu, yeni bir bug değil.
+5. **"Agent'ta panic recovery yok" iddiası** — ❌ **yanlış**, bayat bilgi. Tam olarak geçen oturumda (BUG-H3, commit `9fb11b7`) düzeltilmişti; `executor.go`'nun `RunStream`'i `pipeline.RunStream`'e delege ediyor, orada `defer recoverStreamPanic(...)` zaten var (`internal/agent/pipeline.go:96`).
+
+**Ders:** başka bir AI'nın analizini kaynak olarak kullanırken her iddia ayrı ayrı koda karşı doğrulanmalı — 5 maddenin 2'si tamamen bayat/yanlış çıktı.
+
+## Yapılan tek kod değişikliği: token-bazlı chunking (commit `05d3142`)
+
+`internal/memory/chunker.go`'daki `chunkText`, `strings.Fields` ile **kelime sayıyordu** — ama kelime sayısı token sayısının kötü bir vekili: uzun bir identifier/URL/bitişik yazılan Türkçe kelime birden fazla token'a karşılık gelebiliyor. Sonuç: kelime sayımına göre "300 kelimeden az, tek chunk" denen bir mesaj, gerçek token sayımında budget'ı aşabiliyordu.
+
+**Düzeltme:** `chunkText` artık projede zaten var olan `internal/truncate.EstimateTokens` (char/3 sezgisel) ile tahmini token sayısına göre bölüyor — prefix-sum ile O(n) sliding window, aynı overlap/min-chunk-merge davranışını koruyor. `store.go`'daki `chunkMaxWords`/`chunkOverlapWords` sabitleri `chunkMaxTokens`/`chunkOverlapTokens` olarak yeniden adlandırıldı (değer aynı: 300/50, artık token cinsinden).
+
+**Testler:** `chunker_test.go`'a yeni `TestChunkText_LongWordsExceedBudget` eklendi — 300 kelimelik ama her kelimesi uzun (12 karakter ≈ 5 token) bir metin: eski kod bunu tek chunk sayıyordu (kelime sayısı ≤300), yeni kod doğru bölüyor. Bu test, `git stash` ile eski koda karşı çalıştırılıp **gerçekten fail ettiği** kanıtlandı. Var olan 3 test (`ShortText`, `LongText`, `OverlapContent`) token-semantiğine uyacak şekilde güncellendi (`OverlapContent` artık tam 50-kelime eşitliği yerine son/ilk kelimenin ortaklığını kontrol ediyor, çünkü overlap genişliği artık token maliyetine göre değişken). Ayrıca `TestChunkText_NoDataLoss` eklendi. `store_test.go`'daki `TestSaveInteraction_Chunking` de aynı sebeple güncellendi (sabit "2 chunk" beklentisi yerine ">1 chunk").
+
+## BUG_REPORT.md durumu — kullanıcı "HIGH'lar bitti sanıyordu", DOĞRU DEĞİL
+
+Kullanıcı bu oturuma "HIGH'lar bittiydi sanırım, sadece LOW kalmıştı" diyerek başladı. Dosyayı ve ilgili kodu (chat.go, chat_provider.dart, clients.go, api_client.dart) yeniden kontrol ettim: **yanlış** — Session 20'den beri hiçbir HIGH/MEDIUM/LOW maddesine dokunulmamış (aradaki tek commit'ler bu oturumun chunking fix'i ve docs). Güncel durum aynen BUG_REPORT.md'de yazdığı gibi:
+
+- 🟠 **HIGH: 3 açık** — BUG-H1 (chat-switch backend race, `chat.go:210-217`), BUG-H2 (chat-switch frontend, `chat_provider.dart`), BUG-H3 (Windows'ta auto-shutdown sinyali çalışmıyor, `clients.go:136-142`). Hepsi Session 20'de bilinçli atlanmıştı (H1+H2 birlikte ele alınması gereken büyük bir mimari iş — chat-id refactor planıyla kesişiyor; H3 bu ortamda [Linux] test edilemez).
+- 🟡 **MEDIUM: 2 açık** — M1 (`model_store_screen.dart` boyutu, bakım notu), M2 (`connectionStatusProvider` sonsuz polling, kabul edilmiş).
+- 🟢 **LOW: 5 açık** — L1-L5, hepsi spot-check ile doğrulandı, hâlâ kod tabanında aynen duruyor (satır numaraları ~10 satır kaymış olabilir ama bug'lar aynen mevcut).
+
+Kullanıcıya bu düzeltildi, sonraki adım için üç seçenek sunuldu (LOW'lardan devam / HIGH'a başla / sadece docs) — kullanıcı bu oturumda **sadece dokümanları güncellemeyi** seçti, koda dokunmadı.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build ./... && go vet ./... && go test ./... -race -count=1
+  → tüm paketler yeşil (memory dahil, chunking testleri geçti)
+```
+Frontend'e bu oturumda dokunulmadı.
+
+## Sıradaki Oturum İçin
+
+1. **LOW'lardan devam etmek en düşük sürtünmeli seçenek** — L1-L5 küçük, bağımsız, hızlı kazanımlar (izin diyaloğu bayatlığı, `as List` cast güvenliği, shutdown karar penceresi, model-swap mid-stream, ngrok token yarışı).
+2. **HIGH'lar (H1+H2) büyük iş** — chat-switch race, backend+frontend birlikte, muhtemelen `docs/plans/PLAN_chatid_refactor.md` ile birleştirilmeli. Tek oturumda bitmeyebilir, ayrı planlama gerektirir.
+3. **H3 (Windows auto-shutdown)** bu ortamda hiç test edilemez, gerçek Windows makine/VM gerekiyor.
+4. Bu oturumda push edilmedi, `origin/main`'in kaç commit gerisinde olduğu kontrol edilmedi.
+
+---
+
 # Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği
 
 ## Oturum Özeti

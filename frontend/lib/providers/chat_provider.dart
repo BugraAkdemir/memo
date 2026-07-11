@@ -202,9 +202,14 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   }
 
   Future<void> refresh() async {
-    state = await AsyncValue.guard(
+    final result = await AsyncValue.guard(
       () => ref.read(apiClientProvider).getMessages(),
     );
+    // The await above can outlive this notifier (chat switched away from —
+    // see the BUG-H2 guards in sendMessage/sendFile, which are refresh()'s
+    // main callers). Writing `state` on a disposed notifier throws.
+    if (_disposed) return;
+    state = result;
   }
 
   Future<void> updateMessage(int index, String newContent) async {
@@ -414,6 +419,16 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           }
         }
 
+        // A chat switch mid-stream (ActiveChatIdNotifier.switchTo) calls
+        // stopStreaming() then ref.invalidate(messagesProvider) — this
+        // instance is now disposed, but Riverpod doesn't cancel the
+        // coroutine, so execution reaches here regardless. Writing `state`
+        // on a disposed notifier throws against its own dead `ref`, and
+        // touching a shared provider like isSendingProvider below would
+        // clobber whatever the newly-active chat's own send is doing
+        // (BUG-H2). Bail before touching anything once that's happened.
+        if (_disposed) return;
+
         if (_stopped) {
           _stopped = false;
           ref.read(streamingContentProvider.notifier).state = '';
@@ -426,6 +441,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       } else {
         fullReply = await api.sendMessage(message);
       }
+
+      if (_disposed) return;
 
       // Append final assistant message to the list
       final list = [...(state.valueOrNull ?? <ChatMessage>[])];
@@ -457,6 +474,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
         if (!_disposed) ref.invalidate(chatListProvider);
       });
     } catch (e) {
+      if (_disposed) return;
       _stopped = false;
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Mesaj gönderilemedi ($e)';
@@ -466,7 +484,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingStatusProvider.notifier).state = '';
     } finally {
       _cancelToken = null;
-      ref.read(isSendingProvider.notifier).state = false;
+      if (!_disposed) {
+        ref.read(isSendingProvider.notifier).state = false;
+      }
     }
   }
 
@@ -563,6 +583,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           }
         }
 
+        // See the matching guard + comment in sendMessage() (BUG-H2): this
+        // instance may already be disposed by the time execution resumes
+        // here (chat switched away from mid-stream).
+        if (_disposed) return '';
+
         if (_stopped) {
           _stopped = false;
           ref.read(streamingContentProvider.notifier).state = '';
@@ -575,6 +600,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       } else {
         fullReply = await api.sendFile(message, filePath);
       }
+
+      if (_disposed) return '';
 
       final list = [...(state.valueOrNull ?? <ChatMessage>[])];
       if (fullReply.isNotEmpty || fullThinking.isNotEmpty || finalAgentEvents.isNotEmpty) {
@@ -599,6 +626,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.invalidate(chatListProvider);
       return fullReply;
     } catch (e) {
+      if (_disposed) return '';
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Dosya gönderilemedi ($e)';
       ref.read(streamingContentProvider.notifier).state = '';
@@ -608,7 +636,9 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       return '';
     } finally {
       _cancelToken = null;
-      ref.read(isSendingProvider.notifier).state = false;
+      if (!_disposed) {
+        ref.read(isSendingProvider.notifier).state = false;
+      }
     }
   }
 }

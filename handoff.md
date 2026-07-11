@@ -100,7 +100,21 @@ Frontend tarafında (BUG-H2), `ActiveChatIdNotifier.switchTo`'nun `stopStreaming
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil. `flutter analyze lib/` → aynı 4 bilinen info-uyarısı. `flutter test` → 99/99 yeşil.
 
-**Bu oturumda toplam:** 9 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, 3×LOW, Faz 1, BUG-H1, BUG-H2) + 9 docs commit'i. Push edilmedi.
+## Altıncı iş (aynı oturum) — BUG-L4: model/sağlayıcı swap'ı mid-stream'de net hata mesajına dönüştürüldü (commit `07930f4`)
+
+Kullanıcıya kalan LOW/HIGH durumu özetlendikten sonra "BUG-L4'e devam" dendi — küçük kapsamlı versiyon: in-flight isteği iptal etmek yerine (büyük mimari değişiklik, BUG_REPORT.md'nin kendisi de bunu ayrı bırakmıştı), sadece swap yüzünden başarısız olan isteklerde ham "connection refused" yerine net bir hata mesajı vermek.
+
+`internal/app/llm.go`'ya iki küçük karşılaştırma fonksiyonu eklendi: `clientSwapped(streamClient)` ve `providerSwapped(router)` — çağrının başında `clientMu`/`providerMu` altında yakalanan kopyayı, hata anında güncel `a.client`/`a.providerRouter` ile karşılaştırıyor. Bu, `callLLMStream`/`callLLM`'in **4 hata noktasına** (streaming+non-streaming × local-model+external-provider) eklendi — swap tespit edilirse `modelSwappedMidStreamMsg` ("Model veya sağlayıcı bu mesaj akarken değiştirildi...") kullanılıyor, tespit edilmezse davranış aynen eskisi gibi.
+
+`TestClientSwapped`/`TestProviderSwapped` (yeni `llm_test.go`) karşılaştırma mantığını doğrudan test ediyor — tam bir concurrent integration testi (gerçek bir stream'i ortasında swap ederek) flaky olma riski yüksek olduğu için tercih edilmedi, yeni eklenen TEK karar mantığı (`clientSwapped`/`providerSwapped`) zaten doğrudan test edildiği için bu yeterli görüldü.
+
+`AGENTS.md`'nin "Data Races" notu güncellendi — BUG-L4 artık düzeltilmiş olarak işaretli.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil.
+
+**BUG_REPORT.md son durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only, bu ortamda test edilemez), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı ngrok/telefon testi gerektiriyor). Bu oturumun başında (Session 20'nin bıraktığı yerden) **10 açık madde** vardı, şimdi **4**'e indi.
+
+**Bu oturumda toplam:** 10 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, 3×LOW, Faz 1, BUG-H1, BUG-H2, BUG-L4) + 11 docs commit'i. Push edilmedi.
 
 ---
 

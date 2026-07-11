@@ -79,6 +79,29 @@ Kullanıcı: "Embedding modelinin auto-start'ı bazen çalışmıyor, çoğunluk
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (`internal/llama` dahil, yeni test dahil 4.3s). `GOOS=windows`/`GOOS=darwin go vet ./internal/llama/...` → temiz.
 
+## Beşinci iş (aynı oturum) — BUG_REPORT.md'de LOW'lardan devam + HIGH'lara geçiş (chat-switch race)
+
+Kullanıcı "BUG_REPORT.md'den adım adım devam edelim" dedi. Önce 3 LOW madde tek tek düzeltildi, sonra kullanıcı "HIGH'lara geçelim" dedi — bu da mevcut `docs/plans/PLAN_chatid_refactor.md`'nin (2026-07-06 tarihli, önceki bir oturumda yazılmış, "BÜYÜK, faz faz ilerle" notlu) Faz 1 ve Faz 2'sinin uygulanmasına denk geldi.
+
+### LOW'lar (3/5 düzeltildi, testli, her biri kendi commit'i + docs commit'i)
+
+- **BUG-L2** (`12c26f1`) — `api_client.dart`'ın `listChats()` object-wrapped fallback dalı (`res.data['chats'] as List`, sadece `!= null` korumalı) `_guard<List>` ile değiştirildi — kardeş root-list dalıyla tutarlı hale geldi. Test eski koda karşı gerçekten fail etti (raw `TypeError` vs. beklenen `Exception`).
+- **BUG-L1** (`0290066`) — İzin diyaloğu artık `isSendingProvider`'ı dinliyor, `false` olunca kendini kapatıyor (Stop/chat-switch, ikisi de `stopStreaming()` üzerinden bunu tetikliyor). Eski davranışta diyalog stream durdurulsa/sohbet değiştirilse bile ekranda kalıyordu.
+- **BUG-L3** (`6eadbef`) — `main.go`'nun `--auto-shutdown` sinyal bekleme döngüsü artık sinyali işlemeden **hemen önce** `a.HasActiveClients()` (yeni) ile tekrar doğruluyor — `selfShutdownIfIdle`'ın kararı (registry boştu) ile sinyalin gerçekten teslim edilmesi arasındaki dar pencerede yeni bir client (ör. `/gui`) kaydolursa artık sinyal görmezden geliniyor.
+- **Bilinçli bırakılan 2 LOW:** BUG-L4 (model-swap mid-stream — gerçek düzeltme daha büyük bir mimari karar), BUG-L5 (ngrok token yarışı — dokümanın kendisi zaten "canlı ngrok/telefon testi gerektirir" diyor, bu ortamda test edilemez).
+
+### HIGH'lar — chat-switch race (BUG-H1 backend `f00197f`, BUG-H2 frontend `d18f99e`)
+
+`PLAN_chatid_refactor.md`'nin Faz 1'i (session'ın başında, `a632873`) ve Faz 2'si uygulandı — ama Faz 2 planın istediği **public** `SendMessageStreamTo(ctx, chatID, userMsg)` API'siyle değil, daha dar bir mekanizmayla: `sendMessageStreamInner`/`SendMessageWithImageStream`/`SendMessageWithFileStream` artık `chatID := sm.GetActiveID()`'i çağrının en başında **bir kez** yakalayıp `buildMessagesForSession`/`AddMessageToSession`/`routeStream` boyunca aynı değeri kullanıyor — eskiden bu üçü ayrı ayrı "şu an aktif olan ne" diye soruyordu, aralarında bir switch olursa history bir sohbetten okunup mesaj/reply başka birine yazılabiliyordu (BUG-H1). Kanıt: `TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch` + ad-hoc bir sanity testiyle eski global `buildMessages()`'ın bu senaryoda gerçekten yanlış sohbetin geçmişini sızdırdığı doğrulandı.
+
+Frontend tarafında (BUG-H2), `ActiveChatIdNotifier.switchTo`'nun `stopStreaming()` + `ref.invalidate(messagesProvider)` çağrısı eski notifier'ı dispose ediyor ama Riverpod in-flight `sendMessage()`/`sendFile()` coroutine'ini iptal etmiyor — devam edip dispose olmuş instance'a yazmaya çalışıyordu. **Beklenmedik bulgu:** bu Riverpod sürümünde disposed notifier'a `state` yazmak throw etmiyor (sessizce yutuluyor) — asıl gözlemlenebilir zarar, disposed instance'ın `finally` bloğunun paylaşılan/global `isSendingProvider`'ı koşulsuz `false`'a çekmesi, yani B sohbetine geçilip orada yeni bir gönderim başlatılsa bile A'nın terk edilmiş stream'i bitince B'nin "gönderiliyor" göstergesini yanlışlıkla kapatıyordu. Test tasarımı da bu yüzden iki kez revize edildi (önce "throw etmiyor mu" diye test edildi, atlıyordu bile eski kodda — sonra gerçek semptomu, `isSendingProvider` klobber'ını, doğrulayacak şekilde yeniden yazıldı; `git stash` ile eski koda karşı gerçekten fail ettiği kanıtlandı).
+
+**Plan'da bilinçli açık bırakılan:** `PLAN_chatid_refactor.md` güncellendi — Faz 2 "kısmen tamamlandı" olarak işaretlendi. Asıl planın istediği, **dışarıdan explicit bir chatID kabul eden** public `SendMessageStreamTo` hâlâ yok (mevcut düzeltme sadece "çağrı sırasında aktif olanı sabitliyor," aktif-olmayan bir sohbete dışarıdan mesaj göndermeyi sağlamıyor) — Faz 3'ün (task loop workaround'unu kaldırma) ihtiyaç duyduğu tam olarak bu, yani Faz 3'e başlamadan önce bu public API eklenmeli.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil. `flutter analyze lib/` → aynı 4 bilinen info-uyarısı. `flutter test` → 99/99 yeşil.
+
+**Bu oturumda toplam:** 9 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, 3×LOW, Faz 1, BUG-H1, BUG-H2) + 9 docs commit'i. Push edilmedi.
+
 ---
 
 # Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği

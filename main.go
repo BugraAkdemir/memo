@@ -20,6 +20,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/logx"
 	"memo/internal/replcli"
+	"memo/internal/shutdown"
 )
 
 func main() {
@@ -84,7 +85,14 @@ func main() {
 			log.Printf("Memo backend server running on port %d", *port)
 		}
 
-		// Wait for interrupt signal
+		// Wait for an interrupt signal or an internal shutdown request.
+		// Internal requests (client-registry auto-shutdown in
+		// internal/app/clients.go, POST /api/shutdown in
+		// internal/webserver/handlers_flutter.go) go through
+		// internal/shutdown rather than self-delivering an OS signal —
+		// os.Process.Signal only implements os.Kill on Windows, so a
+		// self-signal there was a silent no-op and the backend never
+		// actually stopped.
 		sigCh := make(chan os.Signal, 1)
 		sigs := []os.Signal{os.Interrupt}
 		if runtime.GOOS != "windows" {
@@ -92,8 +100,11 @@ func main() {
 		}
 		signal.Notify(sigCh, sigs...)
 		for {
-			<-sigCh
-			// An auto-shutdown backend can receive a stale self-signal: it
+			select {
+			case <-sigCh:
+			case <-shutdown.Requested():
+			}
+			// An auto-shutdown backend can receive a stale request: it
 			// decided to shut down while idle (internal/app/clients.go), but
 			// a new client (e.g. /gui spawning right as the last CLI session
 			// disconnects) registered in the gap between that decision and

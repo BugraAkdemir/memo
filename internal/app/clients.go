@@ -5,11 +5,11 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"fmt"
-	"os"
 	"sync"
 	"time"
 
 	"memo/internal/logx"
+	"memo/internal/shutdown"
 )
 
 // clientStaleAfter and clientSweepEvery govern how quickly a client that
@@ -131,8 +131,8 @@ func (a *App) sweepStaleClients() {
 
 // selfShutdownSignal is the actual self-signal call, factored into a
 // swappable var (same technique as shutdownForceExit in shutdown.go) so
-// tests can exercise the "no clients left" decision without delivering a
-// real SIGINT to the test binary.
+// tests can exercise the "no clients left" decision without triggering a
+// real process-wide shutdown request.
 //
 // There's an inherent gap between this decision (registry was empty) and
 // the signal actually being handled in main.go — a new client (e.g. /gui
@@ -140,15 +140,9 @@ func (a *App) sweepStaleClients() {
 // window. main.go's signal-wait loop re-checks HasActiveClients() right
 // before committing to shut down and ignores a stale signal if one showed
 // up, so this call itself doesn't need to be perfectly race-free.
-var selfShutdownSignal = func() {
-	p, err := os.FindProcess(os.Getpid())
-	if err != nil {
-		return
-	}
-	_ = p.Signal(os.Interrupt)
-}
+var selfShutdownSignal = shutdown.Request
 
-// selfShutdownIfIdle sends this process itself the same signal
+// selfShutdownIfIdle requests the same graceful shutdown
 // webserver.handleShutdown does on an explicit POST /api/shutdown, so
 // main()'s existing deferred Shutdown chain runs — no client is left
 // attached to justify staying up.

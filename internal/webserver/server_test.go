@@ -8,6 +8,9 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
+
+	"memo/internal/shutdown"
 )
 
 var errChatNotFound = errors.New("chat not found")
@@ -623,9 +626,7 @@ func TestHandleDeleteMessage_BadJSON(t *testing.T) {
 // TestHandleShutdown_MethodNotAllowed is a regression test for BUG-QH1:
 // handleShutdown had no method check at all, so any HTTP verb (GET, DELETE,
 // OPTIONS) from anyone reachable on the LAN (e.g. remote_access in "lan"
-// tunnel mode binds 0.0.0.0) shut the whole app down. Deliberately does not
-// exercise the POST success path here: handleShutdown sends a real SIGINT
-// to the current process, which would kill this test binary.
+// tunnel mode binds 0.0.0.0) shut the whole app down.
 func TestHandleShutdown_MethodNotAllowed(t *testing.T) {
 	s := newMockServer(&mockBridge{})
 	for _, method := range []string{http.MethodGet, http.MethodDelete, http.MethodOptions, http.MethodPut} {
@@ -635,5 +636,34 @@ func TestHandleShutdown_MethodNotAllowed(t *testing.T) {
 		if w.Code != http.StatusMethodNotAllowed {
 			t.Errorf("method %s: status = %d, want %d", method, w.Code, http.StatusMethodNotAllowed)
 		}
+	}
+}
+
+// TestHandleShutdown_Success_RequestsShutdown is a regression test for
+// BUG-H3: handleShutdown used to self-deliver os.Interrupt via
+// os.Process.Signal, a silent no-op on Windows (Go only implements
+// Process.Signal for os.Kill there) — POST /api/shutdown never actually
+// stopped a Windows-hosted backend. Now that it goes through
+// internal/shutdown (a plain channel send), the POST success path is also
+// safe to exercise directly in this test binary — it no longer delivers a
+// real OS signal to the test process.
+func TestHandleShutdown_Success_RequestsShutdown(t *testing.T) {
+	select {
+	case <-shutdown.Requested():
+	default:
+	}
+
+	s := newMockServer(&mockBridge{})
+	req := httptest.NewRequest(http.MethodPost, "/api/shutdown", nil)
+	w := httptest.NewRecorder()
+	s.handleShutdown(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+	}
+	select {
+	case <-shutdown.Requested():
+	case <-time.After(time.Second):
+		t.Fatal("handleShutdown did not request a shutdown via internal/shutdown")
 	}
 }

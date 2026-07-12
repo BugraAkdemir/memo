@@ -11,6 +11,7 @@ import (
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
+	"memo/internal/shutdown"
 	"net/http"
 	"net/url"
 	"os"
@@ -1847,18 +1848,24 @@ func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Reque
 // is flushed before signaling so the HTTP server can complete this request
 // before it stops.
 //
-// This only ever signals SIGINT — it used to *also* call
-// s.fullBridge.Shutdown() directly first, but that ran the entire teardown
-// (App.Shutdown, guarded by sync.Once) synchronously from inside this very
-// HTTP handler, while the request itself was still in flight from the
-// server's perspective. webserver.Stop() closes its listener via an async
-// srv.Shutdown() that waits for in-flight requests to finish — including
-// this one — so the two shutdown paths (the direct call here, and the one
-// SIGINT triggers in main()'s deferred a.Shutdown(ctx)) were racing each
-// other with the store/WhatsApp/etc. teardown potentially running while the
-// server could still be accepting other requests. sync.Once made a second
-// *call* to Shutdown harmless, but didn't fix that overlap. A single
-// SIGINT-triggered path removes it entirely.
+// This only ever requests a shutdown via internal/shutdown — it used to
+// *also* call s.fullBridge.Shutdown() directly first, but that ran the
+// entire teardown (App.Shutdown, guarded by sync.Once) synchronously from
+// inside this very HTTP handler, while the request itself was still in
+// flight from the server's perspective. webserver.Stop() closes its
+// listener via an async srv.Shutdown() that waits for in-flight requests to
+// finish — including this one — so the two shutdown paths (the direct call
+// here, and the one main()'s deferred a.Shutdown(ctx) runs) were racing
+// each other with the store/WhatsApp/etc. teardown potentially running
+// while the server could still be accepting other requests. sync.Once made
+// a second *call* to Shutdown harmless, but didn't fix that overlap. A
+// single, main()-driven shutdown path removes it entirely.
+//
+// Used to self-signal SIGINT via os.Process.Signal(os.Interrupt) directly —
+// a silent no-op on Windows (Go's os package only implements Process.Signal
+// for os.Kill there), so a Windows-hosted backend never actually stopped on
+// POST /api/shutdown. shutdown.Request() has no such gap: main() selects on
+// it alongside its OS signal channel on every platform.
 func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)
@@ -1866,13 +1873,10 @@ func (s *Server) handleShutdown(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, map[string]string{"status": "shutting_down"})
 
-	// Trigger SIGINT so main() runs the deferred Shutdown chain (WAL
-	// checkpoint, DB flush, in-flight HTTP drain). os.Exit() would skip
-	// deferred functions and corrupt SQLite WAL files.
-	p, _ := os.FindProcess(os.Getpid())
-	if p != nil {
-		p.Signal(os.Interrupt)
-	}
+	// Ask main() to run the deferred Shutdown chain (WAL checkpoint, DB
+	// flush, in-flight HTTP drain). os.Exit() would skip deferred functions
+	// and corrupt SQLite WAL files.
+	shutdown.Request()
 }
 
 // ─── Task Lists ──────────────────────────────────────────────────

@@ -3,6 +3,8 @@ package app
 import (
 	"testing"
 	"time"
+
+	"memo/internal/shutdown"
 )
 
 // withStubbedSelfShutdown swaps selfShutdownSignal for a channel-backed stub
@@ -163,6 +165,29 @@ func TestClientRegistry_HasActiveClients(t *testing.T) {
 	a.UnregisterClient(other)
 	if a.HasActiveClients() {
 		t.Fatal("HasActiveClients() = true after the last client unregistered, want false")
+	}
+}
+
+// TestSelfShutdownSignal_RequestsProcessWideShutdown is a regression test
+// for BUG-H3: the real (unstubbed) selfShutdownSignal used to self-deliver
+// os.Interrupt via os.Process.Signal, which is a silent no-op on Windows
+// (Go only implements Process.Signal for os.Kill there) — the backend never
+// actually stopped. It must now go through internal/shutdown, which has no
+// such platform gap.
+func TestSelfShutdownSignal_RequestsProcessWideShutdown(t *testing.T) {
+	// shutdown.ch is a process-wide package var — drain any stray pending
+	// request before asserting on it.
+	select {
+	case <-shutdown.Requested():
+	default:
+	}
+
+	selfShutdownSignal()
+
+	select {
+	case <-shutdown.Requested():
+	case <-time.After(time.Second):
+		t.Fatal("selfShutdownSignal() did not request a shutdown via internal/shutdown")
 	}
 }
 

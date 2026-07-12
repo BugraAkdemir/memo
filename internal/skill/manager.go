@@ -209,7 +209,7 @@ func (m *Manager) SetActive(names []string) error {
 			if !m.activeSkills[name] {
 				if def, ok := m.skills[name]; ok {
 					for _, tool := range def.Manifest.Tools {
-						m.toolRegistrar.RegisterTool(skillToolName(name, tool.Name), tool)
+						m.toolRegistrar.RegisterTool(skillToolName(name, tool.Name), SkillToolRegistration{SkillName: name, Tool: tool})
 					}
 				}
 			}

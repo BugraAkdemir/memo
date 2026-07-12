@@ -213,7 +213,7 @@ The default system prompt (`buildIdentityBlock`) was translated from Turkish to 
 
 ### Flutter
 - ~~`settings_dialog.dart` is 4391 lines~~ → split into 15 focused files under `settings/tabs/`.
-- `model_store_screen.dart` is 2612 lines (re-verified 2026-07-11) — should be split into components.
+- ~~`model_store_screen.dart` is 2612 lines (re-verified 2026-07-11) — should be split into components~~ → fixed 2026-07-12 (BUG-M1): split via `docs/plans/PLAN_modelstore_refactor.md`'s 5 phases into a 180-line shell + `screens/model_store/discover_item.dart`/`discover_tab.dart`/`model_detail_panel.dart`/`my_models_tab.dart`, mirroring the `settings/tabs/` pattern above. Pure mechanical move — only the 8 symbols referenced across the new file boundaries went from private to public.
 - ~~`EngineStrip`'s divider before the memory warning only checked `chatRunning || isApiProvider`, missing the case where the offline hint rendered instead (fully offline: no chat model, no API provider, embedding not running) — the offline hint and the memory warning rendered stuck together with zero gap ("Start a model●No memory model")~~ → fixed 2026-07-10: two named booleans (`firstSlotHasContent`, `secondSlotHasContent`) capture what the strip's first/second slot actually rendered, used for all three divider checks (embedding indicator, memory warning, download indicator) instead of the incomplete `chatRunning || isApiProvider` shorthand. Regression test in `engine_strip_test.dart` asserts both the divider's presence and a minimum pixel gap between the two texts.
 - ~~Widespread missing `const` constructors.~~ → fixed: 116 auto-fixes via `dart fix`.
 - ~~connectionStatusProvider polling runs forever~~ → still autoDispose but polling loop is acceptable for status checks.
@@ -344,7 +344,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 | Item | Where |
 |------|-------|
 
-All open bugs and technical debt (chat-ID refactor, `DangerLevel` type split, API versioning, `model_store_screen.dart` size, etc.) are tracked in **`BUG_REPORT.md`** — don't duplicate the list here. ~~Onboarding / launchpad UX~~ is done and archived in `docs/plans/plan.md`.
+Open bugs and technical debt are tracked in **`BUG_REPORT.md`** — don't duplicate the list here. As of 2026-07-12 (Session 24) it has 0 open items. ~~Onboarding / launchpad UX~~ is done and archived in `docs/plans/plan.md`.
 
 ---
 

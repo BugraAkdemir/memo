@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 	"time"
 
@@ -357,16 +358,44 @@ func (s *session) reportMemorySaved(before Event, hadBefore bool) {
 		if err != nil || len(events) == 0 {
 			continue
 		}
-		last := events[len(events)-1]
-		if last.Name != "memory:saved" {
+		if !memorySavedSince(events, before, hadBefore) {
 			continue
-		}
-		if hadBefore && last == before {
-			continue // same event that was already there before this turn
 		}
 		fmt.Fprintln(s.out, dim("✓ hafıza kaydedildi"))
 		return
 	}
+}
+
+// memorySavedSince reports whether a memory:saved event occurs in events
+// (oldest-to-newest, matching /api/events) after the point where before was
+// last seen — not merely whether it's the literal final entry. The ring
+// buffer is shared by every subsystem (mood, learning/calendar intent,
+// proactive suggestions, sync), any of which can emit an event between the
+// actual save and this poll and become the new final entry — checking only
+// events[len(events)-1] silently missed a save that had genuinely already
+// happened the moment anything else logged afterward. Confirmed live: the
+// very first message after a fresh CLI start reliably showed the
+// confirmation (no other subsystem had fired anything yet), later ones in
+// the same session increasingly didn't, even though /api/events kept
+// showing the save had happened.
+func memorySavedSince(events []Event, before Event, hadBefore bool) bool {
+	if !hadBefore {
+		return slices.ContainsFunc(events, func(e Event) bool { return e.Name == "memory:saved" })
+	}
+	// Last occurrence of `before` (in case its exact name+data recurs) —
+	// anything named memory:saved strictly after that point is new.
+	beforeIdx := -1
+	for i, e := range events {
+		if e == before {
+			beforeIdx = i
+		}
+	}
+	if beforeIdx == -1 {
+		// `before` fell out of the ring (evicted by 64+ newer events since) —
+		// any memory:saved now present is necessarily newer than it.
+		return slices.ContainsFunc(events, func(e Event) bool { return e.Name == "memory:saved" })
+	}
+	return slices.ContainsFunc(events[beforeIdx+1:], func(e Event) bool { return e.Name == "memory:saved" })
 }
 
 func (s *session) printWelcome() {

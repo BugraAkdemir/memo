@@ -11,6 +11,59 @@ import (
 	"time"
 )
 
+// Regression tests for memorySavedSince: reportMemorySaved used to check
+// only events[len(events)-1], so a save that genuinely happened was missed
+// the moment any other subsystem (mood, learning/calendar intent, proactive
+// suggestions, sync) logged a *different* event afterward and became the
+// new final entry in the shared ring buffer. A real user hit this
+// reliably: the first message after a fresh CLI start (nothing else had
+// fired yet) always showed "✓ hafıza kaydedildi", later messages in the
+// same session increasingly didn't, even though the save had genuinely
+// happened (confirmed separately via the Settings memory-debug search).
+func TestMemorySavedSince_FindsSaveNotAtTheVeryEnd(t *testing.T) {
+	events := []Event{
+		{Name: "memory:saved"},
+		{Name: "chat:done"}, // some other subsystem logs after the save
+	}
+	if !memorySavedSince(events, Event{}, false) {
+		t.Error("expected memorySavedSince to find memory:saved even though it's not the last event")
+	}
+}
+
+func TestMemorySavedSince_IgnoresSaveThatPredatesThisTurn(t *testing.T) {
+	stale := Event{Name: "memory:saved", Data: "old"}
+	events := []Event{stale, {Name: "chat:done"}}
+	if memorySavedSince(events, stale, true) {
+		t.Error("expected memorySavedSince to ignore a memory:saved that was already there before this turn started")
+	}
+}
+
+func TestMemorySavedSince_FindsNewSaveAfterStaleOne(t *testing.T) {
+	stale := Event{Name: "memory:saved", Data: "old"}
+	events := []Event{stale, {Name: "chat:done"}, {Name: "memory:saved", Data: "new"}}
+	if !memorySavedSince(events, stale, true) {
+		t.Error("expected memorySavedSince to find the new memory:saved after the stale one, with an unrelated event in between")
+	}
+}
+
+func TestMemorySavedSince_BeforeEvictedFromRing_AnySaveCounts(t *testing.T) {
+	// `before` is no longer present at all — evicted by 64+ newer ring
+	// entries since it was captured — so any memory:saved now visible must
+	// be newer than it.
+	before := Event{Name: "chat:done", Data: "long-gone"}
+	events := []Event{{Name: "mood:updated"}, {Name: "memory:saved"}}
+	if !memorySavedSince(events, before, true) {
+		t.Error("expected memorySavedSince to treat any memory:saved as new once `before` fell out of the ring")
+	}
+}
+
+func TestMemorySavedSince_NoSaveAtAll(t *testing.T) {
+	events := []Event{{Name: "chat:done"}, {Name: "mood:updated"}}
+	if memorySavedSince(events, Event{}, false) {
+		t.Error("expected memorySavedSince to return false when there's no memory:saved event")
+	}
+}
+
 // newTestServer wires up the five endpoints Run() calls, backed by a
 // scripted list of SSE lines to emit for every /api/send/stream call and a
 // recorder for every /api/agent/permission POST it receives.

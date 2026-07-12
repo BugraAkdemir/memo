@@ -1,7 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-12 (Session 21, devam — AGENTS.md'deki açık teknik borç maddeleri "Teknik Borç" bölümü olarak buraya taşındı)
+> **Son güncelleme:** 2026-07-12 (Session 21, devam — AGENTS.md'deki açık teknik borç maddeleri "Teknik Borç" bölümü olarak buraya taşındı; BUG-H3 düzeltildi, TD-2 yeniden doğrulanıp güncellendi)
 > **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan maddeler kaldı.
 >
 > **İkinci geçiş (aynı gün):** Kalan eski maddeler tek tek koda karşı yeniden doğrulandı. Sonuç: "Mobile API client eksik" iddiası artık geçersizdi (118 backend endpoint'inin 111'i zaten destekleniyor, eksik 7'si de mobile'a hiç uygun değil — kaldırıldı). `AGENTS.md`'nin "Known Pitfalls" bölümü de tarandı: iki madde ("data race" olarak işaretlenen `a.client`/`providerRouter` reassignment'ları) meğerse zaten kilitli imiş — gerçek risk daha dar (BUG-L4), "memory full rebuild O(N)" notu ise referans verdiği `LoadCache` fonksiyonu artık kodda hiç yok, tamamen bayat — hiç eklenmedi.
@@ -15,22 +15,11 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 1 |
+| 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 2 |
 | 🟢 LOW | 1 |
 | 🔧 TEKNİK BORÇ | 3 |
-| **TOPLAM** | **7** |
-
----
-
-## 🟠 HIGH
-
-### BUG-H3: Backend otomatik-kapanma özelliği Windows'ta tamamen çalışmıyor
-
-- **Dosya:** `internal/app/clients.go:136-142` (`selfShutdownSignal`)
-- **Nedir:** `p.Signal(os.Interrupt)` ile kendine sinyal gönderme, Go'nun Windows implementasyonunda desteklenmiyor (`Process.Signal` sadece `Kill`'i destekliyor, diğerleri `EWINDOWS` hatasıyla dönüyor) — hata sessizce yutuluyor.
-- **Kullanıcı etkisi:** Windows'ta, `spawnDetachedBackend`'in başlattığı her backend, son client ayrıldığında kendini kapatmayı deniyor ama başaramıyor — process arka planda süresiz birikiyor, elle kapatılana kadar.
-- **Düzeltme:** Windows'ta `Process.Signal(os.Interrupt)` yerine platforma özgü bir yol (`taskkill`/`GenerateConsoleCtrlEvent`) kullanılmalı.
+| **TOPLAM** | **6** |
 
 ---
 
@@ -70,11 +59,12 @@
 - **Etki:** Task loop gibi otomatik/arka plan çağrılar hâlâ `SwitchChat` + `taskloopRunMu` workaround'una muhtaç; aktif olmayan bir sohbete arka plandan mesaj gönderme yeteneği yok.
 - **Sıradaki adım:** Faz 3 (task loop workaround'unu kaldırma) başlamadan önce public `SendMessageStreamTo` API'si eklenmeli.
 
-### TD-2: `skill.DangerLevel` / `agent.DangerLevel` ayrı named type'lar
+### TD-2: Skill sisteminin kendi `Tools` tanımları hiçbir zaman gerçek agent tool'una dönüşmüyor (öldürülmüş köprü)
 
-- **Dosya:** `internal/skill/` ve `internal/agent/` içindeki `DangerLevel` tanımları
-- **Nedir:** İki paket kendi `DangerLevel` tipini ayrı ayrı tanımlıyor — derleme zamanında birbirine atanamıyorlar.
-- **Etki:** Bug değil ama iki sistem arasında danger-level bilgisi taşınacaksa elle dönüştürme gerekiyor; ortak bir tip veya dönüştürücü yok.
+- **Dosya:** `internal/skill/manager.go` (`ToolRegistrar`, `SetToolRegistrar`, `RegisterTool`/`UnregisterTool` çağrıları), `internal/agent/tools.go` (`FromString`), `internal/app/app.go` (skill manager kurulumu)
+- **2026-07-12 yeniden doğrulandı — orijinal madde ("iki paket ayrı `DangerLevel` tipi tanımlıyor, derleme zamanında uyuşmuyor") YANLIŞ çıktı:** `skill.ToolRegistrar.RegisterTool(name string, toolDef any)` zaten `any` alıyor, bugünkü kodda hiçbir yerde gerçek bir compile-time tip hatası yok.
+- **Gerçek bulgu:** `skill.Manager.toolRegistrar` alanını dolduran `SetToolRegistrar()` **prod kodunda hiçbir yerde çağrılmıyor** (`app.go`'da skill manager kuruluyor ama registrar hiç set edilmiyor) — yani `toolRegistrar` her zaman `nil`, `SetActive`/`Remove` içindeki `RegisterTool`/`UnregisterTool` çağrıları sessizce no-op. `agent.FromString` (bu köprü için yazılmış skill→agent `DangerLevel` dönüştürücüsü) **0 çağırana sahip**, hiç kullanılmıyor. Ayrıca `skill.SkillTool` struct'ında bir `ExecuteFn` alanı da yok — bir skill'in manifest'inde tanımladığı `Tools` çağrıldığında ne çalıştırılacağı hiç tanımlı değil.
+- **Etki:** Bir skill'in YAML manifest'inde `tools:` altında tanımladığı hiçbir şey gerçekte agent'a araç olarak eklenmiyor — tamamen deklaratif/kullanılmayan veri. Bug değil (crash/veri kaybı yok) ama tasarım eksikliği: bu bir basit tip-fix değil, "skill tool'ları nasıl çalıştırılacak" sorusuna cevap gerektiren, kapsamı belirsiz bir feature kararı. Kullanıcı isteğiyle şimdilik koda dokunulmadı — sadece bu madde gerçek bulguya göre güncellendi.
 
 ### TD-3: API versioning yok
 

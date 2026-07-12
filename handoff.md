@@ -1,4 +1,52 @@
-# Handoff — 2026-07-12 (Session 22) — BUG_REPORT.md temizliği: AGENTS.md'den teknik borç taşıma + 5 madde düzeltme
+# Handoff — 2026-07-12 (Session 23) — TD-1: skill tool execution gerçek bir feature olarak inşa edildi
+
+## Oturum Özeti
+
+Kullanıcı: "basit bir köprü değil gerekirse skill sistemini baştan yaz komple çalışır her özelliği stable yakın skill feature istiyorum." Session 22'de TD-1 (skill manifest'lerindeki `tools:` tanımlarının hiçbir zaman gerçek bir agent tool'una dönüşmemesi) sadece dokümante edilip koda dokunulmamıştı — bu oturumda gerçek bir çözüm inşa edildi: skill tool'ları artık gerçekten çalıştırılabiliyor, agent'ın permission/danger-level akışına giriyor, ve mevcut izin diyaloğu UI'si ek iş gerekmeden devreye giriyor.
+
+## Kök tasarım eksikliği (araştırma bulgusu)
+
+`skill.SkillTool` (manifest'teki her `tools:` girdisi) hiçbir zaman "bu tool çağrıldığında ne çalıştırılacağı"nı tanımlayan bir alana sahip olmamış — ne bir `command`, ne bir script yolu, hiçbir şey. `skill.ToolRegistrar.SetToolRegistrar()` da prod kodunda hiç çağrılmıyordu. Yani iki ayrı eksiklik vardı: (1) hiçbir execution mekanizması tanımlı değildi, (2) var olsa bile hiçbir yere bağlı değildi. `docs/superpowers/specs/2026-06-13-skill-system-design.md` ve `docs/superpowers/plans/2026-06-13-skill-system.md` (orijinal tasarım/plan dokümanları) okunarak bu, "basit bir tip uyuşmazlığı" değil, tasarımın hiç bitirilmemiş bir parçası olduğu doğrulandı.
+
+## Yapılan değişiklikler
+
+1. **`internal/skill/types.go`** — `SkillTool`'a `Command string` alanı eklendi (skill'in kendi dizinine göre çözümlenen shell komutu). Ayrıca `SkillToolRegistration{SkillName, Tool}` struct'ı eklendi — `RegisterTool`'a artık salt `SkillTool` değil, hangi skill'e ait olduğu bilgisi de geçiyor (`skillToolName()`'in `"skill_<skill>_<tool>"` string'ini geri parse etmek underscore içeren isimlerde güvenilir olmazdı).
+2. **`internal/skill/executor.go`** (yeni) — `Manager.ExecuteTool(ctx, skillName, toolName, args, basePath)`: komutu skill'in kendi dizininde çalıştırıyor, LLM'in argümanlarını stdin'e ham JSON olarak yazıyor (komut string'ine hiç enjekte etmiyor — `run_command`'dan farklı olarak enjeksiyon yüzeyi yok), `MEMO_SKILL_ARGS`/`MEMO_SKILL_NAME`/`MEMO_SKILL_DIR`/`MEMO_PROJECT_DIR` env değişkenlerini set ediyor.
+3. **`internal/agent/tools/command.go`** — `run_command`'ın sandbox mantığı (OS'e göre shell seçimi, env kurulumu, output truncation, deadline handling) `PrepareCommand`/`FormatCommandOutput` olarak dışa çıkarıldı ki skill executor aynı, test edilmiş mantığı tekrar yazmadan kullansın. `CheckDestructivePatterns` (yalnızca yıkıcı komut kalıpları) `CheckBlacklist`'ten (o da `$`/backtick shell-substitution bloğunu içeriyor) ayrıldı — skill `command` alanı LLM'in o an ürettiği bir string değil, skill yazarının önceden belirlediği statik içerik, bu yüzden `$VAR` kullanımını (tam da yukarıdaki env değişkenlerini okumak için gerekli) bloke etmemesi gerekiyordu.
+4. **`internal/agent/tools.go`** — `ToolRegistry.Unregister(name)` eklendi (önceden yoktu, sadece `Register`/`Get` vardı).
+5. **`internal/agent/executor.go`** — `Executor.Registry()` erişimcisi eklendi, `internal/app`'ın gerçek `agent.ToolRegistry`'ye ulaşabilmesi için.
+6. **`internal/app/skill_tools.go`** (yeni) — `skillToolRegistrar`: `skill.ToolRegistrar` arayüzünü gerçek `agent.ToolRegistry`'ye bağlıyor. `Command` alanı boş olan tool'lar sessizce atlanıyor (hata değil — manifest'te salt dokümantasyon amaçlı bir tool listelenebilir).
+7. **`internal/app/app.go`** — `Startup()`'ta `a.skillManager.SetToolRegistrar(newSkillToolRegistrar(a.agentExecutor.Registry(), a.skillManager))` eklendi — TD-1'in asıl eksik satırı.
+
+## Neden ek frontend işi gerekmedi
+
+Skill tool'ları gerçek `agent.ToolDef` olarak kaydedildiği için, mevcut permission/danger-level/preview akışı (`internal/agent/pipeline.go`, izin diyaloğu) hiçbir değişiklik yapılmadan otomatik olarak devreye giriyor — built-in tool'lardan (read_file, run_command, vb.) hiçbir farkı yok LLM'in ve UI'nin bakış açısından. Backend API/bridge/route/Flutter tarafı (`/api/skills/*`, `skill_provider.dart`, `skills_tab.dart`) zaten Session öncesinde tam çalışır durumdaydı — sadece tool execution bacağı eksikti.
+
+## Testler (hepsi yeni, hepsi gerçek yürütmeyle — mock yok)
+
+- `internal/skill/executor_test.go`: stdin'den argüman alma (`cat` ile), env değişkenlerinin gerçekten set edilmesi, `command` olmayan tool'un hata vermesi, bilinmeyen skill/tool hatası, blacklist reddi, skill dizinine göreli bundled script çalıştırma (`bash scripts/hello.sh`).
+- `internal/app/skill_tools_test.go`: `SetActive` → gerçek `agent.ToolRegistry`'de tool'un göründüğünü, doğru `DangerLevel`'e sahip olduğunu, `registry.Execute()` ile gerçekten çalıştırılabildiğini, deaktivasyonda kaydın silindiğini, `command`'sız tool'un hiç kaydedilmediğini, yanlış tipte `toolDef` verilirse hata döndüğünü doğruluyor.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build ./...                                    → temiz
+CGO_ENABLED=1 go vet ./...                                       → temiz
+GOOS=windows go vet ./...                                        → temiz
+CGO_ENABLED=1 go test ./... -race -count=1                       → tüm paketler yeşil (skill, agent, agent/tools, app dahil)
+```
+Frontend'e bu oturumda dokunulmadı (zaten tam wired durumdaydı, gerek yoktu).
+
+**BUG_REPORT.md:** TD-1 tamamen kapatıldı ve listeden silindi (toplam açık madde: 2 → 1, kalan tek madde BUG-M1, kullanıcı isteğiyle bilinçli atlanmış).
+
+**Sıradaki oturum için:**
+1. Gerçek bir skill scriptiyle (Python/Node, sadece `cat`/`echo` değil) elle uçtan uca doğrulama yapılmadı — sadece unit/entegrasyon testleriyle kanıtlandı.
+2. Orchestra modu skill tool'larını hâlâ görmüyor (kapsam dışı bırakıldı — tasarım dokümanı orchestra entegrasyonunu yalnızca instruction/rol enjeksiyonu olarak tanımlıyor, tool execution değil).
+3. Gerçek bir skill (`skills/memo`, `skills/memo-project`) hâlâ `tools:` kullanmıyor — bunlar salt instruction-injection skill'leri, bilerek dokunulmadı.
+
+---
+
+
 
 ## Oturum Özeti
 

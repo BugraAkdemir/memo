@@ -1,7 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-12 (Session 21, devam — AGENTS.md'deki açık teknik borç maddeleri "Teknik Borç" bölümü olarak buraya taşındı; BUG-H3 düzeltildi, chat-ID refactor Faz 3 tamamlanıp bu listeden kapatıldı (`docs/plans/PLAN_chatid_refactor.md`), eski TD-2 (DangerLevel) yeniden doğrulanıp TD-1 olarak güncellendi, TD-2 (API versioning) düzeltildi, BUG-M2 kapatıldı, BUG-L5 düzeltildi (canlı ngrok testi hariç). Kalan tek gerçek "bug": BUG-M1 (kullanıcı isteğiyle bilinçli atlandı). TD-1 bilinçli olarak koda dokunulmadan bırakıldı.)
+> **Son güncelleme:** 2026-07-12 (Session 23 — TD-1 (skill tool köprüsü) artık gerçek bir feature olarak inşa edildi, "basit köprü" değil: `skill.SkillTool`'a bir `command` alanı eklendi (skill'in kendi dizinine göre çözümlenen shell komutu; LLM'in çağrı argümanları stdin'den ham JSON olarak iletiliyor, komut string'ine hiç enjekte edilmiyor), `internal/skill/executor.go`'daki `Manager.ExecuteTool` bunu `internal/agent/tools`'un aynı sandbox'ını (destructive-pattern blacklist, 10MB çıktı sınırı, caller deadline'ı onurlandıran timeout) paylaşarak çalıştırıyor, `internal/app/skill_tools.go`'daki `skillToolRegistrar` artık `app.go`'nun `Startup()`'ında gerçekten `skillManager.SetToolRegistrar(...)` ile bağlanıyor — bir skill aktifleştirildiğinde `tools:` altında `command` tanımlı her girdi, agent pipeline'ın tool-call döngüsünün fiilen çağırabildiği gerçek bir `agent.ToolDef` olarak kayıtlı, permission/danger-level akışı dahil (mevcut izin diyaloğu otomatik olarak devreye giriyor, ek UI gerekmedi). `command` alanı olmayan girdiler (salt dokümantasyon amaçlı) sessizce kaydedilmiyor, hataya düşmüyor. Kalan tek gerçek "bug": BUG-M1 (kullanıcı isteğiyle bilinçli atlandı).)
 >
 > **BUG-M2 kapatma notu:** `connectionStatusProvider`'ın `app_shell.dart` tarafından sürekli izlenip 30s'de bir `autoDispose` tetiklenmemesi bug değil, kasıtlı tasarım — bu poll, backend'in client-registry'sine ("Backend process model", AGENTS.md) GUI'nin hâlâ açık olduğunu bildiren heartbeat'in ta kendisi; durdurulursa backend GUI'yi kaybolmuş sanabilir. Kod değişikliği yapılmadı, madde kapatıldı.
 > **Not:** Bu dosya daha önce 1300+ satırlık, onlarca oturumun anlatısını ve 100 düzeltilmiş bug'ı içeren tarihsel bir arşivdi. Bu haliyle kullanılamaz hale gelmişti (görünüşte "27 açık bug" diyordu, gerçekte bunların çoğu zaten düzeltilmişti ama tablo hiç güncellenmemişti). Temizlendi — sadece hâlâ gerçekten açık olan maddeler kaldı.
@@ -20,8 +20,8 @@
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 1 |
 | 🟢 LOW | 0 |
-| 🔧 TEKNİK BORÇ | 1 |
-| **TOPLAM** | **2** |
+| 🔧 TEKNİK BORÇ | 0 |
+| **TOPLAM** | **1** |
 
 ---
 
@@ -31,19 +31,6 @@
 
 - **Dosya:** `frontend/lib/screens/model_store_screen.dart` (doğrulandı: 2612 satır)
 - **Kullanıcı etkisi:** Doğrudan bug değil ama bakım yapılamaz hale geliyor, değişikliklerde kırılma riski yüksek.
-
----
-
-## 🔧 Teknik Borç
-
-> AGENTS.md'nin "Known Pitfalls & Technical Debt" / "Known Open Work" bölümlerinden buraya taşındı (2026-07-12) — bug değil ama açık mimari/bakım borcu, aynı formatta takip ediliyor.
-
-### TD-1: Skill sisteminin kendi `Tools` tanımları hiçbir zaman gerçek agent tool'una dönüşmüyor (öldürülmüş köprü)
-
-- **Dosya:** `internal/skill/manager.go` (`ToolRegistrar`, `SetToolRegistrar`, `RegisterTool`/`UnregisterTool` çağrıları), `internal/agent/tools.go` (`FromString`), `internal/app/app.go` (skill manager kurulumu)
-- **2026-07-12 yeniden doğrulandı — orijinal madde ("iki paket ayrı `DangerLevel` tipi tanımlıyor, derleme zamanında uyuşmuyor") YANLIŞ çıktı:** `skill.ToolRegistrar.RegisterTool(name string, toolDef any)` zaten `any` alıyor, bugünkü kodda hiçbir yerde gerçek bir compile-time tip hatası yok.
-- **Gerçek bulgu:** `skill.Manager.toolRegistrar` alanını dolduran `SetToolRegistrar()` **prod kodunda hiçbir yerde çağrılmıyor** (`app.go`'da skill manager kuruluyor ama registrar hiç set edilmiyor) — yani `toolRegistrar` her zaman `nil`, `SetActive`/`Remove` içindeki `RegisterTool`/`UnregisterTool` çağrıları sessizce no-op. `agent.FromString` (bu köprü için yazılmış skill→agent `DangerLevel` dönüştürücüsü) **0 çağırana sahip**, hiç kullanılmıyor. Ayrıca `skill.SkillTool` struct'ında bir `ExecuteFn` alanı da yok — bir skill'in manifest'inde tanımladığı `Tools` çağrıldığında ne çalıştırılacağı hiç tanımlı değil.
-- **Etki:** Bir skill'in YAML manifest'inde `tools:` altında tanımladığı hiçbir şey gerçekte agent'a araç olarak eklenmiyor — tamamen deklaratif/kullanılmayan veri. Bug değil (crash/veri kaybı yok) ama tasarım eksikliği: bu bir basit tip-fix değil, "skill tool'ları nasıl çalıştırılacak" sorusuna cevap gerektiren, kapsamı belirsiz bir feature kararı. Kullanıcı isteğiyle şimdilik koda dokunulmadı — sadece bu madde gerçek bulguya göre güncellendi.
 
 ---
 

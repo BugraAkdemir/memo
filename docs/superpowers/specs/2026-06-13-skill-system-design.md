@@ -40,6 +40,18 @@ tools:                           # Optional: tool definitions for the agent regi
           type: string
           description: "Arg description"
     danger_level: safe|medium|dangerous
+    command: "python3 scripts/tool_name.py"  # Optional: how to actually run this tool.
+      # Resolved relative to the skill's own install directory, so a
+      # manifest can reference its own bundled scripts. The LLM's call
+      # arguments are delivered on the process's stdin as raw JSON (never
+      # interpolated into the command string) and mirrored in the
+      # MEMO_SKILL_ARGS env var; MEMO_SKILL_NAME, MEMO_SKILL_DIR, and
+      # MEMO_PROJECT_DIR (the agent's current sandboxed project root) are
+      # also set. A tool entry with no `command` is registered for
+      # documentation purposes only — it is never wired up as a callable
+      # agent tool (2026-07-12, TD-1 fix: previously `tools:` had no
+      # execution mechanism at all and was entirely inert regardless of
+      # this field's absence).
 ---
 
 # Skill Name

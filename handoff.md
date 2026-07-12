@@ -1,3 +1,53 @@
+# Handoff — 2026-07-12 (Session 22) — BUG_REPORT.md temizliği: AGENTS.md'den teknik borç taşıma + 5 madde düzeltme
+
+## Oturum Özeti
+
+Kullanıcı önce AGENTS.md'deki açık teknik borç maddelerinin BUG_REPORT.md'ye "bilinen hatalar" gibi taşınmasını istedi, sonra "adım adım tüm hataları fixleyecez" dedi. Bir soru turu sonrası kullanıcı "kanka soru sorma, model store refactor dışında bug repotu tertemiz et, tüm bugları gerekli şekilde düzelt" dedi — bunun üzerine BUG-M1 (model_store_screen.dart bölme) hariç kalan her şey soru sorulmadan sırayla düzeltildi.
+
+## Taşıma (kod değişikliği yok)
+
+AGENTS.md'nin "Known Pitfalls & Technical Debt" ve "Known Open Work" bölümlerindeki hâlâ açık (üstü çizilmemiş) maddeler BUG_REPORT.md'ye yeni bir "🔧 Teknik Borç" bölümü olarak taşındı: chat-ID refactor'ün eksik kısmı, `skill.DangerLevel`/`agent.DangerLevel` "tip uyumsuzluğu" iddiası, API versioning yokluğu. AGENTS.md'deki "Known Open Work" tablosu **kullanıcı talimatıyla** boş bırakıldı ama tablo iskeleti korundu (kural: AGENTS.md'deki hiçbir tablo yapısı bozulmayacak, sadece içerik satırları silinebilir/değişebilir).
+
+## Düzeltilen maddeler (5/7, kod + test + commit her biri ayrı)
+
+1. **TD-2 (DangerLevel) → araştırma, KOD DEĞİŞİKLİĞİ YOK, kullanıcı kararıyla:** Gerçek bulgu iddia edilenden çok farklı çıktı — `skill.RegisterTool(name, toolDef any)` zaten `any` alıyor, hiçbir compile-time tip hatası yok. Asıl sorun: `skill.Manager.toolRegistrar` hiçbir yerde set edilmiyor (`SetToolRegistrar` 0 çağıran), `agent.FromString` 0 çağıran — skill manifestlerindeki `Tools` tanımı hiçbir zaman gerçek bir agent tool'una dönüşmüyor, üstelik `SkillTool`'da `ExecuteFn` bile yok. Kullanıcıya 3 seçenek sunuldu (dokümanı düzelt / basit köprü kur / dead code temizle), "sadece dokümanı düzelt" seçildi. Madde TD-1 olarak yeniden numaralandırılıp güncellendi, kod dokunulmadı.
+
+2. **BUG-H3 (Windows'ta backend self-shutdown çalışmıyor) → gerçek kök neden bulunup düzeltildi (commit `70f021f`):** Sadece client-registry auto-shutdown değil, `POST /api/shutdown` HTTP handler'ı da AYNI hatayı taşıyordu — ikisi de `os.Process.Signal(os.Interrupt)` ile kendine sinyal göndermeye çalışıyordu, Go bunu Windows'ta sadece `os.Kill` için implemente ediyor (`os.Interrupt` dahil her şey `EWINDOWS` ile sessizce başarısız). Yeni `internal/shutdown` paketi (`Request()`/`Requested()`, process-wide kanal) her iki çağrı noktasını da OS sinyaline hiç bağımlı olmayan bir mekanizmaya taşıdı; `main.go`'nun sinyal-bekleme döngüsü artık ikisini birden `select`liyor. `GOOS=windows go vet` temiz, gerçek Windows makine testi hâlâ yapılmadı.
+
+3. **TD-1 (chat-ID refactor Faz 3) → tamamlandı (commit `098bee7`):** `docs/plans/PLAN_chatid_refactor.md`'nin planladığı public `SendMessageStreamTo(ctx, chatID, userMsg)` eklendi — `routeStream`'e yeni `forceAgent bool` parametresi (chat'in kendisi `sm.IsAgentChat` ise global `agentEnabled` bayrağına dokunmadan o TEK çağrı için tool execution'ı açıyor). `tasklist.go`'daki `SwitchChat` + global `agentEnabled` zorlama + race'li geri-alma bloğu tamamen kaldırıldı, yerine `SendMessageStreamTo` çağrısı kondu. `taskloopRunMu` bilinçli olarak korundu (artık "sohbet karışması önleme" değil, "task-list turlarını sıraya sokma" amaçlı). Yeni regresyon testleri: chatB aktifken `SendMessageStreamTo(chatA,...)` mesajının chatA'ya yazılıp `GetActiveID()`'in hiç değişmediğini kanıtlıyor.
+
+4. **BUG-M2 (connectionStatusProvider sonsuz polling) → kapatıldı, KOD DEĞİŞİKLİĞİ YOK:** `app_shell.dart` bu provider'ı hep dinliyor (autoDispose hiç tetiklenmiyor) ama bu **kasıtlı** — backend'in client-registry'sine GUI'nin canlı olduğunu bildiren heartbeat'in ta kendisi. Bug değil, madde kapatıldı.
+
+5. **TD-2 (API versioning yok) → gerçek versiyonlama stratejisi eklendi (commit `5df2a50`):** 118 route'u taşımak/yeniden yazmak aşırı riskli olurdu (3 istemci: Flutter desktop, mobile, CLI) — bunun yerine `server.go`'daki `route()` yardımcı fonksiyonu her `/api/...` pattern'ini (düz route'lar, Go 1.22+ `{wildcard}`'lar, trailing-slash prefix'ler dahil) hem eski haliyle hem `/api/v1/...` alias'ı olarak kayıt ediyor — sıfır risk, hiçbir route taşınmadı/yeniden adlandırılmadı. Gerçek bir HTTP sunucusu başlatıp hem düz hem v1 path'lerini (plain/wildcard/trailing-slash) test eden entegrasyon testi eklendi.
+
+6. **BUG-L5 (ngrok token restart sonrası kayboluyor) → kök neden düzeltildi (commit `b8eb483`):** Token backend'de restart'lar arası sabit kalıyor (`internal/app/remote.go` sadece boşsa üretiyor) ama masaüstü istemci sadece bellekte tutuyordu — her açılışta sıfırlanıyordu. `MemoApiClient` artık `savedRemoteToken` (constructor'da hemen header'a uygulanıyor) ve `onRemoteTokenLearned` callback'i alıyor; `apiClientProvider` bunları `SharedPreferences`'a bağladı. Bayat/rotated token hâlâ 401 verir (öncekinden kötü değil), bir sonraki `getRemoteAccess()` çağrısında kendini düzeltir. Unit test'lerle doğrulandı, **canlı ngrok+telefon testi yapılmadı** (bu ortamda mümkün değil).
+
+## Bilinçli atlanan / dokunulmayan
+
+- **BUG-M1** (`model_store_screen.dart` 2612 satır) — kullanıcı açıkça hariç tuttu.
+- **TD-1** (skill→agent tool köprüsü hiç kurulmamış, dead code) — kullanıcı kararıyla sadece dokümante edildi, kod dokunulmadı (kapsamı belirsiz bir feature kararı, basit bir fix değil).
+
+**BUG_REPORT.md nihai durum:** 0 kritik, 0 HIGH, 1 MEDIUM (BUG-M1, bilinçli atlandı), 0 LOW, 1 TEKNİK BORÇ (TD-1, bilinçli atlandı) — toplam 2 açık madde, ikisi de kullanıcı kararıyla kasıtlı olarak açık bırakıldı.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build/vet/test ./... -race -count=1  → tüm paketler yeşil
+GOOS=windows go vet ./...                              → temiz
+flutter analyze lib/                                   → aynı 4 bilinen info-uyarısı
+flutter test                                            → 103/103 yeşil
+```
+
+**Commit'ler (6 kod + 6 docs, hepsi local, henüz push edilmedi):** `70f021f`, `098bee7`, `5df2a50`, `b8eb483` (kod) + `f83666c`, `e66890d`, `0eacf0e`, `0eaf5c1` (docs) + oturum başındaki 2 taşıma commit'i.
+
+**Sıradaki oturum için:**
+1. Bu oturumun commit'lerini push et (kullanıcıya sorulmadı, bilinçli).
+2. BUG-H3 ve BUG-L5 gerçek ortamlarda (Windows makine, canlı ngrok+telefon) doğrulanmalı.
+3. BUG-M1 (model store split) kullanıcı isteyince ele alınabilir.
+4. TD-1 (skill tool köprüsü) — ürün kararı gerekiyor: gerçekten inşa edilsin mi, yoksa dead code temizlensin mi?
+
+---
+
 # Handoff — 2026-07-12 (Session 21) — Dış AI analizi doğrulama + chunking token-fix + BUG_REPORT.md durum teyidi
 
 ## Oturum Özeti

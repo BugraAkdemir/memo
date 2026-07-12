@@ -79,7 +79,7 @@ Kullanıcı: "Embedding modelinin auto-start'ı bazen çalışmıyor, çoğunluk
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (`internal/llama` dahil, yeni test dahil 4.3s). `GOOS=windows`/`GOOS=darwin go vet ./internal/llama/...` → temiz.
 
-## Beşinci iş (aynı oturum) — BUG_REPORT.md'de LOW'lardan devam + HIGH'lara geçiş (chat-switch race)
+## Dördüncü iş (aynı oturum) — BUG_REPORT.md'de LOW'lardan devam + HIGH'lara geçiş (chat-switch race)
 
 Kullanıcı "BUG_REPORT.md'den adım adım devam edelim" dedi. Önce 3 LOW madde tek tek düzeltildi, sonra kullanıcı "HIGH'lara geçelim" dedi — bu da mevcut `docs/plans/PLAN_chatid_refactor.md`'nin (2026-07-06 tarihli, önceki bir oturumda yazılmış, "BÜYÜK, faz faz ilerle" notlu) Faz 1 ve Faz 2'sinin uygulanmasına denk geldi.
 
@@ -100,7 +100,7 @@ Frontend tarafında (BUG-H2), `ActiveChatIdNotifier.switchTo`'nun `stopStreaming
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil. `flutter analyze lib/` → aynı 4 bilinen info-uyarısı. `flutter test` → 99/99 yeşil.
 
-## Altıncı iş (aynı oturum) — BUG-L4: model/sağlayıcı swap'ı mid-stream'de net hata mesajına dönüştürüldü (commit `07930f4`)
+## Beşinci iş (aynı oturum) — BUG-L4: model/sağlayıcı swap'ı mid-stream'de net hata mesajına dönüştürüldü (commit `07930f4`)
 
 Kullanıcıya kalan LOW/HIGH durumu özetlendikten sonra "BUG-L4'e devam" dendi — küçük kapsamlı versiyon: in-flight isteği iptal etmek yerine (büyük mimari değişiklik, BUG_REPORT.md'nin kendisi de bunu ayrı bırakmıştı), sadece swap yüzünden başarısız olan isteklerde ham "connection refused" yerine net bir hata mesajı vermek.
 
@@ -114,9 +114,9 @@ Kullanıcıya kalan LOW/HIGH durumu özetlendikten sonra "BUG-L4'e devam" dendi 
 
 **BUG_REPORT.md son durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only, bu ortamda test edilemez), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı ngrok/telefon testi gerektiriyor). Bu oturumun başında (Session 20'nin bıraktığı yerden) **10 açık madde** vardı, şimdi **4**'e indi.
 
-**Bu oturumda toplam:** 10 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, 3×LOW, Faz 1, BUG-H1, BUG-H2, BUG-L4) + 11 docs commit'i. Push edilmedi.
+**Bu noktaya kadar toplam** (bu oturum devam etti, aşağıda 3 iş daha var — nihai toplam dosyanın sonunda): 10 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, 3×LOW, Faz 1, BUG-H1, BUG-H2, BUG-L4) + 11 docs commit'i.
 
-## Yedinci iş (aynı oturum) — v3.3.3 sürüm notları güncellendi (EN+TR)
+## Altıncı iş (aynı oturum) — v3.3.3 sürüm notları güncellendi (EN+TR)
 
 Kullanıcı `versinNote/v3.3.3.md` ve `versinNote/tr/v3.3.3.md`'yi bu oturumdaki kullanıcı-görünür değişikliklerle güncellemeyi istedi. Sadece gerçek kullanıcı etkisi olanlar eklendi, iç/nadir-edge-case düzeltmeler (BUG-L2 güvensiz cast, BUG-L3 auto-shutdown yarışı, chunking token-fix) release notlarına girecek kadar kullanıcı-görünür değil diye bilinçli atlandı:
 
@@ -128,7 +128,7 @@ Sürüm tarihi (10 Temmuz 2026) ve version.json'a **dokunulmadı** — Session 2
 
 **Doğrulama:** Sadece markdown içerik değişikliği, kod dokunulmadı — `go build`/`flutter analyze` gerektirmiyor. İki dosya da manuel olarak yeniden okunup akış/ton tutarlılığı kontrol edildi.
 
-## Sekizinci iş (aynı oturum) — Plain Chat'te agent/web-arama farkındalığı yoktu (commit `6209f5e` + `941dae2`)
+## Yedinci iş (aynı oturum) — Plain Chat'te agent/web-arama farkındalığı yoktu (commit `6209f5e` + `941dae2`)
 
 Kullanıcı `test_sohbet_memo.md` diye bir GUI sohbet transkripti paylaştı (attach) — normal Chat sekmesinde modele bir Python dosyası oluşturmasını ve web'de arama yapmasını istemiş, Memo ikisine de "böyle bir yeteneğim yok, feature request olarak Buğra'ya gider" diye yanıt vermiş. Kullanıcı bunun doğru olup olmadığını sordu, sinirliydi.
 
@@ -145,7 +145,7 @@ Kullanıcı `test_sohbet_memo.md` diye bir GUI sohbet transkripti paylaştı (at
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (identity dahil, 3 yeni test). `flutter analyze lib/` → aynı 4 bilinen uyarı. `flutter test` → 99/99 yeşil. Test/backend/screenshot süreçleri ve geçici dosyalar oturum sonunda temizlendi.
 
-## Dokuzuncu iş (aynı oturum) — CLI'de "embedding açık görünüyor ama hafıza çalışmıyor" (commit `40ef7e2`)
+## Sekizinci iş (aynı oturum) — CLI'de "embedding açık görünüyor ama hafıza çalışmıyor" (commit `40ef7e2`)
 
 Kullanıcı, ekran görüntüsünde gördüğüm başka bir terminal oturumunda yazdığı şikayeti bu sefer doğrudan bana da yazdı: CLI modunda embedding modeli açık görünüyor ama hafıza arama hiçbir şey bulamıyor, "kaydedildi" diyor ama gerçekte kaydetmiyor; `/embedding` yazınca düzeliyor; GUI'de bu sorun hiç yok. Bir agent'la araştırıp kendim de doğrudan koddan ve gerçek config dosyalarından teyit ettim.
 
@@ -154,6 +154,21 @@ Kullanıcı, ekran görüntüsünde gördüğüm başka bir terminal oturumunda 
 **Düzeltme:** `Startup()`'a yeni `reconnectEmbeddingIfAlreadyRunning()` eklendi — placeholder store hazır olduktan SONRA (bir channel ile sıralanıyor, yoksa daha yavaş olan placeholder goroutine'i sonradan bitip doğru wiring'i geri placeholder'a çevirebilirdi) — configured portta zaten canlı ama bu process'e track edilmemiş bir embedding sunucusu varsa, `Start()`'a hiç gitmeden (o `killByPort` çağırıp gayet iyi çalışan sunucuyu öldürüp yeniden başlatırdı) doğrudan gerçek client'ı bağlıyor ve `reinitMemoryStore` çağırıyor. Bilinçli olarak `EmbeddingAutoStart`'a bağlı değil — o bayrak "yeni bir model süreci başlat" kararını kontrol ediyor (kaynak/rıza kararı), zaten çalışan bir şeye yeniden bağlanmak çok daha düşük riskli, farklı bir eylem.
 
 **Doğrulama:** İki yeni test (`TestReconnectEmbeddingIfAlreadyRunning_WiresUpExternalServer`/`_NoopWhenPortIsEmpty`) fonksiyonu izole test ediyor. Ayrıca **gerçek derlenmiş binary ile uçtan uca doğrulandı**: embedding portunda sahte bir "zaten çalışıyor" sunucusu başlatılıp, TEMİZ bir backend başlatıldı — log satırı ("found an already-running embedding server... reconnecting") ve `/api/models/embedding/status` endpoint'i üzerinden gerçekten yeniden bağlandığı kanıtlandı. `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil.
+
+## Oturum kapanışı — nihai durum
+
+**Toplam (chunking doğrulamasından bu satıra kadar, doğrudan doğrulanabilir):** 13 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, Faz 1, 3×LOW, BUG-H1, BUG-H2, BUG-L4, agent-toggle, capabilities-block, embedding-reconnect) + 15 docs commit'i, artı kullanıcının kendi attığı 2 commit (`19280ca` versiyon bump'ı, `10976a3` `.gitignore`). `docs/plans/PLAN_chatid_refactor.md`'nin Faz 1'i tamamlandı, Faz 2 kısmen (bkz. Dördüncü iş).
+
+**Push durumu:** `origin/main` şu an `19280ca`'ya (versiyon 3.3.3 bump'ı) kadar push edilmiş durumda — kullanıcı bunu oturum sırasında kendisi push etmiş görünüyor. **Son 5 commit hâlâ local'de, push edilmedi:** `6209f5e`, `941dae2`, `e2f4a86` (Yedinci iş — agent-mod farkındalığı), `40ef7e2`, `8a6dbca` (Sekizinci iş — embedding reconnect fix).
+
+**BUG_REPORT.md nihai durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı test gerektiriyor) — toplam 4 açık madde.
+
+**Sıradaki oturum için:**
+1. **Son 5 commit'i push et** — kullanıcıya sorulmadan yapılmadı, bilinçli.
+2. **`PLAN_chatid_refactor.md` Faz 3** (task loop workaround temizliği) — önce Faz 2'nin asıl istediği, dışarıdan explicit `chatID` kabul eden public `SendMessageStreamTo` API'si eklenmeli (mevcut Faz 2 düzeltmesi sadece "çağrı anında aktif olanı sabitliyor", dışarıdan hedef seçmeyi sağlamıyor).
+3. **BUG-H3** (Windows auto-shutdown) — gerçek Windows makine/VM gerekiyor, bu ortamda hiç test edilemedi.
+4. **BUG-L5** (ngrok token yarışı) — canlı ngrok + telefon testi gerektiriyor.
+5. `test_sohbet_memo.md` hâlâ untracked duruyor (kullanıcının GUI'den attach ettiği sohbet transkripti) — commit edilmedi, silinmedi. `yapacam.md` artık `.gitignore`'da (kullanıcının kendi `10976a3` commit'i), disk'te hâlâ duruyor ama git'e hiç girmiyor.
 
 ---
 

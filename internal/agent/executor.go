@@ -78,6 +78,14 @@ func NewWhatsAppExecutor(existing *Executor) *Executor {
 	}
 }
 
+// Registry exposes the executor's tool registry so callers outside this
+// package (the skill system) can register/unregister additional tools
+// into the exact registry the agent pipeline executes against. The field
+// itself is never reassigned after construction, so this needs no locking.
+func (e *Executor) Registry() *ToolRegistry {
+	return e.registry
+}
+
 // IsAvailable checks if the agent can run (needs a provider router).
 func (e *Executor) IsAvailable() bool {
 	e.mu.Lock()

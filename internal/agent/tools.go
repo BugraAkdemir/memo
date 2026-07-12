@@ -232,6 +232,14 @@ func (r *ToolRegistry) Get(name string) (ToolDef, bool) {
 	return tool, ok
 }
 
+// Unregister removes a previously registered tool. Used to tear down a
+// skill's tools when the skill is deactivated or removed.
+func (r *ToolRegistry) Unregister(name string) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	delete(r.tools, name)
+}
+
 // ToOpenAITools converts the registered tools into the format expected by the LLM providers.
 func (r *ToolRegistry) ToOpenAITools() []provider.ToolDefinition {
 	r.mu.RLock()

@@ -71,37 +71,17 @@ func (a *App) StopTaskList(listID string) {
 
 func (a *App) buildTaskLoopRunWorker() taskloop.RunWorker {
 	return func(ctx context.Context, chatID, prompt string) (string, error) {
-		// App only has a single global "active session" — SendMessageStream
-		// always acts on whatever chat that happens to be, and agent mode
-		// (tool use) is a separate global on/off flag. Both must be pinned
-		// to this task list's chat for the duration of the call, and calls
-		// must be serialized so two task lists running at once can't send
-		// into each other's chats mid-switch.
+		// SendMessageStreamTo (docs/plans/PLAN_chatid_refactor.md Faz 3)
+		// targets chatID directly and activates tool execution because the
+		// chat itself is an agent chat — no SwitchChat, no global
+		// agent-mode flag to flip and race back. taskloopRunMu now only
+		// serializes task-list turns against each other, so two lists
+		// running at once queue in order instead of both racing streamMu
+		// and one silently failing its turn with a "please wait" error.
 		a.taskloopRunMu.Lock()
 		defer a.taskloopRunMu.Unlock()
 
-		if err := a.SwitchChat(chatID); err != nil {
-			return "", fmt.Errorf("görev sohbetine geçilemedi: %w", err)
-		}
-
-		a.agentMu.Lock()
-		prevAgentEnabled := a.agentEnabled
-		a.agentEnabled = true
-		a.agentMu.Unlock()
-		defer func() {
-			a.agentMu.Lock()
-			// Only restore if it's still what we forced it to. If a user
-			// manually toggled agent mode from the UI while this call was in
-			// flight (a.agentMu is a different lock than taskloopRunMu, so
-			// that's possible), their explicit choice wins instead of being
-			// silently clobbered back.
-			if a.agentEnabled {
-				a.agentEnabled = prevAgentEnabled
-			}
-			a.agentMu.Unlock()
-		}()
-
-		ch := a.SendMessageStream(ctx, prompt)
+		ch := a.SendMessageStreamTo(ctx, chatID, prompt)
 		var sb strings.Builder
 		for chunk := range ch {
 			if chunk.Error != "" {

@@ -158,13 +158,17 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 // dispatches to the agent pipeline, agent+orchestra, or a plain LLM stream,
 // based on the current agent-mode/provider/local-model state.
 //
-// Shared by sendMessageStreamInner, SendMessageWithImageStream and
+// Shared by sendMessageStreamInnerTo, SendMessageWithImageStream and
 // SendMessageWithFileStream so an image- or file-attached message gets
 // identical agent routing to a plain text one — the image/file streams used
 // to build their own message list and call callLLMStream directly, so
 // agent tools (file read/write, command execution) silently did not run
 // for those message types even with agent mode on.
-func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string) <-chan api.StreamChunk {
+//
+// forceAgent activates tool execution for this call regardless of the
+// global agent-mode toggle — set when sessionID is itself an agent chat
+// (see SendMessageStreamTo's doc comment).
+func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string, forceAgent bool) <-chan api.StreamChunk {
 	if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
 		for i, msg := range messages {
 			if msg.Role == "system" {
@@ -179,6 +183,9 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	a.agentMu.RLock()
 	agentActive := a.agentEnabled
 	a.agentMu.RUnlock()
+	if forceAgent {
+		agentActive = true
+	}
 
 	if agentActive {
 		for i, msg := range messages {
@@ -210,9 +217,48 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 }
 
 // sendMessageStreamInner is the core of SendMessageStream: it records the
-// message, builds the prompt (including any web-search context), and dispatches
-// to the agent, orchestra, or plain LLM stream.
+// message, builds the prompt (including any web-search context), and
+// dispatches to the agent, orchestra, or plain LLM stream — always against
+// whatever chat is currently active.
 func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan api.StreamChunk {
+	sm := a.getSessionManager()
+	var chatID string
+	if sm != nil {
+		chatID = sm.GetActiveID()
+	}
+	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, false)
+}
+
+// SendMessageStreamTo is the explicit-chatID counterpart to
+// SendMessageStream: it sends userMsg into chatID's own history and streams
+// the reply, without reading or touching which chat is globally "active".
+//
+// This is the public API docs/plans/PLAN_chatid_refactor.md's Faz 3 needed
+// so a caller like the task loop (internal/app/tasklist.go) no longer has
+// to SwitchChat + force the global agent-mode flag on and back off around
+// every call — a pattern that raced a concurrent user-driven chat switch or
+// manual agent-mode toggle (a.agentMu is a different lock than
+// taskloopRunMu). Tool execution is active for this one call if chatID
+// itself is an agent chat (sm.IsAgentChat — true for every task-loop and
+// CLI-created chat), regardless of the global agent-mode toggle's current
+// state, so no shared flag needs to move at all.
+func (a *App) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
+	logx.Printf(">> SendMessageStreamTo(%s): %q", chatID, userMsg)
+	sm := a.getSessionManager()
+	if sm == nil || !sm.SessionExists(chatID) {
+		errCh := make(chan api.StreamChunk, 1)
+		errCh <- api.StreamChunk{Error: fmt.Sprintf("sohbet bulunamadı: %s", chatID), Done: true}
+		close(errCh)
+		return errCh
+	}
+	return a.sendMessageStreamInnerTo(ctx, chatID, userMsg, sm.IsAgentChat(chatID))
+}
+
+// sendMessageStreamInnerTo is the shared core behind sendMessageStreamInner
+// and SendMessageStreamTo. forceAgent activates tool execution for this
+// call regardless of the global agent-mode toggle — see SendMessageStreamTo's
+// doc comment for why.
+func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
 	// Prevent concurrent stream goroutines. If a stream is already running,
 	// return an error immediately instead of racing two parallel streams that
 	// would interleave user/user/assistant/assistant into the session history.
@@ -226,24 +272,13 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	a.observerRecorder.RecordMessage(userMsg)
 	go a.processMessageIntent(userMsg, "chat", "", time.Now())
 
-	// Capture the target chat once, up front — buildMessagesForSession
-	// (history read) and AddMessageToSession (the user's own message write)
-	// must both act on the exact same chat, not whatever happens to be
-	// "active" at each individual call's own point in time. Otherwise a
-	// chat switch mid-call (BUG-H1) can read one chat's history but write
-	// the message/reply to a different, newly-active one.
 	sm := a.getSessionManager()
-	var chatID string
-	if sm != nil {
-		chatID = sm.GetActiveID()
-	}
-
 	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil)
 	if sm != nil {
 		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
 	}
 
-	innerCh := a.routeStream(ctx, messages, userMsg, "", "", chatID)
+	innerCh := a.routeStream(ctx, messages, userMsg, "", "", chatID, forceAgent)
 
 	// Wrap the inner channel so streamMu is released when the stream completes.
 	out := make(chan api.StreamChunk, 128)
@@ -308,7 +343,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
 	}
 
-	innerCh := a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID)
+	innerCh := a.routeStream(ctx, msgs, userMsg, imagePath, "", chatID, false)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {
@@ -374,7 +409,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
 	}
 
-	innerCh := a.routeStream(ctx, messages, userMsg, "", filePath, chatID)
+	innerCh := a.routeStream(ctx, messages, userMsg, "", filePath, chatID, false)
 
 	out := make(chan api.StreamChunk, 128)
 	go func() {

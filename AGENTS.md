@@ -224,7 +224,6 @@ The default system prompt (`buildIdentityBlock`) was translated from Turkish to 
 ### Other
 - ~~Config file written with `0644`~~ → fixed: `config.Save()` uses `0600`. Agent permissions/backup also `0600`.
 - ~~`app.go` stores `context.Context` in struct field~~ → `lifecycleCtx` is for goroutine lifecycle only, not request-scoped. All request methods accept `ctx` as parameter. Correct pattern.
-- `skill.DangerLevel` and `agent.DangerLevel` are separate named types — compile-time type mismatch.
 - ~~`config/config.yaml` has hardcoded `active_provider: openai`~~ → fixed: empty string default.
 - ~~Shutdown does not cancel lifecycle context~~ → fixed: lifecycleCancel added, all goroutines stopped on shutdown.
 - ~~Cloud backup missing WAL checkpoint~~ → fixed: PRAGMA wal_checkpoint(TRUNCATE) before archive.
@@ -237,7 +236,6 @@ The default system prompt (`buildIdentityBlock`) was translated from Turkish to 
 - CI: GitHub Actions runs Go vet/test/build + Flutter analyze/test on every push/PR.
 - **Rate limiting** — token-bucket per-IP (100 req/s) on all handlers via `rateLimitMiddleware`.
 - **Structured logging** — `internal/logx` wraps `log/slog` with levels; all packages migrated to `logx.Printf`.
-- **API versioning** — flat `/api/` prefix, no versioning strategy.
 
 ---
 
@@ -283,6 +281,7 @@ Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
 4. Plan files (`plan.md`, `PLAN_*.md`) contain step-by-step implementation plans — follow them in order, tick checkboxes as you complete items, don't improvise a different architecture mid-plan.
 5. Work in small units: max 1–2 plan items per session, each with tests, verified green before moving on.
 6. Commit messages: Conventional Commits (`fix(frontend): ...`, `feat(backend): ...`). No AI attribution / Co-Authored-By lines.
+7. **Code exploration:** this repo is indexed in `codebase-memory-mcp` as project `home-bugra-Belgeler-memo` (9k+ nodes, Go + Dart). Before grepping around for "who calls X" / "what does X call" / impact-of-change questions, use `trace_path`/`search_graph`/`get_architecture` — cheaper and more precise than reading files blind. Re-run `index_repository` if the graph looks stale against a recent diff. A live 3D view is available at `http://localhost:9749` (start with `codebase-memory-mcp --ui=true --port=9749`, stdin must stay open — see `~/.local/bin/codebase-memory-mcp.no-ui.bak2` for the pre-UI binary if the swap ever needs reverting).
 
 ### Verification Commands (mandatory before any "done" claim)
 
@@ -334,9 +333,8 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 
 | Item | Where |
 |------|-------|
-| ~~Onboarding / launchpad UX~~ — done, archived | `docs/plans/plan.md` |
-| Chat-ID refactor: kill the single-global-active-chat architecture | `docs/plans/PLAN_chatid_refactor.md` |
-| `model_store_screen.dart` (2612 lines) needs splitting | Known Pitfalls above |
+
+All open bugs and technical debt (chat-ID refactor, `DangerLevel` type split, API versioning, `model_store_screen.dart` size, etc.) are tracked in **`BUG_REPORT.md`** — don't duplicate the list here. ~~Onboarding / launchpad UX~~ is done and archived in `docs/plans/plan.md`.
 
 ---
 

@@ -145,6 +145,16 @@ Kullanıcı `test_sohbet_memo.md` diye bir GUI sohbet transkripti paylaştı (at
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (identity dahil, 3 yeni test). `flutter analyze lib/` → aynı 4 bilinen uyarı. `flutter test` → 99/99 yeşil. Test/backend/screenshot süreçleri ve geçici dosyalar oturum sonunda temizlendi.
 
+## Dokuzuncu iş (aynı oturum) — CLI'de "embedding açık görünüyor ama hafıza çalışmıyor" (commit `40ef7e2`)
+
+Kullanıcı, ekran görüntüsünde gördüğüm başka bir terminal oturumunda yazdığı şikayeti bu sefer doğrudan bana da yazdı: CLI modunda embedding modeli açık görünüyor ama hafıza arama hiçbir şey bulamıyor, "kaydedildi" diyor ama gerçekte kaydetmiyor; `/embedding` yazınca düzeliyor; GUI'de bu sorun hiç yok. Bir agent'la araştırıp kendim de doğrudan koddan ve gerçek config dosyalarından teyit ettim.
+
+**Kök sebep:** `Startup()`, hafıza deposunu ana chat client'ı (`a.client`) ile **placeholder** bir embed fonksiyonuna bağlıyor — gerçek embedding client'a yalnızca `StartEmbeddingModel` çalışırsa geçiyor. Bu da `cfg.Memory.EmbeddingAutoStart`'a bağlı, ki bu alanın **hiçbir varsayılanı yok** (zero-value `false`) ve makinedeki üç gerçek config.yaml'ın (GUI'nin kullandığı `~/.memo/config/config.yaml` dahil) **hepsinde** `embedding_auto_start: false` olarak doğrulandı. Bu arada `llama.Server.GetStatus()`'un `pingPort()` fallback'ı — portta *herhangi bir şey* yanıt verirse "running" diyor, ama hafıza deposunu asla o porta **bağlamıyor** — sadece kozmetik bir durum. CLI'nin welcome banner'ı tam olarak bu yanıltıcı durumu gösteriyordu. GUI'de sorun görünmemesinin sebebi muhtemelen kullanıcının Models sekmesinden elle bir model başlatmış olması, bu da tesadüfen doğru wiring'i tetikliyor.
+
+**Düzeltme:** `Startup()`'a yeni `reconnectEmbeddingIfAlreadyRunning()` eklendi — placeholder store hazır olduktan SONRA (bir channel ile sıralanıyor, yoksa daha yavaş olan placeholder goroutine'i sonradan bitip doğru wiring'i geri placeholder'a çevirebilirdi) — configured portta zaten canlı ama bu process'e track edilmemiş bir embedding sunucusu varsa, `Start()`'a hiç gitmeden (o `killByPort` çağırıp gayet iyi çalışan sunucuyu öldürüp yeniden başlatırdı) doğrudan gerçek client'ı bağlıyor ve `reinitMemoryStore` çağırıyor. Bilinçli olarak `EmbeddingAutoStart`'a bağlı değil — o bayrak "yeni bir model süreci başlat" kararını kontrol ediyor (kaynak/rıza kararı), zaten çalışan bir şeye yeniden bağlanmak çok daha düşük riskli, farklı bir eylem.
+
+**Doğrulama:** İki yeni test (`TestReconnectEmbeddingIfAlreadyRunning_WiresUpExternalServer`/`_NoopWhenPortIsEmpty`) fonksiyonu izole test ediyor. Ayrıca **gerçek derlenmiş binary ile uçtan uca doğrulandı**: embedding portunda sahte bir "zaten çalışıyor" sunucusu başlatılıp, TEMİZ bir backend başlatıldı — log satırı ("found an already-running embedding server... reconnecting") ve `/api/models/embedding/status` endpoint'i üzerinden gerçekten yeniden bağlandığı kanıtlandı. `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil.
+
 ---
 
 # Handoff — 2026-07-11 (Session 20) — İki yeni provider + auto-permission race + BUG_REPORT.md'deki tüm kritik/HIGH/MEDIUM maddelerin adım adım temizliği

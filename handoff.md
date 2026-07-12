@@ -165,17 +165,35 @@ Kullanıcı iki ekran görüntüsü paylaştı. **Birincisi (`hataa.png`):** GUI
 
 **Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil.
 
-## Oturum kapanışı — nihai durum (henüz kapanmadı, durdurma-butonu bug'ı açık)
+## Onuncu iş (aynı oturum, gece — otonom `/loop`) — GUI durdurma butonu bug'ının kök nedeni bulundu ve düzeltildi (commit `5ea0dd2`)
 
-**Toplam (chunking doğrulamasından bu satıra kadar, doğrudan doğrulanabilir):** 14 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, Faz 1, 3×LOW, BUG-H1, BUG-H2, BUG-L4, agent-toggle, capabilities-block, embedding-reconnect, memory-saved-onayı) + 16 docs commit'i, artı kullanıcının kendi attığı 2 commit (`19280ca` versiyon bump'ı, `10976a3` `.gitignore`). `docs/plans/PLAN_chatid_refactor.md`'nin Faz 1'i tamamlandı, Faz 2 kısmen (bkz. Dördüncü iş).
+Kullanıcı "uyuyorum, uyanana kadar düzelt" diyerek beni `/loop` skill'i ile otonom bıraktı; `opencode` CLI'ı tekrar denememem, soru sormamam, push etmemem söylendi. Dokuzuncu iş'te bırakılan hipotez ("dış sağlayıcı tarafında bir stream, hiçbir `Done:true` chunk'ı frontend'e ulaşmadan `providerCtx.Done()` erken-dönüşüyle sonlanıyor olabilir") **doğru çıktı** — ama tek bir yerde değil, tüm stream pipeline'ında (backend'den Flutter'a giden her hop'ta) aynı desen tekrarlanıyordu.
 
-**Push durumu:** `origin/main` şu an `19280ca`'ya (versiyon 3.3.3 bump'ı) kadar push edilmiş durumda. **6 commit hâlâ local'de, push edilmedi:** `6209f5e`, `941dae2`, `e2f4a86` (Yedinci iş), `40ef7e2`, `8a6dbca` (Sekizinci iş), `3170fae` (Dokuzuncu iş — memory-saved onayı).
+**Kök sebep:** Pipeline'daki her SSE üretici/aktarıcı, `select { case <-ctx.Done(): return; case chunk, ok := <-ch: ... }` şeklinde ctx iptalini chunk almaya karşı **yarıştırıyordu**. Go, aynı anda hazır olan `select` dallarından **rastgele** birini seçer — yani `ctx.Done()` tam da son `Done:true` chunk'ının da hazır olduğu anda tetiklenirse, chunk %50 ihtimalle **sessizce kayboluyordu**. Frontend hiçbir zaman `"done":true` satırını görmüyor, `isSendingProvider` sonsuza kadar `true` kalıyor, gönder butonu durdur ikonunda takılı kalıyordu. Bu desen 4 katmanda tekrarlanmıştı: `internal/provider/{openai,gemini,claude}.go`'nun `processSSE`'si (gönderme tarafı), `internal/app/llm.go`'nun `agentLoop`/`providerLoop`/`localLoop`'u (alma tarafı), `internal/app/chat.go`'nun stream sarmalayıcıları (aktarma tarafı), ve en dıştaki `internal/webserver/handlers_flutter.go`'nun `handleSendStream`/`handleSendFileStream`/`handleWhatsAppChatStream`'i (HTTP/SSE yanıtına yazma tarafı — Flutter'a giden son hop).
 
-**BUG_REPORT.md nihai durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı test gerektiriyor) — toplam 4 açık madde. **Ayrıca yeni, henüz BUG_REPORT.md'ye eklenmemiş bir açık madde var: GUI durdurma butonu takılı kalması (Dokuzuncu iş, kök sebep bulunamadı).**
+**Düzeltme:** Her katmanda "önce bloklamayan bir deneme, sadece o başarısız olursa ctx-farkında bloklayan `select`'e düş" deseni uygulandı — hazır bir değer, yarışan bir iptalden her zaman önceliklendiriliyor:
+- `internal/provider/provider.go`: yeni paylaşılan `trySend` helper'ı, `openai.go`/`gemini.go`/`claude.go`'daki tüm racy `select`'lerin yerini aldı.
+- `internal/app/llm.go`: `trySend`'in gövdesi düzeltildi (fonksiyon zaten vardı, sadece body buggy'ydi), yeni generic `recvChunk[T any]` helper'ı eklendi ve `agentLoop`/`providerLoop`/`localLoop`'a uygulandı.
+- `internal/app/chat.go`: yeni `forwardStream` helper'ı, 6 özdeş inline racy pattern + 1 farklı şekilli (web-search dalı) örneği değiştirdi.
+- `internal/webserver/handlers_flutter.go`: yeni paylaşılan `streamSSE` helper'ı, üç handler'daki özdeş racy for-select döngülerinin yerini aldı.
+
+**Testler:** Her üç pakette (`internal/app`, `internal/provider`, `internal/webserver`) eski buggy tek-`select` deseni izole şekilde yeniden üretilip (`naiveSendOrCancel`/`naiveSSELoop`), ctx zaten iptal edilmişken hazır bir chunk verildiğinde 2000 (webserver'da 500) denemede ne sıklıkla düştüğü ölçüldü: **provider %48 (958/2000), app %51 (1021/2000), webserver %46 (230/500)** — yani hipotez sadece doğru değil, neredeyse yazı-tura kadar güvenilmezmiş. Aynı senaryoda gerçek düzeltilmiş fonksiyonlar (`trySend`, `recvChunk`, `streamSSE`) **0/2000 ve 0/500** kayıpla geçti.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil (frontend'e dokunulmadı, `flutter analyze`/`test` gerekmedi). Watchdog mitigasyonu (kullanıcının önceden onayladığı, `isSendingProvider`'ı 320s sonra zorla `false`'a çeken client-side timer) **eklenmedi** — kök sebep bulunup düzeltildiği ve regresyon testleriyle kanıtlandığı için görev talimatındaki "ya kök-sebep düzeltmesi ya watchdog" ayrımına göre gerek kalmadı.
+
+**Not:** `internal/provider/gemini.go`'da fark edilen ayrı bir asimetri (tool-only/boş içerikli yanıtlarda `fullContent.Len() == 0` ise stream hiç `Done` chunk'ı göndermeden kapanıyor) — incelendi, bu durum `internal/app/llm.go`'nun `providerLoop`'unda zaten telafi ediliyor (`!ok` ile kanal kapanması durumunda `fullReply.Len()` kontrolüyle her hâlükârda bir `Done` chunk'ı gönderiliyor), yani canlı bir bug değil — düzeltme kapsamına alınmadı.
+
+## Oturum kapanışı — nihai durum (durdurma-butonu bug'ı artık kapalı)
+
+**Toplam (chunking doğrulamasından bu satıra kadar, doğrudan doğrulanabilir):** 15 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, Faz 1, 3×LOW, BUG-H1, BUG-H2, BUG-L4, agent-toggle, capabilities-block, embedding-reconnect, memory-saved-onayı, durdurma-butonu race fix) + 16 docs commit'i, artı kullanıcının kendi attığı 2 commit (`19280ca` versiyon bump'ı, `10976a3` `.gitignore`). `docs/plans/PLAN_chatid_refactor.md`'nin Faz 1'i tamamlandı, Faz 2 kısmen (bkz. Dördüncü iş).
+
+**Push durumu:** `origin/main` şu an `19280ca`'ya (versiyon 3.3.3 bump'ı) kadar push edilmiş durumda. **7 commit hâlâ local'de, push edilmedi:** `6209f5e`, `941dae2`, `e2f4a86` (Yedinci iş), `40ef7e2`, `8a6dbca` (Sekizinci iş), `3170fae` (Dokuzuncu iş — memory-saved onayı), `5ea0dd2` (Onuncu iş — durdurma-butonu race fix). Otonom görev talimatı gereği push edilmedi (kullanıcı uyanınca kendi kararına bırakıldı).
+
+**BUG_REPORT.md nihai durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı test gerektiriyor) — toplam 4 açık madde. GUI durdurma butonu takılı kalması artık **kapalı** (Onuncu iş, kök sebep bulundu ve düzeltildi) — BUG_REPORT.md'ye hiç eklenmemişti, eklemeye gerek kalmadı.
 
 **Sıradaki oturum için:**
-1. **ÖNCELİK: GUI durdurma-butonu bug'ının backend log'unu al ve kök nedeni bul** — kullanıcı tekrar üretmeyi ve log paylaşmayı kabul etti, henüz gelmedi. `internal/app/llm.go`'nun dış-sağlayıcı (`callLLMStream`) dalındaki `providerCtx.Done()` erken-dönüş yolunun `outCh`'a hiç `Done:true` yazmadan çıkma ihtimaline bak (hipotez, doğrulanmadı).
-2. **6 commit'i push et** — kullanıcıya sorulmadan yapılmadı, bilinçli.
+1. **Kullanıcı gerçek GUI'de doğrulasın** — bu düzeltme statik analiz + izole regresyon testleriyle doğrulandı (bu ortamda xdotool/pyautogui yok, gerçek Flutter GUI'yi tıklayarak test edemedim); kullanıcının kendi ortamında birkaç mesajlık normal kullanımda buton davranışını teyit etmesi gerekiyor.
+2. **7 commit'i push et** — kullanıcıya sorulmadan yapılmadı, bilinçli.
 3. **`PLAN_chatid_refactor.md` Faz 3** (task loop workaround temizliği) — önce Faz 2'nin asıl istediği, dışarıdan explicit `chatID` kabul eden public `SendMessageStreamTo` API'si eklenmeli.
 4. **BUG-H3** (Windows auto-shutdown) — gerçek Windows makine/VM gerekiyor.
 5. **BUG-L5** (ngrok token yarışı) — canlı ngrok + telefon testi gerektiriyor.

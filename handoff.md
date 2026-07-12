@@ -155,20 +155,31 @@ Kullanıcı, ekran görüntüsünde gördüğüm başka bir terminal oturumunda 
 
 **Doğrulama:** İki yeni test (`TestReconnectEmbeddingIfAlreadyRunning_WiresUpExternalServer`/`_NoopWhenPortIsEmpty`) fonksiyonu izole test ediyor. Ayrıca **gerçek derlenmiş binary ile uçtan uca doğrulandı**: embedding portunda sahte bir "zaten çalışıyor" sunucusu başlatılıp, TEMİZ bir backend başlatıldı — log satırı ("found an already-running embedding server... reconnecting") ve `/api/models/embedding/status` endpoint'i üzerinden gerçekten yeniden bağlandığı kanıtlandı. `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil.
 
-## Oturum kapanışı — nihai durum
+## Dokuzuncu iş (aynı oturum) — GUI'de durdurma butonu takılı kalıyor (araştırma sürüyor) + CLI'de "hafıza kaydedildi" onayı çoğu mesajda hiç görünmüyor (commit `3170fae`)
 
-**Toplam (chunking doğrulamasından bu satıra kadar, doğrudan doğrulanabilir):** 13 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, Faz 1, 3×LOW, BUG-H1, BUG-H2, BUG-L4, agent-toggle, capabilities-block, embedding-reconnect) + 15 docs commit'i, artı kullanıcının kendi attığı 2 commit (`19280ca` versiyon bump'ı, `10976a3` `.gitignore`). `docs/plans/PLAN_chatid_refactor.md`'nin Faz 1'i tamamlandı, Faz 2 kısmen (bkz. Dördüncü iş).
+Kullanıcı iki ekran görüntüsü paylaştı. **Birincisi (`hataa.png`):** GUI'de bir mesaj tam yanıtlanmış görünüyor ama gönder butonu hâlâ "durdur" (kırmızı kare) ikonunu gösteriyor — kullanıcı "eskiden yoktu bu bug" dedi (bilinçli regresyon iddiası). **Araştırma:** `MessagesNotifier.sendMessage`'ın normal (dispose olmamış) tamamlanma yolunu gerçek bir stream ile izole test ettim — `isSendingProvider` doğru `false`'a dönüyor, yani bugünkü BUG-H2 düzeltmem bunun sebebi değil. Kullanıcı butonun **süresiz** takılı kaldığını (geçici bir yavaş-bağlantı-kapanması değil) doğruladı — bu ortamda klavye/mouse simülasyonu yapamadığım için (xdotool/pyautogui yok) gerçek GUI'de tekrar üretemedim. **Backend log'u istendi, kullanıcı henüz paylaşmadı** — bir sonraki oturum/mesajda gelirse kesin kök nedeni bulmak için kullanılmalı. Şu anki en güçlü teori: dış sağlayıcı (OpenCode Zen) tarafında bir stream, hiçbir `Done:true` chunk'ı frontend'e ulaşmadan (`providerCtx.Done()` context iptali `outCh`'a hiç yazmadan `return` ediyor olabilir, `internal/app/llm.go`'nun `callLLMStream` dış-sağlayıcı dalında) sonlanıyor olabilir — doğrulanmadı, sadece hipotez.
 
-**Push durumu:** `origin/main` şu an `19280ca`'ya (versiyon 3.3.3 bump'ı) kadar push edilmiş durumda — kullanıcı bunu oturum sırasında kendisi push etmiş görünüyor. **Son 5 commit hâlâ local'de, push edilmedi:** `6209f5e`, `941dae2`, `e2f4a86` (Yedinci iş — agent-mod farkındalığı), `40ef7e2`, `8a6dbca` (Sekizinci iş — embedding reconnect fix).
+**İkincisi (`logs.png`, gerçek CLI transkripti + Ayarlar → Bellek Debug ekran görüntüsü):** Kullanıcı, CLI'de sadece **ilk** mesajdan sonra "✓ hafıza kaydedildi" onayının göründüğünü, sonraki mesajlarda hiç görünmediğini fark etti — ama Ayarlar'daki bellek arama debug aracı, onaysız mesajları (ör. "bisiklet kanka en sevdiğim hobi mtb") yüksek skorla (0.917) buluyordu, yani kayıt **gerçekten oluyordu**, sadece onay gösterilmiyordu. **Kök sebep bulundu ve düzeltildi:** `reportMemorySaved`, `/api/events` ring buffer'ının sadece **son** elemanına bakıyordu — ama bu ring buffer TÜM alt sistemler (mood scoring, learning/calendar intent, proaktif öneriler, sync) tarafından paylaşılıyor. `finishStream` `chat:done`'ı senkron, `memory:saved`'ı ASYNC worker'dan geç ateşliyor — normalde `memory:saved` son sırada kalırdı, ama session ilerledikçe (mood/intent gibi arka plan işleri arttıkça) araya başka bir event girip onu "son" konumdan itmesi gitgide daha olası hale geliyordu — tam gözlemlenen örüntü (ilk mesaj güvenilir, sonrakiler gitgide güvenilmez). Düzeltme: yeni `memorySavedSince` fonksiyonu tüm event listesini tarayıp `before`'dan sonra **herhangi bir yerde** `memory:saved` var mı diye bakıyor, sadece son elemana değil. Eski mantığın (`events[len-1]` kontrolü) tam bu senaryoda gerçekten `false` döndürdüğü ayrı bir script ile kanıtlandı.
 
-**BUG_REPORT.md nihai durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı test gerektiriyor) — toplam 4 açık madde.
+**Testler:** `TestMemorySavedSince_*` (5 test) — araya başka event giren durum, turn-öncesi bayat kayıt, ring'den düşmüş `before`, hiç kayıt olmayan durum dahil.
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler yeşil.
+
+## Oturum kapanışı — nihai durum (henüz kapanmadı, durdurma-butonu bug'ı açık)
+
+**Toplam (chunking doğrulamasından bu satıra kadar, doğrudan doğrulanabilir):** 14 kod commit'i (chunking, CLI fresh-start+sync, embedding port fix, Faz 1, 3×LOW, BUG-H1, BUG-H2, BUG-L4, agent-toggle, capabilities-block, embedding-reconnect, memory-saved-onayı) + 16 docs commit'i, artı kullanıcının kendi attığı 2 commit (`19280ca` versiyon bump'ı, `10976a3` `.gitignore`). `docs/plans/PLAN_chatid_refactor.md`'nin Faz 1'i tamamlandı, Faz 2 kısmen (bkz. Dördüncü iş).
+
+**Push durumu:** `origin/main` şu an `19280ca`'ya (versiyon 3.3.3 bump'ı) kadar push edilmiş durumda. **6 commit hâlâ local'de, push edilmedi:** `6209f5e`, `941dae2`, `e2f4a86` (Yedinci iş), `40ef7e2`, `8a6dbca` (Sekizinci iş), `3170fae` (Dokuzuncu iş — memory-saved onayı).
+
+**BUG_REPORT.md nihai durum:** 0 kritik, 1 HIGH (BUG-H3, Windows-only), 2 MEDIUM (M1 bakım notu, M2 kabul edilmiş), 1 LOW (BUG-L5, canlı test gerektiriyor) — toplam 4 açık madde. **Ayrıca yeni, henüz BUG_REPORT.md'ye eklenmemiş bir açık madde var: GUI durdurma butonu takılı kalması (Dokuzuncu iş, kök sebep bulunamadı).**
 
 **Sıradaki oturum için:**
-1. **Son 5 commit'i push et** — kullanıcıya sorulmadan yapılmadı, bilinçli.
-2. **`PLAN_chatid_refactor.md` Faz 3** (task loop workaround temizliği) — önce Faz 2'nin asıl istediği, dışarıdan explicit `chatID` kabul eden public `SendMessageStreamTo` API'si eklenmeli (mevcut Faz 2 düzeltmesi sadece "çağrı anında aktif olanı sabitliyor", dışarıdan hedef seçmeyi sağlamıyor).
-3. **BUG-H3** (Windows auto-shutdown) — gerçek Windows makine/VM gerekiyor, bu ortamda hiç test edilemedi.
-4. **BUG-L5** (ngrok token yarışı) — canlı ngrok + telefon testi gerektiriyor.
-5. `test_sohbet_memo.md` hâlâ untracked duruyor (kullanıcının GUI'den attach ettiği sohbet transkripti) — commit edilmedi, silinmedi. `yapacam.md` artık `.gitignore`'da (kullanıcının kendi `10976a3` commit'i), disk'te hâlâ duruyor ama git'e hiç girmiyor.
+1. **ÖNCELİK: GUI durdurma-butonu bug'ının backend log'unu al ve kök nedeni bul** — kullanıcı tekrar üretmeyi ve log paylaşmayı kabul etti, henüz gelmedi. `internal/app/llm.go`'nun dış-sağlayıcı (`callLLMStream`) dalındaki `providerCtx.Done()` erken-dönüş yolunun `outCh`'a hiç `Done:true` yazmadan çıkma ihtimaline bak (hipotez, doğrulanmadı).
+2. **6 commit'i push et** — kullanıcıya sorulmadan yapılmadı, bilinçli.
+3. **`PLAN_chatid_refactor.md` Faz 3** (task loop workaround temizliği) — önce Faz 2'nin asıl istediği, dışarıdan explicit `chatID` kabul eden public `SendMessageStreamTo` API'si eklenmeli.
+4. **BUG-H3** (Windows auto-shutdown) — gerçek Windows makine/VM gerekiyor.
+5. **BUG-L5** (ngrok token yarışı) — canlı ngrok + telefon testi gerektiriyor.
+6. `test_sohbet_memo.md`, `hataa.png`, `logs.png` hâlâ untracked duruyor (kullanıcının attach ettiği dosyalar) — commit edilmedi, silinmedi.
 
 ---
 

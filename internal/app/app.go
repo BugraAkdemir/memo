@@ -444,6 +444,7 @@ func (a *App) Startup(ctx context.Context) {
 	if err := a.skillManager.Discover(); err != nil {
 		logx.Printf("skill: discover error: %v", err)
 	}
+	a.skillManager.SetToolRegistrar(newSkillToolRegistrar(a.agentExecutor.Registry(), a.skillManager))
 	logx.Info("Skill manager initialized")
 
 	// Auto-start the embedding model at boot, not just after a local chat

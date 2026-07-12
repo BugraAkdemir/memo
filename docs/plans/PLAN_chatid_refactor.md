@@ -91,33 +91,44 @@ API şekliyle DEĞİL — daha dar bir mekanizmayla:
   chat'in stream'i artık paylaşılan `isSendingProvider`'ı klobberlamıyor.
 - [x] `-race` ile tüm backend testleri + `flutter analyze`/`flutter test`
   (99/99) yeşil → commit.
-- [ ] **Eksik kalan (Faz 3 öncesi gerçek gereksinim):** Plan'ın istediği
-  `SendMessageStreamTo(ctx, chatID, userMsg)` **public, dışarıdan explicit
-  chatID kabul eden** API hâlâ yok — mevcut düzeltme sadece "çağrı sırasında
-  aktif olan sohbeti sabitler," dışarıdan (ör. task loop'tan) *aktif olmayan*
-  bir sohbete mesaj göndermeyi sağlamaz. Faz 3'ün "`SwitchChat` zorlamadan
-  `a.SendMessageStreamTo(ctx, chatID, prompt)` çağır" planı bu yüzden hâlâ
-  gerçekleştirilemez durumda — Faz 3'e başlamadan önce bu public API'nin asıl
-  şekliyle eklenmesi gerekiyor.
+- [x] **Tamamlandı 2026-07-12 (Faz 3 ile aynı oturumda):** `internal/app/chat.go`'a
+  public `SendMessageStreamTo(ctx, chatID, userMsg) <-chan api.StreamChunk`
+  eklendi — `sm.SessionExists(chatID)` doğrular, `sm.IsAgentChat(chatID)`'e göre
+  o TEK çağrı için tool execution'ı zorlar (global `agentEnabled` bayrağına hiç
+  dokunmadan — `routeStream`'e eklenen yeni `forceAgent bool` parametresiyle),
+  ve session-scoped `sendMessageStreamInnerTo` üzerinden `chatID`'yi hiç
+  "aktif sohbet" kavramına bakmadan uçtan uca taşır. `sendMessageStreamInner`
+  (mevcut `SendMessageStream`'in çekirdeği) artık bunun ince bir sarmalayıcısı:
+  `GetActiveID()`'i yakalayıp `forceAgent=false` ile aynı fonksiyonu çağırıyor
+  — davranışı değişmedi.
 - [ ] `SendMessageWithImageStream`/`SendMessageWithFileStream`'in de aynı
   şekilde **dışarıdan chatID kabul eden** public varyantları — şu an sadece
   içeride `GetActiveID()` yakalıyorlar, dışarıdan chatID parametresi almıyorlar.
+  Task loop bunlara ihtiyaç duymuyor (sadece düz metin prompt gönderiyor), bu
+  yüzden Faz 3'ün kapsamı dışında bırakıldı — ihtiyaç doğarsa eklenir.
 - [ ] Non-stream `SendMessage`/`SendMessageWithImage`/`SendMessageWithFile` —
   hâlâ dokunulmadı, plan zaten bunu opsiyonel/ayrı commit olarak işaretlemişti.
 
-### Faz 3 — task loop'u workaround'dan kurtar
+### Faz 3 — task loop'u workaround'dan kurtar ✅ tamamlandı 2026-07-12
 
-- [ ] `internal/app/tasklist.go` `buildTaskLoopRunWorker`:
-  `SwitchChat` + `agentEnabled` zorlama + geri alma bloğunu (satır ~83-99) sil,
-  yerine `a.SendMessageStreamTo(ctx, chatID, prompt)` çağır.
-- [ ] `taskloopRunMu`'yu **hemen silme** — önce şunu doğrula: LLM katmanında
-  (`a.client`, `providerRouter`, `streamMu`) eşzamanlı iki stream güvenli mi?
-  `streamMu` zaten tekilleştiriyorsa mutex'i kaldır, stream'ler sıraya kendiliğinden
-  girer; değilse mutex kalır ama artık **sohbet karışması değil, sadece
-  sıralılık** kısıtı olur (dokümante et).
-- [ ] Session 13'ün testleri (`internal/taskloop/`) + yeni bir test: loop bir
-  sohbete yazarken global aktif sohbet **değişmiyor** (GetActiveID sabit).
-- [ ] `-race` yeşil → commit.
+- [x] `internal/app/tasklist.go` `buildTaskLoopRunWorker`: `SwitchChat` +
+  `agentEnabled` zorlama + geri alma bloğunu sildi, yerine
+  `a.SendMessageStreamTo(ctx, chatID, prompt)` çağırıyor.
+- [x] `taskloopRunMu` **korundu** (silinmedi) — artık "sohbet karışmasını
+  önleme" değil, sadece **task-list turlarını birbirine karşı sıralama**
+  amaçlı: `SendMessageStreamTo` artık hiçbir paylaşılan durumu (SwitchChat,
+  global `agentEnabled`) değiştirmiyor, tek kalan paylaşılan kaynak
+  `streamMu.TryLock()` (bloklamıyor, anında "lütfen bekleyin" hatasıyla
+  reddediyor) — `taskloopRunMu` olmadan iki task list aynı anda koşarsa biri
+  o turda boş çıktı hatası alırdı; mutex bunu düzgün sıraya sokuyor.
+- [x] Yeni testler (`internal/app/chat_test.go`):
+  `TestSendMessageStreamTo_UnknownChatID_ReturnsError`,
+  `TestSendMessageStreamTo_TargetsGivenChatID_NotGloballyActiveChat` (asıl
+  regresyon kanıtı: chatB aktifken `SendMessageStreamTo(chatA, ...)` mesajı
+  chatA'nın geçmişine yazıyor, chatB'ye hiç sızmıyor, `GetActiveID()` chatB'de
+  sabit kalıyor).
+- [x] `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler
+  yeşil. `GOOS=windows go vet ./...` → temiz.
 
 ### Faz 4 — HTTP + frontend netleştirme (opsiyonel genişleme)
 

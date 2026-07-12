@@ -17,191 +17,7 @@ import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../widgets/model_config_dialog.dart';
 
-// ─── Unified discover item ────────────────────────────────────────
-
-@immutable
-class _DiscoverItem {
-  final String repoId;
-  final String author;
-  /// Override author used for avatar/logo fetch (e.g. the original model creator
-  /// when the uploader is a community quantizer).
-  final String? brandAuthor;
-  final String displayName;
-  final String description;
-  final bool supportsTools;
-  final bool supportsVision;
-  final bool supportsCode;
-  final bool isEmbedding;
-  final int downloads;
-  final int likes;
-  final String? lastModified;
-  final List<String> tags;
-  final int? approxBytes;
-  final bool isCurated;
-
-  const _DiscoverItem({
-    required this.repoId,
-    required this.author,
-    this.brandAuthor,
-    required this.displayName,
-    required this.description,
-    required this.supportsTools,
-    required this.supportsVision,
-    required this.supportsCode,
-    required this.isEmbedding,
-    required this.downloads,
-    required this.likes,
-    this.lastModified,
-    required this.tags,
-    this.approxBytes,
-    required this.isCurated,
-  });
-
-  /// The author slug used to look up the avatar on HuggingFace.
-  String get avatarAuthor => brandAuthor ?? author;
-
-  factory _DiscoverItem.fromCurated(CuratedModel m) => _DiscoverItem(
-        repoId: m.repoId,
-        author: m.repoId.contains('/') ? m.repoId.split('/').first : m.repoId,
-        brandAuthor: m.brandAuthor,
-        displayName: m.name,
-        description: m.desc,
-        supportsTools: m.supportsTools,
-        supportsVision: m.kind == ModelKind.vision,
-        supportsCode: false,
-        isEmbedding: m.kind == ModelKind.memory,
-        downloads: 0,
-        likes: 0,
-        tags: const [],
-        approxBytes: m.approxBytes,
-        isCurated: true,
-      );
-
-  factory _DiscoverItem.fromHF(HFModelResult r) {
-    final lowerTags = r.tags.map((t) => t.toLowerCase()).toSet();
-    final isEmbed = lowerTags.intersection({
-      'feature-extraction',
-      'sentence-similarity',
-      'sentence-transformers',
-      'text-embeddings-inference',
-    }).isNotEmpty;
-    return _DiscoverItem(
-      repoId: r.id,
-      author: r.author,
-      displayName: _humanizeName(r.id),
-      description: '',
-      supportsTools: r.supportsTools,
-      supportsVision: r.supportsVision,
-      supportsCode: r.supportsCode,
-      isEmbedding: isEmbed,
-      downloads: r.downloads,
-      likes: r.likes,
-      lastModified: r.lastModified,
-      tags: r.tags,
-      isCurated: false,
-    );
-  }
-
-  String? get paramCount => _extractParams(displayName.isNotEmpty ? displayName : repoId);
-  String? get arch => _detectArch(tags);
-
-  /// True if this model likely supports tool/function calling.
-  /// HF search tags rarely include 'function-calling' on GGUF repos, so we
-  /// fall back to checking the model name against known tool-capable families.
-  bool get likelySupportsTools {
-    if (supportsTools) return true;
-    if (isEmbedding) return false;
-    final lower = '${displayName.toLowerCase()} ${repoId.toLowerCase()}';
-    const families = [
-      'llama-3', 'llama3', 'llama 3',
-      'qwen2', 'qwen 2', 'qwen2.5', 'qwen3', 'qwen 3',
-      'mistral', 'mixtral',
-      'hermes', 'functionary', 'nexusraven', 'gorilla',
-      'phi-3', 'phi-4', 'phi3', 'phi4', 'phi 3', 'phi 4',
-      'gemma-2', 'gemma2', 'gemma 2', 'gemma-3', 'gemma3', 'gemma 3',
-      'command-r', 'deepseek', 'internlm',
-      'smollm', 'dolphin', 'openhermes',
-    ];
-    final hasFamily = families.any((f) => lower.contains(f));
-    final isInstruct =
-        lower.contains('instruct') || lower.contains('chat') || lower.contains('-it');
-    return hasFamily && isInstruct;
-  }
-
-  /// True if this model likely supports vision/image input.
-  bool get likelySupportsVision {
-    if (supportsVision) return true;
-    final lower = '${displayName.toLowerCase()} ${repoId.toLowerCase()}';
-    const families = [
-      'llava', 'bakllava', 'vision', 'moondream', 'minicpm-v',
-      'internvl', 'cogvlm', 'qwen-vl', 'qwenvl', 'idefics',
-      'pixtral', 'paligemma', 'florence',
-    ];
-    return families.any((f) => lower.contains(f));
-  }
-
-  /// True if this model is primarily a code model.
-  bool get likelySupportsCode {
-    if (supportsCode) return true;
-    final lower = '${displayName.toLowerCase()} ${repoId.toLowerCase()}';
-    const families = [
-      'codellama', 'codegemma', 'deepseek-coder', 'starcoder',
-      'wizardcoder', 'phind-codellama', 'codestral', 'qwen2.5-coder',
-      'granite-code', 'opencoder',
-    ];
-    return families.any((f) => lower.contains(f));
-  }
-}
-
-// ─── Helpers ─────────────────────────────────────────────────────
-
-String _humanizeName(String repoId) {
-  final name = repoId.contains('/') ? repoId.split('/').last : repoId;
-  return name
-      .replaceAll(RegExp(r'[-_]gguf', caseSensitive: false), '')
-      .replaceAll(RegExp(r'[-_]'), ' ')
-      .trim();
-}
-
-String? _extractParams(String text) {
-  final m = RegExp(r'(\d+(?:\.\d+)?)\s*[Bb](?:\b|$)', caseSensitive: false)
-      .firstMatch(text);
-  if (m == null) return null;
-  final val = double.tryParse(m.group(1)!);
-  if (val == null || val > 2000 || val < 0.1) return null;
-  if (val == val.roundToDouble()) return '${val.round()}B';
-  return '${val}B';
-}
-
-String? _detectArch(List<String> tags) {
-  const knownArchs = {
-    'gemma', 'gemma2', 'gemma3', 'llama', 'mistral', 'qwen2', 'qwen3',
-    'phi', 'phi3', 'phi4', 'falcon', 'gpt2', 'mpt', 'bloom', 'internlm2',
-    'deepseek', 'deepseek2', 'cohere',
-  };
-  for (final t in tags) {
-    if (knownArchs.contains(t.toLowerCase())) return t.toLowerCase();
-  }
-  return null;
-}
-
-String _timeAgo(String? iso) {
-  if (iso == null || iso.isEmpty) return '';
-  final dt = DateTime.tryParse(iso);
-  if (dt == null) return '';
-  final diff = DateTime.now().difference(dt);
-  if (diff.inDays > 365) return '${(diff.inDays / 365).round()}y ago';
-  if (diff.inDays > 30) return '${(diff.inDays / 30).round()}mo ago';
-  if (diff.inDays > 0) return '${diff.inDays}d ago';
-  if (diff.inHours > 0) return '${diff.inHours}h ago';
-  return 'just now';
-}
-
-String _fmtCount(int n) {
-  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
-  if (n >= 1000) return '${(n / 1000).toStringAsFixed(0)}K';
-  return '$n';
-}
+import 'model_store/discover_item.dart';
 
 
 Color _authorColor(String author) {
@@ -240,11 +56,11 @@ class _ModelStoreScreenState extends ConsumerState<ModelStoreScreen> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _Header(tab: _tab, onTab: (t) => setState(() => _tab = t)),
-          const _DownloadBanner(),
+          const DownloadBanner(),
           Expanded(
             child: IndexedStack(
               index: _tab,
-              children: [_DiscoverTab(isActive: _tab == 0), const _MyModelsTab()],
+              children: [DiscoverTab(isActive: _tab == 0), const MyModelsTab()],
             ),
           ),
         ],
@@ -393,17 +209,17 @@ enum _SortMode { defaultOrder, mostDownloads, smallestFirst, largestFirst }
 
 // ─── Discover tab — two-panel layout ─────────────────────────────
 
-class _DiscoverTab extends ConsumerStatefulWidget {
+class DiscoverTab extends ConsumerStatefulWidget {
   final bool isActive;
 
-  const _DiscoverTab({required this.isActive});
+  const DiscoverTab({super.key, required this.isActive});
 
   @override
-  ConsumerState<_DiscoverTab> createState() => _DiscoverTabState();
+  ConsumerState<DiscoverTab> createState() => _DiscoverTabState();
 }
 
-class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
-  _DiscoverItem? _selected;
+class _DiscoverTabState extends ConsumerState<DiscoverTab> {
+  DiscoverItem? _selected;
   final _searchCtrl = TextEditingController();
   Timer? _debounce;
 
@@ -433,7 +249,7 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
   }
 
   /// Extract numeric param count for size filtering.
-  double? _paramValue(_DiscoverItem item) {
+  double? _paramValue(DiscoverItem item) {
     final text = item.paramCount;
     if (text == null) return null;
     final m = RegExp(r'(\d+(?:\.\d+)?)B').firstMatch(text);
@@ -441,7 +257,7 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
     return double.tryParse(m.group(1)!);
   }
 
-  List<_DiscoverItem> _applyFiltersSort(List<_DiscoverItem> raw) {
+  List<DiscoverItem> _applyFiltersSort(List<DiscoverItem> raw) {
     var list = raw.toList();
 
     // Capability filters (OR within same type)
@@ -491,14 +307,14 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
     final query = ref.watch(modelSearchQueryProvider);
     final resultsAsync = ref.watch(modelSearchResultsProvider);
 
-    final List<_DiscoverItem> rawItems;
+    final List<DiscoverItem> rawItems;
     final bool isLoading;
     if (query.isEmpty) {
-      rawItems = curatedModels.map(_DiscoverItem.fromCurated).toList();
+      rawItems = curatedModels.map(DiscoverItem.fromCurated).toList();
       isLoading = false;
     } else {
       rawItems =
-          resultsAsync.valueOrNull?.map(_DiscoverItem.fromHF).toList() ?? [];
+          resultsAsync.valueOrNull?.map(DiscoverItem.fromHF).toList() ?? [];
       isLoading = resultsAsync.isLoading;
     }
 
@@ -533,11 +349,11 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
         Expanded(
           child: _selected == null
               ? const _EmptyDetailState()
-              : _ModelDetailPanel(
+              : ModelDetailPanel(
                   key: ValueKey(_selected!.repoId),
                   item: _selected!,
                   onSelectOther: (repoId, displayName) => setState(() {
-                    _selected = _DiscoverItem(
+                    _selected = DiscoverItem(
                       repoId: repoId,
                       author: repoId.contains('/')
                           ? repoId.split('/').first
@@ -564,15 +380,15 @@ class _DiscoverTabState extends ConsumerState<_DiscoverTab> {
 // ─── Left panel: search + filters + model list ───────────────────
 
 class _ModelListPanel extends ConsumerWidget {
-  final List<_DiscoverItem> items;
-  final _DiscoverItem? selected;
+  final List<DiscoverItem> items;
+  final DiscoverItem? selected;
   final bool isCurated;
   final bool isLoading;
   final TextEditingController searchController;
   final Set<String> activeFilters;
   final _SortMode sortMode;
   final ValueChanged<String> onSearch;
-  final ValueChanged<_DiscoverItem> onSelect;
+  final ValueChanged<DiscoverItem> onSelect;
   final ValueChanged<String> onFilterToggle;
   final ValueChanged<_SortMode> onSortChange;
 
@@ -943,7 +759,7 @@ class _LetterAvatar extends StatelessWidget {
 // ─── Model list row ───────────────────────────────────────────────
 
 class _ModelListRow extends ConsumerWidget {
-  final _DiscoverItem item;
+  final DiscoverItem item;
   final bool isSelected;
   final VoidCallback onTap;
 
@@ -964,7 +780,7 @@ class _ModelListRow extends ConsumerWidget {
               item.repoId.split('/').lastOrNull?.toLowerCase() ?? ''),
     );
 
-    final timeAgo = _timeAgo(item.lastModified);
+    final timeAgoText = timeAgo(item.lastModified);
     final params = item.paramCount;
 
     return MouseRegion(
@@ -1071,13 +887,13 @@ class _ModelListRow extends ConsumerWidget {
                           ],
                           if (item.downloads > 0)
                             Text(
-                              '↓ ${_fmtCount(item.downloads)}',
+                              '↓ ${fmtCount(item.downloads)}',
                               style:
                                   TextStyle(fontSize: 10, color: c.textDim),
                             )
-                          else if (timeAgo.isNotEmpty)
+                          else if (timeAgoText.isNotEmpty)
                             Text(
-                              timeAgo,
+                              timeAgoText,
                               style:
                                   TextStyle(fontSize: 10, color: c.textDim),
                             ),
@@ -1169,21 +985,21 @@ class _EmptyDetailState extends StatelessWidget {
 
 // ─── Right panel: model detail ────────────────────────────────────
 
-class _ModelDetailPanel extends ConsumerStatefulWidget {
-  final _DiscoverItem item;
+class ModelDetailPanel extends ConsumerStatefulWidget {
+  final DiscoverItem item;
   final void Function(String repoId, String displayName)? onSelectOther;
 
-  const _ModelDetailPanel({
+  const ModelDetailPanel({
     super.key,
     required this.item,
     this.onSelectOther,
   });
 
   @override
-  ConsumerState<_ModelDetailPanel> createState() => _ModelDetailPanelState();
+  ConsumerState<ModelDetailPanel> createState() => _ModelDetailPanelState();
 }
 
-class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
+class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
   // Files / selection
   List<GGUFFile>? _files;
   String? _filesError;
@@ -1376,14 +1192,14 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
               if (item.downloads > 0)
                 _StatChip(
                     icon: Icons.download_rounded,
-                    text: _fmtCount(item.downloads)),
+                    text: fmtCount(item.downloads)),
               if (item.likes > 0)
                 _StatChip(
                     icon: Icons.star_border_rounded, text: '${item.likes}'),
-              if (_timeAgo(item.lastModified).isNotEmpty)
+              if (timeAgo(item.lastModified).isNotEmpty)
                 _StatChip(
                     icon: Icons.schedule_outlined,
-                    text: _timeAgo(item.lastModified)),
+                    text: timeAgo(item.lastModified)),
             ],
           ),
 
@@ -1622,7 +1438,7 @@ class _ModelDetailPanelState extends ConsumerState<_ModelDetailPanel> {
                         final id = _moreModels![i]['id'] as String?;
                         if (id == null) return;
                         widget.onSelectOther
-                            ?.call(id, _humanizeName(id));
+                            ?.call(id, humanizeName(id));
                       },
                     ),
                   ],
@@ -1992,7 +1808,7 @@ class _MoreModelRow extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(
-                  _humanizeName(id),
+                  humanizeName(id),
                   style: TextStyle(
                     fontSize: 13,
                     fontWeight: FontWeight.w500,
@@ -2004,7 +1820,7 @@ class _MoreModelRow extends StatelessWidget {
               ),
               const SizedBox(width: 8),
               Text(
-                '↓ ${_fmtCount(downloads)}',
+                '↓ ${fmtCount(downloads)}',
                 style: TextStyle(fontSize: 12, color: c.textDim),
               ),
             ],
@@ -2140,8 +1956,8 @@ class _Pill extends StatelessWidget {
 
 // ─── My Models tab (unchanged design) ────────────────────────────
 
-class _MyModelsTab extends ConsumerWidget {
-  const _MyModelsTab();
+class MyModelsTab extends ConsumerWidget {
+  const MyModelsTab({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -2470,8 +2286,8 @@ class _RunningDot extends StatelessWidget {
 
 /// Stacks one banner per in-flight (or errored) download — several files
 /// can now download at once (e.g. the setup wizard's chat + memory model).
-class _DownloadBanner extends ConsumerWidget {
-  const _DownloadBanner();
+class DownloadBanner extends ConsumerWidget {
+  const DownloadBanner({super.key});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {

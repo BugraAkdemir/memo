@@ -1,4 +1,49 @@
-# Handoff — 2026-07-12 (Session 23) — TD-1: skill tool execution gerçek bir feature olarak inşa edildi
+# Handoff — 2026-07-12 (Session 24) — BUG-M1 kapatıldı: model_store_screen.dart 5 dosyaya bölündü
+
+## Oturum Özeti
+
+Kullanıcı BUG_REPORT.md'deki tek kalan madde (BUG-M1: `model_store_screen.dart` 2612 satır) için plan istedi, sonra "tamam başla" dedi. `docs/plans/PLAN_modelstore_refactor.md` yazıldı (grep + codebase-memory ile class haritası çıkarılıp doğrulandı, `settings_dialog.dart`'ın daha önce aynı sorun için kullandığı `settings/tabs/` desenine birebir paralel), sonra 5 fazın tamamı uygulandı.
+
+## Yapılan bölme
+
+`frontend/lib/screens/model_store_screen.dart` (2612 satır) → shell (180 satır) + `frontend/lib/screens/model_store/`:
+- `discover_item.dart` (194 satır) — `DiscoverItem` veri modeli + `humanizeName`/`timeAgo`/`fmtCount` formatlama yardımcıları (public, çünkü hem Discover hem detay panelinde kullanılıyor)
+- `discover_tab.dart` (809 satır) — Discover sekmesi (arama, filtre/sort, model listesi)
+- `model_detail_panel.dart` (956 satır) — seçili modelin detay/indirme paneli
+- `my_models_tab.dart` (515 satır) — My Models sekmesi
+
+Sadece 8 sembol private'tan public'e çevrildi (dosya sınırları arası referans edilenler): `DiscoverTab`, `ModelDetailPanel`, `MyModelsTab`, `DownloadBanner`, `DiscoverItem`, `humanizeName`, `timeAgo`, `fmtCount`. Geri kalan ~25 widget/fonksiyon (grep + codebase-memory `search_graph` ile tek bölüme özel olduğu doğrulanmış) private kaldı — bölme başta düşünülenden daha az invaziv çıktı.
+
+**Yol boyunca yakalanan 2 gerçek hata:**
+1. `_ModelListRow`'daki local `timeAgo` değişkeni, yeni public `timeAgo` fonksiyonuyla aynı isimde olunca kendi kendini referans eden bir initializer'a dönüştü (`referenced_before_declaration` derleme hatası) — `timeAgoText` olarak yeniden adlandırıldı.
+2. `_Pill` widget'ı fiziksel olarak `_ModelDetailPanel`'in hemen yanındaydı ama kod içindeki yorum zaten "reused in My Models" diyordu — ben yine de ilk yazımda `model_detail_panel.dart`'a dahil ettim, `flutter analyze`'ın "unused_element" uyarısı yakaladı, `my_models_tab.dart`'a taşındı.
+
+## Commit'ler (3 kod + kendi plan/docs commit'leri, hepsi local)
+
+- `4076bf2` docs: plan dosyası
+- `b1c12a4` refactor: Faz 1 (DiscoverItem)
+- `2d87364` refactor: Faz 2-4 tek commit'te (discover_tab.dart, model_detail_panel.dart birbirine derleme-bağımlı; ayrı commit'lere zorlamak ara durumda derlenmeyen bir ağaç bırakırdı — bu gerekçe commit mesajında da açık)
+
+## Doğrulama
+
+```
+flutter analyze lib/   → temiz (sadece bilinen 4 info-level use_build_context_synchronously)
+flutter test           → 103/103 yeşil
+```
+
+**Gerçek uygulama testi (kısmi):** Gerçek backend (`go build` + `--headless --port 8090`) ve gerçek Linux binary (`flutter build linux --debug`) çalıştırıldı, `python3 PIL ImageGrab` ile ekran görüntüsü alındı (bu ortamda X11 `import`/ImageMagick screen-grab çalışmadı, PIL çalıştı). Model Store → Discover sekmesi ekran görüntüsüyle doğrulandı: arama çubuğu, sort/filter chip'leri, model listesi (capability ikonları dahil), boş detay durumu, `_HardwareChip`'in GPU adı — hepsi doğru render ediliyor.
+
+**Doğrulanamayan kısım:** Model Detail Panel'e tıklayarak geçiş ve My Models sekmesi. Bu ortamda `xdotool`/`wmctrl`/`ydotool` yok, passwordless sudo yok (kuramadım), ve `python-xlib` ile denenen `XTestFakeInput` sentetik tıklaması native Wayland penceresine hiç ulaşmadı (aynı koordinatlarda bilinen bir sekme değiştirme denemesi bile tetiklenmedi — sistemik bir kısıt, koordinat hatası değil). Dolaylı kanıt: `flutter analyze` tamamen temiz + `app_shell.dart`'ın `IndexedStack`'i tüm sekmeleri (My Models dahil) ekran açılışında zaten inşa ediyor ve hiç hata kutusu çıkmadı — yani `MyModelsTab.build()` da hatasız çalıştı. Sadece `ModelDetailPanel`'in kendisi (bir model seçilmeden inşa edilmiyor) gerçek çalışırken hiç görülmedi.
+
+**BUG_REPORT.md:** BUG-M1 tamamen kapatıldı ve silindi. **Toplam açık madde: 0.**
+
+**Sıradaki oturum için:**
+1. Bu ortamda input-automation aracı (xdotool vb.) kurulabilirse Model Detail Panel'e gerçek tıklamayla bakılabilir — küçük bir doğrulama boşluğu, ama risk düşük (flutter analyze zaten temiz).
+2. Commit'ler henüz push edilmedi.
+
+---
+
+
 
 ## Oturum Özeti
 

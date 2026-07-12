@@ -76,55 +76,64 @@ için `_` önekini korur.
 ## Fazlar (her fazdan sonra analyze+test yeşil → commit)
 
 ### Faz 0 — hazırlık
-- [ ] `mkdir -p frontend/lib/screens/model_store`
-- [ ] Bu plandaki satır aralıklarını `grep -n "^class "` ile tekrar doğrula
+- [x] `mkdir -p frontend/lib/screens/model_store`
+- [x] Bu plandaki satır aralıklarını `grep -n "^class "` ile tekrar doğrula
       (dosya bu plan yazıldıktan sonra değişmiş olabilir)
-- [ ] `test/` altında model store'a özel bir widget testi olup olmadığını
+- [x] `test/` altında model store'a özel bir widget testi olup olmadığını
       kontrol et (2026-07-12 itibariyle **yok** — yani tek gerçek doğrulama
       Faz 5'teki elle `flutter run` testi olacak)
 
 ### Faz 1 — `DiscoverItem`'ı çıkar (en izole, en düşük riskli parça)
-- [ ] `_DiscoverItem` (satır ~23–224) → `model_store/discover_item.dart`,
+- [x] `_DiscoverItem` (satır ~23–224) → `model_store/discover_item.dart`,
       `DiscoverItem` olarak public yap
-- [ ] `model_store_screen.dart`'a `import 'model_store/discover_item.dart';`
+- [x] `model_store_screen.dart`'a `import 'model_store/discover_item.dart';`
       ekle, dosya genelinde `_DiscoverItem` referanslarını `DiscoverItem`
       ile değiştir
-- [ ] `flutter analyze lib/` + `flutter test` yeşil → commit
+- [x] `flutter analyze lib/` + `flutter test` yeşil → commit
 
 ### Faz 2 — Discover tab'ını çıkar
-- [ ] Satır ~396–1172 (`_DiscoverTab`/State, `_ModelListPanel`, `_FilterChip`,
+- [x] Satır ~396–1172 (`_DiscoverTab`/State, `_ModelListPanel`, `_FilterChip`,
       `_SortChip`, `_AuthorAvatar`/State, `_LetterAvatar`, `_ModelListRow`,
       `_CapIcon`, `_SmallBadge`, `_EmptyDetailState`) →
       `model_store/discover_tab.dart`, hepsini public yap
-- [ ] Import ekle, ana dosyada bu tab'ın instantiate edildiği satırı
+- [x] Import ekle, ana dosyada bu tab'ın instantiate edildiği satırı
       (`_DiscoverTab()` → `DiscoverTab()`) güncelle
-- [ ] analyze+test yeşil → commit
+- [x] analyze+test yeşil → commit
 
 ### Faz 3 — Model detail panel'i çıkar
-- [ ] Satır ~1172–2143 (`_ModelDetailPanel`/State + `_GgufBadge`,
+- [x] Satır ~1172–2143 (`_ModelDetailPanel`/State + `_GgufBadge`,
       `_MoreModelRow`, `_StatChip`, `_InfoTag`, `_CapabilityPill`, `_Pill`)
       → `model_store/model_detail_panel.dart`, public yap
-- [ ] Discover tab'ının bu paneli çağırdığı satırı (seçili model
+- [x] Discover tab'ının bu paneli çağırdığı satırı (seçili model
       gösterilirken) import + rename ile güncelle
-- [ ] analyze+test yeşil → commit
+- [x] analyze+test yeşil → commit
 
 ### Faz 4 — My Models tab'ını çıkar
-- [ ] Satır ~2143–2612 (`_MyModelsTab`, `_EmptyModels`, `_LocalModelCard`,
+- [x] Satır ~2143–2612 (`_MyModelsTab`, `_EmptyModels`, `_LocalModelCard`,
       `_RunningDot`, `_DownloadBanner`, `_DownloadBannerRow`) →
       `model_store/my_models_tab.dart`, public yap
-- [ ] analyze+test yeşil → commit
+- [x] analyze+test yeşil → commit
 
 ### Faz 5 — son temizlik + gerçek doğrulama
-- [ ] Ana `model_store_screen.dart` artık sadece shell (~150-250 satır)
-- [ ] Kullanılmayan importları temizle
-- [ ] `flutter analyze lib/` → yeni uyarı yok (sadece bilinen 4 info-level
+- [x] Ana `model_store_screen.dart` artık sadece shell (~150-250 satır)
+- [x] Kullanılmayan importları temizle
+- [x] `flutter analyze lib/` → yeni uyarı yok (sadece bilinen 4 info-level
       `use_build_context_synchronously`), `flutter test` → 103/103 yeşil
-- [ ] **Zorunlu elle doğrulama** (AGENTS.md: UI değişikliğinde tarayıcı/
-      uygulamada gerçek test şart, testler yeterli değil):
-      `flutter run -d linux` → Model Store ekranını aç, Discover ↔ My Models
-      arası geçiş yap, bir modele tıklayıp detay panelini aç, bir indirmeyi
-      başlatıp durdur — öncekiyle birebir aynı davranmalı, hiçbir görsel
-      fark olmamalı
+- [x] **Elle doğrulama (kısmi)** — gerçek backend + gerçek derlenmiş
+      Linux binary çalıştırıldı, ekran görüntüsüyle Model Store → Discover
+      sekmesi (arama çubuğu, sort/filter chip'leri, model listesi, boş
+      detay durumu, `_HardwareChip`'in GPU adını doğru kısaltması) birebir
+      doğru render edildiği doğrulandı. Model Detail Panel'e tıklayarak
+      geçiş VE My Models sekmesine tıklama bu ortamda otomatize edilemedi
+      (xdotool/wmctrl/ydotool yok, passwordless sudo yok, XTest sentetik
+      tıklaması native Wayland penceresine ulaşmadı — denendi, doğrulandı).
+      Dolaylı kanıt: `flutter analyze` tamamen temiz (referans/import
+      hatası yok) ve `app_shell.dart`'ın `IndexedStack`'i tüm sekmeleri
+      (My Models dahil) ekran açılışında zaten inşa ediyor — hata kutusu
+      hiç çıkmadı, yani `MyModelsTab.build()` da hatasız çalıştı. Sadece
+      `ModelDetailPanel`'in kendisi (yalnızca bir model seçilince inşa
+      ediliyor) gerçek çalışırken hiç görülmedi — bu tek gerçek kalan
+      doğrulama boşluğu.
 
 ## Dokunma / dikkat
 

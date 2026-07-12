@@ -105,6 +105,139 @@ func isBlacklisted(cmd string) (string, bool) {
 	return "", false
 }
 
+// CheckBlacklist exposes the same dangerous-command guard run_command uses,
+// including the shell-substitution ($ `) block. Appropriate for a command
+// string built from live LLM/user input at call time, where that
+// substitution block is a real injection defense.
+func CheckBlacklist(cmd string) (string, bool) {
+	return isBlacklisted(cmd)
+}
+
+// CheckDestructivePatterns checks cmd against only the fixed destructive-
+// command patterns (rm -rf /, mkfs, sudo, fork bombs, ...) — not the
+// shell-substitution ($ `) block CheckBlacklist also applies. For callers
+// whose command string is author-trusted static content rather than
+// something assembled from live input (e.g. a skill manifest's own
+// `command:` field, chosen when the skill was written/installed), that
+// substitution block would reject legitimate $VAR usage — including the
+// MEMO_SKILL_NAME/MEMO_PROJECT_DIR env vars this codebase itself passes to
+// skill tool processes — without adding real protection, since there is no
+// LLM-controlled string being interpolated into the command at call time.
+func CheckDestructivePatterns(cmd string) (string, bool) {
+	cmdLower := strings.ToLower(cmd)
+	for _, re := range blacklistedPatterns {
+		if re.MatchString(cmdLower) {
+			return re.String(), true
+		}
+	}
+	return "", false
+}
+
+// PrepareCommand builds a sandboxed *exec.Cmd for running `command` (via
+// the platform shell) in workingDir, with a minimal explicit environment
+// (no os.Environ() passthrough) — the same construction run_command uses.
+// execCtx carries either ctx's own deadline or, if ctx has none, a fresh
+// DefaultToolTimeout deadline; callers that need to distinguish a timeout
+// from an ordinary failure after cmd.Run() returns should check
+// execCtx.Err() == context.DeadlineExceeded. cancel is always non-nil and
+// must be deferred by the caller.
+func PrepareCommand(ctx context.Context, command, workingDir string) (cmd *exec.Cmd, execCtx context.Context, cancel context.CancelFunc) {
+	execCtx = ctx
+	cancel = func() {}
+	if _, ok := ctx.Deadline(); !ok {
+		execCtx, cancel = context.WithTimeout(ctx, DefaultToolTimeout)
+	}
+
+	homeDir, _ := os.UserHomeDir()
+	if runtime.GOOS == "windows" {
+		cmd = exec.CommandContext(execCtx, "cmd", "/C", command)
+		userProfile := os.Getenv("USERPROFILE")
+		if userProfile == "" {
+			userProfile = homeDir
+		}
+		temp := os.Getenv("TEMP")
+		if temp == "" {
+			temp = os.TempDir()
+		}
+		cmd.Env = []string{
+			"PATH=" + os.Getenv("PATH"),
+			"USERPROFILE=" + userProfile,
+			"SystemRoot=" + os.Getenv("SystemRoot"),
+			"USERNAME=" + os.Getenv("USERNAME"),
+			"TEMP=" + temp,
+			"TMP=" + temp,
+			"COMSPEC=" + os.Getenv("COMSPEC"),
+			"HOMEDRIVE=" + os.Getenv("HOMEDRIVE"),
+			"HOMEPATH=" + os.Getenv("HOMEPATH"),
+		}
+	} else {
+		cmd = exec.CommandContext(execCtx, "bash", "-c", command)
+		userPath := os.Getenv("PATH")
+		if userPath == "" {
+			userPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
+		}
+		home := os.Getenv("HOME")
+		if home == "" {
+			home = homeDir
+		}
+		user := os.Getenv("USER")
+		if user == "" {
+			user = os.Getenv("USERNAME")
+		}
+		cmd.Env = []string{
+			"PATH=" + userPath,
+			"HOME=" + home,
+			"USER=" + user,
+			"LANG=en_US.UTF-8",
+		}
+	}
+	cmd.Dir = workingDir
+	return cmd, execCtx, cancel
+}
+
+// FormatCommandOutput renders captured stdout/stderr into the truncated
+// STDOUT/STDERR text returned to the LLM — shared by run_command and
+// internal/skill's tool executor so both truncate/report identically.
+func FormatCommandOutput(runErr error, timedOut bool, stdout, stderr string) string {
+	var result strings.Builder
+	if runErr != nil {
+		if timedOut {
+			result.WriteString("Command timed out\n")
+		} else {
+			fmt.Fprintf(&result, "Command failed with error: %v\n", runErr)
+		}
+	}
+
+	// Truncate COMBINED output if it exceeds the 10MB limit.
+	// We proportionally preserve stdout and stderr rather than truncating independently.
+	const maxSize = 10 * 1024 * 1024
+	total := len(stdout) + len(stderr)
+	if total > maxSize {
+		result.WriteString("\n... Output truncated, exceeded 10MB limit ...\n")
+		ratio := float64(maxSize) / float64(total)
+		outLimit := int(float64(len(stdout)) * ratio)
+		errLimit := int(float64(len(stderr)) * ratio)
+		if outLimit < len(stdout) {
+			stdout = stdout[:outLimit]
+		}
+		if errLimit < len(stderr) {
+			stderr = stderr[:errLimit]
+		}
+	}
+
+	if stdout != "" {
+		fmt.Fprintf(&result, "STDOUT:\n%s\n", stdout)
+	}
+	if stderr != "" {
+		fmt.Fprintf(&result, "STDERR:\n%s\n", stderr)
+	}
+
+	if result.Len() == 0 {
+		return "(Command executed successfully with no output)"
+	}
+	return result.String()
+}
+
 func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, createBackup func(string) error) (string, error) {
 	var args RunCommandArgs
 	if err := json.Unmarshal(argsJSON, &args); err != nil {
@@ -142,108 +275,19 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 		return "", fmt.Errorf("command is blacklisted for safety: %s", pattern)
 	}
 
-	// Execution with proper context propagation from caller. Honor the
-	// caller's own deadline (e.g. the pipeline's 120s per-tool budget) instead
-	// of silently truncating it to DefaultToolTimeout; only fall back to
-	// DefaultToolTimeout when the caller passed no deadline at all.
-	execCtx := ctx
-	var cancel context.CancelFunc
-	if _, ok := ctx.Deadline(); !ok {
-		execCtx, cancel = context.WithTimeout(ctx, DefaultToolTimeout)
-		defer cancel()
-	}
-
-	var cmd *exec.Cmd
-	homeDir, _ := os.UserHomeDir()
-	if runtime.GOOS == "windows" {
-		cmd = exec.CommandContext(execCtx, "cmd", "/C", args.Command)
-		userProfile := os.Getenv("USERPROFILE")
-		if userProfile == "" {
-			userProfile = homeDir
-		}
-		temp := os.Getenv("TEMP")
-		if temp == "" {
-			temp = os.TempDir()
-		}
-		cmd.Env = []string{
-			"PATH=" + os.Getenv("PATH"),
-			"USERPROFILE=" + userProfile,
-			"SystemRoot=" + os.Getenv("SystemRoot"),
-			"USERNAME=" + os.Getenv("USERNAME"),
-			"TEMP=" + temp,
-			"TMP=" + temp,
-			"COMSPEC=" + os.Getenv("COMSPEC"),
-			"HOMEDRIVE=" + os.Getenv("HOMEDRIVE"),
-			"HOMEPATH=" + os.Getenv("HOMEPATH"),
-		}
-	} else {
-		cmd = exec.CommandContext(execCtx, "bash", "-c", args.Command)
-		userPath := os.Getenv("PATH")
-		if userPath == "" {
-			userPath = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin"
-		}
-		home := os.Getenv("HOME")
-		if home == "" {
-			home = homeDir
-		}
-		user := os.Getenv("USER")
-		if user == "" {
-			user = os.Getenv("USERNAME")
-		}
-		cmd.Env = []string{
-			"PATH=" + userPath,
-			"HOME=" + home,
-			"USER=" + user,
-			"LANG=en_US.UTF-8",
-		}
-	}
-	cmd.Dir = workingDir
+	// PrepareCommand honors the caller's own deadline (e.g. the pipeline's
+	// 120s per-tool budget) instead of silently truncating it to
+	// DefaultToolTimeout; it only falls back to DefaultToolTimeout when the
+	// caller passed no deadline at all.
+	cmd, execCtx, cancel := PrepareCommand(ctx, args.Command, workingDir)
+	defer cancel()
 
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout
 	cmd.Stderr = &stderr
 
-	err = cmd.Run()
+	runErr := cmd.Run()
+	timedOut := execCtx.Err() == context.DeadlineExceeded
 
-	var result strings.Builder
-	if err != nil {
-		if execCtx.Err() == context.DeadlineExceeded {
-			result.WriteString("Command timed out\n")
-		} else {
-			result.WriteString(fmt.Sprintf("Command failed with error: %v\n", err))
-		}
-	}
-
-	outStr := stdout.String()
-	errStr := stderr.String()
-
-	// Truncate COMBINED output if it exceeds the 10MB limit.
-	// We proportionally preserve stdout and stderr rather than truncating independently.
-	const maxSize = 10 * 1024 * 1024
-	total := len(outStr) + len(errStr)
-	if total > maxSize {
-		result.WriteString(fmt.Sprintf("\n... Output truncated, exceeded 10MB limit ...\n"))
-		ratio := float64(maxSize) / float64(total)
-		outLimit := int(float64(len(outStr)) * ratio)
-		errLimit := int(float64(len(errStr)) * ratio)
-		if outLimit < len(outStr) {
-			outStr = outStr[:outLimit]
-		}
-		if errLimit < len(errStr) {
-			errStr = errStr[:errLimit]
-		}
-	}
-
-	if outStr != "" {
-		result.WriteString(fmt.Sprintf("STDOUT:\n%s\n", outStr))
-	}
-	if errStr != "" {
-		result.WriteString(fmt.Sprintf("STDERR:\n%s\n", errStr))
-	}
-
-	if result.Len() == 0 {
-		return "(Command executed successfully with no output)", nil
-	}
-
-	return result.String(), nil
+	return FormatCommandOutput(runErr, timedOut, stdout.String(), stderr.String()), nil
 }

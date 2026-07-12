@@ -20,8 +20,8 @@
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 1 |
 | 🟢 LOW | 1 |
-| 🔧 TEKNİK BORÇ | 2 |
-| **TOPLAM** | **4** |
+| 🔧 TEKNİK BORÇ | 1 |
+| **TOPLAM** | **3** |
 
 ---
 
@@ -55,12 +55,6 @@
 - **2026-07-12 yeniden doğrulandı — orijinal madde ("iki paket ayrı `DangerLevel` tipi tanımlıyor, derleme zamanında uyuşmuyor") YANLIŞ çıktı:** `skill.ToolRegistrar.RegisterTool(name string, toolDef any)` zaten `any` alıyor, bugünkü kodda hiçbir yerde gerçek bir compile-time tip hatası yok.
 - **Gerçek bulgu:** `skill.Manager.toolRegistrar` alanını dolduran `SetToolRegistrar()` **prod kodunda hiçbir yerde çağrılmıyor** (`app.go`'da skill manager kuruluyor ama registrar hiç set edilmiyor) — yani `toolRegistrar` her zaman `nil`, `SetActive`/`Remove` içindeki `RegisterTool`/`UnregisterTool` çağrıları sessizce no-op. `agent.FromString` (bu köprü için yazılmış skill→agent `DangerLevel` dönüştürücüsü) **0 çağırana sahip**, hiç kullanılmıyor. Ayrıca `skill.SkillTool` struct'ında bir `ExecuteFn` alanı da yok — bir skill'in manifest'inde tanımladığı `Tools` çağrıldığında ne çalıştırılacağı hiç tanımlı değil.
 - **Etki:** Bir skill'in YAML manifest'inde `tools:` altında tanımladığı hiçbir şey gerçekte agent'a araç olarak eklenmiyor — tamamen deklaratif/kullanılmayan veri. Bug değil (crash/veri kaybı yok) ama tasarım eksikliği: bu bir basit tip-fix değil, "skill tool'ları nasıl çalıştırılacak" sorusuna cevap gerektiren, kapsamı belirsiz bir feature kararı. Kullanıcı isteğiyle şimdilik koda dokunulmadı — sadece bu madde gerçek bulguya göre güncellendi.
-
-### TD-2: API versioning yok
-
-- **Dosya:** `internal/webserver/server.go` (route tanımları)
-- **Nedir:** Tüm endpoint'ler düz `/api/` prefix'i altında, versiyon stratejisi (örn. `/api/v1/`) yok.
-- **Etki:** Gelecekte breaking bir API değişikliği yapılmak istendiğinde eski istemcileri (mobile, eski CLI sürümleri) kırmadan geçiş yolu yok.
 
 ---
 

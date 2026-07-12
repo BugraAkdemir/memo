@@ -266,7 +266,15 @@ func (a *App) Startup(ctx context.Context) {
 	a.clientMu.RUnlock()
 	embeddingFunc := memory.NewEmbeddingFunc(initClient, cfg.API.EmbeddingModel)
 
+	// Closed once the placeholder store below has landed (success or
+	// failure) — reconnectEmbeddingIfAlreadyRunning (started further down,
+	// once a.llamaEmbedServer exists) waits on this so it always runs
+	// *after*, never racing to overwrite a.store first only to have this
+	// goroutine clobber it back to the placeholder afterward.
+	memStoreReady := make(chan struct{})
+
 	go func() {
+		defer close(memStoreReady)
 		store, err := memory.NewStore(memory.StoreConfig{
 			Dir:           cfg.Memory.PersistDir,
 			Dimension:     cfg.Memory.EmbeddingDimension,
@@ -372,6 +380,25 @@ func (a *App) Startup(ctx context.Context) {
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		go a.startupEmbeddingModel()
+	} else if cfg.Memory.MemoryEnabled {
+		// EmbeddingAutoStart only gates launching a brand-new model process
+		// (a resource/consent decision — may download a model). Reconnecting
+		// to one that's already alive on the configured port — started by an
+		// earlier backend process this one is attaching after, or started
+		// manually before this Startup() ran — is a different, much
+		// lower-risk action and shouldn't need the same opt-in. Without
+		// this, memory silently keeps embedding through the a.client
+		// placeholder wired above until something explicitly calls
+		// StartEmbeddingModel (GUI's model dialog, or the CLI's
+		// /embedding) — and GetStatus()'s own pingPort() fallback reports
+		// "running" the entire time without ever actually reconnecting
+		// anything, misleading whoever queries it (the CLI's welcome
+		// banner in particular: shows embedding as on while memory
+		// search/save both silently operate on the wrong client).
+		go func() {
+			<-memStoreReady
+			a.reconnectEmbeddingIfAlreadyRunning()
+		}()
 	}
 
 	// Auto-init WhatsApp when explicitly enabled OR when a paired session

@@ -101,6 +101,40 @@ func (a *App) GetEmbeddingModelStatus() llama.ServerStatus {
 	return a.llamaEmbedServer.GetStatus()
 }
 
+// reconnectEmbeddingIfAlreadyRunning wires the memory store to an embedding
+// server this process doesn't have tracked (a.llamaEmbedServer.IsRunning()
+// == false) but that's actually alive on the configured port — detected the
+// same way GetStatus() already reports it as "running" for display (its own
+// pingPort() fallback), except that call is read-only and never reconnects
+// anything. Left at whatever placeholder (a.client-based) embedding
+// function Startup() wired up otherwise, so memory silently embeds through
+// the wrong model until something explicitly calls StartEmbeddingModel.
+//
+// Deliberately does not go through Start() — that calls killByPort first,
+// which would kill a perfectly good, already-running server just to
+// relaunch an identical one.
+func (a *App) reconnectEmbeddingIfAlreadyRunning() {
+	if a.llamaEmbedServer.IsRunning() {
+		return // already tracked by this process — nothing to reconnect
+	}
+	if !a.llamaEmbedServer.GetStatus().Running {
+		return // nothing answering on the configured port
+	}
+
+	a.cfgMu.RLock()
+	timeoutSeconds := a.cfg.API.TimeoutSeconds
+	embeddingModel := a.cfg.API.EmbeddingModel
+	a.cfgMu.RUnlock()
+
+	baseURL := a.llamaEmbedServer.GetBaseURL()
+	logx.Printf("MEMORY: found an already-running embedding server on %s, reconnecting memory store to it", baseURL)
+	embClient := api.NewClient(baseURL, timeoutSeconds)
+	a.clientMu.Lock()
+	a.embeddingClient = embClient
+	a.clientMu.Unlock()
+	a.reinitMemoryStore(embClient, embeddingModel)
+}
+
 // startupEmbeddingModel ensures the embedding model is available and running at startup.
 func (a *App) startupEmbeddingModel() {
 	repoID := a.cfg.Memory.EmbeddingModelRepo

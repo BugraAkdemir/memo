@@ -16,13 +16,23 @@ import 'settings_provider.dart';
 
 /// Global API client instance. Reads the backend URL from SharedPreferences
 /// so users can configure a custom address. Falls back to 127.0.0.1:8090.
+///
+/// Also seeds the client with whatever remote-access token was last learned
+/// and persists any newly learned one — see MemoApiClient's
+/// savedRemoteToken doc comment for why (BUG-L5).
+const _remoteTokenPrefsKey = 'memo_remote_access_token';
+
 final apiClientProvider = Provider<MemoApiClient>((ref) {
   final prefs = ref.read(prefsProvider);
   final savedUrl = prefs.getString('memo_api_base_url');
   final baseUrl = (savedUrl != null && savedUrl.isNotEmpty)
       ? savedUrl
       : 'http://127.0.0.1:8090';
-  return MemoApiClient(baseUrl: baseUrl);
+  return MemoApiClient(
+    baseUrl: baseUrl,
+    savedRemoteToken: prefs.getString(_remoteTokenPrefsKey),
+    onRemoteTokenLearned: (token) => prefs.setString(_remoteTokenPrefsKey, token),
+  );
 });
 
 // ─── Chat List ──────────────────────────────────────────────────

@@ -17,9 +17,31 @@ class MemoApiClient {
   late final Dio _dio;
   final String baseUrl;
 
+  /// Called whenever _applyRemoteToken learns a (possibly new) token, so
+  /// the caller can persist it for the next app launch — see the
+  /// savedRemoteToken constructor parameter for why this closes BUG-L5.
+  final void Function(String token)? onRemoteTokenLearned;
+
   Dio get dio => _dio;
 
-  MemoApiClient({required this.baseUrl}) {
+  /// savedRemoteToken is whatever token this client learned and persisted
+  /// on a previous run (BUG-L5 fix): if ngrok auto-start is on,
+  /// Startup() rebinds the backend straight to 0.0.0.0 (token-gated)
+  /// before this client ever gets a chance to call
+  /// getRemoteAccess()/setRemoteAccess() and learn the token fresh — so
+  /// its very first request after a restart would otherwise always 401.
+  /// The token is stable across restarts (internal/app/remote.go only
+  /// generates one if RemoteAccess.Token is still empty), so applying the
+  /// last-known value immediately, before any request is made, closes
+  /// that window in the common case (remote access left configured the
+  /// same way between launches). A stale/rotated token still just 401s,
+  /// exactly like before this fix — no worse, and self-corrects the next
+  /// time getRemoteAccess()/setRemoteAccess() is called.
+  MemoApiClient({
+    required this.baseUrl,
+    String? savedRemoteToken,
+    this.onRemoteTokenLearned,
+  }) {
     _dio = Dio(
       BaseOptions(
         baseUrl: baseUrl,
@@ -28,6 +50,9 @@ class MemoApiClient {
         headers: {'Content-Type': 'application/json'},
       ),
     );
+    if (savedRemoteToken != null && savedRemoteToken.isNotEmpty) {
+      _dio.options.headers['X-Memo-Token'] = savedRemoteToken;
+    }
   }
 
   /// The backend now requires X-Memo-Token on every request once remote
@@ -38,7 +63,9 @@ class MemoApiClient {
   /// include it (see _applyRemoteToken call sites below).
   void _applyRemoteToken(dynamic data) {
     if (data is Map && data['token'] is String && (data['token'] as String).isNotEmpty) {
-      _dio.options.headers['X-Memo-Token'] = data['token'];
+      final token = data['token'] as String;
+      _dio.options.headers['X-Memo-Token'] = token;
+      onRemoteTokenLearned?.call(token);
     }
   }
 

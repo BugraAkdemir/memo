@@ -241,10 +241,7 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			select {
-			case ch <- StreamChunk{Done: true}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Done: true})
 			return
 		}
 
@@ -260,9 +257,8 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		for _, part := range result.Candidates[0].Content.Parts {
 			if part.Text != "" {
 				fullContent.WriteString(part.Text)
-				select {
-				case ch <- StreamChunk{Content: part.Text}:
-				case <-ctx.Done():
+				trySend(ctx, ch, StreamChunk{Content: part.Text})
+				if ctx.Err() != nil {
 					return
 				}
 			}
@@ -270,27 +266,18 @@ func (p *geminiProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 
 		fr := result.Candidates[0].FinishReason
 		if fr != "" && fr != "STOP" {
-			select {
-			case ch <- StreamChunk{Done: true, FinishReason: fr}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Done: true, FinishReason: fr})
 			return
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		select {
-		case ch <- StreamChunk{Error: err.Error(), Done: true}:
-		case <-ctx.Done():
-		}
+		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true})
 		return
 	}
 
 	if fullContent.Len() > 0 {
-		select {
-		case ch <- StreamChunk{Done: true}:
-		case <-ctx.Done():
-		}
+		trySend(ctx, ch, StreamChunk{Done: true})
 	}
 }
 

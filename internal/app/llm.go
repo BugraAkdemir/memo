@@ -165,32 +165,30 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			return
 		}
 
-	agentLoop:
 		for {
-			select {
-			case <-ctx.Done():
+			chunk, ok, ctxDone := recvChunk(ctx, streamCh)
+			if ctxDone {
 				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
 				return
-			case chunk, ok := <-streamCh:
-				if !ok {
-					break agentLoop
-				}
-				if chunk.Error != "" {
-					a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
-					trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
-					return
-				}
+			}
+			if !ok {
+				break
+			}
+			if chunk.Error != "" {
+				a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+				return
+			}
 
-				if chunk.Content != "" {
-					fullReply.WriteString(chunk.Content)
-					trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
-				}
+			if chunk.Content != "" {
+				fullReply.WriteString(chunk.Content)
+				trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
+			}
 
-				if chunk.Done {
-					a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, agentEvents)
-					trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
-					return
-				}
+			if chunk.Done {
+				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, agentEvents)
+				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+				return
 			}
 		}
 
@@ -666,47 +664,45 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			tokenCount := 0
 			firstTokenLogged := false
 
-		providerLoop:
 			for {
-				select {
-				case <-providerCtx.Done():
+				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
+				if ctxDone {
 					a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
 					return
-				case chunk, ok := <-ch:
-					if !ok {
-						break providerLoop
-					}
+				}
+				if !ok {
+					break
+				}
 
-					if chunk.Error != "" {
-						var errMsg string
-						if a.providerSwapped(providerRouter) {
-							errMsg = modelSwappedMidStreamMsg
-						} else {
-							errMsg = "⚠️ " + chunk.Error
-							if hint := a.localModelHint(); hint != "" {
-								errMsg += "\n\n" + hint
-							}
+				if chunk.Error != "" {
+					var errMsg string
+					if a.providerSwapped(providerRouter) {
+						errMsg = modelSwappedMidStreamMsg
+					} else {
+						errMsg = "⚠️ " + chunk.Error
+						if hint := a.localModelHint(); hint != "" {
+							errMsg += "\n\n" + hint
 						}
-						a.recordStreamError(userMsg, errMsg, sessionID)
-						trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
-						return
 					}
+					a.recordStreamError(userMsg, errMsg, sessionID)
+					trySend(providerCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
+					return
+				}
 
-					if chunk.Content != "" {
-						if !firstTokenLogged {
-							firstTokenLogged = true
-							logx.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
-						}
-						fullReply.WriteString(chunk.Content)
-						tokenCount++
-						trySend(providerCtx, outCh, api.StreamChunk{Content: chunk.Content})
+				if chunk.Content != "" {
+					if !firstTokenLogged {
+						firstTokenLogged = true
+						logx.Printf("LATENCY provider.first_token ms=%d", time.Since(start).Milliseconds())
 					}
+					fullReply.WriteString(chunk.Content)
+					tokenCount++
+					trySend(providerCtx, outCh, api.StreamChunk{Content: chunk.Content})
+				}
 
-					if chunk.Done {
-						a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
-						trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
-						return
-					}
+				if chunk.Done {
+					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
+					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+					return
 				}
 			}
 
@@ -774,45 +770,43 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		tokenCount := 0
 		firstTokenLogged := false
 
-	localLoop:
 		for {
-			select {
-			case <-streamCtx.Done():
+			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
+			if ctxDone {
 				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
 				return
-			case chunk, ok := <-ch:
-				if !ok {
-					break localLoop
-				}
+			}
+			if !ok {
+				break
+			}
 
-				if chunk.Error != "" {
-					logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-					logx.Printf("Stream chunk error: %s", chunk.Error)
-					errMsg := "⚠️ " + chunk.Error
-					if a.clientSwapped(streamClient) {
-						errMsg = modelSwappedMidStreamMsg
-					}
-					a.recordStreamError(userMsg, errMsg, sessionID)
-					trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
-					return
+			if chunk.Error != "" {
+				logx.Printf("LATENCY llm.stream_chunk_error total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
+				logx.Printf("Stream chunk error: %s", chunk.Error)
+				errMsg := "⚠️ " + chunk.Error
+				if a.clientSwapped(streamClient) {
+					errMsg = modelSwappedMidStreamMsg
 				}
+				a.recordStreamError(userMsg, errMsg, sessionID)
+				trySend(streamCtx, outCh, api.StreamChunk{Error: errMsg, Done: true})
+				return
+			}
 
-				if chunk.Content != "" {
-					if !firstTokenLogged {
-						firstTokenLogged = true
-						logx.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
-					}
-					fullReply.WriteString(chunk.Content)
-					tokenCount++
-					trySend(streamCtx, outCh, chunk)
+			if chunk.Content != "" {
+				if !firstTokenLogged {
+					firstTokenLogged = true
+					logx.Printf("LATENCY llm.first_token total_ms=%d after_stream_ready_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), len(messages))
 				}
+				fullReply.WriteString(chunk.Content)
+				tokenCount++
+				trySend(streamCtx, outCh, chunk)
+			}
 
-				if chunk.Done {
-					logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
-					trySend(streamCtx, outCh, chunk)
-					return
-				}
+			if chunk.Done {
+				logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
+				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
+				trySend(streamCtx, outCh, chunk)
+				return
 			}
 		}
 
@@ -830,11 +824,61 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 	return outCh
 }
 
-// trySend sends a chunk to outCh or returns if the context is cancelled.
+// trySend delivers chunk to outCh, preferring the send over ctx cancellation.
+// A plain `select { case outCh <- chunk: case <-ctx.Done(): }` lets Go's
+// random tie-breaking between simultaneously-ready cases silently drop the
+// chunk — including the final Done:true one — if ctx happens to become Done
+// at the exact moment outCh's reader is also ready to receive. The reader
+// (handleSendStream) then sees the channel close via the *next* call's
+// `close(outCh)` with no final chunk ever written to the SSE response, so
+// the client never learns the stream finished and its "sending" UI state
+// is stuck forever. outCh is always created with a generous buffer (128) in
+// every caller, so the non-blocking attempt below succeeds immediately in
+// the overwhelming majority of real cases, sidestepping the race entirely;
+// the ctx-aware fallback only matters once that buffer is genuinely full,
+// which itself means the reader already stopped consuming.
 func trySend(ctx context.Context, outCh chan<- api.StreamChunk, chunk api.StreamChunk) {
 	select {
 	case outCh <- chunk:
+		return
+	default:
+	}
+	select {
+	case outCh <- chunk:
 	case <-ctx.Done():
+	}
+}
+
+// recvChunk receives the next chunk from ch, preferring an already-ready
+// value over ctx cancellation — the receive-side counterpart to trySend
+// above (see its doc comment for the full race explanation). Used by every
+// agentLoop/providerLoop/localLoop-style for-select in this file: a plain
+// `select { case <-ctx.Done(): return; case chunk, ok := <-ch: ... }` can
+// otherwise pick the ctx.Done() branch even when the *final* chunk (the one
+// carrying Done:true) is simultaneously ready, discarding it and reporting
+// "⏹️ Cevap durduruldu" for a response that had actually already finished
+// successfully. Generic because this file streams two different chunk
+// types depending on the path: api.StreamChunk (local model,
+// streamClient.ChatCompletionStream) and provider.StreamChunk (external
+// provider and agent-pipeline paths, providerRouter/agentExecutor).
+//
+// ok mirrors the standard "receive from a channel" convention: false means
+// ch is closed with nothing left to read. ctxDone mirrors ctx.Done(): true
+// means neither a value nor a close was immediately available and ctx was
+// cancelled first — the only case callers should treat as a genuine
+// cancellation.
+func recvChunk[T any](ctx context.Context, ch <-chan T) (chunk T, ok bool, ctxDone bool) {
+	select {
+	case chunk, ok = <-ch:
+		return chunk, ok, false
+	default:
+	}
+	select {
+	case chunk, ok = <-ch:
+		return chunk, ok, false
+	case <-ctx.Done():
+		var zero T
+		return zero, false, true
 	}
 }
 

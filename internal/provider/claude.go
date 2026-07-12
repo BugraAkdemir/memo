@@ -235,10 +235,7 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		data := strings.TrimPrefix(line, "data: ")
 
 		if data == "[DONE]" {
-			select {
-			case ch <- StreamChunk{Done: true}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Done: true})
 			return
 		}
 
@@ -261,18 +258,14 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			}
 			if delta.Delta.Text != "" {
 				fullContent.WriteString(delta.Delta.Text)
-				select {
-				case ch <- StreamChunk{Content: delta.Delta.Text}:
-				case <-ctx.Done():
+				trySend(ctx, ch, StreamChunk{Content: delta.Delta.Text})
+				if ctx.Err() != nil {
 					return
 				}
 			}
 
 		case "message_stop":
-			select {
-			case ch <- StreamChunk{Done: true, FinishReason: "stop"}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Done: true, FinishReason: "stop"})
 			return
 
 		case "error":
@@ -285,27 +278,18 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 			if err := json.Unmarshal([]byte(data), &errEvent); err != nil {
 				continue
 			}
-			select {
-			case ch <- StreamChunk{Error: errEvent.Error.Message, Done: true}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Error: errEvent.Error.Message, Done: true})
 			return
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		select {
-		case ch <- StreamChunk{Error: err.Error(), Done: true}:
-		case <-ctx.Done():
-		}
+		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true})
 		return
 	}
 
 	if fullContent.Len() > 0 {
-		select {
-		case ch <- StreamChunk{Done: true}:
-		case <-ctx.Done():
-		}
+		trySend(ctx, ch, StreamChunk{Done: true})
 	}
 }
 

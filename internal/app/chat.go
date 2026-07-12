@@ -15,6 +15,34 @@ import (
 	moodpkg "memo/internal/mood"
 )
 
+// forwardStream drains inner into out, preferring delivery of each chunk
+// over honoring ctx cancellation. A plain
+// `select { case out <- chunk: case <-ctx.Done(): return }` lets Go's
+// random tie-breaking between simultaneously-ready cases silently drop a
+// chunk — including the final Done:true one — if ctx happens to become
+// Done at the exact moment out's reader is also ready to receive it. The
+// HTTP handler reading the outer channel then just sees it close with no
+// final chunk ever written to the SSE response, so the client never learns
+// the stream finished and its "sending" UI state is stuck forever (see the
+// matching fix and full explanation on trySend in llm.go). out is always
+// created with a generous buffer (128) by every caller of this function, so
+// the non-blocking attempt below succeeds immediately in the overwhelming
+// majority of real cases, sidestepping the race entirely.
+func forwardStream(ctx context.Context, inner <-chan api.StreamChunk, out chan<- api.StreamChunk) {
+	for chunk := range inner {
+		select {
+		case out <- chunk:
+			continue
+		default:
+		}
+		select {
+		case out <- chunk:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
 // GetIncognito reports whether incognito mode is currently active.
 func (a *App) GetIncognito() bool {
 	a.incognitoMu.RLock()
@@ -105,13 +133,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		go func() {
 			defer close(out)
 			defer a.streamMu.Unlock()
-			for chunk := range innerCh {
-				select {
-				case out <- chunk:
-				case <-ctx.Done():
-					return
-				}
-			}
+			forwardStream(ctx, innerCh, out)
 		}()
 		return out
 	}
@@ -123,18 +145,8 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		out := make(chan api.StreamChunk, 128)
 		go func() {
 			defer close(out)
-			select {
-			case out <- api.StreamChunk{FinishReason: "status", Content: "web_search"}:
-			case <-ctx.Done():
-				return
-			}
-			for chunk := range a.sendMessageStreamInner(ctx, userMsg) {
-				select {
-				case out <- chunk:
-				case <-ctx.Done():
-					return
-				}
-			}
+			trySend(ctx, out, api.StreamChunk{FinishReason: "status", Content: "web_search"})
+			forwardStream(ctx, a.sendMessageStreamInner(ctx, userMsg), out)
 		}()
 		return out
 	}
@@ -238,13 +250,7 @@ func (a *App) sendMessageStreamInner(ctx context.Context, userMsg string) <-chan
 	go func() {
 		defer close(out)
 		defer a.streamMu.Unlock()
-		for chunk := range innerCh {
-			select {
-			case out <- chunk:
-			case <-ctx.Done():
-				return
-			}
-		}
+		forwardStream(ctx, innerCh, out)
 	}()
 	return out
 }
@@ -280,13 +286,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		go func() {
 			defer close(out)
 			defer a.streamMu.Unlock()
-			for chunk := range innerCh {
-				select {
-				case out <- chunk:
-				case <-ctx.Done():
-					return
-				}
-			}
+			forwardStream(ctx, innerCh, out)
 		}()
 		return out
 	}
@@ -314,13 +314,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	go func() {
 		defer close(out)
 		defer a.streamMu.Unlock()
-		for chunk := range innerCh {
-			select {
-			case out <- chunk:
-			case <-ctx.Done():
-				return
-			}
-		}
+		forwardStream(ctx, innerCh, out)
 	}()
 	return out
 }
@@ -362,13 +356,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		go func() {
 			defer close(out)
 			defer a.streamMu.Unlock()
-			for chunk := range innerCh {
-				select {
-				case out <- chunk:
-				case <-ctx.Done():
-					return
-				}
-			}
+			forwardStream(ctx, innerCh, out)
 		}()
 		return out
 	}
@@ -392,13 +380,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 	go func() {
 		defer close(out)
 		defer a.streamMu.Unlock()
-		for chunk := range innerCh {
-			select {
-			case out <- chunk:
-			case <-ctx.Done():
-				return
-			}
-		}
+		forwardStream(ctx, innerCh, out)
 	}()
 	return out
 }

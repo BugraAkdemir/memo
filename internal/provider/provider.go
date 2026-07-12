@@ -121,6 +121,29 @@ type StreamChunk struct {
 	FinishReason string `json:"finish_reason,omitempty"`
 }
 
+// trySend delivers chunk to ch, preferring the send over ctx cancellation. A
+// plain `select { case ch <- chunk: case <-ctx.Done(): }` lets Go's random
+// tie-breaking between simultaneously-ready select cases silently drop the
+// chunk — including the final Done:true one — if ctx becomes Done at the
+// exact moment ch's reader is also ready to receive. Every processSSE-style
+// producer in this package creates ch with a generous buffer (128), so the
+// non-blocking attempt below succeeds immediately in the overwhelming
+// majority of real cases, sidestepping the race entirely; the ctx-aware
+// fallback only matters once that buffer is genuinely full, which itself
+// means the reader already stopped consuming. Mirrors trySend in
+// internal/app/llm.go, one layer further upstream in the same pipeline.
+func trySend(ctx context.Context, ch chan<- StreamChunk, chunk StreamChunk) {
+	select {
+	case ch <- chunk:
+		return
+	default:
+	}
+	select {
+	case ch <- chunk:
+	case <-ctx.Done():
+	}
+}
+
 // ProviderConfig holds configuration for a single provider instance.
 type ProviderConfig struct {
 	Type       ProviderType `json:"type"`

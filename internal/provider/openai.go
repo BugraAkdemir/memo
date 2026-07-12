@@ -276,10 +276,7 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		}
 		data := strings.TrimPrefix(line, "data: ")
 		if data == "[DONE]" {
-			select {
-			case ch <- StreamChunk{Done: true}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Done: true})
 			return
 		}
 
@@ -295,37 +292,27 @@ func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 		delta := chunk.Choices[0].Delta
 		if delta.Content != "" {
 			fullContent.WriteString(delta.Content)
-			select {
-			case ch <- StreamChunk{Content: delta.Content}:
-			case <-ctx.Done():
+			trySend(ctx, ch, StreamChunk{Content: delta.Content})
+			if ctx.Err() != nil {
 				return
 			}
 		}
 
 		if chunk.Choices[0].FinishReason != nil {
-			select {
-			case ch <- StreamChunk{Done: true, FinishReason: *chunk.Choices[0].FinishReason}:
-			case <-ctx.Done():
-			}
+			trySend(ctx, ch, StreamChunk{Done: true, FinishReason: *chunk.Choices[0].FinishReason})
 			return
 		}
 	}
 
 	if err := scanner.Err(); err != nil {
-		select {
-		case ch <- StreamChunk{Error: err.Error(), Done: true}:
-		case <-ctx.Done():
-		}
+		trySend(ctx, ch, StreamChunk{Error: err.Error(), Done: true})
 		return
 	}
 
 	// Always send Done when the stream ends without [DONE] or FinishReason —
 	// tool-use-only responses produce empty fullContent but still need to
 	// unblock the consumer.
-	select {
-	case ch <- StreamChunk{Done: true}:
-	case <-ctx.Done():
-	}
+	trySend(ctx, ch, StreamChunk{Done: true})
 }
 
 type openAIStreamChunk struct {

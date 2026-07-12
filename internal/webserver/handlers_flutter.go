@@ -48,8 +48,34 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 	ch := s.fullBridge.SendMessageStream(ctx, req.Message)
+	streamSSE(ctx, w, flusher, ch)
+}
 
+// streamSSE drains ch, writing each chunk to w as an SSE `data: {...}` line
+// until ch closes or a Done:true chunk is written, preferring delivery of an
+// already-ready chunk over honoring ctx cancellation. A plain
+// `select { case <-ctx.Done(): return; case chunk, ok := <-ch: ... }` lets
+// Go's random tie-breaking between simultaneously-ready select cases silently
+// drop a chunk — including the final Done:true one — if ctx becomes Done at
+// the exact moment ch also has a value ready. The Flutter client then never
+// sees a `"done":true` line, so its "sending" UI state (the stop-button icon)
+// stays stuck forever even though the backend finished the turn cleanly (see
+// the matching fix on trySend/recvChunk in internal/app/llm.go and
+// forwardStream in internal/app/chat.go — this is the outermost, last-hop
+// layer of the same bug).
+func streamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, ch <-chan api.StreamChunk) {
 	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				return
+			}
+			if writeSSEChunk(w, flusher, chunk) {
+				return
+			}
+			continue
+		default:
+		}
 		select {
 		case <-ctx.Done():
 			return
@@ -57,18 +83,21 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 			if !ok {
 				return
 			}
-			data, err := json.Marshal(chunk)
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
-			flusher.Flush()
-
-			if chunk.Done {
+			if writeSSEChunk(w, flusher, chunk) {
 				return
 			}
 		}
 	}
+}
+
+func writeSSEChunk(w http.ResponseWriter, flusher http.Flusher, chunk api.StreamChunk) bool {
+	data, err := json.Marshal(chunk)
+	if err != nil {
+		return false
+	}
+	fmt.Fprintf(w, "data: %s\n\n", string(data))
+	flusher.Flush()
+	return chunk.Done
 }
 
 func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
@@ -133,26 +162,7 @@ func (s *Server) handleSendFileStream(w http.ResponseWriter, r *http.Request) {
 		ch = s.fullBridge.SendMessageWithFileStream(ctx, msg, tmpFilePath)
 	}
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case chunk, ok := <-ch:
-			if !ok {
-				return
-			}
-			data, err := json.Marshal(chunk)
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
-			flusher.Flush()
-
-			if chunk.Done {
-				return
-			}
-		}
-	}
+	streamSSE(ctx, w, flusher, ch)
 }
 
 // ─── Backup / Restore (.memo) ─────────────────────────────────────────────────
@@ -1606,27 +1616,7 @@ func (s *Server) handleWhatsAppChatStream(w http.ResponseWriter, r *http.Request
 	w.Header().Set("Connection", "keep-alive")
 	ctx := r.Context()
 	streamCh := s.fullBridge.WhatsAppChatStream(ctx, req.Message)
-
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		case chunk, ok := <-streamCh:
-			if !ok {
-				return
-			}
-			data, err := json.Marshal(chunk)
-			if err != nil {
-				continue
-			}
-			fmt.Fprintf(w, "data: %s\n\n", string(data))
-			flusher.Flush()
-
-			if chunk.Done {
-				return
-			}
-		}
-	}
+	streamSSE(ctx, w, flusher, streamCh)
 }
 
 // ─── Skill Handlers ──────────────────────────────────────────────

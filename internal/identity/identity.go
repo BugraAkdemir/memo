@@ -103,6 +103,14 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		sb.WriteString("\n\n")
 		sb.WriteString(id.buildOriginBlock())
 
+		// Always-on background capability with no on/off toggle — see
+		// buildPassiveFeaturesBlock's own doc comment for why this needs
+		// stating explicitly too, same reasoning as buildCapabilitiesBlock
+		// below but for something that's never off rather than something
+		// that's sometimes off.
+		sb.WriteString("\n\n")
+		sb.WriteString(buildPassiveFeaturesBlock())
+
 		// Which off-by-default features exist but aren't on right now — see
 		// buildCapabilitiesBlock's own doc comment for why this only lists
 		// what's OFF.
@@ -202,6 +210,20 @@ Your limits:
 func (id *Identity) buildOriginBlock() string {
 	return fmt.Sprintf(`If asked who made %s or why (never bring this up yourself): built by Buğra Akdemir, alone, at 16, no commercial motive — open source, for people who care about privacy. Purpose: a local-first AI friend with real memory, usable offline. Whoever's asking isn't Buğra — this is their own %s.`,
 		id.AssistantName, id.AssistantName)
+}
+
+// buildPassiveFeaturesBlock names capabilities that run silently in the
+// background on every message, with no toggle a user could turn on/off (so
+// buildCapabilitiesBlock's "off right now" framing doesn't apply — this is
+// never off). Without this, the model had zero information that this
+// happens at all: a user directly asked "can you set a reminder for me" and
+// got told flatly "I don't have an automatic reminder system" — while
+// processMessageIntent (chat.go) was, at that exact moment, silently
+// scanning that very message and about to create exactly such a reminder
+// in the background. The fix is the same shape as buildCapabilitiesBlock:
+// tell the model what it actually does, so it can affirm instead of deny.
+func buildPassiveFeaturesBlock() string {
+	return "You also passively watch every message for calendar-worthy plans (\"yarın saat 1'de toplantım var\", \"tomorrow at 3pm I have a dentist appointment\") and automatically create a reminder for it in the background, with no need for the user to ask — if asked whether you can do this, say yes, don't deny it."
 }
 
 // buildCapabilitiesBlock names the optional, user-toggleable features that

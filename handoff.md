@@ -1,3 +1,33 @@
+# Handoff — 2026-07-14 (Session 27, devam) — Bug #9: Memo, hep-açık takvim/hatırlatma özelliğini bilmiyor, sorulunca inkar ediyordu
+
+## Özet
+
+Kullanıcı ekran görüntüsü: "yarın saat 1pm'de toplantım var" dedi, Memo doğru şekilde arka planda hatırlatıcı kurdu (takvime ekleme sorunsuz çalışıyor, kullanıcı bunu doğruladı) — ama kullanıcı "olur öyle bir yeteneğin var mı" diye sorunca, Memo "otomatik hatırlatma kurma gibi bir sistemim yok" dedi ve kullanıcıya kendi alarmını kurmasını önerdi. Tam da o mesaj için arka planda gerçek bir hatırlatıcı kurulurken.
+
+## Kök neden
+
+`internal/app/chat.go`'daki `processMessageIntent` her mesajda koşulsuz çalışıyor (config'te bir toggle yok) ve takvim-değerli planları algılayıp otomatik hatırlatıcı kuruyor — ama `internal/identity/identity.go`'nun system prompt'unda bu konuda hiçbir bilgi yoktu. 2026-07-12'deki `buildCapabilitiesBlock` fix'i (agent modu/web arama için "kapalıyken inkar etme" sorununu çözen) sadece TOGGLE'I OLAN özellikleri kapsıyordu; takvim özelliğinin hiç toggle'ı yok, hep açık — o yüzden o fix'in kapsamı dışında kalmıştı.
+
+## Fix
+
+Yeni `buildPassiveFeaturesBlock()` (`identity.go`) — hep-açık takvim/hatırlatma özelliğini açıkça belirtiyor, `buildOriginBlock`'un hemen ardına, aynı gating (MinimalMode dışında koşulsuz, `CustomRole`'dan bağımsız) ile ekleniyor. Testler: `TestBuildSystemPrompt_MentionsPassiveReminderFeature`, `TestBuildSystemPrompt_MinimalMode_OmitsPassiveFeaturesBlock`.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build/vet/test ./... -race -count=1   → tüm 34 paket yeşil
+```
+
+**Gerçek uygulamada test edilemeyen:** GUI'de gerçekten "böyle bir yeteneğin var mı" diye sorup modelin artık doğru cevap verdiğini gözle doğrulamak (input-automation/display kısıtı). Statik doğrulama: yeni prompt bloğu test edildi, içeriği net ve doğru.
+
+**Commit:** AGENTS.md kuralı gereği otomatik atıldı.
+
+**Sıradaki oturum için:**
+1. Kullanıcı gerçek uygulamada tekrar sorup Memo'nun artık "evet, arka planda otomatik hatırlatıcı kurabiliyorum" gibi doğru bir cevap verdiğini doğrulamalı.
+2. Aynı desenin başka hep-açık arka plan özellikleri için de geçerli olup olmadığı düşünülebilir (ör. proaktif öneri motoru — ama o zaten `cfg.Proactive` ile varsayılan kapalı, bu kategoriye girmiyor).
+
+---
+
 # Handoff — 2026-07-14 (Session 27) — Bug #8: Agent modu her dış provider'da 400 veriyordu (leaked `danger` alanı) + ham JSON hata mesajları
 
 ## Özet

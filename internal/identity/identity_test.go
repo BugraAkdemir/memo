@@ -196,6 +196,33 @@ func TestBuildSystemPrompt_MinimalMode_OmitsCapabilitiesBlock(t *testing.T) {
 	}
 }
 
+// TestBuildSystemPrompt_MentionsPassiveReminderFeature is the fix for a
+// related user complaint: asked directly "can you set a reminder for me",
+// the model said it had no automatic reminder system at all — at the exact
+// moment processMessageIntent (chat.go) was silently scanning that same
+// message and about to create exactly such a reminder in the background.
+// Unlike agent mode/web search, this capability has no on/off toggle, so it
+// must always be mentioned (not gated the way buildCapabilitiesBlock only
+// mentions what's currently off).
+func TestBuildSystemPrompt_MentionsPassiveReminderFeature(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	if !strings.Contains(prompt, "calendar-worthy plans") {
+		t.Error("prompt should mention the always-on passive calendar/reminder feature")
+	}
+}
+
+// TestBuildSystemPrompt_MinimalMode_OmitsPassiveFeaturesBlock confirms this
+// new block is treated like the rest of the identity/persona injection
+// MinimalMode strips, same as the capabilities block above.
+func TestBuildSystemPrompt_MinimalMode_OmitsPassiveFeaturesBlock(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	prompt := id.BuildSystemPrompt(nil, false, false, false)
+	if strings.Contains(prompt, "calendar-worthy plans") {
+		t.Error("MinimalMode should strip the passive-features block too, not just identity/origin/style")
+	}
+}
+
 func TestUpdateUserName(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
 	id.Update("Bob", "", "", "")

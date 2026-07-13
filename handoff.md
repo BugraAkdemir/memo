@@ -1,45 +1,90 @@
-# Handoff — 2026-07-13 (Session 25) — Yeni özellik: "Hafızayı İçe Aktar" (diğer AI'lardan hafıza import)
+# Handoff — 2026-07-14 (Session 25) — "Hafızayı İçe Aktar" özelliği: build → gerçek dünya testi → 3 gerçek bug düzeltmesi
 
 ## Oturum Özeti
 
-Kullanıcı yeni bir özellik istedi: Ayarlar'da, kullanıcının ChatGPT/Gemini/Claude gibi başka AI'lara verebileceği bir prompt üretilsin, kullanıcı o AI'nin cevabını yapıştırsın, Memo bu bilgiyi profesyonelce parçalayıp hafızaya işlesin — ayrıca konuşma tarzı bilgisi de öğrenilip kullanıcıya özel system promptuna yansısın. Netleştirme turunda kullanıcı: yapısallaştırma için aktif LLM kullanılsın (kural tabanlı bölme değil), kapsam "kullanıcının her türlü bilgisi + konuşma tarzı + buna göre kişiselleştirilmiş system prompt" olsun, çıktı formatı bana bırakıldı (JSON seçildi).
+Kullanıcı yeni bir özellik istedi: Ayarlar'da, kullanıcının ChatGPT/Gemini/Claude gibi başka AI'lara verebileceği bir prompt üretilsin, kullanıcı o AI'nin cevabını yapıştırsın, Memo bu bilgiyi profesyonelce parçalayıp hafızaya işlesin — ayrıca konuşma tarzı bilgisi de öğrenilip kullanıcıya özel system promptuna yansısın. Netleştirme turunda kullanıcı: yapısallaştırma için aktif LLM kullanılsın (kural tabanlı bölme değil), çıktı formatı bana bırakıldı (JSON seçildi). Özellik ilk yazıldıktan sonra kullanıcı gerçekten Gemini ve ChatGPT'ye karşı test etti, sonra REPL CLI'da ayrı bir gerçek bug daha buldu — oturum, ilk build + 3 ayrı gerçek-dünya bug'ının bulunup düzeltilmesi şeklinde ilerledi. 13 commit, hepsi local (henüz push edilmedi).
 
-## Yapılan değişiklikler (backend + frontend, tek oturumda uçtan uca)
+## 1) İlk build (backend + frontend, Memory tab'a gömülü)
 
 **Backend:**
-1. `internal/config/config.go` — `IdentityConfig.LearnedStyleNotes string` eklendi (config.yaml'da kalıcı).
-2. `internal/identity/identity.go` — `Identity.LearnedStyleNotes` alanı + `SetLearnedStyleNotes`/`GetLearnedStyleNotes` (mutex korumalı, `MinimalMode` ile aynı desen). `BuildSystemPrompt`'ta stil talimatlarından hemen sonra, additive olarak enjekte ediliyor — `CustomRole`'ün aksine bunu değiştirmiyor, wizard persona/hand-written prompt altında da çalışıyor (origin block ile aynı gerekçe). `MinimalMode` açıkken diğer her şey gibi bu da tamamen kesiliyor.
-3. `internal/app/app.go` `Startup()` — `a.identity.SetLearnedStyleNotes(cfg.Identity.LearnedStyleNotes)` eklendi (kalıcı notu her açılışta yükler).
-4. `internal/app/memory_import.go` (yeni dosya) — `ImportMemoryFromText(ctx, rawText) (factsSaved int, styleUpdated bool, err error)`: aktif provider'a (`a.providerRouter`, `mergeMemoriesLLM` ile aynı hafif çağrı şekli) rawText'i yollayıp `{"facts": [...], "style_summary": "..."}` JSON'u istiyor, `extractJSON` (intent/orchestra/taskloop/proactive ile aynı desen — paket-özel private kopya, paylaşılan exported helper yok) ile prose içinden JSON'u çekiyor. Her fact ayrı ayrı mevcut `SaveExplicitMemory` (`/remember` komutuyla aynı yol) ile kaydediliyor — bilinçli olarak chunklanmıyor, çünkü LLM'e fact'leri zaten kısa/atomik tutması söyleniyor. `style_summary` doluysa `identity.SetLearnedStyleNotes` + `config.Save`.
-5. `internal/webserver/bridge.go`/`handlers_flutter.go`/`server.go` — `FullBridge.ImportMemoryFromText` (primitive dönüş tipi, `app` paketi tipini import etmiyor — bridge pattern'in decoupling'ini koruyor), `POST /api/memory/import-text` route'u.
+- `internal/config/config.go` — `IdentityConfig.LearnedStyleNotes string` (config.yaml'da kalıcı).
+- `internal/identity/identity.go` — `Identity.LearnedStyleNotes` + `SetLearnedStyleNotes`/`GetLearnedStyleNotes` (mutex korumalı, `MinimalMode` ile aynı desen). `BuildSystemPrompt`'ta stil talimatlarından hemen sonra additive enjekte ediliyor — `CustomRole`'ü değiştirmiyor, wizard persona altında da çalışıyor (origin block ile aynı gerekçe). `MinimalMode`'da kesiliyor.
+- `internal/app/app.go` `Startup()` — `a.identity.SetLearnedStyleNotes(cfg.Identity.LearnedStyleNotes)` kalıcı notu her açılışta yükler.
+- `internal/app/memory_import.go` (yeni dosya) — `ImportMemoryFromText(ctx, rawText) (factsSaved int, styleUpdated bool, err error)`. `extractJSON` (intent/orchestra/taskloop/proactive ile aynı desen — paket-özel private kopya).
+- `internal/webserver/bridge.go`/`handlers_flutter.go`/`server.go` — `POST /api/memory/import-text`.
 
-**Frontend:**
-6. `frontend/lib/core/api_client.dart` — `importMemoryFromText(String content)`.
-7. `frontend/lib/widgets/settings/tabs/memory_tab.dart` — "Memory Files" ile "Memory Analytics" bölümleri arasına yeni bir bölüm: kopyalanabilir prompt (TR/EN, `L10n.locale`'e göre), yapıştırma kutusu, "Hafızaya İşle" butonu, sonuç snackbar'ı (kaç fact kaydedildi + stil güncellendi mi).
-8. `frontend/lib/core/l10n.dart` — hem `_tr` hem `_en` map'lerine ~11 yeni key.
+**Frontend (ilk hali):** `api_client.dart`'a `importMemoryFromText`, Memory tab'ın içine bir alt bölüm (prompt + yapıştırma kutusu + buton), `l10n.dart`'a yeni key'ler.
 
-## Testler (yeni)
+Commit'ler: `ff30a22`(*), `f017f21`, `e92905a`, `69cce8d`.
 
-- `internal/app/memory_import_test.go`: `extractJSON` (düz JSON, prose-wrapped/markdown fence, string içinde brace, JSON yok), `ImportMemoryFromText`'in 3 hata yolu (boş metin, router yok, router'da aktif provider yok).
-- `internal/identity/identity_test.go`: `LearnedStyleNotes` — system prompt'a enjekte ediliyor, varsayılan boş, `CustomRole` altında da çalışıyor, `MinimalMode`'da kesiliyor.
+## 2) Bug #1 (kullanıcı buldu, koddan bağımsız bir keşif): `SaveExplicit` hiçbir zaman çalışmamış
 
-**Test edilmeyen:** Gerçek bir dış AI'nin (ChatGPT/Gemini) serbest metin cevabının gerçekten iyi yapısallaştığı — sadece JSON-extraction ve hata yollarının unit testleri var, gerçek bir provider'a canlı çağrı yapan bir mutlu-yol testi yok (bu codebase'de `mergeMemoriesLLM`'in de böyle bir testi yok, aynı emsal).
+Backend'i gerçek bir çalışan instance ile test ederken (`/api/memory/explicit/save` canlı çağrısı), `internal/memory/store.go`'daki `SaveExplicit`'in INSERT'inin VALUES tuple'ı 16 öğe listeliyordu ama kolon listesi 15'ti (chunk_index'in literal `0`'ından önce fazladan bir `?`). SQLite bunu "16 values for 15 columns" hatasıyla reddediyor — yani **`/remember` komutu (ve şimdi yeni özellik) hiçbir zaman gerçekten hafızaya kaydetmemiş**, sessizce başarısız oluyormuş. `SaveExplicit`'in sıfır test coverage'ı vardı, hiç yakalanmamıştı. Düzeltildi + `TestSaveExplicit` regresyon testi eklendi. Commit: `ff30a22`.
 
-## Doğrulama
+## 3) Gerçek dünya testi: kullanıcı prompt'u Gemini + ChatGPT'ye verdi
+
+İlk prompt (basit, tek paragraf) Gemini'de neredeyse boş sonuç verdi. Kullanıcı Gemini'nin **kendi gerçek** "Hafızayı Gemini'a aktarın" ayarlar sayfasından bir örnek prompt paylaştı (3. şahıs anlatım, kategorili, kanıt alıntılı, "Source: X" ile biten). Prompt o örnek temel alınarak **tamamen İngilizce, her zaman** (uygulama dili ne olursa olsun) yeniden yazıldı: 6 kategori (Demographics, Interests & Preferences, Relationships, Dated Events, **Communication Style & Personality** — bu kategori Gemini'nin orijinalinde yok, özellikle bu özellik için eklendi —, Instructions), her girişte Evidence/Basis satırı, "Source: <name>" ile bitiş.
+
+İlk redesign sonrası tekrar test edildiğinde: **Gemini yine zayıf sonuç verdi** (sadece 1 talimat + 1 demografik bilgi), **ChatGPT aynı prompt'la çok zengin, 6 kategorinin tamamını dolduran bir profil üretti**. Sonuç: prompt'un kendisi çalışıyor, Gemini'nin zayıflığı Gemini'nin kendi sınırlaması (muhtemelen tam konuşma geçmişini taramıyor), prompt sorunu değil.
+
+Backend'in yapılandırma promptu (`importMemorySystemPrompt`) bu kategorili/Evidence-Basis/Source formatını tanıyacak şekilde güncellendi: kategori 1-4'ü ayrı fact'lere, 5+6'yı (kişilik + davranış talimatları, ör. "her zaman neden açıklaması ekle" gibi standing instruction'lar) tek bir `style_summary`'ye katlıyor — çünkü style_summary her yanıta enjekte ediliyor, fact'ler gibi olasılıksal aranmıyor.
+
+Commit'ler: `d72abe1`, `a5c4a4b`.
+
+## 4) Kullanıcı isteği: ayrı sayfa + tasarım + kapsam daraltma
+
+Kullanıcı Gemini'nin gerçek ayarlar sayfasının ekran görüntüsünü verdi ("bu tarz renklere uygun bir tasarım istiyorum"), 3 şey istedi: (a) bu tasarıma benzer bir sayfa, (b) Memory tab'ın **içinde değil, ayrı bir Settings sayfası** olarak, (c) "önce biraz sohbet et" uyarısı, (d) Gemini'nin sayfasındaki "Sohbetleri içe aktarın" (.zip conversation import) kısmını **yapma**.
+
+- Yeni `frontend/lib/widgets/settings/tabs/memory_import_tab.dart` — numaralı adım rozetleri (①②), kart yerleşimi, pill butonlar, `translate.svg` ikonu. `memory_tab.dart`'tan bölüm tamamen çıkarıldı.
+- `settings_dialog.dart`'a yeni tab kaydı (Memory'nin hemen sağı, index 4, sonraki tüm case'ler bir kaydırıldı).
+- `warningOrange` tonlu tip banner: "önce biraz sohbet etmiş olman gerekiyor, yoksa zayıf sonuç dönebilir."
+- Conversation-import (.zip) kısmı bilinçli olarak yapılmadı.
+
+Commit'ler: `1d92b73`, `a5c4a4b`.
+
+## 5) Bug #2 (kullanıcı buldu): local-only kurulumda özellik hiç çalışmıyormuş + timeout'a kadar bekliyormuş
+
+`ImportMemoryFromText` doğrudan `a.providerRouter.ChatCompletion`'a gidiyordu — `callLLM`'in gerçek yönlendirme zincirini (Orchestra → dış provider → yerel model, `internal/app/llm.go`) tamamen atlıyordu. Sonuç: (1) sadece yerel model çalışıyorsa özellik hiç çalışmıyordu (yerel modeli hiç denemiyordu), (2) hiçbir şey bağlı değilse canlı bir ağ isteği yapıp kendi 90s timeout'una çarpana kadar sessizce bekliyordu, kullanıcıya hiçbir şey söylemeden.
+
+Düzeltme: artık `a.callLLM(ctx, msgs)` kullanıyor (bu paketteki `updateMoodAsync`/`buildLearningDecider` ile aynı desen) — doğru yönlendirme bedavaya geliyor, ve callLLM'in zaten var olan anlık "⚠️ Yerel model yüklenmemiş..." mesajı (`isLLMErrorReply` ile tespit edilip Go error'a çevriliyor) hemen dönüyor, artık timeout yok. Regresyon testi: `TestImportMemoryFromTextNoModelFailsFastWithClearMessage`.
+
+Commit'ler: `20b3bd9`, `a82214f`.
+
+## 6) Bug #3 (kullanıcı buldu): "içe aktardığımda hiçbir tepki yok"
+
+`MemoryImportTab`, `SettingsDialog`'un modal `Dialog`'unun içinde — bu dialog, uygulamanın kök `Scaffold`'unun overlay yığınında üstünde duruyor. `ScaffoldMessenger.of(context).showSnackBar(...)` kök Scaffold'a bağlanıyor, yani snackbar dialog'un **arkasında** render ediliyor — Settings açıkken hiç görünmüyor. Hem "Hafızaya İşle" hem "Prompt'u Kopyala" bunu kullanıyordu.
+
+Düzeltme: ikisi de artık sonucu sayfanın kendi içinde inline bir `_StatusBanner` (yeşil ✓ başarı / kırmızı ⚠ hata) olarak gösteriyor, modal'dan bağımsız her zaman görünür. **Not:** Bu SnackBar-arkasında-kalma sorunu muhtemelen Settings'teki diğer sekmelerde de var (dokunulmadı, kapsam dışı bırakıldı — sadece bu özellik için düzeltildi).
+
+Commit'ler: `5be26ca`, `4fc4aa9`.
+
+## 7) Bug #4 (kullanıcı buldu, farklı bir yerde — terminal REPL): embedding hatası hiç gösterilmiyormuş
+
+Kullanıcı terminal REPL'i (`internal/replcli`) test ederken şunu fark etti: karşılama bannerındaki "Hafıza:" satırı embedding gerçekten çalışmasa bile hep "açık" görünüyor, ve mesaj başına "✓ hafıza kaydedildi" bazen hiç yazmıyor ama neden yazmadığı hiç açıklanmıyor. Araştırma: backend zaten (`autoStartEmbeddingModel`/`startupEmbeddingModel`/`saveMemorySync`, `internal/app/llama.go`+`embedding.go`+`memory.go`) port dolu/auto-start başarısız/model bulunamadı gibi durumlarda net `memory:error` event'leri yayınlıyordu — ama **REPL bunları hiç dinlemiyordu**, sadece `memory:saved`'a bakıyordu.
+
+Düzeltme (`internal/replcli/repl.go`): yeni `eventDataSince()` helper (`memorySavedSince`'in "bu turdan sonra" mantığını genelleştirip event data'sını da döndürüyor). `printWelcome()` artık hafıza "kapalı" gösterildiğinde ring buffer'daki mevcut `memory:error`'ı arayıp gerçek sebebi banner'ın altında yazıyor. `reportMemorySaved` artık "✓ hafıza kaydedildi" gelmezse ~2.4s'lik pencerede bir `memory:error` var mı diye de bakıp "⚠ <gerçek sebep>" yazıyor, sessizce vazgeçmek yerine. `saveMemorySync`'in "bağlantı yok" tipi hataları susturma mantığına (API-only kurulumlar için bilinçli) dokunulmadı — sadece zaten yayınlanan event'ler REPL'e görünür hale getirildi. 4 regresyon testi eklendi.
+
+Commit'ler: `6d94f63`, `b04c631`.
+
+## Doğrulama (oturum boyunca, her adımdan sonra tekrar tekrar)
 
 ```
-CGO_ENABLED=1 go build/vet/test ./... -race -count=1   → tüm paketler yeşil (yeni testler dahil)
+CGO_ENABLED=1 go build/vet/test ./... -race -count=1   → tüm 34 paket yeşil
 GOOS=windows go vet ./...                               → temiz
 flutter analyze lib/                                    → aynı 4 bilinen info-uyarısı, yeni uyarı yok
 flutter test                                             → 103/103 yeşil
+flutter build linux --debug                             → gerçek binary başarıyla derlendi
 ```
 
-**Gerçek uygulamada denenmedi** (UI'yi açıp gerçek bir dış AI cevabı yapıştırarak uçtan uca akışı görmek) — bu oturumda sadece kod yazıldı + otomatik testlerle doğrulandı.
+**Gerçek uygulamada test edilen kısım:** `/api/memory/explicit/save` ve `/api/memory/import-text` canlı bir backend'e karşı curl ile çağrıldı (bug #1'i bu şekilde yakaladık). Gerçek Gemini + ChatGPT çıktıları kullanıcı tarafından test edildi (bug ne yok ne var, prompt kalitesini doğruladı). Terminal REPL kullanıcı tarafından gerçek kullanımda test edildi (bug #4'ü bu şekilde bulduk).
+
+**Gerçek uygulamada test edilemeyen:** Flutter GUI'de Settings → "Hafızayı İçe Aktar" sayfasına tıklayıp gerçek render'ı görmek — bu ortamda input-automation aracı yok (xdotool/ydotool/wmctrl), uygulama direkt chat ekranına açılıyor.
 
 **Sıradaki oturum için:**
-1. Gerçek uygulamada elle test: Settings → Memory → yeni bölüm, prompt kopyala, gerçek bir ChatGPT/Gemini cevabı yapıştır, sonucu gözlemle.
-2. Commit'ler henüz atılmadı (kullanıcı onayı bekleniyor).
-3. Eğer gerçek dünyada LLM'in "sadece JSON dön" talimatına uymadığı görülürse (özellikle zayıf lokal modellerde), bir retry/fallback mekanizması eklenebilir.
+1. Kullanıcı Flutter GUI'deki yeni sayfayı gerçekten deneyip inline status banner'ın (bug #3 düzeltmesi) düzgün göründüğünü doğrulamalı.
+2. Commit'ler push edilmedi (13 commit, `origin/main`'in 13 ilerisinde).
+3. SnackBar-arkasında-modal sorunu Settings'in diğer sekmelerinde de olabilir — audit edilmedi, bilinçli olarak bu oturumun kapsamı dışında bırakıldı.
+4. Eğer gerçek dünyada zayıf bir lokal modelin "sadece JSON dön" talimatına uymadığı görülürse, bir retry/fallback mekanizması eklenebilir.
 
 ---
 

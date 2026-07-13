@@ -243,6 +243,11 @@ type IdentityConfig struct {
 	// on a tight local-model context budget. Off by default (false), since
 	// most users want the persona/identity behavior.
 	MinimalMode bool `yaml:"minimal_mode"`
+	// LearnedStyleNotes is a short paragraph describing the user's
+	// communication style/personality, produced by the "import memory from
+	// another AI" feature (internal/app/memory_import.go) — injected into
+	// BuildSystemPrompt alongside the fixed Style instructions.
+	LearnedStyleNotes string `yaml:"learned_style_notes"`
 }
 
 type MemoryConfig struct {

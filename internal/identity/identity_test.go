@@ -69,6 +69,43 @@ func TestBuildSystemPrompt_MinimalMode_IgnoresCustomRoleToo(t *testing.T) {
 	}
 }
 
+func TestLearnedStyleNotesAppearsInSystemPrompt(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	id.SetLearnedStyleNotes("Alice prefers short, blunt answers with no filler.")
+	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	if !strings.Contains(prompt, "Alice prefers short, blunt answers with no filler.") {
+		t.Error("learned style notes should be injected into the system prompt")
+	}
+}
+
+func TestLearnedStyleNotesEmptyByDefault(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	if id.GetLearnedStyleNotes() != "" {
+		t.Errorf("GetLearnedStyleNotes() = %q, want empty by default", id.GetLearnedStyleNotes())
+	}
+}
+
+func TestLearnedStyleNotesAppliesUnderCustomRoleToo(t *testing.T) {
+	// Additive, unlike CustomRole itself — should still apply under a
+	// wizard persona or fully custom prompt, same reasoning as the origin
+	// block above.
+	id := New("Alice", "Memo", "casual", "You are a pirate.", false)
+	id.SetLearnedStyleNotes("Alice likes emoji.")
+	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	if !strings.Contains(prompt, "Alice likes emoji.") {
+		t.Error("learned style notes should still be injected even when CustomRole is set")
+	}
+}
+
+func TestLearnedStyleNotesStrippedByMinimalMode(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	id.SetLearnedStyleNotes("Alice likes emoji.")
+	prompt := id.BuildSystemPrompt(nil, false, true, true)
+	if strings.Contains(prompt, "Alice likes emoji.") {
+		t.Error("MinimalMode should strip learned style notes too")
+	}
+}
+
 func TestBuildSystemPrompt_MinimalMode_StillIncludesMemory(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", true)
 	memories := []memory.MemoryResult{{Content: "User likes coffee", Similarity: 0.95}}

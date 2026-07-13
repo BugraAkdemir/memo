@@ -25,6 +25,15 @@ type Identity struct {
 	// racing on a bare bool.
 	MinimalMode   bool
 	minimalModeMu sync.RWMutex
+
+	// LearnedStyleNotes is a short paragraph describing the user's
+	// communication style/personality, learned via the "import memory from
+	// another AI" feature (internal/app/memory_import.go) rather than typed
+	// in directly. Injected in BuildSystemPrompt right after the fixed
+	// Style instructions — additive, so it works whether or not CustomRole
+	// is set, unlike SystemRole/CustomRole which replaces the whole block.
+	LearnedStyleNotes   string
+	learnedStyleNotesMu sync.RWMutex
 }
 
 func New(userName, assistantName, style, customRole string, minimalMode bool) *Identity {
@@ -59,6 +68,22 @@ func (id *Identity) GetMinimalMode() bool {
 	return id.MinimalMode
 }
 
+// SetLearnedStyleNotes replaces the learned communication-style paragraph
+// injected into BuildSystemPrompt. Concurrency-guarded for the same reason
+// as SetMinimalMode: a memory-import request (HTTP handler goroutine) can
+// race an in-flight BuildSystemPrompt call for a streaming reply.
+func (id *Identity) SetLearnedStyleNotes(notes string) {
+	id.learnedStyleNotesMu.Lock()
+	id.LearnedStyleNotes = notes
+	id.learnedStyleNotesMu.Unlock()
+}
+
+func (id *Identity) GetLearnedStyleNotes() string {
+	id.learnedStyleNotesMu.RLock()
+	defer id.learnedStyleNotesMu.RUnlock()
+	return id.LearnedStyleNotes
+}
+
 func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled bool) string {
 	var sb strings.Builder
 
@@ -89,6 +114,14 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		// Style instructions
 		sb.WriteString("\n\n")
 		sb.WriteString(GetStyleInstructions(id.Style))
+
+		// Learned personalization — additive, from imported memory (see
+		// LearnedStyleNotes doc comment), not gated behind CustomRole so it
+		// still applies under a wizard persona or a fully custom prompt.
+		if notes := id.GetLearnedStyleNotes(); notes != "" {
+			sb.WriteString("\n\nWhat you've learned about how this user likes to be talked to (from imported context, adapt your tone accordingly):\n")
+			sb.WriteString(notes)
+		}
 	}
 
 	// Memory context — truncate to fit within a reasonable budget. Included

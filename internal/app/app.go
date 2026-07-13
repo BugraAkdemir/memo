@@ -292,6 +292,7 @@ func (a *App) Startup(ctx context.Context) {
 	}()
 
 	a.identity = identity.New(cfg.Identity.UserName, cfg.Identity.AssistantName, cfg.Identity.Style, cfg.Identity.SystemRole, cfg.Identity.MinimalMode)
+	a.identity.SetLearnedStyleNotes(cfg.Identity.LearnedStyleNotes)
 
 	moodCfg := moodpkg.Config{
 		Enabled:          a.cfg.Mood.Enabled,

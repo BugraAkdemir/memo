@@ -1776,6 +1776,26 @@ func (s *Server) handleMemoryExplicitDelete(w http.ResponseWriter, r *http.Reque
 	writeJSON(w, map[string]any{"ok": true, "deleted": deleted})
 }
 
+func (s *Server) handleMemoryImportText(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Content string `json:"content"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Content) == "" {
+		http.Error(w, "content required", http.StatusBadRequest)
+		return
+	}
+	factsSaved, styleUpdated, err := s.fullBridge.ImportMemoryFromText(r.Context(), body.Content)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "facts_saved": factsSaved, "style_updated": styleUpdated})
+}
+
 func (s *Server) handleMemoryExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet || s.fullBridge == nil {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)

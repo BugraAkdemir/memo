@@ -147,6 +147,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/memory/debug-search", s.handleMemoryDebugSearch)
 	route("/api/memory/explicit/save", s.handleMemoryExplicitSave)
 	route("/api/memory/explicit/delete", s.handleMemoryExplicitDelete)
+	route("/api/memory/import-text", s.handleMemoryImportText)
 	route("/api/memory/export", s.handleMemoryExport)
 	route("/api/memory/import", s.handleMemoryImport)
 	route("/api/memory/stats", s.handleMemoryStats)

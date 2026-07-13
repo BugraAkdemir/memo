@@ -90,7 +90,12 @@ class ChatSidebar extends ConsumerWidget {
                 ),
               ),
               data: (chats) {
-                final normalChats = chats.where((c) => !c.isAgentChat).toList();
+                // Every chat shows here, including ones created from the CLI
+                // (always tagged isAgentChat since it always passes a project
+                // path) — otherwise CLI chat history is invisible in the GUI
+                // outside the separate, agent-only "Ajan" tab. That tab keeps
+                // its own filtered view; this is just no longer exclusive.
+                final normalChats = chats;
                 if (normalChats.isEmpty) {
                   return Center(
                     child: Padding(

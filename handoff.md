@@ -1,3 +1,28 @@
+# Handoff — 2026-07-14 (Session 26, devam) — Bug #6: CLI sohbetleri GUI'nin "Sohbetler" listesinde görünmüyordu
+
+## Özet
+
+Kullanıcı: "CLI'de yapılan chat geçmişini GUI'da göremiyorum". Kök neden: `internal/replcli/repl.go`'daki `startFreshChat()` her zaman `NewAgentChat(s.projectPath)` çağırıyor — agent modu hiç kullanılmasa bile. Backend'in `IsAgentChat` ve frontend'in `ChatSession.isAgentChat`'i salt "project_path dolu mu"ya bakıyor, CLI her zaman cwd'yi project_path olarak geçtiği için **her** CLI sohbeti `isAgentChat=true` oluyor. `chat_sidebar.dart`'ın "Sohbetler" listesi bunları bilerek dışlıyordu (`!c.isAgentChat`), sadece "Ajan" sekmesinde görünüyorlardı.
+
+Gerçek veriyle doğrulandı: `~/.memo/data/sessions/`'daki 13 sohbetten 11'i CLI'den (project_path = `/home/bugra`), başlıkları "Kanka Muhabbeti", "Hobi Sohbeti" gibi sıradan sohbetler — agent/tool kullanımıyla alakasız, ama "Ajan" sekmesine hapsolmuşlar.
+
+## Düzeltme
+
+`frontend/lib/widgets/chat_sidebar.dart` — "Sohbetler" listesi artık `isAgentChat` filtresi uygulamıyor, tüm sohbetleri gösteriyor. "Ajan" sekmesi (`agent_screen.dart`) dokunulmadı, kendi filtreli görünümünü korumaya devam ediyor — bir sohbet artık her ikisinde de görünebilir. `ChatScreen` zaten `agent_event` badge'lerini render ediyor, o yüzden eski bir CLI sohbeti açıldığında tool aktivitesi doğru görünüyor.
+
+## Doğrulama
+
+```
+flutter analyze lib/widgets/chat_sidebar.dart   → temiz (bilinen tek info uyarısı)
+flutter test                                     → 103/103 yeşil
+```
+
+**Gerçek uygulamada test edilemeyen:** Bu ortamda GUI'yi gerçekten açıp "Sohbetler" listesinde CLI sohbetlerinin göründüğünü gözle doğrulamak (input-automation/display kısıtı, önceki oturumlarla aynı). Statik olarak: filtre kaldırıldı, `chats` listesi doğrudan kullanılıyor, `chatListProvider` zaten backend'in tüm sohbetlerini (project_path farketmeksizin) döndürüyor — mantık zinciri eksiksiz.
+
+**Commit edilmedi.**
+
+---
+
 # Handoff — 2026-07-14 (Session 26) — Bug #5: "durdur" ikonu takılı kalıyordu, cevap sessizce kesiliyordu
 
 ## Oturum Özeti

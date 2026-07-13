@@ -358,12 +358,45 @@ func (s *session) reportMemorySaved(before Event, hadBefore bool) {
 		if err != nil || len(events) == 0 {
 			continue
 		}
-		if !memorySavedSince(events, before, hadBefore) {
-			continue
+		if memorySavedSince(events, before, hadBefore) {
+			fmt.Fprintln(s.out, dim("✓ hafıza kaydedildi"))
+			return
 		}
-		fmt.Fprintln(s.out, dim("✓ hafıza kaydedildi"))
-		return
+		// A save was attempted and actually failed (backend already emits
+		// memory:error for this — autoStartEmbeddingModel/startupEmbeddingModel/
+		// saveMemorySync, internal/app/*.go) — surface it instead of silently
+		// giving up after this loop, which used to look exactly like nothing
+		// happened even though the backend knew perfectly well why.
+		if msg, ok := eventDataSince(events, before, hadBefore, "memory:error"); ok {
+			fmt.Fprintln(s.out, yellow("⚠ "+msg))
+			return
+		}
 	}
+}
+
+// eventDataSince returns the Data of the most recent event named `name`
+// that occurs after the point where `before` was last seen (or anywhere in
+// events, if hadBefore is false) — same "after a snapshot point" semantics
+// as memorySavedSince, generalized to also return the matched event's data.
+func eventDataSince(events []Event, before Event, hadBefore bool, name string) (string, bool) {
+	search := events
+	if hadBefore {
+		beforeIdx := -1
+		for i, e := range events {
+			if e == before {
+				beforeIdx = i
+			}
+		}
+		if beforeIdx != -1 {
+			search = events[beforeIdx+1:]
+		}
+	}
+	for i := len(search) - 1; i >= 0; i-- {
+		if search[i].Name == name {
+			return search[i].Data, true
+		}
+	}
+	return "", false
 }
 
 // memorySavedSince reports whether a memory:saved event occurs in events
@@ -401,6 +434,21 @@ func memorySavedSince(events []Event, before Event, hadBefore bool) bool {
 func (s *session) printWelcome() {
 	memory, active := s.memorySummary()
 	fmt.Fprintln(s.out, welcomePanel(s.modelSummary(), memory, active))
+	// Embedding auto-start (autoStartEmbeddingModel/startupEmbeddingModel,
+	// internal/app/llama.go+embedding.go) can fail for reasons the banner
+	// alone doesn't explain — no embedding model file found, the model
+	// download failed, or Start itself failed (e.g. its port is already
+	// occupied by something else). Any of those already emits a
+	// memory:error event with the real reason; only silence in this REPL
+	// ever kept it from the user. Gated on !active so a stale error from
+	// earlier in the ring isn't shown once embedding is actually up.
+	if !active {
+		if events, err := s.client.Events(s.ctx); err == nil {
+			if msg, ok := eventDataSince(events, Event{}, false, "memory:error"); ok {
+				fmt.Fprintln(s.out, yellow("⚠ "+msg))
+			}
+		}
+	}
 }
 
 // modelSummary describes which model/provider is actually going to answer —

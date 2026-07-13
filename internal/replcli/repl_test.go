@@ -64,6 +64,44 @@ func TestMemorySavedSince_NoSaveAtAll(t *testing.T) {
 	}
 }
 
+// Regression tests for eventDataSince: reportMemorySaved/printWelcome used
+// to only ever check for memory:saved, so a memory:error the backend had
+// already emitted (autoStartEmbeddingModel/startupEmbeddingModel/
+// saveMemorySync all emit one with a real, specific reason) was never
+// surfaced anywhere in the REPL — silently indistinguishable from a save
+// that just hadn't finished yet.
+func TestEventDataSince_FindsErrorAnywhereWhenNoBefore(t *testing.T) {
+	events := []Event{{Name: "chat:done"}, {Name: "memory:error", Data: "port dolu"}}
+	msg, ok := eventDataSince(events, Event{}, false, "memory:error")
+	if !ok || msg != "port dolu" {
+		t.Errorf("eventDataSince = (%q, %v), want (\"port dolu\", true)", msg, ok)
+	}
+}
+
+func TestEventDataSince_IgnoresErrorThatPredatesThisTurn(t *testing.T) {
+	stale := Event{Name: "memory:error", Data: "old"}
+	events := []Event{stale, {Name: "chat:done"}}
+	if _, ok := eventDataSince(events, stale, true, "memory:error"); ok {
+		t.Error("expected eventDataSince to ignore a memory:error that was already there before this turn started")
+	}
+}
+
+func TestEventDataSince_FindsNewErrorAfterStaleOne(t *testing.T) {
+	stale := Event{Name: "memory:error", Data: "old"}
+	events := []Event{stale, {Name: "chat:done"}, {Name: "memory:error", Data: "new"}}
+	msg, ok := eventDataSince(events, stale, true, "memory:error")
+	if !ok || msg != "new" {
+		t.Errorf("eventDataSince = (%q, %v), want (\"new\", true)", msg, ok)
+	}
+}
+
+func TestEventDataSince_NoMatch(t *testing.T) {
+	events := []Event{{Name: "chat:done"}, {Name: "mood:updated"}}
+	if _, ok := eventDataSince(events, Event{}, false, "memory:error"); ok {
+		t.Error("expected eventDataSince to return false when there's no matching event")
+	}
+}
+
 // newTestServer wires up the five endpoints Run() calls, backed by a
 // scripted list of SSE lines to emit for every /api/send/stream call and a
 // recorder for every /api/agent/permission POST it receives.

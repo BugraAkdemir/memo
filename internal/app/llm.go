@@ -169,6 +169,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			chunk, ok, ctxDone := recvChunk(ctx, streamCh)
 			if ctxDone {
 				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
 				return
 			}
 			if !ok {
@@ -668,6 +669,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				chunk, ok, ctxDone := recvChunk(providerCtx, ch)
 				if ctxDone {
 					a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
+					trySend(providerCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
 					return
 				}
 				if !ok {
@@ -774,6 +776,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			chunk, ok, ctxDone := recvChunk(streamCtx, ch)
 			if ctxDone {
 				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
+				trySend(streamCtx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
 				return
 			}
 			if !ok {

@@ -2,9 +2,14 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
 	"testing"
+	"time"
 
 	"memo/internal/api"
+	"memo/internal/config"
 	"memo/internal/provider"
 )
 
@@ -141,5 +146,72 @@ func TestRecvChunk_NeverDropsReadyChunkUnderCancelledContext(t *testing.T) {
 		if !ok || !chunk.Done {
 			t.Fatalf("trial %d: recvChunk returned ok=%v chunk=%+v, want the ready final chunk", i, ok, chunk)
 		}
+	}
+}
+
+// TestCallLLMStream_ExternalProvider_CtxDoneSendsTerminalChunk is a
+// regression test: when a genuine ctxDone fires mid-stream (300s generation
+// budget elapsed, or the client disconnected — not the "value was ready
+// anyway" case recvChunk already protects above), the external-provider loop
+// in callLLMStream used to record "⏹️ Cevap durduruldu." to the session and
+// return WITHOUT ever sending a terminal chunk to outCh, unlike every other
+// return path in this file. outCh's close was the only signal the SSE
+// pipeline forwarded, so the live client never learned a response had been
+// cut off — it just silently stopped, indistinguishable from a hung
+// connection. Same gap existed in callAgentStream and the local-model loop.
+func TestCallLLMStream_ExternalProvider_CtxDoneSendsTerminalChunk(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"partial\"}}]}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		// Simulate a generation that's still running when the client gives
+		// up (timeout or disconnect) — never sends [DONE] or a finish_reason,
+		// just holds the connection open until the request context ends.
+		<-r.Context().Done()
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	}})
+
+	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	outCh := a.callLLMStream(ctx, []api.Message{api.NewTextMessage("user", "hi")}, "hi", "", "", "")
+
+	// Let the partial chunk arrive, then cut the stream — exercises
+	// recvChunk's real ctxDone branch (nothing else is ready on the channel).
+	time.Sleep(100 * time.Millisecond)
+	cancel()
+
+	gotTerminal := false
+	timeout := time.After(2 * time.Second)
+loop:
+	for {
+		select {
+		case chunk, ok := <-outCh:
+			if !ok {
+				break loop
+			}
+			if chunk.Done {
+				gotTerminal = true
+				if chunk.Error == "" {
+					t.Errorf("terminal chunk after ctx cancellation has no Error set: %+v", chunk)
+				}
+			}
+		case <-timeout:
+			t.Fatal("timed out waiting for outCh to close")
+		}
+	}
+
+	if !gotTerminal {
+		t.Fatal("outCh closed without ever sending a terminal (Done) chunk after ctx was cancelled mid-stream — the frontend never learns the turn ended, leaving its UI state stuck with no explanation")
 	}
 }

@@ -1,4 +1,40 @@
-# Handoff — 2026-07-14 (Session 25) — "Hafızayı İçe Aktar" özelliği: build → gerçek dünya testi → 3 gerçek bug düzeltmesi
+# Handoff — 2026-07-14 (Session 26) — Bug #5: "durdur" ikonu takılı kalıyordu, cevap sessizce kesiliyordu
+
+## Oturum Özeti
+
+Kullanıcı ekran görüntüsüyle bildirdi: cevap geliyor ama token'lar kesiliyor, gönder/durdur butonu "durdur" (kırmızı kare) ikonunda takılı kalıyor. Ekran görüntüsündeki aktif provider "OpenCode Zen" (dış sağlayıcı) idi. AGENTS.md'de bu tam semptomun 2026-07-12'de zaten düzeltildiği yazıyordu (SSE `Done:true` chunk'ının `ctx.Done()` ile yarışıp düşürülmesi) — ama kurulu binary bugünkü tarihli (00:14) ve bu fix çoktan içindeydi, yani gerçekten farklı bir kaynak aranması gerekiyordu.
+
+## Kök neden
+
+`internal/app/llm.go`'da `recvChunk`'ı tüketen üç döngünün de (`callAgentStream`, `callLLMStream`'in external-provider döngüsü, aynı fonksiyonun local-model döngüsü) `ctxDone` dalı — 2026-07-12'nin kapsamadığı ayrı bir durum: kanalda gerçekten hiçbir şey hazır değilken `ctx` gerçekten sona eriyor (300s generation bütçesi doldu ya da istemci bağlantıyı kesti) — sadece `a.recordStreamError(...)` (sadece session'a yazılıyor, akışa değil) çağırıp `return` ediyordu. Dosyadaki **her** başka hata/dönüş yolu `trySend(...Done:true)` çağırıp öyle dönerken, bu tek dal hiç çağırmıyordu. Sonuç: `outCh` sessizce kapanıyor, istemciye ne bir hata ne bir "durduruldu" mesajı ulaşıyor — kullanıcı sadece cevabın ortasında kesildiğini görüyor, açıklama yok.
+
+Bu, halihazırda dokümante edilmiş "chunk'ın select yarışında düşmesi" bug'ından **farklı ve ayrı** bir gerçek kod yolu eksikliği — o fix zaten doğruydu ama bu üç `ctxDone` dalını kapsamıyordu.
+
+## Düzeltme
+
+`internal/app/llm.go`'da üç noktaya da (satır ~172, ~671, ~777) `return`'den önce `trySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})` eklendi — dosyadaki diğer tüm hata dallarıyla aynı desen.
+
+**Regresyon testi:** `TestCallLLMStream_ExternalProvider_CtxDoneSendsTerminalChunk` (`internal/app/llm_test.go`) — `httptest` ile sahte bir OpenAI-uyumlu SSE sunucusu kuruluyor, bir parça içerik gönderip bağlantıyı `ctx` iptal edilene kadar açık tutuyor (gerçek bir zaman aşımı/kopan bağlantı senaryosunu simüle ediyor), sonra `outCh`'nin kapanmadan önce mutlaka `Done:true` + `Error` dolu bir terminal chunk yaydığını doğruluyor. Fix'ten önceki koda karşı `git stash` ile manuel doğrulandı — gerçekten fail ediyor.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build ./...              → temiz
+CGO_ENABLED=1 go vet ./...                → temiz
+CGO_ENABLED=1 go test ./... -race -count=1 → tüm 34 paket yeşil (yeni test dahil)
+```
+
+**Gerçek uygulamada test edilemeyen:** Bu ortamda GUI'yi gerçekten çalıştırıp "OpenCode Zen" ile 300s'lik bir gecikmeyi tetiklemek pratik değildi — fix, kod yolunun statik analiziyle (ekran görüntüsündeki aktif provider + backend log'larındaki gerçek session geçmişi) izole edilip `httptest` ile izole bir birim testinde doğrulandı, gerçek bir canlı OpenCode Zen isteğine karşı değil.
+
+**Commit edilmedi** — kullanıcı henüz commit istemedi.
+
+**Sıradaki oturum için:**
+1. Kullanıcı gerçek uygulamada tekrar aynı senaryoyu (yavaş/uzun bir dış provider cevabı) deneyip artık "⏹️ Cevap durduruldu." mesajının canlı olarak sohbette göründüğünü doğrulamalı.
+2. Eğer sorun hâlâ tekrarlanırsa, bir sonraki şüpheli: frontend'in `errorMessageProvider`'ının bu mesajı gerçekten bir banner/snackbar olarak gösterip göstermediği (memory-import özelliğinde daha önce yakalanan SnackBar-arkasında-modal deseniyle karşılaştırılmalı).
+
+---
+
+
 
 ## Oturum Özeti
 

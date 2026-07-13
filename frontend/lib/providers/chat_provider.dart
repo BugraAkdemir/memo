@@ -312,6 +312,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   }
 
   Future<void> sendMessage(String message) async {
+    debugPrint('[SEND-DEBUG] enter sendMessage msg=${message.substring(0, message.length > 20 ? 20 : message.length)} isSending=${ref.read(isSendingProvider)} disposed=$_disposed');
     if (ref.read(isSendingProvider)) return;
     // Claim the sending state synchronously, right after the guard check,
     // with no `await` in between — otherwise two sendMessage() calls fired
@@ -322,6 +323,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     // race through, clobbering the shared _cancelToken field and appending
     // two user-message bubbles for what was a single send.
     ref.read(isSendingProvider.notifier).state = true;
+    debugPrint('[SEND-DEBUG] claimed isSendingProvider=true');
 
     _stopped = false;
     _cancelToken = CancelToken();
@@ -329,6 +331,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
     // Intercept /remember and /forget before sending to AI
     if (await _handleMemoryCommand(message, api)) {
+      debugPrint('[SEND-DEBUG] handled as memory command, resetting isSendingProvider=false');
       ref.read(isSendingProvider.notifier).state = false;
       return;
     }
@@ -437,6 +440,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
             ref.read(streamingThinkingProvider.notifier).state = fullThinking;
           }
         }
+        debugPrint('[SEND-DEBUG] stream loop ended normally, disposed=$_disposed stopped=$_stopped fullReply.length=${fullReply.length}');
 
         // A chat switch mid-stream (ActiveChatIdNotifier.switchTo) calls
         // stopStreaming() then ref.invalidate(messagesProvider) — this
@@ -492,7 +496,8 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       _delayedRefreshTimer = Timer(const Duration(seconds: 2), () {
         if (!_disposed) ref.invalidate(chatListProvider);
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('[SEND-DEBUG] caught error: $e\n$st');
       if (_disposed) return;
       _stopped = false;
       ref.read(errorMessageProvider.notifier).state =
@@ -502,6 +507,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
     } finally {
+      debugPrint('[SEND-DEBUG] finally: disposed=$_disposed -> setting isSendingProvider=false');
       _cancelToken = null;
       if (!_disposed) {
         ref.read(isSendingProvider.notifier).state = false;

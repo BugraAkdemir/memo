@@ -313,16 +313,25 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
   Future<void> sendMessage(String message) async {
     if (ref.read(isSendingProvider)) return;
+    // Claim the sending state synchronously, right after the guard check,
+    // with no `await` in between — otherwise two sendMessage() calls fired
+    // back-to-back (double Enter press, OS key-repeat while Enter is held,
+    // a double click on the send button) can both read isSendingProvider as
+    // false and both proceed, since the claim used to happen after
+    // `await _handleMemoryCommand` below. That let two overlapping requests
+    // race through, clobbering the shared _cancelToken field and appending
+    // two user-message bubbles for what was a single send.
+    ref.read(isSendingProvider.notifier).state = true;
 
     _stopped = false;
     _cancelToken = CancelToken();
     final api = ref.read(apiClientProvider);
 
     // Intercept /remember and /forget before sending to AI
-    if (await _handleMemoryCommand(message, api)) return;
-
-    // Signal sending state
-    ref.read(isSendingProvider.notifier).state = true;
+    if (await _handleMemoryCommand(message, api)) {
+      ref.read(isSendingProvider.notifier).state = false;
+      return;
+    }
 
     // Reset the token counter for this new turn.
     ref.read(tokenUsageProvider.notifier).state = null;

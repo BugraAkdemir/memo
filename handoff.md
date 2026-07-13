@@ -1,3 +1,43 @@
+# Handoff — 2026-07-14 (Session 26, devam 2) — Bug #7: "durdur" ikonu takılması — asıl kök neden bulundu (Bug #5'in fix'i yetersizmiş)
+
+## Özet
+
+Bug #5'in fix'inden sonra kullanıcı `flutter run` ile (taze kod, stale binary değil) aynı hatayı tekrar üretti — hızlı/kısa yanıtlarda, her provider'da. Bu, Bug #5'in (300s ctxDone) bu spesifik semptomun kök nedeni OLMADIĞINI kanıtladı. Kullanıcı `/codebase-memory` ve `/code-review` ile detaylı analiz istedi.
+
+## Gerçek kök neden
+
+`frontend/lib/providers/chat_provider.dart`'ın `MessagesNotifier.sendMessage()`'ı: guard kontrolü (`if (isSendingProvider) return;`) ile asıl `isSendingProvider = true` ataması arasında `await _handleMemoryCommand(...)` var — **atomik değil**. İki `sendMessage()` çağrısı art arda (çift Enter basışı, Enter'ı basılı tutunca OS'un ürettiği tuş tekrarı, ya da gönder butonuna çift tık — `chat_input.dart`'ın `_handleKeyEvent`'i Enter'ı direkt `_send()`'e bağlıyor) bu boşluktan ikisi de `isSendingProvider`'ı `false` görüp geçebiliyor: iki ayrı HTTP isteği, paylaşılan `_cancelToken` alanının üzerine yazılması, aynı gönderim için iki kullanıcı balonu. Bu tamamen frontend'de, herhangi bir provider'a bağlı olmadan tetikleniyor — "her provider'da aynı sorun" gözlemiyle birebir örtüşüyor.
+
+## Doğrulama süreci
+
+Önce `frontend/test/providers/messages_notifier_reentrancy_test.dart` yazıldı: `sendMessage()`'ı arada `await` olmadan iki kez çağırıp kaç HTTP isteği gittiğini sayıyor. Fix'ten ÖNCE çalıştırıldı → **fail etti (2 istek)**, bug'ı kanıtladı. Sonra fix uygulandı (`isSendingProvider` claim'i guard'dan hemen sonra, `await`'ten önce, senkron olarak taşındı; `_handleMemoryCommand` gerçekten bir komutu işlerse claim geri `false`'a alınıyor). Test tekrar çalıştırıldı → **geçti (1 istek)**.
+
+## Bu oturumda ayrıca elenen teoriler (gerçek kod okuması ile, spekülasyon değil)
+
+- `internal/app/chat.go`'daki `forwardStream` — select/ctx-done deseni doğru, sızıntı yok.
+- `a.streamMu` global kilidi — her `TryLock()`'un `defer Unlock()`'u var, panic bile `close(outCh)`'tan önce `recoverStreamPanic` ile yakalanıyor.
+- Dart `stream.timeout()`'un `onTimeout`'ta `sink.close()` çağırmaması — ilk bakışta şüpheli ama `await for` bir error event'i gelince zaten throw edip çıkıyor, güvenli.
+- `isSendingProvider`'a yazılan her nokta (7 yer) tek tek listelenip kontrol edildi — sahipsiz `true` yok.
+- Yan bulgu (asıl bug'la alakasız, ayrı gerçek bug): `chat_input.dart`'taki `_sendWhatsApp`, `finishReason == 'status'`/`'usage'` chunk'larını filtrelemiyor — bu chunk'ların JSON içeriği yanıt metnine karışabilir. Düzeltilmedi, kapsam dışı bırakıldı (kullanıcıya bildirildi).
+
+## Doğrulama
+
+```
+flutter analyze lib/providers/chat_provider.dart   → temiz
+flutter test                                        → 104/104 yeşil (yeni test dahil)
+```
+
+**Gerçek uygulamada test edilemeyen:** Bu ortamda gerçek bir çift Enter/tuş-tekrarı senaryosunu GUI'de fiilen tetikleyip görsel olarak doğrulamak (input-automation/display kısıtı, önceki oturumlarla aynı sebep). Birim testi kanıtı güçlü (fix öncesi fail, fix sonrası geç), ama gerçek kullanıcı testi bekliyor.
+
+**Commit:** AGENTS.md kuralı gereği otomatik atıldı (bkz. commit log).
+
+**Sıradaki oturum için:**
+1. Kullanıcı gerçek uygulamada tekrar test edip "durdur" ikonu takılmasının artık olmadığını doğrulamalı — özellikle Enter'a hızlı basarak/basılı tutarak deneyerek.
+2. `chat_input.dart`'ın `_sendWhatsApp`'ındaki status/usage chunk filtreleme eksikliği hâlâ açık, düzeltilmedi.
+3. `sendFile()` ve `_sendWhatsApp()` zaten claim'i await'ten önce/hemen sonra yapıyordu (bu race'e sahip değillerdi) — sadece `sendMessage()` etkilenmişti, ama gelecekte bu iki fonksiyona benzer bir await eklenirse aynı deseni tekrarlamamak gerekir.
+
+---
+
 # Handoff — 2026-07-14 (Session 26, devam) — Bug #6: CLI sohbetleri GUI'nin "Sohbetler" listesinde görünmüyordu
 
 ## Özet

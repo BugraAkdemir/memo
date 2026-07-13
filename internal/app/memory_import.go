@@ -12,14 +12,15 @@ import (
 	"memo/internal/provider"
 )
 
-const importMemorySystemPrompt = `You extract personal memory items from arbitrary text a user pastes in — usually another AI assistant's answer describing what it knows about the user. Read it carefully and return ONLY a single JSON object, no other text, no markdown fences, in this exact shape:
+const importMemorySystemPrompt = `You extract personal memory items from arbitrary text a user pastes in — usually another AI assistant's answer describing what it knows about the user. The input is often organized into labeled categories (e.g. Demographics, Interests & Preferences, Relationships, Dated Events, Communication Style & Personality, Instructions), with each entry followed by an "Evidence:"/"Basis:" sub-line quoting or explaining where it came from, and a trailing "Source: <name>" line. Read it carefully and return ONLY a single JSON object, no other text, no markdown fences, in this exact shape:
 
-{"facts": ["short atomic fact or preference about the user", "..."], "style_summary": "one paragraph describing the user's preferred communication tone/style, or empty string if none is present"}
+{"facts": ["short atomic fact or preference about the user", "..."], "style_summary": "a cohesive paragraph of behavioral/tonal instructions for how to talk to this user, or empty string if none is present"}
 
 Rules:
-- Each item in "facts" must be a short, self-contained sentence (name, job, interests, preferences, important dates/relationships, habits, etc.) — one fact per item, no bullet symbols.
-- Skip filler, meta-commentary, or anything that isn't actually a fact about the user.
-- "style_summary" is only about HOW the user likes to be talked to (tone, formality, directness, humor, etc.) — not what they like. Leave it "" if the input has nothing like that.
+- Ignore category headers, "Evidence:"/"Basis:" sub-lines, and any trailing "Source: <name>" line — they are provenance, not content.
+- Facts (Demographics, Interests & Preferences, Relationships, Dated Events/Projects/Plans, and anything else describing what the user IS/HAS/DID): turn each entry into one short, self-contained, concrete sentence — one fact per item, no bullet symbols. Preserve concrete specifics (names, dates, project names) rather than vague generalities.
+- Style (Communication Style & Personality, plus any Instructions describing HOW to respond — tone, formatting rules, standing behavioral requests, a trigger-phrase-to-canned-response rule, etc.): fold ALL of these into one "style_summary" paragraph, since it gets injected into every future reply rather than retrieved probabilistically like facts. Preserve specific, actionable instructions rather than vaguely paraphrasing them away.
+- Skip filler, meta-commentary, or anything that isn't actually about the user.
 - If the input has no usable content at all, return {"facts": [], "style_summary": ""}.`
 
 type importedMemory struct {

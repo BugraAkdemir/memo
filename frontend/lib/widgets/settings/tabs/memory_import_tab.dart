@@ -22,6 +22,14 @@ class MemoryImportTab extends ConsumerStatefulWidget {
 class _MemoryImportTabState extends ConsumerState<MemoryImportTab> {
   final _importController = TextEditingController();
   bool _importing = false;
+  // Result feedback is shown inline (not via ScaffoldMessenger/SnackBar):
+  // this whole page lives inside SettingsDialog's modal Dialog, which sits
+  // above the app's root Scaffold in the overlay stack — a SnackBar shown
+  // from here renders behind the still-open dialog and is invisible to the
+  // user until they close Settings, which looked exactly like "nothing
+  // happened" when reported.
+  String? _statusMessage;
+  bool _statusIsError = false;
 
   @override
   void dispose() {
@@ -57,14 +65,17 @@ class _MemoryImportTabState extends ConsumerState<MemoryImportTab> {
 
   Future<void> _submitMemoryImport() async {
     final text = _importController.text.trim();
-    final messenger = ScaffoldMessenger.of(context);
     if (text.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(L10n.t('memory_import_empty_error'))),
-      );
+      setState(() {
+        _statusMessage = L10n.t('memory_import_empty_error');
+        _statusIsError = true;
+      });
       return;
     }
-    setState(() => _importing = true);
+    setState(() {
+      _importing = true;
+      _statusMessage = null;
+    });
     try {
       final result = await ref.read(apiClientProvider).importMemoryFromText(text);
       final factsSaved = result['factsSaved'] as int;
@@ -74,14 +85,20 @@ class _MemoryImportTabState extends ConsumerState<MemoryImportTab> {
             ? L10n.t('memory_import_no_facts')
             : L10n.t('memory_import_success_facts', {'count': '$factsSaved'}) +
                 (styleUpdated ? L10n.t('memory_import_success_style') : '');
-        messenger.showSnackBar(SnackBar(content: Text(message)));
+        setState(() {
+          _statusMessage = message;
+          _statusIsError = factsSaved == 0;
+        });
         if (factsSaved > 0) {
           _importController.clear();
         }
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('${L10n.t('error')}: $e')));
+        setState(() {
+          _statusMessage = '${L10n.t('error')}: $e';
+          _statusIsError = true;
+        });
       }
     } finally {
       if (mounted) setState(() => _importing = false);
@@ -141,9 +158,10 @@ class _MemoryImportTabState extends ConsumerState<MemoryImportTab> {
                   ),
                   onPressed: () {
                     Clipboard.setData(ClipboardData(text: _memoryImportPrompt));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(L10n.t('memory_import_prompt_copied'))),
-                    );
+                    setState(() {
+                      _statusMessage = L10n.t('memory_import_prompt_copied');
+                      _statusIsError = false;
+                    });
                   },
                 ),
               ),
@@ -209,6 +227,10 @@ class _MemoryImportTabState extends ConsumerState<MemoryImportTab> {
             ],
           ),
         ),
+        if (_statusMessage != null) ...[
+          SizedBox(height: 16),
+          _StatusBanner(text: _statusMessage!, isError: _statusIsError),
+        ],
       ],
     );
   }
@@ -246,6 +268,44 @@ class _StepHeader extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+}
+
+class _StatusBanner extends StatelessWidget {
+  final String text;
+  final bool isError;
+
+  const _StatusBanner({required this.text, required this.isError});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final color = isError ? MemoTheme.red : MemoTheme.green;
+    return Container(
+      padding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.10),
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: color.withValues(alpha: 0.35)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            isError ? Icons.error_outline : Icons.check_circle_outline,
+            size: 16,
+            color: color,
+          ),
+          SizedBox(width: 10),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(fontSize: 12.5, color: theme.textSecondary, height: 1.4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

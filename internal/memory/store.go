@@ -1341,7 +1341,7 @@ func (s *Store) SaveExplicit(ctx context.Context, content, tags string) error {
 			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
 			                      chunk_index, parent_uuid, total_chunks,
 			                      session_id, importance, tags, source, retrieve_count)
-			 VALUES (?, 'user', ?, ?, ?, '', ?, ?, 0, ?, 1, '', 5, ?, 'explicit', 0)`,
+			 VALUES (?, 'user', ?, ?, ?, '', ?, 0, ?, 1, '', 5, ?, 'explicit', 0)`,
 			uuid, content, timestamp, content, embedBlob, uuid, tags,
 		)
 		if err != nil {

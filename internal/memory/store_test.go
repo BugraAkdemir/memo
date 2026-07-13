@@ -228,6 +228,44 @@ func TestSaveInteraction_ShortNoChunk(t *testing.T) {
 	}
 }
 
+// TestSaveExplicit is a regression test: the INSERT's VALUES tuple used to
+// list 16 comma-separated items against the 15-column list (a stray extra
+// `?` placeholder ahead of chunk_index's literal 0), which SQLite rejects
+// at prepare time with "16 values for 15 columns" — so every single call to
+// SaveExplicit (and therefore the /remember chat command, and the memory
+// import feature built on top of it) silently failed to save anything.
+// Never caught before because SaveExplicit had zero test coverage.
+func TestSaveExplicit(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+	store, err := NewStore(StoreConfig{Dir: dir, Dimension: 3, EmbeddingFunc: testEmbedding})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(ctx, "user likes short answers", "imported"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+	if store.Count() != 1 {
+		t.Fatalf("Count() = %d, want 1", store.Count())
+	}
+
+	results := store.DebugSearch(ctx, "user likes short answers", 5)
+	if len(results) != 1 {
+		t.Fatalf("DebugSearch() returned %d results, want 1", len(results))
+	}
+	if results[0].Source != "explicit" {
+		t.Errorf("Source = %q, want explicit", results[0].Source)
+	}
+	if results[0].Importance != 5 {
+		t.Errorf("Importance = %d, want 5", results[0].Importance)
+	}
+	if results[0].Tags != "imported" {
+		t.Errorf("Tags = %q, want imported", results[0].Tags)
+	}
+}
+
 // TestSaveMerged_EmbedFailure_StillSaves is a regression guard for BUG-M3:
 // when embedding the merged content fails, saveMerged used to save the
 // merged row anyway (correct — losing the merge attempt would be worse than

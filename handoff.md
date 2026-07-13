@@ -1,3 +1,48 @@
+# Handoff — 2026-07-13 (Session 25) — Yeni özellik: "Hafızayı İçe Aktar" (diğer AI'lardan hafıza import)
+
+## Oturum Özeti
+
+Kullanıcı yeni bir özellik istedi: Ayarlar'da, kullanıcının ChatGPT/Gemini/Claude gibi başka AI'lara verebileceği bir prompt üretilsin, kullanıcı o AI'nin cevabını yapıştırsın, Memo bu bilgiyi profesyonelce parçalayıp hafızaya işlesin — ayrıca konuşma tarzı bilgisi de öğrenilip kullanıcıya özel system promptuna yansısın. Netleştirme turunda kullanıcı: yapısallaştırma için aktif LLM kullanılsın (kural tabanlı bölme değil), kapsam "kullanıcının her türlü bilgisi + konuşma tarzı + buna göre kişiselleştirilmiş system prompt" olsun, çıktı formatı bana bırakıldı (JSON seçildi).
+
+## Yapılan değişiklikler (backend + frontend, tek oturumda uçtan uca)
+
+**Backend:**
+1. `internal/config/config.go` — `IdentityConfig.LearnedStyleNotes string` eklendi (config.yaml'da kalıcı).
+2. `internal/identity/identity.go` — `Identity.LearnedStyleNotes` alanı + `SetLearnedStyleNotes`/`GetLearnedStyleNotes` (mutex korumalı, `MinimalMode` ile aynı desen). `BuildSystemPrompt`'ta stil talimatlarından hemen sonra, additive olarak enjekte ediliyor — `CustomRole`'ün aksine bunu değiştirmiyor, wizard persona/hand-written prompt altında da çalışıyor (origin block ile aynı gerekçe). `MinimalMode` açıkken diğer her şey gibi bu da tamamen kesiliyor.
+3. `internal/app/app.go` `Startup()` — `a.identity.SetLearnedStyleNotes(cfg.Identity.LearnedStyleNotes)` eklendi (kalıcı notu her açılışta yükler).
+4. `internal/app/memory_import.go` (yeni dosya) — `ImportMemoryFromText(ctx, rawText) (factsSaved int, styleUpdated bool, err error)`: aktif provider'a (`a.providerRouter`, `mergeMemoriesLLM` ile aynı hafif çağrı şekli) rawText'i yollayıp `{"facts": [...], "style_summary": "..."}` JSON'u istiyor, `extractJSON` (intent/orchestra/taskloop/proactive ile aynı desen — paket-özel private kopya, paylaşılan exported helper yok) ile prose içinden JSON'u çekiyor. Her fact ayrı ayrı mevcut `SaveExplicitMemory` (`/remember` komutuyla aynı yol) ile kaydediliyor — bilinçli olarak chunklanmıyor, çünkü LLM'e fact'leri zaten kısa/atomik tutması söyleniyor. `style_summary` doluysa `identity.SetLearnedStyleNotes` + `config.Save`.
+5. `internal/webserver/bridge.go`/`handlers_flutter.go`/`server.go` — `FullBridge.ImportMemoryFromText` (primitive dönüş tipi, `app` paketi tipini import etmiyor — bridge pattern'in decoupling'ini koruyor), `POST /api/memory/import-text` route'u.
+
+**Frontend:**
+6. `frontend/lib/core/api_client.dart` — `importMemoryFromText(String content)`.
+7. `frontend/lib/widgets/settings/tabs/memory_tab.dart` — "Memory Files" ile "Memory Analytics" bölümleri arasına yeni bir bölüm: kopyalanabilir prompt (TR/EN, `L10n.locale`'e göre), yapıştırma kutusu, "Hafızaya İşle" butonu, sonuç snackbar'ı (kaç fact kaydedildi + stil güncellendi mi).
+8. `frontend/lib/core/l10n.dart` — hem `_tr` hem `_en` map'lerine ~11 yeni key.
+
+## Testler (yeni)
+
+- `internal/app/memory_import_test.go`: `extractJSON` (düz JSON, prose-wrapped/markdown fence, string içinde brace, JSON yok), `ImportMemoryFromText`'in 3 hata yolu (boş metin, router yok, router'da aktif provider yok).
+- `internal/identity/identity_test.go`: `LearnedStyleNotes` — system prompt'a enjekte ediliyor, varsayılan boş, `CustomRole` altında da çalışıyor, `MinimalMode`'da kesiliyor.
+
+**Test edilmeyen:** Gerçek bir dış AI'nin (ChatGPT/Gemini) serbest metin cevabının gerçekten iyi yapısallaştığı — sadece JSON-extraction ve hata yollarının unit testleri var, gerçek bir provider'a canlı çağrı yapan bir mutlu-yol testi yok (bu codebase'de `mergeMemoriesLLM`'in de böyle bir testi yok, aynı emsal).
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build/vet/test ./... -race -count=1   → tüm paketler yeşil (yeni testler dahil)
+GOOS=windows go vet ./...                               → temiz
+flutter analyze lib/                                    → aynı 4 bilinen info-uyarısı, yeni uyarı yok
+flutter test                                             → 103/103 yeşil
+```
+
+**Gerçek uygulamada denenmedi** (UI'yi açıp gerçek bir dış AI cevabı yapıştırarak uçtan uca akışı görmek) — bu oturumda sadece kod yazıldı + otomatik testlerle doğrulandı.
+
+**Sıradaki oturum için:**
+1. Gerçek uygulamada elle test: Settings → Memory → yeni bölüm, prompt kopyala, gerçek bir ChatGPT/Gemini cevabı yapıştır, sonucu gözlemle.
+2. Commit'ler henüz atılmadı (kullanıcı onayı bekleniyor).
+3. Eğer gerçek dünyada LLM'in "sadece JSON dön" talimatına uymadığı görülürse (özellikle zayıf lokal modellerde), bir retry/fallback mekanizması eklenebilir.
+
+---
+
 # Handoff — 2026-07-12 (Session 24) — BUG-M1 kapatıldı: model_store_screen.dart 5 dosyaya bölündü
 
 ## Oturum Özeti

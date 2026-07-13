@@ -2,11 +2,8 @@ package app
 
 import (
 	"context"
+	"strings"
 	"testing"
-
-	"memo/internal/config"
-	"memo/internal/identity"
-	"memo/internal/provider"
 )
 
 func TestExtractJSONMemoryImport(t *testing.T) {
@@ -30,29 +27,29 @@ func TestExtractJSONMemoryImport(t *testing.T) {
 }
 
 func TestImportMemoryFromTextEmptyInput(t *testing.T) {
-	a := &App{providerRouter: provider.NewRouter(nil)}
+	a := &App{}
 	_, _, err := a.ImportMemoryFromText(context.Background(), "   ")
 	if err == nil {
 		t.Fatal("expected error for empty text, got nil")
 	}
 }
 
-func TestImportMemoryFromTextNoRouter(t *testing.T) {
+// TestImportMemoryFromTextNoModelFailsFastWithClearMessage is a regression
+// test: an earlier version called a.providerRouter.ChatCompletion directly,
+// bypassing callLLM's Orchestra/provider/local routing chain entirely — so
+// with nothing connected (no local model, no external provider), it hung on
+// a live network call until the request's own timeout, and the user saw no
+// indication of what was actually wrong. ImportMemoryFromText now routes
+// through callLLM like every other LLM call in this codebase, which fails
+// immediately via its local.client nil-check and returns a clear, actionable
+// message instead of attempting a network call at all.
+func TestImportMemoryFromTextNoModelFailsFastWithClearMessage(t *testing.T) {
 	a := &App{}
-	_, _, err := a.ImportMemoryFromText(context.Background(), "hello")
-	if err == nil {
-		t.Fatal("expected error when no provider router is available, got nil")
-	}
-}
-
-func TestImportMemoryFromTextNoActiveProvider(t *testing.T) {
-	a := &App{
-		providerRouter: provider.NewRouter(nil),
-		identity:       identity.New("Test", "Memo", "casual", "", false),
-		cfg:            &config.AppConfig{},
-	}
 	_, _, err := a.ImportMemoryFromText(context.Background(), "some pasted AI answer about me")
 	if err == nil {
-		t.Fatal("expected error when the router has no active provider, got nil")
+		t.Fatal("expected error when no model/provider is connected, got nil")
+	}
+	if !strings.Contains(err.Error(), "yüklenmemiş") {
+		t.Errorf("error = %q, want it to contain callLLM's clear no-model-loaded message", err.Error())
 	}
 }

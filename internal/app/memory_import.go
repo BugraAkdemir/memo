@@ -5,11 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"strings"
-	"time"
 
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/logx"
-	"memo/internal/provider"
 )
 
 const importMemorySystemPrompt = `You extract personal memory items from arbitrary text a user pastes in — usually another AI assistant's answer describing what it knows about the user. The input is often organized into labeled categories (e.g. Demographics, Interests & Preferences, Relationships, Dated Events, Communication Style & Personality, Instructions), with each entry followed by an "Evidence:"/"Basis:" sub-line quoting or explaining where it came from, and a trailing "Source: <name>" line. Read it carefully and return ONLY a single JSON object, no other text, no markdown fences, in this exact shape:
@@ -71,41 +70,36 @@ func extractJSON(s string) string {
 
 // ImportMemoryFromText takes an arbitrary block of text pasted by the user
 // (typically another AI's answer to a "tell me what you know about me"
-// style prompt), asks the active provider to structure it into atomic
-// memory facts plus a communication-style summary, saves each fact as an
-// explicit memory (source="explicit", same path as the /remember chat
-// command), and — if a style summary was found — persists it as the
-// identity's LearnedStyleNotes so BuildSystemPrompt injects it into every
-// future system prompt.
+// style prompt), asks the active model to structure it into atomic memory
+// facts plus a communication-style summary, saves each fact as an explicit
+// memory (source="explicit", same path as the /remember chat command), and
+// — if a style summary was found — persists it as the identity's
+// LearnedStyleNotes so BuildSystemPrompt injects it into every future
+// system prompt.
+//
+// Routes through callLLM (Orchestra → external provider → local model,
+// same priority chain as regular chat, internal/app/llm.go) rather than
+// reaching into a.providerRouter directly — an earlier version only ever
+// tried the provider router, so a local-only setup silently never got
+// tried at all, and "nothing connected" hung on a live network call
+// instead of failing immediately with callLLM's existing "no model
+// loaded" message.
 func (a *App) ImportMemoryFromText(ctx context.Context, rawText string) (factsSaved int, styleUpdated bool, err error) {
 	rawText = strings.TrimSpace(rawText)
 	if rawText == "" {
 		return 0, false, fmt.Errorf("empty text")
 	}
 
-	a.providerMu.RLock()
-	router := a.providerRouter
-	a.providerMu.RUnlock()
-	if router == nil {
-		return 0, false, fmt.Errorf("no provider router available")
+	msgs := []api.Message{
+		api.NewTextMessage("system", importMemorySystemPrompt),
+		api.NewTextMessage("user", rawText),
+	}
+	reply := a.callLLM(ctx, msgs)
+	if isLLMErrorReply(reply) {
+		return 0, false, fmt.Errorf("%s", strings.TrimPrefix(reply, "⚠️ "))
 	}
 
-	ctx, cancel := context.WithTimeout(ctx, 90*time.Second)
-	defer cancel()
-
-	req := provider.ChatRequest{
-		MaxTokens: 4000,
-		Messages: []provider.Message{
-			provider.TextMessage("system", importMemorySystemPrompt),
-			provider.TextMessage("user", rawText),
-		},
-	}
-	resp, err := router.ChatCompletion(ctx, req)
-	if err != nil {
-		return 0, false, fmt.Errorf("structuring LLM call: %w", err)
-	}
-
-	jsonStr := extractJSON(resp.Content)
+	jsonStr := extractJSON(reply)
 	if jsonStr == "" {
 		return 0, false, fmt.Errorf("model did not return usable JSON")
 	}

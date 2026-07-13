@@ -1,3 +1,39 @@
+# Handoff — 2026-07-14 (Session 27) — Bug #8: Agent modu her dış provider'da 400 veriyordu (leaked `danger` alanı) + ham JSON hata mesajları
+
+## Özet
+
+Kullanıcı ekran görüntüsüyle bildirdi: Agent Chat'te (agent modu açık) bir mesaj gönderince hata: `all providers failed: [opencode-zen] status 400: {"error":{"message":"Error from provider (Console): Upstream request failed",...}}`. Düz sohbet (agent modu kapalı) aynı provider'la sorunsuz çalışıyordu — demek ki fark tam olarak "tool/araç kullanımı" ile ilgiliydi. Kullanıcı ayrıca hata mesajının kullanıcı için anlaşılmaz olduğunu da belirtti.
+
+## Kök neden
+
+`internal/provider/provider.go`'daki `ToolDefinition` struct'ı bir `Danger string` alanı taşıyordu (`json:"danger,omitempty"`), `internal/agent/tools.go`'un `ToOpenAITools()`'u bunu agent'ın iç `DangerLevel`'ından kopyalıyordu. Ama bu struct, `internal/provider/openai.go`'nun **dış provider'a gönderilen ham JSON isteğinin bizzat kendisi** (`openAIChatRequest.Tools []ToolDefinition`) — yani her tool tanımı, standart OpenAI tool-calling şemasının (`{type, function}`) yanında **standart olmayan bir `"danger"` alanı** taşıyarak provider'a gidiyordu. Bu alan kod tabanında hiçbir yerde okunmuyordu (izin kontrolleri ayrı, tamamen iç `agent.ToolDef.DangerLevel`'ı kullanıyor) — yani tek işlevi provider'ın gerçek API'sine sızmaktı. Bazı provider'lar bilinmeyen alanları yok sayıyor, OpenCode Zen'in gateway'i ise katı şema doğrulaması yapıp reddediyor.
+
+## Fix 1: leaked `danger` alanı
+
+`provider.ToolDefinition`'dan `Danger` alanı tamamen kaldırıldı. Regresyon testi `TestToOpenAITools_OnlyStandardFields` (`internal/agent/tools_test.go`) — tüm built-in tool'ların wire temsilini JSON'a çevirip her objede sadece `"type"`/`"function"` anahtarları olduğunu doğruluyor. Fix'ten önce **18 tool'un hepsinde** `"danger"` alanı sızdığını kanıtlayarak fail etti.
+
+## Fix 2: ham JSON hata mesajları
+
+Kullanıcının ikinci şikayeti: hata mesajı `{"error":{"message":"...","type":"...","param":null,"code":"..."}}` gibi ham bir JSON blob'u — normal bir kullanıcı bundan bir şey anlayamaz. `internal/provider/openai.go`/`claude.go`/`gemini.go`'nun üçü de `parseError`'da HTTP body'sini olduğu gibi hata mesajına gömüyordu.
+
+Yeni `provider.ExtractErrorMessage(body []byte) string` (`provider.go`) — OpenAI-uyumlu/Claude/Gemini API'lerinin ortak kullandığı `{"error": {"message": "..."}}` şeklini çözüp sadece asıl mesajı çıkarıyor, şekil uymuyorsa ya da mesaj boşsa ham body'ye düşüyor. Üç provider'ın `parseError`'ına da bağlandı. Testler: `TestExtractErrorMessage_UnwrapsTheRealMessage`/`_FallsBackToRawBody`/`_FallsBackWhenMessageEmpty` (`internal/provider/error_message_test.go`).
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build/vet/test ./... -race -count=1   → tüm 34 paket yeşil (yeni testler dahil)
+```
+
+**Gerçek uygulamada test edilemeyen:** Bu ortamda GUI'yi gerçekten çalıştırıp OpenCode Zen'e karşı agent modunda gerçek bir tool-call isteği atıp 400'ün gerçekten gitmediğini gözle doğrulamak (input-automation/display kısıtı, önceki oturumlarla aynı sebep). Statik/birim test kanıtı güçlü: leak'in kaynağı net (tek yazma noktası, hiç okuma yok), fix mekanik ve düşük riskli.
+
+**Commit:** AGENTS.md kuralı gereği otomatik atıldı.
+
+**Sıradaki oturum için:**
+1. Kullanıcı gerçek uygulamada agent modunda OpenCode Zen (ya da başka bir dış provider) ile tekrar test edip 400 hatasının gittiğini doğrulamalı.
+2. Hata mesajı hâlâ `"all providers failed: [opencode-zen] status 400: <mesaj>"` gibi bir prefix taşıyor — tamamen kullanıcı dostu bir cümleye çevrilmedi, sadece ham JSON gürültüsü temizlendi. İstenirse `internal/app/llm.go`'daki hata gösterim zincirine daha kapsamlı bir "kullanıcı dostu mesaj" katmanı eklenebilir.
+
+---
+
 # Handoff — 2026-07-14 (Session 26, devam 3) — Bug #7'nin GERÇEK kök nedeni: `_disposed` boolean, `build()`'da hiç resetlenmiyormuş
 
 ## Özet

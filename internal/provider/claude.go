@@ -350,5 +350,5 @@ func (p *claudeProvider) wrapError(err error) error {
 
 func (p *claudeProvider) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
-	return &ProviderError{Provider: p.Name(), Err: fmt.Errorf("status %d: %s", resp.StatusCode, string(body))}
+	return &ProviderError{Provider: p.Name(), Err: fmt.Errorf("status %d: %s", resp.StatusCode, ExtractErrorMessage(body))}
 }

@@ -364,7 +364,7 @@ func (p *openAIProvider) wrapError(err error) error {
 
 func (p *openAIProvider) parseError(resp *http.Response) error {
 	body, _ := io.ReadAll(resp.Body)
-	errMsg := string(body)
+	errMsg := ExtractErrorMessage(body)
 
 	switch resp.StatusCode {
 	case http.StatusTooManyRequests:

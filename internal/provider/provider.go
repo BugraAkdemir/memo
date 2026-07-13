@@ -74,11 +74,12 @@ type ImageURL struct {
 }
 
 // ToolDefinition is a tool that the LLM may call, defined in JSON Schema format
-// (OpenAI tool calling standard).
+// (OpenAI tool calling standard). This struct is marshaled verbatim into the
+// "tools" array of the actual request sent to the provider's API — it must
+// only ever contain fields from that standard, nothing app-internal.
 type ToolDefinition struct {
-	Type       string       `json:"type"`
-	Function   ToolFunction `json:"function"`
-	Danger     string       `json:"danger,omitempty"`
+	Type     string       `json:"type"`
+	Function ToolFunction `json:"function"`
 }
 
 type ToolFunction struct {
@@ -201,6 +202,27 @@ func (e *ProviderError) Error() string {
 
 func (e *ProviderError) Unwrap() error {
 	return e.Err
+}
+
+// ExtractErrorMessage pulls the human-readable message out of a provider's
+// JSON error body — {"error": {"message": "...", ...}}, the shape OpenAI-
+// compatible APIs, Claude, and Gemini all use — falling back to the raw body
+// if it isn't in that shape or the message field is empty. Without this, a
+// failed request surfaced its entire raw JSON error body (nested braces,
+// "param":null, duplicate "type"/"code" fields) straight through
+// Router.ChatCompletionStream's "all providers failed: %w" wrapping and
+// into the chat UI verbatim — unreadable to a non-technical user trying to
+// tell what actually went wrong.
+func ExtractErrorMessage(body []byte) string {
+	var parsed struct {
+		Error struct {
+			Message string `json:"message"`
+		} `json:"error"`
+	}
+	if err := json.Unmarshal(body, &parsed); err == nil && parsed.Error.Message != "" {
+		return parsed.Error.Message
+	}
+	return string(body)
 }
 
 // DefaultBaseURLs returns default base URLs for known provider types.

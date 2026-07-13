@@ -254,7 +254,6 @@ func (r *ToolRegistry) ToOpenAITools() []provider.ToolDefinition {
 				Description: t.Description,
 				Parameters:  t.Parameters,
 			},
-			Danger: string(t.DangerLevel),
 		})
 	}
 	return defs

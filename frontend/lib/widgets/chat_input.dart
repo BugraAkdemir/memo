@@ -140,7 +140,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   Future<void> _send() async {
-    debugPrint('[SEND-DEBUG] _send() called, isSending=${ref.read(isSendingProvider)}');
+    debugPrint('[SEND-DEBUG] _send() called, isSending=${ref.read(isSendingProvider)}, notifier instance=${identityHashCode(ref.read(messagesProvider.notifier))}');
     final text = _controller.text.trim();
     final imagePath = _pickedImagePath;
     if (text.isEmpty && imagePath == null) return;

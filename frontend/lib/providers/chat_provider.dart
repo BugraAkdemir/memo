@@ -188,7 +188,10 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
 
   @override
   Future<List<ChatMessage>> build() async {
+    final id = identityHashCode(this);
+    debugPrint('[SEND-DEBUG] MessagesNotifier.build() instance=$id');
     ref.onDispose(() {
+      debugPrint('[SEND-DEBUG] MessagesNotifier.onDispose instance=$id');
       _disposed = true;
       _delayedRefreshTimer?.cancel();
     });
@@ -312,7 +315,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
   }
 
   Future<void> sendMessage(String message) async {
-    debugPrint('[SEND-DEBUG] enter sendMessage msg=${message.substring(0, message.length > 20 ? 20 : message.length)} isSending=${ref.read(isSendingProvider)} disposed=$_disposed');
+    debugPrint('[SEND-DEBUG] enter sendMessage instance=${identityHashCode(this)} msg=${message.substring(0, message.length > 20 ? 20 : message.length)} isSending=${ref.read(isSendingProvider)} disposed=$_disposed');
     if (ref.read(isSendingProvider)) return;
     // Claim the sending state synchronously, right after the guard check,
     // with no `await` in between — otherwise two sendMessage() calls fired

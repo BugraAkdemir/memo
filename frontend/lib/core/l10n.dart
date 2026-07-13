@@ -230,9 +230,14 @@ class L10n {
     'memory_debug_match_hybrid': 'Karma',
     'memory_debug_score': 'Skor',
 
+    'tab_memory_import': 'Hafızayı İçe Aktar',
     'memory_import_title': 'Hafızayı İçe Aktar',
     'memory_import_hint':
         'Başka bir yapay zekaya (ChatGPT, Gemini, vs.) aşağıdaki prompt\'u yapıştır, aldığın cevabı da buraya yapıştırıp gönder — bilgiler madde madde hafızana işlenir, konuşma tarzın da öğrenilirse Memo\'nun sana özel üslubuna eklenir.',
+    'memory_import_step1': 'Bu prompt\'u diğer yapay zeka ile olan sohbetine kopyala',
+    'memory_import_step2': 'Aldığın yanıtı buraya yapıştır',
+    'memory_import_tip':
+        'İpucu: Bu prompt\'u göndermeden önce o AI ile birkaç mesaj sohbet etmiş olman gerekiyor — aksi halde hakkında hatırlayacak bir şeyi olmaz ve zayıf bir sonuç dönebilir.',
     'memory_import_copy_prompt': 'Prompt\'u Kopyala',
     'memory_import_prompt_copied': 'Panoya kopyalandı',
     'memory_import_placeholder': 'Diğer AI\'nin cevabını buraya yapıştır...',
@@ -1014,9 +1019,14 @@ class L10n {
     'memory_debug_match_hybrid': 'Hybrid',
     'memory_debug_score': 'Score',
 
+    'tab_memory_import': 'Import Memory',
     'memory_import_title': 'Import Memory',
     'memory_import_hint':
         'Paste the prompt below into another AI (ChatGPT, Gemini, etc.), then paste its answer back here and send — the facts get saved into memory one by one, and if a communication style is learned, it\'s added to Memo\'s tone with you specifically.',
+    'memory_import_step1': 'Copy this prompt into your conversation with the other AI',
+    'memory_import_step2': 'Paste the response here',
+    'memory_import_tip':
+        'Tip: You need to have chatted with that AI a bit before sending this prompt — otherwise it won\'t have much to remember about you, and the result may be weak.',
     'memory_import_copy_prompt': 'Copy Prompt',
     'memory_import_prompt_copied': 'Copied to clipboard',
     'memory_import_placeholder': 'Paste the other AI\'s answer here...',

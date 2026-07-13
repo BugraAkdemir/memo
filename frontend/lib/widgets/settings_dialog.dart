@@ -9,6 +9,7 @@ import 'settings/tabs/general_tab.dart';
 import 'settings/tabs/system_prompt_tab.dart';
 import 'settings/tabs/incognito_prompt_tab.dart';
 import 'settings/tabs/memory_tab.dart';
+import 'settings/tabs/memory_import_tab.dart';
 import 'settings/tabs/providers_tab.dart';
 import 'settings/tabs/orchestra_tab.dart';
 import 'settings/tabs/agent_permissions_tab.dart';
@@ -37,6 +38,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/chat-text.svg',
     'lib/icon/slash/eye-slash.svg',
     'lib/icon/slash/brain.svg',
+    'lib/icon/slash/translate.svg',
     'lib/icon/slash/plug.svg',
     'lib/icon/slash/music-notes.svg',
     'lib/icon/slash/shield-check.svg',
@@ -55,6 +57,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('system_prompt'),
     L10n.t('incognito_prompt'),
     L10n.t('memory'),
+    L10n.t('tab_memory_import'),
     L10n.t('tab_providers'),
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
@@ -201,17 +204,18 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 1: return SystemPromptTab();
       case 2: return IncognitoPromptTab();
       case 3: return MemoryTab();
-      case 4: return ProvidersTab();
-      case 5: return OrchestraTab();
-      case 6: return AgentPermissionsTab();
-      case 7: return LearningTab();
-      case 8: return MoodTab();
-      case 9: return SkillsTab();
-      case 10: return GpuConfigTab();
-      case 11: return BackupRestoreTab();
-      case 12: return RemoteAccessTab();
-      case 13: return AboutTab();
-      case 14: return TaskLoopTab();
+      case 4: return MemoryImportTab();
+      case 5: return ProvidersTab();
+      case 6: return OrchestraTab();
+      case 7: return AgentPermissionsTab();
+      case 8: return LearningTab();
+      case 9: return MoodTab();
+      case 10: return SkillsTab();
+      case 11: return GpuConfigTab();
+      case 12: return BackupRestoreTab();
+      case 13: return RemoteAccessTab();
+      case 14: return AboutTab();
+      case 15: return TaskLoopTab();
       default: return SizedBox.shrink();
     }
   }

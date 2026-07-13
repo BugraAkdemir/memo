@@ -26,15 +26,12 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
   bool _debugSearched = false;
   MemoryStats? _memoryStats;
   bool _statsLoading = false;
-  final _importController = TextEditingController();
-  bool _importing = false;
 
   @override
   void dispose() {
     _topKController.dispose();
     _minSimilarityController.dispose();
     _debugQueryController.dispose();
-    _importController.dispose();
     super.dispose();
   }
 
@@ -86,53 +83,6 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
       if (mounted) {
         setState(() => _debugSearching = false);
       }
-    }
-  }
-
-  String get _memoryImportPrompt {
-    if (L10n.locale == MemoLocale.tr) {
-      return 'Şimdiye kadarki tüm konuşmalarımızı ve hakkımda öğrendiğin her şeyi kullanarak bana dair bildiğin her şeyi anlat. Şunları mutlaka dahil et:\n'
-          '- Adım, mesleğim, ilgi alanlarım, tercihlerim, önemli tarih/ilişkilerim, alışkanlıklarım gibi somut bilgiler\n'
-          '- Benimle konuşurken kullandığın ton, üslup, resmiyet seviyesi, mizah kullanıp kullanmadığın gibi konuşma tarzı gözlemlerin\n\n'
-          'Cevabını istediğin formatta (madde madde ya da paragraf) verebilirsin, ben bunu başka bir sisteme aktaracağım.';
-    }
-    return 'Using everything from our conversations so far, tell me everything you know about me. Make sure to include:\n'
-        '- Concrete facts: my name, job, interests, preferences, important dates/relationships, habits\n'
-        '- Your observations about how I like to be talked to: tone, formality, whether I like humor, etc.\n\n'
-        'You can answer in whatever format you like (bullet points or prose) — I\'m going to feed this into another system.';
-  }
-
-  Future<void> _submitMemoryImport() async {
-    final text = _importController.text.trim();
-    final messenger = ScaffoldMessenger.of(context);
-    if (text.isEmpty) {
-      messenger.showSnackBar(
-        SnackBar(content: Text(L10n.t('memory_import_empty_error'))),
-      );
-      return;
-    }
-    setState(() => _importing = true);
-    try {
-      final result = await ref.read(apiClientProvider).importMemoryFromText(text);
-      final factsSaved = result['factsSaved'] as int;
-      final styleUpdated = result['styleUpdated'] as bool;
-      if (mounted) {
-        final message = factsSaved == 0
-            ? L10n.t('memory_import_no_facts')
-            : L10n.t('memory_import_success_facts', {'count': '$factsSaved'}) +
-                (styleUpdated ? L10n.t('memory_import_success_style') : '');
-        messenger.showSnackBar(SnackBar(content: Text(message)));
-        if (factsSaved > 0) {
-          _importController.clear();
-          _loadStats();
-        }
-      }
-    } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(SnackBar(content: Text('${L10n.t('error')}: $e')));
-      }
-    } finally {
-      if (mounted) setState(() => _importing = false);
     }
   }
 
@@ -404,87 +354,6 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     }).toList(),
                   );
                 },
-              ),
-              SizedBox(height: 28),
-              Text(
-                L10n.t('memory_import_title'),
-                style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  color: MemoTheme.of(context).textMain,
-                ),
-              ),
-              SizedBox(height: 8),
-              Text(
-                L10n.t('memory_import_hint'),
-                style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
-              ),
-              SizedBox(height: 12),
-              Container(
-                padding: EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: MemoTheme.of(context).bgPanel,
-                  borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
-                  border: Border.all(color: MemoTheme.of(context).borderSoft),
-                ),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Align(
-                      alignment: Alignment.centerLeft,
-                      child: OutlinedButton.icon(
-                        icon: Icon(Icons.copy, size: 16),
-                        label: Text(L10n.t('memory_import_copy_prompt')),
-                        onPressed: () {
-                          Clipboard.setData(ClipboardData(text: _memoryImportPrompt));
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text(L10n.t('memory_import_prompt_copied'))),
-                          );
-                        },
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    TextField(
-                      controller: _importController,
-                      maxLines: 8,
-                      minLines: 4,
-                      style: TextStyle(fontSize: 13),
-                      decoration: InputDecoration(
-                        hintText: L10n.t('memory_import_placeholder'),
-                        filled: true,
-                        fillColor: MemoTheme.of(context).bgApp,
-                        contentPadding: EdgeInsets.all(12),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                          borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                          borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                          borderSide: BorderSide(color: MemoTheme.accent),
-                        ),
-                      ),
-                    ),
-                    SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        ElevatedButton(
-                          onPressed: _importing ? null : _submitMemoryImport,
-                          child: _importing
-                              ? SizedBox(
-                                  width: 14,
-                                  height: 14,
-                                  child: CircularProgressIndicator(strokeWidth: 2),
-                                )
-                              : Text(L10n.t('memory_import_submit')),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
               ),
               SizedBox(height: 28),
               Row(

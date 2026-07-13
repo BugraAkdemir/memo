@@ -140,7 +140,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   Future<void> _send() async {
-    debugPrint('[SEND-DEBUG] _send() called, isSending=${ref.read(isSendingProvider)}, notifier instance=${identityHashCode(ref.read(messagesProvider.notifier))}');
     final text = _controller.text.trim();
     final imagePath = _pickedImagePath;
     if (text.isEmpty && imagePath == null) return;
@@ -585,7 +584,6 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   @override
   Widget build(BuildContext context) {
     final isSending = ref.watch(isSendingProvider);
-    debugPrint('[SEND-DEBUG] ChatInput.build() isSending=$isSending');
     final orchestraAsync = ref.watch(orchestraConfigProvider);
     final orchestraEnabled = orchestraAsync.valueOrNull?.enabled ?? false;
 

@@ -1,3 +1,55 @@
+# Handoff — 2026-07-14 (Session 26, devam 3) — Bug #7'nin GERÇEK kök nedeni: `_disposed` boolean, `build()`'da hiç resetlenmiyormuş
+
+## Özet
+
+Bug #7'nin (re-entrancy) fix'i de yetmedi — kullanıcı gerçek bir `flutter run -d linux` oturumunda **ilk mesajda** aynı şekilde takıldı. `backend.log` o oturumda her turun tertemiz tamamlandığını gösterdi (tek istek, `chat:done`, `memory:saved`), ve CLI (`internal/replcli`, aynı `/api/send/stream` endpoint'ini kullanıyor) hiç bu sorunu üretmiyor — bu, sorunu tamamen Flutter'ın kendi state katmanına indirgedi.
+
+## Kanıt toplama: geçici `[SEND-DEBUG]` logları
+
+`chat_provider.dart` ve `chat_input.dart`'a geçici `debugPrint('[SEND-DEBUG] ...')` satırları eklendi (`MessagesNotifier.sendMessage()`'ın giriş/claim/finally noktaları, `build()`/`onDispose`, `ChatInput.build()`'ın `isSending` değeri). Kullanıcı `flutter run -d linux`'ı çalıştırıp gerçek bir mesaj gönderdi, log'u yapıştırdı. Kritik satır:
+
+```
+[SEND-DEBUG] enter sendMessage instance=139305540 msg=merhaba isSending=false disposed=true
+```
+
+**Daha `sendMessage()` başlarken bile `disposed=true`!** Log'un tam sırası: `build()` → `onDispose` → `build()` (aynı instance ID) → hiç ikinci bir `onDispose` olmadan → `sendMessage()` `disposed=true` görüyor.
+
+## Kök neden
+
+Riverpod, `messagesProvider` invalidate edilip hemen tekrar okunduğunda (bir listener aktifken — gerçek uygulamada `ChatScreen`'in kalıcı `ref.watch(messagesProvider)`'ı bunu tetikliyor), **aynı `MessagesNotifier` nesnesini** tekrar kullanıyor (yeni bir nesne değil). Bu dispose+rebuild döngüsü, uygulama açılışında, kullanıcı hiçbir şey yapmadan **otomatik olarak bir kez** oluyor (kesin tetikleyicisi tam olarak bulunmadı, ama fix için gerekli değildi). `_disposed` alanı sadece field initializer'da (`bool _disposed = false;`) bir kere set ediliyordu, `build()` içinde hiç resetlenmiyordu — yani bu ilk zararsız görünen dispose+rebuild'den sonra `_disposed` **oturumun geri kalanı boyunca kalıcı olarak `true`** kalıyordu. Her `sendMessage()`'ın `finally` bloğundaki `if (!_disposed) { isSendingProvider = false; }` koruması (BUG-H2 için eklenmişti) bu yüzden bir daha hiç çalışmıyordu — buton her turda, her provider'da sonsuza dek "durdur"da takılı kalıyordu.
+
+## İlk yanlış fix denemesi (ve neden yanlış olduğu)
+
+İlk deneme: `build()`'ın başında `_disposed = false;` resetlemek. Bu, **var olan** `messages_notifier_dispose_test.dart` (BUG-H2) regresyon testini bozdu — çünkü nesne tekrar kullanıldığı için, bu reset aynı zamanda BAŞKA bir chat'ten kalan, hâlâ çalışan, terk edilmiş bir stream'i de "dispose değil" gibi gösteriyor, o da paylaşılan `isSendingProvider`'ı yanlış bir şekilde bozabiliyordu (tam olarak BUG-H2'nin önlemeye çalıştığı şey).
+
+## Doğru fix: generation sayacı
+
+`bool _disposed` → `int _generation` (her `build()` çağrısında ++). `sendMessage()`/`sendFile()`/`refresh()` kendi başladıkları anda `final myGeneration = _generation;` yakalıyor, ve daha önce `_disposed` kontrol edilen her yerde `_generation == myGeneration` / `!=` karşılaştırması yapıyor. Bir çağrı sadece KENDİ kuşağı hâlâ güncelken paylaşılan state'e dokunuyor — nesne tekrar kullanılsa da kullanılmasa da, herhangi bir sonraki `build()` eski çağrıları doğru şekilde geçersiz kılıyor, yeni başlayan çağrılar ise yeni kuşağı yakalayıp normal çalışıyor.
+
+## Test kanıtı
+
+`messages_notifier_stale_disposed_flag_test.dart` (yeni): canlı bir listener ile `container.invalidate(messagesProvider)` + hemen `read()` yaparak gerçek dispose+rebuild döngüsünü zorluyor, sonra `sendMessage()`'ın `isSendingProvider`'ı yine de `false`'a resetlediğini doğruluyor. **Hem orijinal koda hem de "build()'da reset" ilk denemesine karşı fail ediyor**, generation-counter fix'ine karşı geçiyor. Aynı anda `messages_notifier_dispose_test.dart` (BUG-H2) ve `messages_notifier_reentrancy_test.dart` da geçmeye devam ediyor — üçü birlikte, birbirini bozmadan.
+
+Geçici `[SEND-DEBUG]` logları (2 ayrı debug commit'i) tamamen temizlendi.
+
+## Doğrulama
+
+```
+flutter analyze lib/   → temiz (bilinen 4 info-level use_build_context_synchronously)
+flutter test           → 105/105 yeşil
+```
+
+**Gerçek uygulamada test edilemeyen:** Bu ortamda GUI'yi gerçekten çalıştırıp doğrulamak mümkün değildi (display/input-automation kısıtı) — fix, kullanıcının kendi gerçek `flutter run` oturumundan aldığı canlı log kanıtına dayanarak yapıldı ve birim testleriyle doğrulandı, ama fix SONRASI gerçek bir retest henüz yok.
+
+**Commit:** AGENTS.md kuralı gereği otomatik atıldı.
+
+**Sıradaki oturum için:**
+1. Kullanıcı gerçek uygulamada tekrar test etmeli — bu sefer gerçekten "artık hiç takılmıyor" diyebilecek mi görmemiz lazım.
+2. `MessagesNotifier`'ın neden açılışta bir kez otomatik dispose+rebuild olduğu hâlâ tam olarak bilinmiyor (belirtilmedi, fix'in gerekliliğini etkilemiyor ama merak konusu olarak kalabilir — `ActiveChatIdNotifier.build()`'ın async `getActiveChatId()` çözümlenmesiyle ilgili bir zamanlama olabilir).
+3. `chat_input.dart`'ın `_sendWhatsApp`'ındaki status/usage chunk filtreleme eksikliği hâlâ açık, düzeltilmedi.
+
+---
+
 # Handoff — 2026-07-14 (Session 26, devam 2) — Bug #7: "durdur" ikonu takılması — asıl kök neden bulundu (Bug #5'in fix'i yetersizmiş)
 
 ## Özet

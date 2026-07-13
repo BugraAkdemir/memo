@@ -426,6 +426,19 @@ class MemoApiClient {
     return [];
   }
 
+  /// Sends free-form text (typically another AI's answer describing what it
+  /// knows about the user) to be structured by the active model into atomic
+  /// memory facts (+ an optional learned communication-style summary) and
+  /// saved. Returns `{'factsSaved': int, 'styleUpdated': bool}`.
+  Future<Map<String, dynamic>> importMemoryFromText(String content) async {
+    final res = await _dio.post('/api/memory/import-text', data: {'content': content});
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return {
+      'factsSaved': (data['facts_saved'] as int?) ?? 0,
+      'styleUpdated': (data['style_updated'] as bool?) ?? false,
+    };
+  }
+
   // ─── Models (Local) ─────────────────────────────────────────────
 
   Future<List<LocalModel>> listLocalModels() async {

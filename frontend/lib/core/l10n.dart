@@ -230,6 +230,18 @@ class L10n {
     'memory_debug_match_hybrid': 'Karma',
     'memory_debug_score': 'Skor',
 
+    'memory_import_title': 'Hafızayı İçe Aktar',
+    'memory_import_hint':
+        'Başka bir yapay zekaya (ChatGPT, Gemini, vs.) aşağıdaki prompt\'u yapıştır, aldığın cevabı da buraya yapıştırıp gönder — bilgiler madde madde hafızana işlenir, konuşma tarzın da öğrenilirse Memo\'nun sana özel üslubuna eklenir.',
+    'memory_import_copy_prompt': 'Prompt\'u Kopyala',
+    'memory_import_prompt_copied': 'Panoya kopyalandı',
+    'memory_import_placeholder': 'Diğer AI\'nin cevabını buraya yapıştır...',
+    'memory_import_submit': 'Hafızaya İşle',
+    'memory_import_empty_error': 'Önce bir metin yapıştır',
+    'memory_import_success_facts': '\${count} bilgi hafızaya eklendi.',
+    'memory_import_success_style': ' Konuşma tarzın da öğrenildi.',
+    'memory_import_no_facts': 'Kullanılabilir bilgi bulunamadı.',
+
     // Settings — Providers
     'providers_title': 'API Providers',
     'add_provider': 'Add Provider',
@@ -1001,6 +1013,18 @@ class L10n {
     'memory_debug_match_fts': 'Keyword',
     'memory_debug_match_hybrid': 'Hybrid',
     'memory_debug_score': 'Score',
+
+    'memory_import_title': 'Import Memory',
+    'memory_import_hint':
+        'Paste the prompt below into another AI (ChatGPT, Gemini, etc.), then paste its answer back here and send — the facts get saved into memory one by one, and if a communication style is learned, it\'s added to Memo\'s tone with you specifically.',
+    'memory_import_copy_prompt': 'Copy Prompt',
+    'memory_import_prompt_copied': 'Copied to clipboard',
+    'memory_import_placeholder': 'Paste the other AI\'s answer here...',
+    'memory_import_submit': 'Process into Memory',
+    'memory_import_empty_error': 'Paste some text first',
+    'memory_import_success_facts': '\${count} facts saved to memory.',
+    'memory_import_success_style': ' Your communication style was also learned.',
+    'memory_import_no_facts': 'No usable information found.',
 
     'providers_title': 'API Providers',
     'add_provider': 'Add Provider',

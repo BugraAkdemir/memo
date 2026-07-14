@@ -1,3 +1,57 @@
+# Handoff — 2026-07-15 (Session 31) — "Profil gerçekleri" mekanizması inşa edildi: RAG dışında, garantili hafıza katmanı
+
+## Özet
+
+Session 30'un handoff'unda önerilmiş ama inşa edilmemiş fikir aynı gün hayata geçirildi: isim/doğum günü/evcil hayvan gibi çekirdek bilgilerin RAG sıralamasına hiç girmeden, her sistem promptuna garantili enjekte edildiği ayrı bir "pinned facts" katmanı.
+
+## Araştırma
+
+mem0 ve MemGPT/Letta'nın bu tam sorunu ("çekirdek bir gerçek asla bir benzerlik yarışması kazanmaya bağlı olmamalı") nasıl çözdüğü araştırıldı (web search): ikisi de küçük, küratörlü bir gerçek listesini HER promptta komple enjekte ediyor, arama/sıralama sadece geri kalan her şey için kullanılıyor (Letta: "Core Memory" vs "Archival Memory").
+
+## Yapılan
+
+- `Store.GetPinnedFacts` (`internal/memory/store.go`) — `source='explicit'`/`importance=5` hafızaları, 50 ile sınırlı, döndürüyor.
+- `retrieveMemory` (`internal/app/memory.go`) bunları RAG sonucuna koşulsuz birleştiriyor — `RetrieveContext`'in sıralamasını tamamen atlıyor.
+- `extractAndPinFacts` — her kaydedilen sohbet turundan SONRA, arka planda, dar kapsamlı bir LLM çağrısı ("bu mesajda kalıcı bir kişisel gerçek var mı, varsa kısa metin") çalıştırıp cevabı mevcut `SaveExplicit`/`/remember` yoluyla pinliyor. Bu, normal sohbette söylenen gerçekleri de yakalıyor — önceki iki fix bunu çözemiyordu çünkü onlar sadece RAG sıralamasını iyileştiriyordu, hiçbir şeyi "pinlemiyordu".
+- Yeni `Memory.AutoFactExtraction` config bayrağı (varsayılan `true`) — tam kapatma anahtarı.
+
+## Elenen tasarımlar
+
+- Regex/anahtar kelime tabanlı tespit: Memo iki dilli (TR/EN), regex ölçeklenmiyor.
+- Cevabı üreten AYNI çağrının gizli bir etiket basması: bu, hafızanın güvenilirliğini agent modunun "model formatı doğru takip eder mi" kırılganlığına bağlar — agent henüz tam stabil değilken, hafızanın ondan DAHA sağlam olması gereken tam da bu özellik için yanlış bir taviz.
+
+## /code-review'un bulduğu 5 gerçek hata (hepsi aynı gün düzeltildi)
+
+1. **KRİTİK** — `extractAndPinFacts` başlangıçta `a.callLLM` yerine `a.providerRouter.ChatCompletion`'ı doğrudan çağırıyordu — bu AYNI anti-pattern, bu dosyada daha önce bulunup düzeltilmiş (`ImportMemoryFromText`, 2026-07-13). Sonuç: local-only kurulumlarda (Memo'nun asıl "local-first" kullanım senaryosu) özellik sessizce hiç çalışmıyordu.
+2. Pinned facts, sonuç dizisinin SONUNA ekleniyordu, ama `identity.BuildSystemPrompt` bütçe aşıldığında bloğu KUYRUKTAN kesiyor — ağır kullanıcılarda (çok RAG geçmişi + çok pinned fact) tam da korunması gereken şeyi ilk atıyordu. Fix: pinned facts başa alındı.
+3. Arka plan extraction çağrısı, tek `memorySaveWorker` goroutine'i içinde SENKRON çalışıyordu — yoğun kullanımda kuyruğun birikme riski. Fix: kendi goroutine'inde ateşleniyor.
+4. `FindMergeCandidates`'ın gece consolidation'ı iki neredeyse-aynı pinned fact'i birleştirip sessizce un-pin edebiliyordu (`source` `'merged'` oluyor). Fix: `source='explicit'` aday havuzundan çıkarıldı.
+5. `GetPinnedFacts` sadece `source='explicit'` kontrol ediyordu, `importance=5`'i değil — kendi doc yorumunun iddiasıyla tutarsız. Fix: eklendi.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 34 paket yeşil
+```
+
+## Bilinen, kabul edilmiş sınırlamalar (düzeltilmedi, dokümante edildi)
+
+- 50'lik cap sadece "en yeni" mantığıyla eviction yapıyor — çok eski bir çekirdek gerçek (bir kere söylenmiş isim gibi) auto-extraction listeyi hızla doldurunca teorik olarak düşebilir.
+- Local modelde extraction ile gerçek sohbet cevapları aynı tek-slotlu (`--parallel 1`) llama-server için yarışıyor.
+
+## Kullanıcıya sorulması gereken, koda tek taraflı yazılmayan karar
+
+`config.Load()`, YAML'i `Default()`'in üzerine bindiriyor — yani mevcut bir kullanıcının yükseltme öncesi `config.yaml`'ı (yeni anahtar yok) sessizce `AutoFactExtraction=true` alıyor, opt-in gerektirmiyor. Bu, mevcut testerlar için gerçek bir onay/şeffaflık sorusu — kodda tek taraflı karar verilmedi, kullanıcıya soruldu.
+
+## Sıradaki oturum için
+
+- Kullanıcının config-default sorusuna cevabı bekleniyor.
+- Gerçek ortamda test: extraction'ın gerçekten local modelle çalıştığını, pinned facts'in gerçekten her promptta göründüğünü doğrulamak.
+
+---
+
 # Handoff — 2026-07-15 (Session 30) — Üçüncü kök neden: her sohbet turu eşit önemde kaydediliyor, compound sorular tek bir vektöre sıkışıyor
 
 ## Özet

@@ -191,10 +191,10 @@ func TestRecall_MultipleDistinctFacts_EachIndependentlyRetrievable(t *testing.T)
 	store := newRecallStore(t, bagOfWordsEmbedding(48), 48)
 
 	facts := map[string]string{
-		"isim":     "kullanicinin adi Ahmet",
-		"dogum":    "kullanicinin dogum gunu 5 Mayis 1995",
-		"renk":     "kullanicinin favori rengi kirmizi",
-		"meslek":   "kullanici yazilim muhendisi olarak calisiyor",
+		"isim":        "kullanicinin adi Ahmet",
+		"dogum":       "kullanicinin dogum gunu 5 Mayis 1995",
+		"renk":        "kullanicinin favori rengi kirmizi",
+		"meslek":      "kullanici yazilim muhendisi olarak calisiyor",
 		"evcilhayvan": "kullanicinin bir kedisi var adi Pamuk",
 	}
 	for _, content := range facts {

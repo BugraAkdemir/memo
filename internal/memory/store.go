@@ -702,6 +702,56 @@ func expandQuery(q string) string {
 	return strings.Join(words[:5], " ")
 }
 
+// splitCompoundQuery breaks a multi-topic question into individual topic
+// segments, splitting on conjunctions and clause punctuation ("ve"/"ile"/
+// "and"/","). A single embedding vector for a whole compound sentence like
+// "adımı ve doğum günümü ve en sevdiğim rengimi biliyor musun" blends three
+// unrelated topics together — against a memory store that has accumulated
+// many superficially-similar routine conversational turns (every chat turn
+// is saved by default, see internal/app/memory.go's saveMemoryAsync), a
+// short, specific fact about only ONE of those topics can rank below far
+// more numerous "reasonably close to the whole blended question" noise
+// entries and never even make the candidate pool. Splitting gives each
+// topic ("adımı", "doğum günümü", "en sevdiğim rengimi") its own query, so a
+// fact only needs to beat noise on its own specific topic, not the whole
+// sentence. Returns nil when the query doesn't look compound (0 or 1
+// segment after splitting) — callers should treat that as "no decomposition
+// available" and fall back to the single whole-query search only.
+func splitCompoundQuery(q string) []string {
+	replacer := strings.NewReplacer(",", " , ", "?", " ", ".", " ", "!", " ")
+	normalized := replacer.Replace(q)
+
+	isSeparator := func(w string) bool {
+		switch strings.ToLower(w) {
+		case ",", "ve", "ile", "and", "&":
+			return true
+		}
+		return false
+	}
+
+	var segments []string
+	var current []string
+	flush := func() {
+		if len(current) > 0 {
+			segments = append(segments, strings.Join(current, " "))
+			current = nil
+		}
+	}
+	for w := range strings.FieldsSeq(normalized) {
+		if isSeparator(w) {
+			flush()
+			continue
+		}
+		current = append(current, w)
+	}
+	flush()
+
+	if len(segments) <= 1 {
+		return nil
+	}
+	return segments
+}
+
 func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, minSimilarity float32) ([]MemoryResult, error) {
 	start := time.Now()
 
@@ -748,6 +798,26 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 			if len(expResults) > 0 {
 				vecMemories = reciprocalRankFusion(vecMemories, expResults, candidateK)
 			}
+		}
+	}
+
+	// Compound-question decomposition: each topic segment gets its own
+	// full-budget vector search and is RRF-merged in, so a fact about one
+	// topic doesn't have to survive being blended into a single averaged
+	// vector for the whole sentence — see splitCompoundQuery's doc comment.
+	for _, segment := range splitCompoundQuery(query) {
+		segEmb, segErr := s.embed(ctx, segment)
+		if segErr != nil || len(segEmb) != s.dim {
+			continue
+		}
+		var segResults []MemoryResult
+		if s.useVec {
+			segResults, _ = s.vecSearch(ctx, segEmb, candidateK, minSimilarity)
+		} else {
+			segResults, _ = s.goSearch(ctx, segEmb, candidateK, minSimilarity)
+		}
+		if len(segResults) > 0 {
+			vecMemories = reciprocalRankFusion(vecMemories, segResults, candidateK)
 		}
 	}
 

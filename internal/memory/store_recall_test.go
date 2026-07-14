@@ -242,6 +242,88 @@ func TestRecall_ExplicitFactOutranksCasualMention(t *testing.T) {
 	}
 }
 
+// TestRecall_CasualFactNotCrowdedOutByRoutineNoise reproduces the exact
+// failure pattern from a real user session: a personal fact ("my dog's name
+// is Zeytin") stated in normal chat — saved via the ordinary per-turn
+// SaveInteraction path with the default importance=3, completely
+// indistinguishable in priority from routine greetings, since Memo has no
+// mechanism to auto-detect "this is a durable fact worth extra weight" (see
+// internal/app/memory.go's saveMemoryAsync, which saves every single turn
+// unconditionally, greetings included) — is asked about later inside a
+// COMPOUND question alongside an unrelated topic. Before splitCompoundQuery,
+// this was confirmed to fail: the single blended embedding for the whole
+// compound question ranked dozens of near-duplicate routine "kanka naber"
+// turns above the one specific fact, crowding it out of the topK=5 cut
+// entirely (verified by temporarily disabling the segment-decomposition
+// loop in RetrieveContext and re-running this exact test — it failed, 0/5
+// results contained the fact).
+func TestRecall_CasualFactNotCrowdedOutByRoutineNoise(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(64), 64)
+
+	for i := range 30 {
+		if err := store.SaveInteraction(ctx,
+			fmt.Sprintf("kanka naber bugun hava nasil sohbet %d", i),
+			"iyilik kanka",
+		); err != nil {
+			t.Fatalf("SaveInteraction(noise %d) error = %v", i, err)
+		}
+	}
+
+	// Mirrors the real bug exactly: a normal chat turn, not SaveExplicit.
+	if err := store.SaveInteraction(ctx, "kopeğimin adı zeytin", "ne güzel isim"); err != nil {
+		t.Fatalf("SaveInteraction(fact) error = %v", err)
+	}
+
+	// A small topK, matching the real-world default, and a genuinely
+	// compound question — the decomposition only activates for these.
+	results, err := store.RetrieveContext(ctx, "kanka naber ve kopeğimin adı neydi", 5, 0)
+	if err != nil {
+		t.Fatalf("RetrieveContext() error = %v", err)
+	}
+	if !containsMemory(results, "zeytin") {
+		t.Fatalf("casual-chat fact crowded out by routine conversational noise; got %+v", results)
+	}
+}
+
+func TestSplitCompoundQuery(t *testing.T) {
+	tests := []struct {
+		name  string
+		query string
+		want  []string
+	}{
+		{"single topic, no split", "favori rengim ne", nil},
+		{
+			"two topics joined by ve",
+			"adımı ve doğum günümü biliyor musun",
+			[]string{"adımı", "doğum günümü biliyor musun"},
+		},
+		{
+			"three topics joined by ve",
+			"adımı ve doğum günümü ve en sevdiğim rengimi biliyor musun",
+			[]string{"adımı", "doğum günümü", "en sevdiğim rengimi biliyor musun"},
+		},
+		{
+			"comma-separated topics",
+			"adım, doğum günüm, favori rengim ne",
+			[]string{"adım", "doğum günüm", "favori rengim ne"},
+		},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			got := splitCompoundQuery(tc.query)
+			if len(got) != len(tc.want) {
+				t.Fatalf("splitCompoundQuery(%q) = %v, want %v", tc.query, got, tc.want)
+			}
+			for i := range got {
+				if got[i] != tc.want[i] {
+					t.Errorf("segment[%d] = %q, want %q", i, got[i], tc.want[i])
+				}
+			}
+		})
+	}
+}
+
 // TestRecall_TopKLimitRespected checks RetrieveContext never returns more
 // than the requested topK, even with many equally-relevant candidates.
 func TestRecall_TopKLimitRespected(t *testing.T) {

@@ -14,8 +14,8 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.API.TimeoutSeconds != 120 {
 		t.Errorf("TimeoutSeconds = %d, want 120", cfg.API.TimeoutSeconds)
 	}
-	if cfg.Memory.TopK != 5 {
-		t.Errorf("Memory.TopK = %d, want 5", cfg.Memory.TopK)
+	if cfg.Memory.TopK != 8 {
+		t.Errorf("Memory.TopK = %d, want 8", cfg.Memory.TopK)
 	}
 	if cfg.Memory.MinSimilarity != 0.1 {
 		t.Errorf("Memory.MinSimilarity = %f, want 0.1", cfg.Memory.MinSimilarity)
@@ -153,8 +153,8 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	if cfg.API.TimeoutSeconds != 120 {
 		t.Errorf("TimeoutSeconds = %d, want 120", cfg.API.TimeoutSeconds)
 	}
-	if cfg.Memory.TopK != 5 {
-		t.Errorf("TopK = %d, want 5", cfg.Memory.TopK)
+	if cfg.Memory.TopK != 8 {
+		t.Errorf("TopK = %d, want 8", cfg.Memory.TopK)
 	}
 	if cfg.Llama.CtxSize != 4096 {
 		t.Errorf("CtxSize = %d, want 4096", cfg.Llama.CtxSize)

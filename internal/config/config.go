@@ -284,7 +284,7 @@ func Default() *AppConfig {
 		},
 		Memory: MemoryConfig{
 			PersistDir:         "./data/memory",
-			TopK:               5,
+			TopK:               8,
 			MinSimilarity:      0.1,
 			MemoryEnabled:      true,
 			EmbeddingDimension: 768,
@@ -469,7 +469,7 @@ func (c *AppConfig) validate() []string {
 		fixes = append(fixes, "Memory.PersistDir")
 	}
 	if c.Memory.TopK <= 0 {
-		c.Memory.TopK = 5
+		c.Memory.TopK = 8
 		fixes = append(fixes, "Memory.TopK")
 	}
 	if c.Memory.MinSimilarity <= 0 {

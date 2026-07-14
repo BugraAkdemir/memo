@@ -1,3 +1,36 @@
+# Handoff — 2026-07-14 (Session 27, devam 2) — Ayarlar sekmelerindeki hardcoded (dile duyarsız) metinler düzeltildi
+
+## Özet
+
+Kullanıcı: özellikle Ayarlar sekmesinde ve birkaç başka yerde, dil TR/EN değiştirilince değişmeyen hardcoded metinler olduğunu bildirdi, bulunup düzeltilmesini istedi.
+
+## Bulgular
+
+`frontend/lib/widgets/settings/tabs/*.dart`'ın hepsinde (11 dosya) birikmiş hardcoded `Text()`/`hintText`/`labelText`/`SnackBar` string'leri vardı — çoğu Türkçe, bazıları İngilizce, hiçbiri dil değiştirmeye tepki vermiyordu. İki farklı alt-sorun tipi çıktı:
+
+1. **Yarım kalmış migrasyon:** `backup_restore_tab.dart` ve `learning_tab.dart`'ta l10n.dart'ta TAM ve DOĞRU TR+EN key'ler zaten vardı ama widget hâlâ ham Türkçe literal kullanıyordu — kimse gerçekten bağlamamış.
+2. **Yanlış çeviri:** Bazı mevcut key'lerin (`add_provider`, `no_providers`, `add_provider_hint`, `connected`, `enable`, `disable`, `delete_provider`, `delete_provider_confirm` vb.) **Türkçe haritasında İngilizce metin** duruyordu — yani widget doğru şekilde `L10n.t()` çağırsa bile Türkçe modda İngilizce görünüyordu.
+3. Diğer dosyalarda (`remote_access_tab.dart`, `mood_tab.dart`'ın rıza diyaloğu, `general_tab.dart`'ın CLI/kaldırma bölümü, `about_tab.dart`'ın gövde metni) hiç key yoktu, sıfırdan eklendi.
+
+## Yapılan
+
+11 dosyanın hepsi tek tek okunup yeniden yazıldı: `backup_restore_tab`, `learning_tab`, `mood_tab`, `remote_access_tab`, `providers_tab`, `gpu_config_tab`, `orchestra_tab`, `general_tab`, `memory_tab`, `skills_tab`, `about_tab`. ~150+ string düzeltildi, l10n.dart'a onlarca yeni key (TR+EN) eklendi, birkaç yanlış çevrilmiş key düzeltildi. `mood_tab.dart`'ın 3 aşamalı sistem-yönetimi onay diyaloglarında widget'ın GERÇEK (daha uzun) metniyle l10n key'lerinin (daha kısa, farklı) metni birbirinden kaymıştı — key'ler widget'ın gerçek içeriğine göre güncellendi, davranış değişmedi.
+
+Bilinçli olarak dokunulmadı: dil-bağımsız placeholder/örnek değerler (`hintText: 'tskey-auth-...'`, `'http://127.0.0.1:8090'`) ve "Client ID" gibi teknik terimler.
+
+## Doğrulama
+
+```
+flutter analyze lib/   → temiz (bilinen 4 info-level use_build_context_synchronously)
+flutter test           → 105/105 yeşil, değişmedi
+```
+
+**Commit:** `fe872eb` (AGENTS.md kuralı gereği otomatik atıldı).
+
+**Kapsam dışı bırakılan (kullanıcı onayıyla):** Aynı sınıf bug'ın settings dışında da olduğu doğrulandı (grep ile) — `agent_screen.dart`, `app_shell.dart`, `chat_input.dart`, `chat_message_list.dart`, `permission_dialog.dart`, `permission_history.dart`, `orchestra_config_dialog.dart`, `provider_config_dialog.dart`, `skill_config_dialog.dart`. Kullanıcıya sorulduğunda "şimdilik bu kadar yeter" dedi — bu dosyalar dokunulmadan bırakıldı, ileride istenirse aynı yöntemle (önce l10n.dart'ta mevcut key var mı kontrol et, yoksa TR+EN ekle, widget'ı `L10n.t()`'a bağla) devam edilebilir.
+
+---
+
 # Handoff — 2026-07-14 (Session 27, devam) — Bug #9: Memo, hep-açık takvim/hatırlatma özelliğini bilmiyor, sorulunca inkar ediyordu
 
 ## Özet

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import '../../../providers/provider_provider.dart';
 import '../../../models/orchestra_config.dart';
 import '../../../providers/orchestra_provider.dart';
@@ -22,7 +23,7 @@ class OrchestraTab extends ConsumerWidget {
             const Text('🎵', style: TextStyle(fontSize: 24)),
             const SizedBox(width: 12),
             Text(
-              'Orchestra Mode',
+              L10n.t('orchestra_title'),
               style: TextStyle(
                 fontSize: 20,
                 fontWeight: FontWeight.w600,
@@ -33,9 +34,7 @@ class OrchestraTab extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Birden çok modeli aynı anda bir ekip olarak çalıştır. '
-          'Bir Şef (Chief) model kullanıcının isteğini analiz eder, '
-          'alt görevlere böler ve her görevi uzmanlaşmış modele atar.',
+          L10n.t('orchestra_desc'),
           style: TextStyle(
             fontSize: 13,
             color: MemoTheme.of(context).textSecondary,
@@ -83,8 +82,8 @@ class OrchestraTab extends ConsumerWidget {
                     children: [
                       Text(
                         config.enabled
-                            ? 'Orchestra Mode Aktif'
-                            : 'Orchestra Mode Pasif',
+                            ? L10n.t('orchestra_active')
+                            : L10n.t('orchestra_inactive'),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -94,8 +93,12 @@ class OrchestraTab extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Text(
                         config.enabled
-                            ? 'Şef: ${config.chiefType}/${config.chiefModel} • ${config.roles.where((r) => r.enabled).length} rol aktif'
-                            : 'Aktifleştirmek için aç/kapa yap',
+                            ? L10n.t('orchestra_status', {
+                                'chief': config.chiefType,
+                                'model': config.chiefModel,
+                                'count': '${config.roles.where((r) => r.enabled).length}',
+                              })
+                            : L10n.t('orchestra_hint'),
                         style: TextStyle(
                           fontSize: 12,
                           color: MemoTheme.of(context).textDim,
@@ -118,7 +121,7 @@ class OrchestraTab extends ConsumerWidget {
             ),
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text('Error: $e')),
+          error: (e, _) => Center(child: Text(L10n.t('orchestra_error', {'e': '$e'}))),
         ),
         const SizedBox(height: 20),
 
@@ -129,7 +132,7 @@ class OrchestraTab extends ConsumerWidget {
             builder: (_) => const OrchestraConfigDialog(),
           ),
           icon: const Icon(Icons.tune, size: 18),
-          label: const Text('Rolleri ve Modelleri Yapılandır'),
+          label: Text(L10n.t('configure_roles')),
           style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
         ),
         const SizedBox(height: 32),
@@ -142,7 +145,7 @@ class OrchestraTab extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  '🎭 Aktif Roller',
+                  L10n.t('active_roles'),
                   style: TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import 'dart:async';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
@@ -61,7 +62,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Tailscale hatası: $e')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('remote_ts_error', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _tsBusy = false);
@@ -89,7 +90,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
       error: (err, _) => Center(
         child: Padding(
           padding: const EdgeInsets.all(32),
-          child: Text('Failed to load: $err',
+          child: Text(L10n.t('remote_load_failed', {'err': '$err'}),
               style: TextStyle(color: MemoTheme.red)),
         ),
       ),
@@ -125,7 +126,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
             ),
             const SizedBox(width: 10),
             Text(
-              running ? 'Remote access active' : 'Remote access off',
+              running ? L10n.t('remote_status_active') : L10n.t('remote_status_off'),
               style: TextStyle(
                 fontSize: 15,
                 fontWeight: FontWeight.w600,
@@ -137,7 +138,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         const SizedBox(height: 24),
 
         if (token.isNotEmpty) ...[
-          _label('Access Token'),
+          _label(L10n.t('remote_access_token_label')),
           const SizedBox(height: 6),
           _valueBox(
             child: Row(
@@ -153,7 +154,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: token));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Token copied')),
+                      SnackBar(content: Text(L10n.t('remote_token_copied'))),
                     );
                   },
                   child: Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
@@ -166,10 +167,10 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
 
         // ── Beta features toggle ──────────────────────────────────────
         SwitchListTile(
-          title: Text('Beta Özellikler',
+          title: Text(L10n.t('remote_beta_features'),
               style: TextStyle(fontSize: 13, color: theme.textMain)),
           subtitle: Text(
-            'Deneysel özellikleri aç (örn. Tailscale tüneli)',
+            L10n.t('remote_beta_features_desc'),
             style: TextStyle(fontSize: 11, color: theme.textDim),
           ),
           value: data['beta'] as bool? ?? false,
@@ -190,7 +191,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         ],
 
         if (ngrokUrl.isNotEmpty) ...[
-          _label('Ngrok Tunnel URL'),
+          _label(L10n.t('remote_ngrok_tunnel_url_label')),
           const SizedBox(height: 6),
           _valueBox(
             borderColor: MemoTheme.accent,
@@ -209,7 +210,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                   onTap: () {
                     Clipboard.setData(ClipboardData(text: ngrokUrl));
                     ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('URL copied')),
+                      SnackBar(content: Text(L10n.t('remote_url_copied'))),
                     );
                   },
                   child: Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
@@ -220,7 +221,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           const SizedBox(height: 20),
         ],
         if (savedNgrokToken.isNotEmpty) ...[
-          _label('Ngrok Auth Token (saved)'),
+          _label(L10n.t('remote_ngrok_token_saved_label')),
           const SizedBox(height: 6),
           _valueBox(
             child: Row(
@@ -263,7 +264,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         ],
 
         if (addresses.isNotEmpty) ...[
-          _label('Local Addresses'),
+          _label(L10n.t('remote_local_addresses_label')),
           const SizedBox(height: 6),
           ...addresses.map((addr) => Padding(
                 padding: const EdgeInsets.only(bottom: 4),
@@ -276,15 +277,15 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           const SizedBox(height: 20),
         ],
 
-        _label('Auto-Start on Backend Launch'),
+        _label(L10n.t('remote_autostart_label')),
         const SizedBox(height: 6),
         SwitchListTile(
-          title: Text('Start ngrok tunnel automatically',
+          title: Text(L10n.t('remote_autostart_ngrok_title'),
               style: TextStyle(fontSize: 13, color: theme.textMain)),
           subtitle: Text(
             ngrokAutoStart
-                ? 'Will start on next backend launch'
-                : 'Start manually from this panel',
+                ? L10n.t('remote_autostart_will_start')
+                : L10n.t('remote_autostart_manual'),
             style: TextStyle(fontSize: 11, color: theme.textDim),
           ),
           value: ngrokAutoStart,
@@ -293,17 +294,17 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           contentPadding: EdgeInsets.zero,
         ),
         const SizedBox(height: 20),
-        _label('Configure Remote Access'),
+        _label(L10n.t('remote_configure_label')),
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: TextField(
                 controller: _ngrokTokenCtrl,
-                decoration: const InputDecoration(
-                  labelText: 'Ngrok Auth Token',
+                decoration: InputDecoration(
+                  labelText: L10n.t('remote_ngrok_token_field_label'),
                   hintText: '2hP2x...',
-                  prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
+                  prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
                 ),
                 style: TextStyle(
                     fontFamily: 'JetBrainsMono',
@@ -321,7 +322,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.power_off_rounded, size: 18),
-                label: Text(_enabling ? '...' : 'Disable'),
+                label: Text(_enabling ? '...' : L10n.t('remote_disable_btn')),
                 style: FilledButton.styleFrom(
                   backgroundColor: MemoTheme.red,
                   foregroundColor: theme.textInverse,
@@ -337,7 +338,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                         height: 16,
                         child: CircularProgressIndicator(strokeWidth: 2))
                     : const Icon(Icons.power_settings_new_rounded, size: 18),
-                label: Text(_enabling ? '...' : 'Enable & Start'),
+                label: Text(_enabling ? '...' : L10n.t('remote_enable_start_btn')),
                 style: FilledButton.styleFrom(
                   backgroundColor: MemoTheme.accent,
                   foregroundColor: theme.textInverse,
@@ -350,14 +351,13 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         if (!enabled) ...[
           const SizedBox(height: 12),
           Text(
-            'Enter your ngrok auth token to start a public tunnel.\n'
-            'Get it from https://dashboard.ngrok.com',
+            L10n.t('remote_ngrok_hint_text'),
             style: TextStyle(fontSize: 12, color: theme.textDim),
           ),
         ],
 
         const SizedBox(height: 32),
-        _label('Backend Server URL'),
+        _label(L10n.t('remote_backend_url_label')),
         const SizedBox(height: 8),
         _buildBackendUrlSection(),
       ],
@@ -388,11 +388,11 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
               Expanded(
                 child: TextField(
                   controller: _backendUrlCtrl,
-                  decoration: const InputDecoration(
-                    labelText: 'Backend URL',
+                  decoration: InputDecoration(
+                    labelText: L10n.t('remote_backend_url_field_label'),
                     hintText: 'http://127.0.0.1:8090',
                     isDense: true,
-                    prefixIcon: Icon(Icons.link, size: 18),
+                    prefixIcon: const Icon(Icons.link, size: 18),
                   ),
                   style: TextStyle(
                       fontFamily: 'JetBrainsMono',
@@ -411,15 +411,15 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                 ref.invalidate(apiClientProvider);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Backend URL updated. Reconnect if needed.'),
-                      duration: Duration(seconds: 2),
+                    SnackBar(
+                      content: Text(L10n.t('remote_backend_url_updated')),
+                      duration: const Duration(seconds: 2),
                     ),
                   );
                 }
               },
               icon: const Icon(Icons.save_outlined, size: 16),
-              label: const Text('Apply'),
+              label: Text(L10n.t('apply')),
               style: FilledButton.styleFrom(
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
@@ -470,7 +470,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                   size: 18,
                   color: tsRunning ? MemoTheme.accent : theme.textDim),
               const SizedBox(width: 8),
-              Text('Tailscale (sabit URL, gömülü)',
+              Text(L10n.t('remote_tailscale_title'),
                   style: TextStyle(
                       fontWeight: FontWeight.w600, color: theme.textMain)),
               const Spacer(),
@@ -485,8 +485,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           ),
           const SizedBox(height: 4),
           Text(
-            'ngrok\'un aksine URL hiç değişmez ve ayrı binary indirmez. '
-            'Tek seferlik bir auth key gerekir (login.tailscale.com → Settings → Keys).',
+            L10n.t('remote_tailscale_desc'),
             style: TextStyle(fontSize: 12, color: theme.textDim),
           ),
           const SizedBox(height: 12),
@@ -509,7 +508,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: tsUrl));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('URL kopyalandı')),
+                        SnackBar(content: Text(L10n.t('remote_url_copied'))),
                       );
                     },
                     child:
@@ -528,7 +527,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                   Icon(Icons.lan_outlined, size: 16, color: theme.textDim),
                   const SizedBox(width: 8),
                   Expanded(
-                    child: Text('$tsIp  (MagicDNS kapalıysa bunu kullan)',
+                    child: Text('$tsIp  ${L10n.t('remote_ts_ip_note')}',
                         style: TextStyle(
                             fontFamily: 'JetBrainsMono',
                             fontSize: 12.5,
@@ -538,7 +537,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     onTap: () {
                       Clipboard.setData(ClipboardData(text: tsIp));
                       ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('IP kopyalandı')),
+                        SnackBar(content: Text(L10n.t('remote_ip_copied'))),
                       );
                     },
                     child:
@@ -551,7 +550,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           ],
 
           if (tsError.isNotEmpty) ...[
-            Text('Hata: $tsError',
+            Text(L10n.t('remote_ts_error', {'e': tsError}),
                 style: TextStyle(fontSize: 12, color: MemoTheme.red)),
             const SizedBox(height: 12),
           ],
@@ -559,10 +558,10 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           if (!tsRunning) ...[
             TextField(
               controller: _tsKeyCtrl,
-              decoration: const InputDecoration(
-                labelText: 'Tailscale Auth Key',
+              decoration: InputDecoration(
+                labelText: L10n.t('remote_ts_auth_key_label'),
                 hintText: 'tskey-auth-...',
-                prefixIcon: Icon(Icons.vpn_key_outlined, size: 20),
+                prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
                 isDense: true,
               ),
               style: TextStyle(
@@ -574,8 +573,8 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                 Expanded(
                   child: TextField(
                     controller: _tsHostCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Cihaz adı',
+                    decoration: InputDecoration(
+                      labelText: L10n.t('remote_ts_device_name_label'),
                       hintText: 'memo',
                       isDense: true,
                     ),
@@ -585,9 +584,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: SwitchListTile(
-                    title: Text('Funnel (public)',
+                    title: Text(L10n.t('remote_ts_funnel_title'),
                         style: TextStyle(fontSize: 12, color: theme.textMain)),
-                    subtitle: Text('Telefona kurulum gerekmez',
+                    subtitle: Text(L10n.t('remote_ts_funnel_desc'),
                         style: TextStyle(fontSize: 10, color: theme.textDim)),
                     value: _tsFunnel,
                     onChanged: (v) => setState(() => _tsFunnel = v),
@@ -607,7 +606,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.power_settings_new_rounded, size: 18),
-              label: Text(_tsBusy ? 'Başlatılıyor...' : 'Tailscale ile Başlat'),
+              label: Text(_tsBusy ? L10n.t('remote_ts_starting') : L10n.t('remote_ts_start_btn')),
               style: FilledButton.styleFrom(
                 backgroundColor: MemoTheme.accent,
                 foregroundColor: theme.textInverse,
@@ -623,7 +622,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2))
                   : const Icon(Icons.power_off_rounded, size: 18),
-              label: const Text('Tailscale Durdur'),
+              label: Text(L10n.t('remote_ts_stop_btn')),
               style: FilledButton.styleFrom(
                 backgroundColor: MemoTheme.red,
                 foregroundColor: theme.textInverse,
@@ -655,7 +654,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('remote_action_failed', {'e': '$e'}))));
       }
     }
   }
@@ -664,7 +663,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     final token = _ngrokTokenCtrl.text.trim();
     if (token.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Enter ngrok auth token first')),
+        SnackBar(content: Text(L10n.t('remote_enter_token_first'))),
       );
       return;
     }
@@ -688,7 +687,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Failed: $e')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('remote_action_failed', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _enabling = false);
@@ -703,7 +702,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Failed: $e')),
+          SnackBar(content: Text(L10n.t('remote_action_failed', {'e': '$e'}))),
         );
       }
     } finally {

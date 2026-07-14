@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import '../../../providers/chat_provider.dart';
@@ -90,23 +91,17 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     final proceed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Şifreleme Parolası Boş'),
-        content: const Text(
-          'Bir şifreleme parolası girmediniz. Bu durumda yedekleriniz bu '
-          'cihazın kimliğinden türetilen bir anahtarla şifrelenir ve SADECE '
-          'bu cihazdan geri yüklenebilir. Başka bir cihaza geçerseniz bu '
-          'yedeği açamazsınız.\n\n'
-          'Devam etmeden önce bir parola belirlemenizi öneririz.',
-        ),
+        title: Text(L10n.t('backup_passphrase_warning_title')),
+        content: Text(L10n.t('backup_passphrase_warning_body')),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('Parola Belirle'),
+            child: Text(L10n.t('backup_set_passphrase_btn')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: MemoTheme.warmBrown),
-            child: const Text('Cihaza Özel Devam Et'),
+            child: Text(L10n.t('backup_device_specific_btn')),
           ),
         ],
       ),
@@ -128,13 +123,13 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Kimlik bilgileri kaydedildi')),
+          SnackBar(content: Text(L10n.t('backup_creds_saved'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kaydetme hatası: $e')),
+          SnackBar(content: Text(L10n.t('backup_save_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -145,7 +140,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
   Future<void> _connectDrive() async {
     if (_clientIdCtrl.text.trim().isEmpty || _clientSecretCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Lütfen önce Client ID ve Client Secret girin')),
+        SnackBar(content: Text(L10n.t('backup_enter_creds_first'))),
       );
       return;
     }
@@ -177,7 +172,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
           if (mounted) {
             setState(() { _cloudOp = ''; });
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text('Yetkilendirme zaman aşımına uğradı. Lütfen tekrar deneyin.')),
+              SnackBar(content: Text(L10n.t('backup_auth_timeout'))),
             );
           }
           return;
@@ -197,10 +192,8 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             if (mounted) {
               setState(() { _cloudOp = ''; });
               ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text(
-                    'Yetkilendirme durumu kontrol edilemiyor. Bağlantınızı kontrol edip tekrar deneyin.',
-                  ),
+                SnackBar(
+                  content: Text(L10n.t('backup_auth_check_failed')),
                 ),
               );
             }
@@ -210,7 +203,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Bağlantı hatası: $e')),
+          SnackBar(content: Text(L10n.t('backup_connection_error', {'e': '$e'}))),
         );
         setState(() { _cloudOp = ''; });
       }
@@ -223,13 +216,13 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       await ref.read(apiClientProvider).triggerSync();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Drive yedeklemesi başlatıldı (arka planda çalışıyor)')),
+          SnackBar(content: Text(L10n.t('backup_drive_started'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Yedekleme hatası: $e')),
+          SnackBar(content: Text(L10n.t('backup_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -241,15 +234,11 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Buluttan Geri Yükle'),
-        content: const Text(
-          "Drive'daki son yedek geri yüklenecek.\n"
-          'Mevcut hafıza verilerinin üzerine yazılacak.\n'
-          'Devam etmek istiyor musunuz?',
-        ),
+        title: Text(L10n.t('backup_restore_cloud_title')),
+        content: Text(L10n.t('backup_restore_cloud_confirm')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Geri Yükle')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(L10n.t('backup_restore_btn_short'))),
         ],
       ),
     );
@@ -259,13 +248,13 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       await ref.read(apiClientProvider).pullSync();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Geri yükleme başlatıldı. Tamamlandığında uygulamayı yeniden başlatın.')),
+          SnackBar(content: Text(L10n.t('backup_restore_started'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Geri yükleme hatası: $e')),
+          SnackBar(content: Text(L10n.t('backup_restore_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -277,14 +266,14 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Drive Bağlantısını Kes'),
-        content: const Text('Google Drive bağlantısı kesilecek. Yerel yedekler korunur.'),
+        title: Text(L10n.t('backup_disconnect_drive_title')),
+        content: Text(L10n.t('backup_disconnect_drive_body')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
             style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
-            child: const Text('Bağlantıyı Kes'),
+            child: Text(L10n.t('backup_disconnect_btn')),
           ),
         ],
       ),
@@ -299,13 +288,13 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
           _cloudEmail = '';
         });
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Drive bağlantısı kesildi')),
+          SnackBar(content: Text(L10n.t('backup_disconnected'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
+          SnackBar(content: Text(L10n.t('backup_error_generic', {'e': '$e'}))),
         );
       }
     }
@@ -322,7 +311,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (!mounted) return;
 
       final path = await FilePicker.platform.saveFile(
-        dialogTitle: 'Memo Yedekle',
+        dialogTitle: L10n.t('backup_export_dialog_title'),
         fileName: 'memo_backup.memo',
         type: FileType.any,
       );
@@ -331,14 +320,14 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         if (mounted) {
           ScaffoldMessenger.of(
             context,
-          ).showSnackBar(SnackBar(content: Text('Yedek kaydedildi: $path')));
+          ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_saved', {'path': path}))));
         }
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Dışa aktarma hatası: $e')));
+        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_error', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -350,7 +339,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     setState(() => _importing = true);
     try {
       final result = await FilePicker.platform.pickFiles(
-        dialogTitle: 'Memo Yedek İçe Aktar',
+        dialogTitle: L10n.t('backup_import_dialog_title'),
         type: FileType.any,
       );
       if (result == null || result.files.isEmpty) return;
@@ -370,9 +359,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Yedek başarıyla içe aktarıldı. Uygulamayı yeniden başlatın.',
-            ),
+            content: Text(L10n.t('backup_import_success')),
           ),
         );
       }
@@ -380,7 +367,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('İçe aktarma hatası: $e')));
+        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_import_error', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _importing = false);
@@ -399,7 +386,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('Silme hatası: $e')));
+        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_wipe_error', {'e': '$e'}))));
       }
     } finally {
       if (mounted) {
@@ -424,22 +411,21 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       builder: (ctx) => AlertDialog(
         backgroundColor: theme.bgPanel,
         title: Text(
-          'Tüm veriler silindi',
+          L10n.t('backup_restart_title'),
           style: TextStyle(
             color: theme.textMain,
             fontWeight: FontWeight.bold,
           ),
         ),
         content: Text(
-          'Verileriniz silindi. Her şeyin temiz başlaması için uygulamanın '
-          'yeniden başlatılması gerekiyor.',
+          L10n.t('backup_restart_body'),
           style: TextStyle(color: theme.textDim, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
             child: Text(
-              'Daha sonra',
+              L10n.t('backup_restart_later'),
               style: TextStyle(color: theme.textDim),
             ),
           ),
@@ -451,7 +437,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
               exit(42);
             },
             child: Text(
-              'Şimdi yeniden başlat',
+              L10n.t('backup_restart_now'),
               style: TextStyle(
                 color: MemoTheme.accent,
                 fontWeight: FontWeight.bold,
@@ -469,7 +455,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       padding: EdgeInsets.all(32),
       children: [
         Text(
-          'Yedekleme',
+          L10n.t('backup_section_title'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
             color: MemoTheme.of(context).textMain,
@@ -477,7 +463,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         ),
         SizedBox(height: 12),
         Text(
-          'Tüm sohbet geçmişi, yapılandırma ve WhatsApp mesajlarınızı .memo dosyasına aktarın veya geri yükleyin.',
+          L10n.t('backup_section_desc'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         SizedBox(height: 24),
@@ -485,9 +471,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         // Include models toggle
         Card(
           child: SwitchListTile(
-            title: Text('Modelleri dahil et'),
+            title: Text(L10n.t('backup_include_models')),
             subtitle: Text(
-              'GGUF modelleri (büyük boyut)',
+              L10n.t('backup_include_models_sub'),
               style: TextStyle(
                 fontSize: 12,
                 color: MemoTheme.of(context).textDim,
@@ -504,9 +490,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         Card(
           child: ListTile(
             leading: Icon(Icons.file_upload_outlined, color: MemoTheme.accent),
-            title: Text('Dışa Aktar'),
+            title: Text(L10n.t('backup_export_btn')),
             subtitle: Text(
-              'Tüm verileri .memo dosyasına kaydeder',
+              L10n.t('backup_export_desc'),
               style: TextStyle(
                 fontSize: 12,
                 color: MemoTheme.of(context).textDim,
@@ -531,9 +517,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
               Icons.file_download_outlined,
               color: MemoTheme.warmBrown,
             ),
-            title: Text('İçe Aktar'),
+            title: Text(L10n.t('backup_import_btn')),
             subtitle: Text(
-              '.memo dosyasından verileri geri yükler',
+              L10n.t('backup_import_desc'),
               style: TextStyle(
                 fontSize: 12,
                 color: MemoTheme.of(context).textDim,
@@ -553,7 +539,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
 
         // Wipe All Data
         Text(
-          'Tüm Verileri Sil',
+          L10n.t('backup_wipe_title'),
           style: TextStyle(
             fontWeight: FontWeight.bold,
             fontSize: 16,
@@ -562,7 +548,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         ),
         SizedBox(height: 8),
         Text(
-          'Sohbet geçmişi, WhatsApp mesajları, hafıza ve yapılandırma kalıcı olarak silinir.',
+          L10n.t('backup_wipe_desc'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         SizedBox(height: 12),
@@ -571,11 +557,11 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             child: ListTile(
               leading: Icon(Icons.delete_forever, color: MemoTheme.warmBrown),
               title: Text(
-                'Tüm Verileri Sil',
+                L10n.t('backup_wipe_btn'),
                 style: TextStyle(color: MemoTheme.warmBrown),
               ),
               subtitle: Text(
-                'Bu işlem geri alınamaz',
+                L10n.t('backup_wipe_irreversible'),
                 style: TextStyle(
                   fontSize: 12,
                   color: MemoTheme.of(context).textDim,
@@ -591,11 +577,11 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             child: ListTile(
               leading: Icon(Icons.delete_forever, color: Colors.redAccent),
               title: Text(
-                'Emin misiniz?',
+                L10n.t('backup_wipe_confirm_title'),
                 style: TextStyle(color: Colors.redAccent),
               ),
               subtitle: Text(
-                'Tüm verileriniz silinecek. Onaylamak için tekrar tıklayın.',
+                L10n.t('backup_wipe_confirm_body'),
                 style: TextStyle(
                   fontSize: 12,
                   color: MemoTheme.of(context).textDim,
@@ -632,14 +618,14 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                     )
                   : Icon(Icons.delete_sweep, color: MemoTheme.red),
               title: Text(
-                'Sil',
+                L10n.t('delete'),
                 style: TextStyle(
                   color: MemoTheme.red,
                   fontWeight: FontWeight.bold,
                 ),
               ),
               subtitle: Text(
-                'Bu işlem geri alınamaz. Tüm veriler silinecek.',
+                L10n.t('backup_wipe_final_confirm'),
                 style: TextStyle(
                   fontSize: 12,
                   color: MemoTheme.of(context).textDim,
@@ -666,7 +652,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             Icon(Icons.cloud_outlined, color: MemoTheme.accent, size: 22),
             SizedBox(width: 10),
             Text(
-              'Bulut Yedekleme (Google Drive)',
+              L10n.t('backup_cloud_title'),
               style: TextStyle(
                 fontWeight: FontWeight.bold,
                 fontSize: 16,
@@ -677,9 +663,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
         ),
         SizedBox(height: 8),
         Text(
-          'Hafıza verilerini AES-256 şifreli olarak Google Drive\'a yedekle ve '
-          'farklı cihazlara geri yükle. Sadece bu uygulamanın oluşturduğu '
-          'dosyalara erişim sağlanır.',
+          L10n.t('backup_cloud_desc'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         SizedBox(height: 20),
@@ -723,7 +707,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      _cloudConnected ? 'Drive Bağlı' : 'Bağlı Değil',
+                      _cloudConnected ? L10n.t('backup_drive_connected') : L10n.t('backup_drive_not_connected'),
                       style: TextStyle(
                         fontWeight: FontWeight.w600,
                         fontSize: 14,
@@ -747,7 +731,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                       Padding(
                         padding: EdgeInsets.only(top: 2),
                         child: Text(
-                          'Kimlik bilgilerini girin ve bağlan',
+                          L10n.t('backup_enter_creds_to_connect'),
                           style: TextStyle(
                             fontSize: 12,
                             color: MemoTheme.of(context).textDim,
@@ -766,7 +750,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                             ),
                             SizedBox(width: 6),
                             Text(
-                              'Tarayıcıda yetkilendirme bekleniyor...',
+                              L10n.t('backup_auth_waiting'),
                               style: TextStyle(
                                 fontSize: 11,
                                 color: MemoTheme.accent,
@@ -782,7 +766,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                 TextButton(
                   onPressed: _cloudOp.isNotEmpty ? null : _disconnectCloud,
                   style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
-                  child: Text('Kes', style: TextStyle(fontSize: 12)),
+                  child: Text(L10n.t('backup_disconnect_short'), style: TextStyle(fontSize: 12)),
                 ),
             ],
           ),
@@ -795,7 +779,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Google OAuth Kimlik Bilgileri',
+                L10n.t('backup_oauth_creds_title'),
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
@@ -805,13 +789,13 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
               if (_cloudConnected)
                 TextButton(
                   onPressed: () => setState(() => _showCredSetup = false),
-                  child: Text('Kapat', style: TextStyle(fontSize: 12)),
+                  child: Text(L10n.t('close'), style: TextStyle(fontSize: 12)),
                 ),
             ],
           ),
           SizedBox(height: 4),
           Text(
-            'Google Cloud Console\'dan bir OAuth 2.0 Desktop App kimlik bilgisi oluşturun.',
+            L10n.t('backup_oauth_creds_hint'),
             style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
           ),
           SizedBox(height: 12),
@@ -829,9 +813,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
           ),
           SizedBox(height: 8),
           CloudTextField(
-            label: 'Şifreleme Parolası',
+            label: L10n.t('backup_encryption_passphrase'),
             controller: _passphraseCtrl,
-            hint: 'Opsiyonel — boş bırakırsanız cihaz kimliği kullanılır',
+            hint: L10n.t('backup_passphrase_hint'),
             obscure: true,
           ),
           SizedBox(height: 12),
@@ -847,7 +831,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                           height: 14,
                           child: CircularProgressIndicator(strokeWidth: 2),
                         )
-                      : Text('Kaydet'),
+                      : Text(L10n.t('save')),
                 ),
                 SizedBox(width: 8),
                 FilledButton.icon(
@@ -862,7 +846,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                           ),
                         )
                       : Icon(Icons.login, size: 16),
-                  label: Text('Google Drive\'a Bağlan'),
+                  label: Text(L10n.t('backup_connect_drive_btn')),
                   style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent),
                 ),
               ] else ...[
@@ -878,7 +862,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                             color: Colors.white,
                           ),
                         )
-                      : Text('Kimlik Bilgilerini Güncelle'),
+                      : Text(L10n.t('backup_update_creds_btn')),
                 ),
               ],
             ],
@@ -892,7 +876,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               Text(
-                'Yedekleme İşlemleri',
+                L10n.t('backup_operations_title'),
                 style: TextStyle(
                   fontWeight: FontWeight.w600,
                   fontSize: 13,
@@ -902,7 +886,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
               TextButton(
                 onPressed: () => setState(() => _showCredSetup = !_showCredSetup),
                 child: Text(
-                  _showCredSetup ? 'Ayarları Kapat' : 'Kimlik Bilgilerini Düzenle',
+                  _showCredSetup ? L10n.t('backup_close_settings') : L10n.t('backup_edit_creds'),
                   style: TextStyle(fontSize: 12),
                 ),
               ),
@@ -922,9 +906,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Icon(Icons.cloud_upload_outlined, color: MemoTheme.accent),
-                    title: Text('Şimdi Yedekle', style: TextStyle(fontSize: 14)),
+                    title: Text(L10n.t('backup_backup_now'), style: TextStyle(fontSize: 14)),
                     subtitle: Text(
-                      'Hafızayı Drive\'a gönder',
+                      L10n.t('backup_backup_now_desc'),
                       style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
                     ),
                     onTap: _cloudOp.isNotEmpty ? null : _backupNow,
@@ -942,9 +926,9 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
                             child: CircularProgressIndicator(strokeWidth: 2),
                           )
                         : Icon(Icons.cloud_download_outlined, color: MemoTheme.warmBrown),
-                    title: Text('Geri Yükle', style: TextStyle(fontSize: 14)),
+                    title: Text(L10n.t('backup_restore_btn_short'), style: TextStyle(fontSize: 14)),
                     subtitle: Text(
-                      'Son yedeği indir ve uygula',
+                      L10n.t('backup_restore_desc'),
                       style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
                     ),
                     onTap: _cloudOp.isNotEmpty ? null : _restoreCloud,
@@ -966,7 +950,7 @@ class CloudTextField extends StatelessWidget {
   final String hint;
   final bool obscure;
 
-  const CloudTextField({super.key, 
+  const CloudTextField({super.key,
     required this.label,
     required this.controller,
     required this.hint,

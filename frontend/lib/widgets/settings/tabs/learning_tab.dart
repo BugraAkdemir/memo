@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/learning_provider.dart';
 
@@ -21,7 +22,7 @@ class LearningTab extends ConsumerWidget {
         Row(
           children: [
             Text(
-              'Learning Profile',
+              L10n.t('learning_title'),
               style: TextStyle(
                 fontSize: 18,
                 fontWeight: FontWeight.w600,
@@ -32,7 +33,7 @@ class LearningTab extends ConsumerWidget {
         ),
         const SizedBox(height: 8),
         Text(
-          'Memo kullanim aliskanliklarini ogrenir ve proaktif olarak yardim teklif eder.',
+          L10n.t('learning_desc'),
           style: TextStyle(color: theme.textDim, fontSize: 13),
         ),
         const SizedBox(height: 16),
@@ -40,7 +41,7 @@ class LearningTab extends ConsumerWidget {
         // Settings card
         settingsAsync.when(
           loading: () => const CircularProgressIndicator(),
-          error: (e, _) => Text('Hata: $e', style: TextStyle(color: MemoTheme.red)),
+          error: (e, _) => Text(L10n.t('learning_error', {'e': '$e'}), style: TextStyle(color: MemoTheme.red)),
           data: (settings) => SettingsCard(settings: settings, ref: ref),
         ),
         const SizedBox(height: 12),
@@ -53,7 +54,7 @@ class LearningTab extends ConsumerWidget {
         Row(
           children: [
             Text(
-              'Ogrenilen Patternler',
+              L10n.t('learning_patterns_title'),
               style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: theme.textMain),
             ),
             const Spacer(),
@@ -61,7 +62,7 @@ class LearningTab extends ConsumerWidget {
               TextButton.icon(
                 onPressed: () => _clearAll(context, ref),
                 icon: Icon(Icons.delete_sweep_outlined, size: 16, color: MemoTheme.red),
-                label: Text('Tumunu Sil', style: TextStyle(fontSize: 12, color: MemoTheme.red)),
+                label: Text(L10n.t('learning_clear_all_btn'), style: TextStyle(fontSize: 12, color: MemoTheme.red)),
                 style: TextButton.styleFrom(visualDensity: VisualDensity.compact),
               ),
           ],
@@ -75,7 +76,7 @@ class LearningTab extends ConsumerWidget {
             child: CircularProgressIndicator(),
           )),
           error: (e, _) => Center(
-            child: Text('Patternler yuklenemedi: $e', style: TextStyle(color: theme.textDim)),
+            child: Text(L10n.t('learning_patterns_load_error', {'e': '$e'}), style: TextStyle(color: theme.textDim)),
           ),
           data: (patterns) {
             if (patterns.isEmpty) {
@@ -88,12 +89,12 @@ class LearningTab extends ConsumerWidget {
                       Icon(Icons.auto_awesome_outlined, size: 48, color: theme.textDim),
                       const SizedBox(height: 12),
                       Text(
-                        'Henuz pattern yok.',
+                        L10n.t('learning_no_patterns'),
                         style: TextStyle(color: theme.textDim, fontSize: 14),
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        'Memo sadece gozlem yapiyor.\nBir kac hafta icinde aliskanliklarinizi ogrenir.',
+                        L10n.t('learning_no_patterns_desc'),
                         style: TextStyle(color: theme.textDim, fontSize: 12),
                         textAlign: TextAlign.center,
                       ),
@@ -120,15 +121,13 @@ class LearningTab extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Tum Ogrenme Verilerini Sil'),
-        content: const Text(
-          'Tum gozlemler ve ogrenilen patternler kalici olarak silinecek. Bu islem geri alinamaz.',
-        ),
+        title: Text(L10n.t('learning_clear_title')),
+        content: Text(L10n.t('learning_clear_confirm')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Hepsini Sil', style: TextStyle(color: Colors.red)),
+            child: Text(L10n.t('learning_clear_all_confirm'), style: TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -162,7 +161,7 @@ class SettingsCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              Text('Proactive Learning', style: TextStyle(fontWeight: FontWeight.w500, color: theme.textMain)),
+              Text(L10n.t('learning_proactive_title'), style: TextStyle(fontWeight: FontWeight.w500, color: theme.textMain)),
               const Spacer(),
               Switch(
                 value: enabled,
@@ -182,7 +181,7 @@ class SettingsCard extends StatelessWidget {
           ),
           if (enabled) ...[
             const SizedBox(height: 8),
-            Text('Seviye:', style: TextStyle(fontSize: 12, color: theme.textDim)),
+            Text(L10n.t('learning_level_label'), style: TextStyle(fontSize: 12, color: theme.textDim)),
             const SizedBox(height: 4),
             Wrap(
               spacing: 6,
@@ -267,12 +266,12 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
       await api.updateCalendarSettings(_reminderLead, disableTimeGuess: !_guessTime);
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Öğrenme ayarları kaydedildi')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_settings_saved'))));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Hata: $e')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_error', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -289,7 +288,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
       );
     }
     if (_error != null) {
-      return Text('Hata: $_error', style: TextStyle(color: MemoTheme.red, fontSize: 12));
+      return Text(L10n.t('learning_error', {'e': _error!}), style: TextStyle(color: MemoTheme.red, fontSize: 12));
     }
 
     return Container(
@@ -304,7 +303,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
         children: [
           Row(
             children: [
-              Text('Tek Model Modu',
+              Text(L10n.t('learning_single_model_title'),
                   style: TextStyle(fontWeight: FontWeight.w500, color: theme.textMain)),
               const Spacer(),
               Switch(
@@ -315,7 +314,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
             ],
           ),
           Text(
-            'Niyet analizi ve proaktif kararlar Orchestra yerine tek modeli kullanır.',
+            L10n.t('learning_single_model_desc'),
             style: TextStyle(fontSize: 12, color: theme.textDim),
           ),
           if (_singleModel) ...[
@@ -325,7 +324,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
               style: TextStyle(color: theme.textMain, fontSize: 13),
               decoration: InputDecoration(
                 isDense: true,
-                hintText: 'Model ID (ör. gpt-4o-mini)',
+                hintText: L10n.t('learning_model_id_hint'),
                 hintStyle: TextStyle(color: theme.textDim, fontSize: 13),
                 border: const OutlineInputBorder(),
               ),
@@ -334,7 +333,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
           const SizedBox(height: 14),
           Row(
             children: [
-              Text('Takvim hatırlatma:',
+              Text(L10n.t('learning_calendar_reminder'),
                   style: TextStyle(fontSize: 13, color: theme.textMain)),
               const Spacer(),
               DropdownButton<int>(
@@ -344,7 +343,9 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
                 items: _leadOptions
                     .map((m) => DropdownMenuItem(
                           value: m,
-                          child: Text(m < 60 ? '$m dk önce' : '${m ~/ 60} saat önce'),
+                          child: Text(m < 60
+                              ? L10n.t('learning_reminder_min_before', {'m': '$m'})
+                              : L10n.t('learning_reminder_hour_before', {'h': '${m ~/ 60}'})),
                         ))
                     .toList(),
                 onChanged: (v) => setState(() => _reminderLead = v ?? 30),
@@ -353,10 +354,10 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
           ),
           const SizedBox(height: 6),
           SwitchListTile(
-            title: Text('Belirsiz saatleri tahmin et',
+            title: Text(L10n.t('learning_guess_time_title'),
                 style: TextStyle(fontSize: 13, color: theme.textMain)),
             subtitle: Text(
-              '"yarın dışarı çıkalım" gibi saatsiz planlara saat ata',
+              L10n.t('learning_guess_time_desc'),
               style: TextStyle(fontSize: 11, color: theme.textDim),
             ),
             value: _guessTime,
@@ -372,7 +373,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
               onPressed: _saving ? null : _save,
               child: _saving
                   ? const SizedBox(height: 16, width: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Text('Kaydet'),
+                  : Text(L10n.t('save')),
             ),
           ),
         ],
@@ -479,11 +480,11 @@ class PatternCard extends ConsumerWidget {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Pattern\'i Unut'),
-        content: Text('"${pattern.activityType}" pattern\'ini silmek istedigine emin misin?'),
+        title: Text(L10n.t('learning_forget_pattern_title')),
+        content: Text(L10n.t('learning_forget_pattern_confirm', {'type': pattern.activityType})),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Unut', style: TextStyle(color: Colors.red))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(L10n.t('learning_forget_btn'), style: TextStyle(color: Colors.red))),
         ],
       ),
     );

@@ -55,34 +55,27 @@ class AboutTab extends ConsumerWidget {
         ),
         SizedBox(height: 8),
         Text(
-          'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı bir yapay zeka asistanıdır. '
-          'Konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazır. '
-          'Üçüncü taraf sunuculara ihtiyaç duymadan, kendi bilgisayarınızda çalışır — '
-          'verileriniz tamamen sizde kalır. İsteğe bağlı olarak harici API sağlayıcıları '
-          'veya yerel llama.cpp modelleri ile kullanılabilir. '
-          'WhatsApp entegrasyonu, RAG hafıza ve E2E şifreli bulut senkronizasyonu destekler.',
+          L10n.t('about_vision_body'),
           style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
         SizedBox(height: 24),
         Text(
-          'Lisans',
+          L10n.t('about_license_title'),
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         SizedBox(height: 8),
         Text(
-          'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile lisanslanmıştır. '
-          'Geliştirici: Buğra Akdemir. Kaynak kod: github.com/BugraAkdemir/memo',
+          L10n.t('about_license_body'),
           style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
         SizedBox(height: 24),
         Text(
-          'Teknolojiler',
+          L10n.t('about_tech_title'),
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         SizedBox(height: 8),
         Text(
-          'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vektör arama) | '
-          'whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
+          L10n.t('about_tech_body'),
           style: TextStyle(height: 1.6, color: MemoTheme.of(context).textMuted),
         ),
       ],

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import '../../../models/provider_config.dart';
 import '../../../providers/provider_provider.dart';
 import '../../provider_config_dialog.dart';
@@ -20,7 +21,7 @@ class ProvidersTab extends ConsumerWidget {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             Text(
-              'API Providers',
+              L10n.t('providers_title'),
               style: Theme.of(context).textTheme.titleLarge?.copyWith(
                 fontWeight: FontWeight.bold,
                 color: MemoTheme.of(context).textMain,
@@ -37,13 +38,13 @@ class ProvidersTab extends ConsumerWidget {
                 }
               },
               icon: const Icon(Icons.add, size: 18),
-              label: const Text('Add Provider'),
+              label: Text(L10n.t('add_provider')),
             ),
           ],
         ),
         const SizedBox(height: 8),
         Text(
-          'Configure external LLM providers (OpenAI, Claude, Gemini, etc.)',
+          L10n.t('providers_description'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         const SizedBox(height: 24),
@@ -61,12 +62,12 @@ class ProvidersTab extends ConsumerWidget {
                   children: [
                     const SizedBox(height: 8),
                     Text(
-                      'No providers configured yet.',
+                      L10n.t('no_providers'),
                       style: TextStyle(color: MemoTheme.of(context).textDim),
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      'Click "Add Provider" to get started.',
+                      L10n.t('add_provider_hint'),
                       style: TextStyle(
                         color: MemoTheme.of(context).textDim,
                         fontSize: 12,
@@ -82,7 +83,7 @@ class ProvidersTab extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('Error: $e'),
+          error: (e, _) => Text(L10n.t('providers_error', {'e': '$e'})),
         ),
       ],
     );
@@ -162,9 +163,9 @@ class ProviderCard extends ConsumerWidget {
                             color: MemoTheme.accent.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(4),
                           ),
-                          child: const Text(
-                            'ACTIVE',
-                            style: TextStyle(
+                          child: Text(
+                            L10n.t('provider_active_badge'),
+                            style: const TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.bold,
                               color: MemoTheme.accent,
@@ -197,7 +198,7 @@ class ProviderCard extends ConsumerWidget {
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          p.enabled ? 'Enabled' : 'Disabled',
+                          p.enabled ? L10n.t('provider_enabled_badge') : L10n.t('provider_disabled_badge'),
                           style: TextStyle(
                             fontSize: 11,
                             color: p.enabled ? MemoTheme.green : MemoTheme.of(context).textDim,
@@ -207,17 +208,17 @@ class ProviderCard extends ConsumerWidget {
                       ),
                       const SizedBox(width: 8),
                       if (p.connected)
-                        const Row(
+                        Row(
                           children: [
-                            Icon(
+                            const Icon(
                               Icons.check_circle,
                               size: 14,
                               color: MemoTheme.green,
                             ),
-                            SizedBox(width: 4),
+                            const SizedBox(width: 4),
                             Text(
-                              'Connected',
-                              style: TextStyle(
+                              L10n.t('connected'),
+                              style: const TextStyle(
                                 fontSize: 11,
                                 color: MemoTheme.green,
                               ),
@@ -245,16 +246,16 @@ class ProviderCard extends ConsumerWidget {
                   final confirm = await showDialog<bool>(
                     context: context,
                     builder: (ctx) => AlertDialog(
-                      title: const Text('Delete Provider'),
-                      content: Text('Delete ${p.name} configuration?'),
+                      title: Text(L10n.t('delete_provider')),
+                      content: Text(L10n.t('delete_provider_confirm', {'name': p.name})),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.of(ctx).pop(false),
-                          child: const Text('Cancel'),
+                          child: Text(L10n.t('cancel')),
                         ),
                         TextButton(
                           onPressed: () => Navigator.of(ctx).pop(true),
-                          child: const Text('Delete'),
+                          child: Text(L10n.t('delete')),
                         ),
                       ],
                     ),
@@ -273,11 +274,11 @@ class ProviderCard extends ConsumerWidget {
               itemBuilder: (_) => [
                 PopupMenuItem(
                   value: 'configure',
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.edit, size: 18),
-                      SizedBox(width: 8),
-                      Text('Configure'),
+                      const Icon(Icons.edit, size: 18),
+                      const SizedBox(width: 8),
+                      Text(L10n.t('configure')),
                     ],
                   ),
                 ),
@@ -290,18 +291,18 @@ class ProviderCard extends ConsumerWidget {
                         size: 18,
                       ),
                       const SizedBox(width: 8),
-                      Text(p.enabled ? 'Disable' : 'Enable'),
+                      Text(p.enabled ? L10n.t('disable') : L10n.t('enable')),
                     ],
                   ),
                 ),
                 const PopupMenuDivider(),
                 PopupMenuItem(
                   value: 'delete',
-                  child: const Row(
+                  child: Row(
                     children: [
-                      Icon(Icons.delete, size: 18, color: MemoTheme.red),
-                      SizedBox(width: 8),
-                      Text('Delete', style: TextStyle(color: MemoTheme.red)),
+                      const Icon(Icons.delete, size: 18, color: MemoTheme.red),
+                      const SizedBox(width: 8),
+                      Text(L10n.t('delete'), style: const TextStyle(color: MemoTheme.red)),
                     ],
                   ),
                 ),

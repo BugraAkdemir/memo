@@ -130,7 +130,7 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Motor Modu',
+                        L10n.t('engine_mode'),
                         style: TextStyle(
                           fontSize: 14,
                           fontWeight: FontWeight.w600,
@@ -146,26 +146,26 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                           isExpanded: true,
                           dropdownColor: MemoTheme.of(context).bgPanel.withValues(alpha: 1.0),
                           elevation: 8,
-                          items: const [
+                          items: [
                             DropdownMenuItem(
                               value: 'auto',
-                              child: Text('Otomatik (Önerilen)'),
+                              child: Text(L10n.t('engine_auto')),
                             ),
                             DropdownMenuItem(
                               value: 'cpu',
-                              child: Text('Sadece İşlemci (CPU)'),
+                              child: Text(L10n.t('engine_cpu')),
                             ),
                             DropdownMenuItem(
                               value: 'nvidia',
-                              child: Text('NVIDIA (CUDA)'),
+                              child: Text(L10n.t('engine_nvidia')),
                             ),
                             DropdownMenuItem(
                               value: 'amd',
-                              child: Text('AMD (ROCm/Vulkan)'),
+                              child: Text(L10n.t('engine_amd')),
                             ),
                             DropdownMenuItem(
                               value: 'metal',
-                              child: Text('Apple Silicon (Metal)'),
+                              child: Text(L10n.t('engine_metal')),
                             ),
                           ],
                           onChanged: (mode) {

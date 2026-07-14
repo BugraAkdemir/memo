@@ -50,7 +50,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Memory stats unavailable: $e')),
+          SnackBar(content: Text(L10n.t('memory_stats_unavailable', {'e': '$e'}))),
         );
       }
     } finally {
@@ -373,7 +373,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                       icon: Icon(Icons.refresh, size: 18),
                       color: MemoTheme.of(context).textDim,
                       onPressed: _loadStats,
-                      tooltip: 'Refresh',
+                      tooltip: L10n.t('refresh'),
                       padding: EdgeInsets.zero,
                       constraints: BoxConstraints(),
                     ),

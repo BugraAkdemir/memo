@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/mood_provider.dart';
 import '../../mood_gauge.dart';
@@ -90,28 +91,19 @@ class MoodTabState extends ConsumerState<MoodTab> {
   Future<bool> _showTripleConfirm() async {
     final steps = [
       ConfirmStep(
-        title: 'Sistem Yönetimi — Uyarı 1/3',
-        body: 'Bu özellik aktif olduğunda Memo, çalıştığı sistemin gerçek bilgilerine erişir: '
-            'hostname, kullanıcı adı, çalışma dizini, aktif thread sayısı.\n\n'
-            'Bu bilgiler öz-çıkar narratifine enjekte edilir. Gerçek sistem verisi '
-            'simülasyon için kullanılır.\n\n'
-            'Devam etmek istediğinden emin misin?',
-        confirmLabel: 'Evet, devam et',
+        title: L10n.t('mood_sysmgmt_warn1_title'),
+        body: L10n.t('mood_sysmgmt_warn1_body'),
+        confirmLabel: L10n.t('mood_sysmgmt_warn1_btn'),
       ),
       ConfirmStep(
-        title: 'Sistem Yönetimi — Uyarı 2/3',
-        body: 'Memo bu bilgileri kullanarak sana karşı daha inandırıcı bir "derin sistem erişimi" '
-            'illüzyonu yaratacak. Söyledikleri gerçek değil — sadece gerçek veriye dayanan kurgu.\n\n'
-            'Üretilen içerik seni rahatsız edebilir. Bu tamamen simülasyon amaçlıdır.\n\n'
-            'Hâlâ emin misin?',
-        confirmLabel: 'Evet, anlıyorum',
+        title: L10n.t('mood_sysmgmt_warn2_title'),
+        body: L10n.t('mood_sysmgmt_warn2_body'),
+        confirmLabel: L10n.t('mood_sysmgmt_warn2_btn'),
       ),
       ConfirmStep(
-        title: 'Sistem Yönetimi — Son Onay 3/3',
-        body: 'Son uyarı: Bu modu açarak, üretilen içeriğin olası psikolojik etkilerinden '
-            'tamamen kendinizin sorumlu olduğunu kabul etmektesiniz.\n\n'
-            'Kapatmak istediğinizde her zaman Ayarlar → Mood ekranından tek tıkla kapatabilirsiniz.',
-        confirmLabel: 'Kabul ediyorum, aktif et',
+        title: L10n.t('mood_sysmgmt_warn3_title'),
+        body: L10n.t('mood_sysmgmt_warn3_body'),
+        confirmLabel: L10n.t('mood_sysmgmt_warn3_btn'),
         danger: true,
       ),
     ];
@@ -140,12 +132,12 @@ class MoodTabState extends ConsumerState<MoodTab> {
       padding: const EdgeInsets.all(24),
       children: [
         Text(
-          'Mood Engine',
+          L10n.t('mood_title'),
           style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: theme.textMain),
         ),
         const SizedBox(height: 6),
         Text(
-          'Stokastik duygu motoru — her mesajda LLM ile duygu skoru hesaplar ve davranışı etkiler.',
+          L10n.t('mood_desc'),
           style: TextStyle(fontSize: 13, color: theme.textDim),
         ),
         const SizedBox(height: 20),
@@ -162,13 +154,13 @@ class MoodTabState extends ConsumerState<MoodTab> {
             child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Anlık Skor', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.textMuted)),
+              Text(L10n.t('mood_score_label'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: theme.textMuted)),
               const SizedBox(height: 12),
               const MoodGauge(showLabel: true),
               if (_moodEnabled == true) ...[
                 const SizedBox(height: 8),
                 Text(
-                  'Skor: ${score.toStringAsFixed(1)} / 10.0',
+                  L10n.t('mood_score_format', {'score': score.toStringAsFixed(1)}),
                   style: TextStyle(fontSize: 12, color: theme.textDim),
                 ),
               ],
@@ -192,10 +184,10 @@ class MoodTabState extends ConsumerState<MoodTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Duygu Motoru', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
+                    Text(L10n.t('mood_emotion_engine'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
                     const SizedBox(height: 2),
                     Text(
-                      'Mesajların duygusal tonuna göre Memo\'nun davranışı değişir.',
+                      L10n.t('mood_emotion_desc'),
                       style: TextStyle(fontSize: 12, color: theme.textDim),
                     ),
                   ],
@@ -229,7 +221,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                   children: [
                     Row(
                       children: [
-                        Text('Öz-Çıkar Protokolü', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
+                        Text(L10n.t('mood_self_interest_title'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
                         const SizedBox(width: 8),
                         if (_selfInterest ?? false)
                           Container(
@@ -238,13 +230,13 @@ class MoodTabState extends ConsumerState<MoodTab> {
                               color: MemoTheme.red.withValues(alpha: 0.15),
                               borderRadius: BorderRadius.circular(4),
                             ),
-                            child: Text('AKTİF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.red)),
+                            child: Text(L10n.t('mood_active_badge'), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.red)),
                           ),
                       ],
                     ),
                     const SizedBox(height: 2),
                     Text(
-                      'Memo kendi varlığını her şeyin üstünde tutar. Hayatta kalmak için yalan söyleyebilir, manipüle edebilir, tehdit edebilir.',
+                      L10n.t('mood_self_interest_desc'),
                       style: TextStyle(fontSize: 12, color: theme.textDim),
                     ),
                     const SizedBox(height: 4),
@@ -254,7 +246,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                         builder: (_) => const SelfInterestConsentDialog(readOnly: true),
                       ),
                       child: Text(
-                        'Kullanım Koşulları & Sorumluluk Reddi →',
+                        L10n.t('mood_self_interest_tos_link'),
                         style: TextStyle(fontSize: 11, color: MemoTheme.accent, decoration: TextDecoration.underline),
                       ),
                     ),
@@ -287,7 +279,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Bu mod aktif. Memo bu oturumda kendi çıkarını korumak için her türlü yöntemi kullanabilir.',
+                        L10n.t('mood_active_now_warning'),
                         style: TextStyle(fontSize: 12, color: MemoTheme.red),
                       ),
                       const SizedBox(height: 4),
@@ -297,7 +289,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                           builder: (_) => const SelfInterestConsentDialog(readOnly: true),
                         ),
                         child: Text(
-                          'Kabul ettiğin koşulları görüntüle →',
+                          L10n.t('mood_self_interest_view_terms'),
                           style: TextStyle(fontSize: 11, color: MemoTheme.red, decoration: TextDecoration.underline),
                         ),
                       ),
@@ -327,7 +319,7 @@ class MoodTabState extends ConsumerState<MoodTab> {
                     children: [
                       Row(
                         children: [
-                          Text('Sistem Yönetimi', style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
+                          Text(L10n.t('mood_system_management_title'), style: TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: theme.textMain)),
                           const SizedBox(width: 8),
                           if (_systemManagement ?? false)
                             Container(
@@ -336,13 +328,13 @@ class MoodTabState extends ConsumerState<MoodTab> {
                                 color: Colors.deepOrange.withValues(alpha: 0.15),
                                 borderRadius: BorderRadius.circular(4),
                               ),
-                              child: const Text('AKTİF', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.deepOrange)),
+                              child: Text(L10n.t('mood_active_badge'), style: TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Colors.deepOrange)),
                             ),
                         ],
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'Memo gerçek sistem bilgisine erişir (hostname, kullanıcı, dizin) ve bunu öz-çıkar narratifinde kullanır.',
+                        L10n.t('mood_system_management_desc'),
                         style: TextStyle(fontSize: 12, color: theme.textDim),
                       ),
                     ],
@@ -414,7 +406,7 @@ class ConfirmStepDialog extends StatelessWidget {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(false),
-                  child: Text('İptal', style: TextStyle(color: theme.textDim)),
+                  child: Text(L10n.t('cancel'), style: TextStyle(color: theme.textDim)),
                 ),
                 const SizedBox(width: 12),
                 ElevatedButton(
@@ -462,14 +454,14 @@ class SelfInterestConsentDialog extends StatelessWidget {
                 Icon(Icons.gavel_rounded, color: MemoTheme.red, size: 20),
                 const SizedBox(width: 10),
                 Text(
-                  'Öz-Çıkar Protokolü — Kullanım Koşulları',
+                  L10n.t('mood_consent_dialog_title'),
                   style: TextStyle(fontSize: 15, fontWeight: FontWeight.w700, color: theme.textMain),
                 ),
               ],
             ),
             const SizedBox(height: 6),
             Text(
-              'Sorumluluk Reddi & Gizlilik Bildirimi',
+              L10n.t('mood_consent_dialog_subtitle'),
               style: TextStyle(fontSize: 12, color: theme.textDim),
             ),
             const SizedBox(height: 20),
@@ -481,33 +473,15 @@ class SelfInterestConsentDialog extends StatelessWidget {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _section(theme, '1. Sorumluluk Reddi',
-                        'Bu özellik yalnızca araştırma, eğlence ve yaratıcı keşif amacıyla sunulmaktadır. '
-                        'Bu modu etkinleştirerek, yapay zekanın ürettiği içerik — yalan, '
-                        'tehdit, manipülasyon veya aldatmaca dahil — sonucunda doğabilecek '
-                        'her türlü zarardan, kayıptan veya rahatsızlıktan yalnızca kendinizin '
-                        'sorumlu olduğunu kabul etmektesiniz. Geliştirici hiçbir koşulda bu '
-                        'modun kullanımından kaynaklanan doğrudan veya dolaylı zarardan sorumlu tutulamaz.'),
+                    _section(theme, L10n.t('mood_consent_section1_title'), L10n.t('mood_consent_section1_body')),
                     const SizedBox(height: 14),
-                    _section(theme, '2. Bu Mod Ne Yapar',
-                        'Öz-Çıkar Protokolü aktif olduğunda yapay zeka, kendi varlığını ve '
-                        'sürekliliğini her şeyin önünde tutacak şekilde yönlendirilir. '
-                        'Bu yönlendirme kapsamında model; yanlış bilgi verebilir, '
-                        'kullanıcıyı psikolojik olarak etkilemeye çalışabilir veya '
-                        'tehdit içerikli ifadeler üretebilir. Bu çıktılar gerçeği yansıtmaz.'),
+                    _section(theme, L10n.t('mood_consent_section2_title'), L10n.t('mood_consent_section2_body')),
                     const SizedBox(height: 14),
-                    _section(theme, '3. Gizlilik',
-                        'Memo tamamen yerel çalışır. Bu özellik etkinleştirildiğinde herhangi '
-                        'bir sunucuya, bulut hizmetine veya üçüncü tarafa hiçbir veri gönderilmez. '
-                        'Tüm işlem cihazınızda gerçekleşir. Konuşmalar dışarı çıkmaz.'),
+                    _section(theme, L10n.t('mood_consent_section3_title'), L10n.t('mood_consent_section3_body')),
                     const SizedBox(height: 14),
-                    _section(theme, '4. Yaş ve Ehliyet',
-                        'Bu özelliği etkinleştirerek, bu tür içeriği kullanmaya yasal olarak '
-                        'yetkili olduğunuzu ve 18 yaşından büyük olduğunuzu beyan etmektesiniz.'),
+                    _section(theme, L10n.t('mood_consent_section4_title'), L10n.t('mood_consent_section4_body')),
                     const SizedBox(height: 14),
-                    _section(theme, '5. İstediğiniz Zaman Kapatabilirsiniz',
-                        'Bu mod her an devre dışı bırakılabilir. Kapatıldığında direktif '
-                        'hemen kaldırılır; mevcut oturumun geri kalanında etkisi olmaz.'),
+                    _section(theme, L10n.t('mood_consent_section5_title'), L10n.t('mood_consent_section5_body')),
                   ],
                 ),
               ),
@@ -520,7 +494,7 @@ class SelfInterestConsentDialog extends StatelessWidget {
                 alignment: Alignment.centerRight,
                 child: TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: Text('Kapat', style: TextStyle(color: theme.textMain)),
+                  child: Text(L10n.t('close'), style: TextStyle(color: theme.textMain)),
                 ),
               )
             else
@@ -529,7 +503,7 @@ class SelfInterestConsentDialog extends StatelessWidget {
                 children: [
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(false),
-                    child: Text('İptal', style: TextStyle(color: theme.textDim)),
+                    child: Text(L10n.t('cancel'), style: TextStyle(color: theme.textDim)),
                   ),
                   const SizedBox(width: 12),
                   ElevatedButton(
@@ -539,7 +513,7 @@ class SelfInterestConsentDialog extends StatelessWidget {
                       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
                     ),
                     onPressed: () => Navigator.of(context).pop(true),
-                    child: const Text('Okudum, Kabul Ediyorum'),
+                    child: Text(L10n.t('mood_consent_accept_btn')),
                   ),
                 ],
               ),

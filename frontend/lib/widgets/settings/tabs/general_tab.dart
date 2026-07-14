@@ -56,9 +56,9 @@ class GeneralTab extends ConsumerWidget {
                 Icons.arrow_drop_down,
                 color: MemoTheme.of(context).textDim,
               ),
-              items: const [
-                DropdownMenuItem(value: MemoLocale.tr, child: Text('Türkçe')),
-                DropdownMenuItem(value: MemoLocale.en, child: Text('English')),
+              items: [
+                DropdownMenuItem(value: MemoLocale.tr, child: Text(L10n.t('lang_turkish'))),
+                DropdownMenuItem(value: MemoLocale.en, child: Text(L10n.t('lang_english'))),
               ],
               onChanged: (val) {
                 if (val != null) {
@@ -98,13 +98,13 @@ class GeneralTab extends ConsumerWidget {
                 Icons.arrow_drop_down,
                 color: MemoTheme.of(context).textDim,
               ),
-              items: const [
+              items: [
                 DropdownMenuItem(
                   value: 'system',
-                  child: Text('Sistem Varsayılanı'),
+                  child: Text(L10n.t('theme_system')),
                 ),
-                DropdownMenuItem(value: 'light', child: Text('Açık')),
-                DropdownMenuItem(value: 'dark', child: Text('Koyu')),
+                DropdownMenuItem(value: 'light', child: Text(L10n.t('theme_light'))),
+                DropdownMenuItem(value: 'dark', child: Text(L10n.t('theme_dark'))),
               ],
               onChanged: (val) {
                 if (val != null) {
@@ -119,7 +119,7 @@ class GeneralTab extends ConsumerWidget {
 
         // Streaming Toggle
         Text(
-          'Anlık Gösterim',
+          L10n.t('streaming'),
           style: TextStyle(
             fontSize: 14,
             fontWeight: FontWeight.w600,
@@ -142,7 +142,7 @@ class GeneralTab extends ConsumerWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      ref.watch(streamingEnabledProvider) ? 'Açık' : 'Kapalı',
+                      ref.watch(streamingEnabledProvider) ? L10n.t('on') : L10n.t('off'),
                       style: TextStyle(
                         fontSize: 14,
                         color: MemoTheme.of(context).textMain,
@@ -150,7 +150,7 @@ class GeneralTab extends ConsumerWidget {
                     ),
                     SizedBox(height: 4),
                     Text(
-                      'Kapalıyken yanıt tamamlandığında tek seferde gösterilir.',
+                      L10n.t('streaming_off_desc'),
                       style: TextStyle(
                         fontSize: 12,
                         color: MemoTheme.of(context).textDim,
@@ -456,7 +456,7 @@ class _EmbeddingStatusRow extends StatelessWidget {
             const SizedBox(width: 7),
             Expanded(
               child: Text(
-                modelName.isNotEmpty ? 'Embedding: $modelName' : 'Embedding modeli aktif',
+                modelName.isNotEmpty ? L10n.t('embedding_active_named', {'model': modelName}) : L10n.t('embedding_active_generic'),
                 style: TextStyle(fontSize: 12, color: _green),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
@@ -467,7 +467,7 @@ class _EmbeddingStatusRow extends StatelessWidget {
             const SizedBox(width: 7),
             Expanded(
               child: Text(
-                'Embedding: kapalı',
+                L10n.t('embedding_off'),
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
             ),
@@ -503,13 +503,13 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
       await ref.read(apiClientProvider).reinstallCli();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CLI yeniden yüklendi. Yeni bir terminal aç ve "memo" yaz.')),
+          SnackBar(content: Text(L10n.t('cli_reinstalled_msg'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
+          SnackBar(content: Text(L10n.t('cli_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -521,14 +521,11 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
     final confirm = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('CLI\'ı Kaldır'),
-        content: const Text(
-          'Terminalden "memo" komutu kaldırılacak. Masaüstü uygulaman ve '
-          'verilerin etkilenmez.',
-        ),
+        title: Text(L10n.t('cli_remove_title')),
+        content: Text(L10n.t('cli_remove_confirm_body')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('İptal')),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Kaldır')),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('cancel'))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(L10n.t('cli_remove_btn'))),
         ],
       ),
     );
@@ -539,13 +536,13 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
       await ref.read(apiClientProvider).removeCli();
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('CLI kaldırıldı.')),
+          SnackBar(content: Text(L10n.t('cli_removed_msg'))),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Hata: $e')),
+          SnackBar(content: Text(L10n.t('cli_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -563,7 +560,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Kaldırma hatası: $e')),
+          SnackBar(content: Text(L10n.t('uninstall_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -589,13 +586,13 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
       builder: (ctx) => AlertDialog(
         backgroundColor: theme.bgPanel,
         title: Text(
-          'Memo kaldırıldı',
+          L10n.t('uninstall_done_title'),
           style: TextStyle(color: theme.textMain, fontWeight: FontWeight.bold),
         ),
         content: Text(
           _keepMemory
-              ? 'Hafızan ~/memo-memory-backup içine yedeklendi. Uygulama şimdi kapanacak.'
-              : 'Tüm veriler silindi. Uygulama şimdi kapanacak.',
+              ? L10n.t('uninstall_done_body_keep')
+              : L10n.t('uninstall_done_body_all'),
           style: TextStyle(color: theme.textDim, fontSize: 13),
         ),
         actions: [
@@ -605,7 +602,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
               exit(0);
             },
             child: Text(
-              'Kapat',
+              L10n.t('close'),
               style: TextStyle(color: MemoTheme.accent, fontWeight: FontWeight.bold),
             ),
           ),
@@ -623,7 +620,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          'CLI ve Kaldırma',
+          L10n.t('cli_section_title'),
           style: TextStyle(fontSize: 14, fontWeight: FontWeight.w600, color: theme.textMain),
         ),
         SizedBox(height: 12),
@@ -634,9 +631,9 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
               leading: _reinstalling
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(Icons.terminal, color: MemoTheme.accent),
-              title: const Text('CLI\'ı Yeniden Yükle'),
+              title: Text(L10n.t('cli_reinstall_title')),
               subtitle: Text(
-                'Terminaldeki "memo" komutunu bu sürümle günceller — yeni bir build sonrası eski komutta takılı kalmamak için.',
+                L10n.t('cli_reinstall_desc'),
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
               onTap: _reinstalling ? null : _reinstallCli,
@@ -648,9 +645,9 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
               leading: _removingCli
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(Icons.terminal_outlined, color: theme.textDim),
-              title: const Text('CLI\'ı Kaldır'),
+              title: Text(L10n.t('cli_remove_title')),
               subtitle: Text(
-                'Sadece terminaldeki "memo" komutunu kaldırır. Verilerin ve masaüstü uygulaman etkilenmez.',
+                L10n.t('cli_remove_desc'),
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
               onTap: _removingCli ? null : _removeCli,
@@ -659,28 +656,28 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
           const SizedBox(height: 24),
         ] else ...[
           Text(
-            'Windows\'ta terminal komutu ayrı bir kurulum değil — memo.exe uygulamanın kendisi. Kaldırmak için Windows Ayarlar > Uygulamalar\'ı kullan.',
+            L10n.t('cli_windows_note'),
             style: TextStyle(fontSize: 12, color: theme.textDim),
           ),
           const SizedBox(height: 24),
         ],
 
         Text(
-          'Memo\'yu Kaldır',
+          L10n.t('uninstall_section_title'),
           style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: MemoTheme.warmBrown),
         ),
         SizedBox(height: 8),
         Text(
-          'CLI, yapılandırma, sohbet geçmişi ve indirilen motor dosyaları dahil her şey silinir.',
+          L10n.t('uninstall_section_desc'),
           style: TextStyle(color: theme.textDim, fontSize: 13),
         ),
         SizedBox(height: 12),
 
         Card(
           child: SwitchListTile(
-            title: const Text('Hafızayı koru'),
+            title: Text(L10n.t('uninstall_keep_memory_title')),
             subtitle: Text(
-              'Kaldırmadan önce hafızayı ~/memo-memory-backup içine yedekler.',
+              L10n.t('uninstall_keep_memory_desc'),
               style: TextStyle(fontSize: 12, color: theme.textDim),
             ),
             value: _keepMemory,
@@ -694,9 +691,9 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
           Card(
             child: ListTile(
               leading: Icon(Icons.delete_forever, color: MemoTheme.warmBrown),
-              title: Text('Memo\'yu Kaldır', style: TextStyle(color: MemoTheme.warmBrown)),
+              title: Text(L10n.t('uninstall_section_title'), style: TextStyle(color: MemoTheme.warmBrown)),
               subtitle: Text(
-                'Bu işlem geri alınamaz',
+                L10n.t('backup_wipe_irreversible'),
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
               trailing: Icon(Icons.warning_amber, color: MemoTheme.warmBrown),
@@ -708,11 +705,11 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
             color: MemoTheme.warmBrown.withValues(alpha: 0.08),
             child: ListTile(
               leading: Icon(Icons.delete_forever, color: Colors.redAccent),
-              title: Text('Emin misiniz?', style: TextStyle(color: Colors.redAccent)),
+              title: Text(L10n.t('backup_wipe_confirm_title'), style: TextStyle(color: Colors.redAccent)),
               subtitle: Text(
                 _keepMemory
-                    ? 'Hafıza dışında her şey silinecek. Onaylamak için tekrar tıklayın.'
-                    : 'Hafıza dahil her şey silinecek. Onaylamak için tekrar tıklayın.',
+                    ? L10n.t('uninstall_confirm2_body_keep')
+                    : L10n.t('uninstall_confirm2_body_all'),
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
               trailing: Row(
@@ -738,9 +735,9 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
               leading: _uninstalling
                   ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                   : Icon(Icons.delete_sweep, color: MemoTheme.red),
-              title: Text('Kaldır', style: TextStyle(color: MemoTheme.red, fontWeight: FontWeight.bold)),
+              title: Text(L10n.t('cli_remove_btn'), style: TextStyle(color: MemoTheme.red, fontWeight: FontWeight.bold)),
               subtitle: Text(
-                'Bu işlem geri alınamaz.',
+                L10n.t('uninstall_final_irreversible'),
                 style: TextStyle(fontSize: 12, color: theme.textDim),
               ),
               trailing: IconButton(

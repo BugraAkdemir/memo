@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
+import '../../../core/l10n.dart';
 import '../../../providers/skill_provider.dart';
 import '../../skill_config_dialog.dart';
 
@@ -22,7 +23,7 @@ class SkillsTab extends ConsumerWidget {
               Text('🧩', style: TextStyle(fontSize: 24)),
               const SizedBox(width: 10),
               Text(
-                'Skills',
+                L10n.t('skills_title'),
                 style: TextStyle(
                   fontSize: 18,
                   fontWeight: FontWeight.w600,
@@ -33,13 +34,13 @@ class SkillsTab extends ConsumerWidget {
               TextButton.icon(
                 onPressed: () => _showSkillManager(context, ref),
                 icon: Icon(Icons.add, size: 16),
-                label: const Text('Skill Yönetimi'),
+                label: Text(L10n.t('skill_management_btn')),
               ),
             ],
           ),
           const SizedBox(height: 8),
           Text(
-            'Skill\'ler agent\'a ek talimatlar ve araçlar kazandırır.',
+            L10n.t('skills_desc'),
             style: TextStyle(color: theme.textDim, fontSize: 13),
           ),
           const SizedBox(height: 20),
@@ -47,7 +48,7 @@ class SkillsTab extends ConsumerWidget {
             child: skillsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
-                child: Text('Yüklenemedi: $e', style: TextStyle(color: theme.textDim)),
+                child: Text(L10n.t('skills_load_error', {'e': '$e'}), style: TextStyle(color: theme.textDim)),
               ),
               data: (skills) {
                 if (skills.isEmpty) {

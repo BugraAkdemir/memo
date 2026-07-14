@@ -576,6 +576,18 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 	return err
 }
 
+// escapeFTSQuery turns a raw natural-language query into an FTS5 MATCH
+// expression that finds a row containing ANY of its words, ranked by bm25
+// (rarer words score higher, so common filler words don't dominate).
+//
+// Joining with plain spaces would use FTS5's default AND operator, requiring
+// every single word — including "ve"/"biliyor"/"musun" filler — to appear in
+// the same row. A multi-topic recall question ("adımı ve doğum günümü ve
+// favori rengimi biliyor musun") then matches nothing at all, because no
+// memory row contains that literal combination of words, and the FTS
+// supplement silently contributes zero candidates to the hybrid RRF merge.
+// OR makes each word an independent candidate match instead, which is what a
+// keyword-recall pass over a multi-topic question needs.
 func escapeFTSQuery(q string) string {
 	words := strings.Fields(q)
 	if len(words) == 0 {
@@ -586,7 +598,7 @@ func escapeFTSQuery(q string) string {
 		w = strings.ReplaceAll(w, `"`, `""`)
 		parts[i] = `"` + w + `"`
 	}
-	return strings.Join(parts, " ")
+	return strings.Join(parts, " OR ")
 }
 
 func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]MemoryResult, error) {

@@ -1,3 +1,52 @@
+# Handoff — 2026-07-15 (Session 28) — Kök neden bulundu: FTS5 hiçbir zaman derlenmemiş, hibrit hafıza araması yıllardır sadece vektörle çalışıyormuş
+
+## Özet
+
+Kullanıcı gerçek bir CLI kullanım örneği yapıştırdı: bir sohbette "en sevdiğim renk kırmızı" dedi, `✓ hafıza kaydedildi` gördü (kayıt gerçekten başarılı oldu). Yeni bir sohbette "adımı, doğum günümü ve en sevdiğim rengi biliyor musun" diye tek, birleşik bir soru sordu — Memo adını ve doğum YILINI (günü/ayını değil) hatırladı ama rengi bilmediğini söyledi, az önce kaydedilmiş olmasına rağmen. Kullanıcı "detaylı ve profesyonel bir araştırma yap, bu hatayı artık düzelt" dedi.
+
+## Araştırma zinciri
+
+1. `internal/app/memory.go`'daki `saveMemorySync` incelendi — `memory:saved` event'i SADECE gerçek bir başarılı yazmadan sonra emit ediliyor (önceki oturumda doğrulanmış davranış). Yani kayıt gerçekten olmuş.
+2. `retrieveMemory`/`buildMemoryQuery` (`internal/app/helpers.go`) incelendi — yeni bir sohbette geçmiş yoksa RAG sorgusu doğrudan kullanıcının ham mesajı. Kullanıcının mesajı ÜÇ farklı konuyu (isim+doğum günü+renk) TEK bir cümlede soruyordu — tek bir embedding vektörü üç konuyu harmanlıyor.
+3. `internal/memory/store.go`'daki `RetrieveContext` (satır 693) incelendi — burada ZATEN yazılmış, test edilmiş, gerçek bir hibrit sistem var: vektör arama + sorgu genişletme + **FTS5 anahtar kelime arama**, hepsi Reciprocal Rank Fusion ile birleştiriliyor. Ama bu FTS5 yarısı `s.useFTS` bayrağının arkasında — ve `tryCreateFTSTable`'ın `CREATE VIRTUAL TABLE ... USING fts5(...)`'i her zaman `no such module: fts5` hatasıyla başarısız oluyordu (backend loglarında daha önce de görülmüştü: "MEMORY: fts5 not available").
+4. Kök neden: `mattn/go-sqlite3`, FTS5'i **varsayılan olarak derlemiyor** — `-tags "sqlite_fts5"` gerekiyor. Repodaki HİÇBİR build komutu (CI'nin 4 workflow'u, `build_releases.sh`/`.bat`, `macrelease.sh`, `package_linux.sh`, `package_windows.sh`, hatta `upload-r2.yml`) bu tag'i hiç geçmiyordu. `internal/memory/store_test.go`'daki `TestHybridSearch_MatchTypeSet`'in kendi yorumu bile bunu "test ortamında fts5 yok" diye normalmiş gibi kabul ediyordu — yani bu, fark edilip düzeltilmemiş, uzun süredir var olan bir eksiklikti.
+5. **Doğrulama (varsayım değil, gerçek test):** `-tags "sqlite_fts5"` ile ayrı bir binary derlendi, boş bir scratch dizininden çalıştırıldı. Log satırı `"MEMORY: fts5 not available (no such module: fts5)"`'ten `"MEMORY: FTS migration complete"`'e değişti — FTS5'in gerçekten aktifleştiğini kanıtladı.
+
+## Sonuç: FTS5 hibrit arama hiçbir yayınlanmış sürümde hiç çalışmamış
+
+Bu, "kırmızı" örneğinin ötesinde geniş kapsamlı bir bulgu: kısa, kesin anahtar kelime tabanlı gerçekler (favori renk gibi), çok konulu/birleşik bir soruyla karşılaştığında ya da hafıza deposu (haftalarca test session'ından birikmiş) büyüdükçe, salt vektör benzerliğiyle top-K dışında kalabiliyor — tam da FTS5'in var olma sebebi. Bu mekanizma zaten yazılmış ve test edilmişti, sadece hiç açılmamıştı.
+
+## Yapılan fix
+
+`-tags "sqlite_fts5"` şu dosyaların HEPSİNE eklendi:
+- `.github/workflows/{ci,build-linux,build-macos,build-windows,upload-r2}.yml` (upload-r2.yml'de 3 ayrı yer)
+- `build_releases.sh`, `build_releases.bat`, `macrelease.sh`, `package_linux.sh`, `package_windows.sh`
+- `AGENTS.md` (Quick Start, Build, Verification Commands, Code Style bölümleri)
+- `README.md`, `READmeTR.md`
+- `docs/CGO_FLAGS.md` — yeni bir "FTS5 — ZORUNLU" bölümü eklendi, neden önemli olduğu detaylıca anlatıldı
+- `.claude/skills/memo-release/SKILL.md`
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...             → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 34 paket yeşil
+```
+
+Gerçek bir binary derlenip boş bir data dizininden çalıştırılarak FTS5'in gerçekten aktifleştiği doğrulandı (bkz. yukarıdaki araştırma zinciri madde 5).
+
+**Gerçek uygulamada test edilemeyen:** Kullanıcının bildirdiği TAM senaryonun (birleşik "adımı, doğum günümü ve rengimi biliyor musun" sorgusu) bu fix'ten sonra gerçekten doğru cevap verdiğini uçtan uca doğrulamak — bu ortamda mevcut gerçek hafıza veritabanı/embedding modeliyle canlı bir test yapılamadı. Fix, zaten var olan ve test edilmiş bir mekanizmayı açıyor, yeni retrieval mantığı eklemiyor — ama kullanıcının rebuild edip gerçek kullanımda tekrar denemesi asıl doğrulama olacak.
+
+**Commit edilecek** (AGENTS.md kuralı gereği).
+
+**Sıradaki oturum için:**
+1. Kullanıcı `-tags "sqlite_fts5"` ile yeniden derleyip (CLI ve/veya GUI) aynı senaryoyu tekrar denemeli — özellikle birleşik/çok konulu sorular.
+2. Fark edilen ama dokunulmayan, alakasız bir bug: `build_releases.sh`'ın macOS bölümünde `GOARCH=$(uname -m)` kullanılıyor — Intel Mac'lerde bu "x86_64" döner, ama Go'nun geçerli `GOARCH` değeri "amd64"tür ("arm64" Apple Silicon'da zaten doğru çıkıyor). Intel Mac'lerde bu satır muhtemelen build'i bozar. Bu oturumun kapsamı dışında bırakıldı, dokunulmadı.
+3. `obsidian-doc/`, `obsidian-doc-en/`, `docs/plans/`, `docs/superpowers/` gibi ikincil/arşiv dokümanlardaki eski `go build`/`go test` örnekleri güncellenmedi — bilinçli olarak kapsam dışı bırakıldı (asıl CI/release/AGENTS.md/README önceliklendirildi).
+
+---
+
 # Handoff — 2026-07-14/15 (Session 27, devam 3) — Yeni özellik: "Hata Bildir" ayarlar sekmesi (telemetri tartışmasından çıktı)
 
 ## Özet

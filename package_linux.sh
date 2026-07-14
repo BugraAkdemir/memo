@@ -12,7 +12,7 @@ mkdir -p build_output/memo-linux-x64/config
 
 echo ""
 echo "⚙️ 1. Building Go Backend (Headless)..."
-go build -o build_output/memo-linux-x64/memo .
+go build -tags "sqlite_fts5" -o build_output/memo-linux-x64/memo .
 
 echo ""
 echo "⚙️ 2. Building Flutter Frontend..."

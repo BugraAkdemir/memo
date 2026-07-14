@@ -87,8 +87,11 @@ All artifacts land in `build_output/dist/` with **versioned** filenames.
 | macOS (alt) | `./macrelease.sh` on a Mac | `Memo-macos-<arch>-v<NEW>.tar.gz`, `.dmg` — for manual/DMG distribution only; do NOT upload the tar.gz as `memo-mac.zip` (`get-memo.sh` unzips, extension must really be zip) |
 
 Before building: verification suite must be green (`CGO_ENABLED=1 go test
-./... -race`, `go build ./...`, `flutter analyze lib/`, `flutter test` —
-see AGENTS.md). Never build a release from a red tree.
+-tags "sqlite_fts5" ./... -race`, `go build -tags "sqlite_fts5" ./...`,
+`flutter analyze lib/`, `flutter test` — see AGENTS.md). Never build a
+release from a red tree. `build_releases.sh`/`macrelease.sh` already pass
+`-tags "sqlite_fts5"` themselves — don't build the backend by hand without it,
+or FTS5 memory search silently never activates in that binary.
 
 Sanity-check each artifact after build: the tar.gz/zip contains
 `run_memo.sh`/`run_memo.bat` AND `launch.vbs` staging output where

@@ -30,7 +30,7 @@ mkdir "%DISTDIR%"
 :: 1. Build Go Backend
 echo [1/3] Go Backend derleniyor...
 set CGO_ENABLED=1
-go build -o "%STAGEDIR%\memo-backend.exe" .
+go build -tags "sqlite_fts5" -o "%STAGEDIR%\memo-backend.exe" .
 if %ERRORLEVEL% neq 0 (
     echo HATA: Go build basarisiz oldu!
     exit /b 1

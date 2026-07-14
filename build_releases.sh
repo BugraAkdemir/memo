@@ -52,7 +52,7 @@ if [ "$OS" == "linux" ]; then
     # 1. Build Backend
     echo "🔨 1. Go Backend Derleniyor..."
     go mod download
-    go build -o "$STAGEDIR/memo-backend" .
+    go build -tags "sqlite_fts5" -o "$STAGEDIR/memo-backend" .
     # Same binary, shipped under the plain "memo" name too — this is what
     # gets symlinked onto PATH by run_memo.sh so the terminal REPL is
     # reachable by typing `memo`, independent of the desktop app launcher.
@@ -344,7 +344,7 @@ elif [ "$OS" == "windows" ]; then
     echo "✅ İşletim Sistemi: Windows tespit edildi. (.exe oluşturulacak)"
 
     echo "🔨 1. Go Backend Derleniyor..."
-    go build -o "$STAGEDIR/memo-backend.exe" .
+    go build -tags "sqlite_fts5" -o "$STAGEDIR/memo-backend.exe" .
     # Same binary, shipped under the plain "memo.exe" name too — installer.iss
     # adds {app} to PATH, so typing `memo` in cmd/PowerShell resolves to this.
     cp "$STAGEDIR/memo-backend.exe" "$STAGEDIR/memo.exe"
@@ -459,7 +459,7 @@ elif [ "$OS" == "darwin" ]; then
     echo "🔨 1. Go Backend Derleniyor (darwin)..."
     go mod download
     MAC_ARCH=$(uname -m)  # arm64 on Apple Silicon, x86_64 on Intel
-    GOARCH=$MAC_ARCH go build -o "$STAGEDIR/memo-backend" .
+    GOARCH=$MAC_ARCH go build -tags "sqlite_fts5" -o "$STAGEDIR/memo-backend" .
 
     # 2. Build Frontend
     echo "🔨 2. Flutter macOS Derleniyor..."

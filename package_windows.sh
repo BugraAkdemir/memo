@@ -14,7 +14,7 @@ mkdir -p dist_packages/windows_stage
 
 # 1. Go Backend Build (Windows Cross-Compile)
 echo "--> Go Headless Backend Windows için derleniyor..."
-GOOS=windows GOARCH=amd64 go build -o dist_packages/windows_stage/memo-backend.exe .
+GOOS=windows GOARCH=amd64 go build -tags "sqlite_fts5" -o dist_packages/windows_stage/memo-backend.exe .
 
 # 2. Bundled Binaries
 echo "--> Bundled Llama-Server binary'leri kopyalanıyor..."

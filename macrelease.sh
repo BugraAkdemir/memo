@@ -56,7 +56,7 @@ mkdir -p "$STAGEDIR/data" "$STAGEDIR/config"
 # ─── 1. Go backend (native darwin, cgo açık) ─────────────────────
 echo "🔨 1. Go Backend derleniyor (CGO_ENABLED=1, $GOARCH)..."
 go mod download
-CGO_ENABLED=1 GOOS=darwin GOARCH="$GOARCH" go build -o "$STAGEDIR/memo-backend" .
+CGO_ENABLED=1 GOOS=darwin GOARCH="$GOARCH" go build -tags "sqlite_fts5" -o "$STAGEDIR/memo-backend" .
 
 # ─── 2. Flutter macOS frontend ───────────────────────────────────
 echo "🔨 2. Flutter macOS frontend derleniyor..."

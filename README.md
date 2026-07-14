@@ -319,7 +319,7 @@ git clone https://github.com/BugraAkdemir/memo.git
 cd memo
 
 # Terminal 1 — backend
-CGO_ENABLED=1 go run . --port 8090
+CGO_ENABLED=1 go run -tags "sqlite_fts5" . --port 8090
 
 # Terminal 2 — frontend
 cd frontend && flutter run -d linux

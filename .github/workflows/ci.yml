@@ -32,13 +32,13 @@ jobs:
           restore-keys: go-${{ runner.os }}-
 
       - name: Build check
-        run: go build -o /dev/null .
+        run: go build -tags "sqlite_fts5" -o /dev/null .
 
       - name: Vet
-        run: go vet ./...
+        run: go vet -tags "sqlite_fts5" ./...
 
       - name: Test with race detector
-        run: go test -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
+        run: go test -tags "sqlite_fts5" -race -count=1 -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5

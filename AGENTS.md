@@ -96,12 +96,17 @@ Defined in `internal/app/llm.go` `callLLMStream()`:
 
 ```bash
 # Interactive terminal chat (starts the backend if needed, opens a REPL)
-go run .
+go run -tags "sqlite_fts5" .
 
 # Headless backend only, to pair with the Flutter frontend
-go run . --headless --port 8090
+go run -tags "sqlite_fts5" . --headless --port 8090
 cd frontend && flutter run -d linux
 ```
+
+`-tags "sqlite_fts5"` is required, not optional — see "Memory / Vector Store"
+below and `docs/CGO_FLAGS.md`. Without it, `mattn/go-sqlite3` silently skips
+FTS5 support and memory retrieval permanently degrades to vector-only search,
+with no visible error.
 
 `memo` auto-detects whether stdin is an interactive terminal: interactive →
 opens the terminal REPL (agent mode on by default, see `internal/replcli/`);
@@ -112,9 +117,9 @@ to it instead of trying to bind again.
 ### Build
 
 ```bash
-go build -o memo .                                    # backend binary
+go build -tags "sqlite_fts5" -o memo .                # backend binary
 cd frontend && flutter build linux --release         # frontend binary
-./build_releases.sh                                  # dist packages (tar.gz, AppImage, deb)
+./build_releases.sh                                  # dist packages (tar.gz, AppImage, deb) — already tagged
 ```
 
 ### Testing
@@ -154,6 +159,7 @@ the versioned→generic artifact rename for `download.bugradev.com`, and the
 - ~~Full rebuild on every startup (`LoadCache` is O(N), no incremental index)~~ → stale note: `LoadCache` doesn't exist in the current codebase (`internal/memory/store.go`'s `NewStore`/`initSchema` don't do a startup full-scan — this refers to an older architecture, before the hybrid vector+FTS rework). Removed as a claim; re-audit from scratch if startup performance on a large memory store is ever reported as an issue.
 - ~~`chunkText` sized chunks by word count (`strings.Fields`), a poor proxy for token count~~ → fixed 2026-07-12: `internal/memory/chunker.go` now sizes chunks by `truncate.EstimateTokens` (the same char/3 heuristic used elsewhere for context budgeting), so a message short by word count but made of long tokens (URLs, code, agglutinative Turkish) can no longer slip through as a single unsplit, over-budget chunk. Note: `chunkText` is only used by `SaveInteraction` to chunk a single chat turn (user message + reply) before embedding — Memo has no document/file-upload → RAG ingestion pipeline, so heading-aware/semantic splitting (relevant for chunking uploaded documents) doesn't apply to this codebase's actual usage.
 - ~~Embedding model must be started separately (config-driven auto-start on model load)~~ → refined 2026-07-12: `EmbeddingAutoStart` (default `false`, opt-in) only gates launching a *new* model process. Separately, `Startup()` now always checks for an embedding server *already* alive on the configured port (left running by an earlier backend process, or started manually) and reconnects the memory store to it automatically (`reconnectEmbeddingIfAlreadyRunning`, `internal/app/embedding.go`) — previously only `StartEmbeddingModel` (auto-start or the explicit `/embedding`/Models-tab action) ever wired `a.embeddingClient`, so a fresh backend process with `EmbeddingAutoStart=false` (the default, and true in every real `config.yaml` on this machine) silently embedded through the `Startup()`-time placeholder (`a.client`, the main chat client) — while `GetStatus()`'s `pingPort()` fallback reported "running" the whole time without ever reconnecting anything, misleading the CLI's welcome banner in particular (GUI usually escaped this because opening the Models tab to pick a chat model incidentally wires embedding too, if the user had started one before).
+- ~~**FTS5 (keyword) search — the other half of the "hybrid vector+FTS" retrieval `RetrieveContext` (`internal/memory/store.go:693`) is built to do — has silently never been active in any shipped build.** User-reported symptom: told Memo their favorite color in one CLI session (`✓ hafıza kaydedildi` shown, so the *save* genuinely succeeded), then in a brand-new session asked "do you know my name, birthday, and favorite color" in one compound question — got the name back, the birth *year* back (from older memory), but flatly "no" on the favorite color, even though it had just been saved. Root cause, confirmed by rebuilding and diffing backend startup logs: `tryCreateFTSTable`'s `CREATE VIRTUAL TABLE ... USING fts5(...)` fails at runtime with `no such module: fts5` — `mattn/go-sqlite3` does not compile FTS5 support unless built with `-tags "sqlite_fts5"`, and as of 2026-07-15 (checked: `.github/workflows/{ci,build-linux,build-macos,build-windows}.yml`, `build_releases.sh`, `macrelease.sh`, `package_linux.sh`, `package_windows.sh`) not a single build path anywhere in this repo ever passed that tag — CI, every released platform binary, all of it. `store.go` catches the failure and sets `s.useFTS = false`, silently degrading to vector-only search with zero user-visible error (`store_test.go`'s own `TestHybridSearch_MatchTypeSet` comment even acknowledges "test ortamında fts5 yok" as an accepted condition, rather than a bug). With `useFTS` false, `RetrieveContext`'s entire FTS5 + Reciprocal-Rank-Fusion hybrid-merge branch (lines 743-758) — already written, already has a dedicated test — never executes; only raw cosine-similarity vector search runs. A single embedding vector for a multi-topic compound query ("name + birthday + color") blends all three topics together, and against a memory store that's accumulated many turns of unrelated chit-chat across dozens of sessions, a short, simple fact like "favorite color: red" can easily rank outside the top-K purely on semantic vector distance — exactly the kind of exact-but-short keyword match FTS5 exists to catch independent of embedding drift~~ → fixed 2026-07-15: `-tags "sqlite_fts5"` added to every Go build/vet/test/run invocation in the repo (all 4 CI workflows, all 5 build/package shell scripts, `AGENTS.md`, `README.md`/`READmeTR.md`, `docs/CGO_FLAGS.md` — which also gained a dedicated section explaining why this flag is non-optional). Verified directly, not just inferred: built a throwaway binary with the tag and ran it from a scratch data directory — startup log changed from `"MEMORY: fts5 not available (no such module: fts5)"` to `"MEMORY: FTS migration complete"`. **Not yet verified:** an actual before/after comparison of retrieval quality for the exact reported scenario (compound multi-fact query) — the fix turns on an existing, already-tested hybrid mechanism rather than adding new retrieval logic, but a live re-test by the user, after rebuilding with the tag, is still the real confirmation this resolves the reported symptom specifically.
 
 ### Local Model Process (`internal/llama/`)
 - ~~An orphaned `llama-server` (parent Memo process died abnormally — crash, `kill -9`, OOM) kept its port bound forever, since none of `sysproc_{linux,darwin,other}.go`'s `newSysProcAttr()` set `Pdeathsig` (incompatible with the `Setpgid` process-group kill needs). The next `Start()` on that port had no memory of the orphan: `cmd.Start()` succeeded at the OS level, but `llama-server` itself failed to bind and exited within ~1s, and the `Stop()` that followed only SIGTERMed *that* (already-dead) attempt's own PID — `killByPort`'s port-discovery fallback is only reached when `s.cmd == nil`, which wasn't the case here. Every retry in `StartEmbeddingModel`'s 3-attempt loop hit the identical failure, and the port stayed stuck until a full reboot killed the real occupant~~ → fixed 2026-07-12: `Start()` now calls `killByPort` on its target port unconditionally, before every spawn attempt (no-op if the port is already free) — fixes both the embedding and chat-model servers, since `Start()` is shared by both.
@@ -333,10 +339,11 @@ Aşağıda bulunan ve düzeltilen hataların basitçe özeti:
 ### Verification Commands (mandatory before any "done" claim)
 
 ```bash
-# Backend (CGO is required — sqlite)
-CGO_ENABLED=1 go build ./...
-CGO_ENABLED=1 go vet ./...
-CGO_ENABLED=1 go test ./... -race
+# Backend (CGO is required — sqlite; -tags "sqlite_fts5" is required too, see
+# "Memory / Vector Store" below — without it FTS5 silently never activates)
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race
 
 # Frontend (Flutter SDK is NOT in PATH on this machine)
 export PATH="$PATH:/home/bugra/Belgeler/flutter/bin"
@@ -394,7 +401,7 @@ Open bugs and technical debt are tracked in **`BUG_REPORT.md`** — don't duplic
 
 - Go backend uses `http.ServeMux` — no external router dependency (gorilla/mux removed).
 - Turkish error messages mixed with English across the codebase (intentional for target users).
-- CGO required: `CGO_ENABLED=1 go build/test/run`.
+- CGO required: `CGO_ENABLED=1 go build/test/run`. `-tags "sqlite_fts5"` required too — see `docs/CGO_FLAGS.md`.
 - sqlite-vec extension binary (`vec0.so`/`.vec0.dll`) is bundled under `binaries/` — no runtime download.
 
 ---

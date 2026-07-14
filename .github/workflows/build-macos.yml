@@ -50,7 +50,7 @@ jobs:
       - name: Build Go backend
         run: |
           ARCH=$(uname -m)
-          GOARCH=$ARCH CGO_ENABLED=1 go build -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+          GOARCH=$ARCH CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
 
       - name: Build Flutter frontend
         run: flutter build macos --release

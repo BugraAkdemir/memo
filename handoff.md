@@ -1,3 +1,45 @@
+# Handoff — 2026-07-15 (Session 29) — İkinci, daha derin kök neden: FTS5 sorgusu implicit AND kullanıyordu, çok-konulu sorularda hiç eşleşme bulamıyordu
+
+## Özet
+
+Session 28'in FTS5 build-tag fix'i commit'lendikten (`e4889e1`) sonra kullanıcı "hafıza RAG sistemi için kapsamlı testler yaz, gerçekten hatırlayıp hatırlamadığını kontrol edecek" dedi. Bu testleri yazarken **ikinci, daha derin bir kök neden** bulundu: build-tag fix'i tek başına, kullanıcının bildirdiği asıl senaryoyu düzeltmiyordu.
+
+## Bulgu
+
+`internal/memory/store.go`'daki `escapeFTSQuery`, sorgunun her kelimesini tırnaklı bir ifadeye çeviriyor ve boşlukla birleştiriyordu. FTS5'te boşlukla ayrılmış terimler **implicit AND** demek — yani "adımı ve doğum günümü ve en sevdiğim rengi biliyor musun" gibi çok-konulu, doğal bir soru, TEK bir hafıza satırının "adımı", "ve", "doğum", "biliyor", "musun" dahil HER kelimeyi içermesini arayan bir MATCH ifadesine dönüşüyordu. Hiçbir gerçek hafıza satırı bu kadar spesifik olamayacağı için `ftsSearch` bu tarz sorularda her zaman 0 satır döndürüyordu, ve `RetrieveContext`'teki `if len(ftsMemories) > 0` guard'ı FTS/RRF birleştirmeyi tamamen atlayıp sessizce vektör-only'e düşüyordu — yani build-tag fix'inden SONRA bile, kullanıcının bildirdiği tam senaryo hâlâ aynı şekilde başarısız olurdu.
+
+Gerçek bir sqlite3 fts5 tablosuyla doğrudan doğrulandı: AND-join edilmiş sorgu 0 satır döndürdü; aynı kelimeler OR-join edildiğinde doğru satır bm25'e göre ilk sırada çıktı.
+
+## Fix
+
+`escapeFTSQuery`, kelimeleri `" "` yerine `" OR "` ile birleştirecek şekilde değiştirildi — her kelime bağımsız bir aday eşleşme oluyor, bm25 (yaygın kelimeleri IDF ile zaten düşük ağırlıklandırıyor) sıralamayı yapıyor.
+
+## Yeni test paketi: `internal/memory/store_recall_test.go`
+
+Hafıza RAG/embedding pipeline'ı için kapsamlı, "gerçekten hatırlıyor mu" odaklı bir test paketi eklendi:
+- `bagOfWordsEmbedding` yardımcı fonksiyonu — mevcut basit 3-eksenli `testEmbedding`'in aksine, kelime örtüşmesini gerçekten takip eden bir cosine similarity üretiyor, bu yüzden gerçek embedding "dilution" (seyrelme) etkilerini test edebiliyor.
+- `TestRecall_CompoundQuery_ShortFactSurvivesNoise` — kullanıcının bildirdiği TAM senaryonun regresyon testi: kısa bir gerçek (favori renk), sorgunun diğer konularıyla kısmen örtüşen "gürültü" (rastgele sohbetler) arasında gömülü — bu test, fix öncesi AND-join koduna karşı FAIL, OR-join fix'ine karşı PASS olacak şekilde bizzat doğrulandı (geçici olarak fix geri alınıp test çalıştırıldı, gerçekten kırıldığı görüldü).
+- Ayrıca: bağımsız çoklu-gerçek recall, store kapat/yeniden aç arası kalıcılık (yeni sohbet oturumu simülasyonu), importance-tabanlı sıralama, minSimilarity filtresi, topK limiti, parçalanmış (chunked) uzun metinde gömülü detay recall, ve `expandQuery`/`escapeFTSQuery`/`reciprocalRankFusion` için birim testleri.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 34 paket yeşil
+```
+
+## Ders
+
+FTS5 build-tag fix'i "zaten yazılmış, zaten test edilmiş bir mekanizmayı açıyor" diye düşünülmüştü — ama hiç çalıştırılmamış bir kod yolunun kendi test edildiği iddiası şüpheyle karşılanmalı: `TestHybridSearch_MatchTypeSet` FTS'in AÇIK olduğu bir ortamda hiç çalışmamıştı, bu yüzden `escapeFTSQuery`'nin AND semantiği hiç fark edilmemişti. Bir kod yolu ilk kez gerçekten çalışır hale geldiğinde, "derleniyor ve testi var" varsayımıyla yetinmeyip sorgu semantiğini sıfırdan doğrulamak gerekiyor.
+
+## Sıradaki oturum için
+
+- Kullanıcının gerçek ortamda (rebuild edilmiş binary, gerçek embedding modeli) tam senaryoyu tekrar denemesi hâlâ asıl doğrulama — bu sefer hem build-tag hem query-semantiği fix'i birlikte devrede.
+- `escapeFTSQuery`'nin OR-join'i Türkçe "ve/bir/bu" gibi çok yaygın kelimelerde bm25 sıralamasını nasıl etkiliyor, büyük (binlerce kayıtlı) gerçek bir hafıza deposunda henüz gözlemlenmedi — sadece küçük sentetik testlerde doğrulandı.
+
+---
+
 # Handoff — 2026-07-15 (Session 28) — Kök neden bulundu: FTS5 hiçbir zaman derlenmemiş, hibrit hafıza araması yıllardır sadece vektörle çalışıyormuş
 
 ## Özet

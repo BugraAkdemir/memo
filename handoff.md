@@ -1,3 +1,45 @@
+# Handoff — 2026-07-15 (Session 30) — Üçüncü kök neden: her sohbet turu eşit önemde kaydediliyor, compound sorular tek bir vektöre sıkışıyor
+
+## Özet
+
+Kullanıcı gerçek, çok oturumlu bir CLI transkripti paylaştı: bazı sohbetlerde tüm gerçekleri (isim, doğum günü, renk, kedi, köpek) doğru hatırlıyor, başka bir sohbette köpeği hatırlayıp rengi unutuyor — görünürde bir örüntü yok. "Her chatte bazı şeyleri hatırlıyor bazılarını hatırlamıyor, garip, önce nedenini anla, sonra RAG/hafıza sistemini %100 stabil hale getir" dedi.
+
+## Araştırma
+
+1. `internal/app/memory.go`'daki `saveMemoryAsync` incelendi: HER sohbet turu (selam/naber dahil) `SaveInteraction` ile aynı varsayılan `importance=3` ile kaydediliyor. Kişisel bir gerçek ("köpeğimin adı Zeytin" gibi normal sohbette söylenen) ile "selam" arasında ÖNCELİK farkı yok — hiçbir "bu kalıcı bir gerçek" tespiti yok.
+2. Gerçekçi bir senaryo simüle edildi (30 rutin "kanka naber" sohbeti + normal sohbette söylenmiş 1 gerçek, kelime örtüşmesini gerçekten yansıtan `bagOfWordsEmbedding` test embedding'i ile): compound bir soru ("kanka naber ve köpeğimin adı neydi") TEK bir harmanlı vektöre dönüşüyor, ve düzinelerce rutin sohbet turu bu harmanlı vektöre gerçeğin kendisinden DAHA benzer çıkıyor — gerçek topK=5 kesiminin tamamen dışında kalıyor. Fix devre dışı bırakılıp aynı test tekrar çalıştırılarak doğrulandı: 0/5 sonuç gerçeği içeriyordu.
+3. İlk denenen ama işe yaramayan yaklaşım: `importance>=5` olan hafızalara RRF sıralamasından bağımsız garanti bir yer ayırmak. Bu HEM işe yaramadı (bir hafıza en baştaki `candidateK` aday havuzuna hiç girmediyse, sonradan tarayarak kurtarılamıyor) HEM DE mevcut bir testi (`TestRecall_TopKLimitRespected`) kırdı — çok sayıda hafıza `importance=5` paylaştığında sonuç listesini sınırsızca şişiriyordu. Bu yaklaşım geri alındı.
+
+## Fix
+
+`splitCompoundQuery` (`internal/memory/store.go`) — sorguyu bağlaç/noktalama işaretlerine göre ("ve"/"ile"/"and"/",") ayrı konu segmentlerine bölüyor. `RetrieveContext` artık her segment için TAM bütçeli (candidateK) ayrı bir vektör araması yapıp RRF ile ana sonuca birleştiriyor — her konu artık SADECE kendi kelimeleriyle gürültüyü yenmek zorunda, tüm cümleye harmanlanmış haliyle değil. Tek-konulu sorgularda `splitCompoundQuery` `nil` döner, yani mevcut davranış değişmiyor.
+
+Ayrıca `Memory.TopK` varsayılanı 5'ten 8'e çıkarıldı (`internal/config/config.go`) — segment birleştirmesi artık daha fazla bağımsız-alakalı aday çıkarabildiği için biraz ekstra alan.
+
+## Testler
+
+- `TestSplitCompoundQuery` — saf bölme mantığının birim testi
+- `TestRecall_CasualFactNotCrowdedOutByRoutineNoise` — transkriptteki TAM senaryoyu tekrar eder (gerçek `SaveInteraction` ile kaydedilmiş, `SaveExplicit` DEĞİL), fix devre dışıyken FAIL, etkinken PASS olduğu doğrulandı
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 34 paket yeşil
+```
+
+## Dürüst sınır: bu "%100 stabil" değil
+
+`splitCompoundQuery` bağlaç/noktalama tabanlı, semantik değil — bağlaç içermeyen bir compound soru, ya da çok büyük bir hafıza deposunda tek-konulu bir soru bile, hâlâ düz sıralamaya bağlı ve gürültüde kaybolabilir. İsim/doğum günü/evcil hayvan gibi az sayıda çekirdek gerçeğin GERÇEKTEN deterministik hatırlanması için, RAG sıralamasının tamamen dışında, her sistem promptuna her zaman enjekte edilen ayrı bir "profil gerçekleri" mekanizması gerekir — bu önerildi ama inşa edilmedi (kapsam kararı, bug değil).
+
+## Sıradaki oturum için
+
+- Kullanıcı gerçek ortamda tekrar test etmeli; aynı sınıf bug tekrar rapor edilirse önce "bağlaçsız ifade mi" yoksa "çok büyük depo mu" ayrımını yap, otomatik olarak aynı kök neden sanma.
+- "Profil gerçekleri" mekanizması (isim/doğum günü/evcil hayvan gibi sabit alanları RAG dışında her zaman sisteme enjekte etmek) kullanıcıya önerildi, onay beklemeden inşa edilmedi — istenirse ayrı bir görev olarak ele alınmalı.
+
+---
+
 # Handoff — 2026-07-15 (Session 29) — İkinci, daha derin kök neden: FTS5 sorgusu implicit AND kullanıyordu, çok-konulu sorularda hiç eşleşme bulamıyordu
 
 ## Özet

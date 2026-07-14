@@ -20,6 +20,9 @@ func TestDefaultValues(t *testing.T) {
 	if cfg.Memory.MinSimilarity != 0.1 {
 		t.Errorf("Memory.MinSimilarity = %f, want 0.1", cfg.Memory.MinSimilarity)
 	}
+	if !cfg.Memory.AutoFactExtraction {
+		t.Error("Memory.AutoFactExtraction = false, want true for fresh installs")
+	}
 	if cfg.Llama.CtxSize != 4096 {
 		t.Errorf("Llama.CtxSize = %d, want 4096", cfg.Llama.CtxSize)
 	}

@@ -97,7 +97,110 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		if sm != nil {
 			sm.Increment()
 		}
+		a.extractAndPinFacts(ctx, userMsg, reply)
 	}
+}
+
+// factExtractionSystemPrompt drives a narrow, single-purpose LLM call: pull
+// zero or more durable personal facts out of one chat turn. Deliberately not
+// asked of the same call that generates the user-facing reply (e.g. via an
+// inline tag) — that would tie memory's reliability to the same "does the
+// model reliably follow a formatting instruction" fragility that makes agent
+// mode not yet fully stable. This runs as its own request, and NONE is the
+// expected, common-case output (most turns — greetings, small talk — have
+// nothing worth pinning), which is why the format is plain text with an
+// explicit sentinel rather than JSON: it must degrade gracefully across every
+// provider/local model this app supports, including ones with no reliable
+// JSON/structured-output mode.
+const factExtractionSystemPrompt = `You extract durable personal facts about the user from a single chat turn, for long-term memory.
+
+Extract a fact only if it will still be true weeks or months from now:
+identity, relationships, pets, ongoing preferences, recurring habits,
+biographical details (birthday, job, location, etc).
+
+Do NOT extract: greetings, small talk, one-off requests, questions,
+opinions about this conversation, or anything temporary.
+
+Rules:
+- One fact per line, nothing else. No numbering, no markdown, no explanation.
+- Each fact must be a short, self-contained, third-person statement
+  (e.g. "User's dog is named Zeytin", not "my dog is named Zeytin").
+- If nothing is worth remembering long-term, output exactly: NONE`
+
+const (
+	maxExtractedFactsPerTurn = 5
+	maxExtractedFactLength   = 300
+)
+
+// extractAndPinFacts runs after a turn is already saved and shown to the
+// user, so a slow, wrong, or failed extraction can never affect the
+// user-visible response — it only ever adds to what tomorrow's system
+// prompts know. Extracted facts are pinned via SaveExplicitMemory, which
+// makes them show up in every future prompt unconditionally through
+// GetPinnedFacts/retrieveMemory, bypassing RAG ranking entirely. See
+// AGENTS.md's Known Pitfalls, Memory / Vector Store section (2026-07-15
+// entries) for the bug class this exists to close: every chat turn saves
+// with equal importance by default, so a fact stated casually has no way to
+// stand out from routine chit-chat under pure retrieval ranking.
+func (a *App) extractAndPinFacts(ctx context.Context, userMsg, reply string) {
+	if !a.cfg.Memory.AutoFactExtraction {
+		return
+	}
+	a.providerMu.RLock()
+	router := a.providerRouter
+	a.providerMu.RUnlock()
+	if router == nil {
+		return
+	}
+
+	ectx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	defer cancel()
+
+	req := provider.ChatRequest{
+		MaxTokens: 200,
+		Messages: []provider.Message{
+			provider.TextMessage("system", factExtractionSystemPrompt),
+			provider.TextMessage("user", fmt.Sprintf("User: %s\nAssistant: %s", userMsg, reply)),
+		},
+	}
+	resp, err := router.ChatCompletion(ectx, req)
+	if err != nil {
+		// Best-effort enhancement, not a core save path — log only, never
+		// surface as memory:error (that event means "a message may not be
+		// remembered at all", which isn't true here: SaveInteraction already
+		// succeeded before this ever runs).
+		logx.Printf("MEMORY: fact extraction skipped: %v", err)
+		return
+	}
+
+	for _, fact := range parseExtractedFacts(resp.Content) {
+		if err := a.SaveExplicitMemory(fact, "auto-extracted"); err != nil {
+			logx.Printf("MEMORY: failed to pin extracted fact: %v", err)
+		}
+	}
+}
+
+// parseExtractedFacts turns the extraction call's raw text output into a
+// bounded, sanitized list of facts. Nothing here trusts the model's output
+// format blindly — a misbehaving or hallucinating model must not be able to
+// flood the pinned-facts list (capped per turn) or inject arbitrarily long
+// garbage into a system prompt (capped per fact).
+func parseExtractedFacts(raw string) []string {
+	var facts []string
+	for line := range strings.SplitSeq(raw, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "-"))
+		if line == "" || strings.EqualFold(line, "none") {
+			continue
+		}
+		if len(line) > maxExtractedFactLength {
+			line = line[:maxExtractedFactLength]
+		}
+		facts = append(facts, line)
+		if len(facts) >= maxExtractedFactsPerTurn {
+			break
+		}
+	}
+	return facts
 }
 
 func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryResult {

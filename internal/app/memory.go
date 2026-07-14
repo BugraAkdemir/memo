@@ -97,7 +97,12 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		if sm != nil {
 			sm.Increment()
 		}
-		a.extractAndPinFacts(ctx, userMsg, reply)
+		// Fired off, not awaited: extraction can take as long as callLLM's own
+		// budget (up to 300s for an external provider/orchestra call), and
+		// memorySaveWorker is a single goroutine draining every queued save —
+		// blocking it here would back up every other chat's save behind this
+		// one turn's extraction call.
+		go a.extractAndPinFacts(ctx, userMsg, reply)
 	}
 }
 
@@ -132,63 +137,74 @@ const (
 	maxExtractedFactLength   = 300
 )
 
-// extractAndPinFacts runs after a turn is already saved and shown to the
-// user, so a slow, wrong, or failed extraction can never affect the
-// user-visible response — it only ever adds to what tomorrow's system
-// prompts know. Extracted facts are pinned via SaveExplicitMemory, which
-// makes them show up in every future prompt unconditionally through
-// GetPinnedFacts/retrieveMemory, bypassing RAG ranking entirely. See
-// AGENTS.md's Known Pitfalls, Memory / Vector Store section (2026-07-15
-// entries) for the bug class this exists to close: every chat turn saves
-// with equal importance by default, so a fact stated casually has no way to
-// stand out from routine chit-chat under pure retrieval ranking.
+// extractAndPinFacts is fired off in its own goroutine by its caller (see
+// saveMemorySync) after a turn is already saved and shown to the user, so a
+// slow, wrong, or failed extraction can never affect the user-visible
+// response, and never blocks the single memorySaveWorker goroutine behind
+// it — it only ever adds to what tomorrow's system prompts know. Extracted
+// facts are pinned via SaveExplicitMemory, which makes them show up in every
+// future prompt unconditionally through GetPinnedFacts/retrieveMemory,
+// bypassing RAG ranking entirely. See AGENTS.md's Known Pitfalls, Memory /
+// Vector Store section (2026-07-15 entries) for the bug class this exists to
+// close: every chat turn saves with equal importance by default, so a fact
+// stated casually has no way to stand out from routine chit-chat under pure
+// retrieval ranking.
+//
+// Routes through callLLM (Orchestra → external provider → local model, same
+// priority chain as regular chat) rather than reaching into a.providerRouter
+// directly — this exact shortcut was already found and fixed once in this
+// package (ImportMemoryFromText, memory_import.go, 2026-07-13): bypassing
+// callLLM means a local-only setup (no external provider configured — this
+// app's core "local-first" use case) gets a nil providerRouter and the
+// feature silently never runs at all. callLLM also applies its own
+// appropriate per-branch timeout (120–300s) — this must not wrap that in a
+// shorter timeout of its own, or it would truncate callLLM's budget instead.
 func (a *App) extractAndPinFacts(ctx context.Context, userMsg, reply string) {
 	if !a.cfg.Memory.AutoFactExtraction {
 		return
 	}
-	a.providerMu.RLock()
-	router := a.providerRouter
-	a.providerMu.RUnlock()
-	if router == nil {
-		return
-	}
 
-	ectx, cancel := context.WithTimeout(ctx, 30*time.Second)
-	defer cancel()
-
-	req := provider.ChatRequest{
-		MaxTokens: 200,
-		Messages: []provider.Message{
-			provider.TextMessage("system", factExtractionSystemPrompt),
-			provider.TextMessage("user", fmt.Sprintf("User: %s\nAssistant: %s", userMsg, reply)),
-		},
+	msgs := []api.Message{
+		api.NewTextMessage("system", factExtractionSystemPrompt),
+		api.NewTextMessage("user", fmt.Sprintf("User: %s\nAssistant: %s", userMsg, reply)),
 	}
-	resp, err := router.ChatCompletion(ectx, req)
-	if err != nil {
+	reply2 := a.callLLM(ctx, msgs)
+	if isLLMErrorReply(reply2) {
 		// Best-effort enhancement, not a core save path — log only, never
 		// surface as memory:error (that event means "a message may not be
 		// remembered at all", which isn't true here: SaveInteraction already
 		// succeeded before this ever runs).
-		logx.Printf("MEMORY: fact extraction skipped: %v", err)
+		logx.Printf("MEMORY: fact extraction skipped: %s", reply2)
 		return
 	}
 
-	for _, fact := range parseExtractedFacts(resp.Content) {
+	for _, fact := range parseExtractedFacts(reply2) {
 		if err := a.SaveExplicitMemory(fact, "auto-extracted"); err != nil {
 			logx.Printf("MEMORY: failed to pin extracted fact: %v", err)
 		}
 	}
 }
 
+// factListMarkerPrefixes are stripped from the front of an extracted line
+// before it's checked for emptiness/NONE — a defense against a model that
+// ignores the "no numbering, no markdown" instruction and emits "1. fact" or
+// "* fact" instead of a bare line. Longest-first within each style so e.g.
+// "10." doesn't get half-stripped into "0.".
+var factListMarkerPrefixes = []string{"- ", "* ", "• ", "-", "*", "•"}
+
 // parseExtractedFacts turns the extraction call's raw text output into a
 // bounded, sanitized list of facts. Nothing here trusts the model's output
 // format blindly — a misbehaving or hallucinating model must not be able to
-// flood the pinned-facts list (capped per turn) or inject arbitrarily long
-// garbage into a system prompt (capped per fact).
+// flood the pinned-facts list (capped per turn), inject arbitrarily long
+// garbage into a system prompt (capped per fact), or leave stray list-marker
+// artifacts that would then sit in every future system prompt forever, since
+// pinned facts bypass the RAG relevance decay a normal memory would age out
+// under.
 func parseExtractedFacts(raw string) []string {
 	var facts []string
 	for line := range strings.SplitSeq(raw, "\n") {
-		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "-"))
+		line = strings.TrimSpace(line)
+		line = stripFactListMarker(line)
 		if line == "" || strings.EqualFold(line, "none") {
 			continue
 		}
@@ -201,6 +217,24 @@ func parseExtractedFacts(raw string) []string {
 		}
 	}
 	return facts
+}
+
+// stripFactListMarker removes one leading list-style marker: a dash/asterisk/
+// bullet ("-", "*", "•"), or a numbered prefix ("1.", "12)", etc).
+func stripFactListMarker(line string) string {
+	for _, p := range factListMarkerPrefixes {
+		if strings.HasPrefix(line, p) {
+			return strings.TrimSpace(line[len(p):])
+		}
+	}
+	i := 0
+	for i < len(line) && line[i] >= '0' && line[i] <= '9' {
+		i++
+	}
+	if i > 0 && i < len(line) && (line[i] == '.' || line[i] == ')') {
+		return strings.TrimSpace(line[i+1:])
+	}
+	return line
 }
 
 func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryResult {
@@ -227,24 +261,45 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 
 	// Pinned facts (explicit saves, importance=5) are merged in unconditionally
 	// — never subject to RetrieveContext's topK/similarity ranking — so a core
-	// personal fact can't be crowded out by routine conversational noise.
-	if pinned, pinErr := a.store.GetPinnedFacts(rctx); pinErr != nil {
+	// personal fact can't be crowded out by routine conversational noise. Uses
+	// its own timeout rather than reusing rctx: RetrieveContext can itself
+	// spend most of a shared budget on multi-embed compound-query
+	// decomposition, which would otherwise leave GetPinnedFacts almost no
+	// time and silently break the "unconditional" guarantee under load.
+	pinCtx, pinCancel := context.WithTimeout(ctx, 5*time.Second)
+	pinned, pinErr := a.store.GetPinnedFacts(pinCtx)
+	pinCancel()
+	if pinErr != nil {
 		logx.Printf("MEMORY: GetPinnedFacts: %v", pinErr)
 	} else if len(pinned) > 0 {
-		seen := make(map[string]struct{}, len(m))
-		for _, r := range m {
-			seen[r.ID] = struct{}{}
-		}
+		// Pinned facts go FIRST, not appended at the end: BuildSystemPrompt
+		// (internal/identity) truncates the formatted memory block from the
+		// tail once it exceeds its token budget — appending here would make
+		// pinned facts the first thing dropped for exactly the heavy users
+		// (large RAG history + many pinned facts) who most need them protected.
+		seen := make(map[string]struct{}, len(pinned))
+		merged := make([]memory.MemoryResult, 0, len(pinned)+len(m))
 		for _, p := range pinned {
-			if _, dup := seen[p.ID]; !dup {
-				m = append(m, p)
+			merged = append(merged, p)
+			seen[p.ID] = struct{}{}
+		}
+		for _, r := range m {
+			if _, dup := seen[r.ID]; !dup {
+				merged = append(merged, r)
 			}
 		}
+		m = merged
 	}
 
 	logx.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))
 	if len(m) > 0 {
-		logx.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), m[0].Similarity*100)
+		best := m[0].Similarity
+		for _, r := range m[1:] {
+			if r.Similarity > best {
+				best = r.Similarity
+			}
+		}
+		logx.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), best*100)
 	}
 	return m
 }

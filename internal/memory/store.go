@@ -1055,7 +1055,7 @@ func (s *Store) GetPinnedFacts(ctx context.Context) ([]MemoryResult, error) {
 		SELECT uuid, content, timestamp, user_msg, assist_msg,
 		       importance, source, tags, session_id, retrieve_count
 		FROM memories
-		WHERE source = 'explicit' AND pending_deletion = 0
+		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, pinnedFactsLimit)
@@ -1642,13 +1642,21 @@ const (
 // FindMergeCandidates returns up to limit pairs of memories whose embeddings
 // have cosine similarity ≥ 0.92. It samples the consolidateSampleSize most
 // recent non-deleted memories to keep the O(n²) scan fast.
+//
+// source='explicit' (pinned facts, see GetPinnedFacts) is excluded from the
+// candidate pool, not just 'merged': saveMerged writes the merge result with
+// source='merged'/importance=4, so merging two pinned facts together would
+// silently un-pin the result — GetPinnedFacts' WHERE clause would no longer
+// match it. Pinned facts are meant to be a small, deliberately-curated set;
+// this consolidation pass exists for the much larger general conversational
+// pool, not for that set.
 func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCandidate, error) {
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT id, content, embedding
 		FROM memories
 		WHERE embedding IS NOT NULL
 		  AND pending_deletion = 0
-		  AND source NOT IN ('merged')
+		  AND source NOT IN ('merged', 'explicit')
 		ORDER BY timestamp DESC
 		LIMIT ?
 	`, consolidateSampleSize)

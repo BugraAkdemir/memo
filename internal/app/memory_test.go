@@ -9,6 +9,7 @@ import (
 	"testing"
 	"time"
 
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/memory"
 	"memo/internal/provider"
@@ -82,6 +83,21 @@ func TestParseExtractedFacts(t *testing.T) {
 			"dash-prefixed lines are cleaned",
 			"- User's dog is named Zeytin\n- User's cat is named Pasha",
 			[]string{"User's dog is named Zeytin", "User's cat is named Pasha"},
+		},
+		{
+			"numbered lines are cleaned despite the 'no numbering' instruction",
+			"1. User's dog is named Zeytin\n2. User's cat is named Pasha",
+			[]string{"User's dog is named Zeytin", "User's cat is named Pasha"},
+		},
+		{
+			"parenthesis-numbered lines are cleaned",
+			"1) User's name is Ahmet",
+			[]string{"User's name is Ahmet"},
+		},
+		{
+			"asterisk/bullet-prefixed lines are cleaned",
+			"* User's name is Ahmet\n• User's job is engineer",
+			[]string{"User's name is Ahmet", "User's job is engineer"},
 		},
 		{
 			"blank lines are skipped",
@@ -169,9 +185,10 @@ func TestExtractAndPinFacts_SavesEachExtractedFact(t *testing.T) {
 	router := newExtractionTestRouter(t, "User's dog is named Zeytin\nUser's favorite color is red")
 
 	a := &App{
-		store:          store,
-		providerRouter: router,
-		cfg:            &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
 	a.extractAndPinFacts(context.Background(), "kopeğimin adı Zeytin, en sevdiğim renk kırmızı", "ne güzel")
@@ -195,9 +212,10 @@ func TestExtractAndPinFacts_NoneResponsePinsNothing(t *testing.T) {
 	router := newExtractionTestRouter(t, "NONE")
 
 	a := &App{
-		store:          store,
-		providerRouter: router,
-		cfg:            &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
 	a.extractAndPinFacts(context.Background(), "selam", "selam, nasılsın")
@@ -229,9 +247,10 @@ func TestExtractAndPinFacts_DisabledConfigNeverCallsProvider(t *testing.T) {
 	}})
 
 	a := &App{
-		store:          store,
-		providerRouter: router,
-		cfg:            &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: false}},
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: false}},
 	}
 
 	a.extractAndPinFacts(context.Background(), "adım Ahmet", "memnun oldum")
@@ -245,11 +264,14 @@ func TestExtractAndPinFacts_DisabledConfigNeverCallsProvider(t *testing.T) {
 	}
 }
 
-// TestExtractAndPinFacts_NoRouterNoop guards against a nil providerRouter
-// (no provider configured yet, e.g. first run) causing a panic in a
-// background worker — a crash there would be far worse than just skipping
-// extraction for this turn.
-func TestExtractAndPinFacts_NoRouterNoop(t *testing.T) {
+// TestExtractAndPinFacts_NoModelConfigured_SkipsGracefully guards against a
+// completely unconfigured App (no provider router, no local client — e.g.
+// first run before any model is set up) causing a panic in a background
+// worker. It also exercises the real routing path: extractAndPinFacts now
+// goes through callLLM like every other LLM call in this package, so with
+// nothing configured it should get callLLM's own local model's
+// "not loaded" error reply and skip cleanly, not a bespoke nil check.
+func TestExtractAndPinFacts_NoModelConfigured_SkipsGracefully(t *testing.T) {
 	store := newExtractionTestStore(t)
 	a := &App{
 		store: store,
@@ -261,5 +283,38 @@ func TestExtractAndPinFacts_NoRouterNoop(t *testing.T) {
 	pinned, _ := store.GetPinnedFacts(context.Background())
 	if len(pinned) != 0 {
 		t.Fatalf("len(pinned) = %d, want 0", len(pinned))
+	}
+}
+
+// TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns is the direct
+// regression test for the bug this routing fix closes: extraction used to
+// call a.providerRouter.ChatCompletion directly, so a local-only setup (no
+// external provider configured — a.providerRouter nil, only the local
+// llama.cpp client set, exactly this app's core "local-first" use case) made
+// extraction a silent, permanent no-op. Now that it routes through callLLM,
+// it must reach callLLM's local-model branch and actually extract/pin a fact
+// using only a.client — the same field every other local-model chat
+// completion in this app goes through.
+func TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns(t *testing.T) {
+	store := newExtractionTestStore(t)
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"User's name is Ahmet"}}]}`)
+	}))
+	defer srv.Close()
+
+	a := &App{
+		store:  store,
+		client: api.NewClient(srv.URL, 30),
+		cfg:    &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
+	}
+
+	a.extractAndPinFacts(context.Background(), "adım Ahmet", "memnun oldum")
+
+	pinned, err := store.GetPinnedFacts(context.Background())
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("len(pinned) = %d, want 1 — extraction must reach the local-model branch when providerRouter is nil", len(pinned))
 	}
 }

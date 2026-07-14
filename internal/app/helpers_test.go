@@ -269,6 +269,51 @@ func TestRetrieveMemory_MergesInPinnedFactsRegardlessOfRanking(t *testing.T) {
 	}
 }
 
+// TestRetrieveMemory_PinnedFactsComeFirst is a regression test: pinned facts
+// must be placed BEFORE RAG results in the returned slice, not appended
+// after. identity.BuildSystemPrompt truncates the formatted memory block
+// from the tail once it exceeds its token budget — if pinned facts were
+// appended last (as an earlier version of this code did), they'd be the
+// first thing dropped for exactly the heavy users (large RAG history) who
+// most need them protected. Confirmed by temporarily reverting to
+// append-at-end during development: this test failed (pinned fact ended up
+// last) before the fix, passes now.
+func TestRetrieveMemory_PinnedFactsComeFirst(t *testing.T) {
+	store, err := memory.NewStore(memory.StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveInteraction(context.Background(), "kanka naber", "iyilik"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+
+	a := &App{
+		store: store,
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 5, MinSimilarity: 0},
+		},
+	}
+
+	results := a.retrieveMemory(context.Background(), "naber")
+	if len(results) < 2 {
+		t.Fatalf("expected at least 2 results (routine + pinned), got %d: %+v", len(results), results)
+	}
+	if results[0].Source != "explicit" {
+		t.Fatalf("results[0].Source = %q, want explicit — pinned facts must come first so tail-truncation hits RAG results, not pinned facts: %+v", results[0].Source, results)
+	}
+}
+
 // TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch is a
 // regression test for BUG-H1: buildMessages() used to read history from
 // whatever chat was globally active *at call time* — if the active chat

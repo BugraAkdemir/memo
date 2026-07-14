@@ -125,6 +125,44 @@ func TestGetPinnedFacts_RespectsCap(t *testing.T) {
 	}
 }
 
+// TestFindMergeCandidates_ExcludesExplicitFacts is a regression test: the
+// candidate pool used to exclude only source='merged', so two near-duplicate
+// pinned (source='explicit') facts could be selected as a merge pair —
+// saveMerged writes the result as source='merged'/importance=4, which
+// GetPinnedFacts' WHERE clause no longer matches, silently un-pinning a fact
+// that auto-extraction (internal/app/memory.go) had just pinned. Two
+// identical-embedding explicit facts here would otherwise score cosine
+// similarity 1.0, comfortably above the 0.92 merge threshold.
+func TestFindMergeCandidates_ExcludesExplicitFacts(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(1) error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(2) error = %v", err)
+	}
+
+	candidates, err := store.FindMergeCandidates(ctx, 5)
+	if err != nil {
+		t.Fatalf("FindMergeCandidates() error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("FindMergeCandidates() = %+v, want none — pinned facts must never be auto-merged/un-pinned", candidates)
+	}
+}
+
 // --- Single/multi-fact recall -------------------------------------------------
 
 func TestRecall_SingleExplicitFact(t *testing.T) {

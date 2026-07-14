@@ -1,3 +1,40 @@
+# Handoff — 2026-07-14/15 (Session 27, devam 3) — Yeni özellik: "Hata Bildir" ayarlar sekmesi (telemetri tartışmasından çıktı)
+
+## Özet
+
+Kullanıcıyla telemetri konusunda uzun bir sohbet oldu: uygulama "0 telemetri, 0 veri" iddiasında, kullanıcı hata raporu/indirme sayısı/kullanım amacı gibi bir telemetri eklemeyi düşünüyordu ama bunun felsefeye ters düşüp şüphe yaratacağından endişeliydi. Tartışma sonucu: indirme sayıları zaten web sitesi tarafında (client'a dokunmadan) tutuluyor; hata raporları için opsiyonel ama tamamen **elle tetiklenen**, arka planda hiçbir şey göndermeyen bir yöntem kararlaştırıldı — GitHub Issues'a önceden doldurulmuş bir link açmak (kullanıcı kendi hesabıyla, kendi gözden geçirip gönderiyor). Kullanıcı sonra "kodlamaya başla, sabah bitmiş görmek istiyorum, soru sorma" dedi — bu yüzden fazla soru sormadan uygulandı.
+
+## Yapılan
+
+Yeni Settings sekmesi: `frontend/lib/widgets/settings/tabs/report_bug_tab.dart` (son sekme, "Hata Bildir"/"Report Bug", wrench.svg ikonu — özel bug ikonu asset'i yok, mevcut ikonlardan en yakını kullanıldı).
+
+- Çok satırlı metin kutusu: "ne oldu, ne yapmaya çalışıyordun, ne bekliyordun" açıklaması.
+- "Son 10 hatayı da ekle" checkbox'ı — **varsayılan kapalı**.
+- "GitHub'da Bildir" butonu: `https://github.com/BugraAkdemir/memo/issues/new?title=...&body=...` linkini `url_launcher` ile tarayıcıda açar. Hiçbir şey bizim sunucumuza gitmez — kullanıcı GitHub'ın kendi sayfasında son kez görüp düzenleyip kendi hesabıyla gönderir.
+- Ekran görüntüsü YOK (bilinçli — ekranda özel sohbet içeriği görünebilir).
+- "Son 10 hata" için yeni bir takip sistemi eklenmedi — zaten var olan `internal/app`'in `eventRing`/`GetEvents()` (`GET /api/events`, önceden Flutter tarafından hiç kullanılmıyordu) tekrar kullanıldı. Yeni `MemoApiClient.getEvents()` eklendi, client-side `name` alanı "error" içeren event'ler filtrelenip son 10'u alınıyor.
+- Yeni backend endpoint'i YOK — bilinçli tercih, "sıfır veri topluyoruz" iddiasını bozmamak için.
+
+`settings_dialog.dart`'a sekme kaydı eklendi (case 16, mevcut desene uyularak). l10n.dart'a TR+EN 14 yeni key eklendi.
+
+## Doğrulama
+
+```
+flutter analyze lib/   → temiz (bilinen 4 info-level use_build_context_synchronously)
+flutter test           → 105/105 yeşil
+```
+
+**Gerçek uygulamada test edilemeyen:** Bu ortamda tarayıcı/display olmadığı için gerçek bir GitHub issue linkinin açılıp doğru doldurulduğunu gözle doğrulamak mümkün değildi. Widget test de eklenmedi (bu kod tabanındaki diğer settings sekmelerinin çoğunda da yok, ör. `memory_import_tab.dart` — gerçek kullanımla test edilmişti).
+
+**Commit edilecek** (AGENTS.md kuralı gereği, bu handoff girişiyle birlikte).
+
+**Bonus fix (fark edilen ayrı, alakasız bir bug):** `settings_dialog.dart`'ın `_tabIcons` listesinde Task Loop sekmesi `'lib/icon/slash/gears.svg'`ye işaret ediyordu ama gerçek dosya adı `gear.svg` (tekil, ve zaten General sekmesi tarafından kullanılıyor) — hiç var olmayan bir asset, muhtemelen kırık/boş görünüyordu. `list-checks.svg` ile değiştirildi (zaten kullanılmıyordu, "görev listesi" semantiğine de daha uygun).
+
+**Sıradaki oturum için:**
+1. Kullanıcı gerçek uygulamada "Hata Bildir" sekmesini deneyip GitHub linkinin doğru başlık/gövdeyle açıldığını ve Task Loop sekmesinin artık düzgün bir ikon gösterdiğini doğrulamalı.
+
+---
+
 # Handoff — 2026-07-14 (Session 27, devam 2) — Ayarlar sekmelerindeki hardcoded (dile duyarsız) metinler düzeltildi
 
 ## Özet

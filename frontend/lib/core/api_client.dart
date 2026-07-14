@@ -166,6 +166,17 @@ class MemoApiClient {
     }
   }
 
+  /// Get recent background events (chat:done, memory:saved, memory:error,
+  /// etc.) from the backend's ring buffer — used by the bug-report tab to
+  /// optionally attach the last few errors to a report.
+  Future<List<Map<String, dynamic>>> getEvents() async {
+    final res = await _dio.get('/api/events');
+    if (res.data is List) {
+      return (_guard<List>(res.data)).cast<Map<String, dynamic>>();
+    }
+    return [];
+  }
+
   /// Get all chats list.
   Future<List<ChatSession>> listChats() async {
     final res = await _dio.get('/api/chats');

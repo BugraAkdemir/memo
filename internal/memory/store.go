@@ -1033,6 +1033,51 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 	return results, nil
 }
 
+// pinnedFactsLimit bounds how many explicit facts GetPinnedFacts returns.
+// Pinned facts are injected into every system prompt in full, unconditionally
+// — unlike RAG results they are never trimmed by relevance — so this cap is
+// what keeps prompt size bounded as the set grows over weeks of use. The
+// existing consolidation pass (FindMergeCandidates/mergeMemoriesLLM, already
+// scheduled by runImportanceDecay) merges near-duplicate explicit facts over
+// time, which is what's meant to keep the underlying set small in practice
+// rather than this cap silently dropping older facts.
+const pinnedFactsLimit = 50
+
+// GetPinnedFacts returns explicit (importance=5, source="explicit") memories,
+// most recent first. Callers are expected to inject the full result into
+// every system prompt unconditionally, bypassing RetrieveContext's RAG
+// ranking entirely — a core personal fact must not depend on winning a
+// similarity contest against routine conversational noise (see AGENTS.md's
+// Known Pitfalls, Memory / Vector Store section, 2026-07-15 entries, for the
+// bug class this exists to sidestep).
+func (s *Store) GetPinnedFacts(ctx context.Context) ([]MemoryResult, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT uuid, content, timestamp, user_msg, assist_msg,
+		       importance, source, tags, session_id, retrieve_count
+		FROM memories
+		WHERE source = 'explicit' AND pending_deletion = 0
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, pinnedFactsLimit)
+	if err != nil {
+		return nil, fmt.Errorf("memory.GetPinnedFacts: %w", err)
+	}
+	defer rows.Close()
+
+	var out []MemoryResult
+	for rows.Next() {
+		var r MemoryResult
+		if err := rows.Scan(&r.ID, &r.Content, &r.Timestamp, &r.UserMsg, &r.AssistMsg,
+			&r.Importance, &r.Source, &r.Tags, &r.SessionID, &r.RetrieveCount); err != nil {
+			continue
+		}
+		r.MatchType = "pinned"
+		r.Similarity = 1.0
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
 // incrementRetrieveCounts increments retrieve_count for the given memory UUIDs.
 // Called asynchronously after a successful retrieval to track usage frequency.
 func (s *Store) incrementRetrieveCounts(ids []string) {

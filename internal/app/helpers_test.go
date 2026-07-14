@@ -227,6 +227,48 @@ func TestBuildMessages_MemoryEnabledNotCrash(t *testing.T) {
 	}
 }
 
+// TestRetrieveMemory_MergesInPinnedFactsRegardlessOfRanking proves pinned
+// (explicit) facts are injected unconditionally, not just when they happen
+// to win RAG's similarity ranking. TopK is set to 0, which makes
+// RetrieveContext return nil immediately (see store.go's `if topK <= 0`
+// guard) — so the only way the explicit fact can appear in retrieveMemory's
+// result is via the GetPinnedFacts merge step, not RAG.
+func TestRetrieveMemory_MergesInPinnedFactsRegardlessOfRanking(t *testing.T) {
+	store, err := memory.NewStore(memory.StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+
+	a := &App{
+		store: store,
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: true, TopK: 0, MinSimilarity: 0},
+		},
+	}
+
+	results := a.retrieveMemory(context.Background(), "irrelevant query")
+	found := false
+	for _, r := range results {
+		if strings.Contains(r.Content, "Ahmet") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("pinned fact missing when RAG (topK=0) excludes everything: %+v", results)
+	}
+}
+
 // TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch is a
 // regression test for BUG-H1: buildMessages() used to read history from
 // whatever chat was globally active *at call time* — if the active chat

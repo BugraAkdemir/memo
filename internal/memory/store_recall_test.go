@@ -65,6 +65,66 @@ func containsMemory(results []MemoryResult, substr string) bool {
 	return false
 }
 
+// --- Pinned facts (always-injected, bypass RAG ranking) ---------------------
+
+func TestGetPinnedFacts_OnlyExplicitSource(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
+
+	if err := store.SaveInteraction(ctx, "kanka naber", "iyilik kanka"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("len(pinned) = %d, want 1 (routine conversation must not be pinned)", len(pinned))
+	}
+	if pinned[0].Source != "explicit" {
+		t.Errorf("Source = %q, want explicit", pinned[0].Source)
+	}
+	if !strings.Contains(pinned[0].Content, "Ahmet") {
+		t.Errorf("Content = %q, want it to contain Ahmet", pinned[0].Content)
+	}
+}
+
+func TestGetPinnedFacts_EmptyStoreReturnsEmpty(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
+
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 0 {
+		t.Fatalf("len(pinned) = %d, want 0", len(pinned))
+	}
+}
+
+func TestGetPinnedFacts_RespectsCap(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)
+
+	for i := range pinnedFactsLimit + 10 {
+		if err := store.SaveExplicit(ctx, fmt.Sprintf("gercek numara %d", i), "profile"); err != nil {
+			t.Fatalf("SaveExplicit(%d) error = %v", i, err)
+		}
+	}
+
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != pinnedFactsLimit {
+		t.Fatalf("len(pinned) = %d, want %d (cap must hold even with more explicit facts saved)", len(pinned), pinnedFactsLimit)
+	}
+}
+
 // --- Single/multi-fact recall -------------------------------------------------
 
 func TestRecall_SingleExplicitFact(t *testing.T) {

@@ -259,6 +259,12 @@ type MemoryConfig struct {
 	EmbeddingModelRepo string  `yaml:"embedding_model_repo" json:"embedding_model_repo"`
 	EmbeddingModelFile string  `yaml:"embedding_model_file" json:"embedding_model_file"`
 	EmbeddingAutoStart bool    `yaml:"embedding_auto_start" json:"embedding_auto_start"`
+	// AutoFactExtraction runs a narrow, background LLM call after each saved
+	// interaction to pull out durable personal facts (name, birthday, pets,
+	// etc.) and pin them so they're injected into every system prompt
+	// unconditionally, instead of competing with routine chit-chat under RAG
+	// ranking. See internal/app/memory.go's extractAndPinFacts.
+	AutoFactExtraction bool `yaml:"auto_fact_extraction" json:"auto_fact_extraction"`
 }
 
 var (
@@ -290,6 +296,7 @@ func Default() *AppConfig {
 			EmbeddingDimension: 768,
 			EmbeddingModelRepo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
 			EmbeddingModelFile: "nomic-embed-text-v1.5.Q4_K_M.gguf",
+			AutoFactExtraction: true,
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled: false,

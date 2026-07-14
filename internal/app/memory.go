@@ -121,6 +121,24 @@ func (a *App) retrieveMemory(ctx context.Context, query string) []memory.MemoryR
 		}
 		return nil
 	}
+
+	// Pinned facts (explicit saves, importance=5) are merged in unconditionally
+	// — never subject to RetrieveContext's topK/similarity ranking — so a core
+	// personal fact can't be crowded out by routine conversational noise.
+	if pinned, pinErr := a.store.GetPinnedFacts(rctx); pinErr != nil {
+		logx.Printf("MEMORY: GetPinnedFacts: %v", pinErr)
+	} else if len(pinned) > 0 {
+		seen := make(map[string]struct{}, len(m))
+		for _, r := range m {
+			seen[r.ID] = struct{}{}
+		}
+		for _, p := range pinned {
+			if _, dup := seen[p.ID]; !dup {
+				m = append(m, p)
+			}
+		}
+	}
+
 	logx.Printf("LATENCY app.retrieve_memory total_ms=%d returned=%d", time.Since(start).Milliseconds(), len(m))
 	if len(m) > 0 {
 		logx.Printf("Memory: found %d relevant memories (best=%.0f%%)", len(m), m[0].Similarity*100)

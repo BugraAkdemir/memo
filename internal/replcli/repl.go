@@ -296,12 +296,10 @@ func (s *session) sendMessage(line string) {
 		memoryLikely = true
 	}
 
-	var lastEventBefore Event
-	var hadEventBefore bool
+	var lastSeqBefore uint64
 	if memoryLikely {
 		if events, err := s.client.Events(s.ctx); err == nil && len(events) > 0 {
-			lastEventBefore = events[len(events)-1]
-			hadEventBefore = true
+			lastSeqBefore = events[len(events)-1].Seq
 		}
 	}
 
@@ -347,7 +345,7 @@ func (s *session) sendMessage(line string) {
 	// directly onto the tail of the reply instead of starting fresh.
 	fmt.Fprintln(s.out)
 	if memoryLikely {
-		s.reportMemorySaved(lastEventBefore, hadEventBefore)
+		s.reportMemorySaved(lastSeqBefore)
 	}
 }
 
@@ -357,7 +355,7 @@ func (s *session) sendMessage(line string) {
 // report a save that actually happened — not something inferred from just
 // having sent a message. Silently gives up after ~2.4s so a slow/disabled
 // save never blocks the prompt from coming back.
-func (s *session) reportMemorySaved(before Event, hadBefore bool) {
+func (s *session) reportMemorySaved(afterSeq uint64) {
 	const attempts = 6
 	const interval = 400 * time.Millisecond
 	for range attempts {
@@ -366,7 +364,7 @@ func (s *session) reportMemorySaved(before Event, hadBefore bool) {
 		if err != nil || len(events) == 0 {
 			continue
 		}
-		if memorySavedSince(events, before, hadBefore) {
+		if memorySavedSince(events, afterSeq) {
 			fmt.Fprintln(s.out, dim("✓ hafıza kaydedildi"))
 			return
 		}
@@ -375,7 +373,7 @@ func (s *session) reportMemorySaved(before Event, hadBefore bool) {
 		// saveMemorySync, internal/app/*.go) — surface it instead of silently
 		// giving up after this loop, which used to look exactly like nothing
 		// happened even though the backend knew perfectly well why.
-		if msg, ok := eventDataSince(events, before, hadBefore, "memory:error"); ok {
+		if msg, ok := eventDataSince(events, afterSeq, "memory:error"); ok {
 			fmt.Fprintln(s.out, yellow("⚠ "+msg))
 			return
 		}
@@ -383,60 +381,45 @@ func (s *session) reportMemorySaved(before Event, hadBefore bool) {
 }
 
 // eventDataSince returns the Data of the most recent event named `name`
-// that occurs after the point where `before` was last seen (or anywhere in
-// events, if hadBefore is false) — same "after a snapshot point" semantics
-// as memorySavedSince, generalized to also return the matched event's data.
-func eventDataSince(events []Event, before Event, hadBefore bool, name string) (string, bool) {
-	search := events
-	if hadBefore {
-		beforeIdx := -1
-		for i, e := range events {
-			if e == before {
-				beforeIdx = i
-			}
-		}
-		if beforeIdx != -1 {
-			search = events[beforeIdx+1:]
-		}
-	}
-	for i := len(search) - 1; i >= 0; i-- {
-		if search[i].Name == name {
-			return search[i].Data, true
+// with Seq > afterSeq (afterSeq 0 means "search all of events" — real Seq
+// values start at 1, so nothing can be lost that way).
+func eventDataSince(events []Event, afterSeq uint64, name string) (string, bool) {
+	for i := len(events) - 1; i >= 0; i-- {
+		if events[i].Name == name && events[i].Seq > afterSeq {
+			return events[i].Data, true
 		}
 	}
 	return "", false
 }
 
-// memorySavedSince reports whether a memory:saved event occurs in events
-// (oldest-to-newest, matching /api/events) after the point where before was
-// last seen — not merely whether it's the literal final entry. The ring
-// buffer is shared by every subsystem (mood, learning/calendar intent,
-// proactive suggestions, sync), any of which can emit an event between the
-// actual save and this poll and become the new final entry — checking only
-// events[len(events)-1] silently missed a save that had genuinely already
-// happened the moment anything else logged afterward. Confirmed live: the
-// very first message after a fresh CLI start reliably showed the
-// confirmation (no other subsystem had fired anything yet), later ones in
-// the same session increasingly didn't, even though /api/events kept
-// showing the save had happened.
-func memorySavedSince(events []Event, before Event, hadBefore bool) bool {
-	if !hadBefore {
-		return slices.ContainsFunc(events, func(e Event) bool { return e.Name == "memory:saved" })
-	}
-	// Last occurrence of `before` (in case its exact name+data recurs) —
-	// anything named memory:saved strictly after that point is new.
-	beforeIdx := -1
-	for i, e := range events {
-		if e == before {
-			beforeIdx = i
-		}
-	}
-	if beforeIdx == -1 {
-		// `before` fell out of the ring (evicted by 64+ newer events since) —
-		// any memory:saved now present is necessarily newer than it.
-		return slices.ContainsFunc(events, func(e Event) bool { return e.Name == "memory:saved" })
-	}
-	return slices.ContainsFunc(events[beforeIdx+1:], func(e Event) bool { return e.Name == "memory:saved" })
+// memorySavedSince reports whether a memory:saved event with Seq > afterSeq
+// occurs in events. Keying off Seq rather than the event's Name+Data (or
+// identity with a snapshotted "before" event) is deliberate: every
+// memory:saved event carries the exact same empty Data, so on two
+// back-to-back turns that each produce a save — the ordinary case for a
+// real conversation — a value-equality check for "the snapshotted before
+// event, recurring" cannot tell the *previous* turn's save apart from the
+// *new* one, since they're structurally identical. That collapsed the new
+// save into "not new," which is exactly what a live multi-turn CLI probe
+// (Fatih persona, 2026-07-15) hit: every turn after the first showed
+// [memory:none-detected] despite the backend log showing a real, fast
+// (<300ms) SaveInteraction completing each time. Seq is assigned once, at
+// push time (internal/app/app.go's eventRing), and never repeats.
+//
+// MemorySavedSince/EventDataSince below are the exported forms, for
+// callers outside this package (main.go's `-p` print mode) that need the
+// same "did a save happen since this snapshot" check the interactive REPL
+// uses.
+func memorySavedSince(events []Event, afterSeq uint64) bool {
+	return slices.ContainsFunc(events, func(e Event) bool { return e.Name == "memory:saved" && e.Seq > afterSeq })
+}
+
+func MemorySavedSince(events []Event, afterSeq uint64) bool {
+	return memorySavedSince(events, afterSeq)
+}
+
+func EventDataSince(events []Event, afterSeq uint64, name string) (string, bool) {
+	return eventDataSince(events, afterSeq, name)
 }
 
 func (s *session) printWelcome() {
@@ -452,7 +435,7 @@ func (s *session) printWelcome() {
 	// earlier in the ring isn't shown once embedding is actually up.
 	if !active {
 		if events, err := s.client.Events(s.ctx); err == nil {
-			if msg, ok := eventDataSince(events, Event{}, false, "memory:error"); ok {
+			if msg, ok := eventDataSince(events, 0, "memory:error"); ok {
 				fmt.Fprintln(s.out, yellow("⚠ "+msg))
 			}
 		}

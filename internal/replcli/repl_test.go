@@ -12,56 +12,91 @@ import (
 	"time"
 )
 
-// Regression tests for memorySavedSince: reportMemorySaved used to check
-// only events[len(events)-1], so a save that genuinely happened was missed
-// the moment any other subsystem (mood, learning/calendar intent, proactive
-// suggestions, sync) logged a *different* event afterward and became the
-// new final entry in the shared ring buffer. A real user hit this
-// reliably: the first message after a fresh CLI start (nothing else had
-// fired yet) always showed "✓ hafıza kaydedildi", later messages in the
-// same session increasingly didn't, even though the save had genuinely
-// happened (confirmed separately via the Settings memory-debug search).
+// Regression tests for memorySavedSince. It used to identify "the snapshot
+// point" by scanning for the last event structurally equal to a snapshotted
+// `before` Event, which broke the moment two occurrences of the same event
+// (most importantly two memory:saved events, which always carry identical
+// empty Data) could exist in the ring at once — see
+// TestMemorySavedSince_ConsecutiveSavesLookIdentical below for the concrete
+// failure this caused. Fixed by keying off Seq, a monotonically increasing
+// counter assigned once per event at push time (internal/app/app.go's
+// eventRing) that never repeats, instead of Name+Data equality.
 func TestMemorySavedSince_FindsSaveNotAtTheVeryEnd(t *testing.T) {
 	events := []Event{
-		{Name: "memory:saved"},
-		{Name: "chat:done"}, // some other subsystem logs after the save
+		{Name: "memory:saved", Seq: 1},
+		{Name: "chat:done", Seq: 2}, // some other subsystem logs after the save
 	}
-	if !memorySavedSince(events, Event{}, false) {
+	if !memorySavedSince(events, 0) {
 		t.Error("expected memorySavedSince to find memory:saved even though it's not the last event")
 	}
 }
 
 func TestMemorySavedSince_IgnoresSaveThatPredatesThisTurn(t *testing.T) {
-	stale := Event{Name: "memory:saved", Data: "old"}
-	events := []Event{stale, {Name: "chat:done"}}
-	if memorySavedSince(events, stale, true) {
+	events := []Event{
+		{Name: "memory:saved", Seq: 1}, // predates this turn
+		{Name: "chat:done", Seq: 2},
+	}
+	if memorySavedSince(events, 1) {
 		t.Error("expected memorySavedSince to ignore a memory:saved that was already there before this turn started")
 	}
 }
 
 func TestMemorySavedSince_FindsNewSaveAfterStaleOne(t *testing.T) {
-	stale := Event{Name: "memory:saved", Data: "old"}
-	events := []Event{stale, {Name: "chat:done"}, {Name: "memory:saved", Data: "new"}}
-	if !memorySavedSince(events, stale, true) {
+	events := []Event{
+		{Name: "memory:saved", Seq: 1}, // stale — predates this turn
+		{Name: "chat:done", Seq: 2},
+		{Name: "memory:saved", Seq: 3}, // new
+	}
+	if !memorySavedSince(events, 1) {
 		t.Error("expected memorySavedSince to find the new memory:saved after the stale one, with an unrelated event in between")
 	}
 }
 
 func TestMemorySavedSince_BeforeEvictedFromRing_AnySaveCounts(t *testing.T) {
-	// `before` is no longer present at all — evicted by 64+ newer ring
-	// entries since it was captured — so any memory:saved now visible must
-	// be newer than it.
-	before := Event{Name: "chat:done", Data: "long-gone"}
-	events := []Event{{Name: "mood:updated"}, {Name: "memory:saved"}}
-	if !memorySavedSince(events, before, true) {
-		t.Error("expected memorySavedSince to treat any memory:saved as new once `before` fell out of the ring")
+	// The snapshotted seq (50) is older than everything still in the ring
+	// (evicted by 64+ newer entries since) — any memory:saved now visible
+	// must be newer than it.
+	events := []Event{
+		{Name: "mood:updated", Seq: 120},
+		{Name: "memory:saved", Seq: 121},
+	}
+	if !memorySavedSince(events, 50) {
+		t.Error("expected memorySavedSince to treat any memory:saved as new once the snapshot seq fell out of the ring")
 	}
 }
 
 func TestMemorySavedSince_NoSaveAtAll(t *testing.T) {
-	events := []Event{{Name: "chat:done"}, {Name: "mood:updated"}}
-	if memorySavedSince(events, Event{}, false) {
+	events := []Event{{Name: "chat:done", Seq: 1}, {Name: "mood:updated", Seq: 2}}
+	if memorySavedSince(events, 0) {
 		t.Error("expected memorySavedSince to return false when there's no memory:saved event")
+	}
+}
+
+// TestMemorySavedSince_ConsecutiveSavesLookIdentical is the real-world case
+// none of the tests above cover: every memory:saved event carries the exact
+// same (empty) Data, so once two turns in a row each produce a save — the
+// ordinary case for a real back-to-back conversation, since saveMemorySync
+// saves nearly every turn — the snapshotted "before" event (the ring's last
+// entry at the start of a turn) can itself BE a memory:saved event from the
+// *previous* turn. Under the old Name+Data-equality implementation this was
+// indistinguishable from the *new* save: scanning for "the last occurrence
+// equal to before" landed on the new save itself (content-identical to the
+// old one), leaving nothing after it to find. Reproduced live: an automated
+// multi-turn CLI probe (Fatih persona, 2026-07-15) got
+// `[memory:none-detected]` on every single turn after the first, even
+// though the backend log showed a real, fast (<300ms) SaveInteraction
+// completing for each one. Seq — unique per event, unlike Name+Data —
+// closes this: the previous turn's save is Seq 2, this turn's is Seq 4,
+// and 4 > 2 regardless of either event's content.
+func TestMemorySavedSince_ConsecutiveSavesLookIdentical(t *testing.T) {
+	events := []Event{
+		{Name: "chat:done", Seq: 1},
+		{Name: "memory:saved", Seq: 2}, // previous turn's save — snapshotted seq
+		{Name: "chat:done", Seq: 3},    // this turn unfolds
+		{Name: "memory:saved", Seq: 4}, // this turn's NEW save — content-identical to Seq 2's event
+	}
+	if !memorySavedSince(events, 2) {
+		t.Error("expected memorySavedSince to detect this turn's new save even though it's content-identical to the previous turn's save")
 	}
 }
 
@@ -72,33 +107,38 @@ func TestMemorySavedSince_NoSaveAtAll(t *testing.T) {
 // surfaced anywhere in the REPL — silently indistinguishable from a save
 // that just hadn't finished yet.
 func TestEventDataSince_FindsErrorAnywhereWhenNoBefore(t *testing.T) {
-	events := []Event{{Name: "chat:done"}, {Name: "memory:error", Data: "port dolu"}}
-	msg, ok := eventDataSince(events, Event{}, false, "memory:error")
+	events := []Event{{Name: "chat:done", Seq: 1}, {Name: "memory:error", Data: "port dolu", Seq: 2}}
+	msg, ok := eventDataSince(events, 0, "memory:error")
 	if !ok || msg != "port dolu" {
 		t.Errorf("eventDataSince = (%q, %v), want (\"port dolu\", true)", msg, ok)
 	}
 }
 
 func TestEventDataSince_IgnoresErrorThatPredatesThisTurn(t *testing.T) {
-	stale := Event{Name: "memory:error", Data: "old"}
-	events := []Event{stale, {Name: "chat:done"}}
-	if _, ok := eventDataSince(events, stale, true, "memory:error"); ok {
+	events := []Event{
+		{Name: "memory:error", Data: "old", Seq: 1},
+		{Name: "chat:done", Seq: 2},
+	}
+	if _, ok := eventDataSince(events, 1, "memory:error"); ok {
 		t.Error("expected eventDataSince to ignore a memory:error that was already there before this turn started")
 	}
 }
 
 func TestEventDataSince_FindsNewErrorAfterStaleOne(t *testing.T) {
-	stale := Event{Name: "memory:error", Data: "old"}
-	events := []Event{stale, {Name: "chat:done"}, {Name: "memory:error", Data: "new"}}
-	msg, ok := eventDataSince(events, stale, true, "memory:error")
+	events := []Event{
+		{Name: "memory:error", Data: "old", Seq: 1},
+		{Name: "chat:done", Seq: 2},
+		{Name: "memory:error", Data: "new", Seq: 3},
+	}
+	msg, ok := eventDataSince(events, 1, "memory:error")
 	if !ok || msg != "new" {
 		t.Errorf("eventDataSince = (%q, %v), want (\"new\", true)", msg, ok)
 	}
 }
 
 func TestEventDataSince_NoMatch(t *testing.T) {
-	events := []Event{{Name: "chat:done"}, {Name: "mood:updated"}}
-	if _, ok := eventDataSince(events, Event{}, false, "memory:error"); ok {
+	events := []Event{{Name: "chat:done", Seq: 1}, {Name: "mood:updated", Seq: 2}}
+	if _, ok := eventDataSince(events, 0, "memory:error"); ok {
 		t.Error("expected eventDataSince to return false when there's no matching event")
 	}
 }

@@ -8,6 +8,7 @@ import (
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -63,18 +64,30 @@ type saveTask struct {
 type AppEvent struct {
 	Name string `json:"name"`
 	Data string `json:"data,omitempty"`
+	// Seq is a monotonically increasing, per-process counter assigned at
+	// push time — never reused, unlike Name+Data which is frequently
+	// identical across events (every memory:saved carries the same empty
+	// Data). Callers that need "did X happen after this point in time"
+	// must key off Seq, not struct equality: two events with equal
+	// Name+Data are NOT necessarily the same occurrence, and treating them
+	// as interchangeable silently collapses distinct events (see
+	// replcli.memorySavedSince's history for the bug this caused).
+	Seq uint64 `json:"seq"`
 }
 
 // eventRing is a fixed-size ring buffer of recent events.
 type eventRing struct {
-	mu   sync.Mutex
-	buf  [64]AppEvent
-	pos  int // next write position
-	full bool
+	mu      sync.Mutex
+	buf     [64]AppEvent
+	pos     int // next write position
+	full    bool
+	nextSeq uint64
 }
 
 func (r *eventRing) push(e AppEvent) {
 	r.mu.Lock()
+	r.nextSeq++
+	e.Seq = r.nextSeq
 	r.buf[r.pos] = e
 	r.pos = (r.pos + 1) % len(r.buf)
 	if r.pos == 0 {
@@ -681,7 +694,7 @@ func (a *App) GetEvents() []map[string]string {
 	evs := a.events.snapshot()
 	out := make([]map[string]string, len(evs))
 	for i, e := range evs {
-		out[i] = map[string]string{"name": e.Name, "data": e.Data}
+		out[i] = map[string]string{"name": e.Name, "data": e.Data, "seq": strconv.FormatUint(e.Seq, 10)}
 	}
 	return out
 }

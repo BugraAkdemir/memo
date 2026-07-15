@@ -5,10 +5,15 @@ import (
 	"net/http"
 )
 
-// Event mirrors app.AppEvent — a name + optional free-form data string.
+// Event mirrors app.AppEvent — a name + optional free-form data string, plus
+// a monotonically increasing Seq. Seq, not Name+Data equality, is what
+// identifies a specific occurrence: many events (every memory:saved, in
+// particular) carry identical Name+Data across completely different turns,
+// so two events can compare equal without being the same occurrence.
 type Event struct {
 	Name string `json:"name"`
 	Data string `json:"data,omitempty"`
+	Seq  uint64 `json:"seq,string"`
 }
 
 // Events returns a snapshot of the backend's recent event ring buffer (used

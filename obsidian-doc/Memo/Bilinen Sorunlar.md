@@ -1,6 +1,6 @@
 # Bilinen Sorunlar ve Teknik Riskler
 
-> Güncelleme: 7 Temmuz 2026 — v3.1.2 açık beta ile güncellendi.
+> Güncelleme: 15 Temmuz 2026 — hafıza/RAG hibrit arama düzeltmeleri ve sabitlenmiş-gerçekler katmanı ile güncellendi (v3.3.3).
 
 **Özet**: 14 belgelenmiş sorun, 11'i düzeltildi (biri bu geçişte: polling sorunları), 3'ü kaldı. Çoğu tasarım seviyesinde teknik borç, bug değil. Tam liste ve kod referansları için `docs/KNOWN_ISSUES.md` ve `docs/tr/BILINEN_SORUNLAR.md`'ye bakın.
 
@@ -16,10 +16,13 @@
 
 ## 🟠 Hafıza / Vektör Deposu
 
-- **Her başlangıçta tam yeniden inşa** — `LoadCache` O(N), artımlı indeks yok. Kişisel ölçekli kullanım için kabul edilebilir.
+- ~~**Her başlangıçta tam yeniden inşa** — `LoadCache` O(N), artımlı indeks yok~~ → eski/güncel olmayan iddia, kaldırıldı: `LoadCache` mevcut kod tabanında yok (hibrit vektör+FTS mimarisinden önceki bir mimariye ait); başlangıçta tam korpus taraması yapılmıyor.
+- ~~**FTS5 anahtar kelime araması hiçbir yayınlanmış sürümde hiç aktif olmamış**~~ → 2026-07-15'te düzeltildi: repodaki hiçbir derleme yolu `-tags "sqlite_fts5"` geçmiyordu, bu yüzden hibrit vektör+FTS arama sessizce sadece vektörle çalışıyordu. Tüm CI workflow'ları ve derleme betiklerinde düzeltildi — bkz. [[Hafıza Deposu (SQLite + vec0)]] / [[CGO Bayrakları]].
+- ~~**Çok-konulu sorular eksik cevap dönebiliyordu**~~ → 2026-07-15'te düzeltildi: `escapeFTSQuery` implicit AND kullanıyordu (doğal dil sorusu hiçbir satırla eşleşmiyordu), ayrıca tek bir harmanlanmış embedding vektörü çok-konulu bir sorunun bir konusunu sulandırıp kaybediyordu. OR-birleştirilmiş anahtar kelime sorguları ve `splitCompoundQuery` ile düzeltildi.
 - **Embedding modeli manuel başlatma gerektiriyor** — yapılandırma tabanlı otomatik başlatma var ama ayarlanması gerekiyor.
+- **Yeni sabitlenmiş-gerçekler katmanının bilinen, kabul edilmiş sınırlamaları** (2026-07-15, bkz. [[Hafıza Deposu (SQLite + vec0)]]): 50 gerçek kapasitesi sadece "en yeni" mantığıyla doluyor, yani çok eski ama önemli bir çekirdek gerçek, otomatik tespit listeyi hızla doldurunca teorik olarak düşebilir; local modelde arka plan gerçek-tespiti, gerçek sohbet cevaplarıyla aynı tek-slotlu (`--parallel 1`) llama-server'ı paylaşıyor; çok-konulu soru bölme bağlaç/noktalama tabanlı, tam semantik değil — hiç bağlaç içermeyen bir soru hâlâ düz sıralamaya bağlı.
 
-**Durum**: Tasarım tercihi. Kırık değil, sadece büyük veri kümeleri için optimize edilmemiş.
+**Durum**: Tasarım tercihi / dokümante edilmiş sınırlama. Kırık değil, sadece çok büyük veri kümeleri veya alışılmadık ifadeler için mükemmel değil.
 
 ---
 

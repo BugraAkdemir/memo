@@ -9,7 +9,10 @@ This document provides a detailed breakdown of every feature integrated into the
 ### Persistent RAG (Retrieval-Augmented Generation)
 Memo isn't just a chat; it's a "Second Brain."
 - **Semantic Indexing**: Every interaction is automatically embedded and stored in a local vector database.
-- **Contextual Recall**: Before every response, Memo performs a similarity search to retrieve the most relevant past conversations (Top-K matching).
+- **Hybrid Search**: Retrieval combines vector similarity with FTS5 keyword search (merged via Reciprocal Rank Fusion), so a short, exact fact isn't only found by "close enough" semantic distance.
+- **Compound-Question Splitting**: A multi-topic question ("what's my name, birthday, and favorite color") is split on conjunctions so each topic gets its own search instead of being diluted into one blended embedding.
+- **Contextual Recall**: Before every response, Memo performs this hybrid search to retrieve the most relevant past conversations (Top-K matching).
+- **Pinned Facts (2026-07-15)**: Durable personal facts (name, birthday, pets, etc.) — whether saved via `/remember` or automatically detected from ordinary conversation — are injected into every prompt unconditionally, bypassing retrieval ranking entirely, so they're never crowded out by routine chat.
 - **Infinite Context**: Long-term memory allows the AI to remember details from weeks or months ago, regardless of the current model's window.
 
 ### Model-Agnostic Engine

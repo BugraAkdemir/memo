@@ -1,18 +1,18 @@
-# CGO Bayrakları — SQLite + sqlite-vec
+# CGO Bayrakları — SQLite + sqlite-vec + FTS5
 
-## Zorunlu CGO
+## Zorunlu CGO ve `-tags "sqlite_fts5"`
 
-Proje `mattn/go-sqlite3` kullandığı için CGO **zorunludur**.
+Proje `mattn/go-sqlite3` kullandığı için CGO **zorunludur**. `-tags "sqlite_fts5"` de aynı derecede zorunlu — **eksikse hiçbir derleme hatası vermez ama hafızanın anahtar kelime araması sessizce hiç aktif olmaz** (bkz. [[Hafıza Deposu (SQLite + vec0)]]). Bu, 2026-07-15'e kadar projenin HİÇBİR yayınlanmış sürümünde fark edilmemiş, gerçek bir hataydı — repodaki hiçbir CI workflow'u ya da derleme betiği bu bayrağı geçmiyordu.
 
 ```bash
 # Build
-CGO_ENABLED=1 go build .
+CGO_ENABLED=1 go build -tags "sqlite_fts5" .
 
 # Test
-CGO_ENABLED=1 go test ./...
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./...
 
 # Çalıştırma
-CGO_ENABLED=1 go run .
+CGO_ENABLED=1 go run -tags "sqlite_fts5" .
 ```
 
 ## SQLite-vec Eklentisi

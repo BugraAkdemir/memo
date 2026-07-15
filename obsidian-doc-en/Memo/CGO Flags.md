@@ -1,18 +1,18 @@
-# CGO Flags — SQLite + sqlite-vec
+# CGO Flags — SQLite + sqlite-vec + FTS5
 
-## Required CGO
+## Required CGO and `-tags "sqlite_fts5"`
 
-The project uses `mattn/go-sqlite3` so CGO is **mandatory**.
+The project uses `mattn/go-sqlite3` so CGO is **mandatory**. `-tags "sqlite_fts5"` is equally mandatory — **missing it causes no build error, but memory's keyword search silently never activates** (see [[Data Layer and Persistence]]). This was a real bug, unnoticed in every single shipped release until 2026-07-15 — no CI workflow or build script in the repo ever passed this tag.
 
 ```bash
 # Build
-CGO_ENABLED=1 go build .
+CGO_ENABLED=1 go build -tags "sqlite_fts5" .
 
 # Test
-CGO_ENABLED=1 go test ./...
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./...
 
 # Run
-CGO_ENABLED=1 go run .
+CGO_ENABLED=1 go run -tags "sqlite_fts5" .
 ```
 
 ## SQLite-vec Extension

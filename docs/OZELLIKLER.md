@@ -11,7 +11,10 @@ Bu döküman, **Memo Yapay Zeka Hafıza Kabuğu** içinde entegre edilmiş olan 
 Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 - **Anlamsal İndeksleme**: Her etkileşim otomatik olarak vektörleştirilir (embedding) ve yerel bir vektör veritabanında saklanır.
-- **Bağlamsal Hatırlama**: Her yanıttan önce Memo, en ilgili geçmiş konuşmaları geri getirmek için anlamsal bir benzerlik araması (Top-K eşleşmesi) yapar.
+- **Hibrit Arama**: Arama, vektör benzerliğini FTS5 anahtar kelime aramasıyla birleştirir (Reciprocal Rank Fusion ile birleştirilir) — böylece kısa, kesin bir gerçek sadece "yeterince yakın" anlamsal benzerliğe bağlı kalmaz.
+- **Çok-Konulu Soru Bölme**: Çok konulu bir soru ("adım, doğum günüm ve favori rengim ne") bağlaçlara göre bölünür, her konu tek bir harmanlanmış embedding'e sıkışmak yerine kendi aramasını alır.
+- **Bağlamsal Hatırlama**: Her yanıttan önce Memo, en ilgili geçmiş konuşmaları geri getirmek için bu hibrit aramayı yapar (Top-K eşleşmesi).
+- **Sabitlenmiş Gerçekler (2026-07-15)**: Kalıcı kişisel gerçekler (isim, doğum günü, evcil hayvan vb.) — ister `/remember` ile kaydedilsin ister normal sohbetten otomatik tespit edilsin — her promptta koşulsuz olarak enjekte edilir, arama sıralamasını tamamen atlar, böylece rutin sohbet arasında asla kaybolmaz.
 - **Sonsuz Bağlam**: Uzun süreli hafıza, yapay zekanın haftalar veya aylar önceki detayları, modelin mevcut pencere sınırından bağımsız olarak hatırlamasını sağlar.
 
 ### Modelden Bağımsız Motor

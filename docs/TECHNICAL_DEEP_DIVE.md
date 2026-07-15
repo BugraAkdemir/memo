@@ -5,10 +5,11 @@ A granular look into the engineering decisions behind Memo.
 ## 1. The Bridge Pattern (`app.go`)
 The `App` struct acts as the central hub. It implements the `AppBridge` interface, which defines all the actions the web server can trigger. This decoupling allows us to theoretically swap the web server for a CLI or a GUI without touching the core logic.
 
-## 2. SQLite + vec0 Persistence
+## 2. SQLite + vec0 + FTS5 Persistence
 Why SQLite?
-- **Unified Storage:** Both vector embeddings and metadata live in the same database — no separate `.gob` files to manage.
+- **Unified Storage:** Vector embeddings, keyword index, and metadata all live in the same database — no separate `.gob` files to manage.
 - **ANN Indexing:** The `sqlite-vec` extension provides a `vec0` virtual table for approximate nearest neighbor search, replacing O(N) brute-force scans with O(log N) lookups.
+- **Keyword Indexing:** SQLite's built-in `FTS5` extension provides a second, independent search path (bm25-ranked exact/keyword matches), merged with vector results via Reciprocal Rank Fusion. Both `vec0` and `fts5` require `-tags "sqlite_fts5"` at build time — see [CGO_FLAGS.md](CGO_FLAGS.md) for why this matters (missing it doesn't error, it just silently degrades to vector-only search, which shipped unnoticed for a long time).
 - **ACID Compliance:** Built-in transaction support ensures atomic writes without per-file crash risk.
 - **Zero-Config:** SQLite requires no external server — the database is a single file in `data/memory/`.
 
@@ -18,12 +19,13 @@ Memo doesn't just "call" Llama; it manages its lifecycle.
 - **Port Management:** If the default port is taken, Memo increments until it finds a free one, then updates the API client dynamically.
 - **Cleanup:** On application exit, Memo sends a `SIGTERM` to all child processes to prevent "zombie" servers.
 
-## 4. Multi-Worker Vector Search
+## 4. Hybrid Search and Pinned Facts
 When a user queries their memory:
-1. The query is embedded.
-2. The search space is divided into chunks.
-3. Multiple Go routines (workers) calculate Cosine Similarity in parallel.
-4. Results are gathered, sorted, and filtered by the `top_k` and `min_similarity` thresholds.
+1. The query is embedded. If it's a compound, multi-topic question, it's also split into segments on conjunctions (`splitCompoundQuery`) — each segment is embedded and searched separately, so one topic doesn't get diluted into an averaged vector with the others.
+2. Vector search runs (`vec0`'s ANN index, or a Go-side sequential cosine-similarity scan as a fallback when `vec0` isn't available — not a parallel worker pool).
+3. FTS5 keyword search runs alongside it, words joined with `OR` (not `AND` — a natural-language question would otherwise never match any single row) and ranked by bm25.
+4. The two result sets are merged via Reciprocal Rank Fusion (RRF), then re-weighted by each memory's `importance` field and filtered by `top_k`/`min_similarity`.
+5. Separately, every `source='explicit'` memory ("pinned fact" — set via `/remember` or automatic background detection) is added unconditionally, bypassing all of the above.
 
 ## 5. E2E Sync Strategy
 1. Collect the SQLite database and all `.json` files.

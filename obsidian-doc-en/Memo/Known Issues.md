@@ -1,6 +1,6 @@
 # Known Issues & Technical Risks
 
-> Updated: July 4, 2026 — re-verified against current source ahead of the v3.1.1 open beta.
+> Updated: July 15, 2026 — updated with memory/RAG hybrid-search fixes and the new pinned-facts tier (v3.3.3).
 
 **Summary**: 14 known issues documented, 11 fixed (one this pass: polling leaks), 3 remaining. Most are design-level technical debt, not bugs. See `docs/KNOWN_ISSUES.md` and `docs/tr/BILINEN_SORUNLAR.md` for the full itemized list with code references.
 
@@ -16,10 +16,13 @@
 
 ## 🟠 Memory / Vector Store
 
-- **Full rebuild on startup** — `LoadCache` is O(N), no incremental index. Acceptable for personal-scale usage.
+- ~~**Full rebuild on startup** — `LoadCache` is O(N), no incremental index~~ → stale claim, removed: `LoadCache` doesn't exist in the current codebase (predates the hybrid vector+FTS rework); startup does no full-corpus scan.
+- ~~**FTS5 keyword search never actually activated in any shipped build**~~ → fixed 2026-07-15: no build path anywhere in the repo ever passed `-tags "sqlite_fts5"`, so the hybrid vector+FTS retrieval silently ran vector-only forever. Fixed across every CI workflow and build script — see [[Hafıza Deposu (SQLite + vec0)]] / [[CGO Flags]].
+- ~~**Multi-topic questions could return incomplete answers**~~ → fixed 2026-07-15: `escapeFTSQuery` used implicit AND (a natural-language question matched nothing), and a single blended embedding vector diluted away one topic of a compound question. Fixed via OR-joined keyword queries plus `splitCompoundQuery`.
 - **Embedding model requires manual start** — config-driven auto-start exists but must be configured.
+- **Known, accepted limitations of the new pinned-facts tier** (2026-07-15, see [[Hafıza Deposu (SQLite + vec0)]]): the 50-fact cap evicts by recency only, so a very old core fact could theoretically age out once auto-extraction fills the list faster than manual-only saving ever did; on local-model setups, the background fact-extraction call competes with real chat replies for the local llama-server's single inference slot (`--parallel 1`); compound-question splitting is conjunction/punctuation-based, not semantic, so a question with no conjunction at all still relies on plain ranking.
 
-**Status**: Design trade-off. Not broken, just not optimized for large corpuses.
+**Status**: Design trade-off / documented limitation. Not broken, just not perfect for very large corpuses or unusual phrasing.
 
 ---
 

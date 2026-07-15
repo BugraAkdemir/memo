@@ -42,13 +42,15 @@ graph TB
 ## 💾 2. Storage Layer
 
 ### Memory Store (`internal/memory/`)
-- **Format:** SQLite database with `vec0` virtual table for ANN index
-- **Vector DB:** Persistent SQLite database with sqlite-vec extension
-- **Search:** Approximate nearest neighbor (ANN) search via vec0 index (O(log N))
+- **Format:** SQLite database with `vec0` virtual table (vector ANN) and an `fts5` virtual table (keyword search) — both require `-tags "sqlite_fts5"` at build time or they silently disable, see [CGO_FLAGS.md](CGO_FLAGS.md)
+- **Search:** Hybrid — vector ANN search (O(log N) via vec0) + FTS5 keyword search (bm25), merged via Reciprocal Rank Fusion (RRF)
+- **Compound queries:** Multi-topic questions are split on conjunctions (`splitCompoundQuery`) so each topic gets its own vector search instead of one diluted embedding
+- **Pinned facts:** `source='explicit'`/`importance=5` rows (`GetPinnedFacts`) are injected into every prompt unconditionally, bypassing the hybrid search above entirely — populated via `/remember` or automatic background fact-detection (`extractAndPinFacts`)
 - **Embedding:** Local embedding model via OpenAI-compatible API (default port 8082)
 - **Limitations:**
   - Index build time on first query after write
   - ANN recall vs. speed tradeoff configurable via vec0 parameters
+  - Pinned facts capped at 50, evicted by recency only (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md))
 
 ### Session Manager (`internal/sessions/`)
 - **Format:** JSON files in `data/sessions/`
@@ -78,27 +80,29 @@ sequenceDiagram
     Frontend->>Backend: POST /api/send/stream
     Backend->>Embedder: Embed query text
     Embedder-->>Backend: Query vector
-    Backend->>Memory: Cosine similarity search
-    Memory-->>Backend: Top-K relevant memories
+    Backend->>Memory: Hybrid search (vector + FTS5, RRF-merged) + pinned facts
+    Memory-->>Backend: Top-K relevant memories + all pinned facts
     Backend->>LLM: System prompt + memories + history + query
     LLM-->>Backend: Streaming tokens (SSE)
     Backend-->>Frontend: SSE stream chunks
     Frontend-->>User: Render tokens
-    Backend->>Memory: Save interaction to vec0 index (async)
+    Backend->>Memory: Save interaction (async)
+    Backend->>Memory: Background fact-extraction, pin if durable (async)
 ```
 
 ### RAG Flow:
 
 1. **User sends message** → Flutter → `POST /api/send/stream`
-2. **Embedding:** Query is vectorized via local embedding model
-3. **Retrieval:** ANN search via vec0 index over all memory entries
-4. **Context construction:** Relevant memories injected into system prompt
-5. **LLM routing (priority order):**
+2. **Embedding:** Query is vectorized via local embedding model; long/compound queries are also split into topic segments (`splitCompoundQuery`), each embedded separately
+3. **Retrieval:** Vector ANN search (vec0) + FTS5 keyword search run per segment, merged via RRF
+4. **Pinned facts:** `GetPinnedFacts` unconditionally adds every `source='explicit'` memory, independent of the retrieval above
+5. **Context construction:** Retrieved memories + pinned facts injected into system prompt
+6. **LLM routing (priority order):**
    - **Orchestra mode** (if enabled) → multi-model workflow (chief → experts → synthesis)
    - **External provider** (if `activeProvider` set) → `provider.Router` with fallback chain
    - **Local llama.cpp** → `api.Client` pointed at local `llama-server`
-6. **Streaming:** Tokens delivered via SSE, rendered in real-time
-7. **Persistence:** Interaction saved asynchronously to vec0 index
+7. **Streaming:** Tokens delivered via SSE, rendered in real-time
+8. **Persistence:** Interaction saved asynchronously; a separate background call (`extractAndPinFacts`) checks whether the turn contains a durable personal fact and pins it if so
 
 > **Agent mode** overrides normal flow when enabled + active provider set: `SendMessageStream` routes to `callAgentStream` which runs the LLM tool-calling pipeline.
 

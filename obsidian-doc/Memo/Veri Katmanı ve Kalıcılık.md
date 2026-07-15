@@ -1,27 +1,40 @@
 # 💾 Veri Katmanı ve Kalıcılık
 
-Memo, geleneksel veritabanları (SQL/NoSQL) yerine, yerel performans ve veri bütünlüğü için özelleşmiş bir dosya yapısı kullanır.
+Memo, hafıza depolaması için tek bir gömülü **SQLite** veritabanı kullanır — ayrı "her etkileşim kendi dosyası" gibi bir yapı yoktur, hepsi tek dosyada (`data/memory/memory.db`).
 
-## SQLite/vec0 Formatı: Kalıcılık
-Memo'nun tüm anıları ve ayarları SQLite/vec0 formatında saklanır.
+## SQLite Formatı: Kalıcılık
 
 ### Avantajları:
-- **Hız:** JSON veya XML'e göre çok daha hızlı serileştirme ve geri yükleme.
-- **Atomik Yazma:** Her etkileşim bağımsız bir dosya olarak kaydedilir. Bu sayede bir dosyanın bozulması tüm veritabanını etkilemez.
-- **Tip Güvenliği:** Go nesne yapısını birebir korur.
+- **ACID İşlemler:** Yazma sırasında oluşabilecek hatalar veritabanının tamamını bozmaz.
+- **Eşzamanlı Erişim:** WAL (Write-Ahead Logging) modu okuma/yazmanın aynı anda çalışmasına izin verir.
+- **Artımlı Yazma:** Yeni bir mesaj kaydederken sadece bir `INSERT` çalışır, tüm veritabanı yeniden yazılmaz.
+
+## Gerçek Şema (`internal/memory/store.go`)
+
+Tek bir `memory.db` dosyası içinde birkaç tablo/sanal tablo bulunur:
+
+| Tablo | Ne İçin |
+|-------|---------|
+| `memories` | Asıl satırlar: içerik, zaman damgası, `importance`, `source` (`conversation`/`explicit`/`merged`), embedding blob |
+| `memories_fts` | FTS5 sanal tablosu — anahtar kelime (tam metin) araması için |
+| `vec_memories` | `sqlite-vec`'in `vec0` sanal tablosu — vektör ANN araması için |
+| `_metadata` | Migration bayrakları, embedding boyutu gibi iç durum |
+
+`vec0` ya da `fts5` derleme zamanında kullanılamıyorsa (bkz. [[CGO Bayrakları]]), ilgili özellik sessizce devre dışı kalır ve Go tarafında yazılmış bir yedek arama yoluna düşülür — bu yüzden backend'i her zaman doğru derleme bayraklarıyla derlemek kritik önemde.
 
 ## Klasör Yapısı (`data/`)
-- `data/memory/`: Semantik vektör dosyaları ve anılar.
-- `data/sessions/`: Sohbet geçmişi (JSON formatında).
+- `data/memory/memory.db`: Tüm hafıza (tek dosya).
+- `data/sessions/`: Sohbet geçmişi (JSON formatında, hafızadan ayrı).
 - `data/models/`: İndirilen GGUF model dosyaları.
 - `data/sync_token.json`: Bulut senkronizasyon yetkilendirme verileri.
 
 ## Bellek (RAM) Yönetimi
-Memo, binlerce anı olsa bile düşük RAM kullanımı sağlar:
-1. Başlangıçta sadece vektörleri (sayısal veriler) RAM'e yükler.
-2. Metin içerikleri diskte kalır.
-3. Arama yapıldığında sadece en alakalı 5-10 anının metni diskten okunur.
+
+Ayrı bir "vektörleri RAM'e önceden yükle" mekanizması **yoktur** — her arama, o anda doğrudan SQLite'a sorgu atarak yapılır:
+- `sqlite-vec` mevcutsa, `vec0` sanal tablosu kendi ANN indeksini disk üzerinde tutar, sorgu diske gider.
+- Değilse, Go tarafındaki yedek yol tüm embedding'leri tek seferlik okuyup kosinüs benzerliğini bellekte hesaplar (küçük/orta ölçekli hafıza depoları için yeterli, kalıcı bir RAM önbelleği değildir).
 
 ### Bağlantılı Notlar:
 - [[RAG ve Semantik Hafıza]]
 - [[Vektör Arama Mantığı]]
+- [[Hafıza Deposu (SQLite + vec0)]]

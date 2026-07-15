@@ -1,26 +1,38 @@
 # 💾 Data Layer and Persistence
 
-Memo uses a specialized file structure for local performance and data integrity instead of traditional databases (SQL/NoSQL).
+Memo uses a single embedded **SQLite** database for memory storage — there is no "one file per interaction" structure; everything lives in one file (`data/memory/memory.db`).
 
-## SQLite/vec0 Format: Persistence
-All of Memo's memories and settings are stored in SQLite/vec0 format.
+## SQLite Format: Persistence
 
 ### Advantages:
-- **Speed:** Much faster serialization and restoration compared to JSON or XML.
-- **Atomic Writes:** Each interaction is saved as an independent file. This way, the corruption of one file does not affect the entire database.
-- **Type Safety:** Maintains the Go object structure exactly.
+- **ACID Transactions:** Errors during a write can't corrupt the whole database.
+- **Concurrent Access:** WAL (Write-Ahead Logging) mode allows reads and writes to happen at the same time.
+- **Incremental Writes:** Saving a new message runs a single `INSERT` — the whole database is never rewritten.
+
+## Actual Schema (`internal/memory/store.go`)
+
+A single `memory.db` file contains several tables/virtual tables:
+
+| Table | Purpose |
+|-------|---------|
+| `memories` | The real rows: content, timestamp, `importance`, `source` (`conversation`/`explicit`/`merged`), embedding blob |
+| `memories_fts` | FTS5 virtual table — for keyword (full-text) search |
+| `vec_memories` | `sqlite-vec`'s `vec0` virtual table — for vector ANN search |
+| `_metadata` | Internal state: migration flags, embedding dimension, etc. |
+
+If `vec0` or `fts5` isn't available at build time (see [[CGO Flags]]), that specific capability silently disables itself and falls back to a Go-side search path — which is why building the backend with the correct build flags is critical.
 
 ## Folder Structure (`data/`)
-- `data/memory/`: Semantic vector files and memories.
-- `data/sessions/`: Chat history (in JSON format).
+- `data/memory/memory.db`: All memory (single file).
+- `data/sessions/`: Chat history (JSON format, separate from memory).
 - `data/models/`: Downloaded GGUF model files.
 - `data/sync_token.json`: Cloud sync authorization data.
 
 ## Memory (RAM) Management
-Memo ensures low RAM usage even with thousands of memories:
-1. At startup, only vectors (numerical data) are loaded into RAM.
-2. Text content remains on the disk.
-3. When a search is performed, only the text of the 5-10 most relevant memories is read from the disk.
+
+There is **no** separate "preload all vectors into RAM" mechanism — every search queries SQLite directly, at the time it's needed:
+- If `sqlite-vec` is available, the `vec0` virtual table keeps its own ANN index on disk; the query goes to disk.
+- Otherwise, the Go-side fallback reads all embeddings once and computes cosine similarity in memory (fine for small/medium memory stores, not a persistent RAM cache).
 
 ### Linked Notes:
 - [[RAG and Semantic Memory]]

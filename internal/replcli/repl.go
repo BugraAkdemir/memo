@@ -311,10 +311,6 @@ func (s *session) sendMessage(line string) {
 	defer cancel()
 	s.interruptCancel = cancel
 	s.startInterruptWatch()
-	defer func() {
-		s.stopInterruptWatch()
-		s.interruptCancel = nil
-	}()
 
 	sp := newSpinner(s.out)
 	onChunk := func(chunk api.StreamChunk) error {
@@ -323,6 +319,18 @@ func (s *session) sendMessage(line string) {
 	}
 	err := s.client.SendStream(ctx, line, onChunk)
 	sp.Stop()
+
+	// Stop watching for Esc/Ctrl+C as soon as the stream itself ends, not
+	// deferred to when sendMessage returns. reportMemorySaved below can
+	// block for up to ~2.4s after this point (whenever memory/embedding is
+	// enabled) — watchInterrupt's goroutine (keys.go) reads every key from
+	// the shared byte channel and silently discards anything that isn't
+	// Esc/Ctrl+C, so leaving it attached during that window ate every
+	// keystroke (or a whole pasted block) the user typed the moment the
+	// reply looked finished, with nothing to show for it — the most likely
+	// cause of the CLI "randomly" losing input right after a reply.
+	s.stopInterruptWatch()
+	s.interruptCancel = nil
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {

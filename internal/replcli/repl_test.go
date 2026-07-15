@@ -2,6 +2,7 @@ package replcli
 
 import (
 	"bytes"
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -285,4 +286,74 @@ func TestRun_ExitsOnEOF(t *testing.T) {
 	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
 		t.Fatalf("Run() error = %v", err)
 	}
+}
+
+// TestSendMessage_StopsInterruptWatchBeforeMemorySavedPoll is a regression
+// test: stopInterruptWatch used to be deferred to when sendMessage returns,
+// which is AFTER reportMemorySaved's up-to-~2.4s poll loop (whenever the
+// embedding model is running) — but keys.go's watchInterrupt goroutine reads
+// every key from the shared byte channel the instant it arrives and silently
+// discards anything that isn't Esc/Ctrl+C. Leaving the watcher attached
+// during that whole window meant any key the user typed right after a reply
+// finished (or a whole pasted block) was consumed and lost, a real
+// contributor to the CLI "randomly" losing input. The watcher must be
+// detached as soon as the network stream itself ends, before the
+// memory-saved poll runs.
+func TestSendMessage_StopsInterruptWatchBeforeMemorySavedPoll(t *testing.T) {
+	// eventsCalls counts /api/events hits: the 1st is sendMessage's own
+	// "before" snapshot (taken prior to SendStream); the 2nd is the first
+	// call inside reportMemorySaved's poll loop, which only happens after a
+	// 400ms sleep — by construction, stopInterruptWatch has already run by
+	// then (it now runs immediately after SendStream returns, before
+	// reportMemorySaved is even called). Signaling eventsHit exactly on that
+	// 2nd call, then synchronizing on it via channel receive, gives a
+	// race-free happens-before edge to safely read s.watcher afterward —
+	// unlike a raw sleep-then-peek, which the race detector correctly flags
+	// as a data race against sendMessage's own goroutine.
+	var eventsCalls int
+	eventsHit := make(chan struct{}, 1)
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/models/embedding/status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"running": true})
+	})
+	mux.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
+		eventsCalls++
+		if eventsCalls == 2 {
+			select {
+			case eventsHit <- struct{}{}:
+			default:
+			}
+		}
+		// Never reports memory:saved, forcing reportMemorySaved through its
+		// full ~2.4s poll budget instead of returning early.
+		json.NewEncoder(w).Encode([]Event{{Name: "chat:done"}})
+	})
+	mux.HandleFunc("/api/send/stream", func(w http.ResponseWriter, r *http.Request) {
+		flusher := w.(http.Flusher)
+		fmt.Fprint(w, `data: {"content":"ok","done":true,"finish_reason":"stop"}`+"\n\n")
+		flusher.Flush()
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var out bytes.Buffer
+	s := &session{
+		client: NewClient(srv.URL),
+		ctx:    context.Background(),
+		out:    &out,
+		keys:   &keySource{ch: make(chan byte, 4), escWait: 50 * time.Millisecond},
+	}
+
+	done := make(chan struct{})
+	go func() {
+		s.sendMessage("selam")
+		close(done)
+	}()
+
+	<-eventsHit
+	if s.watcher != nil {
+		t.Fatal("interrupt watcher still attached during the post-reply memory-saved poll — any key typed right now would be silently discarded")
+	}
+
+	<-done
 }

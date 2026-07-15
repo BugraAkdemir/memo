@@ -1,3 +1,40 @@
+# Handoff — 2026-07-15 (Session 33) — Yanlış hedefe kilitlenme: agent/tool-call sızıntısını düzelttim, ama asıl şikayet hafızanın CLI'da kararsız çalışmasıydı — HÂLÂ AÇIK
+
+## ÖNEMLİ: bu oturumda yanlış anlaşılma oldu, düzeltiyorum
+
+Session 32'nin sonunda kullanıcı "CLI garip davranıyor" dedi ve bir transkript paylaştı (ham `<function_calls>` XML sızıntısı + uydurma "memory.json" izin isteği). Ben bunu "CLI'daki garip davranış" olarak yorumlayıp derin bir `/code-review` + `--fix` turu yaptım (bkz. aşağıdaki "Yapılan (agent/tool-call turu)" bölümü) — 5 bulgu ajanı, kök neden tespiti, gerçek fix'ler, testler, 2 commit (`f2f3594`, `2eaa9b7`).
+
+**Ama oturumun sonunda kullanıcı netleştirdi:** asıl şikayet bu değilmiş. Kullanıcının gerçek şikayeti: **hafızanın CLI'da "garip, saçma, stabil değil, bir çalışıp bir çalışmaması"** — yani GUI'de "harika" çalışan hafızanın (bugünkü pinned-facts + FTS5 + compound-query fix'leri sonrası) CLI'da hâlâ tutarsız davranması. Bu, agent/tool-call konusundan tamamen ayrı bir şikayet ve **hiç araştırılmadı, hiç düzeltilmedi.**
+
+## Gerçek açık uç: CLI'da hafıza neden tutarsız? (araştırılmadı)
+
+Mimari olarak CLI ve GUI **aynı backend binary'sini ve aynı `internal/memory`/`internal/app` kodunu** kullanıyor (main.go: CLI kendi backend'ini `os.Executable()` ile `--headless` olarak yeniden başlatıyor, ayrı bir CLI-özel kod yolu yok — bu daha önce de doğrulanmıştı). Yani bugünkü tüm hafıza fix'leri (FTS5 tag, AND→OR, compound query bölme, pinned facts) İKİSİNE de eşit uygulanıyor OLMALI. Kullanıcı yine de CLI'da tutarsızlık görüyorsa, olası sebepler (hiçbiri doğrulanmadı):
+
+1. **Kurulu CLI binary'si güncel değil** — GUI taze derlenmiş/çalıştırılmış olabilir ama `~/.memo/bin/memo` (kurulu CLI kopyası) eski bir build olabilir. Session 32'de bu ihtimal öne sürülmüştü ama doğrulanmadı.
+2. CLI'nın kendi REPL akışında (`internal/replcli`) hafıza sorgusunu nasıl inşa ettiği (`buildMemoryQuery` vb.) GUI'den farklı bir yol izliyor olabilir — kontrol edilmedi.
+3. CLI'da "önceki sohbet geçmişi" enjeksiyonu (Session 30/31'deki transkriptlerde görülen "── önceki sohbet geçmişi ──" bloğu) hafıza sorgusuna farklı bir bağlam katıyor olabilir, bu da RAG aramasının farklı sonuçlar vermesine sebep olabilir — kontrol edilmedi.
+4. Kullanıcının paylaştığı gerçek transkriptlerde (Session 30) chat1/chat2/chat3 arası tutarsızlık zaten dokümante edilmişti (isim/doğum günü/renk bazen hatırlanıyor bazen hatırlanmıyor) — bugünkü compound-query-splitting fix'i (`d81d2da`) bunun bir kısmını çözmüş olabilir ama kullanıcı hâlâ "garip" diyor, yani ya fix yetersiz ya da farklı bir sorun var.
+
+**Sıradaki oturumun ilk işi bu olmalı:** CLI'da spesifik olarak hafızanın ne zaman/nasıl "çalışmadığını" gerçek bir örnekle (kullanıcıdan yeni bir transkript istenerek) yakalamak, agent/tool-call konusuyla karıştırmadan.
+
+## Yapılan (agent/tool-call turu — gerçek fix'ler ama YANLIŞ ŞİKAYETE cevaben)
+
+Bu kısım hâlâ değerli, gerçek bug'lardı, ama kullanıcının bugünkü asıl şikayetine cevap DEĞİL:
+
+- `internal/agent/pipeline.go`: modelin düz metnine sızan sahte `<function_calls>` XML'i artık temizleniyor (backend seviyesinde, hem CLI hem GUI'yi korur).
+- `internal/app/chat.go`: agent sistem promptu artık gerçek tool-calling protokolünü anlatıyor, dosya yazarak "hafıza taklidi" yapmaması gerektiğini söylüyor.
+- `internal/replcli/repl.go`: cevap bittikten sonraki ~2.4s hafıza-kayıt bekleme penceresinde klavye girdisinin sessizce yutulması düzeltildi (gerçek, bağımsız bir CLI input bug'ıydı, ama "hafıza garip" değil "klavye garip" kategorisinde).
+- CLI izin diyaloğu GUI ile eşitlendi (danger-level gösterimi, allow_session, Preview kullanımı).
+- Hafıza debug panelindeki "pinned" etiketleme eksikliği düzeltildi.
+
+Detaylar için commit `f2f3594` ve `2eaa9b7`'nin mesajlarına bakılabilir.
+
+## Doğrulama
+
+Tüm 34 paket `-race` ile yeşil, `flutter analyze lib/` temiz (ilgisiz, önceden var olan info-seviye bulgular hariç).
+
+---
+
 # Handoff — 2026-07-15 (Session 32) — Gün sonu: dokümantasyon senkronu + kullanıcıdan ilk canlı geri bildirim + iki açık uç
 
 ## Özet

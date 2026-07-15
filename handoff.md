@@ -1,3 +1,38 @@
+# Handoff — 2026-07-15 (Session 32) — Gün sonu: dokümantasyon senkronu + kullanıcıdan ilk canlı geri bildirim + iki açık uç
+
+## Özet
+
+Session 28-31'in tamamı (FTS5 tag, AND→OR, compound query bölme, pinned-facts katmanı, /code-review'un bulduğu 5 hata) aynı günün ürünü. Bu son oturumda: (1) obsidian-doc/obsidian-doc-en/docs dokümantasyonu gerçek mimariyle senkronize edildi, (2) kullanıcı gerçek ortamda ilk kez test etti ve ekran görüntüsü paylaştı, (3) alakasız ama ciddi görünen yeni bir bug rapor edildi (henüz araştırılmadı, kullanıcı kendi test edip rapor verecek).
+
+## Dokümantasyon senkronu (commit `fecd9d4`)
+
+`obsidian-doc/Memo`, `obsidian-doc-en/Memo` ve `docs/`'taki hafıza/RAG sayfaları, bugünkü değişikliklerin ötesinde **hiç var olmamış bir mimariyi** anlatıyordu (her etkileşim ayrı dosya, RAM'de vektör önbelleği, "multi-worker" paralel tarama — hiçbiri `internal/memory/store.go`'da yok). Gerçek şema ve gerçek hibrit arama akışıyla (vektör+FTS5+RRF, compound query bölme, pinned facts) uyumlu hale getirildi. 15 dosya güncellendi. `docs/RESOLVED_ISSUES.md`'ye dokunulmadı (kendi altbilgisi donmuş bir 2026-06-03 denetim kaydı olduğunu söylüyor).
+
+## Kullanıcının canlı testi: iyi haber + bir gözlem
+
+Kullanıcı Ayarlar → Bellek → "Bellek Ara (Debug)" panelinden gerçek bir sorgu denedi (ekran görüntüsü paylaşıldı). Sonuçlar tam olarak istenen formatta: "User's name is Buğra Akdemir.", "User's favorite color is red.", "User's dog Zeytin is 3 years old." gibi temiz, üçüncü şahıs, atomik cümleler — `extractAndPinFacts`'in ürettiği tam format. **Otomatik gerçek çıkarımı gerçek ortamda çalışıyor, doğrulandı.**
+
+**Gözlem (henüz düzeltilmedi):** Debug panelindeki tüm sonuçlar `MatchType="Vektör"` gösteriyor, "Pinned" değil. Sebebi muhtemelen: debug arama endpoint'i (`DebugMemorySearch` → `Store.DebugSearch` → `RetrieveContext`) doğrudan store katmanını çağırıyor, `internal/app/memory.go`'daki `retrieveMemory`'nin pinned-facts merge adımını (GetPinnedFacts + öne ekleme) hiç görmüyor. Yani debug ekranı gerçek sohbette kullanılan tam yolu göstermiyor, sadece alttaki hibrit RAG aramasını gösteriyor — pinned olan bir gerçek de aynı zamanda ham vektör aramasında bulunabildiği için orada "Vektör" olarak görünüyor. Kullanıcıya bunu düzeltip düzeltmemesini sordum, henüz cevap yok.
+
+Kullanıcının kendi ifadesi: "gerçekten hissettim akıllandığını... önceden merhaba yazdığımda eski sohbete gönderdiği çıktıyı atıyordu gibi" — olumlu ama temkinli ("gibi"), kendi deyimiyle uzun soluklu bir test yapıp ayrıca rapor edecek.
+
+## AÇIK UÇ — henüz hiç araştırılmadı: agent/tool-call sızıntısı + beklenmedik dosya yazma izni
+
+Kullanıcı bambaşka, alakasız ve ciddi görünen bir transkript paylaştı (CLI, OpenCode Zen/mimo-v2.5-free): basit bir "adımı hatırlıyor musun" sorusuna cevapta ham `<function_calls><invoke name="read_env">...<invoke name="list_directory">...` XML'i sohbet metnine SIZMIŞ (gerçek bir tool-call formatı, ekran çıktısına düz metin olarak karışmış). Ayrı bir sohbette (chat1), kullanıcı **"memory.json" adında bir dosya yazma izni istendiğini** bildirdi — repo'da `memory.json` diye bir şey yok (`grep` ile doğrulandı), yani model bunu uydurmuş; gerçek hafıza `memory.db` (SQLite), asla `.json` değil.
+
+Başlanan ama tamamlanmayan araştırma:
+- `read_env`/`list_directory` gerçek agent tool isimleri (`internal/agent/tools/*.go`) — yani agent modu bu oturumlarda gerçekten aktifti.
+- `internal/replcli/repl.go:206`, `activateChat()` içinde her sohbete geçişte `SetAgentEnabled(ctx, true)` **koşulsuz olarak** çağrılıyor — CLI'da agent modu kullanıcı hiç istemeden her zaman açık olabilir. Bu, kullanıcının sıradan bir "hatırlıyor musun" sorusunda bile modelin dosya sistemi araçlarına erişebiliyor olmasını açıklar.
+- Henüz kontrol edilmedi: (a) REPL'in tool-call XML'ini neden düz metin olarak gösterdiği (parse edilmeyip sızdığı) — model belki Memo'nun gerçek tool-calling formatını değil, Claude tarzı bir XML formatını taklit ediyor ve Memo bunu tanımıyor; (b) sistem promptunun modelin "hatırlama" isteğini dosya yazmaya yönlendirmesine neden olan bir şey içerip içermediği; (c) bu izin isteğinin CLI'ya özgü mü yoksa GUI'de de olur mu.
+
+**Sıradaki oturum için ilk iş bu olmalı** — kullanıcı kendi testini yapıp rapor verecek, ama `repl.go:206`'daki koşulsuz `SetAgentEnabled(true)` çağrısı şimdiden şüpheli, oradan başlanabilir.
+
+## Cevap bekleyen, kodda karara bağlanmamış soru (Session 31'den beri açık)
+
+`config.Load()`, YAML'i `Default()`'in üzerine bindiriyor — mevcut kullanıcıların güncelleme sonrası `AutoFactExtraction=true`'yu sessizce (onay istenmeden) alması. Henüz kullanıcıdan cevap yok.
+
+---
+
 # Handoff — 2026-07-15 (Session 31) — "Profil gerçekleri" mekanizması inşa edildi: RAG dışında, garantili hafıza katmanı
 
 ## Özet

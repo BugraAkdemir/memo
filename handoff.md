@@ -1,3 +1,48 @@
+# Handoff — 2026-07-15 (Session 34) — Session 33'ün açık ucu kapatıldı: CLI'nın "hafıza bazen kaydediyor bazen kaydetmiyor" şikayetinin gerçek kök nedeni bulundu, düzeltildi, canlı doğrulandı
+
+## Özet
+
+Session 33'ün bıraktığı gerçek açık uç ("CLI'da hafıza neden tutarsız?") bu oturumda çözüldü. Kullanıcı canlı test istedi; bunun için önce `memo -p "mesaj"` adında yeni, non-interaktif bir CLI modu eklendi (terminal REPL'siz, tek mesaj gönderip `[chat:<id>]` + `[memory:<durum>]` basıp çıkan), sonra bunu gerçek bir backend + gerçek OpenCode Zen (mimo-v2.5-free) sağlayıcısına karşı hem elle hem de Haiku 4.5 ile sürülen otomatik bir "Fatih" persona testiyle (23 turn, dosya oluşturma/düzenleme/silme + web arama + tekrarlı hatırlama testleri) canlı olarak koşturuldu.
+
+## Bulunan ve düzeltilen gerçek bug
+
+`internal/replcli/repl.go`'daki `memorySavedSince`/`eventDataSince` — CLI'nın "✓ hafıza kaydedildi" onayı — turun başında `/api/events` halkasının SON elemanını `before` olarak yakalayıp, turdan sonra "bu `before`'a eşit olan son event'ten SONRAKİ bir memory:saved var mı" diye arıyordu; eşitlik kontrolü **Name+Data** üzerindendi. Ama her `memory:saved` event'i aynı (boş) Data'yı taşıyor — yani art arda iki turun İKİSİ de kaydettiğinde (gerçek bir sohbette normal durum, çünkü `saveMemorySync` neredeyse her turu kaydediyor), önceki turun kaydı ile bu turun YENİ kaydı **içerik olarak birbirinin aynısı**. "before'a eşit olan SON occurrence" araması bu yüzden bu turun kendi yeni event'ine denk geliyor, ondan sonrası boş kalıyor — onay sessizce "hiçbir şey olmadı" diyor, halbuki backend log'u her seferinde gerçek, hızlı (<300ms) bir `SaveInteraction` tamamlandığını gösteriyor.
+
+Canlı doğrulama: Haiku'nun sürdüğü 23 turn'lük gerçek CLI oturumunda **23/23 turda** `[memory:none-detected]` çıktı — ama model turlar arası gerçekleri (iş, evcil hayvan, yemek tercihi) fresh chat'lerde %94 doğrulukla hatırlamaya devam etti. Yani asıl kayıt/RAG mekanizması çalışıyordu, sadece CLI'nın kullanıcıya gösterdiği "kaydedildi" onayı yalan söylüyordu — tam da kullanıcının "bazen kaydediyor bazen kaydetmiyor" şikayetiyle birebir örtüşüyor.
+
+**Fix:** Her event'e, ring buffer'a push edilirken bir daha asla tekrarlanmayan, artan bir `Seq` (`internal/app/app.go`'nun `eventRing`'i) atandı. `memorySavedSince`/`eventDataSince` artık Name+Data eşitliği yerine `Seq > snapshotlanan seq` karşılaştırması yapıyor — içerik ne kadar özdeş olursa olsun yanlışsız çalışıyor. `GetEvents()` yeni alanı `"seq"` (string) olarak dışa veriyor, CLI tarafı `json:"seq,string"` ile geri okuyor.
+
+Regresyon testi: `TestMemorySavedSince_ConsecutiveSavesLookIdentical` (`internal/replcli/repl_test.go`) — tam bu senaryoyu (ring'de art arda iki eşit-içerikli save, aradan snapshot alınmış) reprodüklüyor, eski Name+Data implementasyonuna karşı FAIL, Seq fix'ine karşı PASS olduğu doğrulandı. Diğer tüm `memorySavedSince`/`eventDataSince` testleri yeni `(events, afterSeq)` / `(events, afterSeq, name)` imzasına güncellendi.
+
+Canlı yeniden test: fix'li binary ile aynı sohbette art arda 3 mesaj gönderildi, üçünde de `[memory:saved]` doğru şekilde göründü (fix öncesi ikinci mesajdan itibaren hep "none-detected" oluyordu).
+
+Commit: `c1fd2bd` (fix), `4653b66` (`-p` CLI özelliği, ayrı commit — fix'e bağımlı olduğu için sırayla).
+
+## Yan ürün: `memo -p "mesaj" [--chat <id>] [--auto-allow]`
+
+Interaktif REPL'e girmeden tek mesaj gönderip çıkan yeni bir CLI modu (`main.go`). Gerçek terminal oturumuyla AYNI client çağrılarını (NewAgentChat/SwitchChat/SetAgentEnabled/SendStream, aynı memory-saved-since-snapshot polling) kullanıyor — ayrı bir test-özel implementasyon değil. `--auto-allow` (varsayılan kapalı) araç izin isteklerini `deny_once` yerine `allow_once` ile otomatik geçiyor; sadece scriptli/otomatik test senaryoları için, insan onayı olmadan dosya/web aracı çalıştırmayı göze alan bilinçli bir opt-in. Bu oturumda hem elle hem Haiku 4.5 alt-agent'ıyla canlı test için kullanıldı; genel olarak scripting/CI için de kullanılabilir.
+
+## Fatih persona testinin diğer bulguları
+
+- **Araç çalıştırma:** `write_file`/`edit_file`/`delete_file`/`web_search` dördü de gerçek turlarda doğrulandı çalıştı (stderr'de tool_executing/tool_result, dosya diskte gerçekten oluştu/değişti/silindi, web araması gerçekçi güncel içerik döndürdü). Bu tarafta bir sorun yok.
+- **"Buğra" karışıklığı (bug DEĞİL, test metodolojisi hatası):** Bir fresh-chat recall turunda bot "sen Buğra'sın, en sevdiğim renk mor" dedi — Fatih'in adı/rengi değil. Sebep: aynı oturumda Fatih testinden ÖNCE ben kendi elle smoke testimde aynı paylaşılan `data/` deposuna "Buğra, favori renk mor" gerçeğini kaydetmiştim. Memo tek-kullanıcılı bir uygulama olarak tasarlandığı için pinned facts global — iki farklı "persona"yı aynı depoya karıştırmak benim test kurulumumun hatası, üründe bir izolasyon bug'ı değil.
+- **YENİ AÇIK UÇ (düzeltilmedi, sadece gözlemlendi):** Turn 21'de kullanıcı sadece "boş zamanlarında ne yapıyorsun" diye normal bir soru sordu, ama model KENDİLİĞİNDEN `read_file` aracını `.../fatih_workspace/memory.json` üzerinde çağırdı — böyle bir dosya hiç yok (gerçek hafıza SQLite, `.db`), araç `stat failed` hatası verdi, ama model yine de doğru cevabı (muhtemelen zaten sistem promptuna enjekte edilmiş pinned facts'ten) verdi. Bu, Session 32/33'te flaglenip hiç kök nedeni bulunmamış "model 'hatırlıyor musun' sorusuna dosya okuma/yazma ile cevap vermeye çalışıyor" temasının YENİ bir somut örneği — muhtemelen agent modunun her zaman açık olması (`repl.go`'nun `activateChat`'i koşulsuz `SetAgentEnabled(true)` çağırıyor) + sistem promptunun modele "hafızan zaten context'e enjekte edilmiş, kontrol etmen gerekmiyor" demiyor olması kombinasyonu. Bu oturumda kapsam dışı bırakıldı (probabilistik model davranışı, tek bir örnekten kök neden çıkarmak riskli) — **sıradaki oturumun ilk işi bu olabilir**: `internal/identity/identity.go`'nun sistem promptuna hafızanın nasıl çalıştığını (dosya değil, otomatik enjeksiyon) açıklayan bir not eklemek işe yarar mı, denenmeli.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → whisper paketindeki TestGetStatus_NewServer hariç hepsi yeşil
+```
+`internal/whisper`'daki tek FAIL bu oturumla ilgisiz: test gerçek bir TCP bağlantı kontrolü yapıyor ve benim canlı test için ayakta bıraktığım backend'in kendi whisper sunucusu tam o portu (9877) gerçekten dinliyor olduğu için ortam kirliliğinden başarısız oluyor — kod değişikliğiyle alakası yok, backend kapatılınca geçer.
+
+## Not: gerçek API key
+
+Kullanıcı bu oturumda gerçek bir OpenCode Zen API key'i paylaştı, `data/providers.json`'a (şifreli) yazıldı ve `active_provider` olarak ayarlandı — bu repo'nun yerel test verisi olarak kalıyor, kullanıcı test verisinin bozulmasının/silinmesinin önemli olmadığını belirtti.
+
+---
+
 # Handoff — 2026-07-15 (Session 33) — Yanlış hedefe kilitlenme: agent/tool-call sızıntısını düzelttim, ama asıl şikayet hafızanın CLI'da kararsız çalışmasıydı — HÂLÂ AÇIK
 
 ## ÖNEMLİ: bu oturumda yanlış anlaşılma oldu, düzeltiyorum

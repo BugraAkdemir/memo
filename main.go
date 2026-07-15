@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"log"
@@ -10,12 +11,14 @@ import (
 	"os/signal"
 	"runtime"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
 	isatty "github.com/mattn/go-isatty"
 	"golang.org/x/term"
 
+	"memo/internal/api"
 	"memo/internal/app"
 	"memo/internal/config"
 	"memo/internal/logx"
@@ -27,7 +30,15 @@ func main() {
 	port := flag.Int("port", 8090, "Backend REST API port — used both for a standalone --headless server and for the backend an interactive terminal session talks to")
 	headless := flag.Bool("headless", false, "Force headless mode (no terminal REPL) even from an interactive terminal")
 	autoShutdown := flag.Bool("auto-shutdown", false, "internal: set by memo itself when it spawns a detached backend for a terminal session — shuts down once no CLI/GUI client is attached (see internal/app/clients.go). Do not set this for a standalone/service backend.")
+	prompt := flag.String("p", "", "Send a single message non-interactively, print the reply plus [chat:<id>] and a [memory:...] status line, then exit — no terminal REPL. Scripting/testing only, mirrors what the interactive REPL does for one turn.")
+	chatID := flag.String("chat", "", "Existing chat ID to continue with -p (see [chat:<id>] from a previous -p run). Omitted: -p starts a brand-new agent chat, same as an interactive session would.")
+	autoAllow := flag.Bool("auto-allow", false, "With -p: automatically allow any tool permission request instead of denying it, so a scripted turn can actually run agent tools (file edit, command, web search) instead of being blocked. DANGEROUS outside a disposable test environment — the agent gets to act on the filesystem/shell with zero human review.")
 	flag.Parse()
+
+	if *prompt != "" {
+		runPrintMode(*port, *prompt, *chatID, *autoAllow)
+		return
+	}
 
 	interactive := !*headless && isInteractive()
 
@@ -268,6 +279,136 @@ func reapInBackground(cmd *exec.Cmd) {
 	go func() {
 		_ = cmd.Wait()
 	}()
+}
+
+// runPrintMode sends a single message non-interactively and prints the
+// reply, for scripting/testing (`memo -p "message"`) — no terminal REPL, no
+// raw mode, works from a plain pipe or a driving process with no TTY at all.
+// Ensures a backend is up exactly like the interactive path (attaches to one
+// already listening on *port, otherwise spawns a detached one via
+// spawnDetachedBackend — which never self-shuts-down here since this mode
+// never registers a client, see internal/app/clients.go's sawClient gate),
+// then either continues chatID (if given) or starts a brand-new agent chat,
+// mirroring session.startFreshChat/activateChat so a -p run exercises the
+// exact same code path a real interactive turn does.
+func runPrintMode(port int, prompt, chatID string, autoAllow bool) {
+	ctx := context.Background()
+	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
+	client := replcli.NewClient(baseURL)
+
+	statusCtx, statusCancel := context.WithTimeout(ctx, 500*time.Millisecond)
+	alreadyRunning := client.Status(statusCtx) == nil
+	statusCancel()
+
+	if !alreadyRunning {
+		if err := spawnDetachedBackend(port); err != nil {
+			fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+			os.Exit(1)
+		}
+		if !waitForBackend(client, 10*time.Second) {
+			fmt.Fprintf(os.Stderr, "FATAL: backend %d portunda ayağa kalkmadı (bkz. %s)\n", port, config.DataPath("backend.log"))
+			os.Exit(1)
+		}
+	}
+
+	if chatID == "" {
+		cwd, _ := os.Getwd()
+		id, err := client.NewAgentChat(ctx, cwd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "FATAL: sohbet oluşturulamadı: %v\n", err)
+			os.Exit(1)
+		}
+		chatID = id
+	}
+	if err := client.SwitchChat(ctx, chatID); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: sohbete geçilemedi: %v\n", err)
+		os.Exit(1)
+	}
+	if err := client.SetAgentEnabled(ctx, true); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: agent modu açılamadı: %v\n", err)
+		os.Exit(1)
+	}
+
+	memoryLikely := false
+	if status, err := client.EmbeddingStatus(ctx); err == nil && status.Running {
+		memoryLikely = true
+	}
+	var lastSeqBefore uint64
+	if memoryLikely {
+		if events, err := client.Events(ctx); err == nil && len(events) > 0 {
+			lastSeqBefore = events[len(events)-1].Seq
+		}
+	}
+
+	var reply strings.Builder
+	onChunk := func(chunk api.StreamChunk) error {
+		if chunk.Error != "" {
+			fmt.Fprintf(os.Stderr, "[error] %s\n", chunk.Error)
+			return nil
+		}
+		switch chunk.FinishReason {
+		case "agent_event":
+			var ev replcli.AgentEvent
+			if err := json.Unmarshal([]byte(chunk.Content), &ev); err != nil {
+				return nil
+			}
+			switch ev.Type {
+			case "tool_executing":
+				fmt.Fprintf(os.Stderr, "[tool: %s çalışıyor]\n", ev.Tool)
+			case "tool_result":
+				fmt.Fprintf(os.Stderr, "[tool: %s tamamlandı]\n", ev.Tool)
+			case "tool_error":
+				fmt.Fprintf(os.Stderr, "[tool: %s hata: %s]\n", ev.Tool, ev.Error)
+			case "permission_request":
+				// Scripting mode has no interactive prompt to answer this —
+				// resolve it automatically one way or the other rather than
+				// hang forever waiting for input that will never come.
+				policy := "deny_once"
+				verb := "auto-denied"
+				if autoAllow {
+					policy = "allow_once"
+					verb = "auto-allowed"
+				}
+				_ = client.SendPermission(ctx, ev.RequestID, policy)
+				fmt.Fprintf(os.Stderr, "[permission: %s %s (print mode)]\n", ev.Tool, verb)
+			}
+		case "status", "usage", "activity":
+			// not needed for scripted output
+		default:
+			reply.WriteString(chunk.Content)
+		}
+		return nil
+	}
+	if err := client.SendStream(ctx, prompt, onChunk); err != nil {
+		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println(reply.String())
+	fmt.Printf("[chat:%s]\n", chatID)
+
+	if !memoryLikely {
+		fmt.Println("[memory:embedding-not-running]")
+		return
+	}
+	const attempts = 6
+	const interval = 400 * time.Millisecond
+	for range attempts {
+		time.Sleep(interval)
+		events, err := client.Events(ctx)
+		if err != nil || len(events) == 0 {
+			continue
+		}
+		if replcli.MemorySavedSince(events, lastSeqBefore) {
+			fmt.Println("[memory:saved]")
+			return
+		}
+		if msg, ok := replcli.EventDataSince(events, lastSeqBefore, "memory:error"); ok {
+			fmt.Printf("[memory:error:%s]\n", msg)
+			return
+		}
+	}
+	fmt.Println("[memory:none-detected]")
 }
 
 // waitForBackend polls /api/status until it responds or timeout elapses.

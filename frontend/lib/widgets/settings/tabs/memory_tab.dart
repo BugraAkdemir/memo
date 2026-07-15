@@ -538,11 +538,13 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     children: _debugResults.asMap().entries.map((entry) {
                       final i = entry.key;
                       final r = entry.value;
-                      final matchLabel = r.matchType == 'vector'
-                          ? L10n.t('memory_debug_match_vector')
-                          : r.matchType == 'fts'
-                              ? L10n.t('memory_debug_match_fts')
-                              : L10n.t('memory_debug_match_hybrid');
+                      final matchLabel = r.matchType == 'pinned'
+                          ? L10n.t('memory_debug_match_pinned')
+                          : r.matchType == 'vector'
+                              ? L10n.t('memory_debug_match_vector')
+                              : r.matchType == 'fts'
+                                  ? L10n.t('memory_debug_match_fts')
+                                  : L10n.t('memory_debug_match_hybrid');
                       return Container(
                         margin: EdgeInsets.only(bottom: 8),
                         padding: EdgeInsets.all(12),

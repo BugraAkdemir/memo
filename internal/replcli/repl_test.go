@@ -200,6 +200,89 @@ func TestRun_PermissionRequest_Deny(t *testing.T) {
 	}
 }
 
+// TestRun_PermissionRequest_AllowSession is a regression test: the CLI used
+// to only ever send allow_once/deny_once, even though the backend
+// (internal/agent/permissions.go) and the Flutter GUI
+// (permission_dialog.dart) both already support allow_session — so a
+// multi-step agent task re-prompted for the identical tool call every time
+// it recurred in one CLI session, unlike the GUI. A non-dangerous tool must
+// offer, and correctly send, allow_session.
+func TestRun_PermissionRequest_AllowSession(t *testing.T) {
+	event := `{"type":"permission_request","request_id":"req-3","tool":"write_file","danger_level":"medium","args":{"path":"x.txt"}}`
+	srv, calls := newTestServer(t, []string{
+		fmt.Sprintf(`data: {"content":%q,"finish_reason":"agent_event"}`, event),
+		`data: {"content":"","done":true,"finish_reason":"stop"}`,
+	})
+	defer srv.Close()
+
+	in := strings.NewReader("bir dosya yaz\na\n/exit\n")
+	var out bytes.Buffer
+
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("permission calls = %d, want 1", len(*calls))
+	}
+	if (*calls)[0]["policy"] != "allow_session" {
+		t.Errorf("policy = %q, want allow_session", (*calls)[0]["policy"])
+	}
+}
+
+// TestRun_PermissionRequest_DangerousToolHasNoSessionOption is a regression
+// test: a dangerous tool must not offer "allow for session" at all — typing
+// "a" for a dangerous call must NOT be interpreted as allow_session (it
+// isn't a recognized answer for a dangerous prompt, so it falls through to
+// deny), matching the GUI's PermissionDialog withholding the session-allow
+// button specifically for dangerous tools.
+func TestRun_PermissionRequest_DangerousToolHasNoSessionOption(t *testing.T) {
+	event := `{"type":"permission_request","request_id":"req-4","tool":"run_command","danger_level":"dangerous","args":{"command":"rm -rf /"}}`
+	srv, calls := newTestServer(t, []string{
+		fmt.Sprintf(`data: {"content":%q,"finish_reason":"agent_event"}`, event),
+		`data: {"content":"","done":true,"finish_reason":"stop"}`,
+	})
+	defer srv.Close()
+
+	in := strings.NewReader("tehlikeli bir şey yap\na\n/exit\n")
+	var out bytes.Buffer
+
+	if err := Run(srv.URL, "/tmp/project", in, &out, false); err != nil {
+		t.Fatalf("Run() error = %v", err)
+	}
+	if len(*calls) != 1 {
+		t.Fatalf("permission calls = %d, want 1", len(*calls))
+	}
+	if (*calls)[0]["policy"] != "deny_once" {
+		t.Errorf("policy = %q, want deny_once (dangerous tools must not honor 'a' as allow_session)", (*calls)[0]["policy"])
+	}
+}
+
+// TestDescribeToolCall_PrefersBackendPreview is a regression test: the
+// permission prompt used to always show a blind character-truncation of the
+// raw tool-call args JSON, in whatever key order the model emitted them —
+// for a long field ahead of "path", the truncation could end before the
+// target path ever appeared, so the user approved a write without ever
+// seeing which file it targets. The backend's curated Preview field
+// (populated server-side via a tool's PreviewFn) must be preferred when present.
+func TestDescribeToolCall_PrefersBackendPreview(t *testing.T) {
+	ev := AgentEvent{
+		Args:    json.RawMessage(`{"content":"` + strings.Repeat("x", 200) + `","path":"real_target.go"}`),
+		Preview: "Yaz: real_target.go",
+	}
+	got := describeToolCall(ev)
+	if got != "Yaz: real_target.go" {
+		t.Errorf("describeToolCall() = %q, want the curated Preview, not a truncated raw-args blob", got)
+	}
+}
+
+func TestDescribeToolCall_FallsBackToRawArgsWhenNoPreview(t *testing.T) {
+	ev := AgentEvent{Args: json.RawMessage(`{"command":"ls"}`)}
+	got := describeToolCall(ev)
+	if got != `{"command":"ls"}` {
+		t.Errorf("describeToolCall() = %q, want raw args fallback", got)
+	}
+}
+
 // TestRun_ZeroChunkResponse_DoesNotHangOrLeakSpinner is a regression test:
 // if a turn's response stream closes with literally no SSE lines (a genuine
 // possibility — an upstream hiccup, a model erroring before emitting

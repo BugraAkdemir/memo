@@ -561,22 +561,58 @@ func (s *session) handleAgentEvent(ev AgentEvent) error {
 	return nil
 }
 
+// askPermission prompts for a single tool call. Mirrors the Flutter GUI's
+// PermissionDialog (frontend/lib/widgets/agent/permission_dialog.dart) on
+// two points it previously didn't: showing the tool's DangerLevel with
+// proportional visual weight instead of identical wording for every tool
+// regardless of risk, and offering "allow for this session" (backend
+// already understands AllowSession, internal/agent/permissions.go) for
+// non-dangerous tools, instead of re-prompting for the identical call every
+// single time it recurs in one session.
 func (s *session) askPermission(ev AgentEvent) error {
 	// The interrupt watcher and the permission prompt would otherwise race
 	// for the same key stream — pause it for the duration of the question.
 	s.stopInterruptWatch()
 	defer s.startInterruptWatch()
 
-	fmt.Fprintln(s.out, "\n"+yellow(fmt.Sprintf("⚠ %s bu işlemi yapmak istiyor: %s", ev.Tool, previewArgs(ev.Args))))
+	warnPrefix := "⚠"
+	if ev.DangerLevel == "dangerous" {
+		warnPrefix = "🛑 TEHLİKELİ"
+	}
+	fmt.Fprintln(s.out, "\n"+yellow(fmt.Sprintf("%s %s bu işlemi yapmak istiyor: %s", warnPrefix, ev.Tool, describeToolCall(ev))))
+
+	allowSession := ev.DangerLevel != "dangerous"
+	prompt := "İzin ver mi? [y/n] "
+	if allowSession {
+		prompt = "İzin ver mi? [y = bir kere, a = bu oturum boyunca, n = hayır] "
+	}
 
 	policy := "deny_once"
-	if answer, ok := s.promptLine(bold("İzin ver mi? [y/n] ")); ok {
+	if answer, ok := s.promptLine(bold(prompt)); ok {
 		answer = strings.ToLower(strings.TrimSpace(answer))
-		if answer == "y" || answer == "yes" || answer == "e" || answer == "evet" {
+		switch {
+		case allowSession && (answer == "a" || answer == "always" || answer == "oturum"):
+			policy = "allow_session"
+		case answer == "y" || answer == "yes" || answer == "e" || answer == "evet":
 			policy = "allow_once"
 		}
 	}
 	return s.client.SendPermission(s.ctx, ev.RequestID, policy)
+}
+
+// describeToolCall prefers the backend's own curated, human-readable
+// preview (ev.Preview — populated server-side for tools with a PreviewFn,
+// e.g. edit_file/insert_line/delete_lines, internal/agent/pipeline.go) over
+// a blind truncation of the raw tool-call JSON args. The raw JSON is
+// whatever the model itself emitted, in whatever key order it chose — for
+// a long "content" field ahead of "path", a flat character truncation can
+// end before the target path ever appears, so the user approves a write
+// without ever seeing which file it targets.
+func describeToolCall(ev AgentEvent) string {
+	if ev.Preview != "" {
+		return ev.Preview
+	}
+	return previewArgs(ev.Args)
 }
 
 func previewArgs(args json.RawMessage) string {

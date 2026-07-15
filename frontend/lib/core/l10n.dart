@@ -272,6 +272,7 @@ class L10n {
     'memory_debug_match_vector': 'Vektör',
     'memory_debug_match_fts': 'Kelime',
     'memory_debug_match_hybrid': 'Karma',
+    'memory_debug_match_pinned': 'Sabitlenmiş',
     'memory_debug_score': 'Skor',
 
     'tab_memory_import': 'Hafızayı İçe Aktar',
@@ -1178,6 +1179,7 @@ class L10n {
     'memory_debug_match_vector': 'Vector',
     'memory_debug_match_fts': 'Keyword',
     'memory_debug_match_hybrid': 'Hybrid',
+    'memory_debug_match_pinned': 'Pinned',
     'memory_debug_score': 'Score',
 
     'tab_memory_import': 'Import Memory',

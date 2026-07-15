@@ -342,7 +342,13 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	logx.Info("Memory store re-initialized")
 }
 
-// DebugMemorySearch searches memory WITHOUT similarity filter — for debugging.
+// DebugMemorySearch searches memory WITHOUT similarity filter — for
+// debugging. Also merges in pinned facts (source='explicit'/importance=5,
+// see GetPinnedFacts) the same way retrieveMemory does for the real chat
+// path — otherwise this panel mislabels a pinned fact as a plain "Vektör"/
+// "FTS" match whenever it also happens to score well on the hybrid search
+// below, giving no visibility into which results are actually guaranteed to
+// be injected into every prompt versus merely similarity-matched.
 func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
 	a.storeMu.RLock()
 	defer a.storeMu.RUnlock()
@@ -351,7 +357,25 @@ func (a *App) DebugMemorySearch(query string) []memory.MemoryResult {
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	return a.store.DebugSearch(ctx, query, 10)
+	results := a.store.DebugSearch(ctx, query, 10)
+
+	pinned, err := a.store.GetPinnedFacts(ctx)
+	if err != nil {
+		logx.Printf("MEMORY: DebugMemorySearch GetPinnedFacts: %v", err)
+		return results
+	}
+	seen := make(map[string]struct{}, len(pinned))
+	merged := make([]memory.MemoryResult, 0, len(pinned)+len(results))
+	for _, p := range pinned {
+		merged = append(merged, p)
+		seen[p.ID] = struct{}{}
+	}
+	for _, r := range results {
+		if _, dup := seen[r.ID]; !dup {
+			merged = append(merged, r)
+		}
+	}
+	return merged
 }
 
 // GetMemoryCount returns the number of stored memory entries.

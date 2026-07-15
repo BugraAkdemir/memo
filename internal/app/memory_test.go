@@ -318,3 +318,31 @@ func TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns(t *testing.T) {
 		t.Fatalf("len(pinned) = %d, want 1 — extraction must reach the local-model branch when providerRouter is nil", len(pinned))
 	}
 }
+
+// TestDebugMemorySearch_IncludesPinnedFacts is a regression test: the
+// Settings > Bellek Ara debug panel used to call Store.DebugSearch directly,
+// which never surfaces pinned (source='explicit') facts distinctly — a
+// pinned fact would only show up if it also happened to score well on the
+// underlying hybrid vector/FTS search, mislabeled as a plain "vector"/"fts"
+// match with no indication it's actually guaranteed to be injected into
+// every real chat prompt. DebugMemorySearch must merge in GetPinnedFacts the
+// same way retrieveMemory does for the real chat path.
+func TestDebugMemorySearch_IncludesPinnedFacts(t *testing.T) {
+	store := newExtractionTestStore(t)
+	if err := store.SaveExplicit(context.Background(), "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+
+	a := &App{store: store}
+
+	results := a.DebugMemorySearch("tamamen alakasiz bir sorgu")
+	found := false
+	for _, r := range results {
+		if r.MatchType == "pinned" && strings.Contains(r.Content, "Ahmet") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected the pinned fact labeled MatchType=pinned in debug search results, got %+v", results)
+	}
+}

@@ -100,3 +100,57 @@ final learningPatternsProvider = FutureProvider<List<LearnedPattern>>((ref) asyn
   final data = await api.getProactivePatterns();
   return data.map((j) => LearnedPattern.fromJson(j)).toList();
 });
+
+/// A proactive suggestion awaiting the user's response (see
+/// ProactiveSuggestionBanner, widgets/proactive_suggestion_banner.dart).
+class PendingProactiveSuggestion {
+  final String id;
+  final String message;
+  final String patternId;
+  final String action;
+
+  const PendingProactiveSuggestion({
+    required this.id,
+    required this.message,
+    required this.patternId,
+    required this.action,
+  });
+
+  factory PendingProactiveSuggestion.fromJson(Map<String, dynamic> json) {
+    return PendingProactiveSuggestion(
+      id: json['id'] as String? ?? '',
+      message: json['message'] as String? ?? '',
+      patternId: json['pattern_id'] as String? ?? '',
+      action: json['action'] as String? ?? 'suggest',
+    );
+  }
+}
+
+/// Polls for a pending proactive suggestion so it can be surfaced as a
+/// banner regardless of which screen is currently active — the backend
+/// (proactiveEmit, internal/app/proactive.go) deliberately never writes a
+/// suggestion into any chat's message history, since it's a background,
+/// timer-driven engine tick with no relationship to whatever chat happens to
+/// be open; GetPendingSuggestion (this provider) and the respond endpoint
+/// are the only way a desktop user ever sees or answers one.
+///
+/// Mirrors connectionStatusProvider's poll-loop pattern (chat_provider.dart):
+/// autoDispose + a manual "alive" flag flipped by ref.onDispose, rather than
+/// a raw Timer, so the loop actually stops once nothing is watching it —
+/// see AGENTS.md's IndexedStack polling-leak gotcha.
+final pendingProactiveSuggestionProvider =
+    StreamProvider.autoDispose<PendingProactiveSuggestion?>((ref) async* {
+  var alive = true;
+  ref.onDispose(() => alive = false);
+  final api = ref.read(apiClientProvider);
+  while (alive) {
+    try {
+      final data = await api.getPendingSuggestion();
+      yield data == null ? null : PendingProactiveSuggestion.fromJson(data);
+    } catch (_) {
+      yield null;
+    }
+    if (!alive) break;
+    await Future.delayed(const Duration(seconds: 20));
+  }
+});

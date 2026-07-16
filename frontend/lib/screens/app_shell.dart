@@ -14,6 +14,7 @@ import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/setup_wizard_view.dart';
 import '../widgets/version_banner.dart';
+import '../widgets/proactive_suggestion_banner.dart';
 import '../widgets/engine_strip.dart';
 import '../widgets/launchpad_view.dart';
 import '../widgets/spotlight_tour.dart';
@@ -203,6 +204,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               if (_showTour) _buildTourOverlay(),
               LlamaInstallerOverlay(),
               const VersionBanner(),
+              const ProactiveSuggestionBanner(),
             ],
           ),
         ),

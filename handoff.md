@@ -1,3 +1,60 @@
+# Handoff — 2026-07-17 (Session 37, devam 2) — Ambient nudge canlı CLI'da uçtan uca doğrulandı + Minimal Mod'a granüler "yine de açık kalsın" dropdown'u eklendi
+
+## Özet
+
+Session 37'nin (aşağıdaki ilk girdi) aynı gün devamı. İki ayrı iş yapıldı: (1) az önce eklenen ambient nudge özelliğinin **gerçekten CLI'da (`internal/replcli`) çalışıp çalışmadığı** canlı olarak test edildi — kullanıcı `cmd/proactive-demo`'yu değiştirip sahte profil oluşturmayı, `-p` moduyla senaryo kurmayı önerdi; (2) kullanıcı Minimal Mod'un all-or-nothing olmasından memnun değildi, "öğrenmeyi kapatacak ama sistem promptunu kapatmayacak" gibi granüler bir kontrol istedi — sadece GUI'ye, CLI'ya eklenmedi (açık talimat).
+
+## 1) Canlı CLI doğrulaması (izole test backend'i, kullanıcının açık GUI oturumuna dokunulmadı)
+
+`cmd/proactive-demo`'yu değiştirmek yerine (o script 5 hafta sahte veri üretiyor, yavaş) doğrudan `data/profile/patterns.json`'a şu ana denk gelen saatte, `declared:true`, güven 0.9 bir pattern yazıldı — Session 37'nin "beyan edilmiş alışkanlık" mekanizmasını (`SaveDeclared`'ın ürettiği format) taklit ederek. İzole bir backend (`--port 18090`, ayrı `MEMO_DATA_DIR`, repo'nun kendi test OpenCode Zen anahtarıyla) kurulup `memo -p "..."` ile gerçek mesajlar gönderildi:
+
+- Nötr mesaj → hiç nudge yok, yanlış pozitif yok ✅
+- "boş vaktim var ne yapsam" → model **kendiliğinden**, doğal bir cümleyle "zaten akşamüstü kod yazma saatin gelmiş gibi duruyor" dedi ✅
+- Arka plan LLM kontrolü bunu doğru tespit edip `pending.json`'a `action:"ambient"` yazdı ✅
+- `/api/proactive/pending` bu ambient öneriyi doğru şekilde **gizledi** (banner'da görünmedi) ✅
+- "evet hadi başlayalım" (serbest Türkçe metin, keyword listesi yok) → LLM doğru KABUL olarak sınıflandırdı, güven 0.9→1.0, pending temizlendi ✅
+- Bonus: seed edilen declared pattern, backend'in kendi periyodik yeniden-analizinden (`"analyzed 2 observations into 1 pattern(s)"`) silinmeden sağ çıktı
+
+**Ayrıca Minimal Mod'un (o zamanki all-or-nothing hali) gerçekten kusursuz çalıştığı da canlı doğrulandı:** aynı izole backend'de Minimal Mod açılıp aynı senaryo tekrarlandı — `pending.json` hiç oluşmadı, sistem promptu `system=0` token. Daha zor bir senaryo da denendi: bir ambient öneri Minimal Mod açılmadan ÖNCE oluşmuş gibi elle yerleştirilip, Minimal Mod açıkken "evet" gönderildi — `pending.json` ve `patterns.json` **hiç değişmedi**, LLM'e hiç sorulmadı.
+
+Test backend'leri düzgünce (`POST /api/shutdown`) kapatıldı, kullanıcının kendi açık GUI oturumuna (farklı port, farklı `MEMO_DATA_DIR`) hiç dokunulmadı.
+
+## 2) Minimal Mod'a granüler "yine de açık kalsın" dropdown'u
+
+Kullanıcı somut örnek verdi: "öğrenmeyi kapatacak ama sistem promptunu kapatmayacak". Yani Minimal Mod AÇIKKEN, varsayılan olarak her şey kapalı kalırken, kullanıcı belirli kategorileri tek tek geri açabilsin.
+
+**Backend:**
+- `config.IdentityConfig`'e 4 yeni bool: `MinimalModeKeepPersona/Capabilities/Passive/Proactive` (varsayılan false — eski all-off davranışla birebir aynı, dropdown'a hiç dokunmayan kullanıcı için).
+- `identity.Identity` aynı 4 alanı `minimalModeMu` ile korunan şekilde taşıyor + `SetMinimalModeOverrides`/`GetMinimalModeOverrides`/`GetMinimalModeKeepProactive`.
+- `BuildSystemPrompt`, tek `if !MinimalMode {...}` bloğundan üç bağımsız gated bölüme ayrıldı: **persona** (kimlik+origin+üslup+öğrenilen notlar — kullanıcının "sistem promptu" dediği tek kategori), **pasif özellikler bildirimi**, **yetenek bildirimleri**. Her biri `if !minimal || keepX`.
+- `proactive_ambient.go`'daki `ambientNudgingActive()` artık `GetMinimalModeKeepProactive()`'i kontrol ediyor — ambient nudge özelliği dördüncü, bağımsız açılabilir kategori oldu.
+- `internal/app/settings.go`: `GetMinimalModeOverrides`/`SetMinimalModeOverrides` bridge metodları (struct değil, 4 ayrı bool — `internal/webserver`'ın `internal/app` tiplerini import etmemesi kuralı gereği, `ImportMemoryFromText`'in zaten belgelediği desen).
+- Yeni endpoint: `GET/PUT /api/system-prompt/minimal-mode/overrides`.
+
+**Frontend (sadece GUI, CLI'ya eklenmedi):**
+- `frontend/lib/models/minimal_mode_overrides.dart` (yeni model), `api_client.dart` get/set, `minimalModeOverridesProvider` (mevcut `minimalModeProvider` ile aynı desende).
+- Settings → General: Minimal Mod toggle'ının hemen altında, **sadece Minimal Mod açıkken görünen** bir `ExpansionTile` — 4 switch: Kişilik/Sistem Promptu, Yetenek Bildirimleri, Pasif Özellik Bildirimi, Proaktif Öğrenme.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 33 test edilen paket yeşil
+flutter analyze lib/                                            → temiz (bilinen 4 info bulgu)
+flutter test                                                     → 107/107
+```
+
+6 yeni backend testi (4 identity granüler kombinasyon + 1 ambient override + 1 bridge round-trip). Frontend dropdown'u için ayrı widget testi yazılmadı — mevcut kod tabanı konvansiyonuna uyularak (diğer ayarlar sekmelerinin çoğunda da yok), ayrıca private widget class'ları dışarıdan test edilemiyor.
+
+Commit: `2910564` → `853d1ee` arası (ambient nudge + review fix'leri + granüler Minimal Mod).
+
+## Gerçek ortamda doğrulanamayan
+
+Yeni dropdown UI'ı bu ortamda görsel olarak (ekran yok) test edilemedi — kullanıcı gerçek GUI'de Minimal Mod'u açıp dropdown'ın göründüğünü, switch'lerin doğru çalıştığını denemeli.
+
+---
+
 # Handoff — 2026-07-17 (Session 37) — Sohbet içine gömülü "ambient" alışkanlık dürtmesi eklendi, dil-bağımsız (LLM tabanlı) sonuç tespiti, /code-review'un bulduğu 6 gerçek hata düzeltildi
 
 ## Özet

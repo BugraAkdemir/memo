@@ -261,6 +261,7 @@ class L10n {
     'minimal_mode_keep_proactive': 'Proaktif Öğrenme',
     'minimal_mode_keep_proactive_desc': 'Öğrenilen alışkanlıkları sohbet içinde doğal şekilde hatırlatma.',
     'memory_files': 'Bellek Dosyaları',
+    'memory_files_show': 'Dosyaları göster (\${n})',
     'memory_count': 'Bellek Sayısı',
     'clear_memory': 'Tüm Belleği Temizle',
     'clear_memory_confirm':
@@ -1184,6 +1185,7 @@ class L10n {
     'minimal_mode_keep_proactive': 'Proactive Learning',
     'minimal_mode_keep_proactive_desc': 'Naturally mentioning learned habits during conversation.',
     'memory_files': 'Memory Files',
+    'memory_files_show': 'Show files (\${n})',
     'memory_count': 'Memory Count',
     'clear_memory': 'Clear All Memory',
     'clear_memory_confirm': 'Are you sure you want to delete all memory files?',

@@ -50,7 +50,9 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('memory_stats_unavailable', {'e': '$e'}))),
+          SnackBar(
+            content: Text(L10n.t('memory_stats_unavailable', {'e': '$e'})),
+          ),
         );
       }
     } finally {
@@ -68,7 +70,9 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
       _debugSearched = false;
     });
     try {
-      final results = await ref.read(apiClientProvider).debugMemorySearch(query);
+      final results = await ref
+          .read(apiClientProvider)
+          .debugMemorySearch(query);
       if (mounted) {
         setState(() {
           _debugResults = results;
@@ -261,9 +265,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                         builder: (ctx) => AlertDialog(
                           backgroundColor: MemoTheme.of(context).bgPanel,
                           title: Text(L10n.t('clear_memory_title')),
-                          content: Text(
-                            L10n.t('clear_memory_confirm_ext'),
-                          ),
+                          content: Text(L10n.t('clear_memory_confirm_ext')),
                           actions: [
                             TextButton(
                               onPressed: () => Navigator.pop(ctx, false),
@@ -281,7 +283,9 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                       );
                       if (confirmed == true) {
                         try {
-                          await ref.read(memoryFilesProvider.notifier).clearAll();
+                          await ref
+                              .read(memoryFilesProvider.notifier)
+                              .clearAll();
                         } catch (e) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
@@ -313,45 +317,89 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     );
                   }
 
-                  return Column(
-                    children: files.map((file) {
-                      return Column(
-                        children: [
-                          ListTile(
-                            contentPadding: EdgeInsets.zero,
-                            title: Text(
-                              file.name,
-                              style: TextStyle(fontWeight: FontWeight.w500),
-                            ),
-                            subtitle: Text(
-                              '${file.sizeKb} KB • ${file.modified}',
-                              style: TextStyle(
-                                color: MemoTheme.of(context).textDim,
-                                fontSize: 12,
-                              ),
-                            ),
-                            trailing: IconButton(
-                              icon: Icon(Icons.delete_outline),
-                              color: MemoTheme.red,
-                              onPressed: () async {
-                                try {
-                                  await ref
-                                      .read(memoryFilesProvider.notifier)
-                                      .deleteFile(file.path);
-                                } catch (e) {
-                                  if (context.mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(content: Text('${L10n.t('error')}: $e')),
-                                    );
-                                  }
-                                }
-                              },
-                            ),
+                  // Collapsed by default, and the list itself is a bounded-
+                  // height ListView.builder rather than an eager Column —
+                  // a memory store with hundreds of entries used to build
+                  // every ListTile/Divider up front (rebuilt on every
+                  // setState in this tab, e.g. _loadStats/_runDebugSearch),
+                  // which is what caused the RAM/lag complaint. Collapsed,
+                  // zero row widgets exist at all; expanded, only the rows
+                  // actually visible in the fixed-height viewport are built
+                  // (ListView.builder's laziness only works with a bounded
+                  // height — shrinkWrap inside the outer page ListView would
+                  // still force building everything up front).
+                  return Theme(
+                    data: Theme.of(
+                      context,
+                    ).copyWith(dividerColor: Colors.transparent),
+                    child: ExpansionTile(
+                      tilePadding: EdgeInsets.zero,
+                      childrenPadding: EdgeInsets.zero,
+                      title: Text(
+                        L10n.t('memory_files_show', {'n': '${files.length}'}),
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: MemoTheme.of(context).textMain,
+                        ),
+                      ),
+                      children: [
+                        SizedBox(
+                          height: 420,
+                          child: ListView.builder(
+                            itemCount: files.length,
+                            itemBuilder: (context, i) {
+                              final file = files[i];
+                              return Column(
+                                children: [
+                                  ListTile(
+                                    contentPadding: EdgeInsets.zero,
+                                    title: Text(
+                                      file.name,
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.w500,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      '${file.sizeKb} KB • ${file.modified}',
+                                      style: TextStyle(
+                                        color: MemoTheme.of(context).textDim,
+                                        fontSize: 12,
+                                      ),
+                                    ),
+                                    trailing: IconButton(
+                                      icon: Icon(Icons.delete_outline),
+                                      color: MemoTheme.red,
+                                      onPressed: () async {
+                                        try {
+                                          await ref
+                                              .read(
+                                                memoryFilesProvider.notifier,
+                                              )
+                                              .deleteFile(file.path);
+                                        } catch (e) {
+                                          if (context.mounted) {
+                                            ScaffoldMessenger.of(
+                                              context,
+                                            ).showSnackBar(
+                                              SnackBar(
+                                                content: Text(
+                                                  '${L10n.t('error')}: $e',
+                                                ),
+                                              ),
+                                            );
+                                          }
+                                        }
+                                      },
+                                    ),
+                                  ),
+                                  Divider(height: 1),
+                                ],
+                              );
+                            },
                           ),
-                          Divider(),
-                        ],
-                      );
-                    }).toList(),
+                        ),
+                      ],
+                    ),
                   );
                 },
               ),
@@ -367,7 +415,11 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                   ),
                   SizedBox(width: 8),
                   if (_statsLoading)
-                    SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                    SizedBox(
+                      width: 14,
+                      height: 14,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
                   else
                     IconButton(
                       icon: Icon(Icons.refresh, size: 18),
@@ -393,14 +445,28 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     children: [
                       Row(
                         children: [
-                          _StatChip(label: 'Total', value: '${_memoryStats!.count}'),
+                          _StatChip(
+                            label: 'Total',
+                            value: '${_memoryStats!.count}',
+                          ),
                           SizedBox(width: 8),
-                          _StatChip(label: 'Pinned', value: '${_memoryStats!.explicitCount}', accent: true),
+                          _StatChip(
+                            label: 'Pinned',
+                            value: '${_memoryStats!.explicitCount}',
+                            accent: true,
+                          ),
                           SizedBox(width: 8),
-                          _StatChip(label: 'This week', value: '+${_memoryStats!.addedThisWeek}'),
+                          _StatChip(
+                            label: 'This week',
+                            value: '+${_memoryStats!.addedThisWeek}',
+                          ),
                           if (_memoryStats!.pendingDeletion > 0) ...[
                             SizedBox(width: 8),
-                            _StatChip(label: 'Expiring', value: '${_memoryStats!.pendingDeletion}', warn: true),
+                            _StatChip(
+                              label: 'Expiring',
+                              value: '${_memoryStats!.pendingDeletion}',
+                              warn: true,
+                            ),
                           ],
                         ],
                       ),
@@ -435,8 +501,13 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                                 SizedBox(width: 8),
                                 Expanded(
                                   child: Text(
-                                    r.content.length > 80 ? '${r.content.substring(0, 80)}…' : r.content,
-                                    style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textMain),
+                                    r.content.length > 80
+                                        ? '${r.content.substring(0, 80)}…'
+                                        : r.content,
+                                    style: TextStyle(
+                                      fontSize: 12,
+                                      color: MemoTheme.of(context).textMain,
+                                    ),
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
                                   ),
@@ -470,7 +541,10 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
               SizedBox(height: 8),
               Text(
                 L10n.t('memory_debug_hint'),
-                style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
+                style: TextStyle(
+                  color: MemoTheme.of(context).textDim,
+                  fontSize: 13,
+                ),
               ),
               SizedBox(height: 12),
               Row(
@@ -488,15 +562,25 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                           filled: true,
                           fillColor: MemoTheme.of(context).bgApp,
                           border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                            borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                            borderRadius: BorderRadius.circular(
+                              MemoTheme.radiusSm,
+                            ),
+                            borderSide: BorderSide(
+                              color: MemoTheme.of(context).borderSoft,
+                            ),
                           ),
                           enabledBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                            borderSide: BorderSide(color: MemoTheme.of(context).borderSoft),
+                            borderRadius: BorderRadius.circular(
+                              MemoTheme.radiusSm,
+                            ),
+                            borderSide: BorderSide(
+                              color: MemoTheme.of(context).borderSoft,
+                            ),
                           ),
                           focusedBorder: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+                            borderRadius: BorderRadius.circular(
+                              MemoTheme.radiusSm,
+                            ),
                             borderSide: BorderSide(color: MemoTheme.accent),
                           ),
                         ),
@@ -509,7 +593,11 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     child: ElevatedButton(
                       onPressed: _debugSearching ? null : _runDebugSearch,
                       child: _debugSearching
-                          ? SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2))
+                          ? SizedBox(
+                              width: 14,
+                              height: 14,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
                           : Text(L10n.t('memory_debug_search_btn')),
                     ),
                   ),
@@ -523,91 +611,121 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                     style: TextStyle(color: MemoTheme.red, fontSize: 12),
                   ),
                 ),
-              if (_debugSearched && _debugResults.isEmpty && _debugError == null)
+              if (_debugSearched &&
+                  _debugResults.isEmpty &&
+                  _debugError == null)
                 Padding(
                   padding: EdgeInsets.only(top: 12),
                   child: Text(
                     L10n.t('memory_debug_no_results'),
-                    style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
+                    style: TextStyle(
+                      color: MemoTheme.of(context).textDim,
+                      fontSize: 13,
+                    ),
                   ),
                 ),
               if (_debugResults.isNotEmpty)
                 Padding(
                   padding: EdgeInsets.only(top: 12),
-                  child: Column(
-                    children: _debugResults.asMap().entries.map((entry) {
-                      final i = entry.key;
-                      final r = entry.value;
-                      final matchLabel = r.matchType == 'pinned'
-                          ? L10n.t('memory_debug_match_pinned')
-                          : r.matchType == 'vector'
-                              ? L10n.t('memory_debug_match_vector')
-                              : r.matchType == 'fts'
-                                  ? L10n.t('memory_debug_match_fts')
-                                  : L10n.t('memory_debug_match_hybrid');
-                      return Container(
-                        margin: EdgeInsets.only(bottom: 8),
-                        padding: EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          color: MemoTheme.of(context).bgApp,
-                          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
-                          border: Border.all(color: MemoTheme.of(context).borderSoft),
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  '#${i + 1}',
-                                  style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    color: MemoTheme.of(context).textDim,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                                SizedBox(width: 8),
-                                Container(
-                                  padding: EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: MemoTheme.accent.withValues(alpha: 0.15),
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                  child: Text(
-                                    matchLabel,
+                  // Bounded-height ListView.builder, not an eager Column —
+                  // each result renders a decorated Container (border +
+                  // rounded corners, pricier than a plain ListTile), and
+                  // with a well-populated memory store this list is what
+                  // caused the RAM/lag complaint alongside the Memory Files
+                  // list above. Same fix: only the rows actually scrolled
+                  // into view within the fixed height get built.
+                  child: SizedBox(
+                    height: 420,
+                    child: ListView.builder(
+                      itemCount: _debugResults.length,
+                      itemBuilder: (context, i) {
+                        final r = _debugResults[i];
+                        final matchLabel = r.matchType == 'pinned'
+                            ? L10n.t('memory_debug_match_pinned')
+                            : r.matchType == 'vector'
+                            ? L10n.t('memory_debug_match_vector')
+                            : r.matchType == 'fts'
+                            ? L10n.t('memory_debug_match_fts')
+                            : L10n.t('memory_debug_match_hybrid');
+                        return Container(
+                          margin: EdgeInsets.only(bottom: 8),
+                          padding: EdgeInsets.all(12),
+                          decoration: BoxDecoration(
+                            color: MemoTheme.of(context).bgApp,
+                            borderRadius: BorderRadius.circular(
+                              MemoTheme.radiusSm,
+                            ),
+                            border: Border.all(
+                              color: MemoTheme.of(context).borderSoft,
+                            ),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    '#${i + 1}',
                                     style: TextStyle(
-                                      color: MemoTheme.accent,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.w600,
+                                      fontWeight: FontWeight.bold,
+                                      color: MemoTheme.of(context).textDim,
+                                      fontSize: 12,
                                     ),
                                   ),
-                                ),
-                                const Spacer(),
-                                Text(
-                                  '${L10n.t('memory_debug_score')}: ${r.similarity.toStringAsFixed(3)}',
-                                  style: TextStyle(
-                                    color: MemoTheme.of(context).textDim,
-                                    fontSize: 11,
+                                  SizedBox(width: 8),
+                                  Container(
+                                    padding: EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                      vertical: 2,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      color: MemoTheme.accent.withValues(
+                                        alpha: 0.15,
+                                      ),
+                                      borderRadius: BorderRadius.circular(4),
+                                    ),
+                                    child: Text(
+                                      matchLabel,
+                                      style: TextStyle(
+                                        color: MemoTheme.accent,
+                                        fontSize: 11,
+                                        fontWeight: FontWeight.w600,
+                                      ),
+                                    ),
                                   ),
+                                  const Spacer(),
+                                  Text(
+                                    '${L10n.t('memory_debug_score')}: ${r.similarity.toStringAsFixed(3)}',
+                                    style: TextStyle(
+                                      color: MemoTheme.of(context).textDim,
+                                      fontSize: 11,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                              SizedBox(height: 6),
+                              Text(
+                                r.content.length > 200
+                                    ? '${r.content.substring(0, 200)}…'
+                                    : r.content,
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: MemoTheme.of(context).textMain,
                                 ),
-                              ],
-                            ),
-                            SizedBox(height: 6),
-                            Text(
-                              r.content.length > 200
-                                  ? '${r.content.substring(0, 200)}…'
-                                  : r.content,
-                              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textMain),
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              r.timestamp,
-                              style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
-                            ),
-                          ],
-                        ),
-                      );
-                    }).toList(),
+                              ),
+                              SizedBox(height: 4),
+                              Text(
+                                r.timestamp,
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  color: MemoTheme.of(context).textDim,
+                                ),
+                              ),
+                            ],
+                          ),
+                        );
+                      },
+                    ),
                   ),
                 ),
             ],
@@ -624,15 +742,20 @@ class _StatChip extends StatelessWidget {
   final bool accent;
   final bool warn;
 
-  const _StatChip({required this.label, required this.value, this.accent = false, this.warn = false});
+  const _StatChip({
+    required this.label,
+    required this.value,
+    this.accent = false,
+    this.warn = false,
+  });
 
   @override
   Widget build(BuildContext context) {
     final color = warn
         ? MemoTheme.red
         : accent
-            ? MemoTheme.accent
-            : MemoTheme.of(context).textMain;
+        ? MemoTheme.accent
+        : MemoTheme.of(context).textMain;
     return Container(
       padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
       decoration: BoxDecoration(
@@ -643,8 +766,21 @@ class _StatChip extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text(value, style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: color)),
-          Text(label, style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim)),
+          Text(
+            value,
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              color: MemoTheme.of(context).textDim,
+            ),
+          ),
         ],
       ),
     );
@@ -657,7 +793,8 @@ class MemorySettingField extends StatelessWidget {
   final String hint;
   final List<TextInputFormatter> inputFormatters;
 
-  const MemorySettingField({super.key, 
+  const MemorySettingField({
+    super.key,
     required this.label,
     required this.controller,
     required this.hint,

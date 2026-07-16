@@ -35,14 +35,27 @@ func (a *App) proactiveDecide(ctx context.Context, systemPrompt, userPrompt stri
 	return reply, nil
 }
 
-// proactiveEmit surfaces a suggestion: it fires a UI event and drops the message
-// into the active session so it appears in chat.
+// proactiveEmit surfaces a suggestion by firing a UI event and persisting it
+// to the pending-suggestion store (already done by the engine before this is
+// called — see proactive.Engine.execute); GetPendingSuggestion/the
+// "proactive_suggestion" event are the only delivery paths.
+//
+// This deliberately does NOT write the suggestion into any chat session.
+// This is a background, timer-driven engine tick, not a user-initiated
+// action — the app has one global "active" chat (see AGENTS.md's
+// Concurrency & architecture gotcha), and there is no reliable way from here
+// to know whether that's even a chat the user is currently looking at, let
+// alone one related to the suggestion. A previous version called
+// sm.AddMessage(...), which always writes to whatever session happens to be
+// globally active at that instant — including a chat the user is mid-
+// conversation in on a completely unrelated topic, or one a task-loop
+// automation has temporarily switched to (the exact "automated caller must
+// SwitchChat under taskloopRunMu" hazard that gotcha already documents for
+// other callers). A suggestion could silently splice itself into the wrong
+// conversation's history.
 func (a *App) proactiveEmit(p proactive.PendingSuggestion) {
 	if payload, err := json.Marshal(p); err == nil {
 		a.emitEvent("proactive_suggestion", string(payload))
-	}
-	if sm := a.getSessionManager(); sm != nil {
-		sm.AddMessage("assistant", p.Message, "", "")
 	}
 }
 

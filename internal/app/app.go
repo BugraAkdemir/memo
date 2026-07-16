@@ -31,7 +31,6 @@ import (
 	"memo/internal/observer"
 	"memo/internal/orchestra"
 	"memo/internal/proactive"
-	"memo/internal/whisper"
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -39,6 +38,7 @@ import (
 	"memo/internal/tunnel"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
+	"memo/internal/whisper"
 )
 
 // ConnectionStatus holds the connection state and available model list.
@@ -130,8 +130,8 @@ type App struct {
 	incognitoMu       sync.RWMutex
 	isIncognito       bool
 	incognitoMessages []api.Message
-	whisperServer      *whisper.Server
-	whisperMu          sync.RWMutex
+	whisperServer     *whisper.Server
+	whisperMu         sync.RWMutex
 	webServer         *webserver.Server
 	webMu             sync.RWMutex
 	modelStore        *modelstore.Store
@@ -149,10 +149,10 @@ type App struct {
 	memorySaveWg     sync.WaitGroup
 	events           *eventRing
 
-	providerCfgMgr      *provider.ConfigManager
-	providerRouter      *provider.Router
-	activeProviderName  string // which provider is currently active (by Name)
-	healthCheckCancel   context.CancelFunc
+	providerCfgMgr     *provider.ConfigManager
+	providerRouter     *provider.Router
+	activeProviderName string // which provider is currently active (by Name)
+	healthCheckCancel  context.CancelFunc
 
 	orchestraConductor *orchestra.Conductor
 
@@ -165,6 +165,19 @@ type App struct {
 	// Proactive engine — gated by cfg.Proactive (default off).
 	proactivePending *proactive.PendingStore
 	proactiveEngine  *proactive.Engine
+
+	// Ambient nudges — see proactive_ambient.go. lastNudgedPattern is set by
+	// buildProactiveNudgeBlock (called synchronously while assembling a
+	// turn's system prompt) and taken (read + cleared) synchronously by
+	// finishStream via takeNudgedPattern, on the same call path as that
+	// turn's reply — never read from inside the backgrounded
+	// checkAmbientNudgeSurfaced goroutine itself, which would race against a
+	// fast-enough next turn's buildProactiveNudgeBlock. resolvingSuggestionID
+	// guards checkAmbientNudgeOutcome against double-processing the same
+	// pending suggestion from two rapid, overlapping user messages.
+	proactiveNudgeMu      sync.Mutex
+	lastNudgedPattern     *observer.TimePattern
+	resolvingSuggestionID string
 
 	// Intent extraction and calendar system.
 	intentExtractor *intent.Extractor
@@ -195,9 +208,9 @@ type App struct {
 	tailscaleTunnel     *tunnel.Tailscale
 
 	whatsappChatMode  atomic.Bool
-	whatsAppSessionID string       // dedicated session for WhatsApp chat context
-	waMu              sync.Mutex   // protects waClient, waMsgStore initialization
-	streamMu          sync.Mutex   // prevents concurrent stream goroutines (double-send)
+	whatsAppSessionID string     // dedicated session for WhatsApp chat context
+	waMu              sync.Mutex // protects waClient, waMsgStore initialization
+	streamMu          sync.Mutex // prevents concurrent stream goroutines (double-send)
 
 	clients clientRegistry // see clients.go — tracks attached CLI/GUI clients for auto-shutdown
 

@@ -16,12 +16,18 @@ const (
 	ActionNotify  Action = "notify"  // mobile push notification
 	ActionSuggest Action = "suggest" // write a chat message
 	ActionAuto    Action = "auto"    // start the agent pipeline
+
+	// ActionAmbient marks a suggestion that was never a separate banner/
+	// notification at all — the main chat model was simply told a habit
+	// might be worth mentioning and wove it into an ordinary reply on its
+	// own judgment. See internal/app/proactive_ambient.go.
+	ActionAmbient Action = "ambient"
 )
 
 // Valid reports whether a is a recognised action.
 func (a Action) Valid() bool {
 	switch a {
-	case ActionNone, ActionNotify, ActionSuggest, ActionAuto:
+	case ActionNone, ActionNotify, ActionSuggest, ActionAuto, ActionAmbient:
 		return true
 	default:
 		return false

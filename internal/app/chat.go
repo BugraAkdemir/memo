@@ -180,6 +180,43 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 		}
 	}
 
+	// Ambient proactive nudging is skipped entirely in Incognito Mode — same
+	// "secure session, nothing persisted, nothing recalled" contract that
+	// already keeps saveMemoryAsync/updateMoodAsync out of finishStream's
+	// incognito branch. A nudge references a learned habit pulled from
+	// persisted state, and checkAmbientNudgeOutcome would persist a
+	// confidence adjustment back to it — both are exactly the kind of
+	// cross-session leakage Incognito Mode promises not to have.
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+
+	// Independent of memory/RAG (see proactive_ambient.go's package doc
+	// comment) — fired before the reply so a stale pending suggestion from
+	// several turns ago doesn't linger past this one, but backgrounded since
+	// it makes its own LLM call and must not add latency to this turn's
+	// actual reply. Gated here (not just inside checkAmbientNudgeOutcome)
+	// so a disabled/off/MinimalMode/incognito setup doesn't pay for a
+	// goroutine spawn and a pending.json read on every single message.
+	if !incog && a.ambientNudgingActive() {
+		go a.checkAmbientNudgeOutcome(userMsg)
+	}
+
+	var nudge string
+	if !incog {
+		nudge = a.buildProactiveNudgeBlock(time.Now())
+	}
+	if nudge != "" {
+		for i, msg := range messages {
+			if msg.Role == "system" {
+				if content, ok := msg.Content.(string); ok {
+					messages[i].Content = content + nudge
+				}
+				break
+			}
+		}
+	}
+
 	a.agentMu.RLock()
 	agentActive := a.agentEnabled
 	a.agentMu.RUnlock()

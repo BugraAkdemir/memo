@@ -960,6 +960,11 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		if a.mood != nil && a.mood.Enabled() {
 			go a.updateMoodAsync(userMsg)
 		}
+		// Captured synchronously here, not inside the goroutine — see
+		// takeNudgedPattern's doc comment for why that ordering matters.
+		if nudged := a.takeNudgedPattern(); nudged != nil {
+			go a.checkAmbientNudgeSurfaced(nudged, reply)
+		}
 	} else {
 		a.incognitoMu.Lock()
 		a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))

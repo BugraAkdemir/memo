@@ -216,6 +216,38 @@ func TestEngineSuggestsThenAccepts(t *testing.T) {
 	}
 }
 
+// TestEngineHandleOutcome_AppliesAlreadyClassifiedOutcome covers the direct
+// path a caller uses when it has classified the outcome itself (e.g. via an
+// LLM reading free-form, any-language chat text — see
+// internal/app/proactive_ambient.go) instead of matching against
+// OutcomeFromResponse's fixed English/Turkish keyword list.
+func TestEngineHandleOutcome_AppliesAlreadyClassifiedOutcome(t *testing.T) {
+	eng, patterns, pending, emitted := newEngineWithPattern(t, LevelNormal,
+		`{"decision":"suggest","message":"Kod vakti!","pattern_id":"time:coding"}`)
+
+	eng.tick(context.Background())
+	if len(*emitted) != 1 {
+		t.Fatalf("expected 1 emitted suggestion, got %d", len(*emitted))
+	}
+	ps := (*emitted)[0]
+
+	before := patternConfidence(t, patterns, "time:coding")
+	accepted, err := eng.HandleOutcome(ps, OutcomeAccepted)
+	if err != nil {
+		t.Fatalf("HandleOutcome() error = %v", err)
+	}
+	if !accepted {
+		t.Error("expected accepted=true for OutcomeAccepted")
+	}
+	after := patternConfidence(t, patterns, "time:coding")
+	if after <= before {
+		t.Errorf("confidence should rise after acceptance: %f -> %f", before, after)
+	}
+	if pending.HasPending() {
+		t.Error("pending should be cleared after HandleOutcome")
+	}
+}
+
 // TestEngineThrottlesConsultations verifies the Chief is not consulted on every
 // tick while a pattern keeps matching and the Chief keeps replying "none".
 func TestEngineThrottlesConsultations(t *testing.T) {

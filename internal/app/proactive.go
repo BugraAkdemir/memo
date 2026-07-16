@@ -88,12 +88,19 @@ func (a *App) SetProactiveSettings(enabled bool, level string) error {
 }
 
 // GetPendingSuggestion returns the in-flight proactive suggestion, or nil.
+// Deliberately excludes Action == ActionAmbient: those are the whole point
+// of not being a separate banner/notification (see
+// internal/app/proactive_ambient.go) — the model already surfaced it inline
+// in the conversation itself, so showing it again here as a popup would be
+// exactly the redundant interruption ambient nudging exists to avoid. Only
+// callers that resolve suggestions programmatically (checkAmbientNudgeOutcome)
+// go through PendingStore.Get directly, bypassing this filter.
 func (a *App) GetPendingSuggestion() *proactive.PendingSuggestion {
 	if a.proactivePending == nil {
 		return nil
 	}
 	p, err := a.proactivePending.Get()
-	if err != nil {
+	if err != nil || p == nil || p.Action == proactive.ActionAmbient {
 		return nil
 	}
 	return p

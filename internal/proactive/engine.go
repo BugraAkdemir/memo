@@ -247,7 +247,13 @@ func (e *Engine) reapExpired() {
 
 // HandleResponse applies the user's answer to the pending suggestion: it records
 // feedback, adjusts the pattern, and clears the prompt. It reports whether the
-// user accepted (so callers can kick off the corresponding action).
+// user accepted (so callers can kick off the corresponding action). The
+// outcome is derived from response via the keyword-based OutcomeFromResponse
+// — appropriate here because response is a fixed string the frontend itself
+// sends (a banner button's exact label), not free-form user text. For
+// free-form natural-language text (any language — see
+// internal/app/proactive_ambient.go), classify the outcome yourself (e.g.
+// via an LLM, not a keyword list) and call HandleOutcome instead.
 func (e *Engine) HandleResponse(id, response string) (accepted bool, err error) {
 	p, err := e.pending.Respond(id, response)
 	if err != nil {
@@ -256,10 +262,19 @@ func (e *Engine) HandleResponse(id, response string) (accepted bool, err error) 
 	if p == nil {
 		return false, nil
 	}
-	outcome := OutcomeFromResponse(response)
-	e.recordOutcome(*p, outcome)
+	return e.HandleOutcome(*p, OutcomeFromResponse(response))
+}
+
+// HandleOutcome applies an already-classified Outcome to a suggestion: it
+// records feedback, adjusts the pattern (or suppresses it, or does nothing
+// for ignored), and clears the prompt. Callers that already have the
+// PendingSuggestion in hand (e.g. from PendingStore.Get, having classified
+// its own outcome independently of HandleResponse's keyword matching) should
+// use this directly instead of round-tripping through Respond.
+func (e *Engine) HandleOutcome(p PendingSuggestion, outcome Outcome) (accepted bool, err error) {
+	e.recordOutcome(p, outcome)
 	if cerr := e.pending.Clear(); cerr != nil {
-		logx.Printf("PROACTIVE: clear after response: %v", cerr)
+		logx.Printf("PROACTIVE: clear after outcome: %v", cerr)
 	}
 	return outcome == OutcomeAccepted, nil
 }

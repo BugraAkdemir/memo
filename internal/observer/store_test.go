@@ -108,6 +108,43 @@ func TestClassifyTopic(t *testing.T) {
 	}
 }
 
+// TestClassifyTopic_DoesNotMisfireOnCommonWords is a regression test for a
+// real bug: "coding" and "research" keyword lists used to include bare
+// Turkish word roots ("git", "hata", "test", "nasıl", "neden", "bul") that
+// are ordinary, unrelated vocabulary in everyday sentences — a user simply
+// saying they went somewhere, made a mistake, or asking "how are you" got
+// silently classified as a "coding"/"research" activity, polluting the
+// pattern analyzer's habit detection with completely unrelated turns.
+func TestClassifyTopic_DoesNotMisfireOnCommonWords(t *testing.T) {
+	cases := map[string]string{
+		"dün akşam eve gittim, çok yorgunum":    "general", // "git" root ≠ git(1)
+		"büyük bir hata yaptım bugün":           "general", // "hata" ≠ bug
+		"test sürüşüne çıkalım mı yarın":        "general", // "test" generic
+		"nasılsın, iyi misin bugün":             "general", // "nasıl" root of greeting
+		"bu iyi bir neden değil bence":          "general", // "neden" = reason, not "why"
+		"anahtarımı bir türlü bulamadım":        "general", // "bul" root ≠ research
+		"beyaz bir gömlek aldım bugün":          "general", // "yaz" substring of "beyaz"
+	}
+	for in, want := range cases {
+		if got := ClassifyTopic(in); got != want {
+			t.Errorf("ClassifyTopic(%q) = %q, want %q (false-positive keyword collision)", in, got, want)
+		}
+	}
+
+	// Genuine topic messages must still classify correctly even without the
+	// removed ambiguous words.
+	genuine := map[string]string{
+		"bu fonksiyonda bir bug var, refactor etmem lazım": "coding",
+		"bu makaleyi yazmam lazım, bir özet çıkar":          "writing",
+		"bu konuyu araştırmam lazım, kaynak bulabilir misin": "research",
+	}
+	for in, want := range genuine {
+		if got := ClassifyTopic(in); got != want {
+			t.Errorf("ClassifyTopic(%q) = %q, want %q (should still detect genuine topic)", in, got, want)
+		}
+	}
+}
+
 func mustRecord(t *testing.T, s *Store, obs Observation) {
 	t.Helper()
 	if _, err := s.Record(obs); err != nil {

@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"unicode"
 )
 
 // collectBuffer is the maximum number of buffered observations before the
@@ -195,10 +196,21 @@ func wordCount(s string) int {
 // topicKeywords maps a coarse topic label to trigger words (lower-case). The
 // classifier is deliberately simple and local; later phases can replace it with
 // something richer (e.g. the embedding model) without changing the schema.
+//
+// Deliberately excluded: bare Turkish word roots that are common, unrelated
+// vocabulary in their own right and would otherwise fire on completely
+// ordinary sentences — "git" (root of "gitmek", to go: "dün eve gittim"),
+// "hata" (plain "mistake": "büyük bir hata yaptım"), "test" (generic,
+// non-coding uses: "test ediyorum", "kan testi"), "nasıl" (root of the
+// everyday greeting "nasılsın", how are you), "neden" (also just "reason"),
+// "bul" (root of "bulmak", to find, used constantly outside any research
+// context: "anahtarımı bulamadım"), "bug" (prefix of "bugün", today — one of
+// the most common Turkish words there is: "bugün ne yaptın").
+// See TestClassifyTopic_DoesNotMisfireOnCommonWords.
 var topicKeywords = map[string][]string{
 	"coding": {
-		"kod", "code", "fonksiyon", "function", "bug", "hata", "derle", "compile",
-		"refactor", "git", "api", "fonksyon", "class", "struct", "deploy", "test",
+		"kod", "code", "fonksiyon", "function", "derle", "compile",
+		"refactor", "api", "fonksyon", "class", "struct", "deploy",
 		"python", "golang", "javascript", "react", "sql", "docker",
 	},
 	"writing": {
@@ -206,8 +218,8 @@ var topicKeywords = map[string][]string{
 		"mektup", "özet", "summary", "çevir", "translate", "düzelt", "edit",
 	},
 	"research": {
-		"araştır", "research", "nedir", "what is", "açıkla", "explain", "nasıl",
-		"how", "neden", "why", "bul", "find", "kaynak", "source",
+		"araştır", "research", "nedir", "what is", "açıkla", "explain",
+		"how", "why", "kaynak", "source",
 	},
 	"planning": {
 		"plan", "planla", "takvim", "calendar", "toplantı", "meeting", "görev",
@@ -216,13 +228,23 @@ var topicKeywords = map[string][]string{
 }
 
 // ClassifyTopic returns a coarse topic label for a message, or "general" when
-// nothing matches. The match is a simple case-insensitive keyword scan. Topics
-// are scanned in a fixed (sorted) order so ties break deterministically.
+// nothing matches. Single-word keywords are matched as a whole-token prefix
+// (the message is tokenized on Unicode letter/digit runs, so Turkish suffixes
+// attach without breaking tokenization) rather than a raw substring scan —
+// this still catches inflected forms ("yazıyorum" matches "yaz") but no
+// longer matches a keyword root buried mid-word in an unrelated word (e.g.
+// "beyaz", white, no longer matches "yaz"). Keyword phrases containing a
+// space (e.g. "what is") are matched against the raw lowercased text, since
+// tokenizing would break the phrase apart. Topics are scanned in a fixed
+// (sorted) order so ties break deterministically.
 func ClassifyTopic(text string) string {
 	if strings.TrimSpace(text) == "" {
 		return "general"
 	}
 	lower := strings.ToLower(text)
+	tokens := strings.FieldsFunc(lower, func(r rune) bool {
+		return !unicode.IsLetter(r) && !unicode.IsDigit(r)
+	})
 
 	topics := make([]string, 0, len(topicKeywords))
 	for topic := range topicKeywords {
@@ -235,8 +257,17 @@ func ClassifyTopic(text string) string {
 	for _, topic := range topics {
 		hits := 0
 		for _, w := range topicKeywords[topic] {
-			if strings.Contains(lower, w) {
-				hits++
+			if strings.Contains(w, " ") {
+				if strings.Contains(lower, w) {
+					hits++
+				}
+				continue
+			}
+			for _, tok := range tokens {
+				if strings.HasPrefix(tok, w) {
+					hits++
+					break
+				}
 			}
 		}
 		if hits > bestHits {

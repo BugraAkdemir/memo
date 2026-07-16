@@ -1,3 +1,48 @@
+# Handoff — 2026-07-17 (Session 37) — Sohbet içine gömülü "ambient" alışkanlık dürtmesi eklendi, dil-bağımsız (LLM tabanlı) sonuç tespiti, /code-review'un bulduğu 6 gerçek hata düzeltildi
+
+## Özet
+
+Session 36'nın devamı, aynı konuşma içinde. Kullanıcı şunu istedi: proaktif motorun mevcut ayrı banner/bildirim mekanizmasına ek olarak, model kendi normal cevabının İÇİNE doğal bir şekilde alışkanlığı sorabilsin (örnek: "kanka kod vakti değil mi, yazalım mı?") — hem sohbeti güzelleştirsin hem de kullanıcı kabul edip gerçekten o işe geçerse pattern'in güvenini artırsın. Kritik kısıtlar: (1) RAG'a hiç dokunma, (2) kullanıcının kabul/red cevabını anlamak için **kesinlikle keyword/regex listesi kullanma** (mevcut `OutcomeFromResponse` sadece TR/EN kapsıyor, her dilde çalışmalı — bunun yerine LLM'in kendisine sor), (3) Ayarlar → Minimal Mod açıkken bu özelliğin hem öneri sunma hem sonuç değerlendirme tarafı da tamamen kapansın (hiç prompt injection/LLM çağrısı olmasın).
+
+## Yapılan
+
+Yeni dosya `internal/app/proactive_ambient.go`:
+- `buildProactiveNudgeBlock` — saf yerel eşleştirme (mevcut `proactive.Match`/`observer.PatternStore`, LLM çağrısı yok), eşleşirse sistem promptuna "kullanıcının bu saatte X alışkanlığı var, doğal geliyorsa bir kere sorabilirsin, zorlamadan" notu ekliyor.
+- `checkAmbientNudgeSurfaced` (cevap bittikten sonra, `finishStream`'den ateşleniyor) — modelin kendisine "cevabında bu konuyu gerçekten açtın mı, EVET/HAYIR" diye soruyor (dar amaçlı LLM çağrısı, `extractAndPinFacts` ile aynı maliyet sınıfı — sadece pattern eşleştiğinde tetikleniyor, her mesajda değil). EVET ise `PendingSuggestion` (yeni `Action: ambient`) kaydediliyor.
+- `checkAmbientNudgeOutcome` (bir sonraki turun başında) — kullanıcının serbest metin cevabını (hangi dilde olursa olsun) modelin kendisine "KABUL/RET/BELİRSİZ" diye sorduruyor — **keyword listesi yok**. BELİRSİZ ise dokunmuyor, bekliyor.
+
+`internal/proactive/engine.go`: `HandleResponse` ikiye bölündü — yeni public `HandleOutcome(p, outcome)`, zaten sınıflandırılmış bir sonucu doğrudan alıp mevcut `recordOutcome`/`AdjustConfidence`/`Suppress` altyapısına besliyor. Mevcut banner akışı için davranış birebir aynı kaldı (tüm eski testler değişmeden geçiyor).
+
+## /code-review (5 paralel bulucu ajan) — 6 gerçek hata bulundu ve düzeltildi
+
+1. **En kritik**: `checkAmbientNudgeOutcome`, `Action`'a bakmadan HERHANGİ bir pending suggestion'ı işliyordu — arka plan motorunun resmi banner önerisi ekrandayken kullanıcı alakasız bir mesaj yazsa bile o banner'ı sessizce yanlış yorumlayıp temizleyebiliyordu. Fix: sadece `Action == ActionAmbient` işleniyor.
+2. **Gerçek race condition**: eşleşen pattern, paylaşılan bir App alanına sadece ID olarak yazılıp arka plan goroutine'inde tekrar diskten okunuyordu — hızlı bir sonraki tur bu alanı üzerine yazabiliyordu. Fix: `finishStream`'de SENKRON olarak yakalanıp (`takeNudgedPattern`) tam pattern değeri doğrudan goroutine'e parametre olarak geçiliyor.
+3. `checkAmbientNudgeSurfaced` artık `isLLMErrorReply` kontrolü yapıyor (hata cevaplarında boşuna LLM çağrısı yapılmıyordu).
+4. Aynı pending suggestion'ın art arda iki mesajla çift işlenmesine karşı `resolvingSuggestionID` tek-uçuş koruması + `HandleOutcome` öncesi yeniden-fetch eklendi.
+5. `GetPendingSuggestion` (desktop banner + mobile'ın kullandığı endpoint) artık `Action == ActionAmbient` olanları hariç tutuyor — ambient önerinin tüm amacı zaten ayrı bir popup OLMAMAK, banner'da da göstermek anlamsız/rahatsız edici olurdu.
+6. `chat.go`, özellik tamamen kapalıyken bile her mesajda goroutine+disk okuması yapmasın diye çağrı noktasında da erken çıkış ekledi.
+
+**Ek, ajanların bulmadığı ama tutarlılık için eklenen düzeltme:** Incognito Mode'da da bu özellik tamamen kapatıldı (`routeStream`, `saveMemoryAsync`/`updateMoodAsync` ile aynı `!incog` bloğu) — incognito'nun "hiçbir şey kalıcı olmaz" sözüne aykırı düşerdi.
+
+## Bilinçli olarak düzeltilmeyen, kabul edilen sınırlama
+
+`routeStream`, task-loop'un otomatik worker prompt'ları tarafından da çağrılıyor (kullanıcının yazmadığı metin) — teorik olarak bu metin de bir ambient önerinin cevabı gibi yanlış sınıflandırılabilir. Bu, AGENTS.md'nin zaten belgelediği "tek global aktif sohbet, otomatik çağıranlar SwitchChat yapmalı" mimari sınırlamasıyla aynı kategoride — bu özelliğe özgü değil, kapsam dışı bırakıldı. WhatsApp'ın bu koda hiç girmediği ayrıca doğrulandı (temiz).
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 34 paket yeşil (internal/memory dahil)
+```
+13 yeni test (`internal/app/proactive_ambient_test.go`) + `internal/proactive`'e 1 yeni test (`HandleOutcome`).
+
+**Gerçek ortamda doğrulanamayan:** Bu ortamda ekran/gerçek LLM olmadığı için modelin gerçekten doğal bir şekilde alışkanlığı sohbete getirip getirmediği, ve LLM'in EVET/HAYIR/KABUL/RET formatına ne kadar sadık kaldığı canlı test edilemedi — testler sahte (canned) LLM cevaplarıyla mantığı doğruluyor, gerçek model davranışını değil.
+
+Commit: `2910564`.
+
+---
+
 # Handoff — 2026-07-16 (Session 36) — Proaktif öğrenme sistemi baştan sona denetlendi, gerçek hatalar bulunup düzeltildi, desktop UI'ı ilk kez inşa edildi, default açıldı
 
 ## Özet

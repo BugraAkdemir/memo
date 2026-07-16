@@ -332,8 +332,8 @@ func Default() *AppConfig {
 			MaxHistoryDays: 7,
 		},
 		Proactive: ProactiveConfig{
-			Enabled: false,
-			Level:   "off",
+			Enabled: true,
+			Level:   "subtle",
 		},
 		Learning: LearningConfig{
 			SingleModelEnabled: false,

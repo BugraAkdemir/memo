@@ -1,3 +1,48 @@
+# Handoff — 2026-07-16 (Session 36) — Proaktif öğrenme sistemi baştan sona denetlendi, gerçek hatalar bulunup düzeltildi, desktop UI'ı ilk kez inşa edildi, default açıldı
+
+## Özet
+
+Kullanıcı proaktif öğrenmenin hiç çalıştığını görmediğini, üstüne "ben hiç kod ile konuşmama rağmen coding oluyor gibi" dedi. Bu şikayetten yola çıkılıp `internal/proactive` + `internal/observer` (+ ilgili `internal/app`/`internal/intent`/`frontend` uçları) sistematik olarak denetlendi. codebase-memory-mcp (search_graph/trace_path/get_code_snippet) boyunca kullanıldı. Bulunan gerçek hatalar sırayla düzeltildi, her biri ayrı, doğrulanmış, RAG'a (`internal/memory/*`) hiç dokunmayan commit'ler halinde — kullanıcının açık talimatı buydu. `/code-review` her bir Flutter/Go değişiklik grubunda ayrıca çalıştırıldı.
+
+## Bulunan ve düzeltilen 4 gerçek hata
+
+1. **`ClassifyTopic`'in Türkçe kelime çakışmaları (`afa9857`)** — `topicKeywords["coding"]` içinde `"git"` (Türkçe "gitmek" kökü) ve `"hata"` (Türkçe "yanlış/mistake") bare substring olarak duruyordu; `"research"` içinde `"nasıl"` (günlük "nasılsın" selamlaşmasının kökü) vardı. `strings.Contains` ham taraması yaptığı için "dün eve gittim" ya da "büyük bir hata yaptım" gibi kodlamayla hiç alakası olmayan sıradan Türkçe cümleler "coding"/"research" aktivitesi olarak etiketleniyordu — kullanıcının tam şikayeti. Fix: en tehlikeli kelimeler (git/hata/nasıl/neden/bul/test, ve testin kendisi "bug"→"bugün" çakışmasını ortaya çıkardığı için o da) listeden çıkarıldı; `ClassifyTopic` artık Unicode harf/rakam runlarına göre tokenize edip kelime-başı (prefix) eşleşmesi yapıyor (ham substring yerine) — çekimli formlar hâlâ yakalanıyor ama "beyaz" gibi kelimenin ortasına gömülü kökler artık yakalanmıyor.
+
+2. **Beyan edilen alışkanlıklar hiç güvenilmiyordu (`7a59c00`)** — Kullanıcının sohbette açıkça söylediği bir alışkanlık ("her akşam 9'da kod yazarım", `internal/intent`'in zaten çalışan LLM tespiti üzerinden `IsHabit=true` dönüyor) bile genel istatistik havuzuna düşüp `AnalyzePatterns`'ın `MinObservations>=3` + güven eşiği (0.3) barajını geçmek zorundaydı — hafızanın pinned facts'inin RAG sıralamasını atlaması gibi bir garanti katmanı yoktu. Fix: `TimePattern.Declared` alanı + `PatternStore.SaveDeclared` (upsert, `declared:HH:MM` ID'si) + `Analyzer.Run`'ın periyodik istatistiksel yeniden hesaplamadan sonra declared pattern'leri geri birleştirmesi (`Suppress` hâlâ çalışıyor). `processMessageIntent` artık `IsHabit=true` geldiğinde bunu direkt 0.9 güvenle pinliyor.
+
+3. **Proaktif öneriler yanlış sohbete karışıyordu (`f8f6c5a`)** — `proactiveEmit`, `sm.AddMessage(...)` ile öneriyi **o an her ne sohbet aktifse ona** enjekte ediyordu; hiç `SwitchChat` yapmadan. AGENTS.md'nin kendi belgelediği "tek global aktif sohbet" tuzağının tam örneği — arka planda 30 saniyede bir tetiklenen bir motorun, kullanıcının o an tamamen alakasız bir konuda sürdürdüğü bir konuşmaya rastgele mesaj sıkıştırması. Fix: `AddMessage` çağrısı tamamen kaldırıldı, tek teslimat yolu artık `proactive_suggestion` event'i + pending-suggestion store (zaten mobile'ın kullandığı).
+
+4. **Desktop'ta öneriyi gösterecek hiçbir UI yoktu** — backend'in `GetPendingSuggestion`/`RespondToSuggestion` bridge metodları ve Flutter `api_client.dart`'ın `getPendingSuggestion()`/`respondToSuggestion()` metodları zaten vardı ama `frontend/lib` içinde hiçbir çağıran yoktu (mobile ayrı, kendi UI'ını kullanıyor). 3. maddedeki fix'ten sonra bu durum "hiç görünmez" hale gelirdi. Yeni: `pendingProactiveSuggestionProvider` (20s polling, `connectionStatusProvider`'ın autoDispose+alive-flag desenini taklit ediyor) + `ProactiveSuggestionBanner` (AppShell'in overlay Stack'inde, `VersionBanner` gibi her sekmeden görünür, Evet/Şimdi değil/Artık sorma butonları). Widget testi yazılırken gerçek bir overflow bug'ı yakalandı (3 buton 800x600 test viewport'ta bile taşıyordu) — `Row` yerine `Wrap`'e çevrildi.
+
+## Default açıldı (`cffc7f1`)
+
+`config.Default()`'taki `Proactive.Enabled: false` → `true`, `Level: "off"` → `"subtle"` — kullanıcının açık talimatıyla, yukarıdaki 4 fix + UI'dan SONRA. Not: `config.Load()` YAML'i `Default()` üzerine bindiriyor, yani `proactive:` bölümü hiç olmayan (özellik var olmadan önce kurulmuş) mevcut kullanıcılar bunu sessizce miras alacak — aynı mekanizma daha önce `AutoFactExtraction` için flaglenmişti (2026-07-15), burada flip doğrudan istenmişti ama mekanizma kayda geçsin diye not edildi.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm 34 paket yeşil (internal/memory dahil — RAG'a dokunulmadığı da testle doğrulandı)
+flutter analyze lib/                                            → temiz (bilinen 4 info-level bulgu)
+flutter test                                                     → 107/107 (105 + proactive_suggestion_banner_test.dart'ın 2 testi)
+```
+
+Her commit ayrı ayrı `/code-review` ile gözden geçirildi (Go tarafı: `ReportFindings` boş döndü; Flutter tarafı: widget testinin kendisi overflow bug'ını yakaladı, fix commit'e dahil edildi).
+
+## Kapsam dışı bırakılan / dokunulmayan
+
+- `internal/memory/*` (RAG/vektör arama) — kullanıcının açık talimatıyla hiç dokunulmadı.
+- Proaktif motorun `Config{}` sabitleri (Interval=30s, MinScore=0.1, MinConfidence=0.3, Cooldown=30dk) config.yaml'dan ayarlanabilir değil, hardcoded kalıyor — denetlendi, bug değil, kapsam dışı bırakıldı.
+- `RecordIntent`'in `ActivityIntent` gözlemleri hâlâ `Topic: "general"` ile genel istatistik havuzuna da düşüyor (declared-pattern katmanına EK olarak, ondan bağımsız) — önceden var olan bir davranış, bu oturumda dokunulmadı.
+
+## Sıradaki oturum için
+
+- Kullanıcı gerçek ortamda (rebuild edilmiş binary) proaktif öneriyi canlı görüp Evet/Şimdi değil/Artık sorma akışını denemeli — bu ortamda görüntü/tarayıcı olmadığı için görsel doğrulama yapılamadı.
+- "Beyan edilmiş alışkanlık" akışı da canlı test edilmeli: sohbette "her akşam X saatinde Y yaparım" gibi bir cümle söylenip `data/profile/patterns.json`'da `declared:HH:MM` ID'li, `"declared":true` alanlı bir pattern'in gerçekten oluştuğu doğrulanmalı.
+
+---
+
 # Handoff — 2026-07-16 (Session 35) — Session 34'ün bıraktığı açık uç kapatıldı: agent sistem promptu artık hafızanın dosya değil, hazır enjekte metin olduğunu söylüyor
 
 ## Özet

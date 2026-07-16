@@ -14,6 +14,7 @@ import (
 	"memo/internal/calendar"
 	"memo/internal/config"
 	"memo/internal/intent"
+	"memo/internal/observer"
 	"memo/internal/provider"
 )
 
@@ -140,6 +141,17 @@ func (a *App) processMessageIntent(text string, source intent.Source, contact st
 			result.HabitTime,
 			ts,
 		)
+	}
+
+	// A habit the user explicitly declared ("her akşam 9'da kod yazarım")
+	// doesn't need to wait through observer.AnalyzePatterns' statistical
+	// MinObservations/confidence-threshold gate like passively-observed
+	// behavior does — see observer.DeclaredHabitPattern's doc comment.
+	if result.IsHabit && result.HabitTime != nil && a.observerPatterns != nil {
+		p := observer.DeclaredHabitPattern(result.Summary, *result.HabitTime, result.HabitDays)
+		if _, perr := a.observerPatterns.SaveDeclared(p); perr != nil {
+			logx.Printf("observer: save declared habit: %v", perr)
+		}
 	}
 
 	// Add to calendar when a specific event time was resolved. If the user has

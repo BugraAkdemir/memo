@@ -43,8 +43,13 @@ func (a *Analyzer) Run(ctx context.Context) error {
 	}
 	patterns := AnalyzePatterns(obs, now)
 
+	suppressed, serr := a.patterns.SuppressedSet()
+	if serr != nil {
+		suppressed = nil
+	}
+
 	// Drop any patterns the user explicitly retired, so they are not re-learned.
-	if suppressed, serr := a.patterns.SuppressedSet(); serr == nil && len(suppressed) > 0 {
+	if len(suppressed) > 0 {
 		kept := patterns[:0]
 		for _, p := range patterns {
 			if !suppressed[p.ID] {
@@ -52,6 +57,20 @@ func (a *Analyzer) Run(ctx context.Context) error {
 			}
 		}
 		patterns = kept
+	}
+
+	// Declared (explicitly stated) habits are a separate, guaranteed layer —
+	// see TimePattern.Declared — that this statistical recomputation knows
+	// nothing about, since it only reads passively-observed rows from the
+	// Store. Re-merge them back in (still honoring suppression above) so a
+	// declared habit survives every periodic analyzer run indefinitely,
+	// instead of being wiped by the next wholesale Save below.
+	if existing, lerr := a.patterns.Load(); lerr == nil {
+		for _, p := range existing {
+			if p.Declared && !suppressed[p.ID] {
+				patterns = append(patterns, p)
+			}
+		}
 	}
 
 	if err := a.patterns.Save(patterns); err != nil {

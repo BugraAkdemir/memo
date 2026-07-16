@@ -51,6 +51,61 @@ type TimePattern struct {
 	FirstSeen       time.Time `json:"first_seen"`
 	LastSeen        time.Time `json:"last_seen"`
 	WeightedScore   float64   `json:"weighted_score"`
+
+	// Declared is true when this pattern came from the user explicitly
+	// stating a habit ("her akşam 9'da kod yazarım") rather than from
+	// AnalyzePatterns inferring one from repeated passive observation. See
+	// DeclaredHabitPattern and PatternStore.SaveDeclared.
+	Declared bool `json:"declared,omitempty"`
+}
+
+// declaredHabitConfidence is the starting confidence given to a pattern the
+// user explicitly declared. Deliberately high and immediate — the same
+// "trust what was stated outright, don't make it win a repeat-count/
+// consistency contest" principle the memory system's pinned facts already
+// apply to durable facts stated in chat (see extractAndPinFacts). A
+// passively-observed pattern only reaches this range after several
+// consistent repeats (see buildTimePattern); a declared one starts here and
+// only fades via the normal ApplyDecay if never reinforced again.
+const declaredHabitConfidence = 0.9
+
+// DeclaredHabitPattern builds a TimePattern for a habit the user explicitly
+// stated (via intent extraction, internal/intent), for PatternStore.SaveDeclared.
+// habitDays empty means every day. summary becomes the pattern's
+// ActivityType, surfaced verbatim to the proactive engine's Chief decision
+// prompt (BuildContextPrompt), so it should already be a short human-readable
+// description (that's what internal/intent.IntentResult.Summary already is).
+//
+// The pattern ID is keyed only by the declared time-of-day, not the summary
+// text — two mentions of "the same" habit rarely produce byte-identical LLM
+// summaries, but a user is very unlikely to declare two unrelated habits at
+// the exact same minute of day, so this is the more stable dedup key: a
+// second declaration around the same time updates the existing pattern
+// in place instead of accumulating near-duplicates.
+func DeclaredHabitPattern(summary string, habitTime time.Time, habitDays []time.Weekday) TimePattern {
+	var daysActive [7]bool
+	if len(habitDays) == 0 {
+		for i := range daysActive {
+			daysActive[i] = true
+		}
+	} else {
+		for _, d := range habitDays {
+			if d >= 0 && int(d) < 7 {
+				daysActive[d] = true
+			}
+		}
+	}
+	return TimePattern{
+		ID:              "declared:" + habitTime.Format("15:04"),
+		ActivityType:    summary,
+		TimePeakSeconds: habitTime.Hour()*3600 + habitTime.Minute()*60 + habitTime.Second(),
+		StdDevSeconds:   minStdDevSeconds,
+		Confidence:      declaredHabitConfidence,
+		DaysActive:      daysActive,
+		WeightedScore:   1,
+		LastSeen:        time.Now(),
+		Declared:        true,
+	}
 }
 
 // ApplyDecay returns a confidence reduced for elapsed time since lastSeen,
@@ -153,6 +208,45 @@ func (ps *PatternStore) Save(patterns []TimePattern) error {
 		return fmt.Errorf("observer.PatternStore.Save: %w", err)
 	}
 	return nil
+}
+
+// SaveDeclared inserts or updates a single explicitly user-declared habit
+// pattern directly in the persisted file (Declared forced to true),
+// independent of the statistical analyzer's periodic wholesale Save — see
+// TimePattern.Declared and DeclaredHabitPattern. Re-declaring "the same"
+// habit (same ID — see DeclaredHabitPattern's doc comment on the dedup key)
+// updates it in place: FirstSeen and TotalCount are preserved/incremented
+// from the existing entry rather than reset, so a repeated declaration reads
+// as reinforcement, not a fresh one-off statement.
+func (ps *PatternStore) SaveDeclared(p TimePattern) (TimePattern, error) {
+	ps.mu.Lock()
+	defer ps.mu.Unlock()
+	pf, err := ps.readFile()
+	if err != nil {
+		return TimePattern{}, fmt.Errorf("observer.PatternStore.SaveDeclared: read: %w", err)
+	}
+	p.Declared = true
+	if p.LastSeen.IsZero() {
+		p.LastSeen = time.Now()
+	}
+	for i := range pf.Patterns {
+		if pf.Patterns[i].ID == p.ID {
+			p.FirstSeen = pf.Patterns[i].FirstSeen
+			p.TotalCount = pf.Patterns[i].TotalCount + 1
+			pf.Patterns[i] = p
+			if err := ps.writeFile(pf); err != nil {
+				return TimePattern{}, fmt.Errorf("observer.PatternStore.SaveDeclared: %w", err)
+			}
+			return p, nil
+		}
+	}
+	p.FirstSeen = p.LastSeen
+	p.TotalCount = 1
+	pf.Patterns = append(pf.Patterns, p)
+	if err := ps.writeFile(pf); err != nil {
+		return TimePattern{}, fmt.Errorf("observer.PatternStore.SaveDeclared: %w", err)
+	}
+	return p, nil
 }
 
 // SuppressedSet returns the set of retired pattern ids.

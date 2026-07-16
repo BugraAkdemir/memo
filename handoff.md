@@ -1,3 +1,36 @@
+# Handoff — 2026-07-16 (Session 35) — Session 34'ün bıraktığı açık uç kapatıldı: agent sistem promptu artık hafızanın dosya değil, hazır enjekte metin olduğunu söylüyor
+
+## Özet
+
+Session 34'ün handoff'unun önerdiği ilk iş buydu: `internal/identity/identity.go`'nun sistem promptuna hafızanın nasıl çalıştığını (dosya değil, otomatik enjeksiyon) açıklayan bir not eklemenin işe yarayıp yaramayacağı denendi. codebase-memory-mcp'nin graph araçlarıyla (`search_graph`, `trace_path`, `get_code_snippet`) kod okunmadan doğrudan kaynağa gidildi.
+
+## Bulgu
+
+Not aslında `internal/identity/identity.go` değil, `internal/app/chat.go`'daki `buildAgentSystemPrompt()` fonksiyonundaydı — agent modu açıkken (`routeStream`, `chat.go:171`) sistem promptuna ek olarak eklenen ayrı bir blok. Bu blokun zaten bir "Hafıza Hakkında" bölümü vardı (Session 33'te eklenmiş, commit `2eaa9b7`) ama SADECE dosyaya **yazmayı** yasaklıyordu ("dosya yazma araçlarını hafıza amacıyla asla kullanma"). **Okuma** tarafında hiçbir kısıtlama yoktu, ve modele hafızasının zaten `identity.BuildSystemPrompt`'un ürettiği "relevant memories" bölümünde hazır metin olarak durduğu hiç söylenmiyordu.
+
+CLI'da `activateChat` (`internal/replcli/repl.go:202`) her sohbete geçişte agent modunu koşulsuz açtığı için (`SetAgentEnabled(true)`), bu eksik blok pratikte HER CLI turunda devrede — ve model gerçek dosya araçlarına erişebiliyor. Bu, Session 34'te gözlemlenen somut örneği (Turn 21: "boş zamanlarında ne yapıyorsun" gibi sıradan bir soruya model kendiliğinden `read_file` ile var olmayan `.../fatih_workspace/memory.json`'ı okumaya çalıştı) tam olarak açıklıyor.
+
+## Fix
+
+`buildAgentSystemPrompt`'un "Hafıza Hakkında" bloğu iki maddeye ayrıldı:
+1. **Yeni:** Hafızanın zaten sistem promptunun "relevant memories" bölümünde düz metin olarak verildiği, hatırlayıp hatırlamadığını kontrol etmek için `read_file`/`list_directory`/`search` gibi bir dosya aracının ASLA çağrılmaması gerektiği, `memory.json` gibi bir dosyanın diskte olmadığı (gerçek hafıza SQLite'ta, modelin erişimi dışında) açıkça yazıldı.
+2. **Korundu:** Session 33'ün orijinal yazma yasağı ikinci madde olarak aynen kaldı.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → whisper paketindeki TestGetStatus_NewServer hariç hepsi yeşil
+```
+`internal/whisper`'daki tek FAIL yine bu oturumla ilgisiz: `lsof -i :9877` ile doğrulandı, gerçek bir `whisper-server` süreci (önceki bir canlı test oturumundan kalma) o portu hâlâ dinliyor.
+
+**Gerçek ortamda doğrulanamayan:** Bu, salt bir sistem promptu metni değişikliği — modelin gerçekten `read_file`'ı çağırmayı bırakıp bırakmayacağı probabilistik bir davranış, otomatik testle garanti edilemez. Bir sonraki canlı/agent testinde (özellikle "hatırlıyor musun" tarzı sorularla) tekrar gözlemlenmeli.
+
+Commit: (bu handoff girişiyle birlikte, ayrı `docs:` commit'i).
+
+---
+
 # Handoff — 2026-07-15 (Session 34) — Session 33'ün açık ucu kapatıldı: CLI'nın "hafıza bazen kaydediyor bazen kaydetmiyor" şikayetinin gerçek kök nedeni bulundu, düzeltildi, canlı doğrulandı
 
 ## Özet

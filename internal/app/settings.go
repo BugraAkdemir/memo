@@ -201,6 +201,33 @@ func (a *App) SetMinimalMode(enabled bool) error {
 	return config.Save(a.cfg)
 }
 
+// GetMinimalModeOverrides returns the current granular Minimal Mode
+// overrides as plain primitives (see identity.Identity.GetMinimalModeOverrides's
+// doc comment — each only has any effect while Minimal Mode itself is on).
+// Plain bools rather than a struct, same as the rest of this bridge (e.g.
+// ImportMemoryFromText), so internal/webserver never needs to import
+// internal/app types directly.
+func (a *App) GetMinimalModeOverrides() (keepPersona, keepCapabilities, keepPassive, keepProactive bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.Identity.MinimalModeKeepPersona, a.cfg.Identity.MinimalModeKeepCapabilities,
+		a.cfg.Identity.MinimalModeKeepPassive, a.cfg.Identity.MinimalModeKeepProactive
+}
+
+// SetMinimalModeOverrides updates the granular Minimal Mode overrides.
+func (a *App) SetMinimalModeOverrides(keepPersona, keepCapabilities, keepPassive, keepProactive bool) error {
+	a.cfgMu.Lock()
+	a.cfg.Identity.MinimalModeKeepPersona = keepPersona
+	a.cfg.Identity.MinimalModeKeepCapabilities = keepCapabilities
+	a.cfg.Identity.MinimalModeKeepPassive = keepPassive
+	a.cfg.Identity.MinimalModeKeepProactive = keepProactive
+	a.cfgMu.Unlock()
+	a.identity.SetMinimalModeOverrides(keepPersona, keepCapabilities, keepPassive, keepProactive)
+	logx.Printf("Minimal mode overrides set: persona=%v capabilities=%v passive=%v proactive=%v",
+		keepPersona, keepCapabilities, keepPassive, keepProactive)
+	return config.Save(a.cfg)
+}
+
 // GetImageBase64 reads an image file from within the data directory and returns it as base64.
 func (a *App) GetImageBase64(path string) string {
 	dataDir := filepath.Dir(a.cfg.Memory.PersistDir)

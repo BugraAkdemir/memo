@@ -5,10 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"memo/internal/logx"
-	"time"
 	"memo/internal/api"
 	"memo/internal/config"
+	"memo/internal/logx"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/shutdown"
@@ -17,6 +16,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 )
 
 // ─── Chat Streaming (SSE) ───────────────────────────────────────
@@ -331,6 +331,45 @@ func (s *Server) handleMinimalMode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// handleMinimalModeOverrides gets/sets the four granular Minimal Mode
+// overrides (Settings' "keep X on even in Minimal Mode" dropdown) — each
+// only has any effect while Minimal Mode itself is on, see
+// app.MinimalModeOverrides's doc comment.
+func (s *Server) handleMinimalModeOverrides(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		persona, capabilities, passive, proactive := s.fullBridge.GetMinimalModeOverrides()
+		writeJSON(w, map[string]bool{
+			"keep_persona":      persona,
+			"keep_capabilities": capabilities,
+			"keep_passive":      passive,
+			"keep_proactive":    proactive,
+		})
+	case http.MethodPut:
+		var req struct {
+			KeepPersona      bool `json:"keep_persona"`
+			KeepCapabilities bool `json:"keep_capabilities"`
+			KeepPassive      bool `json:"keep_passive"`
+			KeepProactive    bool `json:"keep_proactive"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetMinimalModeOverrides(req.KeepPersona, req.KeepCapabilities, req.KeepPassive, req.KeepProactive); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 // ─── Incognito Prompt ───────────────────────────────────────────
 
 func (s *Server) handleIncognitoPrompt(w http.ResponseWriter, r *http.Request) {
@@ -595,7 +634,6 @@ func (s *Server) handleGenerateTitle(w http.ResponseWriter, r *http.Request) {
 	title := s.fullBridge.GenerateChatTitle()
 	writeJSON(w, map[string]string{"title": title})
 }
-
 
 // ─── Remote Access ──────────────────────────────────────────────
 

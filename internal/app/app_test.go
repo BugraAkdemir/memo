@@ -77,6 +77,35 @@ func TestGetSetIncognitoPrompt(t *testing.T) {
 	}
 }
 
+// TestGetSetMinimalModeOverrides checks the granular Minimal Mode dropdown
+// bridge: set/get round-trips through both a.cfg (what config.Save persists
+// and GetMinimalModeOverrides reads back) and a.identity (what
+// BuildSystemPrompt/ambientNudgingActive actually consult at request time).
+func TestGetSetMinimalModeOverrides(t *testing.T) {
+	a := &App{
+		cfg:      &config.AppConfig{},
+		identity: identity.New("Test", "Memo", "casual", "", true),
+	}
+
+	if err := a.SetMinimalModeOverrides(true, false, true, false); err != nil {
+		t.Fatalf("SetMinimalModeOverrides: %v", err)
+	}
+
+	persona, capabilities, passive, proactiveKeep := a.GetMinimalModeOverrides()
+	if !persona || capabilities || !passive || proactiveKeep {
+		t.Errorf("GetMinimalModeOverrides() = (%v,%v,%v,%v), want (true,false,true,false)",
+			persona, capabilities, passive, proactiveKeep)
+	}
+
+	// Must also have reached a.identity, not just a.cfg — this is what the
+	// hot streaming path (BuildSystemPrompt, ambientNudgingActive) reads.
+	idPersona, idCapabilities, idPassive, idProactive := a.identity.GetMinimalModeOverrides()
+	if !idPersona || idCapabilities || !idPassive || idProactive {
+		t.Errorf("identity.GetMinimalModeOverrides() = (%v,%v,%v,%v), want (true,false,true,false)",
+			idPersona, idCapabilities, idPassive, idProactive)
+	}
+}
+
 func TestGetMoodEnabled(t *testing.T) {
 	a := &App{}
 	if a.GetMoodEnabled() {
@@ -224,7 +253,7 @@ func TestGetActiveProvider(t *testing.T) {
 
 func TestGetActiveProvider_Configured(t *testing.T) {
 	a := &App{
-		cfg:               &config.AppConfig{},
+		cfg:                &config.AppConfig{},
 		activeProviderName: "openai",
 	}
 	got := a.GetActiveProvider()

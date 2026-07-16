@@ -223,6 +223,90 @@ func TestBuildSystemPrompt_MinimalMode_OmitsPassiveFeaturesBlock(t *testing.T) {
 	}
 }
 
+// TestBuildSystemPrompt_MinimalMode_KeepPersona_OnlyRestoresPersona checks
+// the granular override: with MinimalMode on and only KeepPersona set, the
+// identity/origin/style block comes back but the passive-features and
+// capabilities blocks stay stripped — the user's own scenario ("turn
+// learning off, but not the system prompt") depends on this independence.
+func TestBuildSystemPrompt_MinimalMode_KeepPersona_OnlyRestoresPersona(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	id.SetMinimalModeOverrides(true, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false)
+
+	if !strings.Contains(prompt, "Buğra Akdemir") {
+		t.Error("KeepPersona=true should restore the origin block")
+	}
+	if strings.Contains(prompt, "calendar-worthy plans") {
+		t.Error("KeepPersona alone should not restore the passive-features block")
+	}
+	if strings.Contains(prompt, "Agent mode") {
+		t.Error("KeepPersona alone should not restore the capabilities block")
+	}
+}
+
+// TestBuildSystemPrompt_MinimalMode_KeepCapabilitiesOnly is the inverse:
+// only the capabilities block comes back, persona/passive stay stripped.
+func TestBuildSystemPrompt_MinimalMode_KeepCapabilitiesOnly(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	id.SetMinimalModeOverrides(false, true, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false)
+
+	if !strings.Contains(prompt, "Agent mode") {
+		t.Error("KeepCapabilities=true should restore the capabilities block")
+	}
+	if strings.Contains(prompt, "Buğra Akdemir") {
+		t.Error("KeepCapabilities alone should not restore the persona/origin block")
+	}
+	if strings.Contains(prompt, "calendar-worthy plans") {
+		t.Error("KeepCapabilities alone should not restore the passive-features block")
+	}
+}
+
+// TestBuildSystemPrompt_MinimalMode_KeepPassiveOnly is the third
+// combination: only the passive-features block comes back.
+func TestBuildSystemPrompt_MinimalMode_KeepPassiveOnly(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	id.SetMinimalModeOverrides(false, false, true, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false)
+
+	if !strings.Contains(prompt, "calendar-worthy plans") {
+		t.Error("KeepPassive=true should restore the passive-features block")
+	}
+	if strings.Contains(prompt, "Buğra Akdemir") {
+		t.Error("KeepPassive alone should not restore the persona/origin block")
+	}
+	if strings.Contains(prompt, "Agent mode") {
+		t.Error("KeepPassive alone should not restore the capabilities block")
+	}
+}
+
+// TestBuildSystemPrompt_MinimalMode_OverridesAreNoOpWhenNotMinimal confirms
+// the overrides only matter while MinimalMode is actually on — setting them
+// with MinimalMode off must not change anything (everything's already on).
+func TestBuildSystemPrompt_MinimalMode_OverridesAreNoOpWhenNotMinimal(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	id.SetMinimalModeOverrides(false, false, false, false)
+	prompt := id.BuildSystemPrompt(nil, false, false, false)
+
+	if !strings.Contains(prompt, "Buğra Akdemir") || !strings.Contains(prompt, "Agent mode") || !strings.Contains(prompt, "calendar-worthy plans") {
+		t.Error("overrides should have no effect when MinimalMode is off — everything should already be present")
+	}
+}
+
+// TestGetMinimalModeOverrides_DefaultFalse checks the zero-value default —
+// a fresh Identity (or MinimalMode toggled on without ever touching the
+// dropdown) behaves exactly like the original all-off Minimal Mode.
+func TestGetMinimalModeOverrides_DefaultFalse(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", true)
+	p, c, pa, pr := id.GetMinimalModeOverrides()
+	if p || c || pa || pr {
+		t.Errorf("GetMinimalModeOverrides() = (%v,%v,%v,%v), want all false by default", p, c, pa, pr)
+	}
+	if id.GetMinimalModeKeepProactive() {
+		t.Error("GetMinimalModeKeepProactive() should default to false")
+	}
+}
+
 func TestUpdateUserName(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
 	id.Update("Bob", "", "", "")

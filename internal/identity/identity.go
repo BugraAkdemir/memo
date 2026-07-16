@@ -23,8 +23,21 @@ type Identity struct {
 	// (an HTTP toggle) with BuildSystemPrompt running for an in-flight
 	// stream on another chat — both must see a consistent value instead of
 	// racing on a bare bool.
-	MinimalMode   bool
-	minimalModeMu sync.RWMutex
+	MinimalMode bool
+	// Granular Minimal Mode overrides — only consulted while MinimalMode is
+	// true (see BuildSystemPrompt). Let a user keep Minimal Mode's overall
+	// "strip everything" intent while selectively re-enabling one category
+	// — e.g. keep proactive nudging off but the persona/system prompt on —
+	// instead of the only alternative being to turn Minimal Mode off
+	// entirely and get everything back at once. All guarded by
+	// minimalModeMu alongside MinimalMode itself, for the same reason
+	// (SetMinimalMode/the setter below can race an in-flight
+	// BuildSystemPrompt for another chat).
+	MinimalModeKeepPersona      bool
+	MinimalModeKeepCapabilities bool
+	MinimalModeKeepPassive      bool
+	MinimalModeKeepProactive    bool
+	minimalModeMu               sync.RWMutex
 
 	// LearnedStyleNotes is a short paragraph describing the user's
 	// communication style/personality, learned via the "import memory from
@@ -68,6 +81,39 @@ func (id *Identity) GetMinimalMode() bool {
 	return id.MinimalMode
 }
 
+// SetMinimalModeOverrides sets the four granular Minimal Mode overrides in
+// one call (so a settings update applies them atomically together, not one
+// at a time). Each is a no-op unless MinimalMode is also true.
+func (id *Identity) SetMinimalModeOverrides(keepPersona, keepCapabilities, keepPassive, keepProactive bool) {
+	id.minimalModeMu.Lock()
+	id.MinimalModeKeepPersona = keepPersona
+	id.MinimalModeKeepCapabilities = keepCapabilities
+	id.MinimalModeKeepPassive = keepPassive
+	id.MinimalModeKeepProactive = keepProactive
+	id.minimalModeMu.Unlock()
+}
+
+// GetMinimalModeOverrides returns the four granular overrides in one
+// lock acquisition — BuildSystemPrompt needs three of them together and a
+// consistent snapshot matters the same way GetMinimalMode's doc comment
+// already explains for MinimalMode itself.
+func (id *Identity) GetMinimalModeOverrides() (keepPersona, keepCapabilities, keepPassive, keepProactive bool) {
+	id.minimalModeMu.RLock()
+	defer id.minimalModeMu.RUnlock()
+	return id.MinimalModeKeepPersona, id.MinimalModeKeepCapabilities, id.MinimalModeKeepPassive, id.MinimalModeKeepProactive
+}
+
+// GetMinimalModeKeepProactive reports whether proactive/ambient nudging
+// should stay active despite MinimalMode being on — internal/app's
+// ambientNudgingActive() (proactive_ambient.go) is the sole caller, kept as
+// its own single-value getter since that call site only ever needs this one
+// flag, not all four.
+func (id *Identity) GetMinimalModeKeepProactive() bool {
+	id.minimalModeMu.RLock()
+	defer id.minimalModeMu.RUnlock()
+	return id.MinimalModeKeepProactive
+}
+
 // SetLearnedStyleNotes replaces the learned communication-style paragraph
 // injected into BuildSystemPrompt. Concurrency-guarded for the same reason
 // as SetMinimalMode: a memory-import request (HTTP handler goroutine) can
@@ -87,8 +133,14 @@ func (id *Identity) GetLearnedStyleNotes() string {
 func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled bool) string {
 	var sb strings.Builder
 
-	if !id.GetMinimalMode() {
-		// Base identity
+	minimal := id.GetMinimalMode()
+	keepPersona, keepCapabilities, keepPassive, _ := id.GetMinimalModeOverrides()
+
+	// Persona/identity block: base identity or CustomRole, origin facts,
+	// style instructions, and learned style notes — bundled as one category
+	// (Settings' "Minimal Mode" breakdown calls this "system prompt/persona")
+	// since a user picking one wants all four together, not a finer split.
+	if !minimal || keepPersona {
 		if id.CustomRole != "" {
 			sb.WriteString(id.CustomRole)
 		} else {
@@ -103,22 +155,6 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		sb.WriteString("\n\n")
 		sb.WriteString(id.buildOriginBlock())
 
-		// Always-on background capability with no on/off toggle — see
-		// buildPassiveFeaturesBlock's own doc comment for why this needs
-		// stating explicitly too, same reasoning as buildCapabilitiesBlock
-		// below but for something that's never off rather than something
-		// that's sometimes off.
-		sb.WriteString("\n\n")
-		sb.WriteString(buildPassiveFeaturesBlock())
-
-		// Which off-by-default features exist but aren't on right now — see
-		// buildCapabilitiesBlock's own doc comment for why this only lists
-		// what's OFF.
-		if capBlock := buildCapabilitiesBlock(agentEnabled, webSearchEnabled); capBlock != "" {
-			sb.WriteString("\n\n")
-			sb.WriteString(capBlock)
-		}
-
 		// Style instructions
 		sb.WriteString("\n\n")
 		sb.WriteString(GetStyleInstructions(id.Style))
@@ -129,6 +165,30 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		if notes := id.GetLearnedStyleNotes(); notes != "" {
 			sb.WriteString("\n\nWhat you've learned about how this user likes to be talked to (from imported context, adapt your tone accordingly):\n")
 			sb.WriteString(notes)
+		}
+	}
+
+	// Always-on background capability with no on/off toggle — see
+	// buildPassiveFeaturesBlock's own doc comment for why this needs
+	// stating explicitly too, same reasoning as buildCapabilitiesBlock
+	// below but for something that's never off rather than something
+	// that's sometimes off.
+	if !minimal || keepPassive {
+		if sb.Len() > 0 {
+			sb.WriteString("\n\n")
+		}
+		sb.WriteString(buildPassiveFeaturesBlock())
+	}
+
+	// Which off-by-default features exist but aren't on right now — see
+	// buildCapabilitiesBlock's own doc comment for why this only lists
+	// what's OFF.
+	if !minimal || keepCapabilities {
+		if capBlock := buildCapabilitiesBlock(agentEnabled, webSearchEnabled); capBlock != "" {
+			if sb.Len() > 0 {
+				sb.WriteString("\n\n")
+			}
+			sb.WriteString(capBlock)
 		}
 	}
 

@@ -172,12 +172,12 @@ type WhatsAppConfig struct {
 }
 
 type RemoteAccessConfig struct {
-	Enabled       bool   `yaml:"enabled" json:"enabled"`
-	Port          int    `yaml:"port" json:"port"`
-	Token         string `yaml:"token" json:"token"`
-	NgrokMode     bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
-	NgrokToken    string `yaml:"ngrok_token" json:"ngrok_token"`
-	NgrokAutoStart bool  `yaml:"ngrok_auto_start" json:"ngrok_auto_start"`
+	Enabled        bool   `yaml:"enabled" json:"enabled"`
+	Port           int    `yaml:"port" json:"port"`
+	Token          string `yaml:"token" json:"token"`
+	NgrokMode      bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
+	NgrokToken     string `yaml:"ngrok_token" json:"ngrok_token"`
+	NgrokAutoStart bool   `yaml:"ngrok_auto_start" json:"ngrok_auto_start"`
 
 	// Tunnel mode selects how remote access is exposed:
 	//   "lan"       — bind 0.0.0.0, reachable on the local network only
@@ -243,6 +243,17 @@ type IdentityConfig struct {
 	// on a tight local-model context budget. Off by default (false), since
 	// most users want the persona/identity behavior.
 	MinimalMode bool `yaml:"minimal_mode"`
+	// Granular Minimal Mode overrides — each only has any effect while
+	// MinimalMode is true. They let a user keep Minimal Mode's overall
+	// "strip everything" intent while selectively re-enabling one category,
+	// instead of the only alternative being to turn Minimal Mode off
+	// entirely and get everything back. Each defaults to false (off),
+	// matching Minimal Mode's original all-or-nothing behavior for anyone
+	// who never opens the per-category breakdown.
+	MinimalModeKeepPersona      bool `yaml:"minimal_mode_keep_persona"`
+	MinimalModeKeepCapabilities bool `yaml:"minimal_mode_keep_capabilities"`
+	MinimalModeKeepPassive      bool `yaml:"minimal_mode_keep_passive"`
+	MinimalModeKeepProactive    bool `yaml:"minimal_mode_keep_proactive"`
 	// LearnedStyleNotes is a short paragraph describing the user's
 	// communication style/personality, produced by the "import memory from
 	// another AI" feature (internal/app/memory_import.go) — injected into

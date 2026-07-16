@@ -46,11 +46,20 @@ const (
 // only buildProactiveNudgeBlock. A single shared function (rather than each
 // site repeating its own subset of these conditions) is what keeps that
 // true as the checks evolve.
+//
+// MinimalMode.KeepProactive is the one Settings → Minimal Mode dropdown
+// override this package cares about: a user can keep Minimal Mode's overall
+// "strip everything" intent while explicitly re-enabling ambient nudging
+// alone (e.g. wants a lean prompt but still wants the coding nudge) — see
+// identity.Identity.GetMinimalModeKeepProactive's doc comment.
 func (a *App) ambientNudgingActive() bool {
 	if a.cfg == nil || !a.cfg.Proactive.Enabled {
 		return false
 	}
-	if a.identity == nil || a.identity.GetMinimalMode() {
+	if a.identity == nil {
+		return false
+	}
+	if a.identity.GetMinimalMode() && !a.identity.GetMinimalModeKeepProactive() {
 		return false
 	}
 	return a.proactiveLevel() != proactive.LevelOff

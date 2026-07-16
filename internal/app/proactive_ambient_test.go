@@ -77,6 +77,28 @@ func TestBuildProactiveNudgeBlock_RespectsMinimalMode(t *testing.T) {
 	}
 }
 
+// TestBuildProactiveNudgeBlock_KeepProactiveOverridesMinimalMode covers the
+// Settings → Minimal Mode dropdown: a user can turn Minimal Mode on but
+// explicitly keep ambient nudging active via MinimalModeKeepProactive,
+// independent of whether they also kept the persona/capabilities/passive
+// categories on.
+func TestBuildProactiveNudgeBlock_KeepProactiveOverridesMinimalMode(t *testing.T) {
+	a, patterns := newAmbientTestApp(t, true)                     // MinimalMode ON
+	a.identity.SetMinimalModeOverrides(false, false, false, true) // only KeepProactive
+	now := time.Now()
+	if err := patterns.Save([]observer.TimePattern{activePattern("time:coding", "kod yazma", now)}); err != nil {
+		t.Fatalf("seed Save: %v", err)
+	}
+
+	block := a.buildProactiveNudgeBlock(now)
+	if block == "" {
+		t.Fatal("expected a nudge block: MinimalMode is on but KeepProactive overrides it")
+	}
+	if got := a.takeNudgedPattern(); got == nil || got.ID != "time:coding" {
+		t.Errorf("takeNudgedPattern() = %+v, want the matched pattern (time:coding)", got)
+	}
+}
+
 func TestBuildProactiveNudgeBlock_RespectsProactiveDisabled(t *testing.T) {
 	a, patterns := newAmbientTestApp(t, false)
 	a.cfg.Proactive.Enabled = false

@@ -7,16 +7,23 @@ identity:
     assistant_name: Memo
     style: casual
     system_role: ""
-    incognito_prompt: Incognito mode prompt
+    incognito_prompt: ""
+    minimal_mode: false
+    minimal_mode_keep_persona: true
+    minimal_mode_keep_capabilities: false
+    minimal_mode_keep_passive: true
+    minimal_mode_keep_proactive: false
+    learned_style_notes: ""
 memory:
     persist_dir: data/memory
-    top_k: 5
+    top_k: 8
     min_similarity: 0.3
     memory_enabled: false
     embedding_dimension: 768
     embedding_model_repo: ""
     embedding_model_file: ""
     embedding_auto_start: false
+    auto_fact_extraction: false
 remote_access:
     enabled: false
     port: 8080
@@ -37,8 +44,8 @@ llama:
     max_history: 20
     max_context_tokens: 0
     models_dir: data/models
-    temperature: 0.7
-    top_p: 0.9
+    temperature: 0
+    top_p: 0
     max_tokens: 0
 whisper:
     binary_path: ""

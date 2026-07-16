@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/l10n.dart';
 import '../models/gpu_info.dart';
+import '../models/minimal_mode_overrides.dart';
 import 'chat_provider.dart';
 
 final prefsProvider = Provider<SharedPreferences>((ref) {
@@ -386,6 +387,46 @@ class MinimalModeNotifier extends AsyncNotifier<bool> {
           '${L10n.t('error')}: Minimal mod değiştirilemedi ($e)';
     } finally {
       _toggling = false;
+    }
+  }
+}
+
+// ─── Minimal Mode granular overrides ───────────────────────────
+//
+// Shown as a dropdown under the Minimal Mode toggle: lets a user keep
+// Minimal Mode's overall "strip everything" intent while selectively
+// re-enabling one category (e.g. keep ambient proactive nudging off but the
+// persona/system prompt on) instead of the only alternative being to turn
+// Minimal Mode off entirely and get everything back at once.
+
+final minimalModeOverridesProvider = AsyncNotifierProvider<
+    MinimalModeOverridesNotifier, MinimalModeOverrides>(
+  MinimalModeOverridesNotifier.new,
+);
+
+class MinimalModeOverridesNotifier extends AsyncNotifier<MinimalModeOverrides> {
+  // See MemoryEnabledNotifier._toggling above — same fast-double-tap race,
+  // one flag shared across all four checkboxes since they save together.
+  bool _saving = false;
+
+  @override
+  Future<MinimalModeOverrides> build() async {
+    return ref.read(apiClientProvider).getMinimalModeOverrides();
+  }
+
+  Future<void> save(MinimalModeOverrides next) async {
+    if (_saving) return;
+    _saving = true;
+    final previous = state.valueOrNull ?? MinimalModeOverrides.allOff;
+    state = AsyncData(next);
+    try {
+      await ref.read(apiClientProvider).setMinimalModeOverrides(next);
+    } catch (e) {
+      state = AsyncData(previous);
+      ref.read(errorMessageProvider.notifier).state =
+          '${L10n.t('error')}: Minimal mod ayarları değiştirilemedi ($e)';
+    } finally {
+      _saving = false;
     }
   }
 }

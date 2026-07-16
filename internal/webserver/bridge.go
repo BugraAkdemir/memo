@@ -7,12 +7,12 @@ import (
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/memory"
+	"memo/internal/models"
 	"memo/internal/modelstore"
 	"memo/internal/observer"
 	"memo/internal/orchestra"
 	"memo/internal/proactive"
 	"memo/internal/provider"
-	"memo/internal/models"
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/taskloop"
@@ -38,6 +38,8 @@ type FullBridge interface {
 	SetIncognitoPrompt(prompt string) error
 	GetMinimalMode() bool
 	SetMinimalMode(enabled bool) error
+	GetMinimalModeOverrides() (keepPersona, keepCapabilities, keepPassive, keepProactive bool)
+	SetMinimalModeOverrides(keepPersona, keepCapabilities, keepPassive, keepProactive bool) error
 
 	// Memory
 	ClearAllMemory() error

@@ -320,6 +320,10 @@ class GeneralTab extends ConsumerWidget {
             ),
           ),
         ),
+        if (minimalModeAsync.valueOrNull == true) ...[
+          SizedBox(height: 8),
+          const _MinimalModeOverridesDropdown(),
+        ],
 
         SizedBox(height: 32),
 
@@ -420,6 +424,138 @@ class GeneralTab extends ConsumerWidget {
         SizedBox(height: 32),
         const _CliUninstallSection(),
       ],
+    );
+  }
+}
+
+/// Collapsible "keep these on anyway" breakdown, shown only while Minimal
+/// Mode itself is on — each checkbox re-enables one category without
+/// requiring Minimal Mode to be turned off entirely (see
+/// minimalModeOverridesProvider's doc comment).
+class _MinimalModeOverridesDropdown extends ConsumerWidget {
+  const _MinimalModeOverridesDropdown();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = MemoTheme.of(context);
+    final overridesAsync = ref.watch(minimalModeOverridesProvider);
+
+    return Container(
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: overridesAsync.when(
+        loading: () => Padding(
+          padding: EdgeInsets.all(16),
+          child: SizedBox(
+            height: 20,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          ),
+        ),
+        error: (e, _) => Padding(
+          padding: EdgeInsets.all(16),
+          child: Text('${L10n.t('error')}: $e'),
+        ),
+        data: (overrides) => Theme(
+          // ExpansionTile's default divider clashes with this panel's own
+          // border — flatten it so the collapsed/expanded states look like
+          // one continuous card, matching the Minimal Mode container above.
+          data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+          child: ExpansionTile(
+            tilePadding: EdgeInsets.symmetric(horizontal: 16),
+            childrenPadding: EdgeInsets.only(left: 16, right: 16, bottom: 12),
+            title: Text(
+              L10n.t('minimal_mode_overrides_title'),
+              style: TextStyle(fontSize: 13, color: theme.textMain),
+            ),
+            subtitle: Text(
+              L10n.t('minimal_mode_overrides_desc'),
+              style: TextStyle(fontSize: 11, color: theme.textDim),
+            ),
+            children: [
+              _OverrideRow(
+                title: L10n.t('minimal_mode_keep_persona'),
+                desc: L10n.t('minimal_mode_keep_persona_desc'),
+                value: overrides.keepPersona,
+                onChanged: (v) => ref
+                    .read(minimalModeOverridesProvider.notifier)
+                    .save(overrides.copyWith(keepPersona: v)),
+              ),
+              _OverrideRow(
+                title: L10n.t('minimal_mode_keep_capabilities'),
+                desc: L10n.t('minimal_mode_keep_capabilities_desc'),
+                value: overrides.keepCapabilities,
+                onChanged: (v) => ref
+                    .read(minimalModeOverridesProvider.notifier)
+                    .save(overrides.copyWith(keepCapabilities: v)),
+              ),
+              _OverrideRow(
+                title: L10n.t('minimal_mode_keep_passive'),
+                desc: L10n.t('minimal_mode_keep_passive_desc'),
+                value: overrides.keepPassive,
+                onChanged: (v) => ref
+                    .read(minimalModeOverridesProvider.notifier)
+                    .save(overrides.copyWith(keepPassive: v)),
+              ),
+              _OverrideRow(
+                title: L10n.t('minimal_mode_keep_proactive'),
+                desc: L10n.t('minimal_mode_keep_proactive_desc'),
+                value: overrides.keepProactive,
+                onChanged: (v) => ref
+                    .read(minimalModeOverridesProvider.notifier)
+                    .save(overrides.copyWith(keepProactive: v)),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _OverrideRow extends StatelessWidget {
+  final String title;
+  final String desc;
+  final bool value;
+  final ValueChanged<bool> onChanged;
+
+  const _OverrideRow({
+    required this.title,
+    required this.desc,
+    required this.value,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Padding(
+      padding: EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(title, style: TextStyle(fontSize: 12.5, color: theme.textMain)),
+                SizedBox(height: 2),
+                Text(desc, style: TextStyle(fontSize: 11, color: theme.textDim)),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 32,
+            child: Switch(
+              value: value,
+              activeThumbColor: MemoTheme.accent,
+              onChanged: (v) => onChanged(v),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

@@ -7,6 +7,7 @@ import 'package:dio/dio.dart';
 import '../models/chat.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
+import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 import '../models/task_list.dart';
@@ -327,6 +328,19 @@ class MemoApiClient {
 
   Future<void> setMinimalMode(bool enabled) async {
     await _dio.put('/api/system-prompt/minimal-mode', data: {'enabled': enabled});
+  }
+
+  /// Granular Minimal Mode overrides — each only has any effect while
+  /// Minimal Mode itself is on. Lets a user keep one category (e.g. the
+  /// persona/system prompt, or ambient proactive nudging) active without
+  /// having to turn Minimal Mode off entirely and get everything back.
+  Future<MinimalModeOverrides> getMinimalModeOverrides() async {
+    final res = await _dio.get('/api/system-prompt/minimal-mode/overrides');
+    return MinimalModeOverrides.fromJson(res.data as Map<String, dynamic>);
+  }
+
+  Future<void> setMinimalModeOverrides(MinimalModeOverrides overrides) async {
+    await _dio.put('/api/system-prompt/minimal-mode/overrides', data: overrides.toJson());
   }
 
   // ─── Incognito Prompt ───────────────────────────────────────────

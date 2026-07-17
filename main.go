@@ -35,7 +35,21 @@ func main() {
 	autoAllow := flag.Bool("auto-allow", false, "With -p: automatically allow any tool permission request instead of denying it, so a scripted turn can actually run agent tools (file edit, command, web search) instead of being blocked. DANGEROUS outside a disposable test environment — the agent gets to act on the filesystem/shell with zero human review.")
 	flag.Parse()
 
-	if *prompt != "" {
+	// -p was actually passed (even as -p ""), as opposed to omitted
+	// entirely: `*prompt != ""` couldn't tell those two cases apart, since
+	// Go's flag package makes an explicit empty string indistinguishable
+	// from the zero value. That silently fell through to the interactive/
+	// headless branch below with a non-interactive stdin (script/automation
+	// context) — no new backend started (port already bound), but the
+	// process then blocked forever in the signal-wait loop, never exiting
+	// on its own (BUG-L1).
+	promptFlagPassed := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "p" {
+			promptFlagPassed = true
+		}
+	})
+	if promptFlagPassed {
 		runPrintMode(*port, *prompt, *chatID, *autoAllow)
 		return
 	}
@@ -292,6 +306,11 @@ func reapInBackground(cmd *exec.Cmd) {
 // mirroring session.startFreshChat/activateChat so a -p run exercises the
 // exact same code path a real interactive turn does.
 func runPrintMode(port int, prompt, chatID string, autoAllow bool) {
+	if strings.TrimSpace(prompt) == "" {
+		fmt.Fprintln(os.Stderr, "FATAL: boş mesaj gönderilemez (-p için bir metin verin)")
+		os.Exit(1)
+	}
+
 	ctx := context.Background()
 	baseURL := fmt.Sprintf("http://127.0.0.1:%d", port)
 	client := replcli.NewClient(baseURL)

@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-M7 düzeltildi: `internal/agent/tools/command.go`'daki `RunCommand` artık komut string'inin içindeki path-benzeri argümanları da (`commandTargetsProtectedPath`/`extractPathTokens`) `read_file`'ın `validatePath`'ıyla aynı sınırla kontrol ediyor — proje dizini dışına çıkıp `defaultProtectedPaths()`'e giren bir hedef (`/etc/...`, `~/.ssh/...`, `../../etc/...` traversal) artık `run_command` ile de reddediliyor. Proje dizini İÇİNDEKİ göreli path'ler (`go build ./...` gibi) yanlışlıkla engellenmiyor — kontrol önce "proje dizini dışında mı" diye bakıyor, sadece o zaman korumalı liste kontrolü yapıyor (projenin kendisi `/home/` gibi korumalı bir önek altında olsa bile). Regresyon testleri: `TestRunCommand_BlocksProtectedPathBypass`, `TestRunCommand_AllowsOrdinaryProjectCommands`, `TestCommandTargetsProtectedPath` (`internal/agent/tools/command_test.go`).
+> **Son güncelleme:** 2026-07-18 (Session 41) — BUG-L1 düzeltildi: `main.go` artık `*prompt != ""` yerine `flag.Visit` ile "p" bayrağının fiilen geçilip geçilmediğini kontrol ediyor (`promptFlagPassed`), böylece `-p ""` de `runPrintMode`'a düşüyor; `runPrintMode` de boş/whitespace-only prompt için temiz bir `FATAL` mesajıyla hemen çıkıyor (sonsuz askıda kalma yok). Regresyon testi: `TestEmptyPromptExitsCleanly` (`main_test.go`, gerçek binary'yi subprocess olarak çalıştırıp context timeout'uyla sınırlıyor).
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M7 düzeltildi: `internal/agent/tools/command.go`'daki `RunCommand` artık komut string'inin içindeki path-benzeri argümanları da (`commandTargetsProtectedPath`/`extractPathTokens`) `read_file`'ın `validatePath`'ıyla aynı sınırla kontrol ediyor — proje dizini dışına çıkıp `defaultProtectedPaths()`'e giren bir hedef (`/etc/...`, `~/.ssh/...`, `../../etc/...` traversal) artık `run_command` ile de reddediliyor. Proje dizini İÇİNDEKİ göreli path'ler (`go build ./...` gibi) yanlışlıkla engellenmiyor — kontrol önce "proje dizini dışında mı" diye bakıyor, sadece o zaman korumalı liste kontrolü yapıyor (projenin kendisi `/home/` gibi korumalı bir önek altında olsa bile). Regresyon testleri: `TestRunCommand_BlocksProtectedPathBypass`, `TestRunCommand_AllowsOrdinaryProjectCommands`, `TestCommandTargetsProtectedPath` (`internal/agent/tools/command_test.go`).
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M6 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık her fact'i pinlemeden önce mevcut pinned fact'lere karşı normalize edilmiş (küçük harf, trim, sondaki noktalama kırpılmış) exact-match dedup kontrolü yapıyor (`pinnedFactTexts`, `normalizeFactText`) — aynı gerçek art arda turlarda tekrar pinlenmiyor. Regresyon testi: `TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate`.
 >
@@ -30,9 +32,9 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 2 |
+| 🟢 LOW | 1 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **4** |
+| **TOPLAM** | **3** |
 
 ---
 
@@ -57,23 +59,6 @@ Aynı oturumda mobile'a `routine_fallback` L10n key'i ("Rutin"/"Routine") eklenm
 ---
 
 ## 🟢 LOW
-
-### BUG-L1: `memo -p ""` (boş prompt) CLI'ı sonsuza kadar askıda bırakıyor, "Shutting down backend..." yanıltıcı mesajı basıyor
-
-**Dosya:** `main.go:38` (`if *prompt != "" { runPrintMode(...); return }`), `main.go:73-133` (headless/non-interactive fallback yolu)
-
-```
-$ timeout 8 memo-dev -p ""
-Shutting down backend...
-$ echo $?
-124   # timeout process'i zorla öldürdü, kendiliğinden hiç çıkmadı
-```
-
-**Kök neden:** Go'nun `flag` paketinde `-p ""` geçerli, boş bir string değeridir — kontrol `*prompt != ""` olduğu için **boş prompt, "-p hiç verilmemiş" ile ayırt edilemiyor**. `runPrintMode` hiç çağrılmıyor, kod `interactive := !*headless && isInteractive()` dalına düşüyor; TTY olmadığı için (script/otomasyon bağlamı) port zaten dolu olduğundan yeni backend başlatmıyor ama kendi başına sonsuz bir SIGINT/SIGTERM bekleme döngüsüne giriyor, dışarıdan öldürülmeden asla çıkmıyor.
-
-**Senaryo:** Bir script (`for msg in "${messages[@]}"; do memo -p "$msg"; done`) boş bir eleman üretirse (trim edilmiş boş satır, template'te boş interpolasyon), script SESSİZCE sonsuza kadar askıda kalır. Basılan "Shutting down backend..." mesajı da yanıltıcı: gerçek arka plan backend'i hiç etkilenmiyor, sadece bu çıkmayan foreground process (zorla sinyal alınca) bu mesajı basıp çıkıyor.
-
-**Önerilen yön:** `flag.Visit` ile "p" bayrağının fiilen geçilip geçilmediğini kontrol etmek, böylece `-p ""` de `-p "gerçek mesaj"` gibi `runPrintMode`'a düşsün (muhtemelen sonra "boş mesaj gönderilemez" gibi temiz bir hata verir).
 
 ### BUG-L2: WhatsApp gönderimi iki ayrı yoldan geçiyor — AI agent tool'u (`whatsapp_send`) gerçek bir kişiye otomatik mesaj göndermeyi kendi muhakemesiyle reddedebiliyor, ama doğrudan REST/GUI yolu (`/api/whatsapp/send`) hiçbir onay olmadan koşulsuz çalışıyor
 

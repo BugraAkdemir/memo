@@ -272,6 +272,12 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Learning settings
 	route("/api/learning/settings", s.handleLearningSettings)
 
+	// Routines (scheduled automations)
+	route("/api/routines", s.handleRoutines)
+	route("/api/routines/parse", s.handleParseRoutine)
+	route("/api/routines/", s.handleRoutine)
+	route("/api/routines/mobile-ready", s.handleRoutinesMobileReady)
+
 	// Mood
 	route("/api/mood/score", s.handleMoodScore)
 	route("/api/mood/settings", s.handleMoodSettings)

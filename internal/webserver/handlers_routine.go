@@ -1,0 +1,172 @@
+// SPDX-License-Identifier: AGPL-3.0-or-later
+
+package webserver
+
+import (
+	"context"
+	"encoding/json"
+	"net/http"
+	"strconv"
+	"strings"
+
+	"memo/internal/routine"
+)
+
+// RoutineBridge is the subset of App methods required by routine handlers,
+// mirroring CalendarBridge's independent-interface pattern in
+// handlers_calendar.go.
+type RoutineBridge interface {
+	ListRoutines() []routine.Routine
+	ParseRoutineText(ctx context.Context, text string) (routine.Draft, error)
+	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool) (*routine.Routine, error)
+	UpdateRoutine(r routine.Routine) (*routine.Routine, error)
+	DeleteRoutine(id string) error
+	GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error)
+}
+
+// handleRoutines handles GET /api/routines (list) and POST /api/routines (create).
+func (s *Server) handleRoutines(w http.ResponseWriter, r *http.Request) {
+	bridge, ok := s.bridge.(RoutineBridge)
+	if !ok {
+		http.Error(w, "routines not available", http.StatusNotImplemented)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		list := bridge.ListRoutines()
+		if list == nil {
+			list = []routine.Routine{}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(list)
+
+	case http.MethodPost:
+		var body struct {
+			OriginalText      string        `json:"original_text"`
+			Draft             routine.Draft `json:"draft"`
+			WhatsAppTargetJID string        `json:"whatsapp_target_jid"`
+			AutoApproveTools  bool          `json:"auto_approve_tools"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			jsonError(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		created, err := bridge.CreateRoutineFromDraft(body.OriginalText, body.Draft, body.WhatsAppTargetJID, body.AutoApproveTools)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusCreated)
+		json.NewEncoder(w).Encode(created)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleParseRoutine handles POST /api/routines/parse — turns free text into
+// a Draft for the confirmation-card UI step.
+func (s *Server) handleParseRoutine(w http.ResponseWriter, r *http.Request) {
+	bridge, ok := s.bridge.(RoutineBridge)
+	if !ok {
+		http.Error(w, "routines not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		jsonError(w, "text is required", http.StatusBadRequest)
+		return
+	}
+
+	draft, err := bridge.ParseRoutineText(r.Context(), body.Text)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(draft)
+}
+
+// handleRoutine handles PUT /api/routines/{id} and DELETE /api/routines/{id}.
+func (s *Server) handleRoutine(w http.ResponseWriter, r *http.Request) {
+	bridge, ok := s.bridge.(RoutineBridge)
+	if !ok {
+		http.Error(w, "routines not available", http.StatusNotImplemented)
+		return
+	}
+
+	id := strings.TrimPrefix(r.URL.Path, "/api/routines/")
+	if id == "" {
+		jsonError(w, "routine id required", http.StatusBadRequest)
+		return
+	}
+
+	switch r.Method {
+	case http.MethodPut:
+		var rt routine.Routine
+		if err := json.NewDecoder(r.Body).Decode(&rt); err != nil {
+			jsonError(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		rt.ID = id
+		updated, err := bridge.UpdateRoutine(rt)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(updated)
+
+	case http.MethodDelete:
+		if err := bridge.DeleteRoutine(id); err != nil {
+			jsonError(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusNoContent)
+
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleRoutinesMobileReady handles GET /api/routines/mobile-ready?since=<unix> —
+// the phone polls this to learn about newly generated content it should
+// pre-schedule as a local notification (see routine.MobilePayload).
+func (s *Server) handleRoutinesMobileReady(w http.ResponseWriter, r *http.Request) {
+	bridge, ok := s.bridge.(RoutineBridge)
+	if !ok {
+		http.Error(w, "routines not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var since int64
+	if s := r.URL.Query().Get("since"); s != "" {
+		if v, err := strconv.ParseInt(s, 10, 64); err == nil {
+			since = v
+		}
+	}
+
+	items, err := bridge.GetRoutinesReadyForMobile(since)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if items == nil {
+		items = []routine.MobilePayload{}
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(items)
+}

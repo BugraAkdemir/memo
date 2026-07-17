@@ -1409,6 +1409,51 @@ class MemoApiClient {
     });
   }
 
+  // ─── Routines (scheduled automations) ────────────────────────────
+
+  /// List configured routines.
+  Future<List<Map<String, dynamic>>> getRoutines() async {
+    final res = await _dio.get('/api/routines');
+    if (res.data is List) {
+      return _guardList<Map<String, dynamic>>(res.data);
+    }
+    return [];
+  }
+
+  /// Parse a free-text routine description into a draft for confirmation.
+  Future<Map<String, dynamic>> parseRoutineText(String text) async {
+    final res = await _dio.post('/api/routines/parse', data: {'text': text});
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  /// Create a routine from a (possibly user-edited) draft.
+  Future<Map<String, dynamic>> createRoutine({
+    required String originalText,
+    required Map<String, dynamic> draft,
+    String whatsAppTargetJid = '',
+    bool autoApproveTools = false,
+  }) async {
+    final res = await _dio.post('/api/routines', data: {
+      'original_text': originalText,
+      'draft': draft,
+      'whatsapp_target_jid': whatsAppTargetJid,
+      'auto_approve_tools': autoApproveTools,
+    });
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  /// Update a routine (e.g. toggling enabled).
+  Future<Map<String, dynamic>> updateRoutine(Map<String, dynamic> routine) async {
+    final id = routine['id'] as String;
+    final res = await _dio.put('/api/routines/$id', data: routine);
+    return Map<String, dynamic>.from(_guard<Map>(res.data));
+  }
+
+  /// Delete a routine.
+  Future<void> deleteRoutine(String id) async {
+    await _dio.delete('/api/routines/$id');
+  }
+
   // ─── Mood ───────────────────────────────────────────────────────
 
   Future<double> getMoodScore() async {

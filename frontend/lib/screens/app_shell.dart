@@ -25,8 +25,9 @@ import 'agent_screen.dart';
 import 'model_store_screen.dart';
 import 'whatsapp_screen.dart';
 import 'calendar_screen.dart';
+import 'routines_screen.dart';
 
-/// Tracks which main tab is currently selected (0=chat 1=agent 2=models 3=whatsapp 4=calendar).
+/// Tracks which main tab is currently selected (0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines).
 /// Tasks are not a top-level tab — they're opened from within the Agent screen
 /// (a task list is always bound to a specific agent chat, so it makes no sense
 /// to reach it from a global nav item that could be visited from the plain
@@ -42,7 +43,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp 4=calendar
+  int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines
   bool _showLaunchpad = false;
   bool _showTour = false;
 
@@ -53,7 +54,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _hasEverConnectedToBackend = false;
   bool _backendDeadDialogShown = false;
 
-  final _navKeys = List.generate(5, (_) => GlobalKey());
+  final _navKeys = List.generate(6, (_) => GlobalKey());
 
   @override
   void initState() {
@@ -188,6 +189,7 @@ class _AppShellState extends ConsumerState<AppShell> {
                                   key: ValueKey('models_$locale')),
                               const WhatsAppScreen(),
                               const CalendarScreen(),
+                              const RoutinesScreen(),
                             ],
                           ),
                         ),
@@ -339,6 +341,15 @@ class _AppShellState extends ConsumerState<AppShell> {
             label: 'Takvim',
             isActive: _currentIndex == 4,
             onTap: () => _handleTabChange(4),
+          ),
+
+          _NavRailButton(
+            key: _navKeys[5],
+            icon: Icons.schedule_outlined,
+            activeIcon: Icons.schedule,
+            label: 'Rutinler',
+            isActive: _currentIndex == 5,
+            onTap: () => _handleTabChange(5),
           ),
 
           const Spacer(),

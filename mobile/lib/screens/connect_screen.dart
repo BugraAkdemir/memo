@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/connection_provider.dart';
+import '../providers/locale_provider.dart';
 import '../widgets/branding.dart';
 
 class ConnectScreen extends ConsumerStatefulWidget {
@@ -158,6 +159,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                               color: MemoTheme.textFaint, height: 1.45),
                         ),
                       ),
+                      const SizedBox(height: 22),
+                      _languageRow(),
                     ],
                   ),
                 ),
@@ -166,6 +169,51 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
           ),
         ],
       ),
+    );
+  }
+
+  /// Language toggle on the pair screen so users can switch before connecting
+  /// (Settings is only reachable while connected).
+  Widget _languageRow() {
+    final locale = ref.watch(localeProvider);
+    Widget chip(String label, MemoLocale value) {
+      final selected = locale == value;
+      return GestureDetector(
+        onTap: () {
+          HapticFeedback.selectionClick();
+          ref.read(localeProvider.notifier).setLocale(value);
+        },
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            color: selected
+                ? MemoTheme.accent.withValues(alpha: 0.16)
+                : MemoTheme.surfaceAlt,
+            borderRadius: BorderRadius.circular(10),
+            border: Border.all(
+                color: selected ? MemoTheme.accent : MemoTheme.border),
+          ),
+          child: Text(
+            label,
+            style: MemoTheme.body(
+              13,
+              w: FontWeight.w600,
+              color: selected ? MemoTheme.accentBright : MemoTheme.textDim,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Icon(Icons.language_rounded, size: 16, color: MemoTheme.textFaint),
+        const SizedBox(width: 10),
+        chip(L10n.t('language_tr'), MemoLocale.tr),
+        const SizedBox(width: 8),
+        chip(L10n.t('language_en'), MemoLocale.en),
+      ],
     );
   }
 

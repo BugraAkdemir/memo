@@ -85,6 +85,33 @@ func TestChunkText_OverlapContent(t *testing.T) {
 	}
 }
 
+// TestChunkText_SingleOversizedWord reproduces BUG-H3: a single space-free
+// "word" (long URL, base64 blob, minified code, hash) that alone exceeds
+// maxTokens used to come out as its own oversized, unsplit chunk — the
+// grouping loop always takes at least one word per chunk regardless of its
+// size. That oversized chunk then overflowed the embedding server's
+// batch-size limit on both SaveInteraction and RetrieveContext.
+func TestChunkText_SingleOversizedWord(t *testing.T) {
+	blob := strings.Repeat("a", 50000) // no spaces, ~16666 estimated tokens
+	text := blob + " birkaç normal kelime"
+
+	chunks := chunkText(text, 300, 50)
+	if len(chunks) < 2 {
+		t.Fatalf("oversized single word: got %d chunks, want >=2 (must be force-split)", len(chunks))
+	}
+	for i, c := range chunks {
+		if tok := truncate.EstimateTokens(c); tok > 300+50 {
+			t.Fatalf("chunk[%d] has ~%d estimated tokens, want roughly <= 300 — the blob was not force-split", i, tok)
+		}
+	}
+	// No characters may be lost — every rune of the blob must still appear
+	// somewhere across the chunks, just split into smaller pieces.
+	joined := strings.Join(chunks, "")
+	if strings.Count(joined, "a") < 50000 {
+		t.Fatalf("blob data lost during force-split: only %d of 50000 'a' runes survived", strings.Count(joined, "a"))
+	}
+}
+
 func TestChunkText_NoDataLoss(t *testing.T) {
 	words := make([]string, 500)
 	for i := range words {

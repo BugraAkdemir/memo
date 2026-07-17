@@ -25,6 +25,17 @@ func chunkText(text string, maxTokens, overlapTokens int) []string {
 		return nil
 	}
 
+	// A single space-free "word" (long URL, base64 blob, minified code, a
+	// hash) can itself exceed maxTokens — the grouping loop below always
+	// takes at least one word per chunk, so without this fallback that one
+	// word is emitted as its own oversized chunk, overflowing the embedding
+	// server's batch-size limit on both save and retrieve.
+	expanded := make([]string, 0, len(words))
+	for _, w := range words {
+		expanded = append(expanded, splitLongWord(w, maxTokens)...)
+	}
+	words = expanded
+
 	// prefix[i] = estimated tokens of words[0:i] joined by single spaces.
 	prefix := make([]int, len(words)+1)
 	for i, w := range words {
@@ -65,4 +76,26 @@ func chunkText(text string, maxTokens, overlapTokens int) []string {
 		start = next
 	}
 	return chunks
+}
+
+// splitLongWord force-splits a single space-free "word" that alone exceeds
+// maxTokens into rune-safe pieces that each fit the budget. Returns the word
+// unchanged (as a single-element slice) if it's already within budget.
+func splitLongWord(word string, maxTokens int) []string {
+	if truncate.EstimateTokens(word) <= maxTokens {
+		return []string{word}
+	}
+
+	maxBytes := max(maxTokens*3, 1)
+
+	var pieces []string
+	start := 0
+	for i := range word {
+		if i-start >= maxBytes {
+			pieces = append(pieces, word[start:i])
+			start = i
+		}
+	}
+	pieces = append(pieces, word[start:])
+	return pieces
 }

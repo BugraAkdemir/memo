@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-H2 düzeltildi: `internal/intent/extractor.go`'daki `rawIntent.HabitDays` artık `json.RawMessage` olarak leniently parse ediliyor (`parseHabitDays`), LLM `habit_days`'i `[]int` yerine string/string-dizisi/doğal dil ifadesi ("hafta içi") döndürdüğünde bile tüm `rawIntent` reddedilmiyor. Regresyon testleri: `TestExtractHabit_HabitDaysAsPhrase`, `TestExtractHabit_HabitDaysAsStringArray` (`internal/intent/intent_test.go`).
+> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-H3 düzeltildi: `internal/memory/chunker.go`'daki `chunkText`, `maxTokens`'ı tek başına aşan boşluksuz bir "kelime"yi (uzun URL, base64, minify kod, hash) artık `splitLongWord` ile karakter bazlı zorla parçalıyor — hem `SaveInteraction` hem `RetrieveContext` aynı embed batch-size sınırına çarpmaktan kurtuldu. Regresyon testi: `TestChunkText_SingleOversizedWord` (`internal/memory/chunker_test.go`).
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H2 düzeltildi: `internal/intent/extractor.go`'daki `rawIntent.HabitDays` artık `json.RawMessage` olarak leniently parse ediliyor (`parseHabitDays`), LLM `habit_days`'i `[]int` yerine string/string-dizisi/doğal dil ifadesi ("hafta içi") döndürdüğünde bile tüm `rawIntent` reddedilmiyor. Regresyon testleri: `TestExtractHabit_HabitDaysAsPhrase`, `TestExtractHabit_HabitDaysAsStringArray` (`internal/intent/intent_test.go`).
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 40, "Ece" persona testi — CANLI WhatsApp ortamı) — `STRESS_TEST_FINDINGS.md` artık ayrı tutulmuyor, tüm bulgular (Session 39 + Session 40) buraya konsolide edildi ve o dosya silindi. BUG-H2 yeni kanıtla derinleştirildi; 6 yeni madde eklendi (2 HIGH, 3 MEDIUM, 1 LOW — Session 39'dan taşınan 2 madde dahil). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 40.
 >
@@ -18,38 +20,15 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 2 |
+| 🟠 HIGH | 1 |
 | 🟡 MEDIUM | 5 |
 | 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **9** |
+| **TOPLAM** | **8** |
 
 ---
 
 ## 🟠 HIGH
-
-### BUG-H3: Uzun, boşluksuz tek bir "kelime" hafızayı sadece kaydetmekle kalmıyor, RETRIEVE'i de kırıyor ve tüm turu (LLM cevabı dahil) başarısız kılabiliyor
-
-**Dosya:** `internal/memory/chunker.go:18` (`chunkText`), `internal/memory/store.go:482` (`SaveInteraction`), `internal/memory/store.go:755` (`RetrieveContext`)
-
-**Tekrarlanabilir (Session 39):** 50.000 karakterlik boşluksuz bir "a" dizisi + birkaç normal kelime gönderildi. Ana model cevap verdi ama:
-```
-[memory:error:Hafıza kaydedilemedi: memory.SaveInteraction chunk[0]: embed: ... "input (25161 tokens) is too large to process (current batch size: 512)"]
-```
-**Kök neden:** `chunkText`, metni `strings.Fields(text)` ile boşluğa göre "kelime"lere bölüyor, sonra `maxTokens=300` sınırını aşmayacak şekilde grupluyor. Ama TEK bir "kelime" (boşluksuz uzun bir dizi — uzun bir URL, base64 data-URI, minify kod, uzun bir hash) tek başına `maxTokens`'ı aşarsa, bunu daha küçük parçalara bölecek bir fallback YOK — chunk olduğu gibi (aşırı büyük) yayınlanıyor, embedding sunucusunun (`--ctx-size 512`) batch sınırını aşıp 500 ile reddediliyor. `SaveInteraction` ilk başarısız chunk'ta hemen `return` ediyor — mesajın TÜMÜ hafızaya kaydedilmiyor.
-
-**Session 40'ta ağırlaştırılmış tekrar üretim:** Aynı sınıf girdi (40.000 karakter) bu kez SADECE save'i değil, **aynı turda `RetrieveContext`'i de** aynı batch-size hatasıyla kırdı, VE ana LLM sağlayıcısı da timeout verdi:
-```
-[error] ⚠️ LLM Error: all providers failed: [opencode-zen] provider request timed out
-[memory:error:Hafıza okunamadı: memory.RetrieveContext: embed: ... "input (20359 tokens) is too large to process (current batch size: 512)"]
-```
-Yani kullanıcı bu turda **hiçbir yanıt almadı** — Session 39'daki "mesaj kaydedilmiyor ama sohbet normal devam ediyor" senaryosundan daha ağır bir tam-tur-başarısızlığı.
-
-**Senaryo:** Kullanıcı sohbete uzun bir URL, base64 görsel, minify JS/CSS, uzun bir API key/hash veya uzun bir log/stack trace yapıştırırsa, o mesaj (ve içindeki bilgi) sessizce hafızadan düşebilir VEYA (Session 40'ın gösterdiği gibi) o turun tamamı (hem hafıza okuma hem LLM cevabı) başarısız olabilir.
-
-**Önerilen yön:** `chunkText`'e `maxTokens`'ı aşan tek bir "kelime"yi karakter bazlı zorla bölecek bir fallback eklemek (`truncate.EstimateTokens` ile) — bu hem save hem retrieve tarafını aynı anda düzeltir, ikisi de aynı embed/batch-size sınırına çarpıyor. Ayrıca `SaveInteraction`'ın bir chunk başarısız olsa bile geri kalan geçerli chunk'ları kaydetmeyi denemesi (best-effort) düşünülebilir.
-
----
 
 ### BUG-H4: `extractAndPinFacts`, asistanın TOOL SONUCU olarak aktardığı ÜÇÜNCÜ ŞAHIS verisini "kullanıcı hakkında kalıcı gerçek" sanıp kalıcı hafızaya pinliyor — gizlilik/doğruluk riski
 

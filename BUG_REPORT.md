@@ -12,23 +12,11 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 1 |
+| 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 5 |
 | 🟢 LOW | 6 |
 | 🔧 TEKNİK BORÇ | 5 |
-| **TOPLAM** | **17** |
-
----
-
-## 🟠 HIGH
-
-### BUG-H1: `RoutineLoop.tick()` tamamen senkron çalışıyor, hiç zaman aşımı yok — yavaş/askıda kalan bir agent rutini tüm diğer rutinleri durdurur
-
-**Dosya:** `internal/routine/loop.go:51-62` (`Start`), `:64-123` (`tick`)
-
-`Start(ctx)`'in `select` döngüsü her dakika `r.tick(ctx, now)`'ı **senkron** çağırıyor; `tick` de `r.store.List()` üzerinde dönüp her ateşlenmesi gereken rutin için `r.generate(ctx, rt)`'yi (agent-mode rutinlerde `sendMessageStreamInnerTo`'nun LLM stream'i, dakikalarca sürebilir) bekliyor. Hiçbir yerde `context.WithTimeout` veya per-routine deadline yok — tek context, `Start`'a `Startup()`'tan geçirilen `lifecycleCtx`, sadece app kapanışında iptal oluyor.
-
-**Senaryo:** Bir agent-mode rutinin LLM çağrısı yanıtsız kalırsa (sağlayıcı takıldı, ağ sorunu), `tick()` hiç dönmez → ticker'ın bir sonraki tick'i hiç işlenmez → o dakikadan sonra **hiçbir rutin çalışmaz**, ne WhatsApp-only olanlar ne mobil olanlar — sıfır lead time'lı bir WhatsApp rutini bile beklemeye girer. Daha hafif durumda (sadece yavaş, askıda değil) aynı dakikaya denk gelen diğer rutinler LLM çağrısının süresi kadar gecikir.
+| **TOPLAM** | **16** |
 
 ---
 

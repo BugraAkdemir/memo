@@ -5,6 +5,7 @@ package routine
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"memo/internal/logx"
@@ -18,6 +19,13 @@ import (
 // needs to fire. WhatsApp-only routines need no lead — the backend delivers
 // directly, so content is generated exactly at fire time.
 const mobileLeadDuration = 2 * time.Hour
+
+// generateTimeout bounds a single routine's GenerateFn call (an LLM call, or
+// a full multi-step agent turn for agent-mode routines) so a stuck provider
+// or a runaway tool loop can't starve every other routine forever — see
+// tick's doc comment for why this matters given each routine now runs in its
+// own goroutine rather than blocking the tick itself.
+const generateTimeout = 5 * time.Minute
 
 // Emitter publishes an AppEvent, mirroring calendar.Emitter/proactive.Emitter.
 type Emitter func(name, data string)
@@ -39,11 +47,15 @@ type RoutineLoop struct {
 	generate GenerateFn
 	deliver  DeliverFn
 	emit     Emitter
+
+	runningMu sync.Mutex
+	running   map[string]bool
+	wg        sync.WaitGroup // lets tests wait for a tick's launched goroutines to finish
 }
 
 // NewRoutineLoop creates a RoutineLoop. generate, deliver and emit must not be nil.
 func NewRoutineLoop(store *Store, generate GenerateFn, deliver DeliverFn, emit Emitter) *RoutineLoop {
-	return &RoutineLoop{store: store, generate: generate, deliver: deliver, emit: emit}
+	return &RoutineLoop{store: store, generate: generate, deliver: deliver, emit: emit, running: make(map[string]bool)}
 }
 
 // Start runs the tick loop until ctx is done. Meant to be run in its own
@@ -61,6 +73,19 @@ func (r *RoutineLoop) Start(ctx context.Context) {
 	}
 }
 
+// tick scans for due routines and fires each one in its own goroutine,
+// rather than processing them one at a time inline. A routine's GenerateFn
+// can be an arbitrarily long agent turn (tool calls, LLM latency) — running
+// it inline used to block tick() itself for that whole duration, which in
+// turn blocked Start's ticker select from ever reaching the next minute:
+// every other routine due in the meantime (including zero-lead WhatsApp-only
+// ones) sat starved until the slow routine finished, and a truly hung call
+// stopped the entire routine system permanently. generateTimeout bounds the
+// worst case per routine; the running map prevents the same routine from
+// being launched twice concurrently if it's still mid-flight on the next
+// tick (same-day dedup via LastRunDate only gets written after a run
+// completes, so without this a slow routine could otherwise be picked up
+// again before its first run finishes).
 func (r *RoutineLoop) tick(ctx context.Context, now time.Time) {
 	today := now.Format("2006-01-02")
 	for _, rt := range r.store.List() {
@@ -84,41 +109,85 @@ func (r *RoutineLoop) tick(ctx context.Context, now time.Time) {
 			continue // not time to generate yet
 		}
 
-		if rt.LastGeneratedForDate != today {
-			content, err := r.generate(ctx, rt)
-			if err != nil {
-				logx.Printf("routine: generate %s: %v", rt.ID, err)
-				continue
-			}
-			rt.LastGeneratedContent = content
-			rt.LastGeneratedAt = now
-			rt.LastGeneratedForDate = today
-			updated, err := r.store.Update(rt)
-			if err != nil {
-				logx.Printf("routine: save generated content %s: %v", rt.ID, err)
-				continue
-			}
-			rt = *updated
-			if rt.DeliveryMobile {
-				r.emit("routine:ready", rt.ID)
-			}
+		if !r.tryMarkRunning(rt.ID) {
+			continue // already in flight from an earlier tick
 		}
+		r.wg.Add(1)
+		go func(rt Routine) {
+			defer r.wg.Done()
+			defer r.clearRunning(rt.ID)
+			r.processDueRoutine(ctx, rt, now, today, fireTime)
+		}(rt)
+	}
+}
 
-		if now.Before(fireTime) {
-			continue // mobile content pre-generated; wait for the real fire time
-		}
+// waitIdle blocks until every routine goroutine launched by ticks so far has
+// finished. Only meant for tests — production code has no need to wait
+// since the whole point of running routines in their own goroutines is that
+// nothing else has to block on them.
+func (r *RoutineLoop) waitIdle() {
+	r.wg.Wait()
+}
 
-		if rt.DeliveryWhatsApp {
-			if err := r.deliver(ctx, rt, rt.LastGeneratedContent); err != nil {
-				logx.Printf("routine: deliver %s: %v", rt.ID, err)
-				continue
-			}
-		}
+func (r *RoutineLoop) tryMarkRunning(id string) bool {
+	r.runningMu.Lock()
+	defer r.runningMu.Unlock()
+	if r.running[id] {
+		return false
+	}
+	r.running[id] = true
+	return true
+}
 
-		rt.LastRunDate = today
-		if _, err := r.store.Update(rt); err != nil {
-			logx.Printf("routine: mark run %s: %v", rt.ID, err)
+func (r *RoutineLoop) clearRunning(id string) {
+	r.runningMu.Lock()
+	delete(r.running, id)
+	r.runningMu.Unlock()
+}
+
+// processDueRoutine runs the generate/deliver steps for a single routine
+// already confirmed due, bounding the generate call so one stuck provider or
+// runaway agent turn can't hang this goroutine forever.
+func (r *RoutineLoop) processDueRoutine(ctx context.Context, rt Routine, now time.Time, today string, fireTime time.Time) {
+	if rt.LastGeneratedForDate != today {
+		genCtx, cancel := context.WithTimeout(ctx, generateTimeout)
+		content, err := r.generate(genCtx, rt)
+		cancel()
+		if err != nil {
+			logx.Printf("routine: generate %s: %v", rt.ID, err)
+			return
 		}
+		rt.LastGeneratedContent = content
+		rt.LastGeneratedAt = now
+		rt.LastGeneratedForDate = today
+		updated, err := r.store.Update(rt)
+		if err != nil {
+			logx.Printf("routine: save generated content %s: %v", rt.ID, err)
+			return
+		}
+		rt = *updated
+		if rt.DeliveryMobile {
+			r.emit("routine:ready", rt.ID)
+		}
+	}
+
+	if now.Before(fireTime) {
+		return // mobile content pre-generated; wait for the real fire time
+	}
+
+	if rt.DeliveryWhatsApp {
+		deliverCtx, cancel := context.WithTimeout(ctx, generateTimeout)
+		err := r.deliver(deliverCtx, rt, rt.LastGeneratedContent)
+		cancel()
+		if err != nil {
+			logx.Printf("routine: deliver %s: %v", rt.ID, err)
+			return
+		}
+	}
+
+	rt.LastRunDate = today
+	if _, err := r.store.Update(rt); err != nil {
+		logx.Printf("routine: mark run %s: %v", rt.ID, err)
 	}
 }
 

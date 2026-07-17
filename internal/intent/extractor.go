@@ -6,9 +6,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"memo/internal/jsonutil"
 	"memo/internal/logx"
 	"memo/internal/truncate"
-	"strings"
 	"time"
 )
 
@@ -142,8 +142,8 @@ type rawIntent struct {
 }
 
 func parseResponse(raw string, source Source, contact string, now time.Time) (IntentResult, error) {
-	jsonStr := extractJSON(raw)
-	if jsonStr == "" {
+	jsonStr, ok := jsonutil.ExtractBalancedObject(raw)
+	if !ok {
 		return IntentResult{}, fmt.Errorf("no JSON object found")
 	}
 
@@ -207,43 +207,4 @@ func parseISO(s string, ref time.Time) (time.Time, error) {
 		}
 	}
 	return time.Time{}, fmt.Errorf("cannot parse %q as ISO 8601", s)
-}
-
-// extractJSON finds the first balanced JSON object in s. It is string-aware:
-// braces inside JSON string literals (and escaped quotes) are ignored so a
-// value like "yarın :)}" does not truncate the object early.
-func extractJSON(s string) string {
-	start := strings.Index(s, "{")
-	if start == -1 {
-		return ""
-	}
-	depth := 0
-	inString := false
-	escaped := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if inString {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inString = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inString = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return s[start : i+1]
-			}
-		}
-	}
-	return ""
 }

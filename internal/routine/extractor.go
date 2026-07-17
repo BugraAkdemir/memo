@@ -6,8 +6,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"memo/internal/jsonutil"
 	"memo/internal/truncate"
-	"strings"
 	"time"
 )
 
@@ -67,7 +67,7 @@ func (e *Extractor) Extract(ctx context.Context, text string, now time.Time) (Dr
 		return Draft{}, fmt.Errorf("routine: llm decide: %w", err)
 	}
 
-	jsonStr, ok := extractJSON(raw)
+	jsonStr, ok := jsonutil.ExtractBalancedObject(raw)
 	if !ok {
 		return Draft{}, fmt.Errorf("routine: no JSON object in response: %s", truncate.Text(raw, 200))
 	}
@@ -81,43 +81,4 @@ func (e *Extractor) Extract(ctx context.Context, text string, now time.Time) (Dr
 		d.DeliveryMobile = true
 	}
 	return d, nil
-}
-
-// extractJSON finds the first balanced {...} object in s — LLMs sometimes
-// wrap JSON in prose or markdown fences despite instructions not to,
-// mirroring internal/intent/decision.go's extractJSONObject.
-func extractJSON(s string) (string, bool) {
-	start := strings.IndexByte(s, '{')
-	if start < 0 {
-		return "", false
-	}
-	depth := 0
-	inString := false
-	escaped := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if inString {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inString = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inString = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return s[start : i+1], true
-			}
-		}
-	}
-	return "", false
 }

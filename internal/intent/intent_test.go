@@ -211,47 +211,6 @@ func TestExtractJSONEmbeddedInText(t *testing.T) {
 	}
 }
 
-func TestExtractJSONStringAware(t *testing.T) {
-	tests := []struct {
-		name string
-		in   string
-		want string
-	}{
-		{
-			"simple",
-			`{"a": 1}`,
-			`{"a": 1}`,
-		},
-		{
-			"brace inside string value",
-			`{"summary": "yarın :)}", "has_intent": true}`,
-			`{"summary": "yarın :)}", "has_intent": true}`,
-		},
-		{
-			"nested object",
-			`prefix {"a": {"b": 2}} suffix`,
-			`{"a": {"b": 2}}`,
-		},
-		{
-			"escaped quote then brace",
-			`{"t": "he said \"hi}\" ok"}`,
-			`{"t": "he said \"hi}\" ok"}`,
-		},
-		{
-			"no json",
-			`there is no object here`,
-			``,
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := extractJSON(tc.in)
-			if got != tc.want {
-				t.Errorf("extractJSON(%q) = %q, want %q", tc.in, got, tc.want)
-			}
-		})
-	}
-}
 
 // TestExtractWithBraceInSummary is an end-to-end guard: an LLM response whose
 // summary contains a stray closing brace must still parse as a valid intent.

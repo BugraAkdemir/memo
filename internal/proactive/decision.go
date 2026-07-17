@@ -5,6 +5,7 @@ package proactive
 import (
 	"encoding/json"
 	"fmt"
+	"memo/internal/jsonutil"
 	"strings"
 )
 
@@ -72,7 +73,7 @@ type Decision struct {
 // parsed. An unknown or missing action falls back to ActionNone rather than
 // erroring, so a malformed reply never causes an unwanted action.
 func ParseDecision(raw string) (Decision, error) {
-	jsonStr, ok := extractJSONObject(raw)
+	jsonStr, ok := jsonutil.ExtractBalancedObject(raw)
 	if !ok {
 		return Decision{Action: ActionNone}, fmt.Errorf("proactive.ParseDecision: no JSON object found")
 	}
@@ -85,42 +86,4 @@ func ParseDecision(raw string) (Decision, error) {
 		d.Action = ActionNone
 	}
 	return d, nil
-}
-
-// extractJSONObject returns the first balanced {...} run in s, ignoring braces
-// inside string literals.
-func extractJSONObject(s string) (string, bool) {
-	start := strings.IndexByte(s, '{')
-	if start < 0 {
-		return "", false
-	}
-	depth := 0
-	inStr := false
-	escaped := false
-	for i := start; i < len(s); i++ {
-		c := s[i]
-		if inStr {
-			switch {
-			case escaped:
-				escaped = false
-			case c == '\\':
-				escaped = true
-			case c == '"':
-				inStr = false
-			}
-			continue
-		}
-		switch c {
-		case '"':
-			inStr = true
-		case '{':
-			depth++
-		case '}':
-			depth--
-			if depth == 0 {
-				return s[start : i+1], true
-			}
-		}
-	}
-	return "", false
 }

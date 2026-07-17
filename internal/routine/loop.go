@@ -149,7 +149,7 @@ func (r *RoutineLoop) clearRunning(id string) {
 // already confirmed due, bounding the generate call so one stuck provider or
 // runaway agent turn can't hang this goroutine forever.
 func (r *RoutineLoop) processDueRoutine(ctx context.Context, rt Routine, now time.Time, today string, fireTime time.Time) {
-	if rt.LastGeneratedForDate != today {
+	if rt.LastGeneratedDate() != today {
 		genCtx, cancel := context.WithTimeout(ctx, generateTimeout)
 		content, err := r.generate(genCtx, rt)
 		cancel()
@@ -159,7 +159,6 @@ func (r *RoutineLoop) processDueRoutine(ctx context.Context, rt Routine, now tim
 		}
 		rt.LastGeneratedContent = content
 		rt.LastGeneratedAt = now
-		rt.LastGeneratedForDate = today
 		updated, err := r.store.Update(rt)
 		if err != nil {
 			logx.Printf("routine: save generated content %s: %v", rt.ID, err)

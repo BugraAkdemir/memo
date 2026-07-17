@@ -740,7 +740,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               _deselectChat(); // stop the stale per-chat message poll timer
               ref.read(whatsAppStatusProvider.notifier).logout();
             },
-            child: Text(L10n.t('logout_2'),
+            child: Text(L10n.t('logout'),
                 style: const TextStyle(color: MemoTheme.red)),
           ),
         ],
@@ -778,7 +778,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 TextButton.icon(
                   onPressed: () => ref.read(whatsAppStatusProvider.notifier).refresh(),
                   icon: const Icon(Icons.refresh, size: 16),
-                  label: Text(L10n.t('retry_2')),
+                  label: Text(L10n.t('retry')),
                 ),
               ],
             ),

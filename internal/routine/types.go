@@ -72,11 +72,23 @@ type Routine struct {
 
 	// Content is generated ahead of the fire time when DeliveryMobile is set,
 	// since the mobile app has no push channel and must poll+pre-schedule a
-	// local notification (see RoutineLoop's doc comment). LastGeneratedForDate
-	// guards against regenerating more than once per day.
+	// local notification (see RoutineLoop's doc comment).
 	LastGeneratedContent string    `json:"last_generated_content,omitempty"`
 	LastGeneratedAt      time.Time `json:"last_generated_at"`
-	LastGeneratedForDate string    `json:"last_generated_for_date,omitempty"`
+}
+
+// LastGeneratedDate returns the "2026-07-17"-style date LastGeneratedAt
+// falls on, or "" if content was never generated. Guards against
+// regenerating more than once per day — derived from LastGeneratedAt rather
+// than stored as its own field (an earlier LastGeneratedForDate field was
+// removed as redundant: the two were always set together from the same now,
+// in the same code path, so a future edit updating one without the other
+// could silently desync them).
+func (r Routine) LastGeneratedDate() string {
+	if r.LastGeneratedAt.IsZero() {
+		return ""
+	}
+	return r.LastGeneratedAt.Format("2006-01-02")
 }
 
 // MobilePayload is what the mobile app polls for to pre-schedule a local

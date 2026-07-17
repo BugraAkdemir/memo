@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"memo/internal/logx"
+	"memo/internal/truncate"
 	"strings"
 	"sync"
 )
@@ -220,7 +221,7 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 			}
 			logx.Printf("TASKLOOP: CEO review error on item %s round %d: %v", item.ID, round, err)
 			if round < maxRoundsPerItem {
-				workerPrompt = item.Text + "\n\nÖnceki çıktı:\n" + truncateText(workerOutput, 2000) + "\n\nEksik/yanlış: CEO yanıtı anlaşılamadı. Lütfen görevi eksiksiz tamamlayıp tekrar dene."
+				workerPrompt = item.Text + "\n\nÖnceki çıktı:\n" + truncate.Text(workerOutput, 2000) + "\n\nEksik/yanlış: CEO yanıtı anlaşılamadı. Lütfen görevi eksiksiz tamamlayıp tekrar dene."
 				if err := e.store.IncrementRounds(listID, item.ID); err != nil {
 					logx.Printf("TASKLOOP: increment rounds %s/%s: %v", listID, item.ID, err)
 				}
@@ -246,21 +247,13 @@ func (e *Engine) processItem(ctx context.Context, listID string, item *TaskItem,
 		workerPrompt = fmt.Sprintf(
 			"Madde: %s\n\nÖnceki çıktı:\n%s\n\nCEO'nun eksik/yanlış buldukları:\n%s\n\nBu eksikleri gider, hataları düzelt ve görevi eksiksiz tamamla.",
 			item.Text,
-			truncateText(workerOutput, 2000),
+			truncate.Text(workerOutput, 2000),
 			feedback,
 		)
 	}
 
 	item.Note = "maksimum tur sayısına ulaşıldı"
 	return false, false
-}
-
-func truncateText(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n]) + "..."
 }
 
 func ChiefReviewSystemPrompt() string {
@@ -277,7 +270,7 @@ func ChiefReviewPrompt(itemText, workerOutput string) string {
 	return fmt.Sprintf(
 		"Orijinal görev maddesi:\n%s\n\nİşçinin ürettiği çıktı:\n%s\n\nİncele ve JSON olarak kararını ver.",
 		itemText,
-		truncateText(workerOutput, 8000),
+		truncate.Text(workerOutput, 8000),
 	)
 }
 
@@ -289,7 +282,7 @@ func ExtractAndParseReview(raw string) (approved bool, feedback string, err erro
 		Feedback string `json:"feedback"`
 	}
 	if err := json.Unmarshal([]byte(cleaned), &result); err != nil {
-		return false, "", fmt.Errorf("JSON ayrıştırılamadı: %w (ham: %s)", err, truncateText(cleaned, 200))
+		return false, "", fmt.Errorf("JSON ayrıştırılamadı: %w (ham: %s)", err, truncate.Text(cleaned, 200))
 	}
 	return result.Approved, result.Feedback, nil
 }

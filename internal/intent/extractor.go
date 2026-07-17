@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"memo/internal/logx"
+	"memo/internal/truncate"
 	"strings"
 	"time"
 )
@@ -45,7 +46,7 @@ func (e *Extractor) Extract(ctx context.Context, text string, source Source, con
 
 	res, err := parseResponse(raw, source, contact, now)
 	if err != nil {
-		logx.Printf("intent: parse response: %v (raw=%q)", err, truncate(raw, 200))
+		logx.Printf("intent: parse response: %v (raw=%q)", err, truncate.Text(raw, 200))
 		return IntentResult{Source: source, ContactName: contact}, nil
 	}
 	return res, nil
@@ -245,11 +246,4 @@ func extractJSON(s string) string {
 		}
 	}
 	return ""
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }

@@ -2,6 +2,30 @@ package truncate
 
 import "testing"
 
+func TestText(t *testing.T) {
+	tests := []struct {
+		input string
+		n     int
+		want  string
+	}{
+		{"hello", 10, "hello"},
+		{"hello world", 5, "hello..."},
+		{"", 5, ""},
+		// Multi-byte UTF-8 (Turkish, CJK): must cut on rune boundaries, not
+		// byte offsets — a byte-slice truncation would corrupt these.
+		{"日本語", 2, "日本..."},
+		{"ığüşöç", 3, "ığü..."},
+	}
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got := Text(tt.input, tt.n)
+			if got != tt.want {
+				t.Errorf("Text(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.want)
+			}
+		})
+	}
+}
+
 func TestEstimateTokens(t *testing.T) {
 	tests := []struct {
 		input string

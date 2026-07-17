@@ -127,24 +127,3 @@ func TestEstimateTokens(t *testing.T) {
 		})
 	}
 }
-
-func TestTruncateUTF8(t *testing.T) {
-	tests := []struct {
-		input string
-		n     int
-		want  string
-	}{
-		{"hello", 10, "hello"},
-		{"hello world", 5, "hello..."},
-		{"", 5, ""},
-		{"日本語", 2, "日本..."},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := truncateUTF8(tt.input, tt.n)
-			if got != tt.want {
-				t.Errorf("truncateUTF8(%q, %d) = %q, want %q", tt.input, tt.n, got, tt.want)
-			}
-		})
-	}
-}

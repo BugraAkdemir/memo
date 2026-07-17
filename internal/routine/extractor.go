@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"memo/internal/truncate"
 	"strings"
 	"time"
 )
@@ -68,7 +69,7 @@ func (e *Extractor) Extract(ctx context.Context, text string, now time.Time) (Dr
 
 	jsonStr, ok := extractJSON(raw)
 	if !ok {
-		return Draft{}, fmt.Errorf("routine: no JSON object in response: %s", truncateForError(raw, 200))
+		return Draft{}, fmt.Errorf("routine: no JSON object in response: %s", truncate.Text(raw, 200))
 	}
 
 	var d Draft
@@ -80,13 +81,6 @@ func (e *Extractor) Extract(ctx context.Context, text string, now time.Time) (Dr
 		d.DeliveryMobile = true
 	}
 	return d, nil
-}
-
-func truncateForError(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "..."
 }
 
 // extractJSON finds the first balanced {...} object in s — LLMs sometimes

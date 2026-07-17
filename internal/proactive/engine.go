@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"memo/internal/observer"
+	"memo/internal/truncate"
 )
 
 // Tunables with sensible defaults (filled in by NewEngine when zero).
@@ -192,7 +193,7 @@ func (e *Engine) askChief(ctx context.Context, matches []MatchResult, now time.T
 	}
 	d, err := ParseDecision(raw)
 	if err != nil {
-		logx.Printf("PROACTIVE: parse decision: %v (raw=%q)", err, truncate(raw, 200))
+		logx.Printf("PROACTIVE: parse decision: %v (raw=%q)", err, truncate.Text(raw, 200))
 		return Decision{Action: ActionNone}
 	}
 	// The Chief may omit the pattern id; default to the strongest match.
@@ -226,7 +227,7 @@ func (e *Engine) execute(ctx context.Context, d Decision) {
 	if d.Action == ActionAuto && e.auto != nil {
 		go e.auto(ctx, ps)
 	}
-	logx.Printf("PROACTIVE: %s for pattern %s: %q", d.Action, d.PatternID, truncate(d.Message, 80))
+	logx.Printf("PROACTIVE: %s for pattern %s: %q", d.Action, d.PatternID, truncate.Text(d.Message, 80))
 }
 
 // reapExpired records an Outcome of "ignored" for a prompt that timed out and
@@ -307,11 +308,4 @@ func (e *Engine) recordOutcome(p PendingSuggestion, outcome Outcome) {
 		e.history = e.history[len(e.history)-historyLimit:]
 	}
 	e.mu.Unlock()
-}
-
-func truncate(s string, n int) string {
-	if len(s) <= n {
-		return s
-	}
-	return s[:n] + "…"
 }

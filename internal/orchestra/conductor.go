@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"memo/internal/provider"
+	"memo/internal/truncate"
 )
 
 // ProviderFactory is a function type for creating providers within the orchestra.
@@ -811,7 +812,7 @@ func (c *Conductor) buildRoleInfo(cfg OrchestraConfig) string {
 			if !IsBuiltinRole(role.Role) {
 				custom = " (custom)"
 			}
-			prompt := truncateUTF8(role.SystemPrompt, 100)
+			prompt := truncate.Text(role.SystemPrompt, 100)
 			sb.WriteString(fmt.Sprintf("- %s%s: model=%s, prompt=%s\n", role.Role, custom, role.ModelType, prompt))
 			sb.WriteString("\n")
 		}
@@ -835,15 +836,6 @@ func estimateTokens(s string) int {
 		return fromWords
 	}
 	return fromChars
-}
-
-// truncateUTF8 truncates a string to n runes without breaking multi-byte characters.
-func truncateUTF8(s string, n int) string {
-	runes := []rune(s)
-	if len(runes) <= n {
-		return s
-	}
-	return string(runes[:n]) + "..."
 }
 
 func extractJSON(text string) string {

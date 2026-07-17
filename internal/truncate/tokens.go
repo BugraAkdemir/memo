@@ -1,5 +1,19 @@
 package truncate
 
+// Text truncates s to at most n runes, appending "..." if it was cut.
+// Rune-safe (operates on runes, not bytes) so a cut can't land mid-character
+// and corrupt multi-byte UTF-8 (Turkish ı, ş, ğ, ü, ö, ç, or any non-ASCII
+// text) — several earlier per-package copies of this exact helper sliced by
+// byte instead and could do exactly that. Consolidated here so a fix only
+// needs to happen once (TD-2).
+func Text(s string, n int) string {
+	runes := []rune(s)
+	if len(runes) <= n {
+		return s
+	}
+	return string(runes[:n]) + "..."
+}
+
 // EstimateTokens provides a rough token count for a given text.
 // Uses len/3 as a reasonable upper bound for mixed content (code, Turkish, English).
 func EstimateTokens(text string) int {

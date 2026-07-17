@@ -655,19 +655,3 @@ func TestListSkipsDoneAndStuckItems(t *testing.T) {
 	}
 }
 
-func TestTruncateText(t *testing.T) {
-	long := ""
-	for i := 0; i < 3000; i++ {
-		long += "x"
-	}
-	result := truncateText(long, 100)
-	if len([]rune(result)) > 103 { // 100 + "..."
-		t.Fatalf("truncate: got %d runes, want <= 103", len([]rune(result)))
-	}
-
-	short := "hello"
-	result = truncateText(short, 100)
-	if result != short {
-		t.Fatal("short text should not be truncated")
-	}
-}

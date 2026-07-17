@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/connection_provider.dart';
 import '../widgets/branding.dart';
@@ -108,13 +109,13 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       Center(child: const MemoLogo(size: 76)),
                       const SizedBox(height: 22),
                       Center(
-                        child: Text('Memo',
+                        child: Text(L10n.t('app_name'),
                             style: Theme.of(context).textTheme.displayLarge),
                       ),
                       const SizedBox(height: 8),
                       Center(
                         child: Text(
-                          'Pair with your desktop to reach\nyour second brain from here.',
+                          L10n.t('connect_subtitle'),
                           textAlign: TextAlign.center,
                           style: MemoTheme.body(14.5,
                               color: MemoTheme.textDim, height: 1.5),
@@ -148,10 +149,10 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                       Center(
                         child: Text(
                           _mode == 1
-                              ? 'Masaüstünde Tailscale\'i aç, sabit URL\'i (memo.xxx.ts.net) bir kez gir — hep çalışır.'
+                              ? L10n.t('connect_hint_tailscale')
                               : _mode == 2
-                                  ? 'Enable remote access on your desktop\nor enter existing URL and token manually.'
-                                  : 'Phone and desktop need to be on the same Wi-Fi.',
+                                  ? L10n.t('connect_hint_remote')
+                                  : L10n.t('connect_hint_lan'),
                           textAlign: TextAlign.center,
                           style: MemoTheme.body(12.5,
                               color: MemoTheme.textFaint, height: 1.45),
@@ -174,7 +175,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       children: [
         Row(
           children: [
-            Expanded(child: _fieldLabel('DESKTOP ADDRESS')),
+            Expanded(child: _fieldLabel(L10n.t('desktop_address'))),
             if (state.discovering)
               const SizedBox(
                 width: 14,
@@ -189,7 +190,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                   children: [
                     Icon(Icons.wifi_find_outlined, size: 13, color: MemoTheme.accent),
                     const SizedBox(width: 4),
-                    Text('TARA', style: MemoTheme.mono(11, color: MemoTheme.accent, ls: 1.1)),
+                    Text(L10n.t('scan'), style: MemoTheme.mono(11, color: MemoTheme.accent, ls: 1.1)),
                   ],
                 ),
               ),
@@ -223,9 +224,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       HapticFeedback.lightImpact();
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ağda Memo backend bulunamadı. URL\'yi elle gir.'),
-          duration: Duration(seconds: 3),
+        SnackBar(
+          content: Text(L10n.t('scan_not_found')),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -244,17 +245,16 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       _tokenCtrl.text = status.token;
       HapticFeedback.lightImpact();
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Ngrok URL bulundu ve dolduruldu.'),
-          duration: Duration(seconds: 2),
+        SnackBar(
+          content: Text(L10n.t('scan_ngrok_found')),
+          duration: const Duration(seconds: 2),
         ),
       );
     } else {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Ağda Memo bulunamadı ya da ngrok henüz aktif değil.'),
-          duration: Duration(seconds: 3),
+        SnackBar(
+          content: Text(L10n.t('scan_ngrok_not_found')),
+          duration: const Duration(seconds: 3),
         ),
       );
     }
@@ -264,7 +264,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _fieldLabel('TAILSCALE URL'),
+        _fieldLabel(L10n.t('tailscale_url')),
         const SizedBox(height: 8),
         TextField(
           controller: _urlCtrl,
@@ -278,7 +278,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
           ),
         ),
         const SizedBox(height: 16),
-        _fieldLabel('ACCESS TOKEN'),
+        _fieldLabel(L10n.t('access_token')),
         const SizedBox(height: 8),
         TextField(
           controller: _tokenCtrl,
@@ -322,7 +322,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
             _remoteStatusCard(ra.status!, state),
           ],
           const SizedBox(height: 16),
-          _fieldLabel('NGROK AUTH TOKEN'),
+          _fieldLabel(L10n.t('ngrok_auth_token')),
           const SizedBox(height: 8),
           Row(
             children: [
@@ -339,17 +339,17 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
               ),
               const SizedBox(width: 10),
               if (ra.status == null || !ra.status!.enabled)
-                _smallButton('Enable', () => _enableNgrok(),
+                _smallButton(L10n.t('enable'), () => _enableNgrok(),
                     busy: ra.enabling)
               else
-                _smallButton('Disable', () => _disableNgrok(),
+                _smallButton(L10n.t('disable'), () => _disableNgrok(),
                     busy: ra.enabling, destructive: true),
             ],
           ),
           const SizedBox(height: 16),
           Row(
             children: [
-              Expanded(child: _fieldLabel('PUBLIC URL')),
+              Expanded(child: _fieldLabel(L10n.t('public_url'))),
               if (state.discovering)
                 const SizedBox(
                   width: 14,
@@ -364,7 +364,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                     children: [
                       Icon(Icons.wifi_find_outlined, size: 13, color: MemoTheme.accent),
                       const SizedBox(width: 4),
-                      Text('TARA', style: MemoTheme.mono(11, color: MemoTheme.accent, ls: 1.1)),
+                      Text(L10n.t('scan'), style: MemoTheme.mono(11, color: MemoTheme.accent, ls: 1.1)),
                     ],
                   ),
                 ),
@@ -383,7 +383,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
             ),
           ),
           const SizedBox(height: 16),
-          _fieldLabel('ACCESS TOKEN'),
+          _fieldLabel(L10n.t('access_token')),
           const SizedBox(height: 8),
           TextField(
             controller: _tokenCtrl,
@@ -426,7 +426,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
               ),
               const SizedBox(width: 8),
               Text(
-                status.running ? 'Remote access active' : 'Remote access off',
+                status.running ? L10n.t('remote_access_on') : L10n.t('remote_access_off'),
                 style: MemoTheme.body(13,
                     w: FontWeight.w600, color: MemoTheme.text),
               ),
@@ -434,7 +434,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
           ),
           if (status.token.isNotEmpty) ...[
             const SizedBox(height: 8),
-            _statusRow(Icons.key_outlined, 'Token', status.token),
+            _statusRow(Icons.key_outlined, L10n.t('label_token'), status.token),
           ],
           if (status.ngrokUrl.isNotEmpty) ...[
             const SizedBox(height: 6),
@@ -442,23 +442,23 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
               onTap: () {
                 _fillAndConnect(status.ngrokUrl, status.token);
               },
-              child: _statusRow(Icons.public_outlined, 'Ngrok',
-                  status.ngrokUrl, tapHint: 'Tap to connect'),
+              child: _statusRow(Icons.public_outlined, L10n.t('label_ngrok'),
+                  status.ngrokUrl, tapHint: L10n.t('tap_to_connect')),
             ),
           ],
           if (status.ngrokToken.isNotEmpty) ...[
             const SizedBox(height: 6),
-            _statusRow(Icons.vpn_key_outlined, 'Saved token', status.ngrokToken),
+            _statusRow(Icons.vpn_key_outlined, L10n.t('saved_token'), status.ngrokToken),
           ],
           if (status.ngrokError.isNotEmpty) ...[
             const SizedBox(height: 6),
-            _statusRow(Icons.error_outline, 'Error', status.ngrokError),
+            _statusRow(Icons.error_outline, L10n.t('error'), status.ngrokError),
           ],
           const SizedBox(height: 10),
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
-              Text('Auto-start on launch',
+              Text(L10n.t('auto_start_on_boot'),
                   style: MemoTheme.body(13, color: MemoTheme.textDim)),
               Switch(
                 value: status.ngrokAutoStart,
@@ -476,8 +476,8 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
                 onPressed: () =>
                     _fillAndConnect(status.publicUrl!, status.token),
                 icon: const Icon(Icons.link, size: 16),
-                label: const Text('Connect with this URL',
-                    style: TextStyle(fontSize: 13)),
+                label: Text(L10n.t('connect_with_this_url'),
+                    style: const TextStyle(fontSize: 13)),
                 style: OutlinedButton.styleFrom(
                   padding: const EdgeInsets.symmetric(vertical: 12),
                   shape: RoundedRectangleBorder(
@@ -604,9 +604,9 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       ),
       child: Row(
         children: [
-          tab('Wi-Fi', Icons.wifi_rounded, 0),
-          if (_beta) tab('Tailscale', Icons.hub_rounded, 1),
-          tab('Remote', Icons.public_rounded, 2),
+          tab(L10n.t('mode_wifi'), Icons.wifi_rounded, 0),
+          if (_beta) tab(L10n.t('mode_tailscale'), Icons.hub_rounded, 1),
+          tab(L10n.t('mode_remote'), Icons.public_rounded, 2),
         ],
       ),
     );
@@ -655,7 +655,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
             : Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Text('Connect',
+                  Text(L10n.t('connect'),
                       style: MemoTheme.body(16,
                           w: FontWeight.w700, color: MemoTheme.onAccent)),
                   const SizedBox(width: 8),

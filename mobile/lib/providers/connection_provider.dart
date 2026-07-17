@@ -6,6 +6,27 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
+
+/// Turns a caught exception into a short, actionable message instead of
+/// dumping the raw DioException text (stack-trace-like, unreadable) into the
+/// UI. A 401 specifically means the phone's saved token no longer matches
+/// the desktop's — e.g. remote access was just turned on, or its token was
+/// rotated, after the phone last paired — so it gets its own message rather
+/// than falling through to the generic "$action: $e" case.
+String _friendlyError(Object e, {required String action}) {
+  if (e is DioException) {
+    if (e.response?.statusCode == 401) {
+      return L10n.t('err_token_invalid');
+    }
+    if (e.type == DioExceptionType.connectionTimeout ||
+        e.type == DioExceptionType.receiveTimeout ||
+        e.type == DioExceptionType.connectionError) {
+      return L10n.t('err_backend_unreachable', {'action': action});
+    }
+  }
+  return '$action: $e';
+}
 
 final apiClientProvider = Provider<MemoApiClient>((ref) {
   return MemoApiClient();
@@ -147,17 +168,13 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
       } else {
         state = state.copyWith(
           connecting: false,
-          error: 'Backend not reachable at $normalized\n'
-              'Check:\n'
-              '• Same network\n'
-              '• Backend running\n'
-              '• Token correct (if remote)',
+          error: L10n.t('err_backend_not_reachable', {'url': normalized}),
         );
       }
     } catch (e) {
       state = state.copyWith(
         connecting: false,
-        error: 'Connection failed: $e',
+        error: _friendlyError(e, action: L10n.t('err_connection_failed')),
       );
     }
   }
@@ -290,7 +307,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     } catch (e) {
       state = RemoteAccessState(
         loading: false,
-        error: 'Failed to load remote access status: $e',
+        error: _friendlyError(e, action: L10n.t('err_remote_status')),
       );
     }
   }
@@ -312,7 +329,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     } catch (e) {
       state = state.copyWith(
         enabling: false,
-        error: 'Failed to enable ngrok: $e',
+        error: _friendlyError(e, action: L10n.t('err_ngrok_enable')),
       );
     }
   }
@@ -325,7 +342,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     } catch (e) {
       state = state.copyWith(
         enabling: false,
-        error: 'Failed to disable remote access: $e',
+        error: _friendlyError(e, action: L10n.t('err_remote_disable')),
       );
     }
   }
@@ -346,7 +363,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
       await loadStatus();
     } catch (e) {
       state = state.copyWith(
-        error: 'Failed to set auto-start: $e',
+        error: _friendlyError(e, action: L10n.t('err_auto_start')),
       );
     }
   }

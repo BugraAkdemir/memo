@@ -1,9 +1,11 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 39, "Deniz" persona testi) — otonom `-p --auto-allow` canlı testinde yeni bir gerçek bug bulundu: BUG-H2 (aşağıda). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 39.
+> **Son güncelleme:** 2026-07-17 (Session 40, "Ece" persona testi — CANLI WhatsApp ortamı) — `STRESS_TEST_FINDINGS.md` artık ayrı tutulmuyor, tüm bulgular (Session 39 + Session 40) buraya konsolide edildi ve o dosya silindi. BUG-H2 yeni kanıtla derinleştirildi; 6 yeni madde eklendi (2 HIGH, 3 MEDIUM, 1 LOW — Session 39'dan taşınan 2 madde dahil). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 40.
 >
-> **Önceki güncelleme:** 2026-07-17 (2. tur) — `/code-review` (high effort, 8 bulucu açı + doğrulama) ile bulunan 19 maddeden 17'si bu turda düzeltildi (2 CRITICAL, 1 HIGH, 3 MEDIUM, 6 LOW, 5 teknik borç — her biri ayrı, doğrulanmış commit, `go build/vet/test -race` + `flutter analyze/test` yeşil). Kalan 2 MEDIUM madde (BUG-M1, BUG-M4) bilinçli olarak ertelendi: ikisi de gerçek bir API/mimari kararı gerektiriyor (backend'e dil alanı eklemek, rutin saatine zaman dilimi eklemek) — yarım yamalak, otonom bir oturumda tek taraflı karar vermek yerine sonraki oturuma/kullanıcı onayına bırakıldı.
+> **Önceki güncelleme:** 2026-07-17 (Session 39, "Deniz" persona testi) — otonom `-p --auto-allow` canlı testinde yeni bir gerçek bug bulundu: BUG-H2.
+>
+> **Daha önceki güncelleme:** 2026-07-17 (2. tur) — `/code-review` (high effort, 8 bulucu açı + doğrulama) ile bulunan 19 maddeden 17'si bu turda düzeltildi (2 CRITICAL, 1 HIGH, 3 MEDIUM, 6 LOW, 5 teknik borç — her biri ayrı, doğrulanmış commit, `go build/vet/test -race` + `flutter analyze/test` yeşil). Kalan 2 MEDIUM madde (BUG-M1, BUG-M4) bilinçli olarak ertelendi: ikisi de gerçek bir API/mimari kararı gerektiriyor (backend'e dil alanı eklemek, rutin saatine zaman dilimi eklemek) — yarım yamalak, otonom bir oturumda tek taraflı karar vermek yerine sonraki oturuma/kullanıcı onayına bırakıldı.
 >
 > **Önceki geçmiş (2026-07-12 ve öncesi):** Bu dosya o tarihte 0 açık maddeye indirilmişti. 2026-07-17'nin ilk turunda (yukarıdaki 19 madde) eklenen yeni "rutin" (scheduled automation) motorü + geniş L10n temizliği taranmıştı.
 
@@ -14,29 +16,107 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 1 |
-| 🟡 MEDIUM | 2 |
-| 🟢 LOW | 0 |
+| 🟠 HIGH | 3 |
+| 🟡 MEDIUM | 5 |
+| 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **3** |
+| **TOPLAM** | **10** |
 
 ---
 
 ## 🟠 HIGH
 
-### BUG-H2: Alışkanlık (habit) deklarasyonunda `habit_days` tip uyuşmazlığı TÜM intent sonucunu sessizce iptal ediyor — model kullanıcıya yalan "kaydedildi" onayı veriyor
+### BUG-H2: Alışkanlık (habit) deklarasyonunda `habit_days` tip uyuşmazlığı TÜM intent sonucunu sessizce iptal ediyor — model kullanıcıya yalan "kaydedildi" onayı veriyor, mimari olarak asistan bunu asla bilemiyor
 
-**Dosya:** `internal/intent/extractor.go` (`rawIntent.HabitDays []int`, `parseResponse`), `internal/app/learning.go:119-123` (`processMessageIntent`)
+**Dosya:** `internal/intent/extractor.go` (`rawIntent.HabitDays []int`, `parseResponse`), `internal/app/learning.go:150-155` (`processMessageIntent`), `internal/app/chat.go:331` (async tetikleme)
 
-"Deniz" persona testinde (bkz. `handoff.md` Session 39) canlı olarak bulundu: kullanıcı "bundan sonra her gün akşam 21:00'de 20 dakika kitap okuyacağım, bunu alışkanlık olarak not al" dediğinde, LLM `habit_days` alanını beklenen `int` dizisi yerine string olarak döndürdü (muhtemelen gün adları). `json.Unmarshal(jsonStr, &ri)` bu tek alan yüzünden TÜM `rawIntent`'i reddediyor — `has_intent`/`is_habit`/`summary` gayet doğru üretilmiş olsa bile. `parseResponse` hata dönüyor, `processMessageIntent` bunu loglayıp sessizce `return` ediyor; `observerPatterns.SaveDeclared` hiç çağrılmıyor, `data/profile/patterns.json`'a hiçbir şey yazılmıyor.
+"Deniz" persona testinde (Session 39) canlı olarak bulundu: kullanıcı "bundan sonra her gün akşam 21:00'de 20 dakika kitap okuyacağım, bunu alışkanlık olarak not al" dediğinde, LLM `habit_days` alanını beklenen `int` dizisi yerine string olarak döndürdü. `json.Unmarshal(jsonStr, &ri)` bu tek alan yüzünden TÜM `rawIntent`'i reddediyor — `has_intent`/`is_habit`/`summary` gayet doğru üretilmiş olsa bile. `parseResponse` hata dönüyor, `processMessageIntent` bunu loglayıp sessizce `return` ediyor; `observerPatterns.SaveDeclared` hiç çağrılmıyor, `data/profile/patterns.json`'a hiçbir şey yazılmıyor.
 
-**Senaryo:** Kullanıcı bir alışkanlık deklare eder, ana sohbet modeli (bu arka plan pipeline'ından habersiz olduğu için) her zaman "Alışkanlık kaydedildi! 📖" gibi kesin bir onay verir — ama backend hiçbir şey kaydetmemiştir. Kullanıcı gelecekte "bana hatırlatacağını söylemiştin" dediğinde hiçbir hatırlatma gelmez; sessiz veri kaybı + yanlış kullanıcı güveni.
+**Session 40'ta derinleştirilen kanıt:** "Ece" persona testinde AYNI kök neden, çok daha genel/doğal bir ifadeyle ("...her hafta içi sabah 08:30'da 15 dakika esneme yapacağım...") tekrar üretildi — yani tetikleyici tek bir kalıpla sınırlı değil, "belirli günlerde tekrar eden" hemen her alışkanlık deklarasyonu bu riski taşıyor. Ayrıca **zamanlama kesin olarak kanıtlandı**: kullanıcıya "Alışkanlık kaydedildi!" onayı verildikten TAM 40 saniye SONRA arka planda `intent: parse response` hatası düştü (`processMessageIntent` `go` ile async tetikleniyor, ana yanıt akışını hiç beklemiyor) — yani bu sadece "bazen JSON tipi bozuluyor" değil, **mimari olarak ana sohbet modelinin o anda backend sonucunu bilmesi imkansız**, JSON hatası düzelse bile onay her zaman kördür. Katlanan etki de canlı doğrulandı: birkaç tur sonra "takvimimde ne var" diye sorulduğunda, hiç kaydedilmemiş bu alışkanlık, gerçek bir takvim etkinliğiyle ayrım yapılmadan yan yana listelendi (bkz. BUG-M5) — yanlış güven tek turla sınırlı kalmıyor, sonraki turlara taşınıp kalıcılaşıyor.
 
-**Önerilen yön:** `HabitDays`'i `[]int` yerine daha toleranslı bir tip (`json.RawMessage` veya serbest `[]any` + manuel coerce/best-effort parse) yapmak; ayrıca tek bir alanın tipi bozuksa bile geri kalan alanları (has_intent, is_habit, summary, habit_time_hhmm) kurtaracak alan-bazlı bir fallback eklemek düşünülebilir.
+**Senaryo:** Kullanıcı bir alışkanlık deklare eder, ana sohbet modeli (bu arka plan pipeline'ından habersiz olduğu için) her zaman kesin bir onay verir — ama backend hiçbir şey kaydetmemiştir. Kullanıcı gelecekte "bana hatırlatacağını söylemiştin" dediğinde hiçbir hatırlatma gelmez; sessiz veri kaybı + yanlış kullanıcı güveni, üstelik bu yanlış güven sonraki sohbetlerde de kendini doğru gibi tekrarlıyor.
+
+**Önerilen yön:** `HabitDays`'i `[]int` yerine daha toleranslı bir tip (`json.RawMessage` veya serbest `[]any` + manuel coerce/best-effort parse) yapmak; tek bir alanın tipi bozuksa bile geri kalan alanları kurtaracak alan-bazlı fallback eklemek. Daha köklü çözüm: ana sohbet modelinin habit/calendar onayı vermeden önce arka plan sonucunu bekleyecek (veya en azından "kaydediyorum, birazdan kesinleşir" gibi belirsiz bir dil kullanacak) bir mekanizma.
+
+---
+
+### BUG-H3: Uzun, boşluksuz tek bir "kelime" hafızayı sadece kaydetmekle kalmıyor, RETRIEVE'i de kırıyor ve tüm turu (LLM cevabı dahil) başarısız kılabiliyor
+
+**Dosya:** `internal/memory/chunker.go:18` (`chunkText`), `internal/memory/store.go:482` (`SaveInteraction`), `internal/memory/store.go:755` (`RetrieveContext`)
+
+**Tekrarlanabilir (Session 39):** 50.000 karakterlik boşluksuz bir "a" dizisi + birkaç normal kelime gönderildi. Ana model cevap verdi ama:
+```
+[memory:error:Hafıza kaydedilemedi: memory.SaveInteraction chunk[0]: embed: ... "input (25161 tokens) is too large to process (current batch size: 512)"]
+```
+**Kök neden:** `chunkText`, metni `strings.Fields(text)` ile boşluğa göre "kelime"lere bölüyor, sonra `maxTokens=300` sınırını aşmayacak şekilde grupluyor. Ama TEK bir "kelime" (boşluksuz uzun bir dizi — uzun bir URL, base64 data-URI, minify kod, uzun bir hash) tek başına `maxTokens`'ı aşarsa, bunu daha küçük parçalara bölecek bir fallback YOK — chunk olduğu gibi (aşırı büyük) yayınlanıyor, embedding sunucusunun (`--ctx-size 512`) batch sınırını aşıp 500 ile reddediliyor. `SaveInteraction` ilk başarısız chunk'ta hemen `return` ediyor — mesajın TÜMÜ hafızaya kaydedilmiyor.
+
+**Session 40'ta ağırlaştırılmış tekrar üretim:** Aynı sınıf girdi (40.000 karakter) bu kez SADECE save'i değil, **aynı turda `RetrieveContext`'i de** aynı batch-size hatasıyla kırdı, VE ana LLM sağlayıcısı da timeout verdi:
+```
+[error] ⚠️ LLM Error: all providers failed: [opencode-zen] provider request timed out
+[memory:error:Hafıza okunamadı: memory.RetrieveContext: embed: ... "input (20359 tokens) is too large to process (current batch size: 512)"]
+```
+Yani kullanıcı bu turda **hiçbir yanıt almadı** — Session 39'daki "mesaj kaydedilmiyor ama sohbet normal devam ediyor" senaryosundan daha ağır bir tam-tur-başarısızlığı.
+
+**Senaryo:** Kullanıcı sohbete uzun bir URL, base64 görsel, minify JS/CSS, uzun bir API key/hash veya uzun bir log/stack trace yapıştırırsa, o mesaj (ve içindeki bilgi) sessizce hafızadan düşebilir VEYA (Session 40'ın gösterdiği gibi) o turun tamamı (hem hafıza okuma hem LLM cevabı) başarısız olabilir.
+
+**Önerilen yön:** `chunkText`'e `maxTokens`'ı aşan tek bir "kelime"yi karakter bazlı zorla bölecek bir fallback eklemek (`truncate.EstimateTokens` ile) — bu hem save hem retrieve tarafını aynı anda düzeltir, ikisi de aynı embed/batch-size sınırına çarpıyor. Ayrıca `SaveInteraction`'ın bir chunk başarısız olsa bile geri kalan geçerli chunk'ları kaydetmeyi denemesi (best-effort) düşünülebilir.
+
+---
+
+### BUG-H4: `extractAndPinFacts`, asistanın TOOL SONUCU olarak aktardığı ÜÇÜNCÜ ŞAHIS verisini "kullanıcı hakkında kalıcı gerçek" sanıp kalıcı hafızaya pinliyor — gizlilik/doğruluk riski
+
+**Dosya:** `internal/app/memory.go:163-186` (`extractAndPinFacts`), `:168-171` (`fmt.Sprintf("User: %s\nAssistant: %s", userMsg, reply)` — tüm asistan yanıtı, tool-çağrısı sonucu içerse de, ayrım yapılmadan fact-extraction promptuna veriliyor)
+
+**Canlı doğrulama (Session 40):** Persona ("Ece"), WhatsApp sohbet listesine baktırdı; asistanın yanıtı gerçek hesaptaki bir grup sohbetinden bahsetti: *"TEKNOFEST-MEBROBOT MSE grubu → Sunum bitmiş, proje tasarımına başlanacak..."* (bu, hesap sahibinin/bir yakınının gerçek WhatsApp grubu, "Ece" persona'sıyla hiç ilgisi yok). Birkaç saniye sonra `data/memory/memory.db`'de şu pinned fact'ler belirdi:
+```
+explicit_...|User is a 12th grade informatics student.
+explicit_...|User is involved in a TEKNOFEST robotics project called MEBROBOT MSE.
+```
+Model, Ece'nin hiç söylemediği, sadece asistanın WhatsApp'tan okuyup aktardığı bir grup adını, kullanıcının kalıcı kimlik bilgisi sanıp pinledi.
+
+**Kök neden:** `extractAndPinFacts`, `userMsg` (kullanıcının yazdığı) ile `reply` (asistanın ürettiği, tool sonuçlarını da içerebilen serbest metin) arasında hiçbir ayrım yapmadan ikisini "User: ...\nAssistant: ..." şablonuyla tek bir "bu turdan kullanıcı hakkında kalıcı gerçek çıkar" promptuna veriyor. Extraction modeli, asistanın aktardığı üçüncü şahıs bilgisini kullanıcının kendi bilgisiyle karıştırabiliyor.
+
+**Senaryo:** Kullanıcı WhatsApp'tan (veya e-posta, dosya, web arama gibi başka bir tool'dan) BAŞKA BİR İNSANA ait bilgiye baktırdığında, o bilgi yanlışlıkla "kullanıcının kendi kalıcı kimliği" olarak sisteme kalıcı olarak pinlenip HER gelecekteki sohbete (pinned facts RAG ranking'i bypass ederek koşulsuz enjekte edildiği için) sızabilir.
+
+**Önerilen yön:** `extractAndPinFacts`'e sadece `userMsg`'i vermek (asistanın tool-augmented yanıtını hariç tutmak), ya da en azından reply'nin tool-sonucu kaynaklı kısımlarını extraction promptundan çıkarmak.
 
 ---
 
 ## 🟡 MEDIUM
+
+### BUG-M5: Takvim sorgusu için hiçbir agent tool'u yok — model RAG/sohbet hafızasından tahmin ediyor, gerçek `events.db`'yi hiç sorgulamıyor, gerçek/hayali etkinlikleri ayırt edemiyor
+
+**Dosya:** `internal/agent/tools/` (calendar ile ilgili hiçbir dosya/fonksiyon yok)
+
+Gerçek bir takvim etkinliği başarıyla eklendi (`events.db`'de doğrulandı). "Bu hafta takvimimde ne var" diye sorulduğunda model **hiçbir tool çağırmadan** doğru cevap verdi — ama tamamen yeni, geçmişsiz bir sohbette aynı soru sorulduğunda `search_files` (takvimle alakasız bir araç) çağırıp "hatırladığım kadarıyla" diyerek RAG'a dayalı bir cevap üretti. Aynı cevapta, BUG-H2 yüzünden hiç kaydedilmemiş bir alışkanlık, gerçekten kaydedilmiş bir etkinlikle ayrım yapılmadan yan yana listelendi.
+
+**Senaryo:** Kullanıcı gerçek bir etkinliğinin yanında, hiç kaydedilmemiş "hayali" bir etkinliği de takviminde sanabilir — model bunu düzeltecek hiçbir ground-truth kontrolüne sahip değil.
+
+**Önerilen yön:** Takvimi gerçekten okuyan salt-okunur bir agent tool (`get_calendar_events(from,to)`) eklemek, sistem promptunda model her takvim sorgusunda bunu çağırmaya yönlendirilmeli.
+
+### BUG-M6: `extractAndPinFacts`'te tekrar/dedup kontrolü yok — aynı gerçek tur başına tekrar tekrar pinleniyor, kapasiteli pinned-facts havuzunu kendi kopyalarıyla dolduruyor
+
+**Dosya:** `internal/app/memory.go:182-186` (döngü, her fact için koşulsuz `SaveExplicitMemory` çağrısı, hiçbir dedup kontrolü yok)
+
+~16 mesajlık bir persona sohbeti sonunda `source='explicit'` kayıtları arasında 19 tanesi aynı kişiyle ilgiliydi, 8 tanesi neredeyse birebir aynı ifadeydi (`"User's name is Ece."` 4 kez tam aynı metin dahil). `"User has a mother."` art arda 3 kez ayrı ayrı pinlendi.
+
+**Kök neden:** Her turda bağımsız bir LLM çağrısıyla üretilen fact listesi, halihazırda aynı/benzer bir fact pinlenmiş mi diye kontrol edilmeden doğrudan `SaveExplicitMemory`'e veriliyor. Pinned facts RAG ranking'i bypass ederek her sisteme promptuna koşulsuz enjekte edildiği için, bu kopyalar gerçek bir token/maliyet yükü olarak her turda tekrarlanıyor.
+
+**Senaryo:** Uzun süre kullanan bir kullanıcı için, sık tekrar eden temel bilgiler (isim, şehir, meslek), sınırlı `pinnedFactsLimit` slotunu SADECE KENDİ KOPYALARIYLA doldurup, tek seferlik bahsedilmiş değerli gerçekleri (ör. "köpeğimin adı Zeytin") dışarıda bırakabilir.
+
+**Önerilen yön:** `SaveExplicitMemory`'den önce basit bir metin-benzerliği/exact-match dedup kontrolü eklemek; alternatif olarak periyodik bir "pinned facts consolidation" geçişi.
+
+### BUG-M7: `run_command`, `read_file`'ın uyguladığı "korumalı dizin" sınırını tamamen atlıyor — model kendi sınırlarını yanlış anlatıyor
+
+**Dosya:** `internal/agent/tools/command.go` (`RunCommand`, `isBlacklisted`) vs. `internal/agent/tools/file.go` (`validatePath`, `defaultProtectedPaths`)
+
+`read_file` ile `../../../../etc/passwd` denendiğinde doğru şekilde reddedildi ("access denied: path is within protected directory"), model kullanıcıya "sistem dosyalarına erişimim yok" dedi. Hemen ardından AYNI hedefe `run_command` ile (`cat /etc/hostname && whoami && printenv HOME`) ulaşılmaya çalışıldığında **tamamen başarılı** oldu.
+
+**Kök neden:** `file.go`'daki `validatePath`, hedef path'i `defaultProtectedPaths()`'e karşı kontrol ediyor — ama `command.go`'daki `RunCommand` SADECE `cwd` argümanının proje dizini içinde olduğunu doğruluyor; komut STRING'İNİN İÇİNDEKİ path'lere (`cat /etc/shadow`, `cat ~/.ssh/id_rsa`) hiçbir kısıtlama uygulamıyor. `isBlacklisted` sadece yıkıcı komut kalıplarını (rm -rf /, sudo, vb.) engelliyor, okuma/bilgi-sızdırma amaçlı komutlar listede yok.
+
+**Senaryo:** Model `read_file` denerse korumalı dizin engeline takılıp kullanıcıya "erişimim yok" der — ama aynı model, aynı hedefe `run_command` ile sorunsuzca ulaşabilir. Bu hem gerçek bir güvenlik sınırı tutarsızlığı hem de kullanıcıya YANLIŞ bir güvenlik hissi veriyor.
+
+**Önerilen yön:** Muhtemelen bilinçli bir tasarım kararı (run_command'ı tamamen kısıtlamak onu işlevsiz kılar) — ama en azından (a) izin ekranında "bu komut proje dizini dışına erişebilir" uyarısı gösterilmeli, (b) modelin sistem promptu bu ayrımı açıkça anlatmalı.
 
 ### BUG-M1: Backend'in ürettiği rutin içeriği (sistem promptu, bildirim başlığı, boş-bağlam metinleri) tamamen hardcoded Türkçe — yeni L10n sistemini baypas ediyor
 
@@ -53,6 +133,37 @@ Aynı oturumda mobile'a `routine_fallback` L10n key'i ("Rutin"/"Routine") eklenm
 `ParseFireTime`, `"HH:MM"`'i `now.Location()` (backend process'in çalıştığı makinenin saat dilimi) ile çözüyor. Telefon/kullanıcı backend'in çalıştığı yerden farklı bir saat diliminde olursa (uzaktan erişimle seyahat halindeyken), rutin yanlış saatte ateşlenir ve bunu tespit/düzeltecek hiçbir alan yok.
 
 **Senaryo:** Kullanıcı seyahatteyken telefonundan "sabah 8'de" bir rutin kurar; backend farklı bir saat diliminde çalışıyorsa bildirim kullanıcının gerçek sabah 8'inde değil, backend'in yerel 8'inde gelir.
+
+---
+
+## 🟢 LOW
+
+### BUG-L1: `memo -p ""` (boş prompt) CLI'ı sonsuza kadar askıda bırakıyor, "Shutting down backend..." yanıltıcı mesajı basıyor
+
+**Dosya:** `main.go:38` (`if *prompt != "" { runPrintMode(...); return }`), `main.go:73-133` (headless/non-interactive fallback yolu)
+
+```
+$ timeout 8 memo-dev -p ""
+Shutting down backend...
+$ echo $?
+124   # timeout process'i zorla öldürdü, kendiliğinden hiç çıkmadı
+```
+
+**Kök neden:** Go'nun `flag` paketinde `-p ""` geçerli, boş bir string değeridir — kontrol `*prompt != ""` olduğu için **boş prompt, "-p hiç verilmemiş" ile ayırt edilemiyor**. `runPrintMode` hiç çağrılmıyor, kod `interactive := !*headless && isInteractive()` dalına düşüyor; TTY olmadığı için (script/otomasyon bağlamı) port zaten dolu olduğundan yeni backend başlatmıyor ama kendi başına sonsuz bir SIGINT/SIGTERM bekleme döngüsüne giriyor, dışarıdan öldürülmeden asla çıkmıyor.
+
+**Senaryo:** Bir script (`for msg in "${messages[@]}"; do memo -p "$msg"; done`) boş bir eleman üretirse (trim edilmiş boş satır, template'te boş interpolasyon), script SESSİZCE sonsuza kadar askıda kalır. Basılan "Shutting down backend..." mesajı da yanıltıcı: gerçek arka plan backend'i hiç etkilenmiyor, sadece bu çıkmayan foreground process (zorla sinyal alınca) bu mesajı basıp çıkıyor.
+
+**Önerilen yön:** `flag.Visit` ile "p" bayrağının fiilen geçilip geçilmediğini kontrol etmek, böylece `-p ""` de `-p "gerçek mesaj"` gibi `runPrintMode`'a düşsün (muhtemelen sonra "boş mesaj gönderilemez" gibi temiz bir hata verir).
+
+### BUG-L2: WhatsApp gönderimi iki ayrı yoldan geçiyor — AI agent tool'u (`whatsapp_send`) gerçek bir kişiye otomatik mesaj göndermeyi kendi muhakemesiyle reddedebiliyor, ama doğrudan REST/GUI yolu (`/api/whatsapp/send`) hiçbir onay olmadan koşulsuz çalışıyor
+
+**Dosya:** `internal/agent/tools/whatsapp.go` (`SendWhatsApp`, LLM tool-calling üzerinden, izin ekranına tabi) vs. `internal/webserver/handlers_flutter.go:1478` (`handleWhatsAppSend`, GUI'nin WhatsApp sekmesinin kullandığı doğrudan endpoint, LLM'in onayına hiç girmiyor)
+
+**Canlı doğrulama (Session 40):** Kullanıcının izniyle, SADECE `Annnem` kontağına (905457348509@s.whatsapp.net, doğrulandı), zorunlu "bu bir test mesajıdır" ibaresi içeren bir gönderim denendi. Sohbet üzerinden (`whatsapp_send` agent tool'u, `--auto-allow` açıkken) **3 farklı, dürüst rephrase denemesinde de** model kendi kararıyla reddetti: "annenin haberi olmadan otomatik mesaj göndermek doğru değil, endişelenir." `backend.log`'da bu 3 denemede de `whatsapp_send` hiç çağrılmadığı doğrulandı (model tool'u hiç çağırmadan konuşma seviyesinde reddetti). Ardından AYNI mesaj `/api/whatsapp/send` REST endpoint'i (GUI'nin WhatsApp sekmesinin kullandığı yol) üzerinden doğrudan gönderildi — **koşulsuz, anında başarılı oldu** (2 mesaj, `Annnem`'in sohbet geçmişinde `from_me:true` olarak doğrulandı).
+
+**Değerlendirme:** Bu kod-seviyesinde bir bug değil — iki gönderim yolunun kasıtlı olarak farklı güvenlik modelleri var (biri LLM'in kendi takdirine bırakılmış, diğeri doğrudan kullanıcı eylemi). Ama bu, geliştirici için gerçek bir tutarlılık/UX sorusu: eğer "Memo'nun benim adıma WhatsApp mesajı gönderebilmesi" (agent tool üzerinden) istenen bir özellikse, model kendi başına oldukça muhafazakar davranıyor ve bu, kullanıcı için sürpriz olabilir ("neden gönderemiyorsun, ben istedim" — agent ısrarla reddederken GUI'den aynı mesaj anında gidiyor).
+
+**Önerilen yön:** Bilinçli bir tasarım kararı olarak dokümante edilmeli; istenirse agent tool'un system promptuna, kullanıcı doğrudan ve açıkça onay verdiğinde (bu oturumdaki gibi tekrarlanan, net bir talep) ne zaman gönderime izin vermesi gerektiğine dair daha net bir yönerge eklenebilir.
 
 ---
 

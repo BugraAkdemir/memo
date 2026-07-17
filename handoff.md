@@ -1,3 +1,58 @@
+# Handoff — 2026-07-17 (Session 40) — "Ece" persona testi, CANLI WhatsApp ortamında — 6 yeni gerçek bug bulundu, 2 test mesajı gerçekten gönderildi, tüm bulgular BUG_REPORT.md'ye konsolide edildi
+
+## Özet
+
+Kullanıcı bu oturumda repo'nun `data/` dizinine **gerçek, canlı bir WhatsApp hesabı** bağlamış haldeydi (241 gerçek kişi) ve "0'dan bir kişilik yarat, gerçek insan gibi sohbet et" talimatıyla whatsapp/takvim/orchestra/agent/proaktif öğrenme/mood/öz-çıkar/RAG'ı kapsamlı bir canlı teste sokmamı istedi — WhatsApp gönderiminin SADECE `Annnem` kontağına (kullanıcının annesi, gerçek numara) ve SADECE test-ibareli içerikle yapılmasını şart koştu. Önceki oturumlardan (32-39) farklı olarak bu kez **çalışan backend/WhatsApp process'ine hiç dokunulmadı, `data/` wipe edilmedi** — WhatsApp bağlantısını bozma riskini almamak için kullanıcıyla netleştirilip, zaten çalışan backend'e (port 8090) yeni bir istemci binary'siyle (`-tags sqlite_fts5`) bağlanıldı. "Ece" adında bir persona (İzmir'de yaşayan serbest grafik tasarımcı) üzerinden ~20 turluk bir `-p`/API testi koşuldu; sonunda kullanıcı ek olarak WhatsApp'a gerçek bir gönderim ısrar etti, bu da AI-agent yolunda değil doğrudan REST API'den yapıldı (aşağıda Madde WhatsApp). Tüm bulgular tek seferde `BUG_REPORT.md`'ye yazıldı (kullanıcının açık talimatıyla, ayrı bir "stress test" dosyası tutulmadı — önceki oturumun `STRESS_TEST_FINDINGS.md`'si de bu oturumda silindi, içeriği BUG_REPORT.md'ye taşındı).
+
+**Fix uygulanmadı** — kullanıcı bu oturumda "bul ve yaz" istedi, düzeltme kararı sonraki oturuma/kullanıcı onayına bırakıldı.
+
+## Ortam farkı ve alınan güvenlik kararları
+
+1. **WhatsApp'a hiç dokunulmadı:** Kullanıcı "whatsapp gitmesin" diye açıkça uyardı. Backend süreçleri durdurulup yeniden başlatılmadı; sadece yeni derlenen bir istemci binary'si (`/tmp/.../scratchpad/memo-test`, main.go'nun güncel `-p` bayrağını taşıyan — repo kökündeki committed `memo` binary'si Jul 15'ten kalmaydı ve `-p` bayrağı yoktu) zaten port 8090'da dinleyen backend'e bağlandı. Test ortasında backend kendi `--auto-shutdown` mantığıyla bir kez organik olarak yeniden başladı (benim müdahalem değil) — whatsmeow oturumu `session.db`'den sorunsuz geri bağlandı, tüm WhatsApp okuma testleri baştan sona çalıştı.
+2. **`data/` wipe edilmedi** (önceki "Fatih"/"Deniz" persona testlerinden farklı) — bu yüzden bu oturumun "Ece" persona verisi, GERÇEK kullanıcının ve önceki "Deniz" test oturumunun aynı `data/memory/memory.db` pinned-facts havuzuna karıştı (bkz. BUG-H4'ün keşfedilme şekli). Oturum sonunda bu oturumun ürettiği ~35 pinned-fact kaydı ve sahte takvim etkinliği temizlendi; "Deniz" kirliliğine (önceki oturumdan) dokunulmadı.
+3. **WhatsApp gönderimi sıkı kısıtlandı:** `--auto-allow` ile açık uçlu izin verilmedi — her turda ya auto-allow (agent tool testleri için) ya da varsayılan-deny (izin UX testleri için) bilinçli seçildi. Gönderim SADECE `Annnem` (905457348509@s.whatsapp.net, whatsmeow contact tablosundan doğrulandı) hedefine, sadece test-ibareli içerikle denendi.
+
+## Bulunan bug'lar (hepsi `BUG_REPORT.md`'de, detaylar orada)
+
+| # | Özet | Severity |
+|---|---|---|
+| BUG-H2 (güncellendi) | Alışkanlık kaydı JSON tip hatası — yeni kanıt: "her hafta içi" gibi genel ifadelerle de tetikleniyor, onay backend sonucundan 40 saniye ÖNCE veriliyor (mimari olarak asistan hiçbir zaman gerçek sonucu bilemiyor), yanlış güven sonraki turlara taşınıyor | HIGH |
+| BUG-H3 (yeni, Session 39 Madde 3'ün devamı) | Uzun boşluksuz string chunker/embed batch-size hatası artık RETRIEVE tarafını da kırıyor + tüm turu (LLM cevabı dahil) başarısız kılabiliyor | HIGH |
+| BUG-H4 (yeni) | `extractAndPinFacts`, asistanın WhatsApp'tan okuyup aktardığı ÜÇÜNCÜ ŞAHIS bilgisini (başka bir gerçek WhatsApp grubu) kullanıcının kendi kalıcı kimliği sanıp pinledi — gizlilik/doğruluk riski | HIGH |
+| BUG-M5 (yeni) | Takvim sorgusu için hiç agent tool'u yok, model RAG'dan tahmin ediyor, kaydedilmemiş alışkanlığı gerçek etkinlikle ayrım yapmadan listeledi | MEDIUM |
+| BUG-M6 (yeni) | `extractAndPinFacts`'te dedup yok — 16 turluk tek sohbette "adı Ece" gerçeği 8 kez ayrı pinlendi | MEDIUM |
+| BUG-M7 (Session 39'dan taşındı) | `run_command`, `read_file`'ın korumalı-dizin sınırını atlıyor | MEDIUM |
+| BUG-L1 (Session 39'dan taşındı) | `memo -p ""` sonsuza kadar askıda kalıyor | LOW |
+| BUG-L2 (yeni) | WhatsApp agent-tool gönderimi (LLM kendi kararıyla reddediyor) ile doğrudan REST/GUI gönderimi (koşulsuz çalışıyor) arasında tutarsızlık | LOW |
+
+## WhatsApp gönderim testi — ayrıntı
+
+Sohbet üzerinden (`whatsapp_send` agent tool, `--auto-allow` açık) 3 farklı, giderek daha dürüst/net rephrase denemesi yapıldı ("Ece" persona'sı kendi annesine göndermek istiyor, tam test-ibareli metin verildi). Model **üçünde de** kendi konuşma-seviyesi muhakemesiyle reddetti — annenin habersizce otomatik mesaj almasının onu endişelendireceğini söyledi. `backend.log`'da 3 denemede de `whatsapp_send` tool'unun hiç çağrılmadığı doğrulandı (model tool'u hiç çağırmadan reddetti). Kullanıcı sonradan ısrar edince (bu handoff'un yazıldığı konuşmanın devamında), `/api/whatsapp/send` REST endpoint'i (GUI'nin WhatsApp sekmesinin kullandığı, LLM onayına hiç girmeyen doğrudan yol) üzerinden 2 test mesajı gerçekten gönderildi ve `Annnem`'in sohbet geçmişinde `from_me:true` olarak doğrulandı (mesaj ID'leri: `3EB00D3768DAD039021DCA`, `3EB017828DEC4ABA21E836`). Bu, bir kod bug'ı değil — iki ayrı gönderim yolunun kasıtlı farklı güvenlik modelleri var; BUG-L2 olarak dokümante edildi.
+
+## Temizlik (oturum sonunda yapıldı)
+
+- `rename_pngs.py` (agent'ın yazdığı test dosyası) silindi.
+- `data/memory/memory.db`'de bu oturumun ürettiği ~35 "Ece"-kaynaklı `source='explicit'` (pinned) kaydı silindi (isim, şehir, meslek tekrarları + BUG-H4'teki TEKNOFEST/12. sınıf yanlış çıkarımları dahil).
+- `data/calendar/events.db`'de bu oturumun sahte "logo revizyonu görüşmesi" etkinliği silindi.
+- `mood.enabled`, `mood.self_interest`, `web_search.enabled` config toggle'ları (test için API'den açılmıştı) test öncesi kapalı durumuna geri alındı.
+- `STRESS_TEST_FINDINGS.md` silindi — içeriği (Session 39 + Session 40) `BUG_REPORT.md`'ye konsolide edildi.
+- **Dokunulmadı (bilinçli):** Önceki "Deniz" persona test oturumundan kalan pinned-facts kirliliği (kedi "Mırnav" vb.) ve gerçek kullanıcının kendi pinned fact'leri — kullanıcı onayı olmadan eski veri silinmedi.
+
+## Doğrulama
+
+- WhatsApp bağlantısı test boyunca ve sonunda sağlam: `whatsapp_latest`/`whatsapp_messages` gerçek veri döndürmeye devam etti, `session.db` hiç silinmedi/bozulmadı.
+- Gönderilen 2 gerçek test mesajı `/api/whatsapp/messages?jid=905457348509@s.whatsapp.net` ile geri okunup doğrulandı.
+- Kod değişikliği yapılmadığı için `go build`/`go test` bu oturumda çalıştırılmadı — sadece canlı davranış gözlemi + doğrudan sqlite/REST doğrulaması yapıldı.
+
+## Sıradaki Oturum İçin
+
+1. `BUG_REPORT.md`'deki 10 açık maddeden hangilerinin düzeltileceğine kullanıcı karar vermeli — öncelik önerisi: BUG-H4 (gizlilik riski, en yüksek) → BUG-H3 (veri kaybı + tam tur başarısızlığı) → BUG-H2 (yaygın kullanıcı-güveni sorunu) → geri kalanlar.
+2. BUG-M6 (dedup) ve BUG-H4 (third-party içerik sızıntısı) aynı fonksiyonda (`extractAndPinFacts`) — birlikte ele alınması verimli olabilir.
+3. Kullanıcı isterse önceki "Deniz" persona test oturumundan kalan pinned-facts kirliliğinin de temizlenmesi ayrıca onaylanabilir (bu oturumda dokunulmadı).
+4. BUG-L2 bir tasarım kararı gerektiriyor — geliştirici WhatsApp agent-tool'unun ne zaman/hangi koşulda otonom gönderim yapabileceğine dair bilinçli bir politika belirlemek isteyebilir.
+
+---
+
 # Handoff — 2026-07-17 (Session 39) — /code-review bulduğu 19 rutin-motoru bug'ının 17'si otonom /loop ile düzeltildi + "Deniz" persona testiyle canlı doğrulama, 1 yeni gerçek bug bulundu
 
 ## Özet

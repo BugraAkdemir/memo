@@ -585,7 +585,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L10n.t('learning_saved'))));
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_settings_saved'))));
       }
     } catch (e) {
       if (mounted) {

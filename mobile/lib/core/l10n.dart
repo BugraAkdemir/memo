@@ -229,7 +229,7 @@ class L10n {
     'model_started': '\${name} başlatıldı',
     'embedding_suffix': ' · embedding',
     'couldnt_load': 'Yüklenemedi',
-    'learning_saved': 'Öğrenme ayarları kaydedildi',
+    'learning_settings_saved': 'Öğrenme ayarları kaydedildi',
     'single_model_mode': 'TEK MODEL MODU',
     'use_one_model': 'Öğrenme için tek model kullan',
     'use_one_model_hint':
@@ -465,7 +465,7 @@ class L10n {
     'model_started': '\${name} started',
     'embedding_suffix': ' · embedding',
     'couldnt_load': "Couldn't load",
-    'learning_saved': 'Learning settings saved',
+    'learning_settings_saved': 'Learning settings saved',
     'single_model_mode': 'SINGLE MODEL MODE',
     'use_one_model': 'Use one model for learning',
     'use_one_model_hint':

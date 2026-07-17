@@ -10,9 +10,11 @@ import 'core/notification_service.dart';
 import 'core/theme.dart';
 import 'providers/calendar_provider.dart';
 import 'providers/connection_provider.dart';
+import 'providers/routine_provider.dart';
 import 'screens/calendar_screen.dart';
 import 'screens/chat_screen.dart';
 import 'screens/connect_screen.dart';
+import 'screens/routines_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -105,6 +107,11 @@ class _AppShellState extends ConsumerState<AppShell> {
             }
             ref.read(calendarProvider.notifier).refresh();
           } catch (_) {}
+        } else if (name == 'routine:ready') {
+          // Content was just generated ahead of a routine's fire time (see
+          // internal/routine's mobileLeadDuration) — fetch it and schedule a
+          // local notification for the exact fire instant.
+          await ref.read(routineProvider.notifier).checkMobileReady();
         }
       }
       // Keep seen set bounded.
@@ -131,6 +138,7 @@ class _AppShellState extends ConsumerState<AppShell> {
     final screens = [
       const ChatScreen(),
       const CalendarScreen(),
+      const RoutinesScreen(),
     ];
 
     return Scaffold(
@@ -151,6 +159,11 @@ class _AppShellState extends ConsumerState<AppShell> {
             selectedIcon:
                 Icon(Icons.calendar_month, color: MemoTheme.accent),
             label: 'Takvim',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.schedule_outlined, color: MemoTheme.textDim),
+            selectedIcon: Icon(Icons.schedule, color: MemoTheme.accent),
+            label: 'Rutinler',
           ),
         ],
       ),

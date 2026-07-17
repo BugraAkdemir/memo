@@ -1741,6 +1741,57 @@ class MemoApiClient {
     });
   }
 
+  // ─── Routines (scheduled automations) ────────────────────────────
+
+  Future<List<Map<String, dynamic>>> getRoutines() async {
+    final res = await _dio.get('/api/routines');
+    if (res.data is List) {
+      return List<Map<String, dynamic>>.from(res.data as List);
+    }
+    return [];
+  }
+
+  Future<Map<String, dynamic>> parseRoutineText(String text) async {
+    final res = await _dio.post('/api/routines/parse', data: {'text': text});
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> createRoutine({
+    required String originalText,
+    required Map<String, dynamic> draft,
+    String whatsAppTargetJid = '',
+    bool autoApproveTools = false,
+  }) async {
+    final res = await _dio.post('/api/routines', data: {
+      'original_text': originalText,
+      'draft': draft,
+      'whatsapp_target_jid': whatsAppTargetJid,
+      'auto_approve_tools': autoApproveTools,
+    });
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<Map<String, dynamic>> updateRoutine(Map<String, dynamic> routine) async {
+    final id = routine['id'] as String;
+    final res = await _dio.put('/api/routines/$id', data: routine);
+    return Map<String, dynamic>.from(res.data as Map);
+  }
+
+  Future<void> deleteRoutine(String id) async {
+    await _dio.delete('/api/routines/$id');
+  }
+
+  /// Routines whose content was generated after [sinceUnix] (epoch seconds) —
+  /// polled ahead of a routine's fire time so the phone can pre-schedule a
+  /// local notification (see NotificationService.scheduleRoutine).
+  Future<List<Map<String, dynamic>>> getRoutinesMobileReady(int sinceUnix) async {
+    final res = await _dio.get('/api/routines/mobile-ready', queryParameters: {'since': '$sinceUnix'});
+    if (res.data is List) {
+      return List<Map<String, dynamic>>.from(res.data as List);
+    }
+    return [];
+  }
+
   // ─── Mood ───────────────────────────────────────────────────────
 
   Future<double> getMoodScore() async {

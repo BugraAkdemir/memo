@@ -342,7 +342,7 @@ class _AppShellState extends ConsumerState<AppShell> {
             key: _navKeys[5],
             icon: Icons.schedule_outlined,
             activeIcon: Icons.schedule,
-            label: 'Rutinler',
+            label: L10n.t('routines_title'),
             isActive: _currentIndex == 5,
             onTap: () => _handleTabChange(5),
           ),

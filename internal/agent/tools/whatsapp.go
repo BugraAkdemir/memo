@@ -92,7 +92,7 @@ func SearchWhatsApp(ctx context.Context, argsJSON json.RawMessage, basePath stri
 	for _, m := range msgs {
 		from := m.SenderName
 		if from == "" {
-			from = partsBeforeAt(m.SenderJID)
+			from = PartsBeforeAt(m.SenderJID)
 		}
 		ts := m.Timestamp.Format("02/01 15:04")
 		lines = append(lines, fmt.Sprintf("[%s] %s: %s", ts, from, m.Text))
@@ -126,7 +126,7 @@ func LatestWhatsAppChats(ctx context.Context, argsJSON json.RawMessage, basePath
 	for _, c := range chats {
 		displayName := c.DisplayName
 		if displayName == "" {
-			displayName = partsBeforeAt(c.JID)
+			displayName = PartsBeforeAt(c.JID)
 		}
 		ts := c.LastTime.Format("02/01 15:04")
 		// Include the JID so the model can pass it verbatim to whatsapp_send /
@@ -159,7 +159,7 @@ func GetWhatsAppMessages(ctx context.Context, argsJSON json.RawMessage, basePath
 	for _, m := range msgs {
 		from := m.SenderName
 		if from == "" {
-			from = partsBeforeAt(m.SenderJID)
+			from = PartsBeforeAt(m.SenderJID)
 		}
 		ts := m.Timestamp.Format("02/01 15:04")
 		lines = append(lines, fmt.Sprintf("[%s] %s: %s", ts, from, m.Text))
@@ -195,14 +195,16 @@ func resolveWhatsAppJID(nameOrJID string) string {
 		}
 	}
 	for _, c := range chats {
-		if strings.Contains(strings.ToLower(partsBeforeAt(c.JID)), q) {
+		if strings.Contains(strings.ToLower(PartsBeforeAt(c.JID)), q) {
 			return c.JID
 		}
 	}
 	return nameOrJID
 }
 
-func partsBeforeAt(s string) string {
+// PartsBeforeAt returns the part of a JID before the first "@" — used as a
+// display-name fallback for contacts with no saved SenderName/DisplayName.
+func PartsBeforeAt(s string) string {
 	if parts := strings.SplitN(s, "@", 2); len(parts) > 0 {
 		return parts[0]
 	}

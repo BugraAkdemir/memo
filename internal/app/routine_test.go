@@ -5,6 +5,7 @@ package app
 import (
 	"context"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,7 +15,23 @@ import (
 	"memo/internal/observer"
 	"memo/internal/routine"
 	"memo/internal/sessions"
+	"memo/internal/whatsapp"
 )
+
+// TestFormatWhatsAppMessagesForRoutine_FallsBackToJIDWhenSenderNameEmpty is
+// the regression test for BUG-L5: a contact with no saved display name used
+// to render with a blank sender ("[15:04] : hello") instead of falling back
+// to the JID's local part, unlike the equivalent agent tool
+// (GetWhatsAppMessages) which already does this.
+func TestFormatWhatsAppMessagesForRoutine_FallsBackToJIDWhenSenderNameEmpty(t *testing.T) {
+	msgs := []whatsapp.Message{
+		{SenderJID: "905551234567@s.whatsapp.net", SenderName: "", Text: "hello"},
+	}
+	got := formatWhatsAppMessagesForRoutine(msgs)
+	if !strings.Contains(got, "905551234567: hello") {
+		t.Errorf("formatWhatsAppMessagesForRoutine = %q, want it to fall back to the JID's local part as sender", got)
+	}
+}
 
 func newRoutineTestApp(t *testing.T) *App {
 	t.Helper()

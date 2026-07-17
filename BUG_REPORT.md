@@ -14,9 +14,9 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 6 |
+| 🟢 LOW | 4 |
 | 🔧 TEKNİK BORÇ | 5 |
-| **TOPLAM** | **13** |
+| **TOPLAM** | **11** |
 
 ---
 
@@ -59,20 +59,6 @@ WhatsApp bağlı değilken/geçici kesintide bir WhatsApp-teslimatlı rutin onay
 **Dosya:** `mobile/lib/main.dart:118-123` (routine kısmı), karşılaştır `:138-142` (calendar'ın reconnect-refresh deseni)
 
 Takvim akışı her yeniden bağlanmada `calendarProvider.notifier.refresh()`'i koşulsuz çağırıyor; rutin tarafının eşdeğeri yok. Uygulama tamamen kapalıyken bir `routine:ready` event'i gelirse (ya da 64 elemanlık ring buffer'dan taşarsa), o günün bildirimi hiç zamanlanmaz.
-
-### BUG-L4: Nav rail'deki "Rutinler" etiketi, hazır L10n key'i dururken hardcoded
-
-**Dosya:** `frontend/lib/screens/app_shell.dart:345`
-
-`_NavRailButton(... label: 'Rutinler', ...)` — aynı serideki `l10n.dart`'a eklenen `routines_title` key'i (Rutinler ekranının kendi `AppBar` başlığında doğru kullanılıyor) burada kullanılmamış.
-
-### BUG-L5: `formatWhatsAppMessagesForRoutine` gönderen adı boşsa fallback yapmıyor
-
-**Dosya:** `internal/app/routine.go:294-303`, karşılaştır `internal/agent/tools/whatsapp.go:158-167`
-
-Var olan agent tool'u (`GetWhatsAppMessages`), `SenderName` boşsa JID'den isim türetiyor (`partsBeforeAt`); yeni rutin formatlayıcısı bu fallback'i yapmadan direkt `SenderName`'i yazıyor.
-
-**Senaryo:** Kayıtlı görünen adı olmayan bir kişiden gelen mesajlar rutin bağlamında `[15:04] : mesaj` gibi boş gönderen adıyla görünür.
 
 ### BUG-L6: `Store.Update()` global kilidi senkron disk yazımı boyunca tutuyor
 

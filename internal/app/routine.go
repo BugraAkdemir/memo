@@ -8,6 +8,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 	"memo/internal/calendar"
 	"memo/internal/config"
@@ -329,10 +330,17 @@ func formatWhatsAppMessagesForRoutine(msgs []whatsapp.Message) string {
 	}
 	var b strings.Builder
 	for _, m := range msgs {
+		from := m.SenderName
+		if from == "" {
+			// Matches GetWhatsAppMessages' own fallback (internal/agent/tools/
+			// whatsapp.go) — a contact with no saved display name used to
+			// render as a blank sender here (BUG-L5).
+			from = tools.PartsBeforeAt(m.SenderJID)
+		}
 		b.WriteString("[")
 		b.WriteString(m.Timestamp.Format("15:04"))
 		b.WriteString("] ")
-		b.WriteString(m.SenderName)
+		b.WriteString(from)
 		b.WriteString(": ")
 		b.WriteString(m.Text)
 		b.WriteString("\n")

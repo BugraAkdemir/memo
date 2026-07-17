@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/mood_provider.dart';
 
@@ -46,18 +47,18 @@ class _CompactIndicator extends StatelessWidget {
   }
 
   String get _label {
-    if (score <= -9) return 'Breaking';
-    if (score <= -7) return 'Furious';
-    if (score <= -3) return 'Irritated';
-    if (score <= 2) return 'Neutral';
-    if (score <= 6) return 'Warm';
-    return 'Elated';
+    if (score <= -9) return L10n.t('mood_breaking');
+    if (score <= -7) return L10n.t('mood_furious');
+    if (score <= -3) return L10n.t('mood_irritated');
+    if (score <= 2) return L10n.t('mood_neutral');
+    if (score <= 6) return L10n.t('mood_warm');
+    return L10n.t('mood_elated');
   }
 
   @override
   Widget build(BuildContext context) {
     return Tooltip(
-      message: 'Ruh hali: ${score.toStringAsFixed(1)}',
+      message: L10n.t('mood_score_tooltip', {'score': score.toStringAsFixed(1)}),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -121,7 +122,8 @@ class _ExpandedGauge extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Tooltip(
-          message: 'Ruh hali: ${score.toStringAsFixed(1)}',
+          message: L10n.t('mood_score_tooltip',
+              {'score': score.toStringAsFixed(1)}),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/chat_provider.dart';
 
@@ -103,7 +104,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = 'Rutinler yüklenemedi: $e';
+        _error = L10n.t('routines_load_error', {'e': '$e'});
       });
     }
   }
@@ -140,7 +141,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       if (!mounted) return;
       setState(() {
         _parsing = false;
-        _error = 'Anlaşılamadı: $e';
+        _error = L10n.t('routines_parse_error', {'e': '$e'});
       });
     }
   }
@@ -166,7 +167,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Kaydedilemedi: $e');
+      setState(() => _error = L10n.t('routines_save_error', {'e': '$e'}));
     }
   }
 
@@ -179,7 +180,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Güncellenemedi: $e');
+      setState(() => _error = L10n.t('routines_update_error', {'e': '$e'}));
     }
   }
 
@@ -190,7 +191,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = 'Silinemedi: $e');
+      setState(() => _error = L10n.t('routines_delete_error', {'e': '$e'}));
     }
   }
 
@@ -202,10 +203,11 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Text('Rutinler', style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: c.textMain)),
+          Text(L10n.t('routines_title'),
+              style: TextStyle(fontSize: 22, fontWeight: FontWeight.w600, color: c.textMain)),
           const SizedBox(height: 4),
           Text(
-            'Örnek: "her sabah 8\'de takvimimi özetle, whatsapp\'tan yolla" ya da "hafta içi her akşam 6\'da projeye git pull at, durumu raporla"',
+            L10n.t('routines_example'),
             style: TextStyle(fontSize: 13, color: c.textSecondary),
           ),
           const SizedBox(height: 16),
@@ -214,9 +216,9 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
               Expanded(
                 child: TextField(
                   controller: _textController,
-                  decoration: const InputDecoration(
-                    hintText: 'Ne yapmamı istersin, ne zaman?',
-                    border: OutlineInputBorder(),
+                  decoration: InputDecoration(
+                    hintText: L10n.t('routines_hint'),
+                    border: const OutlineInputBorder(),
                   ),
                   onSubmitted: (_) => _parse(),
                 ),
@@ -226,7 +228,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
                 onPressed: _parsing ? null : _parse,
                 child: _parsing
                     ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Text('Gönder'),
+                    : Text(L10n.t('send')),
               ),
             ],
           ),
@@ -243,7 +245,9 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
                 : _routines.isEmpty
-                    ? Center(child: Text('Henüz bir rutin yok.', style: TextStyle(color: c.textSecondary)))
+                    ? Center(
+                        child: Text(L10n.t('routines_empty'),
+                            style: TextStyle(color: c.textSecondary)))
                     : ListView.builder(
                         itemCount: _routines.length,
                         itemBuilder: (context, i) => _buildRoutineTile(_routines[i], c),
@@ -267,21 +271,26 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Her gün saat ${draft['time_of_day']}\'de: ${draft['prompt']}',
+            L10n.t('routines_confirm', {
+              'time': '${draft['time_of_day']}',
+              'prompt': '${draft['prompt']}',
+            }),
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
           Wrap(spacing: 8, children: [
-            if (draft['delivery_whatsapp'] == true) const Chip(label: Text('WhatsApp')),
-            if (draft['delivery_mobile'] == true) const Chip(label: Text('Telefon bildirimi')),
+            if (draft['delivery_whatsapp'] == true)
+              const Chip(label: Text('WhatsApp')),
+            if (draft['delivery_mobile'] == true)
+              Chip(label: Text(L10n.t('routines_mobile_notify'))),
           ]),
           if (_whatsAppChats.isNotEmpty) ...[
             const SizedBox(height: 12),
-            const Text('Hangi WhatsApp sohbetine/kişiye gönderilsin?'),
+            Text(L10n.t('routines_whatsapp_pick')),
             const SizedBox(height: 4),
             DropdownButton<String>(
               value: _selectedWhatsAppJid,
-              hint: const Text('Sohbet seç'),
+              hint: Text(L10n.t('routines_pick_chat')),
               isExpanded: true,
               items: _whatsAppChats
                   .map((chat) => DropdownMenuItem<String>(
@@ -301,8 +310,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
                 children: [
                   Expanded(
                     child: Text(
-                      'Bu görev bilgisayarında komut çalıştırmak isteyecek gibi görünüyor (örn. dosya/proje işlemi). '
-                      'Her çalıştığında senden onay istemesin, otomatik izin verilsin mi?',
+                      L10n.t('routines_auto_approve'),
                       style: TextStyle(fontSize: 12, color: c.textSecondary),
                     ),
                   ),
@@ -317,14 +325,14 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
           const SizedBox(height: 12),
           Row(
             children: [
-              FilledButton(onPressed: _confirm, child: const Text('Kaydet')),
+              FilledButton(onPressed: _confirm, child: Text(L10n.t('save'))),
               const SizedBox(width: 8),
               TextButton(
                 onPressed: () => setState(() {
                   _draft = null;
                   _originalText = null;
                 }),
-                child: const Text('Vazgeç'),
+                child: Text(L10n.t('routines_discard')),
               ),
             ],
           ),
@@ -338,10 +346,12 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         title: Text(r.prompt),
-        subtitle: Text('Saat ${r.timeOfDay}'
-            '${r.deliveryWhatsApp ? ' · WhatsApp' : ''}'
-            '${r.deliveryMobile ? ' · Telefon' : ''}'
-            '${r.agentMode ? ' · Komut çalıştırabilir' : ''}'),
+        subtitle: Text(
+          L10n.t('routines_time', {'time': r.timeOfDay}) +
+              (r.deliveryWhatsApp ? L10n.t('routines_via_whatsapp') : '') +
+              (r.deliveryMobile ? L10n.t('routines_via_mobile') : '') +
+              (r.agentMode ? L10n.t('routines_can_run_commands') : ''),
+        ),
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [

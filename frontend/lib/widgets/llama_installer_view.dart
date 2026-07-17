@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/models_provider.dart';
 import '../providers/chat_provider.dart';
@@ -66,14 +67,12 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
     final hasGpu = gpuAsync.whenOrNull(data: (g) => g.hasGpu) ?? false;
     final gpuName = gpuAsync.whenOrNull(data: (g) => g.name) ?? '';
 
-    final title = 'Llama.cpp Eksik';
+    final title = L10n.t('llama_missing_title');
     final description = hasGpu
-        ? 'Uygulamanın modelleri çalıştırabilmesi için Llama.cpp motorunun kurulması gerekiyor. '
-            'Sisteminizde $gpuName bulundu — GPU destekli sürüm indirilecek.'
-        : 'Uygulamanın modelleri çalıştırabilmesi için Llama.cpp motorunun kurulması gerekiyor. '
-            'Bu işlem sisteminize uygun CPU sürümünü indirecektir.';
+        ? L10n.t('llama_missing_desc_gpu', {'gpu': gpuName})
+        : L10n.t('llama_missing_desc_cpu');
     final primaryLabel =
-        hasGpu ? 'Ekran Kartı İçin Kur (Önerilen)' : 'Motoru İndir ve Kur';
+        hasGpu ? L10n.t('llama_install_gpu') : L10n.t('llama_install');
 
     return Container(
       color: MemoTheme.of(context).bgApp.withValues(alpha: 0.95),
@@ -178,9 +177,9 @@ class _InstallerScreenState extends ConsumerState<_InstallerScreen> {
                         borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                       ),
                     ),
-                    child:  Text(
-                      'Şimdilik Atla (Daha Sonra Ayarlardan Kur)',
-                      style: TextStyle(fontWeight: FontWeight.w500),
+                    child: Text(
+                      L10n.t('skip'),
+                      style: const TextStyle(fontWeight: FontWeight.w500),
                     ),
                   ),
                 ),

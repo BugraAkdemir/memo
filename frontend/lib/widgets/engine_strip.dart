@@ -128,7 +128,7 @@ class EngineStrip extends ConsumerWidget {
           if (ref.watch(agentAutoPermissionProvider)) ...[
             _divider(c.borderSoft),
             Tooltip(
-              message: 'Shift+Tab — all tools auto-approved',
+              message: L10n.t('auto_permission_tooltip'),
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -140,7 +140,7 @@ class EngineStrip extends ConsumerWidget {
                   const Icon(Icons.auto_awesome, size: 13, color: MemoTheme.green),
                   const SizedBox(width: 4),
                   Text(
-                    'Auto',
+                    L10n.t('auto_permission_short'),
                     style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green),
                   ),
                 ],

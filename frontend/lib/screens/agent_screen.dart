@@ -254,7 +254,9 @@ class _AgentContent extends ConsumerWidget {
                 const SizedBox(height: 12),
                 Text('$e', style: TextStyle(color: MemoTheme.of(context).textMuted)),
                 const SizedBox(height: 12),
-                OutlinedButton(onPressed: () => ref.invalidate(messagesProvider), child: const Text('Tekrar Dene')),
+                OutlinedButton(
+                    onPressed: () => ref.invalidate(messagesProvider),
+                    child: Text(L10n.t('retry'))),
               ],
             )),
             data: (messages) {
@@ -369,10 +371,17 @@ class _AgentWelcome extends StatelessWidget {
           children: [
             const Icon(Icons.smart_toy, size: 48, color: MemoTheme.green),
             const SizedBox(height: 16),
-            Text('Ajan Modu Aktif', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: MemoTheme.of(context).textMain)),
+            Text(L10n.t('agent_mode_active'),
+                style: TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.w600,
+                    color: MemoTheme.of(context).textMain)),
             const SizedBox(height: 8),
             if (projectPath != null)
-              Text('Proje: $projectPath', style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim), textAlign: TextAlign.center),
+              Text(L10n.t('agent_project_label', {'path': projectPath!}),
+                  style: TextStyle(
+                      fontSize: 13, color: MemoTheme.of(context).textDim),
+                  textAlign: TextAlign.center),
             const SizedBox(height: 16),
             Text(L10n.t('agent_welcome'), style: TextStyle(fontSize: 13, color: MemoTheme.of(context).textDim), textAlign: TextAlign.center),
           ],

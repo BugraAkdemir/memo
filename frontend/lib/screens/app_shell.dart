@@ -219,17 +219,12 @@ class _AppShellState extends ConsumerState<AppShell> {
       context: context,
       barrierDismissible: false,
       builder: (ctx) => AlertDialog(
-        title: const Text('Memo arka ucu yanıt vermiyor'),
-        content: const Text(
-          'Arka uç sunucusu ile bağlantı kesildi. '
-          'Bu durum Memo zaten açıkken ikinci kez başlatılmaya çalışıldığında '
-          'veya arka uç beklenmedik şekilde kapandığında oluşabilir.\n\n'
-          'Uygulama şimdi kapatılacak. Lütfen tekrar başlatın.',
-        ),
+        title: Text(L10n.t('backend_dead_title')),
+        content: Text(L10n.t('backend_dead_body')),
         actions: [
           TextButton(
             onPressed: () => exit(0),
-            child: const Text('Tamam'),
+            child: Text(L10n.t('ok')),
           ),
         ],
       ),

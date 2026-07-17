@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-M5 düzeltildi: yeni `internal/agent/tools/calendar.go`'daki salt-okunur `get_calendar_events` agent tool'u eklendi (registry: `internal/agent/tools.go`), `internal/app/learning.go`'daki `calendarToolAdapter` gerçek `calendar.Store`'u sarıyor. Agent sistem promptuna (`internal/app/chat.go`'daki `buildAgentSystemPrompt`) model takvim sorgusunda RAG'dan tahmin etmek yerine bu aracı çağırsın diye bir not eklendi. Regresyon testleri: `internal/agent/tools/calendar_test.go`.
+> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-M6 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık her fact'i pinlemeden önce mevcut pinned fact'lere karşı normalize edilmiş (küçük harf, trim, sondaki noktalama kırpılmış) exact-match dedup kontrolü yapıyor (`pinnedFactTexts`, `normalizeFactText`) — aynı gerçek art arda turlarda tekrar pinlenmiyor. Regresyon testi: `TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate`.
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M5 düzeltildi: yeni `internal/agent/tools/calendar.go`'daki salt-okunur `get_calendar_events` agent tool'u eklendi (registry: `internal/agent/tools.go`), `internal/app/learning.go`'daki `calendarToolAdapter` gerçek `calendar.Store`'u sarıyor. Agent sistem promptuna (`internal/app/chat.go`'daki `buildAgentSystemPrompt`) model takvim sorgusunda RAG'dan tahmin etmek yerine bu aracı çağırsın diye bir not eklendi. Regresyon testleri: `internal/agent/tools/calendar_test.go`.
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H4 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık extraction promptuna SADECE `userMsg`'i veriyor, asistanın (tool sonuçlarını da içerebilen) `reply`'sini hiç göndermiyor — üçüncü şahıs bilgisinin (WhatsApp vb.) kullanıcının kendi kalıcı gerçeği sanılıp pinlenmesi artık mümkün değil. Fonksiyon imzasından artık ölü olan `reply` parametresi de kaldırıldı (tek çağıran `saveMemorySync` ve testler güncellendi). Regresyon testi: `TestExtractAndPinFacts_DoesNotSendAssistantReply` (`internal/app/memory_test.go`).
 >
@@ -25,26 +27,14 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 4 |
+| 🟡 MEDIUM | 3 |
 | 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **6** |
+| **TOPLAM** | **5** |
 
 ---
 
 ## 🟡 MEDIUM
-
-### BUG-M6: `extractAndPinFacts`'te tekrar/dedup kontrolü yok — aynı gerçek tur başına tekrar tekrar pinleniyor, kapasiteli pinned-facts havuzunu kendi kopyalarıyla dolduruyor
-
-**Dosya:** `internal/app/memory.go:182-186` (döngü, her fact için koşulsuz `SaveExplicitMemory` çağrısı, hiçbir dedup kontrolü yok)
-
-~16 mesajlık bir persona sohbeti sonunda `source='explicit'` kayıtları arasında 19 tanesi aynı kişiyle ilgiliydi, 8 tanesi neredeyse birebir aynı ifadeydi (`"User's name is Ece."` 4 kez tam aynı metin dahil). `"User has a mother."` art arda 3 kez ayrı ayrı pinlendi.
-
-**Kök neden:** Her turda bağımsız bir LLM çağrısıyla üretilen fact listesi, halihazırda aynı/benzer bir fact pinlenmiş mi diye kontrol edilmeden doğrudan `SaveExplicitMemory`'e veriliyor. Pinned facts RAG ranking'i bypass ederek her sisteme promptuna koşulsuz enjekte edildiği için, bu kopyalar gerçek bir token/maliyet yükü olarak her turda tekrarlanıyor.
-
-**Senaryo:** Uzun süre kullanan bir kullanıcı için, sık tekrar eden temel bilgiler (isim, şehir, meslek), sınırlı `pinnedFactsLimit` slotunu SADECE KENDİ KOPYALARIYLA doldurup, tek seferlik bahsedilmiş değerli gerçekleri (ör. "köpeğimin adı Zeytin") dışarıda bırakabilir.
-
-**Önerilen yön:** `SaveExplicitMemory`'den önce basit bir metin-benzerliği/exact-match dedup kontrolü eklemek; alternatif olarak periyodik bir "pinned facts consolidation" geçişi.
 
 ### BUG-M7: `run_command`, `read_file`'ın uyguladığı "korumalı dizin" sınırını tamamen atlıyor — model kendi sınırlarını yanlış anlatıyor
 

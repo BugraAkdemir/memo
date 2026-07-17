@@ -188,11 +188,59 @@ func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 		return
 	}
 
-	for _, fact := range parseExtractedFacts(reply2) {
+	facts := parseExtractedFacts(reply2)
+	if len(facts) == 0 {
+		return
+	}
+
+	// Dedup against what's already pinned (see BUG-M6): the same durable
+	// fact gets re-extracted on every turn it's still relevant to (a name,
+	// city, job), and since pinned facts bypass RAG ranking entirely and
+	// have a fixed cap, unchecked duplicates crowd out real one-off facts.
+	// Refetched once per call (not cached) so it also catches duplicates
+	// created within this same batch of facts.
+	pinned := a.pinnedFactTexts(ctx)
+	for _, fact := range facts {
+		key := normalizeFactText(fact)
+		if _, dup := pinned[key]; dup {
+			logx.Printf("MEMORY: skipping duplicate extracted fact: %q", truncate.Text(fact, 60))
+			continue
+		}
 		if err := a.SaveExplicitMemory(fact, "auto-extracted"); err != nil {
 			logx.Printf("MEMORY: failed to pin extracted fact: %v", err)
+			continue
 		}
+		pinned[key] = struct{}{}
 	}
+}
+
+// pinnedFactTexts returns the normalized text of every currently pinned
+// fact, for extractAndPinFacts' dedup check. Returns an empty (non-nil) set
+// on any failure to read the store, so callers never skip pinning due to a
+// transient read error.
+func (a *App) pinnedFactTexts(ctx context.Context) map[string]struct{} {
+	a.storeMu.RLock()
+	store := a.store
+	a.storeMu.RUnlock()
+	set := make(map[string]struct{})
+	if store == nil {
+		return set
+	}
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		logx.Printf("MEMORY: dedup check GetPinnedFacts: %v", err)
+		return set
+	}
+	for _, p := range pinned {
+		set[normalizeFactText(p.Content)] = struct{}{}
+	}
+	return set
+}
+
+// normalizeFactText makes two differently-cased/punctuated but otherwise
+// identical fact strings compare equal for dedup purposes.
+func normalizeFactText(s string) string {
+	return strings.TrimRight(strings.ToLower(strings.TrimSpace(s)), ".!? ")
 }
 
 // factListMarkerPrefixes are stripped from the front of an extracted line

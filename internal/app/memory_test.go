@@ -186,6 +186,51 @@ func TestExtractAndPinFacts_DoesNotSendAssistantReply(t *testing.T) {
 	}
 }
 
+// TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate is the regression test
+// for BUG-M6: the same durable fact ("User's name is Ece.") got re-extracted
+// and re-pinned on every turn it was still relevant to, live-verified to
+// happen 4 times identically in a single persona test. Since pinned facts
+// bypass RAG ranking and have a fixed cap (pinnedFactsLimit), unchecked
+// duplicates crowd out real one-off facts.
+func TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate(t *testing.T) {
+	store := newExtractionTestStore(t)
+
+	// Pre-pin the fact as if it were extracted on an earlier turn.
+	if err := store.SaveExplicit(context.Background(), "User's name is Ece.", "auto-extracted"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+
+	// This turn's extraction re-derives the exact same fact (same wording,
+	// as observed live) plus one genuinely new fact.
+	router := newExtractionTestRouter(t, "User's name is Ece.\nUser's favorite color is orange")
+
+	a := &App{
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
+	}
+
+	a.extractAndPinFacts(context.Background(), "adım Ece, en sevdiğim renk turuncu")
+
+	pinned, err := store.GetPinnedFacts(context.Background())
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 2 {
+		t.Fatalf("len(pinned) = %d, want 2 (1 pre-existing + 1 new, duplicate skipped): %+v", len(pinned), pinned)
+	}
+	nameCount := 0
+	for _, p := range pinned {
+		if p.Content == "User's name is Ece." {
+			nameCount++
+		}
+	}
+	if nameCount != 1 {
+		t.Errorf("\"User's name is Ece.\" pinned %d times, want exactly 1 (duplicate must be skipped)", nameCount)
+	}
+}
+
 // newExtractionTestRouter builds a real *provider.Router pointed at an
 // httptest server that returns responseContent as the chat completion's
 // message content — the same pattern TestCallLLMStream_ExternalProvider_*

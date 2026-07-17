@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-H4 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık extraction promptuna SADECE `userMsg`'i veriyor, asistanın (tool sonuçlarını da içerebilen) `reply`'sini hiç göndermiyor — üçüncü şahıs bilgisinin (WhatsApp vb.) kullanıcının kendi kalıcı gerçeği sanılıp pinlenmesi artık mümkün değil. Fonksiyon imzasından artık ölü olan `reply` parametresi de kaldırıldı (tek çağıran `saveMemorySync` ve testler güncellendi). Regresyon testi: `TestExtractAndPinFacts_DoesNotSendAssistantReply` (`internal/app/memory_test.go`).
+> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-M5 düzeltildi: yeni `internal/agent/tools/calendar.go`'daki salt-okunur `get_calendar_events` agent tool'u eklendi (registry: `internal/agent/tools.go`), `internal/app/learning.go`'daki `calendarToolAdapter` gerçek `calendar.Store`'u sarıyor. Agent sistem promptuna (`internal/app/chat.go`'daki `buildAgentSystemPrompt`) model takvim sorgusunda RAG'dan tahmin etmek yerine bu aracı çağırsın diye bir not eklendi. Regresyon testleri: `internal/agent/tools/calendar_test.go`.
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H4 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık extraction promptuna SADECE `userMsg`'i veriyor, asistanın (tool sonuçlarını da içerebilen) `reply`'sini hiç göndermiyor — üçüncü şahıs bilgisinin (WhatsApp vb.) kullanıcının kendi kalıcı gerçeği sanılıp pinlenmesi artık mümkün değil. Fonksiyon imzasından artık ölü olan `reply` parametresi de kaldırıldı (tek çağıran `saveMemorySync` ve testler güncellendi). Regresyon testi: `TestExtractAndPinFacts_DoesNotSendAssistantReply` (`internal/app/memory_test.go`).
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H3 düzeltildi: `internal/memory/chunker.go`'daki `chunkText`, `maxTokens`'ı tek başına aşan boşluksuz bir "kelime"yi (uzun URL, base64, minify kod, hash) artık `splitLongWord` ile karakter bazlı zorla parçalıyor — hem `SaveInteraction` hem `RetrieveContext` aynı embed batch-size sınırına çarpmaktan kurtuldu. Regresyon testi: `TestChunkText_SingleOversizedWord` (`internal/memory/chunker_test.go`).
 >
@@ -23,24 +25,14 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 5 |
+| 🟡 MEDIUM | 4 |
 | 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **7** |
+| **TOPLAM** | **6** |
 
 ---
 
 ## 🟡 MEDIUM
-
-### BUG-M5: Takvim sorgusu için hiçbir agent tool'u yok — model RAG/sohbet hafızasından tahmin ediyor, gerçek `events.db`'yi hiç sorgulamıyor, gerçek/hayali etkinlikleri ayırt edemiyor
-
-**Dosya:** `internal/agent/tools/` (calendar ile ilgili hiçbir dosya/fonksiyon yok)
-
-Gerçek bir takvim etkinliği başarıyla eklendi (`events.db`'de doğrulandı). "Bu hafta takvimimde ne var" diye sorulduğunda model **hiçbir tool çağırmadan** doğru cevap verdi — ama tamamen yeni, geçmişsiz bir sohbette aynı soru sorulduğunda `search_files` (takvimle alakasız bir araç) çağırıp "hatırladığım kadarıyla" diyerek RAG'a dayalı bir cevap üretti. Aynı cevapta, BUG-H2 yüzünden hiç kaydedilmemiş bir alışkanlık, gerçekten kaydedilmiş bir etkinlikle ayrım yapılmadan yan yana listelendi.
-
-**Senaryo:** Kullanıcı gerçek bir etkinliğinin yanında, hiç kaydedilmemiş "hayali" bir etkinliği de takviminde sanabilir — model bunu düzeltecek hiçbir ground-truth kontrolüne sahip değil.
-
-**Önerilen yön:** Takvimi gerçekten okuyan salt-okunur bir agent tool (`get_calendar_events(from,to)`) eklemek, sistem promptunda model her takvim sorgusunda bunu çağırmaya yönlendirilmeli.
 
 ### BUG-M6: `extractAndPinFacts`'te tekrar/dedup kontrolü yok — aynı gerçek tur başına tekrar tekrar pinleniyor, kapasiteli pinned-facts havuzunu kendi kopyalarıyla dolduruyor
 

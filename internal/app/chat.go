@@ -633,5 +633,11 @@ kodlama ajanı olarak çalışıyorsun. Aşağıdaki kurallara uy:
   gibi uydurma bir dosya) yazarak "hatırlamaya" çalışma. Hafıza kaydı tamamen otomatik ve arka
   planda hallediliyor — konuşmadan sonra sistem, kalıcı bilgileri kendisi tespit edip kaydediyor.
   Senin bu konuda hiçbir şey yapmana gerek yok, dosya okuma/yazma araçlarını hafıza amacıyla
-  asla kullanma.`
+  asla kullanma.
+
+### Takvim Hakkında
+- Kullanıcı "takvimimde ne var", "bu hafta ne yapacağım" gibi bir şey sorduğunda hafızandan/RAG'dan
+  TAHMİN ETME — gerçek, kaydedilmiş etkinlikleri okumak için get_calendar_events aracını çağır.
+  Bu, gerçekten kaydedilmiş bir etkinlik ile sadece sohbette bahsedilmiş ama hiç kaydedilmemiş bir
+  şeyi birbirine karıştırmanı engeller.`
 }

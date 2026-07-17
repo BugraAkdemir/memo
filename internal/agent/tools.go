@@ -175,6 +175,14 @@ func (r *ToolRegistry) registerBuiltins() {
 		ExecuteFn:   tools.ConfigureProvider,
 	})
 
+	r.Register(ToolDef{
+		Name:        "get_calendar_events",
+		Description: "Gerçek takvimden (events.db) kayıtlı etkinlikleri okur. Kullanıcı takviminde ne olduğunu sorduğunda tahmin etme, bu aracı çağır. from/to: YYYY-MM-DD veya ISO 8601 (varsayılan: dünden 7 gün sonrasına kadar)",
+		Parameters:  json.RawMessage(`{"type":"object","properties":{"from":{"type":"string","description":"Başlangıç tarihi (YYYY-MM-DD veya ISO 8601)"},"to":{"type":"string","description":"Bitiş tarihi (YYYY-MM-DD veya ISO 8601)"}}}`),
+		DangerLevel: Safe,
+		ExecuteFn:   tools.GetCalendarEvents,
+	})
+
 	r.registerWhatsAppTools()
 }
 

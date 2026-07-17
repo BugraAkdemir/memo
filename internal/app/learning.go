@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/agent/tools"
 	"memo/internal/api"
 	"memo/internal/calendar"
 	"memo/internal/config"
@@ -32,6 +33,9 @@ func (a *App) initLearning(ctx context.Context) {
 			a.emitEvent(name, data)
 		})
 		go a.calendarRemind.Start(ctx)
+		// Wire up the calendar store for the read-only get_calendar_events
+		// agent tool (package-level global, same pattern as WhatsAppClient).
+		tools.CalendarClient = calendarToolAdapter{cs}
 		logx.Info("Calendar system initialized")
 	}
 
@@ -334,4 +338,25 @@ func (a *App) DeleteCalendarEvent(id string) error {
 		return fmt.Errorf("calendar not initialized")
 	}
 	return a.calendarStore.Delete(a.lifecycleCtx, id)
+}
+
+// calendarToolAdapter wraps *calendar.Store to satisfy tools.CalendarClient.
+type calendarToolAdapter struct {
+	s *calendar.Store
+}
+
+func (a calendarToolAdapter) ListEvents(ctx context.Context, from, to time.Time) ([]tools.CalendarEvent, error) {
+	events, err := a.s.List(ctx, from, to)
+	if err != nil {
+		return nil, err
+	}
+	out := make([]tools.CalendarEvent, len(events))
+	for i, e := range events {
+		out[i] = tools.CalendarEvent{
+			Title:     e.Title,
+			StartTime: e.StartTime,
+			Source:    string(e.Source),
+		}
+	}
+	return out, nil
 }

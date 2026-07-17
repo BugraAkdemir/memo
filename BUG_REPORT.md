@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (2. tur) — `/code-review` (high effort, 8 bulucu açı + doğrulama) ile bulunan 19 maddeden 17'si bu turda düzeltildi (2 CRITICAL, 1 HIGH, 3 MEDIUM, 6 LOW, 5 teknik borç — her biri ayrı, doğrulanmış commit, `go build/vet/test -race` + `flutter analyze/test` yeşil). Kalan 2 MEDIUM madde (BUG-M1, BUG-M4) bilinçli olarak ertelendi: ikisi de gerçek bir API/mimari kararı gerektiriyor (backend'e dil alanı eklemek, rutin saatine zaman dilimi eklemek) — yarım yamalak, otonom bir oturumda tek taraflı karar vermek yerine sonraki oturuma/kullanıcı onayına bırakıldı.
+> **Son güncelleme:** 2026-07-17 (Session 39, "Deniz" persona testi) — otonom `-p --auto-allow` canlı testinde yeni bir gerçek bug bulundu: BUG-H2 (aşağıda). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 39.
+>
+> **Önceki güncelleme:** 2026-07-17 (2. tur) — `/code-review` (high effort, 8 bulucu açı + doğrulama) ile bulunan 19 maddeden 17'si bu turda düzeltildi (2 CRITICAL, 1 HIGH, 3 MEDIUM, 6 LOW, 5 teknik borç — her biri ayrı, doğrulanmış commit, `go build/vet/test -race` + `flutter analyze/test` yeşil). Kalan 2 MEDIUM madde (BUG-M1, BUG-M4) bilinçli olarak ertelendi: ikisi de gerçek bir API/mimari kararı gerektiriyor (backend'e dil alanı eklemek, rutin saatine zaman dilimi eklemek) — yarım yamalak, otonom bir oturumda tek taraflı karar vermek yerine sonraki oturuma/kullanıcı onayına bırakıldı.
 >
 > **Önceki geçmiş (2026-07-12 ve öncesi):** Bu dosya o tarihte 0 açık maddeye indirilmişti. 2026-07-17'nin ilk turunda (yukarıdaki 19 madde) eklenen yeni "rutin" (scheduled automation) motorü + geniş L10n temizliği taranmıştı.
 
@@ -12,11 +14,25 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 0 |
+| 🟠 HIGH | 1 |
 | 🟡 MEDIUM | 2 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **2** |
+| **TOPLAM** | **3** |
+
+---
+
+## 🟠 HIGH
+
+### BUG-H2: Alışkanlık (habit) deklarasyonunda `habit_days` tip uyuşmazlığı TÜM intent sonucunu sessizce iptal ediyor — model kullanıcıya yalan "kaydedildi" onayı veriyor
+
+**Dosya:** `internal/intent/extractor.go` (`rawIntent.HabitDays []int`, `parseResponse`), `internal/app/learning.go:119-123` (`processMessageIntent`)
+
+"Deniz" persona testinde (bkz. `handoff.md` Session 39) canlı olarak bulundu: kullanıcı "bundan sonra her gün akşam 21:00'de 20 dakika kitap okuyacağım, bunu alışkanlık olarak not al" dediğinde, LLM `habit_days` alanını beklenen `int` dizisi yerine string olarak döndürdü (muhtemelen gün adları). `json.Unmarshal(jsonStr, &ri)` bu tek alan yüzünden TÜM `rawIntent`'i reddediyor — `has_intent`/`is_habit`/`summary` gayet doğru üretilmiş olsa bile. `parseResponse` hata dönüyor, `processMessageIntent` bunu loglayıp sessizce `return` ediyor; `observerPatterns.SaveDeclared` hiç çağrılmıyor, `data/profile/patterns.json`'a hiçbir şey yazılmıyor.
+
+**Senaryo:** Kullanıcı bir alışkanlık deklare eder, ana sohbet modeli (bu arka plan pipeline'ından habersiz olduğu için) her zaman "Alışkanlık kaydedildi! 📖" gibi kesin bir onay verir — ama backend hiçbir şey kaydetmemiştir. Kullanıcı gelecekte "bana hatırlatacağını söylemiştin" dediğinde hiçbir hatırlatma gelmez; sessiz veri kaybı + yanlış kullanıcı güveni.
+
+**Önerilen yön:** `HabitDays`'i `[]int` yerine daha toleranslı bir tip (`json.RawMessage` veya serbest `[]any` + manuel coerce/best-effort parse) yapmak; ayrıca tek bir alanın tipi bozuksa bile geri kalan alanları (has_intent, is_habit, summary, habit_time_hhmm) kurtaracak alan-bazlı bir fallback eklemek düşünülebilir.
 
 ---
 

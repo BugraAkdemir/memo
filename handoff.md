@@ -1,4 +1,64 @@
-# Handoff — 2026-07-17 (Session 38) — Mobile client full TR/EN L10n (hardcoded strings removed)
+# Handoff — 2026-07-17 (Session 39) — /code-review bulduğu 19 rutin-motoru bug'ının 17'si otonom /loop ile düzeltildi + "Deniz" persona testiyle canlı doğrulama, 1 yeni gerçek bug bulundu
+
+## Özet
+
+Kullanıcı gece uykuya geçmeden önce üç ardışık iş bıraktı: (1) `/code-review` (high effort, 8 açı) + `/codebase-memory` ile HEAD~15..HEAD üzerinde bulunan 19 bug'ı `BUG_REPORT.md`'ye yazdım; (2) kota 05:00'te sıfırlanınca `/loop` ile saat 10:00'da otonom olarak bunları önceliğe göre (CRITICAL→HIGH→MEDIUM→LOW→teknik borç) tek tek düzeltip her birini ayrı commit'le kapattım; (3) tüm düzeltmeler bitince `data/`'yı sıfırlayıp yeni bir "Deniz" persona'sıyla `memo -p --auto-allow` üzerinden canlı bir kullanıcı testi koştum. Bu üçüncü adımda **yeni, gerçek ve önceki oturumların (32/33/34/35) hiç kapatamadığı bir teması yeniden doğrulayan bir bug** bulundu (aşağıda).
+
+**codebase-memory-mcp bu oturumun otonom (/loop) kısmında bağlı değildi** — `ToolSearch` "No matching deferred tools found" döndürdü, hem bug-fix hem persona-test aşamalarında Grep/Read/Bash'e geri dönüldü. Kullanıcının "kesinlikle kullan" talimatına rağmen bu kısıtlama burada açıkça not düşülüyor.
+
+## 1) Rutin motoru bug sweep'i (17/19 düzeltildi, 2 MEDIUM bilinçli ertelendi)
+
+Bulgular ve düzeltmeler artık git geçmişinde (aşağıdaki commit'ler), tekrar burada dokümante edilmiyor — `BUG_REPORT.md` sadece kalan 2 açık maddeyi tutuyor:
+
+- **BUG-M1**: Backend'in ürettiği rutin içeriği (sistem promptu, bildirim başlığı, boş-bağlam metinleri) hardcoded Türkçe, L10n'i baypas ediyor — gerçek düzeltme backend API'sine bir dil alanı eklemeyi gerektiriyor, tek taraflı otonom karar yerine ertelendi.
+- **BUG-M4**: Rutin saati (`HH:MM`) zaman dilimi taşımıyor, backend host'un yerel saatine göre yorumlanıyor — API/mimari kararı gerektiriyor, ertelendi.
+
+Commit'ler (en yeniye doğru): `fd9545e` (BUG-C1), `0717064` (BUG-C2), `02a6e78` (BUG-H1), `abd5be4` (BUG-M2/M3/M5), `19ad5ee` (BUG-L4/L5), `9fb090d` (BUG-L1/L2/L3/L6), `90bfd89` (TD-3/TD-5), `09af2f5` (TD-4), `62a6be9` (TD-2), `d4dd731` (TD-1). Her biri ayrı, `go build/vet/test -race -tags sqlite_fts5` (+ ilgili maddede `flutter analyze/test`) ile doğrulanmış commit.
+
+## 2) "Deniz" persona testi — metodoloji
+
+Fatih persona testinin (Session 34) devamı niteliğinde, ama bu kez repo'nun kendi `data/`'sı üzerinden (kullanıcının gerçek `~/.memo/data`'sına — canlı WhatsApp bağlantısı ve 243 gerçek kişiyle — HİÇ dokunulmadı, bilinçli olarak izole edildi):
+
+1. `rm -rf data/{memory,sessions,profile,mood,calendar,whatsapp,tasklists,agent-backups}` + log dosyaları silindi. **`data/models/` (embedding modeli), `data/providers.json`/`.example.json` (gerçek, zaten yapılandırılmış API key) ve `data/machine.key` (providers.json'u çözmek için gerekli) BİLEREK korundu** — kullanıcı "hiç verim yok, ister sil ister yok et" dedi ama bunları da silmek, testin gerçek bir LLM'e ulaşmasını imkansız kılardı (repo'da lokal bir chat modeli yok, sadece embedding modeli var).
+2. `go build -tags sqlite_fts5 -o /tmp/.../memo-dev .` ile bugünkü tüm fix'leri içeren taze bir binary derlendi, repo kök dizininden çalıştırıldı (böylece `config.DataPath()` process-relative `./data`'yı çözüyor — kurulu `~/.memo/bin/memo`'dan tamamen bağımsız).
+3. "Deniz" persona'sı: 27 yaşında, İzmir'de yazılım mühendisi, favori renk turuncu, kedisi "Mırnav", kahveyi sade içiyor. `memo -p "..." [-chat <id>] [-auto-allow]` ile çok turlu, hem aynı chat'te hem taze chat'lerde test edildi.
+
+## 3) Bulgular
+
+**Çalışanlar (doğrulandı):**
+- Hafıza kaydı + fresh-chat recall: Deniz'in kedisinin adı ve kahve tercihi, TAMAMEN farklı bir chat ID'sinde doğru hatırlandı (embed/retrieve log'ları `best=100%`).
+- `write_file`/`delete_file`/`read_file` round-trip: dosya oluşturma → düzenleme → okuma → silme → `stat` ile doğrulama, hepsi gerçek diskte gerçekleşti (`AGENT [write_file] SUCCESS`, vb. log'da).
+- Takvim intent extraction: "yarın saat 15:00'te diş hekimi randevum var" → arka planda doğru ayrıştırılıp `data/calendar/events.db`'ye gerçek bir satır olarak yazıldı (`Dentist appointment`, `2026-07-18 15:00`).
+- Path güvenliği: `/home/` altına (repo dışı) yazma denemesi `access denied: path is within protected directory` ile bloklandı — savunma çalışıyor.
+
+**Küçük bulgu (bug değil ama not edilmeye değer):** Kullanıcı "masaüstüm" dediğinde model bazen path'i tilde (`~`) ile literal composed ediyor; ilk denemede repo cwd'si altında gerçek bir `~/Desktop/` klasörü OLUŞTURULDU (path expand edilmedi), ikinci denemede aynı tarz bir path "protected directory" diye reddedildi — tutarsız. Test artefaktları (`~/`, `deniz_notlar.txt`, `scratch_test.txt`) temizlendi, repo'da iz yok.
+
+**YENİ GERÇEK BUG (düzeltilmedi, sadece bulundu — BUG_REPORT.md'ye eklenmeli):**
+
+"Bundan sonra her gün akşam 21:00'de 20 dakika kitap okuyacağım, bunu alışkanlık olarak not al" mesajına model sohbette **"Alışkanlık kaydedildi ✅"** dedi — ama bu YALAN. Backend log'u kök nedeni gösteriyor:
+
+```
+intent: parse response: unmarshal: json: cannot unmarshal string into Go struct field
+rawIntent.habit_days of type int {"has_intent": true, "is_calendar_event": false,
+"is_habit": true, ..., "summary": "Daily habit declaration to read a book for 20
+minutes at 21:00.", ...
+```
+
+`internal/intent/extractor.go`'daki `rawIntent.HabitDays []int` alanı, LLM `habit_days`'i (muhtemelen "her gün" için gün adı stringleri olarak) beklenen int dizisi yerine string döndürdüğünde `json.Unmarshal` TÜM objeyi reddediyor — `has_intent`/`is_habit`/`summary` gayet doğru parse edilmiş olsa bile, tek bir alanın tip uyuşmazlığı yüzünden `parseResponse` hata dönüyor, `processMessageIntent` (`internal/app/learning.go:119-123`) bunu loglayıp sessizce return ediyor. Sonuç: `data/profile/patterns.json`'da HİÇBİR yeni pattern yok (`updated_at` habit mesajından ÖNCEki bir timestamp'te donmuş kaldı) — ama ana sohbet modeli arka plandaki bu pipeline'ın başarısız olduğundan habersiz, kullanıcıya her zaman "kaydettim" diyor. **Kullanıcıyı yanlış güvenceye sokan, gerçek bir doğruluk bug'ı.**
+
+Olası düzeltme yönü (uygulanmadı): `rawIntent.HabitDays`'i `[]int` yerine daha toleranslı bir tip (`json.RawMessage` veya `[]any` + manuel coerce) yapmak, ya da tek bir alanın parse hatasının tüm sonucu iptal etmemesi için alan bazlı fallback eklemek.
+
+**Kısmen doğrulanan, önceki oturumlardan tanıdık bir tema:** Session 34'te flaglenen "model, sıradan bir sohbet mesajına kendiliğinden dosya/komut aracı çağırmaya çalışıyor" deseni (Turn 21, `read_file` ile var olmayan `memory.json`) burada da iki kez tekrarlandı — hem takvim hem alışkanlık deklarasyonu turlarında (ikisi de TAZE chat, dosyayla hiç ilgisi olmayan mesajlar), model `run_command`/`read_file`/`write_file` denedi (izin sistemi doğru şekilde `-auto-allow` verilmeyen turlarda reddetti). Session 35'in bu temaya yönelik fix'i (`internal/identity/identity.go`'ya "hafıza dosya değil enjekte" notu) bu deseni tam kapatmamış — kök neden hâlâ açık, yeni bir araştırma turu gerektiriyor.
+
+**Test edilemeyenler (bu ortamda pratik değil, başarı/başarısızlık iddia edilmiyor):** WhatsApp bağlamlı rutinler (izole `data/whatsapp`'ta gerçek bir hesap bağlı değil — "get joined groups error: context deadline exceeded" logland), proaktif/ambient dürtmeler (arka plan tick zamanlamasına ve gerçek zaman geçişine ihtiyaç duyuyor, tek seferlik `-p` çağrılarıyla gözlemlenemedi).
+
+## Sıradaki oturumun ilk işi
+
+Yukarıdaki habit_days JSON parse bug'ını `BUG_REPORT.md`'ye MEDIUM/HIGH önerilen bir madde olarak eklemek ve düzeltmek — kullanıcıya yanlış "kaydedildi" güvencesi verdiği için önceliklendirilmeli.
+
+---
+
+
 
 ## Özet
 

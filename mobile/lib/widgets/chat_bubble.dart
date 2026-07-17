@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import 'branding.dart';
 
@@ -25,7 +26,7 @@ class ChatBubble extends StatelessWidget {
     Clipboard.setData(ClipboardData(text: content));
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
-      ..showSnackBar(const SnackBar(content: Text('Copied to clipboard'), duration: Duration(milliseconds: 1200)));
+      ..showSnackBar(SnackBar(content: Text(L10n.t('copied')), duration: const Duration(milliseconds: 1200)));
   }
 
   @override

@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/chat_provider.dart';
 import '../providers/connection_provider.dart';
@@ -76,7 +77,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             .where((s) => s.id == state.activeSessionId)
             .firstOrNull
             ?.title ??
-        'Memo';
+        L10n.t('app_name');
 
     return Scaffold(
       backgroundColor: MemoTheme.bg,
@@ -94,7 +95,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(isIncognito ? 'Incognito Mode' : title,
+            Text(isIncognito ? L10n.t('incognito_mode') : title,
                 maxLines: 1, overflow: TextOverflow.ellipsis, style: Theme.of(context).textTheme.titleLarge),
             const SizedBox(height: 2),
             const _EngineChip(),
@@ -102,7 +103,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
         ),
         actions: [
           IconButton(
-            tooltip: 'Incognito mode',
+            tooltip: L10n.t('incognito_tooltip'),
             icon: Icon(
               isIncognito ? Icons.visibility_off : Icons.visibility_off_outlined,
               size: 21,
@@ -114,7 +115,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             },
           ),
           IconButton(
-            tooltip: 'Agent mode',
+            tooltip: L10n.t('agent_mode_tooltip'),
             icon: Icon(
               ref.watch(agentEnabledProvider) ? Icons.psychology : Icons.psychology_outlined,
               size: 21,
@@ -126,7 +127,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
             },
           ),
           IconButton(
-            tooltip: 'New chat',
+            tooltip: L10n.t('new_chat'),
             icon: const Icon(Icons.add_comment_outlined, size: 21, color: MemoTheme.textDim),
             onPressed: () {
               HapticFeedback.selectionClick();
@@ -155,7 +156,7 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
                   child: Row(children: [
                     const Icon(Icons.delete_outline_rounded, size: 19, color: MemoTheme.error),
                     const SizedBox(width: 12),
-                    Text('Delete chat', style: MemoTheme.body(14, color: MemoTheme.error)),
+                    Text(L10n.t('delete_chat'), style: MemoTheme.body(14, color: MemoTheme.error)),
                   ]),
                 ),
               ],
@@ -235,11 +236,11 @@ class _ChatScreenState extends ConsumerState<ChatScreen> {
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Delete this chat?'),
-        content: const Text('The conversation will be removed from your desktop. This cannot be undone.'),
+        title: Text(L10n.t('delete_chat_title')),
+        content: Text(L10n.t('delete_chat_body')),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text('Keep', style: MemoTheme.body(14, color: MemoTheme.textDim))),
-          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text('Delete', style: MemoTheme.body(14, w: FontWeight.w600, color: MemoTheme.error))),
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: Text(L10n.t('keep'), style: MemoTheme.body(14, color: MemoTheme.textDim))),
+          TextButton(onPressed: () => Navigator.pop(ctx, true), child: Text(L10n.t('delete'), style: MemoTheme.body(14, w: FontWeight.w600, color: MemoTheme.error))),
         ],
       ),
     );
@@ -256,7 +257,7 @@ class _EngineChip extends ConsumerStatefulWidget {
 }
 
 class _EngineChipState extends ConsumerState<_EngineChip> {
-  String _label = 'connecting…';
+  String _label = L10n.t('connecting');
   bool _loaded = false;
 
   @override
@@ -271,7 +272,7 @@ class _EngineChipState extends ConsumerState<_EngineChip> {
       final active = await api.getActiveProvider();
       String label;
       if (active.isEmpty) {
-        label = 'local model';
+        label = L10n.t('local_model');
       } else {
         final providers = await api.getProviders();
         label = providers
@@ -280,7 +281,7 @@ class _EngineChipState extends ConsumerState<_EngineChip> {
       }
       if (mounted) setState(() { _label = label; _loaded = true; });
     } catch (_) {
-      if (mounted) setState(() { _label = 'offline'; _loaded = true; });
+      if (mounted) setState(() { _label = L10n.t('offline'); _loaded = true; });
     }
   }
 
@@ -320,15 +321,15 @@ class _EmptyState extends StatelessWidget {
           children: [
             const MemoLogo(size: 60),
             const SizedBox(height: 20),
-            Text('No chat open', style: Theme.of(context).textTheme.headlineMedium),
+            Text(L10n.t('no_chat_open'), style: Theme.of(context).textTheme.headlineMedium),
             const SizedBox(height: 8),
-            Text('Start a new conversation, or pick one from the menu.',
+            Text(L10n.t('no_chat_hint'),
                 textAlign: TextAlign.center, style: MemoTheme.body(14, color: MemoTheme.textDim, height: 1.5)),
             const SizedBox(height: 24),
             FilledButton.icon(
               onPressed: onNew,
               icon: const Icon(Icons.add_rounded, size: 19),
-              label: const Text('New chat'),
+              label: Text(L10n.t('new_chat')),
               style: FilledButton.styleFrom(
                 backgroundColor: MemoTheme.accent,
                 foregroundColor: MemoTheme.onAccent,
@@ -363,7 +364,7 @@ class _AgentPermissionDialog extends ConsumerWidget {
             color: isDangerous ? MemoTheme.error : MemoTheme.accent,
           ),
           const SizedBox(width: 8),
-          const Text('Agent Izin Gerekli'),
+          Text(L10n.t('agent_permission_title')),
         ],
       ),
       content: Column(
@@ -371,7 +372,9 @@ class _AgentPermissionDialog extends ConsumerWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            '"${event.toolName ?? "bilinmeyen arac"}" calistirilmak isteniyor',
+            L10n.t('agent_permission_body', {
+              'tool': event.toolName ?? L10n.t('agent_unknown_tool'),
+            }),
             style: const TextStyle(fontSize: 14),
           ),
           if (isDangerous) ...[
@@ -382,12 +385,12 @@ class _AgentPermissionDialog extends ConsumerWidget {
                 color: MemoTheme.error.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Row(
+              child: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded, size: 16, color: MemoTheme.error),
-                  SizedBox(width: 8),
-                  Expanded(child: Text('Bu arac sistemde degisiklik yapabilir!',
-                      style: TextStyle(color: MemoTheme.error, fontSize: 12))),
+                  const Icon(Icons.warning_amber_rounded, size: 16, color: MemoTheme.error),
+                  const SizedBox(width: 8),
+                  Expanded(child: Text(L10n.t('agent_permission_danger'),
+                      style: const TextStyle(color: MemoTheme.error, fontSize: 12))),
                 ],
               ),
             ),
@@ -397,12 +400,12 @@ class _AgentPermissionDialog extends ConsumerWidget {
       actions: [
         TextButton(
           onPressed: () => _respond(context, ref, 'deny_once'),
-          child: const Text('Reddet', style: TextStyle(color: Colors.grey)),
+          child: Text(L10n.t('agent_deny'), style: const TextStyle(color: Colors.grey)),
         ),
         TextButton(
           onPressed: () => _respond(context, ref, 'allow_once'),
           style: TextButton.styleFrom(backgroundColor: MemoTheme.accent),
-          child: const Text('Izin Ver', style: TextStyle(color: Colors.white)),
+          child: Text(L10n.t('agent_allow'), style: const TextStyle(color: Colors.white)),
         ),
       ],
     );
@@ -422,18 +425,18 @@ class _Greeting extends StatelessWidget {
 
   String get _timeGreeting {
     final h = DateTime.now().hour;
-    if (h < 12) return 'Good morning';
-    if (h < 18) return 'Good afternoon';
-    return 'Good evening';
+    if (h < 12) return L10n.t('greeting_morning');
+    if (h < 18) return L10n.t('greeting_afternoon');
+    return L10n.t('greeting_evening');
   }
 
   @override
   Widget build(BuildContext context) {
-    const prompts = [
-      ('Summarise what I worked on', Icons.history_rounded),
-      ('Draft a quick reply', Icons.edit_outlined),
-      ('Explain this in simple terms', Icons.lightbulb_outline_rounded),
-      ('What did I decide about…', Icons.psychology_outlined),
+    final prompts = [
+      (L10n.t('prompt_summarise'), Icons.history_rounded),
+      (L10n.t('prompt_draft'), Icons.edit_outlined),
+      (L10n.t('prompt_explain'), Icons.lightbulb_outline_rounded),
+      (L10n.t('prompt_decide'), Icons.psychology_outlined),
     ];
     return ListView(
       padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
@@ -443,7 +446,7 @@ class _Greeting extends StatelessWidget {
         const SizedBox(height: 24),
         Text(_timeGreeting, textAlign: TextAlign.center, style: Theme.of(context).textTheme.headlineLarge),
         const SizedBox(height: 6),
-        Text('Ask anything — Memo remembers the rest.',
+        Text(L10n.t('greeting_subtitle'),
             textAlign: TextAlign.center, style: MemoTheme.body(14.5, color: MemoTheme.textDim)),
         const SizedBox(height: 30),
         ...prompts.map((p) => Padding(

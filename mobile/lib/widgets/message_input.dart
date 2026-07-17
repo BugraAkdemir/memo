@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/connection_provider.dart';
 
@@ -80,7 +81,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                   HapticFeedback.selectionClick();
                   showModelSwitcher(context, ref);
                 },
-                tooltip: 'Switch model',
+                tooltip: L10n.t('switch_model'),
               ),
               const SizedBox(width: 8),
               Expanded(
@@ -104,7 +105,7 @@ class _MessageInputState extends ConsumerState<MessageInput> {
                     decoration: InputDecoration(
                       isDense: true,
                       filled: false,
-                      hintText: 'Message Memo…',
+                      hintText: L10n.t('message_hint'),
                       hintStyle: MemoTheme.body(15, color: MemoTheme.textFaint),
                       border: InputBorder.none,
                       enabledBorder: InputBorder.none,
@@ -116,13 +117,13 @@ class _MessageInputState extends ConsumerState<MessageInput> {
               ),
               const SizedBox(width: 8),
               widget.streaming
-                  ? _circleButton(icon: Icons.stop_rounded, filled: true, onTap: widget.onStop, tooltip: 'Stop')
+                  ? _circleButton(icon: Icons.stop_rounded, filled: true, onTap: widget.onStop, tooltip: L10n.t('stop'))
                   : _circleButton(
                       icon: Icons.arrow_upward_rounded,
                       filled: true,
                       enabled: _hasText,
                       onTap: _send,
-                      tooltip: 'Send',
+                      tooltip: L10n.t('send'),
                     ),
             ],
           ),
@@ -182,7 +183,7 @@ Future<void> showModelSwitcher(BuildContext context, WidgetRef ref) async {
   } catch (_) {
     if (context.mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Couldn't reach the desktop to load models")),
+        SnackBar(content: Text(L10n.t('models_unreachable'))),
       );
     }
     return;
@@ -200,16 +201,16 @@ Future<void> showModelSwitcher(BuildContext context, WidgetRef ref) async {
       await api.setActiveProvider(result);
       if (context.mounted) {
         final name = result.isEmpty
-            ? 'local model'
+            ? L10n.t('local_model')
             : providers
                 .firstWhere((p) => p.type == result,
                     orElse: () => ProviderConfig(type: result, name: result, model: ''))
                 .name;
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Now using $name')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('now_using', {'name': name}))));
       }
     } catch (e) {
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with', {'e': '$e'}))));
       }
     }
   }
@@ -241,17 +242,17 @@ class _ModelSheet extends StatelessWidget {
             const SizedBox(height: 18),
             Padding(
               padding: const EdgeInsets.only(left: 6, bottom: 4),
-              child: Text('Answer with', style: Theme.of(context).textTheme.titleLarge),
+              child: Text(L10n.t('answer_with'), style: Theme.of(context).textTheme.titleLarge),
             ),
             Padding(
               padding: const EdgeInsets.only(left: 6, bottom: 12),
-              child: Text('Routes this chat to a different model. Runs on your desktop.',
+              child: Text(L10n.t('answer_with_hint'),
                   style: MemoTheme.body(13, color: MemoTheme.textDim)),
             ),
             _option(context,
                 icon: Icons.developer_board_rounded,
-                label: 'Local model',
-                subtitle: 'llama.cpp · fully offline',
+                label: L10n.t('local_model_title'),
+                subtitle: L10n.t('local_model_subtitle'),
                 isActive: active.isEmpty,
                 value: ''),
             ...enabled.map((p) => _option(context,

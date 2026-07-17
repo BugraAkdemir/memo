@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/chat_provider.dart';
 import '../providers/connection_provider.dart';
@@ -38,7 +39,7 @@ class SessionDrawer extends ConsumerWidget {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Memo', style: Theme.of(context).textTheme.titleLarge),
+                        Text(L10n.t('app_name'), style: Theme.of(context).textTheme.titleLarge),
                         const SizedBox(height: 3),
                         Row(
                           children: [
@@ -71,7 +72,7 @@ class SessionDrawer extends ConsumerWidget {
                     Navigator.pop(context);
                   },
                   icon: const Icon(Icons.add_rounded, size: 19),
-                  label: const Text('New chat'),
+                  label: Text(L10n.t('new_chat')),
                   style: FilledButton.styleFrom(
                     backgroundColor: MemoTheme.accent,
                     foregroundColor: MemoTheme.onAccent,
@@ -87,7 +88,7 @@ class SessionDrawer extends ConsumerWidget {
             const SizedBox(height: 18),
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 22),
-              child: Text('RECENT', style: MemoTheme.mono(10.5, color: MemoTheme.textFaint, ls: 1.4)),
+              child: Text(L10n.t('recent'), style: MemoTheme.mono(10.5, color: MemoTheme.textFaint, ls: 1.4)),
             ),
             const SizedBox(height: 8),
 
@@ -97,7 +98,7 @@ class SessionDrawer extends ConsumerWidget {
                   ? Center(
                       child: Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text('No conversations yet.\nStart one above.',
+                        child: Text(L10n.t('no_conversations'),
                             textAlign: TextAlign.center,
                             style: MemoTheme.body(13.5, color: MemoTheme.textFaint, height: 1.5)),
                       ),
@@ -142,7 +143,7 @@ class SessionDrawer extends ConsumerWidget {
                                                 color: active ? MemoTheme.text : MemoTheme.textDim),
                                           ),
                                           const SizedBox(height: 2),
-                                          Text('${s.msgCount} messages',
+                                          Text(L10n.t('message_count', {'count': '${s.msgCount}'}),
                                               style: MemoTheme.mono(10.5, color: MemoTheme.textFaint)),
                                         ],
                                       ),
@@ -159,11 +160,11 @@ class SessionDrawer extends ConsumerWidget {
 
             const Divider(height: 1),
             // ── Footer actions ──
-            _footerTile(context, Icons.tune_rounded, 'Settings', MemoTheme.textDim, () {
+            _footerTile(context, Icons.tune_rounded, L10n.t('settings'), MemoTheme.textDim, () {
               Navigator.pop(context);
               Navigator.of(context).push(MaterialPageRoute(builder: (_) => const SettingsScreen()));
             }),
-            _footerTile(context, Icons.link_off_rounded, 'Disconnect', MemoTheme.error, () {
+            _footerTile(context, Icons.link_off_rounded, L10n.t('disconnect'), MemoTheme.error, () {
               ref.read(connectionStateProvider.notifier).disconnect();
               Navigator.pop(context);
             }),

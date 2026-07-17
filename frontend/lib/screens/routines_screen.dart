@@ -178,6 +178,16 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
     final draft = _draft;
     final original = _originalText;
     if (draft == null || original == null) return;
+    // BUG-L2: if WhatsApp delivery is requested but no chat could be picked
+    // (fetching the chat list failed above, or WhatsApp genuinely has none),
+    // saving anyway used to silently create a routine whose delivery can
+    // never succeed. Block it instead — there's no in-card way to turn
+    // delivery_whatsapp back off, so continuing would just fail forever with
+    // no way for the user to know why.
+    if (draft['delivery_whatsapp'] == true && (_selectedWhatsAppJid ?? '').isEmpty) {
+      setState(() => _error = L10n.t('routines_whatsapp_target_required'));
+      return;
+    }
     try {
       final api = ref.read(apiClientProvider);
       await api.createRoutine(

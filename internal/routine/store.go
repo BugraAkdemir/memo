@@ -23,6 +23,15 @@ type Store struct {
 	dir  string
 	mu   sync.RWMutex
 	list map[string]*Routine
+
+	// writeMu serializes disk writes independently of mu, so a slow write
+	// doesn't hold mu (and therefore block concurrent List()/Get() reads —
+	// hit by both the mobile poll and the desktop UI) for its whole duration
+	// (BUG-L6). Only Update uses it today — it's the hot path, called up to
+	// twice per routine per day by RoutineLoop.tick. Create/Delete are rare
+	// enough that holding mu across their own writes isn't worth the same
+	// treatment.
+	writeMu sync.Mutex
 }
 
 // NewStore creates (if needed) dir and loads any routines already there.
@@ -114,15 +123,35 @@ func (s *Store) List() []Routine {
 }
 
 // Update persists changes to an existing routine (by ID) and bumps UpdatedAt.
+// The disk write happens under writeMu only, not mu, so concurrent
+// List()/Get() calls never block on it (BUG-L6) — mu is only held for the
+// two brief map operations (existence check, then applying the result).
 func (s *Store) Update(r Routine) (*Routine, error) {
+	s.mu.RLock()
+	_, ok := s.list[r.ID]
+	s.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("routine: not found: %s", r.ID)
+	}
+
+	r.UpdatedAt = time.Now()
+
+	s.writeMu.Lock()
+	err := s.saveLocked(&r)
+	s.writeMu.Unlock()
+	if err != nil {
+		return nil, err
+	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, ok := s.list[r.ID]; !ok {
+		// Deleted concurrently while the write above was in flight — don't
+		// resurrect it into the map. Best-effort clean up the stray file we
+		// just wrote (a racing Delete's own os.Remove may have already run
+		// past this point; either order ends with the file gone).
+		_ = os.Remove(s.path(r.ID))
 		return nil, fmt.Errorf("routine: not found: %s", r.ID)
-	}
-	r.UpdatedAt = time.Now()
-	if err := s.saveLocked(&r); err != nil {
-		return nil, err
 	}
 	s.list[r.ID] = &r
 	out := r

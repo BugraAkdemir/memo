@@ -135,9 +135,18 @@ class _AppShellState extends ConsumerState<AppShell> {
 
     // When the connection comes up, force a calendar load so OS reminders get
     // scheduled even if the user never opens the calendar tab this session.
+    // Routines get the same catch-up (BUG-L3): checkMobileReady only used to
+    // fire reactively off a "routine:ready" event seen by the 30s poll — if
+    // the app was fully closed (or the event scrolled out of the backend's
+    // 64-entry ring buffer) while one fired, that day's notification was
+    // never scheduled. A poll-independent catch-up on every (re)connect
+    // means it's picked up the next time the app is opened at all, exactly
+    // like calendar reminders already are.
     ref.listen(connectionStateProvider, (prev, next) {
       if ((prev == null || !prev.connected) && next.connected) {
         ref.read(calendarProvider.notifier).refresh();
+        ref.read(routineProvider.notifier).refresh();
+        ref.read(routineProvider.notifier).checkMobileReady();
       }
     });
 

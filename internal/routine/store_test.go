@@ -2,7 +2,10 @@
 
 package routine
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestStoreCreateGetListUpdateDelete(t *testing.T) {
 	dir := t.TempDir()
@@ -59,6 +62,37 @@ func TestStoreCreateGetListUpdateDelete(t *testing.T) {
 	}
 	if _, err := st.Get(created.ID); err == nil {
 		t.Error("expected Get to fail after Delete")
+	}
+}
+
+// TestStoreUpdate_AfterDelete_DoesNotResurrect covers the narrowed-lock-scope
+// fix for BUG-L6: Update's disk write happens under a separate writeMu, not
+// the map's mu, so a concurrent Delete can complete in between. Update
+// re-checks existence right before applying its result to the in-memory map
+// (under the same mu.Lock() as the mutation) so it can't resurrect a
+// concurrently-deleted routine, and cleans up its own stray file write.
+func TestStoreUpdate_AfterDelete_DoesNotResurrect(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	created, err := st.Create(Routine{Prompt: "x"})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if err := st.Delete(created.ID); err != nil {
+		t.Fatalf("Delete: %v", err)
+	}
+
+	if _, err := st.Update(*created); err == nil {
+		t.Error("expected Update on a deleted routine to fail")
+	}
+	if _, err := st.Get(created.ID); err == nil {
+		t.Error("Update should not have resurrected a deleted routine into the store")
+	}
+	if _, err := os.Stat(st.path(created.ID)); err == nil {
+		t.Error("Update should have cleaned up its own stray file write for a deleted routine")
 	}
 }
 

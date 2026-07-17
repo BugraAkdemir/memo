@@ -1049,6 +1049,8 @@ class L10n {
     'routines_update_error': 'Güncellenemedi: \${e}',
     'routines_delete_error': 'Silinemedi: \${e}',
     'routines_confirm': 'Her gün saat \${time}\'de: \${prompt}',
+    'routines_whatsapp_target_required':
+        'WhatsApp\'tan gönderilmesi için bir sohbet/kişi seçmelisin. WhatsApp bağlı değilse önce bağlan, sonra tekrar dene.',
     'routines_whatsapp_pick': 'Hangi WhatsApp sohbetine/kişiye gönderilsin?',
     'routines_pick_chat': 'Sohbet seç',
     'routines_auto_approve':
@@ -2091,6 +2093,8 @@ class L10n {
     'routines_update_error': 'Could not update: \${e}',
     'routines_delete_error': 'Could not delete: \${e}',
     'routines_confirm': 'Every day at \${time}: \${prompt}',
+    'routines_whatsapp_target_required':
+        'You need to pick a WhatsApp chat/person for this to be delivered. If WhatsApp isn\'t connected, connect it first and try again.',
     'routines_whatsapp_pick': 'Which WhatsApp chat/person should receive this?',
     'routines_pick_chat': 'Pick a chat',
     'routines_auto_approve':

@@ -14,9 +14,9 @@
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 2 |
-| 🟢 LOW | 4 |
+| 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 5 |
-| **TOPLAM** | **11** |
+| **TOPLAM** | **7** |
 
 ---
 
@@ -37,34 +37,6 @@ Aynı oturumda mobile'a `routine_fallback` L10n key'i ("Rutin"/"Routine") eklenm
 `ParseFireTime`, `"HH:MM"`'i `now.Location()` (backend process'in çalıştığı makinenin saat dilimi) ile çözüyor. Telefon/kullanıcı backend'in çalıştığı yerden farklı bir saat diliminde olursa (uzaktan erişimle seyahat halindeyken), rutin yanlış saatte ateşlenir ve bunu tespit/düzeltecek hiçbir alan yok.
 
 **Senaryo:** Kullanıcı seyahatteyken telefonundan "sabah 8'de" bir rutin kurar; backend farklı bir saat diliminde çalışıyorsa bildirim kullanıcının gerçek sabah 8'inde değil, backend'in yerel 8'inde gelir.
-
----
-
-## 🟢 LOW
-
-### BUG-L1: `checkMobileReady()` bir kalem bozuksa tüm grubu iptal ediyor
-
-**Dosya:** `mobile/lib/providers/routine_provider.dart:62-77`
-
-`try/catch` tüm `for` döngüsünü sarmalıyor, tek tek elemanı değil. `RoutineMobileReady.fromJson`'ın `DateTime.parse(json['fire_at_utc'])` çağrısı bozuk/eksik bir tarihte patlarsa, o partide gelen **diğer tüm** rutinlerin zamanlaması da o turda atlanır (bir sonraki pollde kendini düzeltir, ama gecikme olur).
-
-### BUG-L2: WhatsApp sohbet listesi çekilemezse hedef JID boş kalıp yine de kaydediliyor
-
-**Dosya:** `frontend/lib/screens/routines_screen.dart` (`_parse`, sohbet listesi `catch (_) {}` ile yutuluyor) ve mobil eşdeğeri
-
-WhatsApp bağlı değilken/geçici kesintide bir WhatsApp-teslimatlı rutin onaylanırsa, `whatsAppTargetJid: _selectedWhatsAppJid ?? ''` boş string ile kaydedilir — kullanıcıya hiç uyarı gösterilmeden.
-
-### BUG-L3: `checkMobileReady()` sadece `routine:ready` event'iyle tetikleniyor, açılış/yeniden bağlanmada telafi çağrısı yok
-
-**Dosya:** `mobile/lib/main.dart:118-123` (routine kısmı), karşılaştır `:138-142` (calendar'ın reconnect-refresh deseni)
-
-Takvim akışı her yeniden bağlanmada `calendarProvider.notifier.refresh()`'i koşulsuz çağırıyor; rutin tarafının eşdeğeri yok. Uygulama tamamen kapalıyken bir `routine:ready` event'i gelirse (ya da 64 elemanlık ring buffer'dan taşarsa), o günün bildirimi hiç zamanlanmaz.
-
-### BUG-L6: `Store.Update()` global kilidi senkron disk yazımı boyunca tutuyor
-
-**Dosya:** `internal/routine/store.go:117-130`
-
-`s.mu.Lock()` tüm `json.MarshalIndent` + `os.WriteFile` süresince açık kalıyor; eşzamanlı `List()`/`Get()` çağıran HTTP handler'lar (mobil poll, masaüstü liste) bu süre boyunca bekler. Küçük ölçekte önemsiz, çok rutinli/yavaş disk senaryosunda gecikmeye dönüşebilir.
 
 ---
 

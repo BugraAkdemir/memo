@@ -61,9 +61,19 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
   /// past fire times) rather than tracking a "since" cursor — scheduling is
   /// idempotent per routine ID, so re-scheduling the same entry is harmless.
   Future<void> checkMobileReady() async {
+    List<Map<String, dynamic>> raw;
     try {
-      final raw = await _api.getRoutinesMobileReady(0);
-      for (final json in raw) {
+      raw = await _api.getRoutinesMobileReady(0);
+    } catch (_) {
+      // Best-effort — a missed poll just means a slightly later scheduling.
+      return;
+    }
+    // Each item is scheduled independently (BUG-L1): one malformed entry
+    // (e.g. a bad/missing fire_at_utc) used to throw out of the whole loop,
+    // silently delaying every *other* routine's notification in this batch
+    // until the next poll — not just the bad one.
+    for (final json in raw) {
+      try {
         final item = RoutineMobileReady.fromJson(json);
         await NotificationService.scheduleRoutine(
           routineId: item.id,
@@ -71,9 +81,9 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
           body: item.body,
           whenUtc: item.fireAtUtc,
         );
+      } catch (_) {
+        // Skip just this one; the rest of the batch still gets scheduled.
       }
-    } catch (_) {
-      // Best-effort — a missed poll just means a slightly later scheduling.
     }
   }
 

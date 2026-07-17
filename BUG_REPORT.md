@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-M6 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık her fact'i pinlemeden önce mevcut pinned fact'lere karşı normalize edilmiş (küçük harf, trim, sondaki noktalama kırpılmış) exact-match dedup kontrolü yapıyor (`pinnedFactTexts`, `normalizeFactText`) — aynı gerçek art arda turlarda tekrar pinlenmiyor. Regresyon testi: `TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate`.
+> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-M7 düzeltildi: `internal/agent/tools/command.go`'daki `RunCommand` artık komut string'inin içindeki path-benzeri argümanları da (`commandTargetsProtectedPath`/`extractPathTokens`) `read_file`'ın `validatePath`'ıyla aynı sınırla kontrol ediyor — proje dizini dışına çıkıp `defaultProtectedPaths()`'e giren bir hedef (`/etc/...`, `~/.ssh/...`, `../../etc/...` traversal) artık `run_command` ile de reddediliyor. Proje dizini İÇİNDEKİ göreli path'ler (`go build ./...` gibi) yanlışlıkla engellenmiyor — kontrol önce "proje dizini dışında mı" diye bakıyor, sadece o zaman korumalı liste kontrolü yapıyor (projenin kendisi `/home/` gibi korumalı bir önek altında olsa bile). Regresyon testleri: `TestRunCommand_BlocksProtectedPathBypass`, `TestRunCommand_AllowsOrdinaryProjectCommands`, `TestCommandTargetsProtectedPath` (`internal/agent/tools/command_test.go`).
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M6 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık her fact'i pinlemeden önce mevcut pinned fact'lere karşı normalize edilmiş (küçük harf, trim, sondaki noktalama kırpılmış) exact-match dedup kontrolü yapıyor (`pinnedFactTexts`, `normalizeFactText`) — aynı gerçek art arda turlarda tekrar pinlenmiyor. Regresyon testi: `TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate`.
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M5 düzeltildi: yeni `internal/agent/tools/calendar.go`'daki salt-okunur `get_calendar_events` agent tool'u eklendi (registry: `internal/agent/tools.go`), `internal/app/learning.go`'daki `calendarToolAdapter` gerçek `calendar.Store`'u sarıyor. Agent sistem promptuna (`internal/app/chat.go`'daki `buildAgentSystemPrompt`) model takvim sorgusunda RAG'dan tahmin etmek yerine bu aracı çağırsın diye bir not eklendi. Regresyon testleri: `internal/agent/tools/calendar_test.go`.
 >
@@ -27,26 +29,14 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 3 |
+| 🟡 MEDIUM | 2 |
 | 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **5** |
+| **TOPLAM** | **4** |
 
 ---
 
 ## 🟡 MEDIUM
-
-### BUG-M7: `run_command`, `read_file`'ın uyguladığı "korumalı dizin" sınırını tamamen atlıyor — model kendi sınırlarını yanlış anlatıyor
-
-**Dosya:** `internal/agent/tools/command.go` (`RunCommand`, `isBlacklisted`) vs. `internal/agent/tools/file.go` (`validatePath`, `defaultProtectedPaths`)
-
-`read_file` ile `../../../../etc/passwd` denendiğinde doğru şekilde reddedildi ("access denied: path is within protected directory"), model kullanıcıya "sistem dosyalarına erişimim yok" dedi. Hemen ardından AYNI hedefe `run_command` ile (`cat /etc/hostname && whoami && printenv HOME`) ulaşılmaya çalışıldığında **tamamen başarılı** oldu.
-
-**Kök neden:** `file.go`'daki `validatePath`, hedef path'i `defaultProtectedPaths()`'e karşı kontrol ediyor — ama `command.go`'daki `RunCommand` SADECE `cwd` argümanının proje dizini içinde olduğunu doğruluyor; komut STRING'İNİN İÇİNDEKİ path'lere (`cat /etc/shadow`, `cat ~/.ssh/id_rsa`) hiçbir kısıtlama uygulamıyor. `isBlacklisted` sadece yıkıcı komut kalıplarını (rm -rf /, sudo, vb.) engelliyor, okuma/bilgi-sızdırma amaçlı komutlar listede yok.
-
-**Senaryo:** Model `read_file` denerse korumalı dizin engeline takılıp kullanıcıya "erişimim yok" der — ama aynı model, aynı hedefe `run_command` ile sorunsuzca ulaşabilir. Bu hem gerçek bir güvenlik sınırı tutarsızlığı hem de kullanıcıya YANLIŞ bir güvenlik hissi veriyor.
-
-**Önerilen yön:** Muhtemelen bilinçli bir tasarım kararı (run_command'ı tamamen kısıtlamak onu işlevsiz kılar) — ama en azından (a) izin ekranında "bu komut proje dizini dışına erişebilir" uyarısı gösterilmeli, (b) modelin sistem promptu bu ayrımı açıkça anlatmalı.
 
 ### BUG-M1: Backend'in ürettiği rutin içeriği (sistem promptu, bildirim başlığı, boş-bağlam metinleri) tamamen hardcoded Türkçe — yeni L10n sistemini baypas ediyor
 

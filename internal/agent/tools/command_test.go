@@ -1,6 +1,13 @@
 package tools
 
-import "testing"
+import (
+	"context"
+	"encoding/json"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+)
 
 // TestIsBlacklisted_RmRfRoot guards against the BUG-C2 bypass: the original
 // \b-terminated patterns never matched "rm -rf /" (or its ~ and . variants)
@@ -41,6 +48,75 @@ func TestIsBlacklisted_AllowsScopedRm(t *testing.T) {
 	for _, cmd := range allowed {
 		if pattern, ok := isBlacklisted(cmd); ok {
 			t.Errorf("isBlacklisted(%q) = true (matched %q), want false (scoped, non-destructive path)", cmd, pattern)
+		}
+	}
+}
+
+// TestRunCommand_BlocksProtectedPathBypass is the regression test for
+// BUG-M7: read_file correctly refused "../../../../etc/passwd" ("access
+// denied: path is within protected directory"), but the exact same target
+// was fully readable through run_command ("cat /etc/hostname && whoami &&
+// printenv HOME") since RunCommand only validated the cwd argument, never
+// paths referenced inside the command string itself.
+func TestRunCommand_BlocksProtectedPathBypass(t *testing.T) {
+	base := t.TempDir()
+	blocked := []string{
+		"cat /etc/hostname && whoami && printenv HOME",
+		"cat /etc/passwd",
+		"cat ~/.ssh/id_rsa",
+	}
+	for _, cmd := range blocked {
+		args, _ := json.Marshal(RunCommandArgs{Command: cmd})
+		out, err := RunCommand(context.Background(), args, base, nil)
+		if err == nil {
+			t.Errorf("RunCommand(%q) = %q, <nil> error — want rejection (protected path bypass)", cmd, out)
+		}
+	}
+}
+
+// TestRunCommand_AllowsOrdinaryProjectCommands guards against the fix above
+// overreaching: the project directory itself commonly lives somewhere under
+// a "protected" prefix like /home/ or /tmp/ (t.TempDir() does on Linux), so
+// an ordinary relative-path command referencing files *inside* the project
+// must not be rejected just because the project's own absolute path happens
+// to start with a protected prefix.
+func TestRunCommand_AllowsOrdinaryProjectCommands(t *testing.T) {
+	base := t.TempDir()
+	if err := os.WriteFile(filepath.Join(base, "notes.txt"), []byte("hi"), 0644); err != nil {
+		t.Fatalf("WriteFile() error = %v", err)
+	}
+	allowed := []string{
+		"go build ./...",
+		"cat notes.txt",
+		"ls ./sub/dir",
+	}
+	for _, cmd := range allowed {
+		args, _ := json.Marshal(RunCommandArgs{Command: cmd})
+		_, err := RunCommand(context.Background(), args, base, nil)
+		if err != nil && strings.Contains(err.Error(), "protected directory") {
+			t.Errorf("RunCommand(%q) error = %v, want no protected-directory rejection for an in-project path", cmd, err)
+		}
+	}
+}
+
+func TestCommandTargetsProtectedPath(t *testing.T) {
+	base := t.TempDir()
+	tests := []struct {
+		command string
+		want    bool
+	}{
+		{"cat /etc/passwd", true},
+		{"cat /etc/hostname && whoami", true},
+		{"cat ~/.ssh/id_rsa", true},
+		{"cat ../../../../etc/passwd", true},
+		{"go build ./...", false},
+		{"ls -la", false},
+		{"echo hello", false},
+	}
+	for _, tc := range tests {
+		_, got := commandTargetsProtectedPath(tc.command, base, base)
+		if got != tc.want {
+			t.Errorf("commandTargetsProtectedPath(%q) blocked = %v, want %v", tc.command, got, tc.want)
 		}
 	}
 }

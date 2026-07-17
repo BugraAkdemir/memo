@@ -105,6 +105,80 @@ func isBlacklisted(cmd string) (string, bool) {
 	return "", false
 }
 
+// commandPathSeparators are shell metacharacters that can separate or wrap a
+// path-like argument inside a command string ("cat /etc/passwd && whoami").
+// Replaced with spaces before splitting on whitespace, so a path token isn't
+// left glued to its neighbor.
+var commandPathSeparators = regexp.MustCompile("[;&|()<>`]")
+
+// extractPathTokens returns every whitespace-separated argument in command
+// that looks like a filesystem path reference (absolute, "~"-relative, or
+// using ".." traversal) — a cheap, tokenizer-free heuristic, not a full
+// shell parse. False positives (a non-path argument that happens to contain
+// '/', e.g. a URL or a Go module path) are harmless here: they just get
+// resolved and checked against the protected-paths list like any other
+// candidate, and legitimately fail to match.
+func extractPathTokens(command string) []string {
+	normalized := commandPathSeparators.ReplaceAllString(command, " ")
+	fields := strings.Fields(normalized)
+	tokens := make([]string, 0, len(fields))
+	for _, f := range fields {
+		f = strings.Trim(f, `"'`)
+		if strings.HasPrefix(f, "/") || strings.HasPrefix(f, "~") || strings.Contains(f, "/") {
+			tokens = append(tokens, f)
+		}
+	}
+	return tokens
+}
+
+// commandTargetsProtectedPath scans command for a path-like argument that
+// resolves — absolute as-is, "~" expanded to the home directory, anything
+// else joined against workingDir (so "../../etc/passwd" traversal is caught
+// too) — outside basePath AND under one of defaultProtectedPaths(). This
+// mirrors validatePath's actual two-step check (file.go): a resolved path is
+// only compared against the protected list once it's already established to
+// fall outside the project directory, so an ordinary relative path *inside*
+// the project (e.g. "./...") is never flagged just because the project
+// itself happens to live under a protected prefix like "/home/". Returns the
+// first offending token found, if any.
+func commandTargetsProtectedPath(command, workingDir, basePath string) (string, bool) {
+	homeDir, _ := os.UserHomeDir()
+	for _, tok := range extractPathTokens(command) {
+		resolved := tok
+		if strings.HasPrefix(resolved, "~") {
+			if homeDir == "" {
+				continue
+			}
+			resolved = homeDir + resolved[1:]
+		}
+		if !filepath.IsAbs(resolved) {
+			resolved = filepath.Join(workingDir, resolved)
+		}
+		resolved = filepath.Clean(resolved)
+
+		rel, relErr := filepath.Rel(basePath, resolved)
+		outside := relErr != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))
+		if !outside {
+			continue // inside the project directory — allowed
+		}
+
+		cmp := resolved
+		if runtime.GOOS == "windows" {
+			cmp = strings.ToLower(resolved)
+		}
+		for _, protected := range defaultProtectedPaths() {
+			needle := protected
+			if runtime.GOOS == "windows" {
+				needle = strings.ToLower(protected)
+			}
+			if strings.HasPrefix(cmp, needle) {
+				return tok, true
+			}
+		}
+	}
+	return "", false
+}
+
 // CheckBlacklist exposes the same dangerous-command guard run_command uses,
 // including the shell-substitution ($ `) block. Appropriate for a command
 // string built from live LLM/user input at call time, where that
@@ -273,6 +347,16 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	// Security: Blacklist check
 	if pattern, blocked := isBlacklisted(args.Command); blocked {
 		return "", fmt.Errorf("command is blacklisted for safety: %s", pattern)
+	}
+
+	// Security: reject any path-like argument inside the command string that
+	// resolves under a protected system directory — the same boundary
+	// validatePath already enforces for read_file/write_file/list_directory.
+	// Without this, run_command was a complete bypass of that boundary: cwd
+	// was validated but nothing stopped e.g. "cat /etc/shadow" or
+	// "cat ~/.ssh/id_rsa" from reading straight through it (BUG-M7).
+	if target, blocked := commandTargetsProtectedPath(args.Command, workingDir, basePath); blocked {
+		return "", fmt.Errorf("access denied: command references a path within a protected directory (%s)", target)
 	}
 
 	// PrepareCommand honors the caller's own deadline (e.g. the pipeline's

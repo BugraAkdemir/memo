@@ -222,24 +222,50 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 }
 
 // runAgentRoutine handles the agent-mode path (e.g. "git pull and report
-// status"): it runs the exact same in-process App methods main.go's `-p
-// --auto-allow` CLI mode uses for unattended tool execution
-// (NewAgentChat/SwitchChat/SetAgentEnabled/the stream-sending path), scoping
-// permission auto-approval to just this one call via SetAgentAutoPermission
-// (save/restore) rather than the persistent, global AllowForever policy —
-// only this routine's own single serialized stream (see streamMu in chat.go)
-// is affected, never a concurrent interactive chat.
+// status"). It deliberately does NOT call SwitchChat/SetAgentEnabled — that
+// pattern (mutating the app's one global active-chat pointer and agent-mode
+// flag around a call, with no restore) is the exact anti-pattern
+// SendMessageStreamTo's doc comment documents as already found-and-fixed for
+// the task loop (internal/app/tasklist.go): forceAgent=true, passed straight
+// to sendMessageStreamCore below, already activates tool execution for this
+// one call regardless of the global agentEnabled toggle (see routeStream's
+// `if forceAgent { agentActive = true }`), and the call already carries its
+// own explicit chatID everywhere it's needed — so neither global ever needs
+// to move.
+//
+// It also acquires a.streamMu itself, before touching AutoApproveTools,
+// rather than calling sendMessageStreamInnerTo (which only locks internally,
+// after the caller has already set any state it wants scoped to the call).
+// That gap — set the flag, then attempt the lock — is exactly the window a
+// concurrent interactive stream request could win the lock first and
+// silently inherit auto-tool-approval it never asked for. Locking here first
+// closes that: the flag is only ever true while this call holds streamMu
+// exclusively, and thanks to defer's LIFO order below, the restore always
+// runs before the unlock, so no other stream can observe the true value
+// either before or after this call.
 func (a *App) runAgentRoutine(ctx context.Context, r routine.Routine) (string, error) {
+	// sessions.Manager.NewAgentChat sets the newly created chat as globally
+	// "active" as a side effect of creating it — independent of, and not
+	// fixed by, dropping the explicit SwitchChat call above. Capture and
+	// restore immediately so this routine's background chat doesn't hijack
+	// the user's actual active chat; sendMessageStreamCore below is keyed off
+	// the explicit chatID captured here, not the "active" pointer, so
+	// restoring it doesn't affect the routine's own stream at all.
+	prevActiveChat := a.GetActiveChatID()
 	chatID := a.NewAgentChat("")
 	if chatID == "" {
 		return "", fmt.Errorf("routine: could not create agent chat")
 	}
-	if err := a.SwitchChat(chatID); err != nil {
-		return "", fmt.Errorf("routine: switch chat: %w", err)
+	if prevActiveChat != "" {
+		if err := a.SwitchChat(prevActiveChat); err != nil {
+			logx.Printf("routine: restore active chat after creating agent chat: %v", err)
+		}
 	}
-	if err := a.SetAgentEnabled(true); err != nil {
-		return "", fmt.Errorf("routine: enable agent mode: %w", err)
+
+	if !a.streamMu.TryLock() {
+		return "", fmt.Errorf("routine: busy, another stream already in progress")
 	}
+	defer a.streamMu.Unlock()
 
 	if r.AutoApproveTools {
 		prevAuto := a.GetAgentAutoPermission()
@@ -249,7 +275,7 @@ func (a *App) runAgentRoutine(ctx context.Context, r routine.Routine) (string, e
 		defer a.SetAgentAutoPermission(prevAuto)
 	}
 
-	ch := a.sendMessageStreamInnerTo(ctx, chatID, r.Prompt, true)
+	ch := a.sendMessageStreamCore(ctx, chatID, r.Prompt, true)
 	var out strings.Builder
 	for chunk := range ch {
 		out.WriteString(chunk.Content)

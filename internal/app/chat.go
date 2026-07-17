@@ -306,16 +306,7 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 		return errCh
 	}
 
-	a.observerRecorder.RecordMessage(userMsg)
-	go a.processMessageIntent(userMsg, "chat", "", time.Now())
-
-	sm := a.getSessionManager()
-	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil)
-	if sm != nil {
-		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
-	}
-
-	innerCh := a.routeStream(ctx, messages, userMsg, "", "", chatID, forceAgent)
+	innerCh := a.sendMessageStreamCore(ctx, chatID, userMsg, forceAgent)
 
 	// Wrap the inner channel so streamMu is released when the stream completes.
 	out := make(chan api.StreamChunk, 128)
@@ -325,6 +316,27 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 		forwardStream(ctx, innerCh, out)
 	}()
 	return out
+}
+
+// sendMessageStreamCore does the actual routing/streaming work for chatID.
+// Callers must already hold a.streamMu and are responsible for releasing it
+// once the returned channel is fully drained (or abandoned) — the two
+// existing ways that happens are sendMessageStreamInnerTo's async forwarding
+// goroutine above, and runAgentRoutine's synchronous drain (internal/app/
+// routine.go), which needs to hold the lock for its whole call so an
+// unattended routine's auto-permission scoping can't leak into a concurrent
+// interactive stream — see runAgentRoutine's doc comment.
+func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
+	a.observerRecorder.RecordMessage(userMsg)
+	go a.processMessageIntent(userMsg, "chat", "", time.Now())
+
+	sm := a.getSessionManager()
+	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil)
+	if sm != nil {
+		sm.AddMessageToSession(chatID, "user", userMsg, "", "")
+	}
+
+	return a.routeStream(ctx, messages, userMsg, "", "", chatID, forceAgent)
 }
 
 // SendMessageWithImageStream sends a user message together with an image file.

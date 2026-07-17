@@ -11,43 +11,16 @@
 
 | Severity | Açık |
 |----------|------|
-| 🔴 CRITICAL | 2 |
+| 🔴 CRITICAL | 1 |
 | 🟠 HIGH | 1 |
 | 🟡 MEDIUM | 5 |
 | 🟢 LOW | 6 |
 | 🔧 TEKNİK BORÇ | 5 |
-| **TOPLAM** | **19** |
+| **TOPLAM** | **18** |
 
 ---
 
 ## 🔴 CRITICAL
-
-### BUG-C1: `runAgentRoutine` global aktif-sohbeti ve agent modunu geri almadan değiştiriyor — AGENTS.md'nin zaten belgelediği, task-loop için düzeltilmiş anti-pattern'in aynısı
-
-**Dosya:** `internal/app/routine.go:232-260` (`runAgentRoutine`)
-
-Agent-mode bir rutin (örn. "git pull at, durumu raporla") tetiklendiğinde:
-```go
-a.SwitchChat(chatID)          // global "aktif sohbet" işaretçisini değiştiriyor
-a.SetAgentEnabled(true)        // global agentEnabled bool'unu değiştiriyor
-...
-if r.AutoApproveTools {
-    prevAuto := a.GetAgentAutoPermission()
-    a.SetAgentAutoPermission(true)
-    defer a.SetAgentAutoPermission(prevAuto)   // SADECE bu restore ediliyor
-}
-```
-`SwitchChat` ve `SetAgentEnabled` için **hiç restore yok**, hiç lock (`taskloopRunMu` benzeri) alınmıyor. AGENTS.md bu tam deseni ("global aktif sohbet + global agent-mode flag'i değiştirip geri almama") zaten belgeliyor — `chat.go`'nun `SendMessageStreamTo` doc yorumu bunun "eşzamanlı kullanıcı sohbet değişimi veya elle agent-mode toggle'ıyla yarıştığını" söylüyor ve tam bu yüzden task-loop (`tasklist.go`) bu deseni **kullanmıyor**, bunun yerine `sm.IsAgentChat(chatID)` ile global mutasyon yapmadan `SendMessageStreamTo` çağırıyor.
-
-**Somut sonuçlar:**
-1. İlk agent-mode rutin tetiklendikten sonra `agentEnabled` **kalıcı olarak `true`** kalıyor — kullanıcı hiç dokunmamış olsa bile, o andan sonraki her normal sohbet mesajı tool execution'lı çalışır.
-2. Rutin çalışırken kullanıcı gerçek arayüzü kullanıyorsa, `SwitchChat` "aktif sohbet"i rutinin kendi sohbetine kaydırır — kullanıcının ekranı/API'den okuduğu `GetActiveChatID`/mesaj listesi sessizce rutinin sohbetine döner.
-3. **Gerçek bir TOCTOU yarışı:** `SetAgentAutoPermission(true)` çağrısı, `sendMessageStreamInnerTo`'nun `streamMu.TryLock()` denemesinden ÖNCE global flag'i açıyor. Bu pencerede araya giren yeni bir interaktif sohbet isteği kilidi önce kazanırsa, kullanıcı hiç Shift+Tab'a basmamışken **otomatik tool-onayı** ile çalışmaya başlar.
-4. Rutin `streamMu.TryLock()` başarısız olup erken dönse bile (kullanıcı zaten stream halindeyse), `SwitchChat`/`SetAgentEnabled` mutasyonları o başarısızlıktan ÖNCE zaten uygulanmış oluyor.
-
-**Senaryo:** Kullanıcı bir "her gün proje X'e git pull at" rutinini otomatik-onaylı kurar. Rutin ilk kez tetiklendiğinde: agent modu kalıcı açılır, aktif sohbet değişir, ve eğer o an gerçek bir sohbet başlatılıyorsa o sohbet de sessizce oto-onaylı tool çalıştırma moduna geçebilir.
-
----
 
 ### BUG-C2: Rutin güncelleme (enable/disable switch dahil) `weekdays`, `context_source`, `auto_approve_tools`, `whatsapp_target_jid` alanlarını sessizce sıfırlıyor — tek dokunuşla veri kaybı
 

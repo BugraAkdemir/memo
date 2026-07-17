@@ -130,6 +130,10 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
               const SizedBox(height: 8),
               Text(_error!, style: const TextStyle(color: Colors.red)),
             ],
+            if (state.error != null) ...[
+              const SizedBox(height: 8),
+              Text(state.error!, style: const TextStyle(color: Colors.red)),
+            ],
             if (_draft != null) ...[
               const SizedBox(height: 12),
               _buildConfirmationCard(),
@@ -228,7 +232,8 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
         subtitle: Text(
           L10n.t('routines_time', {'time': r.timeOfDay}) +
               (r.deliveryWhatsApp ? L10n.t('routines_via_whatsapp') : '') +
-              (r.deliveryMobile ? L10n.t('routines_via_mobile') : ''),
+              (r.deliveryMobile ? L10n.t('routines_via_mobile') : '') +
+              (r.agentMode ? L10n.t('routines_can_run_commands') : ''),
           style: TextStyle(color: MemoTheme.textDim),
         ),
         trailing: Row(

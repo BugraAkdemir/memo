@@ -13,7 +13,11 @@ import '../core/l10n.dart';
 /// UI. A 401 specifically means the phone's saved token no longer matches
 /// the desktop's — e.g. remote access was just turned on, or its token was
 /// rotated, after the phone last paired — so it gets its own message rather
-/// than falling through to the generic "$action: $e" case.
+/// than falling through to the generic case. Any other DioException (a
+/// 400/500 with a structured `{"error": "..."}` body, say) reuses
+/// MemoApiClient's own extractErrorMessage instead of dumping `e` raw — this
+/// used to be a weaker, independent fallback that this function itself
+/// warned against and then did anyway for every non-401/timeout case.
 String _friendlyError(Object e, {required String action}) {
   if (e is DioException) {
     if (e.response?.statusCode == 401) {
@@ -24,6 +28,7 @@ String _friendlyError(Object e, {required String action}) {
         e.type == DioExceptionType.connectionError) {
       return L10n.t('err_backend_unreachable', {'action': action});
     }
+    return '$action: ${MemoApiClient.extractErrorMessage(e)}';
   }
   return '$action: $e';
 }

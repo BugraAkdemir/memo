@@ -670,7 +670,7 @@ class MemoApiClient {
     _initDio();
   }
 
-  String _extractErrorMessage(DioException e) {
+  static String extractErrorMessage(DioException e) {
     if (e.response?.data != null) {
       if (e.response?.data is String) return e.response!.data as String;
       if (e.response?.data is Map && e.response?.data['error'] != null) {
@@ -1018,7 +1018,7 @@ class MemoApiClient {
         },
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e));
+      throw Exception(extractErrorMessage(e));
     }
   }
 
@@ -1068,7 +1068,7 @@ class MemoApiClient {
         data: {'path': path, 'gpu_layers': gpuLayers},
       );
     } on DioException catch (e) {
-      throw Exception(_extractErrorMessage(e));
+      throw Exception(extractErrorMessage(e));
     }
   }
 

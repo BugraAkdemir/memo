@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../core/notification_service.dart';
 import '../models/routine.dart';
 import 'connection_provider.dart';
@@ -46,7 +47,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       final routines = raw.map(Routine.fromJson).toList();
       state = state.copyWith(routines: routines, loading: false, error: null);
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(loading: false, error: L10n.t('routines_load_error', {'e': '$e'}));
     }
   }
 
@@ -91,7 +92,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       );
       await _load();
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(error: L10n.t('routines_save_error', {'e': '$e'}));
     }
   }
 
@@ -102,7 +103,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
       await _api.updateRoutine(updated);
       await _load();
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(error: L10n.t('routines_update_error', {'e': '$e'}));
     }
   }
 
@@ -114,7 +115,7 @@ class RoutineNotifier extends StateNotifier<RoutineState> {
         routines: state.routines.where((r) => r.id != id).toList(),
       );
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(error: L10n.t('routines_delete_error', {'e': '$e'}));
     }
   }
 }

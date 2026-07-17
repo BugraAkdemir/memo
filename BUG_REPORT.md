@@ -13,10 +13,10 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 5 |
+| 🟡 MEDIUM | 2 |
 | 🟢 LOW | 6 |
 | 🔧 TEKNİK BORÇ | 5 |
-| **TOPLAM** | **16** |
+| **TOPLAM** | **13** |
 
 ---
 
@@ -30,22 +30,6 @@ Aynı oturumda mobile'a `routine_fallback` L10n key'i ("Rutin"/"Routine") eklenm
 
 **Senaryo:** Uygulamayı İngilizce'ye çeviren bir kullanıcı yine de her rutin bildirimini "Rutin" başlığıyla ve LLM'in ürettiği (muhtemelen Türkçe bağlam enjekte edildiği için Türkçe'ye kayabilen) içerikle alır — bu oturumun "mobile full TR/EN L10n" commit mesajlarının iddia ettiği kapsamın dışında kalan gerçek bir boşluk.
 
-### BUG-M2: Mobil Rutinler ekranı, masaüstündeki "komut çalıştırabilir" (agent-mode) rozetini göstermiyor
-
-**Dosya:** `mobile/lib/screens/routines_screen.dart:228-231` (frontend'deki karşılığı: `frontend/lib/screens/routines_screen.dart:349-353`)
-
-Her iki ekran da rutin kartının alt yazısını aynı üç L10n parçasını (saat, WhatsApp, mobil) birleştirerek kuruyor; masaüstü buna dördüncü bir parça daha ekliyor (`agentMode` ise "komut çalıştırabilir"), mobil eklemiyor — `mobile/lib/models/routine.dart`'ın zaten ayrıştırıp sakladığı `agentMode` alanı mobilde hiç gösterilmiyor.
-
-**Senaryo:** Kullanıcı telefonundan rutinlerini denetlerken, hangi rutinin bilgisayarında gerçek komut/dosya işlemi çalıştırabildiğini (BUG-C1/C2'nin de gösterdiği gibi risk taşıyan kısım) **göremiyor** — güvenlik ilgili bir görünürlük eksikliği.
-
-### BUG-M3: `_friendlyError`'ın fallback yolu, 401/timeout dışındaki hatalarda hâlâ ham exception metnini basıyor
-
-**Dosya:** `mobile/lib/providers/connection_provider.dart:17-29` (`_friendlyError`)
-
-Fonksiyonun kendi doc yorumu amacını "ham DioException metnini UI'a dökmemek" olarak tanımlıyor, ama generic fallback satırı (`return '$action: $e';`) tam olarak bunu yapıyor — sadece 401 ve bağlantı zaman aşımı özel olarak ele alınmış. Ayrıca `mobile/lib/core/api_client.dart`'ın zaten var olan `_extractErrorMessage`'ı (backend'in `{"error": "..."}` gövdesinden temiz mesaj çıkarıyor) yeniden kullanmak yerine bağımsız, daha zayıf bir mantık yazılmış.
-
-**Senaryo:** Backend 400/500 gibi başka bir statü kodla, anlamlı bir hata mesajı içeren gövdeyle dönerse (örn. "routine store not initialized"), kullanıcı yine okunaksız bir `DioException [bad response]: ...` dökümü görür — bu oturumun asıl düzeltmeye çalıştığı sorunun ta kendisi, çoğunluk vakada.
-
 ### BUG-M4: Rutin saatinde (`HH:MM`) hiç zaman dilimi bilgisi tutulmuyor — backend host'un yerel saatine göre yorumlanıyor
 
 **Dosya:** `internal/routine/types.go:24` (`TimeOfDay`), `internal/routine/loop.go:127-133` (`ParseFireTime`)
@@ -53,14 +37,6 @@ Fonksiyonun kendi doc yorumu amacını "ham DioException metnini UI'a dökmemek"
 `ParseFireTime`, `"HH:MM"`'i `now.Location()` (backend process'in çalıştığı makinenin saat dilimi) ile çözüyor. Telefon/kullanıcı backend'in çalıştığı yerden farklı bir saat diliminde olursa (uzaktan erişimle seyahat halindeyken), rutin yanlış saatte ateşlenir ve bunu tespit/düzeltecek hiçbir alan yok.
 
 **Senaryo:** Kullanıcı seyahatteyken telefonundan "sabah 8'de" bir rutin kurar; backend farklı bir saat diliminde çalışıyorsa bildirim kullanıcının gerçek sabah 8'inde değil, backend'in yerel 8'inde gelir.
-
-### BUG-M5: Mobil rutin CRUD hataları hiç lokalize edilmemiş ve hiçbir yerde gösterilmiyor
-
-**Dosya:** `mobile/lib/providers/routine_provider.dart` (`_load`, `createFromDraft`, `toggleEnabled`, `delete` — hepsi `error: e.toString()`)
-
-Masaüstü `l10n.dart`'ta `routines_load_error`/`routines_save_error`/`routines_update_error`/`routines_delete_error` gibi key'ler zaten var; mobilin `l10n.dart`'ında sadece `routines_parse_error` taşınmış. Diğer üç işlem hâlâ ham `e.toString()` kullanıyor — üstüne mobil Rutinler ekranı `state.error`'ı hiçbir yerde render etmiyor, yani hata tamamen görünmez.
-
-**Senaryo:** Mobilde bir rutini silme/güncelleme başarısız olursa kullanıcı hiçbir uyarı görmez, işlem sessizce başarısız olur.
 
 ---
 

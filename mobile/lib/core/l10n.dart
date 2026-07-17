@@ -190,6 +190,10 @@ class L10n {
     'routines_hint': 'Ne yapmamı istersin, ne zaman?',
     'routines_empty': 'Henüz bir rutin yok.',
     'routines_parse_error': 'Anlaşılamadı: \${e}',
+    'routines_load_error': 'Rutinler yüklenemedi: \${e}',
+    'routines_save_error': 'Kaydedilemedi: \${e}',
+    'routines_update_error': 'Güncellenemedi: \${e}',
+    'routines_delete_error': 'Silinemedi: \${e}',
     'routines_confirm':
         'Her gün saat \${time}\'de: \${prompt}',
     'routines_whatsapp_pick': 'Hangi WhatsApp sohbetine gönderilsin?',
@@ -200,6 +204,7 @@ class L10n {
     'routines_time': 'Saat \${time}',
     'routines_via_whatsapp': ' · WhatsApp',
     'routines_via_mobile': ' · Telefon',
+    'routines_can_run_commands': ' · Komut çalıştırabilir',
 
     // Settings
     'settings_title': 'Ayarlar',
@@ -419,6 +424,10 @@ class L10n {
     'routines_hint': 'What should I do, and when?',
     'routines_empty': 'No routines yet.',
     'routines_parse_error': "Couldn't parse: \${e}",
+    'routines_load_error': 'Could not load routines: \${e}',
+    'routines_save_error': 'Could not save: \${e}',
+    'routines_update_error': 'Could not update: \${e}',
+    'routines_delete_error': 'Could not delete: \${e}',
     'routines_confirm':
         'Every day at \${time}: \${prompt}',
     'routines_whatsapp_pick': 'Which WhatsApp chat should receive this?',
@@ -429,6 +438,7 @@ class L10n {
     'routines_time': 'At \${time}',
     'routines_via_whatsapp': ' · WhatsApp',
     'routines_via_mobile': ' · Phone',
+    'routines_can_run_commands': ' · Can run commands',
 
     // Settings
     'settings_title': 'Settings',

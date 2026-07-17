@@ -1,3 +1,49 @@
+# Handoff — 2026-07-17 (Session 38) — Mobile client full TR/EN L10n (hardcoded strings removed)
+
+## Özet
+
+Mobile client (`mobile/lib`) neredeyse tamamen hardcoded TR/EN karışık metinlerle doluydu. Desktop frontend ile aynı desende (`L10n` + `MemoLocale` + `localeProvider` + SharedPreferences `memo_locale`) tam dil desteği eklendi. Yapısal/kodsal mimariye dokunulmadı — sadece kullanıcıya görünen metinler + dil seçici.
+
+## Yapılan
+
+- Yeni: `mobile/lib/core/l10n.dart` — 170 TR + 170 EN anahtar, `L10n.t(key, args)` ile `\${arg}` interpolasyonu, `dateLocale` for intl
+- Yeni: `mobile/lib/providers/locale_provider.dart` — persist + rebuild
+- `main.dart` MaterialApp `localeProvider` watch → tüm ağaç yenilenir
+- Connect, chat, drawer, message input, bubble, calendar, routines, settings, notification channels/bodies, connection error messages → `L10n.t`
+- Dil seçici: Settings → Connection tab + Connect ekranı (bağlanmadan önce de değiştirilebilsin diye)
+- Widget test L10n üzerinden assert ediyor
+
+## Doğrulama
+
+```
+flutter analyze lib/  → 0 error (sadece pre-existing info-level deprecation)
+flutter test          → 1/1 passed
+TR/EN key parity      → 170/170
+```
+
+## Commitler (7)
+
+1. `cbe037d` feat(mobile): add L10n system with TR/EN maps and locale provider
+2. `605d9a0` feat(mobile): wire localeProvider into MaterialApp and bottom nav
+3. `4d9499a` feat(mobile): localize connect screen and connection error messages
+4. `1b6ba6a` feat(mobile): localize chat screen, drawer, input, and bubbles
+5. `6339398` feat(mobile): localize calendar, routines, and notification channels
+6. `b1b5541` feat(mobile): localize settings and add TR/EN language switcher
+7. `5581726` feat(mobile): add language toggle on connect screen before pairing
+
+## Bilinçli bırakılan
+
+- `KB`/`MB`/`GB` birimleri ve örnek token hint'leri (`memo-abc123…`, URL örnekleri) — dil-bağımsız placeholder
+- `mobile/flutter_05.png` untracked screenshot — commit edilmedi
+- Desktop frontend / backend / CLI — dokunulmadı
+
+## Sıradaki
+
+- Gerçek telefonda dil toggle + scheduled notification channel isimlerinin dil değişiminden sonra yeniden oluşturulması (Android kanal isimleri ilk oluşturmada kilitlenebilir — bilinen OS davranışı)
+- İstenirse handoff sonrası origin'e push
+
+---
+
 # Handoff — 2026-07-17 (Session 37, devam 2) — Ambient nudge canlı CLI'da uçtan uca doğrulandı + Minimal Mod'a granüler "yine de açık kalsın" dropdown'u eklendi
 
 ## Özet

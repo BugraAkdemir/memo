@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-H3 düzeltildi: `internal/memory/chunker.go`'daki `chunkText`, `maxTokens`'ı tek başına aşan boşluksuz bir "kelime"yi (uzun URL, base64, minify kod, hash) artık `splitLongWord` ile karakter bazlı zorla parçalıyor — hem `SaveInteraction` hem `RetrieveContext` aynı embed batch-size sınırına çarpmaktan kurtuldu. Regresyon testi: `TestChunkText_SingleOversizedWord` (`internal/memory/chunker_test.go`).
+> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-H4 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık extraction promptuna SADECE `userMsg`'i veriyor, asistanın (tool sonuçlarını da içerebilen) `reply`'sini hiç göndermiyor — üçüncü şahıs bilgisinin (WhatsApp vb.) kullanıcının kendi kalıcı gerçeği sanılıp pinlenmesi artık mümkün değil. Fonksiyon imzasından artık ölü olan `reply` parametresi de kaldırıldı (tek çağıran `saveMemorySync` ve testler güncellendi). Regresyon testi: `TestExtractAndPinFacts_DoesNotSendAssistantReply` (`internal/app/memory_test.go`).
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H3 düzeltildi: `internal/memory/chunker.go`'daki `chunkText`, `maxTokens`'ı tek başına aşan boşluksuz bir "kelime"yi (uzun URL, base64, minify kod, hash) artık `splitLongWord` ile karakter bazlı zorla parçalıyor — hem `SaveInteraction` hem `RetrieveContext` aynı embed batch-size sınırına çarpmaktan kurtuldu. Regresyon testi: `TestChunkText_SingleOversizedWord` (`internal/memory/chunker_test.go`).
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H2 düzeltildi: `internal/intent/extractor.go`'daki `rawIntent.HabitDays` artık `json.RawMessage` olarak leniently parse ediliyor (`parseHabitDays`), LLM `habit_days`'i `[]int` yerine string/string-dizisi/doğal dil ifadesi ("hafta içi") döndürdüğünde bile tüm `rawIntent` reddedilmiyor. Regresyon testleri: `TestExtractHabit_HabitDaysAsPhrase`, `TestExtractHabit_HabitDaysAsStringArray` (`internal/intent/intent_test.go`).
 >
@@ -20,32 +22,11 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 1 |
+| 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 5 |
 | 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **8** |
-
----
-
-## 🟠 HIGH
-
-### BUG-H4: `extractAndPinFacts`, asistanın TOOL SONUCU olarak aktardığı ÜÇÜNCÜ ŞAHIS verisini "kullanıcı hakkında kalıcı gerçek" sanıp kalıcı hafızaya pinliyor — gizlilik/doğruluk riski
-
-**Dosya:** `internal/app/memory.go:163-186` (`extractAndPinFacts`), `:168-171` (`fmt.Sprintf("User: %s\nAssistant: %s", userMsg, reply)` — tüm asistan yanıtı, tool-çağrısı sonucu içerse de, ayrım yapılmadan fact-extraction promptuna veriliyor)
-
-**Canlı doğrulama (Session 40):** Persona ("Ece"), WhatsApp sohbet listesine baktırdı; asistanın yanıtı gerçek hesaptaki bir grup sohbetinden bahsetti: *"TEKNOFEST-MEBROBOT MSE grubu → Sunum bitmiş, proje tasarımına başlanacak..."* (bu, hesap sahibinin/bir yakınının gerçek WhatsApp grubu, "Ece" persona'sıyla hiç ilgisi yok). Birkaç saniye sonra `data/memory/memory.db`'de şu pinned fact'ler belirdi:
-```
-explicit_...|User is a 12th grade informatics student.
-explicit_...|User is involved in a TEKNOFEST robotics project called MEBROBOT MSE.
-```
-Model, Ece'nin hiç söylemediği, sadece asistanın WhatsApp'tan okuyup aktardığı bir grup adını, kullanıcının kalıcı kimlik bilgisi sanıp pinledi.
-
-**Kök neden:** `extractAndPinFacts`, `userMsg` (kullanıcının yazdığı) ile `reply` (asistanın ürettiği, tool sonuçlarını da içerebilen serbest metin) arasında hiçbir ayrım yapmadan ikisini "User: ...\nAssistant: ..." şablonuyla tek bir "bu turdan kullanıcı hakkında kalıcı gerçek çıkar" promptuna veriyor. Extraction modeli, asistanın aktardığı üçüncü şahıs bilgisini kullanıcının kendi bilgisiyle karıştırabiliyor.
-
-**Senaryo:** Kullanıcı WhatsApp'tan (veya e-posta, dosya, web arama gibi başka bir tool'dan) BAŞKA BİR İNSANA ait bilgiye baktırdığında, o bilgi yanlışlıkla "kullanıcının kendi kalıcı kimliği" olarak sisteme kalıcı olarak pinlenip HER gelecekteki sohbete (pinned facts RAG ranking'i bypass ederek koşulsuz enjekte edildiği için) sızabilir.
-
-**Önerilen yön:** `extractAndPinFacts`'e sadece `userMsg`'i vermek (asistanın tool-augmented yanıtını hariç tutmak), ya da en azından reply'nin tool-sonucu kaynaklı kısımlarını extraction promptundan çıkarmak.
+| **TOPLAM** | **7** |
 
 ---
 

@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -142,6 +143,49 @@ func TestParseExtractedFacts_CapsCountAndLength(t *testing.T) {
 	}
 }
 
+// TestExtractAndPinFacts_DoesNotSendAssistantReply is the regression test for
+// BUG-H4: the extraction call used to send "User: ...\nAssistant: ..." with
+// the full assistant reply included, so a reply narrating third-party
+// information the assistant read via a tool call (e.g. WhatsApp group
+// contents) got pinned as if it were a durable fact about the user. This
+// asserts the outbound extraction request only ever contains the user's own
+// message, never the assistant's reply text.
+func TestExtractAndPinFacts_DoesNotSendAssistantReply(t *testing.T) {
+	store := newExtractionTestStore(t)
+
+	const thirdPartyReply = "TEKNOFEST-MEBROBOT MSE grubu → Sunum bitmiş, proje tasarımına başlanacak"
+	const userMsg = "whatsapp sohbet listeme bak"
+
+	var capturedBody string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		capturedBody = string(body)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"NONE"}}]}`)
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type: provider.ProviderCustom, Name: "test", BaseURL: srv.URL, Model: "test-model", Enabled: true,
+	}})
+
+	a := &App{
+		store:              store,
+		providerRouter:     router,
+		activeProviderName: "test",
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
+	}
+
+	a.extractAndPinFacts(context.Background(), userMsg)
+
+	if !strings.Contains(capturedBody, userMsg) {
+		t.Fatalf("extraction request should contain the user's own message; body=%s", capturedBody)
+	}
+	if strings.Contains(capturedBody, thirdPartyReply) {
+		t.Fatalf("extraction request must NOT contain the assistant's reply text (third-party leak risk); body=%s", capturedBody)
+	}
+}
+
 // newExtractionTestRouter builds a real *provider.Router pointed at an
 // httptest server that returns responseContent as the chat completion's
 // message content — the same pattern TestCallLLMStream_ExternalProvider_*
@@ -191,7 +235,7 @@ func TestExtractAndPinFacts_SavesEachExtractedFact(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "kopeğimin adı Zeytin, en sevdiğim renk kırmızı", "ne güzel")
+	a.extractAndPinFacts(context.Background(), "kopeğimin adı Zeytin, en sevdiğim renk kırmızı")
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {
@@ -218,7 +262,7 @@ func TestExtractAndPinFacts_NoneResponsePinsNothing(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "selam", "selam, nasılsın")
+	a.extractAndPinFacts(context.Background(), "selam")
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {
@@ -253,7 +297,7 @@ func TestExtractAndPinFacts_DisabledConfigNeverCallsProvider(t *testing.T) {
 		cfg:                &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: false}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ahmet", "memnun oldum")
+	a.extractAndPinFacts(context.Background(), "adım Ahmet")
 
 	if hit {
 		t.Fatal("provider must not be called when AutoFactExtraction is disabled")
@@ -278,7 +322,7 @@ func TestExtractAndPinFacts_NoModelConfigured_SkipsGracefully(t *testing.T) {
 		cfg:   &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ahmet", "memnun oldum")
+	a.extractAndPinFacts(context.Background(), "adım Ahmet")
 
 	pinned, _ := store.GetPinnedFacts(context.Background())
 	if len(pinned) != 0 {
@@ -308,7 +352,7 @@ func TestExtractAndPinFacts_LocalOnlySetup_ActuallyRuns(t *testing.T) {
 		cfg:    &config.AppConfig{Memory: config.MemoryConfig{AutoFactExtraction: true}},
 	}
 
-	a.extractAndPinFacts(context.Background(), "adım Ahmet", "memnun oldum")
+	a.extractAndPinFacts(context.Background(), "adım Ahmet")
 
 	pinned, err := store.GetPinnedFacts(context.Background())
 	if err != nil {

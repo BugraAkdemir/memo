@@ -103,7 +103,7 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		// memorySaveWorker is a single goroutine draining every queued save —
 		// blocking it here would back up every other chat's save behind this
 		// one turn's extraction call.
-		go a.extractAndPinFacts(ctx, userMsg, reply)
+		go a.extractAndPinFacts(ctx, userMsg)
 	}
 }
 
@@ -160,14 +160,23 @@ const (
 // feature silently never runs at all. callLLM also applies its own
 // appropriate per-branch timeout (120–300s) — this must not wrap that in a
 // shorter timeout of its own, or it would truncate callLLM's budget instead.
-func (a *App) extractAndPinFacts(ctx context.Context, userMsg, reply string) {
+// extractAndPinFacts only feeds the user's own message to the extraction
+// call, never the assistant's reply. BUG-H4: the reply can carry third-party
+// information the assistant surfaced via a tool call (e.g. it read out a
+// WhatsApp group's contents) — feeding that alongside "User: ...\nAssistant:
+// ..." let the extraction model confuse a fact about someone else entirely
+// with a durable fact about the user, permanently pinning it into every
+// future prompt (pinned facts bypass RAG ranking entirely). The user's own
+// words are always genuinely about the user, which the assistant's reply is
+// not guaranteed to be.
+func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 	if !a.cfg.Memory.AutoFactExtraction {
 		return
 	}
 
 	msgs := []api.Message{
 		api.NewTextMessage("system", factExtractionSystemPrompt),
-		api.NewTextMessage("user", fmt.Sprintf("User: %s\nAssistant: %s", userMsg, reply)),
+		api.NewTextMessage("user", fmt.Sprintf("User: %s", userMsg)),
 	}
 	reply2 := a.callLLM(ctx, msgs)
 	if isLLMErrorReply(reply2) {

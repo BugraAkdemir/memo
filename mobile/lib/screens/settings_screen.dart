@@ -4,8 +4,10 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/connection_provider.dart' hide ConnectionState;
+import '../providers/locale_provider.dart';
 
 class SettingsScreen extends ConsumerWidget {
   const SettingsScreen({super.key});
@@ -17,7 +19,7 @@ class SettingsScreen extends ConsumerWidget {
       child: Scaffold(
         backgroundColor: MemoTheme.bg,
         appBar: AppBar(
-          title: const Text('Settings'),
+          title: Text(L10n.t('settings_title')),
           bottom: TabBar(
             isScrollable: true,
             indicatorColor: MemoTheme.accent,
@@ -28,11 +30,11 @@ class SettingsScreen extends ConsumerWidget {
             labelStyle: MemoTheme.body(14, w: FontWeight.w600),
             unselectedLabelStyle: MemoTheme.body(14),
             dividerColor: MemoTheme.border,
-            tabs: const [
-              Tab(text: 'Connection'),
-              Tab(text: 'Providers'),
-              Tab(text: 'Models'),
-              Tab(text: 'Learning'),
+            tabs: [
+              Tab(text: L10n.t('tab_connection')),
+              Tab(text: L10n.t('tab_providers')),
+              Tab(text: L10n.t('tab_models')),
+              Tab(text: L10n.t('tab_learning')),
             ],
           ),
         ),
@@ -94,10 +96,10 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
             remote: Uri.parse(normalized).scheme == 'https',
           );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved and reconnected')));
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('saved_reconnected'))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with', {'e': '$e'}))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -108,7 +110,7 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        _label('DESKTOP ADDRESS'),
+        _label(L10n.t('desktop_address')),
         const SizedBox(height: 8),
         TextField(
           controller: _urlCtrl,
@@ -118,15 +120,15 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
           decoration: const InputDecoration(prefixIcon: Icon(Icons.lan_outlined, size: 20)),
         ),
         const SizedBox(height: 18),
-        _label('ACCESS TOKEN'),
+        _label(L10n.t('access_token')),
         const SizedBox(height: 8),
         TextField(
           controller: _tokenCtrl,
           autocorrect: false,
           style: MemoTheme.mono(14, color: MemoTheme.text),
-          decoration: const InputDecoration(
-            prefixIcon: Icon(Icons.key_outlined, size: 20),
-            hintText: 'Only needed for remote access',
+          decoration: InputDecoration(
+            prefixIcon: const Icon(Icons.key_outlined, size: 20),
+            hintText: L10n.t('token_hint_remote'),
           ),
         ),
         const SizedBox(height: 24),
@@ -142,14 +144,70 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
             ),
             child: _saving
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.onAccent))
-                : Text('Save & reconnect', style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
+                : Text(L10n.t('save_reconnect'), style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
+          ),
+        ),
+        const SizedBox(height: 28),
+        _label(L10n.t('language')),
+        const SizedBox(height: 8),
+        _LanguagePicker(),
+      ],
+    );
+  }
+
+  Widget _label(String s) => Text(s, style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2));
+}
+
+class _LanguagePicker extends ConsumerWidget {
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final locale = ref.watch(localeProvider);
+    return Row(
+      children: [
+        Expanded(
+          child: _langChip(
+            label: L10n.t('language_tr'),
+            selected: locale == MemoLocale.tr,
+            onTap: () => ref.read(localeProvider.notifier).setLocale(MemoLocale.tr),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _langChip(
+            label: L10n.t('language_en'),
+            selected: locale == MemoLocale.en,
+            onTap: () => ref.read(localeProvider.notifier).setLocale(MemoLocale.en),
           ),
         ),
       ],
     );
   }
 
-  Widget _label(String s) => Text(s, style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2));
+  Widget _langChip({required String label, required bool selected, required VoidCallback onTap}) {
+    return GestureDetector(
+      onTap: () {
+        HapticFeedback.selectionClick();
+        onTap();
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 14),
+        decoration: BoxDecoration(
+          color: selected ? MemoTheme.accent.withValues(alpha: 0.16) : MemoTheme.surface,
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: selected ? MemoTheme.accent : MemoTheme.border),
+        ),
+        alignment: Alignment.center,
+        child: Text(
+          label,
+          style: MemoTheme.body(
+            14.5,
+            w: FontWeight.w600,
+            color: selected ? MemoTheme.accentBright : MemoTheme.textDim,
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 // ── Providers ────────────────────────────────────────────────────────
@@ -189,7 +247,7 @@ class _ProvidersTabState extends ConsumerState<_ProvidersTab> {
         if (snap.hasError) return _errorView('${snap.error}');
         final providers = snap.data ?? [];
         if (providers.isEmpty) {
-          return _emptyView('No providers configured', 'Add API providers from the desktop app.');
+          return _emptyView(L10n.t('no_providers'), L10n.t('no_providers_hint'));
         }
         return ListView.builder(
           padding: const EdgeInsets.all(16),
@@ -234,7 +292,7 @@ class _ProvidersTabState extends ConsumerState<_ProvidersTab> {
           borderRadius: BorderRadius.circular(8),
           border: Border.all(color: on ? MemoTheme.sage.withValues(alpha: 0.4) : MemoTheme.border),
         ),
-        child: Text(on ? 'ON' : 'OFF',
+        child: Text(on ? L10n.t('on') : L10n.t('off'),
             style: MemoTheme.mono(11, w: FontWeight.w600, color: on ? MemoTheme.sage : MemoTheme.textFaint)),
       ),
     );
@@ -263,9 +321,9 @@ class _ModelsTabState extends ConsumerState<_ModelsTab> {
     setState(() => _stopping = true);
     try {
       await ref.read(apiClientProvider).stopModel();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Model stopped')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('model_stopped'))));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with', {'e': '$e'}))));
     } finally {
       if (mounted) setState(() => _stopping = false);
     }
@@ -292,7 +350,7 @@ class _ModelsTabState extends ConsumerState<_ModelsTab> {
                   icon: _stopping
                       ? const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.error))
                       : const Icon(Icons.stop_circle_outlined, size: 18),
-                  label: const Text('Stop running model'),
+                  label: Text(L10n.t('stop_running_model')),
                   style: OutlinedButton.styleFrom(
                     foregroundColor: MemoTheme.error,
                     side: BorderSide(color: MemoTheme.error.withValues(alpha: 0.4)),
@@ -305,7 +363,7 @@ class _ModelsTabState extends ConsumerState<_ModelsTab> {
             ),
             Expanded(
               child: models.isEmpty
-                  ? _emptyView('No local models', 'Download models from the desktop app.')
+                  ? _emptyView(L10n.t('no_local_models'), L10n.t('no_local_models_hint'))
                   : ListView.builder(
                       padding: const EdgeInsets.all(16),
                       itemCount: models.length,
@@ -339,9 +397,9 @@ class _ModelCardState extends ConsumerState<_ModelCard> {
       } else {
         await api.startModel(path: widget.m.path);
       }
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('${widget.m.filename} started')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('model_started', {'name': widget.m.filename}))));
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with', {'e': '$e'}))));
     } finally {
       if (mounted) setState(() => _starting = false);
     }
@@ -367,7 +425,7 @@ class _ModelCardState extends ConsumerState<_ModelCard> {
                 Text(widget.m.filename,
                     maxLines: 1, overflow: TextOverflow.ellipsis, style: MemoTheme.body(14.5, w: FontWeight.w600)),
                 const SizedBox(height: 3),
-                Text('${_size(widget.m.sizeBytes)}${widget.m.isEmbedding ? " · embedding" : ""}',
+                Text('${_size(widget.m.sizeBytes)}${widget.m.isEmbedding ? L10n.t('embedding_suffix') : ""}',
                     style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
               ],
             ),
@@ -385,7 +443,7 @@ class _ModelCardState extends ConsumerState<_ModelCard> {
               ),
               child: _starting
                   ? const SizedBox(width: 15, height: 15, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.accent))
-                  : Text('Start', style: MemoTheme.body(13.5, w: FontWeight.w600, color: MemoTheme.accentBright)),
+                  : Text(L10n.t('start'), style: MemoTheme.body(13.5, w: FontWeight.w600, color: MemoTheme.accentBright)),
             ),
           ),
         ],
@@ -429,7 +487,7 @@ Widget _errorView(String msg) {
         children: [
           const Icon(Icons.cloud_off_rounded, size: 34, color: MemoTheme.textFaint),
           const SizedBox(height: 12),
-          Text("Couldn't load", style: MemoTheme.body(15, w: FontWeight.w600)),
+          Text(L10n.t('couldnt_load'), style: MemoTheme.body(15, w: FontWeight.w600)),
           const SizedBox(height: 6),
           Text(msg, textAlign: TextAlign.center, style: MemoTheme.body(13, color: MemoTheme.textFaint), maxLines: 4, overflow: TextOverflow.ellipsis),
         ],
@@ -523,12 +581,12 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('Learning settings saved')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_saved'))));
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('Error: $e')));
+            .showSnackBar(SnackBar(content: Text(L10n.t('error_with', {'e': '$e'}))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);
@@ -545,7 +603,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
     return ListView(
       padding: const EdgeInsets.all(20),
       children: [
-        Text('SINGLE MODEL MODE',
+        Text(L10n.t('single_model_mode'),
             style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2)),
         const SizedBox(height: 8),
         _card(
@@ -559,10 +617,10 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('Use one model for learning',
+                        Text(L10n.t('use_one_model'),
                             style: MemoTheme.body(15, w: FontWeight.w600)),
                         const SizedBox(height: 3),
-                        Text('Intent & proactive decisions skip Orchestra',
+                        Text(L10n.t('use_one_model_hint'),
                             style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
                       ],
                     ),
@@ -580,9 +638,9 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
                   controller: _modelCtrl,
                   autocorrect: false,
                   style: MemoTheme.mono(14, color: MemoTheme.text),
-                  decoration: const InputDecoration(
-                    prefixIcon: Icon(Icons.smart_toy_outlined, size: 20),
-                    hintText: 'Model ID (e.g. gpt-4o-mini)',
+                  decoration: InputDecoration(
+                    prefixIcon: const Icon(Icons.smart_toy_outlined, size: 20),
+                    hintText: L10n.t('model_id_hint'),
                   ),
                 ),
               ],
@@ -590,7 +648,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
           ),
         ),
         const SizedBox(height: 18),
-        Text('CALENDAR REMINDER',
+        Text(L10n.t('calendar_reminder_section'),
             style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2)),
         const SizedBox(height: 8),
         _card(
@@ -599,7 +657,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
               _iconTile(Icons.notifications_outlined),
               const SizedBox(width: 14),
               Expanded(
-                child: Text('Notify before an event',
+                child: Text(L10n.t('notify_before_event'),
                     style: MemoTheme.body(15, w: FontWeight.w600)),
               ),
               DropdownButton<int>(
@@ -610,7 +668,9 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
                 items: _leadOptions
                     .map((m) => DropdownMenuItem(
                           value: m,
-                          child: Text(m < 60 ? '$m min' : '${m ~/ 60} h'),
+                          child: Text(m < 60
+                              ? L10n.t('minutes_short', {'n': '$m'})
+                              : L10n.t('hours_short', {'n': '${m ~/ 60}'})),
                         ))
                     .toList(),
                 onChanged: (v) => setState(() => _reminderLead = v ?? 30),
@@ -619,7 +679,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
           ),
         ),
         const SizedBox(height: 18),
-        Text('BELİRSİZ SAATLER',
+        Text(L10n.t('uncertain_times'),
             style: MemoTheme.mono(11, color: MemoTheme.textFaint, ls: 1.2)),
         const SizedBox(height: 8),
         _card(
@@ -631,10 +691,10 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('Saati tahmin et',
+                    Text(L10n.t('guess_time'),
                         style: MemoTheme.body(15, w: FontWeight.w600)),
                     const SizedBox(height: 3),
-                    Text('"yarın dışarı çıkalım" gibi saatsiz planlara saat ata',
+                    Text(L10n.t('guess_time_hint'),
                         style: MemoTheme.mono(11.5, color: MemoTheme.textFaint)),
                   ],
                 ),
@@ -660,7 +720,7 @@ class _LearningTabState extends ConsumerState<_LearningTab> {
             ),
             child: _saving
                 ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.onAccent))
-                : Text('Save', style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
+                : Text(L10n.t('save'), style: MemoTheme.body(15, w: FontWeight.w700, color: MemoTheme.onAccent)),
           ),
         ),
       ],

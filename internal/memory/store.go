@@ -479,6 +479,19 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 const chunkMaxTokens = 300
 const chunkOverlapTokens = 50
 
+// capForEmbedding returns text truncated to a single safe-sized piece for
+// one s.embed call, reusing splitLongWord's conservative byte-per-token
+// margin (see BUG-H3). For callers that need one bounded string rather than
+// chunkText's full multi-chunk split: saveChunk's embedText still has the
+// full assistant reply appended unconditionally with no size bound of its
+// own (chunkText only ever chunks the user's side), and RetrieveContext
+// embeds the raw query/expanded-query/compound-segment text directly with
+// no chunking at all — both were left able to overflow the embedding
+// server's batch-size limit even after chunkText itself was fixed.
+func capForEmbedding(text string, maxTokens int) string {
+	return splitLongWord(text, maxTokens)[0]
+}
+
 func (s *Store) SaveInteraction(ctx context.Context, userMsg, assistantMsg string) error {
 	chunks := chunkText(userMsg, chunkMaxTokens, chunkOverlapTokens)
 	parentUUID := fmt.Sprintf("mem_%d", time.Now().UnixNano())
@@ -498,7 +511,7 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 	if assistantMsg != "" {
 		embedText = userChunk + "\n" + assistantMsg
 	}
-	embedding, err := s.embed(ctx, embedText)
+	embedding, err := s.embed(ctx, capForEmbedding(embedText, chunkMaxTokens))
 	if err != nil {
 		return fmt.Errorf("embed: %w", err)
 	}
@@ -756,7 +769,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	start := time.Now()
 
 	embedStart := time.Now()
-	queryEmbedding, err := s.embed(ctx, query)
+	queryEmbedding, err := s.embed(ctx, capForEmbedding(query, chunkMaxTokens))
 	if err != nil {
 		return nil, fmt.Errorf("memory.RetrieveContext: embed: %w", err)
 	}
@@ -788,7 +801,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	// Multi-query: if query is long, do a second search with a topic-focused variant
 	// and merge with the primary results via RRF for better recall.
 	if expanded := expandQuery(query); expanded != "" {
-		if expEmb, expErr := s.embed(ctx, expanded); expErr == nil && len(expEmb) == s.dim {
+		if expEmb, expErr := s.embed(ctx, capForEmbedding(expanded, chunkMaxTokens)); expErr == nil && len(expEmb) == s.dim {
 			var expResults []MemoryResult
 			if s.useVec {
 				expResults, _ = s.vecSearch(ctx, expEmb, candidateK/2, minSimilarity)
@@ -806,7 +819,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 	// topic doesn't have to survive being blended into a single averaged
 	// vector for the whole sentence — see splitCompoundQuery's doc comment.
 	for _, segment := range splitCompoundQuery(query) {
-		segEmb, segErr := s.embed(ctx, segment)
+		segEmb, segErr := s.embed(ctx, capForEmbedding(segment, chunkMaxTokens))
 		if segErr != nil || len(segEmb) != s.dim {
 			continue
 		}

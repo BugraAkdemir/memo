@@ -78,6 +78,21 @@ func chunkText(text string, maxTokens, overlapTokens int) []string {
 	return chunks
 }
 
+// maxBytesForTokenBudget is how many raw bytes are allowed per estimated
+// token when force-splitting/truncating text bound for the embedding
+// model — a much tighter margin than truncate.EstimateTokens' usual len/3
+// average-case ratio. Live-observed with the exact BUG-H3 repro (a 40k-byte
+// run of a single repeated character): the real embedding tokenizer
+// produced ~550 real tokens for a piece len/3 estimated at ~300 — a ~1.8x
+// underestimate — because degenerate, non-natural-language content doesn't
+// compress the way ordinary mixed text does under a subword tokenizer.
+// This is a safety valve for pathological input, not the general chunking
+// budget, so being generously conservative here costs nothing in the
+// common case.
+func maxBytesForTokenBudget(maxTokens int) int {
+	return max(maxTokens, 1)
+}
+
 // splitLongWord force-splits a single space-free "word" that alone exceeds
 // maxTokens into rune-safe pieces that each fit the budget. Returns the word
 // unchanged (as a single-element slice) if it's already within budget.
@@ -86,7 +101,7 @@ func splitLongWord(word string, maxTokens int) []string {
 		return []string{word}
 	}
 
-	maxBytes := max(maxTokens*3, 1)
+	maxBytes := maxBytesForTokenBudget(maxTokens)
 
 	var pieces []string
 	start := 0

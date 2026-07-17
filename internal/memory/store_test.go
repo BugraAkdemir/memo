@@ -3,6 +3,7 @@ package memory
 import (
 	"context"
 	"errors"
+	"fmt"
 	"strings"
 	"testing"
 
@@ -302,6 +303,45 @@ func TestSaveMerged_EmbedFailure_StillSaves(t *testing.T) {
 	}
 	if embedding != nil {
 		t.Errorf("embedding = %v, want nil — a failed embed must not silently produce a stored vector", embedding)
+	}
+}
+
+// TestSaveAndRetrieve_LongUnbrokenBlob is the regression test for BUG-H3's
+// live-observed retrieve-path gap: chunkText's splitLongWord fix bounded
+// SaveInteraction's userChunk, but saveChunk still appended the full,
+// unbounded assistantMsg onto every chunk's embed text, and RetrieveContext
+// embedded its raw query (plus expandQuery/splitCompoundQuery derivatives)
+// directly with no bound at all. A fake embedding func that rejects any
+// input over a batch-size-like byte limit (mirroring the real embedding
+// server's "too large to process" error) reproduces both failures if
+// capForEmbedding isn't applied at every one of those call sites.
+func TestSaveAndRetrieve_LongUnbrokenBlob(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	const batchByteLimit = 1024
+	limited := func(_ context.Context, text string) ([]float32, error) {
+		if len(text) > batchByteLimit {
+			return nil, fmt.Errorf("input (%d bytes) is too large to process (current batch size: %d)", len(text), batchByteLimit)
+		}
+		return []float32{1, 0, 0}, nil
+	}
+
+	store, err := NewStore(StoreConfig{Dir: dir, Dimension: 3, EmbeddingFunc: limited})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	blob := strings.Repeat("a", 40000) // no spaces — exactly the reported repro shape
+	longReply := strings.Repeat("b", 40000)
+
+	if err := store.SaveInteraction(ctx, blob+" birkaç normal kelime", longReply); err != nil {
+		t.Fatalf("SaveInteraction() with long unbroken blob + long reply error = %v, want nil", err)
+	}
+
+	if _, err := store.RetrieveContext(ctx, blob+" ve normal bir soru daha", 5, 0); err != nil {
+		t.Fatalf("RetrieveContext() with long unbroken blob query error = %v, want nil", err)
 	}
 }
 

@@ -263,19 +263,19 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
               if (item.paramCount != null)
                 _InfoTag(
                     label:
-                        L10n.locale == MemoLocale.tr ? 'Parametre' : 'Params',
+                        L10n.t('params'),
                     value: item.paramCount!),
               if (item.arch != null)
                 _InfoTag(
-                    label: L10n.locale == MemoLocale.tr ? 'Mimari' : 'Arch',
+                    label: L10n.t('arch'),
                     value: item.arch!),
               _InfoTag(
-                  label: L10n.locale == MemoLocale.tr ? 'Format' : 'Format',
+                  label: L10n.t('format'),
                   value: 'GGUF',
                   accent: true),
               if (item.isEmbedding)
                 _InfoTag(
-                    label: L10n.locale == MemoLocale.tr ? 'Tür' : 'Domain',
+                    label: L10n.t('domain'),
                     value: 'Embedding'),
             ],
           ),
@@ -288,9 +288,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
             Row(
               children: [
                 Text(
-                  L10n.locale == MemoLocale.tr
-                      ? 'Yetenekler: '
-                      : 'Capabilities: ',
+                  L10n.t('capabilities'),
                   style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -305,24 +303,20 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
                       if (item.likelySupportsVision)
                         _CapabilityPill(
                           icon: Icons.visibility_outlined,
-                          label: L10n.locale == MemoLocale.tr
-                              ? 'Görüntü'
-                              : 'Vision',
+                          label: L10n.t('vision_2'),
                           color: const Color(0xFF50C878),
                         ),
                       if (item.likelySupportsTools)
                         _CapabilityPill(
                           icon: Icons.build_outlined,
-                          label: L10n.locale == MemoLocale.tr
-                              ? 'Araç'
-                              : 'Tool Use',
+                          label: L10n.t('tool_use'),
                           color: MemoTheme.accent,
                         ),
                       if (item.likelySupportsCode)
                         _CapabilityPill(
                           icon: Icons.code,
                           label:
-                              L10n.locale == MemoLocale.tr ? 'Kod' : 'Code',
+                              L10n.t('code_2'),
                           color: const Color(0xFF7C6FEE),
                         ),
                     ],
@@ -336,9 +330,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
 
           // ── Download Options section header ──
           Text(
-            L10n.locale == MemoLocale.tr
-                ? 'İndirme Seçenekleri'
-                : 'Download Options',
+            L10n.t('download_options'),
             style: TextStyle(
                 fontSize: 12,
                 fontWeight: FontWeight.w700,
@@ -442,9 +434,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
           if (_moreModels != null && _moreModels!.isNotEmpty) ...[
             const SizedBox(height: 28),
             Text(
-              L10n.locale == MemoLocale.tr
-                  ? '${widget.item.author} tarafından diğerleri'
-                  : 'More from ${widget.item.author}',
+              L10n.t('more_from_author', {'author': widget.item.author}),
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.w700,
@@ -495,17 +485,17 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
         FitLevel.good => (
             MemoTheme.green,
             Icons.check_circle_outline,
-            L10n.locale == MemoLocale.tr ? 'Uygun' : 'Fits',
+            L10n.t('fits'),
           ),
         FitLevel.ok => (
             MemoTheme.accent,
             Icons.check_circle_outline,
-            L10n.locale == MemoLocale.tr ? 'CPU\'da çalışır' : 'CPU OK',
+            L10n.t('cpu_ok'),
           ),
         FitLevel.warn => (
             MemoTheme.warningOrange,
             Icons.warning_amber_rounded,
-            L10n.locale == MemoLocale.tr ? '× Çok büyük' : '× Too large',
+            L10n.t('too_large'),
           ),
       };
       return Container(
@@ -532,7 +522,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     Widget headerRow(GGUFFile? file) {
       if (file == null) {
         return Text(
-          L10n.locale == MemoLocale.tr ? 'Dosya seç...' : 'Select a file...',
+          L10n.t('select_a_file'),
           style: TextStyle(fontSize: 13, color: c.textDim),
         );
       }
@@ -730,12 +720,8 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
                   ),
           icon: const Icon(Icons.play_arrow_rounded, size: 18),
           label: Text(!installed
-              ? (L10n.locale == MemoLocale.tr
-                  ? 'Önce llama.cpp kurun'
-                  : 'Install llama.cpp first')
-              : (L10n.locale == MemoLocale.tr
-                  ? 'Başlat · ${file.sizeFormatted}'
-                  : 'Start · ${file.sizeFormatted}')),
+              ? (L10n.t('install_llama_cpp_first'))
+              : (L10n.t('start_sizeformatted', {'sizeFormatted': file.sizeFormatted}))),
           style: ElevatedButton.styleFrom(
               padding: const EdgeInsets.symmetric(vertical: 14)),
         ),
@@ -748,7 +734,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
               .cancelDownload(widget.item.repoId, file.filename),
           icon: const Icon(Icons.stop_rounded, size: 18),
           label: Text(
-            L10n.locale == MemoLocale.tr ? 'İptal Et' : 'Cancel',
+            L10n.t('cancel_2'),
           ),
           style: ElevatedButton.styleFrom(
             padding: const EdgeInsets.symmetric(vertical: 14),

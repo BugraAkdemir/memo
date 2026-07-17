@@ -213,23 +213,17 @@ class _LocalModelCard extends ConsumerWidget {
                     _Pill(text: model.sizeFormatted),
                     if (model.likelySupportsTools)
                       _Pill(
-                        text: L10n.locale == MemoLocale.tr
-                            ? '🔧 Araç'
-                            : '🔧 Tools',
+                        text: L10n.t('tools'),
                         highlight: true,
                       ),
                     if (model.supportsVision && !model.isVision)
                       _Pill(
-                        text: L10n.locale == MemoLocale.tr
-                            ? '👁 Görüntü'
-                            : '👁 Vision',
+                        text: L10n.t('vision_3'),
                         highlight: true,
                       ),
                     if (model.supportsCode)
                       _Pill(
-                        text: L10n.locale == MemoLocale.tr
-                            ? '💻 Kod'
-                            : '💻 Code',
+                        text: L10n.t('code'),
                         highlight: true,
                       ),
                   ],
@@ -468,9 +462,7 @@ class _DownloadBannerRow extends ConsumerWidget {
                 .read(apiClientProvider)
                 .cancelDownload(progress.repoId, progress.filename),
             icon: const Icon(Icons.close_rounded, size: 18),
-            tooltip: L10n.locale == MemoLocale.tr
-                ? 'İndirmeyi iptal et'
-                : 'Cancel download',
+            tooltip: L10n.t('cancel_download_2'),
             color: c.textDim,
             style: IconButton.styleFrom(
               minimumSize: const Size(32, 32),

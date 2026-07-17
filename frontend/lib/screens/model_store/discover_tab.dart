@@ -234,13 +234,12 @@ class _ModelListPanel extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final c = MemoTheme.of(context);
-    final tr = L10n.locale == MemoLocale.tr;
 
     // Filter chip definitions: key, label
     final capFilters = [
-      ('tools', tr ? '🔧 Araç' : '🔧 Tools'),
-      ('vision', tr ? '👁 Vision' : '👁 Vision'),
-      ('code', tr ? '💻 Kod' : '💻 Code'),
+      ('tools', L10n.t('tools')),
+      ('vision', L10n.t('vision')),
+      ('code', L10n.t('code')),
     ];
     final sizeFilters = [
       ('1-8b', '1–8B'),
@@ -249,10 +248,10 @@ class _ModelListPanel extends ConsumerWidget {
     ];
 
     String sortLabel(_SortMode m) => switch (m) {
-          _SortMode.defaultOrder => tr ? 'Varsayılan' : 'Default',
-          _SortMode.mostDownloads => tr ? 'En popüler' : 'Most popular',
-          _SortMode.smallestFirst => tr ? 'En küçük' : 'Smallest',
-          _SortMode.largestFirst => tr ? 'En büyük' : 'Largest',
+          _SortMode.defaultOrder => L10n.t('default'),
+          _SortMode.mostDownloads => L10n.t('most_popular'),
+          _SortMode.smallestFirst => L10n.t('smallest'),
+          _SortMode.largestFirst => L10n.t('largest'),
         };
 
     return Column(
@@ -266,9 +265,7 @@ class _ModelListPanel extends ConsumerWidget {
             onChanged: onSearch,
             style: TextStyle(fontSize: 13, color: c.textMain),
             decoration: InputDecoration(
-              hintText: tr
-                  ? 'HuggingFace\'te model ara...'
-                  : 'Search models on HuggingFace...',
+              hintText: L10n.t('search_models_on_huggingface'),
               prefixIcon: Icon(Icons.search, size: 18, color: c.textDim),
               suffixIcon: searchController.text.isNotEmpty
                   ? IconButton(
@@ -324,8 +321,8 @@ class _ModelListPanel extends ConsumerWidget {
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
           child: Text(
             isCurated && activeFilters.isEmpty
-                ? (tr ? 'Önerilen modeller' : 'Featured models')
-                : (tr ? '${items.length} sonuç' : '${items.length} results'),
+                ? (L10n.t('featured_models'))
+                : (L10n.t('length_results', {'length': '${items.length}'})),
             style: TextStyle(
               fontSize: 11,
               fontWeight: FontWeight.w600,
@@ -344,7 +341,7 @@ class _ModelListPanel extends ConsumerWidget {
                       child: Padding(
                         padding: const EdgeInsets.all(24),
                         child: Text(
-                          tr ? 'Sonuç bulunamadı' : 'No results found',
+                          L10n.t('no_search_results'),
                           style: TextStyle(color: c.textDim, fontSize: 13),
                         ),
                       ),
@@ -416,7 +413,6 @@ class _SortChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
-    final tr = L10n.locale == MemoLocale.tr;
     return MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
@@ -428,19 +424,19 @@ class _SortChip extends StatelessWidget {
             items: [
               PopupMenuItem(
                 value: _SortMode.defaultOrder,
-                child: Text(tr ? 'Varsayılan' : 'Default'),
+                child: Text(L10n.t('default')),
               ),
               PopupMenuItem(
                 value: _SortMode.mostDownloads,
-                child: Text(tr ? 'En popüler' : 'Most popular'),
+                child: Text(L10n.t('most_popular')),
               ),
               PopupMenuItem(
                 value: _SortMode.smallestFirst,
-                child: Text(tr ? 'En küçükten büyüğe' : 'Smallest first'),
+                child: Text(L10n.t('smallest_first')),
               ),
               PopupMenuItem(
                 value: _SortMode.largestFirst,
-                child: Text(tr ? 'En büyükten küçüğe' : 'Largest first'),
+                child: Text(L10n.t('largest_first')),
               ),
             ],
           ).then((mode) {
@@ -797,9 +793,7 @@ class _EmptyDetailState extends StatelessWidget {
           Icon(Icons.touch_app_outlined, size: 40, color: c.textDim),
           const SizedBox(height: 12),
           Text(
-            L10n.locale == MemoLocale.tr
-                ? 'Detayları görmek için bir model seç'
-                : 'Select a model to see details',
+            L10n.t('select_a_model_to_see_details'),
             style: TextStyle(fontSize: 14, color: c.textDim),
           ),
         ],

@@ -188,9 +188,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  L10n.locale == MemoLocale.tr
-                      ? 'WhatsApp Web protokolü — telefon çevrimiçi olmalıdır.'
-                      : 'Uses WhatsApp Web — your phone must stay online.',
+                  L10n.t('uses_whatsapp_web_your_phone_must_stay_online'),
                   style: TextStyle(fontSize: 11, color: c.textMuted),
                   textAlign: TextAlign.center,
                 ),
@@ -205,7 +203,6 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   // ─── Connecting / QR ─────────────────────────────────────────
 
   Widget _buildConnecting(ThemeColors c, WhatsAppStatus status) {
-    final tr = L10n.locale == MemoLocale.tr;
     return Container(
       color: c.bgApp,
       child: Center(
@@ -215,7 +212,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
             const CircularProgressIndicator(color: MemoTheme.accent, strokeWidth: 2),
             const SizedBox(height: 20),
             Text(
-              tr ? 'QR kodu hazırlanıyor...' : 'Preparing QR code...',
+              L10n.t('preparing_qr_code'),
               style: TextStyle(color: c.textDim, fontSize: 14),
             ),
             if (status.lastError.isNotEmpty) ...[
@@ -232,7 +229,6 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   }
 
   Widget _buildQR(ThemeColors c, WhatsAppStatus status) {
-    final tr = L10n.locale == MemoLocale.tr;
     return Container(
       color: c.bgApp,
       child: Center(
@@ -242,7 +238,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(
-                tr ? 'WhatsApp\'ı Bağla' : 'Link WhatsApp',
+                L10n.t('link_whatsapp'),
                 style: TextStyle(
                   fontSize: 20,
                   fontWeight: FontWeight.w700,
@@ -251,9 +247,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               ),
               const SizedBox(height: 12),
               Text(
-                tr
-                    ? 'WhatsApp\'ı aç  →  Bağlı cihazlar  →  Cihaz ekle  →  QR\'ı okut'
-                    : 'Open WhatsApp  →  Linked Devices  →  Link a Device  →  Scan QR',
+                L10n.t('open_whatsapp_linked_devices_link_a_device_scan_qr'),
                 style: TextStyle(fontSize: 13, color: c.textDim),
                 textAlign: TextAlign.center,
               ),
@@ -307,7 +301,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                   ),
                   const SizedBox(width: 10),
                   Text(
-                    tr ? 'QR taranıyor bekleniyor...' : 'Waiting for QR scan...',
+                    L10n.t('waiting_for_qr_scan'),
                     style: TextStyle(fontSize: 13, color: c.textDim),
                   ),
                 ],
@@ -353,7 +347,6 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   }
 
   Widget _buildChatListHeader(ThemeColors c, WhatsAppStatus status) {
-    final tr = L10n.locale == MemoLocale.tr;
     return Container(
       height: 52,
       padding: const EdgeInsets.symmetric(horizontal: 14),
@@ -392,7 +385,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
           // Reconnect button if disconnected
           if (!status.connected && !status.reconnecting)
             Tooltip(
-              message: tr ? 'Yeniden bağlan' : 'Reconnect',
+              message: L10n.t('reconnect'),
               child: IconButton(
                 icon: Icon(Icons.refresh, size: 16, color: c.textDim),
                 onPressed: () => ref.read(whatsAppStatusProvider.notifier).connect(),
@@ -402,10 +395,10 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
             ),
           // Logout button
           Tooltip(
-            message: tr ? 'Çıkış yap' : 'Logout',
+            message: L10n.t('logout'),
             child: IconButton(
               icon: Icon(Icons.logout, size: 16, color: c.textDim),
-              onPressed: () => _confirmLogout(c, tr),
+              onPressed: () => _confirmLogout(c),
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(minWidth: 28, minHeight: 28),
             ),
@@ -427,9 +420,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
             child: Padding(
               padding: const EdgeInsets.all(24),
               child: Text(
-                L10n.locale == MemoLocale.tr
-                    ? 'Henüz mesaj yok.\nBirileri sana yazdığında burada görünür.'
-                    : 'No messages yet.\nChats will appear here when you receive messages.',
+                L10n.t('no_messages_yet_chats_will_appear_here_when_you_re'),
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: c.textDim),
               ),
@@ -451,12 +442,11 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
   // ─── Message panel ────────────────────────────────────────────
 
   Widget _buildNoSelectionPanel(ThemeColors c) {
-    final tr = L10n.locale == MemoLocale.tr;
     return Container(
       color: c.bgApp,
       child: Center(
         child: Text(
-          tr ? 'Bir sohbet seç' : 'Select a conversation',
+          L10n.t('select_a_conversation'),
           style: TextStyle(fontSize: 14, color: c.textMuted),
         ),
       ),
@@ -559,7 +549,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               if (combined.isEmpty) {
                 return Center(
                   child: Text(
-                    L10n.locale == MemoLocale.tr ? 'Mesaj yok' : 'No messages',
+                    L10n.t('no_messages'),
                     style: TextStyle(color: c.textDim),
                   ),
                 );
@@ -605,9 +595,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                       controller: _sendCtrl,
                       style: TextStyle(fontSize: 14, color: c.textMain),
                       decoration: InputDecoration(
-                        hintText: L10n.locale == MemoLocale.tr
-                            ? 'Mesaj yaz...'
-                            : 'Message...',
+                        hintText: L10n.t('message'),
                         hintStyle: TextStyle(color: c.textMuted, fontSize: 14),
                         border: InputBorder.none,
                         contentPadding: const EdgeInsets.symmetric(
@@ -654,9 +642,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 Icon(Icons.wifi_off, size: 14, color: MemoTheme.warningOrange),
                 const SizedBox(width: 6),
                 Text(
-                  L10n.locale == MemoLocale.tr
-                      ? 'Bağlantı kesildi — yeniden bağlanıyor...'
-                      : 'Disconnected — reconnecting...',
+                  L10n.t('disconnected_reconnecting'),
                   style: TextStyle(
                       fontSize: 12, color: MemoTheme.warningOrange),
                 ),
@@ -718,9 +704,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(L10n.locale == MemoLocale.tr
-                ? 'Gönderilemedi: $e'
-                : 'Failed to send: $e'),
+            content: Text(L10n.t('failed_to_send_e', {'e': '$e'})),
             backgroundColor: MemoTheme.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -731,25 +715,23 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
     }
   }
 
-  void _confirmLogout(ThemeColors c, bool tr) {
+  void _confirmLogout(ThemeColors c) {
     showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         backgroundColor: c.bgPanel,
         title: Text(
-          tr ? 'WhatsApp\'tan Çıkış Yap?' : 'Logout from WhatsApp?',
+          L10n.t('logout_from_whatsapp'),
           style: TextStyle(color: c.textMain, fontSize: 16),
         ),
         content: Text(
-          tr
-              ? 'Oturum silinecek. Tekrar bağlanmak için QR okutman gerekecek.'
-              : 'Your session will be removed. You\'ll need to scan a QR code to reconnect.',
+          L10n.t('your_session_will_be_removed_you_ll_need_to_scan_a'),
           style: TextStyle(color: c.textDim, fontSize: 13),
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: Text(tr ? 'İptal' : 'Cancel',
+            child: Text(L10n.t('cancel'),
                 style: TextStyle(color: c.textDim)),
           ),
           TextButton(
@@ -758,7 +740,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
               _deselectChat(); // stop the stale per-chat message poll timer
               ref.read(whatsAppStatusProvider.notifier).logout();
             },
-            child: Text(tr ? 'Çıkış Yap' : 'Logout',
+            child: Text(L10n.t('logout_2'),
                 style: const TextStyle(color: MemoTheme.red)),
           ),
         ],
@@ -783,9 +765,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 Icon(Icons.error_outline, size: 40, color: c.textDim),
                 const SizedBox(height: 12),
                 Text(
-                  L10n.locale == MemoLocale.tr
-                      ? 'Bağlantı hatası'
-                      : 'Connection error',
+                  L10n.t('connection_error'),
                   style: TextStyle(color: c.textMain, fontSize: 15),
                 ),
                 const SizedBox(height: 6),
@@ -798,7 +778,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
                 TextButton.icon(
                   onPressed: () => ref.read(whatsAppStatusProvider.notifier).refresh(),
                   icon: const Icon(Icons.refresh, size: 16),
-                  label: Text(L10n.locale == MemoLocale.tr ? 'Tekrar dene' : 'Retry'),
+                  label: Text(L10n.t('retry_2')),
                 ),
               ],
             ),
@@ -997,7 +977,6 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
   bool _downloading = false;
 
   Future<void> _download() async {
-    final tr = L10n.locale == MemoLocale.tr;
     setState(() => _downloading = true);
     try {
       final bytes = await ref
@@ -1007,7 +986,7 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
           ? widget.name.replaceAll(RegExp(r'[^\w\s-]'), '').trim()
           : 'whatsapp';
       final path = await FilePicker.platform.saveFile(
-        dialogTitle: tr ? 'Profil fotoğrafını kaydet' : 'Save profile photo',
+        dialogTitle: L10n.t('save_profile_photo'),
         fileName: '${safeName.isEmpty ? 'whatsapp' : safeName}_profile.jpg',
       );
       if (path == null) return; // user cancelled
@@ -1017,7 +996,7 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(tr ? 'Fotoğraf kaydedildi' : 'Photo saved'),
+            content: Text(L10n.t('photo_saved')),
             backgroundColor: MemoTheme.green,
             behavior: SnackBarBehavior.floating,
           ),
@@ -1027,7 +1006,7 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(tr ? 'İndirilemedi: $e' : 'Download failed: $e'),
+            content: Text(L10n.t('download_failed_e', {'e': '$e'})),
             backgroundColor: MemoTheme.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -1041,7 +1020,6 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
-    final tr = L10n.locale == MemoLocale.tr;
     final url = ref.read(apiClientProvider).whatsAppAvatarUrl(widget.jid, full: true);
 
     final letterFallback = Container(
@@ -1140,7 +1118,7 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
                           ),
                         )
                       : const Icon(Icons.download_rounded, size: 18),
-                  label: Text(tr ? 'İndir' : 'Download'),
+                  label: Text(L10n.t('download')),
                 ),
               ),
             ),

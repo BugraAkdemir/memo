@@ -478,9 +478,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                     if (e.hasInvalidDate) ...[
                       const SizedBox(width: 6),
                       Tooltip(
-                        message: L10n.locale == MemoLocale.tr
-                            ? 'Sunucudan geçersiz bir tarih geldi, gösterilen saat gerçek zamanı yansıtmayabilir'
-                            : 'Received an invalid date from the server — the time shown may not be accurate',
+                        message: L10n.t('received_an_invalid_date_from_the_server_the_time_'),
                         child: Icon(Icons.warning_amber_rounded,
                             size: 14, color: MemoTheme.warmBrown),
                       ),

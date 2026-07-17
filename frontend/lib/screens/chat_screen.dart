@@ -339,7 +339,7 @@ class _ChatTopBar extends ConsumerWidget {
                 ],
                 if (isAgentEnabled && isAutoPermission) ...[
                   Tooltip(
-                    message: 'Shift+Tab to toggle off — all tools auto-approved',
+                    message: L10n.t('auto_permission_tooltip'),
                     child: GestureDetector(
                     onTap: () => ref.read(agentAutoPermissionProvider.notifier).toggle(),
                     child: Container(
@@ -444,12 +444,8 @@ class _ChatTopBar extends ConsumerWidget {
                   : MemoTheme.of(context).textDim,
             ),
             tooltip: webSearchOn
-                ? (L10n.locale == MemoLocale.tr
-                    ? 'Web araması açık'
-                    : 'Web search on')
-                : (L10n.locale == MemoLocale.tr
-                    ? 'Web araması kapalı'
-                    : 'Web search off'),
+                ? (L10n.t('web_search_on'))
+                : (L10n.t('web_search_off')),
             onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
           ),
 

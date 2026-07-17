@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-17 (Session 40, "Ece" persona testi — CANLI WhatsApp ortamı) — `STRESS_TEST_FINDINGS.md` artık ayrı tutulmuyor, tüm bulgular (Session 39 + Session 40) buraya konsolide edildi ve o dosya silindi. BUG-H2 yeni kanıtla derinleştirildi; 6 yeni madde eklendi (2 HIGH, 3 MEDIUM, 1 LOW — Session 39'dan taşınan 2 madde dahil). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 40.
+> **Son güncelleme:** 2026-07-17 (Session 41) — BUG-H2 düzeltildi: `internal/intent/extractor.go`'daki `rawIntent.HabitDays` artık `json.RawMessage` olarak leniently parse ediliyor (`parseHabitDays`), LLM `habit_days`'i `[]int` yerine string/string-dizisi/doğal dil ifadesi ("hafta içi") döndürdüğünde bile tüm `rawIntent` reddedilmiyor. Regresyon testleri: `TestExtractHabit_HabitDaysAsPhrase`, `TestExtractHabit_HabitDaysAsStringArray` (`internal/intent/intent_test.go`).
+>
+> **Önceki güncelleme:** 2026-07-17 (Session 40, "Ece" persona testi — CANLI WhatsApp ortamı) — `STRESS_TEST_FINDINGS.md` artık ayrı tutulmuyor, tüm bulgular (Session 39 + Session 40) buraya konsolide edildi ve o dosya silindi. BUG-H2 yeni kanıtla derinleştirildi; 6 yeni madde eklendi (2 HIGH, 3 MEDIUM, 1 LOW — Session 39'dan taşınan 2 madde dahil). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 40.
 >
 > **Önceki güncelleme:** 2026-07-17 (Session 39, "Deniz" persona testi) — otonom `-p --auto-allow` canlı testinde yeni bir gerçek bug bulundu: BUG-H2.
 >
@@ -16,29 +18,15 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 3 |
+| 🟠 HIGH | 2 |
 | 🟡 MEDIUM | 5 |
 | 🟢 LOW | 2 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **10** |
+| **TOPLAM** | **9** |
 
 ---
 
 ## 🟠 HIGH
-
-### BUG-H2: Alışkanlık (habit) deklarasyonunda `habit_days` tip uyuşmazlığı TÜM intent sonucunu sessizce iptal ediyor — model kullanıcıya yalan "kaydedildi" onayı veriyor, mimari olarak asistan bunu asla bilemiyor
-
-**Dosya:** `internal/intent/extractor.go` (`rawIntent.HabitDays []int`, `parseResponse`), `internal/app/learning.go:150-155` (`processMessageIntent`), `internal/app/chat.go:331` (async tetikleme)
-
-"Deniz" persona testinde (Session 39) canlı olarak bulundu: kullanıcı "bundan sonra her gün akşam 21:00'de 20 dakika kitap okuyacağım, bunu alışkanlık olarak not al" dediğinde, LLM `habit_days` alanını beklenen `int` dizisi yerine string olarak döndürdü. `json.Unmarshal(jsonStr, &ri)` bu tek alan yüzünden TÜM `rawIntent`'i reddediyor — `has_intent`/`is_habit`/`summary` gayet doğru üretilmiş olsa bile. `parseResponse` hata dönüyor, `processMessageIntent` bunu loglayıp sessizce `return` ediyor; `observerPatterns.SaveDeclared` hiç çağrılmıyor, `data/profile/patterns.json`'a hiçbir şey yazılmıyor.
-
-**Session 40'ta derinleştirilen kanıt:** "Ece" persona testinde AYNI kök neden, çok daha genel/doğal bir ifadeyle ("...her hafta içi sabah 08:30'da 15 dakika esneme yapacağım...") tekrar üretildi — yani tetikleyici tek bir kalıpla sınırlı değil, "belirli günlerde tekrar eden" hemen her alışkanlık deklarasyonu bu riski taşıyor. Ayrıca **zamanlama kesin olarak kanıtlandı**: kullanıcıya "Alışkanlık kaydedildi!" onayı verildikten TAM 40 saniye SONRA arka planda `intent: parse response` hatası düştü (`processMessageIntent` `go` ile async tetikleniyor, ana yanıt akışını hiç beklemiyor) — yani bu sadece "bazen JSON tipi bozuluyor" değil, **mimari olarak ana sohbet modelinin o anda backend sonucunu bilmesi imkansız**, JSON hatası düzelse bile onay her zaman kördür. Katlanan etki de canlı doğrulandı: birkaç tur sonra "takvimimde ne var" diye sorulduğunda, hiç kaydedilmemiş bu alışkanlık, gerçek bir takvim etkinliğiyle ayrım yapılmadan yan yana listelendi (bkz. BUG-M5) — yanlış güven tek turla sınırlı kalmıyor, sonraki turlara taşınıp kalıcılaşıyor.
-
-**Senaryo:** Kullanıcı bir alışkanlık deklare eder, ana sohbet modeli (bu arka plan pipeline'ından habersiz olduğu için) her zaman kesin bir onay verir — ama backend hiçbir şey kaydetmemiştir. Kullanıcı gelecekte "bana hatırlatacağını söylemiştin" dediğinde hiçbir hatırlatma gelmez; sessiz veri kaybı + yanlış kullanıcı güveni, üstelik bu yanlış güven sonraki sohbetlerde de kendini doğru gibi tekrarlıyor.
-
-**Önerilen yön:** `HabitDays`'i `[]int` yerine daha toleranslı bir tip (`json.RawMessage` veya serbest `[]any` + manuel coerce/best-effort parse) yapmak; tek bir alanın tipi bozuksa bile geri kalan alanları kurtaracak alan-bazlı fallback eklemek. Daha köklü çözüm: ana sohbet modelinin habit/calendar onayı vermeden önce arka plan sonucunu bekleyecek (veya en azından "kaydediyorum, birazdan kesinleşir" gibi belirsiz bir dil kullanacak) bir mekanizma.
-
----
 
 ### BUG-H3: Uzun, boşluksuz tek bir "kelime" hafızayı sadece kaydetmekle kalmıyor, RETRIEVE'i de kırıyor ve tüm turu (LLM cevabı dahil) başarısız kılabiliyor
 

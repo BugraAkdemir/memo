@@ -233,6 +233,76 @@ func TestExtractWithBraceInSummary(t *testing.T) {
 	}
 }
 
+// TestExtractHabit_HabitDaysAsPhrase reproduces the live-reported bug
+// (BUG-H2): the LLM sometimes returns habit_days as a natural-language phrase
+// ("her hafta içi") or a string array instead of the requested []int. Before
+// the fix, json.Unmarshal rejected the entire rawIntent object over this one
+// field — has_intent/is_habit/summary were correctly produced but never
+// reached the caller, and the assistant told the user it saved the habit
+// when nothing was actually persisted.
+func TestExtractHabit_HabitDaysAsPhrase(t *testing.T) {
+	decide := func(ctx context.Context, system, user string) (string, error) {
+		return `{
+			"has_intent": true,
+			"is_calendar_event": false,
+			"is_habit": true,
+			"summary": "Every weekday 08:30 stretching",
+			"event_title": "",
+			"event_time_iso": "",
+			"habit_time_hhmm": "08:30",
+			"habit_days": "her hafta içi"
+		}`, nil
+	}
+
+	e := NewExtractor(decide)
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	res, err := e.Extract(context.Background(), "her hafta içi sabah 08:30'da esneme yapacağım", SourceChat, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HasIntent {
+		t.Fatal("expected HasIntent=true even when habit_days is a phrase, not []int")
+	}
+	if !res.IsHabit {
+		t.Error("expected IsHabit=true")
+	}
+	if len(res.HabitDays) != 5 {
+		t.Errorf("HabitDays = %v, want 5 weekdays (Mon-Fri) for \"hafta içi\"", res.HabitDays)
+	}
+}
+
+// TestExtractHabit_HabitDaysAsStringArray covers the LLM returning day names
+// as strings ("monday", "tuesday") instead of ints.
+func TestExtractHabit_HabitDaysAsStringArray(t *testing.T) {
+	decide := func(ctx context.Context, system, user string) (string, error) {
+		return `{
+			"has_intent": true,
+			"is_calendar_event": false,
+			"is_habit": true,
+			"summary": "Gym on Monday and Wednesday",
+			"event_title": "",
+			"event_time_iso": "",
+			"habit_time_hhmm": "18:00",
+			"habit_days": ["monday", "wednesday"]
+		}`, nil
+	}
+
+	e := NewExtractor(decide)
+	now := time.Date(2026, 6, 15, 10, 0, 0, 0, time.UTC)
+
+	res, err := e.Extract(context.Background(), "pazartesi ve çarşamba 18'de spor yapacağım", SourceChat, "", now)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !res.HasIntent {
+		t.Fatal("expected HasIntent=true even when habit_days is a string array")
+	}
+	if len(res.HabitDays) != 2 || res.HabitDays[0] != time.Monday || res.HabitDays[1] != time.Wednesday {
+		t.Errorf("HabitDays = %v, want [Monday Wednesday]", res.HabitDays)
+	}
+}
+
 func TestBuildDecider_Orchestra(t *testing.T) {
 	orchestraCalled := false
 	singleCalled := false

@@ -9,6 +9,8 @@ import (
 	"memo/internal/jsonutil"
 	"memo/internal/logx"
 	"memo/internal/truncate"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -138,7 +140,13 @@ type rawIntent struct {
 	EventTimeISO    string `json:"event_time_iso"`
 	TimeExplicit    bool   `json:"time_explicit"`
 	HabitTimeHHMM   string `json:"habit_time_hhmm"`
-	HabitDays       []int  `json:"habit_days"`
+	// HabitDays is decoded leniently (see parseHabitDays) — the LLM has been
+	// observed returning day-name strings or a phrase like "hafta içi"
+	// instead of the requested []int, and a rigid type here would reject the
+	// entire rawIntent object (has_intent/is_habit/summary included) over
+	// this one field. json.RawMessage never fails to unmarshal regardless
+	// of the shape actually returned.
+	HabitDays json.RawMessage `json:"habit_days"`
 }
 
 func parseResponse(raw string, source Source, contact string, now time.Time) (IntentResult, error) {
@@ -184,13 +192,99 @@ func parseResponse(raw string, source Source, contact string, now time.Time) (In
 		}
 	}
 
-	for _, d := range ri.HabitDays {
-		if d >= 0 && d <= 6 {
-			res.HabitDays = append(res.HabitDays, time.Weekday(d))
-		}
-	}
+	res.HabitDays = parseHabitDays(ri.HabitDays)
 
 	return res, nil
+}
+
+// weekdayNameLookup maps day names/abbreviations (English + Turkish) to
+// time.Weekday, for tolerating an LLM returning names instead of the
+// requested int array in habit_days.
+var weekdayNameLookup = map[string]time.Weekday{
+	"sunday": time.Sunday, "sun": time.Sunday, "pazar": time.Sunday,
+	"monday": time.Monday, "mon": time.Monday, "pazartesi": time.Monday,
+	"tuesday": time.Tuesday, "tue": time.Tuesday, "salı": time.Tuesday, "sali": time.Tuesday,
+	"wednesday": time.Wednesday, "wed": time.Wednesday, "çarşamba": time.Wednesday, "carsamba": time.Wednesday,
+	"thursday": time.Thursday, "thu": time.Thursday, "perşembe": time.Thursday, "persembe": time.Thursday,
+	"friday": time.Friday, "fri": time.Friday, "cuma": time.Friday,
+	"saturday": time.Saturday, "sat": time.Saturday, "cumartesi": time.Saturday,
+}
+
+// parseHabitDays decodes habit_days leniently regardless of the exact shape
+// the LLM returned it in (see rawIntent.HabitDays doc comment): the requested
+// []int, an array of day-name strings, or a single phrase like "hafta içi" /
+// "her gün" describing several days at once. An unrecognized shape yields an
+// empty result rather than an error — the rest of the intent (summary,
+// is_habit, habit time) must stay usable even if the days can't be parsed.
+func parseHabitDays(raw json.RawMessage) []time.Weekday {
+	if len(raw) == 0 {
+		return nil
+	}
+
+	var ints []int
+	if err := json.Unmarshal(raw, &ints); err == nil {
+		return weekdaysFromInts(ints)
+	}
+
+	var strs []string
+	if err := json.Unmarshal(raw, &strs); err == nil {
+		return weekdaysFromStrings(strs)
+	}
+
+	var phrase string
+	if err := json.Unmarshal(raw, &phrase); err == nil {
+		return weekdaysFromPhrase(phrase)
+	}
+
+	return nil
+}
+
+func weekdaysFromInts(ints []int) []time.Weekday {
+	var days []time.Weekday
+	for _, d := range ints {
+		if d >= 0 && d <= 6 {
+			days = append(days, time.Weekday(d))
+		}
+	}
+	return days
+}
+
+func weekdaysFromStrings(strs []string) []time.Weekday {
+	var days []time.Weekday
+	for _, s := range strs {
+		s = strings.TrimSpace(s)
+		if n, err := strconv.Atoi(s); err == nil {
+			if n >= 0 && n <= 6 {
+				days = append(days, time.Weekday(n))
+			}
+			continue
+		}
+		if d, ok := weekdayNameLookup[strings.ToLower(s)]; ok {
+			days = append(days, d)
+		}
+	}
+	return days
+}
+
+var allWeekdays = []time.Weekday{
+	time.Sunday, time.Monday, time.Tuesday, time.Wednesday,
+	time.Thursday, time.Friday, time.Saturday,
+}
+
+func weekdaysFromPhrase(phrase string) []time.Weekday {
+	p := strings.ToLower(strings.TrimSpace(phrase))
+	switch {
+	case strings.Contains(p, "hafta içi"), strings.Contains(p, "hafta ici"), strings.Contains(p, "weekday"):
+		return []time.Weekday{time.Monday, time.Tuesday, time.Wednesday, time.Thursday, time.Friday}
+	case strings.Contains(p, "hafta sonu"), strings.Contains(p, "weekend"):
+		return []time.Weekday{time.Saturday, time.Sunday}
+	case strings.Contains(p, "her gün"), strings.Contains(p, "her gun"), strings.Contains(p, "every day"), strings.Contains(p, "everyday"), strings.Contains(p, "daily"):
+		return allWeekdays
+	}
+	if d, ok := weekdayNameLookup[p]; ok {
+		return []time.Weekday{d}
+	}
+	return nil
 }
 
 // parseISO tries several common ISO 8601 layouts.

@@ -32,6 +32,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/proactive"
 	"memo/internal/provider"
+	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/taskloop"
@@ -184,6 +185,9 @@ type App struct {
 	learningMu      sync.RWMutex // protects intentExtractor reassignment
 	calendarStore   *calendar.Store
 	calendarRemind  *calendar.ReminderLoop
+
+	routineStore *routine.Store
+	routineLoop  *routine.RoutineLoop
 
 	agentExecutor *agent.Executor
 	agentEnabled  bool
@@ -378,6 +382,7 @@ func (a *App) Startup(ctx context.Context) {
 	go a.proactiveEngine.Start(a.lifecycleCtx)
 
 	a.initLearning(ctx)
+	a.initRoutines(ctx)
 
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)

@@ -406,9 +406,13 @@ class _ModelCardState extends ConsumerState<_ModelCard> {
   }
 
   String _size(int b) {
-    if (b < 1024 * 1024) return '${(b / 1024).toStringAsFixed(0)} KB';
-    if (b < 1024 * 1024 * 1024) return '${(b / (1024 * 1024)).toStringAsFixed(0)} MB';
-    return '${(b / (1024 * 1024 * 1024)).toStringAsFixed(1)} GB';
+    if (b < 1024 * 1024) {
+      return L10n.t('size_kb', {'n': (b / 1024).toStringAsFixed(0)});
+    }
+    if (b < 1024 * 1024 * 1024) {
+      return L10n.t('size_mb', {'n': (b / (1024 * 1024)).toStringAsFixed(0)});
+    }
+    return L10n.t('size_gb', {'n': (b / (1024 * 1024 * 1024)).toStringAsFixed(1)});
   }
 
   @override

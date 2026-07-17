@@ -1,3 +1,7 @@
+import '../core/l10n.dart';
+
+String _routineFallbackTitle() => L10n.t('routine_fallback');
+
 class Routine {
   final String id;
   final String createdFromText;
@@ -64,7 +68,7 @@ class RoutineMobileReady {
   factory RoutineMobileReady.fromJson(Map<String, dynamic> json) =>
       RoutineMobileReady(
         id: json['id'] as String? ?? '',
-        title: json['title'] as String? ?? 'Rutin',
+        title: json['title'] as String? ?? _routineFallbackTitle(),
         body: json['body'] as String? ?? '',
         fireAtUtc: DateTime.parse(json['fire_at_utc'] as String),
       );

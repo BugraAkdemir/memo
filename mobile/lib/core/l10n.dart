@@ -251,6 +251,17 @@ class L10n {
     'notif_starts_now': 'Şimdi başlıyor',
     'notif_added_title': 'Takvime eklendi',
     'notif_event_reminder': 'Etkinlik hatırlatması',
+
+    // Leftover fallbacks / misc UI
+    'reasoning': 'Düşünce',
+    'new_chat_fallback': 'Yeni Sohbet',
+    'routine_fallback': 'Rutin',
+    'connection_error_with': 'Bağlantı hatası: \${e}',
+    'whatsapp_stream_error': 'WhatsApp akış hatası: \${e}',
+    'unknown_error': 'Bilinmeyen hata',
+    'size_kb': '\${n} KB',
+    'size_mb': '\${n} MB',
+    'size_gb': '\${n} GB',
   };
 
   // ─── English ──────────────────────────────────────────────────
@@ -469,5 +480,16 @@ class L10n {
     'notif_starts_now': 'Starting now',
     'notif_added_title': 'Added to calendar',
     'notif_event_reminder': 'Event reminder',
+
+    // Leftover fallbacks / misc UI
+    'reasoning': 'Reasoning',
+    'new_chat_fallback': 'New Chat',
+    'routine_fallback': 'Routine',
+    'connection_error_with': 'Connection error: \${e}',
+    'whatsapp_stream_error': 'WhatsApp stream error: \${e}',
+    'unknown_error': 'Unknown error',
+    'size_kb': '\${n} KB',
+    'size_mb': '\${n} MB',
+    'size_gb': '\${n} GB',
   };
 }

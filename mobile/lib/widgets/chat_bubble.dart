@@ -150,7 +150,7 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
                 children: [
                   const Icon(Icons.auto_awesome_outlined, size: 13, color: MemoTheme.textFaint),
                   const SizedBox(width: 6),
-                  Text('Reasoning', style: MemoTheme.mono(11.5, color: MemoTheme.textFaint, ls: 0.4)),
+                  Text(L10n.t('reasoning'), style: MemoTheme.mono(11.5, color: MemoTheme.textFaint, ls: 0.4)),
                   const SizedBox(width: 4),
                   Icon(_open ? Icons.keyboard_arrow_up_rounded : Icons.keyboard_arrow_down_rounded,
                       size: 16, color: MemoTheme.textFaint),

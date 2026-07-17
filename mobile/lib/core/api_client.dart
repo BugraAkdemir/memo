@@ -4,6 +4,8 @@ import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 
+import 'l10n.dart';
+
 // ─── Models ───────────────────────────────────────────────────────────
 
 class StreamChunk {
@@ -131,7 +133,7 @@ class ChatSession {
 
   factory ChatSession.fromJson(Map<String, dynamic> json) => ChatSession(
         id: json['id'] as String? ?? '',
-        title: json['title'] as String? ?? 'New Chat',
+        title: json['title'] as String? ?? L10n.t('new_chat_fallback'),
         createdAt: json['created_at'] as String? ?? '',
         updatedAt: json['updated_at'] as String? ?? '',
         msgCount: json['msg_count'] as int? ?? 0,
@@ -672,10 +674,12 @@ class MemoApiClient {
     if (e.response?.data != null) {
       if (e.response?.data is String) return e.response!.data as String;
       if (e.response?.data is Map && e.response?.data['error'] != null) {
-        return e.response?.data['error'].toString() ?? e.message ?? 'Unknown error';
+        return e.response?.data['error'].toString() ??
+            e.message ??
+            L10n.t('unknown_error');
       }
     }
-    return e.message ?? 'Unknown error';
+    return e.message ?? L10n.t('unknown_error');
   }
 
   // ─── Chat ───────────────────────────────────────────────────────
@@ -733,7 +737,7 @@ class MemoApiClient {
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
+      throw Exception(L10n.t('connection_error_with', {'e': '$e'}));
     }
   }
 
@@ -1197,7 +1201,7 @@ class MemoApiClient {
       final body = e.response?.data;
       final msg = (body is String && body.trim().isNotEmpty)
           ? body.trim()
-          : (e.message ?? 'bilinmeyen hata');
+          : (e.message ?? L10n.t('unknown_error'));
       throw Exception(msg);
     }
   }
@@ -1362,7 +1366,7 @@ class MemoApiClient {
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
+      throw Exception(L10n.t('connection_error_with', {'e': '$e'}));
     }
   }
 
@@ -1636,7 +1640,7 @@ class MemoApiClient {
         }
       }
     } catch (e) {
-      throw Exception('WhatsApp stream error: $e');
+      throw Exception(L10n.t('whatsapp_stream_error', {'e': '$e'}));
     }
   }
 

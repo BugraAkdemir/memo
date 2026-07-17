@@ -115,6 +115,14 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 	return a.routineStore.Create(r)
 }
 
+// GetRoutine returns a single routine by ID.
+func (a *App) GetRoutine(id string) (*routine.Routine, error) {
+	if a.routineStore == nil {
+		return nil, fmt.Errorf("routine: store not initialized")
+	}
+	return a.routineStore.Get(id)
+}
+
 // UpdateRoutine persists changes to an existing routine (e.g. toggling Enabled).
 func (a *App) UpdateRoutine(r routine.Routine) (*routine.Routine, error) {
 	if a.routineStore == nil {

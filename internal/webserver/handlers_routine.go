@@ -17,6 +17,7 @@ import (
 // handlers_calendar.go.
 type RoutineBridge interface {
 	ListRoutines() []routine.Routine
+	GetRoutine(id string) (*routine.Routine, error)
 	ParseRoutineText(ctx context.Context, text string) (routine.Draft, error)
 	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool) (*routine.Routine, error)
 	UpdateRoutine(r routine.Routine) (*routine.Routine, error)
@@ -112,7 +113,20 @@ func (s *Server) handleRoutine(w http.ResponseWriter, r *http.Request) {
 
 	switch r.Method {
 	case http.MethodPut:
-		var rt routine.Routine
+		// Decode onto a copy of the existing stored routine rather than a
+		// fresh zero-value struct — encoding/json's Decode only overwrites
+		// fields actually present in the request body, so any field a caller
+		// omits (e.g. a client whose model only round-trips a subset of
+		// fields, like a bare enable/disable toggle) keeps its current
+		// persisted value instead of silently zeroing (BUG-C2: this used to
+		// wipe weekdays/context_source/auto_approve_tools/whatsapp_target_jid
+		// on every update that didn't explicitly resend them).
+		existing, err := bridge.GetRoutine(id)
+		if err != nil {
+			jsonError(w, err.Error(), http.StatusNotFound)
+			return
+		}
+		rt := *existing
 		if err := json.NewDecoder(r.Body).Decode(&rt); err != nil {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return

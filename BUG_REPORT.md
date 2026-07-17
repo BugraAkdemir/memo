@@ -11,37 +11,12 @@
 
 | Severity | Açık |
 |----------|------|
-| 🔴 CRITICAL | 1 |
+| 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 1 |
 | 🟡 MEDIUM | 5 |
 | 🟢 LOW | 6 |
 | 🔧 TEKNİK BORÇ | 5 |
-| **TOPLAM** | **18** |
-
----
-
-## 🔴 CRITICAL
-
-### BUG-C2: Rutin güncelleme (enable/disable switch dahil) `weekdays`, `context_source`, `auto_approve_tools`, `whatsapp_target_jid` alanlarını sessizce sıfırlıyor — tek dokunuşla veri kaybı
-
-**Dosya:** `frontend/lib/screens/routines_screen.dart:9-54` (`_Routine`), `mobile/lib/models/routine.dart:5-50` (`Routine`), `internal/webserver/handlers_routine.go` (PUT handler), `internal/routine/store.go:117-130` (`Update`)
-
-Hem masaüstü hem mobil `_Routine`/`Routine` Dart modeli sadece şu alanları okuyup yazıyor: `id`, `created_from_text`, `schedule.time_of_day`, `prompt`, `agent_mode`, `delivery_whatsapp`, `delivery_mobile`, `enabled`. `schedule.weekdays`, `context_source`, `auto_approve_tools`, `whatsapp_target_jid` **hiç round-trip edilmiyor**.
-
-Backend tarafında `PUT /api/routines/{id}` handler'ı gövdeyi doğrudan sıfır-değerli bir `routine.Routine{}`'a decode ediyor, `Store.Update` de bunu **tam struct replace** olarak kaydediyor — var olan kayıtla merge yok:
-```go
-var rt routine.Routine
-json.NewDecoder(r.Body).Decode(&rt)
-rt.ID = id
-bridge.UpdateRoutine(rt)   // eksik alanlar Go zero-value'da kalır, öyle kaydedilir
-```
-
-**Senaryo:** Kullanıcı hafta içi 5 gün çalışan, otomatik-onaylı bir agent rutini + belirli bir WhatsApp hedefi kurar. Rutinler listesinde sadece enable/disable switch'ine dokunur (`_toggleEnabled`, `r.toJson()` gönderir). Sonuç:
-- `Schedule.Weekdays` boşalır → `FiresOn` boş diziyi "her gün" sayıyor, rutin artık hafta sonu da çalışır.
-- `AutoApproveTools` `false`'a döner → rutin artık kimsenin cevaplayamayacağı bir izin isteğinde sonsuza kadar takılır.
-- `WhatsAppTargetJID` boşalır → teslimat sessizce hiçbir yere gitmez.
-
-Tek bir switch dokunuşuyla üç farklı, sessiz bozulma. Aynı sorun mobilde de birebir var.
+| **TOPLAM** | **17** |
 
 ---
 

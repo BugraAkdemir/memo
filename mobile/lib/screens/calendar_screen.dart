@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:intl/intl.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/calendar_event.dart';
 import '../providers/calendar_provider.dart';
@@ -34,18 +35,18 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       appBar: AppBar(
         backgroundColor: MemoTheme.surface,
         title: Text(
-          'Takvim',
+          L10n.t('calendar_title'),
           style: TextStyle(color: MemoTheme.text, fontWeight: FontWeight.w600),
         ),
         actions: [
           IconButton(
             icon: Icon(Icons.add, color: MemoTheme.accent),
-            tooltip: 'Etkinlik ekle',
+            tooltip: L10n.t('add_event'),
             onPressed: () => _showAddDialog(context, notifier),
           ),
           IconButton(
             icon: Icon(Icons.settings_outlined, color: MemoTheme.textDim),
-            tooltip: 'Hatırlatma ayarları',
+            tooltip: L10n.t('reminder_settings'),
             onPressed: () => _showSettingsDialog(context, state.settings, notifier),
           ),
         ],
@@ -96,7 +97,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           backgroundColor: MemoTheme.surface,
-          title: Text('Yeni Etkinlik',
+          title: Text(L10n.t('new_event'),
               style: TextStyle(color: MemoTheme.text)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -105,7 +106,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 controller: titleCtrl,
                 style: TextStyle(color: MemoTheme.text),
                 decoration: InputDecoration(
-                  labelText: 'Başlık',
+                  labelText: L10n.t('title_label'),
                   labelStyle: TextStyle(color: MemoTheme.textDim),
                 ),
               ),
@@ -114,7 +115,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 controller: descCtrl,
                 style: TextStyle(color: MemoTheme.text),
                 decoration: InputDecoration(
-                  labelText: 'Açıklama (opsiyonel)',
+                  labelText: L10n.t('description_optional'),
                   labelStyle: TextStyle(color: MemoTheme.textDim),
                 ),
               ),
@@ -122,7 +123,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 title: Text(
-                  DateFormat('dd MMM yyyy HH:mm', 'tr').format(pickedTime),
+                  DateFormat('dd MMM yyyy HH:mm', L10n.dateLocale).format(pickedTime),
                   style: TextStyle(color: MemoTheme.text),
                 ),
                 trailing: Icon(Icons.schedule, color: MemoTheme.accent),
@@ -150,7 +151,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('İptal',
+              child: Text(L10n.t('cancel'),
                   style: TextStyle(color: MemoTheme.textDim)),
             ),
             ElevatedButton(
@@ -164,7 +165,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 );
                 Navigator.pop(ctx);
               },
-              child: const Text('Ekle'),
+              child: Text(L10n.t('add')),
             ),
           ],
         ),
@@ -182,12 +183,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       builder: (ctx) => StatefulBuilder(
         builder: (ctx, setS) => AlertDialog(
           backgroundColor: MemoTheme.surface,
-          title: Text('Hatırlatma Süresi',
+          title: Text(L10n.t('reminder_lead_title'),
               style: TextStyle(color: MemoTheme.text)),
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: options.map((min) {
-              final label = min < 60 ? '$min dakika önce' : '${min ~/ 60} saat önce';
+              final label = min < 60
+                  ? L10n.t('minutes_before', {'n': '$min'})
+                  : L10n.t('hours_before', {'n': '${min ~/ 60}'});
               return RadioListTile<int>(
                 title: Text(label,
                     style: TextStyle(color: MemoTheme.text)),
@@ -201,7 +204,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
           actions: [
             TextButton(
               onPressed: () => Navigator.pop(ctx),
-              child: Text('İptal',
+              child: Text(L10n.t('cancel'),
                   style: TextStyle(color: MemoTheme.textDim)),
             ),
             ElevatedButton(
@@ -210,7 +213,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
                 notifier.updateSettings(reminderLeadMinutes: selected);
                 Navigator.pop(ctx);
               },
-              child: const Text('Kaydet'),
+              child: Text(L10n.t('save')),
             ),
           ],
         ),
@@ -234,7 +237,7 @@ class _MonthHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = DateFormat('MMMM yyyy', 'tr').format(focusedDay);
+    final label = DateFormat('MMMM yyyy', L10n.dateLocale).format(focusedDay);
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       child: Row(
@@ -282,7 +285,15 @@ class _CalendarGrid extends StatelessWidget {
         DateTime(focusedDay.year, focusedDay.month + 1, 0).day;
     final startWeekday = (firstDay.weekday % 7); // Mon=1→1, Sun=7→0
 
-    const dayNames = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+    final dayNames = [
+      L10n.t('day_mon'),
+      L10n.t('day_tue'),
+      L10n.t('day_wed'),
+      L10n.t('day_thu'),
+      L10n.t('day_fri'),
+      L10n.t('day_sat'),
+      L10n.t('day_sun'),
+    ];
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -388,12 +399,12 @@ class _DayEventList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final label = DateFormat('d MMMM', 'tr').format(day);
+    final label = DateFormat('d MMMM', L10n.dateLocale).format(day);
 
     if (events.isEmpty) {
       return Center(
         child: Text(
-          '$label — etkinlik yok',
+          L10n.t('no_events_day', {'label': label}),
           style: TextStyle(color: MemoTheme.textDim),
         ),
       );

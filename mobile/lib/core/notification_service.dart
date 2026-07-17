@@ -4,6 +4,8 @@ import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/data/latest.dart' as tzdata;
 import 'package:timezone/timezone.dart' as tz;
 
+import 'l10n.dart';
+
 /// Wraps flutter_local_notifications for calendar reminders.
 ///
 /// Reminders are *scheduled* at the OS level (via [scheduleReminder]) so they
@@ -47,15 +49,16 @@ class NotificationService {
     _initialized = true;
   }
 
-  static const _reminderDetails = NotificationDetails(
-    android: AndroidNotificationDetails(
-      'calendar_reminders',
-      'Takvim Hatırlatmaları',
-      channelDescription: 'Yaklaşan etkinlikler için hatırlatmalar',
-      importance: Importance.high,
-      priority: Priority.high,
-    ),
-  );
+  // Channel titles/descriptions are localized at use time (cannot be const).
+  static NotificationDetails get _reminderDetails => NotificationDetails(
+        android: AndroidNotificationDetails(
+          'calendar_reminders',
+          L10n.t('notif_channel_reminders'),
+          channelDescription: L10n.t('notif_channel_reminders_desc'),
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
 
   static int _reminderId(String eventId) =>
       _reminderBase + (eventId.hashCode & 0x7FFF);
@@ -74,8 +77,8 @@ class NotificationService {
     if (fireAt.isBefore(tz.TZDateTime.now(tz.UTC))) return;
 
     final body = minutesBefore > 0
-        ? '$minutesBefore dakika sonra başlıyor'
-        : 'Birazdan başlıyor';
+        ? L10n.t('notif_starts_in_min', {'n': '$minutesBefore'})
+        : L10n.t('notif_starts_soon');
 
     await _plugin.zonedSchedule(
       _reminderId(eventId),
@@ -98,32 +101,32 @@ class NotificationService {
   /// Shows an immediate "added to calendar" notification.
   static Future<void> showCalendarAdded(String title) async {
     if (!_initialized) return;
-    const details = NotificationDetails(
+    final details = NotificationDetails(
       android: AndroidNotificationDetails(
         'calendar_added',
-        'Takvim Eklentileri',
-        channelDescription: 'Otomatik eklenen etkinlik bildirimleri',
+        L10n.t('notif_channel_added'),
+        channelDescription: L10n.t('notif_channel_added_desc'),
         importance: Importance.defaultImportance,
         priority: Priority.defaultPriority,
       ),
     );
     await _plugin.show(
       _nextTransientId(),
-      'Takvime eklendi',
+      L10n.t('notif_added_title'),
       title,
       details,
     );
   }
 
-  static const _routineDetails = NotificationDetails(
-    android: AndroidNotificationDetails(
-      'routines',
-      'Rutinler',
-      channelDescription: 'Zamanlanmış rutin bildirimleri',
-      importance: Importance.high,
-      priority: Priority.high,
-    ),
-  );
+  static NotificationDetails get _routineDetails => NotificationDetails(
+        android: AndroidNotificationDetails(
+          'routines',
+          L10n.t('notif_channel_routines'),
+          channelDescription: L10n.t('notif_channel_routines_desc'),
+          importance: Importance.high,
+          priority: Priority.high,
+        ),
+      );
 
   // Own reserved ID band, distinct from _reminderBase, so a routine and a
   // calendar reminder can never collide on the same notification ID.
@@ -176,10 +179,12 @@ class NotificationService {
     } catch (_) {
       return;
     }
-    final title = data['title'] as String? ?? 'Etkinlik hatırlatması';
+    final title =
+        data['title'] as String? ?? L10n.t('notif_event_reminder');
     final minutesLeft = data['minutes_left'] as int? ?? 0;
-    final body =
-        minutesLeft > 0 ? '$minutesLeft dakika sonra başlıyor' : 'Şimdi başlıyor';
+    final body = minutesLeft > 0
+        ? L10n.t('notif_starts_in_min', {'n': '$minutesLeft'})
+        : L10n.t('notif_starts_now');
     await _plugin.show(
       _nextTransientId(),
       title,

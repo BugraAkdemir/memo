@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/routine.dart';
 import '../providers/connection_provider.dart';
@@ -60,7 +61,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       if (!mounted) return;
       setState(() {
         _parsing = false;
-        _error = 'Anlaşılamadı: $e';
+        _error = L10n.t('routines_parse_error', {'e': '$e'});
       });
     }
   }
@@ -91,7 +92,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       backgroundColor: MemoTheme.bg,
       appBar: AppBar(
         backgroundColor: MemoTheme.surface,
-        title: Text('Rutinler', style: TextStyle(color: MemoTheme.text, fontWeight: FontWeight.w600)),
+        title: Text(L10n.t('routines_title'), style: TextStyle(color: MemoTheme.text, fontWeight: FontWeight.w600)),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -99,7 +100,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Text(
-              'Örnek: "her sabah 8\'de takvimimi özetle, whatsapp\'tan yolla"',
+              L10n.t('routines_example'),
               style: TextStyle(fontSize: 12, color: MemoTheme.textDim),
             ),
             const SizedBox(height: 12),
@@ -109,9 +110,9 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
                   child: TextField(
                     controller: _textController,
                     style: TextStyle(color: MemoTheme.text),
-                    decoration: const InputDecoration(
-                      hintText: 'Ne yapmamı istersin, ne zaman?',
-                      border: OutlineInputBorder(),
+                    decoration: InputDecoration(
+                      hintText: L10n.t('routines_hint'),
+                      border: const OutlineInputBorder(),
                     ),
                     onSubmitted: (_) => _parse(),
                   ),
@@ -121,7 +122,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
                   onPressed: _parsing ? null : _parse,
                   child: _parsing
                       ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                      : const Text('Gönder'),
+                      : Text(L10n.t('send')),
                 ),
               ],
             ),
@@ -138,7 +139,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
               child: state.loading
                   ? const Center(child: CircularProgressIndicator())
                   : state.routines.isEmpty
-                      ? Center(child: Text('Henüz bir rutin yok.', style: TextStyle(color: MemoTheme.textDim)))
+                      ? Center(child: Text(L10n.t('routines_empty'), style: TextStyle(color: MemoTheme.textDim)))
                       : ListView.builder(
                           itemCount: state.routines.length,
                           itemBuilder: (context, i) => _buildRoutineTile(state.routines[i]),
@@ -163,16 +164,19 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
-            'Her gün saat ${draft['time_of_day']}\'de: ${draft['prompt']}',
+            L10n.t('routines_confirm', {
+              'time': '${draft['time_of_day']}',
+              'prompt': '${draft['prompt']}',
+            }),
             style: TextStyle(fontWeight: FontWeight.w600, color: MemoTheme.text),
           ),
           if (_whatsAppChats.isNotEmpty) ...[
             const SizedBox(height: 8),
-            Text('Hangi WhatsApp sohbetine gönderilsin?', style: TextStyle(color: MemoTheme.textDim)),
+            Text(L10n.t('routines_whatsapp_pick'), style: TextStyle(color: MemoTheme.textDim)),
             DropdownButton<String>(
               value: _selectedWhatsAppJid,
               isExpanded: true,
-              hint: const Text('Sohbet seç'),
+              hint: Text(L10n.t('routines_pick_chat')),
               items: _whatsAppChats
                   .map((chat) => DropdownMenuItem<String>(
                         value: chat['jid'] as String?,
@@ -188,7 +192,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
               children: [
                 Expanded(
                   child: Text(
-                    'Bu görev bilgisayarında komut çalıştırmak isteyecek gibi. Otomatik izin verilsin mi?',
+                    L10n.t('routines_auto_approve'),
                     style: TextStyle(fontSize: 12, color: MemoTheme.textDim),
                   ),
                 ),
@@ -199,14 +203,14 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
           const SizedBox(height: 8),
           Row(
             children: [
-              FilledButton(onPressed: _confirm, child: const Text('Kaydet')),
+              FilledButton(onPressed: _confirm, child: Text(L10n.t('save'))),
               const SizedBox(width: 8),
               TextButton(
                 onPressed: () => setState(() {
                   _draft = null;
                   _originalText = null;
                 }),
-                child: const Text('Vazgeç'),
+                child: Text(L10n.t('routines_discard')),
               ),
             ],
           ),
@@ -222,9 +226,9 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       child: ListTile(
         title: Text(r.prompt, style: TextStyle(color: MemoTheme.text)),
         subtitle: Text(
-          'Saat ${r.timeOfDay}'
-          '${r.deliveryWhatsApp ? ' · WhatsApp' : ''}'
-          '${r.deliveryMobile ? ' · Telefon' : ''}',
+          L10n.t('routines_time', {'time': r.timeOfDay}) +
+              (r.deliveryWhatsApp ? L10n.t('routines_via_whatsapp') : '') +
+              (r.deliveryMobile ? L10n.t('routines_via_mobile') : ''),
           style: TextStyle(color: MemoTheme.textDim),
         ),
         trailing: Row(

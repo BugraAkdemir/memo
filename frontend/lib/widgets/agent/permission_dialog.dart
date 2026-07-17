@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/agent.dart';
 import '../../providers/chat_provider.dart';
@@ -72,7 +73,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
       if (mounted) {
         setState(() {
           _submitting = false;
-          _error = 'İzin gönderilemedi: $e';
+          _error = L10n.t('permission_send_failed', {'e': '$e'});
         });
       }
     }
@@ -100,6 +101,8 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
     final isMedium = widget.event.dangerLevel == 'medium';
     final toolName = ToolNames.displayName(widget.event.toolName);
     final toolIcon = ToolNames.icon(widget.event.toolName);
+    final timerLabel =
+        '${_secondsLeft ~/ 60}:${(_secondsLeft % 60).toString().padLeft(2, '0')}';
 
     String? shortArg;
     try {
@@ -121,7 +124,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
         children: [
           Icon(toolIcon, size: 20, color: MemoTheme.accent),
           const SizedBox(width: 8),
-          const Text('Izin Gerekli'),
+          Text(L10n.t('permission_required')),
         ],
       ),
       content: Column(
@@ -141,17 +144,20 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
                 children: [
                   Icon(Icons.warning_amber_rounded, size: 16, color: MemoTheme.red),
                   const SizedBox(width: 8),
-                  const Expanded(
+                  Expanded(
                     child: Text(
-                      'Bu arac sistemde degisiklik yapabilir!',
-                      style: TextStyle(color: MemoTheme.red, fontWeight: FontWeight.bold, fontSize: 12),
+                      L10n.t('permission_warning'),
+                      style: const TextStyle(
+                          color: MemoTheme.red,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 12),
                     ),
                   ),
                 ],
               ),
             ),
           Text(
-            '$toolName aracini kullanmak istiyor',
+            L10n.t('permission_wants_tool', {'tool': toolName}),
             style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
           if (shortArg != null)
@@ -176,7 +182,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
           Padding(
             padding: const EdgeInsets.only(top: 10),
             child: Text(
-              '${_secondsLeft ~/ 60}:${(_secondsLeft % 60).toString().padLeft(2, '0')} icinde yanit verilmezse otomatik reddedilecek',
+              L10n.t('permission_auto_deny_timer', {'time': timerLabel}),
               style: TextStyle(
                 fontSize: 11,
                 color: MemoTheme.of(context).textDim,
@@ -206,13 +212,13 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
       actions: [
         TextButton(
           onPressed: _submitting ? null : () => _submit('deny_once'),
-          child: const Text('Reddet', style: TextStyle(color: Colors.grey)),
+          child: Text(L10n.t('deny'), style: const TextStyle(color: Colors.grey)),
         ),
         if (isMedium || !isDangerous) ...[
           TextButton(
             onPressed: _submitting ? null : () => _submit('allow_session'),
             child: Text(
-              'Oturum Boyunca Izin Ver',
+              L10n.t('allow_session'),
               style: TextStyle(color: MemoTheme.accent.withValues(alpha: 0.7), fontSize: 12),
             ),
           ),
@@ -226,10 +232,10 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
                   height: 16,
                   child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                 )
-              : const Text(
-            'Izin Ver',
-            style: TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
-          ),
+              : Text(
+                  L10n.t('allow_short'),
+                  style: const TextStyle(color: Colors.white, fontWeight: FontWeight.w600),
+                ),
         ),
       ],
     );

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memo_flutter/core/api_client.dart';
+import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/models/agent.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/widgets/agent/permission_dialog.dart';
@@ -54,12 +55,13 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.byType(PermissionDialog), findsOneWidget);
 
-    await tester.tap(find.text('Izin Ver'));
+    await tester.tap(find.text(L10n.t('allow_short')));
     await tester.pump();
     await tester.pumpAndSettle(const Duration(seconds: 2));
 
     expect(find.byType(PermissionDialog), findsOneWidget,
         reason: 'dialog must not pop when the permission POST fails');
+    // permission_send_failed = "İzin gönderilemedi: ${e}" (TR default)
     expect(find.textContaining('İzin gönderilemedi'), findsOneWidget);
   });
 

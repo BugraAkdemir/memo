@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../providers/agent_provider.dart';
 import '../../utils/tool_names.dart';
@@ -18,48 +19,51 @@ class PermissionHistory extends ConsumerWidget {
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
-            const Text(
-              'Kalıcı İzinler',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            Text(
+              L10n.t('permanent_permissions'),
+              style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
             ),
             TextButton.icon(
               onPressed: () {
                 showDialog(
                   context: context,
                   builder: (context) => AlertDialog(
-                    title: const Text('Tüm İzinleri Temizle'),
-                    content: const Text('Agent için verilmiş tüm kalıcı izinleri silmek istediğinize emin misiniz?'),
+                    title: Text(L10n.t('clear_all_permissions')),
+                    content: Text(L10n.t('clear_permissions_confirm')),
                     actions: [
-                      TextButton(onPressed: () => Navigator.pop(context), child: const Text('İptal')),
+                      TextButton(
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(L10n.t('cancel'))),
                       TextButton(
                         onPressed: () {
                           ref.read(agentPermissionsProvider.notifier).clearAll();
                           Navigator.pop(context);
                         },
                         style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
-                        child: const Text('Temizle'),
+                        child: Text(L10n.t('clear')),
                       ),
                     ],
                   ),
                 );
               },
               icon: const Icon(Icons.delete_sweep, color: MemoTheme.red),
-              label: const Text('Tümünü Temizle', style: TextStyle(color: MemoTheme.red)),
+              label: Text(L10n.t('clear_all'),
+                  style: const TextStyle(color: MemoTheme.red)),
             ),
           ],
         ),
         const SizedBox(height: 8),
-        const Text(
-          'Agent modunda "Kalıcı olarak izin ver" veya "Kalıcı reddet" seçeneğiyle onayladığınız işlemler burada listelenir.',
-          style: TextStyle(color: Colors.grey),
+        Text(
+          L10n.t('permissions_desc'),
+          style: const TextStyle(color: Colors.grey),
         ),
         const SizedBox(height: 16),
         Expanded(
           child: permissionsAsync.when(
             data: (permissions) {
               if (permissions.isEmpty) {
-                return const Center(
-                  child: Text('Henüz kalıcı bir izin kaydı bulunmuyor.'),
+                return Center(
+                  child: Text(L10n.t('no_permissions')),
                 );
               }
               return ListView.builder(
@@ -74,19 +78,26 @@ class PermissionHistory extends ConsumerWidget {
                         isAllowed ? Icons.check_circle : Icons.block,
                         color: isAllowed ? MemoTheme.green : MemoTheme.red,
                       ),
-                      title: Text(ToolNames.displayName(p.toolName), style: const TextStyle(fontWeight: FontWeight.bold)),
+                      title: Text(ToolNames.displayName(p.toolName),
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
                       subtitle: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           if (ToolNames.description(p.toolName).isNotEmpty)
-                            Text(ToolNames.description(p.toolName), style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                          Text('Tarih: ${p.updatedAt}', style: const TextStyle(fontSize: 11)),
+                            Text(ToolNames.description(p.toolName),
+                                style: TextStyle(
+                                    fontSize: 12,
+                                    color: Theme.of(context)
+                                        .colorScheme
+                                        .onSurfaceVariant)),
+                          Text(L10n.t('permission_date', {'date': p.updatedAt}),
+                              style: const TextStyle(fontSize: 11)),
                         ],
                       ),
                       isThreeLine: true,
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
-                        tooltip: 'İzni İptal Et',
+                        tooltip: L10n.t('revoke_permission'),
                         onPressed: () {
                           ref.read(agentPermissionsProvider.notifier).revoke(p.id);
                         },
@@ -97,7 +108,8 @@ class PermissionHistory extends ConsumerWidget {
               );
             },
             loading: () => const Center(child: CircularProgressIndicator()),
-            error: (e, st) => Center(child: Text('Hata: $e')),
+            error: (e, st) =>
+                Center(child: Text(L10n.t('engine_error', {'e': '$e'}))),
           ),
         ),
       ],

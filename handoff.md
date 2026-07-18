@@ -1,3 +1,52 @@
+# Handoff — 2026-07-18 (Session 41) — BUG_REPORT.md'deki 7 açık maddenin tamamı tek tek düzeltildi + canlı `-p` doğrulaması (fresh `data/`, WhatsApp oturumu korunarak)
+
+## Özet
+
+Session 40'ın bıraktığı 10 açık maddeden kullanıcı onayıyla 7'si bu oturumda kapsam alındı (BUG-M1/BUG-M4, API/mimari kararı gerektirdiği için yine ertelendi; BUG-L2 zaten kod bug'ı değil, tasarım notu). Her madde ayrı, doğrulanmış (`go build/vet/test -race -tags sqlite_fts5`), commit'lendi — paralel agent kullanılmadan tek oturumda sırayla. Sonunda kullanıcının talimatıyla repo'nun `data/` dizini sıfırlandı (WhatsApp hariç, kullanıcı onayıyla) ve taze derlenen binary'yle `-p` üzerinden kısa bir canlı senaryo koşulup 7 düzeltmenin de gerçekten çalıştığı doğrulandı.
+
+## Düzeltilen 7 bug (commit'ler eskiden yeniye)
+
+1. **BUG-H2** (`ffa8a41`) — `internal/intent/extractor.go`: `rawIntent.HabitDays` `[]int` yerine `json.RawMessage`, yeni `parseHabitDays` LLM'in `habit_days`'i string/string-dizisi/doğal dil ifadesi ("hafta içi") olarak döndürmesine tolerans gösteriyor — tek alan tipi bozuk diye tüm `rawIntent` artık reddedilmiyor.
+2. **BUG-H3** (`104c582` + takip `5134823`) — `internal/memory/chunker.go`'ya `splitLongWord` fallback'ı eklendi (boşluksuz uzun "kelime" zorla bölünüyor). **Canlı `-p` testinde ilk fix'in eksik olduğu yakalandı:** `RetrieveContext`'in ham query/expandQuery/splitCompoundQuery embed çağrıları hiç sınırlanmamıştı, `saveChunk` da `assistantMsg`'i sınırsız ekliyordu — yeni `capForEmbedding` bunları da kapsadı. Ayrıca gerçek tokenizer'ın tekrarlı-karakter içerik için `len/3` tahmininden ~1.8× fazla token ürettiği canlı ölçüldü, `splitLongWord`'ün bayt marjı `maxTokens*3`'ten `maxTokens*1`'e düşürüldü.
+3. **BUG-H4** (`2d5003d`) — `internal/app/memory.go`: `extractAndPinFacts` artık sadece `userMsg`'i extraction promptuna veriyor, asistanın (tool sonucu içerebilen) `reply`'sini hiç göndermiyor — ölü kalan `reply` parametresi de imzadan kaldırıldı.
+4. **BUG-M5** (`6770aeb`) — Yeni salt-okunur `get_calendar_events` agent tool'u (`internal/agent/tools/calendar.go`), `internal/app/learning.go`'daki `calendarToolAdapter` gerçek `calendar.Store`'u sarıyor. Agent sistem promptuna model takvim sorgusunda bu aracı çağırsın diye not eklendi.
+5. **BUG-M6** (`1d173e8`) — `extractAndPinFacts` artık pinlemeden önce mevcut pinned fact'lere karşı normalize edilmiş exact-match dedup kontrolü yapıyor.
+6. **BUG-M7** (`a189a1f`) — `internal/agent/tools/command.go`'daki `RunCommand` artık komut string'inin içindeki path'leri de (`commandTargetsProtectedPath`) `read_file`'ın `validatePath`'ıyla aynı sınırla kontrol ediyor — proje dizini İÇİNDEKİ göreli path'ler (`go build ./...`) yanlış pozitif vermiyor.
+7. **BUG-L1** (`5f781e2`) — `main.go`: `*prompt != ""` yerine `flag.Visit` ile "p" bayrağının fiilen geçilip geçilmediği kontrol ediliyor; `runPrintMode` boş/whitespace prompt için temiz `FATAL` ile çıkıyor.
+
+Her commit kendi regresyon testiyle geldi (`TestExtractHabit_HabitDaysAsPhrase`, `TestChunkText_SingleOversizedWord`, `TestSaveAndRetrieve_LongUnbrokenBlob`, `TestExtractAndPinFacts_DoesNotSendAssistantReply`, `TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate`, `internal/agent/tools/calendar_test.go`, `TestRunCommand_BlocksProtectedPathBypass`, `TestEmptyPromptExitsCleanly`).
+
+## Canlı doğrulama — yöntem ve bulgular
+
+Kullanıcı `data/`'nın silinmesini istedi; WhatsApp'ın (canlı, eşleşmiş oturum) hariç tutulup tutulmayacağı netleştirildi (kullanıcı: hariç tut). Mevcut eski backend (port 8090, pre-fix binary) `POST /api/shutdown` ile düzgünce kapatıldı, ardından `rm -rf data/{memory,sessions,profile,mood,calendar,tasklists,agent-backups}` + log dosyaları silindi — `data/whatsapp`, `data/models`, `data/providers.json/.example.json`, `data/machine.key` dokunulmadan bırakıldı. Taze `go build -tags sqlite_fts5` binary'si `--headless --port 18090` ile repo kökünden çalıştırıldı (embedding modeli `/api/models/embedding/start` ile elle başlatıldı, `embedding_auto_start:false` olduğu için), WhatsApp oturumu otomatik yeniden bağlandı (246 kişi, 32 grup).
+
+"Ayşe" adında tek turluk bir test persona'sıyla `-p --auto-allow` üzerinden sırayla:
+- **H2**: "her hafta içi sabah 08:30" ve "her gün akşam 21:00" alışkanlıkları → `patterns.json`'da `declared:08:30` (days_active Mon-Fri) ve `declared:21:00` (her gün) doğru oluştu.
+- **H3**: 40.000 karakterlik boşluksuz blob → ilk denemede HÂLÂ hata verdi (retrieve + save), kök neden analiz edilip fix genişletildi (yukarıda); ikinci denemede hata yok, gerçekçi boyutlu (3KB) bir blob tam ve hatasız kaydedildi. Not: 40KB'lik aşırı-adversarial girdi hâlâ `saveMemorySync`'in 10s bütçesine (67 küçük chunk sırayla) sığmayabiliyor — ayrı, kabul edilmiş bir sınır, orijinal "tüm turu kırma" bug'ı değil.
+- **M5**: Gerçek bir takvim etkinliği eklendi (intent pipeline üzerinden), TAZE bir sohbette "bu hafta takvimimde ne var" sorusu `get_calendar_events` tool'unu gerçekten çağırdı ve doğru etkinliği döndürdü.
+- **M6**: "adım Ayşe" iki ayrı turda söylendi, `memory.db`'de sadece BİR "User's name is Ayşe." kaydı oluştu.
+- **M7**: `run_command` ile `cat /etc/hostname && whoami` reddedildi ("protected directory"), model kendiliğinden path içermeyen güvenli komutlara geçti.
+- **H4**: Gerçek WhatsApp sohbet listesi okundu (`whatsapp_latest`, salt-okunur), asistan yanıtı TEKNOFEST grubu/sınıf grubu gibi üçüncü şahıs bilgisi içerdi — pinned facts'e HİÇBİRİ sızmadı (sadece kullanıcının kendi ismi tekrar pinlendi, dedup exact-match olduğu için farklı dilde ifade edilince ayrı kayıt oldu — bilinen sınır).
+- **L1**: `timeout 8 memo-test -p ""` artık anında "FATAL: boş mesaj gönderilemez" ile çıkıyor (`exit=1`), önceden `exit=124` (zorla öldürülene kadar askıda).
+
+## Ek gözlem (düzeltilmedi, kapsam dışı)
+
+H4 testinde arka plan fact-extraction çağrısı bir kez `NONE` yerine sohbet-tarzı bir ret cümlesi ("WhatsApp mesajlarınızı göremiyorum...") döndürdü ve bu `parseExtractedFacts` tarafından geçerli bir "fact" sanılıp pinlendi. Bu, BUG-H4'ün düzelttiği gizlilik sızıntısından FARKLI bir sorun — zayıf/ücretsiz bir modelin extraction sistem promptuna uymaması. Tekrar gözlenirse `BUG_REPORT.md`'ye yeni bir madde olarak eklenmeli.
+
+## Temizlik ve doğrulama
+
+- Test backend'i (`POST /api/shutdown`) ve embedding server child process'i düzgünce durduruldu.
+- Test persona'sının ürettiği `data/{memory,sessions,profile,mood,calendar,tasklists,agent-backups}` + log dosyaları tekrar silindi — `data/whatsapp` (gerçek oturum), `data/models`, `data/providers.json`, `data/machine.key` dokunulmadan kaldı.
+- Son tam repo taraması: `go build/vet/test -race -tags sqlite_fts5 ./...` tüm paketlerde yeşil (önceki oturumlardan kalma `internal/whisper` port çakışması da bu oturumda kendiliğinden çözüldü, eski orphan süreç artık yok).
+
+## Sıradaki oturum için
+
+1. `BUG_REPORT.md`'de sadece bilinçli ertelenen 3 madde kaldı: BUG-M1 (rutin içeriği hardcoded TR), BUG-M4 (rutin saatinde timezone yok), BUG-L2 (WhatsApp gönderim yolu tutarsızlığı — tasarım kararı). Üçü de gerçek bir API/mimari/ürün kararı gerektiriyor, kullanıcı onayı bekliyor.
+2. Yukarıdaki "ek gözlem" (extraction'ın NONE yerine ret cümlesi dönmesi) tekrar gözlenirse yeni bir bug maddesi olarak açılabilir.
+3. `data/` şu an tamamen temiz (sadece WhatsApp oturumu + model/provider config canlı) — bir sonraki gerçek kullanım veya test oturumu bunun üzerine sıfırdan başlayabilir.
+
+---
+
 # Handoff — 2026-07-17 (Session 40) — "Ece" persona testi, CANLI WhatsApp ortamında — 6 yeni gerçek bug bulundu, 2 test mesajı gerçekten gönderildi, tüm bulgular BUG_REPORT.md'ye konsolide edildi
 
 ## Özet

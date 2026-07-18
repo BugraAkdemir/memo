@@ -21,6 +21,7 @@ import 'settings/tabs/backup_restore_tab.dart';
 import 'settings/tabs/remote_access_tab.dart';
 import 'settings/tabs/about_tab.dart';
 import 'settings/tabs/taskloop_tab.dart';
+import 'settings/tabs/stats_tab.dart';
 import 'settings/tabs/report_bug_tab.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
@@ -47,6 +48,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/arrows-left-right.svg',
     'lib/icon/slash/puzzle-piece.svg',
     'lib/icon/slash/cpu.svg',
+    'lib/icon/slash/chart-bar.svg',
     'lib/icon/slash/archive.svg',
     'lib/icon/slash/globe.svg',
     'lib/icon/slash/info.svg',
@@ -67,6 +69,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_mood'),
     L10n.t('tab_skills'),
     L10n.t('tab_gpu_config'),
+    L10n.t('tab_stats'),
     L10n.t('backup'),
     L10n.t('remote_access'),
     L10n.t('about'),
@@ -215,11 +218,12 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 9: return MoodTab();
       case 10: return SkillsTab();
       case 11: return GpuConfigTab();
-      case 12: return BackupRestoreTab();
-      case 13: return RemoteAccessTab();
-      case 14: return AboutTab();
-      case 15: return TaskLoopTab();
-      case 16: return ReportBugTab();
+      case 12: return StatsTab();
+      case 13: return BackupRestoreTab();
+      case 14: return RemoteAccessTab();
+      case 15: return AboutTab();
+      case 16: return TaskLoopTab();
+      case 17: return ReportBugTab();
       default: return SizedBox.shrink();
     }
   }

@@ -22,7 +22,6 @@ import 'settings/tabs/remote_access_tab.dart';
 import 'settings/tabs/about_tab.dart';
 import 'settings/tabs/taskloop_tab.dart';
 import 'settings/tabs/stats_tab.dart';
-import 'settings/tabs/dev_gateway_tab.dart';
 import 'settings/tabs/report_bug_tab.dart';
 
 /// Settings dialog with vertical tabs on the left and content on the right.
@@ -52,7 +51,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/chart-bar.svg',
     'lib/icon/slash/archive.svg',
     'lib/icon/slash/globe.svg',
-    'lib/icon/slash/code.svg',
     'lib/icon/slash/info.svg',
     'lib/icon/slash/list-checks.svg',
     'lib/icon/slash/wrench.svg',
@@ -74,7 +72,6 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_stats'),
     L10n.t('backup'),
     L10n.t('remote_access'),
-    L10n.t('tab_dev_gateway'),
     L10n.t('about'),
     L10n.t('tab_taskloop'),
     L10n.t('tab_report_bug'),
@@ -224,10 +221,9 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 12: return StatsTab();
       case 13: return BackupRestoreTab();
       case 14: return RemoteAccessTab();
-      case 15: return DevGatewayTab();
-      case 16: return AboutTab();
-      case 17: return TaskLoopTab();
-      case 18: return ReportBugTab();
+      case 15: return AboutTab();
+      case 16: return TaskLoopTab();
+      case 17: return ReportBugTab();
       default: return SizedBox.shrink();
     }
   }

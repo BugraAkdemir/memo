@@ -1,8 +1,8 @@
-/// Settings > Developer tab: the local Anthropic/OpenAI-compatible API
-/// gateway that lets external tools (Claude Code via ANTHROPIC_BASE_URL,
-/// or anything OpenAI-compatible) use whichever model/provider Memo has
-/// configured. Mirrors the backend's DevGatewayConfig
-/// (internal/config/config.go) + GatewayModel (internal/models/devgateway.go).
+/// Developer screen: the local Anthropic/OpenAI-compatible API gateway that
+/// lets external tools (Claude Code via ANTHROPIC_BASE_URL, or anything
+/// OpenAI-compatible) use whichever model/provider Memo has configured.
+/// Mirrors the backend's DevGatewayConfig (internal/config/config.go) +
+/// GatewayModel/GatewayLogEntry (internal/models/devgateway.go).
 class DevGatewayConfig {
   final bool requireAPIKey;
   final bool useMemory;
@@ -33,6 +33,48 @@ class GatewayModel {
     return GatewayModel(
       id: json['id'] as String? ?? '',
       type: json['type'] as String? ?? '',
+    );
+  }
+}
+
+/// One recorded /v1/messages request/response, for the Developer screen's
+/// live log view.
+class GatewayLogEntry {
+  final int seq;
+  final String timestamp;
+  final String model;
+  final bool stream;
+  final bool hasTools;
+  final String requestPreview;
+  final String responsePreview;
+  final String error;
+  final int durationMs;
+
+  const GatewayLogEntry({
+    required this.seq,
+    required this.timestamp,
+    required this.model,
+    required this.stream,
+    required this.hasTools,
+    required this.requestPreview,
+    required this.responsePreview,
+    required this.error,
+    required this.durationMs,
+  });
+
+  bool get isError => error.isNotEmpty;
+
+  factory GatewayLogEntry.fromJson(Map<String, dynamic> json) {
+    return GatewayLogEntry(
+      seq: (json['seq'] as num?)?.toInt() ?? 0,
+      timestamp: json['timestamp'] as String? ?? '',
+      model: json['model'] as String? ?? '',
+      stream: json['stream'] as bool? ?? false,
+      hasTools: json['has_tools'] as bool? ?? false,
+      requestPreview: json['request_preview'] as String? ?? '',
+      responsePreview: json['response_preview'] as String? ?? '',
+      error: json['error'] as String? ?? '',
+      durationMs: (json['duration_ms'] as num?)?.toInt() ?? 0,
     );
   }
 }

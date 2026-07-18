@@ -465,6 +465,15 @@ class MemoApiClient {
         .toList();
   }
 
+  Future<List<GatewayLogEntry>> getGatewayLogs() async {
+    final res = await _dio.get('/api/dev-gateway/logs');
+    final list = res.data;
+    if (list is! List) return [];
+    return list
+        .map((e) => GatewayLogEntry.fromJson(e as Map<String, dynamic>))
+        .toList();
+  }
+
   Future<List<MemorySearchResult>> filteredMemorySearch(
       String query, {String? since, String? tag}) async {
     final params = <String, dynamic>{'q': query};

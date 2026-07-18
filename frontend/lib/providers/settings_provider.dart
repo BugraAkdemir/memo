@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/api_client.dart';
 import '../core/l10n.dart';
 import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
@@ -316,6 +319,50 @@ class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
 final gatewayModelsProvider = FutureProvider<List<GatewayModel>>((ref) async {
   return ref.read(apiClientProvider).getGatewayModels();
 });
+
+/// Live log of /v1/messages requests, for the Developer screen. Polling is
+/// explicitly started/stopped by AppShell based on which NavRail tab is
+/// active (same pattern as WhatsAppStatusNotifier) — the Developer screen
+/// stays mounted at all times inside the app's IndexedStack, so relying on
+/// the widget's own initState/dispose would keep polling even while a
+/// different tab is showing.
+final gatewayLogsProvider =
+    StateNotifierProvider<GatewayLogsNotifier, AsyncValue<List<GatewayLogEntry>>>(
+  (ref) => GatewayLogsNotifier(ref.read(apiClientProvider)),
+);
+
+class GatewayLogsNotifier extends StateNotifier<AsyncValue<List<GatewayLogEntry>>> {
+  final MemoApiClient _api;
+  Timer? _pollTimer;
+
+  GatewayLogsNotifier(this._api) : super(const AsyncValue.loading());
+
+  Future<void> _fetch() async {
+    try {
+      final logs = await _api.getGatewayLogs();
+      if (mounted) state = AsyncValue.data(logs);
+    } catch (e) {
+      if (mounted) state = AsyncValue.error(e, StackTrace.current);
+    }
+  }
+
+  void startPolling() {
+    _pollTimer?.cancel();
+    _fetch();
+    _pollTimer = Timer.periodic(const Duration(seconds: 2), (_) => _fetch());
+  }
+
+  void stopPolling() {
+    _pollTimer?.cancel();
+    _pollTimer = null;
+  }
+
+  @override
+  void dispose() {
+    _pollTimer?.cancel();
+    super.dispose();
+  }
+}
 
 // ─── Sync ───────────────────────────────────────────────────────
 

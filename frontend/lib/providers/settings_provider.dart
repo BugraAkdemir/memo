@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/l10n.dart';
+import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/usage_stats.dart';
@@ -288,6 +289,33 @@ class UsageStatsNotifier extends AsyncNotifier<UsageStatsSummary> {
     );
   }
 }
+
+// ─── Dev gateway ──────────────────────────────────────────────────
+
+final devGatewayConfigProvider =
+    AsyncNotifierProvider<DevGatewayConfigNotifier, DevGatewayConfig>(
+      DevGatewayConfigNotifier.new,
+    );
+
+class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
+  @override
+  Future<DevGatewayConfig> build() async {
+    return ref.read(apiClientProvider).getDevGatewayConfig();
+  }
+
+  Future<void> save({required bool requireAPIKey, required bool useMemory}) async {
+    await ref
+        .read(apiClientProvider)
+        .setDevGatewayConfig(requireAPIKey: requireAPIKey, useMemory: useMemory);
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).getDevGatewayConfig(),
+    );
+  }
+}
+
+final gatewayModelsProvider = FutureProvider<List<GatewayModel>>((ref) async {
+  return ref.read(apiClientProvider).getGatewayModels();
+});
 
 // ─── Sync ───────────────────────────────────────────────────────
 

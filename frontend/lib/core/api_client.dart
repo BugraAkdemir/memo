@@ -10,6 +10,7 @@ import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
+import '../models/dev_gateway.dart';
 import '../models/task_list.dart';
 import '../models/usage_stats.dart';
 
@@ -441,6 +442,27 @@ class MemoApiClient {
   Future<UsageStatsSummary> getUsageStats({int days = 30}) async {
     final res = await _dio.get('/api/stats/usage', queryParameters: {'days': days});
     return UsageStatsSummary.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<DevGatewayConfig> getDevGatewayConfig() async {
+    final res = await _dio.get('/api/dev-gateway/config');
+    return DevGatewayConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<void> setDevGatewayConfig({required bool requireAPIKey, required bool useMemory}) async {
+    await _dio.put('/api/dev-gateway/config', data: {
+      'require_api_key': requireAPIKey,
+      'use_memory': useMemory,
+    });
+  }
+
+  Future<List<GatewayModel>> getGatewayModels() async {
+    final res = await _dio.get('/api/dev-gateway/models');
+    final list = res.data;
+    if (list is! List) return [];
+    return list
+        .map((e) => GatewayModel.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   Future<List<MemorySearchResult>> filteredMemorySearch(

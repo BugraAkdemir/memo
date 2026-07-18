@@ -169,7 +169,11 @@ func WriteNonStream(w http.ResponseWriter, model string, resp provider.ChatRespo
 // `data: {...}` lines), each Anthropic event carries both an `event: <type>`
 // line and a `data: {...}` line — Claude Code's SDK dispatches on the event
 // name, not just the payload shape.
-func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, model string, promptTokens int, ch <-chan provider.StreamChunk) {
+//
+// Returns the full accumulated reply text — the caller (internal/app's dev
+// gateway) needs it to optionally save the turn to RAG memory after the
+// stream finishes, without re-deriving it from the wire.
+func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher, model string, promptTokens int, ch <-chan provider.StreamChunk) string {
 	writeEvent := func(eventType string, data map[string]any) {
 		payload, err := json.Marshal(data)
 		if err != nil {
@@ -201,6 +205,7 @@ func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 
 	outputTokens := 0
 	finishReason := ""
+	var fullContent strings.Builder
 
 	for {
 		var chunk provider.StreamChunk
@@ -222,10 +227,11 @@ func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 				"type":  "error",
 				"error": map[string]string{"type": "api_error", "message": chunk.Error},
 			})
-			return
+			return fullContent.String()
 		}
 		if chunk.Content != "" {
 			outputTokens += len(strings.Fields(chunk.Content))
+			fullContent.WriteString(chunk.Content)
 			writeEvent("content_block_delta", map[string]any{
 				"type":  "content_block_delta",
 				"index": 0,
@@ -250,4 +256,6 @@ func StreamSSE(ctx context.Context, w http.ResponseWriter, flusher http.Flusher,
 	writeEvent("message_stop", map[string]any{
 		"type": "message_stop",
 	})
+
+	return fullContent.String()
 }

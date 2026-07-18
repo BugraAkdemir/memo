@@ -126,7 +126,10 @@ func TestStreamSSE_EventSequence(t *testing.T) {
 	close(ch)
 
 	rec := flushRecorder{httptest.NewRecorder()}
-	StreamSSE(context.Background(), rec, rec, "local/qwen2.5", 7, ch)
+	fullText := StreamSSE(context.Background(), rec, rec, "local/qwen2.5", 7, ch)
+	if fullText != "Hello world" {
+		t.Errorf("accumulated text = %q, want %q", fullText, "Hello world")
+	}
 
 	var events []string
 	scanner := bufio.NewScanner(strings.NewReader(rec.Body.String()))

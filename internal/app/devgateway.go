@@ -10,16 +10,9 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/memory"
+	"memo/internal/models"
 	"memo/internal/provider"
 )
-
-// GatewayModel is one selectable "type/model-id" entry for the dev gateway
-// (Settings > Developer), covering both the local llama.cpp model and every
-// enabled external provider.
-type GatewayModel struct {
-	ID   string `json:"id"`   // e.g. "local/qwen2.5", "openai/gpt-4o"
-	Type string `json:"type"` // "local" or the provider type
-}
 
 // GetDevGatewayConfig returns the dev gateway's settings.
 func (a *App) GetDevGatewayConfig() (requireAPIKey, useMemory bool) {
@@ -58,8 +51,8 @@ func (a *App) GetDevGatewayToken() string {
 // ListGatewayModels enumerates every model currently reachable through the
 // dev gateway: the local model (if a llama.cpp server is running) plus every
 // enabled external provider, each labeled "type/model-id".
-func (a *App) ListGatewayModels() []GatewayModel {
-	var out []GatewayModel
+func (a *App) ListGatewayModels() []models.GatewayModel {
+	var out []models.GatewayModel
 
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		status := a.llamaServer.GetStatus()
@@ -67,7 +60,7 @@ func (a *App) ListGatewayModels() []GatewayModel {
 		if modelName == "" {
 			modelName = provider.DefaultModels[provider.ProviderLlamaCPP]
 		}
-		out = append(out, GatewayModel{ID: "local/" + modelName, Type: "local"})
+		out = append(out, models.GatewayModel{ID: "local/" + modelName, Type: "local"})
 	}
 
 	a.providerMu.RLock()
@@ -75,7 +68,7 @@ func (a *App) ListGatewayModels() []GatewayModel {
 	a.providerMu.RUnlock()
 	if cfgMgr != nil {
 		for _, p := range cfgMgr.GetEnabled() {
-			out = append(out, GatewayModel{ID: string(p.Type) + "/" + p.Model, Type: string(p.Type)})
+			out = append(out, models.GatewayModel{ID: string(p.Type) + "/" + p.Model, Type: string(p.Type)})
 		}
 	}
 	return out

@@ -182,3 +182,69 @@ func TestStreamSSE_PropagatesError(t *testing.T) {
 		t.Errorf("message_stop appeared after error event: %s", body)
 	}
 }
+
+func TestCollectStream_Success(t *testing.T) {
+	ch := make(chan provider.StreamChunk, 3)
+	ch <- provider.StreamChunk{Content: "Hello "}
+	ch <- provider.StreamChunk{Content: "world"}
+	ch <- provider.StreamChunk{Done: true, FinishReason: "stop"}
+	close(ch)
+
+	content, finishReason, errMsg := CollectStream(context.Background(), ch)
+	if content != "Hello world" {
+		t.Errorf("content = %q", content)
+	}
+	if finishReason != "stop" {
+		t.Errorf("finishReason = %q", finishReason)
+	}
+	if errMsg != "" {
+		t.Errorf("errMsg = %q, want empty", errMsg)
+	}
+}
+
+func TestCollectStream_PropagatesError(t *testing.T) {
+	ch := make(chan provider.StreamChunk, 2)
+	ch <- provider.StreamChunk{Content: "partial"}
+	ch <- provider.StreamChunk{Error: "boom", Done: true}
+	close(ch)
+
+	content, _, errMsg := CollectStream(context.Background(), ch)
+	if content != "partial" {
+		t.Errorf("content = %q, want partial content collected before the error", content)
+	}
+	if errMsg != "boom" {
+		t.Errorf("errMsg = %q, want boom", errMsg)
+	}
+}
+
+func TestEstimateTokens(t *testing.T) {
+	messages := []provider.Message{
+		{Role: "system", Content: "You are a helpful assistant"},
+		{Role: "user", Content: "hello there friend"},
+	}
+	got := EstimateTokens(messages)
+	if got <= 0 {
+		t.Errorf("EstimateTokens = %d, want > 0", got)
+	}
+}
+
+func TestWriteError(t *testing.T) {
+	rec := httptest.NewRecorder()
+	if err := WriteError(rec, 400, "model must be \"type/model-id\""); err != nil {
+		t.Fatalf("WriteError: %v", err)
+	}
+	if rec.Code != 400 {
+		t.Errorf("status = %d, want 400", rec.Code)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded["type"] != "error" {
+		t.Errorf("type = %v, want error", decoded["type"])
+	}
+	errObj, ok := decoded["error"].(map[string]any)
+	if !ok || errObj["message"] != `model must be "type/model-id"` {
+		t.Errorf("error object = %+v", decoded["error"])
+	}
+}

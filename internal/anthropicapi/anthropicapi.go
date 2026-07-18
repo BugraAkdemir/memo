@@ -122,6 +122,64 @@ func newMessageID() string {
 	return "msg_" + strings.ReplaceAll(uuid.NewString(), "-", "")
 }
 
+// EstimateTokens gives a rough word-count-based token estimate for a
+// request's messages — used for the message_start event's initial
+// input_tokens figure in streaming responses, where the real count isn't
+// known until the backend replies. Mirrors the same word-count heuristic
+// internal/app/llm.go's estimateContentTokens already uses for its own live
+// counter; this package stays independent of internal/app (import-cycle
+// reasons — see internal/models/devgateway.go's doc comment) so it can't
+// just call that function directly.
+func EstimateTokens(messages []provider.Message) int {
+	total := 0
+	for _, m := range messages {
+		if s, ok := m.Content.(string); ok {
+			total += int(float64(len(strings.Fields(s))) * 1.3)
+		}
+	}
+	return total
+}
+
+// CollectStream drains ch into a single accumulated response — for
+// non-streaming (stream:false) requests, where the caller wants one
+// complete answer instead of an SSE sequence.
+func CollectStream(ctx context.Context, ch <-chan provider.StreamChunk) (content, finishReason, errMsg string) {
+	var sb strings.Builder
+	for {
+		select {
+		case chunk, ok := <-ch:
+			if !ok {
+				return sb.String(), finishReason, errMsg
+			}
+			if chunk.Error != "" {
+				return sb.String(), finishReason, chunk.Error
+			}
+			sb.WriteString(chunk.Content)
+			if chunk.Done {
+				finishReason = chunk.FinishReason
+				return sb.String(), finishReason, ""
+			}
+		case <-ctx.Done():
+			return sb.String(), finishReason, ctx.Err().Error()
+		}
+	}
+}
+
+// WriteError writes an Anthropic-shaped error response
+// ({"type":"error","error":{...}}) — used for request-validation and
+// backend-routing failures that happen before any streaming has started.
+func WriteError(w http.ResponseWriter, status int, message string) error {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	return json.NewEncoder(w).Encode(map[string]any{
+		"type": "error",
+		"error": map[string]string{
+			"type":    "invalid_request_error",
+			"message": message,
+		},
+	})
+}
+
 // stopReason maps a provider.StreamChunk/ChatResponse finish reason to
 // Anthropic's stop_reason vocabulary. Defaults to "end_turn" — the
 // overwhelmingly common case and a safe fallback for reasons this package

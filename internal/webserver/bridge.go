@@ -117,6 +117,15 @@ type FullBridge interface {
 	GetListenAddr() string
 	SetListenAddr(addr string)
 
+	// Dev gateway (Settings > Developer): local OpenAI/Anthropic-compatible
+	// API surface that routes to whichever model/provider is configured.
+	GetDevGatewayConfig() (requireAPIKey, useMemory bool)
+	SetDevGatewayConfig(requireAPIKey, useMemory bool) error
+	GetDevGatewayToken() string
+	ListGatewayModels() []models.GatewayModel
+	DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error)
+	MaybeSaveGatewayMemory(userMsg, reply string)
+
 	// Providers
 	GetProviders() []provider.ProviderConfig
 	UpdateProvider(cfg provider.ProviderConfig) error

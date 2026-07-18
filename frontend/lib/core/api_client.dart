@@ -11,6 +11,7 @@ import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 import '../models/task_list.dart';
+import '../models/usage_stats.dart';
 
 /// Memo Go backend REST API client.
 /// Connects to headless Go server on localhost (plain HTTP, no TLS).
@@ -435,6 +436,11 @@ class MemoApiClient {
   Future<MemoryStats> getMemoryStats() async {
     final res = await _dio.get('/api/memory/stats');
     return MemoryStats.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  Future<UsageStatsSummary> getUsageStats({int days = 30}) async {
+    final res = await _dio.get('/api/stats/usage', queryParameters: {'days': days});
+    return UsageStatsSummary.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   Future<List<MemorySearchResult>> filteredMemorySearch(

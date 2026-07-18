@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import '../models/minimal_mode_overrides.dart';
+import '../models/usage_stats.dart';
 import 'chat_provider.dart';
 
 final prefsProvider = Provider<SharedPreferences>((ref) {
@@ -265,6 +266,26 @@ class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Hafıza ayarları kaydedilemedi ($e)';
     }
+  }
+}
+
+// ─── Usage stats ──────────────────────────────────────────────────
+
+final usageStatsProvider =
+    AsyncNotifierProvider<UsageStatsNotifier, UsageStatsSummary>(
+      UsageStatsNotifier.new,
+    );
+
+class UsageStatsNotifier extends AsyncNotifier<UsageStatsSummary> {
+  @override
+  Future<UsageStatsSummary> build() async {
+    return ref.read(apiClientProvider).getUsageStats();
+  }
+
+  Future<void> refresh() async {
+    state = await AsyncValue.guard(
+      () => ref.read(apiClientProvider).getUsageStats(),
+    );
   }
 }
 

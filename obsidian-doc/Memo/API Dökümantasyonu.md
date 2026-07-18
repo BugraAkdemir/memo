@@ -68,14 +68,14 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 
 Detay: [[Proaktif Öğrenme ve Takvim]]
 
-### İstatistikler (YENİ)
+### İstatistikler (v3.3.3)
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|
 | `GET` | `/api/stats/usage?days=N` | Kullanım istatistikleri (token, hız, model dağılımı, günlük seri) — varsayılan 30 gün |
 
 Detay: [[Özellik Kataloğu]]
 
-### Geliştirici API Ağ Geçidi (YENİ)
+### Geliştirici API Ağ Geçidi (v3.3.3)
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|
 | `GET`/`PUT` | `/api/dev-gateway/config` | `require_api_key`/`use_memory` ayarlarını getir/güncelle, token'ı döner |

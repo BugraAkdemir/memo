@@ -1,10 +1,10 @@
-# Memo v3.1.2
+# Memo v3.3.3
 
 **The AI assistant that learns your habits and acts before you ask.**
 
 Local-first · Privacy-first · Zero cloud dependency · Full offline capable
 
-> v3.1.2 is the second **open beta** of the v3.1 line (July 6, 2026). Includes streaming fixes, cfgMu concurrency safety, atomic import staging, and WhatsApp session isolation. Changelog: `versinNote/v3.1.2.md`.
+> v3.3.3 is an **open beta** release (July 10, 2026). A stability and trust-focused release: terminal CLI reliability fixes, the CLI and desktop app running independently of each other, memory recall fixes, Memo finally giving a real, grounded answer about who made it, the [[Features Catalog|Usage Stats]] tab, a fully complete `.memo` backup (including `machine.key`), and the [[Developer API Gateway]] (point Claude Code at Memo with full agentic tool-calling support). Changelog: `versinNote/v3.3.3.md`.
 
 ---
 
@@ -40,6 +40,19 @@ This is a major release — the biggest update to Memo since the project started
 - **Structured logging** — `logx` slog wrapper
 - **settings_dialog split** — 5013 → 15 files
 
+## v3.3.3 Highlights
+
+- **CLI reliability fixes** — model download no longer hangs, multi-line paste works correctly, the terminal no longer stays broken
+- **CLI/desktop independence** — closing the CLI no longer takes down the desktop app's backend
+- **Memory recall fixes** — keyword search is genuinely active now, multi-topic questions no longer return incomplete answers
+- **Self-identity** — Memo now gives a real answer when asked who made it and why
+- **Minimal Mode**, **two new providers (OpenCode Zen/Go)**, **memory import from another AI**, **skill tools that actually run**
+- **[[Features Catalog|Usage Stats]]** — Settings → Stats: token/speed/model breakdown chart
+- **Complete `.memo` backup** — calendar, routines, permissions, skills, and (most critically) `machine.key` are now included
+- **[[Developer API Gateway]]** — point Claude Code (`ANTHROPIC_BASE_URL`) or any OpenAI-compatible tool at Memo, with full agentic tool-calling support
+
+Full list: `versinNote/v3.3.3.md`
+
 ---
 
 ## Quick Links
@@ -47,8 +60,9 @@ This is a major release — the biggest update to Memo since the project started
 - [[Architecture]] — Package map and module responsibilities
 - [[System Overview]] — How all subsystems fit together
 - [[Known Issues]] — Current state of known problems
-- Release notes: `versinNote/v3.1.2.md`
-- [[v3.1.1 Features]] — Full feature catalog
+- Release notes: `versinNote/v3.3.3.md`
+- [[v3.1.1 Features]] — v3.1.1's full feature catalog (historical record)
+- [[Features Catalog]] — Current feature list (including usage stats and the developer gateway)
 - [[Agent Mode]] — Agent pipeline, tools, permissions
 - [[WhatsApp Integration]] — Setup and features
 - [[Orchestra Mode]] — Multi-model workflow
@@ -63,4 +77,4 @@ This is a major release — the biggest update to Memo since the project started
 
 ---
 
-**Version**: v3.1.2 (Open Beta) · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10
+**Version**: v3.3.3 (Open Beta) · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10

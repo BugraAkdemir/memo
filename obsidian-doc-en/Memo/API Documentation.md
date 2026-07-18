@@ -57,14 +57,14 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 |--------|----------|-------------|
 | `GET`/`PUT` | `/api/orchestra/config` | Get/update orchestra config |
 
-### Usage Stats (NEW)
+### Usage Stats (v3.3.3)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET` | `/api/stats/usage?days=N` | Usage stats (tokens, speed, model breakdown, daily series) — defaults to 30 days |
 
 Details: [[Features Catalog]]
 
-### Developer API Gateway (NEW)
+### Developer API Gateway (v3.3.3)
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `GET`/`PUT` | `/api/dev-gateway/config` | Get/update `require_api_key`/`use_memory`, returns the token |

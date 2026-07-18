@@ -38,7 +38,7 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 
 Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma, sağlık kontrolü goroutine'i.
 
-## 🧑‍💻 Geliştirici Araçları (YENİ)
+## 🧑‍💻 Geliştirici Araçları (v3.3.3)
 
 | Özellik | Durum | Açıklama |
 |---------|-------|----------|
@@ -47,16 +47,16 @@ Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma,
 
 ## 🧰 Ajan Modu (Tool Calling)
 
-| Özellik | Durum |
-|---------|-------|
-| 8 yerleşik araç | ✅ |
-| 3 seviyeli tehlike | ✅ |
-| 6 izin politikası | ✅ |
-| Yürütme sandbox'ı | ✅ |
-| Hız sınırlaması (30 çağrı/dk) | ✅ |
-| Komut kara listesi (23 desen) | ✅ |
-| Denetim izi (1000 kayıt) | ✅ |
-| Ajan frontend UI | ❌ (v3.2.0) |
+| Özellik                       | Durum      |
+| ----------------------------- | ---------- |
+| 8 yerleşik araç               | ✅          |
+| 3 seviyeli tehlike            | ✅          |
+| 6 izin politikası             | ✅          |
+| Yürütme sandbox'ı             | ✅          |
+| Hız sınırlaması (30 çağrı/dk) | ✅          |
+| Komut kara listesi (23 desen) | ✅          |
+| Denetim izi (1000 kayıt)      | ✅          |
+| Ajan frontend UI              | ❌ (v3.2.0) |
 
 ## 🎵 Orkestra Modu (Multi-Model)
 

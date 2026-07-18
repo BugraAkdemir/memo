@@ -38,7 +38,7 @@ Complete feature-by-feature listing of Memo. Full detail: `docs/FEATURES.md`.
 
 Router features: fallback chain, auto-disable after 3 failures, health check goroutine.
 
-## 🧑‍💻 Developer Tools (NEW)
+## 🧑‍💻 Developer Tools (v3.3.3)
 
 | Feature | Status | Description |
 |---------|--------|-------------|

@@ -40,6 +40,9 @@ dependencies:
   # Audio recording (voice keyboard)
   record: ^5.2.1
 
+  # Charts (Settings usage-stats tab)
+  fl_chart: ^0.68.0
+
   path: any
 dependency_overrides:
   record_linux: ^1.0.0

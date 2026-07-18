@@ -149,7 +149,18 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		anthropicapi.WriteError(w, http.StatusBadGateway, errMsg)
 		return
 	}
-	resp := provider.ChatResponse{Content: content, Model: resolvedModel}
+	// Real per-request token counts aren't available here (provider.StreamChunk
+	// carries none) — estimated the same word-count way the streaming path's
+	// message_start/message_delta events already are, so a non-streaming
+	// caller doesn't just see a hardcoded 0/0.
+	resp := provider.ChatResponse{
+		Content: content,
+		Model:   resolvedModel,
+		Usage: &provider.Usage{
+			PromptTokens:     anthropicapi.EstimateTokens(chatReq.Messages),
+			CompletionTokens: anthropicapi.EstimateTokens([]provider.Message{{Role: "assistant", Content: content}}),
+		},
+	}
 	if err := anthropicapi.WriteNonStream(w, resolvedModel, resp, finishReason); err == nil {
 		s.fullBridge.MaybeSaveGatewayMemory(lastUserText, content)
 	}

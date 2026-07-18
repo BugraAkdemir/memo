@@ -43,7 +43,7 @@ Router features: fallback chain, auto-disable after 3 failures, health check gor
 | Feature | Status | Description |
 |---------|--------|-------------|
 | Usage Stats | ✅ | Settings → Stats: token/speed/model breakdown, 30-day chart (fl_chart) |
-| Developer API Gateway | ✅ | Settings → Developer: point Claude Code (`ANTHROPIC_BASE_URL`) or any OpenAI-compatible tool at Memo's local/external model — see [[Developer API Gateway]] |
+| Developer API Gateway | ✅ | Its own screen in the sidebar (not inside Settings): point Claude Code (`ANTHROPIC_BASE_URL`) or any OpenAI-compatible tool at Memo's local/external model, includes a live request/response log — see [[Developer API Gateway]] |
 
 ## 🧰 Agent Mode (Tool Calling)
 

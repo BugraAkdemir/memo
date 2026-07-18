@@ -80,6 +80,7 @@ Detay: [[Özellik Kataloğu]]
 |--------|----------|----------|
 | `GET`/`PUT` | `/api/dev-gateway/config` | `require_api_key`/`use_memory` ayarlarını getir/güncelle, token'ı döner |
 | `GET` | `/api/dev-gateway/models` | Kullanılabilir `"type/model-id"` listesini döner |
+| `GET` | `/api/dev-gateway/logs` | Canlı istek/yanıt günlüğü (Geliştirici ekranı, 200 kayıt, kalıcı değil) |
 | `POST` | `/v1/messages` | Anthropic Messages API uyumlu endpoint — `/api/` altında DEĞİL, Claude Code'un `ANTHROPIC_BASE_URL`'i doğrudan Memo'ya işaret edebilmesi için gerçek Anthropic path'iyle birebir aynı |
 
 Detay: [[Geliştirici API Ağ Geçidi]]

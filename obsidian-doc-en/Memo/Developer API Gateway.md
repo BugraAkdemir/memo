@@ -2,8 +2,8 @@
 
 > **Package:** `internal/anthropicapi/` (wire-format translation), `internal/app/devgateway.go` (routing), `internal/webserver/devgateway_handlers.go` (HTTP)
 > **Config:** `config.DevGatewayConfig` (`require_api_key`, `use_memory`) — both default off
-> **API endpoints:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `POST /v1/messages`
-> **Settings tab:** Settings → Developer
+> **API endpoints:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `GET /api/dev-gateway/logs`, `POST /v1/messages`
+> **NavRail:** the "Developer" icon in the left sidebar (NOT inside Settings — its own top-level screen)
 
 Makes Memo usable from tools that only speak an Anthropic-compatible endpoint — most notably **Claude Code itself**, via `ANTHROPIC_BASE_URL`. The point: point Claude Code at Memo, and have it actually run your own local model or your own OpenAI/Gemini/etc. API key behind the scenes.
 
@@ -29,7 +29,7 @@ The request's `"model"` field must be `<type>/<model-id>`:
 
 If more than one provider shares a type, the **enabled** one wins — there's no separate UI to disambiguate further (a deliberate simplification).
 
-`GET /api/dev-gateway/models` lists every currently available `type/model-id` — the Settings → Developer tab shows this as a copyable list.
+`GET /api/dev-gateway/models` lists every currently available `type/model-id` — the Developer screen in the left sidebar shows this as a copyable list — that same screen also has a live request/response log.
 
 ---
 
@@ -38,7 +38,7 @@ If more than one provider shares a type, the **enabled** one wins — there's no
 `DevGateway.RequireAPIKey` **defaults to off** — matching how plain localhost access is already unauthenticated (see `remoteAuthOK`). When turned on:
 
 - The request must carry an `x-api-key` header (what real Anthropic clients — including Claude Code — send automatically) or `Authorization: Bearer <token>` as a fallback.
-- The token is the **same one** Remote Access uses (`RemoteAccess.Token`) — shown as copyable in the Settings → Developer tab.
+- The token is the **same one** Remote Access uses (`RemoteAccess.Token`) — shown as copyable in the Developer screen.
 - This check is **independent** of the existing `remoteAuthMiddleware`: that one only kicks in once Memo is bound to `0.0.0.0`; this one applies based purely on `RequireAPIKey`, local or remote — the point is stopping another process on the same machine from using this port without permission.
 
 ---
@@ -68,6 +68,16 @@ Claude Code's actual power — tool calling (reading/writing files, running comm
 **Known limitation:** `gemini`, `claude`, and `ollama` provider types don't support tool calling yet — their `internal/provider` implementations don't decode/encode Tools/ToolCalls at all (a pre-existing gap, unrelated to the gateway itself). A tools-bearing request routed to one of those gets a clear error instead of silently dropping the tools.
 
 Token counts are also **estimates** (word-count based), not the real provider-reported numbers — the same approach the rest of the codebase's live counter already uses.
+
+---
+
+## Live Log
+
+The Developer screen has a live list of every request passing through the gateway — so when wiring up Claude Code for the first time, "is this actually working, what did it send, what came back" has an answer without reading backend logs. Each row: time, resolved model, `stream`/`tools` badges, duration (ms), and a truncated request/response preview or error message.
+
+- A separate, 200-entry in-memory buffer (`internal/app/devgatewaylog.go`) — independent of the app-wide shared event ring (64 slots, used at much higher frequency) so a busy chat session elsewhere can't evict the log entries you're actively watching.
+- Auto-refreshes every 2 seconds while the screen is open; stops refreshing when you switch tabs (so it doesn't poll needlessly in the background).
+- Resets on app restart — not persisted, purely for live observation.
 
 ---
 

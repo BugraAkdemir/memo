@@ -2,8 +2,8 @@
 
 > **Paket:** `internal/anthropicapi/` (wire-format çevirisi), `internal/app/devgateway.go` (yönlendirme), `internal/webserver/devgateway_handlers.go` (HTTP)
 > **Yapılandırma:** `config.DevGatewayConfig` (`require_api_key`, `use_memory`) — ikisi de varsayılan kapalı
-> **API endpoint'leri:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `POST /v1/messages`
-> **Ayarlar sekmesi:** Ayarlar → Geliştirici
+> **API endpoint'leri:** `GET/PUT /api/dev-gateway/config`, `GET /api/dev-gateway/models`, `GET /api/dev-gateway/logs`, `POST /v1/messages`
+> **Yan menü:** Sol navigasyon çubuğunda "Geliştirici" simgesi (Ayarlar içinde DEĞİL, ayrı bir ekran)
 
 Memo'yu, sadece Anthropic-uyumlu bir adres kabul eden dış araçlarla (en başta **Claude Code**'un kendisi, `ANTHROPIC_BASE_URL` üzerinden) kullanılabilir hale getirir. Amaç: Claude Code'u Memo'ya bağlayıp, arkada aslında kendi yerel modelini ya da kendi OpenAI/Gemini/vb. API anahtarını kullanmak.
 
@@ -29,7 +29,7 @@ Claude Code gibi araçlar sadece Anthropic'in Messages API formatını (`POST /v
 
 Aynı tipten birden fazla sağlayıcı tanımlıysa **etkin (enabled) olan** kullanılır — hangisinin kullanılacağını seçmek için ayrı bir arayüz yok (bilinçli basitleştirme).
 
-`GET /api/dev-gateway/models` şu an hangi `type/model-id`'lerin kullanılabilir olduğunu listeler — Ayarlar → Geliştirici sekmesi bunu kopyalanabilir bir liste olarak gösterir.
+`GET /api/dev-gateway/models` şu an hangi `type/model-id`'lerin kullanılabilir olduğunu listeler — Sol menüdeki Geliştirici ekranı bunu kopyalanabilir bir liste olarak gösterir — aynı ekranda canlı bir istek/yanıt günlüğü de var.
 
 ---
 
@@ -38,7 +38,7 @@ Aynı tipten birden fazla sağlayıcı tanımlıysa **etkin (enabled) olan** kul
 `DevGateway.RequireAPIKey` **varsayılan kapalı** — tıpkı localhost erişiminin zaten kimlik doğrulaması istemediği gibi (bkz. `remoteAuthOK`). Açılırsa:
 
 - İstek `x-api-key` header'ını taşımalı (gerçek Anthropic istemcilerinin — Claude Code dahil — otomatik gönderdiği header) ya da `Authorization: Bearer <token>` (alternatif).
-- Token, Uzaktan Erişim'in kullandığı **aynı token** (`RemoteAccess.Token`) — Ayarlar → Geliştirici sekmesinde kopyalanabilir gösterilir.
+- Token, Uzaktan Erişim'in kullandığı **aynı token** (`RemoteAccess.Token`) — Geliştirici ekranında kopyalanabilir gösterilir.
 - Bu kontrol, mevcut `remoteAuthMiddleware`'den **bağımsız**: o sadece Memo `0.0.0.0`'a bağlıyken devreye girer, bu ise local/uzak fark etmeksizin her zaman `RequireAPIKey` ayarına göre çalışır — amaç, aynı makinedeki başka bir sürecin izinsiz bu portu kullanmasını engellemek.
 
 ---
@@ -68,6 +68,16 @@ Claude Code'un asıl gücü olan araç çağırma (dosya okuma/yazma, komut çal
 **Bilinen sınırlama:** `gemini`, `claude`, `ollama` tipi sağlayıcılar için araç çağırma henüz desteklenmiyor — bu üçünün `internal/provider` içindeki kendi implementasyonları Tools/ToolCalls'ı hiç çözmüyor (ağ geçidinden bağımsız, önceden var olan bir eksiklik). Bu tiplerden birine araç tanımlı bir istek gelirse, sessizce araçları düşürmek yerine açık bir hata dönülür.
 
 Token sayıları **tahmini** (kelime sayısına dayalı) — gerçek sağlayıcının raporladığı kesin sayılar değil, kod tabanının geri kalanındaki canlı sayaçla aynı yaklaşım.
+
+---
+
+## Canlı Günlük
+
+Geliştirici ekranının altında, ağ geçidinden geçen her isteği gösteren canlı bir liste var — Claude Code'u yeni bağlarken "gerçekten çalışıyor mu, ne gönderiyor, ne dönüyor" sorusuna backend loglarına bakmadan cevap vermek için. Her satır: saat, çözülen model, `stream`/`tools` rozetleri, süre (ms), istek/yanıt önizlemesi (kısaltılmış) ya da hata mesajı.
+
+- Ayrı, 200 kayıtlık bir bellek içi tampon (`internal/app/devgatewaylog.go`) — uygulama genelindeki paylaşılan olay halkasından (64 slot, çok daha yüksek sıklıkta kullanılıyor) bağımsız, böylece yoğun bir sohbet oturumu izlemek istediğin günlük kayıtlarını dışarı atamıyor.
+- Ekran açıkken 2 saniyede bir otomatik yenileniyor; başka bir sekmeye geçince yenileme duruyor (gereksiz istek yapmasın diye).
+- Uygulama yeniden başlatılınca sıfırlanır — kalıcı değil, sadece canlı takip için.
 
 ---
 

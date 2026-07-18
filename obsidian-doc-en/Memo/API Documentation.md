@@ -69,6 +69,7 @@ Details: [[Features Catalog]]
 |--------|----------|-------------|
 | `GET`/`PUT` | `/api/dev-gateway/config` | Get/update `require_api_key`/`use_memory`, returns the token |
 | `GET` | `/api/dev-gateway/models` | Lists every available `"type/model-id"` |
+| `GET` | `/api/dev-gateway/logs` | Live request/response log (Developer screen, 200 entries, not persisted) |
 | `POST` | `/v1/messages` | Anthropic Messages API-compatible endpoint — deliberately NOT under `/api/`, matching the real Anthropic path exactly so Claude Code's `ANTHROPIC_BASE_URL` can point straight at Memo |
 
 Details: [[Developer API Gateway]]

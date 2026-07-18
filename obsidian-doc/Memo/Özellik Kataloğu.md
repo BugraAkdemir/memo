@@ -43,7 +43,7 @@ Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma,
 | Özellik | Durum | Açıklama |
 |---------|-------|----------|
 | Kullanım İstatistikleri | ✅ | Ayarlar → İstatistikler: token/hız/model dağılımı, 30 günlük grafik (fl_chart) |
-| Geliştirici API Ağ Geçidi | ✅ | Ayarlar → Geliştirici: Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'daki yerel/harici modele bağla — bkz. [[Geliştirici API Ağ Geçidi]] |
+| Geliştirici API Ağ Geçidi | ✅ | Yan menüde ayrı bir ekran (Ayarlar içinde değil): Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'daki yerel/harici modele bağla, canlı istek/yanıt günlüğü dahil — bkz. [[Geliştirici API Ağ Geçidi]] |
 
 ## 🧰 Ajan Modu (Tool Calling)
 

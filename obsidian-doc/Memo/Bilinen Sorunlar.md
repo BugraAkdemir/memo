@@ -59,15 +59,15 @@
 
 ## ✅ Yakında Düzeltilenler (v3.1.0 Cilalama)
 
-| Sorun | Orijinal Durum | Çözüm |
-|-------|---------------|-------|
-| Kaynak kodda gömülü şifreleme anahtarı | Güvenlik riski | `crypto/rand` + `data/machine.key` (0600) |
-| İstek body boyutu sınırı yok | DoS vektörü | Tüm handler'larda 50MB `limitBodyMiddleware` |
-| Yapılandırma dosyaları herkese açık | Gizlilik riski | Tüm hassas yazmalarda `0600` izinleri |
-| WhatsApp store serileştirilmemiş yazmalar | Veri bozulması riski | `sync.Mutex` `SaveMessage` + `SaveContact` üzerinde |
-| Takvim çift hatırlatma | UX hatası | `ClaimPendingReminders()` atomik transaction |
-| ngrok otomatik kurtarma yok | Güvenilirlik | Çökmede 5sn otomatik yeniden başlatma |
-| QR polling hiç durmuyor | UX sorunu | Adaptif: QR'da 2sn, bağlıyken 15sn |
-| `handleHistorySync` sadece ilk eşleşmede | Veri boşluğu | `INSERT OR IGNORE` yeniden bağlanmalarda güvenli |
-| Config'te sabit `active_provider: openai` | Geçersiz kılma hatası | Boş string varsayılan olarak değiştirildi |
-| CI pipeline yok | Kalite | GitHub Actions: Go + Flutter push'ta otomatik test |
+| Sorun                                     | Orijinal Durum        | Çözüm                                               |
+| ----------------------------------------- | --------------------- | --------------------------------------------------- |
+| Kaynak kodda gömülü şifreleme anahtarı    | Güvenlik riski        | `crypto/rand` + `data/machine.key` (0600)           |
+| İstek body boyutu sınırı yok              | DoS vektörü           | Tüm handler'larda 50MB `limitBodyMiddleware`        |
+| Yapılandırma dosyaları herkese açık       | Gizlilik riski        | Tüm hassas yazmalarda `0600` izinleri               |
+| WhatsApp store serileştirilmemiş yazmalar | Veri bozulması riski  | `sync.Mutex` `SaveMessage` + `SaveContact` üzerinde |
+| Takvim çift hatırlatma                    | UX hatası             | `ClaimPendingReminders()` atomik transaction        |
+| ngrok otomatik kurtarma yok               | Güvenilirlik          | Çökmede 5sn otomatik yeniden başlatma               |
+| QR polling hiç durmuyor                   | UX sorunu             | Adaptif: QR'da 2sn, bağlıyken 15sn                  |
+| `handleHistorySync` sadece ilk eşleşmede  | Veri boşluğu          | `INSERT OR IGNORE` yeniden bağlanmalarda güvenli    |
+| Config'te sabit `active_provider: openai` | Geçersiz kılma hatası | Boş string varsayılan olarak değiştirildi           |
+| CI pipeline yok                           | Kalite                | GitHub Actions: Go + Flutter push'ta otomatik test  |

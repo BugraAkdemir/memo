@@ -4,17 +4,21 @@
     "type": "split",
     "children": [
       {
-        "id": "8a61530e8a45b44c",
+        "id": "7488f95a64e059ea",
         "type": "tabs",
         "children": [
           {
-            "id": "9566fdd15bfe34e6",
+            "id": "ddf3aff7586b3044",
             "type": "leaf",
             "state": {
-              "type": "graph",
-              "state": {},
-              "icon": "lucide-git-fork",
-              "title": "Grafik Görünümü"
+              "type": "markdown",
+              "state": {
+                "file": "SSE Akış Protokolü.md",
+                "mode": "source",
+                "source": false
+              },
+              "icon": "lucide-file",
+              "title": "SSE Akış Protokolü"
             }
           }
         ]
@@ -49,7 +53,7 @@
             "state": {
               "type": "search",
               "state": {
-                "query": "path:",
+                "query": "",
                 "matchingCase": false,
                 "explainSearch": false,
                 "collapseAll": false,
@@ -57,7 +61,7 @@
                 "sortOrder": "alphabetical"
               },
               "icon": "lucide-search",
-              "title": "Ara"
+              "title": "Search"
             }
           },
           {
@@ -171,20 +175,37 @@
   },
   "left-ribbon": {
     "hiddenItems": {
-      "switcher:Hızlı geçişi aç": false,
-      "graph:Grafik görünümünü aç": false,
-      "canvas:Yeni tuval oluşturun": false,
-      "daily-notes:Bugünün Notunu Aç": false,
-      "templates:Şablon ekle": false,
-      "command-palette:Komut paletini aç": false,
-      "bases:Yeni taban oluştur": false
+      "switcher:Open quick switcher": false,
+      "graph:Open graph view": false,
+      "canvas:Create new canvas": false,
+      "daily-notes:Open today's daily note": false,
+      "templates:Insert template": false,
+      "command-palette:Open command palette": false,
+      "bases:Create new base": false
     }
   },
-  "active": "e3f847874ad2a5cd",
+  "active": "ddf3aff7586b3044",
   "lastOpenFiles": [
-    "00 Ana Sayfa.md",
-    "Vektör Arama Mantığı.md",
+    "Temel Özellikler.md.tmp.3919649.f7fdf317fac7",
+    "Mimari Yapı.md.tmp.3919649.25008ab76b63",
+    "SSE Akış Protokolü.md",
+    "Untitled 2.canvas",
+    "Untitled 1.canvas",
+    "2026-07-18.md",
+    "Untitled.canvas",
+    "Özellik Kataloğu.md",
+    "sedHUfVbp",
+    "Temel Özellikler.md",
+    "Bilinen Sorunlar.md",
+    "Hafıza Deposu (SQLite + vec0).md",
+    "00 Ana Sayfa.md.tmp.3919649.f60f68664d69",
     "RAG ve Semantik Hafıza.md",
+    "00 Ana Sayfa.md.tmp.3919649.7ad95cbee67a",
+    "Vektör Arama Mantığı.md",
+    "API Dokümantasyonu.md",
+    "00 Ana Sayfa.md",
+    "Geliştirici API Ağ Geçidi.md",
+    "00 Ana Sayfa.md.tmp.3919649.2a092879c611",
     "WhatsApp Entegrasyonu.md",
     "Yol Haritası.md",
     "Proaktif Öğrenme ve Takvim.md",
@@ -193,9 +214,7 @@
     "v3.1.0 Özellikleri.md.tmp.5298.3262ff6ccc98",
     "00 Ana Sayfa.md.tmp.5298.8730af108737",
     "00 Ana Sayfa.md.tmp.5298.1dd3c3229218",
-    "Proaktif Öğrenme ve Takvim.md.tmp.5298.5835c8ff6caa",
     "Backend (Go) Mimarisi.md",
-    "Bilinen Sorunlar.md",
     "Bulut Senkronizasyonu.md",
     "CGO Bayrakları.md",
     "Çözülen Sorunlar.md",
@@ -203,17 +222,8 @@
     "Frontend (Flutter) Tasarımı.md",
     "Gelişmiş Ayarlar.md",
     "Gizli Mod (Incognito).md",
-    "Hafıza Deposu (SQLite + vec0).md",
     "Sistem Genel Bakış.md",
     "Sorun Giderme.md",
-    "Özellik Kataloğu.md",
-    "Multimodal Yetenekler (Görsel ve Ses).md",
-    "Model Yönetimi (Fabrika).md",
-    "Mimari Yapı.md",
-    "Katkıda Bulunma.md",
-    "Geliştirici Kurulum Rehberi.md",
-    "Kılavuzlar.md",
-    "Orkestra Modu.md",
-    "Başlıksız.base"
+    "Multimodal Yetenekler (Görsel ve Ses).md"
   ]
 }

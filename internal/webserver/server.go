@@ -153,6 +153,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/memory/import", s.handleMemoryImport)
 	route("/api/memory/stats", s.handleMemoryStats)
 	route("/api/memory/search", s.handleMemoryFilteredSearch)
+	route("/api/stats/usage", s.handleUsageStats)
 	route("/api/version", s.handleVersion)
 	route("/api/version/check", s.handleVersionCheck)
 	route("/api/image", s.handleImage)

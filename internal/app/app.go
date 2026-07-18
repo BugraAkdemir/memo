@@ -35,6 +35,7 @@ import (
 	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/stats"
 	"memo/internal/taskloop"
 	"memo/internal/tunnel"
 	"memo/internal/webserver"
@@ -188,6 +189,8 @@ type App struct {
 
 	routineStore *routine.Store
 	routineLoop  *routine.RoutineLoop
+
+	statsStore *stats.Store
 
 	agentExecutor *agent.Executor
 	agentEnabled  bool
@@ -383,6 +386,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	a.initLearning(ctx)
 	a.initRoutines(ctx)
+	a.initStats()
 
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
@@ -649,6 +653,9 @@ func (a *App) shutdownSync(ctx context.Context) {
 	}
 	if a.calendarStore != nil {
 		stop("calendar", a.calendarStore.Close)
+	}
+	if a.statsStore != nil {
+		stop("stats", a.statsStore.Close)
 	}
 	if a.mood != nil {
 		stop("mood", a.mood.Close)

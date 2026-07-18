@@ -14,6 +14,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
+	"memo/internal/stats"
 )
 
 // estimateContentTokens gives a rough token count for a UI display label.
@@ -23,6 +24,70 @@ func estimateContentTokens(s string) int {
 		return 0
 	}
 	return int(float64(len(strings.Fields(s))) * 1.3)
+}
+
+// estimateMessagesTokens sums estimateContentTokens across a conversation —
+// a rough prompt-token count for usage stats, consistent across every
+// callLLMStream/callAgentStream branch regardless of how each builds its
+// actual provider request.
+func estimateMessagesTokens(messages []api.Message) int {
+	total := 0
+	for _, m := range messages {
+		total += estimateContentTokens(m.GetTextContent())
+	}
+	return total
+}
+
+// usageMeta identifies which provider/model produced a completed turn, for
+// the persisted usage-stats store (internal/stats). nil means "don't record"
+// — used on degenerate error paths where no model was actually resolved.
+type usageMeta struct {
+	Provider     string
+	Model        string
+	PromptTokens int
+}
+
+// currentProviderLabel returns the active external provider's name, or
+// "local" when none is set (matching resolveAgentProvider's own fallback).
+func (a *App) currentProviderLabel() string {
+	a.providerMu.RLock()
+	name := a.activeProviderName
+	a.providerMu.RUnlock()
+	if name == "" {
+		return "local"
+	}
+	return name
+}
+
+// activeProviderModel looks up the configured model for a given provider
+// name, mirroring the lookup resolveAgentProvider does inline for the agent
+// pipeline (internal/app/llm.go:54-66).
+func (a *App) activeProviderModel(name string) string {
+	a.providerMu.RLock()
+	cfgMgr := a.providerCfgMgr
+	a.providerMu.RUnlock()
+	if cfgMgr == nil {
+		return ""
+	}
+	for _, p := range cfgMgr.GetEnabled() {
+		if p.Name == name {
+			return p.Model
+		}
+	}
+	return ""
+}
+
+// localModelName returns the currently loaded local llama.cpp model's name,
+// mirroring resolveAgentProvider's own fallback (internal/app/llm.go:72-75).
+func (a *App) localModelName() string {
+	if a.llamaServer == nil {
+		return ""
+	}
+	status := a.llamaServer.GetStatus()
+	if status.ModelName != "" {
+		return status.ModelName
+	}
+	return provider.DefaultModels[provider.ProviderLlamaCPP]
 }
 
 // resolveAgentProvider returns the provider router and model name the agent
@@ -145,6 +210,8 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		a.agentExecutor.SyncRouter(agentRouter)
 
+		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: estimateMessagesTokens(messages)}
+
 		start := time.Now()
 		var fullReply strings.Builder
 		var agentEvents []interface{}
@@ -187,14 +254,14 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			}
 
 			if chunk.Done {
-				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, agentEvents)
+				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal, agentEvents)
 				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 				return
 			}
 		}
 
 		if fullReply.Len() > 0 {
-			a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, agentEvents)
+			a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal, agentEvents)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
@@ -405,6 +472,8 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 		a.agentExecutor.SyncRouter(agentRouter)
 
+		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: inputTokens}
+
 		var agentBuf strings.Builder
 		var agentEvents []interface{}
 
@@ -421,7 +490,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			// Persist the chief's synthesis before erroring out — otherwise the
 			// answer the user already saw is lost on the frontend's refresh.
 			if strings.TrimSpace(finalContent) != "" {
-				a.finishStream(start, 0, "error", finalContent, userMsg, sessionID, agentEvents)
+				a.finishStream(start, 0, "error", finalContent, userMsg, sessionID, &usageMetaVal, agentEvents)
 			}
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent hatası: " + err.Error(), Done: true})
 			return
@@ -463,7 +532,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			} else {
 				emitUsage(outAccum)
 			}
-			a.finishStream(start, 0, finishReason, finalReply, userMsg, sessionID, agentEvents)
+			a.finishStream(start, 0, finishReason, finalReply, userMsg, sessionID, &usageMetaVal, agentEvents)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
 		}
 
@@ -472,7 +541,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 				// Persist the chief's synthesis (and any agent text so far) so a
 				// mid-agent failure doesn't wipe the answer already on screen.
 				if salvage := strings.TrimSpace(finalContent + "\n\n" + agentBuf.String()); salvage != "" {
-					a.finishStream(start, 0, "error", salvage, userMsg, sessionID, agentEvents)
+					a.finishStream(start, 0, "error", salvage, userMsg, sessionID, &usageMetaVal, agentEvents)
 				}
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
 				return
@@ -543,9 +612,11 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 
 			start := time.Now()
+			ocfg := a.orchestraConductor.Config()
+			usageMetaVal := usageMeta{Provider: "orchestra", Model: ocfg.ChiefModel, PromptTokens: estimateContentTokens(conversationCtx)}
 
 			trySend(ctx, outCh, api.StreamChunk{Content: "🎵 **Orchestra Mode Active**\n"})
-			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", a.orchestraConductor.Config().ChiefType, a.orchestraConductor.Config().ChiefModel)})
+			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", ocfg.ChiefType, ocfg.ChiefModel)})
 
 			var fullBuf strings.Builder
 			var fullBufMu sync.Mutex
@@ -594,7 +665,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			fullBufStr := fullBuf.String()
 			fullBufMu.Unlock()
 			if err != nil {
-				a.finishStream(start, 0, "error", fullBufStr, userPrompt, sessionID)
+				a.finishStream(start, 0, "error", fullBufStr, userPrompt, sessionID, &usageMetaVal)
 				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
 				return
 			}
@@ -609,7 +680,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				tokenCount = len(finalContent) / 4
 			}
 
-			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt, sessionID)
+			a.finishStream(start, tokenCount, "stop", finalContent, userPrompt, sessionID, &usageMetaVal)
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		}()
 		return outCh
@@ -661,6 +732,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 
 			start := time.Now()
+			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), PromptTokens: estimateMessagesTokens(messages)}
 			var fullReply strings.Builder
 			tokenCount := 0
 			firstTokenLogged := false
@@ -702,14 +774,14 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 				}
 
 				if chunk.Done {
-					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
+					a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 					trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 					return
 				}
 			}
 
 			if fullReply.Len() > 0 {
-				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID)
+				a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(providerCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 			} else {
 				errMsg := "⚠️ Provider returned empty response"
@@ -768,6 +840,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		logx.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 
 		start := time.Now()
+		usageMetaVal := usageMeta{Provider: "local", Model: a.localModelName(), PromptTokens: estimateMessagesTokens(messages)}
 		var fullReply strings.Builder
 		tokenCount := 0
 		firstTokenLogged := false
@@ -807,7 +880,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			if chunk.Done {
 				logx.Printf("LATENCY llm.stream_done total_ms=%d generation_ms=%d tokens=%d finish=%s", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount, chunk.FinishReason)
-				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID)
+				a.finishStream(start, tokenCount, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal)
 				trySend(streamCtx, outCh, chunk)
 				return
 			}
@@ -815,7 +888,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 		if fullReply.Len() > 0 {
 			logx.Printf("LATENCY llm.stream_closed total_ms=%d generation_ms=%d tokens=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds(), tokenCount)
-			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID)
+			a.finishStream(start, tokenCount, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal)
 			trySend(streamCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 		} else {
 			logx.Printf("LATENCY llm.stream_empty total_ms=%d generation_ms=%d", time.Since(requestStart).Milliseconds(), time.Since(start).Milliseconds())
@@ -921,7 +994,28 @@ func (a *App) recordStreamError(userMsg, errReply, sessionID string) {
 	}
 }
 
-func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, agentEvents ...[]interface{}) {
+// recordUsageEvent persists one completed turn to the usage-stats store.
+// Fire-and-forget (called via `go`) — a slow or failing write must never
+// hold up or break the chat response it's describing.
+func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSecs, tokensPerSecond float64) {
+	if a.statsStore == nil {
+		return
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	if err := a.statsStore.RecordEvent(ctx, stats.Event{
+		Provider:         meta.Provider,
+		Model:            meta.Model,
+		PromptTokens:     meta.PromptTokens,
+		CompletionTokens: completionTokens,
+		DurationSecs:     durationSecs,
+		TokensPerSecond:  tokensPerSecond,
+	}); err != nil {
+		logx.Printf("WARN: record usage event: %v", err)
+	}
+}
+
+func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply, userMsg, sessionID string, meta *usageMeta, agentEvents ...[]interface{}) {
 	duration := time.Since(start).Seconds()
 	tps := 0.0
 	if duration > 0 && tokenCount > 0 {
@@ -959,6 +1053,20 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 		a.saveMemoryAsync(userMsg, reply)
 		if a.mood != nil && a.mood.Enabled() {
 			go a.updateMoodAsync(userMsg)
+		}
+		if meta != nil {
+			// tokenCount is 0 on some branches (agent pipeline doesn't count
+			// output tokens today) — fall back to estimating from the saved
+			// reply so those turns still show up in usage stats.
+			completionTokens := tokenCount
+			statsTps := tps
+			if completionTokens == 0 {
+				completionTokens = estimateContentTokens(reply)
+				if duration > 0 && completionTokens > 0 {
+					statsTps = float64(completionTokens) / duration
+				}
+			}
+			go a.recordUsageEvent(*meta, completionTokens, duration, statsTps)
 		}
 		// Captured synchronously here, not inside the goroutine — see
 		// takeNudgedPattern's doc comment for why that ordering matters.

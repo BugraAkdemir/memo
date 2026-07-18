@@ -15,6 +15,7 @@ import (
 	"net/url"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -1873,6 +1874,22 @@ func (s *Server) handleMemoryStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, s.fullBridge.GetMemoryStats())
+}
+
+// handleUsageStats serves the Settings usage-stats tab. ?days=N sets the
+// lookback window (default 30).
+func (s *Server) handleUsageStats(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	days := 30
+	if raw := r.URL.Query().Get("days"); raw != "" {
+		if parsed, err := strconv.Atoi(raw); err == nil && parsed > 0 {
+			days = parsed
+		}
+	}
+	writeJSON(w, s.fullBridge.GetUsageStats(days))
 }
 
 func (s *Server) handleMemoryFilteredSearch(w http.ResponseWriter, r *http.Request) {

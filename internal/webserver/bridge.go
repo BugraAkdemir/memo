@@ -15,6 +15,7 @@ import (
 	"memo/internal/provider"
 	"memo/internal/sessions"
 	"memo/internal/skill"
+	"memo/internal/stats"
 	"memo/internal/taskloop"
 	"memo/internal/whatsapp"
 )
@@ -59,6 +60,7 @@ type FullBridge interface {
 	ImportMemories(data []byte) (int, error)
 	GetMemoryStats() models.MemoryStats
 	FilteredMemorySearch(query string, topK int, since string, tag string) []memory.MemoryResult
+	GetUsageStats(days int) stats.Summary
 
 	// Image
 	GetImageBase64(path string) string

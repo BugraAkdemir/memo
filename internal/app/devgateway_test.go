@@ -171,3 +171,46 @@ func TestDevGatewayChatStream_NoEnabledProviderForType(t *testing.T) {
 		t.Fatal("expected an error: no enabled provider of type openai is configured")
 	}
 }
+
+func TestDevGatewayChat_InvalidModelSpec(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	_, _, err := a.DevGatewayChat(context.Background(), "no-slash-here", provider.ChatRequest{})
+	if err == nil {
+		t.Fatal("expected an error for a modelSpec without a \"/\"")
+	}
+}
+
+func TestDevGatewayChat_LocalWithNoModelLoaded(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	_, _, err := a.DevGatewayChat(context.Background(), "local/whatever", provider.ChatRequest{})
+	if err == nil {
+		t.Fatal("expected an error when no local model is loaded")
+	}
+}
+
+func TestDevGatewayChat_NoProviderConfigured(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{}}
+	_, _, err := a.DevGatewayChat(context.Background(), "openai/gpt-4o", provider.ChatRequest{})
+	if err == nil {
+		t.Fatal("expected an error when providerCfgMgr is nil")
+	}
+}
+
+// TestDevGatewayChat_ToolsRejectedForUnsupportedProviderType is the
+// regression test for the gemini/claude/ollama gap: a tools-bearing request
+// routed to one of those types must fail clearly, rather than silently
+// dropping the tools and returning a plain-text reply the caller would
+// wrongly assume came from a tool-aware exchange.
+func TestDevGatewayChat_ToolsRejectedForUnsupportedProviderType(t *testing.T) {
+	cfgMgr := provider.NewConfigManager(filepath.Join(t.TempDir(), "providers.json"), make([]byte, 32))
+	cfgMgr.Set(provider.ProviderConfig{Type: provider.ProviderGemini, Name: "my-gemini", Model: "gemini-2.0-flash", Enabled: true})
+
+	a := &App{cfg: &config.AppConfig{}, providerCfgMgr: cfgMgr}
+	req := provider.ChatRequest{
+		Tools: []provider.ToolDefinition{{Type: "function", Function: provider.ToolFunction{Name: "get_weather"}}},
+	}
+	_, _, err := a.DevGatewayChat(context.Background(), "gemini/gemini-2.0-flash", req)
+	if err == nil {
+		t.Fatal("expected an error: gemini doesn't support tool calling through the dev gateway yet")
+	}
+}

@@ -7,12 +7,24 @@ import (
 	"fmt"
 	"strings"
 
-	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/memory"
 	"memo/internal/models"
 	"memo/internal/provider"
 )
+
+// gatewayToolsUnsupportedTypes lists provider types whose internal/provider
+// implementation doesn't decode/encode Tools/ToolCalls at all yet (a
+// pre-existing gap, not introduced by the dev gateway) — every other type
+// shares internal/provider's openAIProvider, which already has full
+// ChatCompletion (non-streaming) tool support, the same path Memo's own
+// agent pipeline uses. Checked before routing a tools-bearing request so the
+// caller gets a clear error instead of tools silently vanishing.
+var gatewayToolsUnsupportedTypes = map[provider.ProviderType]bool{
+	provider.ProviderGemini: true,
+	provider.ProviderClaude: true,
+	provider.ProviderOllama: true,
+}
 
 // GetDevGatewayConfig returns the dev gateway's settings.
 func (a *App) GetDevGatewayConfig() (requireAPIKey, useMemory bool) {
@@ -74,66 +86,38 @@ func (a *App) ListGatewayModels() []models.GatewayModel {
 	return out
 }
 
-// DevGatewayChatStream is the single entry point the /v1/messages (and,
-// later, /v1/chat/completions) HTTP handlers call. modelSpec is the
-// caller-supplied "type/model-id" (e.g. "local/qwen2.5", "openai/gpt-4o");
-// "local" routes to whatever local model is loaded, anything else is matched
-// against the Type of an *enabled* configured provider — if more than one
-// provider shares that type, the first enabled match wins (no per-request
-// disambiguation; see AGENTS.md).
-//
-// When the dev gateway's "use memory" setting is on, req.Messages gets a
-// RAG memory block prepended to its system message before the call — this
-// mutates req.Messages, it does not return a copy.
-//
-// Returns a unified provider.StreamChunk channel (the local llama.cpp path
-// uses a different concrete type, api.StreamChunk, internally — converted
-// here so callers never need to know which backend served the request) and
-// the resolved "type/model-id" actually used.
-func (a *App) DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error) {
-	typ, modelID, err := splitGatewayModelSpec(modelSpec)
-	if err != nil {
-		return nil, "", err
-	}
-
-	if a.devGatewayMemoryEnabled() && a.GetMemoryEnabled() {
-		req.Messages = a.injectGatewayMemory(ctx, req.Messages)
-	}
-
+// resolveGatewayProvider returns a ready-to-call provider.Provider for typ,
+// plus the resolved "type/model-id" label. "local" builds the same
+// llama.cpp provider.Provider (llamaCPPProvider, sharing openAIProvider's
+// full ChatCompletion/Tools support) that resolveAgentProvider itself uses
+// for Memo's own agent mode — not the lower-level internal/api.Client, which
+// has no Tools support at all. Anything else is matched against the Type of
+// an *enabled* configured provider — if more than one provider shares that
+// type, the first enabled match wins (no per-request disambiguation; see
+// AGENTS.md).
+func (a *App) resolveGatewayProvider(typ, modelID string) (provider.Provider, provider.ProviderType, string, error) {
 	if typ == "local" {
-		a.clientMu.RLock()
-		client := a.client
-		a.clientMu.RUnlock()
-		if client == nil {
-			return nil, "", fmt.Errorf("no local model loaded")
+		if a.llamaServer == nil || !a.llamaServer.IsRunning() {
+			return nil, "", "", fmt.Errorf("no local model loaded")
 		}
-		apiMsgs := make([]api.Message, len(req.Messages))
-		for i, m := range req.Messages {
-			apiMsgs[i] = api.Message{Role: m.Role, Content: m.Content}
+		cfg := provider.ProviderConfig{
+			Type:    provider.ProviderLlamaCPP,
+			Name:    "Local (llama.cpp)",
+			BaseURL: a.llamaServer.GetBaseURL(),
+			Model:   modelID,
 		}
-		localCh, err := client.ChatCompletionStream(ctx, apiMsgs, req.Temperature, req.TopP, req.MaxTokens)
+		prov, err := provider.NewProvider(cfg)
 		if err != nil {
-			return nil, "", err
+			return nil, "", "", err
 		}
-		out := make(chan provider.StreamChunk, 128)
-		go func() {
-			defer close(out)
-			for chunk := range localCh {
-				select {
-				case out <- provider.StreamChunk{Content: chunk.Content, Thinking: chunk.Thinking, Done: chunk.Done, Error: chunk.Error, FinishReason: chunk.FinishReason}:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}()
-		return out, "local/" + modelID, nil
+		return prov, provider.ProviderLlamaCPP, "local/" + modelID, nil
 	}
 
 	a.providerMu.RLock()
 	cfgMgr := a.providerCfgMgr
 	a.providerMu.RUnlock()
 	if cfgMgr == nil {
-		return nil, "", fmt.Errorf("no provider configured")
+		return nil, "", "", fmt.Errorf("no provider configured")
 	}
 	var matched *provider.ProviderConfig
 	for _, p := range cfgMgr.GetEnabled() {
@@ -144,20 +128,84 @@ func (a *App) DevGatewayChatStream(ctx context.Context, modelSpec string, req pr
 		}
 	}
 	if matched == nil {
-		return nil, "", fmt.Errorf("no enabled provider configured for type %q", typ)
+		return nil, "", "", fmt.Errorf("no enabled provider configured for type %q", typ)
 	}
 	matched.Model = modelID
-	req.Model = modelID
 
 	prov, err := provider.NewProvider(*matched)
 	if err != nil {
+		return nil, "", "", err
+	}
+	return prov, matched.Type, typ + "/" + modelID, nil
+}
+
+// DevGatewayChatStream is the /v1/messages HTTP handler's entry point for
+// requests with no tools — a plain streaming (or streamed-then-buffered)
+// text exchange. modelSpec is the caller-supplied "type/model-id" (e.g.
+// "local/qwen2.5", "openai/gpt-4o"); see resolveGatewayProvider for how it
+// resolves.
+//
+// When the dev gateway's "use memory" setting is on, req.Messages gets a
+// RAG memory block prepended to its system message before the call — this
+// mutates req.Messages, it does not return a copy.
+func (a *App) DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error) {
+	typ, modelID, err := splitGatewayModelSpec(modelSpec)
+	if err != nil {
 		return nil, "", err
 	}
+
+	if a.devGatewayMemoryEnabled() && a.GetMemoryEnabled() {
+		req.Messages = a.injectGatewayMemory(ctx, req.Messages)
+	}
+
+	prov, _, resolvedModel, err := a.resolveGatewayProvider(typ, modelID)
+	if err != nil {
+		return nil, "", err
+	}
+	req.Model = modelID
+
 	ch, err := prov.ChatCompletionStream(ctx, req)
 	if err != nil {
 		return nil, "", err
 	}
-	return ch, typ + "/" + modelID, nil
+	return ch, resolvedModel, nil
+}
+
+// DevGatewayChat is the /v1/messages HTTP handler's entry point for
+// tools-bearing requests — always a non-streaming round trip, since Memo's
+// own agent pipeline (internal/agent/pipeline.go) already only ever gets
+// tool calls this way; no provider's streaming path decodes tool_calls
+// deltas. The caller (handleAnthropicMessages) replays the buffered
+// response as an SSE sequence itself when the client asked for streaming —
+// see anthropicapi.StreamSSEFromResponse.
+//
+// Returns a clear error, rather than silently dropping the tools, when
+// modelSpec resolves to a provider type that doesn't support Tools/ToolCalls
+// at all yet (gemini/claude/ollama — see gatewayToolsUnsupportedTypes).
+func (a *App) DevGatewayChat(ctx context.Context, modelSpec string, req provider.ChatRequest) (*provider.ChatResponse, string, error) {
+	typ, modelID, err := splitGatewayModelSpec(modelSpec)
+	if err != nil {
+		return nil, "", err
+	}
+
+	if a.devGatewayMemoryEnabled() && a.GetMemoryEnabled() {
+		req.Messages = a.injectGatewayMemory(ctx, req.Messages)
+	}
+
+	prov, resolvedType, resolvedModel, err := a.resolveGatewayProvider(typ, modelID)
+	if err != nil {
+		return nil, "", err
+	}
+	if len(req.Tools) > 0 && gatewayToolsUnsupportedTypes[resolvedType] {
+		return nil, "", fmt.Errorf("tool calling isn't supported yet for provider type %q through the dev gateway", typ)
+	}
+	req.Model = modelID
+
+	resp, err := prov.ChatCompletion(ctx, req)
+	if err != nil {
+		return nil, "", err
+	}
+	return resp, resolvedModel, nil
 }
 
 // MaybeSaveGatewayMemory saves a completed dev-gateway turn to RAG memory —

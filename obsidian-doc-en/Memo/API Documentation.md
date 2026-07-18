@@ -57,6 +57,22 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 |--------|----------|-------------|
 | `GET`/`PUT` | `/api/orchestra/config` | Get/update orchestra config |
 
+### Usage Stats (NEW)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/stats/usage?days=N` | Usage stats (tokens, speed, model breakdown, daily series) — defaults to 30 days |
+
+Details: [[Features Catalog]]
+
+### Developer API Gateway (NEW)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`PUT` | `/api/dev-gateway/config` | Get/update `require_api_key`/`use_memory`, returns the token |
+| `GET` | `/api/dev-gateway/models` | Lists every available `"type/model-id"` |
+| `POST` | `/v1/messages` | Anthropic Messages API-compatible endpoint — deliberately NOT under `/api/`, matching the real Anthropic path exactly so Claude Code's `ANTHROPIC_BASE_URL` can point straight at Memo |
+
+Details: [[Developer API Gateway]]
+
 ### Synchronization
 | Method | Endpoint | Description |
 |--------|----------|-------------|

@@ -55,6 +55,7 @@ Bu büyük bir sürüm — proje başladığından beri en büyük güncelleme. 
 - [[RAG ve Semantik Hafıza]] — Vektör deposu ve geri getirme
 - [[Proaktif Öğrenme ve Takvim]] — Gözlemci + niyet çıkarımı
 - [[Harici Sağlayıcılar]] — 8 sağlayıcı tipi + yedek zincir
+- [[Geliştirici API Ağ Geçidi]] — Claude Code'u (ya da Anthropic-uyumlu herhangi bir aracı) Memo'ya bağla
 - [[Bulut Senkronizasyonu]] — Uçtan uca şifreli Google Drive yedekleme
 - [[API Dokümantasyonu]] — ~90 REST endpoint'inin tamamı
 - [[Geliştirici Kurulum Rehberi]] — Kaynaktan derleme

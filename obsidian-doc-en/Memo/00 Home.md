@@ -55,6 +55,7 @@ This is a major release — the biggest update to Memo since the project started
 - [[RAG and Semantic Memory]] — Vector store and retrieval
 - [[Proactive Learning and Calendar]] — Observer + intent extraction
 - [[External Providers]] — 8 provider types + fallback chain
+- [[Developer API Gateway]] — Point Claude Code (or anything Anthropic-compatible) at Memo
 - [[Cloud Sync]] — E2E encrypted Google Drive backup
 - [[API Documentation]] — All ~90 REST endpoints
 - [[Developer Setup Guide]] — Build from source

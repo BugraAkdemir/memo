@@ -38,6 +38,13 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 
 Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma, sağlık kontrolü goroutine'i.
 
+## 🧑‍💻 Geliştirici Araçları (YENİ)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Kullanım İstatistikleri | ✅ | Ayarlar → İstatistikler: token/hız/model dağılımı, 30 günlük grafik (fl_chart) |
+| Geliştirici API Ağ Geçidi | ✅ | Ayarlar → Geliştirici: Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'daki yerel/harici modele bağla — bkz. [[Geliştirici API Ağ Geçidi]] |
+
 ## 🧰 Ajan Modu (Tool Calling)
 
 | Özellik | Durum |

@@ -14,11 +14,15 @@ GET /api/export
 Bir zip arşivi oluşturur:
 - Tüm sohbet oturumları (`data/sessions/`)
 - Yapılandırma (`config/config.yaml`)
-- Şifrelenmiş anahtarlarla sağlayıcı yapılandırması (`data/providers.json`)
+- Şifrelenmiş anahtarlarla sağlayıcı yapılandırması (`data/providers.json`) **+ bu anahtarları çözen `data/machine.key`** — eskiden dahil edilmiyordu, bu yüzden başka bir makinede geri yüklenen `providers.json` şifreli API anahtarları hiçbir zaman çözülemiyordu
+- Agent izin politikaları (`data/permissions.json`)
 - Orkestra yapılandırması (`data/orchestra.json`)
 - Hafıza deposu (`data/memory/`)
+- Takvim (`data/calendar/`), öğrenilen alışkanlıklar/bekleyen öneriler (`data/profile/`), rutinler (`data/routines/`), görev listeleri (`data/tasklists/`), kullanım istatistikleri (`data/stats/`), agent dosya-düzenleme güvenlik yedekleri (`data/agent-backups/`), kurulu skill'ler (`data/skills/`)
 - WhatsApp verileri (`data/whatsapp/`)
-- Model indeksi (`data/models/`)
+- Model indeksi (`data/models/`, opsiyonel — `includeModels` bayrağıyla)
+
+Bilinçli olarak **hariç tutulanlar**: `data/sync_token.json` (bu cihaza özel Drive senkron imleci — başka bir kuruluma taşınırsa senkronu yanlış yola sokabilir), `data/tailscale/` (makineye özel tsnet kimliği), `data/backups/` (bu fonksiyonun kendi anlık görüntü dizini — dahil etmek eski yedekleri yenisinin içine iç içe koyardı).
 
 ### İçe Aktarımı
 ```

@@ -14,11 +14,15 @@ GET /api/export
 Creates a zip archive containing:
 - All chat sessions (`data/sessions/`)
 - Configuration (`config/config.yaml`)
-- Provider config with encrypted keys (`data/providers.json`)
+- Provider config with encrypted keys (`data/providers.json`) **+ `data/machine.key`**, which decrypts them — previously missing, so a `providers.json` restored on a different machine could never be decrypted again
+- Agent tool permission policies (`data/permissions.json`)
 - Orchestra config (`data/orchestra.json`)
 - Memory store (`data/memory/`)
+- Calendar (`data/calendar/`), learned habits/pending suggestions (`data/profile/`), routines (`data/routines/`), task lists (`data/tasklists/`), usage stats (`data/stats/`), agent file-edit safety backups (`data/agent-backups/`), installed skills (`data/skills/`)
 - WhatsApp data (`data/whatsapp/`)
-- Model index (`data/models/`)
+- Model index (`data/models/`, optional — via the `includeModels` flag)
+
+Deliberately **excluded**: `data/sync_token.json` (a Drive incremental-sync cursor tied to this device — replaying it elsewhere could make cloud sync skip real changes), `data/tailscale/` (machine-specific tsnet identity), `data/backups/` itself (this function's own snapshot directory — including it would nest old backups inside the new one).
 
 ### Import
 ```

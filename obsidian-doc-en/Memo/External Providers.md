@@ -280,5 +280,6 @@ If no provider is configured and no local model is running, an error is returned
 - [[Architecture]] — System module map
 - [[Orchestra Mode]] — How providers are used in multi-model orchestration
 - [[Agent Mode]] — Tool calling with provider models
+- [[Developer API Gateway]] — Using these providers from an external Anthropic/OpenAI-compatible tool like Claude Code
 - [[API Documentation]] — Provider API endpoints
 - [[Backend (Go) Architecture]] — Package structure

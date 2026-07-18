@@ -68,6 +68,22 @@ Memo Backend, Flutter Frontend veya üçüncü parti istemciler için kapsamlı 
 
 Detay: [[Proaktif Öğrenme ve Takvim]]
 
+### İstatistikler (YENİ)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/stats/usage?days=N` | Kullanım istatistikleri (token, hız, model dağılımı, günlük seri) — varsayılan 30 gün |
+
+Detay: [[Özellik Kataloğu]]
+
+### Geliştirici API Ağ Geçidi (YENİ)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET`/`PUT` | `/api/dev-gateway/config` | `require_api_key`/`use_memory` ayarlarını getir/güncelle, token'ı döner |
+| `GET` | `/api/dev-gateway/models` | Kullanılabilir `"type/model-id"` listesini döner |
+| `POST` | `/v1/messages` | Anthropic Messages API uyumlu endpoint — `/api/` altında DEĞİL, Claude Code'un `ANTHROPIC_BASE_URL`'i doğrudan Memo'ya işaret edebilmesi için gerçek Anthropic path'iyle birebir aynı |
+
+Detay: [[Geliştirici API Ağ Geçidi]]
+
 ### Senkronizasyon
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|

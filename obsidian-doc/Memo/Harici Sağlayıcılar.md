@@ -262,4 +262,5 @@ Hiçbir sağlayıcı yapılandırılmamışsa ve yerel model çalışmıyorsa ha
 - [[Mimari Yapı]] — Sistem modül haritası
 - [[Orkestra Modu]] — Provider'ların orkestrasyonda kullanımı
 - [[Ajan Modu]] — Provider modellerle araç çağırma
+- [[Geliştirici API Ağ Geçidi]] — Bu sağlayıcıları dışarıdan Anthropic/OpenAI-uyumlu bir araçla (Claude Code gibi) kullanma
 - [[API Dökümantasyonu]] — Provider endpoint'leri

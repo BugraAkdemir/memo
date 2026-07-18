@@ -55,6 +55,7 @@ Memo is a local-first, privacy-focused LLM chat application with RAG memory, ext
 | `internal/truncate/` | Token-aware context truncation | `tokens.go` |
 | `internal/models/` | Shared data types | `memory.go` |
 | `internal/lora/` | LoRA adapter building (embryonic) | `build/` (cmake artifacts) |
+| `internal/stats/` | Persistent LLM usage-event store (tokens, speed, model) for the Settings stats tab | `store.go` |
 
 ### Flutter Entrypoint
 
@@ -390,6 +391,11 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 - sqlite-vec extension (`vec0.so`/`vec0.dll`) is bundled under `binaries/` — never add a runtime download for it.
 
 ---
+
+### Usage Stats (`internal/stats/`) (2026-07-18)
+- New: persistent per-turn usage tracking. `finishStream` (`internal/app/llm.go`) records one `stats.Event` (provider, model, prompt/completion tokens, duration, tokens/sec) after every real completion — agent, agent+orchestra, orchestra-only, external provider, and local llama paths all populate a `*usageMeta` (nil on degenerate error paths where no model was ever resolved). Incognito mode is excluded, matching how memory/mood already opt out. `GET /api/stats/usage?days=N` (default 30) serves the aggregation to a new Settings tab (`frontend/lib/widgets/settings/tabs/stats_tab.dart`): KPI cards, a stacked daily bar chart (fl_chart — first chart dependency added to the desktop frontend), and a model-usage breakdown.
+- Token counts are estimates (`estimateContentTokens`/`estimateMessagesTokens`, word-count-based), not real provider-reported token counts — consistent with the rest of the codebase's existing live token counter, but means the stats tab's numbers won't exactly match a provider's own dashboard.
+- **Cost/price is deliberately not shown** — no provider in this codebase exposes pricing backend-side today (only the frontend's OpenRouter model browser fetches `prompt_price`/`completion_price` live, per-request, and only for OpenRouter). Decided with the user rather than shipping a maintained-nowhere static price table or guessing; revisit if/when pricing data becomes available server-side.
 
 ## Known Open Work (pointers)
 

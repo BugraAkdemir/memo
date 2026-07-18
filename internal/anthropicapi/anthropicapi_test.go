@@ -76,6 +76,121 @@ func TestToChatRequest_DefaultsMaxTokens(t *testing.T) {
 	}
 }
 
+func TestToChatRequest_Tools(t *testing.T) {
+	body := []byte(`{
+		"model": "openai/gpt-4o",
+		"messages": [{"role": "user", "content": "what's the weather in SF?"}],
+		"tools": [{"name": "get_weather", "description": "Get the weather", "input_schema": {"type":"object","properties":{"location":{"type":"string"}},"required":["location"]}}]
+	}`)
+	req, err := ParseRequest(body)
+	if err != nil {
+		t.Fatalf("ParseRequest: %v", err)
+	}
+	chatReq := ToChatRequest(req)
+	if len(chatReq.Tools) != 1 {
+		t.Fatalf("Tools = %+v", chatReq.Tools)
+	}
+	tool := chatReq.Tools[0]
+	if tool.Type != "function" || tool.Function.Name != "get_weather" || tool.Function.Description != "Get the weather" {
+		t.Errorf("tool = %+v", tool)
+	}
+	var schema map[string]any
+	if err := json.Unmarshal(tool.Function.Parameters, &schema); err != nil {
+		t.Fatalf("Parameters not valid JSON: %v", err)
+	}
+	if schema["type"] != "object" {
+		t.Errorf("schema = %+v", schema)
+	}
+}
+
+func TestToChatRequest_AssistantToolUseBlock(t *testing.T) {
+	body := []byte(`{
+		"model": "openai/gpt-4o",
+		"messages": [
+			{"role": "user", "content": "what's the weather in SF?"},
+			{"role": "assistant", "content": [
+				{"type": "text", "text": "Let me check."},
+				{"type": "tool_use", "id": "toolu_01ABC", "name": "get_weather", "input": {"location": "SF"}}
+			]}
+		]
+	}`)
+	req, err := ParseRequest(body)
+	if err != nil {
+		t.Fatalf("ParseRequest: %v", err)
+	}
+	chatReq := ToChatRequest(req)
+	if len(chatReq.Messages) != 2 {
+		t.Fatalf("Messages = %+v", chatReq.Messages)
+	}
+	asst := chatReq.Messages[1]
+	if asst.Role != "assistant" || asst.Content != "Let me check." {
+		t.Errorf("assistant message = %+v", asst)
+	}
+	if len(asst.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls = %+v", asst.ToolCalls)
+	}
+	tc := asst.ToolCalls[0]
+	if tc.ID != "toolu_01ABC" || tc.Function.Name != "get_weather" {
+		t.Errorf("tool call = %+v", tc)
+	}
+	var input map[string]any
+	if err := json.Unmarshal(tc.Function.Arguments, &input); err != nil {
+		t.Fatalf("Arguments not valid JSON: %v", err)
+	}
+	if input["location"] != "SF" {
+		t.Errorf("input = %+v", input)
+	}
+}
+
+func TestToChatRequest_UserToolResultBlock(t *testing.T) {
+	body := []byte(`{
+		"model": "openai/gpt-4o",
+		"messages": [
+			{"role": "user", "content": [
+				{"type": "tool_result", "tool_use_id": "toolu_01ABC", "content": "Sunny, 65F"}
+			]}
+		]
+	}`)
+	req, err := ParseRequest(body)
+	if err != nil {
+		t.Fatalf("ParseRequest: %v", err)
+	}
+	chatReq := ToChatRequest(req)
+	if len(chatReq.Messages) != 1 {
+		t.Fatalf("Messages = %+v", chatReq.Messages)
+	}
+	toolMsg := chatReq.Messages[0]
+	if toolMsg.Role != "tool" || toolMsg.ToolCallID != "toolu_01ABC" || toolMsg.Content != "Sunny, 65F" {
+		t.Errorf("tool result message = %+v", toolMsg)
+	}
+}
+
+func TestToChatRequest_UserToolResultPlusText(t *testing.T) {
+	body := []byte(`{
+		"model": "openai/gpt-4o",
+		"messages": [
+			{"role": "user", "content": [
+				{"type": "tool_result", "tool_use_id": "toolu_01ABC", "content": "Sunny, 65F"},
+				{"type": "text", "text": "thanks, what about tomorrow?"}
+			]}
+		]
+	}`)
+	req, err := ParseRequest(body)
+	if err != nil {
+		t.Fatalf("ParseRequest: %v", err)
+	}
+	chatReq := ToChatRequest(req)
+	if len(chatReq.Messages) != 2 {
+		t.Fatalf("Messages = %+v, want a tool message + a trailing user text message", chatReq.Messages)
+	}
+	if chatReq.Messages[0].Role != "tool" || chatReq.Messages[0].ToolCallID != "toolu_01ABC" {
+		t.Errorf("tool message = %+v", chatReq.Messages[0])
+	}
+	if chatReq.Messages[1].Role != "user" || chatReq.Messages[1].Content != "thanks, what about tomorrow?" {
+		t.Errorf("trailing user message = %+v", chatReq.Messages[1])
+	}
+}
+
 func TestWriteNonStream(t *testing.T) {
 	rec := httptest.NewRecorder()
 	resp := provider.ChatResponse{
@@ -107,6 +222,47 @@ func TestWriteNonStream(t *testing.T) {
 	usage := decoded["usage"].(map[string]any)
 	if usage["input_tokens"] != float64(10) || usage["output_tokens"] != float64(3) {
 		t.Errorf("usage = %+v", usage)
+	}
+}
+
+func TestWriteNonStream_ToolCalls(t *testing.T) {
+	rec := httptest.NewRecorder()
+	resp := provider.ChatResponse{
+		Content: "Let me check.",
+		ToolCalls: []provider.ToolCall{
+			{ID: "toolu_01ABC", Type: "function", Function: provider.ToolCallFunction{
+				Name: "get_weather", Arguments: json.RawMessage(`{"location":"SF"}`),
+			}},
+		},
+	}
+	// finishReason "stop" is deliberately passed — a tool call must still win
+	// over whatever finish reason the backend reported.
+	if err := WriteNonStream(rec, "openai/gpt-4o", resp, "stop"); err != nil {
+		t.Fatalf("WriteNonStream: %v", err)
+	}
+
+	var decoded map[string]any
+	if err := json.Unmarshal(rec.Body.Bytes(), &decoded); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if decoded["stop_reason"] != "tool_use" {
+		t.Errorf("stop_reason = %v, want tool_use", decoded["stop_reason"])
+	}
+	content := decoded["content"].([]any)
+	if len(content) != 2 {
+		t.Fatalf("content = %+v, want [text, tool_use]", content)
+	}
+	textBlock := content[0].(map[string]any)
+	if textBlock["type"] != "text" || textBlock["text"] != "Let me check." {
+		t.Errorf("text block = %+v", textBlock)
+	}
+	toolBlock := content[1].(map[string]any)
+	if toolBlock["type"] != "tool_use" || toolBlock["id"] != "toolu_01ABC" || toolBlock["name"] != "get_weather" {
+		t.Errorf("tool_use block = %+v", toolBlock)
+	}
+	input := toolBlock["input"].(map[string]any)
+	if input["location"] != "SF" {
+		t.Errorf("input = %+v", input)
 	}
 }
 
@@ -180,6 +336,69 @@ func TestStreamSSE_PropagatesError(t *testing.T) {
 	// message_stop should never appear after an error event.
 	if idx := strings.Index(body, "event: error"); idx >= 0 && strings.Contains(body[idx:], "message_stop") {
 		t.Errorf("message_stop appeared after error event: %s", body)
+	}
+}
+
+func TestStreamSSEFromResponse_ToolUse(t *testing.T) {
+	resp := provider.ChatResponse{
+		Content: "Let me check.",
+		ToolCalls: []provider.ToolCall{
+			{ID: "toolu_01ABC", Type: "function", Function: provider.ToolCallFunction{
+				Name: "get_weather", Arguments: json.RawMessage(`{"location":"SF"}`),
+			}},
+		},
+		Usage: &provider.Usage{PromptTokens: 20, CompletionTokens: 5},
+	}
+
+	rec := flushRecorder{httptest.NewRecorder()}
+	fullText := StreamSSEFromResponse(rec, rec, "openai/gpt-4o", 20, resp, "tool_calls")
+	if fullText != "Let me check." {
+		t.Errorf("returned text = %q", fullText)
+	}
+
+	body := rec.Body.String()
+	var events []string
+	scanner := bufio.NewScanner(strings.NewReader(body))
+	for scanner.Scan() {
+		if name, ok := strings.CutPrefix(scanner.Text(), "event: "); ok {
+			events = append(events, name)
+		}
+	}
+	want := []string{
+		"message_start",
+		"content_block_start", "content_block_delta", "content_block_stop", // text block
+		"content_block_start", "content_block_delta", "content_block_stop", // tool_use block
+		"message_delta", "message_stop",
+	}
+	if len(events) != len(want) {
+		t.Fatalf("events = %v, want %v", events, want)
+	}
+	for i, e := range want {
+		if events[i] != e {
+			t.Errorf("event[%d] = %q, want %q", i, events[i], e)
+		}
+	}
+
+	if !strings.Contains(body, `"type":"tool_use"`) {
+		t.Errorf("missing tool_use content_block_start in body: %s", body)
+	}
+	if !strings.Contains(body, `"partial_json":"{\"location\":\"SF\"}"`) {
+		t.Errorf("missing tool arguments as input_json_delta in body: %s", body)
+	}
+	if !strings.Contains(body, `"stop_reason":"tool_use"`) {
+		t.Errorf("expected stop_reason tool_use in message_delta, got: %s", body)
+	}
+}
+
+func TestStreamSSEFromResponse_TextOnly(t *testing.T) {
+	resp := provider.ChatResponse{Content: "just a plain answer"}
+	rec := flushRecorder{httptest.NewRecorder()}
+	fullText := StreamSSEFromResponse(rec, rec, "local/qwen2.5", 5, resp, "stop")
+	if fullText != "just a plain answer" {
+		t.Errorf("returned text = %q", fullText)
+	}
+	if !strings.Contains(rec.Body.String(), `"stop_reason":"end_turn"`) {
+		t.Errorf("expected end_turn stop_reason for a text-only response: %s", rec.Body.String())
 	}
 }
 

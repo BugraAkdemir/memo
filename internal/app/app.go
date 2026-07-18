@@ -192,6 +192,8 @@ type App struct {
 
 	statsStore *stats.Store
 
+	devGatewayLog gatewayLog
+
 	agentExecutor *agent.Executor
 	agentEnabled  bool
 	agentMu       sync.RWMutex

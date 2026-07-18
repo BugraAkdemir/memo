@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 
 	"memo/internal/anthropicapi"
 	"memo/internal/provider"
@@ -57,6 +58,16 @@ func (s *Server) handleDevGatewayModels(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, s.fullBridge.ListGatewayModels())
+}
+
+// handleDevGatewayLogs returns the in-memory dev-gateway request/response
+// log (Developer screen's live log view), oldest first.
+func (s *Server) handleDevGatewayLogs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetGatewayLogs())
 }
 
 // devGatewayAuthOK reports whether an incoming /v1/messages request may
@@ -123,6 +134,16 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	lastUserText := lastUserMessageText(chatReq.Messages)
 	ctx := r.Context()
 
+	// Recorded into the dev-gateway log (Developer screen) no matter which
+	// branch below is taken or how it ends — resolvedModel/replyText/errMsg
+	// are filled in as the request proceeds.
+	start := time.Now()
+	resolvedModel := anthReq.Model
+	var replyText, errMsg string
+	defer func() {
+		s.fullBridge.RecordGatewayLog(resolvedModel, anthReq.Stream, len(chatReq.Tools) > 0, lastUserText, replyText, errMsg, time.Since(start))
+	}()
+
 	// A tools-bearing request always goes through the non-streaming
 	// DevGatewayChat, regardless of anthReq.Stream — see DevGatewayChat's
 	// doc comment for why (no provider's streaming path decodes tool_calls
@@ -130,11 +151,13 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	// client asked for streaming, the complete response is replayed as an
 	// SSE sequence via StreamSSEFromResponse instead of a live channel.
 	if len(chatReq.Tools) > 0 {
-		resp, resolvedModel, err := s.fullBridge.DevGatewayChat(ctx, anthReq.Model, chatReq)
+		resp, rm, err := s.fullBridge.DevGatewayChat(ctx, anthReq.Model, chatReq)
 		if err != nil {
-			anthropicapi.WriteError(w, http.StatusBadGateway, err.Error())
+			errMsg = err.Error()
+			anthropicapi.WriteError(w, http.StatusBadGateway, errMsg)
 			return
 		}
+		resolvedModel = rm
 		if resp.Usage == nil {
 			resp.Usage = &provider.Usage{
 				PromptTokens:     anthropicapi.EstimateTokens(chatReq.Messages),
@@ -144,42 +167,49 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		if anthReq.Stream {
 			flusher, ok := prepareSSE(w)
 			if !ok {
-				anthropicapi.WriteError(w, http.StatusInternalServerError, "streaming unsupported")
+				errMsg = "streaming unsupported"
+				anthropicapi.WriteError(w, http.StatusInternalServerError, errMsg)
 				return
 			}
-			reply := anthropicapi.StreamSSEFromResponse(w, flusher, resolvedModel, resp.Usage.PromptTokens, *resp, "")
-			s.fullBridge.MaybeSaveGatewayMemory(lastUserText, reply)
+			replyText = anthropicapi.StreamSSEFromResponse(w, flusher, resolvedModel, resp.Usage.PromptTokens, *resp, "")
+			s.fullBridge.MaybeSaveGatewayMemory(lastUserText, replyText)
 			return
 		}
+		replyText = resp.Content
 		if err := anthropicapi.WriteNonStream(w, resolvedModel, *resp, ""); err == nil {
 			s.fullBridge.MaybeSaveGatewayMemory(lastUserText, resp.Content)
 		}
 		return
 	}
 
-	ch, resolvedModel, err := s.fullBridge.DevGatewayChatStream(ctx, anthReq.Model, chatReq)
+	ch, rm, err := s.fullBridge.DevGatewayChatStream(ctx, anthReq.Model, chatReq)
 	if err != nil {
-		anthropicapi.WriteError(w, http.StatusBadGateway, err.Error())
+		errMsg = err.Error()
+		anthropicapi.WriteError(w, http.StatusBadGateway, errMsg)
 		return
 	}
+	resolvedModel = rm
 
 	if anthReq.Stream {
 		flusher, ok := prepareSSE(w)
 		if !ok {
-			anthropicapi.WriteError(w, http.StatusInternalServerError, "streaming unsupported")
+			errMsg = "streaming unsupported"
+			anthropicapi.WriteError(w, http.StatusInternalServerError, errMsg)
 			return
 		}
 		promptTokens := anthropicapi.EstimateTokens(chatReq.Messages)
-		reply := anthropicapi.StreamSSE(ctx, w, flusher, resolvedModel, promptTokens, ch)
-		s.fullBridge.MaybeSaveGatewayMemory(lastUserText, reply)
+		replyText = anthropicapi.StreamSSE(ctx, w, flusher, resolvedModel, promptTokens, ch)
+		s.fullBridge.MaybeSaveGatewayMemory(lastUserText, replyText)
 		return
 	}
 
-	content, finishReason, errMsg := anthropicapi.CollectStream(ctx, ch)
-	if errMsg != "" {
+	content, finishReason, collectErrMsg := anthropicapi.CollectStream(ctx, ch)
+	if collectErrMsg != "" {
+		errMsg = collectErrMsg
 		anthropicapi.WriteError(w, http.StatusBadGateway, errMsg)
 		return
 	}
+	replyText = content
 	// Real per-request token counts aren't available here (provider.StreamChunk
 	// carries none) — estimated the same word-count way the streaming path's
 	// message_start/message_delta events already are, so a non-streaming

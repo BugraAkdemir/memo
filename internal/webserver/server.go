@@ -285,6 +285,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// works unmodified.
 	route("/api/dev-gateway/config", s.handleDevGatewayConfig)
 	route("/api/dev-gateway/models", s.handleDevGatewayModels)
+	route("/api/dev-gateway/logs", s.handleDevGatewayLogs)
 	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
 
 	// Mood

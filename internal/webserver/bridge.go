@@ -2,6 +2,8 @@ package webserver
 
 import (
 	"context"
+	"time"
+
 	"memo/internal/agent"
 	"memo/internal/api"
 	"memo/internal/config"
@@ -125,6 +127,8 @@ type FullBridge interface {
 	ListGatewayModels() []models.GatewayModel
 	DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error)
 	DevGatewayChat(ctx context.Context, modelSpec string, req provider.ChatRequest) (*provider.ChatResponse, string, error)
+	RecordGatewayLog(modelSpec string, stream, hasTools bool, requestText, responseText, errMsg string, duration time.Duration)
+	GetGatewayLogs() []models.GatewayLogEntry
 	MaybeSaveGatewayMemory(userMsg, reply string)
 
 	// Providers

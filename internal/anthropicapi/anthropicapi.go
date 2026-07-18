@@ -89,6 +89,39 @@ func ParseRequest(body []byte) (Request, error) {
 	return req, nil
 }
 
+// anthropicInputToOpenAIArguments converts an Anthropic tool_use block's
+// `input` — a genuine JSON object on the wire — into the JSON-string-encoded
+// form OpenAI's tool-calling wire format requires for a tool call's
+// `function.arguments` field (e.g. `"arguments": "{\"location\":\"SF\"}"`,
+// not an embedded raw object). provider.ToolCallFunction.Arguments is
+// marshaled verbatim by internal/provider/openai.go's toOpenAIMessages, so
+// getting this encoding right here is what makes a Claude-Code-echoed prior
+// tool_use round-trip correctly to an OpenAI-compatible backend.
+func anthropicInputToOpenAIArguments(input json.RawMessage) json.RawMessage {
+	if len(input) == 0 {
+		input = json.RawMessage("{}")
+	}
+	encoded, err := json.Marshal(string(input))
+	if err != nil {
+		return json.RawMessage(`"{}"`)
+	}
+	return json.RawMessage(encoded)
+}
+
+// openAIArgumentsToJSONText is the inverse of anthropicInputToOpenAIArguments
+// — it extracts the plain JSON object text out of an OpenAI-style tool
+// call's function.arguments field for re-emission as Anthropic's tool_use
+// input (a real object, not a string). Falls back to treating raw as
+// already-plain JSON text if it isn't itself a JSON string, in case a
+// non-standard backend sends the object directly.
+func openAIArgumentsToJSONText(raw json.RawMessage) string {
+	var s string
+	if err := json.Unmarshal(raw, &s); err == nil {
+		return s
+	}
+	return string(raw)
+}
+
 // extractText pulls plain text out of an Anthropic content field, whether
 // it's a bare JSON string or an array of content blocks. Non-text blocks
 // (image, tool_use, tool_result) are silently skipped — used for the
@@ -155,16 +188,12 @@ func toProviderMessages(messages []Message) []provider.Message {
 				}
 				text.WriteString(b.Text)
 			case "tool_use":
-				args := b.Input
-				if len(args) == 0 {
-					args = json.RawMessage("{}")
-				}
 				toolCalls = append(toolCalls, provider.ToolCall{
 					ID:   b.ID,
 					Type: "function",
 					Function: provider.ToolCallFunction{
 						Name:      b.Name,
-						Arguments: args,
+						Arguments: anthropicInputToOpenAIArguments(b.Input),
 					},
 				})
 			case "tool_result":
@@ -332,7 +361,7 @@ func toAnthropicContentBlocks(resp provider.ChatResponse) []map[string]any {
 	}
 	for _, tc := range resp.ToolCalls {
 		var input any
-		if err := json.Unmarshal(tc.Function.Arguments, &input); err != nil {
+		if err := json.Unmarshal([]byte(openAIArgumentsToJSONText(tc.Function.Arguments)), &input); err != nil {
 			input = map[string]any{}
 		}
 		blocks = append(blocks, map[string]any{
@@ -545,7 +574,7 @@ func StreamSSEFromResponse(w http.ResponseWriter, flusher http.Flusher, model st
 		writeEvent("content_block_delta", map[string]any{
 			"type":  "content_block_delta",
 			"index": index,
-			"delta": map[string]string{"type": "input_json_delta", "partial_json": string(tc.Function.Arguments)},
+			"delta": map[string]string{"type": "input_json_delta", "partial_json": openAIArgumentsToJSONText(tc.Function.Arguments)},
 		})
 		writeEvent("content_block_stop", map[string]any{"type": "content_block_stop", "index": index})
 		index++

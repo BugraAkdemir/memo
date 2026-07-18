@@ -133,9 +133,16 @@ func TestToChatRequest_AssistantToolUseBlock(t *testing.T) {
 	if tc.ID != "toolu_01ABC" || tc.Function.Name != "get_weather" {
 		t.Errorf("tool call = %+v", tc)
 	}
+	// Arguments must be JSON-string-encoded (OpenAI's wire format for
+	// function.arguments), not a raw embedded object — unmarshal into a
+	// string first, then parse that string's content.
+	var argsText string
+	if err := json.Unmarshal(tc.Function.Arguments, &argsText); err != nil {
+		t.Fatalf("Arguments is not a JSON string: %v (raw: %s)", err, tc.Function.Arguments)
+	}
 	var input map[string]any
-	if err := json.Unmarshal(tc.Function.Arguments, &input); err != nil {
-		t.Fatalf("Arguments not valid JSON: %v", err)
+	if err := json.Unmarshal([]byte(argsText), &input); err != nil {
+		t.Fatalf("Arguments string content not valid JSON: %v", err)
 	}
 	if input["location"] != "SF" {
 		t.Errorf("input = %+v", input)
@@ -230,8 +237,13 @@ func TestWriteNonStream_ToolCalls(t *testing.T) {
 	resp := provider.ChatResponse{
 		Content: "Let me check.",
 		ToolCalls: []provider.ToolCall{
+			// Arguments is JSON-string-encoded (`"{\"location\":\"SF\"}"`),
+			// matching the real OpenAI wire format for function.arguments —
+			// not a raw embedded object. This is the shape a real backend
+			// actually produces; toAnthropicContentBlocks must unwrap it back
+			// into a real object for Anthropic's tool_use.input.
 			{ID: "toolu_01ABC", Type: "function", Function: provider.ToolCallFunction{
-				Name: "get_weather", Arguments: json.RawMessage(`{"location":"SF"}`),
+				Name: "get_weather", Arguments: json.RawMessage(`"{\"location\":\"SF\"}"`),
 			}},
 		},
 	}
@@ -343,8 +355,10 @@ func TestStreamSSEFromResponse_ToolUse(t *testing.T) {
 	resp := provider.ChatResponse{
 		Content: "Let me check.",
 		ToolCalls: []provider.ToolCall{
+			// JSON-string-encoded, matching the real OpenAI wire format —
+			// see the comment in TestWriteNonStream_ToolCalls.
 			{ID: "toolu_01ABC", Type: "function", Function: provider.ToolCallFunction{
-				Name: "get_weather", Arguments: json.RawMessage(`{"location":"SF"}`),
+				Name: "get_weather", Arguments: json.RawMessage(`"{\"location\":\"SF\"}"`),
 			}},
 		},
 		Usage: &provider.Usage{PromptTokens: 20, CompletionTokens: 5},
@@ -465,5 +479,33 @@ func TestWriteError(t *testing.T) {
 	errObj, ok := decoded["error"].(map[string]any)
 	if !ok || errObj["message"] != `model must be "type/model-id"` {
 		t.Errorf("error object = %+v", decoded["error"])
+	}
+}
+
+// TestToolArgumentsRoundTrip is the regression test for the argument-
+// encoding bug found via a live smoke test: Anthropic's tool_use.input is a
+// real JSON object, but OpenAI's function.arguments is a JSON *string*
+// containing that object's text — conflating the two either double-encodes
+// or leaves the object literally unparsed (Claude Code would receive an
+// "input" field holding the string "{\"location\":\"SF\"}" instead of an
+// object). anthropicInputToOpenAIArguments/openAIArgumentsToJSONText must be
+// exact inverses.
+func TestToolArgumentsRoundTrip(t *testing.T) {
+	anthropicInput := json.RawMessage(`{"location":"SF","unit":"celsius"}`)
+
+	openAIArgs := anthropicInputToOpenAIArguments(anthropicInput)
+	// On the wire, this must be a JSON *string* (quoted), not a raw object.
+	var asString string
+	if err := json.Unmarshal(openAIArgs, &asString); err != nil {
+		t.Fatalf("anthropicInputToOpenAIArguments did not produce a JSON string: %v (got: %s)", err, openAIArgs)
+	}
+
+	back := openAIArgumentsToJSONText(openAIArgs)
+	var obj map[string]any
+	if err := json.Unmarshal([]byte(back), &obj); err != nil {
+		t.Fatalf("openAIArgumentsToJSONText output not valid JSON: %v (got: %s)", err, back)
+	}
+	if obj["location"] != "SF" || obj["unit"] != "celsius" {
+		t.Errorf("round-tripped object = %+v, want the original fields preserved", obj)
 	}
 }

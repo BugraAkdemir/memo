@@ -55,9 +55,17 @@ When off (default): requests are completely isolated, memory is never touched.
 
 ---
 
-## Known limitation (v1)
+## Tool use — full agentic support
 
-Only **text** content blocks are translated. Anthropic's `tool_use`/`tool_result` blocks (and the request's `"tools"` field) are **not** — a request relying on Claude Code's tool-calling gets a plain text reply without the backend ever seeing the tool definitions. Full bidirectional translation between Anthropic's tool format and other providers' OpenAI-style function-calling format is a separate, much bigger piece of work — deliberately out of scope for v1.
+Claude Code's actual power — tool calling (reading/writing files, running commands) — **works**: the request's `"tools"` field, Anthropic's `tool_use`/`tool_result` blocks, and multi-turn continuation (sending a tool's result back in the next message) are all translated.
+
+**How it works:**
+- Anthropic's `input_schema` already is the JSON Schema OpenAI's `parameters` field expects — a near-direct mapping.
+- A prior assistant `tool_use` block becomes OpenAI's `tool_calls`; a user `tool_result` block becomes its own standalone `role: "tool"` message (OpenAI expects tool results as separate messages, not nested in a user turn).
+- **A subtle but critical format detail:** Anthropic's `tool_use.input` is a real JSON object, while OpenAI's `function.arguments` is a JSON *string* carrying that object's text — conflating the two (e.g. passing the same bytes straight through) either double-encodes or produces the exact bug found and fixed via a live end-to-end test: Claude Code would receive a plain string in `input` instead of an object. `anthropicInputToOpenAIArguments`/`openAIArgumentsToJSONText` are the exact inverse of each other and handle this correctly.
+- Tool-calling requests always go to the backend **non-streaming** (`DevGatewayChat`) — Memo's own agent pipeline (`internal/agent/pipeline.go`) already only ever decides tool calls via non-streaming `ChatCompletion`; no provider's streaming path decodes `tool_calls` deltas at all. If the client asked for streaming, the complete response is replayed as Anthropic's SSE event sequence in one shot.
+
+**Known limitation:** `gemini`, `claude`, and `ollama` provider types don't support tool calling yet — their `internal/provider` implementations don't decode/encode Tools/ToolCalls at all (a pre-existing gap, unrelated to the gateway itself). A tools-bearing request routed to one of those gets a clear error instead of silently dropping the tools.
 
 Token counts are also **estimates** (word-count based), not the real provider-reported numbers — the same approach the rest of the codebase's live counter already uses.
 

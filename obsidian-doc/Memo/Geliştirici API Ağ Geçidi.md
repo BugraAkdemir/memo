@@ -55,11 +55,19 @@ Kapalıyken (varsayılan): istekler tamamen izole, hafızaya hiç dokunulmaz.
 
 ---
 
-## Bilinen sınırlama (v1)
+## Araç çağırma (Tool Use) — tam agentic destek
 
-Sadece **metin** içerik blokları çevrilir. Anthropic'in `tool_use`/`tool_result` blokları (ve isteğin `"tools"` alanı) **çevrilmiyor** — Claude Code'un araç çağırma (tool calling) özelliğine dayanan bir istek, backend araç tanımlarını hiç görmeden düz metin bir cevap alır. Anthropic'in araç formatı ile diğer sağlayıcıların OpenAI-tarzı function-calling formatı arasında tam çift yönlü çeviri, ayrı ve daha büyük bir iş — bilinçli olarak v1 kapsamı dışı bırakıldı.
+Claude Code'un asıl gücü olan araç çağırma (dosya okuma/yazma, komut çalıştırma) **çalışır**: isteğin `"tools"` alanı, Anthropic'in `tool_use`/`tool_result` blokları ve çok turlu devam (bir aracın sonucunu bir sonraki mesajda geri gönderme) hepsi çevriliyor.
 
-Ayrıca token sayıları **tahmini** (kelime sayısına dayalı) — gerçek sağlayıcının raporladığı kesin sayılar değil, kod tabanının geri kalanındaki canlı sayaçla aynı yaklaşım.
+**Nasıl çalışıyor:**
+- Anthropic'in `input_schema`'sı zaten OpenAI'ın `parameters` alanının beklediği JSON Schema ile aynı — neredeyse doğrudan eşleniyor.
+- Asistanın önceki bir `tool_use` bloğu → OpenAI'ın `tool_calls` alanına çevriliyor; kullanıcının `tool_result` bloğu → ayrı bir `role: "tool"` mesajına çevriliyor (OpenAI araç sonuçlarını kullanıcı mesajının içine gömülü değil, ayrı bir mesaj olarak bekliyor).
+- **Önemli format detayı:** Anthropic'in `tool_use.input`'u gerçek bir JSON nesnesi, OpenAI'ın `function.arguments`'ı ise o nesnenin metnini taşıyan bir JSON **string**'i — ikisi karıştırılırsa (örn. doğrudan aynı bytes'ı kullanmak) ya çifte kodlama ya da Claude Code'un `input` alanında bir nesne yerine düz metin görmesi gibi sinsi bir hata oluşuyor. `anthropicInputToOpenAIArguments`/`openAIArgumentsToJSONText` bu ikisi arasında tam ters çeviriyi yapıyor — canlı bir uçtan uca testte bu hata gerçekten yakalandı ve düzeltildi.
+- Araç çağıran istekler her zaman **non-streaming** olarak backend'e gidiyor (`DevGatewayChat`) — Memo'nun kendi agent pipeline'ı (`internal/agent/pipeline.go`) da araç çağırma kararını hep non-streaming `ChatCompletion` ile alıyor, hiçbir sağlayıcının streaming tarafı `tool_calls` delta'larını çözmüyor zaten. İstemci streaming istediyse, tamamlanmış cevap tek seferde Anthropic'in SSE event dizisi olarak "yeniden oynatılıyor".
+
+**Bilinen sınırlama:** `gemini`, `claude`, `ollama` tipi sağlayıcılar için araç çağırma henüz desteklenmiyor — bu üçünün `internal/provider` içindeki kendi implementasyonları Tools/ToolCalls'ı hiç çözmüyor (ağ geçidinden bağımsız, önceden var olan bir eksiklik). Bu tiplerden birine araç tanımlı bir istek gelirse, sessizce araçları düşürmek yerine açık bir hata dönülür.
+
+Token sayıları **tahmini** (kelime sayısına dayalı) — gerçek sağlayıcının raporladığı kesin sayılar değil, kod tabanının geri kalanındaki canlı sayaçla aynı yaklaşım.
 
 ---
 

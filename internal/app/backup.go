@@ -78,9 +78,33 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 	addFile("config/config.yaml", "config/config.yaml")
 	addFile("data/providers.json", config.DataPath("providers.json"))
 	addFile("data/orchestra.json", config.DataPath("orchestra.json"))
+	addFile("data/permissions.json", config.DataPath("permissions.json"))
+	// machine.key decrypts providers.json's encrypted API keys (see
+	// provider.defaultMachineKey) — without it, restoring providers.json on a
+	// different machine (or after a data wipe that regenerates the key)
+	// silently leaves every API key as undecryptable garbage. This was
+	// missing entirely before: providers.json was exported but its key never
+	// was, so importing this backup anywhere but the exact machine that made
+	// it already broke every configured provider.
+	addFile("data/machine.key", config.DataPath("machine.key"))
 	addFile("data/memory/", config.DataPath("memory"))
 	addFile("data/whatsapp/", config.DataPath("whatsapp"))
 	addFile("data/mood/", config.DataPath("mood"))
+	addFile("data/calendar/", config.DataPath("calendar"))
+	addFile("data/profile/", config.DataPath("profile"))
+	addFile("data/routines/", config.DataPath("routines"))
+	addFile("data/tasklists/", config.DataPath("tasklists"))
+	addFile("data/stats/", config.DataPath("stats"))
+	addFile("data/agent-backups/", config.DataPath("agent-backups"))
+	addFile("data/skills/", config.DataPath("skills"))
+	// Deliberately NOT exported — machine/account-specific, not portable user
+	// data: sync_token.json (a Google Drive incremental-sync cursor tied to
+	// this device; restoring it elsewhere could make cloud sync think it's
+	// already up to date and skip real remote changes), tailscale/ (tsnet
+	// node identity/keys — same reason WipeAllData's wipePreserve treats it
+	// as machine state, not user content), and backups/ (this function's own
+	// pre-import snapshot directory — including it would nest old .memo
+	// archives inside the new one).
 	if includeModels {
 		addFile("data/models/", config.DataPath("models"))
 	}

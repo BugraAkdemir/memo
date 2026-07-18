@@ -121,8 +121,42 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 
 	chatReq := anthropicapi.ToChatRequest(anthReq)
 	lastUserText := lastUserMessageText(chatReq.Messages)
-
 	ctx := r.Context()
+
+	// A tools-bearing request always goes through the non-streaming
+	// DevGatewayChat, regardless of anthReq.Stream — see DevGatewayChat's
+	// doc comment for why (no provider's streaming path decodes tool_calls
+	// deltas; Memo's own agent pipeline has the same constraint). If the
+	// client asked for streaming, the complete response is replayed as an
+	// SSE sequence via StreamSSEFromResponse instead of a live channel.
+	if len(chatReq.Tools) > 0 {
+		resp, resolvedModel, err := s.fullBridge.DevGatewayChat(ctx, anthReq.Model, chatReq)
+		if err != nil {
+			anthropicapi.WriteError(w, http.StatusBadGateway, err.Error())
+			return
+		}
+		if resp.Usage == nil {
+			resp.Usage = &provider.Usage{
+				PromptTokens:     anthropicapi.EstimateTokens(chatReq.Messages),
+				CompletionTokens: anthropicapi.EstimateTokens([]provider.Message{{Role: "assistant", Content: resp.Content}}),
+			}
+		}
+		if anthReq.Stream {
+			flusher, ok := prepareSSE(w)
+			if !ok {
+				anthropicapi.WriteError(w, http.StatusInternalServerError, "streaming unsupported")
+				return
+			}
+			reply := anthropicapi.StreamSSEFromResponse(w, flusher, resolvedModel, resp.Usage.PromptTokens, *resp, "")
+			s.fullBridge.MaybeSaveGatewayMemory(lastUserText, reply)
+			return
+		}
+		if err := anthropicapi.WriteNonStream(w, resolvedModel, *resp, ""); err == nil {
+			s.fullBridge.MaybeSaveGatewayMemory(lastUserText, resp.Content)
+		}
+		return
+	}
+
 	ch, resolvedModel, err := s.fullBridge.DevGatewayChatStream(ctx, anthReq.Model, chatReq)
 	if err != nil {
 		anthropicapi.WriteError(w, http.StatusBadGateway, err.Error())
@@ -130,10 +164,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	}
 
 	if anthReq.Stream {
-		w.Header().Set("Content-Type", "text/event-stream")
-		w.Header().Set("Cache-Control", "no-cache")
-		w.Header().Set("Connection", "keep-alive")
-		flusher, ok := w.(http.Flusher)
+		flusher, ok := prepareSSE(w)
 		if !ok {
 			anthropicapi.WriteError(w, http.StatusInternalServerError, "streaming unsupported")
 			return
@@ -164,6 +195,17 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 	if err := anthropicapi.WriteNonStream(w, resolvedModel, resp, finishReason); err == nil {
 		s.fullBridge.MaybeSaveGatewayMemory(lastUserText, content)
 	}
+}
+
+// prepareSSE sets the response headers for an SSE stream and returns the
+// http.Flusher needed to actually deliver each event as it's written; ok is
+// false if the underlying ResponseWriter doesn't support flushing.
+func prepareSSE(w http.ResponseWriter) (http.Flusher, bool) {
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	flusher, ok := w.(http.Flusher)
+	return flusher, ok
 }
 
 // lastUserMessageText returns the last user-role message's text content, for

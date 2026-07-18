@@ -124,6 +124,7 @@ type FullBridge interface {
 	GetDevGatewayToken() string
 	ListGatewayModels() []models.GatewayModel
 	DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error)
+	DevGatewayChat(ctx context.Context, modelSpec string, req provider.ChatRequest) (*provider.ChatResponse, string, error)
 	MaybeSaveGatewayMemory(userMsg, reply string)
 
 	// Providers

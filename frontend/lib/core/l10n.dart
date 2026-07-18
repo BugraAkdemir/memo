@@ -173,6 +173,7 @@ class L10n {
     'tab_taskloop': 'Görev Döngüsü',
     'tab_gpu_config': 'Ekran Kartı Config',
     'tab_stats': 'İstatistikler',
+    'tab_dev_gateway': 'Geliştirici',
     'tab_report_bug': 'Hata Bildir',
 
     // Usage stats tab
@@ -194,6 +195,22 @@ class L10n {
     'stats_empty_body': 'Birkaç mesaj gönderdikten sonra burada token kullanımı, hız ve model istatistiklerini göreceksin.',
     'stats_load_error': 'İstatistikler alınamadı: \${e}',
     'stats_no_model': '—',
+
+    // Dev gateway tab
+    'copy': 'Kopyala',
+    'dev_gateway_title': 'Geliştirici API Ağ Geçidi',
+    'dev_gateway_subtitle': 'Memo\'yu Claude Code gibi sadece Anthropic uyumlu bir adres kabul eden araçlarla kullan — Memo\'daki yerel modeli veya tanımlı sağlayıcılardan birini arkada çalıştırır.',
+    'dev_gateway_base_url_label': 'Base URL',
+    'dev_gateway_base_url_hint': 'Claude Code\'da ortam değişkeni olarak ayarla:',
+    'dev_gateway_models_title': 'Model ID\'leri',
+    'dev_gateway_models_hint': 'İsteğin "model" alanına bu ID\'lerden birini yaz.',
+    'dev_gateway_models_empty': 'Şu an kullanılabilir model yok — bir yerel model başlat ya da Ayarlar > API Providers\'dan bir sağlayıcı etkinleştir.',
+    'dev_gateway_require_key_label': 'API Key Gerektir',
+    'dev_gateway_require_key_desc': 'Açıksa istekler bu token\'ı x-api-key veya Authorization: Bearer olarak taşımalı. Kapalıysa herkes bu adrese erişebilen (ör. aynı makinedeki başka bir program) modeli kullanabilir.',
+    'dev_gateway_token_label': 'Token',
+    'dev_gateway_use_memory_label': 'Hafızayı Kullan',
+    'dev_gateway_use_memory_desc': 'Açıksa bu ağ geçidi üzerinden gelen isteklerde Memo\'nun hafızasındaki bilgiler kullanılır ve sohbet hafızaya kaydedilir — ama sohbet geçmişinde görünmez. Kapalıysa (varsayılan) istekler tamamen ayrı tutulur.',
+    'dev_gateway_save_error': 'Ayarlar kaydedilemedi: \${e}',
     'report_bug_title': 'Hata Bildir',
     'report_bug_desc': 'Bir sorun mu buldun? Ne olduğunu anlat, GitHub\'da bir issue açman için hazırlayalım. Hiçbir şey senin onayın olmadan gönderilmez — GitHub sayfasında son kez görüp düzenleyebilirsin.',
     'report_bug_hint': 'Ne oldu? Ne yapmaya çalışıyordun, ne bekliyordun, ne oldu?',
@@ -1264,6 +1281,7 @@ class L10n {
     'tab_taskloop': 'Task Loop',
     'tab_gpu_config': 'GPU Config',
     'tab_stats': 'Stats',
+    'tab_dev_gateway': 'Developer',
     'tab_report_bug': 'Report Bug',
 
     // Usage stats tab
@@ -1285,6 +1303,22 @@ class L10n {
     'stats_empty_body': 'Send a few messages and you\'ll see token usage, speed, and model stats here.',
     'stats_load_error': 'Failed to load stats: \${e}',
     'stats_no_model': '—',
+
+    // Dev gateway tab
+    'copy': 'Copy',
+    'dev_gateway_title': 'Developer API Gateway',
+    'dev_gateway_subtitle': 'Use Memo with tools that only support an Anthropic-compatible endpoint, like Claude Code — it runs whichever local model or configured provider you pick behind the scenes.',
+    'dev_gateway_base_url_label': 'Base URL',
+    'dev_gateway_base_url_hint': 'Set as an environment variable in Claude Code:',
+    'dev_gateway_models_title': 'Model IDs',
+    'dev_gateway_models_hint': 'Use one of these IDs as the request\'s "model" field.',
+    'dev_gateway_models_empty': 'No models available right now — start a local model or enable a provider under Settings > API Providers.',
+    'dev_gateway_require_key_label': 'Require API Key',
+    'dev_gateway_require_key_desc': 'When on, requests must carry this token as x-api-key or Authorization: Bearer. When off, anything that can reach this address (e.g. another program on the same machine) can use the model.',
+    'dev_gateway_token_label': 'Token',
+    'dev_gateway_use_memory_label': 'Use Memory',
+    'dev_gateway_use_memory_desc': 'When on, requests through this gateway draw on Memo\'s memory and get saved to it — but never show up in chat history. When off (default), gateway traffic stays completely separate.',
+    'dev_gateway_save_error': 'Failed to save settings: \${e}',
     'report_bug_title': 'Report a Bug',
     'report_bug_desc': "Found a problem? Tell us what happened and we'll prepare a GitHub issue for it. Nothing is sent without your approval — you get one last look to review and edit it on GitHub's own page.",
     'report_bug_hint': 'What happened? What were you trying to do, what did you expect, what happened instead?',

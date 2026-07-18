@@ -89,6 +89,7 @@ type AppConfig struct {
 	Calendar       CalendarConfig     `yaml:"calendar" json:"calendar"`
 	Mood           MoodConfig         `yaml:"mood" json:"mood"`
 	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
+	DevGateway     DevGatewayConfig   `yaml:"dev_gateway" json:"dev_gateway"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates experimental features (e.g. the embedded Tailscale tunnel).
@@ -169,6 +170,20 @@ type WhatsAppConfig struct {
 	DataDir        string `yaml:"data_dir" json:"data_dir"`
 	AutoIndex      bool   `yaml:"auto_index" json:"auto_index"`
 	MaxHistoryDays int    `yaml:"max_history_days" json:"max_history_days"`
+}
+
+// DevGatewayConfig controls the OpenAI/Anthropic-compatible local API
+// gateway (Settings > Developer) — lets external tools (Claude Code via
+// ANTHROPIC_BASE_URL, or anything OpenAI-compatible) use whichever
+// model/provider is configured in Memo. Both fields default to the more
+// permissive/private option: no key required (matches how plain localhost
+// access is already unauthenticated elsewhere — see remoteAuthOK), and
+// memory left out of gateway requests (an external coding agent's traffic
+// should not silently mix into the user's personal RAG memory unless they
+// explicitly opt in).
+type DevGatewayConfig struct {
+	RequireAPIKey bool `yaml:"require_api_key" json:"require_api_key"`
+	UseMemory     bool `yaml:"use_memory" json:"use_memory"`
 }
 
 type RemoteAccessConfig struct {
@@ -313,6 +328,10 @@ func Default() *AppConfig {
 			Enabled: false,
 			Port:    8090,
 			Token:   "",
+		},
+		DevGateway: DevGatewayConfig{
+			RequireAPIKey: false,
+			UseMemory:     false,
 		},
 		Llama: LlamaConfig{
 			EngineMode:    "auto",

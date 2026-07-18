@@ -65,6 +65,9 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"CalendarEvents", http.MethodGet, "/api/calendar/events", s.handleCalendarEvents, http.StatusNotImplemented},
 		{"CalendarSettings", http.MethodGet, "/api/calendar/settings", s.handleCalendarSettings, http.StatusNotImplemented},
 		{"LearningSettings", http.MethodGet, "/api/learning/settings", s.handleLearningSettings, http.StatusNotImplemented},
+		{"DevGatewayConfig", http.MethodGet, "/api/dev-gateway/config", s.handleDevGatewayConfig, http.StatusServiceUnavailable},
+		{"DevGatewayModels", http.MethodGet, "/api/dev-gateway/models", s.handleDevGatewayModels, http.StatusMethodNotAllowed},
+		{"AnthropicMessages", http.MethodPost, "/v1/messages", s.handleAnthropicMessages, http.StatusServiceUnavailable},
 	}
 
 	for _, tt := range tests {

@@ -279,6 +279,14 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/routines/", s.handleRoutine)
 	route("/api/routines/mobile-ready", s.handleRoutinesMobileReady)
 
+	// Dev gateway (Settings > Developer): local Anthropic/OpenAI-compatible
+	// API surface. /v1/messages is NOT under /api/ — it must match Anthropic's
+	// real path exactly so pointing Claude Code's ANTHROPIC_BASE_URL at Memo
+	// works unmodified.
+	route("/api/dev-gateway/config", s.handleDevGatewayConfig)
+	route("/api/dev-gateway/models", s.handleDevGatewayModels)
+	mux.HandleFunc("/v1/messages", s.handleAnthropicMessages)
+
 	// Mood
 	route("/api/mood/score", s.handleMoodScore)
 	route("/api/mood/settings", s.handleMoodSettings)

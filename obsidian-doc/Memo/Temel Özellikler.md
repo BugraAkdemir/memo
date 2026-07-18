@@ -43,6 +43,6 @@ Bu sayfa, Memo'nun temel özellik dokümantasyonu için bir İçerik Haritasıd�
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[v3.1.1 Özellikleri]] | WhatsApp, mobil, yedekleme, agent, orkestra, sağlayıcılar |
-| [[Özellik Kataloğu]] | Özellik-özellik tam liste |
-| Değişiklik Günlüğü | `versinNote/tr/v3.1.2.md` | Sürüm değişiklikleri |
+| [[v3.1.1 Özellikleri]] | WhatsApp, mobil, yedekleme, agent, orkestra, sağlayıcılar (tarihsel kayıt) |
+| [[Özellik Kataloğu]] | Özellik-özellik güncel tam liste (istatistikler ve geliştirici ağ geçidi dahil) |
+| Değişiklik Günlüğü | `versinNote/tr/v3.3.3.md` |

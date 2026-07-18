@@ -43,6 +43,6 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 
 | Page | Description |
 |------|-------------|
-| [[v3.1.1 Features]] | WhatsApp, mobile, backup, agent, orchestra, providers |
-| [[Features Catalog]] | Complete feature-by-feature listing |
-| Release Notes | `versinNote/v3.1.2.md` | Version changelog |
+| [[v3.1.1 Features]] | WhatsApp, mobile, backup, agent, orchestra, providers (historical record) |
+| [[Features Catalog]] | Complete, current feature-by-feature listing (including usage stats and the developer gateway) |
+| Release Notes | `versinNote/v3.3.3.md` |

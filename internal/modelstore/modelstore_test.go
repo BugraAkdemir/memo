@@ -93,6 +93,32 @@ func TestIsEmbeddingModel(t *testing.T) {
 	}
 }
 
+// TestAuthorFromRepoID is the regression test for a real bug: HF's
+// /api/models search response carries no "author" field at all (confirmed
+// by hitting it directly), so HFModelResult.Author silently decoded to ""
+// for every single search result — the frontend's avatar lookup had
+// nothing to search HF's org/user API for, so every Discover list item
+// showed the generic "?" empty-author placeholder regardless of the real
+// repo owner.
+func TestAuthorFromRepoID(t *testing.T) {
+	tests := []struct {
+		id   string
+		want string
+	}{
+		{"google/gemma-2b", "google"},
+		{"meta-llama/Llama-3.2-3B-Instruct", "meta-llama"},
+		{"bartowski/google_gemma-3-4b-it-GGUF", "bartowski"},
+		{"no-namespace-at-all", ""},
+		{"", ""},
+		{"/leading-slash-only", ""},
+	}
+	for _, tt := range tests {
+		if got := authorFromRepoID(tt.id); got != tt.want {
+			t.Errorf("authorFromRepoID(%q) = %q, want %q", tt.id, got, tt.want)
+		}
+	}
+}
+
 func TestSanitizePath(t *testing.T) {
 	tests := []struct {
 		input string

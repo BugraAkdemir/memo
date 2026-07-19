@@ -184,16 +184,23 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
         });
       }
     } on DioException catch (e) {
-      // A 404 just means this repo has no README.md — a normal, common case,
-      // not worth surfacing as an error. Anything else (timeout, DNS
-      // failure, 5xx) is a real fetch failure the user should be able to
-      // see instead of the README section just silently not appearing as
-      // if the model had none.
-      final is404 = e.response?.statusCode == 404;
+      // A 404 just means this repo has no README.md — a normal, common
+      // case, not worth surfacing as an error. A 401/403 means this is a
+      // gated repo (many official Google/Meta releases require accepting a
+      // license on HF before *any* file — including a plain README raw
+      // fetch — is even readable) and Memo makes anonymous, unauthenticated
+      // requests; there's no user-facing action this app can offer to fix
+      // that, so treat it the same as "no README available" rather than
+      // dumping DioException's raw message ("This exception was thrown
+      // because the response has a status code of 401...") into the
+      // README section as if it were content. Anything else (timeout, DNS
+      // failure, 5xx) is a real fetch failure worth showing.
+      final status = e.response?.statusCode;
+      final isExpected = status == 404 || status == 401 || status == 403;
       if (mounted) {
         setState(() {
           _readmeLoading = false;
-          if (!is404) _readmeError = e.message ?? e.toString();
+          if (!isExpected) _readmeError = e.message ?? e.toString();
         });
       }
     } catch (e) {

@@ -230,7 +230,32 @@ func (s *Store) SearchModels(query string) ([]HFModelResult, error) {
 		return nil, fmt.Errorf("modelstore.Search: decode: %w", err)
 	}
 
+	// HF's model-search API response (confirmed by hitting it directly) has
+	// no top-level "author" field at all — only "id" ("google/gemma-2b"),
+	// "likes", "downloads", "tags", etc. HFModelResult.Author therefore
+	// always decoded to "" here, silently, for every single search result:
+	// the frontend's AuthorAvatar had nothing to look up (empty org/user
+	// name), so every avatar in Discover fell back to its "?" empty-string
+	// placeholder regardless of the real repo owner.
+	for i := range results {
+		if results[i].Author == "" {
+			results[i].Author = authorFromRepoID(results[i].ID)
+		}
+	}
+
 	return results, nil
+}
+
+// authorFromRepoID derives the org/user namespace from a HF repo ID
+// ("google/gemma-2b" -> "google"), same convention DiscoverItem.fromCurated
+// already uses on the Flutter side for curated entries. Returns "" for an
+// ID with no namespace segment at all (malformed, shouldn't happen for a
+// real HF repo ID, but this must not panic on one).
+func authorFromRepoID(id string) string {
+	if slash := strings.Index(id, "/"); slash > 0 {
+		return id[:slash]
+	}
+	return ""
 }
 
 // ─── Get files for a repo ────────────────────────────────────────

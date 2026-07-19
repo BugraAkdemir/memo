@@ -25,6 +25,7 @@ class Routine {
   final String whatsAppTargetJid;
   final bool enabled;
   final String language;
+  final int? utcOffsetMinutes;
 
   const Routine({
     required this.id,
@@ -41,6 +42,7 @@ class Routine {
     required this.whatsAppTargetJid,
     required this.enabled,
     required this.language,
+    required this.utcOffsetMinutes,
   });
 
   factory Routine.fromJson(Map<String, dynamic> json) {
@@ -61,13 +63,18 @@ class Routine {
       whatsAppTargetJid: json['whatsapp_target_jid'] as String? ?? '',
       enabled: json['enabled'] as bool? ?? false,
       language: json['language'] as String? ?? 'tr',
+      utcOffsetMinutes: schedule['utc_offset_minutes'] as int?,
     );
   }
 
   Map<String, dynamic> toJson() => {
         'id': id,
         'created_from_text': createdFromText,
-        'schedule': {'time_of_day': timeOfDay, 'weekdays': weekdays},
+        'schedule': {
+          'time_of_day': timeOfDay,
+          'weekdays': weekdays,
+          'utc_offset_minutes': utcOffsetMinutes,
+        },
         'prompt': prompt,
         'agent_mode': agentMode,
         'auto_approve_tools': autoApproveTools,

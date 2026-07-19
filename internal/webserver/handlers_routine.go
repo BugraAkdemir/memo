@@ -19,7 +19,7 @@ type RoutineBridge interface {
 	ListRoutines() []routine.Routine
 	GetRoutine(id string) (*routine.Routine, error)
 	ParseRoutineText(ctx context.Context, text string) (routine.Draft, error)
-	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string) (*routine.Routine, error)
+	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string, utcOffsetMinutes *int) (*routine.Routine, error)
 	UpdateRoutine(r routine.Routine) (*routine.Routine, error)
 	DeleteRoutine(id string) error
 	GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error)
@@ -53,12 +53,18 @@ func (s *Server) handleRoutines(w http.ResponseWriter, r *http.Request) {
 			// (BUG-M1). Optional: an old client that never sends it leaves the
 			// routine defaulting to Turkish everywhere it's read.
 			Language string `json:"language"`
+			// UTCOffsetMinutes is the client's current UTC offset in minutes at
+			// the moment of creation — see Schedule.UTCOffsetMinutes's doc
+			// comment (BUG-M4). Optional: an old client that never sends it
+			// leaves the routine falling back to the backend host's own local
+			// time, exactly matching pre-fix behavior.
+			UTCOffsetMinutes *int `json:"utc_offset_minutes"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		created, err := bridge.CreateRoutineFromDraft(body.OriginalText, body.Draft, body.WhatsAppTargetJID, body.AutoApproveTools, body.Language)
+		created, err := bridge.CreateRoutineFromDraft(body.OriginalText, body.Draft, body.WhatsAppTargetJID, body.AutoApproveTools, body.Language, body.UTCOffsetMinutes)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return

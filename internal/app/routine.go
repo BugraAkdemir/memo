@@ -77,12 +77,13 @@ func (a *App) ParseRoutineText(ctx context.Context, text string) (routine.Draft,
 // CreateRoutineFromDraft builds and persists a Routine from a (possibly
 // user-edited) Draft plus the explicit choices only a human should make:
 // whichever WhatsApp JID the hint resolved to, whether unattended tool
-// execution is allowed, and the client's current UI language ("tr"/"en",
-// see Routine.Language's doc comment) — the backend has no locale of its own
-// and this is the only point in the routine lifecycle where a client is
-// actually asking to have something created, so it's the only place that
-// needs to capture it.
-func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string) (*routine.Routine, error) {
+// execution is allowed, the client's current UI language ("tr"/"en", see
+// Routine.Language's doc comment), and its current UTC offset in minutes
+// (see Schedule.UTCOffsetMinutes's doc comment, BUG-M4) — the backend has no
+// locale or timezone of its own and this is the only point in the routine
+// lifecycle where a client is actually asking to have something created, so
+// it's the only place that needs to capture either.
+func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string, utcOffsetMinutes *int) (*routine.Routine, error) {
 	if a.routineStore == nil {
 		return nil, fmt.Errorf("routine: store not initialized")
 	}
@@ -102,8 +103,9 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 	r := routine.Routine{
 		CreatedFromText: originalText,
 		Schedule: routine.Schedule{
-			TimeOfDay: d.TimeOfDay,
-			Weekdays:  weekdays,
+			TimeOfDay:        d.TimeOfDay,
+			Weekdays:         weekdays,
+			UTCOffsetMinutes: utcOffsetMinutes,
 		},
 		Prompt:           d.Prompt,
 		AgentMode:        d.NeedsAgentMode,
@@ -166,7 +168,7 @@ func (a *App) GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayloa
 		if !r.LastGeneratedAt.After(since) {
 			continue
 		}
-		fireTime, err := routine.ParseFireTime(r.Schedule.TimeOfDay, now)
+		fireTime, err := routine.ParseFireTime(r.Schedule.TimeOfDay, r.Schedule.UTCOffsetMinutes, now)
 		if err != nil || fireTime.Before(now) {
 			continue
 		}

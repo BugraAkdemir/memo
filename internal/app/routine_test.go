@@ -109,15 +109,19 @@ func TestCreateRoutineFromDraft_PersistsLanguage(t *testing.T) {
 	}
 	a.routineStore = st
 
+	offset := 180
 	created, err := a.CreateRoutineFromDraft("her gün 21:00'de kitap oku", routine.Draft{
 		TimeOfDay: "21:00",
 		Prompt:    "remind me to read",
-	}, "", false, "en")
+	}, "", false, "en", &offset)
 	if err != nil {
 		t.Fatalf("CreateRoutineFromDraft: %v", err)
 	}
 	if created.Language != "en" {
 		t.Errorf("created.Language = %q, want %q", created.Language, "en")
+	}
+	if created.Schedule.UTCOffsetMinutes == nil || *created.Schedule.UTCOffsetMinutes != 180 {
+		t.Errorf("created.Schedule.UTCOffsetMinutes = %v, want pointer to 180", created.Schedule.UTCOffsetMinutes)
 	}
 }
 

@@ -95,7 +95,7 @@ func (r *RoutineLoop) tick(ctx context.Context, now time.Time) {
 		if !rt.Schedule.FiresOn(now.Weekday()) {
 			continue
 		}
-		fireTime, err := ParseFireTime(rt.Schedule.TimeOfDay, now)
+		fireTime, err := ParseFireTime(rt.Schedule.TimeOfDay, rt.Schedule.UTCOffsetMinutes, now)
 		if err != nil {
 			logx.Printf("routine: bad schedule for %s: %v", rt.ID, err)
 			continue
@@ -190,12 +190,23 @@ func (r *RoutineLoop) processDueRoutine(ctx context.Context, rt Routine, now tim
 	}
 }
 
-// ParseFireTime resolves "HH:MM" into an absolute instant on now's date, in
-// now's location.
-func ParseFireTime(timeOfDay string, now time.Time) (time.Time, error) {
-	t, err := time.ParseInLocation("15:04", timeOfDay, now.Location())
+// ParseFireTime resolves "HH:MM" into an absolute instant on today's date in
+// utcOffsetMinutes (BUG-M4) — or, if utcOffsetMinutes is nil (no offset
+// recorded on the schedule, see Schedule.UTCOffsetMinutes's doc comment),
+// today's date in now's own location, exactly matching this function's
+// pre-fix behavior. "Today" itself is computed in the resolved location too
+// (not the caller's), so a routine correctly still fires on the fire
+// timezone's own calendar day even near midnight, when it can differ from
+// the backend host's.
+func ParseFireTime(timeOfDay string, utcOffsetMinutes *int, now time.Time) (time.Time, error) {
+	loc := now.Location()
+	if utcOffsetMinutes != nil {
+		loc = time.FixedZone("", *utcOffsetMinutes*60)
+	}
+	t, err := time.ParseInLocation("15:04", timeOfDay, loc)
 	if err != nil {
 		return time.Time{}, fmt.Errorf("routine: parse time_of_day %q: %w", timeOfDay, err)
 	}
-	return time.Date(now.Year(), now.Month(), now.Day(), t.Hour(), t.Minute(), 0, 0, now.Location()), nil
+	today := now.In(loc)
+	return time.Date(today.Year(), today.Month(), today.Day(), t.Hour(), t.Minute(), 0, 0, loc), nil
 }

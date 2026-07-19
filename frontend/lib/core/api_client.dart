@@ -1480,6 +1480,12 @@ class MemoApiClient {
       // own generated text (notification title, context fillers, system
       // prompt) per routine (BUG-M1). See routine.Routine.Language.
       'language': L10n.locale == MemoLocale.en ? 'en' : 'tr',
+      // Backend has no timezone of its own either — without this, "HH:MM"
+      // is interpreted in whatever timezone the backend host happens to be
+      // running in, not the user's (BUG-M4). See
+      // routine.Schedule.UTCOffsetMinutes's doc comment for why this is a
+      // fixed offset rather than a full IANA zone name.
+      'utc_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
     });
     return Map<String, dynamic>.from(_guard<Map>(res.data));
   }

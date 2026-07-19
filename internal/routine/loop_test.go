@@ -263,3 +263,66 @@ func TestTick_DisabledRoutine_NeverFires(t *testing.T) {
 		t.Errorf("generateCalls = %d, want 0 for a disabled routine", generateCalls)
 	}
 }
+
+// TestParseFireTime_NilOffsetUsesHostLocation is the pre-fix behavior
+// preserved for any routine with no recorded UTCOffsetMinutes (created
+// before BUG-M4's fix, or by a client that never sends one): "HH:MM" is
+// interpreted in now's own location, same as before this field existed.
+func TestParseFireTime_NilOffsetUsesHostLocation(t *testing.T) {
+	hostLoc := time.FixedZone("HOST", 2*3600) // UTC+2, standing in for "wherever the backend happens to run"
+	now := time.Date(2026, 7, 17, 6, 0, 0, 0, hostLoc)
+
+	got, err := ParseFireTime("08:00", nil, now)
+	if err != nil {
+		t.Fatalf("ParseFireTime: %v", err)
+	}
+	want := time.Date(2026, 7, 17, 8, 0, 0, 0, hostLoc)
+	if !got.Equal(want) {
+		t.Errorf("ParseFireTime(nil offset) = %v, want %v (host-local 08:00)", got, want)
+	}
+}
+
+// TestParseFireTime_OffsetOverridesHostLocation is the regression test for
+// BUG-M4: a routine created by a user in a different timezone than the
+// backend host must fire at *that user's* "HH:MM", not the host's. Backend
+// host is fixed at UTC+2; the routine was created by a user at UTC+7 (e.g.
+// Bangkok) who asked for 08:00 their time — that's 03:00 host-local /
+// 01:00 UTC, not 08:00 host-local.
+func TestParseFireTime_OffsetOverridesHostLocation(t *testing.T) {
+	hostLoc := time.FixedZone("HOST", 2*3600)
+	now := time.Date(2026, 7, 17, 1, 30, 0, 0, hostLoc) // 03:30 in the UTC+7 user's timezone
+
+	userOffsetMinutes := 7 * 60
+	got, err := ParseFireTime("08:00", &userOffsetMinutes, now)
+	if err != nil {
+		t.Fatalf("ParseFireTime: %v", err)
+	}
+
+	gotUTC := got.UTC()
+	wantUTC := time.Date(2026, 7, 17, 1, 0, 0, 0, time.UTC) // 08:00 at UTC+7 == 01:00 UTC
+	if !gotUTC.Equal(wantUTC) {
+		t.Errorf("ParseFireTime(+7h offset) = %v UTC, want %v UTC (the user's own 08:00, not the host's)", gotUTC, wantUTC)
+	}
+}
+
+// TestParseFireTime_UsesTargetTimezonesOwnCalendarDay guards the subtler
+// half of the fix: "today" itself must be computed in the resolved offset,
+// not the caller's now.Location(), or a routine near midnight could still
+// fire on the wrong calendar day even with the right offset applied to the
+// clock time. Host is at 23:30 UTC+2 (so still "today" locally); the
+// UTC+7 user is already 4.5 hours into the next calendar day.
+func TestParseFireTime_UsesTargetTimezonesOwnCalendarDay(t *testing.T) {
+	hostLoc := time.FixedZone("HOST", 2*3600)
+	now := time.Date(2026, 7, 17, 23, 30, 0, 0, hostLoc)
+
+	userOffsetMinutes := 7 * 60
+	got, err := ParseFireTime("08:00", &userOffsetMinutes, now)
+	if err != nil {
+		t.Fatalf("ParseFireTime: %v", err)
+	}
+
+	inUserZone := got.In(time.FixedZone("USER", userOffsetMinutes*60))
+	if inUserZone.Day() != 18 {
+		t.Errorf("fire time fell on day %d in the user's own zone, want 18 (the user's actual 'today')", inUserZone.Day())
+	}
+}

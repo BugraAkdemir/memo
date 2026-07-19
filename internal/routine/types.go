@@ -21,8 +21,28 @@ const (
 
 // Schedule describes when a routine fires. Weekdays is empty for "every day".
 type Schedule struct {
-	TimeOfDay string         `json:"time_of_day"` // "HH:MM", local time
+	TimeOfDay string         `json:"time_of_day"` // "HH:MM", in UTCOffsetMinutes if set, else backend host local time
 	Weekdays  []time.Weekday `json:"weekdays,omitempty"`
+
+	// UTCOffsetMinutes is the client's UTC offset in minutes (e.g. 180 for
+	// UTC+3), captured at the moment TimeOfDay was set. ParseFireTime
+	// interprets TimeOfDay against this offset instead of the backend host's
+	// own local timezone (BUG-M4): without it, a routine created while the
+	// user is in a different timezone than wherever the backend process
+	// happens to be running (e.g. remote access while traveling) always
+	// fired at the *host's* local "HH:MM", not the user's. nil for any
+	// routine created before this field existed, or a client that never
+	// sends it — ParseFireTime falls back to the previous host-local-time
+	// behavior exactly in that case.
+	//
+	// Deliberately a fixed offset, not a full IANA zone name: it does not
+	// self-correct across a DST transition the user's real zone would
+	// observe (a routine set in summer stays on summer time through
+	// winter) — capturing a real IANA zone would need a platform
+	// timezone-name plugin on the Flutter side (device timezone name isn't
+	// available from pure Dart), which isn't worth the added dependency for
+	// this. Accepted, documented limitation, not silently wrong.
+	UTCOffsetMinutes *int `json:"utc_offset_minutes,omitempty"`
 }
 
 // FiresOn reports whether the schedule includes the given weekday.

@@ -1,3 +1,48 @@
+# Handoff — 2026-07-20 (Session 44, devam 2) — Kullanıcı raporu: jenerik mesajlarda (selam) model kendi eski cevabını birebir kopyalıyor — canlı doğrulanıp düzeltildi
+
+## Özet
+
+Session 44'ün devamı. Kullanıcı bugünkü RRF fix'lerini gerçek verisiyle canlı test ettirdikten sonra (bkz. bir önceki giriş) ayrı, daha önce hiç bilinmeyen bir bug rapor etti: "selam" gibi jenerik bir mesajı arka arkaya yazınca bir noktadan sonra cevap **sabit kalıyor**. Commit: `0323583`.
+
+## Doğrulama süreci (2 deneme gerekti — ilki metodoloji hatasıydı)
+
+**1. deneme (başarısız izolasyon):** Gerçek `~/.memo/data`'dan sadece `providers.json`/`machine.key`/embedding modelini kopyalayıp izole bir scratch dizininde test etmeye çalıştım. Ama kopyaladığım `config.yaml` içinde `persist_dir: /home/bugra/.memo/data/memory` gibi **mutlak yollar** vardı — bu yüzden "izole" backend'im aslında yine kullanıcının GERÇEK hafıza veritabanına yazıyordu (önceki "Mırnav" testinden kalan veriyle karışarak). Bunu debug-search çıktısında "Mırnav" beklenmedik şekilde çıkınca fark ettim.
+
+**2. deneme (gerçek izolasyon):** `config.yaml`'ı sıfırdan, sadece `active_provider` içerecek şekilde minimal yazdım (mutlak yol yok) — `MEMO_DATA_DIR`'ın parent'ındaki `config/` klasörünü kullanan `ConfigDir()` mantığına uygun dizin yapısı (`<scratch>/data` + `<scratch>/config`) kurdum. Bu sefer gerçekten izole çalıştı.
+
+## Bulgu
+
+8 kere art arda "selam" yazınca: ilk birkaç cevap farklıydı, ama **5. turdan itibaren 4 tur boyunca cevap kelimesi kelimesine aynı kaldı** ("Selam! Ne var ne yok, nasıl gidiyor?"). Backend log'unda kanıt: her yeni "selam", önceki "selam" turlarını (1, 2, 3, 4, 5... gitgide artan sayıda) `%3.5-3.6` benzerlikle "ilgili hafıza" olarak buluyor ve `FormatMemoriesForPrompt` bunları **ham içerikleriyle** (`User: selam\nAssistant: <önceki tam cevap>`) prompt'a enjekte ediyordu — modele "bunlar sadece bağlam, kopyalama" diyen hiçbir talimat yoktu. Zayıf/ücretsiz bir model (`deepseek-v4-flash-free`, OpenCode Zen) bu kadar net emsal görünce en son cevabı aynen tekrarlamaya başlıyordu.
+
+**Kök neden, Memo'nun zaten bilinen/kabul edilmiş bir tasarım özelliğiyle bağlantılı** (AGENTS.md: "Memo has no mechanism to auto-detect 'this is a durable fact worth extra weight'... saves every single turn unconditionally, greetings included") — ama bunun SOMUT SONUCU (tekrar eden cevap) daha önce hiç fark edilmemişti.
+
+## Fix
+
+Kullanıcıya 3 seçenek sunuldu (prompt talimatı / retrieval'da tekilleştirme / sadece dokümante et), **prompt talimatı** seçildi — en küçük, en güvenli değişiklik. `internal/identity/identity.go`'daki `BuildSystemPrompt`'ın hafıza bloğu sonrası talimat cümlesine ("Do not fabricate details... Do not repeat memory timestamps verbatim") şu eklendi: hafızalar sadece arka plan bağlamı, asla kopyalanacak bir şablon değil; bir hafıza modelin kendi eski cevabını gösteriyorsa (örn. "selam"a verilen önceki cevap), o kelimeleri aynen kullanma, kısa/tekrarlı görünen mesajlarda bile her zaman taze ve doğal bir cevap üret.
+
+## Canlı doğrulama (fix öncesi/sonrası karşılaştırma)
+
+Aynı izole ortamda (zaten 4 tane birebir aynı "selam" cevabı hafızada varken) binary'yi bugünkü fix ile yeniden derleyip aynı veriye tekrar bağladım, 6 "selam" daha attım:
+- **Fix öncesi:** 4 tur art arda birebir aynı cevap.
+- **Fix sonrası:** "Selam! Naber, nasıl gidiyor?" / "...valla?" / "Selam! Neler oluyor, nasılsın bakalım?" / "Selam! Ne var ne yok?" — tekrar çeşitlendi, hiçbir art arda iki tur birebir aynı değildi.
+
+Test backend'i düzgünce kapatıldı (`POST /api/shutdown`), arkada iz bırakmadı.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" -race ./...   → temiz, tüm paketler yeşil
+Canlı test (gerçek backend + gerçek provider + gerçek embedding)   → fix öncesi/sonrası net fark, yukarıda
+```
+
+## Sıradaki oturum için
+
+- Bu bug'ın kök nedeni ("her tur koşulsuz kaydediliyor, önem/tazelik filtresi yok") daha geniş bir tasarım konusu — bugünkü fix sadece SONUCU (birebir tekrar) engelliyor, kök nedenin kendisine (gereksiz-jenerik turların hafızaya kaydedilmesi) dokunmadı. İstenirse ayrı bir oturumda ele alınabilir.
+- `internal/identity`'nin sistem prompt'u artık hafıza enjeksiyonu konusunda daha net — benzer "modelin kendi geçmiş cevabını tekrarlaması" şikayeti gelirse önce bu talimatın hâlâ yerinde olduğunu doğrula.
+- Kullanıcının gerçek `~/.memo/data`'sında hâlâ bugünkü test turlarından kalma veri var (Mırnav personası + selam tekrarları) — kullanıcı "kalsa da olur" dedi, silinmedi.
+
+---
+
 # Handoff — 2026-07-19 (Session 44, devam) — Commit imzalama kuruldu, "flaky" CI testi aslında 2 gerçek algoritma bug'ı + 1 data race'miş
 
 ## Özet

@@ -300,14 +300,21 @@ class _ModelListPanel extends ConsumerWidget {
                 color: c.borderSoft,
               ),
               const SizedBox(width: 2),
-              for (final (key, label) in [...capFilters, ...sizeFilters]) ...[
-                _FilterChip(
-                  label: label,
-                  active: activeFilters.contains(key),
-                  onTap: () => onFilterToggle(key),
-                ),
-                const SizedBox(width: 5),
-              ],
+              _MultiSelectFilterDropdown(
+                icon: Icons.tune_rounded,
+                categoryLabel: L10n.t('filter_capabilities'),
+                options: capFilters,
+                activeFilters: activeFilters,
+                onToggle: onFilterToggle,
+              ),
+              const SizedBox(width: 6),
+              _MultiSelectFilterDropdown(
+                icon: Icons.straighten_rounded,
+                categoryLabel: L10n.t('filter_size'),
+                options: sizeFilters,
+                activeFilters: activeFilters,
+                onToggle: onFilterToggle,
+              ),
             ],
           ),
         ),
@@ -381,45 +388,100 @@ class _ModelListPanel extends ConsumerWidget {
   }
 }
 
-// ─── Filter chip ──────────────────────────────────────────────────
+// ─── Multi-select filter dropdown ─────────────────────────────────
+//
+// Replaces the old flat row of individually-toggled _FilterChip pills
+// (kanka feedback: should look and behave like the Sort dropdown next to
+// it instead of a scrolling chip row). Built on MenuAnchor/MenuItemButton
+// (Material 3, closeOnActivate: false) rather than the older
+// showMenu/PopupMenuItem API _SortChip below still uses — PopupMenuItem
+// closes its route on every tap by default, which is exactly right for
+// Sort (pick one, done) but wrong here: toggling a checkbox in a
+// multi-select list must NOT close the menu, so the user can pick several
+// options in one open/close cycle instead of reopening the dropdown after
+// every single toggle.
+class _MultiSelectFilterDropdown extends StatelessWidget {
+  final IconData icon;
+  final String categoryLabel;
+  final List<(String key, String label)> options;
+  final Set<String> activeFilters;
+  final ValueChanged<String> onToggle;
 
-class _FilterChip extends StatelessWidget {
-  final String label;
-  final bool active;
-  final VoidCallback onTap;
-  const _FilterChip({required this.label, required this.active, required this.onTap});
+  const _MultiSelectFilterDropdown({
+    required this.icon,
+    required this.categoryLabel,
+    required this.options,
+    required this.activeFilters,
+    required this.onToggle,
+  });
 
   @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
-    return MouseRegion(
-      cursor: SystemMouseCursors.click,
-      child: GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 150),
-          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-          decoration: BoxDecoration(
-            color: active
-                ? MemoTheme.accent.withValues(alpha: 0.15)
-                : c.bgElement,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: active
-                  ? MemoTheme.accent.withValues(alpha: 0.6)
-                  : c.borderSoft,
-            ),
-          ),
-          child: Text(
-            label,
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: active ? MemoTheme.accent : c.textMuted,
-            ),
+    final selectedCount =
+        options.where((o) => activeFilters.contains(o.$1)).length;
+    final isActive = selectedCount > 0;
+
+    return MenuAnchor(
+      style: MenuStyle(
+        backgroundColor: WidgetStatePropertyAll(c.bgElement),
+        surfaceTintColor: const WidgetStatePropertyAll(Colors.transparent),
+        elevation: const WidgetStatePropertyAll(4),
+        shape: WidgetStatePropertyAll(
+          RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+            side: BorderSide(color: c.borderSoft),
           ),
         ),
       ),
+      builder: (context, controller, child) {
+        return MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => controller.isOpen ? controller.close() : controller.open(),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              decoration: BoxDecoration(
+                color: isActive ? MemoTheme.accent.withValues(alpha: 0.15) : c.bgElement,
+                borderRadius: BorderRadius.circular(20),
+                border: Border.all(
+                  color: isActive ? MemoTheme.accent.withValues(alpha: 0.6) : c.borderSoft,
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(icon, size: 13, color: isActive ? MemoTheme.accent : c.textMuted),
+                  const SizedBox(width: 4),
+                  Text(
+                    isActive ? '$categoryLabel ($selectedCount)' : categoryLabel,
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
+                      color: isActive ? MemoTheme.accent : c.textMuted,
+                    ),
+                  ),
+                  Icon(Icons.arrow_drop_down,
+                      size: 16, color: isActive ? MemoTheme.accent : c.textMuted),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+      menuChildren: [
+        for (final (key, label) in options)
+          MenuItemButton(
+            closeOnActivate: false,
+            onPressed: () => onToggle(key),
+            leadingIcon: Icon(
+              activeFilters.contains(key) ? Icons.check_box : Icons.check_box_outline_blank,
+              size: 18,
+              color: activeFilters.contains(key) ? MemoTheme.accent : c.textDim,
+            ),
+            child: Text(label, style: TextStyle(fontSize: 13, color: c.textMain)),
+          ),
+      ],
     );
   }
 }

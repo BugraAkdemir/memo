@@ -285,9 +285,24 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     // Only this repo+file counts — other files can download concurrently
     // (e.g. the setup wizard's chat + memory model) without flipping this
     // panel's button to "Cancel" for an unrelated download.
+    //
+    // A failed download (e.g. HTTP 401 on a gated HF repo requiring login)
+    // is deliberately kept `active: true` backend-side
+    // (modelstore.DownloadModel's comment: "keep visible so Flutter shows
+    // the error") purely so the download banner elsewhere in the app still
+    // shows the failure instead of the entry silently vanishing — but that
+    // means `active` alone can't distinguish "genuinely downloading" from
+    // "already failed and stopped." Without the `p.error == null` check
+    // below, a failed download left this button stuck on "Cancel" forever
+    // (pressing it called cancelDownload on a transfer that had already
+    // stopped, a confusing no-op) instead of falling back to "Download"
+    // so the user could retry.
     final downloadingNow = _selectedFile != null &&
         downloads.any((p) =>
-            p.active && p.repoId == item.repoId && p.filename == _selectedFile!.filename);
+            p.active &&
+            p.error == null &&
+            p.repoId == item.repoId &&
+            p.filename == _selectedFile!.filename);
 
     return SingleChildScrollView(
       padding: const EdgeInsets.fromLTRB(28, 24, 28, 32),

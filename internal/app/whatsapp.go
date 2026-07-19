@@ -178,6 +178,57 @@ func (a *App) SetWhatsAppChatMode(enabled bool) {
 	a.whatsappChatMode.Store(enabled)
 }
 
+// whatsAppAssistantSystemPrompt is the system message for the dedicated
+// WhatsApp-chat assistant (as opposed to the general agent's own whatsapp_send
+// tool, which this shares registration/permission machinery with via
+// agent.NewWhatsAppExecutor).
+//
+// The explicit-consent paragraph is the fix for BUG-L2: live testing
+// (Session 40) found the model refusing whatsapp_send on its own
+// conversation-level judgment across three separate, increasingly direct
+// rephrasings of an explicit user request ("annenin haberi olmadan otomatik
+// mesaj göndermek doğru değil") — even with --auto-allow already granted, so
+// the tool's own permission gate (DangerLevel: Medium, see
+// internal/agent/tools.go) was never even reached; the refusal happened
+// purely in the model's own reply, before any tool call was attempted. The
+// same message sent instead through the direct REST endpoint
+// (handleWhatsAppSend) succeeded immediately with no such second-guessing —
+// a real inconsistency for a user who has to explain themselves to their own
+// assistant to get it to do what they already unambiguously asked for.
+// This does not weaken the actual safety boundary (the permission prompt /
+// DangerLevel gate, or auto-allow if the user has explicitly turned that on
+// — both untouched) — it only stops the model from adding an extra,
+// unrequested layer of conversational refusal on top of a request that was
+// already clear.
+const whatsAppAssistantSystemPrompt = `You are a WhatsApp assistant. You can read the user's WhatsApp messages, search them, and send messages on their behalf.
+
+Tools available to you:
+- whatsapp_latest: list the most recently messaged chats
+- whatsapp_messages: fetch a chat's message history
+- whatsapp_search: search message text
+- whatsapp_send: send a message to a contact
+
+If the user asks "who messaged me last", call whatsapp_latest.
+If they say "send X a message", call whatsapp_send.
+If they ask "what did I write to X", call whatsapp_messages or whatsapp_search.
+
+NOTE: every chat in whatsapp_latest's output comes with a "(jid: ...)" — use
+that JID when sending a message or fetching history. You can also refer to a
+contact by name alone (e.g. "Sarah") — the system automatically maps the name
+to the right contact. NEVER ask the user for a JID; check whatsapp_latest's
+chat list first instead.
+
+IMPORTANT — whose decision this is: when the user tells you directly and
+clearly who to message and what to say (e.g. "tell X: ...", "message my mom,
+...", "send Y: ...") that is already the user's own explicit consent — call
+whatsapp_send, and don't add your own conversational gatekeeping on top of it
+("are you sure", "I don't think I should send this"). The actual approval
+layer is a separate system (a permission prompt, or auto-approval the user
+has explicitly turned on) — you don't need to be an additional one. Only ask
+for clarification when the recipient or content is genuinely ambiguous (the
+user didn't give a clear recipient or message); as long as the request itself
+is clear, don't refuse to send it on your own judgment.`
+
 // WhatsAppChatStream handles a chat message in WhatsApp mode.
 func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
 	outCh := make(chan api.StreamChunk, 128)
@@ -284,23 +335,8 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		}
 
 		waPrompt := provider.Message{
-			Role: "system",
-			Content: `Sen bir WhatsApp asistanısın. Kullanıcının WhatsApp mesajlarını okuyabilir, arama yapabilir ve mesaj gönderebilirsin.
-
-Kullanabileceğin araçlar:
-- whatsapp_latest: En son mesajlaşılan sohbetleri listele
-- whatsapp_messages: Bir sohbetin mesaj geçmişini getir
-- whatsapp_search: Mesajlarda metin araması yap
-- whatsapp_send: Bir kişiye mesaj gönder
-
-Kullanıcı "bana en son kim yazdı" derse whatsapp_latest çağır.
-"falana mesaj at" derse whatsapp_send çağır.
-"falana ne yazmışım" derse whatsapp_messages veya whatsapp_search çağır.
-
-NOT: whatsapp_latest çıktısında her sohbet "(jid: ...)" bilgisiyle gelir; mesaj
-gönderirken veya geçmiş getirirken bu jid'i kullan. Kişiyi sadece ismiyle de
-belirtebilirsin (örn. "Berra") — sistem ismi otomatik olarak doğru kişiye eşler.
-Kullanıcıya ASLA JID sorma; önce whatsapp_latest ile sohbet listesini kontrol et.`,
+			Role:    "system",
+			Content: whatsAppAssistantSystemPrompt,
 		}
 
 		allMsgs := make([]provider.Message, 0, len(pMsgs)+1)

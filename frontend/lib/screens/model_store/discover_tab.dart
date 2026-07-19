@@ -69,15 +69,23 @@ class _DiscoverTabState extends ConsumerState<DiscoverTab> {
   List<DiscoverItem> _applyFiltersSort(List<DiscoverItem> raw) {
     var list = raw.toList();
 
-    // Capability filters (OR within same type)
-    if (_filters.contains('tools')) {
-      list = list.where((i) => i.supportsTools).toList();
-    }
-    if (_filters.contains('vision')) {
-      list = list.where((i) => i.supportsVision).toList();
-    }
-    if (_filters.contains('code')) {
-      list = list.where((i) => i.supportsCode).toList();
+    // Capability filters — OR'd together (a model matching ANY selected
+    // capability passes), same as the size filters just below. Previously
+    // each capability was applied as its own independent `.where`, which
+    // chained into an AND: picking both "Tools" and "Vision" required a
+    // single model to have both, when a user checking two capability boxes
+    // almost always means "show me either kind" — since very few GGUF
+    // models genuinely support both, that combination silently produced an
+    // empty result list before this fix.
+    final capFilterKeys = _filters.intersection({'tools', 'vision', 'code', 'embedding'});
+    if (capFilterKeys.isNotEmpty) {
+      list = list.where((i) {
+        if (capFilterKeys.contains('tools') && i.supportsTools) return true;
+        if (capFilterKeys.contains('vision') && i.supportsVision) return true;
+        if (capFilterKeys.contains('code') && i.supportsCode) return true;
+        if (capFilterKeys.contains('embedding') && i.isEmbedding) return true;
+        return false;
+      }).toList();
     }
 
     // Size filters
@@ -152,6 +160,7 @@ class _DiscoverTabState extends ConsumerState<DiscoverTab> {
               }
             }),
             onSortChange: (mode) => setState(() => _sort = mode),
+            onFiltersClear: () => setState(() => _filters.clear()),
           ),
         ),
         VerticalDivider(width: 1, thickness: 1, color: c.borderSoft),
@@ -200,6 +209,7 @@ class _ModelListPanel extends ConsumerWidget {
   final ValueChanged<DiscoverItem> onSelect;
   final ValueChanged<String> onFilterToggle;
   final ValueChanged<_SortMode> onSortChange;
+  final VoidCallback onFiltersClear;
 
   const _ModelListPanel({
     required this.items,
@@ -213,6 +223,7 @@ class _ModelListPanel extends ConsumerWidget {
     required this.onSelect,
     required this.onFilterToggle,
     required this.onSortChange,
+    required this.onFiltersClear,
   });
 
   @override
@@ -224,6 +235,7 @@ class _ModelListPanel extends ConsumerWidget {
       ('tools', L10n.t('tools')),
       ('vision', L10n.t('vision')),
       ('code', L10n.t('code')),
+      ('embedding', L10n.t('embedding_filter')),
     ];
     final sizeFilters = [
       ('1-8b', '1–8B'),
@@ -300,19 +312,44 @@ class _ModelListPanel extends ConsumerWidget {
           ),
         ),
 
-        // ── Section label ──
+        // ── Section label + active-filter indicator ──
         Padding(
           padding: const EdgeInsets.fromLTRB(14, 4, 14, 4),
-          child: Text(
-            isCurated && activeFilters.isEmpty
-                ? (L10n.t('featured_models'))
-                : (L10n.t('length_results', {'length': '${items.length}'})),
-            style: TextStyle(
-              fontSize: 11,
-              fontWeight: FontWeight.w600,
-              color: c.textDim,
-              letterSpacing: 0.4,
-            ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Text(
+                  isCurated && activeFilters.isEmpty
+                      ? (L10n.t('featured_models'))
+                      : (L10n.t('length_results', {'length': '${items.length}'})),
+                  style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: c.textDim,
+                    letterSpacing: 0.4,
+                  ),
+                ),
+              ),
+              if (activeFilters.isNotEmpty)
+                GestureDetector(
+                  onTap: onFiltersClear,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        L10n.t('filters_active_count', {'count': '${activeFilters.length}'}),
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: MemoTheme.accent,
+                        ),
+                      ),
+                      const SizedBox(width: 4),
+                      Icon(Icons.close_rounded, size: 13, color: MemoTheme.accent),
+                    ],
+                  ),
+                ),
+            ],
           ),
         ),
 

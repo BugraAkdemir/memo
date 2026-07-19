@@ -143,6 +143,26 @@ func TestBuildSystemPromptWithMemories(t *testing.T) {
 	}
 }
 
+// TestBuildSystemPromptWithMemories_WarnsAgainstVerbatimReuse is the
+// regression test for a real, live-reproduced bug: repeating a generic
+// message like "selam" causes each turn to be saved to memory, and the
+// *next* "selam" retrieves the model's own past reply as a "relevant
+// memory" — with nothing telling the model not to just copy it, a weak
+// model converges onto repeating the exact same reply verbatim after a few
+// turns (confirmed directly: 4 identical replies in a row against a real
+// backend + real provider). The system prompt must explicitly instruct the
+// model that memories are background context, never a template to copy.
+func TestBuildSystemPromptWithMemories_WarnsAgainstVerbatimReuse(t *testing.T) {
+	id := New("Alice", "Memo", "casual", "", false)
+	memories := []memory.MemoryResult{
+		{Content: "User: selam\nAssistant: Selam! Ne var ne yok?", Similarity: 0.5},
+	}
+	prompt := id.BuildSystemPrompt(memories, false, true, true)
+	if !strings.Contains(prompt, "never a template to copy") {
+		t.Error("system prompt should warn the model not to reuse a past reply verbatim when memories include its own prior replies")
+	}
+}
+
 func TestBuildSystemPromptEmptyMemories(t *testing.T) {
 	id := New("Alice", "Memo", "casual", "", false)
 	prompt := id.BuildSystemPrompt([]memory.MemoryResult{}, false, true, true)

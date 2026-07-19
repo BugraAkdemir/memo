@@ -1,3 +1,73 @@
+# Handoff — 2026-07-19 (Session 44) — Local model context-size crash'i + Discover/Model Store'un dizisi (10 commit): GGUF-tabanlı gerçek yetenek tespiti, gated model temizliği, filtre yeniden tasarımı, CI flaky test
+
+## Özet
+
+Tek oturumda, kullanıcının art arda verdiği taleplerle 10 ayrı commit'lik bir zincir: önce local model başlatmada gerçek bir crash bug'ı ("context 10000000 girip modeli çökertebiliyorum"), oradan doğal olarak Model Store/Discover ekranının "hardcoded model-adı tahmini" sorununa, oradan CI'da flaky bir teste, oradan iki gerçek kullanıcı-raporlu buga (401 hataları, boş avatarlar), oradan curated model listesinin temizliğine ve son olarak filtre UI'ının yeniden tasarımına genişledi. Hepsi ayrı, doğrulanmış (`go build/vet/test -race` + `flutter analyze/test`) commit'ler halinde — commit'ler: `d5b6afa`→`1e5a4bd` (yukarıdan aşağı kronolojik).
+
+## 1) Local model context-size crash (`d5b6afa`)
+
+**Bug:** Model başlatma dialogunda context size serbest metin alanıydı, üst sınır yoktu — kullanıcı 128K destekleyen bir modele 10.000.000 girip llama-server'ı çökertebiliyordu.
+
+**Kök neden:** Hiçbir yerde modelin gerçek max context'i okunmuyordu.
+
+**Fix:** Yeni `internal/gguf` paketi — GGUF dosyasının binary header'ındaki metadata key-value bölümünü okuyor (tensor data'ya hiç dokunmuyor, dosya boyutundan bağımsız ucuz), `<mimari>.context_length` anahtarını buluyor. `modelstore.ListLocalModels` bunu okuyup `.meta.json` sidecar'ına cache'liyor (`MaxContext`), `GET /api/models/local` ile frontend'e taşıyor. `internal/llama.Start` da ikinci bir güvenlik katmanı olarak aynı gerçek max'a göre clamp yapıyor (frontend'i atlayan bir istek de kırpılıyor). Frontend'de context size artık modelin kendi `maxContext`'ine bağlı bir `Slider` — max bilinmiyorsa (nadir, tanınmayan mimari) eski serbest metin alanına düşüyor, açık bir uyarı ile.
+
+## 2) Hardcoded model-aile tahmini → gerçek sinyaller (`0916e17`, `5c323dd`, `3cd370a`)
+
+Kullanıcı context-size fix'i sırasında Discover'daki vision/tools rozetlerinin de hardcoded model-adı listelerinden geldiğini fark etti ("google/gemma4 → google logosu çekecek gibi" örneğiyle). `/codebase-memory` ile incelendi: **4 ayrı, birbirinden bağımsız hardcoded aile-adı listesi** bulundu (`local_model.dart`, `discover_item.dart`'ta 3 tane). Hepsi kaldırıldı, yerine gerçek kaynaklar kondu:
+
+- **Tools (indirilmiş model):** `internal/gguf.Read` artık `tokenizer.chat_template`'i de okuyup içinde `tool_calls` geçip geçmediğine bakıyor — modelin kendi beyan ettiği davranış, isim tahmini değil. HF tag'i ile OR'lanıyor.
+- **Vision (indirilmiş model):** zaten doğruydu (`findMmproj`, gerçek dosya kontrolü) — dokunulmadı.
+- **Vision (Discover detay paneli, indirmeden önce):** `_hasMmprojInRepo` — zaten çekilen HF dosya ağacında (`getModelFiles`) gerçek bir `mmproj` dosyası var mı diye bakıyor.
+- **Tools (Discover detay paneli):** `_loadToolsSupport` — repo'nun `tokenizer_config.json`'ını canlı çekip aynı `tool_calls` kontrolünü yapıyor; dosya yoksa (çoğu GGUF-only quantizer reposunda olur) sessizce HF tag'ine düşüyor.
+- **Code:** kullanıcının kararıyla hardcoded liste tamamen kaldırıldı, sadece HF tag'ine güveniyor (dürüst ama daha az kapsama).
+- **Marka logosu (Discover detay paneli):** `_loadBrandAuthor` — HF'nin `cardData.base_model` alanını (üçüncü parti quantizer'ların işaretlediği orijinal model) canlı çekip gerçek marka logosunu (örn. bartowski deposu için Google) gösteriyor.
+- **Discover listesi/filtresi (toplu görünüm):** bilinçli olarak hâlâ sadece HF tag'ine dayanıyor — her sonuç için ekstra istek HF'yi yorardı.
+
+## 3) CI flaky test — race detector değil, sıralama determinizmi (`c8f7ccf`)
+
+Kullanıcı CI'daki `go test -race` job'ının başarısız olduğunu bildirdi. `gh run view --log-failed` ile incelendi: **`DATA RACE` raporu yoktu** — `internal/memory`'deki `TestRecall_CasualFactNotCrowdedOutByRoutineNoise` gerçek bir assertion hatasıyla başarısız oluyordu. Kök neden: `reciprocalRankFusion` sonuçları bir Go map'ini iterate ederek sıralıyordu; Go map iterasyon sırasını **bilerek** her process'te rastgele yapıyor. Eşit RRF skorlu adaylar (30 neredeyse-aynı noise mesajında yaygın) topK sınırında rastgele kazanıp kaybediyordu. Aynı eksik tie-break `goSearch`'te de vardı (CI'da `vec0` eklentisi derli değil, Go fallback kullanılıyor — yerelde eklenti mevcut olduğu için `vecSearch` farklı bir yol izliyor, bu yüzden yerelde hiç görülmüyordu).
+
+**Fix:** `reciprocalRankFusion` ve `goSearch`'e ID bazlı deterministik tie-break, `ftsSearch`'ün SQL'ine ikincil `ORDER BY`. **Önemli, canlı doğrulanmış bulgu:** `vecSearch`'ün SQL'ine aynı ikincil sıralamayı eklemek sqlite-vec'in özel KNN sorgu tanımasını bozup gerçekten farklı/yanlış sonuçlar döndürdü (test tekrar tekrar başarısız oldu) — o satır geri alındı, sebebi kod içinde detaylı belgelendi ki tekrar denenmesin. Yeni `TestReciprocalRankFusion_DeterministicOnTiedScores` (200 kere çağırıp hepsinin aynı sırayı verdiğini doğruluyor) + eski testin 30 kere `-count=30` ile tekrar çalıştırılması.
+
+## 4) İki gerçek kullanıcı-raporlu bug (`79e2e66`, `656eed1`)
+
+Kullanıcının ekran görüntüleriyle bildirdiği:
+- **Boş "?" avatarlar:** HF'nin arama API'sini doğrudan `curl` ile test ettim — response'da hiç `author` alanı yok. Backend artık `repoId`'nin namespace'inden türetiyor (`authorFromRepoID`).
+- **README'de ham 401 metni:** Gated (lisans gerektiren) resmi Google/Meta modellerinde HF anonim isteklere 401 dönüyor; `_loadReadme` sadece 404'ü "README yok" sayıyordu, 401/403 artık aynı muameleyi görüyor.
+- **İkinci ekran görüntüsü:** gerçek bir indirme 401 ile başarısız oldu (`google/gemma-3-4b-it-qat-q4_0-gguf`, gated), üst banner doğru "Failed" gösteriyordu ama detay panelindeki buton hâlâ "İptal Et" yazıyordu — backend hata sonrası `Active`'i bilerek `true` bırakıyor (üst banner kaybolmasın diye), detay panelinin `downloadingNow` kontrolü bunu `error` kontrolü olmadan kullanıyordu. `p.error == null` eklendi.
+
+## 5) Curated model listesi temizliği (`8b4e153`)
+
+Google Gemma-3 4B/12B'nin HF API'sinin kendi `"gated": "manual"` alanıyla **gerçekten** gated olduğu doğrulandı (tahmin değil, `curl` ile). Anonim istek yapan Memo bunları hiç indiremiyor. İkisi de curated listeden kaldırıldı, yerine doğrulanmış non-gated resmi depolar kondu: `openbmb/MiniCPM-V-2_6-gguf` (vision) ve `Qwen/Qwen2.5-3B-Instruct-GGUF` (hafif tier — Phi-3-mini ile "modest hardware" testinde aynı sonuca çakışmasın diye). Diğer tüm curated depolar (`Qwen3-8B`, `Qwen2.5-7B/14B/Coder-7B`, `Phi-3-mini`, `nomic-embed`) `gated:false` olarak doğrulandı.
+
+## 6) Filtre iyileştirmeleri (`e057531`, `1e5a4bd`)
+
+- Tools/Vision/Code/Embedding filtreleri AND yerine artık OR (aynı size filtrelerinin zaten çalıştığı gibi) — önceden ikisini birden seçince neredeyse hep boş sonuç veriyordu.
+- Eksik olan **Embedding/Hafıza** filtresi eklendi.
+- "N filtre aktif · ✕" göstergesi + tek tıkla temizleme.
+- **Kullanıcı isteğiyle:** düz chip satırı, Sort'la aynı görünüm/davranışa sahip iki dropdown'a (Yetenek, Boyut) dönüştürüldü — `MenuAnchor`/`MenuItemButton(closeOnActivate: false)` kullanıldı (Sort'un kullandığı eski `showMenu`/`PopupMenuItem` her tıklamada menüyü kapatıyor, çoklu-seçim checklist için yanlış).
+
+## Doğrulanmadı
+
+Dropdown filtre UI'ının gerçek aç/kapa/toggle etkileşimi bu ortamda tıklanarak test edilmedi (ekran yok) — sadece derleme + mevcut filtre-mantığı testleriyle doğrulandı. Discover detay panelindeki yeni canlı istekler (tools/brand-author fetch) gerçek bir GUI penceresinde görsel olarak denenmedi.
+
+## Doğrulama (her commit için tekrarlandı)
+
+```
+CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" -race ./...   → temiz, tüm paketler yeşil
+flutter analyze lib/ (frontend)                                    → temiz (bilinen info-seviye gürültü dışında)
+flutter test (frontend)                                             → 105/105 yeşil
+```
+
+## Sıradaki oturum için
+
+- Kullanıcı bu oturumda commit sıklığını artırmamı istedi (görev bitince tek dev commit değil, riskli adımlardan önce de commit) — hafızaya kaydedildi (`feedback-commit-frequency`), bundan sonraki oturumlarda uygulanmalı.
+- Dropdown filtre UI'ı gerçek bir GUI'de hiç denenmedi — ilk fırsat bulunca kontrol edilmeli.
+- `internal/gguf` paketinin `tool_calls` substring kontrolü tüm chat template konvansiyonlarını kapsamayabilir (nadir/özel şablonlar kaçabilir) — false negative riski var ama false positive riski yok, kabul edilebilir.
+
+---
+
 # Handoff — 2026-07-19 (Session 43) — BUG_REPORT.md'deki son 3 açık madde de düzeltildi, dosya 0 açık maddeye indi
 
 ## Özet

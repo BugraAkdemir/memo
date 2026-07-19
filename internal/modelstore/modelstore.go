@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/gguf"
 	"memo/internal/logx"
 	"net/http"
 	"net/url"
@@ -30,12 +31,26 @@ type HFModelResult struct {
 // modelMeta is stored as a sidecar JSON file (<model>.meta.json) next to each
 // downloaded GGUF so we can surface HF capabilities without network calls.
 type modelMeta struct {
-	RepoID        string   `json:"repo_id"`
-	Tags          []string `json:"tags"`
-	SupportsTools bool     `json:"supports_tools"`
-	SupportsVision bool    `json:"supports_vision"`
-	SupportsCode  bool     `json:"supports_code"`
-	IsEmbedding   bool     `json:"is_embedding_hf"` // from HF tags (distinct from filename heuristic)
+	RepoID         string   `json:"repo_id"`
+	Tags           []string `json:"tags"`
+	SupportsTools  bool     `json:"supports_tools"`
+	SupportsVision bool     `json:"supports_vision"`
+	SupportsCode   bool     `json:"supports_code"`
+	IsEmbedding    bool     `json:"is_embedding_hf"` // from HF tags (distinct from filename heuristic)
+
+	// MaxContext is the model's own trained context length, read once from
+	// the GGUF file's metadata (internal/gguf.ContextLength) and cached here
+	// so ListLocalModels doesn't re-parse a multi-gigabyte file on every
+	// poll. 0 means "checked, genuinely unknown" (see MaxContextChecked),
+	// not "not yet checked."
+	MaxContext int `json:"max_context,omitempty"`
+	// MaxContextChecked distinguishes "we tried to read the GGUF header and
+	// found nothing" (stays 0 forever, correctly) from "this sidecar
+	// predates the max-context feature and has never been checked" (must
+	// still be attempted once). Without this, a model whose architecture
+	// isn't recognized would have its multi-gigabyte file's header re-read
+	// on every single ListLocalModels call, forever.
+	MaxContextChecked bool `json:"max_context_checked,omitempty"`
 }
 
 // GGUFFile represents a single .gguf file within a HF repo.
@@ -92,6 +107,13 @@ type LocalModel struct {
 	SupportsVision bool     `json:"supports_vision"`
 	SupportsCode   bool     `json:"supports_code"`
 	Tags           []string `json:"tags,omitempty"`
+	// MaxContext is this model's own trained context length (read from its
+	// GGUF metadata, see internal/gguf.ContextLength), so a client can bound
+	// a context-size control at what the model can actually handle instead
+	// of accepting an arbitrary value that crashes llama-server at startup.
+	// 0 means unknown — the file's architecture wasn't one this reader
+	// recognizes the "<arch>.context_length" convention for.
+	MaxContext int `json:"max_context,omitempty"`
 }
 
 // findMmproj looks for a multimodal projector file next to the model.
@@ -624,7 +646,8 @@ func (s *Store) ListLocalModels() []LocalModel {
 			IsEmbedding: isEmbeddingModel(info.Name(), repoID),
 			MmprojPath:  findMmproj(path),
 		}
-		if meta := loadModelMeta(path); meta != nil {
+		meta := loadModelMeta(path)
+		if meta != nil {
 			lm.SupportsTools = meta.SupportsTools
 			lm.SupportsVision = meta.SupportsVision
 			lm.SupportsCode = meta.SupportsCode
@@ -633,6 +656,26 @@ func (s *Store) ListLocalModels() []LocalModel {
 				lm.RepoID = meta.RepoID
 			}
 		}
+		// Read (and cache) the model's real max context length from its own
+		// GGUF header the first time we see it — MaxContextChecked makes
+		// this a one-time cost per file, not a re-parse of a possibly
+		// multi-gigabyte file on every ListLocalModels poll.
+		if meta == nil || !meta.MaxContextChecked {
+			maxCtx, err := gguf.ContextLength(path)
+			if err != nil {
+				logx.Printf("modelstore: read gguf context length for %s: %v", path, err)
+				maxCtx = 0
+			}
+			if meta == nil {
+				meta = &modelMeta{RepoID: lm.RepoID}
+			}
+			meta.MaxContext = maxCtx
+			meta.MaxContextChecked = true
+			if err := saveModelMeta(path, meta); err != nil {
+				logx.Printf("modelstore: cache max context for %s: %v", path, err)
+			}
+		}
+		lm.MaxContext = meta.MaxContext
 		models = append(models, lm)
 
 		return nil

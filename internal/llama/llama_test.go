@@ -1,12 +1,87 @@
 package llama
 
 import (
+	"bytes"
+	"encoding/binary"
 	"os"
 	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
 )
+
+// writeMinimalGGUF writes a real (if tiny) GGUF file whose only metadata is
+// general.architecture + "<arch>.context_length" — enough for
+// internal/gguf.ContextLength (and therefore clampContextSize) to parse
+// correctly, without depending on that package's own test helpers.
+func writeMinimalGGUF(t *testing.T, path, arch string, ctxLen uint32) {
+	t.Helper()
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, uint32(0x46554747)) // magic "GGUF"
+	binary.Write(&buf, binary.LittleEndian, uint32(3))          // version
+	binary.Write(&buf, binary.LittleEndian, uint64(0))          // tensor_count
+	binary.Write(&buf, binary.LittleEndian, uint64(2))          // kv_count
+
+	writeStr := func(s string) {
+		binary.Write(&buf, binary.LittleEndian, uint64(len(s)))
+		buf.WriteString(s)
+	}
+	writeStr("general.architecture")
+	binary.Write(&buf, binary.LittleEndian, uint32(8)) // GGUF STRING type
+	writeStr(arch)
+
+	writeStr(arch + ".context_length")
+	binary.Write(&buf, binary.LittleEndian, uint32(4)) // GGUF UINT32 type
+	binary.Write(&buf, binary.LittleEndian, ctxLen)
+
+	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
+		t.Fatalf("write minimal gguf: %v", err)
+	}
+}
+
+// TestClampContextSize_ClampsToModelsRealMax is the regression test for the
+// local-model crash this fix targets: a requested ctx-size larger than what
+// the model was actually trained for (previously accepted verbatim, all the
+// way down to the --ctx-size flag passed to llama-server) must be clamped.
+func TestClampContextSize_ClampsToModelsRealMax(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "model.gguf")
+	writeMinimalGGUF(t, path, "llama", 131072)
+
+	got := clampContextSize(path, 10_000_000)
+	if got != 131072 {
+		t.Errorf("clampContextSize(10000000) = %d, want clamped to 131072", got)
+	}
+}
+
+// TestClampContextSize_LeavesInBoundsRequestUnchanged ensures a request
+// that's already within the model's real max is passed through exactly,
+// not silently rounded or altered.
+func TestClampContextSize_LeavesInBoundsRequestUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "model.gguf")
+	writeMinimalGGUF(t, path, "llama", 131072)
+
+	got := clampContextSize(path, 8192)
+	if got != 8192 {
+		t.Errorf("clampContextSize(8192) = %d, want unchanged 8192", got)
+	}
+}
+
+// TestClampContextSize_UnparseableFileLeavesValueUnchanged covers a file
+// that isn't a valid GGUF at all (or an architecture this reader doesn't
+// recognize a context_length key for) — there's nothing to clamp against,
+// so the requested value must pass through rather than being zeroed or
+// rejected.
+func TestClampContextSize_UnparseableFileLeavesValueUnchanged(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "not-a-model.gguf")
+	if err := os.WriteFile(path, []byte("not a gguf file"), 0644); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	got := clampContextSize(path, 10_000_000)
+	if got != 10_000_000 {
+		t.Errorf("clampContextSize on an unparseable file = %d, want unchanged 10000000 (nothing to clamp against)", got)
+	}
+}
 
 func TestGPUConstants(t *testing.T) {
 	if GPUTypeNVIDIA != "nvidia" {

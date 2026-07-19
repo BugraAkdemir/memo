@@ -11,6 +11,12 @@ class LocalModel {
   final bool supportsVision;
   final bool supportsCode;
   final List<String> tags;
+  /// This model's own trained context length, read backend-side from its
+  /// GGUF header (0 = unknown — an architecture the backend parser doesn't
+  /// recognize). Used to bound the context-size control in
+  /// ModelConfigDialog so the user can't request more than the model can
+  /// actually support (that used to crash llama-server outright).
+  final int maxContext;
 
   const LocalModel({
     required this.repoId,
@@ -23,6 +29,7 @@ class LocalModel {
     this.supportsVision = false,
     this.supportsCode = false,
     this.tags = const [],
+    this.maxContext = 0,
   });
 
   factory LocalModel.fromJson(Map<String, dynamic> json) => LocalModel(
@@ -36,6 +43,7 @@ class LocalModel {
         supportsVision: json['supports_vision'] as bool? ?? false,
         supportsCode: json['supports_code'] as bool? ?? false,
         tags: (json['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
+        maxContext: json['max_context'] as int? ?? 0,
       );
 
   /// Whether this model likely supports tool/function calling.

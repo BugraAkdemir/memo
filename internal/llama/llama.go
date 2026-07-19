@@ -3,6 +3,7 @@ package llama
 import (
 	"fmt"
 	"memo/internal/config"
+	"memo/internal/gguf"
 	"memo/internal/logx"
 	"net/http"
 	"os"
@@ -36,6 +37,21 @@ type Server struct {
 	waitDone  chan struct{} // Closed when the process actually exits
 	portPid   int           // Last known PID for the port (fallback when cmd is nil)
 	logFile   *os.File      // llama-server's own stdout/stderr, never the REPL's
+}
+
+// clampContextSize returns ctxSize clamped to modelPath's own trained max
+// context length (read from its GGUF header, see internal/gguf), when that
+// can be determined. Returns ctxSize unchanged when the file can't be
+// parsed or its architecture's max context isn't recognized (maxCtx==0,
+// "unknown") — there's nothing to clamp against in that case, same as
+// before this existed.
+func clampContextSize(modelPath string, ctxSize int) int {
+	maxCtx, err := gguf.ContextLength(modelPath)
+	if err != nil || maxCtx <= 0 || ctxSize <= maxCtx {
+		return ctxSize
+	}
+	logx.Printf("llama: requested ctx-size %d exceeds %s's max context %d, clamping", ctxSize, filepath.Base(modelPath), maxCtx)
+	return maxCtx
 }
 
 // NewServer creates a new llama-server manager.
@@ -94,6 +110,13 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	if actualCtx <= 0 {
 		actualCtx = 4096
 	}
+	// Defense in depth: clamp to the model's own trained context length,
+	// independent of whatever the caller (a UI slider, an older client, a
+	// direct API call) already validated or didn't. Without this, a value
+	// exceeding what the model can actually support (the frontend used to
+	// accept anything typed into a free-text field, with no bound at all)
+	// crashed llama-server outright at startup instead of failing cleanly.
+	actualCtx = clampContextSize(modelPath, actualCtx)
 	actualPort := port
 	if actualPort <= 0 {
 		actualPort = s.port

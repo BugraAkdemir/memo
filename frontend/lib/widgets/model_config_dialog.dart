@@ -19,7 +19,12 @@ class ModelConfigDialog extends ConsumerStatefulWidget {
 }
 
 class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
+  // Free-text fallback, only ever used when widget.model.maxContext is 0
+  // (unknown — the backend's GGUF parser didn't recognize this model's
+  // architecture) and the slider therefore has nothing real to bound itself
+  // against.
   final _ctxSizeController = TextEditingController(text: '4096');
+  late int _ctxSize;
   final _gpuLayersController = TextEditingController(text: '33');
   final _portController = TextEditingController(text: '8081');
 
@@ -30,6 +35,10 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
   @override
   void initState() {
     super.initState();
+    // Default to 4096 (the previous hardcoded default) or the model's own
+    // max, whichever is smaller — never start above what's known-safe.
+    final maxContext = widget.model.maxContext;
+    _ctxSize = maxContext > 0 ? (4096 < maxContext ? 4096 : maxContext) : 4096;
     // Pre-select the first embedding model if available
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final models = ref.read(localModelsProvider).valueOrNull ?? [];
@@ -51,7 +60,12 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
   }
 
   Future<void> _startModel() async {
-    final ctx = int.tryParse(_ctxSizeController.text) ?? 4096;
+    // widget.model.maxContext == 0 falls back to the free-text field
+    // (_ConfigField below); otherwise the slider owns _ctxSize directly and
+    // has already structurally clamped it to widget.model.maxContext.
+    final ctx = widget.model.maxContext > 0
+        ? _ctxSize
+        : (int.tryParse(_ctxSizeController.text) ?? 4096);
     final gpuLayers = int.tryParse(_gpuLayersController.text) ?? 33;
     final port = int.tryParse(_portController.text) ?? 8081;
     final isEmbeddingModel = widget.model.isEmbedding;
@@ -177,12 +191,28 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
             SizedBox(height: 24),
 
             if (!isEmbeddingModel) ...[
-              // Context Size
-              _ConfigField(
-                label: L10n.t('ctx_size'),
-                controller: _ctxSizeController,
-                hint: '4096',
-              ),
+              // Context Size — bounded by the model's own real max when
+              // known (see LocalModel.maxContext's doc comment); falls back
+              // to a free-text field only when that couldn't be determined.
+              if (widget.model.maxContext > 0)
+                _ContextSizeSlider(
+                  label: L10n.t('ctx_size'),
+                  value: _ctxSize,
+                  max: widget.model.maxContext,
+                  onChanged: (v) => setState(() => _ctxSize = v),
+                )
+              else ...[
+                _ConfigField(
+                  label: L10n.t('ctx_size'),
+                  controller: _ctxSizeController,
+                  hint: '4096',
+                ),
+                SizedBox(height: 4),
+                Text(
+                  L10n.t('ctx_size_max_unknown'),
+                  style: TextStyle(fontSize: 11, color: MemoTheme.warningOrange),
+                ),
+              ],
               SizedBox(height: 16),
             ],
 
@@ -369,6 +399,62 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Bounded context-size control (BUG fix: the previous free-text field
+/// accepted any value the user typed, including far more than a given model
+/// actually supports — e.g. 10,000,000 against a model trained for 131,072
+/// — which crashed llama-server outright at startup instead of failing
+/// cleanly). A plain [Slider]'s own `max` makes an out-of-range value
+/// structurally unreachable, not just discouraged by a hint string.
+class _ContextSizeSlider extends StatelessWidget {
+  final String label;
+  final int value;
+  final int max;
+  final ValueChanged<int> onChanged;
+
+  static const _minContext = 512;
+
+  const _ContextSizeSlider({
+    required this.label,
+    required this.value,
+    required this.max,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // A model whose real max is already below the usual floor (rare, but
+    // possible for a tiny/legacy conversion) still needs a valid [min, max]
+    // range for Slider — collapse to a fixed point rather than crashing.
+    final sliderMin = _minContext < max ? _minContext : max;
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Text(label, style: TextStyle(fontWeight: FontWeight.w500, fontSize: 13)),
+            Spacer(),
+            Text(
+              L10n.t('ctx_size_of_max', {'cur': '$value', 'max': '$max'}),
+              style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim),
+            ),
+          ],
+        ),
+        Slider(
+          value: value.toDouble().clamp(sliderMin.toDouble(), max.toDouble()),
+          min: sliderMin.toDouble(),
+          max: max.toDouble(),
+          activeColor: MemoTheme.accent,
+          label: '$value',
+          onChanged: sliderMin == max
+              ? null
+              : (v) => onChanged(v.round()),
+        ),
+      ],
     );
   }
 }

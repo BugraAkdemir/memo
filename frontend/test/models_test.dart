@@ -530,6 +530,7 @@ void main() {
         'supports_vision': false,
         'supports_code': true,
         'tags': ['chat', 'instruct'],
+        'max_context': 131072,
       });
       expect(model.repoId, 'meta/llama3');
       expect(model.filename, 'llama3-8b.gguf');
@@ -539,6 +540,18 @@ void main() {
       expect(model.isVision, true);
       expect(model.supportsTools, true);
       expect(model.tags, ['chat', 'instruct']);
+      expect(model.maxContext, 131072);
+    });
+
+    test('fromJson defaults maxContext to 0 when absent (unknown)', () {
+      final model = LocalModel.fromJson({
+        'repo_id': 'meta/llama3',
+        'filename': 'llama3-8b.gguf',
+        'size': 8000000000,
+        'path': '/models/llama3-8b.gguf',
+        'is_embedding': false,
+      });
+      expect(model.maxContext, 0);
     });
 
     test('likelySupportsTools from metadata', () {

@@ -622,7 +622,7 @@ func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]Memory
         FROM memories_fts
         JOIN memories m ON m.id = memories_fts.rowid
         WHERE memories_fts MATCH ?
-        ORDER BY memories_fts.rank
+        ORDER BY memories_fts.rank, m.uuid
         LIMIT ?
     `, escapeFTSQuery(query), topK)
 	if err != nil {
@@ -687,8 +687,23 @@ func reciprocalRankFusion(vecResults, ftsResults []MemoryResult, topK int) []Mem
 	for id, score := range scores {
 		ranked = append(ranked, scored{id, score})
 	}
+	// Tiebreak by ID when scores are exactly equal (common: two candidates
+	// landing at the identical rank position in both merged result sets get
+	// an identical summed score) — without this, sort.Slice's relative
+	// order for tied entries falls back to their position in `ranked`,
+	// which came from iterating the `scores` map above. Go's map iteration
+	// order is deliberately randomized per process, not per call — the
+	// same tied pair can sort either way from one run to the next, which
+	// silently flips whether a given memory survives a topK cutoff at the
+	// tie boundary. This was a real, intermittent CI failure
+	// (TestRecall_CasualFactNotCrowdedOutByRoutineNoise), not a data race —
+	// the tiebreaker below makes the result fully deterministic for a given
+	// input regardless of map iteration order.
 	sort.Slice(ranked, func(i, j int) bool {
-		return ranked[i].score > ranked[j].score
+		if ranked[i].score != ranked[j].score {
+			return ranked[i].score > ranked[j].score
+		}
+		return ranked[i].id < ranked[j].id
 	})
 
 	if topK > len(ranked) {
@@ -871,8 +886,16 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		}
 		memories[i].Similarity *= float32(0.8 + float64(imp)*0.1)
 	}
+	// Same ID tiebreaker as reciprocalRankFusion, and for the same reason —
+	// this slice can carry ties (e.g. two candidates with the exact same
+	// RRF score and the exact same importance) whose relative order would
+	// otherwise depend on whatever order they happened to arrive in from
+	// upstream map-iteration-order-sensitive merges.
 	sort.Slice(memories, func(i, j int) bool {
-		return memories[i].Similarity > memories[j].Similarity
+		if memories[i].Similarity != memories[j].Similarity {
+			return memories[i].Similarity > memories[j].Similarity
+		}
+		return memories[i].ID < memories[j].ID
 	})
 
 	if len(memories) > 0 {
@@ -901,6 +924,16 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 		return nil, fmt.Errorf("memory.vecSearch: marshal: %w", err)
 	}
 
+	// Deliberately no secondary sort key here (unlike ftsSearch's `ORDER BY
+	// memories_fts.rank, m.uuid` a few lines up): `WHERE embedding MATCH ?
+	// AND k = ? ORDER BY distance` is the exact shape sqlite-vec's virtual
+	// table pattern-matches to run its optimized KNN scan — confirmed
+	// empirically that appending `, m.uuid` here breaks that recognition
+	// and silently changes which rows come back (TestRecall_CasualFactNotCrowdedOutByRoutineNoise
+	// went from consistently passing to consistently failing locally with
+	// vec0 available). Any remaining tie-order non-determinism from this
+	// query is handled downstream instead, in reciprocalRankFusion's own ID
+	// tiebreaker.
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg, v.distance,
 		       m.importance, m.source, m.tags, m.session_id, m.retrieve_count
@@ -1018,8 +1051,16 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 		return nil, err
 	}
 
+	// ID tiebreak for the same reason as reciprocalRankFusion's (see its
+	// comment): a plain `sim >` comparator leaves the relative order of
+	// exactly-tied entries dependent on their pre-sort order in `all`,
+	// which in turn depends on SQLite's row order for this ORDER-BY-less
+	// scan — not something this function should rely on staying stable.
 	sort.Slice(all, func(i, j int) bool {
-		return all[i].sim > all[j].sim
+		if all[i].sim != all[j].sim {
+			return all[i].sim > all[j].sim
+		}
+		return all[i].uuid < all[j].uuid
 	})
 
 	if topK > len(all) {

@@ -597,6 +597,48 @@ func TestReciprocalRankFusion_HybridMatchType(t *testing.T) {
 	}
 }
 
+// TestReciprocalRankFusion_DeterministicOnTiedScores is the regression test
+// for an intermittent CI failure (TestRecall_CasualFactNotCrowdedOutByRoutineNoise,
+// observed on a real CI run — go build 471c0eb — but not reproducible with
+// straight repetition locally): reciprocalRankFusion built its ranked list
+// by iterating a map[string]float64, and Go deliberately randomizes map
+// iteration order per process. When two candidates land at the exact same
+// combined RRF score (routine, not rare — see the two vec/fts result sets
+// below, each id lands at a different rank in its own list but an
+// identical *combined* rank position across the two), the old plain
+// `score >` comparator left their relative order dependent on that random
+// iteration order — meaning which one survives a topK cutoff could flip
+// from one process run to the next for identical input. This calls the
+// function 200 times with input guaranteed to produce several exactly-tied
+// pairs and asserts every single call returns the identical order — this
+// reliably catches the bug because each call operates on a freshly
+// constructed map with its own random iteration seed.
+func TestReciprocalRankFusion_DeterministicOnTiedScores(t *testing.T) {
+	// a/d, b/e, and c/f are each ranked identically (position 0/1/2) in
+	// their own list, so every pair in each column ties exactly on
+	// 1/(60+rank+1) — three separate exactly-tied pairs at three different
+	// score levels, not just one edge case.
+	vecResults := []MemoryResult{{ID: "a"}, {ID: "b"}, {ID: "c"}}
+	ftsResults := []MemoryResult{{ID: "d"}, {ID: "e"}, {ID: "f"}}
+
+	first := reciprocalRankFusion(vecResults, ftsResults, 6)
+	firstIDs := make([]string, len(first))
+	for i, r := range first {
+		firstIDs[i] = r.ID
+	}
+
+	for i := range 200 {
+		got := reciprocalRankFusion(vecResults, ftsResults, 6)
+		gotIDs := make([]string, len(got))
+		for j, r := range got {
+			gotIDs[j] = r.ID
+		}
+		if strings.Join(gotIDs, ",") != strings.Join(firstIDs, ",") {
+			t.Fatalf("run %d order = %v, want the same order as run 0 = %v (non-deterministic tie-break)", i, gotIDs, firstIDs)
+		}
+	}
+}
+
 func TestHybridSearch_MatchTypeIsHybridWhenFTSCompiled(t *testing.T) {
 	ctx := context.Background()
 	store := newRecallStore(t, bagOfWordsEmbedding(16), 16)

@@ -49,25 +49,17 @@ class CuratedModel {
 /// Curated GGUF repos — only official repos from the original model creators.
 /// Filenames are resolved at download time via `getModelFiles`.
 const curatedModels = <CuratedModel>[
-  // ── Google — official QAT GGUF releases ─────────────────────────
-  CuratedModel(
-    repoId: 'google/gemma-3-4b-it-qat-q4_0-gguf',
-    name: 'Gemma 3 4B Instruct',
-    descTr: 'Google\'dan hafif ve güçlü · Araç desteği',
-    descEn: 'Lightweight powerhouse from Google · Tool use',
-    approxBytes: 2530000000,
-    kind: ModelKind.chat,
-    supportsTools: true,
-  ),
-  CuratedModel(
-    repoId: 'google/gemma-3-12b-it-qat-q4_0-gguf',
-    name: 'Gemma 3 12B Instruct',
-    descTr: 'Görüntü + sohbet + araç · Google',
-    descEn: 'Vision + chat + tools · Google',
-    approxBytes: 7600000000,
-    kind: ModelKind.vision,
-    supportsTools: true,
-  ),
+  // ── Google's official Gemma 3 GGUF releases are deliberately NOT
+  // curated here: huggingface.co/api/models/{repoId} reports
+  // "gated": "manual" for them (verified directly against HF's API, not
+  // guessed) — anonymous, unauthenticated access (all Memo ever does; no
+  // HF login/token support exists) gets a 401 on every actual file
+  // (README, GGUF download) even though the repo's metadata and file
+  // *listing* both resolve fine, which is exactly what made this
+  // confusing to spot: the Discover detail panel looked normal right up
+  // until the user actually pressed Download. A curated "recommended"
+  // model that can never actually be downloaded is worse than not
+  // recommending one at all.
   // ── Qwen / Alibaba — official GGUF releases ──────────────────────
   CuratedModel(
     repoId: 'Qwen/Qwen3-8B-GGUF',
@@ -105,6 +97,15 @@ const curatedModels = <CuratedModel>[
     kind: ModelKind.chat,
     supportsTools: true,
   ),
+  CuratedModel(
+    repoId: 'Qwen/Qwen2.5-3B-Instruct-GGUF',
+    name: 'Qwen 2.5 3B Instruct',
+    descTr: 'Zayıf donanım için hafif model · Araç desteği',
+    descEn: 'Lightweight model for modest hardware · Tool use',
+    approxBytes: 2104932768,
+    kind: ModelKind.chat,
+    supportsTools: true,
+  ),
   // ── Microsoft — official GGUF releases ──────────────────────────
   CuratedModel(
     repoId: 'microsoft/Phi-3-mini-4k-instruct-gguf',
@@ -114,6 +115,15 @@ const curatedModels = <CuratedModel>[
     approxBytes: 2390000000,
     kind: ModelKind.chat,
     supportsTools: true,
+  ),
+  // ── OpenBMB — official GGUF release, non-gated (verified) ────────
+  CuratedModel(
+    repoId: 'openbmb/MiniCPM-V-2_6-gguf',
+    name: 'MiniCPM-V 2.6',
+    descTr: 'Görüntü + sohbet · OpenBMB, 8B',
+    descEn: 'Vision + chat · OpenBMB, 8B',
+    approxBytes: 4681089344, // Q4_K_M, verified against the repo's own file listing
+    kind: ModelKind.vision,
   ),
   // ── Embedding / Memory ──────────────────────────────────────────
   CuratedModel(

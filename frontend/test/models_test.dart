@@ -412,7 +412,7 @@ void main() {
       final gpu = GPUInfo.fromJson({'ram_total_mb': 4096}); // 4 GB RAM, no GPU
       expect(
         recommendedChatModel(gpu).repoId,
-        'google/gemma-3-4b-it-qat-q4_0-gguf',
+        'microsoft/Phi-3-mini-4k-instruct-gguf',
       );
     });
 
@@ -420,7 +420,7 @@ void main() {
       final gpu = GPUInfo.fromJson({'ram_total_mb': 1024}); // 1 GB RAM, no GPU
       expect(
         recommendedChatModel(gpu).repoId,
-        'microsoft/Phi-3-mini-4k-instruct-gguf',
+        'Qwen/Qwen2.5-3B-Instruct-GGUF',
       );
     });
   });

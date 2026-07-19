@@ -1,12 +1,14 @@
 // SPDX-License-Identifier: AGPL-3.0-or-later
 
-// Package gguf reads just enough of a GGUF model file's header to answer one
-// question: how large a context window was this model actually trained for?
-// It deliberately parses only the metadata key-value section — never tensor
-// data — which sits at a small, self-describing offset right after the
-// header regardless of the file's overall size (a GGUF file can be many
-// gigabytes; this reads at most a few hundred KB, dominated by skipping the
-// tokenizer's vocabulary array).
+// Package gguf reads just enough of a GGUF model file's header to answer
+// questions a client would otherwise have to guess at from the filename:
+// how large a context window was this model actually trained for, and does
+// it actually support tool/function calling? It deliberately parses only
+// the metadata key-value section — never tensor data — which sits at a
+// small, self-describing offset right after the header regardless of the
+// file's overall size (a GGUF file can be many gigabytes; this reads at
+// most a few hundred KB, dominated by skipping the tokenizer's vocabulary
+// array).
 package gguf
 
 import (
@@ -48,19 +50,79 @@ var fixedSizes = map[uint32]int64{
 	typeUint64: 8, typeInt64: 8, typeFloat64: 8,
 }
 
-// ContextLength reads path's GGUF metadata and returns the model's trained
-// context length — the "<architecture>.context_length" key every
-// llama.cpp-supported GGUF file carries (e.g. "llama.context_length",
-// "qwen2.context_length", "gemma2.context_length").
-//
-// Returns (0, nil) — not an error — when the file parses fine but no
-// context-length key is found, e.g. an architecture string this reader
-// doesn't recognize the convention for. Callers must treat 0 as "unknown,"
-// never as "the model supports 0 tokens of context."
-func ContextLength(path string) (int, error) {
+// Metadata is the subset of a GGUF file's own metadata this package
+// extracts — everything a client would otherwise have had to guess from
+// the filename or repo name.
+type Metadata struct {
+	// ContextLength is the model's trained context length — the
+	// "<architecture>.context_length" key every llama.cpp-supported GGUF
+	// file carries (e.g. "llama.context_length", "qwen2.context_length",
+	// "gemma2.context_length"). 0 means unknown (an architecture string
+	// this reader doesn't recognize the convention for), never "the model
+	// supports 0 tokens of context."
+	ContextLength int
+	// SupportsTools reports whether the model's own embedded chat template
+	// (the "tokenizer.chat_template" Jinja template llama.cpp itself uses
+	// to format the conversation) references "tool_calls" — the field name
+	// essentially every tool-calling chat template convention (Llama 3.1+,
+	// Qwen2.5, Hermes, Mistral, ...) uses when rendering or parsing a tool
+	// call. This is the model's own declared behavior, read from the
+	// actual file — not a guess based on the model's name or family.
+	SupportsTools bool
+}
+
+// Read parses path's GGUF metadata key-value section once and extracts
+// everything this package knows how to read (see Metadata's doc comment).
+// Returns a zero Metadata, not an error, for any field this reader
+// couldn't determine — only a genuinely malformed/non-GGUF file, or an I/O
+// failure, produces a non-nil error.
+func Read(path string) (Metadata, error) {
+	meta, err := readAllMetadata(path)
+	if err != nil {
+		return Metadata{}, err
+	}
+
+	var m Metadata
+	if arch, ok := meta["general.architecture"].(string); ok {
+		if n, ok := asContextLength(meta[arch+".context_length"]); ok {
+			m.ContextLength = n
+		}
+	}
+	if m.ContextLength == 0 {
+		// Fallback for a model whose "general.architecture" is missing or
+		// doesn't match its own "<x>.context_length" key exactly (seen on
+		// some custom/finetuned conversions) — scan every key by suffix
+		// instead of giving up.
+		for k, v := range meta {
+			if strings.HasSuffix(k, ".context_length") {
+				if n, ok := asContextLength(v); ok {
+					m.ContextLength = n
+					break
+				}
+			}
+		}
+	}
+
+	for k, v := range meta {
+		if !strings.HasSuffix(k, "chat_template") {
+			continue
+		}
+		if tmpl, ok := v.(string); ok && strings.Contains(strings.ToLower(tmpl), "tool_calls") {
+			m.SupportsTools = true
+			break
+		}
+	}
+
+	return m, nil
+}
+
+// readAllMetadata parses a GGUF file's header + metadata key-value section
+// into a plain map, without interpreting any of it — Read (and any future
+// caller needing another metadata key) derives specific answers from this.
+func readAllMetadata(path string) (map[string]any, error) {
 	f, err := os.Open(path)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 	defer f.Close()
 
@@ -68,59 +130,42 @@ func ContextLength(path string) (int, error) {
 
 	var gotMagic, version uint32
 	if err := binary.Read(r, binary.LittleEndian, &gotMagic); err != nil {
-		return 0, fmt.Errorf("gguf: read magic: %w", err)
+		return nil, fmt.Errorf("gguf: read magic: %w", err)
 	}
 	if gotMagic != magic {
-		return 0, fmt.Errorf("gguf: not a GGUF file (bad magic)")
+		return nil, fmt.Errorf("gguf: not a GGUF file (bad magic)")
 	}
 	if err := binary.Read(r, binary.LittleEndian, &version); err != nil {
-		return 0, fmt.Errorf("gguf: read version: %w", err)
+		return nil, fmt.Errorf("gguf: read version: %w", err)
 	}
 	if version < 2 {
 		// v1 used 32-bit tensor/kv counts and hasn't been produced by any
 		// current tool in years — not worth a second code path for a format
 		// nothing writes anymore.
-		return 0, fmt.Errorf("gguf: unsupported GGUF version %d", version)
+		return nil, fmt.Errorf("gguf: unsupported GGUF version %d", version)
 	}
 
 	var tensorCount, kvCount uint64
 	if err := binary.Read(r, binary.LittleEndian, &tensorCount); err != nil {
-		return 0, fmt.Errorf("gguf: read tensor count: %w", err)
+		return nil, fmt.Errorf("gguf: read tensor count: %w", err)
 	}
 	if err := binary.Read(r, binary.LittleEndian, &kvCount); err != nil {
-		return 0, fmt.Errorf("gguf: read kv count: %w", err)
+		return nil, fmt.Errorf("gguf: read kv count: %w", err)
 	}
 
 	meta := make(map[string]any, kvCount)
 	for i := uint64(0); i < kvCount; i++ {
 		key, err := readString(r)
 		if err != nil {
-			return 0, fmt.Errorf("gguf: read key %d: %w", i, err)
+			return nil, fmt.Errorf("gguf: read key %d: %w", i, err)
 		}
 		val, err := readValue(r)
 		if err != nil {
-			return 0, fmt.Errorf("gguf: read value for %q: %w", key, err)
+			return nil, fmt.Errorf("gguf: read value for %q: %w", key, err)
 		}
 		meta[key] = val
 	}
-
-	if arch, ok := meta["general.architecture"].(string); ok {
-		if n, ok := asContextLength(meta[arch+".context_length"]); ok {
-			return n, nil
-		}
-	}
-	// Fallback for a model whose "general.architecture" is missing or
-	// doesn't match its own "<x>.context_length" key exactly (seen on some
-	// custom/finetuned conversions) — scan every key by suffix instead of
-	// giving up.
-	for k, v := range meta {
-		if strings.HasSuffix(k, ".context_length") {
-			if n, ok := asContextLength(v); ok {
-				return n, nil
-			}
-		}
-	}
-	return 0, nil
+	return meta, nil
 }
 
 func asContextLength(v any) (int, bool) {

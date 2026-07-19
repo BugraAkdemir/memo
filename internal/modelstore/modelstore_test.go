@@ -39,6 +39,38 @@ func writeMinimalGGUF(t *testing.T, path, arch string, ctxLen uint32) {
 	}
 }
 
+// writeMinimalGGUFWithChatTemplate is writeMinimalGGUF plus a
+// tokenizer.chat_template key, for exercising the GGUF-derived
+// SupportsTools detection (internal/gguf.Metadata.SupportsTools).
+func writeMinimalGGUFWithChatTemplate(t *testing.T, path, arch string, ctxLen uint32, chatTemplate string) {
+	t.Helper()
+	var buf bytes.Buffer
+	binary.Write(&buf, binary.LittleEndian, uint32(0x46554747)) // magic "GGUF"
+	binary.Write(&buf, binary.LittleEndian, uint32(3))          // version
+	binary.Write(&buf, binary.LittleEndian, uint64(0))          // tensor_count
+	binary.Write(&buf, binary.LittleEndian, uint64(3))          // kv_count
+
+	writeStr := func(s string) {
+		binary.Write(&buf, binary.LittleEndian, uint64(len(s)))
+		buf.WriteString(s)
+	}
+	writeStr("general.architecture")
+	binary.Write(&buf, binary.LittleEndian, uint32(8))
+	writeStr(arch)
+
+	writeStr(arch + ".context_length")
+	binary.Write(&buf, binary.LittleEndian, uint32(4))
+	binary.Write(&buf, binary.LittleEndian, ctxLen)
+
+	writeStr("tokenizer.chat_template")
+	binary.Write(&buf, binary.LittleEndian, uint32(8))
+	writeStr(chatTemplate)
+
+	if err := os.WriteFile(path, buf.Bytes(), 0644); err != nil {
+		t.Fatalf("write minimal gguf: %v", err)
+	}
+}
+
 func TestIsEmbeddingModel(t *testing.T) {
 	tests := []struct {
 		filename string
@@ -315,9 +347,9 @@ func TestListLocalModels_PopulatesMaxContextFromGGUFHeader(t *testing.T) {
 }
 
 // TestListLocalModels_CachesMaxContextInSidecar verifies the result is
-// persisted into the .meta.json sidecar with MaxContextChecked=true, so a
+// persisted into the .meta.json sidecar with GGUFMetaChecked=true, so a
 // model whose architecture isn't recognized (MaxContext genuinely 0) isn't
-// re-parsed from disk on every single poll — see modelMeta.MaxContextChecked's
+// re-parsed from disk on every single poll — see modelMeta.GGUFMetaChecked's
 // doc comment.
 func TestListLocalModels_CachesMaxContextInSidecar(t *testing.T) {
 	dir := t.TempDir()
@@ -338,8 +370,8 @@ func TestListLocalModels_CachesMaxContextInSidecar(t *testing.T) {
 	if err := json.Unmarshal(data, &meta); err != nil {
 		t.Fatalf("unmarshal sidecar: %v", err)
 	}
-	if !meta.MaxContextChecked {
-		t.Error("sidecar MaxContextChecked = false, want true after the first list")
+	if !meta.GGUFMetaChecked {
+		t.Error("sidecar GGUFMetaChecked = false, want true after the first list")
 	}
 	if meta.MaxContext != 32768 {
 		t.Errorf("sidecar MaxContext = %d, want 32768", meta.MaxContext)
@@ -354,6 +386,55 @@ func TestListLocalModels_CachesMaxContextInSidecar(t *testing.T) {
 	models := s.ListLocalModels()
 	if len(models) != 1 || models[0].MaxContext != 32768 {
 		t.Errorf("second ListLocalModels() = %+v, want cached MaxContext=32768 (not re-parsed)", models)
+	}
+}
+
+// TestListLocalModels_DetectsToolsFromChatTemplateWithNoHFTags is the
+// regression test for the hardcoded-filename-family guessing this replaces
+// (frontend's old LocalModel.likelySupportsTools/DiscoverItem.likelySupportsTools):
+// a locally-imported model with no .meta.json sidecar at all (so HF tags
+// never entered the picture) must still be correctly flagged as
+// tool-capable purely from its own embedded chat template.
+func TestListLocalModels_DetectsToolsFromChatTemplateWithNoHFTags(t *testing.T) {
+	dir := t.TempDir()
+	s := &Store{modelsDir: dir}
+
+	path := filepath.Join(dir, "model.gguf")
+	writeMinimalGGUFWithChatTemplate(t, path, "qwen2", 32768,
+		`{%- if tools %}{{ message.tool_calls }}{%- endif %}`)
+
+	models := s.ListLocalModels()
+	if len(models) != 1 {
+		t.Fatalf("len(models) = %d, want 1", len(models))
+	}
+	if !models[0].SupportsTools {
+		t.Error("SupportsTools = false, want true — the model's own chat template references tool_calls")
+	}
+}
+
+// TestListLocalModels_KeepsHFTagSupportsToolsWhenGGUFTemplateHasNone
+// verifies the OR: an HF tag already having confirmed tool support must
+// survive even if this particular GGUF's chat template doesn't happen to
+// mention tool_calls (some conversions strip/simplify the template) —
+// GGUF-derived detection can only add, never take away, a capability HF's
+// own tags already confirmed.
+func TestListLocalModels_KeepsHFTagSupportsToolsWhenGGUFTemplateHasNone(t *testing.T) {
+	dir := t.TempDir()
+	s := &Store{modelsDir: dir}
+
+	path := filepath.Join(dir, "model.gguf")
+	writeMinimalGGUFWithChatTemplate(t, path, "llama", 8192,
+		`{% for message in messages %}{{ message.content }}{% endfor %}`)
+	if err := saveModelMeta(path, &modelMeta{RepoID: "test/model", SupportsTools: true}); err != nil {
+		t.Fatalf("saveModelMeta: %v", err)
+	}
+
+	models := s.ListLocalModels()
+	if len(models) != 1 {
+		t.Fatalf("len(models) = %d, want 1", len(models))
+	}
+	if !models[0].SupportsTools {
+		t.Error("SupportsTools = false, want true — an existing HF-tag-confirmed value must survive")
 	}
 }
 

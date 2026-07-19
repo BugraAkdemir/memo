@@ -87,13 +87,13 @@ class _DiscoverTabState extends ConsumerState<DiscoverTab> {
 
     // Capability filters (OR within same type)
     if (_filters.contains('tools')) {
-      list = list.where((i) => i.likelySupportsTools).toList();
+      list = list.where((i) => i.supportsTools).toList();
     }
     if (_filters.contains('vision')) {
-      list = list.where((i) => i.likelySupportsVision).toList();
+      list = list.where((i) => i.supportsVision).toList();
     }
     if (_filters.contains('code')) {
-      list = list.where((i) => i.likelySupportsCode).toList();
+      list = list.where((i) => i.supportsCode).toList();
     }
 
     // Size filters
@@ -669,14 +669,14 @@ class _ModelListRow extends ConsumerWidget {
                       Row(
                         children: [
                           // Capability icons
-                          if (item.likelySupportsTools)
+                          if (item.supportsTools)
                             _CapIcon(
                               icon: Icons.build_outlined,
                               color: MemoTheme.accent,
                               tooltip: 'Tool Use',
                             ),
-                          if (item.likelySupportsVision) ...[
-                            if (item.likelySupportsTools)
+                          if (item.supportsVision) ...[
+                            if (item.supportsTools)
                               const SizedBox(width: 4),
                             _CapIcon(
                               icon: Icons.visibility_outlined,
@@ -684,8 +684,8 @@ class _ModelListRow extends ConsumerWidget {
                               tooltip: 'Vision',
                             ),
                           ],
-                          if (item.likelySupportsCode) ...[
-                            if (item.likelySupportsTools || item.likelySupportsVision)
+                          if (item.supportsCode) ...[
+                            if (item.supportsTools || item.supportsVision)
                               const SizedBox(width: 4),
                             _CapIcon(
                               icon: Icons.code,

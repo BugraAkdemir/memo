@@ -46,12 +46,12 @@ type Server struct {
 // "unknown") — there's nothing to clamp against in that case, same as
 // before this existed.
 func clampContextSize(modelPath string, ctxSize int) int {
-	maxCtx, err := gguf.ContextLength(modelPath)
-	if err != nil || maxCtx <= 0 || ctxSize <= maxCtx {
+	meta, err := gguf.Read(modelPath)
+	if err != nil || meta.ContextLength <= 0 || ctxSize <= meta.ContextLength {
 		return ctxSize
 	}
-	logx.Printf("llama: requested ctx-size %d exceeds %s's max context %d, clamping", ctxSize, filepath.Base(modelPath), maxCtx)
-	return maxCtx
+	logx.Printf("llama: requested ctx-size %d exceeds %s's max context %d, clamping", ctxSize, filepath.Base(modelPath), meta.ContextLength)
+	return meta.ContextLength
 }
 
 // NewServer creates a new llama-server manager.

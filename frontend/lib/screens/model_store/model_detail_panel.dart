@@ -48,6 +48,17 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
   // More from author
   List<Map<String, dynamic>>? _moreModels;
 
+  /// Real, file-tree-derived vision signal (BUG fix: this used to be a
+  /// hardcoded model-family name list, e.g. 'llava'/'moondream'/'qwen-vl',
+  /// guessed from the display name). Once the repo's actual file list is
+  /// fetched (`_loadFiles`, already needed to let the user pick a quant),
+  /// the presence of a real "mmproj" file in that same repo is the same
+  /// reliable per-file signal `findMmproj` already uses for already-
+  /// downloaded models — just checked against the HF file tree instead of
+  /// the local disk, since nothing is downloaded yet at this point.
+  bool get _hasMmprojInRepo =>
+      (_files ?? const []).any((f) => f.filename.toLowerCase().contains('mmproj'));
+
   @override
   void initState() {
     super.initState();
@@ -281,9 +292,10 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
           ),
 
           // ── Capabilities ──
-          if (item.likelySupportsTools ||
-              item.likelySupportsVision ||
-              item.likelySupportsCode) ...[
+          if (item.supportsTools ||
+              item.supportsVision ||
+              _hasMmprojInRepo ||
+              item.supportsCode) ...[
             const SizedBox(height: 12),
             Row(
               children: [
@@ -300,19 +312,19 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
                     spacing: 8,
                     runSpacing: 6,
                     children: [
-                      if (item.likelySupportsVision)
+                      if (item.supportsVision || _hasMmprojInRepo)
                         _CapabilityPill(
                           icon: Icons.visibility_outlined,
                           label: L10n.t('vision_2'),
                           color: const Color(0xFF50C878),
                         ),
-                      if (item.likelySupportsTools)
+                      if (item.supportsTools)
                         _CapabilityPill(
                           icon: Icons.build_outlined,
                           label: L10n.t('tool_use'),
                           color: MemoTheme.accent,
                         ),
-                      if (item.likelySupportsCode)
+                      if (item.supportsCode)
                         _CapabilityPill(
                           icon: Icons.code,
                           label:

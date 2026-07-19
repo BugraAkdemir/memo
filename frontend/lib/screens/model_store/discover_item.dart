@@ -90,53 +90,6 @@ class DiscoverItem {
 
   String? get paramCount => _extractParams(displayName.isNotEmpty ? displayName : repoId);
   String? get arch => _detectArch(tags);
-
-  /// True if this model likely supports tool/function calling.
-  /// HF search tags rarely include 'function-calling' on GGUF repos, so we
-  /// fall back to checking the model name against known tool-capable families.
-  bool get likelySupportsTools {
-    if (supportsTools) return true;
-    if (isEmbedding) return false;
-    final lower = '${displayName.toLowerCase()} ${repoId.toLowerCase()}';
-    const families = [
-      'llama-3', 'llama3', 'llama 3',
-      'qwen2', 'qwen 2', 'qwen2.5', 'qwen3', 'qwen 3',
-      'mistral', 'mixtral',
-      'hermes', 'functionary', 'nexusraven', 'gorilla',
-      'phi-3', 'phi-4', 'phi3', 'phi4', 'phi 3', 'phi 4',
-      'gemma-2', 'gemma2', 'gemma 2', 'gemma-3', 'gemma3', 'gemma 3',
-      'command-r', 'deepseek', 'internlm',
-      'smollm', 'dolphin', 'openhermes',
-    ];
-    final hasFamily = families.any((f) => lower.contains(f));
-    final isInstruct =
-        lower.contains('instruct') || lower.contains('chat') || lower.contains('-it');
-    return hasFamily && isInstruct;
-  }
-
-  /// True if this model likely supports vision/image input.
-  bool get likelySupportsVision {
-    if (supportsVision) return true;
-    final lower = '${displayName.toLowerCase()} ${repoId.toLowerCase()}';
-    const families = [
-      'llava', 'bakllava', 'vision', 'moondream', 'minicpm-v',
-      'internvl', 'cogvlm', 'qwen-vl', 'qwenvl', 'idefics',
-      'pixtral', 'paligemma', 'florence',
-    ];
-    return families.any((f) => lower.contains(f));
-  }
-
-  /// True if this model is primarily a code model.
-  bool get likelySupportsCode {
-    if (supportsCode) return true;
-    final lower = '${displayName.toLowerCase()} ${repoId.toLowerCase()}';
-    const families = [
-      'codellama', 'codegemma', 'deepseek-coder', 'starcoder',
-      'wizardcoder', 'phind-codellama', 'codestral', 'qwen2.5-coder',
-      'granite-code', 'opencoder',
-    ];
-    return families.any((f) => lower.contains(f));
-  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────

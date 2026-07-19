@@ -211,7 +211,7 @@ class _LocalModelCard extends ConsumerWidget {
                               : L10n.t('kind_chat')),
                     ),
                     _Pill(text: model.sizeFormatted),
-                    if (model.likelySupportsTools)
+                    if (model.supportsTools)
                       _Pill(
                         text: L10n.t('tools'),
                         highlight: true,

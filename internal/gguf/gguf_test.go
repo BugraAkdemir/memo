@@ -11,9 +11,9 @@ import (
 )
 
 // ggufBuilder assembles a minimal synthetic GGUF byte stream for tests —
-// real GGUF files are gigabytes, but ContextLength only ever reads the
-// header + metadata section, so a hand-built few-KB stream exercises the
-// exact same code path.
+// real GGUF files are gigabytes, but Read only ever reads the header +
+// metadata section, so a hand-built few-KB stream exercises the exact same
+// code path.
 type ggufBuilder struct {
 	buf     bytes.Buffer
 	kvCount uint64
@@ -24,7 +24,7 @@ func newGGUFBuilder(version uint32) *ggufBuilder {
 	b := &ggufBuilder{}
 	binary.Write(&b.buf, binary.LittleEndian, magic)
 	binary.Write(&b.buf, binary.LittleEndian, version)
-	binary.Write(&b.buf, binary.LittleEndian, uint64(0)) // tensor_count, unused by ContextLength
+	binary.Write(&b.buf, binary.LittleEndian, uint64(0)) // tensor_count, unused by Read
 	return b
 }
 
@@ -87,7 +87,7 @@ func (b *ggufBuilder) writeToTempFile(t *testing.T) string {
 	return path
 }
 
-func TestContextLength_FindsArchSpecificKey(t *testing.T) {
+func TestRead_FindsArchSpecificContextLength(t *testing.T) {
 	b := newGGUFBuilder(3)
 	b.kvString("general.architecture", "llama")
 	b.kvUint32("llama.context_length", 131072)
@@ -97,16 +97,16 @@ func TestContextLength_FindsArchSpecificKey(t *testing.T) {
 	b.kvUint32Array("tokenizer.ggml.token_type", []uint32{1, 1, 2, 2})
 	path := b.writeToTempFile(t)
 
-	got, err := ContextLength(path)
+	got, err := Read(path)
 	if err != nil {
-		t.Fatalf("ContextLength: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
-	if got != 131072 {
-		t.Errorf("ContextLength = %d, want 131072", got)
+	if got.ContextLength != 131072 {
+		t.Errorf("ContextLength = %d, want 131072", got.ContextLength)
 	}
 }
 
-func TestContextLength_FallsBackToSuffixScanWhenArchKeyMismatched(t *testing.T) {
+func TestRead_ContextLengthFallsBackToSuffixScanWhenArchKeyMismatched(t *testing.T) {
 	b := newGGUFBuilder(3)
 	// architecture string that doesn't match its own context_length key —
 	// e.g. a custom finetune conversion; the suffix-scan fallback must still
@@ -115,43 +115,82 @@ func TestContextLength_FallsBackToSuffixScanWhenArchKeyMismatched(t *testing.T) 
 	b.kvUint32("mistral.context_length", 32768)
 	path := b.writeToTempFile(t)
 
-	got, err := ContextLength(path)
+	got, err := Read(path)
 	if err != nil {
-		t.Fatalf("ContextLength: %v", err)
+		t.Fatalf("Read: %v", err)
 	}
-	if got != 32768 {
-		t.Errorf("ContextLength = %d, want 32768 via suffix-scan fallback", got)
+	if got.ContextLength != 32768 {
+		t.Errorf("ContextLength = %d, want 32768 via suffix-scan fallback", got.ContextLength)
 	}
 }
 
-func TestContextLength_ReturnsZeroNotErrorWhenKeyMissing(t *testing.T) {
+func TestRead_ContextLengthZeroNotErrorWhenKeyMissing(t *testing.T) {
 	b := newGGUFBuilder(3)
 	b.kvString("general.architecture", "llama")
 	b.kvString("general.name", "some model with no context_length key at all")
 	path := b.writeToTempFile(t)
 
-	got, err := ContextLength(path)
+	got, err := Read(path)
 	if err != nil {
-		t.Fatalf("ContextLength returned an error for a merely-incomplete file: %v", err)
+		t.Fatalf("Read returned an error for a merely-incomplete file: %v", err)
 	}
-	if got != 0 {
-		t.Errorf("ContextLength = %d, want 0 (unknown, not an error)", got)
+	if got.ContextLength != 0 {
+		t.Errorf("ContextLength = %d, want 0 (unknown, not an error)", got.ContextLength)
 	}
 }
 
-func TestContextLength_ErrorsOnBadMagic(t *testing.T) {
+// TestRead_SupportsToolsFromChatTemplate is the core of this package's
+// tool-calling detection: a model's own embedded chat template (the exact
+// Jinja llama.cpp itself formats the conversation with) referencing
+// "tool_calls" is the model's own declared behavior — not a guess based on
+// its name or family, unlike the filename-family heuristics this reader
+// replaces in the Flutter clients.
+func TestRead_SupportsToolsFromChatTemplate(t *testing.T) {
+	b := newGGUFBuilder(3)
+	b.kvString("general.architecture", "qwen2")
+	b.kvString("tokenizer.chat_template", `{%- if tools %}{{ message.tool_calls }}{%- endif %}`)
+	path := b.writeToTempFile(t)
+
+	got, err := Read(path)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if !got.SupportsTools {
+		t.Error("SupportsTools = false, want true for a chat template that references tool_calls")
+	}
+}
+
+// TestRead_SupportsToolsFalseForPlainChatTemplate covers the common case: a
+// model whose chat template never mentions tool calling at all must not be
+// flagged as supporting it.
+func TestRead_SupportsToolsFalseForPlainChatTemplate(t *testing.T) {
+	b := newGGUFBuilder(3)
+	b.kvString("general.architecture", "llama")
+	b.kvString("tokenizer.chat_template", `{% for message in messages %}{{ message.content }}{% endfor %}`)
+	path := b.writeToTempFile(t)
+
+	got, err := Read(path)
+	if err != nil {
+		t.Fatalf("Read: %v", err)
+	}
+	if got.SupportsTools {
+		t.Error("SupportsTools = true, want false for a chat template with no tool-calling reference")
+	}
+}
+
+func TestRead_ErrorsOnBadMagic(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "not-a-model.gguf")
 	if err := os.WriteFile(path, []byte("not a gguf file at all"), 0644); err != nil {
 		t.Fatalf("write temp file: %v", err)
 	}
 
-	if _, err := ContextLength(path); err == nil {
-		t.Error("ContextLength = nil error, want an error for a non-GGUF file")
+	if _, err := Read(path); err == nil {
+		t.Error("Read = nil error, want an error for a non-GGUF file")
 	}
 }
 
-func TestContextLength_ErrorsOnMissingFile(t *testing.T) {
-	if _, err := ContextLength(filepath.Join(t.TempDir(), "does-not-exist.gguf")); err == nil {
-		t.Error("ContextLength = nil error, want an error for a missing file")
+func TestRead_ErrorsOnMissingFile(t *testing.T) {
+	if _, err := Read(filepath.Join(t.TempDir(), "does-not-exist.gguf")); err == nil {
+		t.Error("Read = nil error, want an error for a missing file")
 	}
 }

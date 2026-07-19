@@ -554,40 +554,6 @@ void main() {
       expect(model.maxContext, 0);
     });
 
-    test('likelySupportsTools from metadata', () {
-      final model = LocalModel(
-        repoId: 'test/model',
-        filename: 'model.gguf',
-        size: 1000,
-        path: '/m.gguf',
-        isEmbedding: false,
-        supportsTools: true,
-      );
-      expect(model.likelySupportsTools, true);
-    });
-
-    test('likelySupportsTools from heuristic', () {
-      final model = LocalModel(
-        repoId: 'meta/llama3',
-        filename: 'llama3-8b-instruct.gguf',
-        size: 1000,
-        path: '/m.gguf',
-        isEmbedding: false,
-      );
-      expect(model.likelySupportsTools, true);
-    });
-
-    test('likelySupportsTools false for embedding', () {
-      final model = LocalModel(
-        repoId: 'test/model',
-        filename: 'model.gguf',
-        size: 1000,
-        path: '/m.gguf',
-        isEmbedding: true,
-      );
-      expect(model.likelySupportsTools, false);
-    });
-
     test('sizeFormatted formats GB', () {
       final model = LocalModel(
         repoId: 'test/m', filename: 'm.gguf', size: 5000000000, path: '/m.gguf', isEmbedding: false,

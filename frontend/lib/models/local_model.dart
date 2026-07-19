@@ -6,7 +6,11 @@ class LocalModel {
   final String path;
   final bool isEmbedding;
   final bool isVision;
-  /// Confirmed via HF `.meta.json` sidecar — populated after download.
+  /// Whether this model supports tool/function calling — confirmed either
+  /// by HF's own tags (download time) or, more reliably, by the model's
+  /// own embedded GGUF chat template actually referencing tool_calls
+  /// (internal/gguf.Metadata.SupportsTools) — a real signal read from the
+  /// file itself, not a guess based on the model's name or family.
   final bool supportsTools;
   final bool supportsVision;
   final bool supportsCode;
@@ -45,21 +49,6 @@ class LocalModel {
         tags: (json['tags'] as List<dynamic>?)?.map((e) => e.toString()).toList() ?? [],
         maxContext: json['max_context'] as int? ?? 0,
       );
-
-  /// Whether this model likely supports tool/function calling.
-  /// Uses confirmed HF metadata when available, falls back to filename heuristic.
-  bool get likelySupportsTools {
-    if (supportsTools) return true;
-    if (isEmbedding) return false;
-    final lower = '${filename.toLowerCase()} ${repoId.toLowerCase()}';
-    const toolFamilies = [
-      'llama-3', 'llama3', 'qwen2', 'qwen2.5', 'mistral', 'mixtral',
-      'hermes', 'functionary', 'nexusraven', 'gorilla', 'phi-3', 'phi-4',
-    ];
-    final hasFamily = toolFamilies.any((f) => lower.contains(f));
-    final isInstruct = lower.contains('instruct') || lower.contains('chat');
-    return hasFamily && isInstruct;
-  }
 
   /// Human-readable file size
   String get sizeFormatted {

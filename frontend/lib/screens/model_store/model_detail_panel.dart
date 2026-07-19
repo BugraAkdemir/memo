@@ -48,6 +48,46 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
   // More from author
   List<Map<String, dynamic>>? _moreModels;
 
+  /// The model's *actual* brand/creator (e.g. "google" for a
+  /// bartowski-quantized Gemma repo), resolved from HF's own
+  /// cardData.base_model — not derived from the repo owner, which for a
+  /// GGUF conversion is almost always a third-party quantizer
+  /// (bartowski/unsloth/TheBloke/...), not the original org. Falls back to
+  /// item.avatarAuthor (the repo's own owner) at every render site when
+  /// this stays null — an official first-party repo (uploader IS the
+  /// brand) or a repo with no declared base_model both look identical
+  /// either way.
+  String? _brandAuthor;
+
+  Future<void> _loadBrandAuthor() async {
+    try {
+      final resp = await ref.read(apiClientProvider).dio.get<Map<String, dynamic>>(
+        'https://huggingface.co/api/models/${widget.item.repoId}',
+        options: Options(
+          receiveTimeout: const Duration(seconds: 6),
+          sendTimeout: const Duration(seconds: 6),
+        ),
+      );
+      final cardData = resp.data?['cardData'] as Map<String, dynamic>?;
+      final rawBaseModel = cardData?['base_model'];
+      // HF model cards declare base_model either as a single string or, for
+      // merges, a list of strings — take the first usable one either way.
+      final baseModel = rawBaseModel is String
+          ? rawBaseModel
+          : (rawBaseModel is List && rawBaseModel.isNotEmpty)
+              ? rawBaseModel.first as String?
+              : null;
+      if (baseModel == null || !baseModel.contains('/')) return;
+      final brand = baseModel.split('/').first;
+      if (mounted && brand.isNotEmpty) {
+        setState(() => _brandAuthor = brand);
+      }
+    } catch (_) {
+      // No cardData.base_model, no network, whatever — just fall back to
+      // the repo's own owner everywhere this is used.
+    }
+  }
+
   /// Real, live-fetched tools signal: true once `_loadToolsSupport` has
   /// confirmed the repo's own tokenizer_config.json chat_template actually
   /// references tool_calls. Stays null (never explicitly false) on a 404
@@ -102,6 +142,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     _loadFiles();
     _loadReadme();
     _loadMoreModels();
+    _loadBrandAuthor();
     // Only worth a live fetch when the HF tag hasn't already confirmed
     // tools support (nothing to add) and this isn't an embedding model
     // (never tool-capable).
@@ -246,9 +287,15 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // ── Header: Repo ID + copy ──
+          // ── Header: Logo + Repo ID + copy ──
           Row(
             children: [
+              AuthorAvatar(
+                author: _brandAuthor ?? item.avatarAuthor,
+                dio: ref.read(apiClientProvider).dio,
+                size: 40,
+              ),
+              const SizedBox(width: 10),
               Expanded(
                 child: Text(
                   item.repoId,

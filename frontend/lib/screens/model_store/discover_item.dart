@@ -1,3 +1,4 @@
+import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/curated_models.dart';
@@ -144,4 +145,131 @@ String fmtCount(int n) {
   if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
   if (n >= 1000) return '${(n / 1000).toStringAsFixed(0)}K';
   return '$n';
+}
+
+// ─── Author avatar (HF logo with letter fallback) ────────────────
+//
+// Shared between DiscoverTab's list rows and ModelDetailPanel's header —
+// moved here (was private to discover_tab.dart) so both can use the exact
+// same fetch/cache/fallback logic instead of drifting into two copies.
+
+Color _authorColor(String author) {
+  const colors = [
+    Color(0xFF4B7BEC),
+    Color(0xFF7C6FEE),
+    Color(0xFF26C6DA),
+    Color(0xFF50C878),
+    Color(0xFFFF7043),
+    Color(0xFFE91E8C),
+    Color(0xFFF9CA24),
+  ];
+  if (author.isEmpty) return colors[0];
+  final idx = author.codeUnits.fold(0, (s, c) => s + c) % colors.length;
+  return colors[idx];
+}
+
+class AuthorAvatar extends StatefulWidget {
+  final String author;
+  final Dio dio;
+  final double size;
+  const AuthorAvatar({super.key, required this.author, required this.dio, this.size = 34});
+
+  @override
+  State<AuthorAvatar> createState() => _AuthorAvatarState();
+}
+
+class _AuthorAvatarState extends State<AuthorAvatar> {
+  // Shared across all instances — one fetch per unique author per session.
+  // Capped so browsing thousands of distinct authors across a long-running
+  // session doesn't grow this forever; a clear-on-overflow is simplest and
+  // just costs a few extra re-fetches right after, not a correctness issue.
+  static final _cache = <String, String?>{};
+  static const _cacheCap = 500;
+  String? _avatarUrl;
+  bool _resolved = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _resolve();
+  }
+
+  @override
+  void didUpdateWidget(AuthorAvatar old) {
+    super.didUpdateWidget(old);
+    if (old.author != widget.author) _resolve();
+  }
+
+  Future<void> _resolve() async {
+    final a = widget.author;
+    if (_cache.containsKey(a)) {
+      if (mounted) setState(() { _avatarUrl = _cache[a]; _resolved = true; });
+      return;
+    }
+    String? url;
+    for (final endpoint in [
+      'https://huggingface.co/api/organizations/$a',
+      'https://huggingface.co/api/users/$a',
+    ]) {
+      try {
+        final r = await widget.dio.get<Map<String, dynamic>>(
+          endpoint,
+          options: Options(
+            receiveTimeout: const Duration(seconds: 6),
+            sendTimeout: const Duration(seconds: 6),
+          ),
+        );
+        final u = r.data?['avatarUrl'] as String?;
+        if (u != null && u.isNotEmpty) { url = u; break; }
+      } catch (_) {}
+    }
+    if (_cache.length >= _cacheCap) _cache.clear();
+    _cache[a] = url;
+    if (mounted) setState(() { _avatarUrl = url; _resolved = true; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_resolved && _avatarUrl != null) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(8),
+        child: Image.network(
+          _avatarUrl!,
+          width: widget.size,
+          height: widget.size,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) =>
+              LetterAvatar(author: widget.author, size: widget.size),
+        ),
+      );
+    }
+    return LetterAvatar(author: widget.author, size: widget.size);
+  }
+}
+
+class LetterAvatar extends StatelessWidget {
+  final String author;
+  final double size;
+  const LetterAvatar({super.key, required this.author, this.size = 34});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: size,
+      height: size,
+      decoration: BoxDecoration(
+        color: _authorColor(author),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      alignment: Alignment.center,
+      child: Text(
+        author.isNotEmpty ? author[0].toUpperCase() : '?',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: size * 0.41,
+          fontWeight: FontWeight.w700,
+        ),
+      ),
+    );
+  }
 }

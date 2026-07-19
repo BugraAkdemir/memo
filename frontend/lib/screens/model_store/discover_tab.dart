@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -12,21 +11,6 @@ import '../../providers/models_provider.dart';
 
 import 'discover_item.dart';
 import 'model_detail_panel.dart';
-
-Color _authorColor(String author) {
-  const colors = [
-    Color(0xFF4B7BEC),
-    Color(0xFF7C6FEE),
-    Color(0xFF26C6DA),
-    Color(0xFF50C878),
-    Color(0xFFFF7043),
-    Color(0xFFE91E8C),
-    Color(0xFFF9CA24),
-  ];
-  if (author.isEmpty) return colors[0];
-  final idx = author.codeUnits.fold(0, (s, c) => s + c) % colors.length;
-  return colors[idx];
-}
 
 // ─── Sort mode ────────────────────────────────────────────────────
 
@@ -472,110 +456,6 @@ class _SortChip extends StatelessWidget {
   }
 }
 
-// ─── Author avatar (HF logo with letter fallback) ────────────────
-
-class _AuthorAvatar extends StatefulWidget {
-  final String author;
-  final Dio dio;
-  const _AuthorAvatar({required this.author, required this.dio});
-
-  @override
-  State<_AuthorAvatar> createState() => _AuthorAvatarState();
-}
-
-class _AuthorAvatarState extends State<_AuthorAvatar> {
-  // Shared across all instances — one fetch per unique author per session.
-  // Capped so browsing thousands of distinct authors across a long-running
-  // session doesn't grow this forever; a clear-on-overflow is simplest and
-  // just costs a few extra re-fetches right after, not a correctness issue.
-  static final _cache = <String, String?>{};
-  static const _cacheCap = 500;
-  String? _avatarUrl;
-  bool _resolved = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _resolve();
-  }
-
-  @override
-  void didUpdateWidget(_AuthorAvatar old) {
-    super.didUpdateWidget(old);
-    if (old.author != widget.author) _resolve();
-  }
-
-  Future<void> _resolve() async {
-    final a = widget.author;
-    if (_cache.containsKey(a)) {
-      if (mounted) setState(() { _avatarUrl = _cache[a]; _resolved = true; });
-      return;
-    }
-    String? url;
-    for (final endpoint in [
-      'https://huggingface.co/api/organizations/$a',
-      'https://huggingface.co/api/users/$a',
-    ]) {
-      try {
-        final r = await widget.dio.get<Map<String, dynamic>>(
-          endpoint,
-          options: Options(
-            receiveTimeout: const Duration(seconds: 6),
-            sendTimeout: const Duration(seconds: 6),
-          ),
-        );
-        final u = r.data?['avatarUrl'] as String?;
-        if (u != null && u.isNotEmpty) { url = u; break; }
-      } catch (_) {}
-    }
-    if (_cache.length >= _cacheCap) _cache.clear();
-    _cache[a] = url;
-    if (mounted) setState(() { _avatarUrl = url; _resolved = true; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_resolved && _avatarUrl != null) {
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          _avatarUrl!,
-          width: 34,
-          height: 34,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => _LetterAvatar(author: widget.author),
-        ),
-      );
-    }
-    return _LetterAvatar(author: widget.author);
-  }
-}
-
-class _LetterAvatar extends StatelessWidget {
-  final String author;
-  const _LetterAvatar({required this.author});
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      width: 34,
-      height: 34,
-      decoration: BoxDecoration(
-        color: _authorColor(author),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        author.isNotEmpty ? author[0].toUpperCase() : '?',
-        style: const TextStyle(
-          color: Colors.white,
-          fontSize: 14,
-          fontWeight: FontWeight.w700,
-        ),
-      ),
-    );
-  }
-}
 
 // ─── Model list row ───────────────────────────────────────────────
 
@@ -627,7 +507,7 @@ class _ModelListRow extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 // Avatar
-                _AuthorAvatar(author: item.avatarAuthor, dio: ref.read(apiClientProvider).dio),
+                AuthorAvatar(author: item.avatarAuthor, dio: ref.read(apiClientProvider).dio),
                 const SizedBox(width: 10),
                 // Content
                 Expanded(

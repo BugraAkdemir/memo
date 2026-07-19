@@ -1,3 +1,50 @@
+# Handoff — 2026-07-19 (Session 44, devam) — Commit imzalama kuruldu, "flaky" CI testi aslında 2 gerçek algoritma bug'ı + 1 data race'miş
+
+## Özet
+
+Session 44'ün (aşağıdaki ilk giriş) aynı gün devamı. Kullanıcı önce commit imzalama (GPG/SSH "Verified" rozeti) istedi, sonra `c8f7ccf`'in (önceki CI flaky-test fix'i) yeterli olmadığını gösteren yeni bir CI hata log'u getirdi — o log'u araştırırken görünüşte "flaky" olan test'in aslında **iki ayrı gerçek algoritma bug'ı** ve araştırma sırasında yazılan test kodunun kendi **gerçek bir data race**'i olduğu ortaya çıktı. Commit'ler (kronolojik): `54b2100` → `108cb95` → `87c61ca`.
+
+## 1) SSH commit signing kuruldu (`108cb95`)
+
+Kullanıcı GitHub'daki commit listesinde "Verified" rozetinin neden çıkmadığını sordu. Bu makinede hiç GPG/SSH anahtarı yoktu (`gpg --list-secret-keys` boş, `~/.ssh/` boş) — hiçbir commit imzalanamıyordu, bu 2 spesifik commit'e özgü değil, hepsine. Kullanıcı onayıyla:
+- Parolasız bir SSH imzalama anahtarı üretildi (`~/.ssh/id_ed25519_gitsign`) — parolasız olmasının nedeni: otomatik/interaktif-olmayan bir ortamda her commit'te parola istemi terminali kilitlerdi. Bu anahtar **sadece imzalama** için, sunucu girişi (`authorized_keys`) için değil.
+- `git config --global gpg.format ssh` / `user.signingkey` / `commit.gpgsign true` ayarlandı, `~/.ssh/allowed_signers` yerel doğrulama için eklendi.
+- Kullanıcı public key'i GitHub'a (Settings → SSH and GPG keys → Signing Key) ekledi.
+- Boş bir test commit'i atılıp push edildi, GitHub API'den doğrudan doğrulandı: `verified: true, reason: valid`.
+
+Bundan sonra atılan her commit otomatik imzalı gidiyor.
+
+## 2) "Flaky" CI testi aslında flaky değilmiş — 2 gerçek algoritma bug'ı (`87c61ca`)
+
+Kullanıcı yarıda kesilmiş bir CI log dosyası getirip "yine CI'dan kaldım" dedi. `gh run view --log-failed` ile gerçek CI run'ı (`29693984840`, commit `54b2100` — salt-docs bir commit, ki bu da "flaky" ihtimalini güçlendiriyordu) çekildi: aynı test (`TestRecall_CasualFactNotCrowdedOutByRoutineNoise`) yine başarısız, ama bu sefer skorlar **kesin eşit değildi** (0.0357, 0.0352, 0.0343...) — yani Session 44'ün ilk turundaki "map iterasyon sırası rastgeleliği" tanısı (c8f7ccf) tek başına yeterli değilmiş.
+
+**Kritik keşif — neden yerelde hiç görülmüyordu:** Bu geliştirme makinesinde `sqlite-vec` eklentisi derli/mevcut, CI'da değil. Yani yerel her test çalıştırması sessizce `vecSearch`'ü kullanıyordu, CI'nın gerçekte kullandığı `goSearch` (Go fallback) hiç yerel olarak test edilmiyordu. `store.useVec = false` zorlanarak (önce riskli bir şekilde post-construction mutation ile — bu da kendi data race'ini yarattı, aşağıda) test lokal olarak **%100 tekrarlanabilir** hale getirildi — yani flaky değil, deterministik bozukmuş.
+
+**Bug A — ardışık birleştirme aday kaybettiriyordu:** `RetrieveContext`, çok parçalı bir sorunun (`splitCompoundQuery`) her segmentini ayrı arayıp sonucu `reciprocalRankFusion` ile **ikişer ikişer, her adımda kırparak** ana havuza katıyordu. Bir gerçek (`"köpeğimin adı zeytin"`), kendi segmentinde (`"köpeğimin adı neydi"`) net biçimde #1 olsa bile (0.47 vs en iyi gürültünün 0.16), tüm sorgu + önceki segment turlarında hiç görünmediği için ana havuzdan **o segment birleştirilmeden önce** düşürülüyordu. Fix: `mergeVectorCandidates` — tüm vektör-kaynaklı listeleri (tüm sorgu + expand + her segment) önce toplayıp **tek geçişte** birleştiriyor, kırpma sadece en sonda.
+
+**Bug B — toplama (sum) yerine en-iyi (max) skor gerekiyormuş:** Bug A düzeltilse bile, 30 neredeyse-aynı gürültü mesajı **birden fazla segmentte orta-karar** skor topluyor (toplanan skorlar birikiyor), gerçek ise sadece **kendi** segmentinde mükemmel skor alıyor — RRF'nin toplamalı doğası, "her yerde vasat" olanın "bir yerde mükemmel" olana karşı kazanmasına izin veriyordu. `splitCompoundQuery`'nin kendi tasarım amacına ("bir gerçek sadece kendi konusunda gürültüyü yenmeli, tüm cümlede değil") doğrudan aykırıydı. Fix: `mergeVectorCandidates` artık segmentler arası **max** alıyor (`reciprocalRankFusion`'ın vec+fts birleştirmesi hâlâ **sum** kullanıyor — orası kasıtlı, gerçek hibrit eşleşmeyi ödüllendirmek doğru).
+
+**Bug C — kendi test kodumun gerçek data race'i:** Bug A/B'yi araştırırken yazılan `newRecallStoreGoFallback` yardımcı fonksiyonu, `NewStore()` döndükten SONRA `store.useVec = false` diye dışarıdan mutate ediyordu — ama `NewStore`, arka planda bir vec-migration goroutine'i başlatıyor ve o goroutine `useVec`'i eşzamanlı okuyor. `-race` bunu doğrudan yakaladı. Fix: `StoreConfig.ForceGoFallback` — `initSchema` içinde, migration goroutine'i hiç başlamadan ÖNCE, senkron olarak kontrol ediliyor; alan artık construction'dan sonra hiç dokunulmuyor.
+
+Test artık `_VecSearch`/`_GoFallback` iki ayrı varyanta bölündü ki bu sınıf bug bir daha yerelde geçip CI'da patlamasın.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" -race ./...              → temiz, tüm paketler yeşil
+-race -count=100 (ilgili testler)                                            → 100/100 yeşil, race yok
+gh run view (commit 87c61ca'nın CI'ı)                                        → Test (Go) job'ı ✓ (4m36s, -race dahil)
+```
+
+## Sıradaki oturum için / yapılabilecekler
+
+- **Görsel doğrulama borcu:** Bu oturumun (ilk Session 44 girişi) dropdown filtre UI'ı ve Discover detay panelindeki yeni canlı istekler (tools/brand-author fetch) hâlâ gerçek bir GUI penceresinde tıklanarak denenmedi (bu ortamda ekran yok). İlk fırsatta kullanıcı gerçek uygulamada kontrol etmeli.
+- **`BUG_REPORT.md` şu an 0 açık madde** — yeni bir bulgu/istek gelene kadar bilinen açık iş yok.
+- **Commit imzalama** artık kalıcı olarak kurulu, ekstra bir işlem gerekmiyor.
+- Bu oturumda `internal/memory`'nin hibrit arama/RRF birleştirme mantığı iki kez (Session 44 ilk tur + bu devam) elden geçti — üçüncü bir "flaky" rapor gelirse önce bu dosyayı (`store.go`'daki `mergeVectorCandidates`/`reciprocalRankFusion`/`topScoredByRRF`) ve mutlaka `newRecallStoreGoFallback` ile zorlanmış Go-fallback yolunu kontrol et, sadece varsayılan (vecSearch) yolla değil.
+
+---
+
 # Handoff — 2026-07-19 (Session 44) — Local model context-size crash'i + Discover/Model Store'un dizisi (10 commit): GGUF-tabanlı gerçek yetenek tespiti, gated model temizliği, filtre yeniden tasarımı, CI flaky test
 
 ## Özet

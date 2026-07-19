@@ -56,6 +56,40 @@ func newRecallStore(t *testing.T, embed EmbeddingFunc, dim int) *Store {
 	return store
 }
 
+// newRecallStoreGoFallback is newRecallStore but forces the Go-fallback
+// vector search (goSearch) via StoreConfig.ForceGoFallback — the path CI
+// always exercises, since GitHub Actions' runner never has the sqlite-vec
+// extension compiled in (see vecSearch's own comment for how differently
+// the two implementations can rank near-identical candidates). Any dev
+// machine that *does* have sqlite-vec available — this one included —
+// silently only exercises vecSearch in every test that uses plain
+// newRecallStore, so a goSearch-specific regression can pass locally and
+// still fail in CI. Use this for recall tests where that distinction
+// actually matters (ranking behavior), not for tests that only check
+// plumbing (save/error paths).
+//
+// Deliberately goes through NewStore's own ForceGoFallback config rather
+// than constructing a store and then setting store.useVec = false
+// directly: NewStore starts a background goroutine (the vec-migration
+// pass) that reads useVec concurrently, so mutating it from outside after
+// construction returns is a genuine data race, caught directly by -race —
+// not a hypothetical, this was the actual bug the first version of this
+// helper had.
+func newRecallStoreGoFallback(t *testing.T, embed EmbeddingFunc, dim int) *Store {
+	t.Helper()
+	store, err := NewStore(StoreConfig{
+		Dir:             t.TempDir(),
+		Dimension:       dim,
+		EmbeddingFunc:   embed,
+		ForceGoFallback: true,
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	t.Cleanup(func() { store.Close() })
+	return store
+}
+
 func containsMemory(results []MemoryResult, substr string) bool {
 	for _, r := range results {
 		if strings.Contains(r.Content, substr) {
@@ -355,9 +389,63 @@ func TestRecall_ExplicitFactOutranksCasualMention(t *testing.T) {
 // entirely (verified by temporarily disabling the segment-decomposition
 // loop in RetrieveContext and re-running this exact test — it failed, 0/5
 // results contained the fact).
-func TestRecall_CasualFactNotCrowdedOutByRoutineNoise(t *testing.T) {
+// TestRecall_CasualFactNotCrowdedOutByRoutineNoise_VecSearch runs the shared
+// scenario (see runCasualFactNotCrowdedOutByRoutineNoise) against whichever
+// vector search path this environment naturally selects — vecSearch when
+// the sqlite-vec extension is available (true on this dev machine), goSearch
+// otherwise. Kept alongside the _GoFallback variant below specifically
+// *because* the two paths can rank near-identical candidates differently
+// (see vecSearch's own comment on this) — a name reflecting "whatever the
+// environment gives us" would hide that this test's real path depends on
+// local setup.
+func TestRecall_CasualFactNotCrowdedOutByRoutineNoise_VecSearch(t *testing.T) {
+	runCasualFactNotCrowdedOutByRoutineNoise(t, newRecallStore(t, bagOfWordsEmbedding(256), 256))
+}
+
+// TestRecall_CasualFactNotCrowdedOutByRoutineNoise_GoFallback runs the same
+// scenario forced onto goSearch — the path CI actually exercises (GitHub
+// Actions runners never have the sqlite-vec extension compiled in). This is
+// the regression test for a real gap: the original version of this test
+// passed reliably on every local run (sqlite-vec available here) while
+// intermittently/consistently failing in CI, because the two search
+// implementations aren't guaranteed to rank near-identical candidates the
+// same way. Without a test that explicitly forces the Go fallback, a
+// goSearch-specific regression can pass locally and only ever surface in CI.
+func TestRecall_CasualFactNotCrowdedOutByRoutineNoise_GoFallback(t *testing.T) {
+	runCasualFactNotCrowdedOutByRoutineNoise(t, newRecallStoreGoFallback(t, bagOfWordsEmbedding(256), 256))
+}
+
+// runCasualFactNotCrowdedOutByRoutineNoise reproduces the exact failure
+// pattern from a real user session: a personal fact ("my dog's name is
+// Zeytin") stated in normal chat — saved via the ordinary per-turn
+// SaveInteraction path with the default importance=3, completely
+// indistinguishable in priority from routine greetings, since Memo has no
+// mechanism to auto-detect "this is a durable fact worth extra weight" (see
+// internal/app/memory.go's saveMemoryAsync, which saves every single turn
+// unconditionally, greetings included) — is asked about later inside a
+// COMPOUND question alongside an unrelated topic. Before splitCompoundQuery,
+// this was confirmed to fail: the single blended embedding for the whole
+// compound question ranked dozens of near-duplicate routine "kanka naber"
+// turns above the one specific fact, crowding it out of the topK=5 cut
+// entirely (verified by temporarily disabling the segment-decomposition
+// loop in RetrieveContext and re-running this exact test — it failed, 0/5
+// results contained the fact).
+//
+// Dimension is deliberately 256, not 64: bagOfWordsEmbedding hashes words
+// into buckets by fnv32a(word) % dim, and at only 64 buckets this specific
+// test's word set has a real collision — "bugun"/"hava"/"nasil"/"sohbet"/a
+// noise index number happen to land on buckets that overlap enough with
+// "kopeğimin"/"adı" to spuriously outscore the actual fact against the
+// "kopeğimin adı neydi" query segment (verified directly: at dim=64 two
+// noise entries scored 0.480 similarity against that segment vs the real
+// fact's 0.471; at dim=256 the fact scores 0.471 and the best-matching
+// noise entry drops to 0.160). This is an artifact of the low-dimensional
+// hash-based test double, not the production ranking algorithm — a real
+// embedding model operates in a much higher-dimensional, semantically
+// structured space where this kind of collision doesn't happen.
+func runCasualFactNotCrowdedOutByRoutineNoise(t *testing.T, store *Store) {
+	t.Helper()
 	ctx := context.Background()
-	store := newRecallStore(t, bagOfWordsEmbedding(64), 64)
 
 	for i := range 30 {
 		if err := store.SaveInteraction(ctx,

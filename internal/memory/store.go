@@ -40,6 +40,16 @@ type Store struct {
 	useVec        bool
 	useFTS        bool
 	stopCh        chan struct{}
+
+	// forceGoFallback skips sqlite-vec entirely during initSchema, as if
+	// the extension weren't compiled in — test-only (see StoreConfig's doc
+	// comment). Read exactly once, synchronously, inside initSchema before
+	// NewStore returns; never touched again afterward, unlike an earlier
+	// attempt at this that mutated useVec directly from a test helper
+	// *after* construction — initSchema's own background vec-migration
+	// goroutine (started for exactly this Store) was already reading
+	// useVec concurrently by then, a genuine data race caught by -race.
+	forceGoFallback bool
 }
 
 // SetConsolidationFunc registers the LLM-backed merge function used by the
@@ -54,6 +64,14 @@ type StoreConfig struct {
 	Dir           string
 	Dimension     int
 	EmbeddingFunc EmbeddingFunc
+
+	// ForceGoFallback makes NewStore skip sqlite-vec entirely, as if the
+	// extension weren't compiled in — for tests that need to exercise
+	// goSearch specifically (the code path a CI runner without sqlite-vec
+	// always takes) regardless of whether the extension happens to be
+	// available on the machine actually running the test. Production
+	// callers should never set this.
+	ForceGoFallback bool
 }
 
 func (c StoreConfig) dbPath() string {
@@ -81,11 +99,12 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}
 
 	s := &Store{
-		db:     db,
-		embed:  cfg.EmbeddingFunc,
-		dim:    cfg.Dimension,
-		dir:    cfg.Dir,
-		dbPath: dbPath,
+		db:              db,
+		embed:           cfg.EmbeddingFunc,
+		dim:             cfg.Dimension,
+		dir:             cfg.Dir,
+		dbPath:          dbPath,
+		forceGoFallback: cfg.ForceGoFallback,
 	}
 
 	if err := s.initSchema(); err != nil {
@@ -205,7 +224,10 @@ func (s *Store) initSchema() error {
 		logx.Printf("MEMORY: fts5 not available (%v), keyword search disabled", ftsErr)
 	}
 
-	vecErr := s.tryCreateVecTable(ctx)
+	vecErr := fmt.Errorf("forced Go fallback for testing")
+	if !s.forceGoFallback {
+		vecErr = s.tryCreateVecTable(ctx)
+	}
 	if vecErr == nil {
 		s.useVec = true
 		if err := s.ensureVecMetadata(ctx); err != nil {
@@ -679,26 +701,78 @@ func reciprocalRankFusion(vecResults, ftsResults []MemoryResult, topK int) []Mem
 	applyRank(vecResults, "vector")
 	applyRank(ftsResults, "fts")
 
+	return topScoredByRRF(scores, best, topK)
+}
+
+// mergeVectorCandidates RRF-fuses any number of vector-search result lists
+// (the whole-query search, the optional expand-query variant, and one per
+// splitCompoundQuery segment) into a single ranked candidate pool in one
+// pass. This deliberately replaces folding the lists together pairwise via
+// repeated reciprocalRankFusion calls: each intermediate
+// reciprocalRankFusion call truncates its own output back down to topK, so
+// a candidate absent from the whole-query search AND an earlier segment
+// (e.g. a fact sharing zero words with either) could already be evicted
+// before a *later* segment — the one it actually matches well — ever got a
+// chance to add it back in.
+//
+// Each candidate's score is its BEST (max) rank contribution across every
+// list, not the sum — deliberately different from reciprocalRankFusion's
+// own vec+fts merge, where summing is the correct way to reward a hybrid
+// (both-vector-and-keyword) match. Here, summing across segments actively
+// works against splitCompoundQuery's whole stated purpose ("a fact only
+// needs to beat noise on its own specific topic, not the whole sentence,"
+// see that function's doc comment): a candidate that ranks decently in
+// *multiple* segments (routine conversational noise sharing common words
+// with several segments at once) would out-accumulate a candidate that
+// ranks #1 in exactly the one segment it's actually relevant to. Confirmed
+// directly: a compound-question fact ranked #1 in its own topic segment's
+// search still lost to routine noise under sum-based fusion, because the
+// noise had summed contributions from two segments the fact was never
+// competitive in at all — switching to max-per-candidate fixed it (see
+// TestRecall_CasualFactNotCrowdedOutByRoutineNoise_GoFallback).
+func mergeVectorCandidates(topK int, lists ...[]MemoryResult) []MemoryResult {
+	const k = 60.0
+	scores := make(map[string]float64)
+	best := make(map[string]MemoryResult)
+
+	for _, results := range lists {
+		for rank, r := range results {
+			if s := 1.0 / (k + float64(rank+1)); s > scores[r.ID] {
+				scores[r.ID] = s
+			}
+			if _, seen := best[r.ID]; !seen {
+				r.MatchType = "vector"
+				best[r.ID] = r
+			}
+		}
+	}
+
+	return topScoredByRRF(scores, best, topK)
+}
+
+// topScoredByRRF sorts scores descending and returns the top topK entries
+// from best, shared by reciprocalRankFusion and mergeVectorCandidates.
+//
+// Tiebreaks by ID when scores are exactly equal (common: two candidates
+// landing at the identical rank position in the same set of merged lists
+// get an identical summed score) — without this, sort.Slice's relative
+// order for tied entries falls back to their position in the slice built
+// from iterating the scores map, and Go's map iteration order is
+// deliberately randomized per process, not per call. The same tied pair
+// could then sort either way from one run to the next, silently flipping
+// whether a given memory survives a topK cutoff at the tie boundary — a
+// real, intermittent CI failure (TestRecall_CasualFactNotCrowdedOutByRoutineNoise),
+// not a data race. The tiebreaker makes the result fully deterministic for
+// a given input regardless of map iteration order.
+func topScoredByRRF(scores map[string]float64, best map[string]MemoryResult, topK int) []MemoryResult {
 	type scored struct {
 		id    string
 		score float64
 	}
-	var ranked []scored
+	ranked := make([]scored, 0, len(scores))
 	for id, score := range scores {
 		ranked = append(ranked, scored{id, score})
 	}
-	// Tiebreak by ID when scores are exactly equal (common: two candidates
-	// landing at the identical rank position in both merged result sets get
-	// an identical summed score) — without this, sort.Slice's relative
-	// order for tied entries falls back to their position in `ranked`,
-	// which came from iterating the `scores` map above. Go's map iteration
-	// order is deliberately randomized per process, not per call — the
-	// same tied pair can sort either way from one run to the next, which
-	// silently flips whether a given memory survives a topK cutoff at the
-	// tie boundary. This was a real, intermittent CI failure
-	// (TestRecall_CasualFactNotCrowdedOutByRoutineNoise), not a data race —
-	// the tiebreaker below makes the result fully deterministic for a given
-	// input regardless of map iteration order.
 	sort.Slice(ranked, func(i, j int) bool {
 		if ranked[i].score != ranked[j].score {
 			return ranked[i].score > ranked[j].score
@@ -800,54 +874,57 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 
 	candidateK := min(max(topK*5, 20), 100)
 
-	var vecMemories []MemoryResult
+	vecSearchFn := s.goSearch
 	if s.useVec {
-		vecMemories, err = s.vecSearch(ctx, queryEmbedding, candidateK, minSimilarity)
-	} else {
-		vecMemories, err = s.goSearch(ctx, queryEmbedding, candidateK, minSimilarity)
+		vecSearchFn = s.vecSearch
 	}
+
+	wholeQueryResults, err := vecSearchFn(ctx, queryEmbedding, candidateK, minSimilarity)
 	if err != nil {
 		return nil, fmt.Errorf("memory.RetrieveContext: vector search: %w", err)
 	}
-	for i := range vecMemories {
-		vecMemories[i].MatchType = "vector"
-	}
 
-	// Multi-query: if query is long, do a second search with a topic-focused variant
-	// and merge with the primary results via RRF for better recall.
+	// Collect every vector-origin candidate list — the whole-query search,
+	// the optional expand-query variant, and one per splitCompoundQuery
+	// segment — and fuse them in a single pass at the end (mergeVectorCandidates)
+	// instead of folding them together pairwise via reciprocalRankFusion.
+	// Sequential pairwise fold-and-truncate used to genuinely lose
+	// candidates: each intermediate reciprocalRankFusion call truncates its
+	// output back down to candidateK, so a candidate excluded from the
+	// whole-query search AND an earlier segment (a fact sharing zero words
+	// with either) could already be evicted before a *later* segment —
+	// the one it actually matches well — ever got a chance to add it back
+	// in. Confirmed directly: a compound-question fact ranked #1 in its own
+	// topic segment's search still lost to routine noise in the final
+	// result, because the noise had already accumulated RRF score across
+	// two earlier merge rounds the fact was never part of (see
+	// TestRecall_CasualFactNotCrowdedOutByRoutineNoise_GoFallback).
+	vectorLists := [][]MemoryResult{wholeQueryResults}
+
+	// Multi-query: if query is long, do a second search with a topic-focused variant.
 	if expanded := expandQuery(query); expanded != "" {
 		if expEmb, expErr := s.embed(ctx, capForEmbedding(expanded, chunkMaxTokens)); expErr == nil && len(expEmb) == s.dim {
-			var expResults []MemoryResult
-			if s.useVec {
-				expResults, _ = s.vecSearch(ctx, expEmb, candidateK/2, minSimilarity)
-			} else {
-				expResults, _ = s.goSearch(ctx, expEmb, candidateK/2, minSimilarity)
-			}
-			if len(expResults) > 0 {
-				vecMemories = reciprocalRankFusion(vecMemories, expResults, candidateK)
+			if expResults, _ := vecSearchFn(ctx, expEmb, candidateK/2, minSimilarity); len(expResults) > 0 {
+				vectorLists = append(vectorLists, expResults)
 			}
 		}
 	}
 
 	// Compound-question decomposition: each topic segment gets its own
-	// full-budget vector search and is RRF-merged in, so a fact about one
-	// topic doesn't have to survive being blended into a single averaged
-	// vector for the whole sentence — see splitCompoundQuery's doc comment.
+	// full-budget vector search, so a fact about one topic doesn't have to
+	// survive being blended into a single averaged vector for the whole
+	// sentence — see splitCompoundQuery's doc comment.
 	for _, segment := range splitCompoundQuery(query) {
 		segEmb, segErr := s.embed(ctx, capForEmbedding(segment, chunkMaxTokens))
 		if segErr != nil || len(segEmb) != s.dim {
 			continue
 		}
-		var segResults []MemoryResult
-		if s.useVec {
-			segResults, _ = s.vecSearch(ctx, segEmb, candidateK, minSimilarity)
-		} else {
-			segResults, _ = s.goSearch(ctx, segEmb, candidateK, minSimilarity)
-		}
-		if len(segResults) > 0 {
-			vecMemories = reciprocalRankFusion(vecMemories, segResults, candidateK)
+		if segResults, _ := vecSearchFn(ctx, segEmb, candidateK, minSimilarity); len(segResults) > 0 {
+			vectorLists = append(vectorLists, segResults)
 		}
 	}
+
+	vecMemories := mergeVectorCandidates(candidateK, vectorLists...)
 
 	var memories []MemoryResult
 	if s.useFTS {

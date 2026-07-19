@@ -1,5 +1,7 @@
 # Handoff — 2026-07-20 (Session 44, devam 2) — Kullanıcı raporu: jenerik mesajlarda (selam) model kendi eski cevabını birebir kopyalıyor — canlı doğrulanıp düzeltildi
 
+Not: Kullanıcı arayüzü (dropdown filtreler, Discover detay paneli) kendisi elle test etti, sorun bulunmadı — bu oturumdaki tek açık doğrulama borcu kapandı.
+
 ## Özet
 
 Session 44'ün devamı. Kullanıcı bugünkü RRF fix'lerini gerçek verisiyle canlı test ettirdikten sonra (bkz. bir önceki giriş) ayrı, daha önce hiç bilinmeyen bir bug rapor etti: "selam" gibi jenerik bir mesajı arka arkaya yazınca bir noktadan sonra cevap **sabit kalıyor**. Commit: `0323583`.

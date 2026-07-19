@@ -1,7 +1,14 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-18 (Session 41) — **BUG-H3 fix'i tamamlanmadan önce eksikti, canlı `-p` doğrulamasında yakalandı:** `chunkText`/`splitLongWord` fix'i sadece `SaveInteraction`'ın `userChunk`'ını kapsıyordu; `saveChunk` her chunk'a `assistantMsg`'i (yanıtın tamamı) sınırsız olarak ekliyordu, VE `RetrieveContext` ham `query`/`expandQuery`/`splitCompoundQuery` metnini hiç sınır olmadan doğrudan embed ediyordu — ikisi de aynı "too large to process" hatasına hâlâ açıktı. Ayrıca gerçek embedding tokenizer'ı, tekrarlı tek karakter gibi doğal olmayan içerik için `len/3` tahmininden ~1.8× daha fazla gerçek token üretiyor (canlı ölçüldü: 300 tahmini token'lık bir parça 550 gerçek token çıktı) — bu yüzden `splitLongWord`'ün bayt/token oranı `maxTokens*3`'ten `maxTokens*1`'e düşürüldü. Yeni `capForEmbedding` helper'ı (`internal/memory/store.go`) hem `saveChunk`'ın `embedText`'ini hem `RetrieveContext`'in üç embed çağrısını da (`query`, `expanded`, her `segment`) tek, güvenli boyutlu bir parçaya sınırlıyor. Regresyon testi: `TestSaveAndRetrieve_LongUnbrokenBlob` (`internal/memory/store_test.go`, gerçek sunucunun "too large" reddini taklit eden sahte bir `EmbeddingFunc` ile). **Bilinen, kabul edilen sınır:** aşırı uç (40.000+ karakter, boşluksuz) bir blob artık ne save'i ne retrieve'i kırıyor — ama bu kadar aşırı boyutta bir tek mesaj, `saveMemorySync`'in 10 saniyelik toplam bütçesine çok sayıda (~67) küçük chunk sırayla kaydedilirken sığmayabiliyor (`context deadline exceeded`, chunk N'den sonra) — bu, orijinal "batch-size" kök nedeninden TAMAMEN AYRI, önceden de var olan bir mimari sınır (chunk başına gerçek bir HTTP çağrısı + genel bir zaman bütçesi); orijinal bug'ın asıl belirtisi (retrieve/LLM cevabının TÜM TURU kırması) artık gerçekleşmiyor, sadece arka plan kaydı kısmi kalabiliyor — canlı olarak 3KB'lik gerçekçi bir blob'un (uzun URL) sorunsuz tam kaydedildiği doğrulandı, sadece 40KB'lik yapay-adversarial test girdisi bu ayrı sınıra çarpıyor.
+> **Son güncelleme:** 2026-07-19 (Session 43) — Kalan son 3 açık madde de tek tek düzeltildi, dosya 0 açık maddeye indi:
+> - **BUG-M1** düzeltildi: `routine.Routine`'e `Language` alanı eklendi (istemcinin oluşturma anındaki UI dili, "tr"/"en"), `POST /api/routines`'in yeni `language` alanıyla taşınıyor. Backend'in ürettiği her metin (LLM sistem promptu, "bugün etkinlik yok"/"yeni mesaj yok" bağlam dolgusu, mobil bildirim başlığı) artık buna göre seçiliyor; boş/eski değer Türkçe'ye düşüyor (migrasyon gerekmiyor). Hem masaüstü hem mobil istemci artık oluşturma anında kendi `L10n.locale`'ini gönderiyor ve alanı diğer tüm Routine alanları gibi round-trip ediyor.
+> - **BUG-M4** düzeltildi: `Schedule`'a `UTCOffsetMinutes` (*int, nil=eski davranış) eklendi, istemcinin `DateTime.now().timeZoneOffset`'inden dolduruluyor. `ParseFireTime` artık "HH:MM"'i backend host'un yerel saati yerine bu offset'e göre çözüyor (hem saat hem "bugün" o hedef offset'in kendi takvim gününe göre hesaplanıyor). Bilinçli, dokümante edilmiş sınır: gerçek IANA saat dilimi değil sabit bir offset — DST geçişinde kendini düzeltmiyor (Flutter'a yeni bir native plugin bağımlılığı eklemeye değecek kadar kritik değil).
+> - **BUG-L2** düzeltildi (kod bug'ı değil, prompt netliği): `whatsAppAssistantSystemPrompt`'a (adlandırılmış, test edilebilir bir sabite çıkarıldı) kullanıcının doğrudan ve net bir gönderim isteğinin zaten kendi onayı olduğunu, modelin buna ek bir sohbet-seviyesi veto eklememesi gerektiğini söyleyen bir paragraf eklendi — gerçek güvenlik sınırı (izin ekranı / DangerLevel gate) hiç değişmedi. Aynı düzenlemede tüm prompt Türkçe'den İngilizce'ye çevrildi (bu kod tabanının `identity.go`'daki `buildIdentityBlock` emsaline uyarak — modele verilen meta-talimatlar, sohbetin dilinden bağımsız olarak İngilizce'de daha güvenilir izleniyor; bu kullanıcıya gösterilen bir metin değil, bu yüzden projenin genel "kullanıcıya dönük metin Türkçe-öncelikli" kuralına girmiyor).
+>
+> Üçü de ayrı, doğrulanmış (`go build/vet/test -race -tags sqlite_fts5` + `flutter analyze/test`, hem frontend hem mobile) commit'ler halinde yapıldı.
+>
+> **Önceki güncelleme:** 2026-07-18 (Session 41) — **BUG-H3 fix'i tamamlanmadan önce eksikti, canlı `-p` doğrulamasında yakalandı:** `chunkText`/`splitLongWord` fix'i sadece `SaveInteraction`'ın `userChunk`'ını kapsıyordu; `saveChunk` her chunk'a `assistantMsg`'i (yanıtın tamamı) sınırsız olarak ekliyordu, VE `RetrieveContext` ham `query`/`expandQuery`/`splitCompoundQuery` metnini hiç sınır olmadan doğrudan embed ediyordu — ikisi de aynı "too large to process" hatasına hâlâ açıktı. Ayrıca gerçek embedding tokenizer'ı, tekrarlı tek karakter gibi doğal olmayan içerik için `len/3` tahmininden ~1.8× daha fazla gerçek token üretiyor (canlı ölçüldü: 300 tahmini token'lık bir parça 550 gerçek token çıktı) — bu yüzden `splitLongWord`'ün bayt/token oranı `maxTokens*3`'ten `maxTokens*1`'e düşürüldü. Yeni `capForEmbedding` helper'ı (`internal/memory/store.go`) hem `saveChunk`'ın `embedText`'ini hem `RetrieveContext`'in üç embed çağrısını da (`query`, `expanded`, her `segment`) tek, güvenli boyutlu bir parçaya sınırlıyor. Regresyon testi: `TestSaveAndRetrieve_LongUnbrokenBlob` (`internal/memory/store_test.go`, gerçek sunucunun "too large" reddini taklit eden sahte bir `EmbeddingFunc` ile). **Bilinen, kabul edilen sınır:** aşırı uç (40.000+ karakter, boşluksuz) bir blob artık ne save'i ne retrieve'i kırıyor — ama bu kadar aşırı boyutta bir tek mesaj, `saveMemorySync`'in 10 saniyelik toplam bütçesine çok sayıda (~67) küçük chunk sırayla kaydedilirken sığmayabiliyor (`context deadline exceeded`, chunk N'den sonra) — bu, orijinal "batch-size" kök nedeninden TAMAMEN AYRI, önceden de var olan bir mimari sınır (chunk başına gerçek bir HTTP çağrısı + genel bir zaman bütçesi); orijinal bug'ın asıl belirtisi (retrieve/LLM cevabının TÜM TURU kırması) artık gerçekleşmiyor, sadece arka plan kaydı kısmi kalabiliyor — canlı olarak 3KB'lik gerçekçi bir blob'un (uzun URL) sorunsuz tam kaydedildiği doğrulandı, sadece 40KB'lik yapay-adversarial test girdisi bu ayrı sınıra çarpıyor.
 >
 > **Önceki güncelleme:** 2026-07-18 (Session 41) — BUG-L1 düzeltildi: `main.go` artık `*prompt != ""` yerine `flag.Visit` ile "p" bayrağının fiilen geçilip geçilmediğini kontrol ediyor (`promptFlagPassed`), böylece `-p ""` de `runPrintMode`'a düşüyor; `runPrintMode` de boş/whitespace-only prompt için temiz bir `FATAL` mesajıyla hemen çıkıyor (sonsuz askıda kalma yok). Regresyon testi: `TestEmptyPromptExitsCleanly` (`main_test.go`, gerçek binary'yi subprocess olarak çalıştırıp context timeout'uyla sınırlıyor).
 >
@@ -33,44 +40,10 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 2 |
-| 🟢 LOW | 1 |
+| 🟡 MEDIUM | 0 |
+| 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **3** |
-
----
-
-## 🟡 MEDIUM
-
-### BUG-M1: Backend'in ürettiği rutin içeriği (sistem promptu, bildirim başlığı, boş-bağlam metinleri) tamamen hardcoded Türkçe — yeni L10n sistemini baypas ediyor
-
-**Dosya:** `internal/app/routine.go:161` (`Title: "Rutin"` — `GetRoutinesReadyForMobile`), `:178-179` (`routineSystemPrompt`), `:279`/`:294` (`formatEventsForRoutine`/`formatWhatsAppMessagesForRoutine`)
-
-Aynı oturumda mobile'a `routine_fallback` L10n key'i ("Rutin"/"Routine") eklenmiş ama backend bunu kullanmıyor, ham `"Rutin"` string'i basıyor. Aynı şekilde LLM'e verilen sistem promptu ve "Bugün için takvimde etkinlik yok."/"Bu sohbette yeni mesaj yok." gibi bağlam metinleri sabit Türkçe. Mobil/masaüstü dil anahtarı (`locale_provider.dart`) tamamen client-side (SharedPreferences), backend'e hiç iletilmiyor — yani backend'in bunu düzeltmesi için önce API'ye bir dil alanı eklenmesi gerekiyor.
-
-**Senaryo:** Uygulamayı İngilizce'ye çeviren bir kullanıcı yine de her rutin bildirimini "Rutin" başlığıyla ve LLM'in ürettiği (muhtemelen Türkçe bağlam enjekte edildiği için Türkçe'ye kayabilen) içerikle alır — bu oturumun "mobile full TR/EN L10n" commit mesajlarının iddia ettiği kapsamın dışında kalan gerçek bir boşluk.
-
-### BUG-M4: Rutin saatinde (`HH:MM`) hiç zaman dilimi bilgisi tutulmuyor — backend host'un yerel saatine göre yorumlanıyor
-
-**Dosya:** `internal/routine/types.go:24` (`TimeOfDay`), `internal/routine/loop.go:127-133` (`ParseFireTime`)
-
-`ParseFireTime`, `"HH:MM"`'i `now.Location()` (backend process'in çalıştığı makinenin saat dilimi) ile çözüyor. Telefon/kullanıcı backend'in çalıştığı yerden farklı bir saat diliminde olursa (uzaktan erişimle seyahat halindeyken), rutin yanlış saatte ateşlenir ve bunu tespit/düzeltecek hiçbir alan yok.
-
-**Senaryo:** Kullanıcı seyahatteyken telefonundan "sabah 8'de" bir rutin kurar; backend farklı bir saat diliminde çalışıyorsa bildirim kullanıcının gerçek sabah 8'inde değil, backend'in yerel 8'inde gelir.
-
----
-
-## 🟢 LOW
-
-### BUG-L2: WhatsApp gönderimi iki ayrı yoldan geçiyor — AI agent tool'u (`whatsapp_send`) gerçek bir kişiye otomatik mesaj göndermeyi kendi muhakemesiyle reddedebiliyor, ama doğrudan REST/GUI yolu (`/api/whatsapp/send`) hiçbir onay olmadan koşulsuz çalışıyor
-
-**Dosya:** `internal/agent/tools/whatsapp.go` (`SendWhatsApp`, LLM tool-calling üzerinden, izin ekranına tabi) vs. `internal/webserver/handlers_flutter.go:1478` (`handleWhatsAppSend`, GUI'nin WhatsApp sekmesinin kullandığı doğrudan endpoint, LLM'in onayına hiç girmiyor)
-
-**Canlı doğrulama (Session 40):** Kullanıcının izniyle, SADECE `Annnem` kontağına (905457348509@s.whatsapp.net, doğrulandı), zorunlu "bu bir test mesajıdır" ibaresi içeren bir gönderim denendi. Sohbet üzerinden (`whatsapp_send` agent tool'u, `--auto-allow` açıkken) **3 farklı, dürüst rephrase denemesinde de** model kendi kararıyla reddetti: "annenin haberi olmadan otomatik mesaj göndermek doğru değil, endişelenir." `backend.log`'da bu 3 denemede de `whatsapp_send` hiç çağrılmadığı doğrulandı (model tool'u hiç çağırmadan konuşma seviyesinde reddetti). Ardından AYNI mesaj `/api/whatsapp/send` REST endpoint'i (GUI'nin WhatsApp sekmesinin kullandığı yol) üzerinden doğrudan gönderildi — **koşulsuz, anında başarılı oldu** (2 mesaj, `Annnem`'in sohbet geçmişinde `from_me:true` olarak doğrulandı).
-
-**Değerlendirme:** Bu kod-seviyesinde bir bug değil — iki gönderim yolunun kasıtlı olarak farklı güvenlik modelleri var (biri LLM'in kendi takdirine bırakılmış, diğeri doğrudan kullanıcı eylemi). Ama bu, geliştirici için gerçek bir tutarlılık/UX sorusu: eğer "Memo'nun benim adıma WhatsApp mesajı gönderebilmesi" (agent tool üzerinden) istenen bir özellikse, model kendi başına oldukça muhafazakar davranıyor ve bu, kullanıcı için sürpriz olabilir ("neden gönderemiyorsun, ben istedim" — agent ısrarla reddederken GUI'den aynı mesaj anında gidiyor).
-
-**Önerilen yön:** Bilinçli bir tasarım kararı olarak dokümante edilmeli; istenirse agent tool'un system promptuna, kullanıcı doğrudan ve açıkça onay verdiğinde (bu oturumdaki gibi tekrarlanan, net bir talep) ne zaman gönderime izin vermesi gerektiğine dair daha net bir yönerge eklenebilir.
+| **TOPLAM** | **0** |
 
 ---
 

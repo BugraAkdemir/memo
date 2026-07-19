@@ -1,4 +1,56 @@
-# Handoff — 2026-07-18 (Session 41) — BUG_REPORT.md'deki 7 açık maddenin tamamı tek tek düzeltildi + canlı `-p` doğrulaması (fresh `data/`, WhatsApp oturumu korunarak)
+# Handoff — 2026-07-19 (Session 43) — BUG_REPORT.md'deki son 3 açık madde de düzeltildi, dosya 0 açık maddeye indi
+
+## Özet
+
+Kullanıcı isteğiyle `BUG_REPORT.md`'de kalan son 3 madde (hepsi Session 39-40'tan beri "gerçek bir tasarım kararı gerektiriyor" diye ertelenmişti) tek tek, her biri ayrı doğrulanmış commit'le düzeltildi. `codebase-memory-mcp` bu oturumda bağlı değildi (deferred tool listesinde göründü ama fetch edilmedi) — keşif doğrudan Read/Grep/Bash ile yapıldı.
+
+1. **BUG-M1** (`410a217`) — Backend'in ürettiği rutin metinleri (LLM sistem promptu, "bugün etkinlik yok"/"yeni mesaj yok" bağlam dolgusu, mobil bildirim başlığı "Rutin") tamamen hardcoded Türkçe'ydi, mobile'ın zaten sahip olduğu ama kullanılmayan `routine_fallback` L10n key'ini (Rutin/Routine) baypas ediyordu. Kök neden: backend'in hiç dil kavramı yok, dil tamamen client-side (SharedPreferences). Fix: `routine.Routine`'e `Language` alanı (`"tr"/"en"`) eklendi, istemcinin oluşturma anındaki `L10n.locale`'inden `POST /api/routines`'in yeni `language` alanıyla dolduruluyor; boş/tanınmayan değer Türkçe'ye düşüyor (eski rutinler için migrasyon gerekmiyor). `routineSystemPrompt`, `formatEventsForRoutine`, `formatWhatsAppMessagesForRoutine`, `routineNotificationTitle` artık hepsi buna göre TR/EN seçiyor. Hem masaüstü hem mobil `_Routine`/`Routine` modelleri alanı diğer tüm Routine alanları gibi round-trip ediyor (BUG-C2'nin "eksik alan sessizce siler" dersine uyularak).
+2. **BUG-M4** (`e2bc888`) — `ParseFireTime`, rutin saatini (`"HH:MM"`) her zaman backend host'unun yerel saat dilimiyle çözüyordu; kullanıcı uzaktan erişimle farklı bir saat diliminde olduğunda (seyahat) rutin yanlış saatte ateşleniyordu. Fix: `Schedule`'a `UTCOffsetMinutes` (`*int`, `nil` = eski davranış) eklendi, istemcinin `DateTime.now().timeZoneOffset.inMinutes`'inden dolduruluyor. `ParseFireTime` artık hem saat hem "bugün"ün hangi takvim günü olduğunu bu offset'e göre hesaplıyor (host'un değil). Bilinçli, dokümante sınır: gerçek IANA saat dilimi değil sabit offset — DST geçişinde kendini düzeltmiyor (Dart'ın çekirdek kütüphanesi cihazın IANA zone adını vermiyor, bunu almak yeni bir native plugin bağımlılığı gerektirirdi — bu LOW/MEDIUM önemdeki bug için değmeyecek bir ek bağımlılık).
+3. **BUG-L2** (`bdaac3a`) — Kod bug'ı değil, prompt netliği eksikliği: WhatsApp sohbet asistanı, kullanıcının doğrudan ve tekrarlanan net bir gönderim isteğini (Session 40'ta canlı doğrulandı: 3 farklı rephrase, `--auto-allow` açıkken bile) kendi sohbet-seviyesi muhakemesiyle reddediyordu — `whatsapp_send` tool'u hiç çağrılmadan. Aynı mesaj doğrudan REST endpoint'inden (`/api/whatsapp/send`) anında gidiyordu. Fix: `whatsAppAssistantSystemPrompt`'a (adlandırılmış sabite çıkarıldı, artık test edilebilir) net bir paragraf eklendi — kullanıcının doğrudan isteği zaten onaydır, model buna ek bir veto eklememeli; gerçek güvenlik sınırı (izin ekranı / `DangerLevel: Medium` gate) hiç değişmedi. Kullanıcının canlı geri bildirimiyle aynı düzenlemede tüm prompt Türkçe'den İngilizce'ye çevrildi (`identity.go`'nun `buildIdentityBlock` emsaline uyarak — modele giden meta-talimatlar İngilizce'de daha güvenilir izleniyor, bu kullanıcıya gösterilen bir metin değil) ve örnek kişi adı "Berra"dan "Sarah"a değiştirildi.
+
+`BUG_REPORT.md` artık 0 açık madde — üç madde de dosyadan tamamen silindi (kendi kuralına uyularak, üstü çizili bırakılmadı), header'a bugünkü özet eklendi.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...              → temiz (her commit'te ayrı ayrı çalıştırıldı)
+CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...                 → temiz
+CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race -count=1 → tüm paketler yeşil (son çalıştırma: BUG-L2 sonrası, tam repo)
+flutter analyze lib/ (frontend + mobile)                       → temiz (bilinen info-seviye gürültü dışında)
+flutter test (frontend + mobile)                                → tümü yeşil
+```
+
+Yeni regresyon testleri: `TestRoutineLanguageIsEnglish_DefaultsToTurkish`, `TestFormatEventsForRoutine_LocalizesEmptyFallback`, `TestFormatWhatsAppMessagesForRoutine_LocalizesEmptyFallback`, `TestRoutineNotificationTitle_Localized`, `TestCreateRoutineFromDraft_PersistsLanguage` (BUG-M1); `TestParseFireTime_NilOffsetUsesHostLocation`, `TestParseFireTime_OffsetOverridesHostLocation`, `TestParseFireTime_UsesTargetTimezonesOwnCalendarDay` (BUG-M4); `TestWhatsAppAssistantSystemPrompt_InstructsAcceptingExplicitSendRequests` (BUG-L2).
+
+## Doğrulanmadı
+
+Üçü de canlı bir GUI/telefon oturumunda görsel/davranışsal olarak test edilmedi (bu ortamda ekran/gerçek WhatsApp hesabı yok) — backend mantığı birim testleriyle, Flutter tarafı `analyze`+`test` ile doğrulandı. Özellikle BUG-L2'nin gerçek etkisi (model artık gerçekten daha az reddediyor mu) sadece promptun içeriğiyle doğrulanabildi, canlı bir LLM'in yeni talimata ne kadar sadık kalacağı gözlemlenmedi.
+
+## Sıradaki oturum için
+
+`BUG_REPORT.md` şu an boş — yeni bir bulgu/istek gelene kadar açık madde yok. Session 42'nin "doğrulanmadı" notu (Geliştirici ekranı + canlı log gerçek GUI'de test edilmedi) hâlâ geçerli, bu oturumda dokunulmadı.
+
+---
+
+# Handoff — 2026-07-18 (Session 42) — Kullanım İstatistikleri + Yedekleme eksiksizleştirme + Geliştirici API Ağ Geçidi (Claude Code entegrasyonu, tam agentic tool use)
+
+## Özet
+
+Kullanıcı isteğiyle 3 büyük özellik art arda yapıldı, hepsi adım adım commit'lendi ve `go test -race`/`flutter analyze+test` ile doğrulandı:
+
+1. **Ayarlar → İstatistikler** — token/hız/model dağılımı, 30 günlük grafik. Yeni `internal/stats` paketi, her tamamlanan turu (local/agent/orchestra/harici sağlayıcı) ayrı SQLite'a kaydediyor (gizli mod hariç). Maliyet bilinçli olarak gösterilmiyor — hiçbir sağlayıcı backend'de gerçek fiyat sunmuyor.
+2. **`.memo` yedeklemesi eksiksizleştirildi** — en kritik bulgu: `providers.json`'daki şifreli API anahtarlarını çözen `machine.key` **hiç yedeğe girmiyordu**, başka makinede geri yükleme anahtarları kalıcı olarak bozuyordu. Artık takvim, rutinler, izinler, skill'ler, istatistikler dahil her şey yedekleniyor (bilinçli hariç: `sync_token.json`, `tailscale/`, `backups/`'ın kendisi).
+3. **Geliştirici API Ağ Geçidi** — Memo'yu Claude Code (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir araçla kullanılabilir hale getiren yeni yerel API (`POST /v1/messages`, Anthropic Messages formatı). `internal/anthropicapi` paketi wire-format çevirisini yapıyor, `internal/app/devgateway.go` `tip/model-id` (`local/qwen2.5`, `openai/gpt-4o`) formatına göre yönlendiriyor. **Tam agentic tool use çalışıyor** — canlı uçtan uca testte gerçek bir bug yakalanıp düzeltildi (Anthropic'in `tool_use.input`'u gerçek JSON nesnesi, OpenAI'ın `function.arguments`'ı o nesnenin metnini taşıyan bir string — bunlar karıştırılınca Claude Code bozuk veri alıyordu). Kullanıcı isteğiyle sonradan Ayarlar'dan çıkarılıp yan menüde (WhatsApp/Takvim gibi) ayrı bir ekrana taşındı, canlı istek/yanıt günlüğü eklendi (ayrı 200 kayıtlık bellek-içi tampon, 2sn polling).
+
+Ayrıca: obsidian-doc/obsidian-doc-en vault'ları ve `versinNote/{,tr/}v3.3.3.md` güncellendi — bugünkü üç özellik ayrı bir "sonradan eklendi" notu değil, doğrudan v3.3.3'ün parçası olarak dokümante edildi (kullanıcının açık talimatıyla).
+
+**Bilinen sınırlama:** `gemini`/`claude`/`ollama` tipi sağlayıcılar için tool use henüz yok — o üçünün `internal/provider` implementasyonu Tools/ToolCalls'ı hiç çözmüyor (ağ geçidinden bağımsız, önceden var olan bir eksiklik). Böyle bir istek gelirse açık hata dönülüyor, sessizce yutulmuyor.
+
+**Doğrulanmadı:** Yeni Geliştirici ekranı ve canlı günlük gerçek bir GUI penceresinde görsel olarak test edilmedi (bu ortamda ekran yok) — backend uçtan uca sahte sunucularla canlı doğrulandı, frontend kodu ise WhatsApp sekmesinin kanıtlanmış polling desenini birebir taklit ediyor.
+
+---
+
+
 
 ## Özet
 

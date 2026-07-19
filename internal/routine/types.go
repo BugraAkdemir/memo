@@ -63,6 +63,20 @@ type Routine struct {
 	DeliveryMobile    bool   `json:"delivery_mobile"`
 	WhatsAppTargetJID string `json:"whatsapp_target_jid,omitempty"`
 
+	// Language is the UI locale ("tr" or "en") active on the client at the
+	// moment this routine was created (frontend's MemoLocale/mobile's
+	// MemoLocale, both client-side-only today — the backend otherwise has no
+	// notion of language at all). Drives which language the backend uses for
+	// its own generated text: the notification title, the "no events/no
+	// messages" context filler, and the system prompt handed to the LLM for
+	// the non-agent execution path (see internal/app/routine.go). Empty for
+	// any routine created before this field existed; callers must treat
+	// empty (and any value other than "en") as "tr" — this codebase's
+	// default target audience (see AGENTS.md's "Turkish + English mixed
+	// user-facing text is intentional" note) — rather than requiring a
+	// migration.
+	Language string `json:"language,omitempty"`
+
 	Enabled   bool      `json:"enabled"`
 	CreatedAt time.Time `json:"created_at"`
 	UpdatedAt time.Time `json:"updated_at"`

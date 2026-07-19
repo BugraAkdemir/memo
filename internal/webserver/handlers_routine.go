@@ -19,7 +19,7 @@ type RoutineBridge interface {
 	ListRoutines() []routine.Routine
 	GetRoutine(id string) (*routine.Routine, error)
 	ParseRoutineText(ctx context.Context, text string) (routine.Draft, error)
-	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool) (*routine.Routine, error)
+	CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string) (*routine.Routine, error)
 	UpdateRoutine(r routine.Routine) (*routine.Routine, error)
 	DeleteRoutine(id string) error
 	GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error)
@@ -48,12 +48,17 @@ func (s *Server) handleRoutines(w http.ResponseWriter, r *http.Request) {
 			Draft             routine.Draft `json:"draft"`
 			WhatsAppTargetJID string        `json:"whatsapp_target_jid"`
 			AutoApproveTools  bool          `json:"auto_approve_tools"`
+			// Language is the client's current UI locale ("tr"/"en") at the
+			// moment of creation — see routine.Routine.Language's doc comment
+			// (BUG-M1). Optional: an old client that never sends it leaves the
+			// routine defaulting to Turkish everywhere it's read.
+			Language string `json:"language"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			jsonError(w, "invalid request body", http.StatusBadRequest)
 			return
 		}
-		created, err := bridge.CreateRoutineFromDraft(body.OriginalText, body.Draft, body.WhatsAppTargetJID, body.AutoApproveTools)
+		created, err := bridge.CreateRoutineFromDraft(body.OriginalText, body.Draft, body.WhatsAppTargetJID, body.AutoApproveTools, body.Language)
 		if err != nil {
 			jsonError(w, err.Error(), http.StatusInternalServerError)
 			return

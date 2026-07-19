@@ -1771,6 +1771,10 @@ class MemoApiClient {
       'draft': draft,
       'whatsapp_target_jid': whatsAppTargetJid,
       'auto_approve_tools': autoApproveTools,
+      // Backend has no locale of its own — this is what lets it localize its
+      // own generated text (notification title, context fillers, system
+      // prompt) per routine (BUG-M1). See routine.Routine.Language.
+      'language': L10n.locale == MemoLocale.en ? 'en' : 'tr',
     });
     return Map<String, dynamic>.from(res.data as Map);
   }

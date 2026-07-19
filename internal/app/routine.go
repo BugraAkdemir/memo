@@ -76,9 +76,13 @@ func (a *App) ParseRoutineText(ctx context.Context, text string) (routine.Draft,
 
 // CreateRoutineFromDraft builds and persists a Routine from a (possibly
 // user-edited) Draft plus the explicit choices only a human should make:
-// whichever WhatsApp JID the hint resolved to, and whether unattended tool
-// execution is allowed.
-func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool) (*routine.Routine, error) {
+// whichever WhatsApp JID the hint resolved to, whether unattended tool
+// execution is allowed, and the client's current UI language ("tr"/"en",
+// see Routine.Language's doc comment) — the backend has no locale of its own
+// and this is the only point in the routine lifecycle where a client is
+// actually asking to have something created, so it's the only place that
+// needs to capture it.
+func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string) (*routine.Routine, error) {
 	if a.routineStore == nil {
 		return nil, fmt.Errorf("routine: store not initialized")
 	}
@@ -111,6 +115,7 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 		DeliveryWhatsApp:  d.DeliveryWhatsApp,
 		DeliveryMobile:    d.DeliveryMobile,
 		WhatsAppTargetJID: whatsAppTargetJID,
+		Language:          language,
 		Enabled:           true,
 	}
 	return a.routineStore.Create(r)
@@ -167,7 +172,7 @@ func (a *App) GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayloa
 		}
 		out = append(out, routine.MobilePayload{
 			ID:        r.ID,
-			Title:     "Rutin",
+			Title:     routineNotificationTitle(r.Language),
 			Body:      r.LastGeneratedContent,
 			FireAtUTC: fireTime.UTC(),
 		})
@@ -184,8 +189,42 @@ func (a *App) runRoutineGenerate(ctx context.Context, r routine.Routine) (string
 	return a.runSimplePromptRoutine(ctx, r)
 }
 
-const routineSystemPrompt = "Bir kullanıcının önceden tanımladığı, zamanlanmış bir görevi şimdi çalıştırıyorsun. " +
-	"Kısa, doğal, mesaj gibi okunan bir cevap ver — bir sohbetin ortasındaymış gibi değil, kendi başına bir bildirim gibi."
+// routineLanguageIsEnglish reports whether lang (Routine.Language) selects
+// the English variant of the backend's own generated routine text — any
+// value other than exactly "en" (including the empty string a routine
+// created before this field existed always has) defaults to Turkish,
+// matching this codebase's Turkish-first convention (see AGENTS.md's
+// "Turkish + English mixed user-facing text is intentional" note) rather
+// than requiring a migration for old routines.
+func routineLanguageIsEnglish(lang string) bool {
+	return lang == "en"
+}
+
+// routineNotificationTitle is the mobile push-notification title for a
+// routine's generated content (BUG-M1) — kept in sync with the
+// `routine_fallback` L10n key both clients already carry
+// (frontend/lib/core/l10n.dart, mobile/lib/core/l10n.dart).
+func routineNotificationTitle(lang string) string {
+	if routineLanguageIsEnglish(lang) {
+		return "Routine"
+	}
+	return "Rutin"
+}
+
+// routineSystemPrompt is the system message a non-agent routine run sends
+// the LLM ahead of its actual prompt — instructs it to reply like a
+// standalone notification rather than mid-conversation. Localized per
+// Routine.Language (BUG-M1): a routine created under the English UI used to
+// still receive this instruction in Turkish, which could bleed into the
+// reply's own language.
+func routineSystemPrompt(lang string) string {
+	if routineLanguageIsEnglish(lang) {
+		return "You are now running a task the user scheduled in advance. " +
+			"Give a short, natural reply that reads like a standalone message — not like the middle of a conversation."
+	}
+	return "Bir kullanıcının önceden tanımladığı, zamanlanmış bir görevi şimdi çalıştırıyorsun. " +
+		"Kısa, doğal, mesaj gibi okunan bir cevap ver — bir sohbetin ortasındaymış gibi değil, kendi başına bir bildirim gibi."
+}
 
 // runSimplePromptRoutine handles the non-agent path: deterministically
 // pre-fetch any requested context (calendar agenda / a specific WhatsApp
@@ -202,25 +241,29 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 			end := start.Add(24 * time.Hour)
 			events, err := a.calendarStore.List(ctx, start, end)
 			if err == nil {
-				extraContext = formatEventsForRoutine(events)
+				extraContext = formatEventsForRoutine(events, r.Language)
 			}
 		}
 	case routine.ContextWhatsApp:
 		if r.ContextSource.WhatsAppJID != "" {
 			msgs, err := a.WhatsAppGetMessages(r.ContextSource.WhatsAppJID, 50)
 			if err == nil {
-				extraContext = formatWhatsAppMessagesForRoutine(msgs)
+				extraContext = formatWhatsAppMessagesForRoutine(msgs, r.Language)
 			}
 		}
 	}
 
 	prompt := r.Prompt
 	if extraContext != "" {
-		prompt += "\n\nBağlam:\n" + extraContext
+		contextLabel := "Bağlam:"
+		if routineLanguageIsEnglish(r.Language) {
+			contextLabel = "Context:"
+		}
+		prompt += "\n\n" + contextLabel + "\n" + extraContext
 	}
 
 	msgs := []api.Message{
-		api.NewTextMessage("system", routineSystemPrompt),
+		api.NewTextMessage("system", routineSystemPrompt(r.Language)),
 		api.NewTextMessage("user", prompt),
 	}
 	reply := a.callLLM(ctx, msgs)
@@ -309,8 +352,11 @@ func (a *App) runRoutineDeliver(ctx context.Context, r routine.Routine, content 
 	return err
 }
 
-func formatEventsForRoutine(events []calendar.Event) string {
+func formatEventsForRoutine(events []calendar.Event, lang string) string {
 	if len(events) == 0 {
+		if routineLanguageIsEnglish(lang) {
+			return "No events on today's calendar."
+		}
 		return "Bugün için takvimde etkinlik yok."
 	}
 	var b strings.Builder
@@ -324,8 +370,11 @@ func formatEventsForRoutine(events []calendar.Event) string {
 	return b.String()
 }
 
-func formatWhatsAppMessagesForRoutine(msgs []whatsapp.Message) string {
+func formatWhatsAppMessagesForRoutine(msgs []whatsapp.Message, lang string) string {
 	if len(msgs) == 0 {
+		if routineLanguageIsEnglish(lang) {
+			return "No new messages in this chat."
+		}
 		return "Bu sohbette yeni mesaj yok."
 	}
 	var b strings.Builder

@@ -27,9 +27,97 @@ func TestFormatWhatsAppMessagesForRoutine_FallsBackToJIDWhenSenderNameEmpty(t *t
 	msgs := []whatsapp.Message{
 		{SenderJID: "905551234567@s.whatsapp.net", SenderName: "", Text: "hello"},
 	}
-	got := formatWhatsAppMessagesForRoutine(msgs)
+	got := formatWhatsAppMessagesForRoutine(msgs, "tr")
 	if !strings.Contains(got, "905551234567: hello") {
 		t.Errorf("formatWhatsAppMessagesForRoutine = %q, want it to fall back to the JID's local part as sender", got)
+	}
+}
+
+// TestRoutineLanguageIsEnglish_DefaultsToTurkish is the regression test for
+// BUG-M1: only the exact value "en" should select English — the empty
+// string (every routine created before Routine.Language existed) and any
+// unrecognized value must default to Turkish rather than requiring a
+// migration or crashing on an unexpected value.
+func TestRoutineLanguageIsEnglish_DefaultsToTurkish(t *testing.T) {
+	cases := []struct {
+		lang string
+		want bool
+	}{
+		{"", false},
+		{"tr", false},
+		{"en", true},
+		{"fr", false},
+		{"EN", false}, // exact match only, no case-folding — matches client's own lowercase MemoLocale encoding
+	}
+	for _, c := range cases {
+		if got := routineLanguageIsEnglish(c.lang); got != c.want {
+			t.Errorf("routineLanguageIsEnglish(%q) = %v, want %v", c.lang, got, c.want)
+		}
+	}
+}
+
+// TestFormatEventsForRoutine_LocalizesEmptyFallback is the regression test
+// for BUG-M1: the "no events today" filler text used to be hardcoded
+// Turkish regardless of the routine's own language.
+func TestFormatEventsForRoutine_LocalizesEmptyFallback(t *testing.T) {
+	if got := formatEventsForRoutine(nil, "en"); got != "No events on today's calendar." {
+		t.Errorf("formatEventsForRoutine(nil, %q) = %q, want the English fallback", "en", got)
+	}
+	if got := formatEventsForRoutine(nil, "tr"); got != "Bugün için takvimde etkinlik yok." {
+		t.Errorf("formatEventsForRoutine(nil, %q) = %q, want the Turkish fallback", "tr", got)
+	}
+}
+
+// TestFormatWhatsAppMessagesForRoutine_LocalizesEmptyFallback mirrors the
+// above for the WhatsApp-context "no new messages" filler.
+func TestFormatWhatsAppMessagesForRoutine_LocalizesEmptyFallback(t *testing.T) {
+	if got := formatWhatsAppMessagesForRoutine(nil, "en"); got != "No new messages in this chat." {
+		t.Errorf("formatWhatsAppMessagesForRoutine(nil, %q) = %q, want the English fallback", "en", got)
+	}
+	if got := formatWhatsAppMessagesForRoutine(nil, "tr"); got != "Bu sohbette yeni mesaj yok." {
+		t.Errorf("formatWhatsAppMessagesForRoutine(nil, %q) = %q, want the Turkish fallback", "tr", got)
+	}
+}
+
+// TestRoutineNotificationTitle_Localized is the regression test for the
+// GetRoutinesReadyForMobile half of BUG-M1: mobile push notifications used
+// to always title themselves "Rutin" regardless of the routine's language,
+// even though both clients already carry a `routine_fallback` L10n key
+// ("Rutin"/"Routine") that this must stay in sync with.
+func TestRoutineNotificationTitle_Localized(t *testing.T) {
+	if got := routineNotificationTitle("en"); got != "Routine" {
+		t.Errorf("routineNotificationTitle(%q) = %q, want %q", "en", got, "Routine")
+	}
+	if got := routineNotificationTitle("tr"); got != "Rutin" {
+		t.Errorf("routineNotificationTitle(%q) = %q, want %q", "tr", got, "Rutin")
+	}
+	if got := routineNotificationTitle(""); got != "Rutin" {
+		t.Errorf("routineNotificationTitle(%q) = %q, want the Turkish default %q", "", got, "Rutin")
+	}
+}
+
+// TestCreateRoutineFromDraft_PersistsLanguage verifies the create path
+// actually stores the client-supplied language on the routine, so it's
+// available at every later read site (system prompt, context fillers,
+// notification title) without needing a second round trip.
+func TestCreateRoutineFromDraft_PersistsLanguage(t *testing.T) {
+	a := newRoutineTestApp(t)
+	dir := t.TempDir()
+	st, err := routine.NewStore(dir)
+	if err != nil {
+		t.Fatalf("routine.NewStore: %v", err)
+	}
+	a.routineStore = st
+
+	created, err := a.CreateRoutineFromDraft("her gün 21:00'de kitap oku", routine.Draft{
+		TimeOfDay: "21:00",
+		Prompt:    "remind me to read",
+	}, "", false, "en")
+	if err != nil {
+		t.Fatalf("CreateRoutineFromDraft: %v", err)
+	}
+	if created.Language != "en" {
+		t.Errorf("created.Language = %q, want %q", created.Language, "en")
 	}
 }
 

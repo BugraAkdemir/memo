@@ -42,7 +42,7 @@ func (b *routineTestBridge) ParseRoutineText(ctx context.Context, text string) (
 	return routine.Draft{}, nil
 }
 
-func (b *routineTestBridge) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool) (*routine.Routine, error) {
+func (b *routineTestBridge) CreateRoutineFromDraft(originalText string, d routine.Draft, whatsAppTargetJID string, autoApproveTools bool, language string) (*routine.Routine, error) {
 	return nil, nil
 }
 

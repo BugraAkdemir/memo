@@ -29,6 +29,7 @@ class _Routine {
   final bool deliveryMobile;
   final String whatsAppTargetJid;
   final bool enabled;
+  final String language;
 
   _Routine({
     required this.id,
@@ -44,6 +45,7 @@ class _Routine {
     required this.deliveryMobile,
     required this.whatsAppTargetJid,
     required this.enabled,
+    required this.language,
   });
 
   factory _Routine.fromJson(Map<String, dynamic> j) {
@@ -63,6 +65,7 @@ class _Routine {
       deliveryMobile: j['delivery_mobile'] as bool? ?? false,
       whatsAppTargetJid: j['whatsapp_target_jid'] as String? ?? '',
       enabled: j['enabled'] as bool? ?? false,
+      language: j['language'] as String? ?? 'tr',
     );
   }
 
@@ -78,6 +81,7 @@ class _Routine {
         'delivery_mobile': deliveryMobile,
         'whatsapp_target_jid': whatsAppTargetJid,
         'enabled': enabled,
+        'language': language,
       };
 }
 

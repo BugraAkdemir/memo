@@ -48,6 +48,43 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
   // More from author
   List<Map<String, dynamic>>? _moreModels;
 
+  /// Real, live-fetched tools signal: true once `_loadToolsSupport` has
+  /// confirmed the repo's own tokenizer_config.json chat_template actually
+  /// references tool_calls. Stays null (never explicitly false) on a 404
+  /// or any other fetch failure — many GGUF-only repos (quantizers like
+  /// bartowski/unsloth typically upload only .gguf files, not the source
+  /// model's tokenizer_config.json) simply don't have this file, which is
+  /// not the same as "confirmed not to support tools." A null here just
+  /// means "no live answer," so the render sites fall back to
+  /// item.supportsTools (the HF tag) exactly as before this existed.
+  bool? _liveToolsSupport;
+
+  Future<void> _loadToolsSupport() async {
+    try {
+      final resp = await ref.read(apiClientProvider).dio.get<String>(
+        'https://huggingface.co/${widget.item.repoId}/raw/main/tokenizer_config.json',
+        options: Options(responseType: ResponseType.plain),
+      );
+      // A plain substring scan (not JSON-shape-specific parsing) on
+      // purpose: HuggingFace tokenizers store chat_template either as a
+      // single string or, on newer conversions, as a list of named
+      // templates ([{"name": ..., "template": ...}, ...]) — either way,
+      // "tool_calls" only legitimately shows up here inside a template
+      // that actually renders tool calls, so this mirrors the same check
+      // internal/gguf.Read already does server-side on the downloaded
+      // file's own tokenizer.chat_template.
+      final body = resp.data ?? '';
+      if (mounted && body.toLowerCase().contains('tool_calls')) {
+        setState(() => _liveToolsSupport = true);
+      }
+    } catch (_) {
+      // 404 (most common — file just doesn't exist in this repo) or any
+      // other fetch failure: leave _liveToolsSupport null, fall back to
+      // the HF tag. Not worth surfacing as an error — this is a best-
+      // effort enrichment, not a feature the user directly asked to run.
+    }
+  }
+
   /// Real, file-tree-derived vision signal (BUG fix: this used to be a
   /// hardcoded model-family name list, e.g. 'llava'/'moondream'/'qwen-vl',
   /// guessed from the display name). Once the repo's actual file list is
@@ -65,6 +102,12 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     _loadFiles();
     _loadReadme();
     _loadMoreModels();
+    // Only worth a live fetch when the HF tag hasn't already confirmed
+    // tools support (nothing to add) and this isn't an embedding model
+    // (never tool-capable).
+    if (!widget.item.supportsTools && !widget.item.isEmbedding) {
+      _loadToolsSupport();
+    }
   }
 
   Future<void> _loadFiles() async {
@@ -293,6 +336,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
 
           // ── Capabilities ──
           if (item.supportsTools ||
+              (_liveToolsSupport ?? false) ||
               item.supportsVision ||
               _hasMmprojInRepo ||
               item.supportsCode) ...[
@@ -318,7 +362,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
                           label: L10n.t('vision_2'),
                           color: const Color(0xFF50C878),
                         ),
-                      if (item.supportsTools)
+                      if (item.supportsTools || (_liveToolsSupport ?? false))
                         _CapabilityPill(
                           icon: Icons.build_outlined,
                           label: L10n.t('tool_use'),

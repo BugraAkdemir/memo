@@ -65,6 +65,15 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	}
 	start := time.Now()
 
+	// BUG-L1: pure acks/greetings ("tamam", "ok", "selam") with a short
+	// reply add only RAG noise. Explicit /remember (SaveExplicit) never
+	// reaches this path. Near-duplicate cosine skip in store.SaveInteraction
+	// still applies to everything that does get saved.
+	if memory.IsLowValueInteraction(userMsg, reply) {
+		logx.Printf("MEMORY SAVE SKIPPED: low-value interaction %q", truncate.Text(userMsg, 40))
+		return
+	}
+
 	// Hold the lock only long enough to grab the store reference so that the
 	// heavy embedding I/O below does not block concurrent memory reads/writes.
 	a.storeMu.RLock()

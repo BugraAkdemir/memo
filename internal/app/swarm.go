@@ -206,23 +206,39 @@ func (a *App) HostSwarmSetShare(id string, pct float64) error {
 // pointed at the registered workers. Uses a separate *llama.Server
 // (a.swarmServer) so starting/stopping the swarm never tears down the user's
 // normal chat model.
+//
+// swarmMu is held only while snapshotting room state and flipping Running —
+// never across StartWithRPC/WaitReady (model load can take minutes; holding
+// the lock freezes status polling and late worker joins).
 func (a *App) HostSwarmStart(ctxSize int) error {
 	if err := a.requireSwarmBeta(); err != nil {
 		return err
 	}
-	a.swarmMu.Lock()
-	defer a.swarmMu.Unlock()
 
+	a.swarmMu.Lock()
 	if a.swarmCoordinator == nil || a.swarmCoordinator.RoomCode() == "" {
+		a.swarmMu.Unlock()
 		return fmt.Errorf("swarm: no active room — create one first")
 	}
 	modelPath := a.swarmCoordinator.ModelPath()
 	if modelPath == "" {
-		return fmt.Errorf("swarm: no model path set")
+		a.swarmMu.Unlock()
+		return fmt.Errorf("swarm: model path required")
 	}
 	workers := a.swarmCoordinator.Workers()
 	if len(workers) == 0 {
+		a.swarmMu.Unlock()
 		return fmt.Errorf("swarm: no workers registered yet")
+	}
+	if err := validateWorkerShares(workers); err != nil {
+		a.swarmMu.Unlock()
+		return err
+	}
+	// TCP-probe each worker before launching llama — "Connected" is only set
+	// at register time and never health-checked otherwise.
+	if err := probeWorkerRPC(workers); err != nil {
+		a.swarmMu.Unlock()
+		return err
 	}
 
 	// Build RPCOptions: Servers in list order, TensorSplit = [host, ...workers].
@@ -240,6 +256,8 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 	binaryPath := a.cfg.Llama.BinaryPath
 	engineMode := a.cfg.Llama.EngineMode
 	llamaPort := a.cfg.Llama.Port
+	embedPort := a.cfg.Llama.EmbeddingPort
+	timeoutSec := a.cfg.API.TimeoutSeconds
 	if ctxSize <= 0 {
 		ctxSize = a.cfg.Llama.CtxSize
 	}
@@ -248,7 +266,7 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 	// Dedicated port so swarm doesn't collide with the chat (Port) or
 	// embedding (EmbeddingPort) servers.
 	swarmPort := llamaPort + 2
-	if a.cfg.Llama.EmbeddingPort == swarmPort {
+	if embedPort == swarmPort {
 		swarmPort++
 	}
 
@@ -259,25 +277,67 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 			logx.Printf("swarm: stop previous swarmServer: %v", err)
 		}
 	}
+	srv := a.swarmServer
+	a.swarmMu.Unlock()
 
 	// Note: llama-server ↔ rpc-server traffic is raw TCP from the OS
 	// processes themselves — it does NOT go through Memo's embedded
 	// tsnet.Server Dial/Listen. Tailscale mode only means "each machine's
 	// OS-level Tailscale (or reachable LAN) can route to the other's
 	// rpc-server address"; Memo's Go code never mediates the RPC packets.
-	if err := a.swarmServer.StartWithRPC(binaryPath, modelPath, ctxSize, swarmPort, -1, engineMode, rpc); err != nil {
+	if err := srv.StartWithRPC(binaryPath, modelPath, ctxSize, swarmPort, -1, engineMode, rpc); err != nil {
 		return fmt.Errorf("swarm: start coordinator: %w", err)
 	}
-	if err := a.swarmServer.WaitReady(180 * time.Second); err != nil {
-		_ = a.swarmServer.Stop()
+	if err := srv.WaitReady(180 * time.Second); err != nil {
+		_ = srv.Stop()
 		return fmt.Errorf("swarm: coordinator failed to become ready: %w", err)
 	}
-	a.swarmCoordinator.SetRunning(true)
+
+	a.swarmMu.Lock()
+	if a.swarmCoordinator != nil {
+		a.swarmCoordinator.SetRunning(true)
+	}
 	// Point chat/agent inference at the coordinator so "Start Swarm" actually
 	// changes which model answers — without this, swarmServer runs idle on
 	// Port+2 while a.client keeps talking to the normal chat server.
-	a.redirectChatToSwarm()
+	if a.cfg != nil {
+		url := srv.GetBaseURL()
+		a.clientMu.Lock()
+		a.client = api.NewClient(url, timeoutSec)
+		a.clientMu.Unlock()
+		logx.Printf("API client redirected to swarm coordinator: %s", url)
+	}
+	a.swarmMu.Unlock()
+
 	logx.Printf("swarm: coordinator running on port %d with %d workers", swarmPort, len(workers))
+	return nil
+}
+
+// validateWorkerShares requires at least one worker with SharePercent > 0 so
+// Start does not launch a useless --tensor-split 100,0,...,0 pool.
+func validateWorkerShares(workers []swarm.WorkerSlot) error {
+	sum := 0.0
+	for _, w := range workers {
+		sum += w.SharePercent
+	}
+	if sum <= 0 {
+		return fmt.Errorf("swarm: yardımcı pay yüzdesi ayarlayın (hepsi 0 — pooling yok)")
+	}
+	return nil
+}
+
+// probeWorkerRPC dials each worker's rpc-server address with a short timeout.
+func probeWorkerRPC(workers []swarm.WorkerSlot) error {
+	for _, w := range workers {
+		if strings.TrimSpace(w.Address) == "" {
+			return fmt.Errorf("swarm: worker %q has empty address", w.ID)
+		}
+		conn, err := net.DialTimeout("tcp", w.Address, 2*time.Second)
+		if err != nil {
+			return fmt.Errorf("swarm: worker %q (%s) ulaşılamıyor — rpc-server kapalı mı?: %w", w.Label, w.Address, err)
+		}
+		_ = conn.Close()
+	}
 	return nil
 }
 
@@ -610,17 +670,18 @@ func (a *App) swarmHostAddress() (mode, hostAddr string, err error) {
 }
 
 // swarmLocalRPCAddress is the address the host's llama-server will dial for
-// this machine's rpc-server. Prefer a 100.x (Tailscale CGNAT) address when
-// joining a ts-mode room so RPC traffic can ride the tailnet; otherwise the
-// first non-loopback IPv4.
+// this machine's rpc-server. For ts-mode rooms, require a real OS Tailscale
+// 100.x address — Memo's embedded tsnet does not create a kernel interface
+// that llama-server can dial across sites.
 func (a *App) swarmLocalRPCAddress(mode string, rpcPort int) (string, error) {
-	preferTS := mode == "ts"
-	ip, err := firstLocalIPv4(func() string {
-		if preferTS {
-			return "100."
+	if mode == "ts" {
+		ip, err := firstLocalIPv4WithPrefix("100.")
+		if err != nil {
+			return "", fmt.Errorf("swarm: Tailscale odası için sistem seviyesinde Tailscale gerekli (100.x adresi yok — sadece Memo gömülü tünel yetmez): %w", err)
 		}
-		return ""
-	}())
+		return fmt.Sprintf("%s:%d", ip, rpcPort), nil
+	}
+	ip, err := firstLocalIPv4("")
 	if err != nil {
 		return "", err
 	}
@@ -630,6 +691,7 @@ func (a *App) swarmLocalRPCAddress(mode string, rpcPort int) (string, error) {
 // firstLocalIPv4 returns the first non-loopback IPv4 address. When
 // preferPrefix is non-empty (e.g. "100." for Tailscale), an address with
 // that prefix is preferred if present; otherwise any IPv4 is returned.
+// Prefer-only hard requirement: use firstLocalIPv4WithPrefix.
 func firstLocalIPv4(preferPrefix string) (string, error) {
 	ifaces, err := net.Interfaces()
 	if err != nil {
@@ -662,6 +724,40 @@ func firstLocalIPv4(preferPrefix string) (string, error) {
 		return fallback, nil
 	}
 	return "", fmt.Errorf("swarm: no non-loopback IPv4 address found")
+}
+
+// firstLocalIPv4WithPrefix returns an IPv4 whose string form starts with
+// prefix (e.g. "100." for Tailscale CGNAT). Never falls back to a non-matching
+// address — that silent fallback was why Join-as-ts registered a LAN IP the
+// host could not dial over the tailnet.
+func firstLocalIPv4WithPrefix(prefix string) (string, error) {
+	if prefix == "" {
+		return firstLocalIPv4("")
+	}
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return "", fmt.Errorf("swarm: list interfaces: %w", err)
+	}
+	for _, iface := range ifaces {
+		if iface.Flags&net.FlagUp == 0 || iface.Flags&net.FlagLoopback != 0 {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			ipnet, ok := a.(*net.IPNet)
+			if !ok || ipnet.IP.IsLoopback() || ipnet.IP.To4() == nil {
+				continue
+			}
+			ip := ipnet.IP.String()
+			if strings.HasPrefix(ip, prefix) {
+				return ip, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("swarm: no IPv4 with prefix %q found", prefix)
 }
 
 // postWorkerRegister POSTs this worker's rpc address to the host's

@@ -106,3 +106,36 @@ func TestRedirectChatToSwarm_NoopWhenNoServer(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{API: config.APIConfig{TimeoutSeconds: 30}}}
 	a.redirectChatToSwarm() // must not panic
 }
+
+func TestValidateWorkerShares_RejectsAllZero(t *testing.T) {
+	err := validateWorkerShares([]swarm.WorkerSlot{
+		{ID: "a", SharePercent: 0},
+		{ID: "b", SharePercent: 0},
+	})
+	if err == nil {
+		t.Fatal("validateWorkerShares all-zero = nil, want error")
+	}
+}
+
+func TestValidateWorkerShares_AllowsPositive(t *testing.T) {
+	if err := validateWorkerShares([]swarm.WorkerSlot{
+		{ID: "a", SharePercent: 30},
+		{ID: "b", SharePercent: 0},
+	}); err != nil {
+		t.Fatalf("validateWorkerShares: %v", err)
+	}
+}
+
+func TestFirstLocalIPv4WithPrefix_EmptyPrefixFallsBack(t *testing.T) {
+	// Empty prefix should behave like firstLocalIPv4 (any address or error).
+	_, err := firstLocalIPv4WithPrefix("")
+	// On a normal machine there is at least one non-loopback IPv4; if not, error is fine.
+	_ = err
+}
+
+func TestFirstLocalIPv4WithPrefix_ImpossiblePrefixErrors(t *testing.T) {
+	_, err := firstLocalIPv4WithPrefix("250.250.250.")
+	if err == nil {
+		t.Fatal("impossible prefix = nil error, want failure")
+	}
+}

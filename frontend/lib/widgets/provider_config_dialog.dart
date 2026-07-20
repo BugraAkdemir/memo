@@ -244,7 +244,7 @@ class _ProviderConfigDialogState
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('link_open_failed', {'url': '$url'}))),
+          SnackBar(content: Text(L10n.t('link_open_failed', {'url': url}))),
         );
       }
     }
@@ -632,7 +632,7 @@ class _ProviderConfigDialogState
 
                 // ── Enable toggle ──
                 SwitchListTile(
-                  title: Text(L10n.t('enable_this_provider')),
+                  title: Text(L10n.t('enable_provider')),
                   subtitle: Text(
                     _enabled ? 'Sohbette kullanılabilir' : 'Kayıtlı ama kapalı',
                     style: TextStyle(fontSize: 12, color: c.textDim),

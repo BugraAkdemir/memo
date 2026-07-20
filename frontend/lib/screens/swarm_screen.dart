@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
@@ -497,7 +498,7 @@ class _HostSwarmViewState extends ConsumerState<_HostSwarmView> {
             if (status.modelPath.isNotEmpty) ...[
               const SizedBox(height: 8),
               Text(
-                status.modelPath.split('/').last,
+                p.basename(status.modelPath),
                 style: TextStyle(fontSize: 12, color: c.textDim),
               ),
             ],
@@ -636,7 +637,7 @@ class _HostSwarmViewState extends ConsumerState<_HostSwarmView> {
   }
 }
 
-class _WorkerTile extends StatelessWidget {
+class _WorkerTile extends StatefulWidget {
   final SwarmWorker worker;
   final VoidCallback? onRemove;
   final ValueChanged<double>? onShareChanged;
@@ -649,8 +650,59 @@ class _WorkerTile extends StatelessWidget {
   });
 
   @override
+  State<_WorkerTile> createState() => _WorkerTileState();
+}
+
+class _WorkerTileState extends State<_WorkerTile> {
+  late final TextEditingController _shareCtrl;
+  late final FocusNode _shareFocus;
+
+  @override
+  void initState() {
+    super.initState();
+    _shareCtrl = TextEditingController(
+      text: widget.worker.sharePercent.toStringAsFixed(0),
+    );
+    _shareFocus = FocusNode();
+    _shareFocus.addListener(_onShareFocusChange);
+  }
+
+  @override
+  void didUpdateWidget(covariant _WorkerTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Don't clobber in-progress typing when status poll refreshes.
+    if (!_shareFocus.hasFocus &&
+        oldWidget.worker.sharePercent != widget.worker.sharePercent) {
+      _shareCtrl.text = widget.worker.sharePercent.toStringAsFixed(0);
+    }
+  }
+
+  void _onShareFocusChange() {
+    if (!_shareFocus.hasFocus) {
+      _commitShare();
+    }
+  }
+
+  void _commitShare() {
+    if (widget.onShareChanged == null) return;
+    final pct = double.tryParse(_shareCtrl.text.trim());
+    if (pct == null) return;
+    if (pct == widget.worker.sharePercent) return;
+    widget.onShareChanged!(pct);
+  }
+
+  @override
+  void dispose() {
+    _shareFocus.removeListener(_onShareFocusChange);
+    _shareFocus.dispose();
+    _shareCtrl.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     final c = MemoTheme.of(context);
+    final worker = widget.worker;
     return Card(
       color: c.bgPanel,
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -677,8 +729,9 @@ class _WorkerTile extends StatelessWidget {
             SizedBox(
               width: 56,
               child: TextFormField(
-                initialValue: worker.sharePercent.toStringAsFixed(0),
-                enabled: onShareChanged != null,
+                controller: _shareCtrl,
+                focusNode: _shareFocus,
+                enabled: widget.onShareChanged != null,
                 keyboardType: TextInputType.number,
                 style: TextStyle(fontSize: 13, color: c.textMain),
                 decoration: InputDecoration(
@@ -689,16 +742,14 @@ class _WorkerTile extends StatelessWidget {
                     borderRadius: BorderRadius.circular(6),
                   ),
                 ),
-                onFieldSubmitted: (v) {
-                  final pct = double.tryParse(v);
-                  if (pct != null) onShareChanged?.call(pct);
-                },
+                onFieldSubmitted: (_) => _commitShare(),
+                onEditingComplete: _commitShare,
               ),
             ),
-            if (onRemove != null)
+            if (widget.onRemove != null)
               IconButton(
                 tooltip: L10n.t('swarm_remove_worker'),
-                onPressed: onRemove,
+                onPressed: widget.onRemove,
                 icon: Icon(Icons.delete_outline, size: 18, color: c.textDim),
               ),
             const Icon(Icons.drag_handle, size: 18),

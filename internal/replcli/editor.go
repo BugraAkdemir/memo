@@ -13,25 +13,29 @@ type commandSpec struct {
 }
 
 // slashCommands is the single source of truth for the dropdown, the bare "/"
-// menu and tab completion.
-var slashCommands = []commandSpec{
-	{"/help", "komut listesini göster"},
-	{"/models", "modelleri ve sağlayıcıları listele"},
-	{"/model", "bir sohbet modeli seç ve başlat"},
-	{"/embedding", "bir embedding modeli seç ve başlat"},
-	{"/model-download", "model indirmek için masaüstü uygulamasını aç"},
-	{"/connect", "harici bir API sağlayıcısına bağlan"},
-	{"/gui", "masaüstü uygulamasını aç"},
-	{"/clear", "sohbeti temizle, yeni bir sohbet başlat"},
-	{"/session", "bu projedeki sohbetler arasında geç"},
-	{"/tasklist", "görev listelerini yönet (list/create/start/stop/delete/show)"},
-	{"/remote", "ngrok ile uzak erişim tüneli aç"},
-	{"/exit", "çık"},
+// menu and tab completion. A function, not a package-level literal, because
+// its hints must reflect activeLang — which SetLanguage only sets after this
+// package's vars would already have finished initializing.
+func slashCommands() []commandSpec {
+	return []commandSpec{
+		{"/help", t("cmd_help_hint")},
+		{"/models", t("cmd_models_hint")},
+		{"/model", t("cmd_model_hint")},
+		{"/embedding", t("cmd_embedding_hint")},
+		{"/model-download", t("cmd_model_download_hint")},
+		{"/connect", t("cmd_connect_hint")},
+		{"/gui", t("cmd_gui_hint")},
+		{"/clear", t("cmd_clear_hint")},
+		{"/session", t("cmd_session_hint")},
+		{"/tasklist", t("cmd_tasklist_hint")},
+		{"/remote", t("cmd_remote_hint")},
+		{"/exit", t("cmd_exit_hint")},
+	}
 }
 
 // statusBarText is the composer's persistent bottom hint — the terminal
 // equivalent of Claude Code's "manual mode on · ? for shortcuts" bar.
-const statusBarText = "/ komutlar  ·  @ dosya  ·  Esc durdur  ·  Ctrl+D çık"
+func statusBarText() string { return t("status_bar_text") }
 
 // editor is a raw-mode line editor: cursor movement, in-line editing,
 // history, and a live slash-command dropdown that opens the moment "/" is
@@ -122,7 +126,7 @@ func (e *editor) edit(prompt string) (string, bool) {
 				return "", false
 			} else {
 				e.pendingCtrlC = true
-				e.notice = "çıkmak için tekrar Ctrl+C"
+				e.notice = t("ctrl_c_again_to_exit")
 			}
 
 		case keyEnter:
@@ -333,12 +337,13 @@ func (e *editor) matches() []commandSpec {
 	mode, _, query := e.currentMenuMode()
 	switch mode {
 	case menuSlash:
+		cmds := slashCommands()
 		typed := strings.ToLower(string(e.buf))
 		if typed == "/" {
-			return slashCommands
+			return cmds
 		}
 		var out []commandSpec
-		for _, c := range slashCommands {
+		for _, c := range cmds {
 			if strings.HasPrefix(c.label, typed) {
 				out = append(out, c)
 			}
@@ -415,9 +420,9 @@ func (e *editor) render(prompt string) {
 			b.WriteString("  " + dim(c.hint))
 			rows++
 		}
-		hint := "↑↓ gezin · Tab tamamla · Enter çalıştır · Esc kapat"
+		hint := t("dropdown_hint_slash")
 		if mode == menuAt {
-			hint = "↑↓ gezin · Tab/Enter seç · Esc kapat"
+			hint = t("dropdown_hint_at")
 		}
 		b.WriteString("\n  " + dim(hint))
 		rows++
@@ -428,7 +433,7 @@ func (e *editor) render(prompt string) {
 	// A persistent status bar under the input line, always visible
 	// regardless of dropdown/notice state — the terminal equivalent of
 	// Claude Code's bottom "manual mode on · ? for shortcuts" bar.
-	b.WriteString("\n  " + dim(statusBarText))
+	b.WriteString("\n  " + dim(statusBarText()))
 	rows++
 	e.rowsBelow = rows
 

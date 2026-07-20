@@ -50,7 +50,7 @@ func selectFromMenu(out io.Writer, keys *keySource, title string, items []menuIt
 			}
 			b.WriteString(line + "\n")
 		}
-		b.WriteString("  " + dim("↑↓ gezin · Enter seç · Esc iptal"))
+		b.WriteString("  " + dim(t("menu_footer_hint")))
 		fmt.Fprint(out, b.String())
 	}
 	render(true)

@@ -615,14 +615,16 @@ class BetaFeaturesNotifier extends StateNotifier<bool> {
 final localeProvider = StateNotifierProvider<LocaleNotifier, MemoLocale>(
   (ref) {
     final prefs = ref.read(prefsProvider);
-    return LocaleNotifier(prefs);
+    final apiClient = ref.read(apiClientProvider);
+    return LocaleNotifier(prefs, apiClient);
   },
 );
 
 class LocaleNotifier extends StateNotifier<MemoLocale> {
   final SharedPreferences _prefs;
+  final MemoApiClient _apiClient;
 
-  LocaleNotifier(this._prefs) : super(_initLocale(_prefs));
+  LocaleNotifier(this._prefs, this._apiClient) : super(_initLocale(_prefs));
 
   static MemoLocale _initLocale(SharedPreferences prefs) {
     final saved = prefs.getString('memo_locale');
@@ -635,6 +637,15 @@ class LocaleNotifier extends StateNotifier<MemoLocale> {
     await _prefs.setString('memo_locale', locale == MemoLocale.en ? 'en' : 'tr');
     L10n.setLocale(locale);
     state = locale;
+    // Best-effort, fire-and-forget: the backend has no locale of its own —
+    // this is purely so a second client with no SharedPreferences (the
+    // terminal REPL) can follow along. An unreachable backend must never
+    // block or fail the GUI's own language switch.
+    unawaited(
+      _apiClient
+          .setUILanguage(locale == MemoLocale.en ? 'en' : 'tr')
+          .catchError((_) {}),
+    );
   }
 }
 

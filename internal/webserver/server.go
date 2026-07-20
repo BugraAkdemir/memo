@@ -138,6 +138,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/send/stream", s.handleSendStream)
 	route("/api/system-prompt", s.handleSystemPrompt)
 	route("/api/system-prompt/reset", s.handleResetSystemPrompt)
+	route("/api/system-prompt/ui-language", s.handleUILanguage)
 	route("/api/system-prompt/minimal-mode", s.handleMinimalMode)
 	route("/api/system-prompt/minimal-mode/overrides", s.handleMinimalModeOverrides)
 	route("/api/incognito-prompt", s.handleIncognitoPrompt)

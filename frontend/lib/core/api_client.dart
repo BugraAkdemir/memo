@@ -323,6 +323,15 @@ class MemoApiClient {
     await _dio.post('/api/system-prompt/reset');
   }
 
+  /// Persists the GUI's current display language ("tr"/"en") backend-side.
+  /// The backend has no display language of its own — this exists purely so
+  /// a second client with no SharedPreferences of its own (the terminal
+  /// REPL, internal/replcli) can follow whatever L10n.locale the GUI is
+  /// currently set to, instead of always defaulting to Turkish.
+  Future<void> setUILanguage(String lang) async {
+    await _dio.put('/api/system-prompt/ui-language', data: {'language': lang});
+  }
+
   /// Whether identity/persona/mood/web-search prompt injection is disabled
   /// — only memory context (if separately enabled) still reaches the model.
   Future<bool> getMinimalMode() async {

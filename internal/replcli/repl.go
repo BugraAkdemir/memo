@@ -75,6 +75,14 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	ctx := context.Background()
 	client := NewClient(baseURL)
 
+	// Follow the GUI's display language, if it's ever been set — best-effort,
+	// an unreachable/older backend or an unset value both just mean
+	// SetLanguage's own default (Turkish) applies, same as before this
+	// existed.
+	if lang, err := client.GetUILanguage(ctx); err == nil {
+		SetLanguage(lang)
+	}
+
 	// Attach to the backend's client registry (internal/app/clients.go) so
 	// a backend spawned on demand for this session knows to stay up while
 	// this CLI is running, and can shut itself down once every attached
@@ -192,7 +200,7 @@ func (s *session) allChats() ([]SessionInfo, error) {
 func (s *session) startFreshChat() error {
 	id, err := s.client.NewAgentChat(s.ctx, s.projectPath)
 	if err != nil {
-		return fmt.Errorf("sohbet oluşturulamadı: %w", err)
+		return fmt.Errorf(t("chat_create_failed"), err)
 	}
 	return s.activateChat(id)
 }
@@ -202,10 +210,10 @@ func (s *session) startFreshChat() error {
 // session's current chat.
 func (s *session) activateChat(id string) error {
 	if err := s.client.SwitchChat(s.ctx, id); err != nil {
-		return fmt.Errorf("sohbete geçilemedi: %w", err)
+		return fmt.Errorf(t("chat_switch_failed"), err)
 	}
 	if err := s.client.SetAgentEnabled(s.ctx, true); err != nil {
-		return fmt.Errorf("agent modu açılamadı: %w", err)
+		return fmt.Errorf(t("agent_enable_failed"), err)
 	}
 	s.chatID = id
 	return nil
@@ -220,7 +228,7 @@ func (s *session) replayHistory() {
 		return
 	}
 	fmt.Fprintln(s.out)
-	fmt.Fprintln(s.out, dim("── önceki sohbet geçmişi ──"))
+	fmt.Fprintln(s.out, dim(t("history_divider_start")))
 	for _, m := range msgs {
 		switch m.Role {
 		case "user":
@@ -229,7 +237,7 @@ func (s *session) replayHistory() {
 			fmt.Fprintln(s.out, bold(brightMagenta("● "))+m.Content)
 		}
 	}
-	fmt.Fprintln(s.out, dim("── buradan devam ediyorsun ──"))
+	fmt.Fprintln(s.out, dim(t("history_divider_end")))
 }
 
 // readInput reads one top-level line: through the raw-mode editor on a real
@@ -333,10 +341,10 @@ func (s *session) sendMessage(line string) {
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			fmt.Fprintln(s.out, dim("⨯ iptal edildi"))
+			fmt.Fprintln(s.out, dim(t("cancelled_stream")))
 			return
 		}
-		fmt.Fprintln(s.out, errorf("Hata: %s", friendlyError(err.Error())))
+		fmt.Fprintln(s.out, errorf(t("error_prefix"), friendlyError(err.Error())))
 		return
 	}
 	// The reply is raw model text, typewriter-revealed exactly as received —
@@ -366,7 +374,7 @@ func (s *session) reportMemorySaved(afterSeq uint64) {
 			continue
 		}
 		if memorySavedSince(events, afterSeq) {
-			fmt.Fprintln(s.out, dim("✓ hafıza kaydedildi"))
+			fmt.Fprintln(s.out, dim(t("memory_saved")))
 			return
 		}
 		// A save was attempted and actually failed (backend already emits
@@ -467,9 +475,9 @@ func (s *session) modelSummary() string {
 		if status.ModelName != "" {
 			return status.ModelName
 		}
-		return "yerel model"
+		return t("local_model")
 	}
-	return "yüklü değil — /model ya da /connect"
+	return t("model_not_loaded_hint")
 }
 
 // memorySummary reports whether the embedding model (and therefore RAG
@@ -492,13 +500,13 @@ func (s *session) memorySummary() (text string, active bool) {
 			if status.ModelName != "" {
 				return status.ModelName, true
 			}
-			return "açık", true
+			return t("memory_on"), true
 		}
 		if i < attempts-1 {
 			time.Sleep(interval)
 		}
 	}
-	return "kapalı", false
+	return t("memory_off"), false
 }
 
 func (s *session) handleChunk(chunk api.StreamChunk) error {
@@ -535,13 +543,13 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 func (s *session) handleAgentEvent(ev AgentEvent) error {
 	switch ev.Type {
 	case "tool_executing":
-		fmt.Fprintln(s.out, "\n"+dim(fmt.Sprintf("⚙ %s çalışıyor...", ev.Tool)))
+		fmt.Fprintln(s.out, "\n"+dim(fmt.Sprintf(t("tool_running"), ev.Tool)))
 	case "tool_result":
-		fmt.Fprintln(s.out, green(fmt.Sprintf("✓ %s tamamlandı", ev.Tool)))
+		fmt.Fprintln(s.out, green(fmt.Sprintf(t("tool_done"), ev.Tool)))
 	case "tool_error":
-		fmt.Fprintln(s.out, errorf("✗ %s hata: %s", ev.Tool, ev.Error))
+		fmt.Fprintln(s.out, errorf(t("tool_error"), ev.Tool, ev.Error))
 	case "permission_denied":
-		fmt.Fprintln(s.out, yellow(fmt.Sprintf("✗ %s reddedildi", ev.Tool)))
+		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("tool_denied"), ev.Tool)))
 	case "permission_request":
 		return s.askPermission(ev)
 	}
@@ -564,14 +572,14 @@ func (s *session) askPermission(ev AgentEvent) error {
 
 	warnPrefix := "⚠"
 	if ev.DangerLevel == "dangerous" {
-		warnPrefix = "🛑 TEHLİKELİ"
+		warnPrefix = t("danger_prefix")
 	}
-	fmt.Fprintln(s.out, "\n"+yellow(fmt.Sprintf("%s %s bu işlemi yapmak istiyor: %s", warnPrefix, ev.Tool, describeToolCall(ev))))
+	fmt.Fprintln(s.out, "\n"+yellow(fmt.Sprintf(t("permission_ask"), warnPrefix, ev.Tool, describeToolCall(ev))))
 
 	allowSession := ev.DangerLevel != "dangerous"
-	prompt := "İzin ver mi? [y/n] "
+	prompt := t("permission_prompt_simple")
 	if allowSession {
-		prompt = "İzin ver mi? [y = bir kere, a = bu oturum boyunca, n = hayır] "
+		prompt = t("permission_prompt_session")
 	}
 
 	policy := "deny_once"
@@ -619,7 +627,7 @@ func previewArgs(args json.RawMessage) string {
 // straight into the chat.
 func friendlyError(raw string) string {
 	if strings.Contains(raw, "connection refused") {
-		return "Önce bir model başlatmalısın: /model <isim> ile yerel bir model, ya da /connect ile harici bir sağlayıcı bağla. Yüklü modelleri görmek için /models yaz."
+		return t("friendly_no_model_error")
 	}
 	return raw
 }

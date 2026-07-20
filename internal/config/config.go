@@ -321,6 +321,15 @@ type IdentityConfig struct {
 	// another AI" feature (internal/app/memory_import.go) — injected into
 	// BuildSystemPrompt alongside the fixed Style instructions.
 	LearnedStyleNotes string `yaml:"learned_style_notes"`
+	// UILanguage is "tr" or "en" (empty means unset — the GUI's language
+	// toggle has never written it, or this config predates the field). The
+	// backend has otherwise never known the GUI's display language at all
+	// (frontend/lib/core/l10n.dart's locale choice used to live purely in
+	// Flutter's own SharedPreferences) — this field exists specifically so a
+	// second client with no SharedPreferences of its own, the terminal REPL
+	// (internal/replcli), can follow the same language the GUI is set to
+	// instead of always defaulting to Turkish.
+	UILanguage string `yaml:"ui_language"`
 }
 
 type MemoryConfig struct {

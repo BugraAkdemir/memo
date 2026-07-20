@@ -332,6 +332,46 @@ func (s *Server) handleMinimalMode(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+// ─── UI Language ────────────────────────────────────────────────
+//
+// The backend has no display language of its own — this exists purely so a
+// second client with no SharedPreferences of its own (the terminal REPL,
+// internal/replcli) can follow whatever language the Flutter GUI's own
+// locale toggle (frontend/lib/core/l10n.dart) is set to, instead of always
+// defaulting to Turkish. The GUI writes this whenever its own toggle
+// changes; it never needs to read it back (SharedPreferences is already its
+// source of truth).
+
+func (s *Server) handleUILanguage(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]string{"language": s.fullBridge.GetUILanguage()})
+	case http.MethodPut:
+		var req struct {
+			Language string `json:"language"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if req.Language != "tr" && req.Language != "en" {
+			http.Error(w, `language must be "tr" or "en"`, http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetUILanguage(req.Language); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or PUT", http.StatusMethodNotAllowed)
+	}
+}
+
 // handleMinimalModeOverrides gets/sets the four granular Minimal Mode
 // overrides (Settings' "keep X on even in Minimal Mode" dropdown) — each
 // only has any effect while Minimal Mode itself is on, see

@@ -180,6 +180,25 @@ CORE DIRECTIVES:
 	return config.Save(a.cfg)
 }
 
+// GetUILanguage returns the GUI's last-known display language ("tr"/"en",
+// or "" if never set). The backend never picks this itself — it's purely
+// what the Flutter GUI last wrote via SetUILanguage.
+func (a *App) GetUILanguage() string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.Identity.UILanguage
+}
+
+// SetUILanguage persists the GUI's current display language so other
+// clients with no local preference store of their own (the terminal REPL)
+// can follow it.
+func (a *App) SetUILanguage(lang string) error {
+	a.cfgMu.Lock()
+	a.cfg.Identity.UILanguage = lang
+	a.cfgMu.Unlock()
+	return config.Save(a.cfg)
+}
+
 // GetMinimalMode reports whether identity/persona/mood/web-search prompt
 // injection is disabled — only memory context (if separately enabled)
 // still reaches the model. This reads the persisted config copy (status

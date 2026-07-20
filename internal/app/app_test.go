@@ -121,6 +121,31 @@ func TestGetMoodScore(t *testing.T) {
 	}
 }
 
+func TestGetSetUILanguage(t *testing.T) {
+	a := &App{
+		identity: identity.New("Test", "Memo", "casual", "", false),
+		cfg:      &config.AppConfig{},
+	}
+
+	if got := a.GetUILanguage(); got != "" {
+		t.Errorf("expected empty UILanguage by default, got %q", got)
+	}
+
+	if err := a.SetUILanguage("en"); err != nil {
+		t.Fatalf("SetUILanguage: %v", err)
+	}
+	if got := a.GetUILanguage(); got != "en" {
+		t.Errorf("GetUILanguage() = %q, want %q", got, "en")
+	}
+
+	if err := a.SetUILanguage("tr"); err != nil {
+		t.Fatalf("SetUILanguage: %v", err)
+	}
+	if got := a.GetUILanguage(); got != "tr" {
+		t.Errorf("GetUILanguage() = %q, want %q", got, "tr")
+	}
+}
+
 func TestGetSetMinimalMode(t *testing.T) {
 	a := &App{
 		identity: identity.New("Test", "Memo", "casual", "", false),

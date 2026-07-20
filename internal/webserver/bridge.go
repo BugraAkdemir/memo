@@ -39,6 +39,8 @@ type FullBridge interface {
 	ResetSystemPrompt() error
 	GetIncognitoPrompt() string
 	SetIncognitoPrompt(prompt string) error
+	GetUILanguage() string
+	SetUILanguage(lang string) error
 	GetMinimalMode() bool
 	SetMinimalMode(enabled bool) error
 	GetMinimalModeOverrides() (keepPersona, keepCapabilities, keepPassive, keepProactive bool)

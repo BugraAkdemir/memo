@@ -35,7 +35,7 @@ func newSpinner(out io.Writer) *spinner {
 				fmt.Fprint(s.out, "\r\033[K")
 				return
 			case <-ticker.C:
-				fmt.Fprintf(s.out, "\r%s", dim(spinnerFrames[i%len(spinnerFrames)]+" düşünüyor..."))
+				fmt.Fprintf(s.out, "\r%s", dim(spinnerFrames[i%len(spinnerFrames)]+" "+t("spinner_thinking")))
 				i++
 			}
 		}

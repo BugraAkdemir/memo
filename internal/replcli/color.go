@@ -81,10 +81,12 @@ func clearScreen(out io.Writer) {
 // Deliberately no "what's new"/announcement section next to it: a terminal
 // client has no changelog surface to point at, and the user explicitly asked
 // for it to stay out of this redesign.
-var startupTips = []string{
-	dim("/help") + " ile tüm komutları listele",
-	dim("@") + " yazarak bir dosyaya referans ver",
-	dim("Esc") + " ile yanıtı durdur, " + dim("Ctrl+D") + " ile çık",
+func startupTips() []string {
+	return []string{
+		dim("/help") + t("tip_help"),
+		dim("@") + t("tip_at"),
+		dim("Esc") + t("tip_stop") + dim("Ctrl+D") + t("tip_exit"),
+	}
 }
 
 // welcomePanel renders the startup panel in the Claude-Code-inspired style
@@ -104,9 +106,9 @@ func welcomePanel(version, projectPath, model, memory string, memoryActive bool)
 		// before adding ours so the title never doubles up ("vV3.3.3").
 		title += " v" + strings.TrimLeft(version, "Vv")
 	}
-	const welcomeLine = "Tekrar hoş geldin!"
-	plainModel := "Model:  " + model
-	plainMemory := "Hafıza: " + memory
+	welcomeLine := t("welcome_back")
+	plainModel := t("label_model") + model
+	plainMemory := t("label_memory") + memory
 
 	width := len([]rune(title))
 	width = max(width, len([]rune(welcomeLine)))
@@ -132,14 +134,14 @@ func welcomePanel(version, projectPath, model, memory string, memoryActive bool)
 	fmt.Fprint(&b, row(bold(gold(title)), title))
 	fmt.Fprint(&b, row("", ""))
 	fmt.Fprint(&b, row(welcomeLine, welcomeLine))
-	fmt.Fprint(&b, row(bold("Model:  ")+model, plainModel))
-	fmt.Fprint(&b, row(bold("Hafıza: ")+memoryColor(memory), plainMemory))
+	fmt.Fprint(&b, row(bold(t("label_model"))+model, plainModel))
+	fmt.Fprint(&b, row(bold(t("label_memory"))+memoryColor(memory), plainMemory))
 	if projectPath != "" {
 		fmt.Fprint(&b, row(dim(projectPath), projectPath))
 	}
 	fmt.Fprintf(&b, "%s\n", dim("╰"+strings.Repeat("─", width)+"╯"))
-	fmt.Fprint(&b, "\n"+bold("İpuçları")+"\n")
-	for _, tip := range startupTips {
+	fmt.Fprint(&b, "\n"+bold(t("tips_title"))+"\n")
+	for _, tip := range startupTips() {
 		fmt.Fprint(&b, "  "+tip+"\n")
 	}
 	return strings.TrimRight(b.String(), "\n")

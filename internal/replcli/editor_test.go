@@ -51,8 +51,8 @@ func TestEditor_SlashDropdown_ArrowThenEnterRunsSelection(t *testing.T) {
 	// "/" first and then navigating a separate menu.
 	ed, _ := newTestEditor("/\x1b[B\r")
 	line, ok := ed.readLine("> ")
-	if !ok || line != slashCommands[1].label {
-		t.Fatalf("readLine = %q, %v, want %q", line, ok, slashCommands[1].label)
+	if !ok || line != slashCommands()[1].label {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, slashCommands()[1].label)
 	}
 }
 

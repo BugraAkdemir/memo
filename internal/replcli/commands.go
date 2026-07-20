@@ -14,26 +14,6 @@ import (
 	"time"
 )
 
-const helpText = `Kullanılabilir komutlar:
-  /help                                   bu yardım metnini gösterir
-  /models                                 yüklü modelleri ve sağlayıcıları listeler
-  /model [isim]                           bir sohbet modeli başlatır (isim boşsa listeden seçtirir)
-  /embedding [isim]                       embedding modelini başlatır (isim boşsa ilk bulunanı kullanır)
-  /model-download                         model indirmek için masaüstü uygulamasını (GUI) açar
-  /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
-  /gui                                    masaüstü uygulamasını açar
-  /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
-  /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
-  /tasklist list                          tüm görev listelerini listeler
-  /tasklist create <başlık> <maddeler>    yeni görev listesi oluşturur
-  /tasklist show <id>                     liste detaylarını gösterir
-  /tasklist start <id>                    görev listesini başlatır (otomatik çalışma)
-  /tasklist stop <id>                     çalışan listeyi durdurur
-  /tasklist delete <id>                   görev listesini siler
-  /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
-  /exit                                   çıkar
-`
-
 // handleCommand dispatches a "/"-prefixed line typed at the prompt. /exit is
 // handled by the caller before this is reached. Returns true if the REPL
 // should exit (only possible via the "/" arrow-key menu's Exit entry).
@@ -48,7 +28,7 @@ func (s *session) handleCommand(line string) bool {
 	case "/":
 		return s.showCommandMenu()
 	case "/help":
-		fmt.Fprint(s.out, helpText)
+		fmt.Fprint(s.out, t("help_text"))
 	case "/models":
 		s.cmdModels()
 	case "/model":
@@ -70,7 +50,7 @@ func (s *session) handleCommand(line string) bool {
 	case "/tasklist":
 		s.cmdTaskList(args)
 	default:
-		fmt.Fprintln(s.out, yellow(fmt.Sprintf("Bilinmeyen komut: %s (yardım için /help yaz)", cmd)))
+		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("unknown_command"), cmd)))
 	}
 	return false
 }
@@ -81,19 +61,20 @@ func (s *session) handleCommand(line string) bool {
 // picked Exit. The entries come from the same slashCommands list the live
 // dropdown uses, so the two menus can never drift apart.
 func (s *session) showCommandMenu() bool {
-	items := make([]menuItem, len(slashCommands))
-	for i, c := range slashCommands {
+	cmds := slashCommands()
+	items := make([]menuItem, len(cmds))
+	for i, c := range cmds {
 		items[i] = menuItem{Label: c.label, Hint: c.hint}
 	}
-	idx := selectFromMenu(s.out, s.keys, "Komutlar", items)
+	idx := selectFromMenu(s.out, s.keys, t("menu_title_commands"), items)
 	if idx < 0 {
-		fmt.Fprint(s.out, helpText)
+		fmt.Fprint(s.out, t("help_text"))
 		return false
 	}
 
 	switch items[idx].Label {
 	case "/help":
-		fmt.Fprint(s.out, helpText)
+		fmt.Fprint(s.out, t("help_text"))
 	case "/models":
 		s.cmdModels()
 	case "/model":
@@ -103,7 +84,7 @@ func (s *session) showCommandMenu() bool {
 	case "/model-download":
 		s.cmdModelDownload()
 	case "/connect":
-		fmt.Fprintln(s.out, yellow("Kullanım: /connect <base_url> <api_key> <model>"))
+		fmt.Fprintln(s.out, yellow(t("connect_usage")))
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -127,22 +108,22 @@ func (s *session) showCommandMenu() bool {
 func (s *session) cmdRemote() {
 	status, err := s.client.RemoteAccessStatus(s.ctx)
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Uzak erişim durumu alınamadı: %v", err))
+		fmt.Fprintln(s.out, errorf(t("remote_status_failed"), err))
 		return
 	}
 
 	if status.NgrokMode && status.Running && status.NgrokURL != "" {
-		fmt.Fprintln(s.out, green(fmt.Sprintf("✓ ngrok zaten çalışıyor: %s", status.NgrokURL)))
+		fmt.Fprintln(s.out, green(fmt.Sprintf(t("ngrok_already_running"), status.NgrokURL)))
 		s.warnRemoteExposure()
 		return
 	}
 
 	token := status.NgrokToken
 	if token == "" {
-		fmt.Fprintln(s.out, dim("ngrok authtoken gerekiyor (dashboard.ngrok.com hesabından alabilirsin)."))
-		input, ok := s.promptLine("ngrok authtoken: ")
+		fmt.Fprintln(s.out, dim(t("ngrok_token_needed")))
+		input, ok := s.promptLine(t("ngrok_token_prompt"))
 		if !ok || strings.TrimSpace(input) == "" {
-			fmt.Fprintln(s.out, dim("İptal edildi."))
+			fmt.Fprintln(s.out, dim(t("cancelled_dot")))
 			return
 		}
 		token = strings.TrimSpace(input)
@@ -150,13 +131,18 @@ func (s *session) cmdRemote() {
 
 	port := s.backendPort()
 	if port <= 0 {
-		fmt.Fprintln(s.out, errorf("Backend portu belirlenemedi."))
+		// Plain red(), not errorf(): errorf's Sprintf wrapping over a
+		// non-constant, zero-arg format string is exactly the pattern go
+		// vet's printf check flags ("non-constant format string") — there's
+		// nothing to substitute here, so there's no reason to route through
+		// Sprintf at all.
+		fmt.Fprintln(s.out, red(t("backend_port_unknown")))
 		return
 	}
 
-	fmt.Fprintln(s.out, dim("ngrok tüneli başlatılıyor..."))
+	fmt.Fprintln(s.out, dim(t("ngrok_starting")))
 	if err := s.client.StartNgrok(s.ctx, port, token); err != nil {
-		fmt.Fprintln(s.out, errorf("Başlatılamadı: %v", err))
+		fmt.Fprintln(s.out, errorf(t("start_failed"), err))
 		return
 	}
 
@@ -169,23 +155,23 @@ func (s *session) cmdRemote() {
 			continue
 		}
 		if st.NgrokURL != "" {
-			fmt.Fprintln(s.out, green(fmt.Sprintf("✓ Uzak erişim açık: %s", st.NgrokURL)))
+			fmt.Fprintln(s.out, green(fmt.Sprintf(t("remote_access_open"), st.NgrokURL)))
 			s.warnRemoteExposure()
 			return
 		}
 		if st.NgrokError != "" {
-			fmt.Fprintln(s.out, errorf("ngrok hatası: %s", st.NgrokError))
+			fmt.Fprintln(s.out, errorf(t("ngrok_error"), st.NgrokError))
 			return
 		}
 	}
-	fmt.Fprintln(s.out, yellow("ngrok başlatıldı ama link henüz hazır değil — birkaç saniye sonra /remote yazarak tekrar kontrol edebilirsin."))
+	fmt.Fprintln(s.out, yellow(t("ngrok_started_link_pending")))
 }
 
 // warnRemoteExposure spells out what an active ngrok tunnel actually exposes —
 // the full Memo API, unauthenticated — since this is easy to gloss over next
 // to a shiny public URL.
 func (s *session) warnRemoteExposure() {
-	fmt.Fprintln(s.out, yellow("⚠ Bu linke sahip olan herkes Memo'nun tüm API'sine (sohbet, ajan, hafıza, WhatsApp dahil) erişebilir — sadece güvendiğin yerlerde paylaş."))
+	fmt.Fprintln(s.out, yellow(t("remote_exposure_warning")))
 }
 
 // backendPort extracts the port this CLI is talking to from the client's own
@@ -215,7 +201,7 @@ func (s *session) cmdClear() {
 	clearScreen(s.out)
 	s.printWelcome()
 	fmt.Fprintln(s.out)
-	fmt.Fprintln(s.out, green("✓ Sohbet geçmişi temizlendi, yeni bir sohbet başladı."))
+	fmt.Fprintln(s.out, green(t("chat_cleared")))
 }
 
 // cmdSession dispatches /session's subcommands: bare (interactive picker on
@@ -247,9 +233,9 @@ func (s *session) cmdSession(args []string) {
 // directory.
 func sessionHint(c SessionInfo) string {
 	if c.ProjectPath != "" {
-		return fmt.Sprintf("%s · %d mesaj · %s", c.UpdatedAt, c.MsgCount, filepath.Base(c.ProjectPath))
+		return fmt.Sprintf(t("session_hint_with_project"), c.UpdatedAt, c.MsgCount, filepath.Base(c.ProjectPath))
 	}
-	return fmt.Sprintf("%s · %d mesaj", c.UpdatedAt, c.MsgCount)
+	return fmt.Sprintf(t("session_hint_plain"), c.UpdatedAt, c.MsgCount)
 }
 
 // printSessionList prints every chat — from the CLI and the GUI alike — as
@@ -258,11 +244,11 @@ func sessionHint(c SessionInfo) string {
 func (s *session) printSessionList() {
 	chats, err := s.allChats()
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("chats_list_failed"), err))
 		return
 	}
 	if len(chats) == 0 {
-		fmt.Fprintln(s.out, dim("Kayıtlı sohbet yok."))
+		fmt.Fprintln(s.out, dim(t("no_saved_chats")))
 		return
 	}
 	for i, c := range chats {
@@ -281,7 +267,7 @@ func (s *session) printSessionList() {
 func (s *session) pickSession() {
 	chats, err := s.allChats()
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("chats_list_failed"), err))
 		return
 	}
 	if s.keys == nil {
@@ -290,13 +276,13 @@ func (s *session) pickSession() {
 	}
 
 	items := make([]menuItem, 0, len(chats)+1)
-	items = append(items, menuItem{Label: "+ Yeni sohbet"})
+	items = append(items, menuItem{Label: t("new_chat_entry")})
 	for _, c := range chats {
 		items = append(items, menuItem{Label: c.Title, Hint: sessionHint(c)})
 	}
-	idx := selectFromMenu(s.out, s.keys, "Sohbet seç", items)
+	idx := selectFromMenu(s.out, s.keys, t("menu_title_pick_chat"), items)
 	if idx < 0 {
-		fmt.Fprintln(s.out, dim("İptal edildi."))
+		fmt.Fprintln(s.out, dim(t("cancelled_dot")))
 		return
 	}
 	if idx == 0 {
@@ -312,12 +298,12 @@ func (s *session) pickSession() {
 func (s *session) switchSessionByQuery(query string) {
 	chats, err := s.allChats()
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Sohbetler listelenemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("chats_list_failed"), err))
 		return
 	}
 	if n, convErr := strconv.Atoi(query); convErr == nil {
 		if n < 1 || n > len(chats) {
-			fmt.Fprintln(s.out, yellow(fmt.Sprintf("Geçersiz sohbet numarası: %d", n)))
+			fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("invalid_chat_number"), n)))
 			return
 		}
 		s.switchToChat(chats[n-1])
@@ -330,7 +316,7 @@ func (s *session) switchSessionByQuery(query string) {
 			return
 		}
 	}
-	fmt.Fprintln(s.out, yellow(fmt.Sprintf("%q ile eşleşen bir sohbet bulunamadı (/session list ile listele)", query)))
+	fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("chat_query_not_found"), query)))
 }
 
 // switchToChat activates c and replays its saved history into the terminal.
@@ -345,21 +331,21 @@ func (s *session) switchToChat(c SessionInfo) {
 }
 
 func (s *session) cmdModels() {
-	fmt.Fprintln(s.out, bold("Yerel modeller:"))
+	fmt.Fprintln(s.out, bold(t("local_models_title")))
 	models, err := s.client.ListLocalModels(s.ctx)
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("  Modeller listelenemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("models_list_failed"), err))
 	} else if len(models) == 0 {
-		fmt.Fprintln(s.out, dim("  Hiç yerel model bulunamadı."))
+		fmt.Fprintln(s.out, dim(t("no_local_models")))
 	} else {
 		chatStatus, _ := s.client.ModelStatus(s.ctx)
 		embedStatus, _ := s.client.EmbeddingStatus(s.ctx)
 
 		for _, m := range models {
-			tag := "sohbet"
+			tag := t("kind_chat")
 			running := chatStatus.Running && chatStatus.ModelPath == m.Path
 			if m.IsEmbedding {
-				tag = "embedding"
+				tag = t("kind_embedding")
 				running = embedStatus.Running && embedStatus.ModelPath == m.Path
 			}
 			marker := "  "
@@ -371,14 +357,14 @@ func (s *session) cmdModels() {
 	}
 
 	fmt.Fprintln(s.out)
-	fmt.Fprintln(s.out, bold("API sağlayıcılar:"))
+	fmt.Fprintln(s.out, bold(t("api_providers_title")))
 	providers, err := s.client.ListProviders(s.ctx)
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("  Sağlayıcılar listelenemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("providers_list_failed"), err))
 		return
 	}
 	if len(providers) == 0 {
-		fmt.Fprintln(s.out, dim("  Hiç sağlayıcı yapılandırılmamış. /connect ile ekleyebilirsin."))
+		fmt.Fprintln(s.out, dim(t("no_providers_configured")))
 		return
 	}
 	activeName, _ := s.client.ActiveProviderName(s.ctx)
@@ -387,9 +373,9 @@ func (s *session) cmdModels() {
 		if p.Name == activeName && activeName != "" {
 			marker = green("▶ ")
 		}
-		state := dim("[pasif]")
+		state := dim(t("provider_inactive"))
 		if p.Enabled {
-			state = dim("[aktif]")
+			state = dim(t("provider_active"))
 		}
 		fmt.Fprintf(s.out, "%s%s %s %s\n", marker, p.Name, dim("("+p.Model+")"), state)
 	}
@@ -404,7 +390,7 @@ func (s *session) cmdModel(args []string) {
 			s.pickAndStartModel(false)
 			return
 		}
-		fmt.Fprintln(s.out, yellow("Kullanım: /model <isim>"))
+		fmt.Fprintln(s.out, yellow(t("model_usage")))
 		return
 	}
 	model, err := s.findModel(strings.Join(args, " "), false)
@@ -421,7 +407,7 @@ func (s *session) cmdEmbedding(args []string) {
 	if len(args) == 0 {
 		models, err := s.client.ListLocalModels(s.ctx)
 		if err != nil {
-			fmt.Fprintln(s.out, errorf("Modeller listelenemedi: %v", err))
+			fmt.Fprintln(s.out, errorf(t("models_list_failed_plain"), err))
 			return
 		}
 		for i := range models {
@@ -431,7 +417,7 @@ func (s *session) cmdEmbedding(args []string) {
 			}
 		}
 		if target == nil {
-			fmt.Fprintln(s.out, yellow("Hiç embedding modeli bulunamadı."))
+			fmt.Fprintln(s.out, yellow(t("no_embedding_model")))
 			return
 		}
 	} else {
@@ -452,7 +438,7 @@ func (s *session) cmdEmbedding(args []string) {
 func (s *session) pickAndStartModel(wantEmbedding bool) {
 	models, err := s.client.ListLocalModels(s.ctx)
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Modeller listelenemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("models_list_failed_plain"), err))
 		return
 	}
 
@@ -462,12 +448,12 @@ func (s *session) pickAndStartModel(wantEmbedding bool) {
 			filtered = append(filtered, m)
 		}
 	}
-	kind := "sohbet"
+	kind := t("kind_chat")
 	if wantEmbedding {
-		kind = "embedding"
+		kind = t("kind_embedding")
 	}
 	if len(filtered) == 0 {
-		fmt.Fprintln(s.out, yellow(fmt.Sprintf("Hiç %s modeli bulunamadı. /model-download ile indirebilirsin.", kind)))
+		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("no_kind_model_found"), kind)))
 		return
 	}
 
@@ -475,13 +461,13 @@ func (s *session) pickAndStartModel(wantEmbedding bool) {
 	for i, m := range filtered {
 		items[i] = menuItem{Label: m.Filename}
 	}
-	title := "Bir sohbet modeli seç"
+	title := t("menu_title_pick_chat_model")
 	if wantEmbedding {
-		title = "Bir embedding modeli seç"
+		title = t("menu_title_pick_embed_model")
 	}
 	idx := selectFromMenu(s.out, s.keys, title, items)
 	if idx < 0 {
-		fmt.Fprintln(s.out, dim("İptal edildi."))
+		fmt.Fprintln(s.out, dim(t("cancelled_dot")))
 		return
 	}
 	s.startAndReport(&filtered[idx], wantEmbedding)
@@ -496,11 +482,11 @@ func (s *session) pickAndStartModel(wantEmbedding bool) {
 // context, so a load already in flight keeps running there; a cancelled
 // /model just means checking /models a bit later instead of sitting here.
 func (s *session) startAndReport(model *LocalModel, wantEmbedding bool) {
-	kind := "modeli"
+	kind := t("kind_word_chat_model")
 	if wantEmbedding {
-		kind = "embedding modeli"
+		kind = t("kind_word_embedding_model")
 	}
-	fmt.Fprintf(s.out, "%s %s başlatılıyor, bu biraz sürebilir (Esc ile beklemeyi bırakabilirsin)...\n", model.Filename, kind)
+	fmt.Fprintf(s.out, t("starting_model"), model.Filename, kind)
 
 	ctx, cancel := context.WithCancel(s.ctx)
 	defer cancel()
@@ -522,18 +508,18 @@ func (s *session) startAndReport(model *LocalModel, wantEmbedding bool) {
 
 	if err != nil {
 		if errors.Is(ctx.Err(), context.Canceled) {
-			fmt.Fprintln(s.out, dim("⨯ beklemeyi bıraktın — model arka planda yüklenmeye devam ediyor olabilir, /models ile kontrol et."))
+			fmt.Fprintln(s.out, dim(t("wait_cancelled")))
 			return
 		}
-		fmt.Fprintln(s.out, errorf("Başlatılamadı: %v", err))
+		fmt.Fprintln(s.out, errorf(t("start_failed"), err))
 		return
 	}
-	fmt.Fprintln(s.out, green(fmt.Sprintf("✓ %s başlatıldı.", model.Filename)))
+	fmt.Fprintln(s.out, green(fmt.Sprintf(t("model_started"), model.Filename)))
 }
 
 func (s *session) cmdConnect(args []string) {
 	if len(args) < 3 {
-		fmt.Fprintln(s.out, yellow("Kullanım: /connect <base_url> <api_key> <model>"))
+		fmt.Fprintln(s.out, yellow(t("connect_usage")))
 		return
 	}
 	cfg := ProviderConfig{
@@ -545,14 +531,14 @@ func (s *session) cmdConnect(args []string) {
 		Enabled: true,
 	}
 	if err := s.client.UpdateProvider(s.ctx, cfg); err != nil {
-		fmt.Fprintln(s.out, errorf("Bağlanılamadı: %v", err))
+		fmt.Fprintln(s.out, errorf(t("connect_failed"), err))
 		return
 	}
 	if err := s.client.SetActiveProvider(s.ctx, cfg.Name); err != nil {
-		fmt.Fprintln(s.out, errorf("Sağlayıcı aktif edilemedi: %v", err))
+		fmt.Fprintln(s.out, errorf(t("provider_activate_failed"), err))
 		return
 	}
-	fmt.Fprintln(s.out, green(fmt.Sprintf("✓ %s adresine bağlanıldı (model: %s).", cfg.BaseURL, cfg.Model)))
+	fmt.Fprintln(s.out, green(fmt.Sprintf(t("connected_to"), cfg.BaseURL, cfg.Model)))
 }
 
 // cmdGui launches the Flutter desktop app as a detached background process
@@ -564,7 +550,7 @@ func (s *session) cmdConnect(args []string) {
 func (s *session) cmdGui() {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(s.out, errorf("Çalıştırılabilir dosya yolu bulunamadı: %v", err))
+		fmt.Fprintln(s.out, errorf(t("exe_path_not_found"), err))
 		return
 	}
 	name := guiBinaryName()
@@ -579,7 +565,7 @@ func (s *session) cmdGui() {
 		}
 	}
 	if guiPath == "" {
-		fmt.Fprintln(s.out, errorf("GUI bulunamadı (%s) — bu kurulum GUI içermiyor olabilir.", lastTried))
+		fmt.Fprintln(s.out, errorf(t("gui_not_found"), lastTried))
 		return
 	}
 
@@ -588,10 +574,10 @@ func (s *session) cmdGui() {
 	// itself, not next to the CLI — run from guiPath's own directory.
 	cmd.Dir = filepath.Dir(guiPath)
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintln(s.out, errorf("GUI başlatılamadı: %v", err))
+		fmt.Fprintln(s.out, errorf(t("gui_start_failed"), err))
 		return
 	}
-	fmt.Fprintln(s.out, green("✓ GUI başlatıldı (arka planda çalışıyor)."))
+	fmt.Fprintln(s.out, green(t("gui_started")))
 }
 
 // guiSearchDirs returns the directories to look for the bundled GUI binary
@@ -626,7 +612,7 @@ func guiBinaryName() string {
 // with real progress bars that don't block anything else, so this now just
 // opens the desktop app's Model Store instead of running the download here.
 func (s *session) cmdModelDownload() {
-	fmt.Fprintln(s.out, dim("Model indirme artık masaüstü uygulamasından (Modeller sekmesi) yapılıyor — CLI sadece zaten indirilmiş modelleri başlatır."))
+	fmt.Fprintln(s.out, dim(t("model_download_moved")))
 	s.cmdGui()
 }
 
@@ -635,7 +621,7 @@ func (s *session) cmdModelDownload() {
 func (s *session) findModel(name string, wantEmbedding bool) (*LocalModel, error) {
 	models, err := s.client.ListLocalModels(s.ctx)
 	if err != nil {
-		return nil, fmt.Errorf("modeller listelenemedi: %w", err)
+		return nil, fmt.Errorf(t("models_list_failed_lower"), err)
 	}
 	lower := strings.ToLower(name)
 	for i := range models {
@@ -647,11 +633,11 @@ func (s *session) findModel(name string, wantEmbedding bool) (*LocalModel, error
 			return m, nil
 		}
 	}
-	kind := "sohbet"
+	kind := t("kind_chat")
 	if wantEmbedding {
-		kind = "embedding"
+		kind = t("kind_embedding")
 	}
-	return nil, fmt.Errorf("%q ile eşleşen bir %s modeli bulunamadı (/models ile listele)", name, kind)
+	return nil, fmt.Errorf(t("model_query_not_found"), name, kind)
 }
 
 func (s *session) cmdTaskList(args []string) {
@@ -664,7 +650,7 @@ func (s *session) cmdTaskList(args []string) {
 		_ = s.cmdTaskListList()
 	case "create":
 		if len(args) < 3 {
-			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist create <başlık> <madde1> <madde2> ..."))
+			fmt.Fprintln(s.out, yellow(t("tasklist_create_usage")))
 			return
 		}
 		title := args[1]
@@ -675,18 +661,18 @@ func (s *session) cmdTaskList(args []string) {
 		}
 		tl, err := s.client.CreateTaskList(s.ctx, chatID, title, items)
 		if err != nil {
-			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf(t("generic_error"), err)))
 			return
 		}
-		fmt.Fprintf(s.out, "%s\n", green(fmt.Sprintf("%d maddelik \"%s\" listesi oluşturuldu (ID: %s)", len(items), title, tl.ID)))
+		fmt.Fprintf(s.out, "%s\n", green(fmt.Sprintf(t("tasklist_created"), len(items), title, tl.ID)))
 	case "show":
 		if len(args) < 2 {
-			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist show <id>"))
+			fmt.Fprintln(s.out, yellow(t("tasklist_show_usage")))
 			return
 		}
 		tl, err := s.client.GetTaskList(s.ctx, args[1])
 		if err != nil {
-			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf(t("generic_error"), err)))
 			return
 		}
 		statusStr := tl.Status
@@ -698,7 +684,7 @@ func (s *session) cmdTaskList(args []string) {
 		case "paused":
 			statusStr = yellow(tl.Status)
 		}
-		fmt.Fprintf(s.out, "%s — %s (%d madde)\n", bold(tl.Title), statusStr, len(tl.Items))
+		fmt.Fprintf(s.out, t("tasklist_summary_line"), bold(tl.Title), statusStr, len(tl.Items))
 		for i, item := range tl.Items {
 			symbol := "○"
 			colorFn := dim
@@ -714,61 +700,61 @@ func (s *session) cmdTaskList(args []string) {
 			}
 			note := ""
 			if item.Note != "" {
-				note = dim(fmt.Sprintf(" — %s", item.Note))
+				note = dim(fmt.Sprintf(t("tasklist_note_suffix"), item.Note))
 			}
 			roundsInfo := ""
 			if item.Rounds > 0 {
-				roundsInfo = dim(fmt.Sprintf(" (%d tur)", item.Rounds))
+				roundsInfo = dim(fmt.Sprintf(t("tasklist_rounds_suffix"), item.Rounds))
 			}
 			fmt.Fprintf(s.out, "  %s %s%s%s\n", symbol, colorFn(item.Text), roundsInfo, note)
 			_ = i
 		}
 	case "start":
 		if len(args) < 2 {
-			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist start <id>"))
+			fmt.Fprintln(s.out, yellow(t("tasklist_start_usage")))
 			return
 		}
 		if err := s.client.StartTaskList(s.ctx, args[1]); err != nil {
-			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf(t("generic_error"), err)))
 			return
 		}
-		fmt.Fprintln(s.out, green("Görev listesi başlatıldı. Duraklatmak için /tasklist stop "+args[1]))
+		fmt.Fprintln(s.out, green(t("tasklist_started")+args[1]))
 	case "stop":
 		if len(args) < 2 {
-			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist stop <id>"))
+			fmt.Fprintln(s.out, yellow(t("tasklist_stop_usage")))
 			return
 		}
 		if err := s.client.StopTaskList(s.ctx, args[1]); err != nil {
-			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf(t("generic_error"), err)))
 			return
 		}
-		fmt.Fprintln(s.out, green("Görev listesi durduruldu."))
+		fmt.Fprintln(s.out, green(t("tasklist_stopped")))
 	case "delete":
 		if len(args) < 2 {
-			fmt.Fprintln(s.out, yellow("Kullanım: /tasklist delete <id>"))
+			fmt.Fprintln(s.out, yellow(t("tasklist_delete_usage")))
 			return
 		}
 		if err := s.client.DeleteTaskList(s.ctx, args[1]); err != nil {
-			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+			fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf(t("generic_error"), err)))
 			return
 		}
-		fmt.Fprintln(s.out, green("Görev listesi silindi."))
+		fmt.Fprintln(s.out, green(t("tasklist_deleted")))
 	default:
-		fmt.Fprintln(s.out, yellow("Kullanılabilir: /tasklist list|create|show|start|stop|delete"))
+		fmt.Fprintln(s.out, yellow(t("tasklist_usage_general")))
 	}
 }
 
 func (s *session) cmdTaskListList() error {
 	lists, err := s.client.ListTaskLists(s.ctx)
 	if err != nil {
-		fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf("Hata: %v", err)))
+		fmt.Fprintf(s.out, "%s\n", red(fmt.Sprintf(t("generic_error"), err)))
 		return err
 	}
 	if len(lists) == 0 {
-		fmt.Fprintln(s.out, dim("Henüz görev listesi yok. Oluşturmak için: /tasklist create <başlık> <maddeler>"))
+		fmt.Fprintln(s.out, dim(t("tasklist_none_yet")))
 		return nil
 	}
-	fmt.Fprintf(s.out, "%s (%d liste)\n", bold("Görev Listeleri"), len(lists))
+	fmt.Fprintf(s.out, t("tasklist_lists_header"), bold(t("tasklist_lists_title")), len(lists))
 	for _, tl := range lists {
 		status := tl.Status
 		switch status {
@@ -793,5 +779,5 @@ func (s *session) cmdTaskListList() error {
 
 func (s *session) cmdTaskListInteractive() {
 	_ = s.cmdTaskListList()
-	fmt.Fprintln(s.out, dim("\nKomutlar: /tasklist list | create <başlık> <maddeler> | show <id> | start <id> | stop <id> | delete <id>"))
+	fmt.Fprintln(s.out, dim(t("tasklist_interactive_footer")))
 }

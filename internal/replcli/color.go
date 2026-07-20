@@ -79,28 +79,95 @@ func clearScreen(out io.Writer) {
 	fmt.Fprint(out, "\033[H\033[2J\033[3J")
 }
 
+// tipEntry is one row of the boxed tips panel: a short key/gesture and what
+// it does, rendered as two aligned columns (labelWidth below).
+type tipEntry struct {
+	label string
+	desc  string
+}
+
 // startupTips lists the composer tricks worth surfacing right away — the
 // terminal equivalent of Claude Code's "Tips for getting started" panel.
 // Deliberately no "what's new"/announcement section next to it: a terminal
 // client has no changelog surface to point at, and the user explicitly asked
 // for it to stay out of this redesign.
-func startupTips() []string {
-	return []string{
-		dim("/help") + t("tip_help"),
-		dim("@") + t("tip_at"),
-		dim("Esc") + t("tip_stop") + dim("Ctrl+D") + t("tip_exit"),
+func startupTips() []tipEntry {
+	return []tipEntry{
+		{"/help", t("tip_help")},
+		{"@", t("tip_at")},
+		{"Esc", t("tip_stop")},
+		{"Ctrl+D", t("tip_exit")},
 	}
 }
 
-// welcomePanel renders the startup panel in the Claude-Code-inspired style
-// adopted 2026-07-20: a bordered title box (app name + version, a welcome
-// line, the model/memory status that was already here, and the active
-// project directory) followed by a short tips list. Padding is computed from
-// plain-text lengths; colored segments are wrapped afterward so ANSI codes
-// never throw off the box alignment. memoryActive tints the memory line
-// green/yellow without affecting its width. version/projectPath may be
-// empty (version fetch failed, or this run has no project root) — both rows
-// are simply omitted rather than shown blank.
+// boxWriter accumulates rows for a single bordered panel, all sharing one
+// interior width computed from whatever's been added so far — call finish
+// once every row is queued. Every row is stored as (plain-text, styled)
+// pairs: plain drives width/padding math (raw rune count, no ANSI), styled
+// is what's actually printed, so colored segments never throw off alignment.
+// Every panel this REPL draws (welcomePanel's two boxes, previously
+// welcomePanel's ad hoc pad/row closures) goes through this one
+// implementation now instead of each hand-rolling its own box math.
+type boxWriter struct {
+	rows  []func(width int) string
+	width int
+}
+
+func newBoxWriter() *boxWriter { return &boxWriter{width: 20} }
+
+// left adds a left-aligned row with a 2-column margin, styled independently
+// of the plain text used for width accounting.
+func (b *boxWriter) left(plain, styled string) {
+	b.width = max(b.width, len([]rune(plain))+4)
+	b.rows = append(b.rows, func(width int) string {
+		pad := strings.Repeat(" ", max(width-2-len([]rune(plain)), 0))
+		return bronze("│") + "  " + styled + pad + bronze("│")
+	})
+}
+
+// center adds a horizontally centered row.
+func (b *boxWriter) center(plain, styled string) {
+	b.width = max(b.width, len([]rune(plain))+4)
+	b.rows = append(b.rows, func(width int) string {
+		total := max(width-2-len([]rune(plain)), 0)
+		left := total / 2
+		right := total - left
+		return bronze("│") + strings.Repeat(" ", left) + styled + strings.Repeat(" ", right) + bronze("│")
+	})
+}
+
+// blank adds an empty spacer row.
+func (b *boxWriter) blank() {
+	b.rows = append(b.rows, func(width int) string {
+		return bronze("│") + strings.Repeat(" ", width) + bronze("│")
+	})
+}
+
+// render draws the finished box: top/bottom borders plus every queued row,
+// each padded out to the box's final (widest-row-driven) interior width.
+func (b *boxWriter) render() string {
+	var out strings.Builder
+	fmt.Fprintln(&out, bronze("╭"+strings.Repeat("─", b.width)+"╮"))
+	for _, row := range b.rows {
+		fmt.Fprintln(&out, row(b.width))
+	}
+	fmt.Fprint(&out, bronze("╰"+strings.Repeat("─", b.width)+"╯"))
+	return out.String()
+}
+
+// welcomePanel renders the startup panel: a bordered, centered title card
+// (app name + version, a welcome line, the model/memory status, the active
+// project directory) followed by a second bordered box listing composer
+// tips. Two full boxes rather than one long one — closer to Claude Code's
+// own layout (a title card plus a distinct tips panel) than a single tall
+// block, and it gives the tips their own visual weight instead of trailing
+// off as plain unboxed text. Deliberately no third "what's new" box: a
+// terminal client has no changelog surface to point at, and it was asked to
+// stay out of this redesign explicitly. Both boxes are bordered in Memo's
+// bronze brand accent, not a neutral dim gray — the earlier version's plain
+// gray border was the single biggest reason it read as generic rather than
+// deliberately themed. version/projectPath may be empty (version fetch
+// failed, or this run has no project root) — both rows are simply omitted.
 func welcomePanel(version, projectPath, model, memory string, memoryActive bool) string {
 	title := "✳ Memo CLI"
 	if version != "" {
@@ -109,43 +176,39 @@ func welcomePanel(version, projectPath, model, memory string, memoryActive bool)
 		// before adding ours so the title never doubles up ("vV3.3.3").
 		title += " v" + strings.TrimLeft(version, "Vv")
 	}
-	welcomeLine := t("welcome_back")
-	plainModel := t("label_model") + model
-	plainMemory := t("label_memory") + memory
-
-	width := len([]rune(title))
-	width = max(width, len([]rune(welcomeLine)))
-	width = max(width, len([]rune(plainModel)))
-	width = max(width, len([]rune(plainMemory)))
-	width = max(width, len([]rune(projectPath)))
-	width += 4 // 2-char left margin + at least 2-char right margin
-
-	pad := func(plain string) string {
-		return strings.Repeat(" ", max(width-2-len([]rune(plain)), 0))
-	}
-	row := func(colored, plainForWidth string) string {
-		return dim("│") + "  " + colored + pad(plainForWidth) + dim("│") + "\n"
-	}
-
 	memoryColor := yellow
 	if memoryActive {
 		memoryColor = green
 	}
 
-	var b strings.Builder
-	fmt.Fprintf(&b, "%s\n", dim("╭"+strings.Repeat("─", width)+"╮"))
-	fmt.Fprint(&b, row(bold(gold(title)), title))
-	fmt.Fprint(&b, row("", ""))
-	fmt.Fprint(&b, row(welcomeLine, welcomeLine))
-	fmt.Fprint(&b, row(bold(t("label_model"))+model, plainModel))
-	fmt.Fprint(&b, row(bold(t("label_memory"))+memoryColor(memory), plainMemory))
+	card := newBoxWriter()
+	card.center(title, bold(gold(title)))
+	card.blank()
+	card.center(t("welcome_back"), t("welcome_back"))
+	card.blank()
+	card.left(t("label_model")+model, bold(t("label_model"))+model)
+	card.left(t("label_memory")+memory, bold(t("label_memory"))+memoryColor(memory))
 	if projectPath != "" {
-		fmt.Fprint(&b, row(dim(projectPath), projectPath))
+		card.left(projectPath, dim(projectPath))
 	}
-	fmt.Fprintf(&b, "%s\n", dim("╰"+strings.Repeat("─", width)+"╯"))
-	fmt.Fprint(&b, "\n"+bold(t("tips_title"))+"\n")
+
+	tips := newBoxWriter()
+	tips.left(t("tips_title"), bold(t("tips_title")))
+	tips.blank()
+	const labelWidth = 8
 	for _, tip := range startupTips() {
-		fmt.Fprint(&b, "  "+tip+"\n")
+		padded := tip.label
+		if pad := labelWidth - len([]rune(tip.label)); pad > 0 {
+			padded += strings.Repeat(" ", pad)
+		}
+		plain := padded + tip.desc
+		styled := bold(gold(tip.label))
+		if pad := labelWidth - len([]rune(tip.label)); pad > 0 {
+			styled += strings.Repeat(" ", pad)
+		}
+		styled += dim(tip.desc)
+		tips.left(plain, styled)
 	}
-	return strings.TrimRight(b.String(), "\n")
+
+	return card.render() + "\n\n" + tips.render()
 }

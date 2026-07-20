@@ -390,7 +390,12 @@ func (s *session) reportMemorySaved(afterSeq uint64) {
 		// giving up after this loop, which used to look exactly like nothing
 		// happened even though the backend knew perfectly well why.
 		if msg, ok := eventDataSince(events, afterSeq, "memory:error"); ok {
-			fmt.Fprintln(s.out, yellow("⚠ "+msg))
+			// No forced "⚠ " prefix: several memory:error messages
+			// (llama.go's embedding-not-found one, in particular — visible
+			// in the very screenshot that prompted this fix) already embed
+			// their own "⚠️", and yellow() alone already reads as a warning
+			// everywhere else in this file.
+			fmt.Fprintln(s.out, yellow(msg))
 			return
 		}
 	}
@@ -455,7 +460,12 @@ func (s *session) printWelcome() {
 	if !active {
 		if events, err := s.client.Events(s.ctx); err == nil {
 			if msg, ok := eventDataSince(events, 0, "memory:error"); ok {
-				fmt.Fprintln(s.out, yellow("⚠ "+msg))
+				// No forced "⚠ " prefix: several memory:error messages
+			// (llama.go's embedding-not-found one, in particular — visible
+			// in the very screenshot that prompted this fix) already embed
+			// their own "⚠️", and yellow() alone already reads as a warning
+			// everywhere else in this file.
+			fmt.Fprintln(s.out, yellow(msg))
 			}
 		}
 	}

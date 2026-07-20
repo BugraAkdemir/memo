@@ -97,10 +97,10 @@ var tr = map[string]string{
 	"label_model":  "Model:  ",
 	"label_memory": "Hafıza: ",
 	"tips_title":   "İpuçları",
-	"tip_help":     " ile tüm komutları listele",
-	"tip_at":       " yazarak bir dosyaya referans ver",
-	"tip_stop":     " ile yanıtı durdur, ",
-	"tip_exit":     " ile çık",
+	"tip_help":     "tüm komutları listele",
+	"tip_at":       "bir dosyaya referans ver",
+	"tip_stop":     "yanıtı durdur",
+	"tip_exit":     "çık",
 
 	// spinner.go
 	"spinner_thinking": "düşünüyor...",
@@ -250,10 +250,10 @@ var en = map[string]string{
 	"label_model":  "Model:  ",
 	"label_memory": "Memory: ",
 	"tips_title":   "Tips",
-	"tip_help":     " to list every command",
-	"tip_at":       " to reference a file",
-	"tip_stop":     " to stop the reply, ",
-	"tip_exit":     " to quit",
+	"tip_help":     "list every command",
+	"tip_at":       "reference a file",
+	"tip_stop":     "stop the reply",
+	"tip_exit":     "quit",
 
 	// spinner.go
 	"spinner_thinking": "thinking...",

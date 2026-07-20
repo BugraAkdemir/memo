@@ -72,6 +72,36 @@ func NewServer(port, ctxSize int) *Server {
 // If gpuLayers is -1, it auto-detects maximum capacity. If port/ctxSize are 0, they use defaults.
 // Set embedding=true only for dedicated embedding models; chat models must NOT get --embedding.
 func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers int, embedding bool, mode string) error {
+	return s.startInternal(binaryPath, modelPath, ctxSize, port, gpuLayers, embedding, mode, nil)
+}
+
+// RPCOptions configures the swarm coordinator's llama-server invocation —
+// see StartWithRPC. Order in both slices is meaningful (see PLAN_memo_swarm.md):
+// index 0 of the resulting --tensor-split is always the coordinator's own
+// local share; Servers[i] corresponds to TensorSplit[i+1].
+type RPCOptions struct {
+	// Servers is "host:port" per worker, in list order.
+	Servers []string
+	// TensorSplit has len(Servers)+1 entries: [0] is the coordinator's own
+	// share, [1:] align positionally with Servers.
+	TensorSplit []float64
+}
+
+// StartWithRPC is Start, plus llama.cpp RPC flags to pool compute across
+// the given worker machines (Memo Swarm — see PLAN_memo_swarm.md). Always
+// forces --split-mode layer (never "row" — see buildRPCArgs). Binary
+// resolution goes through resolveCoordinatorBinary instead of the plain
+// resolveBinary, since not every bundled flavor is built with RPC support
+// (verified: the plain linux/cpu release rejects --rpc outright — see
+// rpc_probe.go) — mode is still used for GPU-layer/detection purposes below,
+// just not for binary flavor selection in this path. embedding is always
+// false: an embedding-only server has no reason to run as a swarm
+// coordinator.
+func (s *Server) StartWithRPC(binaryPath, modelPath string, ctxSize, port, gpuLayers int, mode string, rpc RPCOptions) error {
+	return s.startInternal(binaryPath, modelPath, ctxSize, port, gpuLayers, false, mode, &rpc)
+}
+
+func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuLayers int, embedding bool, mode string, rpc *RPCOptions) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -79,8 +109,15 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 		return fmt.Errorf("llama: server already running (PID %d)", s.cmd.Process.Pid)
 	}
 
-	// Resolve binary path
-	bin, err := resolveBinary(binaryPath, mode)
+	// Resolve binary path — the coordinator role needs an RPC-capable
+	// build, which isn't guaranteed for every flavor (see resolveCoordinatorBinary).
+	var bin string
+	var err error
+	if rpc != nil {
+		bin, err = resolveCoordinatorBinary(binaryPath, mode)
+	} else {
+		bin, err = resolveBinary(binaryPath, mode)
+	}
 	if err != nil {
 		return fmt.Errorf("Llama.cpp motoru (llama-server) bulunamadı. Lütfen motorun kurulu olduğundan emin olun veya Ayarlar -> Llama kısmından yolu kontrol edin. (Hata: %w)", err)
 	}
@@ -174,6 +211,10 @@ func (s *Server) Start(binaryPath, modelPath string, ctxSize, port, gpuLayers in
 	if mmproj != "" {
 		args = append(args, "--mmproj", mmproj)
 		logx.Printf("llama: detected mmproj: %s", mmproj)
+	}
+
+	if rpc != nil {
+		args = append(args, buildRPCArgs(*rpc)...)
 	}
 
 	logx.Printf("llama: launching %s %s", bin, strings.Join(args, " "))

@@ -4,12 +4,32 @@ import (
 	"context"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
 
 	"memo/internal/logx"
 )
+
+// buildRPCArgs returns the extra llama-server CLI args needed to run as a
+// swarm coordinator. Always forces --split-mode layer — never "row": row
+// mode needs much tighter per-layer synchronization than layer mode, fine
+// over NVLink/PCIe but far too slow over a normal home network (see
+// PLAN_memo_swarm.md's design decisions) — this is a hard invariant, not a
+// caller-configurable choice, so it's baked in here rather than threaded
+// through RPCOptions.
+func buildRPCArgs(opts RPCOptions) []string {
+	splits := make([]string, len(opts.TensorSplit))
+	for i, v := range opts.TensorSplit {
+		splits[i] = strconv.FormatFloat(v, 'f', -1, 64)
+	}
+	return []string{
+		"--split-mode", "layer",
+		"--tensor-split", strings.Join(splits, ","),
+		"--rpc", strings.Join(opts.Servers, ","),
+	}
+}
 
 // rpcCapabilityCache maps an absolute llama-server binary path to whether it
 // was found to accept --rpc. Populated lazily by probeRPCSupport, kept for

@@ -3,6 +3,7 @@ package replcli
 import (
 	"fmt"
 	"io"
+	"math/rand"
 	"strings"
 )
 
@@ -86,61 +87,122 @@ type tipEntry struct {
 	desc  string
 }
 
-// startupTips lists the composer tricks worth surfacing right away — the
-// terminal equivalent of Claude Code's "Tips for getting started" panel.
-// Deliberately no "what's new"/announcement section next to it: a terminal
-// client has no changelog surface to point at, and the user explicitly asked
-// for it to stay out of this redesign.
-func startupTips() []tipEntry {
+// allTips is the full pool the welcome panel draws from — every command and
+// composer gesture worth a passing mention, not just the four most
+// essential ones. randomTips below samples from this each launch instead of
+// always showing the same fixed set, the terminal equivalent of Claude
+// Code's "Tips for getting started" panel but rotating rather than static.
+func allTips() []tipEntry {
 	return []tipEntry{
 		{"/help", t("tip_help")},
 		{"@", t("tip_at")},
 		{"Esc", t("tip_stop")},
 		{"Ctrl+D", t("tip_exit")},
+		{"/models", t("tip_models")},
+		{"/model", t("tip_model")},
+		{"/embedding", t("tip_embedding")},
+		{"/connect", t("tip_connect")},
+		{"/clear", t("tip_clear")},
+		{"/session", t("tip_session")},
+		{"/tasklist", t("tip_tasklist")},
+		{"/remote", t("tip_remote")},
+		{"/gui", t("tip_gui")},
+		{"/model-download", t("tip_model_download")},
+		{"/update", t("tip_update")},
+		{"Tab", t("tip_tab")},
+		{"↑↓", t("tip_history")},
+		{"Ctrl+L", t("tip_clear_screen")},
+		{"Ctrl+W", t("tip_delete_word")},
+		{"y/a/n", t("tip_permission")},
 	}
 }
 
-// boxWriter accumulates rows for a single fully-bordered panel (welcomePanel's
-// tips box — the title card uses its own lighter left-rule style below,
-// matching the reference screenshot's two different border weights), all
-// sharing one interior width computed from whatever's been added so far.
-// Every row is stored as (plain-text, styled) pairs: plain drives
-// width/padding math (raw rune count, no ANSI), styled is what's actually
-// printed, so colored segments never throw off alignment.
-type boxWriter struct {
-	rows  []func(width int) string
-	width int
-}
-
-func newBoxWriter() *boxWriter { return &boxWriter{width: 20} }
-
-// left adds a left-aligned row with a 2-column margin, styled independently
-// of the plain text used for width accounting.
-func (b *boxWriter) left(plain, styled string) {
-	b.width = max(b.width, len([]rune(plain))+4)
-	b.rows = append(b.rows, func(width int) string {
-		pad := strings.Repeat(" ", max(width-2-len([]rune(plain)), 0))
-		return bronze("│") + "  " + styled + pad + bronze("│")
-	})
-}
-
-// blank adds an empty spacer row.
-func (b *boxWriter) blank() {
-	b.rows = append(b.rows, func(width int) string {
-		return bronze("│") + strings.Repeat(" ", width) + bronze("│")
-	})
-}
-
-// render draws the finished box: top/bottom borders plus every queued row,
-// each padded out to the box's final (widest-row-driven) interior width.
-func (b *boxWriter) render() string {
-	var out strings.Builder
-	fmt.Fprintln(&out, bronze("╭"+strings.Repeat("─", b.width)+"╮"))
-	for _, row := range b.rows {
-		fmt.Fprintln(&out, row(b.width))
+// randomTips returns n distinct tips picked at random from allTips, a fresh
+// draw every call — math/rand's top-level functions have used a random seed
+// by default since Go 1.20, so this genuinely varies launch to launch with
+// no manual seeding needed. n is clamped to the pool size.
+func randomTips(n int) []tipEntry {
+	all := allTips()
+	rand.Shuffle(len(all), func(i, j int) { all[i], all[j] = all[j], all[i] })
+	if n > len(all) {
+		n = len(all)
 	}
-	fmt.Fprint(&out, bronze("╰"+strings.Repeat("─", b.width)+"╯"))
-	return out.String()
+	return all[:n]
+}
+
+// Welcome-panel geometry. Fixed on purpose, NOT derived from the terminal
+// width: growing or shrinking the window must not reflow the box or shift
+// its contents around ("terminali büyütüp küçültünce tasarım çok kaymasın").
+// A terminal genuinely too narrow for the box falls back to plain unboxed
+// lines (narrowPanel), where there is no alignment left to break.
+const (
+	panelLeftW  = 44 // left column's content width
+	panelRightW = 36 // right column's content width
+	// Borders and margins: │ + 2 + left + 1 + │ + 2 + right + 1 + │
+	panelWidth = panelLeftW + panelRightW + 9
+)
+
+// fitTo hard-truncates s to w cells, marking the cut with "…", so an
+// over-long value (a deep project path, a verbose model name) can never
+// push the box out of alignment.
+func fitTo(s string, w int) string {
+	if w <= 0 {
+		return ""
+	}
+	r := []rune(s)
+	if len(r) <= w {
+		return s
+	}
+	if w == 1 {
+		return "…"
+	}
+	return string(r[:w-1]) + "…"
+}
+
+// wrapTo greedily word-wraps s into lines of at most w cells, hard-splitting
+// any single word too long to ever fit.
+func wrapTo(s string, w int) []string {
+	if w <= 0 {
+		return nil
+	}
+	var out []string
+	cur := ""
+	splitOverlong := func() {
+		for len([]rune(cur)) > w {
+			r := []rune(cur)
+			out = append(out, string(r[:w]))
+			cur = string(r[w:])
+		}
+	}
+	for _, word := range strings.Fields(s) {
+		switch {
+		case cur == "":
+			cur = word
+		case len([]rune(cur))+1+len([]rune(word)) <= w:
+			cur += " " + word
+		default:
+			out = append(out, cur)
+			cur = word
+		}
+		splitOverlong()
+	}
+	if cur != "" {
+		out = append(out, cur)
+	}
+	return out
+}
+
+// panelCell is one column's content for one row, carried as a (plain,
+// styled) pair: plain drives the width/padding math (raw rune count, no
+// ANSI), styled is what actually gets printed — so colored segments can
+// never throw the column alignment off.
+type panelCell struct {
+	plain  string
+	styled string
+}
+
+func (c panelCell) pad(w int) string {
+	return c.styled + strings.Repeat(" ", max(w-len([]rune(c.plain)), 0))
 }
 
 // memoMascot is the welcome card's signature element — a small pixel-face,
@@ -154,21 +216,145 @@ var memoMascot = []string{
 	" ▀▀▀▀▀ ",
 }
 
-// welcomePanel renders the startup panel: a title card in Claude Code's own
-// minimal style (a top rule, not a closed box — left edge only, no right or
-// bottom border) with centered content and a small mascot, followed by a
-// separate, fully bordered box listing composer tips. The two panels
-// deliberately use different border weights, matching the reference
-// screenshot exactly rather than forcing one consistent box style: Claude
-// Code's own welcome card is a light rule + left edge, but its tips/updates
-// panel is a real closed box. Deliberately no third "what's new" box: a
-// terminal client has no changelog surface to point at, and it was asked to
-// stay out of this redesign explicitly. Both panels are bronze
-// (colorBronze), not a neutral dim gray — an earlier pass's plain gray
-// border was the single biggest reason it read as generic rather than
-// deliberately themed. version/projectPath may be empty (version fetch
-// failed, or this run has no project root) — both rows are simply omitted.
-func welcomePanel(version, projectPath, model, memory string, memoryActive bool) string {
+// leftColumn builds the box's left half: the mascot and the welcome line
+// centered, then the model/memory/project status flush left. Centering
+// short standalone phrases reads well; centering real key:value data gives
+// a ragged left edge that is harder to scan, so the status block
+// deliberately stays left-aligned.
+func leftColumn(model, memory, projectPath string, memoryColor func(string) string) []panelCell {
+	var out []panelCell
+	add := func(plain, styled string) { out = append(out, panelCell{plain, styled}) }
+	center := func(plain, styled string) {
+		sp := strings.Repeat(" ", max((panelLeftW-len([]rune(plain)))/2, 0))
+		add(sp+plain, sp+styled)
+	}
+
+	add("", "")
+	for _, row := range memoMascot {
+		center(row, bronze(row))
+	}
+	add("", "")
+	center(t("welcome_back"), bold(t("welcome_back")))
+	add("", "")
+
+	// Truncate the value, never the label: a clipped "Model:" would be
+	// unreadable, a clipped value still says which field it belongs to.
+	field := func(label, value string, color func(string) string) {
+		v := fitTo(value, panelLeftW-len([]rune(label)))
+		add(label+v, bold(label)+color(v))
+	}
+	field(t("label_model"), model, func(s string) string { return s })
+	field(t("label_memory"), memory, memoryColor)
+	if projectPath != "" {
+		p := fitTo(projectPath, panelLeftW)
+		add(p, dim(p))
+	}
+	return out
+}
+
+// rightColumn builds the box's right half: a heading, then tips drawn at
+// random for this launch, then the update notice — or, when there's nothing
+// to update, one extra tip so the slot is never left blank.
+func rightColumn(picks []tipEntry, updateNotice string) []panelCell {
+	var out []panelCell
+	add := func(plain, styled string) { out = append(out, panelCell{plain, styled}) }
+
+	shown := picks
+	if updateNotice != "" && len(shown) > 3 {
+		shown = shown[:3]
+	}
+
+	// Sized from the tips actually drawn this launch rather than a fixed
+	// constant: the pool's labels run from "@" to "/model-download", so a
+	// constant either wastes the column or (this shipped once already) runs
+	// a long label straight into its description with no gap at all. Capped
+	// so the description always keeps room to wrap into.
+	labelW := 0
+	for _, tp := range shown {
+		labelW = max(labelW, len([]rune(tp.label)))
+	}
+	labelW = min(labelW, panelRightW/2)
+
+	add(t("tips_title"), bold(t("tips_title")))
+	add("", "")
+	// One row per tip, description truncated rather than wrapped — the same
+	// choice the reference screenshot makes ("…create a CLAUDE.md file with
+	// instructio…"). Wrapping instead made a single tip eat three rows and
+	// left the panel tall and ragged.
+	for _, tp := range shown {
+		label := fitTo(tp.label, labelW)
+		gap := strings.Repeat(" ", max(labelW-len([]rune(label)), 0)+1)
+		desc := fitTo(tp.desc, panelRightW-labelW-1)
+		add(label+gap+desc, bold(gold(label))+gap+dim(desc))
+	}
+	if updateNotice != "" {
+		add("", "")
+		for _, l := range wrapTo(updateNotice, panelRightW) {
+			add(l, yellow(l))
+		}
+	}
+	return out
+}
+
+// boxedPanel draws the finished two-column box: the title inlined into the
+// top border (the way the reference screenshot has it, rather than as a row
+// inside the box), then every row zipped from the two columns — the shorter
+// column padded out with blanks so the divider stays flush all the way down.
+func boxedPanel(title string, left, right []panelCell) string {
+	head := fitTo(title, panelLeftW)
+	var b strings.Builder
+	fmt.Fprintln(&b, bronze("╭─ ")+bold(gold(head))+bronze(" "+
+		strings.Repeat("─", max(panelLeftW-len([]rune(head)), 0))+"┬"+
+		strings.Repeat("─", panelRightW+3)+"╮"))
+
+	cell := func(cells []panelCell, i, w int) string {
+		if i < len(cells) {
+			return cells[i].pad(w)
+		}
+		return strings.Repeat(" ", w)
+	}
+	for i := range max(len(left), len(right)) {
+		fmt.Fprintln(&b, bronze("│")+"  "+cell(left, i, panelLeftW)+" "+
+			bronze("│")+"  "+cell(right, i, panelRightW)+" "+bronze("│"))
+	}
+	fmt.Fprint(&b, bronze("╰"+strings.Repeat("─", panelLeftW+3)+"┴"+
+		strings.Repeat("─", panelRightW+3)+"╯"))
+	return b.String()
+}
+
+// narrowPanel is the fallback for a terminal too narrow to hold the box:
+// the same content as plain unboxed lines, where there is no column
+// alignment left to break in the first place.
+func narrowPanel(title string, left, right []panelCell) string {
+	var b strings.Builder
+	fmt.Fprintln(&b, bold(gold(title)))
+	all := make([]panelCell, 0, len(left)+len(right))
+	all = append(all, left...)
+	all = append(all, right...)
+	for _, c := range all {
+		if strings.TrimSpace(c.plain) == "" {
+			fmt.Fprintln(&b)
+			continue
+		}
+		fmt.Fprintln(&b, "  "+c.styled)
+	}
+	return strings.TrimRight(b.String(), "\n")
+}
+
+// welcomePanel renders the startup panel as ONE box split by a vertical
+// divider, matching the layout of the reference screenshot: the title sits
+// inlined in the top border, the left column carries the mascot, the
+// welcome line and the model/memory/project status, and the right column
+// carries tips drawn at random per launch plus — when GET /api/version/check
+// reports a newer release — an update notice pointing at /update. With
+// nothing to update, that slot takes one more tip instead so it is never
+// blank. Everything is bronze (colorBronze), Memo's brand accent.
+//
+// version and projectPath may be empty (the version fetch failed, or this
+// run has no project root); both are simply omitted rather than shown blank.
+// termWidth <= 0 means "unknown" (piped input, a pty that never reported a
+// size) and takes the full box, since nothing is going to reflow anyway.
+func welcomePanel(version, projectPath, model, memory, updateNotice string, memoryActive bool, termWidth int) string {
 	title := "✳ Memo CLI"
 	if version != "" {
 		// The raw version string (build_releases.sh's `version` file)
@@ -181,56 +367,16 @@ func welcomePanel(version, projectPath, model, memory string, memoryActive bool)
 		memoryColor = green
 	}
 
-	// Only the centered rows (title, mascot, welcome line) drive this width —
-	// the Model:/Memory:/path status block below stays left-aligned and can
-	// run wider than it without affecting how the centered rows are padded,
-	// same reasoning as the previous pass: real key:value data centers with
-	// a ragged, harder-to-scan left edge, so it deliberately doesn't.
-	centerWidth := len([]rune(title))
-	centerWidth = max(centerWidth, len([]rune(t("welcome_back"))))
-	for _, row := range memoMascot {
-		centerWidth = max(centerWidth, len([]rune(row)))
-	}
-	center := func(s string) string {
-		pad := max((centerWidth-len([]rune(s)))/2, 0)
-		return strings.Repeat(" ", pad) + s
-	}
+	// Drawn from one shuffle rather than two calls, so the extra tip that
+	// fills the update slot when there's nothing to update can never repeat
+	// one of the three already listed above it.
+	picks := randomTips(4)
 
-	var card strings.Builder
-	fmt.Fprintln(&card, bronze("╭─")+" "+bold(gold(title)))
-	line := func(s string) { fmt.Fprintln(&card, bronze("│")+"  "+s) }
-	blank := func() { fmt.Fprintln(&card, bronze("│")) }
+	left := leftColumn(model, memory, projectPath, memoryColor)
+	right := rightColumn(picks, updateNotice)
 
-	blank()
-	for _, row := range memoMascot {
-		line(bronze(center(row)))
+	if termWidth > 0 && termWidth < panelWidth {
+		return narrowPanel(title, left, right)
 	}
-	blank()
-	line(center(t("welcome_back")))
-	blank()
-	line(bold(t("label_model")) + model)
-	line(bold(t("label_memory")) + memoryColor(memory))
-	if projectPath != "" {
-		line(dim(projectPath))
-	}
-
-	tips := newBoxWriter()
-	tips.left(t("tips_title"), bold(t("tips_title")))
-	tips.blank()
-	const labelWidth = 8
-	for _, tip := range startupTips() {
-		padded := tip.label
-		if pad := labelWidth - len([]rune(tip.label)); pad > 0 {
-			padded += strings.Repeat(" ", pad)
-		}
-		plain := padded + tip.desc
-		styled := bold(gold(tip.label))
-		if pad := labelWidth - len([]rune(tip.label)); pad > 0 {
-			styled += strings.Repeat(" ", pad)
-		}
-		styled += dim(tip.desc)
-		tips.left(plain, styled)
-	}
-
-	return strings.TrimRight(card.String(), "\n") + "\n\n" + tips.render()
+	return boxedPanel(title, left, right)
 }

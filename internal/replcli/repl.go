@@ -448,7 +448,24 @@ func (s *session) printWelcome() {
 	// Best-effort: an older/incompatible backend or a transient error just
 	// means the title line omits the version suffix, nothing else degrades.
 	version, _ := s.client.Version(s.ctx)
-	fmt.Fprintln(s.out, welcomePanel(version, s.projectPath, s.modelSummary(), memory, active))
+
+	// Short deadline, deliberately shorter than the client's own default
+	// 10s: CheckVersionUpdate's backend handler makes an external network
+	// call, and this is a startup nicety, not something worth stalling the
+	// welcome panel over on a slow or absent connection — it just silently
+	// falls back to a filler tip instead of an update notice.
+	updateNotice := ""
+	checkCtx, cancel := context.WithTimeout(s.ctx, 2500*time.Millisecond)
+	if latest, err := s.client.CheckVersionUpdate(checkCtx); err == nil && latest != "" {
+		updateNotice = fmt.Sprintf(t("update_available"), strings.TrimLeft(latest, "Vv"))
+	}
+	cancel()
+
+	termWidth := 0
+	if s.ed != nil && s.ed.width != nil {
+		termWidth = s.ed.width()
+	}
+	fmt.Fprintln(s.out, welcomePanel(version, s.projectPath, s.modelSummary(), memory, updateNotice, active, termWidth))
 	// Embedding auto-start (autoStartEmbeddingModel/startupEmbeddingModel,
 	// internal/app/llama.go+embedding.go) can fail for reasons the banner
 	// alone doesn't explain — no embedding model file found, the model
@@ -461,11 +478,11 @@ func (s *session) printWelcome() {
 		if events, err := s.client.Events(s.ctx); err == nil {
 			if msg, ok := eventDataSince(events, 0, "memory:error"); ok {
 				// No forced "⚠ " prefix: several memory:error messages
-			// (llama.go's embedding-not-found one, in particular — visible
-			// in the very screenshot that prompted this fix) already embed
-			// their own "⚠️", and yellow() alone already reads as a warning
-			// everywhere else in this file.
-			fmt.Fprintln(s.out, yellow(msg))
+				// (llama.go's embedding-not-found one, in particular — visible
+				// in the very screenshot that prompted this fix) already embed
+				// their own "⚠️", and yellow() alone already reads as a warning
+				// everywhere else in this file.
+				fmt.Fprintln(s.out, yellow(msg))
 			}
 		}
 	}

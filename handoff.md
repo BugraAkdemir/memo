@@ -1,3 +1,21 @@
+# Handoff — 2026-07-20 (Session 45) — RAG'a kaydetmede near-duplicate skip (kök neden yarım çözüm)
+
+## Özet
+
+Session 44'te "selam" tekrarı bug'ı prompt talimatıyla (identity.go) semptom seviyesinde düzeltilmişti. Bu oturumda kök nedene kısmen indik: her sohbet turu, ne kadar anlamsız olursa olsun, importance=3 ile RAG'a koşulsuz kaydediliyordu (`internal/memory/store.go` `saveChunk`), zamanla neredeyse birebir aynı kayıtlar birikip gerçek recall'ı gürültüyle boğuyordu.
+
+**Eklenen mekanizma:** `saveChunk`, insert'ten önce yeni embedding'i mevcut `source == "conversation"` kayıtlarına karşı (zaten var olan `vecSearch`/`goSearch` yollarıyla) kontrol ediyor; cosine similarity ≥ 0.92 ise insert'i atlayıp sadece logluyor (`findDuplicateInteraction`, `duplicateInteractionSimilarity` const).
+
+**Bilerek daraltılmış kapsam (test yazarken 2 gerçek çakışma bulundu):**
+- Pinned/explicit fact'ler (`SaveExplicit`, source=="explicit") asla dedup hedefi olarak eşleşmiyor — sıradan bir sohbet turu asla bir pinned fact'e "birleştirilip" sessizce kaybolmaz.
+- Sadece `totalChunks == 1` (tek parçalık kısa mesajlar) kontrol ediliyor. İlk denemede bunu atlamıştım: `TestSaveInteraction_Chunking` kırıldı, çünkü uzun bir mesajın chunk'ları (chunkOverlapTokens sayesinde) zaten kasıtlı olarak birbirine çok benziyor — dedup mantığı bunları da "aynı şey" sanıp tek satıra düşürüyordu. Chunk'lı mesajlar tamamen kontrol dışı bırakıldı.
+
+Testler: `TestSaveInteraction_SkipsNearDuplicateRepeatedGreeting_VecSearch/_GoFallback`, `TestSaveInteraction_NeverTreatsPinnedFactAsDuplicateTarget` (`internal/memory/store_recall_test.go`). Tüm paket + `-race` yeşil. Commit: `0126088`.
+
+**Hâlâ çözülmedi:** Bu sadece *birebir/neredeyse birebir tekrarı* engelliyor. "tamam", "ok", "peki" gibi farklı kelimeli ama düşük bilgi değerli mesajları filtrelemiyor — daha genel bir "önem skoru" mekanizması hâlâ yok. Eşik (0.92) ampirik, gerçek kullanımda ayarlanması gerekebilir.
+
+---
+
 # Handoff — 2026-07-20 (Session 44, devam 2) — Kullanıcı raporu: jenerik mesajlarda (selam) model kendi eski cevabını birebir kopyalıyor — canlı doğrulanıp düzeltildi
 
 Not: Kullanıcı arayüzü (dropdown filtreler, Discover detay paneli) kendisi elle test etti, sorun bulunmadı — bu oturumdaki tek açık doğrulama borcu kapandı.

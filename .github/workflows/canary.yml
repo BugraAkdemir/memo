@@ -1,12 +1,16 @@
-# Weekly canaries for external dependencies (DuckDuckGo HTML scrape,
-# WhatsApp Noise handshake via whatsmeow). Intentionally NOT triggered by
-# push/PR — these probe live services, so they should fail independently of
-# any code change when an upstream breaks.
+# Canaries for external dependencies (DuckDuckGo HTML scrape, WhatsApp Noise
+# handshake via whatsmeow). Two trigger modes:
+#   - push to main: every commit (catch breakage soon after it ships)
+#   - weekly cron: still runs when a week has no commits (catch silent
+#     upstream breakage with zero local activity)
+# Build tag "canary" keeps these out of the normal CI `go test ./...` suite.
 name: Canary
 
 on:
+  push:
+    branches: [main]
   schedule:
-    # Monday 06:00 UTC
+    # Monday 06:00 UTC — safety net when the repo is quiet
     - cron: "0 6 * * 1"
   workflow_dispatch:
 
@@ -34,7 +38,6 @@ jobs:
           key: go-canary-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: go-canary-${{ runner.os }}-
 
-      # Build tag "canary" keeps these out of the normal `go test ./...` suite.
       - name: Web search canary (DuckDuckGo)
         run: go test -tags "sqlite_fts5 canary" -count=1 -run TestCanary ./internal/websearch/...
 

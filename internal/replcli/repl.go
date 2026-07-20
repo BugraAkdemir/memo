@@ -56,8 +56,9 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 			defer fmt.Fprint(out, "\033[?2004l")
 			keys = newKeySource(f)
 			ed = &editor{
-				out:  out,
-				keys: keys,
+				out:         out,
+				keys:        keys,
+				projectPath: projectPath,
 				width: func() int {
 					w, _, err := term.GetSize(fd)
 					if err != nil {

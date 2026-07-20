@@ -43,6 +43,11 @@ type editor struct {
 	keys  *keySource
 	width func() int // terminal columns; consulted on every render
 
+	// projectPath roots the "@" file-mention dropdown's directory walk
+	// (filematch.go). Empty is valid — it just means the dropdown never
+	// finds anything to show.
+	projectPath string
+
 	history []string
 
 	buf     []rune
@@ -121,11 +126,18 @@ func (e *editor) edit(prompt string) (string, bool) {
 			}
 
 		case keyEnter:
-			if m := e.matches(); e.menuOpen() && len(m) > 0 {
+			mode, atStart, _ := e.currentMenuMode()
+			m := e.matches()
+			if mode == menuAt && len(m) > 0 {
+				// A file mention is inserted, not submitted — the user
+				// keeps composing the rest of the message.
+				e.applySelection(mode, atStart, m[e.menuSel])
+				break
+			}
+			if mode == menuSlash && len(m) > 0 {
 				// Enter runs the highlighted command, even if only a prefix
 				// was typed ("/mo" + Enter → the selected entry).
-				e.buf = []rune(m[e.menuSel].label)
-				e.cursor = len(e.buf)
+				e.applySelection(mode, atStart, m[e.menuSel])
 			}
 			line := string(e.buf)
 			e.finish(prompt)
@@ -137,9 +149,10 @@ func (e *editor) edit(prompt string) (string, bool) {
 			return line, true
 
 		case keyTab:
-			if m := e.matches(); e.menuOpen() && len(m) > 0 {
-				e.buf = []rune(m[e.menuSel].label)
-				e.cursor = len(e.buf)
+			if mode, atStart, _ := e.currentMenuMode(); mode != menuNone {
+				if m := e.matches(); len(m) > 0 {
+					e.applySelection(mode, atStart, m[e.menuSel])
+				}
 			}
 
 		case keyEsc:
@@ -269,32 +282,90 @@ func (e *editor) historyDown() {
 	e.menuSuppress = true
 }
 
-// menuOpen reports whether the dropdown should be visible: a single
-// "/"-prefixed token, not dismissed with Esc.
-func (e *editor) menuOpen() bool {
-	if !e.menuEnable || e.menuSuppress || len(e.buf) == 0 || e.buf[0] != '/' {
-		return false
+// menuMode identifies which live dropdown (if any) applies to the current
+// buffer/cursor position: the whole-line "/" command palette (unchanged from
+// before), or an anywhere-in-message "@" file-reference picker.
+type menuMode int
+
+const (
+	menuNone menuMode = iota
+	menuSlash
+	menuAt
+)
+
+// currentMenuMode inspects the buffer and cursor and reports which dropdown
+// (if any) should be showing. For menuAt it also returns atStart — the
+// buffer index the "@" itself sits at, needed to splice just that token
+// (not the whole line) once a file is picked — and query, the text already
+// typed after "@" up to the cursor.
+func (e *editor) currentMenuMode() (mode menuMode, atStart int, query string) {
+	if !e.menuEnable || e.menuSuppress || len(e.buf) == 0 {
+		return menuNone, 0, ""
 	}
-	return !strings.ContainsRune(string(e.buf), ' ')
+	if e.buf[0] == '/' && !strings.ContainsRune(string(e.buf), ' ') {
+		return menuSlash, 0, ""
+	}
+	// Walk back from the cursor to the start of the word it's currently in
+	// (or right after, if it sits at a word boundary with nothing typed
+	// yet). i == e.cursor means nothing was scanned — the cursor is right
+	// after a space (or at column 0), not inside/after an "@" token, so
+	// that case is deliberately excluded below.
+	i := e.cursor
+	for i > 0 && e.buf[i-1] != ' ' {
+		i--
+	}
+	if i < e.cursor && i < len(e.buf) && e.buf[i] == '@' {
+		return menuAt, i, string(e.buf[i+1 : e.cursor])
+	}
+	return menuNone, 0, ""
 }
 
-// matches returns the dropdown entries for the current buffer (prefix match;
-// bare "/" lists everything).
+// menuOpen reports whether either live dropdown should be visible.
+func (e *editor) menuOpen() bool {
+	mode, _, _ := e.currentMenuMode()
+	return mode != menuNone
+}
+
+// matches returns the dropdown entries for the current buffer: slash
+// commands (prefix match; bare "/" lists everything) or, mid-message after
+// an "@", matching project files (filematch.go).
 func (e *editor) matches() []commandSpec {
-	if !e.menuOpen() {
+	mode, _, query := e.currentMenuMode()
+	switch mode {
+	case menuSlash:
+		typed := strings.ToLower(string(e.buf))
+		if typed == "/" {
+			return slashCommands
+		}
+		var out []commandSpec
+		for _, c := range slashCommands {
+			if strings.HasPrefix(c.label, typed) {
+				out = append(out, c)
+			}
+		}
+		return out
+	case menuAt:
+		return fileMatches(e.projectPath, query)
+	default:
 		return nil
 	}
-	typed := strings.ToLower(string(e.buf))
-	if typed == "/" {
-		return slashCommands
+}
+
+// applySelection inserts the chosen entry: a full-line replacement for a
+// slash command (it IS the whole line), or a splice of just the "@" token
+// at atStart..cursor for a file mention (everything else the user typed
+// before/after it is left alone).
+func (e *editor) applySelection(mode menuMode, atStart int, choice commandSpec) {
+	switch mode {
+	case menuSlash:
+		e.buf = []rune(choice.label)
+		e.cursor = len(e.buf)
+	case menuAt:
+		token := []rune("@" + choice.label)
+		tail := append([]rune{}, e.buf[e.cursor:]...)
+		e.buf = append(append(e.buf[:atStart:atStart], token...), tail...)
+		e.cursor = atStart + len(token)
 	}
-	var out []commandSpec
-	for _, c := range slashCommands {
-		if strings.HasPrefix(c.label, typed) {
-			out = append(out, c)
-		}
-	}
-	return out
 }
 
 // render redraws the input line and whatever lives under it (dropdown or
@@ -329,6 +400,7 @@ func (e *editor) render(prompt string) {
 
 	rows := 0
 	if m := e.matches(); len(m) > 0 {
+		mode, _, _ := e.currentMenuMode()
 		for i, c := range m {
 			b.WriteString("\n")
 			label := c.label
@@ -343,7 +415,11 @@ func (e *editor) render(prompt string) {
 			b.WriteString("  " + dim(c.hint))
 			rows++
 		}
-		b.WriteString("\n  " + dim("↑↓ gezin · Tab tamamla · Enter çalıştır · Esc kapat"))
+		hint := "↑↓ gezin · Tab tamamla · Enter çalıştır · Esc kapat"
+		if mode == menuAt {
+			hint = "↑↓ gezin · Tab/Enter seç · Esc kapat"
+		}
+		b.WriteString("\n  " + dim(hint))
 		rows++
 	} else if e.notice != "" {
 		b.WriteString("\n  " + dim(e.notice))

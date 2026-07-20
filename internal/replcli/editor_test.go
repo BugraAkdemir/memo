@@ -2,6 +2,8 @@ package replcli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -100,6 +102,58 @@ func TestEditor_DropdownRendersMatches(t *testing.T) {
 		if !strings.Contains(rendered, want) {
 			t.Errorf("dropdown output missing %q", want)
 		}
+	}
+}
+
+func TestEditor_AtMention_TabInsertsPathAndKeepsComposing(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "readme.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ed, _ := newTestEditor("check @re\t done\r")
+	ed.projectPath = root
+	line, ok := ed.readLine("> ")
+	want := "check @readme.txt done"
+	if !ok || line != want {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, want)
+	}
+}
+
+func TestEditor_AtMention_EnterInsertsWithoutSubmitting(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "readme.txt"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	// Enter while the "@" dropdown is open must insert the file, not submit
+	// the line — only the trailing "\r" after " ok" should end readLine.
+	ed, _ := newTestEditor("check @re\r ok\r")
+	ed.projectPath = root
+	line, ok := ed.readLine("> ")
+	want := "check @readme.txt ok"
+	if !ok || line != want {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, want)
+	}
+}
+
+func TestEditor_AtMention_NoProjectPathFallsThroughToPlainSubmit(t *testing.T) {
+	// No projectPath set (a run with no project root) — "@" still opens
+	// menuAt mode, but fileMatches has nothing to offer, so Enter must fall
+	// through to a normal submit instead of trying to insert an empty pick.
+	ed, _ := newTestEditor("hi @x\r")
+	line, ok := ed.readLine("> ")
+	if !ok || line != "hi @x" {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, "hi @x")
+	}
+}
+
+func TestEditor_AtMention_MidWordAtSignDoesNotTriggerDropdown(t *testing.T) {
+	// "@" not at the start of its word (an email address, say) must not be
+	// treated as a file mention — Enter submits the line exactly as typed.
+	ed, _ := newTestEditor("mail me at a@b.com\r")
+	ed.projectPath = t.TempDir()
+	line, ok := ed.readLine("> ")
+	if !ok || line != "mail me at a@b.com" {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, "mail me at a@b.com")
 	}
 }
 

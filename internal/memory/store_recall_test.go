@@ -99,6 +99,67 @@ func containsMemory(results []MemoryResult, substr string) bool {
 	return false
 }
 
+// --- Duplicate-interaction skipping (BUG: repeated "selam" turns piling up) -
+
+func runSkipsNearDuplicateRepeatedGreeting(t *testing.T, store *Store) {
+	ctx := context.Background()
+
+	// Mirrors the reported bug directly: the user sends the same generic
+	// greeting several times in a row and the model keeps giving back the
+	// exact same reply (see identity.go's anti-verbatim-copy fix for the
+	// prompt-side half of this) — these turns must collapse to one memory
+	// instead of five near-identical rows.
+	for i := range 5 {
+		if err := store.SaveInteraction(ctx, "selam", "selam! nasilsin"); err != nil {
+			t.Fatalf("SaveInteraction() [%d] error = %v", i, err)
+		}
+	}
+	if got := store.Count(); got != 1 {
+		t.Fatalf("Count() after 5 near-identical greetings = %d, want 1 (later turns should be skipped as duplicates)", got)
+	}
+
+	if err := store.SaveInteraction(ctx, "dogum gunum 5 mayis", "not aldim"); err != nil {
+		t.Fatalf("SaveInteraction() distinct turn error = %v", err)
+	}
+	if got := store.Count(); got != 2 {
+		t.Fatalf("Count() after a genuinely distinct turn = %d, want 2 (distinct content must still be saved)", got)
+	}
+}
+
+func TestSaveInteraction_SkipsNearDuplicateRepeatedGreeting_VecSearch(t *testing.T) {
+	runSkipsNearDuplicateRepeatedGreeting(t, newRecallStore(t, bagOfWordsEmbedding(32), 32))
+}
+
+func TestSaveInteraction_SkipsNearDuplicateRepeatedGreeting_GoFallback(t *testing.T) {
+	runSkipsNearDuplicateRepeatedGreeting(t, newRecallStoreGoFallback(t, bagOfWordsEmbedding(32), 32))
+}
+
+func TestSaveInteraction_NeverTreatsPinnedFactAsDuplicateTarget(t *testing.T) {
+	ctx := context.Background()
+	store := newRecallStore(t, bagOfWordsEmbedding(32), 32)
+
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit() error = %v", err)
+	}
+	// Same wording as the pinned fact, but going through the ordinary chat
+	// path — this must still be saved as its own conversation memory, not
+	// silently skipped because it resembles the pinned fact.
+	if err := store.SaveInteraction(ctx, "kullanicinin adi Ahmet", ""); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+
+	if got := store.Count(); got != 2 {
+		t.Fatalf("Count() = %d, want 2 (pinned fact + conversation turn, neither skipped)", got)
+	}
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("len(pinned) = %d, want 1 (pinned fact must be untouched by the duplicate check)", len(pinned))
+	}
+}
+
 // --- Pinned facts (always-injected, bypass RAG ranking) ---------------------
 
 func TestGetPinnedFacts_OnlyExplicitSource(t *testing.T) {

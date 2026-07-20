@@ -501,6 +501,14 @@ func (s *Store) migrateEmbeddingsToVec(ctx context.Context) error {
 const chunkMaxTokens = 300
 const chunkOverlapTokens = 50
 
+// duplicateInteractionSimilarity is the cosine-similarity floor above which
+// a new conversation turn is treated as a near-repeat of an existing one
+// (e.g. another "selam" exchange) and skipped instead of inserted, so
+// trivial repeated turns don't pile up and crowd out genuinely distinct
+// memories during retrieval. Chosen empirically; revisit if real usage shows
+// it merging turns that are actually distinct, or failing to catch repeats.
+const duplicateInteractionSimilarity = 0.92
+
 // capForEmbedding returns text truncated to a single safe-sized piece for
 // one s.embed call, reusing splitLongWord's conservative byte-per-token
 // margin (see BUG-H3). For callers that need one bounded string rather than
@@ -541,6 +549,21 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 		return fmt.Errorf("embedding dimension %d != expected %d", len(embedding), s.dim)
 	}
 	embedDur := time.Since(embedStart)
+
+	// Only single-chunk saves are eligible for dedup. A long message split
+	// into multiple chunks (see chunkText) deliberately produces several
+	// rows sharing one parentUUID, often with heavy word overlap between
+	// consecutive chunks by design (chunkOverlapTokens) — treating those as
+	// duplicates of each other would silently drop pieces of a single long
+	// message instead of catching a genuinely repeated short turn.
+	if totalChunks == 1 {
+		if dupUUID, err := s.findDuplicateInteraction(ctx, embedding); err != nil {
+			logx.Printf("memory: duplicate check failed, saving anyway: %v", err)
+		} else if dupUUID != "" {
+			logx.Printf("MEMORY SAVE SKIPPED: near-duplicate of %s (similarity >= %.2f)", dupUUID, duplicateInteractionSimilarity)
+			return nil
+		}
+	}
 
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 	uuid := parentUUID
@@ -609,6 +632,30 @@ func (s *Store) saveChunk(ctx context.Context, userChunk, assistantMsg, parentUU
 	)
 
 	return err
+}
+
+// findDuplicateInteraction looks for an existing conversation-sourced memory
+// whose embedding is a near-duplicate of embedding (see
+// duplicateInteractionSimilarity), returning its UUID if found. Pinned/
+// explicit facts (source == "explicit", written by SaveExplicit) are never
+// treated as a duplicate target here — SaveExplicit has its own insert path
+// entirely and is never skipped or merged by this check, only ordinary chat
+// turns saved via SaveInteraction are.
+func (s *Store) findDuplicateInteraction(ctx context.Context, embedding []float32) (string, error) {
+	searchFn := s.goSearch
+	if s.useVec {
+		searchFn = s.vecSearch
+	}
+	candidates, err := searchFn(ctx, embedding, 5, duplicateInteractionSimilarity)
+	if err != nil {
+		return "", err
+	}
+	for _, c := range candidates {
+		if c.Source == "conversation" {
+			return c.ID, nil
+		}
+	}
+	return "", nil
 }
 
 // escapeFTSQuery turns a raw natural-language query into an FTS5 MATCH

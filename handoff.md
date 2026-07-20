@@ -1,4 +1,43 @@
-# Handoff — 2026-07-20 (Session 48 devam) — Unpushed Swarm code audit
+# Handoff — 2026-07-20 (Session 49) — Yeni makine kurulumu + tam fonksiyonel denetim (Session 48 audit'i düzeltir)
+
+## Özet
+
+Kullanıcı bu makineye yeni geçti. Önce SSH commit signing kuruldu (mevcut `~/.ssh/id_ed25519` reddedildi, `gpg.format=ssh` + `allowed_signers`), `user.name`/`user.email` ayarlandı (`BugraAkdemir` / `bugrakaptan5@gmail.com`), test commit ile doğrulandı. Sonra kullanıcı repo'nun 3.3GB olmasını sorguladı — kök `memo`/`memo_test`/`appimagetool-x86_64.AppImage`/`proactive-demo` derlenmiş binary'leri (`.gitignore`'daki build-output kurallarının kapsamadığı) yanlışlıkla commit'lenmiş bulundu, `memo` tek başına history'de ~50 versiyon (~530MB). Untrack edilip `.gitignore`'a eklendi (`308c4d9`) — **history rewrite yapılmadı, kullanıcı bilinçli olarak istemedi**, `.git` hâlâ ~470MB.
+
+Sonra kullanıcı "handoff.md ve son ~30 commit'e göre işlevini yerine getiriyor mu kontrol et" dedi — tam fonksiyonel denetim yapıldı.
+
+## Denetim sonucu
+
+AGENTS.md zorunlu doğrulama komutları çalıştırıldı: `go build/vet -tags sqlite_fts5` temiz, `flutter analyze` temiz (4 bilinen info), `flutter test` 105/105 yeşil.
+
+**Bu dosyanın (eskiden) en üstündeki "Session 48 devam — Unpushed Swarm audit" girişi ARTIK YANLIŞ/ESKİ bilgi veriyordu** — swarm'ın 3 kritik blokerini (chat client swarm'a bağlanmıyor / LAN join default'ta patlıyor / Tailscale "ts" yarım) "push'a hazır değil" diye işaretliyordu. Ama o audit'ten SONRA gelen commit'ler (`9b0b19d`, `4bed402`, `cc4d2a1`) bu üçünü de gerçekten düzeltmiş — `internal/app/swarm.go` satır satır okunarak doğrulandı (commit mesajına güvenilmedi):
+- `HostSwarmStart` artık `a.client`'ı gerçekten swarm coordinator'a yönlendiriyor (`api.NewClient(srv.GetBaseURL(), ...)`), stop'ta `restoreChatClientAfterSwarm` ile geri alınıyor.
+- `ensureSwarmLANListen` webserver'ı LAN join için 127.0.0.1'den 0.0.0.0'a otomatik rebind ediyor.
+- `swarmLocalRPCAddress` "ts" modunda gerçek OS-seviye Tailscale 100.x adresi zorunlu kılıyor, embedded tsnet'e sessizce düşmüyor.
+
+Yani **bu girişin altındaki "Session 48 devam" audit'i artık geçersiz/tarihi belge olarak okunmalı** — o oturumdan sonra fix'ler geldi ama hiçbir handoff girişi bunu yansıtmadı (AGENTS.md kural 2 ihlali — muhtemelen fix'leri yapan oturum handoff yazmadan bitti). `BUG_REPORT.md` tarafı ise doğru güncellenmişti (`6fe9d09`, H1/H2/M1/M2/M3/L1 kapalı olarak işaretli, test suite bunu teyit ediyor) — sadece `handoff.md` geride kalmıştı.
+
+## Bu oturumda bulunup düzeltilen gerçek bug
+
+`internal/llama/process_unix.go`'daki `pidListeningOnPort`'un `fuser` fallback'i kırıktı: `fuser`'ın `"PORT/tcp:"` etiketi **stderr**'e, PID listesi **stdout**'a yazılıyor, ama kod `Output()` (sadece stdout) alıp içinde `":"` arıyordu — hiç bulamayıp sessizce `0` (bulunamadı) dönüyordu. `lsof` kurulu değilse (bu makine dahil) orphan `llama-server` port temizliği (AGENTS.md'de "2026-07-12 fixed" diye işaretli) aslında hiç çalışmıyordu. `TestKillByPort_KillsOrphanProcess` bu sandbox'ta (lsof yok, fuser var) tam bu yüzden fail etti — teorik değil, canlı doğrulandı. Fix: `281f6a9`.
+
+## Diğer bulgu (henüz düzeltilmedi, düşük öncelik)
+
+AGENTS.md'deki Flutter SDK yolu (`~/Belgeler/flutter/bin`) bu yeni makinede geçersiz — gerçek yer `~/Documents/flutter/bin` (klasör adı makine/locale'e göre değişiyor, "Belgeler" eski makineye özgüydü). AGENTS.md güncellenebilir ama makineye özgü bir yol olduğu için repo'ya sabit yazmak yine kırılgan — konu kullanıcıya bırakıldı, düzeltilmedi.
+
+## Sıradaki oturum için
+
+1. Stage 10 (gerçek 2+ makine donanım testi) hâlâ bu ortamda yapılamaz — değişmedi.
+2. AGENTS.md'nin Flutter yolu güncellenmek istenirse (bkz. yukarısı) — kullanıcı kararı bekleniyor.
+3. Genel verdict: uygulama işlevini yerine getiriyor, kritik açık bug kalmadı (fuser fix'i dahil).
+
+## Branch
+
+`main`, origin'in commit sayısı bu oturumda yeniden kontrol edilmedi (audit odaklıydı, push yapılmadı).
+
+---
+
+
 
 ## Özet
 

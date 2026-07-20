@@ -234,6 +234,25 @@ func TestCoordinator_SetWorkerShare_ClampsToZeroHundred(t *testing.T) {
 	}
 }
 
+func TestCoordinator_SetWorkerConnected(t *testing.T) {
+	var c Coordinator
+	if _, err := c.Init("lan", "10.0.0.1:8090"); err != nil {
+		t.Fatal(err)
+	}
+	c.AddWorker("w1", "pc1", "10.0.0.2:50052")
+	if !c.Workers()[0].Connected {
+		t.Fatal("new worker should start Connected")
+	}
+	c.SetWorkerConnected("w1", false)
+	if c.Workers()[0].Connected {
+		t.Fatal("SetWorkerConnected(false) did not stick")
+	}
+	c.SetWorkerConnected("w1", true)
+	if !c.Workers()[0].Connected {
+		t.Fatal("SetWorkerConnected(true) did not stick")
+	}
+}
+
 func TestCoordinator_HostShare_AutoComputedFromWorkerShares(t *testing.T) {
 	var c Coordinator
 	c.Init("lan", "10.0.0.1:8090")

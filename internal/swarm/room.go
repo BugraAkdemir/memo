@@ -291,6 +291,23 @@ func (c *Coordinator) Workers() []WorkerSlot {
 	return out
 }
 
+// SetWorkerConnected updates the live reachability flag for a registered
+// worker (health probe). Re-registration via AddWorker still sets Connected
+// true; this is the only path that can flip it back to false without remove.
+func (c *Coordinator) SetWorkerConnected(id string, connected bool) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for i := range c.workers {
+		if c.workers[i].ID == id {
+			c.workers[i].Connected = connected
+			if connected {
+				c.workers[i].LastSeen = time.Now()
+			}
+			return
+		}
+	}
+}
+
 // SetRunning records whether the coordinator's llama-server is currently
 // running the swarm.
 func (c *Coordinator) SetRunning(running bool) {

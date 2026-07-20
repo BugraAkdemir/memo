@@ -69,7 +69,7 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 	// reply add only RAG noise. Explicit /remember (SaveExplicit) never
 	// reaches this path. Near-duplicate cosine skip in store.SaveInteraction
 	// still applies to everything that does get saved.
-	if memory.IsLowValueInteraction(userMsg, reply) {
+	if memory.IsLowValueTurn(userMsg, reply) {
 		logx.Printf("MEMORY SAVE SKIPPED: low-value interaction %q", truncate.Text(userMsg, 40))
 		return
 	}

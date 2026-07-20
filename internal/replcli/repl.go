@@ -60,11 +60,18 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 				keys:        keys,
 				projectPath: projectPath,
 				width: func() int {
-					w, _, err := term.GetSize(fd)
-					if err != nil {
-						return 80
+					// GetSize can return (0, 0, nil) — no error, but no
+					// winsize either — for a pty whose window size was
+					// never reported (some pty setups, a resize event lost
+					// mid-flight). render()'s maxVis clamps to a minimum of
+					// 8 either way, but falling all the way to that instead
+					// of the normal 80-column assumption made the composer
+					// wrap after a handful of characters for no visible
+					// reason. Treat non-positive the same as an error.
+					if w, _, err := term.GetSize(fd); err == nil && w > 0 {
+						return w
 					}
-					return w
+					return 80
 				},
 			}
 		}

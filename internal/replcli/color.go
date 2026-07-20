@@ -25,8 +25,6 @@ const (
 	// everywhere.
 	colorBrightCyan    = "\033[38;5;51m"
 	colorBrightMagenta = "\033[38;5;213m"
-	colorBgUser        = "\033[48;5;33m" // vivid blue background — tints the user's own sent message
-	colorFgUser        = "\033[38;5;16m" // near-black — strongest possible contrast against colorBgUser
 
 	// Bronze/gold — Memo's brand accent (README's #B08D57), used for the
 	// terminal's structural chrome (welcome panel, prompt glyph, menu/dropdown
@@ -54,16 +52,21 @@ func brightMagenta(s string) string { return colorize(colorBrightMagenta, s) }
 func bronze(s string) string        { return colorize(colorBronze, s) }
 func gold(s string) string          { return colorize(colorGold, s) }
 
-// userInputStart begins a background tint that "bleeds" into the terminal's
-// own echo of whatever the user types next — a tty prints keystrokes using
-// whatever SGR state is currently active when each one is drawn, so this
-// colors the user's raw input without the program ever touching what they
-// typed. Bold near-black on vivid blue, rather than white-on-blue, so it
-// stays legible even under a semi-transparent terminal window blending the
-// background toward whatever's behind it. Always pair with colorReset
-// immediately after the line is read, so nothing printed afterward (blank
-// line, reply, command output) inherits it.
-const userInputStart = colorBgUser + colorBold + colorFgUser
+// userInputStart marks the user's own typed/echoed text — a tty prints
+// keystrokes using whatever SGR state is currently active when each one is
+// drawn, so this styles the user's raw input without the program ever
+// touching what they typed. Bold only, no background fill and no forced
+// foreground color: an earlier version filled a solid background block
+// (blue background, near-black text) — reported unreadable, the second such
+// report after an earlier 16→256-color fix already tried to address the
+// same complaint once. A fixed bg/fg pair can only ever be tuned for one
+// kind of terminal (dark or light), and there's no way to detect which the
+// user is actually running — bold-only sidesteps the whole class of bug by
+// never overriding color at all, so it reads correctly against whatever
+// foreground/background the user's own terminal already uses. Always pair
+// with colorReset immediately after the line is read, so nothing printed
+// afterward (blank line, reply, command output) inherits the bold weight.
+const userInputStart = colorBold
 
 func errorf(format string, args ...any) string {
 	return red(fmt.Sprintf(format, args...))

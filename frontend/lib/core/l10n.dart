@@ -163,6 +163,11 @@ class L10n {
     'free_paid_legend': '🟢 Ücretsiz · 🟡 Ücretli',
     'free': 'Ücretsiz',
     'paid': 'Ücretli',
+    'whatsapp_error': 'WhatsApp hatası: \${e}',
+    'orchestra_toggle_on': '🎵 Orchestra: Açık (düzenle)',
+    'orchestra_toggle_off': '🎵 Orchestra: Kapalı (aç)',
+    'orchestra_enable_failed': 'Orchestra açılamadı: \${e}',
+    'error_with_detail': 'Hata: \${e}',
 
     // Settings tabs
     'settings': 'Ayarlar',
@@ -1358,6 +1363,11 @@ class L10n {
     'free_paid_legend': '\uD83D\uDFE2 Free \u00B7 \uD83D\uDFE1 Paid',
     'free': 'Free',
     'paid': 'Paid',
+    'whatsapp_error': 'WhatsApp error: \${e}',
+    'orchestra_toggle_on': '🎵 Orchestra: On (edit)',
+    'orchestra_toggle_off': '🎵 Orchestra: Off (enable)',
+    'orchestra_enable_failed': 'Could not enable Orchestra: \${e}',
+    'error_with_detail': 'Error: \${e}',
 
     'settings': 'Settings',
     'general': 'General',

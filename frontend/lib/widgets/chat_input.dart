@@ -249,7 +249,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('WhatsApp hatası: $e')),
+          SnackBar(content: Text(L10n.t('whatsapp_error', {'e': '$e'}))),
         );
       }
     } finally {
@@ -467,7 +467,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(),
-            child: const Text('İptal'),
+            child: Text(L10n.t('cancel')),
           ),
           FilledButton(
             onPressed: () {
@@ -475,7 +475,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               if (key.isEmpty) return;
               Navigator.of(ctx).pop(key);
             },
-            child: const Text('Devam'),
+            child: Text(L10n.t('continue_btn')),
           ),
         ],
       ),
@@ -498,7 +498,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               children: [
                 CircularProgressIndicator(),
                 SizedBox(height: 16),
-                Text('Modeller yükleniyor...'),
+                Text(L10n.t('models_loading')),
               ],
             ),
           ),
@@ -514,7 +514,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}'),
+              content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}'),
             ),
           );
         }
@@ -525,9 +525,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         Navigator.of(context).pop();
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('error_with_detail', {'e': '$e'}))),
+        );
       }
       return;
     }
@@ -550,8 +550,8 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       );
       if (result['status'] == 'done' && mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ OpenRouter bağlandı!'),
+          SnackBar(
+            content: Text(L10n.t('openrouter_connected')),
             backgroundColor: MemoTheme.green,
           ),
         );
@@ -560,16 +560,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('❌ ${result['error'] ?? 'Bağlantı hatası'}'),
+            content: Text('❌ ${result['error'] ?? L10n.t('connection_error')}'),
             backgroundColor: MemoTheme.red,
           ),
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Hata: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('error_with_detail', {'e': '$e'}))),
+        );
       }
     }
   }
@@ -716,7 +716,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               _InputIconButton(
                 icon: Icons.image_outlined,
                 tooltip: orchestraEnabled
-                    ? 'Orchestra modunda kullanılamaz'
+                    ? L10n.t('orchestra_not_available')
                     : L10n.t('attach_image'),
                 disabled: orchestraEnabled,
                 onTap: () async {
@@ -737,7 +737,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               _InputIconButton(
                 icon: Icons.attach_file,
                 tooltip: orchestraEnabled
-                    ? 'Orchestra modunda kullanılamaz'
+                    ? L10n.t('orchestra_not_available')
                     : L10n.t('attach_file'),
                 disabled: orchestraEnabled,
                 onTap: () async {
@@ -770,7 +770,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
               // Orchestra quick toggle
               _InputIconButton(
                 icon: orchestraEnabled ? Icons.queue_music : Icons.queue_music_outlined,
-                tooltip: orchestraEnabled ? '🎵 Orchestra: Açık (düzenle)' : '🎵 Orchestra: Kapalı (aç)',
+                tooltip: orchestraEnabled
+                    ? L10n.t('orchestra_toggle_on')
+                    : L10n.t('orchestra_toggle_off'),
                 disabled: false,
                 iconColor: orchestraEnabled ? MemoTheme.accent : null,
                 onTap: () async {
@@ -787,7 +789,9 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('Orchestra açılamadı: $e')),
+                          SnackBar(
+                            content: Text(L10n.t('orchestra_enable_failed', {'e': '$e'})),
+                          ),
                         );
                       }
                     }
@@ -1100,14 +1104,14 @@ class _ModelSwitcherDialog extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
-      title: const Text('Switch Model'),
+      title: Text(L10n.t('switch_model')),
       content: SizedBox(
         width: 320,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              'Choose which model to use for chat:',
+              L10n.t('switch_model_desc'),
               style: TextStyle(
                 fontSize: 13,
                 color: MemoTheme.of(context).textDim,
@@ -1125,7 +1129,7 @@ class _ModelSwitcherDialog extends StatelessWidget {
             TextButton.icon(
               onPressed: onOpenRouterOAuth,
               icon: const Text('🔑', style: TextStyle(fontSize: 16)),
-              label: const Text('OpenRouter ile Giriş Yap'),
+              label: Text(L10n.t('login_openrouter')),
               style: TextButton.styleFrom(foregroundColor: MemoTheme.warningOrange),
             ),
           ],
@@ -1134,7 +1138,7 @@ class _ModelSwitcherDialog extends StatelessWidget {
       actions: [
         TextButton(
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
+          child: Text(L10n.t('cancel')),
         ),
       ],
     );
@@ -1356,13 +1360,13 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
             child: Row(
               children: [
                 Text(
-                  '🟢 Ücretsiz · 🟡 Ücretli',
+                  L10n.t('free_paid_legend'),
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
                 const Spacer(),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('İptal'),
+                  child: Text(L10n.t('cancel')),
                 ),
               ],
             ),

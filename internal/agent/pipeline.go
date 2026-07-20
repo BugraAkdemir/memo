@@ -340,7 +340,18 @@ func (p *Pipeline) RunStream(ctx context.Context, messages []provider.Message, m
 	return outCh, nil
 }
 
+// trySend delivers chunk to outCh, preferring the send over ctx cancellation.
+// A plain `select { case outCh <- chunk: case <-ctx.Done(): }` lets Go's
+// random tie-breaking between simultaneously-ready cases silently drop the
+// chunk — including the final Done:true one — if ctx becomes Done at the
+// exact moment outCh also has buffer room. Mirrors trySend in
+// internal/provider/provider.go and internal/app/llm.go (BUG-H1).
 func trySend(ctx context.Context, outCh chan<- provider.StreamChunk, chunk provider.StreamChunk) {
+	select {
+	case outCh <- chunk:
+		return
+	default:
+	}
 	select {
 	case outCh <- chunk:
 	case <-ctx.Done():

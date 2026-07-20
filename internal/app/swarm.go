@@ -308,8 +308,10 @@ func (a *App) HostSwarmClose() error {
 	return nil
 }
 
-// HostSwarmStatus returns the host-side room state.
-func (a *App) HostSwarmStatus() HostSwarmStatus {
+// HostSwarmStatus returns the host-side room state. Typed as interface{} so
+// it satisfies FullBridge without webserver importing this package (same
+// pattern as GetRemoteAccessStatus).
+func (a *App) HostSwarmStatus() interface{} {
 	a.swarmMu.Lock()
 	defer a.swarmMu.Unlock()
 
@@ -427,8 +429,8 @@ func (a *App) LeaveSwarm() error {
 	return nil
 }
 
-// JoinSwarmStatus returns the worker-side join state.
-func (a *App) JoinSwarmStatus() JoinSwarmStatus {
+// JoinSwarmStatus returns the worker-side join state (interface{} for FullBridge).
+func (a *App) JoinSwarmStatus() interface{} {
 	a.swarmMu.Lock()
 	defer a.swarmMu.Unlock()
 
@@ -449,9 +451,10 @@ func (a *App) JoinSwarmStatus() JoinSwarmStatus {
 }
 
 // SwarmStatusSnapshot returns the combined status for GET /api/swarm/status.
-// Reads host + worker state under a single lock (HostSwarmStatus/JoinSwarmStatus
-// each take swarmMu themselves — calling both would deadlock).
-func (a *App) SwarmStatusSnapshot() SwarmStatus {
+// interface{} so FullBridge doesn't need webserver→app import. Reads host +
+// worker state under a single lock (the concrete Host/Join helpers each take
+// swarmMu themselves — calling both would deadlock).
+func (a *App) SwarmStatusSnapshot() interface{} {
 	a.swarmMu.Lock()
 	defer a.swarmMu.Unlock()
 

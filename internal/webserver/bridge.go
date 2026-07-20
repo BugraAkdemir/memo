@@ -210,4 +210,21 @@ type FullBridge interface {
 	DeleteTaskList(id string) error
 	StartTaskList(ctx context.Context, listID string) error
 	StopTaskList(listID string)
+
+	// Swarm (Memo Swarm — multi-machine llama.cpp RPC pool). Beta-gated in App.
+	// Status methods return interface{} (JSON-serializable structs) so this
+	// package never imports internal/app (cycle: app → webserver).
+	HostSwarmCreate(modelPath string) (roomCode string, err error)
+	HostSwarmAddWorker(id, secret, myRPCAddress, label string) error
+	HostSwarmRemoveWorker(id string) error
+	HostSwarmReorderWorkers(fromIdx, toIdx int) error
+	HostSwarmSetShare(id string, pct float64) error
+	HostSwarmStart(ctxSize int) error
+	HostSwarmStop() error
+	HostSwarmClose() error
+	HostSwarmStatus() interface{}
+	JoinSwarm(code string) error
+	LeaveSwarm() error
+	JoinSwarmStatus() interface{}
+	SwarmStatusSnapshot() interface{}
 }

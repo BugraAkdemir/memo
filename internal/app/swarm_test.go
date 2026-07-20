@@ -74,7 +74,11 @@ func TestHostSwarmAddWorker_AcceptsValidSecret(t *testing.T) {
 func TestSwarmStatusSnapshot_Empty(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{Beta: true, Swarm: config.SwarmConfig{RPCPort: 50052}}}
 	a.initSwarm()
-	st := a.SwarmStatusSnapshot()
+	raw := a.SwarmStatusSnapshot()
+	st, ok := raw.(SwarmStatus)
+	if !ok {
+		t.Fatalf("SwarmStatusSnapshot() type = %T, want SwarmStatus", raw)
+	}
 	if st.Role != "none" {
 		t.Errorf("Role = %q, want none", st.Role)
 	}

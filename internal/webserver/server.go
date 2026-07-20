@@ -150,6 +150,18 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/memory/explicit/delete", s.handleMemoryExplicitDelete)
 	route("/api/memory/import-text", s.handleMemoryImportText)
 	route("/api/memory/insight", s.handleMemoryInsight)
+	// Swarm (Memo Swarm — multi-machine llama.cpp RPC; Beta-gated in App)
+	route("/api/swarm/status", s.handleSwarmStatus)
+	route("/api/swarm/host/create", s.handleSwarmHostCreate)
+	route("/api/swarm/host/workers/add", s.handleSwarmAddWorker)
+	route("/api/swarm/host/workers/remove", s.handleSwarmRemoveWorker)
+	route("/api/swarm/host/workers/reorder", s.handleSwarmReorderWorkers)
+	route("/api/swarm/host/workers/share", s.handleSwarmSetShare)
+	route("/api/swarm/host/start", s.handleSwarmStart)
+	route("/api/swarm/host/stop", s.handleSwarmStop)
+	route("/api/swarm/host/close", s.handleSwarmClose)
+	route("/api/swarm/join", s.handleSwarmJoin)
+	route("/api/swarm/leave", s.handleSwarmLeave)
 	route("/api/memory/export", s.handleMemoryExport)
 	route("/api/memory/import", s.handleMemoryImport)
 	route("/api/memory/stats", s.handleMemoryStats)
@@ -725,6 +737,13 @@ func remoteAuthOK(listenAddr, wantToken string, r *http.Request) bool {
 func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.fullBridge == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Worker join registration: a joining machine has no X-Memo-Token —
+		// auth is the room id+secret pair checked inside HostSwarmAddWorker.
+		// Both /api/ and /api/v1/ aliases must be skipped (route() registers both).
+		if isSwarmWorkerAddPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

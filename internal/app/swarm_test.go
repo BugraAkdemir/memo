@@ -89,3 +89,20 @@ func TestSwarmStatusSnapshot_Empty(t *testing.T) {
 		t.Errorf("RPCPort = %d, want 50052", st.RPCPort)
 	}
 }
+
+func TestRestoreChatClientAfterSwarm_UsesOriginalBaseURLWhenNoLocalModel(t *testing.T) {
+	a := &App{
+		cfg:             &config.AppConfig{API: config.APIConfig{TimeoutSeconds: 30}},
+		originalBaseURL: "http://example.invalid/v1",
+	}
+	a.restoreChatClientAfterSwarm()
+	if a.client == nil {
+		t.Fatal("client is nil after restore")
+	}
+	// Client is opaque; at least ensure restore does not panic and sets non-nil.
+}
+
+func TestRedirectChatToSwarm_NoopWhenNoServer(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{API: config.APIConfig{TimeoutSeconds: 30}}}
+	a.redirectChatToSwarm() // must not panic
+}

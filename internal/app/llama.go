@@ -68,7 +68,15 @@ func (a *App) StopLocalModel() error {
 }
 
 // GetLocalModelStatus returns the current llama server status.
+// When Memo Swarm's coordinator is running, report that server instead so
+// EngineStrip / model status reflect the process chat is actually using.
 func (a *App) GetLocalModelStatus() llama.ServerStatus {
+	if a.swarmServer != nil && a.swarmServer.IsRunning() {
+		return a.swarmServer.GetStatus()
+	}
+	if a.llamaServer == nil {
+		return llama.ServerStatus{}
+	}
 	return a.llamaServer.GetStatus()
 }
 

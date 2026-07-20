@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/logx"
@@ -259,6 +260,10 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 		return fmt.Errorf("swarm: coordinator failed to become ready: %w", err)
 	}
 	a.swarmCoordinator.SetRunning(true)
+	// Point chat/agent inference at the coordinator so "Start Swarm" actually
+	// changes which model answers — without this, swarmServer runs idle on
+	// Port+2 while a.client keeps talking to the normal chat server.
+	a.redirectChatToSwarm()
 	logx.Printf("swarm: coordinator running on port %d with %d workers", swarmPort, len(workers))
 	return nil
 }
@@ -282,7 +287,39 @@ func (a *App) hostSwarmStopLocked() error {
 	if a.swarmCoordinator != nil {
 		a.swarmCoordinator.SetRunning(false)
 	}
+	a.restoreChatClientAfterSwarm()
 	return nil
+}
+
+// redirectChatToSwarm points a.client at the swarm coordinator's OpenAI-compatible
+// base URL (same pattern as StartLocalModel).
+func (a *App) redirectChatToSwarm() {
+	if a.swarmServer == nil || a.cfg == nil {
+		return
+	}
+	url := a.swarmServer.GetBaseURL()
+	a.clientMu.Lock()
+	a.client = api.NewClient(url, a.cfg.API.TimeoutSeconds)
+	a.clientMu.Unlock()
+	logx.Printf("API client redirected to swarm coordinator: %s", url)
+}
+
+// restoreChatClientAfterSwarm undoes redirectChatToSwarm: prefer the normal
+// local chat model if still running, otherwise the original external base URL.
+func (a *App) restoreChatClientAfterSwarm() {
+	if a.cfg == nil {
+		return
+	}
+	a.clientMu.Lock()
+	defer a.clientMu.Unlock()
+	if a.llamaServer != nil && a.llamaServer.IsRunning() {
+		url := a.llamaServer.GetBaseURL()
+		a.client = api.NewClient(url, a.cfg.API.TimeoutSeconds)
+		logx.Printf("API client restored to local chat model: %s", url)
+		return
+	}
+	a.client = api.NewClient(a.originalBaseURL, a.cfg.API.TimeoutSeconds)
+	logx.Printf("API client restored to: %s", a.originalBaseURL)
 }
 
 // HostSwarmClose stops the swarm (if running) and tears down the room so the

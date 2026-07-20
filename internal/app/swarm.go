@@ -102,6 +102,19 @@ func (a *App) HostSwarmCreate(modelPath string) (roomCode string, err error) {
 	if err != nil {
 		return "", err
 	}
+	// LAN joiners POST to host_addr on the Memo web API. Default listen is
+	// 127.0.0.1 — rebind to 0.0.0.0 (via SetRemoteAccess) so other PCs can
+	// reach /api/swarm/host/workers/add. Tailscale mode uses the tunnel.
+	if mode == "lan" {
+		if err := a.ensureSwarmLANListen(); err != nil {
+			return "", err
+		}
+		// Port/IP may have changed after rebind — refresh host_addr.
+		mode, hostAddr, err = a.swarmHostAddress()
+		if err != nil {
+			return "", err
+		}
+	}
 
 	code, err := a.swarmCoordinator.Init(mode, hostAddr)
 	if err != nil {
@@ -526,6 +539,34 @@ func (a *App) SwarmStatusSnapshot() interface{} {
 		return st
 	}
 	return st
+}
+
+// ensureSwarmLANListen makes the Memo web API reachable from other machines
+// on the LAN. Stock installs bind 127.0.0.1 only; without this, a room code
+// with 192.168.x.x:8090 is unreachable and Join always fails.
+func (a *App) ensureSwarmLANListen() error {
+	ws := a.getWebServer()
+	if ws == nil {
+		return fmt.Errorf("swarm: web sunucusu çalışmıyor — önce backend'i başlatın")
+	}
+	if ws.GetListenAddr() == "0.0.0.0" {
+		return nil
+	}
+	port := ws.GetPort()
+	if port <= 0 && a.cfg != nil {
+		port = a.cfg.RemoteAccess.Port
+	}
+	if port <= 0 {
+		port = 8090
+	}
+	logx.Printf("swarm: rebinding webserver 127.0.0.1 → 0.0.0.0 for LAN join (port %d)", port)
+	// SetRemoteAccess(true) rebinds 0.0.0.0 and generates a token if needed.
+	// Token-gated LAN is correct: workers/add is already exempt from that
+	// middleware; other routes stay protected.
+	if err := a.SetRemoteAccess(true, port); err != nil {
+		return fmt.Errorf("swarm: LAN erişimi açılamadı (diğer PC'ler odaya katılamaz): %w", err)
+	}
+	return nil
 }
 
 // swarmHostAddress picks mode + dialable host:port for the room code.

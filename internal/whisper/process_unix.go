@@ -59,15 +59,21 @@ func pidListeningOnPort(port int) int {
 		logx.Printf("whisper: lsof for port %d failed: %v", port, err)
 	}
 
+	// fuser writes the "PORT/tcp:" label to stderr and only the bare,
+	// space-separated PID list to stdout — Output() captures stdout only, so
+	// there is never a ":" in out to split on. This copy used to
+	// SplitN(out, ":", 2) and require len(parts) == 2, which could therefore
+	// never be true: fuser would succeed, the branch would be skipped, and
+	// this function returned 0 as if the port were free. The identical bug
+	// was already found and fixed in llama's copy of this file; whisper's
+	// was left behind, so whisper's port cleanup has never once worked on a
+	// machine without lsof installed.
 	out, err = exec.Command("fuser", fmt.Sprintf("%d/tcp", port)).Output()
 	if err == nil {
-		parts := strings.SplitN(string(out), ":", 2)
-		if len(parts) == 2 {
-			for _, tok := range strings.Fields(parts[1]) {
-				pid := 0
-				if n, _ := fmt.Sscanf(tok, "%d", &pid); n == 1 && pid > 0 {
-					return pid
-				}
+		for _, tok := range strings.Fields(string(out)) {
+			pid := 0
+			if n, _ := fmt.Sscanf(tok, "%d", &pid); n == 1 && pid > 0 {
+				return pid
 			}
 		}
 	} else {

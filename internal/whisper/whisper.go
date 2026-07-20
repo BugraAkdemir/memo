@@ -80,6 +80,24 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 		actualPort = s.port
 	}
 
+	// Clear the port before spawning — the same pre-flight llama.Server.Start
+	// does, for the same reason, which whisper never got. newSysProcAttr sets
+	// Setpgid but deliberately not Pdeathsig (incompatible in Go: runtime
+	// thread reuse triggers premature child death), so a whisper-server whose
+	// parent died abnormally — a crash, kill -9, the SIGHUP of a closed
+	// terminal, `go run` tearing down — is NOT reaped by the OS. It is
+	// orphaned, re-parented to init, and keeps holding this port forever.
+	//
+	// Without this, the next Start() spawns a whisper-server that cannot bind
+	// and exits within a second, while cmd.Start() itself succeeded — so
+	// nothing below reports an error and voice input is silently dead until
+	// the machine reboots. Confirmed live on a user's machine: an orphaned
+	// whisper-server with PPID 1 holding :9877 with no Memo backend running
+	// at all. Safe to call unconditionally — killByPort no-ops on a free port.
+	if err := s.killByPort(actualPort); err != nil {
+		logx.Printf("whisper: could not clear port %d before starting: %v", actualPort, err)
+	}
+
 	s.port = actualPort
 	s.language = lang
 

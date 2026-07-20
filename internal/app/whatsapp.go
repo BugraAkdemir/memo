@@ -263,7 +263,16 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 		defer close(outCh)
 		defer a.streamMu.Unlock()
 
+		// Prefer delivery over ctx cancellation (BUG-H2). A bare
+		// `select { case ch <- chunk: case <-ctx.Done(): }` drops the
+		// final Done:true chunk ~half the time when both cases are ready —
+		// same class fixed in llm.trySend / provider.trySend / streamSSE.
 		localTrySend := func(ctx context.Context, ch chan<- api.StreamChunk, chunk api.StreamChunk) bool {
+			select {
+			case ch <- chunk:
+				return true
+			default:
+			}
 			select {
 			case ch <- chunk:
 				return true
@@ -369,27 +378,41 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 
 	waLoop:
 		for {
+			// Prefer an already-ready chunk over ctx cancellation (same
+			// race class as trySend / streamSSE). A bare select that races
+			// ctx.Done() against <-streamCh can drop a simultaneous final
+			// Done:true and leave the Flutter client stuck.
+			var chunk provider.StreamChunk
+			var ok bool
 			select {
-			case <-ctx.Done():
-				if sm != nil && waSessionID != "" {
-					sm.AddMessageToSession(waSessionID, "assistant", "⏹️ Cevap durduruldu.", "", "", agentEvents)
-				}
-				return
-			case chunk, ok := <-streamCh:
-				if !ok {
-					break waLoop
-				}
-				if chunk.Error != "" {
+			case chunk, ok = <-streamCh:
+			default:
+				select {
+				case chunk, ok = <-streamCh:
+				case <-ctx.Done():
 					if sm != nil && waSessionID != "" {
-						sm.AddMessageToSession(waSessionID, "assistant", "⚠️ "+chunk.Error, "", "", agentEvents)
+						sm.AddMessageToSession(waSessionID, "assistant", "⏹️ Cevap durduruldu.", "", "", agentEvents)
 					}
-					localTrySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+					localTrySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
 					return
 				}
-				if chunk.Content != "" {
-					fullReply.WriteString(chunk.Content)
+			}
+			if !ok {
+				break waLoop
+			}
+			if chunk.Error != "" {
+				if sm != nil && waSessionID != "" {
+					sm.AddMessageToSession(waSessionID, "assistant", "⚠️ "+chunk.Error, "", "", agentEvents)
 				}
-				localTrySend(ctx, outCh, api.StreamChunk{Content: chunk.Content, FinishReason: chunk.FinishReason, Done: chunk.Done})
+				localTrySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+				return
+			}
+			if chunk.Content != "" {
+				fullReply.WriteString(chunk.Content)
+			}
+			localTrySend(ctx, outCh, api.StreamChunk{Content: chunk.Content, FinishReason: chunk.FinishReason, Done: chunk.Done})
+			if chunk.Done {
+				break waLoop
 			}
 		}
 

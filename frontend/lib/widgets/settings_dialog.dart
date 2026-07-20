@@ -19,6 +19,7 @@ import 'settings/tabs/skills_tab.dart';
 import 'settings/tabs/gpu_config_tab.dart';
 import 'settings/tabs/backup_restore_tab.dart';
 import 'settings/tabs/remote_access_tab.dart';
+import 'settings/tabs/beta_features_tab.dart';
 import 'settings/tabs/about_tab.dart';
 import 'settings/tabs/taskloop_tab.dart';
 import 'settings/tabs/stats_tab.dart';
@@ -51,6 +52,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/chart-bar.svg',
     'lib/icon/slash/archive.svg',
     'lib/icon/slash/globe.svg',
+    'lib/icon/slash/code.svg', // Beta features
     'lib/icon/slash/info.svg',
     'lib/icon/slash/list-checks.svg',
     'lib/icon/slash/wrench.svg',
@@ -72,6 +74,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_stats'),
     L10n.t('backup'),
     L10n.t('remote_access'),
+    L10n.t('tab_beta_features'),
     L10n.t('about'),
     L10n.t('tab_taskloop'),
     L10n.t('tab_report_bug'),
@@ -221,9 +224,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 12: return StatsTab();
       case 13: return BackupRestoreTab();
       case 14: return RemoteAccessTab();
-      case 15: return AboutTab();
-      case 16: return TaskLoopTab();
-      case 17: return ReportBugTab();
+      case 15: return BetaFeaturesTab();
+      case 16: return AboutTab();
+      case 17: return TaskLoopTab();
+      case 18: return ReportBugTab();
       default: return SizedBox.shrink();
     }
   }

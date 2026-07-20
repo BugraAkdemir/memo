@@ -599,9 +599,14 @@ class BetaFeaturesNotifier extends StateNotifier<bool> {
       : super(_prefs.getBool('memo_beta_features') ?? false);
 
   Future<void> toggle() async {
-    final next = !state;
-    await _prefs.setBool('memo_beta_features', next);
-    state = next;
+    await setEnabled(!state);
+  }
+
+  /// Set beta enabled and persist locally. Prefer calling this after a
+  /// successful backend `setBeta` so prefs never disagree with `cfg.Beta`.
+  Future<void> setEnabled(bool enabled) async {
+    await _prefs.setBool('memo_beta_features', enabled);
+    state = enabled;
   }
 }
 

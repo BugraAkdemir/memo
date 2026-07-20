@@ -204,7 +204,7 @@ class L10n {
     'swarm_connecting': 'Bağlanıyor…',
     'swarm_remove_worker': 'Kaldır',
     'swarm_share_pct': 'Pay %',
-    'swarm_beta_only': 'Swarm bir beta özelliğidir — Ayarlar > Uzaktan Erişim\'den Beta\'yı aç',
+    'swarm_beta_only': 'Swarm bir beta özelliğidir — Ayarlar > Beta Özellikler\'den aç',
 
     // Usage stats tab
     'stats_title': 'Kullanım İstatistikleri',
@@ -482,7 +482,21 @@ class L10n {
     'remote_access_token_label': 'Erişim Token\'ı',
     'remote_token_copied': 'Token kopyalandı',
     'remote_beta_features': 'Beta Özellikler',
-    'remote_beta_features_desc': 'Deneysel özellikleri aç (örn. Tailscale tüneli)',
+    'remote_beta_features_desc': 'Deneysel özellikleri aç (Tailscale, Memo Swarm, …)',
+    'tab_beta_features': 'Beta Özellikler',
+    'beta_features_page_desc':
+        'Deneysel özellikler varsayılan olarak kapalıdır. Açtığında henüz kararlı kabul edilmeyen entegrasyonlar (Tailscale tüneli, Memo Swarm, …) kullanılabilir hale gelir. Her özellik kendi ekranında ayrıca yapılandırılır.',
+    'beta_features_includes_title': 'Bu anahtarın açtığı özellikler',
+    'beta_item_tailscale_title': 'Tailscale tüneli',
+    'beta_item_tailscale_desc':
+        'Gömülü Tailscale ile sabit bir URL üzerinden uzaktan erişim. Yapılandırma: Ayarlar → Uzaktan Erişim.',
+    'beta_item_swarm_title': 'Memo Swarm',
+    'beta_item_swarm_desc':
+        'Birden fazla makineyi birleştirip tek büyük model çalıştır (yan menü → Swarm). macOS’ta henüz yok.',
+    'beta_features_warning':
+        'Beta özellikler kırılabilir, veri kaybına veya beklenmedik ağ davranışına yol açabilir. Üretim / kritik kullanım için kapalı tut.',
+    'remote_beta_moved_hint':
+        'Tailscale bir beta özelliğidir. Açmak için Ayarlar → Beta Özellikler sayfasını kullan.',
     'remote_ngrok_tunnel_url_label': 'Ngrok Tünel URL\'i',
     'remote_url_copied': 'URL kopyalandı',
     'remote_ngrok_token_saved_label': 'Ngrok Auth Token (kaydedildi)',
@@ -1359,7 +1373,7 @@ class L10n {
     'swarm_connecting': 'Connecting…',
     'swarm_remove_worker': 'Remove',
     'swarm_share_pct': 'Share %',
-    'swarm_beta_only': 'Swarm is a beta feature — enable Beta in Settings > Remote Access',
+    'swarm_beta_only': 'Swarm is a beta feature — enable it in Settings > Beta Features',
 
     // Usage stats tab
     'stats_title': 'Usage Statistics',
@@ -1627,7 +1641,21 @@ class L10n {
     'remote_access_token_label': 'Access Token',
     'remote_token_copied': 'Token copied',
     'remote_beta_features': 'Beta Features',
-    'remote_beta_features_desc': 'Enable experimental features (e.g. Tailscale tunnel)',
+    'remote_beta_features_desc': 'Enable experimental features (Tailscale, Memo Swarm, …)',
+    'tab_beta_features': 'Beta Features',
+    'beta_features_page_desc':
+        'Experimental features are off by default. Turning this on unlocks integrations that are not yet considered stable (Tailscale tunnel, Memo Swarm, …). Each feature is configured on its own screen.',
+    'beta_features_includes_title': 'What this switch enables',
+    'beta_item_tailscale_title': 'Tailscale tunnel',
+    'beta_item_tailscale_desc':
+        'Embedded Tailscale for a stable remote URL. Configure under Settings → Remote Access.',
+    'beta_item_swarm_title': 'Memo Swarm',
+    'beta_item_swarm_desc':
+        'Pool machines to run one large model (sidebar → Swarm). Not available on macOS yet.',
+    'beta_features_warning':
+        'Beta features can break, risk data loss, or behave unexpectedly on the network. Keep them off for production / critical use.',
+    'remote_beta_moved_hint':
+        'Tailscale is a beta feature. Enable it under Settings → Beta Features.',
     'remote_ngrok_tunnel_url_label': 'Ngrok Tunnel URL',
     'remote_url_copied': 'URL copied',
     'remote_ngrok_token_saved_label': 'Ngrok Auth Token (saved)',

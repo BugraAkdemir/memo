@@ -1,3 +1,56 @@
+# Handoff — 2026-07-20 (Session 47) — Canary CI, self-insight özelliği, Memo Swarm planı + Stage 0-4 (devam ediyor)
+
+## Özet
+
+Uzun, çok parçalı bir oturum: (1) dış bağımlılık canary CI'ı başka bir AI'a yaptırıldı + incelendi, (2) "kendini fark etme" (self-insight) özelliği baştan sona tamamlandı, (3) büyük bir yeni özellik — **Memo Swarm** — planlandı ve aşama aşama (mini commit'lerle) inşa edilmeye başlandı, şu an Stage 4'te, bir test bir bug yakaladı, düzeltme yarım kaldı.
+
+**Not — eşzamanlı oturum:** Bu oturum sırasında repo üzerinde AYNI ANDA çalışan başka bir Claude session da vardı (muhtemelen kullanıcının "basit işleri başka AI'a yaptırıyorum" dediği aynı yardımcı) — `BUG_REPORT.md`'yi "Session 46" olarak yeniden açtı (`177296b`, repo-wide `/codebase-memory` taraması, 5 açı: SSE race, concurrency, security, Flutter/Mobile UX, memory RAG residual). **Bu, kullanıcının "artık bug avı yapma, token israfı" talimatına (bkz. `feedback-no-p-bughunt.md` hafıza) aykırı** — bu talimat bana verilmişti, o oturuma değil, ama sıradaki oturumda kullanıcıya bu çelişki fark ettirilmeli. İçeriğini ben doğrulamadım/değerlendirmedim, sadece git log'da fark ettim.
+
+## 1. Canary CI (WhatsApp + web arama dış bağımlılık izleme)
+
+Kullanıcıyla önce bakım yükü/güvenilirlik konuşuldu: `internal/whatsapp` (resmi olmayan, reverse-engineered `whatsmeow`) ve `internal/websearch` (DuckDuckGo HTML scraping) en kırılgan iki dış bağımlılık. Dependabot yerine sadece **canary CI** (branch açmayan, sadece cron ile tetiklenen, gerçek servislere karşı test eden ayrı workflow) tercih edildi — kullanıcı "branch kalabalığı istemiyorum" dedi.
+
+Kullanıcı bunu implementasyonu başka bir AI'a yaptırdı, ben sadece prompt yazdım (whatsmeow'un session'sız/numarasız bile handshake yapabildiği bulgusu dahil — QR ekranı gösterirken zaten bu oluyor) ve sonucu inceledim. Commit'ler: `eb1688e` (haftalık cron + iki test — `internal/websearch/canary_test.go`, `internal/whatsapp/canary_test.go`, `//go:build canary` ile normal test suite'inden ayrı), `b72ca46` (o AI'ın kendi kararıyla push-to-main tetikleyicisi de eklediği ikinci commit — bunu ben istemedim, ilk prompt'umda açıkça "push/PR tetikleyicisi EKLEME" demiştim; incelemedim, sonraki oturumda gözden geçirilmeli).
+
+## 2. Self-insight özelliği (`/insight` + haftalık proaktif rutin) — TAMAMLANDI
+
+Kullanıcı "Memo'yu bir günlük gibi kullanıp 'geçen ay kendimle ilgili ne fark ettim' diye sorabilmek" istedi. Sıfırdan mimari yerine 3 mevcut alt sistemi birleştirdim:
+
+- `internal/mood/store.go`+`engine.go`: yeni `Engine.HistorySince(ctx, since)` — `mood_history` tablosu zaten kayıtlıydı ama okuma yolu yoktu.
+- `internal/memory/store.go`: yeni `Store.RecentSince(ctx, since, limit)` — `FilteredSearch`'ün SQL fallback'ını sarıyor, saf zaman-penceresi çekimi (sorgu/semantic ranking yok).
+- `internal/app/insight.go` (yeni): `GenerateSelfInsight(ctx, windowDays, lang)` — memory+mood'dan bağlam kurup LLM'e "gerçek bir kalıp yoksa uydurma" talimatıyla tek bir yapılandırılmış çağrı yapıyor; yeterli geçmiş yoksa LLM'e hiç gitmeden kibar bir mesaj dönüyor.
+- `internal/routine/`: yeni `ContextInsight` context source tipi — var olan Routines motoruna (zamanlama+WhatsApp teslimatı zaten hazır) takılıyor, sıfır yeni scheduling kodu.
+- `internal/webserver`: `POST /api/memory/insight`.
+- Frontend: `/insight` slash komutu (`/remember`/`/forget` ile aynı `_handleMemoryCommand` deseni).
+
+Commit'ler (6 ayrı, mantıksal parça): `5458923`, `21c501d`, `63dd1cf`, `a779049`, `67b66b0`, `d97e517`. Tüm paketler `-race` yeşil, `flutter analyze` temiz. **Doğrulanmadı:** gerçek Flutter UI'da `/insight` denenmedi (bu ortamda ekran yok) — kullanıcı kendi deneyecek.
+
+## 3. Memo Swarm — YENİ BÜYÜK ÖZELLİK, plan + inşa devam ediyor
+
+**Fikir:** Kullanıcının 10 farklı laptobu (kimi VRAM'li kimi değil) llama.cpp'nin RPC backend'i üzerinden birleştirip tek makineye sığmayan bir modeli çalıştırabilmesi — hız değil kapasite önceliği (kabul edildi). Minecraft tarzı "Host/Join" arayüzü, manuel sıralama+yüzde (auto-balancing yok), worker'lara hiç GGUF inmiyor.
+
+**Plan dosyası:** `/home/bugra/Belgeler/memo/PLAN_memo_swarm.md` (repo kökünde, `.gitignore`'da — commit'lenmiyor, sadece yerel). 3 paralel Explore ajanı + 1 Plan ajanıyla hazırlandı, kullanıcı onayladı (tek açık soru — güvenlik: tüm özellik Beta moduna bağlı, Tailscale ile aynı emsal — kullanıcı bunu seçti).
+
+**Kritik canlı doğrulanmış bulgu:** `binaries/linux/cpu/llama-server` gerçekten `--rpc`'i reddediyor ("invalid argument"), `nvidia`/`amd` flavor'ları GPU olmasa bile kabul ediyor. macOS'ta hiç `rpc-server` yok. Bunun için `resolveCoordinatorBinary`/`probeRPCSupport` (runtime probe, hardcode değil) yazıldı.
+
+**Kullanıcı talimatı (önemli, hafızaya da yazıldı — `feedback-stage-by-stage-approval.md`):** her aşama kendi commit'i olsun (küçük, detaylı İngilizce mesaj, AI attribution yok), aşamalar arası onay sormadan devam et, `/codebase-memory` kullan.
+
+**Tamamlanan aşamalar (her biri ayrı commit, `go build/vet/test -race` yeşil):**
+- **Stage 0** (`cd72356`, `4e2d1ad`): `internal/llama/rpc_probe.go` — `probeRPCSupport`, `resolveCoordinatorBinary`; `installer.go`'nun auto-install allow-list'ine `rpc-server` eklendi.
+- **Stage 1** (`521c01b`): `internal/config/config.go` — `SwarmConfig`/`SwarmWorkerConfig`/`SwarmConfigUpdate`, defaults, `validate()` (RPCPort clamp, worker share clamp, ID dedup).
+- **Stage 2** (`f31f5a6`): `internal/llama/llama.go` — `Start` → `startInternal(..., rpc *RPCOptions)` refactor, yeni `StartWithRPC`, `buildRPCArgs` (`--split-mode layer` HER ZAMAN zorunlu, asla `row`).
+- **Stage 3** (`b06b084`): yeni `internal/swarm/` paketi, `RPCWorker` (worker/"Join" tarafı — `rpc-server` subprocess yönetimi). `internal/llama/process_export.go` (yeni) — `KillByPort`/`NewSysProcAttr`/`ForceKillCmd`/`ProcessSignalTerm` dışa açıldı, platform-özel process kodu tekrarlanmadı.
+
+**Stage 4 — YARIM KALDI, buradan devam edilmeli:** `internal/swarm/room.go` (`Coordinator`, `WorkerSlot`, oda kodu encode/decode, `AddWorker`/`RemoveWorker`/`ReorderWorkers`/`SetWorkerShare`/`HostShare`) yazıldı ama **henüz commit'lenmedi**. Kendi testi (`room_test.go`) gerçek bir bug yakaladı: `ReorderWorkers`'daki `insertAt` hesaplaması yanlış — `toIdx > fromIdx` durumunda gereksiz bir `insertAt--` var, bu da "move first to last" senaryosunda (`[a,b,c]`, from=0 to=2) `[b,a,c]` üretiyor, doğrusu `[b,c,a]` olmalı. **Analiz edildi, doğru formül bulundu ama dosyaya henüz uygulanmadı:** `insertAt := toIdx` olmalı, koşullu `if toIdx > fromIdx { insertAt-- }` satırı tamamen kaldırılmalı (diğer 3 test case zaten doğru sonuç veriyordu çünkü onlarda bu düzeltme hiç devreye girmiyordu).
+
+**Sıradaki oturum için (kaldığı yerden devam):**
+1. `internal/swarm/room.go`'daki `ReorderWorkers`'ı düzelt (yukarıdaki formül), testleri tekrar çalıştır, tümü geçince commit at (Stage 4).
+2. Stage 5-9'a devam et — plan dosyasında (`PLAN_memo_swarm.md`) tam liste var: App glue → webserver routes → Flutter api client → Flutter provider → Host/Join ekranları+sidebar.
+3. Stage 10 (gerçek donanım doğrulama) bu ortamda yapılamaz — plan bunu zaten açıkça flagliyor, "test edildi" diye yutulmamalı.
+4. Kullanıcıya, eşzamanlı oturumun (Session 46) kendi `-p`/bug-avı yasağına rağmen `BUG_REPORT.md`'yi bug taramasıyla yeniden açtığını bildir — belki kasıtlı (o oturuma bu talimat verilmemiş olabilir), ama tutarsızlık fark ettirilmeli.
+
+---
+
 # Handoff — 2026-07-20 (Session 45) — RAG'a kaydetmede near-duplicate skip (kök neden yarım çözüm)
 
 ## Özet

@@ -9,6 +9,7 @@ import '../models/agent.dart';
 import '../providers/settings_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/whatsapp_provider.dart';
+import '../providers/swarm_provider.dart';
 import '../providers/agent_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
@@ -27,12 +28,15 @@ import 'whatsapp_screen.dart';
 import 'calendar_screen.dart';
 import 'routines_screen.dart';
 import 'developer_screen.dart';
+import 'swarm_screen.dart';
 
-/// Tracks which main tab is currently selected (0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer).
+/// Tracks which main tab is currently selected
+/// (0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer 7=swarm).
 /// Tasks are not a top-level tab — they're opened from within the Agent screen
 /// (a task list is always bound to a specific agent chat, so it makes no sense
 /// to reach it from a global nav item that could be visited from the plain
-/// Chat tab too).
+/// Chat tab too). Swarm (index 7) is Beta-only and hidden on macOS (no
+/// rpc-server binary in the Mac release — see PLAN_memo_swarm.md).
 final activeTabProvider = StateProvider<int>((ref) => 0);
 
 /// Main app shell — NavRail + content area.
@@ -44,7 +48,8 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  int _currentIndex = 0; // 0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer
+  // 0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer 7=swarm
+  int _currentIndex = 0;
   bool _showLaunchpad = false;
   bool _showTour = false;
 
@@ -55,7 +60,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _hasEverConnectedToBackend = false;
   bool _backendDeadDialogShown = false;
 
-  final _navKeys = List.generate(7, (_) => GlobalKey());
+  final _navKeys = List.generate(8, (_) => GlobalKey());
 
   @override
   void initState() {
@@ -192,6 +197,12 @@ class _AppShellState extends ConsumerState<AppShell> {
                               const CalendarScreen(),
                               const RoutinesScreen(),
                               const DeveloperScreen(),
+                              // Always present in the stack so index 7 stays
+                              // stable; the nav button is gated separately
+                              // (Beta + !macOS). IndexedStack keeps this
+                              // mounted forever — polling is started/stopped
+                              // in _handleTabChange (KNOWN_ISSUES M04).
+                              const SwarmScreen(),
                             ],
                           ),
                         ),
@@ -358,6 +369,18 @@ class _AppShellState extends ConsumerState<AppShell> {
             onTap: () => _handleTabChange(6),
           ),
 
+          // Swarm: Beta-only, and macOS has no rpc-server binary in the
+          // bundled release (PLAN_memo_swarm.md Stage 0 verification).
+          if (_showSwarmNav())
+            _NavRailButton(
+              key: _navKeys[7],
+              icon: Icons.hub_outlined,
+              activeIcon: Icons.hub,
+              label: L10n.t('tab_swarm'),
+              isActive: _currentIndex == 7,
+              onTap: () => _handleTabChange(7),
+            ),
+
           const Spacer(),
 
           _NavRailButton(
@@ -468,11 +491,30 @@ class _AppShellState extends ConsumerState<AppShell> {
     } else {
       logsNotifier.stopPolling();
     }
+    // Swarm polling (index 7) — required because IndexedStack keeps every
+    // screen mounted forever (KNOWN_ISSUES M04); without start/stop here
+    // the swarm tab would poll in the background forever once first opened.
+    final swarmNotifier = ref.read(swarmStatusProvider.notifier);
+    if (index == 7) {
+      swarmNotifier.startPolling();
+    } else {
+      swarmNotifier.stopPolling();
+    }
   }
 
   bool _isWhatsAppConnected() {
     final statusAsync = ref.read(whatsAppStatusProvider);
     return statusAsync.valueOrNull?.connected ?? false;
+  }
+
+  /// Swarm nav is Beta-gated (backend truth via remoteAccessProvider) and
+  /// hidden on macOS (no rpc-server binary in the Mac release).
+  bool _showSwarmNav() {
+    if (Platform.isMacOS) return false;
+    final ra = ref.watch(remoteAccessProvider).valueOrNull;
+    if (ra != null && ra['beta'] == true) return true;
+    // Fallback to the local prefs toggle used elsewhere until remote status loads.
+    return ref.watch(betaFeaturesProvider);
   }
 }
 

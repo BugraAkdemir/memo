@@ -86,4 +86,30 @@ func (s *Store) saveScore(ctx context.Context, score, iAnlik float64) error {
 	return tx.Commit()
 }
 
+// historySince returns mood_history rows recorded at or after since, oldest
+// first — a time-window trend read, separate from loadScore's single
+// "current value" read.
+func (s *Store) historySince(ctx context.Context, since time.Time) ([]HistoryPoint, error) {
+	rows, err := s.db.QueryContext(ctx,
+		`SELECT score, i_anlik, recorded_at FROM mood_history WHERE recorded_at >= ? ORDER BY recorded_at ASC`,
+		since.Unix(),
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []HistoryPoint
+	for rows.Next() {
+		var p HistoryPoint
+		var recordedAt int64
+		if err := rows.Scan(&p.Score, &p.IAnlik, &recordedAt); err != nil {
+			return nil, err
+		}
+		p.RecordedAt = time.Unix(recordedAt, 0)
+		out = append(out, p)
+	}
+	return out, rows.Err()
+}
+
 func (s *Store) close() error { return s.db.Close() }

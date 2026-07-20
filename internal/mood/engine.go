@@ -6,7 +6,17 @@ import (
 	"math"
 	"math/rand"
 	"sync"
+	"time"
 )
+
+// HistoryPoint is one recorded mood sample — the persisted trend line
+// Update appends to on every score change, distinct from Score()'s single
+// current-value read.
+type HistoryPoint struct {
+	Score      float64
+	IAnlik     float64
+	RecordedAt time.Time
+}
 
 // MoodLabel davranış etiketleri.
 type MoodLabel string
@@ -148,6 +158,13 @@ func (e *Engine) SetSystemManagement(v bool) {
 
 // Close store bağlantısını kapatır.
 func (e *Engine) Close() error { return e.store.close() }
+
+// HistorySince returns recorded mood samples since the given time, oldest
+// first — used to summarize a mood trend over a window (e.g. a weekly/
+// monthly self-insight digest) rather than just the current point value.
+func (e *Engine) HistorySince(ctx context.Context, since time.Time) ([]HistoryPoint, error) {
+	return e.store.historySince(ctx, since)
+}
 
 // stochasticNoise E_mevcut'a duyarlı Gauss gürültüsü üretir.
 // Score nötre yakınken dar varyans (σ_min), uçlardayken geniş varyans (σ_max).

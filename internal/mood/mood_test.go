@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func tempEngine(t *testing.T) *Engine {
@@ -64,6 +65,39 @@ func TestEngineStartsAtZero(t *testing.T) {
 	e := tempEngine(t)
 	if s := e.Score(); s != 0.0 {
 		t.Errorf("yeni engine skoru 0 olmalı, got %v", s)
+	}
+}
+
+// TestHistorySince covers the mood_history time-window read added for the
+// self-insight digest feature — separate from loadScore's single
+// current-value read (TestUpdatePersists below).
+func TestHistorySince(t *testing.T) {
+	e := tempEngine(t)
+	ctx := context.Background()
+
+	if err := e.Update(ctx, 5.0); err != nil {
+		t.Fatal(err)
+	}
+	if err := e.Update(ctx, -3.0); err != nil {
+		t.Fatal(err)
+	}
+
+	past := time.Now().Add(-time.Hour)
+	points, err := e.HistorySince(ctx, past)
+	if err != nil {
+		t.Fatalf("HistorySince(past) error = %v", err)
+	}
+	if len(points) != 2 {
+		t.Fatalf("HistorySince(past) len = %d, want 2", len(points))
+	}
+
+	future := time.Now().Add(time.Hour)
+	points, err = e.HistorySince(ctx, future)
+	if err != nil {
+		t.Fatalf("HistorySince(future) error = %v", err)
+	}
+	if len(points) != 0 {
+		t.Fatalf("HistorySince(future) len = %d, want 0 (cutoff is after every recorded sample)", len(points))
 	}
 }
 

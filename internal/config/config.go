@@ -90,6 +90,7 @@ type AppConfig struct {
 	Mood           MoodConfig         `yaml:"mood" json:"mood"`
 	WebSearch      WebSearchConfig    `yaml:"web_search" json:"web_search"`
 	DevGateway     DevGatewayConfig   `yaml:"dev_gateway" json:"dev_gateway"`
+	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
 	// Beta gates experimental features (e.g. the embedded Tailscale tunnel).
@@ -222,6 +223,52 @@ type LlamaConfig struct {
 	Temperature      float64 `yaml:"temperature" json:"temperature"`               // default 0.7
 	TopP             float64 `yaml:"top_p" json:"top_p"`                           // default 0.9
 	MaxTokens        int     `yaml:"max_tokens" json:"max_tokens"`                 // default 0 (no limit)
+}
+
+// SwarmConfig controls Memo Swarm — pooling multiple machines' compute via
+// llama.cpp's RPC backend to run one model too large for any single one of
+// them (see PLAN_memo_swarm.md). Gated behind AppConfig.Beta, same as the
+// embedded Tailscale tunnel.
+type SwarmConfig struct {
+	// RPCPort is the port this machine's rpc-server binds to when acting as
+	// a worker ("Join"). Default 50052, matching llama.cpp's own default.
+	RPCPort int `yaml:"rpc_port" json:"rpc_port"`
+
+	// LastRoomCode is the most recently generated (as host) or joined (as
+	// worker) room code — persisted purely as a UX convenience (re-show on
+	// the Host screen after a restart, prefill on Join after a reconnect
+	// attempt). Never causes an auto-rejoin/auto-host on startup.
+	LastRoomCode string `yaml:"last_room_code" json:"last_room_code"`
+
+	// Role reflects the last-known role, "none" | "host" | "worker" — used
+	// only to decide which of the two screens to default-show; never
+	// auto-starts anything on launch.
+	Role string `yaml:"role" json:"role"`
+
+	// Workers is the host-side persisted worker list (address, label,
+	// share%, order) so a host doesn't have to re-add machines after a
+	// restart. A re-loaded worker shows as disconnected until it rejoins
+	// (worker-initiated registration) — Memo never dials a worker
+	// unprompted to "resume."
+	Workers []SwarmWorkerConfig `yaml:"workers" json:"workers"`
+}
+
+// SwarmWorkerConfig is one host-side worker slot. Order in AppConfig.Swarm.Workers
+// matters — it maps positionally to llama-server's --tensor-split ratio order.
+type SwarmWorkerConfig struct {
+	ID           string  `yaml:"id" json:"id"`
+	Label        string  `yaml:"label" json:"label"`
+	Address      string  `yaml:"address" json:"address"`
+	SharePercent float64 `yaml:"share_percent" json:"share_percent"`
+}
+
+// SwarmConfigUpdate is a partial update DTO. RPCPort is a pointer (rather
+// than the plain-value fields LlamaConfigUpdate itself mostly uses) so a
+// request that omits it entirely leaves the stored port untouched, instead
+// of an absent field decoding to 0 and getting silently clamped back to the
+// default by validate() on every save.
+type SwarmConfigUpdate struct {
+	RPCPort *int `json:"rpc_port"`
 }
 
 // LlamaConfigUpdate is a partial update for llama.cpp settings, decoded
@@ -385,6 +432,10 @@ func Default() *AppConfig {
 			// hitting the network on every message out of the box.
 			Enabled:    false,
 			MaxResults: 5,
+		},
+		Swarm: SwarmConfig{
+			RPCPort: 50052,
+			Role:    "none",
 		},
 	}
 }
@@ -571,6 +622,47 @@ func (c *AppConfig) validate() []string {
 	if c.Llama.MaxTokens < 0 {
 		c.Llama.MaxTokens = 0
 		fixes = append(fixes, "Llama.MaxTokens")
+	}
+	if c.Swarm.RPCPort <= 0 || c.Swarm.RPCPort > 65535 {
+		c.Swarm.RPCPort = 50052
+		fixes = append(fixes, "Swarm.RPCPort")
+	}
+	if c.Swarm.Role == "" {
+		c.Swarm.Role = "none"
+		fixes = append(fixes, "Swarm.Role")
+	}
+	for i := range c.Swarm.Workers {
+		if c.Swarm.Workers[i].SharePercent < 0 || c.Swarm.Workers[i].SharePercent > 100 {
+			w := c.Swarm.Workers[i].SharePercent
+			if w < 0 {
+				c.Swarm.Workers[i].SharePercent = 0
+			} else {
+				c.Swarm.Workers[i].SharePercent = 100
+			}
+			fixes = append(fixes, fmt.Sprintf("Swarm.Workers[%d].SharePercent", i))
+		}
+	}
+	// Dedupe worker IDs — keep the first occurrence, drop later ones. An ID
+	// collision would otherwise let two distinct WorkerSlot entries silently
+	// alias the same --tensor-split position when internal/swarm looks one
+	// up by ID (add/remove/reorder/share-set), corrupting the coordinator's
+	// worker list.
+	if len(c.Swarm.Workers) > 1 {
+		seen := make(map[string]bool, len(c.Swarm.Workers))
+		deduped := c.Swarm.Workers[:0]
+		dropped := false
+		for _, w := range c.Swarm.Workers {
+			if w.ID != "" && seen[w.ID] {
+				dropped = true
+				continue
+			}
+			seen[w.ID] = true
+			deduped = append(deduped, w)
+		}
+		c.Swarm.Workers = deduped
+		if dropped {
+			fixes = append(fixes, "Swarm.Workers[dedup]")
+		}
 	}
 	if c.Whisper.Language == "" {
 		c.Whisper.Language = "auto"

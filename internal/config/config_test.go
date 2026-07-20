@@ -165,6 +165,88 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	if cfg.Llama.Port != 8081 {
 		t.Errorf("Port = %d, want 8081", cfg.Llama.Port)
 	}
+	if cfg.Swarm.RPCPort != 50052 {
+		t.Errorf("Swarm.RPCPort = %d, want 50052", cfg.Swarm.RPCPort)
+	}
+	if cfg.Swarm.Role != "none" {
+		t.Errorf("Swarm.Role = %q, want %q", cfg.Swarm.Role, "none")
+	}
+}
+
+func TestSwarmDefaults(t *testing.T) {
+	cfg := Default()
+	if cfg.Swarm.RPCPort != 50052 {
+		t.Errorf("Default().Swarm.RPCPort = %d, want 50052", cfg.Swarm.RPCPort)
+	}
+	if cfg.Swarm.Role != "none" {
+		t.Errorf("Default().Swarm.Role = %q, want %q", cfg.Swarm.Role, "none")
+	}
+	if len(cfg.Swarm.Workers) != 0 {
+		t.Errorf("Default().Swarm.Workers = %v, want empty", cfg.Swarm.Workers)
+	}
+}
+
+func TestValidateClampsSwarmRPCPort(t *testing.T) {
+	cases := []struct {
+		in, want int
+	}{
+		{0, 50052},
+		{-1, 50052},
+		{70000, 50052},
+		{50052, 50052},
+		{12345, 12345},
+	}
+	for _, c := range cases {
+		cfg := &AppConfig{Swarm: SwarmConfig{RPCPort: c.in}}
+		cfg.validate()
+		if cfg.Swarm.RPCPort != c.want {
+			t.Errorf("validate() with RPCPort=%d = %d, want %d", c.in, cfg.Swarm.RPCPort, c.want)
+		}
+	}
+}
+
+// TestValidateClampsSwarmWorkerSharePercent mirrors the Llama.Temperature/
+// TopP negative-only-clamp reasoning above, but for a bounded [0,100] range
+// instead of a floor-only one: an out-of-range share (typo, a bad client
+// request) gets pulled back into range rather than silently accepted and
+// fed straight into --tensor-split.
+func TestValidateClampsSwarmWorkerSharePercent(t *testing.T) {
+	cfg := &AppConfig{Swarm: SwarmConfig{Workers: []SwarmWorkerConfig{
+		{ID: "a", SharePercent: -5},
+		{ID: "b", SharePercent: 150},
+		{ID: "c", SharePercent: 30},
+	}}}
+	cfg.validate()
+
+	want := []float64{0, 100, 30}
+	for i, w := range cfg.Swarm.Workers {
+		if w.SharePercent != want[i] {
+			t.Errorf("Workers[%d].SharePercent = %v, want %v", i, w.SharePercent, want[i])
+		}
+	}
+}
+
+// TestValidateDedupesSwarmWorkerIDs is the regression test for a duplicate
+// worker ID silently aliasing two WorkerSlot entries at the same
+// --tensor-split position when internal/swarm looks one up by ID — only the
+// first occurrence of a given ID should survive validate().
+func TestValidateDedupesSwarmWorkerIDs(t *testing.T) {
+	cfg := &AppConfig{Swarm: SwarmConfig{Workers: []SwarmWorkerConfig{
+		{ID: "dup", Label: "first"},
+		{ID: "unique", Label: "kept"},
+		{ID: "dup", Label: "second — should be dropped"},
+	}}}
+	cfg.validate()
+
+	if len(cfg.Swarm.Workers) != 2 {
+		t.Fatalf("len(Workers) = %d, want 2 after dedup, got %+v", len(cfg.Swarm.Workers), cfg.Swarm.Workers)
+	}
+	if cfg.Swarm.Workers[0].Label != "first" {
+		t.Errorf("Workers[0].Label = %q, want %q (first occurrence kept)", cfg.Swarm.Workers[0].Label, "first")
+	}
+	if cfg.Swarm.Workers[1].ID != "unique" {
+		t.Errorf("Workers[1].ID = %q, want %q", cfg.Swarm.Workers[1].ID, "unique")
+	}
 }
 
 // TestValidatePreservesExplicitZeroTemperatureAndTopP is a regression test

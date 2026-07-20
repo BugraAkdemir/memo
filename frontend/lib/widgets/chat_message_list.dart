@@ -240,8 +240,8 @@ class _MessageBubbleState extends State<_MessageBubble> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title:  Text('Mesajı Sil'),
-        content:  Text('Bu mesaj silinecek. Devam etmek istiyor musunuz?'),
+        title: Text(L10n.t('delete_message')),
+        content: Text(L10n.t('delete_message_confirm')),
         actions: [
           TextButton(
             onPressed: () => Navigator.of(ctx).pop(false),
@@ -394,9 +394,9 @@ class _MessageBubbleState extends State<_MessageBubble> {
                                     ),
                                   );
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                     SnackBar(
-                                      content: Text('Kopyalandı'),
-                                      duration: Duration(seconds: 1),
+                                    SnackBar(
+                                      content: Text(L10n.t('copied')),
+                                      duration: const Duration(seconds: 1),
                                     ),
                                   );
                                 },

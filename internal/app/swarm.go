@@ -108,36 +108,34 @@ func (a *App) HostSwarmCreate(modelPath string) (roomCode string, err error) {
 		return "", fmt.Errorf("swarm: model not found: %w", err)
 	}
 
+	// LAN rebind must NOT hold swarmMu — SetRemoteAccess stops/starts the
+	// HTTP server and can block; holding the lock freezes status/join.
+	mode, hostAddr, err := a.swarmHostAddress()
+	if err != nil {
+		return "", err
+	}
+	if mode == "lan" {
+		if err := a.ensureSwarmLANListen(); err != nil {
+			return "", err
+		}
+		mode, hostAddr, err = a.swarmHostAddress()
+		if err != nil {
+			return "", err
+		}
+	}
+
 	a.swarmMu.Lock()
 	defer a.swarmMu.Unlock()
 
 	if a.swarmCoordinator == nil {
 		a.swarmCoordinator = &swarm.Coordinator{}
 	}
-	// Re-check after Stat — another create could have raced.
+	// Re-check after Stat/rebind — another create could have raced.
 	if a.swarmCoordinator.RoomCode() != "" {
 		return "", fmt.Errorf("swarm: zaten bir oda açık — önce odayı kapatın")
 	}
 	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
 		return "", fmt.Errorf("swarm: already joined as a worker — leave first")
-	}
-
-	mode, hostAddr, err := a.swarmHostAddress()
-	if err != nil {
-		return "", err
-	}
-	// LAN joiners POST to host_addr on the Memo web API. Default listen is
-	// 127.0.0.1 — rebind to 0.0.0.0 (via SetRemoteAccess) so other PCs can
-	// reach /api/swarm/host/workers/add. Tailscale mode uses the tunnel.
-	if mode == "lan" {
-		if err := a.ensureSwarmLANListen(); err != nil {
-			return "", err
-		}
-		// Port/IP may have changed after rebind — refresh host_addr.
-		mode, hostAddr, err = a.swarmHostAddress()
-		if err != nil {
-			return "", err
-		}
 	}
 
 	code, err := a.swarmCoordinator.Init(mode, hostAddr)
@@ -268,23 +266,8 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 		a.swarmMu.Unlock()
 		return err
 	}
-	// TCP-probe each worker before launching llama — "Connected" is only set
-	// at register time and never health-checked otherwise.
-	if err := probeWorkerRPC(workers); err != nil {
-		a.swarmMu.Unlock()
-		return err
-	}
-
-	// Build RPCOptions: Servers in list order, TensorSplit = [host, ...workers].
-	// Order is the single most important invariant (see Coordinator docs).
-	servers := make([]string, len(workers))
-	tensorSplit := make([]float64, len(workers)+1)
-	tensorSplit[0] = a.swarmCoordinator.HostShare()
-	for i, w := range workers {
-		servers[i] = w.Address
-		tensorSplit[i+1] = w.SharePercent
-	}
-	rpc := llama.RPCOptions{Servers: servers, TensorSplit: tensorSplit}
+	hostShare := a.swarmCoordinator.HostShare()
+	roomCodeSnap := a.swarmCoordinator.RoomCode()
 
 	a.cfgMu.RLock()
 	binaryPath := a.cfg.Llama.BinaryPath
@@ -314,11 +297,24 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 	srv := a.swarmServer
 	a.swarmMu.Unlock()
 
+	// Probe outside the lock (up to 2s per worker).
+	if err := probeWorkerRPC(workers); err != nil {
+		return err
+	}
+
+	// Build RPCOptions: Servers in list order, TensorSplit = [host, ...workers].
+	servers := make([]string, len(workers))
+	tensorSplit := make([]float64, len(workers)+1)
+	tensorSplit[0] = hostShare
+	for i, w := range workers {
+		servers[i] = w.Address
+		tensorSplit[i+1] = w.SharePercent
+	}
+	rpc := llama.RPCOptions{Servers: servers, TensorSplit: tensorSplit}
+
 	// Note: llama-server ↔ rpc-server traffic is raw TCP from the OS
 	// processes themselves — it does NOT go through Memo's embedded
-	// tsnet.Server Dial/Listen. Tailscale mode only means "each machine's
-	// OS-level Tailscale (or reachable LAN) can route to the other's
-	// rpc-server address"; Memo's Go code never mediates the RPC packets.
+	// tsnet.Server Dial/Listen.
 	if err := srv.StartWithRPC(binaryPath, modelPath, ctxSize, swarmPort, -1, engineMode, rpc); err != nil {
 		return fmt.Errorf("swarm: start coordinator: %w", err)
 	}
@@ -329,12 +325,20 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 	}
 
 	a.swarmMu.Lock()
-	if a.swarmCoordinator != nil {
-		a.swarmCoordinator.SetRunning(true)
+	// Room may have been closed / beta-off while we waited for load.
+	if a.swarmCoordinator == nil || a.swarmCoordinator.RoomCode() == "" ||
+		a.swarmCoordinator.RoomCode() != roomCodeSnap || a.swarmServer != srv {
+		a.swarmMu.Unlock()
+		_ = srv.Stop()
+		return fmt.Errorf("swarm: oda yükleme sırasında kapatıldı")
 	}
+	if !srv.IsRunning() {
+		a.swarmMu.Unlock()
+		return fmt.Errorf("swarm: coordinator process exited during start")
+	}
+	a.swarmCoordinator.SetRunning(true)
 	// Point chat/agent inference at the coordinator so "Start Swarm" actually
-	// changes which model answers — without this, swarmServer runs idle on
-	// Port+2 while a.client keeps talking to the normal chat server.
+	// changes which model answers.
 	if a.cfg != nil {
 		url := srv.GetBaseURL()
 		a.clientMu.Lock()
@@ -491,13 +495,11 @@ func (a *App) JoinSwarm(code string) error {
 	}
 
 	a.swarmMu.Lock()
-	defer a.swarmMu.Unlock()
-
 	// Can't join while hosting a room on this machine.
 	if a.swarmCoordinator != nil && a.swarmCoordinator.RoomCode() != "" {
+		a.swarmMu.Unlock()
 		return fmt.Errorf("swarm: already hosting a room — close it first")
 	}
-
 	a.cfgMu.RLock()
 	engineMode := a.cfg.Llama.EngineMode
 	rpcPort := a.cfg.Swarm.RPCPort
@@ -505,27 +507,28 @@ func (a *App) JoinSwarm(code string) error {
 	if rpcPort <= 0 {
 		rpcPort = 50052
 	}
+	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
+		_ = a.swarmWorker.Stop()
+	}
+	a.swarmMu.Unlock()
 
 	binaryPath, err := llama.ResolveRPCServerBinary(engineMode)
 	if err != nil {
 		return err
 	}
 
-	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
-		_ = a.swarmWorker.Stop()
-	}
-	a.swarmWorker = swarm.NewRPCWorker(rpcPort)
-	if err := a.swarmWorker.Start(binaryPath, 0); err != nil {
+	worker := swarm.NewRPCWorker(rpcPort)
+	if err := worker.Start(binaryPath, 0); err != nil {
 		return fmt.Errorf("swarm: start rpc-server: %w", err)
 	}
-	if err := a.swarmWorker.WaitReady(15 * time.Second); err != nil {
-		_ = a.swarmWorker.Stop()
+	if err := worker.WaitReady(15 * time.Second); err != nil {
+		_ = worker.Stop()
 		return fmt.Errorf("swarm: rpc-server not ready: %w", err)
 	}
 
 	myRPC, err := a.swarmLocalRPCAddress(mode, rpcPort)
 	if err != nil {
-		_ = a.swarmWorker.Stop()
+		_ = worker.Stop()
 		return err
 	}
 	label, _ := os.Hostname()
@@ -533,20 +536,32 @@ func (a *App) JoinSwarm(code string) error {
 		label = myRPC
 	}
 
+	// Network I/O outside swarmMu — same rule as HostSwarmStart WaitReady.
 	if err := postWorkerRegister(hostAddr, id, secret, myRPC, label); err != nil {
-		_ = a.swarmWorker.Stop()
+		_ = worker.Stop()
 		return fmt.Errorf("swarm: register with host: %w", err)
 	}
 
+	a.swarmMu.Lock()
+	// Host room may have been opened on this machine while we joined — rare.
+	if a.swarmCoordinator != nil && a.swarmCoordinator.RoomCode() != "" {
+		a.swarmMu.Unlock()
+		_ = worker.Stop()
+		return fmt.Errorf("swarm: already hosting a room — close it first")
+	}
+	if a.swarmWorker != nil && a.swarmWorker != worker {
+		_ = a.swarmWorker.Stop()
+	}
+	a.swarmWorker = worker
 	a.swarmJoinCode = strings.TrimSpace(code)
 	a.swarmJoinHost = hostAddr
 	a.swarmJoinConnected = true
-
 	a.cfg.Swarm.LastRoomCode = a.swarmJoinCode
 	a.cfg.Swarm.Role = "worker"
 	if err := config.Save(a.cfg); err != nil {
 		logx.Printf("swarm: save config after JoinSwarm: %v", err)
 	}
+	a.swarmMu.Unlock()
 
 	logx.Printf("swarm: joined host=%s as worker rpc=%s", hostAddr, myRPC)
 	return nil
@@ -851,9 +866,14 @@ func postWorkerRegister(hostAddr, id, secret, myRPC, label string) error {
 			msg = resp.Status
 		}
 		lastErr = fmt.Errorf("host returned %d: %s", resp.StatusCode, msg)
-		// 4xx from the real host — do not retry the other scheme with same body
-		// when we already reached Memo (invalid secret etc.).
-		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+		// Only treat 4xx as final when the caller fixed the scheme (already
+		// http(s)://). For bare hosts we try both schemes — a wrong-scheme
+		// proxy can return 404 before Funnel's https would succeed.
+		if len(bases) == 1 && resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return lastErr
+		}
+		// Memo-shaped auth failure on either scheme: stop (secret is wrong).
+		if strings.Contains(msg, "invalid room secret") || strings.Contains(msg, "beta") {
 			return lastErr
 		}
 	}

@@ -72,8 +72,12 @@ func (a *App) StopLocalModel() error {
 // When Memo Swarm's coordinator is running, report that server instead so
 // EngineStrip / model status reflect the process chat is actually using.
 func (a *App) GetLocalModelStatus() llama.ServerStatus {
-	if a.swarmServer != nil && a.swarmServer.IsRunning() {
-		st := a.swarmServer.GetStatus()
+	a.swarmMu.Lock()
+	swarmSrv := a.swarmServer
+	a.swarmMu.Unlock()
+
+	if swarmSrv != nil && swarmSrv.IsRunning() {
+		st := swarmSrv.GetStatus()
 		// Prefix so the status strip is obviously "swarm", not a normal local load.
 		if st.ModelName != "" && !strings.HasPrefix(st.ModelName, "swarm · ") {
 			st.ModelName = "swarm · " + st.ModelName

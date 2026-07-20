@@ -27,6 +27,16 @@ const (
 	colorBrightMagenta = "\033[38;5;213m"
 	colorBgUser        = "\033[48;5;33m" // vivid blue background — tints the user's own sent message
 	colorFgUser        = "\033[38;5;16m" // near-black — strongest possible contrast against colorBgUser
+
+	// Bronze/gold — Memo's brand accent (README's #B08D57), used for the
+	// terminal's structural chrome (welcome panel, prompt glyph, menu/dropdown
+	// selection, status bar) since the 2026-07-20 Claude-Code-inspired
+	// redesign. 256-color approximations of the true hex, picked from the
+	// nearest points on the xterm color cube to RGB(176,141,87): index 137 ≈
+	// (175,135,95) for the base tone, index 180 ≈ (215,175,135) for the
+	// brighter selection/emphasis tone.
+	colorBronze = "\033[38;5;137m"
+	colorGold   = "\033[38;5;180m"
 )
 
 func colorize(code, s string) string {
@@ -41,6 +51,8 @@ func yellow(s string) string        { return colorize(colorYellow, s) }
 func cyan(s string) string          { return colorize(colorCyan, s) }
 func brightCyan(s string) string    { return colorize(colorBrightCyan, s) }
 func brightMagenta(s string) string { return colorize(colorBrightMagenta, s) }
+func bronze(s string) string        { return colorize(colorBronze, s) }
+func gold(s string) string          { return colorize(colorGold, s) }
 
 // userInputStart begins a background tint that "bleeds" into the terminal's
 // own echo of whatever the user types next — a tty prints keystrokes using
@@ -64,45 +76,43 @@ func clearScreen(out io.Writer) {
 	fmt.Fprint(out, "\033[H\033[2J\033[3J")
 }
 
-// asciiBanner is the "MEMO CLI" block-letter wordmark shown once at startup.
-const asciiBanner = ` __  __ _____ __  __  ___        ____ _     _____
-|  \/  | ____|  \/  |/ _ \      / ___| |   |_ _|
-| |\/| |  _| | |\/| | | | |    | |   | |    | |
-| |  | | |___| |  | | |_| |    | |___| |___ | |
-|_|  |_|_____|_|  |_|\___/      \____|_____|___|`
-
-// bannerSplit is the column where the "MEMO" letters end and "CLI" begins —
-// verified against the literal art above: every line has a run of blank
-// columns straddling this index, so slicing here never cuts a letter.
-const bannerSplit = 27
-
-// bannerLine colors one banner row in two tones — cyan for "MEMO", magenta
-// for "CLI" — instead of one flat color, so the wordmark itself has some
-// life to it.
-func bannerLine(l string) string {
-	if len(l) <= bannerSplit {
-		return bold(brightCyan(l))
-	}
-	return bold(brightCyan(l[:bannerSplit])) + bold(brightMagenta(l[bannerSplit:]))
+// startupTips lists the composer tricks worth surfacing right away — the
+// terminal equivalent of Claude Code's "Tips for getting started" panel.
+// Deliberately no "what's new"/announcement section next to it: a terminal
+// client has no changelog surface to point at, and the user explicitly asked
+// for it to stay out of this redesign.
+var startupTips = []string{
+	dim("/help") + " ile tüm komutları listele",
+	dim("@") + " yazarak bir dosyaya referans ver",
+	dim("Esc") + " ile yanıtı durdur, " + dim("Ctrl+D") + " ile çık",
 }
 
-// welcomePanel renders the bordered startup panel: the ASCII banner plus a
-// small info block showing which model/provider will actually answer and
-// whether embedding/RAG memory is active — so that's never a guessing game.
-// Padding is computed from plain-text lengths; colored segments are wrapped
-// afterward so ANSI codes never throw off the box alignment. memoryActive
-// tints the memory line green/yellow without affecting its width.
-func welcomePanel(model, memory string, memoryActive bool) string {
-	bannerLines := strings.Split(asciiBanner, "\n")
+// welcomePanel renders the startup panel in the Claude-Code-inspired style
+// adopted 2026-07-20: a bordered title box (app name + version, a welcome
+// line, the model/memory status that was already here, and the active
+// project directory) followed by a short tips list. Padding is computed from
+// plain-text lengths; colored segments are wrapped afterward so ANSI codes
+// never throw off the box alignment. memoryActive tints the memory line
+// green/yellow without affecting its width. version/projectPath may be
+// empty (version fetch failed, or this run has no project root) — both rows
+// are simply omitted rather than shown blank.
+func welcomePanel(version, projectPath, model, memory string, memoryActive bool) string {
+	title := "✳ Memo CLI"
+	if version != "" {
+		// The raw version string (build_releases.sh's `version` file)
+		// conventionally already carries its own leading V/v — trim it
+		// before adding ours so the title never doubles up ("vV3.3.3").
+		title += " v" + strings.TrimLeft(version, "Vv")
+	}
+	const welcomeLine = "Tekrar hoş geldin!"
 	plainModel := "Model:  " + model
 	plainMemory := "Hafıza: " + memory
 
-	width := 0
-	for _, l := range bannerLines {
-		width = max(width, len([]rune(l)))
-	}
+	width := len([]rune(title))
+	width = max(width, len([]rune(welcomeLine)))
 	width = max(width, len([]rune(plainModel)))
 	width = max(width, len([]rune(plainMemory)))
+	width = max(width, len([]rune(projectPath)))
 	width += 4 // 2-char left margin + at least 2-char right margin
 
 	pad := func(plain string) string {
@@ -119,13 +129,18 @@ func welcomePanel(model, memory string, memoryActive bool) string {
 
 	var b strings.Builder
 	fmt.Fprintf(&b, "%s\n", dim("╭"+strings.Repeat("─", width)+"╮"))
-	for _, l := range bannerLines {
-		fmt.Fprint(&b, row(bannerLine(l), l))
-	}
+	fmt.Fprint(&b, row(bold(gold(title)), title))
 	fmt.Fprint(&b, row("", ""))
+	fmt.Fprint(&b, row(welcomeLine, welcomeLine))
 	fmt.Fprint(&b, row(bold("Model:  ")+model, plainModel))
 	fmt.Fprint(&b, row(bold("Hafıza: ")+memoryColor(memory), plainMemory))
+	if projectPath != "" {
+		fmt.Fprint(&b, row(dim(projectPath), projectPath))
+	}
 	fmt.Fprintf(&b, "%s\n", dim("╰"+strings.Repeat("─", width)+"╯"))
-	fmt.Fprint(&b, dim("Komutlar için /  ·  Yanıtı kesmek için Esc  ·  Çıkmak için /exit ya da Ctrl+D"))
-	return b.String()
+	fmt.Fprint(&b, "\n"+bold("İpuçları")+"\n")
+	for _, tip := range startupTips {
+		fmt.Fprint(&b, "  "+tip+"\n")
+	}
+	return strings.TrimRight(b.String(), "\n")
 }

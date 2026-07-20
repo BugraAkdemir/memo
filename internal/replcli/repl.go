@@ -175,7 +175,7 @@ type session struct {
 
 // promptStyle is the main composer prompt. Kept at display width 2 so the
 // editor's column math stays trivial.
-var promptStyle = bold(brightCyan("❯ "))
+var promptStyle = bold(gold("❯ "))
 
 // allChats returns every known chat, newest first — CLI-created (agent,
 // tagged with a project path) and GUI-created (plain) alike, exactly the
@@ -424,7 +424,10 @@ func EventDataSince(events []Event, afterSeq uint64, name string) (string, bool)
 
 func (s *session) printWelcome() {
 	memory, active := s.memorySummary()
-	fmt.Fprintln(s.out, welcomePanel(s.modelSummary(), memory, active))
+	// Best-effort: an older/incompatible backend or a transient error just
+	// means the title line omits the version suffix, nothing else degrades.
+	version, _ := s.client.Version(s.ctx)
+	fmt.Fprintln(s.out, welcomePanel(version, s.projectPath, s.modelSummary(), memory, active))
 	// Embedding auto-start (autoStartEmbeddingModel/startupEmbeddingModel,
 	// internal/app/llama.go+embedding.go) can fail for reasons the banner
 	// alone doesn't explain — no embedding model file found, the model

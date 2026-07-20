@@ -78,6 +78,18 @@ func (c *Client) Status(ctx context.Context) error {
 	return c.doJSON(ctx, http.MethodGet, "/api/status", nil, nil)
 }
 
+// Version returns the connected backend's version string (e.g. "3.1.2"),
+// shown in the welcome panel's title line.
+func (c *Client) Version(ctx context.Context) (string, error) {
+	var resp struct {
+		Version string `json:"version"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/version", nil, &resp); err != nil {
+		return "", err
+	}
+	return resp.Version, nil
+}
+
 // NewAgentChat creates a fresh agent-mode chat rooted at projectPath and
 // returns its chat ID.
 func (c *Client) NewAgentChat(ctx context.Context, projectPath string) (string, error) {

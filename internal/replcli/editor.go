@@ -29,6 +29,10 @@ var slashCommands = []commandSpec{
 	{"/exit", "çık"},
 }
 
+// statusBarText is the composer's persistent bottom hint — the terminal
+// equivalent of Claude Code's "manual mode on · ? for shortcuts" bar.
+const statusBarText = "/ komutlar  ·  @ dosya  ·  Esc durdur  ·  Ctrl+D çık"
+
 // editor is a raw-mode line editor: cursor movement, in-line editing,
 // history, and a live slash-command dropdown that opens the moment "/" is
 // typed — no Enter needed — and is navigated with the arrow keys, the way
@@ -329,7 +333,7 @@ func (e *editor) render(prompt string) {
 			b.WriteString("\n")
 			label := c.label
 			if i == e.menuSel {
-				b.WriteString(bold(brightCyan("  ▶ " + label)))
+				b.WriteString(bold(gold("  ▶ " + label)))
 			} else {
 				b.WriteString("    " + label)
 			}
@@ -345,6 +349,11 @@ func (e *editor) render(prompt string) {
 		b.WriteString("\n  " + dim(e.notice))
 		rows++
 	}
+	// A persistent status bar under the input line, always visible
+	// regardless of dropdown/notice state — the terminal equivalent of
+	// Claude Code's bottom "manual mode on · ? for shortcuts" bar.
+	b.WriteString("\n  " + dim(statusBarText))
+	rows++
 	e.rowsBelow = rows
 
 	// Park the terminal cursor back at the edit position.

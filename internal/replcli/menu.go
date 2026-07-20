@@ -43,7 +43,7 @@ func selectFromMenu(out io.Writer, keys *keySource, title string, items []menuIt
 		for i, it := range items {
 			line := "    " + it.Label
 			if i == selected {
-				line = bold(brightCyan("  ▶ " + it.Label))
+				line = bold(gold("  ▶ " + it.Label))
 			}
 			if it.Hint != "" {
 				line += "  " + dim(it.Hint)

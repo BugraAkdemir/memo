@@ -9,6 +9,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/logx"
+	"memo/internal/truncate"
 )
 
 const importMemorySystemPrompt = `You extract personal memory items from arbitrary text a user pastes in — usually another AI assistant's answer describing what it knows about the user. The input is often organized into labeled categories (e.g. Demographics, Interests & Preferences, Relationships, Dated Events, Communication Style & Personality, Instructions), with each entry followed by an "Evidence:"/"Basis:" sub-line quoting or explaining where it came from, and a trailing "Source: <name>" line. Read it carefully and return ONLY a single JSON object, no other text, no markdown fences, in this exact shape:
@@ -68,6 +69,16 @@ func extractJSON(s string) string {
 	return ""
 }
 
+// maxImportedFactsPerCall bounds a single import — deliberately higher than
+// extractAndPinFacts' per-turn maxExtractedFactsPerTurn, since one paste can
+// legitimately cover a whole multi-category profile dump rather than one
+// chat turn's worth of content, but still bounded: pinned facts bypass the
+// RAG relevance decay a normal memory would age out under (same reasoning as
+// maxExtractedFactsPerTurn/maxExtractedFactLength in memory.go), so an
+// unbounded or hallucinating model response must not be able to flood the
+// pinned-facts list.
+const maxImportedFactsPerCall = 30
+
 // ImportMemoryFromText takes an arbitrary block of text pasted by the user
 // (typically another AI's answer to a "tell me what you know about me"
 // style prompt), asks the active model to structure it into atomic memory
@@ -84,6 +95,17 @@ func extractJSON(s string) string {
 // tried at all, and "nothing connected" hung on a live network call
 // instead of failing immediately with callLLM's existing "no model
 // loaded" message.
+//
+// Fact saving shares extractAndPinFacts' two guards (memory.go) — this
+// feature predates that mechanism and was never updated to match it: (1)
+// dedup against already-pinned facts via pinnedFactTexts, since a user can
+// paste the same "what do you know about me" export more than once (e.g.
+// after asking the other AI again) and would otherwise get a fresh
+// duplicate pinned entry each time; (2) a length cap per fact
+// (maxExtractedFactLength) and a count cap for the whole call
+// (maxImportedFactsPerCall), since parsed.Facts comes straight from the
+// model's JSON output and pinned facts have no relevance decay to bound
+// unchecked growth the way ordinary RAG memories do.
 func (a *App) ImportMemoryFromText(ctx context.Context, rawText string) (factsSaved int, styleUpdated bool, err error) {
 	rawText = strings.TrimSpace(rawText)
 	if rawText == "" {
@@ -108,15 +130,29 @@ func (a *App) ImportMemoryFromText(ctx context.Context, rawText string) (factsSa
 		return 0, false, fmt.Errorf("unmarshal structured memory: %w", err)
 	}
 
+	pinned := a.pinnedFactTexts(ctx)
 	for _, fact := range parsed.Facts {
+		if factsSaved >= maxImportedFactsPerCall {
+			logx.Printf("MEMORY: ImportMemoryFromText: import fact cap (%d) reached, dropping remaining", maxImportedFactsPerCall)
+			break
+		}
 		fact = strings.TrimSpace(fact)
 		if fact == "" {
+			continue
+		}
+		if len(fact) > maxExtractedFactLength {
+			fact = fact[:maxExtractedFactLength]
+		}
+		key := normalizeFactText(fact)
+		if _, dup := pinned[key]; dup {
+			logx.Printf("MEMORY: ImportMemoryFromText: skipping duplicate imported fact: %q", truncate.Text(fact, 60))
 			continue
 		}
 		if err := a.SaveExplicitMemory(fact, "imported"); err != nil {
 			logx.Printf("WARN: ImportMemoryFromText: save fact: %v", err)
 			continue
 		}
+		pinned[key] = struct{}{}
 		factsSaved++
 	}
 

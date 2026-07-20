@@ -375,33 +375,11 @@ func (s *Server) Stop() error {
 }
 
 // killByPort finds the PID listening on the given TCP port and kills it.
-// Uses lsof (primary) or fuser (fallback) to locate the process.
+// Uses lsof (primary) or fuser (fallback) to locate the process. Delegates
+// to the package-level KillByPort (process_export.go), which is also
+// exposed for other packages in this module to reuse.
 func (s *Server) killByPort(port int) error {
-	pid := s.pidOnPort(port)
-	if pid <= 0 {
-		logx.Printf("llama: nothing found on port %d (lsof/fuser/netstat unavailable or port free)", port)
-		return nil
-	}
-
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("find process %d: %w", pid, err)
-	}
-
-	logx.Printf("llama: killing external PID %d on port %d", pid, port)
-	processSignalTerm(proc)
-
-	// Give it 3s to die gracefully, then force kill.
-	for i := 0; i < 6; i++ {
-		time.Sleep(500 * time.Millisecond)
-		if !processIsAlive(proc) {
-			logx.Printf("llama: process %d exited cleanly", pid)
-			return nil
-		}
-	}
-	logx.Printf("llama: force-killing PID %d", pid)
-	proc.Kill()
-	return nil
+	return KillByPort(port)
 }
 
 // pidOnPort returns the PID of the process listening on the given TCP port, or 0.

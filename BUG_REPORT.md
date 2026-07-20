@@ -1,36 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-19 (Session 43) — Kalan son 3 açık madde de tek tek düzeltildi, dosya 0 açık maddeye indi:
-> - **BUG-M1** düzeltildi: `routine.Routine`'e `Language` alanı eklendi (istemcinin oluşturma anındaki UI dili, "tr"/"en"), `POST /api/routines`'in yeni `language` alanıyla taşınıyor. Backend'in ürettiği her metin (LLM sistem promptu, "bugün etkinlik yok"/"yeni mesaj yok" bağlam dolgusu, mobil bildirim başlığı) artık buna göre seçiliyor; boş/eski değer Türkçe'ye düşüyor (migrasyon gerekmiyor). Hem masaüstü hem mobil istemci artık oluşturma anında kendi `L10n.locale`'ini gönderiyor ve alanı diğer tüm Routine alanları gibi round-trip ediyor.
-> - **BUG-M4** düzeltildi: `Schedule`'a `UTCOffsetMinutes` (*int, nil=eski davranış) eklendi, istemcinin `DateTime.now().timeZoneOffset`'inden dolduruluyor. `ParseFireTime` artık "HH:MM"'i backend host'un yerel saati yerine bu offset'e göre çözüyor (hem saat hem "bugün" o hedef offset'in kendi takvim gününe göre hesaplanıyor). Bilinçli, dokümante edilmiş sınır: gerçek IANA saat dilimi değil sabit bir offset — DST geçişinde kendini düzeltmiyor (Flutter'a yeni bir native plugin bağımlılığı eklemeye değecek kadar kritik değil).
-> - **BUG-L2** düzeltildi (kod bug'ı değil, prompt netliği): `whatsAppAssistantSystemPrompt`'a (adlandırılmış, test edilebilir bir sabite çıkarıldı) kullanıcının doğrudan ve net bir gönderim isteğinin zaten kendi onayı olduğunu, modelin buna ek bir sohbet-seviyesi veto eklememesi gerektiğini söyleyen bir paragraf eklendi — gerçek güvenlik sınırı (izin ekranı / DangerLevel gate) hiç değişmedi. Aynı düzenlemede tüm prompt Türkçe'den İngilizce'ye çevrildi (bu kod tabanının `identity.go`'daki `buildIdentityBlock` emsaline uyarak — modele verilen meta-talimatlar, sohbetin dilinden bağımsız olarak İngilizce'de daha güvenilir izleniyor; bu kullanıcıya gösterilen bir metin değil, bu yüzden projenin genel "kullanıcıya dönük metin Türkçe-öncelikli" kuralına girmiyor).
->
-> Üçü de ayrı, doğrulanmış (`go build/vet/test -race -tags sqlite_fts5` + `flutter analyze/test`, hem frontend hem mobile) commit'ler halinde yapıldı.
->
-> **Önceki güncelleme:** 2026-07-18 (Session 41) — **BUG-H3 fix'i tamamlanmadan önce eksikti, canlı `-p` doğrulamasında yakalandı:** `chunkText`/`splitLongWord` fix'i sadece `SaveInteraction`'ın `userChunk`'ını kapsıyordu; `saveChunk` her chunk'a `assistantMsg`'i (yanıtın tamamı) sınırsız olarak ekliyordu, VE `RetrieveContext` ham `query`/`expandQuery`/`splitCompoundQuery` metnini hiç sınır olmadan doğrudan embed ediyordu — ikisi de aynı "too large to process" hatasına hâlâ açıktı. Ayrıca gerçek embedding tokenizer'ı, tekrarlı tek karakter gibi doğal olmayan içerik için `len/3` tahmininden ~1.8× daha fazla gerçek token üretiyor (canlı ölçüldü: 300 tahmini token'lık bir parça 550 gerçek token çıktı) — bu yüzden `splitLongWord`'ün bayt/token oranı `maxTokens*3`'ten `maxTokens*1`'e düşürüldü. Yeni `capForEmbedding` helper'ı (`internal/memory/store.go`) hem `saveChunk`'ın `embedText`'ini hem `RetrieveContext`'in üç embed çağrısını da (`query`, `expanded`, her `segment`) tek, güvenli boyutlu bir parçaya sınırlıyor. Regresyon testi: `TestSaveAndRetrieve_LongUnbrokenBlob` (`internal/memory/store_test.go`, gerçek sunucunun "too large" reddini taklit eden sahte bir `EmbeddingFunc` ile). **Bilinen, kabul edilen sınır:** aşırı uç (40.000+ karakter, boşluksuz) bir blob artık ne save'i ne retrieve'i kırıyor — ama bu kadar aşırı boyutta bir tek mesaj, `saveMemorySync`'in 10 saniyelik toplam bütçesine çok sayıda (~67) küçük chunk sırayla kaydedilirken sığmayabiliyor (`context deadline exceeded`, chunk N'den sonra) — bu, orijinal "batch-size" kök nedeninden TAMAMEN AYRI, önceden de var olan bir mimari sınır (chunk başına gerçek bir HTTP çağrısı + genel bir zaman bütçesi); orijinal bug'ın asıl belirtisi (retrieve/LLM cevabının TÜM TURU kırması) artık gerçekleşmiyor, sadece arka plan kaydı kısmi kalabiliyor — canlı olarak 3KB'lik gerçekçi bir blob'un (uzun URL) sorunsuz tam kaydedildiği doğrulandı, sadece 40KB'lik yapay-adversarial test girdisi bu ayrı sınıra çarpıyor.
->
-> **Önceki güncelleme:** 2026-07-18 (Session 41) — BUG-L1 düzeltildi: `main.go` artık `*prompt != ""` yerine `flag.Visit` ile "p" bayrağının fiilen geçilip geçilmediğini kontrol ediyor (`promptFlagPassed`), böylece `-p ""` de `runPrintMode`'a düşüyor; `runPrintMode` de boş/whitespace-only prompt için temiz bir `FATAL` mesajıyla hemen çıkıyor (sonsuz askıda kalma yok). Regresyon testi: `TestEmptyPromptExitsCleanly` (`main_test.go`, gerçek binary'yi subprocess olarak çalıştırıp context timeout'uyla sınırlıyor).
->
-> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M7 düzeltildi: `internal/agent/tools/command.go`'daki `RunCommand` artık komut string'inin içindeki path-benzeri argümanları da (`commandTargetsProtectedPath`/`extractPathTokens`) `read_file`'ın `validatePath`'ıyla aynı sınırla kontrol ediyor — proje dizini dışına çıkıp `defaultProtectedPaths()`'e giren bir hedef (`/etc/...`, `~/.ssh/...`, `../../etc/...` traversal) artık `run_command` ile de reddediliyor. Proje dizini İÇİNDEKİ göreli path'ler (`go build ./...` gibi) yanlışlıkla engellenmiyor — kontrol önce "proje dizini dışında mı" diye bakıyor, sadece o zaman korumalı liste kontrolü yapıyor (projenin kendisi `/home/` gibi korumalı bir önek altında olsa bile). Regresyon testleri: `TestRunCommand_BlocksProtectedPathBypass`, `TestRunCommand_AllowsOrdinaryProjectCommands`, `TestCommandTargetsProtectedPath` (`internal/agent/tools/command_test.go`).
->
-> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M6 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık her fact'i pinlemeden önce mevcut pinned fact'lere karşı normalize edilmiş (küçük harf, trim, sondaki noktalama kırpılmış) exact-match dedup kontrolü yapıyor (`pinnedFactTexts`, `normalizeFactText`) — aynı gerçek art arda turlarda tekrar pinlenmiyor. Regresyon testi: `TestExtractAndPinFacts_SkipsAlreadyPinnedDuplicate`.
->
-> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-M5 düzeltildi: yeni `internal/agent/tools/calendar.go`'daki salt-okunur `get_calendar_events` agent tool'u eklendi (registry: `internal/agent/tools.go`), `internal/app/learning.go`'daki `calendarToolAdapter` gerçek `calendar.Store`'u sarıyor. Agent sistem promptuna (`internal/app/chat.go`'daki `buildAgentSystemPrompt`) model takvim sorgusunda RAG'dan tahmin etmek yerine bu aracı çağırsın diye bir not eklendi. Regresyon testleri: `internal/agent/tools/calendar_test.go`.
->
-> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H4 düzeltildi: `internal/app/memory.go`'daki `extractAndPinFacts` artık extraction promptuna SADECE `userMsg`'i veriyor, asistanın (tool sonuçlarını da içerebilen) `reply`'sini hiç göndermiyor — üçüncü şahıs bilgisinin (WhatsApp vb.) kullanıcının kendi kalıcı gerçeği sanılıp pinlenmesi artık mümkün değil. Fonksiyon imzasından artık ölü olan `reply` parametresi de kaldırıldı (tek çağıran `saveMemorySync` ve testler güncellendi). Regresyon testi: `TestExtractAndPinFacts_DoesNotSendAssistantReply` (`internal/app/memory_test.go`).
->
-> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H3 düzeltildi: `internal/memory/chunker.go`'daki `chunkText`, `maxTokens`'ı tek başına aşan boşluksuz bir "kelime"yi (uzun URL, base64, minify kod, hash) artık `splitLongWord` ile karakter bazlı zorla parçalıyor — hem `SaveInteraction` hem `RetrieveContext` aynı embed batch-size sınırına çarpmaktan kurtuldu. Regresyon testi: `TestChunkText_SingleOversizedWord` (`internal/memory/chunker_test.go`).
->
-> **Önceki güncelleme:** 2026-07-17 (Session 41) — BUG-H2 düzeltildi: `internal/intent/extractor.go`'daki `rawIntent.HabitDays` artık `json.RawMessage` olarak leniently parse ediliyor (`parseHabitDays`), LLM `habit_days`'i `[]int` yerine string/string-dizisi/doğal dil ifadesi ("hafta içi") döndürdüğünde bile tüm `rawIntent` reddedilmiyor. Regresyon testleri: `TestExtractHabit_HabitDaysAsPhrase`, `TestExtractHabit_HabitDaysAsStringArray` (`internal/intent/intent_test.go`).
->
-> **Önceki güncelleme:** 2026-07-17 (Session 40, "Ece" persona testi — CANLI WhatsApp ortamı) — `STRESS_TEST_FINDINGS.md` artık ayrı tutulmuyor, tüm bulgular (Session 39 + Session 40) buraya konsolide edildi ve o dosya silindi. BUG-H2 yeni kanıtla derinleştirildi; 6 yeni madde eklendi (2 HIGH, 3 MEDIUM, 1 LOW — Session 39'dan taşınan 2 madde dahil). Fix uygulanmadı, sadece bulundu ve dokümante edildi — bkz. `handoff.md` Session 40.
->
-> **Önceki güncelleme:** 2026-07-17 (Session 39, "Deniz" persona testi) — otonom `-p --auto-allow` canlı testinde yeni bir gerçek bug bulundu: BUG-H2.
->
-> **Daha önceki güncelleme:** 2026-07-17 (2. tur) — `/code-review` (high effort, 8 bulucu açı + doğrulama) ile bulunan 19 maddeden 17'si bu turda düzeltildi (2 CRITICAL, 1 HIGH, 3 MEDIUM, 6 LOW, 5 teknik borç — her biri ayrı, doğrulanmış commit, `go build/vet/test -race` + `flutter analyze/test` yeşil). Kalan 2 MEDIUM madde (BUG-M1, BUG-M4) bilinçli olarak ertelendi: ikisi de gerçek bir API/mimari kararı gerektiriyor (backend'e dil alanı eklemek, rutin saatine zaman dilimi eklemek) — yarım yamalak, otonom bir oturumda tek taraflı karar vermek yerine sonraki oturuma/kullanıcı onayına bırakıldı.
->
-> **Önceki geçmiş (2026-07-12 ve öncesi):** Bu dosya o tarihte 0 açık maddeye indirilmişti. 2026-07-17'nin ilk turunda (yukarıdaki 19 madde) eklenen yeni "rutin" (scheduled automation) motorü + geniş L10n temizliği taranmıştı.
+> **Son güncelleme:** 2026-07-20 (Session 46) — Repo-wide `/codebase-memory` + targeted source review. Index HEAD `b72ca46` ile senkron; re-index gerekmedi. 5 açı (SSE race, concurrency, security, Flutter/Mobile UX, Memory RAG residual). Dev gateway `RequireAPIKey=false` default bilinçli local-dev tercihi olarak **rapor dışı bırakıldı**.
 
 ---
 
@@ -39,11 +10,121 @@
 | Severity | Açık |
 |----------|------|
 | 🔴 CRITICAL | 0 |
-| 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 0 |
-| 🟢 LOW | 0 |
-| 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **0** |
+| 🟠 HIGH | 2 |
+| 🟡 MEDIUM | 3 |
+| 🟢 LOW | 1 |
+| 🔧 TEKNİK BORÇ | 2 |
+| **TOPLAM** | **8** |
+
+---
+
+## 🟠 HIGH
+
+### BUG-H1 — Agent pipeline `trySend` hâlâ bare `select` + `ctx.Done()` race'i
+
+**Dosya:** `internal/agent/pipeline.go` (`trySend`, ~L343–348)
+
+**Ne:** `trySend` şu an:
+
+```go
+select {
+case outCh <- chunk:
+case <-ctx.Done():
+}
+```
+
+Aynı class, 2026-07-12/14'te `internal/app/llm.go`, `internal/provider/provider.go`, `streamSSE`, `forwardStream` ve `internal/api/streaming.go` için **non-blocking-first** pattern ile kapatılmıştı. Agent pipeline bu taramada geride kaldı.
+
+**Neden bug:** Buffer 128 olsa bile, `outCh` gönderime hazır **ve** `ctx` aynı anda `Done` ise Go iki case arasında rastgele seçer — terminal `Done:true` / cancel error chunk ~%50 düşebilir. Channel kapanır; Flutter `"done":true` görmezse stop/sending UI takılı kalabilir.
+
+**Kısmi mitigasyon:** `callAgentStream` channel close + `fullReply` salvage ile content'li happy path'i çoğu zaman toparlar. Cancel / permission-timeout / boş final reply yolları hâlâ kırılgan.
+
+**Fix:** `provider.go` / `llm.go` ile aynı non-blocking-first `trySend`; mevcut trySend race regression testlerinin agent paketine kopyası.
+
+---
+
+### BUG-H2 — WhatsApp chat stream `localTrySend` aynı bare select race
+
+**Dosya:** `internal/app/whatsapp.go` (`WhatsAppChatStream` içindeki `localTrySend`, ~L266–273)
+
+**Ne:** Inline helper yine bare `select { case ch <- chunk: case <-ctx.Done(): return false }`.
+
+**Path:** Flutter → `handleWhatsAppChatStream` → `streamSSE` → `WhatsAppChatStream`. Dış `streamSSE` düzeltilmiş; ama channel **Done:true olmadan** kapanırsa client yine terminal satır almaz → stuck stop-button (AGENTS.md SSE gotcha ile aynı semptom sınıfı).
+
+**Fix:** Shared non-blocking-first helper (veya `app.trySend`); Done/error path'lerinde drop olmadığını assert eden test.
+
+---
+
+## 🟡 MEDIUM
+
+### BUG-M1 — Mobile `sendMessage` in-flight guard yok; cancel token eziliyor
+
+**Dosya:** `mobile/lib/providers/chat_provider.dart` (`sendMessage`, ~L173–271)
+
+**Ne:** Desktop'ta re-entrancy fix (isSending claim + `_generation`) var. Mobile'da:
+1. `if (streaming) return` yok  
+2. `_cancelToken = CancelToken()` önceki token'ı **iptal etmeden** üzerine yazıyor  
+3. Yeni stream subscription eskisinin dinleyicisini kesiyor; çift/hızlı gönderim iki user bubble + yarışan HTTP stream üretebilir  
+
+**Fix:** Desktop pattern: atomic in-flight claim; yeni token öncesi eskisini `cancel()`; mümkünse generation/seq ile stale `onDone` yazmalarını engelle.
+
+---
+
+### BUG-M2 — Settings tab'ları modal `SettingsDialog` içinde hâlâ `ScaffoldMessenger` kullanıyor
+
+**Dosyalar (örnek):**  
+`frontend/lib/widgets/settings/tabs/backup_restore_tab.dart`, `remote_access_tab.dart`, `report_bug_tab.dart`, `gpu_config_tab.dart`, `system_prompt_tab.dart`, `incognito_prompt_tab.dart`  
+Dialog: `frontend/lib/widgets/settings_dialog.dart` (`Dialog` overlay)
+
+**Ne:** SnackBar root Scaffold'a gidiyor; açık modal'ın **arkasında** kalıyor. Kullanıcı "buton hiç tepki vermedi" sanıyor. `MemoryImportTab` için inline status banner ile düzeltilmişti; diğer tab'lara yayılmadı (AGENTS.md Session 13 notu).
+
+**Fix:** Dialog-içi nested Scaffold / paylaşılan inline status banner; SnackBar'ı Settings tab'larından kaldırmak.
+
+---
+
+### BUG-M3 — L10n yarım migration (chat + config dialog'lar)
+
+**Dosyalar:** `chat_input.dart`, `chat_message_list.dart`, `provider_config_dialog.dart`, `skill_config_dialog.dart`, `orchestra_config_dialog.dart` (onlarca hardcoded `Text('…')` TR string)
+
+**Ne:** Settings tab L10n 2026-07-14'te temizlendi; chat input + orchestra/provider/skill dialog'lar hâlâ sabit Türkçe. EN locale'de TR string görünür.
+
+**Fix:** `L10n.t(...)` + `l10n.dart` TR/EN key çiftleri; grep ile hardcoded sweep.
+
+---
+
+## 🟢 LOW
+
+### BUG-L1 — Düşük bilgi değerli sohbet turları hâlâ RAG'a yazılıyor (Session 45 residual)
+
+**Dosya:** `internal/memory/store.go` (`findDuplicateInteraction`, `duplicateInteractionSimilarity = 0.92`)
+
+**Ne:** Session 45 near-duplicate skip (cosine ≥ 0.92, tek-chunk, `source==conversation`) birebir/"selam" tekrarını kesiyor. **Farklı kelimeli** düşük değerli mesajlar ("tamam", "ok", "peki") hâlâ `importance=3` ile kaydoluyor; gürültü birikimi ve retrieval crowding riski devam.
+
+**Not:** Bu crash değil; Session 44–45 "selam tekrarı" kök nedeninin kalan yarısı. Eşik ampirik.
+
+**Fix (tasarım):** importance/heuristic filtre veya kısa-ack classifier; eşiği config'e almak opsiyonel.
+
+---
+
+## 🔧 TEKNİK BORÇ
+
+### TD-1 — Routine saati sabit UTC offset, IANA TZ / DST yok
+
+`Schedule.UTCOffsetMinutes` client offset'ini donduruyor; DST geçişinde kendini düzeltmiyor. Önceki BUG-M4 fix'inin bilinçli sınırı — hâlâ geçerli.
+
+### TD-2 — Pinned facts 50-cap (recency eviction) + local model inference contention
+
+`GetPinnedFacts` cap 50, eviction recency-only. Auto fact extraction local llama tek slotta chat ile yarışır. Session 15 design notes; hâlâ açık.
+
+---
+
+## Bilinçli olarak rapor dışı
+
+| Aday | Neden |
+|------|--------|
+| Dev gateway `RequireAPIKey` default `false` | Local IDE kullanımı için bilerek; remoteAuth ayrı katman. Kullanıcı Session 46'da `q` ile eledi. |
+| `streamSSE` / `llm.trySend` / `provider.trySend` / `api.streaming` | Zaten non-blocking-first; regression yok. |
+| Memory/stats `database.DB.Write` yolu | `ExecContext` Write loop'a giriyor; gotcha ihlali değil. |
 
 ---
 

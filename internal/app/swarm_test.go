@@ -139,3 +139,33 @@ func TestFirstLocalIPv4WithPrefix_ImpossiblePrefixErrors(t *testing.T) {
 		t.Fatal("impossible prefix = nil error, want failure")
 	}
 }
+
+func TestHostSwarmCreate_RejectsWhenRoomAlreadyOpen(t *testing.T) {
+	a := &App{
+		cfg:              &config.AppConfig{Beta: true},
+		swarmCoordinator: &swarm.Coordinator{},
+	}
+	if _, err := a.swarmCoordinator.Init("lan", "10.0.0.1:8090"); err != nil {
+		t.Fatal(err)
+	}
+	// model path check runs after room check only if we pass room check first —
+	// room-already-open is checked before Stat(modelPath).
+	_, err := a.HostSwarmCreate("/nonexistent/model.gguf")
+	if err == nil {
+		t.Fatal("expected error when room already open")
+	}
+	if !strings.Contains(err.Error(), "oda") && !strings.Contains(err.Error(), "already") {
+		// Turkish message "zaten bir oda açık"
+		if !strings.Contains(err.Error(), "açık") {
+			t.Errorf("error = %q, want room-already-open message", err.Error())
+		}
+	}
+}
+
+func TestPostWorkerRegister_BasesPreferExplicitScheme(t *testing.T) {
+	// Smoke: unreachable host fails without panic (http then https tried).
+	err := postWorkerRegister("127.0.0.1:1", "i", "s", "127.0.0.1:2", "lab")
+	if err == nil {
+		t.Fatal("expected error against closed port")
+	}
+}

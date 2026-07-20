@@ -110,6 +110,9 @@ func (a *App) SetBeta(enabled bool) error {
 		if a.cfg.RemoteAccess.TunnelMode == "tailscale" {
 			a.cfg.RemoteAccess.TunnelMode = "lan"
 		}
+		// Same rule as Tailscale: beta-off must not leave experimental
+		// processes (swarm coordinator / rpc-server) running in the background.
+		a.stopSwarmForBetaOff()
 	}
 	if err := config.Save(a.cfg); err != nil {
 		return fmt.Errorf("save config: %w", err)

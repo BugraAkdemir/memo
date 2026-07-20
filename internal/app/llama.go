@@ -5,6 +5,7 @@ import (
 	"log"
 	"memo/internal/logx"
 	"os"
+	"strings"
 	"time"
 
 	"memo/internal/api"
@@ -72,7 +73,14 @@ func (a *App) StopLocalModel() error {
 // EngineStrip / model status reflect the process chat is actually using.
 func (a *App) GetLocalModelStatus() llama.ServerStatus {
 	if a.swarmServer != nil && a.swarmServer.IsRunning() {
-		return a.swarmServer.GetStatus()
+		st := a.swarmServer.GetStatus()
+		// Prefix so the status strip is obviously "swarm", not a normal local load.
+		if st.ModelName != "" && !strings.HasPrefix(st.ModelName, "swarm · ") {
+			st.ModelName = "swarm · " + st.ModelName
+		} else if st.ModelName == "" {
+			st.ModelName = "swarm"
+		}
+		return st
 	}
 	if a.llamaServer == nil {
 		return llama.ServerStatus{}

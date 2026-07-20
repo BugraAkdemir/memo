@@ -24,6 +24,10 @@ import (
 // tone as SetTailscaleMode's beta gate.
 const errSwarmBeta = "Swarm beta özelliğidir; Ayarlar'dan Beta'yı açın"
 
+// swarmStartTimeout budgets multi-machine model load (weights go over the
+// network to each rpc-server). Single-host chat load uses 180s; swarm needs more.
+const swarmStartTimeout = 10 * time.Minute
+
 // HostSwarmStatus is the host-side view of the current swarm room.
 type HostSwarmStatus struct {
 	Role      string             `json:"role"`
@@ -80,6 +84,23 @@ func (a *App) HostSwarmCreate(modelPath string) (roomCode string, err error) {
 	if err := a.requireSwarmBeta(); err != nil {
 		return "", err
 	}
+
+	a.swarmMu.Lock()
+	if a.swarmCoordinator == nil {
+		a.swarmCoordinator = &swarm.Coordinator{}
+	}
+	// Creating again silently wiped workers/secret — require explicit close.
+	if a.swarmCoordinator.RoomCode() != "" {
+		a.swarmMu.Unlock()
+		return "", fmt.Errorf("swarm: zaten bir oda açık — önce odayı kapatın")
+	}
+	// Can't host while already joined as a worker on this machine.
+	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
+		a.swarmMu.Unlock()
+		return "", fmt.Errorf("swarm: already joined as a worker — leave first")
+	}
+	a.swarmMu.Unlock()
+
 	if strings.TrimSpace(modelPath) == "" {
 		return "", fmt.Errorf("swarm: model path required")
 	}
@@ -93,7 +114,10 @@ func (a *App) HostSwarmCreate(modelPath string) (roomCode string, err error) {
 	if a.swarmCoordinator == nil {
 		a.swarmCoordinator = &swarm.Coordinator{}
 	}
-	// Can't host while already joined as a worker on this machine.
+	// Re-check after Stat — another create could have raced.
+	if a.swarmCoordinator.RoomCode() != "" {
+		return "", fmt.Errorf("swarm: zaten bir oda açık — önce odayı kapatın")
+	}
 	if a.swarmWorker != nil && a.swarmWorker.IsRunning() {
 		return "", fmt.Errorf("swarm: already joined as a worker — leave first")
 	}
@@ -158,6 +182,7 @@ func (a *App) HostSwarmAddWorker(id, secret, myRPCAddress, label string) error {
 		label = myRPCAddress
 	}
 	slot := a.swarmCoordinator.AddWorker(id, label, myRPCAddress)
+	a.persistSwarmWorkersLocked()
 	logx.Printf("swarm: worker added id=%s addr=%s label=%s", slot.ID, slot.Address, slot.Label)
 	return nil
 }
@@ -173,6 +198,7 @@ func (a *App) HostSwarmRemoveWorker(id string) error {
 		return fmt.Errorf("swarm: no active room")
 	}
 	a.swarmCoordinator.RemoveWorker(id)
+	a.persistSwarmWorkersLocked()
 	return nil
 }
 
@@ -186,7 +212,11 @@ func (a *App) HostSwarmReorderWorkers(fromIdx, toIdx int) error {
 	if a.swarmCoordinator == nil {
 		return fmt.Errorf("swarm: no active room")
 	}
-	return a.swarmCoordinator.ReorderWorkers(fromIdx, toIdx)
+	if err := a.swarmCoordinator.ReorderWorkers(fromIdx, toIdx); err != nil {
+		return err
+	}
+	a.persistSwarmWorkersLocked()
+	return nil
 }
 
 // HostSwarmSetShare sets one worker's percentage share of --tensor-split.
@@ -199,7 +229,11 @@ func (a *App) HostSwarmSetShare(id string, pct float64) error {
 	if a.swarmCoordinator == nil {
 		return fmt.Errorf("swarm: no active room")
 	}
-	return a.swarmCoordinator.SetWorkerShare(id, pct)
+	if err := a.swarmCoordinator.SetWorkerShare(id, pct); err != nil {
+		return err
+	}
+	a.persistSwarmWorkersLocked()
+	return nil
 }
 
 // HostSwarmStart launches the coordinator's dedicated llama-server with --rpc
@@ -288,7 +322,8 @@ func (a *App) HostSwarmStart(ctxSize int) error {
 	if err := srv.StartWithRPC(binaryPath, modelPath, ctxSize, swarmPort, -1, engineMode, rpc); err != nil {
 		return fmt.Errorf("swarm: start coordinator: %w", err)
 	}
-	if err := srv.WaitReady(180 * time.Second); err != nil {
+	// Multi-machine weight transfer is much slower than a single-host load.
+	if err := srv.WaitReady(swarmStartTimeout); err != nil {
 		_ = srv.Stop()
 		return fmt.Errorf("swarm: coordinator failed to become ready: %w", err)
 	}
@@ -412,6 +447,7 @@ func (a *App) HostSwarmClose() error {
 	}
 	a.cfg.Swarm.Role = "none"
 	a.cfg.Swarm.LastRoomCode = ""
+	a.cfg.Swarm.Workers = nil
 	if err := config.Save(a.cfg); err != nil {
 		logx.Printf("swarm: save config after HostSwarmClose: %v", err)
 	}
@@ -422,6 +458,7 @@ func (a *App) HostSwarmClose() error {
 // it satisfies FullBridge without webserver importing this package (same
 // pattern as GetRemoteAccessStatus).
 func (a *App) HostSwarmStatus() interface{} {
+	a.refreshWorkerConnectivity()
 	a.swarmMu.Lock()
 	defer a.swarmMu.Unlock()
 
@@ -565,6 +602,10 @@ func (a *App) JoinSwarmStatus() interface{} {
 // worker state under a single lock (the concrete Host/Join helpers each take
 // swarmMu themselves — calling both would deadlock).
 func (a *App) SwarmStatusSnapshot() interface{} {
+	// Cheap per-poll TCP check so "Connected" is not stuck true forever after
+	// a worker's rpc-server dies (register only ever sets Connected=true).
+	a.refreshWorkerConnectivity()
+
 	a.swarmMu.Lock()
 	defer a.swarmMu.Unlock()
 
@@ -761,16 +802,10 @@ func firstLocalIPv4WithPrefix(prefix string) (string, error) {
 }
 
 // postWorkerRegister POSTs this worker's rpc address to the host's
-// /api/swarm/host/workers/add. hostAddr is "ip:port" (LAN) or a MagicDNS
-// name / host without scheme (Tailscale).
+// /api/swarm/host/workers/add. hostAddr is "ip:port" (LAN), a MagicDNS
+// name, or already includes http(s)://. When scheme is omitted we try both
+// http and https (Funnel is https-only).
 func postWorkerRegister(hostAddr, id, secret, myRPC, label string) error {
-	base := hostAddr
-	if !strings.HasPrefix(base, "http://") && !strings.HasPrefix(base, "https://") {
-		base = "http://" + base
-	}
-	base = strings.TrimRight(base, "/")
-	url := base + "/api/swarm/host/workers/add"
-
 	body, err := json.Marshal(map[string]string{
 		"id":             id,
 		"secret":         secret,
@@ -781,25 +816,139 @@ func postWorkerRegister(hostAddr, id, secret, myRPC, label string) error {
 		return err
 	}
 
-	client := &http.Client{Timeout: 15 * time.Second}
-	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
-	if err != nil {
-		return err
+	var bases []string
+	h := strings.TrimRight(strings.TrimSpace(hostAddr), "/")
+	switch {
+	case strings.HasPrefix(h, "http://") || strings.HasPrefix(h, "https://"):
+		bases = []string{h}
+	default:
+		// Prefer http for LAN (ip:port); also try https for funnel MagicDNS.
+		bases = []string{"http://" + h, "https://" + h}
 	}
-	req.Header.Set("Content-Type", "application/json")
 
-	resp, err := client.Do(req)
-	if err != nil {
-		return err
-	}
-	defer resp.Body.Close()
-	respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
-	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+	client := &http.Client{Timeout: 15 * time.Second}
+	var lastErr error
+	for _, base := range bases {
+		url := base + "/api/swarm/host/workers/add"
+		req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		req.Header.Set("Content-Type", "application/json")
+		resp, err := client.Do(req)
+		if err != nil {
+			lastErr = err
+			continue
+		}
+		respBody, _ := io.ReadAll(io.LimitReader(resp.Body, 4096))
+		resp.Body.Close()
+		if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+			return nil
+		}
 		msg := strings.TrimSpace(string(respBody))
 		if msg == "" {
 			msg = resp.Status
 		}
-		return fmt.Errorf("host returned %d: %s", resp.StatusCode, msg)
+		lastErr = fmt.Errorf("host returned %d: %s", resp.StatusCode, msg)
+		// 4xx from the real host — do not retry the other scheme with same body
+		// when we already reached Memo (invalid secret etc.).
+		if resp.StatusCode >= 400 && resp.StatusCode < 500 {
+			return lastErr
+		}
 	}
-	return nil
+	if lastErr != nil {
+		return lastErr
+	}
+	return fmt.Errorf("swarm: could not reach host")
+}
+
+// refreshWorkerConnectivity TCP-probes each host-side worker and updates
+// Connected. Called from status snapshots (polled by UI). Short timeouts so a
+// dead worker does not stall the whole status request.
+func (a *App) refreshWorkerConnectivity() {
+	a.swarmMu.Lock()
+	if a.swarmCoordinator == nil || a.swarmCoordinator.RoomCode() == "" {
+		a.swarmMu.Unlock()
+		return
+	}
+	workers := a.swarmCoordinator.Workers()
+	a.swarmMu.Unlock()
+
+	type result struct {
+		id        string
+		connected bool
+	}
+	results := make([]result, 0, len(workers))
+	for _, w := range workers {
+		ok := false
+		if w.Address != "" {
+			conn, err := net.DialTimeout("tcp", w.Address, 400*time.Millisecond)
+			if err == nil {
+				_ = conn.Close()
+				ok = true
+			}
+		}
+		results = append(results, result{id: w.ID, connected: ok})
+	}
+
+	a.swarmMu.Lock()
+	defer a.swarmMu.Unlock()
+	if a.swarmCoordinator == nil {
+		return
+	}
+	for _, r := range results {
+		a.swarmCoordinator.SetWorkerConnected(r.id, r.connected)
+	}
+}
+
+// persistSwarmWorkersLocked writes the live worker list into cfg.Swarm.Workers
+// (caller holds swarmMu). Does not auto-start anything on next launch — only
+// a UX convenience so labels/shares/order can survive a restart.
+func (a *App) persistSwarmWorkersLocked() {
+	if a.cfg == nil || a.swarmCoordinator == nil {
+		return
+	}
+	live := a.swarmCoordinator.Workers()
+	out := make([]config.SwarmWorkerConfig, len(live))
+	for i, w := range live {
+		out[i] = config.SwarmWorkerConfig{
+			ID:           w.ID,
+			Label:        w.Label,
+			Address:      w.Address,
+			SharePercent: w.SharePercent,
+		}
+	}
+	a.cfg.Swarm.Workers = out
+	if err := config.Save(a.cfg); err != nil {
+		logx.Printf("swarm: persist workers: %v", err)
+	}
+}
+
+// stopSwarmForBetaOff tears down host room + worker without the beta gate
+// (beta is already being turned off). Safe to call when nothing is running.
+func (a *App) stopSwarmForBetaOff() {
+	a.swarmMu.Lock()
+	defer a.swarmMu.Unlock()
+	if a.swarmServer != nil && a.swarmServer.IsRunning() {
+		_ = a.swarmServer.Stop()
+	}
+	if a.swarmCoordinator != nil {
+		a.swarmCoordinator.SetRunning(false)
+		a.swarmCoordinator.Close()
+	}
+	if a.swarmWorker != nil {
+		_ = a.swarmWorker.Stop()
+		a.swarmWorker = nil
+	}
+	a.swarmJoinCode = ""
+	a.swarmJoinHost = ""
+	a.swarmJoinConnected = false
+	a.restoreChatClientAfterSwarm()
+	if a.cfg != nil {
+		a.cfg.Swarm.Role = "none"
+		a.cfg.Swarm.LastRoomCode = ""
+		a.cfg.Swarm.Workers = nil
+	}
+	logx.Printf("swarm: stopped because Beta was disabled")
 }

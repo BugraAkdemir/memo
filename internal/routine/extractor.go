@@ -23,7 +23,7 @@ type Draft struct {
 	Weekdays          []int  `json:"weekdays"` // 0=Sunday..6=Saturday; empty = every day
 	Prompt            string `json:"prompt"`
 	NeedsAgentMode    bool   `json:"needs_agent_mode"`
-	ContextSourceType string `json:"context_source_type"` // "none" | "calendar" | "whatsapp"
+	ContextSourceType string `json:"context_source_type"` // "none" | "calendar" | "whatsapp" | "insight"
 	WhatsAppChatHint  string `json:"whatsapp_chat_hint,omitempty"`
 	DeliveryWhatsApp  bool   `json:"delivery_whatsapp"`
 	DeliveryMobile    bool   `json:"delivery_mobile"`
@@ -48,7 +48,7 @@ SADECE aşağıdaki şemaya uyan bir JSON nesnesi döndür, başka hiçbir metin
   "weekdays": [0-6 arası tam sayılardan oluşan dizi; 0=Pazar...6=Cumartesi; her gün ise boş dizi []],
   "prompt": "modele verilecek, ne yapılması istendiğini anlatan kısa bir cümle, kullanıcının dilinde",
   "needs_agent_mode": true veya false — kullanıcı bir komut çalıştırma, dosya işlemi veya proje güncelleme gibi bilgisayarda gerçek bir işlem yapılmasını istiyorsa true; sadece bir metin/özet/hatırlatma istiyorsa false,
-  "context_source_type": "none", "calendar" veya "whatsapp" — rutin takvim ajandasına mı, belirli bir whatsapp sohbetine mi, yoksa hiçbirine mi ihtiyaç duyuyor,
+  "context_source_type": "none", "calendar", "whatsapp" veya "insight" — rutin takvim ajandasına mı, belirli bir whatsapp sohbetine mi, kullanıcının kendi geçmiş sohbet hafızası + duygu durumu trendine mi (örn. "kendimle ilgili ne fark ettim" tarzı bir öz-içgörü özeti) ihtiyaç duyuyor, yoksa hiçbirine mi,
   "whatsapp_chat_hint": kullanıcının bahsettiği whatsapp sohbeti/grubunun adı (varsa), yoksa boş string,
   "delivery_whatsapp": true veya false — whatsapp'tan gönderilsin mi,
   "delivery_mobile": true veya false — telefon bildirimi olarak gönderilsin mi

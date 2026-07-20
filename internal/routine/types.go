@@ -17,6 +17,11 @@ const (
 	ContextNone     ContextSourceType = "none"
 	ContextCalendar ContextSourceType = "calendar"
 	ContextWhatsApp ContextSourceType = "whatsapp"
+	// ContextInsight pre-fetches a time-windowed slice of the user's own
+	// conversation memory + mood trend (see internal/app/insight.go) instead
+	// of calendar/WhatsApp data — for routines like a weekly self-insight
+	// digest ("geçen hafta kendimle ilgili ne fark ettim").
+	ContextInsight ContextSourceType = "insight"
 )
 
 // Schedule describes when a routine fires. Weekdays is empty for "every day".

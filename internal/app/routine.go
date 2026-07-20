@@ -95,7 +95,7 @@ func (a *App) CreateRoutineFromDraft(originalText string, d routine.Draft, whats
 
 	contextType := routine.ContextSourceType(d.ContextSourceType)
 	switch contextType {
-	case routine.ContextCalendar, routine.ContextWhatsApp:
+	case routine.ContextCalendar, routine.ContextWhatsApp, routine.ContextInsight:
 	default:
 		contextType = routine.ContextNone
 	}
@@ -252,6 +252,18 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 			if err == nil {
 				extraContext = formatWhatsAppMessagesForRoutine(msgs, r.Language)
 			}
+		}
+	case routine.ContextInsight:
+		// Reuses GenerateSelfInsight's own context-building (memory.RecentSince +
+		// mood.HistorySince) rather than duplicating it here — the routine's
+		// user-authored Prompt becomes the *framing* around that pre-synthesized
+		// insight, same "deterministic context, one plain LLM call" shape as the
+		// calendar/whatsapp cases above, just with the insight already summarized.
+		insight, err := a.GenerateSelfInsight(ctx, 0, r.Language)
+		if err == nil {
+			extraContext = insight
+		} else {
+			logx.Printf("routine: GenerateSelfInsight: %v", err)
 		}
 	}
 

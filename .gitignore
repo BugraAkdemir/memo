@@ -5,6 +5,10 @@ build_output/
 dist/
 dist_packages/
 *.pkg
+/memo
+/memo_test
+/appimagetool-x86_64.AppImage
+/proactive-demo
 
 # Runtime data (user-specific)
 data/models/

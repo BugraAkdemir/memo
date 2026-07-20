@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/exec"
@@ -33,7 +34,64 @@ func main() {
 	prompt := flag.String("p", "", "Send a single message non-interactively, print the reply plus [chat:<id>] and a [memory:...] status line, then exit — no terminal REPL. Scripting/testing only, mirrors what the interactive REPL does for one turn.")
 	chatID := flag.String("chat", "", "Existing chat ID to continue with -p (see [chat:<id>] from a previous -p run). Omitted: -p starts a brand-new agent chat, same as an interactive session would.")
 	autoAllow := flag.Bool("auto-allow", false, "With -p: automatically allow any tool permission request instead of denying it, so a scripted turn can actually run agent tools (file edit, command, web search) instead of being blocked. DANGEROUS outside a disposable test environment — the agent gets to act on the filesystem/shell with zero human review.")
+
+	// Standalone commands: each prints or does one thing and exits, without
+	// starting a session or touching the backend lifecycle. Both the short
+	// and long spellings are declared because Go's flag package treats "-x"
+	// and "--x" as the same flag but does NOT alias different names, so
+	// --version and -v have to be separate declarations to both work.
+	showHelp := flag.Bool("help", false, "Show the command reference and exit")
+	showHelpH := flag.Bool("h", false, "Alias for --help")
+	showVersion := flag.Bool("version", false, "Print the version and exit")
+	showVersionV := flag.Bool("v", false, "Alias for --version")
+	showStatus := flag.Bool("status", false, "Report whether a backend is running, and which model/memory it has loaded")
+	doKill := flag.Bool("kill", false, "Stop everything Memo owns — the backend, llama-server, whisper-server and the desktop app — and release their ports")
+	doUpdate := flag.Bool("update", false, "Update Memo to the latest release by re-running the platform installer")
+	doGUI := flag.Bool("gui", false, "Open the desktop app")
+	openGitHub := flag.Bool("github", false, "Open the GitHub repository in a browser")
+	openBugReport := flag.Bool("bugreport", false, "Open the bug report page in a browser")
+	openBugRep := flag.Bool("bugrep", false, "Alias for --bugreport")
+	openDocs := flag.Bool("docs", false, "Open the user guide in a browser")
+
+	flag.Usage = func() { printHelp(versionFile) }
 	flag.Parse()
+
+	// Handled before anything else — none of these need a backend, a config
+	// load, or the log redirection below, and several are the things a user
+	// reaches for precisely when the normal path is broken.
+	//
+	// The internal packages these call log through logx at INFO level (the
+	// llama port sweep especially, several lines per port), all of it
+	// diagnostic noise in a one-shot command whose entire job is to print a
+	// short readable result. Silence it so each runX function fully owns
+	// what reaches the terminal.
+	if isStandaloneCommand() {
+		logx.SetOutput(io.Discard)
+		log.SetOutput(io.Discard)
+	}
+
+	switch {
+	case *showHelp || *showHelpH:
+		printHelp(versionFile)
+		return
+	case *showVersion || *showVersionV:
+		printVersion(versionFile)
+		return
+	case *showStatus:
+		os.Exit(runStatus(*port))
+	case *doKill:
+		os.Exit(runKill(*port))
+	case *doUpdate:
+		os.Exit(runUpdate())
+	case *doGUI:
+		os.Exit(runGUI())
+	case *openGitHub:
+		os.Exit(runOpenURL("GitHub", githubURL))
+	case *openBugReport || *openBugRep:
+		os.Exit(runOpenURL("Hata bildir / report a bug", issuesNewURL))
+	case *openDocs:
+		os.Exit(runOpenURL("Kılavuz / guide", guideURL))
+	}
 
 	// -p was actually passed (even as -p ""), as opposed to omitted
 	// entirely: `*prompt != ""` couldn't tell those two cases apart, since

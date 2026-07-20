@@ -374,7 +374,18 @@ func (s *Server) Stop() error {
 		close(s.stopCleaner)
 		s.stopCleaner = nil
 	}
-	go srv.Shutdown(context.Background())
+	// Unlock before blocking Shutdown so Serve's exit path can take s.mu.
+	s.mu.Unlock()
+	// Wait for Shutdown so the port is free before a follow-up
+	// StartHTTPWithAddr (e.g. SetRemoteAccess rebind for Swarm LAN). Fire-
+	// and-forget Shutdown raced Listen and caused intermittent "address
+	// already in use" on create-room.
+	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(ctx); err != nil {
+		logx.Printf("server shutdown: %v", err)
+	}
+	s.mu.Lock()
 	return nil
 }
 

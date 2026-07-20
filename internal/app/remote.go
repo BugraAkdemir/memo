@@ -92,8 +92,13 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 		return fmt.Errorf("server not initialized")
 	}
 
+	// Skip no-op only when listen state already matches the request. If remote
+	// is "enabled" but still bound to 127.0.0.1 (failed rebind, race with
+	// Shutdown), fall through and try again — Swarm LAN join depends on this.
 	if enabled == a.remoteAccessEnabled && ws.GetPort() == port && a.cfg.RemoteAccess.NgrokMode == (a.ngrokServer != nil) {
-		return nil
+		if !enabled || ws.GetListenAddr() == "0.0.0.0" {
+			return nil
+		}
 	}
 
 	a.remoteAccessEnabled = enabled

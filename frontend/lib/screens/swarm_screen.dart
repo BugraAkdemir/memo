@@ -656,6 +656,8 @@ class _WorkerTile extends StatefulWidget {
 class _WorkerTileState extends State<_WorkerTile> {
   late final TextEditingController _shareCtrl;
   late final FocusNode _shareFocus;
+  double? _lastSentShare;
+  bool _sendingShare = false;
 
   @override
   void initState() {
@@ -663,6 +665,7 @@ class _WorkerTileState extends State<_WorkerTile> {
     _shareCtrl = TextEditingController(
       text: widget.worker.sharePercent.toStringAsFixed(0),
     );
+    _lastSentShare = widget.worker.sharePercent;
     _shareFocus = FocusNode();
     _shareFocus.addListener(_onShareFocusChange);
   }
@@ -674,6 +677,7 @@ class _WorkerTileState extends State<_WorkerTile> {
     if (!_shareFocus.hasFocus &&
         oldWidget.worker.sharePercent != widget.worker.sharePercent) {
       _shareCtrl.text = widget.worker.sharePercent.toStringAsFixed(0);
+      _lastSentShare = widget.worker.sharePercent;
     }
   }
 
@@ -684,11 +688,18 @@ class _WorkerTileState extends State<_WorkerTile> {
   }
 
   void _commitShare() {
-    if (widget.onShareChanged == null) return;
+    if (widget.onShareChanged == null || _sendingShare) return;
     final pct = double.tryParse(_shareCtrl.text.trim());
     if (pct == null) return;
-    if (pct == widget.worker.sharePercent) return;
+    if (_lastSentShare != null && pct == _lastSentShare) return;
+    if (pct == widget.worker.sharePercent) {
+      _lastSentShare = pct;
+      return;
+    }
+    _sendingShare = true;
+    _lastSentShare = pct;
     widget.onShareChanged!(pct);
+    _sendingShare = false;
   }
 
   @override

@@ -410,8 +410,8 @@ func extractTarGzToBin(archivePath, destDir string, logger func(string)) error {
 		name := filepath.Base(hdr.Name)
 		lname := strings.ToLower(name)
 
-		// Extract llama-server binary and shared libraries (.so)
-		isServerBin := name == "llama-server"
+		// Extract llama-server/rpc-server binaries and shared libraries (.so)
+		isServerBin := name == "llama-server" || name == "rpc-server"
 		isSharedLib := strings.HasSuffix(lname, ".so") || strings.Contains(lname, ".so.")
 		if !isServerBin && !isSharedLib {
 			continue
@@ -481,8 +481,8 @@ func extractZipToBin(zipPath, destDir string, logger func(string)) error {
 		name := filepath.Base(f.Name)
 		lname := strings.ToLower(name)
 
-		// Only extract the server binary and required DLLs
-		if name != "llama-server.exe" && !strings.HasSuffix(lname, ".dll") {
+		// Only extract the server binaries and required DLLs
+		if name != "llama-server.exe" && name != "rpc-server.exe" && !strings.HasSuffix(lname, ".dll") {
 			continue
 		}
 

@@ -480,3 +480,66 @@ func TestSendMessage_StopsInterruptWatchBeforeMemorySavedPoll(t *testing.T) {
 
 	<-done
 }
+
+// ─── Welcome panel: memory hint replaces the old status row ──────────────
+//
+// These name the *testing.T parameter "tt": this package's l10n helper is a
+// function named t(key string) string, and a parameter named t would shadow
+// it for the whole test body (same convention as l10n_test.go).
+
+// runWelcomeOnce runs one REPL session that exits immediately, against a
+// backend whose embedding status is fixed to embeddingRunning, and returns
+// everything the welcome panel printed. Every other endpoint is left
+// unregistered on purpose — each of those calls is best-effort, so 404ing
+// them also checks the panel still renders when the backend answers nothing.
+func runWelcomeOnce(tt *testing.T, embeddingRunning bool) string {
+	tt.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/agent/chat", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"id": "chat-1"})
+	})
+	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	mux.HandleFunc("/api/models/embedding/status", func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]bool{"running": embeddingRunning})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	var out bytes.Buffer
+	if err := Run(srv.URL, "/tmp/proj", strings.NewReader("/exit\n"), &out, false); err != nil {
+		tt.Fatalf("Run: %v", err)
+	}
+	return out.String()
+}
+
+func TestWelcome_ShowsEmbeddingHintWhileMemoryIsDown(tt *testing.T) {
+	got := runWelcomeOnce(tt, false)
+	if !strings.Contains(got, t("memory_off_hint")) {
+		tt.Errorf("expected the /embedding hint while embedding is down, got:\n%s", got)
+	}
+}
+
+func TestWelcome_HidesEmbeddingHintOnceMemoryIsUp(tt *testing.T) {
+	got := runWelcomeOnce(tt, true)
+	if strings.Contains(got, t("memory_off_hint")) {
+		tt.Errorf("the /embedding hint should be gone once embedding is running, got:\n%s", got)
+	}
+}
+
+// The status row was removed for being untrustworthy (the backend can report
+// "running" off a bare port ping), so it must not come back in either state.
+func TestWelcome_NeverPrintsAMemoryStatusRow(tt *testing.T) {
+	for _, running := range []bool{true, false} {
+		got := runWelcomeOnce(tt, running)
+		for _, label := range []string{"Hafıza:", "Memory:"} {
+			if strings.Contains(got, label) {
+				tt.Errorf("embeddingRunning=%v: panel still prints a memory status row (%q):\n%s", running, label, got)
+			}
+		}
+	}
+}

@@ -217,11 +217,20 @@ var memoMascot = []string{
 }
 
 // leftColumn builds the box's left half: the mascot and the welcome line
-// centered, then the model/memory/project status flush left. Centering
+// centered, then the chat model and project path flush left. Centering
 // short standalone phrases reads well; centering real key:value data gives
 // a ragged left edge that is harder to scan, so the status block
 // deliberately stays left-aligned.
-func leftColumn(model, memory, projectPath string, memoryColor func(string) string) []panelCell {
+//
+// There is deliberately no memory/embedding status row here. It used to
+// show one, and it was actively misleading: the backend's embedding status
+// falls back to a bare port ping (GetStatus/pingPort, internal/app), which
+// reports "running" whenever anything at all is listening on that port —
+// so the panel would cheerfully print "Hafıza: açık" for a session whose
+// memory was not working. A status line nobody can trust is worse than no
+// status line, so what the panel offers instead is a single actionable
+// warning (printWelcome, repl.go) telling the user to run /embedding.
+func leftColumn(model, projectPath string) []panelCell {
 	var out []panelCell
 	add := func(plain, styled string) { out = append(out, panelCell{plain, styled}) }
 	center := func(plain, styled string) {
@@ -239,12 +248,9 @@ func leftColumn(model, memory, projectPath string, memoryColor func(string) stri
 
 	// Truncate the value, never the label: a clipped "Model:" would be
 	// unreadable, a clipped value still says which field it belongs to.
-	field := func(label, value string, color func(string) string) {
-		v := fitTo(value, panelLeftW-len([]rune(label)))
-		add(label+v, bold(label)+color(v))
-	}
-	field(t("label_model"), model, func(s string) string { return s })
-	field(t("label_memory"), memory, memoryColor)
+	label := t("label_model")
+	add(label+fitTo(model, panelLeftW-len([]rune(label))),
+		bold(label)+fitTo(model, panelLeftW-len([]rune(label))))
 	if projectPath != "" {
 		p := fitTo(projectPath, panelLeftW)
 		add(p, dim(p))
@@ -344,7 +350,7 @@ func narrowPanel(title string, left, right []panelCell) string {
 // welcomePanel renders the startup panel as ONE box split by a vertical
 // divider, matching the layout of the reference screenshot: the title sits
 // inlined in the top border, the left column carries the mascot, the
-// welcome line and the model/memory/project status, and the right column
+// welcome line and the chat model / project path, and the right column
 // carries tips drawn at random per launch plus — when GET /api/version/check
 // reports a newer release — an update notice pointing at /update. With
 // nothing to update, that slot takes one more tip instead so it is never
@@ -354,7 +360,7 @@ func narrowPanel(title string, left, right []panelCell) string {
 // run has no project root); both are simply omitted rather than shown blank.
 // termWidth <= 0 means "unknown" (piped input, a pty that never reported a
 // size) and takes the full box, since nothing is going to reflow anyway.
-func welcomePanel(version, projectPath, model, memory, updateNotice string, memoryActive bool, termWidth int) string {
+func welcomePanel(version, projectPath, model, updateNotice string, termWidth int) string {
 	title := "✳ Memo CLI"
 	if version != "" {
 		// The raw version string (build_releases.sh's `version` file)
@@ -362,17 +368,13 @@ func welcomePanel(version, projectPath, model, memory, updateNotice string, memo
 		// before adding ours so the title never doubles up ("vV3.3.3").
 		title += " v" + strings.TrimLeft(version, "Vv")
 	}
-	memoryColor := yellow
-	if memoryActive {
-		memoryColor = green
-	}
 
 	// Drawn from one shuffle rather than two calls, so the extra tip that
 	// fills the update slot when there's nothing to update can never repeat
 	// one of the three already listed above it.
 	picks := randomTips(4)
 
-	left := leftColumn(model, memory, projectPath, memoryColor)
+	left := leftColumn(model, projectPath)
 	right := rightColumn(picks, updateNotice)
 
 	if termWidth > 0 && termWidth < panelWidth {

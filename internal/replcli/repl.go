@@ -444,7 +444,7 @@ func EventDataSince(events []Event, afterSeq uint64, name string) (string, bool)
 }
 
 func (s *session) printWelcome() {
-	memory, active := s.memorySummary()
+	active := s.memoryActive()
 	// Best-effort: an older/incompatible backend or a transient error just
 	// means the title line omits the version suffix, nothing else degrades.
 	version, _ := s.client.Version(s.ctx)
@@ -465,24 +465,26 @@ func (s *session) printWelcome() {
 	if s.ed != nil && s.ed.width != nil {
 		termWidth = s.ed.width()
 	}
-	fmt.Fprintln(s.out, welcomePanel(version, s.projectPath, s.modelSummary(), memory, updateNotice, active, termWidth))
-	// Embedding auto-start (autoStartEmbeddingModel/startupEmbeddingModel,
-	// internal/app/llama.go+embedding.go) can fail for reasons the banner
-	// alone doesn't explain — no embedding model file found, the model
-	// download failed, or Start itself failed (e.g. its port is already
-	// occupied by something else). Any of those already emits a
-	// memory:error event with the real reason; only silence in this REPL
-	// ever kept it from the user. Gated on !active so a stale error from
-	// earlier in the ring isn't shown once embedding is actually up.
+	fmt.Fprintln(s.out, welcomePanel(version, s.projectPath, s.modelSummary(), updateNotice, termWidth))
+
+	// The panel itself shows no memory/embedding status row — the backend's
+	// status is not trustworthy enough to print as fact (see leftColumn's
+	// note: a bare port ping can report "running" for a session whose memory
+	// isn't working). What replaces it is this one actionable line, shown
+	// only while embedding looks down, telling the user the exact command
+	// that fixes it. Running /embedding successfully makes it go away on the
+	// next panel draw (/clear, /session, or the next launch).
 	if !active {
+		fmt.Fprintln(s.out, yellow("⚠ "+t("memory_off_hint")))
+		// Embedding auto-start (autoStartEmbeddingModel/startupEmbeddingModel,
+		// internal/app/llama.go+embedding.go) can fail for reasons the hint
+		// above doesn't cover — no model file found, a failed download, or a
+		// port already occupied by something else. The backend already emits
+		// a memory:error event carrying the real reason; print it underneath
+		// as the detail line, dim so the actionable hint stays the headline.
 		if events, err := s.client.Events(s.ctx); err == nil {
 			if msg, ok := eventDataSince(events, 0, "memory:error"); ok {
-				// No forced "⚠ " prefix: several memory:error messages
-				// (llama.go's embedding-not-found one, in particular — visible
-				// in the very screenshot that prompted this fix) already embed
-				// their own "⚠️", and yellow() alone already reads as a warning
-				// everywhere else in this file.
-				fmt.Fprintln(s.out, yellow(msg))
+				fmt.Fprintln(s.out, dim("  "+msg))
 			}
 		}
 	}
@@ -514,33 +516,33 @@ func (s *session) modelSummary() string {
 	return t("model_not_loaded_hint")
 }
 
-// memorySummary reports whether the embedding model (and therefore RAG
-// memory) is actually running. When this process just started the backend
-// itself (ownBackend), an embedding model can still be mid-load in the
-// background — briefly retry before declaring memory off, so the welcome
-// panel doesn't flash a stale warning for something that finishes loading
-// half a second later. Attaching to an already-running backend has no such
-// race — its embedding status is already settled, so a single check is both
-// correct and instant.
-func (s *session) memorySummary() (text string, active bool) {
+// memoryActive reports whether the embedding model (and therefore RAG
+// memory) looks like it's running. When this process just started the
+// backend itself (ownBackend), an embedding model can still be mid-load in
+// the background — briefly retry before declaring memory off, so the
+// welcome panel doesn't flash a "run /embedding" warning at someone whose
+// embedding finishes loading half a second later. Attaching to an
+// already-running backend has no such race — its embedding status is
+// already settled, so a single check is both correct and instant.
+//
+// This only ever gates a hint, never a status claim: the underlying backend
+// check can report "running" off a bare port ping, so it is not reliable
+// enough to print as fact (see leftColumn, color.go).
+func (s *session) memoryActive() bool {
 	attempts := 1
 	if s.ownBackend {
 		attempts = 6
 	}
 	const interval = 400 * time.Millisecond
 	for i := range attempts {
-		status, err := s.client.EmbeddingStatus(s.ctx)
-		if err == nil && status.Running {
-			if status.ModelName != "" {
-				return status.ModelName, true
-			}
-			return t("memory_on"), true
+		if status, err := s.client.EmbeddingStatus(s.ctx); err == nil && status.Running {
+			return true
 		}
 		if i < attempts-1 {
 			time.Sleep(interval)
 		}
 	}
-	return t("memory_off"), false
+	return false
 }
 
 func (s *session) handleChunk(chunk api.StreamChunk) error {

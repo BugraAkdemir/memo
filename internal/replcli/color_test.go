@@ -88,7 +88,7 @@ func TestRandomTips_ClampsToPoolSize(t *testing.T) {
 // caught every alignment regression this panel has shipped.
 func TestWelcomePanel_EveryBoxRowIsExactlyPanelWidth(t *testing.T) {
 	panel := welcomePanel("3.3.3", "/home/bugra/Documents/memo",
-		"yüklü değil — /model ya da /connect", "kapalı", "", false, 200)
+		"yüklü değil — /model ya da /connect", "", 200)
 	for i, w := range panelRowWidths(panel) {
 		if w != panelWidth {
 			t.Errorf("row %d width = %d, want %d\n%s", i, w, panelWidth, panel)
@@ -100,8 +100,7 @@ func TestWelcomePanel_EveryBoxRowIsExactlyPanelWidth(t *testing.T) {
 // must not reflow the box.
 func TestWelcomePanel_WidthIsStableAcrossTerminalSizes(t *testing.T) {
 	render := func(termWidth int) string {
-		return welcomePanel("3.3.3", "/home/bugra/Documents/memo",
-			"model", "açık", "", true, termWidth)
+		return welcomePanel("3.3.3", "/home/bugra/Documents/memo", "model", "", termWidth)
 	}
 	for _, tw := range []int{panelWidth, 120, 200, 400, 0} {
 		for i, w := range panelRowWidths(render(tw)) {
@@ -116,7 +115,7 @@ func TestWelcomePanel_WidthIsStableAcrossTerminalSizes(t *testing.T) {
 // the row past the border.
 func TestWelcomePanel_OverlongContentStaysInsideTheBox(t *testing.T) {
 	longPath := "/tmp/claude-1000/-home-bugra-Documents-memo/1d799e9b-8252-4f5f-9f2a-780c5e31b304/scratchpad/deeper/still"
-	panel := welcomePanel("3.3.3", longPath, strings.Repeat("uzunmodel", 12), "kapalı", "", false, 200)
+	panel := welcomePanel("3.3.3", longPath, strings.Repeat("uzunmodel", 12), "", 200)
 	for i, w := range panelRowWidths(panel) {
 		if w != panelWidth {
 			t.Errorf("row %d width = %d, want %d — long content escaped the box\n%s", i, w, panelWidth, panel)
@@ -126,7 +125,7 @@ func TestWelcomePanel_OverlongContentStaysInsideTheBox(t *testing.T) {
 
 func TestWelcomePanel_IncludesUpdateNoticeWhenGiven(t *testing.T) {
 	notice := "yeni sürüm mevcut: v9.9.9 — güncellemek için /update yaz"
-	got := welcomePanel("3.3.3", "/tmp/proj", "gpt-x", "açık", notice, true, 200)
+	got := welcomePanel("3.3.3", "/tmp/proj", "gpt-x", notice, 200)
 	if !strings.Contains(got, "9.9.9") {
 		t.Errorf("welcomePanel with a non-empty updateNotice didn't include it:\n%s", got)
 	}
@@ -135,7 +134,7 @@ func TestWelcomePanel_IncludesUpdateNoticeWhenGiven(t *testing.T) {
 // With nothing to update the notice slot takes an extra tip instead, so the
 // right column never renders with a hole in it.
 func TestWelcomePanel_NoUpdateStillFillsTheSlot(t *testing.T) {
-	got := welcomePanel("3.3.3", "/tmp/proj", "gpt-x", "açık", "", true, 200)
+	got := welcomePanel("3.3.3", "/tmp/proj", "gpt-x", "", 200)
 	if strings.Contains(got, "sürüm mevcut") {
 		t.Errorf("no update notice was passed, but one was rendered:\n%s", got)
 	}
@@ -146,7 +145,7 @@ func TestWelcomePanel_NoUpdateStillFillsTheSlot(t *testing.T) {
 }
 
 func TestWelcomePanel_NarrowTerminalFallsBackToUnboxedLines(t *testing.T) {
-	got := welcomePanel("3.3.3", "/home/bugra/Documents/memo", "model", "kapalı", "", false, 40)
+	got := welcomePanel("3.3.3", "/home/bugra/Documents/memo", "model", "", 40)
 	if strings.Contains(got, "╭") || strings.Contains(got, "┬") {
 		t.Errorf("a terminal narrower than the box should not draw one:\n%s", got)
 	}
@@ -165,7 +164,7 @@ func TestWelcomePanel_NoPanicAtAnyTermWidth(t *testing.T) {
 					t.Errorf("welcomePanel panicked at termWidth=%d: %v", w, r)
 				}
 			}()
-			welcomePanel("1.0.0", "/home/bugra/Documents/memo", "model", "kapalı", "", false, w)
+			welcomePanel("1.0.0", "/home/bugra/Documents/memo", "model", "", w)
 		}()
 	}
 }

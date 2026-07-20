@@ -58,8 +58,6 @@ var tr = map[string]string{
 	"memory_saved":              "✓ hafıza kaydedildi",
 	"model_not_loaded_hint":     "yüklü değil — /model ya da /connect",
 	"local_model":               "yerel model",
-	"memory_on":                 "açık",
-	"memory_off":                "kapalı",
 	"tool_running":              "⚙ %s çalışıyor...",
 	"tool_done":                 "✓ %s tamamlandı",
 	"tool_error":                "✗ %s hata: %s",
@@ -96,8 +94,10 @@ var tr = map[string]string{
 	// color.go — welcome panel / tips
 	"welcome_back": "Tekrar hoş geldin!",
 	"label_model":  "Model:  ",
-	"label_memory": "Hafıza: ",
 	"tips_title":   "İpuçları",
+	// Shown instead of a memory status row, which was dropped for being
+	// untrustworthy — see leftColumn (color.go).
+	"memory_off_hint": "Hafızayı kullanmak için /embedding yaz",
 	// Tip descriptions are kept short on purpose: they render as one
 	// truncated row each in the welcome panel's right column (~20 cells
 	// after the label), so anything longer just gets cut with "…".
@@ -238,8 +238,6 @@ var en = map[string]string{
 	"memory_saved":              "✓ memory saved",
 	"model_not_loaded_hint":     "not loaded — /model or /connect",
 	"local_model":               "local model",
-	"memory_on":                 "on",
-	"memory_off":                "off",
 	"tool_running":              "⚙ running %s...",
 	"tool_done":                 "✓ %s done",
 	"tool_error":                "✗ %s error: %s",
@@ -273,10 +271,10 @@ var en = map[string]string{
 	"dropdown_hint_at":        "↑↓ navigate · Tab/Enter select · Esc close",
 
 	// color.go
-	"welcome_back": "Welcome back!",
-	"label_model":  "Model:  ",
-	"label_memory": "Memory: ",
-	"tips_title":   "Tips",
+	"welcome_back":    "Welcome back!",
+	"label_model":     "Model:  ",
+	"tips_title":      "Tips",
+	"memory_off_hint": "Type /embedding to enable memory",
 	// Kept short for the same reason as the Turkish set above — one
 	// truncated row each in the welcome panel's right column.
 	"tip_help":           "list every command",

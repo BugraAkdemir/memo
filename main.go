@@ -121,7 +121,15 @@ func main() {
 		sigCh := make(chan os.Signal, 1)
 		sigs := []os.Signal{os.Interrupt}
 		if runtime.GOOS != "windows" {
-			sigs = append(sigs, syscall.SIGTERM)
+			// SIGHUP too: a standalone --headless backend started in a
+			// terminal gets it when that terminal closes, and its default
+			// disposition is to terminate immediately — skipping the
+			// graceful Shutdown below, which is what stops llama-server and
+			// whisper-server. Left unhandled, closing the terminal is
+			// exactly the case that orphans those children with their ports
+			// still bound. (A backend spawned by spawnDetachedBackend has no
+			// controlling terminal thanks to Setsid, so it never sees this.)
+			sigs = append(sigs, syscall.SIGTERM, syscall.SIGHUP)
 		}
 		signal.Notify(sigCh, sigs...)
 		for {
@@ -168,7 +176,14 @@ func main() {
 	sigCh := make(chan os.Signal, 1)
 	sigs := []os.Signal{os.Interrupt}
 	if runtime.GOOS != "windows" {
-		sigs = append(sigs, syscall.SIGTERM)
+		// SIGHUP matters most of all here: closing the terminal window is
+		// the ordinary way people quit this, and its default disposition
+		// kills the process outright — so the signal branch below never ran,
+		// the client never said goodbye, and the backend it spawned had to
+		// wait out the registry's 90s staleness sweep before shutting down.
+		// That window is exactly what "I closed the app and the port is
+		// still open" looks like from outside.
+		sigs = append(sigs, syscall.SIGTERM, syscall.SIGHUP)
 	}
 	signal.Notify(sigCh, sigs...)
 

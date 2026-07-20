@@ -100,14 +100,13 @@ func startupTips() []tipEntry {
 	}
 }
 
-// boxWriter accumulates rows for a single bordered panel, all sharing one
-// interior width computed from whatever's been added so far — call finish
-// once every row is queued. Every row is stored as (plain-text, styled)
-// pairs: plain drives width/padding math (raw rune count, no ANSI), styled
-// is what's actually printed, so colored segments never throw off alignment.
-// Every panel this REPL draws (welcomePanel's two boxes, previously
-// welcomePanel's ad hoc pad/row closures) goes through this one
-// implementation now instead of each hand-rolling its own box math.
+// boxWriter accumulates rows for a single fully-bordered panel (welcomePanel's
+// tips box — the title card uses its own lighter left-rule style below,
+// matching the reference screenshot's two different border weights), all
+// sharing one interior width computed from whatever's been added so far.
+// Every row is stored as (plain-text, styled) pairs: plain drives
+// width/padding math (raw rune count, no ANSI), styled is what's actually
+// printed, so colored segments never throw off alignment.
 type boxWriter struct {
 	rows  []func(width int) string
 	width int
@@ -122,17 +121,6 @@ func (b *boxWriter) left(plain, styled string) {
 	b.rows = append(b.rows, func(width int) string {
 		pad := strings.Repeat(" ", max(width-2-len([]rune(plain)), 0))
 		return bronze("│") + "  " + styled + pad + bronze("│")
-	})
-}
-
-// center adds a horizontally centered row.
-func (b *boxWriter) center(plain, styled string) {
-	b.width = max(b.width, len([]rune(plain))+4)
-	b.rows = append(b.rows, func(width int) string {
-		total := max(width-2-len([]rune(plain)), 0)
-		left := total / 2
-		right := total - left
-		return bronze("│") + strings.Repeat(" ", left) + styled + strings.Repeat(" ", right) + bronze("│")
 	})
 }
 
@@ -155,17 +143,29 @@ func (b *boxWriter) render() string {
 	return out.String()
 }
 
-// welcomePanel renders the startup panel: a bordered, centered title card
-// (app name + version, a welcome line, the model/memory status, the active
-// project directory) followed by a second bordered box listing composer
-// tips. Two full boxes rather than one long one — closer to Claude Code's
-// own layout (a title card plus a distinct tips panel) than a single tall
-// block, and it gives the tips their own visual weight instead of trailing
-// off as plain unboxed text. Deliberately no third "what's new" box: a
+// memoMascot is the welcome card's signature element — a small pixel-face,
+// Memo's own (not a copy of Claude Code's llama), sized to stay legible at
+// this scale. Every row must be the same rune width (7) so center() below
+// can align them as one block.
+var memoMascot = []string{
+	" ▄▄▄▄▄ ",
+	"█ o o █",
+	"█  -  █",
+	" ▀▀▀▀▀ ",
+}
+
+// welcomePanel renders the startup panel: a title card in Claude Code's own
+// minimal style (a top rule, not a closed box — left edge only, no right or
+// bottom border) with centered content and a small mascot, followed by a
+// separate, fully bordered box listing composer tips. The two panels
+// deliberately use different border weights, matching the reference
+// screenshot exactly rather than forcing one consistent box style: Claude
+// Code's own welcome card is a light rule + left edge, but its tips/updates
+// panel is a real closed box. Deliberately no third "what's new" box: a
 // terminal client has no changelog surface to point at, and it was asked to
-// stay out of this redesign explicitly. Both boxes are bordered in Memo's
-// bronze brand accent, not a neutral dim gray — the earlier version's plain
-// gray border was the single biggest reason it read as generic rather than
+// stay out of this redesign explicitly. Both panels are bronze
+// (colorBronze), not a neutral dim gray — an earlier pass's plain gray
+// border was the single biggest reason it read as generic rather than
 // deliberately themed. version/projectPath may be empty (version fetch
 // failed, or this run has no project root) — both rows are simply omitted.
 func welcomePanel(version, projectPath, model, memory string, memoryActive bool) string {
@@ -181,15 +181,37 @@ func welcomePanel(version, projectPath, model, memory string, memoryActive bool)
 		memoryColor = green
 	}
 
-	card := newBoxWriter()
-	card.center(title, bold(gold(title)))
-	card.blank()
-	card.center(t("welcome_back"), t("welcome_back"))
-	card.blank()
-	card.left(t("label_model")+model, bold(t("label_model"))+model)
-	card.left(t("label_memory")+memory, bold(t("label_memory"))+memoryColor(memory))
+	// Only the centered rows (title, mascot, welcome line) drive this width —
+	// the Model:/Memory:/path status block below stays left-aligned and can
+	// run wider than it without affecting how the centered rows are padded,
+	// same reasoning as the previous pass: real key:value data centers with
+	// a ragged, harder-to-scan left edge, so it deliberately doesn't.
+	centerWidth := len([]rune(title))
+	centerWidth = max(centerWidth, len([]rune(t("welcome_back"))))
+	for _, row := range memoMascot {
+		centerWidth = max(centerWidth, len([]rune(row)))
+	}
+	center := func(s string) string {
+		pad := max((centerWidth-len([]rune(s)))/2, 0)
+		return strings.Repeat(" ", pad) + s
+	}
+
+	var card strings.Builder
+	fmt.Fprintln(&card, bronze("╭─")+" "+bold(gold(title)))
+	line := func(s string) { fmt.Fprintln(&card, bronze("│")+"  "+s) }
+	blank := func() { fmt.Fprintln(&card, bronze("│")) }
+
+	blank()
+	for _, row := range memoMascot {
+		line(bronze(center(row)))
+	}
+	blank()
+	line(center(t("welcome_back")))
+	blank()
+	line(bold(t("label_model")) + model)
+	line(bold(t("label_memory")) + memoryColor(memory))
 	if projectPath != "" {
-		card.left(projectPath, dim(projectPath))
+		line(dim(projectPath))
 	}
 
 	tips := newBoxWriter()
@@ -210,5 +232,5 @@ func welcomePanel(version, projectPath, model, memory string, memoryActive bool)
 		tips.left(plain, styled)
 	}
 
-	return card.render() + "\n\n" + tips.render()
+	return strings.TrimRight(card.String(), "\n") + "\n\n" + tips.render()
 }

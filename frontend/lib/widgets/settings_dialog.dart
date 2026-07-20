@@ -90,6 +90,10 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final dialogWidth = (screenSize.width * 0.85).clamp(400.0, 900.0);
     final dialogHeight = (screenSize.height * 0.85).clamp(400.0, 700.0);
 
+    // ScaffoldMessenger + Scaffold so tab SnackBars (ScaffoldMessenger.of)
+    // render ON TOP of this modal Dialog instead of behind it on the root
+    // Scaffold (BUG-M2). MemoryImportTab already uses an inline banner for the
+    // same reason; this covers every other tab without rewriting each one.
     return Dialog(
       backgroundColor: MemoTheme.of(context).bgApp,
       shape: RoundedRectangleBorder(
@@ -102,106 +106,111 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
         ),
-        child: Column(
-          children: [
-            Container(
-              height: 56,
-              padding: EdgeInsets.symmetric(horizontal: 24),
-              decoration: BoxDecoration(
-                color: MemoTheme.of(context).bgPanel,
-                border: Border(
-                  bottom: BorderSide(color: MemoTheme.of(context).borderSoft),
-                ),
-              ),
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    L10n.t('settings'),
-                    style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                      color: MemoTheme.of(context).textMain,
+        child: ScaffoldMessenger(
+          child: Scaffold(
+            backgroundColor: MemoTheme.of(context).bgApp,
+            body: Column(
+              children: [
+                Container(
+                  height: 56,
+                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  decoration: BoxDecoration(
+                    color: MemoTheme.of(context).bgPanel,
+                    border: Border(
+                      bottom: BorderSide(color: MemoTheme.of(context).borderSoft),
                     ),
                   ),
-                  IconButton(
-                    icon: Icon(Icons.close, size: 20),
-                    onPressed: () => Navigator.of(context).pop(),
-                    color: MemoTheme.of(context).textDim,
-                  ),
-                ],
-              ),
-            ),
-            Expanded(
-              child: Row(
-                children: [
-                  Container(
-                    width: 200,
-                    decoration: BoxDecoration(
-                      color: MemoTheme.of(context).bgPanel.withValues(alpha: 0.5),
-                      border: Border(
-                        right: BorderSide(color: MemoTheme.of(context).borderSoft),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        L10n.t('settings'),
+                        style: TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
+                          color: MemoTheme.of(context).textMain,
+                        ),
                       ),
-                    ),
-                    child: ListView.builder(
-                      padding: EdgeInsets.symmetric(vertical: 12),
-                      itemCount: tabs.length,
-                      itemBuilder: (context, index) {
-                        final isActive = tabIndex == index;
-                        final iconColor = isActive
-                            ? MemoTheme.accent
-                            : MemoTheme.of(context).textDim;
-                        return InkWell(
-                          onTap: () => setState(() => _activeTab = index),
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                            decoration: BoxDecoration(
-                              color: isActive ? MemoTheme.of(context).bgElement : Colors.transparent,
-                              border: Border(
-                                left: BorderSide(
-                                  color: isActive ? MemoTheme.accent : Colors.transparent,
-                                  width: 3,
+                      IconButton(
+                        icon: Icon(Icons.close, size: 20),
+                        onPressed: () => Navigator.of(context).pop(),
+                        color: MemoTheme.of(context).textDim,
+                      ),
+                    ],
+                  ),
+                ),
+                Expanded(
+                  child: Row(
+                    children: [
+                      Container(
+                        width: 200,
+                        decoration: BoxDecoration(
+                          color: MemoTheme.of(context).bgPanel.withValues(alpha: 0.5),
+                          border: Border(
+                            right: BorderSide(color: MemoTheme.of(context).borderSoft),
+                          ),
+                        ),
+                        child: ListView.builder(
+                          padding: EdgeInsets.symmetric(vertical: 12),
+                          itemCount: tabs.length,
+                          itemBuilder: (context, index) {
+                            final isActive = tabIndex == index;
+                            final iconColor = isActive
+                                ? MemoTheme.accent
+                                : MemoTheme.of(context).textDim;
+                            return InkWell(
+                              onTap: () => setState(() => _activeTab = index),
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
+                                decoration: BoxDecoration(
+                                  color: isActive ? MemoTheme.of(context).bgElement : Colors.transparent,
+                                  border: Border(
+                                    left: BorderSide(
+                                      color: isActive ? MemoTheme.accent : Colors.transparent,
+                                      width: 3,
+                                    ),
+                                  ),
+                                ),
+                                child: Row(
+                                  children: [
+                                    SizedBox(
+                                      width: 18, height: 18,
+                                      child: SvgPicture.asset(
+                                        _tabIcons[index],
+                                        colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                                      ),
+                                    ),
+                                    const SizedBox(width: 10),
+                                    Expanded(
+                                      child: Text(
+                                        tabs[index],
+                                        style: TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                                          color: isActive ? MemoTheme.of(context).textMain : MemoTheme.of(context).textSecondary,
+                                        ),
+                                        overflow: TextOverflow.ellipsis,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
-                            ),
-                            child: Row(
-                              children: [
-                                SizedBox(
-                                  width: 18, height: 18,
-                                  child: SvgPicture.asset(
-                                    _tabIcons[index],
-                                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                                  ),
-                                ),
-                                const SizedBox(width: 10),
-                                Expanded(
-                                  child: Text(
-                                    tabs[index],
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                                      color: isActive ? MemoTheme.of(context).textMain : MemoTheme.of(context).textSecondary,
-                                    ),
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      },
-                    ),
+                            );
+                          },
+                        ),
+                      ),
+                      Expanded(
+                        child: Container(
+                          color: MemoTheme.of(context).bgApp,
+                          child: _buildTabContent(tabIndex),
+                        ),
+                      ),
+                    ],
                   ),
-                  Expanded(
-                    child: Container(
-                      color: MemoTheme.of(context).bgApp,
-                      child: _buildTabContent(tabIndex),
-                    ),
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-          ],
+          ),
         ),
       ),
     );

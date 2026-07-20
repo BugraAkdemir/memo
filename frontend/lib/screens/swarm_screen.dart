@@ -533,8 +533,9 @@ class _HostSwarmViewState extends ConsumerState<_HostSwarmView> {
                 shrinkWrap: true,
                 physics: const NeverScrollableScrollPhysics(),
                 itemCount: status.workers.length,
-                onReorder: (oldIndex, newIndex) {
-                  if (newIndex > oldIndex) newIndex -= 1;
+                // onReorderItem already adjusts newIndex for the remove-then-insert
+                // case (Flutter 3.41+); do not manually newIndex--.
+                onReorderItem: (oldIndex, newIndex) {
                   ref
                       .read(swarmStatusProvider.notifier)
                       .reorderWorkers(oldIndex, newIndex);

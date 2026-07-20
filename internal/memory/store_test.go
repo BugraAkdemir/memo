@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"memo/internal/models"
 )
@@ -44,6 +45,46 @@ func TestSaveAndRetrieve(t *testing.T) {
 	}
 	if !strings.Contains(results[0].Content, "coffee beans") {
 		t.Fatalf("result content = %q, want coffee memory", results[0].Content)
+	}
+}
+
+// TestRecentSince covers the pure time-window fetch added for the
+// self-insight digest feature — no query/semantic ranking, just "everything
+// since this cutoff", unlike RetrieveContext/FilteredSearch.
+func TestRecentSince(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store, err := NewStore(StoreConfig{
+		Dir:           dir,
+		Dimension:     3,
+		EmbeddingFunc: testEmbedding,
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveInteraction(ctx, "old fact", "noted"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+
+	future := time.Now().Add(time.Hour)
+	results, err := store.RecentSince(ctx, future, 10)
+	if err != nil {
+		t.Fatalf("RecentSince(future) error = %v", err)
+	}
+	if len(results) != 0 {
+		t.Fatalf("RecentSince(future) len = %d, want 0 (cutoff is after the only saved memory)", len(results))
+	}
+
+	past := time.Now().Add(-time.Hour)
+	results, err = store.RecentSince(ctx, past, 10)
+	if err != nil {
+		t.Fatalf("RecentSince(past) error = %v", err)
+	}
+	if len(results) != 1 || !strings.Contains(results[0].Content, "old fact") {
+		t.Fatalf("RecentSince(past) = %+v, want 1 result containing %q", results, "old fact")
 	}
 }
 

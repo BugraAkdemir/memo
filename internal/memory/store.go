@@ -1495,6 +1495,15 @@ func (s *Store) FilteredSearch(ctx context.Context, query string, topK int, minS
 	return filtered, nil
 }
 
+// RecentSince returns up to limit memories recorded at or after since, most
+// recent first — a pure time-window fetch with no query/semantic ranking,
+// for callers that want everything in a window (e.g. a periodic self-insight
+// digest) rather than top-K by similarity to a search query. Reuses
+// FilteredSearch's own SQL fallback path instead of duplicating the query.
+func (s *Store) RecentSince(ctx context.Context, since time.Time, limit int) ([]MemoryResult, error) {
+	return s.sqlFilteredFallback(ctx, limit, since, "")
+}
+
 // sqlFilteredFallback returns up to limit memories that satisfy the since/tag constraints,
 // ordered by timestamp descending (most recent first). Used when semantic retrieval
 // returns no results within the filter window.

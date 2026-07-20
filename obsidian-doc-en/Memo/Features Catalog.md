@@ -45,6 +45,18 @@ Router features: fallback chain, auto-disable after 3 failures, health check gor
 | Usage Stats | ✅ | Settings → Stats: token/speed/model breakdown, 30-day chart (fl_chart) |
 | Developer API Gateway | ✅ | Its own screen in the sidebar (not inside Settings): point Claude Code (`ANTHROPIC_BASE_URL`) or any OpenAI-compatible tool at Memo's local/external model, includes a live request/response log — see [[Developer API Gateway]] |
 
+## 🐝 Memo Swarm (Beta)
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Host / Join room | ✅ Beta | Sidebar → Swarm; multi-PC via room code |
+| rpc-server (Join) | ✅ Beta | Joiners do not need the model file |
+| llama-server `--rpc` (Host) | ✅ Beta | Model on host; layers split across machines (llama.cpp RPC) |
+| Beta master switch | ✅ | Settings → **Beta Features** (moved out of Remote Access) |
+| macOS | ❌ | UI hidden; RPC binary not packaged |
+
+Plain-language guide: [[Memo Swarm]].
+
 ## 🧰 Agent Mode (Tool Calling)
 
 | Feature | Status |

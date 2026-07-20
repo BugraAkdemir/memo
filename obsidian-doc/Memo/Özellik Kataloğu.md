@@ -45,6 +45,18 @@ Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma,
 | Kullanım İstatistikleri | ✅ | Ayarlar → İstatistikler: token/hız/model dağılımı, 30 günlük grafik (fl_chart) |
 | Geliştirici API Ağ Geçidi | ✅ | Yan menüde ayrı bir ekran (Ayarlar içinde değil): Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'daki yerel/harici modele bağla, canlı istek/yanıt günlüğü dahil — bkz. [[Geliştirici API Ağ Geçidi]] |
 
+## 🐝 Memo Swarm (Beta)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Host / Katıl odası | ✅ Beta | Yan menü → Swarm; oda kodu ile birden fazla PC | 
+| rpc-server (Join) | ✅ Beta | Katılan makinede model dosyası gerekmez |
+| llama-server `--rpc` (Host) | ✅ Beta | Model host’ta; yük katmanları makineler arasında (llama.cpp RPC) |
+| Beta anahtarı | ✅ | Ayarlar → **Beta Özellikler** (eski: Uzaktan Erişim altındaydı) |
+| macOS | ❌ | UI gizli; RPC binary paketlenmiyor |
+
+Sade dil + kurulum: [[Memo Swarm]].
+
 ## 🧰 Ajan Modu (Tool Calling)
 
 | Özellik                       | Durum      |

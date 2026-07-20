@@ -50,6 +50,7 @@ Bu büyük bir sürüm — proje başladığından beri en büyük güncelleme. 
 - **[[Özellik Kataloğu|Kullanım İstatistikleri]]** — Ayarlar → İstatistikler: token/hız/model dağılımı grafiği
 - **Eksiksiz `.memo` yedekleme** — takvim, rutinler, izinler, skill'ler ve (en kritik) `machine.key` artık yedeğe dahil
 - **[[Geliştirici API Ağ Geçidi]]** — Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'ya bağla, tam agentic araç çağırma dahil
+- **[[Memo Swarm]] (Beta)** — tek PC'ye sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır (yan menü → Swarm; Ayarlar → Beta Özellikler)
 
 Tam liste: `versinNote/tr/v3.3.3.md`
 
@@ -70,6 +71,7 @@ Tam liste: `versinNote/tr/v3.3.3.md`
 - [[Proaktif Öğrenme ve Takvim]] — Gözlemci + niyet çıkarımı
 - [[Harici Sağlayıcılar]] — 8 sağlayıcı tipi + yedek zincir
 - [[Geliştirici API Ağ Geçidi]] — Claude Code'u (ya da Anthropic-uyumlu herhangi bir aracı) Memo'ya bağla
+- [[Memo Swarm]] — Birkaç PC ile büyük model (Beta)
 - [[Bulut Senkronizasyonu]] — Uçtan uca şifreli Google Drive yedekleme
 - [[API Dokümantasyonu]] — ~90 REST endpoint'inin tamamı
 - [[Geliştirici Kurulum Rehberi]] — Kaynaktan derleme

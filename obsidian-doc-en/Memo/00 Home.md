@@ -50,6 +50,7 @@ This is a major release — the biggest update to Memo since the project started
 - **[[Features Catalog|Usage Stats]]** — Settings → Stats: token/speed/model breakdown chart
 - **Complete `.memo` backup** — calendar, routines, permissions, skills, and (most critically) `machine.key` are now included
 - **[[Developer API Gateway]]** — point Claude Code (`ANTHROPIC_BASE_URL`) or any OpenAI-compatible tool at Memo, with full agentic tool-calling support
+- **[[Memo Swarm]] (Beta)** — pool several PCs to run a model that will not fit on one machine (sidebar → Swarm; Settings → Beta Features)
 
 Full list: `versinNote/v3.3.3.md`
 
@@ -70,6 +71,7 @@ Full list: `versinNote/v3.3.3.md`
 - [[Proactive Learning and Calendar]] — Observer + intent extraction
 - [[External Providers]] — 8 provider types + fallback chain
 - [[Developer API Gateway]] — Point Claude Code (or anything Anthropic-compatible) at Memo
+- [[Memo Swarm]] — Multi-PC large models (Beta)
 - [[Cloud Sync]] — E2E encrypted Google Drive backup
 - [[API Documentation]] — All ~90 REST endpoints
 - [[Developer Setup Guide]] — Build from source

@@ -16,6 +16,13 @@ Memo, güç kullanıcıları için RAG ve Model parametrelerini ince ayar yapma 
 - **Remote Access:** Bu ayar açıldığında Memo, yerel ağdaki (Wi-Fi) diğer cihazların erişimine açılır.
 - **Port Settings:** Varsayılan 8090 portunu çakışma durumunda değiştirebilirsiniz.
 
+## Beta Özellikler (Ayarlar → Beta Özellikler)
+- Deneysel özelliklerin **tek anahtarı** buradadır (eski yer: Uzaktan Erişim sayfasının içi).
+- **Açıkken:** [[Memo Swarm]], gömülü Tailscale tüneli ve ileride eklenecek diğer beta parçalar kullanılabilir hale gelir.
+- **Kapalıyken:** Swarm menüsü ve Tailscale bölümü gizlenir / devre dışıdır.
+- Her beta özelliğin asıl ayarı kendi ekranındadır (Swarm → yan menü; Tailscale → Uzaktan Erişim).
+
 ### Bağlantılı Notlar:
 - [[Vektör Arama Mantığı]]
 - [[API Dökümantasyonu]]
+- [[Memo Swarm]]

@@ -177,34 +177,59 @@ class L10n {
     'tab_swarm': 'Swarm',
     'tab_report_bug': 'Hata Bildir',
     'swarm_title': 'Memo Swarm',
-    'swarm_subtitle': 'Birden fazla makineyi birleştirip tek büyük model çalıştır',
-    'swarm_host_title': 'Host',
-    'swarm_host_desc': 'Bu makinede oda aç, modeli sen yükle, diğerleri bağlansın',
+    'swarm_subtitle': 'Bir bilgisayara sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır',
+    // Plain-language explainer shown on the Host/Join picker (no jargon).
+    'swarm_what_is_title': 'Bu ne işe yarar?',
+    'swarm_what_is_body':
+        'Bazen bir yapay zekâ modeli o kadar büyük olur ki tek bir bilgisayarın belleğine sığmaz. Memo Swarm, evindeki veya ofisindeki birkaç bilgisayarı “bir takım” gibi birleştirir: model dosyası bir makinede kalır; diğerleri ona işlem gücü katar. Amaç hız değil — tek başına kaldıramayacağın modeli birlikte kaldırabilmek.',
+    'swarm_how_works_title': 'Nasıl çalışır? (üç adım)',
+    'swarm_how_works_1':
+        '1. Bir bilgisayarda “Ev sahibi (Host)” ol: modeli seç, oda aç, çıkan kodu kopyala.',
+    'swarm_how_works_2':
+        '2. Diğer bilgisayarlarda “Katıl”a bas, kodu yapıştır — onlar modele dosya indirmez, sadece yardımcı olur.',
+    'swarm_how_works_3':
+        '3. Host tarafında her makinenin pay yüzdesini ayarla ve “Swarm’ı Başlat”a bas.',
+    'swarm_who_needs_title': 'Ne lazım?',
+    'swarm_who_needs_body':
+        '• Her makinede Memo açık ve Ayarlar → Beta Özellikler açık olmalı.\n'
+        '• Makineler birbirini ağa göre görmeli (aynı Wi‑Fi / LAN, veya her ikisinde de sistem seviyesinde Tailscale).\n'
+        '• Host bilgisayarda model dosyası (GGUF) yüklü olmalı; katılanlarda model dosyası gerekmez.\n'
+        '• macOS’ta Swarm henüz yok (gerekli yardımcı program orada paketlemiyor).',
+    'swarm_limits_title': 'Bilmen gerekenler',
+    'swarm_limits_body':
+        'Bu bir beta özelliktir. Swarm’ı başlatmak model yüklemesini makineler arasında böler; sohbetin her zaman otomatik bu “birleşik” motora geçmesi henüz son cilayı bekliyor olabilir. Hız artışı bekleme — genelde daha yavaş, ama daha büyük model mümkün olur. Pay yüzdelerini 0 bırakırsan yardımcı makineler fiilen iş almaz.',
+    'swarm_host_title': 'Ev sahibi (Host)',
+    'swarm_host_desc':
+        'Modeli bu bilgisayarda tut, oda aç, kodu diğerlerine ver. Yükü sen yönetirsin.',
     'swarm_join_title': 'Katıl',
-    'swarm_join_desc': 'Bir oda kodu yapıştır, rpc-server olarak katıl',
-    'swarm_choose': 'Seç',
+    'swarm_join_desc':
+        'Bir oda kodu yapıştır. Bu bilgisayar modele dosya indirmeden sadece işlem gücü katar.',
+    'swarm_choose': 'Devam',
     'swarm_back': 'Geri',
-    'swarm_select_model': 'Model seç',
-    'swarm_no_models': 'Yerel GGUF model yok — önce Model Store\'dan indir',
-    'swarm_create_room': 'Oda Oluştur',
-    'swarm_room_code': 'Oda kodu',
+    'swarm_select_model': 'Hangi modeli birlikte çalıştıracaksın?',
+    'swarm_no_models':
+        'Bu bilgisayarda indirilmiş GGUF model yok. Önce Model Mağazası’ndan bir model indir.',
+    'swarm_create_room': 'Oda oluştur ve kod al',
+    'swarm_room_code': 'Oda kodu (bunu diğer bilgisayarlara yapıştır)',
     'swarm_copy_code': 'Kopyala',
-    'swarm_code_copied': 'Oda kodu kopyalandı',
-    'swarm_workers': 'Worker\'lar',
-    'swarm_no_workers': 'Henüz worker yok — kodu diğer makinelere gönder',
-    'swarm_host_share': 'Host payı',
-    'swarm_start': 'Swarm\'ı Başlat',
+    'swarm_code_copied': 'Oda kodu panoya kopyalandı',
+    'swarm_workers': 'Bağlanan yardımcılar',
+    'swarm_no_workers':
+        'Henüz kimse katılmadı. Kodu diğer bilgisayarlardaki Memo’da “Katıl”a yapıştır.',
+    'swarm_host_share': 'Bu bilgisayarın payı',
+    'swarm_start': 'Swarm’ı başlat',
     'swarm_stop': 'Durdur',
-    'swarm_close_room': 'Odayı Kapat',
-    'swarm_running': 'Swarm çalışıyor',
-    'swarm_paste_code': 'Oda kodunu yapıştır',
+    'swarm_close_room': 'Odayı kapat',
+    'swarm_running': 'Swarm çalışıyor — makineler birlikte yüklüyor',
+    'swarm_paste_code': 'Host’un verdiği oda kodunu buraya yapıştır',
     'swarm_join_btn': 'Katıl',
     'swarm_leave_btn': 'Ayrıl',
-    'swarm_joined': 'Bağlandı — swarm aktif',
+    'swarm_joined': 'Bağlandın — bu bilgisayar swarm’a güç veriyor',
     'swarm_connecting': 'Bağlanıyor…',
     'swarm_remove_worker': 'Kaldır',
     'swarm_share_pct': 'Pay %',
-    'swarm_beta_only': 'Swarm bir beta özelliğidir — Ayarlar > Beta Özellikler\'den aç',
+    'swarm_beta_only':
+        'Swarm bir beta özelliğidir — Ayarlar → Beta Özellikler’den aç',
 
     // Usage stats tab
     'stats_title': 'Kullanım İstatistikleri',
@@ -1346,34 +1371,60 @@ class L10n {
     'tab_swarm': 'Swarm',
     'tab_report_bug': 'Report Bug',
     'swarm_title': 'Memo Swarm',
-    'swarm_subtitle': 'Pool machines to run one model too large for any single one',
+    'swarm_subtitle':
+        'Run a model that will not fit on one PC by pooling several machines',
+    // Plain-language explainer on the Host/Join picker (no jargon).
+    'swarm_what_is_title': 'What is this for?',
+    'swarm_what_is_body':
+        'Some AI models are so large they will not fit in one computer memory. Memo Swarm turns a few PCs at home or at the office into a team: the model file stays on one machine; the others lend CPU/GPU power. The goal is capacity, not speed — running a model you could not run alone.',
+    'swarm_how_works_title': 'How it works (three steps)',
+    'swarm_how_works_1':
+        '1. On one PC choose "Host": pick the model, create a room, copy the code.',
+    'swarm_how_works_2':
+        '2. On the other PCs choose "Join", paste the code — they do not download the model file; they only help compute.',
+    'swarm_how_works_3':
+        '3. On the Host, set each machine share %, then press "Start Swarm".',
+    'swarm_who_needs_title': 'What you need',
+    'swarm_who_needs_body':
+        '• Memo open on every machine, with Settings → Beta Features turned on.\n'
+        '• Machines must reach each other on the network (same Wi-Fi / LAN, or OS-level Tailscale on both).\n'
+        '• The Host must have the model file (GGUF); joiners do not need the model file.\n'
+        '• Swarm is not available on macOS yet (the helper binary is not packaged there).',
+    'swarm_limits_title': 'Things to know',
+    'swarm_limits_body':
+        'This is a beta feature. Starting the swarm splits the model load across machines; automatic routing of every chat turn onto that combined engine may still be finishing polish. Do not expect a speedup — it is usually slower, but larger models become possible. If you leave share % at 0, helper machines effectively do no work.',
     'swarm_host_title': 'Host',
-    'swarm_host_desc': 'Open a room here, load the model, let others join',
+    'swarm_host_desc':
+        'Keep the model on this PC, open a room, share the code. You control the load.',
     'swarm_join_title': 'Join',
-    'swarm_join_desc': 'Paste a room code and join as an rpc-server worker',
-    'swarm_choose': 'Choose',
+    'swarm_join_desc':
+        'Paste a room code. This PC adds compute power without downloading the model file.',
+    'swarm_choose': 'Continue',
     'swarm_back': 'Back',
-    'swarm_select_model': 'Select model',
-    'swarm_no_models': 'No local GGUF models — download one from the Model Store first',
-    'swarm_create_room': 'Create Room',
-    'swarm_room_code': 'Room code',
+    'swarm_select_model': 'Which model should the team run?',
+    'swarm_no_models':
+        'No GGUF models on this PC yet. Download one from the Model Store first.',
+    'swarm_create_room': 'Create room and get a code',
+    'swarm_room_code': 'Room code (paste this on the other PCs)',
     'swarm_copy_code': 'Copy',
-    'swarm_code_copied': 'Room code copied',
-    'swarm_workers': 'Workers',
-    'swarm_no_workers': 'No workers yet — share the code with other machines',
-    'swarm_host_share': 'Host share',
+    'swarm_code_copied': 'Room code copied to clipboard',
+    'swarm_workers': 'Connected helpers',
+    'swarm_no_workers':
+        'Nobody has joined yet. Paste the code under "Join" on the other PCs.',
+    'swarm_host_share': 'This PC share',
     'swarm_start': 'Start Swarm',
     'swarm_stop': 'Stop',
-    'swarm_close_room': 'Close Room',
-    'swarm_running': 'Swarm running',
-    'swarm_paste_code': 'Paste room code',
+    'swarm_close_room': 'Close room',
+    'swarm_running': 'Swarm running — machines are loading together',
+    'swarm_paste_code': 'Paste the room code the Host gave you',
     'swarm_join_btn': 'Join',
     'swarm_leave_btn': 'Leave',
-    'swarm_joined': 'Connected — swarm active',
+    'swarm_joined': 'Connected — this PC is powering the swarm',
     'swarm_connecting': 'Connecting…',
     'swarm_remove_worker': 'Remove',
     'swarm_share_pct': 'Share %',
-    'swarm_beta_only': 'Swarm is a beta feature — enable it in Settings > Beta Features',
+    'swarm_beta_only':
+        'Swarm is a beta feature — turn it on in Settings → Beta Features',
 
     // Usage stats tab
     'stats_title': 'Usage Statistics',

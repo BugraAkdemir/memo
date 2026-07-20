@@ -103,29 +103,139 @@ class _SwarmScreenState extends ConsumerState<SwarmScreen> {
   Widget _buildPicker(ThemeColors c) {
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(48),
-        child: Wrap(
-          spacing: 16,
-          runSpacing: 16,
-          alignment: WrapAlignment.center,
-          children: [
-            _SwarmFeatureCard(
-              icon: Icons.dns_rounded,
-              title: L10n.t('swarm_host_title'),
-              description: L10n.t('swarm_host_desc'),
-              actionLabel: L10n.t('swarm_choose'),
-              onTap: () => setState(() => _mode = _SwarmMode.host),
-            ),
-            _SwarmFeatureCard(
-              icon: Icons.login_rounded,
-              title: L10n.t('swarm_join_title'),
-              description: L10n.t('swarm_join_desc'),
-              actionLabel: L10n.t('swarm_choose'),
-              onTap: () => setState(() => _mode = _SwarmMode.join),
-            ),
-          ],
+        padding: const EdgeInsets.fromLTRB(32, 16, 32, 48),
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 720),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _SwarmExplainerCard(c: c),
+              const SizedBox(height: 28),
+              Wrap(
+                spacing: 16,
+                runSpacing: 16,
+                alignment: WrapAlignment.center,
+                children: [
+                  _SwarmFeatureCard(
+                    icon: Icons.dns_rounded,
+                    title: L10n.t('swarm_host_title'),
+                    description: L10n.t('swarm_host_desc'),
+                    actionLabel: L10n.t('swarm_choose'),
+                    onTap: () => setState(() => _mode = _SwarmMode.host),
+                  ),
+                  _SwarmFeatureCard(
+                    icon: Icons.login_rounded,
+                    title: L10n.t('swarm_join_title'),
+                    description: L10n.t('swarm_join_desc'),
+                    actionLabel: L10n.t('swarm_choose'),
+                    onTap: () => setState(() => _mode = _SwarmMode.join),
+                  ),
+                ],
+              ),
+            ],
+          ),
         ),
       ),
+    );
+  }
+}
+
+/// Plain-language "what is Swarm / how / needs / limits" block.
+/// All copy comes from [L10n] — never hardcode user-facing strings here.
+class _SwarmExplainerCard extends StatelessWidget {
+  final ThemeColors c;
+  const _SwarmExplainerCard({required this.c});
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: c.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: c.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _section(L10n.t('swarm_what_is_title'), L10n.t('swarm_what_is_body')),
+          const SizedBox(height: 16),
+          Text(
+            L10n.t('swarm_how_works_title'),
+            style: TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              color: c.textMain,
+            ),
+          ),
+          const SizedBox(height: 8),
+          Text(L10n.t('swarm_how_works_1'),
+              style: TextStyle(fontSize: 13, height: 1.45, color: c.textSecondary)),
+          const SizedBox(height: 4),
+          Text(L10n.t('swarm_how_works_2'),
+              style: TextStyle(fontSize: 13, height: 1.45, color: c.textSecondary)),
+          const SizedBox(height: 4),
+          Text(L10n.t('swarm_how_works_3'),
+              style: TextStyle(fontSize: 13, height: 1.45, color: c.textSecondary)),
+          const SizedBox(height: 16),
+          _section(L10n.t('swarm_who_needs_title'), L10n.t('swarm_who_needs_body')),
+          const SizedBox(height: 16),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: MemoTheme.warningOrange.withValues(alpha: 0.1),
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(
+                color: MemoTheme.warningOrange.withValues(alpha: 0.35),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  L10n.t('swarm_limits_title'),
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    color: c.textMain,
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  L10n.t('swarm_limits_body'),
+                  style: TextStyle(
+                    fontSize: 12,
+                    height: 1.45,
+                    color: c.textSecondary,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _section(String title, String body) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: TextStyle(
+            fontSize: 14,
+            fontWeight: FontWeight.w700,
+            color: c.textMain,
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          body,
+          style: TextStyle(fontSize: 13, height: 1.5, color: c.textSecondary),
+        ),
+      ],
     );
   }
 }

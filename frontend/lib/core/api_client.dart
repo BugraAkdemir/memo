@@ -12,6 +12,7 @@ import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 import '../models/dev_gateway.dart';
+import '../models/swarm.dart';
 import '../models/task_list.dart';
 import '../models/usage_stats.dart';
 
@@ -1348,6 +1349,73 @@ class MemoApiClient {
       if (e.type == DioExceptionType.cancel) return;
       throw Exception('WhatsApp stream error: $e');
     }
+  }
+
+  // ─── Swarm ──────────────────────────────────────────────────────
+
+  /// Combined host + worker swarm status (Beta feature).
+  Future<SwarmStatus> getSwarmStatus() async {
+    final res = await _dio.get('/api/swarm/status');
+    return SwarmStatus.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Open a host room for the given GGUF path; returns the shareable room code.
+  Future<String> swarmHostCreate(String modelPath) async {
+    final res = await _dio.post('/api/swarm/host/create', data: {
+      'model_path': modelPath,
+    });
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return data['room_code'] as String? ?? '';
+  }
+
+  /// Remove a registered worker from the host room.
+  Future<void> swarmHostRemoveWorker(String workerId) async {
+    await _dio.post('/api/swarm/host/workers/remove', data: {
+      'worker_id': workerId,
+    });
+  }
+
+  /// Reorder workers (order maps positionally to --tensor-split).
+  Future<void> swarmHostReorderWorkers(int fromIndex, int toIndex) async {
+    await _dio.post('/api/swarm/host/workers/reorder', data: {
+      'from_index': fromIndex,
+      'to_index': toIndex,
+    });
+  }
+
+  /// Set one worker's percentage share of the tensor split.
+  Future<void> swarmHostSetShare(String workerId, double sharePercent) async {
+    await _dio.post('/api/swarm/host/workers/share', data: {
+      'worker_id': workerId,
+      'share_percent': sharePercent,
+    });
+  }
+
+  /// Start the coordinator llama-server with --rpc to registered workers.
+  Future<void> swarmHostStart({int ctxSize = 0}) async {
+    await _dio.post('/api/swarm/host/start', data: {
+      'ctx_size': ctxSize,
+    });
+  }
+
+  /// Stop the coordinator llama-server without closing the room.
+  Future<void> swarmHostStop() async {
+    await _dio.post('/api/swarm/host/stop');
+  }
+
+  /// Stop the swarm (if running) and tear down the room.
+  Future<void> swarmHostClose() async {
+    await _dio.post('/api/swarm/host/close');
+  }
+
+  /// Join a host room by pasting its room code (starts local rpc-server).
+  Future<void> swarmJoin(String code) async {
+    await _dio.post('/api/swarm/join', data: {'code': code});
+  }
+
+  /// Leave the current swarm (stop local rpc-server).
+  Future<void> swarmLeave() async {
+    await _dio.post('/api/swarm/leave');
   }
 
   // ─── Proactive Learning ─────────────────────────────────────────

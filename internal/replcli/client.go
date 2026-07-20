@@ -78,6 +78,15 @@ func (c *Client) Status(ctx context.Context) error {
 	return c.doJSON(ctx, http.MethodGet, "/api/status", nil, nil)
 }
 
+// Shutdown asks the backend to stop itself — the same POST /api/shutdown the
+// Flutter GUI uses. Expect a transport error on success as often as not: the
+// backend exits while answering, so the connection drops before a response
+// arrives, which is indistinguishable from a genuine failure. Callers should
+// confirm by polling Status rather than trusting the error here.
+func (c *Client) Shutdown(ctx context.Context) error {
+	return c.doJSON(ctx, http.MethodPost, "/api/shutdown", nil, nil)
+}
+
 // CheckVersionUpdate reports the latest available version, or "" if this
 // build is already current. Mirrors the Flutter GUI's own update check
 // (GET /api/version/check, already wired to app.CheckLatestVersion — an

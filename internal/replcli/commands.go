@@ -552,10 +552,22 @@ func (s *session) cmdConnect(args []string) {
 // own directory and its parent are searched — the same pattern
 // binarySearchBasesFrom uses in internal/llama for bundled binaries.
 func (s *session) cmdGui() {
+	if err := LaunchGUI(); err != nil {
+		fmt.Fprintln(s.out, errorf("%v", err))
+		return
+	}
+	fmt.Fprintln(s.out, green(t("gui_started")))
+}
+
+// LaunchGUI starts the bundled Flutter desktop app as a detached background
+// process and returns once it has been spawned — it does not wait for the
+// window. Exported because `memo --gui` (main.go) needs exactly the same
+// binary-discovery rules as the REPL's own /gui command, and having two
+// copies of them is how they drift apart.
+func LaunchGUI() error {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Fprintln(s.out, errorf(t("exe_path_not_found"), err))
-		return
+		return fmt.Errorf(t("exe_path_not_found"), err)
 	}
 	name := guiBinaryName()
 	var guiPath string
@@ -569,8 +581,7 @@ func (s *session) cmdGui() {
 		}
 	}
 	if guiPath == "" {
-		fmt.Fprintln(s.out, errorf(t("gui_not_found"), lastTried))
-		return
+		return fmt.Errorf(t("gui_not_found"), lastTried)
 	}
 
 	cmd := exec.Command(guiPath)
@@ -578,10 +589,9 @@ func (s *session) cmdGui() {
 	// itself, not next to the CLI — run from guiPath's own directory.
 	cmd.Dir = filepath.Dir(guiPath)
 	if err := cmd.Start(); err != nil {
-		fmt.Fprintln(s.out, errorf(t("gui_start_failed"), err))
-		return
+		return fmt.Errorf(t("gui_start_failed"), err)
 	}
-	fmt.Fprintln(s.out, green(t("gui_started")))
+	return nil
 }
 
 // guiSearchDirs returns the directories to look for the bundled GUI binary

@@ -58,6 +58,7 @@ type FullBridge interface {
 	SaveExplicitMemory(content, tags string) error
 	DeleteExplicitMemory(pattern string) (int, error)
 	ImportMemoryFromText(ctx context.Context, rawText string) (factsSaved int, styleUpdated bool, err error)
+	GenerateSelfInsight(ctx context.Context, windowDays int, lang string) (string, error)
 	ExportMemories() ([]byte, error)
 	ImportMemories(data []byte) (int, error)
 	GetMemoryStats() models.MemoryStats

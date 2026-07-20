@@ -1835,6 +1835,27 @@ func (s *Server) handleMemoryImportText(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, map[string]any{"ok": true, "facts_saved": factsSaved, "style_updated": styleUpdated})
 }
 
+func (s *Server) handleMemoryInsight(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		WindowDays int    `json:"window_days"`
+		Lang       string `json:"lang"`
+	}
+	// Body is optional — a plain POST with no body just uses the default
+	// window (see GenerateSelfInsight's windowDays<=0 handling) and Turkish.
+	_ = json.NewDecoder(r.Body).Decode(&body)
+
+	insight, err := s.fullBridge.GenerateSelfInsight(r.Context(), body.WindowDays, body.Lang)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{"ok": true, "insight": insight})
+}
+
 func (s *Server) handleMemoryExport(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet || s.fullBridge == nil {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)

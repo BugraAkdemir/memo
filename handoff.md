@@ -1,3 +1,48 @@
+# Handoff — 2026-07-20 (Session 48) — Memo Swarm Stage 5–9 tamamlandı
+
+## Özet
+
+Memo Swarm Stage 5–9 (App glue → webserver → Flutter API/provider/UI) implement edilip ayrı commit'lerle atıldı. Stage 10 (gerçek çoklu-makine donanım) bilinçli olarak dokunulmadı.
+
+## Commit'ler (kronolojik)
+
+| Stage | Commit | Ne |
+|-------|--------|----|
+| 5 | `24e9a4c` | `internal/app/swarm.go` + App alanları (`swarmCoordinator`/`swarmWorker`/`swarmServer`), Beta-gate, DecodeRoomCode export, ResolveRPCServerBinary |
+| 6 | `ea43775` | `/api/swarm/*` routes, FullBridge Swarm bölümü, workers/add X-Memo-Token muafiyeti, handler testleri |
+| 7 | `48f495b` | `models/swarm.dart` + `api_client` Swarm metodları |
+| 8 | `7e6c938` | `swarm_provider.dart` (WhatsApp-style adaptive Timer polling) |
+| 9 | `05bc23e` | `swarm_screen.dart` Host/Join UI, app_shell index 7, Beta+!macOS nav gate, M04 polling |
+
+## Tasarım kararları (uygulandı)
+
+1. **DecodeRoomCode** export (`internal/swarm/room.go`) — JoinSwarm pastalanan kodu çözer.
+2. **ResolveRPCServerBinary** (`internal/llama/rpc_probe.go`) — worker tarafı rpc-server bulur (sadece bundled tree).
+3. **Ayrı `swarmServer *llama.Server`** — normal sohbet `llamaServer`'ına dokunulmaz; Start/Stop bağımsız.
+
+## Doğrulama
+
+```
+CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...     → temiz
+go test -tags "sqlite_fts5" -race ./internal/{app,swarm,llama,webserver}/ → yeşil
+flutter analyze --no-fatal-infos lib/                → sadece info (pre-existing + 1x onReorder deprecation)
+flutter test                                         → 105/105 yeşil
+```
+
+## Bilinen sınırlar / sıradaki
+
+1. **Stage 10** hâlâ kullanıcı tarafında: gerçek 2+ makine, Windows `--rpc` live, Tailscale OS-level RPC routing, mid-inference disconnect UX.
+2. Swarm UI'daki `ReorderableListView.onReorder` Flutter 3.41+ deprecation (info) — `onReorderItem`'a geçilebilir.
+3. Swarm başlatıldığında sohbet motoru otomatik o port'a yönlenmiyor (bilinçli: ayrı server). İstenirse Stage 10 sonrası "swarm'ı aktif chat backend yap" glue eklenebilir.
+4. `remote_access_tab` Beta toggle hâlâ `betaFeaturesProvider` local prefs'i senkronize etmiyor; nav öncelikle `remoteAccessProvider['beta']` okuyor (backend truth) — genelde yeterli.
+5. Session 47 notları hâlâ geçerli: canary CI push-to-main (`b72ca46`) gözden geçirilmedi; Session 46 BUG_REPORT reopen hâlâ değerlendirilmedi.
+
+## Branch
+
+`main` origin'in ~14 commit önünde. Working tree: sadece `.gitignore` dirty (önceki oturumdan).
+
+---
+
 # Handoff — 2026-07-20 (Session 47) — Canary CI, self-insight özelliği, Memo Swarm planı + Stage 0-4 (devam ediyor)
 
 ## Özet

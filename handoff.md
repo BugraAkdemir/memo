@@ -1,3 +1,84 @@
+# Handoff — 2026-07-20 (Session 48 devam) — Unpushed Swarm code audit
+
+## Özet
+
+Kullanıcı "pushlanmamış commit'lerin hepsindeki kodu detaylıca incele, amacını yerine getiriyor mu, gerçekten çalışıyor mu" dedi. 16 unpushed commit (`origin/main..HEAD`, ~4350 satır Swarm Stage 0–9 + docs + gürültü .gitignore) satır satır + binary help + unit test ile denetlendi.
+
+**Verdict: iskelet/unit test yeşil; uçtan uca "büyük modeli swarm ile sohbet" HAYIR — usable feature olarak push'a hazır değil.**
+
+Session 48'in Stage 5–9 handoff'u (`a7b8be4`) "tamamlandı" der; bu entry onu **düzeltir**: implement edildi ≠ ürün hedefi çalışıyor.
+
+## Ne çalışıyor (kanıtlı)
+
+| Parça | Durum |
+|-------|--------|
+| Room code encode/decode + secret | Test yeşil |
+| Coordinator reorder/share/HostShare | Test yeşil (Stage 4 reorder bug fix dahil) |
+| `buildRPCArgs` her zaman `--split-mode layer` | Test + `llama-server --help` uyumlu |
+| RPC probe / ResolveRPCServerBinary | Diskte `binaries/linux/{cpu,nvidia,amd}/rpc-server` var |
+| RPCWorker start/stop/WaitReady | Fake-binary test yeşil |
+| FullBridge `*App` | `var _ webserver.FullBridge = (*App)(nil)` |
+| Routes + workers/add token exemption | Handler testleri yeşil |
+| Flutter Host/Join + M04 poll start/stop | Wired |
+| `go build` / ilgili paket `-race` testleri | Yeşil |
+
+## Kritik (gerçek kullanımda kırar) — Sıradaki oturumda önce bunlar
+
+1. **Swarm sohbete bağlanmıyor** (`internal/app/swarm.go` HostSwarmStart vs `llama.go`/`llm.go` `a.client`)
+   - `swarmServer` Port+2 (default 8083) ayağa kalkıyor.
+   - Chat hâlâ `llamaServer` (8081) / external provider.
+   - UI "Swarm çalışıyor" diyebilir; inference swarm'a gitmez.
+   - **Fix:** Start sonrası `a.client = NewClient(swarmServer.GetBaseURL())` (StartLocalModel deseni); Stop/Close restore; EngineStrip.
+
+2. **LAN join default kurulumda patlar**
+   - Oda kodu `LAN_IP:8090` yazar; webserver default **127.0.0.1** (remote access kapalı).
+   - Worker `POST` → connection refused.
+   - **Fix:** Create'te LAN için 0.0.0.0 (veya hard-error + UI: "önce Uzaktan Erişim/LAN aç").
+
+3. **Tailscale "ts" yarım**
+   - Register HTTP: embedded tsnet proxy olabilir.
+   - RPC: OS TCP, tsnet'ten geçmez; OS-level Tailscale `100.x` lazım.
+   - **Fix:** `100.x` yoksa net hata; veya ts'i şimdilik destekleme.
+
+## Yüksek
+
+4. `HostSwarmStart` `swarmMu`'yu WaitReady(180s) boyunca tutuyor → status/join/share bloke.
+5. Worker share default 0 → Start serbest → `--tensor-split 100,0` → pooling yok. Share field sadece Enter ile commit.
+6. `Connected` bir kez true, health-check yok → ölü worker'a Start mümkün.
+
+## Orta / düşük (özet)
+
+- `SwarmConfig.Workers` persist runtime'da yazılmıyor
+- Port `llamaPort+2` edge collision
+- RPC soft-fallback kafa karıştırıcı hata
+- Funnel HTTPS → worker her zaman `http://`
+- Windows path `split('/')` UI
+- Create tekrar odayı sessizce sıfırlar
+- Beta off swarm process'i durdurmuyor
+- Gürültü commit'ler: `a40defa gitgnore`, `b148bdf a` (sadece .gitignore)
+
+## Gürültü / docs commit'ler unpushed stack'te
+
+- `a40defa`, `b148bdf` — anlamsız mesaj, .gitignore
+- `9c58a70`, `90af3e9`, `a7b8be4` — handoff docs
+- Feature: `cd72356` … `05bc23e` (Stage 0–9)
+
+## Sıradaki oturum (öncelik sırası)
+
+1. Chat client ↔ swarmServer wire + stop/close restore + EngineStrip
+2. LAN create: 0.0.0.0 veya hard refuse + UI uyarısı
+3. Start: share sum > 0 + worker TCP probe; WaitReady dışında lock
+4. ts: 100.x yoksa fail
+5. (İsteğe bağlı) gürültü commit squash / reword; sonra Stage 10 donanım
+
+**Push politikası:** scaffolding/Beta incomplete olarak not düşülmeden "feature bitti" diye push etme. Kullanıcı onayıyla ya fix'ler ya da "WIP Swarm" mesajıyla.
+
+## Branch
+
+`main` origin'in ~16 commit önünde (audit anında).
+
+---
+
 # Handoff — 2026-07-20 (Session 48) — Memo Swarm Stage 5–9 tamamlandı
 
 ## Özet

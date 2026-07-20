@@ -1,4 +1,5 @@
 import 'dart:io' show Platform;
+import '../core/l10n.dart';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -52,7 +53,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                   const Spacer(),
                   TextButton(
                     onPressed: () => Navigator.of(context).pop(),
-                    child: Text('Kapat', style: TextStyle(color: theme.textDim)),
+                    child: Text(L10n.t('close'), style: TextStyle(color: theme.textDim)),
                   ),
                 ],
               ),
@@ -154,7 +155,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                     child: OutlinedButton.icon(
                       onPressed: _installSkill,
                       icon: const Icon(Icons.add, size: 16),
-                      label: const Text('Skill Yükle'),
+                      label: Text(L10n.t('skill_load')),
                       style: OutlinedButton.styleFrom(
                         foregroundColor: MemoTheme.accent,
                         side: BorderSide(color: MemoTheme.accent.withValues(alpha: 0.4)),
@@ -187,16 +188,16 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Skill\'i Sil'),
-        content: Text('"$name" skill\'ini silmek istediğine emin misin?'),
+        title: Text(L10n.t('skill_delete_title')),
+        content: Text(L10n.t('skill_delete_confirm', {'name': name})),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
-            child: const Text('İptal'),
+            child: Text(L10n.t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, true),
-            child: const Text('Sil', style: TextStyle(color: Colors.red)),
+            child: Text(L10n.t('delete'), style: const TextStyle(color: Colors.red)),
           ),
         ],
       ),
@@ -220,11 +221,11 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
     final path = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('Skill Yükle'),
+        title: Text(L10n.t('skill_load')),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text('Skill klasörünün yolunu gir:'),
+            Text(L10n.t('skill_path_prompt')),
             const SizedBox(height: 12),
             TextField(
               controller: pathController,
@@ -242,11 +243,11 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx),
-            child: const Text('İptal'),
+            child: Text(L10n.t('cancel')),
           ),
           TextButton(
             onPressed: () => Navigator.pop(ctx, pathController.text),
-            child: const Text('Yükle'),
+            child: Text(L10n.t('load')),
           ),
         ],
       ),

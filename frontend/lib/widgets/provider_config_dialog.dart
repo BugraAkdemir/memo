@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
@@ -124,7 +125,7 @@ class _ProviderConfigDialogState
     final apiKey = _apiKeyCtrl.text.trim();
     if (apiKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Önce API Key girin')),
+        SnackBar(content: Text(L10n.t('enter_api_key_first'))),
       );
       return;
     }
@@ -147,7 +148,7 @@ class _ProviderConfigDialogState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Modeller alınamadı: $e')),
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': '$e'}))),
         );
       }
       return null;
@@ -156,7 +157,7 @@ class _ProviderConfigDialogState
     if (result['status'] != 'ok') {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}')),
+          SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}')),
         );
       }
       return null;
@@ -188,7 +189,7 @@ class _ProviderConfigDialogState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Modeller alınamadı: $e')),
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': '$e'}))),
         );
       }
       return null;
@@ -197,7 +198,7 @@ class _ProviderConfigDialogState
     if (result['status'] != 'ok') {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ ${result['error'] ?? 'Modeller alınamadı'}')),
+          SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('models_fetch_error_short')}')),
         );
       }
       return null;
@@ -243,7 +244,7 @@ class _ProviderConfigDialogState
     if (!await launchUrl(uri, mode: LaunchMode.externalApplication)) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Bağlantı açılamadı: $url')),
+          SnackBar(content: Text(L10n.t('link_open_failed', {'url': '$url'}))),
         );
       }
     }
@@ -271,7 +272,7 @@ class _ProviderConfigDialogState
     // key-requiring provider with an empty API key.
     if (ProviderDefaults.needsApiKey(_type) && _apiKeyCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('API anahtarını gir (yoksa "Anahtar al" ile edinebilirsin)')),
+        SnackBar(content: Text(L10n.t('api_key_hint_get'))),
       );
       return;
     }
@@ -279,13 +280,13 @@ class _ProviderConfigDialogState
     // Custom endpoints have no default URL — without one, requests go nowhere.
     if (ProviderDefaults.needsBaseUrl(_type) && _baseUrlCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Özel sağlayıcı için Base URL gerekli (örn. https://host/v1)')),
+        SnackBar(content: Text(L10n.t('custom_base_url_required'))),
       );
       return;
     }
     if (_modelCtrl.text.trim().isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Model adı gir')),
+        SnackBar(content: Text(L10n.t('enter_model_name'))),
       );
       return;
     }
@@ -309,7 +310,7 @@ class _ProviderConfigDialogState
         // typed — tell them, so "Claude" quietly becoming "Claude 2" in the
         // provider list isn't a surprise they have to notice on their own.
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('"$desiredName" zaten var, "$finalName" olarak kaydedildi')),
+          SnackBar(content: Text(L10n.t('provider_renamed_on_conflict', {'desired': desiredName, 'final': finalName}))),
         );
       }
 
@@ -525,7 +526,7 @@ class _ProviderConfigDialogState
                         child: OutlinedButton.icon(
                           onPressed: _openModelBrowser,
                           icon: const Icon(Icons.search, size: 18),
-                          label: const Text('Seç'),
+                          label: Text(L10n.t('select')),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 18),
                           ),
@@ -548,7 +549,7 @@ class _ProviderConfigDialogState
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
                           : const Icon(Icons.wifi_find, size: 18),
-                      label: const Text('Bağlantıyı test et'),
+                      label: Text(L10n.t('test_connection')),
                     ),
                     if (_testResult != null) ...[
                       const SizedBox(width: 12),
@@ -631,7 +632,7 @@ class _ProviderConfigDialogState
 
                 // ── Enable toggle ──
                 SwitchListTile(
-                  title: const Text('Bu sağlayıcıyı etkinleştir'),
+                  title: Text(L10n.t('enable_this_provider')),
                   subtitle: Text(
                     _enabled ? 'Sohbette kullanılabilir' : 'Kayıtlı ama kapalı',
                     style: TextStyle(fontSize: 12, color: c.textDim),

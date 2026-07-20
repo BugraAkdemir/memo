@@ -115,6 +115,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
   final MemoApiClient _api;
   CancelToken? _cancelToken;
   StreamSubscription? _streamSubscription;
+  // Monotonic stream generation: each sendMessage/cancel bumps it so a
+  // stale onDone/onError from an abandoned stream cannot clobber the live
+  // one (BUG-M1; mirrors desktop MessagesNotifier._generation).
+  int _streamGeneration = 0;
 
   ChatNotifier(this._api) : super(const ChatState());
 
@@ -171,11 +175,21 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void sendMessage(String message) {
+    // BUG-M1: refuse overlapping sends — previously two taps claimed two
+    // streams, overwrote _cancelToken without cancelling the first, and
+    // appended two user bubbles for one intent.
+    if (state.streaming) return;
+    final text = message.trim();
+    if (text.isEmpty) return;
+
+    _cancelToken?.cancel();
+    _streamSubscription?.cancel();
     _cancelToken = CancelToken();
+    final myGeneration = ++_streamGeneration;
 
     final userMsg = ChatMessage(
       role: 'user',
-      content: message,
+      content: text,
       timestamp: DateTime.now().toIso8601String(),
     );
 
@@ -187,11 +201,11 @@ class ChatNotifier extends StateNotifier<ChatState> {
       error: null,
     );
 
-    _streamSubscription?.cancel();
     _streamSubscription = _api
-        .sendMessageStream(message, cancelToken: _cancelToken)
+        .sendMessageStream(text, cancelToken: _cancelToken)
         .listen(
       (chunk) {
+        if (_streamGeneration != myGeneration) return;
         if (chunk.isAgentEvent) {
           // Parse agent event from JSON content
           try {
@@ -226,6 +240,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         }
       },
       onError: (e) {
+        if (_streamGeneration != myGeneration) return;
         final fullContent = state.currentStreamContent;
         if (fullContent.isNotEmpty) {
           final assistantMsg = ChatMessage(
@@ -249,6 +264,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
         }
       },
       onDone: () {
+        if (_streamGeneration != myGeneration) return;
         final fullContent = state.currentStreamContent;
         if (fullContent.isNotEmpty || state.agentEvents.isNotEmpty) {
           final assistantMsg = ChatMessage(
@@ -278,7 +294,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
   }
 
   void cancelStream() {
+    _streamGeneration++;
     _cancelToken?.cancel();
+    _streamSubscription?.cancel();
+    _streamSubscription = null;
     final fullContent = state.currentStreamContent;
     if (fullContent.isNotEmpty) {
       final assistantMsg = ChatMessage(
@@ -299,7 +318,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
 
   @override
   void dispose() {
+    _streamGeneration++;
     _streamSubscription?.cancel();
+    _cancelToken?.cancel();
     super.dispose();
   }
 

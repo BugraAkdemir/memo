@@ -1,4 +1,37 @@
-# Handoff — 2026-07-20 (Session 49 devam) — Beta installer script'leri, build toolchain (ninja) eksikliği
+# Handoff — 2026-07-20 (Session 49 devam 3) — Codebase-memory MCP yeniden index'lendi + pinned-facts import fix'i
+
+## Özet
+
+Aynı oturumun devamı. Kullanıcı önce RAG/pinned-facts sisteminin nasıl çalıştığını (kaydetme yolu, dedup, hybrid RRF retrieval, pinned facts'in prompt'a nasıl enjekte edildiği) anlayıp anlamadığımı sordu — `AGENTS.md`, `obsidian-doc(-en)/RAG ve Semantik Hafıza` + `Vektör Arama Mantığı` + `Veri Katmanı` sayfaları ve gerçek kaynak (`internal/memory/store.go`, `internal/app/memory.go`, `internal/identity/identity.go`) okunarak doğrulandı, dokümanlarla kod tutarlıydı. Sonra kullanıcı "pinned sistemi ayarlardaki hafızayı içe aktar özelliğinde de çalışıyor mu, yeni yapıya uygun mu" diye sordu — bu şüphe doğru çıktı, gerçek bir bug bulundu ve düzeltildi.
+
+## `codebase-memory-mcp` yeniden index'lendi
+
+Bu makinede proje daha önce hiç index'lenmemişti (`list_projects` boş döndü — AGENTS.md'deki eski `home-bugra-Belgeler-memo` index'i eski makineye aitti, bu yola taşınmadı). `index_repository(repo_path="/home/bugra/Documents/memo", mode="full")` ile yeniden index'lendi: proje adı **`home-bugra-Documents-memo`** (AGENTS.md'de yazan isim artık geçersiz, güncellenmeli), 10375 node / 35448 edge. `trace_path(function_name="SaveExplicitMemory", direction="inbound")` ile pinned-facts yazma yolunun tüm çağıranları doğrulandı: `extractAndPinFacts`, `ImportMemoryFromText`, `handleMemoryExplicitSave` (HTTP `/remember` handler) — üçü de doğrudan çağırıyor, başka gizli bir yol yok.
+
+## Bug bulundu + düzeltildi: `ImportMemoryFromText`'te pinned-facts koruması eksikti (`ef98e2f`)
+
+`internal/app/memory_import.go`'daki `ImportMemoryFromText` (Ayarlar → başka bir AI'dan hafıza içe aktar) her fact'i `SaveExplicitMemory` ile pinned facts'e (`source='explicit', importance=5`, RAG ranking'i tamamen bypass eder) yazıyordu — yapısal olarak doğru path, ama `extractAndPinFacts` (otomatik fact extraction) ile birlikte eklenen iki korumadan yoksundu:
+
+1. **Dedup yoktu** — `pinnedFactTexts` kontrolü hiç yapılmıyordu. Kullanıcı aynı "hakkımda ne biliyorsun" çıktısını iki kere yapıştırırsa her seferinde yeni duplicate pinned kayıt oluşuyordu.
+2. **Sayı/uzunluk sınırı yoktu** — `parseExtractedFacts`'in `maxExtractedFactsPerTurn=5`/`maxExtractedFactLength=300` sınırlarının hiçbir karşılığı yoktu; model JSON'da kaç fact dönerse (ne kadar uzun olursa) hepsi doğrudan pinned'e yazılıyordu.
+
+`GetPinnedFacts` `LIMIT 50` (recency-ordered) olduğu için tekrarlanan/şişkin import'lar gerçek, benzersiz eski fact'leri sessizce prompt'tan düşürebiliyordu.
+
+**Fix:** `pinnedFactTexts` dedup'ı ve `maxExtractedFactLength` uzunluk sınırı `extractAndPinFacts`'ten ödünç alındı; yeni `maxImportedFactsPerCall=30` sayı sınırı eklendi (tek bir profil aktarımı bir sohbet turundan daha fazla fact içerebileceği için extraction'ın 5'lik limitinden yüksek tutuldu). İki yeni regression test (`TestImportMemoryFromText_SkipsAlreadyPinnedDuplicate`, `TestImportMemoryFromText_CapsFactCount`) fix olmadan fail ettiği doğrulanarak eklendi. Tüm backend suite (`-race`) yeşil.
+
+## Sıradaki oturum için
+
+1. AGENTS.md'deki `codebase-memory-mcp` proje adı (`home-bugra-Belgeler-memo`) güncellenmeli → `home-bugra-Documents-memo`.
+2. `handleMemoryExplicitSave` (tek seferlik `/remember` HTTP path'i) bilerek dedup/cap kontrolü dışında bırakıldı — kullanıcının kendi deliberate tek eylemi, LLM-güdümlü toplu extraction değil. İstenirse ayrıca gözden geçirilebilir ama bu oturumda kapsam dışı tutuldu.
+3. Önceki Session 49 girişlerindeki maddeler (ninja kurulumu doğrulanmadı, upload-memo.sh canlı denenmedi, Stage 10 swarm donanımı, AGENTS.md'nin eski Flutter yolu) hâlâ geçerli.
+
+## Branch
+
+`main`, bu oturumda push yapılmadı.
+
+---
+
+
 
 ## Özet
 

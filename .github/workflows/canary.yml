@@ -1,0 +1,42 @@
+# Weekly canaries for external dependencies (DuckDuckGo HTML scrape,
+# WhatsApp Noise handshake via whatsmeow). Intentionally NOT triggered by
+# push/PR — these probe live services, so they should fail independently of
+# any code change when an upstream breaks.
+name: Canary
+
+on:
+  schedule:
+    # Monday 06:00 UTC
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  GO_VERSION: "1.26"
+
+jobs:
+  canary:
+    name: External dependency canaries
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
+      - name: Install SQLite
+        run: sudo apt-get update && sudo apt-get install -y libsqlite3-dev
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-canary-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-canary-${{ runner.os }}-
+
+      # Build tag "canary" keeps these out of the normal `go test ./...` suite.
+      - name: Web search canary (DuckDuckGo)
+        run: go test -tags "sqlite_fts5 canary" -count=1 -run TestCanary ./internal/websearch/...
+
+      - name: WhatsApp handshake canary
+        run: go test -tags "sqlite_fts5 canary" -count=1 -run TestCanary ./internal/whatsapp/...

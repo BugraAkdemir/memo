@@ -86,6 +86,7 @@ var tr = map[string]string{
 	"cmd_session_hint":        "bu projedeki sohbetler arasında geç",
 	"cmd_tasklist_hint":       "görev listelerini yönet (list/create/start/stop/delete/show)",
 	"cmd_remote_hint":         "ngrok ile uzak erişim tüneli aç",
+	"cmd_update_hint":         "Memo'yu en son sürüme güncelle",
 	"cmd_exit_hint":           "çık",
 	"status_bar_text":         "/ komutlar  ·  @ dosya  ·  Esc durdur  ·  Ctrl+D çık",
 	"ctrl_c_again_to_exit":    "çıkmak için tekrar Ctrl+C",
@@ -97,10 +98,29 @@ var tr = map[string]string{
 	"label_model":  "Model:  ",
 	"label_memory": "Hafıza: ",
 	"tips_title":   "İpuçları",
-	"tip_help":     "tüm komutları listele",
-	"tip_at":       "bir dosyaya referans ver",
-	"tip_stop":     "yanıtı durdur",
-	"tip_exit":     "çık",
+	// Tip descriptions are kept short on purpose: they render as one
+	// truncated row each in the welcome panel's right column (~20 cells
+	// after the label), so anything longer just gets cut with "…".
+	"tip_help":           "tüm komutları listele",
+	"tip_at":             "dosya referansı ver",
+	"tip_stop":           "yanıtı durdur",
+	"tip_exit":           "çık",
+	"tip_models":         "modelleri listele",
+	"tip_model":          "sohbet modeli başlat",
+	"tip_embedding":      "embedding modeli aç",
+	"tip_connect":        "API sağlayıcısı bağla",
+	"tip_clear":          "sohbeti temizle",
+	"tip_session":        "sohbetler arası geç",
+	"tip_tasklist":       "görev listeleri",
+	"tip_remote":         "uzaktan erişim aç",
+	"tip_gui":            "masaüstü uygulaması",
+	"tip_model_download": "yeni model indir",
+	"tip_update":         "son sürüme güncelle",
+	"tip_tab":            "komutu tamamla",
+	"tip_history":        "geçmiş mesajlar",
+	"tip_clear_screen":   "ekranı temizle",
+	"tip_delete_word":    "son kelimeyi sil",
+	"tip_permission":     "izin cevabı ver",
 
 	// spinner.go
 	"spinner_thinking": "düşünüyor...",
@@ -116,6 +136,11 @@ var tr = map[string]string{
 	"cancelled_dot":               "İptal edildi.",
 	"backend_port_unknown":        "Backend portu belirlenemedi.",
 	"ngrok_starting":              "ngrok tüneli başlatılıyor...",
+	"update_confirm_prompt":       "Bu komutu çalıştırıp güncellemek istiyor musun? [y/n] ",
+	"update_running":              "Güncelleme çalışıyor, bu biraz sürebilir...",
+	"update_failed":               "Güncelleme başarısız oldu: %v",
+	"update_done":                 "✓ Güncelleme tamamlandı — devam etmek için memo'yu yeniden başlat.",
+	"update_available":            "yeni sürüm mevcut: v%s — güncellemek için /update yaz",
 	"start_failed":                "Başlatılamadı: %v",
 	"remote_access_open":          "✓ Uzak erişim açık: %s",
 	"ngrok_error":                 "ngrok hatası: %s",
@@ -196,6 +221,7 @@ var tr = map[string]string{
   /tasklist stop <id>                     çalışan listeyi durdurur
   /tasklist delete <id>                   görev listesini siler
   /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
+  /update                                 Memo'yu en son sürüme günceller
   /exit                                   çıkar
 `,
 }
@@ -239,6 +265,7 @@ var en = map[string]string{
 	"cmd_session_hint":        "switch between this project's chats",
 	"cmd_tasklist_hint":       "manage task lists (list/create/start/stop/delete/show)",
 	"cmd_remote_hint":         "open a remote-access tunnel via ngrok",
+	"cmd_update_hint":         "update Memo to the latest release",
 	"cmd_exit_hint":           "exit",
 	"status_bar_text":         "/ commands  ·  @ file  ·  Esc stop  ·  Ctrl+D quit",
 	"ctrl_c_again_to_exit":    "press Ctrl+C again to exit",
@@ -250,10 +277,28 @@ var en = map[string]string{
 	"label_model":  "Model:  ",
 	"label_memory": "Memory: ",
 	"tips_title":   "Tips",
-	"tip_help":     "list every command",
-	"tip_at":       "reference a file",
-	"tip_stop":     "stop the reply",
-	"tip_exit":     "quit",
+	// Kept short for the same reason as the Turkish set above — one
+	// truncated row each in the welcome panel's right column.
+	"tip_help":           "list every command",
+	"tip_at":             "reference a file",
+	"tip_stop":           "stop the reply",
+	"tip_exit":           "quit",
+	"tip_models":         "list models",
+	"tip_model":          "start a chat model",
+	"tip_embedding":      "start the embedder",
+	"tip_connect":        "connect a provider",
+	"tip_clear":          "clear the chat",
+	"tip_session":        "switch chats",
+	"tip_tasklist":       "task lists",
+	"tip_remote":         "open remote access",
+	"tip_gui":            "open the desktop app",
+	"tip_model_download": "download a model",
+	"tip_update":         "update to the latest",
+	"tip_tab":            "complete the command",
+	"tip_history":        "previous messages",
+	"tip_clear_screen":   "clear the screen",
+	"tip_delete_word":    "delete the last word",
+	"tip_permission":     "answer once/session/no",
 
 	// spinner.go
 	"spinner_thinking": "thinking...",
@@ -269,6 +314,11 @@ var en = map[string]string{
 	"cancelled_dot":               "Cancelled.",
 	"backend_port_unknown":        "Could not determine the backend port.",
 	"ngrok_starting":              "Starting ngrok tunnel...",
+	"update_confirm_prompt":       "Run this command and update now? [y/n] ",
+	"update_running":              "Updating, this can take a while...",
+	"update_failed":               "Update failed: %v",
+	"update_done":                 "✓ Update complete — restart memo to continue.",
+	"update_available":            "new version available: v%s — run /update to install it",
 	"start_failed":                "Could not start: %v",
 	"remote_access_open":          "✓ Remote access open: %s",
 	"ngrok_error":                 "ngrok error: %s",
@@ -349,6 +399,7 @@ var en = map[string]string{
   /tasklist stop <id>                     stops a running list
   /tasklist delete <id>                   deletes a task list
   /remote                                 opens a remote-access tunnel via ngrok and shows its link
+  /update                                 updates Memo to the latest release
   /exit                                   exits
 `,
 }

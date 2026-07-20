@@ -49,6 +49,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdRemote()
 	case "/tasklist":
 		s.cmdTaskList(args)
+	case "/update":
+		s.cmdUpdate()
 	default:
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("unknown_command"), cmd)))
 	}
@@ -95,6 +97,8 @@ func (s *session) showCommandMenu() bool {
 		s.cmdRemote()
 	case "/tasklist":
 		s.cmdTaskListInteractive()
+	case "/update":
+		s.cmdUpdate()
 	case "/exit":
 		return true
 	}
@@ -638,6 +642,46 @@ func (s *session) findModel(name string, wantEmbedding bool) (*LocalModel, error
 		kind = t("kind_embedding")
 	}
 	return nil, fmt.Errorf(t("model_query_not_found"), name, kind)
+}
+
+// cmdUpdate re-runs the platform installer to bring Memo up to the latest
+// release — the exact one-liner README.md already documents for this
+// (get-memo.sh/.ps1 auto-detect an existing install and update it instead
+// of doing a fresh install, per update.sh/get-memo.sh's own logic). Shows
+// the literal command before running it and asks for confirmation first:
+// this downloads and executes a remote script, the same class of action
+// /remote's ngrok-token prompt and every agent tool permission prompt in
+// this codebase already treat carefully, never silently.
+func (s *session) cmdUpdate() {
+	script := "curl -fsSL https://download.bugradev.com/get-memo.sh | bash"
+	shellCmd, shellArgs := "bash", []string{"-c", script}
+	if runtime.GOOS == "windows" {
+		script = "irm https://download.bugradev.com/get-memo.ps1 | iex"
+		shellCmd, shellArgs = "powershell", []string{"-Command", script}
+	}
+
+	fmt.Fprintln(s.out, dim(script))
+	input, ok := s.promptLine(bold(t("update_confirm_prompt")))
+	if !ok {
+		fmt.Fprintln(s.out, dim(t("cancelled_dot")))
+		return
+	}
+	switch strings.ToLower(strings.TrimSpace(input)) {
+	case "y", "yes", "e", "evet":
+	default:
+		fmt.Fprintln(s.out, dim(t("cancelled_dot")))
+		return
+	}
+
+	fmt.Fprintln(s.out, dim(t("update_running")))
+	cmd := exec.Command(shellCmd, shellArgs...)
+	cmd.Stdout = s.out
+	cmd.Stderr = s.out
+	if err := cmd.Run(); err != nil {
+		fmt.Fprintln(s.out, errorf(t("update_failed"), err))
+		return
+	}
+	fmt.Fprintln(s.out, green(t("update_done")))
 }
 
 func (s *session) cmdTaskList(args []string) {

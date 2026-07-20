@@ -47,6 +47,38 @@ func TestClient_ModelStatus(t *testing.T) {
 	}
 }
 
+func TestClient_CheckVersionUpdate_NewerAvailable(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"current": "3.3.3", "latest": "V3.4.0"})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	latest, err := c.CheckVersionUpdate(context.Background())
+	if err != nil {
+		t.Fatalf("CheckVersionUpdate() error = %v", err)
+	}
+	if latest != "V3.4.0" {
+		t.Errorf("CheckVersionUpdate() = %q, want %q", latest, "V3.4.0")
+	}
+}
+
+func TestClient_CheckVersionUpdate_AlreadyCurrent(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		json.NewEncoder(w).Encode(map[string]string{"current": "3.3.3", "latest": ""})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	latest, err := c.CheckVersionUpdate(context.Background())
+	if err != nil {
+		t.Fatalf("CheckVersionUpdate() error = %v", err)
+	}
+	if latest != "" {
+		t.Errorf("CheckVersionUpdate() = %q, want empty (already current)", latest)
+	}
+}
+
 func TestClient_EmbeddingStatus(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/models/embedding/status" {

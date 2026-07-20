@@ -78,6 +78,23 @@ func (c *Client) Status(ctx context.Context) error {
 	return c.doJSON(ctx, http.MethodGet, "/api/status", nil, nil)
 }
 
+// CheckVersionUpdate reports the latest available version, or "" if this
+// build is already current. Mirrors the Flutter GUI's own update check
+// (GET /api/version/check, already wired to app.CheckLatestVersion — an
+// external network call server-side, capped at 10s there). The caller
+// should pass a short-deadline ctx: this is a best-effort startup nicety,
+// not something worth stalling the welcome panel over on a slow or absent
+// connection.
+func (c *Client) CheckVersionUpdate(ctx context.Context) (latest string, err error) {
+	var resp struct {
+		Latest string `json:"latest"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/version/check", nil, &resp); err != nil {
+		return "", err
+	}
+	return resp.Latest, nil
+}
+
 // GetUILanguage returns the GUI's last-known display language ("tr"/"en",
 // or "" if never set) so the CLI's own text can follow it — see
 // internal/config's Identity.UILanguage and replcli's SetLanguage.

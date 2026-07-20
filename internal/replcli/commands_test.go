@@ -82,6 +82,52 @@ func newTestSession(t *testing.T, srv *httptest.Server) (*session, *bytes.Buffer
 	return s, &out
 }
 
+// tt, not t: this package's own l10n helper is a function named
+// t(key string) string, and a parameter named t would shadow it for the
+// whole test body (see l10n_test.go's note).
+func TestCmdUpdate_DeclineDoesNotRunAnything(tt *testing.T) {
+	srv, _ := newModelsTestServer(tt)
+	defer srv.Close()
+	var out bytes.Buffer
+	s := &session{
+		client:  NewClient(srv.URL),
+		ctx:     context.Background(),
+		out:     &out,
+		scanner: bufio.NewScanner(strings.NewReader("n\n")),
+	}
+
+	s.cmdUpdate()
+
+	got := out.String()
+	if !strings.Contains(got, "download.bugradev.com") {
+		tt.Errorf("cmdUpdate should show the exact command before asking, got:\n%s", got)
+	}
+	if !strings.Contains(got, t("cancelled_dot")) {
+		tt.Errorf("declining should print the cancelled message, got:\n%s", got)
+	}
+	if strings.Contains(got, t("update_running")) || strings.Contains(got, t("update_done")) {
+		tt.Errorf("declining must not run or report success, got:\n%s", got)
+	}
+}
+
+func TestCmdUpdate_EOFDoesNotRunAnything(tt *testing.T) {
+	srv, _ := newModelsTestServer(tt)
+	defer srv.Close()
+	var out bytes.Buffer
+	s := &session{
+		client:  NewClient(srv.URL),
+		ctx:     context.Background(),
+		out:     &out,
+		scanner: bufio.NewScanner(strings.NewReader("")), // EOF, no answer at all
+	}
+
+	s.cmdUpdate()
+
+	if strings.Contains(out.String(), t("update_running")) {
+		tt.Errorf("no answer (EOF) must not run the update, got:\n%s", out.String())
+	}
+}
+
 func TestHandleCommand_Help(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()

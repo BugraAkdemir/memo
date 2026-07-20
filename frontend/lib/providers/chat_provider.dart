@@ -313,6 +313,25 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
       return true;
     }
+    if (trimmed == '/insight') {
+      final ts = DateTime.now().toIso8601String().substring(11, 19);
+      final current = state.valueOrNull ?? [];
+      state = AsyncData([
+        ...current,
+        ChatMessage(role: 'user', content: trimmed, timestamp: ts),
+      ]);
+      try {
+        final lang = L10n.locale == MemoLocale.en ? 'en' : 'tr';
+        final insight = await api.generateSelfInsight(lang: lang);
+        state = AsyncData([
+          ...state.valueOrNull ?? current,
+          ChatMessage(role: 'assistant', content: insight, timestamp: ts),
+        ]);
+      } catch (e) {
+        ref.read(errorMessageProvider.notifier).state = 'Insight generation failed: $e';
+      }
+      return true;
+    }
     if (trimmed.startsWith('/forget ')) {
       final pattern = trimmed.substring('/forget '.length).trim();
       if (pattern.isEmpty) return false;

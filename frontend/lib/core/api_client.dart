@@ -475,6 +475,17 @@ class MemoApiClient {
         .toList();
   }
 
+  /// Synthesizes a short "what did you notice about yourself" reflection
+  /// from the user's own conversation memory + mood trend over the last
+  /// [windowDays] days (0 = backend default). [lang] is the UI locale
+  /// ("tr"/"en"), same convention routines already use.
+  Future<String> generateSelfInsight({int windowDays = 0, String lang = 'tr'}) async {
+    final res = await _dio.post('/api/memory/insight',
+        data: {'window_days': windowDays, 'lang': lang});
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return (data['insight'] as String?) ?? '';
+  }
+
   Future<List<MemorySearchResult>> filteredMemorySearch(
       String query, {String? since, String? tag}) async {
     final params = <String, dynamic>{'q': query};

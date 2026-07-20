@@ -1,8 +1,8 @@
-# Handoff — 2026-07-20 (Session 49 devam) — Beta installer script'leri, build toolchain (ninja) eksikliği, R2 upload script fix'i
+# Handoff — 2026-07-20 (Session 49 devam) — Beta installer script'leri, build toolchain (ninja) eksikliği
 
 ## Özet
 
-Aynı oturumun (Session 49, önceki giriş) devamı. Fonksiyonel denetimden sonra kullanıcı beta dağıtım kanalı için altyapı istedi, sonra build ve upload akışında iki ayrı "yeni makine" kaynaklı kırıklık daha bulundu ve düzeltildi.
+Aynı oturumun (Session 49, önceki giriş) devamı. Fonksiyonel denetimden sonra kullanıcı beta dağıtım kanalı için altyapı istedi; build akışında yeni-makine kaynaklı ninja eksikliği bulundu.
 
 ## 1. Beta installer script'leri — YENİ (`28f332a`)
 
@@ -10,27 +10,16 @@ Aynı oturumun (Session 49, önceki giriş) devamı. Fonksiyonel denetimden sonr
 - `get-memo-beta.sh` — Linux → `memo_beta.tar.gz`, macOS → `memo-mac_beta.zip`
 - `get-memo-beta.ps1` — Windows → `memo-beta.exe`
 
-İkisi de `https://download.bugradev.com` domain'inden indiriyor (aynı R2 bucket, farklı dosya adları). Kurulum/güncelleme mantığı, PATH wrapper'ı, app menu entry'si — hepsi orijinaliyle aynı, sadece "(BETA)" ibaresi banner ve tamamlanma mesajlarına eklendi.
+İkisi de `https://download.bugradev.com` domain'inden indiriyor (farklı dosya adları). Kurulum/güncelleme mantığı, PATH wrapper'ı, app menu entry'si — hepsi orijinaliyle aynı, sadece "(BETA)" ibaresi banner ve tamamlanma mesajlarına eklendi.
 
 ## 2. `build_releases.sh` Linux build'i CMake/Ninja hatasıyla patlıyordu — kök neden bulundu, kullanıcıya bırakıldı
 
 Hata: `CMake Error: CMake was unable to find a build program corresponding to "Ninja"`. Flutter'ın kendisiyle ilgisi yok — `flutter build linux --release` arkada CMake+Ninja kullanıyor. Teşhis: bu yeni makinede `ninja` paketi hiç kurulu değil (`pacman -Q ninja` → not found); fish'teki `alias ninja='ninja -j12'` eski makinenin dotfiles'ından kalma, gerçek binary'ye işaret etmiyor, CMake/Flutter subprocess'leri zaten shell alias'larını görmüyor. `cmake`/`gtk3`/`pkgconf`/`clang`/`base-devel` hepsi kuruluydu, sadece `ninja` eksikti. Çözüm kullanıcıya söylendi: `sudo pacman -S ninja` — **henüz çalıştırılmadı/doğrulanmadı, sıradaki oturumda build tekrar denenip gerçekten geçtiği teyit edilmeli.**
 
-## 3. `~/Documents/r2-memo-push/upload-memo.sh` çalışmıyordu — 2 ayrı yeni-makine kırıklığı düzeltildi
-
-Bu script `memo` reposunun DIŞINDA, ayrı (git'siz) bir klasörde yaşıyor — build çıktısını Cloudflare R2 bucket'ına (`memo` bucket, `download.bugradev.com`'un arkasındaki) yüklüyor.
-
-- **Sorun 1:** Dosya `-rw-r--r--` (çalıştırma izni yok) — terminal profili onu direkt komut olarak başlatmaya çalışınca "Could not find ... starting /bin/fish instead" hatasıyla sessizce fish'e düşüyordu. `chmod +x` ile düzeltildi.
-- **Sorun 2:** İçindeki `LOCAL_DIR="/home/bugra/Belgeler/Memo-İnsaller"` eski makinenin Türkçe "Belgeler" yoluna işaret ediyordu, bu makinede o klasör hiç yok. Kullanıcıyla onaylanıp `LOCAL_DIR="/home/bugra/Documents/r2-memo-push"` (script'in kendi bulunduğu klasör) olarak güncellendi — kullanıcı build çıktılarını manuel olarak bu klasöre kopyalayıp oradan R2'ye atıyor gibi görünüyor.
-- Kullanıcıya Cloudflare R2 API token alma adımları anlatıldı (R2 Dashboard → Manage R2 API Tokens → Create Token → bucket-scoped Object Read&Write önerisi → Account ID + Access Key + Secret Key). **Script henüz çalıştırılmadı** — rclone kurulu mu, R2 credential'ları girildi mi, gerçek upload denendi mi, hiçbiri bu oturumda doğrulanmadı.
-
-**Not:** Bu klasör (`r2-memo-push`) git repo değil, bu commit'ler `memo` reposuna dahil değil — sadece dosya sistemi üzerinde düzeltildi, versiyon kontrolü yok.
-
 ## Sıradaki oturum için
 
 1. `sudo pacman -S ninja` çalıştırılıp `./build_releases.sh` yeniden denenmeli — Linux build'in artık gerçekten geçtiği doğrulanmalı.
-2. `upload-memo.sh` gerçek bir upload ile denenmeli (rclone kurulumu + R2 credential girişi dahil) — henüz canlı test edilmedi.
-3. Önceki Session 49 girişindeki maddeler (Stage 10 swarm donanım testi, AGENTS.md'nin eski Flutter yolu) hâlâ geçerli, değişmedi.
+2. Önceki Session 49 girişindeki maddeler (Stage 10 swarm donanım testi, AGENTS.md'nin eski Flutter yolu) hâlâ geçerli, değişmedi.
 
 ## Branch
 

@@ -79,14 +79,24 @@ func decodeRoomCode(code string) (roomCodePayload, error) {
 	return p, nil
 }
 
+// DecodeRoomCode exposes decodeRoomCode for callers outside this package
+// (internal/app's JoinSwarm) that need to parse a pasted room code.
+func DecodeRoomCode(code string) (mode, hostAddr, id, secret string, err error) {
+	p, err := decodeRoomCode(strings.TrimSpace(code))
+	if err != nil {
+		return "", "", "", "", err
+	}
+	return p.Mode, p.Host, p.ID, p.Secret, nil
+}
+
 // WorkerSlot is one worker machine registered with the coordinator.
 type WorkerSlot struct {
-	ID           string
-	Label        string
-	Address      string // "host:port" the coordinator dials for --rpc
-	SharePercent float64
-	Connected    bool
-	LastSeen     time.Time
+	ID           string    `json:"id"`
+	Label        string    `json:"label"`
+	Address      string    `json:"address"` // "host:port" the coordinator dials for --rpc
+	SharePercent float64   `json:"share_percent"`
+	Connected    bool      `json:"connected"`
+	LastSeen     time.Time `json:"last_seen"`
 }
 
 // Coordinator holds the in-memory state of a hosted swarm room — the

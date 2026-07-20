@@ -23,6 +23,16 @@ func TestEncodeDecodeRoomCode_RoundTrip(t *testing.T) {
 	if p.Mode != "lan" || p.Host != "192.168.1.10:8090" || p.ID != id || p.Secret != secret {
 		t.Errorf("decodeRoomCode() = %+v, want mode=lan host=192.168.1.10:8090 id=%q secret=%q", p, id, secret)
 	}
+
+	// Exported wrapper used by internal/app.JoinSwarm — must match private decode.
+	mode, host, expID, expSecret, err := DecodeRoomCode("  " + code + "  ")
+	if err != nil {
+		t.Fatalf("DecodeRoomCode() error = %v", err)
+	}
+	if mode != "lan" || host != "192.168.1.10:8090" || expID != id || expSecret != secret {
+		t.Errorf("DecodeRoomCode() = (%q,%q,%q,%q), want (lan, 192.168.1.10:8090, %q, %q)",
+			mode, host, expID, expSecret, id, secret)
+	}
 }
 
 func TestEncodeRoomCode_RequiresHostAddr(t *testing.T) {

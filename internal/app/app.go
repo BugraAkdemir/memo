@@ -36,6 +36,7 @@ import (
 	"memo/internal/sessions"
 	"memo/internal/skill"
 	"memo/internal/stats"
+	"memo/internal/swarm"
 	"memo/internal/taskloop"
 	"memo/internal/tunnel"
 	"memo/internal/webserver"
@@ -142,7 +143,11 @@ type App struct {
 	waMsgStore       *whatsapp.Store
 	llamaServer      *llama.Server
 	llamaEmbedServer *llama.Server // dedicated embedding model server
-	llamaInstaller   *llama.Installer
+	// swarmServer is a separate llama-server used only as the Memo Swarm
+	// coordinator. Kept independent of llamaServer so starting/stopping a
+	// swarm never tears down the user's normal chat model (and vice versa).
+	swarmServer    *llama.Server
+	llamaInstaller *llama.Installer
 	originalBaseURL  string      // stores the original API base URL before llama override
 	embeddingClient  *api.Client // separate client for embedding server
 	syncManager      *cloudsync.Manager
@@ -222,6 +227,16 @@ type App struct {
 	streamMu          sync.Mutex // prevents concurrent stream goroutines (double-send)
 
 	clients clientRegistry // see clients.go — tracks attached CLI/GUI clients for auto-shutdown
+
+	// Memo Swarm (Beta) — host room + worker rpc-server. See PLAN_memo_swarm.md
+	// and internal/app/swarm.go. Zero-init only at Startup; heavy pieces
+	// (rpc-server, coordinator llama-server) are lazy.
+	swarmMu            sync.Mutex
+	swarmCoordinator   *swarm.Coordinator
+	swarmWorker        *swarm.RPCWorker
+	swarmJoinCode      string // room code this machine joined with (worker side)
+	swarmJoinHost      string // decoded host address from that code
+	swarmJoinConnected bool   // true after a successful register POST
 
 	// Embedded binaries and version string passed in from main.
 	binaries embed.FS
@@ -389,6 +404,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.initLearning(ctx)
 	a.initRoutines(ctx)
 	a.initStats()
+	a.initSwarm()
 
 	a.modelStore = modelstore.New(cfg.Llama.ModelsDir)
 	a.llamaServer = llama.NewServer(cfg.Llama.Port, cfg.Llama.CtxSize)
@@ -641,6 +657,12 @@ func (a *App) shutdownSync(ctx context.Context) {
 	}
 	if a.llamaEmbedServer != nil {
 		stop("llama embedding", a.llamaEmbedServer.Stop)
+	}
+	if a.swarmServer != nil {
+		stop("swarm coordinator", a.swarmServer.Stop)
+	}
+	if a.swarmWorker != nil {
+		stop("swarm worker", a.swarmWorker.Stop)
 	}
 	if a.ngrokServer != nil {
 		ngrokServer := a.ngrokServer

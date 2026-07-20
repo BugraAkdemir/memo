@@ -2,8 +2,11 @@ package llama
 
 import (
 	"context"
+	"fmt"
+	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"sync"
@@ -97,4 +100,32 @@ func resolveCoordinatorBinary(configured, mode string) (string, error) {
 	}
 	logx.Printf("swarm: no RPC-capable llama-server flavor found for the coordinator role, falling back to %s (may not support --rpc)", bin)
 	return bin, nil
+}
+
+func rpcServerBinary() string {
+	if runtime.GOOS == "windows" {
+		return "rpc-server.exe"
+	}
+	return "rpc-server"
+}
+
+// ResolveRPCServerBinary mirrors resolveBinary's bundled-path search
+// (binaries/<os>/<mode>/) for rpc-server instead of llama-server — no
+// PATH/common-install-path fallback, rpc-server is only ever expected to
+// come from Memo's own bundled binaries/ tree (see download_binaries.sh).
+func ResolveRPCServerBinary(mode string) (string, error) {
+	currentOS := runtime.GOOS
+	flavors := []string{"nvidia", "amd", "cpu"}
+	if mode != "" && mode != "auto" {
+		flavors = []string{mode}
+	}
+	for _, base := range binarySearchBases() {
+		for _, flavor := range flavors {
+			p := filepath.Join(base, "binaries", currentOS, flavor, rpcServerBinary())
+			if _, err := os.Stat(p); err == nil {
+				return p, nil
+			}
+		}
+	}
+	return "", fmt.Errorf("rpc-server binary not found — expected next to llama-server in the bundled binaries/ tree")
 }

@@ -1,3 +1,58 @@
+# Handoff — 2026-07-21 (Session 51) — Flutter L10n borcu kapatıldı
+
+## Özet
+
+Kullanıcı Flutter L10n açığını (AGENTS.md kural #8) düzeltmemi istedi — bilinen dosyalar + başka hardcoded UI metinleri. Script istemedi, doğrudan düzeltme + commit.
+
+**Commit:** `36c8a38` `fix(frontend): wire remaining hardcoded UI strings through L10n`  
+Branch: `main`, 1 commit ahead of `origin/main` (push edilmedi).
+
+## Ne yapıldı
+
+Hardcoded (dile duyarsız) kullanıcı metinleri `L10n.t()` + TR/EN `l10n.dart` girdilerine bağlandı:
+
+| Dosya | Not |
+|-------|-----|
+| `orchestra_config_dialog.dart` | Tüm UI + snackbar + rol açıklamaları |
+| `provider_config_dialog.dart` | Form etiketleri, model browser, test sonucu |
+| `skill_config_dialog.dart` | Boş durum, snackbar sonuçları |
+| `gpu_config_tab.dart` | Mevcut key'ler vardı, widget bağlanmamıştı |
+| `system_prompt_tab.dart` / `incognito_prompt_tab.dart` | desc + "kaydetme başarılı" |
+| `skills_tab.dart` | boş durum |
+| `welcome_view.dart` | öneri chip etiketleri |
+| `prompt_templates.dart` | slash menü — `const` list → locale-aware getter |
+| `agent_screen.dart` | "Agent" → `nav_agent` |
+| `chat_input.dart` | OpenRouter key dialog, WhatsApp timeout, Ücretsiz |
+| `chat_screen.dart` | token usage tooltip |
+
+Ayrıca TR haritasında İngilizce duran key'ler düzeltildi (`enable_provider`, `display_name`, `save_successful`, `orchestra_saved`, `base_url_*`, `test_*`, …). `save_successful` içindeki sahte `${L10n.t("save")}` literal'i de düz metne çevrildi.
+
+**Dokunulmayan (bilinçli):**
+- `setup_wizard_view.dart` — kendi `isTurkish ? … : …` deseni (ayrı sistem)
+- `proactive_suggestion_banner.dart` içindeki `'artık yapmıyorum'` vb. — UI label değil, backend yanıt protokolü; buton metni zaten L10n
+- `curated_models.dart` `descTr`/`descEn` — zaten dil-çiftli veri
+- `.github/workflows/build-*.yml` — çalışma dizininde L10n dışı uncommitted değişiklik vardı, bu commit'e **dahil edilmedi**
+
+## Doğrulama
+
+- `flutter analyze lib/` — sadece 4 önceden var olan `use_build_context_synchronously` **info**
+- `flutter test` — **107/107** yeşil
+- Rule #8 grep (touched `*.dart`) — temiz
+- TR/EN key simetrisi — 1131 / 1131
+
+## Sıradaki oturum için
+
+1. **Push** — `36c8a38` henüz `origin/main`'e gitmedi.
+2. **Uncommitted workflow değişiklikleri** — `build-linux/macos/windows.yml` tag-publish ekleri bu oturumun işi değil; ayrı commit veya discard.
+3. **Kalan olası L10n** — setup wizard hâlâ kendi isTurkish dalını kullanıyor (istenirse L10n'e taşınabilir). Provider display names / `provider_config.dart` açıklamaları hâlâ TR-only data map; UI dialog'ları değil. Routines "WhatsApp" chip, whatsapp relative time (`şimdi`) düşük öncelik.
+4. Handoff Session 50 maddeleri (panel görsel doğrulama kullanıcıda, `/help` dropdown repro, `--update` canlı test) hâlâ açık.
+
+## Branch
+
+`main`, commit `36c8a38` local, push yok.
+
+---
+
 # Handoff — 2026-07-20 (Session 50) — CLI görsel yeniden tasarımı, @ dosya-mention, CLI l10n, yetim süreç/port bug'ı, standalone komutlar
 
 ## Özet

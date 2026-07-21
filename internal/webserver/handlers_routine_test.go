@@ -19,6 +19,10 @@ import (
 // enough to exercise handleRoutine's PUT merge behavior end-to-end.
 type routineTestBridge struct {
 	routines map[string]routine.Routine
+
+	syncOffsetCalledWith int
+	syncOffsetReturn     int
+	syncOffsetErr        error
 }
 
 func (b *routineTestBridge) ListRoutines() []routine.Routine {
@@ -62,6 +66,11 @@ func (b *routineTestBridge) DeleteRoutine(id string) error {
 
 func (b *routineTestBridge) GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error) {
 	return nil, nil
+}
+
+func (b *routineTestBridge) SyncRoutineUTCOffsets(minutes int) (int, error) {
+	b.syncOffsetCalledWith = minutes
+	return b.syncOffsetReturn, b.syncOffsetErr
 }
 
 // Minimal no-op AppBridge implementation — handleRoutine only ever type-asserts
@@ -171,5 +180,64 @@ func TestHandleRoutine_PUT_UnknownID_Returns404(t *testing.T) {
 
 	if w.Code != http.StatusNotFound {
 		t.Errorf("status = %d, want 404", w.Code)
+	}
+}
+
+// TestHandleRoutinesSyncOffset_ForwardsOffsetAndReportsChanged confirms the
+// handler decodes utc_offset_minutes, passes it through to
+// SyncRoutineUTCOffsets unchanged (including a negative offset, since UTC-
+// west-of-Greenwich offsets are entirely normal), and reports the bridge's
+// "changed" count back to the caller — this is the endpoint
+// connectionStatusProvider (chat_provider.dart) calls on every client
+// (re)connect to self-correct routines after a DST transition (BUG_REPORT
+// TD-1).
+func TestHandleRoutinesSyncOffset_ForwardsOffsetAndReportsChanged(t *testing.T) {
+	bridge := &routineTestBridge{routines: map[string]routine.Routine{}, syncOffsetReturn: 2}
+	s := &Server{bridge: bridge}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/routines/sync-offset", strings.NewReader(`{"utc_offset_minutes":-300}`))
+	w := httptest.NewRecorder()
+	s.handleRoutinesSyncOffset(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", w.Code, w.Body.String())
+	}
+	if bridge.syncOffsetCalledWith != -300 {
+		t.Errorf("SyncRoutineUTCOffsets called with %d, want -300", bridge.syncOffsetCalledWith)
+	}
+	var got struct {
+		Changed int `json:"changed"`
+	}
+	if err := json.NewDecoder(w.Body).Decode(&got); err != nil {
+		t.Fatalf("decode response: %v", err)
+	}
+	if got.Changed != 2 {
+		t.Errorf("changed = %d, want 2", got.Changed)
+	}
+}
+
+func TestHandleRoutinesSyncOffset_InvalidBody_Returns400(t *testing.T) {
+	bridge := &routineTestBridge{routines: map[string]routine.Routine{}}
+	s := &Server{bridge: bridge}
+
+	req := httptest.NewRequest(http.MethodPost, "/api/routines/sync-offset", strings.NewReader(`not json`))
+	w := httptest.NewRecorder()
+	s.handleRoutinesSyncOffset(w, req)
+
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("status = %d, want 400", w.Code)
+	}
+}
+
+func TestHandleRoutinesSyncOffset_WrongMethod_Returns405(t *testing.T) {
+	bridge := &routineTestBridge{routines: map[string]routine.Routine{}}
+	s := &Server{bridge: bridge}
+
+	req := httptest.NewRequest(http.MethodGet, "/api/routines/sync-offset", nil)
+	w := httptest.NewRecorder()
+	s.handleRoutinesSyncOffset(w, req)
+
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("status = %d, want 405", w.Code)
 	}
 }

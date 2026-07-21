@@ -292,6 +292,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/routines/parse", s.handleParseRoutine)
 	route("/api/routines/", s.handleRoutine)
 	route("/api/routines/mobile-ready", s.handleRoutinesMobileReady)
+	route("/api/routines/sync-offset", s.handleRoutinesSyncOffset)
 
 	// Dev gateway (Settings > Developer): local Anthropic/OpenAI-compatible
 	// API surface. /v1/messages is NOT under /api/ — it must match Anthropic's

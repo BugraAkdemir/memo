@@ -147,6 +147,17 @@ func (a *App) DeleteRoutine(id string) error {
 	return a.routineStore.Delete(id)
 }
 
+// SyncRoutineUTCOffsets updates every routine's stored UTC offset to match
+// minutes — see routine.Store.SyncUTCOffset's doc comment. A no-op (0, nil)
+// if the routine system never initialized, matching every other routine
+// method's nil-store handling in this file.
+func (a *App) SyncRoutineUTCOffsets(minutes int) (int, error) {
+	if a.routineStore == nil {
+		return 0, nil
+	}
+	return a.routineStore.SyncUTCOffset(minutes)
+}
+
 // RoutineMobilePayload is what the mobile app polls for to pre-schedule a
 // GetRoutinesReadyForMobile returns mobile-delivered routines whose content
 // was generated after sinceUnix (seconds), for the phone's poll-driven

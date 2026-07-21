@@ -158,6 +158,53 @@ func (s *Store) Update(r Routine) (*Routine, error) {
 	return &out, nil
 }
 
+// SyncUTCOffset updates every routine whose Schedule.UTCOffsetMinutes
+// doesn't already match minutes, and returns how many were changed.
+//
+// Schedule.UTCOffsetMinutes freezes the client's UTC offset at the moment a
+// routine is created (see its doc comment, BUG-M4) — that fixed a routine
+// created while the user was in a different timezone than the backend host,
+// but left it permanently wrong after a DST transition, or if the user later
+// relocates: a repeating "time of day" schedule's real intent is almost
+// always "this time of day, wherever/whenever I currently am," the same way
+// a phone's daily alarm follows the device's current local time rather than
+// staying pinned to whatever offset was in effect when the alarm was set.
+// Intended to be called with the client's current wall-clock offset each
+// time it (re)connects (see RoutineBridge.SyncRoutineUTCOffsets) — a DST
+// transition or relocation then self-corrects the next time the app talks to
+// the backend, instead of staying frozen forever.
+//
+// Reuses Update for the actual per-routine write instead of touching s.list
+// or disk directly, so this gets Update's existing concurrency handling
+// (BUG-L6's writeMu, and its "deleted mid-write" guard) for free. A routine
+// deleted concurrently just fails its own Update call here — logged via the
+// returned error, skipped, harmless — rather than aborting the whole sync.
+func (s *Store) SyncUTCOffset(minutes int) (int, error) {
+	s.mu.RLock()
+	var toUpdate []Routine
+	for _, r := range s.list {
+		if r.Schedule.UTCOffsetMinutes == nil || *r.Schedule.UTCOffsetMinutes != minutes {
+			toUpdate = append(toUpdate, *r)
+		}
+	}
+	s.mu.RUnlock()
+
+	changed := 0
+	var firstErr error
+	for _, r := range toUpdate {
+		offset := minutes
+		r.Schedule.UTCOffsetMinutes = &offset
+		if _, err := s.Update(r); err != nil {
+			if firstErr == nil {
+				firstErr = fmt.Errorf("routine: sync utc offset (id=%s): %w", r.ID, err)
+			}
+			continue
+		}
+		changed++
+	}
+	return changed, firstErr
+}
+
 // Delete removes a routine.
 func (s *Store) Delete(id string) error {
 	s.mu.Lock()

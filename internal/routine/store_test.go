@@ -96,6 +96,112 @@ func TestStoreUpdate_AfterDelete_DoesNotResurrect(t *testing.T) {
 	}
 }
 
+// TestSyncUTCOffset_UpdatesNilAndDifferingOffsets covers both cases
+// SyncUTCOffset needs to correct: a routine created before UTCOffsetMinutes
+// existed (nil, falling back to host-local time), and one whose stored
+// offset no longer matches the client's current wall-clock offset (a DST
+// transition or relocation since it was created/last synced).
+func TestSyncUTCOffset_UpdatesNilAndDifferingOffsets(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+
+	noOffset, err := st.Create(Routine{Prompt: "a", Schedule: Schedule{TimeOfDay: "08:00"}})
+	if err != nil {
+		t.Fatalf("Create(noOffset): %v", err)
+	}
+	staleMinutes := 60
+	stale, err := st.Create(Routine{Prompt: "b", Schedule: Schedule{TimeOfDay: "09:00", UTCOffsetMinutes: &staleMinutes}})
+	if err != nil {
+		t.Fatalf("Create(stale): %v", err)
+	}
+
+	changed, err := st.SyncUTCOffset(180)
+	if err != nil {
+		t.Fatalf("SyncUTCOffset: %v", err)
+	}
+	if changed != 2 {
+		t.Fatalf("SyncUTCOffset() changed = %d, want 2", changed)
+	}
+
+	for _, id := range []string{noOffset.ID, stale.ID} {
+		got, err := st.Get(id)
+		if err != nil {
+			t.Fatalf("Get(%s): %v", id, err)
+		}
+		if got.Schedule.UTCOffsetMinutes == nil || *got.Schedule.UTCOffsetMinutes != 180 {
+			t.Errorf("routine %s: UTCOffsetMinutes = %v, want 180", id, got.Schedule.UTCOffsetMinutes)
+		}
+	}
+}
+
+// TestSyncUTCOffset_NoOpWhenAlreadyMatching confirms a routine whose stored
+// offset already matches the given value isn't rewritten — this keeps
+// calling SyncUTCOffset on every client reconnect cheap in the common case
+// (no DST transition, no relocation since the last sync).
+func TestSyncUTCOffset_NoOpWhenAlreadyMatching(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	minutes := 180
+	created, err := st.Create(Routine{Prompt: "a", Schedule: Schedule{TimeOfDay: "08:00", UTCOffsetMinutes: &minutes}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	beforeUpdatedAt := created.UpdatedAt
+
+	changed, err := st.SyncUTCOffset(180)
+	if err != nil {
+		t.Fatalf("SyncUTCOffset: %v", err)
+	}
+	if changed != 0 {
+		t.Fatalf("SyncUTCOffset() changed = %d, want 0 (offset already matches)", changed)
+	}
+
+	got, err := st.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get: %v", err)
+	}
+	if !got.UpdatedAt.Equal(beforeUpdatedAt) {
+		t.Errorf("UpdatedAt changed even though SyncUTCOffset should have been a no-op for this routine")
+	}
+}
+
+// TestSyncUTCOffset_PersistsAcrossReload confirms the correction survives a
+// process restart (a fresh Store instance over the same directory), not just
+// the in-memory map — SyncUTCOffset's whole point is to fix the value a
+// later routine-loop tick would otherwise read back from disk.
+func TestSyncUTCOffset_PersistsAcrossReload(t *testing.T) {
+	dir := t.TempDir()
+	st, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore: %v", err)
+	}
+	created, err := st.Create(Routine{Prompt: "a", Schedule: Schedule{TimeOfDay: "08:00"}})
+	if err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+	if _, err := st.SyncUTCOffset(-300); err != nil {
+		t.Fatalf("SyncUTCOffset: %v", err)
+	}
+
+	st2, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore (reload): %v", err)
+	}
+	reloaded, err := st2.Get(created.ID)
+	if err != nil {
+		t.Fatalf("Get (reload): %v", err)
+	}
+	if reloaded.Schedule.UTCOffsetMinutes == nil || *reloaded.Schedule.UTCOffsetMinutes != -300 {
+		t.Errorf("reloaded UTCOffsetMinutes = %v, want -300", reloaded.Schedule.UTCOffsetMinutes)
+	}
+}
+
 func TestStoreGetDeleteUnknownID(t *testing.T) {
 	st, err := NewStore(t.TempDir())
 	if err != nil {

@@ -23,6 +23,7 @@ type RoutineBridge interface {
 	UpdateRoutine(r routine.Routine) (*routine.Routine, error)
 	DeleteRoutine(id string) error
 	GetRoutinesReadyForMobile(sinceUnix int64) ([]routine.MobilePayload, error)
+	SyncRoutineUTCOffsets(minutes int) (int, error)
 }
 
 // handleRoutines handles GET /api/routines (list) and POST /api/routines (create).
@@ -194,4 +195,40 @@ func (s *Server) handleRoutinesMobileReady(w http.ResponseWriter, r *http.Reques
 	}
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(items)
+}
+
+// handleRoutinesSyncOffset handles POST /api/routines/sync-offset — a client
+// reports its current wall-clock UTC offset every time it (re)connects (see
+// connectionStatusProvider in chat_provider.dart), and every routine's
+// Schedule.UTCOffsetMinutes is updated to match (routine.Store.SyncUTCOffset).
+// This is what lets a DST transition, or a permanent relocation, self-correct
+// the next time the client talks to the backend, rather than staying frozen
+// at whatever offset was in effect the moment each routine was created
+// (BUG_REPORT TD-1).
+func (s *Server) handleRoutinesSyncOffset(w http.ResponseWriter, r *http.Request) {
+	bridge, ok := s.bridge.(RoutineBridge)
+	if !ok {
+		http.Error(w, "routines not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var body struct {
+		UTCOffsetMinutes int `json:"utc_offset_minutes"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		jsonError(w, "invalid request body", http.StatusBadRequest)
+		return
+	}
+
+	changed, err := bridge.SyncRoutineUTCOffsets(body.UTCOffsetMinutes)
+	if err != nil {
+		jsonError(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]int{"changed": changed})
 }

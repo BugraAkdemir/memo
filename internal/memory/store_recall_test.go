@@ -258,6 +258,216 @@ func TestFindMergeCandidates_ExcludesExplicitFacts(t *testing.T) {
 	}
 }
 
+// TestFindPinnedMergeCandidates_MatchesNearDuplicatePinnedFacts is the direct
+// counterpart to TestFindMergeCandidates_ExcludesExplicitFacts above: the two
+// near-duplicate pinned facts that FindMergeCandidates correctly refuses to
+// touch must still be discoverable through the pinned-only path, or nothing
+// in the codebase actually dedups the pinned set (see pinnedFactsLimit's doc
+// comment for the gap this closes).
+func TestFindPinnedMergeCandidates_MatchesNearDuplicatePinnedFacts(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(1) error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(2) error = %v", err)
+	}
+
+	candidates, err := store.FindPinnedMergeCandidates(ctx, 5)
+	if err != nil {
+		t.Fatalf("FindPinnedMergeCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("FindPinnedMergeCandidates() = %+v, want exactly 1 pair", candidates)
+	}
+}
+
+// TestFindPinnedMergeCandidates_ExcludesNonExplicit is the mirror image of
+// the test above: a near-duplicate pair of ordinary (non-pinned) memories
+// must never be surfaced by the pinned-only finder, even at cosine
+// similarity 1.0 — this path exists specifically for the small, curated
+// explicit set, not the much larger general conversational pool (that's
+// FindMergeCandidates' job).
+func TestFindPinnedMergeCandidates_ExcludesNonExplicit(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveInteraction(ctx, "kanka naber", "iyilik kanka"); err != nil {
+		t.Fatalf("SaveInteraction(1) error = %v", err)
+	}
+	if err := store.SaveInteraction(ctx, "naber kanka", "kanka iyilik"); err != nil {
+		t.Fatalf("SaveInteraction(2) error = %v", err)
+	}
+
+	candidates, err := store.FindPinnedMergeCandidates(ctx, 5)
+	if err != nil {
+		t.Fatalf("FindPinnedMergeCandidates() error = %v", err)
+	}
+	if len(candidates) != 0 {
+		t.Fatalf("FindPinnedMergeCandidates() = %+v, want none — only source=explicit/importance=5 rows are eligible", candidates)
+	}
+}
+
+// TestSavePinnedMerged_StaysPinned confirms savePinnedMerged's whole reason
+// to exist: unlike saveMerged (source='merged'/importance=4), its result
+// must still satisfy GetPinnedFacts' WHERE clause, and the two originals it
+// replaces must no longer appear there (pending_deletion=1).
+func TestSavePinnedMerged_StaysPinned(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(1) error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(2) error = %v", err)
+	}
+
+	candidates, err := store.FindPinnedMergeCandidates(ctx, 5)
+	if err != nil {
+		t.Fatalf("FindPinnedMergeCandidates() error = %v", err)
+	}
+	if len(candidates) != 1 {
+		t.Fatalf("FindPinnedMergeCandidates() = %+v, want exactly 1 pair", candidates)
+	}
+	c := candidates[0]
+
+	if err := store.savePinnedMerged(ctx, "Kullanicinin adi Ahmet", c.ID1, c.ID2); err != nil {
+		t.Fatalf("savePinnedMerged() error = %v", err)
+	}
+
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("len(pinned) = %d, want 1 (merge result must stay pinned, originals must drop out)", len(pinned))
+	}
+	if pinned[0].Source != "explicit" {
+		t.Errorf("Source = %q, want explicit", pinned[0].Source)
+	}
+	if !strings.Contains(pinned[0].Content, "Ahmet") {
+		t.Errorf("Content = %q, want it to contain Ahmet", pinned[0].Content)
+	}
+}
+
+// TestRunPinnedConsolidation_MergesAndKeepsPinned exercises the full
+// runPinnedConsolidation path (find → LLM merge → save) with a fake
+// ConsolidationFunc standing in for mergeMemoriesLLM, confirming the merge
+// result is reachable via GetPinnedFacts afterward — the same guarantee
+// TestSavePinnedMerged_StaysPinned checks one level lower, here through the
+// actual scheduled entry point (applyImportanceRules calls this).
+func TestRunPinnedConsolidation_MergesAndKeepsPinned(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(1) error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(2) error = %v", err)
+	}
+
+	fakeMerge := func(_ context.Context, content1, _ string) (string, error) {
+		return content1, nil
+	}
+	store.runPinnedConsolidation(ctx, fakeMerge)
+
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 1 {
+		t.Fatalf("len(pinned) = %d, want 1 after pinned consolidation merges the near-duplicate pair", len(pinned))
+	}
+	if pinned[0].Source != "explicit" {
+		t.Errorf("Source = %q, want explicit", pinned[0].Source)
+	}
+}
+
+// TestRunConsolidation_NeverTouchesPinnedFacts confirms runConsolidation
+// (the general-pool path) leaves the pinned set completely alone even when
+// a fake ConsolidationFunc is wired up — FindMergeCandidates already
+// excludes source='explicit' (TestFindMergeCandidates_ExcludesExplicitFacts),
+// this just checks the same guarantee holds through the actual scheduled
+// entry point, not just the candidate-finding step in isolation.
+func TestRunConsolidation_NeverTouchesPinnedFacts(t *testing.T) {
+	ctx := context.Background()
+	store, err := NewStore(StoreConfig{
+		Dir:       t.TempDir(),
+		Dimension: 4,
+		EmbeddingFunc: func(_ context.Context, _ string) ([]float32, error) {
+			return []float32{1, 0, 0, 0}, nil
+		},
+	})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	if err := store.SaveExplicit(ctx, "kullanicinin adi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(1) error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, "kullanicinin ismi Ahmet", "profile"); err != nil {
+		t.Fatalf("SaveExplicit(2) error = %v", err)
+	}
+
+	fakeMerge := func(_ context.Context, content1, _ string) (string, error) {
+		return content1, nil
+	}
+	store.runConsolidation(ctx, fakeMerge)
+
+	pinned, err := store.GetPinnedFacts(ctx)
+	if err != nil {
+		t.Fatalf("GetPinnedFacts() error = %v", err)
+	}
+	if len(pinned) != 2 {
+		t.Fatalf("len(pinned) = %d, want 2 — the general consolidation pass must never merge/un-pin explicit facts", len(pinned))
+	}
+}
+
 // --- Single/multi-fact recall -------------------------------------------------
 
 func TestRecall_SingleExplicitFact(t *testing.T) {

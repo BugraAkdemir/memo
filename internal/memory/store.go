@@ -1214,12 +1214,25 @@ func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int
 // pinnedFactsLimit bounds how many explicit facts GetPinnedFacts returns.
 // Pinned facts are injected into every system prompt in full, unconditionally
 // — unlike RAG results they are never trimmed by relevance — so this cap is
-// what keeps prompt size bounded as the set grows over weeks of use. The
-// existing consolidation pass (FindMergeCandidates/mergeMemoriesLLM, already
-// scheduled by runImportanceDecay) merges near-duplicate explicit facts over
-// time, which is what's meant to keep the underlying set small in practice
-// rather than this cap silently dropping older facts.
-const pinnedFactsLimit = 50
+// what keeps prompt size bounded as the set grows over weeks of use.
+//
+// Raised from 50 to 75 (2026-07-21): the general consolidation pass
+// (FindMergeCandidates) deliberately excludes source='explicit' rows (see its
+// doc comment — merging two pinned facts together used to silently un-pin the
+// result), so contrary to what this comment previously claimed, nothing was
+// actually shrinking the pinned set over time; the cap was a bare
+// most-recent-75-win truncation with no size-limiting mechanism behind it at
+// all. FindPinnedMergeCandidates/runPinnedConsolidation (below) now cover
+// that gap directly, so the higher cap has some real backing — but the two
+// changes both help independently: the higher number buys more headroom even
+// with duplicates, and dedup slows how fast that headroom fills.
+//
+// BuildSystemPrompt (internal/identity) separately caps the *entire* memory
+// block (pinned + RAG results combined) at ~16K tokens regardless of this
+// constant, so raising it cannot blow past the model's actual context window
+// on its own — worst case, more of that existing budget goes to pinned facts
+// and less to RAG results, since pinned facts are prepended first.
+const pinnedFactsLimit = 75
 
 // GetPinnedFacts returns explicit (importance=5, source="explicit") memories,
 // most recent first. Callers are expected to inject the full result into
@@ -1808,6 +1821,10 @@ func (s *Store) applyImportanceRules() {
 		cCtx, cCancel := context.WithTimeout(context.Background(), 5*time.Minute)
 		defer cCancel()
 		s.runConsolidation(cCtx, fn)
+
+		pCtx, pCancel := context.WithTimeout(context.Background(), 5*time.Minute)
+		defer pCancel()
+		s.runPinnedConsolidation(pCtx, fn)
 	}
 }
 
@@ -1824,6 +1841,14 @@ const (
 	consolidateSimilarityThreshold = float32(0.92)
 	consolidateSampleSize          = 200
 	consolidateMaxPairs            = 5
+
+	// pinnedConsolidateMaxPairs is deliberately smaller than
+	// consolidateMaxPairs: each pair costs one mergeMemoriesLLM call, which
+	// on a local-model setup competes with real chat for llama-server's
+	// single inference slot (--parallel 1, see AGENTS.md's Memory / Vector
+	// Store notes on extractAndPinFacts) — keeping this small bounds how
+	// much extra background load runPinnedConsolidation can add per day.
+	pinnedConsolidateMaxPairs = 3
 )
 
 // FindMergeCandidates returns up to limit pairs of memories whose embeddings
@@ -1836,9 +1861,10 @@ const (
 // silently un-pin the result — GetPinnedFacts' WHERE clause would no longer
 // match it. Pinned facts are meant to be a small, deliberately-curated set;
 // this consolidation pass exists for the much larger general conversational
-// pool, not for that set.
+// pool, not for that set — see FindPinnedMergeCandidates for the pinned set's
+// own, separate dedup path that keeps the merge result pinned.
 func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCandidate, error) {
-	rows, err := s.db.QueryContext(ctx, `
+	return s.findMergeCandidates(ctx, `
 		SELECT id, content, embedding
 		FROM memories
 		WHERE embedding IS NOT NULL
@@ -1846,7 +1872,38 @@ func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCand
 		  AND source NOT IN ('merged', 'explicit')
 		ORDER BY timestamp DESC
 		LIMIT ?
-	`, consolidateSampleSize)
+	`, consolidateSampleSize, limit)
+}
+
+// FindPinnedMergeCandidates is FindMergeCandidates' counterpart for the
+// pinned-facts pool (source='explicit', importance=5) — the set
+// FindMergeCandidates itself deliberately excludes. Its sample size is
+// pinnedFactsLimit itself rather than consolidateSampleSize: the pinned pool
+// is already capped that small, so scanning all of it is cheap, and there is
+// no reason to look at only a fraction of a set this size. Results must be
+// saved via savePinnedMerged, not saveMerged, or the merge would silently
+// un-pin the fact (the exact bug this split was built to keep impossible).
+func (s *Store) FindPinnedMergeCandidates(ctx context.Context, limit int) ([]MergeCandidate, error) {
+	return s.findMergeCandidates(ctx, `
+		SELECT id, content, embedding
+		FROM memories
+		WHERE embedding IS NOT NULL
+		  AND pending_deletion = 0
+		  AND source = 'explicit'
+		  AND importance = 5
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, pinnedFactsLimit, limit)
+}
+
+// findMergeCandidates runs query (expected to select id, content, embedding
+// and take a single sample-size LIMIT parameter), then pairs up results
+// whose embeddings have cosine similarity ≥ consolidateSimilarityThreshold,
+// returning up to limit pairs ranked by similarity descending. Shared by
+// FindMergeCandidates and FindPinnedMergeCandidates — the two differ only in
+// which rows are eligible, never in how pairing/ranking works.
+func (s *Store) findMergeCandidates(ctx context.Context, query string, sampleSize, limit int) ([]MergeCandidate, error) {
+	rows, err := s.db.QueryContext(ctx, query, sampleSize)
 	if err != nil {
 		return nil, err
 	}
@@ -1921,15 +1978,30 @@ func (s *Store) FindMergeCandidates(ctx context.Context, limit int) ([]MergeCand
 // saveMerged inserts the merged content as a new memory (source='merged') and
 // marks the two originals as pending_deletion in a single transaction.
 func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) error {
-	uuid := fmt.Sprintf("merged_%d", time.Now().UnixNano())
+	return s.saveMergedAs(ctx, content, id1, id2, "merged", "merged", 4)
+}
+
+// savePinnedMerged is saveMerged's counterpart for FindPinnedMergeCandidates'
+// results: the merge result keeps source='explicit'/importance=5, so it
+// still matches GetPinnedFacts' WHERE clause — a merge here must never
+// silently un-pin a fact the way running it through plain saveMerged would.
+func (s *Store) savePinnedMerged(ctx context.Context, content string, id1, id2 int64) error {
+	return s.saveMergedAs(ctx, content, id1, id2, "pinned_merged", "explicit", 5)
+}
+
+// saveMergedAs is saveMerged/savePinnedMerged's shared implementation —
+// identical insert/embed/link-cleanup logic, differing only in the new row's
+// uuid prefix, source, and importance.
+func (s *Store) saveMergedAs(ctx context.Context, content string, id1, id2 int64, uuidPrefix, source string, importance int) error {
+	uuid := fmt.Sprintf("%s_%d", uuidPrefix, time.Now().UnixNano())
 	timestamp := time.Now().UTC().Format(time.RFC3339)
 
 	var embedBlob []byte
 	var embedding []float32
 	if emb, err := s.embed(ctx, content); err != nil {
-		logx.Printf("MEMORY: saveMerged embed failed (uuid=%s): %v — merged memory will be saved without a vector and will not surface in similarity search", uuid, err)
+		logx.Printf("MEMORY: saveMergedAs embed failed (uuid=%s): %v — merged memory will be saved without a vector and will not surface in similarity search", uuid, err)
 	} else if len(emb) != s.dim {
-		logx.Printf("MEMORY: saveMerged embed dimension mismatch (uuid=%s): got %d, want %d — merged memory will be saved without a vector and will not surface in similarity search", uuid, len(emb), s.dim)
+		logx.Printf("MEMORY: saveMergedAs embed dimension mismatch (uuid=%s): got %d, want %d — merged memory will be saved without a vector and will not surface in similarity search", uuid, len(emb), s.dim)
 	} else {
 		embedding = emb
 		embedBlob = floatsToBlob(emb)
@@ -1940,8 +2012,8 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 			`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
 			                      chunk_index, parent_uuid, total_chunks,
 			                      session_id, importance, tags, source, retrieve_count)
-			 VALUES (?, 'user', ?, ?, ?, '', ?, 0, ?, 1, '', 4, 'merged', 'merged', 0)`,
-			uuid, content, timestamp, content, embedBlob, uuid,
+			 VALUES (?, 'user', ?, ?, ?, '', ?, 0, ?, 1, '', ?, ?, ?, 0)`,
+			uuid, content, timestamp, content, embedBlob, uuid, importance, source, source,
 		)
 		if err != nil {
 			return err
@@ -1950,7 +2022,7 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 		if embedding != nil && s.useVec {
 			vecJSON, _ := json.Marshal(embedding)
 			if _, err := tx.Exec("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON)); err != nil {
-				logx.Printf("MEMORY: saveMerged vec insert: %v", err)
+				logx.Printf("MEMORY: saveMergedAs vec insert: %v", err)
 			}
 		}
 		if s.useFTS {
@@ -1958,7 +2030,7 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 				"INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, '')",
 				rowID, content, content,
 			); err != nil {
-				logx.Printf("MEMORY: saveMerged fts insert: %v", err)
+				logx.Printf("MEMORY: saveMergedAs fts insert: %v", err)
 			}
 		}
 		_, err = tx.Exec("UPDATE memories SET pending_deletion = 1 WHERE id IN (?, ?)", id1, id2)
@@ -1967,21 +2039,46 @@ func (s *Store) saveMerged(ctx context.Context, content string, id1, id2 int64) 
 }
 
 func (s *Store) runConsolidation(ctx context.Context, fn ConsolidationFunc) {
-	candidates, err := s.FindMergeCandidates(ctx, consolidateMaxPairs)
+	s.runConsolidationWith(ctx, fn, s.FindMergeCandidates, s.saveMerged, consolidateMaxPairs, "consolidation")
+}
+
+// runPinnedConsolidation is runConsolidation's counterpart for the pinned
+// facts pool — dedups near-duplicate pinned facts (e.g. auto-extraction
+// pinning the same durable fact twice, worded differently, on separate
+// occasions) while keeping the merge result pinned, so pinnedFactsLimit's
+// recency cap has fewer near-duplicates competing for its slots over weeks
+// of use. See pinnedFactsLimit's doc comment for the gap this closes.
+func (s *Store) runPinnedConsolidation(ctx context.Context, fn ConsolidationFunc) {
+	s.runConsolidationWith(ctx, fn, s.FindPinnedMergeCandidates, s.savePinnedMerged, pinnedConsolidateMaxPairs, "pinned consolidation")
+}
+
+// runConsolidationWith is runConsolidation/runPinnedConsolidation's shared
+// implementation: find candidates, ask fn to merge each pair's content, and
+// save. find and save are swapped between the two pools so a pinned-fact
+// merge can never take the general pool's un-pinning save path.
+func (s *Store) runConsolidationWith(
+	ctx context.Context,
+	fn ConsolidationFunc,
+	find func(context.Context, int) ([]MergeCandidate, error),
+	save func(context.Context, string, int64, int64) error,
+	maxPairs int,
+	label string,
+) {
+	candidates, err := find(ctx, maxPairs)
 	if err != nil {
-		logx.Printf("MEMORY: consolidation scan: %v", err)
+		logx.Printf("MEMORY: %s scan: %v", label, err)
 		return
 	}
 	if len(candidates) == 0 {
 		return
 	}
-	logx.Printf("MEMORY: consolidating %d memory pair(s)", len(candidates))
+	logx.Printf("MEMORY: %s: %d pair(s)", label, len(candidates))
 	for _, c := range candidates {
 		mergeCtx, cancel := context.WithTimeout(ctx, 45*time.Second)
 		merged, err := fn(mergeCtx, c.Content1, c.Content2)
 		cancel()
 		if err != nil {
-			logx.Printf("MEMORY: consolidation LLM: %v", err)
+			logx.Printf("MEMORY: %s LLM: %v", label, err)
 			continue
 		}
 		merged = strings.TrimSpace(merged)
@@ -1989,10 +2086,10 @@ func (s *Store) runConsolidation(ctx context.Context, fn ConsolidationFunc) {
 			continue
 		}
 		saveCtx, saveCancel := context.WithTimeout(ctx, 15*time.Second)
-		if err := s.saveMerged(saveCtx, merged, c.ID1, c.ID2); err != nil {
-			logx.Printf("MEMORY: consolidation save: %v", err)
+		if err := save(saveCtx, merged, c.ID1, c.ID2); err != nil {
+			logx.Printf("MEMORY: %s save: %v", label, err)
 		} else {
-			logx.Printf("MEMORY: merged pair (sim=%.2f)", c.Similarity)
+			logx.Printf("MEMORY: %s merged pair (sim=%.2f)", label, c.Similarity)
 		}
 		saveCancel()
 	}

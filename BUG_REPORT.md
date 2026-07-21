@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-21 — `pidListeningOnPort` (`internal/llama`, `internal/whisper`) Linux'ta `lsof`/`fuser` bağımlılığı olmadan native `/proc/net/tcp` okuyacak şekilde düzeltildi (`91300f9`/`52b6e9f` + testler `2f839a2`/`d0bb02c`) — her iki araç da kurulu değilse port temizliğinin sessizce no-op olduğu senaryoyu Linux'ta tamamen kapatır (macOS `lsof`/`fuser`'da kaldı, risk zaten düşük).
+> **Son güncelleme:** 2026-07-21 — **TD-2**'nin cap/eviction yarısı kapatıldı (`a925109`): `pinnedFactsLimit` 50→75, ve yeni `FindPinnedMergeCandidates`/`savePinnedMerged`/`runPinnedConsolidation` pinned facts havuzunu kendi içinde dedup'lıyor (genel consolidation zaten `source='explicit'`i hariç tutuyordu — bu boşluğu kapatan hiçbir mekanizma yoktu). TD-2'nin inference-contention yarısı (local model tek slotta extraction ile chat'in yarışması) hâlâ açık, bkz. aşağıda.
+>
+> `pidListeningOnPort` (`internal/llama`, `internal/whisper`) Linux'ta `lsof`/`fuser` bağımlılığı olmadan native `/proc/net/tcp` okuyacak şekilde düzeltildi (`91300f9`/`52b6e9f` + testler `2f839a2`/`d0bb02c`) — her iki araç da kurulu değilse port temizliğinin sessizce no-op olduğu senaryoyu Linux'ta tamamen kapatır (macOS `lsof`/`fuser`'da kaldı, risk zaten düşük).
 >
 > 2026-07-20 (Session 46 fix pass) — Session 46 review maddeleri kapatıldı:
 > - **BUG-H1** `20ba4f0` — agent `trySend` non-blocking-first + regression tests  
@@ -34,9 +36,11 @@
 
 `Schedule.UTCOffsetMinutes` client offset'ini donduruyor; DST geçişinde kendini düzeltmiyor. Önceki BUG-M4 fix'inin bilinçli sınırı.
 
-### TD-2 — Pinned facts 50-cap (recency eviction) + local model inference contention
+### TD-2 — Local model inference contention (auto fact extraction vs. chat)
 
-`GetPinnedFacts` cap 50, eviction recency-only. Auto fact extraction local llama tek slotta chat ile yarışır.
+`extractAndPinFacts` (`internal/app/memory.go`) auto-extraction'ı ayrı bir goroutine'de, chat cevabı kullanıcıya tamamen gönderildikten sonra tetikliyor — yani aynı turun cevabını yavaşlatmıyor. Ama local model kurulumunda `llama-server` tek slotla çalışıyor (`--parallel 1`), o yüzden extraction hâlâ sürerken kullanıcı hemen art arda yeni mesaj yazarsa, o mesaj extraction'ın arkasında sıraya girebilir — küçük, sınırlı bir gecikme riski, harici provider kullananları etkilemiyor.
+
+(Eski cap/eviction yarısı — `pinnedFactsLimit` 50-cap + hiçbir dedup mekanizması olmaması — `a925109` ile kapatıldı: cap 75'e çıkarıldı ve pinned facts'e özel bir consolidation yolu eklendi.)
 
 ---
 

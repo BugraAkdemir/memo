@@ -3,6 +3,7 @@ name: Build Linux
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -16,6 +17,12 @@ jobs:
   build:
     name: Linux x86_64
     runs-on: ubuntu-latest
+    # Only the release-publish step (below) needs contents: write — every
+    # other step here is read-only against the repo. Scoped to the job, not
+    # the whole workflow, since pull_request-triggered runs never reach that
+    # step anyway (its own `if` guards on a tag ref).
+    permissions:
+      contents: write
     steps:
       - uses: actions/checkout@v4
 
@@ -117,3 +124,17 @@ jobs:
           name: Memo-linux-x64
           path: build_output/stage/Memo/
           retention-days: 7
+
+      # Only on an actual tag push (e.g. a manually-cut checkpoint/RC tag,
+      # not every push to main) — attaches this platform's zip to a GitHub
+      # pre-release for that tag. build-windows.yml/build-macos.yml each run
+      # independently and attach their own platform's build to the *same*
+      # release (found/created by tag name) — softprops/action-gh-release
+      # upserts rather than failing if the release already exists from
+      # another platform's job finishing first.
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: build_output/dist/${{ env.APP_NAME }}-linux-x64.zip

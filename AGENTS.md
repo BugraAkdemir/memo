@@ -143,6 +143,50 @@ seven version locations, EN+TR release notes, per-platform build commands,
 the versioned→generic artifact rename for `download.bugradev.com`, and the
 `version.json` update beacon that must be bumped LAST.
 
+### Checkpoint / pre-release tags (lightweight, NOT the same as a release)
+
+Separate from the full release process above — this is for snapshotting a
+point in history (e.g. to hand a build to friends/testers) without going
+through version bumps, changelog files, or the download.bugradev.com/
+version.json publish targets. Added 2026-07-21 (`b50f481`, tag `v3.2.1`).
+
+**How it works:** `build-linux.yml`/`build-windows.yml`/`build-macos.yml`
+each trigger on `push: tags: ["v*"]` (in addition to their existing
+main/PR/`workflow_dispatch` triggers) and, only when the ref is actually a
+tag (`if: startsWith(github.ref, 'refs/tags/')`), run a final step that
+publishes that platform's built zip to a GitHub **pre-release** via
+`softprops/action-gh-release`, found-or-created by the tag name — all
+three platforms' independently-running jobs converge on the same release
+instead of each creating their own. Ordinary pushes to `main` and PR builds
+are completely unaffected (that step never runs for them).
+
+**To cut one:**
+```bash
+git tag -a v<X.Y.Z> -m "short description of this checkpoint"
+git push origin v<X.Y.Z>
+```
+That push is what triggers the three builds — nothing else is needed. The
+GitHub release itself is created empty (no notes) by whichever platform's
+job finishes first; set notes afterward once at least one job has
+completed its publish step:
+```bash
+gh release edit v<X.Y.Z> --notes "..."
+```
+
+**The tag name is independent of the app's embedded version** (the
+`version` file / `/api/version`) — a checkpoint tag does not need to match
+whatever `version` currently says, and nothing enforces that it does. This
+is deliberately looser than the numbered-release process, which is exactly
+why it must never be treated as a substitute for one.
+
+**Hard rule: never push a tag matching `v*` without the user explicitly
+asking for it in that specific moment.** Pushing one is a real, visible,
+somewhat irreversible action — it immediately triggers CI on three
+platforms and publishes a public GitHub pre-release with downloadable
+binaries. This must never happen proactively, as a side effect of some
+other task, or because a past request seemed like a standing instruction —
+confirm every single time before tagging or pushing a tag.
+
 ---
 
 ## Known Pitfalls & Technical Debt

@@ -1,51 +1,20 @@
-//go:build !windows
+//go:build darwin
 
 package llama
 
 import (
 	"fmt"
 	"memo/internal/logx"
-	"os"
 	"os/exec"
 	"strings"
-	"syscall"
-	"time"
 )
 
-func processSignalTerm(p *os.Process) error {
-	return p.Signal(syscall.SIGTERM)
-}
-
-func processIsAlive(p *os.Process) bool {
-	return p.Signal(syscall.Signal(0)) == nil
-}
-
-func forceKillCmd(cmd *exec.Cmd, waitDone chan struct{}) {
-	pid := cmd.Process.Pid
-	pgid, err := syscall.Getpgid(pid)
-	if err == nil && pgid != 0 {
-		_ = syscall.Kill(-pgid, syscall.SIGKILL)
-	} else {
-		_ = cmd.Process.Kill()
-	}
-
-	if waitDone != nil {
-		select {
-		case <-waitDone:
-		case <-time.After(3 * time.Second):
-			logx.Printf("llama: WARNING — process may not have exited cleanly")
-		}
-	}
-}
-
-func killPID(pid int) error {
-	proc, err := os.FindProcess(pid)
-	if err != nil {
-		return fmt.Errorf("find %d: %w", pid, err)
-	}
-	return processSignalTerm(proc)
-}
-
+// pidListeningOnPort shells out to lsof (primary) or fuser (fallback) to
+// find the PID of the process bound to port. macOS has no /proc, so unlike
+// Linux (see process_linux.go) there is no dependency-free native path —
+// but lsof ships with the OS itself (part of the base BSD userland), so the
+// "neither tool installed" failure mode that motivated the Linux rewrite is
+// not a realistic risk here.
 func pidListeningOnPort(port int) int {
 	out, err := exec.Command("lsof", "-ti", fmt.Sprintf("tcp:%d", port)).Output()
 	if err == nil {

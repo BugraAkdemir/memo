@@ -8,6 +8,7 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"strconv"
 	"strings"
 	"testing"
@@ -37,11 +38,15 @@ func TestHelperProcess_ListenOnPort(t *testing.T) {
 // stuck-embedding-port bug: a process this Server never spawned (simulating
 // a llama-server orphaned by a previous, abnormally-terminated Memo run —
 // see the Pdeathsig note in Start()) is listening on a port. killByPort must
-// find and kill it via lsof/fuser-based discovery, not just PID tracking.
+// find and kill it via port discovery, not just PID tracking. On Linux this
+// exercises the native /proc-based lookup (process_linux.go), which has no
+// external tool dependency; on macOS it needs lsof or fuser.
 func TestKillByPort_KillsOrphanProcess(t *testing.T) {
-	if _, err := exec.LookPath("lsof"); err != nil {
-		if _, err := exec.LookPath("fuser"); err != nil {
-			t.Skip("neither lsof nor fuser available in this environment")
+	if runtime.GOOS != "linux" {
+		if _, err := exec.LookPath("lsof"); err != nil {
+			if _, err := exec.LookPath("fuser"); err != nil {
+				t.Skip("neither lsof nor fuser available in this environment")
+			}
 		}
 	}
 

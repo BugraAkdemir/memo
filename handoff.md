@@ -1,3 +1,95 @@
+# Handoff — 2026-07-20 (Session 50) — CLI görsel yeniden tasarımı, @ dosya-mention, CLI l10n, yetim süreç/port bug'ı, standalone komutlar
+
+## Özet
+
+13 commit, hepsi `main`'e push'landı (`origin/main` = `3016711`). Üç blok:
+
+1. **Terminal CLI'ın yeniden tasarımı** — Claude Code referans ekran görüntüsüne göre karşılama paneli, `@` ile dosya-mention, CLI'ın tam l10n'lanması ve GUI ile dil senkronu.
+2. **"Uygulamayı kapatınca port açık kalıyor" bug'ı** — kullanıcı bildirdi, kök nedeni bulundu (aslında iki ayrı defect), düzeltildi ve canlı öncesi/sonrası kanıtlandı.
+3. **Standalone CLI komutları** — `memo --kill`, `--help`, `--version`, `--status`, `--update`, `--gui`, `--github`, `--bugrep`, `--docs`.
+
+## Commitler
+
+| Commit | İş |
+|---|---|
+| `c4bb1e6` | Karşılama paneli + composer bronz palete geçti, kalıcı alt durum çubuğu eklendi |
+| `4b78330` | `@` dosya-mention (yeni `internal/replcli/filematch.go`) |
+| `7771b33` | CLI tamamen l10n'landı + backend `Identity.UILanguage` ile GUI-CLI dil senkronu |
+| `d7b0eb3` | Okunmayan mavi arka planlı girdi stili kaldırıldı |
+| `fc276ed` | Panel iki bronz kutuya çevrildi (ara iterasyon) |
+| `7124a12` | Referansın gerçek kenarlık stili + maskot (ara iterasyon) |
+| `4db9df0` | `/update` komutu, version-check client metodu, 20'lik ipucu havuzu |
+| `bb44fa8` | Panel **tek kutu, dikey çizgiyle iki sütun** oldu (nihai yapı) |
+| `b170175` | Hafıza durum satırı kaldırıldı, yerine `/embedding` uyarısı |
+| `17ce5cf` | **Yetim `whisper-server` port bug'ı** (iki kök neden) |
+| `c9d0920` | **SIGHUP** işleniyor — terminal kapanınca temiz kapanış |
+| `688a950` | `LaunchGUI` + `Client.Shutdown` ortak hale getirildi |
+| `3016711` | Standalone `memo --…` komutları |
+
+## 1. CLI karşılama paneli — 4 iterasyon sürdü
+
+Panel **dört kez** yeniden yazıldı çünkü referans ekran görüntüsünü üst üste yanlış okudum. Nihai yapı kullanıcının kendi işaretlediği ekran görüntüsünden geldi (sarı = kutuyu tamamla, kırmızı = alttaki İpuçları kutusunu tamamen sil, mavi = ikiye böl, yeşil = üst kısma dokunma):
+
+- **Tek kutu**, dikey `┬`/`│`/`┴` çizgisiyle iki sütuna bölünmüş. Başlık üst kenarın *içine* gömülü.
+- **Sol sütun:** maskot (4 satırlık pixel yüz), ortalanmış karşılama satırı, sol hizalı `Model:` + proje yolu.
+- **Sağ sütun:** her açılışta 20'lik havuzdan rastgele seçilen ipuçları + versiyon güncelleme uyarısı (yeni sürüm yoksa o slotu 4. bir ipucu doldurur, boş kalmaz).
+
+**Geometri bilerek sabit** (`panelLeftW=44`, `panelRightW=36`, `panelWidth=89`) — kullanıcının açık talebi "terminali büyütüp küçültünce tasarım kaymasın" idi. Kutuya sığmayacak kadar dar terminalde kutusuz düz satırlara düşüyor (`narrowPanel`). İçerik `fitTo` ile kırpılıyor, `wrapTo` ile sarılıyor; eski `boxWriter`'ın "büyüyerek sığdır" yaklaşımının sığmayan içeriğe cevabı yoktu.
+
+Yol boyunca düzeltilen gerçek hatalar: girdi metninin okunmaz mavi/siyah arka planı (üçüncü renk denemesi yerine **arka planı tamamen kaldırıp sadece bold** yapıldı — sabit bir renk çifti açık/koyu terminallerin ikisinde birden doğru olamaz), `⚠ ⚠️` çift ikon, uzun etiketlerin açıklamayla birleşmesi, `term.GetSize`'ın hatasız `0` dönmesi.
+
+## 2. Hafıza durum satırı kaldırıldı (`b170175`)
+
+Kullanıcı "bazen açık gösteriyor ama kapalı" dedi — doğru çıktı. Backend'in embedding durumu porta ping atmaya düşüyor (`GetStatus`/`pingPort`), yani o portu ne tutuyorsa "çalışıyor" diyor. **Güvenilmeyen bir durum satırı, hiç olmamasından kötü** olduğu için satır tamamen kaldırıldı; yerine sadece embedding kapalı görünürken çıkan tek bir eylem satırı kondu: "Hafızayı kullanmak için /embedding yaz". Aynı güvenilmez sinyal artık *iddia* değil sadece *ipucu* kapısı — hata modu "panel yanlış bilgi veriyor"dan "ipucu bazen görünmüyor"a indi.
+
+`label_memory`/`memory_on`/`memory_off` l10n anahtarları silindi, `memorySummary` → `memoryActive` (sadece bool döner) oldu.
+
+## 3. Yetim süreç / port bug'ı — kök neden (`17ce5cf`, `c9d0920`)
+
+Kullanıcının bildirimi doğrulandı: makinesinde **PPID 1** olan bir `whisper-server` 10+ dakikadır `:9877`'yi tutuyordu, ortada çalışan Memo yoktu. Üç ayrı defect vardı:
+
+1. **`whisper.Server.Start` portu temizlemeden spawn ediyordu.** `llama`'ya 2026-07-12'de eklenen ön-kontrol whisper'a hiç uygulanmamış. `newSysProcAttr` `Setpgid` koyuyor ama `Pdeathsig` koymuyor (Go'da uyumsuz), yani ebeveyn anormal ölünce çocuk OS tarafından toplanmıyor.
+2. **`pidListeningOnPort`'un `fuser` dalı hiç çalışamıyordu.** stdout'u `":"` ile bölüp iki parça bekliyordu, ama `fuser` `"PORT/tcp:"` etiketini **stderr**'e yazıyor — stdout'ta sadece çıplak PID var, yani `":"` hiç yok. `llama`'nın kopyasında düzeltilmiş, whisper'ınki geride kalmış. Sonuç: `lsof` kurulu olmayan her makinede (kullanıcınınki dahil) whisper'ın port temizliği **hiçbir zaman çalışmamış**.
+3. **`SIGHUP` hiçbir yerde yakalanmıyordu.** Terminal penceresini kapatmak insanların çıkış yapma şekli, ama tam da o yol her temizliği atlayan yoldu.
+
+**Canlı öncesi/sonrası kanıt:** düzeltme öncesi binary'ye SIGHUP → backend anında ölüyor, graceful log satırı hiç çıkmıyor, `whisper-server`'ın PPID'si 1'e dönüyor, `:9877` tutulu kalıyor. Düzeltme sonrası → `"whisper: stopping server"` → `"stopped gracefully"` → `"Memo shutdown completed"`, yetim yok, port serbest. Ayrıca `nohup` gibi SIGHUP'ı yoksayan bir şeyin altında başlatılınca eski kod **hiç çıkmıyordu**; `signal.Notify` devraldığı `SIG_IGN`'i ezdiği için o durum da düzeldi.
+
+**8090'ın kendisi bozuk değildi:** client-registry auto-shutdown uçtan uca test edildi, çalışıyor (kayıt → kayıt silme → süreç çıkıyor, port serbest). Kirli çıkışta 90 sn'lik staleness sweep de çalışıyor (test edildi). Kullanıcının "hemen bakınca hâlâ açık" görmesinin sebebi o 90 sn'ydi; SIGHUP düzeltmesi bu pencereyi kapatıyor.
+
+## 4. Standalone komutlar (`3016711`)
+
+`--help`/`-h`, `--version`/`-v`, `--status`, `--kill`, `--update`, `--gui`, `--github`, `--bugreport`/`--bugrep`, `--docs`. Go'nun flag paketi `-x` ile `--x`'i aynı sayar ama farklı isimleri alias'lamaz, o yüzden her yazım ayrı deklare edildi.
+
+`--kill` üç aşamalı (yumuşaktan serte): canlı backend'e kendini kapatmasını söyle → Memo'nun kullandığı her portu temizle (portlar kullanıcının config'inden okunuyor, sabit değil) → kalanları süreç adına göre süpür. Her port öncesi/sonrası problanıp ne temizlendiği raporlanıyor.
+
+**Test sırasında yakalanan tehlike:** ilk yazdığım `pkill -f "llama-server"` deseni **test edildiği kabuğu öldürdü**. `pkill -f` makinedeki her sürecin *tüm komut satırını* tarıyor, yani `tail -f llama-server.log` de, o dosyayı açmış bir editör de eşleşiyor. Desenler `binaries/` ve `--headless` gibi bize özgü çapalara bağlandı; `rpc-server` Windows image listesinden tamamen çıkarıldı (jenerik isim, zaten port taramasında kapsanıyor).
+
+## Doğrulama
+
+- Backend: `go build`/`vet`/`test ./... -race` — **tüm paketler yeşil** (39 paket).
+- Çapraz platform: `GOOS=windows` ve `GOOS=darwin` `go vet` temiz (kill dosyaları platform-özel).
+- Frontend: `flutter analyze lib/` (sadece 4 önceden var olan `use_build_context_synchronously` info'su) + `flutter test` 105/105 — dil senkronu commit'inde koşuldu.
+- `--kill` üç senaryoda canlı test edildi: canlı backend + whisper çocuğu, backend yokken kalmış yetim (port üzerinden temizlendi), hiçbir şey yokken (temiz no-op).
+- Yeni testler: `color_test.go` (panel geometrisi — her satırın tam `panelWidth` olması, terminal boyutundan bağımsız sabitlik, taşan içeriğin kutudan çıkmaması), `filematch_test.go`, `l10n_test.go` (tr/en anahtar simetrisi + format verb paritesi), `process_port_test.go`, `cli_flags_test.go`, `repl_test.go`'ya 3 uçtan uca karşılama testi.
+- `process_port_test.go`'daki asıl regresyon testinin düzeltme olmadan **düştüğü** (`= 0, want this process`), düzeltmeyle geçtiği ayrıca doğrulandı.
+
+## Sıradaki oturum için
+
+1. **Panel görsel doğrulaması kullanıcıda.** Kullanıcı terminalde screenshot/pty denemelerimi açıkça yasakladı ("kontrolü ben ederim"), o yüzden nihai tasarım gerçek bir terminalde **benim tarafımdan doğrulanmadı**. Bilinen tek risk: başlıktaki `✳` karakteri East_Asian_Width=Ambiguous — çift genişlikte render eden bir terminalde o tek satır bir hücre kayar. Her şey rune sayısıyla ölçülüyor, bu durum kodla tespit edilemiyor. Kayma bildirilirse `✳` değiştirilmeli.
+2. **Çözülemeyen bug:** kullanıcı "`/help`'ten sonra `/` dropdown'ı açılmıyor" dedi. Gerçek pty ile iki farklı yöntemle (toplu yazma + karakter karakter yavaş gönderim, doğru pencere boyutuyla) tekrar tekrar denendi, **yeniden üretilemedi** — dropdown her seferinde doğru açıldı. Kod da incelendi, mantıksal hata bulunamadı. Tekrar ederse somut repro gerekli: terminal emülatörü, pencere yeniden boyutlandırıldı mı, tam olarak hangi tuş.
+3. **`/update` ve `--update` uçtan uca denenmedi** — ikisi de uzaktan script indirip çalıştırıyor, bu ortamda bilerek çalıştırılmadı. Onay istemesi ve reddi/EOF'u doğru işlemesi test edildi, ama gerçek kurulum akışı doğrulanmadı.
+4. **`pidListeningOnPort` hâlâ dışarıya shell atıyor** (`lsof`/`fuser`/`netstat`). İkisi de yoksa port keşfi tamamen çalışmıyor — testler o durumda skip ediyor. Linux'ta `/proc/net/tcp` doğrudan okunarak harici araç bağımlılığı kaldırılabilir; `17ce5cf`'in commit mesajında da not düşüldü.
+5. **`internal/whisper/whisper_test.go`'da önceden var olan bir `gofmt` uyumsuzluğu var** — bu oturumda dosyaya dokunulmadığı için bilerek düzeltilmedi (ilgisiz değişikliği commit'e karıştırmamak için). Ayrı bir temizlik commit'i olarak yapılabilir.
+6. **Flutter L10n borcu duruyor:** `orchestra_config_dialog.dart` ve `provider_config_dialog.dart` hâlâ hardcoded Türkçe literal taşıyor (AGENTS.md kural #8 ihlali, önceki oturumdan devir). `agent_screen.dart:316`'daki "Agent" etiketi de denetlenmedi.
+7. **AGENTS.md güncellenebilir:** karşılama panelinin hafıza durumu satırı artık yok ve CLI'ın kendi l10n mekanizması (`internal/replcli/l10n.go`) var — mimari notlarda bunlar geçmiyor.
+8. `aaaa.png` kök dizinde untracked duruyor (kullanıcının ekran görüntüsü), commit'lere karıştırılmadı.
+
+## Branch
+
+`main`, tüm commitler push'landı (`origin/main` = `3016711`).
+
+---
+
 # Handoff — 2026-07-20 (Session 49 devam 3) — Codebase-memory MCP yeniden index'lendi + pinned-facts import fix'i
 
 ## Özet

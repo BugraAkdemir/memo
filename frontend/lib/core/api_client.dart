@@ -1028,6 +1028,29 @@ class MemoApiClient {
     }
   }
 
+  /// Reports this client's current wall-clock UTC offset so every routine's
+  /// stored Schedule.UTCOffsetMinutes (see its doc comment, BUG_REPORT TD-1)
+  /// gets corrected to match. UTCOffsetMinutes freezes at routine-creation
+  /// time and is never otherwise touched again, so without this a DST
+  /// transition (or relocating to a new timezone) leaves every existing
+  /// routine firing at the wrong wall-clock time forever. Called once per
+  /// fresh client registration (see connectionStatusProvider in
+  /// chat_provider.dart) rather than every heartbeat — cheap either way
+  /// (the backend no-ops routines whose offset already matches), but a
+  /// DST/relocation correction only actually needs to happen once per
+  /// reconnect, not every 30s. Best-effort like the client-tracking calls
+  /// above: nothing else depends on this succeeding on any given tick.
+  Future<void> syncRoutineUtcOffset() async {
+    try {
+      await _dio.post(
+        '/api/routines/sync-offset',
+        data: {'utc_offset_minutes': DateTime.now().timeZoneOffset.inMinutes},
+      );
+    } catch (e) {
+      // best-effort — see class doc above
+    }
+  }
+
   // ─── Provider Management ─────────────────────────────────────────
 
   /// Get all provider configs.

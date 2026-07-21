@@ -139,4 +139,83 @@ void main() {
       expect(callbackFired, isFalse);
     });
   });
+
+  group('syncRoutineUtcOffset (BUG_REPORT TD-1)', () {
+    test('posts the current UTC offset to the sync-offset endpoint', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      final adapter = _CapturingAdapter({'changed': 0});
+      client.dio.httpClientAdapter = adapter;
+
+      await client.syncRoutineUtcOffset();
+
+      expect(adapter.lastPath, '/api/routines/sync-offset');
+      expect(
+        adapter.lastData,
+        containsPair(
+          'utc_offset_minutes',
+          DateTime.now().timeZoneOffset.inMinutes,
+        ),
+      );
+    });
+
+    test('swallows a failed request instead of throwing', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+
+      // Must not throw — this is a best-effort background call fired
+      // unawaited from connectionStatusProvider; a network error here must
+      // never surface as an unhandled exception.
+      await client.syncRoutineUtcOffset();
+    });
+  });
+}
+
+/// A fake [HttpClientAdapter] that records the last request's path and JSON
+/// body, and answers with [body].
+class _CapturingAdapter implements HttpClientAdapter {
+  final dynamic body;
+  String? lastPath;
+  Map<String, dynamic>? lastData;
+  _CapturingAdapter(this.body);
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastPath = options.path;
+    if (options.data is Map) {
+      lastData = Map<String, dynamic>.from(options.data as Map);
+    }
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      200,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// A fake [HttpClientAdapter] that always fails the request, standing in for
+/// an unreachable backend.
+class _ThrowingAdapter implements HttpClientAdapter {
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    throw DioException(
+      requestOptions: options,
+      error: 'connection refused',
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }

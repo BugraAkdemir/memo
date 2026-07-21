@@ -777,6 +777,14 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
         clientId = null;
       } else if (clientId == null) {
         clientId = await api.registerClient();
+        if (clientId != null) {
+          // Fresh registration = a new/reconnected session — the moment a
+          // DST transition or timezone relocation since the last connect
+          // should be picked up. See MemoApiClient.syncRoutineUtcOffset's
+          // doc comment; unawaited on purpose, this must never delay/break
+          // the connection-status loop itself.
+          unawaited(api.syncRoutineUtcOffset());
+        }
       } else {
         await api.heartbeatClient(clientId);
       }

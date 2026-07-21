@@ -43,7 +43,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                   Text('🧩', style: TextStyle(fontSize: 20)),
                   const SizedBox(width: 10),
                   Text(
-                    'Skill Yönetimi',
+                    L10n.t('skill_management_btn'),
                     style: TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
@@ -66,7 +66,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      "Skill'ler yuklenemedi: $e",
+                      L10n.t('skills_list_load_failed', {'e': '$e'}),
                       style: TextStyle(color: theme.textDim),
                     ),
                   ),
@@ -80,12 +80,12 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                           mainAxisSize: MainAxisSize.min,
                           children: [
                             Text(
-                              'Henüz skill yüklenmemiş.',
+                              L10n.t('skills_empty'),
                               style: TextStyle(color: theme.textDim, fontSize: 14),
                             ),
                             const SizedBox(height: 8),
                             Text(
-                              'data/skills/ klasörüne SKILL.md dosyası ekleyin\nveya aşağıdan yükleyin.',
+                              L10n.t('skills_empty_hint_dialog'),
                               style: TextStyle(color: theme.textDim, fontSize: 12),
                               textAlign: TextAlign.center,
                             ),
@@ -177,7 +177,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
     if (ok && mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(active ? '✅ $name aktifleştirildi' : '⏸️ $name devre dışı'),
+          content: Text(active ? L10n.t('skill_activated', {'name': name}) : L10n.t('skill_deactivated', {'name': name})),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -209,7 +209,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ok ? '🗑️ $name silindi' : '❌ Silme başarısız'),
+          content: Text(ok ? L10n.t('skill_deleted_ok', {'name': name}) : L10n.t('skill_delete_failed')),
           duration: const Duration(seconds: 2),
         ),
       );
@@ -231,8 +231,8 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
               controller: pathController,
               decoration: InputDecoration(
                 hintText: Platform.isWindows
-                    ? 'C:\\Users\\kullanici\\skills\\benim-skill'
-                    : '/home/kullanici/skiller/benim-skill',
+                    ? L10n.t('skill_path_hint_win')
+                    : L10n.t('skill_path_hint_unix'),
                 border: OutlineInputBorder(),
                 isDense: true,
               ),
@@ -259,7 +259,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(name != null ? '✅ $name yüklendi' : '❌ Yükleme başarısız'),
+          content: Text(name != null ? L10n.t('skill_installed_ok', {'name': name}) : L10n.t('skill_install_failed')),
           duration: const Duration(seconds: 2),
         ),
       );

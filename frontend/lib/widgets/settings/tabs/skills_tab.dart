@@ -59,12 +59,12 @@ class SkillsTab extends ConsumerWidget {
                         Icon(Icons.extension_off, size: 48, color: theme.textDim),
                         const SizedBox(height: 12),
                         Text(
-                          'Henüz skill yüklenmemiş.',
+                          L10n.t('skills_empty'),
                           style: TextStyle(color: theme.textDim, fontSize: 14),
                         ),
                         const SizedBox(height: 4),
                         Text(
-                          'data/skills/ klasörüne SKILL.md dosyası ekleyin veya\n"Skill Yönetimi" butonundan yükleyin.',
+                          L10n.t('skills_empty_hint'),
                           style: TextStyle(color: theme.textDim, fontSize: 12),
                           textAlign: TextAlign.center,
                         ),

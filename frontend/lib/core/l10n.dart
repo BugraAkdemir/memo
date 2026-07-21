@@ -348,7 +348,7 @@ class L10n {
     'incognito_prompt_desc':
         'Gizli moddayken modelin hafızaya erişmeden nasıl davranması gerektiğini belirten yönerge.',
     'reset_prompt': 'Varsayılana Sıfırla',
-    'save_successful': '\${L10n.t("save")} başarılı',
+    'save_successful': 'Kaydetme başarılı',
 
     // Settings — Memory
     'memory': 'Bellek',
@@ -363,6 +363,20 @@ class L10n {
     'skill_management_btn': 'Skill Yönetimi',
     'skills_desc': 'Skill\'ler agent\'a ek talimatlar ve araçlar kazandırır.',
     'skills_load_error': 'Yüklenemedi: \${e}',
+    'skills_empty': 'Henüz skill yüklenmemiş.',
+    'skills_empty_hint':
+        'data/skills/ klasörüne SKILL.md dosyası ekleyin veya\n"Skill Yönetimi" butonundan yükleyin.',
+    'skills_empty_hint_dialog':
+        'data/skills/ klasörüne SKILL.md dosyası ekleyin\nveya aşağıdan yükleyin.',
+    'skills_list_load_failed': 'Skill\'ler yüklenemedi: \${e}',
+    'skill_activated': '✅ \${name} aktifleştirildi',
+    'skill_deactivated': '⏸️ \${name} devre dışı',
+    'skill_deleted_ok': '🗑️ \${name} silindi',
+    'skill_delete_failed': '❌ Silme başarısız',
+    'skill_installed_ok': '✅ \${name} yüklendi',
+    'skill_install_failed': '❌ Yükleme başarısız',
+    'skill_path_hint_unix': '/home/kullanici/skills/benim-skill',
+    'skill_path_hint_win': 'C:\\Users\\kullanici\\skills\\benim-skill',
     'minimal_mode_section': 'Minimal Mod',
     'minimal_mode_active': 'Minimal Mod Açık',
     'minimal_mode_disabled': 'Minimal Mod Kapalı',
@@ -446,21 +460,53 @@ class L10n {
     'enter_api_key_first': 'Önce API Key girin',
     'models_fetch_error': 'Modeller alınamadı: \${e}',
     'models_fetch_error_short': 'Modeller alınamadı',
-    'configure_provider_title': 'Configure \${name}',
-    'provider_label': 'Provider',
-    'display_name': 'Display Name',
-    'api_key_stored': 'Stored encrypted',
-    'base_url_optional': 'Base URL (optional)',
-    'base_url_default_hint': 'Leave empty for default',
+    'configure_provider_title': '\${name} ayarları',
+    'provider_add_title': 'API sağlayıcı ekle',
+    'provider_edit_subtitle': 'Anahtarını ve modelini güncelle',
+    'provider_add_subtitle': 'Sağlayıcını seç, anahtarını yapıştır, bitti.',
+    'provider_step1': '1. Sağlayıcı',
+    'provider_label': 'Sağlayıcı',
+    'display_name': 'Görünen ad',
+    'display_name_helper':
+        'Listede bunu görürsün — birden fazla için ayırt edici yap',
+    'display_name_helper_dup':
+        'Aynı tipten birden fazla için ayırt edici yap',
+    'api_key_optional': 'API anahtarı (opsiyonel)',
+    'api_key_step2': '2. API anahtarı',
+    'api_key_custom_hint':
+        'Endpoint gerektiriyorsa gir — şifrelenerek saklanır',
+    'api_key_stored': 'Şifrelenerek cihazında saklanır',
+    'show_key': 'Göster',
+    'hide_key': 'Gizle',
+    'get_api_key_from': 'Anahtarım yok — \${name}\'dan al',
+    'local_provider_no_key': 'Yerel sağlayıcı — API anahtarı gerekmez.',
+    'base_url': 'Base URL',
+    'base_url_optional': 'Base URL (isteğe bağlı)',
+    'base_url_default_hint': 'Boş = sağlayıcı varsayılanı',
+    'base_url_openai_hint':
+        'OpenAI uyumlu endpoint, örn. https://host/v1',
     'model_label': 'Model',
-    'enable_provider': 'Enable this provider',
-    'test_connection': 'Test Connection',
-    'test_passed': 'Connected',
-    'test_failed': 'Failed',
-    'fetching_models': 'Models',
+    'model_step3': '3. Model',
+    'model_custom_hint': 'Endpoint\'in beklediği model adı',
+    'model_default_hint': 'Varsayılan dolduruldu — değiştirebilirsin',
+    'model_not_found': 'Model bulunamadı',
+    'advanced_settings': 'Gelişmiş ayarlar',
+    'context_window_label': 'Bağlam penceresi (token)',
+    'context_window_hint': 'Boş = varsayılan. Örn. 1000000 = 1M.',
+    'priority_label': 'Öncelik (Priority)',
+    'priority_hint': 'Yüksek = tercih edilir. Boş = 0.',
+    'provider_enabled_sub': 'Sohbette kullanılabilir',
+    'provider_disabled_sub': 'Kayıtlı ama kapalı',
+    'enable_provider': 'Bu sağlayıcıyı etkinleştir',
+    'test_connection': 'Bağlantıyı Test Et',
+    'test_passed': 'Bağlandı',
+    'test_failed': 'Başarısız',
+    'fetching_models': 'Modeller',
 
     // Settings — Orchestra
     'orchestra_title': 'Orchestra Mode',
+    'orchestra_dialog_subtitle':
+        'Birden çok modeli bir ekip gibi çalıştır',
     'orchestra_active': 'Orchestra Mode Aktif',
     'orchestra_inactive': 'Orchestra Mode Pasif',
     'orchestra_desc':
@@ -474,25 +520,55 @@ class L10n {
     'orchestra_section_title': 'Orchestra Mode',
     'orchestra_active_badge': 'Aktif',
     'orchestra_inactive_badge': 'Pasif',
-    'chief_model': '🧙 Şef (Chief) Model',
+    'orchestra_flow_chief': 'Şef planlar',
+    'orchestra_flow_chief_sub': 'İsteği alt görevlere böler',
+    'orchestra_flow_experts': 'Uzmanlar',
+    'orchestra_flow_experts_sub': 'Paralel çalışır',
+    'orchestra_flow_synth': 'Sentez',
+    'orchestra_flow_synth_sub': 'Sonuçları birleştirir',
+    'chief_model': 'Şef model',
+    'chief_model_emoji': '🧙 Şef (Chief) Model',
     'chief_desc':
-        'Şef, kullanıcının isteğini analiz eder, görev dağıtır ve sonuçları sentezler.',
-    'expert_roles': '🎭 Uzman Rolleri',
+        'İsteği analiz eder, görev dağıtır ve sonuçları birleştirir.',
+    'expert_roles': 'Uzman rolleri',
+    'expert_roles_emoji': '🎭 Uzman Rolleri',
     'expert_roles_desc':
-        'Her role bir model ata. Sadece açık roller orkestrasyona katılır. Özel roller ekleyip silebilirsin.',
-    'add_custom_role': 'Özel Rol Ekle',
+        'Sadece açık roller çalışır. Karta dokunup model ve talimatı düzenle.',
+    'roles_enabled_count': '\${count} açık',
+    'quick_setup': 'Hızlı kurulum',
+    'quick_setup_desc':
+        'Tek bir modeli şefe ve tüm açık rollere bir kerede ata.',
+    'select_model_apply': 'Model seç ve uygula',
+    'quick_model_applied':
+        '\${label} şefe ve açık rollere uygulandı',
+    'model_not_assigned': '⚠ Model atanmadı',
+    'select_openrouter_model': 'OpenRouter modeli seç',
+    'advanced_system_prompt': 'Gelişmiş: sistem talimatı',
+    'system_prompt_hint': 'Sistem talimatı...',
+    'custom_role': 'Özel rol',
+    'add_custom_role': 'Özel rol ekle',
     'default_system_prompt': 'Sen bir yardımcı asistansın.',
     'local_model_option': 'Local Model (llama.cpp)',
     'select_model': 'Model seç',
     'delete_role': 'Rolü sil',
-    'select_provider': 'Provider seç',
+    'select_provider': 'Sağlayıcı seç',
     'enable_role_first': 'Önce rolü aç',
     'click_to_select_model': 'Model seçmek için tıkla',
-    'no_models_for_provider':
-        '❌ \${error}',
+    'no_models_for_provider': '❌ \${error}',
     'assign_chief_model': 'Şef modele bir model ata',
     'assign_role_models': 'Lütfen tüm aktif rollere model ata',
-    'orchestra_saved': 'Orchestra config saved',
+    'orchestra_saved': 'Orchestra ayarları kaydedildi',
+    'orchestra_save_failed': 'Kayıt başarısız: \${e}',
+    'openrouter_models_need_config':
+        'Model listesi alınamadı. Önce API Provider\'dan OpenRouter\'ı yapılandır.',
+    'role_desc_planner': 'İsteği alt görevlere böler',
+    'role_desc_frontend': 'Arayüz ve görsel işler',
+    'role_desc_backend': 'Sunucu ve veri tarafı',
+    'role_desc_bug_fixer': 'Hata bulur ve düzeltir',
+    'role_desc_reviewer': 'Kodu gözden geçirir',
+    'role_desc_security': 'Güvenlik denetimi yapar',
+    'role_desc_devops': 'Derleme, dağıtım, altyapı',
+    'role_desc_general': 'Genel amaçlı uzman',
 
     // Settings — Cloud Sync
     'cloud_sync': 'Bulut Senkronizasyon',
@@ -612,6 +688,10 @@ class L10n {
     'llama_reinstall': 'Motoru Yeniden Kur / Onar',
     'llama_install_gpu': 'Ekran Kartı İçin Kur (Önerilen)',
     'llama_install': 'Motoru İndir ve Kur',
+    'llama_installed_desc':
+        'Uygulama arka planda modelleri sorunsuz çalıştırabilir.',
+    'llama_not_installed_desc':
+        'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
 
     // Settings — Model params
     'model_params': 'Model Parametreleri',
@@ -783,7 +863,34 @@ class L10n {
     'template_switch_model_sub': 'Local / API arasında geçiş',
     'template_orchestra': 'Orchestra Mode',
     'template_orchestra_sub': 'Çoklu model orkestrasyonu',
-    'no_matching_command': 'No matching command',
+    'template_skill': 'Skill Yönetimi',
+    'template_skill_sub': "Skill'leri listele, aktifleştir/devre dışı bırak",
+    'template_review_text':
+        'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
+    'template_explain_text':
+        'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
+    'template_fix_text':
+        'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
+    'template_plan_text':
+        'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
+    'template_summarize_text':
+        'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
+    'template_compare_text':
+        'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
+    'template_brainstorm_text':
+        'Şu konu hakkında yaratıcı fikirler üret:\n\n',
+    'template_translate_text':
+        'Aşağıdaki metni Türkçeye çevir:\n\n',
+    'openrouter_key_instructions':
+        "openrouter.ai/keys adresinden API Key'ini kopyalayıp aşağıya yapıştır:",
+    'openrouter_key_hint': 'sk-or-... ile başlar',
+    'whatsapp_timeout': 'WhatsApp yanıt zaman aşımına uğradı (5 dakika)',
+    'usage_tooltip':
+        'Girdi \${input} · Çıktı \${output}',
+    'usage_tooltip_budget':
+        'Girdi \${input} · Çıktı \${output} · Bütçe \${budget}',
+    'no_matching_command': 'Eşleşen komut yok',
+    'action_badge': 'eylem',
 
     // Version
     'version': 'Versiyon',
@@ -1253,6 +1360,16 @@ class L10n {
     'mood_neutral': 'Nötr',
     'mood_warm': 'Sıcak',
     'mood_elated': 'Neşeli',
+
+    // Welcome suggestion chips
+    'suggest_review_label': 'Kod incele',
+    'suggest_review_hint': 'Kodunu yapıştır',
+    'suggest_explain_label': 'Kavram açıkla',
+    'suggest_explain_hint': 'Bir konu sor',
+    'suggest_plan_label': 'Plan oluştur',
+    'suggest_plan_hint': 'Bir görev tanımla',
+    'suggest_ideate_label': 'Fikir üret',
+    'suggest_ideate_hint': 'Beyin fırtınası',
   };
 
   static const _en = <String, String>{
@@ -1557,7 +1674,7 @@ class L10n {
     'incognito_prompt_desc':
         'Instruction for how the model should behave without memory access in incognito mode.',
     'reset_prompt': 'Reset to Default',
-    'save_successful': '\${L10n.t("save")} successful',
+    'save_successful': 'Saved successfully',
 
     'memory': 'Memory',
     'memory_section': 'Memory',
@@ -1571,6 +1688,20 @@ class L10n {
     'skill_management_btn': 'Skill Management',
     'skills_desc': 'Skills give the agent extra instructions and tools.',
     'skills_load_error': 'Could not load: \${e}',
+    'skills_empty': 'No skills installed yet.',
+    'skills_empty_hint':
+        'Add a SKILL.md file under data/skills/ or\ninstall one from "Skill Management".',
+    'skills_empty_hint_dialog':
+        'Add a SKILL.md file under data/skills/\nor install one below.',
+    'skills_list_load_failed': 'Failed to load skills: \${e}',
+    'skill_activated': '✅ \${name} activated',
+    'skill_deactivated': '⏸️ \${name} deactivated',
+    'skill_deleted_ok': '🗑️ \${name} removed',
+    'skill_delete_failed': '❌ Delete failed',
+    'skill_installed_ok': '✅ \${name} installed',
+    'skill_install_failed': '❌ Install failed',
+    'skill_path_hint_unix': '/home/user/skills/my-skill',
+    'skill_path_hint_win': 'C:\\Users\\user\\skills\\my-skill',
     'minimal_mode_section': 'Minimal Mode',
     'minimal_mode_active': 'Minimal Mode On',
     'minimal_mode_disabled': 'Minimal Mode Off',
@@ -1650,13 +1781,43 @@ class L10n {
     'enter_api_key_first': 'Enter API Key first',
     'models_fetch_error': 'Could not load models: \${e}',
     'models_fetch_error_short': 'Could not load models',
-    'configure_provider_title': 'Configure \${name}',
+    'configure_provider_title': '\${name} settings',
+    'provider_add_title': 'Add API provider',
+    'provider_edit_subtitle': 'Update your key and model',
+    'provider_add_subtitle': 'Pick a provider, paste your key, done.',
+    'provider_step1': '1. Provider',
     'provider_label': 'Provider',
-    'display_name': 'Display Name',
-    'api_key_stored': 'Stored encrypted',
+    'display_name': 'Display name',
+    'display_name_helper':
+        'This is what you see in the list — make it distinct if you have several',
+    'display_name_helper_dup':
+        'Make it distinct if you have more than one of the same type',
+    'api_key_optional': 'API key (optional)',
+    'api_key_step2': '2. API key',
+    'api_key_custom_hint':
+        'Enter if your endpoint requires one — stored encrypted',
+    'api_key_stored': 'Stored encrypted on this device',
+    'show_key': 'Show',
+    'hide_key': 'Hide',
+    'get_api_key_from': 'I don\'t have a key — get one from \${name}',
+    'local_provider_no_key': 'Local provider — no API key needed.',
+    'base_url': 'Base URL',
     'base_url_optional': 'Base URL (optional)',
-    'base_url_default_hint': 'Leave empty for default',
+    'base_url_default_hint': 'Empty = provider default',
+    'base_url_openai_hint':
+        'OpenAI-compatible endpoint, e.g. https://host/v1',
     'model_label': 'Model',
+    'model_step3': '3. Model',
+    'model_custom_hint': 'Model name expected by the endpoint',
+    'model_default_hint': 'Default filled in — you can change it',
+    'model_not_found': 'No models found',
+    'advanced_settings': 'Advanced settings',
+    'context_window_label': 'Context window (tokens)',
+    'context_window_hint': 'Empty = default. e.g. 1000000 = 1M.',
+    'priority_label': 'Priority',
+    'priority_hint': 'Higher = preferred. Empty = 0.',
+    'provider_enabled_sub': 'Available in chat',
+    'provider_disabled_sub': 'Saved but disabled',
     'enable_provider': 'Enable this provider',
     'test_connection': 'Test Connection',
     'test_passed': 'Connected',
@@ -1664,6 +1825,8 @@ class L10n {
     'fetching_models': 'Models',
 
     'orchestra_title': 'Orchestra Mode',
+    'orchestra_dialog_subtitle':
+        'Run multiple models as a team',
     'orchestra_active': 'Orchestra Mode Active',
     'orchestra_inactive': 'Orchestra Mode Inactive',
     'orchestra_desc':
@@ -1677,13 +1840,33 @@ class L10n {
     'orchestra_section_title': 'Orchestra Mode',
     'orchestra_active_badge': 'Active',
     'orchestra_inactive_badge': 'Inactive',
-    'chief_model': '\uD83E\uDDD9 Chief Model',
+    'orchestra_flow_chief': 'Chief plans',
+    'orchestra_flow_chief_sub': 'Breaks the request into subtasks',
+    'orchestra_flow_experts': 'Experts',
+    'orchestra_flow_experts_sub': 'Work in parallel',
+    'orchestra_flow_synth': 'Synthesis',
+    'orchestra_flow_synth_sub': 'Merges the results',
+    'chief_model': 'Chief model',
+    'chief_model_emoji': '\uD83E\uDDD9 Chief Model',
     'chief_desc':
-        'The Chief analyzes user requests, distributes tasks, and synthesizes results.',
-    'expert_roles': '\uD83C\uDFAD Expert Roles',
+        'Analyzes the request, assigns tasks, and merges results.',
+    'expert_roles': 'Expert roles',
+    'expert_roles_emoji': '\uD83C\uDFAD Expert Roles',
     'expert_roles_desc':
-        'Assign a model to each role. Only enabled roles participate in the orchestration. You can add and remove custom roles.',
-    'add_custom_role': 'Add Custom Role',
+        'Only enabled roles run. Tap a card to set model and instructions.',
+    'roles_enabled_count': '\${count} enabled',
+    'quick_setup': 'Quick setup',
+    'quick_setup_desc':
+        'Assign one model to the chief and every enabled role at once.',
+    'select_model_apply': 'Select model and apply',
+    'quick_model_applied':
+        '\${label} applied to chief and enabled roles',
+    'model_not_assigned': '⚠ No model assigned',
+    'select_openrouter_model': 'Select OpenRouter model',
+    'advanced_system_prompt': 'Advanced: system prompt',
+    'system_prompt_hint': 'System prompt...',
+    'custom_role': 'Custom role',
+    'add_custom_role': 'Add custom role',
     'default_system_prompt': 'You are a helpful assistant.',
     'local_model_option': 'Local Model (llama.cpp)',
     'select_model': 'Select model',
@@ -1691,11 +1874,21 @@ class L10n {
     'select_provider': 'Select provider',
     'enable_role_first': 'Enable role first',
     'click_to_select_model': 'Click to select model',
-    'no_models_for_provider':
-        '\u274C \${error}',
+    'no_models_for_provider': '\u274C \${error}',
     'assign_chief_model': 'Assign a model to the Chief',
     'assign_role_models': 'Assign models to all active roles',
-    'orchestra_saved': 'Orchestra config saved',
+    'orchestra_saved': 'Orchestra settings saved',
+    'orchestra_save_failed': 'Save failed: \${e}',
+    'openrouter_models_need_config':
+        'Could not load models. Configure OpenRouter under API Providers first.',
+    'role_desc_planner': 'Breaks the request into subtasks',
+    'role_desc_frontend': 'UI and visual work',
+    'role_desc_backend': 'Server and data side',
+    'role_desc_bug_fixer': 'Finds and fixes bugs',
+    'role_desc_reviewer': 'Reviews code',
+    'role_desc_security': 'Security review',
+    'role_desc_devops': 'Build, deploy, infrastructure',
+    'role_desc_general': 'General-purpose specialist',
 
     'cloud_sync': 'Cloud Sync',
     'backup': 'Backup',
@@ -1809,7 +2002,11 @@ class L10n {
     'llama_not_installed_status': 'Llama Engine Not Installed',
     'llama_reinstall': 'Reinstall / Repair Engine',
     'llama_install_gpu': 'Install for GPU (Recommended)',
-    'llama_install': 'Download and Install Engine',
+        'llama_install': 'Download and Install Engine',
+    'llama_installed_desc':
+        'The app can run models smoothly in the background.',
+    'llama_not_installed_desc':
+        'Install the Llama.cpp engine (and GPU drivers if available) so models can run.',
 
     'model_params': 'Model Parameters',
     'param_temperature': 'Temperature',
@@ -1967,7 +2164,34 @@ class L10n {
     'template_switch_model_sub': 'Switch between local/API',
     'template_orchestra': 'Orchestra Mode',
     'template_orchestra_sub': 'Multi-model orchestration',
+    'template_skill': 'Skill Management',
+    'template_skill_sub': 'List, enable, or disable skills',
+    'template_review_text':
+        'Review the following code, list bugs and improvement ideas:\n\n```\n\n```',
+    'template_explain_text':
+        'Explain the following concept simply and clearly:\n\n',
+    'template_fix_text':
+        'Analyze this error message and show me how to fix it:\n\n',
+    'template_plan_text':
+        'Create a step-by-step implementation plan for the following task:\n\n',
+    'template_summarize_text':
+        'Summarize the following text briefly:\n\n',
+    'template_compare_text':
+        'Compare these two options and list pros and cons:\n\n1. \n2. ',
+    'template_brainstorm_text':
+        'Generate creative ideas about this topic:\n\n',
+    'template_translate_text':
+        'Translate the following text to English:\n\n',
+    'openrouter_key_instructions':
+        'Copy your API key from openrouter.ai/keys and paste it below:',
+    'openrouter_key_hint': 'Starts with sk-or-...',
+    'whatsapp_timeout': 'WhatsApp reply timed out (5 minutes)',
+    'usage_tooltip':
+        'Input \${input} · Output \${output}',
+    'usage_tooltip_budget':
+        'Input \${input} · Output \${output} · Budget \${budget}',
     'no_matching_command': 'No matching command',
+    'action_badge': 'action',
 
     'version': 'Version',
 
@@ -2436,5 +2660,15 @@ class L10n {
     'mood_neutral': 'Neutral',
     'mood_warm': 'Warm',
     'mood_elated': 'Elated',
+
+    // Welcome suggestion chips
+    'suggest_review_label': 'Review code',
+    'suggest_review_hint': 'Paste your code',
+    'suggest_explain_label': 'Explain a concept',
+    'suggest_explain_hint': 'Ask about a topic',
+    'suggest_plan_label': 'Make a plan',
+    'suggest_plan_hint': 'Define a task',
+    'suggest_ideate_label': 'Brainstorm',
+    'suggest_ideate_hint': 'Generate ideas',
   };
 }

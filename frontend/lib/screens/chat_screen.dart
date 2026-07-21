@@ -154,8 +154,16 @@ class _TokenCounter extends ConsumerWidget {
         : _fmt(usage.total);
 
     return Tooltip(
-      message:
-          'Girdi ${_fmt(usage.input)} · Çıktı ${_fmt(usage.output)}${usage.budget > 0 ? ' · Bütçe ${_fmt(usage.budget)}' : ''}',
+      message: usage.budget > 0
+          ? L10n.t('usage_tooltip_budget', {
+              'input': _fmt(usage.input),
+              'output': _fmt(usage.output),
+              'budget': _fmt(usage.budget),
+            })
+          : L10n.t('usage_tooltip', {
+              'input': _fmt(usage.input),
+              'output': _fmt(usage.output),
+            }),
       child: Container(
         margin: const EdgeInsets.only(right: 4),
         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),

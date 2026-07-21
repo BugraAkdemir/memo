@@ -313,7 +313,7 @@ class _AgentTopBar extends ConsumerWidget {
               children: [
                 const Icon(Icons.smart_toy, size: 14, color: MemoTheme.green),
                 const SizedBox(width: 4),
-                Text('Agent', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green)),
+                Text(L10n.t('nav_agent'), style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green)),
               ],
             ),
           ),

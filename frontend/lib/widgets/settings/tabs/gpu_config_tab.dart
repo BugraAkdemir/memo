@@ -51,7 +51,7 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
       padding: EdgeInsets.all(32),
       children: [
         Text(
-          'Ekran Kartı (GPU) / Llama Motoru',
+          L10n.t('gpu_section_title'),
           style: Theme.of(context).textTheme.titleLarge?.copyWith(
             fontWeight: FontWeight.bold,
             color: MemoTheme.of(context).textMain,
@@ -59,7 +59,7 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
         ),
         SizedBox(height: 12),
         Text(
-          'Yapay zeka modellerini çalıştıran Llama.cpp motorunun kurulum ve ekran kartı ayarları.',
+          L10n.t('gpu_section_desc'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         SizedBox(height: 32),
@@ -75,7 +75,7 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Sistem Donanım Durumu',
+                L10n.t('hardware_status'),
                 style: TextStyle(
                   fontSize: 14,
                   fontWeight: FontWeight.w600,
@@ -96,8 +96,8 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                   Expanded(
                     child: Text(
                       hasGpu
-                          ? 'Algılanan Ekran Kartı: $gpuName'
-                          : 'Sadece İşlemci (CPU) algılandı veya GPU desteklenmiyor.',
+                          ? L10n.t('gpu_detected_name', {'name': gpuName})
+                          : L10n.t('cpu_only'),
                       style: TextStyle(
                         fontSize: 14,
                         color: MemoTheme.of(context).textMain,
@@ -219,8 +219,8 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                           SizedBox(width: 12),
                           Text(
                             installed
-                                ? 'Llama Motoru Yüklü'
-                                : 'Llama Motoru Yüklü Değil',
+                                ? L10n.t('llama_installed')
+                                : L10n.t('llama_not_installed_status'),
                             style: TextStyle(
                               fontSize: 16,
                               fontWeight: FontWeight.bold,
@@ -232,8 +232,8 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                       SizedBox(height: 12),
                       Text(
                         installed
-                            ? 'Uygulama arka planda modelleri sorunsuz çalıştırabilir.'
-                            : 'Modellerin çalışabilmesi için Llama.cpp motorunun (ve varsa GPU sürücülerinin) yüklenmesi gerekmektedir.',
+                            ? L10n.t('llama_installed_desc')
+                            : L10n.t('llama_not_installed_desc'),
                         style: TextStyle(
                           color: MemoTheme.of(context).textDim,
                           fontSize: 13,
@@ -271,10 +271,10 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                                 )
                               : Text(
                                   installed
-                                      ? 'Motoru Yeniden Kur / Onar'
+                                      ? L10n.t('llama_reinstall')
                                       : (hasGpu
-                                            ? 'Ekran Kartı İçin Kur (Önerilen)'
-                                            : 'Motoru İndir ve Kur'),
+                                            ? L10n.t('llama_install_gpu')
+                                            : L10n.t('llama_install')),
                                   style: TextStyle(fontWeight: FontWeight.w600),
                                 ),
                         ),

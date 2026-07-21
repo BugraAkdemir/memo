@@ -211,7 +211,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
           .timeout(
             const Duration(seconds: 300),
             onTimeout: (sink) => sink.addError(Exception(
-              'WhatsApp yanıt zaman aşımına uğradı (5 dakika)',
+              L10n.t('whatsapp_timeout'),
             )),
           )) {
         if (chunk.finishReason == 'agent_event') {
@@ -442,22 +442,22 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Text(
-              'openrouter.ai/keys adresinden API Key\'ini kopyalayıp aşağıya yapıştır:',
-              style: TextStyle(fontSize: 13),
+            Text(
+              L10n.t('openrouter_key_instructions'),
+              style: const TextStyle(fontSize: 13),
             ),
             const SizedBox(height: 4),
-            const Text(
-              'sk-or-... ile başlar',
-              style: TextStyle(fontSize: 12, color: Colors.grey),
+            Text(
+              L10n.t('openrouter_key_hint'),
+              style: const TextStyle(fontSize: 12, color: Colors.grey),
             ),
             const SizedBox(height: 16),
             TextField(
               controller: keyController,
-              decoration: const InputDecoration(
-                labelText: 'API Key',
+              decoration: InputDecoration(
+                labelText: L10n.t('api_key'),
                 hintText: 'sk-or-...',
-                border: OutlineInputBorder(),
+                border: const OutlineInputBorder(),
               ),
               obscureText: true,
               autofocus: true,
@@ -1248,7 +1248,7 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
   }
 
   String _priceStr(double p) {
-    if (p == 0) return 'Ücretsiz';
+    if (p == 0) return L10n.t('free');
     if (p < 0.000001) return '\$${p.toStringAsExponential(1)}/tkn';
     return '\$${p.toStringAsFixed(7)}/tkn';
   }

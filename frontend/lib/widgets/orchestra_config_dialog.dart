@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
@@ -27,16 +28,20 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
   final Set<String> _promptOpen = {};
 
   /// One-line, plain-language description of what each built-in role does.
-  static const Map<String, String> _roleDesc = {
-    'planner': 'İsteği alt görevlere böler',
-    'frontend': 'Arayüz ve görsel işler',
-    'backend': 'Sunucu ve veri tarafı',
-    'bug_fixer': 'Hata bulur ve düzeltir',
-    'reviewer': 'Kodu gözden geçirir',
-    'security': 'Güvenlik denetimi yapar',
-    'devops': 'Derleme, dağıtım, altyapı',
-    'general': 'Genel amaçlı uzman',
-  };
+  String _roleDescFor(String role) {
+    const keys = <String, String>{
+      'planner': 'role_desc_planner',
+      'frontend': 'role_desc_frontend',
+      'backend': 'role_desc_backend',
+      'bug_fixer': 'role_desc_bug_fixer',
+      'reviewer': 'role_desc_reviewer',
+      'security': 'role_desc_security',
+      'devops': 'role_desc_devops',
+      'general': 'role_desc_general',
+    };
+    final key = keys[role];
+    return key != null ? L10n.t(key) : '';
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +63,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           return _buildContent(context, cfg, providersAsync);
         },
         loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
-        error: (e, _) => SizedBox(height: 200, child: Center(child: Text('Error: $e'))),
+        error: (e, _) => SizedBox(height: 200, child: Center(child: Text(L10n.t('error_with_detail', {'e': '$e'})))),
       ),
     );
   }
@@ -98,14 +103,14 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Orchestra', style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.textMain)),
+              Text(L10n.t('orchestra_title'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w700, color: c.textMain)),
               const SizedBox(height: 2),
-              Text('Birden çok modeli bir ekip gibi çalıştır', style: TextStyle(fontSize: 12, color: c.textDim)),
+              Text(L10n.t('orchestra_dialog_subtitle'), style: TextStyle(fontSize: 12, color: c.textDim)),
             ],
           ),
           const Spacer(),
           Text(
-            config.enabled ? 'Açık' : 'Kapalı',
+            config.enabled ? L10n.t('on') : L10n.t('off'),
             style: TextStyle(fontSize: 13, fontWeight: FontWeight.w500, color: config.enabled ? MemoTheme.accent : c.textDim),
           ),
           const SizedBox(width: 8),
@@ -148,11 +153,11 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          step(Icons.account_tree_outlined, 'Şef planlar', 'İsteği alt görevlere böler'),
+          step(Icons.account_tree_outlined, L10n.t('orchestra_flow_chief'), L10n.t('orchestra_flow_chief_sub')),
           arrow(),
-          step(Icons.groups_outlined, 'Uzmanlar', 'Paralel çalışır'),
+          step(Icons.groups_outlined, L10n.t('orchestra_flow_experts'), L10n.t('orchestra_flow_experts_sub')),
           arrow(),
-          step(Icons.auto_awesome_outlined, 'Sentez', 'Sonuçları birleştirir'),
+          step(Icons.auto_awesome_outlined, L10n.t('orchestra_flow_synth'), L10n.t('orchestra_flow_synth_sub')),
         ],
       ),
     );
@@ -168,9 +173,9 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
         _buildQuickSetup(context, config, modelChoices),
         const SizedBox(height: 24),
 
-        _sectionTitle('Şef model'),
+        _sectionTitle(L10n.t('chief_model')),
         const SizedBox(height: 4),
-        Text('İsteği analiz eder, görev dağıtır ve sonuçları birleştirir.', style: TextStyle(fontSize: 12, color: c.textDim)),
+        Text(L10n.t('chief_desc'), style: TextStyle(fontSize: 12, color: c.textDim)),
         const SizedBox(height: 10),
         _buildChiefSelector(config, modelChoices),
         const SizedBox(height: 24),
@@ -179,20 +184,20 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           crossAxisAlignment: CrossAxisAlignment.baseline,
           textBaseline: TextBaseline.alphabetic,
           children: [
-            _sectionTitle('Uzman rolleri'),
+            _sectionTitle(L10n.t('expert_roles')),
             const SizedBox(width: 8),
-            Text('$enabledCount açık', style: TextStyle(fontSize: 12, color: MemoTheme.accent, fontWeight: FontWeight.w500)),
+            Text(L10n.t('roles_enabled_count', {'count': '$enabledCount'}), style: TextStyle(fontSize: 12, color: MemoTheme.accent, fontWeight: FontWeight.w500)),
           ],
         ),
         const SizedBox(height: 4),
-        Text('Sadece açık roller çalışır. Karta dokunup model ve talimatı düzenle.', style: TextStyle(fontSize: 12, color: c.textDim)),
+        Text(L10n.t('expert_roles_desc'), style: TextStyle(fontSize: 12, color: c.textDim)),
         const SizedBox(height: 12),
         ...List.generate(config.roles.length, (i) => _buildRoleCard(context, config, i, modelChoices)),
         const SizedBox(height: 4),
         OutlinedButton.icon(
           onPressed: () => _addCustomRole(config),
           icon: const Icon(Icons.add, size: 18),
-          label: const Text('Özel rol ekle'),
+          label: Text(L10n.t('add_custom_role')),
           style: OutlinedButton.styleFrom(
             side: BorderSide(color: c.borderSoft),
             foregroundColor: c.textMuted,
@@ -221,17 +226,17 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
             children: [
               const Icon(Icons.bolt, size: 18, color: MemoTheme.accent),
               const SizedBox(width: 6),
-              Text('Hızlı kurulum', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMain)),
+              Text(L10n.t('quick_setup'), style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: c.textMain)),
             ],
           ),
           const SizedBox(height: 4),
-          Text('Tek bir modeli şefe ve tüm açık rollere bir kerede ata.', style: TextStyle(fontSize: 12, color: c.textDim)),
+          Text(L10n.t('quick_setup_desc'), style: TextStyle(fontSize: 12, color: c.textDim)),
           const SizedBox(height: 10),
           DropdownButtonFormField<String>(
             key: ValueKey('quick_${choices.length}'),
             initialValue: null,
             isExpanded: true,
-            hint: Text('Model seç ve uygula', style: TextStyle(fontSize: 13, color: c.textDim)),
+            hint: Text(L10n.t('select_model_apply'), style: TextStyle(fontSize: 13, color: c.textDim)),
             decoration: InputDecoration(
               isDense: true,
               filled: true,
@@ -261,7 +266,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
         ));
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('${choice.label} şefe ve açık rollere uygulandı'), behavior: SnackBarBehavior.floating),
+        SnackBar(content: Text(L10n.t('quick_model_applied', {'label': choice.label})), behavior: SnackBarBehavior.floating),
       );
     }
   }
@@ -273,7 +278,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       enabled: true,
       modelType: 'local',
       modelName: 'local',
-      systemPrompt: 'Sen bir yardımcı asistansın.',
+      systemPrompt: L10n.t('default_system_prompt'),
     ));
     setState(() => _config = config.copyWith(roles: newRoles));
   }
@@ -288,7 +293,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           TextButton(
             onPressed: () => Navigator.of(context).pop(),
             style: TextButton.styleFrom(minimumSize: const Size(0, 44)),
-            child: const Text('İptal'),
+            child: Text(L10n.t('cancel')),
           ),
           const SizedBox(width: 12),
           FilledButton(
@@ -296,7 +301,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
             style: FilledButton.styleFrom(backgroundColor: MemoTheme.accent, minimumSize: const Size(96, 44)),
             child: _saving
                 ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('Kaydet'),
+                : Text(L10n.t('save')),
           ),
         ],
       ),
@@ -309,7 +314,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
 
   List<_ModelChoice> _buildModelChoices(AsyncValue<List<ProviderConfig>> providersAsync) {
     final choices = <_ModelChoice>[];
-    choices.add(_ModelChoice('local', 'local', '🖥️', 'Local Model (llama.cpp)'));
+    choices.add(_ModelChoice('local', 'local', '🖥️', L10n.t('local_model_option')));
     if (providersAsync case AsyncData(:final value)) {
       for (final p in value) {
         if (p.enabled) {
@@ -326,7 +331,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
     return DropdownButtonFormField<String>(
       key: ValueKey('chief_${choices.length}'),
       initialValue: validChoice ? currentKey : null,
-      hint: Text('Model seç', style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
+      hint: Text(L10n.t('select_model'), style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
       decoration: InputDecoration(isDense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10), border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd))),
       items: choices.map((c) => DropdownMenuItem(value: c.key, child: Text('${c.icon} ${c.label}', style: const TextStyle(fontSize: 12)))).toList(),
       onChanged: (val) {
@@ -346,8 +351,8 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
     final role = config.roles[index];
     final isBuiltin = _isBuiltinRole(role.role);
     final icon = isBuiltin ? OrchestraDefaults.iconForRole(role.role) : '\u2756';
-    final label = isBuiltin ? OrchestraDefaults.labelForRole(role.role) : (role.role.isEmpty ? '\u00d6zel rol' : role.role);
-    final desc = isBuiltin ? (_roleDesc[role.role] ?? '') : '\u00d6zel rol';
+    final label = isBuiltin ? OrchestraDefaults.labelForRole(role.role) : (role.role.isEmpty ? L10n.t('custom_role') : role.role);
+    final desc = isBuiltin ? _roleDescFor(role.role) : L10n.t('custom_role');
     final currentKey = '${role.modelType}/${role.modelName}';
     final validChoice = choices.any((ch) => ch.key == currentKey);
     final assignedLabel = validChoice ? choices.firstWhere((ch) => ch.key == currentKey).label : '';
@@ -387,7 +392,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                         const SizedBox(height: 2),
                         Text(
                           role.enabled
-                              ? (assignedLabel.isNotEmpty ? assignedLabel : '⚠ Model atanmadı')
+                              ? (assignedLabel.isNotEmpty ? assignedLabel : L10n.t('model_not_assigned'))
                               : desc,
                           style: TextStyle(
                             fontSize: 11.5,
@@ -429,13 +434,13 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                     ),
                     const SizedBox(height: 10),
                   ],
-                  Text('Model', style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textMuted)),
+                  Text(L10n.t('model_label'), style: TextStyle(fontSize: 11.5, fontWeight: FontWeight.w600, color: c.textMuted)),
                   const SizedBox(height: 6),
                   DropdownButtonFormField<String>(
                     key: ValueKey('role_${index}_${choices.length}'),
       initialValue: validChoice ? currentKey : null,
                     isExpanded: true,
-                    hint: Text('Model seç', style: TextStyle(fontSize: 12.5, color: c.textDim)),
+                    hint: Text(L10n.t('select_model'), style: TextStyle(fontSize: 12.5, color: c.textDim)),
                     decoration: InputDecoration(
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
@@ -465,7 +470,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                           children: [
                             Expanded(
                               child: Text(
-                                role.modelName.isNotEmpty ? role.modelName : 'OpenRouter modeli seç',
+                                role.modelName.isNotEmpty ? role.modelName : L10n.t('select_openrouter_model'),
                                 style: TextStyle(fontSize: 12, color: role.modelName.isNotEmpty ? c.textMain : c.textDim),
                                 overflow: TextOverflow.ellipsis,
                               ),
@@ -486,7 +491,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                       children: [
                         Icon(_promptOpen.contains(role.role) ? Icons.expand_less : Icons.expand_more, size: 16, color: c.textDim),
                         const SizedBox(width: 4),
-                        Text('Gelişmiş: sistem talimatı', style: TextStyle(fontSize: 12, color: c.textMuted)),
+                        Text(L10n.t('advanced_system_prompt'), style: TextStyle(fontSize: 12, color: c.textMuted)),
                       ],
                     ),
                   ),
@@ -509,7 +514,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
                           setState(() => _config = config.copyWith(roles: newRoles));
                         },
                         icon: const Icon(Icons.delete_outline, size: 16),
-                        label: const Text('Rolü sil'),
+                        label: Text(L10n.t('delete_role')),
                         style: TextButton.styleFrom(foregroundColor: MemoTheme.red),
                       ),
                     ),
@@ -531,7 +536,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       if (result['status'] != 'ok') {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('❌ ${result['error'] ?? 'Model listesi alınamadı. Önce API Provider\'dan OpenRouter\'ı yapılandır.'}')),
+            SnackBar(content: Text('❌ ${result['error'] ?? L10n.t('openrouter_models_need_config')}')),
           );
         }
         return;
@@ -539,7 +544,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       final rawModels = result['models'];
       models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Hata: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with_detail', {'e': '$e'}))));
       return;
     }
     if (!mounted) return;
@@ -560,11 +565,11 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
     final noModelRoles = config.roles.where((r) => r.enabled && (r.modelType.isEmpty || r.modelName.isEmpty));
     if (config.enabled) {
       if (config.chiefType.isEmpty || config.chiefModel.isEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Şef modele bir model ata')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('assign_chief_model'))));
         return;
       }
       if (noModelRoles.isNotEmpty) {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Lütfen tüm aktif rollere model ata')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('assign_role_models'))));
         return;
       }
     }
@@ -574,10 +579,10 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       if (mounted) {
         final messenger = ScaffoldMessenger.of(context);
         Navigator.of(context).pop();
-        messenger.showSnackBar(const SnackBar(content: Text('Orchestra config saved')));
+        messenger.showSnackBar(SnackBar(content: Text(L10n.t('orchestra_saved'))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Save failed: $e')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('orchestra_save_failed', {'e': '$e'}))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }
@@ -676,7 +681,7 @@ class _SystemPromptFieldState extends State<_SystemPromptField> {
         color: MemoTheme.of(context).textDim,
       ),
       decoration: InputDecoration(
-        hintText: 'System prompt...',
+        hintText: L10n.t('system_prompt_hint'),
         hintStyle: TextStyle(
           fontSize: 11,
           color: MemoTheme.of(context).textDim.withValues(alpha: 0.4),
@@ -746,7 +751,7 @@ class _RoleModelBrowserDialogState extends State<_RoleModelBrowserDialog> {
             child: TextField(
               onChanged: (v) => setState(() => _search = v),
               decoration: InputDecoration(
-                hintText: 'Model ara...',
+                hintText: L10n.t('model_search'),
                 isDense: true,
                 prefixIcon: const Icon(Icons.search, size: 18),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(MemoTheme.radiusMd)),
@@ -755,17 +760,17 @@ class _RoleModelBrowserDialogState extends State<_RoleModelBrowserDialog> {
               autofocus: true,
             ),
           ),
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16),
             child: Row(
               children: [
-                Text('🟢', style: TextStyle(fontSize: 10)),
-                SizedBox(width: 4),
-                Text('Ücretsiz', style: TextStyle(fontSize: 10)),
-                SizedBox(width: 16),
-                Text('🟡', style: TextStyle(fontSize: 10)),
-                SizedBox(width: 4),
-                Text('Ücretli', style: TextStyle(fontSize: 10)),
+                const Text('🟢', style: TextStyle(fontSize: 10)),
+                const SizedBox(width: 4),
+                Text(L10n.t('free'), style: const TextStyle(fontSize: 10)),
+                const SizedBox(width: 16),
+                const Text('🟡', style: TextStyle(fontSize: 10)),
+                const SizedBox(width: 4),
+                Text(L10n.t('paid'), style: const TextStyle(fontSize: 10)),
               ],
             ),
           ),

@@ -211,7 +211,7 @@ class _ProviderConfigDialogState
     return showDialog<String>(
       context: context,
       builder: (_) => _SimpleModelBrowserDialog(
-        title: '${ProviderDefaults.displayNames[_type] ?? _type} Modelleri',
+        title: '${ProviderDefaults.displayNames[_type] ?? _type} — ${L10n.t('fetching_models')}',
         models: models,
       ),
     );
@@ -375,16 +375,16 @@ class _ProviderConfigDialogState
                         children: [
                           Text(
                             isEditing
-                                ? '${widget.existing!.name} ayarları'
-                                : 'API sağlayıcı ekle',
+                                ? L10n.t('configure_provider_title', {'name': widget.existing!.name})
+                                : L10n.t('provider_add_title'),
                             style: Theme.of(context).textTheme.titleLarge?.copyWith(
                                   fontWeight: FontWeight.bold,
                                 ),
                           ),
                           Text(
                             isEditing
-                                ? 'Anahtarını ve modelini güncelle'
-                                : 'Sağlayıcını seç, anahtarını yapıştır, bitti.',
+                                ? L10n.t('provider_edit_subtitle')
+                                : L10n.t('provider_add_subtitle'),
                             style: TextStyle(fontSize: 12, color: c.textDim),
                           ),
                         ],
@@ -398,7 +398,7 @@ class _ProviderConfigDialogState
                 DropdownButtonFormField<String>(
                   initialValue: _type,
                   decoration: InputDecoration(
-                    labelText: '1. Sağlayıcı',
+                    labelText: L10n.t('provider_step1'),
                     border: const OutlineInputBorder(),
                     helperText: hint,
                     helperMaxLines: 2,
@@ -423,15 +423,15 @@ class _ProviderConfigDialogState
                     autofocus: !isEditing && needsKey,
                     decoration: InputDecoration(
                       labelText: _type == 'custom'
-                          ? 'API anahtarı (opsiyonel)'
-                          : '2. API anahtarı',
+                          ? L10n.t('api_key_optional')
+                          : L10n.t('api_key_step2'),
                       border: const OutlineInputBorder(),
                       helperText: _type == 'custom'
-                          ? 'Endpoint gerektiriyorsa gir — şifrelenerek saklanır'
-                          : 'Şifrelenerek cihazında saklanır',
+                          ? L10n.t('api_key_custom_hint')
+                          : L10n.t('api_key_stored'),
                       prefixIcon: const Icon(Icons.key, size: 20),
                       suffixIcon: IconButton(
-                        tooltip: _obscureKey ? 'Göster' : 'Gizle',
+                        tooltip: _obscureKey ? L10n.t('show_key') : L10n.t('hide_key'),
                         icon: Icon(
                           _obscureKey ? Icons.visibility : Icons.visibility_off,
                           size: 20,
@@ -447,7 +447,7 @@ class _ProviderConfigDialogState
                         onPressed: _openKeyUrl,
                         icon: const Icon(Icons.open_in_new, size: 16),
                         label: Text(
-                          'Anahtarım yok — ${ProviderDefaults.displayNames[_type]}\'dan al',
+                          L10n.t('get_api_key_from', {'name': ProviderDefaults.displayNames[_type] ?? _type}),
                         ),
                         style: TextButton.styleFrom(
                           padding: const EdgeInsets.symmetric(horizontal: 4),
@@ -469,7 +469,7 @@ class _ProviderConfigDialogState
                         const SizedBox(width: 8),
                         Expanded(
                           child: Text(
-                            'Yerel sağlayıcı — API anahtarı gerekmez.',
+                            L10n.t('local_provider_no_key'),
                             style: TextStyle(fontSize: 12, color: c.textSecondary),
                           ),
                         ),
@@ -483,20 +483,20 @@ class _ProviderConfigDialogState
                 if (_type == 'custom') ...[
                   TextField(
                     controller: _baseUrlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Base URL',
-                      border: OutlineInputBorder(),
-                      helperText: 'OpenAI uyumlu endpoint, örn. https://host/v1',
-                      prefixIcon: Icon(Icons.link, size: 20),
+                    decoration: InputDecoration(
+                      labelText: L10n.t('base_url'),
+                      border: const OutlineInputBorder(),
+                      helperText: L10n.t('base_url_openai_hint'),
+                      prefixIcon: const Icon(Icons.link, size: 20),
                     ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: _nameCtrl,
-                    decoration: const InputDecoration(
-                      labelText: 'Görünen ad',
-                      border: OutlineInputBorder(),
-                      helperText: 'Listede bunu görürsün — birden fazla için ayırt edici yap',
+                    decoration: InputDecoration(
+                      labelText: L10n.t('display_name'),
+                      border: const OutlineInputBorder(),
+                      helperText: L10n.t('display_name_helper'),
                     ),
                   ),
                   const SizedBox(height: 12),
@@ -510,12 +510,12 @@ class _ProviderConfigDialogState
                         controller: _modelCtrl,
                         decoration: InputDecoration(
                           labelText: _type == 'custom'
-                              ? 'Model'
-                              : (needsKey ? '3. Model' : 'Model'),
+                              ? L10n.t('model_label')
+                              : (needsKey ? L10n.t('model_step3') : L10n.t('model_label')),
                           border: const OutlineInputBorder(),
                           helperText: _type == 'custom'
-                              ? 'Endpoint\'in beklediği model adı'
-                              : 'Varsayılan dolduruldu — değiştirebilirsin',
+                              ? L10n.t('model_custom_hint')
+                              : L10n.t('model_default_hint'),
                         ),
                       ),
                     ),
@@ -560,7 +560,7 @@ class _ProviderConfigDialogState
                       ),
                       const SizedBox(width: 4),
                       Text(
-                        _testResult! ? 'Bağlandı' : 'Başarısız',
+                        _testResult! ? L10n.t('test_passed') : L10n.t('test_failed'),
                         style: TextStyle(
                           color: _testResult! ? MemoTheme.green : MemoTheme.red,
                         ),
@@ -579,7 +579,7 @@ class _ProviderConfigDialogState
                     initiallyExpanded: _showAdvanced,
                     onExpansionChanged: (v) => setState(() => _showAdvanced = v),
                     title: Text(
-                      'Gelişmiş ayarlar',
+                      L10n.t('advanced_settings'),
                       style: TextStyle(fontSize: 13, color: c.textDim, fontWeight: FontWeight.w500),
                     ),
                     children: [
@@ -588,19 +588,19 @@ class _ProviderConfigDialogState
                       if (_type != 'custom') ...[
                         TextField(
                           controller: _nameCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Görünen ad',
-                            border: OutlineInputBorder(),
-                            helperText: 'Aynı tipten birden fazla için ayırt edici yap',
+                          decoration: InputDecoration(
+                            labelText: L10n.t('display_name'),
+                            border: const OutlineInputBorder(),
+                            helperText: L10n.t('display_name_helper_dup'),
                           ),
                         ),
                         const SizedBox(height: 12),
                         TextField(
                           controller: _baseUrlCtrl,
-                          decoration: const InputDecoration(
-                            labelText: 'Base URL',
-                            border: OutlineInputBorder(),
-                            helperText: 'Boş = sağlayıcı varsayılanı',
+                          decoration: InputDecoration(
+                            labelText: L10n.t('base_url'),
+                            border: const OutlineInputBorder(),
+                            helperText: L10n.t('base_url_default_hint'),
                           ),
                         ),
                         const SizedBox(height: 12),
@@ -609,10 +609,10 @@ class _ProviderConfigDialogState
                         controller: _contextCtrl,
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        decoration: const InputDecoration(
-                          labelText: 'Bağlam penceresi (token)',
-                          border: OutlineInputBorder(),
-                          helperText: 'Boş = varsayılan. Örn. 1000000 = 1M.',
+                        decoration: InputDecoration(
+                          labelText: L10n.t('context_window_label'),
+                          border: const OutlineInputBorder(),
+                          helperText: L10n.t('context_window_hint'),
                         ),
                       ),
                       const SizedBox(height: 12),
@@ -620,10 +620,10 @@ class _ProviderConfigDialogState
                         controller: _priorityCtrl,
                         keyboardType: TextInputType.number,
                         inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                        decoration: const InputDecoration(
-                          labelText: 'Öncelik (Priority)',
-                          border: OutlineInputBorder(),
-                          helperText: 'Yüksek = tercih edilir. Boş = 0.',
+                        decoration: InputDecoration(
+                          labelText: L10n.t('priority_label'),
+                          border: const OutlineInputBorder(),
+                          helperText: L10n.t('priority_hint'),
                         ),
                       ),
                     ],
@@ -634,7 +634,7 @@ class _ProviderConfigDialogState
                 SwitchListTile(
                   title: Text(L10n.t('enable_provider')),
                   subtitle: Text(
-                    _enabled ? 'Sohbette kullanılabilir' : 'Kayıtlı ama kapalı',
+                    _enabled ? L10n.t('provider_enabled_sub') : L10n.t('provider_disabled_sub'),
                     style: TextStyle(fontSize: 12, color: c.textDim),
                   ),
                   value: _enabled,
@@ -649,7 +649,7 @@ class _ProviderConfigDialogState
                   children: [
                     TextButton(
                       onPressed: () => Navigator.of(context).pop(),
-                      child: const Text('İptal'),
+                      child: Text(L10n.t('cancel')),
                     ),
                     const SizedBox(width: 8),
                     FilledButton(
@@ -660,7 +660,7 @@ class _ProviderConfigDialogState
                               height: 16,
                               child: CircularProgressIndicator(strokeWidth: 2),
                             )
-                          : const Text('Kaydet'),
+                          : Text(L10n.t('save')),
                     ),
                   ],
                 ),
@@ -727,7 +727,7 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
   }
 
   String _priceStr(double p) {
-    if (p == 0) return 'Ücretsiz';
+    if (p == 0) return L10n.t('free');
     if (p < 0.000001) return '\$${p.toStringAsExponential(1)}/tkn';
     return '\$${p.toStringAsFixed(7)}/tkn';
   }
@@ -752,14 +752,14 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
               children: [
                 const Icon(Icons.model_training, size: 20),
                 const SizedBox(width: 8),
-                const Expanded(
+                Expanded(
                   child: Text(
-                    'OpenRouter Modelleri',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+                    L10n.t('openrouter_models'),
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
                   ),
                 ),
                 Text(
-                  '${widget.models.length} model',
+                  L10n.t('model_count', {'count': '${widget.models.length}'}),
                   style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                 ),
               ],
@@ -770,7 +770,7 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Model ara...',
+                hintText: L10n.t('model_search'),
                 prefixIcon: const Icon(Icons.search, size: 20),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -834,13 +834,13 @@ class _ModelBrowserDialogState extends State<_ModelBrowserDialog> {
             child: Row(
               children: [
                 Text(
-                  '🟢 Ücretsiz · 🟡 Ücretli',
+                  L10n.t('free_paid_legend'),
                   style: TextStyle(fontSize: 11, color: Colors.grey[500]),
                 ),
                 const Spacer(),
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('İptal'),
+                  child: Text(L10n.t('cancel')),
                 ),
               ],
             ),
@@ -908,7 +908,7 @@ class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
                   ),
                 ),
                 Text(
-                  '${widget.models.length} model',
+                  L10n.t('model_count', {'count': '${widget.models.length}'}),
                   style: TextStyle(fontSize: 12, color: Colors.grey[500]),
                 ),
               ],
@@ -919,7 +919,7 @@ class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
             child: TextField(
               controller: _searchCtrl,
               decoration: InputDecoration(
-                hintText: 'Model ara...',
+                hintText: L10n.t('model_search'),
                 prefixIcon: const Icon(Icons.search, size: 20),
                 isDense: true,
                 contentPadding: const EdgeInsets.symmetric(vertical: 8),
@@ -933,9 +933,9 @@ class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
           const SizedBox(height: 8),
           Flexible(
             child: _filtered.isEmpty
-                ? const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 24),
-                    child: Text('Model bulunamadı'),
+                ? Padding(
+                    padding: const EdgeInsets.symmetric(vertical: 24),
+                    child: Text(L10n.t('model_not_found')),
                   )
                 : ListView.builder(
                     shrinkWrap: true,
@@ -969,7 +969,7 @@ class _SimpleModelBrowserDialogState extends State<_SimpleModelBrowserDialog> {
               children: [
                 TextButton(
                   onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('İptal'),
+                  child: Text(L10n.t('cancel')),
                 ),
               ],
             ),

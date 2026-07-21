@@ -38,7 +38,7 @@ class IncognitoPromptTabState extends ConsumerState<IncognitoPromptTab> {
         ),
         SizedBox(height: 12),
         Text(
-          'Gizli moddayken modelin hafızaya erişmeden nasıl davranması gerektiğini belirten yönerge.',
+          L10n.t('incognito_prompt_desc'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         SizedBox(height: 24),
@@ -70,7 +70,7 @@ class IncognitoPromptTabState extends ConsumerState<IncognitoPromptTab> {
                             .read(incognitoPromptProvider.notifier)
                             .save(_controller.text);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('save')} başarılı')),
+                          SnackBar(content: Text(L10n.t('save_successful'))),
                         );
                       },
                       child: Text(L10n.t('save')),

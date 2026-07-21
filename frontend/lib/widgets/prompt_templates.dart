@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
+import '../core/l10n.dart';
 import '../core/theme.dart';
 
 class PromptTemplate {
@@ -47,73 +48,73 @@ class PopupItem {
   String get text => template?.text ?? '';
 }
 
-const List<PopupItem> templates = [
+/// Built at call time so labels/text follow the active [L10n] locale.
+List<PopupItem> get templates => [
   PopupItem.template(PromptTemplate(
     key: '/code',
     icon: 'lib/icon/slash/code.svg',
-    label: 'Kod Review',
-    text:
-        'Aşağıdaki kodu incele, hataları ve iyileştirme önerilerini açıkla:\n\n```\n\n```',
+    label: L10n.t('template_review'),
+    text: L10n.t('template_review_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/explain',
     icon: 'lib/icon/slash/lightbulb.svg',
-    label: 'Açıkla',
-    text: 'Aşağıdaki kavramı basit ve anlaşılır bir şekilde açıkla:\n\n',
+    label: L10n.t('template_explain'),
+    text: L10n.t('template_explain_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/fix',
     icon: 'lib/icon/slash/wrench.svg',
-    label: 'Hata Düzelt',
-    text: 'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
+    label: L10n.t('template_fix'),
+    text: L10n.t('template_fix_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/plan',
     icon: 'lib/icon/slash/list-checks.svg',
-    label: 'Plan Yap',
-    text: 'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
+    label: L10n.t('template_plan'),
+    text: L10n.t('template_plan_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/summary',
     icon: 'lib/icon/slash/article.svg',
-    label: 'Özetle',
-    text: 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
+    label: L10n.t('template_summarize'),
+    text: L10n.t('template_summarize_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/compare',
     icon: 'lib/icon/slash/arrows-left-right.svg',
-    label: 'Karşılaştır',
-    text: 'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
+    label: L10n.t('template_compare'),
+    text: L10n.t('template_compare_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/brainstorm',
     icon: 'lib/icon/slash/brain.svg',
-    label: 'Beyin Fırtınası',
-    text: 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
+    label: L10n.t('template_brainstorm'),
+    text: L10n.t('template_brainstorm_text'),
   )),
   PopupItem.template(PromptTemplate(
     key: '/translate',
     icon: 'lib/icon/slash/translate.svg',
-    label: 'Çevir (EN->TR)',
-    text: 'Aşağıdaki metni Türkçeye çevir:\n\n',
+    label: L10n.t('template_translate'),
+    text: L10n.t('template_translate_text'),
   )),
   PopupItem.command(PromptCommand(
     key: '/model',
     icon: 'lib/icon/slash/cpu.svg',
-    label: 'Model Değiştir',
-    subtitle: 'Local / API arasında geçiş',
+    label: L10n.t('template_switch_model'),
+    subtitle: L10n.t('template_switch_model_sub'),
   )),
   PopupItem.command(PromptCommand(
     key: '/orchestra',
     icon: 'lib/icon/slash/music-notes.svg',
-    label: 'Orchestra Mode',
-    subtitle: 'Çoklu model orkestrasyonu',
+    label: L10n.t('template_orchestra'),
+    subtitle: L10n.t('template_orchestra_sub'),
   )),
   PopupItem.command(PromptCommand(
     key: '/skill',
     icon: 'lib/icon/slash/puzzle-piece.svg',
-    label: 'Skill Yönetimi',
-    subtitle: "Skill'leri listele, aktiflestir/devre disi birak",
+    label: L10n.t('template_skill'),
+    subtitle: L10n.t('template_skill_sub'),
   )),
 ];
 
@@ -170,7 +171,7 @@ class PromptTemplatesPopup extends StatelessWidget {
         ),
         padding: const EdgeInsets.all(16),
         child: Text(
-          'No matching command',
+          L10n.t('no_matching_command'),
           style: TextStyle(
             fontSize: 13,
             color: MemoTheme.of(context).textDim,
@@ -294,7 +295,7 @@ class _PopupItemWidgetState extends State<_PopupItemWidget> {
                     borderRadius: BorderRadius.circular(4),
                   ),
                   child: Text(
-                    'action',
+                    L10n.t('action_badge'),
                     style: TextStyle(
                       fontSize: 9,
                       color: MemoTheme.accent,

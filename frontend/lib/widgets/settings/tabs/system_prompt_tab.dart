@@ -36,7 +36,7 @@ class SystemPromptTabState extends ConsumerState<SystemPromptTab> {
         ),
         SizedBox(height: 12),
         Text(
-          'Modelin temel davranışını, kimliğini ve sınırlarını belirleyen ana yönerge.',
+          L10n.t('system_prompt_desc'),
           style: TextStyle(color: MemoTheme.of(context).textDim, fontSize: 13),
         ),
         SizedBox(height: 24),
@@ -74,7 +74,7 @@ class SystemPromptTabState extends ConsumerState<SystemPromptTab> {
                             .read(systemPromptProvider.notifier)
                             .save(_controller.text);
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('save')} başarılı')),
+                          SnackBar(content: Text(L10n.t('save_successful'))),
                         );
                       },
                       child: Text(L10n.t('save')),

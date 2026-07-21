@@ -6,15 +6,19 @@ import (
 	"net"
 	"os"
 	"os/exec"
+	"runtime"
 	"testing"
 )
 
-// hasPortDiscoveryTool reports whether either external tool
-// pidListeningOnPort depends on is actually installed. Neither is
-// guaranteed: lsof is absent on plenty of minimal Linux installs (it was
-// missing on the machine this bug was reported from), and fuser ships in
-// psmisc, which is also optional.
+// hasPortDiscoveryTool reports whether port discovery can work on this
+// machine. On Linux, pidListeningOnPort (process_linux.go) reads /proc
+// directly and has no external dependency, so this is always true. On
+// macOS (process_darwin.go) it still shells out to lsof/fuser, neither of
+// which is strictly guaranteed, though lsof ships with the OS.
 func hasPortDiscoveryTool() bool {
+	if runtime.GOOS == "linux" {
+		return true
+	}
 	for _, bin := range []string{"lsof", "fuser"} {
 		if _, err := exec.LookPath(bin); err == nil {
 			return true

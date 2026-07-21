@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-07-20 (Session 46 fix pass) — Session 46 review maddeleri kapatıldı:
+> **Son güncelleme:** 2026-07-21 — `pidListeningOnPort` (`internal/llama`, `internal/whisper`) Linux'ta `lsof`/`fuser` bağımlılığı olmadan native `/proc/net/tcp` okuyacak şekilde düzeltildi (`91300f9`/`52b6e9f` + testler `2f839a2`/`d0bb02c`) — her iki araç da kurulu değilse port temizliğinin sessizce no-op olduğu senaryoyu Linux'ta tamamen kapatır (macOS `lsof`/`fuser`'da kaldı, risk zaten düşük).
+>
+> 2026-07-20 (Session 46 fix pass) — Session 46 review maddeleri kapatıldı:
 > - **BUG-H1** `20ba4f0` — agent `trySend` non-blocking-first + regression tests  
 > - **BUG-H2** `b1fad30` — WhatsApp `localTrySend` + terminal cancel chunk  
 > - **BUG-L1** `a7d4ace`/`21f9623` — low-value ack/greeting RAG skip (`IsLowValueTurn`)  

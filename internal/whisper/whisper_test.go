@@ -65,28 +65,28 @@ func TestBinarySearchBases(t *testing.T) {
 
 func TestWithPrependedEnvPath(t *testing.T) {
 	tests := []struct {
-		name           string
-		env            []string
-		key            string
-		dir            string
+		name            string
+		env             []string
+		key             string
+		dir             string
 		caseInsensitive bool
-		wantContains   string
+		wantContains    string
 	}{
 		{
-			name:           "prepend to existing PATH",
-			env:            []string{"PATH=/usr/bin", "HOME=/home/user"},
-			key:            "PATH",
-			dir:            "/opt/bin",
+			name:            "prepend to existing PATH",
+			env:             []string{"PATH=/usr/bin", "HOME=/home/user"},
+			key:             "PATH",
+			dir:             "/opt/bin",
 			caseInsensitive: false,
-			wantContains:   "/opt/bin",
+			wantContains:    "/opt/bin",
 		},
 		{
-			name:           "add new PATH entry",
-			env:            []string{"HOME=/home/user"},
-			key:            "PATH",
-			dir:            "/opt/bin",
+			name:            "add new PATH entry",
+			env:             []string{"HOME=/home/user"},
+			key:             "PATH",
+			dir:             "/opt/bin",
 			caseInsensitive: false,
-			wantContains:   "",
+			wantContains:    "",
 		},
 	}
 

@@ -684,13 +684,17 @@ func escapeFTSQuery(q string) string {
 }
 
 func (s *Store) ftsSearch(ctx context.Context, query string, topK int) ([]MemoryResult, error) {
+	// m.pending_deletion = 0 excludes a consolidation merge's two originals
+	// — see vecSearch's identical fix for the full explanation (BUG-H5).
+	// Unlike vecSearch's sqlite-vec KNN query, FTS5's MATCH has no fragile
+	// virtual-table shape to preserve, so this filters directly in SQL.
 	rows, err := s.db.QueryContext(ctx, `
         SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg,
                memories_fts.rank,
                m.importance, m.source, m.tags, m.session_id, m.retrieve_count
         FROM memories_fts
         JOIN memories m ON m.id = memories_fts.rowid
-        WHERE memories_fts MATCH ?
+        WHERE memories_fts MATCH ? AND m.pending_deletion = 0
         ORDER BY memories_fts.rank, m.uuid
         LIMIT ?
     `, escapeFTSQuery(query), topK)
@@ -1058,9 +1062,17 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 	// vec0 available). Any remaining tie-order non-determinism from this
 	// query is handled downstream instead, in reciprocalRankFusion's own ID
 	// tiebreaker.
+	// pending_deletion is selected (not filtered in the WHERE clause — see
+	// the comment above about not touching this query's shape) and checked
+	// in the Go loop below, same way minSimilarity already is: consolidation
+	// (saveMergedAs) marks a merged pair's two originals pending_deletion=1
+	// but leaves their rows/vectors fully intact until PurgePendingDeletions
+	// eventually deletes them (up to ~187 days later) — without this check
+	// those originals kept resurfacing as near-duplicates of the very
+	// merged row that replaced them (BUG-H5).
 	rows, err := s.db.QueryContext(ctx, `
 		SELECT m.uuid, m.content, m.timestamp, m.user_msg, m.assist_msg, v.distance,
-		       m.importance, m.source, m.tags, m.session_id, m.retrieve_count
+		       m.importance, m.source, m.tags, m.session_id, m.retrieve_count, m.pending_deletion
 		FROM vec_memories v
 		JOIN memories m ON m.id = v.rowid
 		WHERE v.embedding MATCH ?
@@ -1080,10 +1092,14 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 			distance                  float64
 			importance, retrieveCount int
 			source, tags, sessionID   string
+			pendingDeletion           int
 		)
 		if err := rows.Scan(&uuid, &content, &timestamp, &userMsg, &assistMsg, &distance,
-			&importance, &source, &tags, &sessionID, &retrieveCount); err != nil {
+			&importance, &source, &tags, &sessionID, &retrieveCount, &pendingDeletion); err != nil {
 			return nil, fmt.Errorf("memory.vecSearch: scan: %w", err)
+		}
+		if pendingDeletion != 0 {
+			continue
 		}
 
 		sim := float32(1.0 - math.Max(0, math.Min(distance, 2))/2)
@@ -1110,10 +1126,16 @@ func (s *Store) vecSearch(ctx context.Context, queryEmbedding []float32, topK in
 }
 
 func (s *Store) goSearch(ctx context.Context, queryEmbedding []float32, topK int, minSimilarity float32) ([]MemoryResult, error) {
+	// pending_deletion = 0 excludes a consolidation merge's two originals
+	// (saveMergedAs marks them pending_deletion=1 but leaves the rows
+	// intact until PurgePendingDeletions eventually deletes them) — see
+	// vecSearch's identical fix for the full explanation (BUG-H5). This is
+	// the no-vec0 Go fallback path (unlike vecSearch, no fragile virtual
+	// table query shape to worry about), so the filter goes directly in SQL.
 	rows, err := s.db.QueryContext(ctx,
 		`SELECT id, uuid, content, timestamp, user_msg, assist_msg, embedding,
 		        importance, source, tags, session_id, retrieve_count
-		 FROM memories WHERE embedding IS NOT NULL`)
+		 FROM memories WHERE embedding IS NOT NULL AND pending_deletion = 0`)
 	if err != nil {
 		return nil, fmt.Errorf("memory.goSearch: %w", err)
 	}

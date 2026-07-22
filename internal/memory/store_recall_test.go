@@ -2,6 +2,7 @@ package memory
 
 import (
 	"context"
+	"database/sql"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -466,6 +467,59 @@ func TestRunConsolidation_NeverTouchesPinnedFacts(t *testing.T) {
 	if len(pinned) != 2 {
 		t.Fatalf("len(pinned) = %d, want 2 — the general consolidation pass must never merge/un-pin explicit facts", len(pinned))
 	}
+}
+
+// runRetrieveContextExcludesPendingDeletion is the regression test for
+// BUG-H5: none of vecSearch/goSearch/ftsSearch filtered pending_deletion,
+// and RetrieveContext didn't filter it downstream either — so a row a
+// consolidation merge marks pending_deletion=1 (saveMergedAs sets the flag
+// but leaves the row, its vector, and its FTS entry fully intact —
+// PurgePendingDeletions is the only thing that ever removes them, up to
+// ~187 days later) kept resurfacing in ordinary RAG retrieval as a
+// near-duplicate of the very merged row that was supposed to replace it.
+// Directly marks a saved row pending_deletion=1 (matching exactly the
+// state saveMergedAs leaves originals in) rather than going through a real
+// consolidation run, to isolate this from FindMergeCandidates' own
+// similarity-threshold behavior — that path is already covered by
+// TestFindMergeCandidates_ExcludesExplicitFacts and friends.
+func runRetrieveContextExcludesPendingDeletion(t *testing.T, store *Store) {
+	t.Helper()
+	ctx := context.Background()
+
+	if err := store.SaveInteraction(ctx, "kullanicinin kedisinin adi Pamuk", "kaydedildi"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+
+	before, err := store.RetrieveContext(ctx, "kedimin adi ne", 5, 0)
+	if err != nil {
+		t.Fatalf("RetrieveContext() (before) error = %v", err)
+	}
+	if !containsMemory(before, "Pamuk") {
+		t.Fatalf("expected the cat fact to be retrievable before marking pending_deletion, got %+v", before)
+	}
+
+	if err := store.db.Write(ctx, func(tx *sql.Tx) error {
+		_, err := tx.Exec("UPDATE memories SET pending_deletion = 1 WHERE content LIKE '%Pamuk%'")
+		return err
+	}); err != nil {
+		t.Fatalf("mark pending_deletion: %v", err)
+	}
+
+	after, err := store.RetrieveContext(ctx, "kedimin adi ne", 5, 0)
+	if err != nil {
+		t.Fatalf("RetrieveContext() (after) error = %v", err)
+	}
+	if containsMemory(after, "Pamuk") {
+		t.Fatalf("RetrieveContext() still returned a pending_deletion=1 row, got %+v", after)
+	}
+}
+
+func TestRetrieveContext_ExcludesPendingDeletion(t *testing.T) {
+	runRetrieveContextExcludesPendingDeletion(t, newRecallStore(t, bagOfWordsEmbedding(32), 32))
+}
+
+func TestRetrieveContext_ExcludesPendingDeletion_GoFallback(t *testing.T) {
+	runRetrieveContextExcludesPendingDeletion(t, newRecallStoreGoFallback(t, bagOfWordsEmbedding(32), 32))
 }
 
 // --- Single/multi-fact recall -------------------------------------------------

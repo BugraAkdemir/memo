@@ -622,10 +622,14 @@ func extractText(msg *waE2E.Message) string {
 // handleMessage processes an incoming live message.
 func (c *Client) handleMessage(evt *waEvent.Message) {
 	info := evt.Info
-	text := evt.Message.GetConversation()
-	if text == "" {
-		text = evt.Message.GetExtendedTextMessage().GetText()
-	}
+	// BUG-H6: this used to inline only the conversation/extended-text
+	// cases, silently dropping any live image/video/document message that
+	// carried only a caption — no save, no log, no error, just gone. The
+	// package's own extractText (below) already handles those correctly
+	// and is what handleHistorySync uses, but nothing routed live messages
+	// through it, so the exact same message arriving live vs. via a
+	// post-reconnect history sync behaved completely differently.
+	text := extractText(evt.Message)
 	if text == "" {
 		return
 	}

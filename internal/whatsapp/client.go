@@ -306,7 +306,15 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 		if wa.Store != nil {
 			myJID = wa.Store.ID.String()
 		}
-		_ = store.SaveMessage(Message{
+		// BUG-M5: this used to discard the error entirely (`_ = ...`) —
+		// unlike handleMessage's identical SaveMessage call for the
+		// receive path, which logs a failure. The WhatsApp send itself
+		// already succeeded (resp.ID is real) by this point, so a local
+		// save failure here (disk full, WAL lock contention, permissions)
+		// silently lost the sent message from local history/search with
+		// zero diagnostic trail, while the exact same failure on receive
+		// at least left a log line to investigate.
+		if err := store.SaveMessage(Message{
 			ID:         resp.ID,
 			ChatJID:    jid,
 			SenderJID:  myJID,
@@ -314,7 +322,9 @@ func (c *Client) SendMessage(ctx context.Context, jid, text string) (string, err
 			Text:       text,
 			Timestamp:  time.Now(),
 			FromMe:     true,
-		})
+		}); err != nil {
+			logx.Printf("WhatsApp: save sent message error: %v", err)
+		}
 	}
 
 	return resp.ID, nil

@@ -32,7 +32,10 @@ type WhatsAppChat struct {
 	DisplayName string    `json:"display_name"`
 	LastMessage string    `json:"last_message"`
 	LastTime    time.Time `json:"last_time"`
-	Unread      int       `json:"unread"`
+	// TotalReceived is the lifetime count of messages received in this
+	// chat, NOT an unread count (BUG-M4) — there is no read/unread
+	// tracking in the underlying store at all.
+	TotalReceived int `json:"total_received"`
 }
 
 type WhatsAppSendArgs struct {

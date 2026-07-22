@@ -222,11 +222,18 @@ func (s *Store) GetChatMessages(chatJID string, limit int) ([]Message, error) {
 
 // ChatSummary represents a chat overview with the latest message.
 type ChatSummary struct {
-	JID          string    `json:"jid"`
-	DisplayName  string    `json:"display_name"`
-	LastMessage  string    `json:"last_message"`
-	LastTime     time.Time `json:"last_time"`
-	Unread       int       `json:"unread"`
+	JID         string    `json:"jid"`
+	DisplayName string    `json:"display_name"`
+	LastMessage string    `json:"last_message"`
+	LastTime    time.Time `json:"last_time"`
+	// TotalReceived is the lifetime count of messages received in this chat
+	// (from_me = 0) — NOT an unread count (BUG-M4). There is no read/unread
+	// tracking anywhere in this schema; this field used to be named Unread
+	// despite that, and was exposed as-is to the LLM agent tool
+	// (internal/agent/tools/whatsapp.go), which could then confidently
+	// claim e.g. "you have 47 unread messages" for a chat the user had
+	// long since read and replied to hundreds of times.
+	TotalReceived int `json:"total_received"`
 }
 
 // GetChatList returns the list of unique chats with the latest message.
@@ -249,7 +256,7 @@ func (s *Store) GetChatList() ([]ChatSummary, error) {
 	for rows.Next() {
 		var c ChatSummary
 		var unixTS int64
-		if err := rows.Scan(&c.JID, &c.LastMessage, &unixTS, &c.Unread); err != nil {
+		if err := rows.Scan(&c.JID, &c.LastMessage, &unixTS, &c.TotalReceived); err != nil {
 			return nil, err
 		}
 		c.LastTime = time.Unix(unixTS, 0)

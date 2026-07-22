@@ -520,11 +520,11 @@ func (a waToolAdapter) GetChatList() ([]tools.WhatsAppChat, error) {
 	out := make([]tools.WhatsAppChat, len(chats))
 	for i, c := range chats {
 		out[i] = tools.WhatsAppChat{
-			JID:         c.JID,
-			DisplayName: c.DisplayName,
-			LastMessage: c.LastMessage,
-			LastTime:    c.LastTime,
-			Unread:      c.Unread,
+			JID:           c.JID,
+			DisplayName:   c.DisplayName,
+			LastMessage:   c.LastMessage,
+			LastTime:      c.LastTime,
+			TotalReceived: c.TotalReceived,
 		}
 	}
 	return out, nil

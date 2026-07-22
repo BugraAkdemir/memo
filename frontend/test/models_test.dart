@@ -284,18 +284,18 @@ void main() {
         'display_name': 'Alice',
         'last_message': 'Hi!',
         'last_time': '2024-01-01T12:00:00.000Z',
-        'unread': 5,
+        'total_received': 5,
       });
       expect(summary.jid, '123@s.whatsapp.net');
       expect(summary.displayName, 'Alice');
       expect(summary.lastMessage, 'Hi!');
-      expect(summary.unread, 5);
+      expect(summary.totalReceived, 5);
     });
 
     test('fromJson handles null fields', () {
       final summary = WhatsAppChatSummary.fromJson({});
       expect(summary.jid, '');
-      expect(summary.unread, 0);
+      expect(summary.totalReceived, 0);
     });
   });
 

@@ -35,14 +35,18 @@ class WhatsAppChatSummary {
   final String displayName;
   final String lastMessage;
   final DateTime lastTime;
-  final int unread;
+  // Lifetime count of messages received in this chat — NOT an unread count
+  // (BUG-M4). There is no read/unread tracking in the backend at all; this
+  // field (and the backend's matching JSON key) used to be misleadingly
+  // named `unread` despite that. Currently unused by any widget.
+  final int totalReceived;
 
   const WhatsAppChatSummary({
     required this.jid,
     required this.displayName,
     required this.lastMessage,
     required this.lastTime,
-    required this.unread,
+    required this.totalReceived,
   });
 
   factory WhatsAppChatSummary.fromJson(Map<String, dynamic> json) =>
@@ -53,7 +57,7 @@ class WhatsAppChatSummary {
         lastTime: json['last_time'] != null
             ? DateTime.tryParse(json['last_time'].toString()) ?? DateTime.now()
             : DateTime.now(),
-        unread: json['unread'] as int? ?? 0,
+        totalReceived: json['total_received'] as int? ?? 0,
       );
 }
 

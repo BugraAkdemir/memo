@@ -126,7 +126,7 @@ func (p *claudeProvider) ChatCompletion(ctx context.Context, req ChatRequest) (*
 		model = p.model
 	}
 
-	clReq := p.buildClaudeRequest(req, false)
+	clReq := p.buildClaudeRequest(req, model, false)
 	jsonBody, err := json.Marshal(clReq)
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
@@ -184,7 +184,7 @@ func (p *claudeProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 		model = p.model
 	}
 
-	clReq := p.buildClaudeRequest(req, true)
+	clReq := p.buildClaudeRequest(req, model, true)
 	jsonBody, err := json.Marshal(clReq)
 	if err != nil {
 		return nil, &ProviderError{Provider: p.Name(), Err: fmt.Errorf("marshal: %w", err)}
@@ -293,7 +293,17 @@ func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch 
 	}
 }
 
-func (p *claudeProvider) buildClaudeRequest(req ChatRequest, stream bool) claudeRequest {
+// buildClaudeRequest takes the already-resolved model (req.Model if set,
+// else the provider's own configured default — see ChatCompletion/
+// ChatCompletionStream) as an explicit parameter rather than reading
+// req.Model directly. This used to read req.Model itself, silently
+// discarding the resolved-model fallback its own callers had just computed
+// into an unused local variable: any caller that left ChatRequest.Model
+// empty (e.g. internal/app/llm.go's main chat streaming path, which never
+// sets it) sent Anthropic's API an empty "model" field on every single
+// request, regardless of what model the provider was actually configured
+// with in Settings.
+func (p *claudeProvider) buildClaudeRequest(req ChatRequest, model string, stream bool) claudeRequest {
 	var systemText string
 	var msgs []claudeMsg
 
@@ -320,7 +330,7 @@ func (p *claudeProvider) buildClaudeRequest(req ChatRequest, stream bool) claude
 	}
 
 	clReq := claudeRequest{
-		Model:       req.Model,
+		Model:       model,
 		MaxTokens:   req.MaxTokens,
 		Messages:    msgs,
 		System:      strings.TrimSpace(systemText),

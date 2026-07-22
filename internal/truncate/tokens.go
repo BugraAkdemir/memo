@@ -66,6 +66,23 @@ func TruncateMessages(messages []Message, maxTokens int) []Message {
 		keepStart = i
 	}
 
+	// BUG-M6: a plain token-budget cutoff can land in the middle of an
+	// assistant-with-tool_calls + its tool-result messages — this Message
+	// projection doesn't carry ToolCalls/ToolCallID (see its own doc
+	// comment), but Role alone is enough to detect the boundary: a "tool"
+	// message's result always belongs to the nearest preceding "assistant"
+	// message that requested it, and that pairing is never optional —
+	// dropping the assistant message while keeping its tool results
+	// produces an invalid message sequence (a tool-role message with no
+	// preceding assistant declaring its tool_call_id), which providers
+	// reject outright. Walk keepStart back to that assistant message so
+	// the whole group survives as one unit, even if this pushes the kept
+	// slice over budget — an over-budget-but-valid request beats an
+	// under-budget-but-invalid one.
+	for keepStart > 0 && keepStart < len(nonSystem) && nonSystem[keepStart].Role == "tool" {
+		keepStart--
+	}
+
 	if keepStart >= len(nonSystem) {
 		if sysIdx >= 0 {
 			return []Message{messages[sysIdx]}

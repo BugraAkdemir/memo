@@ -119,3 +119,65 @@ func TestTruncateMessages_TightBudget(t *testing.T) {
 		t.Errorf("expected only system prompt, got %d messages", len(got))
 	}
 }
+
+// TestTruncateMessages_KeepsAssistantWithItsToolResults is the regression
+// test for BUG-M6: pipeline.go's own doc comment claims this drops "oldest
+// assistant+tool message pairs," but TruncateMessages has no concept of
+// pairing at all — it's a plain backward token-budget scan over messages —
+// so a cutoff could land between an assistant's tool_calls and its own
+// tool-result messages, keeping a lone "tool"-role message with no
+// preceding assistant declaring its tool_call_id. That's an invalid
+// message sequence for a provider's ChatCompletion API.
+//
+// EstimateTokens is len(text)/3. Content lengths below are chosen so the
+// backward scan (budget = maxTokens - systemTokens = 5 - 1 = 4) keeps only
+// the final "tool" message (9 chars = 3 tokens, fits) and then breaks
+// before the second tool message (3+3=6 > 4) — without the fix, that
+// leaves the kept slice starting on a lone tool message. The old user
+// message is padded long enough that it's never a candidate either way.
+func TestTruncateMessages_KeepsAssistantWithItsToolResults(t *testing.T) {
+	msgs := []Message{
+		{Role: "system", Content: "sys"},                                        // 1 token
+		{Role: "user", Content: "an old unrelated user turn, long padding here"}, // ~15 tokens
+		{Role: "assistant", Content: "call tool"},                               // 3 tokens
+		{Role: "tool", Content: "result aa"},                                    // 3 tokens
+		{Role: "tool", Content: "result bb"},                                    // 3 tokens
+	}
+	got := TruncateMessages(msgs, 5)
+
+	if len(got) == 0 {
+		t.Fatal("expected at least the system message")
+	}
+	for i, m := range got {
+		if m.Role == "tool" {
+			hasPrecedingAssistant := false
+			for j := i - 1; j >= 0; j-- {
+				if got[j].Role == "assistant" {
+					hasPrecedingAssistant = true
+					break
+				}
+				if got[j].Role != "tool" {
+					break
+				}
+			}
+			if !hasPrecedingAssistant {
+				t.Fatalf("got[%d] is a \"tool\" message with no preceding assistant message in the kept slice — invalid message sequence: %+v", i, got)
+			}
+		}
+	}
+	// The whole assistant+tool-results group must survive together, not
+	// just avoid being invalid — confirms the fix keeps the group instead
+	// of e.g. dropping tool messages down to nothing.
+	if got[len(got)-1].Content != "result bb" {
+		t.Errorf("expected the last kept message to still be the final tool result, got %+v", got)
+	}
+	foundAssistant := false
+	for _, m := range got {
+		if m.Role == "assistant" {
+			foundAssistant = true
+		}
+	}
+	if !foundAssistant {
+		t.Errorf("expected the assistant message to be kept alongside its tool results, got %+v", got)
+	}
+}

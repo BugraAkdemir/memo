@@ -49,6 +49,12 @@ var _ provider.Provider = (*mockProvider)(nil)
 type mockFactory struct {
 	mu        sync.Mutex
 	providers map[string]*mockProvider
+	// lastCfg records the ProviderConfig the conductor actually passed to
+	// pf(cfg) for each provider type it created, keyed by type — lets
+	// BUG-H3 regression tests assert the fallback path used a provider's
+	// own configured Model instead of overwriting it with a different
+	// vendor's model name.
+	lastCfg map[string]provider.ProviderConfig
 }
 
 func (f *mockFactory) get(modelType string) *mockProvider {
@@ -63,7 +69,21 @@ func (f *mockFactory) set(modelType string, p *mockProvider) {
 	f.providers[modelType] = p
 }
 
+func (f *mockFactory) lastConfigFor(modelType string) (provider.ProviderConfig, bool) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	cfg, ok := f.lastCfg[modelType]
+	return cfg, ok
+}
+
 func (f *mockFactory) factory(cfg provider.ProviderConfig) (provider.Provider, error) {
+	f.mu.Lock()
+	if f.lastCfg == nil {
+		f.lastCfg = make(map[string]provider.ProviderConfig)
+	}
+	f.lastCfg[string(cfg.Type)] = cfg
+	f.mu.Unlock()
+
 	p := f.get(string(cfg.Type))
 	if p == nil {
 		return nil, errors.New("provider not found")

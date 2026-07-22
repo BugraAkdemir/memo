@@ -215,12 +215,20 @@ func (c *Conductor) CreateProviderForType(modelType, modelName string) (provider
 		return c.pf(cfg)
 	}
 
-	// Fallback: use any enabled provider (e.g. OpenRouter) but log a warning
+	// Fallback: use any enabled provider (e.g. OpenRouter) but log a warning.
+	// Deliberately keep cfg.Model as-is here (BUG-H3): this branch means the
+	// exact provider type the role asked for wasn't found, so we're handing
+	// the request to a DIFFERENT vendor entirely — model IDs are
+	// vendor-specific (e.g. "gpt-4o" only means something to OpenAI), so
+	// overwriting the fallback provider's own configured model with
+	// modelName (meant for the ORIGINAL type) sent every such fallback
+	// straight into a guaranteed "unknown model" rejection from whichever
+	// vendor it landed on. cfg.Model here is that provider's own
+	// user-configured model, exactly what should be used.
 	configs := c.getConfigs()
 	for _, cfg := range configs {
 		if cfg.Enabled {
 			logx.Printf("ORCHESTRA WARNING: provider %s/%s not found, falling back to %s/%s", modelType, modelName, cfg.Type, cfg.Model)
-			cfg.Model = modelName
 			return c.pf(cfg)
 		}
 	}
@@ -238,20 +246,133 @@ func (c *Conductor) CreateProviderForType(modelType, modelName string) (provider
 	return nil, fmt.Errorf("'%s' provider'ı bulunamadı. Mevcut etkin provider'lar: %s. Lütfen API Providers sayfasından '%s' tipinde bir provider ekleyip etkinleştir", modelType, availStr, modelType)
 }
 
+// chiefProviderCandidates returns the ordered list of provider configs to
+// attempt for a chief call (planning or synthesis): the configured
+// provider for primaryType (with its Model overridden to primaryModel,
+// matching CreateProviderForType's own exact-match behavior) first if
+// found, then every other enabled provider as fallback, sorted by priority
+// descending — mirroring tryFallbackProviders' own ordering. Each fallback
+// candidate's own configured Model is left untouched (BUG-H3): a
+// different vendor's model IDs are meaningless to it.
+//
+// BUG-H4: createPlan and synthesize used to call CreateProviderForType
+// once and return immediately on any failure — via executeSingleTask,
+// ordinary task execution already retries other providers on failure
+// (tryFallbackProviders); the chief's own planning/synthesis calls had
+// zero equivalent coverage.
+func (c *Conductor) chiefProviderCandidates(primaryType, primaryModel string) []provider.ProviderConfig {
+	primaryType = strings.TrimSpace(primaryType)
+	primaryModel = strings.TrimSpace(primaryModel)
+
+	var candidates []provider.ProviderConfig
+	seenTypes := make(map[string]bool)
+
+	if pCfg := c.findProviderConfig(primaryType); pCfg != nil {
+		cfg := *pCfg
+		cfg.Model = primaryModel
+		candidates = append(candidates, cfg)
+		seenTypes[string(cfg.Type)] = true
+	}
+
+	configs := c.getConfigs()
+	sorted := make([]provider.ProviderConfig, 0, len(configs))
+	for _, cfg := range configs {
+		if cfg.Enabled {
+			sorted = append(sorted, cfg)
+		}
+	}
+	sort.SliceStable(sorted, func(i, j int) bool { return sorted[i].Priority > sorted[j].Priority })
+	for _, cfg := range sorted {
+		if seenTypes[string(cfg.Type)] || cfg.Name == primaryType {
+			continue
+		}
+		candidates = append(candidates, cfg)
+		seenTypes[string(cfg.Type)] = true
+	}
+	return candidates
+}
+
+// chiefAttempt makes a single provider call for a chief request (planning
+// or synthesis) — streaming (invoking onChunk per token, if non-nil) when
+// onProgress is set, or a plain retried ChatCompletion otherwise. req's
+// Model field is set here, per-candidate, from pCfg.Model — callers pass a
+// req template with Model left unset.
+func (c *Conductor) chiefAttempt(ctx context.Context, pCfg provider.ProviderConfig, req provider.ChatRequest, onProgress ProgressFn, onChunk func(chunk string)) (string, error) {
+	prov, err := c.pf(pCfg)
+	if err != nil {
+		return "", fmt.Errorf("provider (%s/%s) oluşturulamadı: %w", pCfg.Type, pCfg.Model, err)
+	}
+	req.Model = pCfg.Model
+
+	if onProgress != nil {
+		streamCh, streamErr := prov.ChatCompletionStream(ctx, req)
+		if streamErr != nil {
+			return "", fmt.Errorf("(%s/%s) stream başlatılamadı: %w", pCfg.Type, pCfg.Model, streamErr)
+		}
+		var sb strings.Builder
+		gotChunk := false
+		for chunk := range streamCh {
+			if chunk.Error != "" {
+				return "", fmt.Errorf("(%s/%s) stream hatası: %s", pCfg.Type, pCfg.Model, chunk.Error)
+			}
+			gotChunk = true
+			sb.WriteString(chunk.Content)
+			if onChunk != nil {
+				onChunk(chunk.Content)
+			}
+		}
+		if !gotChunk {
+			return "", fmt.Errorf("(%s/%s) stream hiç veri döndürmedi — model adı geçerli mi ve sağlayıcı streaming destekliyor mu kontrol et", pCfg.Type, pCfg.Model)
+		}
+		return strings.TrimSpace(sb.String()), nil
+	}
+
+	var resp *provider.ChatResponse
+	err = callWithRetry(ctx, fmt.Sprintf("%s/%s", pCfg.Type, pCfg.Model), func() error {
+		var innerErr error
+		resp, innerErr = prov.ChatCompletion(ctx, req)
+		return innerErr
+	})
+	if err != nil {
+		return "", fmt.Errorf("(%s/%s) yanıt vermedi: %w", pCfg.Type, pCfg.Model, err)
+	}
+	return strings.TrimSpace(resp.Content), nil
+}
+
+// runChiefWithFallback tries chiefProviderCandidates(primaryType,
+// primaryModel) in order via chiefAttempt, returning the first successful
+// call's content. label is only used for log messages ("chief planlama" /
+// "synthesis"). If every candidate fails, returns the last attempt's error.
+func (c *Conductor) runChiefWithFallback(ctx context.Context, label, primaryType, primaryModel string, req provider.ChatRequest, onProgress ProgressFn, onChunk func(chunk string)) (string, error) {
+	candidates := c.chiefProviderCandidates(primaryType, primaryModel)
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("provider bulunamadı (istenen: %s/%s)", primaryType, primaryModel)
+	}
+
+	var lastErr error
+	for i, pCfg := range candidates {
+		if i == 0 {
+			logx.Printf("ORCHESTRA: %s with %s/%s...", label, pCfg.Type, pCfg.Model)
+		} else {
+			logx.Printf("ORCHESTRA: %s falling back to %s/%s after: %v", label, pCfg.Type, pCfg.Model, lastErr)
+		}
+		content, err := c.chiefAttempt(ctx, pCfg, req, onProgress, onChunk)
+		if err == nil {
+			return content, nil
+		}
+		lastErr = err
+		logx.Printf("ORCHESTRA: %s attempt with %s/%s failed: %v", label, pCfg.Type, pCfg.Model, err)
+	}
+	return "", lastErr
+}
+
 // ─── Planning ──────────────────────────────────────────────────
 
 func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMessage string, onProgress ProgressFn) (*OrchestraPlan, error) {
-	prov, err := c.CreateProviderForType(cfg.ChiefType, cfg.ChiefModel)
-	if err != nil {
-		return nil, fmt.Errorf("chief provider (%s/%s) oluşturulamadı: %w. API key ve provider konfigürasyonunu kontrol et.", cfg.ChiefType, cfg.ChiefModel, err)
-	}
-
-	logx.Printf("ORCHESTRA: chief planning with %s/%s...", cfg.ChiefType, cfg.ChiefModel)
 	roleInfo := c.buildRoleInfo(cfg)
 	systemMsg := ChiefSystemPrompt + "\n\nMevcut roller ve yetenekleri:\n" + roleInfo
 
 	req := provider.ChatRequest{
-		Model: cfg.ChiefModel,
 		Messages: []provider.Message{
 			provider.TextMessage("system", systemMsg),
 			provider.TextMessage("user", userMessage),
@@ -263,45 +384,18 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 	planCtx, cancel := context.WithTimeout(ctx, 300*time.Second)
 	defer cancel()
 
-	var content string
-	if onProgress != nil {
-		// The chief's raw output is JSON — accumulate it INTERNALLY and never
-		// stream it to the UI. Showing raw `{"tasks":[...]}` to the user was
-		// confusing and unprofessional. A clean ProgressPlanReady is emitted once
-		// the plan is parsed below.
-		logx.Printf("ORCHESTRA: chief opening stream to %s/%s...", cfg.ChiefType, cfg.ChiefModel)
-		streamCh, streamErr := prov.ChatCompletionStream(planCtx, req)
-		if streamErr != nil {
-			return nil, fmt.Errorf("chief (%s/%s) stream başlatılamadı: %w", cfg.ChiefType, cfg.ChiefModel, streamErr)
-		}
-		logx.Printf("ORCHESTRA: chief stream established, waiting for first chunk...")
-		var sb strings.Builder
-		gotChunk := false
-		for chunk := range streamCh {
-			if !gotChunk {
-				gotChunk = true
-				logx.Printf("ORCHESTRA: chief first chunk received")
-			}
-			if chunk.Error != "" {
-				return nil, fmt.Errorf("chief (%s/%s) stream hatası: %s", cfg.ChiefType, cfg.ChiefModel, chunk.Error)
-			}
-			sb.WriteString(chunk.Content)
-		}
-		if !gotChunk {
-			return nil, fmt.Errorf("chief (%s/%s) stream hiç veri döndürmedi — model adı geçerli mi ve sağlayıcı streaming destekliyor mu kontrol et", cfg.ChiefType, cfg.ChiefModel)
-		}
-		content = strings.TrimSpace(sb.String())
-	} else {
-		var resp *provider.ChatResponse
-		err = callWithRetry(planCtx, fmt.Sprintf("chief/%s", cfg.ChiefType), func() error {
-			var innerErr error
-			resp, innerErr = prov.ChatCompletion(planCtx, req)
-			return innerErr
-		})
-		if err != nil {
-			return nil, fmt.Errorf("chief (%s/%s) yanıt vermedi: %w", cfg.ChiefType, cfg.ChiefModel, err)
-		}
-		content = strings.TrimSpace(resp.Content)
+	// BUG-H4: this used to call CreateProviderForType once and return
+	// immediately on any failure (provider creation, stream-start, a
+	// mid-stream chunk error, or a non-streaming call failure) — the chief's
+	// own planning call had zero fallback coverage, unlike ordinary task
+	// execution (executeSingleTask -> tryFallbackProviders). The chief's
+	// raw output is JSON — chiefAttempt's onChunk is deliberately nil here
+	// so it's accumulated internally and never streamed to the UI (showing
+	// raw `{"tasks":[...]}` mid-generation was confusing); a clean
+	// ProgressPlanReady is emitted once the plan is parsed below.
+	content, err := c.runChiefWithFallback(planCtx, "chief planlama", cfg.ChiefType, cfg.ChiefModel, req, onProgress, nil)
+	if err != nil {
+		return nil, fmt.Errorf("chief planlama başarısız: %w. API key ve provider konfigürasyonunu kontrol et.", err)
 	}
 
 	logx.Printf("ORCHESTRA: chief raw response (%d chars): %s", len(content), content[:min(len(content), 200)])
@@ -644,23 +738,26 @@ func (c *Conductor) tryFallbackProviders(ctx context.Context, task OrchestraTask
 			continue
 		}
 
+		// BUG-H3: fbCfg.Model used to be overwritten with task.ModelName —
+		// the FAILED provider's model, which is meaningless (often outright
+		// invalid) to this different vendor's API. cfg.Model here is the
+		// fallback provider's own user-configured model; use it as-is.
 		fbCfg := cfg
-		fbCfg.Model = task.ModelName
 		fbProv, err := c.pf(fbCfg)
 		if err != nil {
-			logx.Printf("ORCHESTRA: fallback provider %s/%s create failed: %v", cfg.Type, task.ModelName, err)
+			logx.Printf("ORCHESTRA: fallback provider %s/%s create failed: %v", cfg.Type, cfg.Model, err)
 			continue
 		}
 
-		logx.Printf("ORCHESTRA: task %d trying fallback provider %s/%s", index, cfg.Type, task.ModelName)
+		logx.Printf("ORCHESTRA: task %d trying fallback provider %s/%s", index, cfg.Type, cfg.Model)
 		if onProgress != nil {
 			c.safeProgress(onProgress, ProgressUpdate{
 				Type:      ProgressTaskStart,
 				Role:      task.Role,
 				Index:     index,
 				ModelType: string(cfg.Type),
-				ModelName: task.ModelName,
-				Content:   fmt.Sprintf("🔄 **%s** → fallback: %s/%s deneniyor...\n", task.Role, cfg.Type, task.ModelName),
+				ModelName: cfg.Model,
+				Content:   fmt.Sprintf("🔄 **%s** → fallback: %s/%s deneniyor...\n", task.Role, cfg.Type, cfg.Model),
 			})
 		}
 
@@ -668,7 +765,7 @@ func (c *Conductor) tryFallbackProviders(ctx context.Context, task OrchestraTask
 		if callErr == nil {
 			return resp, nil
 		}
-		logx.Printf("ORCHESTRA: fallback %s/%s also failed: %v", cfg.Type, task.ModelName, callErr)
+		logx.Printf("ORCHESTRA: fallback %s/%s also failed: %v", cfg.Type, cfg.Model, callErr)
 	}
 	return nil, fmt.Errorf("all fallback providers failed")
 }
@@ -753,13 +850,7 @@ Kurallar:
 - Doğal ve akıcı ol
 - Cevabı kısa tut`
 
-	p, err := c.CreateProviderForType(cfg.ChiefType, cfg.ChiefModel)
-	if err != nil {
-		return "", fmt.Errorf("synthesis provider: %w", err)
-	}
-
 	req := provider.ChatRequest{
-		Model: cfg.ChiefModel,
 		Messages: []provider.Message{
 			provider.TextMessage("system", synthesisMsg),
 			provider.TextMessage("user", sb.String()),
@@ -768,36 +859,23 @@ Kurallar:
 		MaxTokens:   2048,
 	}
 
-	var finalContent string
 	synthCtx, synthCancel := context.WithTimeout(ctx, 300*time.Second)
 	defer synthCancel()
 
+	// BUG-H4: this used to call CreateProviderForType once and return
+	// immediately on any failure — same zero-fallback-coverage gap as
+	// createPlan above. onChunk streams each token to the UI live (as
+	// before) via ProgressSynthChunk, since — unlike the chief's raw JSON
+	// planning output — synthesis IS the user-facing answer.
+	var onChunk func(string)
 	if onProgress != nil {
-		// Stream the synthesis response
-		streamCh, streamErr := p.ChatCompletionStream(synthCtx, req)
-		if streamErr != nil {
-			return "", fmt.Errorf("synthesis stream başlatılamadı: %w", streamErr)
+		onChunk = func(chunk string) {
+			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressSynthChunk, Content: chunk})
 		}
-		var sb strings.Builder
-		for chunk := range streamCh {
-			if chunk.Error != "" {
-				return "", fmt.Errorf("synthesis stream hatası: %s", chunk.Error)
-			}
-			sb.WriteString(chunk.Content)
-			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressSynthChunk, Content: chunk.Content})
-		}
-		finalContent = sb.String()
-	} else {
-		var resp *provider.ChatResponse
-		err = callWithRetry(synthCtx, fmt.Sprintf("synthesis/%s", cfg.ChiefType), func() error {
-			var innerErr error
-			resp, innerErr = p.ChatCompletion(synthCtx, req)
-			return innerErr
-		})
-		if err != nil {
-			return "", fmt.Errorf("synthesis chat completion: %w", err)
-		}
-		finalContent = resp.Content
+	}
+	finalContent, err := c.runChiefWithFallback(synthCtx, "synthesis", cfg.ChiefType, cfg.ChiefModel, req, onProgress, onChunk)
+	if err != nil {
+		return "", fmt.Errorf("synthesis başarısız: %w", err)
 	}
 	return finalContent, nil
 }

@@ -176,3 +176,42 @@ func TestReminderLoopEmits(t *testing.T) {
 		t.Errorf("expected no second emission, got %d total", len(emitted))
 	}
 }
+
+// TestReminderLoop_Start_FiresImmediatelyWithoutWaitingForTicker is the
+// regression test for BUG-M7: time.NewTicker's first tick doesn't fire
+// until a full interval (1 minute) has elapsed, and ClaimPendingReminders'
+// claim window has a strictly-increasing, exclusive lower bound
+// (start_time > now) on every subsequent tick — so an event due within
+// roughly the first minute after Start is called used to fall before every
+// later window's lower bound too, and never fire at all, silently and
+// permanently. Uses a short-lived context and calls Start synchronously
+// (not as a goroutine) — if the immediate tick fix is in place, Start's
+// very first statement fires the reminder before it ever reaches the
+// blocking ticker-wait loop, so this test returns in well under a second
+// rather than needing to wait a real minute either way.
+func TestReminderLoop_Start_FiresImmediatelyWithoutWaitingForTicker(t *testing.T) {
+	store, cleanup := newTestStore(t)
+	defer cleanup()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	now := time.Now()
+
+	if _, err := store.Add(context.Background(), Event{
+		Title:     "GymTime",
+		StartTime: now.Add(10 * time.Minute),
+	}); err != nil {
+		t.Fatal(err)
+	}
+
+	var emitted []string
+	loop := NewReminderLoop(store, func() int { return 30 }, func(name, data string) {
+		emitted = append(emitted, name)
+	})
+
+	loop.Start(ctx)
+
+	if len(emitted) != 1 {
+		t.Fatalf("expected 1 emission from the immediate startup tick, got %d — reminder due within the first minute after Start would otherwise never fire", len(emitted))
+	}
+}

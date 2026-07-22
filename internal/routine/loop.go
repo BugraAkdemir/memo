@@ -60,9 +60,20 @@ func NewRoutineLoop(store *Store, generate GenerateFn, deliver DeliverFn, emit E
 
 // Start runs the tick loop until ctx is done. Meant to be run in its own
 // goroutine. Checks every minute.
+//
+// An immediate tick before entering the ticker-wait loop closes the same
+// gap fixed in calendar.ReminderLoop.Start (BUG-M7): time.NewTicker's first
+// tick doesn't fire until a full interval has elapsed, so without this a
+// routine due right at app startup wouldn't be checked for up to a minute.
+// tick's own same-day dedup (LastRunDate) means this can never double-fire
+// a routine — worst case a routine not yet due is checked one extra time
+// and skipped.
 func (r *RoutineLoop) Start(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+
+	r.tick(ctx, time.Now())
+
 	for {
 		select {
 		case <-ctx.Done():

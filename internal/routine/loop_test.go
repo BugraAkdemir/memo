@@ -326,3 +326,38 @@ func TestParseFireTime_UsesTargetTimezonesOwnCalendarDay(t *testing.T) {
 		t.Errorf("fire time fell on day %d in the user's own zone, want 18 (the user's actual 'today')", inUserZone.Day())
 	}
 }
+
+// TestRoutineLoop_Start_FiresImmediatelyWithoutWaitingForTicker guards
+// against a startup-latency regression to the same fix applied in
+// calendar.ReminderLoop.Start (BUG-M7): time.NewTicker's first tick doesn't
+// fire until a full interval elapses, so without an immediate tick before
+// entering the ticker-wait loop, a routine due right at app startup
+// wouldn't be checked for up to a minute. Uses a routine whose TimeOfDay is
+// the current wall-clock minute, so it's already due by the time Start's
+// internal time.Now() runs.
+func TestRoutineLoop_Start_FiresImmediatelyWithoutWaitingForTicker(t *testing.T) {
+	var generateCalls int32
+	generate := func(ctx context.Context, r Routine) (string, error) {
+		atomic.AddInt32(&generateCalls, 1)
+		return "hello", nil
+	}
+	deliver := func(ctx context.Context, r Routine, content string) error { return nil }
+
+	loop, st := newTestLoop(t, generate, deliver)
+	if _, err := st.Create(Routine{
+		Schedule:         Schedule{TimeOfDay: time.Now().Format("15:04")},
+		DeliveryWhatsApp: true,
+		Enabled:          true,
+	}); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+	loop.Start(ctx)
+	loop.waitIdle()
+
+	if got := atomic.LoadInt32(&generateCalls); got != 1 {
+		t.Fatalf("generateCalls = %d, want 1 from the immediate startup tick — a routine due within the first minute after Start would otherwise never fire until a minute later", got)
+	}
+}

@@ -32,9 +32,22 @@ func NewReminderLoop(store *Store, leadFn LeadFn, emit Emitter) *ReminderLoop {
 
 // Start runs the loop until ctx is cancelled. Intended to be launched as a
 // goroutine. Checks every minute.
+//
+// BUG-M7: time.NewTicker's first tick doesn't fire until a full interval
+// has elapsed, not immediately — and ClaimPendingReminders' claim window
+// has a strictly-increasing, exclusive lower bound (start_time > now) each
+// tick. Any reminder due within roughly the first minute after Start is
+// called therefore fell before every subsequent window's lower bound too,
+// and was silently, permanently never claimed — reminder_sent stayed 0
+// forever, with no error anywhere. An immediate tick before entering the
+// ticker-wait loop closes that gap: the very first check happens at
+// startup instead of a full minute later.
 func (r *ReminderLoop) Start(ctx context.Context) {
 	ticker := time.NewTicker(time.Minute)
 	defer ticker.Stop()
+
+	r.tick(ctx, time.Now())
+
 	for {
 		select {
 		case <-ctx.Done():

@@ -655,6 +655,25 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 				}
 				return result
 			}
+			// BUG-L3: a task whose stream broke mid-flight (a chunk carrying
+			// chunk.Error) used to give up immediately here — unlike its two
+			// sibling failure paths in this same function (an immediate
+			// stream-OPEN failure falls through to the non-streaming retry
+			// below; a non-streaming ChatCompletion failure tries fallback
+			// providers just below that). Try fallback here too before
+			// giving up, same as the non-streaming path does.
+			logx.Printf("ORCHESTRA: task %d (%s/%s) stream broke mid-flight: %v", index, task.ModelType, task.ModelName, lastErr)
+			if fbResp, fbErr := c.tryFallbackProviders(taskCtx, task, req, index, onProgress); fbErr == nil {
+				logx.Printf("ORCHESTRA: task %d (%s) succeeded via fallback provider after mid-stream error", index, task.Role)
+				result.Content = fbResp.Content
+				result.TokensOut = estimateTokens(fbResp.Content)
+				result.DurationMs = time.Since(start).Milliseconds()
+				result.Error = ""
+				if onProgress != nil {
+					c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Content: fbResp.Content})
+				}
+				return result
+			}
 			result.Error = lastErr.Error()
 			if onProgress != nil {
 				c.safeProgress(onProgress, ProgressUpdate{

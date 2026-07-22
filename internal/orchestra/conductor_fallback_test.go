@@ -166,3 +166,40 @@ func TestCreatePlan_AllProvidersFailReturnsError(t *testing.T) {
 		t.Fatal("createPlan() error = nil, want an error when every candidate provider fails")
 	}
 }
+
+// TestExecuteSingleTask_FallsBackAfterMidStreamError is the regression test
+// for BUG-L3: executeSingleTask's stream-chunk-error branch used to return
+// immediately with no retry/fallback attempt, unlike its two sibling
+// failure paths in the same function (an immediate stream-open failure
+// falls through to non-streaming retry; a non-streaming ChatCompletion
+// failure tries fallback providers) — a task whose stream opened fine but
+// broke partway through got no second chance at all.
+func TestExecuteSingleTask_FallsBackAfterMidStreamError(t *testing.T) {
+	f := newMockFactory()
+
+	ch := make(chan provider.StreamChunk, 2)
+	ch <- provider.StreamChunk{Content: "partial "}
+	ch <- provider.StreamChunk{Error: "connection reset mid-stream"}
+	close(ch)
+	f.set("openai", &mockProvider{name: "openai", display: "OpenAI", streamCh: ch})
+	f.set("claude", openAIMock("fallback answer"))
+
+	cfg := DefaultConfig()
+	cfg.Enabled = true
+	c := NewConductor(cfg, f.factory, twoProviderConfigs)
+
+	task := OrchestraTask{
+		Role:      RoleGeneral,
+		Context:   "task",
+		ModelType: "openai",
+		ModelName: "gpt-4o",
+	}
+
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, func(up ProgressUpdate) {}, true)
+	if result.Error != "" {
+		t.Fatalf("executeSingleTask() Error = %q, want success via fallback after the mid-stream error", result.Error)
+	}
+	if result.Content != "fallback answer" {
+		t.Errorf("Content = %q, want %q", result.Content, "fallback answer")
+	}
+}

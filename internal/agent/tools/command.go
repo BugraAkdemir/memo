@@ -124,6 +124,19 @@ func extractPathTokens(command string) []string {
 	tokens := make([]string, 0, len(fields))
 	for _, f := range fields {
 		f = strings.Trim(f, `"'`)
+		// BUG-L2: a "--flag=/path/value"-shaped argument's actual path is
+		// the part after "=" (e.g. "--file=/etc/passwd") — the raw token
+		// isn't absolute on its own, so commandTargetsProtectedPath used to
+		// join it against workingDir instead of recognizing it as pointing
+		// at /etc, letting a protected-path target slip through disguised
+		// behind a flag. Extract the suffix as the candidate instead of the
+		// whole "--flag=..." token whenever it looks path-like.
+		if idx := strings.LastIndex(f, "="); idx >= 0 && idx < len(f)-1 {
+			if v := f[idx+1:]; strings.HasPrefix(v, "/") || strings.HasPrefix(v, "~") || strings.Contains(v, "/") {
+				tokens = append(tokens, v)
+				continue
+			}
+		}
 		if strings.HasPrefix(f, "/") || strings.HasPrefix(f, "~") || strings.Contains(f, "/") {
 			tokens = append(tokens, f)
 		}

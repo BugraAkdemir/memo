@@ -145,3 +145,31 @@ func TestCommandTargetsProtectedPath(t *testing.T) {
 		}
 	}
 }
+
+// TestCommandTargetsProtectedPath_FlagEqualsValue is the regression test
+// for BUG-L2: a "--flag=/path"-shaped argument's actual path is the part
+// after "=" — the raw token isn't absolute on its own ("--file=/etc/passwd"
+// doesn't start with "/"), so it used to get joined against workingDir
+// instead of resolving to /etc, letting a protected-path target slip
+// through disguised behind a flag.
+func TestCommandTargetsProtectedPath_FlagEqualsValue(t *testing.T) {
+	base := t.TempDir()
+	tests := []struct {
+		command string
+		want    bool
+	}{
+		{"someTool --file=/etc/passwd", true},
+		{"someTool --file=/etc/passwd --verbose", true},
+		{"someTool --path=~/.ssh/id_rsa", true},
+		{"someTool --path=../../../etc/passwd", true},
+		{"someTool --config=./local.yaml", false},
+		{"someTool --env=KEY=VALUE", false},
+		{"someTool --level=info", false},
+	}
+	for _, tc := range tests {
+		_, got := commandTargetsProtectedPath(tc.command, base, base)
+		if got != tc.want {
+			t.Errorf("commandTargetsProtectedPath(%q) blocked = %v, want %v", tc.command, got, tc.want)
+		}
+	}
+}

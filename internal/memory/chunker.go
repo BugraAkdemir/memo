@@ -6,15 +6,6 @@ import (
 	"memo/internal/truncate"
 )
 
-// chunkText splits text into overlapping chunks sized by estimated token
-// count (truncate.EstimateTokens), not word count. Word count is a poor
-// proxy for token count — a word can tokenize to anywhere from a fraction
-// of a token to several (long identifiers, URLs, agglutinative Turkish) —
-// so a chunk that looked safely under budget by word count alone could
-// still overflow the embedding model's context.
-// maxTokens: estimated token budget per chunk; overlapTokens: estimated
-// tokens shared between consecutive chunks.
-// Returns the original text as a single chunk if it fits within maxTokens.
 func chunkText(text string, maxTokens, overlapTokens int) []string {
 	if truncate.EstimateTokens(text) <= maxTokens {
 		return []string{text}
@@ -25,11 +16,6 @@ func chunkText(text string, maxTokens, overlapTokens int) []string {
 		return nil
 	}
 
-	// A single space-free "word" (long URL, base64 blob, minified code, a
-	// hash) can itself exceed maxTokens — the grouping loop below always
-	// takes at least one word per chunk, so without this fallback that one
-	// word is emitted as its own oversized chunk, overflowing the embedding
-	// server's batch-size limit on both save and retrieve.
 	expanded := make([]string, 0, len(words))
 	for _, w := range words {
 		expanded = append(expanded, splitLongWord(w, maxTokens)...)
@@ -63,9 +49,6 @@ func chunkText(text string, maxTokens, overlapTokens int) []string {
 			break
 		}
 
-		// Back up from `end` by roughly overlapTokens worth of words so the
-		// next chunk repeats that tail — guaranteed forward progress since
-		// next defaults to end (> start) if the whole span is needed.
 		next := end
 		for next > start && prefix[end]-prefix[next-1] < overlapTokens {
 			next--
@@ -78,24 +61,10 @@ func chunkText(text string, maxTokens, overlapTokens int) []string {
 	return chunks
 }
 
-// maxBytesForTokenBudget is how many raw bytes are allowed per estimated
-// token when force-splitting/truncating text bound for the embedding
-// model — a much tighter margin than truncate.EstimateTokens' usual len/3
-// average-case ratio. Live-observed with the exact BUG-H3 repro (a 40k-byte
-// run of a single repeated character): the real embedding tokenizer
-// produced ~550 real tokens for a piece len/3 estimated at ~300 — a ~1.8x
-// underestimate — because degenerate, non-natural-language content doesn't
-// compress the way ordinary mixed text does under a subword tokenizer.
-// This is a safety valve for pathological input, not the general chunking
-// budget, so being generously conservative here costs nothing in the
-// common case.
 func maxBytesForTokenBudget(maxTokens int) int {
 	return max(maxTokens, 1)
 }
 
-// splitLongWord force-splits a single space-free "word" that alone exceeds
-// maxTokens into rune-safe pieces that each fit the budget. Returns the word
-// unchanged (as a single-element slice) if it's already within budget.
 func splitLongWord(word string, maxTokens int) []string {
 	if truncate.EstimateTokens(word) <= maxTokens {
 		return []string{word}

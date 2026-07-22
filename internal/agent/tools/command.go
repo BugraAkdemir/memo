@@ -333,10 +333,22 @@ func RunCommand(ctx context.Context, argsJSON json.RawMessage, basePath string, 
 	// Security: validate CWD is inside basePath regardless of whether it exists yet.
 	realCWD, err := filepath.EvalSymlinks(workingDir)
 	if err != nil {
-		// Fall back to Clean path — either the dir doesn't exist yet, or on
-		// Windows the caller lacks SeCreateSymbolicLinkPrivilege to resolve a
-		// junction point. The Rel check below still enforces the boundary.
-		realCWD = filepath.Clean(workingDir)
+		if os.IsNotExist(err) {
+			// The dir doesn't exist yet — resolve as much of the path as
+			// actually exists instead of falling back to it unresolved
+			// (BUG-C1, same gap as validatePath in file.go): an existing
+			// ancestor directory earlier in the path could itself be a
+			// symlink pointing outside basePath, and a bare Clean(path)
+			// fallback left that completely unresolved, defeating the Rel
+			// check below.
+			realCWD = resolveExistingAncestor(workingDir)
+		} else {
+			// On Windows the caller may lack SeCreateSymbolicLinkPrivilege
+			// to resolve a junction point — fall back to Clean path same as
+			// before; the Rel check below still enforces the boundary as
+			// best it can without that resolution.
+			realCWD = filepath.Clean(workingDir)
+		}
 	}
 	rel, relErr := filepath.Rel(basePath, realCWD)
 	if relErr != nil || strings.HasPrefix(rel, "..") {

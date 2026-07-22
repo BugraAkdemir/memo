@@ -80,6 +80,31 @@ func TestRunCommand_BlocksProtectedPathBypass(t *testing.T) {
 // an ordinary relative-path command referencing files *inside* the project
 // must not be rejected just because the project's own absolute path happens
 // to start with a protected prefix.
+// TestRunCommand_RejectsSymlinkedAncestorCWDEscape is RunCommand's
+// counterpart to file_test.go's
+// TestValidatePath_RejectsSymlinkedAncestorEscapeToNotYetExistingFile — the
+// exact same BUG-C1 gap existed in the CWD resolution here: a pre-existing
+// symlink inside the project pointing outside it let `cwd` resolve outside
+// basePath as long as the specific CWD subdirectory named didn't exist yet
+// (filepath.EvalSymlinks fails with os.IsNotExist on the missing final
+// component, discarding resolution of the symlinked ancestor entirely).
+func TestRunCommand_RejectsSymlinkedAncestorCWDEscape(t *testing.T) {
+	base := t.TempDir()
+	outside := t.TempDir()
+
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("os.Symlink() error = %v", err)
+	}
+
+	// "notyet" deliberately does not exist under either link or outside.
+	args, _ := json.Marshal(RunCommandArgs{Command: "pwd", CWD: "link/notyet"})
+	out, err := RunCommand(context.Background(), args, base, nil)
+	if err == nil {
+		t.Errorf("RunCommand(cwd=%q) = %q, <nil> error — want rejection (cwd resolves outside project directory)", "link/notyet", out)
+	}
+}
+
 func TestRunCommand_AllowsOrdinaryProjectCommands(t *testing.T) {
 	base := t.TempDir()
 	if err := os.WriteFile(filepath.Join(base, "notes.txt"), []byte("hi"), 0644); err != nil {

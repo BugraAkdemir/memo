@@ -272,6 +272,37 @@ func defaultProtectedPaths() []string {
 	}
 }
 
+// resolveExistingAncestor resolves symlinks along path as far as its
+// components actually exist on disk, then rejoins any trailing
+// not-yet-created components unresolved (there is nothing to resolve for a
+// path segment that doesn't exist yet). Used when a plain
+// filepath.EvalSymlinks(path) itself fails with os.IsNotExist — shared by
+// validatePath (file.go) and RunCommand's CWD resolution (command.go),
+// which had the identical gap (BUG-C1).
+//
+// Recurses up one directory level per call; a legitimate filesystem path
+// only has as many components as the OS allows, so this cannot recurse
+// meaningfully deep. Falls back to the cleaned, unresolved path once it
+// either reaches the filesystem root or hits a non-IsNotExist error partway
+// up (e.g. a permission error) — best-effort, matching how the pre-fix code
+// already tolerated an unresolved fallback for those cases.
+func resolveExistingAncestor(path string) string {
+	parent := filepath.Dir(path)
+	if parent == path {
+		// Reached the filesystem root and even that doesn't exist/resolve.
+		return filepath.Clean(path)
+	}
+	resolvedParent, err := filepath.EvalSymlinks(parent)
+	if err != nil {
+		if os.IsNotExist(err) {
+			resolvedParent = resolveExistingAncestor(parent)
+		} else {
+			resolvedParent = filepath.Clean(parent)
+		}
+	}
+	return filepath.Join(resolvedParent, filepath.Base(path))
+}
+
 // validatePath ensures the path is within the base path, resolves relative
 // paths, blocks traversal outside the project, and denies access to protected
 // system directories.
@@ -294,9 +325,20 @@ func validatePath(targetPath, basePath string) (string, error) {
 	// Resolve symlinks
 	realPath, err := filepath.EvalSymlinks(fullPath)
 	if err != nil {
-		// File might not exist yet (e.g. for write_file), use cleaned full path
+		// File might not exist yet (e.g. for write_file) — resolve as much
+		// of the path as actually exists instead of falling back to the
+		// raw, unresolved path (BUG-C1): EvalSymlinks fails with
+		// IsNotExist as soon as the FINAL component is missing, even if an
+		// EXISTING ancestor directory earlier in the path is itself a
+		// symlink pointing outside basePath. Falling back to fullPath
+		// verbatim left that ancestor symlink completely unresolved, so
+		// the inside-basePath check a few lines down saw only the
+		// project-relative-looking literal path — while the actual
+		// write (os.WriteFile, etc.) transparently follows the real,
+		// unresolved symlink and lands wherever it points, outside the
+		// sandbox entirely.
 		if os.IsNotExist(err) {
-			realPath = fullPath
+			realPath = resolveExistingAncestor(fullPath)
 		} else {
 			return "", fmt.Errorf("failed to resolve path: %w", err)
 		}

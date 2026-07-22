@@ -1,6 +1,7 @@
 package tools
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 )
@@ -54,5 +55,61 @@ func TestValidatePath_RejectsRelativeTraversal(t *testing.T) {
 	base := t.TempDir()
 	if _, err := validatePath("../../etc/passwd", base); err == nil {
 		t.Fatal("validatePath(\"../../etc/passwd\", base) = nil error, want rejection")
+	}
+}
+
+// TestValidatePath_RejectsSymlinkedAncestorEscapeToNotYetExistingFile is the
+// regression test for BUG-C1: a pre-existing symlink inside the project
+// pointing outside it (e.g. an npm/yarn/venv symlink, or one left by another
+// tool) used to let write_file (and edit_file/insert_line/delete_lines,
+// which all route through validatePath) escape the sandbox entirely, as long
+// as the specific file being written didn't exist yet. filepath.EvalSymlinks
+// fails with os.IsNotExist as soon as the FINAL path component is missing —
+// even though the symlinked ancestor directory earlier in the path very much
+// exists and resolves — and the pre-fix code's fallback on that error was
+// the raw, completely unresolved path, so the "is this inside basePath"
+// check below saw only the literal, project-relative-looking string while
+// the real write would have followed the symlink straight outside it.
+func TestValidatePath_RejectsSymlinkedAncestorEscapeToNotYetExistingFile(t *testing.T) {
+	base := t.TempDir()
+	outside := t.TempDir()
+
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Fatalf("os.Symlink() error = %v", err)
+	}
+
+	// "newfile.txt" deliberately does not exist yet — the exact write_file
+	// scenario the bug required.
+	got, err := validatePath("link/newfile.txt", base)
+	if err == nil {
+		t.Fatalf("validatePath(\"link/newfile.txt\", base) = %q, nil error — want rejection, since this resolves to %q, outside base %q", got, filepath.Join(outside, "newfile.txt"), base)
+	}
+}
+
+// TestValidatePath_AllowsSymlinkedAncestorToNotYetExistingFileWithinBase is
+// the non-adversarial counterpart: a symlinked ancestor directory that
+// points to somewhere else *inside* the project must still work normally
+// for a not-yet-existing target file — the fix must not turn every
+// not-yet-existing path under a symlinked directory into a rejection,
+// only ones that actually resolve outside basePath.
+func TestValidatePath_AllowsSymlinkedAncestorToNotYetExistingFileWithinBase(t *testing.T) {
+	base := t.TempDir()
+	realDir := filepath.Join(base, "real")
+	if err := os.Mkdir(realDir, 0o755); err != nil {
+		t.Fatalf("os.Mkdir() error = %v", err)
+	}
+	link := filepath.Join(base, "link")
+	if err := os.Symlink(realDir, link); err != nil {
+		t.Fatalf("os.Symlink() error = %v", err)
+	}
+
+	got, err := validatePath("link/newfile.txt", base)
+	if err != nil {
+		t.Fatalf("validatePath(\"link/newfile.txt\", base) error = %v, want nil (target resolves inside base)", err)
+	}
+	want := filepath.Join(realDir, "newfile.txt")
+	if got != want {
+		t.Errorf("validatePath() = %q, want %q", got, want)
 	}
 }

@@ -67,6 +67,16 @@ func NewManager(dir string) (*Manager, error) {
 	return m, nil
 }
 
+// newSession creates a session in memory only — deliberately NOT persisted
+// to disk here. Every caller used to save immediately on creation, so a chat
+// that was opened and abandoned with zero messages (e.g. the CLI's
+// startFreshChat, called unconditionally on every `memo` launch since
+// 2026-07-12, or the GUI's "+ New Chat" button clicked and never used)
+// still left a permanent, empty "Agent Chat"/"New Chat" entry cluttering
+// every future chat list. AddMessage's own save (below) is what actually
+// commits a session to disk, the first time it receives real content — an
+// unused chat now simply vanishes if the process exits/restarts before
+// that happens, instead of persisting forever with nothing in it.
 func (m *Manager) newSession(title string) *Session {
 	now := time.Now().Format("2006-01-02 15:04")
 	s := &Session{
@@ -77,13 +87,8 @@ func (m *Manager) newSession(title string) *Session {
 		Messages:  []ChatMessage{},
 	}
 	m.sessions[s.ID] = s
-	if err := m.save(s); err != nil {
-		logx.Printf("sessions: save new session %s: %v", s.ID, err)
-	}
 	return s
 }
-
-
 
 func (m *Manager) NewChat() string {
 	m.mu.Lock()
@@ -98,9 +103,6 @@ func (m *Manager) NewAgentChat(projectPath string) string {
 	defer m.mu.Unlock()
 	s := m.newSession("Agent Chat")
 	s.ProjectPath = projectPath
-	if err := m.save(s); err != nil {
-		logx.Printf("sessions: save agent chat project path %s: %v", s.ID, err)
-	}
 	m.active = s.ID
 	return s.ID
 }

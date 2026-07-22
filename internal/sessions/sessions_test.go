@@ -26,6 +26,9 @@ func TestNewManagerLoadsExistingSessions(t *testing.T) {
 	if err != nil {
 		t.Fatalf("NewManager() error = %v", err)
 	}
+	// NewManager's own bootstrap default session never receives a message
+	// and is deliberately never persisted (see newSession's doc comment) —
+	// only the chat created and used below survives a reload.
 	m1.NewChat()
 	m1.AddMessage("user", "hello", "", "")
 
@@ -34,8 +37,39 @@ func TestNewManagerLoadsExistingSessions(t *testing.T) {
 		t.Fatalf("reload NewManager() error = %v", err)
 	}
 	chats := m2.ListChats()
-	if len(chats) != 2 {
-		t.Fatalf("len(chats) = %d, want 2", len(chats))
+	if len(chats) != 1 {
+		t.Fatalf("len(chats) = %d, want 1 (the empty bootstrap default must not survive a reload, only the chat with a real message)", len(chats))
+	}
+}
+
+// TestEmptyChatsDoNotSurviveReload is the regression test for the "empty
+// Agent Chat / New Chat clutters the sidebar forever" bug: creating chats
+// and never sending a message into them (the CLI's startFreshChat does
+// exactly this on every `memo` launch) used to persist each one to disk
+// immediately on creation, so opening and closing the CLI without ever
+// typing anything still left a permanent, empty entry in every future
+// chat list — indistinguishable from a chat the user actually meant to
+// keep.
+func TestEmptyChatsDoNotSurviveReload(t *testing.T) {
+	dir := t.TempDir()
+	m1, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	m1.NewChat()
+	m1.NewAgentChat("/home/user/project")
+	m1.NewAgentChat("/home/user/other-project")
+	if got := len(m1.ListChats()); got != 4 {
+		t.Fatalf("len(ListChats()) before reload = %d, want 4 (bootstrap default + NewChat + 2 NewAgentChat, all live in memory even though unsaved)", got)
+	}
+
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload NewManager() error = %v", err)
+	}
+	if got := len(m2.ListChats()); got != 1 {
+		t.Fatalf("len(ListChats()) after reload = %d, want 1 (only m2's own fresh bootstrap default — none of m1's empty, message-less chats should have left a file on disk)", got)
 	}
 }
 
@@ -359,7 +393,13 @@ func TestNewAgentChatPersistsProjectPath(t *testing.T) {
 		t.Error("IsAgentChat() should be true for agent chat")
 	}
 
-	// Re-open and verify ProjectPath survived restart
+	// A chat with no messages yet is deliberately NOT persisted (see
+	// newSession's doc comment — this is what stops an opened-and-abandoned
+	// CLI/agent chat from cluttering every future chat list forever), so
+	// ProjectPath must survive a restart only once the chat actually has
+	// content.
+	m.AddMessage("user", "hello", "", "")
+
 	m2, err := NewManager(dir)
 	if err != nil {
 		t.Fatalf("reload NewManager() error = %v", err)
@@ -367,6 +407,31 @@ func TestNewAgentChatPersistsProjectPath(t *testing.T) {
 	got = m2.GetProjectPath(id)
 	if got != projectPath {
 		t.Errorf("after reload GetProjectPath() = %q, want %q", got, projectPath)
+	}
+}
+
+// TestNewAgentChatProjectPathNotPersistedWithoutAMessage is
+// TestNewAgentChatPersistsProjectPath's counterpart, confirming the new
+// deliberate behavior directly: an agent chat that never received a
+// message must NOT reappear after a restart.
+func TestNewAgentChatProjectPathNotPersistedWithoutAMessage(t *testing.T) {
+	dir := t.TempDir()
+	m, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	id := m.NewAgentChat("/home/user/project")
+	if id == "" {
+		t.Fatal("NewAgentChat() returned empty ID")
+	}
+
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("reload NewManager() error = %v", err)
+	}
+	if got := m2.GetProjectPath(id); got != "" {
+		t.Errorf("after reload GetProjectPath() = %q, want empty — a message-less agent chat must not survive a restart", got)
 	}
 }
 

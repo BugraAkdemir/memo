@@ -1,3 +1,116 @@
+# Handoff — 2026-07-22 (Session 52) — TD-1/TD-2 kapatıldı, 11 bug bulunup düzeltildi, provider test kapsamı %16→%63 (kritik Claude bug'ı dahil), CI pre-release mekanizması, govulncheck fix
+
+## Özet
+
+Çok uzun, yoğun bir oturum (~1sa40dk) — kullanıcı özenli/adım-adım ilerlemeyi ve her fix'in kendi regresyon testiyle (fix'ten önce gerçekten fail ettiği kanıtlanarak) doğrulanmasını açıkça istedi. Beş ana iş bloğu:
+
+1. **TD-1 kapatıldı** — routine'lerin donmuş UTC offset'i artık her client (re)connect'inde senkronize ediliyor.
+2. **TD-2'nin cap/eviction yarısı kapatıldı** — pinned facts artık kendi içinde dedup'lanıyor, cap 50→75.
+3. **CI'a checkpoint/pre-release tag mekanizması eklendi** + `v3.2.1` tag'i açılıp push edildi (kullanıcının onayıyla) — üç platformun GitHub pre-release'i yayınlandı.
+4. **5 paralel ajanla derin bug taraması** (`internal/agent`, `internal/orchestra`, `internal/memory`, `internal/whatsapp`, `internal/calendar`; swarm hariç) — 11 bug bulundu (1 CRITICAL, 4 HIGH, 4 MEDIUM, 2 LOW), **hepsi** tek tek, ayrı commit'lerde düzeltildi.
+5. **Backend test kapsamı genişletildi** — `internal/provider` %16→%63.4 (bu sırada **ikinci bir kritik bug** bulundu: Claude her normal sohbet mesajında Anthropic API'sine boş `model` alanı gönderiyordu), `internal/webserver` %28.7→%32.5.
+6. **Güvenlik:** CI'daki `govulncheck` bulgusu (`x/text` GO-2026-5970) + bonus `x/net` (GO-2026-5942) düzeltildi.
+
+**Commit durumu:** Her şey `origin/main`'e push edildi, en son push `78319cd`. **Önemli:** oturumun sonunda `git log` üzerinde bu oturuma ait olmayan, benim yapmadığım bir commit bulundu — `035de36 refactor: remove verbose explanatory comments from chunker.go` — local'de duruyor, **push edilmemiş**, `chunker.go`'daki açıklayıcı yorumları (bazıları bu oturumdaki bug bulgularıyla ilgili rasyonel içeriyordu) siliyor. Kullanıcı ya da başka bir oturum/skill tarafından yapılmış olmalı — ben dokunmadım, sildim/geri almadım, sadece not düşüyorum. Push etmeden önce kullanıcı gözden geçirmeli.
+
+---
+
+## 1. TD-1 — Routine UTC offset artık donmuyor
+
+`Schedule.UTCOffsetMinutes` routine oluşturulduğu anda donuyordu, DST geçişinde/lokasyon değişikliğinde asla güncellenmiyordu. Çözüm: gerçek IANA zone değil, ama pratik bir "self-healing" — backend'e yeni `POST /api/routines/sync-offset` eklendi, Flutter GUI her client (re)connect'inde (`connectionStatusProvider`'ın fresh registration anı) mevcut `DateTime.now().timeZoneOffset`'i gönderiyor, backend tüm routine'lerin offset'ini buna göre güncelliyor.
+
+| Commit | İş |
+|---|---|
+| `18ea65c` | Backend: `routine.Store.SyncUTCOffset`, `App.SyncRoutineUTCOffsets`, `POST /api/routines/sync-offset` + testler |
+| `69a4ae3` | Flutter: `syncRoutineUtcOffset()`, `connectionStatusProvider`'da tetikleme + testler |
+| `52a7b3e` | `BUG_REPORT.md`'de TD-1 kapatıldı işaretlendi |
+
+## 2. TD-2 — Pinned facts artık kendi içinde dedup'lanıyor
+
+`pinnedFactsLimit`'in kendi yorumu yanlıştı: "consolidation zaten dedup'lıyor" diyordu ama `FindMergeCandidates` `source='explicit'`'i (pinned facts) bilerek hariç tutuyordu — yani hiçbir dedup mekanizması yoktu, cap tamamen çıplak recency-truncation'dı.
+
+| Commit | İş |
+|---|---|
+| `a925109` | `pinnedFactsLimit` 50→75 + yeni `FindPinnedMergeCandidates`/`savePinnedMerged`/`runPinnedConsolidation` (pinned facts'e özel, pin durumunu bozmayan consolidation) |
+| `0099910` | AGENTS.md + BUG_REPORT.md güncellendi |
+
+**Kalan (kabul edilmiş, düzeltilmedi):** TD-2'nin inference-contention yarısı — local model kurulumunda `extractAndPinFacts`'in `llama-server`'ın tek slotunu (`--parallel 1`) chat ile paylaşması. Etkisi küçük (sadece hemen ardından gelen bir sonraki mesajı, sadece local model kullanıcılarında), düzeltmenin maliyeti (ya `--parallel 2` bellek/KV-cache ikiye katlanır, ya da ayrı öncelik kuyruğu) faydasından yüksek görüldü, kullanıcı onayıyla bilinçli kabul edildi.
+
+## 3. CI checkpoint/pre-release tag mekanizması + v3.2.1
+
+Kullanıcı arkadaşlarına atmak ve kod geçmişini kaydetmek için `v3.2.1` adında hafif bir checkpoint tag'i istedi — tam `memo-release` skill sürecinden (versiyon bump, changelog, download.bugradev.com) bağımsız.
+
+- `b50f481`: `build-linux/windows/macos.yml`'a `push: tags: ["v*"]` tetikleyicisi + tag-gated bir adım eklendi — `softprops/action-gh-release` ile her platformun zip'ini aynı GitHub pre-release'e ekliyor (found-or-created by tag name).
+- `81f003c`: AGENTS.md'ye bu mekanizma + **kesin kural**: kullanıcı açıkça istemeden bir `v*` tag'i asla push edilmeyecek.
+- `v3.2.1` tag'i kullanıcının onayıyla push edildi, üç platformun CI build'i izlendi, tamamlanınca https://github.com/BugraAkdemir/memo/releases/tag/v3.2.1 kısa bir İngilizce checkpoint notuyla güncellendi.
+- Not: binary'nin gömülü versiyonu hâlâ 3.3.3 (ayrı, henüz yayınlanmamış asıl sürüm) — tag adı kasıtlı olarak bununla eşleşmiyor.
+
+## 4. Derin bug taraması — 11 bug bulundu, hepsi düzeltildi
+
+Kullanıcı `/code-review`'u bu amaç için çağırdı ama komut diff-tabanlı olduğu için (burada diff yok, mevcut kodun taranması isteniyordu) 5 paralel genel-amaçlı ajana uyarlandı — her biri kendi paketini `codebase-memory-mcp` ile gezip (1) gerçek mantık bug'ları ve (2) bugünkü oturumda zaten bir kez bulunan sınıf — "yorum/log mesajı kod'un gerçekte yapmadığı bir garanti iddia ediyor" — deseni için tarandı. Her bulgu ajan raporundan sonra elle koda bakılarak doğrulandı, sonra tek tek düzeltildi:
+
+| Bug | Commit | Özet |
+|---|---|---|
+| **BUG-C1** (kritik) | `311e5de` | `internal/agent/tools/file.go`'daki `validatePath`, proje içindeki bir symlink + henüz var olmayan hedef dosya kombinasyonuyla sandbox dışına yazmaya izin veriyordu (`EvalSymlinks`'in `IsNotExist` durumunda ham path'e düşmesi, ara symlink'i hiç çözümlemeden). Yeni `resolveExistingAncestor` yardımcı fonksiyonu her iki dosyada da (file.go + command.go) kullanılıyor. |
+| **BUG-H3/H4** | `c9fae03` | Orchestra fallback zinciri fallback provider'ın kendi modelini, başarısız olan provider'ın model adıyla eziyordu (vendor-özel model ID'leri yanlış API'ye gidiyordu) + chief (plan/sentez) çağrıları fallback zincirine hiç girmiyordu. Yeni `chiefProviderCandidates`/`chiefAttempt`/`runChiefWithFallback` ile refactor edildi. |
+| **BUG-H5** | `971c9e9` | `vecSearch`/`goSearch`/`ftsSearch` hiçbiri `pending_deletion` filtrelemiyordu — consolidation'la birleşen orijinal kayıtlar RAG'da 187 güne kadar duplicate olarak çıkmaya devam ediyordu. `vecSearch`'te sqlite-vec'in kırılgan KNN sorgu şeklini bozmadan (WHERE'e dokunmadan, sadece SELECT'e ekleyip Go tarafında filtrelenerek) düzeltildi. |
+| **BUG-H6** | `a45a53e` | Canlı WhatsApp mesaj işleyicisi (`handleMessage`) sadece conversation/extended-text'e bakıyordu — resim/video/döküman caption'lı mesajlar sessizce kayboluyordu. Paketin kendi `extractText` yardımcısı (sadece history-sync kullanıyordu) artık canlı yolda da kullanılıyor. |
+| **BUG-M4** | `a28cb06` | WhatsApp `ChatSummary.Unread` aslında ömür boyu alınan mesaj sayısıydı, okundu/okunmadı takibi hiç yoktu — agent tool'a da bu yanlış isimle gidiyordu. `TotalReceived`'a yeniden adlandırıldı (backend+Flutter, JSON key dahil). |
+| **BUG-M5** | `a5119d0` | Giden WhatsApp mesajının yerel `SaveMessage` hatası sessizce yutuluyordu (`_ = ...`), gelen mesaj tarafı logluyordu. Artık loglanıyor. |
+| **BUG-M6** | `0739234` | Agent mesaj budaması (`TruncateMessages`) assistant+tool_call gruplarını bozabiliyordu — bütçe kesimi bir grubun ortasına düşerse önceki assistant mesajı olmayan bir "tool" mesajı kalabiliyordu (geçersiz API dizisi). Kesim noktası artık en yakın assistant mesajına kadar geri kayıyor. |
+| **BUG-M7** | `4499976` | `calendar.ReminderLoop.Start` ve `routine.RoutineLoop.Start`, `time.NewTicker`'ın ilk tick'ini ~60sn beklediği için uygulama açıldıktan sonraki ilk dakikadaki hatırlatıcıları kalıcı olarak kaçırabiliyordu (calendar'da `ClaimPendingReminders`'ın dışlayıcı/artan alt sınırı yüzünden kalıcı kayıp; routine'de sadece gecikme). İkisi de artık `Start()`'ta hemen bir ilk tick atıyor. |
+| **BUG-L2** | `0752ba5` | Tehlikeli komut path-koruması, `--file=/etc/passwd` gibi `=`'lı argümanları yakalayamıyordu (raw token `/etc` altında değilmiş gibi görünüyordu). `=`'den sonraki kısım da path adayı olarak çıkarılıyor artık. |
+| **BUG-L3** | `780064a` | Orchestra'da stream-ortası hatalar (`chunk.Error`) komşu iki hata yolunun aksine (stream-açma hatası, non-streaming hata) retry/fallback'e hiç girmiyordu. Artık giriyor. |
+
+`4f30ccc`/`d97f47e`: `BUG_REPORT.md`'ye bulgular kaydedildi, sonra hepsi kapatıldı olarak işaretlendi. Şu an `BUG_REPORT.md`'de sadece TD-2'nin inference-contention yarısı açık.
+
+## 5. Backend test kapsamı genişletildi + ikinci kritik bug
+
+Kullanıcı "backend'de eksik/yarım/olmayan testler var mı" diye sordu. Coverage taraması + kod okuması sonucunda en zayıf/en yüksek riskli alan olarak `internal/provider` (9 vendor implementasyonunun **hiçbirinin** kendine özel testi yoktu, sadece paylaşılan mantık test ediliyordu) belirlendi ve test yazılırken **ikinci bir kritik, canlı bug** bulundu:
+
+| Commit | İş |
+|---|---|
+| `912097b` | `openai_test.go` — `openAIProvider`'ın request/response/SSE mantığı (6 diğer vendor'ın (grok/groq/ollama/llama.cpp/opencode-zen/opencode-go/openrouter) da paylaştığı ortak kod). %16→%28.2. |
+| **`fd6fdd2`** | **KRİTİK BUG:** `claude.go`'da `ChatCompletion`/`ChatCompletionStream`, `ChatRequest.Model` boşsa provider'ın configured modeline düşen bir fallback hesaplıyordu ama hiç kullanmıyordu — `buildClaudeRequest` doğrudan `req.Model`'i okuyordu. `internal/app/llm.go`'daki **ana, normal sohbet streaming yolu** `Model`'i hiç set etmiyor — yani **Claude aktif provider'ken her normal sohbet mesajı Anthropic API'sine boş `"model": ""` gönderiyordu.** Gemini'de aynı fallback deseni var ama URL'de doğru kullanılıyor (bug yok); sadece Claude etkilenmişti. Düzeltme: `buildClaudeRequest` artık çözümlenmiş model'i parametre olarak alıyor. + genel claude.go test kapsamı. %28.2→%41.0. |
+| `f615cdc` | `gemini_test.go` — URL-tabanlı model + SSE mantığı, Gemini'nin bu bug'dan etkilenmediği doğrulandı. %41.0→%53.4. |
+| `3ac596e` | `factory_test.go` — `NewProvider`'ın dispatch switch'i (10 tip) + `DefaultBaseURL` tablosu + 6 ince-sarmalayıcının default URL'leri + `groq.go`'nun kendine özel `ListModels`'i. %53.4→%63.4. |
+| `08c0d2f` | `BUG_REPORT.md`'ye Claude bug'ı kaydedildi. |
+| `9328bcb` | `handlers_calendar_mood_test.go` — `internal/webserver`'da `handlers_calendar.go`/`handlers_mood.go`'nun gerçek bridge davranışı (önceden sadece nil-bridge 501/404 testliydi, `nil_fullbridge_test.go`'nun kendi yorumu "%0 coverage" diyordu). %28.7→%32.5. |
+
+**Genişletilemeyen (gerçek altyapı eksikliği, mock yetmiyor, refactor gerekir):**
+- `internal/webserver/handlers_oauth.go` — openrouter.ai'ye hardcoded URL ile gerçek network çağrısı yapıyor, inject edilebilir client/URL yok.
+- `internal/webserver/handlers_proactive.go` — tam `FullBridge` arayüzünü (~30+ metod) mock'lamayı gerektiriyor, düşük getiri/efor oranı.
+- `internal/cloudsync/drive.go` — Google Drive OAuth/API entegrasyonu, %0 coverage, gerçek network/OAuth gerektiriyor.
+- `hardwareID()` (`internal/cloudsync/crypto.go`) — OS-özel komutlara/dosyalara doğrudan bağımlı, inject edilebilir seam yok.
+
+## 6. Güvenlik: govulncheck dependency fix
+
+Kullanıcı CI'dan gelen `govulncheck` hata çıktısını yapıştırdı: `golang.org/x/text` v0.37.0'da GO-2026-5970 (norm paketinde sonsuz döngü), `whatsapp.Client.GetProfilePicture` üzerinden kod tarafından gerçekten çağrılıyor (CI'ı kırıyor).
+
+`78319cd`: `x/text` v0.37.0→v0.39.0 (zorunlu fix) + `x/net` v0.55.0→v0.56.0 (GO-2026-5942, bedava iyileştirme, aynı anda). `go mod tidy` transitively `x/crypto`/`x/sync`/`x/sys`/`x/term` küçük sürüm bump'ları getirdi. Üçüncü bulgu `GO-2026-5932` (`x/crypto/openpgp`, "unmaintained/unsafe by design") **düzeltilemez** (fix versiyonu yok) ama `govulncheck`'in kendisi kodun bunu hiç çağırmadığını söylüyor (tailscale'in bağımlılık ağacından geliyor, kullanılmıyor) — yapılacak bir şey yok.
+
+Yerel olarak `govulncheck` kurulup doğrulandı: önce CI'daki hatayı birebir üretti, fix sonrası "0 code-reachable, 0 package-level" gösterdi.
+
+---
+
+## Doğrulama
+
+Her commit'ten önce ayrı ayrı: `go build -tags "sqlite_fts5" ./...`, `go vet` (+ `GOOS=windows`/`darwin` cross-check ilgili paketlerde), `go test -tags "sqlite_fts5" -race ./...` — hepsi yeşil. Flutter tarafı değişen her yerde `flutter analyze lib/` (sadece 4 önceden var olan `use_build_context_synchronously` info'su) + `flutter test` (107/107). Her bug fix'i için regresyon testi `git stash` ile fix geçici geri alınıp **gerçekten fail ettiği** kanıtlandıktan sonra commit edildi — bu oturumun baştan sona takip ettiği disiplin.
+
+## Sıradaki oturum için
+
+1. **`035de36` unpushed commit'i gözden geçirilmeli** — bu oturuma ait değil, `chunker.go`'daki açıklayıcı yorumları siliyor, push edilmemiş durumda. Kullanıcı karar vermeli: push mü, geri mi alınsın, yoksa böyle mi kalsın.
+2. **TD-2'nin inference-contention yarısı** hâlâ açık, bilinçli kabul edildi — local model + `extractAndPinFacts` çakışması.
+3. **Test kapsamı genişletilebilecek ama refactor gerektiren alanlar** (yukarıda #5'te detaylı): `handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()` — hepsi gerçek network/OS bağımlılığı yüzünden mock'la değil, injectable client/interface refactor'ıyla test edilebilir hale gelir.
+4. **Commit granülerliği kuralı netleşti bu oturumda** (bkz. `feedback_memo_commit_rules` belleği): risk bazlı ayrım — bağımsız davranış riski taşıyan değişiklikler ayrı commit, salt-katkı (test/doküman/format) değişiklikler tek commit'te toplanabilir. Dosya sayısı veya "kritik dizin" diye statik bir kural yok.
+5. `v3.2.1` GitHub pre-release'i hâlâ yayında (https://github.com/BugraAkdemir/memo/releases/tag/v3.2.1) — asıl `v3.3.3` sürümü henüz yayınlanmadı, ayrı ele alınacak.
+
+## Branch
+
+`main`, `origin/main`'e `78319cd`'ye kadar push edildi. `035de36` local'de duruyor, **push edilmedi** (yukarıya bakın).
+
+---
+
 # Handoff — 2026-07-21 (Session 51) — Flutter L10n borcu kapatıldı
 
 ## Özet

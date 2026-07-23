@@ -1,3 +1,45 @@
+# Handoff — 2026-07-23 (Session 53) — v3.3.3'ün ilk gerçek yayını (memo-release skill)
+
+## Özet
+
+Kullanıcı, biriken çalışmayı (Swarm, Routines, proaktif öğrenme, self-insight, Model Store iyileştirmeleri, CLI'nin ikinci tasarım turu, kritik Claude bug'ı, govulncheck güvenlik düzeltmesi...) gerçek kullanıcılara ulaştırmaya karar verdi — testerlar stabil bildirdi, bilinen açık bug yok. `memo-release` skill'i ile v3.3.3'ü **ilk kez gerçek bir sürüm olarak** (önceki sadece `v3.2.1` hafif checkpoint tag'iydi) yayına hazırladık.
+
+**Öncesinde yapılan iş:** `versinNote/v3.3.3.md` taslağı `v3.1.2.md` ile ve `git log v3.1.2..HEAD` (484 commit) ile karşılaştırıldı — taslakta hiç olmayan büyük parçalar bulundu: Routines (zamanlanmış otomasyonlar), proaktif öğrenme + ortamsal hatırlatmalar, self-insight (`/insight`), Model Store/Discover iyileştirmeleri (donanım-bazlı öneri, eşzamanlı indirme, gerçek yetenek tespiti, filtre yeniden tasarımı), CLI'nin ikinci cila turu (bronz palet, mascot, @ dosya bahsi, `/update`, `--kill`/`--help`/`--version` vb. bağımsız komutlar, SIGHUP/whisper orphan düzeltmesi), kritik Claude boş-`model`-alanı bug'ı, symlink sandbox-escape düzeltmesi, govulncheck bağımlılık düzeltmesi, ve birkaç küçük kullanıcı-görünür düzeltme (WhatsApp altyazılı medya kaybı, takvim/rutin ilk-dakika kaçırması, birleştirilmiş hafızanın tekrar çıkması, boş sohbet kaydı, mobil L10n). Hem İngilizce hem Türkçe sürüm notlarına eklendi (`3e2af0b`).
+
+## Yapılan işlemler (memo-release skill, Faz 1-3)
+
+| Faz | Commit | İş |
+|---|---|---|
+| 1 — versiyon bump | `d64e61c` | `installer.iss`'in `MyAppVersion`'ı ve her iki README'nin versiyon rozeti + changelog linki 3.1.2'den 3.3.3'e güncellendi (`version` dosyası ve Obsidian dokümanları daha önceki bir oturumda zaten 3.3.3'e bumplanmıştı, henüz yayınlanmamıştı) |
+| 2 — sürüm notları | `3e2af0b` | Yukarıdaki eksik bölümler EN+TR sürüm notlarına eklendi |
+| 3 — build | — | `go build/vet/test -race` ve `flutter analyze/test` tertemiz (107/107) doğrulandıktan sonra `./build_releases.sh` ile Linux paketi (`Memo-linux-x64-v3.3.3.tar.gz`, motor binary'leri gömülü, 718MB) yerelde üretildi. AppImage adımı bu ortamda GitHub'dan runtime indiremediği için atlandı (deb zaten kapalı) — tar.gz asıl artifact, etkilenmedi. |
+
+## Tag push + CI
+
+Kullanıcının açık onayıyla `v3.3.3` tag'i push edildi (`git tag -a v3.3.3 && git push origin v3.3.3`, ayrıca `main` da push edildi). Üç platformun CI build'i (`Build Linux`/`Build Windows`/`Build macOS`) başarıyla tamamlandı, Session 52'de eklenen checkpoint/pre-release mekanizması otomatik olarak https://github.com/BugraAkdemir/memo/releases/tag/v3.3.3 adresinde bir GitHub pre-release oluşturup üç platformun zip'ini ekledi.
+
+**Önemli netleştirme:** Bu CI zip'leri (`build-linux.yml`'de "Stage files (NO engine binaries!)" diye açıkça yorumlanmış) kasıtlı olarak motor (llama.cpp/vec0) binary'leri içermiyor — bunlar hafif, checkpoint-amaçlı build'ler. Kullanıcı bunun bilinçli/kabul edilmiş bir tasarım olduğunu doğruladı: GitHub release'in kendisi hiçbir zaman motor binary'lerini taşımıyor; gerçek ürün dağıtımı `download.bugradev.com` üzerinden `build_releases.sh`/`.bat`'ın ürettiği, motor binary'lerini gömen tam paketlerle yapılıyor.
+
+## Kalan iş — kullanıcıya bırakıldı (Faz 4, bilinçli olarak dokunulmadı)
+
+Kullanıcı `download.bugradev.com` ve `version-zeta.vercel.app` (version.json beacon) yüklemelerini kendisinin yapacağını, bu kısma karışılmamasını açıkça belirtti (bu ortamda zaten bu servislere hiçbir credential/araç yoktu — kontrol edildi, `vercel` CLI yok, ortam değişkeni yok). Kalanlar:
+
+1. **Windows/macOS tam build'leri** — bu ortamda sadece Linux tam olarak derlenebiliyor (Xcode/Windows makinesi yok). Kullanıcı kendi Windows/Mac makinelerinde `build_releases.bat`/`build_releases.sh` çalıştırıp motor-binary'li tam paketleri üretecek.
+2. **`download.bugradev.com`'a yükleme** — Linux tar.gz zaten hazır (`build_output/dist/Memo-linux-x64-v3.3.3.tar.gz` → `memo.tar.gz` olarak yeniden adlandırılacak), Windows (`Memo-Setup-v3.3.3.exe` → `memo.exe`) ve macOS (`Memo-macos-<arch>-v3.3.3.zip` → `memo-mac.zip`) kullanıcı tarafından üretilip yüklenecek.
+3. **`version.json` beacon'ının en son güncellenmesi** — üç platformun da yüklemesi bittikten sonra, kullanıcı tarafından.
+
+## Doğrulama
+
+`CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" -race ./...` tertemiz. `flutter analyze lib/` sadece 4 önceden var olan `use_build_context_synchronously` info'su (bilinen, değişmedi). `flutter test` 107/107 geçti.
+
+## Sıradaki oturum için
+
+1. Kullanıcı Windows/macOS build'lerini üretip `download.bugradev.com` + `version.json`'u güncelledikten sonra release'i tamamlanmış say.
+2. v3.3.3 gerçek release olarak yayınlandıktan sonra, önceki oturumda önerilen "stable-readiness checklist" konuşması hâlâ gündemde (kalan TD-2 inference-contention yarısı, test kapsamı boşlukları — `handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`).
+3. `v3.2.1` GitHub pre-release'i hâlâ ayrı duruyor (checkpoint amaçlı) — v3.3.3 gerçek release yayınlandıktan sonra kafa karışıklığı olmaması için release listesinde ikisinin de ne anlama geldiği netleştirilebilir.
+
+---
+
 # Handoff — 2026-07-22 (Session 52) — TD-1/TD-2 kapatıldı, 11 bug bulunup düzeltildi, provider test kapsamı %16→%63 (kritik Claude bug'ı dahil), CI pre-release mekanizması, govulncheck fix
 
 ## Özet

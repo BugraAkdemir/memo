@@ -20,6 +20,8 @@ Kullanıcının açık onayıyla `v3.3.3` tag'i push edildi (`git tag -a v3.3.3 
 
 **Önemli netleştirme:** Bu CI zip'leri (`build-linux.yml`'de "Stage files (NO engine binaries!)" diye açıkça yorumlanmış) kasıtlı olarak motor (llama.cpp/vec0) binary'leri içermiyor — bunlar hafif, checkpoint-amaçlı build'ler. Kullanıcı bunun bilinçli/kabul edilmiş bir tasarım olduğunu doğruladı: GitHub release'in kendisi hiçbir zaman motor binary'lerini taşımıyor; gerçek ürün dağıtımı `download.bugradev.com` üzerinden `build_releases.sh`/`.bat`'ın ürettiği, motor binary'lerini gömen tam paketlerle yapılıyor.
 
+**Atlanan adım, kullanıcı fark edince düzeltildi:** Tag push edilince CI'ın `softprops/action-gh-release` adımı GitHub release'i otomatik oluşturdu ama **boş body + `prerelease: true`** ile — sürüm notlarını eklemeyi ve gerçek release olarak işaretlemeyi unuttum. Kullanıcı haklı olarak tepki gösterdi. Düzeltildi: `gh release edit v3.3.3 --notes-file versinNote/v3.3.3.md --prerelease=false --title "Memo v3.3.3 — Open Beta"`. **Ders:** checkpoint/pre-release mekanizması (Session 52) bilinçli olarak boş/prerelease bırakıyor ("notes afterward once at least one job has completed" — AGENTS.md); gerçek bir sürüm için tag push'tan hemen sonra bu iki adımı (notes + prerelease flag) otomatik takip etmek gerekiyor, elle hatırlamaya güvenmemeli.
+
 ## Kalan iş — kullanıcıya bırakıldı (Faz 4, bilinçli olarak dokunulmadı)
 
 Kullanıcı `download.bugradev.com` ve `version-zeta.vercel.app` (version.json beacon) yüklemelerini kendisinin yapacağını, bu kısma karışılmamasını açıkça belirtti (bu ortamda zaten bu servislere hiçbir credential/araç yoktu — kontrol edildi, `vercel` CLI yok, ortam değişkeni yok). Kalanlar:

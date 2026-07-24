@@ -42,7 +42,7 @@ func (a *App) DownloadModel(repoID, filename string, expectedSize int64) error {
 	// Startup()-time auto-start finds nothing) would leave embedding/RAG
 	// dead for the rest of the session even after downloading one, until
 	// the user finds /embedding.
-	go a.autoStartEmbeddingAfterDownload(repoID, filename)
+	goRecover("autoStartEmbeddingAfterDownload", func() { a.autoStartEmbeddingAfterDownload(repoID, filename) })
 	return nil
 }
 
@@ -94,7 +94,7 @@ func (a *App) ImportLocalModel(sourcePath string) error {
 		return err
 	}
 	if a.GetMemoryEnabled() && (a.llamaEmbedServer == nil || !a.llamaEmbedServer.IsRunning()) {
-		go a.autoStartEmbeddingModel()
+		goRecover("autoStartEmbeddingModel", a.autoStartEmbeddingModel)
 	}
 	return nil
 }

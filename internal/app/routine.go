@@ -31,7 +31,8 @@ func (a *App) initRoutines(ctx context.Context) {
 	a.routineLoop = routine.NewRoutineLoop(st, a.runRoutineGenerate, a.runRoutineDeliver, func(name, data string) {
 		a.emitEvent(name, data)
 	})
-	go a.routineLoop.Start(ctx)
+	loop := a.routineLoop
+	goRecover("routineLoop.Start", func() { loop.Start(ctx) })
 	logx.Info("Routine system initialized")
 }
 

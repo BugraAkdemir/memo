@@ -125,7 +125,8 @@ func (a *App) DeleteProvider(pt provider.ProviderType, name ...string) error {
 	a.providerMu.Unlock()
 
 	if hctx != nil {
-		go a.providerRouter.HealthCheck(hctx, 5*time.Minute)
+		router := a.providerRouter
+		goRecover("providerRouter.HealthCheck", func() { router.HealthCheck(hctx, 5*time.Minute) })
 	}
 	return nil
 }

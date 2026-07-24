@@ -183,7 +183,11 @@ func (a *App) StopRecordingAndTranscribe() (string, error) {
 				recStdin = nil
 			}
 			done := make(chan struct{})
-			go func() { recCmd.Wait(); close(done) }()
+			go func() {
+				defer close(done)
+				defer recoverPanic("stopRecordingProcess/recCmd.Wait")
+				recCmd.Wait()
+			}()
 			select {
 			case <-done:
 			case <-time.After(3 * time.Second):

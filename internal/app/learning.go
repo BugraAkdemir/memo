@@ -32,7 +32,8 @@ func (a *App) initLearning(ctx context.Context) {
 		a.calendarRemind = calendar.NewReminderLoop(cs, a.calendarLeadFn, func(name, data string) {
 			a.emitEvent(name, data)
 		})
-		go a.calendarRemind.Start(ctx)
+		remind := a.calendarRemind
+		goRecover("calendarRemind.Start", func() { remind.Start(ctx) })
 		// Wire up the calendar store for the read-only get_calendar_events
 		// agent tool (package-level global, same pattern as WhatsAppClient).
 		tools.CalendarClient = calendarToolAdapter{cs}

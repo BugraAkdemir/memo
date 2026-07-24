@@ -1224,6 +1224,48 @@ func (a *App) providerSwapped(router *provider.Router) bool {
 	return a.providerRouter != router
 }
 
+// beginBackgroundLLMCall derives a cancellable context for a background
+// (non-chat) LLM call — currently only auto fact extraction — and registers
+// its cancel func so a subsequent real chat turn can preempt it via
+// preemptBackgroundLLM. Callers must invoke the returned cleanup func (via
+// defer) once the call finishes, successfully or not.
+func (a *App) beginBackgroundLLMCall(ctx context.Context) (context.Context, func()) {
+	bgCtx, cancel := context.WithCancel(ctx)
+	a.bgLLMMu.Lock()
+	a.bgLLMCtx = bgCtx
+	a.bgLLMCancel = cancel
+	a.bgLLMMu.Unlock()
+	return bgCtx, func() {
+		a.bgLLMMu.Lock()
+		// Only clear the registered call if it's still this one — a newer
+		// background call may have already replaced it, and this cleanup
+		// running late (this call's own goroutine finishing after another
+		// one started) must not cancel or clear that newer call's slot.
+		if a.bgLLMCtx == bgCtx {
+			a.bgLLMCtx = nil
+			a.bgLLMCancel = nil
+		}
+		a.bgLLMMu.Unlock()
+		cancel()
+	}
+}
+
+// preemptBackgroundLLM cancels whatever background LLM call is currently in
+// flight (see beginBackgroundLLMCall), so a real user chat message is never
+// left queued behind one on llama-server's single local-model inference
+// slot (BUG_REPORT TD-2). Cancelling the Go-side context closes the HTTP
+// request to llama-server, aborting that generation rather than letting it
+// run to completion first. Safe to call unconditionally — a no-op if
+// nothing is in flight.
+func (a *App) preemptBackgroundLLM() {
+	a.bgLLMMu.Lock()
+	cancel := a.bgLLMCancel
+	a.bgLLMMu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+}
+
 // localModelHint returns a user-facing suggestion if a local model is running
 // but the active provider failed. Empty string if no hint is applicable.
 func (a *App) localModelHint() string {

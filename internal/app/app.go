@@ -230,8 +230,12 @@ type App struct {
 	// currently in flight — auto fact extraction today. See preemptBackgroundLLM
 	// (llm.go): a real chat message about to hit the local model (which runs
 	// with a single inference slot) preempts this first, instead of queueing
-	// behind it (BUG_REPORT TD-2).
+	// behind it (BUG_REPORT TD-2). bgLLMCtx is kept alongside so a call's own
+	// cleanup can tell whether it's still the one registered (by pointer
+	// identity) before clearing/cancelling — otherwise an older call's
+	// deferred cleanup could clobber a newer, still-running one's cancel func.
 	bgLLMMu     sync.Mutex
+	bgLLMCtx    context.Context
 	bgLLMCancel context.CancelFunc
 
 	clients clientRegistry // see clients.go — tracks attached CLI/GUI clients for auto-shutdown

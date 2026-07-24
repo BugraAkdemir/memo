@@ -346,6 +346,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 		addrLog = "0.0.0.0 (LAN accessible)"
 	}
 	go func() {
+		defer logx.Recover("webserver.Server/HTTP serve")
 		logx.Info("Flutter API server (HTTP) started", "addr", fmt.Sprintf("http://%s:%d", addrLog, port))
 		for _, ip := range s.localIPs {
 			logx.Info("LAN address available", "ip", ip, "port", port)
@@ -800,6 +801,7 @@ func rateLimitMiddleware(stop <-chan struct{}, next http.Handler) http.Handler {
 		cleanEvery = 60 * time.Second
 	)
 	go func() {
+		defer logx.Recover("webserver rate limiter cleanup")
 		ticker := time.NewTicker(cleanEvery)
 		defer ticker.Stop()
 		for {

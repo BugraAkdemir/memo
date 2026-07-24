@@ -1047,18 +1047,18 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 			if sessionID != "" {
 				sm.AddMessageToSession(sessionID, "assistant", reply, "", "", agentEvents...)
 				if len(sm.GetActiveMessagesForSession(sessionID)) == 2 {
-					go a.generateChatTitleForSession(sessionID)
+					goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(sessionID) })
 				}
 			} else {
 				sm.AddMessage("assistant", reply, "", "", agentEvents...)
 				if len(sm.GetActiveMessages()) == 2 {
-					go a.GenerateChatTitle()
+					goRecover("GenerateChatTitle", func() { a.GenerateChatTitle() })
 				}
 			}
 		}
 		a.saveMemoryAsync(userMsg, reply)
 		if a.mood != nil && a.mood.Enabled() {
-			go a.updateMoodAsync(userMsg)
+			goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 		}
 		if meta != nil {
 			// tokenCount is 0 on some branches (agent pipeline doesn't count
@@ -1072,12 +1072,12 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 					statsTps = float64(completionTokens) / duration
 				}
 			}
-			go a.recordUsageEvent(*meta, completionTokens, duration, statsTps)
+			goRecover("recordUsageEvent", func() { a.recordUsageEvent(*meta, completionTokens, duration, statsTps) })
 		}
 		// Captured synchronously here, not inside the goroutine — see
 		// takeNudgedPattern's doc comment for why that ordering matters.
 		if nudged := a.takeNudgedPattern(); nudged != nil {
-			go a.checkAmbientNudgeSurfaced(nudged, reply)
+			goRecover("checkAmbientNudgeSurfaced", func() { a.checkAmbientNudgeSurfaced(nudged, reply) })
 		}
 	} else {
 		a.incognitoMu.Lock()

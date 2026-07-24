@@ -92,7 +92,7 @@ func (a *App) SendMessage(userMsg string) string {
 		return a.handleIncognito(userMsg, "")
 	}
 	a.observerRecorder.RecordMessage(userMsg)
-	go a.processMessageIntent(userMsg, "chat", "", time.Now())
+	goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
 	messages := a.buildMessages(context.Background(), userMsg, nil)
 	sm := a.getSessionManager()
 	if sm != nil {
@@ -105,7 +105,7 @@ func (a *App) SendMessage(userMsg string) string {
 	a.preemptBackgroundLLM()
 	reply := a.callLLM(context.Background(), messages)
 	if a.mood != nil && a.mood.Enabled() {
-		go a.updateMoodAsync(userMsg)
+		goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 	}
 	if sm != nil {
 		sm.AddMessage("assistant", reply, "", "")
@@ -138,6 +138,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		go func() {
 			defer close(out)
 			defer a.streamMu.Unlock()
+			defer recoverPanic("forwardStream")
 			forwardStream(ctx, innerCh, out)
 		}()
 		return out
@@ -150,6 +151,7 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 		out := make(chan api.StreamChunk, 128)
 		go func() {
 			defer close(out)
+			defer recoverPanic("SendMessageStream/web_search")
 			trySend(ctx, out, api.StreamChunk{FinishReason: "status", Content: "web_search"})
 			forwardStream(ctx, a.sendMessageStreamInner(ctx, userMsg), out)
 		}()
@@ -204,7 +206,7 @@ func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, 
 	// so a disabled/off/MinimalMode/incognito setup doesn't pay for a
 	// goroutine spawn and a pending.json read on every single message.
 	if !incog && a.ambientNudgingActive() {
-		go a.checkAmbientNudgeOutcome(userMsg)
+		goRecover("checkAmbientNudgeOutcome", func() { a.checkAmbientNudgeOutcome(userMsg) })
 	}
 
 	var nudge string
@@ -333,7 +335,7 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 // interactive stream — see runAgentRoutine's doc comment.
 func (a *App) sendMessageStreamCore(ctx context.Context, chatID, userMsg string, forceAgent bool) <-chan api.StreamChunk {
 	a.observerRecorder.RecordMessage(userMsg)
-	go a.processMessageIntent(userMsg, "chat", "", time.Now())
+	goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
 
 	sm := a.getSessionManager()
 	messages := a.buildMessagesForSession(ctx, chatID, userMsg, nil)
@@ -375,6 +377,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 		go func() {
 			defer close(out)
 			defer a.streamMu.Unlock()
+			defer recoverPanic("forwardStream")
 			forwardStream(ctx, innerCh, out)
 		}()
 		return out
@@ -445,6 +448,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 		go func() {
 			defer close(out)
 			defer a.streamMu.Unlock()
+			defer recoverPanic("forwardStream")
 			forwardStream(ctx, innerCh, out)
 		}()
 		return out

@@ -5,7 +5,9 @@ import (
 	"context"
 	"log/slog"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestSetLevel(t *testing.T) {
@@ -112,4 +114,64 @@ func TestSetOutput(t *testing.T) {
 	if !strings.Contains(buf.String(), "redirected message") {
 		t.Errorf("output missing redirected message, got: %s", buf.String())
 	}
+}
+
+// syncBuffer is a bytes.Buffer safe for concurrent writes (the goroutine
+// under test) and reads (the polling test goroutine).
+type syncBuffer struct {
+	mu  sync.Mutex
+	buf bytes.Buffer
+}
+
+func (s *syncBuffer) Write(p []byte) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.Write(p)
+}
+
+func (s *syncBuffer) String() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.buf.String()
+}
+
+// TestGoRecover_SwallowsPanicAndLogsIt is a regression test for the panic-
+// recovery audit: a goroutine started via GoRecover must not crash the
+// process, and must log the panic under the given label. Polls instead of
+// synchronizing on a channel closed from inside fn, since that would race
+// against Recover's own defer actually running (fn's own defers unwind
+// before the goroutine closure's, so a channel closed from within fn doesn't
+// guarantee Recover — and therefore the log write — has completed yet).
+func TestGoRecover_SwallowsPanicAndLogsIt(t *testing.T) {
+	oldOutput, oldLevel := currentOutput, currentLevel
+	defer func() { SetOutput(oldOutput); SetLevel(oldLevel) }()
+
+	buf := &syncBuffer{}
+	SetOutput(buf)
+
+	GoRecover("TestGoRecover_SwallowsPanicAndLogsIt", func() {
+		panic("boom") // if this isn't recovered, the test binary itself crashes
+	})
+
+	// Printf's "values" attribute carries the interpolated args (see its own
+	// doc comment/implementation — it doesn't fmt.Sprintf the message text
+	// itself, a separate pre-existing quirk out of scope here), so check for
+	// the label and panic value there rather than in the literal message.
+	deadline := time.Now().Add(2 * time.Second)
+	for time.Now().Before(deadline) {
+		out := buf.String()
+		if strings.Contains(out, "TestGoRecover_SwallowsPanicAndLogsIt") && strings.Contains(out, "boom") {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("expected panic to be logged within timeout, got: %s", buf.String())
+}
+
+// TestRecover_NoopWhenNoPanic ensures a normal (non-panicking) deferred
+// Recover call is a safe no-op.
+func TestRecover_NoopWhenNoPanic(t *testing.T) {
+	func() {
+		defer Recover("TestRecover_NoopWhenNoPanic")
+	}() // must not panic itself
 }

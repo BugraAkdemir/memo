@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"runtime/debug"
 )
 
 // Level represents log severity.
@@ -59,4 +60,29 @@ func ErrorCtx(ctx context.Context, msg string, args ...any) { logger.ErrorContex
 // Use it as a drop-in while migrating: s/log\.Printf/logx.Printf/
 func Printf(format string, v ...interface{}) {
 	logger.Info(format, "values", v)
+}
+
+// Recover logs and swallows a panic in a background goroutine. An
+// unrecovered panic in ANY goroutine — not just main's — crashes the entire
+// process; Go gives no free recover for a goroutine spawned with a bare
+// `go`, unlike net/http's per-request handler goroutines. Call as
+// `defer logx.Recover("label")` as the first deferred statement in any
+// long-running or fire-and-forget goroutine. label identifies which
+// goroutine panicked in the log.
+func Recover(label string) {
+	if r := recover(); r != nil {
+		Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+	}
+}
+
+// GoRecover starts fn in a new goroutine with Recover deferred around it, so
+// a panic anywhere in fn's call chain is logged and swallowed instead of
+// crashing the whole process. Use instead of a bare `go fn()` for any
+// goroutine that isn't already its own `go func() { defer logx.Recover(...); ... }()`
+// closure.
+func GoRecover(label string, fn func()) {
+	go func() {
+		defer Recover(label)
+		fn()
+	}()
 }

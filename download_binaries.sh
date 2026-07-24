@@ -40,6 +40,9 @@ curl -L "$BASE_URL/llama-$VERSION-bin-win-vulkan-x64.zip" -o windows_amd.zip
 unzip -o windows_amd.zip -d binaries/windows/amd/
 rm windows_amd.zip
 
+echo "Downloading Visual C++ Redistributable (msvcp140.dll etc.)..."
+curl -L "https://aka.ms/vs/17/release/vc_redist.x64.exe" -o binaries/windows/vc_redist.x64.exe
+
 echo ""
 echo "✅ All binaries downloaded and extracted successfully!"
 ls -R binaries/

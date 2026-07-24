@@ -72,6 +72,11 @@ Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\launch.vbs"; WorkingDir: "
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\launch.vbs"; WorkingDir: "{app}"; Tasks: desktopicon; IconFilename: "{app}\memo_flutter.exe"
 
 [Run]
+; memo_flutter.exe needs the VC++ runtime (msvcp140.dll etc.), which a clean
+; Windows install doesn't ship with. /install /quiet /norestart is safe to
+; run every time — it's a no-op if an equal-or-newer runtime is already
+; present, and won't prompt or reboot the machine.
+Filename: "{app}\binaries\windows\vc_redist.x64.exe"; Parameters: "/install /quiet /norestart"; StatusMsg: "Installing Visual C++ Runtime..."; Flags: waituntilterminated skipifdoesntexist
 Filename: "{app}\launch.vbs"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent shellexec; WorkingDir: "{app}"
 
 [Registry]

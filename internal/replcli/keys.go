@@ -2,6 +2,7 @@ package replcli
 
 import (
 	"io"
+	"memo/internal/logx"
 	"strings"
 	"time"
 	"unicode/utf8"
@@ -65,6 +66,7 @@ type keySource struct {
 func newKeySource(r io.Reader) *keySource {
 	k := &keySource{ch: make(chan byte, 256), escWait: 50 * time.Millisecond}
 	go func() {
+		defer logx.Recover("replcli.keySource reader")
 		buf := make([]byte, 256)
 		for {
 			n, err := r.Read(buf)
@@ -345,6 +347,7 @@ func (k *keySource) watchInterrupt(onInterrupt func()) *interruptWatch {
 	w := &interruptWatch{stop: make(chan struct{}), done: make(chan struct{})}
 	go func() {
 		defer close(w.done)
+		defer logx.Recover("replcli.keySource.watchInterrupt")
 		for {
 			select {
 			case <-w.stop:

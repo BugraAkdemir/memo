@@ -120,6 +120,7 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	t.lastErr = ""
 
 	go func() {
+		defer logx.Recover("tunnel.Tailscale serve")
 		if err := http.Serve(ln, proxy); err != nil {
 			t.mu.Lock()
 			if t.running {

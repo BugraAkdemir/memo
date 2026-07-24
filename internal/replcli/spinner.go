@@ -3,6 +3,7 @@ package replcli
 import (
 	"fmt"
 	"io"
+	"memo/internal/logx"
 	"sync"
 	"time"
 )
@@ -26,6 +27,7 @@ func newSpinner(out io.Writer) *spinner {
 	s := &spinner{out: out, stopCh: make(chan struct{}), doneCh: make(chan struct{})}
 	go func() {
 		defer close(s.doneCh)
+		defer logx.Recover("replcli.spinner")
 		ticker := time.NewTicker(80 * time.Millisecond)
 		defer ticker.Stop()
 		i := 0

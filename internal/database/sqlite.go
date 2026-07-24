@@ -130,27 +130,33 @@ func buildDSN(path string) string {
 
 func (db *DB) writeLoop() {
 	defer db.wg.Done()
+	// Recovered per-task: this loop serializes every write to this database
+	// (memory, sessions, calendar, ...) for the process's whole lifetime — a
+	// panic in one caller's write func must not permanently wedge every
+	// future write (task.done would then never be delivered, hanging every
+	// waiting caller forever) or silently kill this database's writes for
+	// good.
+	runTask := func(task writeTask) {
+		defer logx.Recover("database.DB.writeLoop")
+		err := db.execWrite(task.ctx, task.fn)
+		select {
+		case task.done <- err:
+		default:
+			if err != nil {
+				logx.Printf("database: write error dropped (caller gone): %v", err)
+			}
+		}
+	}
 	for {
 		select {
 		case task := <-db.writeCh:
-			err := db.execWrite(task.ctx, task.fn)
-			select {
-			case task.done <- err:
-			default:
-				if err != nil {
-					logx.Printf("database: write error dropped (caller gone): %v", err)
-				}
-			}
+			runTask(task)
 		case <-db.ctx.Done():
 			// Drain queued tasks so Close() callers don't silently lose writes.
 			for {
 				select {
 				case task := <-db.writeCh:
-					err := db.execWrite(task.ctx, task.fn)
-					select {
-					case task.done <- err:
-					default:
-					}
+					runTask(task)
 				default:
 					return
 				}

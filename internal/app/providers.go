@@ -70,7 +70,7 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 	a.providerMu.Unlock()
 
 	if hctx != nil {
-		go rt.HealthCheck(hctx, 5*time.Minute)
+		goRecover("providerRouter.HealthCheck", func() { rt.HealthCheck(hctx, 5*time.Minute) })
 	}
 	return nil
 }
@@ -215,7 +215,7 @@ func (a *App) reinitProviderAndOrchestra() {
 	a.providerMu.Unlock()
 
 	if hctx != nil {
-		go newRouter.HealthCheck(hctx, 5*time.Minute)
+		goRecover("providerRouter.HealthCheck", func() { newRouter.HealthCheck(hctx, 5*time.Minute) })
 	}
 	logx.Printf("provider/orchestra config reloaded (%d enabled provider(s), orchestra enabled=%v)", len(configs), orchestraCfg.Enabled)
 }

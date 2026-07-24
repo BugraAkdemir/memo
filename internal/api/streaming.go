@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"memo/internal/logx"
 	"strings"
 	"sync"
 )
@@ -54,6 +55,7 @@ func processSSEStream(ctx context.Context, body io.ReadCloser, ch chan<- StreamC
 	watchCtx, watchCancel := context.WithCancel(ctx)
 	defer watchCancel()
 	go func() {
+		defer logx.Recover("api.processSSEStream watcher")
 		<-watchCtx.Done()
 		closeOnce.Do(func() { body.Close() })
 	}()

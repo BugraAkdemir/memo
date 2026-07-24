@@ -278,6 +278,16 @@ func main() {
 	clientIDCh := make(chan string, 1)
 	replDone := make(chan error, 1)
 	go func() {
+		defer func() {
+			// A panicking replcli.Run would otherwise never send to replDone,
+			// leaving the select below stuck waiting on sigCh only — and the
+			// unrecovered panic would crash the process without giving the
+			// caller a chance to restore the terminal's raw mode first.
+			if r := recover(); r != nil {
+				logx.Printf("PANIC in replcli.Run: %v", r)
+				replDone <- fmt.Errorf("internal error: %v", r)
+			}
+		}()
 		replDone <- replcli.Run(baseURL, cwd, os.Stdin, os.Stdout, ownBackend, func(id string) {
 			clientIDCh <- id
 		})
@@ -364,6 +374,7 @@ func spawnDetachedBackend(port int) error {
 // block the caller and doesn't affect the child's own independent lifetime.
 func reapInBackground(cmd *exec.Cmd) {
 	go func() {
+		defer logx.Recover("reapInBackground")
 		_ = cmd.Wait()
 	}()
 }

@@ -200,8 +200,8 @@ func (c *Client) Start(ctx context.Context) error {
 	}
 
 	// Import contacts and group names without blocking Start().
-	go c.importContacts()
-	go c.importGroups()
+	logx.GoRecover("whatsapp.Client.importContacts", c.importContacts)
+	logx.GoRecover("whatsapp.Client.importGroups", c.importGroups)
 
 	return nil
 }
@@ -482,7 +482,7 @@ func (c *Client) handleEvent(evt interface{}) {
 		default:
 		}
 		if wasStarted {
-			go c.autoReconnect()
+			logx.GoRecover("whatsapp.Client.autoReconnect", c.autoReconnect)
 		}
 	case *waEvent.LoggedOut:
 		logx.Printf("WhatsApp: logged out remotely")
@@ -494,7 +494,7 @@ func (c *Client) handleEvent(evt interface{}) {
 	case *waEvent.StreamReplaced:
 		logx.Printf("WhatsApp: stream replaced")
 	case *waEvent.HistorySync:
-		go c.handleHistorySync(v)
+		logx.GoRecover("whatsapp.Client.handleHistorySync", func() { c.handleHistorySync(v) })
 	case *waEvent.Message:
 		c.handleMessage(v)
 	}

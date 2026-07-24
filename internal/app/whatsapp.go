@@ -64,13 +64,14 @@ func (a *App) initWhatsApp() {
 	tools.WhatsAppClient = waToolAdapter{a.waClient}
 
 	go func() {
+		defer recoverPanic("waClient.Start")
 		if err := a.waClient.Start(a.lifecycleCtx); err != nil {
 			logx.Printf("WhatsApp: auto-connect error: %v", err)
 		}
 	}()
 
 	// Consume incoming messages for intent extraction and observer recording.
-	go a.runWhatsAppIntentLoop(a.lifecycleCtx)
+	goRecover("runWhatsAppIntentLoop", func() { a.runWhatsAppIntentLoop(a.lifecycleCtx) })
 
 	logx.Info("WhatsApp client initialized and connecting...")
 }
@@ -90,12 +91,21 @@ func (a *App) runWhatsAppIntentLoop(ctx context.Context) {
 			if !ok {
 				return
 			}
-			// Record in observer regardless of intent.
-			if a.observerRecorder != nil {
-				a.observerRecorder.RecordWhatsAppMessage(msg.Text, msg.FromMe, msg.Timestamp)
-			}
+			// Recovered per-message: a panic while recording one WhatsApp
+			// message must not permanently kill this loop for the rest of
+			// the process's life — every future WhatsApp message would
+			// silently stop reaching the observer/intent pipeline.
+			func() {
+				defer recoverPanic("runWhatsAppIntentLoop/RecordWhatsAppMessage")
+				// Record in observer regardless of intent.
+				if a.observerRecorder != nil {
+					a.observerRecorder.RecordWhatsAppMessage(msg.Text, msg.FromMe, msg.Timestamp)
+				}
+			}()
 			// Run intent extraction asynchronously so the channel never blocks.
-			go a.processMessageIntent(msg.Text, "whatsapp", msg.SenderName, msg.Timestamp)
+			goRecover("processMessageIntent", func() {
+				a.processMessageIntent(msg.Text, "whatsapp", msg.SenderName, msg.Timestamp)
+			})
 		}
 	}
 }
@@ -262,6 +272,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 	go func() {
 		defer close(outCh)
 		defer a.streamMu.Unlock()
+		defer recoverPanic("WhatsAppChatStream")
 
 		// Prefer delivery over ctx cancellation (BUG-H2). A bare
 		// `select { case ch <- chunk: case <-ctx.Done(): }` drops the
@@ -423,7 +434,7 @@ func (a *App) WhatsAppChatStream(ctx context.Context, userMsg string) <-chan api
 
 		logx.Printf("WhatsApp chat completed in %v (%d chars)", time.Since(start), len(reply))
 		if a.mood != nil && a.mood.Enabled() && userMsg != "" {
-			go a.updateMoodAsync(userMsg)
+			goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
 		}
 	}()
 

@@ -113,7 +113,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 	}
 
 	s.stopCh = make(chan struct{})
-	go s.runImportanceDecay()
+	logx.GoRecover("memory.Store.runImportanceDecay", s.runImportanceDecay)
 
 	return s, nil
 }
@@ -196,10 +196,12 @@ func (s *Store) initSchema() error {
 		).Scan(&ftsMigrated); err != nil || ftsMigrated != "1" {
 			stopCh := s.stopCh
 			go func() {
+				defer logx.Recover("memory.Store/FTS migration")
 				migCtx, migCancel := context.WithTimeout(context.Background(), 60*time.Second)
 				defer migCancel()
 				// Abort early if the store is closed during migration.
 				go func() {
+					defer logx.Recover("memory.Store/FTS migration watchdog")
 					select {
 					case <-stopCh:
 						migCancel()
@@ -245,10 +247,12 @@ func (s *Store) initSchema() error {
 			// through the DB write-loop, so there is no race with live saves.
 			stopCh2 := s.stopCh
 			go func() {
+				defer logx.Recover("memory.Store/vec migration")
 				migCtx, migCancel := context.WithTimeout(context.Background(), 120*time.Second)
 				defer migCancel()
 				// Abort early if the store is closed during migration.
 				go func() {
+					defer logx.Recover("memory.Store/vec migration watchdog")
 					select {
 					case <-stopCh2:
 						migCancel()
@@ -1031,7 +1035,7 @@ func (s *Store) RetrieveContext(ctx context.Context, query string, topK int, min
 		for i, m := range memories {
 			ids[i] = m.ID
 		}
-		go s.incrementRetrieveCounts(ids)
+		logx.GoRecover("memory.Store.incrementRetrieveCounts", func() { s.incrementRetrieveCounts(ids) })
 	}
 
 	logx.Printf("LATENCY memory.retrieve total_ms=%d embed_ms=%d top_k=%d returned=%d vec=%v fts=%v",
@@ -2118,18 +2122,27 @@ func (s *Store) runConsolidationWith(
 }
 
 func (s *Store) runImportanceDecay() {
+	// Recovered per-call, not once around the whole loop: a panic on one
+	// day's pass must not permanently disable stale-memory cleanup and
+	// consolidation for the rest of the process's life (this only runs once
+	// every 24h, so losing the loop silently could go unnoticed a long time).
+	runOnce := func() {
+		defer logx.Recover("memory.Store.runImportanceDecay/applyImportanceRules")
+		s.applyImportanceRules()
+	}
+
 	select {
 	case <-time.After(5 * time.Minute):
 	case <-s.stopCh:
 		return
 	}
-	s.applyImportanceRules()
+	runOnce()
 	ticker := time.NewTicker(24 * time.Hour)
 	defer ticker.Stop()
 	for {
 		select {
 		case <-ticker.C:
-			s.applyImportanceRules()
+			runOnce()
 		case <-s.stopCh:
 			return
 		}

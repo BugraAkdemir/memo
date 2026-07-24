@@ -55,7 +55,16 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 
 func (a *App) memorySaveWorker() {
 	for task := range a.memorySaveCh {
-		a.saveMemorySync(a.lifecycleCtx, task.userMsg, task.reply)
+		// Recovered per-task, not once around the whole loop: a panic while
+		// saving one turn must not permanently kill every future save for
+		// the rest of the process's life (memorySaveCh keeps filling until
+		// full, then silently drops — see saveMemoryAsync). See recoverPanic
+		// (app.go) for why this matters even inside an already-`go`-started
+		// worker.
+		func() {
+			defer recoverPanic("memorySaveWorker/saveMemorySync")
+			a.saveMemorySync(a.lifecycleCtx, task.userMsg, task.reply)
+		}()
 	}
 }
 
@@ -112,7 +121,7 @@ func (a *App) saveMemorySync(ctx context.Context, userMsg, reply string) {
 		// memorySaveWorker is a single goroutine draining every queued save —
 		// blocking it here would back up every other chat's save behind this
 		// one turn's extraction call.
-		go a.extractAndPinFacts(ctx, userMsg)
+		goRecover("extractAndPinFacts", func() { a.extractAndPinFacts(ctx, userMsg) })
 	}
 }
 
@@ -569,7 +578,7 @@ func (a *App) SetMemoryEnabled(enabled bool) error {
 		a.cfg.Memory.EmbeddingModelRepo != "" &&
 		a.cfg.Memory.EmbeddingModelFile != "" &&
 		!a.llamaEmbedServer.IsRunning() {
-		go a.startupEmbeddingModel()
+		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)
 	}
 	return nil
 }

@@ -60,6 +60,75 @@ func TestProviderSwapped(t *testing.T) {
 	}
 }
 
+// TestPreemptBackgroundLLM_CancelsRegisteredCall is a regression test for
+// BUG_REPORT TD-2: a background call (auto fact extraction) must be
+// cancellable so a real chat message never queues behind it on the local
+// model's single inference slot.
+func TestPreemptBackgroundLLM_CancelsRegisteredCall(t *testing.T) {
+	a := &App{}
+
+	bgCtx, done := a.beginBackgroundLLMCall(context.Background())
+	defer done()
+
+	select {
+	case <-bgCtx.Done():
+		t.Fatal("bgCtx already cancelled before preemptBackgroundLLM was called")
+	default:
+	}
+
+	a.preemptBackgroundLLM()
+
+	select {
+	case <-bgCtx.Done():
+	case <-time.After(time.Second):
+		t.Fatal("preemptBackgroundLLM did not cancel the registered background context")
+	}
+}
+
+// TestPreemptBackgroundLLM_NoopWhenNothingRegistered ensures the real chat
+// paths can call preemptBackgroundLLM unconditionally, even when no
+// background call is in flight.
+func TestPreemptBackgroundLLM_NoopWhenNothingRegistered(t *testing.T) {
+	a := &App{}
+	a.preemptBackgroundLLM() // must not panic
+}
+
+// TestBeginBackgroundLLMCall_StaleCleanupDoesNotClobberNewerCall covers the
+// exact race beginBackgroundLLMCall's cleanup guards against: an older
+// background call's deferred cleanup running after a newer one has already
+// registered must not cancel or clear the newer call's slot.
+func TestBeginBackgroundLLMCall_StaleCleanupDoesNotClobberNewerCall(t *testing.T) {
+	a := &App{}
+
+	_, done1 := a.beginBackgroundLLMCall(context.Background())
+	bgCtx2, done2 := a.beginBackgroundLLMCall(context.Background())
+	defer done2()
+
+	// Simulate call 1 finishing after call 2 has already taken the slot.
+	done1()
+
+	select {
+	case <-bgCtx2.Done():
+		t.Fatal("stale done() from an older background call cancelled the newer, still-active one")
+	default:
+	}
+
+	a.bgLLMMu.Lock()
+	registered := a.bgLLMCtx
+	a.bgLLMMu.Unlock()
+	if registered != bgCtx2 {
+		t.Fatal("stale done() from an older background call cleared the newer, still-registered one")
+	}
+
+	// The newer call is still preemptible.
+	a.preemptBackgroundLLM()
+	select {
+	case <-bgCtx2.Done():
+	case <-time.After(time.Second):
+		t.Fatal("preemptBackgroundLLM did not cancel the still-registered newer call")
+	}
+}
+
 // naiveSendOrCancel reproduces the exact pre-fix body of trySend: a single
 // select racing the send against ctx.Done(). This is what every streaming
 // producer in llm.go/chat.go used before this fix.

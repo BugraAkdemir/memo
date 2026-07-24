@@ -226,6 +226,14 @@ type App struct {
 	waMu              sync.Mutex // protects waClient, waMsgStore initialization
 	streamMu          sync.Mutex // prevents concurrent stream goroutines (double-send)
 
+	// bgLLMCancel cancels whatever background (non-chat) local-model call is
+	// currently in flight — auto fact extraction today. See preemptBackgroundLLM
+	// (llm.go): a real chat message about to hit the local model (which runs
+	// with a single inference slot) preempts this first, instead of queueing
+	// behind it (BUG_REPORT TD-2).
+	bgLLMMu     sync.Mutex
+	bgLLMCancel context.CancelFunc
+
 	clients clientRegistry // see clients.go — tracks attached CLI/GUI clients for auto-shutdown
 
 	// Memo Swarm (Beta) — host room + worker rpc-server. See PLAN_memo_swarm.md

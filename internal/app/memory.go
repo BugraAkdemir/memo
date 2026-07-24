@@ -183,11 +183,17 @@ func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 		return
 	}
 
+	// Registered so a subsequent real chat message can preempt this call
+	// before it reaches the local model — see preemptBackgroundLLM (llm.go)
+	// and BUG_REPORT TD-2.
+	bgCtx, done := a.beginBackgroundLLMCall(ctx)
+	defer done()
+
 	msgs := []api.Message{
 		api.NewTextMessage("system", factExtractionSystemPrompt),
 		api.NewTextMessage("user", fmt.Sprintf("User: %s", userMsg)),
 	}
-	reply2 := a.callLLM(ctx, msgs)
+	reply2 := a.callLLM(bgCtx, msgs)
 	if isLLMErrorReply(reply2) {
 		// Best-effort enhancement, not a core save path — log only, never
 		// surface as memory:error (that event means "a message may not be

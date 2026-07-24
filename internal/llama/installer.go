@@ -652,6 +652,7 @@ func (i *Installer) runCmdStream(cmd *exec.Cmd, logger func(string)) error {
 	wg.Add(2)
 	go func() {
 		defer wg.Done()
+		defer logx.Recover("installer/stdout scanner")
 		scanner := bufio.NewScanner(stdoutR)
 		for scanner.Scan() {
 			logger(scanner.Text())
@@ -659,6 +660,7 @@ func (i *Installer) runCmdStream(cmd *exec.Cmd, logger func(string)) error {
 	}()
 	go func() {
 		defer wg.Done()
+		defer logx.Recover("installer/stderr scanner")
 		scanner := bufio.NewScanner(stderrR)
 		for scanner.Scan() {
 			logger(scanner.Text())

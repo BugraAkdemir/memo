@@ -291,7 +291,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 		s.cmd.Process.Pid, s.port, s.gpu.GPULayers)
 
 	// Monitor process in background for unexpected exits
-	go s.monitor()
+	logx.GoRecover("llama.Server.monitor", s.monitor)
 
 	return nil
 }

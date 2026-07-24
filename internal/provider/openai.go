@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/logx"
 	"net/http"
 	"strings"
 	"time"
@@ -260,6 +261,7 @@ func (p *openAIProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 func (p *openAIProvider) processSSE(ctx context.Context, body io.ReadCloser, ch chan<- StreamChunk) {
 	defer body.Close()
 	defer close(ch)
+	defer logx.Recover("openAIProvider.processSSE")
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)

@@ -225,7 +225,7 @@ func (e *Engine) execute(ctx context.Context, d Decision) {
 	e.emit(ps)
 
 	if d.Action == ActionAuto && e.auto != nil {
-		go e.auto(ctx, ps)
+		logx.GoRecover("proactive.Engine.auto", func() { e.auto(ctx, ps) })
 	}
 	logx.Printf("PROACTIVE: %s for pattern %s: %q", d.Action, d.PatternID, truncate.Text(d.Message, 80))
 }

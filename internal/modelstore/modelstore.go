@@ -385,6 +385,7 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 	s.mu.Unlock()
 
 	go func() {
+		defer logx.Recover("modelstore.Store download: " + repoID + "/" + filename)
 		defer func() {
 			s.mu.Lock()
 			if entry.progress.Error == "" {
@@ -392,6 +393,7 @@ func (s *Store) DownloadModel(repoID, filename string, expectedSize int64) error
 				// Drop the entry a little after it finishes so the UI gets a
 				// beat to show "100%" before the download disappears from lists.
 				time.AfterFunc(3*time.Second, func() {
+					defer logx.Recover("modelstore.Store download cleanup")
 					s.mu.Lock()
 					if cur, ok := s.downloads[key]; ok && cur == entry {
 						delete(s.downloads, key)

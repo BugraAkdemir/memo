@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/logx"
 	"net/http"
 	"strings"
 	"time"
@@ -217,6 +218,7 @@ func (p *claudeProvider) ChatCompletionStream(ctx context.Context, req ChatReque
 func (p *claudeProvider) processSSE(ctx context.Context, body io.ReadCloser, ch chan<- StreamChunk) {
 	defer body.Close()
 	defer close(ch)
+	defer logx.Recover("claudeProvider.processSSE")
 
 	scanner := bufio.NewScanner(body)
 	scanner.Buffer(make([]byte, 0, 65536), 10*1024*1024)

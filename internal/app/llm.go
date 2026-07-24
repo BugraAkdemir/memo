@@ -814,6 +814,12 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		return outCh
 	}
 
+	// A real chat message is about to hit the local model, which runs with a
+	// single inference slot — preempt any background call (auto fact
+	// extraction) still occupying it instead of queueing behind it (BUG_REPORT
+	// TD-2).
+	a.preemptBackgroundLLM()
+
 	go func() {
 		defer close(outCh)
 		defer recoverStreamPanic(ctx, outCh, "callLLMStream/local-model")

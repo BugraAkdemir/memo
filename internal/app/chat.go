@@ -98,6 +98,11 @@ func (a *App) SendMessage(userMsg string) string {
 	if sm != nil {
 		sm.AddMessage("user", userMsg, "", "")
 	}
+	// See callLLMStream's identical call (llm.go) for why: this is a real
+	// chat message about to hit the local model's single inference slot,
+	// so preempt any background call (auto fact extraction) still
+	// occupying it (BUG_REPORT TD-2).
+	a.preemptBackgroundLLM()
 	reply := a.callLLM(context.Background(), messages)
 	if a.mood != nil && a.mood.Enabled() {
 		go a.updateMoodAsync(userMsg)
@@ -517,6 +522,8 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		sm.AddMessage("user", userMsg, imagePath, "")
 	}
 
+	// See SendMessage's identical call for why (BUG_REPORT TD-2).
+	a.preemptBackgroundLLM()
 	reply := a.callLLM(context.Background(), msgs)
 
 	if strings.Contains(reply, "image input is not supported") || strings.Contains(reply, "mmproj") {
@@ -562,6 +569,8 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 		sm.AddMessage("user", userMsg, "", filePath)
 	}
 
+	// See SendMessage's identical call for why (BUG_REPORT TD-2).
+	a.preemptBackgroundLLM()
 	reply := a.callLLM(context.Background(), messages)
 
 	if sm != nil {

@@ -172,6 +172,7 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 
 		// Exchange in background so the HTTP response can flush.
 		go func() {
+			defer logx.Recover("cloudsync.driveClient/oauth exchange")
 			defer func() {
 				ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 				defer cancel()
@@ -197,6 +198,7 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 	})
 
 	go func() {
+		defer logx.Recover("cloudsync.driveClient/auth server")
 		if err := srv.Serve(ln); err != nil && err != http.ErrServerClosed {
 			logx.Printf("cloudsync: auth server: %v", err)
 		}
@@ -209,6 +211,7 @@ func (dc *driveClient) StartAuthFlow() (string, error) {
 func (dc *driveClient) WaitForAuth(ctx context.Context) error {
 	done := make(chan struct{}, 1)
 	go func() {
+		defer logx.Recover("cloudsync.driveClient.WaitForAuth")
 		dc.authWg.Wait()
 		done <- struct{}{}
 	}()

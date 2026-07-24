@@ -161,6 +161,7 @@ func (m *Manager) Increment() {
 	m.scheduleMu.Unlock()
 
 	go func() {
+		defer logx.Recover("cloudsync.Manager/runPipeline")
 		defer func() {
 			m.mu.Lock()
 			m.inFlight = false
@@ -192,6 +193,7 @@ func (m *Manager) TriggerNow() {
 	m.scheduleMu.Unlock()
 
 	go func() {
+		defer logx.Recover("cloudsync.Manager.TriggerNow/runPipeline")
 		defer func() {
 			m.mu.Lock()
 			m.inFlight = false
@@ -216,6 +218,7 @@ func (m *Manager) TriggerPullNow() {
 	m.mu.Unlock()
 
 	go func() {
+		defer logx.Recover("cloudsync.Manager.TriggerPullNow/runPullPipeline")
 		defer func() {
 			m.mu.Lock()
 			m.inFlight = false
@@ -240,6 +243,7 @@ func (m *Manager) TriggerFullSyncNow() {
 	m.mu.Unlock()
 
 	go func() {
+		defer logx.Recover("cloudsync.Manager.TriggerFullSyncNow")
 		defer func() {
 			m.mu.Lock()
 			m.inFlight = false

@@ -8,6 +8,7 @@ import (
 	"memo/internal/logx"
 	"os"
 	"path/filepath"
+	"runtime/debug"
 	"strconv"
 	"strings"
 	"sync"
@@ -298,6 +299,34 @@ func (a *App) emitEvent(name string, data ...interface{}) {
 	logx.Printf("event: %s — %s", name, dataStr)
 }
 
+// recoverPanic logs and swallows a panic in a background goroutine. An
+// unrecovered panic in ANY goroutine — not just main's — crashes the entire
+// process (unlike a per-request net/http handler, Go gives no free recover
+// for goroutines spawned with a bare `go`), so every long-running or
+// fire-and-forget goroutine this package starts needs one of these (or
+// recoverStreamPanic, llm.go's streaming-aware counterpart that also signals
+// the error to a listening client) as one of its deferred calls. label
+// identifies which goroutine panicked in the log.
+func recoverPanic(label string) {
+	if r := recover(); r != nil {
+		logx.Printf("PANIC in %s: %v\n%s", label, r, string(debug.Stack()))
+	}
+}
+
+// goRecover starts fn in a new goroutine with recoverPanic deferred around
+// it, so a panic anywhere in fn's call chain — including one that reaches
+// into another package this one calls into (proactive.Engine.Start,
+// routine.RoutineLoop.Start, llama.Server's monitor loop, etc.) — is logged
+// and swallowed instead of crashing the whole process. Use this instead of a
+// bare `go` for any call that isn't already a `go func() { defer
+// recoverPanic(...); ... }()` closure with its own recover.
+func goRecover(label string, fn func()) {
+	go func() {
+		defer recoverPanic(label)
+		fn()
+	}()
+}
+
 // Startup initializes all application subsystems. It must be called once before
 // any other method.
 func (a *App) Startup(ctx context.Context) {
@@ -337,6 +366,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	go func() {
 		defer close(memStoreReady)
+		defer recoverPanic("Startup/memory.NewStore")
 		store, err := memory.NewStore(memory.StoreConfig{
 			Dir:           cfg.Memory.PersistDir,
 			Dimension:     cfg.Memory.EmbeddingDimension,
@@ -397,10 +427,10 @@ func (a *App) Startup(ctx context.Context) {
 	a.observerPatterns = observer.NewPatternStore(config.DataPath("profile", "patterns.json"))
 	a.observerAnalyzer = observer.NewAnalyzer(a.observerStore, a.observerPatterns)
 	if a.observerStore != nil {
-		go a.runObserverAnalysis(a.lifecycleCtx)
+		goRecover("runObserverAnalysis", func() { a.runObserverAnalysis(a.lifecycleCtx) })
 	}
 
-	go a.startClientSweep(a.lifecycleCtx)
+	goRecover("startClientSweep", func() { a.startClientSweep(a.lifecycleCtx) })
 
 	a.proactivePending = proactive.NewPendingStore(config.DataPath("profile", "pending.json"))
 	a.proactiveEngine = proactive.NewEngine(
@@ -411,7 +441,7 @@ func (a *App) Startup(ctx context.Context) {
 		a.proactiveEmit,
 		a.proactiveLevel,
 	)
-	go a.proactiveEngine.Start(a.lifecycleCtx)
+	goRecover("proactiveEngine.Start", func() { a.proactiveEngine.Start(a.lifecycleCtx) })
 
 	a.initLearning(ctx)
 	a.initRoutines(ctx)
@@ -430,6 +460,7 @@ func (a *App) Startup(ctx context.Context) {
 	a.memorySaveWg.Add(1)
 	go func() {
 		defer a.memorySaveWg.Done()
+		defer recoverPanic("memorySaveWorker")
 		a.memorySaveWorker()
 	}()
 
@@ -448,10 +479,10 @@ func (a *App) Startup(ctx context.Context) {
 		}
 	}
 
-	go a.startSTTServer()
+	goRecover("startSTTServer", a.startSTTServer)
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
-		go a.startupEmbeddingModel()
+		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)
 	} else if cfg.Memory.MemoryEnabled {
 		// EmbeddingAutoStart only gates launching a brand-new model process
 		// (a resource/consent decision — may download a model). Reconnecting
@@ -468,6 +499,7 @@ func (a *App) Startup(ctx context.Context) {
 		// banner in particular: shows embedding as on while memory
 		// search/save both silently operate on the wrong client).
 		go func() {
+			defer recoverPanic("reconnectEmbeddingIfAlreadyRunning")
 			<-memStoreReady
 			a.reconnectEmbeddingIfAlreadyRunning()
 		}()
@@ -527,6 +559,7 @@ func (a *App) Startup(ctx context.Context) {
 	// rest of Startup.
 	if a.GetMemoryEnabled() {
 		go func() {
+			defer recoverPanic("Startup/autoStartEmbeddingModel")
 			if !a.llamaEmbedServer.IsRunning() {
 				a.autoStartEmbeddingModel()
 			}
@@ -557,7 +590,7 @@ func (a *App) StartWebServerHTTP(port int) error {
 	// — which always completes and returns *before* this method is even
 	// called (see main.go) — so getWebServer() was always nil and the
 	// auto-start silently never did anything.
-	go a.startupTailscale()
+	goRecover("startupTailscale", a.startupTailscale)
 
 	return nil
 }
@@ -581,6 +614,7 @@ func (a *App) Shutdown(ctx context.Context) {
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
+			defer recoverPanic("Shutdown/shutdownSync")
 			a.shutdownSync(ctx)
 		}()
 
@@ -652,6 +686,7 @@ func (a *App) shutdownSync(ctx context.Context) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
+			defer recoverPanic("shutdownSync/" + name)
 			if err := fn(); err != nil {
 				logx.Printf("%s shutdown: %v", name, err)
 			}

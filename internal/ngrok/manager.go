@@ -84,7 +84,7 @@ func (m *Manager) Start(port int, authtoken string) error {
 		return err
 	}
 
-	go m.monitor()
+	logx.GoRecover("ngrok.Manager.monitor", m.monitor)
 	logx.Printf("[ngrok] Starting tunnel for port %d", port)
 	return nil
 }
@@ -110,7 +110,7 @@ func (m *Manager) startLocked() error {
 	m.cmd = cmd
 	m.running = true
 
-	go m.pollPublicURL()
+	logx.GoRecover("ngrok.Manager.pollPublicURL", m.pollPublicURL)
 	return nil
 }
 

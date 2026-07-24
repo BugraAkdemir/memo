@@ -50,7 +50,7 @@ func (r *Recorder) record(obs Observation) {
 		return
 	}
 	r.startOnce.Do(func() {
-		go r.worker()
+		logx.GoRecover("observer.Recorder.worker", r.worker)
 	})
 	select {
 	case r.recCh <- obs:
@@ -63,9 +63,16 @@ func (r *Recorder) record(obs Observation) {
 // It runs for the lifetime of the Recorder.
 func (r *Recorder) worker() {
 	for obs := range r.recCh {
-		if _, err := r.store.Record(obs); err != nil {
-			logx.Printf("OBSERVER: record (%s): %v", obs.ActivityType, err)
-		}
+		// Recovered per-observation: a panic persisting one observation must
+		// not permanently kill this loop for the rest of the process's
+		// life — every future observation would silently stop being
+		// recorded (same reasoning as internal/app's memorySaveWorker).
+		func() {
+			defer logx.Recover("observer.Recorder.worker/store.Record")
+			if _, err := r.store.Record(obs); err != nil {
+				logx.Printf("OBSERVER: record (%s): %v", obs.ActivityType, err)
+			}
+		}()
 	}
 }
 

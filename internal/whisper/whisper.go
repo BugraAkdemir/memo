@@ -145,7 +145,7 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 
 	logx.Printf("whisper: server started (PID %d, port %d)", s.cmd.Process.Pid, s.port)
 
-	go s.monitor()
+	logx.GoRecover("whisper.Server.monitor", s.monitor)
 
 	return nil
 }

@@ -96,7 +96,7 @@ func (w *RPCWorker) Start(binaryPath string, threads int) error {
 	}
 
 	logx.Printf("swarm: rpc-server started (PID %d, port %d)", w.cmd.Process.Pid, w.port)
-	go w.monitor()
+	logx.GoRecover("swarm.RPCWorker.monitor", w.monitor)
 	return nil
 }
 

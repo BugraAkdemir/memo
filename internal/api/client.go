@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/logx"
 	"mime/multipart"
 	"net/http"
 	"strings"
@@ -136,7 +137,7 @@ func (c *Client) ChatCompletionStream(ctx context.Context, messages []Message, t
 	}
 
 	ch := make(chan StreamChunk, 128)
-	go processSSEStream(ctx, resp.Body, ch)
+	go logx.GoRecover("api.processSSEStream", func() { processSSEStream(ctx, resp.Body, ch) })
 
 	return ch, nil
 }

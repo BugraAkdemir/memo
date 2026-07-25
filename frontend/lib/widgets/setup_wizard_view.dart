@@ -8,7 +8,9 @@ import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
+import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
+import 'provider_config_dialog.dart';
 
 class SetupWizardOverlay extends ConsumerWidget {
   const SetupWizardOverlay({super.key});
@@ -46,6 +48,9 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   bool _modelsOk = false;
   int _localModelCount = 0;
   bool _saving = false;
+
+  bool _providerConfigured = false;
+  String? _activeProviderName;
 
   bool _modelDownloadStarted = false;
   bool _modelDownloadDone = false;
@@ -292,12 +297,60 @@ Limits:
         final models = await ref.read(apiClientProvider).listLocalModels();
         _modelsOk = models.isNotEmpty;
         _localModelCount = models.length;
+        final activeProvider = await ref.read(apiClientProvider).getActiveProvider();
+        _providerConfigured = activeProvider.isNotEmpty;
+        _activeProviderName = activeProvider.isEmpty ? null : activeProvider;
       }
     } catch (_) {
       _backendOk = false;
       _modelsOk = false;
     }
     if (mounted) setState(() => _checking = false);
+  }
+
+  /// Lets the user skip the local-model download entirely and connect an API
+  /// provider instead — the wizard used to only ever offer the local-model
+  /// path, forcing a multi-GB download even for someone who just wants to
+  /// plug in an OpenAI/Gemini/Claude key. Reuses the same dialog Settings →
+  /// Providers uses to add one, then activates whichever provider it created
+  /// (diffed against the pre-dialog list, since the dialog only returns a
+  /// bool) so the wizard's own "ready" state reflects it immediately.
+  Future<void> _connectProvider() async {
+    Set<String> before = {};
+    try {
+      before = (await ref.read(providerListProvider.future)).map((p) => p.name).toSet();
+    } catch (_) {
+      // Fall through — the diff below then treats every provider as "new",
+      // which just means we (re-)activate whichever one comes back first.
+    }
+    if (!mounted) return;
+
+    final added = await showDialog<bool>(
+      context: context,
+      builder: (_) => const ProviderConfigDialog(),
+    );
+    if (added != true || !mounted) return;
+
+    ref.invalidate(providerListProvider);
+    try {
+      final after = await ref.read(providerListProvider.future);
+      final fresh = after.where((p) => !before.contains(p.name));
+      if (fresh.isNotEmpty) {
+        final name = fresh.first.name;
+        await ref.read(apiClientProvider).setActiveProvider(name);
+        ref.read(activeProviderTypeProvider.notifier).setActive(name);
+        if (mounted) {
+          setState(() {
+            _providerConfigured = true;
+            _activeProviderName = name;
+          });
+        }
+      }
+    } catch (_) {
+      // Provider was saved either way (updateProvider already succeeded
+      // inside the dialog) — activation just didn't confirm; the user can
+      // still pick it from the chat top bar's model switcher afterwards.
+    }
   }
 
   Future<void> _downloadRecommendedModels(GPUInfo gpu) async {
@@ -676,6 +729,9 @@ Limits:
                                   downloadDone: _modelDownloadDone,
                                   downloadError: _modelDownloadError,
                                   onDownload: _downloadRecommendedModels,
+                                  providerConfigured: _providerConfigured,
+                                  activeProviderName: _activeProviderName,
+                                  onConnectProvider: _connectProvider,
                                 );
                               },
                             ),
@@ -737,7 +793,13 @@ Limits:
                                     ok: _modelsOk,
                                     color: c,
                                   ),
-                                  if (!_backendOk || !_modelsOk) ...[
+                                  SizedBox(height: 8),
+                                  _DiagRow(
+                                    title: isTurkish ? 'Sohbete Hazır' : 'Ready to Chat',
+                                    ok: _modelsOk || _providerConfigured,
+                                    color: c,
+                                  ),
+                                  if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
                                     SizedBox(height: 12),
                                     Container(
                                       padding: EdgeInsets.all(10),
@@ -949,6 +1011,9 @@ class _ModelRecommendationCard extends StatelessWidget {
   final bool downloadDone;
   final String? downloadError;
   final void Function(GPUInfo gpu) onDownload;
+  final bool providerConfigured;
+  final String? activeProviderName;
+  final VoidCallback onConnectProvider;
 
   const _ModelRecommendationCard({
     required this.color,
@@ -962,11 +1027,88 @@ class _ModelRecommendationCard extends StatelessWidget {
     required this.downloadDone,
     required this.downloadError,
     required this.onDownload,
+    required this.providerConfigured,
+    required this.activeProviderName,
+    required this.onConnectProvider,
   });
 
   @override
   Widget build(BuildContext context) {
-    return _Card(color: color, child: _content());
+    return _Card(
+      color: color,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _content(),
+          if (!checking) ...[
+            SizedBox(height: 14),
+            _providerSection(),
+          ],
+        ],
+      ),
+    );
+  }
+
+  /// Alternative to the local-model download above: connect an API provider
+  /// instead, so setup doesn't force a multi-GB download on someone who
+  /// already has an OpenAI/Gemini/Claude key. Shown regardless of the local
+  /// model state above — a provider is useful even alongside local models.
+  Widget _providerSection() {
+    if (providerConfigured) {
+      return Row(
+        children: [
+          Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              isTurkish
+                  ? 'API sağlayıcı bağlı: ${activeProviderName ?? ''}'
+                  : 'API provider connected: ${activeProviderName ?? ''}',
+              style: TextStyle(fontSize: 12, color: color.textMain),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Divider(color: color.borderSoft)),
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: 10),
+              child: Text(
+                isTurkish ? 'veya' : 'or',
+                style: TextStyle(fontSize: 11, color: color.textDim),
+              ),
+            ),
+            Expanded(child: Divider(color: color.borderSoft)),
+          ],
+        ),
+        SizedBox(height: 10),
+        SizedBox(
+          height: 42,
+          child: OutlinedButton.icon(
+            onPressed: onConnectProvider,
+            icon: Icon(Icons.cloud_outlined, size: 16, color: color.textMain),
+            label: Text(
+              isTurkish ? 'API Sağlayıcı Bağla' : 'Connect an API Provider',
+              style: TextStyle(
+                color: color.textMain,
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+            style: OutlinedButton.styleFrom(
+              side: BorderSide(color: color.borderSoft),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   Widget _content() {

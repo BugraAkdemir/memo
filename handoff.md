@@ -104,7 +104,22 @@ Faz 1'in ilk 3 alt-adımı aynı gün tamamlandı, her biri kendi commit'inde, b
 
 `flutter analyze`/`flutter test` (109/109) tertemiz her adımda. **Görsel doğrulama yapılmadı** — bu ortamda native Linux masaüstü uygulamasını çalıştırıp gözle kontrol edecek bir araç yok (Browser araçları web içeriği için).
 
-**Bu ortamda gerçek Piper binary'si/model dosyası yok** — kod ve testler gerçek subprocess çağrısı olmadan doğrulandı (hata yollarıyla, mock'larla). Gerçek bir sentezin uçtan uca çalıştığı henüz canlı doğrulanmadı — bir sonraki oturumda binary indirilip gerçek bir ses üretilerek doğrulanmalı, ardından Faz 1.5 (VAD araştırması) ile devam edilebilir.
+**Aynı gün, devam: Faz 1.5 ve 1.6 de tamamlandı — Faz 1'in tamamı koda döküldü (prototip seviyesinde).**
+
+**1.5 — VAD kararı** (`2ce517d`): `vad` paketi (pub.dev, `keyur2maru/vad`, MIT) seçildi — Silero VAD'ı FFI/ONNX Runtime ile linux/macos/windows/android/ios/web'de çalıştırıyor, zaten kullandığımız `record` paketine dayanıyor. **Önemli bulgu:** paketin kendi README'si "echo cancellation Windows/Linux'ta yok" diyor — masaüstünde gerçek AEC'nin bizim tasarım kararımız değil, kütüphanenin kendi kısıtı olduğunu doğruluyor.
+
+**1.6 — Live ekranı, uçtan uca bağlama** (`8081b86`/`082fb59`/`f7db00d`/`b4ee989`), **kısmen tamamlandı:**
+- `vad`+`permission_handler` eklendi — `vad`'ın `record: ^6.1.2` gereksinimi mevcut `^5.2.1` ile çakıştığı için `record` 6.2.1'e bumplandı (changelog kontrol edildi, breaking API değişikliği yok).
+- `encodePcm16Wav` — VAD'ın `List<double>` örneklerini WAV'a çeviren saf Dart fonksiyonu.
+- `LiveModeController` — VAD lifecycle'ını sarıyor, her `onSpeechEnd` segmentini WAV'a çevirip mevcut `transcribeAudio`'ya yolluyor. **Kod içinde yüksek sesle işaretlenmiş, çözülmemiş bir bulgu:** `vad` varsayılan olarak Silero modelini `cdn.jsdelivr.net`'ten indiriyor (sadece web'de değil, her platformda) — Memo'nun "hiçbir motor runtime'da internetten inmez" prensibine aykırı. Şimdilik CDN varsayılanında bırakıldı (hâlâ prototip aşaması) ama sessizce kabul edilmedi, hem kodda hem planda hem burada "üretime girmeden önce kapatılmalı" diye işaretli.
+- `LiveScreen` — dinle→transkript→**mevcut chat pipeline'ı** (`messagesProvider.notifier.sendMessage`, `chat_input.dart` ile birebir aynı API, hiç değiştirilmedi)→cevap→**mevcut TTS zinciri**→çal. Ayarlar → Beta Features'tan "Sesli Mod ekranını aç" butonuyla erişiliyor.
+- **Bilinçli olarak eksik bırakılan: barge-in.** `chat_provider.dart`'ın `sendMessage`'ı AGENTS.md'nin kendi Riverpod gotcha'sında belgelenen, üç turlu bir bug geçmişinin üzerine kurulu kırılgan bir mimari (generation counter + cancel token + senkron claim) — bunu gerçek kesme için genişletmek o dosyanın satır satır okunmasını gerektiriyor, bu oturumun hızıyla aceleye getirilmedi. Şu an sadece basit bir `_busy` guard'ı var (meşgulken yeni konuşma atlanıyor). Faz 1.6'nın hâlâ açık yarısı.
+
+Tüm adımlarda `flutter analyze`/`flutter test` (109/109) yeşil, commit'ler küçük/detaylı parçalara bölündü.
+
+**Bu ortamda gerçek Piper/VAD binary'si yok** — hiçbir adım gerçek bir ses üretimi/dinleme ile canlı test edilmedi, sadece kod + testler + analyze doğrulandı. Flutter UI'ı görsel olarak da doğrulanmadı (native masaüstü uygulaması çalıştıracak araç yok bu ortamda).
+
+**Faz 1'in kalan gerçek işleri** (öncelik sırası kullanıcıya bırakıldı): (1) canlı doğrulama — gerçek Piper+VAD ile bir kez uçtan uca çalıştırıp test etmek, (2) barge-in'i tamamlamak, (3) VAD modelini CDN yerine `binaries/`'a gömmek. Bunlardan sonra sırada **Faz 2** (TTS Store + Provider Router) var.
 
 ---
 

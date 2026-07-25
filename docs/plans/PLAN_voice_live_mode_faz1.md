@@ -255,7 +255,46 @@ Ek bağımlılık: `permission_handler` (mikrofon izni için, paketin kendi
 kurulum talimatı). Hem `vad` hem `permission_handler` 1.6'da, gerçek
 wiring ile birlikte eklenecek — 1.5 sadece karar aşaması.
 
-### 1.6 — Live ekranı: uçtan uca bağlama
+### 1.6 — Live ekranı: uçtan uca bağlama — ⚠️ KISMEN TAMAMLANDI (2026-07-25, `8081b86`/`082fb59`/`f7db00d`/`b4ee989`)
+
+**Yapılan:** Tam bir dinle→düşün→konuş döngüsü uçtan uca çalışıyor —
+`LiveModeController` (`vad` paketiyle VAD, `onSpeechEnd` örnekleri
+`encodePcm16Wav` ile WAV'a çevrilip mevcut `transcribeAudio`'ya
+gönderiliyor) → `LiveScreen` bu metni **mevcut chat pipeline'ına**
+(`messagesProvider.notifier.sendMessage`, `chat_input.dart`'ın kullandığı
+aynı API) hiç dokunmadan gönderiyor → `sendMessage`'ın `Future`'ı bitince
+son asistan mesajı state'ten okunuyor → mevcut `synthesizeSpeech` +
+`audioplayers` zinciriyle seslendiriliyor. Ayarlar → Beta Features'tan
+"Sesli Mod ekranını aç" butonuyla erişilebiliyor.
+
+**Bilinçli olarak YAPILMADI, kapsam dışı bırakılmadı — açıkça ertelendi:**
+
+1. **Barge-in (çift yönlü kesme) yok.** Plandaki "TTS çalarken VAD yeni
+   konuşma tespit ederse kes" mekanizması **yazılmadı**. Bunun yerine
+   basit bir `_busy` guard'ı — bir döngü sürerken gelen yeni konuşma
+   sessizce atlanıyor. Gerekçe: `chat_provider.dart`'ın `sendMessage`'ı
+   AGENTS.md'nin kendi "Riverpod gotcha"sında belgelenen, üç turlu bir
+   bug geçmişinin (generation counter + cancel token + senkron claim)
+   üzerine inşa edilmiş, kırılgan bir mimari — bunu gerçek barge-in için
+   güvenle genişletmek, o dosyayı satır satır okuyup anlamayı gerektirir,
+   bu oturumun momentumuyla aceleye getirilecek bir şey değil. **Faz
+   1.6'nın bir sonraki, hâlâ açık alt-adımı.**
+2. **VAD'ın `.onnx` model dosyası hâlâ CDN'den iniyor** (1.5/`live_mode_controller.dart`'ın
+   kendi doc yorumunda detaylı anlatıldı) — `binaries/`'a gömülmedi.
+   Prototip aşamasında kabul edilebilir, **ama gerçek sürüme girmeden
+   önce kesinlikle kapatılması gereken bir madde.**
+3. Cümle-bazlı/streaming TTS yok — tüm cevap bitince tek `synthesizeSpeech`
+   çağrısı (planın "Açık Sorular #3"ünde önerilen ilk, basit yaklaşım).
+
+**Doğrulama:** `flutter analyze lib/` temiz (sadece 4 bilinen info),
+`flutter test` 109/109. **Gerçek Piper/VAD binary'si yok, gerçek bir
+sesli döngü canlı test edilmedi** — sadece kod/analyze/mevcut testler
+doğrulandı. Görsel doğrulama da yapılmadı (bu ortamda native masaüstü
+uygulaması çalıştıracak araç yok).
+
+---
+
+### Eski taslak metin (referans, üstteki gerçek uygulamadan önce yazılmıştı)
 
 Yeni `frontend/lib/screens/live_screen.dart` (ya da benzeri) — VAD segment
 tespit ettikçe klibi mevcut `transcribeAudio`'ya yollar → dönen metni mevcut
@@ -297,19 +336,34 @@ Faz 1'in "Live" modu kulaklık gerektirebilir (kullanıcıya UI'da belirtilir).
 
 ## Durum (2026-07-25)
 
-1.1, 1.2, 1.3, 1.4 tamamlandı ve commit'lendi — backend (Piper subprocess +
-config + `/api/tts/synthesize`) ve Flutter tarafı (client method + audio
-playback + Beta Features'ta gerçek bir "sesi test et" kontrolü) uçtan uca
-kod-seviyesinde doğrulandı. **Gerçek Piper binary'si/model dosyası bu
-ortamda yok** — hem Go hem Flutter tarafı gerçek bir sentez çağrısı
-olmadan test edildi (mock'lar, hata yolları). Flutter UI'ı ayrıca görsel
-olarak da doğrulanmadı (bu ortamda native masaüstü uygulamasını
-çalıştıracak bir araç yok).
+**Faz 1'in tamamı (1.1-1.6) koda döküldü** — VAD ile sürekli dinleme →
+mevcut STT'ye transkripsiyon → mevcut chat/agent pipeline'ına gönderim →
+Piper ile seslendirme → çalma, uçtan uca tek bir ekranda (`LiveScreen`)
+bağlı. Ayarlar → Beta Features'tan erişilebiliyor.
+
+**Faz 1 "tamamlandı" değil, "prototip olarak koda döküldü" — iki gerçek,
+bilinçli olarak açık bırakılmış madde var:**
+1. **Barge-in yok** (yukarıdaki 1.6 notuna bakın) — şu an tek yönlü bile
+   değil, sadece "meşgulken yeni konuşmayı yok say".
+2. **VAD modeli hâlâ CDN'den iniyor**, `binaries/`'a gömülü değil —
+   local-first mimariye aykırı, üretime girmeden önce kapatılmalı.
+
+**Bu ortamda gerçek Piper/VAD binary'si yok** — hiçbir adım gerçek bir
+ses üretimi/dinleme/transkripsiyon ile canlı test edilmedi, sadece kod +
+`go test`/`flutter test`/`flutter analyze` ile doğrulandı. Flutter UI'ı
+görsel olarak da doğrulanmadı.
 
 ## Sıradaki Adım
 
-**1.5 — VAD araştırması + minimal sürekli-yakalama prototipi.** Yukarıdaki
-1.5 bölümüne bakın — açıkça bir araştırma/prototip adımı, üretim kodu
-değil. Bundan önce, kullanıcı isterse: gerçek Piper binary'sini indirip
-1.1-1.4'ün tamamını canlı olarak (gerçek ses üretimi + çalma) doğrulamak
-iyi bir ara checkpoint olur.
+Kullanıcı önceliğine göre üç seçenek var:
+1. **Canlı doğrulama** — gerçek Piper + `vad`'ın gerçek ONNX modelini
+   (şimdilik CDN'den) indirip tüm zinciri (dinle→transkript→cevap→seslen)
+   gerçekten bir kez çalıştırıp doğrulamak.
+2. **Barge-in'i tamamlamak** — `chat_provider.dart`'ın generation-counter/
+   cancel-token mimarisini dikkatle okuyup gerçek kesme mekanizmasını
+   eklemek (1.6'nın kalan yarısı).
+3. **VAD modelini `binaries/`'a gömmek** — `download_binaries.sh`'a yeni
+   bir adım, CDN bağımlılığını kapatmak.
+
+Faz 1 bittikten sonra sırada **Faz 2** (TTS Store + Provider Router) var
+(bkz. üst plan `PLAN_voice_live_mode.md`).

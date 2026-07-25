@@ -15,6 +15,7 @@ import (
 	"golang.org/x/term"
 
 	"memo/internal/api"
+	"memo/internal/logx"
 )
 
 // Run starts the interactive terminal chat loop against the Memo backend at
@@ -103,7 +104,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 		}
 		hbCtx, hbCancel := context.WithCancel(ctx)
 		defer hbCancel()
-		go heartbeatLoop(hbCtx, client, clientID)
+		go logx.GoRecover("replcli.heartbeatLoop", func() { heartbeatLoop(hbCtx, client, clientID) })
 		defer func() {
 			unregCtx, unregCancel := context.WithTimeout(context.Background(), 3*time.Second)
 			defer unregCancel()

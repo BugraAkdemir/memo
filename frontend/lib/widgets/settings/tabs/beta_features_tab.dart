@@ -1,10 +1,10 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../core/tts_playback_error.dart';
+import '../../../core/wav_player.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../screens/live_screen.dart';
@@ -267,7 +267,7 @@ class _LiveModeVoiceTest extends ConsumerStatefulWidget {
 
 class _LiveModeVoiceTestState extends ConsumerState<_LiveModeVoiceTest> {
   final _controller = TextEditingController();
-  final _player = AudioPlayer();
+  final _player = WavPlayer();
   bool _synthesizing = false;
   bool _playing = false;
   String? _error;
@@ -293,8 +293,7 @@ class _LiveModeVoiceTestState extends ConsumerState<_LiveModeVoiceTest> {
         _synthesizing = false;
         _playing = true;
       });
-      await _player.play(BytesSource(audio));
-      await _player.onPlayerComplete.first;
+      await _player.play(audio);
     } catch (e) {
       if (mounted) setState(() => _error = friendlyPlaybackError(e));
     } finally {

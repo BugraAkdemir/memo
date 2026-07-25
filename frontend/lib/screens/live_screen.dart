@@ -1,4 +1,3 @@
-import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -6,6 +5,7 @@ import '../core/l10n.dart';
 import '../core/live_mode_controller.dart';
 import '../core/theme.dart';
 import '../core/tts_playback_error.dart';
+import '../core/wav_player.dart';
 import '../providers/chat_provider.dart';
 
 enum _LiveState { idle, listening, thinking, speaking }
@@ -40,7 +40,7 @@ class LiveScreen extends ConsumerStatefulWidget {
 
 class _LiveScreenState extends ConsumerState<LiveScreen> {
   LiveModeController? _controller;
-  final _player = AudioPlayer();
+  final _player = WavPlayer();
   _LiveState _state = _LiveState.idle;
   String? _lastTranscript;
   String? _lastReply;
@@ -193,8 +193,7 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
         if (mounted) setState(() => _state = _LiveState.speaking);
         final audio = await ref.read(apiClientProvider).synthesizeSpeech(reply);
         if (!mounted) return;
-        await _player.play(BytesSource(audio));
-        await _player.onPlayerComplete.first;
+        await _player.play(audio);
       } catch (e) {
         if (mounted) setState(() => _error = friendlyPlaybackError(e));
       }

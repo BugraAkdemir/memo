@@ -620,6 +620,16 @@ class L10n {
     'live_mode_test_tts_button': 'Seslendir ve çal',
     'live_mode_test_tts_playing': 'Çalınıyor…',
     'live_mode_test_tts_synthesizing': 'Sentezleniyor…',
+    'beta_item_live_mode_open_button': 'Sesli Mod ekranını aç',
+    'live_screen_title': 'Sesli Mod (Live)',
+    'live_screen_state_idle': 'Hazır',
+    'live_screen_state_listening': 'Dinliyor…',
+    'live_screen_state_thinking': 'Düşünüyor…',
+    'live_screen_state_speaking': 'Konuşuyor…',
+    'live_screen_you_said': 'Sen dedin ki',
+    'live_screen_memo_replied': 'Memo cevap verdi',
+    'live_screen_start_button': 'Dinlemeyi başlat',
+    'live_screen_stop_button': 'Dinlemeyi durdur',
     'beta_features_warning':
         'Beta özellikler kırılabilir, veri kaybına veya beklenmedik ağ davranışına yol açabilir. Üretim / kritik kullanım için kapalı tut.',
     'remote_beta_moved_hint':
@@ -1948,6 +1958,16 @@ class L10n {
     'live_mode_test_tts_button': 'Speak',
     'live_mode_test_tts_playing': 'Playing…',
     'live_mode_test_tts_synthesizing': 'Synthesizing…',
+    'beta_item_live_mode_open_button': 'Open Live Mode screen',
+    'live_screen_title': 'Live Mode (Voice)',
+    'live_screen_state_idle': 'Ready',
+    'live_screen_state_listening': 'Listening…',
+    'live_screen_state_thinking': 'Thinking…',
+    'live_screen_state_speaking': 'Speaking…',
+    'live_screen_you_said': 'You said',
+    'live_screen_memo_replied': 'Memo replied',
+    'live_screen_start_button': 'Start listening',
+    'live_screen_stop_button': 'Stop listening',
     'beta_features_warning':
         'Beta features can break, risk data loss, or behave unexpectedly on the network. Keep them off for production / critical use.',
     'remote_beta_moved_hint':

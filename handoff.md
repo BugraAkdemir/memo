@@ -1,3 +1,33 @@
+# Handoff — 2026-07-25 (devam, hızlı model seçici oturumundan sonra) — ProviderConfigDialog'ta "kayıt tepki vermiyor" bug'ı + wizard'da hafıza modeli uyarısı
+
+## Özet
+
+Kullanıcı bir önceki oturumda eklenen sihirbazın "Connect an API Provider" akışını denedi: dialogda Kaydet'e tıklayınca **hiçbir tepki gelmiyordu** ("tepki gelmiyor" — dialog ne kapanıyor ne hata gösteriyordu). Kök nedeni bulundu, düzeltildi; ayrıca kullanıcının ikinci talebi olan "API sağlayıcıyla devam edilse bile hafıza modeli yoksa uyar ve öner" uygulandı.
+
+## 1. `ProviderConfigDialog` "tepki gelmiyor" bug'ı (`1530a4d`)
+
+Kök neden, iki katmanlı:
+1. Dialog'un 3 validasyon guard'ı (boş API key, eksik custom base URL, boş model) `ScaffoldMessenger.of(context)` ile SnackBar gösteriyordu — ama bu dialog modal bir `Dialog`, yani `ScaffoldMessenger.of(context)` yukarı tırmanıp uygulamanın kök `Scaffold`'ına bağlanıyor, o da **modal barrier'ın arkasında** kalıyor. Aynı bug sınıfı `MemoryImportTab` için zaten bir kez düzeltilmişti (AGENTS.md'de dokümante), burada gözden kaçmıştı.
+2. Asıl kayıt `providerListProvider.notifier.updateProvider()` üzerinden gidiyordu — bu metod kendi hatasını yutup `errorMessageProvider`'a yazıyor, fırlatmıyor. Sihirbazdan açıldığında (henüz `ChatScreen` mount olmamışken) o provider'ı dinleyen kimse yok — hata sessizce kayboluyor, dialog "başarılıymış gibi" `pop(true)` ile kapanıyordu (ya da guard'lar yüzünden hiç kapanmıyordu, ikisi de kullanıcıya aynı "hiçbir şey olmadı" izlenimini veriyordu).
+
+Düzeltme: `_save()` artık `apiClientProvider.updateProvider()`'ı doğrudan çağırıyor, hatayı kendi `catch`'inde yakalıyor, dialog içinde kırmızı bir satır banner (`_saveError`) olarak gösteriyor — modal stack'ten bağımsız her zaman görünür. Sadece gerçekten başarılı olursa `pop(true)` çağrılıyor.
+
+## 2. Sihirbazda hafıza modeli uyarısı (`57306de`)
+
+API sağlayıcı bağlandıktan sonra (`_providerSection()`, providerConfigured==true dalı), yerel bir embedding modeli yoksa (`LocalModel.isEmbedding` — `EngineStrip`'in zaten kullandığı aynı sinyal) turuncu bir uyarı kutusu çıkıyor: "Hafıza modeli yok — sohbet çalışır ama Memo geçmişi hatırlamaz" + "Hafıza Modelini İndir" butonu (`recommendedMemoryModel`'i, mevcut `_downloadCurated`/`_waitForDownloadsIdle` makinesiyle indiriyor, sadece hafıza modelini — sohbet modelini değil).
+
+## Doğrulama
+
+`flutter analyze lib/` temiz (sadece önceden var olan 4 info-level `use_build_context_synchronously`), rule #8 grep temiz (`_getPromptText('normal')` satırındaki tek eşleşme önceden var olan false-positive), `flutter test` 114/114 geçti. **Yine canlı UI doğrulaması yapılamadı** — bu ortamda Flutter penceresi ekran görüntüsüne hiç düşmüyor (önceki oturumlarda not edildi), kullanıcının kendi ekranında test etmesi gerekiyor.
+
+## Sıradaki Adım
+
+1. Kullanıcı her iki değişikliği de kendi ekranında test etmeli — özellikle Kaydet butonunun artık gerçekten tepki verdiğini ve hafıza uyarısının doğru göründüğünü doğrulamalı.
+2. `ProviderConfigDialog`'daki diğer SnackBar'lar (test bağlantısı sonucu, model browser hataları, `provider_renamed_on_conflict`) aynı "modal arkasında" riskini taşıyabilir — bu turda kapsam dışı bırakıldı, sadece Kaydet akışı düzeltildi. Şikayet gelirse aynı desenle (inline banner) genişletilebilir.
+3. "Uygulama karışık, basitleştirelim" genel talebi hâlâ açık uçlu — kullanıcı başka spesifik noktalar işaret edebilir.
+
+---
+
 # Handoff — 2026-07-25 (devam, Live Mode'dan sonra) — Sohbet ekranına hızlı model seçici + "model yok" durumunu basitleştirme
 
 ## Özet

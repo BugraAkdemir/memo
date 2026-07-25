@@ -901,6 +901,22 @@ class MemoApiClient {
     return res.data['text'] as String? ?? '';
   }
 
+  // ─── TTS (Voice Live Mode, Faz 1 — see docs/plans/PLAN_voice_live_mode_faz1.md) ──
+
+  /// Synthesizes [text] to WAV-encoded audio bytes via the backend's Piper
+  /// synthesizer (POST /api/tts/synthesize). Mirrors transcribeAudio's shape
+  /// in reverse: raw bytes response instead of raw bytes request, since the
+  /// backend replies with `Content-Type: audio/wav` directly rather than
+  /// base64-in-JSON — see internal/webserver's handleTTSSynthesize doc.
+  Future<Uint8List> synthesizeSpeech(String text) async {
+    final res = await _dio.post(
+      '/api/tts/synthesize',
+      data: {'text': text},
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(_guard<List<int>>(res.data));
+  }
+
   // ─── Image ──────────────────────────────────────────────────────
 
   Future<String> getImageBase64(String path) async {

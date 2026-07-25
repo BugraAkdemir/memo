@@ -1894,6 +1894,7 @@ func (s *Server) handleTTSSynthesize(w http.ResponseWriter, r *http.Request) {
 	}
 	audio, err := s.fullBridge.SynthesizeSpeech(body.Text)
 	if err != nil {
+		logx.Error("Synthesize error", "err", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

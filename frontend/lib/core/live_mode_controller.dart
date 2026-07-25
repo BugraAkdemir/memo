@@ -54,18 +54,28 @@ class LiveModeController {
     final handler = VadHandler.create(isDebug: false);
     _handler = handler;
 
+    // Guard every add() with isClosed: dispose() can run (closing these
+    // controllers) while a segment's transcribeAudio() call from this very
+    // listener is still in flight -- stopListening() only stops new
+    // segments from being captured, it doesn't wait for an
+    // already-fired onSpeechEnd callback's async body to finish. Without
+    // this guard, that in-flight callback's eventual add() throws
+    // "Bad state: Cannot add event after closing" as an unhandled
+    // exception in the stream-subscription callback (found in review).
     handler.onSpeechEnd.listen((samples) async {
       try {
         final wav = encodePcm16Wav(samples);
         final text = await _apiClient.transcribeAudio(wav);
-        if (text.trim().isNotEmpty) {
+        if (text.trim().isNotEmpty && !_transcriptController.isClosed) {
           _transcriptController.add(text);
         }
       } catch (e) {
-        _errorController.add('$e');
+        if (!_errorController.isClosed) _errorController.add('$e');
       }
     });
-    handler.onError.listen((message) => _errorController.add(message));
+    handler.onError.listen((message) {
+      if (!_errorController.isClosed) _errorController.add(message);
+    });
 
     await handler.startListening(baseAssetPath: _vadBaseAssetPath);
   }

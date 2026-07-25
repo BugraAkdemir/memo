@@ -37,11 +37,25 @@ dependencies:
   # SVG rendering (provider logos)
   flutter_svg: ^2.0.10+1
 
-  # Audio recording (voice keyboard)
-  record: ^5.2.1
+  # Audio recording (voice keyboard). Bumped 5.2.1 -> 6.2.1 for Voice Live
+  # Mode (Faz 1.6): the `vad` package below requires record ^6.1.2, which
+  # is incompatible with 5.x's ^5.2.1 constraint. Checked record's own
+  # CHANGELOG before bumping: 6.0.0's changes are internal (broadcast
+  # streams, Linux backend swapped fmedia -> parecord/ffmpeg) with no
+  # breaking changes to the AudioRecorder/hasPermission/start/stop API
+  # recording_provider.dart actually uses.
+  record: ^6.2.1
 
   # Audio playback (Voice Live Mode TTS — Faz 1, docs/plans/PLAN_voice_live_mode_faz1.md)
   audioplayers: ^6.8.1
+
+  # Voice activity detection (Voice Live Mode Faz 1.6) — Silero VAD via
+  # FFI/ONNX Runtime, covers linux/macos/windows/android/ios/web. Already
+  # depends on `record` internally for capture, so no separate audio
+  # capture layer is needed. See docs/plans/PLAN_voice_live_mode_faz1.md's
+  # 1.5 for why this package was picked over alternatives.
+  vad: ^0.0.8
+  permission_handler: ^12.0.3
 
   # Charts (Settings usage-stats tab)
   fl_chart: ^0.68.0

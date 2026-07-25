@@ -96,9 +96,15 @@ Faz 1'in ilk 3 alt-adımı aynı gün tamamlandı, her biri kendi commit'inde, b
 - **1.2** (`4580306`) — `config.TTSConfig` (Whisper'ın eşleniği, ama port/language yok — Piper'da server/kalıcı port kavramı yok) + `App.ttsSynthesizer`/`initTTS()` wiring (`Startup()`'a bağlı, senkron — whisper'ın aksine `goRecover` gerektirmiyor). 7 test.
 - **1.3** (`8a2a6b1`) — `POST /api/tts/synthesize` (`FullBridge`'e `SynthesizeSpeech`, `handleTranscribe`'ın ters yönü — JSON metin girer, ham WAV byte'ı `Content-Type: audio/wav` ile çıkar, base64 yok). `swarmStubBridge` test double'ı yeni metotla güncellendi. 5 test.
 
-**Sıradaki adım (Faz 1.4, henüz başlanmadı):** Flutter TTS çalma altyapısı — önce `pubspec.yaml`'da mevcut ses çalma bağımlılığı var mı kontrol edilmeli, sonra `api_client.dart`'a `synthesizeSpeech(text)` eklenip Ayarlar'da basit bir "sesi test et" checkpoint'i kurulmalı. Detaylar `PLAN_voice_live_mode_faz1.md`'de.
+**Faz 1.4 aynı gün tamamlandı** (kullanıcının açık talebiyle: commit'ler daha küçük/detaylı parçalara bölündü, testler ayrı, en son commit'te):
+- **1.4a** (`cd7cbb3`) — `api_client.dart`'a `synthesizeSpeech(text)`, `ResponseType.bytes` ile ham WAV döndürüyor.
+- **1.4b** (`af509c6`) — `audioplayers: ^6.8.1` bağımlılığı eklendi (pub.dev'den kontrol edilerek: linux/macos/windows/android/ios/web hepsi destekleniyor). `flutter pub get` her platformun plugin registrant dosyalarını da güncelledi (mekanik, aynı commit'te).
+- **1.4c** (`10601a6`) — **Kullanıcının talebiyle: Live Mode, Ayarlar'da Swarm/Tailscale'in zaten yaşadığı Beta Features sekmesine eklendi**, ayrı bir ekran değil. Yeni `_BetaFeatureRow` (Live Mode açıklaması) + `beta == true` iken görünen `_LiveModeVoiceTest` widget'ı — gerçek bir metin kutusu + "seslendir" butonu + `audioplayers` ile çalma. Placeholder değil, 1.1-1.3'ün gerçekten uçtan uca çalıştığını kanıtlayan işlevsel bir kontrol. 6 yeni L10n anahtarı (TR+EN).
+- **1.4d, testler** (`e4720b4`) — `api_client_test.dart`'a `synthesizeSpeech`'in ham-byte round-trip'i için 2 test, yeni `_CapturingBytesAdapter` (bu dosyanın ilk binary-response test yardımcısı). **Not:** `dart format` çalıştırılıp tüm dosyanın yeniden biçimlendiği görüldü (CI'da zorunlu değil) — geri alınıp sadece 65 satırlık gerçek ekleme commit'lendi, ilgisiz satırlara dokunulmadı.
 
-**Bu ortamda gerçek Piper binary'si/model dosyası yok** — kod ve testler gerçek subprocess çağrısı olmadan doğrulandı (hata yollarıyla, mock'larla). Gerçek bir sentezin uçtan uca çalıştığı henüz canlı doğrulanmadı — bir sonraki oturumda binary indirilip gerçek bir ses üretilerek doğrulanmalı.
+`flutter analyze`/`flutter test` (109/109) tertemiz her adımda. **Görsel doğrulama yapılmadı** — bu ortamda native Linux masaüstü uygulamasını çalıştırıp gözle kontrol edecek bir araç yok (Browser araçları web içeriği için).
+
+**Bu ortamda gerçek Piper binary'si/model dosyası yok** — kod ve testler gerçek subprocess çağrısı olmadan doğrulandı (hata yollarıyla, mock'larla). Gerçek bir sentezin uçtan uca çalıştığı henüz canlı doğrulanmadı — bir sonraki oturumda binary indirilip gerçek bir ses üretilerek doğrulanmalı, ardından Faz 1.5 (VAD araştırması) ile devam edilebilir.
 
 ---
 

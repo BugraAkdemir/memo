@@ -187,7 +187,29 @@ butonuyla uçtan uca TTS zinciri (metin → Piper → ses) manuel doğrulanabili
 — bu, 1.4/1.5'in karmaşık gerçek-zamanlı işine girmeden önce TTS'in tek
 başına çalıştığını kanıtlayan ucuz bir checkpoint.
 
-### 1.4 — Flutter: TTS çalma altyapısı (Live ekranından bağımsız, test edilebilir)
+### 1.4 — Flutter: TTS çalma altyapısı (Live ekranından bağımsız, test edilebilir) — ✅ TAMAMLANDI (2026-07-25, `cd7cbb3`/`af509c6`/`10601a6`/`e4720b4`)
+
+Plandan tek gerçek fark: "sesi test et" butonu Ayarlar'da **ayrı bir yer**
+değil, doğrudan mevcut **Beta Features** sekmesine eklendi (kullanıcının
+açık talebiyle — Swarm/Tailscale tünelinin zaten yaşadığı yer). Live Mode
+kendi `_BetaFeatureRow`'unu aldı, hemen altında `beta == true` iken
+render edilen `_LiveModeVoiceTest` widget'ı gerçek bir metin kutusu +
+buton + `audioplayers` ile çalma içeriyor — placeholder değil, 1.1-1.3'ün
+uçtan uca gerçekten çalıştığını kanıtlayan gerçek bir özellik.
+
+4 ayrı commit (kullanıcının "commit'ler daha detaylı/parçalı olsun, test
+en sona" talebiyle): (a) `api_client.dart`'a `synthesizeSpeech`, (b)
+`audioplayers: ^6.8.1` bağımlılığı (pub.dev'den kontrol edilerek seçildi
+— linux/macos/windows/android/ios/web hepsini kapsıyor), (c) Beta
+Features UI + 6 yeni L10n anahtarı (TR+EN), (d) `api_client_test.dart`'a
+`synthesizeSpeech`'in ham-byte round-trip'ini kontrol eden 2 test
+(`_CapturingBytesAdapter`, yeni — bu dosyanın ilk binary-response testi).
+
+`flutter analyze`/`flutter test` (109/109) tertemiz. **Görsel olarak
+doğrulanmadı** — bu ortamda native Linux masaüstü uygulamasını
+çalıştırıp gözle kontrol edecek bir araç yok (Browser araçları web
+içeriği için, GTK masaüstü uygulaması için değil); sadece analyze/test
+ile doğrulandı.
 
 `frontend/lib/core/api_client.dart`'a `synthesizeSpeech(text)` eklenir
 (mevcut `transcribeAudio` deseninin eşleniği). Ses çalma için mevcut audio
@@ -250,15 +272,19 @@ Faz 1'in "Live" modu kulaklık gerektirebilir (kullanıcıya UI'da belirtilir).
 
 ## Durum (2026-07-25)
 
-1.1, 1.2, 1.3 tamamlandı ve commit'lendi — backend tarafı (Piper subprocess
-+ config + `/api/tts/synthesize` endpoint) uçtan uca çalışır durumda
-(gerçek Piper binary'si olmadan test edildi; binary/model dosyaları bu
-ortamda yok, indirilmedi — sadece kod/testler doğrulandı).
+1.1, 1.2, 1.3, 1.4 tamamlandı ve commit'lendi — backend (Piper subprocess +
+config + `/api/tts/synthesize`) ve Flutter tarafı (client method + audio
+playback + Beta Features'ta gerçek bir "sesi test et" kontrolü) uçtan uca
+kod-seviyesinde doğrulandı. **Gerçek Piper binary'si/model dosyası bu
+ortamda yok** — hem Go hem Flutter tarafı gerçek bir sentez çağrısı
+olmadan test edildi (mock'lar, hata yolları). Flutter UI'ı ayrıca görsel
+olarak da doğrulanmadı (bu ortamda native masaüstü uygulamasını
+çalıştıracak bir araç yok).
 
 ## Sıradaki Adım
 
-**1.4 — Flutter TTS çalma altyapısı.** Önce `frontend/pubspec.yaml`'da
-mevcut bir ses çalma bağımlılığı olup olmadığı kontrol edilmeli. Sonra
-`api_client.dart`'a `synthesizeSpeech(text)` eklenip Ayarlar'da basit bir
-"sesi test et" checkpoint'i kurulmalı — 1.5 (VAD araştırması) ve 1.6 (Live
-ekranı)'na geçmeden önce.
+**1.5 — VAD araştırması + minimal sürekli-yakalama prototipi.** Yukarıdaki
+1.5 bölümüne bakın — açıkça bir araştırma/prototip adımı, üretim kodu
+değil. Bundan önce, kullanıcı isterse: gerçek Piper binary'sini indirip
+1.1-1.4'ün tamamını canlı olarak (gerçek ses üretimi + çalma) doğrulamak
+iyi bir ara checkpoint olur.

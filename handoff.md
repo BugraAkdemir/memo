@@ -31,12 +31,28 @@ Review kapsamı: `git diff 266a678..HEAD` (bugünkü tüm Voice Live Mode commit
 
 Her commit öncesi `go build/vet/test -race` ve `flutter analyze`/`flutter test` (109/109) yeşil doğrulandı. Rule #8 grep her değişen dosyada temiz.
 
+## Ek (aynı gün, devam) — GStreamer bağımlılığı tamamen kaldırıldı (kullanıcı kararı: B seçeneği)
+
+Kullanıcı `gst-plugins-good` kurulum talimatını "0 bağımlılık" felsefesine aykırı bulup itiraz etti — haklı bir itiraz. İki gerçek çözüm karşılaştırıldı:
+- **A — GStreamer eklentilerini `binaries/`'a göm:** Gerçek sıfır bağımlılık, ama .so dosyalarının distro'lar arası ABI/glibc uyumluluğunu doğru paketlemek gerekiyor (AppImage'ların `linuxdeploy-plugin-gstreamer` ile çözdüğü problem) — küçük bir kod değişikliği değil, ayrı bir paketleme işi.
+- **B — Linux'ta `audioplayers`/GStreamer'ı hiç kullanma, `paplay`→`aplay` subprocess'ine düş:** Piper/whisper.cpp/llama.cpp'de zaten kullanılan subprocess deseniyle aynı. %100 sıfır bağımlılık değil (çok minimal bir Linux kurulumunda `paplay`/`aplay` da olmayabilir) ama `gst-plugins-good`'a göre çok daha yaygın kurulu.
+
+Araştırma sırasında `media_kit` (libmpv tabanlı popüler alternatif) da kontrol edildi — onun da **aynı** yapısal kısıtı var, kendi belgesinde "System shared libraries... This is how GNU/Linux works" diyor. Yani bu paket seçimi değil, Linux masaüstü ekosisteminin genel gerçeği.
+
+Kullanıcı B'yi seçti. Uygulandı, 3 commit:
+- `7168c86` — yeni `WavPlayer` sınıfı (`frontend/lib/core/wav_player.dart`): Linux'ta WAV'ı temp dosyaya yazıp `paplay`/`aplay`'i subprocess olarak çalıştırıyor (fallback zinciriyle), diğer platformlarda `audioplayers`'ı sarmalıyor. Gerçek Piper WAV'ıyla bu makinede canlı test edildi — hem `paplay` doğrudan hem bağımsız bir Dart script üzerinden — **kullanıcı sesi kulağıyla duyup doğruladı.**
+- `2b66f25` — `beta_features_tab.dart` ve `live_screen.dart`'taki iki `AudioPlayer` kullanımı `WavPlayer`'a geçirildi. Bu, bug'ı gerçekten uçtan uca kapatan commit — Linux'ta artık GStreamer çağrı yolunda hiç yok.
+- `afd3efe` — 5 test, `paplay`/`aplay` yerine `true`/`false` (coreutils) enjekte edilerek — CI'da gerçek ses donanımı olmasa da çalışıyor. `linuxPlayerCommands` yapıcıya enjekte edilebilir parametre olarak eklendi tam bunun için.
+
+`go build/vet/test -race` ve `flutter analyze`/`flutter test` (114/114) yeşil.
+
 ## Sıradaki Adım
 
-1. Kullanıcı kendi ekranında `gst-plugins-good` kurup (`sudo pacman -S gst-plugins-good`) sesin gerçekten çaldığını doğrulamalı.
-2. `internal/whisper/whisper.go`'nun aynı `binarySearchBases` bug'ı (bugünkü review'da fark edildi ama bugünkü diff'in dışında olduğu için dokunulmadı) — ayrı bir küçük iş olarak ele alınabilir.
-3. VAD'ın CDN'den model indirme sorunu ve barge-in hâlâ açık (önceki handoff girdisinde detaylı).
-4. Faz 1 sonrası **Faz 2** (TTS Store + Provider Router) var.
+1. ~~Kullanıcı kendi ekranında `gst-plugins-good` kurup sesin gerçekten çaldığını doğrulamalı~~ → **artık gerekmiyor**, GStreamer bağımlılığı kaldırıldı, kullanıcı sesi zaten duydu.
+2. `internal/whisper/whisper.go`'nun aynı `binarySearchBases` bug'ı — kullanıcıya ayrı bir görev olarak flagged (`task_0f1b6fbe`).
+3. **A seçeneği (GStreamer eklentilerini `binaries/`'a gömüp AppImage'a entegre etmek) hâlâ gerçek sıfır bağımlılığa giden yol** — B geçici/pratik bir çözüm, A ayrı bir plan maddesi olarak gündemde kalmalı (kullanıcı isterse).
+4. VAD'ın CDN'den model indirme sorunu ve barge-in hâlâ açık (önceki handoff girdisinde detaylı).
+5. Faz 1 sonrası **Faz 2** (TTS Store + Provider Router) var.
 
 ---
 

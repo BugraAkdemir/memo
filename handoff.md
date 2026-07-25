@@ -64,9 +64,19 @@ Commit'ler: `e88aa0d` (struct alanı), `7dfdd99` (yardımcı fonksiyonlar), `d87
 
 **Doğrulama:** Her commit'ten önce `go build ./...` + `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./...` (tüm paketler) çalıştırıldı, hepsi yeşil. Son tam çalıştırma bu oturumun sonunda: 3.1sn, tüm paketler `ok`.
 
+**Update (2026-07-25):** Session 54'te bilinen kalan 4 site kapatıldı, her biri kendi commit'inde:
+- `internal/api/client.go:139` (`60a92f6`) — `go processSSEStream(...)` artık `logx.GoRecover` ile sarmalı.
+- `internal/orchestra/conductor.go:556` (`22f8482`) — `executeParallel`'in per-task goroutine'ine `defer logx.Recover(...)` eklendi.
+- `internal/replcli/repl.go:106` (`4a4e07c`) — `go heartbeatLoop(...)` artık `logx.GoRecover` ile sarmalı.
+- `internal/routine/loop.go:127` (`cd2645a`) — `tick()`'in per-routine goroutine'ine `defer logx.Recover(...)` eklendi.
+
+Her commit öncesi `go build ./...` + `go vet ./...` + `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./...` (tüm paketler) yeşil doğrulandı. `codebase-memory` MCP ile keşfedildi (grep yerine).
+
+**Hâlâ dokunulmamış, denetim tam bitmedi:** `internal/calendar`, `internal/skill`, `internal/intent`, `internal/orchestra`'nın kalanı (yukarıdaki tek site dışında), `internal/routine`'in kalanı (yukarıdaki tek site dışında), `mobile/`+`frontend/` (Flutter/Dart tarafı).
+
 ## Sıradaki oturum için
 
-1. **Panic-recovery denetimini bitir:** yukarıdaki 4 bilinen site (`api/client.go` en öncelikli) + hiç bakılmamış paketler (`calendar`, `skill`, `intent`, `orchestra`'nın kalanı, `routine`'in kalanı).
+1. **Panic-recovery denetimini bitir:** yukarıda listelenen hiç bakılmamış paketler (`calendar`, `skill`, `intent`, `orchestra`'nın kalanı, `routine`'in kalanı).
 2. **`logx.Printf` formatlamama bug'ı** — ayrı, daha büyük kapsamlı bir düzeltme, kullanıcıyla konuşulup planlanmalı (yüzlerce log satırının çıktısını değiştirir).
 3. Kullanıcının Windows VM'de installer'ı test edip `msvcp140.dll` fix'inin gerçekten çalıştığını doğrulaması bekleniyor.
 4. Stable-readiness checklist'in geri kalanı hâlâ gündemde: test kapsamı boşlukları (`handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`).

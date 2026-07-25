@@ -620,6 +620,9 @@ class L10n {
     'live_mode_test_tts_button': 'Seslendir ve çal',
     'live_mode_test_tts_playing': 'Çalınıyor…',
     'live_mode_test_tts_synthesizing': 'Sentezleniyor…',
+    'live_mode_error_missing_gstreamer_plugins':
+        'Ses çalınamadı: sisteminizde GStreamer\'ın "good" eklenti paketi (gst-plugins-good) kurulu değil. Dağıtımınızın paket yöneticisiyle kurup uygulamayı yeniden başlatın (Arch/CachyOS: sudo pacman -S gst-plugins-good; Debian/Ubuntu: sudo apt install gstreamer1.0-plugins-good).',
+    'live_mode_error_playback_generic': 'Ses çalınamadı: {err}',
     'beta_item_live_mode_open_button': 'Sesli Mod ekranını aç',
     'live_screen_title': 'Sesli Mod (Live)',
     'live_screen_state_idle': 'Hazır',
@@ -630,6 +633,10 @@ class L10n {
     'live_screen_memo_replied': 'Memo cevap verdi',
     'live_screen_start_button': 'Dinlemeyi başlat',
     'live_screen_stop_button': 'Dinlemeyi durdur',
+    'live_screen_error_busy_elsewhere':
+        'Memo şu an başka bir yerde mesaj gönderiyor, bu söylediğin atlandı. Biraz bekleyip tekrar dene.',
+    'live_screen_error_no_reply': 'Cevap alınamadı, lütfen tekrar dener misin?',
+    'live_screen_error_send_failed': 'Mesaj gönderilemedi: {err}',
     'beta_features_warning':
         'Beta özellikler kırılabilir, veri kaybına veya beklenmedik ağ davranışına yol açabilir. Üretim / kritik kullanım için kapalı tut.',
     'remote_beta_moved_hint':
@@ -1958,6 +1965,9 @@ class L10n {
     'live_mode_test_tts_button': 'Speak',
     'live_mode_test_tts_playing': 'Playing…',
     'live_mode_test_tts_synthesizing': 'Synthesizing…',
+    'live_mode_error_missing_gstreamer_plugins':
+        'Couldn\'t play the audio: your system is missing GStreamer\'s "good" plugin set (gst-plugins-good). Install it with your distro\'s package manager and restart the app (Arch/CachyOS: sudo pacman -S gst-plugins-good; Debian/Ubuntu: sudo apt install gstreamer1.0-plugins-good).',
+    'live_mode_error_playback_generic': 'Couldn\'t play the audio: {err}',
     'beta_item_live_mode_open_button': 'Open Live Mode screen',
     'live_screen_title': 'Live Mode (Voice)',
     'live_screen_state_idle': 'Ready',
@@ -1968,6 +1978,10 @@ class L10n {
     'live_screen_memo_replied': 'Memo replied',
     'live_screen_start_button': 'Start listening',
     'live_screen_stop_button': 'Stop listening',
+    'live_screen_error_busy_elsewhere':
+        'Memo is already sending a message elsewhere, so this got skipped. Wait a moment and try again.',
+    'live_screen_error_no_reply': 'No reply came back — please try again.',
+    'live_screen_error_send_failed': 'Couldn\'t send the message: {err}',
     'beta_features_warning':
         'Beta features can break, risk data loss, or behave unexpectedly on the network. Keep them off for production / critical use.',
     'remote_beta_moved_hint':

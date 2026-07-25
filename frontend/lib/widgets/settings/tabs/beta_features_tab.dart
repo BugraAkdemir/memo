@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
+import '../../../core/tts_playback_error.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../screens/live_screen.dart';
@@ -295,7 +296,7 @@ class _LiveModeVoiceTestState extends ConsumerState<_LiveModeVoiceTest> {
       await _player.play(BytesSource(audio));
       await _player.onPlayerComplete.first;
     } catch (e) {
-      if (mounted) setState(() => _error = '$e');
+      if (mounted) setState(() => _error = friendlyPlaybackError(e));
     } finally {
       if (mounted) {
         setState(() {

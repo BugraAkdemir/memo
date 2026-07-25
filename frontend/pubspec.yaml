@@ -46,9 +46,6 @@ dependencies:
   # recording_provider.dart actually uses.
   record: ^6.2.1
 
-  # Audio playback (Voice Live Mode TTS — Faz 1, docs/plans/PLAN_voice_live_mode_faz1.md)
-  audioplayers: ^6.8.1
-
   # Voice activity detection (Voice Live Mode Faz 1.6) — Silero VAD via
   # FFI/ONNX Runtime, covers linux/macos/windows/android/ios/web. Already
   # depends on `record` internally for capture, so no separate audio

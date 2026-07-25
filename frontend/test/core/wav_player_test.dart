@@ -57,7 +57,7 @@ void main() {
           isA<Exception>().having(
             (e) => e.toString(),
             'message',
-            contains('No working Linux audio player found'),
+            contains('No working audio player found'),
           ),
         ),
       );

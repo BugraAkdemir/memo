@@ -87,7 +87,7 @@ Her commit öncesi `go build ./...` + `go vet ./...` + `CGO_ENABLED=1 go test -t
 1. ~~Panic-recovery denetimini bitir~~ → **tamamlandı (2026-07-25), Go tarafında 0 açık site kaldı.**
 2. **Flutter/Dart tarafında global hata yakalama yok** (`runZonedGuarded`/`FlutterError.onError` kurulu değil) — ayrı bir iş olarak ele alınmalı, kullanıcıyla görüşülmeli (yukarıda detay var).
 3. **`logx.Printf` formatlamama bug'ı** — ayrı, daha büyük kapsamlı bir düzeltme, kullanıcıyla konuşulup planlanmalı (yüzlerce log satırının çıktısını değiştirir).
-4. Kullanıcının Windows VM'de installer'ı test edip `msvcp140.dll` fix'inin gerçekten çalıştığını doğrulaması bekleniyor.
+4. ~~Kullanıcının Windows VM'de installer'ı test edip `msvcp140.dll` fix'inin gerçekten çalıştığını doğrulaması bekleniyor.~~ → **doğrulandı (2026-07-25):** kullanıcı Windows VM'de installer'ı test etti, `vc_redist.x64.exe` sessiz kurulumu fix'i onaylandı, artık açık değil.
 5. Stable-readiness checklist'in geri kalanı hâlâ gündemde: test kapsamı boşlukları (`handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`).
 6. `docs/plans/PLAN_voice_live_mode.md` — fikir aşamasında, henüz uygulanmaya alınmadı, kullanıcı önceliklendirirse başlanabilir.
 

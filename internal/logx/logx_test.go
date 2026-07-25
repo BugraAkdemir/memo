@@ -68,6 +68,34 @@ func TestPrintf(t *testing.T) {
 	Printf("hello %s %d", "world", 42)
 }
 
+// TestPrintf_ActuallyFormatsTheMessage is a regression test: Printf used to
+// pass the literal, unsubstituted format string as the slog message and dump
+// the interpolation args into a separate "values" attribute instead of
+// calling fmt.Sprintf — so a call like Printf("PANIC in %s: %v", label, err)
+// logged the message "PANIC in %s: %v" with the real label/err buried in
+// values=[...], making the log unsearchable for the actual panic label or
+// error text. Fails against the pre-fix implementation (message would
+// contain the literal "%s"/"%d" verbs, not the substituted values).
+func TestPrintf_ActuallyFormatsTheMessage(t *testing.T) {
+	var buf bytes.Buffer
+	oldLogger := logger
+	logger = slog.New(slog.NewTextHandler(&buf, &slog.HandlerOptions{Level: LevelDebug}))
+	defer func() { logger = oldLogger }()
+
+	Printf("PANIC in %s: %v", "myGoroutine", "boom")
+
+	output := buf.String()
+	if !strings.Contains(output, "PANIC in myGoroutine: boom") {
+		t.Errorf("expected formatted message in output, got: %s", output)
+	}
+	if strings.Contains(output, "%s") || strings.Contains(output, "%v") {
+		t.Errorf("output still contains unsubstituted format verbs: %s", output)
+	}
+	if strings.Contains(output, "values=") {
+		t.Errorf("output should not carry a separate values attribute anymore, got: %s", output)
+	}
+}
+
 func TestLevelConstants(t *testing.T) {
 	if LevelDebug != slog.LevelDebug {
 		t.Errorf("LevelDebug = %d, want %d", LevelDebug, slog.LevelDebug)
@@ -153,10 +181,6 @@ func TestGoRecover_SwallowsPanicAndLogsIt(t *testing.T) {
 		panic("boom") // if this isn't recovered, the test binary itself crashes
 	})
 
-	// Printf's "values" attribute carries the interpolated args (see its own
-	// doc comment/implementation — it doesn't fmt.Sprintf the message text
-	// itself, a separate pre-existing quirk out of scope here), so check for
-	// the label and panic value there rather than in the literal message.
 	deadline := time.Now().Add(2 * time.Second)
 	for time.Now().Before(deadline) {
 		out := buf.String()

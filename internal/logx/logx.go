@@ -4,6 +4,7 @@ package logx
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"log/slog"
 	"os"
@@ -59,7 +60,7 @@ func ErrorCtx(ctx context.Context, msg string, args ...any) { logger.ErrorContex
 // Printf exists as a migration helper — replaces log.Printf calls with Info-level slog.
 // Use it as a drop-in while migrating: s/log\.Printf/logx.Printf/
 func Printf(format string, v ...interface{}) {
-	logger.Info(format, "values", v)
+	logger.Info(fmt.Sprintf(format, v...))
 }
 
 // Recover logs and swallows a panic in a background goroutine. An

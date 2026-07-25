@@ -39,6 +39,7 @@ import (
 	"memo/internal/stats"
 	"memo/internal/swarm"
 	"memo/internal/taskloop"
+	"memo/internal/tts"
 	"memo/internal/tunnel"
 	"memo/internal/webserver"
 	"memo/internal/whatsapp"
@@ -136,6 +137,8 @@ type App struct {
 	incognitoMessages []api.Message
 	whisperServer     *whisper.Server
 	whisperMu         sync.RWMutex
+	ttsSynthesizer    *tts.Synthesizer
+	ttsMu             sync.RWMutex
 	webServer         *webserver.Server
 	webMu             sync.RWMutex
 	modelStore        *modelstore.Store
@@ -147,15 +150,15 @@ type App struct {
 	// swarmServer is a separate llama-server used only as the Memo Swarm
 	// coordinator. Kept independent of llamaServer so starting/stopping a
 	// swarm never tears down the user's normal chat model (and vice versa).
-	swarmServer    *llama.Server
-	llamaInstaller *llama.Installer
-	originalBaseURL  string      // stores the original API base URL before llama override
-	embeddingClient  *api.Client // separate client for embedding server
-	syncManager      *cloudsync.Manager
-	syncMu           sync.RWMutex
-	memorySaveCh     chan saveTask
-	memorySaveWg     sync.WaitGroup
-	events           *eventRing
+	swarmServer     *llama.Server
+	llamaInstaller  *llama.Installer
+	originalBaseURL string      // stores the original API base URL before llama override
+	embeddingClient *api.Client // separate client for embedding server
+	syncManager     *cloudsync.Manager
+	syncMu          sync.RWMutex
+	memorySaveCh    chan saveTask
+	memorySaveWg    sync.WaitGroup
+	events          *eventRing
 
 	providerCfgMgr     *provider.ConfigManager
 	providerRouter     *provider.Router
@@ -480,6 +483,7 @@ func (a *App) Startup(ctx context.Context) {
 	}
 
 	goRecover("startSTTServer", a.startSTTServer)
+	a.initTTS()
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)

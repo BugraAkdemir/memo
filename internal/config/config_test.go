@@ -173,6 +173,16 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	}
 }
 
+func TestTTSDefaults(t *testing.T) {
+	cfg := Default()
+	if cfg.TTS.Enabled {
+		t.Error("Default().TTS.Enabled = true, want false — Piper isn't bundled by default yet")
+	}
+	if cfg.TTS.ModelPath != "" {
+		t.Errorf("Default().TTS.ModelPath = %q, want empty — no voice auto-selection in Faz 1", cfg.TTS.ModelPath)
+	}
+}
+
 func TestSwarmDefaults(t *testing.T) {
 	cfg := Default()
 	if cfg.Swarm.RPCPort != 50052 {

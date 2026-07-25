@@ -82,6 +82,7 @@ type AppConfig struct {
 	RemoteAccess   RemoteAccessConfig `yaml:"remote_access"`
 	Llama          LlamaConfig        `yaml:"llama"`
 	Whisper        WhisperConfig      `yaml:"whisper" json:"whisper"`
+	TTS            TTSConfig          `yaml:"tts" json:"tts"`
 	Sync           SyncConfig         `yaml:"sync"`
 	WhatsApp       WhatsAppConfig     `yaml:"whatsapp"`
 	Proactive      ProactiveConfig    `yaml:"proactive" json:"proactive"`
@@ -143,6 +144,20 @@ type WhisperConfig struct {
 	Language   string `yaml:"language" json:"language"` // "auto", "tr", "en"
 	Port       int    `yaml:"port" json:"port"`         // default 9877
 	Enabled    bool   `yaml:"enabled" json:"enabled"`   // default true
+}
+
+// TTSConfig holds text-to-speech settings for Piper (internal/tts). Unlike
+// WhisperConfig there is no Port/Language: Piper has no persistent server
+// mode (a one-shot subprocess per call, see internal/tts's package doc),
+// and Faz 1 (docs/plans/PLAN_voice_live_mode_faz1.md) has no voice
+// auto-selection, so ModelPath must point at a specific .onnx voice file —
+// no default is guessed. Enabled defaults to false, unlike Whisper's true:
+// the Piper binary/voice model aren't bundled with the app yet at this
+// stage of Voice Live Mode's development.
+type TTSConfig struct {
+	BinaryPath string `yaml:"binary_path" json:"binary_path"`
+	ModelPath  string `yaml:"model_path" json:"model_path"` // path to a .onnx voice file; its .onnx.json sidecar must sit alongside it
+	Enabled    bool   `yaml:"enabled" json:"enabled"`       // default false
 }
 
 // ProactiveConfig controls the learning system's proactive engine. Disabled by
@@ -405,6 +420,9 @@ func Default() *AppConfig {
 			Enabled:  true,
 			Language: "auto",
 			Port:     9877,
+		},
+		TTS: TTSConfig{
+			Enabled: false,
 		},
 		Sync: SyncConfig{
 			Enabled:          false,

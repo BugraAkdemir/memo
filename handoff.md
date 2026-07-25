@@ -1,3 +1,27 @@
+# Handoff — 2026-07-25 (devam, Live Mode'dan sonra) — Sohbet ekranına hızlı model seçici + "model yok" durumunu basitleştirme
+
+## Özet
+
+Kullanıcının `dsd.png` üzerine kırmızı elle çizdiği bir mockup'tan başlayan, "uygulama karışık, aşırı basit/kullanıcı dostu olsun" yönündeki genel talebiyle devam eden bir oturum. Üç ayrı, art arda commit'lenen değişiklik:
+
+1. **Sohbet ekranı üst toolbar'ına hızlı model/sağlayıcı seçici** (`ef3c50c`) — `chat_screen.dart`'ın `_ChatTopBar`'ına yeni bir `_QuickModelDropdown` eklendi. İlk versiyon salt ikon butonuydu, kullanıcı geri bildirimiyle ("button istemiyorum, model adı yazan uzunlamasına bir şey istiyorum") **aktif model/sağlayıcı adını gösteren elonge bir pill**'e çevrildi (ikon + isim + chevron, `activeProviderTypeProvider`/`providerListProvider`'ı watch ediyor). Tıklanınca `showMenu` ile anchored bir dropdown açılıyor: Local Model + her *enabled* provider (`ProviderConfig.name` ile, `.type` ile değil — bir provider type'ı birden fazla isimle kayıtlı olabiliyor, `chat_input.dart`'ın `/model` dialogundaki aynı konvansiyon) + "Add Provider" (mevcut `ProviderConfigDialog`'u açıyor). Sadece var olan L10n key'leri kullanıldı, yeni string yok.
+2. **"Model yok" hatası artık ham exception değil, actionable bir rehber** (`5c43f58`) — Daha önce: local model çalışmıyor + API provider aktif değilken mesaj atınca backend'in `"⚠️ Yerel model yüklenmemiş..."` hatası `Exception` olarak fırlatılıp `chat_provider.dart`'ın catch-all'ında genel bir `"Mesaj gönderilemedi (...)"` snackbar'ına sarılıyordu — teknik ve ürkütücü. `ChatInput._send()` artık göndermeden ÖNCE hazır olup olmadığını kontrol ediyor (`_hasActiveModel()` — cache'lenmiş `activeProviderTypeProvider`/`modelStatusProvider`'dan okuyor, ağ çağrısı yok); değilse gönderim hiç yapılmıyor, bunun yerine ne eksik olduğunu açıklayan ve doğrudan `_showModelSwitcher()`'ı açan "Choose Model" butonlu bir dialog gösteriliyor. Yazılan metin kaybolmuyor. Bu arada `l10n.dart`'ta `local_model`/`switch_model`/`switch_model_desc`/`switched_to`/`switch_failed`/`providers_load_failed`'in Türkçe map'inde düz İngilizce metin olarak durduğu fark edildi (AGENTS.md'nin zaten dokümante ettiği bug sınıfının aynısı) — aynı commit'te düzeltildi.
+3. **Kurulum sihirbazı: yerel model indirmek yerine API sağlayıcı bağlama seçeneği** (`5e0febb`) — Sihirbazın model adım kartı (`_ModelRecommendationCard`) artık yerel-model indirme bölümünün altında bir "veya" ayracı + "Connect an API Provider" butonu gösteriyor (mevcut `ProviderConfigDialog`'u açıyor, dialog öncesi/sonrası provider listesini diff'leyip yeni eklenen provider'ı otomatik aktif ediyor — dialog sadece bool dönüyor, isim dönmüyor). Sistem Kontrolü adımına da `_modelsOk || _providerConfigured` ile hesaplanan yeni bir "Ready to Chat" satırı eklendi — önceden sadece "Yerel Modeller" vardı, sadece-provider'lı bir kurulum kırmızı görünüyordu.
+
+**Önemli tasarım notu — `setup_wizard_view.dart` neden `L10n.t()` kullanmıyor:** Bu dosya, kullanıcının henüz seçmekte olduğu dil/tema ayarlarını `_saveSetup()` çağrılana kadar uygulama geneline commit etmiyor — dosyanın tamamı `isTurkish ? '...' : '...'` ternary deseniyle yazılı (AGENTS.md rule #8'in bilinçli, önceden var olan istisnası). Yeni eklenen "veya"/"Connect an API Provider" metinleri de bu yüzden L10n.t() değil, aynı ternary deseniyle yazıldı — `l10n.dart`'a önce eklenip sonra kullanılmadığı için çıkarılan `connect_api_provider`/`or_divider` key'leri bu yüzden yok.
+
+## Doğrulama
+
+`flutter analyze lib/` ve `flutter test` (114/114, bir tanesi — `messages_notifier_reentrancy_test.dart` — sıra bağımlıydı, izole ve tam suite'te ayrı ayrı tekrar çalıştırılıp geçtiği doğrulandı, bu değişikliklerle ilgisi yok) temiz. Rule #8 grep temiz (`_getPromptText('normal')` satırındaki tek eşleşme önceden var olan bir false-positive, `Text(` alt-string eşleşmesi). **Canlı UI doğrulaması yapılamadı** — bu ortamda Flutter Linux penceresi hiçbir ekran görüntüsünde görünmedi (Wayland + çoklu monitör kurulumu, `flutter run -d linux` debug modunda "Lost connection to device" ile sonlandı) — kullanıcının kendi ekranında görsel olarak doğrulaması gerekiyor.
+
+## Sıradaki Adım
+
+1. Kullanıcı üç değişikliği de kendi ekranında görsel olarak test etmeli (özellikle yeni dropdown pill ve wizard'daki "Connect an API Provider" akışı).
+2. "Uygulama karışık, basitleştirelim" yönündeki genel talep açık uçlu — bu oturumda somut olarak istenen iki nokta (model seçici + model-yok mesajı + wizard provider seçeneği) yapıldı, ama kullanıcı başka spesifik karışıklık noktaları da işaret edebilir; bir sonraki oturumda sorulmalı.
+3. `_connectProvider()`'ın "yeni eklenen provider'ı diff'le" yaklaşımı, aynı anda başka bir yerden (ör. Settings) provider eklenirse yanlış pozitif verebilir — pratikte ihtimal düşük (wizard modal, kullanıcı aynı anda başka ekranla etkileşemez) ama teorik bir kenar durum, not düşüldü.
+
+---
+
 # Handoff — 2026-07-25 (devam, Session 54 sonrası) — Voice Live Mode: kullanıcı canlı test etti, gerçek bug'lar bulunup düzeltildi
 
 ## Özet

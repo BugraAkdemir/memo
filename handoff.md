@@ -1,3 +1,45 @@
+# Handoff — 2026-07-25 (devam, Session 54 sonrası) — Voice Live Mode: kullanıcı canlı test etti, gerçek bug'lar bulunup düzeltildi
+
+## Özet
+
+Kullanıcı Faz 1'i kendi ekranında (`flutter run -d linux`) gerçekten çalıştırıp Beta Features → Live Mode ses testini denedi ve gerçek bir hata gördü: `PlatformException(LinuxAudioError, ..., "GStreamer eklentisi eksik")` çirkin ham metin olarak ekranda görünüyordu. Kullanıcı `/codebase-memory` ve `/code-review` (high effort, 8 paralel ajan açısı) ile Live Mode kodunun tamamının derin bir bug taramasından geçirilmesini istedi. Sonuç: **kök nedeni canlı doğrulandı + 8 gerçek bug bulunup 5 commit'te düzeltildi.**
+
+**Ayrıca bu oturumda (fix'lerden önce) backend zinciri ilk kez gerçek Piper ile canlı doğrulandı:** gerçek Piper binary'si (v1.2.0) + Türkçe ses modeli (`tr_TR-dfki-medium`, HuggingFace) indirilip `binaries/linux/cpu/`'a yerleştirildi (gitignored, sadece bu makinede), izole bir test backend'i üzerinden `POST /api/tts/synthesize` gerçek bir Türkçe cümleyle çağrıldı — 200 OK, gerçek WAV (RMS -16dB, peak tam skala — sessizlik değil, gerçek konuşma). **Backend zinciri (1.1-1.3) artık gerçekten kanıtlanmış durumda**, sadece kod okuma/mock testleriyle değil.
+
+## Kök neden: GStreamer eksik plugin (kullanıcı tarafından bulundu)
+
+`audioplayers`'ın Linux backend'i GStreamer kullanıyor. Bu makine (CachyOS) `gstreamer` + `gst-plugins-base/bad/ugly` kurulu ama **`gst-plugins-good` kurulu değil** — WAV çalmak için gereken `wavparse`/`autoaudiosink` elementleri orada. `gst-inspect-1.0 wavparse` → "No such element" ile doğrulandı, `pacman -Si gst-plugins-good` ile paketin repo'da mevcut ama kurulu olmadığı teyit edildi. Gerçek, yaygın bir Linux paketleme boşluğu — Memo bug'ı değil, ama hata metni kullanıcıya ne yapması gerektiğini söylemeliydi, söylemiyordu.
+
+## `/code-review` (high, 8 paralel ajan) — bulunan ve düzeltilen 8 gerçek bug
+
+Review kapsamı: `git diff 266a678..HEAD` (bugünkü tüm Voice Live Mode commit'leri, 16 commit). Angles: line-by-line, removed-behavior, cross-file tracer, reuse, simplification, efficiency, altitude, conventions (AGENTS.md).
+
+| # | Bug | Bulan açı | Düzeltme (commit) |
+|---|---|---|---|
+| 1 | `internal/tts/tts.go`'nun `binarySearchBases()`'ı sadece "." ve exe'nin kendi dizinini arıyordu — `internal/llama`'da zaten düzeltilmiş aynı bug. Kurulu CLI'da (`~/.memo/bin/memo`) bundled Piper binary'si asla bulunamazdı. | reuse | `0ae18b1` — llama'nın `binarySearchBasesFrom` desenine geçirildi, aynı regresyon testi adapte edildi |
+| 2 | `handleTTSSynthesize` hatayı server-side loglamıyordu (kardeşi `handleTranscribe`'ın aksine) | altitude | `c6f7592` — `logx.Error` eklendi |
+| 3 | Ham `PlatformException`/exception metni kullanıcıya direkt gösteriliyordu (AGENTS.md rule #8 ihlali — 2 ayrı açı tarafından bağımsız bulundu) | line-by-line + conventions | `78465a5`+`44cf99c` — yeni `friendlyPlaybackError()`, GStreamer durumunu özel olarak yakalayıp anlaşılır mesaj veriyor |
+| 4 | `LiveModeController.stop()`, hâlâ süren bir `onSpeechEnd` callback'i varken `dispose()` ile kapatılan stream controller'a yazmaya çalışabiliyordu → "Bad state: Cannot add event after closing" | cross-file tracer + line-by-line (bağımsız, aynı bug) | `5d46b35` — her `add()` çağrısı `isClosed` kontrolüyle korundu |
+| 5 | `_toggleListening`'de re-entrancy yoktu — hızlı çift tıklama, hâlâ başlamakta olan bir controller'ı `stop()`/`dispose()` ile yarıştırıyordu | cross-file tracer | `44cf99c` — `_togglingListening` guard'ı eklendi |
+| 6 | `dispose()` senkron olarak `stop()` + `dispose()`'u art arda çağırıyordu, `stop()`'un kendi async teardown'ını beklemeden | line-by-line | `44cf99c` — `dispose()` artık `stop()` bittikten sonra zincirleniyor |
+| 7 | Başarısız `controller.start()` (örn. VAD modelinin CDN'den inmesi offline'ken başarısız olursa) sadece `_controller = null` yapıyordu — VadHandler ve listener'ları sızıyordu, `_state` da eski değerinde kalıyordu | line-by-line | `44cf99c` — catch artık `stop()`+`dispose()` çağırıyor, `_state`'i idle'a resetliyor |
+| 8 | **En ciddisi:** `chat_provider.dart`'ın `sendMessage()`'ı bir backend hatasını `errorMessageProvider`'a yutuyor, fırlatmıyor, yeni bir cevap eklemiyor — LiveScreen bunu fark edemiyor, sessizce "dinliyor"a dönüyordu, kullanıcı sesli komutunun başarısız olduğunu hiç anlamıyordu. Ayrıca `isSendingProvider` zaten true iken `sendMessage` sessizce no-op oluyor, LiveScreen eski bir asistan cevabını yeni cevapmış gibi tekrar konuşabiliyordu. | cross-file tracer | `44cf99c` — mesaj listesinin gerçekten büyüyüp büyümediği + son mesajın gerçekten yeni bir asistan cevabı olup olmadığı kontrol ediliyor, `isSendingProvider` önceden kontrol ediliyor, ikisi de net hata mesajıyla yüzeye çıkarılıyor |
+
+**Düzeltme sırasında kendi kendine bulunan bir regresyon:** #8'i düzeltirken `_handleTranscript` iki ayrı `try/finally`'e bölündü (gönderim fazı, konuşma fazı) — bu, `_busy`'i konuşma fazı başlamadan sıfırlıyordu, üst üste binen konuşma penceresini tam da konuşma sırasında yeniden açıyordu. Fark edilip aynı commit'te (`44cf99c`) düzeltildi: tek bir dış `try/finally` (`_busy`'i sahipleniyor), içinde faz-bazlı hata mesajları için iki ayrı `try/catch`.
+
+**Bilinçli olarak düzeltilmedi, `live_screen.dart`'ın kendi class doc'unda işaretlendi:** VAD, `speaking` durumunda hiç durdurulmuyor/susturulmuyor — kulaklıksız kullanımda Memo'nun kendi TTS sesini yeni bir konuşma sanıp gereksiz bir STT round-trip'i harcayıp `_busy` guard'ı tarafından sessizce atıyor olabilir. Bu, zaten dokümante edilmiş "barge-in yok" boşluğunun bir uzantısı — gerçek çözüm (playback sırasında mikrofonu susturmak/segment'i atlamak) bu turda yapılmadı.
+
+Her commit öncesi `go build/vet/test -race` ve `flutter analyze`/`flutter test` (109/109) yeşil doğrulandı. Rule #8 grep her değişen dosyada temiz.
+
+## Sıradaki Adım
+
+1. Kullanıcı kendi ekranında `gst-plugins-good` kurup (`sudo pacman -S gst-plugins-good`) sesin gerçekten çaldığını doğrulamalı.
+2. `internal/whisper/whisper.go`'nun aynı `binarySearchBases` bug'ı (bugünkü review'da fark edildi ama bugünkü diff'in dışında olduğu için dokunulmadı) — ayrı bir küçük iş olarak ele alınabilir.
+3. VAD'ın CDN'den model indirme sorunu ve barge-in hâlâ açık (önceki handoff girdisinde detaylı).
+4. Faz 1 sonrası **Faz 2** (TTS Store + Provider Router) var.
+
+---
+
 # Handoff — 2026-07-24 (Session 54) — VC++ redist fix, TD-2 tamamen kapatıldı, repo-geneli panic-recovery turu
 
 ## Özet

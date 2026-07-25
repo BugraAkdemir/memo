@@ -74,12 +74,22 @@ Her commit öncesi `go build ./...` + `go vet ./...` + `CGO_ENABLED=1 go test -t
 
 **Hâlâ dokunulmamış, denetim tam bitmedi:** `internal/calendar`, `internal/skill`, `internal/intent`, `internal/orchestra`'nın kalanı (yukarıdaki tek site dışında), `internal/routine`'in kalanı (yukarıdaki tek site dışında), `mobile/`+`frontend/` (Flutter/Dart tarafı).
 
+**Update (2026-07-25, devam) — iki kaçan commit + audit resmen tamamlandı:**
+
+- Aradan iki commit daha geçmiş, bu handoff'a hiç işlenmemişti: `4038bfa` (`internal/app/chat.go`'daki `sendMessageStreamInnerTo`/`SendMessageStream` (image)/`SendMessageWithFileStream`'in sarmaladığı 3 `forwardStream` closure'ı — aynı dosyadaki diğer 4 eşdeğer closure zaten korunuyordu, bu üçü heuristik taramada kaçmıştı) ve `54771db` (kod değişikliği değil — `docs/plans/PLAN_voice_live_mode.md`, kullanıcıyla konuşulan wake-word/full-duplex barge-in/yerel-TTS-store/filler-ses özellik vizyonunu fikir aşaması olarak kayda geçiren yeni bir plan dosyası, henüz uygulanmaya alınmadı).
+- **Yukarıda "hâlâ dokunulmamış" denen 5 paket tek tek tarandı** (`grep -rnE '^\s*go\s+' <pkg>` + repo-geneli çapraz kontrol, `internal/calendar`/`internal/skill`/`internal/intent`'te **hiç goroutine spawn'ı yok**; `internal/orchestra` ve `internal/routine`'in tek site'ı (`conductor.go:556`, `loop.go:127`) zaten bu oturumun önceki turunda kapatılmıştı) — **hiçbir kod değişikliği gerekmedi, denetim bu beşi için zaten kapalıymış.**
+- Bunu tek paket taramasıyla bırakmayıp **tüm repo'yu** (`main.go` dahil) yeniden tarayan bir çapraz kontrol yapıldı: 40+ `go func(...)`/`go x.Y(...)` sitesinin hepsi tek tek kontrol edildi (her birinin 4 satır penceresinde `Recover`/`recoverPanic`/`recoverStreamPanic` araması) — ilk taramada "eksik" görünen 2 site (`main.go:280`, `internal/taskloop/engine.go:58`) manuel incelemede aslında güvenli çıktı: `main.go:280` kendi inline `recover()`'ını taşıyor (`598cb83`'ten), `taskloop/engine.go:58`'in çağırdığı `(e *Engine) run()` fonksiyonu zaten kendi `recover()`'ını (satır 106, audit'ten önceki 3 orijinal korumalı dosyadan biri) taşıyor — `go` satırının hemen yanında değil, çağrılan fonksiyonun içinde.
+- **Sonuç: repo genelinde Go tarafında panic-recovery denetimi artık %100 tamam** — tek bir korumasız goroutine spawn'ı kalmadı. `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" -race ./...` tertemiz (tüm paketler `ok`).
+- **Yeni, ayrı bir bulgu (düzeltilmedi, kapsam dışı bırakıldı):** Flutter/Dart tarafında (`frontend/lib/main.dart`, `mobile/lib/main.dart`) `runZonedGuarded`/`FlutterError.onError`/`PlatformDispatcher.instance.onError` **hiçbiri kurulu değil** — yakalanmayan bir widget-build hatası veya async zone hatası uygulamayı sessizce çökertebilir/beyaz ekrana düşürebilir. Bu, Go'nun `recover()`'ıyla aynı kavram değil (farklı runtime, farklı hata modeli, farklı düzeltme şekli — global bir hata handler'ı kurup ne yapılacağına karar vermek: sadece logla mı, kullanıcıya "bir şeyler ters gitti" ekranı mı göster) — bu yüzden mevcut Go-odaklı audit'in bir uzantısı olarak sessizce yapılmadı, kullanıcıyla ayrı konuşulmalı.
+
 ## Sıradaki oturum için
 
-1. **Panic-recovery denetimini bitir:** yukarıda listelenen hiç bakılmamış paketler (`calendar`, `skill`, `intent`, `orchestra`'nın kalanı, `routine`'in kalanı).
-2. **`logx.Printf` formatlamama bug'ı** — ayrı, daha büyük kapsamlı bir düzeltme, kullanıcıyla konuşulup planlanmalı (yüzlerce log satırının çıktısını değiştirir).
-3. Kullanıcının Windows VM'de installer'ı test edip `msvcp140.dll` fix'inin gerçekten çalıştığını doğrulaması bekleniyor.
-4. Stable-readiness checklist'in geri kalanı hâlâ gündemde: test kapsamı boşlukları (`handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`).
+1. ~~Panic-recovery denetimini bitir~~ → **tamamlandı (2026-07-25), Go tarafında 0 açık site kaldı.**
+2. **Flutter/Dart tarafında global hata yakalama yok** (`runZonedGuarded`/`FlutterError.onError` kurulu değil) — ayrı bir iş olarak ele alınmalı, kullanıcıyla görüşülmeli (yukarıda detay var).
+3. **`logx.Printf` formatlamama bug'ı** — ayrı, daha büyük kapsamlı bir düzeltme, kullanıcıyla konuşulup planlanmalı (yüzlerce log satırının çıktısını değiştirir).
+4. Kullanıcının Windows VM'de installer'ı test edip `msvcp140.dll` fix'inin gerçekten çalıştığını doğrulaması bekleniyor.
+5. Stable-readiness checklist'in geri kalanı hâlâ gündemde: test kapsamı boşlukları (`handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`).
+6. `docs/plans/PLAN_voice_live_mode.md` — fikir aşamasında, henüz uygulanmaya alınmadı, kullanıcı önceliklendirirse başlanabilir.
 
 ---
 

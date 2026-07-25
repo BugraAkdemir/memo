@@ -40,6 +40,9 @@ dependencies:
   # Audio recording (voice keyboard)
   record: ^5.2.1
 
+  # Audio playback (Voice Live Mode TTS — Faz 1, docs/plans/PLAN_voice_live_mode_faz1.md)
+  audioplayers: ^6.8.1
+
   # Charts (Settings usage-stats tab)
   fl_chart: ^0.68.0
 

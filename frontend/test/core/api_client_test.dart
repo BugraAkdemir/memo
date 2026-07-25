@@ -168,6 +168,71 @@ void main() {
       await client.syncRoutineUtcOffset();
     });
   });
+
+  // Faz 1.4, docs/plans/PLAN_voice_live_mode_faz1.md: synthesizeSpeech is
+  // handleTTSSynthesize's client-side counterpart -- unlike most endpoints
+  // here it must round-trip raw, non-JSON bytes (Content-Type: audio/wav),
+  // not a decoded JSON body.
+  group('synthesizeSpeech (Faz 1.4)', () {
+    test('posts {"text": ...} and returns the raw WAV bytes unchanged', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      final wantBytes = Uint8List.fromList([82, 73, 70, 70, 1, 2, 3, 4]); // "RIFF" + fake data
+      final adapter = _CapturingBytesAdapter(wantBytes);
+      client.dio.httpClientAdapter = adapter;
+
+      final gotBytes = await client.synthesizeSpeech('merhaba');
+
+      expect(adapter.lastPath, '/api/tts/synthesize');
+      expect(adapter.lastData, containsPair('text', 'merhaba'));
+      expect(gotBytes, equals(wantBytes));
+    });
+
+    test('propagates a synthesis failure instead of swallowing it', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+
+      // Unlike syncRoutineUtcOffset's best-effort fire-and-forget, a voice
+      // test button (_LiveModeVoiceTest) needs the real error to show the
+      // user why nothing played -- this must not be silently swallowed.
+      expect(
+        () => client.synthesizeSpeech('merhaba'),
+        throwsA(isA<DioException>()),
+      );
+    });
+  });
+}
+
+/// A fake [HttpClientAdapter] that records the last request's path and JSON
+/// body like [_CapturingAdapter], but answers with raw bytes and an
+/// audio/wav content type instead of encoding [body] as JSON -- for
+/// endpoints like /api/tts/synthesize that reply with binary data directly.
+class _CapturingBytesAdapter implements HttpClientAdapter {
+  final Uint8List bytes;
+  String? lastPath;
+  Map<String, dynamic>? lastData;
+  _CapturingBytesAdapter(this.bytes);
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastPath = options.path;
+    if (options.data is Map) {
+      lastData = Map<String, dynamic>.from(options.data as Map);
+    }
+    return ResponseBody.fromBytes(
+      bytes,
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['audio/wav'],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
 }
 
 /// A fake [HttpClientAdapter] that records the last request's path and JSON

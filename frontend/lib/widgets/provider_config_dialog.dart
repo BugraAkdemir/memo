@@ -34,6 +34,7 @@ class _ProviderConfigDialogState
   bool _isSaving = false;
   bool _showAdvanced = false;
   bool _obscureKey = true;
+  String? _saveError;
 
   final _types = [
     'openai',
@@ -268,30 +269,33 @@ class _ProviderConfigDialogState
   Future<void> _save() async {
     if (_isSaving) return;
 
+    // These used to show as a SnackBar — invisible in practice, since this
+    // dialog is itself a modal Dialog: ScaffoldMessenger.of(context) bubbles
+    // up to the app's root Scaffold, which sits BEHIND the modal barrier
+    // (same class of bug already fixed once for MemoryImportTab — see
+    // AGENTS.md). A click that silently fails a validation guard looks
+    // exactly like "nothing happened". Shown as an inline banner instead,
+    // which is guaranteed visible regardless of the dialog stack.
+    setState(() => _saveError = null);
+
     // Guard the one mistake that silently breaks everything: saving a
     // key-requiring provider with an empty API key.
     if (ProviderDefaults.needsApiKey(_type) && _apiKeyCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('api_key_hint_get'))),
-      );
+      setState(() => _saveError = L10n.t('api_key_hint_get'));
       return;
     }
 
     // Custom endpoints have no default URL — without one, requests go nowhere.
     if (ProviderDefaults.needsBaseUrl(_type) && _baseUrlCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('custom_base_url_required'))),
-      );
+      setState(() => _saveError = L10n.t('custom_base_url_required'));
       return;
     }
     if (_modelCtrl.text.trim().isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('enter_model_name'))),
-      );
+      setState(() => _saveError = L10n.t('enter_model_name'));
       return;
     }
 
-    _isSaving = true;
+    setState(() => _isSaving = true);
     try {
       final existing = widget.existing;
       // Providers are stored keyed by Name. For a NEW provider, ensure the name
@@ -305,14 +309,6 @@ class _ProviderConfigDialogState
       // doesn't get suffixed — but renaming onto ANOTHER provider's name still
       // gets disambiguated instead of silently overwriting it.
       final finalName = _uniqueName(desiredName, exclude: existing?.name);
-      if (finalName != desiredName && mounted) {
-        // _uniqueName silently disambiguated the name the user actually
-        // typed — tell them, so "Claude" quietly becoming "Claude 2" in the
-        // provider list isn't a surprise they have to notice on their own.
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('provider_renamed_on_conflict', {'desired': desiredName, 'final': finalName}))),
-        );
-      }
 
       // Trim every free-text field: a stray space/tab pasted into a model id or
       // key silently breaks requests (e.g. an invalid model that stalls the API).
@@ -331,10 +327,29 @@ class _ProviderConfigDialogState
         maxTokens: existing?.maxTokens ?? 0,
       );
 
-      await ref.read(providerListProvider.notifier).updateProvider(config);
-      if (mounted) Navigator.of(context).pop(true);
+      // Called directly (not via providerListProvider.notifier.updateProvider)
+      // deliberately: that notifier method catches its own errors and only
+      // reports them into errorMessageProvider — a provider nobody may be
+      // listening to right now (e.g. opened from the setup wizard, before
+      // ChatScreen's listener even exists). Catching it here means a failed
+      // save always surfaces in THIS dialog, which is guaranteed visible.
+      await ref.read(apiClientProvider).updateProvider(config);
+      ref.invalidate(providerListProvider);
+      ref.invalidate(activeProviderTypeProvider);
+      if (!mounted) return;
+      if (finalName != desiredName) {
+        // _uniqueName silently disambiguated the name the user actually
+        // typed — tell them, so "Claude" quietly becoming "Claude 2" in the
+        // provider list isn't a surprise they have to notice on their own.
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('provider_renamed_on_conflict', {'desired': desiredName, 'final': finalName}))),
+        );
+      }
+      Navigator.of(context).pop(true);
+    } catch (e) {
+      if (mounted) setState(() => _saveError = '${L10n.t('error')}: $e');
     } finally {
-      _isSaving = false;
+      if (mounted) setState(() => _isSaving = false);
     }
   }
 
@@ -642,6 +657,30 @@ class _ProviderConfigDialogState
                   onChanged: (v) => setState(() => _enabled = v),
                 ),
                 const SizedBox(height: 12),
+
+                if (_saveError != null) ...[
+                  Container(
+                    padding: const EdgeInsets.all(10),
+                    decoration: BoxDecoration(
+                      color: MemoTheme.red.withValues(alpha: 0.08),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Icon(Icons.error_outline, size: 16, color: MemoTheme.red),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _saveError!,
+                            style: const TextStyle(fontSize: 12, color: MemoTheme.red),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                ],
 
                 // ── Actions ──
                 Row(

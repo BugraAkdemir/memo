@@ -125,6 +125,7 @@ func (r *RoutineLoop) tick(ctx context.Context, now time.Time) {
 		}
 		r.wg.Add(1)
 		go func(rt Routine) {
+			defer logx.Recover("routine.processDueRoutine")
 			defer r.wg.Done()
 			defer r.clearRunning(rt.ID)
 			r.processDueRoutine(ctx, rt, now, today, fireTime)

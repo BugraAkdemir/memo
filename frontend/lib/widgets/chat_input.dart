@@ -16,6 +16,7 @@ import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
+import '../providers/models_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/recording_provider.dart';
@@ -152,15 +153,30 @@ class _ChatInputState extends ConsumerState<ChatInput> {
 
     if (ref.read(isSendingProvider)) return;
 
-    _controller.clear();
-    _dismissPopup();
-    setState(() => _pickedImagePath = null);
-
     // WhatsApp chat mode — route to WhatsApp stream when active
     if (ref.read(whatsAppChatModeProvider)) {
+      _controller.clear();
+      _dismissPopup();
+      setState(() => _pickedImagePath = null);
       await _sendWhatsApp(text);
       return;
     }
+
+    // Neither a local model nor an API provider is active — sending would
+    // just come back as a raw backend error ("⚠️ Yerel model yüklenmemiş...")
+    // that used to surface as a generic, unfriendly snackbar (BUG: the actual
+    // backend message got re-wrapped by messages_notifier's catch block into
+    // "Mesaj gönderilemedi (...)"). Catch it before it ever leaves the client
+    // and show clear next steps instead — the input text is preserved so
+    // nothing is lost.
+    if (!_hasActiveModel()) {
+      _showNoModelGuide();
+      return;
+    }
+
+    _controller.clear();
+    _dismissPopup();
+    setState(() => _pickedImagePath = null);
 
     try {
       if (imagePath != null) {
@@ -339,6 +355,39 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       builder: (_) => const SkillConfigDialog(),
     );
     ref.invalidate(skillListProvider);
+  }
+
+  /// Whether a chat request would actually have somewhere to go: either an
+  /// API provider is active, or the local llama.cpp server is up. Read from
+  /// already-cached provider state (EngineStrip keeps both providers alive
+  /// at the app-shell level) — no network round trip.
+  bool _hasActiveModel() {
+    final activeProviderType = ref.read(activeProviderTypeProvider).valueOrNull ?? '';
+    if (activeProviderType.isNotEmpty) return true;
+    return ref.read(modelStatusProvider).valueOrNull?.running ?? false;
+  }
+
+  void _showNoModelGuide() {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L10n.t('no_model_guide_title')),
+        content: Text(L10n.t('no_model_guide_body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text(L10n.t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              _showModelSwitcher();
+            },
+            child: Text(L10n.t('choose_model_action')),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _showModelSwitcher() async {

@@ -142,13 +142,17 @@ class L10n {
     'tip_slash': 'İpucu: "/" yazarak hızlı şablonlara ulaşabilirsiniz',
 
     // Model switch from input
-    'local_model': 'Local Model',
+    'local_model': 'Yerel Model',
     'llama_cpp': 'llama.cpp',
-    'switch_model': 'Switch Model',
-    'switch_model_desc': 'Choose which model to use for chat:',
-    'switched_to': 'Switched to \${name}',
-    'switch_failed': 'Failed to switch: \${e}',
-    'providers_load_failed': 'Failed to load providers: \${e}',
+    'switch_model': 'Model Değiştir',
+    'switch_model_desc': 'Sohbet için hangi modeli kullanmak istediğini seç:',
+    'switched_to': '\${name} moduna geçildi',
+    'switch_failed': 'Değiştirilemedi: \${e}',
+    'providers_load_failed': 'Sağlayıcılar yüklenemedi: \${e}',
+    'no_model_guide_title': 'Henüz bir model yok',
+    'no_model_guide_body':
+        'Sohbet edebilmek için ya bir yerel model indirmen ya da bir API sağlayıcı (OpenAI, Gemini, Claude...) bağlaman gerekiyor.',
+    'choose_model_action': 'Model Seç',
     'openrouter_connect': 'OpenRouter Bağlantısı',
     'openrouter_instruction':
         'openrouter.ai/keys adresinden API Key\'ini kopyalayıp aşağıya yapıştır:',
@@ -1504,6 +1508,10 @@ class L10n {
     'switched_to': 'Switched to \${name}',
     'switch_failed': 'Failed to switch: \${e}',
     'providers_load_failed': 'Failed to load providers: \${e}',
+    'no_model_guide_title': 'No model yet',
+    'no_model_guide_body':
+        'To start chatting you need either a downloaded local model or a connected API provider (OpenAI, Gemini, Claude...).',
+    'choose_model_action': 'Choose Model',
     'openrouter_connect': 'OpenRouter Connection',
     'openrouter_instruction':
         'Copy your API Key from openrouter.ai/keys and paste below:',

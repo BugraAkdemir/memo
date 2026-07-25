@@ -51,10 +51,15 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
 
   bool _providerConfigured = false;
   String? _activeProviderName;
+  bool _hasEmbeddingModel = false;
 
   bool _modelDownloadStarted = false;
   bool _modelDownloadDone = false;
   String? _modelDownloadError;
+
+  bool _memoryModelDownloading = false;
+  bool _memoryModelDownloadDone = false;
+  String? _memoryModelDownloadError;
 
   ThemeColors get _colors {
     if (_selectedTheme == 'dark') return MemoTheme.dark;
@@ -297,6 +302,7 @@ Limits:
         final models = await ref.read(apiClientProvider).listLocalModels();
         _modelsOk = models.isNotEmpty;
         _localModelCount = models.length;
+        _hasEmbeddingModel = models.any((m) => m.isEmbedding);
         final activeProvider = await ref.read(apiClientProvider).getActiveProvider();
         _providerConfigured = activeProvider.isNotEmpty;
         _activeProviderName = activeProvider.isEmpty ? null : activeProvider;
@@ -350,6 +356,38 @@ Limits:
       // Provider was saved either way (updateProvider already succeeded
       // inside the dialog) — activation just didn't confirm; the user can
       // still pick it from the chat top bar's model switcher afterwards.
+    }
+  }
+
+  /// An API provider covers chat, but memory/RAG only ever runs against the
+  /// local embedding model — connecting a provider alone silently leaves
+  /// memory permanently off with nothing telling the user why. Offered right
+  /// next to the provider button so it's a one-click follow-up instead of a
+  /// surprise discovered later.
+  Future<void> _downloadMemoryModel() async {
+    setState(() {
+      _memoryModelDownloading = true;
+      _memoryModelDownloadDone = false;
+      _memoryModelDownloadError = null;
+    });
+    try {
+      await _downloadCurated(recommendedMemoryModel);
+      if (!mounted) return;
+      await _waitForDownloadsIdle([recommendedMemoryModel]);
+      if (mounted) {
+        setState(() {
+          _memoryModelDownloading = false;
+          _memoryModelDownloadDone = true;
+          _hasEmbeddingModel = true;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _memoryModelDownloading = false;
+          _memoryModelDownloadError = e.toString();
+        });
+      }
     }
   }
 
@@ -732,6 +770,11 @@ Limits:
                                   providerConfigured: _providerConfigured,
                                   activeProviderName: _activeProviderName,
                                   onConnectProvider: _connectProvider,
+                                  hasEmbeddingModel: _hasEmbeddingModel,
+                                  memoryModelDownloading: _memoryModelDownloading,
+                                  memoryModelDownloadDone: _memoryModelDownloadDone,
+                                  memoryModelDownloadError: _memoryModelDownloadError,
+                                  onDownloadMemoryModel: _downloadMemoryModel,
                                 );
                               },
                             ),
@@ -1014,6 +1057,11 @@ class _ModelRecommendationCard extends StatelessWidget {
   final bool providerConfigured;
   final String? activeProviderName;
   final VoidCallback onConnectProvider;
+  final bool hasEmbeddingModel;
+  final bool memoryModelDownloading;
+  final bool memoryModelDownloadDone;
+  final String? memoryModelDownloadError;
+  final VoidCallback onDownloadMemoryModel;
 
   const _ModelRecommendationCard({
     required this.color,
@@ -1030,6 +1078,11 @@ class _ModelRecommendationCard extends StatelessWidget {
     required this.providerConfigured,
     required this.activeProviderName,
     required this.onConnectProvider,
+    required this.hasEmbeddingModel,
+    required this.memoryModelDownloading,
+    required this.memoryModelDownloadDone,
+    required this.memoryModelDownloadError,
+    required this.onDownloadMemoryModel,
   });
 
   @override
@@ -1055,18 +1108,27 @@ class _ModelRecommendationCard extends StatelessWidget {
   /// model state above — a provider is useful even alongside local models.
   Widget _providerSection() {
     if (providerConfigured) {
-      return Row(
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
-          SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              isTurkish
-                  ? 'API sağlayıcı bağlı: ${activeProviderName ?? ''}'
-                  : 'API provider connected: ${activeProviderName ?? ''}',
-              style: TextStyle(fontSize: 12, color: color.textMain),
-            ),
+          Row(
+            children: [
+              Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isTurkish
+                      ? 'API sağlayıcı bağlı: ${activeProviderName ?? ''}'
+                      : 'API provider connected: ${activeProviderName ?? ''}',
+                  style: TextStyle(fontSize: 12, color: color.textMain),
+                ),
+              ),
+            ],
           ),
+          if (!hasEmbeddingModel) ...[
+            SizedBox(height: 10),
+            _memoryModelWarning(),
+          ],
         ],
       );
     }
@@ -1108,6 +1170,94 @@ class _ModelRecommendationCard extends StatelessWidget {
           ),
         ),
       ],
+    );
+  }
+
+  /// An API provider only ever covers chat — memory/RAG always runs against
+  /// the local embedding model regardless of which chat provider is active,
+  /// so connecting a provider alone leaves memory silently, permanently off
+  /// with nothing telling the user why. Surfaced right here instead, with a
+  /// one-click download for the same curated memory model the local-model
+  /// path above already recommends.
+  Widget _memoryModelWarning() {
+    return Container(
+      padding: EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        color: MemoTheme.warningOrange.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.info_outline, size: 16, color: MemoTheme.warningOrange),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  isTurkish
+                      ? 'Hafıza modeli yok — API sağlayıcı ile sohbet edebilirsin ama Memo geçmişini hatırlayamaz. Hafıza için ayrı, küçük bir yerel model gerekir.'
+                      : 'No memory model — chat works via the API provider, but Memo won\'t remember past context. Memory needs its own small local model.',
+                  style: TextStyle(fontSize: 11, color: color.textMain, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(height: 10),
+          if (memoryModelDownloadError != null) ...[
+            Text(
+              memoryModelDownloadError!,
+              style: TextStyle(fontSize: 11, color: MemoTheme.red),
+            ),
+            SizedBox(height: 8),
+          ],
+          if (memoryModelDownloadDone)
+            Row(
+              children: [
+                Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 16),
+                SizedBox(width: 6),
+                Text(
+                  isTurkish ? 'Hafıza modeli hazır!' : 'Memory model ready!',
+                  style: TextStyle(fontSize: 12, color: color.textMain),
+                ),
+              ],
+            )
+          else if (memoryModelDownloading)
+            Row(
+              children: [
+                SizedBox(
+                  width: 14,
+                  height: 14,
+                  child: CircularProgressIndicator(strokeWidth: 2, color: MemoTheme.warningOrange),
+                ),
+                SizedBox(width: 8),
+                Text(
+                  isTurkish ? 'İndiriliyor...' : 'Downloading...',
+                  style: TextStyle(fontSize: 12, color: color.textDim),
+                ),
+              ],
+            )
+          else
+            OutlinedButton.icon(
+              onPressed: onDownloadMemoryModel,
+              icon: Icon(Icons.download_outlined, size: 15, color: MemoTheme.warningOrange),
+              label: Text(
+                isTurkish ? 'Hafıza Modelini İndir' : 'Download Memory Model',
+                style: TextStyle(
+                  color: MemoTheme.warningOrange,
+                  fontWeight: FontWeight.w600,
+                  fontSize: 12,
+                ),
+              ),
+              style: OutlinedButton.styleFrom(
+                side: BorderSide(color: MemoTheme.warningOrange.withValues(alpha: 0.4)),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+                padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              ),
+            ),
+        ],
+      ),
     );
   }
 

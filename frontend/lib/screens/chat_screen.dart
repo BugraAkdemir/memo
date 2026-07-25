@@ -6,11 +6,14 @@ import 'dart:io';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
+import '../providers/provider_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import '../widgets/chat_sidebar.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
+import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
 import '../providers/agent_provider.dart';
 
@@ -189,6 +192,222 @@ class _TokenCounter extends ConsumerWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Quick model/provider switcher — anchored dropdown opened from the top
+/// bar. Lists the local model plus every *enabled* registered API provider
+/// (from `data/providers.json`, via [providerListProvider]), and a trailing
+/// shortcut to register a new one. Mirrors the selection logic already used
+/// by `chat_input.dart`'s `/model` dialog (`ProviderConfig.name` is the
+/// identifier `activeProviderTypeProvider`/`setActiveProvider` operate on,
+/// not `ProviderConfig.type` — a provider type can be registered more than
+/// once under different names), but as a compact anchored menu instead of a
+/// modal dialog, matching where the user expects it in the toolbar.
+class _QuickModelDropdown extends ConsumerWidget {
+  const _QuickModelDropdown();
+
+  Future<void> _openMenu(BuildContext context, WidgetRef ref) async {
+    final button = context.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(button.size.bottomLeft(Offset.zero), ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    String activeType;
+    List<ProviderConfig> providers;
+    try {
+      activeType = await ref.read(activeProviderTypeProvider.future);
+      providers = await ref.read(providerListProvider.future);
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('providers_load_failed', {'e': e.toString()}))),
+        );
+      }
+      return;
+    }
+    if (!context.mounted) return;
+
+    final effectiveActive = activeType.isEmpty ? 'local' : activeType;
+    final enabledProviders = providers.where((p) => p.enabled).toList();
+    final c = MemoTheme.of(context);
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        PopupMenuItem(
+          value: 'local',
+          child: _QuickModelMenuRow(
+            leading: Icon(Icons.computer_outlined, size: 18, color: c.textMuted),
+            label: L10n.t('local_model'),
+            isActive: effectiveActive == 'local',
+          ),
+        ),
+        for (final p in enabledProviders)
+          PopupMenuItem(
+            value: p.name,
+            child: _QuickModelMenuRow(
+              leading: providerLogoWidget(p.type, size: 18),
+              label: p.name,
+              isActive: effectiveActive == p.name,
+            ),
+          ),
+        const PopupMenuDivider(),
+        PopupMenuItem(
+          value: '__add_provider__',
+          child: _QuickModelMenuRow(
+            leading: Icon(Icons.add, size: 18, color: MemoTheme.accent),
+            label: L10n.t('add_provider'),
+            labelColor: MemoTheme.accent,
+          ),
+        ),
+      ],
+    );
+
+    if (selected == null || !context.mounted) return;
+
+    if (selected == '__add_provider__') {
+      final added = await showDialog<bool>(
+        context: context,
+        builder: (_) => const ProviderConfigDialog(),
+      );
+      if (added == true) {
+        ref.invalidate(providerListProvider);
+      }
+      return;
+    }
+
+    try {
+      final api = ref.read(apiClientProvider);
+      if (selected == 'local') {
+        await api.setActiveProvider('');
+        ref.read(activeProviderTypeProvider.notifier).setActive('');
+      } else {
+        await api.setActiveProvider(selected);
+        ref.read(activeProviderTypeProvider.notifier).setActive(selected);
+      }
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(L10n.t('switched_to', {'name': selected == 'local' ? L10n.t('local_model') : selected})),
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('switch_failed', {'e': e.toString()}))),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final c = MemoTheme.of(context);
+    final activeType = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
+    final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
+    final isLocal = activeType.isEmpty;
+
+    final String label;
+    final Widget leadingIcon;
+    if (isLocal) {
+      label = L10n.t('local_model');
+      leadingIcon = Icon(Icons.computer_outlined, size: 15, color: c.textMuted);
+    } else {
+      final match = providers.where((p) => p.name == activeType);
+      final providerType = match.isNotEmpty ? match.first.type : activeType;
+      label = activeType;
+      leadingIcon = providerLogoWidget(providerType, size: 15);
+    }
+
+    return Builder(
+      builder: (btnContext) => Tooltip(
+        message: L10n.t('switch_model'),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => _openMenu(btnContext, ref),
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              constraints: const BoxConstraints(maxWidth: 170),
+              decoration: BoxDecoration(
+                color: c.bgElement,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: c.borderSoft),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  leadingIcon,
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        color: c.textMain,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.expand_more, size: 16, color: c.textDim),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _QuickModelMenuRow extends StatelessWidget {
+  final Widget leading;
+  final String label;
+  final bool isActive;
+  final Color? labelColor;
+
+  const _QuickModelMenuRow({
+    required this.leading,
+    required this.label,
+    this.isActive = false,
+    this.labelColor,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        leading,
+        const SizedBox(width: 10),
+        Expanded(
+          child: Text(
+            label,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              fontWeight: isActive ? FontWeight.w600 : FontWeight.w400,
+              color: labelColor,
+            ),
+          ),
+        ),
+        if (isActive) ...[
+          const SizedBox(width: 8),
+          Icon(Icons.check, size: 16, color: MemoTheme.accent),
+        ],
+      ],
     );
   }
 }
@@ -399,6 +618,10 @@ class _ChatTopBar extends ConsumerWidget {
 
           // Live token counter (Claude-Code style)
           const _TokenCounter(),
+
+          // Quick model/provider switch dropdown — local model, every
+          // enabled API provider, and a shortcut to add a new one.
+          const _QuickModelDropdown(),
 
           // Undo button (only when agent mode is on)
           if (isAgentEnabled)

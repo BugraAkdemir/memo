@@ -7,7 +7,6 @@ import '../../../core/tts_playback_error.dart';
 import '../../../core/wav_player.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
-import '../../../screens/live_screen.dart';
 
 /// Settings → Beta Features.
 ///
@@ -137,16 +136,6 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
             if (beta) ...[
               const SizedBox(height: 16),
               const _LiveModeVoiceTest(),
-              const SizedBox(height: 12),
-              OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(builder: (_) => const LiveScreen()),
-                  );
-                },
-                icon: const Icon(Icons.mic_none_rounded, size: 18),
-                label: Text(L10n.t('beta_item_live_mode_open_button')),
-              ),
             ],
             const SizedBox(height: 24),
             Container(

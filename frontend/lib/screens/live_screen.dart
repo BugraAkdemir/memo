@@ -227,16 +227,20 @@ class _LiveScreenState extends ConsumerState<LiveScreen> {
 
     return Scaffold(
       backgroundColor: theme.bgApp,
-      appBar: AppBar(
-        title: Text(L10n.t('live_screen_title')),
-        backgroundColor: theme.bgApp,
-        elevation: 0,
-      ),
       body: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            Text(
+              L10n.t('live_screen_title'),
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: theme.textMain,
+              ),
+            ),
+            const SizedBox(height: 16),
             Text(
               _stateLabel(),
               style: TextStyle(

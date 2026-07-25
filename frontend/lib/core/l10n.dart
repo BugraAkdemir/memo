@@ -191,6 +191,7 @@ class L10n {
     'tab_stats': 'İstatistikler',
     'tab_dev_gateway': 'Geliştirici',
     'tab_swarm': 'Swarm',
+    'tab_live': 'Sesli',
     'tab_report_bug': 'Hata Bildir',
     'swarm_title': 'Memo Swarm',
     'swarm_subtitle': 'Bir bilgisayara sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır',
@@ -623,7 +624,6 @@ class L10n {
     'live_mode_error_missing_gstreamer_plugins':
         'Ses çalınamadı: sisteminizde GStreamer\'ın "good" eklenti paketi (gst-plugins-good) kurulu değil. Dağıtımınızın paket yöneticisiyle kurup uygulamayı yeniden başlatın (Arch/CachyOS: sudo pacman -S gst-plugins-good; Debian/Ubuntu: sudo apt install gstreamer1.0-plugins-good).',
     'live_mode_error_playback_generic': 'Ses çalınamadı: {err}',
-    'beta_item_live_mode_open_button': 'Sesli Mod ekranını aç',
     'live_screen_title': 'Sesli Mod (Live)',
     'live_screen_state_idle': 'Hazır',
     'live_screen_state_listening': 'Dinliyor…',
@@ -1545,6 +1545,7 @@ class L10n {
     'tab_stats': 'Stats',
     'tab_dev_gateway': 'Developer',
     'tab_swarm': 'Swarm',
+    'tab_live': 'Live',
     'tab_report_bug': 'Report Bug',
     'swarm_title': 'Memo Swarm',
     'swarm_subtitle':
@@ -1968,7 +1969,6 @@ class L10n {
     'live_mode_error_missing_gstreamer_plugins':
         'Couldn\'t play the audio: your system is missing GStreamer\'s "good" plugin set (gst-plugins-good). Install it with your distro\'s package manager and restart the app (Arch/CachyOS: sudo pacman -S gst-plugins-good; Debian/Ubuntu: sudo apt install gstreamer1.0-plugins-good).',
     'live_mode_error_playback_generic': 'Couldn\'t play the audio: {err}',
-    'beta_item_live_mode_open_button': 'Open Live Mode screen',
     'live_screen_title': 'Live Mode (Voice)',
     'live_screen_state_idle': 'Ready',
     'live_screen_state_listening': 'Listening…',

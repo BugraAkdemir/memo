@@ -29,14 +29,17 @@ import 'calendar_screen.dart';
 import 'routines_screen.dart';
 import 'developer_screen.dart';
 import 'swarm_screen.dart';
+import 'live_screen.dart';
 
 /// Tracks which main tab is currently selected
-/// (0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer 7=swarm).
-/// Tasks are not a top-level tab — they're opened from within the Agent screen
-/// (a task list is always bound to a specific agent chat, so it makes no sense
-/// to reach it from a global nav item that could be visited from the plain
-/// Chat tab too). Swarm (index 7) is Beta-only and hidden on macOS (no
-/// rpc-server binary in the Mac release — see PLAN_memo_swarm.md).
+/// (0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer
+/// 7=swarm 8=live). Tasks are not a top-level tab — they're opened from
+/// within the Agent screen (a task list is always bound to a specific agent
+/// chat, so it makes no sense to reach it from a global nav item that could
+/// be visited from the plain Chat tab too). Swarm (index 7) and Live (index
+/// 8, docs/plans/PLAN_voice_live_mode_faz1.md) are both Beta-only; Swarm is
+/// additionally hidden on macOS (no rpc-server binary in the Mac release —
+/// see PLAN_memo_swarm.md).
 final activeTabProvider = StateProvider<int>((ref) => 0);
 
 /// Main app shell — NavRail + content area.
@@ -48,7 +51,7 @@ class AppShell extends ConsumerStatefulWidget {
 }
 
 class _AppShellState extends ConsumerState<AppShell> {
-  // 0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer 7=swarm
+  // 0=chat 1=agent 2=models 3=whatsapp 4=calendar 5=routines 6=developer 7=swarm 8=live
   int _currentIndex = 0;
   bool _showLaunchpad = false;
   bool _showTour = false;
@@ -60,7 +63,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _hasEverConnectedToBackend = false;
   bool _backendDeadDialogShown = false;
 
-  final _navKeys = List.generate(8, (_) => GlobalKey());
+  final _navKeys = List.generate(9, (_) => GlobalKey());
 
   @override
   void initState() {
@@ -203,6 +206,10 @@ class _AppShellState extends ConsumerState<AppShell> {
                               // mounted forever — polling is started/stopped
                               // in _handleTabChange (KNOWN_ISSUES M04).
                               const SwarmScreen(),
+                              // Same reasoning as Swarm above (index 8, no
+                              // polling to start/stop — LiveScreen owns its
+                              // own start/stop via its mic button).
+                              const LiveScreen(),
                             ],
                           ),
                         ),
@@ -381,6 +388,18 @@ class _AppShellState extends ConsumerState<AppShell> {
               onTap: () => _handleTabChange(7),
             ),
 
+          // Live Mode: Beta-only, still prototype-stage (no barge-in yet,
+          // see docs/plans/PLAN_voice_live_mode_faz1.md).
+          if (_showLiveModeNav())
+            _NavRailButton(
+              key: _navKeys[8],
+              icon: Icons.record_voice_over_outlined,
+              activeIcon: Icons.record_voice_over,
+              label: L10n.t('tab_live'),
+              isActive: _currentIndex == 8,
+              onTap: () => _handleTabChange(8),
+            ),
+
           const Spacer(),
 
           _NavRailButton(
@@ -514,6 +533,15 @@ class _AppShellState extends ConsumerState<AppShell> {
     final ra = ref.watch(remoteAccessProvider).valueOrNull;
     if (ra != null && ra['beta'] == true) return true;
     // Fallback to the local prefs toggle used elsewhere until remote status loads.
+    return ref.watch(betaFeaturesProvider);
+  }
+
+  /// Live Mode nav is Beta-gated the same way Swarm's is (still prototype-
+  /// stage per docs/plans/PLAN_voice_live_mode_faz1.md) -- no platform
+  /// exclusion, unlike Swarm, since the `vad` package covers macOS too.
+  bool _showLiveModeNav() {
+    final ra = ref.watch(remoteAccessProvider).valueOrNull;
+    if (ra != null && ra['beta'] == true) return true;
     return ref.watch(betaFeaturesProvider);
   }
 }

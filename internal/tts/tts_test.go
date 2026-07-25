@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 )
 
@@ -105,6 +106,29 @@ func TestSynthesize_MissingBinaryFailsFast(t *testing.T) {
 	_, err := s.Synthesize(context.Background(), "hello")
 	if err == nil {
 		t.Error("expected error when Piper binary is not found")
+	}
+}
+
+// TestBinarySearchBasesFrom_IncludesParentOfExeDir is a regression test:
+// this function previously copied whisper.resolveBinary's search (only "."
+// and the exe's own directory), the same bug internal/llama's
+// binarySearchBasesFrom was already fixed for — the installed CLI binary
+// lives at ~/.memo/bin/memo, one level deeper than the bundled binaries/
+// tree it ships next to (~/.memo/binaries/...), so without searching the
+// parent, resolveBinary never finds the bundled Piper binary when running
+// as the installed CLI.
+func TestBinarySearchBasesFrom_IncludesParentOfExeDir(t *testing.T) {
+	exePath := filepath.Join("/home/user/.memo/bin", "memo")
+
+	bases := binarySearchBasesFrom(exePath)
+
+	wantExeDir := filepath.Join("/home/user/.memo/bin")
+	wantParent := filepath.Join("/home/user/.memo")
+	if !slices.Contains(bases, wantExeDir) {
+		t.Errorf("bases = %v, want to contain exe dir %q", bases, wantExeDir)
+	}
+	if !slices.Contains(bases, wantParent) {
+		t.Errorf("bases = %v, want to contain parent dir %q", bases, wantParent)
 	}
 }
 

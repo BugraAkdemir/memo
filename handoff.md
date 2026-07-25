@@ -1,3 +1,78 @@
+# Handoff — 2026-07-24 (Session 54) — VC++ redist fix, TD-2 tamamen kapatıldı, repo-geneli panic-recovery turu
+
+## Özet
+
+Kullanıcı Windows sanal makinede CI'dan gelen build'e motor binary'lerini ekleyip `installer.iss` ile paketlemeye çalışırken `msvcp140.dll` hatası aldı — bu oturum oradan başlayıp kararlılık odaklı bir çalışmaya dönüştü: (1) VC++ Redistributable fix, (2) v3.3.4 için taslak sürüm notları açıldı, (3) **TD-2 (son açık bug) tamamen kapatıldı** — `BUG_REPORT.md` artık 0 açık madde gösteriyor, (4) kullanıcının "bug taraması ve test yazmak istemiyorum, başka ne yapabiliriz" sorusuna cevaben başlanan **repo-geneli panic-recovery denetimi** — 25 commit'te, tek tek dosya bazında (kullanıcının açık talebiyle: "kritik dosyalardaki her değişiklikte commit at").
+
+## 1. VC++ Redistributable — Windows kurulumu artık `msvcp140.dll` hatası vermiyor
+
+`memo_flutter.exe`'nin ihtiyaç duyduğu Visual C++ Runtime, temiz bir Windows makinesinde (VM'ler dahil) kurulu değil. `download_binaries.sh` artık `vc_redist.x64.exe`'yi `binaries/windows/`'a indiriyor (diğer motor binary'leriyle aynı, gitignored konum); `installer.iss`'in `[Run]` bölümü onu `/install /quiet /norestart` ile sessizce kuruyor (`skipifdoesntexist` ile, binary yoksa hata vermiyor). Commit: `5bb88de`.
+
+## 2. `versinNote/v3.3.4.md` + `tr/v3.3.4.md` açıldı
+
+"In Development" olarak işaretli, canlı taslak — sürüm ilerledikçe dolduruluyor. Bu oturumdaki iki gerçek fix (VC++ redist, TD-2) zaten "Fixed" bölümüne taşındı; kalan planlanan iş: test kapsamı boşlukları (`handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`) ve henüz taranmamış modüllerde derin bug taraması (`cloudsync`, `skill`, `proactive`, `observer`). Commit'ler: `aefd65c`, `35ed16c`.
+
+## 3. TD-2 tamamen kapatıldı — local model inference contention
+
+**Kök sorun (`BUG_REPORT.md`'den):** `extractAndPinFacts` (auto fact extraction) her chat turundan sonra ayrı bir goroutine'de local model'e istek atıyor. `llama-server` tek slotla çalıştığı için (`--parallel 1`), extraction hâlâ sürerken kullanıcı hemen yeni mesaj yazarsa o mesaj extraction'ın arkasında sıraya giriyordu — küçük ama gerçek bir gecikme, sadece local model kurulumlarını etkiliyor.
+
+**Fix:** `App.beginBackgroundLLMCall`/`preemptBackgroundLLM` (yeni, `internal/app/llm.go`) — `extractAndPinFacts` artık kendi LLM çağrısını iptal edilebilir bir context üzerinden yapıyor (`bgLLMCtx`/`bgLLMCancel`, pointer-identity korumalı — eski bir çağrının geç gelen cleanup'ı yeni bir çağrının slotunu asla çalmıyor). Gerçek bir chat mesajı local model'e gitmek üzereyken (`callLLMStream`'in local dalı, `SendMessage`/`-WithImage`/`-WithFile`) önce `preemptBackgroundLLM()` çağrılıyor — hâlâ süren extraction'ı iptal edip slotu boşaltıyor.
+
+**Bilinçli olarak `callLLM`'in kendisine eklenmedi:** `callLLM` hem gerçek gönderim (SendMessage vb.) hem arka plan çağrılarını (extraction'ın kendisi dahil — self-insight, mood, routine decider'lar) paylaşıyor; oraya eklemek extraction'ın kendi çağrısını kendi kendine iptal etmesine yol açardı (kendi kendini preempt eden bir bug). Preemption sadece sırf-gerçek-chat giriş noktalarına eklendi.
+
+3 regresyon testi (`TestPreemptBackgroundLLM_*`, `TestBeginBackgroundLLMCall_*`, `internal/app/llm_test.go`). `BUG_REPORT.md` güncellendi — TD-2 madde olarak silindi (dosyanın kendi kuralı: düzeltilen bug tekrar dokümante edilmez, `git log` kalıcı kayıt), açık madde sayısı 1→0.
+
+Commit'ler: `e88aa0d` (struct alanı), `7dfdd99` (yardımcı fonksiyonlar), `d875fbe` (extraction wiring), `169e069` (gerçek chat giriş noktaları), `ea67c31` (testler), `56c24f2` (BUG_REPORT.md güncellemesi).
+
+## 4. Repo-geneli panic-recovery turu (en büyük iş, 20 commit)
+
+**Tetikleyici:** kullanıcı "bug taraması ve test yazmak istemiyorum, stabilite için başka ne yapabiliriz" diye sorunca önerilen üç somut iş kaleminden biri. Denetim şunu ortaya çıkardı: **repo'da sadece 3 dosyada (`agent/pipeline.go`, `app/llm.go`'nun streaming dalları, `taskloop/engine.go`) panic recovery vardı** — geri kalan onlarca `go func()`/`go x.Method()` çağrısının hiçbirinde yoktu. Go'da recover edilmeyen bir panic, nereden gelirse gelsin (main olsun olmasın) **tüm süreci çökertir** — net/http'nin per-request handler'lara verdiği ücretsiz recover, elle başlatılan goroutine'lere uygulanmaz.
+
+**Yaklaşım:** İki paylaşılan yardımcı eklendi:
+- `internal/app`'in kendi `recoverPanic(label)`/`goRecover(label, fn)`'i (app.go) — zaten test edilmiş, dokunulmadı.
+- `internal/logx`'e eklenen `Recover(label)`/`GoRecover(label, fn)` (commit `61c48d7`, 2 regresyon testi) — diğer tüm paketler bunu kullandı, kod tekrarını önlemek için.
+
+**Kapatılan paketler/dosyalar** (her biri kendi commit'inde, build+test her adımda yeşil doğrulandı):
+| Paket/Dosya | Özel not |
+|---|---|
+| `internal/app/app.go` | `588fb02` — Startup/Shutdown'daki tüm goroutine'ler, `memorySaveWorker` artık **per-task** recover (tek bozuk mesaj worker'ı kalıcı öldürmesin) |
+| `internal/app/memory.go` | `adee62a` |
+| `internal/app/chat.go` | `18b7a73` — 5 kopya `forwardStream` closure'ı (panic olursa `streamMu` sonsuza dek kilitli kalırdı) |
+| `internal/app/llm.go` | `49a4df3` — `callAgentStream`/`callAgentWithOrchestra`/3 `callLLMStream` dalı zaten `recoverStreamPanic` ile korumalıydı, kalan 5 bare `go a.X()` |
+| `internal/app/whatsapp.go` | `5b9fb8f` — `runWhatsAppIntentLoop` per-message recover |
+| `internal/app/{models,providers,learning,routine,stt}.go` | `fb1789f` |
+| `internal/logx` | `61c48d7` — paylaşılan `Recover`/`GoRecover` + testler |
+| `internal/llama` | `7b69e0c` — `Server.monitor` (Stop()'un beklediği `waitDone` kanalı kilitlenmesin diye önemli) |
+| `internal/whisper`, `internal/ngrok`, `internal/swarm`, `internal/observer` | `a4b83f9` — `observer.Recorder.worker` per-observation recover |
+| `internal/cloudsync` (sync_manager.go + drive.go) | `c2dab31` |
+| `internal/webserver/server.go` | `725695e` |
+| `internal/memory/store.go` | `ef1ae91` — `runImportanceDecay` per-call recover (günde 1 kez çalışıyor, sessiz kalıcı ölüm fark edilmeden aylar geçebilir) |
+| `internal/database/sqlite.go` | `1b9e001` — **`DB.writeLoop`, per-task.** Bu paylaşılan write-serialization loop'u (memory/sessions/calendar/... tüm SQLite yazmaları buradan geçiyor); recover'sız hâliyle bir panic o DB'nin TÜM gelecekteki yazmalarını sonsuza dek `task.done` beklerken asılı bırakırdı — bulunan en kritik tekil nokta |
+| `internal/modelstore`, `internal/proactive`, `internal/provider` (openai/gemini/claude `processSSE`) | `1ca3382` |
+| `internal/whatsapp/client.go` | `45f6c4a` |
+| `internal/replcli`, `internal/tunnel` | `a706489` |
+| `internal/app/providers.go` (kaçırılan 2 `HealthCheck` sitesi), `internal/api/streaming.go`, `main.go` (`replcli.Run` paniği artık `replDone`'a hata olarak düşüyor, terminal raw-mode restore hâlâ çalışıyor) | `598cb83` |
+
+**Bulunan ama düzeltilmeyen, ayrı bir bug (bu oturumda dokunulmadı):** `logx.Printf(format, v...)` argümanları hiç `fmt.Sprintf` etmiyor — `logger.Info(format, "values", v)` çağırıyor, yani mesaj olarak literal `"PANIC in %s: %v\n%s"` şablonunu loglayıp gerçek değerleri ayrı bir `"values"` attribute'una gömüyor. Bu, `recoverStreamPanic`/`recoverPanic`/`logx.Recover` dahil **kod tabanındaki her `logx.Printf` çağrısını** etkiliyor — loglar greplenebilir değil (`"PANIC in memorySaveWorker"` diye aratırsan hiçbir satır eşleşmez, sadece values dump'ında görünür). Test yazarken (`TestGoRecover_SwallowsPanicAndLogsIt`) bulundu, testi buna göre uyarladım (values dump içeriğini kontrol ediyor). **Düzeltilmedi** — blast radius çok büyük (yüzlerce çağrı sitesinin log çıktı formatını değiştirir), ayrı bir oturumda ele alınmalı.
+
+**Denetim tamamlanmadı — kesinlikle bilinen, henüz dokunulmamış siteler** (kullanıcı `@handoff.md`'yi düzenle diye kesince bırakıldı):
+- `internal/api/client.go:139` — `go processSSEStream(ctx, resp.Body, ch)` — **local model'in HER streaming chat cevabının** SSE okuyucusu, ayrı bir goroutine'de başlatılıyor ve recover'sız. `streaming.go` içindeki watcher alt-goroutine'i düzeltildi ama processSSEStream'in kendisi düzeltilmedi — bu muhtemelen en yüksek öncelikli kalan tekil nokta.
+- `internal/orchestra/conductor.go:556` — `go func(idx int, t OrchestraTask) {` — Orchestra Mode'un görev paralelleştirmesi, hiç bakılmadı.
+- `internal/replcli/repl.go:106` — `go heartbeatLoop(hbCtx, client, clientID)` — CLI'nin backend heartbeat'i, hiç bakılmadı.
+- `internal/routine/loop.go:127` — `go func(rt Routine) {` — routine tetikleme, hiç bakılmadı.
+- Hiç dokunulmayan paketler: `internal/calendar`, `internal/skill`, `internal/intent`, `internal/routine`'in geri kalanı, `internal/orchestra`'nın geri kalanı, `mobile/`+`frontend/` (Flutter/Dart tarafı ayrı bir konu, Go panic modeliyle alakasız ama kendi hata yönetimi denetlenmedi).
+
+**Doğrulama:** Her commit'ten önce `go build ./...` + `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./...` (tüm paketler) çalıştırıldı, hepsi yeşil. Son tam çalıştırma bu oturumun sonunda: 3.1sn, tüm paketler `ok`.
+
+## Sıradaki oturum için
+
+1. **Panic-recovery denetimini bitir:** yukarıdaki 4 bilinen site (`api/client.go` en öncelikli) + hiç bakılmamış paketler (`calendar`, `skill`, `intent`, `orchestra`'nın kalanı, `routine`'in kalanı).
+2. **`logx.Printf` formatlamama bug'ı** — ayrı, daha büyük kapsamlı bir düzeltme, kullanıcıyla konuşulup planlanmalı (yüzlerce log satırının çıktısını değiştirir).
+3. Kullanıcının Windows VM'de installer'ı test edip `msvcp140.dll` fix'inin gerçekten çalıştığını doğrulaması bekleniyor.
+4. Stable-readiness checklist'in geri kalanı hâlâ gündemde: test kapsamı boşlukları (`handlers_oauth.go`, `handlers_proactive.go`, `cloudsync/drive.go`, `hardwareID()`).
+
+---
+
 # Handoff — 2026-07-23 (Session 53) — v3.3.3'ün ilk gerçek yayını (memo-release skill)
 
 ## Özet

@@ -217,7 +217,7 @@ player bağımlılığı var mı **kontrol edilmeli** (whatsapp/agent ekranları
 ses oynatma yoksa yeni bir paket — `just_audio` veya benzeri — eklenmesi
 gerekebilir, `pubspec.yaml`'a bakılmalı).
 
-### 1.5 — Flutter: VAD araştırma + minimal sürekli-yakalama prototipi
+### 1.5 — Flutter: VAD araştırma + minimal sürekli-yakalama prototipi — ✅ KARAR VERİLDİ (2026-07-25)
 
 **Bu adım açıkça bir araştırma/prototip adımı, üretim kodu değil.** VAD için
 somut seçenekler karşılaştırılmalı:
@@ -229,6 +229,31 @@ somut seçenekler karşılaştırılmalı:
 
 Çıktı: bir karar + kısa gerekçe not edilir (bu dosyaya veya üst plana), asıl
 entegrasyon 1.6'da.
+
+**Karar: `vad` paketi (pub.dev, `keyur2maru/vad`, MIT lisans).** pub.dev'den
+kontrol edildi (varsayılmadı): 150/160 pub point, ~5.8K indirme/30gün, aktif
+bakımlı. Silero VAD v4/v5 modellerini native platformlarda ONNX Runtime'a
+doğrudan FFI binding'i ile, web'de `dart:js_interop` ile çalıştırıyor —
+**android/ios/web/macos/windows/linux hepsi destekleniyor**, tam olarak bu
+uygulamanın hedef matrisiyle örtüşüyor. Kendi bağımlılıkları arasında
+**zaten kullandığımız `record` paketi de var** — mikrofon yakalamayı kendi
+içinde `record` ile yapıyor, ayrı bir capture katmanı yazmaya gerek yok.
+`onSpeechEnd` event'i doğrudan `List<double>` (16kHz mono PCM örnekleri)
+veriyor — WAV'a sarıp mevcut `/api/transcribe`'a olduğu gibi gönderilebilir
+(whisper.cpp'nin beklediği format zaten 16kHz mono).
+
+**Önemli, plana doğrudan yansıyan bulgu:** Paketin kendi README'si açıkça
+"Echo cancellation is not available on Windows and Linux platforms due to
+limitations in the underlying audio capture library" diyor — yani gerçek
+AEC platform kısıtı sadece bizim tasarım kararımız değil, kullandığımız
+kütüphanenin kendisinin de masaüstünde (Windows/Linux) sağlayamadığı bir
+şey. Bu, 1.6'daki "barge-in yanlış-pozitif riski" notunu daha da
+kuvvetlendiriyor — mobilde (Android/iOS) paket kendi AEC'sini sağlıyor
+olabilir, masaüstünde kesinlikle sağlamıyor.
+
+Ek bağımlılık: `permission_handler` (mikrofon izni için, paketin kendi
+kurulum talimatı). Hem `vad` hem `permission_handler` 1.6'da, gerçek
+wiring ile birlikte eklenecek — 1.5 sadece karar aşaması.
 
 ### 1.6 — Live ekranı: uçtan uca bağlama
 

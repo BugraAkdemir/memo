@@ -52,7 +52,6 @@ dependencies:
   # capture layer is needed. See docs/plans/PLAN_voice_live_mode_faz1.md's
   # 1.5 for why this package was picked over alternatives.
   vad: ^0.0.8
-  permission_handler: ^12.0.3
 
   # Charts (Settings usage-stats tab)
   fl_chart: ^0.68.0

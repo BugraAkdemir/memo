@@ -46,6 +46,17 @@ Kullanıcı B'yi seçti. Uygulandı, 3 commit:
 
 `go build/vet/test -race` ve `flutter analyze`/`flutter test` (114/114) yeşil.
 
+## Ek (aynı gün, devam) — Live Mode gerçek bir nav sekmesi oldu
+
+Kullanıcı test edip çalıştığını doğruladıktan sonra "gerçek sohbet kısmına getir" dedi — Ayarlar → Beta Features içine gömülü, `Navigator.push` ile açılan bir buton yerine, **Swarm'ın zaten kullandığı desenle** ana nav rail'e eklendi (`b50a2a2`):
+
+- `app_shell.dart`: `LiveScreen` artık `IndexedStack`'e index 8 olarak ekli (her zaman mount'lu, nav butonu ayrı gate'leniyor — Swarm'daki gibi). `_showLiveModeNav()`, `_showSwarmNav()`'ı birebir taklit ediyor (macOS istisnası hariç — `vad` macOS'u destekliyor, sadece Swarm'ın rpc-server binary'si orada yok).
+- `live_screen.dart`: Kendi `AppBar`'ı kaldırıldı, `swarm_screen.dart`/`calendar_screen.dart` ile aynı desene (gövde içinde başlık, Material AppBar yok) geçirildi — eskiden `Navigator.push` girişi için mantıklıydı, artık tab olduğu için tutarsızdı.
+- `beta_features_tab.dart`: Artık gereksiz olan "Sesli Mod ekranını aç" butonu kaldırıldı (ölü L10n anahtarıyla birlikte) — "sesi test et" widget'ı hâlâ duruyor, ayrı bir fayda sağlıyor.
+- Yeni `tab_live` L10n anahtarı (TR "Sesli", EN "Live") — nav rail etiketinin gerçek render boyutuna (fontSize 9, tek satır, ellipsis) uyacak kısalıkta, `live_screen_title`'ın uzun hâlini kullanmadı.
+
+`flutter analyze`/`flutter test` (114/114) yeşil.
+
 ## Sıradaki Adım
 
 1. ~~Kullanıcı kendi ekranında `gst-plugins-good` kurup sesin gerçekten çaldığını doğrulamalı~~ → **artık gerekmiyor**, GStreamer bağımlılığı kaldırıldı, kullanıcı sesi zaten duydu.

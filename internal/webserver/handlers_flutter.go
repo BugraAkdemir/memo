@@ -1875,6 +1875,32 @@ func (s *Server) handleMemoryImportText(w http.ResponseWriter, r *http.Request) 
 	writeJSON(w, map[string]any{"ok": true, "facts_saved": factsSaved, "style_updated": styleUpdated})
 }
 
+// handleTTSSynthesize is handleTranscribe's reverse direction (text in,
+// audio out instead of audio in, text out) — see internal/tts's package
+// doc and docs/plans/PLAN_voice_live_mode_faz1.md's 1.3. Responds with raw
+// WAV bytes rather than base64-in-JSON, mirroring how handleTranscribe
+// already reads its audio input as a raw body rather than JSON+base64.
+func (s *Server) handleTTSSynthesize(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var body struct {
+		Text string `json:"text"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil || strings.TrimSpace(body.Text) == "" {
+		http.Error(w, "text required", http.StatusBadRequest)
+		return
+	}
+	audio, err := s.fullBridge.SynthesizeSpeech(body.Text)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "audio/wav")
+	w.Write(audio)
+}
+
 func (s *Server) handleMemoryInsight(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)

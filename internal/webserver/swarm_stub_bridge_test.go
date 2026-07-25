@@ -42,6 +42,7 @@ type swarmStubBridge struct {
 	leave        func() error
 	joinStatus   func() interface{}
 	status       func() interface{}
+	synthesize   func(text string) ([]byte, error)
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -169,6 +170,12 @@ func (b *swarmStubBridge) ImportMemoryFromText(ctx context.Context, rawText stri
 }
 func (b *swarmStubBridge) GenerateSelfInsight(ctx context.Context, windowDays int, lang string) (string, error) {
 	return "", nil
+}
+func (b *swarmStubBridge) SynthesizeSpeech(text string) ([]byte, error) {
+	if b.synthesize != nil {
+		return b.synthesize(text)
+	}
+	return nil, nil
 }
 func (b *swarmStubBridge) ExportMemories() ([]byte, error)         { return nil, nil }
 func (b *swarmStubBridge) ImportMemories(data []byte) (int, error) { return 0, nil }

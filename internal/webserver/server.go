@@ -150,6 +150,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/memory/explicit/save", s.handleMemoryExplicitSave)
 	route("/api/memory/explicit/delete", s.handleMemoryExplicitDelete)
 	route("/api/memory/import-text", s.handleMemoryImportText)
+	route("/api/tts/synthesize", s.handleTTSSynthesize)
 	route("/api/memory/insight", s.handleMemoryInsight)
 	// Swarm (Memo Swarm — multi-machine llama.cpp RPC; Beta-gated in App)
 	route("/api/swarm/status", s.handleSwarmStatus)

@@ -320,6 +320,7 @@ func (a *App) sendMessageStreamInnerTo(ctx context.Context, chatID, userMsg stri
 	go func() {
 		defer close(out)
 		defer a.streamMu.Unlock()
+		defer recoverPanic("forwardStream")
 		forwardStream(ctx, innerCh, out)
 	}()
 	return out
@@ -406,6 +407,7 @@ func (a *App) SendMessageWithImageStream(ctx context.Context, userMsg string, im
 	go func() {
 		defer close(out)
 		defer a.streamMu.Unlock()
+		defer recoverPanic("forwardStream")
 		forwardStream(ctx, innerCh, out)
 	}()
 	return out
@@ -473,6 +475,7 @@ func (a *App) SendMessageWithFileStream(ctx context.Context, userMsg string, fil
 	go func() {
 		defer close(out)
 		defer a.streamMu.Unlock()
+		defer recoverPanic("forwardStream")
 		forwardStream(ctx, innerCh, out)
 	}()
 	return out

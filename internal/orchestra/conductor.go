@@ -554,6 +554,7 @@ func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, ta
 	for i, task := range tasks {
 		wg.Add(1)
 		go func(idx int, t OrchestraTask) {
+			defer logx.Recover("orchestra.executeParallel task")
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()

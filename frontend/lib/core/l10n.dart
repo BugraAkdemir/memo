@@ -610,6 +610,16 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Birden fazla makineyi birleştirip tek büyük model çalıştır (yan menü → Swarm). macOS’ta henüz yok.',
+    'beta_item_live_mode_title': 'Sesli Mod (Live)',
+    'beta_item_live_mode_desc':
+        'Geliştirme aşamasında — şimdilik yalnızca yerel Piper motoruyla metin-sese dönüştürmeyi aşağıdan test edebilirsin.',
+    'live_mode_test_tts_title': 'Sesli Mod — Ses Testi',
+    'live_mode_test_tts_desc':
+        'Piper motorunun kurulu ve yapılandırılmış olması gerekir (Ayarlar dosyasında tts.enabled + tts.model_path).',
+    'live_mode_test_tts_hint': 'Seslendirilecek metni yaz…',
+    'live_mode_test_tts_button': 'Seslendir ve çal',
+    'live_mode_test_tts_playing': 'Çalınıyor…',
+    'live_mode_test_tts_synthesizing': 'Sentezleniyor…',
     'beta_features_warning':
         'Beta özellikler kırılabilir, veri kaybına veya beklenmedik ağ davranışına yol açabilir. Üretim / kritik kullanım için kapalı tut.',
     'remote_beta_moved_hint':
@@ -1928,6 +1938,16 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Pool machines to run one large model (sidebar → Swarm). Not available on macOS yet.',
+    'beta_item_live_mode_title': 'Live Mode (Voice)',
+    'beta_item_live_mode_desc':
+        'Still in development — for now you can test text-to-speech with the local Piper engine below.',
+    'live_mode_test_tts_title': 'Live Mode — Voice Test',
+    'live_mode_test_tts_desc':
+        'Requires Piper to be installed and configured (tts.enabled + tts.model_path in the config file).',
+    'live_mode_test_tts_hint': 'Type text to speak…',
+    'live_mode_test_tts_button': 'Speak',
+    'live_mode_test_tts_playing': 'Playing…',
+    'live_mode_test_tts_synthesizing': 'Synthesizing…',
     'beta_features_warning':
         'Beta features can break, risk data loss, or behave unexpectedly on the network. Keep them off for production / critical use.',
     'remote_beta_moved_hint':

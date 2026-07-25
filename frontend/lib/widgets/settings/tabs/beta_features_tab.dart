@@ -1,3 +1,4 @@
+import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -124,6 +125,17 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
               body: L10n.t('beta_item_swarm_desc'),
               enabled: beta,
             ),
+            const SizedBox(height: 10),
+            _BetaFeatureRow(
+              icon: Icons.record_voice_over_outlined,
+              title: L10n.t('beta_item_live_mode_title'),
+              body: L10n.t('beta_item_live_mode_desc'),
+              enabled: beta,
+            ),
+            if (beta) ...[
+              const SizedBox(height: 16),
+              const _LiveModeVoiceTest(),
+            ],
             const SizedBox(height: 24),
             Container(
               padding: const EdgeInsets.all(12),
@@ -221,6 +233,137 @@ class _BetaFeatureRow extends StatelessWidget {
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A minimal, functional checkpoint for Voice Live Mode's Faz 1 (see
+/// docs/plans/PLAN_voice_live_mode_faz1.md) — lets a beta user type text,
+/// synthesize it via the backend's Piper synthesizer, and hear the result,
+/// without waiting for the full Live screen (Faz 1.6) to exist. Only
+/// rendered when Beta is on (see the `if (beta)` guard above), matching how
+/// Swarm's real functionality is also beta-gated, not just described.
+class _LiveModeVoiceTest extends ConsumerStatefulWidget {
+  const _LiveModeVoiceTest();
+
+  @override
+  ConsumerState<_LiveModeVoiceTest> createState() =>
+      _LiveModeVoiceTestState();
+}
+
+class _LiveModeVoiceTestState extends ConsumerState<_LiveModeVoiceTest> {
+  final _controller = TextEditingController();
+  final _player = AudioPlayer();
+  bool _synthesizing = false;
+  bool _playing = false;
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    _player.dispose();
+    super.dispose();
+  }
+
+  Future<void> _speak() async {
+    final text = _controller.text.trim();
+    if (text.isEmpty || _synthesizing) return;
+    setState(() {
+      _synthesizing = true;
+      _error = null;
+    });
+    try {
+      final audio = await ref.read(apiClientProvider).synthesizeSpeech(text);
+      if (!mounted) return;
+      setState(() {
+        _synthesizing = false;
+        _playing = true;
+      });
+      await _player.play(BytesSource(audio));
+      await _player.onPlayerComplete.first;
+    } catch (e) {
+      if (mounted) setState(() => _error = '$e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _synthesizing = false;
+          _playing = false;
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final busy = _synthesizing || _playing;
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('live_mode_test_tts_title'),
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              color: theme.textMain,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            L10n.t('live_mode_test_tts_desc'),
+            style: TextStyle(fontSize: 12, height: 1.4, color: theme.textDim),
+          ),
+          const SizedBox(height: 10),
+          TextField(
+            controller: _controller,
+            enabled: !busy,
+            style: TextStyle(fontSize: 13, color: theme.textMain),
+            decoration: InputDecoration(
+              hintText: L10n.t('live_mode_test_tts_hint'),
+              isDense: true,
+              border: const OutlineInputBorder(),
+            ),
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              FilledButton.icon(
+                onPressed: busy ? null : _speak,
+                icon: const Icon(Icons.play_arrow_rounded, size: 18),
+                label: Text(
+                  _synthesizing
+                      ? L10n.t('live_mode_test_tts_synthesizing')
+                      : _playing
+                          ? L10n.t('live_mode_test_tts_playing')
+                          : L10n.t('live_mode_test_tts_button'),
+                ),
+              ),
+              if (busy) ...[
+                const SizedBox(width: 12),
+                const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              ],
+            ],
+          ),
+          if (_error != null) ...[
+            const SizedBox(height: 8),
+            Text(
+              _error!,
+              style: TextStyle(fontSize: 12, color: MemoTheme.red),
+            ),
+          ],
         ],
       ),
     );

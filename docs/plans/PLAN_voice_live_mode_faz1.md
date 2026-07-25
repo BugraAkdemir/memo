@@ -99,7 +99,19 @@ Her adım tek başına build+test yeşil olacak şekilde küçük tutuldu — bi
 sonraki adıma geçmeden önce doğrulanmalı (AGENTS.md kuralı: max 1-2 plan
 maddesi/oturum).
 
-### 1.1 — `internal/tts` paketi: Piper subprocess lifecycle (yeni)
+### 1.1 — `internal/tts` paketi: Piper subprocess lifecycle (yeni) — ✅ TAMAMLANDI (2026-07-25, `2b02423`)
+
+**Gerçek Piper arayüzü doğrulandı** (yukarıdaki "araştırılmalı" notunun
+cevabı): upstream geliştirme Python paketine taşınmış
+(`OHF-Voice/piper1-gpl`, `pip install piper-tts`), ama son standalone
+binary release'i (`rhasspy/piper` v1.2.0, tag `2023.11.14-2`) hâlâ
+Python'suz, tek-seferlik bir CLI — `echo metin | piper --model
+ses.onnx --output_file cikti.wav`, kalıcı HTTP server modu yok
+(whisper-server'ın aksine). `internal/tts.Synthesizer.Synthesize` bu
+şekilde implement edildi: her çağrıda taze bir subprocess. Model dosyası
+için `.onnx.json` sidecar'ının da yanında olması gerektiği doğrulanıp
+`resolveModel`'e eklendi (eksikse net hata, Piper'ın kendi belirsiz
+hatasına düşmeden). 10 test, hepsi yeşil.
 
 `internal/whisper/whisper.go`'nun `Server` struct'ını birebir örnek al:
 
@@ -146,14 +158,23 @@ Test: `internal/tts/tts_test.go`, `whisper_test.go`'daki
 binary'si olmadan da testlenebilecek saf mantık (port seçimi, config
 resolve) öncelik.
 
-### 1.2 — `config.TTSConfig` + `App.startTTSServer` wiring
+### 1.2 — `config.TTSConfig` + `App.startTTSServer` wiring — ✅ TAMAMLANDI (2026-07-25, `4580306`)
+
+Plandan tek fark: fonksiyon adı `initTTS()` (whisper'ın `startSTTServer`
+deseninden farklı olarak senkron — Piper'da beklenecek bir subprocess/port
+hazır olma süreci yok, sadece config path'lerini struct'a taşıyor).
 
 `config.WhisperConfig`'in birebir eşleniği + `App.startSTTServer`
 (`internal/app/stt.go:29`) deseninin `startTTSServer` eşleniği —
 `Startup()`'a aynı şekilde bağlanır. Yeni `App.ttsServer *tts.Server` +
 `ttsMu sync.RWMutex` alanı (whisper'ın `whisperServer`/`whisperMu` deseni).
 
-### 1.3 — `POST /api/tts/synthesize` endpoint
+### 1.3 — `POST /api/tts/synthesize` endpoint — ✅ TAMAMLANDI (2026-07-25, `8a2a6b1`)
+
+`AppBridge` değil `FullBridge`'e eklendi (Flutter-only katman,
+`ImportMemoryFromText` ile aynı seviye). Yanıt JSON+base64 değil, ham WAV
+byte'ı (`Content-Type: audio/wav`) — `handleTranscribe`'ın girdi tarafının
+zaten ham body kullanmasıyla tutarlı.
 
 `handleTranscribe`'ın (`internal/webserver/server.go:662`) ters yönü: metin
 alır, ses byte'ı döner. `AppBridge` arayüzüne `SynthesizeSpeech(text string)
@@ -210,8 +231,9 @@ Faz 1'in "Live" modu kulaklık gerektirebilir (kullanıcıya UI'da belirtilir).
 
 ## Açık Sorular / Riskler (kod yazılmadan önce netleşmesi gerekenler)
 
-1. **Piper'ın gerçek arayüzü** — HTTP server mı, tek-seferlik CLI mi?
-   1.1'in ilk işi bunu gerçek binary ile doğrulamak.
+1. ~~**Piper'ın gerçek arayüzü** — HTTP server mı, tek-seferlik CLI mi?~~ →
+   **çözüldü (2026-07-25):** tek-seferlik CLI, stdin'den metin okur,
+   `--output_file` ile WAV yazar. Yukarıda 1.1'in notuna bakın.
 2. **Whisper-server'ın gerçek zamanlı/parçalı transkripsiyon desteği var mı?**
    Bugünkü `Transcribe()` tam dosya istiyor. VAD segment'leri (birkaç
    saniyelik klipler) bu haliyle de gönderilebilir (segment = "dosya"), yani
@@ -226,10 +248,17 @@ Faz 1'in "Live" modu kulaklık gerektirebilir (kullanıcıya UI'da belirtilir).
    tek seferde en karmaşık versiyona atlanmamalı.
 4. **VAD kütüphane seçimi** — 1.5'in çıktısı.
 
+## Durum (2026-07-25)
+
+1.1, 1.2, 1.3 tamamlandı ve commit'lendi — backend tarafı (Piper subprocess
++ config + `/api/tts/synthesize` endpoint) uçtan uca çalışır durumda
+(gerçek Piper binary'si olmadan test edildi; binary/model dosyaları bu
+ortamda yok, indirilmedi — sadece kod/testler doğrulandı).
+
 ## Sıradaki Adım
 
-Bu plan onaylandıktan sonra **1.1'den başlanmalı** — ama 1.1'in kendisi de
-Piper'ın gerçek arayüzünü doğrulamadan (açık soru #1) struct'ı taahhüt
-etmemeli. İlk somut iş: Piper'ı indirip elle bir deneme sentezi yaparak
-gerçek CLI/dosya arayüzünü doğrulamak, sonra `internal/tts` struct'ını buna
-göre yazmak.
+**1.4 — Flutter TTS çalma altyapısı.** Önce `frontend/pubspec.yaml`'da
+mevcut bir ses çalma bağımlılığı olup olmadığı kontrol edilmeli. Sonra
+`api_client.dart`'a `synthesizeSpeech(text)` eklenip Ayarlar'da basit bir
+"sesi test et" checkpoint'i kurulmalı — 1.5 (VAD araştırması) ve 1.6 (Live
+ekranı)'na geçmeden önce.

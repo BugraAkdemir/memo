@@ -1,3 +1,31 @@
+# Handoff — 2026-07-26 (devam) — "Tüm verileri sil" Windows'ta çalışmıyordu, düzeltildi (`5644872`, `266209f`)
+
+## Özet
+
+Kullanıcı bildirdi: Ayarlar > Yedekleme sekmesindeki "Tüm Verileri Sil" (factory reset / wipe) Linux'ta çalışıyor, Windows'ta çalışmıyor. `/codebase-memory` ile `WipeAllData`'ı bulup izledim.
+
+**Kök neden:** `internal/app/backup.go`'daki `WipeAllData`, veri dizinindeki her şeyi `os.RemoveAll` ile silerken memory store, observer store, calendar store, stats store ve (kullanılmışsa) WhatsApp mesaj deposu + whatsmeow session DB'si **hâlâ açıktı**. Linux'ta açık bir dosyayı unlink etmek sorunsuz çalışır (inode son fd kapanana kadar yaşar) — bu yüzden hiç fark edilmemiş. Windows'ta açık handle'lı bir dosyayı silmek "used by another process" hatasıyla doğrudan başarısız olur, `os.RemoveAll` hata döndürüp wipe yarıda kesiliyordu.
+
+**Düzeltme (`5644872`):**
+- `WipeAllData`, silmeden **önce** memory/observer/calendar/stats store'larını kapatıyor, WhatsApp client'ını durduruyor. Memory store öncekiyle aynı şekilde hemen yeniden kuruluyor; observer/calendar/stats/WhatsApp `nil` bırakılıyor (her çağrı noktası zaten nil-guard'lı) — bir restart'ta geri geliyorlar, sadece memory her sohbet turunda kritik olduğu için tam re-init hak ediyor.
+- Yan bulgu: `internal/whatsapp/client.go`'da whatsmeow'un kendi `sqlstore.Container`'ı (`session.db`'yi açan) hiçbir yerde saklanmıyor/kapatılmıyordu — bu olmadan WhatsApp hiç bağlanmış olsa bile `data/whatsapp/` Windows'ta kilitli kalırdı. `Client.storeDB` alanı eklendi, `Stop()`'ta kapatılıyor.
+
+**Kendi fix'imde bulunan bug (`266209f`):** İlk commit'ten hemen sonra, `/codebase-memory`'nin `trace_path(WipeAllData, direction=both)` çıktısını incelerken fark ettim — `a.waMsgStore` `nil` yapılıyordu ama hiç `.Close()` çağrılmıyordu, yani `messages.db` açık kalmaya devam ediyordu ve düzeltmeye çalıştığım Windows kilitlenmesi bu dosya için hâlâ yaşanacaktı. Düzeltildi: `a.waMsgStore.Close()` gerçekten çağrılıyor artık, ve WhatsApp durdurma kısmı kod tekrarı yerine mevcut `StopWhatsApp()` helper'ını kullanıyor (bonus: `whatsAppSessionID`'i de sıfırlıyor, tam wipe için doğru davranış).
+
+## Doğrulama
+
+`go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...`, `go test -tags "sqlite_fts5" ./... -race` (ilgili paketler) — hepsi yeşil. `codebase-memory` grafiği ile `Shutdown()`'daki nil-guard'lar ve `a.waClient`'ın App seviyesinde hiç nil'lenmediği (mevcut davranış, benim değişikliğim değil) teyit edildi — çifte kapatma/panic riski yok.
+
+**Otomatik regresyon testi eklenmedi:** `WipeAllData` gerçek, process içinde cache'lenen `config.DataDir()` üzerinde çalışıyor; mevcut `backup_test.go` da aynı sebeple gerçek dizin silme işlemini teste sokmaktan kaçınıyor (bkz. `writeAndRestore` yorumu). **Gerçek bir Windows makinesinde canlı doğrulanmadı** — kullanıcının kendi ekranında test etmesi gerekiyor.
+
+## Sıradaki Adım
+
+1. Kullanıcı Windows'ta "Tüm Verileri Sil"i tekrar denemeli — özellikle WhatsApp bağlıyken/bağlanmışken.
+2. Bilinçli olarak dokunulmayan, kapsam dışı bırakılan noktalar: (a) `observerStore`/`calendarStore`/`statsStore` için özel mutex yok — wipe sırasında arka plan okuyucularıyla (observer analyzer, calendar reminder loop) teorik bir yarış var, ama en kötü ihtimalle zaten ele alınan bir "database is closed" hatası dönüyor, panic yok; (b) whatsmeow `Start()`'ın hata (err) dönüş yollarında `storeDB` hâlâ sızdırılıyor (sadece başarı yolunda saklanıyor) — ayrı, küçük, önceden var olan bir sorun, bu turda dokunulmadı.
+3. Diğer açık maddeler değişmedi: son CI push'unun yeşil geçtiği teyit edilmedi; TTS/Faz 2 kullanıcı isteğiyle beklemede.
+
+---
+
 # Handoff — 2026-07-26 — ProviderConfigDialog fix'i canlı doğrulandı + whisper.go'da bundled-binary bug'ı fixlendi (`d3e4899`)
 
 ## Özet

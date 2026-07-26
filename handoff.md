@@ -1,3 +1,27 @@
+# Handoff — 2026-07-26 — ProviderConfigDialog fix'i canlı doğrulandı + whisper.go'da bundled-binary bug'ı fixlendi (`d3e4899`)
+
+## Özet
+
+Kısa bir oturum. İki iş:
+
+1. **Doğrulama:** Bir önceki oturumda yapılan `ProviderConfigDialog` "Kaydet'e tıklayınca tepki vermiyor" fix'i (`1530a4d`) kullanıcı tarafından kendi ekranında test edildi — **çalışıyor, doğrulandı.** Wizard'daki hafıza modeli uyarısı ayrıca test edilmedi/belirtilmedi ama Kaydet akışı artık kapalı bir madde.
+
+2. **`internal/whisper/whisper.go`'da bundled-binary bug'ı fixlendi (`d3e4899`):** Önceki oturumda flagged edilmiş açık bir task'tı (`task_0f1b6fbe`). `binarySearchBases()`, `internal/llama`'da daha önce düzeltilmiş olan aynı bug'ı taşıyordu — sadece `.` ve exe'nin kendi dizinine bakıyor, exe dizininin **parent'ına** bakmıyordu. Kurulu CLI'da binary yerleşimi `~/.memo/bin/memo` (exe) + `~/.memo/binaries/...` (bundled) şeklinde — yani `bin/`'in bir üst dizininde; `exeDir` tek başına yetmiyor. Sonuç: kurulu CLI'dan whisper (speech-to-text) başlatılmaya çalışıldığında `resolveBinary`/`resolveModel` bundled `whisper-server` binary'sini/modelini bulamıyor, "whisper-server binary not found" hatası veriyordu. GUI/AppImage etkilenmiyordu (o binary zaten `binaries/`'la aynı seviyede).
+
+   Fix: `binarySearchBasesFrom` (pure, testable) olarak ayrıldı, `llama.go`'daki aynı desenle exe dizininin parent'ı da `bases`'e eklendi. `llama_test.go`'daki `TestBinarySearchBasesFrom_IncludesParentOfExeDir` regresyon testi birebir adapte edildi (`whisper_test.go`).
+
+## Doğrulama
+
+`go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...`, `go test -tags "sqlite_fts5" ./internal/whisper/... -race` — hepsi yeşil.
+
+## Sıradaki Adım
+
+1. `task_0f1b6fbe` artık kapalı, dismiss edilebilir.
+2. TTS / Live Mode kullanıcı isteğiyle şimdilik ertelendi — kullanıcı önce kendi başına araştırma yapacak, sonra devam edilecek. Bir sonraki oturumda TTS'e otomatik dönülmemeli, kullanıcının kendisi gündeme getirmeli.
+3. Diğer açık maddeler değişmedi: son CI push'unun (`cc5119c`/`a4de65f`/`b1847b2`) GitHub Actions'ta gerçekten yeşil geçtiği henüz teyit edilmedi; Faz 2 (TTS Store + Provider Router) hâlâ gündemde (TTS ertelendiği için o da beklemede).
+
+---
+
 # Handoff — 2026-07-25 (devam, hızlı model seçici oturumundan sonra) — ProviderConfigDialog'ta "kayıt tepki vermiyor" bug'ı + wizard'da hafıza modeli uyarısı
 
 ## Özet

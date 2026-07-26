@@ -380,7 +380,7 @@ func (a *App) WipeAllData() error {
 	// this was never needed there — but on Windows, deleting a file with an
 	// open handle fails outright ("used by another process"), which is why
 	// wiping all data worked on Linux and silently errored out on Windows
-	// the moment memory/calendar/stats/observer/WhatsApp data existed.
+	// the moment memory/calendar/stats/observer/mood/WhatsApp data existed.
 	a.storeMu.Lock()
 	oldMemStore := a.store
 	a.store = nil
@@ -408,15 +408,22 @@ func (a *App) WipeAllData() error {
 		}
 		a.statsStore = nil
 	}
-	// observerStore/calendarStore/statsStore have no dedicated mutex (unlike
-	// store/sessions/waMsgStore) — until this method, they were only ever set
-	// once at Startup and never reassigned, so no concurrent writer existed.
-	// A background reader (the observer analyzer, the calendar reminder
-	// loop) racing this exact nil-out could see a closed store and get a
-	// "database is closed" error back from its own already-handled error
-	// path, but not corrupt state. Accepted as-is: adding real synchronization
-	// for a factory-reset action that's rare and user-initiated wasn't judged
-	// worth a locking pass across every read site in learning.go/routine.go.
+	if a.mood != nil {
+		if err := a.mood.Close(); err != nil {
+			logx.Printf("WARN: wipe: mood store close: %v", err)
+		}
+		a.mood = nil
+	}
+	// observerStore/calendarStore/statsStore/mood have no dedicated mutex
+	// (unlike store/sessions/waMsgStore) — until this method, they were only
+	// ever set once at Startup and never reassigned, so no concurrent writer
+	// existed. A background reader (the observer analyzer, the calendar
+	// reminder loop) racing this exact nil-out could see a closed store and
+	// get a "database is closed" error back from its own already-handled
+	// error path, but not corrupt state. Accepted as-is: adding real
+	// synchronization for a factory-reset action that's rare and
+	// user-initiated wasn't judged worth a locking pass across every read
+	// site in learning.go/routine.go/llm.go/settings.go.
 	a.StopWhatsApp() // also resets whatsAppSessionID, appropriate for a full wipe
 	a.waMu.Lock()
 	if a.waMsgStore != nil {

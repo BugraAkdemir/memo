@@ -22,12 +22,15 @@ Kullanıcı bildirdi: Ayarlar > Yedekleme sekmesindeki "Tüm Verileri Sil" (fact
 
 **CI:** `e65fbc0` (bu turdan önceki son push) — Build Linux/macOS/Windows + CI + Canary, hepsi `success`. `cc5119c` de aynı şekilde tam yeşil. Bu turun kendi push'u (`605e2a9`, `gh run list` ile kontrol edildiği anda) hâlâ `in_progress`'ti — sonucu ayrıca teyit edilmedi, ama öncesindeki iki push zaten tam yeşil olduğundan risk düşük görülüyor.
 
+**Ek tur — kod sağlığı taraması (`c8ed099`):** kullanıcı fix'in onayından sonra "bu deseni başka yerde de tara" dedi. `codebase-memory`'nin `search_graph(name_pattern=".*Close$")` çıktısıyla `Close()` metodu olan her tip listelendi, her biri `WipeAllData` ile çapraz kontrol edildi. **Bir tane daha aynı bug bulundu:** `a.mood` (`internal/mood`, `data/mood/mood.db`) — tıpkı memory/observer/calendar/stats/WhatsApp gibi Startup'ta bir kere açılıyor, hiç yeniden atanmıyordu ve `WipeAllData` "mood" dizinini silmeden önce hiç kapatmıyordu. Aynı Windows-only "used by another process" riski. Düzeltildi: mood store de artık silmeden önce kapatılıyor. Ayrıca `internal/cloudsync/sync_manager.go`'daki iki `sql.Open` çağrısı kontrol edildi — ikisi de aynı fonksiyon içinde açılıp kapanıyor (WAL-checkpoint-before-backup), field olarak tutulmuyor, wipe'ı ilgilendirmiyor.
+
 ## Sıradaki Adım
 
 1. ~~Kullanıcı Windows'ta "Tüm Verileri Sil"i tekrar denemeli~~ → yapıldı, çalışıyor.
-2. Bilinçli olarak dokunulmayan, kapsam dışı bırakılan noktalar: (a) `observerStore`/`calendarStore`/`statsStore` için özel mutex yok — wipe sırasında arka plan okuyucularıyla (observer analyzer, calendar reminder loop) teorik bir yarış var, ama en kötü ihtimalle zaten ele alınan bir "database is closed" hatası dönüyor, panic yok; (b) whatsmeow `Start()`'ın hata (err) dönüş yollarında `storeDB` hâlâ sızdırılıyor (sadece başarı yolunda saklanıyor) — ayrı, küçük, önceden var olan bir sorun, bu turda dokunulmadı.
-3. TTS / Live Mode Faz 2 kullanıcı isteğiyle hâlâ beklemede — kullanıcı kendisi gündeme getirmeden dokunulmayacak.
-4. Şu an başka bilinen açık bug/görev yok — kullanıcıdan yeni bir yön bekleniyor.
+2. **Mood store fix'i henüz kullanıcı tarafından ayrıca test edilmedi** (mood etkinse ve Windows'ta wipe deneniyorsa bunun da artık sorunsuz gitmesi lazım) — küçük bir ek doğrulama, ama zorunlu değil, aynı desenin bir kopyası.
+3. Bilinçli olarak dokunulmayan, kapsam dışı bırakılan noktalar: (a) `observerStore`/`calendarStore`/`statsStore`/`mood` için özel mutex yok — wipe sırasında arka plan okuyucularıyla (observer analyzer, calendar reminder loop) teorik bir yarış var, ama en kötü ihtimalle zaten ele alınan bir "database is closed" hatası dönüyor, panic yok; (b) whatsmeow `Start()`'ın hata (err) dönüş yollarında `storeDB` hâlâ sızdırılıyor (sadece başarı yolunda saklanıyor) — ayrı, küçük, önceden var olan bir sorun, bu turda dokunulmadı.
+4. TTS / Live Mode Faz 2 kullanıcı isteğiyle hâlâ beklemede — kullanıcı kendisi gündeme getirmeden dokunulmayacak.
+5. Şu an başka bilinen açık bug/görev yok — kullanıcıdan yeni bir yön bekleniyor.
 
 ---
 

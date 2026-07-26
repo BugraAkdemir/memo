@@ -373,6 +373,57 @@ var wipePreserve = map[string]bool{
 // reset of personal state, not just memory.
 func (a *App) WipeAllData() error {
 	root := config.DataDir()
+
+	// Close every store that holds an open handle into a directory we're
+	// about to delete. On Linux, os.RemoveAll happily unlinks a file that's
+	// still open (the inode just stays around until the last fd closes), so
+	// this was never needed there — but on Windows, deleting a file with an
+	// open handle fails outright ("used by another process"), which is why
+	// wiping all data worked on Linux and silently errored out on Windows
+	// the moment memory/calendar/stats/observer/WhatsApp data existed.
+	a.storeMu.Lock()
+	oldMemStore := a.store
+	a.store = nil
+	a.storeMu.Unlock()
+	if oldMemStore != nil {
+		if err := oldMemStore.Close(); err != nil {
+			logx.Printf("WARN: wipe: memory store close: %v", err)
+		}
+	}
+	if a.observerStore != nil {
+		if err := a.observerStore.Close(); err != nil {
+			logx.Printf("WARN: wipe: observer store close: %v", err)
+		}
+		a.observerStore = nil
+	}
+	if a.calendarStore != nil {
+		if err := a.calendarStore.Close(); err != nil {
+			logx.Printf("WARN: wipe: calendar store close: %v", err)
+		}
+		a.calendarStore = nil
+	}
+	if a.statsStore != nil {
+		if err := a.statsStore.Close(); err != nil {
+			logx.Printf("WARN: wipe: stats store close: %v", err)
+		}
+		a.statsStore = nil
+	}
+	// observerStore/calendarStore/statsStore have no dedicated mutex (unlike
+	// store/sessions/waMsgStore) — until this method, they were only ever set
+	// once at Startup and never reassigned, so no concurrent writer existed.
+	// A background reader (the observer analyzer, the calendar reminder
+	// loop) racing this exact nil-out could see a closed store and get a
+	// "database is closed" error back from its own already-handled error
+	// path, but not corrupt state. Accepted as-is: adding real synchronization
+	// for a factory-reset action that's rare and user-initiated wasn't judged
+	// worth a locking pass across every read site in learning.go/routine.go.
+	a.waMu.Lock()
+	if a.waClient != nil {
+		a.waClient.Stop()
+	}
+	a.waMsgStore = nil
+	a.waMu.Unlock()
+
 	entries, err := os.ReadDir(root)
 	if err != nil {
 		return fmt.Errorf("wipe: read data dir: %w", err)
@@ -387,6 +438,11 @@ func (a *App) WipeAllData() error {
 		}
 	}
 
+	// Calendar/observer/stats/WhatsApp are left uninitialized here (nil) —
+	// every call site already guards on nil and no-ops, so a restart is
+	// needed to bring those back, but nothing crashes in the meantime. Only
+	// the memory store gets the full immediate re-init treatment below,
+	// since it's on the hot path of every chat turn.
 	a.sessionsMu.Lock()
 	if a.sessions != nil {
 		sm, err := sessions.NewManager(config.DataPath("sessions"))

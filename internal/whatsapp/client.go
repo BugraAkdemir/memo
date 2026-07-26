@@ -48,6 +48,7 @@ type Message struct {
 type Client struct {
 	config       Config
 	waClient     *whatsmeow.Client
+	storeDB      *sqlstore.Container
 	store        *Store
 	qrCodes      []string
 	msgCh        chan Message
@@ -172,6 +173,7 @@ func (c *Client) Start(ctx context.Context) error {
 	if err != nil {
 		return fmt.Errorf("whatsapp: get device: %w", err)
 	}
+	c.storeDB = storeDB
 
 	c.waClient = whatsmeow.NewClient(deviceStore, nil)
 	c.waClient.AddEventHandler(c.handleEvent)
@@ -220,6 +222,16 @@ func (c *Client) Stop() {
 	if c.waClient != nil {
 		c.waClient.Disconnect()
 		c.waClient = nil
+	}
+	// storeDB (whatsmeow's session.db) is opened in Start() and otherwise
+	// never closed anywhere — on Windows an open handle into data/whatsapp/
+	// blocks a full-data-wipe's os.RemoveAll outright ("used by another
+	// process"), unlike Linux where unlinking an open file just works.
+	if c.storeDB != nil {
+		if err := c.storeDB.Close(); err != nil {
+			logx.Printf("whatsapp: session db close: %v", err)
+		}
+		c.storeDB = nil
 	}
 	c.started = false
 	c.reconnecting = false

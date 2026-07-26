@@ -16,13 +16,18 @@ Kullanıcı bildirdi: Ayarlar > Yedekleme sekmesindeki "Tüm Verileri Sil" (fact
 
 `go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...`, `go test -tags "sqlite_fts5" ./... -race` (ilgili paketler) — hepsi yeşil. `codebase-memory` grafiği ile `Shutdown()`'daki nil-guard'lar ve `a.waClient`'ın App seviyesinde hiç nil'lenmediği (mevcut davranış, benim değişikliğim değil) teyit edildi — çifte kapatma/panic riski yok.
 
-**Otomatik regresyon testi eklenmedi:** `WipeAllData` gerçek, process içinde cache'lenen `config.DataDir()` üzerinde çalışıyor; mevcut `backup_test.go` da aynı sebeple gerçek dizin silme işlemini teste sokmaktan kaçınıyor (bkz. `writeAndRestore` yorumu). **Gerçek bir Windows makinesinde canlı doğrulanmadı** — kullanıcının kendi ekranında test etmesi gerekiyor.
+**Otomatik regresyon testi eklenmedi:** `WipeAllData` gerçek, process içinde cache'lenen `config.DataDir()` üzerinde çalışıyor; mevcut `backup_test.go` da aynı sebeple gerçek dizin silme işlemini teste sokmaktan kaçınıyor (bkz. `writeAndRestore` yorumu).
+
+**Windows'ta canlı doğrulandı (kullanıcı, aynı gün):** "Tüm Verileri Sil" artık gerçek bir Windows makinesinde çalışıyor. Bu turun asıl amacı kapandı.
+
+**CI:** `e65fbc0` (bu turdan önceki son push) — Build Linux/macOS/Windows + CI + Canary, hepsi `success`. `cc5119c` de aynı şekilde tam yeşil. Bu turun kendi push'u (`605e2a9`, `gh run list` ile kontrol edildiği anda) hâlâ `in_progress`'ti — sonucu ayrıca teyit edilmedi, ama öncesindeki iki push zaten tam yeşil olduğundan risk düşük görülüyor.
 
 ## Sıradaki Adım
 
-1. Kullanıcı Windows'ta "Tüm Verileri Sil"i tekrar denemeli — özellikle WhatsApp bağlıyken/bağlanmışken.
+1. ~~Kullanıcı Windows'ta "Tüm Verileri Sil"i tekrar denemeli~~ → yapıldı, çalışıyor.
 2. Bilinçli olarak dokunulmayan, kapsam dışı bırakılan noktalar: (a) `observerStore`/`calendarStore`/`statsStore` için özel mutex yok — wipe sırasında arka plan okuyucularıyla (observer analyzer, calendar reminder loop) teorik bir yarış var, ama en kötü ihtimalle zaten ele alınan bir "database is closed" hatası dönüyor, panic yok; (b) whatsmeow `Start()`'ın hata (err) dönüş yollarında `storeDB` hâlâ sızdırılıyor (sadece başarı yolunda saklanıyor) — ayrı, küçük, önceden var olan bir sorun, bu turda dokunulmadı.
-3. Diğer açık maddeler değişmedi: son CI push'unun yeşil geçtiği teyit edilmedi; TTS/Faz 2 kullanıcı isteğiyle beklemede.
+3. TTS / Live Mode Faz 2 kullanıcı isteğiyle hâlâ beklemede — kullanıcı kendisi gündeme getirmeden dokunulmayacak.
+4. Şu an başka bilinen açık bug/görev yok — kullanıcıdan yeni bir yön bekleniyor.
 
 ---
 

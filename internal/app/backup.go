@@ -417,11 +417,14 @@ func (a *App) WipeAllData() error {
 	// path, but not corrupt state. Accepted as-is: adding real synchronization
 	// for a factory-reset action that's rare and user-initiated wasn't judged
 	// worth a locking pass across every read site in learning.go/routine.go.
+	a.StopWhatsApp() // also resets whatsAppSessionID, appropriate for a full wipe
 	a.waMu.Lock()
-	if a.waClient != nil {
-		a.waClient.Stop()
+	if a.waMsgStore != nil {
+		if err := a.waMsgStore.Close(); err != nil {
+			logx.Printf("WARN: wipe: whatsapp message store close: %v", err)
+		}
+		a.waMsgStore = nil
 	}
-	a.waMsgStore = nil
 	a.waMu.Unlock()
 
 	entries, err := os.ReadDir(root)

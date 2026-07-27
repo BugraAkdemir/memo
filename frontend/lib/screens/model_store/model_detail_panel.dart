@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_markdown/flutter_markdown.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../core/friendly_error.dart';
 import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/curated_models.dart';
@@ -258,7 +259,7 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     } catch (e) {
       if (mounted) {
         messenger.showSnackBar(SnackBar(
-            content: Text(L10n.t('import_error', {'e': e.toString()}))));
+            content: Text(L10n.t('import_error', {'e': FriendlyError.describe(e)}))));
       }
     }
   }
@@ -606,39 +607,45 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
     // Hardware fit badge widget
     Widget fitBadge(GGUFFile file) {
       final fit = hardwareFit(file.size, gpu);
-      final (color, icon, label) = switch (fit.level) {
+      final (color, icon, label, tooltip) = switch (fit.level) {
         FitLevel.good => (
             MemoTheme.green,
             Icons.check_circle_outline,
             L10n.t('fits'),
+            L10n.t('fit_good_tooltip'),
           ),
         FitLevel.ok => (
             MemoTheme.accent,
             Icons.check_circle_outline,
             L10n.t('cpu_ok'),
+            L10n.t('fit_ok_tooltip'),
           ),
         FitLevel.warn => (
             MemoTheme.warningOrange,
             Icons.warning_amber_rounded,
             L10n.t('too_large'),
+            L10n.t('fit_warn_tooltip'),
           ),
       };
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.12),
-          borderRadius: BorderRadius.circular(5),
-          border: Border.all(color: color.withValues(alpha: 0.35)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 11, color: color),
-            const SizedBox(width: 4),
-            Text(label,
-                style: TextStyle(
-                    fontSize: 11, fontWeight: FontWeight.w600, color: color)),
-          ],
+      return Tooltip(
+        message: tooltip,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+          decoration: BoxDecoration(
+            color: color.withValues(alpha: 0.12),
+            borderRadius: BorderRadius.circular(5),
+            border: Border.all(color: color.withValues(alpha: 0.35)),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(icon, size: 11, color: color),
+              const SizedBox(width: 4),
+              Text(label,
+                  style: TextStyle(
+                      fontSize: 11, fontWeight: FontWeight.w600, color: color)),
+            ],
+          ),
         ),
       );
     }
@@ -667,12 +674,15 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
             ),
           ),
           const SizedBox(width: 6),
-          Text(qCode,
-              style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  color: c.textDim,
-                  fontFamily: 'monospace')),
+          Tooltip(
+            message: L10n.t('quant_code_tooltip'),
+            child: Text(qCode,
+                style: TextStyle(
+                    fontSize: 11,
+                    fontWeight: FontWeight.w600,
+                    color: c.textDim,
+                    fontFamily: 'monospace')),
+          ),
           const SizedBox(width: 10),
           fitBadge(file),
           const SizedBox(width: 10),
@@ -783,12 +793,15 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
                                         : c.textMain,
                                   ),
                                 ),
-                                Text(
-                                  qCode,
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: c.textDim,
-                                      fontFamily: 'monospace'),
+                                Tooltip(
+                                  message: L10n.t('quant_code_tooltip'),
+                                  child: Text(
+                                    qCode,
+                                    style: TextStyle(
+                                        fontSize: 10,
+                                        color: c.textDim,
+                                        fontFamily: 'monospace'),
+                                  ),
                                 ),
                               ],
                             ),
@@ -909,17 +922,20 @@ class _ModelDetailPanelState extends ConsumerState<ModelDetailPanel> {
 class _GgufBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-      decoration: BoxDecoration(
-        color: MemoTheme.accent.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(4),
-        border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
-      ),
-      child: Text(
-        'GGUF',
-        style: TextStyle(
-            fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.accent),
+    return Tooltip(
+      message: L10n.t('gguf_tooltip'),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: MemoTheme.accent.withValues(alpha: 0.12),
+          borderRadius: BorderRadius.circular(4),
+          border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.3)),
+        ),
+        child: Text(
+          'GGUF',
+          style: TextStyle(
+              fontSize: 10, fontWeight: FontWeight.w700, color: MemoTheme.accent),
+        ),
       ),
     );
   }

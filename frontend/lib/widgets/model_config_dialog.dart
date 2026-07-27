@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/local_model.dart';
@@ -116,7 +117,9 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
                 SnackBar(
-                  content: Text('⚠️ ${L10n.t('embedding_model')}: $e'),
+                  content: Text(
+                    '⚠️ ${L10n.t('embedding_model')}: ${FriendlyError.describe(e)}',
+                  ),
                   backgroundColor: MemoTheme.warningOrange,
                 ),
               );
@@ -142,9 +145,9 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('${L10n.t('error')}: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describe(e)}')),
+        );
       }
     } finally {
       if (mounted) {

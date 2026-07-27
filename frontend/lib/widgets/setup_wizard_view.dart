@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../core/friendly_error.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/curated_models.dart';
@@ -385,7 +386,7 @@ Limits:
       if (mounted) {
         setState(() {
           _memoryModelDownloading = false;
-          _memoryModelDownloadError = e.toString();
+          _memoryModelDownloadError = FriendlyError.describe(e);
         });
       }
     }
@@ -408,7 +409,7 @@ Limits:
       await _waitForDownloadsIdle([recommendedChatModel(gpu), recommendedMemoryModel]);
       if (mounted) setState(() => _modelDownloadDone = true);
     } catch (e) {
-      if (mounted) setState(() => _modelDownloadError = e.toString());
+      if (mounted) setState(() => _modelDownloadError = FriendlyError.describe(e));
     }
   }
 
@@ -452,7 +453,7 @@ Limits:
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: $e')),
+          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describe(e)}')),
         );
       }
     } finally {
@@ -1401,8 +1402,8 @@ class _ModelRecommendationCard extends StatelessWidget {
           ],
           Text(
             isTurkish
-                ? 'İndirmeler arka planda sürüyor — kuruluma devam edebilirsin.'
-                : 'Downloads continue in the background — you can keep going with setup.',
+                ? 'İndirmeler arka planda sürüyor — kuruluma devam edebilirsin. Ama Memo\'yu tamamen kapatırsan indirme durur ve bir dahaki sefere baştan başlar.'
+                : 'Downloads continue in the background — you can keep going with setup. But if you close Memo entirely, the download stops and restarts from scratch next time.',
             style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
           ),
         ],
@@ -1459,12 +1460,43 @@ class _DownloadProgressRow extends StatelessWidget {
     required this.isTurkish,
   });
 
+  /// Parses the backend's already-formatted speed string (e.g. "3.2 MB/s",
+  /// from Go's `formatSpeed`) back into bytes/sec, then estimates time
+  /// remaining from `totalBytes - downloaded`. A non-technical user staring
+  /// at a raw percentage with no sense of whether this takes 30 seconds or
+  /// 30 minutes is the #1 reason downloads get abandoned mid-way.
+  String? _etaLabel() {
+    final p = progress;
+    if (p.speed.isEmpty || p.totalBytes <= 0) return null;
+    final match = RegExp(r'([\d.]+)\s*(B|KB|MB|GB)/s').firstMatch(p.speed);
+    if (match == null) return null;
+    final value = double.tryParse(match.group(1)!);
+    if (value == null || value <= 0) return null;
+    final unit = match.group(2);
+    final bytesPerSec = switch (unit) {
+      'GB' => value * 1024 * 1024 * 1024,
+      'MB' => value * 1024 * 1024,
+      'KB' => value * 1024,
+      _ => value,
+    };
+    final remainingBytes = p.totalBytes - p.downloaded;
+    if (remainingBytes <= 0 || bytesPerSec <= 0) return null;
+    final seconds = remainingBytes / bytesPerSec;
+    if (seconds < 60) {
+      return isTurkish ? '~${seconds.round()} sn kaldı' : '~${seconds.round()} sec left';
+    }
+    final minutes = (seconds / 60).round();
+    return isTurkish ? '~$minutes dakika kaldı' : '~$minutes min left';
+  }
+
   @override
   Widget build(BuildContext context) {
     final p = progress;
     final pct = p.percent.clamp(0, 100).toDouble();
     final label = p.filename.isNotEmpty ? p.filename : (isTurkish ? 'Hazırlanıyor...' : 'Preparing...');
     final speedSuffix = p.speed.isNotEmpty ? ' (${p.speed})' : '';
+    final eta = _etaLabel();
+    final etaSuffix = eta != null ? ' — $eta' : '';
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -1480,7 +1512,7 @@ class _DownloadProgressRow extends StatelessWidget {
         ),
         SizedBox(height: 6),
         Text(
-          '$label — %${pct.toStringAsFixed(0)}$speedSuffix',
+          '$label — %${pct.toStringAsFixed(0)}$speedSuffix$etaSuffix',
           style: TextStyle(fontSize: 11, color: color.textDim),
         ),
       ],

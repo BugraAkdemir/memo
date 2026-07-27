@@ -1,3 +1,42 @@
+# Handoff — 2026-07-27 — REPL'de küçük context'li local model + agent mode kombinasyonu 400 hatası veriyordu, düzeltildi (`a5f48ee`, `c9dff76`, `ec15362`)
+
+## Özet
+
+Kullanıcı donanım/model tavsiyesi konuşmasının (16GB RAM, CPU-only ve sonra GPU'lu masaüstü planları için hangi GGUF quant'ların çalışacağı, hız tahminleri) ortasında CLI'de gerçek bir kullanım denemesi yaptı: `Qwen2.5-32B-Instruct-IQ2_M.gguf`'u REPL'den `/model` ile başlatıp "selam" yazınca:
+
+```
+⚠️ LLM Error: all providers failed: [llama.cpp] status 400: request (4766 tokens) exceeds the available context size (4096 tokens), try increasing it
+```
+
+Tek kelimelik bir mesajın 4096 token sınırını aşması açıkça bir bug'dı. `/codebase-memory` ile kök nedeni izledim.
+
+## Kök neden (iki katmanlı)
+
+1. **`internal/app/helpers.go`'daki `buildMessagesForSession`, agent mode'un tool şemasını hiç bütçelemiyordu.** Fonksiyon `tokenBudget`'ı doğru şekilde `cfg.Llama.CtxSize`'a göre hesaplıyor, sistem promptu + geçmiş + kullanıcı mesajını buna göre kırpıyordu — ama agent mode açıkken (REPL'de varsayılan) `agent.ToOpenAITools()` ile serileştirilen 12+ araç tanımı ayrı bir `tools` alanı olarak llama-server'a gidiyor ve `--jinja` chat template'i üzerinden gerçek prompt'a katılıyor. Bu maliyet bütçeden hiç düşülmüyordu — kod "4096'ya sığdırdım" sanıyordu ama gerçek istek tool şemasının eklediği yükle çok daha büyüktü.
+2. **Varsayılan `Llama.CtxSize` (4096) zaten dardı** — bu yükü karşılayacak pay bırakmıyordu.
+
+## Düzeltmeler (3 ayrı commit, kullanıcının açık talebiyle — AGENTS.md'nin "commit frequently, natural checkpoints" kuralına göre tek commit'e sıkıştırılmadı)
+
+| Commit | İçerik |
+|---|---|
+| `a5f48ee` | Varsayılan context-size 4096→8192 (`config.Default()`, `config.validate()`'in `<=0` recovery yolu, `llama.NewServer`/`startInternal`'ın kendi `<=0` fallback'leri, `replcli`'nin doc yorumu — hepsi aynı sabitin farklı yansımaları) |
+| `c9dff76` | Asıl kök neden düzeltmesi: agent mode açıkken `tokenBudget`'tan `ToOpenAITools()`'un serileştirilmiş boyutu (`encoding/json` + `truncate.EstimateTokens`) düşülüyor, 512 token taban ile |
+| `ec15362` | Yan bulgu: `modelstore.LocalModel`'in `supports_tools` alanı zaten backend'de vardı (Flutter Model Store için) ama `replcli.LocalModel` struct'ı bu alanı hiç tanımlamadığı için JSON'dan sessizce düşüyordu. Alan eklendi + `/model` ile tool-calling desteklemeyen bir model başlatıldığında TR/EN uyarısı (`model_no_tools_warning`) eklendi |
+
+## Doğrulama
+
+`go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...`, `go test -tags "sqlite_fts5" ./...` (tüm paketler) — üç commit'ten sonra da ayrı ayrı yeşil.
+
+**Kullanıcı tarafından canlı doğrulanmadı henüz** — Qwen2.5-14B-Instruct indirmesi bu oturumun sonunda hâlâ sürüyordu, "selam"ın artık patlamadığı gerçek ortamda teyit edilmedi.
+
+## Sıradaki Adım
+
+1. Kullanıcı model indirmesi bitince REPL'de agent mode + yeni context bütçesiyle gerçek bir mesaj denemeli.
+2. Küçük itiraf: `ec15362`'deki `SupportsTools` alan eklemesi aslında `a5f48ee` ile aynı commit'e (models_client.go dosyası iki işi aynı anda taşıdığı için) karışık gitti — sınır tam temiz değil ama her commit kendi başına build/test geçiyor.
+3. Bu oturumda ayrıca uzun bir donanım/model tavsiyesi turu vardı (16GB RAM DDR4 CPU-only hız hesapları, MacBook Air M4/M5 16 vs 24GB, RTX 5060 Ti 16GB'li masaüstü + Ubuntu Server + Tailscale ev sunucusu planı, JetBrains öğrenci lisansı) — kod değişikliği içermiyor, referans için burada not düşülüyor ama AGENTS.md'nin teknik-borç bölümüne girecek bir madde değil.
+
+---
+
 # Handoff — 2026-07-26 (devam) — "Tüm verileri sil" Windows'ta çalışmıyordu, düzeltildi (`5644872`, `266209f`)
 
 ## Özet

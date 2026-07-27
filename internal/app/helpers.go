@@ -2,6 +2,7 @@ package app
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"memo/internal/logx"
@@ -149,12 +150,32 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		maxContextTokens := a.cfg.Llama.MaxContextTokens
 		a.cfgMu.RUnlock()
 		if maxLocal <= 0 {
-			maxLocal = 4096
+			maxLocal = 8192
 		}
 		if maxContextTokens > 0 && maxContextTokens < maxLocal {
 			tokenBudget = maxContextTokens
 		} else {
 			tokenBudget = maxLocal
+		}
+		// Agent mode sends the tool schema (agent.ToOpenAITools) alongside
+		// every request as a separate "tools" field, which the model's chat
+		// template folds into the actual prompt it sees — real context-window
+		// tokens that this budget must leave room for. Without this, a small
+		// local ctx-size (this codebase's own default was 4096 before the
+		// bug below) could be exceeded by tool-schema overhead alone even for
+		// a one-word message, since nothing here ever accounted for it. Found
+		// live: "selam" with agent mode on and a 32B local model produced a
+		// ~4800-token request against a 4096 ctx-size — the visible message
+		// content was a handful of tokens, the rest was this unbudgeted gap.
+		if a.GetAgentEnabled() && a.agentExecutor != nil {
+			if toolDefs := a.agentExecutor.Registry().ToOpenAITools(); len(toolDefs) > 0 {
+				if raw, err := json.Marshal(toolDefs); err == nil {
+					tokenBudget -= truncate.EstimateTokens(string(raw))
+				}
+			}
+		}
+		if tokenBudget < 512 {
+			tokenBudget = 512
 		}
 	} else {
 		tokenBudget = a.apiContextBudget()

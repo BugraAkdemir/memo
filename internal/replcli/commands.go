@@ -519,6 +519,17 @@ func (s *session) startAndReport(model *LocalModel, wantEmbedding bool) {
 		return
 	}
 	fmt.Fprintln(s.out, green(fmt.Sprintf(t("model_started"), model.Filename)))
+
+	// The REPL runs with agent mode on by default (tool-using requests),
+	// but a model's own tool-calling support is a property of its embedded
+	// chat template (internal/gguf.Metadata.SupportsTools), not something
+	// every GGUF file has. Warn right after starting a chat model that
+	// doesn't declare it — a silent gap otherwise, and the same missing
+	// capability contributes to the tool-schema-vs-ctx-size mismatch fixed
+	// separately in buildMessagesForSession.
+	if !wantEmbedding && !model.SupportsTools {
+		fmt.Fprintln(s.out, yellow(t("model_no_tools_warning")))
+	}
 }
 
 func (s *session) cmdConnect(args []string) {

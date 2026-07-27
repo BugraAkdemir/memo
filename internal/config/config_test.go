@@ -23,8 +23,8 @@ func TestDefaultValues(t *testing.T) {
 	if !cfg.Memory.AutoFactExtraction {
 		t.Error("Memory.AutoFactExtraction = false, want true for fresh installs")
 	}
-	if cfg.Llama.CtxSize != 4096 {
-		t.Errorf("Llama.CtxSize = %d, want 4096", cfg.Llama.CtxSize)
+	if cfg.Llama.CtxSize != 8192 {
+		t.Errorf("Llama.CtxSize = %d, want 8192", cfg.Llama.CtxSize)
 	}
 	if cfg.RemoteAccess.Enabled != false {
 		t.Errorf("RemoteAccess.Enabled = %v, want false", cfg.RemoteAccess.Enabled)
@@ -159,8 +159,8 @@ func TestValidateFixesEmptyFields(t *testing.T) {
 	if cfg.Memory.TopK != 8 {
 		t.Errorf("TopK = %d, want 8", cfg.Memory.TopK)
 	}
-	if cfg.Llama.CtxSize != 4096 {
-		t.Errorf("CtxSize = %d, want 4096", cfg.Llama.CtxSize)
+	if cfg.Llama.CtxSize != 8192 {
+		t.Errorf("CtxSize = %d, want 8192", cfg.Llama.CtxSize)
 	}
 	if cfg.Llama.Port != 8081 {
 		t.Errorf("Port = %d, want 8081", cfg.Llama.Port)

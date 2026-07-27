@@ -60,7 +60,7 @@ func NewServer(port, ctxSize int) *Server {
 		port = 8081
 	}
 	if ctxSize <= 0 {
-		ctxSize = 4096
+		ctxSize = 8192
 	}
 	return &Server{
 		port:    port,
@@ -145,7 +145,7 @@ func (s *Server) startInternal(binaryPath, modelPath string, ctxSize, port, gpuL
 	}
 	actualCtx := ctxSize
 	if actualCtx <= 0 {
-		actualCtx = 4096
+		actualCtx = 8192
 	}
 	// Defense in depth: clamp to the model's own trained context length,
 	// independent of whatever the caller (a UI slider, an older client, a

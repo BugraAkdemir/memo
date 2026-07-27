@@ -9,10 +9,11 @@ import (
 // LocalModel mirrors the fields of modelstore.LocalModel the REPL needs to
 // list and pick models by name.
 type LocalModel struct {
-	Filename    string `json:"filename"`
-	Path        string `json:"path"`
-	Size        int64  `json:"size"`
-	IsEmbedding bool   `json:"is_embedding"`
+	Filename      string `json:"filename"`
+	Path          string `json:"path"`
+	Size          int64  `json:"size"`
+	IsEmbedding   bool   `json:"is_embedding"`
+	SupportsTools bool   `json:"supports_tools"`
 }
 
 // ModelStatus mirrors llama.ServerStatus.
@@ -71,7 +72,7 @@ const (
 )
 
 // StartModel loads a local chat model. ctxSize=0, port=0 and gpuLayers=-1
-// all mean "use the backend's defaults" (4096 ctx, auto port, auto GPU
+// all mean "use the backend's defaults" (8192 ctx, auto port, auto GPU
 // layers) — see internal/llama.Server.Start. Model loading can legitimately
 // take up to 180s server-side, so this uses the no-fixed-timeout client with
 // an explicit deadline matching that budget, not the plain 10s JSON timeout.

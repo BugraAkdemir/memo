@@ -409,7 +409,7 @@ func Default() *AppConfig {
 			BinaryPath:    "",
 			Port:          8081,
 			EmbeddingPort: 8082,
-			CtxSize:       4096,
+			CtxSize:       8192,
 			MaxHistory:    20,
 			ModelsDir:     "./data/models",
 			Temperature:   0.7,
@@ -621,7 +621,7 @@ func (c *AppConfig) validate() []string {
 		fixes = append(fixes, "Llama.EmbeddingPort")
 	}
 	if c.Llama.CtxSize <= 0 {
-		c.Llama.CtxSize = 4096
+		c.Llama.CtxSize = 8192
 		fixes = append(fixes, "Llama.CtxSize")
 	}
 	if c.Llama.MaxHistory <= 0 {

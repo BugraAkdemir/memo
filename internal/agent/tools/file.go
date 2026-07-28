@@ -347,11 +347,20 @@ func validatePath(targetPath, basePath string) (string, error) {
 	// Ensure the path is within basePath.
 	rel, err := filepath.Rel(basePath, realPath)
 	if err != nil {
-		return "", fmt.Errorf("path is outside project directory")
+		return "", fmt.Errorf("%q is outside the project directory (%s)", targetPath, basePath)
 	}
 	if strings.HasPrefix(rel, "..") || rel == ".." {
 		// Absolute or relative paths outside the project directory are only
-		// allowed if they do not point to a protected system path.
+		// allowed if they do not point to a protected system path. Either
+		// branch below still rejects the path — defaultProtectedPaths only
+		// picks which message to show, never whether to allow it (see
+		// TestValidatePath_RejectsUnlistedAbsolutePathOutsideBase's doc
+		// comment). Both messages now name the actual project directory
+		// (basePath) explicitly: the old wording just said "outside" without
+		// saying outside of *what*, so the caller (a human, or the model
+		// itself retrying) had nothing to correct toward and would often
+		// blindly retry with a different tool/path instead of the one path
+		// that was actually allowed.
 		cmpPath := realPath
 		if runtime.GOOS == "windows" {
 			cmpPath = strings.ToLower(realPath)
@@ -362,10 +371,10 @@ func validatePath(targetPath, basePath string) (string, error) {
 				needle = strings.ToLower(protected)
 			}
 			if strings.HasPrefix(cmpPath, needle) {
-				return "", fmt.Errorf("access denied: path is within protected directory (%s)", protected)
+				return "", fmt.Errorf("access denied: %q is within a protected system directory (%s) — only files inside %s are accessible", targetPath, protected, basePath)
 			}
 		}
-		return "", fmt.Errorf("path is outside project directory: %s", targetPath)
+		return "", fmt.Errorf("%q is outside the project directory — only files inside %s are accessible", targetPath, basePath)
 	}
 
 	return realPath, nil

@@ -30,6 +30,7 @@ func slashCommands() []commandSpec {
 		{"/tasklist", t("cmd_tasklist_hint")},
 		{"/remote", t("cmd_remote_hint")},
 		{"/update", t("cmd_update_hint")},
+		{"/tema", t("cmd_theme_hint")},
 		{"/exit", t("cmd_exit_hint")},
 	}
 }
@@ -38,12 +39,28 @@ func slashCommands() []commandSpec {
 // equivalent of Claude Code's "manual mode on · ? for shortcuts" bar.
 func statusBarText() string { return t("status_bar_text") }
 
-// statusBarLine picks between the plain hint bar and, while Shift+Tab
-// auto-permission mode is on, a loud reminder that every tool call is being
-// auto-approved without asking — the terminal equivalent of Claude Code's
-// "⏵⏵ auto-accept edits on" bar and the Flutter GUI's chat_screen.dart
-// status pill.
+// statusBarLine renders the composer's bottom line. themeG replaces the
+// whole classic-theme hint bar with live data — model, memory, and
+// auto-permission state all folded into one line — instead of swapping to
+// a separate "auto-accept on" line the way classic does; auto-permission's
+// segment is computed fresh every render (e.autoPermission, a plain field
+// Shift+Tab already updates instantly) since it can change on any
+// keystroke, while liveStatusPrefix (model/memory) is a cheaper snapshot
+// the session refreshes at natural checkpoints (welcome, /model, a
+// finished reply) rather than on every keystroke — recomputing model/memory
+// status per keypress would mean a backend round trip per character typed.
 func (e *editor) statusBarLine() string {
+	if e.theme == themeG {
+		auto := dim(t("live_status_auto_off"))
+		if e.autoPermission {
+			auto = yellow(t("live_status_auto_on"))
+		}
+		prefix := e.liveStatusPrefix
+		if prefix == "" {
+			prefix = dim("memo")
+		}
+		return prefix + dim("  ·  ") + auto + dim("  ·  "+t("live_status_esc_hint"))
+	}
 	if e.autoPermission {
 		return yellow(t("auto_permission_status_on"))
 	}
@@ -91,6 +108,12 @@ type editor struct {
 	// failure); nil leaves Shift+Tab a no-op.
 	autoPermission         bool
 	onToggleAutoPermission func(current bool) bool
+
+	// theme selects the status-bar style — see statusBarLine. liveStatusPrefix
+	// is themeG's cached "<model> · hafıza ●" segment, already ANSI-colored;
+	// set by the session (refreshLiveStatus, repl.go), read verbatim here.
+	theme            replTheme
+	liveStatusPrefix string
 }
 
 // readLine edits one full line with the slash dropdown and history enabled.

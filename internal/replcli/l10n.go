@@ -85,9 +85,18 @@ var tr = map[string]string{
 	"cmd_tasklist_hint":         "görev listelerini yönet (list/create/start/stop/delete/show)",
 	"cmd_remote_hint":           "ngrok ile uzak erişim tüneli aç",
 	"cmd_update_hint":           "Memo'yu en son sürüme güncelle",
+	"cmd_theme_hint":            "arayüz temasını değiştir (g/classic)",
 	"cmd_exit_hint":             "çık",
 	"status_bar_text":           "/ komutlar  ·  @ dosya  ·  Esc durdur  ·  Ctrl+D çık",
 	"auto_permission_status_on": "⏵⏵ otomatik onay açık (kapatmak için Shift+Tab)",
+	"live_status_memory_label":  "hafıza",
+	"live_status_auto_on":       "⏵⏵ oto-onay açık",
+	"live_status_auto_off":      "oto-onay kapalı",
+	"live_status_esc_hint":      "esc durdur",
+	"theme_usage":               "Kullanım: /tema g|classic",
+	"theme_current":             "Mevcut tema: %s (değiştirmek için: /tema g|classic)",
+	"theme_unknown":             "Bilinmeyen tema: %s (g veya classic yaz)",
+	"theme_switched":            "✓ Tema değiştirildi: %s",
 	"ctrl_c_again_to_exit":      "çıkmak için tekrar Ctrl+C",
 	"dropdown_hint_slash":       "↑↓ gezin · Tab tamamla · Enter çalıştır · Esc kapat",
 	"dropdown_hint_at":          "↑↓ gezin · Tab/Enter seç · Esc kapat",
@@ -224,6 +233,7 @@ var tr = map[string]string{
   /tasklist delete <id>                   görev listesini siler
   /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
   /update                                 Memo'yu en son sürüme günceller
+  /tema <g|classic>                       arayüz temasını değiştirir (varsayılan: g)
   /exit                                   çıkar
 `,
 }
@@ -266,9 +276,18 @@ var en = map[string]string{
 	"cmd_tasklist_hint":         "manage task lists (list/create/start/stop/delete/show)",
 	"cmd_remote_hint":           "open a remote-access tunnel via ngrok",
 	"cmd_update_hint":           "update Memo to the latest release",
+	"cmd_theme_hint":            "switch the interface theme (g/classic)",
 	"cmd_exit_hint":             "exit",
 	"status_bar_text":           "/ commands  ·  @ file  ·  Esc stop  ·  Ctrl+D quit",
 	"auto_permission_status_on": "⏵⏵ auto-accept on (Shift+Tab to turn off)",
+	"live_status_memory_label":  "memory",
+	"live_status_auto_on":       "⏵⏵ auto-approve on",
+	"live_status_auto_off":      "auto-approve off",
+	"live_status_esc_hint":      "esc to stop",
+	"theme_usage":               "Usage: /tema g|classic",
+	"theme_current":             "Current theme: %s (to change: /tema g|classic)",
+	"theme_unknown":             "Unknown theme: %s (use g or classic)",
+	"theme_switched":            "✓ Theme switched: %s",
 	"ctrl_c_again_to_exit":      "press Ctrl+C again to exit",
 	"dropdown_hint_slash":       "↑↓ navigate · Tab complete · Enter run · Esc close",
 	"dropdown_hint_at":          "↑↓ navigate · Tab/Enter select · Esc close",
@@ -402,6 +421,7 @@ var en = map[string]string{
   /tasklist delete <id>                   deletes a task list
   /remote                                 opens a remote-access tunnel via ngrok and shows its link
   /update                                 updates Memo to the latest release
+  /tema <g|classic>                       switches the interface theme (default: g)
   /exit                                   exits
 `,
 }

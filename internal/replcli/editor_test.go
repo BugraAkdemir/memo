@@ -290,6 +290,42 @@ func TestEditor_StatusBarLine_ReflectsAutoPermissionState(t *testing.T) {
 	}
 }
 
+// TestEditor_StatusBarLine_GTheme_ShowsLiveDataNotStaticHints covers the
+// "g" theme's status bar: it must never fall back to the classic static
+// command-hint text, and must reflect auto-permission state live even
+// though liveStatusPrefix itself is only refreshed at checkpoints (see
+// repl.go's refreshLiveStatus doc comment).
+func TestEditor_StatusBarLine_GTheme_ShowsLiveDataNotStaticHints(t *testing.T) {
+	ed, _ := newTestEditor("")
+	ed.theme = themeG
+	ed.liveStatusPrefix = dim("deepseek-v4") + dim("  ·  hafıza ") + green("●")
+
+	off := ed.statusBarLine()
+	if strings.Contains(off, "deepseek-v4") == false {
+		t.Errorf("statusBarLine() = %q, want it to include the cached model prefix", off)
+	}
+	if strings.Contains(off, "/ komutlar") {
+		t.Errorf("statusBarLine() = %q, g theme must not fall back to the classic static hint bar", off)
+	}
+
+	ed.autoPermission = true
+	on := ed.statusBarLine()
+	if on == off {
+		t.Fatal("statusBarLine() unchanged after autoPermission=true under g theme")
+	}
+}
+
+// TestEditor_StatusBarLine_GTheme_EmptyPrefixDoesNotPanic guards the case
+// before the session's first refreshLiveStatus call (e.g. very early
+// startup) — liveStatusPrefix is still its zero value.
+func TestEditor_StatusBarLine_GTheme_EmptyPrefixDoesNotPanic(t *testing.T) {
+	ed, _ := newTestEditor("")
+	ed.theme = themeG
+	if got := ed.statusBarLine(); got == "" {
+		t.Error("statusBarLine() with empty liveStatusPrefix returned an empty string, want a fallback")
+	}
+}
+
 func TestSelectFromMenu_ArrowNavigation(t *testing.T) {
 	items := []menuItem{{Label: "bir"}, {Label: "iki"}, {Label: "üç"}}
 	var out bytes.Buffer

@@ -117,6 +117,15 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 
 	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath}
 
+	if ed != nil {
+		// Best-effort: an unreachable/older backend just means the status
+		// bar starts in its default (off) state, same as GetUILanguage above.
+		if enabled, err := client.GetAgentAutoPermission(ctx); err == nil {
+			ed.autoPermission = enabled
+		}
+		ed.onToggleAutoPermission = s.toggleAutoPermission
+	}
+
 	if err := s.startFreshChat(); err != nil {
 		return err
 	}
@@ -591,6 +600,25 @@ func (s *session) handleAgentEvent(ev AgentEvent) error {
 		return s.askPermission(ev)
 	}
 	return nil
+}
+
+// toggleAutoPermission flips the backend's Shift+Tab auto-permission mode
+// (PUT /api/agent/auto-permission — internal/agent/pipeline.go's
+// autoPermission, the same flag the Flutter GUI's Shift+Tab shortcut
+// drives) and returns the resulting state for the editor's status bar. Once
+// on, permission_request events stop arriving entirely — every tool call is
+// approved before the backend ever emits one — so askPermission below simply
+// sees fewer calls rather than needing its own auto-approve branch.
+// Best-effort: a transport error leaves the mode unchanged, matching how
+// other backend-dependent REPL actions in this file degrade.
+func (s *session) toggleAutoPermission(current bool) bool {
+	next := !current
+	ctx, cancel := context.WithTimeout(s.ctx, 5*time.Second)
+	defer cancel()
+	if err := s.client.SetAgentAutoPermission(ctx, next); err != nil {
+		return current
+	}
+	return next
 }
 
 // askPermission prompts for a single tool call. Mirrors the Flutter GUI's

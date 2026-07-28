@@ -42,3 +42,20 @@ func TestSpinner_StopIsIdempotent(t *testing.T) {
 	sp.Stop()
 	sp.Stop() // must not panic (double close) or block
 }
+
+func TestSpinner_SetLabel_ChangesDisplayedText(t *testing.T) {
+	var out bytes.Buffer
+	sp := newSpinner(&out)
+	defer sp.Stop()
+
+	before := sp.Label()
+	sp.SetLabel("⚙ list_directory çalışıyor...")
+	after := sp.Label()
+
+	if after == before {
+		t.Fatalf("Label() unchanged after SetLabel, got %q both times", after)
+	}
+	if !strings.Contains(after, "list_directory") {
+		t.Errorf("Label() = %q, want it to contain the new text", after)
+	}
+}

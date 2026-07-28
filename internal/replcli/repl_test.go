@@ -297,6 +297,44 @@ func TestRun_PermissionRequest_DangerousToolHasNoSessionOption(t *testing.T) {
 	}
 }
 
+// TestHandleAgentEvent_UpdatesSpinnerLabelInsteadOfPrintingPermanentLines is
+// a regression test: tool_executing/tool_result/tool_error/permission_denied
+// used to each Fprintln a permanent line, so a multi-tool-call turn left a
+// wall of scrollback for something the user only cares about the end result
+// of. They now update the turn's status-line spinner in place instead — the
+// terminal output itself gets nothing from these calls directly.
+func TestHandleAgentEvent_UpdatesSpinnerLabelInsteadOfPrintingPermanentLines(t *testing.T) {
+	var out bytes.Buffer
+	sp := newSpinner(&out)
+	defer sp.Stop()
+	s := &session{out: &out, sp: sp}
+
+	if err := s.handleAgentEvent(AgentEvent{Type: "tool_executing", Tool: "list_directory"}); err != nil {
+		t.Fatalf("handleAgentEvent(tool_executing) error = %v", err)
+	}
+	if !strings.Contains(sp.Label(), "list_directory") {
+		t.Errorf("spinner label = %q, want it to mention list_directory", sp.Label())
+	}
+
+	if err := s.handleAgentEvent(AgentEvent{Type: "tool_result", Tool: "list_directory"}); err != nil {
+		t.Fatalf("handleAgentEvent(tool_result) error = %v", err)
+	}
+	if !strings.Contains(sp.Label(), "list_directory") {
+		t.Errorf("spinner label after tool_result = %q, want it to still mention list_directory", sp.Label())
+	}
+}
+
+// TestHandleAgentEvent_NoOpWithoutAnInFlightTurn guards the s.sp nil check:
+// handleAgentEvent must never panic or attempt to touch a status line when
+// called outside of sendMessage's turn (s.sp only set there).
+func TestHandleAgentEvent_NoOpWithoutAnInFlightTurn(t *testing.T) {
+	var out bytes.Buffer
+	s := &session{out: &out}
+	if err := s.handleAgentEvent(AgentEvent{Type: "tool_executing", Tool: "list_directory"}); err != nil {
+		t.Fatalf("handleAgentEvent() error = %v", err)
+	}
+}
+
 // TestDescribeToolCall_PrefersBackendPreview is a regression test: the
 // permission prompt used to always show a blind character-truncation of the
 // raw tool-call args JSON, in whatever key order the model emitted them —

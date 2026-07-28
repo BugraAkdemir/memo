@@ -19,12 +19,13 @@ type spinner struct {
 	doneCh  chan struct{}
 	stopped bool
 	mu      sync.Mutex
+	label   string // guarded by mu; read by the ticker goroutine, written by SetLabel
 }
 
 var spinnerFrames = []string{"⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"}
 
 func newSpinner(out io.Writer) *spinner {
-	s := &spinner{out: out, stopCh: make(chan struct{}), doneCh: make(chan struct{})}
+	s := &spinner{out: out, stopCh: make(chan struct{}), doneCh: make(chan struct{}), label: dim(t("spinner_thinking"))}
 	go func() {
 		defer close(s.doneCh)
 		defer logx.Recover("replcli.spinner")
@@ -37,12 +38,33 @@ func newSpinner(out io.Writer) *spinner {
 				fmt.Fprint(s.out, "\r\033[K")
 				return
 			case <-ticker.C:
-				fmt.Fprintf(s.out, "\r%s", dim(spinnerFrames[i%len(spinnerFrames)]+" "+t("spinner_thinking")))
+				fmt.Fprintf(s.out, "\r%s %s", dim(spinnerFrames[i%len(spinnerFrames)]), s.Label())
 				i++
 			}
 		}
 	}()
 	return s
+}
+
+// Label returns the spinner's current status text — thread-safe against a
+// concurrent SetLabel call from the turn's own goroutine.
+func (s *spinner) Label() string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.label
+}
+
+// SetLabel changes what the spinner shows next to its animated frame. Used
+// to reflect live agent tool-call activity ("⚙ list_directory çalışıyor...",
+// then "✓ list_directory tamamlandı", then the next tool, and so on) in
+// place, instead of each step leaving its own permanent line in the
+// terminal scrollback — a multi-step agent turn used to print one line per
+// tool call, which made an otherwise ordinary request look like a wall of
+// noise once the model needed 4-5 tool calls to get something done.
+func (s *spinner) SetLabel(text string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.label = text
 }
 
 // Stop is safe to call more than once — only the first call has any effect.

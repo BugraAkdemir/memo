@@ -197,6 +197,14 @@ type session struct {
 	// the marker belongs only in front of the first one that has content.
 	// Reset at the start of every sendMessage call.
 	aiTurnStarted bool
+
+	// sp is the in-flight turn's status-line spinner, non-nil only between
+	// sendMessage starting and finishing a turn. handleAgentEvent reuses it
+	// to show live tool-call activity instead of printing a permanent line
+	// per tool call; askPermission stops and restarts it around its own
+	// question. nil outside of sendMessage — every user is a nil-guarded
+	// no-op, so calling one from outside a turn is harmless.
+	sp *spinner
 }
 
 // promptStyle is the main composer prompt. Kept at display width 2 so the
@@ -336,13 +344,13 @@ func (s *session) sendMessage(line string) {
 	s.interruptCancel = cancel
 	s.startInterruptWatch()
 
-	sp := newSpinner(s.out)
+	s.sp = newSpinner(s.out)
 	onChunk := func(chunk api.StreamChunk) error {
-		sp.Stop()
 		return s.handleChunk(chunk)
 	}
 	err := s.client.SendStream(ctx, line, onChunk)
-	sp.Stop()
+	s.stopSpinner()
+	s.sp = nil
 
 	// Stop watching for Esc/Ctrl+C as soon as the stream itself ends, not
 	// deferred to when sendMessage returns. reportMemorySaved below can
@@ -557,12 +565,14 @@ func (s *session) memoryActive() bool {
 
 func (s *session) handleChunk(chunk api.StreamChunk) error {
 	if chunk.Error != "" {
+		s.stopSpinner()
 		fmt.Fprintln(s.out, errorf("%s", friendlyError(chunk.Error)))
 		return nil
 	}
 
 	switch chunk.FinishReason {
 	case "status":
+		s.stopSpinner()
 		fmt.Fprintln(s.out, dim(fmt.Sprintf("[%s]", chunk.Content)))
 	case "agent_event":
 		var ev AgentEvent
@@ -578,6 +588,7 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 		// reply arrives as one chunk), so reveal it with a typewriter
 		// effect instead of dumping it on screen all at once.
 		if !s.aiTurnStarted && chunk.Content != "" {
+			s.stopSpinner()
 			s.aiTurnStarted = true
 			fmt.Fprint(s.out, bold(brightMagenta("● ")))
 		}
@@ -586,16 +597,46 @@ func (s *session) handleChunk(chunk api.StreamChunk) error {
 	return nil
 }
 
+// stopSpinner halts the current turn's status-line spinner, if one is
+// active — used right before printing something that needs the line to
+// itself (an error, a status chunk, the reply's first token, a permission
+// question). A no-op outside a turn (s.sp nil) or once already stopped
+// (spinner.Stop is idempotent).
+func (s *session) stopSpinner() {
+	if s.sp != nil {
+		s.sp.Stop()
+	}
+}
+
+// resumeSpinner restarts the status-line spinner after stopSpinner — used
+// by askPermission once its question is answered, so any further tool
+// calls later in the same turn still get a live status line instead of the
+// terminal looking frozen. Only does anything if a turn is actually in
+// progress (s.sp was set by sendMessage, not nil'd out yet).
+func (s *session) resumeSpinner() {
+	if s.sp != nil {
+		s.sp = newSpinner(s.out)
+	}
+}
+
+// handleAgentEvent reflects one agent tool-call event as the current turn's
+// status-line text rather than a permanent printed line — see spinner.go's
+// SetLabel doc comment for why. permission_request is the one event type
+// that still needs its own dedicated line (askPermission), since it's an
+// actual question needing an answer, not just a status update.
 func (s *session) handleAgentEvent(ev AgentEvent) error {
+	if s.sp == nil {
+		return nil // no turn in flight to attach a status update to
+	}
 	switch ev.Type {
 	case "tool_executing":
-		fmt.Fprintln(s.out, "\n"+dim(fmt.Sprintf(t("tool_running"), ev.Tool)))
+		s.sp.SetLabel(dim(fmt.Sprintf(t("tool_running"), ev.Tool)))
 	case "tool_result":
-		fmt.Fprintln(s.out, green(fmt.Sprintf(t("tool_done"), ev.Tool)))
+		s.sp.SetLabel(green(fmt.Sprintf(t("tool_done"), ev.Tool)))
 	case "tool_error":
-		fmt.Fprintln(s.out, errorf(t("tool_error"), ev.Tool, ev.Error))
+		s.sp.SetLabel(errorf(t("tool_error"), ev.Tool, ev.Error))
 	case "permission_denied":
-		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("tool_denied"), ev.Tool)))
+		s.sp.SetLabel(yellow(fmt.Sprintf(t("tool_denied"), ev.Tool)))
 	case "permission_request":
 		return s.askPermission(ev)
 	}
@@ -634,6 +675,13 @@ func (s *session) askPermission(ev AgentEvent) error {
 	// for the same key stream — pause it for the duration of the question.
 	s.stopInterruptWatch()
 	defer s.startInterruptWatch()
+
+	// The status-line spinner would otherwise keep overwriting the same
+	// line the question and its y/n prompt need — give it the line back
+	// once answered, so any further tool calls later in this turn still
+	// get a live status instead of the terminal looking frozen.
+	s.stopSpinner()
+	defer s.resumeSpinner()
 
 	warnPrefix := "⚠"
 	if ev.DangerLevel == "dangerous" {

@@ -245,6 +245,51 @@ func TestEditor_ReadLinePlain_NoDropdownNoHistory(t *testing.T) {
 	}
 }
 
+func TestEditor_ShiftTab_TogglesAutoPermissionViaCallback(t *testing.T) {
+	var calls []bool
+	ed, _ := newTestEditor("\x1b[Zhi\r")
+	ed.onToggleAutoPermission = func(current bool) bool {
+		calls = append(calls, current)
+		return !current
+	}
+	line, ok := ed.readLine("> ")
+	if !ok || line != "hi" {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, "hi")
+	}
+	if len(calls) != 1 || calls[0] != false {
+		t.Fatalf("onToggleAutoPermission calls = %v, want a single call with false", calls)
+	}
+	if !ed.autoPermission {
+		t.Fatal("autoPermission = false after toggle, want true")
+	}
+}
+
+func TestEditor_ShiftTab_NilCallbackIsNoOp(t *testing.T) {
+	// No onToggleAutoPermission wired (piped/non-terminal-style construction
+	// missing the callback) — Shift+Tab must not panic or affect the buffer.
+	ed, _ := newTestEditor("\x1b[Zhi\r")
+	line, ok := ed.readLine("> ")
+	if !ok || line != "hi" {
+		t.Fatalf("readLine = %q, %v, want %q", line, ok, "hi")
+	}
+	if ed.autoPermission {
+		t.Fatal("autoPermission = true with no callback wired, want false")
+	}
+}
+
+func TestEditor_StatusBarLine_ReflectsAutoPermissionState(t *testing.T) {
+	ed, _ := newTestEditor("")
+	off := ed.statusBarLine()
+	if off != dim(statusBarText()) {
+		t.Fatalf("statusBarLine() off = %q, want plain status bar text", off)
+	}
+	ed.autoPermission = true
+	on := ed.statusBarLine()
+	if on == off {
+		t.Fatal("statusBarLine() unchanged after autoPermission=true")
+	}
+}
+
 func TestSelectFromMenu_ArrowNavigation(t *testing.T) {
 	items := []menuItem{{Label: "bir"}, {Label: "iki"}, {Label: "üç"}}
 	var out bytes.Buffer

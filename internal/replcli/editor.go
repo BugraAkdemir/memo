@@ -38,6 +38,18 @@ func slashCommands() []commandSpec {
 // equivalent of Claude Code's "manual mode on · ? for shortcuts" bar.
 func statusBarText() string { return t("status_bar_text") }
 
+// statusBarLine picks between the plain hint bar and, while Shift+Tab
+// auto-permission mode is on, a loud reminder that every tool call is being
+// auto-approved without asking — the terminal equivalent of Claude Code's
+// "⏵⏵ auto-accept edits on" bar and the Flutter GUI's chat_screen.dart
+// status pill.
+func (e *editor) statusBarLine() string {
+	if e.autoPermission {
+		return yellow(t("auto_permission_status_on"))
+	}
+	return dim(statusBarText())
+}
+
 // editor is a raw-mode line editor: cursor movement, in-line editing,
 // history, and a live slash-command dropdown that opens the moment "/" is
 // typed — no Enter needed — and is navigated with the arrow keys, the way
@@ -67,6 +79,18 @@ type editor struct {
 	pendingCtrlC  bool   // first Ctrl+C on an empty line arms quit-on-repeat
 	historyEnable bool
 	menuEnable    bool
+
+	// autoPermission mirrors the backend's Shift+Tab auto-permission flag
+	// (internal/agent/pipeline.go's autoPermission — every tool call
+	// auto-approved, no permission_request event ever emitted) so the
+	// status bar can show its current state live, the same as the Flutter
+	// GUI's chat_screen.dart indicator. onToggleAutoPermission, if set, is
+	// invoked on a Shift+Tab keypress (from either the main composer or a
+	// secondary y/n prompt) with the current state and must apply the
+	// flip server-side and return the resulting state (unchanged on
+	// failure); nil leaves Shift+Tab a no-op.
+	autoPermission         bool
+	onToggleAutoPermission func(current bool) bool
 }
 
 // readLine edits one full line with the slash dropdown and history enabled.
@@ -158,6 +182,11 @@ func (e *editor) edit(prompt string) (string, bool) {
 				if m := e.matches(); len(m) > 0 {
 					e.applySelection(mode, atStart, m[e.menuSel])
 				}
+			}
+
+		case keyShiftTab:
+			if e.onToggleAutoPermission != nil {
+				e.autoPermission = e.onToggleAutoPermission(e.autoPermission)
 			}
 
 		case keyEsc:
@@ -434,7 +463,7 @@ func (e *editor) render(prompt string) {
 	// A persistent status bar under the input line, always visible
 	// regardless of dropdown/notice state — the terminal equivalent of
 	// Claude Code's bottom "manual mode on · ? for shortcuts" bar.
-	b.WriteString("\n  " + dim(statusBarText()))
+	b.WriteString("\n  " + e.statusBarLine())
 	rows++
 	e.rowsBelow = rows
 

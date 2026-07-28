@@ -43,6 +43,34 @@ func TestSpinner_StopIsIdempotent(t *testing.T) {
 	sp.Stop() // must not panic (double close) or block
 }
 
+// TestSpinner_StopDoesNotDeadlockWithConcurrentTick is a regression test:
+// Stop() used to hold its mutex across a blocking <-doneCh wait, while the
+// ticker goroutine's own render tick needs that same mutex (via Label()) to
+// make progress back to the loop's stopCh check — a real deadlock window,
+// not a data race, so `go test -race` alone would never have caught it.
+// Sleeping roughly one tick interval before each Stop() call maximizes the
+// odds of landing on the exact race window across many trials; a regression
+// hangs the inner goroutine forever, caught here via the outer timeout
+// instead of hanging the whole test binary.
+func TestSpinner_StopDoesNotDeadlockWithConcurrentTick(t *testing.T) {
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for range 20 {
+			var out bytes.Buffer
+			sp := newSpinner(&out)
+			time.Sleep(80 * time.Millisecond)
+			sp.Stop()
+		}
+	}()
+
+	select {
+	case <-done:
+	case <-time.After(10 * time.Second):
+		t.Fatal("spinner.Stop() appears to have deadlocked against a concurrent tick")
+	}
+}
+
 func TestSpinner_SetLabel_ChangesDisplayedText(t *testing.T) {
 	var out bytes.Buffer
 	sp := newSpinner(&out)

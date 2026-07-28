@@ -38,7 +38,16 @@ func newSpinner(out io.Writer) *spinner {
 				fmt.Fprint(s.out, "\r\033[K")
 				return
 			case <-ticker.C:
-				fmt.Fprintf(s.out, "\r%s %s", dim(spinnerFrames[i%len(spinnerFrames)]), s.Label())
+				// Trailing \033[K (clear cursor-to-end-of-line) matters now
+				// that the label's length actually varies between renders
+				// (tool-call status text replaced the old fixed "düşünüyor...").
+				// \r alone only moves the cursor back to column 0 — it
+				// doesn't erase anything — so a render shorter than the
+				// previous one used to leave the previous render's tail
+				// sitting on screen, visually merged with the new text
+				// (e.g. "✓ write_file tamamlandıess denied: ...", reported
+				// directly by a user).
+				fmt.Fprintf(s.out, "\r%s %s\033[K", dim(spinnerFrames[i%len(spinnerFrames)]), s.Label())
 				i++
 			}
 		}
@@ -68,13 +77,22 @@ func (s *spinner) SetLabel(text string) {
 }
 
 // Stop is safe to call more than once — only the first call has any effect.
+// Releases mu before waiting on doneCh (deliberately not one defer-guarded
+// critical section): the ticker goroutine's render tick calls Label(),
+// which also needs mu — holding it across the <-doneCh wait let Stop()
+// block forever the moment a tick fired (and picked the ticker.C case, as
+// select's two ready cases race close enough together that this is a real,
+// not rare, timing window) at the same instant Stop() started, since that
+// goroutine could never reach the next loop iteration's stopCh check to
+// close doneCh while stuck waiting on the very lock Stop() was holding.
 func (s *spinner) Stop() {
 	s.mu.Lock()
-	defer s.mu.Unlock()
 	if s.stopped {
+		s.mu.Unlock()
 		return
 	}
 	s.stopped = true
+	s.mu.Unlock()
 	close(s.stopCh)
 	<-s.doneCh
 }

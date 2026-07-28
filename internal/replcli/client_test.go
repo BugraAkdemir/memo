@@ -97,6 +97,32 @@ func TestClient_SetAgentEnabled(t *testing.T) {
 	}
 }
 
+func TestClient_SetWebSearchEnabled(t *testing.T) {
+	var gotMethod, gotPath string
+	var gotBody map[string]bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		gotPath = r.URL.Path
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		json.NewEncoder(w).Encode(map[string]bool{"enabled": true})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	if err := c.SetWebSearchEnabled(context.Background(), true); err != nil {
+		t.Fatalf("SetWebSearchEnabled() error = %v", err)
+	}
+	if gotMethod != http.MethodPost {
+		t.Errorf("method = %s, want POST", gotMethod)
+	}
+	if gotPath != "/api/websearch" {
+		t.Errorf("path = %s, want /api/websearch", gotPath)
+	}
+	if !gotBody["enabled"] {
+		t.Errorf("enabled = %v, want true", gotBody["enabled"])
+	}
+}
+
 func TestClient_SendPermission(t *testing.T) {
 	var gotBody map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

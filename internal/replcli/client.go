@@ -152,6 +152,13 @@ func (c *Client) SetAgentEnabled(ctx context.Context, enabled bool) error {
 	return c.doJSON(ctx, http.MethodPut, "/api/agent/enabled", map[string]bool{"enabled": enabled}, nil)
 }
 
+// SetWebSearchEnabled turns web-search mode on or off — the same global
+// toggle the Flutter GUI's chat top-bar web-search pill drives
+// (POST /api/websearch, internal/app/settings.go's UpdateWebSearchConfig).
+func (c *Client) SetWebSearchEnabled(ctx context.Context, enabled bool) error {
+	return c.doJSON(ctx, http.MethodPost, "/api/websearch", map[string]bool{"enabled": enabled}, nil)
+}
+
 // SendPermission answers a pending tool permission request with policy
 // "allow_once" or "deny_once".
 func (c *Client) SendPermission(ctx context.Context, requestID, policy string) error {

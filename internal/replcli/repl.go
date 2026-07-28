@@ -240,6 +240,14 @@ func (s *session) activateChat(id string) error {
 	if err := s.client.SetAgentEnabled(s.ctx, true); err != nil {
 		return fmt.Errorf(t("agent_enable_failed"), err)
 	}
+	// Web search is a global toggle, exactly like agent mode above — but
+	// unlike agent mode, nothing in the CLI ever turned it on, so it just
+	// sat at whatever it defaulted to (off) no matter what. Best-effort
+	// (unlike agent mode's hard error above): an older backend without this
+	// route, or a config write failure, just means web search stays off for
+	// this chat — not something worth failing chat creation over, since the
+	// REPL isn't built around it the way it is around agent mode.
+	_ = s.client.SetWebSearchEnabled(s.ctx, true)
 	s.chatID = id
 	return nil
 }

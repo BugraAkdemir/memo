@@ -159,6 +159,25 @@ func (c *Client) SendPermission(ctx context.Context, requestID, policy string) e
 		map[string]string{"request_id": requestID, "policy": policy}, nil)
 }
 
+// GetAgentAutoPermission reports whether Shift+Tab auto-permission mode
+// (internal/agent/pipeline.go's autoPermission flag — every tool call
+// auto-approved, no permission_request event ever emitted) is currently on.
+// Same endpoint the Flutter GUI's Shift+Tab shortcut uses.
+func (c *Client) GetAgentAutoPermission(ctx context.Context) (bool, error) {
+	var resp struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/agent/auto-permission", nil, &resp); err != nil {
+		return false, err
+	}
+	return resp.Enabled, nil
+}
+
+// SetAgentAutoPermission turns Shift+Tab auto-permission mode on or off.
+func (c *Client) SetAgentAutoPermission(ctx context.Context, enabled bool) error {
+	return c.doJSON(ctx, http.MethodPut, "/api/agent/auto-permission", map[string]bool{"enabled": enabled}, nil)
+}
+
 // SendStream POSTs message to /api/send/stream and invokes onChunk once per
 // parsed SSE chunk, in order. It stops when the backend sends done:true, when
 // onChunk returns an error, or when ctx is cancelled.

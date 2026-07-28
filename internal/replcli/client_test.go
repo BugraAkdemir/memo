@@ -114,6 +114,49 @@ func TestClient_SendPermission(t *testing.T) {
 	}
 }
 
+func TestClient_GetAgentAutoPermission(t *testing.T) {
+	var gotMethod string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		json.NewEncoder(w).Encode(map[string]bool{"enabled": true})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	enabled, err := c.GetAgentAutoPermission(context.Background())
+	if err != nil {
+		t.Fatalf("GetAgentAutoPermission() error = %v", err)
+	}
+	if !enabled {
+		t.Error("enabled = false, want true")
+	}
+	if gotMethod != http.MethodGet {
+		t.Errorf("method = %s, want GET", gotMethod)
+	}
+}
+
+func TestClient_SetAgentAutoPermission(t *testing.T) {
+	var gotMethod string
+	var gotBody map[string]bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotMethod = r.Method
+		json.NewDecoder(r.Body).Decode(&gotBody)
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	if err := c.SetAgentAutoPermission(context.Background(), true); err != nil {
+		t.Fatalf("SetAgentAutoPermission() error = %v", err)
+	}
+	if gotMethod != http.MethodPut {
+		t.Errorf("method = %s, want PUT", gotMethod)
+	}
+	if !gotBody["enabled"] {
+		t.Errorf("enabled = %v, want true", gotBody["enabled"])
+	}
+}
+
 func TestClient_ErrorStatusCode(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "bad json", http.StatusBadRequest)

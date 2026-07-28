@@ -24,6 +24,7 @@ const (
 	keyHome
 	keyEnd
 	keyTab
+	keyShiftTab
 	keyEsc
 	keyCtrlC
 	keyCtrlD
@@ -291,6 +292,8 @@ func csiFinal(final byte, params string) key {
 		return key{kind: keyHome}
 	case 'F':
 		return key{kind: keyEnd}
+	case 'Z': // Shift+Tab (CSI Z / "reverse tab")
+		return key{kind: keyShiftTab}
 	case '~':
 		switch params {
 		case "1", "7":

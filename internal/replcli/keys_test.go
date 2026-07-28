@@ -32,6 +32,7 @@ func TestKeySource_DecodesBasicKeys(t *testing.T) {
 		{"csi home", "\x1b[H", []key{{kind: keyHome}}},
 		{"csi end", "\x1b[F", []key{{kind: keyEnd}}},
 		{"csi delete", "\x1b[3~", []key{{kind: keyDelete}}},
+		{"csi shift-tab", "\x1b[Z", []key{{kind: keyShiftTab}}},
 		{"csi home tilde", "\x1b[1~", []key{{kind: keyHome}}},
 		// SS3 variants — sent by terminals in application cursor mode; the
 		// old parser rejected these outright, which is why arrow keys

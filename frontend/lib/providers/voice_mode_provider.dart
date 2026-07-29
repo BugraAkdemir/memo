@@ -14,11 +14,27 @@ import 'chat_provider.dart';
 /// as before while this is on — a user can speak OR type, in either
 /// order, and every assistant reply gets spoken back for as long as
 /// voice mode is active. Ported from the removed live_screen.dart, same
-/// underlying capture engine (LiveModeController) and the same
-/// deliberately-simple one-cycle-at-a-time behavior (no barge-in yet —
-/// see LiveModeController's and live_mode_controller.dart's own doc
-/// comments for why, and for the known VAD-model-from-CDN stability gap
-/// this inherits unchanged).
+/// underlying capture engine (LiveModeController).
+///
+/// **One-directional barge-in**: the user can interrupt Memo mid-reply
+/// (mid-"thinking" or mid-"speaking") by just talking again — the new
+/// utterance cancels whatever's in flight (WavPlayer.stop() on both
+/// players, chat_provider's stopStreaming() on the LLM call) instead of
+/// being silently dropped. The reverse — Memo interrupting the user, or
+/// backchannel sounds while the user is still talking — is not
+/// implemented (that's the parent plan's Faz 4, full duplex + AEC).
+///
+/// **Known, accepted risk this creates, worse than the old no-barge-in
+/// behavior**: without headphones or real echo cancellation (AEC,
+/// explicitly out of scope for this pass — see PLAN_voice_live_mode.md's
+/// Faz 4), VAD can pick up Memo's own TTS/filler audio playing through
+/// the speakers as if it were the user talking again. Previously that
+/// misfire was silently dropped (see the old _busy guard) — wasted one STT
+/// round-trip, otherwise harmless. Now it's treated as an intentional
+/// barge-in and actually cuts Memo off mid-sentence. This is inherent to
+/// implementing real barge-in without AEC, not a bug to fix here — a
+/// speaker-only setup should expect self-interruptions; headphones avoid
+/// the problem entirely (no acoustic path from output back to the mic).
 enum VoiceModeState { idle, listening, thinking, speaking }
 
 final voiceModeProvider =
@@ -38,6 +54,16 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
   LiveModeController? _controller;
   bool _busy = false;
   bool _toggling = false;
+
+  // Bumped every time a cycle starts (fresh utterance OR a barge-in that
+  // preempts one already running). A cycle's own async continuations
+  // (after each await) compare their captured generation against the
+  // live one before touching shared state (_busy, state) — the same
+  // "stale call self-invalidates on a newer one" technique
+  // chat_provider.dart's MessagesNotifier already uses for the identical
+  // problem (see AGENTS.md's Riverpod gotcha) — so a barged-in cycle's
+  // `finally` can't stomp on the state the interrupting cycle is setting.
+  int _generation = 0;
 
   VoiceModeNotifier(this._ref) : super(VoiceModeState.idle);
 
@@ -87,33 +113,44 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
   }
 
   Future<void> _handleTranscript(String text) async {
-    // Drop overlapping utterances instead of racing a second sendMessage()
-    // against one already in flight — real barge-in isn't implemented yet
-    // (see class doc).
-    if (_busy) return;
+    if (_busy) {
+      // Memo is still thinking or speaking — treat this new utterance as
+      // a barge-in rather than dropping it: bump _generation first (so
+      // the in-flight cycle's own continuations below see a mismatch and
+      // skip touching shared state once they unwind), then actually stop
+      // what's in flight. WavPlayer.stop() is a no-op if that particular
+      // player isn't playing (e.g. barging in during "thinking", before
+      // any audio exists yet); stopStreaming() is a no-op if the LLM call
+      // already finished (e.g. barging in during "speaking").
+      _generation++;
+      _fillerPlayer.stop();
+      _player.stop();
+      _ref.read(messagesProvider.notifier).stopStreaming();
+    }
 
     if (_ref.read(isSendingProvider)) {
-      // chat_provider.dart's sendMessage() silently no-ops when this is
-      // already true (a typed message is mid-send elsewhere) — surface
-      // that instead of the utterance just vanishing with zero feedback.
+      // Only reachable for a send that ISN'T this notifier's own (that one
+      // was just cancelled above, and stopStreaming() clears
+      // isSendingProvider synchronously) — a typed message sent from the
+      // normal chat input, genuinely unrelated and still in flight.
+      // chat_provider.dart's sendMessage() would silently no-op in this
+      // case — surface it instead of the utterance just vanishing.
       _ref.read(errorMessageProvider.notifier).state =
           L10n.t('live_screen_error_busy_elsewhere');
       return;
     }
 
+    final myGeneration = ++_generation;
     _busy = true;
     state = VoiceModeState.thinking;
     _playFillerBestEffort();
 
-    // _busy stays true for this whole cycle — sendMessage AND the playback
-    // that follows it — so a VAD segment detected while Memo is still
-    // speaking is dropped by the guard above instead of starting a second,
-    // overlapping cycle.
     try {
       String reply = '';
       try {
         final messagesBefore = _ref.read(messagesProvider).valueOrNull ?? [];
         await _ref.read(messagesProvider.notifier).sendMessage(text);
+        if (myGeneration != _generation) return; // barged in again mid-send
 
         final messages = _ref.read(messagesProvider).valueOrNull ?? [];
         // A genuine new reply must have actually grown the list, not just
@@ -130,6 +167,7 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
         }
         reply = messages.last.content;
       } catch (e) {
+        if (myGeneration != _generation) return; // cancelled by a barge-in
         _ref.read(errorMessageProvider.notifier).state =
             L10n.t('live_screen_error_send_failed', {'err': '$e'});
         return;
@@ -139,13 +177,20 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
       try {
         state = VoiceModeState.speaking;
         final audio = await _ref.read(apiClientProvider).synthesizeSpeech(reply);
+        if (myGeneration != _generation) return; // barged in during synthesis
         await _player.play(audio);
       } catch (e) {
+        if (myGeneration != _generation) return;
         _ref.read(errorMessageProvider.notifier).state = friendlyPlaybackError(e);
       }
     } finally {
-      _busy = false;
-      state = _controller != null ? VoiceModeState.listening : VoiceModeState.idle;
+      // A stale (barged-in) cycle must not reset _busy/state out from
+      // under the cycle that interrupted it — only the still-current
+      // generation gets to do that.
+      if (myGeneration == _generation) {
+        _busy = false;
+        state = _controller != null ? VoiceModeState.listening : VoiceModeState.idle;
+      }
     }
   }
 

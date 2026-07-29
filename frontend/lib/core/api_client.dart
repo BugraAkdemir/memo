@@ -919,6 +919,18 @@ class MemoApiClient {
     return Uint8List.fromList(_guard<List<int>>(res.data));
   }
 
+  /// Fetches one cached local "thinking" filler sound (GET
+  /// /api/tts/filler, Faz 3) — same raw-bytes response shape as
+  /// [synthesizeSpeech], no request body since there's nothing to
+  /// configure.
+  Future<Uint8List> getTTSFiller() async {
+    final res = await _dio.get(
+      '/api/tts/filler',
+      options: Options(responseType: ResponseType.bytes),
+    );
+    return Uint8List.fromList(_guard<List<int>>(res.data));
+  }
+
   // ─── Image ──────────────────────────────────────────────────────
 
   Future<String> getImageBase64(String path) async {

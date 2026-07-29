@@ -1,3 +1,51 @@
+# Handoff — 2026-07-29 (devam 8) — VAD modeli artık paketli, CDN bağımlılığı kapatıldı
+
+## Özet
+
+"Sıradaki neyse adım adım ilerleyelim" talebiyle Faz 1'in son cihazdan
+bağımsız açık maddesi kapatıldı: Voice Live Mode'un Silero VAD v4 modeli
+artık uygulama çalışırken `cdn.jsdelivr.net`'ten indirilmez.
+
+Üç küçük checkpoint commit'i:
+
+1. `e0c174e` — `frontend/assets/vad/silero_vad_legacy.onnx` (1.8 MB)
+   uygulamaya Flutter asset'i olarak eklendi; `download_binaries.sh` aynı
+   dosyayı sabit upstream sürümünden (`@keyurmaru/vad@0.0.1`) indirip
+   SHA-256 ile doğruluyor.
+2. `739a776` — `LiveModeController`, `VadHandler.startListening` için CDN
+   URL'i yerine native Flutter asset anahtarını (`assets/vad/`) kullanıyor.
+   Web derlemesinde Flutter'ın yayınlanan asset yolu (`assets/assets/vad/`)
+   seçiliyor. Yeni odaklı test bunu koruyor.
+3. `f740de6` — Faz 1 planındaki eski açık madde tamamlandı olarak kayda
+   geçirildi.
+
+**Kalan sınır:** Memo masaüstü hedefli. Web derlemesi VAD modelini yerelden
+yüklese de, `vad` paketinin ONNX Runtime WASM dosyaları için varsayılan CDN
+bağımlılığı hâlâ var; bu iş onu kapsamıyor.
+
+## Doğrulama
+
+- Model SHA-256: `a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28`
+  (yerel `vad` paketinin companion modeli ve upstream CDN ile eşleşti).
+- `sh -n download_binaries.sh` + `git diff --check` geçti.
+- `flutter analyze lib/core/live_mode_controller.dart lib/core/vad_assets.dart`
+  temiz; tam `flutter analyze lib/` yalnızca önceden var olan 4
+  `use_build_context_synchronously` bilgisi veriyor.
+- `flutter test --no-pub test/core/vad_assets_test.dart` geçti.
+- Tam `flutter test --no-pub`: **117/117 geçti**.
+
+**Gerçek mikrofon/VAD cihaz doğrulaması hâlâ yapılmadı.** Bu değişiklik
+modelin gerçekten bir uygulama paketinden yüklenmesini kod ve asset manifest
+seviyesinde doğrular; ONNX Runtime + mikrofon izinleri gerçek bir cihazda
+ayrıca denenmeli.
+
+## Sıradaki Adım
+
+Faz 1-3'ün cihaz gerektirmeyen açık işi kalmadı. Sıradaki büyük iş, gerçek
+cihaz/doğrulama gerektiren **Faz 4: AEC ve tam çift yönlü ses**; ardından
+Faz 5 wake-word + Android arka plan desteği. Önce gerçek cihazda Live Mode
+(özellikle hoparlörde yanlış barge-in ve VAD asset yüklemesi) denenmeli.
+
 # Handoff — 2026-07-29 (devam 7) — Barge-in tamamlandı (Faz 1'in son açık maddesi)
 
 ## Özet

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 	"testing"
+	"time"
 
 	"memo/internal/api"
 	"memo/internal/config"
@@ -103,10 +104,10 @@ func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
 
 	t.Run("mood_enabled_true_includes_directives", func(t *testing.T) {
 		moodEngine, err := moodpkg.New(moodpkg.Config{
-			Enabled: true,
-			DBPath:  t.TempDir() + "/mood.db",
-			Alpha:   0.95,
-			Beta:    0.80,
+			Enabled:  true,
+			DBPath:   t.TempDir() + "/mood.db",
+			Alpha:    0.95,
+			Beta:     0.80,
 			SigmaMin: 0.0,
 			SigmaMax: 0.0,
 		})
@@ -224,6 +225,48 @@ func TestBuildMessages_MemoryEnabledNotCrash(t *testing.T) {
 	}
 	if messages[0].Role != "system" {
 		t.Errorf("expected system role, got %s", messages[0].Role)
+	}
+}
+
+// TestBuildMessages_AgentModeSkipsBlindWebSearchInjection is a regression
+// test: buildMessagesForSession used to run websearch.Search on every
+// single message whenever the web-search toggle was on, regardless of
+// agent mode — reported directly by a user as web search firing
+// indiscriminately even for "naber" — even though agent mode already
+// registers its own web_search tool (internal/agent/tools.go) whose
+// description tells the model to call it only when actually needed. With
+// agent mode also on, the blind injection is pure redundant network traffic
+// on every turn; it must not run. context.Background() (not a cancelled
+// one) is used deliberately — a cancelled context would make
+// websearch.Search fail fast for an unrelated reason (ctx error), which
+// would let this test pass even if the actual skip-when-agentEnabled logic
+// regressed. A short wall-clock budget catches that instead: a live DDG
+// HTTP call takes far longer than this to complete or fail.
+func TestBuildMessages_AgentModeSkipsBlindWebSearchInjection(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false)
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory:    config.MemoryConfig{MemoryEnabled: false},
+			Llama:     config.LlamaConfig{CtxSize: 4096},
+			WebSearch: config.WebSearchConfig{Enabled: true},
+		},
+		identity:     id,
+		agentEnabled: true,
+	}
+
+	start := time.Now()
+	messages := a.buildMessages(context.Background(), "naber", nil)
+	elapsed := time.Since(start)
+
+	if elapsed > 200*time.Millisecond {
+		t.Fatalf("buildMessages took %v — suggests a live web search was attempted despite agent mode being on", elapsed)
+	}
+	sys, ok := messages[0].Content.(string)
+	if !ok {
+		t.Fatal("expected system message content to be a string")
+	}
+	if strings.Contains(sys, "Web Search Results") {
+		t.Error("system prompt contains injected web search results — blind injection must be skipped when agent mode is on")
 	}
 }
 

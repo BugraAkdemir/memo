@@ -106,14 +106,15 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		memories = a.retrieveMemory(ctx, a.buildMemoryQuery(userMsg))
 	}
 	// Read once and reuse below (for the live-search injection) rather than
-	// calling GetWebSearchEnabled() twice — a toggle landing between the two
-	// reads could otherwise tell the model one thing (via
+	// calling GetWebSearchEnabled()/GetAgentEnabled() twice each — a toggle
+	// landing between reads could otherwise tell the model one thing (via
 	// buildCapabilitiesBlock) while actually doing another (inject results
-	// or not).
+	// or not, gate the blind search below or not).
 	webSearchEnabled := a.GetWebSearchEnabled()
+	agentEnabled := a.GetAgentEnabled()
 	// Memory formatting is independent of mood — the mood engine must have ZERO
 	// influence when disabled.
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false, a.GetAgentEnabled(), webSearchEnabled)
+	systemPrompt := a.identity.BuildSystemPrompt(memories, false, agentEnabled, webSearchEnabled)
 	// MinimalMode means zero injection beyond memory — mood and web search
 	// context are both prompt injection just like identity/persona is, so
 	// they're skipped here too rather than only in BuildSystemPrompt. Read
@@ -131,10 +132,24 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 			systemPrompt += a.mood.BuildDirective()
 			systemPrompt += a.mood.BuildSelfInterestDirective()
 		}
-		// Web search is now an explicit on/off mode (toggle in the UI). When on,
-		// every message is enriched with fresh web results — no fragile, language-
-		// specific keyword detection. When off, it never runs.
-		if webSearchEnabled {
+		// Web search: two different mechanisms depending on whether agent mode
+		// is also on, not both at once.
+		//
+		// Agent mode already registers a real web_search tool (internal/
+		// agent/tools.go) whose own description tells the model to call it
+		// only for things that actually need current information — the same
+		// "the model decides, per message" shape as every other tool. Blindly
+		// injecting search results here TOO, on every single message
+		// regardless of content, was pure waste when that tool is available:
+		// an extra network round-trip on every turn (including "naber"),
+		// and — reported directly by a user — made web search look like it
+		// fires indiscriminately even though the smarter tool-based path
+		// underneath it was working fine on its own.
+		//
+		// Plain (non-agent) chat has no tool-calling at all, so blind
+		// injection is the only way it can ever see search results — that
+		// path is unchanged.
+		if webSearchEnabled && !agentEnabled {
 			if results, err := websearch.Search(ctx, userMsg, a.cfg.WebSearch.MaxResults); err == nil {
 				systemPrompt += websearch.FormatForContext(userMsg, results)
 			} else {

@@ -14,6 +14,7 @@ import '../models/provider_config.dart';
 import '../models/dev_gateway.dart';
 import '../models/swarm.dart';
 import '../models/task_list.dart';
+import '../models/tts_provider_config.dart';
 import '../models/usage_stats.dart';
 
 /// Memo Go backend REST API client.
@@ -1124,6 +1125,38 @@ class MemoApiClient {
   /// Set active provider.
   Future<void> setActiveProvider(String type) async {
     await _dio.put('/api/providers/active', data: {'provider': type});
+  }
+
+  // ─── TTS Provider Management (Faz 2) ───────────────────────────────
+
+  /// Get all external TTS provider configs.
+  Future<List<TTSProviderConfig>> getTTSProviders() async {
+    final res = await _dio.get('/api/tts/providers');
+    if (res.data is List) {
+      return (_guard<List>(res.data))
+          .map((e) => TTSProviderConfig.fromJson(e as Map<String, dynamic>))
+          .toList();
+    }
+    return [];
+  }
+
+  /// Update (add or edit) a TTS provider config.
+  Future<void> updateTTSProvider(TTSProviderConfig config) async {
+    await _dio.put('/api/tts/providers', data: config.toJson());
+  }
+
+  /// Delete a TTS provider config by type, disambiguated by [name] when given.
+  Future<void> deleteTTSProvider(String type, {String? name}) async {
+    await _dio.delete('/api/tts/providers', data: {
+      'type': type,
+      if (name != null && name.isNotEmpty) 'name': name,
+    });
+  }
+
+  /// Test a TTS provider connection (a real, short synthesis call).
+  Future<Map<String, dynamic>> testTTSProvider(TTSProviderConfig config) async {
+    final res = await _dio.post('/api/tts/providers/test', data: config.toJson());
+    return _guard<Map<String, dynamic>>(res.data);
   }
 
   // ─── Orchestra Mode ───────────────────────────────────────────────

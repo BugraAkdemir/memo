@@ -348,6 +348,66 @@ func TestHandleCommand_Clear(t *testing.T) {
 	}
 }
 
+// TestCmdTheme_Bare_ReportsCurrent covers /tema with no argument: it must
+// report the active theme, not guess or silently do nothing.
+func TestCmdTheme_Bare_ReportsCurrent(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+	s.theme = themeClassic
+
+	s.cmdTheme(nil)
+
+	if !strings.Contains(out.String(), "classic") {
+		t.Errorf("cmdTheme(nil) output = %q, want it to mention the current theme (classic)", out.String())
+	}
+	if s.theme != themeClassic {
+		t.Errorf("s.theme = %q after bare /tema, want unchanged (classic)", s.theme)
+	}
+}
+
+// TestCmdTheme_Switches is a regression test: cmdTheme also calls the real
+// saveTheme (side effect on disk, redirected to a throwaway temp dir by
+// TestMain in theme_test.go) — deliberately not asserted on here, since
+// saveTheme's own correctness is already covered by TestThemePersistence
+// and two tests both asserting on that one shared file would race over
+// which ran last. This test only checks the in-memory state cmdTheme is
+// actually responsible for.
+func TestCmdTheme_Switches(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+	s.theme = themeG
+
+	s.handleCommand("/tema classic")
+
+	if s.theme != themeClassic {
+		t.Errorf("s.theme = %q after /tema classic, want classic", s.theme)
+	}
+	if !strings.Contains(out.String(), "classic") {
+		t.Errorf("cmdTheme output = %q, want confirmation mentioning classic", out.String())
+	}
+}
+
+// TestCmdTheme_UnknownArgument_LeavesThemeUnchanged guards the parseTheme
+// failure path: an unrecognized argument must not silently switch to
+// something, and must not lose the current theme.
+func TestCmdTheme_UnknownArgument_LeavesThemeUnchanged(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+	s.theme = themeG
+
+	s.handleCommand("/tema dark")
+
+	if s.theme != themeG {
+		t.Errorf("s.theme = %q after unknown /tema argument, want unchanged (g)", s.theme)
+	}
+	if !strings.Contains(out.String(), "dark") {
+		t.Errorf("cmdTheme output = %q, want it to echo the unrecognized argument", out.String())
+	}
+}
+
 // TestHandleCommand_Session_List_ShowsAllChats asserts /session list shows
 // every chat — including ones from other project paths and GUI-created
 // chats with no project path at all — since the CLI and the Flutter GUI

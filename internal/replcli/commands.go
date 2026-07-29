@@ -51,6 +51,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdTaskList(args)
 	case "/update":
 		s.cmdUpdate()
+	case "/tema":
+		s.cmdTheme(args)
 	default:
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("unknown_command"), cmd)))
 	}
@@ -99,6 +101,10 @@ func (s *session) showCommandMenu() bool {
 		s.cmdTaskListInteractive()
 	case "/update":
 		s.cmdUpdate()
+	case "/tema":
+		// Needs an argument (g/classic) the menu can't supply — same
+		// treatment as /connect above: show usage instead of guessing.
+		fmt.Fprintln(s.out, yellow(t("theme_usage")))
 	case "/exit":
 		return true
 	}
@@ -206,6 +212,33 @@ func (s *session) cmdClear() {
 	s.printWelcome()
 	fmt.Fprintln(s.out)
 	fmt.Fprintln(s.out, green(t("chat_cleared")))
+}
+
+// cmdTheme switches between the "g" (default: live status bar, no boxed
+// welcome panel) and "classic" (the original boxed panel + static hint bar)
+// composer styles. Bare /tema reports the current one instead of guessing
+// what the user wanted. The choice is persisted (theme.go) so it survives
+// a restart, and re-renders the welcome banner immediately so the switch is
+// visible without waiting for /clear.
+func (s *session) cmdTheme(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(s.out, fmt.Sprintf(t("theme_current"), s.theme))
+		return
+	}
+	th, ok := parseTheme(args[0])
+	if !ok {
+		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("theme_unknown"), args[0])))
+		return
+	}
+	s.theme = th
+	if s.ed != nil {
+		s.ed.theme = th
+	}
+	// Best-effort: a read-only data dir just means the choice doesn't
+	// survive a restart — still applied for the rest of this session.
+	_ = saveTheme(th)
+	fmt.Fprintln(s.out, green(fmt.Sprintf(t("theme_switched"), th)))
+	s.printWelcome()
 }
 
 // cmdSession dispatches /session's subcommands: bare (interactive picker on
@@ -519,6 +552,7 @@ func (s *session) startAndReport(model *LocalModel, wantEmbedding bool) {
 		return
 	}
 	fmt.Fprintln(s.out, green(fmt.Sprintf(t("model_started"), model.Filename)))
+	s.refreshLiveStatus()
 
 	// The REPL runs with agent mode on by default (tool-using requests),
 	// but a model's own tool-calling support is a property of its embedded
@@ -554,6 +588,7 @@ func (s *session) cmdConnect(args []string) {
 		return
 	}
 	fmt.Fprintln(s.out, green(fmt.Sprintf(t("connected_to"), cfg.BaseURL, cfg.Model)))
+	s.refreshLiveStatus()
 }
 
 // cmdGui launches the Flutter desktop app as a detached background process

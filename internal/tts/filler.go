@@ -36,6 +36,16 @@ func NewFillerCache(synth *Synthesizer) *FillerCache {
 	return &FillerCache{synth: synth, cache: make(map[string][]byte)}
 }
 
+// SetCached seeds phrase's cached audio directly, bypassing synthesis —
+// exists for other packages' tests (internal/app's, which can't reach the
+// unexported cache map directly and has no real Piper binary to synthesize
+// through) rather than any production code path.
+func (f *FillerCache) SetCached(phrase string, audio []byte) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.cache[phrase] = audio
+}
+
 // Prewarm synthesizes every phrase up front (call once after the local
 // Piper synthesizer is configured/changed — see App.initTTS) so the first
 // real Random() call during a live conversation doesn't pay the one-time

@@ -22,10 +22,44 @@ func (a *App) initTTS() {
 		return
 	}
 
+	synth := tts.NewSynthesizer(cfg.BinaryPath, cfg.ModelPath)
+	fillers := tts.NewFillerCache(synth)
+
 	a.ttsMu.Lock()
-	a.ttsSynthesizer = tts.NewSynthesizer(cfg.BinaryPath, cfg.ModelPath)
+	a.ttsSynthesizer = synth
+	a.ttsFillerCache = fillers
 	a.ttsMu.Unlock()
 	logx.Info("TTS: Piper synthesizer configured")
+
+	// Prewarm in the background so the first real filler request during a
+	// live voice conversation (GetTTSFillerSound below) doesn't pay
+	// subprocess-spawn latency at the exact moment it's trying to mask
+	// latency — see FillerCache's own doc comment. Best-effort: if the
+	// voice/binary turns out to be misconfigured, Prewarm's phrases are
+	// just left uncached (logged inside Synthesize's own error paths
+	// elsewhere), not a fatal Startup error.
+	goRecover("tts.FillerCache.Prewarm", func() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		defer cancel()
+		fillers.Prewarm(ctx)
+	})
+}
+
+// GetTTSFillerSound returns a cached, local-only "thinking" filler sound
+// (see tts.FillerCache) — nil error only when the local Piper synthesizer
+// is configured, since fillers deliberately never go through the external
+// provider Router (an API round-trip would defeat the point of masking
+// latency).
+func (a *App) GetTTSFillerSound() ([]byte, error) {
+	a.ttsMu.RLock()
+	fillers := a.ttsFillerCache
+	a.ttsMu.RUnlock()
+	if fillers == nil {
+		return nil, fmt.Errorf("TTS: not enabled or not configured")
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	return fillers.Random(ctx)
 }
 
 // SynthesizeSpeech renders text to WAV-encoded audio bytes. Tries any

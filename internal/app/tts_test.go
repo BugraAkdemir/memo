@@ -24,6 +24,39 @@ func TestInitTTS_EnabledConfiguresSynthesizer(t *testing.T) {
 	if a.ttsSynthesizer == nil {
 		t.Error("expected ttsSynthesizer to be configured when TTS is enabled")
 	}
+	if a.ttsFillerCache == nil {
+		t.Error("expected ttsFillerCache to be configured alongside the synthesizer")
+	}
+}
+
+// TestGetTTSFillerSound_NotConfiguredFailsFast mirrors
+// TestSynthesizeSpeech_NotConfiguredFailsFastWithClearMessage — a disabled/
+// unconfigured TTS setup must error immediately, not nil-pointer panic.
+func TestGetTTSFillerSound_NotConfiguredFailsFast(t *testing.T) {
+	a := &App{cfg: &config.AppConfig{TTS: config.TTSConfig{Enabled: false}}}
+	_, err := a.GetTTSFillerSound()
+	if err == nil {
+		t.Fatal("expected error when TTS is not configured")
+	}
+}
+
+// TestGetTTSFillerSound_ReturnsCachedAudio confirms GetTTSFillerSound reads
+// through the App's own ttsFillerCache field rather than some separate
+// path, using a cache pre-seeded directly (no real Piper binary needed).
+func TestGetTTSFillerSound_ReturnsCachedAudio(t *testing.T) {
+	fillers := tts.NewFillerCache(nil)
+	for _, p := range tts.FillerPhrases {
+		fillers.SetCached(p, []byte("audio-for-"+p))
+	}
+	a := &App{ttsFillerCache: fillers}
+
+	audio, err := a.GetTTSFillerSound()
+	if err != nil {
+		t.Fatalf("GetTTSFillerSound: %v", err)
+	}
+	if len(audio) == 0 {
+		t.Error("expected non-empty audio")
+	}
 }
 
 // TestSynthesizeSpeech_NotConfiguredFailsFastWithClearMessage ensures a

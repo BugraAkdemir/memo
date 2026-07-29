@@ -138,6 +138,7 @@ type App struct {
 	whisperServer     *whisper.Server
 	whisperMu         sync.RWMutex
 	ttsSynthesizer    *tts.Synthesizer
+	ttsFillerCache    *tts.FillerCache
 	ttsMu             sync.RWMutex
 	ttsProviderCfgMgr *tts.ConfigManager
 	ttsRouter         *tts.Router

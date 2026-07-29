@@ -142,6 +142,7 @@ type App struct {
 	ttsProviderCfgMgr *tts.ConfigManager
 	ttsRouter         *tts.Router
 	ttsRouterMu       sync.RWMutex
+	ttsVoiceStore     *tts.VoiceStore
 	webServer         *webserver.Server
 	webMu             sync.RWMutex
 	modelStore        *modelstore.Store
@@ -488,6 +489,7 @@ func (a *App) Startup(ctx context.Context) {
 	goRecover("startSTTServer", a.startSTTServer)
 	a.initTTS()
 	a.initTTSProviders()
+	a.ttsVoiceStore = tts.NewVoiceStore(config.DataPath("tts_voices"))
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)

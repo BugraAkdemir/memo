@@ -1,6 +1,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:path/path.dart' as p;
+
 /// Plays WAV audio bytes (Piper's TTS output) via platform-native subprocesses.
 ///
 /// Uses the same subprocess pattern as Piper/whisper.cpp/llama.cpp — no
@@ -38,7 +40,20 @@ class WavPlayer {
   // success from stop()'s point of view, not an error to surface.
   bool _stopRequested = false;
 
-  Future<void> play(Uint8List wavBytes) async {
+  /// Plays [wavBytes] at [volume] (0.0 silent .. 1.0 full, clamped).
+  ///
+  /// Volume is only actually honored on Linux via `paplay` and on macOS via
+  /// `afplay` -- both take a real volume argument (verified against
+  /// `paplay --help`/`man paplay` on this machine: `--volume=N` linear
+  /// 0..65536; `afplay`'s `-v` is documented as 0.0..1.0 but not verified
+  /// live in this environment, no macOS machine here). `aplay` (the Linux
+  /// fallback when `paplay` is missing) has no volume flag at all, and
+  /// PowerShell's `SoundPlayer` (Windows) exposes no per-instance gain
+  /// either -- both silently play at [volume]'s default full level instead
+  /// of failing, since a slightly-wrong volume is a much smaller problem
+  /// than a playback error on a working fallback path.
+  Future<void> play(Uint8List wavBytes, {double volume = 1.0}) async {
+    final clampedVolume = volume.clamp(0.0, 1.0);
     _stopRequested = false;
     final tempFile = File(
       '${Directory.systemTemp.path}/memo-tts-${DateTime.now().microsecondsSinceEpoch}.wav',
@@ -46,11 +61,16 @@ class WavPlayer {
     await tempFile.writeAsBytes(wavBytes);
     try {
       if (Platform.isLinux) {
-        await _runWithFallback(linuxPlayerCommands, tempFile.path);
+        await _runWithFallback(linuxPlayerCommands, tempFile.path, clampedVolume);
       } else if (Platform.isMacOS) {
-        await _runOrThrow('afplay', [tempFile.path]);
+        await _runOrThrow('afplay', [
+          '-v',
+          clampedVolume.toString(),
+          tempFile.path,
+        ]);
       } else if (Platform.isWindows) {
-        // .NET's SoundPlayer — built into every Windows install.
+        // .NET's SoundPlayer — built into every Windows install. No volume
+        // parameter exists on this API; see the doc comment above.
         await _runOrThrow('powershell', [
           '-NoProfile',
           '-Command',
@@ -64,6 +84,14 @@ class WavPlayer {
     }
   }
 
+  /// The `paplay --volume` argument for a linear [volume] in 0.0..1.0.
+  /// Exposed as a static, pure function so the volume-scaling math is unit
+  /// testable without spawning a real `paplay` process.
+  static String paplayVolumeArg(double volume) {
+    final linear = (volume.clamp(0.0, 1.0) * 65536).round();
+    return '--volume=$linear';
+  }
+
   /// Kills the currently-playing subprocess, if any, so [play] returns
   /// early instead of waiting for natural playback completion. A no-op if
   /// nothing is currently playing.
@@ -73,11 +101,23 @@ class WavPlayer {
   }
 
   /// Try each command in [candidates] in order; throw if all fail.
-  Future<void> _runWithFallback(List<String> candidates, String path) async {
+  Future<void> _runWithFallback(
+    List<String> candidates,
+    String path,
+    double volume,
+  ) async {
     Object? lastError;
     for (final cmd in candidates) {
       try {
-        final result = await _startAndWait(cmd, [path]);
+        // Only `paplay` understands a volume argument -- `aplay` (the
+        // built-in fallback) doesn't take one at all, and would fail to
+        // start if handed an argument it doesn't recognize. Compared by
+        // basename (not the raw string) so a caller/test can point
+        // [linuxPlayerCommands] at an absolute path to a `paplay` binary.
+        final args = p.basename(cmd) == 'paplay'
+            ? [paplayVolumeArg(volume), path]
+            : [path];
+        final result = await _startAndWait(cmd, args);
         if (result.exitCode == 0 || _stopRequested) return;
         lastError = '$cmd exited ${result.exitCode}: ${result.stderr}';
       } on ProcessException catch (e) {

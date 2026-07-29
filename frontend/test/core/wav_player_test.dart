@@ -91,6 +91,43 @@ void main() {
     skip: !Platform.isLinux,
   );
 
+  test('paplayVolumeArg() maps the 0.0..1.0 range onto paplay\'s 0..65536', () {
+    expect(WavPlayer.paplayVolumeArg(0.0), '--volume=0');
+    expect(WavPlayer.paplayVolumeArg(1.0), '--volume=65536');
+    expect(WavPlayer.paplayVolumeArg(0.5), '--volume=32768');
+  });
+
+  test('paplayVolumeArg() clamps out-of-range input', () {
+    expect(WavPlayer.paplayVolumeArg(-1.0), '--volume=0');
+    expect(WavPlayer.paplayVolumeArg(2.0), '--volume=65536');
+  });
+
+  test(
+    'play() passes a --volume arg only when the command basename is paplay',
+    () async {
+      // A fake script named exactly "paplay" (matched by basename, not PATH
+      // lookup) so _runWithFallback's volume-arg branch actually engages,
+      // then dumps its argv to a file this test reads back.
+      final fakeBinDir = await Directory.systemTemp.createTemp('memo-paplay-');
+      final argsFile = File('${fakeBinDir.path}/args.txt');
+      final fakePaplay = File('${fakeBinDir.path}/paplay');
+      await fakePaplay.writeAsString(
+        '#!/bin/sh\necho "\$@" > "${argsFile.path}"\nexit 0\n',
+      );
+      await Process.run('chmod', ['+x', fakePaplay.path]);
+
+      final player = WavPlayer(linuxPlayerCommands: [fakePaplay.path]);
+      await player.play(fakeWav, volume: 0.3);
+
+      final recordedArgs = (await argsFile.readAsString()).trim();
+      // 0.3 * 65536 = 19660.8, rounds to 19661.
+      expect(recordedArgs, startsWith('--volume=19661 '));
+
+      await fakeBinDir.delete(recursive: true);
+    },
+    skip: !Platform.isLinux,
+  );
+
   test(
     'play() cleans up its temp file after a successful play',
     () async {

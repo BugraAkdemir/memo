@@ -70,3 +70,4 @@ flutter:
   assets:
     - lib/icon/
     - lib/icon/slash/
+    - assets/vad/silero_vad_legacy.onnx

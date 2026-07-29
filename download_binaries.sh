@@ -1,6 +1,19 @@
 #!/bin/bash
 set -e
 
+# Voice Live Mode's Silero VAD v4 model is loaded by Flutter as an app asset,
+# never from the network at runtime. Keep the URL + checksum here so a fresh
+# development checkout can reproduce the bundled asset deterministically.
+VAD_VERSION="0.0.1"
+VAD_URL="https://cdn.jsdelivr.net/npm/@keyurmaru/vad@$VAD_VERSION/silero_vad_legacy.onnx"
+VAD_SHA256="a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28"
+VAD_DEST="frontend/assets/vad/silero_vad_legacy.onnx"
+
+echo "--- Voice Activity Detection model ---"
+mkdir -p "$(dirname "$VAD_DEST")"
+curl --fail --location --retry 3 "$VAD_URL" --output "$VAD_DEST"
+echo "$VAD_SHA256  $VAD_DEST" | sha256sum --check --status
+
 # Base URL for latest stable binaries (b9441 as seen in earlier logs)
 VERSION="b9441"
 BASE_URL="https://github.com/ggerganov/llama.cpp/releases/download/$VERSION"

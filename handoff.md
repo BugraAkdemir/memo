@@ -41,14 +41,14 @@ Kullanıcı: "dosya yazma/okumada çok hata alıyorum" — kök neden sandbox'ı
 
 ## Doğrulama
 
-Her commit'te ayrı ayrı: `go build`/`go vet`/`go test -race` tüm repo'da yeşil. Kullanıcı canlı doğruladı: Shift+Tab oto-onay, `/theme`/`/theme g`/`/theme classic` (rename öncesi), G temasının durum çubuğu render'ı. **Yeni `/theme` ok-tuşu picker'ı ve default/claude-code isim değişikliği henüz kullanıcı tarafından canlı test edilmedi** — bu oturumun son commit'i.
+Her commit'te ayrı ayrı: `go build`/`go vet`/`go test -race` tüm repo'da yeşil. Kullanıcı canlı doğruladı: Shift+Tab oto-onay, `/theme`/`/theme g`/`/theme classic` (rename öncesi), G temasının durum çubuğu render'ı, ve **ok-tuşu picker + `default`/`claude-code` isim değişikliği de dahil `/theme` komutu genel olarak çalışıyor** ("thema çalışıyo" — kullanıcı onayı, 2026-07-29).
+
+`versinNote/v3.3.4.md` ve `tr/v3.3.4.md` bu oturumdaki tüm işleri (Shift+Tab, `/theme`, tool-aktivitesi/spinner fix'i, sandbox hata mesajları, web search fix'i) kapsayacak şekilde güncellendi — aynı oturumda.
 
 ## Sıradaki Adım
 
-1. Kullanıcı `/theme` ok-tuşu seçiciyi ve yeni isimleri (`default`/`claude-code`) canlı denemeli.
-2. Mockup turundaki diğer yönler (C-H: retro fosfor, günlük/log, konuşma balonu, vb.) hiçbiri koda geçmedi — sadece G ("default") ve mevcut kutulu tasarım ("claude-code") var. Kullanıcı isterse üçüncü bir tema eklenebilir.
-3. v3.3.4 sürüm notları (`versinNote/v3.3.4.md`, `tr/v3.3.4.md`) bu oturumdaki REPL/tema/web-search işlerini henüz içermiyor — bir sonraki release-notes turunda eklenmeli.
-4. Başka bilinen açık bug/görev yok.
+1. Mockup turundaki diğer yönler (C-H: retro fosfor, günlük/log, konuşma balonu, vb.) hiçbiri koda geçmedi — sadece G ("default") ve mevcut kutulu tasarım ("claude-code") var. Kullanıcı isterse üçüncü bir tema eklenebilir.
+2. Başka bilinen açık bug/görev yok — bir sonraki oturumda kullanıcıdan yeni bir yön beklenebilir.
 
 ---
 

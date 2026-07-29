@@ -25,6 +25,7 @@ data/whatsapp/*
 data/calendar/
 data/mood/
 data/profile/
+data/cli_theme
 
 # Runtime databases (may contain personal data)
 *.db
@@ -83,3 +84,4 @@ STABILITY_AUDIT.html
 yapacam.md
 PLAN_memo_swarm.md
 PROMPT_swarm_continue.md
+data/cli_theme

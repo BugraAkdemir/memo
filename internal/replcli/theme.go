@@ -24,7 +24,7 @@ const (
 	themeClassic replTheme = "classic"
 )
 
-// parseTheme validates a /tema argument against the known themes.
+// parseTheme validates a /theme argument against the known themes.
 func parseTheme(s string) (replTheme, bool) {
 	switch replTheme(strings.ToLower(strings.TrimSpace(s))) {
 	case themeG:

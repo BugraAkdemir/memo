@@ -187,7 +187,7 @@ type session struct {
 
 	// theme selects the welcome-banner/status-bar style (see theme.go,
 	// editor.go's statusBarLine). Loaded once at Run() startup and changed
-	// only via /tema.
+	// only via /theme.
 	theme replTheme
 
 	// keys and ed are non-nil only when stdin is a real terminal. keys is
@@ -486,7 +486,7 @@ func EventDataSince(events []Event, afterSeq uint64, name string) (string, bool)
 
 // printWelcome dispatches to the active theme's welcome rendering (see
 // theme.go) and then refreshes the status bar's cached live-data segment —
-// every path that lands here (startup, /clear, /session, /tema) should
+// every path that lands here (startup, /clear, /session, /theme) should
 // leave the status bar showing this chat's actual current model/memory
 // state, not whatever was true the last time it was refreshed.
 func (s *session) printWelcome() {

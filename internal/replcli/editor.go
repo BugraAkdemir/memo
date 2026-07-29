@@ -30,7 +30,7 @@ func slashCommands() []commandSpec {
 		{"/tasklist", t("cmd_tasklist_hint")},
 		{"/remote", t("cmd_remote_hint")},
 		{"/update", t("cmd_update_hint")},
-		{"/tema", t("cmd_theme_hint")},
+		{"/theme", t("cmd_theme_hint")},
 		{"/exit", t("cmd_exit_hint")},
 	}
 }

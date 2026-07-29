@@ -93,8 +93,8 @@ var tr = map[string]string{
 	"live_status_auto_on":       "⏵⏵ oto-onay açık",
 	"live_status_auto_off":      "oto-onay kapalı",
 	"live_status_esc_hint":      "esc durdur",
-	"theme_usage":               "Kullanım: /tema g|classic",
-	"theme_current":             "Mevcut tema: %s (değiştirmek için: /tema g|classic)",
+	"theme_usage":               "Kullanım: /theme g|classic",
+	"theme_current":             "Mevcut tema: %s (değiştirmek için: /theme g|classic)",
 	"theme_unknown":             "Bilinmeyen tema: %s (g veya classic yaz)",
 	"theme_switched":            "✓ Tema değiştirildi: %s",
 	"ctrl_c_again_to_exit":      "çıkmak için tekrar Ctrl+C",
@@ -233,7 +233,7 @@ var tr = map[string]string{
   /tasklist delete <id>                   görev listesini siler
   /remote                                 ngrok ile uzak erişim tüneli açar ve linkini gösterir
   /update                                 Memo'yu en son sürüme günceller
-  /tema <g|classic>                       arayüz temasını değiştirir (varsayılan: g)
+  /theme <g|classic>                      arayüz temasını değiştirir (varsayılan: g)
   /exit                                   çıkar
 `,
 }
@@ -284,8 +284,8 @@ var en = map[string]string{
 	"live_status_auto_on":       "⏵⏵ auto-approve on",
 	"live_status_auto_off":      "auto-approve off",
 	"live_status_esc_hint":      "esc to stop",
-	"theme_usage":               "Usage: /tema g|classic",
-	"theme_current":             "Current theme: %s (to change: /tema g|classic)",
+	"theme_usage":               "Usage: /theme g|classic",
+	"theme_current":             "Current theme: %s (to change: /theme g|classic)",
 	"theme_unknown":             "Unknown theme: %s (use g or classic)",
 	"theme_switched":            "✓ Theme switched: %s",
 	"ctrl_c_again_to_exit":      "press Ctrl+C again to exit",
@@ -421,7 +421,7 @@ var en = map[string]string{
   /tasklist delete <id>                   deletes a task list
   /remote                                 opens a remote-access tunnel via ngrok and shows its link
   /update                                 updates Memo to the latest release
-  /tema <g|classic>                       switches the interface theme (default: g)
+  /theme <g|classic>                      switches the interface theme (default: g)
   /exit                                   exits
 `,
 }

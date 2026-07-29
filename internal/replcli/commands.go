@@ -51,7 +51,7 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdTaskList(args)
 	case "/update":
 		s.cmdUpdate()
-	case "/tema":
+	case "/theme":
 		s.cmdTheme(args)
 	default:
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("unknown_command"), cmd)))
@@ -101,7 +101,7 @@ func (s *session) showCommandMenu() bool {
 		s.cmdTaskListInteractive()
 	case "/update":
 		s.cmdUpdate()
-	case "/tema":
+	case "/theme":
 		// Needs an argument (g/classic) the menu can't supply — same
 		// treatment as /connect above: show usage instead of guessing.
 		fmt.Fprintln(s.out, yellow(t("theme_usage")))
@@ -216,7 +216,7 @@ func (s *session) cmdClear() {
 
 // cmdTheme switches between the "g" (default: live status bar, no boxed
 // welcome panel) and "classic" (the original boxed panel + static hint bar)
-// composer styles. Bare /tema reports the current one instead of guessing
+// composer styles. Bare /theme reports the current one instead of guessing
 // what the user wanted. The choice is persisted (theme.go) so it survives
 // a restart, and re-renders the welcome banner immediately so the switch is
 // visible without waiting for /clear.

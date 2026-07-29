@@ -348,7 +348,7 @@ func TestHandleCommand_Clear(t *testing.T) {
 	}
 }
 
-// TestCmdTheme_Bare_ReportsCurrent covers /tema with no argument: it must
+// TestCmdTheme_Bare_ReportsCurrent covers /theme with no argument: it must
 // report the active theme, not guess or silently do nothing.
 func TestCmdTheme_Bare_ReportsCurrent(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
@@ -362,7 +362,7 @@ func TestCmdTheme_Bare_ReportsCurrent(t *testing.T) {
 		t.Errorf("cmdTheme(nil) output = %q, want it to mention the current theme (classic)", out.String())
 	}
 	if s.theme != themeClassic {
-		t.Errorf("s.theme = %q after bare /tema, want unchanged (classic)", s.theme)
+		t.Errorf("s.theme = %q after bare /theme, want unchanged (classic)", s.theme)
 	}
 }
 
@@ -379,10 +379,10 @@ func TestCmdTheme_Switches(t *testing.T) {
 	s, out := newTestSession(t, srv)
 	s.theme = themeG
 
-	s.handleCommand("/tema classic")
+	s.handleCommand("/theme classic")
 
 	if s.theme != themeClassic {
-		t.Errorf("s.theme = %q after /tema classic, want classic", s.theme)
+		t.Errorf("s.theme = %q after /theme classic, want classic", s.theme)
 	}
 	if !strings.Contains(out.String(), "classic") {
 		t.Errorf("cmdTheme output = %q, want confirmation mentioning classic", out.String())
@@ -398,10 +398,10 @@ func TestCmdTheme_UnknownArgument_LeavesThemeUnchanged(t *testing.T) {
 	s, out := newTestSession(t, srv)
 	s.theme = themeG
 
-	s.handleCommand("/tema dark")
+	s.handleCommand("/theme dark")
 
 	if s.theme != themeG {
-		t.Errorf("s.theme = %q after unknown /tema argument, want unchanged (g)", s.theme)
+		t.Errorf("s.theme = %q after unknown /theme argument, want unchanged (g)", s.theme)
 	}
 	if !strings.Contains(out.String(), "dark") {
 		t.Errorf("cmdTheme output = %q, want it to echo the unrecognized argument", out.String())

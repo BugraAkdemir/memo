@@ -1,3 +1,36 @@
+# Handoff — 2026-07-29 (devam 3) — Voice Live Mode Faz 2 (2.1-2.5) tek oturumda tamamlandı
+
+## Özet
+
+Kullanıcı önceki oturumda başlatılan Faz 2'nin ("komple çalışır hale getir, ben Live Mode'dan sesle sohbet edebileyim") tamamını istedi. Plan dosyasındaki 2.1-2.5 alt-adımlarının hepsi bu oturumda bitti, her biri (ve kritik dosya gruplarına göre bazıları kendi içinde de) ayrı commit'le:
+
+- **2.1** (`c1d7fdb`, önceki oturumdan) — `internal/tts/{provider,router}.go`: external TTS provider arayüzü + öncelik-sıralı fallback router.
+- **2.2** (`677b559`) — `internal/tts/openai.go`: gerçek OpenAI TTS implementasyonu (`response_format=wav` sabit — `handleTTSSynthesize` her yanıtı `audio/wav` diye işaretliyor, provider'ın kendi varsayılanı mp3 olduğu için bu önemli).
+- **2.3** üç commit'e bölündü (kullanıcının açık talebiyle — "kritik dosyalara bağlı, tek commite sığdırma"):
+  - `dba9ca1` — `provider.DefaultMachineKey()` export.
+  - `8f1655d` — `internal/tts/config.go` (`ConfigManager`, `data/tts_providers.json`, AES-256-GCM).
+  - `1ac3587` — App wiring (`tts_providers.go` + `app.go` struct/Startup).
+  - `c800145` — REST katmanı (`bridge.go`/`handlers_flutter.go`/`server.go`/stub test).
+- **2.4** (`3d2d04d`) — `SynthesizeSpeech` artık external router'ı önce dener, hata/yapılandırılmamışsa yerel Piper'a düşer.
+- **2.5** iki commit'e bölündü:
+  - `88f03a6` — `TTSProviderConfig` modeli + `api_client.dart` CRUD.
+  - `57c0905` — `TTSProviderSection` widget'ı (Beta Features'a bağlı) + 19 L10n anahtarı TR+EN.
+
+**Mimari karar (2.1'den beri sabit):** yerel Piper motoru (`tts.Synthesizer`, Faz 1) hiç değişmedi ve yeni `tts.Router`'ın **dışında** kaldı — `callLLMStream`'in yerel llama.cpp'yi `provider.Router`'ın dışında tutmasıyla birebir aynı ayrım. Hiç external provider yapılandırılmamışsa (varsayılan durum) davranış Faz 1 ile bit-bit aynı.
+
+## Doğrulama
+
+Her commit kendi başına `go build`/`go vet`/`go test -race` (ilgili paketler) yeşil. Flutter: `flutter analyze lib/` temiz (4 önceden var olan, alakasız `use_build_context_synchronously` info hariç), `flutter test` 114/114. **Gerçek bir external TTS API anahtarıyla canlı test yapılmadı** — OpenAI provider testleri `httptest` ile sahte sunucuya karşı. **Gerçek Piper/VAD binary'si bu ortamda yok** (Faz 1'den kalma sınırlama) — Live Mode ekranının gerçek sesli döngüsü hiç canlı çalıştırılmadı, ekran görsel olarak da doğrulanmadı.
+
+## Sıradaki Adım
+
+1. **Kullanıcı gerçek bir OpenAI API key ile Ayarlar → Beta Features → "Sesli Yanıt Sağlayıcıları" bölümünden bir sağlayıcı ekleyip test etmeli** — bu, backend'in `httptest` dışında ilk gerçek doğrulaması olacak.
+2. Faz 1'den kalan iki açık madde hâlâ geçerli: barge-in yok, VAD modeli CDN'den iniyor.
+3. Plan dosyasının kendi kapsam dışı bıraktığı **2.6** ("TTS Store" — dil-bazlı ses modeli önerisi/indirme) ve ElevenLabs implementasyonu hâlâ yapılmadı, ayrı bir oturum gerektirir.
+4. Live Mode ekranının gerçek bir cihazda uçtan uca (dinle→transkript→cevap→seslendirme, artık external provider fallback'iyle) denenmesi hâlâ bekleniyor.
+
+---
+
 # Handoff — 2026-07-29 (devam 2) — Voice Live Mode Faz 2 başladı: plan dosyası + TTS Provider Router iskeleti (`c1d7fdb`)
 
 ## Özet

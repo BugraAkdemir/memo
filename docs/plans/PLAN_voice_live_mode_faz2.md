@@ -208,18 +208,45 @@ bu dosyanın kapsamına şimdilik sadece madde olarak düşülüyor, detaylandı
 
 ---
 
-## Bu Oturumda Yapılacak
+## Durum (2026-07-29, güncellendi) — 2.1-2.5 TAMAMLANDI
 
-Faz 1 emsaliyle aynı: **tek seferde tüm faz değil, 1-2 alt-adım.** Bu
-oturumda **2.1** (arayüz + router iskeleti, external provider implementasyonu
-olmadan) yapılacak, kendi commit'iyle, `go build`/`go vet`/`go test -race`
-yeşil olduktan sonra. 2.2+ sonraki adımlar/oturumlar.
+Kullanıcının açık talebiyle ("komple çalışır hale getir") tek oturumda
+2.1'den 2.5'e kadar tamamlandı — her alt-adım (ve bazı alt-adımlar kendi
+içinde de, kritik dosya gruplarına göre) kendi ayrı commit'iyle:
+
+- **2.1** — `internal/tts/{provider,router}.go` + testleri.
+- **2.2** — `internal/tts/openai.go` (gerçek OpenAI TTS implementasyonu,
+  `response_format=wav` sabitlenmiş çünkü `handleTTSSynthesize` her yanıtı
+  `Content-Type: audio/wav` ile işaretliyor).
+- **2.3** — üç ayrı commit'e bölündü:
+  - `provider.DefaultMachineKey()` export (internal/tts'in aynı machine.key'i
+    paylaşması için, ikinci bir anahtar dosyası icat etmeden).
+  - `internal/tts/config.go` (`ConfigManager` — `data/tts_providers.json`,
+    AES-256-GCM şifreli API key'ler).
+  - `App` wiring (`internal/app/tts_providers.go` + `app.go`'daki struct
+    alanları/Startup çağrısı) ve REST katmanı (`bridge.go`,
+    `handlers_flutter.go`, `server.go`, `swarm_stub_bridge_test.go`) — ayrı
+    commit'ler.
+- **2.4** — `SynthesizeSpeech` artık external router'ı önce deniyor, hata/
+  yapılandırılmamışsa yerel Piper'a düşüyor (`callLLMStream`'in
+  external→local önceliğiyle aynı desen).
+- **2.5** — Flutter: `TTSProviderConfig` modeli + `api_client.dart` CRUD
+  metodları (ayrı commit), `TTSProviderSection` widget'ı + Beta
+  Features'a bağlanması + 19 yeni L10n anahtarı TR+EN (ayrı commit).
+
+**Kapsam dışı bırakılan, hâlâ açık:** 2.6 ("TTS Store" — dil-bazlı ses
+modeli önerisi/indirme) — kendi başına büyük bir iş, ayrı planlanacak.
+ElevenLabs sağlayıcısı hâlâ implementasyonsuz (tip tanımlı, seçilirse net
+hata). Gerçek bir external TTS API anahtarıyla canlı uçtan uca test
+yapılmadı — sadece `httptest` ile sahte sunucuya karşı.
 
 ## Doğrulama
 
-`go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...`,
-`go test -tags "sqlite_fts5" ./internal/tts/... -race`. Bu adımda Flutter'a
-dokunulmuyor, `flutter test` gerekmiyor. Gerçek bir external TTS API
-anahtarı bu ortamda yok — 2.2'den itibaren her external provider testi
-`httptest` ile sahte HTTP sunucusuna karşı yazılacak, gerçek API'ye canlı
-çağrı yapılmayacak.
+Her commit kendi başına: `go build -tags "sqlite_fts5" ./...`,
+`go vet -tags "sqlite_fts5" ./...`, ilgili paketlerde `go test ... -race`.
+Flutter tarafı: `flutter analyze lib/` (sadece 4 önceden var olan, alakasız
+info), `flutter test` 114/114. Gerçek bir external TTS API anahtarı bu
+ortamda yok — her external provider testi `httptest` ile sahte HTTP
+sunucusuna karşı yazıldı, gerçek API'ye canlı çağrı yapılmadı. Gerçek
+Piper/VAD binary'si de yok (Faz 1'den kalma sınırlama) — Live Mode ekranının
+gerçek bir sesli döngüsü bu ortamda hiç çalıştırılmadı.

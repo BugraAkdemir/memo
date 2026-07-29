@@ -17,6 +17,12 @@ import 'dart:typed_data';
 /// subprocess approach has a far smaller dependency footprint: only
 /// base audio stack tools that are nearly universally present on desktop
 /// installs of each OS.
+///
+/// Uses `Process.start` (not `Process.run`) specifically so [stop] can kill
+/// a still-playing subprocess mid-clip — needed for voice chat's barge-in
+/// (voice_mode_provider.dart): the user starts talking again while Memo (or
+/// a filler sound) is still speaking, and playback must stop immediately
+/// rather than waiting for the clip to finish naturally.
 class WavPlayer {
   /// Candidate commands tried in order on Linux. Overridable for tests --
   /// CI runners commonly have neither PulseAudio/PipeWire nor a real ALSA
@@ -26,7 +32,14 @@ class WavPlayer {
 
   WavPlayer({this.linuxPlayerCommands = const ['paplay', 'aplay']});
 
+  Process? _activeProcess;
+  // Set by stop() so an intentionally-killed process's non-zero/negative
+  // exit code isn't reported as a playback failure — killing a process is
+  // success from stop()'s point of view, not an error to surface.
+  bool _stopRequested = false;
+
   Future<void> play(Uint8List wavBytes) async {
+    _stopRequested = false;
     final tempFile = File(
       '${Directory.systemTemp.path}/memo-tts-${DateTime.now().microsecondsSinceEpoch}.wav',
     );
@@ -51,18 +64,27 @@ class WavPlayer {
     }
   }
 
+  /// Kills the currently-playing subprocess, if any, so [play] returns
+  /// early instead of waiting for natural playback completion. A no-op if
+  /// nothing is currently playing.
+  void stop() {
+    _stopRequested = true;
+    _activeProcess?.kill();
+  }
+
   /// Try each command in [candidates] in order; throw if all fail.
   Future<void> _runWithFallback(List<String> candidates, String path) async {
     Object? lastError;
     for (final cmd in candidates) {
       try {
-        final result = await Process.run(cmd, [path]);
-        if (result.exitCode == 0) return;
+        final result = await _startAndWait(cmd, [path]);
+        if (result.exitCode == 0 || _stopRequested) return;
         lastError = '$cmd exited ${result.exitCode}: ${result.stderr}';
       } on ProcessException catch (e) {
         lastError = e; // command not found -- try the next one
       }
     }
+    if (_stopRequested) return;
     throw Exception(
       'No working audio player found (tried ${candidates.join(", ")}) '
       '— install PulseAudio/PipeWire-pulse or ALSA utilities. Last error: $lastError',
@@ -72,8 +94,8 @@ class WavPlayer {
   /// Run a single command; throw if it fails.
   Future<void> _runOrThrow(String cmd, List<String> args) async {
     try {
-      final result = await Process.run(cmd, args);
-      if (result.exitCode != 0) {
+      final result = await _startAndWait(cmd, args);
+      if (result.exitCode != 0 && !_stopRequested) {
         throw Exception('$cmd exited ${result.exitCode}: ${result.stderr}');
       }
     } on ProcessException catch (e) {
@@ -81,5 +103,33 @@ class WavPlayer {
     }
   }
 
-  void dispose() {}
+  /// Starts [cmd], tracks it as the currently-killable process (for
+  /// [stop]), and awaits its exit — the `Process.start` equivalent of
+  /// `Process.run`'s single awaitable result. stdout is drained and
+  /// discarded; stderr is buffered (bounded by whatever a CLI audio player
+  /// actually writes, always small) so a real failure's message is still
+  /// available to the caller.
+  Future<_ProcResult> _startAndWait(String cmd, List<String> args) async {
+    final process = await Process.start(cmd, args);
+    _activeProcess = process;
+    final stderrBuffer = StringBuffer();
+    final stdoutDone = process.stdout.drain<void>();
+    final stderrDone = process.stderr
+        .transform(const SystemEncoding().decoder)
+        .forEach(stderrBuffer.write);
+    final exitCode = await process.exitCode;
+    await Future.wait([stdoutDone, stderrDone]);
+    if (identical(_activeProcess, process)) _activeProcess = null;
+    return _ProcResult(exitCode, stderrBuffer.toString());
+  }
+
+  void dispose() {
+    _activeProcess?.kill();
+  }
+}
+
+class _ProcResult {
+  final int exitCode;
+  final String stderr;
+  const _ProcResult(this.exitCode, this.stderr);
 }

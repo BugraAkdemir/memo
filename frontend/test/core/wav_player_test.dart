@@ -66,6 +66,32 @@ void main() {
   );
 
   test(
+    'stop() kills a still-playing subprocess without throwing',
+    () async {
+      // `yes <path>` stands in for a long-running audio player: it
+      // ignores its argument as data to print forever, never exiting on
+      // its own -- if stop() didn't actually kill the process, play()
+      // would hang past this test's own timeout below.
+      final player = WavPlayer(linuxPlayerCommands: const ['yes']);
+      final playFuture = player.play(Uint8List.fromList([]));
+      // Let the subprocess actually start before killing it.
+      await Future.delayed(const Duration(milliseconds: 100));
+      player.stop();
+      await playFuture.timeout(const Duration(seconds: 2));
+    },
+    skip: !Platform.isLinux,
+  );
+
+  test(
+    'stop() with nothing playing is a no-op',
+    () async {
+      final player = WavPlayer(linuxPlayerCommands: const ['true']);
+      player.stop(); // must not throw
+    },
+    skip: !Platform.isLinux,
+  );
+
+  test(
     'play() cleans up its temp file after a successful play',
     () async {
       final before = Directory.systemTemp

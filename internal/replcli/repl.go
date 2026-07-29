@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"time"
@@ -60,6 +61,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 				out:         out,
 				keys:        keys,
 				projectPath: projectPath,
+				theme:       loadSavedTheme(),
 				width: func() int {
 					// GetSize can return (0, 0, nil) — no error, but no
 					// winsize either — for a pty whose window size was
@@ -115,7 +117,10 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 	scanner := bufio.NewScanner(in)
 	scanner.Buffer(make([]byte, 64*1024), 1024*1024)
 
-	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath}
+	// loadSavedTheme is read again here rather than reusing ed.theme so
+	// piped/non-terminal runs (ed nil) still pick the right welcome-banner
+	// style, not always the classic fallback.
+	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath, theme: loadSavedTheme()}
 
 	if ed != nil {
 		// Best-effort: an unreachable/older backend just means the status
@@ -179,6 +184,11 @@ type session struct {
 	// updated by startFreshChat and every /clear or /session switch.
 	projectPath string
 	chatID      string
+
+	// theme selects the welcome-banner/status-bar style (see theme.go,
+	// editor.go's statusBarLine). Loaded once at Run() startup and changed
+	// only via /tema.
+	theme replTheme
 
 	// keys and ed are non-nil only when stdin is a real terminal. keys is
 	// the one shared key stream (editor, menus and the mid-stream interrupt
@@ -389,6 +399,11 @@ func (s *session) sendMessage(line string) {
 	if memoryLikely {
 		s.reportMemorySaved(lastSeqBefore)
 	}
+	// Memory can transition from "loading" to "active" mid-session with no
+	// explicit command (auto-start finishing in the background) — keep the
+	// g-theme status bar's memory dot honest after every turn, not just at
+	// checkpoints that involve an explicit model/provider change.
+	s.refreshLiveStatus()
 }
 
 // reportMemorySaved briefly polls /api/events for a memory:saved event that
@@ -469,7 +484,22 @@ func EventDataSince(events []Event, afterSeq uint64, name string) (string, bool)
 	return eventDataSince(events, afterSeq, name)
 }
 
+// printWelcome dispatches to the active theme's welcome rendering (see
+// theme.go) and then refreshes the status bar's cached live-data segment —
+// every path that lands here (startup, /clear, /session, /tema) should
+// leave the status bar showing this chat's actual current model/memory
+// state, not whatever was true the last time it was refreshed.
 func (s *session) printWelcome() {
+	if s.theme == themeG {
+		s.printWelcomeG()
+	} else {
+		s.printWelcomeClassic()
+	}
+	s.refreshLiveStatus()
+}
+
+// printWelcomeClassic is the original boxed two-column welcome panel.
+func (s *session) printWelcomeClassic() {
 	active := s.memoryActive()
 	// Best-effort: an older/incompatible backend or a transient error just
 	// means the title line omits the version suffix, nothing else degrades.
@@ -514,6 +544,58 @@ func (s *session) printWelcome() {
 			}
 		}
 	}
+}
+
+// printWelcomeG is the "g" theme's welcome: one line (mascot name, model,
+// project, memory dot) instead of a bordered box, matching the same
+// live-data-over-chrome spirit as the status bar. The tips a classic-theme
+// launch would have shown in its right column aren't lost — they're still
+// reachable via /help — just not printed unconditionally on every launch.
+func (s *session) printWelcomeG() {
+	active := s.memoryActive()
+	memDot := dim("○")
+	if active {
+		memDot = green("●")
+	}
+
+	project := filepath.Base(s.projectPath)
+	if s.projectPath == "" {
+		project = ""
+	}
+
+	line := bold(bronze("memo")) + "  " + dim(s.modelSummary())
+	if project != "" {
+		line += dim(" · " + project)
+	}
+	line += dim(" · "+t("live_status_memory_label")+" ") + memDot
+	fmt.Fprintln(s.out, line)
+
+	if !active {
+		fmt.Fprintln(s.out, yellow("⚠ "+t("memory_off_hint")))
+		if events, err := s.client.Events(s.ctx); err == nil {
+			if msg, ok := eventDataSince(events, 0, "memory:error"); ok {
+				fmt.Fprintln(s.out, dim("  "+msg))
+			}
+		}
+	}
+}
+
+// refreshLiveStatus recomputes themeG's cached status-bar prefix
+// ("<model> · hafıza ●/○") and pushes it into the editor. A no-op under
+// classic theme or a piped/non-terminal session (s.ed nil) — callers don't
+// need to guard either case themselves. Deliberately called only at natural
+// checkpoints (welcome, a model/provider change, a finished reply), not
+// per keystroke — see editor.statusBarLine's doc comment for why refreshing
+// this on every render would mean a backend round trip per character typed.
+func (s *session) refreshLiveStatus() {
+	if s.ed == nil || s.theme != themeG {
+		return
+	}
+	memDot := dim("○")
+	if s.memoryActive() {
+		memDot = green("●")
+	}
+	s.ed.liveStatusPrefix = dim(s.modelSummary()) + dim("  ·  "+t("live_status_memory_label")+" ") + memDot
 }
 
 // modelSummary describes which model/provider is actually going to answer —

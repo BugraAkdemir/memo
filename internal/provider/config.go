@@ -441,6 +441,17 @@ func defaultMachineKey() []byte {
 	return randomKey
 }
 
+// DefaultMachineKey exposes defaultMachineKey to other packages that need
+// to encrypt secrets with the same machine-bound key providers.json already
+// uses (e.g. internal/tts's own ConfigManager for TTS provider API keys) —
+// without this, a second package deriving its own "default" key would
+// either duplicate the machine.key read/generate/persist logic verbatim or,
+// worse, silently mint a second key file and make two independent claims
+// about what "the machine key" is.
+func DefaultMachineKey() []byte {
+	return defaultMachineKey()
+}
+
 // SetMasterKey allows setting a custom master key from outside.
 func (cm *ConfigManager) SetMasterKey(key []byte) {
 	cm.mu.Lock()

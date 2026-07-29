@@ -1,3 +1,28 @@
+# Handoff — 2026-07-29 (devam 2) — Voice Live Mode Faz 2 başladı: plan dosyası + TTS Provider Router iskeleti (`c1d7fdb`)
+
+## Özet
+
+Kullanıcı Faz 1'i tamamlanmış sayıp Faz 2'ye geçilmesini istedi (`docs/plans/PLAN_voice_live_mode_faz1.md`, üst plan `PLAN_voice_live_mode.md`). Faz 1'in kendi "Durum" notu iki bilinçli açık madde bıraktığını (barge-in yok, VAD modeli CDN'den iniyor) kullanıcıya hatırlattım, kullanıcı bunları kapatmadan devam etme kararını verdi.
+
+Üst planın kuralı gereği ("herhangi bir fazın kodlanmasına başlamadan önce o fazın kendi dosya bazlı planı yazılmalı") önce gerçek kodu (`internal/provider/{provider,router,config}.go`, `internal/modelstore`, Faz 1'in `internal/tts` paketi) okuyup `docs/plans/PLAN_voice_live_mode_faz2.md`'yi yazdım — Faz 2'yi 2.1-2.6 alt-adımlarına böldü (provider router iskeleti, ilk gerçek sağlayıcı (OpenAI), persistence/App wiring, çağrı noktası fallback sırası, Flutter ayar ekranı, ve büyük/ayrı planlanması gereken dil-bazlı "TTS Store" ses kataloğu).
+
+**Bu oturumda sadece 2.1 yapıldı** (Faz 1 emsaline uyarak: tek seferde tüm faz değil, 1-2 alt-adım/oturum):
+
+- `internal/tts/provider.go` — `TTSProvider` arayüzü, `ProviderType`/`ProviderConfig`+`Validate`, `NewProvider` iskeleti (OpenAI/ElevenLabs tipleri tanımlı ama implementasyonsuz — seçilirse net "henüz implemente edilmedi" hatası verir, sessizce no-op olmaz).
+- `internal/tts/router.go` — `internal/provider.Router`'ın birebir eşleniği: öncelik sıralı fallback zinciri, 3 ardışık hatada auto-disable, context iptali hata sayılmıyor. `HealthCheck` döngüsü **bilinçli olarak yok** (TTS çağrıları chat kadar sık değil, Faz 2'de gereksiz karmaşıklık).
+- **Yerel Piper'a (`tts.Synthesizer`) hiç dokunulmadı** — `callLLMStream`'in yerel llama.cpp'yi `provider.Router`'ın tamamen dışında tutmasıyla aynı mimari ayrım: yerel motor Router'ın bir "provider"ı değil, ayrı bir katman. Bu yüzden mevcut `SynthesizeSpeech`/Beta Features test butonu **bu commit'ten hiç etkilenmedi**.
+- `internal/tts/router_test.go` — `provider/router_test.go`'nun test iskeletinin TTS'e uyarlanmış hali (fallback, auto-disable, öncelik sırası, context iptali, config validation).
+
+## Doğrulama
+
+`go build -tags "sqlite_fts5" ./...`, `go vet -tags "sqlite_fts5" ./...` tüm repo temiz. `go test -tags "sqlite_fts5" ./...` tüm repo yeşil (yeni `internal/tts` testleri dahil, `-race` ile de ayrıca çalıştırıldı). Gerçek bir external TTS API çağrısı yok bu adımda — 2.2'den itibaren gelecek.
+
+## Sıradaki Adım
+
+Plan dosyasındaki 2.2 (OpenAI TTS — `POST /v1/audio/speech`, `internal/provider/openai.go`'nun HTTP-çağrı iskeletini örnek alarak, `provider.ExtractErrorMessage` yeniden kullanılabilir) sırada. Ardından 2.3 (persistence + `App` wiring + REST — `provider.ConfigManager`'ın eşleniği, `data/tts_providers.json`, mevcut `machine.key` paylaşılıyor), 2.4 (çağrı noktasında external→local fallback sırası), 2.5 (Flutter ayar UI'ı), ve son olarak kapsamı büyük olduğu için ayrı planlanacak 2.6 (dil-bazlı ses modeli önerisi/indirme — "TTS Store"). Detaylar `docs/plans/PLAN_voice_live_mode_faz2.md`'de.
+
+---
+
 # Handoff — 2026-07-29 (devam) — AGENTS.md'deki "hardcoded Turkish literal" tekn. borç maddesi yeniden denetlendi, hiç bulunmadı
 
 ## Özet

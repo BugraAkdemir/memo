@@ -5,6 +5,7 @@ package app
 import (
 	"fmt"
 	"memo/internal/logx"
+	"time"
 
 	"memo/internal/config"
 	"memo/internal/tunnel"
@@ -125,6 +126,15 @@ func (a *App) GetBeta() bool {
 	return a.cfg != nil && a.cfg.Beta
 }
 
+// startupTailscaleRetries/-Delay bound the boot-time retry below. Once
+// startTailscale succeeds, the tunnel package's own reconnectLoop takes over
+// for any *later* drop — this is only for the network not being up yet at
+// the exact moment Memo launches (e.g. right after a machine reboot).
+const (
+	startupTailscaleRetries = 4
+	startupTailscaleDelay   = 15 * time.Second
+)
+
 // startupTailscale auto-starts the tunnel on launch when configured.
 func (a *App) startupTailscale() {
 	if a.cfg == nil || !a.cfg.Beta {
@@ -141,7 +151,16 @@ func (a *App) startupTailscale() {
 			return
 		}
 	}
-	if err := a.startTailscale(port); err != nil {
-		logx.Printf("[tailscale] auto-start: %v", err)
+
+	var err error
+	for attempt := 1; attempt <= startupTailscaleRetries; attempt++ {
+		if err = a.startTailscale(port); err == nil {
+			return
+		}
+		logx.Printf("[tailscale] auto-start attempt %d/%d failed: %v", attempt, startupTailscaleRetries, err)
+		if attempt < startupTailscaleRetries {
+			time.Sleep(startupTailscaleDelay)
+		}
 	}
+	logx.Printf("[tailscale] auto-start gave up after %d attempts: %v", startupTailscaleRetries, err)
 }

@@ -15,6 +15,7 @@ import '../models/dev_gateway.dart';
 import '../models/swarm.dart';
 import '../models/task_list.dart';
 import '../models/tts_provider_config.dart';
+import '../models/tts_voice.dart';
 import '../models/usage_stats.dart';
 
 /// Memo Go backend REST API client.
@@ -1157,6 +1158,34 @@ class MemoApiClient {
   Future<Map<String, dynamic>> testTTSProvider(TTSProviderConfig config) async {
     final res = await _dio.post('/api/tts/providers/test', data: config.toJson());
     return _guard<Map<String, dynamic>>(res.data);
+  }
+
+  // ─── TTS Local Voice Store (Faz 2.6 — fully offline, no API key) ──
+
+  /// Get the curated voice catalog + already-downloaded voices + any
+  /// in-flight download progress, in one call.
+  Future<TTSVoiceStoreState> getTTSVoices() async {
+    final res = await _dio.get('/api/tts/voices');
+    return TTSVoiceStoreState.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Start downloading a curated voice in the background.
+  Future<void> downloadTTSVoice(String locale, String name, String quality) async {
+    await _dio.post('/api/tts/voices/download', data: {
+      'locale': locale,
+      'name': name,
+      'quality': quality,
+    });
+  }
+
+  /// Delete a downloaded voice's files.
+  Future<void> deleteTTSVoice(String id) async {
+    await _dio.delete('/api/tts/voices', data: {'id': id});
+  }
+
+  /// Point the local Piper synthesizer at a downloaded voice.
+  Future<void> selectTTSVoice(String id) async {
+    await _dio.post('/api/tts/voices/select', data: {'id': id});
   }
 
   // ─── Orchestra Mode ───────────────────────────────────────────────

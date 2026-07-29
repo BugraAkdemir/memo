@@ -209,13 +209,18 @@ func TestRouterHasActiveProvider(t *testing.T) {
 func TestRouterUpdateConfigsSkipsInvalidAndUnimplemented(t *testing.T) {
 	r := NewRouter([]ProviderConfig{
 		{Type: ProviderOpenAI, Name: "oa", Voice: "alloy", APIKey: "sk-x", Enabled: true},
+		{Type: ProviderElevenLabs, Name: "el", Voice: "rachel", APIKey: "sk-y", Enabled: true},
 		{Type: "", Name: "bad", Enabled: true},
 	})
-	// ProviderOpenAI is declared but NewProvider doesn't implement it yet
-	// (Faz 2.2) — UpdateConfigs must skip it gracefully, not panic or leave
+	// OpenAI is implemented (Faz 2.2) and constructs successfully. ElevenLabs
+	// is declared but not implemented, and the empty-Type entry fails
+	// Validate — UpdateConfigs must skip both gracefully, not panic or leave
 	// a broken entry in r.providers.
-	if len(r.providers) != 0 {
-		t.Errorf("expected 0 constructible providers before Faz 2.2, got %d", len(r.providers))
+	if len(r.providers) != 1 {
+		t.Fatalf("expected exactly 1 constructible provider (openai), got %d", len(r.providers))
+	}
+	if r.providers[0].cfg.Type != ProviderOpenAI {
+		t.Errorf("expected the surviving entry to be openai, got %s", r.providers[0].cfg.Type)
 	}
 }
 

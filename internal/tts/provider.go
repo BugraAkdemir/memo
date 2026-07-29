@@ -69,7 +69,7 @@ func (c ProviderConfig) Validate() error {
 func NewProvider(cfg ProviderConfig) (TTSProvider, error) {
 	switch cfg.Type {
 	case ProviderOpenAI:
-		return nil, fmt.Errorf("tts: OpenAI provider not yet implemented (Faz 2.2)")
+		return newOpenAIProvider(cfg)
 	case ProviderElevenLabs:
 		return nil, fmt.Errorf("tts: ElevenLabs provider not yet supported")
 	default:

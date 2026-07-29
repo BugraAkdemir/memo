@@ -224,6 +224,10 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/providers/models", s.handleProviderModels)
 	route("/api/providers/active", s.handleActiveProvider)
 
+	// TTS provider management (Faz 2)
+	route("/api/tts/providers", s.handleTTSProviders)
+	route("/api/tts/providers/test", s.handleTTSProviderTest)
+
 	// OpenRouter
 	route("/api/openrouter/connect", s.handleOpenRouterConnect)
 	route("/api/openrouter/models", s.handleOpenRouterModels)

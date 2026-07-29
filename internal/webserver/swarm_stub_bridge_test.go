@@ -19,6 +19,7 @@ import (
 	"memo/internal/skill"
 	"memo/internal/stats"
 	"memo/internal/taskloop"
+	"memo/internal/tts"
 	"memo/internal/whatsapp"
 )
 
@@ -256,6 +257,10 @@ func (b *swarmStubBridge) DeleteProvider(pt provider.ProviderType, name ...strin
 func (b *swarmStubBridge) TestProviderConnection(cfg provider.ProviderConfig) error      { return nil }
 func (b *swarmStubBridge) SetActiveProvider(name string)                                 {}
 func (b *swarmStubBridge) GetActiveProvider() string                                     { return "" }
+func (b *swarmStubBridge) GetTTSProviders() []tts.ProviderConfig                         { return nil }
+func (b *swarmStubBridge) UpdateTTSProvider(cfg tts.ProviderConfig) error                { return nil }
+func (b *swarmStubBridge) DeleteTTSProvider(pt tts.ProviderType, name ...string) error    { return nil }
+func (b *swarmStubBridge) TestTTSProviderConnection(cfg tts.ProviderConfig) error        { return nil }
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }

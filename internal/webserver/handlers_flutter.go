@@ -11,6 +11,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/provider"
 	"memo/internal/shutdown"
+	"memo/internal/tts"
 	"net/http"
 	"net/url"
 	"os"
@@ -1250,6 +1251,103 @@ func (s *Server) handleProviderTest(w http.ResponseWriter, r *http.Request) {
 		MaxTokens:   req.MaxTokens,
 	}
 	if err := s.fullBridge.TestProviderConnection(cfg); err != nil {
+		writeJSON(w, map[string]interface{}{
+			"connected": false,
+			"error":     err.Error(),
+		})
+		return
+	}
+	writeJSON(w, map[string]interface{}{
+		"connected": true,
+		"error":     "",
+	})
+}
+
+// ─── TTS Provider Management (Faz 2) ─────────────────────────────
+
+func (s *Server) handleTTSProviders(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		providers := s.fullBridge.GetTTSProviders()
+		writeJSON(w, providers)
+	case http.MethodPut:
+		var req struct {
+			Type     tts.ProviderType `json:"type"`
+			Name     string           `json:"name"`
+			APIKey   string           `json:"api_key"`
+			Voice    string           `json:"voice"`
+			Enabled  bool             `json:"enabled"`
+			Priority int              `json:"priority"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		cfg := tts.ProviderConfig{
+			Type:     req.Type,
+			Name:     req.Name,
+			APIKey:   req.APIKey,
+			Voice:    req.Voice,
+			Enabled:  req.Enabled,
+			Priority: req.Priority,
+		}
+		if err := s.fullBridge.UpdateTTSProvider(cfg); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	case http.MethodDelete:
+		var req struct {
+			Type tts.ProviderType `json:"type"`
+			Name string           `json:"name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if req.Name != "" {
+			if err := s.fullBridge.DeleteTTSProvider(req.Type, req.Name); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		} else {
+			if err := s.fullBridge.DeleteTTSProvider(req.Type); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, PUT, DELETE", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleTTSProviderTest(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Type   tts.ProviderType `json:"type"`
+		Name   string           `json:"name"`
+		APIKey string           `json:"api_key"`
+		Voice  string           `json:"voice"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	cfg := tts.ProviderConfig{
+		Type:   req.Type,
+		Name:   req.Name,
+		APIKey: req.APIKey,
+		Voice:  req.Voice,
+	}
+	if err := s.fullBridge.TestTTSProviderConnection(cfg); err != nil {
 		writeJSON(w, map[string]interface{}{
 			"connected": false,
 			"error":     err.Error(),

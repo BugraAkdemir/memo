@@ -19,6 +19,7 @@ import (
 	"memo/internal/skill"
 	"memo/internal/stats"
 	"memo/internal/taskloop"
+	"memo/internal/tts"
 	"memo/internal/whatsapp"
 )
 
@@ -142,6 +143,12 @@ type FullBridge interface {
 	TestProviderConnection(cfg provider.ProviderConfig) error
 	SetActiveProvider(name string)
 	GetActiveProvider() string
+
+	// TTS providers (Faz 2 — external providers, fall back to local Piper)
+	GetTTSProviders() []tts.ProviderConfig
+	UpdateTTSProvider(cfg tts.ProviderConfig) error
+	DeleteTTSProvider(pt tts.ProviderType, name ...string) error
+	TestTTSProviderConnection(cfg tts.ProviderConfig) error
 
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig

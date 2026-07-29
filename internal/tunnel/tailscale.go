@@ -31,6 +31,11 @@ type TailscaleConfig struct {
 	StateDir  string // persistent identity/state directory
 }
 
+const (
+	reconnectMinDelay = 5 * time.Second
+	reconnectMaxDelay = 60 * time.Second
+)
+
 // tailscaleConn is what connect() produces: an authenticated node plus the
 // listener it's serving on. Kept separate from *Tailscale so a (re)connect
 // attempt can be built and validated before touching the struct's state.
@@ -42,15 +47,20 @@ type tailscaleConn struct {
 }
 
 // Tailscale manages an embedded tsnet node that reverse-proxies to the local
-// web server.
+// web server. Once started, a dropped connection (a killed serve loop, a
+// control-plane hiccup) is retried automatically with backoff until Stop()
+// is called — the caller does not need to notice a drop and manually
+// restart the tunnel.
 type Tailscale struct {
-	mu        sync.Mutex
-	srv       *tsnet.Server
-	ln        net.Listener
-	publicURL string
-	ipURL     string // http://100.x.x.x — bypasses MagicDNS
-	lastErr   string
-	running   bool
+	mu         sync.Mutex
+	srv        *tsnet.Server
+	ln         net.Listener
+	publicURL  string
+	ipURL      string // http://100.x.x.x — bypasses MagicDNS
+	lastErr    string
+	running    bool
+	stopped    bool // true once Stop() has been called for the current session
+	generation int  // bumped on every Start()/Stop() so a stale reconnect goroutine can detect it's been superseded
 }
 
 // NewTailscale creates an (unstarted) Tailscale tunnel manager.
@@ -122,6 +132,19 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 		return err
 	}
 
+	t.stopped = false
+	t.generation++
+	gen := t.generation
+	t.applyConn(conn, cfg)
+
+	logx.Printf("tunnel: tailscale up at %s (funnel=%v)", t.publicURL, cfg.Funnel)
+	go t.serveAndSupervise(conn.ln, cfg, gen)
+	return nil
+}
+
+// applyConn installs a freshly connected node's derived state. Caller must
+// hold t.mu.
+func (t *Tailscale) applyConn(conn *tailscaleConn, cfg TailscaleConfig) {
 	dnsName := strings.TrimSuffix(conn.dnsName, ".")
 	if cfg.Funnel {
 		t.publicURL = "https://" + dnsName
@@ -134,45 +157,93 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	if conn.ip4 != "" {
 		t.ipURL = "http://" + conn.ip4
 	}
-
 	t.srv = conn.srv
 	t.ln = conn.ln
 	t.running = true
 	t.lastErr = ""
-
-	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", cfg.LocalPort))
-	proxy := httputil.NewSingleHostReverseProxy(target)
-	ln := conn.ln
-
-	go func() {
-		defer logx.Recover("tunnel.Tailscale serve")
-		err := http.Serve(ln, proxy)
-		t.mu.Lock()
-		// Only record this as a live failure if nothing has torn the tunnel
-		// down (or replaced it) in the meantime — otherwise this is just the
-		// listener closing because Stop() ran, which is expected and not an
-		// error condition.
-		if t.running && t.ln == ln {
-			t.running = false
-			if err != nil {
-				t.lastErr = err.Error()
-			}
-		}
-		t.mu.Unlock()
-		logx.Printf("tunnel: tailscale serve stopped: %v", err)
-	}()
-
-	logx.Printf("tunnel: tailscale up at %s (funnel=%v)", t.publicURL, cfg.Funnel)
-	return nil
 }
 
-// Stop tears down the tunnel.
+// serveAndSupervise proxies over ln until it fails, then — unless the tunnel
+// was intentionally stopped or superseded by a newer Start() in the
+// meantime — hands off to reconnectLoop instead of leaving the tunnel dead.
+func (t *Tailscale) serveAndSupervise(ln net.Listener, cfg TailscaleConfig, gen int) {
+	defer logx.Recover("tunnel.Tailscale serve")
+	target, _ := url.Parse(fmt.Sprintf("http://127.0.0.1:%d", cfg.LocalPort))
+	proxy := httputil.NewSingleHostReverseProxy(target)
+
+	err := http.Serve(ln, proxy)
+
+	t.mu.Lock()
+	if t.stopped || t.generation != gen {
+		t.mu.Unlock()
+		return
+	}
+	t.running = false
+	if err != nil {
+		t.lastErr = err.Error()
+	}
+	t.mu.Unlock()
+	logx.Printf("tunnel: tailscale serve stopped, reconnecting: %v", err)
+
+	t.reconnectLoop(cfg, gen)
+}
+
+// reconnectLoop retries connect() with exponential backoff until it succeeds
+// or the tunnel is stopped/superseded, then resumes serving on the new
+// connection.
+func (t *Tailscale) reconnectLoop(cfg TailscaleConfig, gen int) {
+	delay := reconnectMinDelay
+	for {
+		time.Sleep(delay)
+
+		t.mu.Lock()
+		superseded := t.stopped || t.generation != gen
+		t.mu.Unlock()
+		if superseded {
+			return
+		}
+
+		conn, err := connect(cfg)
+		if err != nil {
+			t.mu.Lock()
+			if t.stopped || t.generation != gen {
+				t.mu.Unlock()
+				return
+			}
+			t.lastErr = err.Error()
+			t.mu.Unlock()
+			logx.Printf("tunnel: tailscale reconnect attempt failed: %v", err)
+			delay *= 2
+			if delay > reconnectMaxDelay {
+				delay = reconnectMaxDelay
+			}
+			continue
+		}
+
+		t.mu.Lock()
+		if t.stopped || t.generation != gen {
+			t.mu.Unlock()
+			conn.srv.Close()
+			return
+		}
+		t.applyConn(conn, cfg)
+		t.mu.Unlock()
+
+		logx.Printf("tunnel: tailscale reconnected at %s", t.PublicURL())
+		go t.serveAndSupervise(conn.ln, cfg, gen)
+		return
+	}
+}
+
+// Stop tears down the tunnel and cancels any in-flight reconnect attempt.
 func (t *Tailscale) Stop() {
 	t.mu.Lock()
 	defer t.mu.Unlock()
-	if !t.running {
+	if !t.running && t.stopped {
 		return
 	}
+	t.stopped = true
+	t.generation++ // supersede a reconnectLoop that's mid-backoff or mid-connect
 	t.running = false
 	if t.ln != nil {
 		t.ln.Close()

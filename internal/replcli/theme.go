@@ -15,22 +15,33 @@ import (
 type replTheme string
 
 const (
-	// themeG is the default: a compact, box-free welcome line and a bottom
-	// status bar showing live data (model, memory, auto-permission state)
-	// instead of static command hints.
-	themeG replTheme = "g"
-	// themeClassic is the original boxed welcome panel with a static
-	// command-hint bar — kept for anyone who preferred it.
-	themeClassic replTheme = "classic"
+	// themeDefault is Memo's own default: a compact, box-free welcome line
+	// and a bottom status bar showing live data (model, memory,
+	// auto-permission state) instead of static command hints.
+	themeDefault replTheme = "default"
+	// themeClaudeCode is the original boxed welcome panel with a static
+	// command-hint bar, modeled on Claude Code's own terminal client — kept
+	// for anyone who preferred that look.
+	themeClaudeCode replTheme = "claude-code"
 )
 
-// parseTheme validates a /theme argument against the known themes.
+// themeChoices lists every theme in display order — the single source of
+// truth for the /theme arrow-key picker (commands.go's pickTheme).
+func themeChoices() []replTheme {
+	return []replTheme{themeDefault, themeClaudeCode}
+}
+
+// parseTheme validates a /theme argument against the known themes. "g" and
+// "classic" are accepted as legacy aliases for themeDefault/themeClaudeCode
+// — their original names before a clearer naming pass — so a preference
+// file saved before that rename still parses correctly instead of silently
+// resetting someone's already-made choice back to the default.
 func parseTheme(s string) (replTheme, bool) {
-	switch replTheme(strings.ToLower(strings.TrimSpace(s))) {
-	case themeG:
-		return themeG, true
-	case themeClassic:
-		return themeClassic, true
+	switch strings.ToLower(strings.TrimSpace(s)) {
+	case string(themeDefault), "g":
+		return themeDefault, true
+	case string(themeClaudeCode), "classic":
+		return themeClaudeCode, true
 	}
 	return "", false
 }
@@ -44,19 +55,19 @@ func themeFilePath() string {
 	return config.DataPath("cli_theme")
 }
 
-// loadSavedTheme returns the last theme saved via saveTheme, or themeG (the
-// default) if none was ever saved, the file is unreadable, or its contents
-// don't parse — every one of those cases should look like "first run",
-// not an error.
+// loadSavedTheme returns the last theme saved via saveTheme, or themeDefault
+// if none was ever saved, the file is unreadable, or its contents don't
+// parse — every one of those cases should look like "first run", not an
+// error.
 func loadSavedTheme() replTheme {
 	data, err := os.ReadFile(themeFilePath())
 	if err != nil {
-		return themeG
+		return themeDefault
 	}
 	if th, ok := parseTheme(string(data)); ok {
 		return th
 	}
-	return themeG
+	return themeDefault
 }
 
 // saveTheme persists th so it survives a restart. Best-effort by design —

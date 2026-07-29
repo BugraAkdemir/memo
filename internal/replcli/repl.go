@@ -119,7 +119,7 @@ func Run(baseURL, projectPath string, in io.Reader, out io.Writer, ownBackend bo
 
 	// loadSavedTheme is read again here rather than reusing ed.theme so
 	// piped/non-terminal runs (ed nil) still pick the right welcome-banner
-	// style, not always the classic fallback.
+	// style, not always the same zero-value fallback.
 	s := &session{client: client, ctx: ctx, out: out, scanner: scanner, ownBackend: ownBackend, keys: keys, ed: ed, projectPath: projectPath, theme: loadSavedTheme()}
 
 	if ed != nil {
@@ -490,16 +490,16 @@ func EventDataSince(events []Event, afterSeq uint64, name string) (string, bool)
 // leave the status bar showing this chat's actual current model/memory
 // state, not whatever was true the last time it was refreshed.
 func (s *session) printWelcome() {
-	if s.theme == themeG {
-		s.printWelcomeG()
+	if s.theme == themeDefault {
+		s.printWelcomeDefault()
 	} else {
-		s.printWelcomeClassic()
+		s.printWelcomeClaudeCode()
 	}
 	s.refreshLiveStatus()
 }
 
-// printWelcomeClassic is the original boxed two-column welcome panel.
-func (s *session) printWelcomeClassic() {
+// printWelcomeClaudeCode is the original boxed two-column welcome panel.
+func (s *session) printWelcomeClaudeCode() {
 	active := s.memoryActive()
 	// Best-effort: an older/incompatible backend or a transient error just
 	// means the title line omits the version suffix, nothing else degrades.
@@ -546,12 +546,13 @@ func (s *session) printWelcomeClassic() {
 	}
 }
 
-// printWelcomeG is the "g" theme's welcome: one line (mascot name, model,
-// project, memory dot) instead of a bordered box, matching the same
-// live-data-over-chrome spirit as the status bar. The tips a classic-theme
-// launch would have shown in its right column aren't lost — they're still
-// reachable via /help — just not printed unconditionally on every launch.
-func (s *session) printWelcomeG() {
+// printWelcomeDefault is the default theme's welcome: one line (mascot name,
+// model, project, memory dot) instead of a bordered box, matching the same
+// live-data-over-chrome spirit as the status bar. The tips a claude-code
+// theme launch would have shown in its right column aren't lost — they're
+// still reachable via /help — just not printed unconditionally on every
+// launch.
+func (s *session) printWelcomeDefault() {
 	active := s.memoryActive()
 	memDot := dim("○")
 	if active {
@@ -580,15 +581,15 @@ func (s *session) printWelcomeG() {
 	}
 }
 
-// refreshLiveStatus recomputes themeG's cached status-bar prefix
+// refreshLiveStatus recomputes themeDefault's cached status-bar prefix
 // ("<model> · hafıza ●/○") and pushes it into the editor. A no-op under
-// classic theme or a piped/non-terminal session (s.ed nil) — callers don't
+// the claude-code theme or a piped/non-terminal session (s.ed nil) — callers don't
 // need to guard either case themselves. Deliberately called only at natural
 // checkpoints (welcome, a model/provider change, a finished reply), not
 // per keystroke — see editor.statusBarLine's doc comment for why refreshing
 // this on every render would mean a backend round trip per character typed.
 func (s *session) refreshLiveStatus() {
-	if s.ed == nil || s.theme != themeG {
+	if s.ed == nil || s.theme != themeDefault {
 		return
 	}
 	memDot := dim("○")

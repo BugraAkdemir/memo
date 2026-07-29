@@ -102,9 +102,7 @@ func (s *session) showCommandMenu() bool {
 	case "/update":
 		s.cmdUpdate()
 	case "/theme":
-		// Needs an argument (g/classic) the menu can't supply — same
-		// treatment as /connect above: show usage instead of guessing.
-		fmt.Fprintln(s.out, yellow(t("theme_usage")))
+		s.pickTheme()
 	case "/exit":
 		return true
 	}
@@ -214,14 +212,20 @@ func (s *session) cmdClear() {
 	fmt.Fprintln(s.out, green(t("chat_cleared")))
 }
 
-// cmdTheme switches between the "g" (default: live status bar, no boxed
-// welcome panel) and "classic" (the original boxed panel + static hint bar)
-// composer styles. Bare /theme reports the current one instead of guessing
-// what the user wanted. The choice is persisted (theme.go) so it survives
-// a restart, and re-renders the welcome banner immediately so the switch is
-// visible without waiting for /clear.
+// cmdTheme switches between "default" (live status bar, no boxed welcome
+// panel) and "claude-code" (the original boxed panel + static hint bar,
+// modeled on Claude Code's own CLI) composer styles. A typed argument
+// applies directly; bare /theme on a real terminal opens the same kind of
+// arrow-key picker /session and /model use (pickTheme) instead of making
+// the user type the theme's name — piped/non-terminal input falls back to
+// reporting the current one, since there's no keyboard to drive a picker
+// with.
 func (s *session) cmdTheme(args []string) {
 	if len(args) == 0 {
+		if s.keys != nil {
+			s.pickTheme()
+			return
+		}
 		fmt.Fprintln(s.out, fmt.Sprintf(t("theme_current"), s.theme))
 		return
 	}
@@ -230,12 +234,44 @@ func (s *session) cmdTheme(args []string) {
 		fmt.Fprintln(s.out, yellow(fmt.Sprintf(t("theme_unknown"), args[0])))
 		return
 	}
+	s.applyTheme(th)
+}
+
+// pickTheme lets the user choose a theme with the arrow keys instead of
+// typing its name. Falls back to reporting the current theme when keys is
+// nil (selectFromMenu would just return -1 silently in that case, which
+// would otherwise look identical to a real cancellation).
+func (s *session) pickTheme() {
+	if s.keys == nil {
+		fmt.Fprintln(s.out, fmt.Sprintf(t("theme_current"), s.theme))
+		return
+	}
+	choices := themeChoices()
+	items := make([]menuItem, len(choices))
+	for i, th := range choices {
+		items[i] = menuItem{Label: string(th)}
+		if th == s.theme {
+			items[i].Hint = t("theme_current_hint")
+		}
+	}
+	idx := selectFromMenu(s.out, s.keys, t("menu_title_theme"), items)
+	if idx < 0 {
+		return
+	}
+	s.applyTheme(choices[idx])
+}
+
+// applyTheme is the shared tail of both the typed ("/theme <name>") and
+// picked (pickTheme) paths: updates in-memory state, persists the choice
+// (theme.go, best-effort — a read-only data dir just means it doesn't
+// survive a restart, still applied for the rest of this session), and
+// re-renders the welcome banner immediately so the switch is visible
+// without waiting for /clear.
+func (s *session) applyTheme(th replTheme) {
 	s.theme = th
 	if s.ed != nil {
 		s.ed.theme = th
 	}
-	// Best-effort: a read-only data dir just means the choice doesn't
-	// survive a restart — still applied for the rest of this session.
 	_ = saveTheme(th)
 	fmt.Fprintln(s.out, green(fmt.Sprintf(t("theme_switched"), th)))
 	s.printWelcome()

@@ -297,7 +297,7 @@ func TestEditor_StatusBarLine_ReflectsAutoPermissionState(t *testing.T) {
 // repl.go's refreshLiveStatus doc comment).
 func TestEditor_StatusBarLine_GTheme_ShowsLiveDataNotStaticHints(t *testing.T) {
 	ed, _ := newTestEditor("")
-	ed.theme = themeG
+	ed.theme = themeDefault
 	ed.liveStatusPrefix = dim("deepseek-v4") + dim("  ·  hafıza ") + green("●")
 
 	off := ed.statusBarLine()
@@ -320,7 +320,7 @@ func TestEditor_StatusBarLine_GTheme_ShowsLiveDataNotStaticHints(t *testing.T) {
 // startup) — liveStatusPrefix is still its zero value.
 func TestEditor_StatusBarLine_GTheme_EmptyPrefixDoesNotPanic(t *testing.T) {
 	ed, _ := newTestEditor("")
-	ed.theme = themeG
+	ed.theme = themeDefault
 	if got := ed.statusBarLine(); got == "" {
 		t.Error("statusBarLine() with empty liveStatusPrefix returned an empty string, want a fallback")
 	}

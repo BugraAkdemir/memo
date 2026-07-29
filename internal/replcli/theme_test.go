@@ -27,10 +27,10 @@ func TestParseTheme(t *testing.T) {
 		want   replTheme
 		wantOK bool
 	}{
-		{"g", themeG, true},
-		{"G", themeG, true},
-		{"classic", themeClassic, true},
-		{" classic ", themeClassic, true},
+		{"g", themeDefault, true},
+		{"G", themeDefault, true},
+		{"classic", themeClaudeCode, true},
+		{" classic ", themeClaudeCode, true},
 		{"", "", false},
 		{"dark", "", false},
 	}
@@ -55,25 +55,25 @@ func TestThemePersistence(t *testing.T) {
 	themeFile := filepath.Join(os.Getenv("MEMO_DATA_DIR"), "cli_theme")
 	_ = os.Remove(themeFile)
 
-	if got := loadSavedTheme(); got != themeG {
-		t.Errorf("loadSavedTheme() with no saved file = %q, want default %q", got, themeG)
+	if got := loadSavedTheme(); got != themeDefault {
+		t.Errorf("loadSavedTheme() with no saved file = %q, want default %q", got, themeDefault)
 	}
 
-	if err := saveTheme(themeClassic); err != nil {
+	if err := saveTheme(themeClaudeCode); err != nil {
 		t.Fatalf("saveTheme() error = %v", err)
 	}
-	if got := loadSavedTheme(); got != themeClassic {
+	if got := loadSavedTheme(); got != themeClaudeCode {
 		t.Errorf("loadSavedTheme() after saveTheme(classic) = %q, want classic", got)
 	}
 
 	if err := os.WriteFile(themeFile, []byte("garbage\x00"), 0644); err != nil {
 		t.Fatalf("WriteFile() error = %v", err)
 	}
-	if got := loadSavedTheme(); got != themeG {
-		t.Errorf("loadSavedTheme() with garbage contents = %q, want fallback %q", got, themeG)
+	if got := loadSavedTheme(); got != themeDefault {
+		t.Errorf("loadSavedTheme() with garbage contents = %q, want fallback %q", got, themeDefault)
 	}
 
 	// Leave the file back in a known-good state for any other test in this
 	// binary that might (directly or via cmdTheme) call loadSavedTheme.
-	_ = saveTheme(themeG)
+	_ = saveTheme(themeDefault)
 }

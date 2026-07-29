@@ -354,15 +354,15 @@ func TestCmdTheme_Bare_ReportsCurrent(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()
 	s, out := newTestSession(t, srv)
-	s.theme = themeClassic
+	s.theme = themeClaudeCode
 
 	s.cmdTheme(nil)
 
-	if !strings.Contains(out.String(), "classic") {
-		t.Errorf("cmdTheme(nil) output = %q, want it to mention the current theme (classic)", out.String())
+	if !strings.Contains(out.String(), "claude-code") {
+		t.Errorf("cmdTheme(nil) output = %q, want it to mention the current theme (claude-code)", out.String())
 	}
-	if s.theme != themeClassic {
-		t.Errorf("s.theme = %q after bare /theme, want unchanged (classic)", s.theme)
+	if s.theme != themeClaudeCode {
+		t.Errorf("s.theme = %q after bare /theme, want unchanged (claude-code)", s.theme)
 	}
 }
 
@@ -377,15 +377,36 @@ func TestCmdTheme_Switches(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()
 	s, out := newTestSession(t, srv)
-	s.theme = themeG
+	s.theme = themeDefault
+
+	s.handleCommand("/theme claude-code")
+
+	if s.theme != themeClaudeCode {
+		t.Errorf("s.theme = %q after /theme claude-code, want claude-code", s.theme)
+	}
+	if !strings.Contains(out.String(), "claude-code") {
+		t.Errorf("cmdTheme output = %q, want confirmation mentioning claude-code", out.String())
+	}
+}
+
+// TestCmdTheme_LegacyArgumentAliases guards backward compatibility: "g" and
+// "classic" (the theme names before this rename) must keep working as
+// arguments, matching parseTheme's legacy-alias handling — otherwise a
+// script or muscle-memory habit from before the rename would silently stop
+// working instead of erroring loudly.
+func TestCmdTheme_LegacyArgumentAliases(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, _ := newTestSession(t, srv)
 
 	s.handleCommand("/theme classic")
-
-	if s.theme != themeClassic {
-		t.Errorf("s.theme = %q after /theme classic, want classic", s.theme)
+	if s.theme != themeClaudeCode {
+		t.Errorf(`s.theme = %q after /theme classic (legacy alias), want claude-code`, s.theme)
 	}
-	if !strings.Contains(out.String(), "classic") {
-		t.Errorf("cmdTheme output = %q, want confirmation mentioning classic", out.String())
+
+	s.handleCommand("/theme g")
+	if s.theme != themeDefault {
+		t.Errorf(`s.theme = %q after /theme g (legacy alias), want default`, s.theme)
 	}
 }
 
@@ -396,15 +417,58 @@ func TestCmdTheme_UnknownArgument_LeavesThemeUnchanged(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()
 	s, out := newTestSession(t, srv)
-	s.theme = themeG
+	s.theme = themeDefault
 
 	s.handleCommand("/theme dark")
 
-	if s.theme != themeG {
-		t.Errorf("s.theme = %q after unknown /theme argument, want unchanged (g)", s.theme)
+	if s.theme != themeDefault {
+		t.Errorf("s.theme = %q after unknown /theme argument, want unchanged (default)", s.theme)
 	}
 	if !strings.Contains(out.String(), "dark") {
 		t.Errorf("cmdTheme output = %q, want it to echo the unrecognized argument", out.String())
+	}
+}
+
+// TestPickTheme_ArrowSelection_SwitchesTheme covers the arrow-key picker
+// path: Down once from the default selection (index 0, "default") lands on
+// "claude-code" (index 1), Enter applies it — the whole point being the
+// user never has to type a theme's name.
+func TestPickTheme_ArrowSelection_SwitchesTheme(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	var out bytes.Buffer
+	s := &session{
+		client:  NewClient(srv.URL),
+		ctx:     context.Background(),
+		out:     &out,
+		scanner: bufio.NewScanner(strings.NewReader("")),
+		keys:    keysFrom("\x1b[B\r"),
+		theme:   themeDefault,
+	}
+
+	s.pickTheme()
+
+	if s.theme != themeClaudeCode {
+		t.Errorf("s.theme = %q after picking the second entry, want claude-code", s.theme)
+	}
+}
+
+// TestPickTheme_NoKeys_ReportsCurrent covers piped/non-terminal input
+// (s.keys nil, as with newTestSession) — there's no keyboard to drive a
+// picker, so it must fall back to reporting the current theme instead of
+// silently doing nothing (which is what selectFromMenu's own -1-on-nil-keys
+// return would otherwise look like — indistinguishable from a real Esc
+// cancellation).
+func TestPickTheme_NoKeys_ReportsCurrent(t *testing.T) {
+	srv, _ := newModelsTestServer(t)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+	s.theme = themeDefault
+
+	s.pickTheme()
+
+	if !strings.Contains(out.String(), "default") {
+		t.Errorf("pickTheme() with no keys, output = %q, want it to report the current theme", out.String())
 	}
 }
 

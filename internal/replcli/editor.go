@@ -39,10 +39,10 @@ func slashCommands() []commandSpec {
 // equivalent of Claude Code's "manual mode on · ? for shortcuts" bar.
 func statusBarText() string { return t("status_bar_text") }
 
-// statusBarLine renders the composer's bottom line. themeG replaces the
-// whole classic-theme hint bar with live data — model, memory, and
-// auto-permission state all folded into one line — instead of swapping to
-// a separate "auto-accept on" line the way classic does; auto-permission's
+// statusBarLine renders the composer's bottom line. themeDefault replaces
+// the claude-code theme's static hint bar with live data — model, memory,
+// and auto-permission state all folded into one line — instead of swapping
+// to a separate "auto-accept on" line the way claude-code does; auto-permission's
 // segment is computed fresh every render (e.autoPermission, a plain field
 // Shift+Tab already updates instantly) since it can change on any
 // keystroke, while liveStatusPrefix (model/memory) is a cheaper snapshot
@@ -50,7 +50,7 @@ func statusBarText() string { return t("status_bar_text") }
 // finished reply) rather than on every keystroke — recomputing model/memory
 // status per keypress would mean a backend round trip per character typed.
 func (e *editor) statusBarLine() string {
-	if e.theme == themeG {
+	if e.theme == themeDefault {
 		auto := dim(t("live_status_auto_off"))
 		if e.autoPermission {
 			auto = yellow(t("live_status_auto_on"))
@@ -110,7 +110,7 @@ type editor struct {
 	onToggleAutoPermission func(current bool) bool
 
 	// theme selects the status-bar style — see statusBarLine. liveStatusPrefix
-	// is themeG's cached "<model> · hafıza ●" segment, already ANSI-colored;
+	// is themeDefault's cached "<model> · hafıza ●" segment, already ANSI-colored;
 	// set by the session (refreshLiveStatus, repl.go), read verbatim here.
 	theme            replTheme
 	liveStatusPrefix string

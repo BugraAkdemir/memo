@@ -228,6 +228,11 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/tts/providers", s.handleTTSProviders)
 	route("/api/tts/providers/test", s.handleTTSProviderTest)
 
+	// TTS local voice store (Faz 2.6)
+	route("/api/tts/voices", s.handleTTSVoices)
+	route("/api/tts/voices/download", s.handleTTSVoiceDownload)
+	route("/api/tts/voices/select", s.handleTTSVoiceSelect)
+
 	// OpenRouter
 	route("/api/openrouter/connect", s.handleOpenRouterConnect)
 	route("/api/openrouter/models", s.handleOpenRouterModels)

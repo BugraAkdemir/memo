@@ -1360,6 +1360,78 @@ func (s *Server) handleTTSProviderTest(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+// ─── TTS Voice Store (Faz 2.6 — local, offline Piper voices) ─────
+
+func (s *Server) handleTTSVoices(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		writeJSON(w, map[string]interface{}{
+			"catalog":   s.fullBridge.GetTTSVoiceCatalog(),
+			"local":     s.fullBridge.GetLocalTTSVoices(),
+			"downloads": s.fullBridge.GetTTSVoiceDownloadProgress(),
+		})
+	case http.MethodDelete:
+		var req struct {
+			ID string `json:"id"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.DeleteTTSVoice(req.ID); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET, DELETE", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleTTSVoiceDownload(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Locale  string `json:"locale"`
+		Name    string `json:"name"`
+		Quality string `json:"quality"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.DownloadTTSVoice(req.Locale, req.Name, req.Quality); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleTTSVoiceSelect(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ID string `json:"id"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.SelectTTSVoice(req.ID); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
 // handleProviderModels lists the models available for a provider type by
 // calling its ListModels directly — a generic counterpart to the
 // OpenRouter-specific /api/openrouter/models, for providers (OpenCode Zen,

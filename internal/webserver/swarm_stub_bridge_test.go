@@ -261,6 +261,12 @@ func (b *swarmStubBridge) GetTTSProviders() []tts.ProviderConfig                
 func (b *swarmStubBridge) UpdateTTSProvider(cfg tts.ProviderConfig) error                { return nil }
 func (b *swarmStubBridge) DeleteTTSProvider(pt tts.ProviderType, name ...string) error    { return nil }
 func (b *swarmStubBridge) TestTTSProviderConnection(cfg tts.ProviderConfig) error        { return nil }
+func (b *swarmStubBridge) GetTTSVoiceCatalog() []tts.Voice                               { return nil }
+func (b *swarmStubBridge) GetLocalTTSVoices() []tts.LocalVoice                           { return nil }
+func (b *swarmStubBridge) GetTTSVoiceDownloadProgress() []*tts.VoiceDownloadProgress     { return nil }
+func (b *swarmStubBridge) DownloadTTSVoice(locale, name, quality string) error           { return nil }
+func (b *swarmStubBridge) DeleteTTSVoice(id string) error                                { return nil }
+func (b *swarmStubBridge) SelectTTSVoice(id string) error                                { return nil }
 func (b *swarmStubBridge) GetOrchestraConfig() orchestra.OrchestraConfig {
 	return orchestra.OrchestraConfig{}
 }

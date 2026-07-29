@@ -150,6 +150,14 @@ type FullBridge interface {
 	DeleteTTSProvider(pt tts.ProviderType, name ...string) error
 	TestTTSProviderConnection(cfg tts.ProviderConfig) error
 
+	// TTS voice store (Faz 2.6 — local, offline Piper voice models)
+	GetTTSVoiceCatalog() []tts.Voice
+	GetLocalTTSVoices() []tts.LocalVoice
+	GetTTSVoiceDownloadProgress() []*tts.VoiceDownloadProgress
+	DownloadTTSVoice(locale, name, quality string) error
+	DeleteTTSVoice(id string) error
+	SelectTTSVoice(id string) error
+
 	// Orchestra mode
 	GetOrchestraConfig() orchestra.OrchestraConfig
 	UpdateOrchestraConfig(cfg orchestra.OrchestraConfig) error

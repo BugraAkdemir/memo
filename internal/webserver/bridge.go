@@ -62,6 +62,7 @@ type FullBridge interface {
 	DeleteExplicitMemory(pattern string) (int, error)
 	ImportMemoryFromText(ctx context.Context, rawText string) (factsSaved int, styleUpdated bool, err error)
 	SynthesizeSpeech(text string) ([]byte, error)
+	GetTTSFillerSound() ([]byte, error)
 	GenerateSelfInsight(ctx context.Context, windowDays int, lang string) (string, error)
 	ExportMemories() ([]byte, error)
 	ImportMemories(data []byte) (int, error)

@@ -2073,6 +2073,22 @@ func (s *Server) handleTTSSynthesize(w http.ResponseWriter, r *http.Request) {
 	w.Write(audio)
 }
 
+// handleTTSFiller returns one cached, local-only "thinking" filler sound
+// (Faz 3) — GET, not POST, since it takes no input.
+func (s *Server) handleTTSFiller(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet || s.fullBridge == nil {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	audio, err := s.fullBridge.GetTTSFillerSound()
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "audio/wav")
+	w.Write(audio)
+}
+
 func (s *Server) handleMemoryInsight(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "POST only", http.StatusMethodNotAllowed)

@@ -178,6 +178,7 @@ func (b *swarmStubBridge) SynthesizeSpeech(text string) ([]byte, error) {
 	}
 	return nil, nil
 }
+func (b *swarmStubBridge) GetTTSFillerSound() ([]byte, error) { return nil, nil }
 func (b *swarmStubBridge) ExportMemories() ([]byte, error)         { return nil, nil }
 func (b *swarmStubBridge) ImportMemories(data []byte) (int, error) { return 0, nil }
 func (b *swarmStubBridge) GetMemoryStats() models.MemoryStats      { return models.MemoryStats{} }

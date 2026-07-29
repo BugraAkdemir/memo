@@ -1,3 +1,34 @@
+# Handoff — 2026-07-29 (devam 4) — Faz 2.6: yerel/offline ses modeli indirici (API anahtarı gerektirmeden)
+
+## Özet
+
+Kullanıcı önceki "Faz 2 tamamlandı" raporuna sertçe itiraz etti: asıl istenen, external API sağlayıcı (OpenAI vb.) değil, **tamamen yerel/offline** çalışan bir TTS deneyimiydi — plan dosyasının kendi "2.6 — TTS Store" maddesi atlanmıştı. Haklıydı: 2.1-2.5 external provider Router'ını kurdu ama Memo'nun asıl konumlandırması (AGENTS.md: "local-first, privacy-focused") için gereken, yerel Piper motorunu (Faz 1) hiç API anahtarı gerektirmeden kullanılabilir hale getirmekti.
+
+Bu oturumda 2.6 eklendi — **kendi commit'inde bir düzeltme de içeriyor** (bkz. aşağı):
+
+1. `internal/tts/voice_store.go` (`dea1aad`) — `VoiceStore`: `rhasspy/piper-voices` HF reposundan (Faz 1'in kendi araştırmasında zaten doğrulanmış path deseniyle — `tr_TR-fahrettin-medium.onnx` örneği o dosyada zaten geçiyordu) küçük, elle seçilmiş bir katalog (tr_TR-fahrettin-medium, en_US-lessac-medium, en_US-amy-medium) indiriyor. Hiç API çağrısı yok, sadece bir kerelik dosya indirme.
+2. `internal/app/tts_voices.go` (`1808b80`) — App wiring: `GetTTSVoiceCatalog`/`GetLocalTTSVoices`/`DownloadTTSVoice`/`DeleteTTSVoice`/`SelectTTSVoice` — sonuncusu asıl kilit nokta: indirilen sesin dosya yolunu `config.TTS.ModelPath`'e yazıp `initTTS()`'i yeniden çağırarak **anında, restart'sız** etkinleştiriyor.
+3. REST (`2145913`) — `/api/tts/voices` (GET/DELETE), `/download`, `/select`.
+4. **Düzeltme, aynı akış içinde** (`c027a9b`) — ilk widget taslağında "şu an hangi ses seçili" bilgisi hiçbir API'den gelmiyordu, Flutter tarafında anlamsız bir kendine-eşleme (`local.path == local.path`, her zaman true) yazmıştım; fark edip `GetSelectedTTSVoicePath()`'i (config.TTS.ModelPath'i döner) bridge+handler'a ekleyip düzelttim, gerçek koda hiç girmeden.
+5. Flutter modeller (`eee30c7`), api_client+L10n (`e347341`), `TTSVoiceSection` widget'ı (`3765bec`) — Beta Features'ta **`TTSProviderSection`'dan önce** gösteriliyor, local-first önceliği yansıtmak için.
+
+## Doğrulama
+
+Her commit kendi başına `go build`/`go vet`/`go test -race` (ilgili paketler) yeşil. Flutter: `flutter analyze lib/` temiz (4 önceden var olan, alakasız info), `flutter test` 114/114. Oturum sonunda tam repo: `go build/vet/test ./...` ve `flutter analyze/test` tekrar çalıştırıldı, hepsi yeşil, working tree temiz.
+
+**Yan not:** test koşuları sırasında `internal/app/config/config.yaml` (gerçek, git'e commitlenmiş bir dosya — `config.DataDir()`'ın `sync.Once` önbelleği yüzünden testlerin gerçek dosyaya yazması mümkün) kirlenmiş bulundu (muhtemelen bu oturumdaki erken, henüz backup/restore korumasız test çalıştırmalarından kalma). `git checkout --` ile HEAD'e geri alındı, hiçbir commit'e girmedi.
+
+**Gerçek bir Hugging Face indirmesiyle canlı doğrulanmadı** (bu ortamda internet erişimi/gerçek test yok) — path deseni Faz 1'in önceki araştırmasına dayanıyor, bu oturumda yeniden doğrulanmadı.
+
+## Sıradaki Adım
+
+1. **Kullanıcı gerçek bir makinede Ayarlar → Beta Features → "Yerel Ses Modelleri"nden bir ses indirip seçmeli** — bu, `rhasspy/piper-voices` path deseninin ve tüm indirme zincirinin ilk gerçek canlı doğrulaması olacak.
+2. Faz 1'den kalan iki açık madde hâlâ geçerli: barge-in yok, VAD modeli CDN'den iniyor.
+3. ElevenLabs implementasyonu ve curated listenin ötesinde tam HF-repo gözatma hâlâ yapılmadı, kapsam dışı bırakıldı.
+4. Live Mode ekranının gerçek bir cihazda uçtan uca (artık hem yerel indirilmiş ses hem external provider fallback'iyle) denenmesi hâlâ bekleniyor.
+
+---
+
 # Handoff — 2026-07-29 (devam 3) — Voice Live Mode Faz 2 (2.1-2.5) tek oturumda tamamlandı
 
 ## Özet

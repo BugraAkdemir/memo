@@ -234,11 +234,26 @@ içinde de, kritik dosya gruplarına göre) kendi ayrı commit'iyle:
   metodları (ayrı commit), `TTSProviderSection` widget'ı + Beta
   Features'a bağlanması + 19 yeni L10n anahtarı TR+EN (ayrı commit).
 
-**Kapsam dışı bırakılan, hâlâ açık:** 2.6 ("TTS Store" — dil-bazlı ses
-modeli önerisi/indirme) — kendi başına büyük bir iş, ayrı planlanacak.
-ElevenLabs sağlayıcısı hâlâ implementasyonsuz (tip tanımlı, seçilirse net
-hata). Gerçek bir external TTS API anahtarıyla canlı uçtan uca test
-yapılmadı — sadece `httptest` ile sahte sunucuya karşı.
+**2.6 de aynı oturumda tamamlandı** (kullanıcının "asıl mesele local/offline
+çalışması, TTS Store'u atladın" geri bildirimi üzerine, önce yanlışlıkla
+sadece external/API-key'li sağlayıcı tarafı bitmiş gibi rapor edilmişti —
+bu düzeltildi): `internal/tts/voice_store.go`'nun `VoiceStore`'u,
+`rhasspy/piper-voices` HF reposundan küçük, elle seçilmiş bir katalogla
+(tr_TR-fahrettin-medium, en_US-lessac-medium, en_US-amy-medium) **hiç API
+anahtarı gerektirmeden** ses modeli indirip yerel Piper motorunu
+(`config.TTS.ModelPath`) otomatik yapılandırıyor. App wiring
+(`tts_voices.go`, `GetSelectedTTSVoicePath` dahil), REST
+(`/api/tts/voices`, `/download`, `/select`) ve Flutter UI
+(`TTSVoiceSection`, Beta Features'ta `TTSProviderSection`'dan **önce**
+gösteriliyor — local-first öncelik sırasını yansıtmak için) hepsi ayrı
+commit'lerle tamamlandı.
+
+**Hâlâ kapsam dışı:** ElevenLabs sağlayıcısı implementasyonsuz (tip
+tanımlı, seçilirse net hata). Gerçek bir external TTS API anahtarıyla
+canlı uçtan uca test yapılmadı — sadece `httptest` ile sahte sunucuya
+karşı. Curated ses kataloğunun ötesinde (upstream reponun tamamını
+arama/gözatma) bilinçli olarak yapılmadı — küçük, güvenilir bir liste
+tercih edildi.
 
 ## Doğrulama
 

@@ -1,3 +1,29 @@
+# Handoff — 2026-07-29 (devam 5) — Sesli sohbet artık ayrı bir Live Mode sekmesi değil, sohbet kutusunda bir ikon
+
+## Özet
+
+Kullanıcı Faz 2.6'yı (yerel ses indirici) canlı denedi: **hiç stabil değil**, ve **sidebar'daki Live sekmesi çalışmıyor**. Ayrıca mimari bir itiraz getirdi: sesli mod ayrı bir ekran olmamalı — normal sohbet ekranındaki yazma kutusunun yanında ayrı bir ikonla açılmalı, kullanıcı isterse konuşur isterse yazar, Memo hep sesle de cevap verir; çapraz (yaz→sesli cevap, konuş→sesli+yazılı cevap) çalışmalı.
+
+Üç commit'te bu mimari değişiklik yapıldı:
+
+1. `c710e45` — `frontend/lib/providers/voice_mode_provider.dart` (yeni): `live_screen.dart`'ın tüm dinle→transkript→gönder→seslendir döngüsü (aynı `LiveModeController`, aynı tek-seferde-bir-döngü mantığı) bir `StateNotifierProvider`'a taşındı — artık hangi sekme/ekran açık olursa olsun çalışıyor, widget State'ine bağlı değil.
+2. `7f882c5` — `chat_input.dart`'a mevcut push-to-talk mikrofon butonunun yanına ayrı bir `record_voice_over` ikonu eklendi (durum rengiyle: dinliyor/düşünüyor/konuşuyor), `voiceModeProvider`'ı tetikliyor. L10n güncellemeleri de bu commit'te.
+3. `56ed4b7` — Sidebar'daki "Live" sekmesi (nav rail butonu, `IndexedStack`'teki 8. index, `_showLiveModeNav()`) komple kaldırıldı, `live_screen.dart` silindi (mantığı 1. commit'e taşındığı için kod tekrarı kalmadı).
+
+## Doğrulama
+
+Her commit kendi başına `flutter analyze lib/` (4 önceden var olan, alakasız info hariç temiz) ve `flutter test` (114/114) ile doğrulandı. Backend'e hiç dokunulmadı, `go build` tekrar teyit edildi (yeşil).
+
+**Kullanıcının "hiç stabil değil" şikayetinin kök nedeni tam çözülmedi** — `live_mode_controller.dart`'ın kendi dokümante ettiği, bilinen açık bir sorun var: VAD'ın Silero `.onnx` modeli hâlâ `cdn.jsdelivr.net`'ten çalışma zamanında iniyor, `binaries/`'a gömülü değil (local-first mimariye aykırı, dosyanın kendi yorumunda "do not ship without fixing" diye işaretli). Bu oturumda bu ortamda internet erişimi/gerçek indirme imkanı yoktu, kapatılamadı — muhtemelen bildirilen instabilitenin gerçek kaynağı, mimari değişiklikten (ekran→ikon) bağımsız, hâlâ açık.
+
+## Sıradaki Adım
+
+1. **VAD modelini gerçekten `binaries/`'a gömmek** — `download_binaries.sh`'a yeni bir adım, `_vadBaseAssetPath`'i bundled path'e çevirmek. Muhtemelen asıl stabilite sorununu çözecek olan bu.
+2. Kullanıcı yeni ikonu (sohbet kutusunun yanında) gerçek bir cihazda denemeli — bu değişiklik bu ortamda görsel olarak doğrulanmadı (native masaüstü çalıştıracak araç yok).
+3. Barge-in hâlâ yok (Faz 1'den kalma, değişmedi).
+
+---
+
 # Handoff — 2026-07-29 (devam 4) — Faz 2.6: yerel/offline ses modeli indirici (API anahtarı gerektirmeden)
 
 ## Özet

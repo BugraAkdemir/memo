@@ -1,3 +1,45 @@
+# Handoff — 2026-07-29 (devam 10) — Faz 4.1 tamamlandı: motor seçimi + fallback kontratı
+
+## Özet
+
+4.1'in ikisi de ayrı commit edildi:
+
+- `7f258de` — spike sonucunu `PLAN_voice_live_mode_faz4.md`'ye yazdı: seçilen
+  motor `webrtc-audio-processing` (freedesktop/PulseAudio'nun
+  paketleme-dostu libwebrtc APM kopyası; PipeWire'ın `module-echo-cancel`'ı
+  da aynı kütüphaneyi kullanır), BSD lisanslı, `ProcessStream`/
+  `ProcessReverseStream` tam olarak bu planın istediği capture/render
+  ayrımını veriyor. **Gizlenmeyen gerçek risk:** üst akış resmi olarak
+  yalnızca Linux'ta test ediliyor/meson ile derleniyor; Windows/macOS için
+  bakımlı bir build hattı yok, Dart FFI paketi de yok — 4.2'de elle
+  `dart:ffi`/`ffigen` + ayrı CMake denemesi gerekecek, başarısız olursa o
+  platform güvenli fallback'e düşecek (asıl karar).
+- `49314e8` — `frontend/lib/core/duplex_audio_engine.dart`: `DuplexAudioEngine`
+  arayüzü (capture stream, `writeRenderFrame`, `aecAvailable`/`isActive`,
+  start/stop/dispose) + `NoAecDuplexAudioEngine` — bugünkü Faz 1 `record`
+  akışını birebir koruyan, kalıcı (silinecek placeholder değil) fallback.
+  4.2 native motor aynı arayüzün ikinci implementasyonu olacak;
+  `LiveModeController`/`VoiceModeNotifier` bu adımda hiç değişmedi.
+  Test: `frontend/test/core/duplex_audio_engine_test.dart` — yalnızca
+  start() öncesi/no-AEC durumunu kapsıyor (start() gerçek platform ses
+  kanalı açıyor, `flutter test` altında yok; `AudioRecorder`'ın constructor'ı
+  kendi başına awaitlenmemiş bir platform-channel çağrısı attığı için o
+  channel testte mock'landı, yoksa testi tetikleyen test bitmiş olsa bile
+  asenkron `MissingPluginException` fırlatıyordu). `flutter analyze` ve
+  `flutter test` her ikisi de temiz.
+
+## Sıradaki Adım
+
+**4.2 — native duplex motor ve Flutter köprüsü.** Linux için
+`webrtc-audio-processing`'i (meson/CMake ile) derleyip `dart:ffi` +
+muhtemelen `ffigen` ile bağlamak, `DuplexAudioEngine`'in ikinci
+implementasyonu olarak yazmak. Windows/macOS için ayrı bir CMake denemesi
+gerekecek — başarısız olursa o platformda sessizce `NoAecDuplexAudioEngine`'e
+düşülecek (aecAvailable=false), yanlış "AEC aktif" görünümü asla
+verilmeyecek. Bu ortamda gerçek cihaz/derleme doğrulaması yapılmadı; 4.2'nin
+kendi commit mesajında hangi platformun gerçekten derlenip test edildiği
+açıkça belirtilecek.
+
 # Handoff — 2026-07-29 (devam 9) — Faz 4 planı oluşturuldu, native AEC spike bekliyor
 
 ## Özet

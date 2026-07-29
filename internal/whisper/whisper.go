@@ -106,6 +106,7 @@ func (s *Server) Start(binaryPath, modelPath, language string, port int) error {
 		"--port", fmt.Sprintf("%d", actualPort),
 		"--host", "127.0.0.1",
 		"--language", lang,
+		"--threads", fmt.Sprintf("%d", whisperThreads()),
 	}
 
 	logx.Printf("whisper: launching %s %s", bin, strings.Join(args, " "))
@@ -375,6 +376,24 @@ func (s *Server) Transcribe(ctx context.Context, audioData []byte) (string, erro
 	}
 
 	return result.Text, nil
+}
+
+// whisperThreads returns the thread count passed to whisper-server's
+// --threads flag. Previously omitted entirely, silently leaving
+// whisper-server on its own hardcoded default of 4 regardless of the host's
+// actual core count -- a real STT-latency cost on any machine with more
+// cores available. Capped at 8: whisper.cpp's own docs note that beyond
+// roughly the audio decode pipeline's parallelizable width, additional
+// threads mostly add scheduling overhead rather than speed.
+func whisperThreads() int {
+	n := runtime.NumCPU()
+	if n > 8 {
+		return 8
+	}
+	if n < 1 {
+		return 1
+	}
+	return n
 }
 
 func whisperServerBinary() string {

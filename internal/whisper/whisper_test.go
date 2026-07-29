@@ -169,6 +169,23 @@ func TestSamePathEntry(t *testing.T) {
 	}
 }
 
+func TestWhisperThreads_MatchesNumCPUWithinCap(t *testing.T) {
+	got := whisperThreads()
+	if got < 1 {
+		t.Fatalf("whisperThreads() = %d, want >= 1", got)
+	}
+	if got > 8 {
+		t.Fatalf("whisperThreads() = %d, want <= 8 cap", got)
+	}
+	want := runtime.NumCPU()
+	if want > 8 {
+		want = 8
+	}
+	if got != want {
+		t.Errorf("whisperThreads() = %d, want %d", got, want)
+	}
+}
+
 func TestPingPort_NotRunning(t *testing.T) {
 	s := NewServer(19999) // unlikely to be in use
 	if s.pingPort() {

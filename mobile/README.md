@@ -15,7 +15,7 @@
 | ChatScreen | ✅ Done | Streaming SSE, Markdown rendering, session management |
 | Settings | ✅ Done | Backend URL/token config, provider view/toggle, model start/stop |
 | Model Switching | ✅ Done | `/model` command for runtime model switching |
-| Remote Access | ✅ Done | ngrok tunnel support via backend |
+| Remote Access | ✅ Done | ngrok and Tailscale (beta) tunnel support via backend |
 
 ### Planned (v3.3.0+)
 - RAG memory browsing
@@ -101,12 +101,15 @@ flutter build ios --release
 
 ## 🔐 Authentication
 
-Memo Mobile supports two connection modes:
+Memo Mobile supports three connection modes:
 
 | Mode | How it works | Best for |
 |------|-------------|----------|
 | **Local (LAN)** | Direct IP:port connection | Home/office same network |
-| **Remote (ngrok)** | Tunnel URL from backend's ngrok | Access from anywhere |
+| **Tailscale** (beta) | Fixed `*.ts.net` URL from the backend's embedded tsnet tunnel, entered once | Anywhere, no re-pairing after the first setup — the backend self-heals a dropped tunnel, and the app auto-reconnects with the saved URL on every launch |
+| **Remote (ngrok)** | Tunnel URL from backend's ngrok | Access from anywhere without Tailscale set up |
+
+The Tailscale tab only appears once beta features are enabled on the connected desktop backend (Settings → Beta Features) and this phone has connected at least once to learn that.
 
 Optional `X-Memo-Token` header for authentication against the backend.
 

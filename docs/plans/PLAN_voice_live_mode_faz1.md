@@ -341,12 +341,21 @@ mevcut STT'ye transkripsiyon → mevcut chat/agent pipeline'ına gönderim →
 Piper ile seslendirme → çalma, uçtan uca tek bir ekranda (`LiveScreen`)
 bağlı. Ayarlar → Beta Features'tan erişilebiliyor.
 
-**Faz 1 "tamamlandı" değil, "prototip olarak koda döküldü" — iki gerçek,
-bilinçli olarak açık bırakılmış madde var:**
-1. **Barge-in yok** (yukarıdaki 1.6 notuna bakın) — şu an tek yönlü bile
-   değil, sadece "meşgulken yeni konuşmayı yok say".
+**Faz 1 "tamamlandı" değil, "prototip olarak koda döküldü" — bilinçli
+olarak açık bırakılmış maddeler var:**
+1. ~~Barge-in yok~~ → **2026-07-29'da tamamlandı** (`frontend/lib/providers/voice_mode_provider.dart`,
+   ayrıca bkz. handoff.md'nin "Faz'ı komple tamamlayalım" oturumu): tek
+   yönlü barge-in artık çalışıyor — kullanıcı Memo düşünürken/konuşurken
+   tekrar konuşursa, önceki döngü (`chat_provider`'ın `stopStreaming()`'i
+   + `WavPlayer.stop()`) iptal ediliyor, yeni konuşma işleniyor. Ekranın
+   kendisi de kaldırıldı — Live Mode artık sohbet ekranındaki yazma
+   kutusunun yanında bir ikon (bkz. Faz 2 planındaki not). **Bilinçli
+   kabul edilen yeni risk:** AEC olmadan (hâlâ Faz 4 kapsamı) hoparlörle
+   kullanımda VAD, Memo'nun kendi sesini yeni bir konuşma sanıp
+   kendi kendini kesebilir — kulaklıkla bu risk yok.
 2. **VAD modeli hâlâ CDN'den iniyor**, `binaries/`'a gömülü değil —
-   local-first mimariye aykırı, üretime girmeden önce kapatılmalı.
+   local-first mimariye aykırı, üretime girmeden önce kapatılmalı. Bu
+   ortamda internet erişimi olmadığı için hâlâ kapatılamadı.
 
 **Bu ortamda gerçek Piper/VAD binary'si yok** — hiçbir adım gerçek bir
 ses üretimi/dinleme/transkripsiyon ile canlı test edilmedi, sadece kod +

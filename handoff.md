@@ -1,3 +1,30 @@
+# Handoff — 2026-07-29 (devam 7) — Barge-in tamamlandı (Faz 1'in son açık maddesi)
+
+## Özet
+
+Kullanıcı "live modu komple tamamlayalım" dedi. Üst planda geriye üç büyük, birbirinden bağımsız iş kaldığını (barge-in, AEC/Faz 4, wake-word+Android/Faz 5) anlattım, AskUserQuestion ile hangisine odaklanacağımı sordum — **barge-in** seçildi (AEC ve wake-word bu ortamda gerçek cihaz/ses/Android SDK gerektirdiği için zaten test edilemezdi).
+
+İki commit'te tamamlandı:
+
+1. `3cf9640` — `WavPlayer` (`frontend/lib/core/wav_player.dart`) `Process.run`'dan `Process.start`'a geçirildi, yeni bir `stop()` metodu eklendi — çalan altyapıyı öldürebiliyor artık (önceden hiçbir şekilde erken durdurulamıyordu). `yes <path>` ile (gerçek bir coreutil, sonsuza kadar çalışan sahte "player") `stop()`'un gerçekten öldürdüğünü doğrulayan yeni testler.
+2. `4fec0f9` — `voiceModeProvider`'a **tek yönlü barge-in**: kullanıcı Memo düşünürken/konuşurken tekrar konuşursa, eski döngü iptal ediliyor (`chat_provider`'ın zaten var olan `stopStreaming()`'i — durdur butonunun kullandığı aynı mekanizma — + her iki `WavPlayer.stop()`), yeni konuşma işleniyor. `chat_provider.dart`'ın kendi generation-counter tekniği (AGENTS.md'nin Riverpod gotcha'sı) birebir aynı şekilde uygulandı — eski, kesilen döngünün `finally`'si yeni döngünün state'ini ezmiyor.
+
+**Bilinçli, dokümante edilmiş yeni risk:** AEC olmadan (Faz 4, kapsam dışı bırakıldı) hoparlörle kullanımda VAD, Memo'nun kendi TTS/filler sesini yeni bir kullanıcı konuşması sanıp Memo'yu kendi kendine kesebilir. Önceden bu durum sessizce yok sayılıyordu (sadece boşa bir STT çağrısı), şimdi gerçekten kesiyor — gerçek barge-in'in AEC'siz kaçınılmaz bedeli, kulaklıkla sorun yok.
+
+## Doğrulama
+
+Her commit `flutter analyze lib/` (4 önceden var olan, alakasız info hariç temiz) ve `flutter test` (116/116) ile doğrulandı. Backend'e dokunulmadı, `go build` tekrar teyit edildi.
+
+**Gerçek bir cihazda hiç denenmedi** — bu ortamda ses çıkışı/gerçek VAD yok.
+
+## Sıradaki Adım
+
+1. Kullanıcı gerçek bir cihazda barge-in'i denemeli (Memo konuşurken araya girip kesebiliyor mu, kulaklıksız kendi kendini kesip kesmediği).
+2. Geriye kalan büyük parçalar hâlâ açık: **AEC/tam çift yönlü (Faz 4)**, **wake-word + Android arka plan (Faz 5)** — ikisi de bu ortamda gerçek cihaz gerektirir, ayrı oturumlar.
+3. VAD modelinin CDN'den inmesi sorunu hâlâ çözülmedi (internet erişimi yok).
+
+---
+
 # Handoff — 2026-07-29 (devam 6) — Faz 3 başladı: yerel, önbelleklenmiş "düşünme" sesleri (hmm/mm/ah) + Beta kapalıyken ikon gizlendi
 
 ## Özet

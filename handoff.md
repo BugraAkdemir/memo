@@ -1,3 +1,57 @@
+# Handoff — 2026-07-29 — REPL'e Shift+Tab oto-onay, "G" tema (canlı durum paneli) + `/theme` komutu, web search'ün gereksiz çalışması ve spinner deadlock'u düzeltildi
+
+## Özet
+
+Uzun bir oturum, birkaç ayrı iş kolu. Kullanıcı testerlarından "CLI Claude Code'a çok benziyor, özgün tasarım istiyoruz" geri bildirimi aldı — bu, bir tasarım turuna (mockup'lar, kullanıcı seçti) ve sonunda gerçek bir tema sistemine dönüştü. Aradan çıkan gerçek kullanım da iki ayrı canlı bug'ı ortaya çıkardı (spinner çökmesi, web search'ün her mesajda çalışması).
+
+## 1. REPL'e Shift+Tab oto-onay (`a3a66fb`, `915c2cb`, `a1a92f7`, `33128ec`)
+
+Backend + Flutter GUI'de zaten olan Shift+Tab "tüm tool çağrılarını otomatik onayla" özelliği REPL'de hiç yoktu. `keys.go`'ya `keyShiftTab` (CSI `Z`) eklendi, `client.go`'ya mevcut `/api/agent/auto-permission` endpoint'ini saran metodlar eklendi, editor'ün durum çubuğuna canlı gösterge (`⏵⏵ otomatik onay açık`) eklendi, `repl.go`'da gerçek toggle bağlandı. Backend zaten `NeedPrompt`'u bypass ediyor, REPL tarafında ayrı bir onay-atlama mantığı gerekmedi.
+
+## 2. Agent tool aktivitesi artık tek satırlık canlı durum göstergesi (`af8e57e`)
+
+Kullanıcı: çok adımlı bir agent görevinde her `⚙ X çalışıyor... / ✓ X tamamlandı` kalıcı bir satır basıyordu, sohbeti uzatıp çirkinleştiriyordu. `spinner`'a `SetLabel`/`Label` eklendi (mutex korumalı) — artık tool event'leri (çalışıyor/tamamlandı/hata/reddedildi) tek bir yerinde-güncellenen satırı değiştiriyor, hiçbiri kalıcı iz bırakmıyor. `permission_request` hâlâ ayrı ve kalıcı (gerçek bir karar noktası).
+
+## 3. `/theme` komutu — yeni varsayılan tasarım + eski tasarım arasında geçiş
+
+Testerların "Claude Code'a benziyor" şikayeti üzerine 3+6 mockup çizip kullanıcıyla birlikte "G" yönünü (canlı durum paneli: kutu yok, alt çubukta model/hafıza/oto-onay/esc verisi) seçtik.
+
+- **Temel + tema tipi** (`90c5cb1`): `theme.go` — `replTheme` tipi, `parseTheme`, `config.DataPath("cli_theme")`'e yerel kalıcılık (backend'e hiç dokunmuyor, saf terminal tercihi).
+- **Durum çubuğu render'ı** (`60d75e7`): `editor.go` — yeni tema açıkken alt çubuk statik komut ipuçları yerine `<model> · hafıza ●/○ · ⏵⏵ oto-onay açık/kapalı · esc durdur` gösteriyor.
+- **Karşılama paneli + wiring** (`7e4e6e1`): `repl.go` — `printWelcome` artık dispatcher, yeni tema tek satırlık kutu-suz karşılama basıyor, `refreshLiveStatus` doğal kontrol noktalarında (welcome, /model, mesaj sonu) tazeleniyor.
+- **`/theme` komutu** (`51e8688`): ilk halinde `/tema g|classic` şeklindeydi.
+- **İsim değişikliği** (`2738d28`): kullanıcı canlı denedi, `/tema` diğer tüm komutlar İngilizce olduğu için tutarsız kaldı ("Unknown command: /tema" aldı) → `/theme`'e çevrildi. Bu arada `data/cli_theme`'in `.gitignore`'da olmadığı fark edildi, eklendi.
+- **Ok tuşlarıyla seçim + isim değişikliği** (`5999394`, bu turun son commit'i): kullanıcı iki şey daha istedi — (a) `/theme g` yazmak yerine yukarı/aşağı ok ile seçebilmek, (b) tema isimleri: "g" → **"default"**, "classic" → **"claude-code"** (açıkça ne olduğunu söylesin diye). Bare `/theme` artık gerçek terminalde `/session`/`/model` ile aynı `selectFromMenu` picker'ını açıyor; "/" komut menüsünün `/theme` girişi de artık usage metni yerine doğrudan picker'ı açıyor. `parseTheme` eski isimleri ("g", "classic") **legacy alias** olarak hâlâ kabul ediyor — kullanıcının diskteki eski `cli_theme` dosyası sessizce sıfırlanmasın diye.
+
+**Not:** tema seçenekleri arasında henüz gerçek görsel/estetik bir "3. seçenek" (mockup'lardaki C-H yönleri) yok — sadece mevcut G tasarımı ("default") ile eski kutulu tasarım ("claude-code") var. Kullanıcı ileride başka bir mockup yönü isterse aynı `themeChoices()` listesine eklenebilir.
+
+## 4. Spinner deadlock + karışan yazı bug'ı (`fced6ee`)
+
+Kullanıcı ekran görüntüsü gönderdi: `✓ write_file tamamlandıess denied: command references a path within a protected directory (../selam.py)` gibi iki render'ın üst üste bindiği, oturumun tıkanmış göründüğü bir durum. İki gerçek bug bulundu:
+1. Ticker'ın render'ı `\033[K` (satır sonuna kadar temizle) içermiyordu — yeni label eskisinden kısaysa kalıntı kalıyordu.
+2. **Gerçek deadlock** (sadece görsel değil): `Stop()` mutex'i `<-doneCh` beklerken elinde tutuyordu, ama ticker goroutine'i de aynı mutex'i `Label()` üzerinden istiyor — zamanlama denk gelirse (~80ms periyotta gerçek bir pencere) sonsuza kadar kilitleniyordu. Mutex artık `close(stopCh)`'ten önce serbest bırakılıyor.
+
+## 5. Agent sandbox hata mesajları artık gerçek proje dizinini söylüyor (`696f6e3`)
+
+Kullanıcı: "dosya yazma/okumada çok hata alıyorum" — kök neden sandbox'ın YANLIŞ çalışması değil, hata mesajının hangi dizine izin verildiğini hiç söylememesiydi (model kör kör 3-4 farklı tool/yol deniyordu). `internal/agent/tools/{file,command}.go`'daki mesajlar artık gerçek `basePath`'i açıkça söylüyor.
+
+## 6. CLI'de web search artık her mesajda değil, agent modu kapalıyken çalışıyor (`ae25205`, `dc65f1e`)
+
+İki ayrı adım: önce CLI'nin agent modu gibi web search'ü de her sohbette otomatik açması sağlandı (`ae25205`, backend'de zaten global bir toggle). Sonra kullanıcı fark etti: "naber" gibi bir mesajda bile web search çalışıyordu. Kök neden: `buildMessagesForSession`, agent modunun zaten akıllı bir `web_search` tool'u (modelin ne zaman çağıracağına kendi karar verdiği) olmasına rağmen, web search açıkken **her mesajda körlemesine** ayrı bir arama daha yapıp context'e enjekte ediyordu — iki mekanizma aynı anda çalışıyordu. Kör enjeksiyon artık sadece agent modu KAPALIYKEN çalışıyor (agent modu açıkken zaten daha akıllı olan tool var). Bu GUI'yi de düzeltiyor, aynı backend fonksiyonu paylaşılıyor.
+
+## Doğrulama
+
+Her commit'te ayrı ayrı: `go build`/`go vet`/`go test -race` tüm repo'da yeşil. Kullanıcı canlı doğruladı: Shift+Tab oto-onay, `/theme`/`/theme g`/`/theme classic` (rename öncesi), G temasının durum çubuğu render'ı. **Yeni `/theme` ok-tuşu picker'ı ve default/claude-code isim değişikliği henüz kullanıcı tarafından canlı test edilmedi** — bu oturumun son commit'i.
+
+## Sıradaki Adım
+
+1. Kullanıcı `/theme` ok-tuşu seçiciyi ve yeni isimleri (`default`/`claude-code`) canlı denemeli.
+2. Mockup turundaki diğer yönler (C-H: retro fosfor, günlük/log, konuşma balonu, vb.) hiçbiri koda geçmedi — sadece G ("default") ve mevcut kutulu tasarım ("claude-code") var. Kullanıcı isterse üçüncü bir tema eklenebilir.
+3. v3.3.4 sürüm notları (`versinNote/v3.3.4.md`, `tr/v3.3.4.md`) bu oturumdaki REPL/tema/web-search işlerini henüz içermiyor — bir sonraki release-notes turunda eklenmeli.
+4. Başka bilinen açık bug/görev yok.
+
+---
+
 # Handoff — 2026-07-27 — REPL'de küçük context'li local model + agent mode kombinasyonu 400 hatası veriyordu, düzeltildi (`a5f48ee`, `c9dff76`, `ec15362`)
 
 ## Özet

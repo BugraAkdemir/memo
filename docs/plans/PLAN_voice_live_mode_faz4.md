@@ -75,6 +75,48 @@ Her alt adım bağımsız olarak test edilir ve ayrı commit edilir.
 - Çıkış: seçilen motor, lisans/dağıtım boyutu, desteklenen platform matrisi
   ve başarısız/cihaz-desteksiz durumda davranış; bunlar bu plana yazılır.
 
+**Spike sonucu (2026-07-29):**
+
+- **Seçilen motor:** `webrtc-audio-processing` (freedesktop/PulseAudio'nun
+  bakımını yaptığı, libwebrtc'nin `AudioProcessing`/APM modülünün paketlemeye
+  uygun ayrık kopyası — PipeWire'ın `module-echo-cancel`'ı da aynı kütüphaneyi
+  kullanır). Kütüphane doğrudan bu planın ihtiyacı olan sözleşmeyi verir:
+  `ProcessStream` (mikrofon/capture) ve `ProcessReverseStream` (render/hoparlör
+  referansı) ayrı ayrı çağrılır, AEC ikisini içeride hizalar. Lisans BSD —
+  dağıtım ve statik link açısından sorun yok.
+- **Platform riski (gizlenmeyecek gerçek bulgu):** Üst akış proje resmi
+  olarak yalnızca Linux'ta test ediyor ve meson ile derleniyor; Windows/macOS
+  için hazır, bakımı yapılan bir build hattı yok. Var olan Rust sarmalayıcı
+  (`tonarino/webrtc-audio-processing`) da aynı nedenle öncelikle Linux
+  odaklı. Dart/Flutter tarafında bu kütüphaneye hazır bir FFI paketi de yok —
+  4.2'de `dart:ffi` + `ffigen` ile elle bağlanacak.
+  - **Sonuç:** Linux için native motor + gerçek AEC makul bir hedef.
+  - **Windows/macOS için 4.2 kapsamında ayrıca statik/CMake build denenecek,
+    ama başarısız olursa bu iki platform güvenli fallback'e (bu bölümün
+    "başarısız durum" maddesi) düşer — bu, Faz 4'ün "yanlış güvence
+    verilmez" ilkesiyle tutarlıdır, plan bunu bir engel değil beklenen bir
+    dal olarak kabul eder.
+- **Desteklenen platform matrisi (şu anki bilgiyle, doğrulanmamış =
+  derleme/cihaz denemesi bu ortamda yapılmadı):**
+
+  | Platform | AEC native motor | Durum |
+  |----------|-------------------|-------|
+  | Linux    | `webrtc-audio-processing` (FFI) | Hedef; 4.2'de derlenip bağlanacak |
+  | Windows  | aynı kütüphane, ayrı CMake denemesi | Doğrulanmamış, riskli |
+  | macOS    | aynı kütüphane, ayrı CMake denemesi | Doğrulanmamış, riskli |
+  | Android  | platformun kendi `AcousticEchoCanceler`'ı (Faz 5 kapsamı) | Bu plana dahil değil |
+
+- **Başarısız/cihaz-desteksiz durumda davranış:** `DuplexAudioEngine`
+  arayüzünün `aecAvailable == false` döndüğü her durumda (native motor o
+  platformda derlenmediyse veya init başarısızsa), 4.3'teki barge-in mantığı
+  otomatik hoparlör-barge-in'i açmaz; mevcut (Faz 1) davranışa kontrollü
+  geri döner. Bu motor hiç yokken bile Live Mode'un bugünkü çalışma şeklini
+  bozmaması için `NoAecDuplexAudioEngine` adında, `record` paketiyle bugünkü
+  akışı birebir koruyan bir fallback implementasyonu 4.1'in kendisinde eklendi
+  (`frontend/lib/core/duplex_audio_engine.dart`) — 4.2 native motoru bu
+  arayüzün ikinci implementasyonu olarak takacak, çağıran kod
+  (`LiveModeController`/`VoiceModeNotifier`) değişmeyecek.
+
 ### 4.2 — Native duplex motor ve Flutter köprüsü
 
 - Seçilen motoru yalnızca gerekli platformlarda paketle; capture ve render

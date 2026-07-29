@@ -28,9 +28,28 @@ func (a *App) initTTS() {
 	logx.Info("TTS: Piper synthesizer configured")
 }
 
-// SynthesizeSpeech renders text to WAV-encoded audio bytes via the
-// configured Piper synthesizer. Mirrors TranscribeAudio's shape (stt.go).
+// SynthesizeSpeech renders text to WAV-encoded audio bytes. Tries any
+// configured/enabled external TTS provider first (tts.Router, Faz 2), then
+// falls back to the local Piper synthesizer (Faz 1) — mirrors
+// callLLMStream's external-provider-then-local-model priority order
+// (internal/app/llm.go), simplified to two tiers since TTS has no Orchestra
+// equivalent. If no external provider is configured at all (Faz 1's only
+// state, and still the default), behavior is unchanged from before this
+// tier was added: straight to Piper.
 func (a *App) SynthesizeSpeech(text string) ([]byte, error) {
+	a.ttsRouterMu.RLock()
+	router := a.ttsRouter
+	a.ttsRouterMu.RUnlock()
+	if router != nil && router.HasActiveProvider() {
+		ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+		audio, err := router.Synthesize(ctx, text)
+		cancel()
+		if err == nil {
+			return audio, nil
+		}
+		logx.Printf("TTS: external provider(s) failed, falling back to local Piper: %v", err)
+	}
+
 	a.ttsMu.RLock()
 	s := a.ttsSynthesizer
 	a.ttsMu.RUnlock()

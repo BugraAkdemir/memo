@@ -8,6 +8,7 @@ import '../../../core/wav_player.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../tts_provider_section.dart';
+import '../tts_voice_section.dart';
 
 /// Settings → Beta Features.
 ///
@@ -137,6 +138,8 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
             if (beta) ...[
               const SizedBox(height: 16),
               const _LiveModeVoiceTest(),
+              const SizedBox(height: 16),
+              const TTSVoiceSection(),
               const SizedBox(height: 16),
               const TTSProviderSection(),
             ],

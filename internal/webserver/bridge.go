@@ -152,6 +152,7 @@ type FullBridge interface {
 
 	// TTS voice store (Faz 2.6 — local, offline Piper voice models)
 	GetTTSVoiceCatalog() []tts.Voice
+	GetSelectedTTSVoicePath() string
 	GetLocalTTSVoices() []tts.LocalVoice
 	GetTTSVoiceDownloadProgress() []*tts.VoiceDownloadProgress
 	DownloadTTSVoice(locale, name, quality string) error

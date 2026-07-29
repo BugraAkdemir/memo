@@ -12,6 +12,16 @@ func (a *App) GetTTSVoiceCatalog() []tts.Voice {
 	return tts.CuratedVoices()
 }
 
+// GetSelectedTTSVoicePath returns the .onnx path SynthesizeSpeech's local
+// Piper synthesizer is currently configured with (config.TTS.ModelPath) —
+// empty if none is set. Lets a client (Flutter's TTSVoiceSection) show
+// which downloaded voice, if any, is the one actually in use, since
+// SelectTTSVoice's effect otherwise isn't visible anywhere in the voice
+// list response itself.
+func (a *App) GetSelectedTTSVoicePath() string {
+	return a.cfg.TTS.ModelPath
+}
+
 // GetLocalTTSVoices returns Piper voices already downloaded to disk.
 func (a *App) GetLocalTTSVoices() []tts.LocalVoice {
 	if a.ttsVoiceStore == nil {

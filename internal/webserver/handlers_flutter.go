@@ -1370,9 +1370,10 @@ func (s *Server) handleTTSVoices(w http.ResponseWriter, r *http.Request) {
 	switch r.Method {
 	case http.MethodGet:
 		writeJSON(w, map[string]interface{}{
-			"catalog":   s.fullBridge.GetTTSVoiceCatalog(),
-			"local":     s.fullBridge.GetLocalTTSVoices(),
-			"downloads": s.fullBridge.GetTTSVoiceDownloadProgress(),
+			"catalog":       s.fullBridge.GetTTSVoiceCatalog(),
+			"local":         s.fullBridge.GetLocalTTSVoices(),
+			"downloads":     s.fullBridge.GetTTSVoiceDownloadProgress(),
+			"selected_path": s.fullBridge.GetSelectedTTSVoicePath(),
 		})
 	case http.MethodDelete:
 		var req struct {

@@ -139,6 +139,9 @@ type App struct {
 	whisperMu         sync.RWMutex
 	ttsSynthesizer    *tts.Synthesizer
 	ttsMu             sync.RWMutex
+	ttsProviderCfgMgr *tts.ConfigManager
+	ttsRouter         *tts.Router
+	ttsRouterMu       sync.RWMutex
 	webServer         *webserver.Server
 	webMu             sync.RWMutex
 	modelStore        *modelstore.Store
@@ -484,6 +487,7 @@ func (a *App) Startup(ctx context.Context) {
 
 	goRecover("startSTTServer", a.startSTTServer)
 	a.initTTS()
+	a.initTTSProviders()
 
 	if cfg.Memory.MemoryEnabled && cfg.Memory.EmbeddingAutoStart && cfg.Memory.EmbeddingModelRepo != "" && cfg.Memory.EmbeddingModelFile != "" && !a.llamaEmbedServer.IsRunning() {
 		goRecover("startupEmbeddingModel", a.startupEmbeddingModel)

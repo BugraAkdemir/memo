@@ -1,3 +1,30 @@
+# Handoff — 2026-07-29 (devam 6) — Faz 3 başladı: yerel, önbelleklenmiş "düşünme" sesleri (hmm/mm/ah) + Beta kapalıyken ikon gizlendi
+
+## Özet
+
+İki küçük iş:
+
+1. **Bug fix** (`e28c195`) — bir önceki oturumda sohbet kutusuna eklenen sesli-sohbet ikonu Beta kapalıyken de görünüyordu. `chat_input.dart`'taki ikon + durum etiketi artık `betaFeaturesProvider`'a sarılı, eski sekmenin `_showLiveModeNav()`'ıyla aynı mantık.
+2. **Faz 3'ün ilk adımı** — kullanıcı üst plandaki "gecikme anlarında kısa .wav klipleri (düşünme sesi)" özelliğini sordu, "bu wav'ları nereden bulacağım" diye. Cevap: dışarıdan aramaya gerek yok — zaten yerelde çalışan Piper motoruyla ("Hmm", "Mm", "Ah" gibi kısa, dil-bağımsız ifadeleri) bir kere sentezleyip cache'lemek. Kullanıcı onayladı, uygulandı:
+   - `internal/tts/filler.go` (`58e7f01`) — `FillerCache`: `FillerPhrases`'i local Piper `Synthesizer` ile senteleyip bellekte cache'liyor, `Random()` rastgele birini döner. **External provider Router'a hiç uğramıyor** — bir kelimelik "hmm" için API çağrısı gecikmeyi maskelemek yerine büyütür.
+   - `internal/app` wiring (`94fe5b2`) — `a.ttsFillerCache`, `initTTS()`'te Piper yapılandırıldığında arka planda `Prewarm()` ediliyor (ilk gerçek istek subprocess gecikmesi ödemesin diye), `GetTTSFillerSound()`.
+   - REST (`9adb98d`) — `GET /api/tts/filler`.
+   - Flutter (`e7d143a`, `3fe8082`) — `api_client.getTTSFiller()`, `voiceModeProvider`'ın `thinking` durumuna geçtiği an ayrı bir `WavPlayer` ile best-effort (hatasında sessizce yutuluyor) çalıyor.
+
+## Doğrulama
+
+Her commit kendi başına `go build/vet/test -race` (backend) veya `flutter analyze`+`flutter test` (114/114, frontend) ile doğrulandı. Oturum sonunda tam repo: her ikisi de yeşil.
+
+**Gerçek bir cihazda hiç denenmedi** — bu ortamda ne gerçek Piper binary'si/ses modeli ne de ses çıkışı var, sadece kod+test doğrulaması yapıldı.
+
+## Sıradaki Adım
+
+1. Kullanıcı gerçek bir cihazda: (a) Beta kapalıyken ikonun artık görünmediğini, (b) sesli sohbet sırasında "düşünüyor" anında bir "hmm" sesi duyulduğunu doğrulamalı.
+2. **Asıl stabilite sorunu hâlâ açık** — VAD modelinin CDN'den inmesi (`live_mode_controller.dart`), bu oturumda da çözülmedi (internet erişimi yok).
+3. Faz 3'ün geri kalanı (gerçek zamanlı backchannel — Memo konuşurken kullanıcı "hı hı" gibi araya girse bile Memo'nun tepki vermesi) hâlâ yapılmadı, bu sadece "gecikme maskesi" kısmıydı.
+
+---
+
 # Handoff — 2026-07-29 (devam 5) — Sesli sohbet artık ayrı bir Live Mode sekmesi değil, sohbet kutusunda bir ikon
 
 ## Özet

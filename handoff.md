@@ -1,3 +1,25 @@
+# Handoff — 2026-07-29 (devam) — AGENTS.md'deki "hardcoded Turkish literal" tekn. borç maddesi yeniden denetlendi, hiç bulunmadı
+
+## Özet
+
+Önceki oturumun kapanışında önerilen tek açık madde buydu: `AGENTS.md`'nin L10n bölümünde (Flutter kuralları altında) `provider_config_dialog.dart`, `orchestra_config_dialog.dart` ve `agent_screen.dart`'ta 2026-07-20 tarihli bir denetimden kalma "hâlâ hardcoded Türkçe literal var" notu duruyordu. `/codebase-memory` ile projeyi teyit edip (`list_projects`, tek proje: `home-bugra-Documents-memo`) üç dosyayı da Kural #8'in kendi grep deseniyle (`Text(`/`Tooltip(`/`SnackBar(`/`AlertDialog(` içinde `L10n.t(...)`'a sarılmamış tırnaklı literal) tek tek denetledim.
+
+**Sonuç: üçü de artık temiz.** Hiçbir gerçek hardcoded string yok. `git log` ile bakınca aradaki commit'lerden biri (`36c8a38 fix(frontend): wire remaining hardcoded UI strings through L10n`, ayrıca `af33c59`/`377d5be`/`1530a4d`) bunu bir noktada zaten kapatmış ama commit mesajlarının hiçbiri bu üç dosyayı ismen anmadığı için `AGENTS.md`'deki not güncellenmemiş kalmış — tam da notun kendisinin uyardığı "commit mesajının dosya listesine güvenme, dosyanın kendisini grep'le" dersinin bu sefer ters yönde gerçekleşmiş hali.
+
+Kapsamı üç dosyayla sınırlamadım — `frontend/lib/**/*.dart` genelinde aynı Kural #8 deseniyle tam bir tarama yaptım. Bulunan tek eşleşmeler gerçek ihlal değildi: `'WhatsApp'` (marka adı, `routines_screen.dart:332`, çeviri gerektirmez), bir dropdown'ın kendi veri değeri (`chat['display_name']`, literal değil), ve `fontFamily: 'JetBrains Mono'` (kullanıcının okuduğu metin değil, font adı). Ayrıca yaygın sabit UI kelimelerini (İptal/Kaydet/Tamam/Sil/Ekle/Kapat/Devam/Vazgeç/Onayla/Ayarlar/"Model bulunamadı") doğrudan aradım — hepsi sadece `l10n.dart`'ın kendi TR/EN map'leri içinde, hiçbir widget dosyasında çıplak halde değil.
+
+**Değişiklik:** `AGENTS.md`'deki ilgili madde (Flutter bölümü, L10n gotcha'sı) "stale, re-verified 2026-07-29" olarak güncellendi — eski metin `~~üstü çizili~~` bırakıldı (bu dosyanın geri kalanındaki konvansiyon), yerine güncel bulgular eklendi. Kod tarafında hiçbir değişiklik yok — bu saf bir doğrulama/dokümantasyon düzeltmesi, "3 açık madde" artık "0 açık madde".
+
+## Doğrulama
+
+Kod değişmediği için `go build`/`go test`/`flutter test` çalıştırılmadı (bu commit sadece iki markdown dosyasını değiştiriyor: `AGENTS.md`, `handoff.md`). Doğrulama yöntemi bizzat kapsamlı `grep` taramasıydı (yukarıda anlatıldığı gibi, birden fazla açıdan: widget-sarma deseni + düz kelime araması), tek dosya değil repo genelinde.
+
+## Sıradaki Adım
+
+Bilinen açık bug/görev yok. `AGENTS.md`'nin teknik borç listesindeki geri kalan maddeler (Windows'ta gerçek cihazda doğrulanmamış birkaç madde — ngrok+telefon, `internal/shutdown` runtime testi, ExportData vb. — hepsi "no Windows machine in this environment" notuyla) bu makinede zaten yapılamıyor, bir sonraki oturumda kullanıcıdan yeni bir yön beklenebilir.
+
+---
+
 # Handoff — 2026-07-29 — REPL'e Shift+Tab oto-onay, "G" tema (canlı durum paneli) + `/theme` komutu, web search'ün gereksiz çalışması ve spinner deadlock'u düzeltildi
 
 ## Özet

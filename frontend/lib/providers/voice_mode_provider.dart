@@ -29,6 +29,12 @@ final voiceModeProvider =
 class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
   final Ref _ref;
   final WavPlayer _player = WavPlayer();
+  // Separate player instance for filler sounds (Faz 3) — deliberately not
+  // the same _player used for the real reply: a filler is fire-and-forget
+  // and may still be finishing its own subprocess-backed playback right as
+  // the real reply's play() call starts, and the two shouldn't block or
+  // race on shared player state to do that.
+  final WavPlayer _fillerPlayer = WavPlayer();
   LiveModeController? _controller;
   bool _busy = false;
   bool _toggling = false;
@@ -97,6 +103,7 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
 
     _busy = true;
     state = VoiceModeState.thinking;
+    _playFillerBestEffort();
 
     // _busy stays true for this whole cycle — sendMessage AND the playback
     // that follows it — so a VAD segment detected while Memo is still
@@ -142,10 +149,29 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
     }
   }
 
+  /// Plays one cached local filler sound (Faz 3, GET /api/tts/filler) while
+  /// sendMessage() is in flight, to mask the reply's latency. Deliberately
+  /// fire-and-forget: a missing/unconfigured local Piper voice (filler
+  /// sounds are local-only, never routed through an external TTS
+  /// provider — see internal/tts/filler.go's own doc comment) just means
+  /// no filler plays, silently — this is a nice-to-have, not something
+  /// worth surfacing an error toast for on every single turn.
+  void _playFillerBestEffort() {
+    () async {
+      try {
+        final audio = await _ref.read(apiClientProvider).getTTSFiller();
+        await _fillerPlayer.play(audio);
+      } catch (_) {
+        // best-effort, see doc comment above
+      }
+    }();
+  }
+
   @override
   void dispose() {
     _controller?.stop().then((_) => _controller?.dispose());
     _player.dispose();
+    _fillerPlayer.dispose();
     super.dispose();
   }
 }

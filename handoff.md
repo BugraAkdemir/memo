@@ -1,3 +1,48 @@
+# Handoff — 2026-07-29 (devam 11) — Ses hızı/seviyesi şikayetleri: iki hızlı düzeltme
+
+## Özet
+
+Kullanıcı "ses işleme yavaş" ve "sesi düzgün ayarlamıyor" dedi (STT/TTS
+gecikmesi + volume/mikrofon kazancı). Explore agent'la mevcut (Faz 4
+dışı, zaten çalışan) ses hattı incelendi, kök nedenler netleşti:
+
+- **TTS başlama gecikmesi (en büyük sebep, düzeltilmedi — büyük iş):**
+  `voice_mode_provider.dart` LLM cevabının tamamı bitmeden TTS'e hiç
+  başlamıyor; cümle-bazlı streaming zaten `PLAN_voice_live_mode(_faz1).md`'de
+  bilinen/ertelenmiş bir eksik. Bu oturumda dokunulmadı, kullanıcıyla ayrı
+  konuşulacak.
+- **Barge-in "hissi":** AEC olmadan Memo'nun kendi sesini mikrofonun
+  yakalayıp barge-in sanması — zaten bilinen/kabul edilmiş risk
+  (`PLAN_voice_live_mode_faz4.md`), Faz 4.2/4.3'ün çözeceği şey.
+
+Kullanıcı iki düşük riskli düzeltmeyi onayladı, ikisi de ayrı commit:
+
+- `c37b01c` — `internal/whisper/whisper.go`: `whisper-server` artık
+  `--threads` bayrağı hiç almıyordu, sabit varsayılan 4 thread'de
+  çalışıyordu (bu makine 12 çekirdek). `whisperThreads()` artık
+  `runtime.NumCPU()`'yu 8'de sınırlayıp geçiyor — gerçek `--help`
+  çıktısından doğrulandı. `TestWhisperThreads_MatchesNumCPUWithinCap` eklendi.
+  (Paket testlerinde `TestGetStatus_NewServer` önceden de kırık, bu
+  değişiklikle ilgisiz — `git stash` ile doğrulandı.)
+- `e1e08c5` — `frontend/lib/core/wav_player.dart`: `play()` artık
+  `volume` (0.0-1.0) parametresi alıyor. Linux'ta `paplay --volume=N`
+  (gerçek bayrak, `man paplay`'den doğrulandı), macOS'ta `afplay -v`
+  (dokümante ama bu ortamda macOS olmadığı için canlı doğrulanmadı).
+  `aplay` (paplay yoksa fallback) ve Windows'un `SoundPlayer`'ı hiç volume
+  desteklemiyor — sessizce mevcut tam-ses davranışında bırakıldı, hata
+  fırlatılmadı. **Bu sadece altyapı** — `voice_mode_provider.dart` ve
+  `beta_features_tab.dart` hâlâ `volume` geçmeden çağırıyor, yani
+  kullanıcıya görünen bir Ayarlar kaydırıcısı yok, bu ayrı bir sonraki iş.
+
+## Sıradaki Adım
+
+Kullanıcıya asıl büyük gecikme kaynağının (TTS'in tam cevap bitmeden
+başlamaması) ayrı, daha büyük bir iş olduğu hatırlatılmalı — istenirse
+cümle-bazlı TTS streaming'e şimdi geçilebilir. Volume altyapısı hazır;
+gerçek bir Ayarlar kaydırıcısı istenirse `voice_mode_provider.dart`/
+`beta_features_tab.dart`'a L10n'li bir ayar eklenmesi gerekiyor. 4.2 (native
+duplex motor) hâlâ bekliyor.
+
 # Handoff — 2026-07-29 (devam 10) — Faz 4.1 tamamlandı: motor seçimi + fallback kontratı
 
 ## Özet

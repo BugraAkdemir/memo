@@ -119,6 +119,8 @@ class L10n {
     'mic_stop_recording': 'Ses kaydını durdur',
     'mic_recording': 'Kaydediliyor…',
     'mic_transcribing': 'Yazıya dökülüyor…',
+    'voice_mode_start': 'Sesli sohbeti başlat (dinle → yanıtı seslendir)',
+    'voice_mode_stop': 'Sesli sohbeti durdur',
     'mic_no_permission': 'Mikrofon izni verilmedi',
     'orchestra_not_available': 'Orchestra modunda kullanılamaz',
     'file_sent': '*(Dosya gönderildi: \${fileName})*',
@@ -205,7 +207,6 @@ class L10n {
     'tab_stats': 'İstatistikler',
     'tab_dev_gateway': 'Geliştirici',
     'tab_swarm': 'Swarm',
-    'tab_live': 'Sesli',
     'tab_report_bug': 'Hata Bildir',
     'swarm_title': 'Memo Swarm',
     'swarm_subtitle': 'Bir bilgisayara sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır',
@@ -625,9 +626,9 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Birden fazla makineyi birleştirip tek büyük model çalıştır (yan menü → Swarm). macOS’ta henüz yok.',
-    'beta_item_live_mode_title': 'Sesli Mod (Live)',
+    'beta_item_live_mode_title': 'Sesli Sohbet',
     'beta_item_live_mode_desc':
-        'Geliştirme aşamasında — şimdilik yalnızca yerel Piper motoruyla metin-sese dönüştürmeyi aşağıdan test edebilirsin.',
+        'Geliştirme aşamasında — sohbet ekranındaki yazma kutusunun yanında bir ikonla açılıyor (konuş → Memo dinler, cevabını da sesli verir). Aşağıdan sadece yerel Piper motoruyla seslendirmeyi tek başına test edebilirsin.',
     'live_mode_test_tts_title': 'Sesli Mod — Ses Testi',
     'live_mode_test_tts_desc':
         'Piper motorunun kurulu ve yapılandırılmış olması gerekir (Ayarlar dosyasında tts.enabled + tts.model_path).',
@@ -1526,6 +1527,8 @@ class L10n {
     'mic_stop_recording': 'Stop recording',
     'mic_recording': 'Recording…',
     'mic_transcribing': 'Transcribing…',
+    'voice_mode_start': 'Start voice chat (listen → speak the reply)',
+    'voice_mode_stop': 'Stop voice chat',
     'mic_no_permission': 'Microphone permission denied',
     'orchestra_not_available': 'Not available in Orchestra mode',
     'file_sent': '*(File sent: \${fileName})*',
@@ -1606,7 +1609,6 @@ class L10n {
     'tab_stats': 'Stats',
     'tab_dev_gateway': 'Developer',
     'tab_swarm': 'Swarm',
-    'tab_live': 'Live',
     'tab_report_bug': 'Report Bug',
     'swarm_title': 'Memo Swarm',
     'swarm_subtitle':
@@ -2017,9 +2019,9 @@ class L10n {
     'beta_item_swarm_title': 'Memo Swarm',
     'beta_item_swarm_desc':
         'Pool machines to run one large model (sidebar → Swarm). Not available on macOS yet.',
-    'beta_item_live_mode_title': 'Live Mode (Voice)',
+    'beta_item_live_mode_title': 'Voice Chat',
     'beta_item_live_mode_desc':
-        'Still in development — for now you can test text-to-speech with the local Piper engine below.',
+        'Still in development — opens from an icon next to the chat input (speak → Memo listens, and speaks its reply back too). Below, you can test speech synthesis on its own with the local Piper engine.',
     'live_mode_test_tts_title': 'Live Mode — Voice Test',
     'live_mode_test_tts_desc':
         'Requires Piper to be installed and configured (tts.enabled + tts.model_path in the config file).',

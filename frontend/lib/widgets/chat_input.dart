@@ -21,6 +21,7 @@ import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/recording_provider.dart';
 import '../providers/skill_provider.dart';
+import '../providers/voice_mode_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
@@ -914,6 +915,43 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                   },
                 );
               }(),
+              const SizedBox(width: 4),
+              // Voice mode toggle: continuous listen → send → speak-reply,
+              // cross-modal with typing (either way still works while this
+              // is on). Separate from the mic button above, which is a
+              // single push-to-talk-into-the-text-field capture.
+              () {
+                final voiceState = ref.watch(voiceModeProvider);
+                final active = voiceState != VoiceModeState.idle;
+                return _InputIconButton(
+                  icon: active ? Icons.record_voice_over : Icons.record_voice_over_outlined,
+                  tooltip: active
+                      ? L10n.t('voice_mode_stop')
+                      : L10n.t('voice_mode_start'),
+                  disabled: false,
+                  iconColor: switch (voiceState) {
+                    VoiceModeState.idle => null,
+                    VoiceModeState.listening => MemoTheme.accent,
+                    VoiceModeState.thinking => MemoTheme.warningOrange,
+                    VoiceModeState.speaking => MemoTheme.accent,
+                  },
+                  onTap: () => ref.read(voiceModeProvider.notifier).toggle(),
+                );
+              }(),
+              // Status label while voice mode is on
+              if (ref.watch(voiceModeProvider) != VoiceModeState.idle)
+                Padding(
+                  padding: const EdgeInsets.only(left: 8),
+                  child: Text(
+                    switch (ref.watch(voiceModeProvider)) {
+                      VoiceModeState.idle => '',
+                      VoiceModeState.listening => L10n.t('live_screen_state_listening'),
+                      VoiceModeState.thinking => L10n.t('live_screen_state_thinking'),
+                      VoiceModeState.speaking => L10n.t('live_screen_state_speaking'),
+                    },
+                    style: TextStyle(fontSize: 12, color: MemoTheme.accent),
+                  ),
+                ),
               // Status label when recording/transcribing
               if (ref.watch(recordingProvider) != RecordingState.idle)
                 Padding(

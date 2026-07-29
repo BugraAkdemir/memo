@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:vad/vad.dart';
 
 import 'api_client.dart';
+import 'vad_assets.dart';
 import 'wav_encoder.dart';
 
 /// Drives Voice Live Mode's continuous-listening loop (Faz 1.6, see
@@ -12,23 +13,8 @@ import 'wav_encoder.dart';
 /// -- the same endpoint the push-to-talk STT button already uses, so no
 /// backend changes were needed for this step.
 ///
-/// **KNOWN, UNRESOLVED GAP — do not ship without fixing:** the `vad`
-/// package's default `baseAssetPath` points at a public CDN
-/// (`cdn.jsdelivr.net`) and downloads the Silero VAD `.onnx` model file
-/// from there at runtime, on every platform (not just web). This directly
-/// contradicts this app's local-first architecture, where every other
-/// engine (llama.cpp, whisper.cpp, vec0, Piper) is bundled under
-/// `binaries/` and never fetched at runtime (see AGENTS.md's "sqlite-vec
-/// extension binary is bundled ... never add a runtime download for it").
-/// [_vadBaseAssetPath] is left at the CDN default for now, deliberately
-/// NOT silently accepted as fine -- this is flagged in the plan and the
-/// handoff log as a real, blocking gap for Faz 1.6 to close before this
-/// feature leaves prototype status: the `.onnx` model needs to be bundled
-/// the same way Piper's binary/voice files are, with its own
-/// download_binaries.sh step, and this constant repointed at the bundled
-/// path.
-const String _vadBaseAssetPath =
-    'https://cdn.jsdelivr.net/npm/@keyurmaru/vad@0.0.1/';
+/// The Silero VAD v4 model is a declared Flutter asset, so native builds
+/// load it from the installed app and do not make a runtime network request.
 
 class LiveModeController {
   final MemoApiClient _apiClient;
@@ -77,7 +63,7 @@ class LiveModeController {
       if (!_errorController.isClosed) _errorController.add(message);
     });
 
-    await handler.startListening(baseAssetPath: _vadBaseAssetPath);
+    await handler.startListening(baseAssetPath: vadModelBaseAssetPath);
   }
 
   Future<void> stop() async {

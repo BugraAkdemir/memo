@@ -32,8 +32,10 @@ type TailscaleConfig struct {
 }
 
 const (
-	reconnectMinDelay = 5 * time.Second
-	reconnectMaxDelay = 60 * time.Second
+	reconnectMinDelay   = 5 * time.Second
+	reconnectMaxDelay   = 60 * time.Second
+	healthCheckInterval = 20 * time.Second
+	healthCheckTimeout  = 10 * time.Second
 )
 
 // tailscaleConn is what connect() produces: an authenticated node plus the
@@ -139,6 +141,7 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 
 	logx.Printf("tunnel: tailscale up at %s (funnel=%v)", t.publicURL, cfg.Funnel)
 	go t.serveAndSupervise(conn.ln, cfg, gen)
+	go t.superviseHealth(cfg, gen)
 	return nil
 }
 
@@ -231,8 +234,79 @@ func (t *Tailscale) reconnectLoop(cfg TailscaleConfig, gen int) {
 
 		logx.Printf("tunnel: tailscale reconnected at %s", t.PublicURL())
 		go t.serveAndSupervise(conn.ln, cfg, gen)
+		go t.superviseHealth(cfg, gen)
 		return
 	}
+}
+
+// superviseHealth periodically checks the tsnet backend's own connection
+// state. A serve loop failure (handled by serveAndSupervise) only catches a
+// killed listener — it says nothing about the node having quietly fallen off
+// the tailnet (expired key, revoked node, control-plane issue) while the
+// local listener keeps accepting connections that then can't actually reach
+// anything. On a detected drop this closes the stale connection and starts
+// reconnectLoop directly, same as a serve failure would.
+func (t *Tailscale) superviseHealth(cfg TailscaleConfig, gen int) {
+	defer logx.Recover("tunnel.Tailscale health check")
+	ticker := time.NewTicker(healthCheckInterval)
+	defer ticker.Stop()
+
+	for range ticker.C {
+		t.mu.Lock()
+		if t.stopped || t.generation != gen {
+			t.mu.Unlock()
+			return
+		}
+		srv := t.srv
+		t.mu.Unlock()
+
+		if srv == nil || isBackendHealthy(srv) {
+			continue
+		}
+
+		t.mu.Lock()
+		if t.stopped || t.generation != gen {
+			t.mu.Unlock()
+			return
+		}
+		// Bump the generation before tearing anything down: closing staleLn
+		// below wakes serveAndSupervise's blocked http.Serve, and it must see
+		// a stale generation so it doesn't *also* race its own reconnectLoop
+		// against the one this function starts.
+		t.generation++
+		newGen := t.generation
+		t.running = false
+		t.lastErr = "tailscale backend unhealthy, reconnecting"
+		staleSrv, staleLn := t.srv, t.ln
+		t.srv, t.ln = nil, nil
+		t.mu.Unlock()
+
+		logx.Printf("tunnel: tailscale health check failed, reconnecting")
+		if staleLn != nil {
+			staleLn.Close()
+		}
+		if staleSrv != nil {
+			staleSrv.Close()
+		}
+		t.reconnectLoop(cfg, newGen)
+		return // the reconnectLoop launched above starts its own supervisors
+	}
+}
+
+// isBackendHealthy reports whether the tsnet node still considers itself
+// connected and running on the tailnet.
+func isBackendHealthy(srv *tsnet.Server) bool {
+	lc, err := srv.LocalClient()
+	if err != nil {
+		return false
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), healthCheckTimeout)
+	defer cancel()
+	st, err := lc.StatusWithoutPeers(ctx)
+	if err != nil {
+		return false
+	}
+	return st.BackendState == "Running"
 }
 
 // Stop tears down the tunnel and cancels any in-flight reconnect attempt.

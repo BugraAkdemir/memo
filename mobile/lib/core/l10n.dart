@@ -110,6 +110,11 @@ class L10n {
     'err_ngrok_enable': 'Ngrok etkinleştirilemedi',
     'err_remote_disable': 'Uzaktan erişim kapatılamadı',
     'err_auto_start': 'Otomatik başlatma ayarlanamadı',
+    'err_message_failed': 'Mesaj gönderilemedi',
+    'err_sessions_failed': 'Sohbetler yüklenemedi',
+    'err_chat_switch_failed': 'Sohbete geçilemedi',
+    'err_new_chat_failed': 'Yeni sohbet oluşturulamadı',
+    'err_delete_chat_failed': 'Sohbet silinemedi',
 
     // Chat
     'incognito_mode': 'Gizli Mod',
@@ -346,6 +351,11 @@ class L10n {
     'err_ngrok_enable': 'Failed to enable ngrok',
     'err_remote_disable': 'Failed to disable remote access',
     'err_auto_start': 'Failed to set auto-start',
+    'err_message_failed': 'Failed to send message',
+    'err_sessions_failed': 'Failed to load sessions',
+    'err_chat_switch_failed': 'Failed to switch chat',
+    'err_new_chat_failed': 'Failed to create new chat',
+    'err_delete_chat_failed': 'Failed to delete chat',
 
     // Chat
     'incognito_mode': 'Incognito Mode',

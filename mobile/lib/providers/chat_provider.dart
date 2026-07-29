@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/api_client.dart';
+import '../core/l10n.dart';
 import 'connection_provider.dart';
 
 final chatProvider =
@@ -132,7 +133,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
         await switchChat(sessions.first.id);
       }
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: friendlyErrorMessage(e, action: L10n.t('err_sessions_failed')),
+      );
     }
   }
 
@@ -147,7 +151,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
         loading: false,
       );
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: friendlyErrorMessage(e, action: L10n.t('err_chat_switch_failed')),
+      );
     }
   }
 
@@ -158,7 +165,10 @@ class ChatNotifier extends StateNotifier<ChatState> {
       await switchChat(id);
       await loadSessions();
     } catch (e) {
-      state = state.copyWith(loading: false, error: e.toString());
+      state = state.copyWith(
+        loading: false,
+        error: friendlyErrorMessage(e, action: L10n.t('err_new_chat_failed')),
+      );
     }
   }
 
@@ -170,7 +180,9 @@ class ChatNotifier extends StateNotifier<ChatState> {
       }
       await loadSessions();
     } catch (e) {
-      state = state.copyWith(error: e.toString());
+      state = state.copyWith(
+        error: friendlyErrorMessage(e, action: L10n.t('err_delete_chat_failed')),
+      );
     }
   }
 
@@ -259,7 +271,7 @@ class ChatNotifier extends StateNotifier<ChatState> {
             streaming: false,
             currentStreamContent: '',
             agentEvents: [],
-            error: e.toString(),
+            error: friendlyErrorMessage(e, action: L10n.t('err_message_failed')),
           );
         }
       },

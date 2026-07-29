@@ -18,7 +18,7 @@ import '../core/l10n.dart';
 /// MemoApiClient's own extractErrorMessage instead of dumping `e` raw — this
 /// used to be a weaker, independent fallback that this function itself
 /// warned against and then did anyway for every non-401/timeout case.
-String _friendlyError(Object e, {required String action}) {
+String friendlyErrorMessage(Object e, {required String action}) {
   if (e is DioException) {
     if (e.response?.statusCode == 401) {
       return L10n.t('err_token_invalid');
@@ -179,7 +179,7 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
     } catch (e) {
       state = state.copyWith(
         connecting: false,
-        error: _friendlyError(e, action: L10n.t('err_connection_failed')),
+        error: friendlyErrorMessage(e, action: L10n.t('err_connection_failed')),
       );
     }
   }
@@ -312,7 +312,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     } catch (e) {
       state = RemoteAccessState(
         loading: false,
-        error: _friendlyError(e, action: L10n.t('err_remote_status')),
+        error: friendlyErrorMessage(e, action: L10n.t('err_remote_status')),
       );
     }
   }
@@ -334,7 +334,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     } catch (e) {
       state = state.copyWith(
         enabling: false,
-        error: _friendlyError(e, action: L10n.t('err_ngrok_enable')),
+        error: friendlyErrorMessage(e, action: L10n.t('err_ngrok_enable')),
       );
     }
   }
@@ -347,7 +347,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     } catch (e) {
       state = state.copyWith(
         enabling: false,
-        error: _friendlyError(e, action: L10n.t('err_remote_disable')),
+        error: friendlyErrorMessage(e, action: L10n.t('err_remote_disable')),
       );
     }
   }
@@ -368,7 +368,7 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
       await loadStatus();
     } catch (e) {
       state = state.copyWith(
-        error: _friendlyError(e, action: L10n.t('err_auto_start')),
+        error: friendlyErrorMessage(e, action: L10n.t('err_auto_start')),
       );
     }
   }

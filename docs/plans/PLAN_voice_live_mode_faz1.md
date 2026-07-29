@@ -353,9 +353,14 @@ olarak açık bırakılmış maddeler var:**
    kabul edilen yeni risk:** AEC olmadan (hâlâ Faz 4 kapsamı) hoparlörle
    kullanımda VAD, Memo'nun kendi sesini yeni bir konuşma sanıp
    kendi kendini kesebilir — kulaklıkla bu risk yok.
-2. **VAD modeli hâlâ CDN'den iniyor**, `binaries/`'a gömülü değil —
-   local-first mimariye aykırı, üretime girmeden önce kapatılmalı. Bu
-   ortamda internet erişimi olmadığı için hâlâ kapatılamadı.
+2. ~~**VAD modeli hâlâ CDN'den iniyor**, `binaries/`'a gömülü değil~~ →
+   **tamamlandı (2026-07-29):** Silero VAD v4 modeli Flutter asset'i olarak
+   `frontend/assets/vad/` altında paketleniyor. Native VAD yükleyicisi asset
+   anahtarını kullandığından uygulama çalışırken CDN isteği yapılmıyor;
+   `download_binaries.sh` sabit sürüm + SHA-256 ile geliştirici asset'ini
+   yeniden üretiyor. Web tarafı aynı varlığın Flutter'ın yayınladığı
+   `/assets/assets/vad/` yolunu kullanır. Not: Web'in ONNX Runtime WASM
+   dosyaları bu değişikliğin dışında kalır; Memo'nun hedefi masaüstüdür.
 
 **Bu ortamda gerçek Piper/VAD binary'si yok** — hiçbir adım gerçek bir
 ses üretimi/dinleme/transkripsiyon ile canlı test edilmedi, sadece kod +

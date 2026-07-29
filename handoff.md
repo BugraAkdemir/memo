@@ -1,3 +1,40 @@
+# Handoff — 2026-07-29 (devam 9) — Faz 4 planı oluşturuldu, native AEC spike bekliyor
+
+## Özet
+
+Kullanıcı Faz 4'e geçilmesini ve AGENTS.md'nin küçük/doğrulanmış commit
+kurallarına uyulmasını istedi. Kural gereği koddan önce Faz 4'ün ayrı,
+dosya-bazlı planı yazıldı ve tek başına commitlendi:
+
+- `f06c782` — `docs/plans/PLAN_voice_live_mode_faz4.md`
+
+Araştırma/kod incelemesinin kritik sonucu: mevcut `vad`/`record` zinciri
+Android'de `VOICE_COMMUNICATION` + `AcousticEchoCanceler` isteyebiliyor,
+ama bu yalnızca destekleyen Android cihazda çalışır. `vad` paketi
+Linux/Windows için AEC olmadığını kendisi söylüyor. Memo'nun masaüstü
+çıkışı ise `WavPlayer` ile ayrı `paplay`/`aplay` subprocess'inden, mikrofon
+yakalama ise başka bir sahipten geliyor — uygulama AEC'nin zorunlu
+zaman-hizalı render referansına bugün hiç sahip değil.
+
+Bu nedenle `echoCancel: true` bayrağını tekrar geçirmek veya VAD eşiğini
+yükseltmek gerçek Faz 4 çözümü değildir. Planın seçtiği mimari: capture ve
+TTS render'ı tek bir duplex native ses motorunda toplamak, render
+referansını AEC'ye vermek, AEC-sonrası PCM'i mevcut VAD/STT zincirine
+iletmek. `WavPlayer` bu akışta yerini bu motora bırakacak.
+
+## Sıradaki Adım
+
+**4.1 — ses motoru spike ve platform sözleşmesi.** Önce Linux/Windows/macOS
+hedeflerinde aynı anda capture + render referansı + ölçülebilir AEC
+sağlayabilecek bir native altyapı seçilip küçük, sentetik PCM echo testiyle
+kanıtlanacak. Bu karar verilmeden Flutter paketini rastgele eklemek veya
+Live Mode davranışını değiştirmek yasak — `flutter_webrtc` hedef
+platformları desteklese de Memo'nun WAV TTS'ini/ham PCM VAD akışını AEC'ye
+bağlayan doğrulanmış bir genel API olduğu gösterilmedi.
+
+Bu ortamda gerçek hoparlör/mikrofon cihaz doğrulaması yok; 4.1'in sentetik
+testi seçim için gerekli ama hoparlör kabul testinin yerine geçmeyecek.
+
 # Handoff — 2026-07-29 (devam 8) — VAD modeli artık paketli, CDN bağımlılığı kapatıldı
 
 ## Özet

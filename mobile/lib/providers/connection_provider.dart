@@ -129,6 +129,21 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
     state = state.copyWith(baseUrl: url, token: token);
   }
 
+  /// Restores the saved backend URL/token and, if there is one, silently
+  /// tries to reconnect with it — instead of always landing on ConnectScreen
+  /// and requiring a manual tap even though the fields are already prefilled.
+  /// This matters most for a stable Tailscale (*.ts.net) URL, exactly the
+  /// case where "enter it once, it just works" is the whole point: without
+  /// this, every cold start still demanded a manual re-tap for no reason.
+  /// A failed attempt (backend off, token rotated) falls through to the
+  /// same ConnectScreen + prefilled-fields + error experience a manual
+  /// connect attempt already has today — nothing new to handle there.
+  Future<void> autoConnectIfPossible() async {
+    await loadSavedUrl();
+    if (state.baseUrl.isEmpty) return;
+    await connect(state.baseUrl, token: state.token);
+  }
+
   Future<void> connect(String url,
       {String token = '', bool remote = false}) async {
     state = state.copyWith(

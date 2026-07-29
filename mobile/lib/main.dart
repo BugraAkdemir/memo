@@ -69,7 +69,7 @@ class _AppShellState extends ConsumerState<AppShell> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(connectionStateProvider.notifier).loadSavedUrl();
+      ref.read(connectionStateProvider.notifier).autoConnectIfPossible();
       _startEventPolling();
     });
   }

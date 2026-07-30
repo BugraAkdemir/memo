@@ -1,4 +1,131 @@
-# Handoff — 2026-07-30 — Tailscale artık key gerektirmeden, tek tıkla bağlanıyor
+# Handoff — 2026-07-30 (devam) — Tailscale interactive login'de deadlock bulundu + düzeltildi, `/code-review` ile 4 ek bug daha kapatıldı
+
+## Özet
+
+Kullanıcı önceki oturumun (bu dosyanın bir önceki maddesi) özelliğini gerçek
+backend'de denedi, iki bug bildirdi: (1) "Tailscale ile Bağlan" butonuna
+basınca tarayıcı hiç açılmıyor, (2) `go run` ile açtığı backend Ctrl+C'ye
+tepki vermiyor, `memo --kill` ile kapatmak zorunda kaldı. Kullanıcı ayrıca
+codebase-memory kullanılmasını ve `/code-review` çalıştırılmasını istedi.
+
+**Kök neden (gerçek bir tsnet node'uyla standalone repro ile doğrulandı):**
+`internal/tunnel/tailscale.go`'nun `Tailscale.Start()`'ı `t.mu`'yu
+`defer t.mu.Unlock()` ile fonksiyonun sonuna kadar (yani key'siz yolda
+dakikalarca bloke olan `connect()`'in `srv.Up(ctx)` çağrısı dahil) elinde
+tutuyordu. `connect()`'in içindeki `watchAuthURL` goroutine'i, login URL'ini
+yakalayınca **aynı kilidi isteyen** `t.setPendingAuthURL`'i (tarayıcıyı açan
+kod) çağırıyordu — kendi kendini kilitleyen klasik bir deadlock. İkinci bug
+da aynı kökten: `internal/app/app.go`'nun `shutdownSync`'i kapanışta
+`Tailscale.Stop()`'u çağırıp bitmesini bekliyor (`wg.Wait()`), `Stop()` de
+aynı `t.mu`'yu istediği için o da bloke oluyordu — sadece 15sn'lik
+force-exit watchdog kurtarıyordu, ki bu da Ctrl+C'ye "hiç tepki yok" gibi
+görünüyordu.
+
+**Düzeltme:** `Start()` artık `connect()`'i çağırmadan önce kilidi bırakıp
+sonucu uygularken tekrar alıyor — `reconnectLoop`'un zaten doğru yaptığı
+desenle aynı. Kilidi erken bırakmanın açtığı yarışı kapatmak için yeni bir
+`connecting` bool (aynı kısa kilit altında `running` ile birlikte
+kontrol/set ediliyor) eklendi; `connect()` dönünce bir `stopped` yeniden
+kontrolü, ortasında `Stop()` çağrılmış bir tüneli diriltmeyi engelliyor.
+Standalone repro ile doğrulandı: fix öncesi `AuthURL()` hiç dolmuyordu ve
+`Stop()` sonsuza dek bloke oluyordu; fix sonrası `AuthURL()` saniyeler
+içinde doluyor, eşzamanlı çağrılan `Stop()` ~500ns'de dönüyor.
+
+**`/code-review` (8 paralel finder açısı) bu fix'in üzerinde çalıştırıldı,
+4 gerçek ek bug daha bulundu ve hepsi aynı commit'te düzeltildi:**
+
+1. `tailscale.go`'nun `Start()`'ındaki başarı logu, `t.mu.Unlock()`'tan
+   *sonra* `t.publicURL`'i okuyordu — eski "kilidi fonksiyon boyunca tut"
+   şeklinde güvenliydi, yeni şekilde gerçek bir kilitsiz-okuma data race'i
+   (`Stop()` aynı alanı eşzamanlı sıfırlayabiliyor). Değeri kilit hâlâ
+   tutulurken yerel değişkene alıp öyle logluyoruz artık.
+2. Erken "zaten çalışıyor/bağlanıyor" reddi hata dönüyordu ama `t.lastErr`'i
+   hiç set etmiyordu — bu çağrının dönüş değerini değil de sadece durumu
+   (`GetRemoteAccessStatus`) polling eden bir çağıran hiçbir hata görmeden
+   tam 5 dakika sessizce dönebiliyordu. Artık orada da `lastErr` set
+   ediliyor.
+3. `tailscale_test.go`'daki `TestStart_EmptyAuthKey`, bu oturumun bilerek
+   kaldırdığı tam da o davranışı (boş AuthKey'in anında reddedilmesi) test
+   ediyordu — artık boş key kasıtlı olarak interactive-login yolu, test
+   sessizce gerçek ağ çağrısı yapan, `interactiveLoginTimeout` kadar bloke
+   olan bir teste dönüşmüştü (`internal/tunnel` paketinin 1sn'den 301sn'ye
+   çıkmasının sebebi buydu — hiçbir test fail olmadan). Bu yolun gerçekten
+   unit-testable kısmı (`setPendingAuthURL`/`AuthURL` state'i, yeni
+   `connecting` guard'ı) hızlı ve deterministik testlerle değiştirildi,
+   paket süresi tekrar ~1sn'ye döndü.
+4. `SetTailscaleMode`, `a.remoteAccessEnabled = true`'yu yeni arka plan
+   goroutine'inin içinden, kilitsiz, tetikleyen HTTP isteği çoktan dönmüş
+   olsa bile 5 dakikaya kadar sonra yazıyordu — aynı alanı okuyup yazan
+   başka bir eşzamanlı isteğe (`remote.go`'nun `SetRemoteAccess`'i) karşı
+   gerçek bir race. Artık `cfg.RemoteAccess.Enabled` ile aynı yerde,
+   senkron olarak set ediliyor (bu alan "niyet"i temsil ediyor, canlı
+   bağlantı durumunu değil — o zaten `Tailscale.IsRunning()`).
+   Ayrıca: `startupTailscale()`'ın boot'ta otomatik başlatma kapısı
+   `TailscaleKey != ""` şartı arıyordu — interactive-login kullanıcıları bu
+   alanı hiç doldurmuyor, yani onların tüneli restart sonrası sessizce hiç
+   geri gelmiyordu (tsnet aslında saklı node kimliğinden yeniden
+   login'siz bağlanabilirdi). Yeni `TailscaleConnectedOnce` config alanı
+   (ilk başarılı bağlantıda, iki yolda da set ediliyor) kapıya OR'landı;
+   mevcut key'li kullanıcılar etkilenmedi (onların şart dalı değişmedi).
+
+## Bilinçli olarak ertelenen (düzeltilmedi, belgelendi)
+
+- **`Stop()` hâlâ devam eden `connect()`'i gerçekten iptal edemiyor** —
+  sadece state'i çeviriyor (sonuç uygulanmasın diye), ama altındaki
+  `srv.Up(ctx)` ve `watchAuthURL` goroutine'i kendi kendine dönene kadar
+  çalışmaya devam ediyor. Dar ama gerçek bir pencere: login ortasında
+  `Stop()`'a basıp hemen tekrar "Bağlan"a basmak, `t.connecting` o
+  terkedilmiş deneme kendi kendine bitene kadar (5 dakikaya kadar) hiçbir
+  hata göstermeden sessizce hiçbir şey yapmayabilir. Gerçek çözüm
+  `Start()`/`connect()`/`reconnectLoop`/`Stop()` boyunca iptal edilebilir
+  bir `context.Context` geçirmeyi gerektiriyor — bu oturumun kapsamının
+  dışında, ayrı bir iş.
+- **Daha önce kaydedilmiş manuel bir `TailscaleKey`, yeni varsayılan
+  (key'siz) butona basılınca sessizce tekrar kullanılıyor** — çünkü boş
+  `authKey` her zaman "saklı key'i koru" anlamına geldi (bu oturumdan önce
+  de böyleydi). Dar etki alanı (sadece daha önce manuel/gelişmiş key
+  akışını kullanmış biri etkilenir), düzeltmek API'ye "key'i temizle" ile
+  "değiştirme"yi ayıran açık bir sinyal eklemeyi gerektiriyor.
+- Review'ın reuse/simplification/efficiency/altitude açılarının bulduğu
+  bir dizi temizlik önerisi (3 yerde neredeyse birebir polling loop'u —
+  hem Dart hem Go tarafında —, `watchAuthURL`'ün 1sn'lik poll aralığının
+  tsnet'in kendi 5sn'lik döngüsüyle uyuşmaması, `Start()`/`reconnectLoop`'un
+  birbirine çok benzeyen ama paylaşılmayan "connect sonrası uygula" state
+  machine'leri) — bunlar gerçek bug değil, kalite iyileştirmesi; bilinçli
+  olarak bu oturuma dahil edilmedi.
+
+## Yan not: test sırasında istenmeyen tarayıcı sekmeleri
+
+Deadlock'ı doğrularken gerçek bir tsnet node'una karşı standalone repro
+çalıştırıldı (gerçek ağ çağrıları, Tailscale'in login sunucusuna). Fix
+öncesi denemeler deadlock'a takıldığı için zararsızdı, ama fix sonrası
+doğrulama (`Stop()` eşzamanlı çağrıldığında ~500ns'de dönüyor mu testi)
+`setPendingAuthURL`'i gerçekten tetikledi ve kullanıcının **gerçek,
+zaten açık Firefox'unda** en az bir yeni sekme açtı (sahte "memo-repro-scratch2"
+test node'unun login sayfası) — kullanıcı bunu fark edip tepki gösterdi.
+Zarasız (rastgele bir test node'unun login sayfası, kapatılabilir), ama
+bu sandboxed ortamın kullanıcının gerçek masaüstü/tarayıcısı olduğu,
+izole bir sanal ortam olmadığı unutulmamalı — bir sonraki oturumda benzer
+canlı/yan-etkili bir repro gerekirse önce kullanıcıya haber verilmeli.
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` —
+  hepsi yeşil, `internal/tunnel` 301sn'den ~1sn'ye döndü.
+- Commit: `e1b240f`.
+
+## Sıradaki Oturum İçin
+
+1. Kullanıcı gerçek Flutter uygulamasında butona basıp uçtan uca denemeli
+   (önceki oturumdan kalan aynı doğrulama adımı hâlâ geçerli).
+2. Yukarıdaki "bilinçli ertelenen" iki madde — özellikle `Stop()`'un
+   in-flight `connect()`'i iptal edememesi — kullanıcı isterse ayrı bir iş
+   olarak ele alınmalı.
+3. `docs/plans/` altında bu iş için bir plan dosyası açılmadı (küçük,
+   tek-oturumluk bug-fix + review turu olarak ele alındı) — bu bilinçli
+   bir kapsam kararıydı, AGENTS.md'nin plan-dosyası kuralını ihlal etmiyor.
+
+
 
 ## Özet
 

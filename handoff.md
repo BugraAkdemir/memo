@@ -1,4 +1,75 @@
-# Handoff — 2026-07-29 (devam 11) — Ses hızı/seviyesi şikayetleri: iki hızlı düzeltme
+# Handoff — 2026-07-30 — Tailscale artık key gerektirmeden, tek tıkla bağlanıyor
+
+## Özet
+
+Kullanıcı Tailscale bağlantısının önündeki asıl sürtünmenin manuel auth-key
+alma adımı olduğunu belirtti ("kullanıcının PC'sinde CLI'a falan gerek
+olmadan direkt tarayıcı açılıp onay verip login olunabilir mi") — evet,
+`tsnet`'in kendi interactive login akışı (resmi Tailscale client'larının
+kullandığı aynı mekanizma) tam olarak bunu sağlıyor. İki ayrı commit:
+
+- `47bdc3b` (backend) — `internal/tunnel/tailscale.go`: `TailscaleConfig.AuthKey`
+  artık opsiyonel. Boşsa `connect()` `srv.Start()` + `LocalClient()` ile
+  erken bir client alıyor, yeni `watchAuthURL` (1sn poll,
+  `lc.StatusWithoutPeers`, tsnet'in kendi `printAuthURLLoop`'unun aynısı ama
+  dışa açılmış hali) `srv.Up(ctx)` bloke olduğu sürece paralel çalışıp login
+  URL'ini yakalıyor. URL, yeni `*Tailscale.setPendingAuthURL` üzerinden hem
+  otomatik tarayıcıda açılıyor (yeni `internal/browseropen` paketi —
+  `cli_flags.go`'nun `--github`/`--bugreport`/`--docs` bayraklarındaki
+  platform switch'inden çıkarıldı, ikisi de artık aynı kodu paylaşıyor) hem
+  de yeni `AuthURL()` getter'ıyla dışarı veriliyor (oto-açma başarısız
+  olursa — headless ortam, varsayılan tarayıcı yok — fallback). Key'li yol
+  değişmedi (`keyedLoginTimeout`, hâlâ 90sn); key'siz yol insan onayı
+  beklediği için `interactiveLoginTimeout` = 5 dakika. `reconnectLoop` da
+  aynı callback'i kullanıyor, yani oturum ortasında key süresi dolarsa da
+  yeni bir login isteği çıkabiliyor. `internal/app/remote_tailscale.go`:
+  `startTailscale` artık key şartı aramıyor; `SetTailscaleMode` key'siz
+  yolu arkaplana alıyor (`Start()` dakikalarca bloke olabildiği için
+  `/api/remote-access` isteğini kilitlememesi lazım). `internal/app/remote.go`:
+  `GetRemoteAccessStatus`'a `tailscale_auth_url` eklendi.
+- `2792893` (frontend) — `remote_access_tab.dart`: birincil buton artık
+  `authKey: ''` ile "Tailscale ile Bağlan" — key kutusu artık varsayılan
+  görünmüyor, "Gelişmiş: manuel auth key ile bağlan" toggle'ının arkasına
+  alındı (headless/sunucu senaryosu için hâlâ destekleniyor). `_enableTailscale`
+  artık tek seferlik 2sn delay yerine 5 dakikaya kadar 1sn'lik polling
+  yapıyor, `tailscale_auth_url` alanını yerel `_tsPendingAuthUrl` state'ine
+  yansıtıp "tarayıcıda onayla" ipucu + fallback "Giriş sayfasını aç"
+  linkini (`url_launcher`, `report_bug_tab.dart`'takiyle aynı desen) canlı
+  gösteriyor. `l10n.dart`'a TR+EN 4 yeni key + iki metnin "key gerekir"
+  ifadesinin kaldırılması.
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./...` —
+  hepsi yeşil (`internal/tunnel` dahil, 300s — health-check/reconnect
+  testleri gerçek zaman bekliyor, beklenen; key'li yolun davranışı
+  değişmedi).
+- Frontend: `flutter analyze lib/` (yalnızca önceden var olan 4
+  `use_build_context_synchronously` info'su), `flutter test` (hepsi yeşil),
+  Rule #8 grep (dokunulan dosyalarda hardcoded literal yok).
+
+**Bu ortamda gerçek bir Tailscale hesabı/tarayıcı ile uçtan uca hiç
+denenmedi** — tsnet API seviyesinde (auth URL'in gerçekten
+`StatusWithoutPeers`'tan geldiği, `srv.Up`'ın key'siz de bloke olup
+authenticate olunca döndüğü) mantık doğru ama gerçek buton tıklaması →
+tarayıcı sekmesi → onay → tünel ayakta akışı kullanıcı tarafından canlı
+denenmeli.
+
+## Sıradaki Adım
+
+1. Kullanıcı gerçek Flutter uygulamasında butona basıp uçtan uca denemeli.
+2. `startupTailscale` (boot-time auto-start) bilinçli olarak
+   `rc.TailscaleKey == ""` durumunda hâlâ atlanıyor — kimse ekranda değilken
+   boot'ta tarayıcı açmak anlamsız/istenmeyen; bu sadece manuel key ile
+   headless otomatik başlatma senaryosu için geçerliliğini koruyor. Bu
+   tradeoff kullanıcıya söylenmedi henüz, gerekirse ayrıca netleştirilmeli.
+3. Önceki oturumdan kalan, ilgisiz bir konu: `agent-templates/` altındaki 4
+   şablon dosyası (`64db9d0`'de eklenmişti) bir noktada çalışma
+   dizininde silinmiş görünüyordu, sonra git status'ta kayboldu — kullanıcı
+   tarafında mı çözüldü yoksa hâlâ bir tutarsızlık var mı teyit edilmedi,
+   bu iş oturumunda dokunulmadı.
+
+
 
 ## Özet
 

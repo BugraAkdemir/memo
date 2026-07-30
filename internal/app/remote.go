@@ -30,6 +30,7 @@ type RemoteAccessStatus struct {
 	TailscaleIP       string `json:"tailscale_ip"`
 	TailscaleError    string `json:"tailscale_error"`
 	TailscaleRunning  bool   `json:"tailscale_running"`
+	TailscaleAuthURL  string `json:"tailscale_auth_url"` // set while an interactive login awaits browser approval
 
 	Beta bool `json:"beta"`
 }
@@ -75,6 +76,7 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 		if err := a.tailscaleTunnel.LastError(); err != "" {
 			status.TailscaleError = err
 		}
+		status.TailscaleAuthURL = a.tailscaleTunnel.AuthURL()
 	}
 	return status
 }

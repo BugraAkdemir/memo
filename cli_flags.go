@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"memo/internal/browseropen"
 	"memo/internal/config"
 	"memo/internal/llama"
 	"memo/internal/replcli"
@@ -94,30 +95,12 @@ func printVersion(version string) {
 	fmt.Println(strings.TrimSpace(version))
 }
 
-// openURL opens u in the user's default browser. Each platform has exactly
-// one reliable way to do this and no Go stdlib support, so this is the one
-// place that shells out for it.
-func openURL(u string) error {
-	var cmd *exec.Cmd
-	switch runtime.GOOS {
-	case "windows":
-		// rundll32 rather than `start`: `start` is a cmd.exe builtin, not an
-		// executable, so it can't be exec'd directly.
-		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", u)
-	case "darwin":
-		cmd = exec.Command("open", u)
-	default:
-		cmd = exec.Command("xdg-open", u)
-	}
-	return cmd.Start()
-}
-
 // runOpenURL is the shared body of --github/--bugreport/--docs: try to open a
 // browser, and always print the URL too, so the command is still useful over
 // SSH or anywhere without a desktop session.
 func runOpenURL(label, u string) int {
 	fmt.Printf("%s: %s\n", label, u)
-	if err := openURL(u); err != nil {
+	if err := browseropen.OpenURL(u); err != nil {
 		fmt.Fprintf(os.Stderr, "Tarayıcı açılamadı (%v) — linki elle açabilirsin.\n", err)
 		fmt.Fprintf(os.Stderr, "Could not open a browser (%v) — open the link manually.\n", err)
 		return 1

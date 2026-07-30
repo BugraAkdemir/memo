@@ -10,6 +10,7 @@ package tunnel
 import (
 	"context"
 	"fmt"
+	"memo/internal/browseropen"
 	"memo/internal/logx"
 	"net"
 	"net/http"
@@ -19,13 +20,18 @@ import (
 	"sync"
 	"time"
 
+	"tailscale.com/client/local"
 	"tailscale.com/tsnet"
 )
 
-// TailscaleConfig configures a Tailscale tunnel.
+// TailscaleConfig configures a Tailscale tunnel. Leaving AuthKey empty
+// triggers interactive browser login instead (see connect below) — this is
+// the default, key-free path used by the Settings UI's "Tailscale ile
+// bağlan" button; a manually-entered AuthKey remains supported for
+// headless/automated setups.
 type TailscaleConfig struct {
 	Hostname  string // node name on the tailnet (e.g. "memo")
-	AuthKey   string // tailnet auth key (tskey-auth-...)
+	AuthKey   string // tailnet auth key (tskey-auth-...); empty = interactive login
 	Funnel    bool   // expose a public HTTPS URL via Tailscale Funnel
 	LocalPort int    // local web server port to reverse-proxy to
 	StateDir  string // persistent identity/state directory
@@ -36,6 +42,16 @@ const (
 	reconnectMaxDelay   = 60 * time.Second
 	healthCheckInterval = 20 * time.Second
 	healthCheckTimeout  = 10 * time.Second
+
+	// keyedLoginTimeout bounds the fast, non-interactive path (an auth key
+	// authenticates in a couple of seconds against the control plane).
+	keyedLoginTimeout = 90 * time.Second
+	// interactiveLoginTimeout bounds the key-free path: a human has to see
+	// the browser tab, pick an identity provider, and click approve.
+	interactiveLoginTimeout = 5 * time.Minute
+	// authURLPollInterval controls how often connect() checks tsnet's local
+	// status for a pending login URL while waiting on Up().
+	authURLPollInterval = 1 * time.Second
 )
 
 // tailscaleConn is what connect() produces: an authenticated node plus the
@@ -54,15 +70,16 @@ type tailscaleConn struct {
 // is called — the caller does not need to notice a drop and manually
 // restart the tunnel.
 type Tailscale struct {
-	mu         sync.Mutex
-	srv        *tsnet.Server
-	ln         net.Listener
-	publicURL  string
-	ipURL      string // http://100.x.x.x — bypasses MagicDNS
-	lastErr    string
-	running    bool
-	stopped    bool // true once Stop() has been called for the current session
-	generation int  // bumped on every Start()/Stop() so a stale reconnect goroutine can detect it's been superseded
+	mu             sync.Mutex
+	srv            *tsnet.Server
+	ln             net.Listener
+	publicURL      string
+	ipURL          string // http://100.x.x.x — bypasses MagicDNS
+	lastErr        string
+	running        bool
+	stopped        bool   // true once Stop() has been called for the current session
+	generation     int    // bumped on every Start()/Stop() so a stale reconnect goroutine can detect it's been superseded
+	pendingAuthURL string // set while an interactive login is awaiting browser approval
 }
 
 // NewTailscale creates an (unstarted) Tailscale tunnel manager.
@@ -71,7 +88,13 @@ func NewTailscale() *Tailscale { return &Tailscale{} }
 // connect brings up a single tsnet node and listener. It does not touch
 // *Tailscale state, so it can be safely (re)tried independent of the
 // struct's lock.
-func connect(cfg TailscaleConfig) (*tailscaleConn, error) {
+//
+// When cfg.AuthKey is empty, tsnet.Up blocks waiting for a human to complete
+// an interactive login in the browser rather than failing outright. While
+// it's blocked, watchAuthURL polls the node's local status for the pending
+// login URL and reports it via onAuthURL (nil is fine — the URL is simply
+// dropped) so the caller can surface/auto-open it.
+func connect(cfg TailscaleConfig, onAuthURL func(string)) (*tailscaleConn, error) {
 	srv := &tsnet.Server{
 		Hostname: cfg.Hostname,
 		AuthKey:  cfg.AuthKey,
@@ -79,14 +102,33 @@ func connect(cfg TailscaleConfig) (*tailscaleConn, error) {
 		Logf:     func(string, ...any) {}, // silence verbose tsnet logs
 	}
 
-	ctx, cancel := context.WithTimeout(context.Background(), 90*time.Second)
+	timeout := keyedLoginTimeout
+	if cfg.AuthKey == "" {
+		timeout = interactiveLoginTimeout
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
+
+	if cfg.AuthKey == "" {
+		if err := srv.Start(); err != nil {
+			srv.Close()
+			return nil, fmt.Errorf("tailscale start: %w", err)
+		}
+		if lc, err := srv.LocalClient(); err == nil {
+			watchCtx, watchCancel := context.WithCancel(ctx)
+			defer watchCancel()
+			go watchAuthURL(watchCtx, lc, onAuthURL)
+		}
+	}
 
 	// Up blocks until the node is authenticated and has an address.
 	status, err := srv.Up(ctx)
 	if err != nil {
 		srv.Close()
 		return nil, fmt.Errorf("tailscale up: %w", err)
+	}
+	if onAuthURL != nil {
+		onAuthURL("") // authenticated now — clear any pending login URL
 	}
 
 	var ln net.Listener
@@ -112,8 +154,36 @@ func connect(cfg TailscaleConfig) (*tailscaleConn, error) {
 	return conn, nil
 }
 
+// watchAuthURL polls the node's local status while it's waiting to be
+// authenticated and reports the pending login URL (once per distinct value)
+// via onAuthURL — the mechanism tsnet itself uses internally for
+// printAuthURLLoop, just surfaced to the caller instead of only logged.
+func watchAuthURL(ctx context.Context, lc *local.Client, onAuthURL func(string)) {
+	if onAuthURL == nil {
+		return
+	}
+	ticker := time.NewTicker(authURLPollInterval)
+	defer ticker.Stop()
+	last := ""
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			st, err := lc.StatusWithoutPeers(ctx)
+			if err != nil || st.AuthURL == "" || st.AuthURL == last {
+				continue
+			}
+			last = st.AuthURL
+			onAuthURL(last)
+		}
+	}
+}
+
 // Start brings up the tsnet node and begins serving. It blocks until the node
-// is authenticated and the URL is known, or until the timeout elapses.
+// is authenticated and the URL is known, or until the timeout elapses. With
+// an empty cfg.AuthKey it blocks for up to interactiveLoginTimeout waiting on
+// a human to approve the login opened in their browser (see connect).
 func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	t.mu.Lock()
 	defer t.mu.Unlock()
@@ -121,14 +191,11 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	if t.running {
 		return fmt.Errorf("tailscale tunnel already running")
 	}
-	if cfg.AuthKey == "" {
-		return fmt.Errorf("tailscale auth key is required")
-	}
 	if cfg.Hostname == "" {
 		cfg.Hostname = "memo"
 	}
 
-	conn, err := connect(cfg)
+	conn, err := connect(cfg, t.setPendingAuthURL)
 	if err != nil {
 		t.lastErr = err.Error()
 		return err
@@ -145,9 +212,36 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	return nil
 }
 
+// setPendingAuthURL records the interactive-login URL tsnet is currently
+// waiting on (or clears it, given "") and, the first time a given URL shows
+// up, opens it in the user's default browser — so the whole "Tailscale ile
+// bağlan" flow needs no manual copy/paste of a key or a link. Safe to call
+// from connect()'s watcher goroutine concurrently with the rest of *Tailscale.
+func (t *Tailscale) setPendingAuthURL(authURL string) {
+	t.mu.Lock()
+	isNew := authURL != "" && authURL != t.pendingAuthURL
+	t.pendingAuthURL = authURL
+	t.mu.Unlock()
+
+	if isNew {
+		if err := browseropen.OpenURL(authURL); err != nil {
+			logx.Printf("tunnel: tailscale could not auto-open login URL (%v): %s", err, authURL)
+		}
+	}
+}
+
+// AuthURL returns the pending interactive-login URL, or "" when no login is
+// currently awaiting browser approval.
+func (t *Tailscale) AuthURL() string {
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	return t.pendingAuthURL
+}
+
 // applyConn installs a freshly connected node's derived state. Caller must
 // hold t.mu.
 func (t *Tailscale) applyConn(conn *tailscaleConn, cfg TailscaleConfig) {
+	t.pendingAuthURL = ""
 	dnsName := strings.TrimSuffix(conn.dnsName, ".")
 	if cfg.Funnel {
 		t.publicURL = "https://" + dnsName
@@ -206,7 +300,7 @@ func (t *Tailscale) reconnectLoop(cfg TailscaleConfig, gen int) {
 			return
 		}
 
-		conn, err := connect(cfg)
+		conn, err := connect(cfg, t.setPendingAuthURL)
 		if err != nil {
 			t.mu.Lock()
 			if t.stopped || t.generation != gen {
@@ -329,6 +423,7 @@ func (t *Tailscale) Stop() {
 	}
 	t.publicURL = ""
 	t.ipURL = ""
+	t.pendingAuthURL = ""
 }
 
 // PublicURL returns the stable URL, or "" when not running.

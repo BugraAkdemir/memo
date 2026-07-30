@@ -12,12 +12,11 @@ import (
 )
 
 // startTailscale brings up the embedded Tailscale tunnel that reverse-proxies to
-// the local web server. The web server must already be running on the given port.
+// the local web server. The web server must already be running on the given
+// port. rc.TailscaleKey may be empty — Start() then triggers interactive
+// browser login instead of failing.
 func (a *App) startTailscale(port int) error {
 	rc := a.cfg.RemoteAccess
-	if rc.TailscaleKey == "" {
-		return fmt.Errorf("tailscale auth key not set")
-	}
 	if a.tailscaleTunnel == nil {
 		a.tailscaleTunnel = tunnel.NewTailscale()
 	}
@@ -88,11 +87,28 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 	}
 
 	if enabled {
-		if err := a.startTailscale(port); err != nil {
-			return fmt.Errorf("start tailscale: %w", err)
+		if a.cfg.RemoteAccess.TailscaleKey == "" {
+			// Interactive login: startTailscale blocks (up to
+			// interactiveLoginTimeout) waiting for the user to approve the
+			// browser prompt tsnet just opened. Running it inline would hang
+			// this request for minutes, so it goes to the background —
+			// progress is polled via GetRemoteAccessStatus's
+			// tailscale_running/tailscale_auth_url/tailscale_error fields.
+			go func() {
+				if err := a.startTailscale(port); err != nil {
+					logx.Printf("[tailscale] interactive login failed: %v", err)
+					return
+				}
+				a.remoteAccessEnabled = true
+				logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
+			}()
+		} else {
+			if err := a.startTailscale(port); err != nil {
+				return fmt.Errorf("start tailscale: %w", err)
+			}
+			a.remoteAccessEnabled = true
+			logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
 		}
-		a.remoteAccessEnabled = true
-		logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
 	} else {
 		a.stopTailscale()
 	}

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter/services.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import 'dart:async';
@@ -22,6 +23,8 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   int _listenPort = 8090;
   bool _tsFunnel = false;
   bool _tsBusy = false;
+  bool _tsAdvanced = false;
+  String _tsPendingAuthUrl = '';
   bool _enabling = false;
   bool _disposed = false;
 
@@ -48,16 +51,35 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   }
 
   Future<void> _enableTailscale() async {
-    setState(() => _tsBusy = true);
+    setState(() {
+      _tsBusy = true;
+      _tsPendingAuthUrl = '';
+    });
     try {
       await ref.read(apiClientProvider).setTailscaleMode(
             true,
             _listenPort,
-            authKey: _tsKeyCtrl.text.trim(),
+            authKey: _tsAdvanced ? _tsKeyCtrl.text.trim() : '',
             hostname: _tsHostCtrl.text.trim(),
             funnel: _tsFunnel,
           );
-      await Future.delayed(const Duration(seconds: 2));
+      // Interactive login (no auth key) waits on a human approving a browser
+      // prompt, which can take minutes — poll instead of a single fixed
+      // delay, and surface the pending login URL live so the fallback
+      // "open login page" link/hint appears as soon as it's known.
+      for (int i = 0; i < 300; i++) {
+        if (_disposed) return;
+        await Future.delayed(const Duration(seconds: 1));
+        if (_disposed) return;
+        try {
+          final status = await ref.read(apiClientProvider).getRemoteAccess();
+          final running = status['tailscale_running'] as bool? ?? false;
+          final err = status['tailscale_error'] as String? ?? '';
+          final authUrl = status['tailscale_auth_url'] as String? ?? '';
+          if (mounted) setState(() => _tsPendingAuthUrl = authUrl);
+          if (running || err.isNotEmpty) break;
+        } catch (_) {}
+      }
       ref.invalidate(remoteAccessProvider);
     } catch (e) {
       if (mounted) {
@@ -65,8 +87,19 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
             .showSnackBar(SnackBar(content: Text(L10n.t('remote_ts_error', {'e': '$e'}))));
       }
     } finally {
-      if (mounted) setState(() => _tsBusy = false);
+      if (mounted) {
+        setState(() {
+          _tsBusy = false;
+          _tsPendingAuthUrl = '';
+        });
+      }
     }
+  }
+
+  Future<void> _openTsLoginLink(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _disableTailscale() async {
@@ -566,18 +599,60 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           ],
 
           if (!tsRunning) ...[
-            TextField(
-              controller: _tsKeyCtrl,
-              decoration: InputDecoration(
-                labelText: L10n.t('remote_ts_auth_key_label'),
-                hintText: 'tskey-auth-...',
-                prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
-                isDense: true,
+            if (_tsBusy && _tsPendingAuthUrl.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                margin: const EdgeInsets.only(bottom: 12),
+                decoration: BoxDecoration(
+                  color: MemoTheme.accent.withValues(alpha: 0.08),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: MemoTheme.accent.withValues(alpha: 0.35)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      L10n.t('remote_ts_awaiting_login'),
+                      style: TextStyle(fontSize: 12, color: theme.textMain),
+                    ),
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      onPressed: () => _openTsLoginLink(_tsPendingAuthUrl),
+                      icon: const Icon(Icons.open_in_new_rounded, size: 16),
+                      label: Text(L10n.t('remote_ts_open_login_link')),
+                    ),
+                  ],
+                ),
               ),
-              style: TextStyle(
-                  fontFamily: 'JetBrainsMono', fontSize: 13, color: theme.textMain),
+            ],
+            TextButton(
+              onPressed: () => setState(() => _tsAdvanced = !_tsAdvanced),
+              style: TextButton.styleFrom(padding: EdgeInsets.zero, alignment: Alignment.centerLeft),
+              child: Text(
+                L10n.t('remote_ts_advanced_toggle'),
+                style: TextStyle(fontSize: 12, color: theme.textDim),
+              ),
             ),
-            const SizedBox(height: 10),
+            if (_tsAdvanced) ...[
+              const SizedBox(height: 4),
+              Text(
+                L10n.t('remote_ts_manual_key_hint'),
+                style: TextStyle(fontSize: 11, color: theme.textDim),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: _tsKeyCtrl,
+                decoration: InputDecoration(
+                  labelText: L10n.t('remote_ts_auth_key_label'),
+                  hintText: 'tskey-auth-...',
+                  prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
+                  isDense: true,
+                ),
+                style: TextStyle(
+                    fontFamily: 'JetBrainsMono', fontSize: 13, color: theme.textMain),
+              ),
+              const SizedBox(height: 10),
+            ],
             Row(
               children: [
                 Expanded(

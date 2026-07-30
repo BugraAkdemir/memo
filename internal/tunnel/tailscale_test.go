@@ -39,17 +39,28 @@ func TestLastError_New(t *testing.T) {
 	}
 }
 
-func TestStart_EmptyAuthKey(t *testing.T) {
+// An empty AuthKey is no longer rejected upfront — it's the (default)
+// interactive-login path, which genuinely tries to reach Tailscale's control
+// servers and blocks for up to interactiveLoginTimeout waiting on a human to
+// approve a browser prompt. That's not something a unit test should exercise
+// end-to-end (real network I/O, minutes-long by design); instead, test the
+// fast, deterministic part of that path directly: the pending-auth-URL
+// plumbing (setPendingAuthURL/AuthURL) that Start()/connect() drive.
+func TestSetPendingAuthURL_UpdatesAuthURL(t *testing.T) {
 	ts := NewTailscale()
-	err := ts.Start(TailscaleConfig{
-		Hostname:  "test",
-		AuthKey:   "",
-		Funnel:    false,
-		LocalPort: 8090,
-		StateDir:  t.TempDir(),
-	})
-	if err == nil {
-		t.Error("expected error for empty auth key")
+	if url := ts.AuthURL(); url != "" {
+		t.Fatalf("expected empty AuthURL initially, got %q", url)
+	}
+
+	const u = "https://login.tailscale.com/a/testtoken"
+	ts.setPendingAuthURL(u)
+	if url := ts.AuthURL(); url != u {
+		t.Errorf("expected AuthURL %q, got %q", u, url)
+	}
+
+	ts.setPendingAuthURL("")
+	if url := ts.AuthURL(); url != "" {
+		t.Errorf("expected AuthURL cleared, got %q", url)
 	}
 }
 
@@ -62,6 +73,27 @@ func TestStart_AlreadyRunning(t *testing.T) {
 	err := ts.Start(TailscaleConfig{AuthKey: "tskey-auth-xxxx"})
 	if err == nil {
 		t.Error("expected error when already running")
+	}
+	// The early rejection must set lastErr too — otherwise a caller that
+	// only polls LastError()/GetRemoteAccessStatus (rather than the return
+	// value of this specific Start() call) sees no error at all.
+	if got := ts.LastError(); got == "" {
+		t.Error("expected LastError() to be set after an already-running rejection")
+	}
+}
+
+func TestStart_AlreadyConnecting(t *testing.T) {
+	ts := NewTailscale()
+	ts.mu.Lock()
+	ts.connecting = true
+	ts.mu.Unlock()
+
+	err := ts.Start(TailscaleConfig{AuthKey: "tskey-auth-xxxx"})
+	if err == nil {
+		t.Error("expected error when a connect() is already in flight")
+	}
+	if got := ts.LastError(); got == "" {
+		t.Error("expected LastError() to be set after an already-connecting rejection")
 	}
 }
 

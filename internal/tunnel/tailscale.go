@@ -78,6 +78,7 @@ type Tailscale struct {
 	lastErr        string
 	running        bool
 	stopped        bool   // true once Stop() has been called for the current session
+	connecting     bool   // true while a Start() call's connect() is in flight — see Start's doc comment
 	generation     int    // bumped on every Start()/Stop() so a stale reconnect goroutine can detect it's been superseded
 	pendingAuthURL string // set while an interactive login is awaiting browser approval
 }
@@ -184,29 +185,64 @@ func watchAuthURL(ctx context.Context, lc *local.Client, onAuthURL func(string))
 // is authenticated and the URL is known, or until the timeout elapses. With
 // an empty cfg.AuthKey it blocks for up to interactiveLoginTimeout waiting on
 // a human to approve the login opened in their browser (see connect).
+//
+// t.mu is deliberately released before calling connect() — connect() feeds
+// discovered auth URLs back through t.setPendingAuthURL, which itself needs
+// t.mu, so holding the lock across the (up to interactiveLoginTimeout, i.e.
+// minutes-long) blocking call would deadlock that callback against its own
+// caller. It would also block Stop()/AuthURL()/IsRunning() for the same
+// duration for any other goroutine — in particular, shutdownSync's
+// wg.Wait() on Tailscale.Stop(), which is why a stuck interactive login
+// used to make the whole app appear to hang on shutdown. The brief
+// connecting flag (checked/set under the same short lock as the running
+// check) closes the race a naive unlock-then-call would reopen: two
+// overlapping Start() calls both slipping past the "not running yet" check.
 func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	t.mu.Lock()
-	defer t.mu.Unlock()
-
-	if t.running {
-		return fmt.Errorf("tailscale tunnel already running")
+	if t.running || t.connecting {
+		// Set lastErr even for this early rejection — otherwise a caller that
+		// only polls LastError()/GetRemoteAccessStatus (e.g. the Settings UI's
+		// poll loop after clicking Connect twice in a row) sees no error at
+		// all and just spins silently until its own timeout.
+		err := fmt.Errorf("tailscale tunnel already running")
+		t.lastErr = err.Error()
+		t.mu.Unlock()
+		return err
 	}
 	if cfg.Hostname == "" {
 		cfg.Hostname = "memo"
 	}
+	t.connecting = true
+	// A fresh attempt starts clean even if a previous run ended in Stop() —
+	// Stop() can still flip this back to true mid-connect below, and that's
+	// exactly the signal the post-connect check needs.
+	t.stopped = false
+	t.mu.Unlock()
 
 	conn, err := connect(cfg, t.setPendingAuthURL)
+
+	t.mu.Lock()
+	t.connecting = false
 	if err != nil {
 		t.lastErr = err.Error()
+		t.mu.Unlock()
 		return err
 	}
-
-	t.stopped = false
+	if t.stopped {
+		// Stop() ran while connect() was still in flight (e.g. the user
+		// cancelled an interactive login, or the app is shutting down).
+		// Don't resurrect a tunnel that was explicitly torn down.
+		t.mu.Unlock()
+		conn.srv.Close()
+		return fmt.Errorf("tailscale tunnel stopped during connect")
+	}
 	t.generation++
 	gen := t.generation
 	t.applyConn(conn, cfg)
+	publicURL := t.publicURL
+	t.mu.Unlock()
 
-	logx.Printf("tunnel: tailscale up at %s (funnel=%v)", t.publicURL, cfg.Funnel)
+	logx.Printf("tunnel: tailscale up at %s (funnel=%v)", publicURL, cfg.Funnel)
 	go t.serveAndSupervise(conn.ln, cfg, gen)
 	go t.superviseHealth(cfg, gen)
 	return nil

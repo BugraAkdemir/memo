@@ -87,6 +87,16 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 	}
 
 	if enabled {
+		// Set synchronously, matching cfg.RemoteAccess.Enabled above — this
+		// reflects "remote access is turned on" (the user's intent), not
+		// "the tunnel is currently connected" (that's Tailscale.IsRunning(),
+		// the actual status GetRemoteAccessStatus already reports). Setting
+		// it eagerly means the interactive-login goroutine below never
+		// touches it, avoiding an unguarded write racing against
+		// remote.go's SetRemoteAccess (which reads/writes the same field on
+		// whatever goroutine an unrelated, concurrently-handled HTTP request
+		// lands on) up to interactiveLoginTimeout later.
+		a.remoteAccessEnabled = true
 		if a.cfg.RemoteAccess.TailscaleKey == "" {
 			// Interactive login: startTailscale blocks (up to
 			// interactiveLoginTimeout) waiting for the user to approve the
@@ -99,14 +109,20 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 					logx.Printf("[tailscale] interactive login failed: %v", err)
 					return
 				}
-				a.remoteAccessEnabled = true
+				a.cfg.RemoteAccess.TailscaleConnectedOnce = true
+				if err := config.Save(a.cfg); err != nil {
+					logx.Printf("WARN: save config: %v", err)
+				}
 				logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
 			}()
 		} else {
 			if err := a.startTailscale(port); err != nil {
 				return fmt.Errorf("start tailscale: %w", err)
 			}
-			a.remoteAccessEnabled = true
+			a.cfg.RemoteAccess.TailscaleConnectedOnce = true
+			if err := config.Save(a.cfg); err != nil {
+				logx.Printf("WARN: save config: %v", err)
+			}
 			logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
 		}
 	} else {
@@ -157,7 +173,17 @@ func (a *App) startupTailscale() {
 		return // beta features off: never run Tailscale
 	}
 	rc := a.cfg.RemoteAccess
-	if rc.TunnelMode != "tailscale" || !rc.Enabled || rc.TailscaleKey == "" {
+	if rc.TunnelMode != "tailscale" || !rc.Enabled {
+		return
+	}
+	if rc.TailscaleKey == "" && !rc.TailscaleConnectedOnce {
+		// Never actually connected (interactive login never completed, or a
+		// keyed setup that's never once succeeded) — auto-starting now would
+		// either silently no-op or, for the key-free case, pop an
+		// interactive browser login at boot with no human necessarily
+		// present to approve it. Once TailscaleConnectedOnce is true, tsnet
+		// reconnects from its persisted node identity in StateDir without
+		// needing a fresh login, so this only gates the never-connected case.
 		return
 	}
 	port := rc.Port

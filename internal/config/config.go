@@ -218,6 +218,13 @@ type RemoteAccessConfig struct {
 	TailscaleKey      string `yaml:"tailscale_key" json:"tailscale_key"`
 	TailscaleHostname string `yaml:"tailscale_hostname" json:"tailscale_hostname"`
 	TailscaleFunnel   bool   `yaml:"tailscale_funnel" json:"tailscale_funnel"`
+	// TailscaleConnectedOnce is set the first time the embedded tunnel
+	// connects successfully. Interactive-login users (TailscaleKey empty)
+	// never have a key for startupTailscale's boot-time gate to check —
+	// this is the signal that lets their tunnel auto-reconnect on the next
+	// launch too, since tsnet can reauthenticate silently from the node
+	// identity already persisted in StateDir without a fresh browser login.
+	TailscaleConnectedOnce bool `yaml:"tailscale_connected_once" json:"tailscale_connected_once"`
 }
 
 type APIConfig struct {

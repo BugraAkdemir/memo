@@ -1,7 +1,6 @@
 import 'package:flutter/material.dart' hide ConnectionState;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import '../core/l10n.dart';
@@ -22,7 +21,6 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
   late final TextEditingController _tokenCtrl;
   late final TextEditingController _ngrokTokenCtrl;
   int _mode = 0; // 0 = LAN, 1 = Tailscale, 2 = Remote (ngrok/manual)
-  bool _beta = false; // Tailscale tab only shows when beta is enabled
 
   bool get _isRemote => _mode != 0;
 
@@ -32,16 +30,13 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
     _urlCtrl = TextEditingController();
     _tokenCtrl = TextEditingController();
     _ngrokTokenCtrl = TextEditingController();
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
       ref.read(connectionStateProvider.notifier).loadSavedUrl();
       final state = ref.read(connectionStateProvider);
       _urlCtrl.text = state.baseUrl;
       _tokenCtrl.text = state.token;
-      final prefs = await SharedPreferences.getInstance();
-      if (!mounted) return;
       setState(() {
         _mode = state.remoteMode ? 2 : 0;
-        _beta = prefs.getBool('beta_enabled') ?? false;
       });
     });
   }
@@ -653,7 +648,7 @@ class _ConnectScreenState extends ConsumerState<ConnectScreen> {
       child: Row(
         children: [
           tab(L10n.t('mode_wifi'), Icons.wifi_rounded, 0),
-          if (_beta) tab(L10n.t('mode_tailscale'), Icons.hub_rounded, 1),
+          tab(L10n.t('mode_tailscale'), Icons.hub_rounded, 1),
           tab(L10n.t('mode_remote'), Icons.public_rounded, 2),
         ],
       ),

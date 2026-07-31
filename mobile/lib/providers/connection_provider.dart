@@ -320,10 +320,6 @@ class RemoteAccessNotifier extends StateNotifier<RemoteAccessState> {
     try {
       final status = await _client.getRemoteAccess();
       state = RemoteAccessState(loading: false, status: status);
-      // Cache the beta flag so the connect screen can decide whether to show
-      // the Tailscale tab even before a connection exists.
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('beta_enabled', status.beta);
     } catch (e) {
       state = RemoteAccessState(
         loading: false,

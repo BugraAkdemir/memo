@@ -59,11 +59,9 @@ func (a *App) stopTailscale() {
 }
 
 // SetTailscaleMode configures and (re)starts the Tailscale tunnel. Passing an
-// empty authKey keeps the previously stored key.
+// empty authKey keeps the previously stored key. No longer Beta-gated — see
+// SetBeta's doc comment for why Tailscale and Beta were decoupled.
 func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bool, port int) error {
-	if a.cfg != nil && !a.cfg.Beta {
-		return fmt.Errorf("Tailscale beta özelliğidir; Ayarlar'dan Beta'yı açın")
-	}
 	if authKey != "" {
 		a.cfg.RemoteAccess.TailscaleKey = authKey
 	}
@@ -135,20 +133,18 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 	return nil
 }
 
-// SetBeta toggles experimental features. Turning beta off immediately stops any
-// running Tailscale tunnel so it cannot keep running or interfering.
+// SetBeta toggles experimental features. Tailscale graduated out of Beta and
+// is no longer affected by this — it has its own on/off toggle
+// (SetTailscaleMode) and keeps running across a Beta flip. Turning beta off
+// still immediately stops Swarm, which remains genuinely experimental.
 func (a *App) SetBeta(enabled bool) error {
 	if a.cfg == nil {
 		return fmt.Errorf("config not loaded")
 	}
 	a.cfg.Beta = enabled
 	if !enabled {
-		a.stopTailscale()
-		if a.cfg.RemoteAccess.TunnelMode == "tailscale" {
-			a.cfg.RemoteAccess.TunnelMode = "lan"
-		}
-		// Same rule as Tailscale: beta-off must not leave experimental
-		// processes (swarm coordinator / rpc-server) running in the background.
+		// Beta-off must not leave experimental processes (swarm coordinator
+		// / rpc-server) running in the background.
 		a.stopSwarmForBetaOff()
 	}
 	if err := config.Save(a.cfg); err != nil {
@@ -173,8 +169,8 @@ const (
 
 // startupTailscale auto-starts the tunnel on launch when configured.
 func (a *App) startupTailscale() {
-	if a.cfg == nil || !a.cfg.Beta {
-		return // beta features off: never run Tailscale
+	if a.cfg == nil {
+		return
 	}
 	rc := a.cfg.RemoteAccess
 	if rc.TunnelMode != "tailscale" || !rc.Enabled {

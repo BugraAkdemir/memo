@@ -94,8 +94,11 @@ type AppConfig struct {
 	Swarm          SwarmConfig        `yaml:"swarm" json:"swarm"`
 	ActiveProvider string             `yaml:"active_provider" json:"active_provider"`
 
-	// Beta gates experimental features (e.g. the embedded Tailscale tunnel).
-	// Off by default: beta features are hidden and never run.
+	// Beta gates genuinely experimental features (e.g. Memo Swarm). Off by
+	// default: beta features are hidden and never run. The embedded
+	// Tailscale tunnel graduated out of Beta and has its own independent
+	// on/off toggle (RemoteAccess.Enabled/TunnelMode) — it is unaffected by
+	// this flag.
 	Beta bool `yaml:"beta" json:"beta"`
 }
 

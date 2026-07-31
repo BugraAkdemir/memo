@@ -834,11 +834,13 @@ func (s *Store) ImportLocalModel(sourcePath string) error {
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-// sanitizePath replaces "/" in repo IDs with "__" for safe directory names.
-func sanitizePath(repoID string) string {
-	return strings.ReplaceAll(repoID, "/", "__")
-}
-
+// unsanitizePath reverses the "/" → "__" directory-name encoding older Memo
+// versions used when downloads were nested one level under modelsDir as
+// modelsDir/<sanitized-repoID>/<filename>.gguf (see ListLocalModels' relPath
+// split below). Downloads are flat now (no subdirectory — see doDownload's
+// destPath), so nothing writes a sanitized name anymore, but ListLocalModels
+// still needs to read repoID back out of any such directory left over from a
+// pre-existing install.
 func unsanitizePath(dirName string) string {
 	return strings.ReplaceAll(dirName, "__", "/")
 }

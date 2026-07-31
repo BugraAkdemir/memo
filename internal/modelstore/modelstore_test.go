@@ -119,24 +119,6 @@ func TestAuthorFromRepoID(t *testing.T) {
 	}
 }
 
-func TestSanitizePath(t *testing.T) {
-	tests := []struct {
-		input string
-		want  string
-	}{
-		{"meta-llama/llama-3.2-3b", "meta-llama__llama-3.2-3b"},
-		{"nomic-ai/nomic-embed-text-v1.5", "nomic-ai__nomic-embed-text-v1.5"},
-		{"simple", "simple"},
-		{"", ""},
-	}
-	for _, tt := range tests {
-		got := sanitizePath(tt.input)
-		if got != tt.want {
-			t.Errorf("sanitizePath(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
 func TestUnsanitizePath(t *testing.T) {
 	tests := []struct {
 		input string
@@ -151,25 +133,6 @@ func TestUnsanitizePath(t *testing.T) {
 		got := unsanitizePath(tt.input)
 		if got != tt.want {
 			t.Errorf("unsanitizePath(%q) = %q, want %q", tt.input, got, tt.want)
-		}
-	}
-}
-
-func TestSanitizeUnsanitizeRoundtrip(t *testing.T) {
-	inputs := []string{
-		"meta-llama/llama-3.2-3b",
-		"nomic-ai/nomic-embed-text-v1.5",
-		"BAAI/bge-small-en-v1.5",
-		"single",
-	}
-	for _, input := range inputs {
-		sanitized := sanitizePath(input)
-		unsanitized := unsanitizePath(sanitized)
-		if unsanitized != strings.ReplaceAll(input, "/", "/") {
-			// unsanitize replaces __ with /, so "single" stays "single"
-			if input != "single" || unsanitized != "single" {
-				t.Errorf("roundtrip(%q) → sanitize → unsanitize = %q", input, unsanitized)
-			}
 		}
 	}
 }

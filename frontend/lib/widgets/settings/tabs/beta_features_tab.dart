@@ -116,13 +116,6 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
             ),
             const SizedBox(height: 12),
             _BetaFeatureRow(
-              icon: Icons.vpn_lock_rounded,
-              title: L10n.t('beta_item_tailscale_title'),
-              body: L10n.t('beta_item_tailscale_desc'),
-              enabled: beta,
-            ),
-            const SizedBox(height: 10),
-            _BetaFeatureRow(
               icon: Icons.hub_outlined,
               title: L10n.t('beta_item_swarm_title'),
               body: L10n.t('beta_item_swarm_desc'),

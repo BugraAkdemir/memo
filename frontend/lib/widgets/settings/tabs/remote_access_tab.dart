@@ -198,40 +198,9 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           const SizedBox(height: 20),
         ],
 
-        // Tailscale is a beta feature — the master toggle lives under
-        // Settings → Beta Features (not here). Show a short tip when off.
-        if (data['beta'] as bool? ?? false) ...[
-          // ── Tailscale (embedded, stable URL) — beta only ──────────────
-          _buildTailscaleSection(context, theme, data),
-          const SizedBox(height: 24),
-        ] else ...[
-          Container(
-            padding: const EdgeInsets.all(12),
-            margin: const EdgeInsets.only(bottom: 16),
-            decoration: BoxDecoration(
-              color: theme.bgPanel,
-              borderRadius: BorderRadius.circular(8),
-              border: Border.all(color: theme.borderSoft),
-            ),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Icon(Icons.science_outlined, size: 18, color: theme.textDim),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    L10n.t('remote_beta_moved_hint'),
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.4,
-                      color: theme.textDim,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
+        // ── Tailscale (embedded, stable URL) ──────────────────────────
+        _buildTailscaleSection(context, theme, data),
+        const SizedBox(height: 24),
 
         if (ngrokUrl.isNotEmpty) ...[
           _label(L10n.t('remote_ngrok_tunnel_url_label')),

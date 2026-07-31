@@ -572,6 +572,15 @@ func (s *Store) doDownload(ctx context.Context, entry *downloadEntry, repoID, fi
 	// Fetch and save HF metadata (tool-calling capability etc.) as a sidecar.
 	if meta, err := s.fetchModelMeta(repoID); err != nil {
 		logx.Printf("modelstore: fetchModelMeta skipped for %s: %v", repoID, err)
+		// Downloads are stored flat (no per-repo subdirectory, see the
+		// destPath comment above), so RepoID has no other source once this
+		// call fails — ListLocalModels can't recover it from the directory
+		// name for a file it never nested under one. Persist a repoID-only
+		// sidecar so the model isn't stuck with a permanently empty RepoID;
+		// HF tags/capabilities just stay unknown until re-downloaded.
+		if metaErr := saveModelMeta(destPath, &modelMeta{RepoID: repoID}); metaErr != nil {
+			logx.Printf("modelstore: saveModelMeta (repoID-only fallback) failed for %s: %v", destPath, metaErr)
+		}
 	} else if err := saveModelMeta(destPath, meta); err != nil {
 		logx.Printf("modelstore: saveModelMeta failed for %s: %v", destPath, err)
 	}

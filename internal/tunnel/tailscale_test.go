@@ -53,14 +53,30 @@ func TestSetPendingAuthURL_UpdatesAuthURL(t *testing.T) {
 	}
 
 	const u = "https://login.tailscale.com/a/testtoken"
-	ts.setPendingAuthURL(u)
+	ts.setPendingAuthURL(u, false)
 	if url := ts.AuthURL(); url != u {
 		t.Errorf("expected AuthURL %q, got %q", u, url)
 	}
 
-	ts.setPendingAuthURL("")
+	ts.setPendingAuthURL("", false)
 	if url := ts.AuthURL(); url != "" {
 		t.Errorf("expected AuthURL cleared, got %q", url)
+	}
+}
+
+// autoOpen only gates whether setPendingAuthURL attempts to launch a
+// browser — the URL itself must still be recorded either way, so
+// GetRemoteAccessStatus/the Settings UI can surface a "log in again" link
+// for a boot-time (non-interactive) attempt that turned out to need a fresh
+// login. Actually verifying the browser launch is skipped would need
+// injecting a fake browseropen.OpenURL, which isn't wired up for testing;
+// this only covers the state side.
+func TestSetPendingAuthURL_NoAutoOpenStillRecordsURL(t *testing.T) {
+	ts := NewTailscale()
+	const u = "https://login.tailscale.com/a/testtoken2"
+	ts.setPendingAuthURL(u, false)
+	if url := ts.AuthURL(); url != u {
+		t.Errorf("expected AuthURL %q, got %q", u, url)
 	}
 }
 

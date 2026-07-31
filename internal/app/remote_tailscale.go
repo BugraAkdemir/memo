@@ -14,8 +14,11 @@ import (
 // startTailscale brings up the embedded Tailscale tunnel that reverse-proxies to
 // the local web server. The web server must already be running on the given
 // port. rc.TailscaleKey may be empty — Start() then triggers interactive
-// browser login instead of failing.
-func (a *App) startTailscale(port int) error {
+// browser login instead of failing. interactive must be true only when this
+// call is a direct response to the user clicking "Tailscale ile Bağlan" —
+// see TailscaleConfig.Interactive's doc comment for why the boot-time
+// auto-start path (startupTailscale) must always pass false.
+func (a *App) startTailscale(port int, interactive bool) error {
 	rc := a.cfg.RemoteAccess
 	if a.tailscaleTunnel == nil {
 		a.tailscaleTunnel = tunnel.NewTailscale()
@@ -39,11 +42,12 @@ func (a *App) startTailscale(port int) error {
 	}
 
 	return a.tailscaleTunnel.Start(tunnel.TailscaleConfig{
-		Hostname:  hostname,
-		AuthKey:   rc.TailscaleKey,
-		Funnel:    rc.TailscaleFunnel,
-		LocalPort: target,
-		StateDir:  config.DataPath("tailscale"),
+		Hostname:    hostname,
+		AuthKey:     rc.TailscaleKey,
+		Funnel:      rc.TailscaleFunnel,
+		LocalPort:   target,
+		StateDir:    config.DataPath("tailscale"),
+		Interactive: interactive,
 	})
 }
 
@@ -105,7 +109,7 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 			// progress is polled via GetRemoteAccessStatus's
 			// tailscale_running/tailscale_auth_url/tailscale_error fields.
 			go func() {
-				if err := a.startTailscale(port); err != nil {
+				if err := a.startTailscale(port, true); err != nil {
 					logx.Printf("[tailscale] interactive login failed: %v", err)
 					return
 				}
@@ -116,7 +120,7 @@ func (a *App) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bo
 				logx.Printf("[tailscale] tunnel started: %s", a.tailscaleTunnel.PublicURL())
 			}()
 		} else {
-			if err := a.startTailscale(port); err != nil {
+			if err := a.startTailscale(port, true); err != nil {
 				return fmt.Errorf("start tailscale: %w", err)
 			}
 			a.cfg.RemoteAccess.TailscaleConnectedOnce = true
@@ -182,8 +186,12 @@ func (a *App) startupTailscale() {
 		// either silently no-op or, for the key-free case, pop an
 		// interactive browser login at boot with no human necessarily
 		// present to approve it. Once TailscaleConnectedOnce is true, tsnet
-		// reconnects from its persisted node identity in StateDir without
-		// needing a fresh login, so this only gates the never-connected case.
+		// usually reconnects from its persisted node identity in StateDir
+		// without needing a fresh login, so this only gates the
+		// never-connected case. If the persisted session has since gone
+		// stale (revoked node, expired key) and a fresh login turns out to
+		// be needed anyway, startTailscale's interactive=false below is the
+		// actual safety net — it can't fully rule that out in advance.
 		return
 	}
 	port := rc.Port
@@ -196,7 +204,7 @@ func (a *App) startupTailscale() {
 
 	var err error
 	for attempt := 1; attempt <= startupTailscaleRetries; attempt++ {
-		if err = a.startTailscale(port); err == nil {
+		if err = a.startTailscale(port, false); err == nil {
 			return
 		}
 		logx.Printf("[tailscale] auto-start attempt %d/%d failed: %v", attempt, startupTailscaleRetries, err)

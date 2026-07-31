@@ -35,6 +35,21 @@ type TailscaleConfig struct {
 	Funnel    bool   // expose a public HTTPS URL via Tailscale Funnel
 	LocalPort int    // local web server port to reverse-proxy to
 	StateDir  string // persistent identity/state directory
+
+	// Interactive marks this attempt as directly triggered by the user
+	// clicking "Tailscale ile Bağlan" in the Settings UI — someone is
+	// actually watching for a browser prompt right now, so it's fine to
+	// auto-open one and to block for up to interactiveLoginTimeout waiting
+	// on their approval. False for the boot-time auto-start path
+	// (startupTailscale) and any reconnect that inherits its cfg: nothing
+	// there is a response to a click, so a fresh interactive login must
+	// never surprise-open a browser tab with no human necessarily present,
+	// and a resume attempt that turns out to need one should fail fast
+	// (silentResumeTimeout) instead of tying up Start() for minutes — which
+	// would otherwise also reject a real "Bağlan" click the user makes
+	// while a silent boot attempt is still in flight ("tunnel already
+	// running/connecting").
+	Interactive bool
 }
 
 const (
@@ -46,9 +61,18 @@ const (
 	// keyedLoginTimeout bounds the fast, non-interactive path (an auth key
 	// authenticates in a couple of seconds against the control plane).
 	keyedLoginTimeout = 90 * time.Second
-	// interactiveLoginTimeout bounds the key-free path: a human has to see
-	// the browser tab, pick an identity provider, and click approve.
+	// interactiveLoginTimeout bounds the key-free, user-initiated path: a
+	// human has to see the browser tab, pick an identity provider, and click
+	// approve.
 	interactiveLoginTimeout = 5 * time.Minute
+	// silentResumeTimeout bounds a key-free, non-interactive attempt
+	// (cfg.Interactive == false — the boot-time auto-start path). Resuming
+	// an already-authenticated node from its persisted StateDir identity is
+	// fast, same order of magnitude as the keyed path; if it instead turns
+	// out a fresh interactive login is genuinely needed, this path must
+	// never wait around for one (see TailscaleConfig.Interactive), so it
+	// fails fast instead.
+	silentResumeTimeout = 20 * time.Second
 	// authURLPollInterval controls how often connect() checks tsnet's local
 	// status for a pending login URL while waiting on Up().
 	authURLPollInterval = 1 * time.Second
@@ -105,7 +129,11 @@ func connect(cfg TailscaleConfig, onAuthURL func(string)) (*tailscaleConn, error
 
 	timeout := keyedLoginTimeout
 	if cfg.AuthKey == "" {
-		timeout = interactiveLoginTimeout
+		if cfg.Interactive {
+			timeout = interactiveLoginTimeout
+		} else {
+			timeout = silentResumeTimeout
+		}
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), timeout)
 	defer cancel()
@@ -219,12 +247,17 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 	t.stopped = false
 	t.mu.Unlock()
 
-	conn, err := connect(cfg, t.setPendingAuthURL)
+	conn, err := connect(cfg, func(url string) { t.setPendingAuthURL(url, cfg.Interactive) })
 
 	t.mu.Lock()
 	t.connecting = false
 	if err != nil {
 		t.lastErr = err.Error()
+		// This attempt is definitively over (context expired or a real
+		// failure) — any auth URL it surfaced is no longer something a
+		// click can usefully resume, so don't leave it lingering as if a
+		// login were still pending.
+		t.pendingAuthURL = ""
 		t.mu.Unlock()
 		return err
 	}
@@ -250,16 +283,21 @@ func (t *Tailscale) Start(cfg TailscaleConfig) error {
 
 // setPendingAuthURL records the interactive-login URL tsnet is currently
 // waiting on (or clears it, given "") and, the first time a given URL shows
-// up, opens it in the user's default browser — so the whole "Tailscale ile
-// bağlan" flow needs no manual copy/paste of a key or a link. Safe to call
-// from connect()'s watcher goroutine concurrently with the rest of *Tailscale.
-func (t *Tailscale) setPendingAuthURL(authURL string) {
+// up during a user-initiated (autoOpen) attempt, opens it in the user's
+// default browser — so the whole "Tailscale ile bağlan" flow needs no manual
+// copy/paste of a key or a link. autoOpen is false for the boot-time
+// auto-start path (see TailscaleConfig.Interactive): the URL is still
+// recorded so GetRemoteAccessStatus/the Settings UI can surface a "log in
+// again" link, but nothing pops a browser tab the user didn't ask for. Safe
+// to call from connect()'s watcher goroutine concurrently with the rest of
+// *Tailscale.
+func (t *Tailscale) setPendingAuthURL(authURL string, autoOpen bool) {
 	t.mu.Lock()
 	isNew := authURL != "" && authURL != t.pendingAuthURL
 	t.pendingAuthURL = authURL
 	t.mu.Unlock()
 
-	if isNew {
+	if isNew && autoOpen {
 		if err := browseropen.OpenURL(authURL); err != nil {
 			logx.Printf("tunnel: tailscale could not auto-open login URL (%v): %s", err, authURL)
 		}
@@ -336,7 +374,7 @@ func (t *Tailscale) reconnectLoop(cfg TailscaleConfig, gen int) {
 			return
 		}
 
-		conn, err := connect(cfg, t.setPendingAuthURL)
+		conn, err := connect(cfg, func(url string) { t.setPendingAuthURL(url, cfg.Interactive) })
 		if err != nil {
 			t.mu.Lock()
 			if t.stopped || t.generation != gen {
@@ -344,6 +382,7 @@ func (t *Tailscale) reconnectLoop(cfg TailscaleConfig, gen int) {
 				return
 			}
 			t.lastErr = err.Error()
+			t.pendingAuthURL = ""
 			t.mu.Unlock()
 			logx.Printf("tunnel: tailscale reconnect attempt failed: %v", err)
 			delay *= 2

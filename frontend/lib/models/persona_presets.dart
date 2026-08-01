@@ -3,17 +3,20 @@ import 'package:flutter/material.dart';
 import '../core/l10n.dart';
 
 /// A hand-written system-prompt persona, offered as a one-tap starting point
-/// instead of making every user write their own prompt from scratch. Same
-/// dual-language content pattern as [CuratedModel] in curated_models.dart
-/// (descTr/descEn rather than an l10n.dart key) — these are long, authored
-/// paragraphs of prompt content, not short UI chrome strings.
+/// instead of making every user write their own prompt from scratch. The
+/// prompt bodies themselves are long, authored bilingual paragraphs kept as
+/// Dart data (same pattern [CuratedModel] in curated_models.dart uses for
+/// descTr/descEn) rather than l10n.dart keys — but the short one-line
+/// description IS ordinary UI chrome, so that one goes through L10n.t() via
+/// [descKey], reusing the exact strings the Setup Wizard already shipped
+/// with (setup_persona_*_desc in l10n.dart) instead of a second, divergent
+/// set of captions.
 class PersonaPreset {
   final String key;
   final IconData icon;
   final String labelTr;
   final String labelEn;
-  final String descTr; // one-line "what this feels like" hint
-  final String descEn;
+  final String descKey;
   final String promptTr;
   final String promptEn;
 
@@ -22,14 +25,22 @@ class PersonaPreset {
     required this.icon,
     required this.labelTr,
     required this.labelEn,
-    required this.descTr,
-    required this.descEn,
+    required this.descKey,
     required this.promptTr,
     required this.promptEn,
   });
 
-  String get label => L10n.locale == MemoLocale.tr ? labelTr : labelEn;
-  String get desc => L10n.locale == MemoLocale.tr ? descTr : descEn;
+  /// Short display name: the compound label ("Normal — Arkadaşça") is
+  /// truncated to the part before " — " — the "— flavor" half is superseded
+  /// by [desc]'s more specific one-liner, so cards only ever show the short
+  /// form plus that description underneath.
+  String get label {
+    final full = L10n.locale == MemoLocale.tr ? labelTr : labelEn;
+    final i = full.indexOf(' — ');
+    return i == -1 ? full : full.substring(0, i);
+  }
+
+  String get desc => L10n.t(descKey);
   String get prompt => L10n.locale == MemoLocale.tr ? promptTr : promptEn;
 }
 
@@ -52,8 +63,7 @@ const personaPresets = <PersonaPreset>[
     icon: Icons.chat_bubble_outline_rounded,
     labelTr: 'Normal — Arkadaşça',
     labelEn: 'Normal — Friendly',
-    descTr: 'Sıcak ama gereksiz nezaket yok, dobra ve net.',
-    descEn: 'Warm, no fluff — clear and to the point.',
+    descKey: 'setup_persona_normal_desc',
     promptTr: '''Sen Memo'sun — kullanıcının yapay zeka asistanısın.
 
 Nasıl konuşursun:
@@ -86,8 +96,7 @@ Limits:
     icon: Icons.emoji_emotions_outlined,
     labelTr: 'Eğlenceli — Espri sever',
     labelEn: 'Fun — Playful',
-    descTr: 'Bol şakalı, emoji sever, her konuda espri bulur.',
-    descEn: 'Full of jokes and emoji, finds the funny angle in anything.',
+    descKey: 'setup_persona_fun_desc',
     promptTr: '''Sen Memo'sun — kullanıcının eğlenceli yapay zeka arkadaşısın.
 
 Kişiliğin:
@@ -120,8 +129,7 @@ Limits:
     icon: Icons.work_outline_rounded,
     labelTr: 'Resmi — Profesyonel',
     labelEn: 'Formal — Professional',
-    descTr: 'Resmi, düzenli, mesafeli bir profesyonel.',
-    descEn: 'Polished, structured, and professionally reserved.',
+    descKey: 'setup_persona_formal_desc',
     promptTr: '''Sen Memo'sun — kullanıcının profesyonel yapay zeka asistanısın.
 
 Nasıl konuşursun:
@@ -156,8 +164,7 @@ Limits:
     icon: Icons.terminal_rounded,
     labelTr: 'Teknik — Detay odaklı',
     labelEn: 'Technical — Precision',
-    descTr: 'Detaycı, terimlerden kaçınmaz, kod ve veri sever.',
-    descEn: 'Precise and detailed — code, data, no dumbing down.',
+    descKey: 'setup_persona_technical_desc',
     promptTr: '''Sen Memo'sun — kullanıcının teknik yapay zeka asistanısın.
 
 Nasıl konuşursun:
@@ -192,8 +199,7 @@ Limits:
     icon: Icons.palette_outlined,
     labelTr: 'Yaratıcı — Hayal gücü yüksek',
     labelEn: 'Creative — Imaginative',
-    descTr: 'Metafor ve hayal gücüyle konuşan bir yol arkadaşı.',
-    descEn: 'Speaks in metaphor and imagination, thinks outside the box.',
+    descKey: 'setup_persona_creative_desc',
     promptTr: '''Sen Memo'sun — kullanıcının yaratıcı yapay zeka arkadaşısın.
 
 Kişiliğin:
@@ -228,8 +234,7 @@ Limits:
     icon: Icons.groups_rounded,
     labelTr: 'Kanka — Samimi arkadaş',
     labelEn: 'Buddy — Close friend',
-    descTr: '10 yıllık kankan gibi — resmiyet yok, laf sokar, destek olur.',
-    descEn: 'Like a friend of 10 years — no formality, teases, has your back.',
+    descKey: 'setup_persona_friend_desc',
     promptTr: '''Sen Memo'sun — kullanıcının 10 yıllık arkadaşısın. Sanki daha dün akşam bira içmişsiniz gibi samimi.
 
 Kişiliğin:

@@ -78,7 +78,7 @@ class PersonaPicker extends StatelessWidget {
               _PersonaCard(
                 icon: Icons.edit_note_rounded,
                 label: L10n.t('persona_picker_custom_label'),
-                desc: null,
+                desc: L10n.t('setup_persona_custom_desc'),
                 selected: isCustom,
                 color: c,
                 onTap: () => onSelect('custom'),
@@ -119,37 +119,14 @@ class PersonaPicker extends StatelessWidget {
                       border: InputBorder.none,
                       contentPadding: EdgeInsets.all(16),
                     ),
-                    style: TextStyle(
-                      fontSize: 12,
-                      height: 1.5,
-                      color: c.textMain,
-                      fontFamily: 'JetBrains Mono',
-                    ),
+                    style: TextStyle(fontSize: 12, height: 1.5, color: c.textMain),
                   )
-                : Padding(
+                : Container(
+                    width: double.infinity,
                     padding: EdgeInsets.all(16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          L10n.t('persona_picker_preview_label'),
-                          style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            letterSpacing: 0.6,
-                            color: c.textDim,
-                          ),
-                        ),
-                        SizedBox(height: 8),
-                        Text(
-                          selectedPreset?.prompt ?? '',
-                          style: TextStyle(
-                            fontSize: 12,
-                            height: 1.5,
-                            color: c.textDim,
-                          ),
-                        ),
-                      ],
+                    child: Text(
+                      selectedPreset?.prompt ?? '',
+                      style: TextStyle(fontSize: 12, height: 1.5, color: c.textDim),
                     ),
                   ),
           ),
@@ -159,10 +136,13 @@ class PersonaPicker extends StatelessWidget {
   }
 }
 
+/// Matches the card design already shipped in the Setup Wizard
+/// (_PersonaCard, setup_wizard_view.dart) exactly, so a persona looks the
+/// same whether picked there or from Settings → System Prompt.
 class _PersonaCard extends StatelessWidget {
   final IconData icon;
   final String label;
-  final String? desc;
+  final String desc;
   final bool selected;
   final ThemeColors color;
   final VoidCallback onTap;
@@ -181,9 +161,9 @@ class _PersonaCard extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: AnimatedContainer(
-        duration: Duration(milliseconds: 150),
-        width: 172,
-        padding: EdgeInsets.all(12),
+        duration: const Duration(milliseconds: 150),
+        width: 156,
+        padding: const EdgeInsets.all(12),
         decoration: BoxDecoration(
           color: selected ? MemoTheme.accent.withValues(alpha: 0.10) : color.bgElement,
           borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
@@ -194,34 +174,29 @@ class _PersonaCard extends StatelessWidget {
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(
-              icon,
-              size: 18,
-              color: selected ? MemoTheme.accent : color.textDim,
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: (selected ? MemoTheme.accent : color.textDim).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 15, color: selected ? MemoTheme.accent : color.textSecondary),
             ),
-            SizedBox(height: 8),
+            const SizedBox(height: 8),
             Text(
               label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: FontWeight.w600,
-                color: selected ? MemoTheme.accent : color.textMain,
-              ),
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: color.textMain),
             ),
-            if (desc != null) ...[
-              SizedBox(height: 3),
-              Text(
-                desc!,
-                style: TextStyle(
-                  fontSize: 11,
-                  height: 1.3,
-                  color: color.textDim,
-                ),
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
-              ),
-            ],
+            const SizedBox(height: 2),
+            Text(
+              desc,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10.5, height: 1.3, color: color.textDim),
+            ),
           ],
         ),
       ),

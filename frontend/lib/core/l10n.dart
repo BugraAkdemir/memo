@@ -371,7 +371,6 @@ class L10n {
     'persona_picker_name_hint': 'örn. Buğra',
     'persona_picker_custom_label': 'Özel — kendin yaz',
     'persona_picker_custom_hint': 'Kendi sistem promptunu yaz...',
-    'persona_picker_preview_label': 'Önizleme',
     'system_prompt_quick_pick_title': 'Hızlı Karakter Seç',
     'system_prompt_quick_pick_desc':
         'Bir karakter seç, aşağıdaki metne uygulansın — kaydetmeden önce dilediğin gibi düzenleyebilirsin.',
@@ -934,7 +933,6 @@ class L10n {
     'setup_persona_creative_desc': 'Metafor dolu, kalıpların dışında düşünür.',
     'setup_persona_friend_desc': '10 yıllık kankan gibi konuşur.',
     'setup_persona_custom_desc': 'Kendi sistem promptunu sen yaz.',
-    'setup_name_hint': 'Adın (isteğe bağlı — örn. Buğra)',
 
     'setup_step_model': 'Model Önerisi',
     'setup_model_checking': 'Sistemin kontrol ediliyor...',
@@ -1841,7 +1839,6 @@ class L10n {
     'persona_picker_name_hint': 'e.g. Alex',
     'persona_picker_custom_label': 'Custom — write your own',
     'persona_picker_custom_hint': 'Write your own system prompt...',
-    'persona_picker_preview_label': 'Preview',
     'system_prompt_quick_pick_title': 'Quick Pick a Persona',
     'system_prompt_quick_pick_desc':
         'Pick a persona to apply it to the text below — edit freely before saving.',
@@ -2382,7 +2379,6 @@ class L10n {
     'setup_persona_creative_desc': 'Full of metaphor, thinks outside the box.',
     'setup_persona_friend_desc': 'Talks like your friend of 10 years.',
     'setup_persona_custom_desc': 'Write your own system prompt.',
-    'setup_name_hint': 'Your name (optional — e.g. John)',
 
     'setup_step_model': 'Model Recommendation',
     'setup_model_checking': 'Checking your system...',

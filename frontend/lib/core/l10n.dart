@@ -366,6 +366,16 @@ class L10n {
     'reset_prompt': 'Varsayılana Sıfırla',
     'save_successful': 'Kaydetme başarılı',
 
+    // Persona picker (shared: Settings → System Prompt, and Setup Wizard)
+    'persona_picker_name_label': 'Adın (isteğe bağlı)',
+    'persona_picker_name_hint': 'örn. Buğra',
+    'persona_picker_custom_label': 'Özel — kendin yaz',
+    'persona_picker_custom_hint': 'Kendi sistem promptunu yaz...',
+    'persona_picker_preview_label': 'Önizleme',
+    'system_prompt_quick_pick_title': 'Hızlı Karakter Seç',
+    'system_prompt_quick_pick_desc':
+        'Bir karakter seç, aşağıdaki metne uygulansın — kaydetmeden önce dilediğin gibi düzenleyebilirsin.',
+
     // Settings — Memory
     'memory': 'Bellek',
     'memory_section': 'Hafıza',
@@ -1825,6 +1835,16 @@ class L10n {
         'Instruction for how the model should behave without memory access in incognito mode.',
     'reset_prompt': 'Reset to Default',
     'save_successful': 'Saved successfully',
+
+    // Persona picker (shared: Settings → System Prompt, and Setup Wizard)
+    'persona_picker_name_label': 'Your name (optional)',
+    'persona_picker_name_hint': 'e.g. Alex',
+    'persona_picker_custom_label': 'Custom — write your own',
+    'persona_picker_custom_hint': 'Write your own system prompt...',
+    'persona_picker_preview_label': 'Preview',
+    'system_prompt_quick_pick_title': 'Quick Pick a Persona',
+    'system_prompt_quick_pick_desc':
+        'Pick a persona to apply it to the text below — edit freely before saving.',
 
     'memory': 'Memory',
     'memory_section': 'Memory',

@@ -8,6 +8,7 @@ import '../models/curated_models.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import '../providers/chat_provider.dart';
+import '../providers/learning_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/provider_provider.dart';
 import '../providers/settings_provider.dart';
@@ -39,7 +40,6 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
   final _nameController = TextEditingController();
   final _customPromptController = TextEditingController();
 
-  String _selectedLanguage = 'tr';
   String _selectedTheme = 'light';
   String _selectedPrompt = 'normal';
   bool _customPrompt = false;
@@ -74,6 +74,12 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
     return Theme.of(context).brightness;
   }
 
+  // Persona system prompts: substantive bilingual content, not interface
+  // chrome, so this stays as Dart data (same pattern curatedModels.dart
+  // already uses for its descTr/descEn fields) rather than routing through
+  // L10n.t(). Every label follows a "Short Name — flavor" convention; the
+  // short name (before " — ") is what the persona card shows as its title,
+  // with _personaDescKeys supplying a separate, more specific one-liner.
   static const _prompts = {
     'normal': {
       'label_tr': 'Normal — Arkadaşça',
@@ -265,11 +271,33 @@ Limits:
     },
   };
 
+  static const _personaIcons = <String, IconData>{
+    'normal': Icons.chat_bubble_outline_rounded,
+    'fun': Icons.emoji_emotions_outlined,
+    'formal': Icons.work_outline_rounded,
+    'technical': Icons.terminal_rounded,
+    'creative': Icons.palette_outlined,
+    'friend': Icons.groups_rounded,
+  };
+
+  static const _personaDescKeys = <String, String>{
+    'normal': 'setup_persona_normal_desc',
+    'fun': 'setup_persona_fun_desc',
+    'formal': 'setup_persona_formal_desc',
+    'technical': 'setup_persona_technical_desc',
+    'creative': 'setup_persona_creative_desc',
+    'friend': 'setup_persona_friend_desc',
+  };
+
+  bool get _isTurkish => L10n.locale == MemoLocale.tr;
+
   String _getPromptText(String key) {
     final prompts = _prompts[key]!;
-    final isTurkish = _selectedLanguage == 'tr';
-    return isTurkish ? prompts['prompt_tr']! : prompts['prompt_en']!;
+    return _isTurkish ? prompts['prompt_tr']! : prompts['prompt_en']!;
   }
+
+  String _personaName(String key) =>
+      _prompts[key]![_isTurkish ? 'label_tr' : 'label_en']!.split(' — ').first;
 
   String get _finalPrompt {
     final name = _nameController.text.trim();
@@ -446,8 +474,6 @@ Limits:
     setState(() => _saving = true);
     try {
       await ref.read(systemPromptProvider.notifier).save(_finalPrompt);
-      final newLocale = _selectedLanguage == 'en' ? MemoLocale.en : MemoLocale.tr;
-      await ref.read(localeProvider.notifier).setLocale(newLocale);
       await ref.read(themeModeProvider.notifier).setMode(_selectedTheme);
       await ref.read(setupCompleteProvider.notifier).completeSetup();
     } catch (e) {
@@ -474,7 +500,7 @@ Limits:
       child: Builder(
         builder: (context) {
           final c = _colors;
-          final isTurkish = _selectedLanguage == 'tr';
+          final textTheme = Theme.of(context).textTheme;
 
           return Container(
             color: c.bgApp,
@@ -482,7 +508,7 @@ Limits:
               child: SingleChildScrollView(
                 padding: EdgeInsets.symmetric(vertical: 40),
                 child: Container(
-                  width: 600,
+                  width: 640,
                   margin: EdgeInsets.symmetric(horizontal: 24),
                   decoration: BoxDecoration(
                     color: c.bgPanel,
@@ -499,52 +525,73 @@ Limits:
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      // ─── Header ─────────────────────────────
+                      // ─── Hero ───────────────────────────────
                       Container(
-                        padding: EdgeInsets.fromLTRB(40, 36, 40, 24),
+                        width: double.infinity,
+                        padding: EdgeInsets.fromLTRB(40, 40, 40, 28),
                         decoration: BoxDecoration(
                           border: Border(bottom: BorderSide(color: c.borderSoft)),
                         ),
                         child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Container(
-                              width: 56,
-                              height: 56,
+                              width: 52,
+                              height: 52,
                               decoration: BoxDecoration(
-                                color: MemoTheme.accent.withValues(alpha: 0.12),
-                                borderRadius: BorderRadius.circular(16),
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [MemoTheme.accent, MemoTheme.accentLight],
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: MemoTheme.accent.withValues(alpha: 0.35),
+                                    blurRadius: 20,
+                                    offset: Offset(0, 6),
+                                  ),
+                                ],
                               ),
                               child: Center(
                                 child: Text(
                                   'M',
                                   style: TextStyle(
-                                    fontSize: 28,
-                                    fontWeight: FontWeight.bold,
-                                    color: MemoTheme.accent,
+                                    fontFamily: textTheme.headlineSmall?.fontFamily,
+                                    fontSize: 24,
+                                    fontWeight: FontWeight.w700,
+                                    color: c.textInverse,
                                   ),
                                 ),
                               ),
                             ),
-                            SizedBox(height: 16),
+                            SizedBox(height: 20),
                             Text(
-                              isTurkish ? 'Memo\'ya Hoş Geldin' : 'Welcome to Memo',
-                              textAlign: TextAlign.center,
+                              L10n.t('setup_eyebrow').toUpperCase(),
                               style: TextStyle(
-                                fontSize: 22,
-                                fontWeight: FontWeight.bold,
+                                fontSize: 11,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 1.4,
+                                color: MemoTheme.accent,
+                              ),
+                            ),
+                            SizedBox(height: 8),
+                            Text(
+                              L10n.t('setup_wizard_title'),
+                              style: textTheme.headlineSmall?.copyWith(
+                                fontSize: 26,
+                                height: 1.2,
+                                fontWeight: FontWeight.w700,
                                 color: c.textMain,
                               ),
                             ),
-                            SizedBox(height: 6),
+                            SizedBox(height: 10),
                             Text(
-                              isTurkish
-                                  ? 'Birkaç ayarla başlayalım, sonra hemen sohbete dal.'
-                                  : 'A few quick settings and you\'re ready to chat.',
-                              textAlign: TextAlign.center,
+                              L10n.t('setup_subtitle'),
                               style: TextStyle(
                                 fontSize: 14,
                                 color: c.textDim,
-                                height: 1.4,
+                                height: 1.5,
                               ),
                             ),
                           ],
@@ -552,321 +599,364 @@ Limits:
                       ),
 
                       Padding(
-                        padding: EdgeInsets.all(36),
+                        padding: EdgeInsets.fromLTRB(40, 32, 40, 36),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
-                            // ─── Step 1 ───────────────────────
-                            _StepHeader(
+                            // ─── Step 1 — Language & Theme ────
+                            _TimelineStep(
                               number: '1',
-                              title: isTurkish ? 'Dil ve Tema' : 'Language & Theme',
+                              title: L10n.t('setup_step_language_theme'),
                               color: c,
-                            ),
-                            SizedBox(height: 14),
-                            Row(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Expanded(
-                                  child: _Card(
-                                    color: c,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _Label(text: isTurkish ? 'Dil' : 'Language', color: c),
-                                        SizedBox(height: 10),
-                                        _Pill(
-                                          label: 'Türkçe',
-                                          selected: _selectedLanguage == 'tr',
-                                          accent: MemoTheme.accent,
-                                          color: c,
-                                          onTap: () => setState(() => _selectedLanguage = 'tr'),
-                                        ),
-                                        SizedBox(height: 6),
-                                        _Pill(
-                                          label: 'English',
-                                          selected: _selectedLanguage == 'en',
-                                          accent: MemoTheme.accent,
-                                          color: c,
-                                          onTap: () => setState(() => _selectedLanguage = 'en'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                SizedBox(width: 12),
-                                Expanded(
-                                  child: _Card(
-                                    color: c,
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        _Label(text: isTurkish ? 'Tema' : 'Theme', color: c),
-                                        SizedBox(height: 10),
-                                        _Pill(
-                                          label: isTurkish ? 'Koyu' : 'Dark',
-                                          selected: _selectedTheme == 'dark',
-                                          accent: MemoTheme.accent,
-                                          color: c,
-                                          onTap: () => setState(() => _selectedTheme = 'dark'),
-                                        ),
-                                        SizedBox(height: 6),
-                                        _Pill(
-                                          label: isTurkish ? 'Açık' : 'Light',
-                                          selected: _selectedTheme == 'light',
-                                          accent: MemoTheme.accent,
-                                          color: c,
-                                          onTap: () => setState(() => _selectedTheme = 'light'),
-                                        ),
-                                        SizedBox(height: 6),
-                                        _Pill(
-                                          label: isTurkish ? 'Sistem Varsayılanı' : 'System Default',
-                                          selected: _selectedTheme == 'system',
-                                          accent: MemoTheme.accent,
-                                          color: c,
-                                          onTap: () => setState(() => _selectedTheme = 'system'),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 32),
-
-                            // ─── Step 2 ───────────────────────
-                            _StepHeader(
-                              number: '2',
-                              title: isTurkish ? 'Asistan Karakteri' : 'Assistant Persona',
-                              color: c,
-                            ),
-                            SizedBox(height: 4),
-                            Text(
-                              isTurkish
-                                  ? 'Memo sana nasıl hitap etsin?'
-                                  : 'How should Memo talk to you?',
-                              style: TextStyle(fontSize: 13, color: c.textDim),
-                            ),
-                            SizedBox(height: 14),
-
-                            // Prompt pills
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 8,
-                              children: [
-                                ..._prompts.entries.map((entry) {
-                                  final label = isTurkish
-                                      ? entry.value['label_tr']!
-                                      : entry.value['label_en']!;
-                                  return _Pill(
-                                    label: label,
-                                    selected: _selectedPrompt == entry.key && !_customPrompt,
-                                    accent: MemoTheme.accent,
-                                    color: c,
-                                    onTap: () => setState(() {
-                                      _selectedPrompt = entry.key;
-                                      _customPrompt = false;
-                                    }),
-                                  );
-                                }),
-                                _Pill(
-                                  label: isTurkish ? 'Özel — Kendin yaz' : 'Custom — Write your own',
-                                  selected: _customPrompt,
-                                  accent: MemoTheme.accent,
-                                  color: c,
-                                  onTap: () => setState(() => _customPrompt = true),
-                                ),
-                              ],
-                            ),
-                            SizedBox(height: 12),
-
-                            // Preview / custom editor
-                            Container(
-                              decoration: BoxDecoration(
-                                color: c.bgApp,
-                                borderRadius: BorderRadius.circular(12),
-                                border: Border.all(color: c.borderSoft),
-                              ),
-                              child: _customPrompt
-                                  ? TextField(
-                                      controller: _customPromptController,
-                                      maxLines: 6,
-                                      decoration: InputDecoration(
-                                        hintText: isTurkish
-                                            ? 'Kendi sistem promtunu yaz...'
-                                            : 'Write your own system prompt...',
-                                        border: InputBorder.none,
-                                        contentPadding: EdgeInsets.all(16),
-                                      ),
-                                      style: TextStyle(
-                                        fontSize: 12,
-                                        height: 1.5,
-                                        color: c.textMain,
-                                      ),
-                                    )
-                                  : Container(
-                                      width: double.infinity,
-                                      padding: EdgeInsets.all(16),
-                                      child: Text(
-                                        _getPromptText(_selectedPrompt),
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          height: 1.5,
-                                          color: c.textDim,
-                                        ),
-                                      ),
-                                    ),
-                            ),
-                            SizedBox(height: 12),
-
-                            TextField(
-                              controller: _nameController,
-                              decoration: InputDecoration(
-                                hintText: isTurkish
-                                    ? 'Adın (isteğe bağlı — örn: Buğra)'
-                                    : 'Your name (optional — e.g. John)',
-                                filled: true,
-                                fillColor: c.bgElement,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                  borderSide: BorderSide.none,
-                                ),
-                                contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                              ),
-                              style: TextStyle(fontSize: 14, color: c.textMain),
-                            ),
-                            SizedBox(height: 32),
-
-                            // ─── Step 3 ───────────────────────
-                            _StepHeader(
-                              number: '3',
-                              title: isTurkish ? 'Model Önerisi' : 'Model Recommendation',
-                              color: c,
-                            ),
-                            SizedBox(height: 14),
-                            Consumer(
-                              builder: (context, ref, _) {
-                                final gpuAsync = ref.watch(gpuInfoProvider);
-                                final gpu = gpuAsync.valueOrNull ?? const GPUInfo();
-                                final downloads =
-                                    ref.watch(downloadProgressProvider).valueOrNull ?? [];
-                                final repoIds = {
-                                  recommendedChatModel(gpu).repoId,
-                                  recommendedMemoryModel.repoId,
-                                };
-                                final ourDownloads = downloads
-                                    .where((p) => repoIds.contains(p.repoId))
-                                    .toList();
-                                return _ModelRecommendationCard(
-                                  color: c,
-                                  isTurkish: isTurkish,
-                                  checking: _checking,
-                                  gpu: gpu,
-                                  downloads: ourDownloads,
-                                  alreadyHasModels: _modelsOk,
-                                  localModelCount: _localModelCount,
-                                  downloadStarted: _modelDownloadStarted,
-                                  downloadDone: _modelDownloadDone,
-                                  downloadError: _modelDownloadError,
-                                  onDownload: _downloadRecommendedModels,
-                                  providerConfigured: _providerConfigured,
-                                  activeProviderName: _activeProviderName,
-                                  onConnectProvider: _connectProvider,
-                                  hasEmbeddingModel: _hasEmbeddingModel,
-                                  memoryModelDownloading: _memoryModelDownloading,
-                                  memoryModelDownloadDone: _memoryModelDownloadDone,
-                                  memoryModelDownloadError: _memoryModelDownloadError,
-                                  onDownloadMemoryModel: _downloadMemoryModel,
-                                );
-                              },
-                            ),
-                            SizedBox(height: 32),
-
-                            // ─── Step 4 ───────────────────────
-                            _StepHeader(
-                              number: '4',
-                              title: isTurkish ? 'Sistem Kontrolü' : 'System Check',
-                              color: c,
-                            ),
-                            SizedBox(height: 14),
-                            _Card(
-                              color: c,
-                              child: Column(
+                              child: Row(
+                                crossAxisAlignment: CrossAxisAlignment.start,
                                 children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      Text(
-                                        isTurkish ? 'Servis Durumu' : 'Service Status',
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w500,
-                                          color: c.textSecondary,
-                                        ),
-                                      ),
-                                      InkWell(
-                                        onTap: _checking ? null : _checkDiagnostics,
-                                        child: Padding(
-                                          padding: EdgeInsets.all(4),
-                                          child: _checking
-                                              ? SizedBox(
-                                                  width: 14,
-                                                  height: 14,
-                                                  child: CircularProgressIndicator(
-                                                    strokeWidth: 2,
-                                                    color: c.textDim,
-                                                  ),
-                                                )
-                                              : Icon(
-                                                  Icons.refresh,
-                                                  size: 16,
-                                                  color: c.textDim,
-                                                ),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                  SizedBox(height: 14),
-                                  _DiagRow(
-                                    title: isTurkish ? 'Backend Bağlantısı' : 'Backend Connection',
-                                    ok: _backendOk,
-                                    color: c,
-                                  ),
-                                  SizedBox(height: 8),
-                                  _DiagRow(
-                                    title: isTurkish ? 'Yerel Modeller' : 'Local Models',
-                                    ok: _modelsOk,
-                                    color: c,
-                                  ),
-                                  SizedBox(height: 8),
-                                  _DiagRow(
-                                    title: isTurkish ? 'Sohbete Hazır' : 'Ready to Chat',
-                                    ok: _modelsOk || _providerConfigured,
-                                    color: c,
-                                  ),
-                                  if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
-                                    SizedBox(height: 12),
-                                    Container(
-                                      padding: EdgeInsets.all(10),
-                                      decoration: BoxDecoration(
-                                        color: MemoTheme.warningOrange.withValues(alpha: 0.08),
-                                        borderRadius: BorderRadius.circular(8),
-                                      ),
-                                      child: Text(
-                                        isTurkish
-                                            ? 'Tüm servisler çalışmak zorunda değil, devam edebilirsin.'
-                                            : 'Not all services need to be running, you can continue.',
-                                        style: TextStyle(
-                                          fontSize: 11,
-                                          color: MemoTheme.warningOrange,
-                                          height: 1.3,
-                                        ),
+                                  Expanded(
+                                    child: _Card(
+                                      color: c,
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _Label(text: L10n.t('language'), color: c),
+                                          SizedBox(height: 10),
+                                          _Pill(
+                                            label: 'Türkçe',
+                                            selected: L10n.locale == MemoLocale.tr,
+                                            accent: MemoTheme.accent,
+                                            color: c,
+                                            onTap: () => setState(() {
+                                              ref.read(localeProvider.notifier).setLocale(MemoLocale.tr);
+                                            }),
+                                          ),
+                                          SizedBox(height: 6),
+                                          _Pill(
+                                            label: 'English',
+                                            selected: L10n.locale == MemoLocale.en,
+                                            accent: MemoTheme.accent,
+                                            color: c,
+                                            onTap: () => setState(() {
+                                              ref.read(localeProvider.notifier).setLocale(MemoLocale.en);
+                                            }),
+                                          ),
+                                        ],
                                       ),
                                     ),
-                                  ],
+                                  ),
+                                  SizedBox(width: 12),
+                                  Expanded(
+                                    child: _Card(
+                                      color: c,
+                                      child: Column(
+                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        children: [
+                                          _Label(text: L10n.t('theme'), color: c),
+                                          SizedBox(height: 10),
+                                          _Pill(
+                                            label: L10n.t('theme_dark'),
+                                            selected: _selectedTheme == 'dark',
+                                            accent: MemoTheme.accent,
+                                            color: c,
+                                            onTap: () => setState(() => _selectedTheme = 'dark'),
+                                          ),
+                                          SizedBox(height: 6),
+                                          _Pill(
+                                            label: L10n.t('theme_light'),
+                                            selected: _selectedTheme == 'light',
+                                            accent: MemoTheme.accent,
+                                            color: c,
+                                            onTap: () => setState(() => _selectedTheme = 'light'),
+                                          ),
+                                          SizedBox(height: 6),
+                                          _Pill(
+                                            label: L10n.t('theme_system'),
+                                            selected: _selectedTheme == 'system',
+                                            accent: MemoTheme.accent,
+                                            color: c,
+                                            onTap: () => setState(() => _selectedTheme = 'system'),
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                  ),
                                 ],
                               ),
                             ),
-                            SizedBox(height: 36),
+
+                            // ─── Step 2 — Persona ──────────────
+                            _TimelineStep(
+                              number: '2',
+                              title: L10n.t('setup_step_persona'),
+                              subtitle: L10n.t('setup_step_persona_desc'),
+                              color: c,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Wrap(
+                                    spacing: 8,
+                                    runSpacing: 8,
+                                    children: [
+                                      ..._prompts.keys.map((key) {
+                                        return _PersonaCard(
+                                          icon: _personaIcons[key]!,
+                                          name: _personaName(key),
+                                          desc: L10n.t(_personaDescKeys[key]!),
+                                          selected: _selectedPrompt == key && !_customPrompt,
+                                          color: c,
+                                          onTap: () => setState(() {
+                                            _selectedPrompt = key;
+                                            _customPrompt = false;
+                                          }),
+                                        );
+                                      }),
+                                      _PersonaCard(
+                                        icon: Icons.edit_note_rounded,
+                                        name: _isTurkish ? 'Özel' : 'Custom',
+                                        desc: L10n.t('setup_persona_custom_desc'),
+                                        selected: _customPrompt,
+                                        color: c,
+                                        onTap: () => setState(() => _customPrompt = true),
+                                      ),
+                                    ],
+                                  ),
+                                  SizedBox(height: 12),
+
+                                  // Preview / custom editor
+                                  Container(
+                                    decoration: BoxDecoration(
+                                      color: c.bgApp,
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(color: c.borderSoft),
+                                    ),
+                                    child: _customPrompt
+                                        ? TextField(
+                                            controller: _customPromptController,
+                                            maxLines: 6,
+                                            decoration: InputDecoration(
+                                              hintText: _isTurkish
+                                                  ? 'Kendi sistem promtunu yaz...'
+                                                  : 'Write your own system prompt...',
+                                              border: InputBorder.none,
+                                              contentPadding: EdgeInsets.all(16),
+                                            ),
+                                            style: TextStyle(
+                                              fontSize: 12,
+                                              height: 1.5,
+                                              color: c.textMain,
+                                            ),
+                                          )
+                                        : Container(
+                                            width: double.infinity,
+                                            padding: EdgeInsets.all(16),
+                                            child: Text(
+                                              _getPromptText(_selectedPrompt),
+                                              style: TextStyle(
+                                                fontSize: 12,
+                                                height: 1.5,
+                                                color: c.textDim,
+                                              ),
+                                            ),
+                                          ),
+                                  ),
+                                  SizedBox(height: 12),
+
+                                  TextField(
+                                    controller: _nameController,
+                                    decoration: InputDecoration(
+                                      hintText: L10n.t('setup_name_hint'),
+                                      filled: true,
+                                      fillColor: c.bgElement,
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                        borderSide: BorderSide.none,
+                                      ),
+                                      contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                                    ),
+                                    style: TextStyle(fontSize: 14, color: c.textMain),
+                                  ),
+                                ],
+                              ),
+                            ),
+
+                            // ─── Step 3 — Model Recommendation ─
+                            _TimelineStep(
+                              number: '3',
+                              title: L10n.t('setup_step_model'),
+                              color: c,
+                              child: Consumer(
+                                builder: (context, ref, _) {
+                                  final gpuAsync = ref.watch(gpuInfoProvider);
+                                  final gpu = gpuAsync.valueOrNull ?? const GPUInfo();
+                                  final downloads =
+                                      ref.watch(downloadProgressProvider).valueOrNull ?? [];
+                                  final repoIds = {
+                                    recommendedChatModel(gpu).repoId,
+                                    recommendedMemoryModel.repoId,
+                                  };
+                                  final ourDownloads = downloads
+                                      .where((p) => repoIds.contains(p.repoId))
+                                      .toList();
+                                  return _ModelRecommendationCard(
+                                    color: c,
+                                    checking: _checking,
+                                    gpu: gpu,
+                                    downloads: ourDownloads,
+                                    alreadyHasModels: _modelsOk,
+                                    localModelCount: _localModelCount,
+                                    downloadStarted: _modelDownloadStarted,
+                                    downloadDone: _modelDownloadDone,
+                                    downloadError: _modelDownloadError,
+                                    onDownload: _downloadRecommendedModels,
+                                    providerConfigured: _providerConfigured,
+                                    activeProviderName: _activeProviderName,
+                                    onConnectProvider: _connectProvider,
+                                    hasEmbeddingModel: _hasEmbeddingModel,
+                                    memoryModelDownloading: _memoryModelDownloading,
+                                    memoryModelDownloadDone: _memoryModelDownloadDone,
+                                    memoryModelDownloadError: _memoryModelDownloadError,
+                                    onDownloadMemoryModel: _downloadMemoryModel,
+                                  );
+                                },
+                              ),
+                            ),
+
+                            // ─── Step 4 — Starting Preferences ─
+                            _TimelineStep(
+                              number: '4',
+                              title: L10n.t('setup_step_preferences'),
+                              subtitle: L10n.t('setup_step_preferences_desc'),
+                              color: c,
+                              child: Consumer(
+                                builder: (context, ref, _) {
+                                  final learning = ref.watch(learningSettingsProvider);
+                                  final learningData = learning.valueOrNull;
+                                  final proactiveEnabled = learningData?['enabled'] as bool? ?? false;
+                                  final proactiveLevel = learningData?['level'] as String? ?? 'subtle';
+
+                                  final minimal = ref.watch(minimalModeProvider);
+                                  final minimalEnabled = minimal.valueOrNull ?? false;
+
+                                  return Column(
+                                    children: [
+                                      _PreferenceToggle(
+                                        icon: Icons.psychology_outlined,
+                                        title: L10n.t('learning_proactive_title'),
+                                        desc: L10n.t('setup_pref_proactive_desc'),
+                                        value: proactiveEnabled,
+                                        color: c,
+                                        onChanged: learning.isLoading
+                                            ? null
+                                            : (v) => ref
+                                                .read(learningSettingsProvider.notifier)
+                                                .update(v, proactiveLevel),
+                                      ),
+                                      SizedBox(height: 10),
+                                      _PreferenceToggle(
+                                        icon: Icons.speed_outlined,
+                                        title: L10n.t('minimal_mode_section'),
+                                        desc: L10n.t('setup_pref_minimal_desc'),
+                                        value: minimalEnabled,
+                                        color: c,
+                                        onChanged: minimal.isLoading
+                                            ? null
+                                            : (_) => ref.read(minimalModeProvider.notifier).toggle(),
+                                      ),
+                                    ],
+                                  );
+                                },
+                              ),
+                            ),
+
+                            // ─── Step 5 — System Check ─────────
+                            _TimelineStep(
+                              number: '5',
+                              title: L10n.t('setup_step_check'),
+                              color: c,
+                              isLast: true,
+                              child: _Card(
+                                color: c,
+                                child: Column(
+                                  children: [
+                                    Row(
+                                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                      children: [
+                                        Text(
+                                          L10n.t('system_check'),
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w500,
+                                            color: c.textSecondary,
+                                          ),
+                                        ),
+                                        Tooltip(
+                                          message: L10n.t('setup_check_refresh_tooltip'),
+                                          waitDuration: const Duration(milliseconds: 300),
+                                          child: InkWell(
+                                            onTap: _checking ? null : _checkDiagnostics,
+                                            child: Padding(
+                                              padding: EdgeInsets.all(4),
+                                              child: _checking
+                                                  ? SizedBox(
+                                                      width: 14,
+                                                      height: 14,
+                                                      child: CircularProgressIndicator(
+                                                        strokeWidth: 2,
+                                                        color: c.textDim,
+                                                      ),
+                                                    )
+                                                  : Icon(
+                                                      Icons.refresh,
+                                                      size: 16,
+                                                      color: c.textDim,
+                                                    ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                    SizedBox(height: 14),
+                                    _DiagRow(
+                                      title: L10n.t('backend_connection'),
+                                      ok: _backendOk,
+                                      color: c,
+                                      tooltip: L10n.t('setup_check_backend_tooltip'),
+                                    ),
+                                    SizedBox(height: 8),
+                                    _DiagRow(
+                                      title: L10n.t('local_models_status'),
+                                      ok: _modelsOk,
+                                      color: c,
+                                      tooltip: L10n.t('setup_check_models_tooltip'),
+                                    ),
+                                    SizedBox(height: 8),
+                                    _DiagRow(
+                                      title: L10n.t('setup_check_ready'),
+                                      ok: _modelsOk || _providerConfigured,
+                                      color: c,
+                                    ),
+                                    if (!_backendOk || !(_modelsOk || _providerConfigured)) ...[
+                                      SizedBox(height: 12),
+                                      Container(
+                                        padding: EdgeInsets.all(10),
+                                        decoration: BoxDecoration(
+                                          color: MemoTheme.warningOrange.withValues(alpha: 0.08),
+                                          borderRadius: BorderRadius.circular(8),
+                                        ),
+                                        child: Text(
+                                          L10n.t('system_check_info'),
+                                          style: TextStyle(
+                                            fontSize: 11,
+                                            color: MemoTheme.warningOrange,
+                                            height: 1.3,
+                                          ),
+                                        ),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                              ),
+                            ),
+
+                            SizedBox(height: 4),
 
                             // ─── Save Button ──────────────────
                             SizedBox(
@@ -891,7 +981,7 @@ Limits:
                                         ),
                                       )
                                     : Text(
-                                        isTurkish ? 'Başla' : 'Start',
+                                        L10n.t('start_button'),
                                         style: TextStyle(
                                           fontWeight: FontWeight.bold,
                                           fontSize: 16,
@@ -916,45 +1006,114 @@ Limits:
 
 // ─── Helpers ─────────────────────────────────────────────────────
 
-class _StepHeader extends StatelessWidget {
+/// One step in the setup checklist: a numbered circle connected by a thin
+/// bronze thread to the next step's circle — literalizes "a handful of
+/// things, one thread, then you're in" rather than implying a gated,
+/// paginated flow (every step is already visible/editable at once, so a
+/// fake "locked until previous step done" stepper would be dishonest UI).
+class _TimelineStep extends StatelessWidget {
   final String number;
   final String title;
+  final String? subtitle;
+  final Widget child;
   final ThemeColors color;
+  final bool isLast;
 
-  const _StepHeader({required this.number, required this.title, required this.color});
+  const _TimelineStep({
+    required this.number,
+    required this.title,
+    this.subtitle,
+    required this.child,
+    required this.color,
+    this.isLast = false,
+  });
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Container(
-          width: 26,
-          height: 26,
-          decoration: BoxDecoration(
-            color: MemoTheme.accent.withValues(alpha: 0.12),
-            borderRadius: BorderRadius.circular(13),
+    return IntrinsicHeight(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Column(
+            children: [
+              Container(
+                width: 28,
+                height: 28,
+                decoration: BoxDecoration(
+                  color: MemoTheme.accent.withValues(alpha: 0.12),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Center(
+                  child: Text(
+                    number,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.bold,
+                      color: MemoTheme.accent,
+                    ),
+                  ),
+                ),
+              ),
+              if (!isLast)
+                Expanded(
+                  child: Container(
+                    width: 2,
+                    margin: EdgeInsets.symmetric(vertical: 6),
+                    color: MemoTheme.accent.withValues(alpha: 0.18),
+                  ),
+                ),
+            ],
           ),
-          child: Center(
-            child: Text(
-              number,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: FontWeight.bold,
-                color: MemoTheme.accent,
+          SizedBox(width: 14),
+          Expanded(
+            child: Padding(
+              padding: EdgeInsets.only(bottom: isLast ? 0 : 28),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    title,
+                    style: TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      color: color.textMain,
+                      height: 1.1,
+                    ),
+                  ),
+                  if (subtitle != null) ...[
+                    SizedBox(height: 4),
+                    Text(
+                      subtitle!,
+                      style: TextStyle(fontSize: 12.5, color: color.textDim, height: 1.4),
+                    ),
+                  ],
+                  SizedBox(height: 14),
+                  child,
+                ],
               ),
             ),
           ),
-        ),
-        SizedBox(width: 10),
-        Text(
-          title,
-          style: TextStyle(
-            fontSize: 15,
-            fontWeight: FontWeight.w600,
-            color: color.textMain,
-          ),
-        ),
-      ],
+        ],
+      ),
+    );
+  }
+}
+
+/// A small "?" affordance that explains a term or control on hover — for
+/// someone who's never run a local AI model before, "chat model" vs "memory
+/// model" or "API provider" aren't self-explanatory just from a label.
+class _InfoTip extends StatelessWidget {
+  final String message;
+  final ThemeColors color;
+
+  const _InfoTip({required this.message, required this.color});
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: message,
+      waitDuration: const Duration(milliseconds: 300),
+      child: Icon(Icons.help_outline_rounded, size: 14, color: color.textDim),
     );
   }
 }
@@ -1043,9 +1202,148 @@ class _Pill extends StatelessWidget {
   }
 }
 
+/// A selectable persona card: icon, short name, and a one-line description
+/// of what the tone actually feels like — replaces a bare pill so someone
+/// who has no idea what "persona" means can tell these apart without first
+/// selecting each one to read its full system prompt.
+class _PersonaCard extends StatelessWidget {
+  final IconData icon;
+  final String name;
+  final String desc;
+  final bool selected;
+  final ThemeColors color;
+  final VoidCallback onTap;
+
+  const _PersonaCard({
+    required this.icon,
+    required this.name,
+    required this.desc,
+    required this.selected,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 150),
+        width: 156,
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          color: selected ? MemoTheme.accent.withValues(alpha: 0.10) : color.bgElement,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+          border: Border.all(
+            color: selected ? MemoTheme.accent : color.borderSoft,
+            width: selected ? 1.5 : 1,
+          ),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: (selected ? MemoTheme.accent : color.textDim).withValues(alpha: 0.14),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 15, color: selected ? MemoTheme.accent : color.textSecondary),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              name,
+              style: TextStyle(fontSize: 12.5, fontWeight: FontWeight.w600, color: color.textMain),
+            ),
+            const SizedBox(height: 2),
+            Text(
+              desc,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(fontSize: 10.5, height: 1.3, color: color.textDim),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One background preference the user can decide on right away instead of
+/// discovering it later — title, plain-language explanation, and a switch
+/// that applies immediately (same provider Settings itself uses, so nothing
+/// is lost if the wizard is closed before the final "Start" tap).
+class _PreferenceToggle extends StatelessWidget {
+  final IconData icon;
+  final String title;
+  final String desc;
+  final bool value;
+  final ThemeColors color;
+  final ValueChanged<bool>? onChanged;
+
+  const _PreferenceToggle({
+    required this.icon,
+    required this.title,
+    required this.desc,
+    required this.value,
+    required this.color,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: color.bgApp,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.borderSoft),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Container(
+            width: 32,
+            height: 32,
+            decoration: BoxDecoration(
+              color: MemoTheme.accent.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Icon(icon, size: 16, color: MemoTheme.accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  title,
+                  style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color.textMain),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  desc,
+                  style: TextStyle(fontSize: 11.5, height: 1.4, color: color.textDim),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          Switch(
+            value: value,
+            onChanged: onChanged,
+            activeThumbColor: MemoTheme.accent,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _ModelRecommendationCard extends StatelessWidget {
   final ThemeColors color;
-  final bool isTurkish;
   final bool checking;
   final GPUInfo gpu;
   final List<DownloadProgress> downloads;
@@ -1066,7 +1364,6 @@ class _ModelRecommendationCard extends StatelessWidget {
 
   const _ModelRecommendationCard({
     required this.color,
-    required this.isTurkish,
     required this.checking,
     required this.gpu,
     required this.downloads,
@@ -1118,9 +1415,7 @@ class _ModelRecommendationCard extends StatelessWidget {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  isTurkish
-                      ? 'API sağlayıcı bağlı: ${activeProviderName ?? ''}'
-                      : 'API provider connected: ${activeProviderName ?? ''}',
+                  L10n.t('setup_provider_connected', {'name': activeProviderName ?? ''}),
                   style: TextStyle(fontSize: 12, color: color.textMain),
                 ),
               ),
@@ -1143,7 +1438,7 @@ class _ModelRecommendationCard extends StatelessWidget {
             Padding(
               padding: EdgeInsets.symmetric(horizontal: 10),
               child: Text(
-                isTurkish ? 'veya' : 'or',
+                L10n.t('setup_or'),
                 style: TextStyle(fontSize: 11, color: color.textDim),
               ),
             ),
@@ -1151,24 +1446,32 @@ class _ModelRecommendationCard extends StatelessWidget {
           ],
         ),
         SizedBox(height: 10),
-        SizedBox(
-          height: 42,
-          child: OutlinedButton.icon(
-            onPressed: onConnectProvider,
-            icon: Icon(Icons.cloud_outlined, size: 16, color: color.textMain),
-            label: Text(
-              isTurkish ? 'API Sağlayıcı Bağla' : 'Connect an API Provider',
-              style: TextStyle(
-                color: color.textMain,
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+        Row(
+          children: [
+            Expanded(
+              child: SizedBox(
+                height: 42,
+                child: OutlinedButton.icon(
+                  onPressed: onConnectProvider,
+                  icon: Icon(Icons.cloud_outlined, size: 16, color: color.textMain),
+                  label: Text(
+                    L10n.t('setup_provider_connect_button'),
+                    style: TextStyle(
+                      color: color.textMain,
+                      fontWeight: FontWeight.w600,
+                      fontSize: 13,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    side: BorderSide(color: color.borderSoft),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                  ),
+                ),
               ),
             ),
-            style: OutlinedButton.styleFrom(
-              side: BorderSide(color: color.borderSoft),
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-            ),
-          ),
+            SizedBox(width: 8),
+            _InfoTip(message: L10n.t('setup_provider_connect_tooltip'), color: color),
+          ],
         ),
       ],
     );
@@ -1197,9 +1500,7 @@ class _ModelRecommendationCard extends StatelessWidget {
               SizedBox(width: 8),
               Expanded(
                 child: Text(
-                  isTurkish
-                      ? 'Hafıza modeli yok — API sağlayıcı ile sohbet edebilirsin ama Memo geçmişini hatırlayamaz. Hafıza için ayrı, küçük bir yerel model gerekir.'
-                      : 'No memory model — chat works via the API provider, but Memo won\'t remember past context. Memory needs its own small local model.',
+                  L10n.t('setup_memory_model_missing'),
                   style: TextStyle(fontSize: 11, color: color.textMain, height: 1.4),
                 ),
               ),
@@ -1219,7 +1520,7 @@ class _ModelRecommendationCard extends StatelessWidget {
                 Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 16),
                 SizedBox(width: 6),
                 Text(
-                  isTurkish ? 'Hafıza modeli hazır!' : 'Memory model ready!',
+                  L10n.t('setup_memory_model_ready'),
                   style: TextStyle(fontSize: 12, color: color.textMain),
                 ),
               ],
@@ -1234,7 +1535,7 @@ class _ModelRecommendationCard extends StatelessWidget {
                 ),
                 SizedBox(width: 8),
                 Text(
-                  isTurkish ? 'İndiriliyor...' : 'Downloading...',
+                  L10n.t('setup_memory_model_downloading'),
                   style: TextStyle(fontSize: 12, color: color.textDim),
                 ),
               ],
@@ -1244,7 +1545,7 @@ class _ModelRecommendationCard extends StatelessWidget {
               onPressed: onDownloadMemoryModel,
               icon: Icon(Icons.download_outlined, size: 15, color: MemoTheme.warningOrange),
               label: Text(
-                isTurkish ? 'Hafıza Modelini İndir' : 'Download Memory Model',
+                L10n.t('setup_memory_model_download_button'),
                 style: TextStyle(
                   color: MemoTheme.warningOrange,
                   fontWeight: FontWeight.w600,
@@ -1273,7 +1574,7 @@ class _ModelRecommendationCard extends StatelessWidget {
           ),
           SizedBox(width: 10),
           Text(
-            isTurkish ? 'Sistemin kontrol ediliyor...' : 'Checking your system...',
+            L10n.t('setup_model_checking'),
             style: TextStyle(fontSize: 13, color: color.textDim),
           ),
         ],
@@ -1287,9 +1588,7 @@ class _ModelRecommendationCard extends StatelessWidget {
           SizedBox(width: 10),
           Expanded(
             child: Text(
-              isTurkish
-                  ? 'Zaten $localModelCount model kurulu — hazırsın!'
-                  : 'You already have $localModelCount model(s) installed — you\'re all set!',
+              L10n.t('setup_model_already', {'count': '$localModelCount'}),
               style: TextStyle(fontSize: 13, color: color.textMain),
             ),
           ),
@@ -1301,25 +1600,21 @@ class _ModelRecommendationCard extends StatelessWidget {
     final memModel = recommendedMemoryModel;
     final gpuLine = gpu.hasGpu
         ? '${gpu.name} — ${gpu.vramFormatted} VRAM'
-        : (isTurkish ? 'Bulunamadı — CPU ile çalışacak' : 'Not found — will run on CPU');
-    final ramLine = gpu.ramTotalMb > 0
-        ? gpu.ramFormatted
-        : (isTurkish ? 'Bilinmiyor' : 'Unknown');
+        : L10n.t('setup_model_gpu_none');
+    final ramLine = gpu.ramTotalMb > 0 ? gpu.ramFormatted : L10n.t('setup_model_ram_unknown');
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Text(
-          isTurkish
-              ? 'Hey! Sistemine göre bir öneri hazırladık 👋'
-              : 'Hey! We picked models for your system 👋',
+          L10n.t('setup_model_hello'),
           style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: color.textMain),
         ),
         SizedBox(height: 10),
-        _SpecRow(label: 'RAM', value: ramLine, color: color),
+        _SpecRow(label: L10n.t('setup_model_ram'), value: ramLine, color: color),
         SizedBox(height: 4),
         _SpecRow(
-          label: isTurkish ? 'Ekran Kartı' : 'Graphics Card',
+          label: L10n.t('setup_model_gpu'),
           value: gpuLine,
           color: color,
         ),
@@ -1334,26 +1629,26 @@ class _ModelRecommendationCard extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               _SpecRow(
-                label: isTurkish ? 'Sohbet modeli' : 'Chat model',
+                label: L10n.t('setup_model_chat_label'),
                 value: '${chatModel.name} (${chatModel.sizeFormatted})',
                 color: color,
                 bold: true,
+                tooltip: L10n.t('setup_model_chat_tooltip'),
               ),
               SizedBox(height: 4),
               _SpecRow(
-                label: isTurkish ? 'Hafıza modeli' : 'Memory model',
+                label: L10n.t('setup_model_memory_label'),
                 value: memModel.name,
                 color: color,
                 bold: true,
+                tooltip: L10n.t('setup_model_memory_tooltip'),
               ),
             ],
           ),
         ),
         SizedBox(height: 8),
         Text(
-          isTurkish
-              ? 'Bu modeller bilgisayarında saklanır — internetin olmadığı zamanlarda bile Memo çalışmaya devam eder.'
-              : 'These models are stored on your computer — Memo keeps working even when you\'re offline.',
+          L10n.t('setup_model_local_note'),
           style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
         ),
         SizedBox(height: 14),
@@ -1375,7 +1670,7 @@ class _ModelRecommendationCard extends StatelessWidget {
                 shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
               ),
               child: Text(
-                isTurkish ? 'Bu Modelleri İndir' : 'Download These Models',
+                L10n.t('setup_model_download_button'),
                 style: TextStyle(
                   color: MemoTheme.accent,
                   fontWeight: FontWeight.w600,
@@ -1390,20 +1685,18 @@ class _ModelRecommendationCard extends StatelessWidget {
               Icon(Icons.check_circle_rounded, color: MemoTheme.green, size: 18),
               SizedBox(width: 8),
               Text(
-                isTurkish ? 'Modeller hazır! Devam edebilirsin.' : 'Models are ready! You can continue.',
+                L10n.t('setup_model_download_done'),
                 style: TextStyle(fontSize: 12, color: color.textMain),
               ),
             ],
           )
         else ...[
           for (final d in downloads) ...[
-            _DownloadProgressRow(progress: d, color: color, isTurkish: isTurkish),
+            _DownloadProgressRow(progress: d, color: color),
             SizedBox(height: 8),
           ],
           Text(
-            isTurkish
-                ? 'İndirmeler arka planda sürüyor — kuruluma devam edebilirsin. Ama Memo\'yu tamamen kapatırsan indirme durur ve bir dahaki sefere baştan başlar.'
-                : 'Downloads continue in the background — you can keep going with setup. But if you close Memo entirely, the download stops and restarts from scratch next time.',
+            L10n.t('setup_model_download_bg_note'),
             style: TextStyle(fontSize: 11, color: color.textDim, height: 1.4),
           ),
         ],
@@ -1417,12 +1710,14 @@ class _SpecRow extends StatelessWidget {
   final String value;
   final ThemeColors color;
   final bool bold;
+  final String? tooltip;
 
   const _SpecRow({
     required this.label,
     required this.value,
     required this.color,
     this.bold = false,
+    this.tooltip,
   });
 
   @override
@@ -1431,8 +1726,18 @@ class _SpecRow extends StatelessWidget {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(
-          width: 90,
-          child: Text(label, style: TextStyle(fontSize: 12, color: color.textDim)),
+          width: 100,
+          child: Row(
+            children: [
+              Flexible(
+                child: Text(label, style: TextStyle(fontSize: 12, color: color.textDim)),
+              ),
+              if (tooltip != null) ...[
+                SizedBox(width: 4),
+                _InfoTip(message: tooltip!, color: color),
+              ],
+            ],
+          ),
         ),
         Expanded(
           child: Text(
@@ -1452,12 +1757,10 @@ class _SpecRow extends StatelessWidget {
 class _DownloadProgressRow extends StatelessWidget {
   final DownloadProgress progress;
   final ThemeColors color;
-  final bool isTurkish;
 
   const _DownloadProgressRow({
     required this.progress,
     required this.color,
-    required this.isTurkish,
   });
 
   /// Parses the backend's already-formatted speed string (e.g. "3.2 MB/s",
@@ -1483,17 +1786,17 @@ class _DownloadProgressRow extends StatelessWidget {
     if (remainingBytes <= 0 || bytesPerSec <= 0) return null;
     final seconds = remainingBytes / bytesPerSec;
     if (seconds < 60) {
-      return isTurkish ? '~${seconds.round()} sn kaldı' : '~${seconds.round()} sec left';
+      return L10n.t('setup_eta_seconds', {'s': '${seconds.round()}'});
     }
     final minutes = (seconds / 60).round();
-    return isTurkish ? '~$minutes dakika kaldı' : '~$minutes min left';
+    return L10n.t('setup_eta_minutes', {'m': '$minutes'});
   }
 
   @override
   Widget build(BuildContext context) {
     final p = progress;
     final pct = p.percent.clamp(0, 100).toDouble();
-    final label = p.filename.isNotEmpty ? p.filename : (isTurkish ? 'Hazırlanıyor...' : 'Preparing...');
+    final label = p.filename.isNotEmpty ? p.filename : L10n.t('setup_preparing');
     final speedSuffix = p.speed.isNotEmpty ? ' (${p.speed})' : '';
     final eta = _etaLabel();
     final etaSuffix = eta != null ? ' — $eta' : '';
@@ -1524,8 +1827,9 @@ class _DiagRow extends StatelessWidget {
   final String title;
   final bool ok;
   final ThemeColors color;
+  final String? tooltip;
 
-  const _DiagRow({required this.title, required this.ok, required this.color});
+  const _DiagRow({required this.title, required this.ok, required this.color, this.tooltip});
 
   @override
   Widget build(BuildContext context) {
@@ -1544,6 +1848,10 @@ class _DiagRow extends StatelessWidget {
             color: ok ? color.textMain : MemoTheme.red,
           ),
         ),
+        if (tooltip != null) ...[
+          SizedBox(width: 6),
+          _InfoTip(message: tooltip!, color: color),
+        ],
       ],
     );
   }

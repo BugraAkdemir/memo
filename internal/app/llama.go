@@ -211,7 +211,7 @@ func (a *App) autoStartEmbeddingModel() {
 	}
 
 	logx.Printf("Auto-starting embedding model: %s", embeddingPath)
-	if err := a.StartEmbeddingModel(embeddingPath, -1); err != nil {
+	if err := a.StartEmbeddingModel(embeddingPath, a.cfg.Llama.EmbeddingGPULayers); err != nil {
 		msg := fmt.Sprintf("⚠️ Failed to auto-start embedding model: %v", err)
 		log.Print(msg)
 		a.emitEvent("memory:error", msg)

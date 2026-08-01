@@ -141,6 +141,7 @@ func (a *App) startupEmbeddingModel() {
 	filename := a.cfg.Memory.EmbeddingModelFile
 	a.cfgMu.RLock()
 	modelsDir := a.cfg.Llama.ModelsDir
+	embGPULayers := a.cfg.Llama.EmbeddingGPULayers
 	a.cfgMu.RUnlock()
 	modelPath := filepath.Join(modelsDir, filename)
 
@@ -156,7 +157,7 @@ func (a *App) startupEmbeddingModel() {
 	}
 
 	logx.Printf("Auto-starting embedding model: %s", modelPath)
-	if err := a.StartEmbeddingModel(modelPath, -1); err != nil {
+	if err := a.StartEmbeddingModel(modelPath, embGPULayers); err != nil {
 		msg := fmt.Sprintf("Failed to start embedding model: %v", err)
 		log.Print(msg)
 		a.emitEvent("memory:error", msg)

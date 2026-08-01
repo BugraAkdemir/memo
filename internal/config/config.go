@@ -248,6 +248,26 @@ type LlamaConfig struct {
 	Temperature      float64 `yaml:"temperature" json:"temperature"`               // default 0.7
 	TopP             float64 `yaml:"top_p" json:"top_p"`                           // default 0.9
 	MaxTokens        int     `yaml:"max_tokens" json:"max_tokens"`                 // default 0 (no limit)
+
+	// EmbeddingGPULayers controls how many layers the dedicated embedding
+	// llama-server (a.llamaEmbedServer, a separate process from the chat
+	// model's own server) offloads to the GPU when auto-started
+	// (autoStartEmbeddingModel / startupEmbeddingModel). Defaults to 0 (CPU
+	// only) rather than llama.Server.Start's usual -1 ("auto-detect max
+	// layers for this GPU"): that auto-detect only ever considers total
+	// VRAM, with no idea the chat model's own server is already resident —
+	// on any GPU without generous headroom, both servers independently
+	// sizing themselves as if they were the only model running reliably
+	// oversubscribes VRAM, forcing the chat model into partial CPU
+	// fallback and tanking its generation speed for the entire session
+	// (observed: ~10 tok/s with RAG off degrading to ~2-3 tok/s with it
+	// on). Embedding models are tiny (typically 100-400M params) and fast
+	// enough on CPU alone that this trade is a clear win by default. A
+	// user with real VRAM headroom to spare can still set this explicitly
+	// (config.yaml, or per-launch via the manual "start model" dialog,
+	// which already accepts an arbitrary gpuLayers value uncoupled from
+	// this default).
+	EmbeddingGPULayers int `yaml:"embedding_gpu_layers" json:"embedding_gpu_layers"`
 }
 
 // SwarmConfig controls Memo Swarm — pooling multiple machines' compute via
@@ -415,16 +435,17 @@ func Default() *AppConfig {
 			UseMemory:     false,
 		},
 		Llama: LlamaConfig{
-			EngineMode:    "auto",
-			BinaryPath:    "",
-			Port:          8081,
-			EmbeddingPort: 8082,
-			CtxSize:       8192,
-			MaxHistory:    20,
-			ModelsDir:     "./data/models",
-			Temperature:   0.7,
-			TopP:          0.9,
-			MaxTokens:     0,
+			EngineMode:         "auto",
+			BinaryPath:         "",
+			Port:               8081,
+			EmbeddingPort:      8082,
+			CtxSize:            8192,
+			MaxHistory:         20,
+			ModelsDir:          "./data/models",
+			Temperature:        0.7,
+			TopP:               0.9,
+			MaxTokens:          0,
+			EmbeddingGPULayers: 0, // CPU by default — see field doc comment
 		},
 		Whisper: WhisperConfig{
 			Enabled:  true,

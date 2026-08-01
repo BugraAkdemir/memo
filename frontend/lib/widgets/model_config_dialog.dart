@@ -340,21 +340,40 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
             if (_statusMessage.isNotEmpty)
               Padding(
                 padding: EdgeInsets.only(bottom: 12),
-                child: Row(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(
-                      width: 14,
-                      height: 14,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: MemoTheme.accent,
-                      ),
+                    Row(
+                      children: [
+                        SizedBox(
+                          width: 14,
+                          height: 14,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: MemoTheme.accent,
+                          ),
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            _statusMessage,
+                            style: TextStyle(fontSize: 12, color: MemoTheme.accent),
+                          ),
+                        ),
+                      ],
                     ),
-                    SizedBox(width: 8),
-                    Expanded(
+                    // Loading a multi-GB GGUF (first cold read off disk,
+                    // especially) can genuinely take close to a minute — the
+                    // backend itself budgets up to 180s (chat model) / ~6min
+                    // across retries (embedding) before giving up. Without
+                    // this, a first-time user watching the spinner sit still
+                    // that long has no way to tell "still working" apart from
+                    // "frozen."
+                    Padding(
+                      padding: EdgeInsets.only(left: 22, top: 4),
                       child: Text(
-                        _statusMessage,
-                        style: TextStyle(fontSize: 12, color: MemoTheme.accent),
+                        L10n.t('model_start_slow_hint'),
+                        style: TextStyle(fontSize: 11, color: MemoTheme.of(context).textDim),
                       ),
                     ),
                   ],

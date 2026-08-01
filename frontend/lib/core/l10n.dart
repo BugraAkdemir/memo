@@ -799,6 +799,8 @@ class L10n {
     'downloaded_label': 'İNDİRİLEN',
     'cancel_download': 'İndirmeyi İptal Et',
     'start_model': 'Modeli Başlat',
+    'model_start_slow_hint':
+        'Büyük modellerin ilk yüklenmesi bir dakikaya kadar sürebilir — donmadı, dosya hafızaya okunuyor.',
     'stop_model': 'Modeli Durdur',
     'running': 'Çalışıyor',
     'running_model': 'Çalışan Model',
@@ -2254,6 +2256,8 @@ class L10n {
     'downloaded_label': 'DOWNLOADED',
     'cancel_download': 'Cancel Download',
     'start_model': 'Start Model',
+    'model_start_slow_hint':
+        "Large models can take up to a minute to load the first time — it hasn't frozen, the file is being read into memory.",
     'stop_model': 'Stop Model',
     'running': 'Running',
     'running_model': 'Running Model',

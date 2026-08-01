@@ -560,6 +560,14 @@ class MemoApiClient {
           'port': port,
           'gpu_layers': gpuLayers,
         },
+        // The backend blocks this whole request until llama-server reports
+        // ready (StartLocalModel's WaitReady budget is 180s — a large model
+        // on a slow disk can genuinely take close to that on its first,
+        // OS-file-cache-cold load). The default 120s receiveTimeout would
+        // fire first and throw a "failed to start" DioException while the
+        // backend is still successfully loading it in the background —
+        // override with margin above the backend's own budget.
+        options: Options(receiveTimeout: const Duration(seconds: 200)),
       );
     } on DioException catch (e) {
       throw Exception(_extractErrorMessage(e));
@@ -624,6 +632,13 @@ class MemoApiClient {
       await _dio.post(
         '/api/models/embedding/start',
         data: {'path': path, 'gpu_layers': gpuLayers},
+        // StartEmbeddingModel retries up to 3 times, each with its own 120s
+        // WaitReady budget (a fresh embedding server occasionally dies within
+        // its first second or two, which this retry recovers from) — worst
+        // case close to 6 minutes. Same reasoning as startModel above: the
+        // default 120s receiveTimeout would fire well before that and report
+        // a spurious failure while the backend is still retrying.
+        options: Options(receiveTimeout: const Duration(minutes: 7)),
       );
     } on DioException catch (e) {
       throw Exception(_extractErrorMessage(e));

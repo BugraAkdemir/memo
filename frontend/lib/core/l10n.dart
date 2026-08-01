@@ -907,21 +907,81 @@ class L10n {
     'revoke_permission': 'İzni İptal Et',
 
     // Setup wizard
-    'setup_title': 'Hoş Geldiniz',
-    'setup_subtitle': 'Memo\'yu kuralım',
-    'setup_wizard_title': 'Memo Kurulum Sihirbazı',
-    'setup_welcome':
-        'Hoş geldiniz! Memo tamamen yerel ve gizlilik odaklı bir AI asistanıdır. Başlamadan önce birkaç ayarı tamamlayalım.',
-    'your_name': 'Adınız (İsteğe bağlı)',
-    'name_hint': 'Örn: Buğra Akdemir',
-    'system_command': 'Sistem Komutu (Özelleştirebilirsiniz)',
-    'system_command_hint':
-        'Boş bırakırsanız Memo varsayılan davranışıyla ayarlanacaktır.',
+    'setup_eyebrow': 'Hoş geldin',
+    'setup_wizard_title': 'Kendi bilgisayarında çalışan bir yapay zeka',
+    'setup_subtitle':
+        'Birkaç kısa adım, sonra sohbete başlıyoruz. İstersen hiçbir şey bilgisayarından dışarı çıkmadan da çalışabilir.',
+
+    'setup_step_language_theme': 'Dil ve Görünüm',
+
+    'setup_step_persona': 'Asistan Karakteri',
+    'setup_step_persona_desc':
+        'Memo sana nasıl hitap etsin? Emin değilsen sorun yok — istediğin zaman Ayarlar\'dan değiştirebilirsin.',
+    'setup_persona_normal_desc': 'Sıcak ve net, gereksiz kibarlık yok.',
+    'setup_persona_fun_desc': 'Şakacı, emoji sever, seni güldürmeye çalışır.',
+    'setup_persona_formal_desc': 'Profesyonel, ölçülü, işine odaklı.',
+    'setup_persona_technical_desc': 'Detaycı, doğruluk her şeyden önce gelir.',
+    'setup_persona_creative_desc': 'Metafor dolu, kalıpların dışında düşünür.',
+    'setup_persona_friend_desc': '10 yıllık kankan gibi konuşur.',
+    'setup_persona_custom_desc': 'Kendi sistem promptunu sen yaz.',
+    'setup_name_hint': 'Adın (isteğe bağlı — örn. Buğra)',
+
+    'setup_step_model': 'Model Önerisi',
+    'setup_model_checking': 'Sistemin kontrol ediliyor...',
+    'setup_model_already':
+        'Zaten \${count} model kurulu — hazırsın!',
+    'setup_model_hello': 'Hey! Sistemine göre bir öneri hazırladık 👋',
+    'setup_model_ram': 'RAM',
+    'setup_model_gpu': 'Ekran Kartı',
+    'setup_model_gpu_none': 'Bulunamadı — CPU ile çalışacak',
+    'setup_model_ram_unknown': 'Bilinmiyor',
+    'setup_model_chat_label': 'Sohbet modeli',
+    'setup_model_chat_tooltip':
+        'Yazdıklarına cevap üreten model. Ne kadar büyükse o kadar yetenekli, ama o kadar çok yer ve güç ister.',
+    'setup_model_memory_label': 'Hafıza modeli',
+    'setup_model_memory_tooltip':
+        'Konuştuklarınızı hatırlaman için gereken küçük bir yardımcı model. Kendi bilgisayarında çalışır, hiçbir şeyi internete göndermez.',
+    'setup_model_local_note':
+        'Bu modeller bilgisayarında saklanır — internetin olmadığı zamanlarda bile Memo çalışmaya devam eder.',
+    'setup_model_download_button': 'Bu Modelleri İndir',
+    'setup_model_download_done': 'Modeller hazır! Devam edebilirsin.',
+    'setup_model_download_bg_note':
+        'İndirmeler arka planda sürüyor — kuruluma devam edebilirsin. Ama Memo\'yu tamamen kapatırsan indirme durur ve bir dahaki sefere baştan başlar.',
+    'setup_or': 'veya',
+    'setup_provider_connect_button': 'API Sağlayıcı Bağla',
+    'setup_provider_connect_tooltip':
+        'OpenAI, Gemini veya Claude gibi bulut servislerine kendi anahtarınla bağlan. İndirme gerekmez, ama sohbetlerin o servise gider.',
+    'setup_provider_connected': 'API sağlayıcı bağlı: \${name}',
+    'setup_memory_model_missing':
+        'Hafıza modeli yok — API sağlayıcı ile sohbet edebilirsin ama Memo geçmişini hatırlayamaz. Hafıza için ayrı, küçük bir yerel model gerekir.',
+    'setup_memory_model_ready': 'Hafıza modeli hazır!',
+    'setup_memory_model_downloading': 'İndiriliyor...',
+    'setup_memory_model_download_button': 'Hafıza Modelini İndir',
+    'setup_eta_seconds': '~\${s} sn kaldı',
+    'setup_eta_minutes': '~\${m} dakika kaldı',
+    'setup_preparing': 'Hazırlanıyor...',
+
+    'setup_step_preferences': 'Başlangıç Tercihleri',
+    'setup_step_preferences_desc':
+        'İkisi de sonradan Ayarlar\'dan değiştirilebilir.',
+    'setup_pref_proactive_desc':
+        'Memo, konuşma alışkanlıklarından öğrenip zamanla küçük öneriler sunabilir (örn. bir hatırlatma önerisi). Tamamen bilgisayarında kalır — kapalıyken hiçbir şey kaydedilip önerilmez.',
+    'setup_pref_minimal_desc':
+        'Sistem promptunu kısaltıp yanıtları hızlandırır — zayıf donanımda ya da hafızayı yormak istemediğinde işine yarar.',
+
+    'setup_step_check': 'Sistem Kontrolü',
+    'setup_check_refresh_tooltip': 'Yeniden kontrol et',
+    'setup_check_backend_tooltip':
+        'Memo\'nun arka planda çalışan motoru. Bu olmadan sohbet edemezsin.',
+    'setup_check_models_tooltip':
+        'Bilgisayarına indirilmiş, internetsiz çalışan modeller.',
     'system_check': 'Sistem Kontrolü',
     'backend_connection': 'Backend Bağlantısı',
     'local_models_status': 'Yerel Modeller',
+    'setup_check_ready': 'Sohbete Hazır',
     'system_check_info':
         'Tüm sistemlerin çalışır durumda olması şart değildir, devam edebilirsiniz.',
+
     'start_button': 'Başla',
 
     // Prompt templates
@@ -2284,20 +2344,82 @@ class L10n {
     'no_permissions': 'No permanent permissions yet.',
     'revoke_permission': 'Revoke Permission',
 
-    'setup_title': 'Welcome',
-    'setup_subtitle': 'Let\'s set up Memo',
-    'setup_wizard_title': 'Memo Setup Wizard',
-    'setup_welcome':
-        'Welcome! Memo is a fully local, privacy-focused AI assistant. Let\'s complete a few settings before you start.',
-    'your_name': 'Your Name (Optional)',
-    'name_hint': 'e.g.: Your Name',
-    'system_command': 'System Command (You can customize)',
-    'system_command_hint': 'If empty, Memo will use default behavior.',
+    // Setup wizard
+    'setup_eyebrow': 'Welcome',
+    'setup_wizard_title': 'An AI that runs on your own computer',
+    'setup_subtitle':
+        'A few short steps, then you\'re chatting. If you want, it can run without anything ever leaving your computer.',
+
+    'setup_step_language_theme': 'Language & Appearance',
+
+    'setup_step_persona': 'Assistant Persona',
+    'setup_step_persona_desc':
+        'How should Memo talk to you? Not sure? No worries — you can change this anytime in Settings.',
+    'setup_persona_normal_desc': 'Warm and direct, no fluff.',
+    'setup_persona_fun_desc': 'Playful, loves emoji, tries to make you smile.',
+    'setup_persona_formal_desc': 'Professional, measured, straight to business.',
+    'setup_persona_technical_desc': 'Detail-oriented, precision comes first.',
+    'setup_persona_creative_desc': 'Full of metaphor, thinks outside the box.',
+    'setup_persona_friend_desc': 'Talks like your friend of 10 years.',
+    'setup_persona_custom_desc': 'Write your own system prompt.',
+    'setup_name_hint': 'Your name (optional — e.g. John)',
+
+    'setup_step_model': 'Model Recommendation',
+    'setup_model_checking': 'Checking your system...',
+    'setup_model_already':
+        'You already have \${count} model(s) installed — you\'re all set!',
+    'setup_model_hello': 'Hey! We picked models for your system 👋',
+    'setup_model_ram': 'RAM',
+    'setup_model_gpu': 'Graphics Card',
+    'setup_model_gpu_none': 'Not found — will run on CPU',
+    'setup_model_ram_unknown': 'Unknown',
+    'setup_model_chat_label': 'Chat model',
+    'setup_model_chat_tooltip':
+        'The model that answers what you write. The bigger it is, the more capable — but it also needs more space and power.',
+    'setup_model_memory_label': 'Memory model',
+    'setup_model_memory_tooltip':
+        'A small helper model so Memo remembers what you talked about. It runs on your own computer and never sends anything to the internet.',
+    'setup_model_local_note':
+        'These models are stored on your computer — Memo keeps working even when you\'re offline.',
+    'setup_model_download_button': 'Download These Models',
+    'setup_model_download_done': 'Models are ready! You can continue.',
+    'setup_model_download_bg_note':
+        'Downloads continue in the background — you can keep going with setup. But if you close Memo entirely, the download stops and restarts from scratch next time.',
+    'setup_or': 'or',
+    'setup_provider_connect_button': 'Connect an API Provider',
+    'setup_provider_connect_tooltip':
+        'Connect to a cloud service like OpenAI, Gemini, or Claude with your own key. No download needed, but your chats go to that service.',
+    'setup_provider_connected': 'API provider connected: \${name}',
+    'setup_memory_model_missing':
+        'No memory model — chat works via the API provider, but Memo won\'t remember past context. Memory needs its own small local model.',
+    'setup_memory_model_ready': 'Memory model ready!',
+    'setup_memory_model_downloading': 'Downloading...',
+    'setup_memory_model_download_button': 'Download Memory Model',
+    'setup_eta_seconds': '~\${s} sec left',
+    'setup_eta_minutes': '~\${m} min left',
+    'setup_preparing': 'Preparing...',
+
+    'setup_step_preferences': 'Starting Preferences',
+    'setup_step_preferences_desc':
+        'Both of these can be changed later in Settings.',
+    'setup_pref_proactive_desc':
+        'Memo can learn from your conversation habits and occasionally offer small suggestions (like a reminder). It all stays on your computer — when this is off, nothing is recorded or suggested.',
+    'setup_pref_minimal_desc':
+        'Shortens the system prompt to speed up replies — useful on weaker hardware, or when you\'d rather not spend context on it.',
+
+    'setup_step_check': 'System Check',
+    'setup_check_refresh_tooltip': 'Check again',
+    'setup_check_backend_tooltip':
+        'Memo\'s engine running in the background. You can\'t chat without this.',
+    'setup_check_models_tooltip':
+        'Models downloaded to your computer that work without internet.',
     'system_check': 'System Check',
     'backend_connection': 'Backend Connection',
     'local_models_status': 'Local Models',
+    'setup_check_ready': 'Ready to Chat',
     'system_check_info':
         'Not all systems need to be running; you can continue.',
+
     'start_button': 'Start',
 
     'template_review': 'Code Review',

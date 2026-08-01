@@ -130,6 +130,23 @@ func (id *Identity) GetLearnedStyleNotes() string {
 	return id.LearnedStyleNotes
 }
 
+// maxMemoryContextTokens caps how much of the prompt the memory block
+// (retrieved RAG results + unconditionally-injected pinned facts, see
+// retrieveMemory in internal/app/memory.go) can ever consume. Was 16K —
+// effectively no real ceiling for how this app actually uses it: the
+// realistic worst case (topK=8 short retrieved chunks + up to 75 pinned
+// facts, each capped at ~300 chars by extractAndPinFacts) lands nowhere
+// close to that, so it never actually kicked in, and pinned facts in
+// particular only grow over a session's lifetime (auto-extraction keeps
+// adding to them; the daily consolidation pass only dedups near-duplicates,
+// it doesn't shrink the set) with nothing to stop the block from eventually
+// approaching that old ceiling and, along the way, quietly inflating prompt
+// size — and therefore both prefill time and per-token generation cost on a
+// local model — turn after turn. 4096 is still generous for what this
+// actually needs (see the estimate above) while giving the growth a real,
+// much closer ceiling instead of a practically-unbounded ~49K-char one.
+const maxMemoryContextTokens = 4096
+
 func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssistant bool, agentEnabled, webSearchEnabled bool) string {
 	var sb strings.Builder
 
@@ -204,17 +221,17 @@ func (id *Identity) BuildSystemPrompt(memories []memory.MemoryResult, stripAssis
 		memoryBlock = memory.FormatMemoriesForPrompt(memories)
 	}
 	if memoryBlock != "" {
-		// Ensure memories don't exceed ~16K tokens (leaves room for identity + conversation)
+		// Ensure memories don't exceed maxMemoryContextTokens (leaves room for
+		// identity + conversation).
 		blockTokens := truncate.EstimateTokens(memoryBlock)
-		maxMemoryTokens := 16 * 1024
-		if blockTokens > maxMemoryTokens {
+		if blockTokens > maxMemoryContextTokens {
 			// Truncate the memory block to fit
 			lines := strings.Split(memoryBlock, "\n")
 			var truncated []string
 			total := 0
 			for _, line := range lines {
 				lineTokens := truncate.EstimateTokens(line)
-				if total+lineTokens > maxMemoryTokens {
+				if total+lineTokens > maxMemoryContextTokens {
 					truncated = append(truncated, "... (more memories available)")
 					break
 				}

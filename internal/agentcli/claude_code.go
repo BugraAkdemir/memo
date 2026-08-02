@@ -114,6 +114,16 @@ func (c *ClaudeCodeCLI) ChatCompletionStream(ctx context.Context, req provider.C
 	if req.ResumeSessionID != "" {
 		args = append(args, "--resume", req.ResumeSessionID)
 	}
+	// req.Model was accepted by this struct from the start but never actually
+	// passed to the subprocess — every CLI chat silently used claude's own
+	// configured default model regardless of what a caller set here. Accepts
+	// either an alias ("opus", "sonnet", "fable" — the ones claude --help
+	// itself documents) or a full model name; unvalidated here, same as
+	// every other pass-through flag in this file, since claude itself is the
+	// authority on what's valid.
+	if req.Model != "" {
+		args = append(args, "--model", req.Model)
+	}
 	args = append(args, userMsg)
 
 	cmd := execCommandContext(ctx, c.binaryPath, args...)

@@ -179,6 +179,51 @@ func TestChatCompletionStream_ResumePassesResumeFlag(t *testing.T) {
 	}
 }
 
+// TestChatCompletionStream_PassesModelFlag is the regression test for a real
+// gap: ChatRequest.Model was accepted since this struct's first version but
+// never actually reached the subprocess — every CLI chat silently used
+// claude's own default model no matter what a caller set here.
+func TestChatCompletionStream_PassesModelFlag(t *testing.T) {
+	script := `printf '%s\n' '{"type":"result","session_id":"sess-1","is_error":false,"result":"ok"}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewClaudeCodeCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "selam")},
+		Model:    "opus",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	if !strings.Contains(strings.Join(args, " "), "--model opus") {
+		t.Errorf("args %v missing --model opus", args)
+	}
+}
+
+func TestChatCompletionStream_EmptyModelOmitsFlag(t *testing.T) {
+	script := `printf '%s\n' '{"type":"result","session_id":"sess-1","is_error":false,"result":"ok"}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewClaudeCodeCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "selam")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	if strings.Contains(strings.Join(args, " "), "--model") {
+		t.Errorf("args %v should not pass --model when unset, letting claude use its own default", args)
+	}
+}
+
 func TestChatCompletionStream_ProcessExitsWithErrorSendsTerminalChunk(t *testing.T) {
 	script := `echo "boom on stderr" 1>&2; exit 1`
 	fakeScript(t, script, nil)

@@ -246,6 +246,77 @@ func TestCodexChatCompletionStream_UnknownSlashCommandSentVerbatim(t *testing.T)
 	}
 }
 
+// TestCodexChatCompletionStream_PassesModelFlag is the regression test for
+// the same gap as Claude Code's equivalent test: ChatRequest.Model was never
+// actually passed to the codex subprocess, so every CLI chat silently used
+// codex's own config.toml default regardless of what a caller set here.
+func TestCodexChatCompletionStream_PassesModelFlag(t *testing.T) {
+	script := `printf '%s\n' '{"type":"turn.completed","usage":{}}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewCodexCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "selam")},
+		Model:    "gpt-5.6-terra",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	if !strings.Contains(strings.Join(args, " "), "-m gpt-5.6-terra") {
+		t.Errorf("args %v missing -m gpt-5.6-terra", args)
+	}
+}
+
+func TestCodexChatCompletionStream_ResumePassesModelFlagToo(t *testing.T) {
+	script := `printf '%s\n' '{"type":"turn.completed","usage":{}}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewCodexCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages:        []provider.Message{provider.TextMessage("user", "devam")},
+		ResumeSessionID: "thread-1",
+		Model:           "gpt-5.5",
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "-m gpt-5.5") {
+		t.Errorf("args %v missing -m gpt-5.5 on resume", args)
+	}
+	if strings.Contains(joined, "-C ") {
+		t.Errorf("args %v should still not pass -C on resume, got: %s", args, joined)
+	}
+}
+
+func TestCodexChatCompletionStream_EmptyModelOmitsFlag(t *testing.T) {
+	script := `printf '%s\n' '{"type":"turn.completed","usage":{}}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewCodexCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "selam")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	if strings.Contains(strings.Join(args, " "), "-m ") {
+		t.Errorf("args %v should not pass -m when unset, letting codex use its own default", args)
+	}
+}
+
 func TestCodexChatCompletionStream_TurnFailedSendsErrorChunk(t *testing.T) {
 	script := `printf '%s\n' '{"type":"turn.failed","error":{"message":"model not supported"}}'`
 	fakeScript(t, script, nil)

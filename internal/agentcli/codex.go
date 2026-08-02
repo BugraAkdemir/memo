@@ -96,11 +96,23 @@ func (c *CodexCLI) ChatCompletionStream(ctx context.Context, req provider.ChatRe
 
 	var args []string
 	if req.ResumeSessionID != "" {
-		args = []string{"exec", "resume", req.ResumeSessionID, "--json", "--dangerously-bypass-approvals-and-sandbox", userMsg}
+		args = []string{"exec", "resume", req.ResumeSessionID, "--json", "--dangerously-bypass-approvals-and-sandbox"}
+		// req.Model was accepted by this struct from the start but never
+		// actually passed to the subprocess — every CLI chat silently used
+		// codex's own config.toml default model regardless of what a caller
+		// set here. -m/--model is accepted by `codex exec resume` too (unlike
+		// -C, which resume rejects — see the fresh-run branch's own comment).
+		if req.Model != "" {
+			args = append(args, "-m", req.Model)
+		}
+		args = append(args, userMsg)
 	} else {
 		args = []string{"exec", "--json", "--dangerously-bypass-approvals-and-sandbox"}
 		if req.WorkDir != "" {
 			args = append(args, "-C", req.WorkDir)
+		}
+		if req.Model != "" {
+			args = append(args, "-m", req.Model)
 		}
 		args = append(args, userMsg)
 	}

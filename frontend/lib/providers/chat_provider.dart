@@ -35,6 +35,53 @@ final apiClientProvider = Provider<MemoApiClient>((ref) {
   );
 });
 
+// Chat ids with a CLI-backed background stream currently in flight — polled
+// for the chat sidebar's "processing" indicator. autoDispose: only worth
+// polling while the sidebar (or anything else) is actually watching it.
+final runningCLIChatsProvider = StreamProvider.autoDispose<Set<String>>((ref) async* {
+  final api = ref.watch(apiClientProvider);
+  while (true) {
+    try {
+      final ids = await api.getRunningCLIChats();
+      yield ids.toSet();
+    } catch (_) {
+      yield <String>{};
+    }
+    await Future.delayed(const Duration(seconds: 3));
+  }
+});
+
+/// Chat ids whose CLI job just finished while the user wasn't looking at
+/// that chat — cleared once they open it. Notification-badge behavior for
+/// the sidebar's CLI indicator (yapacam.md §2.5).
+final cliJustFinishedChatsProvider =
+    StateNotifierProvider<CLIJustFinishedNotifier, Set<String>>((ref) {
+  return CLIJustFinishedNotifier(ref);
+});
+
+class CLIJustFinishedNotifier extends StateNotifier<Set<String>> {
+  final Ref _ref;
+  Set<String> _lastRunning = {};
+
+  CLIJustFinishedNotifier(this._ref) : super({}) {
+    _ref.listen(runningCLIChatsProvider, (previous, next) {
+      final current = next.valueOrNull ?? {};
+      final finished = _lastRunning.difference(current);
+      if (finished.isNotEmpty) {
+        final activeId = _ref.read(activeChatIdProvider).valueOrNull;
+        state = {...state, ...finished}..remove(activeId);
+      }
+      _lastRunning = current;
+    });
+  }
+
+  void markSeen(String chatId) {
+    if (state.contains(chatId)) {
+      state = {...state}..remove(chatId);
+    }
+  }
+}
+
 // ─── Chat List ──────────────────────────────────────────────────
 
 final chatListProvider =

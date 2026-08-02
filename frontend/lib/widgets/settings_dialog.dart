@@ -11,6 +11,7 @@ import 'settings/tabs/incognito_prompt_tab.dart';
 import 'settings/tabs/memory_tab.dart';
 import 'settings/tabs/memory_import_tab.dart';
 import 'settings/tabs/providers_tab.dart';
+import 'settings/tabs/cli_connections_tab.dart';
 import 'settings/tabs/orchestra_tab.dart';
 import 'settings/tabs/agent_permissions_tab.dart';
 import 'settings/tabs/learning_tab.dart';
@@ -43,6 +44,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/brain.svg',
     'lib/icon/slash/translate.svg',
     'lib/icon/slash/plug.svg',
+    'lib/icon/slash/code.svg', // CLI Bağlantıları
     'lib/icon/slash/music-notes.svg',
     'lib/icon/slash/shield-check.svg',
     'lib/icon/slash/lightbulb.svg',
@@ -65,6 +67,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('memory'),
     L10n.t('tab_memory_import'),
     L10n.t('tab_providers'),
+    L10n.t('tab_cli_connections'),
     L10n.t('tab_orchestra'),
     L10n.t('tab_agent_permissions'),
     L10n.t('tab_learning'),
@@ -224,19 +227,20 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 3: return MemoryTab();
       case 4: return MemoryImportTab();
       case 5: return ProvidersTab();
-      case 6: return OrchestraTab();
-      case 7: return AgentPermissionsTab();
-      case 8: return LearningTab();
-      case 9: return MoodTab();
-      case 10: return SkillsTab();
-      case 11: return GpuConfigTab();
-      case 12: return StatsTab();
-      case 13: return BackupRestoreTab();
-      case 14: return RemoteAccessTab();
-      case 15: return BetaFeaturesTab();
-      case 16: return AboutTab();
-      case 17: return TaskLoopTab();
-      case 18: return ReportBugTab();
+      case 6: return CLIConnectionsTab();
+      case 7: return OrchestraTab();
+      case 8: return AgentPermissionsTab();
+      case 9: return LearningTab();
+      case 10: return MoodTab();
+      case 11: return SkillsTab();
+      case 12: return GpuConfigTab();
+      case 13: return StatsTab();
+      case 14: return BackupRestoreTab();
+      case 15: return RemoteAccessTab();
+      case 16: return BetaFeaturesTab();
+      case 17: return AboutTab();
+      case 18: return TaskLoopTab();
+      case 19: return ReportBugTab();
       default: return SizedBox.shrink();
     }
   }

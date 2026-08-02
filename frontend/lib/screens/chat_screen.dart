@@ -296,6 +296,9 @@ class _QuickModelDropdown extends ConsumerWidget {
         final chatId = ref.read(activeChatIdProvider).valueOrNull;
         if (chatId == null) return;
         await api.setChatCLIProvider(chatId, selectedProvider.type);
+        if (context.mounted) {
+          await _setupCLIChat(context, ref, chatId);
+        }
       } else if (selected == 'local') {
         await api.setActiveProvider('');
         ref.read(activeProviderTypeProvider.notifier).setActive('');
@@ -311,6 +314,49 @@ class _QuickModelDropdown extends ConsumerWidget {
           ),
         );
       }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(L10n.t('switch_failed', {'e': e.toString()}))),
+        );
+      }
+    }
+  }
+
+  /// First time a chat is pointed at a CLI provider: warns the user this is
+  /// a real agent (file/shell access), then asks which folder it should run
+  /// in. Only runs once per chat — a workdir already set means both of
+  /// these already happened.
+  Future<void> _setupCLIChat(BuildContext context, WidgetRef ref, String chatId) async {
+    final api = ref.read(apiClientProvider);
+    final existing = await api.getChatCLIWorkdir(chatId);
+    if (existing.isNotEmpty || !context.mounted) return;
+
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (_) => AlertDialog(
+        title: Text(L10n.t('cli_first_use_title')),
+        content: Text(L10n.t('cli_first_use_body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: Text(L10n.t('cancel')),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: Text(L10n.t('cli_first_use_continue')),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true || !context.mounted) return;
+
+    final dir = await FilePicker.platform.getDirectoryPath(
+      dialogTitle: L10n.t('cli_pick_workdir_title'),
+    );
+    if (dir == null) return;
+    try {
+      await api.setChatCLIWorkdir(chatId, dir);
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

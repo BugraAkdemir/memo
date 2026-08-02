@@ -251,6 +251,13 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// Chat ids with a CLI stream currently running in the background.
+  Future<List<String>> getRunningCLIChats() async {
+    final res = await _dio.get('/api/cli/running');
+    final ids = res.data['chat_ids'];
+    return ids is List ? ids.cast<String>() : const [];
+  }
+
   /// Get recent background events (chat:done, memory:saved, memory:error,
   /// etc.) from the backend's ring buffer — used by the bug-report tab to
   /// optionally attach the last few errors to a report.

@@ -15,6 +15,8 @@ class ChatSidebar extends ConsumerWidget {
     final chatListAsync = ref.watch(chatListProvider);
     final activeChatAsync = ref.watch(activeChatIdProvider);
     final isIncognito = ref.watch(incognitoProvider);
+    final runningCLIChats = ref.watch(runningCLIChatsProvider).valueOrNull ?? const {};
+    final finishedCLIChats = ref.watch(cliJustFinishedChatsProvider);
 
     final c = MemoTheme.of(context);
     final glass = c.isGlass;
@@ -122,6 +124,8 @@ class ChatSidebar extends ConsumerWidget {
                     return _ChatListItem(
                       chat: chat,
                       isActive: isActive,
+                      isCLIRunning: runningCLIChats.contains(chat.id),
+                      isCLIFinished: finishedCLIChats.contains(chat.id),
                       onTap: (id) {
                         if (isIncognito) {
                           ref.read(incognitoProvider.notifier).toggle();
@@ -129,6 +133,7 @@ class ChatSidebar extends ConsumerWidget {
                         ref
                             .read(activeChatIdProvider.notifier)
                             .switchTo(id);
+                        ref.read(cliJustFinishedChatsProvider.notifier).markSeen(id);
                       },
                       onDelete: (id) async {
                         ref
@@ -158,6 +163,8 @@ class ChatSidebar extends ConsumerWidget {
 class _ChatListItem extends StatefulWidget {
   final ChatSession chat;
   final bool isActive;
+  final bool isCLIRunning;
+  final bool isCLIFinished;
   final ValueChanged<String> onTap;
   final ValueChanged<String> onDelete;
   final ValueChanged<String> onRename;
@@ -165,6 +172,8 @@ class _ChatListItem extends StatefulWidget {
    const _ChatListItem({
     required this.chat,
     required this.isActive,
+    this.isCLIRunning = false,
+    this.isCLIFinished = false,
     required this.onTap,
     required this.onDelete,
     required this.onRename,
@@ -295,19 +304,46 @@ class _ChatListItemState extends State<_ChatListItem> {
                     : Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(
-                            widget.chat.title,
-                            style: TextStyle(
-                              fontSize: 13,
-                              fontWeight: widget.isActive
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                              color: widget.isActive
-                                  ? MemoTheme.of(context).textMain
-                                  : MemoTheme.of(context).textSecondary,
-                            ),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  widget.chat.title,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: widget.isActive
+                                        ? FontWeight.w600
+                                        : FontWeight.w400,
+                                    color: widget.isActive
+                                        ? MemoTheme.of(context).textMain
+                                        : MemoTheme.of(context).textSecondary,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (widget.isCLIRunning) ...[
+                                const SizedBox(width: 6),
+                                SizedBox(
+                                  width: 10,
+                                  height: 10,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.5,
+                                    valueColor: AlwaysStoppedAnimation(MemoTheme.accent),
+                                  ),
+                                ),
+                              ] else if (widget.isCLIFinished) ...[
+                                const SizedBox(width: 6),
+                                Container(
+                                  width: 7,
+                                  height: 7,
+                                  decoration: const BoxDecoration(
+                                    shape: BoxShape.circle,
+                                    color: MemoTheme.green,
+                                  ),
+                                ),
+                              ],
+                            ],
                           ),
                            SizedBox(height: 2),
                           Text(

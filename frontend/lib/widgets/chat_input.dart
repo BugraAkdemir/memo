@@ -366,6 +366,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _hasActiveModel() {
     final activeProviderType = ref.read(activeProviderTypeProvider).valueOrNull ?? '';
     if (activeProviderType.isNotEmpty) return true;
+    if ((ref.read(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty) return true;
     return ref.read(modelStatusProvider).valueOrNull?.running ?? false;
   }
 

@@ -296,6 +296,7 @@ class _QuickModelDropdown extends ConsumerWidget {
         final chatId = ref.read(activeChatIdProvider).valueOrNull;
         if (chatId == null) return;
         await api.setChatCLIProvider(chatId, selectedProvider.type);
+        ref.invalidate(activeChatCLIProviderProvider);
         if (context.mounted) {
           await _setupCLIChat(context, ref, chatId);
         }

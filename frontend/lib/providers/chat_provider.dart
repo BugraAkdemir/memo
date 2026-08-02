@@ -51,6 +51,17 @@ final runningCLIChatsProvider = StreamProvider.autoDispose<Set<String>>((ref) as
   }
 });
 
+/// The currently active chat's own CLI provider (empty string if it isn't
+/// CLI-backed). Watched by chat_input.dart's "is there anywhere to send
+/// this message" check — without this, a chat using ONLY a CLI provider
+/// (no app-wide provider, no local model) looked like it had nowhere to
+/// send to and blocked sending entirely.
+final activeChatCLIProviderProvider = FutureProvider.autoDispose<String>((ref) async {
+  final chatId = await ref.watch(activeChatIdProvider.future);
+  if (chatId.isEmpty) return '';
+  return ref.watch(apiClientProvider).getChatCLIProvider(chatId);
+});
+
 /// Chat ids whose CLI job just finished while the user wasn't looking at
 /// that chat — cleared once they open it. Notification-badge behavior for
 /// the sidebar's CLI indicator (yapacam.md §2.5).

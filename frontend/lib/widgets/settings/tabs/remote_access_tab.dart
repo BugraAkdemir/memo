@@ -21,7 +21,12 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   final _tsHostCtrl = TextEditingController();
   final _backendUrlCtrl = TextEditingController();
   int _listenPort = 8090;
-  bool _tsFunnel = false;
+  // Funnel defaults to on: without it, a phone can only reach the tunnel by
+  // also installing the Tailscale app and joining the same tailnet, which
+  // defeats the "just open a link" pitch mobile relies on (see
+  // remote_ts_funnel_off_warning_body below for the user-facing version of
+  // this).
+  bool _tsFunnel = true;
   bool _tsBusy = false;
   bool _tsAdvanced = false;
   String _tsPendingAuthUrl = '';
@@ -93,6 +98,34 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
           _tsPendingAuthUrl = '';
         });
       }
+    }
+  }
+
+  Future<void> _onFunnelChanged(bool v) async {
+    if (v) {
+      setState(() => _tsFunnel = v);
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(L10n.t('remote_ts_funnel_off_warning_title')),
+        content: Text(L10n.t('remote_ts_funnel_off_warning_body')),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(false),
+            child: Text(L10n.t('cancel')),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(true),
+            child: Text(L10n.t('remote_ts_funnel_off_warning_confirm'),
+                style: TextStyle(color: MemoTheme.red)),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true && mounted) {
+      setState(() => _tsFunnel = false);
     }
   }
 
@@ -643,7 +676,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                     subtitle: Text(L10n.t('remote_ts_funnel_desc'),
                         style: TextStyle(fontSize: 10, color: theme.textDim)),
                     value: _tsFunnel,
-                    onChanged: (v) => setState(() => _tsFunnel = v),
+                    onChanged: _onFunnelChanged,
                     dense: true,
                     contentPadding: EdgeInsets.zero,
                     activeThumbColor: MemoTheme.accent,

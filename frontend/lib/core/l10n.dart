@@ -718,6 +718,10 @@ class L10n {
     'remote_ts_device_name_label': 'Cihaz adı',
     'remote_ts_funnel_title': 'Funnel (herkese açık)',
     'remote_ts_funnel_desc': 'Telefona kurulum gerekmez',
+    'remote_ts_funnel_off_warning_title': 'Funnel kapatılsın mı?',
+    'remote_ts_funnel_off_warning_body':
+        'Funnel kapatılırsa telefon uygulaması bu adrese erişemez — telefonda ayrıca Tailscale kurulup aynı tailnet\'e giriş yapılması gerekir. Sadece bilgisayardan/gelişmiş kurulumlarla erişileceksen kapatabilirsin.',
+    'remote_ts_funnel_off_warning_confirm': 'Yine de kapat',
     'remote_ts_starting': 'Başlatılıyor...',
     'remote_ts_start_btn': 'Tailscale ile Bağlan',
     'remote_ts_stop_btn': 'Tailscale Durdur',
@@ -2180,6 +2184,10 @@ class L10n {
     'remote_ts_device_name_label': 'Device name',
     'remote_ts_funnel_title': 'Funnel (public)',
     'remote_ts_funnel_desc': 'No setup needed on your phone',
+    'remote_ts_funnel_off_warning_title': 'Turn off Funnel?',
+    'remote_ts_funnel_off_warning_body':
+        'Without Funnel, the mobile app can\'t reach this address — your phone would also need Tailscale installed and joined to the same tailnet. Only turn this off if you\'ll only connect from a computer or a manual setup.',
+    'remote_ts_funnel_off_warning_confirm': 'Turn off anyway',
     'remote_ts_starting': 'Starting...',
     'remote_ts_start_btn': 'Connect with Tailscale',
     'remote_ts_stop_btn': 'Stop Tailscale',

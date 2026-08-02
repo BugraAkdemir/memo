@@ -113,6 +113,7 @@ class ProviderDefaults {
     'opencode-zen': '',
     'opencode-go': '',
     'claude-code-cli': 'claude-code',
+    'codex-cli': 'codex',
   };
 
   static const Map<String, String> defaultBaseUrls = {
@@ -138,6 +139,7 @@ class ProviderDefaults {
     'opencode-zen': 'OpenCode Zen',
     'opencode-go': 'OpenCode Go',
     'claude-code-cli': 'Claude Code (CLI)',
+    'codex-cli': 'Codex (CLI)',
     'custom': 'Özel (OpenAI uyumlu)',
   };
 
@@ -167,8 +169,17 @@ class ProviderDefaults {
     'opencode-go': 'OpenCode\'un abonelik modeli.',
     'claude-code-cli':
         'Bilgisayarında kurulu Claude Code CLI\'ı kullanır — dosya/komut çalıştırma yetkisi olan gerçek bir ajan, sadece bir sohbet API\'si değil. API anahtarı gerekmez.',
+    'codex-cli':
+        'Bilgisayarında kurulu Codex CLI\'ı kullanır — dosya/komut çalıştırma yetkisi olan gerçek bir ajan, sadece bir sohbet API\'si değil. API anahtarı gerekmez.',
     'custom': 'Herhangi bir OpenAI uyumlu endpoint. Base URL\'i sen girersin.',
   };
+
+  /// Provider types backed by a local CLI subprocess (internal/agentcli),
+  /// not an HTTP API — per-chat selectable, never the app-wide active
+  /// provider (see chat_screen.dart's _QuickModelDropdown).
+  static const Set<String> cliTypes = {'claude-code-cli', 'codex-cli'};
+
+  static bool isCLIType(String type) => cliTypes.contains(type);
 
   /// Providers whose available models are fetched dynamically from the API
   /// (via /api/providers/models) instead of the user typing one by hand.
@@ -178,7 +189,7 @@ class ProviderDefaults {
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.
   static bool needsApiKey(String type) =>
-      type != 'ollama' && type != 'custom' && type != 'claude-code-cli';
+      type != 'ollama' && type != 'custom' && !isCLIType(type);
 
   /// Providers that require the user to supply a Base URL (no sensible default).
   static bool needsBaseUrl(String type) => type == 'custom';

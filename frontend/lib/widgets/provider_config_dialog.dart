@@ -46,6 +46,7 @@ class _ProviderConfigDialogState
     'opencode-zen',
     'opencode-go',
     'claude-code-cli',
+    'codex-cli',
     'ollama',
     'custom',
   ];

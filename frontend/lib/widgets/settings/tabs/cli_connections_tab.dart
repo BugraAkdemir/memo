@@ -27,6 +27,7 @@ class _CLIConnectionsTabState extends ConsumerState<CLIConnectionsTab> {
 
   static const _clis = [
     ('claude-code-cli', 'Claude Code'),
+    ('codex-cli', 'Codex'),
   ];
 
   @override

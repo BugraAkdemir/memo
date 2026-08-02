@@ -10,6 +10,7 @@ import (
 	"memo/internal/api"
 	"memo/internal/logx"
 	"memo/internal/provider"
+	"memo/internal/sessions"
 )
 
 // SetChatCLIProvider/GetChatCLIProvider/SetChatCLIWorkdir/GetChatCLIWorkdir
@@ -158,6 +159,15 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 		return errStreamChunk("⏳ Bu sohbette zaten bir CLI görevi çalışıyor.")
 	}
 
+	// Saved synchronously, before the goroutine even starts — the normal
+	// (non-CLI) path saves the user's turn in sendMessageStreamCore before
+	// routeStream ever runs, and this must match: outCh is returned to the
+	// caller immediately, so if this were deferred into the goroutine a fast
+	// cancel/dismiss could race ahead of it, and a chat re-fetched from disk
+	// (leaving and returning to it) must always show the message the user
+	// actually sent, not just the reply.
+	sm.AddMessageToSession(chatID, "user", userMsg, "", "")
+
 	outCh := make(chan api.StreamChunk, 128)
 	go func() {
 		defer close(outCh)
@@ -218,6 +228,7 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 
 			if chunk.Done {
 				sm.AddMessageToSession(chatID, "assistant", fullReply.String(), "", "")
+				a.generateCLIChatTitleIfNew(chatID, sm)
 				trySend(cliCtx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 				return
 			}
@@ -228,11 +239,22 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 		// a stream must, or the frontend waits forever).
 		if fullReply.Len() > 0 {
 			sm.AddMessageToSession(chatID, "assistant", fullReply.String(), "", "")
+			a.generateCLIChatTitleIfNew(chatID, sm)
 		}
 		trySend(cliCtx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	}()
 
 	return outCh
+}
+
+// generateCLIChatTitleIfNew mirrors finishStream's own title-generation
+// trigger (internal/app/llm.go) — SendCLIMessageStream doesn't go through
+// finishStream at all (see its own doc comment), so this is duplicated
+// rather than shared, matching the same "exactly 2 messages" condition.
+func (a *App) generateCLIChatTitleIfNew(chatID string, sm *sessions.Manager) {
+	if len(sm.GetActiveMessagesForSession(chatID)) == 2 {
+		goRecover("generateChatTitleForSession", func() { a.generateChatTitleForSession(chatID) })
+	}
 }
 
 // resolveCLIProvider builds a provider.Provider for the given CLI provider

@@ -254,3 +254,67 @@ func TestSendCLIMessageStream_KilledByLifecycleCancel(t *testing.T) {
 		t.Error("job should be cleared from the registry once the stream ends")
 	}
 }
+
+// TestSendCLIMessageStream_PersistsUserMessage is the regression test for a
+// real reported bug: the user's own message was never saved to session
+// history (only the assistant reply was), so leaving a CLI chat and
+// reopening it — which re-fetches from disk — showed the reply with no user
+// message above it, looking like sent messages were silently deleted.
+func TestSendCLIMessageStream_PersistsUserMessage(t *testing.T) {
+	a, sm := newTestAppForCLI(t)
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+	t.Cleanup(a.lifecycleCancel)
+
+	chat := sm.NewChat()
+	if err := sm.SetCLIProvider(chat, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	a.providerCfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderClaudeCodeCLI, Name: "claude-code-cli",
+		Model: "x", BaseURL: writeFakeClaudeScript(t, "0"), Enabled: true,
+	})
+
+	for range a.SendCLIMessageStream(context.Background(), chat, "merhaba") {
+	}
+
+	msgs := sm.GetActiveMessagesForSession(chat)
+	if len(msgs) != 2 {
+		t.Fatalf("got %d messages, want 2 (user + assistant): %+v", len(msgs), msgs)
+	}
+	if msgs[0].Role != "user" || msgs[0].Content != "merhaba" {
+		t.Errorf("msgs[0] = %+v, want role=user content=merhaba", msgs[0])
+	}
+	if msgs[1].Role != "assistant" {
+		t.Errorf("msgs[1].Role = %q, want assistant", msgs[1].Role)
+	}
+}
+
+// TestSendCLIMessageStream_UserMessagePersistedEvenOnCLIError covers the
+// case where the CLI process itself fails — the user's message must still
+// be saved (it was actually sent), even though the reply is an error.
+func TestSendCLIMessageStream_UserMessagePersistedEvenOnCLIError(t *testing.T) {
+	a, sm := newTestAppForCLI(t)
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+	t.Cleanup(a.lifecycleCancel)
+
+	chat := sm.NewChat()
+	if err := sm.SetCLIProvider(chat, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	scriptPath := writeFakeClaudeScript(t, "0")
+	if err := os.WriteFile(scriptPath, []byte("#!/bin/sh\nexit 1\n"), 0755); err != nil {
+		t.Fatalf("overwrite script: %v", err)
+	}
+	a.providerCfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderClaudeCodeCLI, Name: "claude-code-cli",
+		Model: "x", BaseURL: scriptPath, Enabled: true,
+	})
+
+	for range a.SendCLIMessageStream(context.Background(), chat, "merhaba") {
+	}
+
+	msgs := sm.GetActiveMessagesForSession(chat)
+	if len(msgs) < 1 || msgs[0].Role != "user" || msgs[0].Content != "merhaba" {
+		t.Fatalf("user message not persisted: %+v", msgs)
+	}
+}

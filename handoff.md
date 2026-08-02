@@ -1,3 +1,61 @@
+# Handoff — 2026-08-02 (devam) — Codex CLI, Settings redesign, CLI slash komutları, CLI model seçimi
+
+## Özet
+
+Önceki oturumun (bu dosyanın bir önceki maddesi) Claude Code CLI temelinin üzerine: **Codex CLI** ikinci CLI provider olarak eklendi, **Settings dialog** 20 düz sekmeden gruplu/aranabilir bir rayla yeniden tasarlandı, CLI sohbetlerine **kendi `/` komutları** ve **model değiştirme** getirildi, ve kullanıcının canlı raporladığı bir CI flake'i düzeltildi. ~20 commit, hepsi ayrı ayrı.
+
+## 1. Codex CLI provider'ı (`internal/agentcli/codex.go`)
+
+Claude Code ile aynı desen (`provider.RegisterConstructor`), `codex exec --json --dangerously-bypass-approvals-and-sandbox` çalıştırıyor. Codex'in stream-json'ı Claude'dan farklı: metin delta değil, `item.completed`/`agent_message` ile turun tam metnini tek seferde veriyor; oturum id'si `session_id` değil `thread_id`; `resume` alt-komutu `-C`'yi reddediyor ama orijinal çalışma dizinini kendisi hatırlıyor. Gerçek binary'ye karşı doğrulandı (fresh + resume).
+
+## 2. Settings dialog yeniden tasarımı (`/frontend-design` ile)
+
+20 sekme 6 gruba ayrıldı (Genel, Sağlayıcılar & Bağlantı, Hafıza & Öğrenme, Ajan & Otomasyon, Sistem, Diğer) + üstte arama kutusu. Marka kimliği (bronz vurgu, fontlar) korundu. Küçük ekranda overflow olmasın diye dialog'un iç layout'u sabit genişlik üzerinden kuruluyor — `settings_dialog_test.dart` 360×640'ta bile overflow olmadığını doğruluyor.
+
+## 3. CLI'ların kendi `/` komutları çalışıyor
+
+- **Kritik bulgu (gerçek binary'lerle doğrulandı):** `claude -p "/komut"` komutu gerçekten çalıştırıyor. `codex exec "/komut"` **çalıştırmıyor** — metin modele düz gidiyor, model uyduruyor. Bu yüzden Codex için genişletmeyi (`ExpandCommand`) Memo'nun kendisi yapıyor: frontmatter atılıyor, `$ARGUMENTS`/`$1..$9` dolduruluyor.
+- Komut keşfi: `.claude/commands` + `.claude/skills`, `.codex/prompts` — proje + kullanıcı seviyesi, proje kazanır.
+- **İkinci bulgu (kullanıcı canlı testte yakaladı — "komutların bir kısmı var, çoğu yok"):** dizin taraması Claude Code'un kendi paketi içindeki skill'leri (dataviz, debug, verify, code-review, run, simplify...) hiç göremiyor. Çözüm: CLI'ın `init` olayındaki `slash_commands` dizisini yakalayıp process-wide önbelleğe alıyoruz (ekstra process/token yok, CLI güncellenince kendini yeniliyor).
+- **Üçüncü bulgu (kullanıcı: "/usage her ikisinde de çalışsın"):** `/usage`, `/usage-credits`, `/extra-usage`, `/cost` yanlışlıkla "oturum durumu" komutu sanılıp filtrelenmişti — oysa hepsi Claude'da gerçek, ücretsiz, yerel cevap veriyor (`total_cost_usd:0`). Düzeltildi. Codex'te ise gerçek bir yerel usage mekanizması **yok** (config.toml/auth.json/doctor hiçbirinde kota verisi yok) — sahte bir şey eklemedim, dürüstçe yok.
+- Frontend: CLI sohbetinde `/` popup'ı CLI'ın komutlarını gösteriyor, kaynak rozetiyle (PROJE/KİŞİSEL/SKILL/YERLEŞİK). Popup her açıldığında tazeleniyor (liste ilk mesajdan sonra dolduğu için).
+
+## 4. CLI model seçimi (üst bar)
+
+**Kritik bulgu:** `provider.ChatRequest.Model` alanı en baştan beri vardı ama CLI subprocess'ine **hiç geçilmiyordu** — model seçici olsa bile işe yaramayacaktı. Önce bunu düzelttim (`--model` Claude'da, `-m` Codex'te hem fresh hem resume'da).
+
+Model listesi kaynağı iki CLI'da tamamen farklı:
+- **Claude:** `claude --help`'in dokümante ettiği 3 alias (`opus`, `sonnet`, `fable`) — sabit kodlu, çünkü yerel bir liste dosyası yok.
+- **Codex:** sabit liste YOK (isimler çok değişken, örn. `gpt-5.6-terra`). Codex'in kendi güncellediği `~/.codex/models_cache.json`'ı okuyoruz; dosya yoksa (codex hiç çalışmamışsa) boş liste dönüyor — uydurma fallback yok.
+
+Üst barda, klasör rozetinin yanında yeni model rozeti — tıklayınca menü açılıyor, seçim `sessions.Session.CLIModel`'e kaydediliyor, sonraki mesajda gerçekten uygulanıyor (sahte script ile argv yakalanarak uçtan uca doğrulandı).
+
+## 5. run_memo.sh düzeltmesi
+
+İki bug: `cd ~/home/bugra/...` çift path (var olmayan dizin), ve tüm komutlar `&` ile arka plana atıldığı için `cd`'ler kalıcı olmuyordu — `flutter run` aslında hep repo kökünden çalışıyordu. `-tags "sqlite_fts5"` ve `--headless` de eklendi.
+
+## 6. CI flake'i düzeltildi
+
+`TestShutdown_WatchdogForcesExitWhenCleanupIsSlow`, `shutdownTimeout = 1ns` ile "watchdog dalı garantili kazanır" varsayıyordu — ama bu iki `select` dalını aynı anda hazır bırakıyor, Go rastgele seçiyor. CI'da temizlik goroutine'i timer'dan önce bitmiş, test "Memo shutdown completed" loglayıp sonra force-exit beklerken timeout'a düşmüş. Yarışı kaldırdım: temizlik artık testin serbest bırakana kadar bloklayan bir stub'la değiştirilebiliyor. 25/25 ardışık `-race` koşusu yeşil.
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` — yeşil, tüm oturum boyunca her commit'te.
+- Frontend: `flutter analyze` + `flutter test` (144/144) — yeşil, Rule #8 (hardcoded string) grep temiz her adımda.
+- Codex/Claude CLI'ların gerçek binary'lerine karşı canlı doğrulama yapıldı (slash komut çalıştırma farkı, `/usage` maliyeti, model flag'i argv'de).
+
+## Çözülemeyen / Ertelenen (önceki oturumdan devam)
+
+- Ok tuşuyla `/`/`@` popup navigasyonu hâlâ çalışmıyor (3 denemeden sonra, `RawAutocomplete` üzerine yeniden yazmak gerekebilir).
+- CLI Minimal Mode toggle hâlâ yok.
+- "Temiz sohbette eski proje dosyaları" raporu kullanıcı tarafından düşük öncelikli sayıldı, tekrar gelirse incelenebilir.
+
+## Sıradaki Oturum İçin
+
+1. Ok tuşu navigasyonu istenirse `RawAutocomplete` yeniden yazımı gündeme gelebilir.
+2. Codex için gerçek bir usage/kota mekanizması ortaya çıkarsa (codex CLI güncellemesiyle) `/usage` oraya da eklenebilir.
+3. Claude model listesi genişletilebilir mi diye ileride tekrar bakılabilir (şu an sadece 3 dokümante alias).
+
 # Handoff — 2026-08-02 — Claude Code CLI sohbet sağlayıcısı: sıfırdan inşa + canlı testte bulunan ~10 gerçek bug
 
 ## Özet

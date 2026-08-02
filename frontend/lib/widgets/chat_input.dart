@@ -28,6 +28,51 @@ import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
 import 'skill_config_dialog.dart';
 
+// Intents for the "/" and "@" popups' keyboard navigation. Bound via a
+// Shortcuts widget wrapping the composer's TextField — see the Shortcuts/
+// Actions nesting in _ChatInputState.build() for why a plain
+// Focus.onKeyEvent wrapper (the pre-existing approach for "Enter sends")
+// doesn't work for arrow keys: EditableText's own internal handling
+// consumes ArrowUp/ArrowDown for cursor movement before an ancestor
+// Focus.onKeyEvent would ever see them. Shortcuts+Actions is the same
+// mechanism Flutter's own RawAutocomplete uses internally to make exactly
+// this case work.
+class _PopupArrowDownIntent extends Intent {
+  const _PopupArrowDownIntent();
+}
+
+class _PopupArrowUpIntent extends Intent {
+  const _PopupArrowUpIntent();
+}
+
+/// Plain Enter: confirm the popup if one's open, otherwise send the message.
+class _PopupEnterIntent extends Intent {
+  const _PopupEnterIntent();
+}
+
+/// Tab: confirm the popup. Only bound/enabled while a popup is open — falls
+/// through to normal focus-traversal behavior otherwise.
+class _PopupConfirmIntent extends Intent {
+  const _PopupConfirmIntent();
+}
+
+class _PopupDismissIntent extends Intent {
+  const _PopupDismissIntent();
+}
+
+/// A CallbackAction whose isEnabled is re-evaluated at invoke time rather
+/// than fixed at construction — lets the SAME Shortcuts binding (e.g.
+/// ArrowDown) do nothing and fall through to the TextField's default
+/// behavior when no popup is open, and drive popup navigation when one is,
+/// without swapping the shortcuts/actions maps themselves.
+class _PopupCallbackAction<T extends Intent> extends CallbackAction<T> {
+  final bool Function() isEnabledWhen;
+  _PopupCallbackAction({required this.isEnabledWhen, required super.onInvoke});
+
+  @override
+  bool isEnabled(T intent, [BuildContext? context]) => isEnabledWhen();
+}
+
 class ChatInput extends ConsumerStatefulWidget {
   const ChatInput({super.key});
 
@@ -199,68 +244,49 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     }
   }
 
-  bool _handleKeyEvent(KeyDownEvent event) {
+  // Popup keyboard navigation (arrows/enter/tab/escape while the "/" or "@"
+  // dropdown is open) is NOT handled through Focus.onKeyEvent below — a
+  // plain Focus wrapping the TextField only sees keys EditableText's own
+  // internal handling didn't already consume, and ArrowUp/ArrowDown are
+  // consumed there directly for cursor movement, so an ancestor
+  // Focus.onKeyEvent never even fires for them (confirmed: this is why the
+  // popups' arrow-key navigation silently did nothing). The one proven
+  // mechanism that actually wins against EditableText's own key handling is
+  // the same one Flutter's own RawAutocomplete uses internally: a Shortcuts
+  // widget mapping the key to an Intent, handled by an Actions widget whose
+  // Action.isEnabled gates whether it's actually consumed — see the
+  // Shortcuts/Actions wrapping in build() below. isEnabled() returning
+  // false (no popup open) correctly lets the key fall through to
+  // EditableText's normal behavior instead of swallowing it.
+  bool get _popupActive => _showFileMentions || _showTemplates;
+
+  void _movePopupSelection(int delta) {
     if (_showFileMentions) {
       final itemCount = _fileMentionResults.length;
-      if (itemCount == 0) {
-        if (event.logicalKey == LogicalKeyboardKey.escape) {
-          _dismissFileMentions();
-          return true;
-        }
-        return false;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        setState(() => _fileMentionSelectedIndex = (_fileMentionSelectedIndex + 1) % itemCount);
-        return true;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        setState(() => _fileMentionSelectedIndex = (_fileMentionSelectedIndex - 1 + itemCount) % itemCount);
-        return true;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.enter ||
-          event.logicalKey == LogicalKeyboardKey.tab) {
-        _selectFileMentionAt(_fileMentionSelectedIndex);
-        return true;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
-        _dismissFileMentions();
-        return true;
-      }
-      return false;
-    }
-    if (_showTemplates) {
+      if (itemCount == 0) return;
+      setState(() => _fileMentionSelectedIndex =
+          (_fileMentionSelectedIndex + delta + itemCount) % itemCount);
+    } else if (_showTemplates) {
       final itemCount = _filteredItems.length;
-      if (itemCount == 0) return false;
-
-      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
-        setState(() => _selectedIndex = (_selectedIndex + 1) % itemCount);
-        return true;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-        setState(
-          () => _selectedIndex = (_selectedIndex - 1 + itemCount) % itemCount,
-        );
-        return true;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.enter &&
-          !HardwareKeyboard.instance.isShiftPressed) {
-        _selectAtIndex(_selectedIndex);
-        return true;
-      }
-      if (event.logicalKey == LogicalKeyboardKey.escape) {
-        _dismissPopup();
-        return true;
-      }
-      return false;
+      if (itemCount == 0) return;
+      setState(() => _selectedIndex = (_selectedIndex + delta + itemCount) % itemCount);
     }
+  }
 
-    // Normal mode: Enter sends
-    if (event.logicalKey == LogicalKeyboardKey.enter &&
-        !HardwareKeyboard.instance.isShiftPressed) {
-      _send();
-      return true;
+  void _confirmPopupSelection() {
+    if (_showFileMentions) {
+      _selectFileMentionAt(_fileMentionSelectedIndex);
+    } else if (_showTemplates) {
+      _selectAtIndex(_selectedIndex);
     }
-    return false;
+  }
+
+  void _dismissAnyPopup() {
+    if (_showFileMentions) {
+      _dismissFileMentions();
+    } else if (_showTemplates) {
+      _dismissPopup();
+    }
   }
 
   Future<void> _send() async {
@@ -805,27 +831,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-        if (popup != null)
-          // Height-0 anchor so the popup overlays upward without pushing layout
-          SizedBox(
-            height: 0,
-            child: OverflowBox(
-              maxHeight: double.infinity,
-              alignment: Alignment.bottomCenter,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  Positioned.fill(
-                    child: GestureDetector(
-                      onTap: _dismissPopup,
-                      behavior: HitTestBehavior.opaque,
-                    ),
-                  ),
-                  popup,
-                ],
-              ),
-            ),
-          ),
+        // A plain Column child, not the previous SizedBox(height:0) +
+        // OverflowBox + Stack "float without affecting layout" trick — that
+        // construct made the popup untouchable by ANY pointer input (arrow
+        // keys, mouse wheel scroll, even taps), reported live: neither
+        // keyboard navigation nor scrolling worked at all. Zero-height
+        // overflow-painted content sits outside the normal hit-test
+        // geometry Flutter expects, so nothing reached it. This trades a
+        // few pixels of the message list shifting up while a popup is open
+        // for interaction that is guaranteed to actually work.
+        if (popup != null) popup,
         // Image preview
         if (_pickedImagePath != null)
           Container(
@@ -1138,42 +1153,81 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
                     border: Border.all(color: MemoTheme.of(context).borderSoft),
                   ),
-                  child: Focus(
-                    onKeyEvent: (node, event) {
-                      if (event is KeyDownEvent) {
-                        if (_handleKeyEvent(event)) {
-                          return KeyEventResult.handled;
-                        }
-                      }
-                      return KeyEventResult.ignored;
+                  child: Shortcuts(
+                    shortcuts: const {
+                      SingleActivator(LogicalKeyboardKey.arrowDown): _PopupArrowDownIntent(),
+                      SingleActivator(LogicalKeyboardKey.arrowUp): _PopupArrowUpIntent(),
+                      // Plain Enter only — SingleActivator defaults every
+                      // modifier to false, so Shift+Enter (insert newline)
+                      // isn't matched here and falls through to
+                      // EditableText's own default behavior untouched.
+                      SingleActivator(LogicalKeyboardKey.enter): _PopupEnterIntent(),
+                      SingleActivator(LogicalKeyboardKey.tab): _PopupConfirmIntent(),
+                      SingleActivator(LogicalKeyboardKey.escape): _PopupDismissIntent(),
                     },
-                    child: TextField(
-                      controller: _controller,
-                      focusNode: _focusNode,
-                      maxLines: null,
-                      textInputAction: TextInputAction.newline,
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: MemoTheme.of(context).textMain,
-                        height: 1.5,
-                      ),
-                      decoration: InputDecoration(
-                        hintText: '${L10n.t('type_message')} (/)',
-                        hintStyle: TextStyle(
-                          color: MemoTheme.of(context).textDim,
+                    child: Actions(
+                      actions: {
+                        _PopupArrowDownIntent: _PopupCallbackAction<_PopupArrowDownIntent>(
+                          isEnabledWhen: () => _popupActive,
+                          onInvoke: (_) => _movePopupSelection(1),
                         ),
-                        border: InputBorder.none,
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 14,
-                          vertical: 12,
+                        _PopupArrowUpIntent: _PopupCallbackAction<_PopupArrowUpIntent>(
+                          isEnabledWhen: () => _popupActive,
+                          onInvoke: (_) => _movePopupSelection(-1),
                         ),
-                        isDense: true,
+                        // Always enabled (unlike the others): plain Enter
+                        // always does SOMETHING — confirm the popup if one
+                        // is open, otherwise send the message. Previously
+                        // "Enter sends" lived in a separate inner
+                        // Focus.onKeyEvent; folded in here instead of
+                        // leaving two different key-handling mechanisms
+                        // both racing to claim the same key.
+                        _PopupEnterIntent: CallbackAction<_PopupEnterIntent>(
+                          onInvoke: (_) {
+                            if (_popupActive) {
+                              _confirmPopupSelection();
+                            } else {
+                              _send();
+                            }
+                            return null;
+                          },
+                        ),
+                        _PopupConfirmIntent: _PopupCallbackAction<_PopupConfirmIntent>(
+                          isEnabledWhen: () => _popupActive,
+                          onInvoke: (_) => _confirmPopupSelection(),
+                        ),
+                        _PopupDismissIntent: _PopupCallbackAction<_PopupDismissIntent>(
+                          isEnabledWhen: () => _popupActive,
+                          onInvoke: (_) => _dismissAnyPopup(),
+                        ),
+                      },
+                      child: TextField(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          maxLines: null,
+                          textInputAction: TextInputAction.newline,
+                          style: TextStyle(
+                            fontSize: 14,
+                            color: MemoTheme.of(context).textMain,
+                            height: 1.5,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: '${L10n.t('type_message')} (/)',
+                            hintStyle: TextStyle(
+                              color: MemoTheme.of(context).textDim,
+                            ),
+                            border: InputBorder.none,
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 14,
+                              vertical: 12,
+                            ),
+                            isDense: true,
+                          ),
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
-
               const SizedBox(width: 12),
 
               // ─── Send / Stop Button ──────────────────

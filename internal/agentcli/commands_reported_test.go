@@ -44,7 +44,7 @@ func TestRememberReportedCommands_FiltersSessionOnlyAndInternal(t *testing.T) {
 	rememberReportedCommands(provider.ProviderClaudeCodeCLI, []string{
 		"dataviz", "code-review", "/review",
 		// Session-only and internal — must not reach the dropdown.
-		"clear", "model", "compact", "usage", "__remote-workflow",
+		"clear", "model", "compact", "__remote-workflow",
 		"workflow-launch-exec", "",
 	})
 
@@ -57,6 +57,25 @@ func TestRememberReportedCommands_FiltersSessionOnlyAndInternal(t *testing.T) {
 		if !want[name] {
 			t.Errorf("unexpected command %q survived filtering (got %v)", name, got)
 		}
+	}
+}
+
+// TestRememberReportedCommands_UsageAndCostSurvive is the regression test
+// for the reported bug: /usage, /usage-credits, /extra-usage, and /cost all
+// return a real, local, zero-cost answer against the real binary (verified
+// 2026-08-02 — their result carries total_cost_usd:0/duration_api_ms:0, a
+// synthetic local read, not an API call) despite sounding like session-only
+// commands. They were wrongly on the blocklist and must stay off it.
+func TestRememberReportedCommands_UsageAndCostSurvive(t *testing.T) {
+	resetReportedCommands(t)
+
+	rememberReportedCommands(provider.ProviderClaudeCodeCLI, []string{
+		"usage", "usage-credits", "extra-usage", "cost",
+	})
+
+	got := reportedCommandNames(provider.ProviderClaudeCodeCLI)
+	if len(got) != 4 {
+		t.Fatalf("got %v, want usage/usage-credits/extra-usage/cost to all survive", got)
 	}
 }
 

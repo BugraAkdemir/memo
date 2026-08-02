@@ -63,10 +63,19 @@ func reportedCommandNames(cliType provider.ProviderType) []string {
 }
 
 // sessionOnlyCommands are commands that only manipulate an interactive
-// terminal session's own state — its model, theme, context window, login,
-// usage counters. They do nothing meaningful sent through Memo's chat, which
-// has no such session to act on, so they're hidden rather than offered and
-// left to fail confusingly.
+// terminal session's own state — its model, theme, context window, login.
+// They do nothing meaningful sent through Memo's chat, which has no such
+// session to act on, so they're hidden rather than offered and left to fail
+// confusingly.
+//
+// NOT everything that sounds session-related belongs here — verified
+// individually against the real `claude` binary in exec mode (2026-08-02)
+// rather than assumed: /usage, /usage-credits, /extra-usage, and /cost all
+// return a real, local, zero-cost answer in `-p` mode (their result carries
+// "total_cost_usd":0 / "duration_api_ms":0 — a synthetic local read, not an
+// API call), so they're genuinely useful sent through Memo and must stay off
+// this list. Re-verify before adding anything here on the strength of its
+// name alone.
 //
 // A blocklist rather than an allowlist on purpose: the useful set changes
 // with every CLI release (bundled skills come and go), and silently hiding a
@@ -74,9 +83,9 @@ func reportedCommandNames(cliType provider.ProviderType) []string {
 // out to be a no-op.
 var sessionOnlyCommands = map[string]bool{
 	"add-dir": true, "agents": true, "bug": true, "clear": true, "color": true,
-	"compact": true, "config": true, "context": true, "cost": true,
+	"compact": true, "config": true, "context": true,
 	"design-consent": true, "design-revoke": true, "effort": true,
-	"exit": true, "export": true, "extra-usage": true, "fast": true,
+	"exit": true, "export": true, "fast": true,
 	"heapdump": true, "help": true, "hooks": true, "ide": true,
 	"insights": true, "install-github-app": true, "login": true,
 	"logout": true, "mcp": true, "memory": true, "migrate-installer": true,
@@ -85,7 +94,7 @@ var sessionOnlyCommands = map[string]bool{
 	"release-notes": true, "reload-skills": true, "rename": true,
 	"resume": true, "status": true, "statusline": true, "team-onboarding": true,
 	"terminal-setup": true, "theme": true, "todos": true, "upgrade": true,
-	"usage": true, "usage-credits": true, "vim": true,
+	"vim": true,
 }
 
 // isSessionOnlyCommand also filters the CLI's internal, double-underscore

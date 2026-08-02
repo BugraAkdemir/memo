@@ -493,7 +493,12 @@ class _ChatTopBar extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final isIncognito = ref.watch(incognitoProvider);
-    final isAgentEnabled = ref.watch(agentEnabledProvider);
+    // A CLI provider (Claude Code, ...) is its own complete agent — Memo's
+    // own agent mode/web search/WhatsApp routing never runs for it (see
+    // SendCLIMessageStream), so those toggles have zero effect here and are
+    // hidden rather than shown doing nothing.
+    final isCLIChat = (ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
+    final isAgentEnabled = !isCLIChat && ref.watch(agentEnabledProvider);
     final isAutoPermission = ref.watch(agentAutoPermissionProvider);
     final isWhatsAppMode = ref.watch(whatsAppChatModeProvider);
     final webSearchOn = ref.watch(webSearchModeProvider);
@@ -727,36 +732,39 @@ class _ChatTopBar extends ConsumerWidget {
           // file/command tools; this mirrors the web-search toggle right
           // next to it. Session-scoped like web search, not persisted onto
           // this specific chat: switching away and back re-derives it from
-          // the chat's own type (ActiveChatIdNotifier.switchTo).
-          IconButton(
-            icon: Icon(
-              Icons.smart_toy,
-              size: 20,
-              color: isAgentEnabled
-                  ? MemoTheme.green
-                  : MemoTheme.of(context).textDim,
+          // the chat's own type (ActiveChatIdNotifier.switchTo). Hidden for
+          // a CLI-backed chat — see isCLIChat's doc comment above.
+          if (!isCLIChat)
+            IconButton(
+              icon: Icon(
+                Icons.smart_toy,
+                size: 20,
+                color: isAgentEnabled
+                    ? MemoTheme.green
+                    : MemoTheme.of(context).textDim,
+              ),
+              tooltip: '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
+              onPressed: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
             ),
-            tooltip: '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
-            onPressed: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
-          ),
 
           // Web search mode toggle — when on, every message uses live web results
-          IconButton(
-            icon: Icon(
-              Icons.travel_explore,
-              size: 20,
-              color: webSearchOn
-                  ? MemoTheme.green
-                  : MemoTheme.of(context).textDim,
+          if (!isCLIChat)
+            IconButton(
+              icon: Icon(
+                Icons.travel_explore,
+                size: 20,
+                color: webSearchOn
+                    ? MemoTheme.green
+                    : MemoTheme.of(context).textDim,
+              ),
+              tooltip: webSearchOn
+                  ? (L10n.t('web_search_on'))
+                  : (L10n.t('web_search_off')),
+              onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
             ),
-            tooltip: webSearchOn
-                ? (L10n.t('web_search_on'))
-                : (L10n.t('web_search_off')),
-            onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
-          ),
 
           // WhatsApp mode toggle (only when connected)
-          if (waStatus.asData?.value.connected == true)
+          if (!isCLIChat && waStatus.asData?.value.connected == true)
             IconButton(
               icon: Icon(
                 Icons.chat,

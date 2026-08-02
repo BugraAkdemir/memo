@@ -47,13 +47,18 @@ class EngineStrip extends ConsumerWidget {
         ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
     final isApiProvider =
         activeProviderType.isNotEmpty && activeProviderType != 'local';
+    // The active chat's own CLI provider (Claude Code, ...) — takes
+    // priority in the strip's first slot over the app-wide model/provider,
+    // since it's what that chat actually sends to.
+    final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
+    final isCLIChat = cliType.isNotEmpty;
 
     // Whether the strip's first "slot" (chat model / API provider / offline
     // hint) rendered anything, and whether the second slot (embedding
     // model / memory warning) did — used to decide when a divider actually
     // has two neighbors to separate instead of leaving a stray line (or, as
     // reported, no gap at all) next to empty space.
-    final firstSlotHasContent = chatRunning || isApiProvider || !embRunning;
+    final firstSlotHasContent = isCLIChat || chatRunning || isApiProvider || !embRunning;
     final secondSlotHasContent = embRunning || memoryEnabled;
 
     return Container(
@@ -77,7 +82,9 @@ class EngineStrip extends ConsumerWidget {
             ),
       child: Row(
         children: [
-          if (chatRunning)
+          if (isCLIChat)
+            _CLIModeIndicator(cliType: cliType)
+          else if (chatRunning)
             _LiveIndicator(
               icon: Icons.memory,
               label: _fileName(status!.modelPath),
@@ -251,6 +258,39 @@ class _LiveIndicator extends StatelessWidget {
                   size: 16, color: c.textDim),
             ),
           ),
+        ),
+      ],
+    );
+  }
+}
+
+class _CLIModeIndicator extends StatelessWidget {
+  final String cliType;
+  const _CLIModeIndicator({required this.cliType});
+
+  @override
+  Widget build(BuildContext context) {
+    final c = MemoTheme.of(context);
+    final displayName = ProviderDefaults.displayNames[cliType] ?? cliType;
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Container(
+          width: 7,
+          height: 7,
+          decoration: const BoxDecoration(
+              color: MemoTheme.accent, shape: BoxShape.circle),
+        ),
+        const SizedBox(width: 8),
+        Icon(Icons.terminal_rounded, size: 16, color: MemoTheme.accent),
+        const SizedBox(width: 6),
+        Text(
+          L10n.t('engine_cli_mode', {'name': displayName}),
+          style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.w500,
+              color: c.textMain),
         ),
       ],
     );

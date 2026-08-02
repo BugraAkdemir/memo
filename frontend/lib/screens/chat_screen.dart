@@ -286,7 +286,17 @@ class _QuickModelDropdown extends ConsumerWidget {
 
     try {
       final api = ref.read(apiClientProvider);
-      if (selected == 'local') {
+      // CLI-backed providers (claude-code-cli, ...) are per-chat, not the
+      // app-wide active provider — a real coding agent running for one chat
+      // must never silently become every other chat's default too.
+      final selectedProvider = enabledProviders
+          .where((p) => p.name == selected)
+          .firstOrNull;
+      if (selectedProvider != null && selectedProvider.type == 'claude-code-cli') {
+        final chatId = ref.read(activeChatIdProvider).valueOrNull;
+        if (chatId == null) return;
+        await api.setChatCLIProvider(chatId, selectedProvider.type);
+      } else if (selected == 'local') {
         await api.setActiveProvider('');
         ref.read(activeProviderTypeProvider.notifier).setActive('');
       } else {

@@ -112,6 +112,7 @@ class ProviderDefaults {
     'ollama': 'llama3',
     'opencode-zen': '',
     'opencode-go': '',
+    'claude-code-cli': 'claude-code',
   };
 
   static const Map<String, String> defaultBaseUrls = {
@@ -136,6 +137,7 @@ class ProviderDefaults {
     'ollama': 'Ollama',
     'opencode-zen': 'OpenCode Zen',
     'opencode-go': 'OpenCode Go',
+    'claude-code-cli': 'Claude Code (CLI)',
     'custom': 'Özel (OpenAI uyumlu)',
   };
 
@@ -163,6 +165,8 @@ class ProviderDefaults {
     'ollama': 'Bilgisayarında yerel model çalıştır — anahtar gerekmez.',
     'opencode-zen': 'OpenCode\'un kullandığın kadar öde modeli — bazı modeller ücretsiz.',
     'opencode-go': 'OpenCode\'un abonelik modeli.',
+    'claude-code-cli':
+        'Bilgisayarında kurulu Claude Code CLI\'ı kullanır — dosya/komut çalıştırma yetkisi olan gerçek bir ajan, sadece bir sohbet API\'si değil. API anahtarı gerekmez.',
     'custom': 'Herhangi bir OpenAI uyumlu endpoint. Base URL\'i sen girersin.',
   };
 
@@ -173,7 +177,8 @@ class ProviderDefaults {
 
   /// Providers that need no API key (local). Custom endpoints often need one,
   /// but not always (local proxies), so it's treated as optional there.
-  static bool needsApiKey(String type) => type != 'ollama' && type != 'custom';
+  static bool needsApiKey(String type) =>
+      type != 'ollama' && type != 'custom' && type != 'claude-code-cli';
 
   /// Providers that require the user to supply a Base URL (no sensible default).
   static bool needsBaseUrl(String type) => type == 'custom';

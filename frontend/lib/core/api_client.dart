@@ -173,6 +173,84 @@ class MemoApiClient {
     }
   }
 
+  // ─── CLI-backed providers (Claude Code / Codex) ────────────────────
+
+  /// Sends chatId's own CLI-backed provider a message. No fixed receive
+  /// timeout — CLI tasks can run far longer than a normal reply and are
+  /// tracked server-side independent of this connection (see backend
+  /// SendCLIMessageStream's doc comment).
+  Stream<StreamChunk> sendCLIMessageStream(
+    String chatId,
+    String message, {
+    CancelToken? cancelToken,
+  }) async* {
+    try {
+      final response = await _dio.post(
+        '/api/send/cli-stream',
+        data: {'chat_id': chatId, 'message': message},
+        options: Options(
+          responseType: ResponseType.stream,
+          receiveTimeout: Duration.zero,
+        ),
+        cancelToken: cancelToken,
+      );
+
+      final stream = response.data.stream;
+      final lineStream = stream
+          .cast<List<int>>()
+          .transform(utf8.decoder)
+          .transform(const LineSplitter());
+
+      await for (final line in lineStream) {
+        if (!line.startsWith('data: ')) continue;
+        Map<String, dynamic> data;
+        try {
+          data = json.decode(line.substring(6)) as Map<String, dynamic>;
+        } catch (_) {
+          continue;
+        }
+        final err = data['error'];
+        if (err is String && err.isNotEmpty) {
+          throw Exception(err);
+        }
+        if (data['content'] != null || data['finish_reason'] != null) {
+          yield StreamChunk(
+            content: data['content'] as String? ?? '',
+            finishReason: data['finish_reason'] as String?,
+          );
+        }
+        if (data['done'] == true) break;
+      }
+    } on DioException catch (e) {
+      if (e.type == DioExceptionType.cancel) return;
+      throw Exception('Bağlantı hatası: $e');
+    }
+  }
+
+  Future<String> getChatCLIProvider(String chatId) async {
+    final res = await _dio.get('/api/chats/cli-provider', queryParameters: {'id': chatId});
+    return res.data['cli_provider'] as String? ?? '';
+  }
+
+  Future<void> setChatCLIProvider(String chatId, String cliProvider) async {
+    await _dio.post('/api/chats/cli-provider', data: {'id': chatId, 'cli_provider': cliProvider});
+  }
+
+  Future<String> getChatCLIWorkdir(String chatId) async {
+    final res = await _dio.get('/api/chats/cli-workdir', queryParameters: {'id': chatId});
+    return res.data['workdir'] as String? ?? '';
+  }
+
+  Future<void> setChatCLIWorkdir(String chatId, String workdir) async {
+    await _dio.post('/api/chats/cli-workdir', data: {'id': chatId, 'workdir': workdir});
+  }
+
+  /// {installed, path, version, binary_name} for a CLI provider type.
+  Future<Map<String, dynamic>> getCLIStatus(String cliType) async {
+    final res = await _dio.get('/api/cli/status', queryParameters: {'type': cliType});
+    return _guard<Map<String, dynamic>>(res.data);
+  }
+
   /// Get recent background events (chat:done, memory:saved, memory:error,
   /// etc.) from the backend's ring buffer — used by the bug-report tab to
   /// optionally attach the last few errors to a report.

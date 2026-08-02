@@ -401,7 +401,33 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       String fullThinking = '';
       List<AgentEvent> finalAgentEvents = [];
 
-      if (streamingEnabled) {
+      final activeChatId = ref.read(activeChatIdProvider).valueOrNull;
+      final cliProvider = activeChatId != null
+          ? await api.getChatCLIProvider(activeChatId)
+          : '';
+
+      if (cliProvider.isNotEmpty && activeChatId != null) {
+        // CLI-backed chat: no fixed timeout (the job can run far longer than
+        // a normal reply and is tracked server-side independent of this
+        // connection), and no agent_event/usage/activity chunks — the CLI
+        // does its own tool work opaquely, Memo never sees it.
+        final stream = api.sendCLIMessageStream(
+          activeChatId,
+          message,
+          cancelToken: _cancelToken,
+        );
+        await for (final chunk in stream) {
+          fullReply += chunk.content;
+          ref.read(streamingContentProvider.notifier).state = fullReply;
+        }
+        if (_generation != myGeneration) return;
+        if (_stopped) {
+          _stopped = false;
+          ref.read(streamingContentProvider.notifier).state = '';
+          await refresh();
+          return;
+        }
+      } else if (streamingEnabled) {
         final stream = api.sendMessageStream(
           message,
           cancelToken: _cancelToken,

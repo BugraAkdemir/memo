@@ -45,6 +45,7 @@ class _ProviderConfigDialogState
     'openrouter',
     'opencode-zen',
     'opencode-go',
+    'claude-code-cli',
     'ollama',
     'custom',
   ];

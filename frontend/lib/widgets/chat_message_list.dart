@@ -55,6 +55,7 @@ class ChatMessageList extends StatefulWidget {
   final String streamingThinking;
   final List<AgentEvent>? streamingAgentEvents;
   final String statusText;
+  final bool isCLIChat;
   final void Function(int index, String newContent)? onEdit;
   final void Function(int index)? onDelete;
 
@@ -66,6 +67,7 @@ class ChatMessageList extends StatefulWidget {
     this.streamingThinking = '',
     this.streamingAgentEvents,
     this.statusText = '',
+    this.isCLIChat = false,
     this.onEdit,
     this.onDelete,
   });
@@ -145,6 +147,7 @@ class _ChatMessageListState extends State<ChatMessageList> {
             content: widget.streamingContent,
             thinking: widget.streamingThinking,
             agentEvents: widget.streamingAgentEvents,
+            keepWorkingCue: widget.isCLIChat,
           );
         }
         // Typing indicator — shown before first token arrives
@@ -428,8 +431,22 @@ class _StreamingBubble extends StatefulWidget {
   final String content;
   final String thinking;
   final List<AgentEvent>? agentEvents;
+  // CLI providers (Claude Code, ...) can go quiet for a long stretch between
+  // content chunks — running a tool, thinking — with no event Memo can see
+  // to explain the gap (yapacam.md §5: opaque by design). Normal providers
+  // stream near-continuously once started, so the working cue disappearing
+  // once real content shows up reads fine there; for a CLI turn it read as
+  // "finished" when it was still very much working, with the only clue
+  // being the send button still showing stop. Keep the cue visible
+  // alongside content for CLI turns instead of hiding it after first token.
+  final bool keepWorkingCue;
 
-   const _StreamingBubble({required this.content, this.thinking = '', this.agentEvents});
+   const _StreamingBubble({
+    required this.content,
+    this.thinking = '',
+    this.agentEvents,
+    this.keepWorkingCue = false,
+  });
 
   @override
   State<_StreamingBubble> createState() => _StreamingBubbleState();
@@ -498,10 +515,13 @@ class _StreamingBubbleState extends State<_StreamingBubble> {
                     ),
                   if (widget.agentEvents != null && widget.agentEvents!.isNotEmpty)
                     _AgentStatusBar(events: widget.agentEvents!)
-                  else if (widget.content.isEmpty)
-                    // No live tool activity and no content yet — show an animated
-                    // cue so the wait feels alive. Skip when content is already
-                    // streaming to avoid showing dots alongside text.
+                  else if (widget.content.isEmpty || widget.keepWorkingCue)
+                    // No live tool activity and no content yet — show an
+                    // animated cue so the wait feels alive. Normally skipped
+                    // once content is streaming (dots next to growing text
+                    // would be redundant) — except for CLI turns, which can
+                    // go quiet mid-reply with no other signal that it's
+                    // still working (see keepWorkingCue's doc comment).
                     const _AgentWorkingIndicator(),
                 ],
               ),

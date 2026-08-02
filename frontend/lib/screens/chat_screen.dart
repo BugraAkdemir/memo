@@ -107,6 +107,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
               if (messages.isEmpty && !isSending && streamingContent.isEmpty && streamingAgentEvents.isEmpty) {
                 return  WelcomeView();
               }
+              final isCLIChat = (ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
               return ChatMessageList(
                 messages: messages,
                 isTyping: isSending,
@@ -114,6 +115,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
                 streamingThinking: streamingThinking,
                 streamingAgentEvents: streamingAgentEvents,
                 statusText: streamingStatus,
+                isCLIChat: isCLIChat,
                 onEdit: (index, newContent) {
                   ref.read(messagesProvider.notifier).updateMessage(index, newContent);
                 },

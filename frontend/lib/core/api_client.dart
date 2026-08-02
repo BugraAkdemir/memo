@@ -251,6 +251,14 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
+  /// Files under root whose path contains query — backs the "@" mention
+  /// dropdown in chat_input.dart.
+  Future<List<String>> listProjectFiles(String root, String query) async {
+    final res = await _dio.get('/api/files/mentions', queryParameters: {'root': root, 'query': query});
+    final files = res.data['files'];
+    return files is List ? files.cast<String>() : const [];
+  }
+
   /// Chat ids with a CLI stream currently running in the background.
   Future<List<String>> getRunningCLIChats() async {
     final res = await _dio.get('/api/cli/running');

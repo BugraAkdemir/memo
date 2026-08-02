@@ -45,6 +45,16 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   bool _whatsappStopped = false;
   CancelToken? _whatsappCancelToken;
 
+  // "@" file mention — unlike "/" templates (whole-message trigger), this
+  // triggers on the current word wherever the cursor is, so "look at
+  // @lib/foo.dart please" works mid-sentence too.
+  bool _showFileMentions = false;
+  String _fileMentionQuery = '';
+  List<String> _fileMentionResults = [];
+  int _fileMentionSelectedIndex = 0;
+  int _fileMentionAtPos = -1;
+  int _fileMentionRequestGen = 0;
+
   List<PopupItem> get _filteredItems {
     if (_filterQuery.isEmpty) return templates;
     final q = _filterQuery.toLowerCase();
@@ -71,6 +81,89 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         _selectedIndex = 0;
       });
     }
+    if (!show) _checkFileMentionTrigger(text);
+  }
+
+  /// Looks backward from the cursor to the nearest preceding whitespace (or
+  /// start of text) for an "@" starting the current word. If found, fetches
+  /// matching project files for the text typed after it.
+  void _checkFileMentionTrigger(String text) {
+    final cursor = _controller.selection.baseOffset;
+    if (cursor < 0 || cursor > text.length) {
+      if (_showFileMentions) setState(() => _showFileMentions = false);
+      return;
+    }
+    final upToCursor = text.substring(0, cursor);
+    final atIndex = upToCursor.lastIndexOf('@');
+    final validStart = atIndex == 0 ||
+        (atIndex > 0 && RegExp(r'\s').hasMatch(upToCursor[atIndex - 1]));
+    final hasSpaceAfterAt =
+        atIndex >= 0 && RegExp(r'\s').hasMatch(upToCursor.substring(atIndex + 1));
+
+    if (atIndex < 0 || !validStart || hasSpaceAfterAt) {
+      if (_showFileMentions) setState(() => _showFileMentions = false);
+      return;
+    }
+
+    final query = upToCursor.substring(atIndex + 1);
+    _fileMentionAtPos = atIndex;
+    if (query != _fileMentionQuery || !_showFileMentions) {
+      _fetchFileMentions(query);
+    }
+  }
+
+  Future<String> _resolveProjectRoot() async {
+    final cliWorkdir = await ref.read(activeChatCLIWorkdirProvider.future);
+    if (cliWorkdir.isNotEmpty) return cliWorkdir;
+    final chatId = ref.read(activeChatIdProvider).valueOrNull;
+    final chats = ref.read(chatListProvider).valueOrNull ?? const [];
+    return chats.where((c) => c.id == chatId).firstOrNull?.projectPath ?? '';
+  }
+
+  Future<void> _fetchFileMentions(String query) async {
+    final gen = ++_fileMentionRequestGen;
+    setState(() {
+      _showFileMentions = true;
+      _fileMentionQuery = query;
+      _fileMentionSelectedIndex = 0;
+    });
+    final root = await _resolveProjectRoot();
+    if (!mounted || gen != _fileMentionRequestGen) return;
+    if (root.isEmpty) {
+      setState(() => _fileMentionResults = []);
+      return;
+    }
+    try {
+      final results = await ref.read(apiClientProvider).listProjectFiles(root, query);
+      if (!mounted || gen != _fileMentionRequestGen) return;
+      setState(() => _fileMentionResults = results);
+    } catch (_) {
+      if (mounted && gen == _fileMentionRequestGen) {
+        setState(() => _fileMentionResults = []);
+      }
+    }
+  }
+
+  void _dismissFileMentions() {
+    setState(() => _showFileMentions = false);
+  }
+
+  void _selectFileMentionAt(int index) {
+    if (index < 0 || index >= _fileMentionResults.length) return;
+    final path = _fileMentionResults[index];
+    final text = _controller.text;
+    final cursor = _controller.selection.baseOffset;
+    if (_fileMentionAtPos < 0 || _fileMentionAtPos > text.length || cursor < 0 || cursor > text.length) {
+      _dismissFileMentions();
+      return;
+    }
+    final before = text.substring(0, _fileMentionAtPos);
+    final after = text.substring(cursor);
+    final inserted = '@$path ';
+    _controller.text = before + inserted + after;
+    _controller.selection = TextSelection.collapsed(offset: before.length + inserted.length);
+    setState(() => _showFileMentions = false);
+    _focusNode.requestFocus();
   }
 
   @override
@@ -107,6 +200,34 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   }
 
   bool _handleKeyEvent(KeyDownEvent event) {
+    if (_showFileMentions) {
+      final itemCount = _fileMentionResults.length;
+      if (itemCount == 0) {
+        if (event.logicalKey == LogicalKeyboardKey.escape) {
+          _dismissFileMentions();
+          return true;
+        }
+        return false;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowDown) {
+        setState(() => _fileMentionSelectedIndex = (_fileMentionSelectedIndex + 1) % itemCount);
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
+        setState(() => _fileMentionSelectedIndex = (_fileMentionSelectedIndex - 1 + itemCount) % itemCount);
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.tab) {
+        _selectFileMentionAt(_fileMentionSelectedIndex);
+        return true;
+      }
+      if (event.logicalKey == LogicalKeyboardKey.escape) {
+        _dismissFileMentions();
+        return true;
+      }
+      return false;
+    }
     if (_showTemplates) {
       final itemCount = _filteredItems.length;
       if (itemCount == 0) return false;
@@ -659,17 +780,27 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       }
     });
 
-    final popup = _showTemplates
+    final popup = _showFileMentions
         ? Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: PromptTemplatesPopup(
-              query: _filterQuery,
-              selectedIndex: _selectedIndex,
-              onSelect: _onPopupResult,
-              onDismiss: _dismissPopup,
+            child: _FileMentionPopup(
+              results: _fileMentionResults,
+              selectedIndex: _fileMentionSelectedIndex,
+              onSelect: _selectFileMentionAt,
+              onDismiss: _dismissFileMentions,
             ),
           )
-        : null;
+        : _showTemplates
+            ? Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: PromptTemplatesPopup(
+                  query: _filterQuery,
+                  selectedIndex: _selectedIndex,
+                  onSelect: _onPopupResult,
+                  onDismiss: _dismissPopup,
+                ),
+              )
+            : null;
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -1467,6 +1598,95 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// "@" file-mention dropdown — same visual shape as [PromptTemplatesPopup]
+/// (prompt_templates.dart), for a flat list of project-relative file paths
+/// instead of slash templates. Empty when [ChatInputState._resolveProjectRoot]
+/// has no folder to search (no CLI workdir, no agent project path).
+class _FileMentionPopup extends StatelessWidget {
+  final List<String> results;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+  final VoidCallback onDismiss;
+
+  const _FileMentionPopup({
+    required this.results,
+    required this.selectedIndex,
+    required this.onSelect,
+    required this.onDismiss,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    if (results.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        constraints: const BoxConstraints(maxHeight: 80),
+        decoration: BoxDecoration(
+          color: theme.bgApp,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+          border: Border.all(color: theme.borderSoft),
+          boxShadow: MemoTheme.shadowMd,
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          L10n.t('file_mention_none'),
+          style: TextStyle(
+            fontSize: 13,
+            color: theme.textDim,
+            fontStyle: FontStyle.italic,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      constraints: const BoxConstraints(maxHeight: 240),
+      decoration: BoxDecoration(
+        color: theme.bgApp,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: theme.borderSoft),
+        boxShadow: MemoTheme.shadowMd,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          shrinkWrap: true,
+          itemCount: results.length,
+          itemBuilder: (context, index) {
+            final path = results[index];
+            final isSelected = index == selectedIndex;
+            return InkWell(
+              onTap: () => onSelect(index),
+              child: Container(
+                color: isSelected ? theme.bgElement : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                child: Row(
+                  children: [
+                    Icon(Icons.insert_drive_file_outlined,
+                        size: 15, color: theme.textDim),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        path,
+                        style: TextStyle(fontSize: 13, color: theme.textMain),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }

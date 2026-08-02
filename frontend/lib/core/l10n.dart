@@ -1054,6 +1054,7 @@ class L10n {
     'usage_tooltip_budget':
         'Girdi \${input} · Çıktı \${output} · Bütçe \${budget}',
     'no_matching_command': 'Eşleşen komut yok',
+    'file_mention_none': 'Eşleşen dosya yok (ya da bu sohbet için bir proje klasörü seçilmedi)',
     'action_badge': 'eylem',
 
     // Version
@@ -2522,6 +2523,7 @@ class L10n {
     'usage_tooltip_budget':
         'Input \${input} · Output \${output} · Budget \${budget}',
     'no_matching_command': 'No matching command',
+    'file_mention_none': 'No matching files (or no project folder set for this chat)',
     'action_badge': 'action',
 
     'version': 'Version',

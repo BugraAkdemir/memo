@@ -3,8 +3,8 @@ package sessions
 import (
 	"encoding/json"
 	"fmt"
-	"memo/internal/logx"
 	"memo/internal/fileutil"
+	"memo/internal/logx"
 	"memo/internal/truncate"
 	"os"
 	"path/filepath"
@@ -31,6 +31,24 @@ type Session struct {
 	UpdatedAt   string        `json:"updated_at"`
 	Messages    []ChatMessage `json:"messages"`
 	ProjectPath string        `json:"project_path,omitempty"`
+
+	// CLIProvider is this chat's own active provider (a provider.ProviderType
+	// value, e.g. "claude-code-cli"), independent of the app-wide active
+	// provider — each chat remembers its own, so switching provider in one
+	// chat never affects another. Empty means this chat isn't CLI-backed and
+	// uses the app-wide provider/local-model routing as before.
+	CLIProvider string `json:"cli_provider,omitempty"`
+	// CLISessionIDs maps a CLIProvider value to that CLI's own session id
+	// for this chat (keyed by provider, not just one string, since a chat
+	// could in principle be switched between claude-code-cli and codex-cli
+	// and each needs its own continuity). Empty/missing means the next
+	// message starts a fresh CLI session rather than resuming one.
+	CLISessionIDs map[string]string `json:"cli_session_ids,omitempty"`
+	// CLIWorkdir is the filesystem directory a CLI provider runs in for this
+	// chat. Deliberately separate from ProjectPath (which already means
+	// something else — "is this an agent chat" — elsewhere in this
+	// codebase) so the two concepts don't get conflated.
+	CLIWorkdir string `json:"cli_workdir,omitempty"`
 }
 
 type Manager struct {
@@ -313,6 +331,88 @@ func (m *Manager) IsAgentChat(id string) bool {
 	defer m.mu.RUnlock()
 	s, ok := m.sessions[id]
 	return ok && s.ProjectPath != ""
+}
+
+// GetCLIProvider returns id's own active CLI provider (empty if this chat
+// isn't CLI-backed, or id doesn't exist).
+func (m *Manager) GetCLIProvider(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	return s.CLIProvider
+}
+
+// SetCLIProvider sets id's own active CLI provider, independent of every
+// other chat's provider (see Session.CLIProvider's doc comment). Passing ""
+// clears it, returning the chat to normal app-wide provider/local-model
+// routing.
+func (m *Manager) SetCLIProvider(id, provider string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.CLIProvider = provider
+	s.UpdatedAt = time.Now().Format("2006-01-02 15:04")
+	return m.save(s)
+}
+
+// GetCLISessionID returns the CLI's own session id for id+cliProvider, or ""
+// if none is recorded yet (the next message should start a fresh session
+// rather than trying to resume one).
+func (m *Manager) GetCLISessionID(id, cliProvider string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok || s.CLISessionIDs == nil {
+		return ""
+	}
+	return s.CLISessionIDs[cliProvider]
+}
+
+// SetCLISessionID records the CLI's own session id for id+cliProvider, so
+// the next message to this chat resumes it instead of starting fresh.
+func (m *Manager) SetCLISessionID(id, cliProvider, cliSessionID string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	if s.CLISessionIDs == nil {
+		s.CLISessionIDs = make(map[string]string)
+	}
+	s.CLISessionIDs[cliProvider] = cliSessionID
+	return m.save(s)
+}
+
+// GetCLIWorkdir returns id's CLI working directory, or "" if unset (the
+// caller should prompt the user to pick one — see yapacam.md §3).
+func (m *Manager) GetCLIWorkdir(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	return s.CLIWorkdir
+}
+
+// SetCLIWorkdir sets id's CLI working directory, persisted so it's only
+// ever asked once per chat.
+func (m *Manager) SetCLIWorkdir(id, dir string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.CLIWorkdir = dir
+	return m.save(s)
 }
 
 func (m *Manager) ListChats() []SessionInfo {

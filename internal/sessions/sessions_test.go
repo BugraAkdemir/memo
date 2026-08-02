@@ -483,3 +483,99 @@ func TestFilePermissions(t *testing.T) {
 		t.Errorf("session file has group/other perms: %o", info.Mode())
 	}
 }
+
+func TestCLIProvider_DefaultsEmptyAndIsPerChat(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chatA := m.NewChat()
+	chatB := m.NewChat()
+
+	if got := m.GetCLIProvider(chatA); got != "" {
+		t.Errorf("new chat CLIProvider = %q, want empty", got)
+	}
+
+	if err := m.SetCLIProvider(chatA, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	if got := m.GetCLIProvider(chatA); got != "claude-code-cli" {
+		t.Errorf("chatA CLIProvider = %q, want claude-code-cli", got)
+	}
+	if got := m.GetCLIProvider(chatB); got != "" {
+		t.Errorf("chatB CLIProvider = %q, want empty (setting chatA must not affect chatB)", got)
+	}
+}
+
+func TestCLIProvider_UnknownChatReturnsError(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	if err := m.SetCLIProvider("does-not-exist", "claude-code-cli"); err == nil {
+		t.Error("expected an error for an unknown chat id")
+	}
+}
+
+func TestCLISessionID_RoundTripsPerProvider(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chat := m.NewChat()
+
+	if got := m.GetCLISessionID(chat, "claude-code-cli"); got != "" {
+		t.Errorf("initial CLISessionID = %q, want empty", got)
+	}
+
+	if err := m.SetCLISessionID(chat, "claude-code-cli", "sess-abc"); err != nil {
+		t.Fatalf("SetCLISessionID: %v", err)
+	}
+	if got := m.GetCLISessionID(chat, "claude-code-cli"); got != "sess-abc" {
+		t.Errorf("CLISessionID = %q, want sess-abc", got)
+	}
+	// A different provider on the same chat must not see the first one's id.
+	if got := m.GetCLISessionID(chat, "codex-cli"); got != "" {
+		t.Errorf("codex-cli CLISessionID = %q, want empty (per-provider isolation)", got)
+	}
+}
+
+func TestCLIWorkdir_RoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chat := m.NewChat()
+
+	if got := m.GetCLIWorkdir(chat); got != "" {
+		t.Errorf("initial CLIWorkdir = %q, want empty", got)
+	}
+	if err := m.SetCLIWorkdir(chat, "/home/user/project"); err != nil {
+		t.Fatalf("SetCLIWorkdir: %v", err)
+	}
+	if got := m.GetCLIWorkdir(chat); got != "/home/user/project" {
+		t.Errorf("CLIWorkdir = %q, want /home/user/project", got)
+	}
+}
+
+func TestCLIFields_SurviveReload(t *testing.T) {
+	dir := t.TempDir()
+	m1, _ := NewManager(dir)
+	chat := m1.NewChat()
+	m1.AddMessageToSession(chat, "user", "hi", "", "") // must be persisted to survive reload
+	if err := m1.SetCLIProvider(chat, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	if err := m1.SetCLISessionID(chat, "claude-code-cli", "sess-xyz"); err != nil {
+		t.Fatalf("SetCLISessionID: %v", err)
+	}
+	if err := m1.SetCLIWorkdir(chat, "/tmp/proj"); err != nil {
+		t.Fatalf("SetCLIWorkdir: %v", err)
+	}
+
+	m2, err := NewManager(dir)
+	if err != nil {
+		t.Fatalf("NewManager (reload): %v", err)
+	}
+	if got := m2.GetCLIProvider(chat); got != "claude-code-cli" {
+		t.Errorf("reloaded CLIProvider = %q", got)
+	}
+	if got := m2.GetCLISessionID(chat, "claude-code-cli"); got != "sess-xyz" {
+		t.Errorf("reloaded CLISessionID = %q", got)
+	}
+	if got := m2.GetCLIWorkdir(chat); got != "/tmp/proj" {
+		t.Errorf("reloaded CLIWorkdir = %q", got)
+	}
+}

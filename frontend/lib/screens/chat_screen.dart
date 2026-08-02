@@ -388,16 +388,16 @@ class _QuickModelDropdown extends ConsumerWidget {
 
     final proceed = await showDialog<bool>(
       context: context,
-      builder: (_) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: Text(L10n.t('cli_first_use_title')),
         content: Text(L10n.t('cli_first_use_body')),
         actions: [
           TextButton(
-            onPressed: () => Navigator.of(context).pop(false),
+            onPressed: () => Navigator.of(dialogContext).pop(false),
             child: Text(L10n.t('cancel')),
           ),
           FilledButton(
-            onPressed: () => Navigator.of(context).pop(true),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
             child: Text(L10n.t('cli_first_use_continue')),
           ),
         ],
@@ -412,11 +412,15 @@ class _QuickModelDropdown extends ConsumerWidget {
     try {
       await api.setChatCLIWorkdir(chatId, dir);
     } catch (e) {
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('switch_failed', {'e': e.toString()}))),
-        );
-      }
+      // Not ScaffoldMessenger.of(context) — the native folder picker above
+      // can stay open for a long, unpredictable time, and by the time it
+      // resolves the widget this context came from (deep inside the model
+      // dropdown's popup menu) may already be gone. errorMessageProvider is
+      // a global, context-free sink a stable top-level listener shows as a
+      // SnackBar (see _ChatContent's ref.listen) — this codebase's own
+      // established way of avoiding exactly this class of crash.
+      ref.read(errorMessageProvider.notifier).state =
+          L10n.t('switch_failed', {'e': e.toString()});
     }
   }
 

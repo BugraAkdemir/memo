@@ -777,6 +777,20 @@ func (s *Server) handleCLIRunning(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string][]string{"chat_ids": s.fullBridge.GetRunningCLIChats()})
 }
 
+func (s *Server) handleFileMentions(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	root := r.URL.Query().Get("root")
+	query := r.URL.Query().Get("query")
+	writeJSON(w, map[string][]string{"files": s.fullBridge.ListProjectFiles(root, query)})
+}
+
 func (s *Server) handleCLIStatus(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

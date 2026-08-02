@@ -204,6 +204,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/remote-access", s.handleRemoteAccess)
 	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/cli/running", s.handleCLIRunning)
+	route("/api/files/mentions", s.handleFileMentions)
 	route("/api/chats/cli-provider", s.handleChatCLIProvider)
 	route("/api/chats/cli-workdir", s.handleChatCLIWorkdir)
 	route("/api/send/cli-stream", s.handleSendCLIStream)

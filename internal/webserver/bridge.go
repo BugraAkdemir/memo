@@ -122,6 +122,7 @@ type FullBridge interface {
 	GetChatCLIWorkdir(chatID string) string
 	SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 	GetRunningCLIChats() []string
+	ListProjectFiles(root, query string) []string
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

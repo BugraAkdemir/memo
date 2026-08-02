@@ -14,6 +14,7 @@ import '../core/theme.dart';
 import 'glass_surface.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
+import '../models/cli_command.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
@@ -100,6 +101,24 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   int _fileMentionAtPos = -1;
   int _fileMentionRequestGen = 0;
 
+  // "/" in a CLI chat lists that CLI's own commands (fetched from the
+  // backend, which can read .claude/commands & .codex/prompts) instead of
+  // Memo's prompt templates — a coding agent's configured workflows are what
+  // "/" means there, and Memo's canned prompt text would be noise.
+  List<CLICommand> _cliCommands = [];
+  int _cliCommandsRequestGen = 0;
+  String _cliCommandsLoadedFor = '';
+
+  List<CLICommand> get _filteredCLICommands {
+    if (_filterQuery.isEmpty) return _cliCommands;
+    final q = _filterQuery.toLowerCase();
+    return _cliCommands
+        .where((c) =>
+            c.name.toLowerCase().contains(q) ||
+            c.description.toLowerCase().contains(q))
+        .toList();
+  }
+
   List<PopupItem> get _filteredItems {
     if (_filterQuery.isEmpty) return templates;
     final q = _filterQuery.toLowerCase();
@@ -126,8 +145,50 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         _selectedIndex = 0;
       });
     }
-    if (!show) _checkFileMentionTrigger(text);
+    if (show) {
+      _ensureCLICommandsLoaded();
+    } else {
+      _checkFileMentionTrigger(text);
+    }
   }
+
+  /// Loads the active CLI provider's slash commands the first time "/" is
+  /// typed in a given CLI chat, and again whenever the chat switches to a
+  /// different CLI provider. Not a CLI chat -> clears the list, so the
+  /// dropdown falls back to Memo's own prompt templates.
+  Future<void> _ensureCLICommandsLoaded() async {
+    final cliType = ref.read(activeChatCLIProviderProvider).valueOrNull ?? '';
+    final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
+    final key = '$cliType|$chatId';
+    if (key == _cliCommandsLoadedFor) return;
+
+    final gen = ++_cliCommandsRequestGen;
+    _cliCommandsLoadedFor = key;
+    if (cliType.isEmpty) {
+      if (_cliCommands.isNotEmpty) setState(() => _cliCommands = []);
+      return;
+    }
+    try {
+      final cmds = await ref.read(apiClientProvider).listCLICommands(cliType, chatId);
+      if (!mounted || gen != _cliCommandsRequestGen) return;
+      setState(() => _cliCommands = cmds);
+    } catch (_) {
+      if (!mounted || gen != _cliCommandsRequestGen) return;
+      // A failed lookup must not strand the composer: an empty list renders
+      // the popup's normal "no matching command" state, and typing the
+      // command by hand still works — the CLI resolves it either way.
+      setState(() => _cliCommands = []);
+      _cliCommandsLoadedFor = '';
+    }
+  }
+
+  /// True when "/" should list the CLI's commands rather than Memo's
+  /// templates. Driven by the chat's CLI provider, not by whether the fetch
+  /// happened to return anything, so a CLI chat with no custom commands
+  /// still shows the CLI's (empty) list instead of silently falling back to
+  /// prompt templates that would do nothing useful there.
+  bool get _isCLIChat =>
+      (ref.read(activeChatCLIProviderProvider).valueOrNull ?? '').isNotEmpty;
 
   /// Looks backward from the cursor to the nearest preceding whitespace (or
   /// start of text) for an "@" starting the current word. If found, fetches
@@ -224,6 +285,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     setState(() => _showTemplates = false);
   }
 
+  /// Inserts the picked CLI command into the composer without sending, so
+  /// arguments can still be typed after it ("/review the auth code").
+  void _selectCLICommandAt(int index) {
+    final items = _filteredCLICommands;
+    if (index < 0 || index >= items.length) return;
+    final inserted = '${items[index].slash} ';
+    setState(() => _showTemplates = false);
+    _controller.text = inserted;
+    _controller.selection = TextSelection.collapsed(offset: inserted.length);
+    _focusNode.requestFocus();
+  }
+
   void _selectAtIndex(int index) {
     final items = _filteredItems;
     if (index < 0 || index >= items.length) return;
@@ -267,7 +340,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       setState(() => _fileMentionSelectedIndex =
           (_fileMentionSelectedIndex + delta + itemCount) % itemCount);
     } else if (_showTemplates) {
-      final itemCount = _filteredItems.length;
+      final itemCount = _isCLIChat ? _filteredCLICommands.length : _filteredItems.length;
       if (itemCount == 0) return;
       setState(() => _selectedIndex = (_selectedIndex + delta + itemCount) % itemCount);
     }
@@ -277,7 +350,11 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     if (_showFileMentions) {
       _selectFileMentionAt(_fileMentionSelectedIndex);
     } else if (_showTemplates) {
-      _selectAtIndex(_selectedIndex);
+      if (_isCLIChat) {
+        _selectCLICommandAt(_selectedIndex);
+      } else {
+        _selectAtIndex(_selectedIndex);
+      }
     }
   }
 
@@ -819,12 +896,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
         : _showTemplates
             ? Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: PromptTemplatesPopup(
-                  query: _filterQuery,
-                  selectedIndex: _selectedIndex,
-                  onSelect: _onPopupResult,
-                  onDismiss: _dismissPopup,
-                ),
+                child: _isCLIChat
+                    ? _CLICommandPopup(
+                        commands: _filteredCLICommands,
+                        selectedIndex: _selectedIndex,
+                        onSelect: _selectCLICommandAt,
+                      )
+                    : PromptTemplatesPopup(
+                        query: _filterQuery,
+                        selectedIndex: _selectedIndex,
+                        onSelect: _onPopupResult,
+                        onDismiss: _dismissPopup,
+                      ),
               )
             : null;
 
@@ -1661,6 +1744,155 @@ class _OpenRouterModelDialogState extends State<_OpenRouterModelDialog> {
 /// (prompt_templates.dart), for a flat list of project-relative file paths
 /// instead of slash templates. Empty when [ChatInputState._resolveProjectRoot]
 /// has no folder to search (no CLI workdir, no agent project path).
+/// "/" dropdown for a CLI chat: the CLI's own commands, with a source badge
+/// (project / user / skill / builtin) so it's clear where each one comes
+/// from — a project command and a same-named personal one are genuinely
+/// different things, and knowing which is about to run matters when the
+/// command can edit files and run shell commands.
+class _CLICommandPopup extends StatelessWidget {
+  final List<CLICommand> commands;
+  final int selectedIndex;
+  final ValueChanged<int> onSelect;
+
+  const _CLICommandPopup({
+    required this.commands,
+    required this.selectedIndex,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    if (commands.isEmpty) {
+      return Container(
+        margin: const EdgeInsets.symmetric(horizontal: 16),
+        decoration: BoxDecoration(
+          color: theme.bgApp,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+          border: Border.all(color: theme.borderSoft),
+          boxShadow: MemoTheme.shadowMd,
+        ),
+        padding: const EdgeInsets.all(16),
+        child: Text(
+          L10n.t('cli_command_none'),
+          style: TextStyle(fontSize: 13, color: theme.textDim, height: 1.4),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 16),
+      constraints: const BoxConstraints(maxHeight: 280),
+      decoration: BoxDecoration(
+        color: theme.bgApp,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: theme.borderSoft),
+        boxShadow: MemoTheme.shadowMd,
+      ),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        child: ListView.builder(
+          padding: const EdgeInsets.symmetric(vertical: 4),
+          shrinkWrap: true,
+          itemCount: commands.length,
+          itemBuilder: (context, index) {
+            final cmd = commands[index];
+            final isSelected = index == selectedIndex;
+            return InkWell(
+              onTap: () => onSelect(index),
+              child: Container(
+                color: isSelected ? theme.bgElement : Colors.transparent,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Icon(Icons.terminal_rounded,
+                        size: 15,
+                        color: isSelected ? MemoTheme.accent : theme.textDim),
+                    const SizedBox(width: 9),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            children: [
+                              Flexible(
+                                child: Text(
+                                  cmd.slash,
+                                  style: TextStyle(
+                                    fontSize: 13,
+                                    fontWeight: FontWeight.w600,
+                                    color: theme.textMain,
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if (cmd.source.isNotEmpty) ...[
+                                const SizedBox(width: 7),
+                                _CLICommandSourceBadge(source: cmd.source),
+                              ],
+                            ],
+                          ),
+                          if (cmd.description.isNotEmpty) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              cmd.description,
+                              style: TextStyle(fontSize: 11.5, color: theme.textDim),
+                              maxLines: 2,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+}
+
+class _CLICommandSourceBadge extends StatelessWidget {
+  final String source;
+
+  const _CLICommandSourceBadge({required this.source});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    // Keys are the backend's Source values; an unrecognized one falls back
+    // to showing the raw value rather than vanishing.
+    const labelKeys = {
+      'project': 'cli_command_src_project',
+      'user': 'cli_command_src_user',
+      'skill': 'cli_command_src_skill',
+      'builtin': 'cli_command_src_builtin',
+    };
+    final key = labelKeys[source];
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(4),
+      ),
+      child: Text(
+        key != null ? L10n.t(key) : source,
+        style: TextStyle(
+          fontSize: 9.5,
+          fontWeight: FontWeight.w600,
+          letterSpacing: 0.3,
+          color: theme.textDim,
+        ),
+      ),
+    );
+  }
+}
+
 class _FileMentionPopup extends StatelessWidget {
   final List<String> results;
   final int selectedIndex;

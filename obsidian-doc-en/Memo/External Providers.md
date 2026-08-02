@@ -104,6 +104,16 @@ type Provider interface {
 
 > **Note:** llama.cpp is NOT implemented as a provider. Local models are handled separately via `api.Client`. The `NewProvider()` factory returns an error for `ProviderLlamaCPP`.
 
+### 8. Claude Code CLI (`internal/agentcli/`, CLI-based — v3.3.4)
+
+Architecturally unlike the other 7: instead of calling an HTTP API, it shells out to the locally installed `claude` command-line tool as a subprocess (`claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`). Implements `provider.Provider` without creating an import cycle — `internal/provider` never imports `internal/agentcli` directly; `agentcli`'s own `init()` registers itself via `provider.RegisterConstructor` (the `database/sql` driver pattern).
+
+- **Per-chat, not app-wide.** New `sessions.Session` fields `CLIProvider`/`CLISessionIDs`/`CLIWorkdir` — each chat carries its own CLI provider, its own CLI session id, and its own working directory.
+- **Independent of `App.streamMu`.** The normal `SendMessageStreamTo` path uses one global stream lock (only one chat can stream at a time); CLI jobs instead lock per-chat via `App.cliJobs` (`map[chatID]context.CancelFunc`) — different chats never block each other.
+- **Tied to `a.lifecycleCtx`, not the HTTP request.** `SendCLIMessageStream`'s ctx is derived from `App.lifecycleCtx`, not the request's — the subprocess survives the user switching chats or closing the window, and only a real backend shutdown (`lifecycleCancel`) kills it (cascades through `exec.CommandContext`).
+- **`ChatRequest.ResumeSessionID`/`WorkDir` and `StreamChunk.CLISessionID`** — these two fields exist only for CLI providers; the other 7 ignore them.
+- New endpoints: `GET /api/cli/status?type=`, `POST /api/chats/cli-provider`, `POST /api/chats/cli-workdir`, `POST /api/send/cli-stream`, `GET /api/cli/running`.
+
 ---
 
 ## Router & Fallback System
@@ -273,6 +283,8 @@ If no provider is configured and no local model is running, an error is returned
 | **No test files** | Zero tests in `internal/provider/` |
 | **Orchestra bypasses router** | Orchestra creates providers directly, no fallback chain |
 | **Machine-bound encryption** | `providers.json` not portable across machines |
+| **No Codex CLI** | Only Claude Code CLI is implemented; Codex support is planned, not built yet |
+| **CLI job cancellation is partial** | `App.streamMu`'s global "one stream at a time" protection doesn't apply to CLI jobs — a separate `cliJobs` lock prevents two messages racing into the same chat, but there's deliberately no cross-chat blocking |
 
 ---
 

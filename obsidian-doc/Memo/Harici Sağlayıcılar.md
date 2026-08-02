@@ -90,6 +90,16 @@ type Provider interface {
 
 > **Not:** llama.cpp bir provider olarak uygulanmamıştır. Yerel modeller `api.Client` ile ayrıca yönetilir.
 
+### 8. Claude Code CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
+
+Diğer 7 sağlayıcıdan mimari olarak tamamen farklı: bir HTTP API'ye istek atmak yerine bilgisayarda kurulu `claude` komut satırı aracını subprocess olarak çalıştırır (`claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`). Import cycle'a girmeden `provider.Provider` arayüzünü uygular — `internal/provider`, `internal/agentcli`'yi doğrudan import etmez; `provider.RegisterConstructor` ile `agentcli`'nin kendi `init()`'i kendini kaydeder (`database/sql` driver deseni).
+
+- **Sohbet-bazlı, uygulama geneli değil.** `sessions.Session`'a eklenen `CLIProvider`/`CLISessionIDs`/`CLIWorkdir` alanları — her chat kendi CLI provider'ını, kendi CLI oturum id'sini ve kendi çalışma dizinini taşır.
+- **`App.streamMu`'dan bağımsız.** Normal `SendMessageStreamTo` tek bir global stream kilidi kullanır (aynı anda sadece bir chat stream edebilir); CLI görevleri bunun yerine `App.cliJobs` (`map[chatID]context.CancelFunc`) ile chat-bazlı kilitlenir — farklı chat'ler birbirini bloklamaz.
+- **`a.lifecycleCtx`'e bağlı, HTTP isteğine değil.** `SendCLIMessageStream`'in ctx'i request'ten değil `App.lifecycleCtx`'ten türetilir — kullanıcı chat değiştirse/pencereyi kapatsa bile subprocess çalışmaya devam eder, sadece gerçek backend shutdown'ı (`lifecycleCancel`) öldürür (`exec.CommandContext` zincirleme cascade).
+- **`ChatRequest.ResumeSessionID`/`WorkDir` ve `StreamChunk.CLISessionID`** — bu iki alan sadece CLI provider'lar tarafından kullanılır, diğer 7 provider görmezden gelir.
+- Yeni endpoint'ler: `GET /api/cli/status?type=`, `POST /api/chats/cli-provider`, `POST /api/chats/cli-workdir`, `POST /api/send/cli-stream`, `GET /api/cli/running`.
+
 ---
 
 ## Router ve Fallback Sistemi
@@ -255,6 +265,8 @@ Hiçbir sağlayıcı yapılandırılmamışsa ve yerel model çalışmıyorsa ha
 | ~~**Test dosyası yok**~~ | ✅ Düzeltildi — `router_test.go` mevcut, 48 test `-race` ile geçiyor |
 | **Orkestra router'ı bypass eder** | Orkestra doğrudan provider oluşturur, fallback zinciri yok |
 | **Makineye bağlı şifreleme** | `providers.json` makineler arası taşınamaz |
+| **Codex CLI yok** | Sadece Claude Code CLI uygulandı, Codex desteği planlı, henüz yapılmadı |
+| **CLI görev iptali tam değil** | `App.streamMu`'nun global "tek stream aynı anda" koruması CLI için yok — aynı chat'e iki mesaj birden gitmesin diye ayrı bir `cliJobs` kilidi var ama chat'ler arası hiç engelleme yok, kasıtlı |
 
 ---
 

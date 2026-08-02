@@ -23,6 +23,13 @@ func fileMatches(root, query string) []commandSpec {
 		return nil
 	}
 	query = strings.ToLower(query)
+	// Dotfiles/dot-directories (.git, .claude, .github, ...) sort before
+	// every ordinary name in filepath.WalkDir's lexical order — with a
+	// real project's usual handful of dot-entries at the root, maxFileMatches
+	// was reached before a single non-dot file was ever seen, so the
+	// dropdown showed nothing but dotfiles. Skip them by default; still
+	// reachable by explicitly typing a query that starts with ".".
+	skipDotEntries := !strings.HasPrefix(query, ".")
 	var out []commandSpec
 	_ = filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -36,6 +43,12 @@ func fileMatches(root, query string) []commandSpec {
 			case ".git", "node_modules", "vendor", "build", ".dart_tool":
 				return filepath.SkipDir
 			}
+			if skipDotEntries && path != root && strings.HasPrefix(d.Name(), ".") {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if skipDotEntries && strings.HasPrefix(d.Name(), ".") {
 			return nil
 		}
 		rel, err := filepath.Rel(root, path)

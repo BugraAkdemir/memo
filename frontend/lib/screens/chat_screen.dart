@@ -221,9 +221,14 @@ class _QuickModelDropdown extends ConsumerWidget {
 
     String activeType;
     List<ProviderConfig> providers;
+    String cliType = '';
     try {
       activeType = await ref.read(activeProviderTypeProvider.future);
       providers = await ref.read(providerListProvider.future);
+      final chatId = ref.read(activeChatIdProvider).valueOrNull;
+      if (chatId != null) {
+        cliType = await ref.read(apiClientProvider).getChatCLIProvider(chatId);
+      }
     } catch (e) {
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -234,7 +239,11 @@ class _QuickModelDropdown extends ConsumerWidget {
     }
     if (!context.mounted) return;
 
-    final effectiveActive = activeType.isEmpty ? 'local' : activeType;
+    final activeCLIName = cliType.isEmpty
+        ? ''
+        : (providers.where((p) => p.type == cliType).firstOrNull?.name ?? cliType);
+    final effectiveActive =
+        activeCLIName.isNotEmpty ? activeCLIName : (activeType.isEmpty ? 'local' : activeType);
     final enabledProviders = providers.where((p) => p.enabled).toList();
     final c = MemoTheme.of(context);
 
@@ -372,11 +381,20 @@ class _QuickModelDropdown extends ConsumerWidget {
     final c = MemoTheme.of(context);
     final activeType = ref.watch(activeProviderTypeProvider).valueOrNull ?? '';
     final providers = ref.watch(providerListProvider).valueOrNull ?? const <ProviderConfig>[];
-    final isLocal = activeType.isEmpty;
+    // A chat's own CLI provider takes priority over the app-wide active
+    // provider in what's SHOWN here — it's what that chat actually sends
+    // to, even though picking it never touched activeProviderTypeProvider
+    // (deliberately — see chat_screen.dart's CLI branch above).
+    final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
+    final isLocal = activeType.isEmpty && cliType.isEmpty;
 
     final String label;
     final Widget leadingIcon;
-    if (isLocal) {
+    if (cliType.isNotEmpty) {
+      final match = providers.where((p) => p.type == cliType);
+      label = match.isNotEmpty ? match.first.name : cliType;
+      leadingIcon = Icon(Icons.terminal_rounded, size: 15, color: MemoTheme.accent);
+    } else if (isLocal) {
       label = L10n.t('local_model');
       leadingIcon = Icon(Icons.computer_outlined, size: 15, color: c.textMuted);
     } else {

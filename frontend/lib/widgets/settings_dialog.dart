@@ -26,7 +26,12 @@ import 'settings/tabs/taskloop_tab.dart';
 import 'settings/tabs/stats_tab.dart';
 import 'settings/tabs/report_bug_tab.dart';
 
-/// Settings dialog with vertical tabs on the left and content on the right.
+/// Settings dialog: a searchable, grouped rail on the left, tab content on
+/// the right. Redesigned (v3.3.4) from a single flat list of 20
+/// identically-weighted rows — which read as cluttered and cramped no
+/// matter the dialog size — into a small number of labeled groups plus a
+/// search box, so scanning/finding a specific setting doesn't mean reading
+/// 20 rows top to bottom every time.
 class SettingsDialog extends ConsumerStatefulWidget {
   const SettingsDialog({super.key});
 
@@ -36,6 +41,8 @@ class SettingsDialog extends ConsumerStatefulWidget {
 
 class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   int _activeTab = 0;
+  final _searchController = TextEditingController();
+  String _searchQuery = '';
 
   static const _tabIcons = [
     'lib/icon/slash/gear.svg',
@@ -58,6 +65,18 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/info.svg',
     'lib/icon/slash/list-checks.svg',
     'lib/icon/slash/wrench.svg',
+  ];
+
+  /// Tab indices grouped under an eyebrow header, in sidebar display order.
+  /// Every index 0..19 must appear exactly once — covered by
+  /// settings_dialog_test.dart's group-coverage test.
+  static const _groups = [
+    ('settings_group_general', [0, 1, 2]),
+    ('settings_group_providers', [5, 6, 15]),
+    ('settings_group_memory', [3, 4, 9, 10]),
+    ('settings_group_agents', [7, 8, 11, 18]),
+    ('settings_group_system', [12, 13, 14]),
+    ('settings_group_other', [16, 17, 19]),
   ];
 
   List<String> get _tabs => [
@@ -84,21 +103,32 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
   ];
 
   @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     ref.watch(localeProvider);
     final tabs = _tabs;
     final tabIndex = _activeTab.clamp(0, tabs.length - 1);
+    final theme = MemoTheme.of(context);
 
     final screenSize = MediaQuery.of(context).size;
-    final dialogWidth = (screenSize.width * 0.85).clamp(400.0, 900.0);
-    final dialogHeight = (screenSize.height * 0.85).clamp(400.0, 700.0);
+    // Fixed once computed from the viewport, so the Row below (sidebar +
+    // content) always lays out against a stable width regardless of how
+    // small the actual window gets — the inner layout can't RenderFlex
+    // overflow from a shrinking screen, only the dialog's own size adapts.
+    final dialogWidth = (screenSize.width * 0.85).clamp(400.0, 1040.0);
+    final dialogHeight = (screenSize.height * 0.85).clamp(440.0, 760.0);
 
     // ScaffoldMessenger + Scaffold so tab SnackBars (ScaffoldMessenger.of)
     // render ON TOP of this modal Dialog instead of behind it on the root
     // Scaffold (BUG-M2). MemoryImportTab already uses an inline banner for the
     // same reason; this covers every other tab without rewriting each one.
     return Dialog(
-      backgroundColor: MemoTheme.of(context).bgApp,
+      backgroundColor: theme.bgApp,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
       ),
@@ -111,17 +141,15 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         ),
         child: ScaffoldMessenger(
           child: Scaffold(
-            backgroundColor: MemoTheme.of(context).bgApp,
+            backgroundColor: theme.bgApp,
             body: Column(
               children: [
                 Container(
                   height: 56,
-                  padding: EdgeInsets.symmetric(horizontal: 24),
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
                   decoration: BoxDecoration(
-                    color: MemoTheme.of(context).bgPanel,
-                    border: Border(
-                      bottom: BorderSide(color: MemoTheme.of(context).borderSoft),
-                    ),
+                    color: theme.bgPanel,
+                    border: Border(bottom: BorderSide(color: theme.borderSoft)),
                   ),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -131,80 +159,51 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
                         style: TextStyle(
                           fontSize: 16,
                           fontWeight: FontWeight.w600,
-                          color: MemoTheme.of(context).textMain,
+                          color: theme.textMain,
                         ),
                       ),
                       IconButton(
-                        icon: Icon(Icons.close, size: 20),
+                        icon: const Icon(Icons.close, size: 20),
                         onPressed: () => Navigator.of(context).pop(),
-                        color: MemoTheme.of(context).textDim,
+                        color: theme.textDim,
                       ),
                     ],
                   ),
                 ),
                 Expanded(
                   child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
-                      Container(
-                        width: 200,
-                        decoration: BoxDecoration(
-                          color: MemoTheme.of(context).bgPanel.withValues(alpha: 0.5),
-                          border: Border(
-                            right: BorderSide(color: MemoTheme.of(context).borderSoft),
+                      SizedBox(
+                        width: 216,
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: theme.bgPanel.withValues(alpha: 0.5),
+                            border: Border(right: BorderSide(color: theme.borderSoft)),
                           ),
-                        ),
-                        child: ListView.builder(
-                          padding: EdgeInsets.symmetric(vertical: 12),
-                          itemCount: tabs.length,
-                          itemBuilder: (context, index) {
-                            final isActive = tabIndex == index;
-                            final iconColor = isActive
-                                ? MemoTheme.accent
-                                : MemoTheme.of(context).textDim;
-                            return InkWell(
-                              onTap: () => setState(() => _activeTab = index),
-                              child: Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 11),
-                                decoration: BoxDecoration(
-                                  color: isActive ? MemoTheme.of(context).bgElement : Colors.transparent,
-                                  border: Border(
-                                    left: BorderSide(
-                                      color: isActive ? MemoTheme.accent : Colors.transparent,
-                                      width: 3,
-                                    ),
-                                  ),
-                                ),
-                                child: Row(
-                                  children: [
-                                    SizedBox(
-                                      width: 18, height: 18,
-                                      child: SvgPicture.asset(
-                                        _tabIcons[index],
-                                        colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
-                                      ),
-                                    ),
-                                    const SizedBox(width: 10),
-                                    Expanded(
-                                      child: Text(
-                                        tabs[index],
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
-                                          color: isActive ? MemoTheme.of(context).textMain : MemoTheme.of(context).textSecondary,
-                                        ),
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
-                                  ],
+                          child: Column(
+                            children: [
+                              _SettingsSearchField(
+                                controller: _searchController,
+                                onChanged: (v) => setState(() => _searchQuery = v),
+                              ),
+                              Expanded(
+                                child: _SettingsRail(
+                                  tabs: tabs,
+                                  tabIcons: _tabIcons,
+                                  groups: _groups,
+                                  query: _searchQuery,
+                                  activeIndex: tabIndex,
+                                  onSelect: (i) => setState(() => _activeTab = i),
                                 ),
                               ),
-                            );
-                          },
+                            ],
+                          ),
                         ),
                       ),
                       Expanded(
                         child: Container(
-                          color: MemoTheme.of(context).bgApp,
+                          color: theme.bgApp,
                           child: _buildTabContent(tabIndex),
                         ),
                       ),
@@ -241,7 +240,200 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 17: return AboutTab();
       case 18: return TaskLoopTab();
       case 19: return ReportBugTab();
-      default: return SizedBox.shrink();
+      default: return const SizedBox.shrink();
     }
+  }
+}
+
+/// Compact search box pinned above the grouped rail — the redesign's answer
+/// to 20 rows with no way to jump straight to one whose name you remember
+/// (or don't: filtering by what you can see still narrows the scan).
+class _SettingsSearchField extends StatelessWidget {
+  final TextEditingController controller;
+  final ValueChanged<String> onChanged;
+
+  const _SettingsSearchField({required this.controller, required this.onChanged});
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      child: TextField(
+        controller: controller,
+        onChanged: onChanged,
+        style: TextStyle(fontSize: 13, color: theme.textMain),
+        decoration: InputDecoration(
+          isDense: true,
+          hintText: L10n.t('settings_search_hint'),
+          hintStyle: TextStyle(fontSize: 13, color: theme.textDim),
+          prefixIcon: Icon(Icons.search_rounded, size: 16, color: theme.textDim),
+          prefixIconConstraints: const BoxConstraints(minWidth: 32, minHeight: 16),
+          contentPadding: const EdgeInsets.symmetric(vertical: 9),
+          filled: true,
+          fillColor: theme.bgElement,
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+            borderSide: BorderSide.none,
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+            borderSide: BorderSide.none,
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+            borderSide: const BorderSide(color: MemoTheme.accent, width: 1.5),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The grouped, filterable list of settings tabs — group headers are plain
+/// labels (not tappable, not numbered: there is no sequence here, order is
+/// just topical clustering) so the eye can skip straight to a cluster
+/// instead of reading 20 same-weight rows in a row.
+class _SettingsRail extends StatelessWidget {
+  final List<String> tabs;
+  final List<String> tabIcons;
+  final List<(String, List<int>)> groups;
+  final String query;
+  final int activeIndex;
+  final ValueChanged<int> onSelect;
+
+  const _SettingsRail({
+    required this.tabs,
+    required this.tabIcons,
+    required this.groups,
+    required this.query,
+    required this.activeIndex,
+    required this.onSelect,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final needle = query.trim().toLowerCase();
+
+    final children = <Widget>[];
+    for (final (titleKey, indices) in groups) {
+      final visible = needle.isEmpty
+          ? indices
+          : indices.where((i) => tabs[i].toLowerCase().contains(needle)).toList();
+      if (visible.isEmpty) continue;
+      children.add(_GroupHeader(L10n.t(titleKey)));
+      for (final i in visible) {
+        children.add(_SettingsTabRow(
+          label: tabs[i],
+          icon: tabIcons[i],
+          isActive: activeIndex == i,
+          onTap: () => onSelect(i),
+        ));
+      }
+      children.add(const SizedBox(height: 10));
+    }
+
+    if (children.isEmpty) {
+      return Padding(
+        padding: const EdgeInsets.all(20),
+        child: Text(
+          L10n.t('settings_search_no_results'),
+          style: TextStyle(fontSize: 12, color: theme.textDim),
+        ),
+      );
+    }
+
+    return ListView(
+      key: const Key('settingsRailList'),
+      padding: const EdgeInsets.only(bottom: 12),
+      children: children,
+    );
+  }
+}
+
+class _GroupHeader extends StatelessWidget {
+  final String label;
+  const _GroupHeader(this.label);
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 6),
+      child: Text(
+        label,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 10.5,
+          fontWeight: FontWeight.w700,
+          letterSpacing: 0.6,
+          color: theme.textDim,
+        ),
+      ),
+    );
+  }
+}
+
+class _SettingsTabRow extends StatelessWidget {
+  final String label;
+  final String icon;
+  final bool isActive;
+  final VoidCallback onTap;
+
+  const _SettingsTabRow({
+    required this.label,
+    required this.icon,
+    required this.isActive,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    final iconColor = isActive ? MemoTheme.accent : theme.textDim;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 1),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+            decoration: BoxDecoration(
+              color: isActive ? MemoTheme.accentMuted : Colors.transparent,
+              borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+            ),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 17,
+                  height: 17,
+                  child: SvgPicture.asset(
+                    icon,
+                    colorFilter: ColorFilter.mode(iconColor, BlendMode.srcIn),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: isActive ? FontWeight.w600 : FontWeight.w500,
+                      color: isActive ? theme.textMain : theme.textSecondary,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }

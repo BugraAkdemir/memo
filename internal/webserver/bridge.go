@@ -114,6 +114,9 @@ type FullBridge interface {
 	GetLlamaConfig() config.LlamaConfig
 	UpdateLlamaConfig(cfg config.LlamaConfigUpdate) error
 
+	// CLI-backed providers (Settings > CLI Bağlantıları)
+	GetCLIStatus(cliType string) interface{}
+
 	// Remote access
 	GetRemoteAccessStatus() interface{}
 	GetRemoteAccessToken() string

@@ -178,7 +178,7 @@ func (b *swarmStubBridge) SynthesizeSpeech(text string) ([]byte, error) {
 	}
 	return nil, nil
 }
-func (b *swarmStubBridge) GetTTSFillerSound() ([]byte, error) { return nil, nil }
+func (b *swarmStubBridge) GetTTSFillerSound() ([]byte, error)      { return nil, nil }
 func (b *swarmStubBridge) ExportMemories() ([]byte, error)         { return nil, nil }
 func (b *swarmStubBridge) ImportMemories(data []byte) (int, error) { return 0, nil }
 func (b *swarmStubBridge) GetMemoryStats() models.MemoryStats      { return models.MemoryStats{} }
@@ -226,6 +226,7 @@ func (b *swarmStubBridge) InstallLlamaServer() error                            
 func (b *swarmStubBridge) SkipLlamaGPUInstall() error                                   { return nil }
 func (b *swarmStubBridge) GetLlamaConfig() config.LlamaConfig                           { return config.LlamaConfig{} }
 func (b *swarmStubBridge) UpdateLlamaConfig(cfg config.LlamaConfigUpdate) error         { return nil }
+func (b *swarmStubBridge) GetCLIStatus(cliType string) interface{}                      { return nil }
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }
@@ -260,7 +261,7 @@ func (b *swarmStubBridge) SetActiveProvider(name string)                        
 func (b *swarmStubBridge) GetActiveProvider() string                                     { return "" }
 func (b *swarmStubBridge) GetTTSProviders() []tts.ProviderConfig                         { return nil }
 func (b *swarmStubBridge) UpdateTTSProvider(cfg tts.ProviderConfig) error                { return nil }
-func (b *swarmStubBridge) DeleteTTSProvider(pt tts.ProviderType, name ...string) error    { return nil }
+func (b *swarmStubBridge) DeleteTTSProvider(pt tts.ProviderType, name ...string) error   { return nil }
 func (b *swarmStubBridge) TestTTSProviderConnection(cfg tts.ProviderConfig) error        { return nil }
 func (b *swarmStubBridge) GetTTSVoiceCatalog() []tts.Voice                               { return nil }
 func (b *swarmStubBridge) GetSelectedTTSVoicePath() string                               { return "" }

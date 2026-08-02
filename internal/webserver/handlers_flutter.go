@@ -679,6 +679,23 @@ func (s *Server) handleGenerateTitle(w http.ResponseWriter, r *http.Request) {
 
 // ─── Remote Access ──────────────────────────────────────────────
 
+func (s *Server) handleCLIStatus(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	cliType := r.URL.Query().Get("type")
+	if cliType == "" {
+		http.Error(w, "missing type", http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, s.fullBridge.GetCLIStatus(cliType))
+}
+
 func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

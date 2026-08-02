@@ -202,6 +202,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 		}
 	})
 	route("/api/remote-access", s.handleRemoteAccess)
+	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/sync/settings", s.handleSyncSettings)
 	route("/api/sync/auth", s.handleSyncAuth)
 	route("/api/sync/account", s.handleSyncAccount)

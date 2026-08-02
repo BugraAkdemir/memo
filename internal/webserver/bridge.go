@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/agentcli"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/llama"
@@ -123,6 +124,7 @@ type FullBridge interface {
 	SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 	GetRunningCLIChats() []string
 	ListProjectFiles(root, query string) []string
+	ListCLICommands(cliType, chatID string) []agentcli.Command
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

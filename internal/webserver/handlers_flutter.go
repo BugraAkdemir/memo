@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"memo/internal/agentcli"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/logx"
@@ -789,6 +790,31 @@ func (s *Server) handleFileMentions(w http.ResponseWriter, r *http.Request) {
 	root := r.URL.Query().Get("root")
 	query := r.URL.Query().Get("query")
 	writeJSON(w, map[string][]string{"files": s.fullBridge.ListProjectFiles(root, query)})
+}
+
+// handleCLICommands serves the slash commands a CLI-backed chat can use, for
+// the composer's "/" dropdown. chat_id is optional — without it only
+// user-level and built-in commands are found, since project-level ones live
+// under the chat's own working directory.
+func (s *Server) handleCLICommands(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	cliType := r.URL.Query().Get("type")
+	if cliType == "" {
+		http.Error(w, "missing type", http.StatusBadRequest)
+		return
+	}
+	cmds := s.fullBridge.ListCLICommands(cliType, r.URL.Query().Get("chat_id"))
+	if cmds == nil {
+		cmds = []agentcli.Command{}
+	}
+	writeJSON(w, map[string][]agentcli.Command{"commands": cmds})
 }
 
 func (s *Server) handleCLIStatus(w http.ResponseWriter, r *http.Request) {

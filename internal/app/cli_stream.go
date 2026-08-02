@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"strings"
 
+	"memo/internal/agentcli"
 	"memo/internal/api"
 	"memo/internal/logx"
 	"memo/internal/provider"
@@ -46,6 +47,23 @@ func (a *App) GetChatCLIWorkdir(chatID string) string {
 		return ""
 	}
 	return sm.GetCLIWorkdir(chatID)
+}
+
+// ListCLICommands returns the slash commands cliType offers for chatID's
+// working directory — the backing data for the composer's "/" dropdown when
+// a chat is in CLI mode. cliType empty (not a CLI chat) yields nothing.
+// Returns a concrete slice rather than an interface so the JSON shape is
+// pinned by agentcli.Command, and never errors: an absent commands
+// directory is an ordinary state, not a failure.
+func (a *App) ListCLICommands(cliType, chatID string) []agentcli.Command {
+	if strings.TrimSpace(cliType) == "" {
+		return nil
+	}
+	workdir := ""
+	if chatID != "" {
+		workdir = a.GetChatCLIWorkdir(chatID)
+	}
+	return agentcli.ListCommands(provider.ProviderType(cliType), workdir)
 }
 
 // startCLIJob registers chatID as having an in-flight CLI stream, returning

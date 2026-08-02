@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"memo/internal/agent"
+	"memo/internal/agentcli"
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/llama"
@@ -238,6 +239,7 @@ func (b *swarmStubBridge) SendCLIMessageStream(ctx context.Context, chatID, user
 }
 func (b *swarmStubBridge) GetRunningCLIChats() []string                                 { return nil }
 func (b *swarmStubBridge) ListProjectFiles(root, query string) []string                 { return nil }
+func (b *swarmStubBridge) ListCLICommands(cliType, chatID string) []agentcli.Command    { return nil }
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }

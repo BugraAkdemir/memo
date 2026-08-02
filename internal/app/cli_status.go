@@ -30,6 +30,8 @@ func cliBinaryName(cliType string) string {
 	switch provider.ProviderType(cliType) {
 	case provider.ProviderClaudeCodeCLI:
 		return "claude"
+	case provider.ProviderCodexCLI:
+		return "codex"
 	default:
 		return ""
 	}

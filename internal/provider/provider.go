@@ -31,6 +31,9 @@ const (
 	// why). Unlike every ProviderType above, this is a real coding agent with
 	// its own file/shell execution, not a stateless chat-completion API.
 	ProviderClaudeCodeCLI ProviderType = "claude-code-cli"
+	// ProviderCodexCLI is the same idea as ProviderClaudeCodeCLI but for
+	// OpenAI's `codex` CLI — implemented in internal/agentcli.
+	ProviderCodexCLI ProviderType = "codex-cli"
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"
@@ -284,6 +287,7 @@ var DefaultModels = map[ProviderType]string{
 	ProviderOllama:        "llama3",
 	ProviderLlamaCPP:      "local-model",
 	ProviderClaudeCodeCLI: "claude-code",
+	ProviderCodexCLI:      "codex",
 }
 
 func init() {

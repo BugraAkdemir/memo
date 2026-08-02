@@ -236,6 +236,7 @@ func (b *swarmStubBridge) SendCLIMessageStream(ctx context.Context, chatID, user
 	close(ch)
 	return ch
 }
+func (b *swarmStubBridge) GetRunningCLIChats() []string                                 { return nil }
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }

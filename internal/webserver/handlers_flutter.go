@@ -765,6 +765,18 @@ func (s *Server) handleSendCLIStream(w http.ResponseWriter, r *http.Request) {
 	streamSSE(ctx, w, flusher, ch)
 }
 
+func (s *Server) handleCLIRunning(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, map[string][]string{"chat_ids": s.fullBridge.GetRunningCLIChats()})
+}
+
 func (s *Server) handleCLIStatus(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

@@ -72,6 +72,18 @@ func (a *App) finishCLIJob(chatID string) {
 	delete(a.cliJobs, chatID)
 }
 
+// GetRunningCLIChats returns the chat ids with a CLI stream currently in
+// flight — polled by the chat sidebar to show a "processing" indicator.
+func (a *App) GetRunningCLIChats() []string {
+	a.cliJobsMu.Lock()
+	defer a.cliJobsMu.Unlock()
+	ids := make([]string, 0, len(a.cliJobs))
+	for id := range a.cliJobs {
+		ids = append(ids, id)
+	}
+	return ids
+}
+
 // IsCLIJobRunning reports whether chatID currently has a CLI stream in
 // flight — the backing signal for the chat sidebar's "processing" indicator
 // (yapacam.md §2.5).

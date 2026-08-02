@@ -178,9 +178,9 @@ func (c *ClaudeCodeCLI) ChatCompletionStream(ctx context.Context, req provider.C
 			return
 		}
 		// Process exited cleanly but the stream never carried an explicit
-		// "result" event (unexpected, but not impossible against a real
-		// binary whose exact output shape isn't independently verified in
-		// this environment — see parseStreamJSONLine's doc comment).
+		// "result" event — shouldn't happen against a real binary (verified
+		// shape, see parseStreamJSONLine's doc comment) but still needs a
+		// terminal chunk sent regardless, per this file's own rule above.
 		send(ctx, ch, provider.StreamChunk{Done: true, FinishReason: "stop", CLISessionID: sessionID})
 	}()
 
@@ -253,9 +253,13 @@ type streamEvent struct {
 // "is_error":bool,"result":"..."}. Anything else (tool-call events, etc.) is
 // silently ignored — opaque to Memo by design, see yapacam.md §5.
 //
-// NOT yet verified against a real `claude` binary's actual output in this
-// environment — this matches the publicly documented schema; if a live run
-// (yapacam.md step 12) turns up a mismatch, fix here first.
+// Verified 2026-08-02 against a real `claude --version` 2.1.220 binary's
+// actual --dangerously-skip-permissions output (also confirmed that flag
+// itself works: the init event's "permissionMode" came back
+// "bypassPermissions") — every field this function reads matched exactly,
+// plus several unhandled event types (hook_started/hook_response,
+// rate_limit_event) that fall through the switch's default case harmlessly,
+// as intended.
 func parseStreamJSONLine(line []byte) (streamEvent, bool) {
 	var raw struct {
 		Type      string `json:"type"`

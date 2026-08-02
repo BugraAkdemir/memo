@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 
 import 'l10n.dart';
 import '../models/chat.dart';
+import '../models/cli_command.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
@@ -257,6 +258,20 @@ class MemoApiClient {
     final res = await _dio.get('/api/files/mentions', queryParameters: {'root': root, 'query': query});
     final files = res.data['files'];
     return files is List ? files.cast<String>() : const [];
+  }
+
+  /// Slash commands a CLI-backed chat can run — the CLI's own custom
+  /// commands/prompts/skills plus its useful built-ins. Backend-sourced
+  /// because these live on disk (.claude/commands, .codex/prompts) and the
+  /// frontend has no filesystem access of its own.
+  Future<List<CLICommand>> listCLICommands(String cliType, String chatId) async {
+    final res = await _dio.get('/api/cli/commands', queryParameters: {
+      'type': cliType,
+      'chat_id': chatId,
+    });
+    final list = res.data['commands'];
+    if (list is! List) return const [];
+    return list.whereType<Map>().map(CLICommand.fromJson).toList();
   }
 
   /// Chat ids with a CLI stream currently running in the background.

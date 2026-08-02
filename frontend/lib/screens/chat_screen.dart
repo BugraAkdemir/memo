@@ -249,6 +249,131 @@ class _CLIWorkdirBadge extends ConsumerWidget {
   }
 }
 
+/// Tappable badge showing the active chat's CLI model override (or the
+/// CLI's own default when none is set) — opens a small menu to pick from
+/// that CLI's available models, right next to the working-directory badge.
+class _CLIModelBadge extends ConsumerWidget {
+  const _CLIModelBadge();
+
+  Future<void> _openMenu(BuildContext context, WidgetRef ref, String cliType, String chatId) async {
+    final button = context.findRenderObject() as RenderBox;
+    final overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final position = RelativeRect.fromRect(
+      Rect.fromPoints(
+        button.localToGlobal(button.size.bottomLeft(Offset.zero), ancestor: overlay),
+        button.localToGlobal(button.size.bottomRight(Offset.zero), ancestor: overlay),
+      ),
+      Offset.zero & overlay.size,
+    );
+
+    List<String> models;
+    String current;
+    try {
+      models = await ref.read(cliModelOptionsProvider(cliType).future);
+      current = await ref.read(apiClientProvider).getChatCLIModel(chatId);
+    } catch (e) {
+      if (context.mounted) {
+        ref.read(errorMessageProvider.notifier).state =
+            L10n.t('switch_failed', {'e': e.toString()});
+      }
+      return;
+    }
+    if (!context.mounted) return;
+
+    final selected = await showMenu<String>(
+      context: context,
+      position: position,
+      items: [
+        PopupMenuItem(
+          value: '',
+          child: _QuickModelMenuRow(
+            leading: Icon(Icons.auto_awesome_outlined, size: 15, color: MemoTheme.of(context).textMuted),
+            label: L10n.t('cli_model_default'),
+            isActive: current.isEmpty,
+          ),
+        ),
+        if (models.isEmpty)
+          PopupMenuItem(
+            enabled: false,
+            child: _QuickModelMenuRow(
+              leading: Icon(Icons.info_outline, size: 15, color: MemoTheme.of(context).textDim),
+              label: L10n.t('cli_model_none_available'),
+              labelColor: MemoTheme.of(context).textDim,
+            ),
+          )
+        else
+          for (final m in models)
+            PopupMenuItem(
+              value: m,
+              child: _QuickModelMenuRow(
+                leading: Icon(Icons.terminal_rounded, size: 15, color: MemoTheme.accent),
+                label: m,
+                isActive: current == m,
+              ),
+            ),
+      ],
+    );
+
+    if (selected == null || !context.mounted) return;
+    try {
+      await ref.read(apiClientProvider).setChatCLIModel(chatId, selected);
+      ref.invalidate(activeChatCLIModelProvider);
+    } catch (e) {
+      ref.read(errorMessageProvider.notifier).state =
+          L10n.t('switch_failed', {'e': e.toString()});
+    }
+  }
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final cliType = ref.watch(activeChatCLIProviderProvider).valueOrNull ?? '';
+    final chatId = ref.watch(activeChatIdProvider).valueOrNull ?? '';
+    if (cliType.isEmpty || chatId.isEmpty) return const SizedBox.shrink();
+    final model = ref.watch(activeChatCLIModelProvider).valueOrNull ?? '';
+    final c = MemoTheme.of(context);
+    final label = model.isEmpty ? L10n.t('cli_model_default') : model;
+
+    return Builder(
+      builder: (btnContext) => Tooltip(
+        message: L10n.t('cli_model_switch_tooltip'),
+        child: MouseRegion(
+          cursor: SystemMouseCursors.click,
+          child: GestureDetector(
+            onTap: () => _openMenu(btnContext, ref, cliType, chatId),
+            child: Container(
+              margin: const EdgeInsets.only(right: 8),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              constraints: const BoxConstraints(maxWidth: 140),
+              decoration: BoxDecoration(
+                color: c.bgElement,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: c.borderSoft),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.tune_rounded, size: 14, color: c.textDim),
+                  const SizedBox(width: 6),
+                  Flexible(
+                    child: Text(
+                      label,
+                      style: TextStyle(fontSize: 12, color: c.textSecondary),
+                      overflow: TextOverflow.ellipsis,
+                      maxLines: 1,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.expand_more, size: 14, color: c.textDim),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickModelDropdown extends ConsumerWidget {
   const _QuickModelDropdown();
 
@@ -757,6 +882,10 @@ class _ChatTopBar extends ConsumerWidget {
           // provider is actually operating in, right next to the picker
           // that shows which one it is.
           if (isCLIChat) const _CLIWorkdirBadge(),
+
+          // Which model the CLI itself is using for this chat, tappable to
+          // switch — the CLI's own equivalent of the provider picker below.
+          if (isCLIChat) const _CLIModelBadge(),
 
           // Quick model/provider switch dropdown — local model, every
           // enabled API provider, and a shortcut to add a new one.

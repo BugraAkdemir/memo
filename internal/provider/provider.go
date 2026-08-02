@@ -25,6 +25,12 @@ const (
 	// via ListModels rather than typed in by hand.
 	ProviderOpenCodeZen ProviderType = "opencode-zen"
 	ProviderOpenCodeGo  ProviderType = "opencode-go"
+	// ProviderClaudeCodeCLI shells out to the user's locally installed Claude
+	// Code CLI (`claude`) instead of making an HTTP call — implemented in
+	// internal/agentcli, not this package (see RegisterConstructor below for
+	// why). Unlike every ProviderType above, this is a real coding agent with
+	// its own file/shell execution, not a stateless chat-completion API.
+	ProviderClaudeCodeCLI ProviderType = "claude-code-cli"
 	// ProviderCustom is any OpenAI-compatible endpoint the user points at via a
 	// custom Base URL (self-hosted, proxies, providers we don't list natively).
 	ProviderCustom ProviderType = "custom"
@@ -48,14 +54,23 @@ type ChatRequest struct {
 	TopP        float64
 	MaxTokens   int
 	Stream      bool
+
+	// ResumeSessionID and WorkDir are consumed only by CLI-backed providers
+	// (internal/agentcli) that shell out to an external coding agent instead
+	// of making an HTTP call — every other provider ignores them. A CLI
+	// agent keeps its own multi-turn history keyed by ResumeSessionID, so
+	// callers send just the latest message rather than the full transcript
+	// this struct's Messages field carries for HTTP providers.
+	ResumeSessionID string
+	WorkDir         string
 }
 
 // Message represents a single message in a conversation.
 type Message struct {
 	Role       string      `json:"role"`
 	Content    interface{} `json:"content"`
-	ToolCallID string     `json:"tool_call_id,omitempty"`
-	ToolCalls  []ToolCall `json:"tool_calls,omitempty"`
+	ToolCallID string      `json:"tool_call_id,omitempty"`
+	ToolCalls  []ToolCall  `json:"tool_calls,omitempty"`
 }
 
 func TextMessage(role, text string) Message {
@@ -89,8 +104,8 @@ type ToolFunction struct {
 }
 
 type ToolCall struct {
-	ID       string         `json:"id"`
-	Type     string         `json:"type"`
+	ID       string           `json:"id"`
+	Type     string           `json:"type"`
 	Function ToolCallFunction `json:"function"`
 }
 
@@ -120,6 +135,12 @@ type StreamChunk struct {
 	Done         bool   `json:"done"`
 	Error        string `json:"error,omitempty"`
 	FinishReason string `json:"finish_reason,omitempty"`
+
+	// CLISessionID is set by CLI-backed providers (internal/agentcli) once
+	// the underlying process reports its own session id — the caller
+	// persists it (per Memo chat) to pass back as ChatRequest.ResumeSessionID
+	// on the next message. Empty for every HTTP provider.
+	CLISessionID string `json:"cli_session_id,omitempty"`
 }
 
 // trySend delivers chunk to ch, preferring the send over ctx cancellation. A
@@ -147,16 +168,16 @@ func trySend(ctx context.Context, ch chan<- StreamChunk, chunk StreamChunk) {
 
 // ProviderConfig holds configuration for a single provider instance.
 type ProviderConfig struct {
-	Type       ProviderType `json:"type"`
-	Name       string       `json:"name"`
-	APIKey     string       `json:"api_key,omitempty"`
-	BaseURL    string       `json:"base_url,omitempty"`
-	Model      string       `json:"model"`
-	Enabled    bool         `json:"enabled"`
-	Priority   int          `json:"priority"`
-	Temperature float64     `json:"temperature,omitempty"`
-	TopP       float64      `json:"top_p,omitempty"`
-	MaxTokens  int          `json:"max_tokens,omitempty"`
+	Type        ProviderType `json:"type"`
+	Name        string       `json:"name"`
+	APIKey      string       `json:"api_key,omitempty"`
+	BaseURL     string       `json:"base_url,omitempty"`
+	Model       string       `json:"model"`
+	Enabled     bool         `json:"enabled"`
+	Priority    int          `json:"priority"`
+	Temperature float64      `json:"temperature,omitempty"`
+	TopP        float64      `json:"top_p,omitempty"`
+	MaxTokens   int          `json:"max_tokens,omitempty"`
 	// ContextTokens is the model's context-window size, used to budget how much
 	// chat history is packed into each request. 0 = use a sensible default.
 	ContextTokens int `json:"context_tokens,omitempty"`
@@ -254,14 +275,15 @@ func DefaultBaseURL(p ProviderType) string {
 }
 
 var DefaultModels = map[ProviderType]string{
-	ProviderOpenAI:     "gpt-4o",
-	ProviderGemini:     "gemini-2.0-flash",
-	ProviderGrok:       "grok-2",
-	ProviderGroq:       "openai/gpt-oss-20b",
-	ProviderClaude:     "claude-sonnet-4-20250514",
-	ProviderOpenRouter: "openai/gpt-4o",
-	ProviderOllama:     "llama3",
-	ProviderLlamaCPP:   "local-model",
+	ProviderOpenAI:        "gpt-4o",
+	ProviderGemini:        "gemini-2.0-flash",
+	ProviderGrok:          "grok-2",
+	ProviderGroq:          "openai/gpt-oss-20b",
+	ProviderClaude:        "claude-sonnet-4-20250514",
+	ProviderOpenRouter:    "openai/gpt-4o",
+	ProviderOllama:        "llama3",
+	ProviderLlamaCPP:      "local-model",
+	ProviderClaudeCodeCLI: "claude-code",
 }
 
 func init() {
@@ -271,6 +293,25 @@ func init() {
 			panic(fmt.Sprintf("missing default base URL for %s", pt))
 		}
 	}
+}
+
+// ConstructorFunc builds a Provider for one ProviderType. Used by
+// RegisterConstructor below for provider implementations that would
+// otherwise create an import cycle with this package.
+type ConstructorFunc func(ProviderConfig) (Provider, error)
+
+var externalConstructors = map[ProviderType]ConstructorFunc{}
+
+// RegisterConstructor makes NewProvider able to build the given provider
+// type via fn. Exists for provider implementations that need types from
+// this package (Provider, ChatRequest, StreamChunk, ...) but can't be
+// imported directly from here without an import cycle — internal/agentcli
+// (CLI-backed providers: ClaudeCodeCLI) is the reference user, registering
+// itself from its own init(). Call from an init() in the implementing
+// package; Go guarantees that runs before any NewProvider call reaches this
+// map, for any package actually linked in (a blank import is enough).
+func RegisterConstructor(pt ProviderType, fn ConstructorFunc) {
+	externalConstructors[pt] = fn
 }
 
 // NewProvider creates a provider by type.
@@ -297,6 +338,9 @@ func NewProvider(cfg ProviderConfig) (Provider, error) {
 	case ProviderOpenCodeGo:
 		return newOpenCodeGoProvider(cfg)
 	default:
+		if fn, ok := externalConstructors[cfg.Type]; ok {
+			return fn(cfg)
+		}
 		return nil, fmt.Errorf("unsupported provider type: %s", cfg.Type)
 	}
 }

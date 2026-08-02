@@ -6,6 +6,10 @@ import (
 	"memo/internal/logx"
 	"time"
 
+	// Blank-imported for its init(), which registers claude-code-cli with
+	// provider.RegisterConstructor — see internal/agentcli's package doc
+	// for why it can't be imported by internal/provider directly.
+	_ "memo/internal/agentcli"
 	"memo/internal/config"
 	"memo/internal/orchestra"
 	"memo/internal/provider"
@@ -59,8 +63,8 @@ func (a *App) UpdateProvider(cfg provider.ProviderConfig) error {
 		a.healthCheckCancel = nil
 	}
 	var (
-		rt     = a.providerRouter
-		hctx   context.Context
+		rt      = a.providerRouter
+		hctx    context.Context
 		hcancel context.CancelFunc
 	)
 	if len(configs) > 0 {

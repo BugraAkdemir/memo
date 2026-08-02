@@ -7,7 +7,7 @@
 
 Ajan Modu, Memo'yu bir sohbet arayüzünden bilgisayarla etkileşime girebilen bir AI asistanına dönüştürür — dosya okuma/yazma, komut çalıştırma, kod arama ve daha fazlası. İzin tabanlı bir güvenlik modeliyle Claude Code benzeri bir deneyim sunar.
 
-> **Karıştırılmasın:** [[Harici Sağlayıcılar]]'daki **Claude Code CLI** provider'ı (`internal/agentcli/`, v3.3.4) bambaşka bir mekanizma — gerçek `claude` CLI'ını subprocess olarak çalıştırır. Bir chat'te CLI provider aktifken bu sayfadaki Ajan Modu pipeline'ı (araç tanımları, izin dialogu, `internal/agent`) **hiç devreye girmez** — bilinçli bir tasarım kararı, iki ayrı tool-execution sistemi aynı anda çalışmasın diye.
+> **Karıştırılmasın:** [[Harici Sağlayıcılar]]'daki **Claude Code CLI** ve **Codex CLI** provider'ları (`internal/agentcli/`, v3.3.4) bambaşka bir mekanizma — gerçek `claude`/`codex` CLI'larını subprocess olarak çalıştırır. Bir chat'te CLI provider aktifken bu sayfadaki Ajan Modu pipeline'ı (araç tanımları, izin dialogu, `internal/agent`) **hiç devreye girmez** — bilinçli bir tasarım kararı, iki ayrı tool-execution sistemi aynı anda çalışmasın diye.
 
 ---
 

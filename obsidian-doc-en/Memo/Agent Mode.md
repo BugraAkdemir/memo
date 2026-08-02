@@ -7,7 +7,7 @@
 
 Agent Mode transforms Memo from a chat interface into an AI assistant that can interact with the user's computer — reading/writing files, executing commands, searching code, and more. It implements a Claude Code-like experience with a permission-based security model.
 
-> **Don't confuse with:** the **Claude Code CLI** provider in [[External Providers]] (`internal/agentcli/`, v3.3.4) is a completely different mechanism — it runs the real `claude` CLI as a subprocess. When a chat's CLI provider is active, this page's Agent Mode pipeline (tool definitions, permission dialog, `internal/agent`) **never runs at all** — a deliberate design choice so the two tool-execution systems can't run at once.
+> **Don't confuse with:** the **Claude Code CLI** and **Codex CLI** providers in [[External Providers]] (`internal/agentcli/`, v3.3.4) are a completely different mechanism — they run the real `claude`/`codex` CLIs as a subprocess. When a chat's CLI provider is active, this page's Agent Mode pipeline (tool definitions, permission dialog, `internal/agent`) **never runs at all** — a deliberate design choice so the two tool-execution systems can't run at once.
 
 ---
 

@@ -90,9 +90,9 @@ type Provider interface {
 
 > **Not:** llama.cpp bir provider olarak uygulanmamıştır. Yerel modeller `api.Client` ile ayrıca yönetilir.
 
-### 8. Claude Code CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
+### 8-9. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
 
-Diğer 7 sağlayıcıdan mimari olarak tamamen farklı: bir HTTP API'ye istek atmak yerine bilgisayarda kurulu `claude` komut satırı aracını subprocess olarak çalıştırır (`claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`). Import cycle'a girmeden `provider.Provider` arayüzünü uygular — `internal/provider`, `internal/agentcli`'yi doğrudan import etmez; `provider.RegisterConstructor` ile `agentcli`'nin kendi `init()`'i kendini kaydeder (`database/sql` driver deseni).
+Diğer sağlayıcılardan mimari olarak tamamen farklı: bir HTTP API'ye istek atmak yerine bilgisayarda kurulu bir komut satırı aracını subprocess olarak çalıştırır — Claude Code için `claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`, Codex için `codex exec --json --dangerously-bypass-approvals-and-sandbox [-C <dir>] [resume <thread-id>]`. Import cycle'a girmeden `provider.Provider` arayüzünü uygular — `internal/provider`, `internal/agentcli`'yi doğrudan import etmez; `provider.RegisterConstructor` ile `agentcli`'nin kendi `init()`'i (her iki dosya, `claude_code.go` ve `codex.go`, ayrı ayrı) kendini kaydeder (`database/sql` driver deseni). Codex'in stream-json çıktısı Claude Code'unkinden farklı: metin delta'lar halinde değil, her `item.completed` (`type:"agent_message"`) olayında turun tam metnini tek parça olarak verir; oturum kimliği `session_id` değil `thread_id` alanında gelir, ve `resume` alt-komutu (fresh-run'ın aksine) `-C` bayrağını kabul etmez — orijinal oturumun çalışma dizinini kendisi hatırlar.
 
 - **Sohbet-bazlı, uygulama geneli değil.** `sessions.Session`'a eklenen `CLIProvider`/`CLISessionIDs`/`CLIWorkdir` alanları — her chat kendi CLI provider'ını, kendi CLI oturum id'sini ve kendi çalışma dizinini taşır.
 - **`App.streamMu`'dan bağımsız.** Normal `SendMessageStreamTo` tek bir global stream kilidi kullanır (aynı anda sadece bir chat stream edebilir); CLI görevleri bunun yerine `App.cliJobs` (`map[chatID]context.CancelFunc`) ile chat-bazlı kilitlenir — farklı chat'ler birbirini bloklamaz.
@@ -265,7 +265,6 @@ Hiçbir sağlayıcı yapılandırılmamışsa ve yerel model çalışmıyorsa ha
 | ~~**Test dosyası yok**~~ | ✅ Düzeltildi — `router_test.go` mevcut, 48 test `-race` ile geçiyor |
 | **Orkestra router'ı bypass eder** | Orkestra doğrudan provider oluşturur, fallback zinciri yok |
 | **Makineye bağlı şifreleme** | `providers.json` makineler arası taşınamaz |
-| **Codex CLI yok** | Sadece Claude Code CLI uygulandı, Codex desteği planlı, henüz yapılmadı |
 | **CLI görev iptali tam değil** | `App.streamMu`'nun global "tek stream aynı anda" koruması CLI için yok — aynı chat'e iki mesaj birden gitmesin diye ayrı bir `cliJobs` kilidi var ama chat'ler arası hiç engelleme yok, kasıtlı |
 
 ---

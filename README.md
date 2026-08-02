@@ -247,7 +247,7 @@ A **Chief** model decomposes a complex task and delegates to 8 specialist roles,
 ### 🔌 8 Providers · 🎤 Voice · ☁️ Cloud Sync · 🔒 Privacy
 
 - **8 Providers, One Interface** — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama, and bundled `llama.cpp`. Auto-fallback on failure, auto-disable after 3 errors, live `/model` switching mid-chat. Keys encrypted with AES-256-GCM.
-- **🖥️ Coding Agent as a Provider (Beta)** — point any single chat at your locally installed **Claude Code CLI** instead of an API. That chat becomes a real coding agent with file/shell access, running in the background independent of whatever else you're doing in Memo — while every other chat keeps using its own provider, untouched.
+- **🖥️ Coding Agent as a Provider (Beta)** — point any single chat at your locally installed **Claude Code** or **Codex CLI** instead of an API. That chat becomes a real coding agent with file/shell access, running in the background independent of whatever else you're doing in Memo — while every other chat keeps using its own provider, untouched.
 - **🎤 Voice Input** — on-device whisper.cpp. Press, speak, release. Auto-detects TR/EN. Audio never leaves your machine.
 - **☁️ Cloud Sync** — optional E2E-encrypted Google Drive backup. AES-256-GCM + PBKDF2 (600K iterations). Encrypted *before* upload — Google can't read it.
 - **🔒 Privacy by Design** — no telemetry, no analytics, no crash reporting. Config files at `0600`. Incognito mode leaves zero trace. The observer stores activity timestamps, never message content.

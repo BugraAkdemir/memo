@@ -247,7 +247,7 @@ Bir **Şef** model karmaşık görevi parçalara böler, 8 uzman role dağıtır
 ### 🔌 8 Sağlayıcı · 🎤 Ses · ☁️ Bulut Senk. · 🔒 Gizlilik
 
 - **8 Sağlayıcı, Tek Arayüz** — OpenAI, Claude, Gemini, Grok, Groq, OpenRouter, Ollama ve gömülü `llama.cpp`. Hatada otomatik yedek, 3 hatada otomatik devre dışı, sohbet ortasında `/model` ile canlı geçiş. Anahtarlar AES-256-GCM ile şifreli.
-- **🖥️ Kodlama Ajanı Sağlayıcı Olarak (Beta)** — herhangi bir sohbeti, bir API yerine bilgisayarında kurulu **Claude Code CLI**'a bağla. O sohbet, dosya/komut yetkisi olan gerçek bir kodlama ajanına dönüşür — Memo'da başka ne yapıyor olursan ol, arka planda bağımsız çalışır; diğer tüm sohbetler kendi sağlayıcısını kullanmaya devam eder, hiç etkilenmez.
+- **🖥️ Kodlama Ajanı Sağlayıcı Olarak (Beta)** — herhangi bir sohbeti, bir API yerine bilgisayarında kurulu **Claude Code** veya **Codex CLI**'a bağla. O sohbet, dosya/komut yetkisi olan gerçek bir kodlama ajanına dönüşür — Memo'da başka ne yapıyor olursan ol, arka planda bağımsız çalışır; diğer tüm sohbetler kendi sağlayıcısını kullanmaya devam eder, hiç etkilenmez.
 - **🎤 Sesli Giriş** — cihaz üzerinde whisper.cpp. Bas, konuş, bırak. TR/EN otomatik algılar. Ses makineni terk etmez.
 - **☁️ Bulut Senkronizasyonu** — isteğe bağlı uçtan uca şifreli Google Drive yedeği. AES-256-GCM + PBKDF2 (600K iterasyon). Yüklemeden *önce* şifrelenir — Google okuyamaz.
 - **🔒 Tasarımı Gereği Gizli** — telemetri yok, analitik yok, çökme raporu yok. Yapılandırma dosyaları `0600`. Gizli mod sıfır iz bırakır. Gözlemci yalnız aktivite zaman damgalarını saklar, mesaj içeriğini değil.

@@ -104,9 +104,9 @@ type Provider interface {
 
 > **Note:** llama.cpp is NOT implemented as a provider. Local models are handled separately via `api.Client`. The `NewProvider()` factory returns an error for `ProviderLlamaCPP`.
 
-### 8. Claude Code CLI (`internal/agentcli/`, CLI-based — v3.3.4)
+### 8-9. Claude Code CLI and Codex CLI (`internal/agentcli/`, CLI-based — v3.3.4)
 
-Architecturally unlike the other 7: instead of calling an HTTP API, it shells out to the locally installed `claude` command-line tool as a subprocess (`claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`). Implements `provider.Provider` without creating an import cycle — `internal/provider` never imports `internal/agentcli` directly; `agentcli`'s own `init()` registers itself via `provider.RegisterConstructor` (the `database/sql` driver pattern).
+Architecturally unlike the other providers: instead of calling an HTTP API, it shells out to a locally installed command-line tool as a subprocess — `claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]` for Claude Code, `codex exec --json --dangerously-bypass-approvals-and-sandbox [-C <dir>] [resume <thread-id>]` for Codex. Implements `provider.Provider` without creating an import cycle — `internal/provider` never imports `internal/agentcli` directly; `agentcli`'s own `init()` (in each of `claude_code.go` and `codex.go` separately) registers itself via `provider.RegisterConstructor` (the `database/sql` driver pattern). Codex's stream-json output differs from Claude Code's: it emits each turn's full text in one piece per `item.completed` event (`type:"agent_message"`) rather than incremental deltas; the session id comes back as `thread_id`, not `session_id`; and its `resume` subcommand (unlike a fresh run) rejects `-C` — it remembers the original session's working directory on its own.
 
 - **Per-chat, not app-wide.** New `sessions.Session` fields `CLIProvider`/`CLISessionIDs`/`CLIWorkdir` — each chat carries its own CLI provider, its own CLI session id, and its own working directory.
 - **Independent of `App.streamMu`.** The normal `SendMessageStreamTo` path uses one global stream lock (only one chat can stream at a time); CLI jobs instead lock per-chat via `App.cliJobs` (`map[chatID]context.CancelFunc`) — different chats never block each other.
@@ -283,7 +283,6 @@ If no provider is configured and no local model is running, an error is returned
 | **No test files** | Zero tests in `internal/provider/` |
 | **Orchestra bypasses router** | Orchestra creates providers directly, no fallback chain |
 | **Machine-bound encryption** | `providers.json` not portable across machines |
-| **No Codex CLI** | Only Claude Code CLI is implemented; Codex support is planned, not built yet |
 | **CLI job cancellation is partial** | `App.streamMu`'s global "one stream at a time" protection doesn't apply to CLI jobs — a separate `cliJobs` lock prevents two messages racing into the same chat, but there's deliberately no cross-chat blocking |
 
 ---

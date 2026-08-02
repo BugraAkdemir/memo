@@ -116,6 +116,11 @@ type FullBridge interface {
 
 	// CLI-backed providers (Settings > CLI Bağlantıları)
 	GetCLIStatus(cliType string) interface{}
+	SetChatCLIProvider(chatID, cliType string) error
+	GetChatCLIProvider(chatID string) string
+	SetChatCLIWorkdir(chatID, dir string) error
+	GetChatCLIWorkdir(chatID string) string
+	SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

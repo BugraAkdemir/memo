@@ -679,6 +679,92 @@ func (s *Server) handleGenerateTitle(w http.ResponseWriter, r *http.Request) {
 
 // ─── Remote Access ──────────────────────────────────────────────
 
+func (s *Server) handleChatCLIProvider(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		id := r.URL.Query().Get("id")
+		writeJSON(w, map[string]string{"cli_provider": s.fullBridge.GetChatCLIProvider(id)})
+	case http.MethodPost:
+		var req struct {
+			ID          string `json:"id"`
+			CLIProvider string `json:"cli_provider"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetChatCLIProvider(req.ID, req.CLIProvider); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleChatCLIWorkdir(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		id := r.URL.Query().Get("id")
+		writeJSON(w, map[string]string{"workdir": s.fullBridge.GetChatCLIWorkdir(id)})
+	case http.MethodPost:
+		var req struct {
+			ID      string `json:"id"`
+			Workdir string `json:"workdir"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetChatCLIWorkdir(req.ID, req.Workdir); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+	}
+}
+
+func (s *Server) handleSendCLIStream(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		ChatID  string `json:"chat_id"`
+		Message string `json:"message"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("Connection", "keep-alive")
+	w.Header().Set("Transfer-Encoding", "chunked")
+
+	flusher, ok := w.(http.Flusher)
+	if !ok {
+		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
+		return
+	}
+
+	ctx := r.Context()
+	ch := s.fullBridge.SendCLIMessageStream(ctx, req.ChatID, req.Message)
+	streamSSE(ctx, w, flusher, ch)
+}
+
 func (s *Server) handleCLIStatus(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)

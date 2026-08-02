@@ -215,18 +215,27 @@ func (b *swarmStubBridge) DeleteLocalModel(path string) error                  {
 func (b *swarmStubBridge) StartLocalModel(modelPath string, ctxSize, port, gpuLayers int) error {
 	return nil
 }
-func (b *swarmStubBridge) StopLocalModel() error                                        { return nil }
-func (b *swarmStubBridge) GetLocalModelStatus() llama.ServerStatus                      { return llama.ServerStatus{} }
-func (b *swarmStubBridge) StartEmbeddingModel(modelPath string, gpuLayers int) error    { return nil }
-func (b *swarmStubBridge) StopEmbeddingModel() error                                    { return nil }
-func (b *swarmStubBridge) GetEmbeddingModelStatus() llama.ServerStatus                  { return llama.ServerStatus{} }
-func (b *swarmStubBridge) DetectGPU() llama.GPUInfo                                     { return llama.GPUInfo{} }
-func (b *swarmStubBridge) CheckLlamaInstallation() bool                                 { return false }
-func (b *swarmStubBridge) InstallLlamaServer() error                                    { return nil }
-func (b *swarmStubBridge) SkipLlamaGPUInstall() error                                   { return nil }
-func (b *swarmStubBridge) GetLlamaConfig() config.LlamaConfig                           { return config.LlamaConfig{} }
-func (b *swarmStubBridge) UpdateLlamaConfig(cfg config.LlamaConfigUpdate) error         { return nil }
-func (b *swarmStubBridge) GetCLIStatus(cliType string) interface{}                      { return nil }
+func (b *swarmStubBridge) StopLocalModel() error                                     { return nil }
+func (b *swarmStubBridge) GetLocalModelStatus() llama.ServerStatus                   { return llama.ServerStatus{} }
+func (b *swarmStubBridge) StartEmbeddingModel(modelPath string, gpuLayers int) error { return nil }
+func (b *swarmStubBridge) StopEmbeddingModel() error                                 { return nil }
+func (b *swarmStubBridge) GetEmbeddingModelStatus() llama.ServerStatus               { return llama.ServerStatus{} }
+func (b *swarmStubBridge) DetectGPU() llama.GPUInfo                                  { return llama.GPUInfo{} }
+func (b *swarmStubBridge) CheckLlamaInstallation() bool                              { return false }
+func (b *swarmStubBridge) InstallLlamaServer() error                                 { return nil }
+func (b *swarmStubBridge) SkipLlamaGPUInstall() error                                { return nil }
+func (b *swarmStubBridge) GetLlamaConfig() config.LlamaConfig                        { return config.LlamaConfig{} }
+func (b *swarmStubBridge) UpdateLlamaConfig(cfg config.LlamaConfigUpdate) error      { return nil }
+func (b *swarmStubBridge) GetCLIStatus(cliType string) interface{}                   { return nil }
+func (b *swarmStubBridge) SetChatCLIProvider(chatID, cliType string) error           { return nil }
+func (b *swarmStubBridge) GetChatCLIProvider(chatID string) string                   { return "" }
+func (b *swarmStubBridge) SetChatCLIWorkdir(chatID, dir string) error                { return nil }
+func (b *swarmStubBridge) GetChatCLIWorkdir(chatID string) string                    { return "" }
+func (b *swarmStubBridge) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
+	ch := make(chan api.StreamChunk)
+	close(ch)
+	return ch
+}
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }

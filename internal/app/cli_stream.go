@@ -12,6 +12,41 @@ import (
 	"memo/internal/provider"
 )
 
+// SetChatCLIProvider/GetChatCLIProvider/SetChatCLIWorkdir/GetChatCLIWorkdir
+// are thin App-level wrappers over sessions.Manager's per-chat CLI fields,
+// for the webserver bridge (which doesn't call sessions.Manager directly).
+func (a *App) SetChatCLIProvider(chatID, cliType string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("sessions not initialized")
+	}
+	return sm.SetCLIProvider(chatID, cliType)
+}
+
+func (a *App) GetChatCLIProvider(chatID string) string {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	return sm.GetCLIProvider(chatID)
+}
+
+func (a *App) SetChatCLIWorkdir(chatID, dir string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("sessions not initialized")
+	}
+	return sm.SetCLIWorkdir(chatID, dir)
+}
+
+func (a *App) GetChatCLIWorkdir(chatID string) string {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	return sm.GetCLIWorkdir(chatID)
+}
+
 // startCLIJob registers chatID as having an in-flight CLI stream, returning
 // false (and doing nothing) if one is already running there. Different
 // chats never contend with each other — only two messages racing into the

@@ -240,6 +240,9 @@ func (b *swarmStubBridge) SendCLIMessageStream(ctx context.Context, chatID, user
 func (b *swarmStubBridge) GetRunningCLIChats() []string                                 { return nil }
 func (b *swarmStubBridge) ListProjectFiles(root, query string) []string                 { return nil }
 func (b *swarmStubBridge) ListCLICommands(cliType, chatID string) []agentcli.Command    { return nil }
+func (b *swarmStubBridge) SetChatCLIModel(chatID, model string) error                   { return nil }
+func (b *swarmStubBridge) GetChatCLIModel(chatID string) string                         { return "" }
+func (b *swarmStubBridge) ListCLIModels(cliType string) []string                        { return nil }
 func (b *swarmStubBridge) GetRemoteAccessStatus() interface{}                           { return nil }
 func (b *swarmStubBridge) SetRemoteAccess(enabled bool, port int) error                 { return nil }
 func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string) error { return nil }

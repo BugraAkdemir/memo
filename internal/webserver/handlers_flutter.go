@@ -736,6 +736,57 @@ func (s *Server) handleChatCLIWorkdir(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleChatCLIModel(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	switch r.Method {
+	case http.MethodGet:
+		id := r.URL.Query().Get("id")
+		writeJSON(w, map[string]string{"model": s.fullBridge.GetChatCLIModel(id)})
+	case http.MethodPost:
+		var req struct {
+			ID    string `json:"id"`
+			Model string `json:"model"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.SetChatCLIModel(req.ID, req.Model); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		writeJSON(w, map[string]string{"ok": "true"})
+	default:
+		http.Error(w, "GET or POST", http.StatusMethodNotAllowed)
+	}
+}
+
+// handleCLIModelOptions serves the model ids a CLI-backed chat can switch to
+// — the top bar's model picker when a chat is in CLI mode.
+func (s *Server) handleCLIModelOptions(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	cliType := r.URL.Query().Get("type")
+	if cliType == "" {
+		http.Error(w, "missing type", http.StatusBadRequest)
+		return
+	}
+	models := s.fullBridge.ListCLIModels(cliType)
+	if models == nil {
+		models = []string{}
+	}
+	writeJSON(w, map[string][]string{"models": models})
+}
+
 func (s *Server) handleSendCLIStream(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost || s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusMethodNotAllowed)

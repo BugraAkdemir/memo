@@ -49,6 +49,30 @@ func (a *App) GetChatCLIWorkdir(chatID string) string {
 	return sm.GetCLIWorkdir(chatID)
 }
 
+func (a *App) SetChatCLIModel(chatID, model string) error {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return fmt.Errorf("sessions not initialized")
+	}
+	return sm.SetCLIModel(chatID, model)
+}
+
+func (a *App) GetChatCLIModel(chatID string) string {
+	sm := a.getSessionManager()
+	if sm == nil {
+		return ""
+	}
+	return sm.GetCLIModel(chatID)
+}
+
+// ListCLIModels returns the model ids cliType's chat can be switched to via
+// its per-chat override — the backing data for the top bar's model picker in
+// CLI mode. Empty means the CLI has no override list available right now
+// (e.g. Codex before its own models_cache.json exists), not an error.
+func (a *App) ListCLIModels(cliType string) []string {
+	return agentcli.AvailableModels(provider.ProviderType(cliType))
+}
+
 // ListCLICommands returns the slash commands cliType offers for chatID's
 // working directory — the backing data for the composer's "/" dropdown when
 // a chat is in CLI mode. cliType empty (not a CLI chat) yields nothing.
@@ -204,6 +228,7 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 			Messages:        []provider.Message{provider.TextMessage("user", userMsg)},
 			ResumeSessionID: sm.GetCLISessionID(chatID, cliType),
 			WorkDir:         sm.GetCLIWorkdir(chatID),
+			Model:           sm.GetCLIModel(chatID),
 		}
 
 		ch, err := p.ChatCompletionStream(cliCtx, req)

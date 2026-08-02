@@ -6,6 +6,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -316,5 +317,46 @@ func TestSendCLIMessageStream_UserMessagePersistedEvenOnCLIError(t *testing.T) {
 	msgs := sm.GetActiveMessagesForSession(chat)
 	if len(msgs) < 1 || msgs[0].Role != "user" || msgs[0].Content != "merhaba" {
 		t.Fatalf("user message not persisted: %+v", msgs)
+	}
+}
+
+// TestSendCLIMessageStream_PassesChatCLIModelToProvider is the regression
+// test for the top-bar model picker's whole point: a chat's CLIModel
+// override (sessions.Manager.SetCLIModel) must actually reach the CLI
+// subprocess as --model, not just sit in the session unused.
+func TestSendCLIMessageStream_PassesChatCLIModelToProvider(t *testing.T) {
+	a, sm := newTestAppForCLI(t)
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+	t.Cleanup(a.lifecycleCancel)
+
+	chat := sm.NewChat()
+	if err := sm.SetCLIProvider(chat, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	if err := sm.SetCLIModel(chat, "opus"); err != nil {
+		t.Fatalf("SetCLIModel: %v", err)
+	}
+
+	argsFile := filepath.Join(t.TempDir(), "args.txt")
+	scriptPath := writeFakeClaudeScript(t, "0")
+	script := "#!/bin/sh\necho \"$@\" > " + argsFile + "\n" +
+		"echo '{\"type\":\"result\",\"session_id\":\"sess-1\",\"is_error\":false,\"result\":\"ok\"}'\n"
+	if err := os.WriteFile(scriptPath, []byte(script), 0755); err != nil {
+		t.Fatalf("overwrite script: %v", err)
+	}
+	a.providerCfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderClaudeCodeCLI, Name: "claude-code-cli",
+		Model: "x", BaseURL: scriptPath, Enabled: true,
+	})
+
+	for range a.SendCLIMessageStream(context.Background(), chat, "merhaba") {
+	}
+
+	got, err := os.ReadFile(argsFile)
+	if err != nil {
+		t.Fatalf("reading captured args: %v", err)
+	}
+	if !strings.Contains(string(got), "--model opus") {
+		t.Errorf("subprocess args = %q, missing --model opus", got)
 	}
 }

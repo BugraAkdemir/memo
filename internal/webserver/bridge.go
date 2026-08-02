@@ -125,6 +125,9 @@ type FullBridge interface {
 	GetRunningCLIChats() []string
 	ListProjectFiles(root, query string) []string
 	ListCLICommands(cliType, chatID string) []agentcli.Command
+	SetChatCLIModel(chatID, model string) error
+	GetChatCLIModel(chatID string) string
+	ListCLIModels(cliType string) []string
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}

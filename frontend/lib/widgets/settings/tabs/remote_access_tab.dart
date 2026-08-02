@@ -29,6 +29,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   bool _tsFunnel = true;
   bool _tsBusy = false;
   bool _tsAdvanced = false;
+  bool _ngrokAdvanced = false;
   String _tsPendingAuthUrl = '';
   bool _enabling = false;
   bool _disposed = false;
@@ -235,171 +236,14 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         _buildTailscaleSection(context, theme, data),
         const SizedBox(height: 24),
 
-        if (ngrokUrl.isNotEmpty) ...[
-          _label(L10n.t('remote_ngrok_tunnel_url_label')),
-          const SizedBox(height: 6),
-          _valueBox(
-            borderColor: MemoTheme.accent,
-            child: Row(
-              children: [
-                Icon(Icons.public_rounded, size: 16, color: MemoTheme.accent),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(ngrokUrl,
-                      style: TextStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 13,
-                          color: MemoTheme.accentLight)),
-                ),
-                GestureDetector(
-                  onTap: () {
-                    Clipboard.setData(ClipboardData(text: ngrokUrl));
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(L10n.t('remote_url_copied'))),
-                    );
-                  },
-                  child: Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-        if (savedNgrokToken.isNotEmpty) ...[
-          _label(L10n.t('remote_ngrok_token_saved_label')),
-          const SizedBox(height: 6),
-          _valueBox(
-            child: Row(
-              children: [
-                Icon(Icons.vpn_key_outlined, size: 16, color: theme.textDim),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(savedNgrokToken,
-                      style: TextStyle(
-                          fontFamily: 'JetBrainsMono',
-                          fontSize: 13,
-                          color: theme.textMain)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        if (ngrokError.isNotEmpty) ...[
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-              color: MemoTheme.red.withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: MemoTheme.red.withValues(alpha: 0.35)),
-            ),
-            child: Row(
-              children: [
-                Icon(Icons.error_outline_rounded, size: 18, color: MemoTheme.red),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(ngrokError,
-                      style: TextStyle(fontSize: 13, color: MemoTheme.red)),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-        ],
-
-        if (addresses.isNotEmpty) ...[
-          _label(L10n.t('remote_local_addresses_label')),
-          const SizedBox(height: 6),
-          ...addresses.map((addr) => Padding(
-                padding: const EdgeInsets.only(bottom: 4),
-                child: Text(addr,
-                    style: TextStyle(
-                        fontFamily: 'JetBrainsMono',
-                        fontSize: 12,
-                        color: theme.textDim)),
-              )),
-          const SizedBox(height: 20),
-        ],
-
-        _label(L10n.t('remote_autostart_label')),
-        const SizedBox(height: 6),
-        SwitchListTile(
-          title: Text(L10n.t('remote_autostart_ngrok_title'),
-              style: TextStyle(fontSize: 13, color: theme.textMain)),
-          subtitle: Text(
-            ngrokAutoStart
-                ? L10n.t('remote_autostart_will_start')
-                : L10n.t('remote_autostart_manual'),
-            style: TextStyle(fontSize: 11, color: theme.textDim),
-          ),
-          value: ngrokAutoStart,
-          onChanged: (v) => _setAutoStart(v),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-        ),
-        const SizedBox(height: 20),
-        _label(L10n.t('remote_configure_label')),
-        const SizedBox(height: 8),
-        Row(
-          children: [
-            Expanded(
-              child: TextField(
-                controller: _ngrokTokenCtrl,
-                decoration: InputDecoration(
-                  labelText: L10n.t('remote_ngrok_token_field_label'),
-                  hintText: '2hP2x...',
-                  prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
-                ),
-                style: TextStyle(
-                    fontFamily: 'JetBrainsMono',
-                    fontSize: 14,
-                    color: theme.textMain),
-              ),
-            ),
-            const SizedBox(width: 12),
-            if (enabled)
-              FilledButton.tonalIcon(
-                onPressed: _enabling ? null : () => _disable(),
-                icon: _enabling
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.power_off_rounded, size: 18),
-                label: Text(_enabling ? '...' : L10n.t('remote_disable_btn')),
-                style: FilledButton.styleFrom(
-                  backgroundColor: MemoTheme.red,
-                  foregroundColor: theme.textInverse,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                ),
-              )
-            else
-              FilledButton.icon(
-                onPressed: _enabling ? null : () => _enable(),
-                icon: _enabling
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2))
-                    : const Icon(Icons.power_settings_new_rounded, size: 18),
-                label: Text(_enabling ? '...' : L10n.t('remote_enable_start_btn')),
-                style: FilledButton.styleFrom(
-                  backgroundColor: MemoTheme.accent,
-                  foregroundColor: theme.textInverse,
-                  padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-                ),
-              ),
-          ],
-        ),
-
-        if (!enabled) ...[
-          const SizedBox(height: 12),
-          Text(
-            L10n.t('remote_ngrok_hint_text'),
-            style: TextStyle(fontSize: 12, color: theme.textDim),
-          ),
-        ],
+        // ── ngrok (advanced/fallback option, collapsed by default) ─────
+        _buildNgrokSection(context, theme,
+            enabled: enabled,
+            ngrokUrl: ngrokUrl,
+            ngrokError: ngrokError,
+            addresses: addresses,
+            savedNgrokToken: savedNgrokToken,
+            ngrokAutoStart: ngrokAutoStart),
 
         const SizedBox(height: 32),
         _label(L10n.t('remote_backend_url_label')),
@@ -486,6 +330,238 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
         border: Border.all(color: borderColor ?? theme.borderSoft),
       ),
       child: child,
+    );
+  }
+
+  // ngrok used to be the primary/only remote-access option; now that
+  // Tailscale+Funnel covers the same "just open a link" case with no
+  // tailnet setup needed, ngrok is kept only as a collapsed fallback for
+  // cases Tailscale doesn't cover (e.g. no Tailscale account, or a
+  // per-request ephemeral URL is actually wanted). Auto-expands if ngrok
+  // is already configured/running, so an existing setup isn't hidden.
+  Widget _buildNgrokSection(
+    BuildContext context,
+    ThemeColors theme, {
+    required bool enabled,
+    required String ngrokUrl,
+    required String ngrokError,
+    required List<String> addresses,
+    required String savedNgrokToken,
+    required bool ngrokAutoStart,
+  }) {
+    final expanded = _ngrokAdvanced || enabled;
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: theme.bgElement,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: enabled ? MemoTheme.accent : theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          InkWell(
+            onTap: enabled ? null : () => setState(() => _ngrokAdvanced = !_ngrokAdvanced),
+            child: Row(
+              children: [
+                Icon(Icons.public_rounded,
+                    size: 18, color: enabled ? MemoTheme.accent : theme.textDim),
+                const SizedBox(width: 8),
+                Text(L10n.t('remote_ngrok_advanced_title'),
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: theme.textMain)),
+                const Spacer(),
+                if (enabled)
+                  Container(
+                    width: 10,
+                    height: 10,
+                    decoration: const BoxDecoration(
+                        shape: BoxShape.circle, color: MemoTheme.green),
+                  )
+                else
+                  Icon(expanded ? Icons.expand_less_rounded : Icons.expand_more_rounded,
+                      size: 20, color: theme.textDim),
+              ],
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            L10n.t('remote_ngrok_advanced_desc'),
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+
+          if (expanded) ...[
+            const SizedBox(height: 12),
+            if (ngrokUrl.isNotEmpty) ...[
+              _label(L10n.t('remote_ngrok_tunnel_url_label')),
+              const SizedBox(height: 6),
+              _valueBox(
+                borderColor: MemoTheme.accent,
+                child: Row(
+                  children: [
+                    Icon(Icons.public_rounded, size: 16, color: MemoTheme.accent),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(ngrokUrl,
+                          style: TextStyle(
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 13,
+                              color: MemoTheme.accentLight)),
+                    ),
+                    GestureDetector(
+                      onTap: () {
+                        Clipboard.setData(ClipboardData(text: ngrokUrl));
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text(L10n.t('remote_url_copied'))),
+                        );
+                      },
+                      child: Icon(Icons.copy_rounded, size: 18, color: theme.textDim),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+            if (savedNgrokToken.isNotEmpty) ...[
+              _label(L10n.t('remote_ngrok_token_saved_label')),
+              const SizedBox(height: 6),
+              _valueBox(
+                child: Row(
+                  children: [
+                    Icon(Icons.vpn_key_outlined, size: 16, color: theme.textDim),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(savedNgrokToken,
+                          style: TextStyle(
+                              fontFamily: 'JetBrainsMono',
+                              fontSize: 13,
+                              color: theme.textMain)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            if (ngrokError.isNotEmpty) ...[
+              Container(
+                padding: const EdgeInsets.all(14),
+                decoration: BoxDecoration(
+                  color: MemoTheme.red.withValues(alpha: 0.10),
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: MemoTheme.red.withValues(alpha: 0.35)),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.error_outline_rounded, size: 18, color: MemoTheme.red),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: Text(ngrokError,
+                          style: TextStyle(fontSize: 13, color: MemoTheme.red)),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ],
+
+            if (addresses.isNotEmpty) ...[
+              _label(L10n.t('remote_local_addresses_label')),
+              const SizedBox(height: 6),
+              ...addresses.map((addr) => Padding(
+                    padding: const EdgeInsets.only(bottom: 4),
+                    child: Text(addr,
+                        style: TextStyle(
+                            fontFamily: 'JetBrainsMono',
+                            fontSize: 12,
+                            color: theme.textDim)),
+                  )),
+              const SizedBox(height: 12),
+            ],
+
+            _label(L10n.t('remote_autostart_label')),
+            const SizedBox(height: 6),
+            SwitchListTile(
+              title: Text(L10n.t('remote_autostart_ngrok_title'),
+                  style: TextStyle(fontSize: 13, color: theme.textMain)),
+              subtitle: Text(
+                ngrokAutoStart
+                    ? L10n.t('remote_autostart_will_start')
+                    : L10n.t('remote_autostart_manual'),
+                style: TextStyle(fontSize: 11, color: theme.textDim),
+              ),
+              value: ngrokAutoStart,
+              onChanged: (v) => _setAutoStart(v),
+              dense: true,
+              contentPadding: EdgeInsets.zero,
+            ),
+            const SizedBox(height: 12),
+            _label(L10n.t('remote_configure_label')),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextField(
+                    controller: _ngrokTokenCtrl,
+                    decoration: InputDecoration(
+                      labelText: L10n.t('remote_ngrok_token_field_label'),
+                      hintText: '2hP2x...',
+                      prefixIcon: const Icon(Icons.vpn_key_outlined, size: 20),
+                      isDense: true,
+                    ),
+                    style: TextStyle(
+                        fontFamily: 'JetBrainsMono',
+                        fontSize: 14,
+                        color: theme.textMain),
+                  ),
+                ),
+                const SizedBox(width: 12),
+                if (enabled)
+                  FilledButton.tonalIcon(
+                    onPressed: _enabling ? null : () => _disable(),
+                    icon: _enabling
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.power_off_rounded, size: 18),
+                    label: Text(_enabling ? '...' : L10n.t('remote_disable_btn')),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MemoTheme.red,
+                      foregroundColor: theme.textInverse,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  )
+                else
+                  FilledButton.icon(
+                    onPressed: _enabling ? null : () => _enable(),
+                    icon: _enabling
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.power_settings_new_rounded, size: 18),
+                    label: Text(_enabling ? '...' : L10n.t('remote_enable_start_btn')),
+                    style: FilledButton.styleFrom(
+                      backgroundColor: MemoTheme.accent,
+                      foregroundColor: theme.textInverse,
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
+                  ),
+              ],
+            ),
+
+            if (!enabled) ...[
+              const SizedBox(height: 12),
+              Text(
+                L10n.t('remote_ngrok_hint_text'),
+                style: TextStyle(fontSize: 12, color: theme.textDim),
+              ),
+            ],
+          ],
+        ],
+      ),
     );
   }
 

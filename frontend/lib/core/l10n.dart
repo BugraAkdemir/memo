@@ -693,6 +693,9 @@ class L10n {
     'live_screen_error_send_failed': 'Mesaj gönderilemedi: {err}',
     'beta_features_warning':
         'Beta özellikler kırılabilir, veri kaybına veya beklenmedik ağ davranışına yol açabilir. Üretim / kritik kullanım için kapalı tut.',
+    'remote_ngrok_advanced_title': 'Gelişmiş: ngrok',
+    'remote_ngrok_advanced_desc':
+        'Tailscale kullanmak istemiyorsan alternatif tünel. Farklı bir hesap ve token gerektirir, URL her yeniden başlatmada değişebilir.',
     'remote_ngrok_tunnel_url_label': 'Ngrok Tünel URL\'i',
     'remote_url_copied': 'URL kopyalandı',
     'remote_ngrok_token_saved_label': 'Ngrok Auth Token (kaydedildi)',
@@ -2159,6 +2162,9 @@ class L10n {
     'live_screen_error_send_failed': 'Couldn\'t send the message: {err}',
     'beta_features_warning':
         'Beta features can break, risk data loss, or behave unexpectedly on the network. Keep them off for production / critical use.',
+    'remote_ngrok_advanced_title': 'Advanced: ngrok',
+    'remote_ngrok_advanced_desc':
+        'Alternative tunnel if you\'d rather not use Tailscale. Needs its own account and token, and the URL can change on every restart.',
     'remote_ngrok_tunnel_url_label': 'Ngrok Tunnel URL',
     'remote_url_copied': 'URL copied',
     'remote_ngrok_token_saved_label': 'Ngrok Auth Token (saved)',

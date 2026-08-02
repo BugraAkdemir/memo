@@ -235,6 +235,16 @@ type App struct {
 	waMu              sync.Mutex // protects waClient, waMsgStore initialization
 	streamMu          sync.Mutex // prevents concurrent stream goroutines (double-send)
 
+	// cliJobs tracks in-flight CLI-backed background streams (see
+	// cli_stream.go), keyed by chat id. Deliberately separate from streamMu
+	// above: a CLI task can run far longer than a normal reply (yapacam.md
+	// §7, no fixed timeout) and must not hold the single global stream slot
+	// for that whole time — every other chat in the app would be blocked
+	// from sending anything until it finished. Per-chat exclusivity only
+	// (two messages can't race into the same chat), never global.
+	cliJobsMu sync.Mutex
+	cliJobs   map[string]context.CancelFunc
+
 	// bgLLMCancel cancels whatever background (non-chat) local-model call is
 	// currently in flight — auto fact extraction today. See preemptBackgroundLLM
 	// (llm.go): a real chat message about to hit the local model (which runs

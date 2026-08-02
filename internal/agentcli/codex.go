@@ -85,6 +85,14 @@ func (c *CodexCLI) ChatCompletionStream(ctx context.Context, req provider.ChatRe
 	if userMsg == "" {
 		return nil, fmt.Errorf("codex-cli: no user message to send")
 	}
+	// Unlike Claude Code, `codex exec` does not resolve slash commands
+	// itself — see ExpandCommand's doc comment for the verification. Expand
+	// here so a codex chat's "/" commands do the same thing they do in
+	// codex's own TUI; an unknown command falls through unchanged rather
+	// than being swallowed.
+	if expanded, ok := ExpandCommand(provider.ProviderCodexCLI, req.WorkDir, userMsg); ok {
+		userMsg = expanded
+	}
 
 	var args []string
 	if req.ResumeSessionID != "" {

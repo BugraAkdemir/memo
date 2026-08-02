@@ -4,6 +4,7 @@ package agentcli
 
 import (
 	"context"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -188,6 +189,60 @@ func TestCodexChatCompletionStream_FreshRunPassesWorkDirFlag(t *testing.T) {
 	joined := strings.Join(args, " ")
 	if !strings.Contains(joined, "-C "+workdir) {
 		t.Errorf("args %v missing -C %s", args, workdir)
+	}
+}
+
+// TestCodexChatCompletionStream_ExpandsSlashCommand covers the behavior
+// difference that makes this necessary at all: `codex exec` passes "/foo"
+// through to the model as literal text instead of resolving the prompt file
+// (verified against the real binary — it improvised an answer rather than
+// running the prompt), so the provider has to expand it before sending.
+func TestCodexChatCompletionStream_ExpandsSlashCommand(t *testing.T) {
+	home := isolatedHome(t)
+	writeFile(t, filepath.Join(home, ".codex", "prompts", "audit.md"),
+		"---\ndescription: Audit\n---\nAudit this: $ARGUMENTS\n")
+
+	script := `printf '%s\n' '{"type":"turn.completed","usage":{}}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewCodexCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "/audit the login flow")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	joined := strings.Join(args, " ")
+	if !strings.Contains(joined, "Audit this: the login flow") {
+		t.Errorf("codex should receive the expanded prompt, got args: %v", args)
+	}
+	if strings.Contains(joined, "/audit the login flow") {
+		t.Errorf("the raw slash command should have been replaced, got args: %v", args)
+	}
+}
+
+func TestCodexChatCompletionStream_UnknownSlashCommandSentVerbatim(t *testing.T) {
+	isolatedHome(t)
+	script := `printf '%s\n' '{"type":"turn.completed","usage":{}}'`
+	var args []string
+	fakeScript(t, script, &args)
+
+	c, _ := NewCodexCLI(provider.ProviderConfig{Model: "x"})
+	ch, err := c.ChatCompletionStream(context.Background(), provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "/nope still send me")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	for range drainWithTimeout(t, ch) {
+	}
+
+	if !strings.Contains(strings.Join(args, " "), "/nope still send me") {
+		t.Errorf("an unknown command must still reach the CLI unchanged, got args: %v", args)
 	}
 }
 

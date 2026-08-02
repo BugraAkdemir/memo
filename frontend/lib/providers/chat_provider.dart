@@ -71,6 +71,21 @@ final activeChatCLIWorkdirProvider = FutureProvider.autoDispose<String>((ref) as
   return ref.watch(apiClientProvider).getChatCLIWorkdir(chatId);
 });
 
+/// The currently active chat's CLI model override (empty = CLI's own
+/// default). Drives the top bar's model picker while a chat is in CLI mode.
+final activeChatCLIModelProvider = FutureProvider.autoDispose<String>((ref) async {
+  final chatId = await ref.watch(activeChatIdProvider.future);
+  if (chatId.isEmpty) return '';
+  return ref.watch(apiClientProvider).getChatCLIModel(chatId);
+});
+
+/// Model ids the given CLI type can be switched to — see
+/// MemoApiClient.getCLIModelOptions for why this can legitimately be empty.
+final cliModelOptionsProvider =
+    FutureProvider.autoDispose.family<List<String>, String>((ref, cliType) {
+  return ref.watch(apiClientProvider).getCLIModelOptions(cliType);
+});
+
 /// Chat ids whose CLI job just finished while the user wasn't looking at
 /// that chat — cleared once they open it. Notification-badge behavior for
 /// the sidebar's CLI indicator (yapacam.md §2.5).

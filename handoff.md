@@ -1,3 +1,49 @@
+# Handoff — 2026-08-02 — Claude Code CLI sohbet sağlayıcısı: sıfırdan inşa + canlı testte bulunan ~10 gerçek bug
+
+## Özet
+
+Kullanıcının isteğiyle Memo'ya yeni bir sohbet sağlayıcısı türü eklendi: **Claude Code CLI** — bir HTTP API'ye istek atmak yerine bilgisayarda kurulu `claude` komut satırı aracını subprocess olarak çalıştıran, gerçek bir kodlama ajanı. Backend'den frontend'e uçtan uca inşa edildi, gerçek `claude` binary'sine karşı doğrulandı, sonra kullanıcının gerçek uygulamada art arda yaptığı canlı testlerde bulunan ~10 gerçek bug düzeltildi. `versinNote/v3.3.4.md`, obsidian dokümanları ve README'ler de güncellendi (commit `319625f`).
+
+## İnşa Edilen Mimari
+
+- **`internal/agentcli`** (yeni paket, `internal/provider` DEĞİL — `claude` subprocess'i, HTTP değil): `provider.Provider` arayüzünü uyguluyor, import-cycle'a girmeden `provider.RegisterConstructor` ile kendini kaydediyor (`database/sql` driver deseni). `commit 3782080`.
+- **Sohbet-bazlı provider/session/workdir** (`internal/sessions`): `Session.CLIProvider`/`CLISessionIDs`/`CLIWorkdir` — her chat kendi CLI sağlayıcısını, kendi CLI session id'sini, kendi çalışma dizinini taşıyor. `commit 9694aa6`.
+- **`App.SendCLIMessageStream`**: mevcut global `a.streamMu`'dan (aynı anda sadece 1 chat stream edebilir) TAMAMEN bağımsız, chat-bazlı kilitli (`a.cliJobs`), `a.lifecycleCtx`'e bağlı (HTTP isteğine değil — kullanıcı chat değiştirse/pencereyi kapatsa bile subprocess çalışmaya devam ediyor, sadece gerçek backend shutdown'ı öldürüyor). `internal/agent` (Memo'nun kendi ajan pipeline'ı) hiç devreye girmiyor. `commit a1b7ef7`, düzeltme `3e64a3a`.
+- **Yeni endpoint'ler**: `GET /api/cli/status`, `GET /api/cli/running`, `POST /api/chats/cli-provider`, `POST /api/chats/cli-workdir`, `POST /api/send/cli-stream`, `GET /api/files/mentions`.
+- **Frontend**: provider seçiciye `claude-code-cli` eklendi (API anahtarı yok, otomatik kayıt), Ayarlar → **CLI Bağlantıları** sekmesi (kurulu mu kontrolü + otomatik provider kaydı), ilk seçimde uyarı + klasör seçici, sidebar'da çalışan CLI job göstergesi, üst bar/alt bar'da CLI modu göstergesi, `@` dosya-etiketleme popup'ı (terminal CLI'nin zaten sahip olduğu özelliğin Flutter karşılığı).
+
+## Canlı Testte Bulunan ve Düzeltilen Gerçek Buglar
+
+1. **Kullanıcı mesajı hiç kaydedilmiyordu** — sadece asistan cevabı session'a yazılıyordu, sohbetten çıkıp girince kullanıcı mesajları "siliniyormuş" gibi görünüyordu. `commit ccd48e9`.
+2. **Sohbet başlığı hiç üretilmiyordu** — CLI yolu `finishStream`'den hiç geçmiyordu. Aynı commit'te düzeltildi.
+3. **"Bitti" gibi görünme** — CLI tool çalıştırırken/düşünürken uzun sessizlikler oluyor, ilk token gelince "çalışıyor" animasyonu kayboluyordu. `commit c5ed3cc`.
+4. **İlk kurulum dialogu `Navigator.of(context)` için yanlış context kullanıyordu** — "Looking up a deactivated widget's ancestor is unsafe" çökmesi. `commit 3436604`.
+5. **İlk CLI seçiminde kurulum dialogu hiç çıkmıyordu** (ikinci denemede çıkıyordu) — `ref.invalidate` çağrısı context'i erken geçersiz kılıyordu, sıra değiştirildi. `commit 9566bc0`.
+6. **`/` ve `@` popup'ları ok tuşuna, fare tekerleğine, hiçbir girdiye tepki vermiyordu** — kök neden: popup'ın `SizedBox(height:0)+OverflowBox+Stack` ile "layout'u etkilemeden taşırma" hilesi hit-test'i tamamen kırıyordu. Düz `Column` child'ına çevrildi, artık fare/tekerlek %100 çalışıyor. `commit 5efbc80`.
+7. **`@` dosya listesi sadece nokta ile başlayan dosyaları (`.git`, `.claude` vb.) gösteriyordu** — alfabetik sırada nokta harflerden önce geldiği için 20 sonuç sınırı gerçek dosyalara hiç sıra vermiyordu. Hem Flutter'ın hem de terminal CLI'nin (`internal/replcli/filematch.go`, aynı bug oradaydı) `@` özelliğinde düzeltildi. `commit 327d1a6`.
+
+## Çözülemeyen / Ertelenen
+
+- **Ok tuşlarıyla `/`/`@` popup'ında yukarı-aşağı gezinme hâlâ çalışmıyor.** 3 farklı yaklaşım denendi (`Focus.onKeyEvent`, `HardwareKeyboard.instance.addHandler`, Flutter'ın kendi `RawAutocomplete`'inin kullandığı `Shortcuts`+`Actions`+`Intent`), hiçbiri işe yaramadı. En olası açıklama: kutu çok satırlı (`maxLines: null`, Shift+Enter için), çok satırlı bir `EditableText`'in kendi iç yukarı/aşağı-satır-değiştirme mekanizması dışarıdan ele geçirilemiyor gibi görünüyor — `RawAutocomplete`'in tek satırlık arama kutularındakinden yapısal olarak farklı bir durum. **Yaz + Tab/Enter** ve **fare** (tekerlek + tıklama) tam çalışıyor, kullanıcının asıl "ara ve seç" ihtiyacını karşılıyor. Gerçek çözüm muhtemelen bu kutuyu Flutter'ın kendi `RawAutocomplete` widget'ı üzerine yeniden inşa etmek — kullanıcı onaylamadı, yapılmadı.
+- **Kullanıcının son raporu net değil, muhtemelen gerçek bug değil**: "temiz görünen bir sohbette `@` yazınca eski projenin dosyaları geliyor, CLI/klasör seçili olmamasına rağmen". Netleştirmeye çalışıldı ama kullanıcı "o kadar ciddi değil" deyip konuyu kapattı. En olası açıklama: bir CLI sohbeti sadece 2. mesajdan sonra gerçek başlık alıyor, o zamana kadar sidebar'da "New Chat" yazıyor — yani "temiz" göründüğü halde aslında CLI'ye zaten bağlı, sadece başlığı henüz üretilmemiş bir sohbet olabilir (bug değil, yanıltıcı etiket). Doğrulanmadı, ileride tekrar gelirse buradan devam edilebilir.
+- **CLI Minimal Mode toggle'ı hiç eklenmedi** — kapalı konumun karşılığı olan davranış (CLI isteğine hafıza/kimlik enjekte etmek) hiç yazılmadı, sahte bir switch koymamak için bilinçli olarak atlandı.
+- **Codex CLI desteği yok** — sadece Claude Code CLI yapıldı, kullanıcı açıkça "önce birini bitir" dedi. Aynı `internal/agentcli` deseni tekrarlanarak eklenebilir.
+- CLI görevleri arka planda çalışırken chat sidebar'ında "işleniyor" göstergesi ve bitince bildirim rozeti var ama gerçek çoklu-eşzamanlı CLI job senaryosu (aynı anda birden fazla sohbette CLI çalışırken) derinlemesine test edilmedi.
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` — her commit'te yeşil.
+- Frontend: `flutter analyze` + `flutter test` (126/126) — her commit'te yeşil, Rule #8 (hardcoded string) grep temiz.
+- Gerçek `claude` binary'sine karşı canlı doğrulandı (kullanıcı + agentcli testleri).
+- Kullanıcı gerçek uygulamada defalarca uçtan uca test etti, yukarıdaki 7 bug bu testlerde bulundu ve düzeltildi.
+
+## Sıradaki Oturum İçin
+
+1. Ok tuşu navigasyonu isteniyorsa: `/`+`@` kutusunu Flutter'ın `RawAutocomplete` widget'ı üzerine yeniden inşa etmek gerekebilir — büyük bir iş, kullanıcı onayı gerekir.
+2. Codex CLI desteği (istenirse) — `internal/agentcli`'deki `ClaudeCodeCLI` deseni tekrarlanır.
+3. CLI Minimal Mode gerçekten isteniyorsa — CLI isteğine hafıza/kimlik enjekte etme özelliğinin kendisi ayrı bir iş olarak yazılmalı, sonra toggle eklenir.
+4. Yukarıdaki "temiz sohbette eski proje dosyaları" raporu tekrar gelirse: hangi chat'e tıklandığı (sidebar'daki mevcut "New Chat" kaydı mı, yoksa "+ Yeni Sohbet" ile mi) netleştirilmeli.
+
 # Handoff — 2026-07-30 (devam) — Tailscale interactive login'de deadlock bulundu + düzeltildi, `/code-review` ile 4 ek bug daha kapatıldı
 
 ## Özet

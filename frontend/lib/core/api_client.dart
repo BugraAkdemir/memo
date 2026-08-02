@@ -246,6 +246,26 @@ class MemoApiClient {
     await _dio.post('/api/chats/cli-workdir', data: {'id': chatId, 'workdir': workdir});
   }
 
+  /// Empty means the CLI uses its own configured default model.
+  Future<String> getChatCLIModel(String chatId) async {
+    final res = await _dio.get('/api/chats/cli-model', queryParameters: {'id': chatId});
+    return res.data['model'] as String? ?? '';
+  }
+
+  /// model = '' clears the override, back to the CLI's own default.
+  Future<void> setChatCLIModel(String chatId, String model) async {
+    await _dio.post('/api/chats/cli-model', data: {'id': chatId, 'model': model});
+  }
+
+  /// Model ids a CLI-backed chat can be switched to. Empty means no override
+  /// list is available right now (e.g. Codex before its own model cache
+  /// exists) — the CLI's own default is the only option.
+  Future<List<String>> getCLIModelOptions(String cliType) async {
+    final res = await _dio.get('/api/cli/model-options', queryParameters: {'type': cliType});
+    final models = res.data['models'];
+    return models is List ? models.cast<String>() : const [];
+  }
+
   /// {installed, path, version, binary_name} for a CLI provider type.
   Future<Map<String, dynamic>> getCLIStatus(String cliType) async {
     final res = await _dio.get('/api/cli/status', queryParameters: {'type': cliType});

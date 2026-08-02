@@ -349,10 +349,16 @@ class _QuickModelDropdown extends ConsumerWidget {
         final chatId = ref.read(activeChatIdProvider).valueOrNull;
         if (chatId == null) return;
         await api.setChatCLIProvider(chatId, selectedProvider.type);
-        ref.invalidate(activeChatCLIProviderProvider);
+        // _setupCLIChat first, invalidate after: invalidating rebuilds
+        // _ChatTopBar (it watches activeChatCLIProviderProvider), which can
+        // deactivate this context before _setupCLIChat even runs — the
+        // dialog/folder picker then silently never appears on the first
+        // pick (only worked on a second attempt, once the rebuild had
+        // already happened and settled).
         if (context.mounted) {
           await _setupCLIChat(context, ref, chatId);
         }
+        ref.invalidate(activeChatCLIProviderProvider);
       } else if (selected == 'local') {
         await api.setActiveProvider('');
         ref.read(activeProviderTypeProvider.notifier).setActive('');

@@ -4,6 +4,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
@@ -12,6 +14,22 @@ import (
 	"memo/internal/provider"
 	"memo/internal/sessions"
 )
+
+// writeFakeClaudeScript writes a stand-in executable (not the real `claude`
+// binary — these tests must run without it installed) that sleeps for
+// delay then prints one valid stream-json "result" line, so
+// provider.NewProvider(ProviderClaudeCodeCLI) with BaseURL pointed at it
+// behaves like a real, slow CLI call for exactly long enough to test
+// context-cancellation behavior.
+func writeFakeClaudeScript(t *testing.T, delay string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), "fake-claude.sh")
+	script := "#!/bin/sh\nsleep " + delay + "\necho '{\"type\":\"result\",\"session_id\":\"sess-1\",\"is_error\":false,\"result\":\"ok\"}'\n"
+	if err := os.WriteFile(path, []byte(script), 0755); err != nil {
+		t.Fatalf("write fake claude script: %v", err)
+	}
+	return path
+}
 
 func newTestAppForCLI(t *testing.T) (*App, *sessions.Manager) {
 	t.Helper()
@@ -148,5 +166,91 @@ func TestCancelCLIJob(t *testing.T) {
 	}
 	if a.CancelCLIJob("no-such-chat") {
 		t.Error("CancelCLIJob on a chat with no job should report false")
+	}
+}
+
+// TestSendCLIMessageStream_SurvivesRequestContextCancellation is the
+// regression test for SendCLIMessageStream's doc comment: the job must not
+// die just because the HTTP request that started it disconnects (user
+// switched chats, closed the app window). It passes an ALREADY-cancelled
+// ctx and still expects the underlying (fake) CLI process to run to
+// completion successfully.
+func TestSendCLIMessageStream_SurvivesRequestContextCancellation(t *testing.T) {
+	a, sm := newTestAppForCLI(t)
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+	t.Cleanup(a.lifecycleCancel)
+
+	chat := sm.NewChat()
+	if err := sm.SetCLIProvider(chat, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	a.providerCfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderClaudeCodeCLI, Name: "claude-code-cli",
+		Model: "x", BaseURL: writeFakeClaudeScript(t, "0.2"), Enabled: true,
+	})
+
+	reqCtx, reqCancel := context.WithCancel(context.Background())
+	reqCancel() // simulate the request already being gone before the call
+
+	var gotDone bool
+	var gotError string
+	for chunk := range a.SendCLIMessageStream(reqCtx, chat, "hello") {
+		if chunk.Done {
+			gotDone = true
+			gotError = chunk.Error
+		}
+	}
+	if !gotDone {
+		t.Fatal("expected the job to run to completion despite a pre-cancelled request ctx")
+	}
+	if gotError != "" {
+		t.Errorf("unexpected error, job should have completed cleanly: %s", gotError)
+	}
+}
+
+// TestSendCLIMessageStream_KilledByLifecycleCancel is
+// TestSendCLIMessageStream_SurvivesRequestContextCancellation's
+// counterpart: an actual backend shutdown (a.lifecycleCancel) must still
+// stop the job. Uses a longer-sleeping fake script and cancels
+// lifecycleCtx shortly after starting, asserting the stream ends (with an
+// error, since the process was killed mid-flight) well before the script's
+// own sleep would have elapsed on its own.
+func TestSendCLIMessageStream_KilledByLifecycleCancel(t *testing.T) {
+	a, sm := newTestAppForCLI(t)
+	a.lifecycleCtx, a.lifecycleCancel = context.WithCancel(context.Background())
+
+	chat := sm.NewChat()
+	if err := sm.SetCLIProvider(chat, "claude-code-cli"); err != nil {
+		t.Fatalf("SetCLIProvider: %v", err)
+	}
+	a.providerCfgMgr.Set(provider.ProviderConfig{
+		Type: provider.ProviderClaudeCodeCLI, Name: "claude-code-cli",
+		Model: "x", BaseURL: writeFakeClaudeScript(t, "5"), Enabled: true,
+	})
+
+	ch := a.SendCLIMessageStream(context.Background(), chat, "hello")
+
+	go func() {
+		time.Sleep(200 * time.Millisecond)
+		a.lifecycleCancel()
+	}()
+
+	start := time.Now()
+	var gotDoneWithError bool
+	for chunk := range ch {
+		if chunk.Done && chunk.Error != "" {
+			gotDoneWithError = true
+		}
+	}
+	elapsed := time.Since(start)
+
+	if !gotDoneWithError {
+		t.Fatal("expected a terminal error chunk once lifecycleCancel killed the subprocess")
+	}
+	if elapsed > 4*time.Second {
+		t.Errorf("stream took %v to end — lifecycleCancel should have killed the subprocess almost immediately, not let its 5s sleep run out", elapsed)
+	}
+	if a.IsCLIJobRunning(chat) {
+		t.Error("job should be cleared from the registry once the stream ends")
 	}
 }

@@ -74,6 +74,19 @@ func (a *App) CancelCLIJob(chatID string) bool {
 // Also deliberately bypasses routeStream/internal/agent entirely: Memo's own
 // tool-execution pipeline must never run alongside a CLI provider, which
 // does its own file/shell work internally and opaquely (yapacam.md §5).
+//
+// The passed-in ctx (normally the HTTP request's) is intentionally NOT what
+// controls the job's lifetime — kept only for signature symmetry with
+// SendMessageStreamTo. The subprocess must survive the user switching chats
+// or closing the app window (the HTTP/SSE connection ending), and only stop
+// on an explicit CancelCLIJob or a real backend shutdown (yapacam.md
+// §2.5/§7), so the job is tied to a.lifecycleCtx instead. Accepted
+// limitation for now: if outCh's buffer (128 chunks) ever fills while no one
+// is reading it (tab closed mid-stream on an unusually long/chatty reply),
+// this goroutine blocks in trySend until the job is cancelled or the app
+// shuts down — the full "reconnect to a live background job" UI (sidebar
+// indicator, yapacam.md §2.5) is what actually closes this gap, not yet
+// built.
 func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
 	sm := a.getSessionManager()
 	if sm == nil || !sm.SessionExists(chatID) {
@@ -85,7 +98,14 @@ func (a *App) SendCLIMessageStream(ctx context.Context, chatID, userMsg string) 
 		return errStreamChunk("bu sohbette bir CLI sağlayıcı seçili değil")
 	}
 
-	cliCtx, cancel := context.WithCancel(ctx)
+	jobBase := a.lifecycleCtx
+	if jobBase == nil {
+		// Only happens outside a real Startup() (unit tests constructing a
+		// bare *App{}) — production always has a lifecycleCtx by the time
+		// any chat can be sent.
+		jobBase = context.Background()
+	}
+	cliCtx, cancel := context.WithCancel(jobBase)
 	if !a.startCLIJob(chatID, cancel) {
 		cancel()
 		return errStreamChunk("⏳ Bu sohbette zaten bir CLI görevi çalışıyor.")

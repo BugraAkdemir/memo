@@ -30,13 +30,23 @@ func TestShutdown_NormalPathDoesNotForceExit(t *testing.T) {
 }
 
 func TestShutdown_WatchdogForcesExitWhenCleanupIsSlow(t *testing.T) {
-	oldTimeout, oldExit := shutdownTimeout, shutdownForceExit
-	defer func() { shutdownTimeout, shutdownForceExit = oldTimeout, oldExit }()
+	oldTimeout, oldExit, oldCleanup := shutdownTimeout, shutdownForceExit, shutdownCleanup
+	defer func() {
+		shutdownTimeout, shutdownForceExit, shutdownCleanup = oldTimeout, oldExit, oldCleanup
+	}()
 
-	// A timeout far shorter than any real cleanup path guarantees the
-	// watchdog branch wins the select race deterministically, without
-	// needing an actually-hanging subsystem to reproduce it.
-	shutdownTimeout = 1 * time.Nanosecond
+	// Cleanup that genuinely doesn't finish until this test lets it, so the
+	// watchdog is the only branch that can win. Shrinking shutdownTimeout to
+	// 1ns instead (the previous approach) left both select cases ready at
+	// once, which Go resolves at random — that flaked in CI, where the
+	// cleanup goroutine finished before the runtime delivered the expired
+	// timer. Deferred before the restore above so it runs FIRST (LIFO),
+	// releasing the goroutine while the stub is still installed.
+	release := make(chan struct{})
+	defer close(release)
+	shutdownCleanup = func(*App, context.Context) { <-release }
+	shutdownTimeout = 50 * time.Millisecond
+
 	exitCode := make(chan int, 1)
 	shutdownForceExit = func(code int) { exitCode <- code }
 

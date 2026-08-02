@@ -627,16 +627,30 @@ func (a *App) StartWebServerHTTP(port int) error {
 var (
 	shutdownTimeout   = 15 * time.Second
 	shutdownForceExit = os.Exit
+	// shutdownCleanup is the cleanup step itself, indirected so a test can
+	// substitute one that genuinely never finishes. The watchdog branch used
+	// to be exercised by shrinking shutdownTimeout to 1ns instead, which is a
+	// scheduler race rather than a guarantee: when both select cases are
+	// ready Go picks uniformly at random, and under -race on a loaded CI
+	// runner the runtime can deliver the already-expired timer later than the
+	// cleanup goroutine finishes. That flaked in CI — the test logged "Memo
+	// shutdown completed" (only reachable from the <-done branch) and then
+	// failed waiting for a force-exit that had already lost the race.
+	shutdownCleanup = (*App).shutdownSync
 )
 
 // Shutdown cleans up all running background processes and servers.
 func (a *App) Shutdown(ctx context.Context) {
 	a.shutdownOnce.Do(func() {
+		// Read on the caller's goroutine, not inside the one below, so a
+		// test restoring the var afterwards is properly ordered against it
+		// instead of racing a background read.
+		cleanup := shutdownCleanup
 		done := make(chan struct{})
 		go func() {
 			defer close(done)
 			defer recoverPanic("Shutdown/shutdownSync")
-			a.shutdownSync(ctx)
+			cleanup(a, ctx)
 		}()
 
 		select {

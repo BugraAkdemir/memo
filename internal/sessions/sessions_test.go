@@ -550,6 +550,22 @@ func TestCLIWorkdir_RoundTrips(t *testing.T) {
 	}
 }
 
+func TestCLIModel_RoundTrips(t *testing.T) {
+	dir := t.TempDir()
+	m, _ := NewManager(dir)
+	chat := m.NewChat()
+
+	if got := m.GetCLIModel(chat); got != "" {
+		t.Errorf("initial CLIModel = %q, want empty", got)
+	}
+	if err := m.SetCLIModel(chat, "opus"); err != nil {
+		t.Fatalf("SetCLIModel: %v", err)
+	}
+	if got := m.GetCLIModel(chat); got != "opus" {
+		t.Errorf("CLIModel = %q, want opus", got)
+	}
+}
+
 func TestCLIFields_SurviveReload(t *testing.T) {
 	dir := t.TempDir()
 	m1, _ := NewManager(dir)
@@ -564,6 +580,9 @@ func TestCLIFields_SurviveReload(t *testing.T) {
 	if err := m1.SetCLIWorkdir(chat, "/tmp/proj"); err != nil {
 		t.Fatalf("SetCLIWorkdir: %v", err)
 	}
+	if err := m1.SetCLIModel(chat, "opus"); err != nil {
+		t.Fatalf("SetCLIModel: %v", err)
+	}
 
 	m2, err := NewManager(dir)
 	if err != nil {
@@ -577,5 +596,8 @@ func TestCLIFields_SurviveReload(t *testing.T) {
 	}
 	if got := m2.GetCLIWorkdir(chat); got != "/tmp/proj" {
 		t.Errorf("reloaded CLIWorkdir = %q", got)
+	}
+	if got := m2.GetCLIModel(chat); got != "opus" {
+		t.Errorf("reloaded CLIModel = %q", got)
 	}
 }

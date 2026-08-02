@@ -49,6 +49,11 @@ type Session struct {
 	// something else — "is this an agent chat" — elsewhere in this
 	// codebase) so the two concepts don't get conflated.
 	CLIWorkdir string `json:"cli_workdir,omitempty"`
+	// CLIModel overrides which model the CLI itself uses for this chat (e.g.
+	// "opus", "sonnet" for Claude Code; a model id for Codex). Empty means no
+	// override is passed — the CLI uses its own configured default, exactly
+	// as it did before this field existed.
+	CLIModel string `json:"cli_model,omitempty"`
 }
 
 type Manager struct {
@@ -412,6 +417,28 @@ func (m *Manager) SetCLIWorkdir(id, dir string) error {
 		return fmt.Errorf("session not found: %s", id)
 	}
 	s.CLIWorkdir = dir
+	return m.save(s)
+}
+
+func (m *Manager) GetCLIModel(id string) string {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return ""
+	}
+	return s.CLIModel
+}
+
+// SetCLIModel sets id's CLI model override, persisted like CLIWorkdir.
+func (m *Manager) SetCLIModel(id, model string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	s, ok := m.sessions[id]
+	if !ok {
+		return fmt.Errorf("session not found: %s", id)
+	}
+	s.CLIModel = model
 	return m.save(s)
 }
 

@@ -151,6 +151,9 @@ func (c *ClaudeCodeCLI) ChatCompletionStream(ctx context.Context, req provider.C
 			if ev.sessionID != "" {
 				sessionID = ev.sessionID
 			}
+			if len(ev.slashCommands) > 0 {
+				rememberReportedCommands(provider.ProviderClaudeCodeCLI, ev.slashCommands)
+			}
 			if ev.textDelta != "" {
 				send(ctx, ch, provider.StreamChunk{Content: ev.textDelta})
 			}
@@ -243,6 +246,12 @@ type streamEvent struct {
 	textDelta string
 	isFinal   bool
 	errText   string
+	// slashCommands is the full command list the CLI reports about itself on
+	// its init event — the only place it is exposed (there is no --list flag,
+	// checked). Recorded so the composer's "/" dropdown can offer everything
+	// the CLI actually has, including skills bundled inside the CLI package
+	// that no directory scan on Memo's side could find.
+	slashCommands []string
 }
 
 // parseStreamJSONLine interprets one line of `claude --output-format
@@ -262,11 +271,12 @@ type streamEvent struct {
 // as intended.
 func parseStreamJSONLine(line []byte) (streamEvent, bool) {
 	var raw struct {
-		Type      string `json:"type"`
-		SessionID string `json:"session_id"`
-		IsError   bool   `json:"is_error"`
-		Result    string `json:"result"`
-		Message   struct {
+		Type          string   `json:"type"`
+		SessionID     string   `json:"session_id"`
+		SlashCommands []string `json:"slash_commands"`
+		IsError       bool     `json:"is_error"`
+		Result        string   `json:"result"`
+		Message       struct {
 			Content []struct {
 				Type string `json:"type"`
 				Text string `json:"text"`
@@ -279,7 +289,7 @@ func parseStreamJSONLine(line []byte) (streamEvent, bool) {
 
 	switch raw.Type {
 	case "system":
-		return streamEvent{sessionID: raw.SessionID}, true
+		return streamEvent{sessionID: raw.SessionID, slashCommands: raw.SlashCommands}, true
 	case "assistant":
 		var b strings.Builder
 		for _, part := range raw.Message.Content {

@@ -114,13 +114,25 @@ func ListCommands(cliType provider.ProviderType, workdir string) []Command {
 		seen[c.Name] = c
 	}
 
+	// Scanned directories first: only these carry a real description and an
+	// accurate source, and a project-level file must shadow anything below.
 	for _, dir := range commandDirs(cliType, workdir) {
 		for _, c := range scanCommandDir(dir) {
+			if isSessionOnlyCommand(c.Name) {
+				continue
+			}
 			claim(c)
 		}
 	}
 	for _, c := range builtinCommands(cliType) {
 		claim(c)
+	}
+	// Then whatever the CLI itself reported on its last init event — the
+	// only source that includes skills bundled inside the CLI package and
+	// loaded plugins. Names only, so these fill in without a description
+	// unless a scanned file already supplied one above.
+	for _, name := range reportedCommandNames(cliType) {
+		claim(Command{Name: name, Source: "builtin"})
 	}
 
 	out := make([]Command, 0, len(seen))

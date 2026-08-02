@@ -205,6 +205,48 @@ class _TokenCounter extends ConsumerWidget {
 /// not `ProviderConfig.type` — a provider type can be registered more than
 /// once under different names), but as a compact anchored menu instead of a
 /// modal dialog, matching where the user expects it in the toolbar.
+/// Shows the active chat's CLI working directory (just the folder name,
+/// full path on hover) next to the model picker.
+class _CLIWorkdirBadge extends ConsumerWidget {
+  const _CLIWorkdirBadge();
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final workdir = ref.watch(activeChatCLIWorkdirProvider).valueOrNull ?? '';
+    if (workdir.isEmpty) return const SizedBox.shrink();
+    final c = MemoTheme.of(context);
+
+    return Tooltip(
+      message: workdir,
+      child: Container(
+        margin: const EdgeInsets.only(right: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        constraints: const BoxConstraints(maxWidth: 140),
+        decoration: BoxDecoration(
+          color: c.bgElement,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: c.borderSoft),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(Icons.folder_outlined, size: 14, color: c.textDim),
+            const SizedBox(width: 6),
+            Flexible(
+              child: Text(
+                p.basename(workdir),
+                style: TextStyle(fontSize: 12, color: c.textSecondary),
+                overflow: TextOverflow.ellipsis,
+                maxLines: 1,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _QuickModelDropdown extends ConsumerWidget {
   const _QuickModelDropdown();
 
@@ -698,6 +740,11 @@ class _ChatTopBar extends ConsumerWidget {
 
           // Live token counter (Claude-Code style)
           const _TokenCounter(),
+
+          // CLI working directory — always visible which folder a CLI
+          // provider is actually operating in, right next to the picker
+          // that shows which one it is.
+          if (isCLIChat) const _CLIWorkdirBadge(),
 
           // Quick model/provider switch dropdown — local model, every
           // enabled API provider, and a shortcut to add a new one.

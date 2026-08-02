@@ -62,6 +62,15 @@ final activeChatCLIProviderProvider = FutureProvider.autoDispose<String>((ref) a
   return ref.watch(apiClientProvider).getChatCLIProvider(chatId);
 });
 
+/// The currently active chat's own CLI working directory (empty if unset).
+/// Shown next to the model picker so it's always visible which folder a CLI
+/// provider is actually operating in.
+final activeChatCLIWorkdirProvider = FutureProvider.autoDispose<String>((ref) async {
+  final chatId = await ref.watch(activeChatIdProvider.future);
+  if (chatId.isEmpty) return '';
+  return ref.watch(apiClientProvider).getChatCLIWorkdir(chatId);
+});
+
 /// Chat ids whose CLI job just finished while the user wasn't looking at
 /// that chat — cleared once they open it. Notification-badge behavior for
 /// the sidebar's CLI indicator (yapacam.md §2.5).

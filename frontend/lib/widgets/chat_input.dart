@@ -137,6 +137,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
   void _onTextChanged() {
     final text = _controller.text;
     final show = text.startsWith('/');
+    final wasShowing = _showTemplates;
     final newQuery = show ? text.substring(1) : '';
     if (show != _showTemplates || newQuery != _filterQuery) {
       setState(() {
@@ -146,27 +147,38 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       });
     }
     if (show) {
-      _ensureCLICommandsLoaded();
+      // Refetch each time the popup opens, not once per chat: the backend's
+      // list grows the first time the CLI actually runs (it reports its own
+      // full command set on its init event), so a list cached from before
+      // that would stay permanently short. Typing further characters just
+      // filters what's already loaded.
+      _ensureCLICommandsLoaded(refresh: !wasShowing);
     } else {
       _checkFileMentionTrigger(text);
     }
   }
 
-  /// Loads the active CLI provider's slash commands the first time "/" is
-  /// typed in a given CLI chat, and again whenever the chat switches to a
-  /// different CLI provider. Not a CLI chat -> clears the list, so the
-  /// dropdown falls back to Memo's own prompt templates.
-  Future<void> _ensureCLICommandsLoaded() async {
+  /// Loads the active CLI provider's slash commands. Not a CLI chat ->
+  /// clears the list, so the dropdown falls back to Memo's own prompt
+  /// templates. The previous list is deliberately left in place while a
+  /// refresh is in flight, so reopening "/" never flashes empty.
+  Future<void> _ensureCLICommandsLoaded({bool refresh = false}) async {
     final cliType = ref.read(activeChatCLIProviderProvider).valueOrNull ?? '';
     final chatId = ref.read(activeChatIdProvider).valueOrNull ?? '';
     final key = '$cliType|$chatId';
-    if (key == _cliCommandsLoadedFor) return;
+    if (!refresh && key == _cliCommandsLoadedFor) return;
 
     final gen = ++_cliCommandsRequestGen;
+    final switchedChat = key != _cliCommandsLoadedFor;
     _cliCommandsLoadedFor = key;
     if (cliType.isEmpty) {
       if (_cliCommands.isNotEmpty) setState(() => _cliCommands = []);
       return;
+    }
+    // Another chat's commands are worse than none — drop them immediately
+    // rather than showing them until the new list arrives.
+    if (switchedChat && _cliCommands.isNotEmpty) {
+      setState(() => _cliCommands = []);
     }
     try {
       final cmds = await ref.read(apiClientProvider).listCLICommands(cliType, chatId);

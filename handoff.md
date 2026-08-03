@@ -1,4 +1,31 @@
-# Handoff — 2026-08-02 (devam) — Codex CLI, Settings redesign, CLI slash komutları, CLI model seçimi
+# Handoff — 2026-08-04 — "Aç-kapat sonrası hâlâ CLI modunda" bug'ı: kök neden global `activeProviderName`, iki ayrı fix
+
+## Özet
+
+Kullanıcı bildirdi: Claude Code CLI/Codex CLI kullanıldıktan sonra Memo kapatılıp açılınca hem Flutter arayüzünde hem de `internal/replcli`'de (terminal `memo`) hâlâ en son kaldığımız CLI modunda çalışıyoruz — istenen: her açılışta 0'dan/tertemiz bir sohbet, eski sohbete istenirse sidebar'dan dönülebilsin. `/codebase-memory` ile iki paralel Explore ajanı (biri Flutter startup akışını, biri `internal/replcli` startup akışını) araştırdı.
+
+## Kök Nedenler (iki ayrı mekanizma, aynı semptom)
+
+1. **`replcli` zaten her açılışta gerçek bir yeni sohbet açıyordu** (`Run()` → `startFreshChat()`, önceki bir oturumda `resumeOrStartChat` kaldırılmıştı) — ama global `App.activeProviderName` (backend'e `cfg.ActiveProvider` olarak persist ediliyor, her `Startup()`'ta `reinitProviderAndOrchestra` ile geri yükleniyor) hiç sıfırlanmıyordu. `replcli`'nin mesaj gönderimi (`/api/send/stream`) per-chat `Session.CLIProvider` alanını hiç kullanmıyor — tamamen bu global provider seçimine göre yönleniyor. Yani "yeni sohbet" bile, provider hâlâ `claude-code-cli`/`codex-cli` olduğu için CLI subprocess'e gidiyordu.
+2. **Flutter tarafında** `activeChatIdProvider` doğrudan `GET /api/chats/active`'e güveniyordu — backend bunu `sessions.Manager.NewManager`'da "en son güncellenen session" sezgisiyle dolduruyor (`internal/sessions/sessions.go`), CLI-tagged olup olmadığına bakmadan. Persist edilen bir "son aktif sohbet id"si Flutter tarafında yok, tamamen backend'e devrediliyor.
+
+## Düzeltmeler (2 ayrı commit)
+
+- **Backend** (`514487b`, `internal/app/providers.go`): `reinitProviderAndOrchestra` artık restore edilen aktif provider'ın `Type`'ı `ProviderClaudeCodeCLI`/`ProviderCodexCLI` ise (yeni `isCLIProviderName` helper'ı, `providers_test.go`) hem `activeProviderName`'ı hem `cfg.ActiveProvider`'ı `""`'e sıfırlıyor — CLI provider'lar per-session bir araç, OpenAI/Claude API gibi restart'lar arası kalıcı bir varsayılan değil. Normal external provider'lar etkilenmiyor, eskisi gibi restart'ta korunuyor. Bu tek başına `replcli`'nin bug'ını tamamen çözüyor.
+- **Frontend** (`a3baf25`, `frontend/lib/screens/app_shell.dart`): `AppShell.initState`, `replcli`'nin `startFreshChat()`'ini birebir ayna gibi — setup tamamlandıysa ve chat listesi boş değilse (ilk kurulum/launchpad akışına karışmasın diye boşsa dokunmuyor), mevcut `ChatListNotifier.createNew()` + `activeChatIdProvider.switchTo()` ikilisiyle (sidebar'daki "+ Yeni Sohbet" butonuyla aynı yol) her soğuk başlangıçta yepyeni bir sohbete geçiyor. Eski sohbet hiç dokunulmadan sidebar'da kalıyor.
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./...` (tüm paketler) yeşil, `-race` ile `internal/app` yeşil. Yeni `TestIsCLIProviderName` eklendi.
+- Frontend: `flutter analyze` (değişen dosyada yeni uyarı yok, mevcut 6 issue ilgisiz/önceden var) + `flutter test` (144/144) yeşil. Rule #8 grep (`app_shell.dart`) temiz — yeni kullanıcı-görünür string eklenmedi.
+- **Canlı uçtan uca doğrulanmadı** (gerçek `claude`/`codex` binary'siyle kapat-aç senaryosu bu ortamda test edilmedi) — mantık ve birim testleriyle doğrulandı, kullanıcının gerçek ortamda bir sonraki kullanımda teyit etmesi gerekiyor.
+
+## Sıradaki Oturum İçin
+
+1. Kullanıcı gerçek kullanımda teyit etsin: kapat-aç sonrası hem GUI hem `memo` CLI tertemiz bir sohbetle mi açılıyor, hem de mesaj göndermek gerçekten yerel modele/önceki normal provider'a mı gidiyor (CLI subprocess'e değil).
+2. Önceki oturumdan devam eden, hâlâ açık maddeler (aşağıdaki 2026-08-02 kaydına bakın): ok tuşu `/`/`@` popup navigasyonu, CLI Minimal Mode toggle'ı, Codex için gerçek usage mekanizması yoksa `/usage` eklenemez.
+
+
 
 ## Özet
 

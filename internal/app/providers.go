@@ -172,6 +172,16 @@ func (a *App) reinitProviderAndOrchestra() {
 				}
 			}
 		}
+		// CLI providers (Claude Code CLI / Codex CLI) are a per-session tool,
+		// not a sticky default the way an external API provider is — silently
+		// restoring one across an app restart routed every subsequent chat,
+		// including a brand new one, through that CLI subprocess. Startup
+		// always treats a previously-active CLI provider as unset; the user
+		// reselects it explicitly to keep working in CLI mode.
+		if isCLIProviderName(activeProviderName, configs) {
+			activeProviderName = ""
+			a.cfg.ActiveProvider = ""
+		}
 	}
 
 	a.providerMu.Lock()
@@ -222,6 +232,20 @@ func (a *App) reinitProviderAndOrchestra() {
 		goRecover("providerRouter.HealthCheck", func() { newRouter.HealthCheck(hctx, 5*time.Minute) })
 	}
 	logx.Printf("provider/orchestra config reloaded (%d enabled provider(s), orchestra enabled=%v)", len(configs), orchestraCfg.Enabled)
+}
+
+// isCLIProviderName reports whether name (a provider Name, as stored in
+// cfg.ActiveProvider) refers to a CLI-backed provider — Claude Code CLI or
+// Codex CLI — per configs. Unknown names report false rather than erroring;
+// callers only use this to decide whether to keep an active-provider
+// selection, not to validate it.
+func isCLIProviderName(name string, configs []provider.ProviderConfig) bool {
+	for _, p := range configs {
+		if p.Name == name {
+			return p.Type == provider.ProviderClaudeCodeCLI || p.Type == provider.ProviderCodexCLI
+		}
+	}
+	return false
 }
 
 // SetActiveProvider selects which provider to use for chat (by provider Name).

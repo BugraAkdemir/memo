@@ -73,8 +73,26 @@ class _AppShellState extends ConsumerState<AppShell> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final setupComplete = ref.read(setupCompleteProvider);
-      if (setupComplete) _checkOnboarding();
+      if (setupComplete) {
+        _checkOnboarding();
+        _startFreshChatOnLaunch();
+      }
     });
+  }
+
+  /// Every cold start opens a brand-new, empty chat instead of silently
+  /// resuming whatever chat — possibly still in Claude Code CLI / Codex CLI
+  /// mode — was last active. Mirrors internal/replcli's Run(), which already
+  /// does the same via startFreshChat(): the old chat is untouched and stays
+  /// reachable from the sidebar, this just stops it from being the default.
+  /// Skipped on a true first run (no chats at all yet) so it doesn't
+  /// interfere with _checkOnboarding's own "chats.isEmpty" launchpad check.
+  Future<void> _startFreshChatOnLaunch() async {
+    final chats = await ref.read(chatListProvider.future);
+    if (chats.isEmpty || !mounted) return;
+    final id = await ref.read(chatListProvider.notifier).createNew();
+    if (!mounted) return;
+    await ref.read(activeChatIdProvider.notifier).switchTo(id);
   }
 
   @override

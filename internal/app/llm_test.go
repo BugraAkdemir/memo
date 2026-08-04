@@ -284,3 +284,36 @@ loop:
 		t.Fatal("outCh closed without ever sending a terminal (Done) chunk after ctx was cancelled mid-stream — the frontend never learns the turn ended, leaving its UI state stuck with no explanation")
 	}
 }
+
+// TestDrainAgentStream_EmptyChannelSendsTerminalChunk is the regression test
+// for BUG_REPORT.md's SF-5: callAgentStream's tail (now extracted as
+// drainAgentStream) used to reach `if fullReply.Len() > 0 {...} else {
+// recordStreamError(...) }` when streamCh closed without ever sending a
+// Done chunk and with no content received — and that else branch only
+// persisted the error to session history, never to outCh. A client waiting
+// on the stream saw it just close with nothing, the same stuck-UI symptom
+// as the ctx-cancellation chunk-race bug this file already fixed once
+// (BUG-H1/H2) — except with no explanation at all, not even a late one.
+func TestDrainAgentStream_EmptyChannelSendsTerminalChunk(t *testing.T) {
+	a := &App{}
+	streamCh := make(chan provider.StreamChunk)
+	close(streamCh) // closes immediately with nothing sent — the exact shape this bug needed
+
+	outCh := make(chan api.StreamChunk, 4)
+	a.drainAgentStream(context.Background(), streamCh, outCh, time.Now(), "hi", "", &usageMeta{}, nil)
+	close(outCh)
+
+	var chunks []api.StreamChunk
+	for c := range outCh {
+		chunks = append(chunks, c)
+	}
+	if len(chunks) != 1 {
+		t.Fatalf("expected exactly one terminal chunk, got %d: %+v", len(chunks), chunks)
+	}
+	if !chunks[0].Done {
+		t.Errorf("expected the terminal chunk to have Done=true, got %+v", chunks[0])
+	}
+	if chunks[0].Error == "" {
+		t.Errorf("expected the terminal chunk to carry an error explaining the empty response, got %+v", chunks[0])
+	}
+}

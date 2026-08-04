@@ -213,7 +213,6 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
-		var fullReply strings.Builder
 		var agentEvents []interface{}
 
 		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
@@ -232,43 +231,65 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 			return
 		}
 
-		for {
-			chunk, ok, ctxDone := recvChunk(ctx, streamCh)
-			if ctxDone {
-				a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
-				trySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
-				return
-			}
-			if !ok {
-				break
-			}
-			if chunk.Error != "" {
-				a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
-				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
-				return
-			}
-
-			if chunk.Content != "" {
-				fullReply.WriteString(chunk.Content)
-				trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
-			}
-
-			if chunk.Done {
-				a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, &usageMetaVal, agentEvents)
-				trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
-				return
-			}
-		}
-
-		if fullReply.Len() > 0 {
-			a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, &usageMetaVal, agentEvents)
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
-		} else {
-			a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
-		}
+		a.drainAgentStream(ctx, streamCh, outCh, start, userMsg, sessionID, &usageMetaVal, agentEvents)
 	}()
 
 	return outCh
+}
+
+// drainAgentStream reads streamCh (the agent pipeline's own output) until it
+// closes or ctx is cancelled, forwarding content to outCh and finishing the
+// turn (finishStream + a terminal Done/Error chunk) on every exit path.
+//
+// Extracted out of callAgentStream's closure so this exact fan-in logic is
+// directly unit-testable against a hand-built streamCh, without needing a
+// real agent.Executor/Pipeline round trip — see
+// TestDrainAgentStream_EmptyChannelSendsTerminalChunk (BUG_REPORT.md SF-5):
+// every current Pipeline.RunStream exit path already sends a terminal chunk
+// before closing its channel, so the bug this guards against (streamCh
+// closing with zero chunks ever received) isn't reachable through today's
+// real pipeline — this is deliberate defense-in-depth against a future
+// change to that pipeline (or a different agent.Executor implementation)
+// introducing exactly that gap, matching the same "every branch sends a
+// terminal chunk" rule already enforced in internal/agentcli's own
+// ChatCompletionStream implementations.
+func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents []interface{}) {
+	var fullReply strings.Builder
+	for {
+		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
+		if ctxDone {
+			a.recordStreamError(userMsg, "⏹️ Cevap durduruldu.", sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: "⏹️ Cevap durduruldu.", Done: true})
+			return
+		}
+		if !ok {
+			break
+		}
+		if chunk.Error != "" {
+			a.recordStreamError(userMsg, "⚠️ "+chunk.Error, sessionID)
+			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
+			return
+		}
+
+		if chunk.Content != "" {
+			fullReply.WriteString(chunk.Content)
+			trySend(ctx, outCh, api.StreamChunk{Content: chunk.Content})
+		}
+
+		if chunk.Done {
+			a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents)
+			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
+			return
+		}
+	}
+
+	if fullReply.Len() > 0 {
+		a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents)
+		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
+	} else {
+		a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)
+		trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent boş yanıt döndürdü", Done: true})
+	}
 }
 
 // callAgentWithOrchestra runs when both agent mode and orchestra mode are enabled.

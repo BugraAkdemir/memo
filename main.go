@@ -482,7 +482,7 @@ func runPrintMode(port int, prompt, chatID string, autoAllow bool) {
 		}
 		return nil
 	}
-	if err := client.SendStream(ctx, prompt, onChunk); err != nil {
+	if err := client.SendStream(ctx, chatID, prompt, onChunk); err != nil {
 		fmt.Fprintf(os.Stderr, "FATAL: %v\n", err)
 		os.Exit(1)
 	}

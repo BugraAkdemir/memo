@@ -366,7 +366,7 @@ func (s *session) sendMessage(line string) {
 	onChunk := func(chunk api.StreamChunk) error {
 		return s.handleChunk(chunk)
 	}
-	err := s.client.SendStream(ctx, line, onChunk)
+	err := s.client.SendStream(ctx, s.chatID, line, onChunk)
 	s.stopSpinner()
 	s.sp = nil
 

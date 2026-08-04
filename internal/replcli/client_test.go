@@ -213,7 +213,7 @@ func TestClient_SendStream(t *testing.T) {
 
 	c := NewClient(srv.URL)
 	var got []string
-	err := c.SendStream(context.Background(), "selam", func(chunk api.StreamChunk) error {
+	err := c.SendStream(context.Background(), "", "selam", func(chunk api.StreamChunk) error {
 		got = append(got, chunk.Content)
 		return nil
 	})
@@ -222,6 +222,66 @@ func TestClient_SendStream(t *testing.T) {
 	}
 	if len(got) != 3 || got[0] != "Mer" || got[1] != "haba" || got[2] != "" {
 		t.Errorf("got chunks %v", got)
+	}
+}
+
+// TestClient_SendStream_SendsChatID is the regression test for
+// PLAN_chatid_refactor.md Faz 4 on the replcli side: the REPL always knows
+// which chat it's talking to (session.chatID, set by startFreshChat/
+// activateChat) but SendStream used to send only {"message"}, so the
+// backend wrote into whichever chat it considered globally "active" —
+// a hazard once a second client (the Flutter GUI) can switch chats on the
+// same backend concurrently. A non-empty chatID must now be forwarded as
+// chat_id.
+func TestClient_SendStream_SendsChatID(t *testing.T) {
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"content\":\"\",\"done\":true}\n\n")
+		flusher.Flush()
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.SendStream(context.Background(), "chat-A", "selam", func(chunk api.StreamChunk) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("SendStream() error = %v", err)
+	}
+	if gotBody["chat_id"] != "chat-A" {
+		t.Errorf("chat_id = %q, want %q — body: %v", gotBody["chat_id"], "chat-A", gotBody)
+	}
+	if gotBody["message"] != "selam" {
+		t.Errorf("message = %q, want %q", gotBody["message"], "selam")
+	}
+}
+
+// TestClient_SendStream_OmitsChatIDWhenEmpty covers the backward-compatible
+// half: an empty chatID (a caller with no specific chat in mind) must not
+// send a chat_id field at all, matching the backend's own opt-in contract.
+func TestClient_SendStream_OmitsChatIDWhenEmpty(t *testing.T) {
+	var gotBody map[string]string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_ = json.NewDecoder(r.Body).Decode(&gotBody)
+		flusher := w.(http.Flusher)
+		w.Header().Set("Content-Type", "text/event-stream")
+		fmt.Fprint(w, "data: {\"content\":\"\",\"done\":true}\n\n")
+		flusher.Flush()
+	}))
+	defer srv.Close()
+
+	c := NewClient(srv.URL)
+	err := c.SendStream(context.Background(), "", "selam", func(chunk api.StreamChunk) error {
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("SendStream() error = %v", err)
+	}
+	if _, ok := gotBody["chat_id"]; ok {
+		t.Errorf("expected no chat_id field when chatID is empty, got body: %v", gotBody)
 	}
 }
 
@@ -238,7 +298,7 @@ func TestClient_SendStream_StopsOnCallbackError(t *testing.T) {
 	c := NewClient(srv.URL)
 	callCount := 0
 	boom := errors.New("boom")
-	err := c.SendStream(context.Background(), "selam", func(chunk api.StreamChunk) error {
+	err := c.SendStream(context.Background(), "", "selam", func(chunk api.StreamChunk) error {
 		callCount++
 		return boom
 	})

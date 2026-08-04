@@ -188,9 +188,20 @@ func (c *Client) SetAgentAutoPermission(ctx context.Context, enabled bool) error
 // SendStream POSTs message to /api/send/stream and invokes onChunk once per
 // parsed SSE chunk, in order. It stops when the backend sends done:true, when
 // onChunk returns an error, or when ctx is cancelled.
-func (c *Client) SendStream(ctx context.Context, message string, onChunk func(api.StreamChunk) error) error {
+//
+// chatID, when non-empty, is sent as chat_id (PLAN_chatid_refactor.md Faz 4)
+// so the backend writes into that exact chat instead of whichever one it
+// considers globally "active" at the moment the request is handled — the
+// REPL always has one (its own session.chatID), so this should be passed on
+// every call; an empty chatID exists only for backward-compatible callers
+// (e.g. tests exercising the pre-Faz-4 behavior).
+func (c *Client) SendStream(ctx context.Context, chatID, message string, onChunk func(api.StreamChunk) error) error {
+	body := map[string]string{"message": message}
+	if chatID != "" {
+		body["chat_id"] = chatID
+	}
 	var buf bytes.Buffer
-	if err := json.NewEncoder(&buf).Encode(map[string]string{"message": message}); err != nil {
+	if err := json.NewEncoder(&buf).Encode(body); err != nil {
 		return err
 	}
 

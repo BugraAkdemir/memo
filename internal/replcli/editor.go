@@ -24,6 +24,7 @@ func slashCommands() []commandSpec {
 		{"/embedding", t("cmd_embedding_hint")},
 		{"/model-download", t("cmd_model_download_hint")},
 		{"/connect", t("cmd_connect_hint")},
+		{"/disconnect", t("cmd_disconnect_hint")},
 		{"/gui", t("cmd_gui_hint")},
 		{"/clear", t("cmd_clear_hint")},
 		{"/session", t("cmd_session_hint")},

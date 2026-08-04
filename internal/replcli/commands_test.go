@@ -284,6 +284,69 @@ func TestHandleCommand_Connect_MissingArgs(t *testing.T) {
 	}
 }
 
+// newActiveProviderTestServer is a minimal stand-in for the single endpoint
+// TestHandleCommand_Disconnect* needs: GET /api/providers/active answers
+// with active (settable by the test before calling handleCommand), and PUT
+// records the value it was set to. refreshLiveStatus (called at the end of
+// cmdDisconnect) is a no-op in tests since session.ed is nil, so nothing
+// else needs to be mocked here.
+func newActiveProviderTestServer(t *testing.T, active string) (*httptest.Server, *[]string) {
+	t.Helper()
+	var puts []string
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/providers/active", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(map[string]string{"provider": active})
+			return
+		}
+		var body map[string]string
+		json.NewDecoder(r.Body).Decode(&body)
+		puts = append(puts, body["provider"])
+		json.NewEncoder(w).Encode(map[string]string{"ok": "true"})
+	})
+	return httptest.NewServer(mux), &puts
+}
+
+// TestHandleCommand_Disconnect_ClearsActiveProvider is the regression test
+// for the "GUI sets a CLI provider (Claude Code CLI / Codex CLI) active,
+// replcli silently inherits it with no way back" finding: activeProviderName
+// is process-wide, not per-client, and neither /model (only starts a local
+// model) nor /clear (only replaces the current chat) ever touch it — /model
+// starting a local model doesn't even help, since the routing priority
+// (Orchestra -> external provider -> local model) means an active external
+// provider wins regardless. /disconnect must clear it back to "".
+func TestHandleCommand_Disconnect_ClearsActiveProvider(t *testing.T) {
+	srv, puts := newActiveProviderTestServer(t, "Claude Code")
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	s.handleCommand("/disconnect")
+
+	if len(*puts) != 1 || (*puts)[0] != "" {
+		t.Fatalf("expected exactly one PUT with provider=\"\", got %+v", *puts)
+	}
+	if !strings.Contains(out.String(), "Claude Code") {
+		t.Errorf("expected confirmation naming the disconnected provider, got:\n%s", out.String())
+	}
+}
+
+// TestHandleCommand_Disconnect_NoneActive covers the no-op path: nothing to
+// disconnect must not fire a PUT at all, just report there was nothing to do.
+func TestHandleCommand_Disconnect_NoneActive(t *testing.T) {
+	srv, puts := newActiveProviderTestServer(t, "")
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	s.handleCommand("/disconnect")
+
+	if len(*puts) != 0 {
+		t.Errorf("expected no PUT calls when no provider is active, got %+v", *puts)
+	}
+	if out.String() == "" {
+		t.Error("expected some feedback even when there's nothing to disconnect")
+	}
+}
+
 func TestHandleCommand_Unknown(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()

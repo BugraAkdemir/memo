@@ -39,6 +39,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdModelDownload()
 	case "/connect":
 		s.cmdConnect(args)
+	case "/disconnect":
+		s.cmdDisconnect()
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -89,6 +91,8 @@ func (s *session) showCommandMenu() bool {
 		s.cmdModelDownload()
 	case "/connect":
 		fmt.Fprintln(s.out, yellow(t("connect_usage")))
+	case "/disconnect":
+		s.cmdDisconnect()
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -624,6 +628,33 @@ func (s *session) cmdConnect(args []string) {
 		return
 	}
 	fmt.Fprintln(s.out, green(fmt.Sprintf(t("connected_to"), cfg.BaseURL, cfg.Model)))
+	s.refreshLiveStatus()
+}
+
+// cmdDisconnect clears the backend's active external/CLI provider so this
+// REPL's messages route back to whatever local model is loaded (if any).
+//
+// This is the only way to escape it: activeProviderName is process-wide,
+// not per-client or per-chat, and the LLM routing priority (Orchestra →
+// external provider → local model) means an active external provider wins
+// even if a local model is running. Nothing else clears it — /model only
+// starts a local model without touching the active-provider selection, and
+// /clear only replaces the current chat. If the active provider was set
+// from elsewhere (the GUI's Providers tab, or a CLI provider — Claude Code
+// CLI / Codex CLI — picked there for a normal, non-chat-tagged send), a
+// concurrently-running REPL session silently inherited it with previously
+// no way back short of going to the GUI to change it again.
+func (s *session) cmdDisconnect() {
+	current, _ := s.client.ActiveProviderName(s.ctx)
+	if current == "" {
+		fmt.Fprintln(s.out, dim(t("disconnect_already_none")))
+		return
+	}
+	if err := s.client.SetActiveProvider(s.ctx, ""); err != nil {
+		fmt.Fprintln(s.out, errorf(t("disconnect_failed"), err))
+		return
+	}
+	fmt.Fprintln(s.out, green(fmt.Sprintf(t("disconnected_from"), current)))
 	s.refreshLiveStatus()
 }
 

@@ -79,6 +79,7 @@ var tr = map[string]string{
 	"cmd_embedding_hint":        "bir embedding modeli seç ve başlat",
 	"cmd_model_download_hint":   "model indirmek için masaüstü uygulamasını aç",
 	"cmd_connect_hint":          "harici bir API sağlayıcısına bağlan",
+	"cmd_disconnect_hint":       "aktif harici/CLI sağlayıcıyı bırak, yerel modele dön",
 	"cmd_gui_hint":              "masaüstü uygulamasını aç",
 	"cmd_clear_hint":            "sohbeti temizle, yeni bir sohbet başlat",
 	"cmd_session_hint":          "bu projedeki sohbetler arasında geç",
@@ -186,6 +187,9 @@ var tr = map[string]string{
 	"connect_failed":              "Bağlanılamadı: %v",
 	"provider_activate_failed":    "Sağlayıcı aktif edilemedi: %v",
 	"connected_to":                "✓ %s adresine bağlanıldı (model: %s).",
+	"disconnect_already_none":     "Zaten aktif bir harici sağlayıcı yok.",
+	"disconnect_failed":           "Sağlayıcı bırakılamadı: %v",
+	"disconnected_from":           "✓ %s bırakıldı, yerel modele dönüldü.",
 	"exe_path_not_found":          "Çalıştırılabilir dosya yolu bulunamadı: %v",
 	"gui_not_found":               "GUI bulunamadı (%s) — bu kurulum GUI içermiyor olabilir.",
 	"gui_start_failed":            "GUI başlatılamadı: %v",
@@ -223,6 +227,7 @@ var tr = map[string]string{
   /embedding [isim]                       embedding modelini başlatır (isim boşsa ilk bulunanı kullanır)
   /model-download                         model indirmek için masaüstü uygulamasını (GUI) açar
   /connect <base_url> <api_key> <model>   harici bir API sağlayıcısına bağlanır
+  /disconnect                             aktif harici/CLI sağlayıcıyı bırakır, yerel modele döner
   /gui                                    masaüstü uygulamasını açar
   /clear                                  sohbet geçmişini temizler, yeni bir sohbet başlatır
   /session [isim|numara|new|list]         bu projedeki sohbetler arasında geçiş yapar
@@ -271,6 +276,7 @@ var en = map[string]string{
 	"cmd_embedding_hint":        "pick and start an embedding model",
 	"cmd_model_download_hint":   "open the desktop app to download a model",
 	"cmd_connect_hint":          "connect to an external API provider",
+	"cmd_disconnect_hint":       "drop the active external/CLI provider, go back to the local model",
 	"cmd_gui_hint":              "open the desktop app",
 	"cmd_clear_hint":            "clear the chat, start a new one",
 	"cmd_session_hint":          "switch between this project's chats",
@@ -374,6 +380,9 @@ var en = map[string]string{
 	"model_no_tools_warning":      "⚠ This model doesn't appear to support tool-calling — agent mode's file/command/search tools may not work correctly.",
 	"connect_failed":              "Could not connect: %v",
 	"provider_activate_failed":    "Could not activate provider: %v",
+	"disconnect_already_none":     "No external provider is currently active.",
+	"disconnect_failed":           "Could not disconnect provider: %v",
+	"disconnected_from":           "✓ Disconnected %s, back to the local model.",
 	"connected_to":                "✓ Connected to %s (model: %s).",
 	"exe_path_not_found":          "Could not find the executable path: %v",
 	"gui_not_found":               "GUI not found (%s) — this install may not include the GUI.",
@@ -412,6 +421,7 @@ var en = map[string]string{
   /embedding [name]                       starts the embedding model (uses the first one found if no name given)
   /model-download                         opens the desktop app (GUI) to download a model
   /connect <base_url> <api_key> <model>   connects to an external API provider
+  /disconnect                             drops the active external/CLI provider, back to the local model
   /gui                                    opens the desktop app
   /clear                                  clears the chat history, starts a new chat
   /session [name|number|new|list]         switches between this project's chats

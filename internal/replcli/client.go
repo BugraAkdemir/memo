@@ -159,6 +159,18 @@ func (c *Client) SetWebSearchEnabled(ctx context.Context, enabled bool) error {
 	return c.doJSON(ctx, http.MethodPost, "/api/websearch", map[string]bool{"enabled": enabled}, nil)
 }
 
+// GetWebSearchEnabled reports whether web search is currently on — backs
+// /web's bare (no-argument) status report.
+func (c *Client) GetWebSearchEnabled(ctx context.Context) (bool, error) {
+	var resp struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/websearch", nil, &resp); err != nil {
+		return false, err
+	}
+	return resp.Enabled, nil
+}
+
 // SendPermission answers a pending tool permission request with policy
 // "allow_once" or "deny_once".
 func (c *Client) SendPermission(ctx context.Context, requestID, policy string) error {

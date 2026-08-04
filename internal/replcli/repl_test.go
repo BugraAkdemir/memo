@@ -177,27 +177,32 @@ func newTestServer(t *testing.T, sseLines []string) (*httptest.Server, *[]map[st
 	return httptest.NewServer(mux), &permissionCalls
 }
 
-// TestActivateChat_AlsoEnablesWebSearch is a regression test: activateChat
-// always turned agent mode on for a fresh/switched chat but never touched
-// web search, even though both are the same kind of global toggle backend-
-// side — reported directly by a user confused that a plain "what's the gold
-// price" question in the CLI got "web search is off in this chat" when
-// agent mode plainly worked. Web search must now come on the same way agent
-// mode does.
-func TestActivateChat_AlsoEnablesWebSearch(t *testing.T) {
-	var webSearchBody map[string]bool
-	webSearchCalled := false
+// TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles is the
+// regression test for the opposite, later-discovered bug: activateChat
+// used to force both agent mode (SetAgentEnabled) and web search
+// (SetWebSearchEnabled) on globally on every fresh chat/clear/session
+// switch. Both are backend-wide, not per-chat or per-client — a
+// concurrently-running Flutter GUI shared the exact same App instance, so
+// every replcli launch silently flipped its agent-mode and web-search
+// settings on too, even if the GUI user had deliberately turned either off.
+// Agent mode no longer needs the global flag at all (every chat replcli
+// sends into via chat_id now forces tool execution per-call through
+// SendMessageStreamTo/IsAgentChat, see the Faz 4 chat-id work); web search
+// has no per-chat equivalent, so it's simply no longer force-enabled — see
+// the new /web command for how a user turns it on deliberately instead.
+func TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles(t *testing.T) {
+	agentCalled, webSearchCalled := false, false
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
+		agentCalled = true
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 	mux.HandleFunc("/api/websearch", func(w http.ResponseWriter, r *http.Request) {
 		webSearchCalled = true
-		json.NewDecoder(r.Body).Decode(&webSearchBody)
 		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
 	})
 	srv := httptest.NewServer(mux)
@@ -207,34 +212,11 @@ func TestActivateChat_AlsoEnablesWebSearch(t *testing.T) {
 	if err := s.activateChat("chat-1"); err != nil {
 		t.Fatalf("activateChat() error = %v", err)
 	}
-	if !webSearchCalled {
-		t.Fatal("activateChat never called /api/websearch — reproduces the reported bug")
+	if agentCalled {
+		t.Error("activateChat must not call /api/agent/enabled — it's a global toggle, not per-chat")
 	}
-	if !webSearchBody["enabled"] {
-		t.Errorf("enabled = %v, want true", webSearchBody["enabled"])
-	}
-}
-
-// TestActivateChat_WebSearchFailureIsBestEffort guards the "unlike agent
-// mode, this must not be fatal" half of the fix — an older backend without
-// the /api/websearch route (or any other transport failure) must not break
-// chat creation, since the REPL isn't built around web search the way it is
-// around agent mode.
-func TestActivateChat_WebSearchFailureIsBestEffort(t *testing.T) {
-	mux := http.NewServeMux()
-	mux.HandleFunc("/api/chats/switch", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
-	mux.HandleFunc("/api/agent/enabled", func(w http.ResponseWriter, r *http.Request) {
-		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
-	})
-	// Deliberately no /api/websearch handler — ServeMux answers 404.
-	srv := httptest.NewServer(mux)
-	defer srv.Close()
-
-	s := &session{client: NewClient(srv.URL), ctx: context.Background()}
-	if err := s.activateChat("chat-1"); err != nil {
-		t.Fatalf("activateChat() error = %v, want nil (web search failure must be best-effort)", err)
+	if webSearchCalled {
+		t.Error("activateChat must not call /api/websearch — it's a global toggle, not per-chat")
 	}
 	if s.chatID != "chat-1" {
 		t.Errorf("chatID = %q, want chat-1", s.chatID)

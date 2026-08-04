@@ -240,24 +240,28 @@ func (s *session) startFreshChat() error {
 	return s.activateChat(id)
 }
 
-// activateChat switches the backend's active chat to id, re-enables agent
-// mode (switching chats resets it backend-side) and records id as this
-// session's current chat.
+// activateChat switches the backend's active chat to id and records id as
+// this session's current chat.
+//
+// Used to also force-enable agent mode and web search here via
+// SetAgentEnabled/SetWebSearchEnabled(true) — both are global, backend-wide
+// toggles, not per-chat, so doing that on every launch/clear silently
+// flipped them on for whatever chat a concurrently-running Flutter GUI had
+// open, even if the user had deliberately turned either off there. Removed:
+// agent mode no longer needs it at all — every chat the REPL sends into via
+// chat_id goes through SendMessageStreamTo, which forces tool execution
+// per-call for an IsAgentChat chat (every chat startFreshChat creates)
+// regardless of this flag. Web search has no per-chat equivalent to fall
+// back on, so this is a real behavior change: REPL chats no longer get web
+// search on by default — enable it from the GUI if wanted. Chosen
+// deliberately over keeping the auto-on default, since silently sending
+// queries out to a web search from a background toggle cuts against Memo's
+// privacy-first design (see AGENTS.md's target-audience notes) independent
+// of the cross-client collision this also fixes.
 func (s *session) activateChat(id string) error {
 	if err := s.client.SwitchChat(s.ctx, id); err != nil {
 		return fmt.Errorf(t("chat_switch_failed"), err)
 	}
-	if err := s.client.SetAgentEnabled(s.ctx, true); err != nil {
-		return fmt.Errorf(t("agent_enable_failed"), err)
-	}
-	// Web search is a global toggle, exactly like agent mode above — but
-	// unlike agent mode, nothing in the CLI ever turned it on, so it just
-	// sat at whatever it defaulted to (off) no matter what. Best-effort
-	// (unlike agent mode's hard error above): an older backend without this
-	// route, or a config write failure, just means web search stays off for
-	// this chat — not something worth failing chat creation over, since the
-	// REPL isn't built around it the way it is around agent mode.
-	_ = s.client.SetWebSearchEnabled(s.ctx, true)
 	s.chatID = id
 	return nil
 }

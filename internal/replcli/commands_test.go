@@ -347,6 +347,89 @@ func TestHandleCommand_Disconnect_NoneActive(t *testing.T) {
 	}
 }
 
+// newWebSearchTestServer mocks GET/POST /api/websearch, recording every POST
+// body and answering GET with whatever the test last set enabled to.
+func newWebSearchTestServer(t *testing.T, initialEnabled bool) (*httptest.Server, *[]bool) {
+	t.Helper()
+	enabled := initialEnabled
+	var posts []bool
+	mux := http.NewServeMux()
+	mux.HandleFunc("/api/websearch", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet {
+			json.NewEncoder(w).Encode(map[string]bool{"enabled": enabled})
+			return
+		}
+		var body map[string]bool
+		json.NewDecoder(r.Body).Decode(&body)
+		enabled = body["enabled"]
+		posts = append(posts, enabled)
+		json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+	})
+	return httptest.NewServer(mux), &posts
+}
+
+// TestHandleCommand_Web_TurnsOnAndOff is the regression test for the /web
+// command added alongside removing activateChat's forced global web-search
+// enable (see TestActivateChat_DoesNotTouchGlobalAgentOrWebSearchToggles):
+// the REPL previously had no command at all to turn web search on or off
+// itself, only ever an implicit (and cross-client-unsafe) auto-on.
+func TestHandleCommand_Web_TurnsOnAndOff(t *testing.T) {
+	srv, posts := newWebSearchTestServer(t, false)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	s.handleCommand("/web on")
+	if len(*posts) != 1 || !(*posts)[0] {
+		t.Fatalf("expected one POST enabled=true after /web on, got %+v", *posts)
+	}
+	if !strings.Contains(out.String(), "aç") {
+		t.Errorf("expected an on confirmation, got:\n%s", out.String())
+	}
+
+	out.Reset()
+	s.handleCommand("/web off")
+	if len(*posts) != 2 || (*posts)[1] {
+		t.Fatalf("expected a second POST enabled=false after /web off, got %+v", *posts)
+	}
+	if !strings.Contains(out.String(), "kapat") {
+		t.Errorf("expected an off confirmation, got:\n%s", out.String())
+	}
+}
+
+// TestHandleCommand_Web_NoArgsReportsStatus covers the bare "/web" status
+// path — must not POST anything, just read and report the current state.
+func TestHandleCommand_Web_NoArgsReportsStatus(t *testing.T) {
+	srv, posts := newWebSearchTestServer(t, true)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	s.handleCommand("/web")
+
+	if len(*posts) != 0 {
+		t.Errorf("expected no POST for a bare /web status check, got %+v", *posts)
+	}
+	if !strings.Contains(out.String(), "açık") {
+		t.Errorf("expected status output reporting 'on', got:\n%s", out.String())
+	}
+}
+
+// TestHandleCommand_Web_UnknownArg rejects anything other than on/off
+// instead of silently doing nothing.
+func TestHandleCommand_Web_UnknownArg(t *testing.T) {
+	srv, posts := newWebSearchTestServer(t, false)
+	defer srv.Close()
+	s, out := newTestSession(t, srv)
+
+	s.handleCommand("/web maybe")
+
+	if len(*posts) != 0 {
+		t.Errorf("expected no POST for an invalid argument, got %+v", *posts)
+	}
+	if !strings.Contains(out.String(), "Kullanım") {
+		t.Errorf("expected a usage message, got:\n%s", out.String())
+	}
+}
+
 func TestHandleCommand_Unknown(t *testing.T) {
 	srv, _ := newModelsTestServer(t)
 	defer srv.Close()

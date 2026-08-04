@@ -41,6 +41,8 @@ func (s *session) handleCommand(line string) bool {
 		s.cmdConnect(args)
 	case "/disconnect":
 		s.cmdDisconnect()
+	case "/web":
+		s.cmdWeb(args)
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -93,6 +95,8 @@ func (s *session) showCommandMenu() bool {
 		fmt.Fprintln(s.out, yellow(t("connect_usage")))
 	case "/disconnect":
 		s.cmdDisconnect()
+	case "/web":
+		s.cmdWeb(nil)
 	case "/gui":
 		s.cmdGui()
 	case "/clear":
@@ -655,6 +659,51 @@ func (s *session) cmdDisconnect() {
 		return
 	}
 	fmt.Fprintln(s.out, green(fmt.Sprintf(t("disconnected_from"), current)))
+	s.refreshLiveStatus()
+}
+
+// cmdWeb turns web search on/off, or with no argument reports its current
+// state. Web search is a global toggle (like the active provider above),
+// not per-chat — activateChat used to force it on for every fresh/switched
+// REPL chat, which silently overrode a Flutter GUI user's own choice on a
+// concurrently-running backend. That auto-on default was removed; this
+// command is the replacement — the REPL previously had no way at all to
+// turn web search on, on or off, itself.
+func (s *session) cmdWeb(args []string) {
+	if len(args) == 0 {
+		enabled, err := s.client.GetWebSearchEnabled(s.ctx)
+		if err != nil {
+			fmt.Fprintln(s.out, errorf(t("web_status_failed"), err))
+			return
+		}
+		if enabled {
+			fmt.Fprintln(s.out, t("web_status_on"))
+		} else {
+			fmt.Fprintln(s.out, t("web_status_off"))
+		}
+		return
+	}
+
+	var enable bool
+	switch args[0] {
+	case "on":
+		enable = true
+	case "off":
+		enable = false
+	default:
+		fmt.Fprintln(s.out, yellow(t("web_usage")))
+		return
+	}
+
+	if err := s.client.SetWebSearchEnabled(s.ctx, enable); err != nil {
+		fmt.Fprintln(s.out, errorf(t("web_toggle_failed"), err))
+		return
+	}
+	if enable {
+		fmt.Fprintln(s.out, green(t("web_turned_on")))
+	} else {
+		fmt.Fprintln(s.out, green(t("web_turned_off")))
+	}
 	s.refreshLiveStatus()
 }
 

@@ -4,7 +4,9 @@ package agentcli
 
 import (
 	"context"
+	"os"
 	"os/exec"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -96,6 +98,22 @@ func TestNewClaudeCodeCLI_BaseURLOverridesBinaryPath(t *testing.T) {
 	}
 }
 
+// waitForFile polls for path to exist, up to timeout — used instead of a
+// fixed sleep to know a background shell job has actually started before
+// the test proceeds, so the test's timing doesn't depend on how fast the
+// machine running it happens to be.
+func waitForFile(t *testing.T, path string, timeout time.Duration) {
+	t.Helper()
+	deadline := time.Now().Add(timeout)
+	for time.Now().Before(deadline) {
+		if _, err := os.Stat(path); err == nil {
+			return
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+	t.Fatalf("timed out after %s waiting for %s to appear", timeout, path)
+}
+
 // fakeScript builds an execCommandContext replacement that runs sh -c
 // <script> instead of the real claude binary, so these tests never require
 // claude to actually be installed. It also records the args claude would
@@ -151,6 +169,75 @@ printf '%s\n' '{"type":"result","session_id":"sess-1","is_error":false,"result":
 	}
 	if gotSessionID != "sess-1" {
 		t.Errorf("CLISessionID = %q, want sess-1", gotSessionID)
+	}
+}
+
+// TestChatCompletionStream_GrandchildHoldingPipeOpen_WaitDelayUnblocksScan
+// is the regression test for BUG_REPORT.md's LK-1: exec.CommandContext only
+// SIGKILLs the *direct* child (claude/codex) on cancellation. With
+// --dangerously-skip-permissions, that process can spawn its own children
+// to carry out a tool call — if ctx is cancelled before a "final" JSON line
+// arrives and one of those grandchildren outlives the direct process, it
+// keeps the stdout pipe's write end open independently, and
+// scanner.Scan() (reading that pipe) blocks on EOF that never comes: the
+// goroutine never returns, ch never closes, and ChatCompletion's `for
+// chunk := range ch` hangs forever too.
+//
+// The fix is two-layered — cmd.Cancel now kills the whole process group
+// (newSysProcAttr/killProcessGroup, sysproc_unix.go/sysproc_windows.go),
+// which already reaps an ordinary tool-call child since it inherits the
+// same group by default; cliProcessWaitDelay is the backstop for a
+// grandchild that somehow escapes the group anyway (a code-review finding
+// on this exact fix — process-group kill alone doesn't cover every case,
+// e.g. a child that calls setsid itself). This test exercises the
+// end-to-end outcome both layers exist for — cancellation must never hang
+// — rather than trying to isolate one mechanism from the other, since a
+// portable way to force a *guaranteed* group-escaping grandchild (setsid
+// isn't available on every platform this ships for) isn't worth the
+// fragility.
+//
+// The script backgrounds `sleep 3` inside a subshell that exits
+// immediately (`(sleep 3 &)`), then writes readyMarker so the test can wait
+// for the grandchild to actually exist before cancelling instead of
+// guessing with a fixed sleep (a prior version of this test did exactly
+// that and was flagged by review as capable of silently testing nothing
+// under CI load). The direct process itself just sleeps too, deliberately
+// emitting no result line, so cancellation — not a clean exit — is what
+// ends it.
+func TestChatCompletionStream_GrandchildHoldingPipeOpen_WaitDelayUnblocksScan(t *testing.T) {
+	orig := cliProcessWaitDelay
+	cliProcessWaitDelay = 100 * time.Millisecond
+	t.Cleanup(func() { cliProcessWaitDelay = orig })
+
+	readyMarker := filepath.Join(t.TempDir(), "grandchild-ready")
+	script := `(sleep 3 &); touch ` + readyMarker + `; sleep 3`
+	fakeScript(t, script, nil)
+
+	c, _ := NewClaudeCodeCLI(provider.ProviderConfig{Model: "x"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := c.ChatCompletionStream(ctx, provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "selam")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	waitForFile(t, readyMarker, 2*time.Second)
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		for range ch {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+		// ch closed promptly instead of blocking on the grandchild's
+		// remaining ~3s sleep.
+	case <-time.After(1 * time.Second):
+		t.Fatal("ChatCompletionStream's channel never closed within 1s of cancellation — scanner.Scan() is stuck reading from a pipe a grandchild process is still holding open (LK-1)")
 	}
 }
 

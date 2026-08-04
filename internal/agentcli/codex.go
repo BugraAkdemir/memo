@@ -118,6 +118,9 @@ func (c *CodexCLI) ChatCompletionStream(ctx context.Context, req provider.ChatRe
 	}
 
 	cmd := execCommandContext(ctx, c.binaryPath, args...)
+	cmd.WaitDelay = cliProcessWaitDelay
+	cmd.SysProcAttr = newSysProcAttr()
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}

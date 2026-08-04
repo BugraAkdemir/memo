@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"memo/internal/provider"
 )
@@ -366,6 +367,47 @@ func TestCodexChatCompletionStream_ProcessExitsWithErrorSendsTerminalChunk(t *te
 	}
 	if !gotErrChunk {
 		t.Errorf("expected a terminal error chunk — every branch must send one (AGENTS.md streaming gotcha)")
+	}
+}
+
+// TestCodexChatCompletionStream_GrandchildHoldingPipeOpen_WaitDelayUnblocksScan
+// is CodexCLI's counterpart to claude_code_test.go's identically-named test
+// for BUG_REPORT.md's LK-1 — codex.go's ChatCompletionStream has the exact
+// same scanner-blocks-on-a-grandchild's-held-open-pipe shape as Claude
+// Code's, sharing cliProcessWaitDelay and the same execCommandContext seam.
+// See that test's doc comment for the full mechanism.
+func TestCodexChatCompletionStream_GrandchildHoldingPipeOpen_WaitDelayUnblocksScan(t *testing.T) {
+	orig := cliProcessWaitDelay
+	cliProcessWaitDelay = 100 * time.Millisecond
+	t.Cleanup(func() { cliProcessWaitDelay = orig })
+
+	readyMarker := filepath.Join(t.TempDir(), "grandchild-ready")
+	script := `(sleep 3 &); touch ` + readyMarker + `; sleep 3`
+	fakeScript(t, script, nil)
+
+	c, _ := NewCodexCLI(provider.ProviderConfig{Model: "x"})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	ch, err := c.ChatCompletionStream(ctx, provider.ChatRequest{
+		Messages: []provider.Message{provider.TextMessage("user", "selam")},
+	})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	waitForFile(t, readyMarker, 2*time.Second)
+	cancel()
+
+	done := make(chan struct{})
+	go func() {
+		for range ch {
+		}
+		close(done)
+	}()
+	select {
+	case <-done:
+	case <-time.After(1 * time.Second):
+		t.Fatal("ChatCompletionStream's channel never closed within 1s of cancellation — scanner.Scan() is stuck reading from a pipe an orphaned grandchild process is still holding open (LK-1)")
 	}
 }
 

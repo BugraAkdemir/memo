@@ -20,6 +20,7 @@ import (
 	"fmt"
 	"os/exec"
 	"strings"
+	"time"
 
 	"memo/internal/provider"
 )
@@ -33,6 +34,28 @@ func init() {
 // execCommandContext is a seam over exec.CommandContext so tests can run a
 // stand-in script instead of the real `claude` binary.
 var execCommandContext = exec.CommandContext
+
+// cliProcessWaitDelay (a var, not a const, so tests can shrink it rather
+// than actually waiting out the production value) bounds how long
+// ChatCompletionStream's scanner loop
+// (both ClaudeCodeCLI's and CodexCLI's — same shape) waits for the
+// subprocess's stdout pipe to actually close once ctx is cancelled.
+//
+// exec.CommandContext only kills the *direct* child (claude/codex) on
+// cancellation — with --dangerously-skip-permissions/
+// --dangerously-bypass-approvals-and-sandbox, that process is free to spawn
+// its own children (shell commands, git, an editor) to carry out a tool
+// call, and any of those inherit the stdout pipe's write end. If ctx is
+// cancelled mid-turn (before a "final" JSON line arrives) and one of those
+// grandchildren outlives the SIGKILL to the direct process, the pipe's
+// write end stays open in a process nothing here ever tracked or killed —
+// scanner.Scan() then blocks on EOF that may never come, the goroutine
+// never returns, ch never closes, and ChatCompletion's `for chunk := range
+// ch` (which never checks ctx) hangs forever too. Setting WaitDelay makes
+// Wait() force-close cmd's pipes once this much time has passed after
+// cancellation, unblocking Scan() regardless of what any grandchild is
+// still doing with its own copy of the descriptor.
+var cliProcessWaitDelay = 5 * time.Second
 
 // ClaudeCodeCLI shells out to the user's locally installed `claude` binary
 // in non-interactive mode, one subprocess per message. Unlike every HTTP
@@ -127,6 +150,9 @@ func (c *ClaudeCodeCLI) ChatCompletionStream(ctx context.Context, req provider.C
 	args = append(args, userMsg)
 
 	cmd := execCommandContext(ctx, c.binaryPath, args...)
+	cmd.WaitDelay = cliProcessWaitDelay
+	cmd.SysProcAttr = newSysProcAttr()
+	cmd.Cancel = func() error { return killProcessGroup(cmd) }
 	if req.WorkDir != "" {
 		cmd.Dir = req.WorkDir
 	}

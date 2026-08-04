@@ -45,6 +45,9 @@ type swarmStubBridge struct {
 	joinStatus   func() interface{}
 	status       func() interface{}
 	synthesize   func(text string) ([]byte, error)
+
+	sendMessageStream   func(ctx context.Context, userMsg string) <-chan api.StreamChunk
+	sendMessageStreamTo func(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -130,9 +133,18 @@ func (b *swarmStubBridge) SwarmStatusSnapshot() interface{} {
 
 // ─── FullBridge no-ops (everything not covered above) ───
 func (b *swarmStubBridge) SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk {
+	if b.sendMessageStream != nil {
+		return b.sendMessageStream(ctx, userMsg)
+	}
 	ch := make(chan api.StreamChunk)
 	close(ch)
 	return ch
+}
+func (b *swarmStubBridge) SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk {
+	if b.sendMessageStreamTo != nil {
+		return b.sendMessageStreamTo(ctx, chatID, userMsg)
+	}
+	return b.SendMessageStream(ctx, userMsg)
 }
 func (b *swarmStubBridge) SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk {
 	return b.SendMessageStream(ctx, userMsg)

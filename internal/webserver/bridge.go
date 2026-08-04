@@ -30,6 +30,13 @@ type FullBridge interface {
 
 	// Chat
 	SendMessageStream(ctx context.Context, userMsg string) <-chan api.StreamChunk
+	// SendMessageStreamTo is SendMessageStream's explicit-chatID counterpart
+	// (PLAN_chatid_refactor.md Faz 4) — sends into chatID's own history
+	// without reading or moving which chat is globally "active", so a
+	// concurrent chat switch (from this same client or a different one, e.g.
+	// the GUI and internal/replcli talking to the same backend at once)
+	// can't redirect an in-flight reply into the wrong chat.
+	SendMessageStreamTo(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
 	SendMessageWithImageStream(ctx context.Context, userMsg string, imagePath string) <-chan api.StreamChunk
 	SendMessageWithFileStream(ctx context.Context, userMsg string, filePath string) <-chan api.StreamChunk
 	ExportChat() string

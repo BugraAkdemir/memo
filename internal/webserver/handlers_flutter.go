@@ -32,6 +32,14 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 
 	var req struct {
 		Message string `json:"message"`
+		// ChatID is optional (PLAN_chatid_refactor.md Faz 4) — a caller that
+		// knows which chat it's actually talking to (Flutter's currently
+		// open chat, internal/replcli's own session) should send it so the
+		// message lands there regardless of which chat the backend considers
+		// globally "active" at the moment the request is handled. Omitted
+		// for backward compatibility with older clients, which fall back to
+		// the previous implicit-active-chat behavior.
+		ChatID string `json:"chat_id"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
@@ -51,7 +59,12 @@ func (s *Server) handleSendStream(w http.ResponseWriter, r *http.Request) {
 	}
 
 	ctx := r.Context()
-	ch := s.fullBridge.SendMessageStream(ctx, req.Message)
+	var ch <-chan api.StreamChunk
+	if req.ChatID != "" {
+		ch = s.fullBridge.SendMessageStreamTo(ctx, req.ChatID, req.Message)
+	} else {
+		ch = s.fullBridge.SendMessageStream(ctx, req.Message)
+	}
 	streamSSE(ctx, w, flusher, ch)
 }
 

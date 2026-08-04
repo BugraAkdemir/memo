@@ -66,6 +66,32 @@ func TestSaveMemoryAsyncSkipsErrorReplies(t *testing.T) {
 	}
 }
 
+// TestSaveMemoryAsync_ClosedChannelDoesNotPanic is the regression test for
+// BUG_REPORT.md's RC-7: Shutdown() closes memorySaveCh once webSrv.Stop()
+// returns, but that only waits on each HTTP handler's own call stack — a
+// streaming reply's own detached goroutine can still be mid-finishStream
+// when that happens, and finishStream calls saveMemoryAsync synchronously.
+// A send on the now-closed channel used to panic with no recover of its
+// own; whichever unrelated streaming goroutine happened to be running the
+// call would catch it (via that goroutine's own recoverStreamPanic) and
+// misreport it as a generic "internal error" for that turn, with the
+// memory save itself silently lost either way. saveMemoryAsync must
+// recover its own send instead of panicking through to its caller.
+func TestSaveMemoryAsync_ClosedChannelDoesNotPanic(t *testing.T) {
+	a := &App{
+		cfg:          &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: true}},
+		memorySaveCh: make(chan saveTask, 1),
+	}
+	close(a.memorySaveCh)
+
+	defer func() {
+		if r := recover(); r != nil {
+			t.Fatalf("saveMemoryAsync panicked instead of recovering its own closed-channel send: %v", r)
+		}
+	}()
+	a.saveMemoryAsync("kullanıcı mesajı", "gerçek bir yanıt")
+}
+
 func TestParseExtractedFacts(t *testing.T) {
 	tests := []struct {
 		name string

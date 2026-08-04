@@ -45,6 +45,23 @@ func (a *App) saveMemoryAsync(userMsg, reply string) {
 	if reply == "" || isLLMErrorReply(reply) || !a.GetMemoryEnabled() {
 		return
 	}
+	// Shutdown() closes memorySaveCh once webSrv.Stop() returns — but that
+	// only waits on each HTTP handler's own call stack, not on a detached
+	// background goroutine a handler already started (a streaming reply's
+	// own goroutine can still be finishing finishStream/saveMemoryAsync
+	// after the request itself has ended). A send racing that close panics
+	// ("send on closed channel"); recovering it right here — instead of
+	// letting it propagate into whatever unrelated streaming goroutine
+	// happens to be running this call, where recoverStreamPanic would
+	// report it as a generic "internal error" mid-turn — keeps the failure
+	// correctly attributed and makes the loss observable instead of
+	// silent (BUG_REPORT.md RC-7). Narrow shutdown-timing window; doesn't
+	// happen on a normal, running backend.
+	defer func() {
+		if r := recover(); r != nil {
+			logx.Printf("WARN: memory save skipped (shutting down): %v", r)
+		}
+	}()
 	select {
 	case a.memorySaveCh <- saveTask{userMsg: userMsg, reply: reply}:
 	case <-time.After(2 * time.Second):

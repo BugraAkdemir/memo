@@ -164,6 +164,19 @@ API şekliyle DEĞİL — daha dar bir mekanizmayla:
 - **HTTP API sözleşmesini kırma** — eski endpoint'ler ve gövdeler aynen çalışmalı.
 - `streamMu`'nun "önceki cevap bitmeden yeni mesaj yok" kullanıcı-görünür
   davranışı bilinçli; onu gevşetmek bu planın kapsamı DIŞINDA.
+  **2026-08-05'te yeniden gözden geçirildi:** bu not tek-client senaryolar
+  (task loop vs. interaktif sohbet) düşünülerek yazılmıştı. Artık bilinen
+  gerçek bir sonucu var: GUI ve `internal/replcli` aynı backend'e aynı anda
+  bağlıyken (`streamMu` app-genelinde tek mutex, `chat.go`'daki her
+  `TryLock()` çağrısı) biri stream halindeyken diğerinin mesajı "⏳ Lütfen
+  önceki cevap tamamlanana kadar bekleyin." hatasıyla reddediliyor — farklı
+  sohbetlerde olsalar bile. Kullanıcıya soruldu, **bilinçli olarak
+  değiştirilmedi** (per-chat kilide çevirmek yerine mevcut davranış
+  korunmasına karar verildi) — ileride tekrar gündeme gelirse bu not ve
+  Faz 4'ün explicit-chatID altyapısı (`SendMessageStreamTo`) zaten per-chat
+  bir kilide geçişi kolaylaştırır, sadece `streamMu`'yu `sync.Mutex`'ten
+  `map[string]*sync.Mutex` (chat id başına) benzeri bir yapıya çevirmek
+  yeterli olurdu.
 - WhatsApp chat yolu (`sendWhatsAppChatStream`) ayrı pipeline — bu refactor'de
   dokunulmaz.
 - Orchestra modu `callLLMStream` önceliğinin en üstünde; chatID taşırken

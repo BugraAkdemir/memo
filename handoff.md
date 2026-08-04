@@ -1,4 +1,43 @@
-# Handoff — 2026-08-05 — GUI+replcli eşzamanlı çalışırken çakışan global state'ler: 4 bug, `/codebase-memory` ile bulunup teker teker düzeltildi
+# Handoff — 2026-08-05 (devam) — BUG_REPORT.md'deki 3 bekleyen bug (LK-1/SF-5/RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp düzeltildi
+
+## Özet
+
+Bir önceki oturumda (bu dosyanın bir sonraki maddesi — GUI/replcli çakışma bug'ları) paralel çalışan başka bir oturum, `BUG_REPORT.md`'ye 3 bug daha eklemişti (streaming/cancellation denetimi, kullanıcı talimatıyla sadece rapor — kod değişikliği yapılmamış): LK-1, SF-5, RC-7. Kullanıcı "bunları `/code-review` ve `/codebase-memory` ile doğrulamaya geç, düzeltmeye başla, kuralları unutma" dedi, sonra "soru sorma, işlerini bitir, commit'le, push'la, uyuyorum" diyerek ayrıldı — geri kalan iş tamamen otonom yapıldı.
+
+## LK-1 — agentcli subprocess pipe sızıntısı (`14f4486`)
+
+`internal/agentcli`'nin `ChatCompletionStream`'i (hem Claude Code hem Codex — rapor sadece Claude Code'u işaret etmişti, düzeltirken Codex'te de birebir aynı kusur bulundu) `scanner.Scan()` ile stdout pipe'ını okuyordu, ctx'e hiç bakmadan. `exec.CommandContext` iptalde sadece **doğrudan** alt süreci öldürüyor — `--dangerously-skip-permissions`/`--dangerously-bypass-approvals-and-sandbox` ile başlatılan bir tool-call child'ı hayatta kalırsa pipe'ı açık tutuyor, `Scan()` sonsuza dek bloklanıyor, goroutine hiç dönmüyor.
+
+Go'nun kendi `os/exec` dokümantasyonu tam bu senaryoyu tarif ediyor (doğrudan kaynağından doğrulandı, `go doc os/exec Cmd.WaitDelay`). İki katmanlı düzeltme:
+1. `cmd.Cancel` artık tüm process group'u öldürüyor (`internal/agentcli/sysproc_unix.go`/`sysproc_windows.go`, `internal/llama`'nın Setpgid deseniyle aynı).
+2. `cmd.WaitDelay` (5s) torun süreç yine de grup dışına kaçarsa (örn. kendi `setsid` çağırırsa) yedek — pipe'ı zorla kapatıp `Scan()`'i kurtarıyor.
+
+`/code-review` ilk (sadece WaitDelay) versiyona karşı çalıştırıldı, 2 gerçek eksik buldu, ikisi de aynı commit'te kapatıldı: (1) WaitDelay tek başına sadece Go tarafındaki okuyucuyu kurtarıyordu, süreci öldürmüyordu — `--dangerously-*` yetkisiyle çalışan bir süreç arka planda öldürülmeden kalmaya devam ediyordu (process-group kill ile kapatıldı); (2) testin sabit 200ms bekleme süresi gerçek bir senkronizasyon garantisi değildi, yavaş CI'da yanlış sebepten geçebilirdi (marker-file polling'e çevrildi). Fix sonrası `pgrep -af 'sleep 3'` ile boşta kalan süreç olmadığı doğrulandı.
+
+## SF-5 — agent boş-cevap dalı terminal chunk göndermiyor (`7f434ed`)
+
+`callAgentStream`'in bir dalı (`streamCh` hiç `Done` göndermeden boş kapanırsa) sadece session'a kaydediyordu, canlı client'a hiçbir şey göndermiyordu. Gerçek `agent.Executor`/`Pipeline.RunStream`'in HER çıkış yolu (ctx-iptal, LLM hatası, tool-call yok, izin iptali, max-iterasyon, panic recovery) zaten terminal chunk gönderiyor — yani bu dal bugün gerçekten tetiklenemiyor, dürüstçe "gelecekteki bir pipeline değişikliğine karşı savunma" olarak düzeltildi, "canlı bug" değil. Test edilebilir olması için drain mantığı `drainAgentStream` diye ayrı metoda çıkarıldı (elle kurulmuş boş bir kanalla test ediliyor, gerçek pipeline'a ihtiyaç yok).
+
+## RC-7 — memorySaveCh kapanma yarışı (`5294014`)
+
+`Shutdown()`'ın `close(memorySaveCh)`'i "artık hiçbir gönderim olmayacak" varsayıyordu ama bu garanti sadece `webSrv.Stop()`'un HTTP handler'ların kendi call stack'ini beklemesine dayanıyor — handler'ın başlattığı arka plan goroutine'i (streaming reply) hâlâ `finishStream`→`saveMemoryAsync` içinde olabilir. Kapanmış kanala gönderim panic atıyordu, panic'i o an çalışan **başka bir** goroutine'in `recoverStreamPanic`'i yanlış ilişkilendirilmiş şekilde yakalıyordu, hafıza kaydı sessizce kayboluyordu. `saveMemoryAsync` artık kendi gönderimini recover ediyor, doğru loglanmış bir kayıpla — yarışın kendisi kapanmadı (bunun için her streaming giriş noktasının shutdown'dan önce join edilmesi gerekirdi, büyük bir refactor, LOW şiddet için yapılmadı), ama artık gözlemlenebilir ve doğru kaynağa atfedilmiş.
+
+## Metodoloji
+
+Her üçü de: `/codebase-memory` ile kod okunup iddia doğrulandı (LK-1 için Go'nun kendi stdlib dokümantasyonu bile kontrol edildi), fix yazıldı, regresyon testi yazıldı, fix geçici geri alınıp testin GERÇEKTEN kırıldığı doğrulandı, fix geri getirildi, `-race` ile tam suite çalıştırıldı, sonra commit edildi. LK-1'in ilk versiyonu ayrıca `/code-review`'dan geçirildi (2 gerçek bulgu, ikisi de aynı commit'te kapatıldı) — SF-5/RC-7 için ikinci bir `/code-review` çağrısı harness tarafından reddedildi (`disable-model-invocation` — muhtemelen oturum başına tek kullanım), bu ikisi elle gözden geçirildi.
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" -race ./...` — tüm paketler yeşil, her commit'te.
+- `BUG_REPORT.md` güncellendi: LK-1/SF-5/RC-7 kaldırıldı (dosyanın kendi kuralı: düzeltilen bug tekrar dokümante edilmez, git log yeter), özet tablo 0'a döndü.
+- **Canlı gerçek `claude`/`codex` binary'siyle test edilmedi** — birim testleriyle ve (LK-1 için) gerçek subprocess/pipe/process-group davranışıyla doğrulandı.
+
+## Sıradaki Oturum İçin
+
+1. RC-7'nin tam çözümü (her streaming giriş noktasının shutdown'da join edilmesi) istenirse ayrı, büyük bir iş olarak ele alınmalı.
+2. Önceki oturumdan devam eden açık maddeler (ok tuşu navigasyonu, CLI Minimal Mode) hâlâ bekliyor.
+
+
 
 ## Özet
 

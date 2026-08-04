@@ -1,7 +1,12 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-05 — streaming/cancellation derin denetimi + `-race` soak; bulunan 3 bug **doğrulandı ama düzeltilmedi** (kullanıcı talimatı: sadece rapor, kod değişikliği yok — LK-1, SF-5, RC-7 aşağıda).
+> **Son güncelleme:** 2026-08-05 — bir önceki denetimde bulunan 3 bug (LK-1, SF-5, RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp hepsi düzeltildi:
+> - **LK-1** (`14f4486`) — `internal/agentcli`'nin `ChatCompletionStream`'i (Claude Code + Codex, ikisi de) ctx iptalinde sadece doğrudan alt süreci öldürüyordu; `--dangerously-skip-permissions`/`--dangerously-bypass-approvals-and-sandbox` ile başlattığı bir torun süreç stdout pipe'ını açık tutarsa `scanner.Scan()` sonsuza kadar bloklanıyordu. `cmd.Cancel` artık tüm process group'u öldürüyor (`internal/llama`'nın Setpgid deseni), `cmd.WaitDelay` (5s) torun süreç yine de kaçarsa yedek. İlk versiyon `/code-review`'dan geçti, 2 gerçek eksik bulundu ve kapatıldı: process-group kill eksikti (sadece pipe'ı zorla kapatıyordu, süreci öldürmüyordu — `--dangerously-*` yetkisiyle çalışan bir süreç arka planda öldürülmeden kalıyordu), test'in sabit 200ms bekleme süresi gerçek bir senkronizasyon garantisi değildi (marker-file polling'e çevrildi).
+> - **SF-5** (`7f434ed`) — `callAgentStream`'in bir dalı (`streamCh` boş kapanırsa) terminal chunk göndermiyordu. Gerçek pipeline'ın (`agent.Executor`/`Pipeline.RunStream`) her çıkış yolu zaten terminal chunk gönderiyor — bu yüzden bugün canlı olarak tetiklenemez, ama gelecekteki bir pipeline değişikliğine karşı savunma amaçlı düzeltildi. Test edilebilir olması için `drainAgentStream` diye ayrı bir metoda çıkarıldı.
+> - **RC-7** (`5294014`) — `Shutdown()`'ın `close(memorySaveCh)`'i, hâlâ süren bir stream goroutine'inin `saveMemoryAsync` gönderimiyle yarışabiliyordu (`webSrv.Stop()` sadece HTTP handler'ın kendi call stack'ini bekliyor, arkaplan goroutine'lerini değil) — panic oluyordu, başka bir goroutine'in `recoverStreamPanic`'i yanlış ilişkilendirilmiş şekilde yakalıyordu. `saveMemoryAsync` artık kendi gönderimini recover ediyor, doğru loglanmış bir kayıpla.
+>
+> Her üçü de kendi reprodüksiyon testiyle geldi (fix geri alınınca gerçekten kırıldığı doğrulandı), `-race` ile tüm backend yeşil.
 >
 > 2026-07-24 — **TD-2 tamamen kapatıldı** (`e88aa0d`/`7dfdd99`/`d875fbe`/`169e069`/`ea67c31`): inference-contention yarısı (cap/eviction yarısı zaten `a925109` ile kapanmıştı). Yeni `App.beginBackgroundLLMCall`/`preemptBackgroundLLM` (`internal/app/llm.go`) — `extractAndPinFacts` artık kendi LLM çağrısını iptal edilebilir bir context üzerinden yapıyor; gerçek bir chat mesajı local model'e (tek inference slot, `llama-server --parallel 1`) gitmek üzereyken (`callLLMStream`'in local dalı, `SendMessage`/`-WithImage`/`-WithFile`) hâlâ süren extraction çağrısını önce iptal ediyor — böylece yeni mesaj artık extraction'ın arkasında sıraya girmiyor. `callLLM`'in kendisine eklenmedi (hem gerçek gönderim hem arka plan çağrıları paylaşıyor — extraction'ın kendi çağrısını kendi kendine iptal etmesini önlemek için preemption sadece sırf-gerçek-chat giriş noktalarına eklendi). 3 regresyon testi (`TestPreemptBackgroundLLM_*`, `TestBeginBackgroundLLMCall_*`).
 >
@@ -47,46 +52,10 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 1 |
-| 🟢 LOW | 2 |
+| 🟡 MEDIUM | 0 |
+| 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **3** |
-
----
-
-## Açık Bug'lar (2026-08-05)
-
-Denetim notu: üçü de kaynak kodu üzerinde doğrulandı (satır referansları güncel koddur); hiçbiri live senaryoda üretilmedi, düzeltme yapılmadı. `-race` soak ayrıca `count=3` × tüm `./internal/...` için **0 DATA RACE / tüm paketler PASS** sonucunu verdi.
-
-### LK-1 — agentcli subprocess pipe sızıntısı / sonsuz blok (MEDIUM)
-
-**Yer:** `internal/agentcli/claude_code.go` — `ChatCompletion` (satır 81-94) ve `ChatCompletionStream`'in goroutine'i (satır 145-198).
-
-**Kök neden:** `ChatCompletion` çıktı kanalını `for chunk := range ch` ile boşaltıyor ve bu döngüde `ctx` hiç kontrol edilmiyor. Stream goroutine'i içinde `scanner.Scan()` (satır 152) EOF'a kadar bloklar; EOF ancak stdout pipe'ının tüm yazıcı uçları kapanınca gelir. `--dangerously-skip-permissions` ile çalışan `claude` alt süreçleri (shell, git, editör vb.) spawn edebilir; `exec.CommandContext` iptalinde yalnızca **doğrudan** alt süreç SIGKILL ile öldürülür, torun süreçler pipe yazma ucunu devralmışsa `Scan()` hiç EOF görmez → `defer close(ch)` (satır 146) asla yürümez → `ch` sonsuza dek açık kalır.
-
-**Etki:** İptal edilen/takılan bir claude-code-cli sohbeti: `ChatCompletion` çağıranları (arka plan LLM yolları) sonsuza dek bekler; cli_stream yolu üzerinden kullanılıyorsa yapılan iş sonsuza dek "çalışıyor" görünür ve o sohbetteki sonraki gönderimler engellenir; sızan goroutine kalıcıdır ve yalnızca backend restart ile temizlenir. `cmd.Wait()` de hiçbir zaman geri dönmeyeceği için bu durum da olayı kalıcılaştırır.
-
-**Önerilen düzeltme (uygulanmadı):** `internal/llama`'nın `Setpgid`/süreç grubu öldürme desenini buraya taşımak (iptalde torunları da öldürür) VEYA asgari olarak `ChatCompletion` döngüsüne `select { case chunk, ok := <-ch: ... case <-ctx.Done(): return nil, ctx.Err() }` idiomu eklemek (çağıranın takılmasını önler ama goroutine sızıntısını ve cli_stream durum sorununu çözmez).
-
-### SF-5 — agent boş-cevap dalı terminal chunk göndermiyor (LOW)
-
-**Yer:** `internal/app/llm.go` satır 263-268 (`callAgentStream`).
-
-**Kök neden:** `if fullReply.Len() > 0 { finishStream + trySend(Done) } else { recordStreamError(...) }` — else dalında trySend edilmediği için yalnızca `defer close(outCh)` çalışır; akış, terminal `Done:true` chunk'ı gönderilmeden kapanır. AGENTS.md "Streaming/SSE" kuralının ihlali: her stream-dönüş dalı terminal chunk göndermeli (bunun üç turda yaptığı). 
-
-**Etki:** Agent pipeline'ı boş bir yanıt döndürürse (nadir ama mümkün) client terminal işareti almaz — sessiz boş cevap, hata/uyarı çıkmaz. Erişilebilirlik düşük; diğer dallar aynı düzeltmeden geçtiği için tutarsız koşullar içinde kaldı.
-
-**Önerilen düzeltme (uygulanmadı):** else dalına `trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent boş yanıt döndürdü", Done: true})` (veya `FinishReason:"stop"` + `Done:true`).
-
-### RC-7 — routine/memory kanalının kapanma yarışı (LOW)
-
-**Yer:** `internal/app/app.go` satır 699 (`close(a.memorySaveCh)`) ↔ `internal/app/llm.go` satır 1059 (`a.saveMemoryAsync(...)`, `finishStream` içinden) ↔ `internal/app/memory.go` satır 44-49 (`select` ile kanala send).
-
-**Kök neden:** Shutdown sırasında `close(memorySaveCh)` yapılırken hâlâ tamamlanmakta olan bir stream'in `finishStream` → `saveMemoryAsync` yolu kapanmış kanala send dener; "send on closed channel" runtime panic'i fırlatır. Panic, gönderen goroutine'in `recoverStreamPanic` sarmalı tarafından yakalanır (süreç çökmez), ancak o turun memory kaydı sessizce kaybolur.
-
-**Etki:** Dar pencere (kapanış sırasındaki in-flight stream sonu + 15s watchdog zaten süreci bitirir) ve panic recover edildiği için pratik etki düşüktür: son turdaki bir memory kaydı kaybolabilir. Ayrıca `app.go:698-699` yorumu "no more sends will occur" diyor — bu garanti, kapanan kanala send'i kısmen gözden kaçırıyor (tüm write'ların Shutdown öncesi tamamlanmış olması açıkça garanti edilmeli).
-
-**Önerilen düzeltme (uygulanmadı):** `saveMemoryAsync`'de send seçeneğine `defer recover()` eklemek (en azından sessiz kayıp → loglu kayıp) ve/veya `close(memorySaveCh)` öncesinde in-flight stream'lerin bittiğini garanti etmek.
+| **TOPLAM** | **0** |
 
 ---
 

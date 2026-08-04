@@ -130,15 +130,34 @@ API şekliyle DEĞİL — daha dar bir mekanizmayla:
 - [x] `CGO_ENABLED=1 go build/vet/test ./... -race -count=1` → tüm paketler
   yeşil. `GOOS=windows go vet ./...` → temiz.
 
-### Faz 4 — HTTP + frontend netleştirme (opsiyonel genişleme)
+### Faz 4 — HTTP + frontend netleştirme ✅ tamamlandı 2026-08-04
 
-- [ ] `POST /api/chat/stream` (handlers_flutter.go) body'sine opsiyonel
-  `chat_id` alanı ekle; verilmişse `SendMessageStreamTo`, verilmemişse eski
-  davranış. Eski Flutter sürümleri kırılmaz.
-- [ ] Flutter `chat_provider.dart`: istek atarken o an bağlı olduğu sohbetin
-  ID'sini gönder (`activeChatIdProvider`'a "körü körüne güvenme" kuralının
-  gerçek çözümü). Mobile client'a da aynı alanı ekle.
-- [ ] `flutter analyze lib/` + `flutter test` yeşil → commit.
+> Uzun süre "opsiyonel genişleme" sayılmıştı, ama gerçek bir kullanıcı
+> raporuyla zorunlu hale geldi: GUI ve `internal/replcli` (terminal `memo`)
+> aynı backend'e aynı anda bağlanabiliyor — biri chat değiştirince/yeni
+> sohbet açınca diğerinin bir sonraki mesajı sessizce yanlış sohbete
+> gidebiliyordu. commit `c60fab1` (backend), `4497f22` (frontend), `4460fde`
+> (replcli).
+
+- [x] `POST /api/send/stream` (handlers_flutter.go) body'sine opsiyonel
+  `chat_id` alanı eklendi; verilmişse `SendMessageStreamTo`, verilmemişse
+  eski davranış (`FullBridge.SendMessageStreamTo` eklendi). Eski
+  istemciler kırılmadı — `chat_id` yoksa davranış birebir eskisi.
+- [x] Flutter `chat_provider.dart`: `sendMessage()` zaten resolve ettiği
+  `activeChatId`'yi artık `api.sendMessageStream(message, chatId: ...)`
+  ile gönderiyor.
+- [x] `internal/replcli`: `Client.SendStream` yeni `chatID` parametresi
+  alıyor; `repl.go`'nun `sendMessage()`'ı `session.chatID`'yi, `main.go`'nun
+  print-mode (`memo -p`) yolu kendi resolve ettiği `chatID`'yi geçiyor —
+  ikisi de artık implicit-active'e hiç dokunmuyor.
+- [x] Mobile client: yok (bu depoda mobile client'ın kendisi bulunmuyor,
+  kapsam dışı bırakıldı).
+- [x] Regresyon testleri: `handlers_send_stream_test.go` (backend, iki test),
+  `api_client_test.dart` (frontend, üç test), `client_test.go` (replcli, iki
+  test) — hepsi fix'i geri alınca gerçekten kırılıyor (runtime assertion ya
+  da compile hatası), doğrulanmış.
+- [x] Backend `-race` + `flutter analyze`/`flutter test` yeşil → commit
+  (3 ayrı commit, backend/frontend/replcli).
 
 ## Dokunma / dikkat
 

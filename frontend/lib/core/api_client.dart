@@ -118,14 +118,25 @@ class MemoApiClient {
   }
 
   /// Send a message with streaming SSE. Yields [StreamChunk] with content and/or thinking.
+  ///
+  /// [chatId], when provided, is sent as `chat_id` so the backend writes
+  /// into that exact chat via SendMessageStreamTo instead of whichever chat
+  /// it considers globally "active" at the moment the request is handled —
+  /// see PLAN_chatid_refactor.md Faz 4. Without it, a second client (e.g.
+  /// internal/replcli's terminal REPL, which switches/creates chats on its
+  /// own) can silently redirect this reply into the wrong chat.
   Stream<StreamChunk> sendMessageStream(
     String message, {
+    String? chatId,
     CancelToken? cancelToken,
   }) async* {
     try {
       final response = await _dio.post(
         '/api/send/stream',
-        data: {'message': message},
+        data: {
+          'message': message,
+          if (chatId != null && chatId.isNotEmpty) 'chat_id': chatId,
+        },
         options: Options(responseType: ResponseType.stream),
         cancelToken: cancelToken,
       );

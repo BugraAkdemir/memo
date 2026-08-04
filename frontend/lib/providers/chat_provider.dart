@@ -512,6 +512,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       } else if (streamingEnabled) {
         final stream = api.sendMessageStream(
           message,
+          chatId: activeChatId,
           cancelToken: _cancelToken,
         );
 

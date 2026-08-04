@@ -169,6 +169,47 @@ void main() {
     });
   });
 
+  // Regression tests for PLAN_chatid_refactor.md Faz 4: sendMessageStream
+  // used to send only {"message"}, so the backend always wrote into
+  // whichever chat it considered globally "active" — a hazard once a second
+  // long-lived client (internal/replcli's terminal REPL) can switch/create
+  // chats on the same backend at any time. chatId must now be forwarded as
+  // chat_id when the caller has one.
+  group('sendMessageStream chat_id (PLAN_chatid_refactor.md Faz 4)', () {
+    test('includes chat_id in the request body when provided', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      final adapter = _CapturingStreamAdapter('data: {"done":true}\n\n');
+      client.dio.httpClientAdapter = adapter;
+
+      await client.sendMessageStream('hello', chatId: 'chat-A').toList();
+
+      expect(adapter.lastPath, '/api/send/stream');
+      expect(adapter.lastData, containsPair('message', 'hello'));
+      expect(adapter.lastData, containsPair('chat_id', 'chat-A'));
+    });
+
+    test('omits chat_id from the request body when not provided', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      final adapter = _CapturingStreamAdapter('data: {"done":true}\n\n');
+      client.dio.httpClientAdapter = adapter;
+
+      await client.sendMessageStream('hello').toList();
+
+      expect(adapter.lastData, containsPair('message', 'hello'));
+      expect(adapter.lastData!.containsKey('chat_id'), isFalse);
+    });
+
+    test('omits chat_id when it is an empty string', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      final adapter = _CapturingStreamAdapter('data: {"done":true}\n\n');
+      client.dio.httpClientAdapter = adapter;
+
+      await client.sendMessageStream('hello', chatId: '').toList();
+
+      expect(adapter.lastData!.containsKey('chat_id'), isFalse);
+    });
+  });
+
   // Faz 1.4, docs/plans/PLAN_voice_live_mode_faz1.md: synthesizeSpeech is
   // handleTTSSynthesize's client-side counterpart -- unlike most endpoints
   // here it must round-trip raw, non-JSON bytes (Content-Type: audio/wav),
@@ -258,6 +299,39 @@ class _CapturingAdapter implements HttpClientAdapter {
       200,
       headers: {
         Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
+/// A fake [HttpClientAdapter] for `responseType: ResponseType.stream`
+/// endpoints (SSE) — records the last request's path and JSON body like
+/// [_CapturingAdapter], but answers with [sseBody] as a byte stream instead
+/// of a single decoded JSON response.
+class _CapturingStreamAdapter implements HttpClientAdapter {
+  final String sseBody;
+  String? lastPath;
+  Map<String, dynamic>? lastData;
+  _CapturingStreamAdapter(this.sseBody);
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    lastPath = options.path;
+    if (options.data is Map) {
+      lastData = Map<String, dynamic>.from(options.data as Map);
+    }
+    return ResponseBody.fromBytes(
+      utf8.encode(sseBody),
+      200,
+      headers: {
+        Headers.contentTypeHeader: ['text/event-stream'],
       },
     );
   }

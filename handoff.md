@@ -1,4 +1,50 @@
-# Handoff — 2026-08-04 — "Aç-kapat sonrası hâlâ CLI modunda" bug'ı: kök neden global `activeProviderName`, iki ayrı fix
+# Handoff — 2026-08-05 — GUI+replcli eşzamanlı çalışırken çakışan global state'ler: 4 bug, `/codebase-memory` ile bulunup teker teker düzeltildi
+
+## Özet
+
+Önceki maddenin ("aç-kapat sonrası CLI modunda takılı kalma") devamı: kullanıcı "CLI'lar açıkken GUI ve replcli arasında çarpışan mantık hataları var mı, tespit et" dedi. `/codebase-memory` ile araştırıldı, backend'de **tek bir `App` instance'ının hem Flutter GUI hem de terminal `memo` (replcli) tarafından aynı anda paylaşıldığı**, ama pek çok state'in per-client/per-chat değil **process-wide global** olduğu görüldü — 4 ayrı çarpışma noktası bulundu, kullanıcıyla teker teker (her biri için ayrı onay) düzeltildi.
+
+## Bug A — implicit "aktif sohbet" (kök mimari sorun)
+
+`POST /api/send/stream` (hem Flutter hem replcli'nin kullandığı endpoint) mesaj gövdesinde chat id taşımıyordu — backend her zaman `sessions.Manager.active`'e (paylaşılan, global) yazıyordu. Bir client sohbet değiştirince/yeni sohbet açınca diğerinin bir sonraki mesajı sessizce yanlış sohbete gidebiliyordu.
+
+**Bulgu:** `docs/plans/PLAN_chatid_refactor.md` diye 2026-07-06'da yazılmış, Faz 1-3'ü tamamlanmış ama Faz 4'ü (HTTP+frontend wiring) hiç yapılmamış bir plan zaten vardı — tam olarak bu sorunu çözüyordu (`SendMessageStreamTo(ctx, chatID, userMsg)` zaten mevcuttu, sadece HTTP katmanına hiç bağlanmamıştı).
+
+**Fix (3 commit, `c60fab1`/`4497f22`/`4460fde`):** `/api/send/stream`'e opsiyonel `chat_id` eklendi (`FullBridge.SendMessageStreamTo`); Flutter `sendMessageStream(chatId: activeChatId)` gönderiyor; replcli `SendStream(ctx, s.chatID, ...)` gönderiyor (main.go'nun `-p` print-mode yolu dahil). Plan dosyası Faz 4 tamamlandı olarak güncellendi (`a70cb56`).
+
+## Bug B — `App.streamMu` (app-genelinde tek stream kilidi)
+
+GUI ve replcli aynı anda stream'lerse biri "önceki cevap tamamlanana kadar bekleyin" hatası alıyor, farklı sohbetlerde olsalar bile. **Plan dosyası bunu bilinçli tasarım olarak işaretlemişti** (task loop gibi tek-client senaryolar düşünülerek). Kullanıcıya soruldu → **dokunulmadı, sadece not düşüldü** (`4d8d396`) — per-chat kilide çevirmek istenirse Faz 4'ün chatID altyapısı zaten kolaylaştırıyor.
+
+## Bug C — `activeProviderName` eşzamanlı sızıntı + eksik kaçış yolu
+
+GUI genel provider seçiciden bir CLI provider'ı (Claude Code CLI/Codex CLI) aktif yaparsa, replcli'nin TÜM düz mesajları da (CLI-tag'siz olsa bile) o subprocess'e gidiyor — çünkü replcli hiç per-chat `Session.CLIProvider` kullanmıyor, sadece bu global değişkene bakıyor. **Daha ciddi bulgu:** replcli'de bunu geri alacak HİÇBİR komut yoktu — `/model` sadece yerel model başlatıyor (provider'a dokunmuyor), routing önceliği (Orchestra→external→local) yerel model çalışsa bile external provider'ı öncelikli tutuyor.
+
+**Fix (`4a3653f`):** `/disconnect` komutu eklendi — `SetActiveProvider(ctx, "")` çağırıp yerel modele döndürüyor, `/` menüsüne ve TR/EN yardım metnine eklendi.
+
+## Bug D — global `agentEnabled`/`WebSearchEnabled` toggle'ları
+
+`activateChat()` (her REPL launch/`/clear`/`/session` switch'te) koşulsuz `SetAgentEnabled(true)` + `SetWebSearchEnabled(true)` çağırıyordu — ikisi de per-chat değil, backend-genelinde tek durum. GUI açıkken terminalde `memo` açmak/`/clear` yapmak, GUI'nin o an açık sohbetinde bu ayarları sessizce değiştiriyordu.
+
+**Fix (`2166990`):** Agent mode çağrısı tamamen kaldırıldı — bugünkü Bug A fix'i sayesinde artık gereksiz (`SendMessageStreamTo` zaten `sm.IsAgentChat(chatID)`'e göre per-call zorluyor, `routeStream`'in `agentActive && (hasProvider || localModelRunning)` dalına kadar izlenerek doğrulandı). Web search çağrısı da kaldırıldı — per-chat eşdeğeri yok, ve bunu sessizce zorlamak zaten Memo'nun gizlilik-öncelikli tasarımına aykırıydı (bkz. AGENTS.md hedef kitle notları). Kaybolan "REPL'de varsayılan açık" davranışının yerine **yeni `/web [on|off]` komutu** eklendi (REPL'de bunu açıp kapatacak hiçbir komut yoktu, sadece sessiz auto-on vardı).
+
+## Metodoloji notu
+
+Kullanıcı her bug için "önce reprodüksiyon testi yaz (fail etmeli), sonra düzelt, sonra testi yeşile çevir" istedi — 4 bug'ın hepsinde bu döngü uygulandı: her fix, ilgili dosyalar `git stash` ile geçici geri alınıp testlerin GERÇEKTEN kırıldığı doğrulandıktan sonra commit edildi (sadece "yeşil" görmek yetmedi, kırmızıyı da görmek gerekti). Bug B ve C/D'nin bazı alt-kararları kullanıcıya doğrudan soruldu (AskUserQuestion) — düşük riskli/faydası kesin olanlar yapıldı, davranış değiştiren veya kapsamı genişleten kısımlar önce onaylandı.
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./...` — tüm paketler yeşil, her commit'te.
+- Frontend: `flutter analyze` + `flutter test` (147/147, +3 yeni) — yeşil, Rule #8 grep temiz.
+- Her bug'ın kendi reprodüksiyon testi var, hepsi fix öncesi kırmızı olduğu doğrulanarak commit edildi.
+- **Canlı, gerçek GUI+replcli eşzamanlı senaryo bu ortamda test edilmedi** — birim/entegrasyon testleriyle doğrulandı, kullanıcının gerçek ortamda (iki client'ı gerçekten aynı anda açıp) teyit etmesi faydalı olur.
+
+## Sıradaki Oturum İçin
+
+1. Bug B (streamMu) kullanıcı isterse per-chat kilide çevrilebilir — plan dosyasında yol tarif edildi.
+2. `/disconnect` ve `/web` gerçek `claude`/`codex` binary'leriyle canlı test edilmedi.
+3. Önceki oturumdan devam eden açık maddeler (ok tuşu navigasyonu, CLI Minimal Mode) hâlâ bekliyor.
+
 
 ## Özet
 

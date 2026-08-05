@@ -83,6 +83,8 @@ KOMUTLAR / COMMANDS
 SUNUCU / SERVER
   --headless                  REPL'siz, sadece backend / backend only, no REPL
   --port <n>                  Backend portu (varsayılan 8090) / backend port
+  --lan                       (--headless ile) 0.0.0.0'a bağlan, X-Memo-Token zorunlu
+                              (with --headless) bind 0.0.0.0, require X-Memo-Token
 
 Ayrıntılı sohbet komutları için Memo içinde /help yaz.
 Type /help inside Memo for the in-chat command list.

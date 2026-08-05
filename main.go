@@ -34,6 +34,7 @@ func main() {
 	prompt := flag.String("p", "", "Send a single message non-interactively, print the reply plus [chat:<id>] and a [memory:...] status line, then exit — no terminal REPL. Scripting/testing only, mirrors what the interactive REPL does for one turn.")
 	chatID := flag.String("chat", "", "Existing chat ID to continue with -p (see [chat:<id>] from a previous -p run). Omitted: -p starts a brand-new agent chat, same as an interactive session would.")
 	autoAllow := flag.Bool("auto-allow", false, "With -p: automatically allow any tool permission request instead of denying it, so a scripted turn can actually run agent tools (file edit, command, web search) instead of being blocked. DANGEROUS outside a disposable test environment — the agent gets to act on the filesystem/shell with zero human review.")
+	lanMode := flag.Bool("lan", false, "Headless mode only: bind 0.0.0.0 instead of 127.0.0.1 and require the X-Memo-Token/Authorization Bearer header on every request (same auth remote access uses), instead of a 127.0.0.1-only bind that nothing outside the host — including Docker's own port-forwarding — can reach. For running the backend as a LAN-reachable service (Docker/CasaOS, a home server), not for the interactive REPL/GUI path. A token is generated on first use and persisted to config.yaml; it is printed to the log on every boot.")
 
 	// Standalone commands: each prints or does one thing and exits, without
 	// starting a session or touching the backend lifecycle. Both the short
@@ -166,6 +167,14 @@ func main() {
 				os.Exit(1)
 			}
 			log.Printf("Memo backend server running on port %d", *port)
+
+			if *lanMode {
+				if err := a.SetRemoteAccess(true, *port); err != nil {
+					fmt.Fprintf(os.Stderr, "FATAL: --lan: %v\n", err)
+					os.Exit(1)
+				}
+				log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — X-Memo-Token required on every request: %s", *port, a.GetRemoteAccessToken())
+			}
 		}
 
 		// Wait for an interrupt signal or an internal shutdown request.

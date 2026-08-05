@@ -1,3 +1,43 @@
+# Handoff — 2026-08-06 — CasaOS/Docker backend-only dağıtım desteği
+
+## Özet
+
+Kullanıcı "Memo'yu CasaOS'ta çalışır hale getirelim" dedi. İki yol arasında seçim sunuldu (AskUserQuestion): backend-only container (hızlı, tarayıcıdan sohbet yok, mevcut Flutter/CLI client bağlanır) vs. tam Flutter web portu (çok daha büyük iş — 10 dosyada dart:io kullanımı, web platformu hiç açılmamış). Kullanıcı backend-only'i seçti. `commit baa590d`, `6b8f2df`.
+
+## Kök tespitler (uygulamaya başlamadan önce)
+
+- `--headless` her zaman `127.0.0.1`'e bağlanıyordu; LAN moduna (0.0.0.0) geçiş SADECE GUI'den `SetRemoteAccess` çağrısıyla runtime'da oluyordu — config/flag üzerinden boot'ta doğrudan LAN moduna geçecek bir yol yoktu (sadece ngrok/tailscale modları kendi kendine bind ediyordu). Docker'da bu kritik: container içinde `127.0.0.1`'e bağlı bir servise `-p` port mapping ULAŞAMAZ (iptables DNAT container arayüzüne yönlendirir, loopback'e değil).
+- `internal/config.DataDir()` zaten `MEMO_DATA_DIR` env var'ını onurlandırıyor, `ConfigDir()` de `DataDir()`'in ebeveyninin "config" kardeşi olarak otomatik türüyor — tek bir `/memo` volume (`MEMO_DATA_DIR=/memo/data`) hem data hem config'i kapsıyor, ekstra env var gerekmiyor.
+- `binarySearchBasesFrom`/vec0 lookup zaten cwd + exe dizini + ebeveynini tarıyor — `/app` WORKDIR'ı + `/app/binaries/linux/cpu/...` layout'u sıfır ekstra kod değişikliğiyle çalışıyor.
+- `remoteAuthMiddleware` LAN modunda (`listenAddr=="0.0.0.0"`) loopback'i bile muaf tutmuyor — her istek token ister, healthcheck'te de bunu hesaba kattım.
+
+## Yapılanlar
+
+1. **`--lan` bayrağı** (`main.go`, `cli_flags.go`): `--headless` ile birlikte, server başladıktan hemen sonra `a.SetRemoteAccess(true, *port)` çağırıyor — mevcut 0.0.0.0 bind + X-Memo-Token middleware'ini tekrar kullanıyor, yeni bir güvenlik yüzeyi açmıyor. Token boot'ta loglanıyor. Canlı doğrulandı: 0.0.0.0'a bağlanıyor, token'sız 401, token'lı 200.
+2. **`Dockerfile`** (repo kökü, multi-stage): builder `golang:1.26-bookworm` (`CGO_ENABLED=1`, `-tags sqlite_fts5`), runtime `debian:bookworm-slim`. Sadece `binaries/linux/cpu` gömülü (GPU passthrough varsayılmıyor — CasaOS/NAS donanımı için gerçekçi değil); llama.cpp'nin dev/debug CLI araçları (`llama-cli`/`-bench`/`-imatrix`/... ) ve whisper-server+model (`ggml-small.bin`, 466MB) `find`/`rm` ile budanıyor, sadece `llama-server` + `vec0.so` + paylaşılan kütüphaneler kalıyor.
+3. **`.dockerignore`**: `binaries/` toplamda 2.6GB (windows/darwin/nvidia/amd/ngrok + whisper modeli) — build context'e gitmesin diye budandı.
+4. **`docker/entrypoint.sh`**: mounted `/memo` volume'e sadece ilk açılışta (dosya yoksa) temiz `config.yaml`/`providers.json` seed'liyor, sonra `exec memo --headless --port 8090 --lan`.
+5. **`docker/docker-compose.yml`**: CasaOS'un "install a customized app" akışı için `x-casaos` metadata bloğu (TR+EN açıklama, ikon/kategori/port_map). `image:` placeholder — CasaOS Dockerfile'dan build ETMİYOR, kullanıcının image'ı build edip bir registry'ye push etmesi gerekiyor (README'de anlatıldı).
+6. **`docker/README.md`**: build/push, CasaOS kurulum, token'ı `docker logs`'tan alma, client bağlama adımları + **canlı doğrulanmamış olduğu net şekilde belirtildi** (bu ortamda `docker` binary'si yok, aşağıya bak).
+7. **Flutter client tarafında gerçek bir eksik bulundu ve kapatıldı:** Settings → Remote Access → "Backend Server URL" alanı sadece URL alıyordu, token için hiçbir alan yoktu. Mevcut `savedRemoteToken`/`onRemoteTokenLearned` mekanizması (`api_client.dart`) sadece "kendi doğurduğun backend'i sonradan LAN'a açtın" senaryosunda otomatik öğreniyor — CasaOS container'ı gibi YABANCI bir backend'e bağlanırken bu kısayol yok, token'ın elle girilmesi gerekiyor. `BackendTokenNotifier`/`backendTokenProvider` (`settings_provider.dart`, `BackendUrlNotifier`'ın birebir eşi, aynı `memo_remote_access_token` prefs key'i) + `remote_access_tab.dart`'a yeni token TextField'ı + TR/EN l10n key'leri eklendi. Bu olmadan Docker image'ı erişilebilir ama masaüstü client'tan pratikte kullanılamaz olurdu.
+8. **`memo` CLI'nin uzak backend'e bağlanma desteği YOK** (`internal/replcli` hep `127.0.0.1`'e sabit) — kapsam dışı bırakıldı, README'de açıkça belirtildi (sessizce keşfedilecek bir eksik olarak bırakılmadı).
+
+## Doğrulama
+
+- Backend: `CGO_ENABLED=1 go build/vet/test -tags sqlite_fts5 -race ./...` — tüm paketler yeşil.
+- Frontend: `flutter analyze` (dokunulan 3 dosyada 0 sorun) + `flutter test` (147/147) yeşil, Rule #8 grep temiz.
+- **`docker build`/`docker run` bu ortamda hiç çalıştırılamadı — `docker` binary'si yok (sandbox'ta container runtime yok).** Bunun yerine Dockerfile'ın COPY+budama mantığını gerçek dosya sisteminde birebir simüle ettim: `binaries/linux/cpu`'yu staging dizinine kopyalayıp aynı `find`/`rm` adımlarını uyguladım, `llama-server`'ı orada çalıştırıp `ldd` ile tüm bağımlılıkların (libstdc++/libssl/libcrypto/libgomp/zlib/brotli×3/zstd) Dockerfile'daki apt paket listesiyle birebir eştiğini doğruladım, sonra `memo` binary'sini o staging layout'undan gerçekten başlatıp uçtan uca kontrol ettim: `vec0` yüklendi ("DATABASE: vec driver registered successfully"), FTS5 migration tamamlandı, `--lan` 0.0.0.0'a bağlandı, token'sız 401/token'lı 200. Bu, gerçek `docker build`'e güçlü bir vekil ama **birebir yerini tutmuyor** — `docker/README.md`'nin "What hasn't been verified live" bölümünde tam olarak hangi komutların çalıştırılması gerektiği yazıyor.
+
+## Sıradaki Oturum İçin / Bilinen Açıklar
+
+1. **Kullanıcı gerçek bir Docker ortamında `docker build` + `docker run` denemeli** — apt paket sürümleri (debian bookworm) veya beklenmedik bir `ldd` bağımlılığı bu ortamda görülemeyen bir şeyi ortaya çıkarabilir.
+2. Image sadece **amd64** — `binaries/linux/cpu`'daki llama.cpp/vec0 x86_64. ARM CasaOS kutusu (Raspberry Pi vb.) için ayrı bir arm64 build gerekir, yapılmadı.
+3. `docker-compose.yml`'deki `image:` placeholder — kullanıcı kendi registry'sine push edip satırı güncellemeli, CasaOS Dockerfile'dan build etmiyor.
+4. Whisper (STT) bu image'da yok (model dosyası 466MB, dockerignore ile hariç tutuldu) — istenirse ileride ayrı bir opt-in mekanizma (on-demand indirme) eklenebilir.
+5. `memo` CLI'nin uzak bağlanma desteği yok — istenirse `internal/replcli`'ye bir `--server`/env var eklenmesi ayrı bir iş.
+6. Önceki oturumlardan devam eden açık maddeler (ok tuşu navigasyonu, CLI Minimal Mode, Codex usage) hâlâ bekliyor, bu oturumda dokunulmadı.
+
+
 # Handoff — 2026-08-05 (devam) — BUG_REPORT.md'deki 3 bekleyen bug (LK-1/SF-5/RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp düzeltildi
 
 ## Özet

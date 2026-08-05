@@ -47,7 +47,20 @@ Common issues and their solutions for Memo.
 ## 7. Agent Mode Not Working
 **Issue:** Agent mode doesn't respond or tool calls fail.
 **Solution:**
-- Agent mode requires an active external provider (local llama.cpp doesn't support tool calling reliably).
-- Enable Agent Mode in settings: `PUT /api/agent/enabled {"enabled": true}`.
-- Agent frontend UI is not yet implemented. Use backend API directly for now.
+- Toggle Agent Mode directly in Chat's top bar, next to the web-search toggle — no separate screen or API call needed.
+- With a local model, make sure it actually supports tool calling and has enough context: the default local context was raised 4096 → 8192, and a very small context could previously fail even on a one-word message because tool definitions weren't counted against the budget (fixed).
 - Check `data/permissions.json` if permission policies are blocking tools.
+
+## 8. macOS: "Connection Error" on Launch
+**Issue:** The desktop app opens but immediately shows a connection error talking to its own local backend, or the microphone/file picker silently doesn't work.
+**Cause:** The macOS App Sandbox entitlements were missing `network.client` (blocks Dio's calls to `localhost:8090`), `device.audio-input` (blocks the `record` package for Live Mode/voice input), and `files.user-selected.read-write` (blocks `file_picker`); `Info.plist` was also missing `NSMicrophoneUsageDescription`.
+**Solution:** Fixed in commit `420e6a5` (`frontend/macos/Runner/Release.entitlements`, `DebugProfile.entitlements`, `Info.plist`). Update to a build that includes this fix.
+
+## 9. Turning On Memory Makes Local Generation Very Slow
+**Issue:** Enabling memory/RAG on a local model tanks generation speed (e.g. ~10 tok/s down to 2-3).
+**Cause (fixed in v3.3.4):** The embedding server was auto-sizing itself onto the GPU as if it were the only model running, oversubscribing VRAM alongside the chat model's own server and pushing it into partial CPU fallback.
+**Solution:** Update to a build with the fix — the embedding server now defaults to CPU-only. If you have real VRAM headroom to spare, `embedding_gpu_layers` in config lets you opt it back onto the GPU.
+
+## 10. Windows: Missing `msvcp140.dll` on Launch
+**Issue:** A clean Windows install (common on fresh VMs) fails to start Memo at all with a missing DLL error.
+**Solution:** Fixed in v3.3.4 — the installer now bundles and silently installs the Visual C++ Redistributable. Update to a current installer, or install the VC++ Redistributable manually as a workaround on an older build.

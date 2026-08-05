@@ -1,6 +1,8 @@
 # Çözülen Sorunlar
 
-> **Kapsam notu (2026-07-04):** Bu belge, v3.0.0 stabilizasyon turunun donmuş bir görüntüsüdür (son güncelleme 2026-06-03). v3.1.1 açık betası öncesi çözülenler dahil v3.1.x serisinde yapılan düzeltmeler, artık aktif olarak güncellenen [`BILINEN_SORUNLAR.md`](BILINEN_SORUNLAR.md)'nin "✅ Düzeltilen Hatalar" bölümünde takip ediliyor.
+> **Kapsam notu (2026-07-04):** Bu belge, v3.0.0 stabilizasyon turunun donmuş bir görüntüsüdür (son güncelleme 2026-06-03). v3.1.1 açık betası öncesi çözülenler dahil v3.1.x serisinde yapılan düzeltmeler, [`BILINEN_SORUNLAR.md`](BILINEN_SORUNLAR.md)'nin "✅ Düzeltilen Hatalar" bölümünde takip ediliyor.
+>
+> **Güncelleme (2026-08-05):** `BILINEN_SORUNLAR.md`'nin kendisi de artık dondurulmuş bir 2026-07-04 görüntüsü. O tarihten beri düzeltilen her şey — v3.1.x serisinin geri kalanı, artı v3.2.0/v3.3.0-v3.3.3'ün tamamı ve geliştirmedeki v3.3.4 — repo kökündeki `BUG_REPORT.md`'de takip ediliyor; şu an aktif olarak bakımı yapılan tek liste orası (bu yazının yazıldığı tarihte 0 açık madde; kendi kuralı gereği düzeltilen maddeler orada tekrar dokümante edilmiyor — neyin ne zaman düzeldiğinin kalıcı kaydı için `git log`/`handoff.md`'ye bakın).
 
 Bu belge, Memo projesinde çözülmüş olan 61 hatayı listeler.
 

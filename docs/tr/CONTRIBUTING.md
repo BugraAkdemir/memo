@@ -23,7 +23,8 @@ Harika bir fikriniz mi var? Bir issue açın ve bunun "yerel öncelikli" (local-
 ## Geliştirme Standartları
 - **Önce Gizlilik:** Kullanıcının açık rızası olmadan verileri harici sunuculara gönderen kodları asla eklemeyin.
 - **Performans:** RAM kullanımını düşük tutmak için SQLite + sqlite-vec gibi verimli algoritmaları tercih edin.
-- **Dökümantasyon:** Her yeni özellik `/docs` klasöründe ve Obsidian kasasında dökümante edilmelidir.
+- **Dökümantasyon:** Her yeni özellik `/docs` klasöründe dökümante edilmelidir.
+- **Test:** Backend testleri `go test -tags "sqlite_fts5" -race` ile çalışır (build tag'i önemli, bkz. `docs/CGO_FLAGS.md`). `internal/provider/`, `internal/agent/`, `internal/orchestra/` artık sağlam test kapsamına sahip; `internal/cloudsync`, `internal/skill`, `internal/proactive`, `internal/observer` hâlâ daha az test edilmiş durumda — katkılar memnuniyetle karşılanır.
 
 ## Felsefe
 Memo, **Egemenlik** üzerine inşa edilmiştir. Kullanıcılar yapay zekalarına, verilerine ve donanımlarına sahip olmalıdır. Yerel tutun, hızlı tutun, sizin tutun.

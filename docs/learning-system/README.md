@@ -1,8 +1,8 @@
 # Memo Learning System — Proactive Intelligence Engine
 
-> **Status:** Design Document — Pre-Implementation  
-> **Version:** v2.0  
-> **Target Release:** v3.5.0+
+> **Status:** Shipped — live in v3.3.3 as **Proactive Learning & Ambient Nudges**, on by default at a subtle level (Settings → General; also gated by Incognito and Minimal Mode). This document is kept as the original design doc/architecture reference — see `versinNote/v3.3.3.md` for the user-facing feature description and `§12.5 Implementation Progress` below for what actually shipped vs. this doc's original design.
+> **Version:** v2.0 (design) → implemented v3.3.3
+> **Related:** **Self-Insight** (`/insight`, or a weekly Routine) reuses this same mood/memory history to describe a pattern on request instead of proactively — see `versinNote/v3.3.3.md`.
 
 ---
 
@@ -549,10 +549,10 @@ Yeni Output Channel (örn: SMS, Slack)
 
 > **Bilinen sınır:** Feedback ile yapılan confidence ince ayarı saatlik analizde davranıştan yeniden türetilir; kalıcı olan tek karar "suppress"tir. Bu tasarım gereğidir (sistem davranışı izler, sabit eşik tutmaz).
 >
-> **Not:** Backend uçları ve event'ler hazır; Flutter/masaüstü UI entegrasyonu (Settings > Proactive Learning, bildirim baloncuğu) ayrı bir frontend görevidir.
+> **Faz 6 (v3.3.3'te tamamlandı) — Frontend entegrasyonu:** Settings → General'da Proactive Learning aç/kapa anahtarı (artık varsayılan olarak açık, subtle seviye) ve Minimal Mode'un alt-özellikler bazında bağımsız yeniden açılabilmesi; masaüstünde gerçek bir öneri banner'ı (Evet / Şimdi Değil / Sormayı Bırak); bir nudge artık Memo'nun normal bir yanıtının içine de dokunabiliyor (ayrı bir banner olmak zorunda değil) — kabul edilip edilmediği modelin kendisine sorularak değerlendiriliyor, dilden bağımsız. Gizli Mod'da tamamen kapalı.
 
 ---
 
-> **Next:** Frontend entegrasyonu (Settings UI + bildirim) ve gerçek-kullanım kalibrasyonu  
-> **Author:** Memo Team  
-> **Last updated:** 2026-06-14
+> **Sonraki:** gerçek-kullanım kalibrasyonu, Home Assistant/IoT gibi ek Observer kaynakları (bkz. §12 Genişletilebilirlik)
+> **Author:** Memo Team
+> **Last updated:** 2026-08-05 (durum: shipped v3.3.3 — bkz. üstteki not; tasarım içeriği 2026-06-14'ten değişmedi)

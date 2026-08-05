@@ -1,5 +1,7 @@
 # Bilinen Sorunlar ve Teknik Riskler
 
+> **Kapsam notu (2026-08-05):** Bu belge, 2026-07-04 tarihli tam kod tabanı denetiminin dondurulmuş bir görüntüsüdür (o tarihte güncel koda göre yeniden doğrulanmıştı — aşağıdaki nota bakın). v3.1.2 → v3.3.3 → v3.3.4 hattından öncesine ait. Güncel, aktif olarak bakımı yapılan hata takibi `BUG_REPORT.md`'de (repo kökü) — **2026-08-05 itibarıyla her seviyede 0 açık madde**. Aşağıdaki dört madde (K04, H06, H12, H13) özellikle yeniden kontrol edilip güncellendi; dosyanın geri kalanı 2026-07-04'ten beri yeniden doğrulanmadı ve benzer şekilde bayatlamış olabilir — güncel referans için `BUG_REPORT.md`'ye bakın.
+
 Bu belge, Memo projesindeki tüm açık hataları ve teknik riskleri takip eder.
 
 **Öncelik kategorileri:**
@@ -238,12 +240,10 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - ~~`read_file`, `write_file`, `edit_file` gibi araçlar dosya argümanlarındaki yolları doğrulamıyordu.~~
 - **Düzeltme:** `internal/agent/tools/file.go` `validatePath()` artık `filepath.Rel(basePath, realPath)` ile containment kontrolü yapıyor; `..` ile proje dışına çıkan yollar yalnızca korumalı sistem yolları listesine (`defaultProtectedPaths()`) girmiyorsa ve açıkça reddedilmiyorsa izin veriliyor — genel keyfi path traversal artık kapalı.
 
-### K04. 0.0.0.0'a Bağlanınca Tüm Endpoint'ler Açık — Kimlik Doğrulama Yok
-- **Dosya:** `internal/webserver/server.go:79-201` (StartHTTPWithAddr)
-- **Detay:** Uzaktan erişim etkinleştirildiğinde sunucu `0.0.0.0` adresine bağlanır. Tüm endpoint'ler (`/api/wipe`, `/api/whatsapp/send`, `/api/agent/permission`, `/api/import` vb.) hiçbir token veya session doğrulaması olmadan yerel ağdaki herkese açık hale gelir.
-- **Risk:** LAN'daki herhangi bir cihaz tüm verileri silebilir, WhatsApp mesajı gönderebilir, agent'ı kontrol edebilir.
-- **Kategori:** Güvenlik (kimlik doğrulama eksikliği)
-- **2026-07-04 doğrulama:** Kod tabanında `AccessToken`/`X-Memo-Token` benzeri hiçbir auth mekanizması bulunamadı — **hâlâ açık**. v3.1.1 stable öncesi ele alınması önerilir; ngrok/Tailscale tünelleri de bu riski miras alıyor.
+### ~~K04. 0.0.0.0'a Bağlanınca Tüm Endpoint'ler Açık — Kimlik Doğrulama Yok~~ ✅ DÜZELTİLDİ (v3.3.3)
+- ~~`internal/webserver/server.go:79-201` (StartHTTPWithAddr)~~
+- ~~Uzaktan erişim etkinleştirildiğinde sunucu `0.0.0.0` adresine bağlanır. Tüm endpoint'ler (`/api/wipe`, `/api/whatsapp/send`, `/api/agent/permission`, `/api/import` vb.) hiçbir token veya session doğrulaması olmadan yerel ağdaki herkese açık hale gelir.~~
+- **Düzeltme (v3.3.3 sürüm notları):** Uzaktan erişim (LAN veya ngrok) açıkken artık her istek, Settings'te gösterilen erişim token'ını sunmak zorunda. Mobil uygulama bu token'ı zaten gönderiyordu; doğrudan uzak API'ye yazılan özel bir araç artık buna ihtiyaç duyuyor. Sadece yerel kullanım (varsayılan, uzak erişim kapalı) tamamen etkilenmiyor.
 
 ### ~~K25. Provider API Anahtarları Zayıf Makine-Türevli Anahtarla Şifreleniyor~~ ✅ DÜZELTİLDİ
 - ~~`defaultMachineKey()` gizli olmayan donanım kimliklerinden anahtar türetiyordu, kaynak kodunda hardcoded fallback anahtar vardı.~~
@@ -279,9 +279,10 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Detay:** Kullanıcı girdisi `"%" + query + "%"` ile LIKE desenine sarılır. Sorgu `_` (LIKE'da tek karakter joker karakteri) içeriyorsa, istenmeyen sonuçlar döner. Örnek: `"test_"` sorgusu `"test1"`, `"testX"` vb. eşleşir.
 - **Risk:** Alt çizgi içeren mesaj aramalarında yanlış sonuçlar.
 
-### H06. Flutter: Global Stil Önbelleği (`_styleCache`) Bellek Sızıntısı
-- **Dosya:** `frontend/lib/widgets/chat_message_list.dart:13`
-- **Detay:** `_styleCache` global mutable bir `Map`'tir — asla temizlenmez, ziyaret edilen her tema yapılandırması kombinasyonu ile sonsuz büyür. Bu, temalar değiştirildikçe bellek kullanımının sürekli arttığı bir bellek sızıntısıdır.
+### ~~H06. Flutter: Global Stil Önbelleği (`_styleCache`) Bellek Sızıntısı~~ ✅ YENİDEN KONTROL EDİLDİ, GERÇEK SIZINTI DEĞİL
+- ~~`frontend/lib/widgets/chat_message_list.dart:13`~~
+- ~~`_styleCache` global mutable bir `Map`'tir — asla temizlenmez, ziyaret edilen her tema yapılandırması kombinasyonu ile sonsuz büyür.~~
+- **Yeniden doğrulama (handoff.md):** Anahtar uzayı 2 ile sınırlı (light/dark brightness) çünkü `MemoTheme.accent` sabit, kullanıcının değiştirebildiği bir değişken değil — map hiçbir zaman 2 girdiyi geçemiyor. Yanlış pozitif, dokunulmadı.
 
 ### ~~H08. Flutter: `connectionStatusProvider` Sonsuz Polling~~ ✅ DÜZELTİLDİ
 - ~~Uygulama ömrü boyunca `autoDispose` olmadan 30s'de bir polling yapıyordu.~~
@@ -299,14 +300,15 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 - **Dosya:** `internal/agent/executor.go:40-45`
 - **Detay:** `logEntries` slice'ı 1000 ile sınırlı. Eski girdiler sessizce atılır. Döndürme veya kalıcılık yok.
 
-### H12. Flutter: Provider Test ve Mobil Uç Nokta Eksiklikleri
-- **Dosya:** `mobile/lib/core/api_client.dart`
-- **Detay:** Mobil API istemcisi backend uç noktalarının çoğunu içermez: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory ayarları, model arama/indirme, WhatsApp, sync, remote access, backup/restore, recording, image.
+### ~~H12. Flutter: Provider Test ve Mobil Uç Nokta Eksiklikleri~~ ✅ YENİDEN KONTROL EDİLDİ, ARTIK DOĞRU DEĞİL
+- ~~`mobile/lib/core/api_client.dart`~~
+- ~~Mobil API istemcisi backend uç noktalarının çoğunu içermez: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory ayarları, model arama/indirme, WhatsApp, sync, remote access, backup/restore, recording, image.~~
+- **Yeniden doğrulama (handoff.md):** backend'in route tablosuna karşı grep ile sayıldı — 118 endpoint'in 111'i artık mobilde var. Kalan 7'si ya mobilin ihtiyacı olmayan yeni client-registry uçları ya da mobilde hiç CLI olmadığı için gerekmeyen CLI-yönetim uçları. `BUG_REPORT.md`'den kaldırıldı.
 
-### H13. `StartLocalModel`/`StopLocalModel`'de `a.client` Veri Yarışı
-- **Dosya:** `app.go` (`StartLocalModel`, `StopLocalModel`)
-- **Detay:** `a.client` (llama.cpp API istemcisi) eşzamanlama olmadan yeniden atanır. `clientMu` mevcut olsa da, streaming istekleri sırasında istemci değiştirilirse eski istemci referansı ile yeni istekler gönderilebilir.
-- **Risk:** Model değiştirme sırasında beklenmeyen hatalar.
+### ~~H13. `StartLocalModel`/`StopLocalModel`'de `a.client` Veri Yarışı~~ ✅ YENİDEN KONTROL EDİLDİ — YARIŞ DEĞİLMİŞ, DAHA DAR SORUN BUG-L4 OLARAK DÜZELTİLDİ
+- ~~`app.go` (`StartLocalModel`, `StopLocalModel`)~~
+- ~~`a.client` (llama.cpp API istemcisi) eşzamanlama olmadan yeniden atanır. `clientMu` mevcut olsa da, streaming istekleri sırasında istemci değiştirilirse eski istemci referansı ile yeni istekler gönderilebilir.~~
+- **Yeniden doğrulama (handoff.md):** `a.client`/`providerRouter` yeniden atamalarının hem okuma hem yazma tarafı `clientMu`/`providerMu` ile düzgün kilitli — bu hiçbir zaman gerçek bir veri yarışı olmamış. Gerçek, daha dar kalan risk (bir stream client'ı kilit altında local değişkene kopyalayıp süresi boyunca elinde tutuyor — tam o sırada bir model/sağlayıcı swap'ı olursa stream eski client ile konuşmaya devam ediyor) **BUG-L4** olarak takip edildi ve düzeltildi: swap kaynaklı başarısızlıklar artık ham "connection refused" yerine net bir hata mesajı gösteriyor (commit `07930f4`).
 
 ### H15. `Sandbox.ValidatePath` Korumasız Mutlak Yollara İzin Veriyor
 - **Dosya:** `internal/agent/sandbox.go:88-112`
@@ -813,7 +815,8 @@ Bu oturumda aşağıdaki hatalar düzeltildi:
 > **Son güncelleme:** 2026-07-04 (v3.1.1 açık betası öncesi güncel koda göre yeniden doğrulandı)
 > **Denetim kapsamı:** Tüm kod tabanı — Go backend (app.go, app_skill.go, tüm internal/ paketleri) + Flutter frontend + mobil frontend + yeni skill sistemi + orchestra sistemi
 > **2026-07-04 geçişi:** Tüm 🔴 Kritik ve 🟠 Yüksek maddeler, artı M09-M12/M45, güncel koda göre tek tek kontrol edildi. Daha önce açık görünen 16 madde (K01, K25, K26, H01, H02, H03, H08, H09, H10, H21, H23, H24, H25, H27, M10, M11, M12, M45 — bir Yüksek maddesi Orta'daki kopyasıyla birleşik sayıldı) zaten düzeltilmiş çıktı ve ✅ Düzeltildi olarak işaretlendi. İki madde (H22, H26) kısmen düzeltilip yerinde düşürüldü (Yüksek → Orta/Düşük). M13-M44 ve tüm ⚪ Düşük / ⚫ Bilgi maddeleri bu geçişte tekrar doğrulanmadı — aynı bayatlama riskini taşıyor olabilirler, aşağıdaki sayılar tavan değil taban olarak okunmalı. **Not:** Bu TR denetimi EN (`docs/KNOWN_ISSUES.md`) dosyasından daha fazla ve farklı numaralandırılmış madde içeriyor (örn. K01/K04, H13/H15/H18/H19/H20 gibi TR'ye özgü maddeler) — iki dosya birebir çeviri değil, bağımsız genişlemiş.
-> **Açık hatalar:** 🔴1 (K04), 🟠10 doğrulanmış (H04, H05, H06, H11, H12, H13, H15, H18, H19, H20), 🔵~27 (H22 düşürmesi dahil, tam doğrulanmadı), ⚪~18 (H26 düşürmesi dahil, tam doğrulanmadı)
+> **2026-08-05 nokta-kontrolü:** K04 (kimlik doğrulamasız uzak erişim) v3.3.3'te düzeltildi (erişim token'ı artık zorunlu). H06 (stil önbelleği) ve H12 (mobil API istemcisi) yeniden kontrolde yanlış pozitif çıktı. H13 (`a.client` veri yarışı) da yanlış pozitifti, ama işaret ettiği daha dar gerçek sorun ayrıca BUG-L4 olarak takip edilip düzeltildi. Dördü de yukarıda ✅ Düzeltildi'ye taşındı.
+> **Açık hatalar (2026-07-04 itibarıyla, yukarıdaki 4 madde çıkarılmış):** 🔴0, 🟠7 doğrulanmış (H04, H05, H11, H15, H18, H19, H20) — bunların hiçbiri 2026-08-05'te yeniden doğrulanmadı, güncel durum için `BUG_REPORT.md`'ye bakın, 🔵~27 (H22 düşürmesi dahil, tam doğrulanmadı), ⚪~18 (H26 düşürmesi dahil, tam doğrulanmadı)
 > **Gözlemler:** 24
-> **Düzeltilen:** 59 (43 önceki + 16 bu geçişte doğrulanan)
+> **Düzeltilen:** 63 (43 önceki + 16 2026-07-04 geçişinde + 4 2026-08-05'te doğrulanan)
 > **Bulunan toplam sorun sayısı:** 118+

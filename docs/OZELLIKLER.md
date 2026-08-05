@@ -38,9 +38,15 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 - **%100 Çevrimdışı**: Hiçbir veri bilgisayarınızdan dışarı çıkmaz. Telemetri yok, log gönderimi yok, bulut bağımlılığı yok.
 - **Güvenli Yerel Depolama**: Zihniniz kendi donanımınızda kalır.
 
+### `.memo` Yedekleme — Artık Gerçekten Eksiksiz
+
+- Tam dışa aktarma artık takvim olayları, öğrenilen alışkanlıklar, rutinler, görev listeleri, agent tool izinleri, kurulu skill'ler **ve `machine.key`** dahil her şeyi içeriyor. `machine.key` eksikliği önceden bir yedeği başka bir makinede geri yüklediğinde tüm sağlayıcı API anahtarlarını kalıcı olarak çözülemez hale getiriyordu — düzeltildi.
+
 ### Uzaktan Erişim Sunucusu
 
 - **Yerel Ağ Köprüsü**: Ayarlardan "Uzaktan Erişim"i etkinleştirerek, aynı Wi-Fi üzerindeki diğer cihazlardan (telefon, tablet vb.) yerel Memo'nuzla sohbet edebilirsiniz.
+- **Tailscale artık Beta değil**: Tek tıkla giriş (auth key yapıştırmaya gerek yok), Funnel varsayılan açık, kopan bağlantıdan sonra otomatik yeniden bağlanma — Settings → Remote Access'te doğrudan, masaüstü ve mobilde.
+- **Token zorunlu**: LAN/ngrok/Tailscale üzerinden yapılan her uzak istek artık Settings'te gösterilen erişim token'ını gerektiriyor — önceden isteğe bağlıydı, bu da aynı ağdaki herkesin API anahtarlarını okuyabilmesi gibi gerçek bir açıktı. Sadece yerel kullanım (varsayılan) etkilenmiyor.
 
 ---
 
@@ -58,8 +64,12 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 ### Arka Plan İndirme Yöneticisi
 
-- **Paralel İndirme**: Gerçek zamanlı yüzde ve hız takibi ile yüksek hızlı GGUF indirme motoru.
+- **Paralel İndirme**: Artık aynı anda birden fazla GGUF indirmesi çalışabiliyor (önceden ikinci indirme reddediliyordu), toplam ilerleme motor durum çubuğunda; kaba bir süre tahmini de gösteriliyor.
 - **Yaşam Döngüsü Kontrolü**: Yerel modeller için tek tıkla Başlat, Durdur ve Güncelle seçenekleri.
+- **Donanıma Göre İlk Öneri**: Kurulum, RAM/GPU'nuzu okuyup eşleşen bir sohbet + hafıza model çiftini önerir, tek butonla ikisini birden indirmeye başlatır.
+- **Güvenli Context Boyutu**: Context alanı artık modelin GGUF dosyasından okunan gerçek maksimumunu aşamıyor (önceden serbest metindi, motoru çökertebiliyordu).
+- **Sade Dilli Hatalar ve İpuçları**: `llama: server failed to become ready within 120s` gibi ham hatalar yerine kısa, eyleme geçirilebilir mesajlar; donanım-uyum ve kuantizasyon rozetlerinde açıklayıcı ipuçları.
+- **Discover Filtreleri**: Tools/Vision/Code/Embedding/Size filtreleri artık VE değil VEYA ile birleşiyor, çoklu-seçim dropdown'larına taşındı.
 
 ---
 
@@ -80,13 +90,26 @@ Memo sadece bir sohbet aracı değil, bir "İkinci Beyin"dir.
 
 - **Gerçek Zamanlı İstatistikler**: Zaman damgasının üzerine gelerek üretim hızını (tok/s), toplam token miktarını ve süre metriklerini görün.
 
+### Sesli Mod — Eller Serbest Konuşma (Beta)
+
+- Sohbet kutusunun yanındaki küçük ses ikonu (Settings → Beta Features açıkken) — ayrı bir sidebar sekmesi değil. Konuşmanı dinler, ne zaman başlayıp bittiğini otomatik algılar, yerelde yazıya döker, normal bir sohbet mesajı olarak gönderir ve yanıtı sesli okur.
+- **Varsayılan olarak tamamen yerel**: cihaz-üstü transkripsiyon + yerel **Piper** TTS. İstersen harici bir OpenAI TTS sağlayıcısı da yapılandırabilirsin; yerel Piper her zaman yedek olarak devrede kalır.
+- **Çevrimdışı ses seçici**: küçük, elle seçilmiş bir Piper ses koleksiyonunu (TR/EN) indirip anında geçiş yapabilirsin.
+- **Tek yönlü barge-in**: Memo konuşurken tekrar konuşursan durup seni dinler.
+- **Bilinen sınırlama**: henüz yankı iptali yok — hoparlör kullanmak Memo'nun bazen kendi sesini kesme sanmasına yol açabilir.
+
+### @ Dosya Bahsetme
+
+- Herhangi bir sohbette `@` yazmak dosya adına göre arayıp referans gösterebileceğin bir liste açar — agent modunu tam yol yazmadan belirli bir dosyaya yönlendirmek için kullanışlı.
+
 ---
 
 ## 5. 🔌 Harici Sağlayıcı Desteği (External Providers)
 
 ### Çoklu Sağlayıcı Mimarisi
 Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
-- **Desteklenen Sağlayıcılar:** OpenAI (GPT-4o, o1, o3), Google Gemini (2.0 Flash, 2.5 Pro), xAI Grok (2, 3), Anthropic Claude (3.5 Sonnet, 3 Opus), OpenRouter (tek API ile tüm modeller), Groq (hızlı çıkarım), Ollama (yerel alternatif)
+- **Desteklenen Sağlayıcılar:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, artı **OpenCode Zen** (kullandıkça öde, bazı modeller ücretsiz) ve **OpenCode Go** (abonelik) — ikisi de gerçek, canlı model listesinden seçim yaptırır.
+- **Sohbet Sağlayıcısı Olarak Claude Code / Codex CLI (beta):** API çağrısı yerine Memo, kurulu `claude`/`codex` CLI'ını arka planda çalıştırır. Sohbet-bazlı (uygulama geneli değil), sabit zaman aşımı olmadan gerçek bir arka plan görevi olarak çalışır, CLI'ın kendi `/` komutları Memo'nun komut penceresinde görünür. Hafıza/kimlik bağlamı gönderilmez — CLI kendi oturumunu kendi yönetir.
 - **Sağlayıcı Arayüzü:** Ortak `Provider` interface ile `ChatCompletion`, `ChatCompletionStream`, `ListModels`
 - **Fallback Zinciri:** Router sağlayıcıları sırayla dener; 3 başarısızlıkta auto-disable; iyileşince health check ile tekrar aktifleştirme
 
@@ -106,7 +129,8 @@ Memo, yerel modellerin yanında harici LLM API'lerine de bağlanır:
 
 ### Araç Çalıştırma Motoru
 Memo, bilgisayarınızda işlem yapabilen bir AI ajanı olarak çalışır:
-- **8 Yerleşik Araç:** `read_file`, `write_file`, `delete_file`, `list_directory`, `run_command`, `search_files`, `get_file_info`, `read_env`
+- **19 Yerleşik Araç:** dosya G/Ç (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
+- **Skill tool'ları artık gerçekten çalışıyor.** Bir skill'in `SKILL.md`'sinde tanımlanan `command:` alanı, yerleşik araçlarla aynı tool pipeline'ına ve izin-sorma arayüzüne bağlanıyor — önceden sadece deklaratifti, hiçbir şey çalıştırmıyordu.
 - **Araç Kaydı:** JSON Schema parametre tanımlarıyla thread-safe kayıt sistemi
 - **Tehlike Seviyesi:** `safe` (otomatik izin), `medium` (kullanıcıya sor), `dangerous` (kullanıcıya sor + 2sn gecikme)
 
@@ -125,7 +149,7 @@ Memo, bilgisayarınızda işlem yapabilen bir AI ajanı olarak çalışır:
 - **Olay Akışı:** Araç çalıştırma olayları SSE ile frontend'e iletilir
 - **Denetim Günlüğü:** Son 1000 araç çalıştırması zaman damgasıyla kaydedilir
 
-> **Not:** Ajan frontend UI'ı (izin dialog'ları, araç kartları, mod toggle) henüz uygulanmamıştır. Ajan sadece backend API üzerinden çalışır.
+> **Not:** Ajan frontend UI'ı (izin dialog'ları, araç kartları, mod toggle) bir süredir tamamen canlı — toggle doğrudan sohbetin üst çubuğunda, web arama toggle'ının yanında; ayrı bir Agent ekranı gerekmiyor.
 
 ---
 
@@ -177,6 +201,67 @@ Birden çok AI modeli bir ekip olarak çalışır:
 
 - **Çevrimdışı Transkripsiyon**: Sesli mesajları doğrudan uygulama içinde kaydedin.
 - **Entegre Motor**: Sıfır gecikmeli ve gizli transkripsiyon için paketlenmiş yerel ortamı (Vosk/Whisper muadili) kullanır.
+
+---
+
+## 9. ⏰ Rutinler ve Proaktif Zeka
+
+### Rutinler (Zamanlanmış Otomasyonlar)
+
+- Ne istediğini ve ne sıklıkla istediğini düz dille anlat; Memo bunu arka planda zamanında tetiklenen, basit bir prompt ya da tam bir agent görevi olabilen bir rutine çevirir.
+- **Masaüstü ve mobilde** çalışır — mobil, uygulama açık olmasa bile gelen gerçek, önceden zamanlanmış yerel bildirimler kullanır.
+- **Kendi cihazının saat diliminde** tetiklenir (oluşturulduğunda yakalanır, her yeniden bağlanmada güncellenir) — seyahat/DST değişikliği kendini düzeltir.
+
+### Proaktif Öğrenme ve Ortam Uyarıları
+
+- Memo kullanım desenlerini (belirttiğin bir alışkanlık veya belirli bir saatte yaptığın bir şey) fark edip kendiliğinden gündeme getirebilir — varsayılan olarak açık (subtle seviye).
+- Doğrudan belirtilen bir alışkanlık ("her gece 21 gibi kod yazarım") hemen güvenilir; pasif gözlemlenen bir desenin önce istatistiksel olarak birikmesi gerekir.
+- Bir hatırlatma normal bir yanıtın içine dokunarak veya masaüstünde bir öneri banner'ı (Evet / Şimdi Değil / Sormayı Bırak) olarak gelebilir.
+- Gizli Mod'da tamamen kapalı; Minimal Mode'da özellikle yeniden açılmadıkça kapalı.
+
+### Öz-İçgörü (`/insight`)
+
+- Doğrudan sor, ya da haftalık bir Rutin sorsun — Memo son ruh hali/hafıza geçmişine bakıp gerçek bir desen varsa anlatır; yeterli sinyal yoksa uydurmak yerine bunu söyler.
+
+### Minimal Mode (Settings → General)
+
+- Mümkün olduğunca az ek yük ile yerel model çalıştırmak isteyenler için kişilik/mood/web-arama talimatlarını promptan tamamen çıkarır; hafıza da kapalıysa yazdığın mesajın dışında hiçbir şey eklenmez.
+- Persona/sistem-promptu, yetenek açıklamaları, pasif-özellik açıklamaları ve proaktif öğrenme, Minimal Mode açıkken bile tek tek yeniden açılabilir.
+
+### Memo'nun Kendi Kimliği
+
+- Memo'yu kimin, neden yaptığı sorulduğunda artık tahmin yerine gerçek bir cevap veriyor — sadece sorulunca devreye giriyor, günlük davranışı değiştirmiyor, seçilen personadan bağımsız.
+
+---
+
+## 10. 🛠️ Geliştirici ve İleri Kullanıcı Özellikleri
+
+### Developer API Gateway (Sidebar → Developer)
+
+- Sadece Anthropic-uyumlu bir endpoint destekleyen araçların (en önemlisi **Claude Code**, `ANTHROPIC_BASE_URL` ile) Memo'nun yerel modelini veya yapılandırılmış herhangi bir sağlayıcı/anahtarını kullanmasını sağlayan yerel bir API.
+- Model seçimi `type/model-id` formatında (`local/qwen2.5`, `openai/gpt-4o`, ...). openai/custom/local/groq/openrouter/grok/opencode-zen/opencode-go sağlayıcıları için tam agentic tool calling.
+- İsteğe bağlı API key zorunluluğu (Remote Access token'ını paylaşır), isteğe bağlı hafıza entegrasyonu, canlı istek logu.
+
+### Memo Swarm (Beta)
+
+- Birden fazla PC'nin işlem gücünü (Settings → Beta Features → Swarm) tek bir makinenin RAM/VRAM'ine sığmayan büyük bir GGUF modeli çalıştırmak için havuzlar — bir Host model dosyasını tutar, diğerleri bir oda koduyla Join edip llama.cpp'nin `rpc-server`'ı üzerinden işlem gücü ödünç verir.
+- Hedef hız değil kapasitedir. macOS'ta henüz yok.
+
+### Kullanım İstatistikleri (Settings → Stats)
+
+- KPI kartları (toplam istek, girdi/çıktı token, ortalama tok/s, en çok kullanılan model), son 30 günün günlük kullanım grafiği ve model-bazlı döküm — Gizli Mod hariç her tamamlanan tur (yerel, agent, orchestra, harici sağlayıcı) için kaydedilir.
+
+### Hafızayı Başka Bir AI'dan İçe Aktar (Settings)
+
+- Başka bir AI asistanından (ChatGPT, Gemini, Claude, ...) aldığın yapılandırılmış bir açıklamayı yapıştır; Memo bunu `/remember` ile aynı şekilde atomik gerçeklere böler, artı bir iletişim-tarzı özetini kendi sistem promptuna kalıcı olarak ekler.
+
+### Hata Bildir (Settings)
+
+- Tarayıcında önceden doldurulmuş bir GitHub issue açar (isteğe bağlı son 10 arka plan hata olayı eki ile) — sen GitHub'da gözden geçirip kendin göndermeden hiçbir şey hiçbir yere gitmez.
+
+### Yeniden Düzenlenen Settings
+
+- Settings yaklaşık 20 düz sekmeden, üstte arama kutusu olan, gruplanmış ve aranabilir bir rafa taşındı.
 
 ---
 

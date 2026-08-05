@@ -5,7 +5,7 @@
 ## 1. NAVIGATION (app_shell.dart)
 
 - AppShell → NavRail (64px) + IndexedStack
-- **NavRail**: Logo, Chat, Agent, Models, WhatsApp (beta), Settings (dialog)
+- **NavRail**: Logo, Chat, Agent, Models, WhatsApp, Calendar, Routines, Developer, Swarm (beta-gated, hidden unless Settings → Beta Features is on and the platform supports it — not macOS), Settings (dialog)
 - Active tab: filled icon, accent color
 - SetupWizardOverlay (first launch)
 - LlamaInstallerOverlay (download progress)
@@ -126,7 +126,7 @@
 
 ---
 
-## 5. WHATSAPP SCREEN (whatsapp_screen.dart) — BETA
+## 5. WHATSAPP SCREEN (whatsapp_screen.dart)
 
 - Connection status: connected/disconnected/connecting
 - QR code display for pairing
@@ -136,11 +136,42 @@
 
 ---
 
+## 5.1 CALENDAR SCREEN (calendar_screen.dart)
+
+- Month view + event list, add/edit events
+
+## 5.2 ROUTINES SCREEN (routines_screen.dart)
+
+- List of scheduled Routines (schedule + prompt or agent config)
+- Plain-language description → parsed into a routine config
+- Desktop; mobile shows real pre-scheduled local notifications
+
+## 5.3 DEVELOPER SCREEN (developer_screen.dart)
+
+- Anthropic-compatible Developer API Gateway: Base URL, model list (`type/model-id`), token, live request log
+- Optional API key requirement (shares Remote Access's token), optional memory integration
+
+## 5.4 SWARM SCREEN (swarm_screen.dart) — BETA
+
+- Host: create room, room code, add/reorder/remove joined workers, set each worker's compute share
+- Join: enter a room code to lend compute without downloading the model
+- Gated behind Settings → Beta Features; not shown on macOS
+
+## 5.5 LIVE MODE — VOICE ICON (chat_input.dart) — BETA
+
+- A small icon next to the chat input box (not a separate screen/tab) — enabled via Settings → Beta Features
+- Listens, auto-detects speech start/stop, transcribes locally, sends as a normal message, speaks the reply back (local Piper TTS by default, optional external OpenAI TTS)
+- One-directional barge-in; no echo cancellation yet (known limitation)
+
+---
+
 ## 6. SETTINGS DIALOG (settings_dialog.dart)
 
-- Left panel: tab list (140px)
+- Reorganized (v3.3.4) into a **searchable, grouped rail** with a search box up top, replacing the old flat row of ~20 tabs
+- Left panel: grouped tab rail
 - Right panel: content area
-- Tabs:
+- Includes (non-exhaustive): General (incl. Minimal Mode, per-sub-feature overrides), Providers, CLI Connections (Claude Code/Codex install check), Llama, Memory, Cloud Sync, Identity, Orchestra, Agent Permissions, Skills, Learning (Proactive), Stats (Usage), Beta Features, Remote Access, Backup/Restore, Report Bug, About
+- Tabs (original set, still present in some form):
 
 ### General
 - Theme selector (System/Light/Dark)
@@ -215,7 +246,11 @@
 ### 8.1 Prompt Templates
 - Trigger: "/" in text field
 - Filtered popup list
-- Templates: /model, /orchestra, custom prompts
+- Templates: /model, /orchestra, /insight, custom prompts; in a CLI-provider chat, shows that CLI's own real commands instead
+
+### 8.1.1 @ File-Mention
+- Trigger: "@" in text field
+- Filtered popup, search by filename, references a file without typing the full path — useful for pointing agent mode at something specific
 
 ### 8.2 Agent Permission Dialog
 - Icon + title

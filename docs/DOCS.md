@@ -1,7 +1,7 @@
 ---
 tags: project, ai, go, flutter, memory, rag, llm
 status: Active
-version: 3.1.1
+version: 3.3.3 (3.3.4 in development)
 tech_stack: [Go 1.26, Flutter 3.10, SQLite, vec0, llama.cpp, whatsmeow]
 category: [[AI_Agents]]
 ---
@@ -38,11 +38,14 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 | Capability | Description |
 |-----------|-------------|
 | **Memory** | Every chat is embedded into a local vector database (SQLite + vec0). Remembers conversations for weeks. |
-| **Learning** | Background observer tracks *when* you work (not *what*), learns rhythms, and anticipates your needs. |
-| **Action** | 8 built-in agent tools: read/write files, run commands, search web, send WhatsApp messages. All sandboxed, permission-gated. |
+| **Learning** | Background observer tracks *when* you work (not *what*), learns rhythms, and proactively nudges you about patterns — on by default, fully controllable per sub-feature. |
+| **Action** | Agent tool system: read/write files, run commands, search web, send WhatsApp messages, plus any skill that declares its own `command:` tool. All sandboxed, permission-gated. |
+| **Automation** | Routines let you schedule a prompt or full agent run in plain language, on desktop or mobile, firing in your own device's timezone. |
 | **Multi-model** | Orchestra mode decomposes tasks across multiple LLMs (Claude for reasoning, Gemini for speed, local for code). |
-| **Offline** | Works 100% offline with bundled llama.cpp. External providers are optional fallback. |
-| **Private** | No telemetry, no analytics, no cloud dependency. API keys encrypted with AES-256-GCM. |
+| **Voice** | Live Mode (beta) is a hands-free, spoken back-and-forth with Memo — local transcription + local Piper TTS by default, one-directional barge-in. |
+| **Offline** | Works 100% offline with bundled llama.cpp. External providers, including Claude Code/Codex CLI (beta) as chat providers, are optional. |
+| **Developer-friendly** | Sidebar → Developer exposes an Anthropic-compatible local API gateway, so tools like Claude Code can run against your own local model or API keys. |
+| **Private** | No telemetry, no analytics, no cloud dependency. API keys and the `.memo` backup are encrypted; remote access requires a token. |
 
 ---
 
@@ -115,10 +118,20 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 | `internal/observer/` | Usage pattern analyzer | `analyzer.go`, `recorder.go`, `store.go`, `pattern.go` |
 | `internal/whatsapp/` | WhatsApp bridge (whatsmeow) | `client.go`, `store.go` |
 | `internal/whisper/` | Speech-to-text (whisper.cpp) | `whisper.go`, platform-specific files |
-| `internal/skill/` | Skill system (plugin-like) | `manager.go`, `loader.go`, `types.go` |
-| `internal/logx/` | Structured logging (slog wrapper) | `logx.go` |
+| `internal/skill/` | Skill system (plugin-like); skill `command:` tools now execute through the same agent pipeline/permission UI | `manager.go`, `loader.go`, `types.go` |
+| `internal/logx/` | Structured logging (slog wrapper); also home to `Recover`/`GoRecover` — the backend-wide panic-recovery helper every background goroutine now uses | `logx.go` |
 | `internal/truncate/` | Token-aware context truncation | `tokens.go` |
 | `internal/mood/` | Mood engine & self-interest protocol | `scorer.go` |
+| `internal/routine/` | Scheduled automations ("Routines") — desktop + mobile, own timezone offset | `loop.go`, `extractor.go`, `store.go`, `types.go` |
+| `internal/agentcli/` | Claude Code / Codex CLI as chat providers (beta) | `claude_code.go`, `codex.go`, `commands.go`, `models.go` |
+| `internal/anthropicapi/` | Developer API Gateway — local Anthropic-compatible endpoint (works with Claude Code) | `anthropicapi.go` |
+| `internal/tts/` | Live Mode text-to-speech: local Piper by default, optional external OpenAI TTS | `tts.go`, `router.go`, `openai.go`, `filler.go`, `voice_store.go` |
+| `internal/swarm/` | Memo Swarm (beta) — pools several PCs' compute for one oversized local model | `room.go`, `worker.go` |
+| `internal/stats/` | Usage Stats (Settings → Stats) — per-turn token/request recording | `store.go` |
+| `internal/taskloop/` | Worker/review-chief engine backing autonomous multi-step task lists | `engine.go`, `store.go` |
+| `internal/shutdown/` | Cross-platform graceful-shutdown signaling (`main()` selects on it; fixes a Windows no-op in the old signal-based approach) | `shutdown.go` |
+| `internal/gguf/` | GGUF file metadata parsing (real max context, tool-calling detection) | `gguf.go` |
+| `internal/jsonutil/`, `internal/browseropen/` | Shared JSON helpers; cross-platform "open URL in browser" helper | `jsonutil.go`, `browseropen.go` |
 
 ---
 
@@ -140,10 +153,11 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 - Export/import support
 
 ### 5.3 Agent Engine
-- 8 built-in tools: read_file, write_file, edit_file, delete_file, list_directory, run_command, web_search, whatsapp_send
+- 19 built-in tools (`internal/agent/tools.go`): file I/O (read/write/edit/delete/insert-line/delete-lines/list/search/get-info), `run_command`, `web_search`, `self_clone`, `configure_provider`, calendar, WhatsApp (send/search/latest/messages), `read_env` — plus any skill that declares its own `command:` tool, wired into the same pipeline
 - Permission system: Safe/Medium/Dangerous per tool, session/user policies
-- Execution sandbox: path validation, symlink protection, command blacklist (23 patterns)
+- Execution sandbox: path validation, symlink protection (incl. a fixed sandbox-escape gap), hardened dangerous-command blacklist
 - 120s timeout per tool call (60s fallback if no deadline is set), max 20 iterations, cancel support
+- Toggle now lives directly in Chat's top bar (no longer a separate Agent-only screen)
 - Audit trail (last 1000 entries)
 
 ### 5.4 Orchestra Mode
@@ -177,10 +191,35 @@ Memo is not just another chat UI. It is a full AI companion that runs entirely o
 - Encrypt *before* upload — Google can't read it
 
 ### 5.9 Model Store
-- HuggingFace model discovery
-- Hardware-fit badges (GPU/CPU/too large)
-- One-click download with auto GPU offloading
-- Quantization quality labels in plain language
+- HuggingFace model discovery, OR-combined multi-select filters (Tools/Vision/Code/Embedding/Size)
+- Hardware-fit badges (GPU/CPU/too large) with hover tooltips explaining what they mean
+- One-click download with auto GPU offloading; several downloads can run in parallel
+- Quantization quality labels in plain language; real max-context read from the GGUF file itself (slider can't exceed it)
+
+### 5.10 Routines (Scheduled Automations)
+- Describe a task and a schedule in plain language; runs as a simple prompt or a full tool-using agent job
+- Desktop and mobile (mobile delivers real pre-scheduled local notifications)
+- Fires in the device's own timezone, resynced on every (re)connect
+
+### 5.11 Self-Insight (`/insight`)
+- On demand or on a weekly Routine, Memo reviews recent mood/memory history for a real pattern — explicitly told not to invent one if there isn't enough signal
+
+### 5.12 Live Mode (beta)
+- Hands-free spoken conversation via a small icon next to the chat input box (not a sidebar tab)
+- Local on-device transcription; replies spoken with local Piper TTS by default, optional external OpenAI TTS
+- One-directional barge-in, bundled VAD model; no echo cancellation yet (known limitation)
+
+### 5.13 Claude Code / Codex CLI as Chat Providers (beta)
+- Per-chat provider that shells out to a locally installed `claude`/`codex` CLI as a real background agent job, no fixed timeout
+- The CLI's own slash commands resolve in Memo's `/` popup; no memory/identity context is injected
+
+### 5.14 Developer API Gateway (Sidebar → Developer)
+- Local Anthropic-compatible endpoint (`internal/anthropicapi/`) for tools like Claude Code (`ANTHROPIC_BASE_URL`)
+- Model selection via `type/model-id`; full tool calling for openai/custom/local/groq/openrouter/grok/opencode-zen/opencode-go providers
+
+### 5.15 Memo Swarm (beta)
+- Pools several PCs' compute for one local model too large for a single machine's VRAM/RAM (Host + Join via llama.cpp `rpc-server`)
+- Not available on macOS yet
 
 ---
 
@@ -215,8 +254,11 @@ Priority order defined in `internal/app/llm.go` `callLLMStream()`:
 | `data/calendar/` | Calendar events SQLite DB |
 | `data/permissions.json` | Agent tool permission policies |
 | `data/machine.key` | Machine-specific encryption key (0600) |
+| `data/routines/*.json` | One file per Routine (schedule, prompt/agent config) |
+| `data/usage.db` | Usage Stats — per-turn request/token records (SQLite) |
+| `data/tts/voices/` | Downloaded local Piper voice files (`.onnx` + `.onnx.json`) |
 | `.env` | Optional environment overrides (OAuth creds, API keys) |
-| `binaries/` | Platform-specific binaries (llama-server, vec0 extension) |
+| `binaries/` | Platform-specific binaries (llama-server, vec0 extension, whisper-server) |
 
 ---
 
@@ -308,36 +350,20 @@ GitHub Actions runs on every push/PR:
 | Request Limits | 50MB body limit via `limitBodyMiddleware` |
 | Config Files | Written with `0600` permissions |
 | Cloud Sync | E2E encrypted before upload, PBKDF2 600K iterations |
-| Agent Sandbox | Path validation, symlink protection, 23-command blacklist |
+| Agent Sandbox | Path validation, symlink protection, hardened dangerous-command blacklist (incl. a symlink-escape fix) |
 | WhatsApp | Mutex-protected init, serialized message writes |
+| Remote Access | Token required on every request (LAN/ngrok/Tailscale) — previously optional, now enforced |
+| `.memo` Backup | Full export now includes calendar/habits/routines/tasks/permissions/skills and `machine.key` (previously incomplete) |
 
 ---
 
 ## 11. Known Issues & Technical Debt
 
-### Remaining Issues
-| Priority | Issue | Status |
-|----------|-------|--------|
-| HIGH | `model_store_screen.dart` (2469 lines) — needs split | Open |
-| HIGH | Mobile API client missing most endpoints | Open |
-| HIGH | Whisper GPU variant missing | Open |
-| MED | `connectionStatusProvider` polling | Acceptable (autoDispose) |
-| LOW | `skill.DangerLevel` / `agent.DangerLevel` separate types | Cosmetic |
+**Current status: 0 open bugs at every severity** — see [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root), the actively-maintained tracker. Older, larger audits from earlier in the v3.1.x line live in [`docs/KNOWN_ISSUES.md`](KNOWN_ISSUES.md) (frozen 2026-07-04 snapshot; several of its "open" items — e.g. mobile API client coverage, `a.client`/`providerRouter` reassignment — have since been re-verified as false positives or fixed) and [`docs/RESOLVED_ISSUES.md`](RESOLVED_ISSUES.md) (frozen v3.0.0 snapshot).
 
-### Fixed (2026-06-28)
-- Memory store write lock (data corruption fix)
-- Cloud backup WAL checkpoint (incomplete backup fix)
-- WhatsApp mutex (double connection fix)
-- Sessions mutex (init race fix)
-- Orchestra conductor mutex (data race fix)
-- MIME spoofing (content-based detection)
-- Rate limit bypass (removed X-Forwarded-For trust)
-- Path traversal (filepath.Rel validation)
-- Goroutine lifecycle (WhatsApp uses lifecycleCtx)
-- Logging migration (all packages → logx.Printf)
-- Orchestra fallback chain (tryFallbackProviders)
-- Provider priority UI (dialog field added)
-- Flutter const constructors (116 auto-fixes)
+Two items previously listed here as open are resolved:
+- `model_store_screen.dart` was split into a `settings/tabs/`-style module set (5-phase refactor).
+- Mobile API client parity: 111 of the backend's 118 endpoints now exist on mobile; the remaining 7 are CLI-management/client-registry endpoints mobile has no use for.
 
 ---
 
@@ -358,7 +384,8 @@ GitHub Actions runs on every push/PR:
 | CGO Flags | `docs/CGO_FLAGS.md` | Build configuration |
 | Learning System | `docs/learning-system/README.md` | Observer & proactive engine |
 | Obsidian Docs | `obsidian-doc/Memo/` | Full documentation set (20+ files) |
+| Bug Report | `BUG_REPORT.md` | Actively-maintained open-bug tracker (0 open as of this writing) |
 
 ---
 
-*Last updated: 2026-07-04 · Version: v3.1.1 (open beta)*
+*Last updated: 2026-08-05 · Version: v3.3.3 (open beta) · v3.3.4 in development*

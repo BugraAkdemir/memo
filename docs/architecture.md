@@ -50,7 +50,8 @@ graph TB
 - **Limitations:**
   - Index build time on first query after write
   - ANN recall vs. speed tradeoff configurable via vec0 parameters
-  - Pinned facts capped at 50, evicted by recency only (see [KNOWN_ISSUES.md](KNOWN_ISSUES.md))
+  - Pinned facts capped at 75 (raised from 50); a dedicated consolidation pass now dedups the pinned-facts pool itself, closing a gap where `source='explicit'` rows were excluded from general consolidation with nothing else deduping them (fixed, see `BUG_REPORT.md`/handoff.md TD-2)
+  - The 4096-token memory-prompt budget (down from an unbounded ~16K) caps worst-case prompt bloat as the pinned-facts set grows (v3.3.4)
 
 ### Session Manager (`internal/sessions/`)
 - **Format:** JSON files in `data/sessions/`
@@ -208,8 +209,9 @@ Agent execution engine:
 - **`sandbox.go`** — `Sandbox` with path traversal protection, rate limiting (30 calls/min, 5s cooldown), command blacklist (23 patterns)
 - **`pipeline.go`** — `Pipeline`: LLM → tool call → permission check → execution → result loop (max 20 iterations), event streaming via channels
 - **`executor.go`** — Top-level orchestrator: `RunStream()`, `HandlePermissionResponse()`, audit log (last 1000 entries)
-- **`tools/file.go`/`command.go`/`search.go`** — Tool implementations with path validation, backup creation, environment variable masking
-- **Known issues:** No test files; frontend agent UI not implemented yet
+- **`tools/file.go`/`command.go`/`search.go`/`calendar.go`/`provider.go`/`whatsapp.go`/`websearch.go`/`selfclone.go`** — 19 built-in tools total, with path validation, backup creation, environment variable masking
+- Skill `command:` tools now execute through this same pipeline and permission UI (previously declaration-only)
+- Test coverage exists across the package now (`permissions_test.go`, `backup_test.go`, `tools/*_test.go`); frontend agent UI is fully implemented (toggle in Chat's top bar)
 
 ### `internal/orchestra/` (3 files, ~1000 lines total)
 Multi-model orchestration (Orchestra Mode):
@@ -302,13 +304,15 @@ graph LR
 - `AnimationController` per message bubble → severe jank with 50+ messages (fixed in v3.0.0)
 - Auto-scroll yanks to bottom when reading history (fixed in v3.0.0)
 - Download polling loop never cancels (fixed in v3.0.0)
-- Cloud Sync UI completed; Remote Access tab shows "disabled in v3.0.0"
-- Agent frontend UI (permission dialog, tool call cards, mode toggle) not yet implemented
-- No agent-related API methods in `api_client.dart`
+- Cloud Sync UI completed; Remote Access (Tailscale) graduated out of Beta in v3.3.4 — one-click login, Funnel on by default, auto-reconnect
+- Agent frontend UI (permission dialog, tool call cards, mode toggle) is fully implemented and live — the toggle sits in Chat's top bar
+- Current status: see [`docs/DOCS.md`](DOCS.md) §11 / `BUG_REPORT.md` for actively-maintained bug tracking (0 open as of 2026-08-05)
 
 ---
 
 ## 🔌 6. REST API Endpoints
+
+> This table predates several feature lines (Routines, Proactive Learning, Live Mode/TTS, Memo Swarm, Usage Stats, CLI providers, Skills, the Anthropic-compatible Developer Gateway) and is not exhaustive — see [`docs/API_REFERENCE.md`](API_REFERENCE.md) for those, or `internal/webserver/server.go`'s `route(...)` calls for the full current list (~118 endpoints as of v3.3.4).
 
 | Method | Endpoint | Description |
 |---|---|---|
@@ -352,7 +356,7 @@ graph LR
 ## 🛠️ 7. Development & Build
 
 ### Prerequisites
-- Go 1.25+
+- Go 1.26+
 - Flutter 3.10+
 - llama.cpp (auto-installed by the app, or manual)
 
@@ -375,11 +379,21 @@ cd frontend && flutter run -d linux
 
 ## 📋 8. Current Status
 
-**Current version:** v3.1.2 (open beta)
+**Current version:** v3.3.3 (open beta), v3.3.4 in development
 
-**Full known issues:** [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md)
+**Bug tracking:** [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root) is the actively-maintained log — 0 open bugs as of 2026-08-05. [docs/KNOWN_ISSUES.md](./KNOWN_ISSUES.md) is a frozen 2026-07-04 snapshot kept for historical reference.
+
+**Since v3.1.2, headline architectural additions** (see `versinNote/v3.3.3.md` and `versinNote/v3.3.4.md` for full detail):
+- `internal/agentcli/` — Claude Code / Codex CLI as chat providers (beta), shelling out to a local CLI instead of an HTTP call
+- `internal/anthropicapi/` — Developer API Gateway, an Anthropic-compatible local endpoint for tools like Claude Code
+- `internal/routine/` — scheduled automations ("Routines"), desktop + mobile
+- `internal/tts/` — Live Mode voice (beta): local Piper TTS by default, optional external OpenAI TTS
+- `internal/swarm/` — Memo Swarm (beta), pooling several machines' compute via llama.cpp's `rpc-server`
+- `internal/stats/` — Usage Stats persistence
+- Backend-wide panic recovery: `logx.Recover`/`logx.GoRecover` now wrap essentially every background goroutine (memory, streaming, WhatsApp, cloud sync, routines, proactive suggestions, notifications, remote-access tunnels), so an unexpected error in one no longer takes the whole process down
+- Remote access (LAN/ngrok/Tailscale) now requires the access token on every request; Tailscale itself graduated out of Beta
 
 ---
 
-> **Last updated:** 2026-07-07
-> **Version:** v3.1.2 open beta
+> **Last updated:** 2026-08-05
+> **Version:** v3.3.3 open beta (v3.3.4 in development)

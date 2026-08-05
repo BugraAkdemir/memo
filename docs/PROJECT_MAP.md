@@ -35,16 +35,102 @@ internal/agent/
   backup.go           — BackupManager: agent dosya düzenlemelerinden önce anlık yedek alır, geri yükler
   backup_test.go      — BackupManager oluşturma/geri yükleme round-trip testleri
 
-internal/agent/tools/
-  file.go             — read_file tool'u: sandbox'lanmış taban yol içinde dosya okur
-  edit.go             — edit_file tool'u: mevcut dosyalara string/satır aralığı değişikliği uygular
+internal/agent/tools/  — 19 yerleşik tool (internal/agent/tools.go'da kayıtlı), aşağıdaki dosyalara dağılmış
+  file.go             — read_file/write_file/delete_file/list_directory/get_file_info tool'ları: sandbox'lanmış taban yol içinde dosya G/Ç
+  edit.go             — edit_file/insert_line/delete_lines tool'ları: mevcut dosyalara string/satır aralığı değişikliği uygular
   edit_test.go        — EditFile satır ve string-replace davranışı testleri
   search.go           — search_files tool'u: proje dizininde desen/glob arama
   command.go          — run_command tool'u: kara liste ve timeout korumasıyla shell komutu çalıştırır
   websearch.go        — web_search tool'u: internal/websearch'ü agent'tan çağrılabilir hale getirir
-  whatsapp.go         — WhatsApp tool bağlamaları (gönder/ara/liste), enjekte edilen client arayüzü üzerinden
+  whatsapp.go         — whatsapp_send/search/latest/messages tool bağlamaları, enjekte edilen client arayüzü üzerinden
+  calendar.go         — get_calendar_events tool'u
+  provider.go         — configure_provider tool'u: agent'ın kendi sağlayıcı ayarlarını değiştirmesine izin verir
   selfclone.go        — self_clone tool'u: çalışan Memo binary'sini/projeyi başka dizine kopyalar
   selfclone_test.go   — SelfClone'un kendine/alt dizinine klonlamaya karşı korumalarının testi
+  calendar_test.go, command_test.go, file_test.go, provider_test.go — testler
+```
+
+### internal/agentcli/ — Claude Code / Codex CLI'ı sohbet sağlayıcısına çeviren köprü (beta)
+
+```
+internal/agentcli/
+  claude_code.go          — Claude Code CLI'ı provider.Provider arayüzüne saran, alt-süreç olarak çalıştıran implementasyon
+  codex.go                — Codex CLI için aynı köprünün karşılığı
+  commands.go              — CLI'ın kendi `/` komutlarını (.claude/commands, .codex/prompts, skill'ler) keşfeder
+  commands_reported.go     — komut listesini Memo'nun `/` popup'ına raporlar (proje/kişisel/skill/yerleşik etiketiyle)
+  commands_reported_test.go, commands_test.go, models_test.go, claude_code_test.go, codex_test.go — testler
+  models.go                — CLI sağlayıcı için sahte/statik model listesi
+  sysproc_unix.go/sysproc_windows.go — alt süreç grubu kurulumu (process-group kill için)
+```
+
+> `internal/provider`'ın kendisi değil — bunlar HTTP çağrısı değil, dosya düzenleyebilen/komut çalıştırabilen durumlu (stateful) yerel süreçler, kendi oturum/auth modelleriyle.
+
+### internal/anthropicapi/ — Developer API Gateway (Sidebar → Developer)
+
+```
+internal/anthropicapi/
+  anthropicapi.go          — Anthropic Messages API'sinin (ANTHROPIC_BASE_URL) sunucu tarafı implementasyonu; internal/provider/claude.go'nun (istemci tarafı) aynadaki karşılığı — Claude Code gibi araçların Memo'yu gerçek Anthropic API'si sanıp yerel modele/kendi API key'lerine yönlendirmesini sağlar
+  anthropicapi_test.go     — testler
+```
+
+### internal/routine/ — Rutinler (zamanlanmış otomasyonlar)
+
+```
+internal/routine/
+  types.go        — Routine veri tipi ve zamanlama alanları
+  extractor.go     — doğal dil açıklamasından bir Routine yapılandırması çıkarır (LLM tabanlı)
+  loop.go          — zamanlanmış rutinleri tetikleyen arka plan döngüsü, cihaz saat dilimi ofsetiyle
+  store.go         — data/routines/*.json — rutin başına bir dosya
+  *_test.go        — testler
+```
+
+### internal/stats/ — Kullanım İstatistikleri (Settings → Stats)
+
+```
+internal/stats/
+  store.go       — her tamamlanan sohbet turunu (yerel/agent/orchestra/harici sağlayıcı) data/usage.db'ye kaydeder; incognito'da kayıt yok
+  store_test.go  — testler
+```
+
+### internal/swarm/ — Memo Swarm (beta)
+
+```
+internal/swarm/
+  room.go       — Host/Join oda kodu, katılımcı listesi, pay (yüzde) yönetimi
+  worker.go     — llama.cpp rpc-server ile bir makinenin işlem gücünü havuza katma
+  *_test.go     — testler
+```
+
+> macOS'ta henüz yok (yardımcı binary orada paketlenmiyor).
+
+### internal/taskloop/ — Otonom çok-adımlı görev listesi motoru
+
+```
+internal/taskloop/
+  engine.go          — worker/review-chief döngüsü: bir görevi çalıştırır, chief'e onaylatır, sıradakine geçer
+  store.go            — görev listesi kalıcılığı
+  taskloop_test.go     — testler
+```
+
+### internal/tts/ — Live Mode metin-konuşma (Piper + opsiyonel OpenAI TTS)
+
+```
+internal/tts/
+  tts.go             — Piper binary'sini saran Synthesizer (yerel, çevrimdışı, varsayılan)
+  openai.go           — opsiyonel harici OpenAI TTS sağlayıcısı
+  router.go           — hangi TTS motorunun kullanılacağına karar verir, hata durumunda yerel Piper'a düşer
+  filler.go            — cevap üretilirken çalan kısa "düşünme" sesi (hmm/mm/ah)
+  voice_store.go       — Hugging Face'ten küçük, elle seçilmiş Piper ses koleksiyonunu indirip yöneten yerel katalog
+  *_test.go            — testler
+```
+
+### internal/shutdown/, internal/gguf/, internal/jsonutil/, internal/browseropen/ — küçük paylaşılan yardımcı paketler
+
+```
+internal/shutdown/shutdown.go     — main()'in seçtiği (select) süreç-geneli graceful-shutdown sinyali; eski os.Signal-tabanlı yöntemin Windows'ta sessiz no-op olması sorununu çözer
+internal/gguf/gguf.go             — bir GGUF dosyasının sadece metadata bölümünü okuyup gerçek maksimum context ve tool-calling desteğini tespit eder (tensor verisine hiç dokunmaz)
+internal/jsonutil/jsonutil.go     — paylaşılan JSON yardımcıları
+internal/browseropen/browseropen.go — varsayılan tarayıcıda URL açma (CLI'ın --github/--bugreport/--docs bayrakları ve Tailscale giriş akışı tarafından kullanılır)
 ```
 
 ### internal/api/ — LLM API istemcisi (OpenAI uyumlu)
@@ -588,27 +674,27 @@ skills/
 
 ```
 AGENTS.md                 — AI kodlama ajanları için Memo'nun teknoloji yığını/mimarisi özeti (ana referans doküman)
-BLUEPRINT.md               — v4.0.0'ı hedefleyen tam ekosistem planı/vizyon dokümanı
-BUG_REPORT.md              — v3.1.0-beta stable release'i engelleyen kapsamlı stabilite bug denetimi
+BLUEPRINT.md               — v4.0.0'ı hedefleyen spekülatif ekosistem/iş planı (memo-proxy API iş modeli) — henüz uygulanmadı
+BUG_REPORT.md              — aktif olarak bakımı yapılan açık bug takipçisi (bu yazının yazıldığı tarihte 0 açık madde, her seviyede)
 GEMINI.md                  — proje genel bakış dokümanı ("Memory Shell" konsepti)
 README.md / READmeTR.md    — ana proje README'si (EN) ve Türkçe çevirisi
 roadmap.md                 — docs/ROADMAP.md (EN) ve docs/tr/ROADMAP.md'ye yönlendiren stub
-handoff.md                 — oturum devir teslim notları (en son: terminal REPL/CLI çalışması)
+handoff.md                 — oturum devir teslim notları, ters-kronolojik (en yeni en üstte)
 plan.md                    — özellik kaybetmeden ilk-çalıştırma onboarding/UX iyileştirme planı
-PLAN_learning_calendar.md  — v3.2 intent-tabanlı öğrenme + takvim + tek-model-modu planı
+PLAN_learning_calendar.md  — v3.2 intent-tabanlı öğrenme + takvim + tek-model-modu planı (tamamlandı)
 yapılacaklar.md            — Türkçe TODO listesi: stable-release engelleri + RAG hafıza yol haritası
 
-docs/                — 55 dosya: superpowers/specs (tasarım dokümanları) + superpowers/plans (uygulama planları,
-                        bu oturumdaki terminal REPL dahil), learning-system/, task/, tr/ (API_REFERENCE, ROADMAP,
+docs/                — superpowers/specs (tasarım dokümanları) + superpowers/plans (uygulama planları),
+                        learning-system/, task/, plans/, tr/ (API_REFERENCE, BILINEN_SORUNLAR,
                         TROUBLESHOOTING vb. Türkçe teknik dokümantasyon seti)
-obsidian-doc/, obsidian-doc-en/ — 87 dosya toplam: Obsidian vault olarak dışa aktarılmış TR/EN kullanıcı/geliştirici dokümantasyonu
-versinNote/           — sürüm notları (V1.0.0 → v3.1.1) ve Türkçe çevirileri
+obsidian-doc/, obsidian-doc-en/ — Obsidian vault olarak dışa aktarılmış TR/EN kullanıcı/geliştirici dokümantasyonu
+versinNote/           — sürüm notları (V1.0.0 → v3.3.3 yayınlandı, v3.3.4 geliştirmede) ve tr/ altında Türkçe çevirileri
 ```
 
 ## 8. Çalışma Zamanı / Üretilen Dizinler (kaynak kodu değil, açıklanmadı)
 
 ```
-data/          — çalışma zamanı verisi: hafıza DB, sohbet oturumları, modeller, takvim, mood, WhatsApp, config anahtarları
+data/          — çalışma zamanı verisi: hafıza DB, sohbet oturumları, modeller, takvim, mood, WhatsApp, rutinler, kullanım istatistikleri (usage.db), Piper sesleri (tts/voices/), config anahtarları
 binaries/      — platforma özel llama.cpp/vec0/whisper binary'leri (bundling için)
 build/, build_output/ — derleme çıktıları ve paketleme sahne alanları
 frontend/build/, frontend/.dart_tool/, mobile/build/, mobile/.dart_tool/ — Flutter derleme önbellekleri
@@ -619,54 +705,58 @@ frontend/build/, frontend/.dart_tool/, mobile/build/, mobile/.dart_tool/ — Flu
 
 ## İstatistikler
 
+> **2026-08-05'te yeniden sayıldı** (`find`/`wc` ile) — v3.3.3 sürümü + v3.3.4 geliştirme dalı sonrası. Aşağıdaki sayılar bir sonraki büyük refactor'de yine bayatlayacak, elle güncel tutulur.
+
 ### Go (backend)
 
 | Metrik | Değer |
 |---|---|
-| Toplam `.go` dosyası (test hariç) | 143 |
-| Test dosyası (`_test.go`) | 58 |
-| `internal/` alt paket sayısı | 31 |
-| Kaynak kod satırı (test hariç) | 32.272 |
-| Test kodu satırı | 10.074 |
-| **Toplam Go satırı** | **42.346** |
-| En büyük dosya | `internal/memory/store.go` (1.838 satır) |
-| 2. en büyük | `internal/webserver/handlers_flutter.go` (1.789 satır) |
-| 3. en büyük | `internal/orchestra/conductor.go` (972 satır) |
+| Toplam `.go` dosyası (test hariç) | 220 |
+| Test dosyası (`_test.go`) | 161 |
+| `internal/` alt paket sayısı | 41 |
+| Kaynak kod satırı (test hariç) | 53.292 |
+| Test kodu satırı | 30.946 |
+| **Toplam Go satırı** | **84.238** |
+| En büyük dosya | `internal/webserver/handlers_flutter.go` (2.532 satır) |
+| 2. en büyük | `internal/memory/store.go` (2.333 satır) |
+| 3. en büyük | `internal/app/llm.go` (1.308 satır) |
 
 ### Flutter — Masaüstü (`frontend/`)
 
 | Metrik | Değer |
 |---|---|
-| Toplam `.dart` dosyası (lib/, test hariç) | 71 |
-| Test dosyası | 2 |
-| Kaynak kod satırı (lib/) | 27.008 |
-| Test kodu satırı | 838 |
-| En büyük dosya | `screens/model_store_screen.dart` (2.537 satır) |
-| 2. en büyük | `core/l10n.dart` (1.474 satır) |
-| 3. en büyük | `widgets/chat_input.dart` (1.337 satır) |
+| Toplam `.dart` dosyası (lib/, test hariç) | 105 |
+| Test dosyası | 17 |
+| Kaynak kod satırı (lib/) | 40.341 |
+| Test kodu satırı | 2.786 |
+| En büyük dosya | `core/l10n.dart` (3.042 satır) |
+| 2. en büyük | `widgets/chat_input.dart` (1.991 satır) |
+| 3. en büyük | `core/api_client.dart` (1.967 satır) |
+
+> `model_store_screen.dart` artık tek dev dosya değil — `settings/tabs/`'a paralel bir desenle bölündü (bkz. handoff.md, BUG-M1).
 
 ### Flutter — Mobil (`mobile/`)
 
 | Metrik | Değer |
 |---|---|
-| Toplam `.dart` dosyası (lib/, test hariç) | 16 |
+| Toplam `.dart` dosyası (lib/, test hariç) | 21 |
 | Test dosyası | 1 |
-| Kaynak kod satırı (lib/) | 6.356 |
-| En büyük dosya | `core/api_client.dart` (1.821 satır) |
+| Kaynak kod satırı (lib/) | 7.848 |
+| En büyük dosya | `core/api_client.dart` (1.928 satır) |
 
 ### Genel Toplamlar
 
 | Metrik | Değer |
 |---|---|
-| **Toplam kaynak dosyası** (Go + Dart, test dahil) | **291** |
-| **Toplam kaynak kodu satırı** (Go + Dart, test dahil) | **~76.548** |
-| Shell/bat/ps1 script sayısı (kök dizin) | 11 |
-| Script satırı toplamı | 1.454 |
-| Markdown doküman sayısı (repo genelinde) | 234 |
-| `.github/workflows/` sayısı | 5 |
+| **Toplam kaynak dosyası** (Go + Dart, test dahil) | **~525** |
+| **Toplam kaynak kodu satırı** (Go + Dart, test dahil) | **~135.200** |
+| Shell/bat/ps1 script sayısı (kök dizin) | 15 |
+| Script satırı toplamı | 2.269 |
+| Markdown doküman sayısı (repo genelinde) | ~202 |
+| `.github/workflows/` sayısı | 6 |
 | `skills/` altındaki skill sayısı | 2 |
-| Git commit sayısı | 387 |
+| Git commit sayısı | 1.156 |
 
 ---
 
-*
+*Son güncelleme: 2026-08-05 · v3.3.3 (yayınlandı) / v3.3.4 (geliştirmede)*

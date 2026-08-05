@@ -23,7 +23,8 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Remote Access
 - **ngrok Tunnel**: Built-in ngrok integration for accessing your Memo backend from anywhere. Auto-download, tunnel management, configurable domain and region.
-- **Token Authentication**: Optional `X-Memo-Token` header for secure remote connections.
+- **Tailscale (out of Beta)**: One-click login (no auth key to paste), Funnel on by default, auto-reconnect after a dropped connection — available directly in Settings → Remote Access, desktop and mobile.
+- **Token Authentication Required**: Every remote request (LAN, ngrok, or Tailscale) now requires the access token shown in Settings — previously optional for LAN/ngrok, closing a real "anyone on the network could read your API keys" gap. Local-only use is unaffected.
 
 ---
 
@@ -41,9 +42,9 @@ Memo isn't just a chat; it's a "Second Brain."
 - **AES-256-GCM Encryption**: API keys encrypted with machine-derived key.
 
 ### Backup & Restore (.memo)
-- **Full Export**: `GET /api/export` — zip archive of sessions, config, providers, orchestra, memory, WhatsApp data.
+- **Full Export**: `GET /api/export` — zip archive of sessions, config, providers, orchestra, memory, WhatsApp data, **plus calendar events, learned habits, routines, task lists, agent tool permissions, installed skills, and `machine.key`** (previously missing — without `machine.key`, a restored backup left every provider API key permanently undecryptable). Models excluded by default (own toggle).
 - **Full Import**: `POST /api/import` — restore from .memo zip. Optional model inclusion.
-- **Wipe All Data**: `POST /api/wipe` — double-confirmation dialog, config file persists.
+- **Wipe All Data**: `POST /api/wipe` — double-confirmation dialog, config file persists. Now reliably closes every internal database (memory, stats, calendar, mood, WhatsApp) before removing files, fixing a Windows-only failure.
 
 ### Mobile Companion App
 - **Thin Client**: Android/iOS Flutter app connecting over LAN or remote tunnel.
@@ -64,17 +65,32 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Compatibility Badge**: Flags models as "GPU Compatible" or warns about "Insufficient VRAM" before you download.
 
 ### Background Download Manager
-- **Parallel Downloading**: High-speed GGUF fetching with real-time percentage and speed tracking.
+- **Parallel Downloading**: Several GGUF downloads can now run at once (previously a second download was rejected outright), with combined progress in the engine status bar and a rough time estimate, not just a bare percentage.
 - **Lifecycle Control**: One-click Start, Stop, and Update for all local models.
+- **Hardware-Matched First-Run Suggestion**: Setup reads your RAM/GPU and recommends a matching chat + memory model pair, with one button to start both downloading.
+- **Safer Context Sizing**: The context-size field now reads the model's real maximum context straight from the GGUF file and won't let the slider exceed it (previously free-text, could crash the engine).
+- **Accurate Capability Badges**: Tool-calling/code badges are now derived from the model's actual chat template and tags instead of a hardcoded list of "known" families.
+- **Plain-Language Errors & Tooltips**: Raw errors like `llama: server failed to become ready within 120s` are now short and actionable; hardware-fit and quantization badges have hover tooltips explaining what they mean.
+- **Discover Filters**: Tools/Vision/Code/Embedding/Size filters now combine with OR (not AND) and are grouped into multi-select dropdowns with an "N filters active · clear" indicator.
 
 ---
 
 ## 4. ⚡ Interaction & User Experience
 
-### Live Mode (Streaming)
+### Streaming Responses
 - **Token-by-Token Rendering**: Watch the AI "type" its responses in real-time.
 - **Thinking State**: A pulsing "Memo is thinking..." status provides visual feedback before the first token arrives.
 - **Cursor UI**: A blinking terminal-style cursor (`▊`) follows the stream.
+
+### Live Mode — Hands-Free Voice (Beta)
+- A small voice icon next to the chat input box (after enabling Settings → Beta Features) — not a separate sidebar tab. Listens, auto-detects when you start/stop speaking, transcribes locally, sends it as a normal chat message, and speaks the reply back.
+- **Local by default**: on-device transcription + local **Piper** TTS, so nothing has to leave the machine. An optional external OpenAI TTS provider can be configured instead; local Piper is always the fallback.
+- **Offline voice picker**: download a small curated set of Piper voices (Turkish/English), switch instantly, no restart.
+- **One-directional barge-in**: speak again while Memo is talking and it stops to listen instead of talking over you.
+- **Known limitation**: no echo cancellation yet — speakers (vs. headphones) can occasionally make Memo mistake its own voice for an interruption.
+
+### @ File-Mention
+- Type `@` in any chat's message box to search for and reference a file by name — useful for pointing agent mode at a specific file without typing the full path.
 
 ### Incognito Mode
 - **Zero-Persistence**: A secure toggle that disables all memory saving and history logging for sensitive sessions.
@@ -98,7 +114,8 @@ Memo isn't just a chat; it's a "Second Brain."
 
 ### Multi-Provider Architecture
 Memo connects to external LLM APIs alongside local models:
-- **Supported Providers:** OpenAI (GPT-4o, o1, o3), Google Gemini (2.0 Flash, 2.5 Pro), xAI Grok (2, 3), Anthropic Claude (3.5 Sonnet, 3 Opus), OpenRouter (unified access), Groq (fast inference), Ollama (local alternative)
+- **Supported Providers:** OpenAI, Google Gemini, xAI Grok, Anthropic Claude, OpenRouter, Groq, Ollama, plus **OpenCode Zen** (pay-as-you-go, some models free) and **OpenCode Go** (subscription) — both let you pick from a live model list instead of typing a model name by hand.
+- **Claude Code / Codex CLI as chat providers (beta):** instead of an API call, Memo shells out to a locally installed `claude`/`codex` CLI. Per-chat (not app-wide), runs as a real untimed background job, uses the CLI's own no-prompt permission mode, and its own `/` slash commands surface in Memo's command popup. No memory/identity context is sent — the CLI manages its own session.
 - **Provider Interface:** Common `Provider` interface with `ChatCompletion`, `ChatCompletionStream`, `ListModels`
 - **Fallback Chain:** Router tries providers in order; auto-disables after 3 consecutive failures; health-check re-enables on recovery
 
@@ -118,7 +135,8 @@ Memo connects to external LLM APIs alongside local models:
 
 ### Tool Execution Engine
 Memo acts as an AI agent with full computer control:
-- **8 Built-in Tools:** `read_file`, `write_file`, `delete_file`, `list_directory`, `run_command`, `search_files`, `get_file_info`, `read_env`
+- **19 Built-in Tools:** file I/O (`read_file`, `write_file`, `edit_file`, `insert_line`, `delete_lines`, `delete_file`, `list_directory`, `get_file_info`, `search_files`), `run_command`, `read_env`, `web_search`, `self_clone`, `configure_provider`, `get_calendar_events`, WhatsApp (`whatsapp_send`/`search`/`latest`/`messages`)
+- **Skill tools now actually execute.** A skill's `SKILL.md` can define a `command:` field, wired into the exact same tool pipeline and permission-prompt UI as built-in tools — previously this was declaration-only and never ran anything.
 - **Tool Registry:** Thread-safe registry with JSON Schema parameter definitions
 - **Danger Level System:** `safe` (auto-allowed), `medium` (prompt user), `dangerous` (prompt + delay)
 
@@ -137,7 +155,7 @@ Memo acts as an AI agent with full computer control:
 - **Event Streaming:** Tool execution events streamed to frontend via SSE
 - **Audit Log:** Last 1000 tool executions logged with timestamps
 
-> **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) is planned for v3.2.0. Agent currently works via backend API only.
+> **Note:** Agent frontend UI (permission dialogs, tool call cards, mode toggle) shipped some time ago and is fully live — the toggle sits directly in Chat's top bar next to the web-search toggle, no separate Agent-only screen needed.
 
 ---
 
@@ -186,6 +204,56 @@ Multiple AI models collaborate as a team:
 ### Local STT (Speech-to-Text)
 - **Offline Transcription**: Record voice messages directly in the app.
 - **Bundled Engine**: Uses a localized environment (Vosk/Whisper equivalent) for zero-latency, private transcription.
+
+---
+
+## 9. ⏰ Routines & Proactive Intelligence
+
+### Routines (Scheduled Automations)
+- Describe a task and a schedule in plain language; Memo turns it into a routine that fires on schedule as a simple prompt or a full tool-using agent run.
+- Works on **desktop and mobile** — mobile delivers real, pre-scheduled local notifications so reminders arrive even if the app isn't open.
+- Fires in **your own device's timezone** (captured at creation, resynced on every reconnect), so travel/DST corrects itself instead of staying frozen.
+
+### Proactive Learning & Ambient Nudges
+- Memo notices usage patterns (a stated habit, or something you tend to do at a certain time) and can bring it up on its own — on by default at a subtle level.
+- A directly-stated habit ("I code every night around 9") is trusted immediately; a passively-observed pattern needs to show up statistically first.
+- A nudge can appear woven into a normal reply, or as a desktop suggestion banner (Yes / Not now / Stop asking).
+- Fully disabled in Incognito mode, and under Minimal Mode unless specifically re-enabled.
+
+### Self-Insight (`/insight`)
+- Ask directly, or let a weekly Routine ask, and Memo looks back over recent mood/memory history for a real pattern — explicitly instructed not to invent one if there isn't enough signal.
+
+### Minimal Mode (Settings → General)
+- Strips personality/mood/web-search instructions from every prompt for people who want their local model running with as little overhead as possible; with memory also off, nothing extra is added beyond the typed message.
+- Persona/system-prompt, capability disclosures, passive-feature disclosures, and proactive learning can each be independently re-enabled even while Minimal Mode is otherwise on.
+
+### Memo's Own Identity
+- Asking who built Memo, what it's for, or what it stands for now gets a real, grounded answer instead of a guess — this only surfaces when asked, and doesn't change day-to-day behavior or depend on which persona was picked.
+
+---
+
+## 10. 🛠️ Developer & Power-User Features
+
+### Developer API Gateway (Sidebar → Developer)
+- A local Anthropic-compatible API endpoint, so tools that only support that wire format (most notably **Claude Code**, via `ANTHROPIC_BASE_URL`) can run against Memo's local model or any configured provider/key.
+- Model selection via a `type/model-id` format (`local/qwen2.5`, `openai/gpt-4o`, ...). Full agentic tool calling for openai/custom/local/groq/openrouter/grok/opencode-zen/opencode-go providers.
+- Optional API-key requirement (shares Remote Access's token), optional memory integration, live request log.
+
+### Memo Swarm (Beta)
+- Pool several PCs' compute (Settings → Beta Features → Swarm) to run one GGUF model too large for a single machine's RAM/VRAM — one Host holds the model file, others Join with a room code and lend compute via llama.cpp's `rpc-server`.
+- Goal is capacity, not speed. Not available on macOS yet.
+
+### Usage Stats (Settings → Stats)
+- KPI cards (total requests, input/output tokens, avg tok/s, most-used model), a 30-day stacked daily-usage chart, and a per-model breakdown — recorded for every completed turn (local, agent, orchestra, or external provider) except in Incognito mode.
+
+### Import Memory From Another AI (Settings)
+- Paste a structured description from another AI assistant (ChatGPT, Gemini, Claude, ...) and Memo breaks it into atomic facts saved the same way `/remember` does, plus a communication-style summary folded into its own system prompt.
+
+### Report a Bug (Settings)
+- Prefills a GitHub issue in your browser (with an optional attachment of your last 10 background error events) — nothing is sent anywhere until you review and submit it yourself on GitHub.
+
+### Settings, Reorganized
+- Settings moved from ~20 flat tabs into a searchable, grouped rail with a search box.
 
 ---
 

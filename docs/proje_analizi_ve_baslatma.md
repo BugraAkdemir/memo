@@ -11,7 +11,7 @@ En önemli odak noktaları:
 Proje, Wails/Svelte tabanlı eski mimariden ayrılmış ve "Decoupled" (Bağımsız) bir yapıya geçmiştir. İki ana bileşenden oluşur:
 
 1. **Arka Uç (Backend) - Go:** 
-   Verilerin saklanması, RAG mekanizması, vektör aramaları, harici LLM sağlayıcı yönetimi, AI ajan sistemi ve çoklu model orkestrasyonundan sorumlu olan headless (arayüzsüz) bir REST API sunucusudur. `main.go` ve `app.go` (~2409 satır) üzerinden çalışır. Varsayılan olarak `8090` portunda dinleme yapar. Modüler yapısı `internal/` dizini altında 8 pakete ayrılmıştır: `webserver`, `llama`, `memory`, `provider`, `agent`, `orchestra`, `cloudsync`, `identity`, `sessions`, `modelstore`.
+   Verilerin saklanması, RAG mekanizması, vektör aramaları, harici LLM sağlayıcı yönetimi, AI ajan sistemi ve çoklu model orkestrasyonundan sorumlu olan headless (arayüzsüz) bir REST API sunucusudur. `main.go` ve `internal/app/` (merkezi orkestratör paketi) üzerinden çalışır. Varsayılan olarak `8090` portunda dinleme yapar. Modüler yapısı `internal/` dizini altında 40'tan fazla pakete ayrılmıştır — çekirdek olanlar: `webserver`, `llama`, `memory`, `provider`, `agent`, `orchestra`, `cloudsync`, `identity`, `sessions`, `modelstore`; artı v3.3.x'te eklenen `routine` (rutinler), `agentcli` (Claude Code/Codex CLI sağlayıcıları), `anthropicapi` (Developer API Gateway), `tts` (Sesli Mod), `swarm` (Memo Swarm), `stats` (Kullanım İstatistikleri) gibi yeni paketler.
 
 2. **Ön Uç (Frontend) - Flutter:** 
    Kullanıcı deneyimini sağlayan modern ve masaüstü uyumlu native arayüzdür. `frontend` klasörü içerisinde yer alır. Arka uca REST API üzerinden bağlanarak haberleşir. Riverpod state yönetimi ve Dio HTTP istemcisi kullanır.

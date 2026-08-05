@@ -1,6 +1,8 @@
 # Resolved Issues
 
-> **Scope note (2026-07-04):** This document is a frozen snapshot of the v3.0.0 stabilization pass (last updated 2026-06-03). Fixes made during the v3.1.x line — including everything resolved ahead of the v3.1.1 open beta — are tracked in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)'s "✅ Fixed Bugs" section instead, which is the actively maintained log going forward.
+> **Scope note (2026-07-04):** This document is a frozen snapshot of the v3.0.0 stabilization pass (last updated 2026-06-03). Fixes made during the v3.1.x line — including everything resolved ahead of the v3.1.1 open beta — are tracked in [`KNOWN_ISSUES.md`](KNOWN_ISSUES.md)'s "✅ Fixed Bugs" section instead.
+>
+> **Update (2026-08-05):** `KNOWN_ISSUES.md` is itself now a frozen 2026-07-04 snapshot. Everything fixed since — the rest of the v3.1.x line plus all of v3.2.0/v3.3.0-v3.3.3 and the in-progress v3.3.4 — is tracked in [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root), the current actively-maintained log (0 open bugs as of this writing; fixes aren't re-documented there once landed — see its own header for why, and `git log`/`handoff.md` for the record of what shipped).
 
 This document lists all 61 identified bugs that have been fixed in the Memo project.
 

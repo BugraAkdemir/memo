@@ -63,3 +63,25 @@ Multi-model orchestration enables multiple LLMs to collaborate:
   3. **Synthesize** — Chief model receives all task results and produces a coherent final response.
 - **Provider Bypass:** Unlike normal chat mode, orchestra creates providers directly via factory rather than going through `provider.Router`. This means no fallback chain at the provider level — each role is pinned to its configured model.
 - **Progress Streaming:** Each phase emits typed progress updates (`ProgressPlan`, `ProgressTaskStart`, `ProgressTaskChunk`, `ProgressSynthChunk`, etc.) that the frontend renders in real-time.
+
+## 9. Backend-Wide Panic Recovery (`internal/logx`)
+Before this was addressed, Go gave no automatic protection for panics in background goroutines the way `net/http` gives a single request — an unexpected error in memory saving, a routine tick, a WhatsApp handler, a proactive-suggestion check, or a streaming reply could crash the *entire* process, not just that one task. Only a few corners of the codebase guarded against this.
+
+`logx.Recover(label)` (deferred) and `logx.GoRecover(label, fn)` (a `go fn()` replacement) now wrap essentially every background goroutine across the backend — memory, chat streaming, WhatsApp, cloud sync, local model management, speech-to-text, routines, proactive suggestions, notifications, remote-access tunnels. A panic is logged and contained instead of taking Memo down with it. This is purely defensive — it changes nothing about behavior when everything works normally.
+
+## 10. Claude Code / Codex CLI as Chat Providers (`internal/agentcli/`, beta)
+Rather than an HTTP call the way every `internal/provider` type works, `internal/agentcli` shells out to a locally installed `claude`/`codex` CLI binary as a real, stateful, side-effecting background process — deliberately not folded into `internal/provider` itself, since these have their own session/auth model rather than being stateless chat-completion APIs.
+
+- Per-chat, not app-wide: each chat remembers its own CLI provider/working directory/model independently.
+- No fixed timeout (unlike the 5-minute budget every other reply has); tracked independently of whichever chat is currently visible.
+- Uses each CLI's own no-prompt permission mode (`--dangerously-skip-permissions` for Claude Code, `--dangerously-bypass-approvals-and-sandbox` for Codex) since there's no terminal for either to prompt in.
+- Deliberately sends no memory/identity context — the CLI manages its own multi-turn session and project-context mechanisms.
+- The CLI's own `/` slash commands (`.claude/commands`, `.codex/prompts`, skills, built-ins) are discovered and surfaced in Memo's own `/` popup, each labeled by origin.
+
+## 11. Developer API Gateway (`internal/anthropicapi/`)
+Implements the server side of Anthropic's Messages API wire format (`POST /v1/messages`) — the mirror image of `internal/provider/claude.go`, which implements the *client* side. This lets any tool that only knows how to speak to Anthropic — most notably Claude Code itself, via `ANTHROPIC_BASE_URL` — point at Memo instead, with Memo translating the request to the local model or a configured provider/API key. Model selection uses a `type/model-id` format. Full tool calling works for openai/custom/local/groq/openrouter/grok/opencode-zen/opencode-go providers; gemini/claude/ollama's own provider implementations don't support tools, so a tools-bearing request to one of those returns a clear error instead of silently dropping the tools.
+
+## 12. Routines, Live Mode, and Memo Swarm
+- **Routines (`internal/routine/`):** a natural-language description is parsed into a schedule + prompt/agent config, then fired by a background loop in the device's own captured timezone offset (resynced on every reconnect via `POST /api/routines/sync-offset`).
+- **Live Mode (`internal/tts/`, beta):** on-device speech transcription (reused from elsewhere) feeds a normal chat message; replies are synthesized with a local **Piper** binary by default (`internal/tts/tts.go`), with an optional external OpenAI TTS provider and automatic fallback to Piper on failure or missing config. A small curated voice catalog (`voice_store.go`) downloads `.onnx`/`.onnx.json` Piper voices from Hugging Face on demand.
+- **Memo Swarm (`internal/swarm/`, beta):** pools several machines' compute for one GGUF model too large for any single one of them, via llama.cpp's RPC backend (`rpc-server`). One machine is the Host (holds the model, creates a room/code); others Join and lend compute without downloading the model themselves. Not packaged on macOS yet.

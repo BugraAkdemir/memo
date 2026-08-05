@@ -1,9 +1,14 @@
 # API Reference
 
-Memo Backend runs a REST API on `localhost:8090` (default).
+Memo Backend runs a REST API on `localhost:8090` (default). Every `/api/*` route is also aliased under `/api/v1/*` (see `route()` in `internal/webserver/server.go`).
 
 ## Authentication
-Currently, the API is open for `localhost` connections. Remote access is disabled in v3.0.0.
+Local (`localhost`) connections are open, no token required. **Remote access (LAN, ngrok, or Tailscale) requires the access token** shown in Settings on every request — this was previously optional and is now enforced (v3.3.3 security fix). The mobile app already sends it; a custom tool talking to the remote API directly needs to add it too.
+
+## Developer API Gateway (Anthropic-compatible)
+`POST /v1/messages` implements the server side of Anthropic's Messages API wire format (`internal/anthropicapi/`), so tools that only know how to talk to Anthropic — most notably **Claude Code** via `ANTHROPIC_BASE_URL` — can point at Memo instead. Model selection uses a `type/model-id` format (`local/qwen2.5`, `openai/gpt-4o`, ...). See Sidebar → Developer for the base URL/token/live request log.
+
+This list below is not exhaustive — there are ~118 registered endpoints as of v3.3.4. It groups the major ones by area; see `internal/webserver/server.go`'s `route(...)` calls for the full, current list.
 
 ## Endpoints
 
@@ -78,9 +83,83 @@ Currently, the API is open for `localhost` connections. Remote access is disable
 | :--- | :--- | :--- |
 | `GET`/`PUT` | `/api/config/llama` | Get/update llama configuration |
 | `POST` | `/api/image` | Read image (⚠️ path-restricted to `data/`) |
-| `POST` | `/api/embed/start` | Start embedding server |
-| `POST` | `/api/embed/stop` | Stop embedding server |
+| `POST` | `/api/models/embedding/start` | Start embedding server |
+| `POST` | `/api/models/embedding/stop` | Stop embedding server |
+
+### ⏰ Routines
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`POST` | `/api/routines` | List / create routines |
+| `POST` | `/api/routines/parse` | Turn a plain-language description into a routine config |
+| `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Get/update/delete a routine |
+| `POST` | `/api/routines/sync-offset` | Resync a device's timezone offset for its routines |
+
+### 🔔 Proactive Learning & Self-Insight
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`PUT` | `/api/proactive/settings` | Get/update proactive learning level |
+| `GET` | `/api/proactive/pending` | Poll for a pending suggestion (used by mobile) |
+| `POST` | `/api/proactive/respond` | Accept/dismiss/suppress a suggestion |
+| `GET` | `/api/proactive/patterns` | List learned patterns |
+| `POST` | `/api/proactive/patterns/forget` | Forget one pattern |
+| `POST` | `/api/proactive/clear` | Clear all patterns |
+| `GET` | `/api/memory/insight` | `/insight` — summarize recent mood/memory patterns |
+
+### 🎙️ Live Mode / Text-to-Speech
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/tts/synthesize` | Synthesize speech for a chat reply |
+| `POST` | `/api/tts/filler` | Short "thinking" filler sound |
+| `GET`/`PUT` | `/api/tts/providers` | List/select TTS provider (local Piper or external) |
+| `POST` | `/api/tts/providers/test` | Test an external TTS provider |
+| `GET` | `/api/tts/voices` | List downloadable/local Piper voices |
+| `POST` | `/api/tts/voices/download` | Download a voice |
+| `POST` | `/api/tts/voices/select` | Select active voice |
+
+### 🖧 Memo Swarm (beta)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/swarm/status` | Current room/worker status |
+| `POST` | `/api/swarm/host/create` | Create a Swarm room (become Host) |
+| `POST` | `/api/swarm/host/workers/add`/`remove`/`reorder`/`share` | Manage joined workers and their compute share |
+| `POST` | `/api/swarm/host/start`/`stop`/`close` | Control the Swarm session |
+| `POST` | `/api/swarm/join`/`leave` | Join/leave a room with a room code |
+
+### 📊 Usage Stats
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/stats/usage` | Requests, tokens, avg tok/s, per-model breakdown, 30-day history |
+
+### 🖥️ Claude Code / Codex CLI Providers (beta)
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/cli/status` | Whether `claude`/`codex` are installed, with version |
+| `GET` | `/api/cli/running` | CLI jobs currently running in the background |
+| `GET` | `/api/cli/commands` | The CLI's own `/` commands (project/personal/skill/built-in) |
+| `GET`/`PUT` | `/api/chats/cli-provider`, `/api/chats/cli-workdir`, `/api/chats/cli-model` | Per-chat CLI provider/working-dir/model |
+| `POST` | `/api/send/cli-stream` | Send a message to a CLI-provider chat (SSE) |
+
+### 🗂️ Skills
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET` | `/api/skills/list` | List installed skills |
+| `POST` | `/api/skills/install` | Install a skill |
+| `DELETE` | `/api/skills/remove/{name}` | Remove a skill |
+| `GET` | `/api/skills/get/{name}` | Get one skill's manifest |
+| `GET`/`PUT` | `/api/skills/active-list`, `/api/skills/active` | Get/set active skills |
+
+### 💾 Backup / Export / Wipe
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `POST` | `/api/export` | Full `.memo` backup (now includes calendar, routines, task lists, permissions, skills, `machine.key`) |
+| `POST` | `/api/import` | Restore from a `.memo` backup |
+| `POST` | `/api/wipe` | Factory reset (all internal DBs closed before file removal, fixed on Windows) |
+
+### 🌐 Remote Access
+| Method | Endpoint | Description |
+| :--- | :--- | :--- |
+| `GET`/`PUT` | `/api/remote-access` | LAN/ngrok/Tailscale config, requires the access token on remote requests |
 
 ---
 
-*For detailed JSON payloads, refer to `internal/webserver/handlers_flutter.go` and `internal/webserver/server.go`.*
+*For detailed JSON payloads, refer to `internal/webserver/handlers_flutter.go`, the other `handlers_*.go` files, and `internal/webserver/server.go`.*

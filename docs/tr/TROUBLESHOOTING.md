@@ -34,3 +34,13 @@ Memo için yaygın sorunlar ve çözümleri.
 - "Gizli Mod"un aktif olup olmadığını kontrol edin (Hafızayı devre dışı bırakır).
 - Bir embedding modelinin yüklü olduğundan emin olun. RAG, aktif bir embedding sunucusu gerektirir (genellikle port 8082).
 - Hafıza deposunun aktif olup olmadığını kontrol edin. Hafıza, SQLite (sqlite-vec) vektör deposu kullanır.
+
+## 6. macOS: Açılışta "Bağlantı Hatası"
+**Sorun:** Masaüstü uygulaması açılıyor ama kendi yerel backend'ine bağlanırken hemen bağlantı hatası veriyor, ya da mikrofon/dosya seçici sessizce çalışmıyor.
+**Sebep:** macOS App Sandbox entitlement'larında `network.client` (Dio'nun `localhost:8090`'a çağrılarını engeller), `device.audio-input` (Sesli Mod için `record` paketini engeller) ve `files.user-selected.read-write` (`file_picker`'ı engeller) eksikti; `Info.plist`'te de `NSMicrophoneUsageDescription` yoktu.
+**Çözüm:** `420e6a5` commit'inde düzeltildi (`frontend/macos/Runner/Release.entitlements`, `DebugProfile.entitlements`, `Info.plist`). Bu düzeltmeyi içeren bir sürüme güncelleyin.
+
+## 7. Hafızayı Açmak Yerel Üretimi Çok Yavaşlatıyor
+**Sorun:** Yerel bir modelde hafıza/RAG'ı açmak üretim hızını ciddi düşürüyor (örn. ~10 tok/sn'den 2-3'e).
+**Sebep (v3.3.4'te düzeltildi):** Embedding sunucusu, sanki tek çalışan model kendisiymiş gibi GPU'ya yerleşiyor, sohbet modelinin kendi sunucusuyla VRAM'i aşırı taahhüt edip onu kısmi CPU fallback'ine itiyordu.
+**Çözüm:** Düzeltmeyi içeren bir sürüme güncelleyin — embedding sunucusu artık varsayılan olarak sadece-CPU çalışıyor. Gerçekten boş VRAM'iniz varsa config'teki `embedding_gpu_layers` ile tekrar GPU'ya alabilirsiniz.

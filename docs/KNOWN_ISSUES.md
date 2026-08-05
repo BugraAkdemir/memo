@@ -1,5 +1,7 @@
 # Known Issues & Technical Risks
 
+> **Scope note (2026-08-05):** This document is a frozen snapshot of a full-codebase audit from 2026-07-04 (re-verified against source as of that date, see the note at the bottom). It predates the v3.1.2 → v3.3.3 → v3.3.4 line of work. Current, actively-maintained bug tracking lives in [`BUG_REPORT.md`](../BUG_REPORT.md) (repo root) — **0 open bugs at every severity as of 2026-08-05**. Three items below have since been specifically re-checked and updated in place (H06, H11, H12/BUG-L4); the rest of this file's Medium/Low/Info sections were **not** re-verified after 2026-07-04 and may contain further false positives or already-fixed items — treat it as historical background, not a current punch list.
+
 This document tracks all currently open bugs and technical risks in the Memo project.
 
 **Priority legend:**
@@ -270,9 +272,10 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **Detail:** User input is wrapped with `"%" + query + "%"` for a LIKE pattern. If `query` contains `_` (single-character wildcard in SQL LIKE), it matches unintended rows. Example: query `"test_"` would match `"test1"`, `"testX"`, etc.
 - **Risk:** Incorrect search results when messages contain underscores.
 
-### H06. Flutter: Global Style Cache (`_styleCache`) Memory Leak
-- **File:** `frontend/lib/widgets/chat_message_list.dart:13`
-- **Detail:** `_styleCache` is a global mutable `Map` that is never cleared. It grows indefinitely with every unique combination of theme brightness and accent color visited. A memory leak proportional to theme configurations visited.
+### ~~H06. Flutter: Global Style Cache (`_styleCache`) Memory Leak~~ ✅ RE-CHECKED, NOT A REAL LEAK
+- ~~`frontend/lib/widgets/chat_message_list.dart:13`~~
+- ~~`_styleCache` is a global mutable `Map` that is never cleared. It grows indefinitely with every unique combination of theme brightness and accent color visited.~~
+- **Re-verified (per handoff.md):** the key space is bounded to 2 (light/dark brightness) since `MemoTheme.accent` is a constant, not a variable the user changes — the map can never grow past 2 entries. False positive, not touched.
 
 ### ~~H07. Flutter: `connectionStatusProvider` Infinite Polling~~ ✅ FIXED (duplicate of M31)
 - ~~Ran a `while(true)` 30s polling loop for the app's entire lifetime, no `autoDispose`.~~
@@ -290,14 +293,15 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - **File:** `internal/agent/executor.go:40-45`
 - **Detail:** `logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.
 
-### H11. Mobile API Client Missing Most Backend Endpoints
-- **File:** `mobile/lib/core/api_client.dart`
-- **Detail:** Mobile API client lacks: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory settings, model search/download, WhatsApp, sync, remote access, backup/restore, recording, image endpoints.
+### ~~H11. Mobile API Client Missing Most Backend Endpoints~~ ✅ RE-CHECKED, NO LONGER TRUE
+- ~~`mobile/lib/core/api_client.dart`~~
+- ~~Mobile API client lacks: `sendFileStream`, `exportChat`, `generateTitle`, `updateMessage`, `deleteMessage`, `getSystemPrompt`, memory settings, model search/download, WhatsApp, sync, remote access, backup/restore, recording, image endpoints.~~
+- **Re-verified (per handoff.md):** grep-counted against the backend's route table — 111 of 118 endpoints now exist on mobile. The remaining 7 are either brand-new client-registry endpoints mobile has no use for, or CLI-management endpoints (mobile has no CLI). Removed from `BUG_REPORT.md`.
 
-### H12. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`
-- **File:** `app.go` (`StartLocalModel`, `StopLocalModel`)
-- **Detail:** `a.client` (llama.cpp API client) is reassigned during model start/stop. `clientMu` exists but concurrent streaming requests using the old client while it is being swapped could fail or observe inconsistent state.
-- **Risk:** Unexpected errors or hangs during model switching.
+### ~~H12. Data Race on `a.client` During `StartLocalModel`/`StopLocalModel`~~ ✅ RE-CHECKED — NOT A RACE, NARROWER ISSUE FIXED AS BUG-L4
+- ~~`app.go` (`StartLocalModel`, `StopLocalModel`)~~
+- ~~`a.client` (llama.cpp API client) is reassigned during model start/stop. `clientMu` exists but concurrent streaming requests using the old client while it is being swapped could fail or observe inconsistent state.~~
+- **Re-verified (per handoff.md):** both the read and write sides of `a.client`/`providerRouter` reassignment are correctly guarded by `clientMu`/`providerMu` — this was never a data race. The real, narrower residual risk (a stream copies the client to a local variable under lock and holds it for the duration of the stream; if a model/provider swap happens mid-stream, that stream keeps talking to the old client) was tracked as **BUG-L4** and fixed: swap-caused failures now surface a clear error message instead of a raw "connection refused" (commit `07930f4`).
 
 ### ~~H13. Flutter: Model/Embedding Status Providers Infinite Polling~~ ✅ FIXED
 - ~~`frontend/lib/providers/models_provider.dart:34-54`~~
@@ -661,10 +665,11 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 
 ---
 
-> **Last updated:** 2026-07-04 (re-verified against current source ahead of the v3.1.1 open beta)
+> **Last updated:** 2026-07-04 (re-verified against current source ahead of the v3.1.1 open beta); H06/H11/H12 re-checked and closed on 2026-08-05 (see scope note at top — current bug tracking has moved to `BUG_REPORT.md`)
 > **Audit scope:** Full codebase — Go backend (app.go, app_skill.go, all internal/ packages) + Flutter frontend + mobile frontend + skill system + orchestra system
 > **2026-07-04 pass:** Every 🔴 Critical and 🟠 High item, plus M09-M12/M31, was individually re-checked against current source. 15 items previously listed as open (CR01, CR02, H01, H02, H03, H07, H08, H09, H14, H16, H17, H18, H20, M10, M11, M12, M31 — one High item cross-linked as a Medium duplicate) were already fixed and are now moved to ✅ Fixed. Two (H15, H19) were partially fixed and downgraded in place (High → Medium/Low) rather than closed outright. Medium items M13-M30 and all ⚪ Low / ⚫ Info items were **not** re-verified this pass and may already be stale in the same way — treat counts below as a floor, not a ceiling.
-> **Open bugs:** 🔴0, 🟠6 confirmed (H04, H05, H06, H10, H11, H12), 🔵~28 (incl. H15 downgrade, not fully re-verified), ⚪~19 (incl. H19 downgrade, not fully re-verified)
+> **2026-08-05 spot-check:** H06 (style cache) and H11 (mobile API client) were false positives on re-check; H12 (data race) was also a false positive, but the real narrower issue it pointed at was tracked separately as BUG-L4 and has since been fixed. All three moved to ✅ Fixed above.
+> **Open bugs (as of 2026-07-04, minus the 3 above):** 🔴0, 🟠3 confirmed (H04, H05, H10), 🔵~28 (incl. H15 downgrade, not fully re-verified), ⚪~19 (incl. H19 downgrade, not fully re-verified) — none of these re-verified since 2026-07-04; check `BUG_REPORT.md` for current ground truth
 > **Observations:** 24 (I24 spot-checked 2026-07-04, still open)
-> **Fixed:** 58 (43 previous + 15 confirmed this pass)
+> **Fixed:** 61 (43 previous + 15 confirmed 2026-07-04 + 3 confirmed 2026-08-05)
 > **Total issues found:** 108+

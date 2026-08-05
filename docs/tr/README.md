@@ -2,7 +2,7 @@
   <img src="https://img.shields.io/badge/Go-1.26-00ADD8?style=for-the-badge&logo=go" alt="Go 1.26"/>
   <img src="https://img.shields.io/badge/Flutter-3.10-02569B?style=for-the-badge&logo=flutter" alt="Flutter 3.10"/>
   <img src="https://img.shields.io/badge/Lisans-AGPL_v3-blue?style=for-the-badge" alt="Lisans AGPL v3"/>
-  <img src="https://img.shields.io/badge/Durum-v3.1.2--Açık_Beta-blue?style=for-the-badge" alt="v3.1.2"/>
+  <img src="https://img.shields.io/badge/Durum-v3.3.3--Açık_Beta-blue?style=for-the-badge" alt="v3.3.3"/>
   <br/>
   <img src="https://img.shields.io/badge/llama.cpp-Entegre-orange?style=flat-square&logo=llama" alt="llama.cpp"/>
   <img src="https://img.shields.io/badge/RAG-Aktif-green?style=flat-square" alt="RAG"/>
@@ -29,7 +29,7 @@
 
 ---
 
-> **⚠️ Güncel Durum:** v3.1.2 açık beta — Agent modu, Orchestra, WhatsApp entegrasyonu, bulut senkronizasyonu, takvim ve proaktif öğrenme aktif. [Bilinen sorunlar →](./BILINEN_SORUNLAR.md)
+> **⚠️ Güncel Durum:** v3.3.3 açık beta (v3.3.4 geliştirmede) — Agent modu, Orchestra, WhatsApp entegrasyonu, bulut senkronizasyonu, takvim, rutinler, proaktif öğrenme, (beta) Sesli Mod, (beta) Claude Code/Codex CLI sağlayıcıları ve Developer API Gateway aktif. [Bilinen sorunlar →](./BILINEN_SORUNLAR.md) · Güncel açık bug sayısı: `BUG_REPORT.md`'ye bakın (0)
 
 ---
 

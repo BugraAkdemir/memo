@@ -25,6 +25,7 @@ Memo, WhatsApp hesabına çoklu cihaz Web API'si (whatsmeow) üzerinden bağlan�
 | Otomatik yeniden bağlanma | Exponential backoff (5sn, 10sn, 30sn, 60sn) |
 | Çıkış zaman aşımı | 5sn üst sınır — yerel oturum her durumda temizlenir |
 | Mesaj sıralaması | Düzeltildi: en yeni altta, en eski üstte |
+| Caption'lı medya mesajları | Düzeltildi (v3.3.3): görsel/video/belge içeren canlı mesajlar, üzerlerinde bir caption varsa sessizce kaybolmuyor artık — önceden sadece düz metin mesajları okunuyordu |
 
 ## Teknik
 

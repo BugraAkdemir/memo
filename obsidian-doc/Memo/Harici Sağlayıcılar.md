@@ -1,6 +1,6 @@
 # 🔌 Harici Sağlayıcılar
 
-> **Paket:** `internal/provider/` (10 dosya, ~1700 satır)
+> **Paket:** `internal/provider/` (10+ dosya, ~1700 satır), CLI provider'lar için ayrıca `internal/agentcli/`
 > **Yapılandırma dosyası:** `data/providers.json`
 > **API endpoint'leri:** `/api/providers`, `/api/providers/test`, `/api/providers/active`
 
@@ -50,7 +50,7 @@ type Provider interface {
 
 ---
 
-## Desteklenen Sağlayıcılar (7 tür)
+## Desteklenen Sağlayıcılar (9 tür + 2 CLI provider)
 
 ### 1. OpenAI (`openai.go`, 353 satır)
 - **Uyumlu API'ler:** OpenAI, OpenAI uyumlu tüm endpoint'ler
@@ -88,9 +88,19 @@ type Provider interface {
 - **Base URL:** `http://localhost:11434/v1`
 - **Değer:** Yerel açık kaynak modeller
 
+### 8. OpenCode Zen (v3.3.3)
+- **API Stili:** OpenAI uyumlu
+- **Model seçimi:** OpenRouter gibi elle model adı yazılmaz — provider dialog'unda "Seç" ile sağlayıcının canlı model listesinden seçilir
+- **Fiyatlandırma:** Pay-as-you-go, bazı modeller ücretsiz
+
+### 9. OpenCode Go (v3.3.3)
+- **API Stili:** OpenAI uyumlu
+- **Model seçimi:** OpenCode Zen ile aynı — canlı liste, elle yazım yok
+- **Fiyatlandırma:** Abonelik tabanlı
+
 > **Not:** llama.cpp bir provider olarak uygulanmamıştır. Yerel modeller `api.Client` ile ayrıca yönetilir.
 
-### 8-9. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
+### 10-11. Claude Code CLI ve Codex CLI (`internal/agentcli/`, CLI tabanlı — v3.3.4)
 
 Diğer sağlayıcılardan mimari olarak tamamen farklı: bir HTTP API'ye istek atmak yerine bilgisayarda kurulu bir komut satırı aracını subprocess olarak çalıştırır — Claude Code için `claude -p --output-format stream-json --dangerously-skip-permissions [--resume <id>]`, Codex için `codex exec --json --dangerously-bypass-approvals-and-sandbox [-C <dir>] [resume <thread-id>]`. Import cycle'a girmeden `provider.Provider` arayüzünü uygular — `internal/provider`, `internal/agentcli`'yi doğrudan import etmez; `provider.RegisterConstructor` ile `agentcli`'nin kendi `init()`'i (her iki dosya, `claude_code.go` ve `codex.go`, ayrı ayrı) kendini kaydeder (`database/sql` driver deseni). Codex'in stream-json çıktısı Claude Code'unkinden farklı: metin delta'lar halinde değil, her `item.completed` (`type:"agent_message"`) olayında turun tam metnini tek parça olarak verir; oturum kimliği `session_id` değil `thread_id` alanında gelir, ve `resume` alt-komutu (fresh-run'ın aksine) `-C` bayrağını kabul etmez — orijinal oturumun çalışma dizinini kendisi hatırlar.
 
@@ -263,11 +273,12 @@ Hiçbir sağlayıcı yapılandırılmamışsa ve yerel model çalışmıyorsa ha
 | Sorun | Detay |
 |-------|-------|
 | **llama.cpp provider yok** | Yerel motor provider arayüzü üzerinden değil, ayrıca yönetilir |
-| **Priority alanı kullanılmıyor** | Router sıralamada Priority'yi dikkate almaz |
-| ~~**Test dosyası yok**~~ | ✅ Düzeltildi — `router_test.go` mevcut, 48 test `-race` ile geçiyor |
-| **Orkestra router'ı bypass eder** | Orkestra doğrudan provider oluşturur, fallback zinciri yok |
+| ~~**Priority alanı kullanılmıyor**~~ | ✅ Düzeltildi — router artık `Priority`'ye göre sıralıyor, UI'da gösteriyor |
+| ~~**Test dosyası yok**~~ | ✅ Düzeltildi — `router_test.go` mevcut, 48 test `-race` ile geçiyor; `claude_test.go`/`openai_test.go` de eklendi |
+| ~~**Orkestra router'ı bypass eder**~~ | ✅ Düzeltildi — `tryFallbackProviders` ile Orkestra'ya da yedek zincir eklendi |
 | **Makineye bağlı şifreleme** | `providers.json` makineler arası taşınamaz |
 | **CLI görev iptali tam değil** | `App.streamMu`'nun global "tek stream aynı anda" koruması CLI için yok — aynı chat'e iki mesaj birden gitmesin diye ayrı bir `cliJobs` kilidi var ama chat'ler arası hiç engelleme yok, kasıtlı |
+| ~~**Claude provider'ı boş model alanı gönderiyordu**~~ | ✅ Düzeltildi (`fd6fdd2`, 2026-07-22, CRITICAL) — `ChatRequest.Model` boşsa hesaplanan fallback hiç kullanılmıyordu; Claude aktif provider'ken **her normal sohbet mesajı** Anthropic API'sine boş `"model": ""` gönderiyordu. Gemini/OpenAI etkilenmemişti. Regresyon testiyle kapatıldı. |
 
 ---
 

@@ -135,6 +135,10 @@ Son 3 yedek. Eskiler otomatik silinir. Bu, Drive kotanı doldurmamak için.
 
 ---
 
+> **Güvenlik notu (v3.3.4, geliştirme aşamasında):** Google Drive entegrasyonunun kullandığı `google.golang.org/grpc` bağımlılığında `govulncheck`'in işaretlediği bir güvenlik açığı, bağımlılık güncellenerek yamalandı.
+
+---
+
 ## Bağlantılı Notlar:
 - [[Veri Katmanı ve Kalıcılık]]
 - [[Mimari Yapı]]

@@ -37,6 +37,26 @@ Kod tabanı, her biri belirli bir sorumluluğa sahip olan modüllere ayrılmış
 - **Görev:** Çoklu model orkestrasyonu.
 - **Özellik:** Şef model planlar ve uzman rollere dağıtır, paralel/sıralı görev çalıştırma, sonuç sentezleme.
 
+### 9. `routine` (v3.3.3'te YENİ)
+- **Görev:** Doğal dilde tanımlanan zamanlanmış otomasyonlar (Routines).
+- **Özellik:** Cihaz saat dilimine göre tetikleme + her (yeniden) bağlantıda offset resenkronizasyonu, basit prompt ya da tam agent çalışması olarak tetikleme, dile duyarlı üretilen metin.
+
+### 10. `agentcli` (v3.3.4'te YENİ, Beta)
+- **Görev:** Claude Code CLI / Codex CLI'ı sohbet sağlayıcısı olarak subprocess üzerinden çalıştırma.
+- **Özellik:** `provider.Provider` arayüzünü uygular ama HTTP API yerine kurulu `claude`/`codex` komut satırı aracını çalıştırır; `App.lifecycleCtx`'e bağlı, sohbet-bazlı `cliJobs` kilidiyle çalışır.
+
+### 11. `anthropicapi` (v3.3.3'te YENİ)
+- **Görev:** Geliştirici API Ağ Geçidi'nin Anthropic Messages API wire-format çevirisi.
+- **Özellik:** Anthropic `tool_use`/`tool_result` blokları ↔ OpenAI `tool_calls`/`role:"tool"` çevirisi, `POST /v1/messages`.
+
+### 12. `tts` (v3.3.4'te YENİ, Beta)
+- **Görev:** Sesli Mod / Live Mode metin-konuşma motoru yönlendirmesi.
+- **Özellik:** Varsayılan yerel Piper, opsiyonel harici OpenAI TTS, yerel ses seçici/indirici, "düşünme" dolgu sesi.
+
+## Kararlılık: Panic Recovery (v3.3.4)
+
+Go, arka planda çalışan goroutine'lere HTTP handler'ların aksine otomatik bir panic koruması sağlamıyor. Bu sürümden önce kod tabanının sadece birkaç köşesinde buna karşı bir koruma vardı — hafıza kaydı, bir routine tetiklemesi, bir WhatsApp mesaj işleyicisi, proaktif öneri kontrolü, akan bir yanıt gibi neredeyse her arka plan işindeki beklenmedik bir hata **tüm** Memo sürecini çökertebiliyordu. Artık arka ucun tamamındaki arka plan işleri (hafıza, sohbet akışı, WhatsApp, bulut senk., yerel model yönetimi, STT, routine'ler, proaktif öneriler, bildirimler, uzaktan erişim tünelleri ve daha fazlası) korumalı: içlerinden birinde bir şey ters giderse kaydediliyor ve orada durduruluyor.
+
 ## Bridge Deseni
 `app.go` dosyası, tüm bu modülleri bir araya getiren ana "Beyin" görevi görür. Web sunucusu, `AppBridge`/`FullBridge` arayüzü üzerinden bu motorla konuşur. `FullBridge`, `AppBridge`'i sağlayıcı yönetimi, ajan kontrolü ve orkestra yapılandırması gibi Flutter'a özel handler'larla genişletir.
 

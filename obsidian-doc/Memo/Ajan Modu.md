@@ -193,6 +193,11 @@ Aşağıdaki pattern'ler `run_command`'da **engellenir**:
 - **Global:** Dakikada max 30 araç çağrısı
 - **Komut başına:** 5 saniye bekleme (aynı komut 5sn'de 1'den fazla çağrılamaz)
 
+### Güvenlik Düzeltmeleri (v3.3.3)
+
+- **Tehlikeli-komut filtresi sertleştirildi.** Pattern eşleşmesindeki bir boşluk, birkaç spesifik yıkıcı komutun (ör. bir root/home dizinini silme) güvenlik kontrolünü atlatmasına izin veriyordu; her araç çağrısı hâlâ kullanıcı onayı gerektiriyor, bu ek güvenlik ağındaki bir boşluğu kapatıyor (`--flag=/path` biçimli argümanlar da artık yakalanıyor).
+- **Sandbox-escape (symlink) açığı kapatıldı.** Proje içinde, henüz var olmayan bir dosyaya işaret eden bir symlink, bir dosya-düzenleme aracının sandbox dizininin dışına yazmasına izin verebiliyordu — düzeltildi.
+
 ---
 
 ## Pipeline
@@ -238,10 +243,10 @@ Aşağıdaki pattern'ler `run_command`'da **engellenir**:
 
 | Sorun | Detay |
 |-------|-------|
-| **Frontend UI yok** | İzin dialog'u, araç kartları, mod toggle henüz yok |
-| **Streaming yok** | Pipeline non-streaming ChatCompletion kullanır — UI kilitlenir |
+| ~~Frontend UI yok~~ | ✅ Düzeltildi — izin dialog'u, araç çağrı kartları, mod toggle'ı (sohbet üst çubuğunda, v3.3.3) tam uygulandı |
 | **Audit log kalıcı değil** | 1000 kayıtlık RAM buffer, yeniden başlatmada kaybolur |
-| **Harici provider gerekli** | Yerel llama.cpp araç çağırma desteği sunmaz |
+| **Harici provider gerekli** | Yerel llama.cpp araç çağırma desteği sunmaz — Claude Code CLI/Codex CLI (v3.3.4, bkz. yukarıdaki not) bu sınırlamayı dolaylı olarak aşan ayrı bir mekanizma |
+| **Küçük context'li yerel modellerde agent modu (düzeltildi, v3.3.4)** | Araç tanımları context bütçesine hiç dahil edilmiyordu — tek kelimelik bir mesaj bile "request exceeds context size" ile başarısız olabiliyordu. Artık araç şeması context boyutuna göre bütçeleniyor, varsayılan yerel context 4096→8192'ye çıkarıldı. |
 
 ---
 

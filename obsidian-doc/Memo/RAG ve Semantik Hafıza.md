@@ -23,6 +23,7 @@ Salt vektör benzerliği, çok-konulu bir soruda ("adımı, doğum günümü ve 
 ## Teknik Özellikler
 - **Kalıcılık:** Veriler tek bir SQLite dosyasında saklanır (`data/memory/memory.db`).
 - **Disk Tabanlı Arama:** Her arama doğrudan SQLite'a sorgu atar — RAM'de ayrı bir vektör önbelleği tutulmaz (bkz. [[Veri Katmanı ve Kalıcılık]]).
+- **Context bütçesi (v3.3.4, geliştirme aşamasında):** Her prompt'a enjekte edilen hafıza bloğu artık ~4096 token'a sabitlendi (önceki 16K bütçe gerçekçi bir tavan değildi). Embedding sunucusu da artık varsayılan olarak sadece-CPU çalışıyor — sohbet modeliyle VRAM için yarışmasın diye; bu ikisi birlikte hafıza açıkken yerel üretim hızının 4-5 kat düşmesi sorununu çözdü (bkz. [[Gelişmiş Ayarlar]]).
 
 ### Bağlantılı Notlar:
 - [[Vektör Arama Mantığı]]

@@ -21,6 +21,16 @@ Memo ile yerel yapay zeka deneyiminize başlamak için bu adımları takip edin.
 ## Ayarlar ve Özelleştirme
 - **System Prompt:** Asistanın nasıl davranması gerektiğini (örn: "Kısa ve öz cevap ver" veya "Kodlama uzmanı gibi davran") buradan değiştirebilirsiniz.
 - **Cloud Sync:** Verilerinizi yedeklemek için Google Drive bağlantısını yapın.
+- **Ayarlar artık aranabilir:** 20 sekmeyi tek tek gezmek yerine üstteki arama kutusuna aradığın şeyin birkaç harfini yaz.
+
+## Kendiliğinden Harekete Geçen Memo (v3.3.3)
+- **Rutinler** (yan menü) — "her sabah 8'de günü özetle" gibi bir cümleyle Memo'ya zamanlanmış bir görev tanımlayabilirsin; masaüstünde ve mobilde çalışır.
+- **Kendiliğinden öneriler (nudge):** Memo bir alışkanlığını fark ederse kendiliğinden gündeme getirebilir — ekranda çıkan öneriye Evet / Şimdi değil / Sorma ile yanıt verebilirsin. Ayarlar → Genel'den kapatabilirsin.
+- **`/insight` yaz** — Memo, ruh hali ve hafıza geçmişinden fark ettiği gerçek bir örüntü varsa anlatır.
+- **Minimal Mod** istersen — kişilik/ruh hali/web arama talimatlarını atlayıp sadece hafızayla (istersen onu da kapatarak) en hafif haliyle çalıştırır.
+
+## Sesli Sohbet (Beta, v3.3.4 — geliştirme aşamasında)
+Ayarlar → Beta Özellikler'i açtıktan sonra sohbet kutusunun yanındaki ses ikonuyla Memo'yla yazmadan, konuşarak sohbet edebilirsin — cevaplar sesli okunur.
 
 ---
 > **İpucu:** Daha hızlı yanıtlar için ayarlar kısmından "GPU Layers" sayısını artırarak ekran kartınızın gücünden faydalanabilirsiniz.

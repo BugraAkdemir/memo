@@ -36,13 +36,17 @@ Bu sayfa, Memo'nun temel özellik dokümantasyonu için bir İçerik Haritasıd�
 |-------|----------|
 | [[Ajan Modu]] | İzin sistemi ve sandbox ile AI araç çağırma |
 | [[Orkestra Modu]] | Uzman rollerle çoklu model orkestrasyonu |
-| [[Multimodal Yetenekler (Görsel ve Ses)]] | Görsel yükleme, STT transkripsiyon |
+| [[Multimodal Yetenekler (Görsel ve Ses)]] | Görsel yükleme, STT transkripsiyon, Sesli Mod / Live Mode (beta) |
+| [[Proaktif Öğrenme ve Takvim]] | Rutinler, ambient nudge'lar, Self-Insight, niyet çıkarımı, takvim |
+| [[Geliştirici API Ağ Geçidi]] | Claude Code'u (ya da Anthropic-uyumlu herhangi bir aracı) Memo'ya bağla |
+| [[Memo Swarm]] | Birkaç PC ile büyük model çalıştırma (beta) |
 | [[Ajan Araçları Referansı]] | 8 yerleşik araç ve JSON şemaları |
 
 ## 🗂️ Sürüm Özellikleri
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[v3.1.1 Özellikleri]] | WhatsApp, mobil, yedekleme, agent, orkestra, sağlayıcılar (tarihsel kayıt) |
-| [[Özellik Kataloğu]] | Özellik-özellik güncel tam liste (istatistikler ve geliştirici ağ geçidi dahil) |
-| Değişiklik Günlüğü | `versinNote/tr/v3.3.3.md` |
+| [[v3.1.1 Özellikleri]] | WhatsApp, mobil, yedekleme, agent, orkestra, sağlayıcılar (tarihsel kayıt — v3.1.0 anlık görüntüsü) |
+| [[Özellik Kataloğu]] | Özellik-özellik güncel tam liste (Routines, Sesli Mod, CLI provider'lar, istatistikler, geliştirici ağ geçidi dahil) |
+| Değişiklik Günlüğü (yayınlanan) | `versinNote/tr/v3.3.3.md` |
+| Değişiklik Günlüğü (geliştirme aşamasında) | `versinNote/tr/v3.3.4.md` |

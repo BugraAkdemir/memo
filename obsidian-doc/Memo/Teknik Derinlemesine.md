@@ -130,5 +130,22 @@ type Provider interface {
 Her aşama typed progress event'leri yayınlar: `ProgressPlan`, `ProgressTaskStart`, `ProgressTaskChunk`, `ProgressSynthChunk`, `ProgressError`.
 
 ### Sınırlamalar
-- Provider bypass: Router yerine doğrudan factory kullanır
+- ~~Provider bypass: Router yerine doğrudan factory kullanır~~ ✅ Düzeltildi — `tryFallbackProviders` ile Orkestra'ya da Router'ın yedek zinciri eklendi
 - Config doğrulama yok — runtime'da hata alınırsa geç fark edilir
+
+## 9. Panic Recovery (v3.3.4)
+
+Go, tek bir HTTP isteğine verdiği panic korumasının aksine arka planda çalışan goroutine'lere otomatik bir koruma sağlamıyor — korumasız bir goroutine'de panic olursa tüm süreç çöker. Bu sürümden önce kod tabanının sadece birkaç köşesinde (ör. stream işleyicileri) buna karşı `recover()` vardı. v3.3.4'te arka ucun tamamındaki arka plan işleri (hafıza kaydı, routine tetiklemesi, WhatsApp mesaj işleyicisi, bulut senk., yerel model yönetimi, STT, proaktif öneri kontrolü, bildirimler, uzaktan erişim tünelleri...) benzer bir `recover`+log deseniyle sarmalandı — bir işteki beklenmedik hata artık sadece o işi durduruyor, Memo'yu kendisiyle birlikte götürmüyor.
+
+## 10. Yeni Alt Sistemler (v3.3.3 / v3.3.4)
+
+Kısa teknik özet — tam detay için ilgili sayfalara bakın:
+
+| Alt sistem | Paket | Sayfa |
+|-----------|-------|-------|
+| Routines | `internal/routine/` | [[Proaktif Öğrenme ve Takvim]] |
+| Memo Swarm (beta) | `internal/swarm/` | [[Memo Swarm]] |
+| Geliştirici API Ağ Geçidi | `internal/anthropicapi/` | [[Geliştirici API Ağ Geçidi]] |
+| Claude Code/Codex CLI provider (beta) | `internal/agentcli/` | [[Harici Sağlayıcılar]] |
+| Sesli Mod / Live Mode (beta) | `internal/tts/` | [[Multimodal Yetenekler (Görsel ve Ses)]] |
+| Kullanım İstatistikleri | `internal/stats/` | [[Özellik Kataloğu]] |

@@ -33,8 +33,10 @@ Bir issue açın:
 
 | Alan | Açıklama |
 |------|----------|
-| Ajan Frontend UI | İzin diyalogları, araç çağrı kartları, ajan açma/kapama (Flutter) |
-| Testler | `internal/provider/`, `internal/agent/`, `internal/orchestra/` için birim testler |
+| Test kapsamı | Daha önce hiç test edilmeyen alanlar: `handlers_oauth.go`, `handlers_proactive.go`, `internal/cloudsync/drive.go`, `hardwareID()` |
+| Derin bug taraması | `internal/cloudsync`, `internal/skill`, `internal/proactive`, `internal/observer` — v3.3.3 için yapılan çoklu-ajan incelemesinin henüz kapsamadığı modüller |
+| CLI görev inceleme UI'ı | Claude Code/Codex CLI provider'ının (beta) gerçekte yaptığı dosya düzenlemelerini/komutları son metnin ötesinde gözden geçirecek bir arayüz henüz yok |
+| Sesli Mod echo cancellation | Beta Sesli Mod'da henüz yankı iptali yok — hoparlör kullanımını etkiliyor |
 | Çok Adımlı Planlama | Plan oluşturma, toplu izin, adım adım yürütme |
 | Dosya Düzenleme Aracı | Diff önizlemeli ve geri almalı satır tabanlı düzenleme |
 | Git Araçları | git_status, git_diff, git_commit, git_push entegrasyonu |

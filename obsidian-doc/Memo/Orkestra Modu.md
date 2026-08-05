@@ -274,7 +274,7 @@ Ayarlar → Orkestra sekmesi:
 
 | Sorun | Detay |
 |-------|-------|
-| **Provider fallback yok** | Router bypass edilir, görev başarısız olursa direkt hata |
+| ~~**Provider fallback yok**~~ | ✅ Düzeltildi — `tryFallbackProviders` ile Router'ın yedek zinciri Orkestra'ya da eklendi; ayrıca akış-ortası hatalar da artık retry/fallback deniyor |
 | **Task streaming yok** | Görev sonuçları tamamen beklenir, token akışı yok |
 | **JSON çıktı zorunluluğu** | Şef JSON dışında çıktı üretirse parse hatası |
 | **Config validasyonu yok** | Geçersiz model çalışma anında hata verir |

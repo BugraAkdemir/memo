@@ -27,6 +27,14 @@ Tek bir `memory.db` dosyası içinde birkaç tablo/sanal tablo bulunur:
 - `data/sessions/`: Sohbet geçmişi (JSON formatında, hafızadan ayrı).
 - `data/models/`: İndirilen GGUF model dosyaları.
 - `data/sync_token.json`: Bulut senkronizasyon yetkilendirme verileri.
+- `data/routines/`: (v3.3.3) Routines tanımları.
+- `data/tasklists/`: Görev listeleri.
+- `data/stats/`: (v3.3.3) Kullanım istatistikleri.
+- `data/calendar/`, `data/profile/`: Takvim etkinlikleri, öğrenilen alışkanlıklar/bekleyen öneriler.
+- `data/permissions.json`: Ajan izin politikaları.
+- `data/machine.key`: `providers.json`'daki şifreli API anahtarlarını çözen anahtar — v3.3.3'e kadar `.memo` yedeğine hiç dahil edilmiyordu (bkz. [[Yedekleme & Restore]]).
+
+Tam yedekleme kapsamı için [[Yedekleme & Restore]]'a bakın.
 
 ## Bellek (RAM) Yönetimi
 

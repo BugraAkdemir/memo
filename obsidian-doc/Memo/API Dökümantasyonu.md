@@ -75,6 +75,67 @@ Detay: [[Proaktif Öğrenme ve Takvim]]
 
 Detay: [[Özellik Kataloğu]]
 
+### Routines (v3.3.3)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET`/`POST` | `/api/routines` | Rutinleri listele/oluştur |
+| `POST` | `/api/routines/parse` | Doğal dil metnini yapılandırılmış bir rutin tanımına çevir |
+| `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Tek bir rutini getir/güncelle/sil |
+| `GET` | `/api/routines/mobile-ready` | Mobil bildirim olarak zamanlanmaya hazır rutinler |
+| `POST` | `/api/routines/sync-offset` | İstemcinin güncel saat dilimi offset'ini gönderir (bkz. [[Proaktif Öğrenme ve Takvim]]) |
+
+### Self-Insight ve Hafıza İçe Aktarma (v3.3.3)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `POST` | `/api/memory/insight` | `/insight` komutunun arkasındaki uç — ruh hali/hafıza geçmişinden örüntü çıkarımı |
+| `POST` | `/api/memory/import-text` | Başka bir AI'dan kopyalanan yapılandırılmış metni ayrıştırıp gerçeklere böler |
+| `POST` | `/api/memory/import` | Ayrıştırılan gerçekleri hafızaya kaydeder ("Hafızaya İşle") |
+| `GET` | `/api/memory/stats` | Hafıza deposu istatistikleri |
+
+### Minimal Mod (v3.3.3)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET`/`PUT` | `/api/system-prompt/minimal-mode` | Minimal Mod'u aç/kapat |
+| `GET`/`PUT` | `/api/system-prompt/minimal-mode/overrides` | Persona/yetenek duyuruları/pasif-özellik duyuruları/proaktif öğrenmeyi ayrı ayrı yeniden aç |
+
+### Memo Swarm (Beta, v3.3.3)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/swarm/status` | Oda/worker durumu |
+| `POST` | `/api/swarm/host/create` | Host olarak oda oluştur |
+| `POST` | `/api/swarm/host/workers/add`/`remove`/`reorder`/`share` | Worker yönetimi (ekle/çıkar/sırala/pay ayarla) |
+| `POST` | `/api/swarm/host/start`/`stop`/`close` | Swarm'ı başlat/durdur/odayı kapat |
+| `POST` | `/api/swarm/join`/`leave` | Bir odaya katıl/ayrıl |
+
+Detay: [[Memo Swarm]]
+
+### Claude Code / Codex CLI Sağlayıcıları (Beta, v3.3.4 — geliştirme aşamasında)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `GET` | `/api/cli/status?type=` | `claude`/`codex` CLI'ının kurulu/PATH'te olup olmadığını + sürümünü döner |
+| `GET` | `/api/cli/running` | Şu an CLI görevi çalışan sohbetler |
+| `GET` | `/api/cli/commands?type=&chat_id=` | CLI'ın kendi `/` komutlarının listesi (proje + kullanıcı seviyesi) |
+| `GET` | `/api/cli/model-options` | CLI provider için model seçenekleri |
+| `POST` | `/api/cli/remove`/`reinstall` | CLI aracını kaldır/yeniden kur |
+| `POST` | `/api/chats/cli-provider` | Bir sohbetin CLI sağlayıcısını ayarla |
+| `POST` | `/api/chats/cli-workdir` | Bir sohbetin CLI çalışma dizinini ayarla |
+| `POST` | `/api/chats/cli-model` | Bir sohbetin CLI modelini ayarla |
+| `POST` | `/api/send/cli-stream` | CLI sağlayıcısına akışlı mesaj gönder |
+
+Detay: [[Harici Sağlayıcılar]]
+
+### Sesli Mod / TTS (Beta, v3.3.4 — geliştirme aşamasında)
+| Metot | Endpoint | Açıklama |
+|--------|----------|----------|
+| `POST` | `/api/tts/synthesize` | Metni sese çevir |
+| `POST` | `/api/tts/filler` | Kısa "düşünme" dolgu sesi üret |
+| `GET` | `/api/tts/providers` | Yapılandırılmış TTS sağlayıcıları |
+| `POST` | `/api/tts/providers/test` | TTS sağlayıcı bağlantısını test et |
+| `GET` | `/api/tts/voices` | İndirilebilir/yüklü Piper sesleri |
+| `POST` | `/api/tts/voices/download`/`select` | Bir sesi indir/seç |
+
+Detay: [[Multimodal Yetenekler (Görsel ve Ses)]]
+
 ### Geliştirici API Ağ Geçidi (v3.3.3)
 | Metot | Endpoint | Açıklama |
 |--------|----------|----------|

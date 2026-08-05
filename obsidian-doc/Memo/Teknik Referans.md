@@ -19,7 +19,7 @@ Memo'nun mimarisi, API'leri ve iç yapısı hakkında derinlemesine teknik dokü
 
 | Sayfa | Açıklama |
 |-------|----------|
-| [[API Dökümantasyonu]] | Tam REST API endpoint referansı (~35 endpoint) |
+| [[API Dökümantasyonu]] | Tam REST API endpoint referansı (~90 endpoint) |
 | [[Olay Sistemi]] | Arka plan bildirimleri için ring buffer olay sistemi |
 | [[SSE Akış Protokolü]] | Server-Sent Events mesaj formatı ve akışı |
 
@@ -31,7 +31,7 @@ Memo'nun mimarisi, API'leri ve iç yapısı hakkında derinlemesine teknik dokü
 | [[Vektör Arama Mantığı]] | Kosinüs benzerliği, paralel işçiler, Top-K |
 | [[CGO Bayrakları]] | Derleme gereksinimleri, sqlite-vec derlemesi |
 | [[Varsayılan Sistem Promptu]] | Memo'nun kimlik yönergeleri ve anti-halüsinasyon kuralları |
-| [[Bilinen Sorunlar]] | Kapsamlı hata denetimi (37 hata, 37'si düzeltildi) |
+| [[Bilinen Sorunlar]] | Güncel açık bug: 0 (`BUG_REPORT.md`) — kalan sayfa tasarım sınırlamaları + beta özellik eksikleri |
 | [[Çözülen Sorunlar]] | 61 belgelenmiş düzeltme ve kod referansları |
 
 ## 🚀 Kılavuzlar

@@ -35,8 +35,39 @@ Memo'nun özellik-özellik tam listesi. Tam detay: `docs/tr/FEATURES.md`.
 | OpenRouter | ✅ | API anahtarı |
 | Groq | ✅ | API anahtarı |
 | Ollama | ✅ | URL |
+| OpenCode Zen (v3.3.3) | ✅ | API anahtarı — pay-as-you-go, bazı modeller ücretsiz |
+| OpenCode Go (v3.3.3) | ✅ | API anahtarı — abonelik tabanlı |
+| Claude Code CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `claude` CLI'ını subprocess olarak çalıştırır |
+| Codex CLI (Beta, v3.3.4) | ✅ | Yok — kurulu `codex` CLI'ını subprocess olarak çalıştırır |
 
-Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma, sağlık kontrolü goroutine'i.
+Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma, sağlık kontrolü goroutine'i. OpenCode Zen/Go, OpenRouter gibi model adını elle yazmak yerine sağlayıcının canlı model listesinden seçtiriyor. Claude Code/Codex CLI mimari olarak bambaşka — bkz. [[Harici Sağlayıcılar]].
+
+## 🔁 Routines — Zamanlanmış Otomasyonlar (v3.3.3)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Doğal dilde tanım | ✅ | "Her sabah 8'de günü özetle" gibi bir cümle yeterli |
+| Masaüstü + Mobil | ✅ | Mobilde gerçek, önceden zamanlanmış yerel bildirimler |
+| Cihaz saat dilimi | ✅ | Oluşturulduğu cihazın saat diliminde tetiklenir, her (yeniden) bağlantıda resenkronize olur |
+| Basit prompt / tam agent | ✅ | İsteğe bağlı olarak araç kullanan tam bir agent çalışması olarak da tetiklenebilir |
+| Dil desteği | ✅ | Routine metinleri (sistem promptu, bildirim başlıkları) artık uygulama dilini takip ediyor |
+
+## 🌱 Proaktif Öğrenme, Ambient Nudge'lar ve Self-Insight (v3.3.3)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Ambient nudge | ✅ | Varsayılan açık (ince seviye); bir örüntüyü kendiliğinden gündeme getirebilir |
+| Öneri banner'ı | ✅ | Masaüstünde gerçek bir UI: Evet / Şimdi değil / Sorma |
+| Doğrudan beyan edilen alışkanlık | ✅ | "Her gece 21:00 kodluyorum" gibi bir cümle istatistiksel örüntü beklemeden hemen güvenilir |
+| `/insight` | ✅ | Ruh hali/hafıza geçmişinden gerçek bir örüntü varsa açıklar, yoksa uydurmaz |
+| Minimal Mod / Gizli Mod etkileşimi | ✅ | Gizli Mod'da tamamen kapalı; Minimal Mod'da parça parça yeniden açılabilir |
+
+## 🧘 Minimal Mod (v3.3.3)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Ayarlar → Genel | ✅ | Kişilik/ruh hali/web arama talimatlarını tamamen atlar — sadece hafıza (açıksa) modele gider |
+| Parça parça yeniden açma | ✅ | Persona/sistem promptu, yetenek duyuruları, pasif-özellik duyuruları, proaktif öğrenme ayrı ayrı yeniden açılabilir |
 
 ## 🧑‍💻 Geliştirici Araçları (v3.3.3)
 
@@ -44,6 +75,29 @@ Router özellikleri: fallback zinciri, 3 hatada otomatik devre dışı bırakma,
 |---------|-------|----------|
 | Kullanım İstatistikleri | ✅ | Ayarlar → İstatistikler: token/hız/model dağılımı, 30 günlük grafik (fl_chart) |
 | Geliştirici API Ağ Geçidi | ✅ | Yan menüde ayrı bir ekran (Ayarlar içinde değil): Claude Code'u (`ANTHROPIC_BASE_URL`) ya da OpenAI-uyumlu bir aracı Memo'daki yerel/harici modele bağla, canlı istek/yanıt günlüğü dahil — bkz. [[Geliştirici API Ağ Geçidi]] |
+
+## 🎙️ Sesli Mod / Live Mode (Beta, v3.3.4, geliştirme aşamasında)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Eller serbest sesli sohbet | ✅ Beta | Sohbet kutusunun yanında küçük bir ikon (yan menü sekmesi DEĞİL) |
+| Yerel Piper TTS | ✅ | Varsayılan — çevrimdışı, hiçbir şey makineden çıkmak zorunda değil |
+| Harici TTS (OpenAI) | ✅ Opsiyonel | Ayarlar → Beta Özellikler'den yapılandırılır, Piper her zaman yedek |
+| Tek yönlü barge-in | ✅ | Memo konuşurken tekrar konuşman onu keser |
+| Gömülü VAD modeli | ✅ | Ses-aktivite algılama artık uygulamayla birlikte geliyor, çalışma zamanı CDN indirmesi yok |
+| Bilinen sınırlama | ⚠️ | Henüz echo cancellation yok — hoparlörle kullanımda Memo kendi sesini duyabilir |
+
+## 🖥️ Sohbet Sağlayıcısı Olarak Claude Code / Codex CLI (Beta, v3.3.4)
+
+| Özellik | Durum | Açıklama |
+|---------|-------|----------|
+| Gerçek arka plan agent görevi | ✅ Beta | Kurulu `claude`/`codex` CLI'ı subprocess olarak çalıştırır, dosya okur/yazar, komut çalıştırır |
+| Sohbet-bazlı | ✅ | Her sohbet kendi CLI sağlayıcısını/oturumunu/çalışma dizinini taşır |
+| Sabit zaman aşımı yok | ✅ | Diğer yanıtların 5 dakikalık bütçesine tabi değil |
+| CLI'ın kendi `/` komutları | ✅ | `.claude/commands` / `.codex/prompts`, skill'ler ve yerleşik komutlar |
+| İnceleme arayüzü | ❌ | Dosya düzenlemelerini/komutları son metnin ötesinde gözden geçirecek UI henüz yok |
+
+Detay: [[Harici Sağlayıcılar]]
 
 ## 🐝 Memo Swarm (Beta)
 
@@ -97,9 +151,10 @@ Sade dil + kurulum: [[Memo Swarm]].
 | Özellik | Durum |
 |---------|-------|
 | ngrok tüneli | ✅ |
-| Token kimlik doğrulama | ✅ |
-| `.memo` dışa/içe aktarma | ✅ |
-| Tam silme (wipe) | ✅ |
+| Tailscale tüneli | ✅ (v3.3.4: artık Beta değil — tek tıkla giriş, Funnel varsayılan açık, otomatik yeniden bağlanma) |
+| Token kimlik doğrulama (zorunlu) | ✅ (v3.3.3 güvenlik düzeltmesi — önceden token olmadan da erişilebiliyordu) |
+| `.memo` dışa/içe aktarma (eksiksiz) | ✅ (v3.3.3: takvim/rutin/görev/izin/skill + `machine.key` artık dahil) |
+| Tam silme (wipe) | ✅ (v3.3.4: Windows'ta dosya kilidi nedeniyle başarısız olma sorunu düzeltildi) |
 | Google Drive E2E senkronizasyon | ✅ |
 | AES-256-GCM şifreleme | ✅ |
 
@@ -116,8 +171,12 @@ Sade dil + kurulum: [[Memo Swarm]].
 | Kurulum sihirbazı (6 kişilik) | ✅ |
 | Çoklu dil (TR/EN) | ✅ (924 anahtar) |
 | Greige teması, Material 3 | ✅ |
-| Mobil eşlikçi uygulama | ✅ (temel) |
+| Mobil eşlikçi uygulama | ✅ (v3.3.3: tam TR/EN yerelleştirme + bağlantı ekranında dil seçici) |
 | Karanlık mod | ✅ |
+| Sohbette `@` dosya bahsetme | ✅ (v3.3.4) |
+| Aktif model/sağlayıcı pill'i | ✅ (v3.3.4) — sohbet üst çubuğunda tıkla-değiştir |
+| Ayarlar aranabilir raf | ✅ (v3.3.4) — 20 düz sekme yerine gruplanmış, aranabilir liste |
+| Agent modu toggle'ı (sohbet üst çubuğu) | ✅ (v3.3.3) |
 
 ## 🎵 Ses ve Multimodal
 

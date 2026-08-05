@@ -38,4 +38,8 @@ Kullanıcı ve geliştirici kılavuzları için İçerik Haritası.
 | [[WhatsApp Entegrasyonu]] | QR eşleştirme ve mesajlaşma |
 | [[Ajan Modu]] | AI araç çağırmayı etkinleştirme ve kullanma |
 | [[Orkestra Modu]] | Çoklu model orkestrasyonu kurulumu |
-| [[Harici Sağlayıcılar]] | API sağlayıcıları ekleme |
+| [[Harici Sağlayıcılar]] | API sağlayıcıları ekleme (OpenCode Zen/Go, Claude Code/Codex CLI dahil) |
+| [[Proaktif Öğrenme ve Takvim]] | Rutinler, ambient nudge'lar, Self-Insight, takvim |
+| [[Multimodal Yetenekler (Görsel ve Ses)]] | Görsel/dosya bağlamı, STT, Sesli Mod (beta) |
+| [[Geliştirici API Ağ Geçidi]] | Claude Code'u (`ANTHROPIC_BASE_URL`) Memo'ya bağlama |
+| [[Memo Swarm]] | Birkaç PC ile büyük model çalıştırma (beta) |

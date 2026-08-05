@@ -1,8 +1,8 @@
 # Bilinen Sorunlar ve Teknik Riskler
 
-> Güncelleme: 15 Temmuz 2026 — hafıza/RAG hibrit arama düzeltmeleri ve sabitlenmiş-gerçekler katmanı ile güncellendi (v3.3.3).
+> Güncelleme: 5 Ağustos 2026 — `BUG_REPORT.md` şu an her önem seviyesinde **0 açık, tespit edilmiş bug** gösteriyor (LK-1/SF-5/RC-7 dahil daha önce takip edilen her şey düzeltildi). Aşağıdaki liste, gerçek bug'lardan çok bilinçli tasarım sınırlamalarını ve beta özelliklerin dürüstçe belirtilmiş eksiklerini kapsıyor.
 
-**Özet**: 14 belgelenmiş sorun, 11'i düzeltildi (biri bu geçişte: polling sorunları), 3'ü kaldı. Çoğu tasarım seviyesinde teknik borç, bug değil. Tam liste ve kod referansları için `docs/KNOWN_ISSUES.md` ve `docs/tr/BILINEN_SORUNLAR.md`'ye bakın.
+**Özet**: 14 belgelenmiş sorun, 11'i düzeltildi, 3'ü kaldı (tasarım seviyesinde teknik borç). Ayrıca aşağıda v3.3.3/v3.3.4 beta özelliklerinin bilinen sınırlamaları listeleniyor — bunlar "bug" değil, henüz tamamlanmamış iş. Tam liste ve kod referansları için `docs/KNOWN_ISSUES.md` ve `docs/tr/BILINEN_SORUNLAR.md`'ye bakın.
 
 ---
 
@@ -46,6 +46,16 @@
 **Düzeltildi**: `settings_dialog.dart` 4391 satırdan 15 dosyaya bölündü, şu an 218 satır. ✓
 
 ---
+
+## 🟣 v3.3.3 / v3.3.4 Beta Sınırlamaları (bug değil, dürüstçe belirtilmiş eksikler)
+
+| Sınırlama | Detay |
+|-----------|-------|
+| **Sesli Mod: echo cancellation yok** | Hoparlör kullanımında Memo kendi sesini bazen kendini kesen bir kullanıcı sanabiliyor; kulaklık öneriliyor. Tam çift yönlü ses ilerideki bir sürüm için planlı. |
+| **Memo Swarm macOS'ta yok** | RPC yardımcı binary'si macOS'ta paketlenmiyor; UI orada gizli. |
+| **Claude Code/Codex CLI: inceleme arayüzü yok** | CLI'nin gerçekte yaptığı dosya düzenlemeleri/komutları son metin yanıtının ötesinde gözden geçirecek bir UI henüz yok — erken entegrasyon. |
+| **Geliştirici API Ağ Geçidi: bazı provider'larda araç çağırma yok** | `gemini`/`claude`/`ollama` tipi sağlayıcılar `internal/provider` içinde Tools/ToolCalls'ı hiç çözmüyor (ağ geçidinden bağımsız, önceden var olan bir eksiklik) — araç tanımlı bir istek bu tiplere gelirse sessizce düşürülmek yerine açık hata dönüyor. |
+| **Memo Swarm genel olarak** | Beta; kazanç kapasite, hız değil — genelde daha yavaş token üretimi. |
 
 ## 🔵 Diğer
 

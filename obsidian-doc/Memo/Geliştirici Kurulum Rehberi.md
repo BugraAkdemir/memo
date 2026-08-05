@@ -17,10 +17,10 @@ cd memo
 ```
 
 ### 2. Backend'i Hazırlayın
-Bağımlılıkları indirin ve sunucuyu başlatın:
+Bağımlılıkları indirin ve sunucuyu başlatın (CGO ve `sqlite_fts5` derleme etiketi zorunlu — bkz. [[CGO Bayrakları]]):
 ```bash
 go mod tidy
-go run . --port 8090
+CGO_ENABLED=1 go run -tags "sqlite_fts5" . --port 8090
 ```
 
 ### 3. Frontend'i Hazırlayın

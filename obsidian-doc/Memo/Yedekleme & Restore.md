@@ -38,6 +38,8 @@ POST /api/wipe
 
 Tüm verileri tamamen siler (oturumlar, hafıza, WhatsApp, sağlayıcılar). Çift onay gerektirir. Yapılandırma dosyası korunur.
 
+> **v3.3.4 düzeltmesi (geliştirme aşamasında):** Bu işlem Linux'ta çalışıyordu ama Windows'ta doğrudan başarısız olabiliyordu — Memo'nun bazı iç veritabanları (hafıza, kullanım istatistikleri, takvim, ruh hali, WhatsApp) silme sırasında hâlâ açıktı; Windows aynı süreç tarafından kullanılan bir dosyayı silmeyi reddediyor. Her depo artık dosyaları kaldırılmadan önce düzgünce kapatılıyor.
+
 ## ☁️ Bulut Senkronizasyonu (Google Drive)
 
 Memo, Google Drive'a E2E şifreli yedekleme sunar:

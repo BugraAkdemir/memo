@@ -38,6 +38,12 @@ Memo için yaygın sorunlar ve çözümleri.
 - `server.log` dosyasını kontrol edin
 - Güvenlik duvarının localhost:8090'u engellemediğinden emin olun
 
+## 4b. macOS'ta "Connection Error" (Yerel Backend'e Ulaşılamıyor)
+
+**Sorun**: macOS'ta uygulama açılıyor ama backend'e hiçbir istek gitmiyor gibi görünüyor — bağlantı hatası.
+
+**Çözüm**: 2026-08-05'te düzeltilen gerçek bir App Sandbox entitlement eksikliğiydi — `frontend/macos/Runner/{Release,DebugProfile}.entitlements`'ta `com.apple.security.network.client` yoktu, bu da macOS'un yerel backend'e giden Dio çağrılarını sandbox seviyesinde engellemesine yol açıyordu (commit `420e6a5`). Güncel bir sürümde bu düzeltilmiş olmalı; eski bir build kullanıyorsanız güncelleyin. Aynı düzeltmeyle birlikte mikrofon (`device.audio-input`, Sesli Mod/STT için) ve dosya seçici (`files.user-selected.read-write`) izinleri de eklendi.
+
 ## 5. Hafıza Geri Getirme Hataları
 
 **Sorun**: AI geçmiş konuşmaları hatırlamıyor.
@@ -63,7 +69,16 @@ Memo için yaygın sorunlar ve çözümleri.
 **Sorun**: Ajan modu yanıt vermiyor veya araç çağrıları başarısız.
 
 **Çözüm**:
-- Ajan modu aktif harici sağlayıcı gerektirir (yerel llama.cpp tool calling'i güvenilir şekilde desteklemez)
-- API ile etkinleştirin: `PUT /api/agent/enabled {"enabled": true}`
-- Ajan frontend UI henüz uygulanmadı — şimdilik doğrudan backend API kullanın
+- Ajan modu aktif harici sağlayıcı gerektirir (yerel llama.cpp genel olarak güvenilir tool calling desteği sunmaz)
+- Sohbet üst çubuğundaki agent toggle'ından açıp kapatabilirsiniz, ya da API ile: `PUT /api/agent/enabled {"enabled": true}`
 - İzin politikalarının araçları engelleyip engellemediğini kontrol etmek için `data/permissions.json` dosyasını inceleyin
+- **Küçük context'li yerel bir modelde** agent modu açıkken tek kelimelik bir mesaj bile "request exceeds the available context size" ile başarısız oluyorsa: bu v3.3.4'te düzeltildi (araç şeması artık context'e doğru bütçeleniyor, varsayılan yerel context 4096→8192'ye çıkarıldı) — hâlâ görüyorsanız güncel sürümde olduğunuzdan emin olun
+
+## 8. Hafıza Açıkken Yerel Üretim Çok Yavaş
+
+**Sorun**: Yerel bir modelde hafıza/RAG'ı açmak üretim hızını belirgin şekilde düşürüyor (10 t/s'den 2-3 t/s'ye gibi).
+
+**Çözüm** (v3.3.4, geliştirme aşamasında — düzeltildi):
+- Sebep, embedding sunucusunun sohbet modeliyle aynı anda VRAM için yarışması ve her prompt'a enjekte edilen hafıza bloğunun gereğinden büyük bir bütçeye (16K token) sahip olmasıydı
+- Embedding sunucusu artık varsayılan olarak sadece-CPU çalışıyor; gerçekten boş VRAM'in varsa `embedding_gpu_layers` ile tekrar GPU'ya alabilirsiniz (bkz. [[Gelişmiş Ayarlar]])
+- Hafıza context bütçesi artık ~4096 token'a sabitlendi

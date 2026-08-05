@@ -23,3 +23,17 @@ Sistem promptu `buildMessages()` (`app.go`) ile enjekte edilir:
 - Her istekte bir kez eklenir (birikmez)
 - RAG hafıza sonuçları kimlik promptundan sonra bağlam blokları olarak eklenir
 - "Kesintisiz Hafıza" yönergesi, alınan bağlamın doğal entegrasyonunu sağlar
+
+## Memo'nun Kendi Kimliği (v3.3.3)
+
+Kullanıcı Memo'ya kim tarafından, neden yapıldığını ya da ne için var olduğunu sorarsa, artık uydurmak yerine gerçek bir cevap veriyor: **Buğra Akdemir** — 16 yaşında bir geliştirici — tarafından tek başına, ticari bir motivasyon olmadan yapıldı, gizliliğine önem veren insanlar için açık kaynak olarak yayınlandı; yerel-öncelikli, çevrimdışı çalışır, verini hiçbir yere göndermeden seni hatırlar.
+
+Bu blok yalnızca doğrudan sorulduğunda devreye giriyor — Memo'nun günlük konuşma tarzını değiştirmiyor ve kurulumda seçilen kişilikten bağımsız olarak her zaman dahil ediliyor.
+
+## Minimal Mod'un Prompt Üzerindeki Etkisi (v3.3.3)
+
+Minimal Mod açıkken (Ayarlar → Genel), kişilik/ruh hali/web arama talimatları prompt'a **hiç eklenmiyor** — sadece hafıza (ayrıca açıksa) modele gidiyor. İkisi de kapalıysa hiçbir ekstra şey eklenmiyor, sadece kullanıcının yazdığı mesaj olduğu gibi gidiyor. Persona/sistem promptu, yetenek duyuruları, pasif-özellik duyuruları ve proaktif öğrenme, Minimal Mod açıkken bile birbirinden bağımsız olarak yeniden etkinleştirilebiliyor (bkz. [[Gelişmiş Ayarlar]]).
+
+## Yetenek Duyuruları (v3.3.3 düzeltmesi)
+
+Memo artık bir özelliğin **var olduğunu ama o sohbet için açık olmadığını** biliyor — önceden web araması ya da dosya düzenleme gibi bir şey o sohbette kapalıyken istendiğinde "böyle bir yeteneğim yok" gibi yanıltıcı bir cevap veriyordu. Aynı şekilde, kendi her zaman açık takvim/hatırlatma tespiti sorulduğunda artık doğru şekilde "evet" diyor.

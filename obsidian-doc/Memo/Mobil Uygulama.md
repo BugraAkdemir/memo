@@ -101,9 +101,11 @@ Telefon ←──── İnternet ────→ ngrok sunucusu ────→
 
 ### Seçenek 2: Tailscale (kararlı URL)
 
+> **v3.3.4 (geliştirme aşamasında):** Tailscale artık Beta özelliği değil, doğrudan Uzaktan Erişim'in içinde. Bağlanmak artık key yapıştırmayı gerektirmiyor — tek tıkla, key gerektirmeyen interaktif bir giriş akışı var. Ayrıca kopan bir bağlantıdan sonra otomatik yeniden bağlanıyor ve mobil uygulama soğuk başlangıçta kayıtlı URL ile otomatik yeniden bağlanıyor.
+
 1. [Tailscale](https://tailscale.com)'e üye ol
 2. Memo'da **Ayarlar → Uzaktan Erişim → Tailscale**
-3. Tailscale Key'ini gir
+3. Tek tıkla giriş yap (auth key elle yapıştırmak artık gerekmiyor)
 4. Hostname belirle (örn. `memo-ev`)
 5. Telefonuna da Tailscale uygulamasını kur
 6. Mobil uygulamada adresi `http://memo-ev:8090` olarak gir
@@ -126,6 +128,20 @@ Mobil uygulamada bir takvim sekmesi var. Bu sekme:
 - Yeni etkinlik ekleyebilirsin (manuel)
 - Etkinliğe uzun basınca silebilirsin
 - Hatırlatma süresini değiştirebilirsin
+
+---
+
+## 🔁 Rutinler Sekmesi (v3.3.3)
+
+Routines masaüstü kadar mobilde de tam çalışır:
+
+- Rutin hatırlatmaları **gerçek, önceden zamanlanmış yerel bildirimler** olarak gelir — uygulama o an açık olmasa bile ulaşır.
+- Rutinler, oluşturuldukları cihazın saat diliminde tetiklenir; bu offset her (yeniden) bağlantıda otomatik güncellenir (seyahat/DST değişimi kendini düzeltir).
+- Rutin bildirim başlıkları ve metinleri artık uygulama dilini (TR/EN) takip eder.
+
+## 🌍 Tam Yerelleştirme (v3.3.3)
+
+Mobil uygulama artık masaüstüyle aynı şekilde tam TR/EN iki dilli — dil değiştirici hem **Ayarlar**'da hem de **eşleştirme öncesi bağlantı ekranında** mevcut.
 
 ---
 

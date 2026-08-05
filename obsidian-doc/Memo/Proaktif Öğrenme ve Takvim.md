@@ -1,10 +1,38 @@
 # Proaktif Öğrenme ve Takvim
 
-> **Durum:** ✅ Tam (backend + mobil + masaüstü ayar) | **Sürüm:** v3.1.1
+> **Durum:** ✅ Tam (backend + mobil + masaüstü ayar) | **Sürüm:** v3.1.1 (temel) → v3.3.3'te Routines, ambient nudge banner'ı ve Self-Insight ile genişledi
 >
-> Memo'nun öğrenme sistemi artık sadece *ne zaman* bir şey yaptığını değil, *ne yapacağını söylediğini* de anlıyor — hem normal sohbette hem de WhatsApp konuşmalarında.
+> Memo'nun öğrenme sistemi artık sadece *ne zaman* bir şey yaptığını değil, *ne yapacağını söylediğini* de anlıyor — hem normal sohbette hem de WhatsApp konuşmalarında. v3.3.3'ten itibaren bu öğrenme, kendiliğinden gündeme gelen nudge'lara, kullanıcı tanımlı zamanlanmış Routine'lere ve isteğe bağlı bir öz-değerlendirmeye (`/insight`) dönüşüyor.
 
 İlgili sayfalar: [[WhatsApp Entegrasyonu]] · [[Orkestra Modu]] · [[Mobil Uygulama]] · [[Backend (Go) Mimarisi]]
+
+---
+
+## 🔁 Routines — Zamanlanmış Otomasyonlar (v3.3.3)
+
+> **Paket:** `internal/routine/` (extractor, loop, store) · **UI:** Yan menü (masaüstü) / ayrı sekme (mobil) → **Rutinler**
+
+Klasik takvim sistemi kullanıcının niyetini *tespit ediyordu* (aşağıya bkz.); Routines bunun tersini yapıyor — kullanıcı Memo'ya doğrudan ne yapmasını istediğini söylüyor ve bir zamanlama veriyor:
+
+- **Doğal dilde tanım.** "Her sabah 8'de günü özetle" gibi bir cümle yeterli; `internal/routine/extractor.go` bunu yapılandırılmış bir zamanlamaya çevirir.
+- **Basit prompt ya da tam agent.** Bir routine ya arka planda tek seferlik bir LLM çağrısı olarak, ya da (kullanıcı açarsa) araç kullanan tam bir agent çalışması olarak tetiklenebilir.
+- **Masaüstü + Mobil.** Mobil uygulama routine hatırlatmalarını gerçek, önceden zamanlanmış yerel bildirimler olarak teslim eder — uygulama o an açık olmasa bile ulaşır.
+- **Cihaz saat dilimi.** Routine'ler, oluşturuldukları cihazın saat diliminde tetiklenir; bu offset artık her (yeniden) bağlantıda otomatik resenkronize oluyor (`POST /api/routines/sync-offset`) — seyahat veya DST değişimi bir sonraki bağlantıda kendini düzeltiyor, donmuş offset sorunu pratikte kapandı.
+- **Dile duyarlı üretim.** Routine'in kendi system prompt'u, "bugün için bir şey yok" dolgu metni ve bildirim başlıkları artık her zaman Türkçe yerine uygulama dilini takip ediyor.
+
+## 🌱 Proaktif Öğrenme: Ambient Nudge'lar (v3.3.3)
+
+Klasik gözlem tabanlı öğrenme sistemi artık kullanıcıya kendiliğinden geri dönebiliyor:
+
+- **Varsayılan açık** (ince seviye). Ayarlar → Genel'den tamamen kapatılabilir, ya da (v3.3.3'te yeni) Minimal Mod'un sadece belirli parçaları — persona/sistem promptu, yetenek duyuruları, pasif-özellik duyuruları, proaktif öğrenme — birbirinden bağımsız olarak yeniden açılabilir.
+- Doğrudan beyan edilen bir alışkanlık ("her gece 21:00 kodluyorum") istatistiksel olarak çok oturumda birikmesini beklemeden hemen güvenilir sayılır.
+- Bir nudge artık Memo'nun kendi bir cevabına doğal biçimde dokunarak ("kodlama saatin gelmedi mi?") ya da ayrı bir öneri banner'ı olarak gelebilir — gerçekten gündeme gelip gelmediği ve kabul edilip edilmediği, belirli bir dilin kesin kalıbına bağlı olmadan modelin kendisine sorularak değerlendiriliyor.
+- Gizli Mod'da tamamen kapalı; Minimal Mod'da (yukarıdaki gibi özel olarak açılmadıysa) da kapalı.
+- **Masaüstünde gerçek bir öneri banner'ı** (Evet / Şimdi değil / Sorma) — önceden bekleyen bir öneriyi görecek/yanıtlayacak hiçbir UI yoktu.
+
+## 🔎 Self-Insight — `/insight` (v3.3.3)
+
+`/insight` yazıldığında (ya da bir Routine haftalık olarak sorduğunda), Memo son ruh hali geçmişine ve hafızasına bakıp gerçek bir örüntü varsa anlatır — açıkça, yeterli veri yoksa bir örüntü **uydurmaması** talimatıyla; bu durumda sadece bunu söyler.
 
 ---
 
@@ -127,6 +155,7 @@ func BuildDecider(cfg config.LearningConfig, orchestra OrchestraFn, single Singl
 | `DELETE`    | `/api/calendar/events/{id}`      | Etkinlik sil                   |
 | `GET`/`PUT` | `/api/calendar/settings`         | Hatırlatma süresi (dakika)     |
 | `GET`/`PUT` | `/api/learning/settings`         | Tek model modu + model ID      |
+| `POST`      | `/api/routines/sync-offset`      | (v3.3.3) İstemcinin güncel `DateTime.now().timeZoneOffset`'ini gönderir, backend tüm routine'lerin `UTCOffsetMinutes`'ını buna göre günceller |
 
 Bkz. [[API Dökümantasyonu]].
 

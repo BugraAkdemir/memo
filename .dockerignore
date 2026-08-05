@@ -1,0 +1,38 @@
+# Backend-only Docker image (see Dockerfile) — keep the build context to
+# what the Go build and the runtime stage actually need. binaries/ alone is
+# ~2.6GB across all platforms; without this file the whole tree would be
+# streamed to the Docker daemon on every build.
+
+.git/
+build/
+build_output/
+dist/
+dist_packages/
+
+# Flutter desktop frontend — not part of this image (backend-only).
+frontend/
+
+# Docs/notes — irrelevant to the image, large in aggregate.
+docs/
+obsidian-doc/
+obsidian-doc-en/
+versinNote/
+
+# Only binaries/linux/cpu ships in this image (see Dockerfile). Windows/macOS
+# binaries and the GPU (nvidia/amd) llama.cpp variants are unusable in a
+# standard container without GPU passthrough the CasaOS target doesn't have;
+# ngrok is unused (CasaOS's own port mapping/reverse proxy covers this
+# instead); the bundled Whisper STT model is the single biggest file in the
+# repo and downloads on demand like any other model, same as a native install.
+binaries/windows/
+binaries/darwin/
+binaries/linux/nvidia/
+binaries/linux/amd/
+binaries/linux/ngrok
+binaries/linux/cpu/ggml-small.bin
+binaries/linux/cpu/llama-new/
+
+# Runtime/user data — never baked into the image, always a mounted volume.
+data/
+config/config.yaml
+.env

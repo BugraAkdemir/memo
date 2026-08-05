@@ -678,3 +678,40 @@ class BackendUrlNotifier extends StateNotifier<String> {
     }
   }
 }
+
+// ─── Backend Token ──────────────────────────────────────────────
+//
+// Manual counterpart to apiClientProvider's onRemoteTokenLearned
+// (chat_provider.dart): that callback only ever *learns* a token from a
+// backend this app spawned itself and later exposed via LAN mode. Pointing
+// the Backend URL above at a foreign backend that requires the token from
+// the very first request (e.g. a headless `--lan` container) has no such
+// bootstrap moment — the token has to be entered by hand at least once.
+// Same SharedPreferences key as apiClientProvider's _remoteTokenPrefsKey
+// (not imported directly to avoid a chat_provider.dart <-> settings_provider.dart
+// cycle — chat_provider.dart already imports this file).
+const _backendTokenPrefsKey = 'memo_remote_access_token';
+
+final backendTokenProvider =
+    StateNotifierProvider<BackendTokenNotifier, String>((ref) {
+  final prefs = ref.read(prefsProvider);
+  return BackendTokenNotifier(prefs);
+});
+
+class BackendTokenNotifier extends StateNotifier<String> {
+  final SharedPreferences _prefs;
+
+  BackendTokenNotifier(this._prefs)
+      : super(_prefs.getString(_backendTokenPrefsKey) ?? '');
+
+  Future<void> save(String token) async {
+    final trimmed = token.trim();
+    if (trimmed.isEmpty) {
+      await _prefs.remove(_backendTokenPrefsKey);
+      state = '';
+    } else {
+      await _prefs.setString(_backendTokenPrefsKey, trimmed);
+      state = trimmed;
+    }
+  }
+}

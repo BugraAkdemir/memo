@@ -20,6 +20,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   final _tsKeyCtrl = TextEditingController();
   final _tsHostCtrl = TextEditingController();
   final _backendUrlCtrl = TextEditingController();
+  final _backendTokenCtrl = TextEditingController();
   int _listenPort = 8090;
   // Funnel defaults to on: without it, a phone can only reach the tunnel by
   // also installing the Tailscale app and joining the same tailnet, which
@@ -53,6 +54,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     _tsKeyCtrl.dispose();
     _tsHostCtrl.dispose();
     _backendUrlCtrl.dispose();
+    _backendTokenCtrl.dispose();
     super.dispose();
   }
 
@@ -256,8 +258,12 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
   Widget _buildBackendUrlSection() {
     final theme = MemoTheme.of(context);
     final currentUrl = ref.watch(backendUrlProvider);
+    final currentToken = ref.watch(backendTokenProvider);
     if (_backendUrlCtrl.text.isEmpty) {
       _backendUrlCtrl.text = currentUrl;
+    }
+    if (_backendTokenCtrl.text.isEmpty) {
+      _backendTokenCtrl.text = currentToken;
     }
 
     return Container(
@@ -292,11 +298,45 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
             ],
           ),
           const SizedBox(height: 8),
+          // Only needed when the URL above points at a backend running with
+          // --lan/remote access enabled on its own (a Docker/CasaOS
+          // deployment, another machine's exposed backend) — such a backend
+          // requires this token on every request from the very first one, so
+          // unlike a same-origin remote-access setup there is no automatic
+          // way for this app to learn it; it has to be pasted in by hand.
+          Row(
+            children: [
+              Icon(Icons.key_outlined, size: 18, color: theme.textDim),
+              const SizedBox(width: 8),
+              Expanded(
+                child: TextField(
+                  controller: _backendTokenCtrl,
+                  decoration: InputDecoration(
+                    labelText: L10n.t('remote_backend_token_field_label'),
+                    hintText: 'memo-...',
+                    isDense: true,
+                    prefixIcon: const Icon(Icons.vpn_key_outlined, size: 18),
+                  ),
+                  style: TextStyle(
+                      fontFamily: 'JetBrainsMono',
+                      fontSize: 14,
+                      color: theme.textMain),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            L10n.t('remote_backend_token_field_hint'),
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+          const SizedBox(height: 8),
           SizedBox(
             width: double.infinity,
             child: FilledButton.tonalIcon(
               onPressed: () async {
                 await ref.read(backendUrlProvider.notifier).save(_backendUrlCtrl.text);
+                await ref.read(backendTokenProvider.notifier).save(_backendTokenCtrl.text);
                 ref.invalidate(apiClientProvider);
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(

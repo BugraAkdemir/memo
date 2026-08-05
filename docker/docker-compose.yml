@@ -1,0 +1,54 @@
+# Memo — backend-only container for CasaOS / any Docker host.
+#
+# Install in CasaOS via App Store -> "Install a customized app" -> paste
+# this file (after replacing `image:` with your own pushed image — see
+# docker/README.md, CasaOS does not build from a Dockerfile itself).
+#
+# There is no browser UI: this is Memo's REST API only. Connect the Flutter
+# desktop app or the `memo` CLI to this container's address using the
+# X-Memo-Token printed in `docker logs` on first boot.
+name: memo
+
+services:
+  memo:
+    image: your-dockerhub-username/memo-backend:latest # replace after `docker build` + `docker push` — see docker/README.md
+    container_name: memo
+    restart: unless-stopped
+    ports:
+      - "8090:8090"
+    volumes:
+      - /DATA/AppData/memo:/memo
+    environment:
+      - TZ=Europe/Istanbul
+    # No healthcheck block here — the image already declares one
+    # (Dockerfile's HEALTHCHECK), inherited automatically.
+
+x-casaos:
+  # amd64 only — binaries/linux/cpu (llama.cpp + vec0) in this repo is x86_64
+  # only. Add arm64 here only once an arm64 build of those is substituted in.
+  architectures:
+    - amd64
+  main: memo
+  author: BugraAkdemir
+  category: Utilities
+  description:
+    en_us: >-
+      Local-first, privacy-focused AI chat backend with long-term memory.
+      This image is the REST API only (no browser UI) — connect with the
+      Memo desktop app or the `memo` terminal client using the access token
+      printed in this container's logs on first boot.
+    tr_tr: >-
+      Yerel öncelikli, gizlilik odaklı, uzun süreli hafızalı yapay zekâ
+      sohbet backend'i. Bu imaj yalnızca REST API'dir (tarayıcı arayüzü
+      yoktur) — konteynerin ilk açılışında loglara yazılan erişim token'ı
+      ile Memo masaüstü uygulaması veya `memo` terminal istemcisiyle
+      bağlanın.
+  tagline:
+    en_us: Your private AI memory, self-hosted.
+    tr_tr: Kendi sunucunda, gizli yapay zekâ hafızası.
+  title:
+    en_us: Memo (backend)
+    tr_tr: Memo (backend)
+  port_map: "8090"
+  index: /api/status
+  scheme: http

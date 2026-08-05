@@ -26,7 +26,17 @@ If `vec0` or `fts5` isn't available at build time (see [[CGO Flags]]), that spec
 - `data/memory/memory.db`: All memory (single file).
 - `data/sessions/`: Chat history (JSON format, separate from memory).
 - `data/models/`: Downloaded GGUF model files.
-- `data/sync_token.json`: Cloud sync authorization data.
+- `data/sync_token.json`: Cloud sync authorization data (device-specific — excluded from `.memo` backups).
+- `data/routines/`: Scheduled automations (Routines, v3.3.3).
+- `data/calendar/`: Calendar events (`events.db`).
+- `data/profile/`: Learned habits and pending proactive suggestions.
+- `data/tasklists/`: Task lists.
+- `data/stats/`: Usage stats (v3.3.3, Settings → Stats).
+- `data/skills/`: Installed skills.
+- `data/agent-backups/`: `.bak` files the `write_file`/`edit_file` tools create before overwriting.
+- `data/permissions.json`: Agent tool permission policies.
+- `data/machine.key`: Decrypts `providers.json`'s encrypted API keys — see [[Backup & Restore]] for why this matters.
+- `data/tailscale/`: Machine-specific tsnet identity (device-specific — excluded from `.memo` backups).
 
 ## Memory (RAM) Management
 

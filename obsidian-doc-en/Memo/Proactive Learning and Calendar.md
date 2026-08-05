@@ -1,10 +1,56 @@
 # Proactive Learning and Calendar
 
-> **Status:** ✅ Complete (backend + mobile + desktop settings) | **Version:** v3.1.1
+> **Status:** ✅ Complete (backend + mobile + desktop settings) | **Version:** v3.3.3 added Routines, ambient nudges with a real suggestion banner, and Self-Insight on top of the v3.1.1 intent/calendar system below.
 >
-> Memo's learning system now understands not just *when* you do something, but *what you tell it you will do* — in both chat and WhatsApp conversations.
+> Memo's learning system now understands not just *when* you do something, but *what you tell it you will do* — in both chat and WhatsApp conversations — and, as of v3.3.3, can act on its own initiative: scheduling itself (Routines), noticing patterns unprompted (proactive nudges), and reflecting on them when asked (`/insight`).
 
 Related pages: [[WhatsApp Integration]] · [[Orchestra Mode]] · [[Mobile App]] · [[Backend (Go) Architecture]]
+
+---
+
+## ⏰ Routines — Scheduled Automations (`internal/routine/`, v3.3.3)
+
+Sidebar → **Routines** lets you describe, in plain language, something Memo should do on its own on a schedule — a plain-language prompt is parsed into a `routine.Routine` (`internal/routine/types.go`) via `Extractor` (`extractor.go`).
+
+- **Two execution paths**, chosen by `Routine.AgentMode`: a plain LLM call with deterministically pre-fetched context (`ContextSource` — `none`/`calendar`/`whatsapp`/`insight`, fetched in Go rather than trusting an unattended tool call), or the full agent/tool pipeline for tasks like "git pull and report status" — the latter requires `AutoApproveTools` set at creation time, since there's no human present to answer a permission prompt when it fires.
+- **Per-device timezone.** `Schedule.UTCOffsetMinutes` captures the creating device's UTC offset at creation time (not the backend host's local time) — `ParseFireTime` interprets `TimeOfDay` against that offset, and the offset **automatically resyncs on every (re)connect** (`/api/routines/sync-offset`) so travel or a DST change corrects itself instead of staying frozen at whatever was true the day the routine was created. A routine created before this field existed (nil offset) falls back to the previous host-local-time behavior.
+- **Works on desktop and mobile.** The mobile app has no push channel, so `RoutineLoop` pre-generates content ahead of the fire time and the mobile app polls `/api/routines/mobile-ready` to pre-schedule a real local notification — it still arrives even if the app isn't open.
+- **Language-aware output.** `Routine.Language` (captured client-side at creation) drives the notification title, the "nothing due today" filler text, and the system prompt used for the non-agent path — previously this always came out in Turkish regardless of the user's setting.
+- **Delivery:** in-chat, and optionally to a WhatsApp target JID (`DeliveryWhatsApp`) or as a mobile notification (`DeliveryMobile`).
+
+### API Endpoints
+
+| Method | Endpoint | Description |
+|--------|----------|--------------|
+| `GET`/`POST` | `/api/routines` | List / create routines |
+| `POST` | `/api/routines/parse` | Turn plain-language text into a draft routine |
+| `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Get/update/delete a routine |
+| `GET` | `/api/routines/mobile-ready` | Mobile polling endpoint for pre-scheduling local notifications |
+| `POST` | `/api/routines/sync-offset` | Resync a client's UTC offset against its routines |
+
+---
+
+## 🧭 Self-Insight (`/insight`, v3.3.3)
+
+`GenerateSelfInsight` (`internal/app/insight.go`) synthesizes a short "what did you notice about yourself" reflection from the user's own conversation memory (last 30 days by default, capped at 60 raw memory rows to stay inside the model's context budget) plus their mood-history trend. It's explicitly instructed not to invent a pattern if there isn't enough to go on — it says so instead of guessing.
+
+Two entry points share the same generation code:
+- **On-demand:** type `/insight` in chat → `POST /api/memory/insight`.
+- **Scheduled:** a Routine with `ContextSource.Type = "insight"` (e.g. a weekly self-insight digest) pre-fetches the same window deterministically before the LLM call.
+
+---
+
+## 🔔 Proactive Ambient Nudges (v3.3.3)
+
+On top of the classic observation-based learning system (below), Memo can now surface a pattern **unprompted** instead of only ever answering when asked — the `internal/proactive/` engine (`Engine.NewEngine`, a periodic heartbeat, default 30s interval) matches the current moment against learned patterns (`internal/observer/`) and asks the Chief model what to do with it (`Decider`), subject to a minimum score/confidence and a 30-minute cooldown between consultations.
+
+- **On by default** at the "subtle" level. Settings → General has the master switch, plus (new in v3.3.3) **independent Minimal Mode overrides** — persona/system-prompt, capability disclosures, passive-feature disclosures, and proactive learning can each be re-enabled individually even while Minimal Mode is otherwise stripping everything else out.
+- A habit **stated directly** in conversation ("I code every night around 9") is trusted immediately, unlike a passively-observed pattern which needs to show up statistically across sessions first.
+- A nudge can appear **woven into a normal reply** ("isn't it about your coding time?") instead of only as a separate suggestion — whether it was actually raised, and whether the user accepted or brushed it off, is judged by asking the model itself (language-independent, not string-matched).
+- **A real suggestion banner exists on desktop now** (Yes / Not now / Stop asking) — previously there was no UI to see or respond to a `PendingSuggestion` at all.
+- **Fully disabled under Incognito Mode**, and under Minimal Mode unless specifically re-enabled per the granular toggles above.
+
+---
 
 ---
 

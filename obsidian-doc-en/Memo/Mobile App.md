@@ -102,9 +102,11 @@ Phone ←──── Internet ────→ ngrok server ────→ Your
 
 ### Option 2: Tailscale (stable URL)
 
+Tailscale-based remote access **graduated out of Beta in v3.3.4** — no longer needs the Beta Features switch on either platform.
+
 1. Sign up at [Tailscale](https://tailscale.com)
 2. In Memo: **Settings → Remote Access → Tailscale**
-3. Enter your Tailscale Key
+3. **One-click login (v3.3.4):** an interactive login flow — no auth key to paste anymore
 4. Set a hostname (e.g. `memo-home`)
 5. Install the Tailscale app on your phone too
 6. In the mobile app, connect to `http://memo-home:8090`
@@ -114,7 +116,7 @@ Phone ←── Tailscale network ──→ Computer
 (Tailscale app)                 (Memo + embedded Tailscale)
 ```
 
-> With Tailscale, the URL **stays the same forever.** Set it once, never change it.
+> With Tailscale, the URL **stays the same forever.** Set it once, never change it. As of v3.3.4, the mobile app also auto-reconnects with the saved URL on a cold start, and shows a real error message instead of a raw exception dump when a connection drops.
 
 ---
 
@@ -127,6 +129,14 @@ The mobile app has a calendar tab. It shows:
 - Add events manually
 - Long-press an event to delete it
 - Change the reminder lead time
+
+## ⏰ Routines on Mobile (v3.3.3)
+
+Routines work on mobile too, not just desktop. Since the mobile app has no push channel, it polls `/api/routines/mobile-ready` to pre-schedule a **real, pre-scheduled local notification** ahead of a routine's fire time — it still arrives even if the app isn't open. Notification text follows the language the routine was created in (fixed in v3.3.3 — it previously always came out in Turkish regardless of the app's own language setting). See [[Proactive Learning and Calendar]].
+
+## 🌍 Full Localization (v3.3.3)
+
+The mobile app is now fully localized (Turkish/English), matching the desktop app, with a language toggle available both in Settings and on the pre-pairing connect screen.
 
 ---
 

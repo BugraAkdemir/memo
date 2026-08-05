@@ -1,8 +1,8 @@
 # Known Issues & Technical Risks
 
-> Updated: July 15, 2026 — updated with memory/RAG hybrid-search fixes and the new pinned-facts tier (v3.3.3).
+> Updated: August 5, 2026 — reconciled against `BUG_REPORT.md` (0 open tracked bugs at every severity as of this date — every previously-tracked bug has a fix commit) and `handoff.md`. This page covers design-level technical debt and architectural risk, not the actively-tracked bug list — see `BUG_REPORT.md` for that.
 
-**Summary**: 14 known issues documented, 11 fixed (one this pass: polling leaks), 3 remaining. Most are design-level technical debt, not bugs. See `docs/KNOWN_ISSUES.md` and `docs/tr/BILINEN_SORUNLAR.md` for the full itemized list with code references.
+**Summary**: 14 known issues documented, 11 fixed, 3 remaining below are design-level technical debt, not open bugs. See `docs/KNOWN_ISSUES.md` and `docs/tr/BILINEN_SORUNLAR.md` for the full itemized list with code references.
 
 ---
 
@@ -33,7 +33,10 @@
 | `provider.Priority` field exists but unused by router | Design debt — sort logic present, not wired |
 | Orchestra bypasses `provider.Router` — creates providers directly, no fallback chain | Architecture limitation |
 | No test files for `orchestra/` package (~800 lines) | Coverage gap |
-| Agent frontend UI (permission dialog, tool call cards) not fully implemented | Partial — basic dialog exists, streaming events rendered |
+| ~~Agent frontend UI (permission dialog, tool call cards) not fully implemented~~ | ✅ implemented — `frontend/lib/screens/agent_screen.dart` + agent chat card, permission dialog, and the in-chat agent-mode toggle all ship |
+| Live Mode (Beta, v3.3.4): no echo cancellation | Known limitation — using speakers instead of headphones can make Memo mistake its own voice for an interruption. Full duplex audio planned. |
+| Memo Swarm (Beta): not on macOS, capacity not speed, always-routing-every-turn polish still ongoing | Beta, see [[Memo Swarm]] |
+| Claude Code CLI / Codex CLI providers (Beta, v3.3.4): no UI yet for reviewing what the CLI actually did beyond its final text reply | Early integration, see [[External Providers]] |
 
 ---
 

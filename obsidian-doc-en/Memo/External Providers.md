@@ -60,7 +60,9 @@ type Provider interface {
 
 ---
 
-## Supported Providers (7 types)
+## Supported Providers (13 registered `ProviderType` values)
+
+7 detailed below (OpenAI, Gemini, Claude, Grok, Groq, OpenRouter, Ollama), plus: **Custom** (any OpenAI-compatible endpoint — LM Studio, vLLM, etc., wraps `openAIProvider`), **OpenCode Zen** and **OpenCode Go** (v3.3.3 — OpenCode's two gateways; like OpenRouter, pick a model from the live list instead of typing one by hand — Zen is pay-as-you-go with some free models, Go is subscription-based), the two CLI-based providers (#8-9 below, v3.3.4), and `llama.cpp` — an enum placeholder only, **not actually implemented** as a provider (see the note below).
 
 ### 1. OpenAI (`openai.go`, 353 lines)
 - **Compatible APIs:** OpenAI, any OpenAI-compatible endpoint

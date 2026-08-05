@@ -34,15 +34,22 @@ This is a Map of Content (MOC) for Memo's core feature documentation. Each linke
 
 | Page | Description |
 |------|-------------|
-| [[Agent Mode]] | AI tool calling with permission system and sandbox |
+| [[Agent Mode]] | AI tool calling with permission system and sandbox — 19 built-in tools + executable skill tools |
 | [[Orchestra Mode]] | Multi-model orchestration with expert roles |
-| [[Multimodal Capabilities (Vision and Voice)]] | Image uploads, STT transcription |
-| [[Agent Tools Reference]] | All 8 built-in tools with JSON schemas |
+| [[Multimodal Capabilities (Vision and Voice)]] | Image uploads, STT transcription, and (Beta) hands-free Live Mode voice conversation |
+| [[Developer API Gateway]] | Anthropic-compatible endpoint — point Claude Code at Memo |
+| [[Memo Swarm]] | Beta — pool several PCs for one oversized local model |
+
+## ⏰ Automation & Proactivity
+
+| Page | Description |
+|------|-------------|
+| [[Proactive Learning and Calendar]] | Routines (scheduled automations), ambient nudges, Self-Insight, intent extraction, calendar |
 
 ## 🗂️ Version Features
 
 | Page | Description |
 |------|-------------|
-| [[v3.1.1 Features]] | WhatsApp, mobile, backup, agent, orchestra, providers (historical record) |
-| [[Features Catalog]] | Complete, current feature-by-feature listing (including usage stats and the developer gateway) |
-| Release Notes | `versinNote/v3.3.3.md` |
+| [[v3.1.1 Features]] | WhatsApp, mobile, backup, agent, orchestra, providers — historical snapshot, frozen at v3.1.0/v3.1.1, two majors behind current |
+| [[Features Catalog]] | Complete, current feature-by-feature listing |
+| Release Notes | `versinNote/v3.3.3.md` (released), `versinNote/v3.3.4.md` (in development) |

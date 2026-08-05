@@ -1,50 +1,37 @@
-# Memo v3.3.3
+# Memo v3.3.4 (in development)
 
 **The AI assistant that learns your habits and acts before you ask.**
 
 Local-first · Privacy-first · Zero cloud dependency · Full offline capable
 
-> v3.3.3 is an **open beta** release (July 10, 2026). A stability and trust-focused release: terminal CLI reliability fixes, the CLI and desktop app running independently of each other, memory recall fixes, Memo finally giving a real, grounded answer about who made it, the [[Features Catalog|Usage Stats]] tab, a fully complete `.memo` backup (including `machine.key`), and the [[Developer API Gateway]] (point Claude Code at Memo with full agentic tool-calling support). Changelog: `versinNote/v3.3.3.md`.
+> The last **released** version is **v3.3.3** (open beta, July 23, 2026). **v3.3.4 is in active development** (not yet released) — a reliability and polish pass: the backend no longer crashes from a background error, a 4-5x local-generation slowdown from having memory on is fixed, a new (beta) **Live Mode** for hands-free voice conversation, **Tailscale remote access graduates out of Beta**, **Claude Code CLI / Codex CLI as chat providers** (beta), Settings reorganized into a searchable rail, and a batch of real bug fixes (agent mode on small-context local models, "Delete All Data" on Windows, speech-to-text from an installed CLI, web search firing on every message). Changelog: `versinNote/v3.3.4.md`.
+>
+> v3.3.3 itself was a stability/trust release: terminal CLI reliability fixes, the CLI and desktop app running independently of each other, memory recall fixes, Memo finally giving a real, grounded answer about who made it, **Routines** (scheduled automations) and **Proactive Learning/ambient nudges**, the [[Features Catalog|Usage Stats]] tab, a fully complete `.memo` backup (including `machine.key`), and the [[Developer API Gateway]]. Changelog: `versinNote/v3.3.3.md`.
 
 ---
 
-## What's New in v3.1.0
+## v3.3.4 Highlights (in development)
 
-This is a major release — the biggest update to Memo since the project started. Key additions:
+- **Backend-wide panic recovery** — a crash in any background task (memory, routines, WhatsApp, cloud sync, STT, notifications, tunnels, ...) is now logged and contained instead of taking the whole app down
+- **4-5x local-generation slowdown from memory being on — fixed** — the embedding server no longer fights the chat model for VRAM (defaults to CPU-only), and the memory-block token budget is capped at 4096
+- **[[Multimodal Capabilities (Vision and Voice)|Live Mode]] (Beta)** — hands-free voice conversation via a small icon next to the chat input; local Piper TTS by default, offline voice picker, one-directional barge-in, bundled VAD model; no echo cancellation yet
+- **Claude Code CLI / Codex CLI as chat providers (Beta)** — see [[External Providers]] — per-chat, runs as a real background agent job, own slash commands
+- **Remote Access (Tailscale) graduates out of Beta** — one-click login, Funnel on by default, auto-reconnect
+- **Settings reorganized into a searchable rail** — no longer 20 flat tabs
+- **`@` file-mention** in chat, a quick model-switcher pill in the chat top bar
+- Fixed: agent mode failing on short messages with small-context local models (default local context 4096 → 8192), "Delete All Data" failing on Windows, STT not finding bundled files from an installed CLI, web search firing on every message, Windows installer now bundles the VC++ Redistributable
+- **macOS App Sandbox fix** (`420e6a5`) — missing `network.client`/`device.audio-input`/`files.user-selected.read-write` entitlements were causing a real "connection error" on macOS; see [[Troubleshooting]] and [[Build and Packaging]]
 
-### Core Features
-- **RAG Memory** — SQLite + sqlite-vec vector store remembers conversations
-- **WhatsApp Integration** — Full WhatsApp Web via QR pairing, no API fees
-- **Agent Mode** — Tool-calling pipeline with 8 tools and permission system
-- **Orchestra** — Multi-model workflow with 8 specialist roles
-- **Proactive Learning** — Pattern detection + auto-suggestion engine
-- **Calendar** — Intent extraction from conversations → auto-events → reminders
-- **Model Store** — Hardware-fit badges, curated models, one-click download
-- **Skill System** — Drop `SKILL.md` files to add capabilities
-- **Mood Engine** — Stochastic emotional state that shapes responses
-- **Web Search** — DuckDuckGo integration, zero config
+Full list: `versinNote/v3.3.4.md` (running draft, not final)
 
-### Platform
-- **Mobile Companion** — Flutter app for Android/iOS
-- **Remote Access** — ngrok + Tailscale tunnels
-- **Cloud Sync** — E2E encrypted Google Drive backup
-- **Windows Support** — Full feature parity
-- **Whisper STT** — On-device speech-to-text
+## v3.3.3 Highlights (last released)
 
-### Polish (v3.1.0)
-- **Onboarding UX** — Setup wizard, launchpad, spotlight tour, empty states
-- **150+ L10n keys** — Full TR/EN bilingual support
-- **Production hardening** — Rate limiting, 50MB body limit, 0600 permissions
-- **Security** — `crypto/rand` key derivation, encrypted API keys
-- **CI/CD** — GitHub Actions: auto-test on every push
-- **Structured logging** — `logx` slog wrapper
-- **settings_dialog split** — 5013 → 15 files
-
-## v3.3.3 Highlights
-
-- **CLI reliability fixes** — model download no longer hangs, multi-line paste works correctly, the terminal no longer stays broken
+- **[[Proactive Learning and Calendar|Routines]]** — schedule something for Memo to do on its own, in plain language, on desktop and mobile
+- **Proactive Learning & ambient nudges** — Memo notices patterns and gently brings them up, with a real suggestion banner (Yes / Not now / Stop asking)
+- **Self-Insight (`/insight`)** — ask Memo to describe patterns in your mood/memory history
+- **CLI reliability fixes** — model download no longer hangs, multi-line paste works correctly, the terminal no longer stays broken, plus a full visual redesign
 - **CLI/desktop independence** — closing the CLI no longer takes down the desktop app's backend
-- **Memory recall fixes** — keyword search is genuinely active now, multi-topic questions no longer return incomplete answers
+- **Memory recall fixes** — keyword search is genuinely active now, multi-topic questions no longer return incomplete answers, `/remember` actually saves again
 - **Self-identity** — Memo now gives a real answer when asked who made it and why
 - **Minimal Mode**, **two new providers (OpenCode Zen/Go)**, **memory import from another AI**, **skill tools that actually run**
 - **[[Features Catalog|Usage Stats]]** — Settings → Stats: token/speed/model breakdown chart
@@ -73,10 +60,10 @@ Full list: `versinNote/v3.3.3.md`
 - [[Developer API Gateway]] — Point Claude Code (or anything Anthropic-compatible) at Memo
 - [[Memo Swarm]] — Multi-PC large models (Beta)
 - [[Cloud Sync]] — E2E encrypted Google Drive backup
-- [[API Documentation]] — All ~90 REST endpoints
+- [[API Documentation]] — 160+ REST endpoints
 - [[Developer Setup Guide]] — Build from source
 - [[Contributing]] — How to contribute
 
 ---
 
-**Version**: v3.3.3 (Open Beta) · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10
+**Version**: v3.3.3 released (Open Beta) · v3.3.4 in development · **License**: AGPL v3 · **Tech**: Go 1.26 + Flutter 3.10

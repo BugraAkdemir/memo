@@ -25,17 +25,21 @@ Why SQLite?
 ### Database Schema
 
 ```
-data/memory/memo.db
-├── vec0 table          ← Vector ANN index (sqlite-vec)
-├── documents table     ← Content and metadata
-└── metadata table      ← Collection info
+data/memory/memory.db
+├── memories table       ← Content, importance, source (conversation/explicit/merged), embedding blob
+├── memories_fts table   ← FTS5 virtual table — keyword search
+├── vec_memories table   ← vec0 virtual table (sqlite-vec) — vector ANN index
+└── _metadata table      ← Migration flags, embedding dimension
 ```
 
-| Table | Columns | Purpose |
-|-------|---------|---------|
-| `documents` | `id`, `content`, `created_at`, `metadata_json` | Memory records |
-| `vec0` | `id`, `embedding` | Vector ANN index |
-| `metadata` | `key`, `value` | Collection metadata |
+| Table | Purpose |
+|-------|---------|
+| `memories` | Memory records — content, timestamp, importance, source, embedding blob |
+| `memories_fts` | FTS5 keyword search (requires `-tags "sqlite_fts5"`, see [[CGO Flags]]) |
+| `vec_memories` | Vector ANN index (`vec0`) |
+| `_metadata` | Internal state |
+
+Search is **hybrid**: vector similarity and FTS5 keyword search both run, merged via Reciprocal Rank Fusion — see [[RAG and Semantic Memory]] and [[Vector Search Logic]] for the full retrieval pipeline (compound-question splitting, pinned facts, importance re-weighting).
 
 ### Go Fallback Mode
 
@@ -108,12 +112,13 @@ type Provider interface {
 - After 3 consecutive failures → auto-disabled
 - Health check goroutine periodically tests disabled providers → re-enables on recovery
 
-### Provider Types
+### Provider Types (13, up from 7)
 | Type | Providers | Implementation Pattern |
 |------|-----------|----------------------|
-| OpenAI-compatible | OpenAI, Grok, Groq, OpenRouter, Ollama | Common `openAIProvider` with different base URLs |
+| OpenAI-compatible | OpenAI, Grok, Groq, OpenRouter, Ollama, Custom, OpenCode Zen, OpenCode Go | Common `openAIProvider` with different base URLs |
 | Gemini | Google Gemini | Custom `generateContent`/`streamGenerateContent` |
 | Claude | Anthropic Claude | Custom Messages API with `x-api-key` auth |
+| CLI-based (Beta, v3.3.4) | Claude Code CLI, Codex CLI | Subprocess (`internal/agentcli/`), not an HTTP call — see [[External Providers]] |
 
 ### Encrypted Config
 - API keys stored in `data/providers.json`
@@ -124,7 +129,7 @@ type Provider interface {
 ## 7. Agent Engine (`internal/agent/`)
 
 ### Tool Registry
-Thread-safe registry holding 8 built-in tools:
+Thread-safe registry holding 19 built-in tools (up from the original 8) — see [[Agent Mode]] for the full list with schemas:
 
 | Tool | Danger Level | Description |
 |------|-------------|-------------|
@@ -135,7 +140,15 @@ Thread-safe registry holding 8 built-in tools:
 | `run_command` | Dangerous | Execute shell commands |
 | `search_files` | Safe | Search files by pattern |
 | `get_file_info` | Safe | Get file metadata |
-| `read_env` | Safe | Read environment variables |
+| `read_env` | Medium | Read environment variables |
+| `edit_file` / `insert_line` / `delete_lines` | Medium | Line-level file editing with diff preview |
+| `web_search` | Safe | DuckDuckGo, model decides when it's actually needed |
+| `self_clone` | Dangerous | Copy the project to another local directory |
+| `configure_provider` | Dangerous | Add/update a provider from chat |
+| `get_calendar_events` | Safe | Read real calendar data |
+| `whatsapp_send` / `whatsapp_search` / `whatsapp_latest` / `whatsapp_messages` | Medium/Safe | WhatsApp tools |
+
+**Skill tools (v3.3.3):** a skill's `SKILL.md` `command:` field now executes for real through this exact pipeline (`internal/skill/executor.go`), previously purely declarative.
 
 Each tool has a JSON Schema parameter definition.
 
@@ -158,7 +171,9 @@ Core loop:
 2. If tool calls requested → check permissions
 3. Execute tool in sandbox
 4. Feed result back to LLM
-5. Repeat until final response or 20 iterations
+5. Repeat until final response or 40 iterations
+
+As of v3.3.4, agent mode's tool schema (12+ tool definitions sent on every request) is correctly counted against the model's context budget — previously it wasn't, so even a one-word message could fail outright on a small-context local model with a confusing "request exceeds the available context size" error. Default local context was also raised 4096 → 8192.
 
 ## 8. Orchestra Mode (`internal/orchestra/`)
 
@@ -193,3 +208,16 @@ Each phase emits typed progress updates:
 ### Limitations
 - Provider bypass: unlike normal chat, orchestra creates providers directly via factory (no Router fallback)
 - Config validation: no validation at config time — runtime error if chief model is invalid
+
+## 9. Backend-Wide Panic Recovery (v3.3.4)
+
+Go gives automatic panic protection to a single HTTP request handler, but none at all to code running in a background goroutine — an unhandled panic there takes down the *entire* process, not just that task. Before v3.3.4, only three small corners of the codebase guarded against this.
+
+Every background task across the backend is now wrapped in recovery: memory saving, chat streaming, WhatsApp message handling, cloud sync, local model management, speech-to-text, routines, proactive suggestions, notifications, and remote-access tunnels. An unexpected error in any one of them is logged and contained instead of crashing Memo. This is purely a stability floor — it doesn't change any feature's behavior when things are working normally.
+
+## 10. Memory/Local-Generation Performance Fix (v3.3.4)
+
+Reported directly: turning on memory/RAG for a local model could cut generation from ~10 tokens/sec to 2-3. Two compounding causes:
+
+1. The dedicated embedding server auto-started with GPU auto-detect, sized as if it were the only model running, even while the chat model's own server was already resident and using most of the VRAM — the two oversubscribed together, pushing the chat model into partial CPU fallback. **Fixed:** the embedding server now defaults to CPU-only (small enough to stay fast there); `embedding_gpu_layers` opts it back onto the GPU if there's real headroom.
+2. The memory block injected into every prompt (retrieved results + pinned `/remember` facts, which only grow over a session) had an old 16K-token budget that was never a real ceiling. **Fixed:** capped at 4096 tokens.

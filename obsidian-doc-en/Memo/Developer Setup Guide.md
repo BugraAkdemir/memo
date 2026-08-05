@@ -3,10 +3,12 @@
 Follow the steps below to contribute to the Memo project or run it in your local environment.
 
 ## Requirements
-- **Go:** v1.20+
+- **Go:** v1.26+ (see `go.mod`)
 - **Flutter:** v3.10+ (Master or Stable channel)
 - **C++ Compiler:** (Optional, if you wish to compile Llama.cpp)
 - **Linux:** `build-essential`, `libgtk-3-dev`, `libayatana-appindicator3-dev`
+- **macOS:** if you hit a "connection error" or missing mic/file-picker access on a local dev build, check `frontend/macos/Runner/*.entitlements` include `network.client`, `device.audio-input`, and `files.user-selected.read-write` (fixed for shipped builds in `420e6a5`) — see [[Build and Packaging]]
+- Backend build needs CGO + `-tags "sqlite_fts5"` — see [[CGO Flags]]
 
 ## Setup Steps
 

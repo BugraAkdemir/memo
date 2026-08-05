@@ -1,6 +1,6 @@
 # 🤖 Agent Mode
 
-> **Package:** `internal/agent/` (8 files, ~1450 lines)
+> **Package:** `internal/agent/` (19 built-in tools, up from the original 8)
 > **Config file:** `data/permissions.json`
 > **API endpoints:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
 > **Requires:** Active external provider (local llama.cpp does not support tool calling)
@@ -92,6 +92,8 @@ Methods:
 
 ## Built-in Tools
 
+Registered in `internal/agent/tools.go` — 19 tools total, up from the original 8 (`edit_file`/`insert_line`/`delete_lines`/`web_search`/`self_clone`/`configure_provider`/`get_calendar_events` and the 4 WhatsApp tools were added later, see [[WhatsApp Integration]]). On top of these, **skill tools are now real** (v3.3.3): a skill's `SKILL.md` can declare a `command:` field, and it executes through this exact same pipeline and permission UI — see [[Guides]].
+
 ### 1. `read_file` — Safe
 ```json
 {
@@ -147,6 +149,32 @@ Methods:
 ### 8. `read_env` — Medium
 - Lists environment variables
 - Masks sensitive keys (containing: KEY, TOKEN, SECRET, PASS, AUTH, CREDENTIAL)
+
+### 9. `edit_file` — Medium
+- Edits an existing file: either `old_string`/`new_string` (find-and-replace) or `start_line`/`end_line`/`new_content` (line-range replace)
+- Has a `PreviewFn` for a diff-style preview before execution
+
+### 10. `insert_line` — Medium
+- Inserts content at a specific line number
+
+### 11. `delete_lines` — Medium
+- Deletes a range of lines (`start_line`–`end_line`)
+
+### 12. `web_search` — Safe
+- DuckDuckGo search; the model is instructed to reach for it only for current events/prices/facts that may have changed since training, not for greetings or general knowledge
+- Fixed in v3.3.4: previously ran unconditionally on every message when the (separate, dumber) chat-level web search toggle was on, even with agent mode active — now agent mode's own tool-based decision handles it alone
+
+### 13. `self_clone` — Dangerous
+- Copies the entire project (source + binary) to another local directory, for local replication/backup
+
+### 14. `configure_provider` — Dangerous
+- Adds/updates an external provider config (type, base URL, API key, model) from within a chat instead of Settings; requires user confirmation
+
+### 15. `get_calendar_events` — Safe
+- Reads real events from `events.db` for a date range — the model is instructed to call this instead of guessing when asked about the calendar
+
+### 16-19. WhatsApp tools — `whatsapp_send` (Medium), `whatsapp_search` (Safe), `whatsapp_latest` (Safe), `whatsapp_messages` (Safe)
+- Send/search/list-chats/get-history against the paired WhatsApp account — see [[WhatsApp Integration]]
 
 ---
 
@@ -226,7 +254,7 @@ Return NeedPrompt → frontend must respond
 └──────────────────────────────────────────┘
 ```
 
-> **Note:** The permission dialog frontend UI is not yet implemented. The backend emits `EventPermissionRequest` events but there is no Flutter widget to handle them.
+> **Note:** The permission dialog frontend UI is implemented (`frontend/lib/screens/agent_screen.dart`, `frontend/lib/widgets/agent/agent_chat_card.dart`) — the backend's `EventPermissionRequest` events are rendered as a real dialog, and agent mode has its own toggle in Chat's top bar (v3.3.3), not just the separate Agent tab.
 
 ---
 
@@ -304,7 +332,7 @@ The following patterns are **blocked** in `run_command`:
    │   Loop to step 3
    └── If no tool_calls:
        └── Emit EventFinalResponse → done
-5. Repeat max 20 iterations (safety limit)
+5. Repeat max 40 iterations (safety limit)
 ```
 
 ### Event Types
@@ -443,12 +471,12 @@ return a.callLLMStream(ctx, messages, userMsg, "", "")
 
 | Issue | Detail |
 |-------|--------|
-| **No frontend UI** | Permission dialog, tool call cards, mode toggle not implemented |
 | **No streaming** | Pipeline uses non-streaming ChatCompletion for tool calls — blocks UI |
 | **No per-tool timeout** | Pipeline doesn't enforce individual timeouts (sandbox does for commands) |
 | **Audit log not persisted** | 1000-entry in-memory buffer, lost on restart |
-| **Max 20 iterations** | Hard limit prevents infinite loops but may cut off complex tasks |
-| **Requires external provider** | Local llama.cpp doesn't support tool calling reliably |
+| **Max 40 iterations** | Hard limit prevents infinite loops but may cut off complex tasks |
+| **Tool schema now budgeted against context (v3.3.4)** | Previously agent mode's tool definitions weren't counted against the model's context size, so even a one-word message could fail on a small-context local model with a confusing error. Fixed; default local context also raised 4096 → 8192. |
+| **Local models** | llama.cpp's own tool-calling support varies by model; starting a model that doesn't support it now shows a warning instead of failing unexplained later (v3.3.4) |
 
 ---
 

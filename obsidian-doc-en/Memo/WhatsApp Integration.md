@@ -32,3 +32,5 @@ Memo connects to your WhatsApp account through the multi-device Web API (whatsme
 - **Store**: SQLite with WAL mode, `sync.Mutex` on writes
 - **Integration**: Messages feed into RAG memory, proactive observer, intent extractor, and mood engine
 - **Data**: Stored in `data/whatsapp/` — messages, contacts, profile picture cache
+- **Fixed (v3.3.3):** incoming images, videos, or documents with a caption were silently dropped — only plain-text messages were being read from live messages; a caption on media is no longer ignored.
+- **Security (v3.3.3):** a `golang.org/x/text` infinite-loop vulnerability, reachable through the profile-picture lookup, was patched (along with a related `golang.org/x/net` fix).

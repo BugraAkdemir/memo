@@ -23,6 +23,9 @@ Pure vector similarity blends every topic of a multi-part question ("do you know
 ## Technical Specifications
 - **Persistence:** Data is stored in a single SQLite file (`data/memory/memory.db`).
 - **Disk-based search:** Every search queries SQLite directly — there's no separate in-RAM vector cache (see [[Data Layer and Persistence]]).
+- **Prompt token budget (v3.3.4):** the memory block injected into every prompt is capped at 4096 tokens — previously an unenforced 16K "ceiling" that let worst-case prompt bloat grow unbounded as `/remember`-pinned facts accumulated over a session.
+- **Local-generation performance (v3.3.4):** the dedicated embedding server now defaults to CPU-only instead of GPU auto-detect, fixing a case where it fought the chat model's own server for VRAM and could cut local generation speed 4-5x. `embedding_gpu_layers` opts it back onto the GPU if there's real headroom.
+- **Import Memory From Another AI (v3.3.3):** Settings → Import Memory lets Memo ingest a structured description another AI assistant gives back about the user, breaking it into atomic facts saved the same way `/remember` does — see [[Proactive Learning and Calendar]] and [[Advanced Settings]].
 
 ### Linked Notes:
 - [[Vector Search Logic]]

@@ -19,7 +19,7 @@ Map of Content for in-depth technical documentation about Memo's architecture, A
 
 | Page | Description |
 |------|-------------|
-| [[API Documentation]] | Complete REST API endpoint reference (~35 endpoints) |
+| [[API Documentation]] | Complete REST API endpoint reference (160+ routes) |
 | [[Event System]] | Ring buffer event system for background notifications |
 | [[SSE Streaming Protocol]] | Server-Sent Events message format and flow |
 
@@ -31,7 +31,7 @@ Map of Content for in-depth technical documentation about Memo's architecture, A
 | [[Vector Search Logic]] | Cosine similarity, parallel workers, Top-K |
 | [[CGO Flags]] | Build requirements, sqlite-vec compilation |
 | [[Default System Prompt]] | Memo's identity directives and anti-hallucination rules |
-| [[Known Issues]] | Exhaustive bug audit (54 tracked, 46 fixed) |
+| [[Known Issues]] | Design-level technical debt and architectural risk (0 open tracked bugs — see `BUG_REPORT.md`) |
 | [[Resolved Issues]] | 61 documented fixes with code references |
 
 ## 🚀 Guides

@@ -38,4 +38,8 @@ Map of Content for user and developer guides.
 | [[WhatsApp Integration]] | QR pairing and messaging |
 | [[Agent Mode]] | Enabling and using AI tool calling |
 | [[Orchestra Mode]] | Multi-model orchestration setup |
-| [[External Providers]] | Adding API providers |
+| [[External Providers]] | Adding API providers, incl. CLI-based (Claude Code/Codex) |
+| [[Proactive Learning and Calendar]] | Routines, ambient nudges, Self-Insight, calendar |
+| [[Multimodal Capabilities (Vision and Voice)]] | Voice input, Live Mode (Beta) |
+| [[Developer API Gateway]] | Point Claude Code at Memo |
+| [[Memo Swarm]] | Pooling several PCs for one large model (Beta) |

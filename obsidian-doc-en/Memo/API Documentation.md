@@ -57,6 +57,57 @@ The Memo Backend provides a comprehensive REST API for the Flutter Frontend or t
 |--------|----------|-------------|
 | `GET`/`PUT` | `/api/orchestra/config` | Get/update orchestra config |
 
+### Routines (v3.3.3)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET`/`POST` | `/api/routines` | List / create routines |
+| `POST` | `/api/routines/parse` | Turn plain-language text into a draft routine |
+| `GET`/`PUT`/`DELETE` | `/api/routines/{id}` | Get/update/delete a routine |
+| `GET` | `/api/routines/mobile-ready` | Mobile polling endpoint for pre-scheduled local notifications |
+| `POST` | `/api/routines/sync-offset` | Resync a client's UTC offset |
+
+Details: [[Proactive Learning and Calendar]]
+
+### Self-Insight & Memory Import (v3.3.3)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/memory/insight` | On-demand `/insight` generation |
+| `POST` | `/api/memory/import-text` | Import-Memory-From-Another-AI: submit the pasted text |
+| `POST` | `/api/memory/import` | Process the imported text into atomic facts + a communication-style summary |
+
+### Live Mode / TTS (Beta, v3.3.4)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/api/tts/synthesize` | Synthesize speech for a reply |
+| `POST` | `/api/tts/filler` | Locally-synthesized "thinking" filler sound |
+| `GET` | `/api/tts/providers` | List configured TTS providers |
+| `POST` | `/api/tts/providers/test` | Test a TTS provider |
+| `GET` | `/api/tts/voices` | List available (downloaded + downloadable) Piper voices |
+| `POST` | `/api/tts/voices/download` | Download an offline voice |
+| `POST` | `/api/tts/voices/select` | Switch active voice |
+
+Details: [[Multimodal Capabilities (Vision and Voice)]]
+
+### Claude Code CLI / Codex CLI Providers (Beta, v3.3.4)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/api/cli/status?type=` | Whether `claude`/`codex` is installed, with version |
+| `GET` | `/api/cli/running` | Currently running CLI jobs |
+| `GET` | `/api/cli/commands?type=&chat_id=` | The CLI's own slash commands (project/personal/skill/built-in) |
+| `POST` | `/api/chats/cli-provider` | Set a chat's CLI provider |
+| `POST` | `/api/chats/cli-workdir` | Set a chat's CLI working directory |
+| `POST` | `/api/chats/cli-model` | Set a chat's CLI model |
+| `GET` | `/api/cli/model-options` | Available CLI model options |
+| `POST` | `/api/send/cli-stream` | Send a message through the active CLI provider |
+| `POST` | `/api/cli/remove` / `/api/cli/reinstall` | Manage the installed CLI binary |
+
+Details: [[External Providers]]
+
+### Memo Swarm (Beta, v3.3.3)
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `/api/swarm/*` | Room create/join, worker registration, share %, start/stop — see [[Memo Swarm]] | |
+
 ### Usage Stats (v3.3.3)
 | Method | Endpoint | Description |
 |--------|----------|-------------|

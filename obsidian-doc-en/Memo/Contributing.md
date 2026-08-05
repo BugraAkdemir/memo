@@ -33,11 +33,11 @@ Open an issue describing how it benefits the "local-first" philosophy.
 
 | Area | Description |
 |------|-------------|
-| Agent Frontend UI | Permission dialog, tool call cards, agent mode toggle (Flutter) |
-| Tests | Unit tests for `internal/provider/`, `internal/agent/`, `internal/orchestra/` |
-| Multi-Step Planning | Plan creation, batch permission, step-by-step execution |
-| File Edit Tool | Line-based editing with diff preview and undo |
-| Git Tools | git_status, git_diff, git_commit, git_push |
+| Test coverage | `handlers_oauth.go`, `handlers_proactive.go`, `internal/cloudsync/drive.go`, `hardwareID()`, `internal/provider/`, `internal/orchestra/` |
+| Deep bug-scan | Modules not yet covered by a full review pass: `internal/cloudsync`, `internal/skill`, `internal/proactive`, `internal/observer` |
+| Live Mode | Full duplex audio / echo cancellation (currently one-directional barge-in only) |
+| CLI providers | A UI for reviewing what a Claude Code/Codex CLI job actually did (file edits, commands) beyond its final text reply |
+| Git Tools | git_status, git_diff, git_commit, git_push (agent tools) |
 
 ## Philosophy
 

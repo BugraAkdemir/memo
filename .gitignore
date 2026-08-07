@@ -86,3 +86,4 @@ PLAN_memo_swarm.md
 PROMPT_swarm_continue.md
 data/cli_theme
 .idea
+.vscode/launch.json

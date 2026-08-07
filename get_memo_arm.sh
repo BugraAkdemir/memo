@@ -100,8 +100,19 @@ echo ""
 echo -e "${BOLD}Extracting...${NC}"
 unzip -o "$archive" -d "$work_dir"
 
-src="$work_dir/$APP_NAME"
-[ -d "$src" ] || src="$work_dir"
+# Don't assume the archive's top-level folder is literally named "$APP_NAME"
+# — unlike get-memo.sh's memo.tar.gz (always produced by build_releases.sh,
+# always "Memo/"), memo_arm.zip right now is hand-assembled (CI's build
+# artifact plus binaries/linux/cpu-arm64/ merged in by hand), so its wrapper
+# folder can be named anything. If memo-backend isn't directly in work_dir,
+# use whatever single subdirectory unzip actually created instead of
+# guessing a name.
+if [ -f "$work_dir/memo-backend" ]; then
+    src="$work_dir"
+else
+    src="$(find "$work_dir" -mindepth 1 -maxdepth 1 -type d | head -n1)"
+    [ -n "$src" ] || src="$work_dir"
+fi
 
 # ── install / update ─────────────────────────────────────────────────────────
 echo ""
@@ -113,13 +124,20 @@ mkdir -p "$MEMO_HOME/bin" "$MEMO_HOME/config" \
 
 # Engine binaries — update always refreshes these
 if [ -d "$src/binaries" ]; then
-    if $IS_UPDATE; then
+    if $IS_UPDATE || [ ! -d "$MEMO_HOME/binaries" ]; then
         echo -e "  ${GREEN}▸${NC} Engine binaries (llama.cpp + vec0)"
         rm -rf "$MEMO_HOME/binaries"
         cp -r "$src/binaries" "$MEMO_HOME/binaries"
-    elif [ ! -d "$MEMO_HOME/binaries" ]; then
-        echo -e "  ${GREEN}▸${NC} Engine binaries (llama.cpp + vec0)"
-        cp -r "$src/binaries" "$MEMO_HOME/binaries"
+        # Defensive flatten: internal/llama's binary resolver only ever
+        # looks under binaries/linux/{cpu,nvidia,amd}/ — it has no idea an
+        # architecture-suffixed "cpu-arm64" exists (that name only exists
+        # as a *source*-side staging convention, see download_binaries.sh/
+        # build_releases_arm.sh). A hand-assembled archive that still has
+        # binaries sitting under cpu-arm64/ would otherwise install fine
+        # and then silently never find llama-server at runtime.
+        if [ -d "$MEMO_HOME/binaries/linux/cpu-arm64" ] && [ ! -d "$MEMO_HOME/binaries/linux/cpu" ]; then
+            mv "$MEMO_HOME/binaries/linux/cpu-arm64" "$MEMO_HOME/binaries/linux/cpu"
+        fi
     fi
 else
     echo -e "  ${YELLOW}⚠${NC}  No bundled engine binaries in this archive — llama-server/vec0 will need to be installed separately (Settings → AI Engine)."
@@ -164,6 +182,7 @@ if [ -f "$src/memo" ]; then
     rm -f "$MEMO_HOME/bin/memo"
     cp -f "$src/memo" "$MEMO_HOME/bin/memo"
 elif [ -f "$src/memo-backend" ]; then
+    echo -e "  ${GREEN}▸${NC} CLI (from memo-backend — this archive has no separate memo binary)"
     cp -f "$src/memo-backend" "$MEMO_HOME/bin/memo"
 else
     echo -e "${RED}Error: memo binary not found in archive.${NC}" >&2

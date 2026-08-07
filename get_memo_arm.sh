@@ -212,56 +212,84 @@ case ":$PATH:" in
         ;;
 esac
 
-# ── app menu entry ───────────────────────────────────────────────────────────
-echo -e "  ${GREEN}▸${NC} App menu entry"
-DESKTOP_DIR="$HOME/.local/share/applications"
-ICON_DIR="$HOME/.local/share/icons/hicolor/256x256/apps"
-mkdir -p "$DESKTOP_DIR" "$ICON_DIR"
+# ── systemd service (headless, auto-start on boot) ──────────────────────────
+# ARM boards/NAS/servers are headless — there's no display for the bundled
+# Flutter GUI (memo_flutter, still in the archive but unused here) and no app
+# menu to put a launcher icon in. What this install actually needs is the
+# backend running unattended: --headless (no REPL waiting on a TTY that will
+# never exist) + --lan (binds 0.0.0.0 so the built-in web UI and any remote
+# client can actually reach it — 127.0.0.1 is invisible from outside the box).
+# A user systemd unit (not system-wide — matches the rest of this installer
+# never asking for root) plus lingering so it survives reboots with no one
+# logged in, which is the entire point on a box you SSH into once and forget.
+SERVICE_PORT=8090
+echo -e "  ${GREEN}▸${NC} Systemd service (port $SERVICE_PORT, --lan)"
+if command -v systemctl >/dev/null 2>&1; then
+    mkdir -p "$HOME/.config/systemd/user"
+    cat > "$HOME/.config/systemd/user/memo.service" <<SERVICE
+[Unit]
+Description=Memo — local-first AI assistant (headless)
+After=network-online.target
+Wants=network-online.target
 
-if [ -f "$src/icon.png" ]; then
-    cp "$src/icon.png" "$ICON_DIR/memo.png"
-elif [ -f "$src/data/flutter_assets/assets/icon.png" ]; then
-    cp "$src/data/flutter_assets/assets/icon.png" "$ICON_DIR/memo.png"
+[Service]
+Type=simple
+Environment=MEMO_DATA_DIR=%h/.memo/data
+WorkingDirectory=%h/.memo
+ExecStart=%h/.memo/memo-backend --headless --port $SERVICE_PORT --lan
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=default.target
+SERVICE
+    # Each systemctl/loginctl call can legitimately fail (no user session
+    # bus in some minimal/container environments, no polkit rule for
+    # lingering, etc.) — none of that should abort the whole install under
+    # `set -e`, so every check here is explicit rather than relying on
+    # bare command status.
+    if systemctl --user daemon-reload 2>/dev/null \
+        && systemctl --user enable memo.service >/dev/null 2>&1 \
+        && systemctl --user restart memo.service 2>/dev/null; then
+        # restart (not start): on an update the old process needs to
+        # actually exit and relaunch to pick up the binary that was just
+        # overwritten, not just "already active, nothing to do".
+        if loginctl enable-linger "$(whoami)" >/dev/null 2>&1; then
+            echo -e "    ${GREEN}✓${NC} Enabled — starts on boot even with no one logged in"
+        else
+            echo -e "    ${YELLOW}⚠${NC}  Service enabled, but couldn't turn on lingering (needs root)."
+            echo -e "       Without it, this only runs while you're logged in / SSH'd in."
+            echo -e "       Run this once to fix that:"
+            echo -e "       ${CYAN}sudo loginctl enable-linger $(whoami)${NC}"
+        fi
+    else
+        echo -e "    ${YELLOW}⚠${NC}  Unit written but couldn't start it via 'systemctl --user'"
+        echo -e "       (no user session bus available right now?). Start it by hand:"
+        echo -e "       ${CYAN}$MEMO_HOME/memo-backend --headless --port $SERVICE_PORT --lan${NC}"
+    fi
+else
+    echo -e "  ${YELLOW}⚠${NC}  systemd not found — skipping service setup."
+    echo -e "     Start it by hand: ${CYAN}$MEMO_HOME/memo-backend --headless --port $SERVICE_PORT --lan${NC}"
 fi
-
-cat > "$DESKTOP_DIR/memo.desktop" <<DESKTOP
-[Desktop Entry]
-Name=$APP_NAME
-Comment=Local AI Memory Shell
-Exec=$MEMO_HOME/run_memo.sh
-Path=$MEMO_HOME
-Icon=$ICON_DIR/memo.png
-Terminal=false
-Type=Application
-Categories=Utility;Development;
-DESKTOP
-chmod +x "$DESKTOP_DIR/memo.desktop"
-
-command -v update-desktop-database >/dev/null 2>&1 && \
-    update-desktop-database "$DESKTOP_DIR" 2>/dev/null || true
 
 # ── done ─────────────────────────────────────────────────────────────────────
 echo ""
 if $IS_UPDATE; then
     echo -e "${GREEN}${BOLD}  Update complete!${NC}"
     echo ""
-    echo -e "  ${BOLD}Updated:${NC}    binaries, engine, launcher, desktop app, CLI"
+    echo -e "  ${BOLD}Updated:${NC}    binaries, engine, service, CLI"
     echo -e "  ${BOLD}Preserved:${NC}  config, memory, models, sessions, providers, skills"
 else
     echo -e "${GREEN}${BOLD}  Installation complete!${NC}"
-    echo ""
-    echo -e "  ${BOLD}Terminal:${NC}  ${CYAN}memo${NC}"
-    echo -e "  ${BOLD}Desktop:${NC}   find ${CYAN}Memo${NC} in your app menu"
 fi
+echo ""
+echo -e "  ${BOLD}Web UI:${NC}    ${CYAN}http://$(hostname -I 2>/dev/null | awk '{print $1}'):$SERVICE_PORT${NC} (or this box's IP)"
+echo -e "  ${BOLD}Terminal:${NC}  ${CYAN}memo${NC} (attaches to the running service instead of starting a second one)"
 echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memo.bugradev.com/guide${NC}"
-
-if command -v memo >/dev/null 2>&1; then
-    echo ""
-    echo -e "  Run ${CYAN}memo${NC} to get started."
-else
-    echo ""
-    echo -e "  ${YELLOW}Open a new terminal (or restart your shell) and run 'memo'.${NC}"
-fi
+echo ""
+echo -e "  This box now requires a token on every request (LAN mode). Get it with:"
+echo -e "  ${CYAN}journalctl --user -u memo -n 50 --no-pager | grep 'X-Memo-Token'${NC}"
+echo -e "  The web UI's first screen will ask for it."
 
 echo ""
 echo -e "  ${BOLD}Thank you for choosing Memo!${NC}"

@@ -69,8 +69,18 @@ type Server struct {
 }
 
 func New(bridge AppBridge) *Server {
+	// fs.Sub can only fail if "webui" isn't a valid subtree of the embedded
+	// FS — a build-time mistake (a typo in the //go:embed directive or a
+	// missing file), not a runtime condition, so panicking here rather than
+	// threading an error through New()'s (currently error-free) signature
+	// is the right failure mode.
+	webAssets, err := fs.Sub(webUIFS, "webui")
+	if err != nil {
+		panic(fmt.Sprintf("webserver: embedded web UI assets: %v", err))
+	}
 	s := &Server{
 		bridge: bridge,
+		assets: webAssets,
 	}
 	if fb, ok := bridge.(FullBridge); ok {
 		s.fullBridge = fb
@@ -328,6 +338,13 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/mood/settings", s.handleMoodSettings)
 	route("/api/mood/self-interest", s.handleSelfInterestSettings)
 	route("/api/mood/system-management", s.handleSystemManagementSettings)
+
+	// Minimal browser client (index.html/app.js/style.css) — a catch-all,
+	// lowest-priority route: Go's ServeMux always prefers the more specific
+	// "/api/..." registrations above over this "/", so it can never shadow
+	// an API endpoint no matter the registration order. http.FileServer
+	// serves "webui/index.html" for a bare "/" automatically.
+	mux.Handle("/", http.FileServer(http.FS(s.assets)))
 
 	if s.stopCleaner != nil {
 		close(s.stopCleaner)
@@ -778,6 +795,18 @@ func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 		// auth is the room id+secret pair checked inside HostSwarmAddWorker.
 		// Both /api/ and /api/v1/ aliases must be skipped (route() registers both).
 		if isSwarmWorkerAddPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Minimal web UI's static assets (index.html/app.js/style.css,
+		// served off the "/" catch-all) are deliberately unauthenticated
+		// even in LAN mode — the page has to load before it can show a
+		// token-entry screen at all. No secrets live in these files; every
+		// actual data call the page makes still goes through /api/... and
+		// stays fully gated below. Every registered route in this server is
+		// under /api/ except that one catch-all, so this check is exact,
+		// not a heuristic.
+		if !strings.HasPrefix(r.URL.Path, "/api/") {
 			next.ServeHTTP(w, r)
 			return
 		}

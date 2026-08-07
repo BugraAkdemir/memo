@@ -1,14 +1,18 @@
 # Memo on CasaOS / Docker
 
-This is a **backend-only** image: Memo's headless Go REST API, no Flutter
-GUI, no browser page to open. You get a running Memo brain on your CasaOS
-box, and you talk to it with the same Flutter desktop app or `memo` CLI you'd
-otherwise run locally — pointed at the container instead of at localhost.
+This is a **backend-only** image: Memo's headless Go REST API. There's no
+Flutter GUI in it (that stays a separate, dart:io-based desktop app), but the
+backend now serves its own small, built-in browser client — open
+`http://<casaos-ip>:8090` in any browser and you get a chat screen plus the
+handful of settings you need before anything else is possible (starting/
+stopping the local model, connecting a provider). See "Open it in a browser"
+under step 4.
 
-If what you actually want is "open a browser tab and chat" on CasaOS itself,
-that needs a Flutter *web* build (a much larger, separate project — the
-Flutter frontend currently only targets linux/macos/windows, and several
-screens use `dart:io` directly). This image does not attempt that.
+For everything else — memory, identity, orchestra, calendar, WhatsApp, and
+so on — point the full Flutter desktop app at this container instead
+(Settings → Remote Access, same as step 4 below); once it's connected, it can
+manage the whole backend remotely with no extra code on this side. The
+built-in browser client is intentionally not a port of that app.
 
 ## 1. Build and push the image
 
@@ -31,10 +35,13 @@ first boot is the realistic choice on this class of hardware anyway. Voice
 transcription (Whisper) isn't bundled — the model wasn't shipped in the image
 to keep it small; that feature stays unavailable in this deployment for now.
 
-Not built for arm64 — the bundled llama.cpp/vec0 binaries under
-`binaries/linux/cpu` in this repo are x86_64 only, and `docker-compose.yml`'s
-`x-casaos.architectures` reflects that (amd64 only). A Raspberry Pi or other
-ARM CasaOS box needs its own arm64 llama.cpp/vec0 build substituted in first.
+This `Dockerfile`/`docker-compose.yml` build amd64 only —
+`x-casaos.architectures` reflects that. Linux arm64 (Raspberry Pi, ARM NAS)
+support exists elsewhere in this repo now (`build_releases_arm.sh`,
+`binaries/linux/cpu-arm64/`, `get_memo_arm.sh` — a native, non-Docker
+install), but this specific Dockerfile hasn't been extended to build an
+arm64 image yet. Substituting an arm64 `binaries/linux/cpu-arm64/` build into
+a modified Dockerfile would be the starting point if that's wanted next.
 
 ## 2. Install on CasaOS
 
@@ -65,6 +72,14 @@ docker logs memo | grep "X-Memo-Token required"
 ```
 
 ## 4. Connect a client
+
+**Open it in a browser** — go to `http://<casaos-ip>:8090`. First visit shows
+a token-entry screen (paste the token from step 3, stored in the browser's
+own `localStorage` so you only enter it once per browser); after that you
+land on a chat screen with a Settings tab for starting/stopping the local
+model and connecting an external provider. This is the built-in web UI
+(`internal/webserver/webui/`), served by the backend itself — no separate
+container or port.
 
 **Flutter desktop app** — Settings → Remote Access → "Backend Server URL"
 section:

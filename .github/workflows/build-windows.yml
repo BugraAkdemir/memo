@@ -52,16 +52,22 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      # No marketplace rclone action (see build-linux.yml's identical note —
+      # wei/rclone-action's repo no longer exists). choco ships preinstalled
+      # on windows-latest.
+      - name: Install rclone
+        run: choco install rclone -y --no-progress
+        shell: pwsh
+
       - name: Download engine binaries from R2
-        uses: wei/rclone-action@v1
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/windows/ binaries/windows/ --progress
+        shell: pwsh
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
-        with:
-          args: copy R2:${{ env.R2_BUCKET }}/binaries/windows/ binaries/windows/ --progress
 
       - name: Build Go backend
         run: |
@@ -275,7 +281,8 @@ jobs:
       # until the installer side is wired up.
       - name: Upload beta to R2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: wei/rclone-action@v1
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-windows-x64.zip R2:${{ env.R2_BUCKET }}/memo-windows_beta.zip --progress
+        shell: pwsh
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -283,5 +290,3 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copyto build_output/dist/${{ env.APP_NAME }}-windows-x64.zip R2:${{ env.R2_BUCKET }}/memo-windows_beta.zip --progress

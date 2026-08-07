@@ -66,16 +66,23 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      # No marketplace rclone action here (wei/rclone-action doesn't resolve
+      # — its repo no longer exists; the same broken reference sat unnoticed
+      # in upload-r2.yml since 2026-07-02, that workflow's only run failed
+      # the same way and nobody had triggered it again since). Installing
+      # rclone directly and calling it as a plain step sidesteps depending on
+      # a marketplace action's continued existence entirely.
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
       - name: Download engine binaries from R2
-        uses: wei/rclone-action@v1
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/ binaries/linux/ --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
-        with:
-          args: copy R2:${{ env.R2_BUCKET }}/binaries/linux/ binaries/linux/ --progress
 
       - name: Build Go backend
         run: |
@@ -161,7 +168,7 @@ jobs:
       # `curl -fsSL .../get-memo-beta.sh | bash` always gets the latest main.
       - name: Upload beta to R2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: wei/rclone-action@v1
+        run: rclone copyto build_output/dist/memo_beta.tar.gz R2:${{ env.R2_BUCKET }}/memo_beta.tar.gz --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -169,8 +176,6 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copyto build_output/dist/memo_beta.tar.gz R2:${{ env.R2_BUCKET }}/memo_beta.tar.gz --progress
 
   build-arm64:
     name: Linux arm64
@@ -250,16 +255,17 @@ jobs:
       # rename-on-install trick get_memo_arm.sh already does, done here at
       # package time instead so the shipped zip needs zero install-time
       # special-casing.
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
       - name: Download engine binaries from R2
-        uses: wei/rclone-action@v1
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/cpu-arm64/ binaries/linux/cpu/ --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
-        with:
-          args: copy R2:${{ env.R2_BUCKET }}/binaries/linux/cpu-arm64/ binaries/linux/cpu/ --progress
 
       - name: Build Go backend
         run: |
@@ -339,7 +345,7 @@ jobs:
       # beta channel, no existing installer script consumes it yet).
       - name: Upload beta to R2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: wei/rclone-action@v1
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-linux-arm64.zip R2:${{ env.R2_BUCKET }}/memo_arm_beta.zip --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -347,5 +353,3 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copyto build_output/dist/${{ env.APP_NAME }}-linux-arm64.zip R2:${{ env.R2_BUCKET }}/memo_arm_beta.zip --progress

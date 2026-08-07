@@ -167,11 +167,16 @@ jobs:
           prerelease: true
           files: build_output/dist/${{ env.APP_NAME }}-macos.zip
 
-      # See build-linux.yml's identical step — fixed filename get-memo-beta.sh
-      # already expects for Darwin.
+      # No marketplace rclone action (see build-linux.yml's identical note —
+      # wei/rclone-action's repo no longer exists). Fixed filename
+      # get-memo-beta.sh already expects for Darwin.
+      - name: Install rclone
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
       - name: Upload beta to R2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: wei/rclone-action@v1
+        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-macos.zip R2:${{ env.R2_BUCKET }}/memo-mac_beta.zip --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -179,5 +184,3 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copyto build_output/dist/${{ env.APP_NAME }}-macos.zip R2:${{ env.R2_BUCKET }}/memo-mac_beta.zip --progress

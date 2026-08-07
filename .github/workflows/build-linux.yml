@@ -163,11 +163,26 @@ jobs:
       # memo-mac.zip on R2 and shows as a full (non-prerelease) GitHub
       # release — those two concepts no longer coexist cleanly now that
       # every v* tag does the full publish. Flagged, not resolved here.
+      # Human-facing release body — versinNote/<tag>.md if the memo-release
+      # skill's Phase 2 produced one for this tag, empty otherwise (a
+      # checkpoint tag cut outside that process has no release notes; an
+      # empty body_path is a no-op for softprops/action-gh-release rather
+      # than an error, so this doesn't fail the workflow). Without this the
+      # release body silently defaulted to whichever commit happened to be
+      # HEAD when the tag was cut — an internal CI commit message, not
+      # anything end-user-facing.
+      - name: Resolve release notes path
+        id: notes
+        run: |
+          F="versinNote/${{ github.ref_name }}.md"
+          if [ -f "$F" ]; then echo "path=$F" >> "$GITHUB_OUTPUT"; else echo "path=" >> "$GITHUB_OUTPUT"; fi
+
       - name: Publish to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           prerelease: false
+          body_path: ${{ steps.notes.outputs.path }}
           files: build_output/dist/${{ env.APP_NAME }}-linux-x64.zip
 
       # A real tag push (a cut version, not a main push) republishes the
@@ -355,11 +370,19 @@ jobs:
           path: build_output/stage/Memo/
           retention-days: 7
 
+      # See the x86_64 job's identical step for the full explanation.
+      - name: Resolve release notes path
+        id: notes
+        run: |
+          F="versinNote/${{ github.ref_name }}.md"
+          if [ -f "$F" ]; then echo "path=$F" >> "$GITHUB_OUTPUT"; else echo "path=" >> "$GITHUB_OUTPUT"; fi
+
       - name: Publish to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           prerelease: false
+          body_path: ${{ steps.notes.outputs.path }}
           files: build_output/dist/${{ env.APP_NAME }}-linux-arm64.zip
 
       # A real tag push republishes the same zip under the stable filename

@@ -259,29 +259,45 @@ jobs:
           Compress-Archive -Path "build_output\stage\${{ env.APP_NAME }}\*" -DestinationPath "build_output\dist\${{ env.APP_NAME }}-windows-x64.zip" -Force
         shell: pwsh
 
+      # installer.iss's [Files] source is literally "build_output\stage\Memo\*"
+      # — the exact staging dir this job just built — and its SetupIconFile is
+      # repo-root-relative, so this only needs to run from the checkout root
+      # (the default working directory here, unlike the flutter/frontend
+      # steps above) with zero path adjustments.
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+        shell: pwsh
+
+      - name: Compile Inno Setup installer
+        run: '& "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss'
+        shell: pwsh
+
       - uses: actions/upload-artifact@v4
         with:
           name: Memo-windows-x64
           path: build_output/stage/Memo/
           retention-days: 7
 
-      # See build-linux.yml's identical step for the full explanation.
+      # See build-linux.yml's identical step for the full explanation. Now
+      # also attaches the compiled Inno Setup installer alongside the zip.
       - name: Publish to GitHub Release
         if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           prerelease: true
-          files: build_output/dist/${{ env.APP_NAME }}-windows-x64.zip
+          files: |
+            build_output/dist/${{ env.APP_NAME }}-windows-x64.zip
+            build_output/dist/Memo-Setup-*.exe
 
-      # Same fixed-name beta channel as Linux/macOS. NOT an Inno Setup
-      # installer — get-memo-beta.ps1 currently expects a compiled
-      # memo-beta.exe, which nothing in this repo's CI builds yet (no ISCC
-      # step exists here; installer.iss is still compiled by hand). Ships as
-      # a zip under its own name so it doesn't collide with that filename
-      # until the installer side is wired up.
+      # Same fixed-name beta channel as Linux/macOS — get-memo-beta.ps1
+      # expects a real compiled installer at this exact filename, which the
+      # ISCC step above now produces (versioned OutputBaseFilename from
+      # installer.iss, renamed here to the fixed beta name via copyto).
       - name: Upload beta to R2
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        run: rclone copyto build_output/dist/${{ env.APP_NAME }}-windows-x64.zip R2:${{ env.R2_BUCKET }}/memo-windows_beta.zip --progress
+        run: |
+          $exe = Get-ChildItem -Path "build_output\dist" -Filter "Memo-Setup-*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          rclone copyto $exe R2:${{ env.R2_BUCKET }}/memo-beta.exe --progress
         shell: pwsh
         env:
           RCLONE_CONFIG_R2_TYPE: s3

@@ -1,20 +1,30 @@
 ---
 name: memo-release
-description: Use when releasing a new version of Memo, bumping the version number, building distribution packages (tar.gz, AppImage, deb, exe, dmg), writing release notes, or publishing artifacts to download.bugradev.com. Also use when asked "release çıkar", "versiyon yükselt", "sürüm atla", or when the version banner / update check needs a new version published.
+description: Use when releasing a new version of Memo, bumping the version number, writing release notes, or publishing a new version. Also use when asked "release çıkar", "versiyon yükselt", "sürüm atla", or when the version banner / update check needs a new version published.
 ---
 
 # Memo Release Procedure
 
 ## Overview
 
-A Memo release touches **seven version locations, three build scripts, two
-upload targets** — and history shows the manual ones get missed: the v3.1.2
-bump shipped with `installer.iss` still saying 3.1.1, and both READMEs kept
-pointing at the v3.1.1 changelog. This skill exists so no step is skipped.
+**As of 2026-08-08, building and publishing is fully automated by CI** —
+`build-linux.yml`/`build-macos.yml`/`build-windows.yml` all trigger on any
+`v*` tag push. Each platform's job downloads its engine binaries from R2,
+builds, packages, compiles the Windows Inno Setup installer, publishes a
+GitHub Release (not a prerelease — a tag push is now a real release), and
+republishes the fixed stable filenames `download.bugradev.com` actually
+serves (`memo.tar.gz`, `memo-mac.zip`, `memo.exe`, `memo_arm.zip`) straight
+to R2. **There is no more manual `build_releases.sh` + manual upload step
+for a normal release** — cutting the tag is the publish step.
 
-**Core principle: the release is not done until every phase below is checked
-off and committed. Partial releases (bumped but not uploaded, uploaded but
-version.json not updated) leave users on broken update paths.**
+What's still manual (this skill's actual job now): the version-number
+bump across the locations that don't read from git, writing release notes,
+and the separate update-beacon bump. History shows the manual ones get
+missed: the v3.1.2 bump shipped with `installer.iss` still saying 3.1.1,
+and both READMEs kept pointing at the v3.1.1 changelog.
+
+**Core principle: the release is not done until every phase below is
+checked off, committed, and CI is green on the pushed tag.**
 
 Work through the phases in order. Commit after each phase (see Commit
 Discipline at the bottom — it is not optional).
@@ -28,7 +38,7 @@ version (e.g. `3.1.3`):
 | # | File | What to change |
 |---|------|----------------|
 | 1 | `version` | Single line `V<NEW>`, **no trailing newline** (it is `//go:embed`-ed into the binary via `embed.go` and served at `/api/version`) |
-| 2 | `installer.iss:8` | `#define MyAppVersion "<NEW>"` — drives Windows AppVersion and `Memo-Setup-v<NEW>.exe` filename. **This is the one that was forgotten in v3.1.2.** |
+| 2 | `installer.iss:8` | `#define MyAppVersion "<NEW>"` — drives Windows AppVersion and the `Memo-Setup-v<NEW>.exe` filename CI's ISCC step produces. **This is the one that was forgotten in v3.1.2.** |
 | 3 | `README.md` | Version badge (~line 16, `Version-v<NEW>`) AND the changelog link (~line 371) → `versinNote/v<NEW>.md` |
 | 4 | `READmeTR.md` | Same two spots: `Sürüm-v<NEW>` badge and `versinNote/tr/v<NEW>.md` link |
 
@@ -55,7 +65,7 @@ Format (copy the structure of the previous release's file):
 ```markdown
 # Memo v<NEW> — Release Notes
 
-> **Open Beta** · <Month Day, Year> · [Download](https://memo.bugradev.com)
+> <Month Day, Year> · [Download](https://memo.bugradev.com)
 > One-line summary of the release.
 
 ---
@@ -75,58 +85,44 @@ code reads these files; they are human-facing docs linked from the READMEs.
 
 → Commit.
 
-## Phase 3 — Build
+## Phase 3 — Tag & push (CI builds and publishes automatically)
 
-All artifacts land in `build_output/dist/` with **versioned** filenames.
+```bash
+git tag v<NEW>
+git push origin v<NEW>
+```
 
-| Platform | Command | Artifacts |
-|----------|---------|-----------|
-| Linux (this machine) | `./build_releases.sh` | `Memo-linux-x64-v<NEW>.tar.gz`, `.AppImage` (deb off by default) |
-| Windows | `build_releases.bat` on a Windows machine | `Memo-Setup-v<NEW>.exe` via Inno Setup (`iscc`); falls back to `.zip` if iscc missing — **the .exe is required, the zip fallback is NOT a release artifact** |
-| macOS | `./build_releases.sh` on a Mac (needs Xcode) | `Memo-macos-<arch>-v<NEW>.zip` — **this zip is what gets published as `memo-mac.zip`** |
-| macOS (alt) | `./macrelease.sh` on a Mac | `Memo-macos-<arch>-v<NEW>.tar.gz`, `.dmg` — for manual/DMG distribution only; do NOT upload the tar.gz as `memo-mac.zip` (`get-memo.sh` unzips, extension must really be zip) |
+That push is the entire publish step. Per AGENTS.md's hard rule, **confirm
+with the user before this specific push, every time** — it is real,
+visible, and triggers binaries going out to actual users.
 
-Before building: verification suite must be green (`CGO_ENABLED=1 go test
--tags "sqlite_fts5" ./... -race`, `go build -tags "sqlite_fts5" ./...`,
-`flutter analyze lib/`, `flutter test` — see AGENTS.md). Never build a
-release from a red tree. `build_releases.sh`/`macrelease.sh` already pass
-`-tags "sqlite_fts5"` themselves — don't build the backend by hand without it,
-or FTS5 memory search silently never activates in that binary.
+Then watch CI go green on all three platform workflows
+(`gh run list --branch main` or the Actions tab) before telling the user
+the release is out — a red run here means `download.bugradev.com` did NOT
+get updated, only whichever platforms did finish did.
 
-Sanity-check each artifact after build: the tar.gz/zip contains
-`run_memo.sh`/`run_memo.bat` AND `launch.vbs` staging output where
-applicable, and `./memo --version`-equivalent (`curl localhost:8090/api/version`
-after launch) reports `<NEW>`.
-
-## Phase 4 — Publish (two separate targets, BOTH required)
-
-**Target A — download server (`download.bugradev.com`):** upload with
-**generic names** (the installers fetch fixed URLs — rename on upload):
-
-| Built file | Upload as |
-|------------|-----------|
-| `Memo-linux-x64-v<NEW>.tar.gz` | `memo.tar.gz` |
-| `Memo-macos-<arch>-v<NEW>.zip` (from `build_releases.sh`, not the macrelease.sh tar.gz) | `memo-mac.zip` |
-| `Memo-Setup-v<NEW>.exe` | `memo.exe` |
-| `get-memo.sh` / `get-memo.ps1` / `update.sh` / `uninstall.sh` | same names (only if changed this release) |
-
-**Target B — update beacon:** bump `version` field in `version.json` on
-`version-zeta.vercel.app`. This is what `CheckLatestVersion()`
-(`internal/app/version.go`) polls; installed apps show the update banner
-ONLY after this changes. Upload artifacts FIRST, beacon LAST — the moment
-the beacon changes, users start downloading.
-
-Post-publish smoke test:
+Sanity-check after CI succeeds:
 
 ```bash
 curl -fsSL https://download.bugradev.com/memo.tar.gz | tar tz | head -3
+```
+
+## Phase 4 — Update beacon
+
+Bump `version` field in `version.json` on `version-zeta.vercel.app`. This
+is a separate system from R2/GitHub — `CheckLatestVersion()`
+(`internal/app/version.go`) polls it, and installed apps show the update
+banner ONLY after this changes. Do this AFTER Phase 3's CI run is
+confirmed green — the moment the beacon changes, users start downloading,
+so it must never point at a version that isn't actually live yet.
+
+```bash
 curl -fsSL https://version-zeta.vercel.app/version.json   # must show <NEW>
 ```
 
 ## Phase 5 — Close out
 
-- Tag: `git tag v<NEW> && git push --tags` (if remote configured).
-- Append a handoff.md entry: what shipped, artifact checksums if computed,
+- Append a handoff.md entry: what shipped, which CI runs published it,
   anything deferred.
 
 ## Commit Discipline (MANDATORY)
@@ -156,7 +152,19 @@ curl -fsSL https://version-zeta.vercel.app/version.json   # must show <NEW>
 |---------|-------------|-------|
 | Editing `version` but not `installer.iss` | Windows installer registers wrong version (happened in v3.1.2) | Phase 1 grep check |
 | Forgetting README changelog links | Users read old release notes (happened in v3.1.2) | Phase 1 table rows 3–4 |
-| Uploading versioned filenames as-is | `get-memo.sh` 404s — it fetches `memo.tar.gz`, not `Memo-linux-x64-v*.tar.gz` | Phase 4 rename table |
-| Updating version.json before uploads finish | Update banner points users at stale/missing artifacts | Phase 4 ordering rule |
-| Skipping the Windows `.exe` because iscc missing | `get-memo.ps1` serves an outdated installer | Phase 3 — zip fallback is not a release |
+| Bumping the beacon before CI finishes | Update banner points users at a version that isn't actually uploaded yet | Phase 4 ordering rule |
 | Bumping pubspec.yaml versions | Meaningless churn — they are independent | Phase 1 "do NOT touch" |
+| Pushing the tag without confirming first | AGENTS.md hard rule — tag pushes are real, visible, irreversible-ish actions | Phase 3 |
+
+## Known tension: checkpoint tags vs. real releases
+
+AGENTS.md separately documents a lightweight "checkpoint tag" mechanism
+(any `v*` tag, cut without going through this skill at all, meant for
+handing an informal build to testers). Since 2026-08-08 the CI publish
+step doesn't distinguish a checkpoint tag from a real one — **any** `v*`
+push now also overwrites the stable `download.bugradev.com` files and
+creates a non-prerelease GitHub release. A checkpoint tag cut casually is
+therefore no longer "safely separate" from a real release the way AGENTS.md
+originally described. Not resolved — flag it to the user if a checkpoint
+tag is what's actually wanted, don't assume this skill's tag-push in
+Phase 3 is harmless to redo casually.

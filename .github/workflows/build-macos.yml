@@ -12,6 +12,8 @@ env:
   GO_VERSION: "1.26"
   FLUTTER_CHANNEL: stable
   APP_NAME: Memo
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
 
 jobs:
   build:
@@ -65,7 +67,7 @@ jobs:
           CODE_SIGNING_ALLOWED: "NO"
         working-directory: frontend
 
-      - name: Stage files (NO engine binaries!)
+      - name: Stage files (engine binaries embedded, already in git)
         run: |
           S="build_output/stage/${{ env.APP_NAME }}"
           mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
@@ -74,6 +76,11 @@ jobs:
           if [ -n "$APP_BUNDLE" ]; then
             cp -R "$APP_BUNDLE" "$S/${{ env.APP_NAME }}.app"
           fi
+          # binaries/darwin/ is small enough (~17MB) to be committed straight
+          # to git (unlike linux/windows, which are R2-only) — no download
+          # step needed, it's already in the checkout.
+          mkdir -p "$S/binaries"
+          cp -r binaries/darwin "$S/binaries/darwin"
           cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
           cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
           cp .env.example "$S/.env" 2>/dev/null || true
@@ -159,3 +166,18 @@ jobs:
         with:
           prerelease: true
           files: build_output/dist/${{ env.APP_NAME }}-macos.zip
+
+      # See build-linux.yml's identical step — fixed filename get-memo-beta.sh
+      # already expects for Darwin.
+      - name: Upload beta to R2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copyto build_output/dist/${{ env.APP_NAME }}-macos.zip R2:${{ env.R2_BUCKET }}/memo-mac_beta.zip --progress

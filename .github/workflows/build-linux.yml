@@ -12,6 +12,8 @@ env:
   GO_VERSION: "1.26"
   FLUTTER_CHANNEL: stable
   APP_NAME: Memo
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
 
 jobs:
   build:
@@ -64,6 +66,17 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      - name: Download engine binaries from R2
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+        with:
+          args: copy R2:${{ env.R2_BUCKET }}/binaries/linux/ binaries/linux/ --progress
+
       - name: Build Go backend
         run: |
           CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
@@ -72,12 +85,14 @@ jobs:
         run: flutter build linux --release
         working-directory: frontend
 
-      - name: Stage files (NO engine binaries!)
+      - name: Stage files (engine binaries embedded, from R2)
         run: |
           S="build_output/stage/${{ env.APP_NAME }}"
           mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
 
           cp -r frontend/build/linux/x64/release/bundle/* "$S/"
+          mkdir -p "$S/binaries"
+          cp -r binaries/linux "$S/binaries/linux"
           cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
           cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
           cp .env.example "$S/.env" 2>/dev/null || true
@@ -118,6 +133,7 @@ jobs:
           mkdir -p build_output/dist
           cd build_output/stage
           zip -r "../dist/${{ env.APP_NAME }}-linux-x64.zip" "${{ env.APP_NAME }}/"
+          tar czf "../dist/memo_beta.tar.gz" "${{ env.APP_NAME }}/"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -138,6 +154,23 @@ jobs:
         with:
           prerelease: true
           files: build_output/dist/${{ env.APP_NAME }}-linux-x64.zip
+
+      # Every push straight to main (not PRs, not tags — tags get the real
+      # release above) republishes a fully working, binary-embedded build
+      # under a fixed filename that get-memo-beta.sh already expects, so
+      # `curl -fsSL .../get-memo-beta.sh | bash` always gets the latest main.
+      - name: Upload beta to R2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copyto build_output/dist/memo_beta.tar.gz R2:${{ env.R2_BUCKET }}/memo_beta.tar.gz --progress
 
   build-arm64:
     name: Linux arm64
@@ -212,6 +245,22 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      # R2 only stores an arch-suffixed "cpu-arm64" folder (Linux x86_64's
+      # own binaries/linux/cpu/ is a different, incompatible build) — same
+      # rename-on-install trick get_memo_arm.sh already does, done here at
+      # package time instead so the shipped zip needs zero install-time
+      # special-casing.
+      - name: Download engine binaries from R2
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+        with:
+          args: copy R2:${{ env.R2_BUCKET }}/binaries/linux/cpu-arm64/ binaries/linux/cpu/ --progress
+
       - name: Build Go backend
         run: |
           CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
@@ -220,7 +269,7 @@ jobs:
         run: flutter build linux --release
         working-directory: frontend
 
-      - name: Stage files (NO engine binaries!)
+      - name: Stage files (engine binaries embedded, from R2)
         run: |
           S="build_output/stage/${{ env.APP_NAME }}"
           mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
@@ -228,6 +277,8 @@ jobs:
           # Flutter's own output dir is arch-named (x64/arm64) — arm64 here,
           # unlike the x86_64 job above which is still hardcoded to x64.
           cp -r frontend/build/linux/arm64/release/bundle/* "$S/"
+          mkdir -p "$S/binaries/linux"
+          cp -r binaries/linux/cpu "$S/binaries/linux/cpu"
           cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
           cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
           cp .env.example "$S/.env" 2>/dev/null || true
@@ -281,3 +332,20 @@ jobs:
         with:
           prerelease: true
           files: build_output/dist/${{ env.APP_NAME }}-linux-arm64.zip
+
+      # Same fixed-name beta channel as the x86_64 job above, ARM's own
+      # dedicated filename (get_memo_arm.sh's own installer/updater still
+      # points at the stable memo_arm.zip — this is a separate, always-latest
+      # beta channel, no existing installer script consumes it yet).
+      - name: Upload beta to R2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copyto build_output/dist/${{ env.APP_NAME }}-linux-arm64.zip R2:${{ env.R2_BUCKET }}/memo_arm_beta.zip --progress

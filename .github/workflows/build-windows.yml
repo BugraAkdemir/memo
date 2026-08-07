@@ -12,6 +12,8 @@ env:
   GO_VERSION: "1.26"
   FLUTTER_CHANNEL: stable
   APP_NAME: Memo
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
 
 jobs:
   build:
@@ -50,6 +52,17 @@ jobs:
         run: flutter pub get
         working-directory: frontend
 
+      - name: Download engine binaries from R2
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+        with:
+          args: copy R2:${{ env.R2_BUCKET }}/binaries/windows/ binaries/windows/ --progress
+
       - name: Build Go backend
         run: |
           set CGO_ENABLED=1
@@ -60,7 +73,7 @@ jobs:
         run: flutter build windows --release
         working-directory: frontend
 
-      - name: Stage files (NO engine binaries!)
+      - name: Stage files (engine binaries embedded, from R2)
         run: |
           $S = "build_output\stage\${{ env.APP_NAME }}"
           New-Item -ItemType Directory -Force -Path "$S\config"
@@ -87,6 +100,8 @@ jobs:
           # robocopy returns 1 on success, >= 8 is actual error
           if ($LASTEXITCODE -ge 8) { throw "robocopy failed with code $LASTEXITCODE" }
           $LASTEXITCODE = 0
+          New-Item -ItemType Directory -Force -Path "$S\binaries\windows"
+          Copy-Item -Recurse -Force "binaries\windows\*" "$S\binaries\windows\"
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml" -ErrorAction SilentlyContinue
           Copy-Item "config\config.yaml.example" "$S\config\config.yaml.example" -ErrorAction SilentlyContinue
           Copy-Item ".env.example" "$S\.env" -ErrorAction SilentlyContinue
@@ -251,3 +266,22 @@ jobs:
         with:
           prerelease: true
           files: build_output/dist/${{ env.APP_NAME }}-windows-x64.zip
+
+      # Same fixed-name beta channel as Linux/macOS. NOT an Inno Setup
+      # installer — get-memo-beta.ps1 currently expects a compiled
+      # memo-beta.exe, which nothing in this repo's CI builds yet (no ISCC
+      # step exists here; installer.iss is still compiled by hand). Ships as
+      # a zip under its own name so it doesn't collide with that filename
+      # until the installer side is wired up.
+      - name: Upload beta to R2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        uses: wei/rclone-action@v1
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+        with:
+          args: copyto build_output/dist/${{ env.APP_NAME }}-windows-x64.zip R2:${{ env.R2_BUCKET }}/memo-windows_beta.zip --progress

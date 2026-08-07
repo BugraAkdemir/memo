@@ -289,6 +289,23 @@ jobs:
             build_output/dist/${{ env.APP_NAME }}-windows-x64.zip
             build_output/dist/Memo-Setup-*.exe
 
+      # A real tag push republishes the same installer under the stable
+      # filename get-memo.ps1 already expects (see build-linux.yml's
+      # identical step).
+      - name: Upload stable to R2
+        if: startsWith(github.ref, 'refs/tags/')
+        run: |
+          $exe = Get-ChildItem -Path "build_output\dist" -Filter "Memo-Setup-*.exe" | Select-Object -First 1 -ExpandProperty FullName
+          rclone copyto $exe R2:${{ env.R2_BUCKET }}/memo.exe --progress
+        shell: pwsh
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+
       # Same fixed-name beta channel as Linux/macOS — get-memo-beta.ps1
       # expects a real compiled installer at this exact filename, which the
       # ISCC step above now produces (versioned OutputBaseFilename from

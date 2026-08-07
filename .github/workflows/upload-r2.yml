@@ -57,8 +57,11 @@ jobs:
           V=${{ github.event.inputs.version }}
           cd build_output/stage && zip -r "../dist/${{ env.APP_NAME }}-linux-x64-${V#v}.zip" "${{ env.APP_NAME }}/"
 
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
       - name: Upload to R2
-        uses: wei/rclone-action@v1
+        run: rclone copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -66,8 +69,6 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
 
   # ─── Windows ────────────────────────────────────────────────────
   build-windows:
@@ -228,8 +229,13 @@ jobs:
           $V = "${{ github.event.inputs.version }}" -replace '^v', ''
           Compress-Archive -Path "build_output\stage\${{ env.APP_NAME }}\*" -DestinationPath "build_output\dist\${{ env.APP_NAME }}-windows-x64-$V.zip" -Force
 
+      - name: Install rclone
+        run: choco install rclone -y --no-progress
+        shell: pwsh
+
       - name: Upload to R2
-        uses: wei/rclone-action@v1
+        run: rclone copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
+        shell: pwsh
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -237,8 +243,6 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
 
   # ─── macOS ──────────────────────────────────────────────────────
   build-macos:
@@ -279,8 +283,11 @@ jobs:
           V=${{ github.event.inputs.version }}
           cd build_output/stage && zip -r "../dist/${{ env.APP_NAME }}-macos-${V#v}.zip" "${{ env.APP_NAME }}/"
 
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
       - name: Upload to R2
-        uses: wei/rclone-action@v1
+        run: rclone copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress
         env:
           RCLONE_CONFIG_R2_TYPE: s3
           RCLONE_CONFIG_R2_PROVIDER: Cloudflare
@@ -288,5 +295,3 @@ jobs:
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
-        with:
-          args: copy build_output/dist/ R2:${{ env.R2_BUCKET }}/ --progress

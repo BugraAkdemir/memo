@@ -166,9 +166,36 @@ jobs:
             libblkid-dev libsecret-1-dev \
             libwebkit2gtk-4.1-dev libjsoncpp-dev
 
-      - uses: subosito/flutter-action@v2
+      # subosito/flutter-action has no arm64 support: it resolves a Flutter
+      # SDK archive from Google's releases_linux.json manifest, which only
+      # ever lists x64 archives (verified directly — 728 stable releases,
+      # zero arch field, every archive path is .../linux/flutter_linux_*,
+      # no arm64 variant). Upstream tracks this as issue #345 (open) / PR
+      # #403 (open, unmerged) — its own fix is exactly this: fall back to
+      # `git clone` and let Flutter's own tooling fetch the right engine
+      # artifacts for whatever host arch it's actually running on, which is
+      # how the framework has always worked underneath the SDK-archive
+      # convenience path. Cache restore has to happen BEFORE the clone step
+      # (not after, like the block below might suggest at a glance) so a
+      # cache hit can make the clone a no-op instead of failing on an
+      # already-populated directory.
+      - uses: actions/cache@v4
+        id: flutter-cache
         with:
-          channel: "${{ env.FLUTTER_CHANNEL }}"
+          path: |
+            ~/flutter
+            ~/.pub-cache
+          key: flutter-${{ runner.os }}-arm64-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-arm64-
+
+      - name: Install Flutter (git clone — flutter-action has no arm64 archive)
+        run: |
+          if [ ! -x "$HOME/flutter/bin/flutter" ]; then
+            rm -rf "$HOME/flutter"
+            git clone -b "${{ env.FLUTTER_CHANNEL }}" --depth 1 https://github.com/flutter/flutter.git "$HOME/flutter"
+          fi
+          echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
+          echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
       - uses: actions/cache@v4
         with:
@@ -178,13 +205,8 @@ jobs:
           key: go-${{ runner.os }}-arm64-${{ hashFiles('**/go.sum') }}
           restore-keys: go-${{ runner.os }}-arm64-
 
-      - uses: actions/cache@v4
-        with:
-          path: |
-            /opt/hostedtoolcache/flutter
-            /home/runner/.pub-cache
-          key: flutter-${{ runner.os }}-arm64-${{ hashFiles('frontend/pubspec.lock') }}
-          restore-keys: flutter-${{ runner.os }}-arm64-
+      - name: flutter doctor
+        run: flutter doctor -v
 
       - name: Flutter deps
         run: flutter pub get

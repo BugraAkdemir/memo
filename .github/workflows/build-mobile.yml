@@ -1,0 +1,55 @@
+name: Build Mobile
+
+on:
+  push:
+    branches: [main]
+    paths: ["mobile/**"]
+  pull_request:
+    branches: [main]
+    paths: ["mobile/**"]
+  workflow_dispatch:
+
+env:
+  FLUTTER_CHANNEL: stable
+
+jobs:
+  build:
+    name: Android (debug)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: "temurin"
+          java-version: "17"
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "${{ env.FLUTTER_CHANNEL }}"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /opt/hostedtoolcache/flutter
+            /home/runner/.pub-cache
+          key: flutter-${{ runner.os }}-mobile-${{ hashFiles('mobile/pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-mobile-
+
+      - name: Get dependencies
+        run: flutter pub get
+        working-directory: mobile
+
+      # No key.properties in this repo (see android/key.properties.example),
+      # so app/build.gradle.kts's own fallback already signs release builds
+      # with the debug key. Building the debug variant explicitly here keeps
+      # that dependency out of the picture entirely rather than relying on it.
+      - name: Build debug APK
+        run: flutter build apk --debug
+        working-directory: mobile
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: memo-mobile-debug-apk
+          path: mobile/build/app/outputs/flutter-apk/app-debug.apk
+          retention-days: 7

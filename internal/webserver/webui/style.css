@@ -216,10 +216,15 @@ main { flex: 1; overflow: hidden; display: flex; }
   padding: 2px 6px;
 }
 
-details.add-provider summary {
-  cursor: pointer;
-  color: var(--muted);
+.subhead {
   font-size: 13px;
-  margin-top: 4px;
+  font-weight: 600;
+  color: var(--muted);
+  margin: 16px 0 0;
+  text-transform: uppercase;
+  letter-spacing: .03em;
 }
 #provider-form { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }
+.model-row { display: flex; gap: 8px; }
+.model-row input { flex: 1; }
+.model-row button { flex-shrink: 0; white-space: nowrap; }

@@ -122,6 +122,7 @@ function initApp() {
   document.getElementById("model-stop").addEventListener("click", stopModel);
   document.getElementById("provider-form").addEventListener("submit", saveProvider);
   document.getElementById("p-test").addEventListener("click", testProvider);
+  document.getElementById("p-fetch-models").addEventListener("click", fetchModels);
 }
 
 async function pollStatus() {
@@ -344,6 +345,41 @@ function providerFormValue() {
     api_key: document.getElementById("p-apikey").value,
     base_url: document.getElementById("p-baseurl").value.trim(),
   };
+}
+
+async function fetchModels() {
+  const msg = document.getElementById("fetch-models-msg");
+  const type = document.getElementById("p-type").value;
+  const apiKey = document.getElementById("p-apikey").value;
+  const baseUrl = document.getElementById("p-baseurl").value.trim();
+  if (!apiKey && type !== "ollama" && type !== "llama.cpp") {
+    msg.textContent = "Enter an API key first.";
+    return;
+  }
+  msg.textContent = "Fetching…";
+  try {
+    const result = await apiJSON("/api/providers/models", {
+      method: "POST",
+      body: JSON.stringify({ type, api_key: apiKey, base_url: baseUrl }),
+    });
+    if (result.status !== "ok" || !result.models || !result.models.length) {
+      msg.textContent = "No models returned: " + (result.error || "empty list");
+      return;
+    }
+    const list = document.getElementById("p-model-list");
+    list.innerHTML = "";
+    result.models.forEach((m) => {
+      const opt = document.createElement("option");
+      opt.value = m;
+      list.appendChild(opt);
+    });
+    msg.textContent = `${result.models.length} models loaded — pick one from the Model field.`;
+    const modelInput = document.getElementById("p-model");
+    if (!modelInput.value) modelInput.value = result.models[0];
+  } catch (e) {
+    if (e.unauthorized) { showLogin(); return; }
+    msg.textContent = "Failed: " + e.message;
+  }
 }
 
 async function testProvider() {

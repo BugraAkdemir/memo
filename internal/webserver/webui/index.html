@@ -51,31 +51,35 @@
       <div class="panel">
         <h2>External Providers</h2>
         <div id="provider-list" class="provider-list"></div>
-        <details class="add-provider">
-          <summary>Add / update a provider</summary>
-          <form id="provider-form">
-            <select id="p-type">
-              <option value="openai">OpenAI</option>
-              <option value="gemini">Gemini</option>
-              <option value="claude">Claude</option>
-              <option value="grok">Grok</option>
-              <option value="groq">Groq</option>
-              <option value="openrouter">OpenRouter</option>
-              <option value="ollama">Ollama</option>
-              <option value="llama.cpp">llama.cpp (remote)</option>
-              <option value="custom">Custom (OpenAI-compatible)</option>
-            </select>
-            <input id="p-name" placeholder="Name (e.g. my-openai)" required>
-            <input id="p-model" placeholder="Model (e.g. gpt-4o-mini)">
-            <input id="p-apikey" type="password" placeholder="API key" autocomplete="off">
-            <input id="p-baseurl" placeholder="Base URL (custom/ollama/llama.cpp only)">
-            <div class="actions">
-              <button type="button" id="p-test" class="secondary">Test</button>
-              <button type="submit" id="p-save">Save &amp; activate</button>
-            </div>
-            <p id="provider-form-msg" class="status-line"></p>
-          </form>
-        </details>
+        <h3 class="subhead">Add / update a provider</h3>
+        <form id="provider-form">
+          <select id="p-type">
+            <option value="openai">OpenAI</option>
+            <option value="gemini">Gemini</option>
+            <option value="claude">Claude</option>
+            <option value="grok">Grok</option>
+            <option value="groq">Groq</option>
+            <option value="openrouter">OpenRouter</option>
+            <option value="ollama">Ollama</option>
+            <option value="opencode-zen">OpenCode Zen</option>
+            <option value="llama.cpp">llama.cpp (remote)</option>
+            <option value="custom">Custom (OpenAI-compatible)</option>
+          </select>
+          <input id="p-name" placeholder="Name (e.g. my-openai)" required>
+          <input id="p-apikey" type="password" placeholder="API key" autocomplete="off">
+          <input id="p-baseurl" placeholder="Base URL (custom/ollama/llama.cpp only)">
+          <div class="model-row">
+            <input id="p-model" list="p-model-list" placeholder="Model (e.g. gpt-4o-mini) — or fetch the list →" autocomplete="off">
+            <datalist id="p-model-list"></datalist>
+            <button type="button" id="p-fetch-models" class="secondary">Fetch models</button>
+          </div>
+          <p id="fetch-models-msg" class="status-line"></p>
+          <div class="actions">
+            <button type="button" id="p-test" class="secondary">Test</button>
+            <button type="submit" id="p-save">Save &amp; activate</button>
+          </div>
+          <p id="provider-form-msg" class="status-line"></p>
+        </form>
       </div>
     </section>
   </main>

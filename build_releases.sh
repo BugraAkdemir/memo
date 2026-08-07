@@ -49,10 +49,32 @@ mkdir -p "$STAGEDIR/config"
 if [ "$OS" == "linux" ]; then
     echo "✅ İşletim Sistemi: Linux tespit edildi. (tar.gz, AppImage, deb oluşturulacak)"
 
+    # Architecture — native build only, no cross-compiling. CI runs this
+    # script on a matching native runner per arch (e.g. ubuntu-24.04-arm
+    # for arm64), same principle as the macOS section's $MAC_ARCH below.
+    LINUX_ARCH="$(uname -m)"
+    case "$LINUX_ARCH" in
+        x86_64)
+            GOARCH_VAL="amd64"
+            PKG_ARCH="x64"
+            APPIMAGE_ARCH="x86_64"
+            ;;
+        aarch64|arm64)
+            GOARCH_VAL="arm64"
+            PKG_ARCH="arm64"
+            APPIMAGE_ARCH="aarch64"
+            ;;
+        *)
+            echo "❌ Desteklenmeyen Linux mimarisi: $LINUX_ARCH"
+            exit 1
+            ;;
+    esac
+    echo "🏗  Mimari: $LINUX_ARCH → paket etiketi: linux-$PKG_ARCH"
+
     # 1. Build Backend
     echo "🔨 1. Go Backend Derleniyor..."
     go mod download
-    go build -tags "sqlite_fts5" -o "$STAGEDIR/memo-backend" .
+    GOARCH=$GOARCH_VAL go build -tags "sqlite_fts5" -o "$STAGEDIR/memo-backend" .
     # Same binary, shipped under the plain "memo" name too — this is what
     # gets symlinked onto PATH by run_memo.sh so the terminal REPL is
     # reachable by typing `memo`, independent of the desktop app launcher.
@@ -64,7 +86,10 @@ if [ "$OS" == "linux" ]; then
     cd frontend
     flutter build linux --release
     cd ..
-    cp -r frontend/build/linux/x64/release/bundle/* "$STAGEDIR/"
+    # Flutter's own output dir is arch-named ($PKG_ARCH matches Flutter's
+    # x64/arm64 tokens exactly) — this was hardcoded to x64 before arm64
+    # support existed.
+    cp -r "frontend/build/linux/$PKG_ARCH/release/bundle/"* "$STAGEDIR/"
 
     # 3. Copy Assets
     echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0)..."
@@ -74,7 +99,25 @@ if [ "$OS" == "linux" ]; then
     # (ngrok/whisper) expects the "binaries/<GOOS>/..." layout, so keep
     # the linux/ subdir instead of flattening it.
     mkdir -p "$STAGEDIR/binaries/linux"
-    cp -r binaries/linux/* "$STAGEDIR/binaries/linux/" 2>/dev/null || true
+    if [ "$PKG_ARCH" == "arm64" ]; then
+        # ARM boards/NAS: CPU-only, no nvidia/amd GPU variant story.
+        # binaries/linux/cpu-arm64/ (see download_binaries.sh) is the
+        # source staging dir — flattened into the plain "cpu" name here
+        # because internal/llama's binary resolver only knows GOOS + GPU
+        # mode (binaries/linux/cpu/...), never an arch-suffixed directory.
+        mkdir -p "$STAGEDIR/binaries/linux/cpu"
+        cp -r binaries/linux/cpu-arm64/* "$STAGEDIR/binaries/linux/cpu/" 2>/dev/null || true
+        # ngrok deliberately NOT bundled here — this repo's binaries/linux/
+        # ngrok is x86_64-only, and internal/ngrok/installer.go already
+        # falls back to downloading the linux/arm64 build from
+        # bin.ngrok.com when no bundled binary is present, so the feature
+        # still works, just not fully offline on first use.
+    else
+        cp -r binaries/linux/* "$STAGEDIR/binaries/linux/" 2>/dev/null || true
+        # Exclude the arm64 staging dir from the x64 package — it's a
+        # source-side sibling of cpu/nvidia/amd, never meant to ship here.
+        rm -rf "$STAGEDIR/binaries/linux/cpu-arm64"
+    fi
 
 	# Config
     # Ship ONLY the clean example as config.yaml — never the developer's real
@@ -254,7 +297,7 @@ RUNNER
     if [ "$BUILD_TARGZ" = true ]; then
         echo "📦 4. tar.gz Paketi Oluşturuluyor..."
         cd build_output/stage
-        tar czf "../dist/${APP_NAME}-linux-x64-v${VERSION}.tar.gz" "$APP_NAME"
+        tar czf "../dist/${APP_NAME}-linux-${PKG_ARCH}-v${VERSION}.tar.gz" "$APP_NAME"
         cd ../..
     fi
 
@@ -285,21 +328,23 @@ DESKTOP
             cp "$APPDIR/icon.png" "$APPDIR/${APP_NAME}.png"
         fi
 
-        # Download appimagetool if not exists or is empty
-        if [ ! -s "appimagetool-x86_64.AppImage" ]; then
-            echo "⬇️ appimagetool indiriliyor..."
-            rm -f appimagetool-x86_64.AppImage
-            wget -qO appimagetool-x86_64.AppImage https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
-            chmod +x appimagetool-x86_64.AppImage
+        # Download appimagetool if not exists or is empty — arch-specific
+        # binary, matching the host we're actually running on.
+        APPIMAGETOOL="appimagetool-${APPIMAGE_ARCH}.AppImage"
+        if [ ! -s "$APPIMAGETOOL" ]; then
+            echo "⬇️ appimagetool indiriliyor ($APPIMAGE_ARCH)..."
+            rm -f "$APPIMAGETOOL"
+            wget -qO "$APPIMAGETOOL" "https://github.com/AppImage/appimagetool/releases/download/continuous/$APPIMAGETOOL"
+            chmod +x "$APPIMAGETOOL"
         fi
         # Try with --appimage-extract-and-run for systems without FUSE
-        ARCH=x86_64 ./appimagetool-x86_64.AppImage --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-x64-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
+        ARCH=$APPIMAGE_ARCH "./$APPIMAGETOOL" --appimage-extract-and-run "$APPDIR" "build_output/dist/${APP_NAME}-linux-${PKG_ARCH}-v${VERSION}.AppImage" 2>&1 || echo "⚠️ AppImage oluşturulamadı."
     fi
 
     # --- DEB ---
     if [ "$BUILD_DEB" = true ]; then
         echo "📦 6. .deb Paketi Oluşturuluyor..."
-        DEBDIR="build_output/stage/${APP_NAME}_${VERSION}_amd64"
+        DEBDIR="build_output/stage/${APP_NAME}_${VERSION}_${GOARCH_VAL}"
         mkdir -p "$DEBDIR/opt/$APP_NAME"
         mkdir -p "$DEBDIR/usr/bin"
         mkdir -p "$DEBDIR/usr/share/applications"
@@ -317,7 +362,7 @@ Package: ${APP_NAME,,}
 Version: ${VERSION}
 Section: utils
 Priority: optional
-Architecture: amd64
+Architecture: ${GOARCH_VAL}
 Maintainer: Bugra Akdemir <bugrakaptan5@gmail.com>
 Description: Local LLM Memory Shell — Privacy-first AI assistant with RAG, Agent mode, Orchestra, and External Providers
 CONTROL

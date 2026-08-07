@@ -138,3 +138,124 @@ jobs:
         with:
           prerelease: true
           files: build_output/dist/${{ env.APP_NAME }}-linux-x64.zip
+
+  build-arm64:
+    name: Linux arm64
+    # Native build, no cross-compiling — GitHub's free hosted arm64 Ubuntu
+    # runner (public repos only). Deliberately a separate job rather than a
+    # matrix over the job above: keeps this addition fully isolated from
+    # the proven x86_64 pipeline (a bug here can't break that one), at the
+    # cost of some duplication.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "${{ env.GO_VERSION }}"
+
+      - name: Install dependencies (SQLite + Flutter Linux GTK)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsqlite3-dev \
+            clang cmake ninja-build pkg-config \
+            libgtk-3-dev liblzma-dev \
+            libblkid-dev libsecret-1-dev \
+            libwebkit2gtk-4.1-dev libjsoncpp-dev
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: "${{ env.FLUTTER_CHANNEL }}"
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            ~/go/pkg/mod
+            ~/.cache/go-build
+          key: go-${{ runner.os }}-arm64-${{ hashFiles('**/go.sum') }}
+          restore-keys: go-${{ runner.os }}-arm64-
+
+      - uses: actions/cache@v4
+        with:
+          path: |
+            /opt/hostedtoolcache/flutter
+            /home/runner/.pub-cache
+          key: flutter-${{ runner.os }}-arm64-${{ hashFiles('frontend/pubspec.lock') }}
+          restore-keys: flutter-${{ runner.os }}-arm64-
+
+      - name: Flutter deps
+        run: flutter pub get
+        working-directory: frontend
+
+      - name: Build Go backend
+        run: |
+          CGO_ENABLED=1 go build -tags "sqlite_fts5" -o "build_output/stage/${{ env.APP_NAME }}/memo-backend" .
+
+      - name: Build Flutter frontend
+        run: flutter build linux --release
+        working-directory: frontend
+
+      - name: Stage files (NO engine binaries!)
+        run: |
+          S="build_output/stage/${{ env.APP_NAME }}"
+          mkdir -p "$S"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile}}
+
+          # Flutter's own output dir is arch-named (x64/arm64) — arm64 here,
+          # unlike the x86_64 job above which is still hardcoded to x64.
+          cp -r frontend/build/linux/arm64/release/bundle/* "$S/"
+          cp config/config.yaml.example "$S/config/config.yaml" 2>/dev/null || true
+          cp config/config.yaml.example "$S/config/config.yaml.example" 2>/dev/null || true
+          cp .env.example "$S/.env" 2>/dev/null || true
+          cp data/providers.example.json "$S/data/providers.example.json" 2>/dev/null || true
+          echo '[]' > "$S/data/permissions.json"
+          touch "$S/data/whatsapp/.gitkeep"
+
+      - name: Create runner script
+        run: |
+          S="build_output/stage/${{ env.APP_NAME }}"
+          cat << 'EOF' > "$S/run_memo.sh"
+          #!/bin/bash
+          set -e
+          DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+          MEMO_HOME="$HOME/.memo"
+          export MEMO_DATA_DIR="$MEMO_HOME/data"
+          mkdir -p "$MEMO_HOME"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile,bin}}
+
+          [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ] && cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+          [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -f "$DIR/config/config.yaml" ] && cp "$DIR/config/config.yaml" "$MEMO_HOME/config/"
+          [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
+          [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
+          [ ! -f "$MEMO_HOME/data/permissions.json" ] && echo '[]' > "$MEMO_HOME/data/permissions.json"
+
+          cd "$MEMO_HOME"
+          export LD_LIBRARY_PATH="$MEMO_HOME/data/bin:$DIR/lib:$LD_LIBRARY_PATH"
+
+          pkill -TERM -f "memo-backend" 2>/dev/null || true; sleep 1
+          "$DIR/memo-backend" > "$MEMO_HOME/backend.log" 2>&1 &
+          sleep 1
+          "$DIR/memo_flutter" "$@"
+          curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 5 >/dev/null 2>&1 || true
+          EOF
+          chmod +x "$S/run_memo.sh"
+
+      - name: Package
+        run: |
+          mkdir -p build_output/dist
+          cd build_output/stage
+          zip -r "../dist/${{ env.APP_NAME }}-linux-arm64.zip" "${{ env.APP_NAME }}/"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Memo-linux-arm64
+          path: build_output/stage/Memo/
+          retention-days: 7
+
+      - name: Publish to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          prerelease: true
+          files: build_output/dist/${{ env.APP_NAME }}-linux-arm64.zip

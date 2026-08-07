@@ -18,6 +18,10 @@ echo "$VAD_SHA256  $VAD_DEST" | sha256sum --check --status
 VERSION="b9441"
 BASE_URL="https://github.com/ggerganov/llama.cpp/releases/download/$VERSION"
 
+# sqlite-vec release used for the arm64 vec0 extension (linux/cpu-arm64 below)
+VEC_VERSION="v0.1.9"
+VEC_BASE_URL="https://github.com/asg017/sqlite-vec/releases/download/$VEC_VERSION"
+
 # Linux Binaries (x64)
 echo "--- Linux Binaries ($VERSION) ---"
 echo "Downloading Linux CPU..."
@@ -34,6 +38,23 @@ echo "Downloading Linux AMD (ROCm 7.2)..."
 curl -L "$BASE_URL/llama-$VERSION-bin-ubuntu-rocm-7.2-x64.tar.gz" -o linux_amd.tar.gz
 tar -xzf linux_amd.tar.gz -C binaries/linux/amd/
 rm linux_amd.tar.gz
+
+# Linux Binaries (arm64, CPU only — no discrete-GPU story on ARM boards/NAS)
+echo ""
+echo "--- Linux arm64 Binaries ($VERSION) ---"
+mkdir -p binaries/linux/cpu-arm64
+echo "Downloading Linux arm64 CPU..."
+curl -L "$BASE_URL/llama-$VERSION-bin-ubuntu-arm64.tar.gz" -o linux_cpu_arm64.tar.gz
+# Unlike the x64 archives above, this release layout wraps everything in a
+# top-level "llama-$VERSION/" directory — strip it so files land flat,
+# matching how binaries/linux/{cpu,nvidia,amd}/ are actually laid out.
+tar -xzf linux_cpu_arm64.tar.gz --strip-components=1 -C binaries/linux/cpu-arm64/
+rm linux_cpu_arm64.tar.gz
+
+echo "Downloading Linux arm64 vec0 (sqlite-vec $VEC_VERSION)..."
+curl -L "$VEC_BASE_URL/sqlite-vec-${VEC_VERSION#v}-loadable-linux-aarch64.tar.gz" -o vec0_linux_arm64.tar.gz
+tar -xzf vec0_linux_arm64.tar.gz -C binaries/linux/cpu-arm64/
+rm vec0_linux_arm64.tar.gz
 
 # Windows Binaries (x64)
 echo ""

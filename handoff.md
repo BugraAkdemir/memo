@@ -1,4 +1,71 @@
-# Handoff — 2026-08-06 — CasaOS/Docker backend-only dağıtım desteği
+# Handoff — 2026-08-08 — R2-tabanlı tam otomatik release pipeline (build → binary gömme → GitHub Release → download.bugradev.com) + v3.3.4 gerçek yayını
+
+## Özet
+
+Kullanıcı aylardır her release'de aynı acı süreçten geçiyordu: lokal makinede binary derle, `binaries/` klasörünü elle güncelle, `build_releases.sh` çalıştır, zip'i elle R2'ye yükle, curl ile indirip test et — özellikle ARM'da yeni bir binary denerken bu döngü saatler sürüyordu ("3-5 saat amk"). Bu oturumda bunu komple otomatikleştirdik: artık `git tag vX.Y.Z && git push` tek başına build, binary gömme, paketleme, GitHub Release ve `download.bugradev.com`'un stabil indirme linklerini uçtan uca günceller. Oturum sonunda gerçek bir sürüm (**v3.3.4**) bu yeni pipeline ile fiilen yayınlandı ve doğrulandı.
+
+Küçük yan işler: 8. CI olarak `build-mobile.yml` eklendi (Android debug APK), `mobile.rl` cleanup, GitHub issue #15 yanıtlandı, kod tabanı satır sayısı raporlandı (~135K satır), kullanıcı hakkında bir memory kaydı eklendi (17 yaşında lise öğrencisi, Milli Teknoloji Okulları).
+
+## Yapılanlar
+
+### 1. `build-mobile.yml` (8. CI) — `95aa637`
+`mobile/` altında değişiklik olduğunda veya elle tetiklendiğinde `flutter build apk --debug` çalıştırıp APK'yı artifact olarak yüklüyor. Repo'da `key.properties` olmadığı için release signing zaten debug key'e fallback ediyordu; debug variant'ı doğrudan build ederek buna bağımlı kalmadan garanti altına alındı.
+
+### 2. R2'ye engine binary'lerinin yüklenmesi ve temizliği
+Kullanıcının `/home/bugra/Documents/r2-memo-push/` staging klasörü incelendi, gerçek sorunlar bulundu ve düzeltildi:
+- `Aa/DSADASD.txt` (junk test dosyası), `Memo-macos/`/`Memo-windows-x64/` (zaten zip'lenmiş içeriğin açık/paketlenmemiş kopyaları) silindi.
+- `binaries/linux/cpu/` ve `binaries/windows/{cpu,nvidia,amd}/` içinde llama.cpp'nin ~50-60 kullanılmayan CLI/test aracı (`llama-cli`, `llama-bench`, `test-*.exe` vb. — kod sadece `llama-server`/`rpc-server`/`whisper-server`/`vec0.*` çalıştırıyor, grep ile doğrulandı) budandı.
+- `binaries/linux/cpu/`'ta yarım kalmış bir "-new" motor denemesi (mtime/boyut eşleşmesiyle doğrulandı: `.so.0.14.0`/`.so.0-new`/`llama-new/` — eksik `llama-server`/`vec0.so` içeriyordu, hiç tam bir set değildi) silindi.
+- `upload-memo.sh`'te gerçek bir bug bulundu: `rclone copy` `--copy-links` olmadan symlink'leri sessizce atlıyordu (`binaries/linux/cpu-arm64/`'teki 10 symlink, ör. `libggml.so -> libggml.so.0 -> libggml.so.0.13.1`) — kullanıcının ekran görüntüsünden ("tamamı gitmiyor") yakalandı. `--copy-links` eklendi, tekrar upload edildi, symlink hedefli dosyaların gerçekten gittiği `rclone ls` ile doğrulandı.
+- Upload Monitor ile arka planda izlendi, 0 hata/uyarıyla tamamlandı (2.6GB).
+
+### 3. CI'ya binary gömme + beta kanal (`build-linux.yml`, `build-macos.yml`, `build-windows.yml`)
+Üç workflow da artık paketlemeden önce R2'den (`binaries/<platform>/`) motor binary'lerini indirip pakete gömüyor (macOS hariç — `binaries/darwin` zaten küçük olduğu için git'te committed, R2'ye hiç gerek yok). Her main push'unda üretilen paket sabit isimle R2'ye yükleniyor: `memo_beta.tar.gz`, `memo-mac_beta.zip`, `memo_arm_beta.zip`, (ilk başta) `memo-windows_beta.zip`.
+
+**İlk push anında iki gerçek prod bug bulundu ve düzeltildi (canlı CI loglarından):**
+- `wei/rclone-action@v1` artık resolve olmuyor ("repository not found" — repo'su silinmiş). Aynı bug zaten `upload-r2.yml`'de 2026-07-02'den beri fark edilmeden duruyormuş (o workflow'un tek çalışması da aynı sebeple başarısız olmuş, workflow_dispatch-only olduğu için kimse tekrar denememiş). Tüm 4 dosyada (`build-linux.yml` ×4 occurrence, `build-macos.yml`, `build-windows.yml` ×2, `upload-r2.yml` ×3) marketplace action'a bağımlılık kaldırıldı — rclone doğrudan `curl install.sh`/`choco install rclone` ile kurulup düz `run:` adımı olarak çağrılıyor.
+- `secrets.R2_ACCESS_KEY_ID`/`R2_SECRET_ACCESS_KEY` GitHub repo'sunda **hiç tanımlı değilmiş** (workflow'lar referans veriyordu ama gerçekte hiç set edilmemiş — ilk kez bugün fark edildi). Lokal `rclone.conf`'taki çalışan `memo-r2` credential'ları çıkarılıp `gh secret set` ile GitHub'a tanımlandı (değerler hiç ekrana basılmadan). Secret'lar iş sırasında set edildiği için o anda zaten çalışmakta olan job'lar eski (boş) secret değerini yakalamış kaldı — `gh run rerun` ile tek tek yeniden tetiklendi, hepsi yeşile döndü.
+
+### 4. Windows'ta gerçek Inno Setup derlemesi
+`build-windows.yml`'e `choco install innosetup` + `ISCC.exe installer.iss` eklendi — `installer.iss`'in `[Files]` kaynağı zaten CI'nin ürettiği staging klasörünün birebir aynısı olduğu için sıfır ek path uyarlaması gerekti. Beta kanal artık gerçek derlenmiş `memo-beta.exe` yüklüyor (önceki oturumda placeholder olarak bırakılan zip yerine) — `get-memo-beta.ps1`'in zaten beklediği tam olarak bu.
+
+### 5. Tag push = gerçek stabil release
+Tag push'ta (main push'tan ayrı, `if: startsWith(github.ref, 'refs/tags/')`) aynı build artık `download.bugradev.com`'un stabil dosya adlarına da gidiyor: `memo.tar.gz`, `memo-mac.zip`, `memo.exe`, `memo_arm.zip` — `get-memo.sh`/`get-memo.ps1`/`get_memo_arm.sh`'in zaten aradığı isimler. Ayrıca üç workflow'da da `prerelease: true` → `false` yapıldı (kullanıcı: "ben prerelease istemiyorum") — tag push artık GitHub'da gerçek bir release açıyor.
+
+**Bilinçli olarak flaglenen, çözülmeyen gerilim:** AGENTS.md'nin ayrı "checkpoint tag" mekanizması (test build'i arkadaşlara vermek için atılan, hafif, `v*` deseniyle aynı tetikleyiciyi kullanan tag) artık gerçek release'lerden ayrışmıyor — herhangi bir `v*` tag'i artık hem stabil R2 kanalını eziyor hem de prerelease olmayan bir GitHub release açıyor. `memo-release/SKILL.md`'ye not düşüldü, kod tarafında ayrıştırılmadı.
+
+### 6. `memo-release/SKILL.md` yeniden yazıldı
+Phase 3/4'teki manuel `build_releases.sh` + manuel R2 upload adımları tamamen kaldırıldı, yerine "tag at, push et, CI hallediyor" geldi. Sadece versiyon numarası bump'ı (Phase 1), release notları (Phase 2) ve ayrı `version.json` beacon bump'ı (Phase 4, CI yeşil olduktan SONRA) manuel kaldı.
+
+### 7. GitHub Release body bug'ı
+v3.3.4 yayınlandıktan sonra kullanıcı ekran görüntüsüyle yakaladı: release body'si `versinNote/v3.3.4.md` değil, tag'in üstündeki commit'in mesajını gösteriyordu (softprops/action-gh-release'e hiç `body`/`body_path` verilmemişti). Dört publish adımına da (`linux` x2 job, `macos`, `windows`) `versinNote/${{ github.ref_name }}.md` varsa onu `body_path` olarak geçen bir "Resolve release notes path" adımı eklendi (dosya yoksa boş string — no-op, hata değil, checkpoint tag'leri bozmuyor). Zaten yayınlanmış olan v3.3.4'ün body'si `gh release edit --notes-file` ile elle düzeltildi.
+
+### 8. v3.3.4 fiilen yayınlandı
+Lokalde eski bir commit'e (`9a467be`) işaret eden, hiç remote'a gitmemiş bir `v3.3.4` tag'i vardı ("birkaç gün önce yayınlandı ama geri çektim" — muhtemelen eski, kırık CI zamanından kalma). Tag güncel HEAD'e taşınıp push edildi (kullanıcıdan açık onay alındıktan sonra — tag push AGENTS.md hard rule'ü gereği + sistemin kendi auto-mode classifier'ı da bunu blokladı, onay istedi). Sonuç doğrulandı:
+- GitHub Release: `isPrerelease: false`, 5 asset (Linux x64/arm64 zip, macOS zip, Windows Setup.exe + zip).
+- R2 stabil kanal: `memo.tar.gz` (735MB), `memo-mac.zip` (126MB), `memo.exe` (606MB), `memo_arm.zip` (71MB) — hepsi taze timestamp'li.
+
+### 9. Diğer küçük işler
+- Repo kökündeki başıboş screenshot'lar (`bugra.png`, `aa.png`, `daa.png`) silindi — `logo.png`/`memo.png` (gerçek proje asset'leri) dokunulmadı.
+- GitHub issue #15 ("Backend connection error on macOS") yanıtlandı — kök sebep (App Sandbox'ta eksik `network.client` entitlement) zaten 2026-08-05'te düzeltilmişti, v3.3.4 ile birlikte yayınlandığı belirtildi, tekrar denemesi istendi. Issue kapatılmadı, kullanıcının onayı bekleniyor.
+- Kod tabanı satır sayısı raporlandı: Backend (Go) 53.345 (+30.946 test), Frontend (Dart) 40.422 (+2.786 test), Mobile (Dart) 7.848, Shell 3.065 — toplam ~135.626 satır.
+
+## Doğrulama
+
+- Her workflow değişikliği `python3 -c "import yaml; yaml.safe_load(...)"` ile syntax doğrulandı (bu ortamda gerçek bir GitHub Actions runner yok, `actionlint` de kurulu değildi).
+- **Gerçek doğrulama canlı CI'da yapıldı** — bu oturumun büyük kısmı, push edilen her değişikliği gerçek GitHub Actions run'ları üzerinden izleyip (Monitor tool ile arka planda) hataları yakalayıp düzeltmekle geçti: rclone-action bulunamama hatası → düzeltildi → secrets boş hatası → düzeltildi → Inno Setup eklenmesi → yeşil → tag release → yeşil → release body bug'ı → düzeltildi. Yani "yazıp umut etmek" değil, "yaz, push et, gerçek sonucu gör, düzelt" döngüsüyle ilerlendi.
+- R2'deki dosyalar (`rclone lsl`) ve GitHub Release içeriği (`gh release view --json`) doğrudan sorgulanarak iddialar değil gerçek durum raporlandı.
+
+## Sıradaki Oturum İçin / Bilinen Açıklar
+
+1. **`version.json` beacon (version-zeta.vercel.app) henüz 3.3.4'e bump'lanmadı** — kullanıcıya soruldu, cevap bu oturumda gelmedi. Update banner'ının kullanıcılara görünmesi için gereken son adım, ayrı bir sistem, CI bunu yapmıyor.
+2. **Checkpoint tag / gerçek release gerilimi çözülmedi** (yukarıda #5) — istenirse tag adlandırma konvansiyonuyla (ör. `v*-checkpoint` vs `v*`) ya da workflow_dispatch input'uyla ayrıştırılabilir.
+3. `upload-r2.yml` (eski, workflow_dispatch-only, versiyon input'lu manuel upload akışı) artık büyük ölçüde gereksiz — yeni otomatik pipeline aynı işi tag push'ta zaten yapıyor. Silinmedi, kullanıcıya sorulmadı.
+4. `body_path` boş string verildiğinde `softprops/action-gh-release@v2`'nin gerçekten no-op olduğu (hata vermediği) varsayımla ilerlendi, checkpoint-tag senaryosunda (release notu dosyası yokken) canlı doğrulanmadı — bir sonraki notsuz tag'de izlenmeli.
+5. GitHub issue #15 kullanıcının onayını bekliyor, kapatılmadı.
+6. `binaries/windows/{cpu,nvidia,amd}` ve `binaries/linux/{nvidia,amd,cpu-arm64}` içindeki dead-tool budaması sadece `r2-memo-push/` staging klasöründe yapıldı ve R2'ye o haliyle yüklendi — kullanıcının kendi lokal `binaries/` klasörü (release script'lerinin okuduğu asıl kaynak) budanmadı, isterse orada da aynı temizliği yapabilir.
+
+
 
 ## Özet
 

@@ -87,3 +87,6 @@ PROMPT_swarm_continue.md
 data/cli_theme
 .idea
 .vscode/launch.json
+data/skills/*
+data/skills_imported.json
+bug.png

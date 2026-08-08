@@ -119,6 +119,50 @@ void main() {
       );
       expect(container.read(backendUrlProvider), 'http://10.0.0.5:8090');
     });
+
+    testWidgets('typing a bare host with no scheme does not crash the app (regression, bug3)',
+        (tester) async {
+      await pump(tester);
+      await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
+      await tester.pumpAndSettle();
+
+      // The exact reported input: no "http://", no port. Before
+      // normalizeBackendUrl existed, MemoApiClient's Dio construction threw
+      // "Invalid argument (baseUrl): Must be a valid URL on platforms other
+      // than Web." synchronously and uncaught, crashing the whole widget
+      // tree with Flutter's red error screen.
+      await tester.enterText(
+        find.widgetWithText(TextField, L10n.t('remote_backend_url_field_label')),
+        '127.0.0.1',
+      );
+      await tester.tap(find.text(L10n.t('apply')));
+      await tester.pumpAndSettle();
+
+      expect(tester.takeException(), isNull);
+      final container = ProviderScope.containerOf(
+        tester.element(find.byType(BackendUnreachableView)),
+      );
+      expect(container.read(backendUrlProvider), 'http://127.0.0.1:8090');
+    });
+
+    testWidgets('"Bu Bilgisayarın Backend\'ine Dön" resets both fields to the local default',
+        (tester) async {
+      await pump(tester);
+      await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
+      await tester.pumpAndSettle();
+
+      await tester.enterText(
+        find.widgetWithText(TextField, L10n.t('remote_backend_url_field_label')),
+        '192.168.1.106:1234',
+      );
+      await tester.tap(find.text(L10n.t('reset_to_local_backend')));
+      await tester.pumpAndSettle();
+
+      expect(find.text(L10n.t('restart_required_title')), findsOneWidget);
+      final container = ProviderScope.containerOf(tester.element(find.byType(MaterialApp)));
+      expect(container.read(backendUrlProvider), 'http://127.0.0.1:8090');
+      expect(container.read(backendTokenProvider), '');
+    });
   });
 
   group('BackendUnreachableOverlay', () {

@@ -895,6 +895,7 @@ class L10n {
     'backend_unreachable_restart_confirm_body':
         'Memo kapanacak. Backend de dahil tam bir yeniden başlatma için uygulamayı tekrar açman gerekiyor.',
     'change_server_dialog_title': 'Sunucuyu Değiştir',
+    'reset_to_local_backend': 'Bu Bilgisayarın Backend\'ine Dön',
     'restart_required_title': 'Memo\'nun yeniden başlatılması gerekiyor',
     'restart_required_body':
         'Sunucu adresi değişti. Değişikliğin düzgün uygulanması için Memo\'nun yeniden başlatılması gerekiyor.',
@@ -2406,6 +2407,7 @@ class L10n {
     'backend_unreachable_restart_confirm_body':
         'Memo will close. Reopen it to fully restart, backend included.',
     'change_server_dialog_title': 'Change Server',
+    'reset_to_local_backend': 'Return to This Computer\'s Backend',
     'restart_required_title': 'Memo needs to restart',
     'restart_required_body':
         'The server address changed. Memo needs to restart for this to take full effect.',

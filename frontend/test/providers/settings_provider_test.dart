@@ -57,6 +57,51 @@ void main() {
     });
   });
 
+  group('BackendUrlNotifier', () {
+    // Regression: MemoApiClient's Dio instance validates baseUrl eagerly
+    // and synchronously — a bare "127.0.0.1" (no scheme) used to crash the
+    // entire app with Flutter's red error screen the moment apiClientProvider
+    // built, before any UI (including the screens meant to fix a bad
+    // address) could render.
+    test('self-heals an already-saved schemeless value on construction', () async {
+      final container = await _containerWith({'memo_api_base_url': '127.0.0.1'});
+      addTearDown(container.dispose);
+
+      expect(container.read(backendUrlProvider), 'http://127.0.0.1:8090');
+    });
+
+    test('save() normalizes a schemeless, portless address before persisting', () async {
+      final container = await _containerWith({});
+      addTearDown(container.dispose);
+
+      await container.read(backendUrlProvider.notifier).save('192.168.1.106');
+
+      expect(container.read(backendUrlProvider), 'http://192.168.1.106:8090');
+      final prefs = container.read(prefsProvider);
+      expect(prefs.getString('memo_api_base_url'), 'http://192.168.1.106:8090');
+    });
+
+    test('save() respects an explicit port instead of defaulting it', () async {
+      final container = await _containerWith({});
+      addTearDown(container.dispose);
+
+      await container.read(backendUrlProvider.notifier).save('192.168.1.106:1234');
+
+      expect(container.read(backendUrlProvider), 'http://192.168.1.106:1234');
+    });
+
+    test('save("") clears the pref entirely and resets to the local default', () async {
+      final container = await _containerWith({'memo_api_base_url': 'http://192.168.1.106:8090'});
+      addTearDown(container.dispose);
+
+      await container.read(backendUrlProvider.notifier).save('');
+
+      expect(container.read(backendUrlProvider), 'http://127.0.0.1:8090');
+      final prefs = container.read(prefsProvider);
+      expect(prefs.containsKey('memo_api_base_url'), isFalse);
+    });
+  });
+
   group('LaunchpadSeenNotifier', () {
     test('defaults to false with forceShow false', () async {
       final container = await _containerWith({});

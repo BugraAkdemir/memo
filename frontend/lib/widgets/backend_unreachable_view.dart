@@ -219,9 +219,9 @@ class _ChangeServerDialogState extends ConsumerState<_ChangeServerDialog> {
     super.dispose();
   }
 
-  Future<void> _apply() async {
-    await ref.read(backendUrlProvider.notifier).save(_urlCtrl.text);
-    await ref.read(backendTokenProvider.notifier).save(_tokenCtrl.text);
+  Future<void> _apply({String? urlOverride, String? tokenOverride}) async {
+    await ref.read(backendUrlProvider.notifier).save(urlOverride ?? _urlCtrl.text);
+    await ref.read(backendTokenProvider.notifier).save(tokenOverride ?? _tokenCtrl.text);
     ref.invalidate(apiClientProvider);
     if (!mounted) return;
     Navigator.of(context).pop();
@@ -231,6 +231,12 @@ class _ChangeServerDialogState extends ConsumerState<_ChangeServerDialog> {
       builder: (context) => const _RestartRequiredDialog(),
     );
   }
+
+  /// "Bu bilgisayarın backend'ine dön" — clears both fields back to Memo's
+  /// own default (127.0.0.1:8090) in one tap, for the common recovery case
+  /// where the user doesn't remember/care what the old remote address was
+  /// and just wants their local backend back.
+  void _resetToLocal() => _apply(urlOverride: '', tokenOverride: '');
 
   @override
   Widget build(BuildContext context) {
@@ -266,11 +272,15 @@ class _ChangeServerDialogState extends ConsumerState<_ChangeServerDialog> {
       ),
       actions: [
         TextButton(
+          onPressed: _resetToLocal,
+          child: Text(L10n.t('reset_to_local_backend')),
+        ),
+        TextButton(
           onPressed: () => Navigator.of(context).pop(),
           child: Text(L10n.t('cancel')),
         ),
         FilledButton(
-          onPressed: _apply,
+          onPressed: () => _apply(),
           child: Text(L10n.t('apply')),
         ),
       ],

@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
@@ -669,8 +670,14 @@ final backendUrlProvider = StateNotifierProvider<BackendUrlNotifier, String>(
 class BackendUrlNotifier extends StateNotifier<String> {
   final SharedPreferences _prefs;
 
+  // Runs whatever was already on disk through normalizeBackendUrl() too —
+  // a value saved before that function existed (e.g. a bare "127.0.0.1"
+  // with no scheme) would otherwise keep crashing the whole app on every
+  // launch forever, since MemoApiClient's Dio instance validates baseUrl
+  // eagerly and there's no UI screen reachable before that construction
+  // runs.
   BackendUrlNotifier(this._prefs)
-      : super(_prefs.getString('memo_api_base_url') ?? 'http://127.0.0.1:8090');
+      : super(normalizeBackendUrl(_prefs.getString('memo_api_base_url') ?? ''));
 
   Future<void> save(String url) async {
     final trimmed = url.trim();
@@ -678,12 +685,13 @@ class BackendUrlNotifier extends StateNotifier<String> {
       // Reset to default
       await _prefs.remove('memo_api_base_url');
       state = 'http://127.0.0.1:8090';
-    } else {
-      // Strip trailing slash
-      final clean = trimmed.endsWith('/') ? trimmed.substring(0, trimmed.length - 1) : trimmed;
-      await _prefs.setString('memo_api_base_url', clean);
-      state = clean;
+      return;
     }
+    // normalizeBackendUrl adds a scheme/port if missing (e.g. "127.0.0.1"
+    // -> "http://127.0.0.1:8090") and strips a trailing slash.
+    final normalized = normalizeBackendUrl(trimmed);
+    await _prefs.setString('memo_api_base_url', normalized);
+    state = normalized;
   }
 }
 

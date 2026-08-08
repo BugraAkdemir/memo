@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/api_client.dart';
+import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import '../models/agent.dart';
 import '../models/chat.dart';
@@ -25,10 +26,7 @@ const _remoteTokenPrefsKey = 'memo_remote_access_token';
 
 final apiClientProvider = Provider<MemoApiClient>((ref) {
   final prefs = ref.read(prefsProvider);
-  final savedUrl = prefs.getString('memo_api_base_url');
-  final baseUrl = (savedUrl != null && savedUrl.isNotEmpty)
-      ? savedUrl
-      : 'http://127.0.0.1:8090';
+  final baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
   return MemoApiClient(
     baseUrl: baseUrl,
     savedRemoteToken: prefs.getString(_remoteTokenPrefsKey),

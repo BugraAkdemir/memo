@@ -166,20 +166,34 @@ func SyncExternalSkills(m *Manager, sources []ExternalSource) (SyncResult, error
 		}
 	}
 
-	if len(result.Imported) > 0 || len(result.Updated) > 0 {
+	// Auto-activate only names imported for the very first time *this run*
+	// — never on Updated (re-imported because source content changed) and
+	// never by re-scanning the whole registry on every sync. Activation is
+	// now persisted (Manager.LoadActiveSkills/SetActive, loaded before this
+	// function ever runs), so an already-imported skill's current on/off
+	// state already reflects whatever the user last set it to; force-
+	// activating it again here would silently override a deliberate
+	// `/skill:off` the moment its source content next changes, or on every
+	// single restart if activation had never been persisted at all (the
+	// original bug this comment replaces).
+	if len(result.Imported) > 0 {
 		active := m.GetActiveNames()
 		activeSet := make(map[string]bool, len(active))
 		for _, n := range active {
 			activeSet[n] = true
 		}
-		for name := range registry {
-			if _, ok := m.Get(name); ok && !activeSet[name] {
+		changed := false
+		for _, name := range result.Imported {
+			if !activeSet[name] {
 				active = append(active, name)
 				activeSet[name] = true
+				changed = true
 			}
 		}
-		if err := m.SetActive(active); err != nil {
-			return result, fmt.Errorf("activate imported skills: %w", err)
+		if changed {
+			if err := m.SetActive(active); err != nil {
+				return result, fmt.Errorf("activate imported skills: %w", err)
+			}
 		}
 	}
 

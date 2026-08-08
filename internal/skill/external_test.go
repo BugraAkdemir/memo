@@ -47,6 +47,44 @@ func TestSyncExternalSkills_ImportsAndActivates(t *testing.T) {
 	}
 }
 
+// TestSyncExternalSkills_RespectsManualDeactivation is the regression test
+// for "an imported skill you turned off comes back on by itself": the
+// original auto-activate logic re-scanned every skill the registry had
+// *ever* imported on *every* sync and force-activated any that weren't
+// currently active — indistinguishable from "never activated yet" once
+// activation wasn't persisted across restarts either. Only genuinely new
+// imports (result.Imported) should ever be auto-activated.
+func TestSyncExternalSkills_RespectsManualDeactivation(t *testing.T) {
+	dataDir := t.TempDir()
+	sourceDir := t.TempDir()
+	m := NewManager(dataDir)
+	sources := []ExternalSource{{ID: "claude-code", Name: "Claude Code", Dirs: []string{sourceDir}}}
+
+	writeExternalSkill(t, sourceDir, "opt-out", "Auto-imported skill")
+
+	if _, err := SyncExternalSkills(m, sources); err != nil {
+		t.Fatalf("first sync error: %v", err)
+	}
+	if !m.IsActive("opt-out") {
+		t.Fatal("first import should auto-activate")
+	}
+
+	if err := m.SetActive(nil); err != nil {
+		t.Fatalf("SetActive(nil) error: %v", err)
+	}
+
+	result, err := SyncExternalSkills(m, sources)
+	if err != nil {
+		t.Fatalf("second sync error: %v", err)
+	}
+	if len(result.Imported) != 0 {
+		t.Fatalf("unchanged skill should not be re-imported, got %+v", result.Imported)
+	}
+	if m.IsActive("opt-out") {
+		t.Fatal("sync re-activated a skill the user had manually turned off")
+	}
+}
+
 func TestSyncExternalSkills_SecondRunIsNoOp(t *testing.T) {
 	dataDir := t.TempDir()
 	sourceDir := t.TempDir()

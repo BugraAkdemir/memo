@@ -1,14 +1,17 @@
 package skill
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
 )
 
 const skillsDirName = "skills"
+const activeSkillsFileName = "active_skills.json"
 
 type ToolRegistrar interface {
 	RegisterTool(name string, toolDef any) error
@@ -35,6 +38,15 @@ func NewManager(baseDir string) *Manager {
 
 func (m *Manager) SkillsDir() string {
 	return filepath.Join(m.baseDir, skillsDirName)
+}
+
+// ActiveSkillsPath is where SetActive persists which skills are currently
+// active, so activation survives an app restart. Previously activeSkills
+// lived only in the Manager's in-memory map and silently reset to empty on
+// every launch — a skill turned on by hand had to be turned on again every
+// single time the app started.
+func (m *Manager) ActiveSkillsPath() string {
+	return filepath.Join(m.baseDir, activeSkillsFileName)
 }
 
 func (m *Manager) Discover() error {
@@ -218,7 +230,58 @@ func (m *Manager) SetActive(names []string) error {
 
 	m.activeSkills = newActive
 
+	return m.saveActiveSkillsLocked()
+}
+
+// saveActiveSkillsLocked writes the current activeSkills map to
+// ActiveSkillsPath(). Caller must already hold m.mu (write lock).
+func (m *Manager) saveActiveSkillsLocked() error {
+	names := make([]string, 0, len(m.activeSkills))
+	for name := range m.activeSkills {
+		names = append(names, name)
+	}
+	sort.Strings(names) // stable file contents, easier to diff/inspect by hand
+
+	data, err := json.MarshalIndent(names, "", "  ")
+	if err != nil {
+		return fmt.Errorf("marshal active skills: %w", err)
+	}
+	if err := os.WriteFile(m.ActiveSkillsPath(), data, 0644); err != nil {
+		return fmt.Errorf("write active skills: %w", err)
+	}
 	return nil
+}
+
+// LoadActiveSkills restores which skills were active in a previous session
+// from ActiveSkillsPath(). Called once during startup, after Discover() (so
+// m.skills is populated) and after SetToolRegistrar (so tools belonging to
+// a restored-active skill actually get wired up). A name in the file that
+// no longer corresponds to an installed skill — removed since last
+// session — is silently dropped rather than treated as an error: the file
+// records past intent, not a request that must fully succeed.
+func (m *Manager) LoadActiveSkills() error {
+	data, err := os.ReadFile(m.ActiveSkillsPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return fmt.Errorf("read active skills: %w", err)
+	}
+	var names []string
+	if err := json.Unmarshal(data, &names); err != nil {
+		return fmt.Errorf("parse active skills: %w", err)
+	}
+
+	m.mu.RLock()
+	valid := make([]string, 0, len(names))
+	for _, name := range names {
+		if _, ok := m.skills[name]; ok {
+			valid = append(valid, name)
+		}
+	}
+	m.mu.RUnlock()
+
+	return m.SetActive(valid)
 }
 
 func (m *Manager) GetActiveNames() []string {

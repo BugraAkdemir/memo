@@ -570,6 +570,9 @@ func (a *App) Startup(ctx context.Context) {
 		logx.Printf("skill: discover error: %v", err)
 	}
 	a.skillManager.SetToolRegistrar(newSkillToolRegistrar(a.agentExecutor.Registry(), a.skillManager))
+	if err := a.skillManager.LoadActiveSkills(); err != nil {
+		logx.Printf("skill: load active skills error: %v", err)
+	}
 	if result, err := skill.SyncExternalSkills(a.skillManager, skill.KnownExternalSources()); err != nil {
 		logx.Printf("skill: external sync error: %v", err)
 	} else if len(result.Imported) > 0 || len(result.Updated) > 0 {

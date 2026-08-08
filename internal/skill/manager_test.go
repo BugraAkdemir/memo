@@ -202,6 +202,87 @@ Remove instructions
 	}
 }
 
+// TestManagerSetActive_PersistsAcrossRestart is the regression test for
+// "activation only lived in memory": a fresh Manager instance pointed at
+// the same baseDir (simulating an app restart) used to always start with
+// every skill inactive, no matter what the user had turned on before.
+func TestManagerSetActive_PersistsAcrossRestart(t *testing.T) {
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, skillsDirName)
+	os.MkdirAll(skillsDir, 0755)
+	writeTestSkill(t, skillsDir, "persistent", `---
+name: persistent
+description: "Persistence test"
+danger_level: safe
+---
+Persistent instructions
+`)
+
+	m1 := NewManager(dir)
+	if err := m1.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+	if err := m1.SetActive([]string{"persistent"}); err != nil {
+		t.Fatalf("SetActive() error: %v", err)
+	}
+
+	// A brand new Manager, same baseDir — this is what app.go's Startup()
+	// actually constructs on every launch.
+	m2 := NewManager(dir)
+	if err := m2.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+	if m2.IsActive("persistent") {
+		t.Fatal("m2 should start inactive before LoadActiveSkills() runs")
+	}
+	if err := m2.LoadActiveSkills(); err != nil {
+		t.Fatalf("LoadActiveSkills() error: %v", err)
+	}
+	if !m2.IsActive("persistent") {
+		t.Fatal("LoadActiveSkills() did not restore activation from the previous Manager instance")
+	}
+}
+
+// TestManagerLoadActiveSkills_DropsRemovedSkillsSilently covers a name in
+// the persisted file that no longer corresponds to an installed skill
+// (removed since last session) — must not error and must not block
+// restoring the other, still-valid names.
+func TestManagerLoadActiveSkills_DropsRemovedSkillsSilently(t *testing.T) {
+	dir := t.TempDir()
+	skillsDir := filepath.Join(dir, skillsDirName)
+	os.MkdirAll(skillsDir, 0755)
+	writeTestSkill(t, skillsDir, "still-here", `---
+name: still-here
+description: "Still installed"
+danger_level: safe
+---
+Instructions
+`)
+
+	m := NewManager(dir)
+	if err := m.Discover(); err != nil {
+		t.Fatalf("Discover() error: %v", err)
+	}
+	data := `["still-here", "long-since-removed"]`
+	if err := os.WriteFile(m.ActiveSkillsPath(), []byte(data), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := m.LoadActiveSkills(); err != nil {
+		t.Fatalf("LoadActiveSkills() error: %v", err)
+	}
+	if !m.IsActive("still-here") {
+		t.Fatal("still-installed skill should be restored active")
+	}
+}
+
+func TestManagerLoadActiveSkills_NoFileIsNotAnError(t *testing.T) {
+	m := NewManager(t.TempDir())
+	if err := m.LoadActiveSkills(); err != nil {
+		t.Fatalf("LoadActiveSkills() with no persisted file should be a no-op, got error: %v", err)
+	}
+}
+
 func TestManagerSetActiveInvalid(t *testing.T) {
 	dir := t.TempDir()
 	m := NewManager(dir)

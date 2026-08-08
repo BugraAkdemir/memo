@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
+import '../../../core/friendly_error.dart';
 
 /// Manual, explicit bug reporting: the user writes what happened and can
 /// optionally attach the last 10 backend error events (from the existing
@@ -88,7 +89,7 @@ class _ReportBugTabState extends ConsumerState<ReportBugTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('report_bug_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('report_bug_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {

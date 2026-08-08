@@ -8,6 +8,7 @@ import '../../core/theme.dart';
 import '../../models/agent.dart';
 import '../../providers/chat_provider.dart';
 import '../../utils/tool_names.dart';
+import '../../core/friendly_error.dart';
 
 class PermissionDialog extends ConsumerStatefulWidget {
   final AgentEvent event;
@@ -73,7 +74,7 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
       if (mounted) {
         setState(() {
           _submitting = false;
-          _error = L10n.t('permission_send_failed', {'e': '$e'});
+          _error = L10n.t('permission_send_failed', {'e': FriendlyError.describeGeneric(e)});
         });
       }
     }

@@ -13,6 +13,7 @@ import '../models/chat.dart';
 import '../models/token_usage.dart';
 import 'agent_provider.dart';
 import 'settings_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Global API client instance. Reads the backend URL from SharedPreferences
 /// so users can configure a custom address. Falls back to 127.0.0.1:8090.
@@ -238,7 +239,7 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
     try {
       state = await _api.getWebSearchEnabled();
     } catch (e) {
-      debugPrint('chat: web search init error: $e');
+      debugPrint('chat: web search init error: ${FriendlyError.describeGeneric(e)}');
       // leave default (off) on error
     }
   }
@@ -250,7 +251,7 @@ class WebSearchModeNotifier extends StateNotifier<bool> {
       state = next;
     } catch (e) {
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Web arama modu değiştirilemedi ($e)';
+          '${L10n.t('error')}: Web arama modu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -351,7 +352,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Mesaj güncellenemedi ($e)';
+          '${L10n.t('error')}: Mesaj güncellenemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -366,7 +367,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       }
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Mesaj silinemedi ($e)';
+          '${L10n.t('error')}: Mesaj silinemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -391,7 +392,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ),
         ]);
       } catch (e) {
-        ref.read(errorMessageProvider.notifier).state = 'Memory save failed: $e';
+        ref.read(errorMessageProvider.notifier).state = 'Memory save failed: ${FriendlyError.describeGeneric(e)}';
       }
       return true;
     }
@@ -410,7 +411,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ChatMessage(role: 'assistant', content: insight, timestamp: ts),
         ]);
       } catch (e) {
-        ref.read(errorMessageProvider.notifier).state = 'Insight generation failed: $e';
+        ref.read(errorMessageProvider.notifier).state = 'Insight generation failed: ${FriendlyError.describeGeneric(e)}';
       }
       return true;
     }
@@ -433,7 +434,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
           ),
         ]);
       } catch (e) {
-        ref.read(errorMessageProvider.notifier).state = 'Memory delete failed: $e';
+        ref.read(errorMessageProvider.notifier).state = 'Memory delete failed: ${FriendlyError.describeGeneric(e)}';
       }
       return true;
     }
@@ -653,7 +654,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       if (_generation != myGeneration) return;
       _stopped = false;
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Mesaj gönderilemedi ($e)';
+          '${L10n.t('error')}: Mesaj gönderilemedi (${FriendlyError.describeGeneric(e)})';
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
@@ -805,7 +806,7 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     } catch (e) {
       if (_generation != myGeneration) return '';
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Dosya gönderilemedi ($e)';
+          '${L10n.t('error')}: Dosya gönderilemedi (${FriendlyError.describeGeneric(e)})';
       ref.read(streamingContentProvider.notifier).state = '';
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
@@ -849,10 +850,10 @@ class IncognitoNotifier extends StateNotifier<bool> {
     try {
       await _ref.read(apiClientProvider).toggleIncognito(state);
     } catch (e) {
-      debugPrint('chat: incognito toggle error: $e');
+      debugPrint('chat: incognito toggle error: ${FriendlyError.describeGeneric(e)}');
       state = previous;
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Gizli mod değiştirilemedi ($e)';
+          '${L10n.t('error')}: Gizli mod değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -898,7 +899,7 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
         await api.heartbeatClient(clientId);
       }
     } catch (e) {
-      debugPrint('chat: connectionStatus error: $e');
+      debugPrint('chat: connectionStatus error: ${FriendlyError.describeGeneric(e)}');
       yield false;
       clientId = null;
     }

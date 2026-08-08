@@ -6,6 +6,7 @@ import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../models/usage_stats.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class StatsTab extends ConsumerWidget {
   const StatsTab({super.key});
@@ -55,7 +56,7 @@ class StatsTab extends ConsumerWidget {
           error: (e, _) => Padding(
             padding: EdgeInsets.symmetric(vertical: 40),
             child: Text(
-              L10n.t('stats_load_error', {'e': '$e'}),
+              L10n.t('stats_load_error', {'e': FriendlyError.describeGeneric(e)}),
               style: TextStyle(color: MemoTheme.red),
             ),
           ),

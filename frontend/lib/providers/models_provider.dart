@@ -7,6 +7,7 @@ import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 // ─── Local Models ───────────────────────────────────────────────
 
@@ -30,9 +31,9 @@ class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
       await ref.read(apiClientProvider).deleteLocalModel(path);
       await refresh();
     } catch (e) {
-      debugPrint('models: deleteModel error: $e');
+      debugPrint('models: deleteModel error: ${FriendlyError.describeGeneric(e)}');
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Model silinemedi ($e)';
+          '${L10n.t('error')}: Model silinemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -47,7 +48,7 @@ final modelStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async
     try {
       yield await api.getModelStatus();
     } catch (e) {
-      debugPrint('models: modelStatus error: $e');
+      debugPrint('models: modelStatus error: ${FriendlyError.describeGeneric(e)}');
       yield const ServerStatus();
     }
     await Future.delayed(const Duration(seconds: 30));
@@ -62,7 +63,7 @@ final embeddingStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) a
     try {
       yield await api.getEmbeddingStatus();
     } catch (e) {
-      debugPrint('models: embeddingStatus error: $e');
+      debugPrint('models: embeddingStatus error: ${FriendlyError.describeGeneric(e)}');
       yield const ServerStatus();
     }
     await Future.delayed(const Duration(seconds: 30));
@@ -75,7 +76,7 @@ final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
   try {
     return await ref.read(apiClientProvider).getGpuInfo();
   } catch (e) {
-    debugPrint('models: gpuInfo error: $e');
+    debugPrint('models: gpuInfo error: ${FriendlyError.describeGeneric(e)}');
     return const GPUInfo();
   }
 });
@@ -98,7 +99,7 @@ final downloadProgressProvider =
       active = progress.any((p) => p.active);
       yield progress;
     } catch (e) {
-      debugPrint('models: downloadProgress error: $e');
+      debugPrint('models: downloadProgress error: ${FriendlyError.describeGeneric(e)}');
       yield const [];
     }
     await Future.delayed(Duration(seconds: active ? 1 : 4));

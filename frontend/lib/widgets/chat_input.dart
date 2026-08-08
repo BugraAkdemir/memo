@@ -28,6 +28,7 @@ import '../providers/whatsapp_provider.dart';
 import 'orchestra_config_dialog.dart';
 import 'prompt_templates.dart';
 import 'skill_config_dialog.dart';
+import '../core/friendly_error.dart';
 
 // Intents for the "/" and "@" popups' keyboard navigation. Bound via a
 // Shortcuts widget wrapping the composer's TextField — see the Shortcuts/
@@ -426,7 +427,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text('${L10n.t('error')}: $e')));
+        ).showSnackBar(SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')));
       }
     }
 
@@ -503,7 +504,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('whatsapp_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('whatsapp_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {
@@ -814,7 +815,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
       if (mounted) {
         Navigator.of(context).pop();
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('error_with_detail', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('error_with_detail', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
       return;
@@ -856,7 +857,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('error_with_detail', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('error_with_detail', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     }
@@ -1053,7 +1054,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     } catch (e) {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('error')}: $e')),
+                          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
                         );
                       }
                     }
@@ -1083,7 +1084,7 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                       if (mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
                           SnackBar(
-                            content: Text(L10n.t('orchestra_enable_failed', {'e': '$e'})),
+                            content: Text(L10n.t('orchestra_enable_failed', {'e': FriendlyError.describeGeneric(e)})),
                           ),
                         );
                       }

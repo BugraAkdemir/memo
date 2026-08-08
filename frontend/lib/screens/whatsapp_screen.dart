@@ -12,6 +12,7 @@ import '../models/whatsapp.dart';
 import '../providers/whatsapp_provider.dart';
 import '../providers/chat_provider.dart' show apiClientProvider;
 import 'app_shell.dart';
+import '../core/friendly_error.dart';
 
 // This screen uses Memo's own palette so it sits naturally beside the other
 // pages: the bronze accent for interactive/brand elements, and the muted theme
@@ -704,7 +705,7 @@ class _WhatsAppScreenState extends ConsumerState<WhatsAppScreen> {
         });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(L10n.t('failed_to_send_e', {'e': '$e'})),
+            content: Text(L10n.t('failed_to_send_e', {'e': FriendlyError.describeGeneric(e)})),
             backgroundColor: MemoTheme.red,
             behavior: SnackBarBehavior.floating,
           ),
@@ -1006,7 +1007,7 @@ class _AvatarPreviewDialogState extends ConsumerState<_AvatarPreviewDialog> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(L10n.t('download_failed_e', {'e': '$e'})),
+            content: Text(L10n.t('download_failed_e', {'e': FriendlyError.describeGeneric(e)})),
             backgroundColor: MemoTheme.red,
             behavior: SnackBarBehavior.floating,
           ),

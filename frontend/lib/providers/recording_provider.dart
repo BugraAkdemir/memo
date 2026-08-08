@@ -7,6 +7,7 @@ import 'package:record/record.dart';
 
 import '../core/l10n.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 enum RecordingState { idle, recording, transcribing }
 
@@ -51,9 +52,9 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
       state = RecordingState.recording;
       return null;
     } catch (e) {
-      debugPrint('recording: start error: $e');
+      debugPrint('recording: start error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Kayıt başlatılamadı ($e)';
+          '${L10n.t('error')}: Kayıt başlatılamadı (${FriendlyError.describeGeneric(e)})';
       state = RecordingState.idle;
       return null;
     }
@@ -86,9 +87,9 @@ class RecordingNotifier extends StateNotifier<RecordingState> {
       state = RecordingState.idle;
       return text;
     } catch (e) {
-      debugPrint('recording: transcribe error: $e');
+      debugPrint('recording: transcribe error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Ses metne dönüştürülemedi ($e)';
+          '${L10n.t('error')}: Ses metne dönüştürülemedi (${FriendlyError.describeGeneric(e)})';
       state = RecordingState.idle;
       return null;
     }

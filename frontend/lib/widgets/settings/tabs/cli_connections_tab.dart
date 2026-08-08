@@ -6,6 +6,7 @@ import '../../../core/theme.dart';
 import '../../../models/provider_config.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/provider_provider.dart';
+import '../../../core/friendly_error.dart';
 
 /// Settings → CLI Bağlantıları. Checks whether each CLI-backed provider's
 /// underlying executable (claude, ...) is actually installed and on PATH —
@@ -50,7 +51,7 @@ class _CLIConnectionsTabState extends ConsumerState<CLIConnectionsTab> {
         await _ensureProviderRegistered(cliType);
       }
     } catch (e) {
-      if (mounted) setState(() => _status[cliType] = {'error': '$e'});
+      if (mounted) setState(() => _status[cliType] = {'error': FriendlyError.describeGeneric(e)});
     } finally {
       if (mounted) setState(() => _checking.remove(cliType));
     }

@@ -9,6 +9,7 @@ import '../models/local_model.dart';
 import '../models/swarm.dart';
 import '../providers/models_provider.dart';
 import '../providers/swarm_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Memo Swarm — Host / Join screen (Beta, non-macOS).
 /// Visual pattern mirrors [LaunchpadView]'s feature cards.
@@ -382,7 +383,7 @@ class _HostSwarmViewState extends ConsumerState<_HostSwarmView> {
             const SizedBox(height: 8),
             modelsAsync.when(
               loading: () => const LinearProgressIndicator(minHeight: 2),
-              error: (e, _) => Text('$e', style: TextStyle(color: c.textDim)),
+              error: (e, _) => Text(FriendlyError.describeGeneric(e), style: TextStyle(color: c.textDim)),
               data: (models) {
                 final chatModels =
                     models.where((m) => !m.isEmbedding).toList();

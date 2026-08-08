@@ -5,6 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../models/persona_presets.dart';
 import '../../../providers/settings_provider.dart';
 import '../../persona_picker.dart';
+import '../../../core/friendly_error.dart';
 
 class SystemPromptTab extends ConsumerStatefulWidget {
   const SystemPromptTab({super.key});
@@ -86,7 +87,7 @@ class SystemPromptTabState extends ConsumerState<SystemPromptTab> {
 
         asyncPrompt.when(
           loading: () => Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('${L10n.t('error')}: $e'),
+          error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
           data: (prompt) {
             if (_lastLoadedPrompt != prompt) {
               _lastLoadedPrompt = prompt;

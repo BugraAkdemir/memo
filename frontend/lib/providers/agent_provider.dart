@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../models/agent.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 final agentEnabledProvider =
     StateNotifierProvider<AgentEnabledNotifier, bool>((ref) {
@@ -23,7 +24,7 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
       final enabled = await _ref.read(apiClientProvider).getAgentEnabled();
       state = enabled;
     } catch (e) {
-      debugPrint('agent: init error: $e');
+      debugPrint('agent: init error: ${FriendlyError.describeGeneric(e)}');
     }
   }
 
@@ -33,10 +34,10 @@ class AgentEnabledNotifier extends StateNotifier<bool> {
     try {
       await _ref.read(apiClientProvider).setAgentEnabled(enabled);
     } catch (e) {
-      debugPrint('agent: setEnabled error: $e');
+      debugPrint('agent: setEnabled error: ${FriendlyError.describeGeneric(e)}');
       state = previous;
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Ajan modu değiştirilemedi ($e)';
+          '${L10n.t('error')}: Ajan modu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -67,9 +68,9 @@ class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
       await ref.read(apiClientProvider).revokeAgentPermission(id);
       await refresh();
     } catch (e) {
-      debugPrint('agent: revoke error: $e');
+      debugPrint('agent: revoke error: ${FriendlyError.describeGeneric(e)}');
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: İzin kaldırılamadı ($e)';
+          '${L10n.t('error')}: İzin kaldırılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -78,9 +79,9 @@ class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
       await ref.read(apiClientProvider).clearAgentPermissions();
       await refresh();
     } catch (e) {
-      debugPrint('agent: clearAll error: $e');
+      debugPrint('agent: clearAll error: ${FriendlyError.describeGeneric(e)}');
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: İzinler temizlenemedi ($e)';
+          '${L10n.t('error')}: İzinler temizlenemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -128,7 +129,7 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
           await _ref.read(apiClientProvider).getAgentAutoPermission();
       state = enabled;
     } catch (e) {
-      debugPrint('agent: auto-permission init error: $e');
+      debugPrint('agent: auto-permission init error: ${FriendlyError.describeGeneric(e)}');
     }
   }
 
@@ -138,10 +139,10 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
     try {
       await _ref.read(apiClientProvider).setAgentAutoPermission(next);
     } catch (e) {
-      debugPrint('agent: auto-permission toggle error: $e');
+      debugPrint('agent: auto-permission toggle error: ${FriendlyError.describeGeneric(e)}');
       state = !next;
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Otomatik izin değiştirilemedi ($e)';
+          '${L10n.t('error')}: Otomatik izin değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -151,10 +152,10 @@ class AgentAutoPermissionNotifier extends StateNotifier<bool> {
     try {
       await _ref.read(apiClientProvider).setAgentAutoPermission(enabled);
     } catch (e) {
-      debugPrint('agent: auto-permission set error: $e');
+      debugPrint('agent: auto-permission set error: ${FriendlyError.describeGeneric(e)}');
       state = previous;
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Otomatik izin değiştirilemedi ($e)';
+          '${L10n.t('error')}: Otomatik izin değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }

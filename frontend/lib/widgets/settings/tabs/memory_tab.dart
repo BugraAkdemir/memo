@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 import '../../../models/gpu_info.dart';
 import '../../../providers/settings_provider.dart';
 import '../../../providers/chat_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class MemoryTab extends ConsumerStatefulWidget {
   const MemoryTab({super.key});
@@ -51,7 +52,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(L10n.t('memory_stats_unavailable', {'e': '$e'})),
+            content: Text(L10n.t('memory_stats_unavailable', {'e': FriendlyError.describeGeneric(e)})),
           ),
         );
       }
@@ -120,7 +121,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
               SizedBox(height: 20),
               settingsAsync.when(
                 loading: () => Center(child: CircularProgressIndicator()),
-                error: (e, _) => Text('${L10n.t('error')}: $e'),
+                error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
                 data: (settings) {
                   if (!_settingsInitialized) {
                     _topKController.text = settings.topK.toString();
@@ -211,7 +212,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                                           messenger.showSnackBar(
                                             SnackBar(
                                               content: Text(
-                                                '${L10n.t('error')}: $e',
+                                                '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
                                               ),
                                             ),
                                           );
@@ -289,7 +290,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                         } catch (e) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${L10n.t('error')}: $e')),
+                              SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
                             );
                           }
                         }
@@ -301,7 +302,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
               SizedBox(height: 12),
               memoryAsync.when(
                 loading: () => Center(child: CircularProgressIndicator()),
-                error: (e, _) => Center(child: Text('${L10n.t('error')}: $e')),
+                error: (e, _) => Center(child: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
                 data: (files) {
                   if (files.isEmpty) {
                     return Padding(
@@ -383,7 +384,7 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                                             ).showSnackBar(
                                               SnackBar(
                                                 content: Text(
-                                                  '${L10n.t('error')}: $e',
+                                                  '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
                                                 ),
                                               ),
                                             );

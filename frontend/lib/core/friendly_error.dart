@@ -45,4 +45,69 @@ class FriendlyError {
     }
     return L10n.t('friendly_error_generic');
   }
+
+  /// General-purpose sibling of [describe] for everywhere else in the app
+  /// (agent, WhatsApp, swarm, backup, settings tabs, ...) that isn't one of
+  /// [describe]'s three model-loading callers. Same safe, type-based
+  /// network-error classification, but deliberately without [describe]'s
+  /// keyword heuristics: "killed"/"socketexception"/etc. as bare substrings
+  /// were tuned for llama.cpp process-lifecycle errors specifically, and
+  /// would misclassify an unrelated error elsewhere that happens to mention
+  /// one of those words for its own reasons (e.g. "permission killed" in an
+  /// agent context has nothing to do with running out of RAM).
+  static String describeGeneric(Object error) {
+    if (error is DioException) {
+      switch (error.type) {
+        case DioExceptionType.connectionTimeout:
+        case DioExceptionType.receiveTimeout:
+        case DioExceptionType.sendTimeout:
+        case DioExceptionType.connectionError:
+          return L10n.t('friendly_error_network');
+        case DioExceptionType.badResponse:
+          return _messageFromResponseBody(error.response?.data) ??
+              L10n.t('friendly_error_generic');
+        case DioExceptionType.cancel:
+        case DioExceptionType.badCertificate:
+        case DioExceptionType.transformTimeout:
+        case DioExceptionType.unknown:
+          return L10n.t('friendly_error_generic');
+      }
+    }
+    return _stripExceptionPrefix(error.toString());
+  }
+
+  /// Unwraps the `{"error": "..."}` / `{"error": {"message": "..."}}` /
+  /// `{"message": "..."}` shapes Memo's own backend error responses use
+  /// (see internal/provider.ExtractErrorMessage on the Go side) so a
+  /// genuine backend-reported failure still surfaces its actual message
+  /// instead of a bare status code or nothing at all.
+  static String? _messageFromResponseBody(Object? data) {
+    if (data is Map) {
+      final err = data['error'];
+      if (err is String && err.isNotEmpty) return err;
+      if (err is Map) {
+        final msg = err['message'];
+        if (msg is String && msg.isNotEmpty) return msg;
+      }
+      final msg = data['message'];
+      if (msg is String && msg.isNotEmpty) return msg;
+    }
+    return null;
+  }
+
+  /// `Exception('some message').toString()` is `'Exception: some message'`
+  /// — most non-Dio throws in this codebase are hand-written with an
+  /// already-clean message, so stripping the mechanical type prefix is
+  /// enough to make them read as prose instead of leaking a type name.
+  static String _stripExceptionPrefix(String text) {
+    // Dart's built-in Error/Exception types each format their own
+    // toString() differently — Exception/FormatException prefix with their
+    // own type name, but StateError's is "Bad state: ..." (its actual
+    // wording, not "StateError: ...").
+    const prefixes = ['Exception: ', 'FormatException: ', 'Bad state: '];
+    for (final prefix in prefixes) {
+      if (text.startsWith(prefix)) return text.substring(prefix.length);
+    }
+    return text;
+  }
 }

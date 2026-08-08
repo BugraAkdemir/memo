@@ -5,6 +5,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../models/task_list.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
   Timer? _pollTimer;
@@ -55,7 +56,7 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
       await action();
       await refresh();
     } catch (e) {
-      ref.read(errorMessageProvider.notifier).state = '${L10n.t('error')}: $e';
+      ref.read(errorMessageProvider.notifier).state = '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}';
     }
   }
 

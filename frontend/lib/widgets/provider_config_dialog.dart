@@ -8,6 +8,7 @@ import '../core/theme.dart';
 import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/provider_provider.dart';
+import '../core/friendly_error.dart';
 
 class ProviderConfigDialog extends ConsumerStatefulWidget {
   final ProviderConfig? existing;
@@ -151,7 +152,7 @@ class _ProviderConfigDialogState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
       return null;
@@ -192,7 +193,7 @@ class _ProviderConfigDialogState
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('models_fetch_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
       return null;
@@ -349,7 +350,7 @@ class _ProviderConfigDialogState
       }
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) setState(() => _saveError = '${L10n.t('error')}: $e');
+      if (mounted) setState(() => _saveError = '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}');
     } finally {
       if (mounted) setState(() => _isSaving = false);
     }

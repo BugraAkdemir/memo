@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
 import '../../../providers/provider_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class TaskLoopTab extends ConsumerWidget {
   const TaskLoopTab({super.key});
@@ -67,7 +68,7 @@ class TaskLoopTab extends ConsumerWidget {
                   loading: () =>
                       const SizedBox(height: 20, child: LinearProgressIndicator()),
                   error: (e, _) => Text(
-                    '${L10n.t('error')}: $e',
+                    '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
                     style: const TextStyle(fontSize: 12, color: MemoTheme.red),
                   ),
                 ),
@@ -110,7 +111,7 @@ class TaskLoopTab extends ConsumerWidget {
                   loading: () =>
                       const SizedBox(height: 20, child: LinearProgressIndicator()),
                   error: (e, _) => Text(
-                    '${L10n.t('error')}: $e',
+                    '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
                     style: const TextStyle(fontSize: 12, color: MemoTheme.red),
                   ),
                 ),

@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../core/l10n.dart';
 import '../providers/chat_provider.dart';
 import 'app_shell.dart';
+import '../core/friendly_error.dart';
 
 /// A calendar event as returned by /api/calendar/events.
 class _Event {
@@ -123,7 +124,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = FriendlyError.describeGeneric(e);
         _loading = false;
       });
     }

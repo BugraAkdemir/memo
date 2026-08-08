@@ -7,6 +7,7 @@ import '../core/api_client.dart';
 import '../core/l10n.dart';
 import '../models/swarm.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Swarm room status with adaptive polling (same pattern as
 /// [WhatsAppStatusNotifier] — manual Timer reschedule, not Timer.periodic).
@@ -80,9 +81,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       startPolling();
       return code;
     } catch (e) {
-      debugPrint('swarm: createHost error: $e');
+      debugPrint('swarm: createHost error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Swarm oda oluşturulamadı ($e)';
+          '${L10n.t('error')}: Swarm oda oluşturulamadı (${FriendlyError.describeGeneric(e)})';
       return null;
     }
   }
@@ -92,9 +93,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmHostRemoveWorker(workerId);
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: removeWorker error: $e');
+      debugPrint('swarm: removeWorker error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Worker kaldırılamadı ($e)';
+          '${L10n.t('error')}: Worker kaldırılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -103,9 +104,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmHostReorderWorkers(fromIndex, toIndex);
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: reorderWorkers error: $e');
+      debugPrint('swarm: reorderWorkers error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Worker sırası değiştirilemedi ($e)';
+          '${L10n.t('error')}: Worker sırası değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -114,9 +115,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmHostSetShare(workerId, pct);
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: setShare error: $e');
+      debugPrint('swarm: setShare error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Pay oranı ayarlanamadı ($e)';
+          '${L10n.t('error')}: Pay oranı ayarlanamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -125,9 +126,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmHostStart(ctxSize: ctxSize);
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: start error: $e');
+      debugPrint('swarm: start error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Swarm başlatılamadı ($e)';
+          '${L10n.t('error')}: Swarm başlatılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -136,9 +137,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmHostStop();
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: stop error: $e');
+      debugPrint('swarm: stop error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Swarm durdurulamadı ($e)';
+          '${L10n.t('error')}: Swarm durdurulamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -147,9 +148,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmHostClose();
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: closeRoom error: $e');
+      debugPrint('swarm: closeRoom error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Swarm odası kapatılamadı ($e)';
+          '${L10n.t('error')}: Swarm odası kapatılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -159,9 +160,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _fetch();
       startPolling();
     } catch (e) {
-      debugPrint('swarm: join error: $e');
+      debugPrint('swarm: join error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Swarm\'a katılınamadı ($e)';
+          '${L10n.t('error')}: Swarm\'a katılınamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -170,9 +171,9 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
       await _api.swarmLeave();
       await _fetch();
     } catch (e) {
-      debugPrint('swarm: leave error: $e');
+      debugPrint('swarm: leave error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Swarm\'dan ayrılamadı ($e)';
+          '${L10n.t('error')}: Swarm\'dan ayrılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 

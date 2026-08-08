@@ -5,6 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../models/provider_config.dart';
 import '../../../providers/provider_provider.dart';
 import '../../provider_config_dialog.dart';
+import '../../../core/friendly_error.dart';
 
 class ProvidersTab extends ConsumerWidget {
   const ProvidersTab({super.key});
@@ -83,7 +84,7 @@ class ProvidersTab extends ConsumerWidget {
             );
           },
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text(L10n.t('providers_error', {'e': '$e'})),
+          error: (e, _) => Text(L10n.t('providers_error', {'e': FriendlyError.describeGeneric(e)})),
         ),
       ],
     );

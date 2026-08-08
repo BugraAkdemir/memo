@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../models/orchestra_config.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Orchestra config provider.
 final orchestraConfigProvider =
@@ -17,9 +18,9 @@ class OrchestraConfigNotifier extends AsyncNotifier<OrchestraConfig> {
     try {
       return await ref.read(apiClientProvider).getOrchestraConfig();
     } catch (e) {
-      debugPrint('orchestra: build error: $e');
+      debugPrint('orchestra: build error: ${FriendlyError.describeGeneric(e)}');
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Orchestra yapılandırması alınamadı ($e)';
+          '${L10n.t('error')}: Orchestra yapılandırması alınamadı (${FriendlyError.describeGeneric(e)})';
       return const OrchestraConfig();
     }
   }
@@ -29,9 +30,9 @@ class OrchestraConfigNotifier extends AsyncNotifier<OrchestraConfig> {
       await ref.read(apiClientProvider).updateOrchestraConfig(config);
       state = AsyncData(config);
     } catch (e) {
-      debugPrint('orchestra: save error: $e');
+      debugPrint('orchestra: save error: ${FriendlyError.describeGeneric(e)}');
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Orchestra yapılandırması kaydedilemedi ($e)';
+          '${L10n.t('error')}: Orchestra yapılandırması kaydedilemedi (${FriendlyError.describeGeneric(e)})';
       rethrow;
     }
   }

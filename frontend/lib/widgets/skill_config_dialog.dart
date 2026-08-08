@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../providers/skill_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Dialog for managing skills: list, activate/deactivate, install, remove.
 class SkillConfigDialog extends ConsumerStatefulWidget {
@@ -66,7 +67,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
                   child: Padding(
                     padding: const EdgeInsets.all(24),
                     child: Text(
-                      L10n.t('skills_list_load_failed', {'e': '$e'}),
+                      L10n.t('skills_list_load_failed', {'e': FriendlyError.describeGeneric(e)}),
                       style: TextStyle(color: theme.textDim),
                     ),
                   ),

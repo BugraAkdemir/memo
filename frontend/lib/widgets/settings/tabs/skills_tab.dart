@@ -4,6 +4,7 @@ import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../providers/skill_provider.dart';
 import '../../skill_config_dialog.dart';
+import '../../../core/friendly_error.dart';
 
 class SkillsTab extends ConsumerWidget {
   const SkillsTab({super.key});
@@ -48,7 +49,7 @@ class SkillsTab extends ConsumerWidget {
             child: skillsAsync.when(
               loading: () => const Center(child: CircularProgressIndicator()),
               error: (e, _) => Center(
-                child: Text(L10n.t('skills_load_error', {'e': '$e'}), style: TextStyle(color: theme.textDim)),
+                child: Text(L10n.t('skills_load_error', {'e': FriendlyError.describeGeneric(e)}), style: TextStyle(color: theme.textDim)),
               ),
               data: (skills) {
                 if (skills.isEmpty) {

@@ -5,6 +5,7 @@ import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/tts_provider_config.dart';
 import '../../providers/chat_provider.dart';
+import '../../core/friendly_error.dart';
 
 /// Settings → Beta Features → Voice Response Providers (Faz 2.5).
 ///
@@ -48,7 +49,7 @@ class _TTSProviderSectionState extends ConsumerState<TTSProviderSection> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loadError = '$e';
+        _loadError = FriendlyError.describeGeneric(e);
         _loading = false;
       });
     }
@@ -61,7 +62,7 @@ class _TTSProviderSectionState extends ConsumerState<TTSProviderSection> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('tts_provider_delete_failed', {'err': '$e'}))),
+        SnackBar(content: Text(L10n.t('tts_provider_delete_failed', {'err': FriendlyError.describeGeneric(e)}))),
       );
     }
   }
@@ -73,7 +74,7 @@ class _TTSProviderSectionState extends ConsumerState<TTSProviderSection> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('tts_provider_save_failed', {'err': '$e'}))),
+        SnackBar(content: Text(L10n.t('tts_provider_save_failed', {'err': FriendlyError.describeGeneric(e)}))),
       );
     }
   }
@@ -261,7 +262,7 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
       setState(() {
         _testing = false;
         _statusIsError = true;
-        _status = L10n.t('tts_provider_test_failed', {'err': '$e'});
+        _status = L10n.t('tts_provider_test_failed', {'err': FriendlyError.describeGeneric(e)});
       });
     }
   }
@@ -282,7 +283,7 @@ class _AddProviderFormState extends ConsumerState<_AddProviderForm> {
       setState(() {
         _saving = false;
         _statusIsError = true;
-        _status = L10n.t('tts_provider_save_failed', {'err': '$e'});
+        _status = L10n.t('tts_provider_save_failed', {'err': FriendlyError.describeGeneric(e)});
       });
     }
   }

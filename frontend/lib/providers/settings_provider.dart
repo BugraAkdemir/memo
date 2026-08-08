@@ -11,6 +11,7 @@ import '../models/gpu_info.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/usage_stats.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 final prefsProvider = Provider<SharedPreferences>((ref) {
   throw UnimplementedError('Override prefsProvider in main()');
@@ -268,7 +269,7 @@ class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
       state = AsyncData(MemorySettings(topK: topK, minSimilarity: minSimilarity));
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Hafıza ayarları kaydedilemedi ($e)';
+          '${L10n.t('error')}: Hafıza ayarları kaydedilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -371,7 +372,7 @@ final syncAuthProvider = FutureProvider<bool>((ref) async {
     return await ref.read(apiClientProvider).checkSyncAuth();
   } catch (e) {
     ref.read(errorMessageProvider.notifier).state =
-        '${L10n.t('error')}: Sync durumu alınamadı ($e)';
+        '${L10n.t('error')}: Sync durumu alınamadı (${FriendlyError.describeGeneric(e)})';
     return false;
   }
 });
@@ -381,7 +382,7 @@ final syncAccountProvider = FutureProvider<Map<String, dynamic>>((ref) async {
     return await ref.read(apiClientProvider).getSyncAccount();
   } catch (e) {
     ref.read(errorMessageProvider.notifier).state =
-        '${L10n.t('error')}: Sync hesap bilgisi alınamadı ($e)';
+        '${L10n.t('error')}: Sync hesap bilgisi alınamadı (${FriendlyError.describeGeneric(e)})';
     return {'authenticated': false};
   }
 });
@@ -391,19 +392,26 @@ final syncSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
     return await ref.read(apiClientProvider).getSyncSettings();
   } catch (e) {
     ref.read(errorMessageProvider.notifier).state =
-        '${L10n.t('error')}: Sync ayarları alınamadı ($e)';
+        '${L10n.t('error')}: Sync ayarları alınamadı (${FriendlyError.describeGeneric(e)})';
     return {};
   }
 });
 
 // ─── Remote Access ──────────────────────────────────────────────
 
+// Deliberately silent on failure, unlike most of this file's other
+// FutureProviders: this one isn't scoped to a screen the user chose to
+// open (Remote Access settings has its own explicit fetch/error handling)
+// — app_shell.dart's _showSwarmNav() watches it on every rebuild just to
+// gate a nav icon, so a dead/unreachable backend used to mean this rethrew
+// into errorMessageProvider on every single rebuild, spamming a raw
+// exception-dump SnackBar over the *entire* app for as long as the
+// backend stayed down. Same quiet-default pattern gpuInfoProvider/
+// downloadProgressProvider already use for the same reason.
 final remoteAccessProvider = FutureProvider<Map<String, dynamic>>((ref) async {
   try {
     return await ref.read(apiClientProvider).getRemoteAccess();
   } catch (e) {
-    ref.read(errorMessageProvider.notifier).state =
-        '${L10n.t('error')}: Uzak erişim durumu alınamadı ($e)';
     return {'enabled': false};
   }
 });
@@ -442,7 +450,7 @@ class MemoryEnabledNotifier extends AsyncNotifier<bool> {
     } catch (e) {
       state = AsyncData(current);
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Hafıza durumu değiştirilemedi ($e)';
+          '${L10n.t('error')}: Hafıza durumu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     } finally {
       _toggling = false;
     }
@@ -480,7 +488,7 @@ class MinimalModeNotifier extends AsyncNotifier<bool> {
     } catch (e) {
       state = AsyncData(current);
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Minimal mod değiştirilemedi ($e)';
+          '${L10n.t('error')}: Minimal mod değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     } finally {
       _toggling = false;
     }
@@ -520,7 +528,7 @@ class MinimalModeOverridesNotifier extends AsyncNotifier<MinimalModeOverrides> {
     } catch (e) {
       state = AsyncData(previous);
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Minimal mod ayarları değiştirilemedi ($e)';
+          '${L10n.t('error')}: Minimal mod ayarları değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     } finally {
       _saving = false;
     }
@@ -534,7 +542,7 @@ final appVersionProvider = FutureProvider<String>((ref) async {
     return await ref.read(apiClientProvider).getVersion();
   } catch (e) {
     ref.read(errorMessageProvider.notifier).state =
-        '${L10n.t('error')}: Uygulama sürümü alınamadı ($e)';
+        '${L10n.t('error')}: Uygulama sürümü alınamadı (${FriendlyError.describeGeneric(e)})';
     return 'unknown';
   }
 });

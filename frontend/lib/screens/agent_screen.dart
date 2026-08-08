@@ -11,6 +11,7 @@ import '../providers/agent_provider.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import 'tasks_screen.dart';
+import '../core/friendly_error.dart';
 
 class AgentScreen extends ConsumerWidget {
   const AgentScreen({super.key});
@@ -65,7 +66,7 @@ class _AgentSidebar extends ConsumerWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text(L10n.t('agent_create_failed', {'error': '$e'}))),
+                          SnackBar(content: Text(L10n.t('agent_create_failed', {'error': FriendlyError.describeGeneric(e)}))),
                         );
                       }
                     }
@@ -227,7 +228,7 @@ class _AgentContent extends ConsumerWidget {
                   } catch (e) {
                     if (context.mounted) {
                       ScaffoldMessenger.of(context).showSnackBar(
-                        SnackBar(content: Text(L10n.t('agent_create_failed', {'error': '$e'}))),
+                        SnackBar(content: Text(L10n.t('agent_create_failed', {'error': FriendlyError.describeGeneric(e)}))),
                       );
                     }
                   }
@@ -252,7 +253,7 @@ class _AgentContent extends ConsumerWidget {
               children: [
                 Icon(Icons.error_outline, color: MemoTheme.red, size: 40),
                 const SizedBox(height: 12),
-                Text('$e', style: TextStyle(color: MemoTheme.of(context).textMuted)),
+                Text(FriendlyError.describeGeneric(e), style: TextStyle(color: MemoTheme.of(context).textMuted)),
                 const SizedBox(height: 12),
                 OutlinedButton(
                     onPressed: () => ref.invalidate(messagesProvider),

@@ -5,6 +5,7 @@ import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../models/tts_voice.dart';
 import '../../providers/chat_provider.dart';
+import '../../core/friendly_error.dart';
 
 /// Settings → Beta Features → Local Voice Models (Faz 2.6).
 ///
@@ -49,7 +50,7 @@ class _TTSVoiceSectionState extends ConsumerState<TTSVoiceSection> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _loadError = L10n.t('tts_voice_load_failed', {'err': '$e'});
+        _loadError = L10n.t('tts_voice_load_failed', {'err': FriendlyError.describeGeneric(e)});
         _loading = false;
       });
     }
@@ -76,7 +77,7 @@ class _TTSVoiceSectionState extends ConsumerState<TTSVoiceSection> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('tts_voice_download_failed', {'err': '$e'}))),
+        SnackBar(content: Text(L10n.t('tts_voice_download_failed', {'err': FriendlyError.describeGeneric(e)}))),
       );
     } finally {
       if (mounted) setState(() => _busyIds.remove(v.id));
@@ -91,7 +92,7 @@ class _TTSVoiceSectionState extends ConsumerState<TTSVoiceSection> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('tts_voice_select_failed', {'err': '$e'}))),
+        SnackBar(content: Text(L10n.t('tts_voice_select_failed', {'err': FriendlyError.describeGeneric(e)}))),
       );
     } finally {
       if (mounted) setState(() => _busyIds.remove(v.id));
@@ -106,7 +107,7 @@ class _TTSVoiceSectionState extends ConsumerState<TTSVoiceSection> {
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(L10n.t('tts_voice_delete_failed', {'err': '$e'}))),
+        SnackBar(content: Text(L10n.t('tts_voice_delete_failed', {'err': FriendlyError.describeGeneric(e)}))),
       );
     } finally {
       if (mounted) setState(() => _busyIds.remove(v.id));

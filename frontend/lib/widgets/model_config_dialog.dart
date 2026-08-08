@@ -112,7 +112,7 @@ class _ModelConfigDialogState extends ConsumerState<ModelConfigDialog> {
                 );
             ref.invalidate(embeddingStatusProvider);
           } catch (e) {
-            debugPrint('Embedding start error: $e');
+            debugPrint('Embedding start error: ${FriendlyError.describeGeneric(e)}');
             // Don't block — embedding is optional, show warning
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(

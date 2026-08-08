@@ -7,6 +7,7 @@ import '../../../core/l10n.dart';
 import 'dart:async';
 import 'package:file_picker/file_picker.dart';
 import '../../../providers/chat_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class BackupRestoreTab extends ConsumerStatefulWidget {
   const BackupRestoreTab({super.key});
@@ -129,7 +130,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('backup_save_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('backup_save_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {
@@ -203,7 +204,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('backup_connection_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('backup_connection_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
         setState(() { _cloudOp = ''; });
       }
@@ -222,7 +223,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('backup_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('backup_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {
@@ -254,7 +255,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('backup_restore_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('backup_restore_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {
@@ -294,7 +295,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('backup_error_generic', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('backup_error_generic', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     }
@@ -327,7 +328,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_error', {'e': '$e'}))));
+        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_export_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) setState(() => _exporting = false);
@@ -367,7 +368,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_import_error', {'e': '$e'}))));
+        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_import_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) setState(() => _importing = false);
@@ -386,7 +387,7 @@ class BackupRestoreTabState extends ConsumerState<BackupRestoreTab> {
       if (mounted) {
         ScaffoldMessenger.of(
           context,
-        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_wipe_error', {'e': '$e'}))));
+        ).showSnackBar(SnackBar(content: Text(L10n.t('backup_wipe_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) {

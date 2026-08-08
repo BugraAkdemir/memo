@@ -5,6 +5,7 @@ import '../../core/l10n.dart';
 import '../../core/theme.dart';
 import '../../providers/agent_provider.dart';
 import '../../utils/tool_names.dart';
+import '../../core/friendly_error.dart';
 
 class PermissionHistory extends ConsumerWidget {
   const PermissionHistory({super.key});
@@ -109,7 +110,7 @@ class PermissionHistory extends ConsumerWidget {
             },
             loading: () => const Center(child: CircularProgressIndicator()),
             error: (e, st) =>
-                Center(child: Text(L10n.t('engine_error', {'e': '$e'}))),
+                Center(child: Text(L10n.t('engine_error', {'e': FriendlyError.describeGeneric(e)}))),
           ),
         ),
       ],

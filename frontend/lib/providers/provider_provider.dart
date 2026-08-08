@@ -5,6 +5,7 @@ import 'package:flutter_svg/flutter_svg.dart';
 import '../core/l10n.dart';
 import '../models/provider_config.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Provider list provider.
 final providerListProvider =
@@ -32,7 +33,7 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
       ref.invalidate(activeProviderTypeProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Sağlayıcı kaydedilemedi ($e)';
+          '${L10n.t('error')}: Sağlayıcı kaydedilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -43,7 +44,7 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
       ref.invalidate(activeProviderTypeProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Sağlayıcı silinemedi ($e)';
+          '${L10n.t('error')}: Sağlayıcı silinemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -51,9 +52,9 @@ class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
     try {
       return await ref.read(apiClientProvider).testProvider(config);
     } catch (e) {
-      debugPrint('provider: test error: $e');
+      debugPrint('provider: test error: ${FriendlyError.describeGeneric(e)}');
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Sağlayıcı test edilemedi ($e)';
+          '${L10n.t('error')}: Sağlayıcı test edilemedi (${FriendlyError.describeGeneric(e)})';
       return {'connected': false, 'error': e.toString()};
     }
   }
@@ -68,12 +69,20 @@ final activeProviderTypeProvider =
 class ActiveProviderNotifier extends AsyncNotifier<String> {
   @override
   Future<String> build() async {
+    // Deliberately silent on failure: this is watched ambiently from the
+    // main chat top bar and the always-visible engine strip
+    // (chat_screen.dart, engine_strip.dart), not a screen the user chose to
+    // open — a dead/unreachable backend used to rethrow into
+    // errorMessageProvider on every rebuild, spamming a raw exception-dump
+    // SnackBar over the whole app for as long as the backend stayed down
+    // (same root cause and fix as remoteAccessProvider, see its own
+    // comment). BackendUnreachableOverlay is what actually tells the user
+    // the backend is down now — this provider doesn't need to duplicate
+    // that.
     try {
       return await ref.read(apiClientProvider).getActiveProvider();
     } catch (e) {
-      debugPrint('provider: getActiveProvider error: $e');
-      ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Aktif sağlayıcı alınamadı ($e)';
+      debugPrint('provider: getActiveProvider error: ${FriendlyError.describeGeneric(e)}');
       return '';
     }
   }
@@ -85,7 +94,7 @@ class ActiveProviderNotifier extends AsyncNotifier<String> {
       ref.invalidate(providerListProvider);
     } catch (e) {
       ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Aktif sağlayıcı değiştirilemedi ($e)';
+          '${L10n.t('error')}: Aktif sağlayıcı değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }

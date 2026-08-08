@@ -6,6 +6,7 @@ import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/models_provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class GeneralTab extends ConsumerWidget {
   const GeneralTab({super.key});
@@ -194,7 +195,7 @@ class GeneralTab extends ConsumerWidget {
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            error: (e, _) => Text('${L10n.t('error')}: $e'),
+            error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
             data: (enabled) => Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -232,7 +233,7 @@ class GeneralTab extends ConsumerWidget {
                         } catch (e) {
                           if (context.mounted) {
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${L10n.t('error')}: $e')),
+                              SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
                             );
                           }
                         }
@@ -273,7 +274,7 @@ class GeneralTab extends ConsumerWidget {
               height: 24,
               child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
             ),
-            error: (e, _) => Text('${L10n.t('error')}: $e'),
+            error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
             data: (enabled) => Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -310,7 +311,7 @@ class GeneralTab extends ConsumerWidget {
                     } catch (e) {
                       if (context.mounted) {
                         ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(content: Text('${L10n.t('error')}: $e')),
+                          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
                         );
                       }
                     }
@@ -456,7 +457,7 @@ class _MinimalModeOverridesDropdown extends ConsumerWidget {
         ),
         error: (e, _) => Padding(
           padding: EdgeInsets.all(16),
-          child: Text('${L10n.t('error')}: $e'),
+          child: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
         ),
         data: (overrides) => Theme(
           // ExpansionTile's default divider clashes with this panel's own
@@ -645,7 +646,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('cli_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('cli_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {
@@ -678,7 +679,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('cli_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('cli_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {
@@ -696,7 +697,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('uninstall_error', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('uninstall_error', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {

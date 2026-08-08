@@ -9,6 +9,7 @@ import '../models/chat.dart';
 import '../models/task_list.dart';
 import '../providers/tasklist_provider.dart';
 import '../providers/chat_provider.dart';
+import '../core/friendly_error.dart';
 
 class TasksScreen extends ConsumerStatefulWidget {
   /// The agent chat this screen was opened from. Pre-selects that chat as
@@ -161,7 +162,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
                     Icon(Icons.cloud_off, size: 48, color: c.textDim),
                     const SizedBox(height: 12),
                     Text(
-                      '${L10n.t('error')}: $e',
+                      '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
                       style: TextStyle(fontSize: 13, color: c.textSecondary),
                       textAlign: TextAlign.center,
                     ),
@@ -442,7 +443,7 @@ class _TasksScreenState extends ConsumerState<TasksScreen> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: $e'), backgroundColor: MemoTheme.red),
+          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'), backgroundColor: MemoTheme.red),
         );
       }
     }

@@ -5,6 +5,7 @@ import '../core/live_mode_controller.dart';
 import '../core/tts_playback_error.dart';
 import '../core/wav_player.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Cross-modal voice mode for the normal chat screen: unlike the old,
 /// removed standalone Live Mode tab, this lives at the provider level so
@@ -169,7 +170,7 @@ class VoiceModeNotifier extends StateNotifier<VoiceModeState> {
       } catch (e) {
         if (myGeneration != _generation) return; // cancelled by a barge-in
         _ref.read(errorMessageProvider.notifier).state =
-            L10n.t('live_screen_error_send_failed', {'err': '$e'});
+            L10n.t('live_screen_error_send_failed', {'err': FriendlyError.describeGeneric(e)});
         return;
       }
 

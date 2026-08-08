@@ -4,6 +4,7 @@ import '../../../core/theme.dart';
 import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/learning_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class LearningTab extends ConsumerWidget {
   const LearningTab({super.key});
@@ -41,7 +42,7 @@ class LearningTab extends ConsumerWidget {
         // Settings card
         settingsAsync.when(
           loading: () => const CircularProgressIndicator(),
-          error: (e, _) => Text(L10n.t('learning_error', {'e': '$e'}), style: TextStyle(color: MemoTheme.red)),
+          error: (e, _) => Text(L10n.t('learning_error', {'e': FriendlyError.describeGeneric(e)}), style: TextStyle(color: MemoTheme.red)),
           data: (settings) => SettingsCard(settings: settings, ref: ref),
         ),
         const SizedBox(height: 12),
@@ -76,7 +77,7 @@ class LearningTab extends ConsumerWidget {
             child: CircularProgressIndicator(),
           )),
           error: (e, _) => Center(
-            child: Text(L10n.t('learning_patterns_load_error', {'e': '$e'}), style: TextStyle(color: theme.textDim)),
+            child: Text(L10n.t('learning_patterns_load_error', {'e': FriendlyError.describeGeneric(e)}), style: TextStyle(color: theme.textDim)),
           ),
           data: (patterns) {
             if (patterns.isEmpty) {
@@ -252,7 +253,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
     } catch (e) {
       if (!mounted) return;
       setState(() {
-        _error = '$e';
+        _error = FriendlyError.describeGeneric(e);
         _loading = false;
       });
     }
@@ -271,7 +272,7 @@ class ModelRoutingCardState extends ConsumerState<ModelRoutingCard> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L10n.t('learning_error', {'e': '$e'}))));
+            .showSnackBar(SnackBar(content: Text(L10n.t('learning_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) setState(() => _saving = false);

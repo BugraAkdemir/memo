@@ -6,6 +6,7 @@ import '../../../providers/provider_provider.dart';
 import '../../../models/orchestra_config.dart';
 import '../../../providers/orchestra_provider.dart';
 import '../../orchestra_config_dialog.dart';
+import '../../../core/friendly_error.dart';
 
 class OrchestraTab extends ConsumerWidget {
   const OrchestraTab({super.key});
@@ -121,7 +122,7 @@ class OrchestraTab extends ConsumerWidget {
             ),
           ),
           loading: () => const Center(child: CircularProgressIndicator()),
-          error: (e, _) => Center(child: Text(L10n.t('orchestra_error', {'e': '$e'}))),
+          error: (e, _) => Center(child: Text(L10n.t('orchestra_error', {'e': FriendlyError.describeGeneric(e)}))),
         ),
         const SizedBox(height: 20),
 

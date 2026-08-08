@@ -5,6 +5,7 @@ import '../core/api_client.dart';
 import '../core/l10n.dart';
 import '../models/whatsapp.dart';
 import 'chat_provider.dart';
+import '../core/friendly_error.dart';
 
 final whatsAppStatusProvider = StateNotifierProvider.autoDispose<
     WhatsAppStatusNotifier, AsyncValue<WhatsAppStatus>>((ref) {
@@ -43,7 +44,7 @@ class WhatsAppChatModeNotifier extends StateNotifier<bool> {
     try {
       state = await _api.getWhatsAppChatMode();
     } catch (e) {
-      debugPrint('whatsapp: chat mode init error: $e');
+      debugPrint('whatsapp: chat mode init error: ${FriendlyError.describeGeneric(e)}');
     }
   }
 
@@ -53,9 +54,9 @@ class WhatsAppChatModeNotifier extends StateNotifier<bool> {
       await _api.setWhatsAppChatMode(next);
       state = next;
     } catch (e) {
-      debugPrint('whatsapp: toggle error: $e');
+      debugPrint('whatsapp: toggle error: ${FriendlyError.describeGeneric(e)}');
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: WhatsApp sohbet modu değiştirilemedi ($e)';
+          '${L10n.t('error')}: WhatsApp sohbet modu değiştirilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 }
@@ -125,7 +126,7 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: WhatsApp bağlantısı başlatılamadı ($e)';
+          '${L10n.t('error')}: WhatsApp bağlantısı başlatılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -136,7 +137,7 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: WhatsApp bağlantısı kesilemedi ($e)';
+          '${L10n.t('error')}: WhatsApp bağlantısı kesilemedi (${FriendlyError.describeGeneric(e)})';
     }
   }
 
@@ -147,7 +148,7 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
     } catch (e) {
       if (mounted) state = AsyncValue.error(e, StackTrace.current);
       _ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: WhatsApp oturumu kapatılamadı ($e)';
+          '${L10n.t('error')}: WhatsApp oturumu kapatılamadı (${FriendlyError.describeGeneric(e)})';
     }
   }
 

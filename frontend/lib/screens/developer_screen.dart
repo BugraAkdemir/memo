@@ -7,6 +7,7 @@ import '../core/theme.dart';
 import '../models/dev_gateway.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Developer screen (NavRail): the local Anthropic/OpenAI-compatible API
 /// gateway's Base URL/model list/settings, plus a live log of requests
@@ -61,7 +62,7 @@ class DeveloperScreen extends ConsumerWidget {
         SizedBox(height: 8),
         modelsAsync.when(
           loading: () => Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('${L10n.t('error')}: $e', style: TextStyle(color: MemoTheme.red)),
+          error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}', style: TextStyle(color: MemoTheme.red)),
           data: (models) {
             if (models.isEmpty) {
               return Container(
@@ -91,7 +92,7 @@ class DeveloperScreen extends ConsumerWidget {
 
         configAsync.when(
           loading: () => Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('${L10n.t('error')}: $e', style: TextStyle(color: MemoTheme.red)),
+          error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}', style: TextStyle(color: MemoTheme.red)),
           data: (config) => _ConfigSection(config: config),
         ),
         SizedBox(height: 32),
@@ -167,7 +168,7 @@ class _ConfigSection extends ConsumerWidget {
       } catch (e) {
         if (context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(L10n.t('dev_gateway_save_error', {'e': '$e'}))),
+            SnackBar(content: Text(L10n.t('dev_gateway_save_error', {'e': FriendlyError.describeGeneric(e)}))),
           );
         }
       }
@@ -293,7 +294,7 @@ class _LogSection extends ConsumerWidget {
         logsAsync.when(
           loading: () => Center(child: CircularProgressIndicator()),
           error: (e, _) => Text(
-            L10n.t('dev_gateway_logs_error', {'e': '$e'}),
+            L10n.t('dev_gateway_logs_error', {'e': FriendlyError.describeGeneric(e)}),
             style: TextStyle(color: MemoTheme.red),
           ),
           data: (logs) {

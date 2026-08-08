@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/chat_provider.dart';
+import '../core/friendly_error.dart';
 
 /// A configured routine, as returned by GET /api/routines.
 ///
@@ -143,7 +144,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _error = L10n.t('routines_load_error', {'e': '$e'});
+        _error = L10n.t('routines_load_error', {'e': FriendlyError.describeGeneric(e)});
       });
     }
   }
@@ -180,7 +181,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       if (!mounted) return;
       setState(() {
         _parsing = false;
-        _error = L10n.t('routines_parse_error', {'e': '$e'});
+        _error = L10n.t('routines_parse_error', {'e': FriendlyError.describeGeneric(e)});
       });
     }
   }
@@ -216,7 +217,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = L10n.t('routines_save_error', {'e': '$e'}));
+      setState(() => _error = L10n.t('routines_save_error', {'e': FriendlyError.describeGeneric(e)}));
     }
   }
 
@@ -229,7 +230,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = L10n.t('routines_update_error', {'e': '$e'}));
+      setState(() => _error = L10n.t('routines_update_error', {'e': FriendlyError.describeGeneric(e)}));
     }
   }
 
@@ -240,7 +241,7 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
       await _load();
     } catch (e) {
       if (!mounted) return;
-      setState(() => _error = L10n.t('routines_delete_error', {'e': '$e'}));
+      setState(() => _error = L10n.t('routines_delete_error', {'e': FriendlyError.describeGeneric(e)}));
     }
   }
 

@@ -5,6 +5,7 @@ import '../../../core/l10n.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/models_provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class GpuConfigTab extends ConsumerStatefulWidget {
   const GpuConfigTab({super.key});
@@ -113,7 +114,7 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
 
         installedAsync.when(
           loading: () => Center(child: CircularProgressIndicator()),
-          error: (e, _) => Text('${L10n.t('error')}: $e'),
+          error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
           data: (installed) {
             final llamaSettings = ref.watch(llamaSettingsProvider);
             return Column(
@@ -140,7 +141,7 @@ class GpuConfigTabState extends ConsumerState<GpuConfigTab> {
                       SizedBox(height: 12),
                       llamaSettings.when(
                         loading: () => CircularProgressIndicator(),
-                        error: (e, _) => Text('${L10n.t('error')}: $e'),
+                        error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
                         data: (settings) => DropdownButton<String>(
                           value: settings.engineMode,
                           isExpanded: true,
@@ -312,7 +313,7 @@ class ModelParametersCardState extends ConsumerState<ModelParametersCard> {
     final llamaSettings = ref.watch(llamaSettingsProvider);
     return llamaSettings.when(
       loading: () => SizedBox.shrink(),
-      error: (e, _) => Text('${L10n.t('error')}: $e'),
+      error: (e, _) => Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}'),
       data: (settings) {
         if (!_loaded) {
           _temperature = settings.temperature;

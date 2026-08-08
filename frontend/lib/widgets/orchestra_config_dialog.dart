@@ -8,6 +8,7 @@ import '../models/provider_config.dart';
 import '../providers/chat_provider.dart';
 import '../providers/orchestra_provider.dart';
 import '../providers/provider_provider.dart';
+import '../core/friendly_error.dart';
 
 class OrchestraConfigDialog extends ConsumerStatefulWidget {
   const OrchestraConfigDialog({super.key});
@@ -63,7 +64,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
           return _buildContent(context, cfg, providersAsync);
         },
         loading: () => const SizedBox(height: 200, child: Center(child: CircularProgressIndicator())),
-        error: (e, _) => SizedBox(height: 200, child: Center(child: Text(L10n.t('error_with_detail', {'e': '$e'})))),
+        error: (e, _) => SizedBox(height: 200, child: Center(child: Text(L10n.t('error_with_detail', {'e': FriendlyError.describeGeneric(e)})))),
       ),
     );
   }
@@ -544,7 +545,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
       final rawModels = result['models'];
       models = (rawModels is List) ? rawModels.cast<Map<String, dynamic>>() : <Map<String, dynamic>>[];
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with_detail', {'e': '$e'}))));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('error_with_detail', {'e': FriendlyError.describeGeneric(e)}))));
       return;
     }
     if (!mounted) return;
@@ -582,7 +583,7 @@ class _OrchestraConfigDialogState extends ConsumerState<OrchestraConfigDialog> {
         messenger.showSnackBar(SnackBar(content: Text(L10n.t('orchestra_saved'))));
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('orchestra_save_failed', {'e': '$e'}))));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(L10n.t('orchestra_save_failed', {'e': FriendlyError.describeGeneric(e)}))));
     } finally {
       if (mounted) setState(() => _saving = false);
     }

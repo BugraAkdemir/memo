@@ -9,6 +9,7 @@ import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
 import '../tts_provider_section.dart';
 import '../tts_voice_section.dart';
+import '../../../core/friendly_error.dart';
 
 /// Settings → Beta Features.
 ///
@@ -39,7 +40,7 @@ class _BetaFeaturesTabState extends ConsumerState<BetaFeaturesTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('${L10n.t('error')}: $e')),
+          SnackBar(content: Text('${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}')),
         );
       }
     } finally {

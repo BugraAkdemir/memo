@@ -158,6 +158,27 @@ func (a *App) buildMessagesForSession(ctx context.Context, chatID, userMsg strin
 		}
 	}
 
+	// Deliberately outside the MinimalMode check above: mood/web-search are
+	// ambient enhancements Minimal Mode is meant to strip, but an active
+	// skill is something the user explicitly turned on, not incidental
+	// prompt bloat.
+	//
+	// Injected here — into systemPrompt itself, before the local/external
+	// branch below decides how to fold it into the outgoing messages —
+	// rather than by the caller appending it onto a `role: "system"`
+	// message afterward (the previous approach, in routeStream/
+	// callLLMStream's Orchestra branch). That approach silently dropped
+	// every active skill's instructions whenever a.llamaServer was running:
+	// the local-model branch just below never emits a `role: "system"`
+	// message at all (it merges systemPrompt straight into a user-role
+	// message instead, apparently for chat-template compatibility), so a
+	// search for `msg.Role == "system"` after the fact found nothing to
+	// attach to. Baking it into systemPrompt up front means it rides along
+	// no matter which branch below actually uses it.
+	if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
+		systemPrompt += skillPrompt
+	}
+
 	var tokenBudget int
 	if a.llamaServer != nil && a.llamaServer.IsRunning() {
 		a.cfgMu.RLock()

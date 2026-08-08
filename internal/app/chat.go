@@ -176,16 +176,13 @@ func (a *App) SendMessageStream(ctx context.Context, userMsg string) <-chan api.
 // global agent-mode toggle — set when sessionID is itself an agent chat
 // (see SendMessageStreamTo's doc comment).
 func (a *App) routeStream(ctx context.Context, messages []api.Message, userMsg, imagePath, filePath, sessionID string, forceAgent bool) <-chan api.StreamChunk {
-	if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
-		for i, msg := range messages {
-			if msg.Role == "system" {
-				if content, ok := msg.Content.(string); ok {
-					messages[i].Content = content + skillPrompt
-				}
-				break
-			}
-		}
-	}
+	// Active-skill instructions are baked into systemPrompt by
+	// buildMessagesForSession (helpers.go) itself now, before messages was
+	// even built — see that call site's comment for why re-injecting here
+	// after the fact (the previous approach) silently missed local-model
+	// chats. Re-appending here too would double the instructions for every
+	// caller that already goes through buildMessagesForSession (all three
+	// real callers of routeStream do).
 
 	// Ambient proactive nudging is skipped entirely in Incognito Mode — same
 	// "secure session, nothing persisted, nothing recalled" contract that

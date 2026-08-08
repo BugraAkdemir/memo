@@ -327,10 +327,13 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 
 		conversationCtx := buildConversationContext(messages, userPrompt)
 		if systemPrompt != "" {
+			// Active-skill instructions are already part of systemPrompt by
+			// the time messages reaches here (baked in by
+			// buildMessagesForSession, helpers.go) — appending
+			// buildActiveSkillPrompt() again here would duplicate them for
+			// every real caller of this function, which all build messages
+			// that way.
 			conversationCtx = "Sistem talimatları: " + systemPrompt + "\n\n---\n\n" + conversationCtx
-		}
-		if skillPrompt := a.buildActiveSkillPrompt(); skillPrompt != "" {
-			conversationCtx += "\n\n" + skillPrompt
 		}
 
 		// Only the chief talks to the user. The preamble, plan, and each

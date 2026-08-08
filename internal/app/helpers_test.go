@@ -2,6 +2,8 @@ package app
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -12,6 +14,7 @@ import (
 	"memo/internal/memory"
 	moodpkg "memo/internal/mood"
 	"memo/internal/sessions"
+	"memo/internal/skill"
 )
 
 func TestBuildMessages_MoodDisabled_StripsAssistant(t *testing.T) {
@@ -411,6 +414,74 @@ func TestBuildMessagesForSession_IgnoresConcurrentActiveChatSwitch(t *testing.T)
 	}
 	if !foundA {
 		t.Fatal("buildMessagesForSession(chatA, ...) did not include chat A's own history")
+	}
+}
+
+// TestBuildMessagesForSession_IncludesActiveSkillInstructions is the
+// regression test for the bug found while investigating "do activated
+// skills actually reach the model": buildActiveSkillPrompt() used to be
+// appended by routeStream (chat.go) and callAgentWithOrchestra (llm.go)
+// *after* buildMessagesForSession had already built the message list, by
+// searching for a `role: "system"` message to append onto. That search
+// silently found nothing whenever a.llamaServer was running: the local-
+// model branch of buildMessagesForSession never emits a `role: "system"`
+// message at all (it merges systemPrompt into a user-role message
+// instead) — so an active skill's instructions never reached the local
+// model, with no error or indication anywhere that anything was wrong.
+//
+// Fixed by baking buildActiveSkillPrompt()'s output into systemPrompt
+// itself, before either branch below decides how to fold it into the
+// outgoing messages — this test covers the a.llamaServer == nil branch
+// (real system-role message), which exercises the same systemPrompt
+// variable the local-model branch also uses. The local-model branch
+// itself needs a real, live *llama.Server (IsRunning() checks an actual
+// OS process) and isn't practical to exercise in a plain unit test.
+func TestBuildMessagesForSession_IncludesActiveSkillInstructions(t *testing.T) {
+	id := identity.New("Test", "Memo", "casual", "", false)
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("NewManager() error = %v", err)
+	}
+
+	skillMgr := skill.NewManager(t.TempDir())
+	skillDir := filepath.Join(skillMgr.SkillsDir(), "greeter")
+	if err := os.MkdirAll(skillDir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	content := "---\nname: greeter\ndescription: \"test skill\"\n---\n" +
+		"Always greet the user by name before answering.\n"
+	if err := os.WriteFile(filepath.Join(skillDir, "SKILL.md"), []byte(content), 0644); err != nil {
+		t.Fatal(err)
+	}
+	if err := skillMgr.Discover(); err != nil {
+		t.Fatalf("Discover() error = %v", err)
+	}
+	if err := skillMgr.SetActive([]string{"greeter"}); err != nil {
+		t.Fatalf("SetActive() error = %v", err)
+	}
+
+	a := &App{
+		cfg: &config.AppConfig{
+			Memory: config.MemoryConfig{MemoryEnabled: false},
+			Llama:  config.LlamaConfig{CtxSize: 4096},
+		},
+		identity:     id,
+		sessions:     sm,
+		skillManager: skillMgr,
+	}
+
+	chatID := sm.GetActiveID()
+	messages := a.buildMessagesForSession(context.Background(), chatID, "hello", nil)
+
+	var found bool
+	for _, m := range messages {
+		if content, ok := m.Content.(string); ok &&
+			strings.Contains(content, "Always greet the user by name before answering.") {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("buildMessagesForSession() did not include the active skill's instructions")
 	}
 }
 

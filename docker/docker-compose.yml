@@ -1,17 +1,16 @@
 # Memo — backend-only container for CasaOS / any Docker host.
 #
-# Install in CasaOS via App Store -> "Install a customized app" -> paste
-# this file (after replacing `image:` with your own pushed image — see
-# docker/README.md, CasaOS does not build from a Dockerfile itself).
-#
-# There is no browser UI: this is Memo's REST API only. Connect the Flutter
-# desktop app or the `memo` CLI to this container's address using the
-# X-Memo-Token printed in `docker logs` on first boot.
+# Install in CasaOS via App Store -> "Install a customized app" -> paste this
+# file as-is — the image below is built and published automatically by
+# .github/workflows/build-docker.yml on every push to main (:beta) and every
+# release tag (:latest), no manual `docker build`/`docker push` needed. See
+# docker/README.md if you want to build your own image instead (e.g. a fork,
+# or a local change you haven't pushed).
 name: memo
 
 services:
   memo:
-    image: your-dockerhub-username/memo-backend:latest # replace after `docker build` + `docker push` — see docker/README.md
+    image: ghcr.io/bugraakdemir/memo-backend:latest
     container_name: memo
     restart: unless-stopped
     ports:
@@ -24,8 +23,14 @@ services:
     # (Dockerfile's HEALTHCHECK), inherited automatically.
 
 x-casaos:
-  # amd64 only — binaries/linux/cpu (llama.cpp + vec0) in this repo is x86_64
-  # only. Add arm64 here only once an arm64 build of those is substituted in.
+  # Still amd64-only here even though build-docker.yml already publishes a
+  # working arm64 image (ghcr.io/bugraakdemir/memo-backend:latest is in fact
+  # already a multi-arch manifest covering both). Deliberately not adding
+  # arm64 to this list until it's actually been verified booting on real ARM
+  # hardware (a Raspberry Pi) — CasaOS uses this field to decide which
+  # architectures to even offer the app on, so listing one that was never
+  # live-tested risks a CasaOS/ARM user installing something silently
+  # broken. Flip this once that verification happens (yapacam.md Faz 1).
   architectures:
     - amd64
   main: memo

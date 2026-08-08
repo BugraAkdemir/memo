@@ -14,18 +14,18 @@ so on — point the full Flutter desktop app at this container instead
 manage the whole backend remotely with no extra code on this side. The
 built-in browser client is intentionally not a port of that app.
 
-## 1. Build and push the image
+## 1. The image is already built for you
 
-CasaOS's "Install a customized app" screen installs a `docker-compose.yml`
-that references an already-built `image:` — it does not build from a
-Dockerfile itself. Build it wherever you have Docker, push it to a registry
-your CasaOS box can pull from (Docker Hub, GHCR, a private registry), then
-point `docker-compose.yml` at it.
+`docker-compose.yml` points at `ghcr.io/bugraakdemir/memo-backend:latest` —
+a **multi-arch image (amd64 + arm64)** built and published automatically by
+`.github/workflows/build-docker.yml`. Nothing to build or push yourself for
+a normal install: `docker compose up -d` (or CasaOS's "Install a customized
+app") pulls the right architecture for your machine on its own, Raspberry
+Pi/ARM NAS included.
 
-```bash
-docker build -t <your-registry>/memo-backend:latest .
-docker push <your-registry>/memo-backend:latest
-```
+Tag scheme, same beta/stable split the rest of this repo's release pipeline
+uses: `:latest` (and `:vX.Y.Z`) only ever move on a real tagged release;
+`:beta` tracks every push to `main` if you want the bleeding edge instead.
 
 The image bundles the **CPU** llama.cpp backend only (no GPU passthrough
 assumed on a typical NAS/home-server box). Local GGUF chat/embedding models
@@ -35,13 +35,28 @@ first boot is the realistic choice on this class of hardware anyway. Voice
 transcription (Whisper) isn't bundled — the model wasn't shipped in the image
 to keep it small; that feature stays unavailable in this deployment for now.
 
-This `Dockerfile`/`docker-compose.yml` build amd64 only —
-`x-casaos.architectures` reflects that. Linux arm64 (Raspberry Pi, ARM NAS)
-support exists elsewhere in this repo now (`build_releases_arm.sh`,
-`binaries/linux/cpu-arm64/`, `get_memo_arm.sh` — a native, non-Docker
-install), but this specific Dockerfile hasn't been extended to build an
-arm64 image yet. Substituting an arm64 `binaries/linux/cpu-arm64/` build into
-a modified Dockerfile would be the starting point if that's wanted next.
+**arm64 status:** the image itself is built and pushed for arm64 (native, on
+GitHub's hosted arm64 runner — see the workflow), but `x-casaos.architectures`
+in `docker-compose.yml` still only lists `amd64` until someone actually boots
+it on real ARM hardware and confirms it works end to end (CasaOS uses that
+field to decide which architectures to even offer the app on — listing one
+that was never live-tested risks shipping something silently broken to every
+CasaOS/ARM user at once). If you're testing this on a Raspberry Pi: `docker
+pull ghcr.io/bugraakdemir/memo-backend:latest` already gets you the arm64
+image directly (Docker resolves the manifest automatically), you don't need
+to wait for that flag — just report back whether it actually works.
+
+### Building your own image instead
+
+Only needed for a fork, or testing a local change you haven't pushed:
+
+```bash
+docker build -t <your-registry>/memo-backend:latest .
+docker push <your-registry>/memo-backend:latest
+```
+
+then point `docker-compose.yml`'s `image:` at what you pushed instead of the
+GHCR one.
 
 ## 2. Install on CasaOS
 
@@ -137,3 +152,13 @@ If the build fails on a missing apt package or an unexpected `ldd` dependency
 on your build machine's exact `llama-server` build, that's the first place to
 look — the runtime stage's package list was derived from `ldd` against the
 binary already committed in this repo, not guessed.
+
+**`.github/workflows/build-docker.yml` itself is also unverified against a
+real run** — YAML-syntax-checked only (no GitHub Actions runner available in
+the environment it was written in), same limitation as this Dockerfile had
+before someone actually ran it. First real push to `main` is the actual
+test. One manual, one-time step it can't do for you: a package pushed with
+the workflow's own `GITHUB_TOKEN` is **private** by default — go to the
+repo's GitHub page → Packages → `memo-backend` → Package settings → Change
+visibility → Public, once, after the first successful push, or nobody
+without repo access can `docker pull` it.

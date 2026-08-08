@@ -1,4 +1,85 @@
-# Handoff — 2026-08-08 — R2-tabanlı tam otomatik release pipeline (build → binary gömme → GitHub Release → download.bugradev.com) + v3.3.4 gerçek yayını
+# Handoff — 2026-08-08 (Session 2) — Skill auto-import (Claude Code) + "sunucuya bağlanılamıyor" deneyiminin komple yeniden yapılması
+
+## Özet
+
+İki ayrı iş hattı, aynı gün, aynı oturum:
+
+**1. Skill auto-import:** Kullanıcının fikri — Memo'nun kendi SKILL.md formatı Claude Code'unkiyle (YAML frontmatter + markdown body) neredeyse birebir aynı olduğu için, kullanıcının makinesinde zaten yüklü olan Claude Code skill'lerini (`~/.claude/skills/`) elle `/skill install` etmesine gerek kalmadan her açılışta otomatik tarayıp içe aktaran ve aktifleştiren bir mekanizma kuruldu.
+
+**2. "Sunucuya bağlanılamıyor" deneyimi:** Kullanıcı üç ayrı ekran görüntüsüyle (bug.png, bug2.png, bug3.png) art arda gerçek bug'lar buldu — sırasıyla: (a) backend'e ulaşılamayınca yanlışlıkla "Llama.cpp Eksik" ekranı çıkıp kullanıcıyı Settings'e geri dönemeyecek şekilde kilitliyordu; (b) her ekranda (sohbet, takvim, model mağazası) ayrı ayrı çirkin `DioException`/`SocketException` metin dökümleri ve tekrarlayan kırmızı toast'lar görünüyordu; (c) sunucu adresine şemasız bir değer (`127.0.0.1`) yazıp uygulayınca Dio'nun senkron doğrulaması yüzünden **tüm uygulama çöküyordu**. Üçü de kök nedenlerine kadar bulunup düzeltildi; sonuçta tüm uygulamayı kaplayan tek, sakin bir "Sunucuya bağlanılamıyor" ekranı + Tekrar Dene / Sunucuyu Değiştir / Yeniden Başlat aksiyonları + proje genelinde (~48 dosya, ~170 yer) ham exception metinlerinin insan diline çevrilmesiyle sonuçlandı.
+
+**Commit durumu:** Hepsi commitlendi, working tree temiz: `93ddc60`, `519ab3d`, `e1d943e`, `4a0ed89`, `d26ad80`, `285c509`, `d0e8ea8`.
+
+## Yapılanlar
+
+### 1. Skill auto-import (`93ddc60`, `519ab3d`)
+
+`internal/skill/external.go` (yeni): `SyncExternalSkills(m, sources)` — her `ExternalSource`'un dizinlerini tarar, `LoadSkill` ile parse eder, `<dataDir>/skills_imported.json`'da tuttuğu path+boyut+mtime imzasına göre üç duruma ayırır: yeni → `Install()` + otomatik aktifleştir; içerik değişmiş → `Remove()`+`Install()`; isim çakışması ama import kaydı yok (kullanıcının kendi elle kurduğu bir skill) → **dokunma**, `Skipped` olarak raporla. Kaynak dizini sonradan silinen bir skill asla otomatik kaldırılmıyor (bilinçli, konservatif varsayım). `KnownExternalSources()` şu an sadece Claude Code'u (`~/.claude/skills`) listeliyor — OpenCode/Codex'in gerçek dosya konvansiyonu bu ortamda doğrulanamadığı için bilinçli olarak dışarıda bırakıldı (yanlış path'e göre kod yazıp ya hiçbir şey ya da yanlış dosyaları içe aktarma riski). `internal/app/app.go`'nun `Startup()`'ına, `Discover()`+`SetToolRegistrar()`'dan hemen sonra tek satır çağrı olarak bağlandı.
+
+`internal/skill/loader.go`'ya `sanitizeFrontMatterYAML` eklendi (`519ab3d`): canlı ortamda gerçek `~/.claude/skills/codebase-memory/SKILL.md`'yi test ederken bulundu — description alanı `"...Triggers on: explore..."` gibi tırnaksız bir iç kolon içeriyordu, bu da `yaml.v3`'ün "mapping values are not allowed" hatasıyla parse'ı tamamen reddetmesine sebep oluyordu (Claude Code'un kendi hafif extraction'ı buna toleranslı, gerçek YAML değil). Üst seviye skaler alanlar (`name`/`description`/vb.) için, iç kolon içeren tırnaksız değerleri otomatik tırnaklıyor — `tools:` altındaki iç içe `- name:`/`description:` satırlarına dokunmuyor (column-0 anchor sayesinde).
+
+Canlı doğrulama: bu makinedeki gerçek `~/.claude/skills/`'e karşı headless backend başlatılıp `/api/skills/active-list` sorgulandı — 5/6 skill (`find-skills`, `frontend-design`, `prompt-master`, `seo-geo`, `codebase-memory`) otomatik içe aktarılıp aktifleşti. `notebooklm` hâlâ dışarıda kaldı — 121MB'lık gömülü bir `node` binary'si var, `copyDir`'in önceden var olan 10MB dosya boyutu sınırına takılıyor (bilinçli, kapsam dışı bırakıldı).
+
+### 2. "Llama.cpp Eksik" yanlış tetiklenmesi (`e1d943e`)
+
+Kullanıcı önceden bir uzak backend'e (`192.168.1.106:8090`) bağlanmış, o sunucuyu kapatmıştı. `llamaInstalledProvider` (models_provider.dart) her hatayı (bağlantı reddi dahil) yutup `false` döndürüyordu — yani "backend'e ulaşamıyorum" ile "llama.cpp gerçekten kurulu değil" ayırt edilemiyordu. Bu da tüm ekranı kaplayan `LlamaInstallerOverlay`'i açıyordu; overlay'in tek çıkış butonu ("Skip") ise GPU tespitine bağlıydı, o da aynı şekilde hata yutup "GPU yok" varsayıyordu — yani Skip butonu da hiç görünmüyordu. Sonuç: Settings dişlisine tıklanamıyor, gerçek çıkış yolu yok.
+
+Düzeltme: `llamaInstalledProvider` artık bağlantı hatasını yutmuyor, olduğu gibi fırlatıyor — zaten var olan (ama hiç tetiklenemeyen) `error: (e,_) => SizedBox.shrink()` dalı otomatik devreye giriyor. Ayrıca `_showBackendDeadDialog`'a (backend oturum ortasında ölürse) "Ayarlar" butonu eklendi.
+
+### 3. Global "Sunucuya bağlanılamıyor" ekranı + inline sunucu değiştirme + restart geri sayımı (`4a0ed89`)
+
+`frontend/lib/widgets/backend_unreachable_view.dart` (yeni):
+- `BackendUnreachableOverlay` — `connectionStatusProvider`'ı (zaten var, 30sn'de bir `isAlive()` çağırıyor) izliyor, `false` raporlandığı an **tüm uygulamayı** kaplıyor (`app_shell.dart`'ın Stack'ine `LlamaInstallerOverlay`'in yanına eklendi). Bu, kullanıcının "takvim'e giriyorum, model mağazasına giriyorum, her yerde ayrı hata alıyorum" şikayetini kökten çözüyor — artık hiçbiri o ekrana ulaşamıyor bile.
+- `isBackendUnreachableError(e)` — `DioExceptionType` bazlı sınıflandırma (string sniffing değil), gerçek bir backend hatasıyla karışmaz.
+- "Sunucuyu Değiştir" **Settings'e gitmiyor** (kullanıcı sonradan bunu istedi) — kendi küçük `_ChangeServerDialog`'unu açıyor, aynı `backendUrlProvider`/`backendTokenProvider`'ı kullanıyor.
+- Apply sonrası `_RestartRequiredDialog`: "Şimdi Başlat" butonu + canlı 10 saniyelik geri sayım, süre dolunca otomatik restart. Restart = `exit(0)` (Memo'nun frontend'i backend'i hiç kendisi başlatmadığı için gerçek bir dual-process restart yapılamıyor — bu, mevcut `_showBackendDeadDialog` konvansiyonuyla aynı, kullanıcıya açıkça anlatıldı, bkz. "Bilinen Açıklar").
+
+Yan düzeltmeler (aynı işi çalışır kılmak için gerekliydi):
+- `api_client.dart`'ın 3 streaming metodu artık `DioException`'ı olduğu gibi `rethrow` ediyor — önceden ham metni yeni bir `Exception`'a gömüp tipini kaybediyordu, bu da `isBackendUnreachableError`'ın hiçbir zaman doğru sınıflandıramamasına sebep oluyordu.
+- `remote_access_tab.dart`: URL/token alanları artık `getRemoteAccess()`'in başarısına bağlı olmadan her zaman render ediliyor (önceden sadece `data` dalındaydı — yani backend zaten ulaşılamazken bu sekmeyi açan kullanıcı, sorunu çözecek TEK kontrolü hiç göremiyordu). Ayrıca canlı testte bulunan, önceden fark edilmemiş bir overflow bug'ı düzeltildi (Tailscale/ngrok başlık satırlarında `Spacer()` yerine `Expanded`+ellipsis).
+- `SettingsDialog.initialTab` eklendi (varsayılan 0) — `_showBackendDeadDialog`'ın "Ayarlar" butonu artık doğrudan Remote Access sekmesine düşüyor.
+
+### 4. Proje genelinde ham hata mesajlarının temizlenmesi (`d26ad80`)
+
+Kullanıcı ayrı bir ekran görüntüsüyle ("Aktif sağlayıcı alınamadı (DioException...)") yakaladı: `ActiveProviderNotifier` (provider_provider.dart), her rebuild'de (ana sohbet üst çubuğu + engine strip tarafından ambient izleniyor) hata olduğunda ham exception'ı `errorMessageProvider`'a basıyordu — `remoteAccessProvider`'la (aynı gün, aynı oturumda daha önce sessizleştirilmişti) birebir aynı anti-pattern. Aynı şekilde sessizleştirildi.
+
+Sonra proje geneli tarandı: `frontend/lib/**/*.dart`'ta `'$e'`/`($e)` şeklinde ham exception interpolasyonu yapan **~170 yer, ~48 dosya** bulundu (her provider'ın catch bloğu, her settings sekmesinin SnackBar'ı, her `.when(error:)`). Hepsi `FriendlyError.describeGeneric(e)`'e çevrildi — mevcut `friendly_error.dart`'taki `FriendlyError.describe()`'a (3 model-yükleme ekranına özel, OOM/download anahtar kelime sezgileriyle) **yeni bir kardeş metod** olarak eklendi (mevcut `describe()`'a dokunulmadı — "killed"/"socketexception" gibi anahtar kelimeler model bağlamı dışında yanlış sınıflandırma yapabilirdi). `describeGeneric`: DioException bağlantı/timeout tipleri → tek sakin cümle; gerçek bir backend yanıtı (badResponse) → `{"error":{"message":...}}` gövdesini aç (Go tarafındaki `ExtractErrorMessage`'ın aynası); diğer her şey → `Exception: `/`Bad state: ` gibi mekanik tip önekleri temizlenmiş orijinal mesaj.
+
+Script ile mekanik olarak uygulandı (`python3` ile toplu `$e` → `${FriendlyError.describeGeneric(e)}` değişimi + gerekli import ekleme), sonra `flutter analyze`'ın işaretlediği gereksiz string-interpolation sarmalamaları (`'${expr}'` → `expr`) ayrı bir geçişle temizlendi. Yeni testler: `friendly_error_test.dart`.
+
+### 5. `.gitignore`: `bug*.png` (`285c509`)
+
+Önceki oturumdan kalan `bug.png` literal girişi glob'landı — bu oturumda bug2.png/bug3.png tekrar untracked-file uyarısı vermesin diye.
+
+### 6. Şemasız backend adresi tüm uygulamayı çökertiyordu (`d0e8ea8`)
+
+Kullanıcı canlı yakaladı: "Sunucuyu Değiştir" dialoguna `127.0.0.1` (şemasız) yazıp Apply'a basınca **tüm uygulama** Flutter'ın kırmızı hata ekranıyla çöküyordu — `Invalid argument (baseUrl): Must be a valid URL...`. Dio'nun `BaseOptions`'ı `baseUrl`'i constructor'da senkron doğruluyor; `apiClientProvider` (chat_provider.dart) kaydedilmiş string'i doğrudan `MemoApiClient`'a veriyor, arada hiçbir try/catch yok — yani kötü bir değer, tam da onu düzeltecek ekran dahil, hiçbir UI render olmadan çöküyordu.
+
+`frontend/lib/core/backend_url.dart` (yeni): `normalizeBackendUrl()` — şema yoksa `http://` ekler (Memo backend'i hep düz HTTP), port yoksa `:8090` ekler, açıkça verilmiş bir port (`:1234` gibi) hep korunur, kendisi asla throw etmez (parse edilemeyen host → yerel varsayılana düş). Hem `BackendUrlNotifier.save()`'da (kayıt anında) hem de `apiClientProvider`'ın okuma anında (`chat_provider.dart`) uygulandı — **kritik olan ikincisi**: bu sayede bu düzeltmeden ÖNCE zaten kaydedilmiş bozuk bir değer bile bir sonraki okumada kendi kendini düzeltiyor, kullanıcı hiçbir şey yapmasa bile.
+
+Kullanıcının istediği "Bu Bilgisayarın Backend'ine Dön" butonu `_ChangeServerDialog`'a eklendi — tek tıkla URL+token'ı `127.0.0.1:8090`/boş token'a sıfırlayıp restart-required akışını tetikliyor.
+
+## Doğrulama
+
+- Backend: `go build/vet/test -tags sqlite_fts5 ./internal/skill/... ./internal/app/...` yeşil.
+- Frontend: `flutter analyze lib/` — sadece önceden var olan 5 info (bu oturumdan 0 yeni). `flutter test` — 162'den 176'ya çıktı, hepsi yeşil (yeni: `backend_unreachable_view_test.dart`, `friendly_error_test.dart`, `backend_url_test.dart`, `settings_provider_test.dart`'a eklenen `BackendUrlNotifier` grubu).
+- Skill auto-import canlı doğrulandı (yukarıda, madde 1).
+- Backend-unreachable akışı canlı doğrulandı: gerçek headless backend'e karşı `LlamaInstallerOverlay`'in artık tetiklenmediği, `/api/skills/active-list` gibi endpoint'lerin beklendiği gibi davrandığı kontrol edildi.
+- Restart geri sayımı testte gerçekten `exit(0)`'a **hiç ulaştırılmadan** (9sn'de durdurularak) doğrulandı — test process'ini öldürmemesi için bilinçli.
+- Kullanıcı kendi makinesinde `flutter run -d linux` ile canlı test etmeye başladı; bu ortamda gerçek bir Linux masaüstü display olmadığı için görsel doğrulama tamamen kullanıcının ekran görüntülerine dayandı (bug.png/bug2.png/bug3.png — üçü de gerçek, art arda bulunan gerçek bug'lardı, hipotetik değil).
+
+## Sıradaki Oturum İçin / Bilinen Açıklar
+
+1. **"Yeniden Başlat" gerçek bir dual-process restart değil.** Memo'nun frontend'i backend'i hiç kendisi başlatmıyor (sadece `run_memo.sh`/AppImage/masaüstü ikonu yapıyor), bu yüzden restart butonu/geri sayımı sadece frontend'i `exit(0)` ile kapatıyor. Paketli sürümde `run_memo.sh`'nin kendi temizlik mantığı (frontend kapanınca, EĞER backend'i o başlattıysa `/api/shutdown` + kill) backend'i de kapatabiliyor — ama dev modda (`flutter run -d linux`, kullanıcının şu an test ettiği yöntem) backend tamamen arkada açık kalıyor, dokunulmuyor. Kullanıcıya bu net şekilde anlatıldı. İstenirse restart dialoguna backend'in durumunu gösteren bir satır eklenebilir — yapılmadı.
+2. **OpenCode/Codex için skill auto-import yok** — v1 bilinçli olarak sadece Claude Code'u kapsıyor, diğerlerinin gerçek dosya konvansiyonu doğrulanmadı.
+3. **`notebooklm` skill'i içe aktarılamıyor** — 121MB gömülü `node` binary'si `copyDir`'in 10MB/dosya sınırına takılıyor. Bilinçli kapsam dışı, istenirse sınır yükseltilebilir veya büyük dosyalar için ayrı bir istisna eklenebilir.
+4. **Kaynak dizininden silinen bir skill Memo'dan otomatik kaldırılmıyor** (konservatif tasarım kararı) — istenirse bir "temizle" komutu eklenebilir.
+5. Önceki oturumdan kalan `version.json` beacon sorusu kullanıcı tarafından "ben yaptım" denilerek kapatıldı, bu oturumda dokunulmadı.
+6. Kullanıcının gerçek makinesinde uçtan uca (gerçek bir backend'i kapatıp/değiştirip UI'da) tam doğrulama henüz yapılmadı — üç bug da ekran görüntüleriyle bulundu ama düzeltmelerin *hepsinin* canlı UI'da tekrar denendiği teyit edilmedi. Bir sonraki oturumda kullanıcıdan bunu sorup teyit almak iyi olur.
+
+---
+
+
 
 ## Özet
 

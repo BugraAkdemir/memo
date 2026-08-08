@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"time"
 
@@ -11,6 +12,39 @@ import (
 )
 
 const frontMatterDelim = "---"
+
+// topLevelScalarKey matches an unindented `key: value` line for one of the
+// manifest's plain string fields — never `tools:`/`metadata:` block starters
+// or their nested `- name:`/`description:` entries, which are always
+// indented and so never match this anchored-at-column-0 pattern.
+var topLevelScalarKey = regexp.MustCompile(`^(name|description|version|author|license|instructions):\s+(.*\S)\s*$`)
+
+// sanitizeFrontMatterYAML quotes plain-scalar values that contain a bare
+// "key: value"-shaped colon, which yaml.v3 otherwise rejects as an
+// unexpected nested mapping. Claude Code's own SKILL.md files routinely
+// write descriptions like `description: Use X. Triggers on: doing Y` —
+// valid enough for whatever lightweight extraction Claude Code itself uses,
+// but not valid YAML, so real-world skills from that ecosystem would
+// otherwise fail to import here.
+func sanitizeFrontMatterYAML(yamlPart string) string {
+	lines := strings.Split(yamlPart, "\n")
+	for i, line := range lines {
+		m := topLevelScalarKey.FindStringSubmatch(line)
+		if m == nil {
+			continue
+		}
+		key, value := m[1], m[2]
+		if strings.ContainsAny(value[:1], `"'|>{[`) {
+			continue // already quoted or a flow/block scalar — leave as-is
+		}
+		if !strings.Contains(value, ": ") && !strings.HasSuffix(value, ":") {
+			continue // no embedded colon, nothing to fix
+		}
+		escaped := strings.ReplaceAll(value, `"`, `\"`)
+		lines[i] = key + `: "` + escaped + `"`
+	}
+	return strings.Join(lines, "\n")
+}
 
 func LoadSkill(dir string) (*SkillDefinition, error) {
 	path := filepath.Join(dir, "SKILL.md")
@@ -104,7 +138,7 @@ func extractFrontMatter(content string) (*SkillManifest, string, error) {
 	bodyPart := strings.TrimSpace(rest[second+len(frontMatterDelim):])
 
 	var manifest SkillManifest
-	if err := yaml.Unmarshal([]byte(yamlPart), &manifest); err != nil {
+	if err := yaml.Unmarshal([]byte(sanitizeFrontMatterYAML(yamlPart)), &manifest); err != nil {
 		return nil, "", fmt.Errorf("parse YAML front matter: %w", err)
 	}
 

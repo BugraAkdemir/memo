@@ -125,6 +125,54 @@ Helps with coding tasks.
 	}
 }
 
+func TestParseSkill_UnquotedColonInDescription(t *testing.T) {
+	// Reproduces a real ~/.claude/skills SKILL.md that fails strict YAML
+	// parsing verbatim: an unquoted description containing "Triggers on: ...".
+	content := `---
+name: codebase-memory
+description: Use the codebase knowledge graph for structural queries. Triggers on: explore the codebase, trace the call chain, find callers of.
+---
+Instructions body
+`
+	def, err := ParseSkill([]byte(content), "/skills/codebase-memory")
+	if err != nil {
+		t.Fatalf("ParseSkill() error: %v", err)
+	}
+	if def.Manifest.Name != "codebase-memory" {
+		t.Errorf("Name = %q", def.Manifest.Name)
+	}
+	want := "Use the codebase knowledge graph for structural queries. Triggers on: explore the codebase, trace the call chain, find callers of."
+	if def.Manifest.Description != want {
+		t.Errorf("Description = %q, want %q", def.Manifest.Description, want)
+	}
+}
+
+func TestParseSkill_ToolsBlockUnaffectedBySanitizer(t *testing.T) {
+	// The nested `- name:`/`description:` lines inside `tools:` must not be
+	// touched by the top-level-only sanitizer, even though they share key
+	// names with the manifest's own top-level fields.
+	content := `---
+name: coder
+description: "Code assistant"
+tools:
+  - name: format_code
+    description: "Formats: applies style rules"
+    danger_level: safe
+---
+Coder instructions
+`
+	def, err := ParseSkill([]byte(content), "/skills/coder")
+	if err != nil {
+		t.Fatalf("ParseSkill() error: %v", err)
+	}
+	if len(def.Manifest.Tools) != 1 || def.Manifest.Tools[0].Name != "format_code" {
+		t.Fatalf("Tools = %+v", def.Manifest.Tools)
+	}
+	if def.Manifest.Tools[0].Description != "Formats: applies style rules" {
+		t.Errorf("Tool.Description = %q", def.Manifest.Tools[0].Description)
+	}
+}
+
 func TestDiscoverSkills(t *testing.T) {
 	dir := t.TempDir()
 

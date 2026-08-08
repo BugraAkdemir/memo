@@ -36,6 +36,13 @@ x-casaos:
   main: memo
   author: BugraAkdemir
   category: Utilities
+  # data.memocpp.com's bucket isn't provisioned yet as of this commit — the
+  # URL is expected to go live shortly after. Added ahead of that on purpose
+  # (explicit call: "gelir ekle sen") rather than waiting, since CasaOS just
+  # re-fetches this field on demand — it isn't baked into anything, so there's
+  # nothing to redo once the bucket exists. Until then this renders as
+  # CasaOS's default fallback icon, not a broken image.
+  icon: https://data.memocpp.com/logo.png
   description:
     en_us: >-
       Local-first, privacy-focused AI chat backend with long-term memory.

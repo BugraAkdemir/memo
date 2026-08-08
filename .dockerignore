@@ -33,6 +33,14 @@ binaries/linux/cpu/ggml-small.bin
 binaries/linux/cpu/llama-new/
 
 # Runtime/user data — never baked into the image, always a mounted volume.
+# Exception: providers.example.json is a template the Dockerfile itself
+# COPYs in (seeded into the volume by docker/entrypoint.sh on first boot,
+# same as config.yaml.example) — it has to survive this exclusion. BuildKit
+# (what docker/build-push-action's buildx always uses) resolves a later,
+# more specific "!" rule against an already-excluded parent directory
+# correctly; the classic docker builder does not, but this image is never
+# built with it.
 data/
+!data/providers.example.json
 config/config.yaml
 .env

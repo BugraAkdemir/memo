@@ -570,6 +570,11 @@ func (a *App) Startup(ctx context.Context) {
 		logx.Printf("skill: discover error: %v", err)
 	}
 	a.skillManager.SetToolRegistrar(newSkillToolRegistrar(a.agentExecutor.Registry(), a.skillManager))
+	if result, err := skill.SyncExternalSkills(a.skillManager, skill.KnownExternalSources()); err != nil {
+		logx.Printf("skill: external sync error: %v", err)
+	} else if len(result.Imported) > 0 || len(result.Updated) > 0 {
+		logx.Printf("skill: imported from external tools — new: %v, updated: %v", result.Imported, result.Updated)
+	}
 	logx.Info("Skill manager initialized")
 
 	// Auto-start the embedding model at boot, not just after a local chat

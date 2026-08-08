@@ -1,0 +1,174 @@
+name: Build Docker
+
+# Builds and publishes the backend-only Docker image (see Dockerfile,
+# docker/README.md) to GHCR — amd64 and arm64, combined into one multi-arch
+# manifest so `docker pull .../memo-backend:latest` resolves correctly on
+# either a regular server or a Raspberry Pi. GHCR instead of Docker Hub: zero
+# extra secrets needed (pushes with the workflow's own GITHUB_TOKEN, scoped
+# to `packages: write` per job), and it doesn't hit Docker Hub's anonymous
+# pull rate limit that has bitten other self-hosted-app-store installs.
+#
+# Same beta/stable split the other build-*.yml workflows already use: every
+# push to main updates the `:beta`/`:beta-amd64`/`:beta-arm64` tags, a `v*`
+# tag additionally publishes `:<tag>`/`:<tag>-amd64`/`:<tag>-arm64` and moves
+# `:latest` — so `docker-compose.yml` pointing at `:latest` only ever tracks
+# real releases, never a beta.
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+env:
+  R2_ENDPOINT: https://ce4b56c11890013834d9c6a31568e3f9.r2.cloudflarestorage.com
+  R2_BUCKET: memo
+  IMAGE_NAME: bugraakdemir/memo-backend
+
+jobs:
+  build-amd64:
+    name: Docker amd64
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      - name: Download engine binaries from R2 (amd64 CPU build)
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/cpu/ binaries/linux/cpu/ --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "value=${{ github.ref_name }}-amd64" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=beta-amd64" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+
+  build-arm64:
+    name: Docker arm64
+    # Native build on GitHub's free hosted arm64 runner (public repos) —
+    # same choice build-linux.yml's own build-arm64 job already made, and
+    # for the same reason: CGO (mattn/go-sqlite3) needs a real arm64 C
+    # toolchain to link against, which a QEMU-emulated buildx platform
+    # doesn't give you cheaply or reliably. Building natively on arm64
+    # hardware sidesteps cross-compilation entirely.
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install rclone
+        run: curl -fsSL https://rclone.org/install.sh | sudo bash
+
+      # R2 only stores an arch-suffixed "cpu-arm64" folder (the amd64 job's
+      # binaries/linux/cpu/ is a different, incompatible build) — same
+      # rename-on-install trick build-linux.yml's build-arm64 job and
+      # get_memo_arm.sh already use. Staging it under the same path the
+      # amd64 job uses means the Dockerfile itself never needs to know
+      # which architecture it's building for; it always just COPYs
+      # binaries/linux/cpu/, whatever happens to be staged there.
+      - name: Download engine binaries from R2 (arm64 CPU build)
+        run: rclone copy R2:${{ env.R2_BUCKET }}/binaries/linux/cpu-arm64/ binaries/linux/cpu/ --progress
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            echo "value=${{ github.ref_name }}-arm64" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=beta-arm64" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ghcr.io/${{ env.IMAGE_NAME }}:${{ steps.tag.outputs.value }}
+
+  publish-manifest:
+    name: Publish multi-arch manifest
+    # Combines the two single-arch images pushed above into one manifest
+    # list, so `docker pull ghcr.io/.../memo-backend:latest` (or `:beta`)
+    # transparently resolves to the right architecture whether it's pulled
+    # on a regular amd64 server or a Raspberry Pi — equivalent to `docker
+    # buildx build --platform amd64,arm64 --push` in one shot, just built
+    # across two native runners instead of QEMU-emulating one of them.
+    needs: [build-amd64, build-arm64]
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push manifest
+        run: |
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            SUFFIX="${{ github.ref_name }}"
+          else
+            SUFFIX="beta"
+          fi
+          IMAGE="ghcr.io/${{ env.IMAGE_NAME }}"
+          docker buildx imagetools create -t "$IMAGE:$SUFFIX" "$IMAGE:$SUFFIX-amd64" "$IMAGE:$SUFFIX-arm64"
+          if [ "${{ github.ref_type }}" = "tag" ]; then
+            docker buildx imagetools create -t "$IMAGE:latest" "$IMAGE:$SUFFIX-amd64" "$IMAGE:$SUFFIX-arm64"
+          fi

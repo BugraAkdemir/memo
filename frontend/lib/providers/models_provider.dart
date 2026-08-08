@@ -119,12 +119,13 @@ final modelSearchResultsProvider =
 // ─── Llama Installation ─────────────────────────────────────────
 
 final llamaInstalledProvider = FutureProvider<bool>((ref) async {
-  try {
-    return await ref.read(apiClientProvider).checkLlamaInstallation();
-  } catch (e) {
-    // Connection error: backend unreachable — assume not installed
-    // so the user sees the installer and can trigger setup.
-    // Other errors: also return false to show installer.
-    return false;
-  }
+  // No try/catch here on purpose: a thrown DioException (backend
+  // unreachable) must surface as an AsyncError, not get coerced into
+  // `false`. LlamaInstallerOverlay's error branch already renders nothing
+  // for that case — if this swallowed the error into `false` instead, an
+  // unreachable backend (e.g. a saved remote URL that's since gone dead)
+  // would look identical to "llama.cpp genuinely isn't installed" and pop
+  // the full-screen installer over live data, hiding the nav rail with no
+  // way back to Settings to fix the URL.
+  return ref.read(apiClientProvider).checkLlamaInstallation();
 });

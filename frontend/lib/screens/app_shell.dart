@@ -258,6 +258,18 @@ class _AppShellState extends ConsumerState<AppShell> {
         title: Text(L10n.t('backend_dead_title')),
         content: Text(L10n.t('backend_dead_body')),
         actions: [
+          // A backend can go dead because a custom Remote Access URL
+          // (Settings) points at a server that's since been shut down —
+          // "restart the app" alone doesn't help there, it just reloads the
+          // same dead URL. Opening Settings first lets the user clear/fix
+          // it without forcing a full quit.
+          TextButton(
+            onPressed: () {
+              Navigator.of(ctx).pop();
+              showDialog(context: context, builder: (context) => SettingsDialog());
+            },
+            child: Text(L10n.t('settings')),
+          ),
           TextButton(
             onPressed: () => exit(0),
             child: Text(L10n.t('ok')),

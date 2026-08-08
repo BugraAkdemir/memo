@@ -885,6 +885,22 @@ class L10n {
     'installing': 'Yükleniyor...',
     'skip': 'Şimdilik Atla (Daha Sonra Ayarlardan Kur)',
 
+    // Backend unreachable
+    'backend_unreachable_title': 'Sunucuya bağlanılamıyor',
+    'backend_unreachable_desc':
+        'Memo şu adrese bağlanmaya çalışıyor ama yanıt alamıyor:\n\${url}\n\nSunucu kapalı olabilir ya da bu adres artık geçerli değil.',
+    'backend_unreachable_change_server': 'Sunucuyu Değiştir',
+    'backend_unreachable_restart': 'Memo\'yu Yeniden Başlat',
+    'backend_unreachable_restart_confirm_title': 'Memo yeniden başlatılsın mı?',
+    'backend_unreachable_restart_confirm_body':
+        'Memo kapanacak. Backend de dahil tam bir yeniden başlatma için uygulamayı tekrar açman gerekiyor.',
+    'change_server_dialog_title': 'Sunucuyu Değiştir',
+    'restart_required_title': 'Memo\'nun yeniden başlatılması gerekiyor',
+    'restart_required_body':
+        'Sunucu adresi değişti. Değişikliğin düzgün uygulanması için Memo\'nun yeniden başlatılması gerekiyor.',
+    'restart_now_button': 'Şimdi Başlat',
+    'restart_in_seconds': '\${s} saniye içinde otomatik olarak yeniden başlayacak',
+
     // Embedding
     'embedding_model': 'Gömme Modeli',
     'start_embedding': 'Gömme Modelini Başlat',
@@ -2380,6 +2396,21 @@ class L10n {
     'install_llama': 'Install llama-server',
     'installing': 'Installing...',
     'skip': 'Skip (Install Later from Settings)',
+
+    'backend_unreachable_title': 'Can\'t connect to the server',
+    'backend_unreachable_desc':
+        'Memo is trying to reach this address but isn\'t getting a response:\n\${url}\n\nThe server may be off, or this address may no longer be valid.',
+    'backend_unreachable_change_server': 'Change Server',
+    'backend_unreachable_restart': 'Restart Memo',
+    'backend_unreachable_restart_confirm_title': 'Restart Memo?',
+    'backend_unreachable_restart_confirm_body':
+        'Memo will close. Reopen it to fully restart, backend included.',
+    'change_server_dialog_title': 'Change Server',
+    'restart_required_title': 'Memo needs to restart',
+    'restart_required_body':
+        'The server address changed. Memo needs to restart for this to take full effect.',
+    'restart_now_button': 'Restart Now',
+    'restart_in_seconds': 'Restarting automatically in \${s}s',
 
     'embedding_model': 'Embedding Model',
     'start_embedding': 'Start Embedding Model',

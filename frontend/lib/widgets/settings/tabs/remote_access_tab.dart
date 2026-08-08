@@ -7,6 +7,7 @@ import '../../../core/l10n.dart';
 import 'dart:async';
 import '../../../providers/chat_provider.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../core/friendly_error.dart';
 
 class RemoteAccessTab extends ConsumerStatefulWidget {
   const RemoteAccessTab({super.key});
@@ -92,7 +93,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L10n.t('remote_ts_error', {'e': '$e'}))));
+            .showSnackBar(SnackBar(content: Text(L10n.t('remote_ts_error', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) {
@@ -154,16 +155,32 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     final theme = MemoTheme.of(context);
     final raAsync = ref.watch(remoteAccessProvider);
 
-    return raAsync.when(
-      loading: () => const Center(child: CircularProgressIndicator()),
-      error: (err, _) => Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(L10n.t('remote_load_failed', {'err': '$err'}),
-              style: TextStyle(color: MemoTheme.red)),
+    // The backend URL/token fields are local SharedPreferences state
+    // (backendUrlProvider/backendTokenProvider) — unlike everything else on
+    // this tab, they don't depend on getRemoteAccess() actually succeeding.
+    // They used to live inside _buildStatus, i.e. only reachable in the
+    // `data` branch below: a user landing here specifically *because* the
+    // configured backend is unreachable (e.g. from BackendUnreachableView's
+    // "Sunucuyu Değiştir") would hit nothing but the bare error text and
+    // never see the one control that could actually fix it. Rendered
+    // unconditionally, first, instead.
+    return ListView(
+      padding: const EdgeInsets.all(32),
+      children: [
+        _label(L10n.t('remote_backend_url_label')),
+        const SizedBox(height: 8),
+        _buildBackendUrlSection(),
+        const SizedBox(height: 32),
+        raAsync.when(
+          loading: () => const Center(child: CircularProgressIndicator()),
+          error: (err, _) => Padding(
+            padding: const EdgeInsets.symmetric(vertical: 16),
+            child: Text(L10n.t('remote_load_failed', {'err': '$err'}),
+                style: TextStyle(color: MemoTheme.red)),
+          ),
+          data: (data) => _buildStatus(context, theme, data),
         ),
-      ),
-      data: (data) => _buildStatus(context, theme, data),
+      ],
     );
   }
 
@@ -180,8 +197,8 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
       _ngrokTokenCtrl.text = savedNgrokToken;
     }
 
-    return ListView(
-      padding: const EdgeInsets.all(32),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Row(
           children: [
@@ -246,11 +263,6 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
             addresses: addresses,
             savedNgrokToken: savedNgrokToken,
             ngrokAutoStart: ngrokAutoStart),
-
-        const SizedBox(height: 32),
-        _label(L10n.t('remote_backend_url_label')),
-        const SizedBox(height: 8),
-        _buildBackendUrlSection(),
       ],
     );
   }
@@ -408,10 +420,13 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                 Icon(Icons.public_rounded,
                     size: 18, color: enabled ? MemoTheme.accent : theme.textDim),
                 const SizedBox(width: 8),
-                Text(L10n.t('remote_ngrok_advanced_title'),
-                    style: TextStyle(
-                        fontWeight: FontWeight.w600, color: theme.textMain)),
-                const Spacer(),
+                Expanded(
+                  child: Text(L10n.t('remote_ngrok_advanced_title'),
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                          fontWeight: FontWeight.w600, color: theme.textMain)),
+                ),
+                const SizedBox(width: 8),
                 if (enabled)
                   Container(
                     width: 10,
@@ -631,10 +646,13 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
                   size: 18,
                   color: tsRunning ? MemoTheme.accent : theme.textDim),
               const SizedBox(width: 8),
-              Text(L10n.t('remote_tailscale_title'),
-                  style: TextStyle(
-                      fontWeight: FontWeight.w600, color: theme.textMain)),
-              const Spacer(),
+              Expanded(
+                child: Text(L10n.t('remote_tailscale_title'),
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontWeight: FontWeight.w600, color: theme.textMain)),
+              ),
+              const SizedBox(width: 8),
               if (tsRunning)
                 Container(
                   width: 10,
@@ -857,7 +875,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L10n.t('remote_action_failed', {'e': '$e'}))));
+            .showSnackBar(SnackBar(content: Text(L10n.t('remote_action_failed', {'e': FriendlyError.describeGeneric(e)}))));
       }
     }
   }
@@ -890,7 +908,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text(L10n.t('remote_action_failed', {'e': '$e'}))));
+            .showSnackBar(SnackBar(content: Text(L10n.t('remote_action_failed', {'e': FriendlyError.describeGeneric(e)}))));
       }
     } finally {
       if (mounted) setState(() => _enabling = false);
@@ -905,7 +923,7 @@ class RemoteAccessTabState extends ConsumerState<RemoteAccessTab> {
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(L10n.t('remote_action_failed', {'e': '$e'}))),
+          SnackBar(content: Text(L10n.t('remote_action_failed', {'e': FriendlyError.describeGeneric(e)}))),
         );
       }
     } finally {

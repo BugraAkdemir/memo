@@ -33,14 +33,24 @@ import 'settings/tabs/report_bug_tab.dart';
 /// search box, so scanning/finding a specific setting doesn't mean reading
 /// 20 rows top to bottom every time.
 class SettingsDialog extends ConsumerStatefulWidget {
-  const SettingsDialog({super.key});
+  const SettingsDialog({super.key, this.initialTab = 0});
+
+  /// Which tab to open on. Lets a caller elsewhere in the app (e.g. a
+  /// "server unreachable" screen offering to change the backend URL) land
+  /// the user directly on the relevant tab instead of always the first one.
+  final int initialTab;
+
+  /// Index of the Remote Access tab in [_SettingsDialogState._tabs] — kept
+  /// here as a named constant so callers outside this file don't have to
+  /// hardcode the position of one entry in that list.
+  static const remoteAccessTabIndex = 15;
 
   @override
   ConsumerState<SettingsDialog> createState() => _SettingsDialogState();
 }
 
 class _SettingsDialogState extends ConsumerState<SettingsDialog> {
-  int _activeTab = 0;
+  late int _activeTab = widget.initialTab;
   final _searchController = TextEditingController();
   String _searchQuery = '';
 

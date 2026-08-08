@@ -15,7 +15,9 @@ import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
+import '../widgets/backend_unreachable_view.dart';
 import '../providers/agent_provider.dart';
+import '../core/friendly_error.dart';
 
 /// Chat screen — sidebar + message list + input area.
 class ChatScreen extends ConsumerWidget {
@@ -79,25 +81,27 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
             loading: () =>  Center(
               child: CircularProgressIndicator(color: MemoTheme.accent),
             ),
-            error: (e, _) => Center(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(Icons.error_outline, color: MemoTheme.red, size: 40),
-                   SizedBox(height: 12),
-                  Text(
-                    '$e',
-                    style: TextStyle(color: MemoTheme.of(context).textMuted),
-                    textAlign: TextAlign.center,
+            error: (e, _) => isBackendUnreachableError(e)
+                ? const BackendUnreachableView()
+                : Center(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.error_outline, color: MemoTheme.red, size: 40),
+                         SizedBox(height: 12),
+                        Text(
+                          FriendlyError.describeGeneric(e),
+                          style: TextStyle(color: MemoTheme.of(context).textMuted),
+                          textAlign: TextAlign.center,
+                        ),
+                         SizedBox(height: 12),
+                        OutlinedButton(
+                          onPressed: () => ref.invalidate(messagesProvider),
+                          child: Text(L10n.t('retry')),
+                        ),
+                      ],
+                    ),
                   ),
-                   SizedBox(height: 12),
-                  OutlinedButton(
-                    onPressed: () => ref.invalidate(messagesProvider),
-                    child: Text(L10n.t('retry')),
-                  ),
-                ],
-              ),
-            ),
             data: (messages) {
               final isSending = ref.watch(isSendingProvider);
               final streamingContent = ref.watch(streamingContentProvider);

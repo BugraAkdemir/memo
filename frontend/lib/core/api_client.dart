@@ -181,7 +181,7 @@ class MemoApiClient {
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
+      rethrow;
     }
   }
 
@@ -235,7 +235,7 @@ class MemoApiClient {
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
+      rethrow;
     }
   }
 
@@ -1161,7 +1161,7 @@ class MemoApiClient {
       }
     } on DioException catch (e) {
       if (e.type == DioExceptionType.cancel) return;
-      throw Exception('Bağlantı hatası: $e');
+      rethrow;
     }
   }
 

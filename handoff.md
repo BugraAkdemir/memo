@@ -1,3 +1,112 @@
+# Handoff — 2026-08-09 (Session 1) — Self-hosted sunucu yol haritası (yapacam.md) + Faz 1: Docker/CasaOS arm64 CI
+
+## Özet
+
+Kullanıcı Memo'yu masaüstü-only bir uygulamadan gerçek bir self-hosted
+servise dönüştürme kararı aldı: kendi Raspberry Pi'sinde/home server'ında
+7/24 açık, masaüstü/mobil Memo'dan IP ile bağlanılan, SSH+CLI+minimal web'den
+yönetilen bir kurulum. Uzun bir soru-cevap turuyla (ARM kapsamı, auth modeli,
+CLI önceliği, web UI hedefi, TLS/tünel özgürlüğü) 4 fazlı bir plan çıkarılıp
+proje kökündeki **`yapacam.md`**'ye yazıldı — bu dosya **`.gitignore`'da**,
+repoya commitlenmedi, ama gelecek oturumlar için asıl yol haritası orada:
+
+1. **Faz 1 — ARM: Docker/CasaOS + canlı doğrulama** (bu oturumda yapıldı, aşağıda)
+2. **Faz 2 — Auth/Güvenlik mimarisi** (en kritik faz, henüz başlanmadı): 4 auth modu (none/token/password/token+password, OR mantığı), argon2id şifre hash, `golang-jwt/jwt` ile oturum token'ı, login'e özel brute-force/lockout, cihaz bazlı token yönetimi, TLS opsiyonel. Kullanıcı modeli netleşti: **tek kişi, çoklu cihaz** — gerçek çok-kullanıcı (ayrı hesap/hafıza) kapsam dışı.
+3. **Faz 3 — CLI genişletmesi**: systemd servis kurulumu, `memo config get/set`, remote-access/token/cihaz yönetimi CLI'dan, tünel (Tailscale/ngrok) CLI'dan.
+4. **Faz 4 — Web UI kapsamı**: `internal/webserver/webui/` minimal kalacak (kullanıcı kararı) — asıl iş `frontend/`/`mobile/`'ın remote modda %100 özellik paritesine sahip olduğunu denetlemek.
+
+`yapacam.md`'nin kendisi `.gitignore`'da olduğu için **bu handoff entry'si o
+planın tek repo-içi izi** — bir sonraki oturum önce `yapacam.md`'yi (varsa)
+okumalı, yoksa bu entry'den fazların özetini alıp kullanıcıya sorup devam
+etmeli.
+
+Bu oturumda sadece **Faz 1** yapıldı, kullanıcının "Faz 1 bitince dur"
+talimatıyla burada durduruldu.
+
+**Commit durumu:** 3 commit, hepsi push'landı (`origin/main` + ikinci bir
+mirror remote, `web.bugradev.com`): `def582a`, `f5d5f1f`, `429946d`.
+
+## Yapılanlar — Faz 1
+
+1. **`.github/workflows/build-docker.yml` (yeni, `def582a`):** amd64
+   (`ubuntu-latest`) ve arm64 (`ubuntu-24.04-arm`, native — build-arm64
+   job'unun zaten kullandığı GitHub'ın ücretsiz arm64 runner'ı) ayrı job'larda
+   kendi mimarilerinin `binaries/linux/cpu{,-arm64}/`'ünü R2'den çekip
+   `docker/build-push-action` ile GHCR'a (`ghcr.io/bugraakdemir/memo-backend`)
+   push ediyor; üçüncü bir `publish-manifest` job'u `docker buildx imagetools
+   create` ile ikisini tek bir multi-arch manifest'te birleştiriyor. Docker
+   Hub değil **GHCR** seçildi — yeni secret gerekmiyor (workflow'un kendi
+   `GITHUB_TOKEN`'ı, `packages: write` scope'uyla yeterli), CasaOS/home-server
+   kurulumlarını vuran Docker Hub anonim-pull rate limit'i de yok. Tag şeması
+   repo'nun mevcut beta/stable ayrımını taklit ediyor: main push → `:beta`/
+   `:beta-amd64`/`:beta-arm64`, `v*` tag → `:vX.Y.Z`/aynı-arch-suffix'li +
+   `:latest`'i taşıma.
+2. **`docker-compose.yml` + `docker/README.md` (`f5d5f1f`):** compose
+   dosyası artık gerçek `ghcr.io/bugraakdemir/memo-backend:latest`'e işaret
+   ediyor (eski "your-dockerhub-username" placeholder kalktı). `x-casaos.
+   architectures` **bilinçli olarak hâlâ sadece `amd64`** — imaj gerçekten
+   arm64 içeriyor ama CasaOS'a "destekleniyor" demeden önce gerçek ARM
+   donanımında (kullanıcının RPi'si) doğrulanmasını bekliyoruz. README'nin
+   "Build and push" bölümü "zaten otomatik yayınlanıyor" olarak yeniden
+   yazıldı, manuel build fork/lokal-test alt-bölümüne indirgendi.
+3. **Gerçek bug, gerçek CI'da yakalandı ve düzeltildi (`429946d`):** ilk
+   push'taki CI koşusu (`31283141346`) hem amd64 hem arm64 job'unda aynı
+   hatayla patladı: `"/data/providers.example.json": not found`.
+   `.dockerignore`'daki genel `data/` hariç tutması (doğru niyet — gerçek
+   kullanıcı verisi asla imaja gömülmemeli), Dockerfile'ın `COPY
+   data/providers.example.json ...` ile ihtiyaç duyduğu bu tek template
+   dosyasını da götürüyordu — Dockerfile ilk yazıldığından beri var olan bir
+   bug, `docker build` bu ortamda (Docker daemon yok) hiç çalıştırılmadığı
+   için hiç yakalanmamıştı. `!data/providers.example.json` istisnasıyla
+   düzeltildi (BuildKit bunu doğru çözüyor, klasik docker builder çözemez
+   ama bu pipeline hiç onu kullanmıyor). **İkinci koşu (`31283227699`) 3
+   job'ta da yeşil** — amd64 ✓, arm64 ✓, manifest ✓, gerçek GHCR push'ları
+   log'larda doğrulandı (`beta-amd64`/`beta-arm64` digest'leri, manifest
+   `create` çıktısı).
+
+## Doğrulama
+
+- YAML syntax: `python3 -c "import yaml; yaml.safe_load(...)"` — geçti.
+- **Gerçek CI'da doğrulandı** (bu ortamda Docker daemon yok, `docker build`
+  hiç lokal çalıştırılamadı — docker/README.md'nin zaten var olan "never
+  actually executed" notuyla tutarlı): push edildi, `gh run watch` ile arka
+  planda izlendi, ilk koşu gerçek bir bug'la patladı, düzeltilip tekrar
+  push'landı, ikinci koşu tüm job'larda yeşil. `gh run view --json
+  conclusion` ile teyit edildi, sadece "tamamlandı" değil "conclusion:
+  success" olarak.
+- Go/Flutter tarafında hiçbir değişiklik yok bu oturumda — sadece CI/Docker
+  dosyaları, verification commandlarının çalıştırılmasına gerek yoktu.
+
+## Sıradaki Oturum İçin / Bilinen Açıklar
+
+1. **Kullanıcının kendi Raspberry Pi'sinde canlı doğrulama bekleniyor** —
+   Faz 1'in son maddesi, bu ortamdan yapılamaz. `docker pull
+   ghcr.io/bugraakdemir/memo-backend:beta` (henüz `:latest` yok, aşağıya
+   bak) ile bugün test edilebilir.
+2. **`:latest` henüz yok** — sadece `v*` tag push'unda oluşuyor (tasarım
+   gereği, beta'yı hiç taşımasın diye). Bir sonraki gerçek release'e kadar
+   `docker-compose.yml`'in varsayılan `image:` satırı gerçekte pull
+   edilemez — test için elle `:beta`'ya çevirmek gerekiyor. Kullanıcıya
+   söylenmeli.
+3. **GHCR paketi muhtemelen hâlâ private** — `GITHUB_TOKEN` ile push edilen
+   bir paket varsayılan private olur; repo → Packages → `memo-backend` →
+   Change visibility → Public, tek seferlik, kullanıcının kendi GitHub
+   hesabından yapması gerekiyor (`gh` CLI'ın bu ortamda `packages` scope'u
+   yok, kontrol/değiştirme yapılamadı).
+4. **x-casaos.architectures hâlâ amd64-only** — yukarıdaki 1. madde
+   doğrulanmadan bilerek flip edilmedi.
+5. **Faz 2 (Auth/Güvenlik) bir sonraki büyük iş** — `yapacam.md`'de tüm
+   kararlar (auth modları, OR mantığı, argon2id, golang-jwt/jwt, brute-force
+   koruması, cihaz bazlı token, TLS opsiyonel) netleşmiş durumda, kod
+   yazmaya hazır. En kritik faz olduğu için muhtemelen tek oturumda
+   bitmeyecek, kendi içinde alt-checkpoint'lere bölünerek ilerlenmeli.
+6. Önceki oturumun (2026-08-08 Session 2) açık maddeleri hâlâ geçerli
+   (aşağıda, değişmedi): `version.json` beacon 3.3.4'e bump'lanmadı,
+   checkpoint-tag/gerçek-release gerilimi çözülmedi, issue #15 kullanıcı
+   onayı bekliyor.
+
+---
+
 # Handoff — 2026-08-08 (Session 2) — Skill auto-import (Claude Code) + "sunucuya bağlanılamıyor" deneyiminin komple yeniden yapılması
 
 ## Özet

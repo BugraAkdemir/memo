@@ -105,7 +105,7 @@ Build:
 ```bash
 go build -o memo .
 cd frontend && flutter build linux --release
-./build_releases.sh
+./scripts/build_releases.sh
 ```
 
 ## Testing Protocol
@@ -234,7 +234,7 @@ A commit is stable only when:
 | Run backend | `go run . --port 8090` |
 | Run frontend | `cd frontend && flutter run -d linux` |
 | Run tests | `go test ./... -race` |
-| Build release | `./build_releases.sh` |
+| Build release | `./scripts/build_releases.sh` |
 | API docs | `obsidian-doc/Memo/API Dokümantasyonu.md` |
 | Config | `config/config.yaml` |
 | Data | `data/` |

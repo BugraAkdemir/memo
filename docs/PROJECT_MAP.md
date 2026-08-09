@@ -627,11 +627,17 @@ mobile/lib/widgets/
 
 ---
 
-## 4. Paketleme / Build / Kurulum Script'leri (kök dizin)
+## 4. Paketleme / Build / Kurulum Script'leri (`scripts/`)
+
+Root'un kalabalıklaşmaması için tüm `.sh`/`.ps1`/`.bat` script'leri
+`scripts/` altında toplandı (2026-08-09) — hiçbiri kendi dosya konumuna
+göre `cd` yapmıyor, hepsi repo kökünden (`./scripts/<isim>`) çalıştırılmayı
+varsayıyor. Ayrıntı ve kullanım örnekleri için `scripts/README.md`.
 
 ```
 build_releases.sh    — Linux release paketleme (.deb/.AppImage/.tar.gz) — Go backend + Flutter frontend
 build_releases.bat   — build_releases.sh'in Windows karşılığı
+build_releases_arm.sh — build_releases.sh'in arm64 (Raspberry Pi) karşılığı
 package_linux.sh      — Go backend + Flutter frontend derler, bir Linux release paketi hazırlar
 package_windows.sh    — Go backend'i Windows için çapraz derler, bir Windows release paketi hazırlar
 macrelease.sh         — macOS'a özel paketleme (.app/.tar.gz/.dmg üretir, Xcode/cgo gerektirir)
@@ -639,10 +645,21 @@ download_binaries.sh  — bundle için llama.cpp llama-server binary'lerini indi
 patch.sh              — birkaç App metodunun dönüş tipini interface{}'e çeviren tek seferlik sed patch'i
 install.sh            — Linux kullanıcı-yerel yükleyici; paketi ~/.local/share'e kopyalar, masaüstü girdisi ekler
 uninstall.sh          — Linux kullanıcı-yerel kurulumu kaldırır (uygulama dizini, masaüstü dosyası, ikon)
-get-memo.sh           — Linux/macOS için tek satır curl yükleyicisi; binary'leri + PATH wrapper'ını kurar
+uninstall-arm.sh      — uninstall.sh'in arm64 karşılığı; hem native hem Docker kurulumlarını algılar
+update.sh             — mevcut kurulumu veri/config'e dokunmadan günceller
+run_memo.sh           — yerel geliştirme kısayolu (backend+frontend'i birlikte başlatır)
+get-memo.sh           — Linux/macOS için tek satır curl yükleyicisi (stable); binary'leri + PATH wrapper'ını kurar
+get-memo-beta.sh      — get-memo.sh'in beta kanalı (her main push'unda güncellenir)
 get-memo.ps1          — Windows için tek satır yükleyici; Inno Setup yükleyicisini indirip çalıştırır
-installer.iss         — Memo'nun Windows Setup.exe yükleyicisini derleyen Inno Setup script'i
+get-memo-beta.ps1     — get-memo.ps1'in beta kanalı
+get_memo_arm.sh       — Linux arm64 (Raspberry Pi) için tam kurulum (CLI+backend+masaüstü)
+get-memo-server.sh    — self-hosted, sadece sunucu kurulumu (masaüstü yok), stable kanal
+get-memo-server-beta.sh — get-memo-server.sh'in beta kanalı
 ```
+
+`installer.iss` (Windows Inno Setup script'i) bilinçli olarak kök dizinde
+bırakıldı — `build-windows.yml` CI workflow'u onu sabit bir yoldan
+referans alıyor, taşımak CI'a ek bir değişiklik gerektirirdi.
 
 ## 5. CI/CD (`.github/workflows/`)
 

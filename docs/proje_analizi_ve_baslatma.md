@@ -42,7 +42,7 @@ flutter run -d linux
 
 ## Projeyi Dağıtım (Production) İçin Derleme ve Paketleme
 
-Projeyi tek tıklamayla (veya tek komutla) çalışabilecek, son kullanıcıya hazır bir sürüme dönüştürmek isterseniz Linux için hazırlanmış olan `package_linux.sh` betiğini kullanabilirsiniz.
+Projeyi tek tıklamayla (veya tek komutla) çalışabilecek, son kullanıcıya hazır bir sürüme dönüştürmek isterseniz Linux için hazırlanmış olan `scripts/package_linux.sh` betiğini kullanabilirsiniz.
 
 Bu script şu işlemleri otomatik yapar:
 1. Go backend'ini çalıştırılabilir (binary) olarak derler.
@@ -52,7 +52,7 @@ Bu script şu işlemleri otomatik yapar:
 
 **Paketlemek için:**
 ```bash
-./package_linux.sh
+./scripts/package_linux.sh
 ```
 
 **Paketlenmiş Sürümü Çalıştırmak için:**

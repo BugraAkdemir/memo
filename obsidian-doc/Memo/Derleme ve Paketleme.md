@@ -1,6 +1,6 @@
 # 📦 Derleme ve Paketleme
 
-Memo'yu son kullanıcı için hazır hale getirmek için otomatik paketleme betikleri kullanılır. Ana betik artık kök dizindeki **`build_releases.sh`** (eski `package_linux.sh`/`package_windows.sh` betiklerinin yerini aldı).
+Memo'yu son kullanıcı için hazır hale getirmek için otomatik paketleme betikleri kullanılır. Tüm script'ler `scripts/` dizininde toplanıyor (2026-08-09, root'un kalabalıklaşmaması için taşındı — bkz. `scripts/README.md`). Ana betik **`scripts/build_releases.sh`** (eski `package_linux.sh`/`package_windows.sh` betiklerinin yerini aldı).
 
 ## `build_releases.sh`
 1. **Backend Derleme:** Go kodunu `memo` binary'si olarak derler (`CGO_ENABLED=1`, `-tags "sqlite_fts5"` — bkz. [[CGO Bayrakları]]).

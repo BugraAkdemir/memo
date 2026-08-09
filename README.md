@@ -364,8 +364,8 @@ cd frontend && flutter run -d linux
 
 Release packages:
 ```bash
-./build_releases.sh     # Linux  → AppImage / deb / tar.gz
-.\build_releases.bat    # Windows → Inno Setup installer / zip
+./scripts/build_releases.sh     # Linux  → AppImage / deb / tar.gz
+.\scripts\build_releases.bat    # Windows → Inno Setup installer / zip
 ```
 </details>
 

@@ -3,7 +3,7 @@
 Automatic packaging scripts are used to make Memo ready for the end-user.
 
 ## Linux Packaging
-The `package_linux.sh` script in the root directory performs these operations:
+The `scripts/package_linux.sh` script performs these operations:
 1. **Backend Build:** Compiles the Go code as the `memo` binary.
 2. **Frontend Build:** Compiles the Flutter project in `release` mode.
 3. **File Preparation:** Collects all necessary files (config, data, assets) under the `build_output/memo-linux-x64/` folder.
@@ -11,7 +11,7 @@ The `package_linux.sh` script in the root directory performs these operations:
 
 ### Execution:
 ```bash
-./package_linux.sh
+./scripts/package_linux.sh
 ```
 
 ## Windows Packaging

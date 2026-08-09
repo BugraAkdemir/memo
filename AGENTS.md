@@ -120,7 +120,7 @@ to it instead of trying to bind again.
 ```bash
 go build -tags "sqlite_fts5" -o memo .                # backend binary
 cd frontend && flutter build linux --release         # frontend binary
-./build_releases.sh                                  # dist packages (tar.gz, AppImage, deb) — already tagged
+./scripts/build_releases.sh                          # dist packages (tar.gz, AppImage, deb) — already tagged
 ```
 
 ### Testing

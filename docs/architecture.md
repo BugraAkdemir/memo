@@ -371,7 +371,7 @@ cd frontend && flutter run -d linux
 
 ### Build for Linux
 ```bash
-./package_linux.sh
+./scripts/package_linux.sh
 # Output: build_output/memo-linux-x64/
 ```
 

@@ -46,11 +46,29 @@ jobs:
         with:
           channel: "${{ env.FLUTTER_CHANNEL }}"
 
+      # ~/.cache/go-build (the COMPILED object cache, not the module source
+      # cache below) was deliberately dropped from this path — found live:
+      # the arm64 job's "Build Go backend" step completed in ~10s (CGO +
+      # sqlite3 + this project's dependency tree should take noticeably
+      # longer even warm, let alone genuinely cold), and the resulting
+      # binary's embedded webui (internal/webserver/webui/*, go:embed)
+      # was stale — several commits behind the actual checked-out source,
+      # while the compiled Go *code* in the same binary was current. Never
+      # fully root-caused (the actions/cache restore step for this exact
+      # cache logs "File exists" tar errors against ~/go/pkg/mod and
+      # reports the whole restore as a miss, which per actions/cache's own
+      # documented behavior should mean a cold GOCACHE — yet the build
+      # time says otherwise), but the fix doesn't require finishing that
+      # investigation: go:embed content must never be served by a
+      # potentially-stale cached compiled object, and the module cache
+      # below (~/go/pkg/mod) is the part that actually saves meaningful
+      # CI time — it's checksum-verified against go.sum by the toolchain
+      # itself, so it can't silently serve wrong *code*, only wrong/absent
+      # third-party source, which `go build` would simply re-fetch.
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
-            ~/.cache/go-build
           key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: go-${{ runner.os }}-
 
@@ -273,11 +291,13 @@ jobs:
           echo "$HOME/flutter/bin" >> "$GITHUB_PATH"
           echo "$HOME/.pub-cache/bin" >> "$GITHUB_PATH"
 
+      # ~/.cache/go-build dropped — see the identical comment on the
+      # x86_64 job's cache step above for why (this is that same bug,
+      # found live on this exact job).
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
-            ~/.cache/go-build
           key: go-${{ runner.os }}-arm64-${{ hashFiles('**/go.sum') }}
           restore-keys: go-${{ runner.os }}-arm64-
 

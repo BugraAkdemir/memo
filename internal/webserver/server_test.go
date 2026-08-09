@@ -683,3 +683,38 @@ func TestHandleShutdown_Success_RequestsShutdown(t *testing.T) {
 		t.Fatal("handleShutdown did not request a shutdown via internal/shutdown")
 	}
 }
+
+// TestHandleWebUIAssets_NoStore is the regression case for a bug found on
+// a real device: a user re-ran the install script, CI confirmed the new
+// binary (with a genuinely updated embedded webui) was running, and they
+// still saw the old page — because plain http.FileServer sent no caching
+// headers at all, so the browser just kept serving its own stale cached
+// copy without ever asking the server again. Every response from this
+// handler must carry Cache-Control: no-store so that can't happen again.
+func TestHandleWebUIAssets_NoStore(t *testing.T) {
+	s := newMockServer(&mockBridge{})
+
+	// "/index.html" is deliberately excluded: http.FileServer 301-redirects
+	// the named index file to its directory ("/") as standard behavior,
+	// nothing to do with this fix — asserted separately below, since the
+	// header must still be present on that redirect response too.
+	for _, path := range []string{"/", "/app.js", "/style.css"} {
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		w := httptest.NewRecorder()
+		s.handleWebUIAssets(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("%s: status = %d, want %d", path, w.Code, http.StatusOK)
+		}
+		if got := w.Header().Get("Cache-Control"); got != "no-store" {
+			t.Errorf("%s: Cache-Control = %q, want %q", path, got, "no-store")
+		}
+	}
+
+	req := httptest.NewRequest(http.MethodGet, "/index.html", nil)
+	w := httptest.NewRecorder()
+	s.handleWebUIAssets(w, req)
+	if got := w.Header().Get("Cache-Control"); got != "no-store" {
+		t.Errorf("/index.html (redirect): Cache-Control = %q, want %q", got, "no-store")
+	}
+}

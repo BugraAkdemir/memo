@@ -352,9 +352,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Minimal browser client (index.html/app.js/style.css) — a catch-all,
 	// lowest-priority route: Go's ServeMux always prefers the more specific
 	// "/api/..." registrations above over this "/", so it can never shadow
-	// an API endpoint no matter the registration order. http.FileServer
-	// serves "webui/index.html" for a bare "/" automatically.
-	mux.Handle("/", http.FileServer(http.FS(s.assets)))
+	// an API endpoint no matter the registration order.
+	mux.Handle("/", http.HandlerFunc(s.handleWebUIAssets))
 
 	if s.stopCleaner != nil {
 		close(s.stopCleaner)
@@ -477,6 +476,26 @@ func (s *Server) SetListenAddr(addr string) {
 }
 
 // ─── Handlers ───────────────────────────────────────────────────
+
+// handleWebUIAssets serves the embedded minimal web client
+// (index.html/app.js/style.css — see webui/index.html for
+// "webui/index.html" served for a bare "/") with Cache-Control: no-store
+// on every response. Plain http.FileServer sends no caching headers at
+// all by default, so a browser that already had this page open (or just
+// visited it before) can silently keep serving its own cached copy of
+// index.html/app.js/style.css from disk/memory cache indefinitely, never
+// even asking the server again, long after a `memo service update`/binary
+// swap actually shipped new ones. Found live: a user re-ran the install
+// script, CI confirmed the new build (new webui embedded) was genuinely
+// running, and they still saw the old page until a hard refresh — the
+// server was serving the new files correctly the whole time, the browser
+// just never asked. These files are tiny and served over LAN/localhost,
+// so disabling caching entirely here costs nothing next to a user
+// concluding a real, shipped fix "didn't work."
+func (s *Server) handleWebUIAssets(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Cache-Control", "no-store")
+	http.FileServer(http.FS(s.assets)).ServeHTTP(w, r)
+}
 
 func (s *Server) handleSend(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {

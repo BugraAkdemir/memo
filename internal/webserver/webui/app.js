@@ -239,6 +239,7 @@ function initApp() {
   document.getElementById("p-test").addEventListener("click", testProvider);
   document.getElementById("p-fetch-models").addEventListener("click", fetchModels);
   document.getElementById("restart-backend").addEventListener("click", restartBackend);
+  document.getElementById("account-form").addEventListener("submit", saveAccount);
 }
 
 async function pollStatus() {
@@ -350,7 +351,7 @@ let settingsLoaded = false;
 async function loadSettings() {
   if (settingsLoaded) return;
   settingsLoaded = true;
-  await Promise.all([loadModels(), loadProviders(), loadRemoteAccess()]);
+  await Promise.all([loadModels(), loadProviders(), loadRemoteAccess(), loadAccounts()]);
 }
 
 async function loadModels() {
@@ -579,6 +580,78 @@ async function restartBackend() {
     // internal/replcli.Client.Shutdown's identical reasoning).
   }
   msg.textContent = "Shutdown requested. If this backend runs under systemd (`memo service install`) or a container restart policy, it should come back up shortly — otherwise it needs to be started again manually.";
+}
+
+// ── settings: accounts (Faz 5.1, yapacam.md) ────────────────────────────
+//
+// Deliberately no client-side "am I admin" check before showing the
+// add/remove controls — this UI has no way to know its own session's role
+// without a dedicated endpoint, and every other panel here (Remote
+// Access, Providers) already follows the same pattern of just letting the
+// backend's own admin-only gating (Server.callerIsAdmin) reject a
+// non-admin's attempt with a clear inline error rather than pre-emptively
+// hiding the form. GET /api/accounts itself is readable by any
+// authenticated caller (matches the device list), so listing always
+// works; only add/remove can 403.
+
+async function loadAccounts() {
+  const list = document.getElementById("account-list");
+  try {
+    const accounts = await apiJSON("/api/accounts");
+    list.innerHTML = "";
+    if (!accounts || !accounts.length) {
+      list.innerHTML = '<p class="status-line">No accounts yet.</p>';
+      return;
+    }
+    accounts.forEach((acc) => {
+      const row = document.createElement("div");
+      row.className = "provider-row";
+      row.innerHTML = `
+        <span class="name">${escapeHTML(acc.username)}</span>
+        <span class="role-badge ${acc.role === "admin" ? "admin" : ""}">${escapeHTML(acc.role)}</span>
+        <button type="button" class="remove-btn">Remove</button>
+      `;
+      row.querySelector(".remove-btn").addEventListener("click", () => deleteAccount(acc.id, acc.username));
+      list.appendChild(row);
+    });
+  } catch (e) {
+    if (e.unauthorized) { showLogin(); return; }
+    list.innerHTML = '<p class="status-line">Could not load accounts: ' + escapeHTML(e.message) + "</p>";
+  }
+}
+
+async function saveAccount(ev) {
+  ev.preventDefault();
+  const msg = document.getElementById("account-form-msg");
+  const username = document.getElementById("acc-username").value.trim();
+  const password = document.getElementById("acc-password").value;
+  const role = document.getElementById("acc-role").value;
+  if (!username || !password) { msg.textContent = "Username and password are required."; return; }
+  msg.textContent = "Saving…";
+  try {
+    await apiJSON("/api/accounts", {
+      method: "POST",
+      body: JSON.stringify({ username, password, role }),
+    });
+    msg.textContent = "Account added.";
+    document.getElementById("account-form").reset();
+    await loadAccounts();
+  } catch (e) {
+    if (e.unauthorized) { showLogin(); return; }
+    msg.textContent = "Failed: " + e.message;
+  }
+}
+
+async function deleteAccount(id, username) {
+  const msg = document.getElementById("account-form-msg");
+  if (!confirm(`Remove the account "${username}"? This can't be undone.`)) return;
+  try {
+    await apiJSON("/api/accounts/" + encodeURIComponent(id), { method: "DELETE" });
+    await loadAccounts();
+  } catch (e) {
+    if (e.unauthorized) { showLogin(); return; }
+    msg.textContent = "Could not remove account: " + e.message;
+  }
 }
 
 function escapeHTML(s) {

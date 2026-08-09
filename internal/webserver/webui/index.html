@@ -113,6 +113,25 @@
         </div>
         <p id="restart-msg" class="status-line"></p>
       </div>
+
+      <div class="panel">
+        <h2>Accounts</h2>
+        <p class="status-line">Who can sign in to this server. Adding, removing, and choosing roles is admin-only.</p>
+        <div id="account-list" class="provider-list"></div>
+        <h3 class="subhead">Add an account</h3>
+        <form id="account-form">
+          <input id="acc-username" placeholder="Username" autocomplete="off" required>
+          <input id="acc-password" type="password" placeholder="Password" autocomplete="new-password" required>
+          <select id="acc-role">
+            <option value="user">User</option>
+            <option value="admin">Admin</option>
+          </select>
+          <div class="actions">
+            <button type="submit" id="acc-save">Add account</button>
+          </div>
+          <p id="account-form-msg" class="status-line"></p>
+        </form>
+      </div>
     </section>
   </main>
 </div>

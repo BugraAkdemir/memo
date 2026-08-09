@@ -48,6 +48,15 @@ type swarmStubBridge struct {
 
 	sendMessageStream   func(ctx context.Context, userMsg string) <-chan api.StreamChunk
 	sendMessageStreamTo func(ctx context.Context, chatID, userMsg string) <-chan api.StreamChunk
+
+	// Faz 5.1 (yapacam.md) multi-account / role model — see
+	// remote_auth_test.go's handler-level tests.
+	needsSetup         bool
+	createAdminAccount func(username, password string) (string, error)
+	sessionRole        func(token string) (string, bool)
+	listAccounts       func() interface{}
+	createAccount      func(username, password, role string) error
+	deleteAccount      func(id string) error
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -271,12 +280,43 @@ func (b *swarmStubBridge) VerifyRemoteDeviceToken(token string) bool {
 	return token != "" && token == b.token
 }
 func (b *swarmStubBridge) ValidateRemoteSession(token string) bool { return false }
-func (b *swarmStubBridge) LoginRemotePassword(remoteAddr, username, password string) (string, error) {
+func (b *swarmStubBridge) LoginRemotePassword(remoteAddr, username, password string) (string, string, error) {
+	return "", "", nil
+}
+func (b *swarmStubBridge) ListRemoteDevices() interface{}                 { return nil }
+func (b *swarmStubBridge) CreateRemoteDevice(name string) (string, error) { return "", nil }
+func (b *swarmStubBridge) RevokeRemoteDevice(id string) error             { return nil }
+func (b *swarmStubBridge) NeedsSetup() bool                               { return b.needsSetup }
+func (b *swarmStubBridge) CreateAdminAccount(username, password string) (string, error) {
+	if b.createAdminAccount != nil {
+		return b.createAdminAccount(username, password)
+	}
 	return "", nil
 }
-func (b *swarmStubBridge) ListRemoteDevices() interface{}                          { return nil }
-func (b *swarmStubBridge) CreateRemoteDevice(name string) (string, error)          { return "", nil }
-func (b *swarmStubBridge) RevokeRemoteDevice(id string) error                      { return nil }
+func (b *swarmStubBridge) SessionRole(token string) (string, bool) {
+	if b.sessionRole != nil {
+		return b.sessionRole(token)
+	}
+	return "", false
+}
+func (b *swarmStubBridge) ListAccounts() interface{} {
+	if b.listAccounts != nil {
+		return b.listAccounts()
+	}
+	return nil
+}
+func (b *swarmStubBridge) CreateAccount(username, password, role string) error {
+	if b.createAccount != nil {
+		return b.createAccount(username, password, role)
+	}
+	return nil
+}
+func (b *swarmStubBridge) DeleteAccount(id string) error {
+	if b.deleteAccount != nil {
+		return b.deleteAccount(id)
+	}
+	return nil
+}
 func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool)                       { return false, false }
 func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool) error { return nil }
 func (b *swarmStubBridge) GetDevGatewayToken() string                              { return "" }

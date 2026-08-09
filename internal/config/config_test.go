@@ -422,3 +422,65 @@ func TestLoad_NoMigrationWhenNoLegacyToken(t *testing.T) {
 		t.Errorf("expected no devices on a fresh config, got %d", len(cfg.RemoteAccess.Devices))
 	}
 }
+
+// ── Faz 5.1 (yapacam.md): legacy single-credential → Accounts migration ─
+
+func TestLoad_MigratesLegacyPasswordCredentialIntoAdminAccount(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	yamlContent := "remote_access:\n  auth_mode: password\n  username: alice\n  password_hash: \"$argon2id$fakehash$\"\n"
+	if err := os.WriteFile(path, []byte(yamlContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.RemoteAccess.Accounts) != 1 {
+		t.Fatalf("expected exactly one migrated account, got %d", len(cfg.RemoteAccess.Accounts))
+	}
+	acc := cfg.RemoteAccess.Accounts[0]
+	if acc.Username != "alice" {
+		t.Errorf("migrated account Username = %q, want %q", acc.Username, "alice")
+	}
+	if acc.Role != "admin" {
+		t.Errorf("migrated account Role = %q, want %q", acc.Role, "admin")
+	}
+	if acc.PasswordHash != "$argon2id$fakehash$" {
+		t.Errorf("migrated account PasswordHash = %q, want the original hash carried over unchanged", acc.PasswordHash)
+	}
+	// Unlike migrateLegacyRemoteToken, the legacy fields must survive —
+	// GetRemoteAccessStatus and the desktop Settings tab still read them.
+	if cfg.RemoteAccess.Username != "alice" || cfg.RemoteAccess.PasswordHash == "" {
+		t.Error("expected legacy Username/PasswordHash to remain set after migration, not be blanked")
+	}
+}
+
+func TestLoad_NoAccountMigrationWhenNoLegacyPassword(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.RemoteAccess.Accounts) != 0 {
+		t.Errorf("expected no accounts on a fresh config with no legacy password, got %d", len(cfg.RemoteAccess.Accounts))
+	}
+}
+
+func TestMigrateLegacyRemoteAccount_NoOpWhenAccountsAlreadyPresent(t *testing.T) {
+	cfg := Default()
+	cfg.RemoteAccess.Username = "alice"
+	cfg.RemoteAccess.PasswordHash = "somehash"
+	cfg.RemoteAccess.Accounts = []Account{{ID: "existing", Username: "bob", PasswordHash: "otherhash", Role: "admin"}}
+
+	if migrateLegacyRemoteAccount(cfg) {
+		t.Error("expected no migration when Accounts is already non-empty")
+	}
+	if len(cfg.RemoteAccess.Accounts) != 1 || cfg.RemoteAccess.Accounts[0].Username != "bob" {
+		t.Error("expected the existing Accounts list to be left untouched")
+	}
+}

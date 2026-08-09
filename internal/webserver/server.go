@@ -215,6 +215,12 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/remote-access/devices", s.handleRemoteDevices)
 	route("/api/remote-access/devices/{id}", s.handleRemoteDeviceByID)
 	route("/api/auth/login", s.handleRemoteLogin)
+
+	// Multi-account / role model (Faz 5.1, yapacam.md)
+	route("/api/setup/status", s.handleSetupStatus)
+	route("/api/setup/create-admin", s.handleSetupCreateAdmin)
+	route("/api/accounts", s.handleAccounts)
+	route("/api/accounts/{id}", s.handleAccountByID)
 	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/cli/running", s.handleCLIRunning)
 	route("/api/cli/commands", s.handleCLICommands)
@@ -860,6 +866,13 @@ func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 		// internal/remoteauth's brute-force limiter inside LoginRemotePassword,
 		// not by this check.
 		if isRemoteLoginPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// First-run bootstrap (Faz 5.1, yapacam.md): same reasoning as the
+		// login path above — a client checking "is setup needed" or
+		// creating the very first account has no credential to present yet.
+		if isSetupBootstrapPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}

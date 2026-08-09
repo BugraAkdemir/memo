@@ -28,29 +28,39 @@ var ErrInvalidSessionToken = errors.New("remoteauth: invalid or expired session 
 
 type sessionClaims struct {
 	jwt.RegisteredClaims
+	// Role carries the account's role (Faz 5.1, yapacam.md — "admin"/"user")
+	// at issue time, so an admin-only endpoint can check it without a
+	// second lookup. A role change or account deletion after issuance is
+	// still caught: ValidateSessionToken only verifies signature/expiry,
+	// but every caller of it (App.ValidateRemoteSession/SessionRole) also
+	// re-checks the subject against the *current* account list, so a
+	// deleted account's outstanding tokens stop validating regardless of
+	// what role they were issued with.
+	Role string `json:"role,omitempty"`
 }
 
 // IssueSessionToken signs a new short-lived session token for subject
-// (typically the configured remote-access username) using signingKey.
-func IssueSessionToken(signingKey []byte, subject string) (string, error) {
-	return issueSessionTokenAt(signingKey, subject, time.Now(), SessionTTL)
+// (an account's username) carrying role, using signingKey.
+func IssueSessionToken(signingKey []byte, subject, role string) (string, error) {
+	return issueSessionTokenAt(signingKey, subject, role, time.Now(), SessionTTL)
 }
 
-func issueSessionTokenAt(signingKey []byte, subject string, issuedAt time.Time, ttl time.Duration) (string, error) {
+func issueSessionTokenAt(signingKey []byte, subject, role string, issuedAt time.Time, ttl time.Duration) (string, error) {
 	claims := sessionClaims{
 		RegisteredClaims: jwt.RegisteredClaims{
 			Subject:   subject,
 			IssuedAt:  jwt.NewNumericDate(issuedAt),
 			ExpiresAt: jwt.NewNumericDate(issuedAt.Add(ttl)),
 		},
+		Role: role,
 	}
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	return token.SignedString(signingKey)
 }
 
 // ValidateSessionToken verifies tokenString's signature and expiry against
-// signingKey and returns the subject it was issued for.
-func ValidateSessionToken(signingKey []byte, tokenString string) (string, error) {
+// signingKey and returns the subject and role it was issued for.
+func ValidateSessionToken(signingKey []byte, tokenString string) (subject, role string, err error) {
 	token, err := jwt.ParseWithClaims(tokenString, &sessionClaims{}, func(t *jwt.Token) (interface{}, error) {
 		if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
 			return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
@@ -58,13 +68,13 @@ func ValidateSessionToken(signingKey []byte, tokenString string) (string, error)
 		return signingKey, nil
 	})
 	if err != nil || !token.Valid {
-		return "", ErrInvalidSessionToken
+		return "", "", ErrInvalidSessionToken
 	}
 	claims, ok := token.Claims.(*sessionClaims)
 	if !ok || claims.Subject == "" {
-		return "", ErrInvalidSessionToken
+		return "", "", ErrInvalidSessionToken
 	}
-	return claims.Subject, nil
+	return claims.Subject, claims.Role, nil
 }
 
 // LoadOrCreateSigningKey reads a 32-byte HMAC signing key from path, or

@@ -907,6 +907,10 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 	case http.MethodGet:
 		writeJSON(w, s.fullBridge.GetRemoteAccessStatus())
 	case http.MethodPut:
+		if !s.callerIsAdmin(r) {
+			http.Error(w, "forbidden: admin only", http.StatusForbidden)
+			return
+		}
 		var req struct {
 			Enabled        *bool  `json:"enabled"`
 			Port           int    `json:"port"`

@@ -24,6 +24,22 @@ type RemoteDeviceInfo struct {
 	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
+// AccountInfo is the account list DTO exposed to clients (Faz 5.1,
+// yapacam.md) — deliberately excludes PasswordHash, same reasoning as
+// RemoteDeviceInfo excluding TokenHash.
+type AccountInfo struct {
+	ID        string    `json:"id"`
+	Username  string    `json:"username"`
+	Role      string    `json:"role"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+// validAccountRoles lists every value Account.Role may hold.
+var validAccountRoles = map[string]bool{
+	"admin": true,
+	"user":  true,
+}
+
 // validAuthModes lists every value RemoteAccess.AuthMode may hold — kept in
 // one place so SetRemoteAuthConfig's validation and any future switch over
 // modes (see remoteAuthOK in internal/webserver) can't silently drift apart.
@@ -253,62 +269,312 @@ func (e *remoteLoginError) Error() string {
 // lockout.
 func (e *remoteLoginError) LockedFor() time.Duration { return e.lockedFor }
 
-// LoginRemotePassword validates username/password against the configured
-// remote-access credentials and, on success, issues a signed session
-// token. remoteAddr should be the raw connecting IP (used only to key the
-// brute-force limiter — never persisted).
-func (a *App) LoginRemotePassword(remoteAddr, username, password string) (string, error) {
+// findAccount returns a pointer into a.cfg.RemoteAccess.Accounts matching
+// username, or nil. Callers must hold remoteAccountsMu.
+func (a *App) findAccount(username string) *config.Account {
+	for i := range a.cfg.RemoteAccess.Accounts {
+		if a.cfg.RemoteAccess.Accounts[i].Username == username {
+			return &a.cfg.RemoteAccess.Accounts[i]
+		}
+	}
+	return nil
+}
+
+// LoginRemotePassword validates username/password and, on success, issues
+// a signed session token carrying the matched account's role. remoteAddr
+// should be the raw connecting IP (used only to key the brute-force
+// limiter — never persisted).
+//
+// Once Accounts (Faz 5.1, yapacam.md) has at least one entry, it is the
+// sole source of truth: the legacy single Username/PasswordHash pair is
+// ignored for login purposes even if still set (see config.
+// migrateLegacyRemoteAccount's doc comment — an existing single-credential
+// install is migrated into Accounts' first, "admin" entry, so this switch
+// is invisible to a user who never touches the new multi-account
+// features). Only when Accounts is still empty does this fall back to the
+// legacy pair, with an implicit "admin" role.
+func (a *App) LoginRemotePassword(remoteAddr, username, password string) (token, role string, err error) {
 	mode := a.cfg.RemoteAccess.AuthMode
 	if mode != "password" && mode != "token_password" {
-		return "", fmt.Errorf("password login is not enabled (auth mode is %q)", mode)
+		return "", "", fmt.Errorf("password login is not enabled (auth mode is %q)", mode)
 	}
 
 	limiter := a.authLimiter()
 	key := remoteAddr + "|" + username
+
+	a.remoteAccountsMu.Lock()
 	if allowed, retryAfter := limiter.Allowed(key); !allowed {
-		return "", &remoteLoginError{lockedFor: retryAfter}
+		a.remoteAccountsMu.Unlock()
+		return "", "", &remoteLoginError{lockedFor: retryAfter}
 	}
 
-	valid := username != "" && username == a.cfg.RemoteAccess.Username
-	if valid {
-		ok, err := remoteauth.VerifyPassword(a.cfg.RemoteAccess.PasswordHash, password)
-		valid = ok && err == nil
+	valid := false
+	if len(a.cfg.RemoteAccess.Accounts) > 0 {
+		if acc := a.findAccount(username); acc != nil {
+			ok, verr := remoteauth.VerifyPassword(acc.PasswordHash, password)
+			valid = ok && verr == nil
+			role = acc.Role
+		}
+	} else {
+		valid = username != "" && username == a.cfg.RemoteAccess.Username
+		if valid {
+			ok, verr := remoteauth.VerifyPassword(a.cfg.RemoteAccess.PasswordHash, password)
+			valid = ok && verr == nil
+		}
+		role = "admin"
 	}
+	a.remoteAccountsMu.Unlock()
+
 	if !valid {
 		lockout := limiter.RecordFailure(key)
 		a.emitEvent("remote_auth:login_failed", username)
-		return "", &remoteLoginError{lockedFor: lockout}
+		return "", "", &remoteLoginError{lockedFor: lockout}
 	}
 	limiter.RecordSuccess(key)
 
 	signingKey, err := a.sessionSigningKey()
 	if err != nil {
-		return "", fmt.Errorf("session signing key: %w", err)
+		return "", "", fmt.Errorf("session signing key: %w", err)
 	}
-	token, err := remoteauth.IssueSessionToken(signingKey, username)
+	token, err = remoteauth.IssueSessionToken(signingKey, username, role)
 	if err != nil {
-		return "", fmt.Errorf("issue session token: %w", err)
+		return "", "", fmt.Errorf("issue session token: %w", err)
 	}
 	a.emitEvent("remote_auth:login_success", username)
-	return token, nil
+	return token, role, nil
 }
 
 // ValidateRemoteSession reports whether token is a currently-valid session
-// token issued for the currently-configured username. Checking the
-// username (not just signature+expiry) means renaming the account
+// token issued for a still-existing identity — either an Accounts entry
+// (Faz 5.1) or, when Accounts is empty, the legacy single username (see
+// LoginRemotePassword's doc comment for which one is authoritative).
+// Checking against the *current* list (not just signature+expiry) means
+// renaming/deleting an account, or renaming the legacy username,
 // immediately invalidates every session issued under the old name. A
 // *password* change alone does not rotate the signing key or otherwise
 // invalidate outstanding sessions — known limitation, not a design goal:
 // a compromised session token still self-expires within SessionTTL (12h)
 // regardless, same as noted on remoteauth.SessionTTL.
 func (a *App) ValidateRemoteSession(token string) bool {
+	_, ok := a.sessionSubjectRole(token)
+	return ok
+}
+
+// SessionRole returns the role a currently-valid session token's subject
+// currently holds (re-checked against the live account list, not just
+// trusted from the JWT claim — see ValidateRemoteSession), and whether the
+// token validated at all. Used by admin-only endpoints (internal/webserver)
+// to distinguish a "user"-role session from an "admin" one; a device token
+// or an unrecognized/expired credential returns ok=false, which callers
+// treat as "no role information available" rather than "forbidden" — see
+// the gating logic's own doc comment for why.
+func (a *App) SessionRole(token string) (string, bool) {
+	return a.sessionSubjectRole(token)
+}
+
+// sessionSubjectRole is the shared implementation behind
+// ValidateRemoteSession/SessionRole.
+func (a *App) sessionSubjectRole(token string) (string, bool) {
 	signingKey, err := a.sessionSigningKey()
 	if err != nil {
-		return false
+		return "", false
 	}
-	subject, err := remoteauth.ValidateSessionToken(signingKey, token)
+	subject, _, err := remoteauth.ValidateSessionToken(signingKey, token)
+	if err != nil || subject == "" {
+		return "", false
+	}
+
+	a.remoteAccountsMu.Lock()
+	defer a.remoteAccountsMu.Unlock()
+	if len(a.cfg.RemoteAccess.Accounts) > 0 {
+		if acc := a.findAccount(subject); acc != nil {
+			return acc.Role, true
+		}
+		return "", false
+	}
+	if subject == a.cfg.RemoteAccess.Username {
+		return "admin", true
+	}
+	return "", false
+}
+
+// NeedsSetup reports whether the server has never had a password-based
+// identity configured at all — no Accounts entries and no legacy
+// Username/PasswordHash pair. While true, POST /api/setup/create-admin is
+// reachable without any credential (see internal/webserver's
+// isSetupBootstrapPath) and the minimal web UI shows a first-run "create
+// your account" screen instead of a token/login prompt (Faz 5.1,
+// yapacam.md). An install that already had password auth configured
+// before Faz 5.1 shipped is treated as already set up — see config.
+// migrateLegacyRemoteAccount — so upgrading never re-surfaces this screen
+// for an existing user.
+func (a *App) NeedsSetup() bool {
+	a.remoteAccountsMu.Lock()
+	defer a.remoteAccountsMu.Unlock()
+	return len(a.cfg.RemoteAccess.Accounts) == 0 && a.cfg.RemoteAccess.Username == ""
+}
+
+// CreateAdminAccount creates the very first Accounts entry (always Role
+// "admin") and immediately logs it in, returning a session token — the
+// bootstrap flow the minimal web UI's first-run screen drives. Only
+// reachable while NeedsSetup() is true; the second call (and every call
+// after) fails, permanently, regardless of server restarts, matching
+// yapacam.md's "ilk başarılı çağrıdan sonra kalıcı olarak kapanır"
+// requirement — there is no code path that ever clears Accounts back to
+// empty other than DeleteAccount, which itself refuses to remove the last
+// admin (see its doc comment).
+//
+// Also upgrades AuthMode when needed: a fresh install defaults to "token"
+// (no password login checked at all — see remoteAuthOK), which would make
+// the freshly created account's password silently unusable. "none" and
+// "token" both become "password"; "token_password" is left alone (already
+// password-capable, and downgrading would break any already-paired device
+// token).
+func (a *App) CreateAdminAccount(username, password string) (string, error) {
+	if !a.NeedsSetup() {
+		return "", fmt.Errorf("setup already completed")
+	}
+	if username == "" {
+		return "", fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return "", fmt.Errorf("password is required")
+	}
+	hash, err := remoteauth.HashPassword(password)
 	if err != nil {
-		return false
+		return "", fmt.Errorf("hash password: %w", err)
 	}
-	return subject != "" && subject == a.cfg.RemoteAccess.Username
+
+	a.remoteAccountsMu.Lock()
+	// Re-check under lock: NeedsSetup() above raced no lock at all, so two
+	// concurrent bootstrap requests could otherwise both pass it and both
+	// append an account.
+	if len(a.cfg.RemoteAccess.Accounts) > 0 || a.cfg.RemoteAccess.Username != "" {
+		a.remoteAccountsMu.Unlock()
+		return "", fmt.Errorf("setup already completed")
+	}
+	a.cfg.RemoteAccess.Accounts = append(a.cfg.RemoteAccess.Accounts, config.Account{
+		ID:           remoteauth.GenerateDeviceID(),
+		Username:     username,
+		PasswordHash: hash,
+		Role:         "admin",
+		CreatedAt:    time.Now(),
+	})
+	if a.cfg.RemoteAccess.AuthMode == "none" || a.cfg.RemoteAccess.AuthMode == "token" || a.cfg.RemoteAccess.AuthMode == "" {
+		a.cfg.RemoteAccess.AuthMode = "password"
+	}
+	err = config.Save(a.cfg)
+	a.remoteAccountsMu.Unlock()
+	if err != nil {
+		return "", fmt.Errorf("save config: %w", err)
+	}
+	a.emitEvent("remote_auth:admin_bootstrapped", username)
+
+	signingKey, err := a.sessionSigningKey()
+	if err != nil {
+		return "", fmt.Errorf("session signing key: %w", err)
+	}
+	token, err := remoteauth.IssueSessionToken(signingKey, username, "admin")
+	if err != nil {
+		return "", fmt.Errorf("issue session token: %w", err)
+	}
+	return token, nil
+}
+
+// ListAccounts returns every account's metadata (never the password hash
+// — see AccountInfo). Returns interface{} for the same FullBridge
+// decoupling reason as ListRemoteDevices.
+func (a *App) ListAccounts() interface{} {
+	a.remoteAccountsMu.Lock()
+	defer a.remoteAccountsMu.Unlock()
+	accounts := a.cfg.RemoteAccess.Accounts
+	out := make([]AccountInfo, 0, len(accounts))
+	for _, acc := range accounts {
+		out = append(out, AccountInfo{ID: acc.ID, Username: acc.Username, Role: acc.Role, CreatedAt: acc.CreatedAt})
+	}
+	return out
+}
+
+// CreateAccount adds a new account. Callers (internal/webserver's
+// admin-only handlers) are responsible for verifying the caller is
+// actually an admin — this method itself performs no authorization check,
+// matching CreateRemoteDevice's existing convention in this file.
+func (a *App) CreateAccount(username, password, role string) error {
+	if username == "" {
+		return fmt.Errorf("username is required")
+	}
+	if password == "" {
+		return fmt.Errorf("password is required")
+	}
+	if !validAccountRoles[role] {
+		return fmt.Errorf("invalid role: %q", role)
+	}
+	hash, err := remoteauth.HashPassword(password)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+
+	a.remoteAccountsMu.Lock()
+	if a.findAccount(username) != nil {
+		a.remoteAccountsMu.Unlock()
+		return fmt.Errorf("an account named %q already exists", username)
+	}
+	a.cfg.RemoteAccess.Accounts = append(a.cfg.RemoteAccess.Accounts, config.Account{
+		ID:           remoteauth.GenerateDeviceID(),
+		Username:     username,
+		PasswordHash: hash,
+		Role:         role,
+		CreatedAt:    time.Now(),
+	})
+	err = config.Save(a.cfg)
+	a.remoteAccountsMu.Unlock()
+	if err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	a.emitEvent("remote_auth:account_created", username)
+	return nil
+}
+
+// DeleteAccount removes an account permanently. Refuses to remove the
+// last remaining "admin"-role account — without this guard, an admin
+// could lock every account (including themselves) out of every
+// admin-only endpoint with no recovery path short of hand-editing
+// config.yaml, since NeedsSetup()/the bootstrap endpoint only ever
+// re-opens when Accounts *and* the legacy Username are both empty, not
+// merely when no admin remains.
+func (a *App) DeleteAccount(id string) error {
+	a.remoteAccountsMu.Lock()
+	accounts := a.cfg.RemoteAccess.Accounts
+	idx := -1
+	for i, acc := range accounts {
+		if acc.ID == id {
+			idx = i
+			break
+		}
+	}
+	if idx == -1 {
+		a.remoteAccountsMu.Unlock()
+		return fmt.Errorf("account not found: %s", id)
+	}
+	if accounts[idx].Role == "admin" {
+		adminCount := 0
+		for _, acc := range accounts {
+			if acc.Role == "admin" {
+				adminCount++
+			}
+		}
+		if adminCount <= 1 {
+			a.remoteAccountsMu.Unlock()
+			return fmt.Errorf("cannot remove the last admin account")
+		}
+	}
+	name := accounts[idx].Username
+	a.cfg.RemoteAccess.Accounts = append(accounts[:idx], accounts[idx+1:]...)
+	err := config.Save(a.cfg)
+	a.remoteAccountsMu.Unlock()
+	if err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	a.emitEvent("remote_auth:account_deleted", name)
+	return nil
 }

@@ -292,6 +292,11 @@ type App struct {
 	// exactly one GetRemoteAccessStatus call (see SetRemoteAccess's
 	// auto-provision-on-first-enable) — read-and-cleared, never persisted.
 	pendingDeviceToken string
+	// remoteAccountsMu protects a.cfg.RemoteAccess.Accounts (Faz 5.1,
+	// yapacam.md multi-user/role model) — separate from remoteDevicesMu
+	// since accounts and devices are independent lists mutated by
+	// independent request paths.
+	remoteAccountsMu sync.Mutex
 }
 
 // NewApp creates a new App instance. The binaries embed.FS and version string

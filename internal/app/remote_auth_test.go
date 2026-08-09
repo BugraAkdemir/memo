@@ -193,7 +193,7 @@ func TestVerifyRemoteDeviceToken_UpdatesLastSeenInMemory(t *testing.T) {
 
 func TestLoginRemotePassword_WrongModeRejected(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{RemoteAccess: config.RemoteAccessConfig{AuthMode: "token"}}}
-	if _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2"); err == nil {
 		t.Fatal("expected login to be rejected when auth mode doesn't support passwords")
 	}
 }
@@ -217,12 +217,15 @@ func newPasswordApp(t *testing.T, username, password string) *App {
 
 func TestLoginRemotePassword_CorrectCredentialsIssueValidSession(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	token, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2")
+	token, role, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2")
 	if err != nil {
 		t.Fatalf("LoginRemotePassword: %v", err)
 	}
 	if token == "" {
 		t.Fatal("expected a non-empty session token")
+	}
+	if role != "admin" {
+		t.Errorf("role = %q, want %q (legacy single-credential path)", role, "admin")
 	}
 	if !a.ValidateRemoteSession(token) {
 		t.Error("expected the issued session token to validate")
@@ -231,14 +234,14 @@ func TestLoginRemotePassword_CorrectCredentialsIssueValidSession(t *testing.T) {
 
 func TestLoginRemotePassword_WrongPasswordFails(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	if _, err := a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword"); err == nil {
 		t.Fatal("expected wrong password to fail")
 	}
 }
 
 func TestLoginRemotePassword_WrongUsernameFails(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	if _, err := a.LoginRemotePassword("1.2.3.4", "notadmin", "hunter2"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "notadmin", "hunter2"); err == nil {
 		t.Fatal("expected wrong username to fail")
 	}
 }
@@ -247,14 +250,14 @@ func TestLoginRemotePassword_LocksOutAfterRepeatedFailures(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
 	var lastErr error
 	for i := 0; i < 10; i++ {
-		_, lastErr = a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword")
+		_, _, lastErr = a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword")
 	}
 	le, ok := lastErr.(*remoteLoginError)
 	if !ok || le.LockedFor() <= 0 {
 		t.Fatalf("expected a lockout error after repeated failures, got %v", lastErr)
 	}
 	// Even the correct password must be rejected while locked out.
-	if _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2"); err == nil {
 		t.Error("expected correct credentials to still be rejected during lockout")
 	}
 }
@@ -271,12 +274,218 @@ func TestValidateRemoteSession_RejectsGarbage(t *testing.T) {
 
 func TestValidateRemoteSession_RejectsTokenForRenamedUser(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	token, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2")
+	token, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2")
 	if err != nil {
 		t.Fatalf("LoginRemotePassword: %v", err)
 	}
 	a.cfg.RemoteAccess.Username = "someoneelse"
 	if a.ValidateRemoteSession(token) {
 		t.Error("expected a session issued for the old username to fail after a rename")
+	}
+}
+
+// ── Faz 5.1 (yapacam.md): multi-account / role model ───────────────────
+
+func newAccountsApp(t *testing.T) *App {
+	t.Helper()
+	dir := t.TempDir()
+	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	return &App{cfg: config.Get(), events: &eventRing{}, sessionKey: []byte(testSigningKey)}
+}
+
+func TestNeedsSetup_TrueOnFreshInstall(t *testing.T) {
+	a := newAccountsApp(t)
+	if !a.NeedsSetup() {
+		t.Error("expected a fresh install with no accounts and no legacy password to need setup")
+	}
+}
+
+func TestNeedsSetup_FalseWhenLegacyPasswordAlreadyConfigured(t *testing.T) {
+	a := newPasswordApp(t, "admin", "hunter2")
+	if a.NeedsSetup() {
+		t.Error("expected a pre-Faz-5.1 install with password auth already configured to not need setup")
+	}
+}
+
+func TestCreateAdminAccount_Succeeds(t *testing.T) {
+	a := newAccountsApp(t)
+	token, err := a.CreateAdminAccount("alice", "hunter2")
+	if err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected a non-empty session token")
+	}
+	if a.NeedsSetup() {
+		t.Error("expected NeedsSetup to be false immediately after bootstrap")
+	}
+	if a.cfg.RemoteAccess.AuthMode != "password" {
+		t.Errorf("AuthMode = %q, want %q (should upgrade from default token mode)", a.cfg.RemoteAccess.AuthMode, "password")
+	}
+	role, ok := a.SessionRole(token)
+	if !ok || role != "admin" {
+		t.Errorf("SessionRole = (%q, %v), want (\"admin\", true)", role, ok)
+	}
+}
+
+func TestCreateAdminAccount_FailsWhenAlreadySetUp(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("alice", "hunter2"); err != nil {
+		t.Fatalf("first CreateAdminAccount: %v", err)
+	}
+	if _, err := a.CreateAdminAccount("mallory", "hunter3"); err == nil {
+		t.Fatal("expected a second bootstrap call to be rejected")
+	}
+}
+
+func TestCreateAdminAccount_PreservesTokenPasswordMode(t *testing.T) {
+	a := newAccountsApp(t)
+	a.cfg.RemoteAccess.AuthMode = "token_password"
+	if _, err := a.CreateAdminAccount("alice", "hunter2"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if a.cfg.RemoteAccess.AuthMode != "token_password" {
+		t.Errorf("AuthMode = %q, want unchanged %q", a.cfg.RemoteAccess.AuthMode, "token_password")
+	}
+}
+
+func TestLoginRemotePassword_UsesAccountsAndReturnsRole(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+
+	_, role, err := a.LoginRemotePassword("1.2.3.4", "alice", "adminpass")
+	if err != nil || role != "admin" {
+		t.Errorf("alice login: role=%q err=%v, want role=admin err=nil", role, err)
+	}
+	_, role, err = a.LoginRemotePassword("1.2.3.4", "bob", "userpass")
+	if err != nil || role != "user" {
+		t.Errorf("bob login: role=%q err=%v, want role=user err=nil", role, err)
+	}
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "bob", "wrongpass"); err == nil {
+		t.Error("expected wrong password to fail even though the username exists")
+	}
+}
+
+func TestSessionRole_UnrecognizedTokenReturnsFalse(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, ok := a.SessionRole("not-a-real-token"); ok {
+		t.Error("expected an unrecognized token to return ok=false")
+	}
+}
+
+func TestSessionRole_DeletedAccountInvalidatesSession(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	token, role, err := a.LoginRemotePassword("1.2.3.4", "bob", "userpass")
+	if err != nil || role != "user" {
+		t.Fatalf("bob login: role=%q err=%v", role, err)
+	}
+	if _, ok := a.SessionRole(token); !ok {
+		t.Fatal("expected bob's session to validate before deletion")
+	}
+
+	accounts := a.ListAccounts().([]AccountInfo)
+	var bobID string
+	for _, acc := range accounts {
+		if acc.Username == "bob" {
+			bobID = acc.ID
+		}
+	}
+	if err := a.DeleteAccount(bobID); err != nil {
+		t.Fatalf("DeleteAccount: %v", err)
+	}
+	if _, ok := a.SessionRole(token); ok {
+		t.Error("expected bob's session to stop validating after his account was deleted")
+	}
+}
+
+func TestCreateAccount_DuplicateUsernameRejected(t *testing.T) {
+	a := newAccountsApp(t)
+	if err := a.CreateAccount("bob", "pass1", "user"); err != nil {
+		t.Fatalf("first CreateAccount: %v", err)
+	}
+	if err := a.CreateAccount("bob", "pass2", "admin"); err == nil {
+		t.Error("expected a duplicate username to be rejected")
+	}
+}
+
+func TestCreateAccount_InvalidRoleRejected(t *testing.T) {
+	a := newAccountsApp(t)
+	if err := a.CreateAccount("bob", "pass1", "superuser"); err == nil {
+		t.Error("expected an unrecognized role to be rejected")
+	}
+}
+
+func TestDeleteAccount_CannotRemoveLastAdmin(t *testing.T) {
+	a := newAccountsApp(t)
+	token, err := a.CreateAdminAccount("alice", "adminpass")
+	if err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	_, ok := a.SessionRole(token)
+	if !ok {
+		t.Fatal("expected the bootstrap session to validate")
+	}
+	accounts := a.ListAccounts().([]AccountInfo)
+	if len(accounts) != 1 {
+		t.Fatalf("expected 1 account, got %d", len(accounts))
+	}
+	if err := a.DeleteAccount(accounts[0].ID); err == nil {
+		t.Error("expected deleting the last admin account to be rejected")
+	}
+}
+
+func TestDeleteAccount_AllowsRemovingNonLastAdmin(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if err := a.CreateAccount("carol", "carolpass", "admin"); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	accounts := a.ListAccounts().([]AccountInfo)
+	var aliceID string
+	for _, acc := range accounts {
+		if acc.Username == "alice" {
+			aliceID = acc.ID
+		}
+	}
+	if aliceID == "" {
+		t.Fatal("expected to find alice's account")
+	}
+	if err := a.DeleteAccount(aliceID); err != nil {
+		t.Errorf("expected deleting one of two admins to succeed, got %v", err)
+	}
+}
+
+func TestDeleteAccount_RemovingUserAccountNeverBlocked(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
+		t.Fatalf("CreateAccount: %v", err)
+	}
+	accounts := a.ListAccounts().([]AccountInfo)
+	var bobID string
+	for _, acc := range accounts {
+		if acc.Username == "bob" {
+			bobID = acc.ID
+		}
+	}
+	if err := a.DeleteAccount(bobID); err != nil {
+		t.Errorf("expected deleting a non-admin account to succeed, got %v", err)
 	}
 }

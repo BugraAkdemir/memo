@@ -154,10 +154,19 @@ type FullBridge interface {
 	SetRemoteAuthConfig(mode, username, password string) error
 	VerifyRemoteDeviceToken(token string) bool
 	ValidateRemoteSession(token string) bool
-	LoginRemotePassword(remoteAddr, username, password string) (string, error)
+	LoginRemotePassword(remoteAddr, username, password string) (token, role string, err error)
 	ListRemoteDevices() interface{}
 	CreateRemoteDevice(name string) (string, error)
 	RevokeRemoteDevice(id string) error
+
+	// Multi-account / role model (Faz 5.1, yapacam.md) — see
+	// internal/app/remote_auth.go's doc comments for the full design.
+	NeedsSetup() bool
+	CreateAdminAccount(username, password string) (token string, err error)
+	SessionRole(token string) (role string, ok bool)
+	ListAccounts() interface{}
+	CreateAccount(username, password, role string) error
+	DeleteAccount(id string) error
 
 	// Dev gateway (Settings > Developer): local OpenAI/Anthropic-compatible
 	// API surface that routes to whichever model/provider is configured.

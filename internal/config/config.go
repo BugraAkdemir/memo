@@ -267,6 +267,18 @@ type RemoteAccessConfig struct {
 	// migrateLegacyRemoteToken.
 	Devices []RemoteDevice `yaml:"devices" json:"-"`
 	Token   string         `yaml:"token" json:"-"`
+
+	// Accounts is the multi-user/role model added in Faz 5.1 (yapacam.md) —
+	// a deliberately separate concept from both Devices (per-client tokens,
+	// no identity/role at all) and the legacy Username/PasswordHash pair
+	// above (one person's own single credential, no role). Once Accounts is
+	// non-empty, LoginRemotePassword/ValidateRemoteSession/SessionRole
+	// authenticate exclusively against it and the legacy fields become
+	// display-only leftovers of whichever config a pre-Faz-5.1 install had;
+	// see migrateLegacyRemoteAccount for how an existing single-credential
+	// setup becomes this list's first ("admin") entry automatically, with
+	// no action required from the user and no loss of access.
+	Accounts []Account `yaml:"accounts" json:"-"`
 }
 
 // RemoteDevice is one paired client's access record. Only TokenHash is ever
@@ -278,6 +290,22 @@ type RemoteDevice struct {
 	TokenHash  string    `yaml:"token_hash" json:"-"`
 	CreatedAt  time.Time `yaml:"created_at" json:"created_at"`
 	LastSeenAt time.Time `yaml:"last_seen_at,omitempty" json:"last_seen_at,omitempty"`
+}
+
+// Account is one login identity under the Faz 5.1 multi-user model — a
+// username+password pair with a Role ("admin" or "user") that gates
+// server-management endpoints (see internal/webserver's admin-only
+// handlers). PasswordHash is always argon2id (internal/remoteauth.
+// HashPassword); the plain password is never persisted. The first account
+// ever created (via POST /api/setup/create-admin, only reachable while the
+// list is empty — see App.NeedsSetup) is always Role "admin"; every
+// account after that is created by an existing admin, who chooses the role.
+type Account struct {
+	ID           string    `yaml:"id" json:"id"`
+	Username     string    `yaml:"username" json:"username"`
+	PasswordHash string    `yaml:"password_hash" json:"-"`
+	Role         string    `yaml:"role" json:"role"`
+	CreatedAt    time.Time `yaml:"created_at" json:"created_at"`
 }
 
 type APIConfig struct {
@@ -597,6 +625,7 @@ func Load(path string) (*AppConfig, error) {
 		logx.Printf("config: applied defaults for: %v", fixes)
 	}
 	migrated := migrateLegacyRemoteToken(cfg)
+	migrated = migrateLegacyRemoteAccount(cfg) || migrated
 	if seeded || migrated {
 		// Persist the seeded/migrated config to its writable home so later
 		// runs read it directly (and, for migration, so the plaintext token
@@ -630,6 +659,36 @@ func migrateLegacyRemoteToken(cfg *AppConfig) bool {
 		CreatedAt: time.Now(),
 	})
 	cfg.RemoteAccess.Token = ""
+	return true
+}
+
+// migrateLegacyRemoteAccount turns a pre-Faz-5.1 config's single
+// Username+PasswordHash password credential into that same person's first
+// Accounts entry, with Role "admin" — so an existing install that already
+// had password auth configured is treated as already "set up" (App.
+// NeedsSetup returns false) rather than being shown the first-run bootstrap
+// screen, and so LoginRemotePassword's account-list path (see its doc
+// comment) has something to authenticate against immediately. Unlike
+// migrateLegacyRemoteToken, this deliberately does NOT blank the legacy
+// fields afterward — GetRemoteAccessStatus and the desktop Settings tab's
+// existing SetRemoteAuthConfig flow still read/write them directly, and
+// leaving them in place costs nothing once Accounts is authoritative.
+// No-ops (and is safe to call every Load()) once Accounts is non-empty,
+// so this never re-runs after the one-time migration.
+func migrateLegacyRemoteAccount(cfg *AppConfig) bool {
+	if len(cfg.RemoteAccess.Accounts) > 0 {
+		return false
+	}
+	if cfg.RemoteAccess.Username == "" || cfg.RemoteAccess.PasswordHash == "" {
+		return false
+	}
+	cfg.RemoteAccess.Accounts = append(cfg.RemoteAccess.Accounts, Account{
+		ID:           remoteauth.GenerateDeviceID(),
+		Username:     cfg.RemoteAccess.Username,
+		PasswordHash: cfg.RemoteAccess.PasswordHash,
+		Role:         "admin",
+		CreatedAt:    time.Now(),
+	})
 	return true
 }
 

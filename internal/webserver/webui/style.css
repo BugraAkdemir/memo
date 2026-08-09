@@ -72,7 +72,7 @@ input, select, textarea {
 }
 
 /* ── login ───────────────────────────────────────────────────────────── */
-#login-screen {
+#login-screen, #setup-screen {
   min-height: 100vh;
   display: flex;
   align-items: center;
@@ -91,6 +91,14 @@ input, select, textarea {
 .login-box p { color: var(--muted); font-size: 13px; line-height: 1.5; }
 .login-box input { margin: 12px 0; }
 .login-box button { width: 100%; }
+.divider {
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin: 16px 0;
+}
 .error { color: var(--danger); font-size: 13px; }
 .warning {
   color: var(--warn);

@@ -39,8 +39,31 @@ async function apiJSON(path, opts = {}) {
 }
 
 // ── boot ─────────────────────────────────────────────────────────────────
+//
+// Faz 5.1 (yapacam.md): before probing /api/status the usual way, check
+// whether this server has ever had an account/password configured at all.
+// A brand new install (curl installer just finished, nobody has touched
+// Settings yet) shows the first-run "create your admin account" screen
+// instead of a token-entry prompt no one has a token for yet — the whole
+// point of this feature. /api/setup/status is deliberately unauthenticated
+// (see isSetupBootstrapPath, server-side), so this call always succeeds
+// regardless of auth mode.
+
+let authMode = "";
 
 async function boot() {
+  try {
+    const setup = await apiJSON("/api/setup/status");
+    if (setup && setup.needs_setup) {
+      showSetup();
+      return;
+    }
+    authMode = (setup && setup.auth_mode) || "";
+  } catch (e) {
+    // Setup-status itself unreachable (backend not up yet) — fall through
+    // to the normal probe below exactly as before this feature existed.
+  }
+
   try {
     await apiJSON("/api/status");
     showApp();
@@ -57,12 +80,38 @@ async function boot() {
 }
 
 function showLogin() {
+  document.getElementById("setup-screen").classList.add("hidden");
   document.getElementById("login-screen").classList.remove("hidden");
   document.getElementById("app").classList.add("hidden");
-  document.getElementById("token-input").focus();
+
+  // Show whichever credential form(s) the configured auth mode actually
+  // checks (see internal/webserver's remoteAuthOK) — "password" never
+  // checks a device token and vice versa, so offering the other one would
+  // just be a confusing dead end. Unknown/empty mode (e.g. the
+  // setup-status probe above failed) falls back to the token-only form,
+  // matching this page's behavior before password login existed here.
+  const showPassword = authMode === "password" || authMode === "token_password";
+  const showToken = authMode !== "password";
+  document.getElementById("password-login-block").classList.toggle("hidden", !showPassword);
+  document.getElementById("token-login-block").classList.toggle("hidden", !showToken);
+  document.getElementById("login-divider").classList.toggle("hidden", !(showPassword && showToken));
+
+  if (showPassword) {
+    document.getElementById("login-username").focus();
+  } else {
+    document.getElementById("token-input").focus();
+  }
+}
+
+function showSetup() {
+  document.getElementById("login-screen").classList.add("hidden");
+  document.getElementById("app").classList.add("hidden");
+  document.getElementById("setup-screen").classList.remove("hidden");
+  document.getElementById("setup-username").focus();
 }
 
 function showApp() {
+  document.getElementById("setup-screen").classList.add("hidden");
   document.getElementById("login-screen").classList.add("hidden");
   document.getElementById("app").classList.remove("hidden");
   initApp();
@@ -85,6 +134,72 @@ document.getElementById("token-submit").addEventListener("click", async () => {
 });
 document.getElementById("token-input").addEventListener("keydown", (e) => {
   if (e.key === "Enter") document.getElementById("token-submit").click();
+});
+
+document.getElementById("login-submit").addEventListener("click", async () => {
+  const username = document.getElementById("login-username").value.trim();
+  const password = document.getElementById("login-password").value;
+  const errEl = document.getElementById("login-error");
+  errEl.classList.add("hidden");
+  if (!username || !password) return;
+  try {
+    const res = await fetch("/api/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || "invalid credentials");
+    }
+    const data = await res.json();
+    setToken(data.session_token);
+    showApp();
+  } catch (e) {
+    errEl.textContent = "Login failed — check your username and password.";
+    errEl.classList.remove("hidden");
+  }
+});
+document.getElementById("login-password").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("login-submit").click();
+});
+
+document.getElementById("setup-submit").addEventListener("click", async () => {
+  const username = document.getElementById("setup-username").value.trim();
+  const password = document.getElementById("setup-password").value;
+  const confirm = document.getElementById("setup-password-confirm").value;
+  const errEl = document.getElementById("setup-error");
+  errEl.classList.add("hidden");
+  if (!username || !password) {
+    errEl.textContent = "Username and password are required.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  if (password !== confirm) {
+    errEl.textContent = "Passwords don't match.";
+    errEl.classList.remove("hidden");
+    return;
+  }
+  try {
+    const res = await fetch("/api/setup/create-admin", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ username, password }),
+    });
+    if (!res.ok) {
+      const text = await res.text().catch(() => "");
+      throw new Error(text || `${res.status} ${res.statusText}`);
+    }
+    const data = await res.json();
+    setToken(data.session_token);
+    showApp();
+  } catch (e) {
+    errEl.textContent = "Could not create account: " + e.message;
+    errEl.classList.remove("hidden");
+  }
+});
+document.getElementById("setup-password-confirm").addEventListener("keydown", (e) => {
+  if (e.key === "Enter") document.getElementById("setup-submit").click();
 });
 
 // ── app shell (tabs, status dot) ────────────────────────────────────────

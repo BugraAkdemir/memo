@@ -11,10 +11,31 @@
 <div id="login-screen" class="screen hidden">
   <div class="login-box">
     <h1>Memo</h1>
-    <p>This backend is on a LAN/remote network — enter its access token to continue. You'll find it in the desktop app under Settings → Remote Access, or in the container logs.</p>
-    <input id="token-input" type="password" placeholder="Access token" autocomplete="off">
-    <button id="token-submit">Connect</button>
+    <div id="password-login-block" class="hidden">
+      <p>This backend is on a LAN/remote network — sign in with your account to continue.</p>
+      <input id="login-username" type="text" placeholder="Username" autocomplete="username">
+      <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+      <button id="login-submit">Log in</button>
+    </div>
+    <p id="login-divider" class="divider hidden">or</p>
+    <div id="token-login-block">
+      <p>This backend is on a LAN/remote network — enter its access token to continue. You'll find it in the desktop app under Settings → Remote Access, or in the container logs.</p>
+      <input id="token-input" type="password" placeholder="Access token" autocomplete="off">
+      <button id="token-submit">Connect</button>
+    </div>
     <p id="login-error" class="error hidden"></p>
+  </div>
+</div>
+
+<div id="setup-screen" class="screen hidden">
+  <div class="login-box">
+    <h1>Welcome to Memo</h1>
+    <p>No account exists on this server yet. Create one to get started — it will be the server's <strong>admin</strong> account, with full access to accounts, devices, and server settings.</p>
+    <input id="setup-username" type="text" placeholder="Username" autocomplete="username">
+    <input id="setup-password" type="password" placeholder="Password" autocomplete="new-password">
+    <input id="setup-password-confirm" type="password" placeholder="Confirm password" autocomplete="new-password">
+    <button id="setup-submit">Create admin account</button>
+    <p id="setup-error" class="error hidden"></p>
   </div>
 </div>
 

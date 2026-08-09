@@ -1,5 +1,37 @@
 # Handoff — 2026-08-09 (Session 6) — Faz 5.1 implementasyonu: çoklu-hesap + rol modeli + web bootstrap ekranı
 
+## Ek (aynı gün, gerçek RPi kurulum testi) — 2 yeni onboarding bug'ı + 1 teknik borç, BUG_REPORT.md'ye kaydedildi
+
+Kullanıcı bu oturumun sonunda gerçekten kendi Raspberry Pi'sinde
+`get-memo-server-beta.sh` ile canlı bir kurulum yaptı (istenen CI build'i
+— `Linux arm64` — bitmişti). İki gerçek, birebir yaşanmış bug + bir
+teknik borç bulundu, kullanıcının açık isteğiyle **düzeltilmeden**,
+sadece `BUG_REPORT.md`'ye kaydedildi:
+
+- **BUG-ONB1** — kurulum/servis script'i (`get-memo-server.sh`/`-beta.sh`)
+  kullanıcıya hangi URL/porta gireceğini hiç söylemiyor; ayrıca birden
+  fazla LAN IP'si (gerçek IP + Docker bridge IP'leri) ayrım yapılmadan
+  listeleniyor. Faz 5.1'in "tarayıcıdan hiçbir terminal komutu olmadan
+  başla" vaadini fiilen zayıflatıyor.
+- **BUG-ONB2** — `memo service`'te `restart` alt komutu yok; hiçbir
+  çıktı `systemctl --user` gerektiğini söylemiyor. Kullanıcı gerçekten
+  `systemctl restart memo` (polkit auth fail) ve `sudo systemctl restart
+  memo` (Unit not found) denedi, ikisi de farklı şekillerde sessizce
+  başarısız oldu.
+- **TD-3** — `download.bugradev.com`'daki kurulum script'leri CI ile
+  otomatik güncellenmiyor (sadece binary/arşivler güncelleniyor).
+  Somut kanıtı: kullanıcının çektiği script hâlâ Session 5'te
+  (`1fbaec6`) düzeltilen eski, döngüsel "token-bootstrap" metnini
+  gösterdi — repo'da aylar önce kapanan bir bug, script elle
+  yeniden yüklenmediği için canlıda hâlâ aktif.
+
+Tam detay, önerilen (uygulanmamış) düzeltmeler ve dosya konumları için
+`BUG_REPORT.md`'nin yeni 🟡 MEDIUM + 🔧 TEKNİK BORÇ bölümlerine bak.
+**Hiçbir kod değişikliği yapılmadı** — kullanıcı açıkça "not et, düzeltme"
+dedi.
+
+---
+
 ## Özet
 
 Kullanıcı masanın başında değildi, "faz 5'ten devam edelim, her yetkiye

@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-05 — bir önceki denetimde bulunan 3 bug (LK-1, SF-5, RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp hepsi düzeltildi:
+> **Son güncelleme:** 2026-08-09 — kullanıcının kendi Raspberry Pi'sinde `get-memo-server-beta.sh` ile yaptığı gerçek, canlı kurulumda 2 yeni bulgu tespit edildi (BUG-ONB1, TD-3) — henüz düzeltilmedi, sadece kayda geçirildi, aşağıda.
+>
+> 2026-08-05 — bir önceki denetimde bulunan 3 bug (LK-1, SF-5, RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp hepsi düzeltildi:
 > - **LK-1** (`14f4486`) — `internal/agentcli`'nin `ChatCompletionStream`'i (Claude Code + Codex, ikisi de) ctx iptalinde sadece doğrudan alt süreci öldürüyordu; `--dangerously-skip-permissions`/`--dangerously-bypass-approvals-and-sandbox` ile başlattığı bir torun süreç stdout pipe'ını açık tutarsa `scanner.Scan()` sonsuza kadar bloklanıyordu. `cmd.Cancel` artık tüm process group'u öldürüyor (`internal/llama`'nın Setpgid deseni), `cmd.WaitDelay` (5s) torun süreç yine de kaçarsa yedek. İlk versiyon `/code-review`'dan geçti, 2 gerçek eksik bulundu ve kapatıldı: process-group kill eksikti (sadece pipe'ı zorla kapatıyordu, süreci öldürmüyordu — `--dangerously-*` yetkisiyle çalışan bir süreç arka planda öldürülmeden kalıyordu), test'in sabit 200ms bekleme süresi gerçek bir senkronizasyon garantisi değildi (marker-file polling'e çevrildi).
 > - **SF-5** (`7f434ed`) — `callAgentStream`'in bir dalı (`streamCh` boş kapanırsa) terminal chunk göndermiyordu. Gerçek pipeline'ın (`agent.Executor`/`Pipeline.RunStream`) her çıkış yolu zaten terminal chunk gönderiyor — bu yüzden bugün canlı olarak tetiklenemez, ama gelecekteki bir pipeline değişikliğine karşı savunma amaçlı düzeltildi. Test edilebilir olması için `drainAgentStream` diye ayrı bir metoda çıkarıldı.
 > - **RC-7** (`5294014`) — `Shutdown()`'ın `close(memorySaveCh)`'i, hâlâ süren bir stream goroutine'inin `saveMemoryAsync` gönderimiyle yarışabiliyordu (`webSrv.Stop()` sadece HTTP handler'ın kendi call stack'ini bekliyor, arkaplan goroutine'lerini değil) — panic oluyordu, başka bir goroutine'in `recoverStreamPanic`'i yanlış ilişkilendirilmiş şekilde yakalıyordu. `saveMemoryAsync` artık kendi gönderimini recover ediyor, doğru loglanmış bir kayıpla.
@@ -52,10 +54,40 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 0 |
+| 🟡 MEDIUM | 2 |
 | 🟢 LOW | 0 |
-| 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **0** |
+| 🔧 TEKNİK BORÇ | 1 |
+| **TOPLAM** | **3** |
+
+---
+
+## 🟡 MEDIUM — Self-hosted onboarding (2026-08-09, kullanıcının kendi RPi'sindeki canlı `get-memo-server-beta.sh` kurulumunda birebir yaşandı)
+
+### BUG-ONB1: Kurulum/servis script'i kullanıcıya hangi URL/porta gireceğini hiç söylemiyor
+
+- **Dosya:** `scripts/get-memo-server.sh`, `scripts/get-memo-server-beta.sh` (aynı sorun ikisinde de — systemd servis kurulum bloğu, script sonu)
+- **Nedir:** Kurulum bitip `--lan` ile systemd servisi kurulduktan sonra script'in son çıktısı "Service installed and started", auth mode notu, ve `memo service status` / `memo remote status` gibi SSH komutlarını listeliyor — ama **hiçbir satırda** kullanıcının tarayıcıdan açacağı gerçek adresi (`http://<ip>:8090`) açıkça yazmıyor. Faz 5.1 ile artık asıl akış "tarayıcıdan hesap oluştur" olduğu için bu, kullanıcının ilk adımda tam olarak nereye gideceğini bilmediği anlamına geliyor.
+- **Ek bulgu (aynı kurulumda):** `memo service status`'ın loglarında birden fazla "LAN address available" satırı basılıyor (`192.168.1.106` — gerçek LAN IP'si — ile birlikte `172.18.0.1`/`172.19.0.1`/`172.17.0.1` — makinede kurulu Docker'ın bridge IP'leri). Script/CLI hangisinin "gerçek" adres olduğunu hiç ayırt etmiyor; ortalama bir kullanıcı Docker bridge IP'lerinden birine girmeyi deneyip başarısız olabilir.
+- **Kullanıcı etkisi:** yapacam.md'nin Faz 5.1 bitiş kriteri — "curl kurulumundan sonra hiçbir terminal komutu çalıştırmadan tarayıcıdan bir hesap oluşturup kullanmaya başlayabilecek" — bu script'le tam sağlanmıyor: kullanıcı yine de adresi öğrenmek için ek bir komut çalıştırmak (`memo service status`, `hostname -I` vb.) zorunda kalıyor.
+- **Düzeltme (uygulanmadı, sadece kayıt):** Kurulum/servis-kurulum bloğunun sonunda, script'in zaten bildiği gerçek LAN IP'sini (Go tarafı zaten `GetAddresses()`/local IP tespiti yapıyor, script bunu `memo remote status`'tan JSON olarak okuyup basabilir, ya da kendi `hostname -I`/`ip route get` mantığıyla tek bir en-olası adresi seçebilir) kalın/renkli, gözden kaçmayacak bir satırda basmalı: `Open http://<ip>:8090 in your browser to get started`. Docker bridge IP'leri filtrelenmeli (özel `172.17-31.x.x`/`docker0` arayüzü sezgisel olarak elenebilir).
+
+### BUG-ONB2: `memo service`'te `restart` alt komutu yok; hiçbir çıktı `systemctl --user` gerektiğini söylemiyor
+
+- **Dosya:** `cli_service.go` (sadece `install`/`uninstall`/`status` var, `restart` yok), kurulum script'lerinin systemd bloğu
+- **Nedir:** Servis `systemctl --user` ile kuruluyor (doğru, kod tarafında hep `--user` kullanılıyor — `cli_service.go:92`, `scripts/get_memo_arm.sh`) ama bu **hiçbir kullanıcı-yüzü metinde açıkça söylenmiyor**. Gerçek kurulumda kullanıcı doğal refleksle önce `systemctl restart memo` denedi — sistem genelinde polkit şifre istedi, kimlik doğrulama başarısız oldu (`--user` olmayan bir servise sistem seviyesinde restart isteği, farklı bir yetkilendirme yoluna giriyor) — sonra `sudo systemctl restart memo` denedi, bu da `Unit memo.service not found` verdi (sudo'nun systemctl'i sistem birimlerine bakar, `~/.config/systemd/user/`'a değil). İki komut da başarısız oldu, ikisi de nedenini açıklamadı.
+- **Kullanıcı etkisi:** Servisi yeniden başlatmanın CLI'dan hiçbir güvenilir/kolay yolu yok — `memo service restart` diye bir komut yok, doğru komut (`systemctl --user restart memo`) hiçbir yerde yazmıyor. Web UI'ın "Restart Backend" butonu var ama tarayıcıdan login olmayı gerektiriyor — backend zaten "takılmış" göründüğü an tam da erişilemeyebilecek yol.
+- **Düzeltme (uygulanmadı, sadece kayıt):** (1) `cli_service.go`'ya bir `restart` alt komutu eklenmeli (`runSystemctl("restart", ...)` zaten var olan `install`/`status` mantığını taklit ederek trivial). (2) Kurulum script'inin systemd onay bloğu sonuna, `journalctl`/`memo remote status` ipuçlarının yanına `systemctl --user restart memo` / `systemctl --user status memo` da açıkça eklenmeli — kullanıcı `--user` olmayan hâlini deneyip kafası karışmadan önce.
+
+---
+
+## 🔧 TEKNİK BORÇ
+
+### TD-3: `download.bugradev.com`'daki kurulum script'leri CI ile otomatik güncellenmiyor — repo'da düzeltilen bug'lar canlıda hâlâ eski
+
+- **Dosya:** `.github/workflows/build-linux.yml`/`build-macos.yml`/`build-windows.yml` (R2'ye sadece derlenmiş binary/arşivleri yüklüyor), R2 bucket
+- **Nedir:** Derlenmiş çıktılar (`memo_beta.tar.gz`, `memo_arm_beta.zip` vb.) her `main` push'unda otomatik R2'ye yükleniyor, ama `get-memo-server.sh`/`get-memo-server-beta.sh` gibi kurulum script'lerinin **kendisi hiçbir workflow tarafından yüklenmiyor** — Session 5'in handoff'unda zaten "kullanıcı R2'ye kendi eliyle yükleyecek" diye not edilmişti. Bugün somut sonucu görüldü: kullanıcının `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash` ile çektiği script, commit `1fbaec6`'nın (Session 5, token-bootstrap circular-dependency fix) düzelttiği **eski** metni gösterdi — "run 'memo remote status' to see the device token" (bu komutun kendisi token olmadan zaten 401 veriyor, tam olarak `1fbaec6`'nın kapattığı döngüsel bug). Yani repo'da aylar önce düzeltilmiş bir bug, canlıda hâlâ aktif çünkü script hiç yeniden yüklenmemiş.
+- **Kullanıcı etkisi:** Install-script'lere yapılan HERHANGİ bir düzeltme (BUG-ONB1/ONB2 dahil, düzeltilseler bile), birisi elle R2'ye yükleyene kadar gerçek kullanıcıları etkilemeye devam eder — sessiz, fark edilmesi zor bir regresyon kaynağı; test edip "düzelttim" demek yeterli değil, deploy de ayrı bir adım.
+- **Düzeltme (uygulanmadı, sadece kayıt):** İki seçenek: (1) `scripts/*.sh`'ı da bir CI adımıyla otomatik R2'ye yükle (build workflow'larına eklenecek düşük riskli bir adım — script'ler zaten repo'da), (2) en azından `scripts/README.md`'ye/memo-release skill'ine "script değişikliğinden sonra elle R2'ye yükle" diye açık, atlanamaz bir checklist maddesi ekle. (1) daha sağlam çünkü insan hatasına bağımlı değil — bugünkü olay tam olarak bu insan-hatası senaryosu.
 
 ---
 

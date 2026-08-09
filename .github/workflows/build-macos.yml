@@ -34,11 +34,17 @@ jobs:
         with:
           channel: "${{ env.FLUTTER_CHANNEL }}"
 
+      # ~/Library/Caches/go-build (compiled-object cache) deliberately
+      # dropped — see build-linux.yml's cache step for the full story (the
+      # same risk applies here even though it was only actually observed
+      # on Linux; an earlier pass here mistakenly claimed this job "never
+      # opted into" that cache, which was wrong — it's the same block,
+      # just under macOS's own cache-dir naming, missed by a Linux-path-
+      # specific grep at the time).
       - uses: actions/cache@v4
         with:
           path: |
             ~/go/pkg/mod
-            ~/Library/Caches/go-build
           key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: go-${{ runner.os }}-
 
@@ -53,6 +59,17 @@ jobs:
       - name: Flutter deps
         run: flutter pub get
         working-directory: frontend
+
+      # Must run BEFORE "Build Go backend" — see build-linux.yml's
+      # identical comment for why (go:embed reads webapp/ at compile time).
+      - name: Build Flutter web frontend
+        run: flutter build web --release
+        working-directory: frontend
+
+      - name: Copy web build into the Go embed directory
+        run: |
+          rm -f internal/webserver/webapp/index.html
+          cp -r frontend/build/web/* internal/webserver/webapp/
 
       - name: Build Go backend
         run: |

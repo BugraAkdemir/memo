@@ -697,8 +697,12 @@ func TestHandleWebUIAssets_NoStore(t *testing.T) {
 	// "/index.html" is deliberately excluded: http.FileServer 301-redirects
 	// the named index file to its directory ("/") as standard behavior,
 	// nothing to do with this fix — asserted separately below, since the
-	// header must still be present on that redirect response too.
-	for _, path := range []string{"/", "/app.js", "/style.css"} {
+	// header must still be present on that redirect response too. Only
+	// "/" is checked in the main loop (not e.g. "/main.dart.js") since the
+	// real Flutter web build's asset filenames aren't present in a
+	// go test run — webapp/ only ever has the local-dev placeholder
+	// index.html unless someone ran `flutter build web` first.
+	for _, path := range []string{"/"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		w := httptest.NewRecorder()
 		s.handleWebUIAssets(w, req)

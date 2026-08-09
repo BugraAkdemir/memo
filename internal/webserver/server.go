@@ -69,14 +69,14 @@ type Server struct {
 }
 
 func New(bridge AppBridge) *Server {
-	// fs.Sub can only fail if "webui" isn't a valid subtree of the embedded
+	// fs.Sub can only fail if "webapp" isn't a valid subtree of the embedded
 	// FS — a build-time mistake (a typo in the //go:embed directive or a
 	// missing file), not a runtime condition, so panicking here rather than
 	// threading an error through New()'s (currently error-free) signature
 	// is the right failure mode.
-	webAssets, err := fs.Sub(webUIFS, "webui")
+	webAssets, err := fs.Sub(webAppFS, "webapp")
 	if err != nil {
-		panic(fmt.Sprintf("webserver: embedded web UI assets: %v", err))
+		panic(fmt.Sprintf("webserver: embedded web app assets: %v", err))
 	}
 	s := &Server{
 		bridge: bridge,
@@ -477,21 +477,23 @@ func (s *Server) SetListenAddr(addr string) {
 
 // ─── Handlers ───────────────────────────────────────────────────
 
-// handleWebUIAssets serves the embedded minimal web client
-// (index.html/app.js/style.css — see webui/index.html for
-// "webui/index.html" served for a bare "/") with Cache-Control: no-store
+// handleWebUIAssets serves the embedded web app (webAppFS — the same
+// Flutter app as the desktop build, compiled for web, see webapp.go) for
+// a bare "/" and every asset path under it, with Cache-Control: no-store
 // on every response. Plain http.FileServer sends no caching headers at
 // all by default, so a browser that already had this page open (or just
-// visited it before) can silently keep serving its own cached copy of
-// index.html/app.js/style.css from disk/memory cache indefinitely, never
-// even asking the server again, long after a `memo service update`/binary
-// swap actually shipped new ones. Found live: a user re-ran the install
-// script, CI confirmed the new build (new webui embedded) was genuinely
+// visited it before) can silently keep serving its own cached copy
+// indefinitely, never even asking the server again, long after a
+// `memo service update`/binary swap actually shipped new ones. Found
+// live, against the previous hand-rolled webui this replaced: a user
+// re-ran the install script, CI confirmed the new build was genuinely
 // running, and they still saw the old page until a hard refresh — the
 // server was serving the new files correctly the whole time, the browser
-// just never asked. These files are tiny and served over LAN/localhost,
-// so disabling caching entirely here costs nothing next to a user
-// concluding a real, shipped fix "didn't work."
+// just never asked. Flutter's own flutter_service_worker.js does real
+// content-hash-based caching for the app's assets, but that mechanism
+// itself depends on the browser actually re-fetching index.html/
+// flutter_bootstrap.js to learn a new version exists — no-store here
+// guarantees that entry point is never the thing silently going stale.
 func (s *Server) handleWebUIAssets(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Cache-Control", "no-store")
 	http.FileServer(http.FS(s.assets)).ServeHTTP(w, r)

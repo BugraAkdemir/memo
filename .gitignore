@@ -47,6 +47,14 @@ binaries/
 frontend/.dart_tool/
 frontend/.packages
 frontend/build/
+
+# Web app embedded into the Go binary (internal/webserver/webapp.go) —
+# `flutter build web` output gets copied here at release-build time
+# (see build-linux.yml/build-macos.yml/build-windows.yml). Only the
+# local-dev placeholder index.html is tracked; everything else here is
+# generated and would just be repo-tracked build output otherwise.
+internal/webserver/webapp/*
+!internal/webserver/webapp/index.html
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
 frontend/linux/flutter/ephemeral/

@@ -34,11 +34,15 @@ jobs:
         with:
           channel: "${{ env.FLUTTER_CHANNEL }}"
 
+      # ~\AppData\Local\go-build (compiled-object cache) deliberately
+      # dropped — see build-linux.yml's cache step for the full story (an
+      # earlier pass here mistakenly claimed this job never opted into
+      # that cache; it did, just under Windows's own cache-dir naming,
+      # missed by a Linux-path-specific grep at the time).
       - uses: actions/cache@v4
         with:
           path: |
             ~\go\pkg\mod
-            ~\AppData\Local\go-build
           key: go-${{ runner.os }}-${{ hashFiles('**/go.sum') }}
           restore-keys: go-${{ runner.os }}-
 
@@ -68,6 +72,18 @@ jobs:
           RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
           RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+
+      # Must run BEFORE "Build Go backend" — see build-linux.yml's
+      # identical comment for why (go:embed reads webapp/ at compile time).
+      - name: Build Flutter web frontend
+        run: flutter build web --release
+        working-directory: frontend
+
+      - name: Copy web build into the Go embed directory
+        run: |
+          Remove-Item -Force internal\webserver\webapp\index.html
+          Copy-Item -Recurse -Force frontend\build\web\* internal\webserver\webapp\
+        shell: pwsh
 
       - name: Build Go backend
         run: |

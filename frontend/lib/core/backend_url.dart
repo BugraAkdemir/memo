@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
+
 /// Normalizes a user-typed backend address into a full URL Dio's
 /// `BaseOptions` will accept without throwing.
 ///
@@ -22,7 +24,20 @@
 ///   "192.168.1.50" and "192.168.1.50:8090" behave identically; an
 ///   explicit port (e.g. ":1234") is always respected.
 String normalizeBackendUrl(String input) {
-  const fallback = 'http://127.0.0.1:8090';
+  // On web, this app is always served BY the exact Memo backend it needs
+  // to talk to (embedded into the Go binary, see internal/webserver) —
+  // the page's own origin is always the right default, unlike desktop
+  // where 127.0.0.1 is a reasonable guess for "the backend I might have
+  // started myself." Hardcoding 127.0.0.1:8090 here for web was actively
+  // wrong the moment the page is loaded from any address other than
+  // localhost (e.g. a phone/laptop opening http://192.168.1.106:8090/ on
+  // the LAN) — every API call would try to reach that *client's own*
+  // loopback address instead of the server that served the page, the
+  // same client/server confusion class as the file-picker bug fixed
+  // earlier this session. Uri.base is meaningless on non-web platforms
+  // (resolves to a file:// URI or the process cwd), so this is
+  // deliberately gated on kIsWeb rather than applied universally.
+  final fallback = kIsWeb ? Uri.base.origin : 'http://127.0.0.1:8090';
   final trimmed = input.trim();
   if (trimmed.isEmpty) return fallback;
 

@@ -22,6 +22,13 @@ type Client struct {
 	httpClient *http.Client // short timeout, for plain JSON calls
 	streamHTTP *http.Client // no timeout — SSE responses can run for minutes
 	longOpHTTP *http.Client // no timeout — long-running ops (model load) bounded by the caller's context instead
+	// token is attached as X-Memo-Token on every request once set via
+	// SetToken. Empty by default — every existing caller talks to a
+	// 127.0.0.1-bound backend, which never requires one; only needed for
+	// `memo remote` (cli_remote.go) against a backend running with --lan
+	// (0.0.0.0 bind requires a credential on every request, including
+	// loopback ones — see remoteAuthOK in internal/webserver).
+	token string
 }
 
 func NewClient(baseURL string) *Client {
@@ -32,6 +39,9 @@ func NewClient(baseURL string) *Client {
 		longOpHTTP: &http.Client{}, // caller controls duration via ctx
 	}
 }
+
+// SetToken attaches token as X-Memo-Token on every subsequent request.
+func (c *Client) SetToken(token string) { c.token = token }
 
 // doJSON makes a plain request/response JSON call with the default 10s
 // timeout — the right choice for anything the backend answers quickly.
@@ -55,6 +65,9 @@ func (c *Client) doJSONWith(ctx context.Context, httpClient *http.Client, method
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	if c.token != "" {
+		req.Header.Set("X-Memo-Token", c.token)
+	}
 
 	resp, err := httpClient.Do(req)
 	if err != nil {

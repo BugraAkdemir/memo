@@ -12,12 +12,14 @@ config/JWT → app-layer hesap/rol mantığı → HTTP handler'lar + admin-only
 gating → minimal web UI'ın gerçek bootstrap ekranı. Canlı bir backend'e
 karşı uçtan uca curl ile doğrulandı (aşağıya bak).
 
-**Commit durumu:** İki yeni commit, `main`'de, **push edilmedi** (önceki
+**Commit durumu:** Üç yeni commit, `main`'de, **push edilmedi** (önceki
 oturumdaki push-edilmemiş commit'lerle birlikte, kullanıcı onayı
 bekliyor):
 - `848f262` — backend: `Accounts` modeli, JWT `role` claim'i, bootstrap
   endpoint'leri, admin-only gating.
 - `576d506` — minimal web UI: ilk-kurulum ekranı + şifre login formu.
+- `665e3ad` — minimal web UI: Accounts yönetim paneli (ekleme/silme) —
+  aşağıdaki "Ek" bölümüne bak.
 
 `yapacam.md` (gitignore'da, repo-içi izi sadece bu handoff) Faz 5.1'in
 taslak iş listesini işaretlendi ve iki açık kararı kapattı.
@@ -83,32 +85,73 @@ bu oturumda fark edilip kapatıldı.
 
 ## Sıradaki Oturum İçin
 
-1. **Backend API'si tamam ama hiçbir ön yüz hesap yönetimini göstermiyor:**
-   `ListAccounts`/`CreateAccount`/`DeleteAccount` + `GET/POST /api/accounts`
-   + `DELETE /api/accounts/{id}` hepsi hazır ve admin-only ama (a) masaüstü
-   Settings'te bir "Hesaplar" sekmesi yok, (b) `memo remote add-account`
-   CLI komutu yok, (c) minimal web UI'da bir hesap yönetim ekranı yok.
-   Şimdilik tek hesap oluşturma yolu bootstrap ekranı (ilk admin) veya
-   doğrudan API çağrısı — ikinci bir hesap eklemek isteyen gerçek bir
-   kullanıcı şu an hiçbir arayüzden bunu yapamaz. Üçünden en azından biri
-   (muhtemelen CLI, en hızlısı) bir sonraki oturumun ilk işi olmalı.
+1. ~~Backend API'si tamam ama hiçbir ön yüz hesap yönetimini göstermiyor~~
+   → **minimal web UI tarafı düzeltildi, aşağıdaki eke bak.** Hâlâ açık:
+   masaüstü Settings'te "Hesaplar" sekmesi yok, `memo remote add-account`
+   CLI komutu yok. Şimdilik ikinci bir hesap eklemenin tek arayüzü web UI —
+   masaüstünden/CLI'dan bağlanan bir admin için hâlâ arayüz eksik.
 2. **Kullanıcının RPi kurulumunun sonucu hâlâ bekleniyor** (Session 5'ten
    devreden) — bu oturumda RPi'ye hiç dokunulmadı, kullanıcı masanın
    başında değildi.
 3. **Tunnel + canlı pentest hâlâ yapılmadı** (Session 5'ten devreden) —
-   şimdi ayrıca yeni bootstrap/rol yüzeyini de kapsamalı: bootstrap
+   şimdi ayrıca yeni bootstrap/rol/accounts yüzeyini de kapsamalı: bootstrap
    endpoint'i gerçekten LAN dışından kapalı mı (sadece 0.0.0.0 bind'te
    `remoteAuthMiddleware`'e giriyor, `isSetupBootstrapPath` route'u içeri
    sokuyor ama `NeedsSetup()` false olduktan sonra her zaman 403 veriyor —
    mantığı doğru ama gerçek bir dış saldırı yüzeyi taramasıyla teyit
-   edilmedi), rol gating'i atlatmanın bir yolu var mı.
+   edilmedi), rol gating'i atlatmanın bir yolu var mı, minimal web UI'ın
+   yeni Accounts panelinin GET'i (herhangi bir authenticated çağıran
+   okuyabiliyor, admin-only değil — bilinçli bir tasarım kararıydı, ama
+   pentest turunda tekrar gözden geçirilmeli).
 4. **Commit'ler push edilmedi** — kullanıcı onayı bekliyor (bu oturumdaki
-   ikisi dahil, Session 5'ten devreden diğerleriyle birlikte).
+   üçü dahil, Session 5'ten devreden diğerleriyle birlikte).
 5. Faz 5.1'in "Açık kararlar" bölümündeki iki karar bu oturumda kapatıldı
    (`Accounts` ayrı bir kavram, bootstrap sadece web UI'da) — `yapacam.md`
    güncellendi, tekrar sorulmasına gerek yok.
 6. Faz 1-4'ün ve Session 5'in kendi açık maddeleri hâlâ geçerli, aşağıdaki
    eski girişlerde ve `yapacam.md`'nin özet bölümünde duruyor.
+
+---
+
+## Ek (aynı gün, devam) — Accounts yönetim paneli (minimal web UI) + bir kendi hatam
+
+Kullanıcı "sıradaki adıma geç, hallet, çalışır olsun" dedi — yukarıdaki
+madde 1'i (hesap yönetiminin hiçbir arayüzden yapılamaması) kapatmak için
+en hızlı ve felsefeye en uygun yolu seçtim: masaüstü Settings sekmesi ya da
+CLI komutu yerine **minimal web UI'a bir Accounts paneli** eklendi — zaten
+bootstrap ekranının yaşadığı yer, ve Faz 5'i tetikleyen "PC kullanmayan
+biri" hedef kitlesine CLI'dan daha uygun.
+
+**Commit:** `665e3ad` — Settings'te Remote Access panelinden hemen sonra
+yeni bir "Accounts" paneli: hesap listesi (kullanıcı adı + rol rozeti + Sil
+butonu) + yeni hesap ekleme formu (kullanıcı adı/şifre/rol). Var olan diğer
+panellerle (Providers, Remote Access) aynı deseni izliyor — istemci taraflı
+"ben admin miyim" kontrolü yok, backend'in kendi `callerIsAdmin` guard'ı
+yetkisiz denemeyi 403 ile reddediyor.
+
+**Doğrulama:** İzole edilmiş, tek kullanımlık bir backend'e karşı uçtan uca
+curl testi — bootstrap → hesap listesi → panelin POST'uyla "user" rollü
+hesap oluşturma → o hesap kendini silmeye çalışınca 403 → admin siliyor,
+başarılı → admin kendini (son admin) silmeye çalışınca 400. Statik
+`index.html`'in yeni panel ID'lerini kimliksiz servis ettiği doğrulandı.
+
+**Kendi hatam, saklanmadan not edildi:** Doğrulama sürecinde bir smoke-test
+çalıştırmasını **`MEMO_DATA_DIR` ayarlamadan ve repo kökünden** başlattım —
+bu, gerçek geliştirme makinesinin **kendi `config/config.yaml`'ını** okuyup
+`--lan --port 18098` bayraklarıyla üzerine yazdı (`remote_access.enabled:
+false→true`, `port: 8090→18098`). Hemen fark edilip elle düzeltildi (iki
+alan da eski haline döndürüldü); dosyanın geri kalanı (gerçek cihaz
+token'ı, vb.) `SetRemoteAccess`'in sadece bu iki alanı dokunduğu
+doğrulanarak bozulmadığı teyit edildi — `config/config.yaml` zaten
+gitignore'da olduğu için bu git geçmişine hiç yansımadı. Sonraki her canlı
+backend testinde artık her zaman kendi `bin/`+`data/` alt dizinlerine sahip
+tamamen izole bir geçici dizin kullanılıyor (executable'ın kendi dizinini
+seed kaynağı olarak kullanan `config.Load`'ın "seed" davranışı yüzünden
+paylaşılan bir `/tmp` executable dizini bile yetersiz — ilk denemede bu da
+başıma geldi, ikinci düzeltmede executable'ı da kendi izole dizinine
+koydum). Ders: bundan sonraki her canlı backend smoke-test'inde **önce**
+`MEMO_DATA_DIR`'in gerçekten izole bir yola işaret ettiğini teyit et, sonra
+mutasyon içeren herhangi bir çağrı yap.
 
 ---
 

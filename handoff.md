@@ -1,4 +1,118 @@
-# Handoff — 2026-08-09 (Session 5, devam) — scripts/ reorganizasyonu, canlı RPi kurulumunda bulunan token-bootstrap bug'ı, Faz 5 planlaması (yapacam.md yeniden yazıldı)
+# Handoff — 2026-08-09 (Session 6) — Faz 5.1 implementasyonu: çoklu-hesap + rol modeli + web bootstrap ekranı
+
+## Özet
+
+Kullanıcı masanın başında değildi, "faz 5'ten devam edelim, her yetkiye
+sahipsin" dedi — bir önceki oturumun (Session 5) planladığı ama hiç kod
+yazmadığı Faz 5.1'in (çoklu hesap + admin/user rolleri + web'den kurulum
+sihirbazı) **gerçek implementasyonu** bu oturumda yapıldı. `codebase-memory`
+skill'i ile mevcut auth mimarisi (Faz 2: `RemoteAccessConfig`, `Devices`,
+JWT session, argon2id) okunarak doğrulandı, sonra üç katmanda inşa edildi:
+config/JWT → app-layer hesap/rol mantığı → HTTP handler'lar + admin-only
+gating → minimal web UI'ın gerçek bootstrap ekranı. Canlı bir backend'e
+karşı uçtan uca curl ile doğrulandı (aşağıya bak).
+
+**Commit durumu:** İki yeni commit, `main`'de, **push edilmedi** (önceki
+oturumdaki push-edilmemiş commit'lerle birlikte, kullanıcı onayı
+bekliyor):
+- `848f262` — backend: `Accounts` modeli, JWT `role` claim'i, bootstrap
+  endpoint'leri, admin-only gating.
+- `576d506` — minimal web UI: ilk-kurulum ekranı + şifre login formu.
+
+`yapacam.md` (gitignore'da, repo-içi izi sadece bu handoff) Faz 5.1'in
+taslak iş listesini işaretlendi ve iki açık kararı kapattı.
+
+---
+
+## Yapılanlar
+
+### 1. Backend: çoklu-hesap + rol modeli (`848f262`)
+
+**Mimari karar (açık kararlardan biri, bu oturumda kapatıldı):** Hesap
+verisi `RemoteAccessConfig.Devices`'ın yerini almadı — tamamen ayrı, yeni
+bir `Accounts []Account{ID, Username, PasswordHash, Role, CreatedAt}`
+kavramı oldu. Gerekçe: `Devices` kimliksiz, salt cihaz-token'ı; hesap/rol
+kavramıyla birleştirmek iki farklı güvenlik modelini karıştırırdı.
+
+| Katman | Değişiklik |
+|---|---|
+| `internal/config/config.go` | `Account` struct'ı + `RemoteAccessConfig.Accounts`. `migrateLegacyRemoteAccount` (yeni, `Load()`'dan `migrateLegacyRemoteToken` ile birlikte çağrılıyor) eski tekil `Username`/`PasswordHash` şifre kurulumunu otomatik olarak ilk "admin" hesabına taşıyor — legacy alanlar **silinmiyor** (token migration'ın aksine), çünkü `GetRemoteAccessStatus`/masaüstü Settings hâlâ okuyor; sadece `Accounts` doluyken artık login için otorite değiller. |
+| `internal/remoteauth/jwt.go` | `sessionClaims`'e `Role` eklendi. `IssueSessionToken`/`ValidateSessionToken` imzaları `role` taşıyacak şekilde güncellendi. |
+| `internal/app/remote_auth.go` | `LoginRemotePassword`/`ValidateRemoteSession` artık `Accounts` doluyken onun üzerinden çalışıyor (boşsa legacy tekil kimlik doğrulamaya düşüyor — geriye dönük uyumluluk). Yeni: `SessionRole` (canlı hesap listesine karşı yeniden doğrular, sadece JWT'nin gömülü rolüne güvenmiyor — hesap silinince/değişince eski session'lar geçersiz), `NeedsSetup`, `CreateAdminAccount` (TOCTOU'ya karşı mutex altında yeniden kontrol, auth mode'u none/token'dan password'e otomatik yükseltiyor), `ListAccounts`/`CreateAccount`/`DeleteAccount` (son admin hesabı silinemez guard'ı). |
+| `internal/webserver/bridge.go` | `FullBridge`'e 6 yeni metod + `LoginRemotePassword`'ün imzası `(token, role, err)` oldu. |
+| `internal/webserver/handlers_auth.go` | `handleSetupStatus`/`handleSetupCreateAdmin` (yeni, `isSetupBootstrapPath` ile `remoteAuthMiddleware`'den muaf — henüz kimlik yok), `handleAccounts`/`handleAccountByID` (yeni), `callerIsAdmin` guard'ı (bilinçli olarak varsayılan-izinli — tanınmayan/eksik kimlik engellenmiyor, sadece açıkça "user" rolü 403 alıyor; bu mevcut tüm kurulumların davranışını birebir koruyor). |
+| `internal/webserver/server.go` | `/api/setup/status`, `/api/setup/create-admin`, `/api/accounts`, `/api/accounts/{id}` route'ları; setup path'leri auth middleware'den muaf tutuldu. |
+| `internal/webserver/handlers_flutter.go` | `handleRemoteAccess`'in `PUT`'u `callerIsAdmin` ile korunuyor artık. |
+
+### 2. Minimal web UI: ilk-kurulum ekranı + şifre login (`576d506`)
+
+`internal/webserver/webui/` (CasaOS/headless dağıtımlar için gömülü,
+build'siz vanilla JS/HTML/CSS istemci): `boot()` artık önce
+`GET /api/setup/status`'a bakıyor; `needs_setup: true` ise yeni
+`#setup-screen`'i (kullanıcı adı + şifre + onay) gösteriyor, eskisi gibi
+kimse elinde olmayan bir token istemiyor. Gönderim `POST /api/setup/
+create-admin`'e gidiyor ve dönen session token'la direkt login oluyor.
+
+Ayrıca login ekranına da (önceden **sadece** token girişi vardı) auth_mode'a
+göre gösterilen bir kullanıcı adı/şifre formu eklendi — password-only modda
+bu sayfadan login etmenin daha önce hiçbir yolu yoktu, o gerçek bir eksikti,
+bu oturumda fark edilip kapatıldı.
+
+---
+
+## Doğrulama
+
+- `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` — tüm
+  repo yeşil (yeni testler dahil: config migration, bootstrap TOCTOU guard,
+  rol-bazlı session doğrulama/geçersizleşme, son-admin-silinemez guard'ı,
+  HTTP handler seviyesinde admin-gating).
+- **Canlı backend'e karşı uçtan uca curl testi** (`--headless --lan`, temiz
+  temp data dir): `setup/status` → `needs_setup:true` → `create-admin` →
+  auth_mode `token`→`password` otomatik yükseldi, çalışan session token
+  döndü → ikinci `create-admin` çağrısı kalıcı 403 → admin session'ı
+  `POST /api/accounts` ile "user" rollü bir hesap oluşturdu → o hesap
+  `/api/auth/login`'den giriş yaptı → `PUT /api/remote-access`'te 403 aldı
+  ama `/api/status`'ta 200 aldı → statik `index.html` yeni ekran
+  ID'leriyle (`setup-screen`, `password-login-block`, `login-submit`)
+  kimliksiz olarak serviste. Test backend'i ve temp data dir temizlendi.
+- Flutter'a hiç dokunulmadı (webui vanilla JS, `frontend/` değil) — bu
+  yüzden `flutter analyze`/`flutter test` bu oturumda çalıştırılmadı,
+  gerek yoktu.
+
+---
+
+## Sıradaki Oturum İçin
+
+1. **Backend API'si tamam ama hiçbir ön yüz hesap yönetimini göstermiyor:**
+   `ListAccounts`/`CreateAccount`/`DeleteAccount` + `GET/POST /api/accounts`
+   + `DELETE /api/accounts/{id}` hepsi hazır ve admin-only ama (a) masaüstü
+   Settings'te bir "Hesaplar" sekmesi yok, (b) `memo remote add-account`
+   CLI komutu yok, (c) minimal web UI'da bir hesap yönetim ekranı yok.
+   Şimdilik tek hesap oluşturma yolu bootstrap ekranı (ilk admin) veya
+   doğrudan API çağrısı — ikinci bir hesap eklemek isteyen gerçek bir
+   kullanıcı şu an hiçbir arayüzden bunu yapamaz. Üçünden en azından biri
+   (muhtemelen CLI, en hızlısı) bir sonraki oturumun ilk işi olmalı.
+2. **Kullanıcının RPi kurulumunun sonucu hâlâ bekleniyor** (Session 5'ten
+   devreden) — bu oturumda RPi'ye hiç dokunulmadı, kullanıcı masanın
+   başında değildi.
+3. **Tunnel + canlı pentest hâlâ yapılmadı** (Session 5'ten devreden) —
+   şimdi ayrıca yeni bootstrap/rol yüzeyini de kapsamalı: bootstrap
+   endpoint'i gerçekten LAN dışından kapalı mı (sadece 0.0.0.0 bind'te
+   `remoteAuthMiddleware`'e giriyor, `isSetupBootstrapPath` route'u içeri
+   sokuyor ama `NeedsSetup()` false olduktan sonra her zaman 403 veriyor —
+   mantığı doğru ama gerçek bir dış saldırı yüzeyi taramasıyla teyit
+   edilmedi), rol gating'i atlatmanın bir yolu var mı.
+4. **Commit'ler push edilmedi** — kullanıcı onayı bekliyor (bu oturumdaki
+   ikisi dahil, Session 5'ten devreden diğerleriyle birlikte).
+5. Faz 5.1'in "Açık kararlar" bölümündeki iki karar bu oturumda kapatıldı
+   (`Accounts` ayrı bir kavram, bootstrap sadece web UI'da) — `yapacam.md`
+   güncellendi, tekrar sorulmasına gerek yok.
+6. Faz 1-4'ün ve Session 5'in kendi açık maddeleri hâlâ geçerli, aşağıdaki
+   eski girişlerde ve `yapacam.md`'nin özet bölümünde duruyor.
+
+---
+
+
 
 ## Özet
 

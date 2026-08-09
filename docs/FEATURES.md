@@ -21,10 +21,13 @@ Memo isn't just a chat; it's a "Second Brain."
 - **Cross-Mode Architecture**: Use external API providers (OpenAI, Claude, Gemini) for chat while a tiny local model handles embeddings — both run independently.
 - **External Provider Support**: Seamlessly connects to LM-Studio or any OpenAI-compatible local API (Port 1234/8081).
 
-### Remote Access
+### Remote Access & Self-Hosting
+- **Four Auth Modes**: `none` (explicitly opt-in, loudly warned about), `token` (per-device tokens, the default), `password` (username + argon2id-hashed password, short-lived signed session), or `token+password` (either satisfies — OR logic). Selectable per-server in Settings → Remote Access or via the `memo remote set-mode` CLI command.
+- **Per-Device Tokens**: Every paired device (phone, laptop, a second desktop) gets its own token, shown once at creation and only ever stored hashed — revoke one device without rotating everyone else's. Managed from Settings, or `memo remote list-devices`/`add-device`/`revoke-device` over SSH.
+- **Brute-Force Protection**: Password-mode logins are rate-limited independently of the general API rate limiter — a handful of free attempts, then exponential backoff.
 - **ngrok Tunnel**: Built-in ngrok integration for accessing your Memo backend from anywhere. Auto-download, tunnel management, configurable domain and region.
 - **Tailscale (out of Beta)**: One-click login (no auth key to paste), Funnel on by default, auto-reconnect after a dropped connection — available directly in Settings → Remote Access, desktop and mobile.
-- **Token Authentication Required**: Every remote request (LAN, ngrok, or Tailscale) now requires the access token shown in Settings — previously optional for LAN/ngrok, closing a real "anyone on the network could read your API keys" gap. Local-only use is unaffected.
+- **Self-Hosted Server Mode**: Run just the headless backend — no desktop app — on a Raspberry Pi, home server, or VPS, managed entirely over SSH via the `memo` CLI (`memo service install` for a systemd --user service, `memo config get/set` for config.yaml, `memo remote` for auth/devices). Native installer (`get-memo-server.sh`) or a multi-arch (amd64+arm64) Docker/CasaOS image. See [Self-Hosting](SELF_HOSTED.md).
 
 ---
 

@@ -18,10 +18,13 @@ Memo sadece bir sohbet aracı değil; bir "İkinci Beyin"dir.
 - **Cross-Mode**: Harici API provider (OpenAI, Claude, Gemini) ile chat + yerel embedding aynı anda çalışır.
 - **Harici Sağlayıcı Desteği**: OpenAI, Anthropic, Google, xAI, Groq, OpenRouter, Ollama.
 
-### Uzaktan Erişim
+### Uzaktan Erişim & Self-Hosting
+- **Dört Auth Modu**: `none` (bilinçli opt-in, göz ardı edilemeyecek kadar belirgin uyarıyla), `token` (cihaz bazlı token, varsayılan), `password` (kullanıcı adı + argon2id ile hash'lenmiş şifre, kısa ömürlü imzalı oturum) veya `token+password` (ikisinden biri yeterli — OR mantığı). Settings → Remote Access'ten ya da `memo remote set-mode` CLI komutuyla sunucu bazında seçilebilir.
+- **Cihaz Bazlı Token'lar**: Her eşleşen cihaz (telefon, dizüstü, ikinci bir masaüstü) kendi token'ını alır — oluşturulduğu anda bir kez gösterilir, sonrasında sadece hash'lenmiş halde saklanır. Diğer cihazları etkilemeden tek bir cihazın erişimini iptal edebilirsin. Settings'ten ya da SSH üzerinden `memo remote list-devices`/`add-device`/`revoke-device` ile yönetilir.
+- **Brute-Force Koruması**: Şifre modundaki girişler, genel API rate limiter'dan bağımsız olarak sınırlanıyor — birkaç serbest deneme, sonra üstel bekleme.
 - **ngrok Tüneli**: Dahili ngrok entegrasyonu, dünyanın her yerinden erişim.
 - **Tailscale (artık Beta değil)**: Tek tıkla giriş, Funnel varsayılan açık, kopan bağlantıdan otomatik yeniden bağlanma.
-- **Token Zorunlu**: Her uzak istek (LAN/ngrok/Tailscale) artık Settings'teki erişim token'ını gerektiriyor — önceden isteğe bağlıydı (v3.3.3 güvenlik düzeltmesi).
+- **Self-Hosted Sunucu Modu**: Sadece headless backend'i — masaüstü uygulaması olmadan — bir Raspberry Pi'de, ev sunucusunda ya da VPS'te çalıştır, tamamen SSH üzerinden `memo` CLI'ıyla yönet (`memo service install` systemd `--user` servisi için, `memo config get/set` config.yaml için, `memo remote` auth/cihaz yönetimi için). Native kurulum (`get-memo-server.sh`) ya da çoklu mimari (amd64+arm64) Docker/CasaOS imajı. Bkz. [Self-Hosting](SELF_HOSTED.md).
 
 ---
 

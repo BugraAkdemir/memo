@@ -1,0 +1,144 @@
+# Self-Hosting Memo
+
+Memo can run as a real, always-on service on its own machine — a Raspberry
+Pi, a home server, a VPS — instead of being tied to one computer's desktop
+session. This page covers everything that's specific to that setup: how to
+install just the headless server, how to secure it, and how to manage it
+without ever opening a desktop window on the server itself.
+
+Everyday use is unchanged: point your regular desktop or mobile Memo app at
+the server's address and it works exactly like a local instance — full
+feature parity, nothing server-specific to learn on the client side.
+
+---
+
+## 1. Installing just the server
+
+Two ways to get the headless backend with no Flutter desktop app installed
+on the machine:
+
+### Native install
+
+```bash
+curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+```
+
+Auto-detects Linux x86_64, Linux arm64 (Raspberry Pi and other ARM boards),
+and macOS. Re-running the same command later updates an existing install in
+place (binaries refreshed, config/data preserved) — safe to re-run anytime.
+On a fresh Linux install it offers to set the backend up as a systemd
+service right away (see [§3](#3-running-as-a-service-systemd)).
+
+This is `get-memo.sh`'s headless sibling — same release archives, same
+`~/.memo` layout, same PATH wrapper — it just skips copying the desktop
+binary, its Flutter assets, and the application-menu entry, since a
+server has no display to show them on.
+
+### Docker / CasaOS
+
+```bash
+docker compose -f docker/docker-compose.yml up -d
+```
+
+A multi-arch (amd64 + arm64) image is published automatically to
+`ghcr.io/bugraakdemir/memo-backend` on every push. See
+[`docker/README.md`](../docker/README.md) for the full compose file, volume
+layout, and CasaOS-specific notes.
+
+---
+
+## 2. Securing it: auth modes
+
+A server bound only to `127.0.0.1` (the desktop app's own local backend)
+never requires a credential — that's unchanged. The moment it's reachable
+from the network (`--lan`, Docker's port mapping, Tailscale, ngrok), one of
+four auth modes applies:
+
+| Mode | What it checks | When to use it |
+|---|---|---|
+| `none` | Nothing — anyone who can reach the port gets in | Never on a real network. A visible warning is shown everywhere (Settings, `--lan` startup log, `memo remote status`) whenever this is active on an exposed listener. |
+| `token` (default) | A per-device token | The default and simplest option — pair each device once, revoke individually if one is lost. |
+| `password` | Username + password (argon2id-hashed), a short-lived signed session token per login | When you'd rather type a password than copy a token to each device. |
+| `token_password` | Either a valid device token **or** a valid session — either satisfies | Want both options available at once (e.g. tokens for your own devices, a password for occasional access from somewhere else). |
+
+Password-mode logins are rate-limited independently of the general API
+limiter: a couple of free attempts, then exponential backoff — a trivial
+`admin`/`admin` script hits multi-minute waits within a dozen guesses.
+
+Set the mode from Settings → Remote Access on desktop, or over SSH:
+
+```bash
+memo remote set-mode token_password --username you --password 'a real password'
+memo remote list-devices
+memo remote add-device "My Phone"      # prints its token once — copy it now
+memo remote revoke-device <id>
+```
+
+There is deliberately no multi-user model here — this is one person's own
+choice of *how* to authenticate to *their own* server, not separate
+accounts with separate memory/data.
+
+---
+
+## 3. Running as a service (systemd)
+
+```bash
+memo service install --lan     # installs, enables, and starts it now
+memo service status
+memo service uninstall
+```
+
+This installs a **systemd `--user`** service (`~/.config/systemd/user/
+memo.service`) — no root/sudo needed, matching a single-user self-hosted
+setup. It restarts automatically on failure. One thing a user service can't
+do on its own: start before any login session exists at all (relevant right
+after a headless Raspberry Pi reboot). For that, run once:
+
+```bash
+loginctl enable-linger $(whoami)
+```
+
+---
+
+## 4. Managing it entirely over SSH
+
+Everything above is reachable without ever installing a desktop app on the
+server:
+
+```bash
+memo config get llama.port           # read any config.yaml key
+memo config set llama.ctx_size 8192  # write one — takes effect on restart
+memo remote status                   # auth mode, addresses, warnings
+memo service status                  # is it running?
+```
+
+`memo config` deliberately refuses anything under `remote_access.*` — that
+section has its own commands above, because a few of its fields (the
+password hash, the device list) need real validation a raw config edit
+would bypass.
+
+For the rare moment nothing else is reachable, a minimal built-in web page
+(no separate install — it's baked into the backend binary) is served at
+`http://<server-ip>:<port>/`: chat, basic model/provider settings, and a
+Remote Access panel with the current auth status and a restart button. It's
+intentionally not a full admin panel — device/auth-mode management stays on
+the desktop app or the CLI, both of which already do real validation this
+static page would otherwise have to duplicate.
+
+---
+
+## 5. Known limitations
+
+- **No built-in TLS yet.** Memo's own listener is plain HTTP. For traffic
+  leaving your LAN, put it behind something that terminates TLS — your own
+  reverse proxy, or Memo's built-in Tailscale/ngrok tunnels (both already
+  encrypt the transport for you, no extra setup).
+- **`memo service` is Linux-only** (systemd). No launchd unit for macOS yet.
+- **No tunnel management from the CLI yet** — Tailscale/ngrok start/stop is
+  still Settings-only; `memo remote`/`memo config`/`memo service` cover
+  auth, config, and process lifecycle, not tunnels.
+
+---
+
+*See also: [Features](FEATURES.md#remote-access--self-hosting) ·
+[Docker/CasaOS](../docker/README.md) · [API Reference](API_REFERENCE.md)*

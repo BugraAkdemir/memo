@@ -352,7 +352,7 @@ GitHub Actions runs on every push/PR:
 | Cloud Sync | E2E encrypted before upload, PBKDF2 600K iterations |
 | Agent Sandbox | Path validation, symlink protection, hardened dangerous-command blacklist (incl. a symlink-escape fix) |
 | WhatsApp | Mutex-protected init, serialized message writes |
-| Remote Access | Token required on every request (LAN/ngrok/Tailscale) — previously optional, now enforced |
+| Remote Access | Four selectable auth modes (none/token/password/token+password); per-device tokens (hashed at rest, shown once); argon2id password hashing; brute-force lockout on password login; short-lived signed session tokens |
 | `.memo` Backup | Full export now includes calendar/habits/routines/tasks/permissions/skills and `machine.key` (previously incomplete) |
 
 ---
@@ -377,6 +377,7 @@ Two items previously listed here as open are resolved:
 | API Reference | `docs/API_REFERENCE.md` | REST API endpoint documentation |
 | Technical Deep Dive | `docs/TECHNICAL_DEEP_DIVE.md` | Engineering decisions |
 | Features | `docs/FEATURES.md` | Feature catalog |
+| Self-Hosting | `docs/SELF_HOSTED.md` | Running just the backend on a Pi/home server/VPS: install paths, auth modes, CLI management |
 | Troubleshooting | `docs/TROUBLESHOOTING.md` | Common issues & fixes |
 | Contributing | `docs/CONTRIBUTING.md` | Contribution guidelines |
 | Known Issues | `docs/KNOWN_ISSUES.md` | Known bugs & limitations |

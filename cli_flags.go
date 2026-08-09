@@ -86,6 +86,13 @@ SUNUCU / SERVER
   --lan                       (--headless ile) 0.0.0.0'a bağlan, X-Memo-Token zorunlu
                               (with --headless) bind 0.0.0.0, require X-Memo-Token
 
+YÖNETİM / MANAGEMENT (SSH-only self-hosted kurulum için / for SSH-only self-hosted setups)
+  memo config get/set <key> [value]     config.yaml'ı düzenle / edit config.yaml
+  memo remote status|list-devices|...   uzaktan erişim/auth yönetimi / remote-access/auth management
+  memo service install|uninstall|status systemd --user servisi / systemd --user service
+                              Kullanım detayı için argümansız çalıştır / run with no
+                              arguments for full usage, e.g. "memo remote"
+
 Ayrıntılı sohbet komutları için Memo içinde /help yaz.
 Type /help inside Memo for the in-chat command list.
 `, version, version)

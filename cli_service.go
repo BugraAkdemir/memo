@@ -35,9 +35,11 @@ func runServiceCommand(args []string) int {
 	switch args[0] {
 	case "install":
 		fs := flag.NewFlagSet("service install", flag.ContinueOnError)
+		fs.Usage = printServiceUsage
 		port := fs.Int("port", 8090, "Backend port")
 		lan := fs.Bool("lan", false, "Bind 0.0.0.0 instead of 127.0.0.1 (see --lan's own help)")
-		if err := fs.Parse(args[1:]); err != nil {
+		flagArgs, _ := splitFlagsAndPositional(args[1:], map[string]bool{"lan": true})
+		if err := fs.Parse(flagArgs); err != nil {
 			return 1
 		}
 		return serviceInstall(*port, *lan)

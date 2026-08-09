@@ -25,14 +25,16 @@ func runRemoteCommand(args []string) int {
 	verb := args[0]
 
 	fs := flag.NewFlagSet("remote "+verb, flag.ContinueOnError)
+	fs.Usage = printRemoteUsage
 	port := fs.Int("port", 8090, "Backend port")
 	token := fs.String("token", "", "Device or session token — required if the backend was started with --lan (0.0.0.0 bind requires a credential on every request, including from this same machine)")
 	username := fs.String("username", "", "Username (set-mode/login)")
 	password := fs.String("password", "", "Password (set-mode/login)")
-	if err := fs.Parse(args[1:]); err != nil {
+	// No boolean flags in this subcommand — every flag here takes a value.
+	flagArgs, positional := splitFlagsAndPositional(args[1:], nil)
+	if err := fs.Parse(flagArgs); err != nil {
 		return 1 // flag package already printed the error
 	}
-	positional := fs.Args()
 
 	client := replcli.NewClient(fmt.Sprintf("http://127.0.0.1:%d", *port))
 	if *token != "" {

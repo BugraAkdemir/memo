@@ -27,7 +27,27 @@ import (
 	"memo/internal/shutdown"
 )
 
+// subcommandDispatch maps a verb (memo <verb> ...) to its handler. Checked
+// before flag.Parse() below, and before any of the top-level --flags are
+// even declared: Go's flag package has no notion of git-style subcommands,
+// it would just silently treat "config"/"remote"/"service" as a stray
+// positional argument and fall through to the normal REPL/backend startup
+// path, ignoring everything after it. These three (Faz 3, yapacam.md —
+// "SSH + this CLI should be a complete management path") each parse their
+// own remaining args independently.
+var subcommandDispatch = map[string]func([]string) int{
+	"config":  runConfigCommand,
+	"remote":  runRemoteCommand,
+	"service": runServiceCommand,
+}
+
 func main() {
+	if len(os.Args) > 1 {
+		if handler, ok := subcommandDispatch[os.Args[1]]; ok {
+			os.Exit(handler(os.Args[2:]))
+		}
+	}
+
 	port := flag.Int("port", 8090, "Backend REST API port — used both for a standalone --headless server and for the backend an interactive terminal session talks to")
 	headless := flag.Bool("headless", false, "Force headless mode (no terminal REPL) even from an interactive terminal")
 	autoShutdown := flag.Bool("auto-shutdown", false, "internal: set by memo itself when it spawns a detached backend for a terminal session — shuts down once no CLI/GUI client is attached (see internal/app/clients.go). Do not set this for a standalone/service backend.")

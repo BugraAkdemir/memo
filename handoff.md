@@ -1,6 +1,41 @@
 # Handoff — 2026-08-09 (Session 6) — Faz 5.1 implementasyonu: çoklu-hesap + rol modeli + web bootstrap ekranı
 
-## Ek (aynı gün, gerçek RPi kurulum testi) — 2 yeni onboarding bug'ı + 1 teknik borç, BUG_REPORT.md'ye kaydedildi
+## Ek (2026-08-10, devam) — minimal web UI komple yeniden tasarlandı (commit `d44a0eb`)
+
+Kullanıcı gerçek RPi'sinde web UI'ı canlı test edip çok net şikayetler
+getirdi: token/şifre hangisi belli değil, girdiği token'ı göremiyor
+(maskeli, reveal yok), provider ekleyebiliyor ama düzenleyemiyor/
+silemiyor, ve doğrudan sordu — "bu site Memo'nun stiline uyuyor mu?".
+`/frontend-design` yüklendi, cevap hayırdı: sayfa Memo'nun gerçek
+kimliğiyle hiç alakası olmayan jenerik mor bir renk kullanıyordu
+(`#7c5cff`) — gerçek marka `frontend/lib/core/theme.dart`'taki bronz
+aksan (`#B08D57`, "Night"/"Glass Light" temaları).
+
+**Yapılan:** `internal/webserver/webui/`'nin üçü de (style.css/index.html/
+app.js) baştan yazıldı — palet gerçek Memo temasıyla birebir eşleşiyor
+(dış font/CDN yok, sıfır bağımlılık korunuyor), login ekranı iki üst üste
+form yerine net bir Password/Token sekme anahtarına döndü (ikisi de her
+zaman erişilebilir — tespit edilen auth_mode sadece varsayılan sekmeyi
+seçiyor, artık yanlış tespit kullanıcıyı kilitli bırakmıyor), her şifre/
+token/API-key alanına 👁 göster/gizle eklendi, provider satırlarına Edit
+(gerçek API key'i dolduruyor — `ConfigManager.Set`'in tam üzerine yazdığı
+gerçek bir tuzağı da kapatıyor: boş key gönderirsen mevcut key silinirdi)
++ Delete eklendi (`DeleteProvider` zaten backend'de vardı, hiç
+bağlanmamıştı), ve Local Model paneline iki yeni tam çalışan akış geldi:
+"Import from server…" (bugünkü Flutter düzeltmesiyle aynı `GET /api/
+files/browse`'ı kullanan gerçek bir sunucu-disk tarayıcısı) ve "Download
+from Hugging Face…" (mevcut search/files/download/progress endpoint'lerini
+gerçek bir arama→dosya seç→ilerleme çubuğu akışına bağlıyor).
+
+**Doğrulama:** `go build/vet/test` temiz, `node -c app.js` ile JS syntax
+doğrulandı, her `getElementById` HTML'deki bir `id` ile eşleştirildi,
+izole bir throwaway backend'e karşı canlı test edildi (bootstrap → provider
+ekle → düzenle [model değişti, API key silinmedi, doğrulandı] → sil).
+**Bu ortamda gerçek bir tarayıcıda render edilmedi** (görüntü yok) — DOM/
+event/API sözleşmesi doğrulandı ama kullanıcının kendi RPi'sinde gerçek
+tarayıcı testi hâlâ asıl doğrulama.
+
+---
 
 Kullanıcı bu oturumun sonunda gerçekten kendi Raspberry Pi'sinde
 `get-memo-server-beta.sh` ile canlı bir kurulum yaptı (istenen CI build'i

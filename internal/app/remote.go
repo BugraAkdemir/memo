@@ -20,13 +20,18 @@ type RemoteAccessStatus struct {
 	// of a first device, and pendingDeviceToken) — empty on every other
 	// GET. This is the caller's one and only chance to learn a freshly
 	// generated plaintext token; only a hash is ever persisted afterward.
-	Token      string `json:"token"`
-	AuthMode   string `json:"auth_mode"`
-	Username   string `json:"username"`
-	NgrokMode  bool   `json:"ngrok_mode"`
-	NgrokToken string `json:"ngrok_token"`
-	NgrokURL   string `json:"ngrok_url"`
-	NgrokError string `json:"ngrok_error"`
+	Token    string `json:"token"`
+	AuthMode string `json:"auth_mode"`
+	Username string `json:"username"`
+	// AuthWarning is non-empty exactly when AuthMode is "none" and remote
+	// access is enabled — see the assignment at the bottom of
+	// GetRemoteAccessStatus for why this is computed once here rather than
+	// left to every caller to re-derive.
+	AuthWarning string `json:"auth_warning,omitempty"`
+	NgrokMode   bool   `json:"ngrok_mode"`
+	NgrokToken  string `json:"ngrok_token"`
+	NgrokURL    string `json:"ngrok_url"`
+	NgrokError  string `json:"ngrok_error"`
 
 	TunnelMode        string `json:"tunnel_mode"`
 	TailscaleHostname string `json:"tailscale_hostname"`
@@ -89,6 +94,14 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 			status.TailscaleError = err
 		}
 		status.TailscaleAuthURL = a.tailscaleTunnel.AuthURL()
+	}
+	if status.Enabled && status.AuthMode == "none" {
+		// Surfaced here (not just the --lan CLI startup log) so any
+		// client polling this status — Settings' Remote Access tab in
+		// particular — can render an impossible-to-miss warning without
+		// each one having to duplicate "AuthMode == none" as its own
+		// trigger condition.
+		status.AuthWarning = "AUTH DISABLED — this server accepts requests from this network/tunnel with no credential at all."
 	}
 	return status
 }

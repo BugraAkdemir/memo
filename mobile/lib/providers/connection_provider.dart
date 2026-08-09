@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/backend_url.dart';
 import '../core/l10n.dart';
 
 /// Turns a caught exception into a short, actionable message instead of
@@ -122,7 +123,13 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
 
   Future<void> loadSavedUrl() async {
     final prefs = await SharedPreferences.getInstance();
-    final url = prefs.getString('backend_url') ?? state.baseUrl;
+    // Runs whatever was already on disk through normalizeBackendUrl() too —
+    // a value saved before this fix existed (e.g. a bare "192.168.1.50"
+    // with no scheme) would otherwise crash the whole app on every launch:
+    // updateBaseUrl -> _initDio constructs Dio(BaseOptions(baseUrl: ...))
+    // synchronously, and Dio validates baseUrl eagerly, before any
+    // try/catch between this call and app startup gets a chance to run.
+    final url = normalizeBackendUrl(prefs.getString('backend_url') ?? state.baseUrl);
     final token = prefs.getString('backend_token') ?? '';
     _client.updateBaseUrl(url);
     _client.setToken(token);
@@ -158,13 +165,7 @@ class ConnectionNotifier extends StateNotifier<ConnectionState> {
     // itself) — all of it must be inside this try, otherwise an exception
     // here leaves `connecting` stuck at true forever with no error shown.
     try {
-      var normalized = url.trim().replaceAll(RegExp(r'/+$'), '');
-      // Auto-add a scheme when the user typed a bare host. Tailscale/Funnel
-      // hosts (*.ts.net) are HTTPS; everything else (LAN IPs) defaults to HTTP.
-      if (!normalized.startsWith('http://') && !normalized.startsWith('https://')) {
-        final host = normalized.split(':').first;
-        normalized = (host.endsWith('.ts.net') ? 'https://' : 'http://') + normalized;
-      }
+      final normalized = normalizeBackendUrl(url);
       _client.updateBaseUrl(normalized);
       if (token.isNotEmpty) {
         _client.setToken(token);

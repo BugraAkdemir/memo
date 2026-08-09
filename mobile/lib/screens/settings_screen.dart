@@ -4,6 +4,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/backend_url.dart';
 import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/connection_provider.dart' hide ConnectionState;
@@ -83,7 +84,7 @@ class _GeneralTabState extends ConsumerState<_GeneralTab> {
     if (url.isEmpty) return;
     setState(() => _saving = true);
     try {
-      final normalized = url.replaceAll(RegExp(r'/+$'), '');
+      final normalized = normalizeBackendUrl(url);
       final api = ref.read(apiClientProvider);
       api.updateBaseUrl(normalized);
       api.setToken(_tokenCtrl.text.trim());

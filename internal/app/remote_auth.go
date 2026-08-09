@@ -104,8 +104,14 @@ func (a *App) SetRemoteAuthConfig(mode, username, password string) error {
 }
 
 // ListRemoteDevices returns every paired device's metadata (never the
-// token itself — see RemoteDeviceInfo).
-func (a *App) ListRemoteDevices() []RemoteDeviceInfo {
+// token itself — see RemoteDeviceInfo). Returns interface{}, not
+// []RemoteDeviceInfo, so this satisfies webserver.FullBridge without that
+// package needing to import internal/app (see GetRemoteAccessStatus's
+// identical reasoning) — an interface method's return type has to match
+// exactly, so the concrete slice type can't stand in for interface{}
+// implicitly at the interface-satisfaction level even though it does at
+// any individual call site.
+func (a *App) ListRemoteDevices() interface{} {
 	a.remoteDevicesMu.Lock()
 	defer a.remoteDevicesMu.Unlock()
 	devices := a.cfg.RemoteAccess.Devices

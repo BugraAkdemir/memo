@@ -138,7 +138,6 @@ type FullBridge interface {
 
 	// Remote access
 	GetRemoteAccessStatus() interface{}
-	GetRemoteAccessToken() string
 	SetRemoteAccess(enabled bool, port int) error
 	SetNgrokMode(enabled bool, port int, ngrokToken string) error
 	SetTailscaleMode(enabled bool, authKey, hostname string, funnel bool, port int) error
@@ -146,6 +145,19 @@ type FullBridge interface {
 	SetNgrokAutoStart(autoStart bool)
 	GetListenAddr() string
 	SetListenAddr(addr string)
+
+	// Remote access auth (Faz 2, yapacam.md): four auth modes
+	// (none/token/password/token_password), argon2id password login with
+	// brute-force lockout, JWT sessions, and per-device tokens replacing
+	// the old single shared token. See internal/app/remote_auth.go.
+	GetRemoteAuthMode() string
+	SetRemoteAuthConfig(mode, username, password string) error
+	VerifyRemoteDeviceToken(token string) bool
+	ValidateRemoteSession(token string) bool
+	LoginRemotePassword(remoteAddr, username, password string) (string, error)
+	ListRemoteDevices() interface{}
+	CreateRemoteDevice(name string) (string, error)
+	RevokeRemoteDevice(id string) error
 
 	// Dev gateway (Settings > Developer): local OpenAI/Anthropic-compatible
 	// API surface that routes to whichever model/provider is configured.

@@ -5,7 +5,6 @@ import (
 	"crypto/ecdsa"
 	"crypto/elliptic"
 	"crypto/rand"
-	"crypto/subtle"
 	"crypto/tls"
 	"crypto/x509"
 	"crypto/x509/pkix"
@@ -212,6 +211,9 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 		}
 	})
 	route("/api/remote-access", s.handleRemoteAccess)
+	route("/api/remote-access/devices", s.handleRemoteDevices)
+	route("/api/remote-access/devices/{id}", s.handleRemoteDeviceByID)
+	route("/api/auth/login", s.handleRemoteLogin)
 	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/cli/running", s.handleCLIRunning)
 	route("/api/cli/commands", s.handleCLICommands)
@@ -751,40 +753,66 @@ func corsMiddleware(next http.Handler) http.Handler {
 	})
 }
 
-// remoteAuthOK reports whether a request may proceed given the server's
-// current listen address and the configured remote-access token. Pulled out
-// as a pure function (no *Server/FullBridge dependency) so the token-check
-// logic is directly unit-testable without a full FullBridge mock.
-//
-// listenAddr != "0.0.0.0" (local-only mode) always passes — every request is
-// let through exactly as before BUG-C1 was fixed. Once bound to "0.0.0.0"
-// (LAN mode, or ngrok/Tailscale which target this same port), a valid
-// X-Memo-Token — or "Authorization: Bearer <token>" — is required. A
-// constant-time comparison avoids leaking the token's value through
-// response-time differences.
-func remoteAuthOK(listenAddr, wantToken string, r *http.Request) bool {
-	if listenAddr != "0.0.0.0" {
-		return true
-	}
-
+// remoteCredential extracts the caller-presented credential — device token
+// or session token alike, both travel the same two headers — from r.
+func remoteCredential(r *http.Request) string {
 	got := r.Header.Get("X-Memo-Token")
 	if got == "" {
 		if auth := r.Header.Get("Authorization"); strings.HasPrefix(auth, "Bearer ") {
 			got = strings.TrimPrefix(auth, "Bearer ")
 		}
 	}
-	if wantToken == "" || got == "" {
+	return got
+}
+
+// remoteAuthOK reports whether a request may proceed given the server's
+// current listen address and configured auth mode (Faz 2, yapacam.md).
+// Pulled out as a pure function (verifyDevice/validateSession passed in as
+// closures rather than a *Server/FullBridge dependency) so the mode-gating
+// logic is directly unit-testable without a full FullBridge mock.
+//
+// listenAddr != "0.0.0.0" (local-only mode) always passes — every request is
+// let through exactly as before BUG-C1 was fixed, regardless of mode.
+//
+//   - "none":  always passes (once bound to 0.0.0.0) — the deliberately
+//     insecure opt-in; callers must surface a loud warning elsewhere
+//     (see warnAuthDisabled), this function only implements the gate.
+//   - "token": verifyDevice only — a device token from CreateRemoteDevice.
+//   - "password": validateSession only — a session token from
+//     POST /api/auth/login. A device token, even a genuinely valid one,
+//     does NOT satisfy this mode: the whole point of choosing
+//     password-only is that pre-shared device tokens aren't the account's
+//     credential anymore.
+//   - "token_password": either satisfies (OR logic, per yapacam.md).
+//   - anything else (shouldn't happen — validate() defaults empty to
+//     "token"): fails closed.
+func remoteAuthOK(listenAddr, mode string, r *http.Request, verifyDevice, validateSession func(string) bool) bool {
+	if listenAddr != "0.0.0.0" {
+		return true
+	}
+	if mode == "none" {
+		return true
+	}
+	cred := remoteCredential(r)
+	if cred == "" {
 		return false
 	}
-	return subtle.ConstantTimeCompare([]byte(wantToken), []byte(got)) == 1
+	switch mode {
+	case "token":
+		return verifyDevice(cred)
+	case "password":
+		return validateSession(cred)
+	case "token_password":
+		return verifyDevice(cred) || validateSession(cred)
+	default:
+		return false
+	}
 }
 
 // remoteAuthMiddleware wires remoteAuthOK into the request chain.
 // SetRemoteAccess/SetNgrokMode/SetTailscaleMode all rebind the listener to
 // "0.0.0.0" when enabling, and back to "127.0.0.1" when disabling, so a
-// single listenAddr check covers LAN mode and ngrok alike. The token itself
-// was already generated and shown in the UI (GetRemoteAccessStatus) before
-// this fix; it just wasn't checked anywhere.
+// single listenAddr check covers LAN mode and ngrok alike.
 func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if s.fullBridge == nil {
@@ -795,6 +823,14 @@ func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 		// auth is the room id+secret pair checked inside HostSwarmAddWorker.
 		// Both /api/ and /api/v1/ aliases must be skipped (route() registers both).
 		if isSwarmWorkerAddPath(r.URL.Path) {
+			next.ServeHTTP(w, r)
+			return
+		}
+		// Password login itself can't require a credential — that's the
+		// whole point of the endpoint. Rate-limited independently by
+		// internal/remoteauth's brute-force limiter inside LoginRemotePassword,
+		// not by this check.
+		if isRemoteLoginPath(r.URL.Path) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -813,8 +849,9 @@ func (s *Server) remoteAuthMiddleware(next http.Handler) http.Handler {
 		s.mu.Lock()
 		listenAddr := s.listenAddr
 		s.mu.Unlock()
-		if !remoteAuthOK(listenAddr, s.fullBridge.GetRemoteAccessToken(), r) {
-			http.Error(w, "unauthorized: missing or invalid X-Memo-Token", http.StatusUnauthorized)
+		mode := s.fullBridge.GetRemoteAuthMode()
+		if !remoteAuthOK(listenAddr, mode, r, s.fullBridge.VerifyRemoteDeviceToken, s.fullBridge.ValidateRemoteSession) {
+			http.Error(w, "unauthorized: missing or invalid credential", http.StatusUnauthorized)
 			return
 		}
 		next.ServeHTTP(w, r)

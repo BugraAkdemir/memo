@@ -173,7 +173,19 @@ func main() {
 					fmt.Fprintf(os.Stderr, "FATAL: --lan: %v\n", err)
 					os.Exit(1)
 				}
-				log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — X-Memo-Token required on every request: %s", *port, a.GetRemoteAccessToken())
+				status, _ := a.GetRemoteAccessStatus().(app.RemoteAccessStatus)
+				switch status.AuthMode {
+				case "none":
+					log.Printf("⚠️  Memo backend bound to 0.0.0.0:%d (LAN mode) — AUTH DISABLED (auth_mode: none). Anyone on this network can reach the API with no credential at all.", *port)
+				case "password":
+					log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — password login required (user: %s). POST /api/auth/login to get a session token.", *port, status.Username)
+				default: // "token" or "token_password"
+					if status.Token != "" {
+						log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — X-Memo-Token required on every request: %s", *port, status.Token)
+					} else {
+						log.Printf("Memo backend bound to 0.0.0.0:%d (LAN mode) — a device token is required; existing paired device token(s) remain valid.", *port)
+					}
+				}
 			}
 		}
 

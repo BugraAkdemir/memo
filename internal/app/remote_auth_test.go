@@ -120,7 +120,7 @@ func TestCreateAndListAndRevokeRemoteDevice(t *testing.T) {
 		t.Fatal("expected a non-empty plaintext token")
 	}
 
-	devices := a.ListRemoteDevices()
+	devices := a.ListRemoteDevices().([]RemoteDeviceInfo)
 	if len(devices) != 1 {
 		t.Fatalf("expected 1 device, got %d", len(devices))
 	}
@@ -138,7 +138,7 @@ func TestCreateAndListAndRevokeRemoteDevice(t *testing.T) {
 	if err := a.RevokeRemoteDevice(devices[0].ID); err != nil {
 		t.Fatalf("RevokeRemoteDevice: %v", err)
 	}
-	if len(a.ListRemoteDevices()) != 0 {
+	if len(a.ListRemoteDevices().([]RemoteDeviceInfo)) != 0 {
 		t.Error("expected device list to be empty after revocation")
 	}
 	if a.VerifyRemoteDeviceToken(plain) {

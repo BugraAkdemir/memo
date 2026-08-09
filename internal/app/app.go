@@ -288,6 +288,10 @@ type App struct {
 	// touches LastSeenAt), unlike the rest of a.cfg's RemoteAccess fields,
 	// which only change on rare, user-initiated admin actions.
 	remoteDevicesMu sync.Mutex
+	// pendingDeviceToken holds a just-minted device token's plaintext for
+	// exactly one GetRemoteAccessStatus call (see SetRemoteAccess's
+	// auto-provision-on-first-enable) — read-and-cleared, never persisted.
+	pendingDeviceToken string
 }
 
 // NewApp creates a new App instance. The binaries embed.FS and version string

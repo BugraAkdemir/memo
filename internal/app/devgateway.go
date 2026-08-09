@@ -11,6 +11,7 @@ import (
 	"memo/internal/memory"
 	"memo/internal/models"
 	"memo/internal/provider"
+	"memo/internal/remoteauth"
 )
 
 // gatewayToolsUnsupportedTypes lists provider types whose internal/provider
@@ -43,17 +44,17 @@ func (a *App) SetDevGatewayConfig(requireAPIKey, useMemory bool) error {
 	return config.Save(cfg)
 }
 
-// GetDevGatewayToken returns the shared remote-access token (see
-// GetRemoteAccessToken), generating and persisting one first if none exists
-// yet. Unlike remote access itself, the dev gateway doesn't require LAN/
-// ngrok/Tailscale mode to be turned on to have a key — "require API key" is
-// an independent, local-or-remote check.
+// GetDevGatewayToken returns the dev gateway's own API key (see
+// config.DevGatewayConfig.Token), generating and persisting one first if
+// none exists yet. Unlike remote access itself, the dev gateway doesn't
+// require LAN/ngrok/Tailscale mode to be turned on to have a key — "require
+// API key" is an independent, local-or-remote check.
 func (a *App) GetDevGatewayToken() string {
 	a.cfgMu.Lock()
-	if a.cfg.RemoteAccess.Token == "" {
-		a.cfg.RemoteAccess.Token = generateToken()
+	if a.cfg.DevGateway.Token == "" {
+		a.cfg.DevGateway.Token = remoteauth.GenerateDeviceToken()
 	}
-	token := a.cfg.RemoteAccess.Token
+	token := a.cfg.DevGateway.Token
 	cfg := a.cfg
 	a.cfgMu.Unlock()
 	config.Save(cfg)

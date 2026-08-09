@@ -205,6 +205,17 @@ type WhatsAppConfig struct {
 type DevGatewayConfig struct {
 	RequireAPIKey bool `yaml:"require_api_key" json:"require_api_key"`
 	UseMemory     bool `yaml:"use_memory" json:"use_memory"`
+	// Token is the dev gateway's own API key — deliberately independent of
+	// RemoteAccess's token/device model below (Faz 2, yapacam.md). Before
+	// Faz 2 this feature shared RemoteAccess.Token as a shortcut; that field
+	// is now migrated away into hashed per-device records on Load (see
+	// migrateLegacyRemoteToken) and would otherwise get regenerated and
+	// immediately re-migrated-away on every restart, breaking this token's
+	// stability. Deliberately still plaintext, unlike RemoteAccess's device
+	// tokens: this key is checked by devGatewayAuthOK against arbitrary
+	// local processes (Claude Code, other CLI tools), a lower-stakes,
+	// same-machine-by-default threat model than remote network access.
+	Token string `yaml:"token" json:"-"`
 }
 
 type RemoteAccessConfig struct {

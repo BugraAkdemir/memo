@@ -920,10 +920,22 @@ func (s *Server) handleRemoteAccess(w http.ResponseWriter, r *http.Request) {
 			TailscaleFunnel   bool   `json:"tailscale_funnel"`
 			// Beta features toggle
 			Beta *bool `json:"beta"`
+			// Auth mode (Faz 2, yapacam.md) — omit AuthMode entirely to
+			// leave the current mode/credentials untouched (e.g. a PUT that
+			// only toggles Enabled/Port shouldn't accidentally reset auth).
+			AuthMode string `json:"auth_mode"`
+			Username string `json:"username"`
+			Password string `json:"password"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
+		}
+		if req.AuthMode != "" {
+			if err := s.fullBridge.SetRemoteAuthConfig(req.AuthMode, req.Username, req.Password); err != nil {
+				http.Error(w, err.Error(), http.StatusBadRequest)
+				return
+			}
 		}
 		if req.Beta != nil {
 			if err := s.fullBridge.SetBeta(*req.Beta); err != nil {

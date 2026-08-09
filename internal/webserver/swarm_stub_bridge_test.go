@@ -261,10 +261,22 @@ func (b *swarmStubBridge) SetNgrokMode(enabled bool, port int, ngrokToken string
 func (b *swarmStubBridge) SetTailscaleMode(enabled bool, authKey, hostname string, funnel bool, port int) error {
 	return nil
 }
-func (b *swarmStubBridge) SetBeta(enabled bool) error                              { return nil }
-func (b *swarmStubBridge) SetNgrokAutoStart(autoStart bool)                        {}
-func (b *swarmStubBridge) GetListenAddr() string                                   { return "127.0.0.1" }
-func (b *swarmStubBridge) SetListenAddr(addr string)                               {}
+func (b *swarmStubBridge) SetBeta(enabled bool) error                                { return nil }
+func (b *swarmStubBridge) SetNgrokAutoStart(autoStart bool)                          {}
+func (b *swarmStubBridge) GetListenAddr() string                                     { return "127.0.0.1" }
+func (b *swarmStubBridge) SetListenAddr(addr string)                                 {}
+func (b *swarmStubBridge) GetRemoteAuthMode() string                                 { return "token" }
+func (b *swarmStubBridge) SetRemoteAuthConfig(mode, username, password string) error { return nil }
+func (b *swarmStubBridge) VerifyRemoteDeviceToken(token string) bool {
+	return token != "" && token == b.token
+}
+func (b *swarmStubBridge) ValidateRemoteSession(token string) bool { return false }
+func (b *swarmStubBridge) LoginRemotePassword(remoteAddr, username, password string) (string, error) {
+	return "", nil
+}
+func (b *swarmStubBridge) ListRemoteDevices() interface{}                          { return nil }
+func (b *swarmStubBridge) CreateRemoteDevice(name string) (string, error)          { return "", nil }
+func (b *swarmStubBridge) RevokeRemoteDevice(id string) error                      { return nil }
 func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool)                       { return false, false }
 func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool) error { return nil }
 func (b *swarmStubBridge) GetDevGatewayToken() string                              { return "" }

@@ -1,8 +1,6 @@
 package app
 
 import (
-	"crypto/rand"
-	"encoding/hex"
 	"fmt"
 	"memo/internal/logx"
 
@@ -13,15 +11,22 @@ import (
 
 // RemoteAccessStatus holds the current remote access configuration and state.
 type RemoteAccessStatus struct {
-	Enabled    bool     `json:"enabled"`
-	Port       int      `json:"port"`
-	Running    bool     `json:"running"`
-	Addresses  []string `json:"addresses"`
-	Token      string   `json:"token"`
-	NgrokMode  bool     `json:"ngrok_mode"`
-	NgrokToken string   `json:"ngrok_token"`
-	NgrokURL   string   `json:"ngrok_url"`
-	NgrokError string   `json:"ngrok_error"`
+	Enabled   bool     `json:"enabled"`
+	Port      int      `json:"port"`
+	Running   bool     `json:"running"`
+	Addresses []string `json:"addresses"`
+	// Token is populated only immediately after a brand new device token
+	// was minted by this exact call (see SetRemoteAccess's auto-provision
+	// of a first device, and pendingDeviceToken) — empty on every other
+	// GET. This is the caller's one and only chance to learn a freshly
+	// generated plaintext token; only a hash is ever persisted afterward.
+	Token      string `json:"token"`
+	AuthMode   string `json:"auth_mode"`
+	Username   string `json:"username"`
+	NgrokMode  bool   `json:"ngrok_mode"`
+	NgrokToken string `json:"ngrok_token"`
+	NgrokURL   string `json:"ngrok_url"`
+	NgrokError string `json:"ngrok_error"`
 
 	TunnelMode        string `json:"tunnel_mode"`
 	TailscaleHostname string `json:"tailscale_hostname"`
@@ -37,10 +42,17 @@ type RemoteAccessStatus struct {
 
 // GetRemoteAccessStatus returns the current state of the remote access server.
 func (a *App) GetRemoteAccessStatus() interface{} {
+	a.remoteDevicesMu.Lock()
+	pendingToken := a.pendingDeviceToken
+	a.pendingDeviceToken = ""
+	a.remoteDevicesMu.Unlock()
+
 	status := RemoteAccessStatus{
 		Enabled:           a.cfg.RemoteAccess.Enabled,
 		Port:              a.cfg.RemoteAccess.Port,
-		Token:             a.cfg.RemoteAccess.Token,
+		Token:             pendingToken,
+		AuthMode:          a.cfg.RemoteAccess.AuthMode,
+		Username:          a.cfg.RemoteAccess.Username,
 		NgrokMode:         a.cfg.RemoteAccess.NgrokMode,
 		NgrokToken:        a.cfg.RemoteAccess.NgrokToken,
 		TunnelMode:        a.cfg.RemoteAccess.TunnelMode,
@@ -81,12 +93,6 @@ func (a *App) GetRemoteAccessStatus() interface{} {
 	return status
 }
 
-// GetRemoteAccessToken returns the current remote-access auth token (empty
-// until remote access has been enabled at least once, see SetRemoteAccess).
-func (a *App) GetRemoteAccessToken() string {
-	return a.cfg.RemoteAccess.Token
-}
-
 // SetRemoteAccess enables or disables remote access and restarts the web server.
 func (a *App) SetRemoteAccess(enabled bool, port int) error {
 	ws := a.getWebServer()
@@ -107,8 +113,23 @@ func (a *App) SetRemoteAccess(enabled bool, port int) error {
 	a.cfg.RemoteAccess.Enabled = enabled
 	a.cfg.RemoteAccess.Port = port
 
-	if a.cfg.RemoteAccess.Token == "" {
-		a.cfg.RemoteAccess.Token = generateToken()
+	// Auto-provision a first device the same way the old single shared
+	// token used to be generated on first enable — but only when the
+	// configured mode actually checks device tokens; auto-minting one
+	// under "password" mode (where it's never even checked) would be
+	// misleading. CreateRemoteDevice persists its own save; the plaintext
+	// is stashed for GetRemoteAccessStatus's next call to surface exactly
+	// once (see RemoteAccessStatus.Token's doc comment), matching the
+	// pre-Faz-2 "PUT is the caller's one chance to learn the token" flow.
+	mode := a.cfg.RemoteAccess.AuthMode
+	if enabled && len(a.cfg.RemoteAccess.Devices) == 0 && (mode == "token" || mode == "token_password") {
+		if tok, err := a.CreateRemoteDevice("Varsayılan"); err != nil {
+			logx.Printf("remote_auth: failed to auto-provision default device: %v", err)
+		} else {
+			a.remoteDevicesMu.Lock()
+			a.pendingDeviceToken = tok
+			a.remoteDevicesMu.Unlock()
+		}
 	}
 
 	if enabled && a.cfg.RemoteAccess.NgrokMode && a.cfg.RemoteAccess.NgrokToken != "" {
@@ -158,12 +179,6 @@ func (a *App) SetNgrokMode(enabled bool, port int, ngrokToken string) error {
 	}
 
 	return a.SetRemoteAccess(enabled, port)
-}
-
-func generateToken() string {
-	b := make([]byte, 12)
-	rand.Read(b)
-	return "memo-" + hex.EncodeToString(b)
 }
 
 // GetListenAddr returns the current listen address of the web server.

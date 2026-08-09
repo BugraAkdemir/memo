@@ -12,6 +12,7 @@
   --bubble-bot-text: #1a1a1e;
   --danger: #d64545;
   --ok: #2fa84f;
+  --warn: #d68f1f;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -91,6 +92,15 @@ input, select, textarea {
 .login-box input { margin: 12px 0; }
 .login-box button { width: 100%; }
 .error { color: var(--danger); font-size: 13px; }
+.warning {
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 600;
+  border: 1px solid var(--warn);
+  border-radius: 8px;
+  padding: 8px 12px;
+  margin: 8px 0;
+}
 
 /* ── app shell ───────────────────────────────────────────────────────── */
 #app {

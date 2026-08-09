@@ -123,6 +123,7 @@ function initApp() {
   document.getElementById("provider-form").addEventListener("submit", saveProvider);
   document.getElementById("p-test").addEventListener("click", testProvider);
   document.getElementById("p-fetch-models").addEventListener("click", fetchModels);
+  document.getElementById("restart-backend").addEventListener("click", restartBackend);
 }
 
 async function pollStatus() {
@@ -234,7 +235,7 @@ let settingsLoaded = false;
 async function loadSettings() {
   if (settingsLoaded) return;
   settingsLoaded = true;
-  await Promise.all([loadModels(), loadProviders()]);
+  await Promise.all([loadModels(), loadProviders(), loadRemoteAccess()]);
 }
 
 async function loadModels() {
@@ -420,6 +421,49 @@ async function saveProvider(ev) {
     if (e.unauthorized) { showLogin(); return; }
     msg.textContent = "Failed: " + e.message;
   }
+}
+
+// ── settings: remote access (Faz 2/3, yapacam.md) ──────────────────────
+//
+// Deliberately narrow, matching this UI's overall scope: status + a
+// restart button, not device/auth-mode management (that's the desktop
+// app's Settings → Remote Access tab, or `memo remote` over SSH — both
+// already cover it, with real validation this page would just have to
+// duplicate).
+
+async function loadRemoteAccess() {
+  const statusEl = document.getElementById("remote-status");
+  const warnEl = document.getElementById("remote-warning");
+  try {
+    const status = await apiJSON("/api/remote-access");
+    const parts = [status.enabled ? "Enabled" : "Disabled"];
+    if (status.auth_mode) parts.push("auth: " + status.auth_mode);
+    parts.push(status.running ? "running" : "not running");
+    statusEl.textContent = parts.join(" · ");
+    if (status.auth_warning) {
+      warnEl.textContent = "⚠️ " + status.auth_warning;
+      warnEl.classList.remove("hidden");
+    } else {
+      warnEl.classList.add("hidden");
+    }
+  } catch (e) {
+    if (e.unauthorized) { showLogin(); return; }
+    statusEl.textContent = "Could not load remote-access status: " + e.message;
+  }
+}
+
+async function restartBackend() {
+  const msg = document.getElementById("restart-msg");
+  if (!confirm("Restart the Memo backend now? Anyone connected will be briefly disconnected.")) return;
+  msg.textContent = "Restarting…";
+  try {
+    await api("/api/shutdown", { method: "POST" });
+  } catch {
+    // The backend closing the connection as it exits looks identical to a
+    // network error from here — expected, not a failure (see
+    // internal/replcli.Client.Shutdown's identical reasoning).
+  }
+  msg.textContent = "Shutdown requested. If this backend runs under systemd (`memo service install`) or a container restart policy, it should come back up shortly — otherwise it needs to be started again manually.";
 }
 
 function escapeHTML(s) {

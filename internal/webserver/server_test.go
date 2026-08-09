@@ -462,6 +462,22 @@ func TestCorsMiddleware_LoopbackOrigins(t *testing.T) {
 		{"", true},
 		{"http://evil.com", false},
 		{"https://malicious.site", false},
+		// Regression: strings.HasPrefix(origin, "http://localhost") used to
+		// accept any of these — an attacker-registered subdomain of a
+		// domain they own, which is a textbook CORS bypass (CWE-346).
+		// isLoopbackOrigin must parse the URL and check the hostname
+		// exactly instead.
+		{"http://localhost.attacker.com", false},
+		{"http://localhost.attacker.com:8090", false},
+		{"http://127.0.0.1.attacker.com", false},
+		{"http://[::1].attacker.com", false},
+		{"http://localhostattacker.com", false},
+		// https on a loopback host must also be rejected — this server
+		// only ever serves plain HTTP, so a real browser page reaching it
+		// would never present an https:// origin; accepting one here would
+		// just be an unnecessary extra surface.
+		{"https://localhost", false},
+		{"not a url at all", false},
 	}
 
 	for _, tt := range tests {

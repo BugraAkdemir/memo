@@ -16,6 +16,7 @@ import (
 	"math/big"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"strings"
 	"sync"
@@ -727,16 +728,44 @@ func writeJSON(w http.ResponseWriter, v interface{}) {
 	}
 }
 
+// isLoopbackOrigin reports whether origin is exactly http://localhost,
+// http://127.0.0.1, or http://[::1] (any port) — parsed and compared by
+// exact hostname, never a substring/prefix match. A prefix check
+// (the previous implementation: strings.HasPrefix(origin, "http://localhost"))
+// is a classic CORS bypass (CWE-346): an attacker who registers
+// "localhost.attacker.com" — a perfectly ordinary subdomain of a domain
+// they own — sends Origin: http://localhost.attacker.com, which starts
+// with "http://localhost" as a raw string despite being a completely
+// different, attacker-controlled host. Combined with a credential-less
+// endpoint like POST /api/auth/login, that let an external attacker's
+// webpage use a LAN-connected victim's browser as a relay to reach and
+// read responses from Memo instances the attacker has no direct network
+// path to (classic browser-as-LAN-pivot). Parsing the URL and checking
+// u.Hostname() exactly closes this: "localhost.attacker.com" parses to
+// hostname "localhost.attacker.com", never "localhost".
+func isLoopbackOrigin(origin string) bool {
+	if origin == "" {
+		return true
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	switch u.Hostname() {
+	case "localhost", "127.0.0.1", "::1":
+		return true
+	default:
+		return false
+	}
+}
+
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
 		// Only allow loopback origins. Even in LAN mode (0.0.0.0) we do not
 		// reflect arbitrary origins, because that would let malicious websites
 		// talk to the local Memo API from the user's browser.
-		isLoopback := origin == "" ||
-			strings.HasPrefix(origin, "http://localhost") ||
-			strings.HasPrefix(origin, "http://127.0.0.1") ||
-			strings.HasPrefix(origin, "http://[::1]")
+		isLoopback := isLoopbackOrigin(origin)
 		if isLoopback {
 			if origin == "" {
 				origin = "http://localhost"

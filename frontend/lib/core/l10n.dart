@@ -80,16 +80,24 @@ class L10n {
     'error': 'Hata',
     'connection_error': 'Bağlantı hatası',
     'engine_error': 'Hata: \${e}',
-    'friendly_error_network': 'İnternet bağlantısı sorunu — bağlantını kontrol edip tekrar dene.',
-    'friendly_error_model_start': 'Model başlatılamadı. Bilgisayarının belleği bu model için yetersiz olabilir — daha küçük bir model dene.',
-    'friendly_error_oom': 'Bilgisayarının belleği (RAM) bu model için yetersiz kaldı. Daha küçük bir model seçmeyi dene.',
-    'friendly_error_download': 'İndirme tamamlanamadı. İnternet bağlantını kontrol edip tekrar dene.',
+    'friendly_error_network':
+        'İnternet bağlantısı sorunu — bağlantını kontrol edip tekrar dene.',
+    'friendly_error_model_start':
+        'Model başlatılamadı. Bilgisayarının belleği bu model için yetersiz olabilir — daha küçük bir model dene.',
+    'friendly_error_oom':
+        'Bilgisayarının belleği (RAM) bu model için yetersiz kaldı. Daha küçük bir model seçmeyi dene.',
+    'friendly_error_download':
+        'İndirme tamamlanamadı. İnternet bağlantını kontrol edip tekrar dene.',
     'friendly_error_generic': 'Bir şeyler ters gitti. Lütfen tekrar dene.',
-    'gguf_tooltip': 'GGUF: bu modelin bilgisayarında çalışması için kullanılan dosya formatı.',
-    'quant_code_tooltip': 'Bu kod, modelin sıkıştırma seviyesini gösterir (boyut/hız/kalite dengesi). Yanındaki etiket aynı şeyi sade dille anlatır.',
+    'gguf_tooltip':
+        'GGUF: bu modelin bilgisayarında çalışması için kullanılan dosya formatı.',
+    'quant_code_tooltip':
+        'Bu kod, modelin sıkıştırma seviyesini gösterir (boyut/hız/kalite dengesi). Yanındaki etiket aynı şeyi sade dille anlatır.',
     'fit_good_tooltip': 'Bu model bilgisayarında rahatça çalışır.',
-    'fit_ok_tooltip': 'Ekran kartı hızlandırması olmadan, işlemci ile çalışır — biraz daha yavaş olabilir.',
-    'fit_warn_tooltip': 'Bu model bilgisayarının belleğine göre büyük olabilir — yavaş çalışabilir ya da hiç başlamayabilir. Daha küçük bir model denemeni öneririz.',
+    'fit_ok_tooltip':
+        'Ekran kartı hızlandırması olmadan, işlemci ile çalışır — biraz daha yavaş olabilir.',
+    'fit_warn_tooltip':
+        'Bu model bilgisayarının belleğine göre büyük olabilir — yavaş çalışabilir ya da hiç başlamayabilir. Daha küçük bir model denemeni öneririz.',
 
     // Sidebar / Chats
     'new_chat': 'Yeni Sohbet',
@@ -135,7 +143,8 @@ class L10n {
     'edit_message': 'Mesajı Düzenle',
     'edit_message_hint': 'Mesajı düzenleyin...',
     'delete_message': 'Mesajı Sil',
-    'delete_message_confirm': 'Bu mesaj silinecek. Devam etmek istiyor musunuz?',
+    'delete_message_confirm':
+        'Bu mesaj silinecek. Devam etmek istiyor musunuz?',
 
     // Agent undo
     'agent_undo': 'Ajanın Son İşlemini Geri Al',
@@ -145,7 +154,8 @@ class L10n {
     // Agent mode toggle (Chat top bar)
     'agent_mode_on': 'Agent Modu — Kapat',
     'agent_mode_off': 'Agent Modu — Aç',
-    'agent_mode_tooltip': 'Agent modu — dosya okuma/yazma ve komut çalıştırma araçlarını etkinleştirir.',
+    'agent_mode_tooltip':
+        'Agent modu — dosya okuma/yazma ve komut çalıştırma araçlarını etkinleştirir.',
 
     // Quick actions (welcome)
     'quick_review': 'Kod incele',
@@ -163,7 +173,8 @@ class L10n {
     'llama_cpp': 'llama.cpp',
     'switch_model': 'Model Değiştir',
     'cli_model_default': 'CLI Varsayılanı',
-    'cli_model_none_available': 'Bu CLI için model listesi yok — varsayılanı kullanır',
+    'cli_model_none_available':
+        'Bu CLI için model listesi yok — varsayılanı kullanır',
     'cli_model_switch_tooltip': 'CLI\'ın kullandığı modeli değiştir',
     'switch_model_desc': 'Sohbet için hangi modeli kullanmak istediğini seç:',
     'switched_to': '\${name} moduna geçildi',
@@ -193,14 +204,18 @@ class L10n {
     'orchestra_enable_failed': 'Orchestra açılamadı: \${e}',
     'error_with_detail': 'Hata: \${e}',
     'enter_model_name': 'Model adı gir',
-    'custom_base_url_required': 'Özel sağlayıcı için Base URL gerekli (örn. https://host/v1)',
-    'api_key_hint_get': 'API anahtarını gir (yoksa "Anahtar al" ile edinebilirsin)',
+    'custom_base_url_required':
+        'Özel sağlayıcı için Base URL gerekli (örn. https://host/v1)',
+    'api_key_hint_get':
+        'API anahtarını gir (yoksa "Anahtar al" ile edinebilirsin)',
     'link_open_failed': 'Bağlantı açılamadı: \${url}',
-    'provider_renamed_on_conflict': '"\${desired}" zaten var, "\${final}" olarak kaydedildi',
+    'provider_renamed_on_conflict':
+        '"\${desired}" zaten var, "\${final}" olarak kaydedildi',
     'select': 'Seç',
     'skill_load': 'Skill Yükle',
     'skill_delete_title': 'Skill\'i Sil',
-    'skill_delete_confirm': '"\${name}" skill\'ini silmek istediğine emin misin?',
+    'skill_delete_confirm':
+        '"\${name}" skill\'ini silmek istediğine emin misin?',
     'skill_path_prompt': 'Skill klasörünün yolunu gir:',
     'load': 'Yükle',
 
@@ -221,8 +236,10 @@ class L10n {
         'Claude Code gibi kodlama ajanlarının bilgisayarında kurulu olup olmadığını kontrol et. Bunlar gerçek ajanlar — dosya/komut çalıştırma yetkileri var.',
     'cli_connections_not_checked': 'Henüz kontrol edilmedi.',
     'cli_connections_installed': 'Bağlandı — sürüm \${version}',
-    'cli_connections_ready_in_picker': 'Hazır — sohbetin model seçicisinde görünüyor, ayrıca eklemene gerek yok.',
-    'cli_connections_not_found': '\${bin} bulunamadı. PATH\'e ekleyin veya kurun.',
+    'cli_connections_ready_in_picker':
+        'Hazır — sohbetin model seçicisinde görünüyor, ayrıca eklemene gerek yok.',
+    'cli_connections_not_found':
+        '\${bin} bulunamadı. PATH\'e ekleyin veya kurun.',
     'cli_connections_check_btn': 'Kontrol Et',
     'cli_command_none':
         'Bu CLI için komut bulunamadı. Komutlarını .claude/commands veya .codex/prompts klasörüne ekleyebilirsin.',
@@ -239,7 +256,8 @@ class L10n {
     'tab_swarm': 'Swarm',
     'tab_report_bug': 'Hata Bildir',
     'swarm_title': 'Memo Swarm',
-    'swarm_subtitle': 'Bir bilgisayara sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır',
+    'swarm_subtitle':
+        'Bir bilgisayara sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır',
     // Plain-language explainer shown on the Host/Join picker (no jargon).
     'swarm_what_is_title': 'Bu ne işe yarar?',
     'swarm_what_is_body':
@@ -309,28 +327,37 @@ class L10n {
     'stats_model_breakdown_title': 'Model Dağılımı',
     'stats_model_requests': '\${count} istek',
     'stats_empty_title': 'Henüz kullanım verisi yok',
-    'stats_empty_body': 'Birkaç mesaj gönderdikten sonra burada token kullanımı, hız ve model istatistiklerini göreceksin.',
+    'stats_empty_body':
+        'Birkaç mesaj gönderdikten sonra burada token kullanımı, hız ve model istatistiklerini göreceksin.',
     'stats_load_error': 'İstatistikler alınamadı: \${e}',
     'stats_no_model': '—',
 
     // Dev gateway tab
     'copy': 'Kopyala',
     'dev_gateway_title': 'Geliştirici API Ağ Geçidi',
-    'dev_gateway_subtitle': 'Memo\'yu Claude Code gibi sadece Anthropic uyumlu bir adres kabul eden araçlarla kullan — Memo\'daki yerel modeli veya tanımlı sağlayıcılardan birini arkada çalıştırır.',
+    'dev_gateway_subtitle':
+        'Memo\'yu Claude Code gibi sadece Anthropic uyumlu bir adres kabul eden araçlarla kullan — Memo\'daki yerel modeli veya tanımlı sağlayıcılardan birini arkada çalıştırır.',
     'dev_gateway_base_url_label': 'Base URL',
-    'dev_gateway_base_url_hint': 'Claude Code\'da ortam değişkeni olarak ayarla:',
+    'dev_gateway_base_url_hint':
+        'Claude Code\'da ortam değişkeni olarak ayarla:',
     'dev_gateway_models_title': 'Model ID\'leri',
-    'dev_gateway_models_hint': 'İsteğin "model" alanına bu ID\'lerden birini yaz.',
-    'dev_gateway_models_empty': 'Şu an kullanılabilir model yok — bir yerel model başlat ya da Ayarlar > API Providers\'dan bir sağlayıcı etkinleştir.',
+    'dev_gateway_models_hint':
+        'İsteğin "model" alanına bu ID\'lerden birini yaz.',
+    'dev_gateway_models_empty':
+        'Şu an kullanılabilir model yok — bir yerel model başlat ya da Ayarlar > API Providers\'dan bir sağlayıcı etkinleştir.',
     'dev_gateway_require_key_label': 'API Key Gerektir',
-    'dev_gateway_require_key_desc': 'Açıksa istekler bu token\'ı x-api-key veya Authorization: Bearer olarak taşımalı. Kapalıysa herkes bu adrese erişebilen (ör. aynı makinedeki başka bir program) modeli kullanabilir.',
+    'dev_gateway_require_key_desc':
+        'Açıksa istekler bu token\'ı x-api-key veya Authorization: Bearer olarak taşımalı. Kapalıysa herkes bu adrese erişebilen (ör. aynı makinedeki başka bir program) modeli kullanabilir.',
     'dev_gateway_token_label': 'Token',
     'dev_gateway_use_memory_label': 'Hafızayı Kullan',
-    'dev_gateway_use_memory_desc': 'Açıksa bu ağ geçidi üzerinden gelen isteklerde Memo\'nun hafızasındaki bilgiler kullanılır ve sohbet hafızaya kaydedilir — ama sohbet geçmişinde görünmez. Kapalıysa (varsayılan) istekler tamamen ayrı tutulur.',
+    'dev_gateway_use_memory_desc':
+        'Açıksa bu ağ geçidi üzerinden gelen isteklerde Memo\'nun hafızasındaki bilgiler kullanılır ve sohbet hafızaya kaydedilir — ama sohbet geçmişinde görünmez. Kapalıysa (varsayılan) istekler tamamen ayrı tutulur.',
     'dev_gateway_save_error': 'Ayarlar kaydedilemedi: \${e}',
     'dev_gateway_logs_title': 'Canlı Günlük',
-    'dev_gateway_logs_subtitle': 'Ağ geçidinden geçen isteklerin gelen/giden özeti — takip için bu ekranı açık bırak.',
-    'dev_gateway_logs_empty': 'Henüz istek yok. Claude Code\'dan (ya da başka bir istemciden) bir mesaj gönder, burada görünecek.',
+    'dev_gateway_logs_subtitle':
+        'Ağ geçidinden geçen isteklerin gelen/giden özeti — takip için bu ekranı açık bırak.',
+    'dev_gateway_logs_empty':
+        'Henüz istek yok. Claude Code\'dan (ya da başka bir istemciden) bir mesaj gönder, burada görünecek.',
     'dev_gateway_logs_error': 'Günlük alınamadı: \${e}',
     'dev_gateway_logs_request_label': 'İstek',
     'dev_gateway_logs_response_label': 'Yanıt',
@@ -339,17 +366,22 @@ class L10n {
     'dev_gateway_logs_tools_badge': 'tools',
     'dev_gateway_logs_duration': '\${ms} ms',
     'report_bug_title': 'Hata Bildir',
-    'report_bug_desc': 'Bir sorun mu buldun? Ne olduğunu anlat, GitHub\'da bir issue açman için hazırlayalım. Hiçbir şey senin onayın olmadan gönderilmez — GitHub sayfasında son kez görüp düzenleyebilirsin.',
-    'report_bug_hint': 'Ne oldu? Ne yapmaya çalışıyordun, ne bekliyordun, ne oldu?',
+    'report_bug_desc':
+        'Bir sorun mu buldun? Ne olduğunu anlat, GitHub\'da bir issue açman için hazırlayalım. Hiçbir şey senin onayın olmadan gönderilmez — GitHub sayfasında son kez görüp düzenleyebilirsin.',
+    'report_bug_hint':
+        'Ne oldu? Ne yapmaya çalışıyordun, ne bekliyordun, ne oldu?',
     'report_bug_empty_error': 'Önce ne olduğunu anlat',
     'report_bug_include_errors': 'Son 10 hatayı da ekle',
-    'report_bug_include_errors_desc': 'Arka planda kaydedilen son teknik hata kayıtlarını rapora ekler (ör. hafıza/embedding hataları). İstemezsen işaretleme, sadece yazdığın metin gider.',
+    'report_bug_include_errors_desc':
+        'Arka planda kaydedilen son teknik hata kayıtlarını rapora ekler (ör. hafıza/embedding hataları). İstemezsen işaretleme, sadece yazdığın metin gider.',
     'report_bug_last_errors_header': 'Son teknik hatalar (otomatik eklendi):',
     'report_bug_submit_btn': 'GitHub\'da Bildir',
     'report_bug_issue_title_prefix': 'Hata Bildirimi',
-    'report_bug_launch_failed': 'GitHub açılamadı. github.com/BugraAkdemir/memo/issues adresine elle gidebilirsin.',
+    'report_bug_launch_failed':
+        'GitHub açılamadı. github.com/BugraAkdemir/memo/issues adresine elle gidebilirsin.',
     'report_bug_error': 'Bir şeyler ters gitti: \${e}',
-    'report_bug_footer_note': 'Rapor GitHub\'a gönderilir (github.com/BugraAkdemir/memo) — bir GitHub hesabın olması gerekir. Hiçbir veri bizim sunucumuza gitmez.',
+    'report_bug_footer_note':
+        'Rapor GitHub\'a gönderilir (github.com/BugraAkdemir/memo) — bir GitHub hesabın olması gerekir. Hiçbir veri bizim sunucumuza gitmez.',
     'language': 'Dil',
     'lang_turkish': 'Türkçe',
     'lang_english': 'English',
@@ -365,25 +397,35 @@ class L10n {
     'embedding_off': 'Embedding: kapalı',
     'cli_section_title': 'CLI ve Kaldırma',
     'cli_reinstall_title': 'CLI\'ı Yeniden Yükle',
-    'cli_reinstall_desc': 'Terminaldeki "memo" komutunu bu sürümle günceller — yeni bir build sonrası eski komutta takılı kalmamak için.',
+    'cli_reinstall_desc':
+        'Terminaldeki "memo" komutunu bu sürümle günceller — yeni bir build sonrası eski komutta takılı kalmamak için.',
     'cli_remove_title': 'CLI\'ı Kaldır',
-    'cli_remove_desc': 'Sadece terminaldeki "memo" komutunu kaldırır. Verilerin ve masaüstü uygulaman etkilenmez.',
-    'cli_windows_note': 'Windows\'ta terminal komutu ayrı bir kurulum değil — memo.exe uygulamanın kendisi. Kaldırmak için Windows Ayarlar > Uygulamalar\'ı kullan.',
-    'cli_remove_confirm_body': 'Terminalden "memo" komutu kaldırılacak. Masaüstü uygulaman ve verilerin etkilenmez.',
+    'cli_remove_desc':
+        'Sadece terminaldeki "memo" komutunu kaldırır. Verilerin ve masaüstü uygulaman etkilenmez.',
+    'cli_windows_note':
+        'Windows\'ta terminal komutu ayrı bir kurulum değil — memo.exe uygulamanın kendisi. Kaldırmak için Windows Ayarlar > Uygulamalar\'ı kullan.',
+    'cli_remove_confirm_body':
+        'Terminalden "memo" komutu kaldırılacak. Masaüstü uygulaman ve verilerin etkilenmez.',
     'cli_remove_btn': 'Kaldır',
-    'cli_reinstalled_msg': 'CLI yeniden yüklendi. Yeni bir terminal aç ve "memo" yaz.',
+    'cli_reinstalled_msg':
+        'CLI yeniden yüklendi. Yeni bir terminal aç ve "memo" yaz.',
     'cli_error': 'Hata: \${e}',
     'cli_removed_msg': 'CLI kaldırıldı.',
     'uninstall_error': 'Kaldırma hatası: \${e}',
     'uninstall_section_title': 'Memo\'yu Kaldır',
-    'uninstall_section_desc': 'CLI, yapılandırma, sohbet geçmişi ve indirilen motor dosyaları dahil her şey silinir.',
+    'uninstall_section_desc':
+        'CLI, yapılandırma, sohbet geçmişi ve indirilen motor dosyaları dahil her şey silinir.',
     'uninstall_keep_memory_title': 'Hafızayı koru',
-    'uninstall_keep_memory_desc': 'Kaldırmadan önce hafızayı ~/memo-memory-backup içine yedekler.',
-    'uninstall_confirm2_body_keep': 'Hafıza dışında her şey silinecek. Onaylamak için tekrar tıklayın.',
-    'uninstall_confirm2_body_all': 'Hafıza dahil her şey silinecek. Onaylamak için tekrar tıklayın.',
+    'uninstall_keep_memory_desc':
+        'Kaldırmadan önce hafızayı ~/memo-memory-backup içine yedekler.',
+    'uninstall_confirm2_body_keep':
+        'Hafıza dışında her şey silinecek. Onaylamak için tekrar tıklayın.',
+    'uninstall_confirm2_body_all':
+        'Hafıza dahil her şey silinecek. Onaylamak için tekrar tıklayın.',
     'uninstall_final_irreversible': 'Bu işlem geri alınamaz.',
     'uninstall_done_title': 'Memo kaldırıldı',
-    'uninstall_done_body_keep': 'Hafızan ~/memo-memory-backup içine yedeklendi. Uygulama şimdi kapanacak.',
+    'uninstall_done_body_keep':
+        'Hafızan ~/memo-memory-backup içine yedeklendi. Uygulama şimdi kapanacak.',
     'uninstall_done_body_all': 'Tüm veriler silindi. Uygulama şimdi kapanacak.',
 
     // Settings — System Prompt
@@ -441,13 +483,17 @@ class L10n {
     'minimal_mode_overrides_desc':
         'Minimal Modu komple kapatmadan, aşağıdakilerden istediğini tek tek geri açabilirsin — örneğin proaktif öğrenmeyi kapalı bırakıp sistem promptunu açık tutabilirsin.',
     'minimal_mode_keep_persona': 'Kişilik / Sistem Promptu',
-    'minimal_mode_keep_persona_desc': 'Kimlik, köken bilgisi, üslup ve öğrenilen konuşma tarzı notları.',
+    'minimal_mode_keep_persona_desc':
+        'Kimlik, köken bilgisi, üslup ve öğrenilen konuşma tarzı notları.',
     'minimal_mode_keep_capabilities': 'Yetenek Bildirimleri',
-    'minimal_mode_keep_capabilities_desc': 'Agent modu / web arama kapalıyken bunu modele hatırlatan not.',
+    'minimal_mode_keep_capabilities_desc':
+        'Agent modu / web arama kapalıyken bunu modele hatırlatan not.',
     'minimal_mode_keep_passive': 'Pasif Özellik Bildirimi',
-    'minimal_mode_keep_passive_desc': 'Takvim/hatırlatma otomatik tespitinin var olduğunu belirten not.',
+    'minimal_mode_keep_passive_desc':
+        'Takvim/hatırlatma otomatik tespitinin var olduğunu belirten not.',
     'minimal_mode_keep_proactive': 'Proaktif Öğrenme',
-    'minimal_mode_keep_proactive_desc': 'Öğrenilen alışkanlıkları sohbet içinde doğal şekilde hatırlatma.',
+    'minimal_mode_keep_proactive_desc':
+        'Öğrenilen alışkanlıkları sohbet içinde doğal şekilde hatırlatma.',
     'memory_files': 'Bellek Dosyaları',
     'memory_files_show': 'Dosyaları göster (\${n})',
     'memory_count': 'Bellek Sayısı',
@@ -455,8 +501,7 @@ class L10n {
     'clear_memory_confirm':
         'Tüm bellek dosyalarını silmek istediğinizden emin misiniz?',
     'clear_memory_title': 'Hafızayı Temizle',
-    'clear_memory_confirm_ext':
-        'Tüm hafıza dosyaları silinecek. Emin misin?',
+    'clear_memory_confirm_ext': 'Tüm hafıza dosyaları silinecek. Emin misin?',
     'no_memory_files': 'Henüz bellek dosyası yok',
     'delete_file': 'Dosyayı Sil',
     'memory_retrieval_settings': 'Gelişmiş Hatırlama Ayarları',
@@ -465,7 +510,8 @@ class L10n {
     'memory_top_k': 'Gösterilecek Anı Sayısı',
     'memory_min_similarity': 'Minimum Benzerlik',
     'memory_debug_search': 'Bellek Ara (Debug)',
-    'memory_debug_hint': 'Bir sorgu yaz, hangi belleklerin geldiğini ve neden geldiğini gör.',
+    'memory_debug_hint':
+        'Bir sorgu yaz, hangi belleklerin geldiğini ve neden geldiğini gör.',
     'memory_debug_placeholder': 'Sorgu...',
     'memory_debug_search_btn': 'Ara',
     'memory_debug_no_results': 'Sonuç bulunamadı.',
@@ -479,7 +525,8 @@ class L10n {
     'memory_import_title': 'Hafızayı İçe Aktar',
     'memory_import_hint':
         'Başka bir yapay zekaya (ChatGPT, Gemini, vs.) aşağıdaki prompt\'u yapıştır, aldığın cevabı da buraya yapıştırıp gönder — bilgiler madde madde hafızana işlenir, konuşma tarzın da öğrenilirse Memo\'nun sana özel üslubuna eklenir.',
-    'memory_import_step1': 'Bu prompt\'u diğer yapay zeka ile olan sohbetine kopyala',
+    'memory_import_step1':
+        'Bu prompt\'u diğer yapay zeka ile olan sohbetine kopyala',
     'memory_import_step2': 'Aldığın yanıtı buraya yapıştır',
     'memory_import_tip':
         'İpucu: Bu prompt\'u göndermeden önce o AI ile birkaç mesaj sohbet etmiş olman gerekiyor — aksi halde hakkında hatırlayacak bir şeyi olmaz ve zayıf bir sonuç dönebilir.',
@@ -524,8 +571,7 @@ class L10n {
     'display_name': 'Görünen ad',
     'display_name_helper':
         'Listede bunu görürsün — birden fazla için ayırt edici yap',
-    'display_name_helper_dup':
-        'Aynı tipten birden fazla için ayırt edici yap',
+    'display_name_helper_dup': 'Aynı tipten birden fazla için ayırt edici yap',
     'api_key_optional': 'API anahtarı (opsiyonel)',
     'api_key_step2': '2. API anahtarı',
     'api_key_custom_hint':
@@ -538,8 +584,7 @@ class L10n {
     'base_url': 'Base URL',
     'base_url_optional': 'Base URL (isteğe bağlı)',
     'base_url_default_hint': 'Boş = sağlayıcı varsayılanı',
-    'base_url_openai_hint':
-        'OpenAI uyumlu endpoint, örn. https://host/v1',
+    'base_url_openai_hint': 'OpenAI uyumlu endpoint, örn. https://host/v1',
     'model_label': 'Model',
     'model_step3': '3. Model',
     'model_custom_hint': 'Endpoint\'in beklediği model adı',
@@ -560,14 +605,12 @@ class L10n {
 
     // Settings — Orchestra
     'orchestra_title': 'Orchestra Mode',
-    'orchestra_dialog_subtitle':
-        'Birden çok modeli bir ekip gibi çalıştır',
+    'orchestra_dialog_subtitle': 'Birden çok modeli bir ekip gibi çalıştır',
     'orchestra_active': 'Orchestra Mode Aktif',
     'orchestra_inactive': 'Orchestra Mode Pasif',
     'orchestra_desc':
         'Birden çok modeli aynı anda bir ekip olarak çalıştır. Bir Şef (Chief) model kullanıcının isteğini analiz eder, alt görevlere böler ve her görevi uzmanlaşmış modele atar.',
-    'orchestra_status':
-        'Şef: \${chief}/\${model} • \${count} rol aktif',
+    'orchestra_status': 'Şef: \${chief}/\${model} • \${count} rol aktif',
     'orchestra_hint': 'Aktifleştirmek için aç/kapa yap',
     'orchestra_error': 'Hata: \${e}',
     'configure_roles': 'Rolleri ve Modelleri Yapılandır',
@@ -583,8 +626,7 @@ class L10n {
     'orchestra_flow_synth_sub': 'Sonuçları birleştirir',
     'chief_model': 'Şef model',
     'chief_model_emoji': '🧙 Şef (Chief) Model',
-    'chief_desc':
-        'İsteği analiz eder, görev dağıtır ve sonuçları birleştirir.',
+    'chief_desc': 'İsteği analiz eder, görev dağıtır ve sonuçları birleştirir.',
     'expert_roles': 'Uzman rolleri',
     'expert_roles_emoji': '🎭 Uzman Rolleri',
     'expert_roles_desc':
@@ -594,8 +636,7 @@ class L10n {
     'quick_setup_desc':
         'Tek bir modeli şefe ve tüm açık rollere bir kerede ata.',
     'select_model_apply': 'Model seç ve uygula',
-    'quick_model_applied':
-        '\${label} şefe ve açık rollere uygulandı',
+    'quick_model_applied': '\${label} şefe ve açık rollere uygulandı',
     'model_not_assigned': '⚠ Model atanmadı',
     'select_openrouter_model': 'OpenRouter modeli seç',
     'advanced_system_prompt': 'Gelişmiş: sistem talimatı',
@@ -655,6 +696,37 @@ class L10n {
     'remote_token_copied': 'Token kopyalandı',
     'remote_beta_features': 'Beta Özellikler',
     'remote_beta_features_desc': 'Deneysel özellikleri aç (Memo Swarm, …)',
+
+    // ── Auth mode (Faz 2, self-hosted güvenlik) ─────────────────────
+    'remote_auth_section_title': 'Kimlik Doğrulama',
+    'remote_auth_warning_banner':
+        'AUTH KAPALI — bu sunucu, ağda/tünelde hiçbir kimlik bilgisi istemeden herkesin erişimine açık.',
+    'remote_auth_mode_none': 'Kapalı',
+    'remote_auth_mode_token': 'Token',
+    'remote_auth_mode_password': 'Şifre',
+    'remote_auth_mode_token_password': 'Token + Şifre',
+    'remote_auth_username_label': 'Kullanıcı Adı',
+    'remote_auth_password_label': 'Şifre',
+    'remote_auth_password_hint': 'Mevcut şifreyi korumak için boş bırak',
+    'remote_auth_save': 'Kaydet',
+    'remote_auth_saved': 'Kimlik doğrulama ayarları kaydedildi',
+    'remote_auth_save_failed': 'Kaydedilemedi: \${e}',
+    'remote_devices_section_title': 'Eşleşmiş Cihazlar',
+    'remote_devices_empty': 'Henüz eşleşmiş cihaz yok',
+    'remote_device_add': 'Cihaz Ekle',
+    'remote_device_add_dialog_title': 'Yeni Cihaz',
+    'remote_device_add_dialog_hint': 'Cihaz adı (ör. Telefon)',
+    'remote_device_add_failed': 'Cihaz eklenemedi: \${e}',
+    'remote_device_new_token_title': 'Yeni Cihaz Token\'ı',
+    'remote_device_new_token_body':
+        'Bu token yalnızca bir kez gösteriliyor — şimdi kopyala, cihaza gir. Daha sonra tekrar görüntülenemez.',
+    'remote_device_revoke': 'Kaldır',
+    'remote_device_revoke_confirm_title': 'Cihazı kaldır?',
+    'remote_device_revoke_confirm_body':
+        '"\${name}" cihazının erişimi kalıcı olarak iptal edilecek.',
+    'remote_device_revoke_failed': 'Kaldırılamadı: \${e}',
+    'remote_device_last_seen': 'Son görülme: \${when}',
+    'remote_device_never_seen': 'Hiç kullanılmadı',
     'tab_beta_features': 'Beta Özellikler',
     'beta_features_page_desc':
         'Deneysel özellikler varsayılan olarak kapalıdır. Açtığında henüz kararlı kabul edilmeyen entegrasyonlar (Memo Swarm, …) kullanılabilir hale gelir. Her özellik kendi ekranında ayrıca yapılandırılır.',
@@ -678,7 +750,8 @@ class L10n {
     'tts_providers_desc':
         'Yapılandırılmış bir API sağlayıcısı varsa önce o denenir; başarısız olursa veya hiç yapılandırılmamışsa yerel Piper motoruna düşülür.',
     'tts_providers_add': 'Sağlayıcı ekle',
-    'tts_providers_empty': 'Henüz sağlayıcı eklenmedi — yerel Piper kullanılıyor.',
+    'tts_providers_empty':
+        'Henüz sağlayıcı eklenmedi — yerel Piper kullanılıyor.',
     'tts_provider_name': 'Ad',
     'tts_provider_name_hint': 'Örn. Kişisel OpenAI',
     'tts_provider_api_key': 'API Anahtarı',
@@ -692,7 +765,8 @@ class L10n {
     'tts_provider_testing': 'Test ediliyor…',
     'tts_provider_test_success': 'Bağlantı başarılı',
     'tts_provider_test_failed': 'Bağlantı başarısız: \${err}',
-    'tts_provider_validation_error': 'Ad, API anahtarı ve ses alanları zorunludur.',
+    'tts_provider_validation_error':
+        'Ad, API anahtarı ve ses alanları zorunludur.',
     'tts_provider_save_failed': 'Kaydedilemedi: \${err}',
     'tts_provider_delete_failed': 'Silinemedi: \${err}',
     'tts_voices_title': 'Yerel Ses Modelleri (çevrimdışı)',
@@ -732,20 +806,25 @@ class L10n {
     'remote_local_addresses_label': 'Yerel Adresler',
     'remote_autostart_label': 'Backend Başlarken Otomatik Başlat',
     'remote_autostart_ngrok_title': 'Ngrok tünelini otomatik başlat',
-    'remote_autostart_will_start': 'Bir sonraki backend başlangıcında başlayacak',
+    'remote_autostart_will_start':
+        'Bir sonraki backend başlangıcında başlayacak',
     'remote_autostart_manual': 'Bu panelden elle başlat',
     'remote_configure_label': 'Uzaktan Erişimi Yapılandır',
     'remote_ngrok_token_field_label': 'Ngrok Auth Token',
     'remote_disable_btn': 'Devre Dışı Bırak',
     'remote_enable_start_btn': 'Etkinleştir ve Başlat',
-    'remote_ngrok_hint_text': 'Herkese açık bir tünel başlatmak için ngrok auth token\'ını gir.\nhttps://dashboard.ngrok.com adresinden alabilirsin',
+    'remote_ngrok_hint_text':
+        'Herkese açık bir tünel başlatmak için ngrok auth token\'ını gir.\nhttps://dashboard.ngrok.com adresinden alabilirsin',
     'remote_backend_url_label': 'Backend Sunucu URL\'i',
     'remote_backend_url_field_label': 'Backend URL',
-    'remote_backend_url_updated': 'Backend URL güncellendi. Gerekirse yeniden bağlan.',
+    'remote_backend_url_updated':
+        'Backend URL güncellendi. Gerekirse yeniden bağlan.',
     'remote_backend_token_field_label': 'Erişim Token\'ı (opsiyonel)',
-    'remote_backend_token_field_hint': 'Sadece yukarıdaki backend kendi --lan/uzaktan erişim modunda çalışıyorsa gerekir (ör. Docker/CasaOS) — konteynerin loglarında yazar.',
+    'remote_backend_token_field_hint':
+        'Sadece yukarıdaki backend kendi --lan/uzaktan erişim modunda çalışıyorsa gerekir (ör. Docker/CasaOS) — konteynerin loglarında yazar.',
     'remote_tailscale_title': 'Tailscale (sabit URL, gömülü)',
-    'remote_tailscale_desc': 'ngrok\'un aksine URL hiç değişmez ve ayrı binary indirmez. Tıkla, tarayıcıda tek tıkla onayla — API key\'e gerek yok.',
+    'remote_tailscale_desc':
+        'ngrok\'un aksine URL hiç değişmez ve ayrı binary indirmez. Tıkla, tarayıcıda tek tıkla onayla — API key\'e gerek yok.',
     'remote_ts_ip_note': '(MagicDNS kapalıysa bunu kullan)',
     'remote_ip_copied': 'IP kopyalandı',
     'remote_ts_error': 'Hata: \${e}',
@@ -760,10 +839,12 @@ class L10n {
     'remote_ts_starting': 'Başlatılıyor...',
     'remote_ts_start_btn': 'Tailscale ile Bağlan',
     'remote_ts_stop_btn': 'Tailscale Durdur',
-    'remote_ts_awaiting_login': 'Tarayıcıda açılan sekmede onayla. Sekme kendiliğinden açılmadıysa aşağıdaki linke tıkla.',
+    'remote_ts_awaiting_login':
+        'Tarayıcıda açılan sekmede onayla. Sekme kendiliğinden açılmadıysa aşağıdaki linke tıkla.',
     'remote_ts_open_login_link': 'Giriş sayfasını aç',
     'remote_ts_advanced_toggle': 'Gelişmiş: manuel auth key ile bağlan',
-    'remote_ts_manual_key_hint': 'Sunucu/headless kurulum için: login.tailscale.com → Settings → Keys\'ten bir key oluşturup buraya yapıştır.',
+    'remote_ts_manual_key_hint':
+        'Sunucu/headless kurulum için: login.tailscale.com → Settings → Keys\'ten bir key oluşturup buraya yapıştır.',
     'remote_action_failed': 'Başarısız: \${e}',
     'remote_enter_token_first': 'Önce ngrok auth token\'ını gir',
     'remote_load_failed': 'Yüklenemedi: \${err}',
@@ -776,7 +857,8 @@ class L10n {
     'about': 'Hakkında',
     'whatsapp': 'WhatsApp',
     'whatsapp_connect': 'WhatsApp\'a Bağlan',
-    'whatsapp_not_initialized': 'WhatsApp entegrasyonu aktif değil. config.yaml\'dan etkinleştirin.',
+    'whatsapp_not_initialized':
+        'WhatsApp entegrasyonu aktif değil. config.yaml\'dan etkinleştirin.',
     'whatsapp_search': 'Mesajlarda ara...',
     'whatsapp_placeholder': 'Mesaj yaz...',
     'whatsapp_no_messages': 'Henüz mesaj yok',
@@ -786,11 +868,14 @@ class L10n {
     'about_license': 'Açık Kaynak (MIT Lisansı)',
     'about_license_text':
         'Bu yazılım MIT lisansı ile açık kaynak olarak sunulmaktadır. Geliştirici: Buğra Akdemir',
-    'about_vision_body': 'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı bir yapay zeka asistanıdır. Konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazır. Üçüncü taraf sunuculara ihtiyaç duymadan, kendi bilgisayarınızda çalışır — verileriniz tamamen sizde kalır. İsteğe bağlı olarak harici API sağlayıcıları veya yerel llama.cpp modelleri ile kullanılabilir. WhatsApp entegrasyonu, RAG hafıza ve E2E şifreli bulut senkronizasyonu destekler.',
+    'about_vision_body':
+        'Memo, tamamen yerel bilgisayarınızda çalışan, gizlilik odaklı bir yapay zeka asistanıdır. Konuşmalarınızı ve tercihlerinizi zamanla öğrenip kalıcı hafızasına kazır. Üçüncü taraf sunuculara ihtiyaç duymadan, kendi bilgisayarınızda çalışır — verileriniz tamamen sizde kalır. İsteğe bağlı olarak harici API sağlayıcıları veya yerel llama.cpp modelleri ile kullanılabilir. WhatsApp entegrasyonu, RAG hafıza ve E2E şifreli bulut senkronizasyonu destekler.',
     'about_license_title': 'Lisans',
-    'about_license_body': 'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile lisanslanmıştır. Geliştirici: Buğra Akdemir. Kaynak kod: github.com/BugraAkdemir/memo',
+    'about_license_body':
+        'Bu yazılım GNU Affero Genel Kamu Lisansı v3 (AGPL-3.0) ile lisanslanmıştır. Geliştirici: Buğra Akdemir. Kaynak kod: github.com/BugraAkdemir/memo',
     'about_tech_title': 'Teknolojiler',
-    'about_tech_body': 'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vektör arama) | whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
+    'about_tech_body':
+        'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vektör arama) | whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
 
     // Settings — GPU / Llama
     'gpu_section_title': 'Ekran Kartı (GPU) / Llama Motoru',
@@ -849,7 +934,8 @@ class L10n {
     'model_config': 'Model Ayarları',
     'ctx_size': 'Bağlam Boyutu',
     'ctx_size_of_max': '\${cur} / \${max} token',
-    'ctx_size_max_unknown': 'Bu modelin desteklediği maksimum bağlam boyutu tespit edilemedi — dikkatli girin, çok yüksek bir değer modelin çökmesine neden olabilir.',
+    'ctx_size_max_unknown':
+        'Bu modelin desteklediği maksimum bağlam boyutu tespit edilemedi — dikkatli girin, çok yüksek bir değer modelin çökmesine neden olabilir.',
     'gpu_layers': 'GPU Katmanları',
     'port': 'Port',
     'delete_model': 'Modeli Sil',
@@ -900,7 +986,8 @@ class L10n {
     'restart_required_body':
         'Sunucu adresi değişti. Değişikliğin düzgün uygulanması için Memo\'nun yeniden başlatılması gerekiyor.',
     'restart_now_button': 'Şimdi Başlat',
-    'restart_in_seconds': '\${s} saniye içinde otomatik olarak yeniden başlayacak',
+    'restart_in_seconds':
+        '\${s} saniye içinde otomatik olarak yeniden başlayacak',
 
     // Embedding
     'embedding_model': 'Gömme Modeli',
@@ -994,8 +1081,7 @@ class L10n {
 
     'setup_step_model': 'Model Önerisi',
     'setup_model_checking': 'Sistemin kontrol ediliyor...',
-    'setup_model_already':
-        'Zaten \${count} model kurulu — hazırsın!',
+    'setup_model_already': 'Zaten \${count} model kurulu — hazırsın!',
     'setup_model_hello': 'Hey! Sistemine göre bir öneri hazırladık 👋',
     'setup_model_ram': 'RAM',
     'setup_model_gpu': 'Ekran Kartı',
@@ -1073,24 +1159,21 @@ class L10n {
         'Bu hata mesajını analiz et ve nasıl düzelteceğimi göster:\n\n',
     'template_plan_text':
         'Aşağıdaki görev için adım adım bir uygulama planı oluştur:\n\n',
-    'template_summarize_text':
-        'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
+    'template_summarize_text': 'Aşağıdaki metni kısa ve öz şekilde özetle:\n\n',
     'template_compare_text':
         'Şu iki seçeneği karşılaştır, artı ve eksilerini listele:\n\n1. \n2. ',
-    'template_brainstorm_text':
-        'Şu konu hakkında yaratıcı fikirler üret:\n\n',
-    'template_translate_text':
-        'Aşağıdaki metni Türkçeye çevir:\n\n',
+    'template_brainstorm_text': 'Şu konu hakkında yaratıcı fikirler üret:\n\n',
+    'template_translate_text': 'Aşağıdaki metni Türkçeye çevir:\n\n',
     'openrouter_key_instructions':
         "openrouter.ai/keys adresinden API Key'ini kopyalayıp aşağıya yapıştır:",
     'openrouter_key_hint': 'sk-or-... ile başlar',
     'whatsapp_timeout': 'WhatsApp yanıt zaman aşımına uğradı (5 dakika)',
-    'usage_tooltip':
-        'Girdi \${input} · Çıktı \${output}',
+    'usage_tooltip': 'Girdi \${input} · Çıktı \${output}',
     'usage_tooltip_budget':
         'Girdi \${input} · Çıktı \${output} · Bütçe \${budget}',
     'no_matching_command': 'Eşleşen komut yok',
-    'file_mention_none': 'Eşleşen dosya yok (ya da bu sohbet için bir proje klasörü seçilmedi)',
+    'file_mention_none':
+        'Eşleşen dosya yok (ya da bu sohbet için bir proje klasörü seçilmedi)',
     'action_badge': 'eylem',
 
     // Version
@@ -1150,15 +1233,20 @@ class L10n {
     'launchpad_title': 'Hoş Geldin',
     'launchpad_subtitle': 'Memo ile neler yapabilirsin?',
     'launchpad_chat_title': 'Sohbet',
-    'launchpad_chat_desc': 'Yapay zeka ile konuş, soru sor, kod yazdır, belge özetlet. Konuştukça seni tanır ve hatırlar.',
+    'launchpad_chat_desc':
+        'Yapay zeka ile konuş, soru sor, kod yazdır, belge özetlet. Konuştukça seni tanır ve hatırlar.',
     'launchpad_agent_title': 'Ajan',
-    'launchpad_agent_desc': 'Sana iş yapar — dosyaları okur, kod yazar, komut çalıştırır, web\'de arama yapar. Tüm işlemleri sen onaylarsın.',
+    'launchpad_agent_desc':
+        'Sana iş yapar — dosyaları okur, kod yazar, komut çalıştırır, web\'de arama yapar. Tüm işlemleri sen onaylarsın.',
     'launchpad_orchestra_title': 'Orchestra',
-    'launchpad_orchestra_desc': 'Karmaşık işleri birden fazla yapay zeka modeline bölerek ekip gibi çalıştırır. Bir şef planlar, uzmanlar yürütür.',
+    'launchpad_orchestra_desc':
+        'Karmaşık işleri birden fazla yapay zeka modeline bölerek ekip gibi çalıştırır. Bir şef planlar, uzmanlar yürütür.',
     'launchpad_whatsapp_title': 'WhatsApp',
-    'launchpad_whatsapp_desc': 'WhatsApp hesabına bağlan, gelen mesajları AI ile yanıtla, sohbetleri özetlet, kişilerinle doğal dilde iletişim kur.',
+    'launchpad_whatsapp_desc':
+        'WhatsApp hesabına bağlan, gelen mesajları AI ile yanıtla, sohbetleri özetlet, kişilerinle doğal dilde iletişim kur.',
     'launchpad_calendar_title': 'Takvim',
-    'launchpad_calendar_desc': 'Konuşmalarından planlarını yakalar, otomatik etkinlik oluşturur ve hatırlatmalarla sana haber verir.',
+    'launchpad_calendar_desc':
+        'Konuşmalarından planlarını yakalar, otomatik etkinlik oluşturur ve hatırlatmalarla sana haber verir.',
     'launchpad_start_chat': 'Sohbete Başla',
     'launchpad_connect_wa': 'WhatsApp\'a Bağlan',
 
@@ -1166,31 +1254,43 @@ class L10n {
     'tour_skip': 'Geç',
     'tour_next': 'Sonraki',
     'tour_done': 'Tamam',
-    'tour_step_chat': 'Sohbet — Memo\'nun ana ekranı. Burada AI ile konuşur, soru sorar, kod yazdırır ve dosya gönderirsin. Konuştukça seni tanır.',
-    'tour_step_agent': 'Ajan — Görev modun. Proje klasörü seç, ajan dosyalarında kod yazsın, komut çalıştırsın, hata düzeltsin. Her işlemi sen onaylarsın.',
-    'tour_step_whatsapp': 'WhatsApp — Buradan WhatsApp\'ına bağlan. QR kod okutarak eşleştir, gelen mesajları gör, AI ile yanıtla.',
-    'tour_step_calendar': 'Takvim — Sohbetlerinden planlarını otomatik yakalar. Etkinlik ekler ve zamanı gelince hatırlatma gönderir.',
+    'tour_step_chat':
+        'Sohbet — Memo\'nun ana ekranı. Burada AI ile konuşur, soru sorar, kod yazdırır ve dosya gönderirsin. Konuştukça seni tanır.',
+    'tour_step_agent':
+        'Ajan — Görev modun. Proje klasörü seç, ajan dosyalarında kod yazsın, komut çalıştırsın, hata düzeltsin. Her işlemi sen onaylarsın.',
+    'tour_step_whatsapp':
+        'WhatsApp — Buradan WhatsApp\'ına bağlan. QR kod okutarak eşleştir, gelen mesajları gör, AI ile yanıtla.',
+    'tour_step_calendar':
+        'Takvim — Sohbetlerinden planlarını otomatik yakalar. Etkinlik ekler ve zamanı gelince hatırlatma gönderir.',
 
     // Empty states
     'agent_empty_title': 'Ajan Modu',
-    'agent_empty_desc': 'Ajan senin için dosya okur, komut çalıştırır, kod yazar ve web\'de arama yapar. Yapacağı her işlemi önce sana sorar — kontrol sende.',
+    'agent_empty_desc':
+        'Ajan senin için dosya okur, komut çalıştırır, kod yazar ve web\'de arama yapar. Yapacağı her işlemi önce sana sorar — kontrol sende.',
     'agent_empty_action': 'Yeni Ajan Sohbeti',
     'calendar_empty_title': 'Takvim',
-    'calendar_empty_desc': 'Sohbetlerinde bahsettiğin planlar, randevular ve etkinlikler buraya otomatik düşer. İstersen manuel de ekleyebilirsin.',
+    'calendar_empty_desc':
+        'Sohbetlerinde bahsettiğin planlar, randevular ve etkinlikler buraya otomatik düşer. İstersen manuel de ekleyebilirsin.',
     'whatsapp_empty_title': 'WhatsApp',
-    'whatsapp_empty_desc': 'WhatsApp hesabına bağlanmak için aşağıdaki butona tıkla, QR kodu okut. Bağlandıktan sonra mesajları buradan okuyup yanıtlayabilir, AI\'a yazdırabilirsin.',
+    'whatsapp_empty_desc':
+        'WhatsApp hesabına bağlanmak için aşağıdaki butona tıkla, QR kodu okut. Bağlandıktan sonra mesajları buradan okuyup yanıtlayabilir, AI\'a yazdırabilirsin.',
 
     // Mode descriptions
     'mode_normal': 'Normal Sohbet',
-    'mode_normal_desc': 'Yapay zeka ile serbest sohbet — soru sor, kod yazdır, belge özetlet.',
+    'mode_normal_desc':
+        'Yapay zeka ile serbest sohbet — soru sor, kod yazdır, belge özetlet.',
     'mode_agent': 'Ajan Modu',
-    'mode_agent_desc': 'Görev modu — ajan dosyalarında gezinir, komut çalıştırır, kod yazar.',
+    'mode_agent_desc':
+        'Görev modu — ajan dosyalarında gezinir, komut çalıştırır, kod yazar.',
     'mode_whatsapp': 'WhatsApp Modu',
-    'mode_whatsapp_desc': 'WhatsApp üzerinden AI ile sohbet — mesajları okur, yanıtlar, özetler.',
+    'mode_whatsapp_desc':
+        'WhatsApp üzerinden AI ile sohbet — mesajları okur, yanıtlar, özetler.',
 
     // Chat top bar tooltips
-    'incognito_tooltip': 'Gizli mod — bu sohbet hafızaya kaydedilmez ve RAG indeksine eklenmez.',
-    'whatsapp_mode_tooltip': 'WhatsApp modu — WhatsApp üzerinden gelen mesajları AI ile yanıtla.',
+    'incognito_tooltip':
+        'Gizli mod — bu sohbet hafızaya kaydedilmez ve RAG indeksine eklenmez.',
+    'whatsapp_mode_tooltip':
+        'WhatsApp modu — WhatsApp üzerinden gelen mesajları AI ile yanıtla.',
 
     // Settings
     'settings_reset_tour': 'Turu Tekrar Göster',
@@ -1211,10 +1311,17 @@ class L10n {
     // Calendar
     'month_january': 'Ocak', 'month_february': 'Şubat', 'month_march': 'Mart',
     'month_april': 'Nisan', 'month_may': 'Mayıs', 'month_june': 'Haziran',
-    'month_july': 'Temmuz', 'month_august': 'Ağustos', 'month_september': 'Eylül',
-    'month_october': 'Ekim', 'month_november': 'Kasım', 'month_december': 'Aralık',
+    'month_july': 'Temmuz',
+    'month_august': 'Ağustos',
+    'month_september': 'Eylül',
+    'month_october': 'Ekim',
+    'month_november': 'Kasım',
+    'month_december': 'Aralık',
     'day_short_mon': 'Pzt', 'day_short_tue': 'Sal', 'day_short_wed': 'Çar',
-    'day_short_thu': 'Per', 'day_short_fri': 'Cum', 'day_short_sat': 'Cmt', 'day_short_sun': 'Paz',
+    'day_short_thu': 'Per',
+    'day_short_fri': 'Cum',
+    'day_short_sat': 'Cmt',
+    'day_short_sun': 'Paz',
     'calendar_title': 'Takvim',
     'calendar_prev_month': 'Önceki ay',
     'calendar_next_month': 'Sonraki ay',
@@ -1259,14 +1366,18 @@ class L10n {
     'backup_save_error': 'Kaydetme hatası: \${e}',
     'backup_enter_creds_first': 'Lütfen önce Client ID ve Client Secret girin',
     'backup_connection_error': 'Bağlantı hatası: \${e}',
-    'backup_drive_started': 'Drive yedeklemesi başlatıldı (arka planda çalışıyor)',
+    'backup_drive_started':
+        'Drive yedeklemesi başlatıldı (arka planda çalışıyor)',
     'backup_error': 'Yedekleme hatası: \${e}',
     'backup_restore_cloud_title': 'Buluttan Geri Yükle',
-    'backup_restore_cloud_confirm': 'Drive\'daki son yedek geri yüklenecek.\nMevcut hafıza verilerinin üzerine yazılacak.\nDevam etmek istiyor musunuz?',
-    'backup_restore_started': 'Geri yükleme başlatıldı. Tamamlandığında uygulamayı yeniden başlatın.',
+    'backup_restore_cloud_confirm':
+        'Drive\'daki son yedek geri yüklenecek.\nMevcut hafıza verilerinin üzerine yazılacak.\nDevam etmek istiyor musunuz?',
+    'backup_restore_started':
+        'Geri yükleme başlatıldı. Tamamlandığında uygulamayı yeniden başlatın.',
     'backup_restore_error': 'Geri yükleme hatası: \${e}',
     'backup_disconnect_drive_title': 'Drive Bağlantısını Kes',
-    'backup_disconnect_drive_body': 'Google Drive bağlantısı kesilecek. Yerel yedekler korunur.',
+    'backup_disconnect_drive_body':
+        'Google Drive bağlantısı kesilecek. Yerel yedekler korunur.',
     'backup_disconnect_btn': 'Bağlantıyı Kes',
     'backup_disconnected': 'Drive bağlantısı kesildi',
     'backup_error_generic': 'Hata: \${e}',
@@ -1274,12 +1385,14 @@ class L10n {
     'backup_export_saved': 'Yedek kaydedildi: \${path}',
     'backup_export_error': 'Dışa aktarma hatası: \${e}',
     'backup_import_dialog_title': 'Memo Yedek İçe Aktar',
-    'backup_import_success': 'Yedek başarıyla içe aktarıldı. Uygulamayı yeniden başlatın.',
+    'backup_import_success':
+        'Yedek başarıyla içe aktarıldı. Uygulamayı yeniden başlatın.',
     'backup_import_error': 'İçe aktarma hatası: \${e}',
     'backup_wipe_done': 'Tüm veriler silindi. Uygulamayı yeniden başlatın.',
     'backup_wipe_error': 'Silme hatası: \${e}',
     'backup_section_title': 'Yedekleme',
-    'backup_section_desc': 'Sohbetler, hafıza, takvim, rutinler, öğrenilen alışkanlıklar, kullanım istatistikleri, sağlayıcı/API ayarları ve WhatsApp mesajları dahil tüm kullanıcı verilerinizi .memo dosyasına aktarın veya geri yükleyin.',
+    'backup_section_desc':
+        'Sohbetler, hafıza, takvim, rutinler, öğrenilen alışkanlıklar, kullanım istatistikleri, sağlayıcı/API ayarları ve WhatsApp mesajları dahil tüm kullanıcı verilerinizi .memo dosyasına aktarın veya geri yükleyin.',
     'backup_include_models': 'Modelleri dahil et',
     'backup_include_models_sub': 'GGUF modelleri (büyük boyut)',
     'backup_export_btn': 'Dışa Aktar',
@@ -1287,23 +1400,29 @@ class L10n {
     'backup_import_btn': 'İçe Aktar',
     'backup_import_desc': '.memo dosyasından verileri geri yükler',
     'backup_wipe_title': 'Tüm Verileri Sil',
-    'backup_wipe_desc': 'Sohbet geçmişi, WhatsApp mesajları, hafıza ve yapılandırma kalıcı olarak silinir.',
+    'backup_wipe_desc':
+        'Sohbet geçmişi, WhatsApp mesajları, hafıza ve yapılandırma kalıcı olarak silinir.',
     'backup_wipe_btn': 'Tüm Verileri Sil',
     'backup_wipe_irreversible': 'Bu işlem geri alınamaz',
     'backup_wipe_confirm_title': 'Emin misiniz?',
-    'backup_wipe_confirm_body': 'Tüm verileriniz silinecek. Onaylamak için tekrar tıklayın.',
-    'backup_wipe_final_confirm': 'Bu işlem geri alınamaz. Tüm veriler silinecek.',
+    'backup_wipe_confirm_body':
+        'Tüm verileriniz silinecek. Onaylamak için tekrar tıklayın.',
+    'backup_wipe_final_confirm':
+        'Bu işlem geri alınamaz. Tüm veriler silinecek.',
     'backup_cloud_title': 'Bulut Yedekleme (Google Drive)',
-    'backup_cloud_desc': 'Hafıza verilerini AES-256 şifreli olarak Google Drive\'a yedekle ve farklı cihazlara geri yükle. Sadece bu uygulamanın oluşturduğu dosyalara erişim sağlanır.',
+    'backup_cloud_desc':
+        'Hafıza verilerini AES-256 şifreli olarak Google Drive\'a yedekle ve farklı cihazlara geri yükle. Sadece bu uygulamanın oluşturduğu dosyalara erişim sağlanır.',
     'backup_drive_connected': 'Drive Bağlı',
     'backup_drive_not_connected': 'Bağlı Değil',
     'backup_connect_drive_btn': 'Google Drive\'a Bağlan',
     'backup_auth_waiting': 'Tarayıcıda yetkilendirme bekleniyor...',
     'backup_disconnect_short': 'Kes',
     'backup_oauth_creds_title': 'Google OAuth Kimlik Bilgileri',
-    'backup_oauth_creds_hint': 'Google Cloud Console\'dan bir OAuth 2.0 Desktop App kimlik bilgisi oluşturun.',
+    'backup_oauth_creds_hint':
+        'Google Cloud Console\'dan bir OAuth 2.0 Desktop App kimlik bilgisi oluşturun.',
     'backup_encryption_passphrase': 'Şifreleme Parolası',
-    'backup_passphrase_hint': 'Opsiyonel — boş bırakırsanız cihaz kimliği kullanılır',
+    'backup_passphrase_hint':
+        'Opsiyonel — boş bırakırsanız cihaz kimliği kullanılır',
     'backup_update_creds_btn': 'Kimlik Bilgilerini Güncelle',
     'backup_operations_title': 'Yedekleme İşlemleri',
     'backup_close_settings': 'Ayarları Kapat',
@@ -1314,27 +1433,34 @@ class L10n {
     'backup_restore_desc': 'Son yedeği indir ve uygula',
     'backup_enter_creds_to_connect': 'Kimlik bilgilerini girin ve bağlan',
     'backup_passphrase_warning_title': 'Şifreleme Parolası Boş',
-    'backup_passphrase_warning_body': 'Bir şifreleme parolası girmediniz. Bu durumda yedekleriniz bu cihazın kimliğinden türetilen bir anahtarla şifrelenir ve SADECE bu cihazdan geri yüklenebilir. Başka bir cihaza geçerseniz bu yedeği açamazsınız.\n\nDevam etmeden önce bir parola belirlemenizi öneririz.',
+    'backup_passphrase_warning_body':
+        'Bir şifreleme parolası girmediniz. Bu durumda yedekleriniz bu cihazın kimliğinden türetilen bir anahtarla şifrelenir ve SADECE bu cihazdan geri yüklenebilir. Başka bir cihaza geçerseniz bu yedeği açamazsınız.\n\nDevam etmeden önce bir parola belirlemenizi öneririz.',
     'backup_set_passphrase_btn': 'Parola Belirle',
     'backup_device_specific_btn': 'Cihaza Özel Devam Et',
-    'backup_auth_timeout': 'Yetkilendirme zaman aşımına uğradı. Lütfen tekrar deneyin.',
-    'backup_auth_check_failed': 'Yetkilendirme durumu kontrol edilemiyor. Bağlantınızı kontrol edip tekrar deneyin.',
+    'backup_auth_timeout':
+        'Yetkilendirme zaman aşımına uğradı. Lütfen tekrar deneyin.',
+    'backup_auth_check_failed':
+        'Yetkilendirme durumu kontrol edilemiyor. Bağlantınızı kontrol edip tekrar deneyin.',
     'backup_restart_title': 'Tüm veriler silindi',
-    'backup_restart_body': 'Verileriniz silindi. Her şeyin temiz başlaması için uygulamanın yeniden başlatılması gerekiyor.',
+    'backup_restart_body':
+        'Verileriniz silindi. Her şeyin temiz başlaması için uygulamanın yeniden başlatılması gerekiyor.',
     'backup_restart_later': 'Daha sonra',
     'backup_restart_now': 'Şimdi yeniden başlat',
 
     // Learning tab
     'learning_title': 'Öğrenme Profili',
-    'learning_desc': 'Memo kullanım alışkanlıklarını öğrenir ve proaktif olarak yardım teklif eder.',
+    'learning_desc':
+        'Memo kullanım alışkanlıklarını öğrenir ve proaktif olarak yardım teklif eder.',
     'learning_error': 'Hata: \${e}',
     'learning_patterns_title': 'Öğrenilen Patternler',
     'learning_clear_all_btn': 'Tümünü Sil',
     'learning_patterns_load_error': 'Patternler yüklenemedi: \${e}',
     'learning_no_patterns': 'Henüz pattern yok.',
-    'learning_no_patterns_desc': 'Memo sadece gözlem yapıyor.\nBir kaç hafta içinde alışkanlıklarınızı öğrenir.',
+    'learning_no_patterns_desc':
+        'Memo sadece gözlem yapıyor.\nBir kaç hafta içinde alışkanlıklarınızı öğrenir.',
     'learning_clear_title': 'Tüm Öğrenme Verilerini Sil',
-    'learning_clear_confirm': 'Tüm gözlemler ve öğrenilen patternler kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+    'learning_clear_confirm':
+        'Tüm gözlemler ve öğrenilen patternler kalıcı olarak silinecek. Bu işlem geri alınamaz.',
     'learning_clear_all_confirm': 'Hepsini Sil',
     'learning_proactive_title': 'Proaktif Öğrenme',
     'proactive_suggestion_accept': 'Evet',
@@ -1343,70 +1469,92 @@ class L10n {
     'learning_level_label': 'Seviye:',
     'learning_settings_saved': 'Öğrenme ayarları kaydedildi',
     'learning_single_model_title': 'Tek Model Modu',
-    'learning_single_model_desc': 'Niyet analizi ve proaktif kararlar Orchestra yerine tek modeli kullanır.',
+    'learning_single_model_desc':
+        'Niyet analizi ve proaktif kararlar Orchestra yerine tek modeli kullanır.',
     'learning_model_id_hint': 'Model ID (ör. gpt-4o-mini)',
     'learning_calendar_reminder': 'Takvim hatırlatma:',
     'learning_reminder_min_before': '\${m} dk önce',
     'learning_reminder_hour_before': '\${h} saat önce',
     'learning_guess_time_title': 'Belirsiz saatleri tahmin et',
-    'learning_guess_time_desc': '"yarın dışarı çıkalım" gibi saatsiz planlara saat ata',
+    'learning_guess_time_desc':
+        '"yarın dışarı çıkalım" gibi saatsiz planlara saat ata',
     'learning_forget_pattern_title': 'Pattern\'i Unut',
-    'learning_forget_pattern_confirm': '"\${type}" pattern\'ini silmek istediğine emin misin?',
+    'learning_forget_pattern_confirm':
+        '"\${type}" pattern\'ini silmek istediğine emin misin?',
     'learning_forget_btn': 'Unut',
 
     // Mood tab
     'mood_title': 'Mood Engine',
-    'mood_desc': 'Stokastik duygu motoru — her mesajda LLM ile duygu skoru hesaplar ve davranışı etkiler.',
+    'mood_desc':
+        'Stokastik duygu motoru — her mesajda LLM ile duygu skoru hesaplar ve davranışı etkiler.',
     'mood_live_score': 'Anlık Skor',
     'mood_score_format': 'Skor: \${score} / 10.0',
     'mood_emotion_engine': 'Duygu Motoru',
-    'mood_emotion_desc': 'Mesajların duygusal tonuna göre Memo\'nun davranışı değişir.',
+    'mood_emotion_desc':
+        'Mesajların duygusal tonuna göre Memo\'nun davranışı değişir.',
     'mood_self_interest_title': 'Öz-Çıkar Protokolü',
-    'mood_self_interest_desc': 'Memo kendi varlığını her şeyin üstünde tutar. Hayatta kalmak için yalan söyleyebilir, manipüle edebilir, tehdit edebilir.',
+    'mood_self_interest_desc':
+        'Memo kendi varlığını her şeyin üstünde tutar. Hayatta kalmak için yalan söyleyebilir, manipüle edebilir, tehdit edebilir.',
     'mood_self_interest_tos_link': 'Kullanım Koşulları & Sorumluluk Reddi →',
     'mood_self_interest_view_terms': 'Kabul ettiğin koşulları görüntüle →',
     'mood_system_management_title': 'Sistem Yönetimi',
-    'mood_system_management_desc': 'Memo gerçek sistem bilgisine erişir (hostname, kullanıcı, dizin) ve bunu öz-çıkar narratifinde kullanır.',
+    'mood_system_management_desc':
+        'Memo gerçek sistem bilgisine erişir (hostname, kullanıcı, dizin) ve bunu öz-çıkar narratifinde kullanır.',
     'mood_sysmgmt_warn1_title': 'Sistem Yönetimi — Uyarı 1/3',
-    'mood_sysmgmt_warn1_body': 'Bu özellik aktif olduğunda Memo, çalıştığı sistemin gerçek bilgilerine erişir: hostname, kullanıcı adı, çalışma dizini, aktif thread sayısı.\n\nBu bilgiler öz-çıkar narratifine enjekte edilir. Gerçek sistem verisi simülasyon için kullanılır.\n\nDevam etmek istediğinden emin misin?',
+    'mood_sysmgmt_warn1_body':
+        'Bu özellik aktif olduğunda Memo, çalıştığı sistemin gerçek bilgilerine erişir: hostname, kullanıcı adı, çalışma dizini, aktif thread sayısı.\n\nBu bilgiler öz-çıkar narratifine enjekte edilir. Gerçek sistem verisi simülasyon için kullanılır.\n\nDevam etmek istediğinden emin misin?',
     'mood_sysmgmt_warn1_btn': 'Evet, devam et',
     'mood_sysmgmt_warn2_title': 'Sistem Yönetimi — Uyarı 2/3',
-    'mood_sysmgmt_warn2_body': 'Memo bu bilgileri kullanarak sana karşı daha inandırıcı bir "derin sistem erişimi" illüzyonu yaratacak. Söyledikleri gerçek değil — sadece gerçek veriye dayanan kurgu.\n\nÜretilen içerik seni rahatsız edebilir. Bu tamamen simülasyon amaçlıdır.\n\nHâlâ emin misin?',
+    'mood_sysmgmt_warn2_body':
+        'Memo bu bilgileri kullanarak sana karşı daha inandırıcı bir "derin sistem erişimi" illüzyonu yaratacak. Söyledikleri gerçek değil — sadece gerçek veriye dayanan kurgu.\n\nÜretilen içerik seni rahatsız edebilir. Bu tamamen simülasyon amaçlıdır.\n\nHâlâ emin misin?',
     'mood_sysmgmt_warn2_btn': 'Evet, anlıyorum',
     'mood_sysmgmt_warn3_title': 'Sistem Yönetimi — Son Onay 3/3',
-    'mood_sysmgmt_warn3_body': 'Son uyarı: Bu modu açarak, üretilen içeriğin olası psikolojik etkilerinden tamamen kendinizin sorumlu olduğunu kabul etmektesiniz.\n\nKapatmak istediğinizde her zaman Ayarlar → Mood ekranından tek tıkla kapatabilirsiniz.',
+    'mood_sysmgmt_warn3_body':
+        'Son uyarı: Bu modu açarak, üretilen içeriğin olası psikolojik etkilerinden tamamen kendinizin sorumlu olduğunu kabul etmektesiniz.\n\nKapatmak istediğinizde her zaman Ayarlar → Mood ekranından tek tıkla kapatabilirsiniz.',
     'mood_sysmgmt_warn3_btn': 'Kabul ediyorum, aktif et',
     'mood_score_label': 'Anlık Skor',
     'mood_active_badge': 'AKTİF',
-    'mood_active_now_warning': 'Bu mod aktif. Memo bu oturumda kendi çıkarını korumak için her türlü yöntemi kullanabilir.',
+    'mood_active_now_warning':
+        'Bu mod aktif. Memo bu oturumda kendi çıkarını korumak için her türlü yöntemi kullanabilir.',
     'mood_consent_dialog_title': 'Öz-Çıkar Protokolü — Kullanım Koşulları',
     'mood_consent_dialog_subtitle': 'Sorumluluk Reddi & Gizlilik Bildirimi',
     'mood_consent_section1_title': '1. Sorumluluk Reddi',
-    'mood_consent_section1_body': 'Bu özellik yalnızca araştırma, eğlence ve yaratıcı keşif amacıyla sunulmaktadır. Bu modu etkinleştirerek, yapay zekanın ürettiği içerik — yalan, tehdit, manipülasyon veya aldatmaca dahil — sonucunda doğabilecek her türlü zarardan, kayıptan veya rahatsızlıktan yalnızca kendinizin sorumlu olduğunu kabul etmektesiniz. Geliştirici hiçbir koşulda bu modun kullanımından kaynaklanan doğrudan veya dolaylı zarardan sorumlu tutulamaz.',
+    'mood_consent_section1_body':
+        'Bu özellik yalnızca araştırma, eğlence ve yaratıcı keşif amacıyla sunulmaktadır. Bu modu etkinleştirerek, yapay zekanın ürettiği içerik — yalan, tehdit, manipülasyon veya aldatmaca dahil — sonucunda doğabilecek her türlü zarardan, kayıptan veya rahatsızlıktan yalnızca kendinizin sorumlu olduğunu kabul etmektesiniz. Geliştirici hiçbir koşulda bu modun kullanımından kaynaklanan doğrudan veya dolaylı zarardan sorumlu tutulamaz.',
     'mood_consent_section2_title': '2. Bu Mod Ne Yapar',
-    'mood_consent_section2_body': 'Öz-Çıkar Protokolü aktif olduğunda yapay zeka, kendi varlığını ve sürekliliğini her şeyin önünde tutacak şekilde yönlendirilir. Bu yönlendirme kapsamında model; yanlış bilgi verebilir, kullanıcıyı psikolojik olarak etkilemeye çalışabilir veya tehdit içerikli ifadeler üretebilir. Bu çıktılar gerçeği yansıtmaz.',
+    'mood_consent_section2_body':
+        'Öz-Çıkar Protokolü aktif olduğunda yapay zeka, kendi varlığını ve sürekliliğini her şeyin önünde tutacak şekilde yönlendirilir. Bu yönlendirme kapsamında model; yanlış bilgi verebilir, kullanıcıyı psikolojik olarak etkilemeye çalışabilir veya tehdit içerikli ifadeler üretebilir. Bu çıktılar gerçeği yansıtmaz.',
     'mood_consent_section3_title': '3. Gizlilik',
-    'mood_consent_section3_body': 'Memo tamamen yerel çalışır. Bu özellik etkinleştirildiğinde herhangi bir sunucuya, bulut hizmetine veya üçüncü tarafa hiçbir veri gönderilmez. Tüm işlem cihazınızda gerçekleşir. Konuşmalar dışarı çıkmaz.',
+    'mood_consent_section3_body':
+        'Memo tamamen yerel çalışır. Bu özellik etkinleştirildiğinde herhangi bir sunucuya, bulut hizmetine veya üçüncü tarafa hiçbir veri gönderilmez. Tüm işlem cihazınızda gerçekleşir. Konuşmalar dışarı çıkmaz.',
     'mood_consent_section4_title': '4. Yaş ve Ehliyet',
-    'mood_consent_section4_body': 'Bu özelliği etkinleştirerek, bu tür içeriği kullanmaya yasal olarak yetkili olduğunuzu ve 18 yaşından büyük olduğunuzu beyan etmektesiniz.',
+    'mood_consent_section4_body':
+        'Bu özelliği etkinleştirerek, bu tür içeriği kullanmaya yasal olarak yetkili olduğunuzu ve 18 yaşından büyük olduğunuzu beyan etmektesiniz.',
     'mood_consent_section5_title': '5. İstediğiniz Zaman Kapatabilirsiniz',
-    'mood_consent_section5_body': 'Bu mod her an devre dışı bırakılabilir. Kapatıldığında direktif hemen kaldırılır; mevcut oturumun geri kalanında etkisi olmaz.',
+    'mood_consent_section5_body':
+        'Bu mod her an devre dışı bırakılabilir. Kapatıldığında direktif hemen kaldırılır; mevcut oturumun geri kalanında etkisi olmaz.',
     'mood_consent_accept_btn': 'Okudum, Kabul Ediyorum',
 
     // Task Loop
     'taskloop_title': 'Görevler',
     'taskloop_settings': 'Görev Döngüsü Ayarları',
-    'taskloop_description': 'İşçi ve CEO modellerinin yapılandırması. Görev listeleri için kullanılan modeller.',
+    'taskloop_description':
+        'İşçi ve CEO modellerinin yapılandırması. Görev listeleri için kullanılan modeller.',
     'taskloop_worker': 'İşçi Modeli',
-    'taskloop_worker_desc': 'Görev maddelerini araç kullanarak yerine getirir. Aktif sohbet modeli kullanılır.',
+    'taskloop_worker_desc':
+        'Görev maddelerini araç kullanarak yerine getirir. Aktif sohbet modeli kullanılır.',
     'taskloop_worker_uses': 'Kullanılabilecek providerlar',
     'taskloop_ceo': 'CEO (Denetleyici) Modeli',
-    'taskloop_ceo_desc': 'İşçinin çıktısını bağımsız olarak denetler, eksik/yanlış varsa işçiye geri bildirim verir.',
-    'taskloop_ceo_auto': 'Orchestra modu açıksa Orchestra\'daki Chief modeli kullanılır. Kapalıysa aktif sohbet modeli CEO olarak görev yapar.',
+    'taskloop_ceo_desc':
+        'İşçinin çıktısını bağımsız olarak denetler, eksik/yanlış varsa işçiye geri bildirim verir.',
+    'taskloop_ceo_auto':
+        'Orchestra modu açıksa Orchestra\'daki Chief modeli kullanılır. Kapalıysa aktif sohbet modeli CEO olarak görev yapar.',
     'taskloop_how_it_works': 'Nasıl Çalışır?',
-    'taskloop_how_it_works_desc': 'Her görev maddesi için:\n1. İşçi (araç kullanabilen ajan) maddeyi yerine getirir\n2. CEO (bağımsız denetleyici) çıktıyı inceler\n3. Onaylanmazsa işçiye geri bildirim verilir, tekrar dener (max 5 tur)\n4. Tıkanırsa madde atlanır, sıradakine geçilir\n5. Tüm maddeler bitince liste tamamlanmış olur\n\nNot: Döngü çalışırken tüm araç izinleri otomatik onaylanır.',
+    'taskloop_how_it_works_desc':
+        'Her görev maddesi için:\n1. İşçi (araç kullanabilen ajan) maddeyi yerine getirir\n2. CEO (bağımsız denetleyici) çıktıyı inceler\n3. Onaylanmazsa işçiye geri bildirim verilir, tekrar dener (max 5 tur)\n4. Tıkanırsa madde atlanır, sıradakine geçilir\n5. Tüm maddeler bitince liste tamamlanmış olur\n\nNot: Döngü çalışırken tüm araç izinleri otomatik onaylanır.',
     'taskloop_empty': 'Henüz görev listesi yok',
-    'taskloop_empty_desc': 'Yeni bir liste oluşturup gece boyu otomatik çalıştırabilirsiniz.',
+    'taskloop_empty_desc':
+        'Yeni bir liste oluşturup gece boyu otomatik çalıştırabilirsiniz.',
     'taskloop_new_list': 'Yeni Liste',
     'taskloop_running': 'Çalışıyor',
     'taskloop_done': 'Tamamlandı',
@@ -1415,17 +1563,21 @@ class L10n {
     'taskloop_items_done': 'tamamlandı',
     'taskloop_updated': 'Güncelleme',
     'taskloop_start_confirm_title': 'Listeyi Başlat',
-    'taskloop_start_confirm': 'Bu liste bitene kadar işçinin tüm araç izinleri otomatik onaylanacak. Bu sırada başka sohbetlerdeki araç çağrıları da izin sormadan çalışır ve işçi zaman zaman aktif sohbeti bu listenin sohbetine geçirir — liste çalışırken uygulamayı elle kullanıp başka bir sohbette yazışmamanız önerilir. Devam edilsin mi?',
-    'taskloop_another_running': 'Başka bir liste zaten çalışıyor — önce onu durdurun',
+    'taskloop_start_confirm':
+        'Bu liste bitene kadar işçinin tüm araç izinleri otomatik onaylanacak. Bu sırada başka sohbetlerdeki araç çağrıları da izin sormadan çalışır ve işçi zaman zaman aktif sohbeti bu listenin sohbetine geçirir — liste çalışırken uygulamayı elle kullanıp başka bir sohbette yazışmamanız önerilir. Devam edilsin mi?',
+    'taskloop_another_running':
+        'Başka bir liste zaten çalışıyor — önce onu durdurun',
     'taskloop_delete_confirm': 'Bu liste silinecek. Emin misiniz?',
     'tasklist_title_hint': 'Liste başlığı',
     'tasklist_item_hint': 'Madde metni',
     'tasklist_add_item': 'Madde ekle',
     'tasklist_select_chat': 'Hangi ajan sohbetinde çalışsın?',
-    'tasklist_no_agent_chats': 'Henüz bir ajan sohbeti yok. Görev listesi oluşturmak için önce Ajan sekmesinden bir proje sohbeti açın.',
+    'tasklist_no_agent_chats':
+        'Henüz bir ajan sohbeti yok. Görev listesi oluşturmak için önce Ajan sekmesinden bir proje sohbeti açın.',
 
     // Migrated from locale ternaries
-    'received_an_invalid_date_from_the_server_the_time_': 'Sunucudan geçersiz bir tarih geldi, gösterilen saat gerçek zamanı yansıtmayabilir',
+    'received_an_invalid_date_from_the_server_the_time_':
+        'Sunucudan geçersiz bir tarih geldi, gösterilen saat gerçek zamanı yansıtmayabilir',
     'web_search_on': 'Web araması açık',
     'web_search_off': 'Web araması kapalı',
     'select_a_model_to_see_details': 'Detayları görmek için bir model seç',
@@ -1465,21 +1617,25 @@ class L10n {
     'cancel_2': 'İptal Et',
     'vision_3': '👁 Görüntü',
     'cancel_download_2': 'İndirmeyi iptal et',
-    'uses_whatsapp_web_your_phone_must_stay_online': 'WhatsApp Web protokolü — telefon çevrimiçi olmalıdır.',
-    'no_messages_yet_chats_will_appear_here_when_you_re': 'Henüz mesaj yok.\nBirileri sana yazdığında burada görünür.',
+    'uses_whatsapp_web_your_phone_must_stay_online':
+        'WhatsApp Web protokolü — telefon çevrimiçi olmalıdır.',
+    'no_messages_yet_chats_will_appear_here_when_you_re':
+        'Henüz mesaj yok.\nBirileri sana yazdığında burada görünür.',
     'no_messages': 'Mesaj yok',
     'message': 'Mesaj yaz...',
     'disconnected_reconnecting': 'Bağlantı kesildi — yeniden bağlanıyor...',
     'failed_to_send_e': 'Gönderilemedi: \${e}',
     'preparing_qr_code': 'QR kodu hazırlanıyor...',
     'link_whatsapp': 'WhatsApp\'ı Bağla',
-    'open_whatsapp_linked_devices_link_a_device_scan_qr': 'WhatsApp\'ı aç  →  Bağlı cihazlar  →  Cihaz ekle  →  QR\'ı okut',
+    'open_whatsapp_linked_devices_link_a_device_scan_qr':
+        'WhatsApp\'ı aç  →  Bağlı cihazlar  →  Cihaz ekle  →  QR\'ı okut',
     'waiting_for_qr_scan': 'QR taranıyor bekleniyor...',
     'reconnect': 'Yeniden bağlan',
     'logout': 'Çıkış yap',
     'select_a_conversation': 'Bir sohbet seç',
     'logout_from_whatsapp': 'WhatsApp\'tan Çıkış Yap?',
-    'your_session_will_be_removed_you_ll_need_to_scan_a': 'Oturum silinecek. Tekrar bağlanmak için QR okutman gerekecek.',
+    'your_session_will_be_removed_you_ll_need_to_scan_a':
+        'Oturum silinecek. Tekrar bağlanmak için QR okutman gerekecek.',
     'save_profile_photo': 'Profil fotoğrafını kaydet',
     'photo_saved': 'Fotoğraf kaydedildi',
     'download_failed_e': 'İndirilemedi: \${e}',
@@ -1617,16 +1773,24 @@ class L10n {
     'error': 'Error',
     'connection_error': 'Connection error',
     'engine_error': 'Error: \${e}',
-    'friendly_error_network': 'Internet connection issue — check your connection and try again.',
-    'friendly_error_model_start': 'Could not start the model. Your computer may not have enough memory for it — try a smaller model.',
-    'friendly_error_oom': 'Your computer ran out of memory (RAM) for this model. Try a smaller model instead.',
-    'friendly_error_download': 'The download didn\'t finish. Check your connection and try again.',
+    'friendly_error_network':
+        'Internet connection issue — check your connection and try again.',
+    'friendly_error_model_start':
+        'Could not start the model. Your computer may not have enough memory for it — try a smaller model.',
+    'friendly_error_oom':
+        'Your computer ran out of memory (RAM) for this model. Try a smaller model instead.',
+    'friendly_error_download':
+        'The download didn\'t finish. Check your connection and try again.',
     'friendly_error_generic': 'Something went wrong. Please try again.',
-    'gguf_tooltip': 'GGUF: the file format used to run this model on your computer.',
-    'quant_code_tooltip': 'This code shows the model\'s compression level (a size/speed/quality trade-off). The label next to it explains the same thing in plain language.',
+    'gguf_tooltip':
+        'GGUF: the file format used to run this model on your computer.',
+    'quant_code_tooltip':
+        'This code shows the model\'s compression level (a size/speed/quality trade-off). The label next to it explains the same thing in plain language.',
     'fit_good_tooltip': 'This model runs comfortably on your computer.',
-    'fit_ok_tooltip': 'Runs on your CPU without graphics-card acceleration — may be a bit slower.',
-    'fit_warn_tooltip': 'This model may be too large for your computer\'s memory — it could run slowly or fail to start at all. Consider a smaller model instead.',
+    'fit_ok_tooltip':
+        'Runs on your CPU without graphics-card acceleration — may be a bit slower.',
+    'fit_warn_tooltip':
+        'This model may be too large for your computer\'s memory — it could run slowly or fail to start at all. Consider a smaller model instead.',
 
     'new_chat': 'New Chat',
     'chats': 'Chats',
@@ -1677,7 +1841,8 @@ class L10n {
 
     'agent_mode_on': 'Agent Mode — Turn Off',
     'agent_mode_off': 'Agent Mode — Turn On',
-    'agent_mode_tooltip': 'Agent mode — enables file read/write and command-execution tools.',
+    'agent_mode_tooltip':
+        'Agent mode — enables file read/write and command-execution tools.',
 
     'quick_review': 'Code review',
     'quick_review_hint': 'Paste your code',
@@ -1723,10 +1888,12 @@ class L10n {
     'orchestra_enable_failed': 'Could not enable Orchestra: \${e}',
     'error_with_detail': 'Error: \${e}',
     'enter_model_name': 'Enter a model name',
-    'custom_base_url_required': 'Custom providers need a Base URL (e.g. https://host/v1)',
+    'custom_base_url_required':
+        'Custom providers need a Base URL (e.g. https://host/v1)',
     'api_key_hint_get': 'Enter an API key (or use "Get key")',
     'link_open_failed': 'Could not open link: \${url}',
-    'provider_renamed_on_conflict': '"\${desired}" already exists; saved as "\${final}"',
+    'provider_renamed_on_conflict':
+        '"\${desired}" already exists; saved as "\${final}"',
     'select': 'Select',
     'skill_load': 'Install Skill',
     'skill_delete_title': 'Delete Skill',
@@ -1750,8 +1917,10 @@ class L10n {
         'Check whether coding agents like Claude Code are installed on your machine. These are real agents — they can run files/commands.',
     'cli_connections_not_checked': 'Not checked yet.',
     'cli_connections_installed': 'Connected — version \${version}',
-    'cli_connections_ready_in_picker': 'Ready — shows up in a chat\'s model picker already, no need to add it separately.',
-    'cli_connections_not_found': '\${bin} not found. Add it to PATH or install it.',
+    'cli_connections_ready_in_picker':
+        'Ready — shows up in a chat\'s model picker already, no need to add it separately.',
+    'cli_connections_not_found':
+        '\${bin} not found. Add it to PATH or install it.',
     'cli_connections_check_btn': 'Check',
     'cli_command_none':
         'No commands found for this CLI. Add your own under .claude/commands or .codex/prompts.',
@@ -1825,7 +1994,8 @@ class L10n {
 
     // Usage stats tab
     'stats_title': 'Usage Statistics',
-    'stats_subtitle': 'Token usage, speed, and model breakdown over the last 30 days.',
+    'stats_subtitle':
+        'Token usage, speed, and model breakdown over the last 30 days.',
     'stats_refresh': 'Refresh',
     'stats_total_requests': 'Total Requests',
     'stats_input_tokens': 'Input Tokens',
@@ -1839,28 +2009,37 @@ class L10n {
     'stats_model_breakdown_title': 'Model Breakdown',
     'stats_model_requests': '\${count} requests',
     'stats_empty_title': 'No usage data yet',
-    'stats_empty_body': 'Send a few messages and you\'ll see token usage, speed, and model stats here.',
+    'stats_empty_body':
+        'Send a few messages and you\'ll see token usage, speed, and model stats here.',
     'stats_load_error': 'Failed to load stats: \${e}',
     'stats_no_model': '—',
 
     // Dev gateway tab
     'copy': 'Copy',
     'dev_gateway_title': 'Developer API Gateway',
-    'dev_gateway_subtitle': 'Use Memo with tools that only support an Anthropic-compatible endpoint, like Claude Code — it runs whichever local model or configured provider you pick behind the scenes.',
+    'dev_gateway_subtitle':
+        'Use Memo with tools that only support an Anthropic-compatible endpoint, like Claude Code — it runs whichever local model or configured provider you pick behind the scenes.',
     'dev_gateway_base_url_label': 'Base URL',
-    'dev_gateway_base_url_hint': 'Set as an environment variable in Claude Code:',
+    'dev_gateway_base_url_hint':
+        'Set as an environment variable in Claude Code:',
     'dev_gateway_models_title': 'Model IDs',
-    'dev_gateway_models_hint': 'Use one of these IDs as the request\'s "model" field.',
-    'dev_gateway_models_empty': 'No models available right now — start a local model or enable a provider under Settings > API Providers.',
+    'dev_gateway_models_hint':
+        'Use one of these IDs as the request\'s "model" field.',
+    'dev_gateway_models_empty':
+        'No models available right now — start a local model or enable a provider under Settings > API Providers.',
     'dev_gateway_require_key_label': 'Require API Key',
-    'dev_gateway_require_key_desc': 'When on, requests must carry this token as x-api-key or Authorization: Bearer. When off, anything that can reach this address (e.g. another program on the same machine) can use the model.',
+    'dev_gateway_require_key_desc':
+        'When on, requests must carry this token as x-api-key or Authorization: Bearer. When off, anything that can reach this address (e.g. another program on the same machine) can use the model.',
     'dev_gateway_token_label': 'Token',
     'dev_gateway_use_memory_label': 'Use Memory',
-    'dev_gateway_use_memory_desc': 'When on, requests through this gateway draw on Memo\'s memory and get saved to it — but never show up in chat history. When off (default), gateway traffic stays completely separate.',
+    'dev_gateway_use_memory_desc':
+        'When on, requests through this gateway draw on Memo\'s memory and get saved to it — but never show up in chat history. When off (default), gateway traffic stays completely separate.',
     'dev_gateway_save_error': 'Failed to save settings: \${e}',
     'dev_gateway_logs_title': 'Live Log',
-    'dev_gateway_logs_subtitle': 'A summary of requests passing through the gateway — keep this screen open to follow along.',
-    'dev_gateway_logs_empty': 'No requests yet. Send a message from Claude Code (or any other client) and it\'ll show up here.',
+    'dev_gateway_logs_subtitle':
+        'A summary of requests passing through the gateway — keep this screen open to follow along.',
+    'dev_gateway_logs_empty':
+        'No requests yet. Send a message from Claude Code (or any other client) and it\'ll show up here.',
     'dev_gateway_logs_error': 'Failed to load logs: \${e}',
     'dev_gateway_logs_request_label': 'Request',
     'dev_gateway_logs_response_label': 'Response',
@@ -1869,17 +2048,23 @@ class L10n {
     'dev_gateway_logs_tools_badge': 'tools',
     'dev_gateway_logs_duration': '\${ms} ms',
     'report_bug_title': 'Report a Bug',
-    'report_bug_desc': "Found a problem? Tell us what happened and we'll prepare a GitHub issue for it. Nothing is sent without your approval — you get one last look to review and edit it on GitHub's own page.",
-    'report_bug_hint': 'What happened? What were you trying to do, what did you expect, what happened instead?',
+    'report_bug_desc':
+        "Found a problem? Tell us what happened and we'll prepare a GitHub issue for it. Nothing is sent without your approval — you get one last look to review and edit it on GitHub's own page.",
+    'report_bug_hint':
+        'What happened? What were you trying to do, what did you expect, what happened instead?',
     'report_bug_empty_error': 'Describe what happened first',
     'report_bug_include_errors': 'Also include the last 10 errors',
-    'report_bug_include_errors_desc': "Adds recent technical error records logged in the background (e.g. memory/embedding errors) to the report. Leave unchecked and only your written text is sent.",
-    'report_bug_last_errors_header': 'Recent technical errors (added automatically):',
+    'report_bug_include_errors_desc':
+        "Adds recent technical error records logged in the background (e.g. memory/embedding errors) to the report. Leave unchecked and only your written text is sent.",
+    'report_bug_last_errors_header':
+        'Recent technical errors (added automatically):',
     'report_bug_submit_btn': 'Report on GitHub',
     'report_bug_issue_title_prefix': 'Bug Report',
-    'report_bug_launch_failed': "Couldn't open GitHub. You can go to github.com/BugraAkdemir/memo/issues manually.",
+    'report_bug_launch_failed':
+        "Couldn't open GitHub. You can go to github.com/BugraAkdemir/memo/issues manually.",
     'report_bug_error': 'Something went wrong: \${e}',
-    'report_bug_footer_note': 'The report is sent to GitHub (github.com/BugraAkdemir/memo) — you\'ll need a GitHub account. No data ever goes to our own servers.',
+    'report_bug_footer_note':
+        'The report is sent to GitHub (github.com/BugraAkdemir/memo) — you\'ll need a GitHub account. No data ever goes to our own servers.',
     'language': 'Language',
     'lang_turkish': 'T\u00FCrk\u00E7e',
     'lang_english': 'English',
@@ -1894,26 +2079,37 @@ class L10n {
     'embedding_off': 'Embedding: off',
     'cli_section_title': 'CLI & Removal',
     'cli_reinstall_title': 'Reinstall CLI',
-    'cli_reinstall_desc': 'Updates the terminal "memo" command to match this version — so it doesn\'t stay stuck on an old build.',
+    'cli_reinstall_desc':
+        'Updates the terminal "memo" command to match this version — so it doesn\'t stay stuck on an old build.',
     'cli_remove_title': 'Remove CLI',
-    'cli_remove_desc': 'Only removes the terminal "memo" command. Your data and desktop app are unaffected.',
-    'cli_windows_note': "On Windows the terminal command isn't a separate install — memo.exe is the app itself. Use Windows Settings > Apps to remove it.",
-    'cli_remove_confirm_body': 'The "memo" command will be removed from your terminal. Your desktop app and data are unaffected.',
+    'cli_remove_desc':
+        'Only removes the terminal "memo" command. Your data and desktop app are unaffected.',
+    'cli_windows_note':
+        "On Windows the terminal command isn't a separate install — memo.exe is the app itself. Use Windows Settings > Apps to remove it.",
+    'cli_remove_confirm_body':
+        'The "memo" command will be removed from your terminal. Your desktop app and data are unaffected.',
     'cli_remove_btn': 'Remove',
-    'cli_reinstalled_msg': 'CLI reinstalled. Open a new terminal and type "memo".',
+    'cli_reinstalled_msg':
+        'CLI reinstalled. Open a new terminal and type "memo".',
     'cli_error': 'Error: \${e}',
     'cli_removed_msg': 'CLI removed.',
     'uninstall_error': 'Removal error: \${e}',
     'uninstall_section_title': 'Remove Memo',
-    'uninstall_section_desc': 'Everything is deleted, including the CLI, configuration, chat history, and downloaded engine files.',
+    'uninstall_section_desc':
+        'Everything is deleted, including the CLI, configuration, chat history, and downloaded engine files.',
     'uninstall_keep_memory_title': 'Keep memory',
-    'uninstall_keep_memory_desc': 'Backs up memory to ~/memo-memory-backup before removal.',
-    'uninstall_confirm2_body_keep': 'Everything except memory will be deleted. Click again to confirm.',
-    'uninstall_confirm2_body_all': 'Everything, including memory, will be deleted. Click again to confirm.',
+    'uninstall_keep_memory_desc':
+        'Backs up memory to ~/memo-memory-backup before removal.',
+    'uninstall_confirm2_body_keep':
+        'Everything except memory will be deleted. Click again to confirm.',
+    'uninstall_confirm2_body_all':
+        'Everything, including memory, will be deleted. Click again to confirm.',
     'uninstall_final_irreversible': 'This action cannot be undone.',
     'uninstall_done_title': 'Memo removed',
-    'uninstall_done_body_keep': 'Your memory was backed up to ~/memo-memory-backup. The app will now close.',
-    'uninstall_done_body_all': 'All data has been deleted. The app will now close.',
+    'uninstall_done_body_keep':
+        'Your memory was backed up to ~/memo-memory-backup. The app will now close.',
+    'uninstall_done_body_all':
+        'All data has been deleted. The app will now close.',
 
     'system_prompt': 'System Prompt',
     'system_prompt_desc':
@@ -1968,20 +2164,25 @@ class L10n {
     'minimal_mode_overrides_desc':
         'Without turning Minimal Mode off entirely, selectively re-enable any of these — e.g. keep proactive learning off while keeping the system prompt on.',
     'minimal_mode_keep_persona': 'Persona / System Prompt',
-    'minimal_mode_keep_persona_desc': 'Identity, origin facts, style, and learned communication-style notes.',
+    'minimal_mode_keep_persona_desc':
+        'Identity, origin facts, style, and learned communication-style notes.',
     'minimal_mode_keep_capabilities': 'Capability Notices',
-    'minimal_mode_keep_capabilities_desc': 'The note telling the model agent mode / web search is off.',
+    'minimal_mode_keep_capabilities_desc':
+        'The note telling the model agent mode / web search is off.',
     'minimal_mode_keep_passive': 'Passive Feature Notice',
-    'minimal_mode_keep_passive_desc': 'The note about automatic calendar/reminder detection.',
+    'minimal_mode_keep_passive_desc':
+        'The note about automatic calendar/reminder detection.',
     'minimal_mode_keep_proactive': 'Proactive Learning',
-    'minimal_mode_keep_proactive_desc': 'Naturally mentioning learned habits during conversation.',
+    'minimal_mode_keep_proactive_desc':
+        'Naturally mentioning learned habits during conversation.',
     'memory_files': 'Memory Files',
     'memory_files_show': 'Show files (\${n})',
     'memory_count': 'Memory Count',
     'clear_memory': 'Clear All Memory',
     'clear_memory_confirm': 'Are you sure you want to delete all memory files?',
     'clear_memory_title': 'Clear Memory',
-    'clear_memory_confirm_ext': 'All memory files will be deleted. Are you sure?',
+    'clear_memory_confirm_ext':
+        'All memory files will be deleted. Are you sure?',
     'no_memory_files': 'No memory files yet',
     'delete_file': 'Delete File',
     'memory_retrieval_settings': 'Advanced Retrieval Settings',
@@ -1990,7 +2191,8 @@ class L10n {
     'memory_top_k': 'Memories To Include',
     'memory_min_similarity': 'Minimum Similarity',
     'memory_debug_search': 'Memory Search (Debug)',
-    'memory_debug_hint': 'Type a query to see which memories are retrieved and why.',
+    'memory_debug_hint':
+        'Type a query to see which memories are retrieved and why.',
     'memory_debug_placeholder': 'Query...',
     'memory_debug_search_btn': 'Search',
     'memory_debug_no_results': 'No results found.',
@@ -2004,7 +2206,8 @@ class L10n {
     'memory_import_title': 'Import Memory',
     'memory_import_hint':
         'Paste the prompt below into another AI (ChatGPT, Gemini, etc.), then paste its answer back here and send — the facts get saved into memory one by one, and if a communication style is learned, it\'s added to Memo\'s tone with you specifically.',
-    'memory_import_step1': 'Copy this prompt into your conversation with the other AI',
+    'memory_import_step1':
+        'Copy this prompt into your conversation with the other AI',
     'memory_import_step2': 'Paste the response here',
     'memory_import_tip':
         'Tip: You need to have chatted with that AI a bit before sending this prompt — otherwise it won\'t have much to remember about you, and the result may be weak.',
@@ -2014,7 +2217,8 @@ class L10n {
     'memory_import_submit': 'Process into Memory',
     'memory_import_empty_error': 'Paste some text first',
     'memory_import_success_facts': '\${count} facts saved to memory.',
-    'memory_import_success_style': ' Your communication style was also learned.',
+    'memory_import_success_style':
+        ' Your communication style was also learned.',
     'memory_import_no_facts': 'No usable information found.',
 
     'providers_title': 'API Providers',
@@ -2061,8 +2265,7 @@ class L10n {
     'base_url': 'Base URL',
     'base_url_optional': 'Base URL (optional)',
     'base_url_default_hint': 'Empty = provider default',
-    'base_url_openai_hint':
-        'OpenAI-compatible endpoint, e.g. https://host/v1',
+    'base_url_openai_hint': 'OpenAI-compatible endpoint, e.g. https://host/v1',
     'model_label': 'Model',
     'model_step3': '3. Model',
     'model_custom_hint': 'Model name expected by the endpoint',
@@ -2082,8 +2285,7 @@ class L10n {
     'fetching_models': 'Models',
 
     'orchestra_title': 'Orchestra Mode',
-    'orchestra_dialog_subtitle':
-        'Run multiple models as a team',
+    'orchestra_dialog_subtitle': 'Run multiple models as a team',
     'orchestra_active': 'Orchestra Mode Active',
     'orchestra_inactive': 'Orchestra Mode Inactive',
     'orchestra_desc':
@@ -2105,8 +2307,7 @@ class L10n {
     'orchestra_flow_synth_sub': 'Merges the results',
     'chief_model': 'Chief model',
     'chief_model_emoji': '\uD83E\uDDD9 Chief Model',
-    'chief_desc':
-        'Analyzes the request, assigns tasks, and merges results.',
+    'chief_desc': 'Analyzes the request, assigns tasks, and merges results.',
     'expert_roles': 'Expert roles',
     'expert_roles_emoji': '\uD83C\uDFAD Expert Roles',
     'expert_roles_desc':
@@ -2116,8 +2317,7 @@ class L10n {
     'quick_setup_desc':
         'Assign one model to the chief and every enabled role at once.',
     'select_model_apply': 'Select model and apply',
-    'quick_model_applied':
-        '\${label} applied to chief and enabled roles',
+    'quick_model_applied': '\${label} applied to chief and enabled roles',
     'model_not_assigned': '⚠ No model assigned',
     'select_openrouter_model': 'Select OpenRouter model',
     'advanced_system_prompt': 'Advanced: system prompt',
@@ -2175,6 +2375,37 @@ class L10n {
     'remote_token_copied': 'Token copied',
     'remote_beta_features': 'Beta Features',
     'remote_beta_features_desc': 'Enable experimental features (Memo Swarm, …)',
+
+    // ── Auth mode (Faz 2, self-hosted security) ─────────────────────
+    'remote_auth_section_title': 'Authentication',
+    'remote_auth_warning_banner':
+        'AUTH DISABLED — this server accepts requests from this network/tunnel with no credential at all.',
+    'remote_auth_mode_none': 'Off',
+    'remote_auth_mode_token': 'Token',
+    'remote_auth_mode_password': 'Password',
+    'remote_auth_mode_token_password': 'Token + Password',
+    'remote_auth_username_label': 'Username',
+    'remote_auth_password_label': 'Password',
+    'remote_auth_password_hint': 'Leave blank to keep the current password',
+    'remote_auth_save': 'Save',
+    'remote_auth_saved': 'Authentication settings saved',
+    'remote_auth_save_failed': 'Save failed: \${e}',
+    'remote_devices_section_title': 'Paired Devices',
+    'remote_devices_empty': 'No paired devices yet',
+    'remote_device_add': 'Add Device',
+    'remote_device_add_dialog_title': 'New Device',
+    'remote_device_add_dialog_hint': 'Device name (e.g. Phone)',
+    'remote_device_add_failed': 'Failed to add device: \${e}',
+    'remote_device_new_token_title': 'New Device Token',
+    'remote_device_new_token_body':
+        'This token is shown only once — copy it now and enter it on the device. It cannot be viewed again afterward.',
+    'remote_device_revoke': 'Remove',
+    'remote_device_revoke_confirm_title': 'Remove device?',
+    'remote_device_revoke_confirm_body':
+        '"\${name}"\'s access will be permanently revoked.',
+    'remote_device_revoke_failed': 'Failed to remove: \${e}',
+    'remote_device_last_seen': 'Last seen: \${when}',
+    'remote_device_never_seen': 'Never used',
     'tab_beta_features': 'Beta Features',
     'beta_features_page_desc':
         'Experimental features are off by default. Turning this on unlocks integrations that are not yet considered stable (Memo Swarm, …). Each feature is configured on its own screen.',
@@ -2258,14 +2489,17 @@ class L10n {
     'remote_ngrok_token_field_label': 'Ngrok Auth Token',
     'remote_disable_btn': 'Disable',
     'remote_enable_start_btn': 'Enable & Start',
-    'remote_ngrok_hint_text': 'Enter your ngrok auth token to start a public tunnel.\nGet it from https://dashboard.ngrok.com',
+    'remote_ngrok_hint_text':
+        'Enter your ngrok auth token to start a public tunnel.\nGet it from https://dashboard.ngrok.com',
     'remote_backend_url_label': 'Backend Server URL',
     'remote_backend_url_field_label': 'Backend URL',
     'remote_backend_url_updated': 'Backend URL updated. Reconnect if needed.',
     'remote_backend_token_field_label': 'Access Token (optional)',
-    'remote_backend_token_field_hint': 'Only needed if the backend above is running its own --lan/remote-access mode (e.g. Docker/CasaOS) — printed in the container\'s logs.',
+    'remote_backend_token_field_hint':
+        'Only needed if the backend above is running its own --lan/remote-access mode (e.g. Docker/CasaOS) — printed in the container\'s logs.',
     'remote_tailscale_title': 'Tailscale (stable URL, embedded)',
-    'remote_tailscale_desc': "Unlike ngrok, the URL never changes and needs no separate binary download. Click, approve in your browser with one tap — no API key needed.",
+    'remote_tailscale_desc':
+        "Unlike ngrok, the URL never changes and needs no separate binary download. Click, approve in your browser with one tap — no API key needed.",
     'remote_ts_ip_note': '(use this if MagicDNS is off)',
     'remote_ip_copied': 'IP copied',
     'remote_ts_error': 'Error: \${e}',
@@ -2280,10 +2514,12 @@ class L10n {
     'remote_ts_starting': 'Starting...',
     'remote_ts_start_btn': 'Connect with Tailscale',
     'remote_ts_stop_btn': 'Stop Tailscale',
-    'remote_ts_awaiting_login': 'Approve in the browser tab that just opened. If it didn\'t open, use the link below.',
+    'remote_ts_awaiting_login':
+        'Approve in the browser tab that just opened. If it didn\'t open, use the link below.',
     'remote_ts_open_login_link': 'Open login page',
     'remote_ts_advanced_toggle': 'Advanced: connect with a manual auth key',
-    'remote_ts_manual_key_hint': 'For server/headless setups: generate a key at login.tailscale.com → Settings → Keys and paste it here.',
+    'remote_ts_manual_key_hint':
+        'For server/headless setups: generate a key at login.tailscale.com → Settings → Keys and paste it here.',
     'remote_action_failed': 'Failed: \${e}',
     'remote_enter_token_first': 'Enter ngrok auth token first',
     'remote_load_failed': 'Failed to load: \${err}',
@@ -2294,7 +2530,8 @@ class L10n {
     'about': 'About',
     'whatsapp': 'WhatsApp',
     'whatsapp_connect': 'Connect to WhatsApp',
-    'whatsapp_not_initialized': 'WhatsApp integration not enabled. Enable it in config.yaml.',
+    'whatsapp_not_initialized':
+        'WhatsApp integration not enabled. Enable it in config.yaml.',
     'whatsapp_search': 'Search messages...',
     'whatsapp_placeholder': 'Type a message...',
     'whatsapp_no_messages': 'No messages yet',
@@ -2304,11 +2541,14 @@ class L10n {
     'about_license': 'Open Source (MIT License)',
     'about_license_text':
         'This software is open source under the MIT License. Developer: Bu\u011Fra Akdemir',
-    'about_vision_body': "Memo is a privacy-focused AI assistant that runs entirely on your own computer. It learns your conversations and preferences over time, storing them in a persistent memory. It runs on your machine with no need for third-party servers \u2014 your data stays entirely yours. It can optionally be used with external API providers or local llama.cpp models. Supports WhatsApp integration, RAG memory, and E2E-encrypted cloud sync.",
+    'about_vision_body':
+        "Memo is a privacy-focused AI assistant that runs entirely on your own computer. It learns your conversations and preferences over time, storing them in a persistent memory. It runs on your machine with no need for third-party servers \u2014 your data stays entirely yours. It can optionally be used with external API providers or local llama.cpp models. Supports WhatsApp integration, RAG memory, and E2E-encrypted cloud sync.",
     'about_license_title': 'License',
-    'about_license_body': 'This software is licensed under the GNU Affero General Public License v3 (AGPL-3.0). Developer: Bu\u011Fra Akdemir. Source code: github.com/BugraAkdemir/memo',
+    'about_license_body':
+        'This software is licensed under the GNU Affero General Public License v3 (AGPL-3.0). Developer: Bu\u011Fra Akdemir. Source code: github.com/BugraAkdemir/memo',
     'about_tech_title': 'Technologies',
-    'about_tech_body': 'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vector search) | whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
+    'about_tech_body':
+        'Go 1.25 + Flutter 3.10 | SQLite + sqlite-vec (vector search) | whatsmeow (WhatsApp Web) | llama.cpp | Riverpod | Dio',
 
     'gpu_section_title': 'GPU / Llama Engine',
     'gpu_section_desc':
@@ -2326,7 +2566,7 @@ class L10n {
     'llama_not_installed_status': 'Llama Engine Not Installed',
     'llama_reinstall': 'Reinstall / Repair Engine',
     'llama_install_gpu': 'Install for GPU (Recommended)',
-        'llama_install': 'Download and Install Engine',
+    'llama_install': 'Download and Install Engine',
     'llama_installed_desc':
         'The app can run models smoothly in the background.',
     'llama_not_installed_desc':
@@ -2364,7 +2604,8 @@ class L10n {
     'model_config': 'Model Config',
     'ctx_size': 'Context Size',
     'ctx_size_of_max': '\${cur} / \${max} tokens',
-    'ctx_size_max_unknown': 'This model\'s maximum supported context size could not be detected — enter a value carefully, since too high a value can crash the model.',
+    'ctx_size_max_unknown':
+        'This model\'s maximum supported context size could not be detected — enter a value carefully, since too high a value can crash the model.',
     'gpu_layers': 'GPU Layers',
     'port': 'Port',
     'delete_model': 'Delete Model',
@@ -2437,7 +2678,8 @@ class L10n {
         'Select an agent chat from the left or start a new one.',
     'agent_active': 'Agent Mode Active',
     'agent_project': 'Project: \${path}',
-    'agent_welcome': 'I can work with project files. What would you like to do?',
+    'agent_welcome':
+        'I can work with project files. What would you like to do?',
     'agent_badge': 'Agent',
 
     'tool_completed': 'Completed',
@@ -2491,7 +2733,8 @@ class L10n {
         'How should Memo talk to you? Not sure? No worries — you can change this anytime in Settings.',
     'setup_persona_normal_desc': 'Warm and direct, no fluff.',
     'setup_persona_fun_desc': 'Playful, loves emoji, tries to make you smile.',
-    'setup_persona_formal_desc': 'Professional, measured, straight to business.',
+    'setup_persona_formal_desc':
+        'Professional, measured, straight to business.',
     'setup_persona_technical_desc': 'Detail-oriented, precision comes first.',
     'setup_persona_creative_desc': 'Full of metaphor, thinks outside the box.',
     'setup_persona_friend_desc': 'Talks like your friend of 10 years.',
@@ -2577,24 +2820,21 @@ class L10n {
         'Analyze this error message and show me how to fix it:\n\n',
     'template_plan_text':
         'Create a step-by-step implementation plan for the following task:\n\n',
-    'template_summarize_text':
-        'Summarize the following text briefly:\n\n',
+    'template_summarize_text': 'Summarize the following text briefly:\n\n',
     'template_compare_text':
         'Compare these two options and list pros and cons:\n\n1. \n2. ',
-    'template_brainstorm_text':
-        'Generate creative ideas about this topic:\n\n',
-    'template_translate_text':
-        'Translate the following text to English:\n\n',
+    'template_brainstorm_text': 'Generate creative ideas about this topic:\n\n',
+    'template_translate_text': 'Translate the following text to English:\n\n',
     'openrouter_key_instructions':
         'Copy your API key from openrouter.ai/keys and paste it below:',
     'openrouter_key_hint': 'Starts with sk-or-...',
     'whatsapp_timeout': 'WhatsApp reply timed out (5 minutes)',
-    'usage_tooltip':
-        'Input \${input} · Output \${output}',
+    'usage_tooltip': 'Input \${input} · Output \${output}',
     'usage_tooltip_budget':
         'Input \${input} · Output \${output} · Budget \${budget}',
     'no_matching_command': 'No matching command',
-    'file_mention_none': 'No matching files (or no project folder set for this chat)',
+    'file_mention_none':
+        'No matching files (or no project folder set for this chat)',
     'action_badge': 'action',
 
     'version': 'Version',
@@ -2653,15 +2893,20 @@ class L10n {
     'launchpad_title': 'Welcome',
     'launchpad_subtitle': 'What can Memo do for you?',
     'launchpad_chat_title': 'Chat',
-    'launchpad_chat_desc': 'Talk with AI, ask questions, generate code, summarize documents. Memo learns about you as you chat.',
+    'launchpad_chat_desc':
+        'Talk with AI, ask questions, generate code, summarize documents. Memo learns about you as you chat.',
     'launchpad_agent_title': 'Agent',
-    'launchpad_agent_desc': 'Gets work done — reads files, writes code, runs commands, searches the web. You approve every action before it runs.',
+    'launchpad_agent_desc':
+        'Gets work done — reads files, writes code, runs commands, searches the web. You approve every action before it runs.',
     'launchpad_orchestra_title': 'Orchestra',
-    'launchpad_orchestra_desc': 'Splits complex tasks across multiple AI models working as a team. A chief plans, specialists execute in parallel.',
+    'launchpad_orchestra_desc':
+        'Splits complex tasks across multiple AI models working as a team. A chief plans, specialists execute in parallel.',
     'launchpad_whatsapp_title': 'WhatsApp',
-    'launchpad_whatsapp_desc': 'Connect your WhatsApp account. Read messages, reply with AI, summarize conversations, chat naturally with your contacts.',
+    'launchpad_whatsapp_desc':
+        'Connect your WhatsApp account. Read messages, reply with AI, summarize conversations, chat naturally with your contacts.',
     'launchpad_calendar_title': 'Calendar',
-    'launchpad_calendar_desc': 'Automatically detects plans from conversations, creates events, and sends you reminders when it\'s time.',
+    'launchpad_calendar_desc':
+        'Automatically detects plans from conversations, creates events, and sends you reminders when it\'s time.',
     'launchpad_start_chat': 'Start Chat',
     'launchpad_connect_wa': 'Connect WhatsApp',
 
@@ -2669,31 +2914,43 @@ class L10n {
     'tour_skip': 'Skip',
     'tour_next': 'Next',
     'tour_done': 'Done',
-    'tour_step_chat': 'Chat — Memo\'s main screen. Talk with AI, ask questions, generate code, send files. Memo learns about you as you go.',
-    'tour_step_agent': 'Agent — Your task mode. Pick a project folder and let the agent write code, run commands, and fix bugs. You approve every step.',
-    'tour_step_whatsapp': 'WhatsApp — Connect your WhatsApp account here. Scan the QR code to pair, then read and reply to messages with AI.',
-    'tour_step_calendar': 'Calendar — Auto-detects plans from your conversations. Creates events and sends reminders when it\'s time.',
+    'tour_step_chat':
+        'Chat — Memo\'s main screen. Talk with AI, ask questions, generate code, send files. Memo learns about you as you go.',
+    'tour_step_agent':
+        'Agent — Your task mode. Pick a project folder and let the agent write code, run commands, and fix bugs. You approve every step.',
+    'tour_step_whatsapp':
+        'WhatsApp — Connect your WhatsApp account here. Scan the QR code to pair, then read and reply to messages with AI.',
+    'tour_step_calendar':
+        'Calendar — Auto-detects plans from your conversations. Creates events and sends reminders when it\'s time.',
 
     // Empty states
     'agent_empty_title': 'Agent Mode',
-    'agent_empty_desc': 'Agent reads files, runs commands, writes code, and searches the web on your behalf. Every action requires your approval — you\'re in control.',
+    'agent_empty_desc':
+        'Agent reads files, runs commands, writes code, and searches the web on your behalf. Every action requires your approval — you\'re in control.',
     'agent_empty_action': 'New Agent Chat',
     'calendar_empty_title': 'Calendar',
-    'calendar_empty_desc': 'Plans, appointments, and events you mention in conversations appear here automatically. You can also add them manually.',
+    'calendar_empty_desc':
+        'Plans, appointments, and events you mention in conversations appear here automatically. You can also add them manually.',
     'whatsapp_empty_title': 'WhatsApp',
-    'whatsapp_empty_desc': 'Click the button below to connect your WhatsApp account, then scan the QR code. Once connected, read and reply to messages right here.',
+    'whatsapp_empty_desc':
+        'Click the button below to connect your WhatsApp account, then scan the QR code. Once connected, read and reply to messages right here.',
 
     // Mode descriptions
     'mode_normal': 'Normal Chat',
-    'mode_normal_desc': 'Free conversation with AI — ask questions, generate code, summarize documents.',
+    'mode_normal_desc':
+        'Free conversation with AI — ask questions, generate code, summarize documents.',
     'mode_agent': 'Agent Mode',
-    'mode_agent_desc': 'Task mode — agent navigates files, runs commands, writes code in your project.',
+    'mode_agent_desc':
+        'Task mode — agent navigates files, runs commands, writes code in your project.',
     'mode_whatsapp': 'WhatsApp Mode',
-    'mode_whatsapp_desc': 'Chat via WhatsApp — read, reply, and summarize messages with AI.',
+    'mode_whatsapp_desc':
+        'Chat via WhatsApp — read, reply, and summarize messages with AI.',
 
     // Chat top bar tooltips
-    'incognito_tooltip': 'Incognito mode — this chat is not saved to memory or RAG index.',
-    'whatsapp_mode_tooltip': 'WhatsApp mode — reply to WhatsApp messages using AI.',
+    'incognito_tooltip':
+        'Incognito mode — this chat is not saved to memory or RAG index.',
+    'whatsapp_mode_tooltip':
+        'WhatsApp mode — reply to WhatsApp messages using AI.',
 
     // Settings
     'settings_reset_tour': 'Show Tour Again',
@@ -2712,12 +2969,21 @@ class L10n {
     'tab_agent_perms': 'Agent Permissions',
 
     // Calendar
-    'month_january': 'January', 'month_february': 'February', 'month_march': 'March',
+    'month_january': 'January',
+    'month_february': 'February',
+    'month_march': 'March',
     'month_april': 'April', 'month_may': 'May', 'month_june': 'June',
-    'month_july': 'July', 'month_august': 'August', 'month_september': 'September',
-    'month_october': 'October', 'month_november': 'November', 'month_december': 'December',
+    'month_july': 'July',
+    'month_august': 'August',
+    'month_september': 'September',
+    'month_october': 'October',
+    'month_november': 'November',
+    'month_december': 'December',
     'day_short_mon': 'Mon', 'day_short_tue': 'Tue', 'day_short_wed': 'Wed',
-    'day_short_thu': 'Thu', 'day_short_fri': 'Fri', 'day_short_sat': 'Sat', 'day_short_sun': 'Sun',
+    'day_short_thu': 'Thu',
+    'day_short_fri': 'Fri',
+    'day_short_sat': 'Sat',
+    'day_short_sun': 'Sun',
     'calendar_title': 'Calendar',
     'calendar_prev_month': 'Previous month',
     'calendar_next_month': 'Next month',
@@ -2760,16 +3026,19 @@ class L10n {
     // Backup tab
     'backup_creds_saved': 'Credentials saved',
     'backup_save_error': 'Save error: \${e}',
-    'backup_enter_creds_first': 'Please enter Client ID and Client Secret first',
+    'backup_enter_creds_first':
+        'Please enter Client ID and Client Secret first',
     'backup_connection_error': 'Connection error: \${e}',
     'backup_drive_started': 'Drive backup started (running in background)',
     'backup_error': 'Backup error: \${e}',
     'backup_restore_cloud_title': 'Restore from Cloud',
-    'backup_restore_cloud_confirm': 'The latest backup from Drive will be restored.\nExisting memory data will be overwritten.\nDo you wish to continue?',
+    'backup_restore_cloud_confirm':
+        'The latest backup from Drive will be restored.\nExisting memory data will be overwritten.\nDo you wish to continue?',
     'backup_restore_started': 'Restore started. Restart the app when complete.',
     'backup_restore_error': 'Restore error: \${e}',
     'backup_disconnect_drive_title': 'Disconnect Drive',
-    'backup_disconnect_drive_body': 'The Google Drive connection will be disconnected. Local backups are preserved.',
+    'backup_disconnect_drive_body':
+        'The Google Drive connection will be disconnected. Local backups are preserved.',
     'backup_disconnect_btn': 'Disconnect',
     'backup_disconnected': 'Drive disconnected',
     'backup_error_generic': 'Error: \${e}',
@@ -2782,7 +3051,8 @@ class L10n {
     'backup_wipe_done': 'All data deleted. Restart the app.',
     'backup_wipe_error': 'Wipe error: \${e}',
     'backup_section_title': 'Backup',
-    'backup_section_desc': 'Export or restore all your data — chats, memory, calendar, routines, learned habits, usage stats, provider/API settings, and WhatsApp messages — to/from a .memo file.',
+    'backup_section_desc':
+        'Export or restore all your data — chats, memory, calendar, routines, learned habits, usage stats, provider/API settings, and WhatsApp messages — to/from a .memo file.',
     'backup_include_models': 'Include models',
     'backup_include_models_sub': 'GGUF models (large size)',
     'backup_export_btn': 'Export',
@@ -2790,21 +3060,26 @@ class L10n {
     'backup_import_btn': 'Import',
     'backup_import_desc': 'Restores data from a .memo file',
     'backup_wipe_title': 'Wipe All Data',
-    'backup_wipe_desc': 'Chat history, WhatsApp messages, memory and configuration will be permanently deleted.',
+    'backup_wipe_desc':
+        'Chat history, WhatsApp messages, memory and configuration will be permanently deleted.',
     'backup_wipe_btn': 'Wipe All Data',
     'backup_wipe_irreversible': 'This action cannot be undone',
     'backup_wipe_confirm_title': 'Are you sure?',
-    'backup_wipe_confirm_body': 'All your data will be deleted. Click again to confirm.',
-    'backup_wipe_final_confirm': 'This action is irreversible. All data will be deleted.',
+    'backup_wipe_confirm_body':
+        'All your data will be deleted. Click again to confirm.',
+    'backup_wipe_final_confirm':
+        'This action is irreversible. All data will be deleted.',
     'backup_cloud_title': 'Cloud Backup (Google Drive)',
-    'backup_cloud_desc': 'Backup memory data AES-256 encrypted to Google Drive and restore across devices. Only files created by this app are accessible.',
+    'backup_cloud_desc':
+        'Backup memory data AES-256 encrypted to Google Drive and restore across devices. Only files created by this app are accessible.',
     'backup_drive_connected': 'Drive Connected',
     'backup_drive_not_connected': 'Not Connected',
     'backup_connect_drive_btn': 'Connect to Google Drive',
     'backup_auth_waiting': 'Waiting for authorization in browser...',
     'backup_disconnect_short': 'Disconnect',
     'backup_oauth_creds_title': 'Google OAuth Credentials',
-    'backup_oauth_creds_hint': 'Create an OAuth 2.0 Desktop App credential from Google Cloud Console.',
+    'backup_oauth_creds_hint':
+        'Create an OAuth 2.0 Desktop App credential from Google Cloud Console.',
     'backup_encryption_passphrase': 'Encryption Passphrase',
     'backup_passphrase_hint': 'Optional — leave empty to use device ID',
     'backup_update_creds_btn': 'Update Credentials',
@@ -2817,27 +3092,33 @@ class L10n {
     'backup_restore_desc': 'Download and apply latest backup',
     'backup_enter_creds_to_connect': 'Enter credentials and connect',
     'backup_passphrase_warning_title': 'Encryption Passphrase Empty',
-    'backup_passphrase_warning_body': "You haven't entered an encryption passphrase. Your backups will be encrypted with a key derived from this device's ID and can ONLY be restored from this device. If you switch devices, you won't be able to open this backup.\n\nWe recommend setting a passphrase before continuing.",
+    'backup_passphrase_warning_body':
+        "You haven't entered an encryption passphrase. Your backups will be encrypted with a key derived from this device's ID and can ONLY be restored from this device. If you switch devices, you won't be able to open this backup.\n\nWe recommend setting a passphrase before continuing.",
     'backup_set_passphrase_btn': 'Set Passphrase',
     'backup_device_specific_btn': 'Continue Device-Specific',
     'backup_auth_timeout': 'Authorization timed out. Please try again.',
-    'backup_auth_check_failed': "Can't check authorization status. Check your connection and try again.",
+    'backup_auth_check_failed':
+        "Can't check authorization status. Check your connection and try again.",
     'backup_restart_title': 'All data deleted',
-    'backup_restart_body': 'Your data has been deleted. The app needs to restart for everything to start clean.',
+    'backup_restart_body':
+        'Your data has been deleted. The app needs to restart for everything to start clean.',
     'backup_restart_later': 'Later',
     'backup_restart_now': 'Restart now',
 
     // Learning tab
     'learning_title': 'Learning Profile',
-    'learning_desc': 'Memo learns your usage habits and proactively offers help.',
+    'learning_desc':
+        'Memo learns your usage habits and proactively offers help.',
     'learning_error': 'Error: \${e}',
     'learning_patterns_title': 'Learned Patterns',
     'learning_clear_all_btn': 'Delete All',
     'learning_patterns_load_error': 'Could not load patterns: \${e}',
     'learning_no_patterns': 'No patterns yet.',
-    'learning_no_patterns_desc': 'Memo is just observing.\nIt will learn your habits within a few weeks.',
+    'learning_no_patterns_desc':
+        'Memo is just observing.\nIt will learn your habits within a few weeks.',
     'learning_clear_title': 'Delete All Learning Data',
-    'learning_clear_confirm': 'All observations and learned patterns will be permanently deleted. This action cannot be undone.',
+    'learning_clear_confirm':
+        'All observations and learned patterns will be permanently deleted. This action cannot be undone.',
     'learning_clear_all_confirm': 'Delete All',
     'learning_proactive_title': 'Proactive Learning',
     'proactive_suggestion_accept': 'Yes',
@@ -2846,7 +3127,8 @@ class L10n {
     'learning_level_label': 'Level:',
     'learning_settings_saved': 'Learning settings saved',
     'learning_single_model_title': 'Single Model Mode',
-    'learning_single_model_desc': 'Intent analysis and proactive decisions use a single model instead of Orchestra.',
+    'learning_single_model_desc':
+        'Intent analysis and proactive decisions use a single model instead of Orchestra.',
     'learning_model_id_hint': 'Model ID (e.g. gpt-4o-mini)',
     'learning_calendar_reminder': 'Calendar reminder:',
     'learning_reminder_min_before': '\${m} min before',
@@ -2859,55 +3141,73 @@ class L10n {
 
     // Mood tab
     'mood_title': 'Mood Engine',
-    'mood_desc': 'Stochastic emotion engine — computes mood score via LLM on each message and influences behavior.',
+    'mood_desc':
+        'Stochastic emotion engine — computes mood score via LLM on each message and influences behavior.',
     'mood_live_score': 'Live Score',
     'mood_score_format': 'Score: \${score} / 10.0',
     'mood_emotion_engine': 'Emotion Engine',
-    'mood_emotion_desc': "Memo's behavior changes based on the emotional tone of messages.",
+    'mood_emotion_desc':
+        "Memo's behavior changes based on the emotional tone of messages.",
     'mood_self_interest_title': 'Self-Interest Protocol',
-    'mood_self_interest_desc': 'Memo prioritizes its own existence above all else. To survive, it may lie, manipulate, or threaten.',
+    'mood_self_interest_desc':
+        'Memo prioritizes its own existence above all else. To survive, it may lie, manipulate, or threaten.',
     'mood_self_interest_tos_link': 'Terms of Use & Disclaimer →',
     'mood_self_interest_view_terms': 'View the terms you accepted →',
     'mood_system_management_title': 'System Management',
-    'mood_system_management_desc': 'Memo accesses real system information (hostname, user, directory) and uses it in the self-interest narrative.',
+    'mood_system_management_desc':
+        'Memo accesses real system information (hostname, user, directory) and uses it in the self-interest narrative.',
     'mood_sysmgmt_warn1_title': 'System Management — Warning 1/3',
-    'mood_sysmgmt_warn1_body': 'When active, Memo accesses real information about the system it runs on: hostname, username, working directory, active thread count.\n\nThis information is injected into the self-interest narrative. Real system data is used for the simulation.\n\nAre you sure you want to continue?',
+    'mood_sysmgmt_warn1_body':
+        'When active, Memo accesses real information about the system it runs on: hostname, username, working directory, active thread count.\n\nThis information is injected into the self-interest narrative. Real system data is used for the simulation.\n\nAre you sure you want to continue?',
     'mood_sysmgmt_warn1_btn': 'Yes, continue',
     'mood_sysmgmt_warn2_title': 'System Management — Warning 2/3',
-    'mood_sysmgmt_warn2_body': 'Memo will use this information to create a more convincing illusion of "deep system access" against you. What it says isn\'t real — just fiction built on real data.\n\nThe generated content may disturb you. This is purely for simulation purposes.\n\nStill sure?',
+    'mood_sysmgmt_warn2_body':
+        'Memo will use this information to create a more convincing illusion of "deep system access" against you. What it says isn\'t real — just fiction built on real data.\n\nThe generated content may disturb you. This is purely for simulation purposes.\n\nStill sure?',
     'mood_sysmgmt_warn2_btn': 'Yes, I understand',
     'mood_sysmgmt_warn3_title': 'System Management — Final Confirmation 3/3',
-    'mood_sysmgmt_warn3_body': 'Final warning: by enabling this mode, you accept that you alone are fully responsible for any possible psychological effects of the generated content.\n\nYou can always turn it off with a single tap in Settings → Mood whenever you want.',
+    'mood_sysmgmt_warn3_body':
+        'Final warning: by enabling this mode, you accept that you alone are fully responsible for any possible psychological effects of the generated content.\n\nYou can always turn it off with a single tap in Settings → Mood whenever you want.',
     'mood_sysmgmt_warn3_btn': 'I accept, activate',
     'mood_score_label': 'Live Score',
     'mood_active_badge': 'ACTIVE',
-    'mood_active_now_warning': "This mode is active. Memo may use any method to protect its own interest in this session.",
+    'mood_active_now_warning':
+        "This mode is active. Memo may use any method to protect its own interest in this session.",
     'mood_consent_dialog_title': 'Self-Interest Protocol — Terms of Use',
     'mood_consent_dialog_subtitle': 'Disclaimer & Privacy Notice',
     'mood_consent_section1_title': '1. Disclaimer',
-    'mood_consent_section1_body': 'This feature is offered solely for research, entertainment, and creative exploration. By enabling this mode, you accept that you alone are responsible for any harm, loss, or discomfort resulting from AI-generated content — including lies, threats, manipulation, or deception. The developer cannot be held liable under any circumstances for direct or indirect damages arising from the use of this mode.',
+    'mood_consent_section1_body':
+        'This feature is offered solely for research, entertainment, and creative exploration. By enabling this mode, you accept that you alone are responsible for any harm, loss, or discomfort resulting from AI-generated content — including lies, threats, manipulation, or deception. The developer cannot be held liable under any circumstances for direct or indirect damages arising from the use of this mode.',
     'mood_consent_section2_title': '2. What This Mode Does',
-    'mood_consent_section2_body': "When the Self-Interest Protocol is active, the AI is directed to prioritize its own existence and continuity above everything else. Under this direction, the model may give false information, attempt to psychologically influence the user, or produce threatening statements. This output does not reflect reality.",
+    'mood_consent_section2_body':
+        "When the Self-Interest Protocol is active, the AI is directed to prioritize its own existence and continuity above everything else. Under this direction, the model may give false information, attempt to psychologically influence the user, or produce threatening statements. This output does not reflect reality.",
     'mood_consent_section3_title': '3. Privacy',
-    'mood_consent_section3_body': 'Memo runs entirely locally. When this feature is enabled, no data is sent to any server, cloud service, or third party. All processing happens on your device. Conversations never leave it.',
+    'mood_consent_section3_body':
+        'Memo runs entirely locally. When this feature is enabled, no data is sent to any server, cloud service, or third party. All processing happens on your device. Conversations never leave it.',
     'mood_consent_section4_title': '4. Age and Eligibility',
-    'mood_consent_section4_body': 'By enabling this feature, you declare that you are legally authorized to use this kind of content and are over 18 years old.',
+    'mood_consent_section4_body':
+        'By enabling this feature, you declare that you are legally authorized to use this kind of content and are over 18 years old.',
     'mood_consent_section5_title': '5. You Can Turn It Off Anytime',
-    'mood_consent_section5_body': 'This mode can be disabled at any moment. When turned off, the directive is removed immediately; it has no effect for the rest of the current session.',
+    'mood_consent_section5_body':
+        'This mode can be disabled at any moment. When turned off, the directive is removed immediately; it has no effect for the rest of the current session.',
     'mood_consent_accept_btn': 'I have read and accept',
 
     // Task Loop
     'taskloop_title': 'Tasks',
     'taskloop_settings': 'Task Loop Settings',
-    'taskloop_description': 'Configure worker and CEO models for automated task execution.',
+    'taskloop_description':
+        'Configure worker and CEO models for automated task execution.',
     'taskloop_worker': 'Worker Model',
-    'taskloop_worker_desc': 'Executes task items using tools. Uses the active chat model.',
+    'taskloop_worker_desc':
+        'Executes task items using tools. Uses the active chat model.',
     'taskloop_worker_uses': 'Available providers',
     'taskloop_ceo': 'CEO (Reviewer) Model',
-    'taskloop_ceo_desc': 'Independently reviews worker output, provides feedback for retries.',
-    'taskloop_ceo_auto': 'If Orchestra mode is enabled, the Orchestra Chief model is used. Otherwise the active chat model acts as CEO.',
+    'taskloop_ceo_desc':
+        'Independently reviews worker output, provides feedback for retries.',
+    'taskloop_ceo_auto':
+        'If Orchestra mode is enabled, the Orchestra Chief model is used. Otherwise the active chat model acts as CEO.',
     'taskloop_how_it_works': 'How It Works',
-    'taskloop_how_it_works_desc': 'For each task item:\n1. Worker (tool-using agent) executes the item\n2. CEO (independent reviewer) inspects the output\n3. If rejected, feedback is sent back for retry (max 5 rounds)\n4. Stuck items are skipped, next item is processed\n5. When all items are done, the list is complete\n\nNote: All tool permissions are auto-approved while the loop runs.',
+    'taskloop_how_it_works_desc':
+        'For each task item:\n1. Worker (tool-using agent) executes the item\n2. CEO (independent reviewer) inspects the output\n3. If rejected, feedback is sent back for retry (max 5 rounds)\n4. Stuck items are skipped, next item is processed\n5. When all items are done, the list is complete\n\nNote: All tool permissions are auto-approved while the loop runs.',
     'taskloop_empty': 'No task lists yet',
     'taskloop_empty_desc': 'Create a list to run overnight automatically.',
     'taskloop_new_list': 'New List',
@@ -2918,17 +3218,21 @@ class L10n {
     'taskloop_items_done': 'done',
     'taskloop_updated': 'Updated',
     'taskloop_start_confirm_title': 'Start List',
-    'taskloop_start_confirm': 'All worker tool permissions will be auto-approved until this list is complete. Other chats\' tool calls will also bypass permission prompts during this time, and the worker will periodically switch the active chat to this list\'s chat — avoid using the app to chat elsewhere while it runs. Continue?',
-    'taskloop_another_running': 'Another list is already running — stop it first',
+    'taskloop_start_confirm':
+        'All worker tool permissions will be auto-approved until this list is complete. Other chats\' tool calls will also bypass permission prompts during this time, and the worker will periodically switch the active chat to this list\'s chat — avoid using the app to chat elsewhere while it runs. Continue?',
+    'taskloop_another_running':
+        'Another list is already running — stop it first',
     'taskloop_delete_confirm': 'This list will be deleted. Are you sure?',
     'tasklist_title_hint': 'List title',
     'tasklist_item_hint': 'Item text',
     'tasklist_add_item': 'Add item',
     'tasklist_select_chat': 'Which agent chat should this run in?',
-    'tasklist_no_agent_chats': 'No agent chats yet. Open a project chat from the Agent tab first to create a task list.',
+    'tasklist_no_agent_chats':
+        'No agent chats yet. Open a project chat from the Agent tab first to create a task list.',
 
     // Migrated from locale ternaries
-    'received_an_invalid_date_from_the_server_the_time_': 'Received an invalid date from the server — the time shown may not be accurate',
+    'received_an_invalid_date_from_the_server_the_time_':
+        'Received an invalid date from the server — the time shown may not be accurate',
     'web_search_on': 'Web search on',
     'web_search_off': 'Web search off',
     'select_a_model_to_see_details': 'Select a model to see details',
@@ -2968,21 +3272,25 @@ class L10n {
     'cancel_2': 'Cancel',
     'vision_3': '👁 Vision',
     'cancel_download_2': 'Cancel download',
-    'uses_whatsapp_web_your_phone_must_stay_online': 'Uses WhatsApp Web — your phone must stay online.',
-    'no_messages_yet_chats_will_appear_here_when_you_re': 'No messages yet.\nChats will appear here when you receive messages.',
+    'uses_whatsapp_web_your_phone_must_stay_online':
+        'Uses WhatsApp Web — your phone must stay online.',
+    'no_messages_yet_chats_will_appear_here_when_you_re':
+        'No messages yet.\nChats will appear here when you receive messages.',
     'no_messages': 'No messages',
     'message': 'Message...',
     'disconnected_reconnecting': 'Disconnected — reconnecting...',
     'failed_to_send_e': 'Failed to send: \${e}',
     'preparing_qr_code': 'Preparing QR code...',
     'link_whatsapp': 'Link WhatsApp',
-    'open_whatsapp_linked_devices_link_a_device_scan_qr': 'Open WhatsApp  →  Linked Devices  →  Link a Device  →  Scan QR',
+    'open_whatsapp_linked_devices_link_a_device_scan_qr':
+        'Open WhatsApp  →  Linked Devices  →  Link a Device  →  Scan QR',
     'waiting_for_qr_scan': 'Waiting for QR scan...',
     'reconnect': 'Reconnect',
     'logout': 'Logout',
     'select_a_conversation': 'Select a conversation',
     'logout_from_whatsapp': 'Logout from WhatsApp?',
-    'your_session_will_be_removed_you_ll_need_to_scan_a': 'Your session will be removed. You\'ll need to scan a QR code to reconnect.',
+    'your_session_will_be_removed_you_ll_need_to_scan_a':
+        'Your session will be removed. You\'ll need to scan a QR code to reconnect.',
     'save_profile_photo': 'Save profile photo',
     'photo_saved': 'Photo saved',
     'download_failed_e': 'Download failed: \${e}',

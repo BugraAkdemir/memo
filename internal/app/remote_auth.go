@@ -12,10 +12,16 @@ import (
 // excludes TokenHash (the whole point of hashing at rest is that the secret
 // never leaves the moment it was generated).
 type RemoteDeviceInfo struct {
-	ID         string    `json:"id"`
-	Name       string    `json:"name"`
-	CreatedAt  time.Time `json:"created_at"`
-	LastSeenAt time.Time `json:"last_seen_at,omitempty"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+	// LastSeenAt is a pointer, not a plain time.Time — encoding/json's
+	// omitempty has no effect on struct-typed fields (a well-known Go
+	// gotcha: the "empty" check only applies to bools/numbers/strings/nil
+	// pointers-slices-maps-interfaces, never to a zero-value struct), so a
+	// never-verified device would otherwise always serialize
+	// "0001-01-01T00:00:00Z" instead of being omitted.
+	LastSeenAt *time.Time `json:"last_seen_at,omitempty"`
 }
 
 // validAuthModes lists every value RemoteAccess.AuthMode may hold — kept in
@@ -117,9 +123,12 @@ func (a *App) ListRemoteDevices() interface{} {
 	devices := a.cfg.RemoteAccess.Devices
 	out := make([]RemoteDeviceInfo, 0, len(devices))
 	for _, d := range devices {
-		out = append(out, RemoteDeviceInfo{
-			ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt, LastSeenAt: d.LastSeenAt,
-		})
+		info := RemoteDeviceInfo{ID: d.ID, Name: d.Name, CreatedAt: d.CreatedAt}
+		if !d.LastSeenAt.IsZero() {
+			lastSeen := d.LastSeenAt
+			info.LastSeenAt = &lastSeen
+		}
+		out = append(out, info)
 	}
 	return out
 }

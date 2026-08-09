@@ -128,6 +128,14 @@ func TestCreateAndListAndRevokeRemoteDevice(t *testing.T) {
 		t.Errorf("device name = %q, want %q", devices[0].Name, "Laptop")
 	}
 
+	// Pre-seed LastSeenAt so the verify call below doesn't also trip
+	// VerifyRemoteDeviceToken's staleness threshold and fire its async
+	// config.Save — that path is covered on its own, without a real
+	// config.Load, by TestVerifyRemoteDeviceToken_UpdatesLastSeenInMemory;
+	// mixing the two here would race an out-of-band goroutine against this
+	// test's own t.TempDir() cleanup.
+	a.cfg.RemoteAccess.Devices[0].LastSeenAt = time.Now()
+
 	if !a.VerifyRemoteDeviceToken(plain) {
 		t.Error("expected the freshly created device token to verify")
 	}

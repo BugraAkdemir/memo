@@ -70,7 +70,9 @@ class MemoApiClient {
   /// Captured from getRemoteAccess()/setRemoteAccess() responses, which
   /// include it (see _applyRemoteToken call sites below).
   void _applyRemoteToken(dynamic data) {
-    if (data is Map && data['token'] is String && (data['token'] as String).isNotEmpty) {
+    if (data is Map &&
+        data['token'] is String &&
+        (data['token'] as String).isNotEmpty) {
       final token = data['token'] as String;
       _dio.options.headers['X-Memo-Token'] = token;
       onRemoteTokenLearned?.call(token);
@@ -240,53 +242,80 @@ class MemoApiClient {
   }
 
   Future<String> getChatCLIProvider(String chatId) async {
-    final res = await _dio.get('/api/chats/cli-provider', queryParameters: {'id': chatId});
+    final res = await _dio.get(
+      '/api/chats/cli-provider',
+      queryParameters: {'id': chatId},
+    );
     return res.data['cli_provider'] as String? ?? '';
   }
 
   Future<void> setChatCLIProvider(String chatId, String cliProvider) async {
-    await _dio.post('/api/chats/cli-provider', data: {'id': chatId, 'cli_provider': cliProvider});
+    await _dio.post(
+      '/api/chats/cli-provider',
+      data: {'id': chatId, 'cli_provider': cliProvider},
+    );
   }
 
   Future<String> getChatCLIWorkdir(String chatId) async {
-    final res = await _dio.get('/api/chats/cli-workdir', queryParameters: {'id': chatId});
+    final res = await _dio.get(
+      '/api/chats/cli-workdir',
+      queryParameters: {'id': chatId},
+    );
     return res.data['workdir'] as String? ?? '';
   }
 
   Future<void> setChatCLIWorkdir(String chatId, String workdir) async {
-    await _dio.post('/api/chats/cli-workdir', data: {'id': chatId, 'workdir': workdir});
+    await _dio.post(
+      '/api/chats/cli-workdir',
+      data: {'id': chatId, 'workdir': workdir},
+    );
   }
 
   /// Empty means the CLI uses its own configured default model.
   Future<String> getChatCLIModel(String chatId) async {
-    final res = await _dio.get('/api/chats/cli-model', queryParameters: {'id': chatId});
+    final res = await _dio.get(
+      '/api/chats/cli-model',
+      queryParameters: {'id': chatId},
+    );
     return res.data['model'] as String? ?? '';
   }
 
   /// model = '' clears the override, back to the CLI's own default.
   Future<void> setChatCLIModel(String chatId, String model) async {
-    await _dio.post('/api/chats/cli-model', data: {'id': chatId, 'model': model});
+    await _dio.post(
+      '/api/chats/cli-model',
+      data: {'id': chatId, 'model': model},
+    );
   }
 
   /// Model ids a CLI-backed chat can be switched to. Empty means no override
   /// list is available right now (e.g. Codex before its own model cache
   /// exists) — the CLI's own default is the only option.
   Future<List<String>> getCLIModelOptions(String cliType) async {
-    final res = await _dio.get('/api/cli/model-options', queryParameters: {'type': cliType});
+    final res = await _dio.get(
+      '/api/cli/model-options',
+      queryParameters: {'type': cliType},
+    );
     final models = res.data['models'];
     return models is List ? models.cast<String>() : const [];
   }
 
   /// {installed, path, version, binary_name} for a CLI provider type.
   Future<Map<String, dynamic>> getCLIStatus(String cliType) async {
-    final res = await _dio.get('/api/cli/status', queryParameters: {'type': cliType});
+    final res = await _dio.get(
+      '/api/cli/status',
+      queryParameters: {'type': cliType},
+    );
     return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Files under root whose path contains query — backs the "@" mention
   /// dropdown in chat_input.dart.
   Future<List<String>> listProjectFiles(String root, String query) async {
-    final res = await _dio.get('/api/files/mentions', queryParameters: {'root': root, 'query': query});
+    final res = await _dio.get(
+      '/api/files/mentions',
+      queryParameters: {'root': root, 'query': query},
+    );
     final files = res.data['files'];
     return files is List ? files.cast<String>() : const [];
   }
@@ -295,11 +324,14 @@ class MemoApiClient {
   /// commands/prompts/skills plus its useful built-ins. Backend-sourced
   /// because these live on disk (.claude/commands, .codex/prompts) and the
   /// frontend has no filesystem access of its own.
-  Future<List<CLICommand>> listCLICommands(String cliType, String chatId) async {
-    final res = await _dio.get('/api/cli/commands', queryParameters: {
-      'type': cliType,
-      'chat_id': chatId,
-    });
+  Future<List<CLICommand>> listCLICommands(
+    String cliType,
+    String chatId,
+  ) async {
+    final res = await _dio.get(
+      '/api/cli/commands',
+      queryParameters: {'type': cliType, 'chat_id': chatId},
+    );
     final list = res.data['commands'];
     if (list is! List) return const [];
     return list.whereType<Map>().map(CLICommand.fromJson).toList();
@@ -327,15 +359,15 @@ class MemoApiClient {
   Future<List<ChatSession>> listChats() async {
     final res = await _dio.get('/api/chats');
     if (res.data is List) {
-      return (_guard<List>(res.data))
-          .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return (_guard<List>(
+        res.data,
+      )).map((e) => ChatSession.fromJson(e as Map<String, dynamic>)).toList();
     }
     // Backend wraps it in an object sometimes
     if (res.data is Map && res.data['chats'] != null) {
-      return (_guard<List>(res.data['chats']))
-          .map((e) => ChatSession.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return (_guard<List>(
+        res.data['chats'],
+      )).map((e) => ChatSession.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
@@ -380,9 +412,9 @@ class MemoApiClient {
   Future<List<ChatMessage>> getMessages() async {
     final res = await _dio.get('/api/messages');
     if (res.data is List) {
-      return (_guard<List>(res.data))
-          .map((e) => ChatMessage.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return (_guard<List>(
+        res.data,
+      )).map((e) => ChatMessage.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
@@ -481,7 +513,10 @@ class MemoApiClient {
   }
 
   Future<void> setMinimalMode(bool enabled) async {
-    await _dio.put('/api/system-prompt/minimal-mode', data: {'enabled': enabled});
+    await _dio.put(
+      '/api/system-prompt/minimal-mode',
+      data: {'enabled': enabled},
+    );
   }
 
   /// Granular Minimal Mode overrides — each only has any effect while
@@ -494,7 +529,10 @@ class MemoApiClient {
   }
 
   Future<void> setMinimalModeOverrides(MinimalModeOverrides overrides) async {
-    await _dio.put('/api/system-prompt/minimal-mode/overrides', data: overrides.toJson());
+    await _dio.put(
+      '/api/system-prompt/minimal-mode/overrides',
+      data: overrides.toJson(),
+    );
   }
 
   // ─── Incognito Prompt ───────────────────────────────────────────
@@ -566,11 +604,17 @@ class MemoApiClient {
   }
 
   Future<void> saveExplicitMemory(String content, {String tags = ''}) async {
-    await _dio.post('/api/memory/explicit/save', data: {'content': content, 'tags': tags});
+    await _dio.post(
+      '/api/memory/explicit/save',
+      data: {'content': content, 'tags': tags},
+    );
   }
 
   Future<int> deleteExplicitMemory(String pattern) async {
-    final res = await _dio.post('/api/memory/explicit/delete', data: {'pattern': pattern});
+    final res = await _dio.post(
+      '/api/memory/explicit/delete',
+      data: {'pattern': pattern},
+    );
     return (res.data['deleted'] as int?) ?? 0;
   }
 
@@ -581,8 +625,11 @@ class MemoApiClient {
   }
 
   Future<int> importMemories(String jsonData) async {
-    final res = await _dio.post('/api/memory/import', data: jsonData,
-        options: Options(headers: {'Content-Type': 'application/json'}));
+    final res = await _dio.post(
+      '/api/memory/import',
+      data: jsonData,
+      options: Options(headers: {'Content-Type': 'application/json'}),
+    );
     return (res.data['imported'] as int?) ?? 0;
   }
 
@@ -592,7 +639,10 @@ class MemoApiClient {
   }
 
   Future<UsageStatsSummary> getUsageStats({int days = 30}) async {
-    final res = await _dio.get('/api/stats/usage', queryParameters: {'days': days});
+    final res = await _dio.get(
+      '/api/stats/usage',
+      queryParameters: {'days': days},
+    );
     return UsageStatsSummary.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
@@ -601,11 +651,14 @@ class MemoApiClient {
     return DevGatewayConfig.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
-  Future<void> setDevGatewayConfig({required bool requireAPIKey, required bool useMemory}) async {
-    await _dio.put('/api/dev-gateway/config', data: {
-      'require_api_key': requireAPIKey,
-      'use_memory': useMemory,
-    });
+  Future<void> setDevGatewayConfig({
+    required bool requireAPIKey,
+    required bool useMemory,
+  }) async {
+    await _dio.put(
+      '/api/dev-gateway/config',
+      data: {'require_api_key': requireAPIKey, 'use_memory': useMemory},
+    );
   }
 
   Future<List<GatewayModel>> getGatewayModels() async {
@@ -630,15 +683,23 @@ class MemoApiClient {
   /// from the user's own conversation memory + mood trend over the last
   /// [windowDays] days (0 = backend default). [lang] is the UI locale
   /// ("tr"/"en"), same convention routines already use.
-  Future<String> generateSelfInsight({int windowDays = 0, String lang = 'tr'}) async {
-    final res = await _dio.post('/api/memory/insight',
-        data: {'window_days': windowDays, 'lang': lang});
+  Future<String> generateSelfInsight({
+    int windowDays = 0,
+    String lang = 'tr',
+  }) async {
+    final res = await _dio.post(
+      '/api/memory/insight',
+      data: {'window_days': windowDays, 'lang': lang},
+    );
     final data = _guard<Map<String, dynamic>>(res.data);
     return (data['insight'] as String?) ?? '';
   }
 
   Future<List<MemorySearchResult>> filteredMemorySearch(
-      String query, {String? since, String? tag}) async {
+    String query, {
+    String? since,
+    String? tag,
+  }) async {
     final params = <String, dynamic>{'q': query};
     if (since != null) params['since'] = since;
     if (tag != null && tag.isNotEmpty) params['tag'] = tag;
@@ -656,7 +717,10 @@ class MemoApiClient {
   /// memory facts (+ an optional learned communication-style summary) and
   /// saved. Returns `{'factsSaved': int, 'styleUpdated': bool}`.
   Future<Map<String, dynamic>> importMemoryFromText(String content) async {
-    final res = await _dio.post('/api/memory/import-text', data: {'content': content});
+    final res = await _dio.post(
+      '/api/memory/import-text',
+      data: {'content': content},
+    );
     final data = _guard<Map<String, dynamic>>(res.data);
     return {
       'factsSaved': (data['facts_saved'] as int?) ?? 0,
@@ -669,9 +733,9 @@ class MemoApiClient {
   Future<List<LocalModel>> listLocalModels() async {
     final res = await _dio.get('/api/models/local');
     if (res.data is List) {
-      return (_guard<List>(res.data))
-          .map((e) => LocalModel.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return (_guard<List>(
+        res.data,
+      )).map((e) => LocalModel.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
@@ -805,9 +869,9 @@ class MemoApiClient {
   Future<List<HFModelResult>> searchModels(String query) async {
     final res = await _dio.post('/api/models/search', data: {'query': query});
     if (res.data is List) {
-      return (_guard<List>(res.data))
-          .map((e) => HFModelResult.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return (_guard<List>(
+        res.data,
+      )).map((e) => HFModelResult.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
@@ -818,15 +882,18 @@ class MemoApiClient {
       queryParameters: {'repo': repoId},
     );
     if (res.data is List) {
-      return (_guard<List>(res.data))
-          .map((e) => GGUFFile.fromJson(e as Map<String, dynamic>))
-          .toList();
+      return (_guard<List>(
+        res.data,
+      )).map((e) => GGUFFile.fromJson(e as Map<String, dynamic>)).toList();
     }
     return [];
   }
 
-  Future<void> downloadModel(String repoId, String filename,
-      {int expectedSize = 0}) async {
+  Future<void> downloadModel(
+    String repoId,
+    String filename, {
+    int expectedSize = 0,
+  }) async {
     await _dio.post(
       '/api/models/download',
       data: {
@@ -882,7 +949,12 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data);
   }
 
-  Future<void> setRemoteAccess(bool enabled, int port, {bool ngrokMode = false, String ngrokToken = ''}) async {
+  Future<void> setRemoteAccess(
+    bool enabled,
+    int port, {
+    bool ngrokMode = false,
+    String ngrokToken = '',
+  }) async {
     final res = await _dio.put(
       '/api/remote-access',
       data: {
@@ -902,9 +974,7 @@ class MemoApiClient {
   Future<void> setRemoteAccessAutoStart(bool autoStart) async {
     final res = await _dio.put(
       '/api/remote-access',
-      data: {
-        'ngrok_auto_start': autoStart,
-      },
+      data: {'ngrok_auto_start': autoStart},
     );
     _applyRemoteToken(res.data);
   }
@@ -912,6 +982,60 @@ class MemoApiClient {
   /// Toggles experimental (beta) features.
   Future<void> setBeta(bool enabled) async {
     await _dio.put('/api/remote-access', data: {'beta': enabled});
+  }
+
+  /// Updates the remote-access auth mode (Faz 2, yapacam.md):
+  /// "none"/"token"/"password"/"token_password". [password] may be left
+  /// empty when re-saving mode/username without changing an existing
+  /// password — the backend keeps the current hash in that case.
+  Future<void> setRemoteAuthConfig(
+    String mode, {
+    String username = '',
+    String password = '',
+  }) async {
+    final res = await _dio.put(
+      '/api/remote-access',
+      data: {'auth_mode': mode, 'username': username, 'password': password},
+    );
+    _applyRemoteToken(res.data);
+  }
+
+  /// Logs in with username/password (only valid in "password"/
+  /// "token_password" modes) and returns the session token on success —
+  /// the caller is responsible for applying it the same way a device
+  /// token is applied (see savedRemoteToken/onRemoteTokenLearned).
+  /// Throws a [DioException] with status 429 on brute-force lockout
+  /// (a Retry-After header is included) or 401 on bad credentials.
+  Future<String> loginRemote(String username, String password) async {
+    final res = await _dio.post(
+      '/api/auth/login',
+      data: {'username': username, 'password': password},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return data['session_token'] as String? ?? '';
+  }
+
+  /// Lists every paired device (never includes the token itself — only
+  /// shown once, at creation, by [createRemoteDevice]).
+  Future<List<Map<String, dynamic>>> listRemoteDevices() async {
+    final res = await _dio.get('/api/remote-access/devices');
+    return List<Map<String, dynamic>>.from(res.data as List);
+  }
+
+  /// Creates a new paired device and returns its plaintext token — the
+  /// only time it's ever available; only a hash is persisted afterward.
+  Future<String> createRemoteDevice(String name) async {
+    final res = await _dio.post(
+      '/api/remote-access/devices',
+      data: {'name': name},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return data['token'] as String? ?? '';
+  }
+
+  /// Revokes a paired device's access permanently.
+  Future<void> revokeRemoteDevice(String id) async {
+    await _dio.delete('/api/remote-access/devices/$id');
   }
 
   /// Configures the embedded Tailscale tunnel (stable URL, no extra binary).
@@ -1007,20 +1131,24 @@ class MemoApiClient {
 
   /// Export all user data as .memo bytes.
   Future<List<int>> exportData({bool includeModels = false}) async {
-    final res = await _dio.get('/api/export',
-        queryParameters: {'include_models': includeModels.toString()},
-        options: Options(responseType: ResponseType.bytes));
+    final res = await _dio.get(
+      '/api/export',
+      queryParameters: {'include_models': includeModels.toString()},
+      options: Options(responseType: ResponseType.bytes),
+    );
     return _guard<List<int>>(res.data);
   }
 
   /// Import from .memo bytes.
   Future<void> importData(List<int> data) async {
-    await _dio.post('/api/import',
-        data: Stream.fromIterable([data]),
-        options: Options(
-          contentType: 'application/octet-stream',
-          headers: {'Content-Length': data.length.toString()},
-        ));
+    await _dio.post(
+      '/api/import',
+      data: Stream.fromIterable([data]),
+      options: Options(
+        contentType: 'application/octet-stream',
+        headers: {'Content-Length': data.length.toString()},
+      ),
+    );
   }
 
   /// Wipe all user data.
@@ -1256,10 +1384,10 @@ class MemoApiClient {
   /// Delete a provider config. [name] disambiguates when multiple providers
   /// share the same type (the backend deletes by name when given).
   Future<void> deleteProvider(String type, {String? name}) async {
-    await _dio.delete('/api/providers', data: {
-      'type': type,
-      if (name != null && name.isNotEmpty) 'name': name,
-    });
+    await _dio.delete(
+      '/api/providers',
+      data: {'type': type, if (name != null && name.isNotEmpty) 'name': name},
+    );
   }
 
   /// Test a provider connection.
@@ -1314,15 +1442,18 @@ class MemoApiClient {
 
   /// Delete a TTS provider config by type, disambiguated by [name] when given.
   Future<void> deleteTTSProvider(String type, {String? name}) async {
-    await _dio.delete('/api/tts/providers', data: {
-      'type': type,
-      if (name != null && name.isNotEmpty) 'name': name,
-    });
+    await _dio.delete(
+      '/api/tts/providers',
+      data: {'type': type, if (name != null && name.isNotEmpty) 'name': name},
+    );
   }
 
   /// Test a TTS provider connection (a real, short synthesis call).
   Future<Map<String, dynamic>> testTTSProvider(TTSProviderConfig config) async {
-    final res = await _dio.post('/api/tts/providers/test', data: config.toJson());
+    final res = await _dio.post(
+      '/api/tts/providers/test',
+      data: config.toJson(),
+    );
     return _guard<Map<String, dynamic>>(res.data);
   }
 
@@ -1336,12 +1467,15 @@ class MemoApiClient {
   }
 
   /// Start downloading a curated voice in the background.
-  Future<void> downloadTTSVoice(String locale, String name, String quality) async {
-    await _dio.post('/api/tts/voices/download', data: {
-      'locale': locale,
-      'name': name,
-      'quality': quality,
-    });
+  Future<void> downloadTTSVoice(
+    String locale,
+    String name,
+    String quality,
+  ) async {
+    await _dio.post(
+      '/api/tts/voices/download',
+      data: {'locale': locale, 'name': name, 'quality': quality},
+    );
   }
 
   /// Delete a downloaded voice's files.
@@ -1510,13 +1644,19 @@ class MemoApiClient {
 
   /// Send a WhatsApp message.
   Future<Map<String, dynamic>> sendWhatsApp(String jid, String text) async {
-    final res = await _dio.post('/api/whatsapp/send', data: {'jid': jid, 'text': text});
+    final res = await _dio.post(
+      '/api/whatsapp/send',
+      data: {'jid': jid, 'text': text},
+    );
     return _guard<Map<String, dynamic>>(res.data);
   }
 
   /// Search WhatsApp messages.
   Future<List<dynamic>> searchWhatsApp(String query) async {
-    final res = await _dio.get('/api/whatsapp/search', queryParameters: {'q': query});
+    final res = await _dio.get(
+      '/api/whatsapp/search',
+      queryParameters: {'q': query},
+    );
     return (_guard<List<dynamic>?>(res.data)) ?? [];
   }
 
@@ -1528,7 +1668,10 @@ class MemoApiClient {
 
   /// Get messages for a specific WhatsApp chat.
   Future<List<dynamic>> getWhatsAppMessages(String jid) async {
-    final res = await _dio.get('/api/whatsapp/messages', queryParameters: {'jid': jid});
+    final res = await _dio.get(
+      '/api/whatsapp/messages',
+      queryParameters: {'jid': jid},
+    );
     return (_guard<List<dynamic>?>(res.data)) ?? [];
   }
 
@@ -1541,8 +1684,10 @@ class MemoApiClient {
 
   /// Downloads a chat's profile picture bytes (full-res by default) — used to
   /// save the photo to disk from the enlarged preview.
-  Future<Uint8List> fetchWhatsAppAvatarBytes(String jid,
-      {bool full = true}) async {
+  Future<Uint8List> fetchWhatsAppAvatarBytes(
+    String jid, {
+    bool full = true,
+  }) async {
     final res = await _dio.get(
       '/api/whatsapp/avatar',
       queryParameters: {'jid': jid, if (full) 'full': '1'},
@@ -1586,8 +1731,10 @@ class MemoApiClient {
   /// finishReason == 'agent_event' (their content is JSON), real reply text
   /// arrives as plain content chunks. The caller must distinguish the two so
   /// agent events render as status badges instead of raw JSON in the bubble.
-  Stream<StreamChunk> sendWhatsAppChatStream(String message,
-      {CancelToken? cancelToken}) async* {
+  Stream<StreamChunk> sendWhatsAppChatStream(
+    String message, {
+    CancelToken? cancelToken,
+  }) async* {
     try {
       final response = await _dio.post(
         '/api/whatsapp/chat-stream',
@@ -1637,41 +1784,41 @@ class MemoApiClient {
 
   /// Open a host room for the given GGUF path; returns the shareable room code.
   Future<String> swarmHostCreate(String modelPath) async {
-    final res = await _dio.post('/api/swarm/host/create', data: {
-      'model_path': modelPath,
-    });
+    final res = await _dio.post(
+      '/api/swarm/host/create',
+      data: {'model_path': modelPath},
+    );
     final data = _guard<Map<String, dynamic>>(res.data);
     return data['room_code'] as String? ?? '';
   }
 
   /// Remove a registered worker from the host room.
   Future<void> swarmHostRemoveWorker(String workerId) async {
-    await _dio.post('/api/swarm/host/workers/remove', data: {
-      'worker_id': workerId,
-    });
+    await _dio.post(
+      '/api/swarm/host/workers/remove',
+      data: {'worker_id': workerId},
+    );
   }
 
   /// Reorder workers (order maps positionally to --tensor-split).
   Future<void> swarmHostReorderWorkers(int fromIndex, int toIndex) async {
-    await _dio.post('/api/swarm/host/workers/reorder', data: {
-      'from_index': fromIndex,
-      'to_index': toIndex,
-    });
+    await _dio.post(
+      '/api/swarm/host/workers/reorder',
+      data: {'from_index': fromIndex, 'to_index': toIndex},
+    );
   }
 
   /// Set one worker's percentage share of the tensor split.
   Future<void> swarmHostSetShare(String workerId, double sharePercent) async {
-    await _dio.post('/api/swarm/host/workers/share', data: {
-      'worker_id': workerId,
-      'share_percent': sharePercent,
-    });
+    await _dio.post(
+      '/api/swarm/host/workers/share',
+      data: {'worker_id': workerId, 'share_percent': sharePercent},
+    );
   }
 
   /// Start the coordinator llama-server with --rpc to registered workers.
   Future<void> swarmHostStart({int ctxSize = 0}) async {
-    await _dio.post('/api/swarm/host/start', data: {
-      'ctx_size': ctxSize,
-    });
+    await _dio.post('/api/swarm/host/start', data: {'ctx_size': ctxSize});
   }
 
   /// Stop the coordinator llama-server without closing the room.
@@ -1704,10 +1851,10 @@ class MemoApiClient {
 
   /// Update proactive settings (enabled + level).
   Future<void> setProactiveSettings(bool enabled, String level) async {
-    await _dio.post('/api/proactive/settings', data: {
-      'enabled': enabled,
-      'level': level,
-    });
+    await _dio.post(
+      '/api/proactive/settings',
+      data: {'enabled': enabled, 'level': level},
+    );
   }
 
   /// List learned patterns.
@@ -1736,10 +1883,10 @@ class MemoApiClient {
 
   /// Respond to a pending suggestion (yes / no / stop).
   Future<void> respondToSuggestion(String id, String response) async {
-    await _dio.post('/api/proactive/respond', data: {
-      'id': id,
-      'response': response,
-    });
+    await _dio.post(
+      '/api/proactive/respond',
+      data: {'id': id, 'response': response},
+    );
   }
 
   // ─── Learning model routing ─────────────────────────────────────
@@ -1751,17 +1898,23 @@ class MemoApiClient {
   }
 
   /// Update learning settings (single model mode + model id).
-  Future<void> updateLearningSettings(bool singleModelEnabled, String modelId) async {
-    await _dio.put('/api/learning/settings', data: {
-      'single_model_enabled': singleModelEnabled,
-      'model_id': modelId,
-    });
+  Future<void> updateLearningSettings(
+    bool singleModelEnabled,
+    String modelId,
+  ) async {
+    await _dio.put(
+      '/api/learning/settings',
+      data: {'single_model_enabled': singleModelEnabled, 'model_id': modelId},
+    );
   }
 
   // ─── Calendar ───────────────────────────────────────────────────
 
   /// List calendar events in [from, to].
-  Future<List<Map<String, dynamic>>> getCalendarEvents({DateTime? from, DateTime? to}) async {
+  Future<List<Map<String, dynamic>>> getCalendarEvents({
+    DateTime? from,
+    DateTime? to,
+  }) async {
     final params = <String, String>{};
     if (from != null) params['from'] = from.toUtc().toIso8601String();
     if (to != null) params['to'] = to.toUtc().toIso8601String();
@@ -1773,12 +1926,19 @@ class MemoApiClient {
   }
 
   /// Add a manual calendar event.
-  Future<Map<String, dynamic>> addCalendarEvent(String title, DateTime startTime, String description) async {
-    final res = await _dio.post('/api/calendar/events', data: {
-      'title': title,
-      'start_time': startTime.toUtc().toIso8601String(),
-      'description': description,
-    });
+  Future<Map<String, dynamic>> addCalendarEvent(
+    String title,
+    DateTime startTime,
+    String description,
+  ) async {
+    final res = await _dio.post(
+      '/api/calendar/events',
+      data: {
+        'title': title,
+        'start_time': startTime.toUtc().toIso8601String(),
+        'description': description,
+      },
+    );
     return Map<String, dynamic>.from(_guard<Map>(res.data));
   }
 
@@ -1794,12 +1954,17 @@ class MemoApiClient {
   }
 
   /// Update calendar settings (reminder lead minutes + time-guess toggle).
-  Future<void> updateCalendarSettings(int reminderLeadMinutes,
-      {bool disableTimeGuess = false}) async {
-    await _dio.put('/api/calendar/settings', data: {
-      'reminder_lead_minutes': reminderLeadMinutes,
-      'disable_time_guess': disableTimeGuess,
-    });
+  Future<void> updateCalendarSettings(
+    int reminderLeadMinutes, {
+    bool disableTimeGuess = false,
+  }) async {
+    await _dio.put(
+      '/api/calendar/settings',
+      data: {
+        'reminder_lead_minutes': reminderLeadMinutes,
+        'disable_time_guess': disableTimeGuess,
+      },
+    );
   }
 
   // ─── Routines (scheduled automations) ────────────────────────────
@@ -1826,27 +1991,32 @@ class MemoApiClient {
     String whatsAppTargetJid = '',
     bool autoApproveTools = false,
   }) async {
-    final res = await _dio.post('/api/routines', data: {
-      'original_text': originalText,
-      'draft': draft,
-      'whatsapp_target_jid': whatsAppTargetJid,
-      'auto_approve_tools': autoApproveTools,
-      // Backend has no locale of its own — this is what lets it localize its
-      // own generated text (notification title, context fillers, system
-      // prompt) per routine (BUG-M1). See routine.Routine.Language.
-      'language': L10n.locale == MemoLocale.en ? 'en' : 'tr',
-      // Backend has no timezone of its own either — without this, "HH:MM"
-      // is interpreted in whatever timezone the backend host happens to be
-      // running in, not the user's (BUG-M4). See
-      // routine.Schedule.UTCOffsetMinutes's doc comment for why this is a
-      // fixed offset rather than a full IANA zone name.
-      'utc_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
-    });
+    final res = await _dio.post(
+      '/api/routines',
+      data: {
+        'original_text': originalText,
+        'draft': draft,
+        'whatsapp_target_jid': whatsAppTargetJid,
+        'auto_approve_tools': autoApproveTools,
+        // Backend has no locale of its own — this is what lets it localize its
+        // own generated text (notification title, context fillers, system
+        // prompt) per routine (BUG-M1). See routine.Routine.Language.
+        'language': L10n.locale == MemoLocale.en ? 'en' : 'tr',
+        // Backend has no timezone of its own either — without this, "HH:MM"
+        // is interpreted in whatever timezone the backend host happens to be
+        // running in, not the user's (BUG-M4). See
+        // routine.Schedule.UTCOffsetMinutes's doc comment for why this is a
+        // fixed offset rather than a full IANA zone name.
+        'utc_offset_minutes': DateTime.now().timeZoneOffset.inMinutes,
+      },
+    );
     return Map<String, dynamic>.from(_guard<Map>(res.data));
   }
 
   /// Update a routine (e.g. toggling enabled).
-  Future<Map<String, dynamic>> updateRoutine(Map<String, dynamic> routine) async {
+  Future<Map<String, dynamic>> updateRoutine(
+    Map<String, dynamic> routine,
+  ) async {
     final id = routine['id'] as String;
     final res = await _dio.put('/api/routines/$id', data: routine);
     return Map<String, dynamic>.from(_guard<Map>(res.data));
@@ -1929,12 +2099,14 @@ class MemoApiClient {
   }
 
   Future<TaskList> createTaskList(
-      String chatId, String title, List<String> items) async {
-    final res = await _dio.post('/api/tasklists', data: {
-      'chat_id': chatId,
-      'title': title,
-      'items': items,
-    });
+    String chatId,
+    String title,
+    List<String> items,
+  ) async {
+    final res = await _dio.post(
+      '/api/tasklists',
+      data: {'chat_id': chatId, 'title': title, 'items': items},
+    );
     return TaskList.fromJson(Map<String, dynamic>.from(_guard<Map>(res.data)));
   }
 

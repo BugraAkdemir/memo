@@ -1,3 +1,125 @@
+# Handoff — 2026-08-09 (Session 3, devam) — Adversarial CORS bulgusu düzeltildi + Faz 3: CLI genişletmesi (4 küçük commit)
+
+## Özet
+
+Faz 2 tamamlandıktan sonra kullanıcı, kendi yazdığım auth sistemini
+"profesyonel bir hacker gibi" saldırgan gözüyle incelememi istedi. Kod
+okuyarak (hayal etmeden) gerçek bir zincir buldum: `corsMiddleware`'in
+(Haziran'dan beri var, Faz 2'den önce) `strings.HasPrefix` ile origin
+kontrolü klasik bir CORS bypass'ıydı (`localhost.saldirgan.com` gibi bir
+subdomain prefix kontrolünü geçiyordu) — bu, Faz 2'de eklenen kimlik
+istemeyen `POST /api/auth/login` endpoint'iyle birleşince, bir saldırganın
+kurbanın tarayıcısını LAN'daki Memo'ya sızmak için relay olarak kullanmasına
+izin veriyordu (klasik "browser-as-LAN-pivot"). Kullanıcının onayıyla
+düzeltildi. Ardından **Faz 3**'e (CLI genişletmesi) geçildi: `memo config
+get/set`, `memo remote` (cihaz/auth-modu yönetimi), `memo service`
+(systemd), hepsi gerçek bir backend'e karşı canlı test edilerek.
+
+**Commit durumu:** 5 yeni commit, hepsi `main`'e yapıldı, **push edilmedi**
+(önceki oturumdaki 9 Faz 2 commit'i de dahil, toplam push bekleyen commit
+sayısı 15). Sırasıyla: `1920eed` (CORS fix), `ebfee95` (config get/set),
+`d098ff8` (remote CLI), `355ee96` (service CLI), `fbaac2e` (dispatch wiring
++ gerçek bir arg-parsing bug'ının düzeltilmesi).
+
+---
+
+## Yapılanlar
+
+### 1. CORS origin-validation bypass düzeltmesi (`1920eed`)
+
+`internal/webserver/server.go`'daki `corsMiddleware`, `Origin` header'ını
+`strings.HasPrefix(origin, "http://localhost")` gibi bir prefix kontrolüyle
+doğruluyordu — CWE-346 (Origin Validation Error), klasik bir CORS bypass
+deseni. `http://localhost.saldirgan.com` (saldırganın kendi domain'inin
+altında sıradan bir subdomain) bu kontrolü geçiyordu.
+
+**Neden Faz 2'yle birleşince ciddileşti:** Bu oturumda eklenen
+`POST /api/auth/login` kimlik istemiyor (`isRemoteLoginPath` ile
+`remoteAuthMiddleware`'den muaf — login yapabilmek için zaten öyle olması
+gerekiyor). `json.NewDecoder` Content-Type header'ına bakmadığı için
+saldırgan `Content-Type: text/plain` (CORS'un preflight istemediği "basit
+istek" tipi) kullanıp preflight'ı bile atlayabiliyordu. Sonuç: kurbanı
+`saldirgan-site.com`'a çekebilen bir internet saldırganı, kurbanın
+tarayıcısını kullanarak kurbanın **kendi LAN'ındaki** Memo'ya (saldırganın
+hiç erişemediği bir private IP) login denemeleri gönderip **cevabı
+okuyabiliyordu** (401 mi, 429 mu, yoksa session_token mı geldi) — LAN'a hiç
+girmeden, sadece bir link tıklattırarak.
+
+**Düzeltme:** `isLoopbackOrigin` — origin'i `net/url` ile parse edip
+`u.Hostname()`'i tam eşitlikle (`localhost`/`127.0.0.1`/`::1`) karşılaştırıyor,
+asla substring/prefix değil. Bypass deseninin her varyasyonunu kapsayan
+regresyon testleri eklendi (`localhost.attacker.com`, `127.0.0.1.attacker.com`,
+`[::1].attacker.com`, `https://localhost`, bozuk URL).
+
+### 2-5. Faz 3 — CLI genişletmesi
+
+`cli_flags.go`'daki mevcut standalone-flag deseninden farklı olarak, Go'nun
+`flag` paketi git-tarzı alt komutları (subcommand) bilmediği için `main.go`'da
+yeni bir `subcommandDispatch` map'i eklendi — `os.Args[1]`'i `flag.Parse()`'tan
+**önce** yakalıyor.
+
+| Komut | Dosya | Ne yapıyor |
+|---|---|---|
+| `memo config get/set <key> [value]` | `cli_config.go` | config.yaml'daki aynı nokta-ayraçlı anahtarlarla (`llama.port`), `yaml.v3` üzerinden generic map round-trip'i. `remote_access.*` bilinçli olarak engellendi (kendi komutları var). Backend'e ihtiyaç yok. |
+| `memo remote status/list-devices/add-device/revoke-device/set-mode/login` | `cli_remote.go` | Faz 2'nin REST uç noktalarının **ikinci istemcisi** — Settings UI'ın kullandığı aynı endpoint'ler. `--lan` ile başlayan backend'e karşı `--token`/`memo remote login` ile kimlik sağlanabiliyor. |
+| `memo service install/uninstall/status` | `cli_service.go` | `systemctl --user` (root gerekmiyor), unit dosyası `~/.config/systemd/user/memo.service`. Boot'ta oturumsuz başlama için `loginctl enable-linger` ayrı, elle adım (otomatik yapılmıyor — hesap genelinde bir ayar, sessizce yapılması sürpriz olurdu). |
+
+**`internal/replcli.Client`'a `SetToken`/`token` alanı eklendi** — X-Memo-Token
+header'ı olarak gönderiliyor, `--lan` modunda local isteklerin bile kimlik
+istemesi yüzünden gerekli oldu.
+
+**Gerçek bir bug, canlı testte yakalandı ve düzeltildi:** `memo remote
+add-device MyPhone --port 9090` (flag pozisyonel argümandan SONRA) sessizce
+başarısız oluyordu — Go'nun `flag` paketi ilk pozisyonel argümanda parse'ı
+durduruyor, sonrasındaki her şeyi (flag'ler dahil) `fs.Args()`'a düz metin
+olarak dolduruyor. `cli_args.go`'daki `splitFlagsAndPositional`, argümanları
+sıralarından bağımsız olarak flag/pozisyonel diye ikiye ayırıyor artık.
+Bu, **sadece birim testle değil, gerçek bir throwaway backend'e karşı canlı
+komut çalıştırılarak** bulundu — birim testler her ikisini de "doğru"
+gösteriyordu çünkü ayrı ayrı test edilmişlerdi, gerçek uçtan uca akış
+olmadan bu etkileşim gözden kaçmıştı.
+
+---
+
+## Doğrulama
+
+- Backend: her commit sonrası `go build -tags "sqlite_fts5" ./...`,
+  `go vet ./...`, `go test ./...` — hepsi yeşil.
+- **`memo remote` komutları gerçek, throwaway bir backend'e karşı uçtan uca
+  canlı test edildi** (`/tmp` altında geçici `MEMO_DATA_DIR` ile, gerçek dev
+  ortamına dokunulmadan): add-device → list-devices → set-mode password →
+  login → revoke-device, tam döngü, iki farklı argüman sıralamasıyla.
+- **`memo service`, gerçek bir install/uninstall döngüsüyle doğrulanmadı**
+  — bu makinede systemd var ama gerçekten çalıştırmak kalıcı bir autostart
+  girdisi kurardı, izinsiz yapılmadı. Sadece `service status` (salt-okunur,
+  zararsız) ve unit dosyası üretme mantığı (`buildUnitFile`, birim test)
+  doğrulandı.
+- CORS fix: yeni regresyon testleriyle (`TestCorsMiddleware_LoopbackOrigins`)
+  hem eski davranış hem her bypass varyasyonu kapsandı.
+
+---
+
+## Sıradaki Oturum İçin
+
+1. **Faz 3'ün tek açık maddesi: tünel yönetimi CLI'dan** (`internal/tunnel`
+   Tailscale + `internal/ngrok` açma/kapama/durum, şu an sadece GUI'den).
+2. **`memo service install/uninstall` gerçek bir cihazda (ya da bu makinede,
+   kullanıcı onayıyla) canlı doğrulanmalı** — `loginctl enable-linger`
+   adımı dahil.
+3. **Commit'ler hâlâ push edilmedi** (toplam 15 commit bekliyor — 9 Faz 2 +
+   1 CORS fix + 4 Faz 3 — henüz push onayı istenmedi/verilmedi, bu handoff
+   yazıldığı sırada henüz sorulmadı).
+4. Faz 2'den kalan açık maddeler hâlâ geçerli: TLS/self-signed sertifika,
+   mobile app parite denetimi, kullanıcının RPi'sinde gerçek sızma denemesi.
+5. Faz 1'in açık maddeleri de hâlâ geçerli (GHCR public yapma, RPi canlı
+   doğrulama).
+6. `/security-review`'ın kendi taradığı diff, sadece Faz 2 commit'lerini
+   kapsıyordu — Faz 3'ün CLI kodu ayrıca bir security-review'dan geçmedi
+   (daha düşük riskli görülüyor — çoğunlukla yerel dosya/REST istemcisi
+   kodu — ama resmi olarak taranmadı).
+
+---
+
 # Handoff — 2026-08-09 (Session 2) — Faz 2: Auth/Güvenlik mimarisi (backend + frontend, 9 küçük commit)
 
 ## Özet

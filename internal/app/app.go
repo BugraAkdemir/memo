@@ -33,6 +33,7 @@ import (
 	"memo/internal/orchestra"
 	"memo/internal/proactive"
 	"memo/internal/provider"
+	"memo/internal/remoteauth"
 	"memo/internal/routine"
 	"memo/internal/sessions"
 	"memo/internal/skill"
@@ -272,6 +273,21 @@ type App struct {
 	// Embedded binaries and version string passed in from main.
 	binaries embed.FS
 	version  string
+
+	// Remote-access auth (Faz 2, yapacam.md) — see remote_auth.go.
+	// remoteAuthLimiter guards password-login brute-forcing; sessionKey
+	// signs/validates the short-lived JWTs a successful password login
+	// issues. Both are process-lifetime singletons, lazily initialized on
+	// first use rather than in NewApp/Startup, since most installs never
+	// touch password auth at all (default AuthMode is "token").
+	remoteAuthMu      sync.Mutex
+	remoteAuthLimiter *remoteauth.Limiter
+	sessionKey        []byte
+	// remoteDevicesMu protects a.cfg.RemoteAccess.Devices specifically: it's
+	// mutated on every authenticated remote request (VerifyRemoteDeviceToken
+	// touches LastSeenAt), unlike the rest of a.cfg's RemoteAccess fields,
+	// which only change on rare, user-initiated admin actions.
+	remoteDevicesMu sync.Mutex
 }
 
 // NewApp creates a new App instance. The binaries embed.FS and version string

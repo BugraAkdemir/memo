@@ -87,6 +87,12 @@ func (a *App) ExportData(includeModels bool) ([]byte, error) {
 	// was, so importing this backup anywhere but the exact machine that made
 	// it already broke every configured provider.
 	addFile("data/machine.key", config.DataPath("machine.key"))
+	// session.key signs remote-access password-login session tokens (see
+	// remote_auth.go's sessionSigningKey) — not strictly required (a missing
+	// key is just regenerated, invalidating any outstanding 12h sessions,
+	// which is a mild inconvenience, not data loss), but harmless to carry
+	// over so a restore doesn't needlessly log every paired device out.
+	addFile("data/session.key", config.DataPath("session.key"))
 	addFile("data/memory/", config.DataPath("memory"))
 	addFile("data/whatsapp/", config.DataPath("whatsapp"))
 	addFile("data/mood/", config.DataPath("mood"))

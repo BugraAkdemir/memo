@@ -59,6 +59,7 @@ Full list: `versinNote/v3.3.3.md`
 - [[External Providers]] — 8 provider types + fallback chain
 - [[Developer API Gateway]] — Point Claude Code (or anything Anthropic-compatible) at Memo
 - [[Memo Swarm]] — Multi-PC large models (Beta)
+- [[Remote Access & Self-Hosting]] — Run just the server on a Pi/home server, four auth modes, SSH-only management
 - [[Cloud Sync]] — E2E encrypted Google Drive backup
 - [[API Documentation]] — 160+ REST endpoints
 - [[Developer Setup Guide]] — Build from source

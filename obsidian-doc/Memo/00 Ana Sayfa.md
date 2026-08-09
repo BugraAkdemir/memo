@@ -92,6 +92,7 @@ Taslak: `versinNote/tr/v3.3.4.md`
 - [[Harici Sağlayıcılar]] — 8 sağlayıcı tipi + yedek zincir
 - [[Geliştirici API Ağ Geçidi]] — Claude Code'u (ya da Anthropic-uyumlu herhangi bir aracı) Memo'ya bağla
 - [[Memo Swarm]] — Birkaç PC ile büyük model (Beta)
+- [[Uzaktan Erişim ve Self-Hosting]] — Sadece sunucuyu bir Pi/ev sunucusuna kur, dört auth modu, tamamen SSH üzerinden yönetim
 - [[Bulut Senkronizasyonu]] — Uçtan uca şifreli Google Drive yedekleme
 - [[API Dokümantasyonu]] — ~90 REST endpoint'inin tamamı
 - [[Geliştirici Kurulum Rehberi]] — Kaynaktan derleme

@@ -856,6 +856,27 @@ func (s *Server) handleFileMentions(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string][]string{"files": s.fullBridge.ListProjectFiles(root, query)})
 }
 
+// handleFileBrowse implements GET /api/files/browse?path=... — the backend
+// half of the in-app server-side file browser (Faz 5.1 follow-up, see
+// App.BrowseServerPath's doc comment). Lists path's immediate children;
+// path="" starts at the server's home directory.
+func (s *Server) handleFileBrowse(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodGet {
+		http.Error(w, "GET only", http.StatusMethodNotAllowed)
+		return
+	}
+	result, err := s.fullBridge.BrowseServerPath(r.URL.Query().Get("path"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, result)
+}
+
 // handleCLICommands serves the slash commands a CLI-backed chat can use, for
 // the composer's "/" dropdown. chat_id is optional — without it only
 // user-level and built-in commands are found, since project-level ones live

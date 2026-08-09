@@ -16,6 +16,7 @@ import '../widgets/chat_input.dart';
 import '../widgets/provider_config_dialog.dart';
 import '../widgets/welcome_view.dart';
 import '../widgets/backend_unreachable_view.dart';
+import '../widgets/server_file_browser_dialog.dart';
 import '../providers/agent_provider.dart';
 import '../core/friendly_error.dart';
 
@@ -540,9 +541,7 @@ class _QuickModelDropdown extends ConsumerWidget {
     );
     if (proceed != true || !context.mounted) return;
 
-    final dir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: L10n.t('cli_pick_workdir_title'),
-    );
+    final dir = await showServerFileBrowserDialog(context, mode: ServerBrowseMode.directory);
     if (dir == null) return;
     try {
       await api.setChatCLIWorkdir(chatId, dir);

@@ -70,6 +70,7 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"DevGatewayModels", http.MethodGet, "/api/dev-gateway/models", s.handleDevGatewayModels, http.StatusMethodNotAllowed},
 		{"AnthropicMessages", http.MethodPost, "/v1/messages", s.handleAnthropicMessages, http.StatusServiceUnavailable},
 		{"DevGatewayLogs", http.MethodGet, "/api/dev-gateway/logs", s.handleDevGatewayLogs, http.StatusMethodNotAllowed},
+		{"FileBrowse", http.MethodGet, "/api/files/browse", s.handleFileBrowse, http.StatusNotImplemented},
 	}
 
 	for _, tt := range tests {

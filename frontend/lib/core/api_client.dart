@@ -12,6 +12,7 @@ import '../models/local_model.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
+import '../models/server_browse_entry.dart';
 import '../models/dev_gateway.dart';
 import '../models/swarm.dart';
 import '../models/task_list.dart';
@@ -318,6 +319,23 @@ class MemoApiClient {
     );
     final files = res.data['files'];
     return files is List ? files.cast<String>() : const [];
+  }
+
+  /// Lists path's immediate children on the *backend's* own filesystem —
+  /// path="" starts at the server's home directory. This is deliberately
+  /// separate from any native OS file picker: a native picker only ever
+  /// sees the connecting client's own disk, which is wrong the moment the
+  /// backend is a remote self-hosted server rather than this same
+  /// machine (see ServerFileBrowserDialog's doc comment for the full
+  /// story). Every "pick a folder/file" control in this app should use
+  /// that dialog, not FilePicker.platform, so it always resolves against
+  /// whichever backend is actually connected.
+  Future<ServerBrowseResult> browseServer(String path) async {
+    final res = await _dio.get(
+      '/api/files/browse',
+      queryParameters: {'path': path},
+    );
+    return ServerBrowseResult.fromJson(_guard<Map<String, dynamic>>(res.data));
   }
 
   /// Slash commands a CLI-backed chat can run — the CLI's own custom

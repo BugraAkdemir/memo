@@ -168,6 +168,13 @@ type FullBridge interface {
 	CreateAccount(username, password, role string) error
 	DeleteAccount(id string) error
 
+	// Server-side file browser (Faz 5.1 follow-up) — lets the Flutter
+	// client browse the *backend's* filesystem instead of its own
+	// OS-native file_picker, which only ever sees the connecting client's
+	// own disk. See App.BrowseServerPath's doc comment for why that's
+	// silently wrong against a remote self-hosted backend.
+	BrowseServerPath(path string) (interface{}, error)
+
 	// Dev gateway (Settings > Developer): local OpenAI/Anthropic-compatible
 	// API surface that routes to whichever model/provider is configured.
 	GetDevGatewayConfig() (requireAPIKey, useMemory bool)

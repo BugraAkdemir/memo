@@ -1176,6 +1176,16 @@ class L10n {
         'Eşleşen dosya yok (ya da bu sohbet için bir proje klasörü seçilmedi)',
     'action_badge': 'eylem',
 
+    // Server file browser (Faz 5.1 follow-up) — sunucunun kendi dosya
+    // sisteminde gezinme, uzak backend'lerde native dosya seçicinin yanlış
+    // (client'ın kendi) klasörlerini göstermesi sorununu çözüyor.
+    'server_browse_title': 'Sunucuda gözat',
+    'server_browse_select_folder': 'Bu klasörü seç',
+    'server_browse_empty': 'Bu klasör boş',
+    'server_browse_load_error': 'Klasör okunamadı: \${e}',
+    'server_browse_tap_file_hint': 'Seçmek için bir dosyaya dokun',
+    'server_browse_up_tooltip': 'Üst klasöre git',
+
     // Version
     'version': 'Versiyon',
 
@@ -2836,6 +2846,16 @@ class L10n {
     'file_mention_none':
         'No matching files (or no project folder set for this chat)',
     'action_badge': 'action',
+
+    // Server file browser (Faz 5.1 follow-up) — browses the backend's own
+    // filesystem, fixing a remote-backend bug where the native file
+    // picker showed the connecting client's folders instead.
+    'server_browse_title': 'Browse server',
+    'server_browse_select_folder': 'Select this folder',
+    'server_browse_empty': 'This folder is empty',
+    'server_browse_load_error': 'Could not read folder: \${e}',
+    'server_browse_tap_file_hint': 'Tap a file to select it',
+    'server_browse_up_tooltip': 'Go up one folder',
 
     'version': 'Version',
 

@@ -1,4 +1,3 @@
-import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:path/path.dart' as p;
@@ -9,6 +8,7 @@ import '../../models/local_model.dart';
 import '../../providers/chat_provider.dart';
 import '../../providers/models_provider.dart';
 import '../../widgets/model_config_dialog.dart';
+import '../../widgets/server_file_browser_dialog.dart';
 import '../../core/friendly_error.dart';
 
 // ─── My Models tab (unchanged design) ────────────────────────────
@@ -65,11 +65,11 @@ class MyModelsTab extends ConsumerWidget {
 
   Future<void> _import(BuildContext context, WidgetRef ref) async {
     final messenger = ScaffoldMessenger.of(context);
-    final result = await FilePicker.platform.pickFiles(type: FileType.any);
-    if (result == null || result.files.single.path == null) return;
+    final path = await showServerFileBrowserDialog(context, mode: ServerBrowseMode.file);
+    if (path == null) return;
     messenger.showSnackBar(SnackBar(content: Text(L10n.t('importing_model'))));
     try {
-      await ref.read(apiClientProvider).importModel(result.files.single.path!);
+      await ref.read(apiClientProvider).importModel(path);
       ref.invalidate(localModelsProvider);
       messenger
           .showSnackBar(SnackBar(content: Text(L10n.t('import_success'))));

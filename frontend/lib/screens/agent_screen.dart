@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:file_picker/file_picker.dart';
 import 'package:path/path.dart' as p;
 
 import '../core/l10n.dart';
@@ -10,6 +9,7 @@ import '../providers/chat_provider.dart';
 import '../providers/agent_provider.dart';
 import '../widgets/chat_message_list.dart';
 import '../widgets/chat_input.dart';
+import '../widgets/server_file_browser_dialog.dart';
 import 'tasks_screen.dart';
 import '../core/friendly_error.dart';
 
@@ -51,8 +51,9 @@ class _AgentSidebar extends ConsumerWidget {
                 icon: Icons.add,
                 label: L10n.t('agent_new_chat'),
                   onTap: () async {
-                    final result = await FilePicker.platform.getDirectoryPath(
-                      dialogTitle: L10n.t('agent_select_project'),
+                    final result = await showServerFileBrowserDialog(
+                      context,
+                      mode: ServerBrowseMode.directory,
                     );
                     if (result == null) return;
                     try {
@@ -215,7 +216,7 @@ class _AgentContent extends ConsumerWidget {
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: () async {
-                  final result = await FilePicker.platform.getDirectoryPath(dialogTitle: L10n.t('agent_select_project'));
+                  final result = await showServerFileBrowserDialog(context, mode: ServerBrowseMode.directory);
                   if (result == null) return;
                   try {
                     final api = ref.read(apiClientProvider);

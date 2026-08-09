@@ -57,6 +57,7 @@ type swarmStubBridge struct {
 	listAccounts       func() interface{}
 	createAccount      func(username, password, role string) error
 	deleteAccount      func(id string) error
+	browseServerPath   func(path string) (interface{}, error)
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -316,6 +317,12 @@ func (b *swarmStubBridge) DeleteAccount(id string) error {
 		return b.deleteAccount(id)
 	}
 	return nil
+}
+func (b *swarmStubBridge) BrowseServerPath(path string) (interface{}, error) {
+	if b.browseServerPath != nil {
+		return b.browseServerPath(path)
+	}
+	return nil, nil
 }
 func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool)                       { return false, false }
 func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool) error { return nil }

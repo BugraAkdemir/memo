@@ -1,3 +1,150 @@
+# Handoff — 2026-08-09 (Session 5, devam) — scripts/ reorganizasyonu, canlı RPi kurulumunda bulunan token-bootstrap bug'ı, Faz 5 planlaması (yapacam.md yeniden yazıldı)
+
+## Özet
+
+Faz 4 sonrası kullanıcı kendi Raspberry Pi'sinde gerçek ilk canlı kurulumu
+başlattı (`get-memo-server-beta.sh`) — bu, önceki oturumlarda üretilen kodun
+**ilk gerçek cihaz testi**. Bu süreçte üç ayrı iş yapıldı: (1) root'taki
+dağınık script'ler `scripts/`'e toplandı, (2) kullanıcıyı canlı kuruluma
+yönlendirirken kendi yazdığım installer'daki gerçek bir bug (`--lan` +
+systemd kombinasyonunda token'ın nasıl alınacağı) bulunup düzeltildi, (3)
+kullanıcı "self-hosted deneyimi Memo'nun 'PC kullanmayan biri de
+kullanabilsin' felsefesine daha çok uymalı" diyerek yeni bir büyük özellik
+istedi (çoklu hesap + admin/user rolleri + web'den kurulum sihirbazı) — bu,
+soru-cevapla planlandı, `yapacam.md` bu plana göre baştan yazıldı (Faz 1-4
+özetlendi, yeni Faz 5 eklendi). **Faz 5'in kodu henüz yazılmadı, sadece
+planlandı.**
+
+**Commit durumu:** `1fbaec6`'ya kadar (bir önceki handoff'tan sonraki tüm
+commit'ler) `main`'de, **push edilmedi**. Kullanıcının kendi attığı iki
+commit de araya girdi (`18cb838` "E" — kendi Obsidian not dosyaları,
+`76d9be3` "test delete" — `scripts/`'e kendi eklediği iki Python dosyasını
+silmesi, ikisi de benim işim değil, sadece bilgi için). `yapacam.md`
+gitignore'da, bu handoff onun tek repo-içi izi.
+
+---
+
+## Yapılanlar
+
+### 1. `scripts/` reorganizasyonu (`24d3951`)
+
+Root'ta 20 tane `.sh`/`.ps1`/`.bat` dosyası vardı, kullanıcı "kalabalık"
+dedi. Hepsi `git mv` ile `scripts/`'e taşındı (geçmiş korundu, %100 rename).
+Taşımadan önce doğrulandı: hiçbir script kendi dosya konumuna göre `cd`
+yapmıyor (hepsi repo kökünden çalıştırılmayı varsayıyor — `dirname
+"${BASH_SOURCE[0]}"` kullanan 4 script'te bile bu pattern sadece bir
+heredoc'un İÇİNDE, üretilen BAŞKA bir dosyanın (paketlenmiş `run_memo.sh`)
+kendi mantığı, taşınan script'in kendisiyle ilgisi yok) ve hiçbir CI
+workflow'u bu script'leri doğrudan çağırmıyor (hepsi inline build yapıyor).
+Yani saf bir dosya taşıma — hiçbir mantık değişmedi. Tüm aktif dokümanlardaki
+(`README.md`/`READmeTR.md`, `AGENTS.md`, `docs/*.md`, iki obsidian vault,
+`skills/memo-project/SKILL.md`) `./script.sh` referansları `./scripts/
+script.sh`'e güncellendi. `installer.iss` bilinçli olarak taşınmadı
+(`build-windows.yml` onu sabit bir bağıl yoldan çağırıyor). Yeni
+`scripts/README.md` her script'i kategorize edip ne işe yaradığını/nasıl
+çalıştırılacağını anlatıyor.
+
+### 2. Kullanıcının canlı kurulumu sırasında bulunan gerçek bug (`1fbaec6`)
+
+Kullanıcı "kurulum bitince ne yapacağım, şifreyi/token'ı nasıl alacağım"
+diye sorunca akışı satır satır izlerken kendi yazdığım installer'daki
+mesajın **yanlış** olduğunu fark ettim: `get-memo-server(-beta).sh`,
+`memo service install --lan` sonrası "token'ı görmek için `memo remote
+status` çalıştır" diyordu. Ama `remoteAuthOK` (`internal/webserver/
+server.go`) sadece **dinleyicinin bağlandığı adrese** bakıyor, isteğin
+nereden geldiğine değil — yani `--lan` ile 0.0.0.0'a bağlanınca, sunucunun
+kendisinde SSH'la çalıştırılan `memo remote status` bile kimlik istiyor.
+Kurulumdan hemen sonra bu komutu çalıştırmak **401** ile sonuçlanır, token
+hiç gösterilmez — döngüsel bir bootstrap sorunu.
+
+**Düzeltme:** Token sadece backend'in kendi process log'una yazılıyor
+(`main.go`'nun `--lan` başlangıç log satırı) — `memo service install`
+altında bu, systemd journal'ına gidiyor. Her iki installer script'inin
+mesajı `journalctl --user -u memo.service --no-pager | grep -i token`'a
+yönlendirecek şekilde düzeltildi. Ayrıca `cli_remote.go`'ya
+`hintIfUnauthorized` eklendi — `memo remote` komutlarından biri 401 alırsa
+otomatik olarak aynı ipucunu basıyor, böylece bu sadece kurulum çıktısını
+okuyanlar değil, sonradan aynı duvara çarpan herkes için de keşfedilebilir.
+`docs/SELF_HOSTED.md` (+tr) ve iki obsidian sayfasına da bu "bootstrap
+sorunu" bir uyarı kutusu olarak eklendi. Yeni birim testler
+(`TestHintIfUnauthorized_*`, stderr'i yakalayan bir yardımcıyla).
+
+### 3. Faz 5 planlaması: çoklu hesap + roller + web kurulum sihirbazı
+
+Kullanıcının isteği: curl kurulumu bitince kullanıcıya bir URL verilsin,
+tarayıcıdan `frontend/`'in mevcut `setup_wizard_view.dart`'ına benzer ama
+farklı olarak bir **hesap/rol** adımı olan bir sihirbaz açılsın — kullanıcı
+adı+şifre / +token / sadece token seçilebilsin, birden fazla hesap
+(user1, user2...) açılabilsin, ilk hesap otomatik **admin** olsun.
+
+Kod okunarak doğrulandı (`codebase-memory` ile): `internal/memory.NewStore`/
+`SaveInteraction`, `internal/sessions`, `internal/calendar`, gözlemci/
+proaktif motor — **hiçbiri** kullanıcı ID'si almıyor, tek/global/tek-kişilik
+bir veri modeli. Bu, "her hesabın kendi hafızası" ile "hesaplar hafızayı
+paylaşır" arasındaki farkın küçük bir seçenek değil, günler süren bir
+mimari yeniden yazım farkı olduğu anlamına geliyor. Bu gerçek, kullanıcıya
+`AskUserQuestion` ile üç soru sorularak netleştirildi:
+
+1. **Veri izolasyonu:** Kullanıcı "ikisini de istiyorum, kullanıcı seçsin"
+   dedi — ama bunun iki çok farklı büyüklükte iş olduğu açıklanınca,
+   **fazlara bölünmesi** üzerinde anlaşıldı (aşağıya bak).
+2. **Sihirbazın yeri:** Minimal web UI (`internal/webserver/webui/`),
+   kurulum sonrası ilk açılış — Nextcloud/Home Assistant tarzı "ilk açılış
+   = kurulum sihirbazı" deseni.
+3. **Rol sınırı:** Normal kullanıcı sohbet/ajan/hafıza/takvim — her şeyi
+   tam kullanır; sadece güvenlik/sunucu ayarlarına (auth modu, hesap/cihaz
+   yönetimi, config, servis restart) dokunamaz.
+
+**Sonuç — `yapacam.md` baştan yazıldı:**
+- Faz 1-4, ayrıntılı bullet'lardan kısa özetlere indirildi (tam detay zaten
+  commit mesajlarında ve önceki handoff girdilerinde duruyor).
+- **Faz 5.1** (şimdi planlanan, henüz kod yazılmadı): paylaşılan hafıza +
+  admin/user rolü + web'den bootstrap sihirbazı. Taslak iş listesi ve açık
+  kararlar (hesap verisi `Devices`'ın yerini mi alacak, sihirbaz Flutter'da
+  da gösterilecek mi) `yapacam.md`'de.
+- **Faz 5.2** (ayrı, büyük, sonraki bir oturum): gerçek kullanıcı-bazlı
+  hafıza izolasyonu — bilinçli olarak 5.1'den ayrıldı, 5.1'in arayüzünde bu
+  seçenek için sahte/yarım bir switch konulmayacak.
+
+---
+
+## Doğrulama
+
+- `scripts/` taşıması: her script `bash -n` ile syntax kontrol edildi,
+  `get-memo-server.sh` yeni konumundan sahte arşivle uçtan uca tekrar test
+  edildi (regresyon yok).
+- Token-bootstrap fix: `go build`/`go vet`/`go test` (tüm repo) yeşil, yeni
+  `hintIfUnauthorized` testleri geçti.
+- Faz 5: **hiçbir kod yazılmadı**, sadece plan. Kullanıcının kendi
+  Raspberry Pi'sindeki canlı kurulumu bu handoff yazıldığı sırada hâlâ
+  devam ediyor (`get-memo-server-beta.sh` çalıştırıldı, sonucu henüz
+  bilinmiyor).
+
+---
+
+## Sıradaki Oturum İçin
+
+1. **Kullanıcının RPi kurulumunun sonucu bekleniyor** — başarılı mı, hangi
+   hatalar çıktı, journalctl'den token gerçekten okunabildi mi.
+2. **Kullanıcı bir tunnel (Tailscale Funnel/ngrok) açınca canlı bir
+   pentest yapılacak** — bu ortamdan sadece internetten erişilebilir bir
+   adrese ulaşılabiliyor, LAN IP'sine değil. Kapsam: kimlik olmadan hiçbir
+   şey sızmıyor mu (auth gate), sonra kimlikli tarafta mantık hatası var
+   mı.
+3. **Kullanıcı R2'ye kendi elleriyle yükleyecek** (`get-memo-server.sh`,
+   `get-memo-server-beta.sh`, ve `scripts/` taşımasından sonra güncellenmiş
+   diğer script'ler) — CI'nın bunu yapmadığı zaten önceki bir handoff'ta
+   not edilmişti.
+4. **Faz 5.1'in gerçek implementasyonu henüz başlamadı** — `yapacam.md`'deki
+   açık kararlar (hesap verisi nerede yaşayacak, sihirbaz Flutter'a da mı
+   gelecek) implementasyon oturumu başlarken netleştirilmeli.
+5. Faz 1-4'ün kendi açık maddeleri (RPi canlı doğrulama, GHCR public yapma,
+   TLS, tünel CLI'dan yönetim, tam feature-parity QA turu) hâlâ geçerli,
+   `yapacam.md`'nin özet bölümünde tekrar listelendi.
+6. **Commit'ler push edilmedi** — kullanıcı onayı bekliyor.
+
+---
+
 # Handoff — 2026-08-09 (Session 4, devam) — Faz 4 başladı: mobil'de gerçek bir çökme bug'ı bulunup düzeltildi + minimal web UI'a acil durum paneli (2 commit)
 
 ## Özet

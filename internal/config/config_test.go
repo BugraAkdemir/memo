@@ -1,6 +1,8 @@
 package config
 
 import (
+	"bytes"
+	"memo/internal/remoteauth"
 	"os"
 	"path/filepath"
 	"testing"
@@ -335,5 +337,88 @@ func TestRebaseDataPath(t *testing.T) {
 	abs := filepath.Join(t.TempDir(), "data", "models")
 	if got := rebaseDataPath(abs); got != abs {
 		t.Errorf("rebaseDataPath(%q) = %q, want unchanged", abs, got)
+	}
+}
+
+func TestDefault_AuthModeDefaultsToToken(t *testing.T) {
+	cfg := Default()
+	if cfg.RemoteAccess.AuthMode != "token" {
+		t.Errorf("AuthMode = %q, want %q", cfg.RemoteAccess.AuthMode, "token")
+	}
+}
+
+func TestValidate_DefaultsEmptyAuthModeToToken(t *testing.T) {
+	cfg := Default()
+	cfg.RemoteAccess.AuthMode = "" // simulate a pre-Faz-2 config with no auth_mode key at all
+	fixes := cfg.validate()
+	if cfg.RemoteAccess.AuthMode != "token" {
+		t.Errorf("AuthMode = %q, want %q", cfg.RemoteAccess.AuthMode, "token")
+	}
+	found := false
+	for _, f := range fixes {
+		if f == "RemoteAccess.AuthMode" {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("expected validate() to report RemoteAccess.AuthMode as fixed, got %v", fixes)
+	}
+}
+
+// TestLoad_MigratesLegacyPlaintextToken is the core Faz 2 backward-compat
+// guarantee: an existing user's pre-upgrade config.yaml (plaintext token,
+// no devices list) must silently migrate to a hashed device record on
+// load, with the plaintext never touching disk again — no manual action,
+// no re-pairing required, same token value still works.
+func TestLoad_MigratesLegacyPlaintextToken(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	const legacyToken = "memo-aaaaaaaaaaaaaaaaaaaaaaaa"
+	yamlContent := "remote_access:\n  enabled: true\n  port: 8090\n  token: \"" + legacyToken + "\"\n"
+	if err := os.WriteFile(path, []byte(yamlContent), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if cfg.RemoteAccess.Token != "" {
+		t.Errorf("expected plaintext Token to be cleared after migration, got %q", cfg.RemoteAccess.Token)
+	}
+	if len(cfg.RemoteAccess.Devices) != 1 {
+		t.Fatalf("expected exactly one migrated device, got %d", len(cfg.RemoteAccess.Devices))
+	}
+	dev := cfg.RemoteAccess.Devices[0]
+	if dev.Name != "Legacy" {
+		t.Errorf("migrated device Name = %q, want %q", dev.Name, "Legacy")
+	}
+	if !remoteauth.VerifyTokenHash(dev.TokenHash, legacyToken) {
+		t.Error("expected migrated device's hash to verify against the original legacy token")
+	}
+
+	// Re-read the file from disk directly (not through Load's in-memory
+	// cfg) to confirm the plaintext was actually rewritten, not just
+	// scrubbed from the returned struct.
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bytes.Contains(raw, []byte(legacyToken)) {
+		t.Error("expected the persisted config.yaml to no longer contain the plaintext legacy token")
+	}
+}
+
+func TestLoad_NoMigrationWhenNoLegacyToken(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load() error = %v", err)
+	}
+	if len(cfg.RemoteAccess.Devices) != 0 {
+		t.Errorf("expected no devices on a fresh config, got %d", len(cfg.RemoteAccess.Devices))
 	}
 }

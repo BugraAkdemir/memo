@@ -4,11 +4,13 @@ import (
 	"fmt"
 	"memo/internal/fileutil"
 	"memo/internal/logx"
+	"memo/internal/remoteauth"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"sync"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -208,7 +210,6 @@ type DevGatewayConfig struct {
 type RemoteAccessConfig struct {
 	Enabled        bool   `yaml:"enabled" json:"enabled"`
 	Port           int    `yaml:"port" json:"port"`
-	Token          string `yaml:"token" json:"token"`
 	NgrokMode      bool   `yaml:"ngrok_mode" json:"ngrok_mode"`
 	NgrokToken     string `yaml:"ngrok_token" json:"ngrok_token"`
 	NgrokAutoStart bool   `yaml:"ngrok_auto_start" json:"ngrok_auto_start"`
@@ -228,6 +229,44 @@ type RemoteAccessConfig struct {
 	// launch too, since tsnet can reauthenticate silently from the node
 	// identity already persisted in StateDir without a fresh browser login.
 	TailscaleConnectedOnce bool `yaml:"tailscale_connected_once" json:"tailscale_connected_once"`
+
+	// AuthMode selects how a request against a 0.0.0.0-bound listener must
+	// authenticate (see internal/webserver's remoteAuthOK):
+	//   "none"           — no credential required at all (must still be
+	//                      surfaced as a loud warning wherever this mode is
+	//                      shown — see warnAuthDisabled)
+	//   "token"          — a registered device token only (legacy behavior)
+	//   "password"       — Username+PasswordHash login, session token only
+	//   "token_password" — either a device token OR a valid session token
+	//                      (OR logic — whichever the connecting client has)
+	AuthMode string `yaml:"auth_mode" json:"auth_mode"`
+	// Username/PasswordHash back "password"/"token_password" modes. There is
+	// deliberately no multi-user model here (see yapacam.md Faz 2): this is
+	// one person's own choice of how to authenticate to their own server,
+	// not separate accounts with separate data. PasswordHash is always an
+	// argon2id-encoded hash (internal/remoteauth.HashPassword) — the plain
+	// password itself is never persisted anywhere.
+	Username     string `yaml:"username" json:"username"`
+	PasswordHash string `yaml:"password_hash" json:"-"`
+	// Devices replaces the single shared Token below with one hashed record
+	// per paired device/client, so one device's access can be revoked
+	// without rotating every other device's credential. Token is kept only
+	// so an existing pre-Faz-2 config.yaml still parses; Load() migrates any
+	// plaintext value found there into a Device record and blanks it — see
+	// migrateLegacyRemoteToken.
+	Devices []RemoteDevice `yaml:"devices" json:"-"`
+	Token   string         `yaml:"token" json:"-"`
+}
+
+// RemoteDevice is one paired client's access record. Only TokenHash is ever
+// persisted for the credential itself — the plaintext token is shown to the
+// user exactly once, at the moment it's generated, and never again.
+type RemoteDevice struct {
+	ID         string    `yaml:"id" json:"id"`
+	Name       string    `yaml:"name" json:"name"`
+	TokenHash  string    `yaml:"token_hash" json:"-"`
+	CreatedAt  time.Time `yaml:"created_at" json:"created_at"`
+	LastSeenAt time.Time `yaml:"last_seen_at,omitempty" json:"last_seen_at,omitempty"`
 }
 
 type APIConfig struct {
@@ -426,9 +465,10 @@ func Default() *AppConfig {
 			AutoFactExtraction: true,
 		},
 		RemoteAccess: RemoteAccessConfig{
-			Enabled: false,
-			Port:    8090,
-			Token:   "",
+			Enabled:  false,
+			Port:     8090,
+			Token:    "",
+			AuthMode: "token",
 		},
 		DevGateway: DevGatewayConfig{
 			RequireAPIKey: false,
@@ -545,14 +585,41 @@ func Load(path string) (*AppConfig, error) {
 	if fixes := cfg.validate(); len(fixes) > 0 {
 		logx.Printf("config: applied defaults for: %v", fixes)
 	}
-	if seeded {
-		// Persist the seeded config to its writable home so later runs read it directly.
+	migrated := migrateLegacyRemoteToken(cfg)
+	if seeded || migrated {
+		// Persist the seeded/migrated config to its writable home so later
+		// runs read it directly (and, for migration, so the plaintext token
+		// this replaced never touches disk again after this one rewrite).
 		if saveErr := saveToFile(cfg, path); saveErr != nil {
-			logx.Printf("config: failed to persist seeded config: %v", saveErr)
+			logx.Printf("config: failed to persist seeded/migrated config: %v", saveErr)
 		}
 	}
 	instance = cfg
 	return cfg, nil
+}
+
+// migrateLegacyRemoteToken moves a pre-Faz-2 plaintext RemoteAccess.Token
+// into a hashed RemoteDevice record and blanks the plaintext field, so an
+// existing user's config.yaml never has to be touched by hand and no
+// existing paired client loses access — the same secret value still
+// authenticates, just checked against its hash instead of compared as
+// plaintext. Deliberately only called from Load() (once per process
+// start), never from validate() (which Save() also runs): validate() runs
+// on every save, including the one immediately after generating a *new*
+// token, and would otherwise migrate-and-blank a token before it was ever
+// used.
+func migrateLegacyRemoteToken(cfg *AppConfig) bool {
+	if cfg.RemoteAccess.Token == "" {
+		return false
+	}
+	cfg.RemoteAccess.Devices = append(cfg.RemoteAccess.Devices, RemoteDevice{
+		ID:        remoteauth.GenerateDeviceID(),
+		Name:      "Legacy",
+		TokenHash: remoteauth.HashToken(cfg.RemoteAccess.Token),
+		CreatedAt: time.Now(),
+	})
+	cfg.RemoteAccess.Token = ""
+	return true
 }
 
 func Get() *AppConfig {
@@ -633,6 +700,15 @@ func (c *AppConfig) validate() []string {
 	if c.RemoteAccess.TailscaleHostname == "" {
 		c.RemoteAccess.TailscaleHostname = "memo"
 		fixes = append(fixes, "RemoteAccess.TailscaleHostname")
+	}
+	if c.RemoteAccess.AuthMode == "" {
+		// Pre-Faz-2 configs (and any RemoteAccess block that predates
+		// AuthMode entirely) implicitly relied on the single shared token —
+		// defaulting to "token" here preserves exactly that behavior rather
+		// than silently falling back to "none" (would deauthenticate every
+		// remote client) or "password" (no username/password exists yet).
+		c.RemoteAccess.AuthMode = "token"
+		fixes = append(fixes, "RemoteAccess.AuthMode")
 	}
 	if c.RemoteAccess.TunnelMode == "" {
 		// Preserve legacy behaviour: if ngrok was on, default to ngrok mode.

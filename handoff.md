@@ -1,3 +1,116 @@
+# Handoff — 2026-08-09 (Session 4, devam) — Faz 4 başladı: mobil'de gerçek bir çökme bug'ı bulunup düzeltildi + minimal web UI'a acil durum paneli (2 commit)
+
+## Özet
+
+CORS düzeltmesi + Faz 3'ten sonra kullanıcı commit'leri push etmemi ve
+Faz 4'e geçmemi istedi. Push yapıldı (`git push origin main` — hem
+`github.com` hem `web.bugradev.com` mirror'ına, `ba3a0e9..b9fb7d4`).
+Faz 4'ün iki somut, kod-okumayla yapılabilir maddesi ele alındı; asıl
+büyük madde ("her ekran/özellik remote'a karşı canlı denensin") bilinçli
+olarak bu oturumun kapsamı dışında bırakıldı (gerekçe aşağıda).
+
+**Commit durumu:** 2 yeni commit, `main`'e yapıldı, **push edilmedi**
+(kullanıcı onayı bekliyor, önceki 15 commit push edilmişti). Sırasıyla:
+`aea875a` (mobil çökme fix'i), `687466d` (web UI acil durum paneli).
+
+---
+
+## Yapılanlar
+
+### 1. Mobil'de gerçek, tekrarlanabilir bir çökme bug'ı bulundu ve düzeltildi (`aea875a`)
+
+yapacam.md Faz 4, "mobilin `connection_provider.dart`'ı masaüstündeki
+şema-yoksa-çökme fix'ine sahip mi, denetlenmedi" diye bir soru işareti
+bırakmıştı. Kod okunarak kontrol edildi — **gerçek, tekrarlanabilir bir
+bug olduğu doğrulandı**, teorik bir risk değil:
+
+- `mobile/lib/core/api_client.dart`'taki `MemoApiClient._initDio()`,
+  `updateBaseUrl()` her çağrıldığında senkron olarak
+  `Dio(BaseOptions(baseUrl: ...))` kuruyor — Dio bunu constructor içinde
+  anında doğruluyor, masaüstündeki orijinal çökme noktasının birebir aynısı.
+- `mobile/lib/screens/settings_screen.dart`'ın `_save()`'i sadece sondaki
+  `/`'ı siliyordu, **şema hiç eklemiyordu** — "192.168.1.50" gibi şemasız
+  bir değer gerçekten `backend_url` SharedPreferences anahtarına
+  kaydedilebiliyordu.
+- `mobile/lib/providers/connection_provider.dart`'taki
+  `ConnectionNotifier.loadSavedUrl()` — her soğuk başlangıçta
+  `autoConnectIfPossible()` üzerinden çağrılıyor — diskten okuduğu değeri
+  **hiç normalize etmeden** doğrudan `updateBaseUrl()`'e veriyordu. Şema
+  fixup mantığı sadece `connect()` (elle yeni bağlantı denemesi) içinde
+  inline olarak vardı.
+
+Sonuç: bir kez şemasız bir adres kaydedilirse, uygulama **her açılışta**
+çöküyordu — düzeltecek hiçbir ekrana (adres değiştirme ekranı dahil)
+ulaşılamadan. Masaüstündeki `normalizeBackendUrl` bug'ının (daha önce
+bulunup düzeltilmiş) mobildeki hiç düzeltilmemiş eşleniği.
+
+**Düzeltme:** `mobile/lib/core/backend_url.dart` (yeni) —
+`normalizeBackendUrl`, ama masaüstünün birebir kopyası değil: mobilin
+kendi Tailscale Funnel (`*.ts.net` → `https://`) tespiti korunuyor, ve
+masaüstünün aksine **hiçbir zaman varsayılan port zorlanmıyor** (bir
+Funnel adresine `:8090` zorlamak onu kırardı — Funnel standart HTTPS
+443'te servis veriyor). Üç noktaya uygulandı: `loadSavedUrl` (asıl
+düzeltme — self-healing), `connect()` (tekrar eden inline mantık
+ortaklaştırıldı), `SettingsScreen._save()` (kötü değerin kaydedilme kökeni
+kapatıldı). `mobile/test/core/backend_url_test.dart` (yeni) —
+`frontend/test/core/backend_url_test.dart`'ın yapısını taklit ediyor,
+artı Funnel'e özgü ek testler. `flutter analyze`/`flutter test` (tam
+mobil suite) yeşil, sadece önceden var olan 6 info kaldı.
+
+### 2. Minimal web UI'a Faz 2/3'ün "acil durum" karşılığı eklendi (`687466d`)
+
+`internal/webserver/webui/` — Settings sekmesine yeni "Remote Access"
+paneli: enabled/running/auth-mode durumu, `auth_warning` alanı (Faz 2'nin
+AUTH DISABLED sinyali) görünür bir uyarı kutusu olarak, ve bir "Restart
+Backend" butonu (`POST /api/shutdown`, onay istiyor). Cihaz/auth-modu
+yönetimi **bilinçli olarak eklenmedi** — kullanıcının "tam admin paneline
+büyütülmeyecek" kararı gereği, panel bunun yerine masaüstü Settings'e ya
+da `memo remote` CLI'ına yönlendiriyor.
+
+Restart, sadece süreci denetleyen bir mekanizma varsa (systemd
+`Restart=on-failure`, Docker restart policy) gerçekten geri geliyor —
+düz `--headless` bir process için zaten `/api/shutdown`'ın her zamanki
+davranışı (kapanır, geri gelmez), buton bu sözleşmeyi değiştirmiyor,
+sadece acil durum sayfasından tetiklenebilir hale getiriyor.
+
+**Gerçek bir throwaway backend'e karşı canlı doğrulandı:** binary build
+edilip scratch bir `MEMO_DATA_DIR` ile başlatıldı, `curl` ile
+`index.html`/`app.js`/`/api/remote-access` gerçekten çekildi, panelin
+markup'ı + JS wiring'i (`getElementById` çağrıları `index.html`'deki
+gerçek id'lerle çapraz kontrol edildi) + API cevap şekli birbirine
+uyduğu doğrulandı. `node --check` ile JS syntax kontrolü.
+
+---
+
+## Doğrulama
+
+- Backend: `go build`/`go vet`/`go test` (tüm repo) — değişmedi bu iki
+  commit'te (sadece webui statik dosyaları + mobil Dart kodu değişti).
+- Mobil: `flutter analyze`/`flutter test` — tam suite yeşil.
+- Web UI: gerçek binary + curl ile canlı doğrulandı (yukarıda detay).
+
+---
+
+## Sıradaki Oturum İçin
+
+1. **Faz 4'ün asıl büyük maddesi hâlâ yapılmadı:** `frontend/lib/`
+   (masaüstü) ve `mobile/lib/`'deki her ekran/özelliğin gerçek bir uzak
+   backend'e karşı "lokal ile bire bir aynı mı" diye tek tek denenmesi
+   (model yönetimi, hafıza, takvim, WhatsApp bridge, agent/skill sistemi,
+   ayarlar). Bilinçli olarak bu oturumda yapılmadı — gerçek bir uzak
+   backend + gerçek cihaz(lar) gerektiren canlı bir QA turu, kod okuyarak
+   "muhtemelen çalışır" denemez. Ayrı, kendine has bir oturumu hak ediyor.
+2. Faz 3'ün tek açık maddesi hâlâ geçerli: tünel yönetimi (Tailscale/ngrok)
+   CLI'dan, şu an sadece GUI'de.
+3. Faz 2'den kalan açık maddeler hâlâ geçerli: TLS/self-signed sertifika,
+   kullanıcının RPi'sinde gerçek sızma denemesi.
+4. Faz 1'in açık maddeleri de hâlâ geçerli (GHCR public yapma, RPi canlı
+   doğrulama).
+5. **Commit'ler push edilmedi** — bu oturumun 2 commit'i, önceki
+   oturumun push'undan sonra eklendi, henüz push onayı istenmedi.
+
+---
+
 # Handoff — 2026-08-09 (Session 3, devam) — Adversarial CORS bulgusu düzeltildi + Faz 3: CLI genişletmesi (4 küçük commit)
 
 ## Özet

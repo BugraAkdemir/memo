@@ -100,6 +100,25 @@ Burada bilinçli olarak çok-kullanıcılı bir model yok — bu, tek bir kişin
 **kendi** sunucusuna nasıl kimlik doğrulayacağına dair kendi tercihi, ayrı
 hafızası/verisi olan ayrı hesaplar değil.
 
+> **İlk token'ı almak (bootstrap sorunu):** `0.0.0.0`'a (`--lan`) bağlandığı
+> an, API **her** istekte kimlik istiyor — SSH ile sunucunun kendisinde
+> çalıştırdığın `memo remote` komutları dahil. Auth kapısı sadece
+> dinleyicinin bağlandığı adrese bakıyor, isteğin nereden geldiğine değil.
+> Yani ilk `--lan` açılışında otomatik üretilen cihaz token'ı `memo remote
+> status` ile geri okunamaz (o çağrının kendisi de kimliksiz olduğu için
+> 401 alır). Bu token sadece backend'in kendi process log'una yazılıyor —
+> `memo service install` ile kurulduysa bu, senin terminalin değil,
+> systemd journal'ı demek:
+> ```bash
+> journalctl --user -u memo.service --no-pager | grep -i token
+> ```
+> `memo remote status`/`list-devices` gibi komutlar 401 aldıklarında bu
+> ipucunu zaten otomatik gösteriyor — yani ezberlemen gerekmiyor, sadece
+> önceden bilmek işini kolaylaştırır. Bunun yerine şifre belirlemek
+> (`memo remote set-mode password ...`) bu bootstrap sorununu tamamen
+> ortadan kaldırıyor, çünkü kimlik bilgisini geri okumak yerine kendin
+> belirliyorsun.
+
 ---
 
 ## 3. Servis olarak çalıştırmak (systemd)

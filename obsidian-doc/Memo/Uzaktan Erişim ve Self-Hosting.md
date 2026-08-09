@@ -51,6 +51,8 @@ Sunucu kurulduktan sonra, dışarıdan (ev ağının dışından ya da telefonun
 
 **Token nasıl çalışır, basitçe:** Telefonunu Memo sunucuna ilk bağladığında, sunucu sana uzun, rastgele bir kod (token) verir. Bu kodu telefonuna bir kez girersin, o andan sonra telefonun otomatik hatırlar. Bu kod sadece **bir kez** gösterilir — sonradan tekrar göremezsin (kaybedersen, o cihaz için yenisini oluşturursun, eskisini iptal edersin). Her cihazın kendi kodu vardır — telefonunun kodu çalınsa bile, dizüstünün erişimi etkilenmez.
 
+> ⚠️ **Terminal/SSH ile kurduysan:** kurulum sırasında otomatik oluşturulan ilk kod, ekrana değil sistemin arka plan günlüğüne yazılır (`journalctl --user -u memo.service | grep -i token`) — kurulum script'i bunu sana kurulumun sonunda zaten söylüyor.
+
 Yanlış şifre/kod denemelerine karşı da otomatik bir koruma var: art arda birkaç yanlış denemeden sonra, sistem birkaç saniyeliğine (sonra dakikalarca) yeni denemeyi engelliyor — birinin şifreni tahmin etmeye çalışması pratikte işe yaramaz.
 
 ---

@@ -238,9 +238,14 @@ if [ "$os" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && ! $IS_UPDATE; 
         echo ""
         echo -e "  ${GREEN}▸${NC} Service installed and started."
         if [ -n "$lan_flag" ]; then
-            echo -e "  ${YELLOW}Default auth mode is 'token' — run 'memo remote status' to see the"
-            echo -e "  device token it just generated, or 'memo remote set-mode password"
-            echo -e "  --username you --password ...' to use a password instead.${NC}"
+            echo -e "  ${YELLOW}Default auth mode is 'token' — a device token was just generated,"
+            echo -e "  but once bound to 0.0.0.0 the API requires a credential for every"
+            echo -e "  request, including local CLI calls — so it can't be read back via"
+            echo -e "  'memo remote status' (that itself would 401 without a token yet)."
+            echo -e "  Find it in the service log instead:"
+            echo -e "    ${CYAN}journalctl --user -u memo.service --no-pager | grep -i token${NC}"
+            echo -e "  Or skip tokens entirely and set a password:"
+            echo -e "    ${CYAN}memo remote set-mode password --username you --password ...${NC}"
         fi
         echo -e "  For it to also start on boot without a login session: ${CYAN}loginctl enable-linger $(whoami)${NC}"
     else

@@ -5,6 +5,7 @@ import (
 	"flag"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"memo/internal/replcli"
@@ -94,10 +95,28 @@ her komut / every command: [--port N] [--token T]
   pass --token (an existing device/session token) in that case.`)
 }
 
+// hintIfUnauthorized appends a pointer to the systemd journal when the
+// error looks like a 401 — the single most common first-run confusion:
+// once bound to 0.0.0.0 (--lan), the API requires a credential for EVERY
+// request, including these CLI calls run locally on the same box, so
+// there's no bootstrap "just ask the CLI" path for a freshly auto-
+// generated device token. It's only ever visible in the backend's own
+// process log (main.go's --lan startup line), which under systemd means
+// the journal, not this terminal.
+func hintIfUnauthorized(err error) {
+	if err == nil || !strings.Contains(err.Error(), "401") {
+		return
+	}
+	fmt.Fprintln(os.Stderr, "İpucu / Hint: --lan ile ilk kurulumda üretilen token'ı görmek için:")
+	fmt.Fprintln(os.Stderr, "  journalctl --user -u memo.service --no-pager | grep -i token")
+	fmt.Fprintln(os.Stderr, "Ya da --token ile geçerli bir cihaz/oturum token'ı ver, veya `memo remote login` kullan.")
+}
+
 func remoteStatusCmd(ctx context.Context, c *replcli.Client) int {
 	status, err := c.RemoteFullAccessStatus(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "durum alınamadı / failed to get status: %v\n", err)
+		hintIfUnauthorized(err)
 		return 1
 	}
 	fmt.Printf("Etkin / Enabled: %v\n", status.Enabled)
@@ -119,6 +138,7 @@ func remoteListDevicesCmd(ctx context.Context, c *replcli.Client) int {
 	devices, err := c.ListRemoteDevices(ctx)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cihazlar alınamadı / failed to list devices: %v\n", err)
+		hintIfUnauthorized(err)
 		return 1
 	}
 	if len(devices) == 0 {
@@ -139,6 +159,7 @@ func remoteAddDeviceCmd(ctx context.Context, c *replcli.Client, name string) int
 	token, err := c.AddRemoteDevice(ctx, name)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "cihaz eklenemedi / failed to add device: %v\n", err)
+		hintIfUnauthorized(err)
 		return 1
 	}
 	fmt.Printf("✓ Cihaz eklendi / device added: %s\n", name)
@@ -149,6 +170,7 @@ func remoteAddDeviceCmd(ctx context.Context, c *replcli.Client, name string) int
 func remoteRevokeDeviceCmd(ctx context.Context, c *replcli.Client, id string) int {
 	if err := c.RevokeRemoteDevice(ctx, id); err != nil {
 		fmt.Fprintf(os.Stderr, "cihaz kaldırılamadı / failed to revoke device: %v\n", err)
+		hintIfUnauthorized(err)
 		return 1
 	}
 	fmt.Println("✓ Cihaz erişimi kaldırıldı / device access revoked.")
@@ -158,6 +180,7 @@ func remoteRevokeDeviceCmd(ctx context.Context, c *replcli.Client, id string) in
 func remoteSetModeCmd(ctx context.Context, c *replcli.Client, mode, username, password string) int {
 	if err := c.SetRemoteAuthMode(ctx, mode, username, password); err != nil {
 		fmt.Fprintf(os.Stderr, "auth modu ayarlanamadı / failed to set auth mode: %v\n", err)
+		hintIfUnauthorized(err)
 		return 1
 	}
 	fmt.Printf("✓ Auth modu ayarlandı / auth mode set: %s\n", mode)

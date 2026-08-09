@@ -51,6 +51,8 @@ Once the server is reachable from outside (from outside your home network, or fr
 
 **How a token works, in plain terms:** the first time you connect your phone to the Memo server, it hands you a long, random code (a token). You type that in once, and your phone remembers it from then on. That code is shown to you **exactly once** — you can't see it again later (lose it, and you just generate a fresh one for that device and revoke the old one). Every device has its own code — even if your phone's code got stolen, your laptop's access is unaffected.
 
+> ⚠️ **If you installed via terminal/SSH:** the first code, auto-generated during setup, is written to the background service log rather than your screen (`journalctl --user -u memo.service | grep -i token`) — the install script tells you this itself at the end of setup.
+
 There's also automatic protection against guessing: after a handful of wrong attempts in a row, the system blocks further tries for a few seconds, then minutes — trying to guess your password by brute force simply doesn't work in practice.
 
 ---

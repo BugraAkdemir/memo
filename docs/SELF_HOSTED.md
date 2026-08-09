@@ -97,6 +97,25 @@ There is deliberately no multi-user model here — this is one person's own
 choice of *how* to authenticate to *their own* server, not separate
 accounts with separate memory/data.
 
+> **Bootstrapping the very first token:** once bound to `0.0.0.0`
+> (`--lan`), the API requires a credential on *every* request — including
+> `memo remote` calls run locally, over SSH, on the server itself. The
+> auth gate only checks the listener's bind address, not where the caller
+> is. So the device token auto-generated on first `--lan` enable can't be
+> read back with `memo remote status` (that call itself would 401,
+> credential-less). It's only ever printed to the backend's own process
+> log — under `memo service install`, that means the systemd journal, not
+> your terminal:
+> ```bash
+> journalctl --user -u memo.service --no-pager | grep -i token
+> ```
+> `memo remote status`/`list-devices`/etc. also print this same hint
+> automatically when they hit a 401, so this isn't something you have to
+> remember — just easier to know up front. Setting a password instead
+> (`memo remote set-mode password ...`) sidesteps the whole bootstrap
+> problem, since you choose the credential yourself rather than reading
+> one back.
+
 ---
 
 ## 3. Running as a service (systemd)

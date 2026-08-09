@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"strings"
 	"testing"
 	"time"
 
@@ -30,6 +35,51 @@ func TestRemoteStatusCmd_PrintsWarningOnAuthDisabled(t *testing.T) {
 	if code := remoteStatusCmd(ctx, client); code != 0 {
 		t.Fatalf("remoteStatusCmd returned %d, want 0", code)
 	}
+}
+
+func TestHintIfUnauthorized_PrintsJournalHintOn401(t *testing.T) {
+	got := captureStderr(t, func() {
+		hintIfUnauthorized(fmt.Errorf("GET /api/remote-access: 401 Unauthorized (unauthorized)"))
+	})
+	if !strings.Contains(got, "journalctl --user -u memo.service") {
+		t.Errorf("expected the journalctl hint for a 401 error, got: %q", got)
+	}
+}
+
+func TestHintIfUnauthorized_SilentOnOtherErrors(t *testing.T) {
+	got := captureStderr(t, func() {
+		hintIfUnauthorized(fmt.Errorf("connection refused"))
+	})
+	if got != "" {
+		t.Errorf("expected no output for a non-401 error, got: %q", got)
+	}
+}
+
+func TestHintIfUnauthorized_NilErrorIsNoOp(t *testing.T) {
+	got := captureStderr(t, func() {
+		hintIfUnauthorized(nil)
+	})
+	if got != "" {
+		t.Errorf("expected no output for a nil error, got: %q", got)
+	}
+}
+
+func captureStderr(t *testing.T, fn func()) string {
+	t.Helper()
+	old := os.Stderr
+	r, w, err := os.Pipe()
+	if err != nil {
+		t.Fatalf("os.Pipe: %v", err)
+	}
+	os.Stderr = w
+	defer func() { os.Stderr = old }()
+
+	fn()
+
+	w.Close()
+	var buf bytes.Buffer
+	io.Copy(&buf, r)
+	return buf.String()
 }
 
 func TestRemoteStatusCmd_FailsOnUnauthorized(t *testing.T) {

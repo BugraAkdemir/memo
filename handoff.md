@@ -1,3 +1,156 @@
+# Handoff — 2026-08-09 (Session 2) — Faz 2: Auth/Güvenlik mimarisi (backend + frontend, 9 küçük commit)
+
+## Özet
+
+`yapacam.md`'nin Faz 2'si (self-hosted auth/güvenlik, en kritik faz) bu
+oturumda uçtan uca inşa edildi: dört auth modu (`none`/`token`/`password`/
+`token_password`), argon2id şifre hash'leme, JWT oturum token'ı,
+login'e özel brute-force kilitleme, ve tek-paylaşımlı-token modelinden
+hash'lenmiş, tek tek iptal edilebilir **cihaz bazlı token** modeline geçiş
+— hem backend (Go) hem frontend (Flutter Settings UI) tarafında. Kullanıcının
+açık talimatı gereği **9 ayrı, bağımsız commit** halinde ilerlendi (tek büyük
+commit değil), her biri kendi başına build+test yeşil. `/codebase-memory`
+(MCP graph araçları) mevcut auth altyapısını (remoteAuthOK, RemoteAccessConfig,
+bridge pattern) haritalamak için kullanıldı; `/security-review` bu oturumun
+son adımı olarak ayrıca çalıştırılacak (bu handoff'un altına eklenecek/
+sonraki oturumda tamamlanacak — bak "Sıradaki Oturum İçin").
+
+**Commit durumu:** 9 commit, hepsi `main`'e yapıldı, **push edilmedi**
+(kullanıcı onayı istenmeden push atılmaz — mevcut kural). Sırasıyla:
+`b69e7d9`, `9d82dd8`, `ca665b8`, `20b5aed`, `8442b8f`, `593e929`, `575d194`,
+`6a4f8d9`, `5c5fcbf`.
+
+`yapacam.md` (gitignore'da, repoya girmiyor) Faz 2'nin checkbox'ları
+güncellendi — tamamlanan/tamamlanmayan her madde tek tek işaretlendi, kalan
+açık noktalar (mobile parite, canlı RPi sızma testi, TLS/self-signed sertifika)
+ayrı bir "YAPILMAYAN" listesinde toplandı.
+
+---
+
+## Yapılanlar (commit sırasıyla)
+
+### 1-4. `internal/remoteauth` (yeni paket) — 4 ayrı commit
+
+Bilinçli olarak `internal/config`/`internal/app`'tan tamamen bağımsız, saf
+bir paket — hiçbir app/webserver bağımlılığı yok, tek başına test edilebilir.
+
+| Dosya | İçerik |
+|---|---|
+| `password.go` | `HashPassword`/`VerifyPassword` — `golang.org/x/crypto/argon2.IDKey` (argon2id), OWASP'ın "minimum önerilen" parametreleri (m=19MiB, t=2, p=1) — Raspberry Pi hedefi gözetilerek, yüksek-trafik servis parametreleri değil. PHC-benzeri encode format. |
+| `devices.go` | `GenerateDeviceToken` (eski `generateToken()`'la aynı `memo-<hex>` formatı), `HashToken`/`VerifyTokenHash` — **SHA-256, argon2id değil**: token zaten yüksek entropili rastgele değer, yavaş hash ek güvenlik katmıyor. |
+| `jwt.go` | `github.com/golang-jwt/jwt/v5` (kullanıcının tercihi — yeni bağımlılık kabul edildi). HS256, 12 saat TTL (`SessionTTL`). `LoadOrCreateSigningKey` — `data/session.key`, 0600, **machine.key'den ayrı dosya** (session key rotate etmek provider API key şifre çözmeyi etkilemesin diye). |
+| `bruteforce.go` | `Limiter` — `remoteIP\|username` anahtarlı, 2 serbest deneme + exponential backoff (2s → 5dk tavan). Arka plan temizleme goroutine'i yok (bilinçli — self-hosted tek-kullanıcılı trafik için gereksiz). |
+
+Her dosyanın kendi `_test.go`'su var, hepsi yeşil.
+
+### 5. `internal/config` — AuthMode/Devices + migrasyon
+
+`RemoteAccessConfig`'e `AuthMode`, `Username`, `PasswordHash`,
+`Devices []RemoteDevice` eklendi. Eski `Token` alanı **sadece geriye dönük
+YAML uyumluluğu için** tutuldu — `migrateLegacyRemoteToken` (yalnızca
+`Load()`'dan çağrılıyor, `validate()`'ten **değil**: `Save()` de
+`validate()`'i her seferinde çalıştırıyor, biri orada olsaydı yeni üretilen
+bir token bir sonraki save'de kendini migrate edip boşaltırdı) eski
+plaintext token'ı hash'lenmiş bir "Legacy" cihaza çevirip plaintext'i
+temizliyor, hemen diske yazıyor.
+
+### 6. `internal/app/remote_auth.go` (yeni dosya) — App katmanı
+
+`SetRemoteAuthConfig`, `ListRemoteDevices`/`CreateRemoteDevice`/
+`RevokeRemoteDevice`, `VerifyRemoteDeviceToken` (LastSeenAt güncelliyor,
+cihaz başına dakikada bir kez diske yazarak throttle ediyor), 
+`LoginRemotePassword`/`ValidateRemoteSession`. Yeni `App.remoteDevicesMu`
+mutex'i özellikle `cfg.RemoteAccess.Devices` mutasyonlarını koruyor (her
+kimlik doğrulanmış istekte çalışıyor, `go test -race` ile doğrulandı).
+
+### 7. `internal/webserver` — 4 modlu auth gate + yeni endpoint'ler
+
+`remoteAuthOK` artık `(listenAddr, mode string, r, verifyDevice,
+validateSession func(string) bool)` alıyor — mode'a göre hangi closure'ın
+çağrılacağına karar veriyor (`password` modu device token'ı **hiç**
+kontrol etmiyor, `token` modu session'ı **hiç** kontrol etmiyor —
+kasıtlı, "sadece şifre" seçmenin bir anlamı olsun diye). Yeni
+`handlers_auth.go`: `POST /api/auth/login` (auth gate'ten muaf — login
+için credential gerekmiyor zaten; kilitlenirse 429 + `Retry-After`),
+`GET/POST /api/remote-access/devices`, `DELETE
+/api/remote-access/devices/{id}`. Dev Gateway'in kendi API key'i
+(`GetDevGatewayToken`) `RemoteAccess.Token`'ı paylaşıyordu — ayrı
+`DevGatewayConfig.Token` alanına taşındı, yoksa migrasyon onu da silip
+her restart'ta yeniden üretirdi.
+
+### 8. AUTH DISABLED uyarısı
+
+`main.go`'nun `--lan` başlangıç logu artık mode'a göre farklı mesaj
+basıyor (`none` için ⚠️ uyarı). `GetRemoteAccessStatus`'a `AuthWarning`
+alanı eklendi (Enabled && AuthMode=="none" iken dolduruluyor) — herhangi
+bir client (Settings, gelecekte CLI) kendi "mode==none" kontrolünü
+tekrarlamak zorunda kalmadan bunu gösterebilir.
+
+### 9. Frontend — `RemoteAccessTab` + `api_client.dart`
+
+Yeni bölümler: Auth modu seçici (4 chip), koşullu kullanıcı adı/şifre
+alanları, warningOrange uyarı banner'ı; Eşleşmiş Cihazlar listesi
+(ekle/kaldır, yeni token'ı bir kez gösteren kopyala diyaloğu — mevcut
+tek-token kutusuyla aynı desen). Tüm yeni string'ler `l10n.dart`'ın hem
+TR hem EN sözlüğüne eklendi (hardcoded metin yok).
+
+**Bu adımda ayrıca 2 gerçek bug bulunup düzeltildi:**
+1. `RemoteDeviceInfo.LastSeenAt` düz `time.Time` + `json:"...,omitempty"`
+   idi — Go'nun bilinen bir gotcha'sı: `omitempty` struct tipler için hiç
+   çalışmıyor (sadece bool/number/string/nil pointer-slice-map-interface
+   için), yani hiç kullanılmamış bir cihaz `"0001-01-01T00:00:00Z"` olarak
+   serialize olurdu, frontend'in boş-string kontrolü hiç yakalamazdı.
+   `*time.Time`'a çevrildi (nil = hiç görülmedi).
+2. `TestCreateAndListAndRevokeRemoteDevice` testi, yeni oluşturulmuş bir
+   cihazda `VerifyRemoteDeviceToken` çağırıyordu — zero-value `LastSeenAt`
+   her zaman "stale" sayıldığından, testin kendi `t.TempDir()` temizliğiyle
+   yarışan bir async `config.Save` goroutine'i tetikliyordu. Canlı log'da
+   gerçekten yakalandı: `"open .../config.yaml.tmp: no such file or
+   directory"`. `LastSeenAt`'i çağrıdan önce `time.Now()`'a set ederek
+   düzeltildi.
+
+---
+
+## Doğrulama
+
+- Backend: her commit sonrası `go build -tags "sqlite_fts5" ./...`,
+  `go vet ./...`, `go test ./...` (tüm repo, tüm paketler) — hepsi yeşil.
+  `go test -race` yeni device-mutasyon testlerinde de yeşil.
+- Frontend: `flutter analyze` (0 yeni sorun — sadece önceden var olan 6
+  info kaldı), `flutter test` (tüm suite, 176 test, yeşil), `dart format`
+  uygulandı.
+- **Yapılmayan:** gerçek bir Flutter uygulamasını çalıştırıp yeni Auth/
+  Devices bölümlerini gözle görmek — bu ortamda görsel masaüstü test
+  ortamı yok (önceki oturumların da tekrar tekrar not ettiği bilinen
+  kısıt). `/security-review` bu handoff yazıldığı anda **henüz
+  çalıştırılmadı** — sıradaki adım.
+
+---
+
+## Sıradaki Oturum İçin
+
+1. **`/security-review` henüz bu oturumda çalıştırılmadı** — bu handoff
+   yazılırken sıradaki adımdı. Bir sonraki oturum (ya da bu oturumun
+   devamı) önce onu çalıştırıp bulunan şeyleri değerlendirmeli/düzeltmeli.
+2. **Commit'ler push edilmedi** — kullanıcı onayı bekliyor.
+3. **TLS/transport (self-signed sertifika) hiç yapılmadı** — yapacam.md
+   Faz 2'nin kendi checklist'inde açık madde olarak işaretli, bu oturumun
+   kapsamı dışında bırakıldı (büyük, ayrı bir iş).
+4. **Mobile app (`mobile/lib/`) hiç dokunulmadı** — `RemoteAccessTab`'ın
+   mobile eşdeğeri yok, `mobile/lib/core/api_client.dart`'ın yeni auth
+   endpoint'lerini bilip bilmediği denetlenmedi. Faz 4'ün ("özellik
+   parite denetimi") kapsamına giriyor, şimdiden not edildi.
+5. **CLI'dan cihaz/auth-mode yönetimi yok** — Faz 3'ün kendi maddesi
+   zaten bunu bekliyor, bu oturumda kasıtlı olarak yapılmadı.
+6. **Kullanıcının kendi Raspberry Pi'sinde gerçek sızma denemesi**
+   (yapacam.md'nin tepesindeki bitiş kriteri) hâlâ yapılmadı — bu ortamdan
+   yapılamaz.
+7. Faz 1'in kendi açık maddeleri (GHCR paketi public yapma, RPi canlı
+   doğrulama, `x-casaos.architectures` amd64-only) hâlâ geçerli, bu
+   oturumda dokunulmadı.
+
+---
+
 # Handoff — 2026-08-09 (Session 1) — Self-hosted sunucu yol haritası (yapacam.md) + Faz 1: Docker/CasaOS arm64 CI
 
 ## Özet

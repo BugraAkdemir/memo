@@ -30,6 +30,8 @@ curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
 
 Bu komut hangi işlemci mimarisinde olduğunu (Raspberry Pi'nin ARM'ı mı, normal bir PC'nin x86'sı mı) kendisi anlar, doğru sürümü indirir. Masaüstü penceresi **kurmaz** — sadece arka planda çalışan parçayı kurar.
 
+> 💡 **En yeni self-hosting özelliklerini hemen denemek isteyenler için:** Bu sayfada anlatılan özellikler (dört auth modu, `memo remote`/`memo config`/`memo service` komutları gibi) henüz resmi bir sürümde yayınlanmamış olabilir — önce her zaman "beta" kanalına düşerler. Bunları hemen denemek istiyorsan, yukarıdaki komut yerine şunu kullan: `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash`. Emin değilsen normal (stable) komutu kullan — beta, test amaçlıdır.
+
 ### Yol 2: Docker (CasaOS gibi bir NAS/ev sunucusu kullanıyorsan)
 
 Docker biliyorsan ya da CasaOS gibi bir "uygulama mağazası" arayüzü olan bir kutu kullanıyorsan, Memo'nun hazır Docker imajı da var — proje deposundaki `docker/README.md` dosyasında adım adım anlatılıyor.

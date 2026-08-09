@@ -35,6 +35,27 @@ Bu, `get-memo.sh`'in headless kardeşi — aynı release arşivleri, aynı
 Flutter asset'lerini ve uygulama menüsü girdisini kopyalamıyor, çünkü bir
 sunucunun onları gösterecek bir ekranı yok.
 
+### Beta ve stable kanal farkı
+
+Masaüstü installer'ının kendi `get-memo.sh` / `get-memo-beta.sh` ayrımıyla
+birebir aynı mantıkla, iki ayrı script/arşiv çifti var:
+
+| Script | Çektiği arşivler | CI ne zaman günceller |
+|---|---|---|
+| `get-memo-server.sh` (stable) | `memo.tar.gz` / `memo_arm.zip` / `memo-mac.zip` | Bir `vX.Y.Z` tag'i açıldığında (gerçek, etiketli bir release) |
+| `get-memo-server-beta.sh` | `memo_beta.tar.gz` / `memo_arm_beta.zip` / `memo-mac_beta.zip` | **`main`'e yapılan her push'ta** |
+
+Bu sadece bir dokümantasyon ayrıntısı değil — hangisini gerçekten istediğini
+değiştiriyor. Self-hosting'e özgü işler (Docker/ARM CI, bu dört-modlu auth
+sistemi, `memo config`/`memo remote`/`memo service` komutları) önce
+`main`'e düşüyor, etiketli bir release'e ancak sonra ulaşıyor. Burada
+anlatılan bir özellik `get-memo-server.sh`'te henüz yokmuş gibi
+görünüyorsa, `get-memo-server-beta.sh`'te neredeyse kesinlikle vardır —
+o, her tek push'ta yeniden derleniyor. Herhangi birini daha sonra tekrar
+çalıştırmak mevcut kurulumu aynı şekilde yerinde günceller; stable'dan
+beta'ya (ya da tersine) geçmek de sadece diğer script'i bir kez
+çalıştırmak demek.
+
 ### Docker / CasaOS
 
 ```bash

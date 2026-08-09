@@ -339,6 +339,12 @@ memo remote status           # auth mode, addresses, warnings
 memo config get llama.port   # edit config.yaml from the command line
 ```
 
+Self-hosting is under active development — new pieces land on `main`
+first and only reach a tagged release later. For the newest features
+immediately, use `get-memo-server-beta.sh` instead (updated on every
+push, not just releases): `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash`.
+See [Self-Hosting](docs/SELF_HOSTED.md) for the full picture.
+
 <details>
 <summary><b>🛠 For developers — build from source</b></summary>
 <br/>

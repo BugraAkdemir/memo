@@ -339,6 +339,13 @@ memo remote status           # auth modu, adresler, uyarılar
 memo config get llama.port   # config.yaml'ı komut satırından düzenle
 ```
 
+Self-hosting aktif olarak geliştiriliyor — yeni parçalar önce `main`'e
+düşer, etiketli bir release'e ancak sonra ulaşır. En yeni özellikleri
+hemen denemek için `get-memo-server-beta.sh`'ı kullan (her push'ta
+güncellenir, sadece release'lerde değil):
+`curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash`.
+Tam tablo için [Self-Hosting](docs/tr/SELF_HOSTED.md)'e bak.
+
 <details>
 <summary><b>🛠 Geliştiriciler için — kaynaktan derleme</b></summary>
 <br/>

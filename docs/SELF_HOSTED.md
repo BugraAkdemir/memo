@@ -34,6 +34,25 @@ This is `get-memo.sh`'s headless sibling — same release archives, same
 binary, its Flutter assets, and the application-menu entry, since a
 server has no display to show them on.
 
+### Beta vs. stable channel
+
+Two separate script/archive pairs exist, matching the desktop installer's
+own `get-memo.sh` / `get-memo-beta.sh` split:
+
+| Script | Archives it pulls | Updated by CI on |
+|---|---|---|
+| `get-memo-server.sh` (stable) | `memo.tar.gz` / `memo_arm.zip` / `memo-mac.zip` | A `vX.Y.Z` tag push (a real, tagged release) |
+| `get-memo-server-beta.sh` | `memo_beta.tar.gz` / `memo_arm_beta.zip` / `memo-mac_beta.zip` | **Every push to `main`** |
+
+This isn't a documentation detail — it changes which one you actually want.
+Self-hosting-specific work (Docker/ARM CI, this four-mode auth system, the
+`memo config`/`memo remote`/`memo service` commands) lands on `main` first
+and only reaches a tagged release later. If a feature is described here but
+`get-memo-server.sh` doesn't seem to have it yet, `get-memo-server-beta.sh`
+almost certainly does — it's rebuilt on every single push. Re-running either
+script later updates an existing install in place the same way; switching
+from stable to beta (or back) is just running the other script once.
+
 ### Docker / CasaOS
 
 ```bash

@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "SSE Akış Protokolü.md",
+                "file": "00 Ana Sayfa.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "SSE Akış Protokolü"
+              "title": "00 Ana Sayfa"
             }
           }
         ]
@@ -186,9 +186,13 @@
   },
   "active": "ddf3aff7586b3044",
   "lastOpenFiles": [
+    "Untitled.base",
+    "Untitled 3.canvas",
+    "2026-08-09.md",
+    "00 Ana Sayfa.md",
+    "SSE Akış Protokolü.md",
     "Temel Özellikler.md.tmp.3919649.f7fdf317fac7",
     "Mimari Yapı.md.tmp.3919649.25008ab76b63",
-    "SSE Akış Protokolü.md",
     "Untitled 2.canvas",
     "Untitled 1.canvas",
     "2026-07-18.md",
@@ -203,7 +207,6 @@
     "00 Ana Sayfa.md.tmp.3919649.7ad95cbee67a",
     "Vektör Arama Mantığı.md",
     "API Dokümantasyonu.md",
-    "00 Ana Sayfa.md",
     "Geliştirici API Ağ Geçidi.md",
     "00 Ana Sayfa.md.tmp.3919649.2a092879c611",
     "WhatsApp Entegrasyonu.md",
@@ -212,8 +215,6 @@
     "Mobil Uygulama.md.tmp.5298.4ce4ed30b88f",
     "API Dökümantasyonu.md.tmp.5298.6f9631914252",
     "v3.1.0 Özellikleri.md.tmp.5298.3262ff6ccc98",
-    "00 Ana Sayfa.md.tmp.5298.8730af108737",
-    "00 Ana Sayfa.md.tmp.5298.1dd3c3229218",
     "Backend (Go) Mimarisi.md",
     "Bulut Senkronizasyonu.md",
     "CGO Bayrakları.md",
@@ -223,7 +224,6 @@
     "Gelişmiş Ayarlar.md",
     "Gizli Mod (Incognito).md",
     "Sistem Genel Bakış.md",
-    "Sorun Giderme.md",
-    "Multimodal Yetenekler (Görsel ve Ses).md"
+    "Sorun Giderme.md"
   ]
 }

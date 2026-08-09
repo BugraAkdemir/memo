@@ -310,6 +310,35 @@ Download the latest release from **[memo.bugradev.com](https://memo.bugradev.com
   <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Download_Memo-memo.bugradev.com-B08D57?style=for-the-badge" alt="Download"/></a>
 </div>
 
+### 🏠 Self-Hosting (no desktop app — Raspberry Pi, home server, VPS)
+
+Want Memo running 7/24 on its own box — reachable from your desktop/mobile
+Memo app elsewhere, managed entirely over SSH — instead of tied to one
+computer's desktop session? Two ways to get just the headless server, no
+Flutter GUI installed on the machine itself:
+
+```bash
+# Native install (Linux x86_64/arm64 — Raspberry Pi included — or macOS)
+curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+
+# Or Docker / CasaOS (multi-arch: amd64 + arm64)
+docker compose -f docker/docker-compose.yml up -d   # see docker/README.md
+```
+
+Both give you the same headless backend: a `memo` CLI for management over
+SSH, four selectable auth modes (open/token/password/token+password) with
+per-device tokens you can revoke individually, and a minimal built-in web
+page (`http://<server-ip>:8090`) for emergency status/restart when nothing
+else is reachable. Everyday use is still through your regular desktop or
+mobile Memo app, pointed at the server's address — full feature parity,
+no separate "server UI" to learn.
+
+```bash
+memo service install --lan   # systemd --user service, auto-restart, LAN-reachable
+memo remote status           # auth mode, addresses, warnings
+memo config get llama.port   # edit config.yaml from the command line
+```
+
 <details>
 <summary><b>🛠 For developers — build from source</b></summary>
 <br/>

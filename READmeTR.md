@@ -310,6 +310,35 @@ Son sürümü **[memo.bugradev.com](https://memo.bugradev.com)** adresinden indi
   <a href="https://memo.bugradev.com"><img src="https://img.shields.io/badge/⬇_Memo'yu_İndir-memo.bugradev.com-B08D57?style=for-the-badge" alt="İndir"/></a>
 </div>
 
+### 🏠 Self-Hosted Kurulum (masaüstü yok — Raspberry Pi, ev sunucusu, VPS)
+
+Memo'yu bir masaüstü oturumuna bağlı olmadan, kendi başına 7/24 çalışan bir
+makinede tutup — başka bir masaüstü/mobil Memo'dan bağlanmak, her şeyi
+SSH üzerinden yönetmek mi istiyorsun? Makinenin kendisine Flutter arayüzü
+kurmadan, sadece headless sunucuyu kurmanın iki yolu:
+
+```bash
+# Native kurulum (Linux x86_64/arm64 — Raspberry Pi dahil — ya da macOS)
+curl -fsSL https://download.bugradev.com/get-memo-server.sh | bash
+
+# Ya da Docker / CasaOS (çoklu mimari: amd64 + arm64)
+docker compose -f docker/docker-compose.yml up -d   # bkz. docker/README.md
+```
+
+İkisi de aynı headless backend'i veriyor: SSH üzerinden yönetim için bir
+`memo` CLI'ı, dört seçilebilir auth modu (açık/token/şifre/token+şifre) ve
+tek tek iptal edilebilen cihaz bazlı token'lar, ve hiçbir şey erişilemez
+olduğunda acil durum için gömülü minimal bir web sayfası
+(`http://<sunucu-ip>:8090`). Günlük kullanım hâlâ normal masaüstü/mobil
+Memo uygulamandan, sunucunun adresine bağlanarak — tam özellik paritesi,
+öğrenilecek ayrı bir "sunucu arayüzü" yok.
+
+```bash
+memo service install --lan   # systemd --user servisi, otomatik yeniden başlatma, LAN'a açık
+memo remote status           # auth modu, adresler, uyarılar
+memo config get llama.port   # config.yaml'ı komut satırından düzenle
+```
+
 <details>
 <summary><b>🛠 Geliştiriciler için — kaynaktan derleme</b></summary>
 <br/>

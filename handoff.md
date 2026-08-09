@@ -155,6 +155,73 @@ mutasyon içeren herhangi bir çağrı yap.
 
 ---
 
+## Ek (aynı gün, devam) — gerçek bir uyumsuzluk bug'ı bulundu ve düzeltildi: dosya seçiciler + uzak backend
+
+Kullanıcı geçmiş testlerinde yaşadığı somut şikayetleri anlattı: self-hosted
+bir backend'e bağlanınca "model ekleyemedim, model api okumadı, model
+değiştiremedim" gibi uyumsuzluklar görmüş. Ayrıca agent/CLI özelliklerinde
+seçilen klasörün client'ın mı sunucunun mu diski olduğunu sordu.
+
+**Bulgu:** `codebase-memory` ile kod okunarak doğrulandı — `frontend/`'deki
+**her** "klasör/dosya seç" kontrolü (`agent_screen.dart` x2, `chat_screen.
+dart`'ın CLI workdir seçici, `my_models_tab.dart`'ın model import'u)
+native `FilePicker.platform` kullanıyordu. Bu, Flutter'ın işletim
+sistemi seviyesinde açtığı native pencere — **her zaman o an oturulan
+cihazın (client'ın) kendi diskini** gösteriyor. Seçilen yol olduğu gibi
+backend'e gönderiliyor; backend de (`internal/modelstore.
+ImportLocalModel`'in `os.Stat` çağrısı, `NewAgentChat`/
+`SetChatCLIWorkdir`'in agent tool sandbox kökü) o yolu **kendi** diskinde
+arıyor. Backend lokal (masaüstünün kendisi) olduğu sürece bu görünmez bir
+sorundu — client ve sunucu zaten aynı makine. Ama self-hosted/uzak bir
+backend'e bağlanınca yol sunucuda bulunamıyor: model import'u sessizce
+patlıyor (kullanıcının "model ekleyemedim" şikayeti tam olarak bu), agent/
+CLI klasör seçimi de aynı şekilde ya hata veriyor ya da (daha kötüsü)
+sunucuda tesadüfen aynı isimde başka bir yer varsa onu karıştırabiliyor.
+
+**Düzeltme (commit `a8dc873`):** Gerçek bir in-app dosya tarayıcısı
+eklendi — artık **sunucunun kendi diskini** gösteriyor:
+- `internal/app/server_browse.go` (yeni) + `GET /api/files/browse`:
+  bir dizinin doğrudan çocuklarını listeliyor (klasörler önce, alfabetik),
+  boş yol → sunucunun home dizini, dosya argümanı → onun bulunduğu klasöre
+  düşüyor. Ekstra bir izin kontrolü yok (normal authenticated erişim
+  yeterli) — sadece isim gösteriyor, içerik değil; zaten "user" rolü bile
+  kendi agent sohbetinde tüm dosya sistemine erişebiliyor (Faz 5.1'in rol
+  sınırı), bu ondan daha dar bir yüzey.
+- `frontend/lib/widgets/server_file_browser_dialog.dart` (yeni): klasör
+  gezme, üst dizine çıkma, dosya/klasör seçme modları. Dört çağrı noktası
+  da buna geçirildi.
+- **Backend tüketici tarafında (`ImportLocalModel`/`NewAgentChat`/
+  `SetChatCLIWorkdir`) hiçbir değişiklik gerekmedi** — bunlar zaten
+  sunucu-yerel bir yol bekliyordu, sadece yanlış (client'ın) yol
+  besleniyordu. Yani asıl "düzeltme" seçicinin kaynağını değiştirmekti.
+
+**Doğrulama:** `go build/vet/test -race` (yeni `BrowseServerPath` testleri:
+klasör-önce sıralama, boş-yol varsayılanı, var-olmayan-yol hatası, dosya
+argümanının üst klasöre düşmesi, dosya sistemi kökünün parent'ının boş
+olması), `flutter analyze` (yeni sorun yok, sadece dokunulmamış
+dosyalardaki 5 eski `use_build_context_synchronously` info'su), `flutter
+test` 176/176, L10n grep temiz. İzole bir throwaway backend'e karşı canlı
+test edildi (bu kez baştan izole — bir önceki bölümdeki dersi uyguladım):
+varsayılan gözat `$HOME`'a düşüyor, gerçek bir dizin listeleniyor
+(klasörler dosyalardan önce, doğru boyutlarla), üst dizine çıkma
+çalışıyor, var olmayan yol 400 veriyor, dosya argümanı doğru şekilde
+kendi klasörüne düşüyor.
+
+**Ayrıca bu turda:** Kullanıcı arka planda çalışan `/code-review`
+agent'ının (kendi başlattığı alt-agent'larla birlikte) çok fazla token
+harcadığını fark edip durdurmamı istedi — durduruldu (`TaskStop`), kalan
+tüm iş agent/skill-fork kullanılmadan doğrudan yapıldı. **`/code-review`
+bu oturumda hiç tamamlanmadı** — sıradaki oturumda istenirse tekrar
+çalıştırılabilir, ama bu sefer daha dar kapsamlı (tek bir hedefli
+inceleme) çağırmak muhtemelen daha isabetli olur.
+
+**Hâlâ açık:** `frontend/`/`mobile/`'daki her ekranın gerçek bir uzak
+backend'e karşı sistematik "lokalle bire bir aynı mı" QA turu hâlâ
+yapılmadı — bu bug tam da böyle bir turun bulacağı sınıftan bir sorundu,
+benzerleri başka ekranlarda da olabilir.
+
+---
+
 
 
 ## Özet

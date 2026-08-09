@@ -2,7 +2,8 @@
 // REST/SSE API the desktop app and CLI use. Scope is deliberately narrow —
 // chat plus the handful of settings you need before the full desktop app
 // (which can already manage everything else remotely, see AGENTS.md) is
-// reachable: starting/stopping the local model, connecting a provider.
+// reachable: starting/stopping/importing/downloading the local model,
+// connecting a provider, managing accounts.
 
 const TOKEN_KEY = "memo_web_token";
 
@@ -38,6 +39,39 @@ async function apiJSON(path, opts = {}) {
   return null;
 }
 
+// ── generic UI helpers: reveal-toggle fields, modals ────────────────────
+
+// Any input wrapped in .reveal-field with a sibling [data-target] button
+// gets a show/hide eye toggle — used on every password/token/API-key field
+// on this page so what you typed is always verifiable before you submit
+// it, not just trusted blind.
+function wireRevealToggles() {
+  document.querySelectorAll(".reveal-toggle").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const input = document.getElementById(btn.dataset.target);
+      if (!input) return;
+      const showing = input.type === "text";
+      input.type = showing ? "password" : "text";
+      btn.textContent = showing ? "👁" : "🙈";
+      btn.setAttribute("aria-label", showing ? "Show" : "Hide");
+    });
+  });
+}
+
+function openModal(id) { document.getElementById(id).classList.remove("hidden"); }
+function closeModal(id) { document.getElementById(id).classList.add("hidden"); }
+
+function wireModalCloseButtons() {
+  document.querySelectorAll("[data-close-modal]").forEach((btn) => {
+    btn.addEventListener("click", () => closeModal(btn.dataset.closeModal));
+  });
+  document.querySelectorAll(".modal-backdrop").forEach((backdrop) => {
+    backdrop.addEventListener("click", (e) => {
+      if (e.target === backdrop) backdrop.classList.add("hidden");
+    });
+  });
+}
+
 // ── boot ─────────────────────────────────────────────────────────────────
 //
 // Faz 5.1 (yapacam.md): before probing /api/status the usual way, check
@@ -52,6 +86,9 @@ async function apiJSON(path, opts = {}) {
 let authMode = "";
 
 async function boot() {
+  wireRevealToggles();
+  wireModalCloseButtons();
+
   try {
     const setup = await apiJSON("/api/setup/status");
     if (setup && setup.needs_setup) {
@@ -79,29 +116,32 @@ async function boot() {
   }
 }
 
+// Both login methods are always offered, regardless of the detected
+// auth_mode — only the *default* tab follows it. A wrong/stale auth_mode
+// detection (a transient network hiccup on the /api/setup/status probe
+// above, for instance) used to hide the one method that would have
+// actually worked; now the user can just click the other tab instead of
+// being stuck looking at a form for a credential they don't have.
 function showLogin() {
   document.getElementById("setup-screen").classList.add("hidden");
   document.getElementById("login-screen").classList.remove("hidden");
   document.getElementById("app").classList.add("hidden");
+  document.getElementById("login-error").classList.add("hidden");
 
-  // Show whichever credential form(s) the configured auth mode actually
-  // checks (see internal/webserver's remoteAuthOK) — "password" never
-  // checks a device token and vice versa, so offering the other one would
-  // just be a confusing dead end. Unknown/empty mode (e.g. the
-  // setup-status probe above failed) falls back to the token-only form,
-  // matching this page's behavior before password login existed here.
-  const showPassword = authMode === "password" || authMode === "token_password";
-  const showToken = authMode !== "password";
-  document.getElementById("password-login-block").classList.toggle("hidden", !showPassword);
-  document.getElementById("token-login-block").classList.toggle("hidden", !showToken);
-  document.getElementById("login-divider").classList.toggle("hidden", !(showPassword && showToken));
-
-  if (showPassword) {
-    document.getElementById("login-username").focus();
-  } else {
-    document.getElementById("token-input").focus();
-  }
+  setLoginTab(authMode === "token" ? "token" : "password");
 }
+
+function setLoginTab(which) {
+  const isPassword = which === "password";
+  document.getElementById("login-tab-password").classList.toggle("active", isPassword);
+  document.getElementById("login-tab-token").classList.toggle("active", !isPassword);
+  document.getElementById("password-login-block").classList.toggle("hidden", !isPassword);
+  document.getElementById("token-login-block").classList.toggle("hidden", isPassword);
+  const focusTarget = document.getElementById(isPassword ? "login-username" : "token-input");
+  if (focusTarget) focusTarget.focus();
+}
+document.getElementById("login-tab-password").addEventListener("click", () => setLoginTab("password"));
+document.getElementById("login-tab-token").addEventListener("click", () => setLoginTab("token"));
 
 function showSetup() {
   document.getElementById("login-screen").classList.add("hidden");
@@ -141,7 +181,11 @@ document.getElementById("login-submit").addEventListener("click", async () => {
   const password = document.getElementById("login-password").value;
   const errEl = document.getElementById("login-error");
   errEl.classList.add("hidden");
-  if (!username || !password) return;
+  if (!username || !password) {
+    errEl.textContent = "Enter both a username and a password.";
+    errEl.classList.remove("hidden");
+    return;
+  }
   try {
     const res = await fetch("/api/auth/login", {
       method: "POST",
@@ -160,14 +204,16 @@ document.getElementById("login-submit").addEventListener("click", async () => {
     errEl.classList.remove("hidden");
   }
 });
-document.getElementById("login-password").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("login-submit").click();
+["login-username", "login-password"].forEach((id) => {
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("login-submit").click();
+  });
 });
 
 document.getElementById("setup-submit").addEventListener("click", async () => {
   const username = document.getElementById("setup-username").value.trim();
   const password = document.getElementById("setup-password").value;
-  const confirm = document.getElementById("setup-password-confirm").value;
+  const confirmPw = document.getElementById("setup-password-confirm").value;
   const errEl = document.getElementById("setup-error");
   errEl.classList.add("hidden");
   if (!username || !password) {
@@ -175,7 +221,7 @@ document.getElementById("setup-submit").addEventListener("click", async () => {
     errEl.classList.remove("hidden");
     return;
   }
-  if (password !== confirm) {
+  if (password !== confirmPw) {
     errEl.textContent = "Passwords don't match.";
     errEl.classList.remove("hidden");
     return;
@@ -198,8 +244,10 @@ document.getElementById("setup-submit").addEventListener("click", async () => {
     errEl.classList.remove("hidden");
   }
 });
-document.getElementById("setup-password-confirm").addEventListener("keydown", (e) => {
-  if (e.key === "Enter") document.getElementById("setup-submit").click();
+["setup-username", "setup-password", "setup-password-confirm"].forEach((id) => {
+  document.getElementById(id).addEventListener("keydown", (e) => {
+    if (e.key === "Enter") document.getElementById("setup-submit").click();
+  });
 });
 
 // ── app shell (tabs, status dot) ────────────────────────────────────────
@@ -235,11 +283,18 @@ function initApp() {
 
   document.getElementById("model-start").addEventListener("click", startModel);
   document.getElementById("model-stop").addEventListener("click", stopModel);
+  document.getElementById("model-browse-import").addEventListener("click", openImportModelBrowser);
+  document.getElementById("model-search-open").addEventListener("click", openHFSearch);
   document.getElementById("provider-form").addEventListener("submit", saveProvider);
+  document.getElementById("provider-cancel-edit").addEventListener("click", cancelProviderEdit);
   document.getElementById("p-test").addEventListener("click", testProvider);
   document.getElementById("p-fetch-models").addEventListener("click", fetchModels);
   document.getElementById("restart-backend").addEventListener("click", restartBackend);
   document.getElementById("account-form").addEventListener("submit", saveAccount);
+  document.getElementById("hf-search-btn").addEventListener("click", runHFSearch);
+  document.getElementById("hf-query").addEventListener("keydown", (e) => {
+    if (e.key === "Enter") runHFSearch();
+  });
 }
 
 async function pollStatus() {
@@ -373,7 +428,7 @@ async function loadModels() {
       statusEl.textContent = `Running — ${status.model_name || status.model_path} (port ${status.port})`;
       if (status.model_path) select.value = status.model_path;
     } else {
-      statusEl.textContent = (models && models.length) ? "Not running." : "No local models downloaded yet — use the desktop app's Model Store to download one first.";
+      statusEl.textContent = (models && models.length) ? "Not running." : "No local models yet — import one from the server's disk, or download one from Hugging Face below.";
     }
   } catch (e) {
     if (e.unauthorized) { showLogin(); return; }
@@ -411,7 +466,220 @@ async function stopModel() {
   }
 }
 
+// ── settings: server-side file browser (model import) ──────────────────
+//
+// Browses the *backend's own* filesystem — not whatever device this page
+// happens to be open on. A model file has to already exist on the server
+// (llama.cpp runs there, not in this browser tab), so a plain HTML
+// <input type="file"> — which only ever sees the local device's disk —
+// would silently pick the wrong thing on any non-local setup. This talks
+// to GET /api/files/browse (same endpoint the desktop app's agent/CLI
+// folder pickers now use, for the identical reason) instead.
+
+let browseState = { path: "", parent: "", onPick: null };
+
+async function openImportModelBrowser() {
+  document.getElementById("browse-modal-title").textContent = "Import a model file";
+  browseState.onPick = async (path) => {
+    closeModal("browse-modal");
+    const statusEl = document.getElementById("model-status");
+    statusEl.textContent = "Importing…";
+    try {
+      await apiJSON("/api/models/import", { method: "POST", body: JSON.stringify({ path }) });
+      await loadModels();
+    } catch (e) {
+      if (e.unauthorized) { showLogin(); return; }
+      statusEl.textContent = "Import failed: " + e.message;
+    }
+  };
+  openModal("browse-modal");
+  await browseTo("");
+}
+
+async function browseTo(path) {
+  const body = document.getElementById("browse-body");
+  const pathEl = document.getElementById("browse-path");
+  const upBtn = document.getElementById("browse-up");
+  body.innerHTML = '<p class="modal-loading">Loading…</p>';
+  try {
+    const result = await apiJSON("/api/files/browse?path=" + encodeURIComponent(path));
+    browseState.path = result.path;
+    browseState.parent = result.parent || "";
+    pathEl.textContent = result.path;
+    pathEl.title = result.path;
+    upBtn.disabled = !browseState.parent;
+    body.innerHTML = "";
+    if (!result.entries || !result.entries.length) {
+      body.innerHTML = '<p class="modal-empty">This folder is empty.</p>';
+      return;
+    }
+    result.entries.forEach((entry) => {
+      const row = document.createElement("div");
+      row.className = "browse-entry" + (entry.is_dir ? " is-dir" : "");
+      const childPath = browseState.path.endsWith("/") ? browseState.path + entry.name : browseState.path + "/" + entry.name;
+      row.innerHTML = `
+        <span class="icon">${entry.is_dir ? "📁" : "📄"}</span>
+        <span class="entry-name">${escapeHTML(entry.name)}</span>
+        <span class="entry-size">${entry.is_dir ? "" : formatBytes(entry.size)}</span>
+      `;
+      row.addEventListener("click", () => {
+        if (entry.is_dir) {
+          browseTo(childPath);
+        } else if (browseState.onPick) {
+          browseState.onPick(childPath);
+        }
+      });
+      body.appendChild(row);
+    });
+  } catch (e) {
+    if (e.unauthorized) { closeModal("browse-modal"); showLogin(); return; }
+    body.innerHTML = '<p class="modal-empty">Could not read this folder: ' + escapeHTML(e.message) + "</p>";
+  }
+}
+document.getElementById("browse-up").addEventListener("click", () => {
+  if (browseState.parent) browseTo(browseState.parent);
+});
+
+function formatBytes(n) {
+  if (!n) return "";
+  if (n >= 1024 * 1024 * 1024) return (n / (1024 * 1024 * 1024)).toFixed(1) + " GB";
+  if (n >= 1024 * 1024) return (n / (1024 * 1024)).toFixed(1) + " MB";
+  if (n >= 1024) return (n / 1024).toFixed(0) + " KB";
+  return n + " B";
+}
+
+// ── settings: Hugging Face search + download ────────────────────────────
+
+let downloadPollTimer = null;
+
+function openHFSearch() {
+  document.getElementById("hf-body").innerHTML = '<p class="modal-empty">Search for a model above (e.g. a family name + "gguf").</p>';
+  document.getElementById("hf-query").value = "";
+  openModal("hf-modal");
+  document.getElementById("hf-query").focus();
+  startDownloadPolling();
+}
+
+async function runHFSearch() {
+  const query = document.getElementById("hf-query").value.trim();
+  const body = document.getElementById("hf-body");
+  if (!query) return;
+  body.innerHTML = '<p class="modal-loading">Searching…</p>';
+  try {
+    const results = await apiJSON("/api/models/search", { method: "POST", body: JSON.stringify({ query }) });
+    if (!results || !results.length) {
+      body.innerHTML = '<p class="modal-empty">No results.</p>';
+      return;
+    }
+    body.innerHTML = "";
+    results.forEach((r) => {
+      const row = document.createElement("div");
+      row.className = "hf-result";
+      row.innerHTML = `
+        <span class="hf-name">${escapeHTML(r.id)}</span>
+        <span class="hf-meta">⬇ ${r.downloads || 0}</span>
+        <button type="button" class="secondary" style="width:auto">Files</button>
+      `;
+      row.querySelector("button").addEventListener("click", () => showHFFiles(r.id));
+      body.appendChild(row);
+    });
+  } catch (e) {
+    if (e.unauthorized) { closeModal("hf-modal"); showLogin(); return; }
+    body.innerHTML = '<p class="modal-empty">Search failed: ' + escapeHTML(e.message) + "</p>";
+  }
+}
+
+async function showHFFiles(repoId) {
+  const body = document.getElementById("hf-body");
+  body.innerHTML = '<p class="modal-loading">Loading files…</p>';
+  try {
+    const files = await apiJSON("/api/models/files?repo=" + encodeURIComponent(repoId));
+    body.innerHTML = "";
+    const back = document.createElement("button");
+    back.type = "button";
+    back.className = "link-btn";
+    back.style.margin = "10px 0 4px 12px";
+    back.textContent = "← Back to search results";
+    back.addEventListener("click", runHFSearch);
+    body.appendChild(back);
+    if (!files || !files.length) {
+      const p = document.createElement("p");
+      p.className = "modal-empty";
+      p.textContent = "No .gguf files found in this repo.";
+      body.appendChild(p);
+      return;
+    }
+    files.forEach((f) => {
+      const row = document.createElement("div");
+      row.className = "hf-result";
+      row.innerHTML = `
+        <span class="hf-name">${escapeHTML(f.filename)}</span>
+        <span class="hf-meta">${formatBytes(f.size)}</span>
+        <button type="button" style="width:auto">Download</button>
+      `;
+      row.querySelector("button").addEventListener("click", async () => {
+        try {
+          await apiJSON("/api/models/download", {
+            method: "POST",
+            body: JSON.stringify({ repo_id: repoId, filename: f.filename, expected_size: f.size }),
+          });
+          startDownloadPolling();
+        } catch (e) {
+          if (e.unauthorized) { closeModal("hf-modal"); showLogin(); return; }
+          alert("Could not start download: " + e.message);
+        }
+      });
+      body.appendChild(row);
+    });
+  } catch (e) {
+    if (e.unauthorized) { closeModal("hf-modal"); showLogin(); return; }
+    body.innerHTML = '<p class="modal-empty">Could not load files: ' + escapeHTML(e.message) + "</p>";
+  }
+}
+
+function startDownloadPolling() {
+  if (downloadPollTimer) return;
+  downloadPollTimer = setInterval(async () => {
+    try {
+      const progress = await apiJSON("/api/models/download/progress");
+      renderDownloadProgress(progress || []);
+      if (!progress || !progress.some((p) => p.active)) {
+        clearInterval(downloadPollTimer);
+        downloadPollTimer = null;
+        loadModels();
+      }
+    } catch (e) {
+      clearInterval(downloadPollTimer);
+      downloadPollTimer = null;
+    }
+  }, 1200);
+}
+
+function renderDownloadProgress(items) {
+  const existing = document.getElementById("hf-progress-list");
+  if (existing) existing.remove();
+  const active = items.filter((p) => p.active);
+  if (!active.length) return;
+  const modal = document.getElementById("hf-modal");
+  if (modal.classList.contains("hidden")) return;
+  const wrap = document.createElement("div");
+  wrap.id = "hf-progress-list";
+  wrap.style.padding = "10px 20px 0";
+  active.forEach((p) => {
+    const item = document.createElement("div");
+    item.style.marginBottom = "8px";
+    item.innerHTML = `
+      <div class="status-line" style="margin:0">${escapeHTML(p.filename)} — ${Math.round(p.percent)}%${p.speed ? " · " + escapeHTML(p.speed) : ""}</div>
+      <div class="progress-bar"><div style="width:${p.percent}%"></div></div>
+    `;
+    wrap.appendChild(item);
+  });
+  document.querySelector("#hf-modal .modal-header").insertAdjacentElement("afterend", wrap);
+}
+
 // ── settings: providers ─────────────────────────────────────────────────
+
+let editingProvider = null; // {type, name} while the form is editing an existing provider, else null
 
 async function loadProviders() {
   const list = document.getElementById("provider-list");
@@ -420,37 +688,75 @@ async function loadProviders() {
     const active = await apiJSON("/api/providers/active");
     list.innerHTML = "";
     if (!providers || !providers.length) {
-      list.innerHTML = '<p class="status-line">No providers configured yet.</p>';
+      list.innerHTML = '<p class="status-line">No providers configured yet — add one below.</p>';
       return;
     }
     providers.forEach((p) => {
       const row = document.createElement("div");
-      row.className = "provider-row";
+      row.className = "row";
       const isActive = active && active.provider === p.name;
       row.innerHTML = `
         <span class="dot ${p.connected ? "on" : ""}"></span>
         <span class="name">${escapeHTML(p.name)}</span>
-        <span class="type">${escapeHTML(p.type)}</span>
-        ${isActive ? '<span class="active-badge">active</span>' : '<button type="button" class="secondary set-active">Use this</button>'}
+        <span class="type-tag">${escapeHTML(p.type)}</span>
+        ${isActive ? '<span class="active-badge">Active</span>' : '<button type="button" class="secondary set-active" style="width:auto">Use this</button>'}
+        <span class="row-actions">
+          <button type="button" class="icon-btn edit-provider" title="Edit" aria-label="Edit ${escapeHTML(p.name)}">✎</button>
+          <button type="button" class="icon-btn delete-provider" title="Delete" aria-label="Delete ${escapeHTML(p.name)}">🗑</button>
+        </span>
       `;
       if (!isActive) {
         row.querySelector(".set-active").addEventListener("click", async () => {
           try {
-            await apiJSON("/api/providers/active", {
-              method: "PUT",
-              body: JSON.stringify({ provider: p.name }),
-            });
+            await apiJSON("/api/providers/active", { method: "PUT", body: JSON.stringify({ provider: p.name }) });
             await loadProviders();
           } catch (e) {
             if (e.unauthorized) showLogin();
           }
         });
       }
+      row.querySelector(".edit-provider").addEventListener("click", () => startEditProvider(p));
+      row.querySelector(".delete-provider").addEventListener("click", () => deleteProvider(p));
       list.appendChild(row);
     });
   } catch (e) {
     if (e.unauthorized) { showLogin(); return; }
     list.innerHTML = '<p class="status-line">Could not load providers: ' + escapeHTML(e.message) + "</p>";
+  }
+}
+
+function startEditProvider(p) {
+  editingProvider = { type: p.type, name: p.name };
+  document.getElementById("p-type").value = p.type;
+  document.getElementById("p-name").value = p.name;
+  document.getElementById("p-apikey").value = p.api_key || "";
+  document.getElementById("p-baseurl").value = p.base_url || "";
+  document.getElementById("p-model").value = p.model || "";
+  document.getElementById("provider-form-title").textContent = "Editing: " + p.name;
+  document.getElementById("provider-cancel-edit").classList.remove("hidden");
+  document.getElementById("provider-form").classList.add("editing");
+  document.getElementById("provider-form-msg").textContent = "";
+  document.getElementById("provider-form").scrollIntoView({ behavior: "smooth", block: "center" });
+}
+
+function cancelProviderEdit() {
+  editingProvider = null;
+  document.getElementById("provider-form").reset();
+  document.getElementById("provider-form-title").textContent = "Add a provider";
+  document.getElementById("provider-cancel-edit").classList.add("hidden");
+  document.getElementById("provider-form").classList.remove("editing");
+  document.getElementById("provider-form-msg").textContent = "";
+}
+
+async function deleteProvider(p) {
+  if (!confirm(`Remove the provider "${p.name}"? This can't be undone.`)) return;
+  try {
+    await apiJSON("/api/providers", { method: "DELETE", body: JSON.stringify({ type: p.type, name: p.name }) });
+    if (editingProvider && editingProvider.name === p.name) cancelProviderEdit();
+    await loadProviders();
+  } catch (e) {
+    if (e.unauthorized) { showLogin(); return; }
+    alert("Could not remove provider: " + e.message);
   }
 }
 
@@ -502,15 +808,15 @@ async function fetchModels() {
 async function testProvider() {
   const msg = document.getElementById("provider-form-msg");
   const v = providerFormValue();
+  msg.className = "";
   msg.textContent = "Testing…";
   try {
-    const result = await apiJSON("/api/providers/test", {
-      method: "POST",
-      body: JSON.stringify(v),
-    });
+    const result = await apiJSON("/api/providers/test", { method: "POST", body: JSON.stringify(v) });
+    msg.className = result.connected ? "success" : "error";
     msg.textContent = result.connected ? "✓ Connected." : "✗ " + (result.error || "Could not connect.");
   } catch (e) {
     if (e.unauthorized) { showLogin(); return; }
+    msg.className = "error";
     msg.textContent = "✗ " + e.message;
   }
 }
@@ -519,22 +825,22 @@ async function saveProvider(ev) {
   ev.preventDefault();
   const msg = document.getElementById("provider-form-msg");
   const v = providerFormValue();
-  if (!v.name) { msg.textContent = "Name is required."; return; }
+  if (!v.name) { msg.className = "error"; msg.textContent = "Name is required."; return; }
+  msg.className = "";
   msg.textContent = "Saving…";
   try {
     await apiJSON("/api/providers", {
       method: "PUT",
       body: JSON.stringify(Object.assign({}, v, { enabled: true, priority: 0 })),
     });
-    await apiJSON("/api/providers/active", {
-      method: "PUT",
-      body: JSON.stringify({ provider: v.name }),
-    });
+    await apiJSON("/api/providers/active", { method: "PUT", body: JSON.stringify({ provider: v.name }) });
+    msg.className = "success";
     msg.textContent = "Saved and activated.";
-    document.getElementById("provider-form").reset();
+    cancelProviderEdit();
     await loadProviders();
   } catch (e) {
     if (e.unauthorized) { showLogin(); return; }
+    msg.className = "error";
     msg.textContent = "Failed: " + e.message;
   }
 }
@@ -605,11 +911,11 @@ async function loadAccounts() {
     }
     accounts.forEach((acc) => {
       const row = document.createElement("div");
-      row.className = "provider-row";
+      row.className = "row";
       row.innerHTML = `
         <span class="name">${escapeHTML(acc.username)}</span>
         <span class="role-badge ${acc.role === "admin" ? "admin" : ""}">${escapeHTML(acc.role)}</span>
-        <button type="button" class="remove-btn">Remove</button>
+        <span class="row-actions"><button type="button" class="icon-btn remove-btn" title="Remove" aria-label="Remove ${escapeHTML(acc.username)}">🗑</button></span>
       `;
       row.querySelector(".remove-btn").addEventListener("click", () => deleteAccount(acc.id, acc.username));
       list.appendChild(row);
@@ -626,18 +932,18 @@ async function saveAccount(ev) {
   const username = document.getElementById("acc-username").value.trim();
   const password = document.getElementById("acc-password").value;
   const role = document.getElementById("acc-role").value;
-  if (!username || !password) { msg.textContent = "Username and password are required."; return; }
+  if (!username || !password) { msg.className = "error"; msg.textContent = "Username and password are required."; return; }
+  msg.className = "";
   msg.textContent = "Saving…";
   try {
-    await apiJSON("/api/accounts", {
-      method: "POST",
-      body: JSON.stringify({ username, password, role }),
-    });
+    await apiJSON("/api/accounts", { method: "POST", body: JSON.stringify({ username, password, role }) });
+    msg.className = "success";
     msg.textContent = "Account added.";
     document.getElementById("account-form").reset();
     await loadAccounts();
   } catch (e) {
     if (e.unauthorized) { showLogin(); return; }
+    msg.className = "error";
     msg.textContent = "Failed: " + e.message;
   }
 }
@@ -650,6 +956,7 @@ async function deleteAccount(id, username) {
     await loadAccounts();
   } catch (e) {
     if (e.unauthorized) { showLogin(); return; }
+    msg.className = "error";
     msg.textContent = "Could not remove account: " + e.message;
   }
 }

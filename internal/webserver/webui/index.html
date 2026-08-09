@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light dark">
 <title>Memo</title>
 <link rel="stylesheet" href="style.css">
 </head>
@@ -10,30 +11,57 @@
 
 <div id="login-screen" class="screen hidden">
   <div class="login-box">
-    <h1>Memo</h1>
-    <div id="password-login-block" class="hidden">
-      <p>This backend is on a LAN/remote network — sign in with your account to continue.</p>
-      <input id="login-username" type="text" placeholder="Username" autocomplete="username">
-      <input id="login-password" type="password" placeholder="Password" autocomplete="current-password">
+    <div class="brand-mark"><span class="brand-dot"></span></div>
+    <h1>Welcome back</h1>
+    <p class="lede">This backend is on a LAN/remote network — sign in to continue.</p>
+
+    <div class="tab-switch">
+      <button type="button" id="login-tab-password" class="active">Password</button>
+      <button type="button" id="login-tab-token">Access Token</button>
+    </div>
+
+    <div id="password-login-block">
+      <label for="login-username">Username</label>
+      <input id="login-username" type="text" placeholder="Your username" autocomplete="username">
+      <label for="login-password">Password</label>
+      <div class="reveal-field">
+        <input id="login-password" type="password" placeholder="Your password" autocomplete="current-password">
+        <button type="button" class="reveal-toggle" data-target="login-password" aria-label="Show password">👁</button>
+      </div>
       <button id="login-submit">Log in</button>
     </div>
-    <p id="login-divider" class="divider hidden">or</p>
-    <div id="token-login-block">
-      <p>This backend is on a LAN/remote network — enter its access token to continue. You'll find it in the desktop app under Settings → Remote Access, or in the container logs.</p>
-      <input id="token-input" type="password" placeholder="Access token" autocomplete="off">
+
+    <div id="token-login-block" class="hidden">
+      <label for="token-input">Access token</label>
+      <div class="reveal-field">
+        <input id="token-input" type="password" placeholder="memo-..." autocomplete="off">
+        <button type="button" class="reveal-toggle" data-target="token-input" aria-label="Show token">👁</button>
+      </div>
+      <p class="field-hint">Find it in the desktop app under Settings → Remote Access, or run <code>memo remote status</code> over SSH.</p>
       <button id="token-submit">Connect</button>
     </div>
+
     <p id="login-error" class="error hidden"></p>
   </div>
 </div>
 
 <div id="setup-screen" class="screen hidden">
   <div class="login-box">
+    <div class="brand-mark"><span class="brand-dot"></span></div>
     <h1>Welcome to Memo</h1>
-    <p>No account exists on this server yet. Create one to get started — it will be the server's <strong>admin</strong> account, with full access to accounts, devices, and server settings.</p>
-    <input id="setup-username" type="text" placeholder="Username" autocomplete="username">
-    <input id="setup-password" type="password" placeholder="Password" autocomplete="new-password">
-    <input id="setup-password-confirm" type="password" placeholder="Confirm password" autocomplete="new-password">
+    <p class="lede">No account exists on this server yet. Create one to get started — it becomes the server's <strong>admin</strong> account, with full access to accounts, devices, and server settings.</p>
+    <label for="setup-username">Username</label>
+    <input id="setup-username" type="text" placeholder="Pick a username" autocomplete="username">
+    <label for="setup-password">Password</label>
+    <div class="reveal-field">
+      <input id="setup-password" type="password" placeholder="Pick a password" autocomplete="new-password">
+      <button type="button" class="reveal-toggle" data-target="setup-password" aria-label="Show password">👁</button>
+    </div>
+    <label for="setup-password-confirm">Confirm password</label>
+    <div class="reveal-field">
+      <input id="setup-password-confirm" type="password" placeholder="Type it again" autocomplete="new-password">
+      <button type="button" class="reveal-toggle" data-target="setup-password-confirm" aria-label="Show password">👁</button>
+    </div>
     <button id="setup-submit">Create admin account</button>
     <p id="setup-error" class="error hidden"></p>
   </div>
@@ -41,7 +69,7 @@
 
 <div id="app" class="hidden">
   <header>
-    <div class="brand">Memo</div>
+    <div class="brand"><span class="brand-dot"></span>Memo</div>
     <nav>
       <button class="tab active" data-tab="chat">Chat</button>
       <button class="tab" data-tab="settings">Settings</button>
@@ -60,20 +88,33 @@
 
     <section id="settings-view" class="view">
       <div class="panel">
-        <h2>Local Model</h2>
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="3"/><path d="M9 9h6v6H9z"/></svg>
+          Local Model
+        </h2>
         <p id="model-status" class="status-line">Loading…</p>
         <select id="model-select"></select>
         <div class="actions">
           <button id="model-start">Start</button>
           <button id="model-stop" class="secondary">Stop</button>
+          <button id="model-browse-import" type="button" class="secondary">Import from server…</button>
+          <button id="model-search-open" type="button" class="secondary">Download from Hugging Face…</button>
         </div>
       </div>
 
       <div class="panel">
-        <h2>External Providers</h2>
-        <div id="provider-list" class="provider-list"></div>
-        <h3 class="subhead">Add / update a provider</h3>
-        <form id="provider-form">
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12.5a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/></svg>
+          External Providers
+        </h2>
+        <p class="panel-desc">Connect an external API (OpenAI, Claude, Gemini…) or a local OpenAI-compatible server.</p>
+        <div id="provider-list" class="list"></div>
+        <div class="subhead">
+          <span id="provider-form-title">Add a provider</span>
+          <button type="button" id="provider-cancel-edit" class="link-btn hidden">Cancel edit</button>
+        </div>
+        <form id="provider-form" class="form-card">
+          <label for="p-type">Type</label>
           <select id="p-type">
             <option value="openai">OpenAI</option>
             <option value="gemini">Gemini</option>
@@ -86,28 +127,38 @@
             <option value="llama.cpp">llama.cpp (remote)</option>
             <option value="custom">Custom (OpenAI-compatible)</option>
           </select>
-          <input id="p-name" placeholder="Name (e.g. my-openai)" required>
-          <input id="p-apikey" type="password" placeholder="API key" autocomplete="off">
-          <input id="p-baseurl" placeholder="Base URL (custom/ollama/llama.cpp only)">
+          <label for="p-name">Name</label>
+          <input id="p-name" placeholder="e.g. my-openai" required>
+          <label for="p-apikey">API key</label>
+          <div class="reveal-field">
+            <input id="p-apikey" type="password" placeholder="API key" autocomplete="off">
+            <button type="button" class="reveal-toggle" data-target="p-apikey" aria-label="Show API key">👁</button>
+          </div>
+          <label for="p-baseurl">Base URL <span style="font-weight:400;color:var(--text-dim)">(custom / ollama / llama.cpp only)</span></label>
+          <input id="p-baseurl" placeholder="http://127.0.0.1:11434/v1">
+          <label for="p-model">Model</label>
           <div class="model-row">
-            <input id="p-model" list="p-model-list" placeholder="Model (e.g. gpt-4o-mini) — or fetch the list →" autocomplete="off">
+            <input id="p-model" list="p-model-list" placeholder="e.g. gpt-4o-mini — or fetch the list →" autocomplete="off">
             <datalist id="p-model-list"></datalist>
             <button type="button" id="p-fetch-models" class="secondary">Fetch models</button>
           </div>
-          <p id="fetch-models-msg" class="status-line"></p>
+          <p id="fetch-models-msg" class="field-hint"></p>
           <div class="actions">
-            <button type="button" id="p-test" class="secondary">Test</button>
+            <button type="button" id="p-test" class="secondary">Test connection</button>
             <button type="submit" id="p-save">Save &amp; activate</button>
           </div>
-          <p id="provider-form-msg" class="status-line"></p>
+          <p id="provider-form-msg"></p>
         </form>
       </div>
 
       <div class="panel">
-        <h2>Remote Access</h2>
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>
+          Remote Access
+        </h2>
         <p id="remote-status" class="status-line">Loading…</p>
         <p id="remote-warning" class="warning hidden"></p>
-        <p class="status-line">Device/auth-mode management: use the desktop app's Settings → Remote Access, or the <code>memo remote</code> CLI command over SSH.</p>
+        <p class="field-hint">Device/auth-mode management: use the desktop app's Settings → Remote Access, or the <code>memo remote</code> CLI command over SSH.</p>
         <div class="actions">
           <button id="restart-backend" class="secondary">Restart Backend</button>
         </div>
@@ -115,25 +166,70 @@
       </div>
 
       <div class="panel">
-        <h2>Accounts</h2>
-        <p class="status-line">Who can sign in to this server. Adding, removing, and choosing roles is admin-only.</p>
-        <div id="account-list" class="provider-list"></div>
-        <h3 class="subhead">Add an account</h3>
-        <form id="account-form">
-          <input id="acc-username" placeholder="Username" autocomplete="off" required>
-          <input id="acc-password" type="password" placeholder="Password" autocomplete="new-password" required>
+        <h2>
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2 20c0-3.5 3-6 7-6s7 2.5 7 6"/><path d="M17 8.5a3 3 0 1 0 0-5"/><path d="M22 20c0-2.8-2-5-5-5.6"/></svg>
+          Accounts
+        </h2>
+        <p class="panel-desc">Who can sign in to this server. Adding, removing, and choosing roles is admin-only.</p>
+        <div id="account-list" class="list"></div>
+        <div class="subhead"><span>Add an account</span></div>
+        <form id="account-form" class="form-card">
+          <label for="acc-username">Username</label>
+          <input id="acc-username" placeholder="Their username" autocomplete="off" required>
+          <label for="acc-password">Password</label>
+          <div class="reveal-field">
+            <input id="acc-password" type="password" placeholder="Set an initial password" autocomplete="new-password" required>
+            <button type="button" class="reveal-toggle" data-target="acc-password" aria-label="Show password">👁</button>
+          </div>
+          <label for="acc-role">Role</label>
           <select id="acc-role">
-            <option value="user">User</option>
-            <option value="admin">Admin</option>
+            <option value="user">User — chat, agent, memory, calendar</option>
+            <option value="admin">Admin — everything, including server settings</option>
           </select>
           <div class="actions">
             <button type="submit" id="acc-save">Add account</button>
           </div>
-          <p id="account-form-msg" class="status-line"></p>
+          <p id="account-form-msg"></p>
         </form>
       </div>
     </section>
   </main>
+</div>
+
+<!-- Shared modal: server file browser (model import / agent-style folder pick) -->
+<div id="browse-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3 id="browse-modal-title">Browse server files</h3>
+      <button type="button" class="icon-btn" data-close-modal="browse-modal" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-path-bar">
+      <button type="button" id="browse-up" class="icon-btn" aria-label="Up one folder" title="Up one folder">⬆</button>
+      <span id="browse-path" class="path-text"></span>
+    </div>
+    <div id="browse-body" class="modal-body"></div>
+    <div class="modal-footer">
+      <button type="button" class="secondary" data-close-modal="browse-modal">Cancel</button>
+    </div>
+  </div>
+</div>
+
+<!-- Shared modal: Hugging Face model search + download -->
+<div id="hf-modal" class="modal-backdrop hidden">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Download a model from Hugging Face</h3>
+      <button type="button" class="icon-btn" data-close-modal="hf-modal" aria-label="Close">✕</button>
+    </div>
+    <div class="modal-path-bar">
+      <input id="hf-query" placeholder="Search models (e.g. qwen2.5 7b instruct gguf)" style="flex:1">
+      <button type="button" id="hf-search-btn" class="secondary" style="width:auto">Search</button>
+    </div>
+    <div id="hf-body" class="modal-body"></div>
+    <div class="modal-footer">
+      <button type="button" class="secondary" data-close-modal="hf-modal">Close</button>
+    </div>
+  </div>
 </div>
 
 <script src="app.js"></script>

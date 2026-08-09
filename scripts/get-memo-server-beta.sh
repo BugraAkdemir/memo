@@ -71,11 +71,26 @@ esac
 
 # ── detect mode ──────────────────────────────────────────────────────────────
 IS_UPDATE=false
+HAD_SYSTEMD_SERVICE=false
 if [ -d "$MEMO_HOME" ]; then
     IS_UPDATE=true
     echo -e "${YELLOW}Existing install detected — updating...${NC}"
-    if curl -s -X POST "http://localhost:8090/api/shutdown" --max-time 3 >/dev/null 2>&1; then
-        echo -e "  ${GREEN}▸${NC} Stopped running backend"
+    # POST /api/shutdown used to be the primary stop mechanism here, but it
+    # goes through the same auth gate as every other /api/ route — once the
+    # backend is bound to 0.0.0.0 (--lan, which the systemd install prompt
+    # below defaults to), an unauthenticated POST just gets a 401 and stops
+    # nothing. Worse, plain `curl -s` (no `-f`) treats that 401 as success
+    # at the transport level, so the old `if curl ...; then echo "Stopped
+    # running backend"` check printed a false positive while the old
+    # process kept running — the update below would replace the binary
+    # *on disk* out from under a process that never actually stopped, so
+    # the "update" silently never took effect until something else
+    # restarted the service. If systemd --user owns it, stop it the way
+    # systemd expects — no HTTP credential needed for that.
+    if command -v systemctl >/dev/null 2>&1 && systemctl --user is-enabled memo.service >/dev/null 2>&1; then
+        HAD_SYSTEMD_SERVICE=true
+        echo -e "  ${GREEN}▸${NC} Stopping systemd --user service"
+        systemctl --user stop memo.service >/dev/null 2>&1 || true
     else
         pkill -TERM -f "memo-backend" 2>/dev/null || true
     fi
@@ -217,9 +232,20 @@ else
 fi
 echo ""
 
-# ── systemd offer (Linux only; skipped on macOS — launchd isn't wired up
-# yet, see yapacam.md Faz 3) ─────────────────────────────────────────────────
-if [ "$os" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && ! $IS_UPDATE; then
+# ── systemd: restart after an update, or offer to set it up on fresh
+# installs (Linux only; skipped on macOS — launchd isn't wired up yet, see
+# yapacam.md Faz 3) ──────────────────────────────────────────────────────────
+if [ "$os" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && $IS_UPDATE && $HAD_SYSTEMD_SERVICE; then
+    echo -e "${BOLD}Restarting the systemd --user service with the updated binary...${NC}"
+    systemctl --user daemon-reload >/dev/null 2>&1 || true
+    if systemctl --user restart memo.service >/dev/null 2>&1; then
+        echo -e "  ${GREEN}▸${NC} Restarted — now running the updated version."
+    else
+        echo -e "  ${YELLOW}⚠${NC}  Could not restart it automatically — run this yourself:"
+        echo -e "    ${CYAN}systemctl --user restart memo${NC}"
+    fi
+    echo ""
+elif [ "$os" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && ! $IS_UPDATE; then
     echo -e "${BOLD}Run Memo as a background service (systemd --user)?${NC}"
     echo -e "It'll auto-restart if it crashes, and can be set to survive a reboot."
     echo ""

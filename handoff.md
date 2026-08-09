@@ -103,13 +103,23 @@ bu oturumda fark edilip kapatıldı.
    yeni Accounts panelinin GET'i (herhangi bir authenticated çağıran
    okuyabiliyor, admin-only değil — bilinçli bir tasarım kararıydı, ama
    pentest turunda tekrar gözden geçirilmeli).
-4. **Commit'ler push edilmedi** — kullanıcı onayı bekliyor (bu oturumdaki
-   üçü dahil, Session 5'ten devreden diğerleriyle birlikte).
+4. ~~Commit'ler push edilmedi~~ → **push edildi** (kullanıcı onayıyla, oturum
+   sonunda `git push`). `origin/main` artık bu oturumun tüm commit'lerini
+   (`848f262`den `4ebe205`e kadar) içeriyor.
 5. Faz 5.1'in "Açık kararlar" bölümündeki iki karar bu oturumda kapatıldı
    (`Accounts` ayrı bir kavram, bootstrap sadece web UI'da) — `yapacam.md`
    güncellendi, tekrar sorulmasına gerek yok.
 6. Faz 1-4'ün ve Session 5'in kendi açık maddeleri hâlâ geçerli, aşağıdaki
    eski girişlerde ve `yapacam.md`'nin özet bölümünde duruyor.
+7. **`/code-review` bu oturumda hiç tamamlanmadı** — kullanıcı arka planda
+   çok token yaktığı için durdurdu (aşağıdaki eke bak). Sıradaki oturumda
+   istenirse tekrar çalıştırılabilir, daha dar kapsamlı (tüm repo yerine
+   son commit'lerin diff'i) çağırmak muhtemelen daha isabetli.
+8. **Dosya seçici bug'ının bulduğu sınıf hâlâ sistematik taranmadı** —
+   `frontend/`/`mobile/`'daki her ekranın gerçek bir uzak backend'e karşı
+   "lokalle bire bir aynı mı" QA turu (Faz 4'ten devreden açık madde) tam
+   olarak bu bug'ı da bulurdu; benzer client/server karışıklığı başka
+   ekranlarda da olabilir, kontrol edilmedi.
 
 ---
 

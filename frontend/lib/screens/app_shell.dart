@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/services.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'dart:io';
@@ -550,9 +551,15 @@ class _AppShellState extends ConsumerState<AppShell> {
   }
 
   /// Swarm nav is Beta-gated (backend truth via remoteAccessProvider) and
-  /// hidden on macOS (no rpc-server binary in the Mac release).
+  /// hidden on macOS (no rpc-server binary in the Mac release). dart:io's
+  /// Platform throws UnsupportedError the instant any of its getters are
+  /// touched on web (confirmed live: this exact line was why the whole
+  /// app rendered a blank screen and nothing else on the page ever got a
+  /// chance to run — app_shell is the root shell, built immediately after
+  /// boot) — kIsWeb must be checked first, every time, never Platform.*
+  /// unguarded.
   bool _showSwarmNav() {
-    if (Platform.isMacOS) return false;
+    if (!kIsWeb && Platform.isMacOS) return false;
     final ra = ref.watch(remoteAccessProvider).valueOrNull;
     if (ra != null && ra['beta'] == true) return true;
     // Fallback to the local prefs toggle used elsewhere until remote status loads.

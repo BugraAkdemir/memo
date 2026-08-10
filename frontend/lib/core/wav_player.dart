@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:path/path.dart' as p;
 
 /// Plays WAV audio bytes (Piper's TTS output) via platform-native subprocesses.
@@ -53,6 +54,12 @@ class WavPlayer {
   /// of failing, since a slightly-wrong volume is a much smaller problem
   /// than a playback error on a working fallback path.
   Future<void> play(Uint8List wavBytes, {double volume = 1.0}) async {
+    if (kIsWeb) {
+      // Subprocess-based playback has no web equivalent (no dart:io on
+      // web at all) — fail loudly and immediately instead of touching
+      // Platform.* below, which throws UnsupportedError on web.
+      throw UnsupportedError('Audio playback is not yet supported on web.');
+    }
     final clampedVolume = volume.clamp(0.0, 1.0);
     _stopRequested = false;
     final tempFile = File(

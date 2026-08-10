@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/theme.dart';
@@ -751,7 +752,7 @@ class _CliUninstallSectionState extends ConsumerState<_CliUninstallSection> {
   @override
   Widget build(BuildContext context) {
     final theme = MemoTheme.of(context);
-    final showCliActions = !Platform.isWindows;
+    final showCliActions = !kIsWeb && !Platform.isWindows;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

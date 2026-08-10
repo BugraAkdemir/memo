@@ -1,6 +1,7 @@
 import 'dart:io' show Platform;
 import '../core/l10n.dart';
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -231,7 +232,7 @@ class _SkillConfigDialogState extends ConsumerState<SkillConfigDialog> {
             TextField(
               controller: pathController,
               decoration: InputDecoration(
-                hintText: Platform.isWindows
+                hintText: !kIsWeb && Platform.isWindows
                     ? L10n.t('skill_path_hint_win')
                     : L10n.t('skill_path_hint_unix'),
                 border: OutlineInputBorder(),

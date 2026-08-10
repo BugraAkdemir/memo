@@ -118,18 +118,6 @@ jobs:
         run: |
           rm -f internal/webserver/webapp/index.html
           cp -r frontend/build/web/* internal/webserver/webapp/
-          # Temporary diagnostics — a prior run's embedded binary ended up
-          # byte-identical in size to the placeholder-only build despite
-          # this step reporting no error, so the embed silently isn't
-          # picking up what's copied here for a reason not yet understood.
-          # These lines make the actual on-disk state (and go:embed's own
-          # view of it) visible in the log instead of guessing again.
-          echo "--- ls internal/webserver/webapp/ ---"
-          ls -la internal/webserver/webapp/
-          echo "--- du -sh ---"
-          du -sh internal/webserver/webapp/
-          echo "--- go list -f embed pattern match ---"
-          go list -f '{{.EmbedFiles}}' ./internal/webserver/ || true
 
       - name: Build Go backend
         run: |
@@ -366,18 +354,6 @@ jobs:
         run: |
           rm -f internal/webserver/webapp/index.html
           cp -r frontend/build/web/* internal/webserver/webapp/
-          # Temporary diagnostics — a prior run's embedded binary ended up
-          # byte-identical in size to the placeholder-only build despite
-          # this step reporting no error, so the embed silently isn't
-          # picking up what's copied here for a reason not yet understood.
-          # These lines make the actual on-disk state (and go:embed's own
-          # view of it) visible in the log instead of guessing again.
-          echo "--- ls internal/webserver/webapp/ ---"
-          ls -la internal/webserver/webapp/
-          echo "--- du -sh ---"
-          du -sh internal/webserver/webapp/
-          echo "--- go list -f embed pattern match ---"
-          go list -f '{{.EmbedFiles}}' ./internal/webserver/ || true
 
       - name: Build Go backend
         run: |

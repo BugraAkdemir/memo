@@ -1,3 +1,55 @@
+## Ek (2026-08-10) — Flutter web'de boş gri ekran: `dart:io` `Platform.*` guard'sız kullanımı (commit `9e65d77`)
+
+Yeni Flutter-web build kullanıcının RPi'sinde tamamen boş gri sayfa
+verdi (tab başlığı doğru "Memo", içerik sıfır — ekran görüntüsü
+`bug4.png`). Tarayıcı konsolunu istedim, kullanıcı yapıştırdı: `Unsupported
+operation: Platform._operatingSystem`. `dart:io`'nun `Platform` sınıfı
+web'de **derleme zamanında değil, runtime'da** herhangi bir getter'a
+dokunulduğu an patlıyor (`isWindows`/`isMacOS`/`isLinux`/
+`operatingSystem` hepsi) — `kIsWeb` (foundation.dart) ile önce
+guard'lanması şart, aksi halde web build'i temiz derlenir ama ilk
+çalıştırmada çöker.
+
+**Kök neden:** `app_shell.dart`'taki `_showSwarmNav()` — root shell'in
+nav-rail görünürlük kontrolü, boot'tan hemen sonraki ilk build'de
+çalışıyor. Web'de ilk kare hiç çizilemeden patlıyordu, o yüzden sayfa
+tamamen boştu.
+
+**Grep ile tüm repo'da tarandı** (`grep -rn "Platform\.\(operatingSystem\
+|isWindows\|isLinux\|isMacOS\|isAndroid\|isIOS\|isFuchsia\)" lib/ | grep
+-v kIsWeb`), 4 guard'sız çağrı bulundu, hepsi düzeltildi:
+- `app_shell.dart:555` — asıl çökme noktası.
+- `wav_player.dart` — TTS ses çalma tamamen subprocess tabanlı
+  (paplay/afplay/PowerShell SoundPlayer), web'de gerçek bir karşılığı
+  yok — `play()`'in en başına `kIsWeb` erken-dönüş/throw eklendi,
+  `Platform.*`'a hiç dokunmadan düzgün `UnsupportedError` fırlatıyor.
+- `skill_config_dialog.dart:234`, `general_tab.dart:754` — lazy
+  (dialog/ayarlar sekmesi), boot çökmesine sebep değildi ama açılınca
+  patlardı, düzeltildi.
+
+Tüm guard'lar `!kIsWeb && Platform.X` deseninde — masaüstünde `kIsWeb`
+her zaman `false`, yani bu koşullar masaüstünde eskisiyle **matematiksel
+olarak birebir aynı**, sıfır davranış/layout değişikliği riski yok
+(kullanıcıya da bunu doğruladım). Sadece web'de artık çökmek yerine
+düzgün çalışıyor.
+
+**Doğrulama:** `flutter analyze` (aynı 5 bilinen `use_build_context_
+synchronously` info, yeni sıfır), `flutter test` (176/176), `flutter
+build web --release` temiz, yerel Go binary rebuild + curl ile embed
+içeriği doğrulandı (`main.dart.js` 4.8MB, doğru content-type, 200 OK).
+`internal/webserver/webapp/index.html` commit öncesi tracked
+placeholder'a geri alındı (`git checkout --`).
+
+**Sıradaki oturum için:** CI'daki `Build Linux` (arm64 dahil, RPi'nin
+kullandığı) push anında hâlâ çalışıyordu — tamamlandığında **gerçek
+indirilen artifact bizzat doğrulanmalı** (cache-busting query string
+ile, TD-4 hâlâ çözülmedi — Cloudflare eski `.zip`'i cache'leyebilir),
+sonra kullanıcıya retest onayı verilmeli. Web'de TTS ses çalma bilerek
+çalışmıyor (kullanıcı "beta, şimdilik boşver" dedi) — `wav_player.dart`
+guard'ı bunu net bir hatayla söylüyor, sessizce başarısız olmuyor.
+
+---
+
 # Handoff — 2026-08-09 (Session 6) — Faz 5.1 implementasyonu: çoklu-hesap + rol modeli + web bootstrap ekranı
 
 ## Ek (2026-08-10, devam) — el yazması webui tamamen atıldı, yerine gerçek Flutter web build kondu (commit'ler `5df172b`→`78ca962`)

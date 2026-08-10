@@ -56,8 +56,8 @@
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 2 |
 | 🟢 LOW | 0 |
-| 🔧 TEKNİK BORÇ | 1 |
-| **TOPLAM** | **3** |
+| 🔧 TEKNİK BORÇ | 2 |
+| **TOPLAM** | **4** |
 
 ---
 
@@ -88,6 +88,13 @@
 - **Nedir:** Derlenmiş çıktılar (`memo_beta.tar.gz`, `memo_arm_beta.zip` vb.) her `main` push'unda otomatik R2'ye yükleniyor, ama `get-memo-server.sh`/`get-memo-server-beta.sh` gibi kurulum script'lerinin **kendisi hiçbir workflow tarafından yüklenmiyor** — Session 5'in handoff'unda zaten "kullanıcı R2'ye kendi eliyle yükleyecek" diye not edilmişti. Bugün somut sonucu görüldü: kullanıcının `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash` ile çektiği script, commit `1fbaec6`'nın (Session 5, token-bootstrap circular-dependency fix) düzelttiği **eski** metni gösterdi — "run 'memo remote status' to see the device token" (bu komutun kendisi token olmadan zaten 401 veriyor, tam olarak `1fbaec6`'nın kapattığı döngüsel bug). Yani repo'da aylar önce düzeltilmiş bir bug, canlıda hâlâ aktif çünkü script hiç yeniden yüklenmemiş.
 - **Kullanıcı etkisi:** Install-script'lere yapılan HERHANGİ bir düzeltme (BUG-ONB1/ONB2 dahil, düzeltilseler bile), birisi elle R2'ye yükleyene kadar gerçek kullanıcıları etkilemeye devam eder — sessiz, fark edilmesi zor bir regresyon kaynağı; test edip "düzelttim" demek yeterli değil, deploy de ayrı bir adım.
 - **Düzeltme (uygulanmadı, sadece kayıt):** İki seçenek: (1) `scripts/*.sh`'ı da bir CI adımıyla otomatik R2'ye yükle (build workflow'larına eklenecek düşük riskli bir adım — script'ler zaten repo'da), (2) en azından `scripts/README.md`'ye/memo-release skill'ine "script değişikliğinden sonra elle R2'ye yükle" diye açık, atlanamaz bir checklist maddesi ekle. (1) daha sağlam çünkü insan hatasına bağımlı değil — bugünkü olay tam olarak bu insan-hatası senaryosu.
+
+### TD-4: `download.bugradev.com` Cloudflare edge cache'i eski arşivleri servis edebiliyor — repo'dan bağımsız, hesap ayarı gerektiriyor
+
+- **Dosya:** Cloudflare dashboard (bu repo'da düzeltilecek bir kod yok — hesap/DNS/cache ayarı)
+- **Nedir:** Flutter-web webui migrasyonunu doğrularken (2026-08-10) tesadüfen bulundu: `curl -I https://download.bugradev.com/memo_arm_beta.zip` bazen `cf-cache-status: HIT` ile **saatler önceki** bir `last-modified`/`content-length` döndürüyor — R2'deki gerçek dosya güncel olsa bile. Aynı URL'e cache-busting query string (`?cachebust=$(date +%s)`) eklenince `cf-cache-status: MISS` ile doğru, taze dosya geliyor — yani Cloudflare bu hostname için `.zip` dosyalarını (muhtemelen "Cache Everything" tipi bir Page Rule/Cache Rule ile) agresif şekilde edge'de tutuyor, R2'deki güncelleme ile cache'in temizlenmesi arasında senkron yok.
+- **Kullanıcı etkisi:** Bir kullanıcı `curl ... | bash` ile kurulum/update script'ini çalıştırdığında, hangi Cloudflare edge node'una denk geldiğine bağlı olarak **saatler eski bir binary** indirebilir — script'in kendisi hiçbir hata vermez, "başarılı" görünür, ama içerik eski kalır. Bu oturumda tam olarak bu yaşandı: kullanıcı update'i doğru çalıştırdı, script de doğru çalıştı, ama indirilen arşiv Cloudflare cache'inden geldiği için saatler önceki bir build'di — CI/kod tarafında (yanlışlıkla) uzun bir hata avı başlatıldı, gerçek sebep bu cache katmanıydı.
+- **Düzeltme (uygulanmadı, bu repo'nun kapsamı dışında):** Cloudflare dashboard'undan `download.bugradev.com` için: (1) `.zip`/`.tar.gz` dosyalarına kısa bir cache TTL (ya da "bypass cache") kuralı eklenmeli, VEYA (2) CI'nın R2'ye her yükleme sonrası Cloudflare API ile o dosya için otomatik bir "purge cache" çağrısı yapması (`CF_API_TOKEN`/`CF_ZONE_ID` secret'ları eklenip build workflow'larının R2 upload adımlarının hemen ardından bir `curl -X POST .../purge_cache` adımı). (2) daha sağlam çünkü insan "hatırlayıp elle purge etme"ye bağımlı değil — tam olarak TD-3'ün aynı dersi.
 
 ---
 

@@ -1,5 +1,86 @@
 # Handoff — 2026-08-09 (Session 6) — Faz 5.1 implementasyonu: çoklu-hesap + rol modeli + web bootstrap ekranı
 
+## Ek (2026-08-10, devam) — el yazması webui tamamen atıldı, yerine gerçek Flutter web build kondu (commit'ler `5df172b`→`78ca962`)
+
+Kullanıcı yeniden tasarlanan webui'yi de test edip yine ciddi eksikler
+buldu (provider "Use this" API key sormadan aktive ediyordu, model
+değiştirme dağınıktı) ve doğrudan sordu: neden `frontend/`'i web için
+derleyip onu kullanmıyoruz? Test ettim — **mevcut Flutter kod tabanı hiç
+değişiklik gerektirmeden web için derleniyor** (`flutter build web
+--release` temiz geçti). Karar verildi: el yazması `internal/webserver/
+webui/` tamamen silindi, yerine `frontend/`'in web derlemesi
+(`internal/webserver/webapp/`, `//go:embed all:webapp`) geldi — artık
+masaüstü/web tek kod tabanı, tek bug seti.
+
+**Yapılanlar:**
+- `internal/webserver/webapp.go` (eski `webui.go`) yeni dizini gömüyor.
+- `frontend/lib/core/backend_url.dart`: web'de `Uri.base.origin`'e
+  düşüyor artık (eskiden hardcoded `127.0.0.1:8090` — LAN'dan başka bir
+  IP'den açılan sayfa kendi tarayıcısının localhost'una bağlanmaya
+  çalışıyordu, bugünkü dosya-seçici bug'ıyla aynı client/server karışıklığı).
+- `build-linux.yml`(x86_64+arm64)/`build-macos.yml`/`build-windows.yml`:
+  `go build`'dan önce `flutter build web --release` + kopyalama adımı
+  eklendi. `build-docker.yml` bilinçli olarak dokunulmadı (o image zaten
+  "tarayıcı UI yok, masaüstü/CLI kullan" diye belgelenmiş).
+- Marka: `flutter create --platforms=web` şablonunun jenerik
+  "memo_flutter"/mavi teması, gerçek Memo kimliğine (bronz `#b08d57`,
+  gerçek 1024x1024 ikon) çevrildi.
+- **Aynı fırsatta:** `~/.cache/go-build` cache fix'i aslında sadece
+  `build-linux.yml`'e uygulanmıştı — bir önceki commit mesajım macOS/
+  Windows'un "zaten güvenli" olduğunu YANLIŞ iddia etmişti (Linux'a özel
+  bir grep pattern'i onların kendi OS-spesifik path'lerini kaçırmış).
+  İkisi de bu turda düzeltildi.
+
+**Bu turda ikinci kez ciddi bir kendi hatam oldu, saklamadan yazıyorum:**
+İlk commit'i (`5df172b`) hazırlarken `git add`'a verdiğim path listesinde
+biri (`internal/webserver/webui.go` — zaten daha önce `git rm --cached`
+ile silinmiş, tekrar eklenecek hiçbir şeyi kalmamıştı) eşleşmedi, `git
+add` bu yüzden **komutun tamamını sessizce iptal etti** — aynı komuttaki
+diğer TÜM path'ler (CI workflow'ları, `.gitignore`, `backend_url.dart`,
+`server.go`) de stage'lenmeden kaldı. `git status`'un iki-kolonlu
+formatını (` M` = stage'siz, `M ` = stage'li) yanlış okuyup commit attım
+— `5df172b` derleniyor gibi görünüyordu (yerel dizinde gerçek değişiklik
+vardı) ama commit'in içinde SADECE `webapp.go`/`webapp/` ve silinen eski
+dosyalar vardı, CI'nın ihtiyaç duyduğu her şey (asıl iş) eksikti. CI
+`undefined: webUIFS` ile patladı. `ad6f9aa` ile düzeltildi — bu sefer
+`git diff --stat` (sadece stage'siz farkı gösterir) sıfır dönene kadar
+commit atmadım.
+
+**Sonra üçüncü bir kör iz sürme turu daha oldu:** `ad6f9aa` CI'da
+başarıyla derlendi ama indirip kontrol ettiğim arm64 binary'si eski
+boyuttaydı, yeni webui izi yoktu. Go'nun derleme cache'ini (tonight'ın
+önceki bug'ı) suçladım, ama zaten kaldırmıştım. CI'a geçici debug
+adımları ekleyip (`9bcba20`) gerçek disk durumunu logladım — `go list -f
+EmbedFiles` **doğru dosyaları** gösterdi, kopyalama adımı da doğruydu.
+Asıl suçlu hiç kod değildi: **Cloudflare `download.bugradev.com` için
+`.zip` dosyalarını edge'de agresif cache'liyor** (`cf-cache-status:
+HIT`, saatler eski `last-modified`) — cache-busting query string ekleyince
+(`?cachebust=...`) `MISS` ile doğru, taze (~112MB, eskisi ~65MB) binary
+geldi, 0 eski webui izi + 42 gerçek Flutter-web işareti + marka rengi
+doğrulandı. Bu, `BUG_REPORT.md`'ye **TD-4** olarak kaydedildi — repo
+dışı, Cloudflare dashboard ayarı gerektiriyor, ben düzeltemem.
+
+**Doğrulama:** `go build/vet/test -race` temiz, `flutter analyze`/`test`
+temiz (176/176), YAML üç workflow'da da geçerli. CI'da gerçek build
+izlendi (arm64 job artık ~3-4dk, önceden ~2-3dk — web derleme eklendiği
+için beklenen artış). **Cache-busting ile indirilen arşiv bizzat
+doğrulandı** — bu, bugünkü tüm "değişmemiş" şikayetlerinin son, gerçek
+kapanışı.
+
+**Sıradaki oturum için:**
+1. Kullanıcı yeni web app'i kendi RPi'sinde, **Cloudflare cache'ini
+   önce purge ederek ya da `?cachebust=` ekleyerek** test etmeli —
+   yoksa yine eski (bu sefer Flutter'dan ÖNCEKİ el yazması) sürümü görebilir.
+2. TD-4 (Cloudflare cache) — kullanıcının kendi dashboard'undan ya bir
+   cache-bypass kuralı ya da CI'ya otomatik purge adımı eklenmeli.
+3. `build-docker.yml` hâlâ placeholder sayfa servis ediyor — bilinçli
+   kapsam dışı, ama gerçek bir kullanıcı Docker + tarayıcı beklerse
+   şaşırabilir.
+4. Ses kaydı (`record` paketi) web'de hiç test edilmedi — kullanıcı
+   "beta zaten, şimdilik boş ver" dedi.
+
+---
+
 ## Ek (2026-08-10, devam) — minimal web UI komple yeniden tasarlandı (commit `d44a0eb`)
 
 Kullanıcı gerçek RPi'sinde web UI'ı canlı test edip çok net şikayetler

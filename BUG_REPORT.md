@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-12 — **TD-3 tamamen düzeltildi** (`8e470e3`): `build-linux.yml`'e "Upload install/update/uninstall scripts to R2" adımı eklendi — `scripts/README.md`'nin "End-user installers" tablosundaki 11 script artık her `main` push'unda R2'ye otomatik yükleniyor (mevcut R2 secret'ları/rclone deseni yeniden kullanılıyor), böylece repo'da düzeltilen bir script bug'ı elle yükleme beklemeden canlıya çıkıyor — bu oturumun kendi BUG-ONB1/ONB2 script düzeltmeleri (`dec0c0a`) dahil. TD-4 (Cloudflare edge cache) hâlâ açık — hesap/dashboard erişimi + yeni `CF_API_TOKEN`/`CF_ZONE_ID` secret'ları gerektiriyor, bu oturumda yapılamadı.
+> **Son güncelleme:** 2026-08-12 — **TD-4 kullanıcı tarafından halledildi** (Cloudflare dashboard/hesap ayarı — bu repo'nun kapsamı dışındaydı zaten, kod tarafında bir şey yok). **TD-3 tamamen düzeltildi** (`8e470e3`): `build-linux.yml`'e "Upload install/update/uninstall scripts to R2" adımı eklendi — `scripts/README.md`'nin "End-user installers" tablosundaki 11 script artık her `main` push'unda R2'ye otomatik yükleniyor (mevcut R2 secret'ları/rclone deseni yeniden kullanılıyor), böylece repo'da düzeltilen bir script bug'ı elle yükleme beklemeden canlıya çıkıyor — bu oturumun kendi BUG-ONB1/ONB2 script düzeltmeleri (`dec0c0a`) dahil.
+>
+> **Ayrıca aynı oturumda, kullanıcı script'lerin gerçekten çalışıp çalışmadığını sorunca bulundu:** 9 end-user script'in (get-memo.sh, get-memo-beta.sh, get-memo-server.sh, get-memo-server-beta.sh, get_memo_arm.sh, update.sh, uninstall.sh, uninstall-arm.sh, uninstall-selfhosted.sh) hepsi `set -euo pipefail`'den hemen sonra çıplak `clear` çağırıyordu — `$TERM` set değilse (pty'siz `curl | bash`, bazı SSH/provisioning senaryoları, cron) `clear` hata koduyla dönüyor ve `set -e` yüzünden **script hiçbir şey yapmadan anında ölüyordu**. `uninstall-selfhosted.sh`'ı sahte bir `$HOME` ile sandbox'ta çalıştırarak canlı olarak doğrulandı (fix'ten önce: hiçbir şey silinmedi; fix'ten sonra: doğru şekilde silindi). `8e470e3`'ün ardından `40b6b32` ile düzeltildi (`clear 2>/dev/null || true` + 3 script'teki `/dev/tty` prompt fallback'lerinde yanlış sıralı redirection'lar).
 >
 > **BUG-ONB1 ve BUG-ONB2 tamamen düzeltildi:**
 > - **BUG-ONB1** (2 parça): (1) `1c9c33c` — `internal/webserver/server.go`'nun LAN-adres tespiti (`getLocalIPs`, `Settings`/`memo remote status`/script'lerin hepsinin kullandığı) artık `docker`/`br-`/`veth`/`virbr`/`tun`/`tap`/`podman`/`cni`/`flannel`/`kube-bridge`/`cali` önekli sanal arayüzleri atlıyor — aynı mantığın kullanılmayan bir kopyası zaten dosyada duruyordu, ikisi tek, doğru implementasyonda birleştirildi. (2) `dec0c0a` — `get-memo-server.sh`/`get-memo-server-beta.sh` artık kurulum/güncelleme sonunda gerçek `http://<ip>:<port>` adresini basıyor; adres `ip route get 1.1.1.1`'in kaynak IP'siyle (Docker bridge'lerini doğal olarak atlıyor, çünkü onlar hiç outbound routing'de kullanılmıyor) ve port, unit dosyasının kendi `ExecStart` satırından tespit ediliyor (varsayılan olmayan `--port` de doğru yansıyor).
@@ -65,18 +67,18 @@
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 1 |
 | 🟢 LOW | 0 |
-| 🔧 TEKNİK BORÇ | 1 |
-| **TOPLAM** | **2** |
+| 🔧 TEKNİK BORÇ | 0 |
+| **TOPLAM** | **1** |
 
 ---
 
 ## 🟡 MEDIUM — Self-hosted onboarding & web UI (2026-08-11, kullanıcının RPi'sindeki canlı `http://192.168.1.106:8090` web kurulumunda birebir yaşandı)
 
-### BUG-ONB5: RAM doğru okunmuyor şüphesi (netleştirilecek)
+### BUG-ONB5: Kurulum ekranı + Model Store, ilk açılışta RAM'i bulamayıp yanlış/eksik model öneriyor — refresh'te düzeliyor
 
-- **Nedir:** Kullanıcı, API provider bağlayıp cevap alabilen çalışan bir kurulumda "RAM'i doğru okumuyor" belirtiyor. Henüz hangi ekranda (Settings? Model tabı? backend `/api/status`'ta mı gösterilen değer?) ve gerçek değerin ne olduğu netleşmedi. RPi 2GB RAM; muhtemelen model yükleme/embedding bağlamında "yetersiz RAM" mesajı alıyor veya gösterilen değer yanlış.
-- **Durum:** Bekleniyor — kullanıcıdan ekran/örnek talep edilecek. (Olası ilgili senaryo, alttaki embedding-RAM notunda.)
-- **Düzeltme (uygulanmadı):** netleşince.
+- **Netleşti (2026-08-12, kullanıcıdan):** İki ayrı yer etkileniyor — (1) **kurulum (setup) ekranı**, kullanıcının RAM'ini (örn. "16GB") doğru gösteriyor AMA aynı ekranın RAM'e göre model önerme mantığı RAM'i bulamıyor (öneri boş/yanlış çıkıyor); (2) **Model Store**, aynı şekilde RAM'e göre model önerirken RAM'i okuyamıyor. İkisinde de sayfayı **refresh edince sorun kendi kendine düzeliyor** — bu klasik bir race/timing sinyali: RAM tespiti muhtemelen asenkron geliyor (bir API çağrısı/provider ile) ve öneri mantığı bu veri henüz gelmeden, `null`/`0`/varsayılan bir değerle çalışıyor; refresh, provider'ı yeniden tetikleyip veriyi doğru sırayla getiriyor.
+- **Kullanıcı planı:** Bu oturumun script fix'lerini (BUG-ONB1/ONB2/`clear`+`/dev/tty` script bug'ı) kendi RPi'sine kurup hem onları hem bu bug'ı tekrar test edip sonucu bildirecek.
+- **Düzeltme (uygulanmadı, sıradaki oturumda kod tarafı incelenmeli):** Setup wizard'ın ve Model Store'un RAM okuma noktaları (`frontend/lib/widgets/setup_wizard_view.dart`, `frontend/lib/screens/model_store/...`) ile bunların beslendiği Riverpod provider'ı bulunup, RAM verisinin "henüz gelmedi" durumuyla "gelip 0 döndü" durumu birbirinden ayırt ediliyor mu (AsyncValue.loading vs. data:0) kontrol edilmeli — model önerisi muhtemelen `loading` state'i `0`/`bilinmiyor` gibi işleyip erken karar veriyor.
 
 ### Embedding modeli 2GB RAM'de çalıştırılamadı (bilgi, bug değil — 2026-08-11)
 
@@ -89,12 +91,7 @@
 
 ## 🔧 TEKNİK BORÇ
 
-### TD-4: `download.bugradev.com` Cloudflare edge cache'i eski arşivleri servis edebiliyor — repo'dan bağımsız, hesap ayarı gerektiriyor
-
-- **Dosya:** Cloudflare dashboard (bu repo'da düzeltilecek bir kod yok — hesap/DNS/cache ayarı)
-- **Nedir:** Flutter-web webui migrasyonunu doğrularken (2026-08-10) tesadüfen bulundu: `curl -I https://download.bugradev.com/memo_arm_beta.zip` bazen `cf-cache-status: HIT` ile **saatler önceki** bir `last-modified`/`content-length` döndürüyor — R2'deki gerçek dosya güncel olsa bile. Aynı URL'e cache-busting query string (`?cachebust=$(date +%s)`) eklenince `cf-cache-status: MISS` ile doğru, taze dosya geliyor — yani Cloudflare bu hostname için `.zip` dosyalarını (muhtemelen "Cache Everything" tipi bir Page Rule/Cache Rule ile) agresif şekilde edge'de tutuyor, R2'deki güncelleme ile cache'in temizlenmesi arasında senkron yok.
-- **Kullanıcı etkisi:** Bir kullanıcı `curl ... | bash` ile kurulum/update script'ini çalıştırdığında, hangi Cloudflare edge node'una denk geldiğine bağlı olarak **saatler eski bir binary** indirebilir — script'in kendisi hiçbir hata vermez, "başarılı" görünür, ama içerik eski kalır. Bu oturumda tam olarak bu yaşandı: kullanıcı update'i doğru çalıştırdı, script de doğru çalıştı, ama indirilen arşiv Cloudflare cache'inden geldiği için saatler önceki bir build'di — CI/kod tarafında (yanlışlıkla) uzun bir hata avı başlatıldı, gerçek sebep bu cache katmanıydı.
-- **Düzeltme (uygulanmadı, bu repo'nun kapsamı dışında):** Cloudflare dashboard'undan `download.bugradev.com` için: (1) `.zip`/`.tar.gz` dosyalarına kısa bir cache TTL (ya da "bypass cache") kuralı eklenmeli, VEYA (2) CI'nın R2'ye her yükleme sonrası Cloudflare API ile o dosya için otomatik bir "purge cache" çağrısı yapması (`CF_API_TOKEN`/`CF_ZONE_ID` secret'ları eklenip build workflow'larının R2 upload adımlarının hemen ardından bir `curl -X POST .../purge_cache` adımı). (2) daha sağlam çünkü insan "hatırlayıp elle purge etme"ye bağımlı değil — tam olarak TD-3'ün aynı dersi.
+*(hiçbiri açık değil — TD-3 `8e470e3` ile, TD-4 kullanıcı tarafından Cloudflare dashboard'undan halledildi)*
 
 ---
 

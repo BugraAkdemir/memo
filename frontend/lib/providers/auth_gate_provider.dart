@@ -1,7 +1,6 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
 import 'chat_provider.dart';
@@ -31,7 +30,11 @@ class AuthGateInfo {
 ///   - backend unreachable           -> ok (BackendUnreachableOverlay)
 final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
   var alive = true;
-  ref.onDispose(() => alive = false);
+  Timer? pollTimer;
+  ref.onDispose(() {
+    alive = false;
+    pollTimer?.cancel();
+  });
   final api = ref.read(apiClientProvider);
   final prefs = ref.read(prefsProvider);
   while (alive) {
@@ -60,6 +63,10 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
       yield const AuthGateInfo(AuthGateState.ok);
     }
     if (!alive) break;
-    await Future.delayed(const Duration(seconds: 30));
+    // A cancellable pause instead of Future.delayed: onDispose must be able
+    // to stop the poll cleanly (widget tests assert no pending timers).
+    final pause = Completer<void>();
+    pollTimer = Timer(const Duration(seconds: 30), pause.complete);
+    await pause.future;
   }
 });

@@ -17,6 +17,7 @@ import 'package:memo_flutter/providers/settings_provider.dart';
 /// HTTP requests sendMessage() actually dispatched.
 class _FakeMultiStreamAdapter implements HttpClientAdapter {
   final List<StreamController<Uint8List>> requests = [];
+  final requestStarted = Completer<void>();
 
   @override
   Future<ResponseBody> fetch(
@@ -36,6 +37,7 @@ class _FakeMultiStreamAdapter implements HttpClientAdapter {
     if (options.method == 'POST' && options.path == '/api/send/stream') {
       final controller = StreamController<Uint8List>();
       requests.add(controller);
+      if (!requestStarted.isCompleted) requestStarted.complete();
       return ResponseBody(controller.stream, 200);
     }
     return ResponseBody.fromString('not found', 404);
@@ -92,8 +94,13 @@ void main() {
     final f2 = notifier.sendMessage('naber');
 
     // Let both calls run up to (and past, if the guard fails to stop the
-    // second one) the point where they'd issue their HTTP request.
-    await Future.delayed(const Duration(milliseconds: 20));
+    // second one) the point where they'd issue their HTTP request. Waiting
+    // on the adapter's request-started signal (not a fixed delay) keeps the
+    // assertion deterministic under parallel full-suite load, where a bare
+    // Future.delayed could observe the request not yet dispatched even
+    // though the guard logic is sound. f1/f2 themselves are awaited below,
+    // after the streams are closed.
+    await adapter.requestStarted.future;
 
     expect(
       adapter.requests.length,

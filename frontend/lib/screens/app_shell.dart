@@ -15,6 +15,7 @@ import '../providers/agent_provider.dart';
 import '../widgets/settings_dialog.dart';
 import '../widgets/llama_installer_view.dart';
 import '../widgets/backend_unreachable_view.dart';
+import '../widgets/auth_gate_overlay.dart';
 import '../widgets/setup_wizard_view.dart';
 import '../widgets/version_banner.dart';
 import '../widgets/proactive_suggestion_banner.dart';
@@ -244,6 +245,7 @@ class _AppShellState extends ConsumerState<AppShell> {
               if (_showTour) _buildTourOverlay(),
               LlamaInstallerOverlay(),
               const BackendUnreachableOverlay(),
+              const AuthGateOverlay(),
               const VersionBanner(),
               const ProactiveSuggestionBanner(),
             ],

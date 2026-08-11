@@ -180,6 +180,10 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
         return;
       }
       await prefs.setBool(authSetupDoneKey, true);
+      await prefs.setString(
+          'memo_session_role', 'admin');
+      await prefs.setString(
+          'memo_session_username', _username.text.trim());
       ref.invalidate(authGateProvider);
     } on DioException catch (e) {
       if (!mounted) return;
@@ -444,6 +448,8 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
       if (res.sessionToken.isEmpty) throw Exception('empty token');
       api.setSessionToken(res.sessionToken);
       await prefs.setString('memo_session_role', res.role);
+      await prefs.setString(
+          'memo_session_username', _username.text.trim());
       ref.invalidate(authGateProvider);
     } on DioException catch (e) {
       if (!mounted) return;

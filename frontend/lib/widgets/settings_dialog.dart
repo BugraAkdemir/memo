@@ -20,6 +20,7 @@ import 'settings/tabs/skills_tab.dart';
 import 'settings/tabs/gpu_config_tab.dart';
 import 'settings/tabs/backup_restore_tab.dart';
 import 'settings/tabs/remote_access_tab.dart';
+import 'settings/tabs/accounts_tab.dart';
 import 'settings/tabs/beta_features_tab.dart';
 import 'settings/tabs/about_tab.dart';
 import 'settings/tabs/taskloop_tab.dart';
@@ -75,17 +76,18 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/info.svg',
     'lib/icon/slash/list-checks.svg',
     'lib/icon/slash/wrench.svg',
+    'lib/icon/slash/people.svg',
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..19 must appear exactly once — covered by
+  /// Every index 0..20 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
     ('settings_group_providers', [5, 6, 15]),
     ('settings_group_memory', [3, 4, 9, 10]),
     ('settings_group_agents', [7, 8, 11, 18]),
-    ('settings_group_system', [12, 13, 14]),
+    ('settings_group_system', [12, 13, 14, 20]),
     ('settings_group_other', [16, 17, 19]),
   ];
 
@@ -110,6 +112,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('about'),
     L10n.t('tab_taskloop'),
     L10n.t('tab_report_bug'),
+    L10n.t('tab_accounts'),
   ];
 
   @override
@@ -250,6 +253,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 17: return AboutTab();
       case 18: return TaskLoopTab();
       case 19: return ReportBugTab();
+      case 20: return AccountsTab();
       default: return const SizedBox.shrink();
     }
   }

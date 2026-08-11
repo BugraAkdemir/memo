@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-11 — kullanıcının RPi'sindeki (`192.168.1.106:8090`) canlı web kurulumunda yeni bulgular: BUG-ONB3 (login sonrası geçici "sunucuya bağlanılamıyor" + kurulum ekranına düşme, hâlâ açık), BUG-ONB5 (RAM okuma şüphesi, hâlâ açık) — sadece kayda geçirildi, aşağıda. **BUG-ONB4 düzeltildi** (gate açıkken arka plan poll'lerinin 401 gürültüsü) — `authGateBlocked()`/`cancellablePause()` (`frontend/lib/providers/gate_guard.dart`) gate kapalıyken models/embedding/download/mood/whatsapp/cli-running/connection-status poll'lerini askıya alıyor, `messagesProvider` gate altında 401'i sessizce boş sohbet olarak açıyor ve gate kapanınca `chat_screen.dart`'ın listener'ı yeniden yüklüyor. Düzeltme sürecinde ayrı bir gerçek bug daha bulundu ve kapatıldı: `mood_provider.dart`'ın `Stream.periodic(...).asyncExpand(...).distinct()` deseni, iç generator'ın gate kapalıyken hep boş dönmesi (`return;`, hiç `yield` yok) durumunda periyodik Timer'ı dispose'da iptal etmiyordu (minimal, ağsız bir repro ile doğrulandı — asyncExpand+distinct+her-zaman-boş kombinasyonu genel olarak şüpheli, sadece mood'a özgü değil); `modelStatusProvider`'ın da kullandığı kanıtlanmış `while(alive)+cancellablePause` deseniyle yeniden yazıldı. Ayrıca önceki oturumun soruları: hesap yokken login ekranı + uninstall-selfhosted.sh eklendi.
+> **Son güncelleme:** 2026-08-12 — **BUG-ONB3 tamamen düzeltildi** (2 parça): (1) `6125f39` — `isAlive()` artık 401'i "canlı ama yetkisiz" sayıyor (sadece transport hatası "ölü" sayılıyor), `BackendUnreachableOverlay` gate henüz karar vermemişken (`valueOrNull == null`) de gizleniyor — login sonrası "sunucuya bağlanılamıyor" flaş'ı kapandı. (2) `576d200` — `auth_gate_overlay.dart`'taki 4 login/setup yolunun hepsinde (`_submit`, `_enterToken`, `_loginPassword`, `_loginToken`) `api.setSessionToken()`'ın kendi persistence'i (`onRemoteTokenLearned`) fire-and-forget olduğundan, hemen ardından gelen `ref.invalidate(authGateProvider)` bazen henüz diske yazılmamış (eski/boş) token'ı okuyup kullanıcıyı kurulum ekranına düşürüyordu — her 4 yolda `prefs.setString('memo_remote_access_token', token)` artık invalidate'ten önce `await`leniyor. `flutter test` 229/229, analyze temiz, Rule #8 grep temiz.
+>
+> 2026-08-11 — kullanıcının RPi'sindeki (`192.168.1.106:8090`) canlı web kurulumunda yeni bulgular: BUG-ONB5 (RAM okuma şüphesi, hâlâ açık) — sadece kayda geçirildi, aşağıda. **BUG-ONB4 düzeltildi** (gate açıkken arka plan poll'lerinin 401 gürültüsü) — `authGateBlocked()`/`cancellablePause()` (`frontend/lib/providers/gate_guard.dart`) gate kapalıyken models/embedding/download/mood/whatsapp/cli-running/connection-status poll'lerini askıya alıyor, `messagesProvider` gate altında 401'i sessizce boş sohbet olarak açıyor ve gate kapanınca `chat_screen.dart`'ın listener'ı yeniden yüklüyor. Düzeltme sürecinde ayrı bir gerçek bug daha bulundu ve kapatıldı: `mood_provider.dart`'ın `Stream.periodic(...).asyncExpand(...).distinct()` deseni, iç generator'ın gate kapalıyken hep boş dönmesi (`return;`, hiç `yield` yok) durumunda periyodik Timer'ı dispose'da iptal etmiyordu (minimal, ağsız bir repro ile doğrulandı — asyncExpand+distinct+her-zaman-boş kombinasyonu genel olarak şüpheli, sadece mood'a özgü değil); `modelStatusProvider`'ın da kullandığı kanıtlanmış `while(alive)+cancellablePause` deseniyle yeniden yazıldı. Ayrıca önceki oturumun soruları: hesap yokken login ekranı + uninstall-selfhosted.sh eklendi.
 >
 > 2026-08-05 — bir önceki denetimde bulunan 3 bug (LK-1, SF-5, RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp hepsi düzeltildi:
 > - **LK-1** (`14f4486`) — `internal/agentcli`'nin `ChatCompletionStream`'i (Claude Code + Codex, ikisi de) ctx iptalinde sadece doğrudan alt süreci öldürüyordu; `--dangerously-skip-permissions`/`--dangerously-bypass-approvals-and-sandbox` ile başlattığı bir torun süreç stdout pipe'ını açık tutarsa `scanner.Scan()` sonsuza kadar bloklanıyordu. `cmd.Cancel` artık tüm process group'u öldürüyor (`internal/llama`'nın Setpgid deseni), `cmd.WaitDelay` (5s) torun süreç yine de kaçarsa yedek. İlk versiyon `/code-review`'dan geçti, 2 gerçek eksik bulundu ve kapatıldı: process-group kill eksikti (sadece pipe'ı zorla kapatıyordu, süreci öldürmüyordu — `--dangerously-*` yetkisiyle çalışan bir süreç arka planda öldürülmeden kalıyordu), test'in sabit 200ms bekleme süresi gerçek bir senkronizasyon garantisi değildi (marker-file polling'e çevrildi).
@@ -54,22 +56,14 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 4 |
+| 🟡 MEDIUM | 3 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 2 |
-| **TOPLAM** | **6** |
+| **TOPLAM** | **5** |
 
 ---
 
 ## 🟡 MEDIUM — Self-hosted onboarding & web UI (2026-08-11, kullanıcının RPi'sindeki canlı `http://192.168.1.106:8090` web kurulumunda birebir yaşandı)
-
-### BUG-ONB3: Şifreyle login sonrası 5-10 sn "sunucuya bağlanılamıyor" + birkaç saniye sonra kurulum ekranına atma (refresh'te kayboluyor)
-
-- **Nedir:** Web UI'a ilk girişte (login'den hemen sonra ve/veya yeni sekmede) ~5-10 saniye boyunca "sunucuya bağlanılamıyor" (BackendUnreachable) ekranı görünüyor; ardından uygulama **kurulum (setup) ekranına** atıyor — kullanıcının uzak sunucuda zaten kurulu bir hesabı ve verisi varken. Sayfa yenilenince çoğu hata kayboluyor ve normal ekran geliyor.
-- **Gözlemlenen konsol:** login ekranındayken her polling/background çağrısı 401 dönüyor (`/api/whatsapp/status`, `/api/models/download/progress`, `/api/cli/running` → `HTTP/1.1 401 Unauthorized`) ve `agent: init error / chat: web search init error / models: modelStatus error: Bir şeyler ters gitti` logları basıyor. Ayrıca `Password fields present on an insecure (http://) page` tarayıcı uyarısı (LAN HTTP — beklenen, bilgi amaçlı).
-- **Olası kök neden (henüz incelenmedi):** setup/status poll'ü ile login sonrası token'ın kaydedilmesi arasındaki yarış; `authGateProvider`'ın 401/probe davranışı; `BackendUnreachableOverlay`'in gate'i gizleme mantığı. "Kurulum ekranına atma" özellikle yanlış state geçişi sinyali — login olmuş kullanıcıya asla setup gösterilmemeli.
-- **Kullanıcı etkisi:** İlk izlenim "bozuk/bağlanamıyor" + bir de "verilerim mi gitti?" paniği. Refresh'le atlatılıyor ama onboarding deneyimini ciddi zedeliyor. Düzeltilecek ilk web-UI maddesi.
-- **Düzeltme (uygulanmadı, sadece kayıt):** frontend state akışı incelenmeli: (1) login başarılı + token kaydedildikten sonra gate anında kapanmalı; (2) `authGateProvider` hiçbir koşulda `needs_setup`'a geçerken mevcut session'ı iptal etmemeli/yok saymamalı; (3) `needs_setup:true` döndüğünde bile kayıtlı geçerli bir token varsa kullanıcıya setup gösterilmemeli (login olmuş kullanıcı için setup akışına düşmek kabul edilemez).
 
 ### BUG-ONB5: RAM doğru okunmuyor şüphesi (netleştirilecek)
 

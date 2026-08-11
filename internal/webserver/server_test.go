@@ -523,6 +523,79 @@ func TestCorsMiddleware_Methods(t *testing.T) {
 	}
 }
 
+// TestCorsMiddleware_SameHostOrigin is the remote-web-UI regression guard:
+// a browser page loaded from http://192.168.1.106:8090/ (the backend's own
+// embedded web app, opened via its LAN address) talks to the API on the
+// same address — the request's Origin equals its own Host header, which is
+// neither loopback (so the old middleware refused it, producing exactly the
+// user-reported wall of "Cross-Origin Request Blocked ... 127.0.0.1") nor
+// arbitrary. That origin must be reflected so the page's API calls are
+// readable by the browser. An attacker's page can never reproduce this:
+// its Origin is browser-set to the attacker's origin, which cannot equal
+// the Host of a request addressed to Memo.
+func TestCorsMiddleware_SameHostOrigin(t *testing.T) {
+	handler := corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+
+	cases := []struct {
+		name      string
+		origin    string
+		requestTo string // URL; its host becomes the Host header
+		want      string // expected Access-Control-Allow-Origin value ("" = must be absent)
+	}{
+		{"page at LAN IP calling same LAN IP", "http://192.168.1.106:8090", "http://192.168.1.106:8090/api/version", "http://192.168.1.106:8090"},
+		{"page at LAN IP calling same LAN IP (no port in origin)", "http://192.168.1.106", "http://192.168.1.106/api/version", "http://192.168.1.106"},
+		{"hostname alias page", "http://memo.local:8090", "http://memo.local:8090/api/chats", "http://memo.local:8090"},
+		{"attacker page calling Memo's LAN IP", "http://evil.com", "http://192.168.1.106:8090/api/chats", ""},
+		{"attacker page calling loopback", "http://evil.com", "http://127.0.0.1:8090/api/wipe", ""},
+		{"same host different port", "http://192.168.1.106:9000", "http://192.168.1.106:8090/api/chats", ""},
+		{"origin matching a different hostname value", "http://memo.local", "http://192.168.1.106:8090/api/chats", ""},
+		{"no origin at all", "", "http://192.168.1.106:8090/api/version", "http://localhost"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest(http.MethodGet, tc.requestTo, nil)
+			if tc.origin != "" {
+				req.Header.Set("Origin", tc.origin)
+			}
+			w := httptest.NewRecorder()
+			handler.ServeHTTP(w, req)
+
+			got := w.Header().Get("Access-Control-Allow-Origin")
+			if got != tc.want {
+				t.Errorf("Access-Control-Allow-Origin = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+// TestCorsMiddleware_OPTIONSPreflightFromSameHost ensures a browser
+// preflight (OPTIONS) from a LAN-served page gets the headers it needs to
+// proceed with the actual JSON POST — the login POST from the remote web
+// UI depends on this exact exchange.
+func TestCorsMiddleware_OPTIONSPreflightFromSameHost(t *testing.T) {
+	handler := corsMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		t.Error("next handler must not run for OPTIONS")
+	}))
+
+	req := httptest.NewRequest(http.MethodOptions, "http://192.168.1.106:8090/api/auth/login", nil)
+	req.Header.Set("Origin", "http://192.168.1.106:8090")
+	req.Header.Set("Access-Control-Request-Method", "POST")
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("OPTIONS got status %d, want %d", w.Code, http.StatusOK)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Origin"); got != "http://192.168.1.106:8090" {
+		t.Errorf("Access-Control-Allow-Origin = %q, want the page's LAN origin", got)
+	}
+	if got := w.Header().Get("Access-Control-Allow-Headers"); !strings.Contains(got, "X-Memo-Token") {
+		t.Errorf("Access-Control-Allow-Headers = %q, must include X-Memo-Token (the credential header)", got)
+	}
+}
+
 func TestLimitBodyMiddleware(t *testing.T) {
 	t.Run("small_body_passes", func(t *testing.T) {
 		handler := limitBodyMiddleware(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

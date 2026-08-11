@@ -37,4 +37,39 @@ void main() {
       expect(normalizeBackendUrl('   '), 'http://127.0.0.1:8090');
     });
   });
+
+  group('webBackendUrl (web build: page origin is the sane default)', () {
+    const lanPage = 'http://192.168.1.106:8090';
+    const loopbackPage = 'http://127.0.0.1:8090';
+
+    test('no saved URL -> the page\'s own origin', () {
+      expect(webBackendUrl('', lanPage), lanPage);
+      expect(webBackendUrl('   ', lanPage), lanPage);
+      expect(webBackendUrl('', loopbackPage), loopbackPage);
+    });
+
+    test('stale saved loopback URL on a LAN-served page is ignored', () {
+      // The exact user-reported failure: page loaded from the LAN address
+      // while a previous localhost session left http://127.0.0.1:8090
+      // saved — every API call went to the client's own loopback and got
+      // CORS-blocked ("Cross-Origin Request Blocked ... 127.0.0.1").
+      expect(webBackendUrl('http://127.0.0.1:8090', lanPage), lanPage);
+      expect(webBackendUrl('http://localhost:8090', lanPage), lanPage);
+    });
+
+    test('saved loopback URL on a loopback-served page is kept', () {
+      expect(webBackendUrl('http://127.0.0.1:8090', loopbackPage),
+          'http://127.0.0.1:8090');
+    });
+
+    test('a deliberately different server is respected', () {
+      expect(webBackendUrl('http://192.168.1.50:8090', lanPage),
+          'http://192.168.1.50:8090');
+      expect(webBackendUrl('192.168.1.50', lanPage), 'http://192.168.1.50:8090');
+    });
+
+    test('bare host with no scheme or port still gets both defaults', () {
+      expect(webBackendUrl('127.0.0.1', lanPage), lanPage);
+    });
+  });
 }

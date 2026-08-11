@@ -54,3 +54,46 @@ String normalizeBackendUrl(String input) {
   final result = normalized.toString();
   return result.endsWith('/') ? result.substring(0, result.length - 1) : result;
 }
+
+/// Resolves the effective backend URL for the WEB build.
+///
+/// [saved] is the user-configured address (SharedPreferences
+/// `memo_api_base_url`); [pageOrigin] is the origin this page itself was
+/// loaded from (`Uri.base.origin`). The embedded web app is always served
+/// BY the backend it must talk to, so the page's own origin is the correct
+/// default — but a *saved* value must be viewed through that lens:
+///
+/// - empty saved value → the page's own origin;
+/// - saved loopback URL (localhost/127.0.0.1/::1) while the page itself
+///   was loaded from a non-loopback address → **stale**: that value means
+///   "this client's own machine," which on a phone/laptop pointed at
+///   http://192.168.1.x:8090 is the client itself, not the server that
+///   served the page. This exact mismatch is what produced the wall of
+///   "Cross-Origin Request Blocked … 127.0.0.1" errors while the page ran
+///   from the LAN address — every API call went to the device's own
+///   loopback, which the backend's CORS correctly refused to bless.
+///   Ignore the saved value, use the page origin (self-heals the bad
+///   value without the user having to find "Sunucuyu Değiştir");
+/// - anything else (a genuinely different server the user configured on
+///   purpose) → respected as-is, so the change-server flow keeps working.
+///
+/// Takes the origins as explicit parameters instead of reading
+/// `Uri.base`/`kIsWeb` internally so the whole decision is unit-testable
+/// under `flutter test` (which runs on the VM, where kIsWeb is false and
+/// Uri.base is a file:// path).
+String webBackendUrl(String saved, String pageOrigin) {
+  final trimmed = saved.trim();
+  if (trimmed.isEmpty) return pageOrigin;
+  final resolved = normalizeBackendUrl(trimmed);
+  if (_isLoopbackHost(resolved) && !_isLoopbackHost(pageOrigin)) {
+    return pageOrigin;
+  }
+  return resolved;
+}
+
+bool _isLoopbackHost(String url) {
+  final uri = Uri.tryParse(url);
+  if (uri == null) return false;
+  final host = uri.host.toLowerCase();
+  return host == 'localhost' || host == '127.0.0.1' || host == '::1';
+}

@@ -1,15 +1,47 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-<meta charset="UTF-8">
-<title>Memo</title>
+  <!--
+    If you are serving your web app in a path other than the root, change the
+    href value below to reflect the base path you are serving from.
+
+    The path provided below has to start and end with a slash "/" in order for
+    it to work correctly.
+
+    For more details:
+    * https://developer.mozilla.org/en-US/docs/Web/HTML/Element/base
+
+    This is a placeholder for base href that will be replaced by the value of
+    the `--base-href` argument provided to `flutter build`.
+  -->
+  <base href="/">
+
+  <meta charset="UTF-8">
+  <meta content="IE=Edge" http-equiv="X-UA-Compatible">
+  <meta name="description" content="Memo — the local, privacy-first AI assistant. Chat, memory, and agent tools, running on your own hardware.">
+  <meta name="theme-color" content="#b08d57">
+
+  <!-- iOS meta tags & icons -->
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black">
+  <meta name="apple-mobile-web-app-title" content="Memo">
+  <link rel="apple-touch-icon" href="icons/Icon-192.png">
+
+  <!-- Favicon -->
+  <link rel="icon" type="image/png" href="favicon.png"/>
+
+  <title>Memo</title>
+  <link rel="manifest" href="manifest.json">
 </head>
-<body style="font-family: -apple-system, sans-serif; max-width: 560px; margin: 80px auto; padding: 0 20px; color: #2a2723;">
-<h1>Memo web app not built into this binary</h1>
-<p>This is a placeholder. The real web client is <code>frontend/</code> (the same Flutter app as the desktop build) compiled for web and embedded here at build time — see <code>internal/webserver/webapp.go</code>.</p>
-<p>To build it locally:</p>
-<pre>cd frontend &amp;&amp; flutter build web --release
-cp -r build/web/* ../internal/webserver/webapp/</pre>
-<p>Then rebuild the Go binary. Release CI does this automatically.</p>
+<body>
+  <!--
+    You can customize the "flutter_bootstrap.js" script.
+    This is useful to provide a custom configuration to the Flutter loader
+    or to give the user feedback during the initialization process.
+
+    For more details:
+    * https://docs.flutter.dev/platform-integration/web/initialization
+  -->
+  <script src="flutter_bootstrap.js" async></script>
 </body>
 </html>

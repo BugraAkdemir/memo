@@ -791,15 +791,25 @@ func isLoopbackOrigin(origin string) bool {
 func corsMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		origin := r.Header.Get("Origin")
-		// Only allow loopback origins. Even in LAN mode (0.0.0.0) we do not
-		// reflect arbitrary origins, because that would let malicious websites
-		// talk to the local Memo API from the user's browser.
-		isLoopback := isLoopbackOrigin(origin)
-		if isLoopback {
+		// Allow loopback origins (localhost/127.0.0.1/::1 — the desktop app
+		// and a locally-opened web UI) AND origins that exactly match the
+		// address this request was addressed to (r.Host). The second rule
+		// is what makes the embedded web UI work when the user opens it via
+		// its LAN address: the page's own origin is then
+		// http://192.168.1.x:8090, and every same-server call from it
+		// carries that origin with Host: 192.168.1.x:8090. Reflecting the
+		// origin only when it equals the request's own Host is still safe
+		// against the CWE-346 browser-as-LAN-pivot attack: a malicious
+		// page's Origin is set by the browser to the attacker's own origin,
+		// which can never equal the Host of a request aimed at Memo — so
+		// arbitrary websites stay blocked, exactly as before.
+		allow := isLoopbackOrigin(origin) || isSameHostOrigin(origin, r.Host)
+		if allow {
 			if origin == "" {
 				origin = "http://localhost"
 			}
 			w.Header().Set("Access-Control-Allow-Origin", origin)
+			w.Header().Add("Vary", "Origin")
 		}
 		w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Memo-Token")
@@ -809,6 +819,27 @@ func corsMiddleware(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// isSameHostOrigin reports whether origin is exactly the host:port this
+// request was addressed to (the Host header) — i.e. a page served by Memo
+// itself calling its own address. This is the "the embedded web app talking
+// to the backend that served it" case; browsers treat such requests as
+// same-origin when the wording matches exactly and need no CORS at all, but
+// the same page calling the same backend under a differently-worded alias
+// (http://localhost:8090 vs http://192.168.1.106:8090, or a hostname) is
+// cross-origin and does need the header. Compared by exact host:port —
+// never a prefix/substring match, for the same CWE-346 reason documented on
+// isLoopbackOrigin.
+func isSameHostOrigin(origin, host string) bool {
+	if origin == "" {
+		return false
+	}
+	u, err := url.Parse(origin)
+	if err != nil || u.Scheme != "http" {
+		return false
+	}
+	return strings.EqualFold(u.Host, host)
 }
 
 // remoteCredential extracts the caller-presented credential — device token

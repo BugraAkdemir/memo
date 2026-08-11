@@ -26,7 +26,16 @@ const _remoteTokenPrefsKey = 'memo_remote_access_token';
 
 final apiClientProvider = Provider<MemoApiClient>((ref) {
   final prefs = ref.read(prefsProvider);
-  final baseUrl = normalizeBackendUrl(prefs.getString('memo_api_base_url') ?? '');
+  // On web the page is served by the very backend it must talk to, so the
+  // effective URL is resolved through the page's own origin — a stale
+  // saved localhost/127.0.0.1 value (from a previous localhost session) is
+  // ignored when the page itself was loaded from a LAN address, which is
+  // exactly the cross-origin/127.0.0.1 trap that produced a wall of CORS
+  // errors. Desktop keeps its 127.0.0.1 default + explicit change-server.
+  final saved = prefs.getString('memo_api_base_url') ?? '';
+  final baseUrl = kIsWeb
+      ? webBackendUrl(saved, Uri.base.origin)
+      : normalizeBackendUrl(saved);
   return MemoApiClient(
     baseUrl: baseUrl,
     savedRemoteToken: prefs.getString(_remoteTokenPrefsKey),

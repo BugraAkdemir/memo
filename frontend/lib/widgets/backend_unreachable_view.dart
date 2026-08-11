@@ -47,8 +47,13 @@ class BackendUnreachableOverlay extends ConsumerWidget {
 
     // 401 is "need credentials", not "no backend" — the auth gate owns that
     // state; without this the two overlays would fight over the screen.
+    // A null gate ("still rebuilding after login's invalidate()") is also
+    // "don't know yet", never a reason to cover the app — the gate decides
+    // whether this is a login problem or a real backend problem, not the
+    // connectivity poll (BUG-ONB3: the RPi flashed this overlay for the
+    // whole stale-false window right after a successful login).
     final auth = ref.watch(authGateProvider).valueOrNull;
-    if (auth != null && auth.state != AuthGateState.ok) return const SizedBox.shrink();
+    if (auth == null || auth.state != AuthGateState.ok) return const SizedBox.shrink();
 
     return Container(
       color: MemoTheme.of(context).bgApp.withValues(alpha: 0.95),

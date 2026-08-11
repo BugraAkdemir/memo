@@ -1443,7 +1443,18 @@ class MemoApiClient {
     try {
       await _dio.get('/api/version');
       return true;
-    } catch (e) {
+    } on DioException catch (e) {
+      // Any HTTP response means the backend answered — a 401 (needs
+      // credentials; the normal state of /api/version on a LAN-bound
+      // server before the user logs in) is proof it is alive, not proof
+      // it is down. Only transport-level failures (connection refused,
+      // timeouts) mean "no server". BUG-ONB3: on the Raspberry Pi the
+      // token-less /api/version 401'd, isAlive() reported false, and the
+      // whole GUI showed "Sunucuya bağlanılamıyor" for the entire 30s
+      // poll window — including right after a successful login, when the
+      // auth gate closed but the stale false was still on screen.
+      return e.response != null;
+    } catch (_) {
       return false;
     }
   }

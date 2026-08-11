@@ -341,7 +341,31 @@ void main() {
       await client.deleteAccount('a1');
     expect(paths, containsAll(['/api/accounts', '/api/accounts', '/api/accounts/a1']));
   });
-});
+  });
+
+  group('isAlive', () {
+    test('a 401 response counts as alive — the backend is up, just needs credentials', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      client.dio.httpClientAdapter = _FakeAuthAdapter({
+        '/api/version': (401, {'error': 'unauthorized: missing or invalid credential'}),
+      });
+      expect(await client.isAlive(), isTrue);
+    });
+
+    test('a transport-level failure counts as not alive', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      client.dio.httpClientAdapter = _ThrowingAdapter();
+      expect(await client.isAlive(), isFalse);
+    });
+
+    test('a 200 response counts as alive', () async {
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      client.dio.httpClientAdapter = _FakeAuthAdapter({
+        '/api/version': (200, {'version': 'v1'}),
+      });
+      expect(await client.isAlive(), isTrue);
+    });
+  });
 }
 
 /// A fake [HttpClientAdapter] that records the last request's path and JSON

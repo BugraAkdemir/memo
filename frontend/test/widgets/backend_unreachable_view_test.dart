@@ -167,7 +167,11 @@ void main() {
   });
 
   group('BackendUnreachableOverlay', () {
-    Future<ProviderContainer> pumpApp(WidgetTester tester, {required bool? connected}) async {
+    Future<ProviderContainer> pumpApp(
+      WidgetTester tester, {
+      required bool? connected,
+      Stream<AuthGateInfo>? gate,
+    }) async {
       SharedPreferences.setMockInitialValues({});
       final prefs = await SharedPreferences.getInstance();
       final container = ProviderContainer(overrides: [
@@ -177,10 +181,10 @@ void main() {
           (ref) => connected == null ? const Stream.empty() : Stream.value(connected),
         ),
         // The overlay now consults the auth gate too; as of 2026-08 make the
-        // gate permanently "ok" so it can't veto the unreachable screen.
-        authGateProvider.overrideWith(
-          (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
-        ),
+        // gate report the stream the test wants — null/empty simulates the
+        // gate's stream being rebuilt mid-flight (e.g. right after login,
+        // when invalidate() restarts it and nothing has been yielded yet).
+        authGateProvider.overrideWith((ref) => gate ?? const Stream.empty()),
       ]);
       addTearDown(container.dispose);
 
@@ -192,6 +196,9 @@ void main() {
           ),
         ),
       );
+      await tester.pump();
+      // Let the overridden single-value streams (connection status, auth
+      // gate) actually deliver their value into the widget's watches.
       await tester.pump();
       return container;
     }
@@ -208,8 +215,22 @@ void main() {
     });
 
     testWidgets('covers the screen once the backend is confirmed unreachable', (tester) async {
-      await pumpApp(tester, connected: false);
+      await pumpApp(
+        tester,
+        connected: false,
+        gate: Stream.value(const AuthGateInfo(AuthGateState.ok)),
+      );
       expect(find.byType(BackendUnreachableView), findsOneWidget);
+    });
+
+    testWidgets(
+        'does not flash while the auth gate is rebuilding after login (BUG-ONB3)',
+        (tester) async {
+      // connected:false (stale pre-login isAlive result) + gate stream
+      // restarting (invalidate() right after login) is exactly the window
+      // where the RPi showed "Sunucuya bağlanılamıyor" for seconds.
+      await pumpApp(tester, connected: false, gate: const Stream.empty());
+      expect(find.byType(BackendUnreachableView), findsNothing);
     });
   });
 }

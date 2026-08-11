@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-12 — **BUG-ONB1 ve BUG-ONB2 tamamen düzeltildi:**
+> **Son güncelleme:** 2026-08-12 — **TD-3 tamamen düzeltildi** (`8e470e3`): `build-linux.yml`'e "Upload install/update/uninstall scripts to R2" adımı eklendi — `scripts/README.md`'nin "End-user installers" tablosundaki 11 script artık her `main` push'unda R2'ye otomatik yükleniyor (mevcut R2 secret'ları/rclone deseni yeniden kullanılıyor), böylece repo'da düzeltilen bir script bug'ı elle yükleme beklemeden canlıya çıkıyor — bu oturumun kendi BUG-ONB1/ONB2 script düzeltmeleri (`dec0c0a`) dahil. TD-4 (Cloudflare edge cache) hâlâ açık — hesap/dashboard erişimi + yeni `CF_API_TOKEN`/`CF_ZONE_ID` secret'ları gerektiriyor, bu oturumda yapılamadı.
+>
+> **BUG-ONB1 ve BUG-ONB2 tamamen düzeltildi:**
 > - **BUG-ONB1** (2 parça): (1) `1c9c33c` — `internal/webserver/server.go`'nun LAN-adres tespiti (`getLocalIPs`, `Settings`/`memo remote status`/script'lerin hepsinin kullandığı) artık `docker`/`br-`/`veth`/`virbr`/`tun`/`tap`/`podman`/`cni`/`flannel`/`kube-bridge`/`cali` önekli sanal arayüzleri atlıyor — aynı mantığın kullanılmayan bir kopyası zaten dosyada duruyordu, ikisi tek, doğru implementasyonda birleştirildi. (2) `dec0c0a` — `get-memo-server.sh`/`get-memo-server-beta.sh` artık kurulum/güncelleme sonunda gerçek `http://<ip>:<port>` adresini basıyor; adres `ip route get 1.1.1.1`'in kaynak IP'siyle (Docker bridge'lerini doğal olarak atlıyor, çünkü onlar hiç outbound routing'de kullanılmıyor) ve port, unit dosyasının kendi `ExecStart` satırından tespit ediliyor (varsayılan olmayan `--port` de doğru yansıyor).
 > - **BUG-ONB2** (`97aa57f` + `dec0c0a`) — `cli_service.go`'ya `memo service restart` eklendi (`systemctl --user restart memo.service`'i sarmalıyor), `printServiceUsage()` ve script'lerin "Manage over SSH" bölümü artık `--user` gerekliliğini açıkça yazıyor.
 > - Go: build/vet/test `-race` yeşil (`TestIsVirtualNetworkInterface`, `TestPrintServiceUsage_MentionsRestartAndUserFlag` yeni). Script'ler `bash -n` ile sözdizimi doğrulandı + port/`--lan`/IP çıkarma mantığı örnek unit-dosyası içeriğine karşı ayrıca test edildi; gerçek bir systemd kurulumuna karşı uçtan uca bu ortamda denenmedi.
@@ -63,8 +65,8 @@
 | 🟠 HIGH | 0 |
 | 🟡 MEDIUM | 1 |
 | 🟢 LOW | 0 |
-| 🔧 TEKNİK BORÇ | 2 |
-| **TOPLAM** | **3** |
+| 🔧 TEKNİK BORÇ | 1 |
+| **TOPLAM** | **2** |
 
 ---
 
@@ -86,13 +88,6 @@
 ---
 
 ## 🔧 TEKNİK BORÇ
-
-### TD-3: `download.bugradev.com`'daki kurulum script'leri CI ile otomatik güncellenmiyor — repo'da düzeltilen bug'lar canlıda hâlâ eski
-
-- **Dosya:** `.github/workflows/build-linux.yml`/`build-macos.yml`/`build-windows.yml` (R2'ye sadece derlenmiş binary/arşivleri yüklüyor), R2 bucket
-- **Nedir:** Derlenmiş çıktılar (`memo_beta.tar.gz`, `memo_arm_beta.zip` vb.) her `main` push'unda otomatik R2'ye yükleniyor, ama `get-memo-server.sh`/`get-memo-server-beta.sh` gibi kurulum script'lerinin **kendisi hiçbir workflow tarafından yüklenmiyor** — Session 5'in handoff'unda zaten "kullanıcı R2'ye kendi eliyle yükleyecek" diye not edilmişti. Bugün somut sonucu görüldü: kullanıcının `curl -fsSL https://download.bugradev.com/get-memo-server-beta.sh | bash` ile çektiği script, commit `1fbaec6`'nın (Session 5, token-bootstrap circular-dependency fix) düzelttiği **eski** metni gösterdi — "run 'memo remote status' to see the device token" (bu komutun kendisi token olmadan zaten 401 veriyor, tam olarak `1fbaec6`'nın kapattığı döngüsel bug). Yani repo'da aylar önce düzeltilmiş bir bug, canlıda hâlâ aktif çünkü script hiç yeniden yüklenmemiş.
-- **Kullanıcı etkisi:** Install-script'lere yapılan HERHANGİ bir düzeltme (BUG-ONB1/ONB2 dahil, düzeltilseler bile), birisi elle R2'ye yükleyene kadar gerçek kullanıcıları etkilemeye devam eder — sessiz, fark edilmesi zor bir regresyon kaynağı; test edip "düzelttim" demek yeterli değil, deploy de ayrı bir adım.
-- **Düzeltme (uygulanmadı, sadece kayıt):** İki seçenek: (1) `scripts/*.sh`'ı da bir CI adımıyla otomatik R2'ye yükle (build workflow'larına eklenecek düşük riskli bir adım — script'ler zaten repo'da), (2) en azından `scripts/README.md`'ye/memo-release skill'ine "script değişikliğinden sonra elle R2'ye yükle" diye açık, atlanamaz bir checklist maddesi ekle. (1) daha sağlam çünkü insan hatasına bağımlı değil — bugünkü olay tam olarak bu insan-hatası senaryosu.
 
 ### TD-4: `download.bugradev.com` Cloudflare edge cache'i eski arşivleri servis edebiliyor — repo'dan bağımsız, hesap ayarı gerektiriyor
 

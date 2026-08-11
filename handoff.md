@@ -1,3 +1,26 @@
+## Ek (2026-08-12) — BUG-ONB3 tamamlandı, BUG-ONB1/ONB2/TD-3 düzeltildi
+
+Önceki oturumdan tek commitlenmemiş değişiklik vardı: `auth_gate_overlay.dart`'ta BUG-ONB3'ün ikinci yarısı (token persistence race) için 3 yoldan (`_submit`, `_enterToken`, `_loginToken`) `await prefs.setString(...)` eklenmişti — ama kendi yorumu `_loginPassword`'ün de aynı race'e sahip olduğunu söylüyordu ve orada fix eksikti. Önce bunu tamamladım, sonra doğrulayıp commitledim (`576d200`), `BUG_REPORT.md`'den ONB3'ü kapattım (`d1c6a73`). BUG-ONB3 artık 2 parçasıyla da tam kapalı (ilk parça, `isAlive()`/overlay fix'i, zaten `6125f39` ile önceki oturumda kapanmıştı).
+
+Sonra `BUG_REPORT.md`'nin kalan açık maddelerini `codebase-memory-mcp` (`search_graph`/`trace_path`/`get_code_snippet`) ile kod tarafından doğrulayıp sırayla düzelttim:
+
+| Bug | Kök neden | Fix | Commit |
+|---|---|---|---|
+| **BUG-ONB1** (backend yarısı) | `internal/webserver/server.go`'da LAN-IP tespiti (`StartHTTPWithAddr`'ın inline bloğu) hiçbir arayüz filtrelemesi yapmıyordu — Docker/Podman/libvirt/VPN bridge'leri de "LAN address available" olarak listeleniyordu. Ayrıca dosyada aynı bug'lı mantığın kullanılmayan bir kopyası (`getLocalIPs()`) zaten duruyordu. | İkisini birleştirdim: `getLocalIPs()` artık `net.Interfaces()`'i dolaşıp `docker/br-/veth/virbr/tun/tap/podman/cni/flannel/kube-bridge/cali` önekli arayüzleri atlıyor, inline blok artık ona delege ediyor. | `1c9c33c` |
+| **BUG-ONB2** | `cli_service.go`'da `install`/`uninstall`/`status` var ama `restart` yok; `--user` gerekliliği hiçbir çıktıda yazmıyordu. | `serviceRestart()` eklendi (`systemctl --user restart memo.service`), `printServiceUsage()` `--user` gerekliliğini açıkça anlatıyor. | `97aa57f` |
+| **BUG-ONB1** (script yarısı) + **BUG-ONB2** (script yarısı) | `get-memo-server.sh`/`-beta.sh` kurulum sonunda gerçek `http://<ip>:<port>` adresini hiç basmıyordu; "Manage over SSH" bölümü `restart`'tan hiç bahsetmiyordu. | Script sonuna, gerçek unit dosyasını (`~/.config/systemd/user/memo.service`) inceleyip `--lan`/port'u oradan okuyan ve `ip route get 1.1.1.1`'in kaynak IP'siyle (Docker bridge'lerini doğal olarak atlıyor) LAN adresini bulan bir blok eklendi; "Manage over SSH" `memo service restart` + `--user` notunu içeriyor artık. | `dec0c0a` |
+| **TD-3** | Hiçbir CI workflow'u `scripts/*.sh`/`.ps1` kurulum script'lerini R2'ye yüklemiyordu — sadece derlenmiş arşivler yükleniyordu. Somut kanıt: `1fbaec6`'nın (Session 5) düzelttiği metin, aylar sonra hâlâ canlı script'te eskiydi. | `build-linux.yml`'e "Upload install/update/uninstall scripts to R2" adımı eklendi — mevcut R2 secret'ları/rclone deseniyle, her `main` push'unda `scripts/README.md`'nin 11 end-user script'ini birebir yüklüyor. | `8e470e3` |
+
+Her fix'in ardından `BUG_REPORT.md`'den ilgili madde silindi (dosyanın kendi konvansiyonu — düzeltilen bug burada tutulmuyor, git log kalıcı kayıt), özet tablo güncellendi (ayrı docs commit'leri: `d1c6a73`, `54a599d`, `656cbf6`).
+
+**Doğrulama:** `CGO_ENABLED=1 go build/vet/test -tags "sqlite_fts5" ./... -race` tüm oturum boyunca yeşil (yeni testler: `TestIsVirtualNetworkInterface`, `TestPrintServiceUsage_MentionsRestartAndUserFlag`); `flutter analyze`/`flutter test` 229/229 (auth_gate_overlay.dart fix'i için); iki install script `bash -n` ile sözdizimi doğrulandı + port/`--lan`/IP çıkarma mantığı örnek unit-dosyası içeriğine karşı ayrıca elle test edildi. **Uçtan uca doğrulanmayan:** gerçek bir systemd kurulumuna karşı script'lerin son bloğu, gerçek bir R2 upload'a karşı yeni CI adımı (bu ortamda kimlik bilgisi yok).
+
+**Kalan açık, bu oturumda dokunulmadı:**
+- **BUG-ONB5** (RAM okuma şüphesi) — hâlâ kullanıcıdan ekran/örnek bekliyor, kod tarafında netleşmeden yapılacak bir şey yok.
+- **TD-4** (Cloudflare edge cache eski arşiv servis edebiliyor) — bilinçli olarak dokunulmadı: çözüm ya Cloudflare dashboard'unda bir cache-TTL/bypass kuralı (repo dışı, hesap erişimi gerektiriyor), ya da CI'ya bir "purge cache" adımı eklemek (repo içi ama `CF_API_TOKEN`/`CF_ZONE_ID` gibi henüz var olmayan yeni secret'lar gerektiriyor — sahte/boş secret'larla kod eklemek sessizce başarısız olan, yanıltıcı bir adım olurdu). Kullanıcı bu secret'ları Cloudflare'den alıp GitHub'a eklerse, purge-adımını yazmaya hazırım.
+
+---
+
 ## Ek (2026-08-11) — BUG-ONB4 tamamlandı: gate açıkken background polling 401 gürültüsü (commit `ffee2bf`)
 
 Önceki oturum yarım kalmıştı: `gate_guard.dart` (`authGateBlocked`/`cancellablePause`) + 5 provider dosyasında guard'lar yazılmış ama commit edilmemişti, artı bozuk bir `debugPrint` teşhis kalıntısı ve derlenmeyen bir scratch test dosyası vardı. Bu oturumda bitirildi:

@@ -356,7 +356,7 @@ func (a *App) LoginRemotePassword(remoteAddr, username, password string) (token,
 // a compromised session token still self-expires within SessionTTL (12h)
 // regardless, same as noted on remoteauth.SessionTTL.
 func (a *App) ValidateRemoteSession(token string) bool {
-	_, ok := a.sessionSubjectRole(token)
+	_, _, ok := a.sessionSubjectRole(token)
 	return ok
 }
 
@@ -369,33 +369,34 @@ func (a *App) ValidateRemoteSession(token string) bool {
 // treat as "no role information available" rather than "forbidden" — see
 // the gating logic's own doc comment for why.
 func (a *App) SessionRole(token string) (string, bool) {
-	return a.sessionSubjectRole(token)
+	_, role, ok := a.sessionSubjectRole(token)
+	return role, ok
 }
 
 // sessionSubjectRole is the shared implementation behind
-// ValidateRemoteSession/SessionRole.
-func (a *App) sessionSubjectRole(token string) (string, bool) {
+// ValidateRemoteSession/SessionRole/SessionSubject.
+func (a *App) sessionSubjectRole(token string) (subject, role string, ok bool) {
 	signingKey, err := a.sessionSigningKey()
 	if err != nil {
-		return "", false
+		return "", "", false
 	}
-	subject, _, err := remoteauth.ValidateSessionToken(signingKey, token)
+	subject, _, err = remoteauth.ValidateSessionToken(signingKey, token)
 	if err != nil || subject == "" {
-		return "", false
+		return "", "", false
 	}
 
 	a.remoteAccountsMu.Lock()
 	defer a.remoteAccountsMu.Unlock()
 	if len(a.cfg.RemoteAccess.Accounts) > 0 {
 		if acc := a.findAccount(subject); acc != nil {
-			return acc.Role, true
+			return subject, acc.Role, true
 		}
-		return "", false
+		return "", "", false
 	}
 	if subject == a.cfg.RemoteAccess.Username {
-		return "admin", true
+		return subject, "admin", true
 	}
-	return "", false
+	return "", "", false
 }
 
 // NeedsSetup reports whether the server has never had a password-based
@@ -576,5 +577,65 @@ func (a *App) DeleteAccount(id string) error {
 		return fmt.Errorf("save config: %w", err)
 	}
 	a.emitEvent("remote_auth:account_deleted", name)
+	return nil
+}
+
+// SessionSubject returns the username a currently-valid session token was
+// issued for, re-checked against the live account list (same resolution
+// as sessionSubjectRole — a deleted/renamed account invalidates its
+// outstanding sessions immediately). ok=false for device tokens, expired
+// or garbage credentials.
+func (a *App) SessionSubject(token string) (string, bool) {
+	subject, _, ok := a.sessionSubjectRole(token)
+	return subject, ok
+}
+
+// ChangeAccountPassword updates an account's password hash. Self-service
+// (the account the session was issued for — matched by id or the
+// account's username) requires the current password; changing someone
+// else's account requires an admin session. The password change does NOT
+// invalidate outstanding sessions (JWT TTL 12h applies, matching
+// ValidateRemoteSession's documented limitation).
+func (a *App) ChangeAccountPassword(sessionToken, id, currentPassword, newPassword string) error {
+	if newPassword == "" {
+		return fmt.Errorf("new password is required")
+	}
+	subject, subjectRole, ok := a.sessionSubjectRole(sessionToken)
+	if !ok {
+		return fmt.Errorf("valid session token is required")
+	}
+
+	a.remoteAccountsMu.Lock()
+	defer a.remoteAccountsMu.Unlock()
+	if len(a.cfg.RemoteAccess.Accounts) == 0 {
+		return fmt.Errorf("password change requires accounts")
+	}
+	var acc *config.Account
+	for i := range a.cfg.RemoteAccess.Accounts {
+		if a.cfg.RemoteAccess.Accounts[i].ID == id {
+			acc = &a.cfg.RemoteAccess.Accounts[i]
+			break
+		}
+	}
+	if acc == nil {
+		return fmt.Errorf("account not found: %s", id)
+	}
+	if id == subject || (acc.Username == subject && subjectRole != "admin") {
+		ok, err := remoteauth.VerifyPassword(acc.PasswordHash, currentPassword)
+		if err != nil || !ok {
+			return fmt.Errorf("current password is incorrect")
+		}
+	} else if subjectRole != "admin" {
+		return fmt.Errorf("only admins can change another account's password")
+	}
+	hash, err := remoteauth.HashPassword(newPassword)
+	if err != nil {
+		return fmt.Errorf("hash password: %w", err)
+	}
+	acc.PasswordHash = hash
+	if err := config.Save(a.cfg); err != nil {
+		return fmt.Errorf("save config: %w", err)
+	}
+	a.emitEvent("remote_auth:password_changed", acc.Username)
 	return nil
 }

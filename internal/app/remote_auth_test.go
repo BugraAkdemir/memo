@@ -489,3 +489,122 @@ func TestDeleteAccount_RemovingUserAccountNeverBlocked(t *testing.T) {
 		t.Errorf("expected deleting a non-admin account to succeed, got %v", err)
 	}
 }
+
+func hashTestPassword(t *testing.T, pw string) string {
+	t.Helper()
+	h, err := remoteauth.HashPassword(pw)
+	if err != nil {
+		t.Fatalf("HashPassword: %v", err)
+	}
+	return h
+}
+
+func sessionTokenFor(t *testing.T, a *App, username, role string) string {
+	t.Helper()
+	tok, err := remoteauth.IssueSessionToken([]byte(testSigningKey), username, role)
+	if err != nil {
+		t.Fatalf("IssueSessionToken: %v", err)
+	}
+	return tok
+}
+
+func accountsApp(t *testing.T) *App {
+	t.Helper()
+	dir := t.TempDir()
+	if _, err := config.Load(filepath.Join(dir, "config.yaml")); err != nil {
+		t.Fatalf("config.Load: %v", err)
+	}
+	a := &App{cfg: config.Get(), events: &eventRing{}, sessionKey: []byte(testSigningKey)}
+	a.cfg.RemoteAccess.Accounts = []config.Account{
+		{ID: "a-admin", Username: "admin", PasswordHash: hashTestPassword(t, "adminpw"), Role: "admin", CreatedAt: time.Now()},
+		{ID: "a-user", Username: "kaya", PasswordHash: hashTestPassword(t, "userpw"), Role: "user", CreatedAt: time.Now()},
+	}
+	return a
+}
+
+func TestSessionSubject_ValidSessionReturnsUsername(t *testing.T) {
+	a := accountsApp(t)
+	tok := sessionTokenFor(t, a, "admin", "admin")
+	got, ok := a.SessionSubject(tok)
+	if !ok || got != "admin" {
+		t.Errorf("SessionSubject = (%q, %v), want (\"admin\", true)", got, ok)
+	}
+}
+
+func TestSessionSubject_GarbageTokenFails(t *testing.T) {
+	a := accountsApp(t)
+	if got, ok := a.SessionSubject("garbage"); ok || got != "" {
+		t.Errorf("SessionSubject(garbage) = (%q, %v), want (\"\", false)", got, ok)
+	}
+}
+
+func TestChangeAccountPassword_SelfServiceNeedsCurrentPassword(t *testing.T) {
+	a := accountsApp(t)
+	tok := sessionTokenFor(t, a, "kaya", "user")
+	err := a.ChangeAccountPassword(tok, "a-user", "wrongpw", "newpw")
+	if err == nil || err.Error() != "current password is incorrect" {
+		t.Fatalf("wrong current password: err = %v, want 'current password is incorrect'", err)
+	}
+	if err := a.ChangeAccountPassword(tok, "a-user", "userpw", "newpw"); err != nil {
+		t.Fatalf("self-service change: %v", err)
+	}
+	ok, verr := remoteauth.VerifyPassword(a.cfg.RemoteAccess.Accounts[1].PasswordHash, "newpw")
+	if verr != nil || !ok {
+		t.Errorf("expected new password to verify, ok=%v err=%v", ok, verr)
+	}
+}
+
+func TestChangeAccountPassword_AdminChangesOtherWithoutCurrentPassword(t *testing.T) {
+	a := accountsApp(t)
+	tok := sessionTokenFor(t, a, "admin", "admin")
+	if err := a.ChangeAccountPassword(tok, "a-user", "", "freshpw"); err != nil {
+		t.Fatalf("admin change: %v", err)
+	}
+	ok, verr := remoteauth.VerifyPassword(a.cfg.RemoteAccess.Accounts[1].PasswordHash, "freshpw")
+	if verr != nil || !ok {
+		t.Errorf("expected freshpw to verify, ok=%v err=%v", ok, verr)
+	}
+}
+
+func TestChangeAccountPassword_UserCannotChangeOthers(t *testing.T) {
+	a := accountsApp(t)
+	tok := sessionTokenFor(t, a, "kaya", "user")
+	err := a.ChangeAccountPassword(tok, "a-admin", "", "hacked")
+	if err == nil || err.Error() != "only admins can change another account's password" {
+		t.Fatalf("err = %v, want 'only admins can change another account's password'", err)
+	}
+}
+
+func TestChangeAccountPassword_UnknownAccountFails(t *testing.T) {
+	a := accountsApp(t)
+	tok := sessionTokenFor(t, a, "admin", "admin")
+	if err := a.ChangeAccountPassword(tok, "nope", "", "x"); err == nil || err.Error() != "account not found: nope" {
+		t.Fatalf("err = %v, want 'account not found: nope'", err)
+	}
+}
+
+func TestChangeAccountPassword_RequiresValidSessionAndNewPassword(t *testing.T) {
+	a := accountsApp(t)
+	if err := a.ChangeAccountPassword("garbage", "a-admin", "", "x"); err == nil || err.Error() != "valid session token is required" {
+		t.Fatalf("garbage session: err = %v, want 'valid session token is required'", err)
+	}
+	tok := sessionTokenFor(t, a, "admin", "admin")
+	if err := a.ChangeAccountPassword(tok, "a-admin", "", ""); err == nil || err.Error() != "new password is required" {
+		t.Fatalf("empty new password: err = %v, want 'new password is required'", err)
+	}
+	if err := a.ChangeAccountPassword(tok, "a-admin", "", "xl"); err != nil {
+		t.Fatalf("plain change: %v", err)
+	}
+}
+
+func TestChangeAccountPassword_LegacyOnlyFails(t *testing.T) {
+	a := accountsApp(t)
+	a.cfg.RemoteAccess.Accounts = nil
+	a.cfg.RemoteAccess.Username = "admin"
+	a.cfg.RemoteAccess.PasswordHash = hashTestPassword(t, "pw")
+	tok := sessionTokenFor(t, a, "admin", "admin")
+	err := a.ChangeAccountPassword(tok, "a-admin", "", "x")
+	if err == nil || err.Error() != "password change requires accounts" {
+		t.Fatalf("err = %v, want 'password change requires accounts'", err)
+	}
+}

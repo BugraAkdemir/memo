@@ -1,7 +1,9 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-12 — **TD-4 kullanıcı tarafından halledildi** (Cloudflare dashboard/hesap ayarı — bu repo'nun kapsamı dışındaydı zaten, kod tarafında bir şey yok). **TD-3 tamamen düzeltildi** (`8e470e3`): `build-linux.yml`'e "Upload install/update/uninstall scripts to R2" adımı eklendi — `scripts/README.md`'nin "End-user installers" tablosundaki 11 script artık her `main` push'unda R2'ye otomatik yükleniyor (mevcut R2 secret'ları/rclone deseni yeniden kullanılıyor), böylece repo'da düzeltilen bir script bug'ı elle yükleme beklemeden canlıya çıkıyor — bu oturumun kendi BUG-ONB1/ONB2 script düzeltmeleri (`dec0c0a`) dahil.
+> **Son güncelleme:** 2026-08-12 — **BUG-ONB5 tamamen düzeltildi** (`bfc910a`): kullanıcının netleştirmesi ("kurulum ekranı ve Model Store, RAM'i doğru gösteriyor ama modele göre öneri yaparken bulamıyor, refresh'te düzeliyor") `codebase-memory` ile koda bağlandı — `gpuInfoProvider` (`frontend/lib/providers/models_provider.dart`), BUG-ONB4'ün diğer tüm polling provider'lara eklediği `authGateBlocked()` korumasından **kaçmış tek provider**: düz bir `FutureProvider` olduğundan (StreamProvider'lardaki gibi `while(alive)` retry döngüsü yok) tek denemesi gate kapalıyken denk gelirse `/api/gpu` 401 dönüyor, catch bunu sessizce `GPUInfo()` (ramTotalMb:0) olarak önbelleğe alıyor ve **bir daha asla yeniden denemiyor** — `recommendedChatModel`/`hardwareFit` (`curated_models.dart`) RAM'i "bilinmiyor" sayıp zayıf/genel öneriye düşüyor. Refresh "düzeltiyormuş" gibi görünmesinin sebebi tüm provider grafiğinin sıfırdan kurulması, o noktada gate zaten açık oluyor. Fix: (1) `gpuInfoProvider` artık istek atmadan önce gate'i kontrol ediyor (diğer polling provider'larla aynı desen); (2) `auth_gate_overlay.dart`'ın gate'i açan 5 noktasının hepsi (`_decline`, `_submit`, `_enterToken`, `_loginPassword`, `_loginToken`) artık `ref.invalidate(authGateProvider)`'ın yanında `ref.invalidate(gpuInfoProvider)` da çağırıyor — `ref.watch(authGateProvider)` ile reaktif bağlama denendi ama non-autoDispose bir `FutureProvider`'ın autoDispose bir `StreamProvider`'ı watch etmesi `container.read(...future)`'ı testte sonsuza kilitliyor, bu yüzden açık invalidation'a dönüldü. Yeni test: `gpu_info_provider_test.dart`. `flutter test` 231/231, analyze temiz, Rule #8 grep temiz. **Kullanıcı elinde doğrulanacak** — RPi'sine kurup gerçek sonucu bildirecek.
+>
+> **TD-4 kullanıcı tarafından halledildi** (Cloudflare dashboard/hesap ayarı — bu repo'nun kapsamı dışındaydı zaten, kod tarafında bir şey yok). **TD-3 tamamen düzeltildi** (`8e470e3`): `build-linux.yml`'e "Upload install/update/uninstall scripts to R2" adımı eklendi — `scripts/README.md`'nin "End-user installers" tablosundaki 11 script artık her `main` push'unda R2'ye otomatik yükleniyor (mevcut R2 secret'ları/rclone deseni yeniden kullanılıyor), böylece repo'da düzeltilen bir script bug'ı elle yükleme beklemeden canlıya çıkıyor — bu oturumun kendi BUG-ONB1/ONB2 script düzeltmeleri (`dec0c0a`) dahil.
 >
 > **Ayrıca aynı oturumda, kullanıcı script'lerin gerçekten çalışıp çalışmadığını sorunca bulundu:** 9 end-user script'in (get-memo.sh, get-memo-beta.sh, get-memo-server.sh, get-memo-server-beta.sh, get_memo_arm.sh, update.sh, uninstall.sh, uninstall-arm.sh, uninstall-selfhosted.sh) hepsi `set -euo pipefail`'den hemen sonra çıplak `clear` çağırıyordu — `$TERM` set değilse (pty'siz `curl | bash`, bazı SSH/provisioning senaryoları, cron) `clear` hata koduyla dönüyor ve `set -e` yüzünden **script hiçbir şey yapmadan anında ölüyordu**. `uninstall-selfhosted.sh`'ı sahte bir `$HOME` ile sandbox'ta çalıştırarak canlı olarak doğrulandı (fix'ten önce: hiçbir şey silinmedi; fix'ten sonra: doğru şekilde silindi). `8e470e3`'ün ardından `40b6b32` ile düzeltildi (`clear 2>/dev/null || true` + 3 script'teki `/dev/tty` prompt fallback'lerinde yanlış sıralı redirection'lar).
 >
@@ -65,20 +67,14 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 1 |
+| 🟡 MEDIUM | 0 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 0 |
-| **TOPLAM** | **1** |
+| **TOPLAM** | **0** |
 
 ---
 
-## 🟡 MEDIUM — Self-hosted onboarding & web UI (2026-08-11, kullanıcının RPi'sindeki canlı `http://192.168.1.106:8090` web kurulumunda birebir yaşandı)
-
-### BUG-ONB5: Kurulum ekranı + Model Store, ilk açılışta RAM'i bulamayıp yanlış/eksik model öneriyor — refresh'te düzeliyor
-
-- **Netleşti (2026-08-12, kullanıcıdan):** İki ayrı yer etkileniyor — (1) **kurulum (setup) ekranı**, kullanıcının RAM'ini (örn. "16GB") doğru gösteriyor AMA aynı ekranın RAM'e göre model önerme mantığı RAM'i bulamıyor (öneri boş/yanlış çıkıyor); (2) **Model Store**, aynı şekilde RAM'e göre model önerirken RAM'i okuyamıyor. İkisinde de sayfayı **refresh edince sorun kendi kendine düzeliyor** — bu klasik bir race/timing sinyali: RAM tespiti muhtemelen asenkron geliyor (bir API çağrısı/provider ile) ve öneri mantığı bu veri henüz gelmeden, `null`/`0`/varsayılan bir değerle çalışıyor; refresh, provider'ı yeniden tetikleyip veriyi doğru sırayla getiriyor.
-- **Kullanıcı planı:** Bu oturumun script fix'lerini (BUG-ONB1/ONB2/`clear`+`/dev/tty` script bug'ı) kendi RPi'sine kurup hem onları hem bu bug'ı tekrar test edip sonucu bildirecek.
-- **Düzeltme (uygulanmadı, sıradaki oturumda kod tarafı incelenmeli):** Setup wizard'ın ve Model Store'un RAM okuma noktaları (`frontend/lib/widgets/setup_wizard_view.dart`, `frontend/lib/screens/model_store/...`) ile bunların beslendiği Riverpod provider'ı bulunup, RAM verisinin "henüz gelmedi" durumuyla "gelip 0 döndü" durumu birbirinden ayırt ediliyor mu (AsyncValue.loading vs. data:0) kontrol edilmeli — model önerisi muhtemelen `loading` state'i `0`/`bilinmiyor` gibi işleyip erken karar veriyor.
+## Bilgi notları (bug değil, takip amaçlı)
 
 ### Embedding modeli 2GB RAM'de çalıştırılamadı (bilgi, bug değil — 2026-08-11)
 

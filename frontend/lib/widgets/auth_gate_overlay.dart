@@ -216,6 +216,10 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
         _password.text,
       );
       api.setSessionToken(token);
+      // BUG-ONB3: same fire-and-forget-persistence race as _loginPassword
+      // below — await it explicitly rather than relying on the ordering of
+      // the other awaited prefs writes that happen to follow.
+      await prefs.setString('memo_remote_access_token', token);
       if (_method == 'token_password') {
         await api.setRemoteAuthConfig(
           'token_password',
@@ -257,7 +261,14 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
 
   Future<void> _enterToken() async {
     final api = ref.read(apiClientProvider);
-    api.setSessionToken(_tokenInput.text.trim());
+    final prefs = ref.read(prefsProvider);
+    final token = _tokenInput.text.trim();
+    api.setSessionToken(token);
+    // BUG-ONB3: setSessionToken's own persistence (onRemoteTokenLearned) is
+    // fire-and-forget — invalidate() must not race ahead of it, or the
+    // gate's fresh poll can read the old (empty) saved token and show the
+    // login screen again right after a successful token entry.
+    await prefs.setString('memo_remote_access_token', token);
     ref.invalidate(authGateProvider);
   }
 
@@ -516,6 +527,11 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
       );
       if (res.sessionToken.isEmpty) throw Exception('empty token');
       api.setSessionToken(res.sessionToken);
+      // BUG-ONB3: setSessionToken's own persistence (onRemoteTokenLearned) is
+      // fire-and-forget — invalidate() below must not race ahead of it, or
+      // the gate's fresh poll can read the old (empty) saved token and show
+      // the login screen again right after a successful password login.
+      await prefs.setString('memo_remote_access_token', res.sessionToken);
       await prefs.setString('memo_session_role', res.role);
       await prefs.setString(
           'memo_session_username', _username.text.trim());
@@ -541,7 +557,12 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
 
   Future<void> _loginToken() async {
     final api = ref.read(apiClientProvider);
-    api.setSessionToken(_tokenInput.text.trim());
+    final prefs = ref.read(prefsProvider);
+    final token = _tokenInput.text.trim();
+    api.setSessionToken(token);
+    // BUG-ONB3: see _enterToken's identical comment — don't let invalidate()
+    // race the fire-and-forget persistence in setSessionToken.
+    await prefs.setString('memo_remote_access_token', token);
     ref.invalidate(authGateProvider);
   }
 

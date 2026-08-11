@@ -57,6 +57,7 @@ type swarmStubBridge struct {
 	listAccounts       func() interface{}
 	createAccount      func(username, password, role string) error
 	deleteAccount      func(id string) error
+	changeAccountPassword func(sessionToken, id, currentPassword, newPassword string) error
 	browseServerPath   func(path string) (interface{}, error)
 }
 
@@ -315,6 +316,12 @@ func (b *swarmStubBridge) CreateAccount(username, password, role string) error {
 func (b *swarmStubBridge) DeleteAccount(id string) error {
 	if b.deleteAccount != nil {
 		return b.deleteAccount(id)
+	}
+	return nil
+}
+func (b *swarmStubBridge) ChangeAccountPassword(sessionToken, id, currentPassword, newPassword string) error {
+	if b.changeAccountPassword != nil {
+		return b.changeAccountPassword(sessionToken, id, currentPassword, newPassword)
 	}
 	return nil
 }

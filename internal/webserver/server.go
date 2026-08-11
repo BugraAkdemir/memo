@@ -221,6 +221,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/setup/create-admin", s.handleSetupCreateAdmin)
 	route("/api/accounts", s.handleAccounts)
 	route("/api/accounts/{id}", s.handleAccountByID)
+	route("/api/accounts/{id}/password", s.handleAccountByID)
 	route("/api/cli/status", s.handleCLIStatus)
 	route("/api/cli/running", s.handleCLIRunning)
 	route("/api/cli/commands", s.handleCLICommands)

@@ -167,6 +167,7 @@ type FullBridge interface {
 	ListAccounts() interface{}
 	CreateAccount(username, password, role string) error
 	DeleteAccount(id string) error
+	ChangeAccountPassword(sessionToken, id, currentPassword, newPassword string) error
 
 	// Server-side file browser (Faz 5.1 follow-up) — lets the Flutter
 	// client browse the *backend's* filesystem instead of its own

@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -276,18 +277,12 @@ func (s *Server) handleAccounts(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-// handleAccountByID implements DELETE /api/accounts/{id} — admin-only.
+// handleAccountByID implements DELETE /api/accounts/{id} (admin-only) and
+// POST /api/accounts/{id}/password (password change — role logic lives in
+// ChangeAccountPassword, see its doc comment).
 func (s *Server) handleAccountByID(w http.ResponseWriter, r *http.Request) {
 	if s.fullBridge == nil {
 		http.Error(w, "not available", http.StatusNotImplemented)
-		return
-	}
-	if r.Method != http.MethodDelete {
-		http.Error(w, "DELETE only", http.StatusMethodNotAllowed)
-		return
-	}
-	if !s.callerIsAdmin(r) {
-		http.Error(w, "forbidden: admin only", http.StatusForbidden)
 		return
 	}
 	id := r.PathValue("id")
@@ -295,9 +290,50 @@ func (s *Server) handleAccountByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "missing account id", http.StatusBadRequest)
 		return
 	}
-	if err := s.fullBridge.DeleteAccount(id); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
+	switch r.Method {
+	case http.MethodDelete:
+		if !s.callerIsAdmin(r) {
+			http.Error(w, "forbidden: admin only", http.StatusForbidden)
+			return
+		}
+		if err := s.fullBridge.DeleteAccount(id); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	case http.MethodPost:
+		var req struct {
+			CurrentPassword string `json:"current_password"`
+			NewPassword     string `json:"new_password"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "bad json", http.StatusBadRequest)
+			return
+		}
+		if err := s.fullBridge.ChangeAccountPassword(remoteCredential(r), id, req.CurrentPassword, req.NewPassword); err != nil {
+			http.Error(w, err.Error(), changePasswordStatus(err))
+			return
+		}
+		writeJSON(w, map[string]bool{"ok": true})
+	default:
+		http.Error(w, "DELETE or POST", http.StatusMethodNotAllowed)
 	}
-	writeJSON(w, map[string]bool{"ok": true})
+}
+
+// changePasswordStatus maps ChangeAccountPassword's error strings to HTTP
+// status codes — the errors already carry the distinction in their message,
+// matching the codebase's string-based status mapping convention (see
+// handleRemoteDeviceByID).
+func changePasswordStatus(err error) int {
+	msg := err.Error()
+	switch {
+	case msg == "valid session token is required":
+		return http.StatusUnauthorized
+	case strings.HasPrefix(msg, "account not found"):
+		return http.StatusNotFound
+	case msg == "only admins can change another account's password":
+		return http.StatusForbidden
+	default:
+		return http.StatusBadRequest
+	}
 }

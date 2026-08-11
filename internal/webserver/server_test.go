@@ -795,3 +795,24 @@ func TestHandleWebUIAssets_NoStore(t *testing.T) {
 		t.Errorf("/index.html (redirect): Cache-Control = %q, want %q", got, "no-store")
 	}
 }
+
+// TestIsVirtualNetworkInterface guards BUG-ONB1: getLocalIPs (LAN-address
+// display for Settings, `memo remote status`, and the self-hosted install
+// scripts) must exclude container/VPN bridge interfaces, or a Docker host
+// shows the user several confusing, unreachable "LAN address available"
+// entries alongside the one real physical-LAN IP.
+func TestIsVirtualNetworkInterface(t *testing.T) {
+	virtual := []string{"docker0", "br-4f2a9c1d3e5b", "veth3a1b2c4", "virbr0", "tun0", "tap0", "podman0", "cni0", "flannel.1", "kube-bridge", "cali1234abcd"}
+	for _, name := range virtual {
+		if !isVirtualNetworkInterface(name) {
+			t.Errorf("isVirtualNetworkInterface(%q) = false, want true", name)
+		}
+	}
+
+	real := []string{"eth0", "wlan0", "enp3s0", "wlp2s0", "en0"}
+	for _, name := range real {
+		if isVirtualNetworkInterface(name) {
+			t.Errorf("isVirtualNetworkInterface(%q) = true, want false", name)
+		}
+	}
+}

@@ -371,15 +371,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Detect local IPs for LAN access display
 	s.localIPs = nil
 	if addr == "0.0.0.0" {
-		ifaces, _ := net.Interfaces()
-		for _, iface := range ifaces {
-			addrs, _ := iface.Addrs()
-			for _, a := range addrs {
-				if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-					s.localIPs = append(s.localIPs, ipnet.IP.String())
-				}
-			}
-		}
+		s.localIPs = getLocalIPs()
 	}
 
 	ln, err := net.Listen("tcp", s.srv.Addr)
@@ -1050,19 +1042,56 @@ func rateLimitMiddleware(stop <-chan struct{}, next http.Handler) http.Handler {
 	})
 }
 
-func getLocalIPs() []string {
-	var ips []string
-	addrs, err := net.InterfaceAddrs()
-	if err != nil {
-		return []string{"localhost"}
-	}
-	for _, addr := range addrs {
-		if ipnet, ok := addr.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
-			ips = append(ips, ipnet.IP.String())
+// virtualInterfacePrefixes lists interface name prefixes that are very
+// unlikely to be the physical LAN link a phone/desktop client would
+// actually use to reach this box: Docker/Podman bridges and veth pairs,
+// libvirt's virbr0, VPN tun/tap devices, and common container-CNI bridges
+// (Flannel, Calico, Kubernetes' own kube-bridge). BUG-ONB1: with no
+// filtering at all, a box running Docker showed 3-4 "LAN address
+// available" lines (the real 192.168.x.x alongside 172.17-19.x.x Docker
+// bridge IPs) with nothing distinguishing which one the user should
+// actually type into a browser — an average user could easily try a
+// bridge IP first and get a connection failure.
+var virtualInterfacePrefixes = []string{
+	"docker", "br-", "veth", "virbr", "tun", "tap",
+	"podman", "cni", "flannel", "kube-bridge", "cali",
+}
+
+func isVirtualNetworkInterface(name string) bool {
+	lower := strings.ToLower(name)
+	for _, prefix := range virtualInterfacePrefixes {
+		if strings.HasPrefix(lower, prefix) {
+			return true
 		}
 	}
-	if len(ips) == 0 {
-		ips = []string{"localhost"}
+	return false
+}
+
+// getLocalIPs enumerates this machine's non-loopback IPv4 addresses,
+// excluding virtual/container network interfaces (see
+// isVirtualNetworkInterface) so LAN-access display (the desktop Settings
+// UI, `memo remote status`, and the self-hosted install scripts) surfaces
+// only addresses another device on the same physical network could
+// actually reach.
+func getLocalIPs() []string {
+	var ips []string
+	ifaces, err := net.Interfaces()
+	if err != nil {
+		return nil
+	}
+	for _, iface := range ifaces {
+		if isVirtualNetworkInterface(iface.Name) {
+			continue
+		}
+		addrs, err := iface.Addrs()
+		if err != nil {
+			continue
+		}
+		for _, a := range addrs {
+			if ipnet, ok := a.(*net.IPNet); ok && !ipnet.IP.IsLoopback() && ipnet.IP.To4() != nil {
+				ips = append(ips, ipnet.IP.String())
+			}
+		}
 	}
 	return ips
 }

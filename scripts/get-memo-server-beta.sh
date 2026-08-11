@@ -290,10 +290,44 @@ elif [ "$os" = "Linux" ] && command -v systemctl >/dev/null 2>&1 && ! $IS_UPDATE
     echo ""
 fi
 
+# ── tell the user exactly where to point their browser (BUG-ONB1) ──────────
+# Inspects the actual persisted unit file (if any) instead of tracking
+# shell state across the branches above — this correctly covers every path:
+# a fresh --lan install, an update that restarted an existing --lan
+# service, a loopback-only install, and "no service configured at all"
+# (nothing printed in that last case — there's no running backend yet to
+# point at). Deliberately not hostname -I based: `ip route get` returns
+# the real source IP for the box's default outbound route, which sidesteps
+# Docker/Podman/libvirt bridge IPs entirely (they're never used for
+# outbound routing) instead of listing every interface and leaving the
+# user to guess which one is real.
+UNIT_FILE="$HOME/.config/systemd/user/memo.service"
+if [ -f "$UNIT_FILE" ] && command -v systemctl >/dev/null 2>&1 && systemctl --user is-active --quiet memo.service 2>/dev/null; then
+    unit_port="$(sed -n 's/.*--port \([0-9]*\).*/\1/p' "$UNIT_FILE" | head -1)"
+    [ -n "$unit_port" ] || unit_port="8090"
+    echo ""
+    if grep -q -- '--lan' "$UNIT_FILE"; then
+        lan_ip="$(ip -4 route get 1.1.1.1 2>/dev/null | sed -n 's/.* src \([0-9.]*\).*/\1/p')"
+        if [ -n "$lan_ip" ]; then
+            echo -e "  ${GREEN}${BOLD}➜ Open http://$lan_ip:$unit_port in your browser to get started${NC}"
+        else
+            echo -e "  ${YELLOW}Could not auto-detect this device's LAN IP — find it with 'ip addr' or"
+            echo -e "  'hostname -I', then open http://<that-ip>:$unit_port in your browser.${NC}"
+        fi
+    else
+        echo -e "  ${GREEN}${BOLD}➜ Open http://127.0.0.1:$unit_port in your browser on this machine to get started${NC}"
+    fi
+fi
+
+echo ""
 echo -e "  ${BOLD}Manage over SSH:${NC}"
 echo -e "    ${CYAN}memo service status${NC}          — is it running?"
+echo -e "    ${CYAN}memo service restart${NC}         — restart it (always with --user, see below)"
 echo -e "    ${CYAN}memo remote status${NC}           — auth mode, addresses, warnings"
 echo -e "    ${CYAN}memo config get/set <key>${NC}    — edit config.yaml from the command line"
+echo -e "    ${YELLOW}Note:${NC} the service is a systemd ${CYAN}--user${NC} unit (no root/sudo) — if you use"
+echo -e "    plain systemctl yourself, include ${CYAN}--user${NC} too (bare/sudo systemctl targets"
+echo -e "    system-wide units and will fail with 'Unit memo.service not found')."
 echo -e "  ${BOLD}Guide:${NC}     ${BLUE}https://memo.bugradev.com/guide${NC}"
 echo ""
 

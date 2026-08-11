@@ -116,7 +116,14 @@ trap 'rm -rf "$work_dir"' EXIT
 archive="$work_dir/$(basename "$url")"
 echo ""
 echo -e "${BOLD}Downloading:${NC} $url"
-curl -fSL -# -o "$archive" "$url"
+# Cache-busting query param: an ISP-level transparent HTTP cache along the
+# way (not Cloudflare itself — confirmed live: the same URL with vs.
+# without this query string returned two different binaries from the
+# same network path at the same moment) can keep serving a stale archive
+# indefinitely even long after a fresh CI upload. $url itself stays
+# unbusted (used for archive's local filename and the printed message
+# above) — only the actual request is.
+curl -fSL -# -o "$archive" "${url}?cachebust=$(date +%s%N)"
 echo ""
 
 # ── extract ──────────────────────────────────────────────────────────────────

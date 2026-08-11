@@ -7,6 +7,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
 
@@ -43,6 +44,11 @@ class BackendUnreachableOverlay extends ConsumerWidget {
     // (isAlive() itself never throws, but valueOrNull is null either way) —
     // only a confirmed `false` should block the whole app.
     if (connected != false) return const SizedBox.shrink();
+
+    // 401 is "need credentials", not "no backend" — the auth gate owns that
+    // state; without this the two overlays would fight over the screen.
+    final auth = ref.watch(authGateProvider).valueOrNull;
+    if (auth != null && auth.state != AuthGateState.ok) return const SizedBox.shrink();
 
     return Container(
       color: MemoTheme.of(context).bgApp.withValues(alpha: 0.95),

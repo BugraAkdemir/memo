@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:memo_flutter/core/api_client.dart';
 import 'package:memo_flutter/core/l10n.dart';
+import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 import 'package:memo_flutter/widgets/backend_unreachable_view.dart';
@@ -174,6 +175,11 @@ void main() {
         apiClientProvider.overrideWithValue(MemoApiClient(baseUrl: 'http://127.0.0.1:8090')),
         connectionStatusProvider.overrideWith(
           (ref) => connected == null ? const Stream.empty() : Stream.value(connected),
+        ),
+        // The overlay now consults the auth gate too; as of 2026-08 make the
+        // gate permanently "ok" so it can't veto the unreachable screen.
+        authGateProvider.overrideWith(
+          (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
         ),
       ]);
       addTearDown(container.dispose);

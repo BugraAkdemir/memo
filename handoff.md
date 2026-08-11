@@ -1,3 +1,33 @@
+## Ek (2026-08-12, devam 2) — RPi'de canlı SSH testi: BUG-ONB7/8/9 bulundu ve düzeltildi, uçtan uca doğrulandı
+
+Aynı oturumun devamı — bir önceki "Ek" girdisinden (BUG-ONB5, script `clear`/`tty` fix'leri) sonrası. Kullanıcı bu oturumdaki değişiklikleri gerçek RPi'sinde (`bugraa@192.168.1.106`, SSH erişimi verildi) test etmeye başladı; bulunan her şey **canlı SSH ile teşhis edilip düzeltildi ve tekrar canlı doğrulandı** — spekülasyonla değil.
+
+### BUG-ONB7 — systemd unit `MEMO_DATA_DIR` ayarlamıyordu (`53d1740`)
+
+Kullanıcı `uninstall-selfhosted.sh` ile "komple kaldırıp" `get-memo-server-beta.sh` ile sıfırdan kurunca eski hesabının/hafızasının geri geldiğini bildirdi. SSH ile `~/.memo/`'nun gerçekten silindiği doğrulandı, ama `GET /api/accounts` hâlâ eski hesabı (`2026-08-09` tarihli) döndürüyordu — veri `~/.memo/data` dışında bir yerde yaşıyordu. Kök neden: `buildUnitFile()` (`cli_service.go`) hiç `MEMO_DATA_DIR` ayarlamıyordu; systemd `--user` birimleri `WorkingDirectory=` set edilmediğinde `$HOME`'u kullanıyor, `config.DataDir()`'ın relative `"data"` fallback'i de bu yüzden **`$HOME/data`**'ya çözülüyordu. Fix: unit dosyasına `Environment=MEMO_DATA_DIR=<MEMO_HOME>/data` eklendi (`internal/app/cliadmin.go`'nun masaüstü kurulum yolunun zaten kullandığı aynı değer). **Migrasyon yok** — mevcut kurulu bir servis fix'i almak için yeniden kurulmalı.
+
+### BUG-ONB6 sistematik geçiş (`a0f14ce`, `9ce06af`)
+
+Kullanıcı önce chat ekranında, sonra "aynı şey Ayarlar'da ve Geliştirici Seçenekleri'nde de var" dedi. `codebase-memory` (`search_graph`) ile tahmin yürütmeden tüm `AsyncNotifier.build()` + `apiClientProvider` kullanan provider'lar tarandı — **17 provider'da** aynı korumasız desen bulundu (chat, settings×9 — `DevGatewayConfigNotifier` dahil, agent, skill, models, tasklist, provider×2, orchestra, swarm). Hepsine gate kontrolü eklendi; her ekrana ayrı listener yerine `app_shell.dart`'a tek merkezi bir gate-geçişi listener'ı kondu (17 provider'ı tek seferde invalidate ediyor). Yol boyunca `settings_toggle_race_test.dart`'ta gerçek bir test kırılması bulunup düzeltildi.
+
+### BUG-ONB8 — çift hata toast'ı + ham provider hatası (`6863dae`, kullanıcının ekran görüntüsüyle)
+
+OpenCode Zen rate-limit yiyince kullanıcı ham Go hatasını ("all providers failed: [opencode-zen] provider rate limited: ...") aynen görüyordu — `FriendlyError.describeGeneric`'e rate-limit tanıma eklendi (TR+EN dostça mesaj). Aynı ekran görüntüsünde ikinci bug: hata toast'ı iki kere çıkıyordu — `chat_screen.dart`'ta (6 Temmuz) `app_shell.dart`'ınkiyle (25 Haziran) birebir aynı bir `errorMessageProvider` listener kopyası vardı, ikisi `IndexedStack` içinde sürekli birlikte mount oluyordu. Kopya silindi.
+
+### BUG-ONB9 — ISP seviyesinde şeffaf cache, kurulum script'lerini sürekli eski binary indirtiyordu (`a19d223`)
+
+En çetrefilli olanı: BUG-ONB7 fix'i CI'dan geçip R2'ye yüklendi, Cloudflare'in kendi edge'i taze olduğu doğrulandı (`cf-cache-status: DYNAMIC`) — ama RPi'de art arda **3 ayrı** tam uninstall+reinstall döngüsünde script hâlâ eski binary'yi (`md5 3c401e2d...`) indiriyordu. `strings`/`md5sum` ile ikisi karşılaştırılarak (canlı, sahte binary çalıştırılmadan) kanıtlandı. Aynı URL'ye `?cachebust=$(date +%s%N)` eklenince aynı network yolundan doğru binary (`3ead9182...`) geldi — Cloudflare değil, RPi'nin ağ yolundaki bir yerde (muhtemelen ISP seviyesi şeffaf HTTP cache) sorun olduğu kesinleşti. Archive indiren 6 script'e (`get-memo*.sh`, `get_memo_arm.sh`, `update.sh`) cache-busting eklendi. **RPi'de uçtan uca doğrulandı:** fix sonrası unit dosyasında `Environment=MEMO_DATA_DIR=...` doğru, `needs_setup:true` (gerçek fresh install, eski hesap yok).
+
+### Yeni iş akışı: hızlı R2 upload
+
+Kullanıcı script değiştiğinde CI'yı beklemek yerine `/home/bugra/Documents/r2-memo-push/`'a kopyalayıp `upload-memo.sh` (rclone, kullanıcının kendi R2 credential'larıyla) çalıştırmayı öğretti — bundan sonraki script değişikliklerinde bu yol da kullanılacak (CI'nın kendi otomatik yüklemesine ek, ondan bağımsız).
+
+### Doğrulama
+
+Go build/vet/test `-race` ve `flutter analyze`/`flutter test` (236/236) tüm oturum boyunca yeşil. **BUG-ONB7 ve BUG-ONB9 RPi'de gerçek SSH ile uçtan uca doğrulandı** (sandbox değil, gerçek cihaz). BUG-ONB6/ONB8 sadece test seviyesinde doğrulandı, kullanıcı tarayıcıdan canlı test ediyor — sonucu henüz bildirmedi. `BUG_REPORT.md` hâlâ 0 açık madde (hepsi fixed olarak kapatıldı, header log'da özetleniyor).
+
+---
+
 ## Ek (2026-08-12, devam) — TD-4 kullanıcı tarafından halledildi, script'ler gerçekten doğrulandı (2 yeni bug bulundu+düzeltildi), BUG-ONB5 çözüldü — BUG_REPORT.md artık 0 açık madde
 
 Aynı oturumun devamı. Kullanıcı TD-4'ü kendisi Cloudflare dashboard'undan halletti (kod tarafı yok, sadece kayda geçirildi). Sonra kullanıcı bu oturumun `get-memo-server.sh`/`get-memo-server-beta.sh`/`uninstall-selfhosted.sh` script'lerinin **gerçekten çalışıp çalışmadığını** sordu — sahte bir `$HOME`/`$MEMO_HOME` ile sandbox'ta `uninstall-selfhosted.sh`'ı çalıştırınca script hiçbir şey yapmadan anında çıktı, hiçbir dosya silinmedi.

@@ -1,3 +1,18 @@
+## Ek (2026-08-11) — BUG-ONB4 tamamlandı: gate açıkken background polling 401 gürültüsü (commit `ffee2bf`)
+
+Önceki oturum yarım kalmıştı: `gate_guard.dart` (`authGateBlocked`/`cancellablePause`) + 5 provider dosyasında guard'lar yazılmış ama commit edilmemişti, artı bozuk bir `debugPrint` teşhis kalıntısı ve derlenmeyen bir scratch test dosyası vardı. Bu oturumda bitirildi:
+
+- **`chat_screen.dart` derlenmiyordu** — `authGateProvider`/`AuthGateInfo`/`authGateBlocked` kullanılıyordu ama `auth_gate_provider.dart`/`gate_guard.dart` import edilmemişti (`flutter analyze` hard error veriyordu). Import eklendi.
+- **Gerçek bir ikinci bug bulundu ve düzeltildi** (fix'i doğrularken, 65 sahte-saniyelik bir poll testiyle): `mood_provider.dart`'ın `Stream.periodic(...).asyncExpand((_) async* { if (blocked) return; ... }).distinct()` deseni — iç generator'ın "blocked" dalı hiç `yield` yapmadan boş dönünce (`return;`) periyodik Timer'ı dispose'da iptal etmiyordu. Minimal, ağsız bir repro ile doğrulandı (aynı şekil ama her tick en az bir `yield` yapan versiyon temiz dispose oluyor) — genel bir Dart/`asyncExpand`+`distinct`+hep-boş-iç-stream tuzağı, sadece mood'a özgü değil. `modelStatusProvider`'ın kanıtlanmış `while(alive)+cancellablePause` deseniyle yeniden yazıldı, eski `.distinct()` davranışı manuel `last` takibiyle korundu.
+- `engine_strip_gate_guard_test.dart`'a `engine_strip_test.dart`'ın zaten kullandığı 1400x800 test viewport'u eklendi — EngineStrip gate açılınca tüm göstergeleri (model/embedding/memory/download/orchestra/mood) aynı anda render ediyor, varsayılan test yüzeyinde overflow veriyordu (gate-guard mantığıyla ilgisiz, saf test kurulumu eksikliği).
+- Bozuk `gate_override_diag_test.dart` (derlenmiyordu, geçici teşhis dosyasıydı) silindi; `models_provider.dart`'taki `MODELSTATUS_TICK`/`EMBEDDING_TICK` debug print'leri kaldırıldı.
+
+**Doğrulama:** `flutter test` 229/229, `flutter analyze` temiz (bilinen 5 info dışında), Rule #8 grep temiz (dokunulan tüm dosyalarda). `BUG_REPORT.md`'den BUG-ONB4 girdisi silindi (düzeltildi, repo konvansiyonu gereği burada tutulmuyor).
+
+**Debug metodolojisi notu (ileride benzer bir "pending timer" hatası çıkarsa):** `container.dispose()`'u `addTearDown()` ile kaydetmek YANLIŞ zamanlama veriyor — flutter_test'in `!timersPending` kontrolü tearDown'lardan ÖNCE, test callback'i bittiği anda çalışıyor; `addTearDown(container.dispose)` kullanan bir scratch test her zaman sahte-pozitif "pending timer" veriyordu (4 provider'ın hepsi aynı anda "leak ediyor" gibi göründü, hepsi bu sebepten). Gerçek disposal her zaman test body'sinin SONUNDA senkron `container.dispose()` çağrısıyla yapılmalı, `addTearDown` değil.
+
+**Sıradaki oturum için açık:** BUG-ONB3 (login sonrası geçici "sunucuya bağlanılamıyor" + kurulum ekranına düşme) ve BUG-ONB5 (RAM okuma şüphesi, kullanıcıdan netleşme bekliyor) hâlâ `BUG_REPORT.md`'de açık.
+
 ## Ek (2026-08-11) — Embedded web UI'nin LAN erişimi: CORS same-host fix (commit `7105291`)
 
 Gömülü Flutter web UI'si (backend'in kendi sunduğu `main.dart.js`) makinenin LAN adresinden (`http://192.168.1.x:18099`) açılınca uçtan uca çalışmıyordu. İki istifli kök neden:

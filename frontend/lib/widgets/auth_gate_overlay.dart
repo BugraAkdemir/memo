@@ -7,6 +7,7 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
 import 'backend_unreachable_view.dart';
 
@@ -177,6 +178,11 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
     final prefs = ref.read(prefsProvider);
     await prefs.setBool(authSetupDoneKey, true);
     ref.invalidate(authGateProvider);
+    // BUG-ONB5: gpuInfoProvider (a one-shot FutureProvider, not reactively
+    // watching the gate) may have already cached a blocked-gate default
+    // from an earlier attempt — re-run it now that the gate is opening, see
+    // that provider's own comment for the full story.
+    ref.invalidate(gpuInfoProvider);
   }
 
   Future<void> _submit() async {
@@ -242,6 +248,9 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
       await prefs.setString(
           'memo_session_username', _username.text.trim());
       ref.invalidate(authGateProvider);
+      // BUG-ONB5: see gpuInfoProvider's own comment — a one-shot
+      // FutureProvider that may have cached a blocked-gate default earlier.
+      ref.invalidate(gpuInfoProvider);
     } on DioException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -270,6 +279,9 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
     // login screen again right after a successful token entry.
     await prefs.setString('memo_remote_access_token', token);
     ref.invalidate(authGateProvider);
+    // BUG-ONB5: see gpuInfoProvider's own comment — a one-shot
+    // FutureProvider that may have cached a blocked-gate default earlier.
+    ref.invalidate(gpuInfoProvider);
   }
 
   Future<void> _copyToken() async {
@@ -536,6 +548,9 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
       await prefs.setString(
           'memo_session_username', _username.text.trim());
       ref.invalidate(authGateProvider);
+      // BUG-ONB5: see gpuInfoProvider's own comment — a one-shot
+      // FutureProvider that may have cached a blocked-gate default earlier.
+      ref.invalidate(gpuInfoProvider);
     } on DioException catch (e) {
       if (!mounted) return;
       setState(() {
@@ -564,6 +579,9 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
     // race the fire-and-forget persistence in setSessionToken.
     await prefs.setString('memo_remote_access_token', token);
     ref.invalidate(authGateProvider);
+    // BUG-ONB5: see gpuInfoProvider's own comment — a one-shot
+    // FutureProvider that may have cached a blocked-gate default earlier.
+    ref.invalidate(gpuInfoProvider);
   }
 
   @override

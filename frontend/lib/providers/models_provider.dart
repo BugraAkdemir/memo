@@ -86,7 +86,35 @@ final embeddingStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) a
 
 // ─── GPU Info ───────────────────────────────────────────────────
 
+// BUG-ONB5: on a token/password-gated backend, this used to fire once via
+// a plain ref.read with no gate check at all — the one provider BUG-ONB4's
+// fix missed, since that fix targeted the StreamProvider polling loops
+// above and this is a one-shot FutureProvider with no retry loop of its
+// own. If that single attempt landed while the login gate was still up,
+// getGpuInfo() 401'd, the catch below silently swallowed it into GPUInfo()
+// (ramTotalMb: 0), and — because a FutureProvider only ever runs its
+// builder once and caches the result — every screen reading RAM/GPU (setup
+// wizard's model recommendation, Model Store's hardware-fit badges) stayed
+// stuck on "unknown hardware" for the rest of the session, recommending/
+// fitting models as if RAM were 0 instead of the real value. A manual
+// refresh "fixed" it only because reloading the app rebuilds the whole
+// provider graph from scratch, by which point the gate had already opened.
+//
+// Fixed in two parts: (1) a gate check here, matching the polling
+// providers above, so a blocked gate never even attempts the request
+// (avoids the 401 in the first place — same reasoning as BUG-ONB4); (2)
+// auth_gate_overlay.dart's four successful-login paths now also
+// ref.invalidate(gpuInfoProvider) right alongside their existing
+// ref.invalidate(authGateProvider) — since this provider isn't watched
+// reactively (a plain, not autoDispose, FutureProvider watching an
+// autoDispose StreamProvider deadlocks container.read(....future) — tried
+// and reverted, see this commit's message), the only way it learns the
+// gate has actually opened is being told to recompute explicitly at the
+// one moment that matters: right after login succeeds.
 final gpuInfoProvider = FutureProvider<GPUInfo>((ref) async {
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+    return const GPUInfo();
+  }
   try {
     return await ref.read(apiClientProvider).getGpuInfo();
   } catch (e) {

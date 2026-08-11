@@ -250,6 +250,36 @@ jobs:
           RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
           RCLONE_CONFIG_R2_ACL: public-read
 
+      # TD-3 (BUG_REPORT.md): before this step, NOTHING in CI ever published
+      # the end-user install/update/uninstall scripts themselves — only the
+      # compiled release archives above. A fix landed in scripts/*.sh sat
+      # unreachable on download.bugradev.com until someone remembered to
+      # upload it to R2 by hand; the concrete case that surfaced this was
+      # commit 1fbaec6 (a token-bootstrap circular-dependency fix) staying
+      # live-broken for the reporting user's RPi months after it was fixed
+      # in the repo. Every one of these is a small static text file with no
+      # build step or architecture dependency, so publishing on every main
+      # push (same trigger as the beta tarball above) keeps
+      # download.bugradev.com byte-identical to the repo with no manual
+      # step to forget. Filenames match scripts/README.md's "End-user
+      # installers" table 1:1 — update both if a script is renamed/added.
+      - name: Upload install/update/uninstall scripts to R2
+        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        run: |
+          set -euo pipefail
+          for f in get-memo.sh get-memo-beta.sh get-memo.ps1 get-memo-beta.ps1 \
+                   get_memo_arm.sh get-memo-server.sh get-memo-server-beta.sh \
+                   update.sh uninstall.sh uninstall-arm.sh uninstall-selfhosted.sh; do
+            rclone copyto "scripts/$f" "R2:${{ env.R2_BUCKET }}/$f" --progress
+          done
+        env:
+          RCLONE_CONFIG_R2_TYPE: s3
+          RCLONE_CONFIG_R2_PROVIDER: Cloudflare
+          RCLONE_CONFIG_R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          RCLONE_CONFIG_R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          RCLONE_CONFIG_R2_ENDPOINT: ${{ env.R2_ENDPOINT }}
+          RCLONE_CONFIG_R2_ACL: public-read
+
   build-arm64:
     name: Linux arm64
     # Native build, no cross-compiling — GitHub's free hosted arm64 Ubuntu

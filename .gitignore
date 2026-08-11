@@ -99,3 +99,4 @@ data/skills/*
 data/skills_imported.json
 data/active_skills.json
 bug*.png
+data/session.key

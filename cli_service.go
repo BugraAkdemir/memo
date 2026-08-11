@@ -74,23 +74,40 @@ with "Unit memo.service not found".`)
 
 // buildUnitFile is a pure function (no filesystem/exec access) so its
 // output is directly testable without a real systemd around.
+//
+// Found live on a real RPi self-hosted install (uninstall-selfhosted.sh
+// deleted ~/.memo/ completely, yet the account/memory/chat history it was
+// supposed to remove came right back on the next install): this never set
+// MEMO_DATA_DIR, so config.DataDir() (internal/config/config.go) fell back
+// to its relative-path default ("data") — and since systemd --user units
+// default their working directory to $HOME when WorkingDirectory= isn't
+// set, every systemd-managed backend was silently reading/writing
+// $HOME/data (and, since ConfigDir() derives from DataDir(), $HOME/config)
+// instead of ~/.memo/data — the location every install/update/uninstall
+// script actually manages. binPath resolves to <MEMO_HOME>/bin/memo (the
+// CLI wrapper always execs that real path before `service install` runs),
+// so its grandparent directory IS MEMO_HOME — matches the exact
+// MEMO_DATA_DIR value internal/app/cliadmin.go's ReinstallCLI wrapper
+// generation already uses for the desktop-app install path.
 func buildUnitFile(binPath string, port int, lan bool) string {
 	execArgs := fmt.Sprintf("--headless --port %d", port)
 	if lan {
 		execArgs += " --lan"
 	}
+	dataDir := filepath.Join(filepath.Dir(filepath.Dir(binPath)), "data")
 	return fmt.Sprintf(`[Unit]
 Description=Memo self-hosted backend
 After=network.target
 
 [Service]
+Environment=MEMO_DATA_DIR=%s
 ExecStart=%s %s
 Restart=on-failure
 RestartSec=5
 
 [Install]
 WantedBy=default.target
-`, binPath, execArgs)
+`, dataDir, binPath, execArgs)
 }
 
 func systemdUnitPath() (string, error) {

@@ -31,6 +31,23 @@ func TestBuildUnitFile_HasRestartOnFailure(t *testing.T) {
 	}
 }
 
+// TestBuildUnitFile_SetsMemoDataDir guards a real bug found live on an RPi
+// self-hosted install: without this, systemd --user's default working
+// directory ($HOME, since WorkingDirectory= is never set) made
+// config.DataDir()'s relative "data" fallback resolve to $HOME/data instead
+// of ~/.memo/data — every install/update/uninstall script manages the
+// latter, so the account/memory/chat history that was supposed to be wiped
+// by uninstall-selfhosted.sh silently survived in the former, invisible to
+// every script. binPath is always <MEMO_HOME>/bin/memo (the CLI wrapper
+// execs that real path before `service install` ever runs), so
+// MEMO_DATA_DIR must be its grandparent directory + "/data".
+func TestBuildUnitFile_SetsMemoDataDir(t *testing.T) {
+	unit := buildUnitFile("/home/pi/.memo/bin/memo", 8090, true)
+	if !strings.Contains(unit, "Environment=MEMO_DATA_DIR=/home/pi/.memo/data\n") {
+		t.Errorf("unit file missing correct MEMO_DATA_DIR:\n%s", unit)
+	}
+}
+
 func TestSystemdUnitPath_UnderConfigSystemdUser(t *testing.T) {
 	path, err := systemdUnitPath()
 	if err != nil {

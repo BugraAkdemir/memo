@@ -1,4 +1,29 @@
-## Ek (2026-08-10) — Flutter web'de boş gri ekran: `dart:io` `Platform.*` guard'sız kullanımı (commit `9e65d77`)
+## Ek (2026-08-11) — Evrensel auth ekranı (plan `2026-08-11-auth-screen.md`, 7 task tamam)
+
+Tümü `main` üzerinde, 6 commit:
+
+| Task | Commit | İçerik |
+|------|--------|--------|
+| 1 | `d90f745` | Backend: `App.SessionSubject(token)` + `App.ChangeAccountPassword(...)` (`internal/app/remote_auth.go`) — JWT session kavramı |
+| 2 | `547bfad` | `POST /api/accounts/{id}/password` handler + `FullBridge` imzası + `server.go` route kaydı |
+| 3 | `a6cb70e` | API client: `SetupStatus`, `ApiAuthStatus`, `LoginResult`, `fetchSetupStatus/probeAuth/setSessionToken/setupCreateAdmin/login/changeAccountPassword/listAccounts/createAccount/deleteAccount` + 20/20 test |
+| 4 | `37af80c` | `authGateProvider` (30s poll, iptal edilebilir Timer) + `BackendUnreachableOverlay` 401'de gizleme |
+| 5 | `191b76b` | `AuthGateOverlay` (setup 3 adım + login şifre/token) + ~40 `auth_gate_*` TR/EN key + 6 widget test |
+| 6 | `e6d6931` | Settings → Hesaplar sekmesi (`accounts_tab.dart`, `people.svg` ikon, 27 key): listenin/ekle/sil/şifre değiştir/oturum kapat + 5 widget test |
+
+**Doğrulama (hepsi yeşil):** Go vet+tests `-race` 42 paket; `flutter analyze` temiz; `flutter test` 200/200; canlı backend smoke (`MEMO_DATA_DIR` ile temiz kurulum, port 24448) uçtan uca: `needs_setup:true` → create-admin → `needs_setup:false` → login → list/create/delete → **user rolü create/delete/başkasının şifresi 403** → kendi şifresi 200 → yeni şifreyle login 200, eskiyle 401.
+
+**Kullanıcı elinde olacak son doğrulama (bu ortamda ekran yok):** `flutter run -d linux` ile SetupGate→wizard, Ayarlar→Hesaplar akışları, RPi web'de setup/login.
+
+**Notlar:**
+- Smoke testi sırasında `go build` + `--headless` ile backend'i başka portta çalıştırmayı unutma: `--data-dir` flag'i YOK, `MEMO_DATA_DIR` kullan (config `ConfigDir()` = parent(DataDir)/config olduğundan data'yı iç içe koy: `/tmp/x/data`).
+- `pkill -f "memo-smoke"` kendi kabuğunu da öldürür (string eşleşmesi) — smoke sonrası `/api/shutdown` POST et, port serbest kalır.
+- Plan'ın Task 2 kod bloğu self-çelişkiliydi: Go 1.22 ServeMux `{id}` tek segment — `/api/accounts/{id}` POST'u `/api/accounts/{id}/password`'i EŞLEŞTİRMEZ; ayrı `route()` kaydı şarttı (`server.go` ~224).
+- `MessagesNotifier` reentrancy testinin 20ms `Future.delayed`'i tam süit yükü altında flaky — `Completer` (adapter istek atınca ateşlenen) ile deterministik yapıldı (Task 5 commit'inde).
+- Task 1 deviasyonları: `sessionSubjectRole` 3 değerli `(subject, role, ok)` döner; self-service koşulu `id == subject \|\| (acc.Username == subject && role != "admin")`; JWT subject'i kullanıcı adıdır (ID değil) — plan'daki `id == subject` ölü koşuldu.
+- `callerIsAdmin` bilinçli permissive: credential'sız localhost isteği admin sayılır (pre-Faz-5.1 davranışı); yalnızca tanınan "user" rolü kısıtlanır. `remoteAuthMiddleware` zaten yalnızca 0.0.0.0 dinleyicide devrede.
+- BUG-ONB1 (web auth ekranı) `9e65d77` commit'iyle çözülmüştü; bu plan onun ardılı: masaüstü de dahil evrensel auth.
+- Frontend'de `memo_session_username` prefs anahtarı yeni (login + setup persist ediyor); `AccountsTab._selfUsername` eşleşmesi "kendi şifresini değiştirmede mevcut şifre sor" mantığını besler.## Ek (2026-08-10) — Flutter web'de boş gri ekran: `dart:io` `Platform.*` guard'sız kullanımı (commit `9e65d77`)
 
 Yeni Flutter-web build kullanıcının RPi'sinde tamamen boş gri sayfa
 verdi (tab başlığı doğru "Memo", içerik sıfır — ekran görüntüsü

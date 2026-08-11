@@ -38,7 +38,7 @@
     - `"current password is incorrect"`
     - `"only admins can change another account's password"`
 
-- [ ] **Step 1: Failing test'ler**
+- [x] **Step 1: Failing test'ler**
 
 `internal/app/remote_auth_test.go` sonuna ekle (mevcut `testSigningKey` const'u ve `App{cfg: ..., events: &eventRing{}}` desenini kullan; `hashTestPassword` helper'ı):
 
@@ -163,12 +163,12 @@ func TestChangeAccountPassword_LegacyOnlyFails(t *testing.T) {
 }
 ```
 
-- [ ] **Step 2: Test'i çalıştırıp fail olduğunu gör**
+- [x] **Step 2: Test'i çalıştırıp fail olduğunu gör**
 
 Run: `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ -run 'TestSessionSubject|TestChangeAccountPassword' -v`
 Expected: derleme hatası — `a.SessionSubject` / `a.ChangeAccountPassword` tanımsız.
 
-- [ ] **Step 3: Minimal implementasyon**
+- [x] **Step 3: Minimal implementasyon**
 
 `internal/app/remote_auth.go` sonuna (dosya sonundaki `DeleteAccount`'tan sonra) ekle:
 
@@ -233,17 +233,17 @@ func (a *App) ChangeAccountPassword(sessionToken, id, currentPassword, newPasswo
 }
 ```
 
-- [ ] **Step 4: Test'i çalıştırıp pass olduğunu gör**
+- [x] **Step 4: Test'i çalıştırıp pass olduğunu gör**
 
 Run: `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/ -run 'TestSessionSubject|TestChangeAccountPassword'`
 Expected: PASS (7 test).
 
-- [ ] **Step 5: Tüm app paketini regression test et**
+- [x] **Step 5: Tüm app paketini regression test et**
 
 Run: `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./internal/app/`
 Expected: hepsi yeşil (mevcut `remote_auth_test.go` testleri dahil).
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add internal/app/remote_auth.go internal/app/remote_auth_test.go
@@ -270,7 +270,7 @@ claims itself."
 - Consumes: `a.ChangeAccountPassword(sessionToken, id, currentPassword, newPassword string) error`, `remoteCredential(r)` (`server.go` — X-Memo-Token/Bearer çıkarır), hata dizeleri (Task 1).
 - Produces: `POST /api/accounts/{id}/password` route'u (mevcut `/api/accounts/{id}` kaydının altında, `server.go:223`'teki `route("/api/accounts/{id}", s.handleAccountByID)` zaten wildcard'ı kapsar — yeni route gerekmez).
 
-- [ ] **Step 1: FullBridge'e imza ekle**
+- [x] **Step 1: FullBridge'e imza ekle**
 
 `internal/webserver/bridge.go`'da `DeleteAccount(id string) error`'ün bulunduğu interface bloğuna (satır ~169) hemen sonrasına:
 
@@ -278,7 +278,7 @@ claims itself."
 	ChangeAccountPassword(sessionToken, id, currentPassword, newPassword string) error
 ```
 
-- [ ] **Step 2: Handler'a POST kolu ekle**
+- [x] **Step 2: Handler'a POST kolu ekle**
 
 `internal/webserver/handlers_auth.go`'da `handleAccountByID`'nin `DELETE` dalını ayrıştıran switch'e POST ekle (mevcut yapı `switch r.Method { case http.MethodDelete: ... default: }` şeklinde — case'i genişlet):
 
@@ -323,12 +323,12 @@ func changePasswordStatus(err error) int {
 
 Not: `msg == "account not found"` eşleşmesi `"account not found: nope"` ile prefix değil tam eşleşme — `strings.HasPrefix(msg, "account not found")` kullan (import `strings` — dosyada zaten var mı kontrol et: `grep -n '"strings"' internal/webserver/handlers_auth.go`; yoksa import ekle).
 
-- [ ] **Step 3: Derle + vet**
+- [x] **Step 3: Derle + vet**
 
 Run: `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./... && CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...`
 Expected: temiz.
 
-- [ ] **Step 4: Canlı smoke (curl)**
+- [x] **Step 4: Canlı smoke (curl)**
 
 Geçici data diziniyle backend aç (24444 portu boş olmalı):
 
@@ -354,7 +354,7 @@ curl -s -X POST http://127.0.0.1:24444/api/auth/login -d '{"username":"admin","p
 
 Kapat: `curl -s -X POST http://127.0.0.1:24444/api/shutdown` (veya kill). Smoke script'i `/tmp/authsmoke/`'a kopyalanabilir — repoya girmez.
 
-- [ ] **Step 5: Commit**
+^- [x] **Step 5: Commit**
 
 ```bash
 git add internal/webserver/bridge.go internal/webserver/handlers_auth.go
@@ -386,7 +386,7 @@ existing DELETE — the {id} wildcard already covers it."
   - `Future<void> changeAccountPassword(String id, {String currentPassword = '', required String newPassword})`
   - `Future<List<Map<String, dynamic>>> listAccounts()`, `Future<void> createAccount(String username, String password, String role)`, `Future<void> deleteAccount(String id)`
 
-- [ ] **Step 1: Failing test'ler**
+- [x] **Step 1: Failing test'ler**
 
 `frontend/test/core/api_client_test.dart` sonuna (dosya `_FakeChatsAdapter` deseni kullanıyor; yeni bir path'e duyarlı adapter ekle):
 
@@ -504,12 +504,12 @@ group('auth endpoints', () {
 
 Not: `changeAccountPassword` body doğrulaması için `_FakeAuthAdapter`'a isteğe bağlı `onRequest` callback'i eklenebilir (annexe) — Step 3'te body'yi gönderdiğini doğrula; gerekmiyorsa yukarıdaki gibi status doğrulaması yeterli. Simplest geçerli yol: adapter'a `final void Function(RequestOptions)? onRequest;` ekle ve `changeAccountPassword` testinde body'yi `jsonDecode(options.data as String)` ile kontrol et.
 
-- [ ] **Step 2: Test'i çalıştırıp fail olduğunu gör**
+- [x] **Step 2: Test'i çalıştırıp fail olduğunu gör**
 
 Run: `export PATH="$PATH:/home/bugra/Documents/flutter/bin" && cd frontend && flutter test test/core/api_client_test.dart`
 Expected: derleme hatası — `fetchSetupStatus`/`ApiAuthStatus`/`LoginResult` tanımsız.
 
-- [ ] **Step 3: Implementasyon**
+- [x] **Step 3: Implementasyon**
 
 `frontend/lib/core/api_client.dart`'a ekle (mevcut `loginRemote`'un yanına, "Health check" bölümünün üstüne):
 
@@ -628,12 +628,12 @@ Future<void> deleteAccount(String id) async {
   }
 ```
 
-- [ ] **Step 4: Test'i çalıştırıp pass olduğunu gör**
+- [x] **Step 4: Test'i çalıştırıp pass olduğunu gör**
 
 Run: `flutter test test/core/api_client_test.dart`
 Expected: PASS (yeni 7 test dahil; mevcut loginRemote/testler bozulmadı).
 
-- [ ] **Step 5: Commit**
+^- [x] **Step 5: Commit**
 
 ```bash
 git add frontend/lib/core/api_client.dart frontend/test/core/api_client_test.dart
@@ -664,7 +664,7 @@ error) so the app can show the right screen for each."
     - `needs_setup=true` && !bayrak → `setupNeeded`; bayrak varsa → `ok`
     - `needs_setup=false`: `prefs.getString('memo_remote_access_token')` boş → `loginNeeded`; dolu → `probeAuth()`: `ok`→`ok`, `unauthorized`→`loginNeeded`, `down`→`ok`
 
-- [ ] **Step 1: Failing test'ler**
+- [x] **Step 1: Failing test'ler**
 
 `frontend/test/providers/auth_gate_provider_test.dart` (yeni dosya) — `_FakeAuthAdapter` desenini `api_client_test.dart`'tan kopyala (test dosyaları arası paylaşım yok; adapter'ı bu dosyada yeniden tanımla, daha küçük: `Map<String, (int, Object?)>`):
 
@@ -792,12 +792,12 @@ void main() {
 
 Not: `/api/version` 200 yanıtı `{'version': 'x'}` — `probeAuth` yanıt gövdesini parse etmiyor, status yeterli; `(200, {})` da olur. `(401, null)` body'siz.
 
-- [ ] **Step 2: Test'i çalıştırıp fail olduğunu gör**
+- [x] **Step 2: Test'i çalıştırıp fail olduğunu gör**
 
 Run: `flutter test test/providers/auth_gate_provider_test.dart`
 Expected: derleme hatası — `auth_gate_provider.dart` yok.
 
-- [ ] **Step 3: Provider'ı yaz**
+- [x] **Step 3: Provider'ı yaz**
 
 `frontend/lib/providers/auth_gate_provider.dart` (yeni dosya):
 
@@ -869,7 +869,7 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
 });
 ```
 
-- [ ] **Step 4: BackendUnreachableOverlay'de 401'de gizle**
+- [x] **Step 4: BackendUnreachableOverlay'de 401'de gizle**
 
 `frontend/lib/widgets/backend_unreachable_view.dart`'ta `BackendUnreachableOverlay.build` içine (mevcut `connected != false` kontrolünün yanına) — import ekle: `import '../providers/auth_gate_provider.dart';`:
 
@@ -880,12 +880,12 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
 
 (Gerekçe: 401 "backend'e ulaşılamıyor" değil, "kimlik yok" — gate onu üstlenir; bu koşul olmadan ikisi çakışırdı.)
 
-- [ ] **Step 5: Test'i çalıştırıp pass olduğunu gör**
+- [x] **Step 5: Test'i çalıştırıp pass olduğunu gör**
 
 Run: `flutter test test/providers/auth_gate_provider_test.dart && flutter test test/widgets/backend_unreachable_view_test.dart`
 Expected: 6 yeni test PASS; mevcut overlay testleri bozulmadı.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```bash
 git add frontend/lib/providers/auth_gate_provider.dart frontend/lib/widgets/backend_unreachable_view.dart frontend/test/providers/auth_gate_provider_test.dart
@@ -911,7 +911,7 @@ when a gate is active — 401 is 'need credentials', not 'no backend'."
 - Consumes: `authGateProvider`/`AuthGateInfo` (Task 4), `MemoApiClient` (fetchSetupStatus, setupCreateAdmin, setSessionToken, login, createRemoteDevice, setRemoteAuthConfig), `prefsProvider`, `authSetupDoneKey`, `MemoTheme`, `L10n`.
 - Produces: `class AuthGateOverlay extends ConsumerWidget` — app_shell stack'ine `BackendUnreachableOverlay`'den sonra eklenir.
 
-- [ ] **Step 1: l10n key'leri (TR + EN)**
+- [x] **Step 1: l10n key'leri (TR + EN)**
 
 `frontend/lib/core/l10n.dart`'a (TR map ve EN map'e aynı key'ler) ekle:
 
@@ -955,7 +955,7 @@ when a gate is active — 401 is 'need credentials', not 'no backend'."
 
 Format uyumluluğu: l10n.dart'ın mevcut deseni (TR ve EN map'leri aynı key setiyle) — kopyala-yapıştır doğrula: bir TR entry'si unutulursa doğrulama adımında yakalanır.
 
-- [ ] **Step 2: Widget'ı yaz**
+- [x] **Step 2: Widget'ı yaz**
 
 `frontend/lib/widgets/auth_gate_overlay.dart` (yeni dosya) — yapı:
 
@@ -1160,11 +1160,11 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
 }
 ```
 
-- [ ] **Step 3: app_shell.dart'a ekle**
+- [x] **Step 3: app_shell.dart'a ekle**
 
 `frontend/lib/screens/app_shell.dart:246` satırındaki `const BackendUnreachableOverlay(),`'den HEMEN SONRA (gate, unreachable'ın ÜZERİNDE çizilir): import ekle + `const AuthGateOverlay(),`.
 
-- [ ] **Step 4: Widget test'leri**
+- [x] **Step 4: Widget test'leri**
 
 `frontend/test/widgets/auth_gate_overlay_test.dart` (yeni):
 
@@ -1341,22 +1341,22 @@ void main() {
 
 Not: `tester.tap(find.text(...))` için buton metinleri birebir l10n key'lerinden gelmeli; `RadioListTile` gruplarında `find.text` çalışır. Başarılı akışlarda StreamProvider'ın invalidate + yeniden poll'u `pumpAndSettle` ile bekletilir; adapter `authed=true` sonrası `/api/version` 200 döndürmeli (yukarıdaki gibi).
 
-- [ ] **Step 5: Test'leri çalıştırıp pass olduğunu gör**
+- [x] **Step 5: Test'leri çalıştırıp pass olduğunu gör**
 
 Run: `flutter test test/widgets/auth_gate_overlay_test.dart`
 Expected: 6 test PASS. Gerekirse (mismatch) — parse hataları flutter test çıktısında görünür.
 
-- [ ] **Step 6: Tam frontend doğrulaması**
+- [x] **Step 6: Tam frontend doğrulaması**
 
 Run: `flutter analyze lib/ && flutter test`
 Expected: analyze — mevcut 5 bilinen info dışında yeni bulgu yok. 176 mevcut + yeni testler hepsi yeşil.
 
-- [ ] **Step 7: Kural #8 grep**
+- [x] **Step 7: Kural #8 grep**
 
 Run: `git diff --name-only -- '*.dart' | xargs -r grep -nE "(Text|Tooltip|SnackBar|AlertDialog)\(\s*['\"][A-Za-zÇĞİÖŞÜçğıöşü]"`
 Expected: boş (auth_gate_overlay.dart ve dokunulan dosyalarda ham string literal yok).
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```bash
 git add frontend/lib/widgets/auth_gate_overlay.dart frontend/lib/screens/app_shell.dart frontend/lib/core/l10n.dart frontend/test/widgets/auth_gate_overlay_test.dart
@@ -1383,7 +1383,7 @@ the RPi web deadlock where 401s were shown as 'can't connect'."
 - Consumes: `MemoApiClient.listAccounts/createAccount/deleteAccount/changeAccountPassword`, `prefsProvider` (`memo_session_role`), Task 3 tipleri.
 - Produces: `class AccountsTab extends ConsumerStatefulWidget` — settings_dialog'da `case` + `_tabs` + `_tabIcons` + `_groups`'a kayıtlı.
 
-- [ ] **Step 1: l10n key'leri**
+- [x] **Step 1: l10n key'leri**
 
 | Key | TR | EN |
 |---|---|---|
@@ -1416,7 +1416,7 @@ the RPi web deadlock where 401s were shown as 'can't connect'."
 | `accounts_empty` | "Henüz hesap yok. Backend kurulmamış görünüyor." | "No accounts yet. The backend appears to be unset up." |
 | `accounts_loaded_error` | "Hesaplar yüklenemedi: {err}" | "Could not load accounts: {err}" |
 
-- [ ] **Step 2: Sekmeyi yaz**
+- [x] **Step 2: Sekmeyi yaz**
 
 `frontend/lib/widgets/settings/tabs/accounts_tab.dart` (yeni dosya) — yapı:
 
@@ -1487,7 +1487,7 @@ class _AccountsTabState extends ConsumerState<AccountsTab> {
 
 Build: `_accounts == null && _error == null` → yükleniyor spinner (initState'ta `_load()`); `_canManage == false` → yalnızca `accounts_change_password` bölümü + `accounts_admin_only_note`; aksi halde liste (`ListTile`: avatar+username + rol rozeti (`accounts_role_admin`/`accounts_role_user` Chip'i) + sil IconButton) + "Yeni hesap" butonu + şifre değiştir butonları + en altta "Oturumu kapat" OutlinedButton (sadece `memo_session_role` kayıtlıysa, yani gerçek bir login varsa).
 
-- [ ] **Step 3: settings_dialog'a kaydet**
+- [x] **Step 3: settings_dialog'a kaydet**
 
 `frontend/lib/widgets/settings_dialog.dart`:
 - `_tabs` listesine (satır 92-113: `L10n.t('remote_access')`'in hemen ardına): `L10n.t('tab_accounts'),`
@@ -1498,7 +1498,7 @@ Build: `_accounts == null && _error == null` → yükleniyor spinner (initState'
 
 Not: sekmeler dinamik (`_tabs` getter) — switch'te sayı sabit kalır, `_tabs` getter'ı döndürdüğü uzunluk değişince `_activeTab.clamp` zaten korur.
 
-- [ ] **Step 4: Widget test'i**
+- [x] **Step 4: Widget test'i**
 
 `frontend/test/widgets/accounts_tab_test.dart` (yeni) — `_StatefulAuthAdapter` desenini (Task 5 testinden) kopyala, şu route'ları stub'la: `/api/accounts` GET → 2 hesap (`admin`/`kaya`), DELETE → 200, POST → 200:
 
@@ -1554,17 +1554,17 @@ void main() {
 
 `_RecordingAdapter`: Task 5'teki `_StatefulAuthAdapter`'dan türet (requests listesi + `onRequest` callback'i; login/create-admin authed mantığı gerekmez — sadece map'ten yanıtla + kaydet). Liste ekleme akışı testi opsiyonel (üstteki ikisi kapsamı örter); `deleteAccount`/`changePassword` dialog akışları `tap` + `pumpAndSettle` + request kaydı ile aynı desende genişletilebilir — minimum: listeleme + rol görünürlüğü.
 
-- [ ] **Step 5: Test'leri çalıştırıp pass olduğunu gör**
+- [x] **Step 5: Test'leri çalıştırıp pass olduğunu gör**
 
 Run: `flutter test test/widgets/accounts_tab_test.dart && flutter test test/widgets/settings_dialog_test.dart`
 Expected: PASS; mevcut settings_dialog testleri bozulmadı.
 
-- [ ] **Step 6: Kural #8 grep + flutter analyze**
+- [x] **Step 6: Kural #8 grep + flutter analyze**
 
 Run: `git diff --name-only -- '*.dart' | xargs -r grep -nE "(Text|Tooltip|SnackBar|AlertDialog)\(\s*['\"][A-Za-zÇĞİÖŞÜçğıöşü]"` → boş.
 Run: `flutter analyze lib/` → mevcut info'lar dışında temiz.
 
-- [ ] **Step 7: Commit**
+- [x] **Step 7: Commit**
 
 ```bash
 git add frontend/lib/widgets/settings/tabs/accounts_tab.dart frontend/lib/widgets/settings_dialog.dart frontend/lib/core/l10n.dart frontend/test/widgets/accounts_tab_test.dart
@@ -1582,28 +1582,28 @@ invalidating the auth gate. Closes the long-standing desktop gap
 
 **Files:** (değişiklik yok — yalnızca doğrulama)
 
-- [ ] **Step 1: Backend tam suite**
+^- [x] **Step 1: Backend tam suite**
 
 Run: `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./... && CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race`
 Expected: hepsi yeşil.
 
-- [ ] **Step 2: Frontend tam suite**
+^- [x] **Step 2: Frontend tam suite**
 
 Run: `flutter analyze lib/ && flutter test`
 Expected: analyze temiz (mevcut 5 info hariç), tüm testler yeşil.
 
-- [ ] **Step 3: Canlı masaüstü smoke (kullanıcı elinde)**
+^- [x] **Step 3: Canlı masaüstü smoke (kullanıcı elinde)** **^ ^** *(backend kısmı bu ortamda doğrulandı — setup→login→403 korumaları→şifre değişimi uçtan uca; Flutter GUI + RPi web kısmı kullanıcı elinde, ortamda ekran yok)*
 
 - `go run -tags "sqlite_fts5" . --headless --port 8090` ile başlat; `flutter run -d linux`.
 - Beklenen: ilk açılışta SetupGate görünür ("Başka cihazlar?" → Hayır) → wizard → normal app. (Mevcut kurulum zaten account kurdaysa LoginGate devreye girer — login → app.)
 - Ayarlar → Hesaplar: hesap listesi + ekle/sil/şifre değiştir akışları; "Oturumu kapat" → LoginGate geri gelir.
 - RPi web'de: web açılır → (setup yoksa) SetupGate → Evet + Sadece şifre → şifre kur → sohbet açılır; ikinci tarayıcıda LoginGate → giriş → çalışır.
 
-- [ ] **Step 4: handoff güncelle**
+^- [x] **Step 4: handoff güncelle**
 
 `handoff.md`'nin en üstüne giriş ekle (yapılanlar, commit'ler, RPi'de canlı doğrulama henüz yapılmadı notu, BUG-ONB1 ile ilişki).
 
-- [ ] **Step 5: Commit**
+^- [x] **Step 5: Commit**
 
 ```bash
 git add handoff.md

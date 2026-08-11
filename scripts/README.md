@@ -44,6 +44,7 @@ to R2 by hand (no CI step publishes these — see `docs/SELF_HOSTED.md`).
 | `update.sh` | Updates an existing install in place, data/config preserved | — |
 | `uninstall.sh` | Removes a desktop+backend install (offers to back up memory first) | — |
 | `uninstall-arm.sh` | Same, also detects and cleans up a Docker-based arm64 install | — |
+| `uninstall-selfhosted.sh` | Removes a **server-only** install (`get-memo-server.sh`/`-beta.sh`): stops & removes the systemd `memo.service` unit if present, kills processes started from `~/memo` (manual `--headless` runs included), deletes `~/.memo`, the `~/.local/bin/memo` wrapper and rc-file PATH lines; offers a memory+sessions backup first. `-y`/`--yes` skips the confirmation prompt. | — |
 
 ## Local dev convenience
 

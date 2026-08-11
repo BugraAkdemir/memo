@@ -15,7 +15,12 @@ RED="\033[31m"
 BLUE="\033[34m"
 NC="\033[0m"
 
-clear
+# clear fails (nonzero exit) when $TERM isn't set - happens any time this
+# runs without a real pty (piped curl | bash over some SSH/provisioning
+# setups, cron). Under 'set -e' that would kill the WHOLE script right
+# here, before anything is downloaded/installed/removed - never let it
+# be fatal.
+clear 2>/dev/null || true
 
 # ── banner ───────────────────────────────────────────────────────────────────
 echo -e "${CYAN}${BOLD}"
@@ -56,8 +61,8 @@ if $HAS_MEMORY; then
         echo -ne "${YELLOW}Save your memory data before uninstalling? (yes/no) [yes]: ${NC}"
         read -r answer
     else
-        echo -ne "${YELLOW}Save your memory data before uninstalling? (yes/no) [yes]: ${NC}" >/dev/tty
-        read -r answer </dev/tty
+        echo -ne "${YELLOW}Save your memory data before uninstalling? (yes/no) [yes]: ${NC}" 2>/dev/null >/dev/tty || true
+        read -r answer 2>/dev/null </dev/tty || true
     fi
     case "${answer:-yes}" in
         [Yy]|[Yy][Ee][Ss]) DO_BACKUP=true ;;
@@ -105,8 +110,8 @@ if [ -t 0 ]; then
     echo -ne "${RED}${BOLD}Proceed with uninstall? (yes/no) [no]: ${NC}"
     read -r confirm
 else
-    echo -ne "${RED}${BOLD}Proceed with uninstall? (yes/no) [no]: ${NC}" >/dev/tty
-    read -r confirm </dev/tty
+    echo -ne "${RED}${BOLD}Proceed with uninstall? (yes/no) [no]: ${NC}" 2>/dev/null >/dev/tty || true
+    read -r confirm 2>/dev/null </dev/tty || true
 fi
 case "${confirm:-no}" in
     [Yy]|[Yy][Ee][Ss]) ;;

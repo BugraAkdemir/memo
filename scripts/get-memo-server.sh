@@ -30,7 +30,12 @@ RED="\033[31m"
 BLUE="\033[34m"
 NC="\033[0m"
 
-clear
+# clear fails (nonzero exit) when $TERM isn't set - happens any time this
+# runs without a real pty (piped curl | bash over some SSH/provisioning
+# setups, cron). Under 'set -e' that would kill the WHOLE script right
+# here, before anything is downloaded/installed/removed - never let it
+# be fatal.
+clear 2>/dev/null || true
 
 # ── banner ───────────────────────────────────────────────────────────────────
 echo -e "${CYAN}${BOLD}"

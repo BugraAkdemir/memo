@@ -105,6 +105,11 @@ if [ -d "$src/binaries" ]; then
     echo -e "  ${GREEN}▸${NC} Engine binaries (llama.cpp + vec0)"
     rm -rf "$MEMO_HOME/binaries"
     cp -r "$src/binaries" "$MEMO_HOME/binaries"
+    # Archives don't reliably preserve the execute bit (the arm64
+    # build_releases_arm.sh bundle used to ship llama-server as 0644,
+    # which made every model start fail with EACCES) — force it.
+    find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
+    find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
 fi
 
 # Backend

@@ -81,6 +81,8 @@ echo "📂 3. Gömülü Dosyalar Kopyalanıyor (llama.cpp + vec0, arm64 CPU-only
 # (binaries/linux/cpu/...), mimari sonekli bir dizini hiç aramıyor.
 mkdir -p "$STAGEDIR/binaries/linux/cpu"
 cp -r binaries/linux/cpu-arm64/* "$STAGEDIR/binaries/linux/cpu/" 2>/dev/null || true
+find "$STAGEDIR/binaries/linux/cpu" -name "llama-server*" -exec chmod +x {} \;
+find "$STAGEDIR/binaries/linux/cpu" -name "*.so*" -exec chmod +x {} \;
 # ngrok deliberately NOT bundled — bu repodaki binaries/linux/ngrok
 # x86_64-only, internal/ngrok/installer.go zaten gömülü binary yoksa
 # linux/arm64 build'ini bin.ngrok.com'dan indiriyor (sadece ilk

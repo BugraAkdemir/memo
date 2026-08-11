@@ -57,7 +57,12 @@ dependencies:
   fl_chart: ^0.68.0
 
   path: any
+# jni 1.0.1+ dropped the (void**) cast in attach_thread() (dartjni.h),
+# which clang>=16 rejects as a hard error (incompatible-pointer-types);
+# 1.0.3 entered the lockfile collaterally via pub get and broke every
+# desktop build. Pin the last compiling version until upstream fixes it.
 dependency_overrides:
+  jni: 1.0.0
   record_linux: ^1.0.0
 
 dev_dependencies:

@@ -444,6 +444,7 @@ Acceptable pre-existing noise: a few `use_build_context_synchronously` **info**-
 - Backend JSON must be checked with `is` before casting — `as List`/`as Map` on unexpected payloads has crashed the UI in 5+ places before.
 - New user-facing strings go through `frontend/lib/core/l10n.dart`.
 - Unexplained plugin build failure? Check `~/.pub-cache` for 0-byte/partial package downloads **before** adding `dependency_overrides` (see 2026-07-04 note above).
+- **2026-08-11: jni 1.0.1+ is uncompilable with clang ≥ 16** (`dartjni.h`'s `attach_thread()` dropped the `(void**)` cast; `-Wincompatible-pointer-types` is a hard error in C since clang 16 / GCC 14). It entered the lockfile **collaterally** — commit `ad6f9aa` (an unrelated CI fix) ran `flutter pub get` and silently bumped jni 1.0.0 → 1.0.3, breaking every desktop build (Linux/macOS/Windows; jni is compiled because it declares `linux`/`windows` `ffiPlugin` and is forced into the graph by `path_provider_android 2.3.1`, the current latest). Fixed by pinning `jni: 1.0.0` in `dependency_overrides` (comment in `pubspec.yaml` explains why). No upstream fix exists yet (1.0.1 retracted, 1.0.2/1.0.3 share the regression). **Lesson: when an unrelated commit touches only `pubspec.lock`, diff it for collateral dependency bumps and spot-check the jni version — this class of failure re-enters the repo via plain `pub get`.**
 
 **Types & misc**
 - `skill.DangerLevel` and `agent.DangerLevel` are separate named types — they do not cross-assign.

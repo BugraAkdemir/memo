@@ -1,3 +1,7 @@
+## Ek (2026-08-11) — jni 1.0.3 build regression'ı: `jni: 1.0.0` pin (commit `fix(frontend)`)
+
+`flutter run -d linux` CLI/GUI tamamen kırıktı: jni 1.0.3'ün `dartjni.h`'sındaki `attach_thread()` (satır 166) `(void**)` cast'ini düşürmüş, clang ≥16 `-Wincompatible-pointer-types`'ı C'de hard-error yaptığından Linux desktop build (CachyOS clang 22.1.8) her seferinde `Error: Build process failed` veriyordu. jni 1.0.3 lockfile'a **collateral** girmişti: `ad6f9aa` (ilgisiz CI fix'i) `flutter pub get` çalıştırınca 1.0.0 → 1.0.3 sessizce yükseldi (git log bunu teyit ediyor; sadece lockfile değişmişti). jni grafa `path_provider_android 2.3.1` (en güncel, jni'ye bağımlı) üzerinden giriyor ve `linux/windows ffiPlugin` bildirdiği için masaüstü build'lerinde derleniyor. Upstream fix yok (1.0.1 retracted, 1.0.2/1.0.3 aynı regresyonda). **Fix:** `frontend/pubspec.yaml`'da `dependency_overrides: jni: 1.0.0` (repo'da 0.13.0 override tarihçesi de var — `17d0b33`). Doğrulama: `flutter build linux --debug` ✓, `flutter analyze` temiz (yalnızca bilinen info'lar), `flutter test` 200/200. Yeni pitfall AGENTS.md'de "Flutter" gotchas'ında belgelendi. Dikkat: jni'yi etkileyen `path_provider_android` yükseltmesi bu pini tekrar kırabilir.
+
 ## Ek (2026-08-11) — Evrensel auth ekranı (plan `2026-08-11-auth-screen.md`, 7 task tamam)
 
 Tümü `main` üzerinde, 6 commit:

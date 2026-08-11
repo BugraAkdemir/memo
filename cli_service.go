@@ -47,6 +47,8 @@ func runServiceCommand(args []string) int {
 		return serviceUninstall()
 	case "status":
 		return serviceStatus()
+	case "restart":
+		return serviceRestart()
 	default:
 		printServiceUsage()
 		return 1
@@ -57,7 +59,17 @@ func printServiceUsage() {
 	fmt.Fprintln(os.Stderr, `kullanım / usage:
   memo service install [--port N] [--lan]
   memo service uninstall
-  memo service status`)
+  memo service status
+  memo service restart
+
+not / note: bunlar hep "systemctl --user" komutlarını sarmalıyor (root/sudo
+gerekmez) — elle systemctl kullanmak isterseniz de "--user" ekleyin, aksi
+halde farklı bir yetkilendirme yoluna (sistem geneli, polkit) girer ve
+"Unit memo.service not found" hatası alırsınız.
+note: these all wrap "systemctl --user" commands (no root/sudo needed) — if
+you run systemctl by hand instead, include "--user" too, otherwise it goes
+through a different (system-wide, polkit) authorization path and fails
+with "Unit memo.service not found".`)
 }
 
 // buildUnitFile is a pure function (no filesystem/exec access) so its
@@ -169,5 +181,22 @@ func serviceStatus() int {
 		// distinguishes those cases, so this isn't itself a command failure.
 		return 0
 	}
+	return 0
+}
+
+// serviceRestart exists so a user's natural first instinct — "restart the
+// service" — has a `memo service` subcommand to reach for, instead of
+// requiring them to already know the unit is a "--user" one and type the
+// full `systemctl --user restart memo` themselves (BUG-ONB2: a plain
+// `systemctl restart memo`/`sudo systemctl restart memo` both fail, for two
+// different reasons, with no indication either time that "--user" was the
+// missing piece).
+func serviceRestart() int {
+	out, err := runSystemctl("restart", systemdUnitName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "servis yeniden başlatılamadı / failed to restart service: %v\n%s\n", err, out)
+		return 1
+	}
+	fmt.Println("✓ Servis yeniden başlatıldı / service restarted.")
 	return 0
 }

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"os"
 	"strings"
 	"testing"
 )
@@ -36,5 +38,28 @@ func TestSystemdUnitPath_UnderConfigSystemdUser(t *testing.T) {
 	}
 	if !strings.HasSuffix(path, "/.config/systemd/user/memo.service") {
 		t.Errorf("systemdUnitPath = %q, want a path ending in /.config/systemd/user/memo.service", path)
+	}
+}
+
+func TestPrintServiceUsage_MentionsRestartAndUserFlag(t *testing.T) {
+	old := os.Stderr
+	r, w, _ := os.Pipe()
+	os.Stderr = w
+	printServiceUsage()
+	w.Close()
+	os.Stderr = old
+
+	var buf bytes.Buffer
+	buf.ReadFrom(r)
+	out := buf.String()
+
+	// BUG-ONB2: the usage text is the one place every user actually reads
+	// before trying to restart the service — it must list the subcommand
+	// and warn that a bare `systemctl restart memo` (no --user) fails.
+	if !strings.Contains(out, "memo service restart") {
+		t.Errorf("printServiceUsage() output missing 'memo service restart':\n%s", out)
+	}
+	if !strings.Contains(out, "--user") {
+		t.Errorf("printServiceUsage() output missing a --user mention:\n%s", out)
 	}
 }

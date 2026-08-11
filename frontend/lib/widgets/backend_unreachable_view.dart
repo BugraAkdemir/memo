@@ -213,7 +213,11 @@ class BackendUnreachableView extends ConsumerWidget {
 /// same direct way to re-point the app without finding the Remote Access
 /// tab in Settings.
 class ChangeServerDialog extends ConsumerStatefulWidget {
-  const ChangeServerDialog({super.key});
+  const ChangeServerDialog({super.key, this.title});
+
+  /// Overrides the dialog title — the auth gate's "connect to a remote
+  /// server" entry opens the same dialog under its own wording.
+  final String? title;
 
   @override
   ConsumerState<ChangeServerDialog> createState() => ChangeServerDialogState();
@@ -251,8 +255,9 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
     return AlertDialog(
-      title: Text(L10n.t('change_server_dialog_title')),
+      title: Text(widget.title ?? L10n.t('change_server_dialog_title')),
       content: SizedBox(
         width: 380,
         child: Column(
@@ -277,6 +282,11 @@ class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
                 prefixIcon: const Icon(Icons.vpn_key_outlined, size: 18),
               ),
               style: const TextStyle(fontFamily: 'JetBrainsMono', fontSize: 14),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              L10n.t('change_server_token_hint'),
+              style: TextStyle(color: theme.textDim, fontSize: 11, height: 1.4),
             ),
           ],
         ),

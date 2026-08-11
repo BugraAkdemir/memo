@@ -822,6 +822,8 @@ class L10n {
     'remote_backend_token_field_label': 'Erişim Token\'ı (opsiyonel)',
     'remote_backend_token_field_hint':
         'Sadece yukarıdaki backend kendi --lan/uzaktan erişim modunda çalışıyorsa gerekir (ör. Docker/CasaOS) — konteynerin loglarında yazar.',
+    'change_server_token_hint':
+        'Yalnızca token ile giriş yapılan sunucularda doldurun; kullanıcı adı + şifre isteyen sunucularda boş bırakın, giriş ekranına yönlendirilirsiniz.',
     'remote_tailscale_title': 'Tailscale (sabit URL, gömülü)',
     'remote_tailscale_desc':
         'ngrok\'un aksine URL hiç değişmez ve ayrı binary indirmez. Tıkla, tarayıcıda tek tıkla onayla — API key\'e gerek yok.',
@@ -1745,6 +1747,8 @@ class L10n {
     'auth_gate_other_devices_question': 'Bu Memo\'ya başka cihazlardan erişilecek mi?',
     'auth_gate_other_devices_yes': 'Evet, telefonumdan / başka cihazlardan da gireceğim',
     'auth_gate_other_devices_no': 'Hayır, yalnızca bu cihazda kullanacağım',
+    'auth_gate_connect_remote': 'Uzak bir sunucuya bağlanacağım',
+    'auth_gate_join_remote': 'Uzak sunucuya bağlan',
     'auth_gate_continue': 'Devam',
     'auth_gate_method_label': 'Giriş yöntemi',
     'auth_gate_method_password': 'Sadece şifre',
@@ -2575,6 +2579,8 @@ class L10n {
     'remote_backend_token_field_label': 'Access Token (optional)',
     'remote_backend_token_field_hint':
         'Only needed if the backend above is running its own --lan/remote-access mode (e.g. Docker/CasaOS) — printed in the container\'s logs.',
+    'change_server_token_hint':
+        'Fill in only for token-only servers; leave empty for username/password servers and you will be taken to the sign-in screen.',
     'remote_tailscale_title': 'Tailscale (stable URL, embedded)',
     'remote_tailscale_desc':
         "Unlike ngrok, the URL never changes and needs no separate binary download. Click, approve in your browser with one tap — no API key needed.",
@@ -3478,6 +3484,8 @@ class L10n {
     'auth_gate_other_devices_question': 'Will this Memo be accessed from other devices?',
     'auth_gate_other_devices_yes': 'Yes, I\'ll sign in from my phone / other devices too',
     'auth_gate_other_devices_no': 'No, I\'ll only use it on this device',
+    'auth_gate_connect_remote': 'I\'ll connect to a remote server',
+    'auth_gate_join_remote': 'Connect to remote server',
     'auth_gate_continue': 'Continue',
     'auth_gate_method_label': 'Sign-in method',
     'auth_gate_method_password': 'Password only',

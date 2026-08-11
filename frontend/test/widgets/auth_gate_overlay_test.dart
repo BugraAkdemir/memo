@@ -98,6 +98,27 @@ void main() {
     expect(prefs.getBool(authSetupDoneKey), isTrue);
   });
 
+  testWidgets('first run: connect-to-remote option opens the server dialog', (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': true, 'auth_mode': 'token'}),
+    });
+    await pump(tester, adapter);
+    await tester.tap(find.text(L10n.t('auth_gate_connect_remote')));
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('auth_gate_join_remote')), findsOneWidget);
+    expect(find.text(L10n.t('remote_backend_url_field_label')), findsOneWidget);
+  });
+
+  testWidgets('login gate: connect-to-remote link opens the server dialog', (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
+    });
+    await pump(tester, adapter);
+    await tester.tap(find.text(L10n.t('auth_gate_join_remote')));
+    await tester.pumpAndSettle();
+    expect(find.text(L10n.t('remote_backend_url_field_label')), findsOneWidget);
+  });
+
   testWidgets('first run: password setup flow creates admin and closes gate', (tester) async {
     final adapter = _StatefulAuthAdapter({
       '/api/setup/status': (200, {'needs_setup': true, 'auth_mode': 'token'}),

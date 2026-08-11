@@ -309,6 +309,17 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
                 icon: Icons.desktop_windows_rounded,
                 onPressed: _decline,
               ),
+              const SizedBox(height: 8),
+              _GateChoiceButton(
+                label: L10n.t('auth_gate_connect_remote'),
+                icon: Icons.language_rounded,
+                onPressed: () => showDialog(
+                  context: context,
+                  builder: (_) => ChangeServerDialog(
+                    title: L10n.t('auth_gate_join_remote'),
+                  ),
+                ),
+              ),
             ],
           ),
         ),
@@ -628,6 +639,24 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
                       style: const TextStyle(fontWeight: FontWeight.w600),
                     ),
                   ),
+          ),
+          const SizedBox(height: 4),
+          TextButton(
+            onPressed: () => showDialog(
+              context: context,
+              builder: (_) => ChangeServerDialog(
+                title: L10n.t('auth_gate_join_remote'),
+              ),
+            ),
+            style: TextButton.styleFrom(
+              foregroundColor: theme.textDim,
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            child: Text(
+              L10n.t('auth_gate_join_remote'),
+              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+            ),
           ),
         ],
       ),

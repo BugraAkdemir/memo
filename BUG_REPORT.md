@@ -1,7 +1,12 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-12 — **BUG-ONB3 tamamen düzeltildi** (2 parça): (1) `6125f39` — `isAlive()` artık 401'i "canlı ama yetkisiz" sayıyor (sadece transport hatası "ölü" sayılıyor), `BackendUnreachableOverlay` gate henüz karar vermemişken (`valueOrNull == null`) de gizleniyor — login sonrası "sunucuya bağlanılamıyor" flaş'ı kapandı. (2) `576d200` — `auth_gate_overlay.dart`'taki 4 login/setup yolunun hepsinde (`_submit`, `_enterToken`, `_loginPassword`, `_loginToken`) `api.setSessionToken()`'ın kendi persistence'i (`onRemoteTokenLearned`) fire-and-forget olduğundan, hemen ardından gelen `ref.invalidate(authGateProvider)` bazen henüz diske yazılmamış (eski/boş) token'ı okuyup kullanıcıyı kurulum ekranına düşürüyordu — her 4 yolda `prefs.setString('memo_remote_access_token', token)` artık invalidate'ten önce `await`leniyor. `flutter test` 229/229, analyze temiz, Rule #8 grep temiz.
+> **Son güncelleme:** 2026-08-12 — **BUG-ONB1 ve BUG-ONB2 tamamen düzeltildi:**
+> - **BUG-ONB1** (2 parça): (1) `1c9c33c` — `internal/webserver/server.go`'nun LAN-adres tespiti (`getLocalIPs`, `Settings`/`memo remote status`/script'lerin hepsinin kullandığı) artık `docker`/`br-`/`veth`/`virbr`/`tun`/`tap`/`podman`/`cni`/`flannel`/`kube-bridge`/`cali` önekli sanal arayüzleri atlıyor — aynı mantığın kullanılmayan bir kopyası zaten dosyada duruyordu, ikisi tek, doğru implementasyonda birleştirildi. (2) `dec0c0a` — `get-memo-server.sh`/`get-memo-server-beta.sh` artık kurulum/güncelleme sonunda gerçek `http://<ip>:<port>` adresini basıyor; adres `ip route get 1.1.1.1`'in kaynak IP'siyle (Docker bridge'lerini doğal olarak atlıyor, çünkü onlar hiç outbound routing'de kullanılmıyor) ve port, unit dosyasının kendi `ExecStart` satırından tespit ediliyor (varsayılan olmayan `--port` de doğru yansıyor).
+> - **BUG-ONB2** (`97aa57f` + `dec0c0a`) — `cli_service.go`'ya `memo service restart` eklendi (`systemctl --user restart memo.service`'i sarmalıyor), `printServiceUsage()` ve script'lerin "Manage over SSH" bölümü artık `--user` gerekliliğini açıkça yazıyor.
+> - Go: build/vet/test `-race` yeşil (`TestIsVirtualNetworkInterface`, `TestPrintServiceUsage_MentionsRestartAndUserFlag` yeni). Script'ler `bash -n` ile sözdizimi doğrulandı + port/`--lan`/IP çıkarma mantığı örnek unit-dosyası içeriğine karşı ayrıca test edildi; gerçek bir systemd kurulumuna karşı uçtan uca bu ortamda denenmedi.
+>
+> **BUG-ONB3 tamamen düzeltildi** (2 parça): (1) `6125f39` — `isAlive()` artık 401'i "canlı ama yetkisiz" sayıyor (sadece transport hatası "ölü" sayılıyor), `BackendUnreachableOverlay` gate henüz karar vermemişken (`valueOrNull == null`) de gizleniyor — login sonrası "sunucuya bağlanılamıyor" flaş'ı kapandı. (2) `576d200` — `auth_gate_overlay.dart`'taki 4 login/setup yolunun hepsinde (`_submit`, `_enterToken`, `_loginPassword`, `_loginToken`) `api.setSessionToken()`'ın kendi persistence'i (`onRemoteTokenLearned`) fire-and-forget olduğundan, hemen ardından gelen `ref.invalidate(authGateProvider)` bazen henüz diske yazılmamış (eski/boş) token'ı okuyup kullanıcıyı kurulum ekranına düşürüyordu — her 4 yolda `prefs.setString('memo_remote_access_token', token)` artık invalidate'ten önce `await`leniyor. `flutter test` 229/229, analyze temiz, Rule #8 grep temiz.
 >
 > 2026-08-11 — kullanıcının RPi'sindeki (`192.168.1.106:8090`) canlı web kurulumunda yeni bulgular: BUG-ONB5 (RAM okuma şüphesi, hâlâ açık) — sadece kayda geçirildi, aşağıda. **BUG-ONB4 düzeltildi** (gate açıkken arka plan poll'lerinin 401 gürültüsü) — `authGateBlocked()`/`cancellablePause()` (`frontend/lib/providers/gate_guard.dart`) gate kapalıyken models/embedding/download/mood/whatsapp/cli-running/connection-status poll'lerini askıya alıyor, `messagesProvider` gate altında 401'i sessizce boş sohbet olarak açıyor ve gate kapanınca `chat_screen.dart`'ın listener'ı yeniden yüklüyor. Düzeltme sürecinde ayrı bir gerçek bug daha bulundu ve kapatıldı: `mood_provider.dart`'ın `Stream.periodic(...).asyncExpand(...).distinct()` deseni, iç generator'ın gate kapalıyken hep boş dönmesi (`return;`, hiç `yield` yok) durumunda periyodik Timer'ı dispose'da iptal etmiyordu (minimal, ağsız bir repro ile doğrulandı — asyncExpand+distinct+her-zaman-boş kombinasyonu genel olarak şüpheli, sadece mood'a özgü değil); `modelStatusProvider`'ın da kullandığı kanıtlanmış `while(alive)+cancellablePause` deseniyle yeniden yazıldı. Ayrıca önceki oturumun soruları: hesap yokken login ekranı + uninstall-selfhosted.sh eklendi.
 >
@@ -56,10 +61,10 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 3 |
+| 🟡 MEDIUM | 1 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 2 |
-| **TOPLAM** | **5** |
+| **TOPLAM** | **3** |
 
 ---
 
@@ -77,25 +82,6 @@
 - **Ölçek (doğrulanmış, llama.cpp):** nomic-embed-text-v1.5 = 137M parametre. Q4_K_M ~82MB, Q3_K_S ~55MB dosya. Embedding server'ın RSS'i dosya boyutu + model overhead + KV cache ile ~150-300MB arası oluyor — yani **model boyutu 2GB sistemde asla sorun değil**; 1-1.5GB boş RAM tek başına fazlasıyla yeterli. Çalışmama sebebi model boyutu olamaz.
 - **Olası gerçek sebepler (incelenmeli):** (1) **OOM killer** — 2GB sistemde başka süreçler (chat modeli llama-server, memos uygulaması, backend, node, Docker bridge servisleri) RAM'i dolduruyorsa embedder süreci öldürülüyor olabilir (`dmesg`/`journalctl -k | grep -i oom` ile doğrulanır); (2) embedder başlatma hatası başka bir sebeple (port çakışması, arm64 binary'sinin eksik olması — RPi arm64, `binaries/` içinde linux/arm64 mevcut mu kontrol edilmeli); (3) `embedding_auto_start: false` — config'de kapalıysa embedder hiç başlatılmıyor, "çalıştıramadım" hissi veriyor.
 - **Not:** RPi'deki config'de `embedding_auto_start: false` — kullanıcı elle başlatmadıkça embedding devreye girmiyor.
-
----
-
-## 🟡 MEDIUM — Self-hosted onboarding (2026-08-09, kullanıcının kendi RPi'sindeki canlı `get-memo-server-beta.sh` kurulumunda birebir yaşandı)
-
-### BUG-ONB1: Kurulum/servis script'i kullanıcıya hangi URL/porta gireceğini hiç söylemiyor
-
-- **Dosya:** `scripts/get-memo-server.sh`, `scripts/get-memo-server-beta.sh` (aynı sorun ikisinde de — systemd servis kurulum bloğu, script sonu)
-- **Nedir:** Kurulum bitip `--lan` ile systemd servisi kurulduktan sonra script'in son çıktısı "Service installed and started", auth mode notu, ve `memo service status` / `memo remote status` gibi SSH komutlarını listeliyor — ama **hiçbir satırda** kullanıcının tarayıcıdan açacağı gerçek adresi (`http://<ip>:8090`) açıkça yazmıyor. Faz 5.1 ile artık asıl akış "tarayıcıdan hesap oluştur" olduğu için bu, kullanıcının ilk adımda tam olarak nereye gideceğini bilmediği anlamına geliyor.
-- **Ek bulgu (aynı kurulumda):** `memo service status`'ın loglarında birden fazla "LAN address available" satırı basılıyor (`192.168.1.106` — gerçek LAN IP'si — ile birlikte `172.18.0.1`/`172.19.0.1`/`172.17.0.1` — makinede kurulu Docker'ın bridge IP'leri). Script/CLI hangisinin "gerçek" adres olduğunu hiç ayırt etmiyor; ortalama bir kullanıcı Docker bridge IP'lerinden birine girmeyi deneyip başarısız olabilir.
-- **Kullanıcı etkisi:** yapacam.md'nin Faz 5.1 bitiş kriteri — "curl kurulumundan sonra hiçbir terminal komutu çalıştırmadan tarayıcıdan bir hesap oluşturup kullanmaya başlayabilecek" — bu script'le tam sağlanmıyor: kullanıcı yine de adresi öğrenmek için ek bir komut çalıştırmak (`memo service status`, `hostname -I` vb.) zorunda kalıyor.
-- **Düzeltme (uygulanmadı, sadece kayıt):** Kurulum/servis-kurulum bloğunun sonunda, script'in zaten bildiği gerçek LAN IP'sini (Go tarafı zaten `GetAddresses()`/local IP tespiti yapıyor, script bunu `memo remote status`'tan JSON olarak okuyup basabilir, ya da kendi `hostname -I`/`ip route get` mantığıyla tek bir en-olası adresi seçebilir) kalın/renkli, gözden kaçmayacak bir satırda basmalı: `Open http://<ip>:8090 in your browser to get started`. Docker bridge IP'leri filtrelenmeli (özel `172.17-31.x.x`/`docker0` arayüzü sezgisel olarak elenebilir).
-
-### BUG-ONB2: `memo service`'te `restart` alt komutu yok; hiçbir çıktı `systemctl --user` gerektiğini söylemiyor
-
-- **Dosya:** `cli_service.go` (sadece `install`/`uninstall`/`status` var, `restart` yok), kurulum script'lerinin systemd bloğu
-- **Nedir:** Servis `systemctl --user` ile kuruluyor (doğru, kod tarafında hep `--user` kullanılıyor — `cli_service.go:92`, `scripts/get_memo_arm.sh`) ama bu **hiçbir kullanıcı-yüzü metinde açıkça söylenmiyor**. Gerçek kurulumda kullanıcı doğal refleksle önce `systemctl restart memo` denedi — sistem genelinde polkit şifre istedi, kimlik doğrulama başarısız oldu (`--user` olmayan bir servise sistem seviyesinde restart isteği, farklı bir yetkilendirme yoluna giriyor) — sonra `sudo systemctl restart memo` denedi, bu da `Unit memo.service not found` verdi (sudo'nun systemctl'i sistem birimlerine bakar, `~/.config/systemd/user/`'a değil). İki komut da başarısız oldu, ikisi de nedenini açıklamadı.
-- **Kullanıcı etkisi:** Servisi yeniden başlatmanın CLI'dan hiçbir güvenilir/kolay yolu yok — `memo service restart` diye bir komut yok, doğru komut (`systemctl --user restart memo`) hiçbir yerde yazmıyor. Web UI'ın "Restart Backend" butonu var ama tarayıcıdan login olmayı gerektiriyor — backend zaten "takılmış" göründüğü an tam da erişilemeyebilecek yol.
-- **Düzeltme (uygulanmadı, sadece kayıt):** (1) `cli_service.go`'ya bir `restart` alt komutu eklenmeli (`runSystemctl("restart", ...)` zaten var olan `install`/`status` mantığını taklit ederek trivial). (2) Kurulum script'inin systemd onay bloğu sonuna, `journalctl`/`memo remote status` ipuçlarının yanına `systemctl --user restart memo` / `systemctl --user status memo` da açıkça eklenmeli — kullanıcı `--user` olmayan hâlini deneyip kafası karışmadan önce.
 
 ---
 

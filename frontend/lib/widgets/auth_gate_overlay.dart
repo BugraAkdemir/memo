@@ -8,6 +8,7 @@ import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
+import 'backend_unreachable_view.dart';
 
 /// App-wide gate: shows the first-run setup screen or the login screen
 /// whenever the backend requires a credential the app doesn't have yet.
@@ -30,21 +31,73 @@ class AuthGateOverlay extends ConsumerWidget {
 
 /// Full-screen container matching the BackendUnreachableView look: Memo
 /// background, centered card, branded title.
-class _GateScaffold extends StatelessWidget {
+///
+/// Also renders the server footer line under the card: which backend this
+/// gate is talking to, and a way to re-point it when the backend moved —
+/// the URL comes from the same SharedPreferences key the Settings
+/// Remote Access tab edits, and the change dialog forces a restart (same
+/// reasoning as BackendUnreachableView's copy: too many providers capture
+/// their MemoApiClient once at stream start to safely hot-swap the URL).
+class _GateScaffold extends ConsumerWidget {
   const _GateScaffold({required this.child});
 
   final Widget child;
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = MemoTheme.of(context);
+    final baseUrl = ref.watch(apiClientProvider).baseUrl;
     return Container(
       color: theme.bgApp,
       alignment: Alignment.center,
       padding: const EdgeInsets.all(24),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(maxWidth: 480),
-        child: child,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: child,
+          ),
+          const SizedBox(height: 14),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.dns_outlined, size: 14, color: theme.textDim),
+                const SizedBox(width: 6),
+                Flexible(
+                  child: Text(
+                    baseUrl,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: theme.textDim,
+                      fontSize: 12,
+                      fontFamily: 'JetBrainsMono',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 10),
+                TextButton(
+                  onPressed: () => showDialog(
+                    context: context,
+                    builder: (_) => const ChangeServerDialog(),
+                  ),
+                  style: TextButton.styleFrom(
+                    foregroundColor: theme.textDim,
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    L10n.t('backend_unreachable_change_server'),
+                    style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ],
       ),
     );
   }

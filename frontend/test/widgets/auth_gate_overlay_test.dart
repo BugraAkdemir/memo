@@ -175,4 +175,27 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text(L10n.t('auth_gate_enter_token')), findsNothing);
   });
+
+  testWidgets('login gate shows which server it is connecting to', (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
+    });
+    await pump(tester, adapter);
+    // apiClientProvider override in pump() uses baseUrl http://memo.test
+    expect(find.text('http://memo.test'), findsOneWidget);
+    expect(find.text(L10n.t('backend_unreachable_change_server')), findsOneWidget);
+  });
+
+  testWidgets('login gate can re-point the backend server', (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
+    });
+    await pump(tester, adapter);
+    await tester.tap(find.text(L10n.t('backend_unreachable_change_server')));
+    await tester.pumpAndSettle();
+    // The dialog (reused from BackendUnreachableView) is open — its
+    // "return to local backend" action only exists there.
+    expect(find.text(L10n.t('reset_to_local_backend')), findsOneWidget);
+    expect(find.text(L10n.t('remote_backend_url_field_label')), findsOneWidget);
+  });
 }

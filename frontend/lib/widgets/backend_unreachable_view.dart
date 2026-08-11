@@ -149,7 +149,7 @@ class BackendUnreachableView extends ConsumerWidget {
                 // that's actually blocking them right now.
                 onPressed: () => showDialog(
                   context: context,
-                  builder: (context) => const _ChangeServerDialog(),
+                  builder: (context) => const ChangeServerDialog(),
                 ),
                 style: OutlinedButton.styleFrom(
                   foregroundColor: theme.textMain,
@@ -207,14 +207,19 @@ class BackendUnreachableView extends ConsumerWidget {
 /// status, which needs a live backend connection to mean anything — useless
 /// clutter (or worse, its own error state) in a dialog whose entire point is
 /// "the backend is the thing that's broken right now."
-class _ChangeServerDialog extends ConsumerStatefulWidget {
-  const _ChangeServerDialog();
+///
+/// Shared with the auth gate (auth_gate_overlay.dart's server footer line):
+/// a user stuck on the login screen because the backend moved deserves the
+/// same direct way to re-point the app without finding the Remote Access
+/// tab in Settings.
+class ChangeServerDialog extends ConsumerStatefulWidget {
+  const ChangeServerDialog({super.key});
 
   @override
-  ConsumerState<_ChangeServerDialog> createState() => _ChangeServerDialogState();
+  ConsumerState<ChangeServerDialog> createState() => ChangeServerDialogState();
 }
 
-class _ChangeServerDialogState extends ConsumerState<_ChangeServerDialog> {
+class ChangeServerDialogState extends ConsumerState<ChangeServerDialog> {
   late final _urlCtrl = TextEditingController(text: ref.read(backendUrlProvider));
   late final _tokenCtrl = TextEditingController(text: ref.read(backendTokenProvider));
 
@@ -234,7 +239,7 @@ class _ChangeServerDialogState extends ConsumerState<_ChangeServerDialog> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (context) => const _RestartRequiredDialog(),
+      builder: (context) => const RestartRequiredDialog(),
     );
   }
 
@@ -301,14 +306,14 @@ class _ChangeServerDialogState extends ConsumerState<_ChangeServerDialog> {
 /// invalidated — a full restart is the only way to guarantee every one of
 /// them actually picks up the new address, rather than trusting each
 /// provider individually got this right.
-class _RestartRequiredDialog extends StatefulWidget {
-  const _RestartRequiredDialog();
+class RestartRequiredDialog extends StatefulWidget {
+  const RestartRequiredDialog({super.key});
 
   @override
-  State<_RestartRequiredDialog> createState() => _RestartRequiredDialogState();
+  State<RestartRequiredDialog> createState() => RestartRequiredDialogState();
 }
 
-class _RestartRequiredDialogState extends State<_RestartRequiredDialog> {
+class RestartRequiredDialogState extends State<RestartRequiredDialog> {
   static const _startSeconds = 10;
   int _remaining = _startSeconds;
   Timer? _timer;

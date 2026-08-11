@@ -73,14 +73,21 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
       }
     });
 
-    // BUG-ONB4: messagesProvider mounts as an empty chat while the auth
-    // gate blocks (its build may not watch the gate's stream — Riverpod
-    // would leave its future pending forever), so the gate flipping open
-    // after login/setup must explicitly reload it — gate change is the one
-    // signal that 401-era emptiness can turn into real messages.
+    // BUG-ONB4/BUG-ONB6: messagesProvider/chatListProvider/
+    // activeChatIdProvider all mount empty while the auth gate blocks
+    // (their build() may not watch the gate's stream — Riverpod would
+    // leave the future pending forever), so the gate flipping open after
+    // login/setup must explicitly reload them — gate change is the one
+    // signal that 401-era emptiness can turn into real data. Without this,
+    // the chat sidebar/active-chat/message list stayed permanently stuck
+    // on "Bir şeyler ters gitti" after connecting to a gated backend until
+    // something else (creating a new chat) happened to re-fetch — on
+    // desktop, with no page-refresh escape hatch, that meant forever stuck.
     ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
       if (authGateBlocked(prev?.valueOrNull) != authGateBlocked(next.valueOrNull)) {
         ref.invalidate(messagesProvider);
+        ref.invalidate(chatListProvider);
+        ref.invalidate(activeChatIdProvider);
       }
     });
 

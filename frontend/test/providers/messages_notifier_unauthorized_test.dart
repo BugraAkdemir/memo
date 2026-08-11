@@ -21,6 +21,8 @@ class _UnauthorizedAdapter implements HttpClientAdapter {
   int downloadProgressCalls = 0;
   int moodScoreCalls = 0;
   int moodEnabledCalls = 0;
+  int listChatsCalls = 0;
+  int activeChatIdCalls = 0;
 
   @override
   Future<ResponseBody> fetch(
@@ -34,6 +36,8 @@ class _UnauthorizedAdapter implements HttpClientAdapter {
     if (options.path == '/api/models/download/progress') downloadProgressCalls++;
     if (options.path == '/api/mood/score') moodScoreCalls++;
     if (options.path == '/api/mood/enabled') moodEnabledCalls++;
+    if (options.path == '/api/chats') listChatsCalls++;
+    if (options.path == '/api/chats/active') activeChatIdCalls++;
     return ResponseBody.fromString(
       '{"error":"yetkisiz"}',
       401,
@@ -105,6 +109,43 @@ void main() {
       expect(messages, isEmpty);
       expect(adapter.messagesCalls, 0,
           reason: 'no point 401-ing a request the user cannot authorize yet');
+    });
+  });
+
+  // BUG-ONB6: reported live against the RPi — on first connecting to a
+  // gated backend, the chat sidebar/active-chat area showed a permanent
+  // "Bir şeyler ters gitti" that only went away once something else
+  // (creating a new chat) happened to re-fetch after the gate had opened;
+  // on desktop, with no page-refresh escape hatch, it stayed stuck forever.
+  // Same root cause as messagesProvider above (a one-shot AsyncNotifier
+  // with no gate check), just never covered by the original BUG-ONB4 fix.
+  group('chatListProvider / activeChatIdProvider against an unauthorized backend', () {
+    test('while the login gate is up, neither provider touches the backend',
+        () async {
+      SharedPreferences.setMockInitialValues({});
+      final prefs = await SharedPreferences.getInstance();
+      final adapter = _UnauthorizedAdapter();
+      final client = MemoApiClient(baseUrl: 'http://memo.test');
+      client.dio.httpClientAdapter = adapter;
+
+      final container = ProviderContainer(overrides: [
+        apiClientProvider.overrideWithValue(client),
+        prefsProvider.overrideWithValue(prefs),
+        authGateProvider.overrideWith(
+          (ref) => Stream.value(
+            const AuthGateInfo(AuthGateState.loginNeeded, authMode: 'password'),
+          ),
+        ),
+      ]);
+      addTearDown(container.dispose);
+
+      final chats = await container.read(chatListProvider.future);
+      final activeId = await container.read(activeChatIdProvider.future);
+
+      expect(chats, isEmpty);
+      expect(activeId, isEmpty);
+      expect(adapter.listChatsCalls, 0);
+      expect(adapter.activeChatIdCalls, 0);
     });
   });
 }

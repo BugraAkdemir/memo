@@ -143,6 +143,19 @@ final chatListProvider =
 class ChatListNotifier extends AsyncNotifier<List<ChatSession>> {
   @override
   Future<List<ChatSession>> build() async {
+    // BUG-ONB6: same shape as messagesProvider's BUG-ONB4 fix above — while
+    // the auth gate is still up, listChats() 401s, and since this Notifier
+    // only ever runs build() once (not a poll loop), that single failure
+    // surfaced as a permanent "Bir şeyler ters gitti" on the sidebar/chat
+    // screen's very first paint after connecting to a gated backend —
+    // reported live against the RPi. Opening a new chat "fixed" it only
+    // because createNew()/refresh() explicitly re-fetch after the gate had
+    // already opened by then; on desktop, with no page-refresh escape
+    // hatch, it stayed stuck forever. Mirrors messagesProvider: mount empty
+    // while blocked, reload via chat_screen.dart's existing gate-transition
+    // listener (a Notifier's build() can't reliably ref.watch a
+    // StreamProvider — see that listener's own comment).
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     final api = ref.read(apiClientProvider);
     return api.listChats();
   }
@@ -189,6 +202,8 @@ final activeChatIdProvider =
 class ActiveChatIdNotifier extends AsyncNotifier<String> {
   @override
   Future<String> build() async {
+    // BUG-ONB6: see chatListProvider's identical comment just above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return '';
     return ref.read(apiClientProvider).getActiveChatId();
   }
 

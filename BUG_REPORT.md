@@ -1,7 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-09 — kullanıcının kendi Raspberry Pi'sinde `get-memo-server-beta.sh` ile yaptığı gerçek, canlı kurulumda 2 yeni bulgu tespit edildi (BUG-ONB1, TD-3) — henüz düzeltilmedi, sadece kayda geçirildi, aşağıda.
+> **Son güncelleme:** 2026-08-11 — kullanıcının RPi'sindeki (`192.168.1.106:8090`) canlı web kurulumunda yeni bulgular: BUG-ONB3 (login sonrası geçici "sunucuya bağlanılamıyor" + kurulum ekranına düşme), BUG-ONB4 (gate açıkken background polling 401 gürültüsü), BUG-ONB5 (RAM okuma şüphesi) — sadece kayda geçirildi, aşağıda. Ayrıca önceki oturumun soruları: hesap yokken login ekranı + uninstall-selfhosted.sh eklendi.
 >
 > 2026-08-05 — bir önceki denetimde bulunan 3 bug (LK-1, SF-5, RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp hepsi düzeltildi:
 > - **LK-1** (`14f4486`) — `internal/agentcli`'nin `ChatCompletionStream`'i (Claude Code + Codex, ikisi de) ctx iptalinde sadece doğrudan alt süreci öldürüyordu; `--dangerously-skip-permissions`/`--dangerously-bypass-approvals-and-sandbox` ile başlattığı bir torun süreç stdout pipe'ını açık tutarsa `scanner.Scan()` sonsuza kadar bloklanıyordu. `cmd.Cancel` artık tüm process group'u öldürüyor (`internal/llama`'nın Setpgid deseni), `cmd.WaitDelay` (5s) torun süreç yine de kaçarsa yedek. İlk versiyon `/code-review`'dan geçti, 2 gerçek eksik bulundu ve kapatıldı: process-group kill eksikti (sadece pipe'ı zorla kapatıyordu, süreci öldürmüyordu — `--dangerously-*` yetkisiyle çalışan bir süreç arka planda öldürülmeden kalıyordu), test'in sabit 200ms bekleme süresi gerçek bir senkronizasyon garantisi değildi (marker-file polling'e çevrildi).
@@ -54,10 +54,41 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 2 |
+| 🟡 MEDIUM | 5 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 2 |
-| **TOPLAM** | **4** |
+| **TOPLAM** | **7** |
+
+---
+
+## 🟡 MEDIUM — Self-hosted onboarding & web UI (2026-08-11, kullanıcının RPi'sindeki canlı `http://192.168.1.106:8090` web kurulumunda birebir yaşandı)
+
+### BUG-ONB3: Şifreyle login sonrası 5-10 sn "sunucuya bağlanılamıyor" + birkaç saniye sonra kurulum ekranına atma (refresh'te kayboluyor)
+
+- **Nedir:** Web UI'a ilk girişte (login'den hemen sonra ve/veya yeni sekmede) ~5-10 saniye boyunca "sunucuya bağlanılamıyor" (BackendUnreachable) ekranı görünüyor; ardından uygulama **kurulum (setup) ekranına** atıyor — kullanıcının uzak sunucuda zaten kurulu bir hesabı ve verisi varken. Sayfa yenilenince çoğu hata kayboluyor ve normal ekran geliyor.
+- **Gözlemlenen konsol:** login ekranındayken her polling/background çağrısı 401 dönüyor (`/api/whatsapp/status`, `/api/models/download/progress`, `/api/cli/running` → `HTTP/1.1 401 Unauthorized`) ve `agent: init error / chat: web search init error / models: modelStatus error: Bir şeyler ters gitti` logları basıyor. Ayrıca `Password fields present on an insecure (http://) page` tarayıcı uyarısı (LAN HTTP — beklenen, bilgi amaçlı).
+- **Olası kök neden (henüz incelenmedi):** setup/status poll'ü ile login sonrası token'ın kaydedilmesi arasındaki yarış; `authGateProvider`'ın 401/probe davranışı; `BackendUnreachableOverlay`'in gate'i gizleme mantığı. "Kurulum ekranına atma" özellikle yanlış state geçişi sinyali — login olmuş kullanıcıya asla setup gösterilmemeli.
+- **Kullanıcı etkisi:** İlk izlenim "bozuk/bağlanamıyor" + bir de "verilerim mi gitti?" paniği. Refresh'le atlatılıyor ama onboarding deneyimini ciddi zedeliyor. Düzeltilecek ilk web-UI maddesi.
+- **Düzeltme (uygulanmadı, sadece kayıt):** frontend state akışı incelenmeli: (1) login başarılı + token kaydedildikten sonra gate anında kapanmalı; (2) `authGateProvider` hiçbir koşulda `needs_setup`'a geçerken mevcut session'ı iptal etmemeli/yok saymamalı; (3) `needs_setup:true` döndüğünde bile kayıtlı geçerli bir token varsa kullanıcıya setup gösterilmemeli (login olmuş kullanıcı için setup akışına düşmek kabul edilemez).
+
+### BUG-ONB4: Auth gate açıkken background polling 401 yiyip "Bir şeyler ters gitti" logları basıyor (models/modelStatus, embeddingStatus, downloadProgress, agent init, web search init)
+
+- **Nedir:** Login/setup gate'i ekranı açıkken bile uygulamanın provider'ları (models, embedding, agent, web search, whatsapp, cli/running) backend'i poll'üyor; backend LAN mode'da her istekten kimlik doğrulama istediği için hepsi 401 alıyor ve her biri `Bir şeyler ters gitti. Lütfen tekrar dene.` hatası logluyor (dakikada onlarca). Ayrıca kullanıcı ana ekrana geldiğinde de **yeni sohbet açılana kadar** bağlantı hatası görüyor — sohbet açılınca düzeliyor.
+- **Kullanıcı etkisi:** Konsol gürültüsü + "bağlantı hatası" hissi; asıl işlev bozukluğu değil ama ilk izlenim ve hata ayıklama açısından kötü.
+- **Düzeltme (uygulanmadı, sadece kayıt):** Gate açıkken (401 olduğu bilinirken) background polling'leri askıya almak (authGateProvider'ın state'ine bağlamak) veya 401'leri "beklenen" olarak sessizce geçmek — en azından log seviyesi düşürülmeli.
+
+### BUG-ONB5: RAM doğru okunmuyor şüphesi (netleştirilecek)
+
+- **Nedir:** Kullanıcı, API provider bağlayıp cevap alabilen çalışan bir kurulumda "RAM'i doğru okumuyor" belirtiyor. Henüz hangi ekranda (Settings? Model tabı? backend `/api/status`'ta mı gösterilen değer?) ve gerçek değerin ne olduğu netleşmedi. RPi 2GB RAM; muhtemelen model yükleme/embedding bağlamında "yetersiz RAM" mesajı alıyor veya gösterilen değer yanlış.
+- **Durum:** Bekleniyor — kullanıcıdan ekran/örnek talep edilecek. (Olası ilgili senaryo, alttaki embedding-RAM notunda.)
+- **Düzeltme (uygulanmadı):** netleşince.
+
+### Embedding modeli 2GB RAM'de çalıştırılamadı (bilgi, bug değil — 2026-08-11)
+
+- **Sorun:** RPi 2GB RAM, ~1-1.5GB boş RAM varken nomic-embed-text-v1.5 Q4_K_M (~82MB dosya) / Q3_K_S embedder'ı başlatılamıyor.
+- **Ölçek (doğrulanmış, llama.cpp):** nomic-embed-text-v1.5 = 137M parametre. Q4_K_M ~82MB, Q3_K_S ~55MB dosya. Embedding server'ın RSS'i dosya boyutu + model overhead + KV cache ile ~150-300MB arası oluyor — yani **model boyutu 2GB sistemde asla sorun değil**; 1-1.5GB boş RAM tek başına fazlasıyla yeterli. Çalışmama sebebi model boyutu olamaz.
+- **Olası gerçek sebepler (incelenmeli):** (1) **OOM killer** — 2GB sistemde başka süreçler (chat modeli llama-server, memos uygulaması, backend, node, Docker bridge servisleri) RAM'i dolduruyorsa embedder süreci öldürülüyor olabilir (`dmesg`/`journalctl -k | grep -i oom` ile doğrulanır); (2) embedder başlatma hatası başka bir sebeple (port çakışması, arm64 binary'sinin eksik olması — RPi arm64, `binaries/` içinde linux/arm64 mevcut mu kontrol edilmeli); (3) `embedding_auto_start: false` — config'de kapalıysa embedder hiç başlatılmıyor, "çalıştıramadım" hissi veriyor.
+- **Not:** RPi'deki config'de `embedding_auto_start: false` — kullanıcı elle başlatmadıkça embedding devreye girmiyor.
 
 ---
 

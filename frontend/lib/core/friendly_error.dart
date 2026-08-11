@@ -69,8 +69,9 @@ class FriendlyError {
         case DioExceptionType.connectionError:
           return L10n.t('friendly_error_network');
         case DioExceptionType.badResponse:
-          return _messageFromResponseBody(error.response?.data) ??
-              L10n.t('friendly_error_generic');
+          final msg = _messageFromResponseBody(error.response?.data);
+          if (msg == null) return L10n.t('friendly_error_generic');
+          return _classifyProviderMessage(msg) ?? msg;
         case DioExceptionType.cancel:
         case DioExceptionType.badCertificate:
         case DioExceptionType.transformTimeout:
@@ -78,7 +79,26 @@ class FriendlyError {
           return L10n.t('friendly_error_generic');
       }
     }
-    return _stripExceptionPrefix(error.toString());
+    final stripped = _stripExceptionPrefix(error.toString());
+    return _classifyProviderMessage(stripped) ?? stripped;
+  }
+
+  /// Recognizes the handful of raw external-provider failure shapes that
+  /// otherwise leak straight through describeGeneric's fallback (unlike
+  /// describe() above, describeGeneric has no keyword heuristics of its own
+  /// — see that method's doc comment for why). Reported live: a Router
+  /// (internal/provider/router.go) "all providers failed: [opencode-zen]
+  /// provider rate limited: Rate limit exceeded. Please try again later."
+  /// error reached the send-message SnackBar completely verbatim — a
+  /// legitimate, expected condition (the provider is throttling, not a
+  /// Memo bug) read as a cryptic internal error dump, making the app look
+  /// broken for something outside its control. Returns null (caller keeps
+  /// showing the original message) for anything not recognized here.
+  static String? _classifyProviderMessage(String message) {
+    if (message.toLowerCase().contains('rate limit')) {
+      return L10n.t('friendly_error_provider_rate_limited');
+    }
+    return null;
   }
 
   /// Unwraps the `{"error": "..."}` / `{"error": {"message": "..."}}` /

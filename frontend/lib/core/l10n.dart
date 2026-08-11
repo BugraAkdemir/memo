@@ -92,6 +92,8 @@ class L10n {
         'Bilgisayarının belleği (RAM) bu model için yetersiz kaldı. Daha küçük bir model seçmeyi dene.',
     'friendly_error_download':
         'İndirme tamamlanamadı. İnternet bağlantını kontrol edip tekrar dene.',
+    'friendly_error_provider_rate_limited':
+        'Sağlayıcı şu anda çok fazla istek aldığı için geçici olarak sınırlıyor — bu Memo\'nun sorunu değil. Birazdan tekrar dene, ya da Ayarlar\'dan başka bir sağlayıcı/model seç.',
     'friendly_error_generic': 'Bir şeyler ters gitti. Lütfen tekrar dene.',
     'gguf_tooltip':
         'GGUF: bu modelin bilgisayarında çalışması için kullanılan dosya formatı.',
@@ -1872,6 +1874,8 @@ class L10n {
         'Your computer ran out of memory (RAM) for this model. Try a smaller model instead.',
     'friendly_error_download':
         'The download didn\'t finish. Check your connection and try again.',
+    'friendly_error_provider_rate_limited':
+        'The provider is temporarily rate-limiting requests — this isn\'t a Memo problem. Try again shortly, or switch providers/models in Settings.',
     'friendly_error_generic': 'Something went wrong. Please try again.',
     'gguf_tooltip':
         'GGUF: the file format used to run this model on your computer.',

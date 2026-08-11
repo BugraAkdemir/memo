@@ -64,14 +64,13 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
   Widget build(BuildContext context) {
     final messagesAsync = ref.watch(messagesProvider);
 
-    ref.listen(errorMessageProvider, (prev, next) {
-      if (next.isNotEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next), duration: const Duration(seconds: 4)),
-        );
-        ref.read(errorMessageProvider.notifier).state = '';
-      }
-    });
+    // errorMessageProvider's SnackBar is shown exactly once, in
+    // app_shell.dart's own ref.listen (added first, June — this screen's
+    // near-identical copy was added later, July, and duplicated it: both
+    // are mounted simultaneously since ChatScreen lives inside AppShell's
+    // IndexedStack, so every error toast showed twice back to back, same
+    // text, different styling). Reported live by the user. Don't re-add a
+    // listener here — app_shell.dart's already covers every screen.
 
     // BUG-ONB4/BUG-ONB6: messagesProvider/chatListProvider/
     // activeChatIdProvider all mount empty while the auth gate blocks

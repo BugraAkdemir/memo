@@ -61,6 +61,33 @@ void main() {
     test('strips StateError\'s own "Bad state: " prefix too', () {
       expect(FriendlyError.describeGeneric(StateError('kötü durum')), 'kötü durum');
     });
+
+    // Reported live: a Router (internal/provider/router.go) fallback error
+    // — "all providers failed: [opencode-zen] provider rate limited: Rate
+    // limit exceeded. Please try again later." — reached the send-message
+    // SnackBar completely verbatim, reading as an internal error dump for
+    // what's actually just the external provider throttling, not a Memo
+    // bug.
+    test('a provider rate-limit error (plain-exception path) is replaced with a friendly message', () {
+      final msg = FriendlyError.describeGeneric(Exception(
+          'all providers failed: [opencode-zen] provider rate limited: Rate limit exceeded. Please try again later.'));
+      expect(msg, L10n.t('friendly_error_provider_rate_limited'));
+      expect(msg.contains('opencode-zen'), isFalse);
+      expect(msg.contains('all providers failed'), isFalse);
+    });
+
+    test('a provider rate-limit error (Dio badResponse path) is also replaced', () {
+      final req = RequestOptions(path: '/x');
+      final res = Response(
+        requestOptions: req,
+        statusCode: 429,
+        data: {'error': 'provider rate limited: Rate limit exceeded'},
+      );
+      final msg = FriendlyError.describeGeneric(
+        DioException(requestOptions: req, type: DioExceptionType.badResponse, response: res),
+      );
+      expect(msg, L10n.t('friendly_error_provider_rate_limited'));
+    });
   });
 
   group('FriendlyError.describe (model start failures)', () {

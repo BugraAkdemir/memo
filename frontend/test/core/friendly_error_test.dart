@@ -62,4 +62,26 @@ void main() {
       expect(FriendlyError.describeGeneric(StateError('kötü durum')), 'kötü durum');
     });
   });
+
+  group('FriendlyError.describe (model start failures)', () {
+    test('a permission error is never blamed on RAM', () {
+      final msg = FriendlyError.describe(Exception(
+          'llama: start failed: fork/exec /home/bugraa/.memo/binaries/linux/cpu/llama-server: permission denied'));
+      expect(msg, L10n.t('friendly_error_model_permission'));
+      expect(msg.contains('bellek'), isFalse);
+    });
+
+    test('a spawn failure that is not a permission problem is reported neutrally', () {
+      final msg = FriendlyError.describe(Exception(
+          'llama: start failed: exec: "llama-server": executable file not found in \$PATH'));
+      expect(msg, L10n.t('friendly_error_model_spawn'));
+      expect(msg.contains('bellek'), isFalse);
+    });
+
+    test('a server that ran but never became ready keeps the memory hint', () {
+      final msg = FriendlyError.describe(
+          Exception('llama: server failed to become ready within 120s'));
+      expect(msg, L10n.t('friendly_error_model_start'));
+    });
+  });
 }

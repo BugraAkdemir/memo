@@ -84,6 +84,10 @@ class L10n {
         'İnternet bağlantısı sorunu — bağlantını kontrol edip tekrar dene.',
     'friendly_error_model_start':
         'Model başlatılamadı. Bilgisayarının belleği bu model için yetersiz olabilir — daha küçük bir model dene.',
+    'friendly_error_model_permission':
+        'Model motoru (llama-server) çalıştırılamıyor — izin sorunu. Yüklemeyi veya güncellemeyi tekrar çalıştır.',
+    'friendly_error_model_spawn':
+        'Model motoru başlatılamadı. Kurulum eksik veya bozuk olabilir — yüklemeyi tekrar çalıştırmayı dene.',
     'friendly_error_oom':
         'Bilgisayarının belleği (RAM) bu model için yetersiz kaldı. Daha küçük bir model seçmeyi dene.',
     'friendly_error_download':
@@ -1860,6 +1864,10 @@ class L10n {
         'Internet connection issue — check your connection and try again.',
     'friendly_error_model_start':
         'Could not start the model. Your computer may not have enough memory for it — try a smaller model.',
+    'friendly_error_model_permission':
+        'The model engine (llama-server) could not start — a permission problem. Re-run the installer or updater.',
+    'friendly_error_model_spawn':
+        'The model engine could not be started. The installation may be missing or broken — try re-running the installer.',
     'friendly_error_oom':
         'Your computer ran out of memory (RAM) for this model. Try a smaller model instead.',
     'friendly_error_download':

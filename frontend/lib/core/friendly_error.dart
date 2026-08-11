@@ -27,9 +27,14 @@ class FriendlyError {
 
     final raw = error.toString().toLowerCase();
 
+    if (raw.contains('permission denied')) {
+      return L10n.t('friendly_error_model_permission');
+    }
+    if (raw.contains('start failed')) {
+      return L10n.t('friendly_error_model_spawn');
+    }
     if (raw.contains('failed to become ready') ||
-        raw.contains('server process exited') ||
-        raw.contains('start failed')) {
+        raw.contains('server process exited')) {
       return L10n.t('friendly_error_model_start');
     }
     if (raw.contains('out of memory') ||

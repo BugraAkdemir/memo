@@ -11,7 +11,9 @@ import '../models/dev_gateway.dart';
 import '../models/gpu_info.dart';
 import '../models/minimal_mode_overrides.dart';
 import '../models/usage_stats.dart';
+import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
 import '../core/friendly_error.dart';
 
 final prefsProvider = Provider<SharedPreferences>((ref) {
@@ -77,6 +79,14 @@ final llamaSettingsProvider =
 class LlamaSettingsNotifier extends AsyncNotifier<LlamaSettings> {
   @override
   Future<LlamaSettings> build() async {
+    // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
+    // story): a one-shot AsyncNotifier whose single build() attempt landing
+    // while the auth gate is still up 401s and gets permanently cached as
+    // an error. Mount safe defaults instead; app_shell.dart's gate-
+    // transition listener re-invalidates this once the gate actually opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return LlamaSettings.fromJson(const {});
+    }
     final data = await ref.read(apiClientProvider).getLlamaConfig();
     return LlamaSettings.fromJson(data);
   }
@@ -187,6 +197,8 @@ final systemPromptProvider =
 class SystemPromptNotifier extends AsyncNotifier<String> {
   @override
   Future<String> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return '';
     return ref.read(apiClientProvider).getSystemPrompt();
   }
 
@@ -230,6 +242,8 @@ final memoryFilesProvider =
 class MemoryFilesNotifier extends AsyncNotifier<List<MemoryFileInfo>> {
   @override
   Future<List<MemoryFileInfo>> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     return ref.read(apiClientProvider).listMemoryFiles();
   }
 
@@ -258,6 +272,10 @@ final memorySettingsProvider =
 class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
   @override
   Future<MemorySettings> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return MemorySettings.fromJson(const {});
+    }
     final data = await ref.read(apiClientProvider).getMemorySettings();
     return MemorySettings.fromJson(data);
   }
@@ -285,6 +303,10 @@ final usageStatsProvider =
 class UsageStatsNotifier extends AsyncNotifier<UsageStatsSummary> {
   @override
   Future<UsageStatsSummary> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return UsageStatsSummary.fromJson(const {});
+    }
     return ref.read(apiClientProvider).getUsageStats();
   }
 
@@ -305,6 +327,10 @@ final devGatewayConfigProvider =
 class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
   @override
   Future<DevGatewayConfig> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return const DevGatewayConfig();
+    }
     return ref.read(apiClientProvider).getDevGatewayConfig();
   }
 
@@ -434,6 +460,8 @@ class MemoryEnabledNotifier extends AsyncNotifier<bool> {
 
   @override
   Future<bool> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return true;
     return ref.read(apiClientProvider).getMemoryEnabled();
   }
 
@@ -475,6 +503,8 @@ class MinimalModeNotifier extends AsyncNotifier<bool> {
 
   @override
   Future<bool> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return false;
     return ref.read(apiClientProvider).getMinimalMode();
   }
 
@@ -516,6 +546,10 @@ class MinimalModeOverridesNotifier extends AsyncNotifier<MinimalModeOverrides> {
 
   @override
   Future<MinimalModeOverrides> build() async {
+    // BUG-ONB6: see LlamaSettingsNotifier's comment above.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return MinimalModeOverrides.allOff;
+    }
     return ref.read(apiClientProvider).getMinimalModeOverrides();
   }
 

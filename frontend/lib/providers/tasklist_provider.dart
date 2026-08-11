@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../models/task_list.dart';
+import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
 import '../core/friendly_error.dart';
 
 class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
@@ -13,6 +15,12 @@ class TaskListsNotifier extends AsyncNotifier<List<TaskListInfo>> {
   @override
   Future<List<TaskListInfo>> build() async {
     ref.onDispose(stopPolling);
+    // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
+    // story): a one-shot AsyncNotifier whose single build() attempt landing
+    // while the auth gate is still up 401s and gets permanently cached as
+    // an error. Mount empty instead; app_shell.dart's gate-transition
+    // listener re-invalidates this once the gate actually opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     final api = ref.read(apiClientProvider);
     return api.listTaskLists();
   }

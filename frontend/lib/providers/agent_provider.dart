@@ -4,7 +4,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../models/agent.dart';
+import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
 import '../core/friendly_error.dart';
 
 final agentEnabledProvider =
@@ -50,6 +52,12 @@ final agentPermissionsProvider =
 class AgentPermissionsNotifier extends AsyncNotifier<List<AgentPermission>> {
   @override
   Future<List<AgentPermission>> build() async {
+    // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
+    // story): a one-shot AsyncNotifier whose single build() attempt landing
+    // while the auth gate is still up 401s and gets permanently cached as
+    // an error. Mount empty instead; app_shell.dart's gate-transition
+    // listener re-invalidates this once the gate actually opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     final api = ref.read(apiClientProvider);
     final data = await api.getAgentPermissions();
     return data.map((e) => AgentPermission.fromJson(e)).toList();

@@ -4,7 +4,9 @@ import 'package:flutter_svg/flutter_svg.dart';
 
 import '../core/l10n.dart';
 import '../models/provider_config.dart';
+import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
 import '../core/friendly_error.dart';
 
 /// Provider list provider.
@@ -16,6 +18,12 @@ final providerListProvider =
 class ProviderListNotifier extends AsyncNotifier<List<ProviderConfig>> {
   @override
   Future<List<ProviderConfig>> build() async {
+    // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
+    // story): a one-shot AsyncNotifier whose single build() attempt landing
+    // while the auth gate is still up 401s and gets permanently cached as
+    // an error. Mount empty instead; app_shell.dart's gate-transition
+    // listener re-invalidates this once the gate actually opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     return ref.read(apiClientProvider).getProviders();
   }
 
@@ -79,6 +87,13 @@ class ActiveProviderNotifier extends AsyncNotifier<String> {
     // comment). BackendUnreachableOverlay is what actually tells the user
     // the backend is down now — this provider doesn't need to duplicate
     // that.
+    // BUG-ONB6: unlike the providers this bug hit visibly (see
+    // chat_provider.dart's ChatListNotifier), this one already degraded
+    // gracefully on any error — but without a gate check it still never
+    // refreshed to the real value after a blocked first attempt except by
+    // luck (some other rebuild). app_shell.dart's gate-transition listener
+    // invalidates this like the others once the gate actually opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return '';
     try {
       return await ref.read(apiClientProvider).getActiveProvider();
     } catch (e) {

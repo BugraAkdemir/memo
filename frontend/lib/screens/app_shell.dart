@@ -8,7 +8,14 @@ import '../core/l10n.dart';
 import '../core/theme.dart';
 import '../models/agent.dart';
 import '../providers/settings_provider.dart';
+import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/gate_guard.dart';
+import '../providers/models_provider.dart';
+import '../providers/orchestra_provider.dart';
+import '../providers/provider_provider.dart';
+import '../providers/skill_provider.dart';
+import '../providers/tasklist_provider.dart';
 import '../providers/whatsapp_provider.dart';
 import '../providers/swarm_provider.dart';
 import '../providers/agent_provider.dart';
@@ -174,6 +181,40 @@ class _AppShellState extends ConsumerState<AppShell> {
           }
         }
       });
+    });
+
+    // BUG-ONB6: every one-shot AsyncNotifier below mounts a safe empty/
+    // default value instead of erroring while the auth gate is blocked
+    // (see each one's own comment, and chat_screen.dart's identical
+    // listener for messagesProvider/chatListProvider/activeChatIdProvider,
+    // the first three this bug was found on) — but a Notifier's build()
+    // can't reliably ref.watch a StreamProvider itself (Riverpod leaves the
+    // future pending forever), so something always-mounted has to trigger
+    // the reload once the gate actually opens. AppShell is that: the one
+    // widget alive for the entire app session regardless of which tab is
+    // active, so this single listener covers every settings/agent/skill/
+    // model/task-list/provider/orchestra/swarm screen at once instead of
+    // each needing its own copy of this listener.
+    ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
+      if (authGateBlocked(prev?.valueOrNull) != authGateBlocked(next.valueOrNull)) {
+        ref.invalidate(llamaSettingsProvider);
+        ref.invalidate(systemPromptProvider);
+        ref.invalidate(memoryFilesProvider);
+        ref.invalidate(memorySettingsProvider);
+        ref.invalidate(usageStatsProvider);
+        ref.invalidate(devGatewayConfigProvider);
+        ref.invalidate(memoryEnabledProvider);
+        ref.invalidate(minimalModeProvider);
+        ref.invalidate(minimalModeOverridesProvider);
+        ref.invalidate(agentPermissionsProvider);
+        ref.invalidate(skillListProvider);
+        ref.invalidate(localModelsProvider);
+        ref.invalidate(taskListsProvider);
+        ref.invalidate(providerListProvider);
+        ref.invalidate(activeProviderTypeProvider);
+        ref.invalidate(orchestraConfigProvider);
+        ref.invalidate(swarmStatusProvider);
+      }
     });
 
     return Shortcuts(

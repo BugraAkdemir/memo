@@ -6,7 +6,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../core/api_client.dart';
 import '../core/l10n.dart';
 import '../models/swarm.dart';
+import 'auth_gate_provider.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
 import '../core/friendly_error.dart';
 
 /// Swarm room status with adaptive polling (same pattern as
@@ -29,6 +31,16 @@ class SwarmNotifier extends StateNotifier<AsyncValue<SwarmStatus>> {
   }
 
   Future<void> _fetch() async {
+    // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
+    // story): lower risk here than the app-boot providers (autoDispose —
+    // only fetches once the Swarm screen is actually opened, by which
+    // point the gate is usually already open), but the same shape of bug —
+    // mount empty instead of erroring while blocked; app_shell.dart's
+    // gate-transition listener re-invalidates this once the gate opens.
+    if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) {
+      if (mounted) state = const AsyncValue.data(SwarmStatus());
+      return;
+    }
     try {
       final status = await _api.getSwarmStatus();
       if (mounted) state = AsyncValue.data(status);

@@ -20,6 +20,12 @@ final localModelsProvider =
 class LocalModelsNotifier extends AsyncNotifier<List<LocalModel>> {
   @override
   Future<List<LocalModel>> build() async {
+    // BUG-ONB6 (see chat_provider.dart's ChatListNotifier for the full
+    // story): a one-shot AsyncNotifier whose single build() attempt landing
+    // while the auth gate is still up 401s and gets permanently cached as
+    // an error. Mount empty instead; app_shell.dart's gate-transition
+    // listener re-invalidates this once the gate actually opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
     return ref.read(apiClientProvider).listLocalModels();
   }
 

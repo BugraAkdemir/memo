@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:memo_flutter/core/api_client.dart';
+import 'package:memo_flutter/providers/auth_gate_provider.dart';
 import 'package:memo_flutter/providers/chat_provider.dart';
 import 'package:memo_flutter/providers/settings_provider.dart';
 
@@ -81,9 +82,23 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       apiClientProvider.overrideWithValue(client),
+      // BUG-ONB6: MemoryEnabledNotifier/MinimalModeNotifier now check the
+      // auth gate before fetching — an unresolved gate (the default with no
+      // override) reads as blocked, so without this override build() would
+      // return the gate-blocked default instead of the fake adapter's
+      // value, unrelated to what this test actually exercises (the toggle
+      // in-flight race).
+      authGateProvider.overrideWith(
+        (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+      ),
     ]);
     addTearDown(container.dispose);
 
+    // Let the gate override's stream actually deliver its first event
+    // before reading a provider whose build() synchronously checks it —
+    // otherwise build() can run while authGateProvider is still in its
+    // initial AsyncLoading state, reading as blocked despite the override.
+    await container.read(authGateProvider.future);
     final initial = await container.read(memoryEnabledProvider.future);
     expect(initial, false);
 
@@ -106,9 +121,19 @@ void main() {
 
     final container = ProviderContainer(overrides: [
       apiClientProvider.overrideWithValue(client),
+      // BUG-ONB6: MemoryEnabledNotifier/MinimalModeNotifier now check the
+      // auth gate before fetching — an unresolved gate (the default with no
+      // override) reads as blocked, so without this override build() would
+      // return the gate-blocked default instead of the fake adapter's
+      // value, unrelated to what this test actually exercises (the toggle
+      // in-flight race).
+      authGateProvider.overrideWith(
+        (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+      ),
     ]);
     addTearDown(container.dispose);
 
+    await container.read(authGateProvider.future);
     final initial = await container.read(minimalModeProvider.future);
     expect(initial, false);
 

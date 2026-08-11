@@ -283,7 +283,9 @@ func (a *App) findAccount(username string) *config.Account {
 // LoginRemotePassword validates username/password and, on success, issues
 // a signed session token carrying the matched account's role. remoteAddr
 // should be the raw connecting IP (used only to key the brute-force
-// limiter — never persisted).
+// limiter — never persisted). remember requests the longer "remember me"
+// lifetime (RememberSessionTTL) instead of the default short one — the
+// login screen's checkbox maps straight onto this parameter.
 //
 // Once Accounts (Faz 5.1, yapacam.md) has at least one entry, it is the
 // sole source of truth: the legacy single Username/PasswordHash pair is
@@ -293,7 +295,7 @@ func (a *App) findAccount(username string) *config.Account {
 // is invisible to a user who never touches the new multi-account
 // features). Only when Accounts is still empty does this fall back to the
 // legacy pair, with an implicit "admin" role.
-func (a *App) LoginRemotePassword(remoteAddr, username, password string) (token, role string, err error) {
+func (a *App) LoginRemotePassword(remoteAddr, username, password string, remember bool) (token, role string, err error) {
 	mode := a.cfg.RemoteAccess.AuthMode
 	if mode != "password" && mode != "token_password" {
 		return "", "", fmt.Errorf("password login is not enabled (auth mode is %q)", mode)
@@ -336,7 +338,11 @@ func (a *App) LoginRemotePassword(remoteAddr, username, password string) (token,
 	if err != nil {
 		return "", "", fmt.Errorf("session signing key: %w", err)
 	}
-	token, err = remoteauth.IssueSessionToken(signingKey, username, role)
+	ttl := remoteauth.SessionTTL
+	if remember {
+		ttl = remoteauth.RememberSessionTTL
+	}
+	token, err = remoteauth.IssueSessionTokenWithTTL(signingKey, username, role, ttl)
 	if err != nil {
 		return "", "", fmt.Errorf("issue session token: %w", err)
 	}

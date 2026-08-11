@@ -24,11 +24,24 @@ import '../models/usage_stats.dart';
 class SetupStatus {
   final bool needsSetup;
   final String authMode;
-  SetupStatus({required this.needsSetup, required this.authMode});
+
+  /// True when the request reached the backend over the loopback
+  /// interface (127.0.0.1/::1 source) — mirrors the backend's
+  /// remoteAuthOK trust model: such requests need no credential at all,
+  /// so the auth gate can be skipped entirely instead of asking for a
+  /// password the backend would never check. Absent on old backends.
+  final bool loopback;
+
+  SetupStatus({
+    required this.needsSetup,
+    required this.authMode,
+    required this.loopback,
+  });
 
   factory SetupStatus.fromJson(Map<String, dynamic> json) => SetupStatus(
         needsSetup: json['needs_setup'] as bool? ?? false,
         authMode: json['auth_mode'] as String? ?? 'token',
+        loopback: json['loopback'] as bool? ?? false,
       );
 }
 
@@ -1046,8 +1059,8 @@ class MemoApiClient {
   /// token is applied (see savedRemoteToken/onRemoteTokenLearned).
   /// Throws a [DioException] with status 429 on brute-force lockout
   /// (a Retry-After header is included) or 401 on bad credentials.
-  Future<String> loginRemote(String username, String password) async {
-    return (await login(username, password)).sessionToken;
+  Future<String> loginRemote(String username, String password, {bool remember = false}) async {
+    return (await login(username, password, remember: remember)).sessionToken;
   }
 
   /// Lists every paired device (never includes the token itself — only
@@ -1371,11 +1384,21 @@ class MemoApiClient {
   }
 
   /// Password login; returns the session token and the account's role.
+  /// [remember] requests the longer "remember me" session lifetime
+  /// (backend: remoteauth.RememberSessionTTL) instead of the default 12h.
   /// [loginRemote] delegates here for backwards compatibility.
-  Future<LoginResult> login(String username, String password) async {
+  Future<LoginResult> login(
+    String username,
+    String password, {
+    bool remember = false,
+  }) async {
     final res = await _dio.post(
       '/api/auth/login',
-      data: {'username': username, 'password': password},
+      data: {
+        'username': username,
+        'password': password,
+        'remember': remember,
+      },
     );
     final data = _guard<Map<String, dynamic>>(res.data);
     return LoginResult(

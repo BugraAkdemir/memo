@@ -154,7 +154,7 @@ type FullBridge interface {
 	SetRemoteAuthConfig(mode, username, password string) error
 	VerifyRemoteDeviceToken(token string) bool
 	ValidateRemoteSession(token string) bool
-	LoginRemotePassword(remoteAddr, username, password string) (token, role string, err error)
+	LoginRemotePassword(remoteAddr, username, password string, remember bool) (token, role string, err error)
 	ListRemoteDevices() interface{}
 	CreateRemoteDevice(name string) (string, error)
 	RevokeRemoteDevice(id string) error

@@ -499,6 +499,7 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
   bool _busy = false;
   String? _error;
   var _tab = 0; // 0 şifre, 1 token (yalnız token_password'de görünür)
+  var _remember = true; // "beni hatırla" — uzun ömürlü oturum token'ı
 
   Future<void> _loginPassword() async {
     final api = ref.read(apiClientProvider);
@@ -508,7 +509,11 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
       _error = null;
     });
     try {
-      final res = await api.login(_username.text.trim(), _password.text);
+      final res = await api.login(
+        _username.text.trim(),
+        _password.text,
+        remember: _remember,
+      );
       if (res.sessionToken.isEmpty) throw Exception('empty token');
       api.setSessionToken(res.sessionToken);
       await prefs.setString('memo_session_role', res.role);
@@ -595,6 +600,27 @@ class _LoginGateViewState extends ConsumerState<_LoginGateView> {
               label: L10n.t('auth_gate_password'),
               icon: Icons.lock_outline_rounded,
               obscure: true,
+            ),
+            const SizedBox(height: 4),
+            // "Beni hatırla" — the backend issues a 30-day session token
+            // when checked (remoteauth.RememberSessionTTL) instead of the
+            // default 12h one, so a remote client isn't re-prompted daily.
+            // Material(transparency) gives the ListTile its own nearest
+            // Material ancestor — the _GateCard's DecoratedBox would
+            // otherwise hide its ink splashes (framework assertion).
+            Material(
+              type: MaterialType.transparency,
+              child: CheckboxListTile(
+                value: _remember,
+                onChanged: (v) => setState(() => _remember = v ?? false),
+                title: Text(
+                  L10n.t('auth_gate_remember_me'),
+                  style: TextStyle(fontSize: 13, color: theme.textDim),
+                ),
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                controlAffinity: ListTileControlAffinity.leading,
+              ),
             ),
           ],
           if (widget.mode == 'password') ...[

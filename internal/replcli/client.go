@@ -26,8 +26,8 @@ type Client struct {
 	// SetToken. Empty by default — every existing caller talks to a
 	// 127.0.0.1-bound backend, which never requires one; only needed for
 	// `memo remote` (cli_remote.go) against a backend running with --lan
-	// (0.0.0.0 bind requires a credential on every request, including
-	// loopback ones — see remoteAuthOK in internal/webserver).
+	// (0.0.0.0 bind requires a credential on every non-loopback request —
+	// see remoteAuthOK in internal/webserver).
 	token string
 }
 

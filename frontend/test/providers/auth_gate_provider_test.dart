@@ -112,4 +112,37 @@ void main() {
     final c = await makeContainer({});
     expect((await firstGate(c)).state, AuthGateState.ok);
   });
+
+  test('loopback source skips login even with no saved token', () async {
+    final c = await makeContainer({
+      '/api/setup/status': (200, {
+        'needs_setup': false,
+        'auth_mode': 'password',
+        'loopback': true,
+      }),
+    });
+    final info = await firstGate(c);
+    expect(info.state, AuthGateState.ok,
+        reason: 'loopback traffic needs no credential — the backend '
+            'exempts it (remoteAuthOK), so the gate must not demand a login');
+  });
+
+  test('loopback false with no saved token still shows login gate', () async {
+    final c = await makeContainer({
+      '/api/setup/status': (200, {
+        'needs_setup': false,
+        'auth_mode': 'password',
+        'loopback': false,
+      }),
+    });
+    expect((await firstGate(c)).state, AuthGateState.loginNeeded);
+  });
+
+  test('absent loopback field (old backend) falls back to token-based gate',
+      () async {
+    final c = await makeContainer({
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'token'}),
+    });
+    expect((await firstGate(c)).state, AuthGateState.loginNeeded);
+  });
 }

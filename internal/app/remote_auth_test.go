@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/golang-jwt/jwt/v5"
 	"memo/internal/config"
 	"memo/internal/remoteauth"
 )
@@ -193,7 +194,7 @@ func TestVerifyRemoteDeviceToken_UpdatesLastSeenInMemory(t *testing.T) {
 
 func TestLoginRemotePassword_WrongModeRejected(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{RemoteAccess: config.RemoteAccessConfig{AuthMode: "token"}}}
-	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2", false); err == nil {
 		t.Fatal("expected login to be rejected when auth mode doesn't support passwords")
 	}
 }
@@ -217,7 +218,7 @@ func newPasswordApp(t *testing.T, username, password string) *App {
 
 func TestLoginRemotePassword_CorrectCredentialsIssueValidSession(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	token, role, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2")
+	token, role, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2", false)
 	if err != nil {
 		t.Fatalf("LoginRemotePassword: %v", err)
 	}
@@ -234,14 +235,39 @@ func TestLoginRemotePassword_CorrectCredentialsIssueValidSession(t *testing.T) {
 
 func TestLoginRemotePassword_WrongPasswordFails(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword", false); err == nil {
 		t.Fatal("expected wrong password to fail")
+	}
+}
+
+// TestLoginRemotePassword_RememberIssuesLongLivedToken is the "beni hatırla"
+// contract: with remember=true the issued token must carry the 30-day
+// lifetime (RememberSessionTTL), not the default 12h one — otherwise the
+// checkbox is a no-op and the client is re-prompted daily.
+func TestLoginRemotePassword_RememberIssuesLongLivedToken(t *testing.T) {
+	a := newPasswordApp(t, "admin", "hunter2")
+	token, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2", true)
+	if err != nil {
+		t.Fatalf("LoginRemotePassword(remember): %v", err)
+	}
+	claims := &jwt.RegisteredClaims{}
+	if _, err := jwt.ParseWithClaims(token, claims, func(t *jwt.Token) (interface{}, error) {
+		return a.sessionKey, nil
+	}); err != nil {
+		t.Fatalf("parse token: %v", err)
+	}
+	lifetime := claims.ExpiresAt.Sub(claims.IssuedAt.Time)
+	if lifetime < remoteauth.RememberSessionTTL-time.Minute {
+		t.Errorf("lifetime = %v, want ~%v (remembered session)", lifetime, remoteauth.RememberSessionTTL)
+	}
+	if lifetime <= remoteauth.SessionTTL {
+		t.Errorf("lifetime = %v, must exceed the default %v", lifetime, remoteauth.SessionTTL)
 	}
 }
 
 func TestLoginRemotePassword_WrongUsernameFails(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	if _, _, err := a.LoginRemotePassword("1.2.3.4", "notadmin", "hunter2"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "notadmin", "hunter2", false); err == nil {
 		t.Fatal("expected wrong username to fail")
 	}
 }
@@ -250,14 +276,14 @@ func TestLoginRemotePassword_LocksOutAfterRepeatedFailures(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
 	var lastErr error
 	for i := 0; i < 10; i++ {
-		_, _, lastErr = a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword")
+		_, _, lastErr = a.LoginRemotePassword("1.2.3.4", "admin", "wrongpassword", false)
 	}
 	le, ok := lastErr.(*remoteLoginError)
 	if !ok || le.LockedFor() <= 0 {
 		t.Fatalf("expected a lockout error after repeated failures, got %v", lastErr)
 	}
 	// Even the correct password must be rejected while locked out.
-	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2", false); err == nil {
 		t.Error("expected correct credentials to still be rejected during lockout")
 	}
 }
@@ -274,7 +300,7 @@ func TestValidateRemoteSession_RejectsGarbage(t *testing.T) {
 
 func TestValidateRemoteSession_RejectsTokenForRenamedUser(t *testing.T) {
 	a := newPasswordApp(t, "admin", "hunter2")
-	token, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2")
+	token, _, err := a.LoginRemotePassword("1.2.3.4", "admin", "hunter2", false)
 	if err != nil {
 		t.Fatalf("LoginRemotePassword: %v", err)
 	}
@@ -360,15 +386,15 @@ func TestLoginRemotePassword_UsesAccountsAndReturnsRole(t *testing.T) {
 		t.Fatalf("CreateAccount: %v", err)
 	}
 
-	_, role, err := a.LoginRemotePassword("1.2.3.4", "alice", "adminpass")
+	_, role, err := a.LoginRemotePassword("1.2.3.4", "alice", "adminpass", false)
 	if err != nil || role != "admin" {
 		t.Errorf("alice login: role=%q err=%v, want role=admin err=nil", role, err)
 	}
-	_, role, err = a.LoginRemotePassword("1.2.3.4", "bob", "userpass")
+	_, role, err = a.LoginRemotePassword("1.2.3.4", "bob", "userpass", false)
 	if err != nil || role != "user" {
 		t.Errorf("bob login: role=%q err=%v, want role=user err=nil", role, err)
 	}
-	if _, _, err := a.LoginRemotePassword("1.2.3.4", "bob", "wrongpass"); err == nil {
+	if _, _, err := a.LoginRemotePassword("1.2.3.4", "bob", "wrongpass", false); err == nil {
 		t.Error("expected wrong password to fail even though the username exists")
 	}
 }
@@ -388,7 +414,7 @@ func TestSessionRole_DeletedAccountInvalidatesSession(t *testing.T) {
 	if err := a.CreateAccount("bob", "userpass", "user"); err != nil {
 		t.Fatalf("CreateAccount: %v", err)
 	}
-	token, role, err := a.LoginRemotePassword("1.2.3.4", "bob", "userpass")
+	token, role, err := a.LoginRemotePassword("1.2.3.4", "bob", "userpass", false)
 	if err != nil || role != "user" {
 		t.Fatalf("bob login: role=%q err=%v", role, err)
 	}

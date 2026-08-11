@@ -851,6 +851,16 @@ func remoteAuthOK(listenAddr, mode string, r *http.Request, verifyDevice, valida
 	if mode == "none" {
 		return true
 	}
+	// Loopback requests need no credential regardless of mode: traffic
+	// from 127.0.0.1/::1 can only come from software on this machine (the
+	// installed desktop app talks to 127.0.0.1 exclusively), and the gate
+	// exists to keep *remote* callers out — loopback is exactly as trusted
+	// as the unauthenticated local-only bind. A LAN-IP client on the same
+	// box ("192.168.1.xxx" bounced back locally) still gets gated, since
+	// RemoteAddr then carries the interface's non-loopback address.
+	if isLoopbackIP(requestIP(r)) {
+		return true
+	}
 	cred := remoteCredential(r)
 	if cred == "" {
 		return false

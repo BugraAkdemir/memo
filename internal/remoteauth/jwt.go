@@ -20,6 +20,12 @@ import (
 // a compromised session token self-expires within this window regardless.
 const SessionTTL = 12 * time.Hour
 
+// RememberSessionTTL is the longer lifetime granted when the client logs
+// in with "remember me" checked — long enough that the desktop/web app
+// doesn't nag for a password every day, still short enough that a stolen
+// token is not a permanent credential. Opt-in per login, not the default.
+const RememberSessionTTL = 30 * 24 * time.Hour
+
 // ErrInvalidSessionToken covers every way ValidateSessionToken can fail
 // (expired, wrong signature, malformed) — callers only need to distinguish
 // "valid" from "not," never why, so a single sentinel keeps the auth gate's
@@ -43,6 +49,13 @@ type sessionClaims struct {
 // (an account's username) carrying role, using signingKey.
 func IssueSessionToken(signingKey []byte, subject, role string) (string, error) {
 	return issueSessionTokenAt(signingKey, subject, role, time.Now(), SessionTTL)
+}
+
+// IssueSessionTokenWithTTL is IssueSessionToken with an explicit lifetime —
+// used by the "remember me" login path (RememberSessionTTL). Callers must
+// pick a TTL from this package's constants; anything else is a caller bug.
+func IssueSessionTokenWithTTL(signingKey []byte, subject, role string, ttl time.Duration) (string, error) {
+	return issueSessionTokenAt(signingKey, subject, role, time.Now(), ttl)
 }
 
 func issueSessionTokenAt(signingKey []byte, subject, role string, issuedAt time.Time, ttl time.Duration) (string, error) {

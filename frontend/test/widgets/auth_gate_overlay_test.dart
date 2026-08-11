@@ -186,6 +186,56 @@ void main() {
     expect(find.text(L10n.t('auth_gate_sign_in')), findsNothing);
   });
 
+  testWidgets('login gate: remember me is checked by default -> remember:true',
+      (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
+    });
+    await pump(tester, adapter);
+    expect(find.text(L10n.t('auth_gate_remember_me')), findsOneWidget);
+    await tester.enterText(find.byType(TextField).at(0), 'admin');
+    await tester.enterText(find.byType(TextField).at(1), 'pw');
+    await tester.tap(find.widgetWithText(ElevatedButton, L10n.t('auth_gate_sign_in')));
+    await tester.pumpAndSettle();
+    final login = adapter.requests
+        .firstWhere((r) => r.path == '/api/auth/login');
+    expect((login.data as Map)['remember'], isTrue,
+        reason: 'the default-on "beni hatırla" must request the 30-day '
+            'session lifetime, or the user is re-prompted daily');
+  });
+
+  testWidgets('login gate: unchecking remember me sends remember:false',
+      (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'password'}),
+    });
+    await pump(tester, adapter);
+    await tester.tap(find.text(L10n.t('auth_gate_remember_me')));
+    await tester.pump();
+    await tester.enterText(find.byType(TextField).at(0), 'admin');
+    await tester.enterText(find.byType(TextField).at(1), 'pw');
+    await tester.tap(find.widgetWithText(ElevatedButton, L10n.t('auth_gate_sign_in')));
+    await tester.pumpAndSettle();
+    final login = adapter.requests
+        .firstWhere((r) => r.path == '/api/auth/login');
+    expect((login.data as Map)['remember'], isFalse);
+  });
+
+  testWidgets('loopback source: no login gate at all', (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {
+        'needs_setup': false,
+        'auth_mode': 'password',
+        'loopback': true,
+      }),
+    });
+    await pump(tester, adapter);
+    expect(find.text(L10n.t('auth_gate_sign_in')), findsNothing,
+        reason: 'the backend trusts loopback traffic without a credential — '
+            'demanding a login here would ask for a password never checked');
+    expect(find.text(L10n.t('auth_gate_other_devices_question')), findsNothing);
+  });
+
   testWidgets('token mode: gateway via pasted token', (tester) async {
     final adapter = _StatefulAuthAdapter({
       '/api/setup/status': (200, {'needs_setup': false, 'auth_mode': 'token'}),

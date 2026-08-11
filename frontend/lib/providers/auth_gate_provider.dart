@@ -25,7 +25,10 @@ class AuthGateInfo {
 /// gate (if any) the user must pass before the app is usable:
 ///   - needs_setup && !declined flag  -> setup gate (first-run choice)
 ///   - needs_setup && declined flag   -> nothing (open local install)
-///   - setup done, no saved token    -> login gate
+///   - setup done, loopback source   -> nothing (backend trusts loopback
+///     — remoteAuthOK passes credential-less loopback requests, so asking
+///     for a password here would be demanding one that is never checked)
+///   - setup done, no saved token    -> login gate (remote/unknown source)
 ///   - saved token but 401           -> login gate (expired session)
 ///   - backend unreachable           -> ok (BackendUnreachableOverlay)
 final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
@@ -44,17 +47,21 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
       if (ss.needsSetup && !declined) {
         yield AuthGateInfo(AuthGateState.setupNeeded, authMode: ss.authMode);
       } else if (!ss.needsSetup) {
-        final saved = prefs.getString('memo_remote_access_token');
-        if (saved == null || saved.isEmpty) {
-          yield AuthGateInfo(AuthGateState.loginNeeded, authMode: ss.authMode);
+        if (ss.loopback) {
+          yield const AuthGateInfo(AuthGateState.ok);
         } else {
-          final probe = await api.probeAuth();
-          yield switch (probe) {
-            ApiAuthStatus.ok => const AuthGateInfo(AuthGateState.ok),
-            ApiAuthStatus.unauthorized =>
-              AuthGateInfo(AuthGateState.loginNeeded, authMode: ss.authMode),
-            ApiAuthStatus.down => const AuthGateInfo(AuthGateState.ok),
-          };
+          final saved = prefs.getString('memo_remote_access_token');
+          if (saved == null || saved.isEmpty) {
+            yield AuthGateInfo(AuthGateState.loginNeeded, authMode: ss.authMode);
+          } else {
+            final probe = await api.probeAuth();
+            yield switch (probe) {
+              ApiAuthStatus.ok => const AuthGateInfo(AuthGateState.ok),
+              ApiAuthStatus.unauthorized =>
+                AuthGateInfo(AuthGateState.loginNeeded, authMode: ss.authMode),
+              ApiAuthStatus.down => const AuthGateInfo(AuthGateState.ok),
+            };
+          }
         }
       } else {
         yield const AuthGateInfo(AuthGateState.ok);

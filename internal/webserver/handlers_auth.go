@@ -30,6 +30,23 @@ func requestIP(r *http.Request) string {
 	return r.RemoteAddr
 }
 
+// isLoopbackIP reports whether the request's source IP is the loopback
+// interface (127.0.0.0/8 or ::1). Requests from localhost are trusted by
+// the same token the backend uses for its local-only bind: loopback traffic
+// can only originate from software running on this machine, so remote auth
+// gates — which exist purely to protect against *remote* callers — don't
+// apply. This keeps the installed desktop app (always talking to
+// 127.0.0.1) working without a credential even after remote access has been
+// enabled with a strict auth mode, while a request from the LAN IP (the
+// "192.168.1.xxx'den şifre istesin" case) still goes through the gate.
+func isLoopbackIP(ip string) bool {
+	if ip == "" {
+		return false
+	}
+	parsed := net.ParseIP(ip)
+	return parsed != nil && parsed.IsLoopback()
+}
+
 // handleRemoteLogin implements POST /api/auth/login for "password"/
 // "token_password" auth modes — the one endpoint reachable without any
 // credential at all (see isRemoteLoginPath). On success it returns a
@@ -48,12 +65,16 @@ func (s *Server) handleRemoteLogin(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Username string `json:"username"`
 		Password string `json:"password"`
+		// remember extends the session lifetime (remoteauth.
+		// RememberSessionTTL) — the "beni hatırla" checkbox on the login
+		// gate. Absent = false keeps old clients on the default short TTL.
+		Remember bool `json:"remember"`
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "bad json", http.StatusBadRequest)
 		return
 	}
-	token, role, err := s.fullBridge.LoginRemotePassword(requestIP(r), req.Username, req.Password)
+	token, role, err := s.fullBridge.LoginRemotePassword(requestIP(r), req.Username, req.Password, req.Remember)
 	if err != nil {
 		if seconds, locked := asLockedError(err); locked {
 			w.Header().Set("Retry-After", strconv.Itoa(int(seconds)+1))
@@ -204,6 +225,11 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, map[string]interface{}{
 		"needs_setup": s.fullBridge.NeedsSetup(),
 		"auth_mode":   s.fullBridge.GetRemoteAuthMode(),
+		// loopback mirrors remoteAuthOK's trust model: when true, the
+		// requester needs no credential at all (local app on this
+		// machine), so clients can skip their login gate entirely instead
+		// of asking for a password that the backend would never check.
+		"loopback": isLoopbackIP(requestIP(r)),
 	})
 }
 

@@ -282,7 +282,7 @@ func (b *swarmStubBridge) VerifyRemoteDeviceToken(token string) bool {
 	return token != "" && token == b.token
 }
 func (b *swarmStubBridge) ValidateRemoteSession(token string) bool { return false }
-func (b *swarmStubBridge) LoginRemotePassword(remoteAddr, username, password string) (string, string, error) {
+func (b *swarmStubBridge) LoginRemotePassword(remoteAddr, username, password string, remember bool) (string, string, error) {
 	return "", "", nil
 }
 func (b *swarmStubBridge) ListRemoteDevices() interface{}                 { return nil }

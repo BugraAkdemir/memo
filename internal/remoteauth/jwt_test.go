@@ -26,6 +26,29 @@ func TestSessionToken_RoundTrip(t *testing.T) {
 	}
 }
 
+// TestSessionToken_WithTTLIsStillValidAtIssue guards the "remember me"
+// path's token: IssueSessionTokenWithTTL must sign a token carrying the
+// requested (longer) lifetime that still validates like any other.
+func TestSessionToken_WithTTLIsStillValidAtIssue(t *testing.T) {
+	key := []byte("0123456789abcdef0123456789abcdef")
+	token, err := IssueSessionTokenWithTTL(key, "admin", "admin", RememberSessionTTL)
+	if err != nil {
+		t.Fatalf("IssueSessionTokenWithTTL: %v", err)
+	}
+	if _, _, err := ValidateSessionToken(key, token); err != nil {
+		t.Fatalf("ValidateSessionToken on remember-me token: %v", err)
+	}
+}
+
+// TestRememberSessionTTLIsLongerThanSessionTTL is a semantic guard: the
+// "remember me" lifetime must be strictly longer than the default, or the
+// checkbox would be a no-op.
+func TestRememberSessionTTLIsLongerThanSessionTTL(t *testing.T) {
+	if !(RememberSessionTTL > SessionTTL) {
+		t.Fatalf("expected RememberSessionTTL (%v) > SessionTTL (%v)", RememberSessionTTL, SessionTTL)
+	}
+}
+
 func TestSessionToken_CarriesNonAdminRole(t *testing.T) {
 	key := []byte("0123456789abcdef0123456789abcdef")
 	token, err := IssueSessionToken(key, "bob", "user")

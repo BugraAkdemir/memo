@@ -58,6 +58,45 @@ func TestRemoteAuthOK_NoneModeAlwaysPasses(t *testing.T) {
 	}
 }
 
+// TestRemoteAuthOK_LoopbackSourcePasses is the local-app regression guard:
+// once remote access is enabled (0.0.0.0 bind) with a strict mode, the
+// installed desktop app — which always talks to 127.0.0.1 — must keep
+// working with no credential at all, in every mode. Before this exemption
+// existed, enabling LAN access locked the machine's own app out until the
+// user submitted a password.
+func TestRemoteAuthOK_LoopbackSourcePasses(t *testing.T) {
+	for _, mode := range []string{"token", "password", "token_password"} {
+		r := httptest.NewRequest(http.MethodGet, "/api/wipe", nil)
+		r.RemoteAddr = "127.0.0.1:54321"
+		if !remoteAuthOK("0.0.0.0", mode, r, neverPasses, neverPasses) {
+			t.Errorf("mode %s: expected loopback request to pass with no credential", mode)
+		}
+	}
+}
+
+// TestRemoteAuthOK_LoopbackIPv6Passes covers the ::1 source — a client
+// pointed at "localhost" can resolve to IPv6 first.
+func TestRemoteAuthOK_LoopbackIPv6Passes(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/wipe", nil)
+	r.RemoteAddr = "[::1]:54321"
+	if !remoteAuthOK("0.0.0.0", "password", r, neverPasses, neverPasses) {
+		t.Fatal("expected ::1 loopback request to pass with no credential")
+	}
+}
+
+// TestRemoteAuthOK_LoopbackDoesNotExemptLANSource guards the "pointed at
+// the LAN IP from the same machine" case: the REMOTE_ADDR is the
+// interface's non-loopback address, so the gate must still apply — a
+// loopback exemption must be keyed on the actual source IP, never on
+// "the client thinks it's talking to itself".
+func TestRemoteAuthOK_LoopbackDoesNotExemptLANSource(t *testing.T) {
+	r := httptest.NewRequest(http.MethodGet, "/api/wipe", nil)
+	r.RemoteAddr = "192.168.1.50:54321"
+	if remoteAuthOK("0.0.0.0", "password", r, neverPasses, neverPasses) {
+		t.Fatal("expected LAN-source request without credential to be rejected even from the same machine")
+	}
+}
+
 func TestRemoteAuthOK_TokenMode(t *testing.T) {
 	verify := fixedCheck("memo-sometoken")
 
@@ -187,6 +226,30 @@ func TestHandleSetupStatus_ReportsNeedsSetupAndAuthMode(t *testing.T) {
 	}
 	if !strings.Contains(w.Body.String(), `"needs_setup":true`) {
 		t.Errorf("expected needs_setup:true in body, got %s", w.Body.String())
+	}
+}
+
+// TestHandleSetupStatus_ReportsLoopback mirrors remoteAuthOK's trust model
+// for clients: the same request source that passes with no credential must
+// be told so via the loopback field, so the desktop app can skip its login
+// gate instead of demanding a password the backend would never check.
+func TestHandleSetupStatus_ReportsLoopback(t *testing.T) {
+	stub := &swarmStubBridge{needsSetup: false}
+	s := New(stub)
+
+	local := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	local.RemoteAddr = "127.0.0.1:54321"
+	wLocal := httptest.NewRecorder()
+	s.handleSetupStatus(wLocal, local)
+	if !strings.Contains(wLocal.Body.String(), `"loopback":true`) {
+		t.Errorf("expected loopback:true for a 127.0.0.1 source, got %s", wLocal.Body.String())
+	}
+
+	remote := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	wRemote := httptest.NewRecorder()
+	s.handleSetupStatus(wRemote, remote)
+	if !strings.Contains(wRemote.Body.String(), `"loopback":false`) {
+		t.Errorf("expected loopback:false for a LAN source, got %s", wRemote.Body.String())
 	}
 }
 

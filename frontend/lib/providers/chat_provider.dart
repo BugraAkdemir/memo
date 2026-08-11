@@ -13,6 +13,8 @@ import '../models/agent.dart';
 import '../models/chat.dart';
 import '../models/token_usage.dart';
 import 'agent_provider.dart';
+import 'auth_gate_provider.dart';
+import 'gate_guard.dart';
 import 'settings_provider.dart';
 import '../core/friendly_error.dart';
 
@@ -49,13 +51,19 @@ final apiClientProvider = Provider<MemoApiClient>((ref) {
 final runningCLIChatsProvider = StreamProvider.autoDispose<Set<String>>((ref) async* {
   final api = ref.watch(apiClientProvider);
   while (true) {
+    // BUG-ONB4: no click on a token-gated backend while the gate is up.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield <String>{};
+      await cancellablePause(ref, const Duration(seconds: 3));
+      continue;
+    }
     try {
       final ids = await api.getRunningCLIChats();
       yield ids.toSet();
     } catch (_) {
       yield <String>{};
     }
-    await Future.delayed(const Duration(seconds: 3));
+    await cancellablePause(ref, const Duration(seconds: 3));
   }
 });
 
@@ -308,7 +316,26 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
     ref.onDispose(() {
       _delayedRefreshTimer?.cancel();
     });
-    return ref.read(apiClientProvider).getMessages();
+    // BUG-ONB4: while the auth gate is up, the backend answers 401 — which
+    // used to surface as a visible "Bir şeyler ters gitti" over the login
+    // screen. The gate owns that state; mount as an empty chat instead.
+    // (Notifier build may not `ref.watch` a stream provider — Riverpod
+    // leaves the provider's future pending forever — and
+    // `ref.listen`+`invalidateSelf` races the build's own completion, so
+    // the "reload after login" half lives in chat_screen's widget listen,
+    // alongside its existing errorMessageProvider listen.)
+    final gate = ref.read(authGateProvider).valueOrNull;
+    if (authGateBlocked(gate)) return const [];
+    try {
+      return await ref.read(apiClientProvider).getMessages();
+    } on DioException catch (e) {
+      // A 401 despite a closed gate means the saved token went stale — the
+      // gate's own probe is about to flip back to loginNeeded, which re-runs
+      // this build via the watch above. No error UI of our own: the gate
+      // overlay is the correct response, not an error message.
+      if (e.response?.statusCode == 401) return const [];
+      rethrow;
+    }
   }
 
   void addMessage(ChatMessage msg) {
@@ -884,6 +911,16 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
   // the GUI is gone: it prunes a client that misses a few heartbeats.
   String? clientId;
   while (alive) {
+    // BUG-ONB4: while the gate is up, the backend is reachable (the gate's
+    // own poll is talking to it) but won't accept our heartbeat — every
+    // register/heartbeat would 401. Report "reachable" (the gate decides
+    // what the user must do) and skip the registry traffic entirely.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield true;
+      clientId = null;
+      await cancellablePause(ref, const Duration(seconds: 5));
+      continue;
+    }
     try {
       final ok = await api.isAlive();
       yield ok;
@@ -911,6 +948,6 @@ final connectionStatusProvider = StreamProvider.autoDispose<bool>((ref) async* {
       clientId = null;
     }
     if (!alive) break;
-    await Future.delayed(const Duration(seconds: 30));
+    await cancellablePause(ref, const Duration(seconds: 30));
   }
 });

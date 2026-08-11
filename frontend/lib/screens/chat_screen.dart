@@ -18,6 +18,8 @@ import '../widgets/welcome_view.dart';
 import '../widgets/backend_unreachable_view.dart';
 import '../widgets/server_file_browser_dialog.dart';
 import '../providers/agent_provider.dart';
+import '../providers/auth_gate_provider.dart';
+import '../providers/gate_guard.dart';
 import '../core/friendly_error.dart';
 
 /// Chat screen — sidebar + message list + input area.
@@ -68,6 +70,17 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
           SnackBar(content: Text(next), duration: const Duration(seconds: 4)),
         );
         ref.read(errorMessageProvider.notifier).state = '';
+      }
+    });
+
+    // BUG-ONB4: messagesProvider mounts as an empty chat while the auth
+    // gate blocks (its build may not watch the gate's stream — Riverpod
+    // would leave its future pending forever), so the gate flipping open
+    // after login/setup must explicitly reload it — gate change is the one
+    // signal that 401-era emptiness can turn into real messages.
+    ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
+      if (authGateBlocked(prev?.valueOrNull) != authGateBlocked(next.valueOrNull)) {
+        ref.invalidate(messagesProvider);
       }
     });
 

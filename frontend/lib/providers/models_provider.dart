@@ -7,6 +7,8 @@ import '../core/l10n.dart';
 import '../models/gpu_info.dart';
 import '../models/local_model.dart';
 import 'chat_provider.dart';
+import 'gate_guard.dart';
+import 'auth_gate_provider.dart';
 import '../core/friendly_error.dart';
 
 // ─── Local Models ───────────────────────────────────────────────
@@ -45,13 +47,20 @@ final modelStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) async
   ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
   while (alive) {
+    // BUG-ONB4: no point polling a token-gated backend while the login gate
+    // is up — every tick would 401. Re-check every 5s until the gate opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield const ServerStatus();
+      await cancellablePause(ref, const Duration(seconds: 5));
+      continue;
+    }
     try {
       yield await api.getModelStatus();
     } catch (e) {
       debugPrint('models: modelStatus error: ${FriendlyError.describeGeneric(e)}');
       yield const ServerStatus();
     }
-    await Future.delayed(const Duration(seconds: 30));
+    await cancellablePause(ref, const Duration(seconds: 30));
   }
 });
 
@@ -60,13 +69,18 @@ final embeddingStatusProvider = StreamProvider.autoDispose<ServerStatus>((ref) a
   ref.onDispose(() => alive = false);
   final api = ref.read(apiClientProvider);
   while (alive) {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield const ServerStatus();
+      await cancellablePause(ref, const Duration(seconds: 5));
+      continue;
+    }
     try {
       yield await api.getEmbeddingStatus();
     } catch (e) {
       debugPrint('models: embeddingStatus error: ${FriendlyError.describeGeneric(e)}');
       yield const ServerStatus();
     }
-    await Future.delayed(const Duration(seconds: 30));
+    await cancellablePause(ref, const Duration(seconds: 30));
   }
 });
 
@@ -94,6 +108,11 @@ final downloadProgressProvider =
 
   while (alive) {
     var active = false;
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      yield const [];
+      await cancellablePause(ref, const Duration(seconds: 5));
+      continue;
+    }
     try {
       final progress = await api.getDownloadProgress();
       active = progress.any((p) => p.active);
@@ -102,7 +121,7 @@ final downloadProgressProvider =
       debugPrint('models: downloadProgress error: ${FriendlyError.describeGeneric(e)}');
       yield const [];
     }
-    await Future.delayed(Duration(seconds: active ? 1 : 4));
+    await cancellablePause(ref, Duration(seconds: active ? 1 : 4));
   }
 });
 

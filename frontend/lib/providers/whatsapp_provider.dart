@@ -5,6 +5,8 @@ import '../core/api_client.dart';
 import '../core/l10n.dart';
 import '../models/whatsapp.dart';
 import 'chat_provider.dart';
+import 'auth_gate_provider.dart';
+import 'gate_guard.dart';
 import '../core/friendly_error.dart';
 
 final whatsAppStatusProvider = StateNotifierProvider.autoDispose<
@@ -71,6 +73,11 @@ class WhatsAppStatusNotifier extends StateNotifier<AsyncValue<WhatsAppStatus>> {
   }
 
   Future<void> _fetch() async {
+    // BUG-ONB4: the WhatsApp screen stays mounted under the gate overlay
+    // (IndexedStack) and its poll kept 401-ing the token-gated backend every
+    // 2-15s. Skip the request while the gate is up; the adaptive schedule
+    // keeps checking back until it opens.
+    if (authGateBlocked(_ref.read(authGateProvider).valueOrNull)) return;
     try {
       final data = await _api.getWhatsAppStatus();
       if (mounted) state = AsyncValue.data(WhatsAppStatus.fromJson(data));

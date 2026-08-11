@@ -1,7 +1,7 @@
 # Bug Report — Memo Açık Bug Listesi
 
 > **Amaç:** Şu an gerçekten açık olan, stable sürüme engel bug'ların listesi — düzeltilmiş olanlar burada yok (git geçmişinde duruyorlar, tekrar burada tutmanın değeri yok).
-> **Son güncelleme:** 2026-08-11 — kullanıcının RPi'sindeki (`192.168.1.106:8090`) canlı web kurulumunda yeni bulgular: BUG-ONB3 (login sonrası geçici "sunucuya bağlanılamıyor" + kurulum ekranına düşme), BUG-ONB4 (gate açıkken background polling 401 gürültüsü), BUG-ONB5 (RAM okuma şüphesi) — sadece kayda geçirildi, aşağıda. Ayrıca önceki oturumun soruları: hesap yokken login ekranı + uninstall-selfhosted.sh eklendi.
+> **Son güncelleme:** 2026-08-11 — kullanıcının RPi'sindeki (`192.168.1.106:8090`) canlı web kurulumunda yeni bulgular: BUG-ONB3 (login sonrası geçici "sunucuya bağlanılamıyor" + kurulum ekranına düşme, hâlâ açık), BUG-ONB5 (RAM okuma şüphesi, hâlâ açık) — sadece kayda geçirildi, aşağıda. **BUG-ONB4 düzeltildi** (gate açıkken arka plan poll'lerinin 401 gürültüsü) — `authGateBlocked()`/`cancellablePause()` (`frontend/lib/providers/gate_guard.dart`) gate kapalıyken models/embedding/download/mood/whatsapp/cli-running/connection-status poll'lerini askıya alıyor, `messagesProvider` gate altında 401'i sessizce boş sohbet olarak açıyor ve gate kapanınca `chat_screen.dart`'ın listener'ı yeniden yüklüyor. Düzeltme sürecinde ayrı bir gerçek bug daha bulundu ve kapatıldı: `mood_provider.dart`'ın `Stream.periodic(...).asyncExpand(...).distinct()` deseni, iç generator'ın gate kapalıyken hep boş dönmesi (`return;`, hiç `yield` yok) durumunda periyodik Timer'ı dispose'da iptal etmiyordu (minimal, ağsız bir repro ile doğrulandı — asyncExpand+distinct+her-zaman-boş kombinasyonu genel olarak şüpheli, sadece mood'a özgü değil); `modelStatusProvider`'ın da kullandığı kanıtlanmış `while(alive)+cancellablePause` deseniyle yeniden yazıldı. Ayrıca önceki oturumun soruları: hesap yokken login ekranı + uninstall-selfhosted.sh eklendi.
 >
 > 2026-08-05 — bir önceki denetimde bulunan 3 bug (LK-1, SF-5, RC-7) `/code-review` + `/codebase-memory` ile doğrulanıp hepsi düzeltildi:
 > - **LK-1** (`14f4486`) — `internal/agentcli`'nin `ChatCompletionStream`'i (Claude Code + Codex, ikisi de) ctx iptalinde sadece doğrudan alt süreci öldürüyordu; `--dangerously-skip-permissions`/`--dangerously-bypass-approvals-and-sandbox` ile başlattığı bir torun süreç stdout pipe'ını açık tutarsa `scanner.Scan()` sonsuza kadar bloklanıyordu. `cmd.Cancel` artık tüm process group'u öldürüyor (`internal/llama`'nın Setpgid deseni), `cmd.WaitDelay` (5s) torun süreç yine de kaçarsa yedek. İlk versiyon `/code-review`'dan geçti, 2 gerçek eksik bulundu ve kapatıldı: process-group kill eksikti (sadece pipe'ı zorla kapatıyordu, süreci öldürmüyordu — `--dangerously-*` yetkisiyle çalışan bir süreç arka planda öldürülmeden kalıyordu), test'in sabit 200ms bekleme süresi gerçek bir senkronizasyon garantisi değildi (marker-file polling'e çevrildi).
@@ -54,10 +54,10 @@
 |----------|------|
 | 🔴 CRITICAL | 0 |
 | 🟠 HIGH | 0 |
-| 🟡 MEDIUM | 5 |
+| 🟡 MEDIUM | 4 |
 | 🟢 LOW | 0 |
 | 🔧 TEKNİK BORÇ | 2 |
-| **TOPLAM** | **7** |
+| **TOPLAM** | **6** |
 
 ---
 
@@ -70,12 +70,6 @@
 - **Olası kök neden (henüz incelenmedi):** setup/status poll'ü ile login sonrası token'ın kaydedilmesi arasındaki yarış; `authGateProvider`'ın 401/probe davranışı; `BackendUnreachableOverlay`'in gate'i gizleme mantığı. "Kurulum ekranına atma" özellikle yanlış state geçişi sinyali — login olmuş kullanıcıya asla setup gösterilmemeli.
 - **Kullanıcı etkisi:** İlk izlenim "bozuk/bağlanamıyor" + bir de "verilerim mi gitti?" paniği. Refresh'le atlatılıyor ama onboarding deneyimini ciddi zedeliyor. Düzeltilecek ilk web-UI maddesi.
 - **Düzeltme (uygulanmadı, sadece kayıt):** frontend state akışı incelenmeli: (1) login başarılı + token kaydedildikten sonra gate anında kapanmalı; (2) `authGateProvider` hiçbir koşulda `needs_setup`'a geçerken mevcut session'ı iptal etmemeli/yok saymamalı; (3) `needs_setup:true` döndüğünde bile kayıtlı geçerli bir token varsa kullanıcıya setup gösterilmemeli (login olmuş kullanıcı için setup akışına düşmek kabul edilemez).
-
-### BUG-ONB4: Auth gate açıkken background polling 401 yiyip "Bir şeyler ters gitti" logları basıyor (models/modelStatus, embeddingStatus, downloadProgress, agent init, web search init)
-
-- **Nedir:** Login/setup gate'i ekranı açıkken bile uygulamanın provider'ları (models, embedding, agent, web search, whatsapp, cli/running) backend'i poll'üyor; backend LAN mode'da her istekten kimlik doğrulama istediği için hepsi 401 alıyor ve her biri `Bir şeyler ters gitti. Lütfen tekrar dene.` hatası logluyor (dakikada onlarca). Ayrıca kullanıcı ana ekrana geldiğinde de **yeni sohbet açılana kadar** bağlantı hatası görüyor — sohbet açılınca düzeliyor.
-- **Kullanıcı etkisi:** Konsol gürültüsü + "bağlantı hatası" hissi; asıl işlev bozukluğu değil ama ilk izlenim ve hata ayıklama açısından kötü.
-- **Düzeltme (uygulanmadı, sadece kayıt):** Gate açıkken (401 olduğu bilinirken) background polling'leri askıya almak (authGateProvider'ın state'ine bağlamak) veya 401'leri "beklenen" olarak sessizce geçmek — en azından log seviyesi düşürülmeli.
 
 ### BUG-ONB5: RAM doğru okunmuyor şüphesi (netleştirilecek)
 

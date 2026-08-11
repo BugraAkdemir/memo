@@ -241,6 +241,107 @@ void main() {
       );
     });
   });
+
+  group('auth endpoints', () {
+  test('fetchSetupStatus parses needs_setup and auth_mode', () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    client.dio.httpClientAdapter = _FakeAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': true, 'auth_mode': 'password'}),
+    });
+    final ss = await client.fetchSetupStatus();
+    expect(ss.needsSetup, isTrue);
+    expect(ss.authMode, 'password');
+  });
+
+  test('probeAuth distinguishes ok / unauthorized / down', () async {
+    final ok = MemoApiClient(baseUrl: 'http://memo.test');
+    ok.dio.httpClientAdapter = _FakeAuthAdapter({'/api/version': (200, {})});
+    expect(await ok.probeAuth(), ApiAuthStatus.ok);
+
+    final unauthorized = MemoApiClient(baseUrl: 'http://memo.test');
+    unauthorized.dio.httpClientAdapter = _FakeAuthAdapter({'/api/version': (401, {})});
+    expect(await unauthorized.probeAuth(), ApiAuthStatus.unauthorized);
+
+    final down = MemoApiClient(baseUrl: 'http://memo.test');
+    down.dio.httpClientAdapter = _FakeAuthAdapter({});
+    expect(await down.probeAuth(), ApiAuthStatus.down);
+  });
+
+  test('setSessionToken sets header and fires onRemoteTokenLearned', () async {
+    String? learned;
+    final client = MemoApiClient(
+      baseUrl: 'http://memo.test',
+      onRemoteTokenLearned: (t) => learned = t,
+    );
+    client.setSessionToken('sess-tok');
+    expect(client.dio.options.headers['X-Memo-Token'], 'sess-tok');
+    expect(learned, 'sess-tok');
+  });
+
+  test('setupCreateAdmin returns the session token', () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    client.dio.httpClientAdapter = _FakeAuthAdapter({
+      '/api/setup/create-admin': (200, {'session_token': 'boot-tok', 'role': 'admin'}),
+    });
+    expect(await client.setupCreateAdmin('admin', 'pw'), 'boot-tok');
+  });
+
+  test('login parses session_token and role; loginRemote delegates', () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    client.dio.httpClientAdapter = _FakeAuthAdapter({
+      '/api/auth/login': (200, {'session_token': 's-tok', 'role': 'user'}),
+    });
+    final res = await client.login('kaya', 'pw');
+    expect(res.sessionToken, 's-tok');
+    expect(res.role, 'user');
+    expect(await client.loginRemote('kaya', 'pw'), 's-tok');
+  });
+
+  test('changeAccountPassword sends current_password and new_password', () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    Map<String, dynamic>? sentBody;
+    client.dio.httpClientAdapter = _FakeAuthAdapter(
+      {
+        '/api/accounts/a1/password': (200, {'ok': true}),
+      },
+      onRequest: (options) {
+          if (options.path == '/api/accounts/a1/password') {
+            sentBody = Map<String, dynamic>.from(options.data as Map);
+          }
+      },
+    );
+    await client.changeAccountPassword('a1', currentPassword: 'old', newPassword: 'new');
+    expect(sentBody, {'current_password': 'old', 'new_password': 'new'});
+  });
+
+  test('listAccounts/createAccount/deleteAccount map to the accounts routes', () async {
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    final paths = <String>[];
+      client.dio.httpClientAdapter = _FakeAuthAdapter(
+        {
+          '/api/accounts': (200, [
+            {'id': 'a1', 'username': 'admin', 'role': 'admin'},
+          ]),
+        },
+        onRequest: (options) => paths.add(options.path),
+      );
+      final accounts = await client.listAccounts();
+      expect(accounts, hasLength(1));
+      expect(accounts.first['username'], 'admin');
+      // POST /api/accounts and DELETE /api/accounts/a1 — same map keys
+      // (path-based), but the stub above only answers GET /api/accounts.
+      client.dio.httpClientAdapter = _FakeAuthAdapter(
+        {
+          '/api/accounts': (200, {'ok': true}),
+          '/api/accounts/a1': (200, {'ok': true}),
+        },
+        onRequest: (options) => paths.add(options.path),
+      );
+      await client.createAccount('kaya', 'pw', 'user');
+      await client.deleteAccount('a1');
+    expect(paths, containsAll(['/api/accounts', '/api/accounts', '/api/accounts/a1']));
+  });
+});
 }
 
 /// A fake [HttpClientAdapter] that records the last request's path and JSON
@@ -358,3 +459,33 @@ class _ThrowingAdapter implements HttpClientAdapter {
   @override
   void close({bool force = false}) {}
 }
+
+/// Answers per-path with a fixed (status, body) pair and records every
+/// request — mirrors _FakeChatsAdapter but lets a single stub cover the
+/// setup/login/accounts routes for the auth client tests.
+class _FakeAuthAdapter implements HttpClientAdapter {
+  _FakeAuthAdapter(this.responses, {this.onRequest});
+  final Map<String, (int, Object?)> responses;
+  final void Function(RequestOptions options)? onRequest;
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    onRequest?.call(options);
+    final (status, body) = responses[options.path] ?? (500, {'error': 'no stub for ${options.path}'});
+    return ResponseBody.fromString(
+      jsonEncode(body),
+      status,
+      headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      },
+    );
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+

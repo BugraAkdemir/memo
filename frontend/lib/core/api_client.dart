@@ -20,6 +20,28 @@ import '../models/tts_provider_config.dart';
 import '../models/tts_voice.dart';
 import '../models/usage_stats.dart';
 
+/// Result of GET /api/setup/status — the unauthenticated first-run probe.
+class SetupStatus {
+  final bool needsSetup;
+  final String authMode;
+  SetupStatus({required this.needsSetup, required this.authMode});
+
+  factory SetupStatus.fromJson(Map<String, dynamic> json) => SetupStatus(
+        needsSetup: json['needs_setup'] as bool? ?? false,
+        authMode: json['auth_mode'] as String? ?? 'token',
+      );
+}
+
+/// Does the backend require auth for this client right now?
+enum ApiAuthStatus { ok, unauthorized, down }
+
+/// Result of a successful password login.
+class LoginResult {
+  final String sessionToken;
+  final String role;
+  LoginResult({required this.sessionToken, required this.role});
+}
+
 /// Memo Go backend REST API client.
 /// Connects to headless Go server on localhost (plain HTTP, no TLS).
 class MemoApiClient {
@@ -1025,12 +1047,7 @@ class MemoApiClient {
   /// Throws a [DioException] with status 429 on brute-force lockout
   /// (a Retry-After header is included) or 401 on bad credentials.
   Future<String> loginRemote(String username, String password) async {
-    final res = await _dio.post(
-      '/api/auth/login',
-      data: {'username': username, 'password': password},
-    );
-    final data = _guard<Map<String, dynamic>>(res.data);
-    return data['session_token'] as String? ?? '';
+    return (await login(username, password)).sessionToken;
   }
 
   /// Lists every paired device (never includes the token itself — only
@@ -1309,6 +1326,91 @@ class MemoApiClient {
       if (e.type == DioExceptionType.cancel) return;
       rethrow;
     }
+  }
+
+  // ─── Auth gate (setup / login) ─────────────────────────────────
+
+  /// Fetches whether a first-run setup is still pending and the current
+  /// auth mode. Unauthenticated route (see backend isSetupBootstrapPath).
+  Future<SetupStatus> fetchSetupStatus() async {
+    final res = await _dio.get('/api/setup/status');
+    return SetupStatus.fromJson(_guard<Map<String, dynamic>>(res.data));
+  }
+
+  /// Applies the session token from a password login the same way a device
+  /// token is applied (see _applyRemoteToken).
+  void setSessionToken(String token) {
+    _dio.options.headers['X-Memo-Token'] = token;
+    onRemoteTokenLearned?.call(token);
+  }
+
+  /// Version probe that distinguishes "unauthorized" (401 — backend is up,
+  /// this client lacks a valid credential) from "down" (no reachable
+  /// backend). Only 401 denotes an auth problem; every other failure is
+  /// treated as unreachable so the app can show its normal connection error.
+  Future<ApiAuthStatus> probeAuth() async {
+    try {
+      await _dio.get('/api/version');
+      return ApiAuthStatus.ok;
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401) return ApiAuthStatus.unauthorized;
+      return ApiAuthStatus.down;
+    } catch (_) {
+      return ApiAuthStatus.down;
+    }
+  }
+
+  /// Creates the very first admin account (only valid while the backend
+  /// reports needs_setup) and returns the issued session token.
+  Future<String> setupCreateAdmin(String username, String password) async {
+    final res = await _dio.post(
+      '/api/setup/create-admin',
+      data: {'username': username, 'password': password},
+    );
+    return _guard<Map<String, dynamic>>(res.data)['session_token'] as String? ?? '';
+  }
+
+  /// Password login; returns the session token and the account's role.
+  /// [loginRemote] delegates here for backwards compatibility.
+  Future<LoginResult> login(String username, String password) async {
+    final res = await _dio.post(
+      '/api/auth/login',
+      data: {'username': username, 'password': password},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return LoginResult(
+      sessionToken: data['session_token'] as String? ?? '',
+      role: data['role'] as String? ?? 'user',
+    );
+  }
+
+  /// Changes an account's password. For the session's own account the
+  /// current password is required; an admin session may change anyone's.
+  Future<void> changeAccountPassword(
+    String id, {
+    String currentPassword = '',
+    required String newPassword,
+  }) async {
+    await _dio.post(
+      '/api/accounts/$id/password',
+      data: {'current_password': currentPassword, 'new_password': newPassword},
+    );
+  }
+
+  /// Lists all accounts (metadata only, never password hashes).
+  Future<List<Map<String, dynamic>>> listAccounts() async {
+    final res = await _dio.get('/api/accounts');
+    return _guardList<Map<String, dynamic>>(res.data);
+  }
+
+  /// Creates an account with the given role ("admin"|"user").
+  Future<void> createAccount(String username, String password, String role) async {
+    await _dio.post('/api/accounts', data: {'username': username, 'password': password, 'role': role});
+  }
+
+  /// Deletes an account (refuses the last admin — backend-enforced).
+  Future<void> deleteAccount(String id) async {
+    await _dio.delete('/api/accounts/$id');
   }
 
   // ─── Health check ───────────────────────────────────────────────

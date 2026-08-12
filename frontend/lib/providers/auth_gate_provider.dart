@@ -1,8 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/api_client.dart';
+import '../core/local_session_state.dart';
 import 'chat_provider.dart';
 import 'settings_provider.dart';
 
@@ -24,6 +26,10 @@ class AuthGateInfo {
 /// endpoint and, once setup is done, the version probe, to decide which
 /// gate (if any) the user must pass before the app is usable:
 ///   - needs_setup && !declined flag  -> setup gate (first-run choice)
+///   - needs_setup && declined flag, but a non-loopback probe 401s
+///                                    -> setup gate (that flag was recorded
+///                                       against a backend this client can
+///                                       no longer authenticate to)
 ///   - needs_setup && declined flag   -> nothing (open local install)
 ///   - setup done, loopback source   -> nothing (backend trusts loopback
 ///     — remoteAuthOK passes credential-less loopback requests, so asking
@@ -43,7 +49,24 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
   while (alive) {
     try {
       final ss = await api.fetchSetupStatus();
-      final declined = prefs.getBool(authSetupDoneKey) ?? false;
+      // Layer 1 — identity. If this backend is not the one our saved
+      // state was recorded against (wiped and reinstalled, or the client
+      // now points at a different Memo), that state is worthless and
+      // keeping it is what left users stuck: a stale declined flag hides
+      // the setup gate while every request 401s.
+      await _resetIfServerReplaced(prefs, ss.installId);
+      var declined = prefs.getBool(authSetupDoneKey) ?? false;
+      // Layer 2 — reachability. Independent of layer 1 on purpose: it
+      // works against any backend, including ones too old to report an
+      // install id, and against a client whose id was never recorded.
+      // "Setup pending" plus "this source cannot authenticate" is a
+      // contradiction the declined flag must not be allowed to hide.
+      if (ss.needsSetup && declined && !ss.loopback) {
+        if (await api.probeAuth() == ApiAuthStatus.unauthorized) {
+          await prefs.remove(authSetupDoneKey);
+          declined = false;
+        }
+      }
       if (ss.needsSetup && !declined) {
         yield AuthGateInfo(AuthGateState.setupNeeded, authMode: ss.authMode);
       } else if (!ss.needsSetup) {
@@ -77,3 +100,31 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
     await pause.future;
   }
 });
+
+/// Drops this client's server-coupled state when [installId] shows the
+/// backend is not the one that state was recorded against.
+///
+/// Two cases are deliberately treated as "no reset":
+///
+///  * An empty [installId] — an older backend, or one that could not
+///    persist an id. Unknown is not a mismatch; the gate's unauthorized
+///    probe covers those.
+///  * Nothing stored locally yet. Every existing client is in exactly
+///    this position the first time it runs a build that knows about
+///    install ids, and their saved sign-ins are overwhelmingly valid —
+///    resetting on first sight would sign out every working user to
+///    catch the few who are broken. Those few are caught by the probe
+///    instead, which costs them nothing but a login they already needed.
+Future<void> _resetIfServerReplaced(
+  SharedPreferences prefs,
+  String installId,
+) async {
+  if (installId.isEmpty) return;
+  final known = prefs.getString(serverInstallIdKey);
+  if (known == null || known.isEmpty) {
+    await prefs.setString(serverInstallIdKey, installId);
+    return;
+  }
+  if (known == installId) return;
+  await clearServerCoupledState(prefs, keepInstallId: installId);
+}

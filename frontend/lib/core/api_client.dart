@@ -32,16 +32,27 @@ class SetupStatus {
   /// password the backend would never check. Absent on old backends.
   final bool loopback;
 
+  /// Opaque identifier for the install this response came from — random
+  /// per install, gone when its data directory is wiped (see
+  /// internal/app/install_id.go). Lets a client notice that the backend
+  /// it saved credentials against was reinstalled, or that it is now
+  /// pointed at a different Memo entirely. Empty on older backends and
+  /// whenever the server could not persist one, so callers must treat ''
+  /// as "unknown", never as a mismatch.
+  final String installId;
+
   SetupStatus({
     required this.needsSetup,
     required this.authMode,
     required this.loopback,
+    this.installId = '',
   });
 
   factory SetupStatus.fromJson(Map<String, dynamic> json) => SetupStatus(
         needsSetup: json['needs_setup'] as bool? ?? false,
         authMode: json['auth_mode'] as String? ?? 'token',
         loopback: json['loopback'] as bool? ?? false,
+        installId: json['install_id'] as String? ?? '',
       );
 }
 

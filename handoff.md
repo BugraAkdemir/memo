@@ -1,3 +1,57 @@
+## Ek (2026-08-13, devam) — BUG-ONB11: BUG-ONB6 taramasından kaçan 3 başlangıç isteği (`02b762b`)
+
+Kullanıcı masaüstü uygulamasından RPi'ye bağlıyken iki ekran görüntüsü
+gönderdi: **Rutinler** ekranında kalıcı "Rutinler yüklenemedi: Bir şeyler
+ters gitti", **Geliştirici** ekranında Model ID'leri altında kalıcı aynı
+hata — ama uygulamanın geri kalanı (sohbet, OpenCode Zen provider'ı,
+hafıza) sorunsuz çalışıyor. "Bunları daha önce düzeltmiştik" dedi, haklı:
+BUG-ONB6 tam olarak bu semptomu düzeltmişti.
+
+**Neden tekrar çıktı:** BUG-ONB6'nın taraması `AsyncNotifier.build()` +
+`apiClientProvider` **şeklini** arıyordu. Bu üçünün hiçbiri o şekilde
+değil:
+
+| Yer | Şekil | Neden kaçtı | Şiddet |
+|---|---|---|---|
+| `gatewayModelsProvider` (`settings_provider.dart`) | düz `FutureProvider` | AsyncNotifier değil — `gpuInfoProvider`/BUG-ONB5 ile birebir aynı kaçış | **kalıcı** (retry döngüsü yok) |
+| `RoutinesScreen._load()` | `initState` → widget state | provider bile değil, hiçbir provider sorgusu göremez | **kalıcı** (timer yok, invalidate edilecek şey yok) |
+| `CalendarScreen._load()` | `initState` + 20s timer | aynı sebep | geçici (sekmeye girilince toparlıyor, ama o ana kadar yanlış hata banner'ı) |
+
+Ortak kök neden değişmedi: `AppShell`'in `IndexedStack`'i **her** ekranı
+açılışta kuruyor, yani auth gate daha açılmadan. Gated bir backend'e
+giden o tek deneme 401 alıyor.
+
+Takvim "kendini toparlıyor" diye bırakılmadı — gösterdiği hata basitçe
+doğru değil.
+
+**Fix:** üçü de artık `authGateBlocked()` kontrol ediyor ve hata değil
+güvenli varsayılan gösteriyor. İki ekran `build()`'de kendi
+`ref.listen`'ıyla gate açılınca yükleniyor (`chat_screen.dart` deseni);
+provider `app_shell.dart`'ın merkezi listener'ından invalidate ediliyor —
+oraya `gpuInfoProvider` de eklendi, çünkü bugün yalnızca
+`auth_gate_overlay`'in 5 login yolundan invalidate ediliyor ve o liste
+gate'in açılabildiği diğer yolları görmüyor.
+
+**Doğrulama:** `flutter analyze` temiz (5 bilinen info), `flutter test`
+**249/249** (3 yeni: `gate_blocked_screens_test.dart` — widget şekli için
+hiç kapsam yoktu; artı `gate_blocked_providers_test.dart`'a 2 provider).
+**Üç yeni assertion'ın da fix'ten önce gerçekten kırıldığı doğrulandı.**
+Go tarafı bu turda değişmedi (build+vet yeşil).
+
+**Kalıcı ders AGENTS.md'ye yazıldı:** bu bug sınıfı artık **dört kez**
+düzeltildi ve her seferinde bir öncekinin taraması yanlış *şekli*
+aradığı için hayatta kalan oldu. Süpürme yapmadan önce dört şeklin
+hepsine bakılmalı: AsyncNotifier/StateNotifier build, düz FutureProvider,
+StatefulWidget initState, polling döngüsü. Üçüncüsü hiçbir provider
+odaklı graph sorgusuyla görünmez.
+
+**Not:** bu sınıf yalnızca **loopback olmayan** bir adresten gated bir
+backend'e bağlanınca üretilebiliyor — yerel masaüstü çalıştırmada gate
+hiç açılmıyor (`remoteAuthOK` loopback'e güveniyor), o yüzden geliştirme
+sırasında hiç görünmüyor.
+
+---
+
 ## Ek (2026-08-13) — BUG-ONB10: sunucu silinip yeniden kurulunca tarayıcı bayat state'te kilitleniyordu + UI varsayılanı İngilizce
 
 Kullanıcı `uninstall-selfhosted.sh` + `get-memo-server-beta.sh` ile RPi'sini

@@ -557,7 +557,14 @@ func Default() *AppConfig {
 			ReminderLeadMinutes: 30,
 		},
 		Mood: MoodConfig{
-			Enabled:  true,
+			// Off by default: the mood engine injects directives that change
+			// the assistant's tone on every message, which is a surprising
+			// thing to find already running on a fresh install. Same
+			// reasoning as WebSearch below — a feature that alters every
+			// reply should be opted into, not opted out of. Existing
+			// installs are unaffected: Load() overlays their config.yaml,
+			// which already carries an explicit mood.enabled.
+			Enabled:  false,
 			Alpha:    0.95,
 			Beta:     0.15,
 			SigmaMin: 0.10,

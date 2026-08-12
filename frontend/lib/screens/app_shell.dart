@@ -222,6 +222,9 @@ class _AppShellState extends ConsumerState<AppShell> {
         // those five call sites don't know about.
         ref.invalidate(gatewayModelsProvider);
         ref.invalidate(gpuInfoProvider);
+        // Drives whether the Swarm tab is shown at all — a stale answer
+        // here silently hands that decision to the local mirror pref.
+        ref.invalidate(remoteAccessProvider);
       }
     });
 
@@ -612,8 +615,17 @@ class _AppShellState extends ConsumerState<AppShell> {
   bool _showSwarmNav() {
     if (!kIsWeb && Platform.isMacOS) return false;
     final ra = ref.watch(remoteAccessProvider).valueOrNull;
-    if (ra != null && ra['beta'] == true) return true;
-    // Fallback to the local prefs toggle used elsewhere until remote status loads.
+    // The backend's answer is authoritative once it actually arrives — it
+    // owns cfg.Beta, the local pref is only a mirror of it. The old code
+    // fell through to that mirror whenever the answer was anything but
+    // beta:true, so a stale local true kept the Swarm tab visible against
+    // a backend with beta:false, permanently. Reported live.
+    //
+    // "Arrived" has to be tested by the key, not by non-null:
+    // remoteAccessProvider swallows its own failure into {'enabled': false},
+    // which is indistinguishable from a real response except that the real
+    // one always carries 'beta' (RemoteAccessStatus.Beta, no omitempty).
+    if (ra != null && ra.containsKey('beta')) return ra['beta'] == true;
     return ref.watch(betaFeaturesProvider);
   }
 

@@ -444,6 +444,17 @@ final syncSettingsProvider = FutureProvider<Map<String, dynamic>>((ref) async {
 // backend stayed down. Same quiet-default pattern gpuInfoProvider/
 // downloadProgressProvider already use for the same reason.
 final remoteAccessProvider = FutureProvider<Map<String, dynamic>>((ref) async {
+  // BUG-ONB11 family: another plain FutureProvider read during app start.
+  // AppShell's nav rail watches this to decide whether the Swarm tab is
+  // visible, so a 401 behind the auth gate used to cache {'enabled': false}
+  // for the session — and because that fallback carries no 'beta' key, the
+  // nav fell back to the local mirror pref forever, showing Swarm against a
+  // backend with beta:false. Returning the same shape here would defeat
+  // app_shell's containsKey('beta') check, so stay unresolved instead and
+  // let the gate-transition listener refetch.
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+    return const <String, dynamic>{};
+  }
   try {
     return await ref.read(apiClientProvider).getRemoteAccess();
   } catch (e) {

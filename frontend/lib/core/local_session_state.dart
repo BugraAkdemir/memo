@@ -26,6 +26,12 @@ const serverCoupledPrefsKeys = <String>[
   'memo_setup_complete',
   'memo_launchpad_seen',
   'memo_tour_seen',
+  // Not a device preference despite looking like one: this mirrors the
+  // backend's own cfg.Beta and is only consulted until the server answers.
+  // Carried across to a different install it gates UI (the Swarm tab) on a
+  // flag that install never set — which is exactly how Swarm stayed
+  // visible against a backend with beta:false.
+  'memo_beta_features',
 ];
 
 /// The install id (see SetupStatus.installId) this client last saw. Held
@@ -36,9 +42,9 @@ const serverInstallIdKey = 'memo_server_install_id';
 
 /// Drops every server-coupled value, leaving device preferences alone.
 ///
-/// Deliberately preserved: memo_locale, memo_theme_mode, memo_streaming
-/// and memo_beta_features (this device's preferences, not the server's),
-/// and above all memo_api_base_url — that is *how the client reaches the
+/// Deliberately preserved: memo_locale, memo_theme_mode and memo_streaming
+/// (genuinely this device's preferences, not the server's), and above all
+/// memo_api_base_url — that is *how the client reaches the
 /// backend at all*, so clearing it would strand a desktop client on
 /// localhost. Re-pointing at a different server is a separate, explicit
 /// action (ChangeServerDialog).

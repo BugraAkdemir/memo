@@ -185,6 +185,34 @@ func TestTTSDefaults(t *testing.T) {
 	}
 }
 
+// TestMoodDefaultsOff: the mood engine rewrites the assistant's tone on
+// every message, so finding it already running on a brand-new install is a
+// surprise, not a feature — same reasoning WebSearch is off by default.
+// Reported by a user who kept meeting it enabled after a fresh install.
+func TestMoodDefaultsOff(t *testing.T) {
+	if Default().Mood.Enabled {
+		t.Error("Default().Mood.Enabled = true, want false on a fresh install")
+	}
+}
+
+// TestExplicitMoodEnabledSurvivesLoad guards the other half: flipping the
+// default must not quietly disable mood for anyone who already turned it
+// on, since Load overlays their config.yaml onto Default().
+func TestExplicitMoodEnabledSurvivesLoad(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "config.yaml")
+	if err := os.WriteFile(path, []byte("mood:\n    enabled: true\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := Load(path)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if !cfg.Mood.Enabled {
+		t.Error("an explicit mood.enabled: true was lost when the default flipped")
+	}
+}
+
 func TestSwarmDefaults(t *testing.T) {
 	cfg := Default()
 	if cfg.Swarm.RPCPort != 50052 {

@@ -1,3 +1,73 @@
+## Ek (2026-08-13, devam 2) — mood varsayılanı kapatıldı, Swarm sekmesi beta kapalıyken görünüyordu (`08d0b0d`)
+
+Kullanıcı iki küçük varsayılan hatası bildirdi: (1) duygu durumu (mood)
+ilk kurulumda açık geliyor, (2) beta kapalı olmasına rağmen Swarm sekmesi
+görünebiliyor.
+
+### Mood
+
+`config.Default()` `Mood.Enabled: true` veriyordu. Mood motoru **her
+mesaja** ton direktifi enjekte ediyor — WebSearch'ün zaten kapalı
+gelmesiyle aynı gerekçe: her cevabı değiştiren bir özellik keşfedilerek
+değil, açıkça açılarak gelmeli. Kapatıldı.
+
+Dikkat: `config.yaml.example` (release arşivinin `config.yaml` olarak
+gönderdiği dosya) **zaten `false`'du** — yani sorun yalnızca
+"config dosyası hiç yok" yolundaydı, ki `Load()` orada `Default()`'u
+yazıyor. Mevcut kurulumlar etkilenmiyor (`Load()` kendi config.yaml'larını
+üstüne biniyor); `TestExplicitMoodEnabledSurvivesLoad` bunu sabitliyor, ki
+varsayılanı çevirmek mood'u açık tutan birinin ayarını sessizce
+kapatamasın.
+
+### Swarm — iki katmanlı, ikisi de gerçek
+
+**1. `_showSwarmNav()`'ın fallback mantığı yanlıştı.** Kod şuydu:
+```dart
+if (ra != null && ra['beta'] == true) return true;
+return ref.watch(betaFeaturesProvider);   // yerel prefs aynası
+```
+Yorumu "remote status yüklenene kadar fallback" diyordu ama kod, cevap
+`beta:true` **dışında ne olursa olsun** yerel aynaya düşüyordu — sapasağlam
+bir `beta:false` dahil. Yani bayat bir yerel `true` kalıcı olarak kazanıyordu.
+Backend `cfg.Beta`'nın sahibi; yerel pref sadece cevap gelene kadar
+danışılan bir ayna.
+
+**2. `remoteAccessProvider` de korumasızdı (BUG-ONB11 şekli).** Gate
+arkasında açılışta 401 alıp `{'enabled': false}` önbelleğe alıyordu — içinde
+`'beta'` anahtarı olmayan bir map, ki bu "henüz cevap gelmedi"den
+ayırt edilemez. Sonuç: nav kararı tüm oturum boyunca yerel aynaya
+devrediliyordu.
+
+**Fix:** provider gate kapalıyken **boş** map dönüyor (yanlışlıkla gerçek
+cevap gibi görünmesin diye) ve `app_shell`'in merkezi listener'ından
+invalidate ediliyor; `_showSwarmNav` artık `containsKey('beta')` ile test
+ediyor — gerçek bir `beta:false` onurlandırılıyor, gerçek bir fallback
+hâlâ erteliyor.
+
+**`memo_beta_features` `serverCoupledPrefsKeys`'e taşındı.** Cihaz tercihi
+gibi duruyor ama sunucu config'inin aynası; başka bir kuruluma taşınması,
+o kurulumun hiç set etmediği bir bayrağa göre UI kapılamak demek — aynı
+bug'ın başka bir yolu.
+
+### Doğrulama
+
+Go build/vet/test `-race` yeşil (2 yeni config testi); `flutter analyze`
+temiz (5 bilinen info), `flutter test` **251/251** (2 yeni). Yeni
+`remote_access_gate_test.dart`'ın fix'ten önce kırıldığı doğrulandı
+(`Expected: empty, Actual: {'enabled': false}`).
+
+RPi'nin kendi config'i SSH ile kontrol edildi: `mood: enabled: false`,
+`beta: false` — yani sunucu tarafı zaten doğruydu, iki bug da tamamen
+istemci/varsayılan tarafındaydı.
+
+**Test tuzağı (tekrar karşılaşılırsa):** gate kontrolü ekleyen bir
+provider'ı test ederken `authGateProvider` override'ının stream'i henüz
+ilk event'ini vermeden `build()` senkron koşuyor, bu yüzden her senaryo
+"blocked" görünüyor. Önce `container.read(authGateProvider.future)`
+await'lenmeli — `settings_toggle_race_test.dart` de aynı tuzağa düşmüştü.
+
+---
+
 ## Ek (2026-08-13, devam) — BUG-ONB11: BUG-ONB6 taramasından kaçan 3 başlangıç isteği (`02b762b`)
 
 Kullanıcı masaüstü uygulamasından RPi'ye bağlıyken iki ekran görüntüsü

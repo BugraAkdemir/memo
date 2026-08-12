@@ -196,17 +196,19 @@ func (s *Server) callerIsAdmin(r *http.Request) bool {
 }
 
 // isSetupBootstrapPath reports whether path is one of the unauthenticated
-// first-run setup endpoints (Faz 5.1, yapacam.md) — both must be reachable
-// with no credential (there is none yet), including their /api/v1/
-// aliases. GET /api/setup/status only ever reveals a boolean and the
-// current auth mode (no secrets); POST /api/setup/create-admin enforces
-// its own one-time-only gate internally (App.NeedsSetup) rather than
-// relying on remoteAuthMiddleware, since after the first successful call
-// it must keep returning 403 forever, not start requiring a credential
-// that no client fetching this "is setup needed" screen would have.
+// first-run setup endpoints (Faz 5.1, yapacam.md) — all three must be
+// reachable with no credential (there is none yet), including their
+// /api/v1/ aliases. GET /api/setup/status only ever reveals a boolean and
+// the current auth mode (no secrets); POST /api/setup/create-admin and
+// POST /api/setup/create-device each enforce their own one-time-only gate
+// internally (App.NeedsSetup) rather than relying on remoteAuthMiddleware,
+// since after the first successful call they must keep returning 403
+// forever, not start requiring a credential that no client fetching this
+// "is setup needed" screen would have.
 func isSetupBootstrapPath(path string) bool {
 	return path == "/api/setup/status" || path == "/api/v1/setup/status" ||
-		path == "/api/setup/create-admin" || path == "/api/v1/setup/create-admin"
+		path == "/api/setup/create-admin" || path == "/api/v1/setup/create-admin" ||
+		path == "/api/setup/create-device" || path == "/api/v1/setup/create-device"
 }
 
 // handleSetupStatus implements GET /api/setup/status — unauthenticated
@@ -270,6 +272,40 @@ func (s *Server) handleSetupCreateAdmin(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 	writeJSON(w, map[string]string{"session_token": token, "role": "admin"})
+}
+
+// handleSetupCreateDevice implements POST /api/setup/create-device — the
+// token-only counterpart to handleSetupCreateAdmin above, same reasoning:
+// unauthenticated (see isSetupBootstrapPath), only actually succeeds while
+// App.NeedsSetup() is true (App.BootstrapTokenAuth's own self-gating).
+// Returns the plaintext device token exactly once, the same as the
+// authenticated POST /api/remote-access/devices normally would.
+func (s *Server) handleSetupCreateDevice(w http.ResponseWriter, r *http.Request) {
+	if s.fullBridge == nil {
+		http.Error(w, "not available", http.StatusNotImplemented)
+		return
+	}
+	if r.Method != http.MethodPost {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Name string `json:"name"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	token, err := s.fullBridge.BootstrapTokenAuth(req.Name)
+	if err != nil {
+		status := http.StatusBadRequest
+		if !s.fullBridge.NeedsSetup() {
+			status = http.StatusForbidden
+		}
+		http.Error(w, err.Error(), status)
+		return
+	}
+	writeJSON(w, map[string]string{"token": token})
 }
 
 // handleAccounts implements GET (list) and POST (create) on /api/accounts.

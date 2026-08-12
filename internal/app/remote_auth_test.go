@@ -377,6 +377,78 @@ func TestCreateAdminAccount_PreservesTokenPasswordMode(t *testing.T) {
 	}
 }
 
+func TestBootstrapTokenAuth_Succeeds(t *testing.T) {
+	a := newAccountsApp(t)
+	token, err := a.BootstrapTokenAuth("Auth setup")
+	if err != nil {
+		t.Fatalf("BootstrapTokenAuth: %v", err)
+	}
+	if token == "" {
+		t.Fatal("expected a non-empty device token")
+	}
+	if a.cfg.RemoteAccess.AuthMode != "token" {
+		t.Errorf("AuthMode = %q, want %q", a.cfg.RemoteAccess.AuthMode, "token")
+	}
+	if !a.VerifyRemoteDeviceToken(token) {
+		t.Error("expected the returned token to verify as a valid device token")
+	}
+}
+
+// TestBootstrapTokenAuth_FlipsNeedsSetup guards the actual bug reported
+// live: the token-only setup path never created an Accounts entry, so
+// NeedsSetup() stayed true forever after it — which meant every later
+// probeAuth() 401 (a rotated/revoked device token, a momentary network
+// blip misread as unauthorized) permanently cleared the frontend's local
+// "setup already declined" flag and threw a working install back into the
+// full first-run wizard. Without SetupBootstrapped, this assertion fails
+// (NeedsSetup stays true).
+func TestBootstrapTokenAuth_FlipsNeedsSetup(t *testing.T) {
+	a := newAccountsApp(t)
+	if !a.NeedsSetup() {
+		t.Fatal("expected a fresh install to need setup before bootstrapping")
+	}
+	if _, err := a.BootstrapTokenAuth("Auth setup"); err != nil {
+		t.Fatalf("BootstrapTokenAuth: %v", err)
+	}
+	if a.NeedsSetup() {
+		t.Error("expected NeedsSetup to be false immediately after token bootstrap")
+	}
+}
+
+func TestBootstrapTokenAuth_FailsWhenAlreadySetUp(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.BootstrapTokenAuth("Auth setup"); err != nil {
+		t.Fatalf("first BootstrapTokenAuth: %v", err)
+	}
+	if _, err := a.BootstrapTokenAuth("Another device"); err == nil {
+		t.Fatal("expected a second bootstrap call to be rejected")
+	}
+}
+
+// TestBootstrapTokenAuth_FailsAfterAdminAccountCreated and its mirror below
+// guard the cross-path race the re-check-under-lock comments call out:
+// whichever first-run bootstrap method wins must permanently close the
+// other one too, not just its own.
+func TestBootstrapTokenAuth_FailsAfterAdminAccountCreated(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.CreateAdminAccount("alice", "hunter2"); err != nil {
+		t.Fatalf("CreateAdminAccount: %v", err)
+	}
+	if _, err := a.BootstrapTokenAuth("Auth setup"); err == nil {
+		t.Fatal("expected token bootstrap to be rejected once an admin account already exists")
+	}
+}
+
+func TestCreateAdminAccount_FailsAfterTokenBootstrap(t *testing.T) {
+	a := newAccountsApp(t)
+	if _, err := a.BootstrapTokenAuth("Auth setup"); err != nil {
+		t.Fatalf("BootstrapTokenAuth: %v", err)
+	}
+	if _, err := a.CreateAdminAccount("alice", "hunter2"); err == nil {
+		t.Fatal("expected admin account creation to be rejected once token bootstrap already ran")
+	}
+}
+
 func TestLoginRemotePassword_UsesAccountsAndReturnsRole(t *testing.T) {
 	a := newAccountsApp(t)
 	if _, err := a.CreateAdminAccount("alice", "adminpass"); err != nil {

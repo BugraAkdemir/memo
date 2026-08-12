@@ -42,6 +42,10 @@ class _StatefulAuthAdapter implements HttpClientAdapter {
       authed = true;
       return _json(200, {'session_token': 'sess', 'role': 'admin'});
     }
+    if (options.path == '/api/setup/create-device') {
+      authed = true;
+      return _json(200, {'token': 'dev-tok-123'});
+    }
     if (options.path == '/api/version' && authed) return _json(200, {});
     return _json(500, null);
   }
@@ -139,6 +143,37 @@ void main() {
     );
     // gate kapandı (ok) — AuthGateOverlay boş döndü
     expect(find.text(L10n.t('auth_gate_other_devices_question')), findsNothing);
+  });
+
+  // Regression test for the reported bug: the token-only first-run choice
+  // used to call the authenticated /api/remote-access + /api/remote-access/
+  // devices endpoints as its very first network calls, with no credential
+  // yet — 401s from any non-loopback client. It must go through the single
+  // unauthenticated /api/setup/create-device endpoint instead, and never
+  // touch the authenticated pair during setup.
+  testWidgets('first run: token-only setup flow calls create-device, not remote-access', (tester) async {
+    final adapter = _StatefulAuthAdapter({
+      '/api/setup/status': (200, {'needs_setup': true, 'auth_mode': 'token'}),
+    });
+    await pump(tester, adapter);
+    await tester.tap(find.text(L10n.t('auth_gate_other_devices_yes')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(L10n.t('auth_gate_method_token')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text(L10n.t('auth_gate_generate_token')));
+    await tester.pumpAndSettle();
+
+    expect(
+      adapter.requests.any((r) => r.path == '/api/setup/create-device'),
+      isTrue,
+    );
+    expect(
+      adapter.requests.any((r) =>
+          r.path == '/api/remote-access' || r.path == '/api/remote-access/devices'),
+      isFalse,
+    );
+    // step 2: generated token shown, ready to be pasted back in.
+    expect(find.text('dev-tok-123'), findsOneWidget);
   });
 
   testWidgets('setup mismatch: password confirmation error shown, no request', (tester) async {

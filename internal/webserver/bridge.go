@@ -168,6 +168,10 @@ type FullBridge interface {
 	// see internal/app/install_id.go.
 	InstallID() string
 	CreateAdminAccount(username, password string) (token string, err error)
+	// BootstrapTokenAuth is the token-only counterpart to CreateAdminAccount
+	// — see its own doc comment (internal/app/remote_auth.go) for why the
+	// token-only first-run path needs a bootstrap call of its own.
+	BootstrapTokenAuth(deviceName string) (token string, err error)
 	SessionRole(token string) (role string, ok bool)
 	ListAccounts() interface{}
 	CreateAccount(username, password, role string) error

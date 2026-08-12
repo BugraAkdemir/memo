@@ -279,6 +279,20 @@ type RemoteAccessConfig struct {
 	// setup becomes this list's first ("admin") entry automatically, with
 	// no action required from the user and no loss of access.
 	Accounts []Account `yaml:"accounts" json:"-"`
+
+	// SetupBootstrapped is set once the token-only first-run path
+	// (App.BootstrapTokenAuth, POST /api/setup/create-device) completes.
+	// NeedsSetup() otherwise only ever looks at Accounts/Username, both of
+	// which the token-only path deliberately never touches — without this
+	// flag, a token-only install would report needs_setup=true forever and
+	// every unauthenticated bootstrap endpoint gated on NeedsSetup() would
+	// stay reachable indefinitely instead of closing after first use, the
+	// same way create-admin's does via Accounts. The admin-account path
+	// doesn't need this (Accounts alone already flips NeedsSetup() false),
+	// but BootstrapTokenAuth sets it too for symmetry, so NeedsSetup() has a
+	// single, complete definition of "first run already happened" no matter
+	// which of the two bootstrap paths a client took.
+	SetupBootstrapped bool `yaml:"setup_bootstrapped" json:"-"`
 }
 
 // RemoteDevice is one paired client's access record. Only TokenHash is ever

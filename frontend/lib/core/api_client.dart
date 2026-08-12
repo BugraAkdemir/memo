@@ -1404,6 +1404,19 @@ class MemoApiClient {
     return _guard<Map<String, dynamic>>(res.data)['session_token'] as String? ?? '';
   }
 
+  /// Creates the first device token for the token-only first-run setup
+  /// choice (only valid while the backend reports needs_setup) — the
+  /// unauthenticated counterpart to [createRemoteDevice], which requires a
+  /// credential this client doesn't have yet at this point in setup. Sets
+  /// the backend's auth mode to "token" as part of the same call.
+  Future<String> setupCreateDevice(String name) async {
+    final res = await _dio.post(
+      '/api/setup/create-device',
+      data: {'name': name},
+    );
+    return _guard<Map<String, dynamic>>(res.data)['token'] as String? ?? '';
+  }
+
   /// Password login; returns the session token and the account's role.
   /// [remember] requests the longer "remember me" session lifetime
   /// (backend: remoteauth.RememberSessionTTL) instead of the default 12h.

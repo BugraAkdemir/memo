@@ -418,7 +418,9 @@ func (a *App) sessionSubjectRole(token string) (subject, role string, ok bool) {
 func (a *App) NeedsSetup() bool {
 	a.remoteAccountsMu.Lock()
 	defer a.remoteAccountsMu.Unlock()
-	return len(a.cfg.RemoteAccess.Accounts) == 0 && a.cfg.RemoteAccess.Username == ""
+	return len(a.cfg.RemoteAccess.Accounts) == 0 &&
+		a.cfg.RemoteAccess.Username == "" &&
+		!a.cfg.RemoteAccess.SetupBootstrapped
 }
 
 // CreateAdminAccount creates the very first Accounts entry (always Role
@@ -455,8 +457,10 @@ func (a *App) CreateAdminAccount(username, password string) (string, error) {
 	a.remoteAccountsMu.Lock()
 	// Re-check under lock: NeedsSetup() above raced no lock at all, so two
 	// concurrent bootstrap requests could otherwise both pass it and both
-	// append an account.
-	if len(a.cfg.RemoteAccess.Accounts) > 0 || a.cfg.RemoteAccess.Username != "" {
+	// append an account. SetupBootstrapped is included too, guarding against
+	// a race with the token-only bootstrap path (BootstrapTokenAuth) below.
+	if len(a.cfg.RemoteAccess.Accounts) > 0 || a.cfg.RemoteAccess.Username != "" ||
+		a.cfg.RemoteAccess.SetupBootstrapped {
 		a.remoteAccountsMu.Unlock()
 		return "", fmt.Errorf("setup already completed")
 	}
@@ -486,6 +490,47 @@ func (a *App) CreateAdminAccount(username, password string) (string, error) {
 		return "", fmt.Errorf("issue session token: %w", err)
 	}
 	return token, nil
+}
+
+// BootstrapTokenAuth is the token-only counterpart to CreateAdminAccount:
+// the first-run "just give me a device token, no account" setup choice has
+// no account/username of its own to flip NeedsSetup() false, so without
+// this it would depend on NeedsSetup() staying true forever (see
+// SetupBootstrapped's doc comment on RemoteAccessConfig). Sets AuthMode to
+// "token" and creates the very first device token as one atomic operation,
+// self-gated on NeedsSetup() the same way CreateAdminAccount is — reachable
+// with no credential (POST /api/setup/create-device, see
+// isSetupBootstrapPath) only because it can never succeed a second time.
+//
+// Before this existed, the token-only setup screen's two calls
+// (PUT /api/remote-access then POST /api/remote-access/devices) went
+// through the normal, authenticated remoteAuthMiddleware — which a
+// first-run client with no credential at all can only pass from a loopback
+// source. Every non-loopback attempt (a phone/desktop client setting up a
+// remote server over LAN, the exact case the other two setup methods are
+// for) 401'd on the very first call, deterministically.
+func (a *App) BootstrapTokenAuth(deviceName string) (string, error) {
+	a.remoteAccountsMu.Lock()
+	// Same re-check-under-lock reasoning as CreateAdminAccount: NeedsSetup()
+	// above (if a caller checked it) races no lock, so two concurrent
+	// bootstrap requests — of either kind — could otherwise both pass.
+	if len(a.cfg.RemoteAccess.Accounts) > 0 || a.cfg.RemoteAccess.Username != "" ||
+		a.cfg.RemoteAccess.SetupBootstrapped {
+		a.remoteAccountsMu.Unlock()
+		return "", fmt.Errorf("setup already completed")
+	}
+	a.cfg.RemoteAccess.AuthMode = "token"
+	a.cfg.RemoteAccess.SetupBootstrapped = true
+	err := config.Save(a.cfg)
+	a.remoteAccountsMu.Unlock()
+	if err != nil {
+		return "", fmt.Errorf("save config: %w", err)
+	}
+	a.emitEvent("remote_auth:token_bootstrapped", deviceName)
+	// CreateRemoteDevice takes its own, separate lock (remoteDevicesMu) — no
+	// deadlock risk, and this call happens after remoteAccountsMu is already
+	// released above.
+	return a.CreateRemoteDevice(deviceName)
 }
 
 // ListAccounts returns every account's metadata (never the password hash

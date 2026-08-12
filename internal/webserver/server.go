@@ -219,6 +219,7 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	// Multi-account / role model (Faz 5.1, yapacam.md)
 	route("/api/setup/status", s.handleSetupStatus)
 	route("/api/setup/create-admin", s.handleSetupCreateAdmin)
+	route("/api/setup/create-device", s.handleSetupCreateDevice)
 	route("/api/accounts", s.handleAccounts)
 	route("/api/accounts/{id}", s.handleAccountByID)
 	route("/api/accounts/{id}/password", s.handleAccountByID)

@@ -199,13 +199,24 @@ func TestRemoteAuthOK_EmptyCredentialFailsClosed(t *testing.T) {
 // ── Faz 5.1 (yapacam.md): first-run bootstrap + admin-only gating ──────
 
 func TestIsSetupBootstrapPath(t *testing.T) {
-	yes := []string{"/api/setup/status", "/api/v1/setup/status", "/api/setup/create-admin", "/api/v1/setup/create-admin"}
+	yes := []string{
+		"/api/setup/status", "/api/v1/setup/status",
+		"/api/setup/create-admin", "/api/v1/setup/create-admin",
+		"/api/setup/create-device", "/api/v1/setup/create-device",
+	}
 	for _, p := range yes {
 		if !isSetupBootstrapPath(p) {
 			t.Errorf("expected %q to be recognized as a setup bootstrap path", p)
 		}
 	}
-	no := []string{"/api/setup", "/api/accounts", "/api/auth/login", "/api/setup/status/"}
+	no := []string{
+		"/api/setup", "/api/accounts", "/api/auth/login", "/api/setup/status/",
+		// Regression guard for the bug create-device fixes: these two stay
+		// authenticated on purpose — BootstrapTokenAuth (create-device) is
+		// the unauthenticated path for a first-run client with no
+		// credential at all; these are for a client that already has one.
+		"/api/remote-access", "/api/remote-access/devices",
+	}
 	for _, p := range no {
 		if isSetupBootstrapPath(p) {
 			t.Errorf("expected %q to NOT be recognized as a setup bootstrap path", p)
@@ -331,6 +342,63 @@ func TestHandleSetupCreateAdmin_ClosesPermanentlyAfterFirstSuccess(t *testing.T)
 	req := httptest.NewRequest(http.MethodPost, "/api/setup/create-admin", strings.NewReader(`{"username":"mallory","password":"hunter2"}`))
 	w := httptest.NewRecorder()
 	s.handleSetupCreateAdmin(w, req)
+
+	if w.Code != http.StatusForbidden {
+		t.Fatalf("got status %d, want 403, body: %s", w.Code, w.Body.String())
+	}
+}
+
+// TestHandleSetupCreateDevice_SucceedsWhileSetupNeeded and the two tests
+// below guard the actual reported bug: before create-device existed, the
+// token-only setup screen's first call went through the normal,
+// authenticated remote-access endpoints and 401'd for any non-loopback
+// client (reported live from a Raspberry Pi over LAN, 2026-08-13).
+func TestHandleSetupCreateDevice_SucceedsWhileSetupNeeded(t *testing.T) {
+	stub := &swarmStubBridge{
+		needsSetup: true,
+		bootstrapTokenAuth: func(deviceName string) (string, error) {
+			if deviceName != "Auth setup" {
+				t.Errorf("got deviceName=%q, want %q", deviceName, "Auth setup")
+			}
+			return "a-fresh-device-token", nil
+		},
+	}
+	s := New(stub)
+
+	// No X-Memo-Token/Authorization header at all — matching a genuine
+	// first-run client, and the whole point of this endpoint being in
+	// isSetupBootstrapPath's exemption list (see remoteAuthMiddleware,
+	// which routes here without ever calling this handler with a missing
+	// credential rejected).
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/create-device", strings.NewReader(`{"name":"Auth setup"}`))
+	w := httptest.NewRecorder()
+	s.handleSetupCreateDevice(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), "a-fresh-device-token") {
+		t.Errorf("expected the device token in the response body, got %s", w.Body.String())
+	}
+}
+
+// TestHandleSetupCreateDevice_ClosesPermanentlyAfterFirstSuccess mirrors
+// TestHandleSetupCreateAdmin_ClosesPermanentlyAfterFirstSuccess — same
+// self-gating contract, so a second bootstrap attempt (or an attempt
+// against a server that already completed setup by either path) must be
+// rejected, not silently mint another unauthenticated device token forever.
+func TestHandleSetupCreateDevice_ClosesPermanentlyAfterFirstSuccess(t *testing.T) {
+	stub := &swarmStubBridge{
+		needsSetup: false, // simulates a server restarted after bootstrap already completed
+		bootstrapTokenAuth: func(deviceName string) (string, error) {
+			return "", errors.New("setup already completed")
+		},
+	}
+	s := New(stub)
+
+	req := httptest.NewRequest(http.MethodPost, "/api/setup/create-device", strings.NewReader(`{"name":"Another device"}`))
+	w := httptest.NewRecorder()
+	s.handleSetupCreateDevice(w, req)
 
 	if w.Code != http.StatusForbidden {
 		t.Fatalf("got status %d, want 403, body: %s", w.Code, w.Body.String())

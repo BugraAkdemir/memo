@@ -54,6 +54,7 @@ type swarmStubBridge struct {
 	needsSetup         bool
 	installID          string
 	createAdminAccount func(username, password string) (string, error)
+	bootstrapTokenAuth func(deviceName string) (string, error)
 	sessionRole        func(token string) (string, bool)
 	listAccounts       func() interface{}
 	createAccount      func(username, password, role string) error
@@ -294,6 +295,12 @@ func (b *swarmStubBridge) InstallID() string                             { retur
 func (b *swarmStubBridge) CreateAdminAccount(username, password string) (string, error) {
 	if b.createAdminAccount != nil {
 		return b.createAdminAccount(username, password)
+	}
+	return "", nil
+}
+func (b *swarmStubBridge) BootstrapTokenAuth(deviceName string) (string, error) {
+	if b.bootstrapTokenAuth != nil {
+		return b.bootstrapTokenAuth(deviceName)
 	}
 	return "", nil
 }

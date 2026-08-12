@@ -222,8 +222,15 @@ class _SetupGateViewState extends ConsumerState<_SetupGateView> {
       if (_method == 'token') {
         // Sadece token: mode=token + device token üret; kullanıcı token'ı
         // sonraki adımda alana yapıştırır.
-        await api.setRemoteAuthConfig('token');
-        final plain = await api.createRemoteDevice('Auth setup');
+        //
+        // setRemoteAuthConfig + createRemoteDevice ayrı ayrı çağrılmıyor
+        // artık: ikisi de authenticated /api/ uçları, ama bu noktada elde
+        // henüz hiçbir kimlik yok (ilk kurulum). Loopback olmayan bir
+        // istemciden (örn. RPi'ye LAN üzerinden bağlanan masaüstü
+        // uygulaması) bu ilk çağrı kesin olarak 401 alıyordu — setupCreateAdmin
+        // gibi bootstrap-exempt tek bir uca ihtiyaç vardı, o da
+        // setupCreateDevice (POST /api/setup/create-device).
+        final plain = await api.setupCreateDevice('Auth setup');
         await prefs.setBool(authSetupDoneKey, true);
         if (!mounted) return;
         setState(() {

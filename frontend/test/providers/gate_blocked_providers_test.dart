@@ -43,6 +43,35 @@ class _UnauthorizedAdapter implements HttpClientAdapter {
   void close({bool force = false}) {}
 }
 
+/// Answers 500 for one specific path, 200/empty for everything else —
+/// models a genuine transient failure on a single ambiently-watched
+/// endpoint while the rest of the (gate-open) app works normally.
+class _FailingPathAdapter implements HttpClientAdapter {
+  _FailingPathAdapter(this.failingPath);
+  final String failingPath;
+  final Map<String, int> calls = {};
+
+  @override
+  Future<ResponseBody> fetch(
+    RequestOptions options,
+    Stream<Uint8List>? requestStream,
+    Future<void>? cancelFuture,
+  ) async {
+    calls[options.path] = (calls[options.path] ?? 0) + 1;
+    if (options.path == failingPath) {
+      return ResponseBody.fromString('{"error":"boom"}', 500, headers: {
+        Headers.contentTypeHeader: [Headers.jsonContentType],
+      });
+    }
+    return ResponseBody.fromString('{}', 200, headers: {
+      Headers.contentTypeHeader: [Headers.jsonContentType],
+    });
+  }
+
+  @override
+  void close({bool force = false}) {}
+}
+
 // BUG-ONB6, systemic pass: reported live by the user across Settings and
 // Developer Options, not just the chat screen — audited with codebase-
 // memory and found in every AsyncNotifier below (plus swarmStatusProvider,
@@ -125,6 +154,50 @@ void main() {
     expect(adapter.calls, isEmpty,
         reason: 'no gate-sensitive provider should attempt a request while '
             'the login/setup gate is still up — got: ${adapter.calls}');
+  });
+
+  // Reported live (2026-08-13): even with the gate open, orchestraConfigProvider's
+  // build() rethrew any fetch failure into errorMessageProvider — but it's
+  // watched ambiently by the always-visible engine strip and chat input bar
+  // (engine_strip.dart, chat_input.dart), not just the Orchestra dialog/
+  // settings tab a user chose to open. A transient failure (flaky LAN link
+  // to a self-hosted backend, a momentary 500) surfaced a SnackBar reading
+  // "Orchestra yapılandırması alınamadı" with no relation to anything the
+  // user was doing — including while Orchestra itself was off. Fixed the
+  // same way activeProviderTypeProvider/remoteAccessProvider already were:
+  // degrade to the safe default silently, no toast.
+  test('orchestraConfigProvider stays silent on a non-gate fetch failure', () async {
+    SharedPreferences.setMockInitialValues({});
+    final prefs = await SharedPreferences.getInstance();
+    final adapter = _FailingPathAdapter('/api/orchestra/config');
+    final client = MemoApiClient(baseUrl: 'http://memo.test');
+    client.dio.httpClientAdapter = adapter;
+
+    final container = ProviderContainer(overrides: [
+      apiClientProvider.overrideWithValue(client),
+      prefsProvider.overrideWithValue(prefs),
+      authGateProvider.overrideWith(
+        (ref) => Stream.value(const AuthGateInfo(AuthGateState.ok)),
+      ),
+    ]);
+    addTearDown(container.dispose);
+
+    // Test trap (documented 2026-08-13, mood/Swarm default fix session):
+    // authGateProvider's override stream hasn't delivered its first event
+    // yet when build() runs synchronously on the very first read, so
+    // authGateBlocked() sees null (== blocked) and orchestraConfigProvider
+    // would short-circuit to the safe default *without ever calling the
+    // API* — passing the assertions below for the wrong reason. Await the
+    // gate's own future first so it's genuinely "ok" before exercising the
+    // fetch-failure path.
+    await container.read(authGateProvider.future);
+
+    final orchestra = await container.read(orchestraConfigProvider.future);
+    expect(orchestra.enabled, false);
+    expect(adapter.calls['/api/orchestra/config'], greaterThan(0),
+        reason: 'the fetch must actually have been attempted for this test '
+            'to mean anything');
+    expect(container.read(errorMessageProvider), isEmpty);
   });
 
   test('swarmStatusProvider (a StateNotifier, not AsyncNotifier) also stays blocked',

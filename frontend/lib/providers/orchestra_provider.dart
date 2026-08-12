@@ -30,9 +30,18 @@ class OrchestraConfigNotifier extends AsyncNotifier<OrchestraConfig> {
     try {
       return await ref.read(apiClientProvider).getOrchestraConfig();
     } catch (e) {
+      // Deliberately silent on failure, same reasoning and same fix as
+      // activeProviderTypeProvider/remoteAccessProvider (see their own
+      // comments): this is watched ambiently from the always-visible engine
+      // strip and chat input bar (engine_strip.dart, chat_input.dart), not
+      // just the Orchestra dialog/settings tab a user chose to open — those
+      // two already show this same error inline via their own `.when()`
+      // error branch, so rethrowing into errorMessageProvider here only
+      // ever added a redundant, ambiently-spammed SnackBar (reported live:
+      // a transient failure while Orchestra was off kept surfacing an
+      // "Orchestra yapılandırması alınamadı" toast with no relation to
+      // anything the user was doing).
       debugPrint('orchestra: build error: ${FriendlyError.describeGeneric(e)}');
-      ref.read(errorMessageProvider.notifier).state =
-          '${L10n.t('error')}: Orchestra yapılandırması alınamadı (${FriendlyError.describeGeneric(e)})';
       return const OrchestraConfig();
     }
   }

@@ -1,3 +1,48 @@
+## Ek (2026-08-13, devam 3) — RPi canlı testinden 3 bulgu: token-only kurulum 401'i + Orchestra toast spam'i + genel "web tarafı garip" taraması
+
+Kullanıcı, önceki oturumun BUG-ONB10 fix'ini RPi'ye çıkarıp canlı test ettikten sonra üç şey bildirdi: (1) hesap kurulumunda "username+şifre" ve "sadece token" seçenekleri "garip davranıyor, bazen çalışıyor bazen çalışmıyor"; (2) alttaki toast bar'da, Orchestra kapalı olmasına rağmen sık sık "Orchestra'da bir hata oluştu" benzeri bir mesaj çıkıyor (`friendly_error.dart`'a bakılması istendi); (3) genel olarak "web tarafında garip bir davranış" var, kontrol edilmesi istendi. Üçüncüsü ayrı bir bug çıkmadı — ilk ikisinin belirtisiydi, ikisi de yalnızca loopback olmayan (LAN/self-hosted) bir bağlantıda ortaya çıkıyor.
+
+### Bug A — Orchestra toast spam (kod okumasıyla bulundu, kanıtlandı)
+
+`orchestra_provider.dart`'ın `OrchestraConfigNotifier.build()`'i BUG-ONB6 fix'ini (`authGateBlocked()` kontrolü) zaten taşıyordu, ama gate açıkken **herhangi bir başka** hatada (RPi'nin LAN bağlantısındaki geçici bir hıçkırık, backend'in o an meşgul olması) hâlâ `errorMessageProvider`'a toast basıyordu. Sorun: bu provider'ı **ambient** iki widget izliyor — `engine_strip.dart` (her zaman görünen üst şerit) ve `chat_input.dart` (sohbet giriş çubuğundaki Orchestra ikonu). Yani Orchestra hiç açılmamış olsa bile arka planda config çekilirken bir hata olduğunda toast basılıyordu. Aynı bug daha önce iki kardeş provider'da (`activeProviderTypeProvider`, `remoteAccessProvider`, BUG-ONB6 sistematik geçişinde) yaşanmış ve sessiz hale getirilmişti — Orchestra bu düzeltmeyi hiç almamıştı. `orchestra_config_dialog.dart`/`orchestra_tab.dart` zaten kendi ekranlarında satır içi hata gösteriyor, yani global toast tamamen gereksiz gürültüydü.
+
+**Fix (`orchestra_provider.dart`):** `build()`'in catch'inden `errorMessageProvider` çağrısı kaldırıldı, `debugPrint`'e düşürüldü (established pattern). Yeni regresyon testi `gate_blocked_providers_test.dart`'a eklendi (`orchestraConfigProvider stays silent on a non-gate fetch failure`) — gate açık ama `/api/orchestra/config` 500 dönerken `errorMessageProvider`'ın boş kaldığını doğruluyor. **Test tuzağına iki kez düşüldü, ikisi de düzeltildi:** (1) ilk yazımda `authGateProvider.future`'ı önce await etmeden test edildi — override stream'i henüz ilk event'ini vermeden `build()` senkron koştuğu için `authGateBlocked(null)==true` oldu ve istek hiç atılmadan "geçti" (yanlış nedenle) — mood/Swarm oturumunda (yukarıdaki "Ek") tam olarak dokümante edilen aynı tuzak; `await container.read(authGateProvider.future)` eklenip `adapter.calls[...] > 0` assertion'ı eklenerek düzeltildi. (2) fix'in gerçekten işe yaradığını doğrularken `git stash pop` unutulup bir tur eski koda karşı "fixed" olarak test koşuldu — fark edilip düzeltildi. Doğru sırayla: eski kod → test fail (`Actual: 'Error: Orchestra yapılandırması alınamadı (boom)'`), yeni kod → test pass.
+
+### Bug B — Token-only ("sadece token") kurulum, loopback olmayan istemciden her zaman 401 ile patlıyor
+
+`auth_gate_overlay.dart`'ın `_SetupGateViewState._submit()`'inde üç yöntem var: `password`, `token_password`, `token`. Kod okumasıyla bulundu:
+
+- **password / token_password**: ilk çağrı her zaman `setupCreateAdmin` → `POST /api/setup/create-admin`, kasıtlı olarak kimlik doğrulamasız (`isSetupBootstrapPath`). Başarılı olunca geçerli bir session token dönüyor **ve** `CreateAdminAccount` backend'in `AuthMode`'unu otomatik `token`→`password`'e yükseltiyor (`internal/app/remote_auth.go`) — sonraki çağrılar bu token ile geçiyor.
+- **sadece token**: ilk çağrı doğrudan `setRemoteAuthConfig('token')` → `PUT /api/remote-access` idi. Bu endpoint `isSetupBootstrapPath` listesinde **yoktu**. Bu noktada elde hiç kimlik yok (ilk kurulum, henüz hesap/cihaz yok). `remoteAuthOK` (`internal/webserver/server.go`) loopback olmayan + boş credential isteğini kesin reddediyor → **her seferinde 401**, rastgele değil deterministik. RPi'ye masaüstü uygulamasından (loopback olmayan) bağlanınca bu yol hiç çalışamıyordu; loopback'ten (RPi'nin kendi tarayıcısı) denenirse görünmüyor — "bazen çalışıyor bazen çalışmıyor" izlenimi muhtemelen buradan.
+
+**Fix — `create-admin` ile aynı desende yeni bir self-gating bootstrap endpoint'i eklendi** (kullanıcı onayıyla: "sana kalmış kanka, memo'ya uygun fesefelerine uygun olsun"):
+
+| Dosya | Değişiklik |
+|---|---|
+| `internal/config/config.go` | `RemoteAccessConfig.SetupBootstrapped bool` eklendi — token-only yol `Accounts`/`Username`'e hiç dokunmadığı için `NeedsSetup()`'ın tek başına bunlara bakması, token-only kurulumdan sonra `needs_setup`'ın **sonsuza dek true kalması** demekti (ayrı, daha derin bir sorun — client'ın `declined` + reachability-probe fallback'ine sonsuza dek bağımlı kalması, herhangi bir gelecekteki 401'in kalıcı olarak kurulum ekranına geri atması riski). |
+| `internal/app/remote_auth.go` | `NeedsSetup()` artık `!SetupBootstrapped`'i de kontrol ediyor. Yeni `App.BootstrapTokenAuth(deviceName string) (string, error)` — `CreateAdminAccount`'ın token-only karşılığı: `NeedsSetup()` true iken tek seferlik, atomik olarak `AuthMode='token'` set edip ilk cihazı oluşturuyor. `CreateAdminAccount`'ın re-check-under-lock'ı da `SetupBootstrapped`'i kontrol edecek şekilde güncellendi (çapraz yol yarışı: biri kapanınca öbürü de kapanmalı). |
+| `internal/webserver/handlers_auth.go` | `handleSetupCreateDevice` (`create-admin` deseni), `isSetupBootstrapPath`'e `/api/setup/create-device` eklendi. |
+| `internal/webserver/server.go` | Route kaydı. |
+| `internal/webserver/bridge.go` | `FullBridge.BootstrapTokenAuth` eklendi. |
+| `frontend/lib/core/api_client.dart` | `setupCreateDevice(name)` → `POST /api/setup/create-device`. |
+| `frontend/lib/widgets/auth_gate_overlay.dart` | `_submit()`'in `token` dalı artık `setRemoteAuthConfig`+`createRemoteDevice` yerine tek `setupCreateDevice` çağrısı yapıyor. |
+
+**Testler (hepsi yeni, hepsi geçiyor):**
+- Go: `TestBootstrapTokenAuth_Succeeds/_FlipsNeedsSetup/_FailsWhenAlreadySetUp/_FailsAfterAdminAccountCreated`, `TestCreateAdminAccount_FailsAfterTokenBootstrap` (`internal/app/remote_auth_test.go`); `TestHandleSetupCreateDevice_SucceedsWhileSetupNeeded/_ClosesPermanentlyAfterFirstSuccess`, `TestIsSetupBootstrapPath` genişletildi (yeni path'ler + `/api/remote-access`/`/api/remote-access/devices`'in **hâlâ** kimlik doğrulamalı kaldığını doğrulayan regresyon guard'ı) (`internal/webserver/remote_auth_test.go`).
+- Flutter: `auth_gate_overlay_test.dart`'a `first run: token-only setup flow calls create-device, not remote-access` — token yöntemi seçilip "Generate" tıklanınca isteğin `/api/setup/create-device`'a gittiğini, `/api/remote-access`/`/api/remote-access/devices`'e **hiç** gitmediğini doğruluyor.
+- **Canlı duman testi** (gerçek binary, izole data dir, port 24462, `--lan`): `POST /api/setup/create-device` credential'sız 200 + token döndü; sonrasında `/api/setup/status` → `needs_setup:false`; ikinci `create-device` denemesi → 403 "setup already completed"; `config.yaml`'da `auth_mode: token`, `setup_bootstrapped: true`, cihaz kaydı doğrulandı.
+- **Doğrulanamayan:** gerçek non-loopback kaynaktan (örn. ayrı bir makineden RPi'ye) canlı 401→200 karşılaştırması bu ortamda yapılamadı (network topolojisi taklit edilemiyor) — bunun yerine `remoteAuthOK`/`isSetupBootstrapPath` doğrudan unit test'lerle (network'ten bağımsız) kapsandı, bu da past-session'ların benzer fix'lerinin doğrulama seviyesiyle tutarlı.
+
+### Doğrulama (hepsi yeşil)
+
+`go build`/`vet`/`test -race` (`-tags "sqlite_fts5"`) tüm repo. `flutter analyze lib/` temiz (aynı 5 bilinen info), `flutter test` **253/253** (2 yeni). Yeni regresyon testlerinin fix'ten önce gerçekten kırıldığı doğrulandı (Orchestra testi + Go `TestBootstrapTokenAuth_FlipsNeedsSetup`'ın mantığı — Accounts/Username'e hiç dokunulmadığı için fix olmadan deterministik olarak fail eder).
+
+### Sıradaki oturum için
+
+RPi'de gerçek canlı test edilmedi — yeni binary'nin R2'ye çıkıp kurulması gerekiyor. Özellikle token-only kurulum yolu, masaüstü uygulamasından (loopback olmayan) gerçek bir RPi'ye karşı uçtan uca denenmeli (önceki tüm denemeler muhtemelen bu yüzden başarısız oluyordu).
+
+---
+
 ## Ek (2026-08-13, devam 2) — mood varsayılanı kapatıldı, Swarm sekmesi beta kapalıyken görünüyordu (`08d0b0d`)
 
 Kullanıcı iki küçük varsayılan hatası bildirdi: (1) duygu durumu (mood)

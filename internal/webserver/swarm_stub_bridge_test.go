@@ -52,6 +52,7 @@ type swarmStubBridge struct {
 	// Faz 5.1 (yapacam.md) multi-account / role model — see
 	// remote_auth_test.go's handler-level tests.
 	needsSetup         bool
+	installID          string
 	createAdminAccount func(username, password string) (string, error)
 	sessionRole        func(token string) (string, bool)
 	listAccounts       func() interface{}
@@ -289,6 +290,7 @@ func (b *swarmStubBridge) ListRemoteDevices() interface{}                 { retu
 func (b *swarmStubBridge) CreateRemoteDevice(name string) (string, error) { return "", nil }
 func (b *swarmStubBridge) RevokeRemoteDevice(id string) error             { return nil }
 func (b *swarmStubBridge) NeedsSetup() bool                               { return b.needsSetup }
+func (b *swarmStubBridge) InstallID() string                             { return b.installID }
 func (b *swarmStubBridge) CreateAdminAccount(username, password string) (string, error) {
 	if b.createAdminAccount != nil {
 		return b.createAdminAccount(username, password)

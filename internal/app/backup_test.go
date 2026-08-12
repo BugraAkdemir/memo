@@ -190,6 +190,11 @@ func TestExportData_IncludesEveryDataStore(t *testing.T) {
 func TestExportData_ExcludesNonPortableMachineState(t *testing.T) {
 	writeAndRestore(t, "sync_token.json", `{"token":"abc"}`)
 	writeAndRestore(t, "tailscale/state.db", "tsnet-state")
+	// install_id identifies THIS install (see install_id.go). Exporting it
+	// would make a backup restored onto a fresh machine claim to be the
+	// same install, so every client would keep its now-stale saved
+	// sign-in instead of resetting it.
+	writeAndRestore(t, installIDFile, "deadbeefdeadbeef")
 
 	a := &App{}
 	zipData, err := a.ExportData(false)
@@ -201,7 +206,8 @@ func TestExportData_ExcludesNonPortableMachineState(t *testing.T) {
 		t.Fatalf("open produced zip: %v", err)
 	}
 	for _, f := range zr.File {
-		if f.Name == "data/sync_token.json" || filepath.Dir(f.Name) == "data/tailscale" {
+		if f.Name == "data/sync_token.json" || filepath.Dir(f.Name) == "data/tailscale" ||
+			f.Name == "data/"+installIDFile {
 			t.Errorf("archive unexpectedly contains non-portable entry %q", f.Name)
 		}
 	}

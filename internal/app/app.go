@@ -297,6 +297,12 @@ type App struct {
 	// since accounts and devices are independent lists mutated by
 	// independent request paths.
 	remoteAccountsMu sync.Mutex
+
+	// Caches this install's identity (see install_id.go) so the
+	// unauthenticated /api/setup/status poll doesn't hit the disk on
+	// every client tick.
+	installIDMu  sync.Mutex
+	installIDVal string
 }
 
 // NewApp creates a new App instance. The binaries embed.FS and version string

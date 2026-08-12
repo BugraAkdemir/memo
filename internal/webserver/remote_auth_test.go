@@ -229,6 +229,44 @@ func TestHandleSetupStatus_ReportsNeedsSetupAndAuthMode(t *testing.T) {
 	}
 }
 
+// TestHandleSetupStatus_ReportsInstallID covers the field clients use to
+// notice their saved sign-in belongs to a backend that no longer exists —
+// a wipe+reinstall reuses the same origin, so localStorage alone can never
+// tell (reported live from a Raspberry Pi, 2026-08-13). The route is
+// unauthenticated by design (isSetupBootstrapPath), which is exactly why a
+// client locked out by stale state can still read it.
+func TestHandleSetupStatus_ReportsInstallID(t *testing.T) {
+	stub := &swarmStubBridge{needsSetup: true, installID: "abc123"}
+	s := New(stub)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	w := httptest.NewRecorder()
+	s.handleSetupStatus(w, req)
+
+	if !strings.Contains(w.Body.String(), `"install_id":"abc123"`) {
+		t.Errorf("expected install_id in body, got %s", w.Body.String())
+	}
+}
+
+// TestHandleSetupStatus_ToleratesMissingInstallID: a backend that could not
+// persist an id must still serve the route — clients fall back to their
+// unauthorized-probe layer rather than losing the bootstrap endpoint.
+func TestHandleSetupStatus_ToleratesMissingInstallID(t *testing.T) {
+	stub := &swarmStubBridge{needsSetup: true}
+	s := New(stub)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/setup/status", nil)
+	w := httptest.NewRecorder()
+	s.handleSetupStatus(w, req)
+
+	if w.Code != http.StatusOK {
+		t.Fatalf("got status %d, want 200, body: %s", w.Code, w.Body.String())
+	}
+	if !strings.Contains(w.Body.String(), `"install_id":""`) {
+		t.Errorf("expected an empty install_id, got %s", w.Body.String())
+	}
+}
+
 // TestHandleSetupStatus_ReportsLoopback mirrors remoteAuthOK's trust model
 // for clients: the same request source that passes with no credential must
 // be told so via the loopback field, so the desktop app can skip its login

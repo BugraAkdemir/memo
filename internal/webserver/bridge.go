@@ -162,6 +162,11 @@ type FullBridge interface {
 	// Multi-account / role model (Faz 5.1, yapacam.md) — see
 	// internal/app/remote_auth.go's doc comments for the full design.
 	NeedsSetup() bool
+	// InstallID identifies THIS install so a client can tell that the
+	// backend it stored state against was wiped and reinstalled (or that
+	// it is now pointed at a different Memo). Empty when unavailable —
+	// see internal/app/install_id.go.
+	InstallID() string
 	CreateAdminAccount(username, password string) (token string, err error)
 	SessionRole(token string) (role string, ok bool)
 	ListAccounts() interface{}

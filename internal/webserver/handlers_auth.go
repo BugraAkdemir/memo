@@ -230,6 +230,12 @@ func (s *Server) handleSetupStatus(w http.ResponseWriter, r *http.Request) {
 		// machine), so clients can skip their login gate entirely instead
 		// of asking for a password that the backend would never check.
 		"loopback": isLoopbackIP(requestIP(r)),
+		// install_id lets a client detect that this backend is not the one
+		// it stored its auth state against — a wipe+reinstall, or the same
+		// browser pointed at a different Memo. Opaque random value, no
+		// secret material (see internal/app/install_id.go). Empty when the
+		// backend could not persist one; clients must tolerate that.
+		"install_id": s.fullBridge.InstallID(),
 	})
 }
 

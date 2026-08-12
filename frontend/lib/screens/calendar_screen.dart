@@ -5,7 +5,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/theme.dart';
 import '../core/l10n.dart';
+import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/gate_guard.dart';
 import 'app_shell.dart';
 import '../core/friendly_error.dart';
 
@@ -105,6 +107,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
   }
 
   Future<void> _load({bool silent = false}) async {
+    // BUG-ONB11: same startup race as RoutinesScreen (IndexedStack builds
+    // this at app start, before the auth gate opens). Less severe here
+    // because the 20s refresh timer eventually recovers it — but only
+    // after the user opens the tab, and they see a wrong error banner
+    // until then. Don't produce that error in the first place.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     if (!silent) {
       setState(() {
         _loading = true;
@@ -180,6 +195,14 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
       } else {
         _refreshTimer?.cancel();
         _refreshTimer = null;
+      }
+    });
+    // BUG-ONB11: loads the events initState deliberately skipped while the
+    // gate was up, without making the user open the tab first.
+    ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
+      if (authGateBlocked(prev?.valueOrNull) &&
+          !authGateBlocked(next.valueOrNull)) {
+        _load();
       }
     });
     final c = MemoTheme.of(context);

@@ -3,7 +3,9 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../core/l10n.dart';
 import '../core/theme.dart';
+import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/gate_guard.dart';
 import '../core/friendly_error.dart';
 
 /// A configured routine, as returned by GET /api/routines.
@@ -130,6 +132,22 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
   }
 
   Future<void> _load() async {
+    // BUG-ONB11: this screen sits in AppShell's IndexedStack, so initState
+    // runs once at app start — while the auth gate is still up on a gated
+    // backend. That single attempt 401s and parks a permanent "Rutinler
+    // yüklenemedi" here, with nothing to retry it: unlike the calendar
+    // there is no refresh timer, and unlike the settings notifiers this is
+    // widget state, not a provider, which is why the BUG-ONB6 sweep (an
+    // audit of AsyncNotifier.build methods) never saw it. Wait for the
+    // gate instead; build()'s listener calls back once it opens.
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      if (!mounted) return;
+      setState(() {
+        _loading = false;
+        _error = null;
+      });
+      return;
+    }
     setState(() => _loading = true);
     try {
       final api = ref.read(apiClientProvider);
@@ -247,6 +265,15 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    // The other half of BUG-ONB11: initState's attempt was skipped while
+    // the gate was up, so this is what actually loads the list once the
+    // user gets in. Same shape as chat_screen.dart's gate listener.
+    ref.listen<AsyncValue<AuthGateInfo>>(authGateProvider, (prev, next) {
+      if (authGateBlocked(prev?.valueOrNull) &&
+          !authGateBlocked(next.valueOrNull)) {
+        _load();
+      }
+    });
     final c = MemoTheme.of(context);
     return Padding(
       padding: const EdgeInsets.all(24),

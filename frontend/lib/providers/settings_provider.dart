@@ -345,6 +345,14 @@ class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
 }
 
 final gatewayModelsProvider = FutureProvider<List<GatewayModel>>((ref) async {
+  // BUG-ONB11: same trap as gpuInfoProvider (BUG-ONB5), and missed by the
+  // BUG-ONB6 sweep because that audit searched for AsyncNotifier.build()
+  // and this is a plain FutureProvider. DeveloperScreen lives in
+  // AppShell's IndexedStack, so it is built at app start — its single
+  // attempt lands while the auth gate is still up, 401s, and that error
+  // is cached forever with no retry loop to recover it. Mount empty
+  // instead; app_shell.dart's gate-transition listener refetches.
+  if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) return const [];
   return ref.read(apiClientProvider).getGatewayModels();
 });
 

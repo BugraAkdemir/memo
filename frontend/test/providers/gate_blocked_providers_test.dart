@@ -93,6 +93,12 @@ void main() {
     final providers = await container.read(providerListProvider.future);
     final activeProvider = await container.read(activeProviderTypeProvider.future);
     final orchestra = await container.read(orchestraConfigProvider.future);
+    // BUG-ONB11 additions: plain FutureProviders, the shape the original
+    // BUG-ONB6 audit (AsyncNotifier.build) could not see. Both back an
+    // IndexedStack screen built at app start, and neither has a retry loop
+    // of its own, so a 401 here is permanent.
+    final gatewayModels = await container.read(gatewayModelsProvider.future);
+    final gpuInfo = await container.read(gpuInfoProvider.future);
 
     // Safe defaults, not errors.
     expect(llama.engineMode, 'auto');
@@ -111,6 +117,8 @@ void main() {
     expect(providers, isEmpty);
     expect(activeProvider, '');
     expect(orchestra.enabled, false);
+    expect(gatewayModels, isEmpty);
+    expect(gpuInfo.ramTotalMb, 0);
 
     // The one and only assertion that actually matters: zero requests ever
     // reached the (401-answering) backend, for any of them.

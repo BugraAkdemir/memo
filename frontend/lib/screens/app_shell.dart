@@ -214,6 +214,14 @@ class _AppShellState extends ConsumerState<AppShell> {
         ref.invalidate(activeProviderTypeProvider);
         ref.invalidate(orchestraConfigProvider);
         ref.invalidate(swarmStatusProvider);
+        // BUG-ONB11: plain FutureProviders behind an IndexedStack screen.
+        // They have no retry loop of their own, so this listener is the
+        // only thing that ever refetches them. gpuInfoProvider is also
+        // invalidated from auth_gate_overlay's login paths (BUG-ONB5);
+        // doing it here too costs nothing and covers the gate transitions
+        // those five call sites don't know about.
+        ref.invalidate(gatewayModelsProvider);
+        ref.invalidate(gpuInfoProvider);
       }
     });
 

@@ -1,3 +1,121 @@
+## Ek (2026-08-13) — BUG-ONB10: sunucu silinip yeniden kurulunca tarayıcı bayat state'te kilitleniyordu + UI varsayılanı İngilizce
+
+Kullanıcı `uninstall-selfhosted.sh` + `get-memo-server-beta.sh` ile RPi'sini
+sıfırdan kurdu ve kurulum ekranı **hiç gelmedi** — bunun yerine giriş
+isteyen bir ekran geldi, elinde şifre yoktu, konsol 401 yağmuru
+(`/api/cli/running`, `/api/whatsapp/status`, `/api/models/download/progress`)
+ve her provider'da "Bir şeyler ters gitti". **Kök nedeni kullanıcı kendisi
+buldu:** Ctrl+Shift+R ve Ctrl+F5 hiçbir şey değiştirmedi, ama F12 →
+Application'dan cookie/cache/localStorage/sessionStorage'ı **elle**
+temizleyince doğru ekran (ilk kurulum) geldi.
+
+### Kök neden
+
+localStorage **origin bazlı**. Sunucuyu silip yeniden kurmak aynı
+`http://192.168.1.106:8090` adresine bambaşka bir backend koyuyor, ama
+tarayıcının hiçbir şeyi atmak için sebebi yok. `memo_auth_setup_done`
+(`authSetupDoneKey`) tek başına yetiyordu: `authGateProvider`'ın
+`needs_setup && declined -> ok` dalı bunu bilinçli bir tercih sanıp
+kurulum kapısını tamamen bastırıyor, uygulama açılıyor ve hiçbir istek
+kimlik doğrulayamıyor. Hard reload'ın işe yaramamasının sebebi de bu:
+Ctrl+Shift+R sadece HTTP cache'ini atlıyor, localStorage'a dokunmuyor.
+
+SSH ile canlı doğrulandı (`bugraa@192.168.1.106`): unit dosyasında
+`Environment=MEMO_DATA_DIR=...` doğru (BUG-ONB7 fix'i tutmuş), `~/data`
+yok, `accounts: []`, `/api/setup/status` → `needs_setup:true`. Yani
+**backend tamamen doğruydu**, sorun %100 istemci tarafındaydı.
+
+### Fix — iki bağımsız katman (kullanıcı seçenekleri karşılaştırdıktan sonra Seçenek 1'i seçti)
+
+Katmanlar bilinçli olarak **farklı şekillerde** bozuluyor; bu yedeklilik
+değil, savunma derinliği:
+
+| Katman | Ne yapıyor | Nerede bozulur |
+|---|---|---|
+| **1. Kimlik** (`0a32529`, `593a7f5`) | `App.InstallID` (`internal/app/install_id.go`) ilk açılışta rastgele 16 byte üretip `data/install_id` (0600) olarak saklıyor, `/api/setup/status` bunu dönüyor. Gate, gördüğü son ID ile karşılaştırıp uyuşmazlıkta sunucuya bağlı tüm anahtarları siliyor. | ID döndürmeyen eski backend'lerde çalışmaz |
+| **2. Erişilebilirlik** (`593a7f5`) | `needs_setup && declined && !loopback` iken `probeAuth()`; 401 gelirse declined bayrağı yok sayılıyor. "Kurulum bekliyor" + "bu kaynak kimlik doğrulayamıyor" çelişkisini hiçbir istemci bayrağı gizleyemez. | Her backend'de çalışır, eskiler dahil |
+
+**Kritik tasarım kararı:** bir install ID'yi *ilk kez* görmek sıfırlama
+**tetiklemez**, sadece kaydedilir. Mevcut her istemci bu build'e geçerken
+tam olarak o duruma düşüyor ve çoğunun girişi geçerli — birkaç bozuk
+istemci için herkesi çıkış yaptırmak yanlış takas; zaten bozuk olanları
+Katman 2 yakalıyor.
+
+`serverCoupledPrefsKeys` (`frontend/lib/core/local_session_state.dart`)
+neyin silineceğini tek bir yerde adlandırıyor: auth_setup_done,
+remote_access_token, session_username, session_role, setup_complete,
+launchpad_seen, tour_seen. **Korunanlar:** `memo_locale`,
+`memo_theme_mode`, `memo_streaming`, `memo_beta_features` (cihaz
+tercihi) ve özellikle `memo_api_base_url` — onu silmek istemciyi ortada
+bırakırdı. `install_id` bilinçli olarak `ExportData`'ya **girmiyor**
+(`sync_token.json`/`tailscale/` ile aynı gerekçe): geri yüklenen bir
+yedek her istemciye "yeni kurulum" olarak okunmalı.
+
+### Elle kaçış yolu (`67e310a`)
+
+`ClearSavedSignInButton` — auth gate footer'ında ve
+backend-unreachable ekranında. İki katmanın göremediği durumlar için;
+bir daha kimse DevTools açmak zorunda kalmasın diye. **Metin bilinçli:**
+"verileri sıfırla" demiyor (kullanıcı bunu isabetli şekilde uyardı —
+sunucudaki hafıza/sohbet siliniyor sanılırdı); onay diyaloğu
+"Sunucudaki sohbetlerin, hafızan ve modellerin etkilenmez" diye açıkça
+yazıyor ve bir test bu güvencenin ekranda olduğunu doğruluyor. Yeni
+`MemoApiClient.clearSessionToken()` canlı client'ın header'ındaki ölü
+token'ı da temizliyor — sadece prefs silmek onu bir sonraki girişe kadar
+bırakırdı.
+
+**Yol boyunca gerçek bir layout bug'ı bulundu ve düzeltildi:** gate
+footer'ı tek bir `Row`'du; ikinci buton eklenince **Türkçe'de** 54px
+taşıyordu (İngilizce'de geçiyordu, çünkü etiketler daha kısa). Adres
+artık kendi satırında, aksiyonlar altında bir `Wrap` içinde.
+
+### UI varsayılanı İngilizce (`8882506`)
+
+`L10n._locale` ve `LocaleNotifier._initLocale` artık İngilizce'ye
+düşüyor; yalnızca açık `'tr'` Türkçe seçiyor, yani dili daha önce seçmiş
+hiç kimse etkilenmiyor. Gerekçe: ilk temas artık Türk masaüstü kullanıcısı
+değil, self-hosted bir kutuya bakan tarayıcı. Üç widget testi Türkçe
+literal'e bağlıydı — literal'leri çevirmek yerine widget'ın okuduğu aynı
+`L10n.t()` anahtarlarını okuyacak şekilde dile bağımsız hale getirildi
+(settings arama terimi de "Report Bug"/"Hata Bildir"in kendi ilk
+kelimesinden türetiliyor).
+
+**Bilinçli kapsam dışı, kullanıcıya önceden söylendi:** backend hâlâ bazı
+kullanıcıya ulaşan stringleri Türkçe basıyor (`"⚠️ Yerel model
+yüklenmemiş..."`, `"⏹️ Cevap durduruldu."`, `"hafıza kaydedildi"`).
+Bunlar `L10n`'dan geçmiyor, yani İngilizce arayüzde Türkçe sistem
+mesajları görünmeye devam edecek — kapatmak `Identity.UILanguage`'e
+bağlamayı gerektiriyor, ayrı bir iş. AGENTS.md'ye açık seam olarak
+yazıldı.
+
+### Doğrulama
+
+- `go build`/`vet`/`test -race` (`-tags "sqlite_fts5"`) tüm repo yeşil.
+  Yeni: `TestInstallID_StableAcrossRestarts`, `_CachedWithinOneApp`,
+  `_ChangesAfterDataWipe`, `TestHandleSetupStatus_ReportsInstallID`,
+  `_ToleratesMissingInstallID`, genişletilmiş
+  `TestExportData_ExcludesNonPortableMachineState`.
+- `flutter analyze lib/` temiz (aynı 5 bilinen info), `flutter test`
+  **246/246** (7 yeni). Rule #8 grep temiz.
+- **Yeni regresyon testleri fix'ten önce gerçekten kırıldığı doğrulandı**
+  (gate dosyası HEAD'e geri alınıp koşuldu: 3 test fail).
+- **Canlı duman testi** (gerçek binary, izole data dir, port 24461):
+  taze kurulum `install_id` üretiyor ve dosyaya 0600 yazıyor → art arda
+  poll'lerde değişmiyor → düz restart'ta **aynı** kalıyor → data dir
+  silinip yeniden başlatılınca **değişiyor** (kullanıcının uninstall+
+  reinstall senaryosunun birebir kendisi).
+
+### Kullanıcı elinde kalan
+
+Bu fix'lerin hiçbiri **kullanıcının gerçek RPi'sinde** henüz canlı test
+edilmedi — yeni binary'nin R2'ye çıkıp kurulması gerekiyor. Kullanıcı bu
+sırada elle temizlediği mevcut sürümü kullanmaya devam ediyor ve bulduğu
+bug'ları bildirecek. Test ederken dikkat: **istemci tarafı fix'i ancak
+tarayıcıda yeni build çalıştığında devreye girer** — yani bu sürüme
+geçerken bir kez daha elle temizlik gerekebilir; ondan sonrası otomatik.
+
+---
+
 ## Ek (2026-08-12, devam 2) — RPi'de canlı SSH testi: BUG-ONB7/8/9 bulundu ve düzeltildi, uçtan uca doğrulandı
 
 Aynı oturumun devamı — bir önceki "Ek" girdisinden (BUG-ONB5, script `clear`/`tty` fix'leri) sonrası. Kullanıcı bu oturumdaki değişiklikleri gerçek RPi'sinde (`bugraa@192.168.1.106`, SSH erişimi verildi) test etmeye başladı; bulunan her şey **canlı SSH ile teşhis edilip düzeltildi ve tekrar canlı doğrulandı** — spekülasyonla değil.

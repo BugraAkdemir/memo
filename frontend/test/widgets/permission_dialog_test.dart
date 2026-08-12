@@ -61,8 +61,14 @@ void main() {
 
     expect(find.byType(PermissionDialog), findsOneWidget,
         reason: 'dialog must not pop when the permission POST fails');
-    // permission_send_failed = "İzin gönderilemedi: ${e}" (TR default)
-    expect(find.textContaining('İzin gönderilemedi'), findsOneWidget);
+    // Read through L10n rather than hardcoded, so this asserts the real UI
+    // in whatever the active locale is (the default flipped to English on
+    // 2026-08-13). The key's value ends in an interpolated error, so match
+    // on the fixed prefix only.
+    expect(
+      find.textContaining(L10n.t('permission_send_failed').split(r'${e}').first),
+      findsOneWidget,
+    );
   });
 
   // Regression test for BUG-L1: the dialog used to stay on screen even after

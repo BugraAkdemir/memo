@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:memo_flutter/core/l10n.dart';
 import 'package:memo_flutter/providers/learning_provider.dart';
 import 'package:memo_flutter/widgets/proactive_suggestion_banner.dart';
 
@@ -25,7 +26,7 @@ void main() {
     await tester.pump();
 
     expect(find.byType(ProactiveSuggestionBanner), findsOneWidget);
-    expect(find.text('Evet'), findsNothing);
+    expect(find.text(L10n.t('proactive_suggestion_accept')), findsNothing);
   });
 
   testWidgets('shows the suggestion message and all three response buttons', (tester) async {
@@ -41,8 +42,8 @@ void main() {
     await tester.pump();
 
     expect(find.text('Kod yazma zamanın geldi, başlayalım mı?'), findsOneWidget);
-    expect(find.text('Evet'), findsOneWidget);
-    expect(find.text('Şimdi değil'), findsOneWidget);
-    expect(find.text('Artık sorma'), findsOneWidget);
+    expect(find.text(L10n.t('proactive_suggestion_accept')), findsOneWidget);
+    expect(find.text(L10n.t('proactive_suggestion_not_now')), findsOneWidget);
+    expect(find.text(L10n.t('proactive_suggestion_stop')), findsOneWidget);
   });
 }

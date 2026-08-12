@@ -1,10 +1,20 @@
 import 'package:flutter/widgets.dart';
 
-/// Simple i18n system for Memo — Turkish (default) + English.
+/// Simple i18n system for Memo — English (default) + Turkish.
+///
+/// The default flipped to English on 2026-08-13: Memo ships self-hosted
+/// now (Raspberry Pi, LAN, browser), so first contact is no longer
+/// reliably a Turkish desktop user. Turkish remains fully supported and
+/// one switch away in Settings; an explicit choice always wins, since
+/// only an unset memo_locale falls through to this default.
+///
+/// Known and accepted for now: the backend still emits some user-facing
+/// strings in Turkish regardless of this setting (see AGENTS.md's Code
+/// Style note) — those are not driven by L10n and need their own pass.
 enum MemoLocale { tr, en }
 
 class L10n {
-  static MemoLocale _locale = MemoLocale.tr;
+  static MemoLocale _locale = MemoLocale.en;
   static final _listeners = <VoidCallback>[];
 
   static MemoLocale get locale => _locale;

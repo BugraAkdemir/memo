@@ -671,7 +671,10 @@ class LocaleNotifier extends StateNotifier<MemoLocale> {
 
   static MemoLocale _initLocale(SharedPreferences prefs) {
     final saved = prefs.getString('memo_locale');
-    final locale = saved == 'en' ? MemoLocale.en : MemoLocale.tr;
+    // Only an explicit 'tr' selects Turkish — an unset key falls through
+    // to English, matching L10n's own default (flipped 2026-08-13; see
+    // the doc comment there). A user who already chose Turkish keeps it.
+    final locale = saved == 'tr' ? MemoLocale.tr : MemoLocale.en;
     L10n.setLocale(locale);
     return locale;
   }

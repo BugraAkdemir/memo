@@ -47,16 +47,30 @@ Future<void> _pumpSettingsDialog(WidgetTester tester, {Size size = const Size(12
   await tester.pump();
 }
 
+// Rail labels are read through L10n rather than hardcoded, so these tests
+// assert the real UI in whatever the active locale is instead of breaking
+// the moment the default language changes (it flipped to English on
+// 2026-08-13).
+String get _providersGroup => L10n.t('settings_group_providers');
+String get _agentsGroup => L10n.t('settings_group_agents');
+String get _systemGroup => L10n.t('settings_group_system');
+String get _reportBugTab => L10n.t('tab_report_bug');
+
+/// A search term guaranteed to match the Report Bug row and nothing in the
+/// Providers or Agents groups: the first word of that row's own label
+/// ("report" / "hata").
+String get _reportBugTerm => _reportBugTab.split(' ').first.toLowerCase();
+
 void main() {
   testWidgets('shows grouped headers and tab rows with no layout overflow at a normal window size',
       (tester) async {
     await _pumpSettingsDialog(tester);
 
-    expect(find.text('Sağlayıcılar & Bağlantı'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Ajan & Otomasyon'), 150, scrollable: _railScrollable);
-    expect(find.text('Ajan & Otomasyon'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Hata Bildir'), 150, scrollable: _railScrollable);
-    expect(find.text('Hata Bildir'), findsOneWidget);
+    expect(find.text(_providersGroup), findsOneWidget);
+    await tester.scrollUntilVisible(find.text(_agentsGroup), 150, scrollable: _railScrollable);
+    expect(find.text(_agentsGroup), findsOneWidget);
+    await tester.scrollUntilVisible(find.text(_reportBugTab), 150, scrollable: _railScrollable);
+    expect(find.text(_reportBugTab), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -75,15 +89,15 @@ void main() {
   testWidgets('search narrows the rail to matching rows and hides now-empty groups', (tester) async {
     await _pumpSettingsDialog(tester);
 
-    await tester.enterText(find.byType(TextField), 'hata');
+    await tester.enterText(find.byType(TextField), _reportBugTerm);
     await tester.pump();
 
-    expect(find.text('Hata Bildir'), findsOneWidget);
-    // No item in the "Agents & Automation" group matches "hata" — the
+    expect(find.text(_reportBugTab), findsOneWidget);
+    // No item in the "Agents & Automation" group matches the term — the
     // whole group, header included, must disappear rather than show an
     // empty section.
-    expect(find.text('Ajan & Otomasyon'), findsNothing);
-    expect(find.text('Sağlayıcılar & Bağlantı'), findsNothing);
+    expect(find.text(_agentsGroup), findsNothing);
+    expect(find.text(_providersGroup), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -100,16 +114,16 @@ void main() {
   testWidgets('clearing the search restores every group', (tester) async {
     await _pumpSettingsDialog(tester);
 
-    await tester.enterText(find.byType(TextField), 'hata');
+    await tester.enterText(find.byType(TextField), _reportBugTerm);
     await tester.pump();
-    expect(find.text('Sağlayıcılar & Bağlantı'), findsNothing);
+    expect(find.text(_providersGroup), findsNothing);
 
     await tester.enterText(find.byType(TextField), '');
     await tester.pump();
 
-    expect(find.text('Sağlayıcılar & Bağlantı'), findsOneWidget);
-    await tester.scrollUntilVisible(find.text('Sistem'), 150, scrollable: _railScrollable);
-    expect(find.text('Sistem'), findsOneWidget);
+    expect(find.text(_providersGroup), findsOneWidget);
+    await tester.scrollUntilVisible(find.text(_systemGroup), 150, scrollable: _railScrollable);
+    expect(find.text(_systemGroup), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

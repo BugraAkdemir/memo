@@ -10,6 +10,7 @@ import '../providers/chat_provider.dart';
 import '../providers/models_provider.dart';
 import '../providers/settings_provider.dart';
 import 'backend_unreachable_view.dart';
+import 'clear_saved_sign_in_button.dart';
 
 /// App-wide gate: shows the first-run setup screen or the login screen
 /// whenever the backend requires a credential the app doesn't have yet.
@@ -60,6 +61,11 @@ class _GateScaffold extends ConsumerWidget {
             child: child,
           ),
           const SizedBox(height: 14),
+          // The address on its own line, its actions under it. Deliberately
+          // not one Row: the labels are localized and vary a lot in width
+          // (Turkish runs noticeably longer), and a single Row overflowed
+          // by 54px the moment a second action was added. A Wrap lets the
+          // buttons drop to another line instead of throwing.
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 480),
             child: Row(
@@ -78,7 +84,16 @@ class _GateScaffold extends ConsumerWidget {
                     ),
                   ),
                 ),
-                const SizedBox(width: 10),
+              ],
+            ),
+          ),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 480),
+            child: Wrap(
+              alignment: WrapAlignment.center,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              spacing: 4,
+              children: [
                 TextButton(
                   onPressed: () => showDialog(
                     context: context,
@@ -95,6 +110,7 @@ class _GateScaffold extends ConsumerWidget {
                     style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
                   ),
                 ),
+                const ClearSavedSignInButton(dense: true),
               ],
             ),
           ),

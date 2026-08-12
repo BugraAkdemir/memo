@@ -984,6 +984,15 @@ class L10n {
     'backend_unreachable_desc':
         'Memo şu adrese bağlanmaya çalışıyor ama yanıt alamıyor:\n\${url}\n\nSunucu kapalı olabilir ya da bu adres artık geçerli değil.',
     'backend_unreachable_change_server': 'Sunucuyu Değiştir',
+    // Manual escape hatch — the copy must never suggest that Memo's own
+    // data is being deleted (see ClearSavedSignInButton).
+    'clear_sign_in_button': 'Kayıtlı girişi temizle',
+    'clear_sign_in_title': 'Bu cihazdaki kayıtlı giriş temizlensin mi?',
+    'clear_sign_in_body':
+        'Bu cihaz, bu sunucu için sakladığı giriş bilgilerini unutur ve '
+            'yeniden giriş yapmanı ister. Sunucudaki sohbetlerin, hafızan ve '
+            'modellerin etkilenmez.',
+    'clear_sign_in_confirm': 'Temizle',
     'backend_unreachable_restart': 'Memo\'yu Yeniden Başlat',
     'backend_unreachable_restart_confirm_title': 'Memo yeniden başlatılsın mı?',
     'backend_unreachable_restart_confirm_body':
@@ -2740,6 +2749,15 @@ class L10n {
     'backend_unreachable_desc':
         'Memo is trying to reach this address but isn\'t getting a response:\n\${url}\n\nThe server may be off, or this address may no longer be valid.',
     'backend_unreachable_change_server': 'Change Server',
+    // Manual escape hatch — the copy must never suggest that Memo's own
+    // data is being deleted (see ClearSavedSignInButton).
+    'clear_sign_in_button': 'Clear saved sign-in',
+    'clear_sign_in_title': 'Clear saved sign-in on this device?',
+    'clear_sign_in_body':
+        'This device will forget the credentials it saved for this server '
+            'and ask you to sign in again. Your chats, memory and models on '
+            'the server are not affected.',
+    'clear_sign_in_confirm': 'Clear',
     'backend_unreachable_restart': 'Restart Memo',
     'backend_unreachable_restart_confirm_title': 'Restart Memo?',
     'backend_unreachable_restart_confirm_body':

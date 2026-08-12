@@ -54,7 +54,7 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
       // now points at a different Memo), that state is worthless and
       // keeping it is what left users stuck: a stale declined flag hides
       // the setup gate while every request 401s.
-      await _resetIfServerReplaced(prefs, ss.installId);
+      await _resetIfServerReplaced(prefs, api, ss.installId);
       var declined = prefs.getBool(authSetupDoneKey) ?? false;
       // Layer 2 — reachability. Independent of layer 1 on purpose: it
       // works against any backend, including ones too old to report an
@@ -117,6 +117,7 @@ final authGateProvider = StreamProvider.autoDispose<AuthGateInfo>((ref) async* {
 ///    instead, which costs them nothing but a login they already needed.
 Future<void> _resetIfServerReplaced(
   SharedPreferences prefs,
+  MemoApiClient api,
   String installId,
 ) async {
   if (installId.isEmpty) return;
@@ -127,4 +128,8 @@ Future<void> _resetIfServerReplaced(
   }
   if (known == installId) return;
   await clearServerCoupledState(prefs, keepInstallId: installId);
+  // The already-constructed client is still sending the old install's
+  // token; clearing only SharedPreferences would leave it there until
+  // the next successful login.
+  api.clearSessionToken();
 }

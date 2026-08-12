@@ -1368,6 +1368,16 @@ class MemoApiClient {
     onRemoteTokenLearned?.call(token);
   }
 
+  /// Forgets the credential this client is sending, without persisting
+  /// anything — the live counterpart to clearServerCoupledState's
+  /// SharedPreferences cleanup, which alone would leave a dead token in
+  /// this already-constructed client's headers until the next login.
+  /// Deliberately does not fire onRemoteTokenLearned: that callback's job
+  /// is to save a token, and there is nothing here to save.
+  void clearSessionToken() {
+    _dio.options.headers.remove('X-Memo-Token');
+  }
+
   /// Version probe that distinguishes "unauthorized" (401 — backend is up,
   /// this client lacks a valid credential) from "down" (no reachable
   /// backend). Only 401 denotes an auth problem; every other failure is

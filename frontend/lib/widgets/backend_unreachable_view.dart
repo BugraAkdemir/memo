@@ -10,6 +10,7 @@ import '../core/theme.dart';
 import '../providers/auth_gate_provider.dart';
 import '../providers/chat_provider.dart';
 import '../providers/settings_provider.dart';
+import 'clear_saved_sign_in_button.dart';
 
 /// True when [error] means "couldn't reach the backend at all" (dead host,
 /// refused connection, timed out) rather than a real response the backend
@@ -177,6 +178,10 @@ class BackendUnreachableView extends ConsumerWidget {
                 style: TextStyle(color: theme.textDim, fontWeight: FontWeight.w500),
               ),
             ),
+            // "Cannot reach the backend" is also what a client stuck on a
+            // credential the server no longer honours can look like, so the
+            // escape hatch belongs here too, not only on the auth gate.
+            const ClearSavedSignInButton(),
           ],
         ),
       ),

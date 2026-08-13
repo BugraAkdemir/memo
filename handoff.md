@@ -39,7 +39,7 @@ Kullanıcı, önceki oturumun BUG-ONB10 fix'ini RPi'ye çıkarıp canlı test et
 
 ### Sıradaki oturum için
 
-RPi'de gerçek canlı test edilmedi — yeni binary'nin R2'ye çıkıp kurulması gerekiyor. Özellikle token-only kurulum yolu, masaüstü uygulamasından (loopback olmayan) gerçek bir RPi'ye karşı uçtan uca denenmeli (önceki tüm denemeler muhtemelen bu yüzden başarısız oluyordu).
+~~RPi'de gerçek canlı test edilmedi~~ → **aynı gün canlı doğrulandı:** `uninstall-selfhosted.sh` + `get-memo-server-beta.sh` ile RPi'ye (`192.168.1.106`, SSH ile) sıfırdan V3.3.4 kuruldu (CI bu oturumun 3 commit'ini içeriyordu), sonra **gerçek non-loopback bir kaynaktan** (bu makineden RPi'nin LAN IP'sine doğrudan `curl`, `setup/status`'ın `"loopback":false` alanıyla teyitli) uçtan uca test edildi: eski yol (`PUT /api/remote-access`, credential'sız) → **401** (raporlanan bug'ın canlı kanıtı); yeni yol (`POST /api/setup/create-device`) → **200** + geçerli token; `needs_setup` → `false`; ikinci deneme → **403**; üretilen token `/api/version`'a karşı çalıştı; `config.yaml`'da `setup_bootstrapped: true`. Önceki "bu ortamda taklit edilemedi" notu artık geçersiz.
 
 ---
 

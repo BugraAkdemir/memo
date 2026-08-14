@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -121,18 +122,59 @@ func TestSendMessageStreamTo_TargetsGivenChatID_NotGloballyActiveChat(t *testing
 	}
 }
 
+// capturedRequests collects outbound request bodies the fake provider
+// server saw, safe for concurrent access. A single successful SendMessage
+// call is not the only thing that can hit the mocked provider: routeStream
+// also kicks off fire-and-forget background calls (e.g. processMessageIntent)
+// against the same router, on their own goroutines, with no signal the test
+// can wait on — an earlier version of this test captured into a bare
+// *string with no synchronization at all and raced (caught by CI's -race,
+// not reproducible locally under normal load): the background goroutine's
+// write and the test's own read of the same string were unsynchronized.
+// Aggregating into a mutex-guarded slice and checking "did any captured
+// request contain X" instead of "did the last one" fixes the race and stays
+// correct regardless of how many extra background calls happen to fire —
+// only the real agent-routed call will ever carry tool definitions, so the
+// containsAny checks below are unaffected by unrelated background traffic.
+type capturedRequests struct {
+	mu     sync.Mutex
+	bodies []string
+}
+
+func (c *capturedRequests) add(body string) {
+	c.mu.Lock()
+	c.bodies = append(c.bodies, body)
+	c.mu.Unlock()
+}
+
+func (c *capturedRequests) containsAny(substr string) bool {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, b := range c.bodies {
+		if strings.Contains(b, substr) {
+			return true
+		}
+	}
+	return false
+}
+
+func (c *capturedRequests) String() string {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	return strings.Join(c.bodies, "\n---\n")
+}
+
 // newSendMessageTestApp builds a real App wired to a fake OpenAI-compatible
 // HTTP server standing in for the active provider, so SendMessage's actual
-// outbound request can be inspected. reqBody receives the raw JSON body of
-// the last request the fake server saw.
-func newSendMessageTestApp(t *testing.T, reqBody *string) *App {
+// outbound request(s) can be inspected via reqs.
+func newSendMessageTestApp(t *testing.T, reqs *capturedRequests) *App {
 	t.Helper()
 	t.Setenv("MEMO_DATA_DIR", t.TempDir())
 
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		body, _ := io.ReadAll(r.Body)
-		*reqBody = string(body)
-		if strings.Contains(*reqBody, `"stream":true`) {
+		reqs.add(string(body))
+		if strings.Contains(string(body), `"stream":true`) {
 			// The agent pipeline's ChatCompletion (non-streaming, used to
 			// send tool definitions) is a plain JSON POST/response — but
 			// routeStream's non-agent fallback goes through
@@ -197,16 +239,16 @@ func newSendMessageTestApp(t *testing.T, reqBody *string) *App {
 // POST /api/send/stream (already routed through routeStream) correctly
 // triggered a run_command tool call.
 func TestSendMessage_AgentModeOn_SendsToolDefinitions(t *testing.T) {
-	var reqBody string
-	a := newSendMessageTestApp(t, &reqBody)
+	reqs := &capturedRequests{}
+	a := newSendMessageTestApp(t, reqs)
 	if err := a.SetAgentEnabled(true); err != nil {
 		t.Fatalf("SetAgentEnabled(true): %v", err)
 	}
 
 	reply := a.SendMessage("list the files in the current directory")
 
-	if !strings.Contains(reqBody, `"tools"`) {
-		t.Fatalf("agent mode on: outbound provider request had no tool definitions — agent routing was skipped (the bug this test guards against). body=%s", reqBody)
+	if !reqs.containsAny(`"tools"`) {
+		t.Fatalf("agent mode on: outbound provider request had no tool definitions — agent routing was skipped (the bug this test guards against). requests=%s", reqs)
 	}
 	if reply != "fake agent reply" {
 		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
@@ -217,13 +259,13 @@ func TestSendMessage_AgentModeOn_SendsToolDefinitions(t *testing.T) {
 // above: with agent mode off, SendMessage must still behave like plain chat
 // — no tool definitions sent, same as before this fix.
 func TestSendMessage_AgentModeOff_NoToolDefinitions(t *testing.T) {
-	var reqBody string
-	a := newSendMessageTestApp(t, &reqBody)
+	reqs := &capturedRequests{}
+	a := newSendMessageTestApp(t, reqs)
 
 	reply := a.SendMessage("hello")
 
-	if strings.Contains(reqBody, `"tools"`) {
-		t.Fatalf("agent mode off: outbound provider request unexpectedly carried tool definitions. body=%s", reqBody)
+	if reqs.containsAny(`"tools"`) {
+		t.Fatalf("agent mode off: outbound provider request unexpectedly carried tool definitions. requests=%s", reqs)
 	}
 	if reply != "fake agent reply" {
 		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")

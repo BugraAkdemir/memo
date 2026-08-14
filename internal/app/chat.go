@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"memo/internal/api"
-	"memo/internal/memory"
 	moodpkg "memo/internal/mood"
 )
 
@@ -82,7 +81,50 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 	return reply
 }
 
-// SendMessage sends a plain-text user message and returns the reply.
+// drainToReply collapses a stream started via a.streamMu-guarded routing
+// (sendMessageStreamCore/routeStream) into a single display-ready reply
+// string, for the non-streaming Send* API surface (SendMessage,
+// SendMessageWithImage, SendMessageWithFile — used by POST /api/send and
+// friends). Agent-event chunks (FinishReason=="agent_event") carry
+// JSON-encoded tool-execution metadata meant for an SSE consumer to render
+// as badges (see chat_provider.dart) — they are not reply text and are
+// skipped here, same as the streaming consumers never inline them into the
+// message body either. The first Error chunk wins and is returned as-is
+// (already a display-ready "⚠️ ..." string, matching every other error path
+// in this file) without draining further, mirroring how callLLM/callLLMStream
+// treat a stream error as terminal.
+func drainToReply(ch <-chan api.StreamChunk) string {
+	var reply strings.Builder
+	for chunk := range ch {
+		if chunk.Error != "" {
+			return chunk.Error
+		}
+		if chunk.FinishReason == "agent_event" {
+			continue
+		}
+		reply.WriteString(chunk.Content)
+	}
+	return reply.String()
+}
+
+// SendMessage sends a plain-text user message and returns the reply
+// (non-streaming, used by POST /api/send).
+//
+// Routes through the same sendMessageStreamCore/routeStream path
+// SendMessageStream uses instead of calling callLLM directly, so agent mode
+// applies here too. Before this, SendMessage bypassed routeStream entirely —
+// no tool definitions, no agent system prompt — so a tool-requiring message
+// sent through this endpoint always got a plain, tool-less reply (the model
+// just claiming it had no tools) regardless of whether agent mode was on,
+// with no error or indication anything was skipped. This is the same bug
+// class routeStream's own doc comment already describes being fixed for the
+// image/file *streaming* variants; SendMessage/SendMessageWithImage/
+// SendMessageWithFile (their non-streaming counterparts) were the
+// remaining unfixed instances. sendMessageStreamCore/finishStream now own
+// session recording, memory saving, mood updates, observer/intent
+// recording, and title generation as side effects of the drain below — the
+// manual duplicates of all of those that used to live in this function are
+// gone, not just moved.
 func (a *App) SendMessage(userMsg string) string {
 	logx.Printf(">> SendMessage: %q", userMsg)
 	a.incognitoMu.RLock()
@@ -91,27 +133,20 @@ func (a *App) SendMessage(userMsg string) string {
 	if incog {
 		return a.handleIncognito(userMsg, "")
 	}
-	a.observerRecorder.RecordMessage(userMsg)
-	goRecover("processMessageIntent", func() { a.processMessageIntent(userMsg, "chat", "", time.Now()) })
-	messages := a.buildMessages(context.Background(), userMsg, nil)
+
+	if !a.streamMu.TryLock() {
+		return "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin."
+	}
+	defer a.streamMu.Unlock()
+
 	sm := a.getSessionManager()
+	var chatID string
 	if sm != nil {
-		sm.AddMessage("user", userMsg, "", "")
+		chatID = sm.GetActiveID()
 	}
-	// See callLLMStream's identical call (llm.go) for why: this is a real
-	// chat message about to hit the local model's single inference slot,
-	// so preempt any background call (auto fact extraction) still
-	// occupying it (BUG_REPORT TD-2).
-	a.preemptBackgroundLLM()
-	reply := a.callLLM(context.Background(), messages)
-	if a.mood != nil && a.mood.Enabled() {
-		goRecover("updateMoodAsync", func() { a.updateMoodAsync(userMsg) })
-	}
-	if sm != nil {
-		sm.AddMessage("assistant", reply, "", "")
-	}
-	a.saveMemoryAsync(userMsg, reply)
-	return reply
+
+	ch := a.sendMessageStreamCore(context.Background(), chatID, userMsg, false)
+	return drainToReply(ch)
 }
 
 // SendMessageStream sends a user message and streams the reply token by token.
@@ -492,7 +527,10 @@ func (a *App) handleIncognitoStream(ctx context.Context, userMsg string, b64 str
 	return a.callLLMStream(ctx, msgs, userMsg, "", "", "")
 }
 
-// SendMessageWithImage sends a vision message (non-streaming).
+// SendMessageWithImage sends a vision message (non-streaming). Same
+// SendMessageStream/routeStream routing as SendMessage — see its doc
+// comment for why this replaced a direct callLLM call (this function had
+// the identical agent-skipping bug).
 func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 	logx.Printf(">> Vision: %q with image %s", userMsg, imagePath)
 
@@ -510,38 +548,39 @@ func (a *App) SendMessageWithImage(userMsg string, imagePath string) string {
 		return a.handleIncognito(userMsg, b64)
 	}
 
-	var memories []memory.MemoryResult
-	if a.GetMemoryEnabled() {
-		memories = a.retrieveMemory(context.Background(), userMsg)
+	if !a.streamMu.TryLock() {
+		return "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin."
 	}
-	systemPrompt := a.identity.BuildSystemPrompt(memories, false, a.GetAgentEnabled(), a.GetWebSearchEnabled())
-
-	var msgs []api.Message
-	msgs = append(msgs, api.NewTextMessage("system", systemPrompt))
-	msgs = append(msgs, a.getSessionHistory()...)
-	msgs = append(msgs, api.NewMultimodalMessage("user", userMsg, b64))
+	defer a.streamMu.Unlock()
 
 	sm := a.getSessionManager()
+	var chatID string
 	if sm != nil {
-		sm.AddMessage("user", userMsg, imagePath, "")
+		chatID = sm.GetActiveID()
 	}
 
-	// See SendMessage's identical call for why (BUG_REPORT TD-2).
-	a.preemptBackgroundLLM()
-	reply := a.callLLM(context.Background(), msgs)
+	msgs := a.buildMessagesForSession(context.Background(), chatID, userMsg, []string{b64})
+	if sm != nil {
+		sm.AddMessageToSession(chatID, "user", userMsg, imagePath, "")
+	}
 
+	ch := a.routeStream(context.Background(), msgs, userMsg, imagePath, "", chatID, false)
+	reply := drainToReply(ch)
+
+	// Cosmetic only: finishStream (inside the drain above) already recorded
+	// the raw reply to session history/memory before this substitution runs,
+	// same trade-off the streaming vision path (SendMessageWithImageStream)
+	// already has — it never had this substitution at all.
 	if strings.Contains(reply, "image input is not supported") || strings.Contains(reply, "mmproj") {
 		reply = "⚠️ Bu model görsel/resim desteklemiyor. Resim gönderebilmek için vision destekli bir model kullanmalısınız (örn: LLaVA, BakLLaVA, Llama Vision gibi)."
 	}
-
-	if sm != nil {
-		sm.AddMessage("assistant", reply, "", "")
-	}
-	a.saveMemoryAsync(userMsg, reply)
 	return reply
 }
 
-// SendMessageWithFile sends a file-attached message (non-streaming).
+// SendMessageWithFile sends a file-attached message (non-streaming). Same
+// SendMessageStream/routeStream routing as SendMessage — see its doc
+// comment for why this replaced a direct callLLM call (this function had
+// the identical agent-skipping bug).
 func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 	logx.Printf(">> File: %q with %s", userMsg, filePath)
 
@@ -566,22 +605,24 @@ func (a *App) SendMessageWithFile(userMsg string, filePath string) string {
 		return a.handleIncognito(combined, "")
 	}
 
-	messages := a.buildMessages(context.Background(), combined, nil)
+	if !a.streamMu.TryLock() {
+		return "⏳ Lütfen önceki cevap tamamlanana kadar bekleyin."
+	}
+	defer a.streamMu.Unlock()
 
 	sm := a.getSessionManager()
+	var chatID string
 	if sm != nil {
-		sm.AddMessage("user", userMsg, "", filePath)
+		chatID = sm.GetActiveID()
 	}
 
-	// See SendMessage's identical call for why (BUG_REPORT TD-2).
-	a.preemptBackgroundLLM()
-	reply := a.callLLM(context.Background(), messages)
-
+	messages := a.buildMessagesForSession(context.Background(), chatID, combined, nil)
 	if sm != nil {
-		sm.AddMessage("assistant", reply, "", "")
+		sm.AddMessageToSession(chatID, "user", userMsg, "", filePath)
 	}
-	a.saveMemoryAsync(userMsg, reply)
-	return reply
+
+	ch := a.routeStream(context.Background(), messages, userMsg, "", filePath, chatID, false)
+	return drainToReply(ch)
 }
 
 // updateMoodAsync duygu skorunu arka planda asenkron günceller.

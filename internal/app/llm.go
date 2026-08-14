@@ -213,10 +213,10 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
-		var agentEvents []interface{}
+		agentEvents := &agentEventLog{}
 
 		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
-			agentEvents = append(agentEvents, ev)
+			agentEvents.add(ev)
 			chunkData, _ := json.Marshal(ev)
 			trySend(ctx, outCh, api.StreamChunk{
 				Content:      string(chunkData),
@@ -237,6 +237,56 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 	return outCh
 }
 
+// agentEventLog accumulates agent tool-execution events across the lifetime
+// of one callAgentStream call. Two goroutines touch it: the pipeline's own
+// worker goroutine appends to it (via the onEvent callback passed to
+// agent.Executor.RunStream, which starts that goroutine and returns
+// immediately — RunStream does not block until the pipeline finishes), while
+// callAgentStream's goroutine reads it once the stream completes, to hand
+// the full event list to finishStream for session recording. A plain
+// `var agentEvents []interface{}` (the previous shape) raced on exactly
+// that: append vs. read with no synchronization (caught by
+// TestSendMessage_AgentModeOn_SendsToolDefinitions under -race, the first
+// test to actually drive a real agent pipeline run to completion). It was
+// also silently wrong even ignoring the race — the read happened once,
+// immediately after RunStream returned (i.e. right as the pipeline started,
+// before any tool call could have run), and that stale near-empty snapshot
+// is what got passed into drainAgentStream and ultimately persisted as the
+// turn's agent-event history, regardless of how many tool calls actually
+// ran before the stream later finished. snapshot() must be called only
+// once the stream is actually done (drainAgentStream's two finishStream
+// call sites), not at RunStream's return time.
+type agentEventLog struct {
+	mu     sync.Mutex
+	events []interface{}
+}
+
+func (l *agentEventLog) add(ev interface{}) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	l.events = append(l.events, ev)
+	l.mu.Unlock()
+}
+
+// snapshot returns a defensive copy — the caller (finishStream, eventually
+// sessions.Manager) must not share backing storage with a slice this log
+// might still be appending to concurrently.
+func (l *agentEventLog) snapshot() []interface{} {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	if len(l.events) == 0 {
+		return nil
+	}
+	out := make([]interface{}, len(l.events))
+	copy(out, l.events)
+	return out
+}
+
 // drainAgentStream reads streamCh (the agent pipeline's own output) until it
 // closes or ctx is cancelled, forwarding content to outCh and finishing the
 // turn (finishStream + a terminal Done/Error chunk) on every exit path.
@@ -253,7 +303,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 // introducing exactly that gap, matching the same "every branch sends a
 // terminal chunk" rule already enforced in internal/agentcli's own
 // ChatCompletionStream implementations.
-func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents []interface{}) {
+func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.StreamChunk, outCh chan<- api.StreamChunk, start time.Time, userMsg, sessionID string, usageMetaVal *usageMeta, agentEvents *agentEventLog) {
 	var fullReply strings.Builder
 	for {
 		chunk, ok, ctxDone := recvChunk(ctx, streamCh)
@@ -277,14 +327,14 @@ func (a *App) drainAgentStream(ctx context.Context, streamCh <-chan provider.Str
 		}
 
 		if chunk.Done {
-			a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents)
+			a.finishStream(start, 0, chunk.FinishReason, fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: chunk.FinishReason})
 			return
 		}
 	}
 
 	if fullReply.Len() > 0 {
-		a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents)
+		a.finishStream(start, 0, "stop", fullReply.String(), userMsg, sessionID, usageMetaVal, agentEvents.snapshot())
 		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	} else {
 		a.recordStreamError(userMsg, "⚠️ Agent boş yanıt döndürdü", sessionID)

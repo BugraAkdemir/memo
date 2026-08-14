@@ -2,11 +2,19 @@ package app
 
 import (
 	"context"
+	"fmt"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
+	"memo/internal/agent"
 	"memo/internal/config"
 	"memo/internal/identity"
+	"memo/internal/provider"
 	"memo/internal/sessions"
 )
 
@@ -110,5 +118,114 @@ func TestSendMessageStreamTo_TargetsGivenChatID_NotGloballyActiveChat(t *testing
 		if m["content"] == "task loop message" {
 			t.Fatal("message sent via SendMessageStreamTo(chatA, ...) leaked into chat B's history")
 		}
+	}
+}
+
+// newSendMessageTestApp builds a real App wired to a fake OpenAI-compatible
+// HTTP server standing in for the active provider, so SendMessage's actual
+// outbound request can be inspected. reqBody receives the raw JSON body of
+// the last request the fake server saw.
+func newSendMessageTestApp(t *testing.T, reqBody *string) *App {
+	t.Helper()
+	t.Setenv("MEMO_DATA_DIR", t.TempDir())
+
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body, _ := io.ReadAll(r.Body)
+		*reqBody = string(body)
+		if strings.Contains(*reqBody, `"stream":true`) {
+			// The agent pipeline's ChatCompletion (non-streaming, used to
+			// send tool definitions) is a plain JSON POST/response — but
+			// routeStream's non-agent fallback goes through
+			// ChatCompletionStream, which requests SSE. Both must be served
+			// correctly since which one a given test exercises depends on
+			// agent mode being on or off.
+			w.Header().Set("Content-Type", "text/event-stream")
+			fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"fake agent reply\"}}]}\n\n")
+			fmt.Fprint(w, "data: [DONE]\n\n")
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"1","object":"chat.completion","created":1,"model":"test-model",`+
+			`"choices":[{"index":0,"message":{"role":"assistant","content":"fake agent reply"},"finish_reason":"stop"}],`+
+			`"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}`)
+	}))
+	t.Cleanup(srv.Close)
+
+	cfgMgr := provider.NewConfigManager(filepath.Join(t.TempDir(), "providers.json"), make([]byte, 32))
+	cfgMgr.Set(provider.ProviderConfig{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	})
+
+	router := provider.NewRouter(cfgMgr.GetEnabled())
+	router.SetActiveProvider("test")
+
+	sm, err := sessions.NewManager(t.TempDir())
+	if err != nil {
+		t.Fatalf("sessions.NewManager: %v", err)
+	}
+
+	return &App{
+		cfg:                &config.AppConfig{Memory: config.MemoryConfig{MemoryEnabled: false}},
+		identity:           identity.New("Test", "Memo", "casual", "", false),
+		sessions:           sm,
+		providerRouter:     router,
+		providerCfgMgr:     cfgMgr,
+		activeProviderName: "test",
+		agentExecutor:      agent.NewExecutor(t.TempDir(), nil, nil),
+		events:             &eventRing{},
+	}
+}
+
+// TestSendMessage_AgentModeOn_SendsToolDefinitions is the regression test for
+// the POST /api/send agent-skipping bug: App.SendMessage used to call
+// callLLM directly, which builds a plain message list with no tool
+// definitions and no agent system prompt — bypassing routeStream (and thus
+// agent mode) entirely, regardless of the global agent-mode toggle. A
+// tool-requiring message sent through this path always got a plain,
+// tool-less reply (the model just claiming it had no tools available), with
+// no error or indication anything was skipped.
+//
+// SendMessage now routes through sendMessageStreamCore/routeStream exactly
+// like SendMessageStream does, so with agent mode on, the outbound request
+// to the provider must carry tool definitions. Confirmed live against a real
+// self-hosted install before this fix: the same message sent via
+// POST /api/send got a plain refusal ("I don't have terminal access"), while
+// POST /api/send/stream (already routed through routeStream) correctly
+// triggered a run_command tool call.
+func TestSendMessage_AgentModeOn_SendsToolDefinitions(t *testing.T) {
+	var reqBody string
+	a := newSendMessageTestApp(t, &reqBody)
+	if err := a.SetAgentEnabled(true); err != nil {
+		t.Fatalf("SetAgentEnabled(true): %v", err)
+	}
+
+	reply := a.SendMessage("list the files in the current directory")
+
+	if !strings.Contains(reqBody, `"tools"`) {
+		t.Fatalf("agent mode on: outbound provider request had no tool definitions — agent routing was skipped (the bug this test guards against). body=%s", reqBody)
+	}
+	if reply != "fake agent reply" {
+		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
+	}
+}
+
+// TestSendMessage_AgentModeOff_NoToolDefinitions is the mirror of the test
+// above: with agent mode off, SendMessage must still behave like plain chat
+// — no tool definitions sent, same as before this fix.
+func TestSendMessage_AgentModeOff_NoToolDefinitions(t *testing.T) {
+	var reqBody string
+	a := newSendMessageTestApp(t, &reqBody)
+
+	reply := a.SendMessage("hello")
+
+	if strings.Contains(reqBody, `"tools"`) {
+		t.Fatalf("agent mode off: outbound provider request unexpectedly carried tool definitions. body=%s", reqBody)
+	}
+	if reply != "fake agent reply" {
+		t.Fatalf("SendMessage() = %q, want %q", reply, "fake agent reply")
 	}
 }

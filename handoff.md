@@ -1,3 +1,124 @@
+# Handoff — 2026-08-14 (Session 7) — RPi sil/yükle turu, `/api/send` agent bug'ı bulundu ve düzeltildi, 3 yeni CLI subcommand'ı, CI (govulncheck+race) düzeltmeleri, v3.5.5 release notes
+
+## Oturum Özeti
+
+Uzun, çok parçalı bir oturum. Kullanıcı "yetki sende, gerekli tüm testleri yap, hata bulursan düzelt, CI bekle, tekrar sil-test et, agent'ı çalışır hale getir, bir tek agent'a bakma her yeri test et" diyerek geniş bir otonom yetki verdi (`/loop` ile). Beş ana iş parçası:
+
+1. **RPi'de (192.168.1.106) tekrarlanan sil/yükle/test döngüleri** — `data.memocpp.com`/`download.bugradev.com`'dan `get-memo-server-beta.sh` ile.
+2. **Gerçek bir bug bulundu ve düzeltildi:** agent modu, streaming olmayan `/api/send` ve kardeşlerinde tamamen sessizce atlanıyordu.
+3. **CI'de iki bağımsız sorun** (govulncheck CVE'si + kendi yeni testimdeki data race) bulunup düzeltildi.
+4. **3 yeni CLI subcommand'ı** (`memo provider`/`memo agent`/`memo model`) + `memo remote rotate-token` + güvenli şifre/key prompt'u eklendi.
+5. **v3.5.5 release notes** (EN+TR) yazıldı — sadece Phase 2, version bump/tag/publish yapılmadı.
+
+**Commit durumu — hepsi push edildi (`main`, hem GitHub hem `web.bugradev.com` remote'una):**
+
+| Commit | Özet |
+|---|---|
+| `b46a672` | fix(backend): agent mode was silently skipped by POST /api/send and friends |
+| `f9a3fec` | fix(backend): data race in the new SendMessage agent-routing regression tests |
+| `129d590` | chore(backend): bump go.mod to 1.26.6 for GO-2026-6218 (net/url quadratic complexity) |
+| `11ce3be` | feat(cli): add memo provider/agent/model subcommands, remote rotate-token, hidden password/key prompts |
+| `b39626b` | docs(release-notes): add v3.5.5 release notes (EN+TR) |
+
+Tüm bu commit'ler için CI (Security Scan + Go test + Flutter) yeşil, Build Linux/macOS/Windows/Docker hepsi başarılı — canlı doğrulandı (`gh run list`/`gh run watch`).
+
+---
+
+## İş 1 — `/api/send` agent bug'ı (asıl istenen fix)
+
+**Kullanıcı raporu / kendi bulgum:** RPi'de canlı test ederken (`/api/send` senkron endpoint'ine agent-mode açıkken bir tool gerektiren mesaj gönderince) model "ben terminal değilim" diye düz metin cevap veriyordu — `/api/send/stream` ile aynı mesaj gerçek `run_command` tool call'ı tetikliyordu.
+
+**Kök sebep:** `App.SendMessage`/`SendMessageWithImage`/`SendMessageWithFile` (`internal/app/chat.go`) `a.callLLM`'i doğrudan çağırıyordu — `routeStream`'den hiç geçmiyordu, yani agent system prompt'u ve tool tanımları asla gönderilmiyordu, global agent-mode bayrağına bakılmaksızın. `routeStream`'in kendi yorumu bu bug sınıfının image/file *streaming* varyantları için zaten bir kere düzeltildiğini söylüyor (BUG-QL5) — bu üç senkron fonksiyon düzeltilmemiş kalan örneklerdi.
+
+**Fix:** Üçü de artık `sendMessageStreamCore`/`routeStream` üzerinden geçiyor, dönen stream'i yeni bir `drainToReply` helper'ıyla senkron olarak topluyor (agent_event JSON chunk'larını atlıyor, sadece gerçek metni alıyor). Session kaydı, hafıza kaydetme, mood güncellemesi, title generation artık `finishStream`'in yan etkisi — bu üç fonksiyondaki elle yapılan kopyaları (hepsi) kaldırıldı, taşınmadı.
+
+**Regresyon testleri** (`chat_test.go`): `TestSendMessage_AgentModeOn_SendsToolDefinitions` / `_AgentModeOff_NoToolDefinitions` — gerçek bir sahte OpenAI-uyumlu `httptest.Server`e karşı, agent açıkken isteğin `"tools"` taşıdığını, kapalıyken taşımadığını doğruluyor.
+
+**Bu testi yazarken ikinci, bağımsız bir bug bulundu:** `callAgentStream`'deki (`internal/app/llm.go`) `agentEvents []interface{}` iki goroutine arasında senkronizasyonsuz paylaşılıyordu (`-race` yakaladı) — üstelik sadece race değil, fonksiyonel olarak da bozuktu: okuma, `RunStream` döner dönmez (pipeline daha yeni başlarken) yapılıyordu, yani agent event geçmişi neredeyse hep boş kaydediliyordu, kaç tool çalışırsa çalışsın. Mutex korumalı `agentEventLog` tipiyle düzeltildi; `drainAgentStream`'in iki `finishStream` çağrı noktası artık `snapshot()`'ı stream gerçekten bittiğinde alıyor.
+
+**Kapsam dışı bırakılan, not düşülen:** `internal/app/whatsapp.go`'nun kendi chat-reply stream'i `routeStream` yerine kendi mesaj listesini kuruyor — benzer bir agent-routing boşluğu olabilir, ayrı bir kod yolu, rapor edilen konu değildi, dokunulmadı.
+
+**Canlı doğrulama (RPi, gerçek non-loopback client, fix'ten önce ve sonra):** fix öncesi `/api/send` + agent açık + "ls -la çalıştır" → düz metin refuse. Fix sonrası (yeniden kurulmuş, güncel build) → aynı istek gerçek `run_command` tool call'ı tetikledi, gerçek `ls -la` çıktısı döndü.
+
+---
+
+## İş 2 — CI'de bulunan iki bağımsız sorun
+
+Push sonrası "CI" workflow'u kırmızı çıktı, kullanıcı fark edip bildirdi ("CI'lerden kaldı amk security ve go dan").
+
+1. **Security Scan (govulncheck) — GO-2026-6218**, `net/url`'de quadratic-complexity, `go1.26.5`'te var, `go1.26.6`'da düzeltilmiş. Koddan bağımsız, bir stdlib CVE'si. `go.mod`'un `go` direktifi `1.26.5` → `1.26.6`'ya çekildi. **Bu sandbox'ta internet yok** (DNS `127.0.0.1:53`'e gidip reddediliyor — asıl sebep aşağıda İş 6'da anlatılan sistem DNS bozukluğu, o zaman bilinmiyordu), bu yüzden yerelde `go.mod`'u geçici olarak `1.26.5`'e çekip test ettim, commit'ten hemen önce `1.26.6`'ya geri aldım. CI (gerçek interneti olan) gerçek doğrulamayı yaptı, yeşil.
+
+2. **Test (Go) — data race**, İş 1'de anlatılan `agentEventLog` bug'ı — aynı commit'te düzeltildi.
+
+**Ayrı, kendi yeni testlerimdeki üçüncü bir race daha bulundu** (ikinci push sonrası, yine CI'de): `chat_test.go`'daki fake sunucu, her isteğin body'sini paylaşımlı bir `*string`'e senkronizasyonsuz yazıyordu — `routeStream`'in `processMessageIntent` gibi arka plan çağrıları da aynı sahte sunucuya paralel istek atınca çakışıyordu. Mutex korumalı `capturedRequests` (istek listesi + `containsAny`) tipiyle düzeltildi — hem race gitti hem de arka plan çağrıları artık asıl assertion'ı bozmuyor.
+
+---
+
+## İş 3 — RPi sil/yükle/test döngüleri (birden fazla tur)
+
+Toplam 3 tam sil→kur→test turu yapıldı (agent fix öncesi bir tur, CLI eklemeleri sonrası bir tur, + ilk oturumun kendi turu). Her turda: `~/.memo`'yu yedekleyip (`~/Documents/memo-backup-*.zip`) sil, `curl -fsSL https://data.memocpp.com/get-memo-server-beta.sh | bash` (`--lan`, token auth, sistemd `--user` servisi), `POST /api/setup/create-device` ile bootstrap, OpenCode Zen provider'ı (`hy3-free` free model) bağla, test et.
+
+**Test edilenler (hepsi geçti):**
+- Auth/setup fix'i (önceki oturumun BUG-ONB13'ü) — gerçek non-loopback client'tan doğrulandı.
+- Normal chat, agent chat (tool call + izin akışı), hafıza (embedding modeli `nomic-embed-text-v1.5.Q4_K_M.gguf` indirilip başlatıldı — **sıfır geçmişli, bambaşka bir sohbette** kedi adı + yemek tercihi doğru hatırlandı, çelişen iki "favori renk" kaydını uydurmadan doğru işaretledi).
+- Takvim CRUD, WhatsApp status (bağlı değil, beklenen), Orchestra config okuma, stats/usage, routines/tasklist (boş, beklenen).
+- Yeni CLI subcommand'larının hepsi (aşağıda İş 4).
+
+**İncelenip bilerek dokunulmayan bulgular:**
+- `GET /api/providers` API key'i düz metin döndürüyor — ama `ConfigManager.GetAll()`'un kendi doc comment'i "API keys in plaintext" diyerek bunu açıkça belgeliyor, kasıtlı tasarım (muhtemelen Settings'te key'i geri gösterebilmek için). Onay almadan davranışı değiştirmedim.
+
+---
+
+## İş 4 — 3 yeni CLI subcommand'ı + `remote rotate-token` + güvenli prompt (`11ce3be`)
+
+Kullanıcı, `memo remote`'un zaten var olduğunu ama bilmediğini fark edince ("bu değiştirme komutlarını ilk defa görüyorum"), bugün RPi'de bizzat ihtiyaç duyduğum (curl'e dönmek zorunda kaldığım) 3 boşluğu doldurmamı istedi:
+
+- **`memo provider list|add|set-active|active`** — harici provider yönetimi. `--key` verilmezse (ve stdin gerçek bir terminalse) gizli olarak sorulur.
+- **`memo agent status|enable|disable|auto-permission status|on|off`** — agent modu + auto-permission.
+- **`memo model list|status|search|files|download|start|start-embedding`** — HF model arama, canlı ilerleme çubuklu indirme, embedding/chat model başlatma.
+- **`memo remote rotate-token <id>`** — bir cihazı iptal edip aynı adla yeniden ekliyor (dedicated bir reissue endpoint'i yok, token'lar kasıtlı olarak write-once).
+- **Güvenlik düzeltmesi (bulundu, aynı commit'te düzeltildi):** `memo remote set-mode`/`login`'in `--password`'ü düz flag değeri olarak alması — `ps`/`/proc/<pid>/cmdline`'dan başka kullanıcılara görünür, shell history'de kalıcı. Yeni `promptSecret` helper'ı (`cli_secret.go`, `term.ReadPassword`, `sudo`/`ssh` gibi) hem yeni `--key`'e hem mevcut `--password`'e uygulandı; stdin terminal değilse (script/pipe) hemen net bir hatayla başarısız oluyor, sonsuza kadar beklemiyor.
+- `--help` çıktısının YÖNETİM bölümü, her subcommand'ı ayrı satırda listeleyecek şekilde genişletildi — tam da bu oturumda yaşanan "zaten vardı ama `--help`'te göze çarpmıyordu" dersini uygulayarak.
+
+**Client katmanı** (`internal/replcli/models_client.go`): `SearchModels`/`ListModelFiles`/`DownloadModel`/`DownloadProgress`/`GetAgentEnabled` eklendi; `UpdateProvider`/`ListProviders`/`SetActiveProvider`/`StartModel`/`StartEmbedding` zaten vardı (REPL'in `/connect`/`/embedding` komutları için), yeniden kullanıldı.
+
+**Doğrulama:** `go build`/`vet`/`test -race` tüm repo yeşil (go.mod yine geçici 1.26.5'e çekilip test edildi, commit öncesi 1.26.6'ya geri alındı — aynı sandbox-network kısıtı). Yeni regresyon testleri (`cli_agent_test.go`, `cli_provider_test.go`, `cli_model_test.go`, `cli_remote_test.go`'ya eklenenler, `cli_secret_test.go`) hepsi `httptest.Server`e karşı gerçek istek body'lerini doğruluyor. **Ayrıca gerçek bir backend'e karşı uçtan uca canlı test edildi** (bu makinede yerel bir headless backend başlatılıp): search→files→download (canlı ilerheme)→start-embedding, provider add→list→set-active→active, agent enable→status→auto-permission on/off→disable, remote add-device→list-devices→rotate-token, ve `promptSecret`'in non-terminal-stdin hızlı-hata yolu.
+
+---
+
+## İş 5 — v3.5.5 release notes (EN+TR), `b39626b`
+
+`versinNote/v3.5.5.md` + `versinNote/tr/v3.5.5.md` yazıldı — v3.3.4 tag'inden bu yana ~140 commit'i kapsıyor (self-hosting'in tam hikayesi: 4-modlu auth, çoklu hesap, yeni Flutter web UI, Docker/CasaOS, CLI'ın tamamı; RPi'de canlı bulunan ~13 onboarding bug'ı; bugünkü agent fix'i + data race; yeni CLI subcommand'ları; mood varsayılan kapanması).
+
+**Bilinçli olarak yapılmayan:** version dosyası, `installer.iss`, README badge/link'leri güncellenmedi, tag atılmadı, `version.json` beacon'ı değiştirilmedi. Kullanıcı sadece "release notes güncelle" istedi (skill'in Phase 2'si) — tam release (Phase 1/3/4) ayrı bir onay gerektirir, özellikle tag push (AGENTS.md'nin sabit kuralı).
+
+---
+
+## İş 6 — Sistem DNS bozukluğu bulundu, kullanıcı isteğiyle düzeltilmedi
+
+`go.mod`'u 1.26.6'ya çekince VS Code'un Go extension'ı (`gopls`) hata verdi: toolchain indirilemiyor, DNS `127.0.0.1:53`'e gidip reddediliyor. Kök neden bulundu: `/etc/resolv.conf` (14 Temmuz'dan kalma, statik dosya) `127.0.0.1`/`::1` yazıyor ama o portta hiçbir şey dinlemiyor (`ss -tulnp` boş); `systemd-resolved` çalışıyor ve gerçek, güncel bir resolv.conf'u `/run/systemd/resolve/stub-resolv.conf`'ta tutuyor ama `/etc/resolv.conf` ona symlink değil. `curl` çalışıyordu çünkü glibc/NSS systemd-resolved'ın D-Bus arayüzünü kullanıyor, `/etc/resolv.conf`'a hiç bakmıyor — Go'nun pure-Go resolver'ı katı şekilde o dosyayı okuyor. Standart düzeltme: `sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`. **Kullanıcı "gerek yok" dedi, dokunulmadı** — bu makinede (ve muhtemelen bu oturum boyunca sandbox'ın "internet yok" sandığım göründüğü her yerde) hâlâ geçerli, bilinen bir kısıt.
+
+---
+
+## Diğer — kod değişikliği içermeyen tartışmalar
+
+- **Mobile app portu:** kullanıcı `frontend/`'i mobile'a (android/ios) derlemeyi sordu — RAG/hafıza backend-side olduğu için local model olmadan da çalışır ama mutlaka bir backend'e bağlanmak gerekir (`mobile/README.md` zaten bunu söylüyor: "thin client, all AI/ML stays on the desktop"). `frontend/`'de `android`/`ios` platform klasörleri hiç yok, `mobile/` zaten geride kalmış ayrı proje. **Kullanıcı bu işi erteledi.**
+- **Web UI responsive değil:** `internal/webserver/webapp/` aslında `frontend/`'in Flutter web derlemesi (custom HTML değil). `frontend/web/index.html`'de `<meta name="viewport">` yok — mobilde muhtemelen zoom-out görünmesinin sebebi. Tarayıcı panelinde canlı test etmeye çalışıldı ama hem RPi IP'si hem yerel `http.server` üzerinden per-site onay engeline takıldı (kullanıcının kendi arayüzünde tıklanması gerekiyor). **Kullanıcı "onu da bırak" dedi, ertelendi** — viewport meta tag eksikliği hâlâ düzeltilmedi, gerçek kanıt toplanamadı.
+- **Kütüphane bağımlılık riski taraması** (kod değişikliği yok, sadece analiz+tavsiye): `flutter_markdown` **gerçekten** Google tarafından 30 Mayıs 2025'te discontinued ilan edilmiş (WebSearch ile doğrulandı), topluluk devamı `flutter_markdown_plus` var — Memo hâlâ eski pakete bağlı, geçiş önerildi ama yapılmadı. `go.mau.fi/whatsmeow` (WhatsApp) en kırılgan bağımlılık olarak işaretlendi (resmi değil, WhatsApp'ın protokol değişikliklerine karşı savunmasız). İyi "in-house yaz" adayları olarak `mattn/go-isatty`, `google/uuid`, `fl_chart` (tek kullanım yeri: `stats_tab.dart`, tek bir stacked bar chart) işaretlendi; `golang-jwt/jwt` için **bilerek in-house önerilmedi** (güvenlik-kritik kod, "basit görünüyor" ile "güvenli yazmak kolay" aynı şey değil). Kendi tünel sistemi (Tailscale yerine) yazma fikri de değerlendirildi ve caydırıldı — WireGuard kripto + NAT traversal/DERP relay altyapısı + cross-platform native entegrasyon, Go'nun gücüyle değil işin kendi zorluğuyla ilgili; zaten ngrok + LAN token/şifre auth fallback'leri var.
+
+---
+
+## Sıradaki oturum için
+
+1. **Web UI mobil responsive fix'i bekliyor:** `frontend/web/index.html`'e `<meta name="viewport" content="width=device-width, initial-scale=1.0">` eklenmesi muhtemel ilk adım — ama gerçek tarayıcı testiyle doğrulanmadı, kullanıcı erteledi. Sırada tekrar gelirse buradan devam.
+2. **Sistem DNS bozukluğu hâlâ düzeltilmedi** (`/etc/resolv.conf` → `/run/systemd/resolve/stub-resolv.conf` symlink'i eksik) — kullanıcı "gerek yok" dedi ama bu, Go toolchain'inin (ve muhtemelen başka network gerektiren her Go aracının) bu makinede yerel olarak internete çıkamamasının kök sebebi olmaya devam ediyor.
+3. **`flutter_markdown` → `flutter_markdown_plus` geçişi** önerildi, onay bekliyor.
+4. **`fl_chart`'ın elle çizilmiş bir stacked bar chart'a düşürülmesi** önerildi, onay bekliyor.
+5. **v3.5.5'in tam release'i** (version bump + installer.iss + README badge/link + tag push + version.json beacon) hâlâ yapılmadı — sadece release notes hazır. Kullanıcı isterse memo-release skill'iyle devam edilebilir (tag push'tan önce ayrıca onay şart, AGENTS.md kuralı).
+6. `internal/app/whatsapp.go`'nun kendi chat-reply stream'inin `routeStream`'den geçmeyip benzer bir agent-routing boşluğu taşıyıp taşımadığı hâlâ araştırılmadı — İş 1'de kapsam dışı bırakıldı, ayrı bir bakış gerekebilir.
+
+---
+
 ## Ek (2026-08-13, devam 3) — RPi canlı testinden 3 bulgu: token-only kurulum 401'i + Orchestra toast spam'i + genel "web tarafı garip" taraması
 
 Kullanıcı, önceki oturumun BUG-ONB10 fix'ini RPi'ye çıkarıp canlı test ettikten sonra üç şey bildirdi: (1) hesap kurulumunda "username+şifre" ve "sadece token" seçenekleri "garip davranıyor, bazen çalışıyor bazen çalışmıyor"; (2) alttaki toast bar'da, Orchestra kapalı olmasına rağmen sık sık "Orchestra'da bir hata oluştu" benzeri bir mesaj çıkıyor (`friendly_error.dart`'a bakılması istendi); (3) genel olarak "web tarafında garip bir davranış" var, kontrol edilmesi istendi. Üçüncüsü ayrı bir bug çıkmadı — ilk ikisinin belirtisiydi, ikisi de yalnızca loopback olmayan (LAN/self-hosted) bir bağlantıda ortaya çıkıyor.

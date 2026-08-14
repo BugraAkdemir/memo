@@ -133,6 +133,64 @@ func TestRemoteListDevicesCmd_EmptyListSucceeds(t *testing.T) {
 	}
 }
 
+func TestRemoteRotateTokenCmd_RevokesAndReAddsSameName(t *testing.T) {
+	var revokedID, addedName string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/remote-access/devices":
+			json.NewEncoder(w).Encode([]replcli.RemoteDevice{{ID: "dev-1", Name: "Laptop"}})
+		case r.Method == http.MethodDelete && strings.HasPrefix(r.URL.Path, "/api/remote-access/devices/"):
+			revokedID = strings.TrimPrefix(r.URL.Path, "/api/remote-access/devices/")
+			w.WriteHeader(http.StatusOK)
+		case r.Method == http.MethodPost && r.URL.Path == "/api/remote-access/devices":
+			var body map[string]string
+			json.NewDecoder(r.Body).Decode(&body)
+			addedName = body["name"]
+			json.NewEncoder(w).Encode(map[string]string{"token": "memo-newtoken"})
+		}
+	}))
+	defer srv.Close()
+
+	client := replcli.NewClient(srv.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if code := remoteRotateTokenCmd(ctx, client, "dev-1"); code != 0 {
+		t.Fatalf("remoteRotateTokenCmd returned %d, want 0", code)
+	}
+	if revokedID != "dev-1" {
+		t.Errorf("revoked device ID = %q, want %q", revokedID, "dev-1")
+	}
+	if addedName != "Laptop" {
+		t.Errorf("re-added device name = %q, want %q (must preserve the original name)", addedName, "Laptop")
+	}
+}
+
+func TestRemoteRotateTokenCmd_UnknownDeviceIDFailsWithoutRevoking(t *testing.T) {
+	revoked := false
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.Method == http.MethodGet && r.URL.Path == "/api/remote-access/devices":
+			json.NewEncoder(w).Encode([]replcli.RemoteDevice{{ID: "dev-1", Name: "Laptop"}})
+		case r.Method == http.MethodDelete:
+			revoked = true
+			w.WriteHeader(http.StatusOK)
+		}
+	}))
+	defer srv.Close()
+
+	client := replcli.NewClient(srv.URL)
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	if code := remoteRotateTokenCmd(ctx, client, "does-not-exist"); code == 0 {
+		t.Fatal("expected a non-zero exit code for an unknown device ID")
+	}
+	if revoked {
+		t.Error("must not revoke anything when the given device ID was never found")
+	}
+}
+
 func TestRemoteSetModeCmd_SendsExpectedBody(t *testing.T) {
 	var body map[string]string
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

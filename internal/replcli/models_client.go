@@ -3,6 +3,7 @@ package replcli
 import (
 	"context"
 	"net/http"
+	"net/url"
 	"time"
 )
 
@@ -25,15 +26,20 @@ type ModelStatus struct {
 }
 
 // ProviderConfig mirrors the fields of provider.ProviderConfig the REPL's
-// /connect command needs to configure an external, OpenAI-compatible
-// endpoint (custom base URL + API key + model).
+// /connect command and `memo provider` (cli_provider.go) need to configure
+// an external, OpenAI-compatible endpoint (custom base URL + API key +
+// model). Priority/Connected added for `memo provider list`'s display —
+// deliberately not a full mirror (Temperature/TopP/MaxTokens/ContextTokens
+// aren't needed by either CLI caller).
 type ProviderConfig struct {
-	Type    string `json:"type"`
-	Name    string `json:"name"`
-	APIKey  string `json:"api_key"`
-	BaseURL string `json:"base_url"`
-	Model   string `json:"model"`
-	Enabled bool   `json:"enabled"`
+	Type      string `json:"type"`
+	Name      string `json:"name"`
+	APIKey    string `json:"api_key"`
+	BaseURL   string `json:"base_url"`
+	Model     string `json:"model"`
+	Enabled   bool   `json:"enabled"`
+	Priority  int    `json:"priority"`
+	Connected bool   `json:"connected,omitempty"`
 }
 
 // ListLocalModels returns every model the backend knows about (chat and
@@ -130,4 +136,85 @@ func (c *Client) ActiveProviderName(ctx context.Context) (string, error) {
 		return "", err
 	}
 	return resp.Provider, nil
+}
+
+// GetAgentEnabled reports whether agent (tool-use) mode is currently on.
+// Counterpart to SetAgentEnabled above.
+func (c *Client) GetAgentEnabled(ctx context.Context) (bool, error) {
+	var resp struct {
+		Enabled bool `json:"enabled"`
+	}
+	if err := c.doJSON(ctx, http.MethodGet, "/api/agent/enabled", nil, &resp); err != nil {
+		return false, err
+	}
+	return resp.Enabled, nil
+}
+
+// HFModel mirrors modelstore.HFModelResult — one Hugging Face repo hit from
+// a model search.
+type HFModel struct {
+	ID           string   `json:"id"`
+	Author       string   `json:"author"`
+	Downloads    int      `json:"downloads"`
+	Likes        int      `json:"likes"`
+	Tags         []string `json:"tags"`
+	LastModified string   `json:"lastModified"`
+}
+
+// SearchModels searches Hugging Face for GGUF model repos matching query.
+func (c *Client) SearchModels(ctx context.Context, query string) ([]HFModel, error) {
+	var results []HFModel
+	if err := c.doJSON(ctx, http.MethodPost, "/api/models/search", map[string]string{"query": query}, &results); err != nil {
+		return nil, err
+	}
+	return results, nil
+}
+
+// GGUFFile mirrors modelstore.GGUFFile — one downloadable .gguf file within
+// a Hugging Face repo.
+type GGUFFile struct {
+	Filename string `json:"filename"`
+	Size     int64  `json:"size"`
+}
+
+// ListModelFiles lists the .gguf files available in a Hugging Face repo
+// (repoID, e.g. "nomic-ai/nomic-embed-text-v1.5-GGUF").
+func (c *Client) ListModelFiles(ctx context.Context, repoID string) ([]GGUFFile, error) {
+	var files []GGUFFile
+	if err := c.doJSON(ctx, http.MethodGet, "/api/models/files?repo="+url.QueryEscape(repoID), nil, &files); err != nil {
+		return nil, err
+	}
+	return files, nil
+}
+
+// DownloadModel starts (asynchronously, backend-side) downloading filename
+// from repoID. Poll DownloadProgress to track it — this call itself returns
+// as soon as the download is queued, not when it finishes.
+func (c *Client) DownloadModel(ctx context.Context, repoID, filename string, expectedSize int64) error {
+	return c.doJSON(ctx, http.MethodPost, "/api/models/download", map[string]any{
+		"repo_id":       repoID,
+		"filename":      filename,
+		"expected_size": expectedSize,
+	}, nil)
+}
+
+// ModelDownloadProgress mirrors modelstore.DownloadProgress.
+type ModelDownloadProgress struct {
+	Active     bool    `json:"active"`
+	RepoID     string  `json:"repo_id"`
+	Filename   string  `json:"filename"`
+	TotalBytes int64   `json:"total_bytes"`
+	Downloaded int64   `json:"downloaded"`
+	Percent    float64 `json:"percent"`
+	Speed      string  `json:"speed"`
+	Error      string  `json:"error,omitempty"`
+}
+
+// DownloadProgress returns every currently-active download's progress.
+func (c *Client) DownloadProgress(ctx context.Context) ([]ModelDownloadProgress, error) {
+	var progress []ModelDownloadProgress
+	if err := c.doJSON(ctx, http.MethodGet, "/api/models/download/progress", nil, &progress); err != nil {
+		return nil, err
+	}
+	return progress, nil
 }

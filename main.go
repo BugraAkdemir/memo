@@ -30,15 +30,22 @@ import (
 // subcommandDispatch maps a verb (memo <verb> ...) to its handler. Checked
 // before flag.Parse() below, and before any of the top-level --flags are
 // even declared: Go's flag package has no notion of git-style subcommands,
-// it would just silently treat "config"/"remote"/"service" as a stray
-// positional argument and fall through to the normal REPL/backend startup
-// path, ignoring everything after it. These three (Faz 3, yapacam.md —
-// "SSH + this CLI should be a complete management path") each parse their
-// own remaining args independently.
+// it would just silently treat "config"/"remote"/"service"/"provider"/
+// "agent"/"model" as a stray positional argument and fall through to the
+// normal REPL/backend startup path, ignoring everything after it. These
+// (Faz 3, yapacam.md — "SSH + this CLI should be a complete management
+// path") each parse their own remaining args independently. provider/agent/
+// model added later, same reasoning: configuring an external provider,
+// toggling agent mode, or downloading/starting a local model on a headless
+// self-hosted install otherwise had no CLI path at all, only a raw curl
+// against the REST API.
 var subcommandDispatch = map[string]func([]string) int{
-	"config":  runConfigCommand,
-	"remote":  runRemoteCommand,
-	"service": runServiceCommand,
+	"config":   runConfigCommand,
+	"remote":   runRemoteCommand,
+	"service":  runServiceCommand,
+	"provider": runProviderCommand,
+	"agent":    runAgentCommand,
+	"model":    runModelCommand,
 }
 
 func main() {

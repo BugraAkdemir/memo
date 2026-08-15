@@ -82,6 +82,14 @@ class ChatInput extends ConsumerStatefulWidget {
   ConsumerState<ChatInput> createState() => _ChatInputState();
 }
 
+/// Composer width below which the input bar stacks (text field on its own
+/// row, action + send buttons underneath) instead of laying everything out
+/// in a single Row — see the LayoutBuilder in [_ChatInputState.build].
+/// Deliberately larger than ChatScreen's own sidebar breakpoint: the
+/// composer runs out of room while the sidebar is still inline, since it
+/// only ever gets the chat pane's width, not the window's.
+const double _composerStackBelowWidth = 460;
+
 class _ChatInputState extends ConsumerState<ChatInput> {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -1004,9 +1012,18 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     top: BorderSide(color: MemoTheme.of(context).borderSoft),
                   ),
                 ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+            // The fixed-width children of this bar (4-6 icon buttons, their
+            // gaps, and the 42px send button) take ~225px regardless of how
+            // much width is available, so under a narrow viewport the
+            // Expanded text field below is left with almost nothing and its
+            // hint wraps one character per line — reported live as "there's
+            // no text box" at phone width. Below the breakpoint, stack
+            // instead: the field gets its own full-width row, with the
+            // action buttons and send button on a second row underneath.
+            final narrow = constraints.maxWidth < _composerStackBelowWidth;
+            final actions = <Widget>[
               _InputIconButton(
                 icon: Icons.image_outlined,
                 tooltip: orchestraEnabled
@@ -1238,11 +1255,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     ],
                   ),
                 ),
-              const SizedBox(width: 8),
+            ];
 
-              // ─── Text Input ──────────────────────────
-              Expanded(
-                child: Container(
+            // ─── Text Input ──────────────────────────
+            final field = Container(
                   constraints: const BoxConstraints(maxHeight: 160),
                   decoration: BoxDecoration(
                     color: MemoTheme.of(context).bgPanel,
@@ -1322,12 +1338,10 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                         ),
                       ),
                     ),
-                  ),
-                ),
-              const SizedBox(width: 12),
+                  );
 
-              // ─── Send / Stop Button ──────────────────
-              AnimatedContainer(
+            // ─── Send / Stop Button ──────────────────
+            final send = AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
                 child: Material(
                   color: isSending ? MemoTheme.red : MemoTheme.accent,
@@ -1360,8 +1374,50 @@ class _ChatInputState extends ConsumerState<ChatInput> {
                     ),
                   ),
                 ),
-              ),
-            ],
+              );
+
+            if (narrow) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  field,
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      // Scrollable rather than a plain Row: with Beta on
+                      // (voice button) plus a recording/transcribing status
+                      // label, the action set can still outgrow a phone
+                      // width even on its own row.
+                      Expanded(
+                        child: SingleChildScrollView(
+                          scrollDirection: Axis.horizontal,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: actions,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      send,
+                    ],
+                  ),
+                ],
+              );
+            }
+
+            return Row(
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                ...actions,
+                const SizedBox(width: 8),
+                Expanded(child: field),
+                const SizedBox(width: 12),
+                send,
+              ],
+            );
+            },
           ),
           ),
         ),

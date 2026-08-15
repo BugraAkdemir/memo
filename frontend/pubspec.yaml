@@ -16,8 +16,9 @@ dependencies:
   # State Management
   flutter_riverpod: ^2.4.9
   
-  # Markdown rendering
-  flutter_markdown: ^0.6.22
+  # Markdown rendering (community-maintained continuation of the
+  # Google-discontinued flutter_markdown, API-compatible drop-in)
+  flutter_markdown_plus: ^1.0.12
   
   # URL launcher (for sync auth)
   url_launcher: ^6.2.4

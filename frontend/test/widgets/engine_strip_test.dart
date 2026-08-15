@@ -49,13 +49,13 @@ LocalModel _embeddingModel() => LocalModel.fromJson({
       'is_embedding': true,
     });
 
-/// Pumps EngineStrip at a desktop-realistic width. The default flutter_test
-/// surface (800x600) is narrower than this strip's content in some states
-/// (e.g. the memory warning + its action text), which overflows — a real
-/// constraint of this Row-based layout, not a test bug, and not something
-/// this batch of tests is trying to fix. Memo's app window is always
-/// considerably wider than 800px in practice, so this matches how the
-/// strip actually gets used rather than papering over the overflow.
+/// Pumps EngineStrip at a desktop-realistic width, matching how the strip
+/// actually gets used (Memo's app window is always considerably wider than
+/// this in practice) so the existing pixel-position assertions below stay
+/// meaningful. The indicator row used to overflow below its own natural
+/// content width regardless of surface size (fixed 2026-08-16 — see
+/// "scrolls instead of overflowing" below) — that's no longer a factor in
+/// picking this width.
 Future<void> _pumpEngineStrip(
   WidgetTester tester, {
   required List<Override> overrides,
@@ -77,6 +77,30 @@ Future<void> _pumpEngineStrip(
     ),
   );
 }
+
+/// Same as [_pumpEngineStrip] but at a phone-width surface (375px) — used
+/// only by the narrow-width regression test below, which needs an actually
+/// narrow viewport rather than the desktop-realistic default above.
+Future<void> _pumpEngineStripNarrow(
+  WidgetTester tester, {
+  required List<Override> overrides,
+}) async {
+  tester.view.physicalSize = const Size(375, 800);
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+
+  await tester.pumpWidget(
+    ProviderScope(
+      overrides: overrides,
+      child: const MaterialApp(
+        home: Scaffold(body: EngineStrip(onOpenModels: _noop)),
+      ),
+    ),
+  );
+}
+
+void _noop() {}
 
 void main() {
   // Baseline overrides shared by every case — only the ones a test cares
@@ -283,5 +307,31 @@ void main() {
     expect(find.text(L10n.t('engine_downloading_models')), findsNothing);
     expect(find.text('a.gguf'), findsNothing);
     expect(find.text(L10n.t('engine_no_model')), findsOneWidget);
+  });
+
+  testWidgets(
+      'scrolls instead of overflowing when several indicators are active at '
+      'a phone-width viewport (regression: the root Row had no scroll/flex '
+      'protection and threw a 295px RenderFlex overflow at 375px live)',
+      (tester) async {
+    await _pumpEngineStripNarrow(
+      tester,
+      overrides: baseline(
+        chat: const ServerStatus(running: true, modelPath: '/models/gemma-3-4b.gguf'),
+        memoryEnabled: true,
+        downloads: [
+          DownloadProgress.fromJson({
+            'active': true,
+            'repo_id': 'a/repo',
+            'filename': 'a.gguf',
+            'percent': 10.0,
+          }),
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+    expect(find.byType(SingleChildScrollView), findsOneWidget);
   });
 }

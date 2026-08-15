@@ -82,109 +82,127 @@ class EngineStrip extends ConsumerWidget {
             ),
       child: Row(
         children: [
-          if (isCLIChat)
-            _CLIModeIndicator(cliType: cliType)
-          else if (chatRunning)
-            _LiveIndicator(
-              icon: Icons.memory,
-              label: _fileName(status!.modelPath),
-              onStop: () async {
-                await ref.read(apiClientProvider).stopModel();
-                ref.invalidate(modelStatusProvider);
-              },
-            )
-          else if (isApiProvider)
-            _ApiProviderIndicator(providerType: activeProviderType)
-          else if (!embRunning)
-            _OfflineHint(onOpenModels: onOpenModels),
-          if (embRunning) ...[
-            // The offline hint above only renders when !embRunning, so
-            // "chatRunning || isApiProvider" alone misses the case where it
-            // fired instead — same firstSlotHasContent check as below.
-            if (firstSlotHasContent) _divider(c.borderSoft),
-            _LiveIndicator(
-              icon: Icons.hub_outlined,
-              label: '${L10n.t('engine_memory')}: ${_fileName(emb!.modelPath)}',
-              onStop: () async {
-                await ref.read(apiClientProvider).stopEmbeddingModel();
-                ref.invalidate(embeddingStatusProvider);
-              },
-            ),
-          ] else if (memoryEnabled) ...[
-            // Memory is turned on in Settings but no embedding server is
-            // actually running — RAG silently does nothing until this is
-            // fixed, so surface it instead of failing invisibly.
-            //
-            // firstSlotHasContent (not "chatRunning || isApiProvider"): the
-            // offline hint renders whenever chat isn't running AND there's
-            // no active API provider AND embedding isn't running either —
-            // exactly the state a fully-offline install starts in. The old
-            // check missed that case, so the offline hint and this warning
-            // rendered stuck together with no gap between them.
-            if (firstSlotHasContent) _divider(c.borderSoft),
-            _MemoryWarningIndicator(hasModel: hasEmbeddingModel, onTap: onOpenModels),
-          ],
-          if (activeDownloads.isNotEmpty) ...[
-            if (firstSlotHasContent || secondSlotHasContent) _divider(c.borderSoft),
-            _DownloadIndicator(
-              downloads: activeDownloads,
-              onTap: onOpenModels,
-            ),
-          ],
-          // Auto-permission indicator
-          if (ref.watch(agentAutoPermissionProvider)) ...[
-            _divider(c.borderSoft),
-            Tooltip(
-              message: L10n.t('auto_permission_tooltip'),
+          // The indicator set grows with however many of these are active
+          // at once (chat model, memory, downloads, auto-permission,
+          // Orchestra, mood) plus their dividers, with no upper bound — fine
+          // at desktop widths, but a plain Row here overflowed by ~300px on
+          // a phone-width viewport (RenderFlex assertion, confirmed live at
+          // 375px). Scroll horizontally instead of erroring/clipping;
+          // Expanded (not Spacer, which needs bounded width and doesn't
+          // work inside a scrollable) still pins "Open Models" to the right
+          // edge on wide screens exactly as before.
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
               child: Row(
-                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Container(
-                    width: 7, height: 7,
-                    decoration: const BoxDecoration(color: MemoTheme.green, shape: BoxShape.circle),
-                  ),
-                  const SizedBox(width: 6),
-                  const Icon(Icons.auto_awesome, size: 13, color: MemoTheme.green),
-                  const SizedBox(width: 4),
-                  Text(
-                    L10n.t('auto_permission_short'),
-                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green),
-                  ),
+                  if (isCLIChat)
+                    _CLIModeIndicator(cliType: cliType)
+                  else if (chatRunning)
+                    _LiveIndicator(
+                      icon: Icons.memory,
+                      label: _fileName(status!.modelPath),
+                      onStop: () async {
+                        await ref.read(apiClientProvider).stopModel();
+                        ref.invalidate(modelStatusProvider);
+                      },
+                    )
+                  else if (isApiProvider)
+                    _ApiProviderIndicator(providerType: activeProviderType)
+                  else if (!embRunning)
+                    _OfflineHint(onOpenModels: onOpenModels),
+                  if (embRunning) ...[
+                    // The offline hint above only renders when !embRunning, so
+                    // "chatRunning || isApiProvider" alone misses the case where it
+                    // fired instead — same firstSlotHasContent check as below.
+                    if (firstSlotHasContent) _divider(c.borderSoft),
+                    _LiveIndicator(
+                      icon: Icons.hub_outlined,
+                      label: '${L10n.t('engine_memory')}: ${_fileName(emb!.modelPath)}',
+                      onStop: () async {
+                        await ref.read(apiClientProvider).stopEmbeddingModel();
+                        ref.invalidate(embeddingStatusProvider);
+                      },
+                    ),
+                  ] else if (memoryEnabled) ...[
+                    // Memory is turned on in Settings but no embedding server is
+                    // actually running — RAG silently does nothing until this is
+                    // fixed, so surface it instead of failing invisibly.
+                    //
+                    // firstSlotHasContent (not "chatRunning || isApiProvider"): the
+                    // offline hint renders whenever chat isn't running AND there's
+                    // no active API provider AND embedding isn't running either —
+                    // exactly the state a fully-offline install starts in. The old
+                    // check missed that case, so the offline hint and this warning
+                    // rendered stuck together with no gap between them.
+                    if (firstSlotHasContent) _divider(c.borderSoft),
+                    _MemoryWarningIndicator(hasModel: hasEmbeddingModel, onTap: onOpenModels),
+                  ],
+                  if (activeDownloads.isNotEmpty) ...[
+                    if (firstSlotHasContent || secondSlotHasContent) _divider(c.borderSoft),
+                    _DownloadIndicator(
+                      downloads: activeDownloads,
+                      onTap: onOpenModels,
+                    ),
+                  ],
+                  // Auto-permission indicator
+                  if (ref.watch(agentAutoPermissionProvider)) ...[
+                    _divider(c.borderSoft),
+                    Tooltip(
+                      message: L10n.t('auto_permission_tooltip'),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 7, height: 7,
+                            decoration: const BoxDecoration(color: MemoTheme.green, shape: BoxShape.circle),
+                          ),
+                          const SizedBox(width: 6),
+                          const Icon(Icons.auto_awesome, size: 13, color: MemoTheme.green),
+                          const SizedBox(width: 4),
+                          Text(
+                            L10n.t('auto_permission_short'),
+                            style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: MemoTheme.green),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                  // Orchestra mode indicator
+                  if (ref.watch(orchestraConfigProvider).valueOrNull?.enabled == true) ...[
+                    _divider(c.borderSoft),
+                    Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 7, height: 7,
+                          decoration: const BoxDecoration(color: MemoTheme.accent, shape: BoxShape.circle),
+                        ),
+                        const SizedBox(width: 8),
+                        const Text('🎵', style: TextStyle(fontSize: 13)),
+                        const SizedBox(width: 4),
+                        Text(
+                          'Orchestra',
+                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.textMain),
+                        ),
+                      ],
+                    ),
+                  ],
+                  if (ref.watch(moodEnabledProvider).valueOrNull == true) ...[
+                    _divider(c.borderSoft),
+                    const MoodGauge(),
+                  ],
                 ],
               ),
             ),
-          ],
-          // Orchestra mode indicator
-          if (ref.watch(orchestraConfigProvider).valueOrNull?.enabled == true) ...[
-            _divider(c.borderSoft),
-            Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 7, height: 7,
-                  decoration: const BoxDecoration(color: MemoTheme.accent, shape: BoxShape.circle),
-                ),
-                const SizedBox(width: 8),
-                const Text('🎵', style: TextStyle(fontSize: 13)),
-                const SizedBox(width: 4),
-                Text(
-                  'Orchestra',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.w500, color: c.textMain),
-                ),
-              ],
-            ),
-          ],
-          if (ref.watch(moodEnabledProvider).valueOrNull == true) ...[
-            _divider(c.borderSoft),
-            const MoodGauge(),
-          ],
+          ),
           const SizedBox(width: 12),
-          const Spacer(),
           MouseRegion(
             cursor: SystemMouseCursors.click,
             child: GestureDetector(
               onTap: onOpenModels,
               child: Row(
+                mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
                     L10n.t('engine_open_models'),

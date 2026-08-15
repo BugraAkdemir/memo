@@ -94,28 +94,20 @@ Kullanıcı, `memo remote`'un zaten var olduğunu ama bilmediğini fark edince (
 
 ---
 
-## İş 6 — Sistem DNS bozukluğu bulundu, kullanıcı isteğiyle düzeltilmedi
-
-`go.mod`'u 1.26.6'ya çekince VS Code'un Go extension'ı (`gopls`) hata verdi: toolchain indirilemiyor, DNS `127.0.0.1:53`'e gidip reddediliyor. Kök neden bulundu: `/etc/resolv.conf` (14 Temmuz'dan kalma, statik dosya) `127.0.0.1`/`::1` yazıyor ama o portta hiçbir şey dinlemiyor (`ss -tulnp` boş); `systemd-resolved` çalışıyor ve gerçek, güncel bir resolv.conf'u `/run/systemd/resolve/stub-resolv.conf`'ta tutuyor ama `/etc/resolv.conf` ona symlink değil. `curl` çalışıyordu çünkü glibc/NSS systemd-resolved'ın D-Bus arayüzünü kullanıyor, `/etc/resolv.conf`'a hiç bakmıyor — Go'nun pure-Go resolver'ı katı şekilde o dosyayı okuyor. Standart düzeltme: `sudo ln -sf /run/systemd/resolve/stub-resolv.conf /etc/resolv.conf`. **Kullanıcı "gerek yok" dedi, dokunulmadı** — bu makinede (ve muhtemelen bu oturum boyunca sandbox'ın "internet yok" sandığım göründüğü her yerde) hâlâ geçerli, bilinen bir kısıt.
-
----
-
 ## Diğer — kod değişikliği içermeyen tartışmalar
 
 - **Mobile app portu:** kullanıcı `frontend/`'i mobile'a (android/ios) derlemeyi sordu — RAG/hafıza backend-side olduğu için local model olmadan da çalışır ama mutlaka bir backend'e bağlanmak gerekir (`mobile/README.md` zaten bunu söylüyor: "thin client, all AI/ML stays on the desktop"). `frontend/`'de `android`/`ios` platform klasörleri hiç yok, `mobile/` zaten geride kalmış ayrı proje. **Kullanıcı bu işi erteledi.**
 - **Web UI responsive değil:** `internal/webserver/webapp/` aslında `frontend/`'in Flutter web derlemesi (custom HTML değil). `frontend/web/index.html`'de `<meta name="viewport">` yok — mobilde muhtemelen zoom-out görünmesinin sebebi. Tarayıcı panelinde canlı test etmeye çalışıldı ama hem RPi IP'si hem yerel `http.server` üzerinden per-site onay engeline takıldı (kullanıcının kendi arayüzünde tıklanması gerekiyor). **Kullanıcı "onu da bırak" dedi, ertelendi** — viewport meta tag eksikliği hâlâ düzeltilmedi, gerçek kanıt toplanamadı.
-- **Kütüphane bağımlılık riski taraması** (kod değişikliği yok, sadece analiz+tavsiye): `flutter_markdown` **gerçekten** Google tarafından 30 Mayıs 2025'te discontinued ilan edilmiş (WebSearch ile doğrulandı), topluluk devamı `flutter_markdown_plus` var — Memo hâlâ eski pakete bağlı, geçiş önerildi ama yapılmadı. `go.mau.fi/whatsmeow` (WhatsApp) en kırılgan bağımlılık olarak işaretlendi (resmi değil, WhatsApp'ın protokol değişikliklerine karşı savunmasız). İyi "in-house yaz" adayları olarak `mattn/go-isatty`, `google/uuid`, `fl_chart` (tek kullanım yeri: `stats_tab.dart`, tek bir stacked bar chart) işaretlendi; `golang-jwt/jwt` için **bilerek in-house önerilmedi** (güvenlik-kritik kod, "basit görünüyor" ile "güvenli yazmak kolay" aynı şey değil). Kendi tünel sistemi (Tailscale yerine) yazma fikri de değerlendirildi ve caydırıldı — WireGuard kripto + NAT traversal/DERP relay altyapısı + cross-platform native entegrasyon, Go'nun gücüyle değil işin kendi zorluğuyla ilgili; zaten ngrok + LAN token/şifre auth fallback'leri var.
+- **Kütüphane bağımlılık riski taraması** (kod değişikliği yok, sadece analiz+tavsiye): `flutter_markdown` **gerçekten** Google tarafından 30 Mayıs 2025'te discontinued ilan edilmiş (WebSearch ile doğrulandı), topluluk devamı `flutter_markdown_plus` var — geçiş önerildi (sonraki oturumda yapıldı, aşağıdaki yeni handoff girdisine bakın). `go.mau.fi/whatsmeow` (WhatsApp) en kırılgan bağımlılık olarak işaretlendi (resmi değil, WhatsApp'ın protokol değişikliklerine karşı savunmasız). İyi "in-house yaz" adayları olarak `mattn/go-isatty`, `google/uuid`, `fl_chart` (tek kullanım yeri: `stats_tab.dart`, tek bir stacked bar chart) işaretlendi; `golang-jwt/jwt` için **bilerek in-house önerilmedi** (güvenlik-kritik kod, "basit görünüyor" ile "güvenli yazmak kolay" aynı şey değil). Kendi tünel sistemi (Tailscale yerine) yazma fikri de değerlendirildi ve caydırıldı — WireGuard kripto + NAT traversal/DERP relay altyapısı + cross-platform native entegrasyon, Go'nun gücüyle değil işin kendi zorluğuyla ilgili; zaten ngrok + LAN token/şifre auth fallback'leri var.
 
 ---
 
 ## Sıradaki oturum için
 
 1. **Web UI mobil responsive fix'i bekliyor:** `frontend/web/index.html`'e `<meta name="viewport" content="width=device-width, initial-scale=1.0">` eklenmesi muhtemel ilk adım — ama gerçek tarayıcı testiyle doğrulanmadı, kullanıcı erteledi. Sırada tekrar gelirse buradan devam.
-2. **Sistem DNS bozukluğu hâlâ düzeltilmedi** (`/etc/resolv.conf` → `/run/systemd/resolve/stub-resolv.conf` symlink'i eksik) — kullanıcı "gerek yok" dedi ama bu, Go toolchain'inin (ve muhtemelen başka network gerektiren her Go aracının) bu makinede yerel olarak internete çıkamamasının kök sebebi olmaya devam ediyor.
-3. **`flutter_markdown` → `flutter_markdown_plus` geçişi** önerildi, onay bekliyor.
-4. **`fl_chart`'ın elle çizilmiş bir stacked bar chart'a düşürülmesi** önerildi, onay bekliyor.
-5. **v3.5.5'in tam release'i** (version bump + installer.iss + README badge/link + tag push + version.json beacon) hâlâ yapılmadı — sadece release notes hazır. Kullanıcı isterse memo-release skill'iyle devam edilebilir (tag push'tan önce ayrıca onay şart, AGENTS.md kuralı).
-6. `internal/app/whatsapp.go`'nun kendi chat-reply stream'inin `routeStream`'den geçmeyip benzer bir agent-routing boşluğu taşıyıp taşımadığı hâlâ araştırılmadı — İş 1'de kapsam dışı bırakıldı, ayrı bir bakış gerekebilir.
+2. **`fl_chart`'ın elle çizilmiş bir stacked bar chart'a düşürülmesi** önerildi, onay bekliyor.
+3. **v3.5.5'in tam release'i** (version bump + installer.iss + README badge/link + tag push + version.json beacon) hâlâ yapılmadı — sadece release notes hazır. Kullanıcı isterse memo-release skill'iyle devam edilebilir (tag push'tan önce ayrıca onay şart, AGENTS.md kuralı).
+4. `internal/app/whatsapp.go`'nun kendi chat-reply stream'inin `routeStream`'den geçmeyip benzer bir agent-routing boşluğu taşıyıp taşımadığı hâlâ araştırılmadı — İş 1'de kapsam dışı bırakıldı, ayrı bir bakış gerekebilir.
 
 ---
 

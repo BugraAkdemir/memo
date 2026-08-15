@@ -1,3 +1,47 @@
+# Handoff — 2026-08-15 (Session 8) — `flutter_markdown` → `flutter_markdown_plus` geçişi + handoff temizliği
+
+## Oturum Özeti
+
+Session 7'nin bekleyen maddelerinden biri ele alındı: `flutter_markdown`
+(Google tarafından discontinued) → `flutter_markdown_plus` (topluluk
+devamı, API-uyumlu drop-in) geçişi. `/codebase-memory` grafiğiyle
+doğrulandı: `frontend/`'de sadece iki gerçek kullanım yeri var
+(`chat_message_list.dart`, `model_detail_panel.dart`) — `mobile/` de
+aynı pakete bağlı ama ayrı, zaten geride kalmış bir proje olduğu için
+kapsam dışı bırakıldı, dokunulmadı.
+
+**Commit durumu — henüz push edilmedi:**
+
+| Commit | Özet |
+|---|---|
+| `a36c064` | chore(frontend): migrate flutter_markdown to flutter_markdown_plus |
+| `6c84af6` | docs(handoff): remove resolved system-DNS pitfall from Session 7 entry |
+
+---
+
+## Yapılanlar
+
+1. **`pubspec.yaml`**: `flutter_markdown: ^0.6.22` → `flutter_markdown_plus: ^1.0.12` (pub.dev'den doğrulandı: en güncel sürüm, `MarkdownBody`/`MarkdownStyleSheet` dahil aynı API yüzeyi).
+2. İki import satırı güncellendi (`chat_message_list.dart`, `model_detail_panel.dart`).
+3. `flutter pub get` sonrası `pubspec.lock`'ta `flutter_markdown` artık hiç yok (transitive olarak bile) — sadece `flutter_markdown_plus`.
+4. `handoff.md`'deki çözülmüş sistem-DNS notu (Session 7'nin "İş 6"sı) kaldırıldı, "Sıradaki oturum için" listesi buna göre yeniden numaralandırıldı; kütüphane-riski taraması notundaki bayat "geçiş yapılmadı" ifadesi güncellendi.
+
+## Doğrulama
+
+- `flutter analyze lib/` — temiz (yalnız 5 bilinen `use_build_context_synchronously` info'su).
+- `flutter test` — **253/253** geçti.
+- L10n grep taraması (Agent Working Rules #8) — değiştirilen dosyalarda yeni hardcoded string yok (boş sonuç).
+- Bu oturumda backend'e dokunulmadı, Go doğrulaması gerekmedi.
+
+## Sıradaki oturum için
+
+1. Bu iki commit henüz push edilmedi — kullanıcı onayı bekliyor.
+2. Gerçek uygulamada (Flutter masaüstü) sohbet balonlarında ve Model Store açıklamasında Markdown render'ının görsel olarak hâlâ doğru göründüğü canlı doğrulanmadı — bu oturumda sadece `flutter analyze`/`flutter test` ile doğrulandı, tarayıcı/masaüstü ortamı bu makinede kurulmadı.
+3. `mobile/`'daki aynı `flutter_markdown` bağımlılığı hâlâ eski sürümde — ayrı proje olduğu için bilerek kapsam dışı bırakıldı, istenirse ayrı bir iş olarak ele alınabilir.
+4. Session 7'nin diğer bekleyen maddeleri (web UI viewport fix'i, `fl_chart` düşürme, v3.5.5'in tam release'i, WhatsApp stream'inin agent-routing taraması) hâlâ geçerli, aşağıda.
+
+---
+
 # Handoff — 2026-08-14 (Session 7) — RPi sil/yükle turu, `/api/send` agent bug'ı bulundu ve düzeltildi, 3 yeni CLI subcommand'ı, CI (govulncheck+race) düzeltmeleri, v3.5.5 release notes
 
 ## Oturum Özeti

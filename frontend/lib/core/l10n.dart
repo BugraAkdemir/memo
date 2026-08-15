@@ -116,6 +116,7 @@ class L10n {
         'Bu model bilgisayarının belleğine göre büyük olabilir — yavaş çalışabilir ya da hiç başlamayabilir. Daha küçük bir model denemeni öneririz.',
 
     // Sidebar / Chats
+    'chat_open_sidebar': 'Sohbet listesini aç',
     'new_chat': 'Yeni Sohbet',
     'chats': 'Sohbetler',
     'no_chats': 'Henüz sohbet yok',
@@ -1906,6 +1907,7 @@ class L10n {
     'fit_warn_tooltip':
         'This model may be too large for your computer\'s memory — it could run slowly or fail to start at all. Consider a smaller model instead.',
 
+    'chat_open_sidebar': 'Open chat list',
     'new_chat': 'New Chat',
     'chats': 'Chats',
     'no_chats': 'No chats yet',

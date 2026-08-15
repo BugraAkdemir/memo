@@ -26,35 +26,60 @@ import '../core/friendly_error.dart';
 class ChatScreen extends ConsumerWidget {
    const ChatScreen({super.key});
 
+  // Below this width, a permanently-inline 260px ChatSidebar (chat_sidebar.dart)
+  // leaves too little room for a usable chat area — confirmed live at a
+  // 375px phone width, where it squeezed _ChatContent's available width down
+  // to ~15px and threw a 189px RenderFlex overflow. Below the breakpoint the
+  // sidebar moves into a Drawer (opened via a menu button in _ChatTopBar)
+  // instead of sitting inline; NavRail (app_shell.dart, ~72px, icon-only) is
+  // left as-is since it's already narrow enough not to need this.
+  static const double _sidebarBreakpoint = 600;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Row(
-      children: [
-        // ─── Sidebar ──────────────────────────────
-        Padding(
-          padding: MemoTheme.of(context).isGlass
-              ? const EdgeInsets.fromLTRB(8, 12, 8, 12)
-              : EdgeInsets.zero,
-          child: ChatSidebar(),
-        ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final narrow = constraints.maxWidth < _sidebarBreakpoint;
 
-        // ─── Main Chat Area ───────────────────────
-        Expanded(
+        final content = Container(
           // Transparent in Glass Light so the soft gradient shows behind the
           // messages and the frosted input bar; opaque panel in dark.
-          child: Container(
-            color: MemoTheme.of(context).isGlass
-                ? Colors.transparent
-                : MemoTheme.of(context).bgApp,
-            child: _ChatContent(),
-          ),
-        ),
-      ],
+          color: MemoTheme.of(context).isGlass
+              ? Colors.transparent
+              : MemoTheme.of(context).bgApp,
+          child: _ChatContent(showMenuButton: narrow),
+        );
+
+        if (narrow) {
+          return Scaffold(
+            drawer: Drawer(child: SafeArea(child: ChatSidebar())),
+            body: content,
+          );
+        }
+
+        return Row(
+          children: [
+            // ─── Sidebar ──────────────────────────────
+            Padding(
+              padding: MemoTheme.of(context).isGlass
+                  ? const EdgeInsets.fromLTRB(8, 12, 8, 12)
+                  : EdgeInsets.zero,
+              child: ChatSidebar(),
+            ),
+
+            // ─── Main Chat Area ───────────────────────
+            Expanded(child: content),
+          ],
+        );
+      },
     );
   }
 }
 
 class _ChatContent extends ConsumerStatefulWidget {
+  final bool showMenuButton;
+  const _ChatContent({this.showMenuButton = false});
+
   @override
   ConsumerState<_ChatContent> createState() => _ChatContentState();
 }
@@ -93,7 +118,7 @@ class _ChatContentState extends ConsumerState<_ChatContent> {
     return Column(
       children: [
         // ─── Top Bar ──────────────────────────────
-         _ChatTopBar(),
+         _ChatTopBar(showMenuButton: widget.showMenuButton),
 
         // ─── Messages or Welcome ──────────────────
         Expanded(
@@ -689,7 +714,8 @@ class _QuickModelMenuRow extends StatelessWidget {
 }
 
 class _ChatTopBar extends ConsumerWidget {
-   const _ChatTopBar();
+  final bool showMenuButton;
+   const _ChatTopBar({this.showMenuButton = false});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -721,6 +747,141 @@ class _ChatTopBar extends ConsumerWidget {
 
     final c = MemoTheme.of(context);
     final glass = c.isGlass;
+
+    // Built as a list (rather than inline in the Row below) so the narrow
+    // layout can wrap it in a horizontally-scrollable Flexible instead of
+    // letting it sit as unbounded fixed-width Row children — with the menu
+    // button, title, and every one of these badges/toggles all fighting for
+    // space, this overflowed by 70px at a 375px phone width (confirmed
+    // live) once the sidebar fix (above) gave _ChatContent enough width for
+    // the topbar's own overflow to surface on its own instead of being
+    // swallowed by the sidebar's much larger one.
+    final trailingActions = <Widget>[
+      // Live token counter (Claude-Code style)
+      const _TokenCounter(),
+
+      // CLI working directory — always visible which folder a CLI
+      // provider is actually operating in, right next to the picker
+      // that shows which one it is.
+      if (isCLIChat) const _CLIWorkdirBadge(),
+
+      // Which model the CLI itself is using for this chat, tappable to
+      // switch — the CLI's own equivalent of the provider picker below.
+      if (isCLIChat) const _CLIModelBadge(),
+
+      // Quick model/provider switch dropdown — local model, every
+      // enabled API provider, and a shortcut to add a new one.
+      const _QuickModelDropdown(),
+
+      // Undo button (only when agent mode is on)
+      if (isAgentEnabled)
+        IconButton(
+          icon: Icon(Icons.undo, size: 20),
+          color: MemoTheme.of(context).textDim,
+          tooltip: L10n.t('agent_undo'),
+          onPressed: () async {
+            try {
+              await ref.read(apiClientProvider).undoAgentEdit();
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(L10n.t('agent_undone'))),
+                );
+              }
+            } catch (e) {
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': e.toString()})), backgroundColor: MemoTheme.red),
+                );
+              }
+            }
+          },
+        ),
+
+      // Agent mode toggle — was previously only reachable from the
+      // separate Agent tab, so plain Chat had no visible way to turn on
+      // file/command tools; this mirrors the web-search toggle right
+      // next to it. Session-scoped like web search, not persisted onto
+      // this specific chat: switching away and back re-derives it from
+      // the chat's own type (ActiveChatIdNotifier.switchTo). Hidden for
+      // a CLI-backed chat — see isCLIChat's doc comment above.
+      if (!isCLIChat)
+        IconButton(
+          icon: Icon(
+            Icons.smart_toy,
+            size: 20,
+            color: isAgentEnabled
+                ? MemoTheme.green
+                : MemoTheme.of(context).textDim,
+          ),
+          tooltip: '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
+          onPressed: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
+        ),
+
+      // Web search mode toggle — when on, every message uses live web results
+      if (!isCLIChat)
+        IconButton(
+          icon: Icon(
+            Icons.travel_explore,
+            size: 20,
+            color: webSearchOn
+                ? MemoTheme.green
+                : MemoTheme.of(context).textDim,
+          ),
+          tooltip: webSearchOn
+              ? (L10n.t('web_search_on'))
+              : (L10n.t('web_search_off')),
+          onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
+        ),
+
+      // WhatsApp mode toggle (only when connected)
+      if (!isCLIChat && waStatus.asData?.value.connected == true)
+        IconButton(
+          icon: Icon(
+            Icons.chat,
+            size: 20,
+            color: isWhatsAppMode ? MemoTheme.green : MemoTheme.of(context).textDim,
+          ),
+          tooltip: isWhatsAppMode
+              ? '${L10n.t('whatsapp_mode_on')} — ${L10n.t('whatsapp_mode_tooltip')}'
+              : '${L10n.t('whatsapp_mode_off')} — ${L10n.t('whatsapp_mode_tooltip')}',
+          onPressed: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
+        ),
+
+      // Export button
+      IconButton(
+        icon: Icon(Icons.file_download_outlined, size: 20),
+        color: MemoTheme.of(context).textDim,
+        tooltip: L10n.t('export_chat'),
+        onPressed: () async {
+          try {
+            final api = ref.read(apiClientProvider);
+            final md = await api.exportChat();
+            if (md.isEmpty || !context.mounted) return;
+            final path = await FilePicker.platform.saveFile(
+              dialogTitle: L10n.t('export_chat'),
+              fileName: 'chat_export.md',
+              type: FileType.custom,
+              allowedExtensions: ['md'],
+            );
+            if (path != null) {
+              await File(path).writeAsString(md);
+              if (context.mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text(L10n.t('chat_exported', {'path': path}))),
+                );
+              }
+            }
+          } catch (e) {
+            if (context.mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(L10n.t('export_failed', {'e': e.toString()}))),
+              );
+            }
+          }
+        },
+      ),
+    ];
+
     return Container(
       height: 56,
       margin: glass
@@ -740,6 +901,16 @@ class _ChatTopBar extends ConsumerWidget {
             ),
       child: Row(
         children: [
+          if (showMenuButton) ...[
+            IconButton(
+              icon: Icon(Icons.menu, color: c.textMain),
+              tooltip: L10n.t('chat_open_sidebar'),
+              onPressed: () => Scaffold.of(context).openDrawer(),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+            ),
+            SizedBox(width: 12),
+          ],
           // Title
           Expanded(
             child: Row(
@@ -897,129 +1068,23 @@ class _ChatTopBar extends ConsumerWidget {
             ),
           ),
 
-          // Live token counter (Claude-Code style)
-          const _TokenCounter(),
-
-          // CLI working directory — always visible which folder a CLI
-          // provider is actually operating in, right next to the picker
-          // that shows which one it is.
-          if (isCLIChat) const _CLIWorkdirBadge(),
-
-          // Which model the CLI itself is using for this chat, tappable to
-          // switch — the CLI's own equivalent of the provider picker below.
-          if (isCLIChat) const _CLIModelBadge(),
-
-          // Quick model/provider switch dropdown — local model, every
-          // enabled API provider, and a shortcut to add a new one.
-          const _QuickModelDropdown(),
-
-          // Undo button (only when agent mode is on)
-          if (isAgentEnabled)
-            IconButton(
-              icon: Icon(Icons.undo, size: 20),
-              color: MemoTheme.of(context).textDim,
-              tooltip: L10n.t('agent_undo'),
-              onPressed: () async {
-                try {
-                  await ref.read(apiClientProvider).undoAgentEdit();
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(L10n.t('agent_undone'))),
-                    );
-                  }
-                } catch (e) {
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(L10n.t('agent_undo_failed', {'e': e.toString()})), backgroundColor: MemoTheme.red),
-                    );
-                  }
-                }
-              },
-            ),
-          
-          // Agent mode toggle — was previously only reachable from the
-          // separate Agent tab, so plain Chat had no visible way to turn on
-          // file/command tools; this mirrors the web-search toggle right
-          // next to it. Session-scoped like web search, not persisted onto
-          // this specific chat: switching away and back re-derives it from
-          // the chat's own type (ActiveChatIdNotifier.switchTo). Hidden for
-          // a CLI-backed chat — see isCLIChat's doc comment above.
-          if (!isCLIChat)
-            IconButton(
-              icon: Icon(
-                Icons.smart_toy,
-                size: 20,
-                color: isAgentEnabled
-                    ? MemoTheme.green
-                    : MemoTheme.of(context).textDim,
+          // Wide layout: natural width, exactly as before. Narrow layout
+          // (see showMenuButton/ChatScreen's breakpoint): the same actions
+          // wrapped in a horizontally-scrollable Flexible instead of
+          // unbounded Row children, so a full badge/toggle set can't
+          // overflow the topbar the way it did at 375px (confirmed live).
+          if (showMenuButton)
+            Flexible(
+              child: SingleChildScrollView(
+                scrollDirection: Axis.horizontal,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: trailingActions,
+                ),
               ),
-              tooltip: '${isAgentEnabled ? L10n.t('agent_mode_on') : L10n.t('agent_mode_off')} — ${L10n.t('agent_mode_tooltip')}',
-              onPressed: () => ref.read(agentEnabledProvider.notifier).setEnabled(!isAgentEnabled),
-            ),
-
-          // Web search mode toggle — when on, every message uses live web results
-          if (!isCLIChat)
-            IconButton(
-              icon: Icon(
-                Icons.travel_explore,
-                size: 20,
-                color: webSearchOn
-                    ? MemoTheme.green
-                    : MemoTheme.of(context).textDim,
-              ),
-              tooltip: webSearchOn
-                  ? (L10n.t('web_search_on'))
-                  : (L10n.t('web_search_off')),
-              onPressed: () => ref.read(webSearchModeProvider.notifier).toggle(),
-            ),
-
-          // WhatsApp mode toggle (only when connected)
-          if (!isCLIChat && waStatus.asData?.value.connected == true)
-            IconButton(
-              icon: Icon(
-                Icons.chat,
-                size: 20,
-                color: isWhatsAppMode ? MemoTheme.green : MemoTheme.of(context).textDim,
-              ),
-              tooltip: isWhatsAppMode
-                  ? '${L10n.t('whatsapp_mode_on')} — ${L10n.t('whatsapp_mode_tooltip')}'
-                  : '${L10n.t('whatsapp_mode_off')} — ${L10n.t('whatsapp_mode_tooltip')}',
-              onPressed: () => ref.read(whatsAppChatModeProvider.notifier).toggle(),
-            ),
-          
-          // Export button
-          IconButton(
-            icon:  Icon(Icons.file_download_outlined, size: 20),
-            color: MemoTheme.of(context).textDim,
-            tooltip: L10n.t('export_chat'),
-            onPressed: () async {
-              try {
-                final api = ref.read(apiClientProvider);
-                final md = await api.exportChat();
-                if (md.isEmpty || !context.mounted) return;
-                final path = await FilePicker.platform.saveFile(
-                  dialogTitle: L10n.t('export_chat'),
-                  fileName: 'chat_export.md',
-                  type: FileType.custom,
-                  allowedExtensions: ['md'],
-                );
-                if (path != null) {
-                  await File(path).writeAsString(md);
-                  if (context.mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text(L10n.t('chat_exported', {'path': path}))),
-                    );
-                  }
-                }
-              } catch (e) {
-                if (context.mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(L10n.t('export_failed', {'e': e.toString()}))),
-                  );
-                }
-              }
-            },
-          ),
+            )
+          else
+            ...trailingActions,
         ],
       ),
     );

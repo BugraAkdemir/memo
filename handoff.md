@@ -1,3 +1,92 @@
+# Handoff — 2026-08-16/17 (Session 10) — Session 9'da bulunan bug'ların düzeltilmesi + canlı doğrulama disiplini
+
+## Oturum Özeti
+
+Session 9'da bulunup dokümante edilen ama düzeltilmemiş bug'ların dördü bu
+oturumda düzeltildi. Kullanıcı önemli bir süreç hatasını yakaladı: Session
+9'un sonundaki "Accounts yazım hatası düzeltildi" ve "permission dialog
+düzeltildi" iddiaları sadece `flutter analyze`/`flutter test` ile
+doğrulanmıştı, **derlenip yayına giren `internal/webserver/webapp/` hiç
+yeniden build edilmemişti** — yani tarayıcıda hâlâ eski, düzeltilmemiş kod
+çalışıyordu. Bu oturumda kural netleşti: **bir frontend fix'i, taze
+`flutter build web` + Go binary yeniden derleme + backend restart +
+tarayıcıda gözle doğrulama olmadan "tamamlandı" sayılmaz.**
+
+**Commit durumu — henüz push edilmedi:**
+
+| Commit | Özet |
+|---|---|
+| `1eb269e` | fix(orchestra): callLLM'in yardımcı çağrılarını tam pipeline'dan çıkar |
+| `a27a797` | fix(frontend): rutin teslimat kanalı çiplerini tıklanabilir yap |
+| `312d911` | fix(frontend): backend'in terminal mesajını anında göster |
+
+## Düzeltilen bug'lar
+
+### A. Orchestra'nın `callLLM` yardımcı çağrıları gereksiz yere tam pipeline'dan geçiyordu — Session 9'un #5 ve #7 bulgularının GERÇEK kök sebebi
+
+Kök sebep araştırması Session 9'daki teşhisi düzeltti: `synthesize()`/
+`createPlan()`'da zaten 300 saniyelik timeout **vardı** — "Orchestra
+synthesis'te timeout yok" iddiası yanlıştı. Gerçek sorun:
+`internal/app/llm.go`'daki `callLLM()` — sohbet başlığı üretimi, rutin
+ayrıştırma, hafıza özeti, proaktif kontroller gibi **tek bir düz metin
+cevabı isteyen** iç yardımcı fonksiyonların hepsinin ortak çağrı noktası —
+Orchestra açıkken bunların hepsini `orchestraConductor.Run()`'a yönlendiriyordu.
+`Run()` şefi `{"tasks":[...]}` şemasına zorluyor, sonra tam
+plan→görev→sentez turunu çalıştırıyor — bir rutin isteğini ayrıştırmak veya
+bir sohbete başlık bulmak isteyen bir çağıran için tamamen yanlış sözleşme.
+
+Canlı reprodüksiyon: Orchestra açıkken bir rutin isteği "chief returned no
+tasks" hatası verdi (şef, rutin metnini görev listesine bölmeye çalışıp
+başarısız oldu); düz bir sohbet başlığı isteği sessizce tam pipeline'ı
+çalıştırıp 3+ dakika sürdü.
+
+**Fix:** `Conductor.RunSingle(ctx, systemPrompt, userPrompt)` eklendi — şefi
+doğrudan, plan/sentez olmadan tek seferlik çağırıyor (`runChiefWithFallback`'ı
+zaten var olan fallback mantığıyla yeniden kullanıyor). `callLLM()` artık
+`Run()` yerine bunu çağırıyor. Regresyon testleri
+(`conductor_single_test.go`): düz metin cevabının (`{"tasks":...}` JSON
+OLMADAN) doğrudan döndüğünü doğruluyor — eski `Run()` yolu bu durumda JSON
+parse hatasıyla patlardı.
+
+### B. Rutinlerde WhatsApp/Telefon teslimat çipleri tıklanamıyordu (Session 9'un #6 bulgusu, BUG-L2 olarak zaten flag'lenmişti)
+
+`routines_screen.dart`'taki onay kartında düz `Chip` widget'ları →
+`FilterChip`'e çevrildi, ikisi de her zaman görünür ve açılıp kapatılabilir.
+WhatsApp açılınca sohbet listesi otomatik çekiliyor (LLM'in kendisi WhatsApp
+seçtiğinde olduğu gibi). Regresyon testi: `routines_channel_chips_test.dart`.
+
+### C. Canlı ekran, backend'in geç gelen terminal mesajını göstermiyordu (Session 9'un #4 bulgusu) — EN ÖNEMLİ FIX
+
+Kök sebep tam olarak bulundu: `sendMessageStream()` backend'den `error`
+alanlı bir chunk gelince bunu bilerek bir Dart `Exception` olarak fırlatıyor
+(önceki bir bug için eklenmiş, "yutulmamalı" yorumuyla). Permission-timeout
+iptali ve Orchestra şef hatası ikisi de turu böyle bitiriyor. Ama
+`sendMessage()`/`sendFile()`'ın `catch` bloğu sadece jenerik bir toast
+gösterip transkripti dokunmadan bırakıyordu — `_stopped` dalı ve CLI dalı
+gibi `refresh()` çağırmıyordu. Backend mesajı zaten kalıcı olarak kaydetmiş
+oluyordu ama kullanıcı sayfayı elle yenilemeden bunu hiç görmüyordu.
+
+**Fix:** her iki `catch` bloğuna da `await refresh();` eklendi. Regresyon
+testi (`messages_notifier_error_chunk_refresh_test.dart`) sahte bir HTTP
+adaptörüyle stream'in bir error chunk göndermesini simüle edip
+`/api/messages`'ın ikinci kez (refresh'ten) çağrıldığını ve backend'in
+gerçek mesajının state'e girdiğini doğruluyor. **Canlı tarayıcıda da
+doğrulandı:** yeni bir permission-timeout senaryosu tetiklendi, sayfa hiç
+yenilenmeden "⚠ Agent execution cancelled (permission timeout)" balonu
+mesaj gönderildikten ~60 saniye sonra otomatik belirdi.
+
+## Düzeltilmeyen, hâlâ açık olan bulgular (Session 9'dan)
+
+- Routines + Orchestra "chief returned no tasks" — A maddesindeki fix bunu
+  da çözmüş olmalı (aynı `callLLM` yolu), ama bu spesifik senaryo bu
+  oturumda ayrıca canlı yeniden test edilmedi.
+- SQLite FTS5 modülü eksik (`ftsSearch: no such module: fts5`) — build/ortam
+  yapılandırma sorunu, kod bug'ı değil, dokunulmadı.
+- Free model'in bazen "ajan modu kapalı" diye yanlış yanıt vermesi — model
+  tutarsızlığı, backend/frontend bug'ı değil.
+
+---
+
 # Handoff — 2026-08-16 (Session 9) — WhatsApp/Swarm dışındaki tüm özelliklerin gerçek tarayıcıda kapsamlı fonksiyonel testi
 
 ## Oturum Özeti

@@ -1,14 +1,19 @@
-# Handoff — 2026-08-15 (Session 8) — `flutter_markdown` → `flutter_markdown_plus` geçişi + handoff temizliği
+# Handoff — 2026-08-15/16 (Session 8) — `flutter_markdown_plus` geçişi + web UI'ın mobil genişlikte komple kırık olduğunun bulunup düzeltilmesi
 
 ## Oturum Özeti
 
-Session 7'nin bekleyen maddelerinden biri ele alındı: `flutter_markdown`
-(Google tarafından discontinued) → `flutter_markdown_plus` (topluluk
-devamı, API-uyumlu drop-in) geçişi. `/codebase-memory` grafiğiyle
-doğrulandı: `frontend/`'de sadece iki gerçek kullanım yeri var
-(`chat_message_list.dart`, `model_detail_panel.dart`) — `mobile/` de
-aynı pakete bağlı ama ayrı, zaten geride kalmış bir proje olduğu için
-kapsam dışı bırakıldı, dokunulmadı.
+İki parça. (1) Session 7'den kalan `flutter_markdown` → `flutter_markdown_plus`
+geçişi. (2) "Web UI mobilde garip görünüyor" maddesi ele alınırken, tarayıcıda
+**canlı tıklayarak test edilince** viewport meta tag'inin sorunun sadece küçük
+bir parçası olduğu, asıl sebebin telefon genişliğinde üst üste binen **üç ayrı
+layout bug'ı** olduğu ortaya çıktı. Hepsi bulundu, düzeltildi, regresyon
+testleriyle sabitlendi.
+
+**Önemli ders:** viewport meta tag'i eksikliği "muhtemel ilk adım" olarak
+Session 7'de tahmin edilmişti; gerçek tarayıcıda çalıştırılınca tek başına
+hiçbir şeyi düzeltmediği görüldü (Flutter Web bootstrap zaten runtime'da kendi
+tag'ini basıyor). Bu sınıf UI bug'ı **kod okuyarak değil, ancak gerçek bir
+tarayıcıda gerçek bir genişlikte çalıştırarak** bulunabiliyor.
 
 **Commit durumu — henüz push edilmedi:**
 
@@ -16,29 +21,110 @@ kapsam dışı bırakıldı, dokunulmadı.
 |---|---|
 | `a36c064` | chore(frontend): migrate flutter_markdown to flutter_markdown_plus |
 | `6c84af6` | docs(handoff): remove resolved system-DNS pitfall from Session 7 entry |
+| `03befd3` | docs: record Session 8 handoff |
+| `bf2d390` | fix(frontend): add viewport meta tag to the web index.html |
+| `a8d5a3f` | fix(frontend): stop EngineStrip overflowing at phone widths |
+| `fc3b8a1` | fix(frontend): move the chat sidebar into a drawer at phone widths |
+| `d153467` | fix(frontend): stack the composer so the text field stays usable when narrow |
 
 ---
 
-## Yapılanlar
+## İş 1 — `flutter_markdown` → `flutter_markdown_plus`
 
 1. **`pubspec.yaml`**: `flutter_markdown: ^0.6.22` → `flutter_markdown_plus: ^1.0.12` (pub.dev'den doğrulandı: en güncel sürüm, `MarkdownBody`/`MarkdownStyleSheet` dahil aynı API yüzeyi).
-2. İki import satırı güncellendi (`chat_message_list.dart`, `model_detail_panel.dart`).
-3. `flutter pub get` sonrası `pubspec.lock`'ta `flutter_markdown` artık hiç yok (transitive olarak bile) — sadece `flutter_markdown_plus`.
-4. `handoff.md`'deki çözülmüş sistem-DNS notu (Session 7'nin "İş 6"sı) kaldırıldı, "Sıradaki oturum için" listesi buna göre yeniden numaralandırıldı; kütüphane-riski taraması notundaki bayat "geçiş yapılmadı" ifadesi güncellendi.
+2. İki import satırı güncellendi (`chat_message_list.dart`, `model_detail_panel.dart`) — `/codebase-memory` grafiğiyle bunların tek kullanım yeri olduğu doğrulandı.
+3. `pubspec.lock`'ta `flutter_markdown` artık hiç yok (transitive olarak bile).
+4. `mobile/` de aynı pakete bağlı ama ayrı, zaten geride kalmış bir proje — bilerek kapsam dışı bırakıldı.
+
+---
+
+## İş 2 — Mobil genişlikte üç layout bug'ı (canlı tarayıcıda bulundu)
+
+Test yöntemi: `flutter build web --debug` + statik sunucu + tarayıcı panelinde
+375px/700px/1400px'te gerçek tıklama. Debug build şart — release build'de
+`RenderFlex overflowed` assertion'ları hiç görünmüyor.
+
+### Bug 1 — `EngineStrip` (alt şerit), 295px overflow
+
+Kök sebep: root `Row`'un hiç scroll/flex koruması yok, ama içindeki gösterge
+seti uygulama durumuyla sınırsız büyüyor (sohbet modeli, hafıza modeli, aktif
+indirmeler, auto-permission, Orchestra, mood + aralarındaki divider'lar).
+Masaüstü genişliğinde sorun yok; 375px'te patlıyor.
+
+**Fix:** göstergeler yatay kaydırılabilir bir `Expanded` bölgeye alındı;
+"Open Models" sağ kenarda sabit kaldı. `Spacer` kaldırıldı — scrollable içinde
+çalışmıyor, `Expanded` zaten aynı hizalamayı veriyor.
+
+### Bug 2 — `ChatSidebar` sabit 260px, ana sohbet alanını ~15px'e sıkıştırıyor
+
+`ChatScreen` sidebar'ı her zaman inline gösteriyordu. NavRail (~72px) ile
+birlikte 375px'te sohbete ~15px kalıyordu; `_ChatContent`'in boş durumu 189px
+dikey overflow atıyordu.
+
+**Fix:** 600px altında sidebar `Scaffold` drawer'ına taşındı, üst çubuğa menü
+butonu eklendi (`chat_open_sidebar`, TR+EN). 600px üstünde düzen bit bit aynı.
+NavRail bilerek dokunulmadı (ikon-only, zaten dar).
+
+**Bu fix ikinci bir bug'ı açığa çıkardı:** `_ChatTopBar`'ın kendi `Row`'u
+(başlık + token sayacı + model dropdown + 5 toggle + export) 70px overflow
+atıyordu — sidebar fix'i sohbet paneline yer açana kadar daha büyük overflow'un
+altında gizleniyordu. Trailing action'lar liste olarak inşa edilip dar modda
+yatay scroller'a alındı.
+
+### Bug 3 — "text box yok" (kullanıcının bizzat bildirdiği), asıl ciddi olan
+
+Kullanıcı raporu: "ana ekranda text box yok". Gerçekte kutu vardı ama
+**~105px'e sıkışmıştı** (ölçüldü) ve hint metni harf harf alt alta sarıyordu —
+görsel olarak dikey bir harf şeridi, input gibi durmuyor.
+
+Kök sebep: 4-6 ikon butonu + boşluklar + 42px gönder butonu `Expanded` text
+field ile **aynı `Row`'da**; bu sabit genişlikli çocuklar mevcut alandan
+bağımsız ~225px yiyor.
+
+**Fix:** 460px altında composer dikey istifleniyor — text field kendi tam
+genişlikli satırında, ikonlar + gönder butonu altındaki satırda (ikonlar da
+yatay scroller'da, çünkü Beta açıkken voice butonu + kayıt durum etiketi
+kendi satırında bile taşabiliyor). Breakpoint kasıtlı olarak ChatScreen'in
+600px'inden **geniş**: composer sadece sohbet panelinin genişliğini alıyor, o
+yüzden sidebar hâlâ inline'ken bile yer sıkıntısına giriyor (706px pencerede
+composer'a ~374px kalıyor).
+
+---
 
 ## Doğrulama
 
-- `flutter analyze lib/` — temiz (yalnız 5 bilinen `use_build_context_synchronously` info'su).
-- `flutter test` — **253/253** geçti.
-- L10n grep taraması (Agent Working Rules #8) — değiştirilen dosyalarda yeni hardcoded string yok (boş sonuç).
-- Bu oturumda backend'e dokunulmadı, Go doğrulaması gerekmedi.
+- `flutter analyze lib/ test/` — temiz (yalnız 6 bilinen önceden var olan info).
+- `flutter test` — **256/256** geçti (253 → +3 yeni).
+- **Üç yeni regresyon testinin de fix'ten önce gerçekten kırıldığı doğrulandı:**
+  `engine_strip_test.dart` (201px overflow), `chat_input_narrow_test.dart`
+  (alan 105px, gereken >200px). Geniş-ekran testi her iki durumda da geçiyor
+  (doğru — o düzen değişmedi).
+- Canlı tarayıcı doğrulaması: 375px, 700px, 1400px'te ekran görüntüsüyle +
+  text field'a tıklayıp gerçekten yazarak.
+- L10n grep taraması (Agent Working Rules #8) — boş sonuç.
+- Backend'e dokunulmadı, Go doğrulaması gerekmedi.
+
+---
 
 ## Sıradaki oturum için
 
-1. Bu iki commit henüz push edilmedi — kullanıcı onayı bekliyor.
-2. Gerçek uygulamada (Flutter masaüstü) sohbet balonlarında ve Model Store açıklamasında Markdown render'ının görsel olarak hâlâ doğru göründüğü canlı doğrulanmadı — bu oturumda sadece `flutter analyze`/`flutter test` ile doğrulandı, tarayıcı/masaüstü ortamı bu makinede kurulmadı.
-3. `mobile/`'daki aynı `flutter_markdown` bağımlılığı hâlâ eski sürümde — ayrı proje olduğu için bilerek kapsam dışı bırakıldı, istenirse ayrı bir iş olarak ele alınabilir.
-4. Session 7'nin diğer bekleyen maddeleri (web UI viewport fix'i, `fl_chart` düşürme, v3.5.5'in tam release'i, WhatsApp stream'inin agent-routing taraması) hâlâ geçerli, aşağıda.
+1. **7 commit henüz push edilmedi** — kullanıcı onayı bekliyor.
+2. **Diğer ekranlar dar genişlikte hiç denetlenmedi.** Bu oturum sadece
+   Chat ekranını kapattı. Model Store, Ayarlar, Takvim, Rutinler, Ajan,
+   WhatsApp, Developer, Swarm ekranlarının hepsi aynı sınıf bug'ı taşıyor
+   olabilir — `_ModelRecommendationCard` (setup wizard) canlı testte 0.09px ve
+   4.4px overflow verdi, kurulum sihirbazının dil/tema pill'leri 375px'te
+   ("Türk / çe", "Ligh / t") kelime ortasından kırılıyor. Hiçbiri
+   düzeltilmedi.
+3. Gerçek bir telefonda hiç test edilmedi — sadece tarayıcı viewport
+   simülasyonuyla. Dokunmatik hedef boyutları, klavye açılınca layout,
+   gerçek mobil tarayıcı davranışı doğrulanmadı.
+4. Markdown geçişinin görsel doğrulaması (sohbet balonları, Model Store
+   açıklaması) hâlâ yapılmadı — `flutter analyze`/`flutter test` yeşil ama
+   render'a gözle bakılmadı.
+5. `mobile/`'daki `flutter_markdown` bağımlılığı hâlâ eski.
+6. Session 7'nin diğer bekleyen maddeleri (`fl_chart` düşürme, v3.5.5'in tam
+   release'i, WhatsApp stream'inin agent-routing taraması) hâlâ geçerli.
 
 ---
 

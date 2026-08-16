@@ -160,6 +160,26 @@ kanıt yok, aynı chat'te ısrarla tekrar istenince gerçek tool_call de üretti
 - Task Loop: fix sonrası uçtan uca doğrulandı (yukarıya bkz).
 - Routines: Orchestra kapalıyken doğru parse ediyor, kaydediyor, listede
   doğru gösteriyor (kanal seçim sorunu hariç, bkz. #6).
+- Skills: `codebase-memory` bu Claude Code oturumundan otomatik import edilmiş
+  olarak listeleniyor; "explore the codebase" tetikleyicisiyle canlı bir
+  sohbette gerçekten tetiklendi — modelin cevabı skill'in tam araç adlarını
+  (`list_projects`, `get_graph_schema`, `trace_path`, `search_graph`)
+  doğru şekilde referans aldı.
+- Learning: seviye seçimi (subtle/normal/assertive) ve Save çalışıyor,
+  "Learned Patterns" gerçek geçmiş kullanım verisini gösteriyor.
+- Mood: Emotion Engine açılınca Live Score paneli ve EngineStrip göstergesi
+  gerçek zamanlı güncelleniyor. (Self-Interest Protocol kasıtlı olarak
+  denenmedi — "may lie, manipulate, or threaten" davranışını canlı ortamda
+  tetiklemek riskli/amaç dışı.)
+- Agent Permissions: "Permanent Permissions" listesi doğru şekilde boş
+  (bu oturumda hiç "Allow/Deny Forever" kullanılmadı).
+- API Providers: tüm sağlayıcılar doğru durumda listeleniyor, aktif sağlayıcı
+  (OpenCode Zen 2) doğru "Enabled/Connected" gösteriliyor.
+- CLI Connections: bu oturumun kendisini çalıştıran Claude Code CLI'ı
+  (v2.1.220) ve Codex CLI'ı doğru şekilde "Connected" olarak algılıyor,
+  "Check" yeniden çalıştırılabiliyor.
+- Remote Access: URL/token/auth-mode/paired-devices/Tailscale bölümleri
+  doğru render ediyor (gerçek uzaktan erişim kasıtlı olarak açılmadı).
 
 ---
 

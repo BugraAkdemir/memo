@@ -16,15 +16,48 @@ import '../core/friendly_error.dart';
 class AgentScreen extends ConsumerWidget {
   const AgentScreen({super.key});
 
+  // Same reasoning (and the same 600px cut) as ChatScreen: _AgentSidebar is
+  // a fixed 260px, which together with AppShell's NavRail leaves the agent
+  // conversation almost nothing at a phone width.
+  static const double _sidebarBreakpoint = 600;
+
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    return Row(
-      children: [
-        _AgentSidebar(),
-        Expanded(
-          child: Container(color: MemoTheme.of(context).bgApp, child: _AgentContent()),
-        ),
-      ],
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final content = Container(
+          color: MemoTheme.of(context).bgApp,
+          child: _AgentContent(),
+        );
+
+        if (constraints.maxWidth < _sidebarBreakpoint) {
+          return Scaffold(
+            drawer: Drawer(child: SafeArea(child: _AgentSidebar())),
+            body: Column(
+              children: [
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Builder(
+                    builder: (ctx) => IconButton(
+                      icon: const Icon(Icons.menu),
+                      tooltip: L10n.t('agent_open_chats'),
+                      onPressed: () => Scaffold.of(ctx).openDrawer(),
+                    ),
+                  ),
+                ),
+                Expanded(child: content),
+              ],
+            ),
+          );
+        }
+
+        return Row(
+          children: [
+            _AgentSidebar(),
+            Expanded(child: content),
+          ],
+        );
+      },
     );
   }
 }

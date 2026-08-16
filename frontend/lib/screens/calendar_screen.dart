@@ -252,14 +252,19 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
         color: c.bgPanel,
         border: Border(bottom: BorderSide(color: c.borderSoft)),
       ),
-      child: Row(
+      // Title + month nav + refresh + "add event" is more than a phone-width
+      // pane can hold (18px RenderFlex overflow at 375px, confirmed live);
+      // scroll the whole bar rather than dropping any of its controls.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
         children: [
           Icon(Icons.calendar_month, color: MemoTheme.accent, size: 22),
           const SizedBox(width: 10),
           Text(L10n.t('calendar_title'),
               style: TextStyle(
                   fontSize: 17, fontWeight: FontWeight.w600, color: c.textMain)),
-          const Spacer(),
+          const SizedBox(width: 24),
           IconButton(
             tooltip: L10n.t('calendar_prev_month'),
             icon: Icon(Icons.chevron_left, color: c.textDim),
@@ -298,6 +303,7 @@ class _CalendarScreenState extends ConsumerState<CalendarScreen> {
             onPressed: () => _showAddDialog(c),
           ),
         ],
+        ),
       ),
     );
   }

@@ -2542,7 +2542,16 @@ func (s *Server) handleTaskListByID(w http.ResponseWriter, r *http.Request) {
 
 	switch {
 	case subAction == "start" && r.Method == http.MethodPost:
-		if err := s.fullBridge.StartTaskList(r.Context(), listID); err != nil {
+		// Engine.Start spawns a goroutine that outlives this handler (it
+		// returns immediately after `go e.run(...)`), so r.Context() is the
+		// wrong parent - net/http cancels it the instant this handler
+		// returns, which raced the run loop's very first ctx.Done() check
+		// and made every list pause after zero items, every time (reported
+		// live: Start always immediately re-paused with 0 items processed).
+		// The engine's own Stop()/active-map bookkeeping already owns the
+		// list's lifecycle, so a background context here is correct, not
+		// just a workaround.
+		if err := s.fullBridge.StartTaskList(context.Background(), listID); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}

@@ -61,6 +61,44 @@ func (c *Conductor) Run(ctx context.Context, userMessage string) (string, []Orch
 	return c.RunWithProgress(ctx, userMessage, nil)
 }
 
+// RunSingle asks the chief model for one plain-text completion, bypassing
+// the plan→execute→synthesize pipeline entirely. Callers that just want "one
+// text answer" for an internal utility task (chat title generation, routine
+// parsing, memory summarization, proactive-suggestion checks — see
+// internal/app's callLLM) must not go through Run/RunWithProgress: those
+// force the chief to produce a {"tasks":[...]} decomposition and then run a
+// full multi-role round-trip, which is both the wrong contract (a routine
+// parser or title generator doesn't want a task list, it wants a JSON object
+// or short string in its own format) and needlessly slow — reproduced live:
+// a request to generate a Routine while Orchestra was on failed with "chief
+// returned no tasks" because the chief was asked to decompose the routine
+// text into tasks instead of just parsing it, and a plain chat title took
+// 3+ minutes because it silently ran the full pipeline (plan, one "general"
+// task, then synthesis) for what should be a single completion.
+func (c *Conductor) RunSingle(ctx context.Context, systemPrompt, userPrompt string) (string, error) {
+	cfg := c.Config()
+	if !cfg.Enabled {
+		return "", fmt.Errorf("orchestra mode is not enabled")
+	}
+
+	var messages []provider.Message
+	if systemPrompt != "" {
+		messages = append(messages, provider.TextMessage("system", systemPrompt))
+	}
+	messages = append(messages, provider.TextMessage("user", userPrompt))
+
+	req := provider.ChatRequest{
+		Messages:    messages,
+		Temperature: 0.3,
+		MaxTokens:   4096,
+	}
+
+	singleCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
+	defer cancel()
+
+	return c.runChiefWithFallback(singleCtx, "single completion", cfg.ChiefType, cfg.ChiefModel, req, nil, nil)
+}
+
 // RunWithProgress executes the full orchestra workflow with optional progress streaming.
 // It checks ctx.Done() between each phase so cancellation propagates promptly.
 func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onProgress ProgressFn) (string, []OrchestraResult, error) {

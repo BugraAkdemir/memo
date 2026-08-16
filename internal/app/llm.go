@@ -1187,13 +1187,17 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 		if userPrompt == "" {
 			return "⚠️ No user message found"
 		}
-		conversationCtx := buildConversationContext(messages, userPrompt)
-		if systemPrompt != "" {
-			conversationCtx = "Sistem talimatları: " + systemPrompt + "\n\n---\n\n" + conversationCtx
-		}
-		octx, cancel := context.WithTimeout(ctx, 300*time.Second)
+		// callLLM is a single-completion helper (chat titles, routine
+		// parsing, memory summaries, proactive checks — see its callers) —
+		// it must not go through Run/RunWithProgress, which forces the
+		// chief into the plan→execute→synthesize workflow and its
+		// {"tasks":[...]} contract. See RunSingle's doc comment for the two
+		// live-reproduced failures that caused (a routine request failing
+		// with "chief returned no tasks", and a plain chat title taking 3+
+		// minutes because it silently ran the full pipeline).
+		octx, cancel := context.WithTimeout(ctx, 90*time.Second)
 		defer cancel()
-		finalResponse, _, err := a.orchestraConductor.Run(octx, conversationCtx)
+		finalResponse, err := a.orchestraConductor.RunSingle(octx, systemPrompt, userPrompt)
 		if err != nil {
 			return "⚠️ " + err.Error()
 		}

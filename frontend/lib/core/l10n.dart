@@ -3593,7 +3593,7 @@ class L10n {
     'accounts_sign_out': 'Sign out',
     'accounts_sign_out_confirm_title': 'Sign out',
     'accounts_sign_out_confirm_body': 'Your saved session will be cleared; you\'ll be asked to sign in again next launch.',
-    'accounts_empty': 'No accounts yet. The backend appears to be unset up.',
+    'accounts_empty': 'No accounts yet. The backend appears to not be set up.',
     'accounts_loaded_error': 'Could not load accounts: {err}',
   };
 }

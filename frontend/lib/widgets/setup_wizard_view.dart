@@ -292,9 +292,22 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
             child: Center(
               child: SingleChildScrollView(
                 padding: EdgeInsets.symmetric(vertical: 40),
-                child: Container(
+                child: LayoutBuilder(
+                  builder: (context, outerConstraints) {
+                  // The card's own width (640) already gets clamped down to
+                  // fit a narrow viewport by the ambient constraint chain —
+                  // that part was never the bug. What wasn't responsive is
+                  // everything INSIDE it: 40px of padding per side plus a
+                  // 24px margin is more than half of a 375px phone's width
+                  // on its own, so the remaining content (in particular the
+                  // Language/Theme cards below, side by side) was squeezed
+                  // hard enough to wrap "Türkçe"/"English" mid-word.
+                  // Confirmed live.
+                  final narrow = outerConstraints.maxWidth < 500;
+                  final hPad = narrow ? 16.0 : 40.0;
+                  return Container(
                   width: 640,
-                  margin: EdgeInsets.symmetric(horizontal: 24),
+                  margin: EdgeInsets.symmetric(horizontal: narrow ? 8 : 24),
                   decoration: BoxDecoration(
                     color: c.bgPanel,
                     borderRadius: BorderRadius.circular(24),
@@ -313,7 +326,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       // ─── Hero ───────────────────────────────
                       Container(
                         width: double.infinity,
-                        padding: EdgeInsets.fromLTRB(40, 40, 40, 28),
+                        padding: EdgeInsets.fromLTRB(hPad, 40, hPad, 28),
                         decoration: BoxDecoration(
                           border: Border(bottom: BorderSide(color: c.borderSoft)),
                         ),
@@ -384,7 +397,7 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       ),
 
                       Padding(
-                        padding: EdgeInsets.fromLTRB(40, 32, 40, 36),
+                        padding: EdgeInsets.fromLTRB(hPad, 32, hPad, 36),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
@@ -393,78 +406,117 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                               number: '1',
                               title: L10n.t('setup_step_language_theme'),
                               color: c,
-                              child: Row(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Expanded(
-                                    child: _Card(
-                                      color: c,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          _Label(text: L10n.t('language'), color: c),
-                                          SizedBox(height: 10),
-                                          _Pill(
-                                            label: 'Türkçe',
-                                            selected: L10n.locale == MemoLocale.tr,
-                                            accent: MemoTheme.accent,
-                                            color: c,
-                                            onTap: () => setState(() {
-                                              ref.read(localeProvider.notifier).setLocale(MemoLocale.tr);
-                                            }),
-                                          ),
-                                          SizedBox(height: 6),
-                                          _Pill(
-                                            label: 'English',
-                                            selected: L10n.locale == MemoLocale.en,
-                                            accent: MemoTheme.accent,
-                                            color: c,
-                                            onTap: () => setState(() {
-                                              ref.read(localeProvider.notifier).setLocale(MemoLocale.en);
-                                            }),
-                                          ),
-                                        ],
+                              child: Builder(builder: (context) {
+                                final languageCard = _Card(
+                                  color: c,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _Label(text: L10n.t('language'), color: c),
+                                      SizedBox(height: 10),
+                                      _Pill(
+                                        label: 'Türkçe',
+                                        selected: L10n.locale == MemoLocale.tr,
+                                        accent: MemoTheme.accent,
+                                        color: c,
+                                        onTap: () => setState(() {
+                                          ref.read(localeProvider.notifier).setLocale(MemoLocale.tr);
+                                        }),
                                       ),
-                                    ),
-                                  ),
-                                  SizedBox(width: 12),
-                                  Expanded(
-                                    child: _Card(
-                                      color: c,
-                                      child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
-                                        children: [
-                                          _Label(text: L10n.t('theme'), color: c),
-                                          SizedBox(height: 10),
-                                          _Pill(
-                                            label: L10n.t('theme_dark'),
-                                            selected: _selectedTheme == 'dark',
-                                            accent: MemoTheme.accent,
-                                            color: c,
-                                            onTap: () => setState(() => _selectedTheme = 'dark'),
-                                          ),
-                                          SizedBox(height: 6),
-                                          _Pill(
-                                            label: L10n.t('theme_light'),
-                                            selected: _selectedTheme == 'light',
-                                            accent: MemoTheme.accent,
-                                            color: c,
-                                            onTap: () => setState(() => _selectedTheme = 'light'),
-                                          ),
-                                          SizedBox(height: 6),
-                                          _Pill(
-                                            label: L10n.t('theme_system'),
-                                            selected: _selectedTheme == 'system',
-                                            accent: MemoTheme.accent,
-                                            color: c,
-                                            onTap: () => setState(() => _selectedTheme = 'system'),
-                                          ),
-                                        ],
+                                      SizedBox(height: 6),
+                                      _Pill(
+                                        label: 'English',
+                                        selected: L10n.locale == MemoLocale.en,
+                                        accent: MemoTheme.accent,
+                                        color: c,
+                                        onTap: () => setState(() {
+                                          ref.read(localeProvider.notifier).setLocale(MemoLocale.en);
+                                        }),
                                       ),
-                                    ),
+                                    ],
                                   ),
-                                ],
-                              ),
+                                );
+                                final themeCard = _Card(
+                                  color: c,
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      _Label(text: L10n.t('theme'), color: c),
+                                      SizedBox(height: 10),
+                                      _Pill(
+                                        label: L10n.t('theme_dark'),
+                                        selected: _selectedTheme == 'dark',
+                                        accent: MemoTheme.accent,
+                                        color: c,
+                                        onTap: () => setState(() => _selectedTheme = 'dark'),
+                                      ),
+                                      SizedBox(height: 6),
+                                      _Pill(
+                                        label: L10n.t('theme_light'),
+                                        selected: _selectedTheme == 'light',
+                                        accent: MemoTheme.accent,
+                                        color: c,
+                                        onTap: () => setState(() => _selectedTheme = 'light'),
+                                      ),
+                                      SizedBox(height: 6),
+                                      _Pill(
+                                        label: L10n.t('theme_system'),
+                                        selected: _selectedTheme == 'system',
+                                        accent: MemoTheme.accent,
+                                        color: c,
+                                        onTap: () => setState(() => _selectedTheme = 'system'),
+                                      ),
+                                    ],
+                                  ),
+                                );
+
+                                // Two side-by-side cards, each with a
+                                // two-word pill ("Türkçe"/"English"), need
+                                // real room — squeezed to ~117px each on a
+                                // 375px phone (before hPad's own shrink even
+                                // helped), the pill text wrapped mid-word
+                                // ("Türk/çe"). Below the breakpoint they
+                                // stack instead.
+                                //
+                                // A LayoutBuilder+Wrap version of this was
+                                // tried and reverted: this step sits inside
+                                // _TimelineStep's IntrinsicHeight (matches
+                                // its numbered-circle-and-thread column's
+                                // height to its content), and a
+                                // LayoutBuilder in that position broke
+                                // IntrinsicHeight's dry-layout measurement
+                                // pass outright — a hard "RenderBox was not
+                                // laid out" crash, not just a cosmetic
+                                // mismatch, confirmed live. Plain
+                                // Row/Column swapping is the one that
+                                // actually works here without crashing.
+                                // Known remaining imperfection, not chased
+                                // further: stacking two cards makes this
+                                // step's content taller than
+                                // _TimelineStep's IntrinsicHeight measured
+                                // it as up front, an 11px mismatch —
+                                // visibly harmless (the connecting line
+                                // ends 11px short of the next step's
+                                // circle) but not eliminated.
+                                if (narrow) {
+                                  return Column(
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [
+                                      languageCard,
+                                      SizedBox(height: 12),
+                                      themeCard,
+                                    ],
+                                  );
+                                }
+                                return Row(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Expanded(child: languageCard),
+                                    SizedBox(width: 12),
+                                    Expanded(child: themeCard),
+                                  ],
+                                );
+                              }),
                             ),
 
                             // ─── Step 2 — Persona ──────────────
@@ -707,6 +759,8 @@ class _SetupWizardScreenState extends ConsumerState<_SetupWizardScreen> {
                       ),
                     ],
                   ),
+                  );
+                  },
                 ),
               ),
             ),

@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_svg/flutter_svg.dart';
@@ -129,19 +131,79 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     final theme = MemoTheme.of(context);
 
     final screenSize = MediaQuery.of(context).size;
+    // Below this, a 216px rail beside the content leaves too little room for
+    // the tab bodies to be usable at all, so the rail moves into a drawer
+    // (same pattern as ChatScreen's sidebar).
+    final narrow = screenSize.width < 640;
+    // Dialog's own default insetPadding eats 40px per side; on a phone that
+    // is a sixth of the screen, so shrink it when narrow.
+    final inset = EdgeInsets.symmetric(
+      horizontal: narrow ? 8 : 40,
+      vertical: narrow ? 12 : 24,
+    );
     // Fixed once computed from the viewport, so the Row below (sidebar +
     // content) always lays out against a stable width regardless of how
     // small the actual window gets — the inner layout can't RenderFlex
     // overflow from a shrinking screen, only the dialog's own size adapts.
-    final dialogWidth = (screenSize.width * 0.85).clamp(400.0, 1040.0);
-    final dialogHeight = (screenSize.height * 0.85).clamp(440.0, 760.0);
+    //
+    // The trailing clamps are the fix for a real bug: the 400x440 lower
+    // bounds were applied unconditionally, so on a 375px-wide phone the
+    // dialog asked for 400px inside a viewport that (after insetPadding)
+    // only had ~295px — it rendered wider than the screen with its right
+    // edge, including the tab content, simply cut off. A minimum is only
+    // meaningful up to what actually exists.
+    final availableWidth = screenSize.width - inset.horizontal;
+    final availableHeight = screenSize.height - inset.vertical;
+    final dialogWidth = math.min(
+      (screenSize.width * 0.85).clamp(400.0, 1040.0),
+      availableWidth,
+    );
+    final dialogHeight = math.min(
+      (screenSize.height * 0.85).clamp(440.0, 760.0),
+      availableHeight,
+    );
 
     // ScaffoldMessenger + Scaffold so tab SnackBars (ScaffoldMessenger.of)
     // render ON TOP of this modal Dialog instead of behind it on the root
     // Scaffold (BUG-M2). MemoryImportTab already uses an inline banner for the
     // same reason; this covers every other tab without rewriting each one.
+    // The search box + grouped tab rail, shared by both layouts: inline in
+    // a 216px column when wide, inside the drawer when narrow.
+    Widget rail({required bool inDrawer}) => Container(
+          decoration: BoxDecoration(
+            color: theme.bgPanel.withValues(alpha: inDrawer ? 1.0 : 0.5),
+            border: inDrawer
+                ? null
+                : Border(right: BorderSide(color: theme.borderSoft)),
+          ),
+          child: Column(
+            children: [
+              _SettingsSearchField(
+                controller: _searchController,
+                onChanged: (v) => setState(() => _searchQuery = v),
+              ),
+              Expanded(
+                child: _SettingsRail(
+                  tabs: tabs,
+                  tabIcons: _tabIcons,
+                  groups: _groups,
+                  query: _searchQuery,
+                  activeIndex: tabIndex,
+                  onSelect: (i) {
+                    setState(() => _activeTab = i);
+                    // Picking a tab is the drawer's whole purpose — leaving
+                    // it open would just cover the content it selected.
+                    if (inDrawer) Navigator.of(context).pop();
+                  },
+                ),
+              ),
+            ],
+          ),
+        );
+
     return Dialog(
       backgroundColor: theme.bgApp,
+      insetPadding: inset,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(MemoTheme.radiusLg),
       ),
@@ -154,77 +216,82 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
         ),
         child: ScaffoldMessenger(
           child: Scaffold(
-            backgroundColor: theme.bgApp,
-            body: Column(
-              children: [
-                Container(
-                  height: 56,
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  decoration: BoxDecoration(
-                    color: theme.bgPanel,
-                    border: Border(bottom: BorderSide(color: theme.borderSoft)),
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        L10n.t('settings'),
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                          color: theme.textMain,
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close, size: 20),
-                        onPressed: () => Navigator.of(context).pop(),
-                        color: theme.textDim,
-                      ),
-                    ],
-                  ),
-                ),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: 216,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: theme.bgPanel.withValues(alpha: 0.5),
-                            border: Border(right: BorderSide(color: theme.borderSoft)),
+              backgroundColor: theme.bgApp,
+              drawer: narrow
+                  ? Drawer(child: SafeArea(child: rail(inDrawer: true)))
+                  : null,
+              body: Column(
+                children: [
+                  Container(
+                    height: 56,
+                    padding: EdgeInsets.symmetric(horizontal: narrow ? 8 : 24),
+                    decoration: BoxDecoration(
+                      color: theme.bgPanel,
+                      border:
+                          Border(bottom: BorderSide(color: theme.borderSoft)),
+                    ),
+                    child: Row(
+                      children: [
+                        if (narrow) ...[
+                          // Builder so Scaffold.of() resolves the Scaffold
+                          // just above — build()'s own context is its
+                          // ancestor and would find the app's root one
+                          // instead (or throw, as it did first time round).
+                          Builder(
+                            builder: (ctx) => IconButton(
+                              icon: const Icon(Icons.menu, size: 20),
+                              tooltip: L10n.t('settings_open_sections'),
+                              color: theme.textMain,
+                              onPressed: () => Scaffold.of(ctx).openDrawer(),
+                            ),
                           ),
-                          child: Column(
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                          child: Text(
+                            // Which section is open matters more than the
+                            // word "Settings" once the rail is hidden.
+                            narrow ? tabs[tabIndex] : L10n.t('settings'),
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w600,
+                              color: theme.textMain,
+                            ),
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.close, size: 20),
+                          onPressed: () => Navigator.of(context).pop(),
+                          color: theme.textDim,
+                        ),
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: narrow
+                        ? Container(
+                            color: theme.bgApp,
+                            child: _buildTabContent(tabIndex),
+                          )
+                        : Row(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
-                              _SettingsSearchField(
-                                controller: _searchController,
-                                onChanged: (v) => setState(() => _searchQuery = v),
+                              SizedBox(
+                                width: 216,
+                                child: rail(inDrawer: false),
                               ),
                               Expanded(
-                                child: _SettingsRail(
-                                  tabs: tabs,
-                                  tabIcons: _tabIcons,
-                                  groups: _groups,
-                                  query: _searchQuery,
-                                  activeIndex: tabIndex,
-                                  onSelect: (i) => setState(() => _activeTab = i),
+                                child: Container(
+                                  color: theme.bgApp,
+                                  child: _buildTabContent(tabIndex),
                                 ),
                               ),
                             ],
                           ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Container(
-                          color: theme.bgApp,
-                          child: _buildTabContent(tabIndex),
-                        ),
-                      ),
-                    ],
                   ),
-                ),
-              ],
-            ),
+                ],
+              ),
           ),
         ),
       ),

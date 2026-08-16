@@ -25,6 +25,17 @@ Future<void> _pumpSettingsDialog(WidgetTester tester, {Size size = const Size(12
   final prefs = await SharedPreferences.getInstance();
   L10n.setLocale(MemoLocale.tr);
 
+  // MaterialApp/WidgetsApp derives its own MediaQuery from the test
+  // binding's FlutterView rather than an ancestor MediaQuery override, so
+  // wrapping the tree in one (as this helper used to) is silently a no-op —
+  // the dialog always saw the default 800x600 test surface regardless of
+  // `size`. Found while adding the phone-width tests below: the "shrinks to
+  // a small size" test never actually shrank anything. This is the same
+  // tester.view approach every other screen test in this suite already uses.
+  tester.view.physicalSize = size;
+  tester.view.devicePixelRatio = 1.0;
+  addTearDown(tester.view.reset);
+
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
@@ -38,10 +49,7 @@ Future<void> _pumpSettingsDialog(WidgetTester tester, {Size size = const Size(12
         // is all this suite needs.
         embeddingStatusProvider.overrideWith((ref) => Stream.value(const ServerStatus())),
       ],
-      child: MediaQuery(
-        data: MediaQueryData(size: size),
-        child: const MaterialApp(home: Scaffold(body: SettingsDialog())),
-      ),
+      child: const MaterialApp(home: Scaffold(body: SettingsDialog())),
     ),
   );
   await tester.pump();
@@ -124,6 +132,33 @@ void main() {
     expect(find.text(_providersGroup), findsOneWidget);
     await tester.scrollUntilVisible(find.text(_systemGroup), 150, scrollable: _railScrollable);
     expect(find.text(_systemGroup), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
+
+  // The "stays overflow-free" test above only asserts no RenderFlex
+  // assertion fired, which doesn't distinguish this bug from correct
+  // behavior — Scaffold silently clips an oversized Dialog child rather
+  // than throwing, so nothing in that test's own signal changes. Reported
+  // live: dialogWidth's lower bound (400.0) was applied unconditionally, so
+  // on a 375px phone the dialog asked for 400px inside a viewport that
+  // (after insetPadding) only had ~295px — the fixed-width 216px rail and
+  // the tab content next to it were squeezed into whatever the clip left,
+  // with most of both genuinely unreachable rather than just cramped.
+  testWidgets(
+      'at phone width the rail moves into a drawer instead of squeezing '
+      'the tab content', (tester) async {
+    await _pumpSettingsDialog(tester, size: const Size(375, 812));
+    await tester.pump(const Duration(milliseconds: 50));
+
+    // The rail's own content (e.g. the search field) is not laid out
+    // inline at all — only reachable through the drawer.
+    expect(find.byKey(const Key('settingsRailList')), findsNothing);
+    expect(find.byIcon(Icons.menu), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.menu));
+    await tester.pump(const Duration(milliseconds: 300));
+
+    expect(find.byKey(const Key('settingsRailList')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

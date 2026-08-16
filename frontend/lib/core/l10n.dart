@@ -238,6 +238,8 @@ class L10n {
 
     // Settings tabs
     'settings': 'Ayarlar',
+    'settings_open_sections': 'Ayar bölümlerini aç',
+    'agent_open_chats': 'Ajan sohbetlerini aç',
     'settings_search_hint': 'Ayarlarda ara…',
     'settings_search_no_results': 'Sonuç bulunamadı',
     'settings_group_general': 'Genel',
@@ -2018,6 +2020,8 @@ class L10n {
     'load': 'Install',
 
     'settings': 'Settings',
+    'settings_open_sections': 'Open settings sections',
+    'agent_open_chats': 'Open agent chats',
     'settings_search_hint': 'Search settings…',
     'settings_search_no_results': 'No matching settings',
     'settings_group_general': 'General',

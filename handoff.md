@@ -1,3 +1,61 @@
+# GENEL ÖZET — Session 8-12 (2026-08-15/17): Mobil responsive + kapsamlı fonksiyonel test + kombinasyon bug'ları
+
+Bu blok, altındaki tüm oturum kayıtlarının (Session 8-12) hızlı referans
+özeti. Detaylar için ilgili oturum bölümüne bak.
+
+## Düzeltilen bug'lar (test edilip commit'lendi)
+
+**Mobil responsive (Session 8) — web UI telefon genişliğinde komple kırıktı:**
+- Viewport meta tag eksikti (tek başına yeterli değildi, asıl sorun aşağıdakiler)
+- EngineStrip alt şerit 295px overflow
+- Chat sidebar sabit genişlik → sohbete ~15px kalıyordu
+- Composer: ikonlar text field'ı ~60px'e sıkıştırıyordu (kullanıcının "text box yok" raporunun gerçek sebebi)
+- Settings dialog, Model Store, Agent screen sidebar, Calendar header, WelcomeView tip kutusu, Setup wizard — aynı sınıf overflow bug'ları
+
+**Fonksiyonel bug'lar (Session 9-11):**
+- Agent izin dialogu: 5dk/60sn timeout uyuşmazlığı + bazı durumlarda sonsuza kadar takılı kalma (`13bfc83`)
+- Accounts sekmesi İngilizce yazım hatası (`336f9cd`)
+- **Task Loop tamamen çalışmıyordu** — HTTP request context'i arka plan işine veriliyordu, iş hiç başlamadan ölüyordu (`95f1f4f`)
+- Orchestra'nın `callLLM` yardımcı çağrıları (başlık üretimi, rutin ayrıştırma) gereksiz yere ağır pipeline'dan geçiyordu → "chief returned no tasks", 3+ dk gecikme (`1eb269e`)
+- Routines WhatsApp/Telefon çipleri tıklanamıyordu (`a27a797`)
+- Canlı ekran backend'in terminal mesajını göstermiyordu, reload gerektiriyordu (`312d911`)
+- **Orchestra + Agent Mode kombinasyonu çalışmıyordu** — göreve atanan model gerçek araç erişimine sahip değildi, "simüle ettim" diye itiraf ediyordu; Task Loop+Orchestra hep "stuck" oluyordu (`43ae213`, en büyük mimari fix)
+
+## Test edilip sorunsuz bulunanlar
+Markdown render, Import Memory, System Prompt, Incognito Prompt, Memory, Model Store (arama/filtre), Developer API Gateway, Skills (gerçek tetikleme doğrulandı), Learning, Mood, Agent Permissions, API Providers, CLI Connections, Remote Access, Routines (Orchestra kapalıyken).
+
+## Açık kalan, bilinçli kapsam dışı bırakılan sorunlar
+- SQLite FTS5 modülü eksik (`insert fts: no such module`) — ortam/build yapılandırması, kod bug'ı değil
+- Free model bazen "ajan modu kapalı" diye yanlış cevap veriyor — model tutarsızlığı, ürün bug'ı değil
+- Setup wizard'da 11px kozmetik `IntrinsicHeight` uyuşmazlığı — görsel olarak fark edilmiyor
+
+## Geri çekilen tek "bug" (Session 12)
+Orchestra+Agent'ın canlı ekranı erken "bitti" gösterdiği iddiası — araştırma
+sonucu bunun test aracının `wait()` sürelerinin gerçek geçen zamanı yanlış
+yansıtmasından kaynaklanan bir ölçüm hatası olduğu kanıtlandı, gerçek bir
+ürün bug'ı değildi.
+
+## Genel kullanıcı deneyimi değerlendirmesi
+
+**Güçlü yanlar:** Memory/RAG, Skills, Model Store, Developer Gateway, temel
+sohbet akışı sağlam. Sandbox güvenliği doğru çalışıyor (ör. Task Loop'un
+`/tmp`'ye yazmayı reddetmesi — bug değil, doğru davranış). Mimari genelde
+iyi düşünülmüş (Bridge pattern, event sistemi, fallback zincirleri).
+
+**Zayıf yanlar:** Mobil deneyim bu tur öncesi tamamen kırıktı — tek bir
+"viewport tag eksik" tahmini yanlıştı, asıl sorun 10+ ayrı layout bug'ıydı.
+Agent Mode + Orchestra Mode kombinasyonu, iki güçlü özelliğin **birlikte
+hiç test edilmemiş** olduğunu gösterdi — ayrı ayrı çalışıyorlardı ama
+birleştirilince biri diğerini sessizce bozuyordu.
+
+**Genel:** Ürün temelde sağlam ama "iki özelliği aynı anda açınca ne olur"
+sorusu sistematik olarak sorulmamış — bulunan en ciddi 3 bug (Task Loop,
+Orchestra+callLLM, Orchestra+Agent) hepsi tam da özellik kesişim
+noktalarındaydı. İleride yeni özellik eklenirken mevcut özelliklerle
+kombinasyon testi rutine alınmalı.
+
+---
+
 # Handoff — 2026-08-17 (Session 12) — Session 11'de "bulunan" canlı-UI bug'ının aslında ölçüm hatası olduğu doğrulandı
 
 ## Düzeltme: Session 11'in "canlı ekran erken bitti gösteriyor" bulgusu gerçek değildi

@@ -355,13 +355,43 @@ class _RoutinesScreenState extends ConsumerState<RoutinesScreen> {
             style: const TextStyle(fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 8),
+          // BUG-L2 fix: these used to be plain, non-interactive Chip widgets
+          // showing only whichever channel(s) the LLM happened to pick, with
+          // no way to correct a wrong guess short of discarding the whole
+          // draft and rephrasing the request in the hope of a better parse.
+          // FilterChip makes both channels always visible and toggleable, and
+          // toggling WhatsApp on lazily fetches the chat list the same way
+          // _parse() does when the LLM itself picked WhatsApp.
           Wrap(spacing: 8, children: [
-            if (draft['delivery_whatsapp'] == true)
-              const Chip(label: Text('WhatsApp')),
-            if (draft['delivery_mobile'] == true)
-              Chip(label: Text(L10n.t('routines_mobile_notify'))),
+            FilterChip(
+              label: const Text('WhatsApp'),
+              selected: draft['delivery_whatsapp'] == true,
+              onSelected: (selected) async {
+                setState(() => _draft = {..._draft!, 'delivery_whatsapp': selected});
+                if (selected && _whatsAppChats.isEmpty) {
+                  try {
+                    final api = ref.read(apiClientProvider);
+                    final raw = await api.getWhatsAppChats();
+                    if (!mounted) return;
+                    setState(() {
+                      _whatsAppChats = raw.map((e) => Map<String, dynamic>.from(e as Map)).toList();
+                    });
+                  } catch (_) {
+                    // WhatsApp not connected — _confirm()'s existing check
+                    // (BUG-L2) still blocks saving without a picked chat.
+                  }
+                }
+              },
+            ),
+            FilterChip(
+              label: Text(L10n.t('routines_mobile_notify')),
+              selected: draft['delivery_mobile'] == true,
+              onSelected: (selected) {
+                setState(() => _draft = {..._draft!, 'delivery_mobile': selected});
+              },
+            ),
           ]),
-          if (_whatsAppChats.isNotEmpty) ...[
+          if (draft['delivery_whatsapp'] == true && _whatsAppChats.isNotEmpty) ...[
             const SizedBox(height: 12),
             Text(L10n.t('routines_whatsapp_pick')),
             const SizedBox(height: 4),

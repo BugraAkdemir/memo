@@ -101,6 +101,14 @@ class WelcomeView extends ConsumerWidget {
             _FadeIn(
               delayMs: 340,
               child: Container(
+                // Explicit full-width rather than mainAxisSize.min on the Row
+                // below: min-sizing a Row that also contains a Flexible child
+                // is a contradiction Flutter doesn't resolve the way you'd
+                // expect — confirmed live, the Flexible alone did not stop
+                // this from overflowing. Filling the available width outright
+                // removes the ambiguity, and this container already read as
+                // full-width visually (it has its own background/border).
+                width: double.infinity,
                 padding:
                     const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                 decoration: BoxDecoration(
@@ -109,14 +117,20 @@ class WelcomeView extends ConsumerWidget {
                   border: Border.all(color: c.borderSoft),
                 ),
                 child: Row(
-                  mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(Icons.lightbulb_outline_rounded,
                         size: 15, color: c.textDim),
                     const SizedBox(width: 8),
-                    Text(
-                      L10n.t('tip_slash'),
-                      style: TextStyle(fontSize: 12, color: c.textDim),
+                    // At a phone width the SingleChildScrollView above only
+                    // leaves this row ~177px, and the localized tip text
+                    // alone needs more — a 23px RenderFlex overflow,
+                    // confirmed live. Wrapping to a second line reads fine;
+                    // it's a tip, not a label that needs to stay on one line.
+                    Expanded(
+                      child: Text(
+                        L10n.t('tip_slash'),
+                        style: TextStyle(fontSize: 12, color: c.textDim),
+                      ),
                     ),
                   ],
                 ),

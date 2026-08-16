@@ -708,6 +708,17 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
+      // The stream's own error chunk (thrown as an Exception by
+      // sendMessageStream, see its "must NOT be swallowed" comment) is the
+      // backend's own terminal message for this turn — permission-timeout
+      // cancellation and an Orchestra chief failure both end a turn this
+      // way. The backend already persisted it (e.g. "Agent execution
+      // cancelled (permission timeout)"), but this catch block only ever
+      // showed a generic toast and left `state` untouched: the real message
+      // was invisible until the next full reload pulled it in. refresh()
+      // pulls it in immediately, matching every other terminal path above
+      // (_stopped, the CLI branch) which already call it.
+      await refresh();
     } finally {
       _cancelToken = null;
       if (_generation == myGeneration) {
@@ -860,6 +871,11 @@ class MessagesNotifier extends AsyncNotifier<List<ChatMessage>> {
       ref.read(streamingThinkingProvider.notifier).state = '';
       ref.read(streamingAgentEventsProvider.notifier).state = [];
       ref.read(streamingStatusProvider.notifier).state = '';
+      // See the matching comment in sendMessage()'s catch block: the
+      // stream's error chunk is the backend's own terminal message for this
+      // turn, already persisted — pull it in now instead of leaving it
+      // invisible until the next reload.
+      await refresh();
       return '';
     } finally {
       _cancelToken = null;

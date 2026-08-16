@@ -386,15 +386,15 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			conversationCtx = "Sistem talimatları: " + systemPrompt + "\n\n---\n\n" + conversationCtx
 		}
 
-		// Only the chief talks to the user. The preamble, plan, and each
-		// specialist's raw output are now process — they live in the right-side
-		// activity panel, not the conversation. The saved message holds just the
-		// chief's synthesis (+ any agent execution result).
+		// Only the chief talks to the user with its own words. Plan/task
+		// activity lives in the right-side activity panel; each task's real
+		// tool activity (permission dialogs, tool results) streams as normal
+		// agent_event chunks, exactly like a non-Orchestra agent chat turn.
 		var fullBuf strings.Builder
 		var fullBufMu sync.Mutex
-		// outAccum tracks total model output tokens (specialists + chief) for the
-		// token counter, even though specialist text isn't shown. Guarded by
-		// fullBufMu because parallel tasks invoke the callback concurrently.
+		// outAccum tracks total model output tokens (specialists + chief) for
+		// the token counter. Guarded by fullBufMu because parallel tasks
+		// invoke the callback concurrently.
 		var outAccum int
 
 		// emitActivity streams a structured step to the right-side activity panel.
@@ -426,7 +426,77 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		}
 		emitUsage(0)
 
-		orchestraResult, _, err := a.orchestraConductor.RunWithProgress(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
+		// Resolved once, up front, so every task's specialist executes real
+		// tool calls through the same agent (provider/model/sandbox) this
+		// chat is actually configured with — see AgentTaskRunner's and
+		// RunAgentTasks's doc comments for why tasks need this instead of a
+		// plain ChatCompletion.
+		agentRouter, modelName, err := a.resolveAgentProvider()
+		if err != nil {
+			// Combined mode: an Orchestra-configured user often has no separate
+			// "active provider" set, so the agent half would otherwise fail here.
+			// Fall back to the Orchestra chief's provider so the two systems stay
+			// connected.
+			ocfg := a.orchestraConductor.Config()
+			if r, m, ferr := a.agentRouterFromProviderName(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
+				agentRouter, modelName = r, m
+			} else {
+				a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
+				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
+				return
+			}
+		}
+		a.agentExecutor.SyncRouter(agentRouter)
+
+		sm := a.getSessionManager()
+		projectPath := ""
+		if sessionID != "" && sm != nil {
+			projectPath = sm.GetProjectPath(sessionID)
+		}
+
+		pMsgs := make([]provider.Message, len(messages))
+		for i, m := range messages {
+			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
+		}
+
+		var agentEventsMu sync.Mutex
+		var agentEvents []interface{}
+
+		// agentRunner gives each task's specialist real tool access (file,
+		// command, web) via the same pipeline a direct agent chat uses —
+		// sandboxed and permission-gated, so a live permission dialog still
+		// appears exactly like it would outside Orchestra. taskPrompt
+		// becomes one more user turn on top of the real conversation
+		// history (pMsgs), never a fabricated assistant claim about what
+		// happened — that's what caused the self-fulfilling "I don't have
+		// tool access" failures this replaces (see RunAgentTasks).
+		agentRunner := func(taskCtx context.Context, taskPrompt string, onEvent func(string)) (string, error) {
+			taskMsgs := append(append([]provider.Message{}, pMsgs...), provider.Message{Role: "user", Content: taskPrompt})
+			streamCh, err := a.agentExecutor.RunStream(taskCtx, sessionID, modelName, taskMsgs, func(ev agent.AgentEvent) {
+				agentEventsMu.Lock()
+				agentEvents = append(agentEvents, ev)
+				agentEventsMu.Unlock()
+				if chunkData, merr := json.Marshal(ev); merr == nil {
+					onEvent(string(chunkData))
+				}
+			}, projectPath)
+			if err != nil {
+				return "", err
+			}
+			var sb strings.Builder
+			for chunk := range streamCh {
+				if chunk.Error != "" {
+					return sb.String(), fmt.Errorf("%s", chunk.Error)
+				}
+				sb.WriteString(chunk.Content)
+				if chunk.Done {
+					break
+				}
+			}
+			return sb.String(), nil
+		}
+
+		orchestraResult, _, err := a.orchestraConductor.RunAgentTasks(ctx, conversationCtx, func(up orchestra.ProgressUpdate) {
 			select {
 			case <-ctx.Done():
 				return
@@ -459,8 +529,13 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 					"status": "running",
 				})
 			case orchestra.ProgressTaskChunk:
-				// Specialists work silently — their tokens stream to the chief, not
-				// to the user. Nothing emitted here.
+				// agentRunner forwards each real agent.AgentEvent here as raw
+				// JSON — pass it straight through as a normal agent_event
+				// chunk so permission dialogs and tool-activity render live,
+				// exactly like a non-Orchestra agent chat turn.
+				if up.Content != "" {
+					trySend(ctx, outCh, api.StreamChunk{Content: up.Content, FinishReason: "agent_event"})
+				}
 			case orchestra.ProgressTaskDone:
 				if up.Error != "" {
 					emitActivity(map[string]interface{}{
@@ -492,7 +567,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 				fullBufMu.Unlock()
 				trySend(ctx, outCh, api.StreamChunk{Content: up.Content})
 			}
-		})
+		}, agentRunner)
 		if err != nil {
 			a.recordStreamError(userMsg, "⚠️ Orchestra hatası: "+err.Error(), sessionID)
 			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Orchestra hatası: " + err.Error(), Done: true})
@@ -506,134 +581,17 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 			finalContent = orchestraResult
 		}
 
-		// Token meter: chief synthesis is done — fold it into the running total.
 		fullBufMu.Lock()
 		outAccum += estimateContentTokens(finalContent)
 		fullBufMu.Unlock()
 		emitUsage(outAccum)
 
-		pMsgs := make([]provider.Message, len(messages))
-		for i, m := range messages {
-			pMsgs[i] = provider.Message{Role: m.Role, Content: m.Content}
-		}
-		pMsgs = append(pMsgs, provider.Message{Role: "assistant", Content: finalContent})
-
-		agentRouter, modelName, err := a.resolveAgentProvider()
-		if err != nil {
-			// Combined mode: an Orchestra-configured user often has no separate
-			// "active provider" set, so the agent half would otherwise fail here.
-			// Fall back to the Orchestra chief's provider so the two systems stay
-			// connected — Orchestra plans, then the agent executes with the chief.
-			ocfg := a.orchestraConductor.Config()
-			if r, m, ferr := a.agentRouterFromProviderName(ocfg.ChiefType, ocfg.ChiefModel); ferr == nil {
-				agentRouter, modelName = r, m
-			} else {
-				if strings.TrimSpace(finalContent) != "" {
-					a.finishStream(start, 0, "error", finalContent, userMsg, sessionID, nil)
-				} else {
-					a.recordStreamError(userMsg, "⚠️ "+err.Error(), sessionID)
-				}
-				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + err.Error(), Done: true})
-				return
-			}
-		}
-
-		sm := a.getSessionManager()
-		projectPath := ""
-		if sessionID != "" && sm != nil {
-			projectPath = sm.GetProjectPath(sessionID)
-		}
-
-		a.agentExecutor.SyncRouter(agentRouter)
-
 		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: inputTokens}
-
-		var agentBuf strings.Builder
-		var agentEvents []interface{}
-
-		streamCh, err := a.agentExecutor.RunStream(ctx, sessionID, modelName, pMsgs, func(ev agent.AgentEvent) {
-			agentEvents = append(agentEvents, ev)
-			chunkData, _ := json.Marshal(ev)
-			trySend(ctx, outCh, api.StreamChunk{
-				Content:      string(chunkData),
-				FinishReason: "agent_event",
-			})
-		}, projectPath)
-
-		if err != nil {
-			// Persist the chief's synthesis before erroring out — otherwise the
-			// answer the user already saw is lost on the frontend's refresh.
-			if strings.TrimSpace(finalContent) != "" {
-				a.finishStream(start, 0, "error", finalContent, userMsg, sessionID, &usageMetaVal, agentEvents)
-			}
-			trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ Agent hatası: " + err.Error(), Done: true})
-			return
-		}
-
-		// usedTools reports whether the agent actually executed any tool. If it
-		// didn't, its text output is just a redundant second answer on top of the
-		// chief's synthesis — exactly the "empty talk" we want to avoid. So we
-		// buffer the agent's text and only surface it when real work happened.
-		usedTools := func() bool {
-			for _, e := range agentEvents {
-				if ev, ok := e.(agent.AgentEvent); ok {
-					switch ev.Type {
-					case agent.EventToolExecuting, agent.EventToolResult, agent.EventToolError:
-						return true
-					}
-				}
-			}
-			return false
-		}
-
-		// finalize assembles the saved reply + closes the stream. agentText is
-		// appended only when the agent did tool work.
-		finalize := func(finishReason string) {
-			agentText := agentBuf.String()
-			finalReply := finalContent
-			// Show the agent's text when it did real work (tools) OR when the
-			// chief produced no answer — otherwise the user would get a blank reply.
-			showAgentText := agentText != "" &&
-				(usedTools() || strings.TrimSpace(finalContent) == "")
-			if showAgentText {
-				prefix := "\n\n"
-				if strings.TrimSpace(finalContent) == "" {
-					prefix = ""
-				}
-				trySend(ctx, outCh, api.StreamChunk{Content: prefix + agentText})
-				finalReply = strings.TrimSpace(finalContent + prefix + agentText)
-				emitUsage(outAccum + estimateContentTokens(agentText))
-			} else {
-				emitUsage(outAccum)
-			}
-			a.finishStream(start, 0, finishReason, finalReply, userMsg, sessionID, &usageMetaVal, agentEvents)
-			trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: finishReason})
-		}
-
-		for chunk := range streamCh {
-			if chunk.Error != "" {
-				// Persist the chief's synthesis (and any agent text so far) so a
-				// mid-agent failure doesn't wipe the answer already on screen.
-				if salvage := strings.TrimSpace(finalContent + "\n\n" + agentBuf.String()); salvage != "" {
-					a.finishStream(start, 0, "error", salvage, userMsg, sessionID, &usageMetaVal, agentEvents)
-				}
-				trySend(ctx, outCh, api.StreamChunk{Error: "⚠️ " + chunk.Error, Done: true})
-				return
-			}
-			if chunk.Content != "" {
-				// Buffer, don't stream live — the decision to show it is made at the
-				// end based on whether tools ran.
-				agentBuf.WriteString(chunk.Content)
-			}
-			if chunk.Done {
-				finalize(chunk.FinishReason)
-				return
-			}
-		}
-
-		// Stream closed without an explicit Done chunk — finalize anyway so the
-		// frontend never hangs waiting for completion.
-		finalize("stop")
+		agentEventsMu.Lock()
+		finalEvents := agentEvents
+		agentEventsMu.Unlock()
+		a.finishStream(start, 0, "stop", finalContent, userMsg, sessionID, &usageMetaVal, finalEvents)
+		trySend(ctx, outCh, api.StreamChunk{Done: true, FinishReason: "stop"})
 	}()
 
 	return outCh

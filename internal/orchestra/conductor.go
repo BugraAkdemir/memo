@@ -99,9 +99,39 @@ func (c *Conductor) RunSingle(ctx context.Context, systemPrompt, userPrompt stri
 	return c.runChiefWithFallback(singleCtx, "single completion", cfg.ChiefType, cfg.ChiefModel, req, nil, nil)
 }
 
+// AgentTaskRunner executes one task's prompt through a real tool-calling
+// agent (file/command/web access, sandboxed, permission-gated) instead of a
+// plain text completion — see RunAgentTasks's doc comment for why this
+// exists. onEvent forwards each agent.AgentEvent (as JSON) so a live
+// permission dialog / tool-activity UI still works the same as a normal
+// agent chat turn.
+type AgentTaskRunner func(ctx context.Context, prompt string, onEvent func(eventJSON string)) (string, error)
+
 // RunWithProgress executes the full orchestra workflow with optional progress streaming.
 // It checks ctx.Done() between each phase so cancellation propagates promptly.
 func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onProgress ProgressFn) (string, []OrchestraResult, error) {
+	return c.run(ctx, userMessage, onProgress, nil)
+}
+
+// RunAgentTasks is RunWithProgress for an agent-mode chat: each task's
+// specialist runs through agentRunner (real tools) instead of a plain
+// ChatCompletion. Without this, a task role model has no way to actually
+// read a file or run a command — it can only guess/narrate what the result
+// would probably be. Reproduced live, twice: asked to run `echo foo` via
+// run_command inside an agent chat with Orchestra on, the task's own output
+// admitted "couldn't actually call run_command (no tool access), simulated
+// it" — and because that admission got folded into the chief's synthesis
+// and then fed back into the conversation as a fake prior assistant turn,
+// it primed the *real* agent pass that used to run afterward to also skip
+// the tool call, mirroring the same "I don't have access" framing (a
+// self-fulfilling prophecy). Giving tasks real tool access here removes the
+// need for that redundant, unreliable second pass entirely — the chief's
+// synthesis now describes what actually happened, because it did.
+func (c *Conductor) RunAgentTasks(ctx context.Context, userMessage string, onProgress ProgressFn, agentRunner AgentTaskRunner) (string, []OrchestraResult, error) {
+	return c.run(ctx, userMessage, onProgress, agentRunner)
+}
+
+func (c *Conductor) run(ctx context.Context, userMessage string, onProgress ProgressFn, agentRunner AgentTaskRunner) (string, []OrchestraResult, error) {
 	c.mu.RLock()
 	cfg := c.config
 	c.mu.RUnlock()
@@ -136,7 +166,7 @@ func (c *Conductor) RunWithProgress(ctx context.Context, userMessage string, onP
 	default:
 	}
 
-	results, err := c.executeTasks(ctx, cfg, *plan, onProgress)
+	results, err := c.executeTasks(ctx, cfg, *plan, onProgress, agentRunner)
 	if err != nil {
 		return "", nil, fmt.Errorf("task execution failed: %w", err)
 	}
@@ -493,7 +523,7 @@ func (c *Conductor) createPlan(ctx context.Context, cfg OrchestraConfig, userMes
 
 // ─── Execution ─────────────────────────────────────────────────
 
-func (c *Conductor) executeTasks(ctx context.Context, cfg OrchestraConfig, plan OrchestraPlan, onProgress ProgressFn) ([]OrchestraResult, error) {
+func (c *Conductor) executeTasks(ctx context.Context, cfg OrchestraConfig, plan OrchestraPlan, onProgress ProgressFn, agentRunner AgentTaskRunner) ([]OrchestraResult, error) {
 	results := make([]OrchestraResult, len(plan.Tasks))
 
 	// Check if any task has dependencies
@@ -506,14 +536,14 @@ func (c *Conductor) executeTasks(ctx context.Context, cfg OrchestraConfig, plan 
 	}
 
 	if hasDeps || !plan.Parallel {
-		c.executeSequential(ctx, cfg, plan.Tasks, results, onProgress)
+		c.executeSequential(ctx, cfg, plan.Tasks, results, onProgress, agentRunner)
 	} else {
-		c.executeParallel(ctx, cfg, plan.Tasks, results, onProgress)
+		c.executeParallel(ctx, cfg, plan.Tasks, results, onProgress, agentRunner)
 	}
 	return results, nil
 }
 
-func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, tasks []OrchestraTask, results []OrchestraResult, onProgress ProgressFn) {
+func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, tasks []OrchestraTask, results []OrchestraResult, onProgress ProgressFn, agentRunner AgentTaskRunner) {
 	completed := make(map[int]bool) // keyed by task index, not role name
 	remaining := make([]int, len(tasks))
 	for i := range tasks {
@@ -548,7 +578,7 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 
 			// Sequential tasks stream token-by-token — only one runs at a time
 			// so the live output stays coherent.
-			results[idx] = c.executeSingleTask(ctx, cfg, task, idx, onProgress, true)
+			results[idx] = c.executeSingleTask(ctx, cfg, task, idx, onProgress, true, agentRunner)
 			completed[idx] = true
 
 			remaining = append(remaining[:i], remaining[i+1:]...)
@@ -586,7 +616,7 @@ func (c *Conductor) executeSequential(ctx context.Context, cfg OrchestraConfig, 
 // per-task retries — cascades into mostly-failed tasks and a degraded answer.
 const maxParallelTasks = 4
 
-func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, tasks []OrchestraTask, results []OrchestraResult, onProgress ProgressFn) {
+func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, tasks []OrchestraTask, results []OrchestraResult, onProgress ProgressFn, agentRunner AgentTaskRunner) {
 	sem := make(chan struct{}, maxParallelTasks)
 	var wg sync.WaitGroup
 	for i, task := range tasks {
@@ -599,13 +629,13 @@ func (c *Conductor) executeParallel(ctx context.Context, cfg OrchestraConfig, ta
 			// Parallel tasks must NOT stream token-by-token: concurrent streams
 			// would interleave into one garbled blob. Run without chunk streaming
 			// so each task's full result is emitted atomically on completion.
-			results[idx] = c.executeSingleTask(ctx, cfg, t, idx, onProgress, false)
+			results[idx] = c.executeSingleTask(ctx, cfg, t, idx, onProgress, false, agentRunner)
 		}(i, task)
 	}
 	wg.Wait()
 }
 
-func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, task OrchestraTask, index int, onProgress ProgressFn, streamChunks bool) OrchestraResult {
+func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, task OrchestraTask, index int, onProgress ProgressFn, streamChunks bool, agentRunner AgentTaskRunner) OrchestraResult {
 	start := time.Now()
 	logx.Printf("ORCHESTRA: task %d starting: role=%s model=%s/%s", index, task.Role, task.ModelType, task.ModelName)
 
@@ -628,6 +658,36 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 		ModelName: task.ModelName,
 	}
 
+	contextMsg := task.Context
+	if contextMsg == "" {
+		contextMsg = task.Prompt // fallback for backward compatibility
+	}
+
+	if agentRunner != nil {
+		content, err := agentRunner(ctx, contextMsg, func(eventJSON string) {
+			if onProgress != nil {
+				c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskChunk, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, Content: eventJSON})
+			}
+		})
+		result.DurationMs = time.Since(start).Milliseconds()
+		if err != nil {
+			logx.Printf("ORCHESTRA: task %d (agent) failed: %v", index, err)
+			result.Error = err.Error()
+			if onProgress != nil {
+				c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Error: err.Error()})
+			}
+			return result
+		}
+		result.Content = content
+		result.TokensIn = estimateTokens(systemPrompt + contextMsg)
+		result.TokensOut = estimateTokens(content)
+		logx.Printf("ORCHESTRA: task %d (agent) OK %dms", index, result.DurationMs)
+		if onProgress != nil {
+			c.safeProgress(onProgress, ProgressUpdate{Type: ProgressTaskDone, Role: task.Role, Index: index, ModelType: task.ModelType, ModelName: task.ModelName, DurationMs: result.DurationMs, Content: content})
+		}
+		return result
+	}
+
 	p, err := c.CreateProviderForType(task.ModelType, task.ModelName)
 	if err != nil {
 		errMsg := fmt.Sprintf("%s (%s) provider hatası: %v. Provider'ı API Providers'dan kontrol et.", task.ModelType, task.ModelName, err)
@@ -639,10 +699,6 @@ func (c *Conductor) executeSingleTask(ctx context.Context, cfg OrchestraConfig, 
 
 	messages := []provider.Message{
 		provider.TextMessage("system", systemPrompt),
-	}
-	contextMsg := task.Context
-	if contextMsg == "" {
-		contextMsg = task.Prompt // fallback for backward compatibility
 	}
 	messages = append(messages, provider.TextMessage("user", contextMsg))
 

@@ -21,7 +21,7 @@ func TestExecuteSequential(t *testing.T) {
 		{Role: RoleGeneral, Context: "task 2", ModelType: "openai", ModelName: "gpt-4o"},
 	}
 	results := make([]OrchestraResult, 2)
-	c.executeSequential(context.Background(), cfg, tasks, results, nil)
+	c.executeSequential(context.Background(), cfg, tasks, results, nil, nil)
 
 	for i, r := range results {
 		if r.Error != "" {
@@ -44,7 +44,7 @@ func TestExecuteSequentialDeadlock(t *testing.T) {
 		{Role: RoleGeneral, Context: "task A", ModelType: "openai", ModelName: "gpt-4o", DependsOn: []string{"general"}},
 	}
 	results := make([]OrchestraResult, 1)
-	c.executeSequential(context.Background(), cfg, tasks, results, nil)
+	c.executeSequential(context.Background(), cfg, tasks, results, nil, nil)
 
 	if results[0].Error == "" {
 		t.Error("expected deadlock error")
@@ -83,7 +83,7 @@ func TestExecuteSequentialDependencyOrder(t *testing.T) {
 		{Role: RolePlanner, Context: "depends on general", ModelType: "openai", ModelName: "gpt-4o", DependsOn: []string{"general"}},
 	}
 	results := make([]OrchestraResult, 2)
-	c.executeSequential(context.Background(), DefaultConfig(), tasks, results, nil)
+	c.executeSequential(context.Background(), DefaultConfig(), tasks, results, nil, nil)
 
 	if results[0].Error != "" {
 		t.Errorf("task 0 should succeed: %s", results[0].Error)
@@ -109,7 +109,7 @@ func TestExecuteParallel(t *testing.T) {
 	}
 
 	results := make([]OrchestraResult, 2)
-	c.executeParallel(context.Background(), cfg, plan.Tasks, results, nil)
+	c.executeParallel(context.Background(), cfg, plan.Tasks, results, nil, nil)
 
 	for i, r := range results {
 		if r.Error != "" {
@@ -135,7 +135,7 @@ func TestExecuteSingleTask(t *testing.T) {
 		ModelName: "gpt-4o",
 	}
 
-	result := c.executeSingleTask(context.Background(), cfg, task, 0, nil, false)
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, nil, false, nil)
 	if result.Error != "" {
 		t.Errorf("unexpected error: %s", result.Error)
 	}
@@ -175,7 +175,7 @@ func TestExecuteSingleTaskStreaming(t *testing.T) {
 		ModelName: "gpt-4o",
 	}
 
-	result := c.executeSingleTask(context.Background(), cfg, task, 0, onProgress, true)
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, onProgress, true, nil)
 	if result.Error != "" {
 		t.Errorf("unexpected error: %s", result.Error)
 	}
@@ -205,7 +205,7 @@ func TestExecuteSingleTaskProviderError(t *testing.T) {
 		ModelName: "gpt-4o",
 	}
 
-	result := c.executeSingleTask(context.Background(), cfg, task, 0, nil, false)
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, nil, false, nil)
 	if result.Error == "" {
 		t.Fatal("expected error")
 	}
@@ -230,7 +230,7 @@ func TestExecuteSingleTaskFallbackToNonStreaming(t *testing.T) {
 		ModelName: "gpt-4o",
 	}
 
-	result := c.executeSingleTask(context.Background(), cfg, task, 0, func(up ProgressUpdate) {}, true)
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, func(up ProgressUpdate) {}, true, nil)
 	if result.Error != "" {
 		t.Errorf("unexpected error: %s", result.Error)
 	}

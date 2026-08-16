@@ -195,7 +195,7 @@ func TestExecuteSingleTask_FallsBackAfterMidStreamError(t *testing.T) {
 		ModelName: "gpt-4o",
 	}
 
-	result := c.executeSingleTask(context.Background(), cfg, task, 0, func(up ProgressUpdate) {}, true)
+	result := c.executeSingleTask(context.Background(), cfg, task, 0, func(up ProgressUpdate) {}, true, nil)
 	if result.Error != "" {
 		t.Fatalf("executeSingleTask() Error = %q, want success via fallback after the mid-stream error", result.Error)
 	}

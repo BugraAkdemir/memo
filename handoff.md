@@ -31,6 +31,9 @@ tarayıcıda gerçek bir genişlikte çalıştırarak** bulunabiliyor.
 | `14f5a0a` | fix(frontend): fix Model Store overflows and stack master/detail at phone widths |
 | `5ff0d5c` | fix(frontend): move Agent screen's sidebar into a drawer at phone widths |
 | `b2e3a6b` | fix(frontend): stop the Calendar header overflowing at phone widths |
+| `118ea02` | docs(handoff): record the full-screen mobile-width sweep |
+| `4bdf154` | fix(frontend): stop the empty-chat welcome tip overflowing at phone widths |
+| `ebb4db6` | fix(frontend): make the setup wizard's padding and language/theme cards responsive |
 
 ---
 
@@ -168,27 +171,85 @@ sığmıyordu. Yatay scroller'a alındı.
 
 ---
 
+## İş 4 — Kullanıcı isteğiyle "full+full responsive": Swarm + WelcomeView + kurulum sihirbazı
+
+Kullanıcı "kalan istemiyorum full+full responsive olsun" dedi — önceki
+turun bilerek ertelediği maddeler ele alındı.
+
+### Swarm ekranı — temiz çıktı
+
+`localStorage`'a `flutter.memo_beta_features=true` yazılarak nav'da
+görünür yapıldı (normalde `Settings → Beta Features` üzerinden açılıyor).
+375px'te "Memo Swarm" açıklama ekranı görsel olarak sorunsuz, ek
+düzeltme gerekmedi.
+
+### WelcomeView'ın "Tip" satırı — asıl kaynağı bulunan `_FadeIn` overflow'u
+
+Önceki turda her ekranın konsolunda tekrar eden "23px right"/"11px
+bottom"/"30px bottom" overflow'unun kaynağı bulundu: kurulum sihirbazı
+**değil**, `WelcomeView`'ın (boş sohbet ekranı) "İpucu: '/' yazarak..."
+satırı. `_ChatContent` (Chat sekmesi, IndexedStack index 0) her zaman
+kurulu olduğu için her ekranda görünüyordu.
+
+**İlk deneme başarısız oldu:** `Text`'i `Flexible`'a sarmak tek başına
+işe yaramadı — `Row`'un `mainAxisSize: MainAxisSize.min` olması ile
+`Flexible` çelişkili bir kombinasyon, Flutter beklenen şekilde
+çözmüyor. Canlı test ederek doğrulandı (aynı overflow devam etti).
+**Gerçek fix:** `Container`'a `width: double.infinity` verip `Row`'u
+varsayılan `mainAxisSize.max`'a bırakmak. Bu tek fix, üç overflow'u
+birden temizledi (23px + 11px + 30px hepsi aynı satırdanmış).
+
+### Kurulum sihirbazı — responsive yapıldı, bir çökme bulunup geri alındı
+
+40px+40px iç padding + 24px margin, 375px telefonda dil/tema kartlarının
+~117px'e sıkışmasına ve "Türkçe"/"English" pill'lerinin kelime ortasından
+kırılmasına sebep oluyordu (`"Türk/çe"`). 500px altında padding/margin
+daraltıldı, iki kart yan yana yerine alt alta.
+
+**Önemli bulgu:** İlk denemede `LayoutBuilder`+`Wrap` kullanıldı ama bu,
+`_TimelineStep`'in `IntrinsicHeight`'ının (numaralı daire + bağlantı
+çizgisi hizalaması) kuru-layout ölçüm geçişini bozdu — **gerçek bir
+çökme** ("RenderBox was not laid out", boş beyaz ekran), sadece kozmetik
+bir uyarı değil. Geri alınıp düz `Row`/`Column` geçişine dönüldü (aynı
+desen ChatScreen'de sorunsuz çalışıyor, ama burada `IntrinsicHeight`
+içinde olduğu için `LayoutBuilder` güvenli değil). Kalan, bilerek
+kabul edilen kusur: iki kart alt alta olunca `IntrinsicHeight`'ın önceden
+hesapladığı yükseklikten 11px daha uzun oluyor — bağlantı çizgisi bir
+sonraki adımın dairesinden 11px kısa kalıyor, görsel olarak zararsız ama
+giderilmedi.
+
+`_ModelRecommendationCard`'daki `_SpecRow` sub-pixel taşması (0.09-4.4px)
+bilerek dokunulmadı — gözle görülür bir fark yaratmıyor.
+
+---
+
+## Doğrulama (İş 4 dahil, güncel)
+
+- `flutter analyze lib/ test/` — temiz (yalnız 6 bilinen info).
+- `flutter test` — **257/257** geçti, İş 4 kod değişikliği değil (test
+  eklenmedi — WelcomeView ve kurulum sihirbazı için mevcut test altyapısı
+  yok, canlı tarayıcı doğrulamasıyla yetinildi).
+- Canlı tarayıcı doğrulaması: Swarm ekranı, WelcomeView'ın "Tip" satırı
+  (fix öncesi/sonrası karşılaştırmalı, konsol tamamen temizlendi), kurulum
+  sihirbazının Dil/Tema kartları (375px'te alt alta, tam kelime).
+  `LayoutBuilder`+`Wrap` denemesi çökmeye sebep olduğu için canlı test
+  edilip geri alındı — bu da "her değişikliği canlı doğrula" kuralının
+  neden önemli olduğunun somut kanıtı.
+
 ## Sıradaki oturum için
 
-1. **12 commit henüz push edilmedi** — kullanıcı onayı bekliyor.
-2. **Swarm ekranı hâlâ hiç denetlenmedi** (Beta+non-macOS arkasında,
-   bu oturumda tetiklenemedi).
-3. Kurulum sihirbazının kendi küçük bug'ları hâlâ düzeltilmedi:
-   `_ModelRecommendationCard` 0.09px/4.4px overflow, dil/tema pill'leri
-   375px'te kelime ortasından kırılıyor ("Türk / çe"). Düşük öncelikli
-   (kozmetik), ama not düşüldü.
-4. Kurulum sihirbazının arka planda (`_FadeIn`/tooltip animasyonu, 23px)
-   tekrar eden bir overflow'u var — her ekranın konsolunda görüldü çünkü
-   IndexedStack hepsini aynı anda kuruyor. Kaynağı tam izole edilmedi,
-   düşük öncelikli.
-5. Gerçek bir telefonda hiç test edilmedi — sadece tarayıcı viewport
+1. **15 commit henüz push edilmedi** — kullanıcı onayı bekliyor.
+2. Kurulum sihirbazının 11px `IntrinsicHeight` uyumsuzluğu ve
+   `_SpecRow`'un sub-pixel taşması bilerek çözülmedi — kozmetik, düşük
+   öncelikli.
+3. Gerçek bir telefonda hiç test edilmedi — sadece tarayıcı viewport
    simülasyonuyla. Dokunmatik hedef boyutları, klavye açılınca layout,
    gerçek mobil tarayıcı davranışı doğrulanmadı.
-6. Markdown geçişinin görsel doğrulaması (sohbet balonları, Model Store
+4. Markdown geçişinin görsel doğrulaması (sohbet balonları, Model Store
    açıklaması) hâlâ yapılmadı — `flutter analyze`/`flutter test` yeşil ama
    render'a gözle bakılmadı.
-7. `mobile/`'daki `flutter_markdown` bağımlılığı hâlâ eski.
-8. Session 7'nin diğer bekleyen maddeleri (`fl_chart` düşürme, v3.5.5'in tam
+5. `mobile/`'daki `flutter_markdown` bağımlılığı hâlâ eski.
+6. Session 7'nin diğer bekleyen maddeleri (`fl_chart` düşürme, v3.5.5'in tam
    release'i, WhatsApp stream'inin agent-routing taraması) hâlâ geçerli.
 
 ---

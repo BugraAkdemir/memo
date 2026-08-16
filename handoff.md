@@ -26,6 +26,11 @@ tarayıcıda gerçek bir genişlikte çalıştırarak** bulunabiliyor.
 | `a8d5a3f` | fix(frontend): stop EngineStrip overflowing at phone widths |
 | `fc3b8a1` | fix(frontend): move the chat sidebar into a drawer at phone widths |
 | `d153467` | fix(frontend): stack the composer so the text field stays usable when narrow |
+| `206da03` | docs(handoff): record the mobile-width layout fixes |
+| `8487158` | fix(frontend): move Settings' rail into a drawer at phone widths, fix its overflowing width clamp |
+| `14f5a0a` | fix(frontend): fix Model Store overflows and stack master/detail at phone widths |
+| `5ff0d5c` | fix(frontend): move Agent screen's sidebar into a drawer at phone widths |
+| `b2e3a6b` | fix(frontend): stop the Calendar header overflowing at phone widths |
 
 ---
 
@@ -91,16 +96,73 @@ composer'a ~374px kalıyor).
 
 ---
 
+## İş 3 — Kullanıcı isteğiyle diğer ekranların tam taraması (aynı oturum, devam)
+
+Kullanıcı "diğer ekranları da tara, aynı bug'ları düzelt, özellikle ayarlar
+komple çalışmaz durumda" dedi. `flutter build web --debug` + tarayıcıda
+375px'te NavRail'deki her sekme tek tek tıklanarak tarandı.
+
+### Ayarlar — en ciddi bulgu, iki bağımsız bug
+
+1. `dialogWidth`'in alt sınırı (`.clamp(400.0, 1040.0)`) ekran genişliğine
+   bakmaksızın uygulanıyordu. 375px telefonda `insetPadding` sonrası ~295px
+   yer varken dialog 400px istiyordu. `Scaffold` taşan `Dialog` çocuğunu
+   sessizce kırpıyor (hata fırlatmıyor), o yüzden rail ve sekme içeriği
+   görünmez/ulaşılamaz oluyordu ama hiçbir assertion tetiklenmiyordu.
+2. 216px sabit rail her zaman inline'dı — Chat/Ajan'la aynı sorun.
+
+**Fix:** 640px altında rail Drawer'a taşındı, `dialogWidth`/`dialogHeight`
+gerçekten mevcut alanla sınırlandı, `insetPadding` daraltıldı.
+
+**Önemli test dersi:** mevcut "stays overflow-free when the window shrinks"
+testi bu bug'ı hiç yakalamıyordu — sadece `takeException()==null` kontrol
+ediyordu, ama taşan bir `Dialog` assertion fırlatmıyor, sessizce kırpılıyor.
+Daha da kötüsü: o testin `size` parametresi **hiç çalışmıyordu** —
+`MaterialApp` kendi `MediaQuery`'sini `View`'dan türetiyor, ata `MediaQuery`
+sarmalamasını görmezden geliyor. Yani test her zaman varsayılan 800x600'de
+koşuyordu, hiç küçülmüyordu. `tester.view.physicalSize` kullanacak şekilde
+düzeltildi (bu paketteki diğer tüm ekran testlerinin zaten kullandığı yöntem).
+
+### Model Store — iki bug
+
+1. Başlık satırı (`_Header`) 41px taşıyordu — EngineStrip deseniyle
+   (yatay scroll) düzeltildi.
+2. `DiscoverTab`'ın 340px sabit liste paneli + detay paneli yan yana
+   düzeni telefon genişliğine hiç sığmıyordu. 640px altında normal mobil
+   master/detail'e döndü: liste tam ekran, model seçince "← Back" butonlu
+   detay ekranı liste yerine geçiyor.
+
+### Ajan ekranı — ChatScreen'le birebir aynı bug
+
+`_AgentSidebar` (260px sabit) her zaman inline'dı. Aynı 600px breakpoint'i
+ve Drawer deseni uygulandı.
+
+### Takvim — başlık satırı 18px taşıyordu
+
+Başlık + ay navigasyonu + yenile + "etkinlik ekle" telefon genişliğine
+sığmıyordu. Yatay scroller'a alındı.
+
+### WhatsApp, Rutinler, Developer — temiz
+
+Üçü de 375px'te görsel olarak sorunsuz render oldu, ek düzeltme gerekmedi.
+
+---
+
 ## Doğrulama
 
 - `flutter analyze lib/ test/` — temiz (yalnız 6 bilinen önceden var olan info).
-- `flutter test` — **256/256** geçti (253 → +3 yeni).
-- **Üç yeni regresyon testinin de fix'ten önce gerçekten kırıldığı doğrulandı:**
-  `engine_strip_test.dart` (201px overflow), `chat_input_narrow_test.dart`
-  (alan 105px, gereken >200px). Geniş-ekran testi her iki durumda da geçiyor
-  (doğru — o düzen değişmedi).
-- Canlı tarayıcı doğrulaması: 375px, 700px, 1400px'te ekran görüntüsüyle +
-  text field'a tıklayıp gerçekten yazarak.
+- `flutter test` — **257/257** geçti (253 → +4 yeni: EngineStrip narrow,
+  ChatInput narrow, Settings drawer regresyonu; "never renders wider" testi
+  ayırt edici olmadığı için yazılıp sonra kaldırıldı).
+- **Dört yeni regresyon testinin de fix'ten önce gerçekten kırıldığı
+  doğrulandı:** `engine_strip_test.dart` (201px overflow),
+  `chat_input_narrow_test.dart` (alan 105px, gereken >200px),
+  `settings_dialog_test.dart`'ın yeni drawer testi (rail inline bulundu,
+  bulunmaması gerekirken).
+- Canlı tarayıcı doğrulaması: her ekran 375px'te ekran görüntüsüyle,
+  Ayarlar+Ajan+Model Store'da drawer/master-detail gerçekten tıklanarak
+  test edildi. Ayarlar ve Model Store 706-1400px'te de kontrol edildi —
+  masaüstü düzeni birebir korunmuş.
 - L10n grep taraması (Agent Working Rules #8) — boş sonuç.
 - Backend'e dokunulmadı, Go doğrulaması gerekmedi.
 
@@ -108,22 +170,25 @@ composer'a ~374px kalıyor).
 
 ## Sıradaki oturum için
 
-1. **7 commit henüz push edilmedi** — kullanıcı onayı bekliyor.
-2. **Diğer ekranlar dar genişlikte hiç denetlenmedi.** Bu oturum sadece
-   Chat ekranını kapattı. Model Store, Ayarlar, Takvim, Rutinler, Ajan,
-   WhatsApp, Developer, Swarm ekranlarının hepsi aynı sınıf bug'ı taşıyor
-   olabilir — `_ModelRecommendationCard` (setup wizard) canlı testte 0.09px ve
-   4.4px overflow verdi, kurulum sihirbazının dil/tema pill'leri 375px'te
-   ("Türk / çe", "Ligh / t") kelime ortasından kırılıyor. Hiçbiri
-   düzeltilmedi.
-3. Gerçek bir telefonda hiç test edilmedi — sadece tarayıcı viewport
+1. **12 commit henüz push edilmedi** — kullanıcı onayı bekliyor.
+2. **Swarm ekranı hâlâ hiç denetlenmedi** (Beta+non-macOS arkasında,
+   bu oturumda tetiklenemedi).
+3. Kurulum sihirbazının kendi küçük bug'ları hâlâ düzeltilmedi:
+   `_ModelRecommendationCard` 0.09px/4.4px overflow, dil/tema pill'leri
+   375px'te kelime ortasından kırılıyor ("Türk / çe"). Düşük öncelikli
+   (kozmetik), ama not düşüldü.
+4. Kurulum sihirbazının arka planda (`_FadeIn`/tooltip animasyonu, 23px)
+   tekrar eden bir overflow'u var — her ekranın konsolunda görüldü çünkü
+   IndexedStack hepsini aynı anda kuruyor. Kaynağı tam izole edilmedi,
+   düşük öncelikli.
+5. Gerçek bir telefonda hiç test edilmedi — sadece tarayıcı viewport
    simülasyonuyla. Dokunmatik hedef boyutları, klavye açılınca layout,
    gerçek mobil tarayıcı davranışı doğrulanmadı.
-4. Markdown geçişinin görsel doğrulaması (sohbet balonları, Model Store
+6. Markdown geçişinin görsel doğrulaması (sohbet balonları, Model Store
    açıklaması) hâlâ yapılmadı — `flutter analyze`/`flutter test` yeşil ama
    render'a gözle bakılmadı.
-5. `mobile/`'daki `flutter_markdown` bağımlılığı hâlâ eski.
-6. Session 7'nin diğer bekleyen maddeleri (`fl_chart` düşürme, v3.5.5'in tam
+7. `mobile/`'daki `flutter_markdown` bağımlılığı hâlâ eski.
+8. Session 7'nin diğer bekleyen maddeleri (`fl_chart` düşürme, v3.5.5'in tam
    release'i, WhatsApp stream'inin agent-routing taraması) hâlâ geçerli.
 
 ---

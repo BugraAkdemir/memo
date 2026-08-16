@@ -60,27 +60,48 @@ class _Header extends ConsumerWidget {
       ),
       child: Row(
         children: [
-          Text(
-            L10n.t('nav_models'),
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  color: c.textMain,
-                ),
+          // Title + tabs scroll rather than overflow: their combined
+          // natural width (localized labels included) exceeds a phone-width
+          // pane, which threw a 41px RenderFlex overflow at 375px. Expanded
+          // still pushes the hardware chip to the right edge exactly as the
+          // previous Spacer did.
+          Expanded(
+            child: SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    L10n.t('nav_models'),
+                    style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          fontWeight: FontWeight.w700,
+                          color: c.textMain,
+                        ),
+                  ),
+                  const SizedBox(width: 24),
+                  _TabItem(
+                    label: L10n.t('tab_discover'),
+                    active: tab == 0,
+                    onTap: () => onTab(0),
+                  ),
+                  const SizedBox(width: 4),
+                  _TabItem(
+                    label: L10n.t('tab_my_models'),
+                    active: tab == 1,
+                    onTap: () => onTab(1),
+                  ),
+                ],
+              ),
+            ),
           ),
-          const SizedBox(width: 24),
-          _TabItem(
-            label: L10n.t('tab_discover'),
-            active: tab == 0,
-            onTap: () => onTab(0),
+          const SizedBox(width: 12),
+          // Bounded so the chip's own Flexible text can ellipsize: as a
+          // non-flex Row child it would otherwise be laid out against
+          // unbounded width and never shorten.
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: const _HardwareChip(),
           ),
-          const SizedBox(width: 4),
-          _TabItem(
-            label: L10n.t('tab_my_models'),
-            active: tab == 1,
-            onTap: () => onTab(1),
-          ),
-          const Spacer(),
-          const Flexible(child: _HardwareChip()),
         ],
       ),
     );

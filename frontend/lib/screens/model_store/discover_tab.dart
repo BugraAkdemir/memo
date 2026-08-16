@@ -137,60 +137,88 @@ class _DiscoverTabState extends ConsumerState<DiscoverTab> {
 
     final items = _applyFiltersSort(rawItems);
 
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        SizedBox(
-          width: 340,
-          child: _ModelListPanel(
-            items: items,
-            selected: _selected,
-            isCurated: query.isEmpty,
-            isLoading: isLoading,
-            searchController: _searchCtrl,
-            activeFilters: _filters,
-            sortMode: _sort,
-            onSearch: _onSearch,
-            onSelect: (item) => setState(() => _selected = item),
-            onFilterToggle: (key) => setState(() {
-              if (_filters.contains(key)) {
-                _filters.remove(key);
-              } else {
-                _filters.add(key);
-              }
+    final listPanel = _ModelListPanel(
+      items: items,
+      selected: _selected,
+      isCurated: query.isEmpty,
+      isLoading: isLoading,
+      searchController: _searchCtrl,
+      activeFilters: _filters,
+      sortMode: _sort,
+      onSearch: _onSearch,
+      onSelect: (item) => setState(() => _selected = item),
+      onFilterToggle: (key) => setState(() {
+        if (_filters.contains(key)) {
+          _filters.remove(key);
+        } else {
+          _filters.add(key);
+        }
+      }),
+      onSortChange: (mode) => setState(() => _sort = mode),
+      onFiltersClear: () => setState(() => _filters.clear()),
+    );
+
+    Widget detailPanel() => _selected == null
+        ? const _EmptyDetailState()
+        : ModelDetailPanel(
+            key: ValueKey(_selected!.repoId),
+            item: _selected!,
+            onSelectOther: (repoId, displayName) => setState(() {
+              _selected = DiscoverItem(
+                repoId: repoId,
+                author: repoId.contains('/')
+                    ? repoId.split('/').first
+                    : repoId,
+                displayName: displayName,
+                description: '',
+                supportsTools: false,
+                supportsVision: false,
+                supportsCode: false,
+                isEmbedding: false,
+                downloads: 0,
+                likes: 0,
+                tags: const [],
+                isCurated: false,
+              );
             }),
-            onSortChange: (mode) => setState(() => _sort = mode),
-            onFiltersClear: () => setState(() => _filters.clear()),
-          ),
-        ),
-        VerticalDivider(width: 1, thickness: 1, color: c.borderSoft),
-        Expanded(
-          child: _selected == null
-              ? const _EmptyDetailState()
-              : ModelDetailPanel(
-                  key: ValueKey(_selected!.repoId),
-                  item: _selected!,
-                  onSelectOther: (repoId, displayName) => setState(() {
-                    _selected = DiscoverItem(
-                      repoId: repoId,
-                      author: repoId.contains('/')
-                          ? repoId.split('/').first
-                          : repoId,
-                      displayName: displayName,
-                      description: '',
-                      supportsTools: false,
-                      supportsVision: false,
-                      supportsCode: false,
-                      isEmbedding: false,
-                      downloads: 0,
-                      likes: 0,
-                      tags: const [],
-                      isCurated: false,
-                    );
-                  }),
+          );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        // The master pane alone is a fixed 340px, so side-by-side needs
+        // meaningfully more than that to leave the detail pane anything
+        // usable. Under a phone width the pair simply does not fit — the
+        // 340px box overflowed the ~303px pane outright (confirmed live).
+        // Below the breakpoint this becomes a normal mobile master/detail:
+        // the list fills the screen, and picking a model replaces it with
+        // the detail view plus a back button.
+        if (constraints.maxWidth < 640) {
+          if (_selected == null) return listPanel;
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Align(
+                alignment: Alignment.centerLeft,
+                child: TextButton.icon(
+                  onPressed: () => setState(() => _selected = null),
+                  icon: const Icon(Icons.arrow_back, size: 18),
+                  label: Text(L10n.t('back')),
                 ),
-        ),
-      ],
+              ),
+              Expanded(child: detailPanel()),
+            ],
+          );
+        }
+
+        return Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            SizedBox(width: 340, child: listPanel),
+            VerticalDivider(width: 1, thickness: 1, color: c.borderSoft),
+            Expanded(child: detailPanel()),
+          ],
+        );
+      },
     );
   }
 }

@@ -1,3 +1,168 @@
+# Handoff — 2026-08-16 (Session 9) — WhatsApp/Swarm dışındaki tüm özelliklerin gerçek tarayıcıda kapsamlı fonksiyonel testi
+
+## Oturum Özeti
+
+Session 8'in mobil-responsive taramasından farklı bir eksen: bu sefer genişlik
+değil, **fonksiyonellik** test edildi. Kullanıcı "0'dan başla, gerçek bir
+kullanıcı gibi kullan" dedi — backend + Flutter web build aynı origin'de
+(`internal/webserver/webapp/` embed) ayağa kaldırıldı, OpenCode Zen'in ücretsiz
+`hy3-free` modeliyle WhatsApp ve Swarm dışındaki her sekme/özellik tarayıcıda
+tıklanarak denendi: System Prompt, Incognito Prompt, Import Memory, Memory,
+Model Store (arama + filtre + My Models), Developer API Gateway, Routines,
+Agent Mode (tool-call döngüsü), Orchestra Mode, Task Loop.
+
+Test verisi (`memo-live-test-data/`, backend log) **kasıtlı olarak silinmedi**
+— kullanıcı kendisi inceleyecek.
+
+**Commit durumu — henüz push edilmedi:**
+
+| Commit | Özet |
+|---|---|
+| `13bfc83` | fix(frontend): stop the agent permission dialog getting permanently stuck |
+| `336f9cd` | fix(frontend): correct Accounts empty-state English typo |
+| `95f1f4f` | fix(taskloop): stop Start from cancelling itself via the request context |
+
+---
+
+## Bulunan ve düzeltilen bug'lar
+
+### 1. Agent izin dialog'u — timeout uyuşmazlığı + kalıcı takılma (fixed, `13bfc83`)
+
+`permission_dialog.dart`'taki sayaç 5 dakikaydı, backend'deki gerçek
+auto-deny (`internal/agent/executor.go`) 60 saniye. Kullanıcı 1-5 dakika
+arası cevap verirse backend zaten isteği düşürmüş oluyordu ama dialog hâlâ
+"4 dakika kaldı" gösteriyordu → "Could not send permission" hatası. Ayrıca
+`ref.listen` sadece *canlı geçişte* tetiklendiği için, dialog `isSendingProvider`
+zaten `false`yken monte olursa (backend'in kendi 60s timeout'u agent_event
+teslimatından önce turu bitirirse) sonsuza dek açık kalıyor, hiçbir buton
+işe yaramıyordu, Escape bile kapatmıyordu. İkisi de canlı reprodüklendi.
+Fix: sayaç 60s'e çekildi, `build()` her çağrıldığında `isSendingProvider`'ın
+*mevcut* değeri de kontrol ediliyor (sadece geçiş değil).
+
+### 2. Accounts sekmesi İngilizce yazım hatası (fixed, `336f9cd`)
+
+`l10n.dart:3596`: "The backend appears to be unset up." → "...to not be set
+up." — Türkçe karşılığıyla karşılaştırılınca fark edildi.
+
+### 3. Task Loop tamamen çalışmıyordu (fixed, `95f1f4f`) — bu oturumun en ciddi bulgusu
+
+"Start" butonuna basınca liste **her zaman** anında "paused" durumuna
+geçiyordu, 0/1 tamamlanmış, worker'a tek bir çağrı bile gitmiyordu — sessizce,
+hatasız. Kök sebep: `handlers_flutter.go`'daki `/api/tasklists/{id}/start`
+handler'ı `taskloop.Engine.Start(ctx, listID)`'e `r.Context()` veriyordu.
+`Engine.Start` işi bir goroutine'e devredip (`go e.run(listCtx, listID)`)
+hemen dönüyor; HTTP handler da hemen dönüyor → net/http `r.Context()`'i o an
+iptal ediyor → goroutine'in ilk `ctx.Done()` kontrolü neredeyse her zaman bu
+iptali görüp anında "paused" yazıp çıkıyordu. Fix: `context.Background()`
+kullanılıyor artık (Engine zaten kendi `Stop()`/active-map mekanizmasıyla
+listenin yaşam döngüsünü yönetiyor, request'in ömrüne hiç ihtiyacı yoktu).
+Regresyon testi (`tasklist_start_context_test.go`) fix'siz haliyle
+doğrulanarak fail ettirildi, sonra fix'le pass ettirildi. Fix sonrası canlı
+tarayıcıda tam bir taskloop koşusu izlendi: worker gerçekten çağrıldı, sandbox
+`/tmp`'ye yazmayı doğru şekilde reddetti, CEO review turları düzgün retry etti,
+liste doğru şekilde "stuck" ile bitti (`/tmp` proje dizini dışında olduğu için
+— beklenen davranış, test senaryomun kapsamıydı).
+
+---
+
+## Bulunan ama düzeltilmeyen bug'lar (kapsam dışı bırakıldı, dokümante edildi)
+
+### 4. Agent/Orchestra: canlı UI, backend'in gecikmiş sonucunu göstermiyor
+
+Bir turda (özellikle permission-timeout sonrası veya Orchestra'nın chief JSON
+parse hatası üzerine retry ettiği durumda) backend arka planda çalışmaya devam
+ederken frontend zaten "boş/idle" görünüyor — ne hata balonu, ne "thinking"
+göstergesi. Sayfa yenilenince mesaj geçmişinde doğru içerik (ör. "Agent
+execution cancelled (permission timeout)") **zaten var** — yani veri
+kaybolmuyor, sadece canlı akışta ekrana basılmıyor. İki farklı yerde
+reprodüklendi:
+- Agent Chat'te ikinci permission-timeout denemesi (mesaj sayısı UI'da hiç
+  artmadı, reload sonrası doğru şekilde arttı).
+- Orchestra'nın chief'i JSON parse hatası alıp retry ederken backend
+  `event: chat:done` yayınlıyor (İLK, başarısız deneme için) — frontend bunu
+  turun bittiği sanıp `isSendingProvider`'ı `false` yapıyor, ama backend asıl
+  cevabı üretmeye 2. denemeyle devam ediyor (bu oturumda synthesis adımı 3+
+  dakika sürdü, timeout yok). Kullanıcı reload etmeden asıl cevabı hiç görmüyor.
+
+Kök sebep muhtemelen ortak: backend'in "turun bittiğini" bildiren event'i,
+her zaman turun *gerçekten* bittiği anlamına gelmiyor (retry/uzun senkron adım
+senaryolarında erken ateşleniyor). Düzeltme, streaming event sırasının backend
+tarafında (retry'lardan önce `chat:done` göndermemek) veya frontend'in
+mesaj geçmişini periyodik olarak backend'le senkronize etmesini gerektirir —
+ikisi de bu oturumun kapsamı dışında bırakıldı, ileride ayrı bir iş olarak ele
+alınmalı.
+
+### 5. Orchestra synthesis adımında timeout yok
+
+Yukarıdaki bug'la bağlantılı: chief'in "synthesizing..." adımı bu oturumda
+3+ dakika hiçbir geri bildirim vermeden askıda kaldı (ücretsiz model gecikmesi
++ timeout eksikliği birleşimi). Sonunda kendi kendine bitti ama süre boyunca
+kullanıcıya hiçbir ilerleme/timeout göstergesi yok.
+
+### 6. Routines: teslimat kanalı (WhatsApp/Phone) UI'dan değiştirilemiyor
+
+`routines_screen.dart`'taki onay kartındaki "WhatsApp" / "Phone notification"
+çipleri (`_buildConfirmationCard`, satır ~358-362) düz `Chip` widget'ları —
+`onTap`/`onSelected` yok. Kanal tamamen LLM'in doğal dil isteğini nasıl
+yorumladığına bağlı; yanlış yorumlarsa (ör. WhatsApp seçip bağlı hesap
+yokken) kullanıcının tek çaresi listeyi silip isteği yeniden, daha açık
+ifadelerle yazmak. Doğrulandı: "...whatsapp kullanma..." gibi açık bir
+olumsuzlama eklenince model doğru kanalı (sadece Phone) seçti.
+
+### 7. Routines + Orchestra Mode birlikte: "chief returned no tasks"
+
+Orchestra Mode açıkken bir routine isteği gönderilince
+`routine: llm decide: routine: llm call failed: ⚠ chief returned no tasks`
+hatası alındı. Orchestra kapatılınca aynı istek sorunsuz parse edildi.
+Orchestra'nın chief LLM çağrısının routine-decide adımını da ele geçirip
+ücretsiz modelin beklenmeyen formatta cevap vermesine yol açtığından
+şüpheleniliyor; kesin kök sebep araştırılmadı (kapsam dışı bırakıldı).
+
+### 8. SQLite FTS5 modülü eksik → ara sıra hafıza kaydı başarısız oluyor
+
+Task Loop koşusu sırasında bir kez gözlemlendi: `MEMORY SAVE FAILED:
+memory.SaveInteraction chunk[0]: insert fts: no such module: fts5`. Muhtemelen
+bu ortamdaki SQLite derlemesinde/sürücüsünde FTS5 uzantısının derlenmemiş
+olmasından kaynaklanıyor — kod bug'ı değil, build/ortam yapılandırması olabilir;
+doğrulanmadı.
+
+### 9. Agent Mode'da free model bazen "agent modu kapalı" diye yanıtlıyor
+
+Aynı Agent Chat'te, backend'in gerçekten bir `run_command` permission request'i
+oluşturduğu (loglanmış, doğrulanmış) turlardan hemen önce/sonra, model bazı
+denemelerde "ajan modu şu an kapalı, robot ikonuna tıkla" diye düz metinle
+yanıt verdi — hiçbir tool_call denemeden. UI'da böyle bir toggle yok (Agent
+sekmesindeki her sohbet zaten agent modunda). Muhtemelen `hy3-free`'nin
+sistem promptundaki araç kullanılabilirliği talimatını tutarsız takip etmesi
+(bilinen bir ücretsiz-model zayıflığı, bkz. `pipeline.go`'daki
+`hallucinatedToolCallPattern` yorumu) — backend tarafı bir bug olduğuna dair
+kanıt yok, aynı chat'te ısrarla tekrar istenince gerçek tool_call de üretti.
+
+---
+
+## Doğrulanan, sorunsuz çalışan özellikler
+
+- Markdown render (kod bloğu, liste, tablo — `flutter_markdown_plus` geçişi
+  sonrası ilk gerçek canlı doğrulama).
+- Import Memory: metin yapıştırıp "Process into Memory" → "4 facts saved to
+  memory. Your communication style was also learned." — gerçekten kaydedildi.
+- System Prompt: persona seçimi + isim alanı canlı olarak prompt şablonuna
+  enjekte ediliyor, Save çalışıyor.
+- Incognito Prompt: doğru varsayılan metin, Save çalışıyor.
+- Model Store: HuggingFace araması gerçek sonuç döndürüyor, Capabilities/Size
+  filtreleri doğru filtreliyor (0 sonuç dahil, dürüstçe), My Models yerel
+  modelin durumunu doğru gösteriyor.
+- Developer API Gateway: gerçek bir Anthropic-format `curl` isteği uçtan uca
+  çalıştı, Live Log isteği doğru özetledi (boş content'li isteği de dahil).
+- Orchestra Mode: 5 rol (Planner/Frontend/Backend/Bug Fixer/General) yapılandırması
+  kaydediliyor, chief planlama + görev dağıtımı + synthesis zinciri gerçekten
+  çalışıyor (yavaş ve #4/#5'teki UI güncelleme sorunlarıyla birlikte).
+- Task Loop: fix sonrası uçtan uca doğrulandı (yukarıya bkz).
+- Routines: Orchestra kapalıyken doğru parse ediyor, kaydediyor, listede
+  doğru gösteriyor (kanal seçim sorunu hariç, bkz. #6).
+
+---
+
 # Handoff — 2026-08-15/16 (Session 8) — `flutter_markdown_plus` geçişi + web UI'ın mobil genişlikte komple kırık olduğunun bulunup düzeltilmesi
 
 ## Oturum Özeti

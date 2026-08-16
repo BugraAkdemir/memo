@@ -25,16 +25,24 @@ void main() {
       args: '{}',
     );
 
+    final container = ProviderContainer(overrides: [
+      // Port 1 is a privileged port nothing listens on in a test
+      // sandbox — connecting fails fast and reliably with no mocking
+      // library needed.
+      apiClientProvider.overrideWithValue(
+        MemoApiClient(baseUrl: 'http://127.0.0.1:1'),
+      ),
+    ]);
+    addTearDown(container.dispose);
+    // The dialog is only ever shown while the underlying turn is still
+    // streaming - checking this explicitly (rather than leaving the
+    // default) matters since the fix for the stuck-dialog bug below reads
+    // this on every build and pops immediately once it's false.
+    container.read(isSendingProvider.notifier).state = true;
+
     await tester.pumpWidget(
-      ProviderScope(
-        overrides: [
-          // Port 1 is a privileged port nothing listens on in a test
-          // sandbox — connecting fails fast and reliably with no mocking
-          // library needed.
-          apiClientProvider.overrideWithValue(
-            MemoApiClient(baseUrl: 'http://127.0.0.1:1'),
-          ),
-        ],
+      UncontrolledProviderScope(
+        container: container,
         child: MaterialApp(
           home: Scaffold(
             body: Builder(
@@ -120,5 +128,57 @@ void main() {
 
     expect(find.byType(PermissionDialog), findsNothing,
         reason: 'dialog must auto-dismiss once the underlying turn ends');
+  });
+
+  // Regression test found live: the backend's own 60s auto-deny
+  // (internal/agent/executor.go) can end the turn (isSendingProvider ->
+  // false) before this widget's first build ever runs, if the
+  // agent_event that triggers showDialog is itself delivered late. The
+  // ref.listen above only fires on a live transition, so it never sees
+  // one - the dialog was reproduced permanently stuck, every button
+  // failing against a requestId the backend had already discarded, with
+  // no way to dismiss it at all (not even Escape).
+  testWidgets(
+      'permission dialog does not get stuck open if the turn already ended '
+      'before it was ever shown', (tester) async {
+    const event = AgentEvent(
+      type: 'permission_request',
+      requestId: 'req-1',
+      toolName: 'run_command',
+      dangerLevel: 'safe',
+      args: '{}',
+    );
+
+    final container = ProviderContainer();
+    addTearDown(container.dispose);
+    // Never set to true - simulates the turn having already ended by the
+    // time this dialog is built, the exact race that got it stuck.
+    container.read(isSendingProvider.notifier).state = false;
+
+    await tester.pumpWidget(
+      UncontrolledProviderScope(
+        container: container,
+        child: MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => ElevatedButton(
+                onPressed: () => showDialog<void>(
+                  context: context,
+                  builder: (_) => const PermissionDialog(event: event),
+                ),
+                child: const Text('open'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(PermissionDialog), findsNothing,
+        reason: 'a dialog for an already-ended turn must not stay stuck '
+            'open with no way to dismiss it');
   });
 }

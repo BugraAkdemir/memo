@@ -20,10 +20,15 @@ class PermissionDialog extends ConsumerStatefulWidget {
 }
 
 class _PermissionDialogState extends ConsumerState<PermissionDialog> {
-  // No existing timeout convention elsewhere in the agent code for user-facing
-  // prompts; 5 minutes is generous enough to notice the dialog but short
-  // enough that the agent pipeline doesn't hang indefinitely if the user is away.
-  static const Duration _timeout = Duration(minutes: 5);
+  // Must match internal/agent/executor.go's permTimer (60 * time.Second)
+  // exactly - they were out of sync (this used to say 5 minutes) and it
+  // produced a real, reproduced-live bug: the backend auto-denies at 60s
+  // regardless of what this dialog tells the user, so anyone who answered
+  // between 1 and 5 minutes in saw "Could not send permission: Something
+  // went wrong" for a request the backend had already discarded, with a
+  // countdown still innocently ticking down from 4-something minutes as if
+  // nothing had happened.
+  static const Duration _timeout = Duration(seconds: 60);
 
   late int _secondsLeft = _timeout.inSeconds;
   Timer? _countdownTimer;
@@ -97,6 +102,23 @@ class _PermissionDialogState extends ConsumerState<PermissionDialog> {
         Navigator.of(context).pop();
       }
     });
+    // ref.listen only fires on a live transition — it does nothing if
+    // isSendingProvider was ALREADY false by the time this widget's first
+    // build ran. That race is real, not theoretical: reproduced live with
+    // the backend's own 60s auto-deny (internal/agent/executor.go) firing
+    // and the turn ending before the dialog even finished mounting off a
+    // slow agent_event delivery, leaving it permanently stuck - every
+    // button just re-fails against a requestId the backend had already
+    // discarded, with no way to dismiss it at all (not even Escape).
+    // Checking the CURRENT value on every build closes that window: once
+    // it's false, schedule the pop after this frame (Navigator calls
+    // during build are not allowed) instead of waiting for a transition
+    // that already happened.
+    if (!ref.read(isSendingProvider) && !_submitting) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) Navigator.of(context).pop();
+      });
+    }
 
     final isDangerous = widget.event.dangerLevel == 'dangerous';
     final isMedium = widget.event.dangerLevel == 'medium';

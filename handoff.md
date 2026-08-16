@@ -1,3 +1,30 @@
+# Handoff — 2026-08-17 (Session 12) — Session 11'de "bulunan" canlı-UI bug'ının aslında ölçüm hatası olduğu doğrulandı
+
+## Düzeltme: Session 11'in "canlı ekran erken bitti gösteriyor" bulgusu gerçek değildi
+
+Session 11'in sonunda "backend ~68s çalışıyor ama arayüz ~20-30s'de bitti
+gösteriyor" diye rapor edilen bug, bu oturumda `chat_provider.dart`'ın
+SSE tüketim döngüsüne geçici bir debug print eklenip tekrar test edilerek
+araştırıldı. Sonuç: **gerçek bir bug yoktu.**
+
+Kanıt: debug log'u, `permission_request` → `tool_error` (60s timeout) →
+şef sentezi → `stop` chunk'ına kadar TÜM SSE dizisinin tek bir `_generation`
+değeriyle, kesintisiz ve doğru sırada tüketildiğini gösterdi. Ayrıca gerçek
+duvar saati karşılaştırması (backend log zaman damgası vs. `date` komutu)
+doğruladı: bu oturumun tarayıcı otomasyon araçlarında `wait(N)` çağrılarının
+nominal süresi ile gerçekte geçen süre arasında ciddi bir fark var —
+screenshot/log-okuma gibi ardışık araç çağrıları arasında beklenenden çok
+daha fazla gerçek zaman geçiyor. Session 11'de "arayüz 20-30s'de bitti"
+gözlemi, bu birikimli gecikme yüzünden nominal bekleme sayacının gerçek
+süreyi yanlış yansıtmasından kaynaklanıyordu — arayüz her zaman doğru
+zamanda, doğru şekilde bitiyordu.
+
+**Sonuç:** Session 11'in `43ae213` fix'i (Orchestra görevlerine gerçek araç
+erişimi) tam ve eksiksiz çalışıyor, ek bir düzeltme gerekmiyor. Geçici debug
+kodu kaldırıldı, temiz build ile yeniden doğrulandı.
+
+---
+
 # Handoff — 2026-08-17 (Session 11) — Kombinasyon senaryoları (Orchestra+Agent+Task Loop) testi ve fix'i
 
 ## Oturum Özeti
@@ -47,7 +74,7 @@ yok. SSE ham verisi (`read_network_requests`) doğrulandı: backend doğru
 sırayla `permission_request` → `tool_error` (timeout) → sentez → `done:true`
 gönderiyor.
 
-## Bulunan ama düzeltilmeyen yeni bug: canlı ekran, arka planda hâlâ çalışan bir Orchestra görevini erken "bitti" gösteriyor
+## [RETRACTED — bkz. Session 12] Bulunan ama düzeltilmeyen yeni bug: canlı ekran, arka planda hâlâ çalışan bir Orchestra görevini erken "bitti" gösteriyor
 
 Kesin olarak doğrulandı (temiz, izole, tek mesajlık test): backend log'u
 görevin gerçekten ~68 saniye sürdüğünü gösteriyor (izin isteği + 60s

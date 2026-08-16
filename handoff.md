@@ -1,3 +1,79 @@
+# Handoff — 2026-08-17 (Session 11) — Kombinasyon senaryoları (Orchestra+Agent+Task Loop) testi ve fix'i
+
+## Oturum Özeti
+
+Kullanıcı özellik kombinasyonlarının test edilmesini istedi (Orchestra+Agent,
+Orchestra+Agent+Task Loop). İlk testte ciddi bir mimari bug bulundu: Agent
+Mode + Orchestra Mode ikisi birden açıkken, Orchestra'nın göreve atadığı
+uzman modelin **gerçek araç erişimi yoktu** — sadece düz metin tamamlaması
+yapıyordu, bu yüzden `run_command` gibi bir araç istendiğinde model
+"aracı fiilen çağıramadım, simüle ettim" diye itiraf ediyordu. Bu sahte
+itiraf, sohbet geçmişine sahte bir asistan mesajı olarak enjekte oluyor ve
+ardından çalışan (var olan ama yetersiz belgelenmiş) ikinci, gerçek ajan
+geçişini de "bende de erişim yok" diye düşünmeye itiyordu (kendi kendini
+gerçekleştiren kehanet). Task Loop + Orchestra kombinasyonunda bu durum
+5 round'u da boşa harcayıp "stuck" ile sonuçlanıyordu.
+
+Kullanıcının açık talimatı: **"düzelt ve test et, orkestranın amacı bu,
+agent+orchestra birlikte çalışabilmeli."**
+
+**Commit durumu — henüz push edilmedi:**
+
+| Commit | Özet |
+|---|---|
+| `43ae213` | feat(orchestra): görev yürütmesine agent sohbetlerinde gerçek araç erişimi ver |
+
+## Yapılan fix
+
+`internal/orchestra/conductor.go`'a `AgentTaskRunner` tipi ve
+`Conductor.RunAgentTasks` eklendi — her görev artık `CreateProviderForType`
++ düz `ChatCompletion` yerine, gerçek, sandbox'lı, izin-korumalı ajan
+pipeline'ından geçiyor. `internal/app/llm.go`'daki `callAgentWithOrchestra`
+tamamen yeniden yazıldı: eski iki fazlı yapı (şef sentezler → sonra ayrı,
+güvenilmez bir ajan geçişi tekrar dener) kaldırıldı, tek fazda görevler
+doğrudan gerçek araçlarla çalışıyor, şefin sentezi artık gerçekten olanı
+anlatıyor.
+
+**Regresyon testleri:** `conductor_agent_task_test.go` — agentRunner
+verildiğinde görev yürütmesinin düz completion'ı hiç çağırmadığını,
+agentRunner'ın hatasının göreve doğru yansıdığını doğruluyor.
+`go test ./internal/orchestra/... ./internal/app/...` yeşil.
+
+**Canlı doğrulama:** Backend log'u artık `"task 0 (agent)"` gösteriyor
+(eskisi gibi düz simülasyon değil), gerçek `run_command` izin istekleri
+oluşuyor, gerçek 60 saniyelik timeout/auto-deny davranışı çalışıyor —
+eskisi gibi "aracı hiç çağıramadım" halüsinasyonu veya sebepsiz anlık iptal
+yok. SSE ham verisi (`read_network_requests`) doğrulandı: backend doğru
+sırayla `permission_request` → `tool_error` (timeout) → sentez → `done:true`
+gönderiyor.
+
+## Bulunan ama düzeltilmeyen yeni bug: canlı ekran, arka planda hâlâ çalışan bir Orchestra görevini erken "bitti" gösteriyor
+
+Kesin olarak doğrulandı (temiz, izole, tek mesajlık test): backend log'u
+görevin gerçekten ~68 saniye sürdüğünü gösteriyor (izin isteği + 60s
+timeout + sentez), ama tarayıcı arayüzü mesajı gönderdikten sadece ~20-30
+saniye sonra "gönderiliyor" durumundan çıkıp boşta (Send ikonu) durumuna
+geçiyor — kullanıcı hâlâ bekleyen bir izin isteği varken sohbetin bittiğini
+sanıyor. Bu, Session 9'da bulunan #4 numaralı bug'la (backend'in geç
+mesajı canlı göstermemesi) AYNI aile ama farklı bir tetikleyici — o zamanki
+fix (sendMessage()'ın catch bloğuna refresh() eklemek) burada işe yaramıyor
+çünkü hiçbir exception fırlatılmıyor, akış `Done:true` ile düzgün bitiyor,
+sadece ÇOK ERKEN bir noktada `isSendingProvider`'ın `false` olduğu
+gözlemleniyor.
+
+Tarayıcı konsolunda tekrarlayan bir hata bulundu: **"Bad state: Cannot use
+'ref' after the widget was disposed."** — muhtemelen izin diyaloğu veya
+agent-event dinleyicisiyle ilgili bir race condition, ama kesin kök sebep
+bu oturumda tam olarak izole edilemedi (SSE ham verisi doğru sırayla tüm
+event'leri içeriyor — `read_network_requests` ile doğrulandı — yani sorun
+backend'de değil, frontend'in bu event'leri işleme/state güncelleme
+zamanlamasında). İleride ayrıca araştırılmalı: `permission_request`
+event'i alındığında dialog'u açan/`agentEventBusProvider`'ı dinleyen kod
+ile `isSendingProvider`'ı etkileyen bir yan etkisi olup olmadığına
+bakılmalı.
+
+---
+
 # Handoff — 2026-08-16/17 (Session 10) — Session 9'da bulunan bug'ların düzeltilmesi + canlı doğrulama disiplini
 
 ## Oturum Özeti

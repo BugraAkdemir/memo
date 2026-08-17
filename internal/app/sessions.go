@@ -187,7 +187,7 @@ func (a *App) generateChatTitleForSession(sessionID string) string {
 		)),
 	}
 
-	title := strings.TrimSpace(a.callLLM(context.Background(), prompt))
+	title := strings.TrimSpace(a.callLLMCategorized(context.Background(), prompt, categoryTitle))
 	if title == "" || strings.HasPrefix(title, "⚠️") {
 		return ""
 	}

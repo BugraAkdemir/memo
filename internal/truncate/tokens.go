@@ -14,13 +14,19 @@ func Text(s string, n int) string {
 	return string(runes[:n]) + "..."
 }
 
+// CharsPerTokenEstimate is EstimateTokens' char/token ratio, exported so
+// callers computing a token estimate from a SQL-aggregated character count
+// (e.g. memory.Store.Stats' pinned-facts token estimate) don't need to pull
+// the actual text into Go just to reuse this heuristic.
+const CharsPerTokenEstimate = 3
+
 // EstimateTokens provides a rough token count for a given text.
 // Uses len/3 as a reasonable upper bound for mixed content (code, Turkish, English).
 func EstimateTokens(text string) int {
 	if text == "" {
 		return 0
 	}
-	return len(text) / 3
+	return len(text) / CharsPerTokenEstimate
 }
 
 // TruncateMessages truncates a message list to fit within maxTokens.

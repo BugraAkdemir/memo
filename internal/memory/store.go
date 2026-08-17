@@ -16,6 +16,7 @@ import (
 
 	"memo/internal/database"
 	"memo/internal/models"
+	"memo/internal/truncate"
 )
 
 type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
@@ -1462,15 +1463,24 @@ func (s *Store) Stats() models.MemoryStats {
 	stats.Dimension = s.dim
 
 	// Single-pass count query — one table scan instead of four round-trips.
-	var total, explicit, thisWeek, pending int
+	// pinnedChars sums content length for pinned rows only, in the same
+	// pass — cheaper than a second query or fetching every pinned row's
+	// content into Go just to measure it.
+	// Every SUM() is COALESCE-wrapped: on a completely empty table SUM
+	// returns SQL NULL regardless of what the CASE expression would
+	// produce per-row (there are simply no rows to sum), which used to
+	// fail this Scan outright ("converting NULL to int is unsupported")
+	// on a fresh install before any memory is ever saved.
+	var total, explicit, thisWeek, pending, pinnedChars int
 	scanErr := s.db.QueryRowContext(ctx, `
 		SELECT
-			SUM(CASE WHEN pending_deletion = 0 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN pending_deletion = 0 AND source = 'explicit' THEN 1 ELSE 0 END),
-			SUM(CASE WHEN pending_deletion = 0 AND julianday('now') - julianday(timestamp) <= 7 THEN 1 ELSE 0 END),
-			SUM(CASE WHEN pending_deletion = 1 THEN 1 ELSE 0 END)
+			COALESCE(SUM(CASE WHEN pending_deletion = 0 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN pending_deletion = 0 AND source = 'explicit' THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN pending_deletion = 0 AND julianday('now') - julianday(timestamp) <= 7 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN pending_deletion = 1 THEN 1 ELSE 0 END), 0),
+			COALESCE(SUM(CASE WHEN pending_deletion = 0 AND source = 'explicit' THEN LENGTH(content) ELSE 0 END), 0)
 		FROM memories
-	`).Scan(&total, &explicit, &thisWeek, &pending)
+	`).Scan(&total, &explicit, &thisWeek, &pending, &pinnedChars)
 	if scanErr != nil {
 		logx.Printf("MEMORY: stats count query: %v", scanErr)
 	}
@@ -1479,6 +1489,10 @@ func (s *Store) Stats() models.MemoryStats {
 	stats.AddedThisWeek = thisWeek
 	stats.PendingDeletion = pending
 	stats.VecCount = stats.Count
+	// Same len/3 heuristic as truncate.EstimateTokens (applied here to a
+	// SQL-computed character sum rather than a Go string, to avoid pulling
+	// every pinned row's content into memory just to measure it).
+	stats.PinnedTokens = pinnedChars / truncate.CharsPerTokenEstimate
 
 	// Top 5 most-retrieved memories for the analytics panel
 	rows, err := s.db.QueryContext(ctx, `

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"memo/internal/models"
+	"memo/internal/truncate"
 )
 
 func TestSaveAndRetrieve(t *testing.T) {
@@ -162,9 +163,17 @@ func TestStats(t *testing.T) {
 	}
 	defer store.Close()
 
+	// Regression: SUM() over zero rows returns SQL NULL regardless of what
+	// the CASE expression inside it would produce, which used to fail this
+	// Scan outright ("converting NULL to int is unsupported") on a
+	// completely empty table — i.e. every fresh install, before the first
+	// memory is ever saved.
 	stats := store.Stats()
 	if stats.Dimension != 3 {
 		t.Fatalf("Dimension = %d, want 3", stats.Dimension)
+	}
+	if stats.Count != 0 || stats.ExplicitCount != 0 || stats.PinnedTokens != 0 {
+		t.Fatalf("empty-store stats = %+v, want all-zero counts", stats)
 	}
 
 	if err := store.SaveInteraction(ctx, "test", "response"); err != nil {
@@ -177,6 +186,48 @@ func TestStats(t *testing.T) {
 	}
 	if stats.VecCount != 1 {
 		t.Fatalf("VecCount = %d, want 1", stats.VecCount)
+	}
+	if stats.PinnedTokens != 0 {
+		t.Fatalf("PinnedTokens = %d, want 0 (SaveInteraction doesn't pin)", stats.PinnedTokens)
+	}
+}
+
+// TestStats_PinnedTokens covers PinnedTokens specifically: only
+// source='explicit' rows count toward it, and the estimate must match
+// truncate.EstimateTokens' own len/3 heuristic exactly (same divisor,
+// CharsPerTokenEstimate) so this number is directly comparable to what
+// BuildSystemPrompt's own token-budget reasoning uses elsewhere.
+func TestStats_PinnedTokens(t *testing.T) {
+	ctx := context.Background()
+	dir := t.TempDir()
+
+	store, err := NewStore(StoreConfig{Dir: dir, Dimension: 3, EmbeddingFunc: testEmbedding})
+	if err != nil {
+		t.Fatalf("NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	// Not pinned — must not count toward PinnedTokens.
+	if err := store.SaveInteraction(ctx, "some casual chat turn", "ok"); err != nil {
+		t.Fatalf("SaveInteraction() error = %v", err)
+	}
+
+	fact1 := "User's dog is named Zeytin"
+	fact2 := "User works as a backend engineer"
+	if err := store.SaveExplicit(ctx, fact1, ""); err != nil {
+		t.Fatalf("SaveExplicit(fact1) error = %v", err)
+	}
+	if err := store.SaveExplicit(ctx, fact2, ""); err != nil {
+		t.Fatalf("SaveExplicit(fact2) error = %v", err)
+	}
+
+	want := (len(fact1) + len(fact2)) / truncate.CharsPerTokenEstimate
+	stats := store.Stats()
+	if stats.PinnedTokens != want {
+		t.Fatalf("PinnedTokens = %d, want %d", stats.PinnedTokens, want)
+	}
+	if stats.ExplicitCount != 2 {
+		t.Fatalf("ExplicitCount = %d, want 2", stats.ExplicitCount)
 	}
 }
 

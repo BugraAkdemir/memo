@@ -1,3 +1,47 @@
+# v3.5.5 RELEASE — Session 13 (2026-08-17): memo-release skill ile tam yayın
+
+**Yayınlanan:** Memo v3.5.5 (Open Beta, 14–17 Ağustos 2026). Kullanıcı
+isteği üzerine `memo-release` skill'i uçtan uca çalıştırıldı.
+
+## Yapılanlar (hepsi commit'li, CI yeşil)
+
+- **Phase 1 — Version bump** (`8f1341b`): `version` (V3.5.5, trailing newline
+  yok), `installer.iss` MyAppVersion 3.5.5, README.md + READmeTR.md badge'leri
+  ve changelog link'leri v3.5.5. Grep doğrulaması: eski 3.3.4 için 4 dosyada
+  ZERO hit. `frontend/pubspec.yaml`/`mobile/pubspec.yaml`'a dokunulmadı.
+- **Phase 2 — Release notları** (`37a0393`): `versinNote/v3.5.5.md` +
+  `versinNote/tr/v3.5.5.md` — ilk beta notlarına sonradan eklenen mobil
+  responsive geçişi, Task Loop fix'i, Orchestra yardımcı çağrı pipeline fix'i,
+  Orchestra+Agent gerçek araç erişimi bölümleri eklendi. EN ve TR aynı commit'te
+  (birbirinden sapmasın diye).
+- **Phase 3 — Tag & push**: `v3.5.5` annotated tag, kullanıcı onayıyla push
+  edildi. 4 workflow da green: Build Linux (8m56s), Build macOS (6m56s),
+  Build Windows (15m51s), Build Docker (3m1s).
+- **GitHub Release**: `v3.5.5`, **non-prerelease** (latest), draft değil.
+  Asset'ler: `Memo-linux-arm64.zip`, `Memo-linux-x64.zip`, `Memo-macos.zip`,
+  `Memo-Setup-v3.5.5.exe`, `Memo-windows-x64.zip`. Notes kullanıcı tarafından
+  eklenebilir.
+- **Sanity check**: `curl https://download.bugradev.com/memo.tar.gz` →
+  arşiv canlı (Memo/ dizini dönüyor). Linux stabil dosyaları R2'ye
+  republish edildi (CI'ın tag işi).
+
+## Kullanıcı tarafından manuel yapılacak (dokunulmadı)
+
+- **Phase 4 — `version.json` beacon** (`version-zeta.vercel.app`): kullanıcı
+  açıkça "beacon'a dokunma, onu ben manuel hallederim" dedi. Şu an hâlâ
+  `V3.3.4` gösteriyor. Update banner'ı kullanıcılara ancak bu bump edilince
+  görünür — release "tamamen bitti" sayılmaz, beacon hâlâ eski sürümü
+  işaret ediyor.
+- GitHub release notları (İngilizce özet) istenirse `gh release edit v3.5.5 --notes "..."` ile eklenebilir.
+
+## Sıradaki işler
+
+1. `version.json` beacon'ı 3.5.5'e bump'la (manuel, kullanıcıda).
+2. Bir sonraki sürümde: `versinNote/v3.5.5.md` tarih aralığı 14–17 Ağustos
+   olarak güncelliğini koruyor; yeni sürüm için yeni not dosyası açılacak.
+
+---
+
 # GENEL ÖZET — Session 8-12 (2026-08-15/17): Mobil responsive + kapsamlı fonksiyonel test + kombinasyon bug'ları
 
 Bu blok, altındaki tüm oturum kayıtlarının (Session 8-12) hızlı referans

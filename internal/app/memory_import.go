@@ -116,7 +116,7 @@ func (a *App) ImportMemoryFromText(ctx context.Context, rawText string) (factsSa
 		api.NewTextMessage("system", importMemorySystemPrompt),
 		api.NewTextMessage("user", rawText),
 	}
-	reply := a.callLLM(ctx, msgs)
+	reply := a.callLLMCategorized(ctx, msgs, categoryMemoryImport)
 	if isLLMErrorReply(reply) {
 		return 0, false, fmt.Errorf("%s", strings.TrimPrefix(reply, "⚠️ "))
 	}

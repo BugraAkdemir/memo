@@ -484,6 +484,24 @@ type MemoryConfig struct {
 	// unconditionally, instead of competing with routine chit-chat under RAG
 	// ranking. See internal/app/memory.go's extractAndPinFacts.
 	AutoFactExtraction bool `yaml:"auto_fact_extraction" json:"auto_fact_extraction"`
+
+	// Dream periodically rewrites the pinned-facts set as a whole, merging
+	// facts about the same topic into fewer, denser ones (e.g. four separate
+	// facts about one pet into a single sentence) instead of letting the set
+	// only ever grow — see internal/memory/store.go's runDream. Independent
+	// of AutoFactExtraction: that controls whether facts get pinned in the
+	// first place, this controls whether the already-pinned set gets
+	// periodically compressed.
+	DreamEnabled bool `yaml:"dream_enabled" json:"dream_enabled"`
+	// DreamInitialDelayMinutes is how long after startup the first Dream
+	// pass can run (matches the general consolidation loop's existing
+	// 5-minute warmup — see runImportanceDecay).
+	DreamInitialDelayMinutes int `yaml:"dream_initial_delay_minutes" json:"dream_initial_delay_minutes"`
+	// DreamIntervalHours is how often Dream re-checks after the first pass.
+	// A changed value takes effect from the next scheduled check onward, not
+	// retroactively — RunDreamNow (manual trigger) exists for "run it right
+	// now" instead.
+	DreamIntervalHours int `yaml:"dream_interval_hours" json:"dream_interval_hours"`
 }
 
 var (
@@ -508,14 +526,17 @@ func Default() *AppConfig {
 			IncognitoPrompt: "You are Memo, in Incognito Mode. This is a secure session. Never refer to past events, because you have no memory here. Do your best to assist the user right now.",
 		},
 		Memory: MemoryConfig{
-			PersistDir:         "./data/memory",
-			TopK:               8,
-			MinSimilarity:      0.1,
-			MemoryEnabled:      true,
-			EmbeddingDimension: 768,
-			EmbeddingModelRepo: "nomic-ai/nomic-embed-text-v1.5-GGUF",
-			EmbeddingModelFile: "nomic-embed-text-v1.5.Q4_K_M.gguf",
-			AutoFactExtraction: true,
+			PersistDir:               "./data/memory",
+			TopK:                     8,
+			MinSimilarity:            0.1,
+			MemoryEnabled:            true,
+			EmbeddingDimension:       768,
+			EmbeddingModelRepo:       "nomic-ai/nomic-embed-text-v1.5-GGUF",
+			EmbeddingModelFile:       "nomic-embed-text-v1.5.Q4_K_M.gguf",
+			AutoFactExtraction:       true,
+			DreamEnabled:             true,
+			DreamInitialDelayMinutes: 5,
+			DreamIntervalHours:       24,
 		},
 		RemoteAccess: RemoteAccessConfig{
 			Enabled:  false,
@@ -783,6 +804,14 @@ func (c *AppConfig) validate() []string {
 	if c.Memory.EmbeddingDimension <= 0 {
 		c.Memory.EmbeddingDimension = 768
 		fixes = append(fixes, "Memory.EmbeddingDimension")
+	}
+	if c.Memory.DreamInitialDelayMinutes <= 0 {
+		c.Memory.DreamInitialDelayMinutes = 5
+		fixes = append(fixes, "Memory.DreamInitialDelayMinutes")
+	}
+	if c.Memory.DreamIntervalHours <= 0 {
+		c.Memory.DreamIntervalHours = 24
+		fixes = append(fixes, "Memory.DreamIntervalHours")
 	}
 	if c.RemoteAccess.Port <= 0 || c.RemoteAccess.Port > 65535 {
 		c.RemoteAccess.Port = 8080

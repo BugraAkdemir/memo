@@ -274,6 +274,20 @@ class L10n {
     'tab_dev_gateway': 'Geliştirici',
     'tab_swarm': 'Swarm',
     'tab_report_bug': 'Hata Bildir',
+    'tab_dream': 'Dream',
+    'dream_subtitle':
+        'Sabitlenmiş hafıza (pinned facts) zamanla büyür. Dream, aynı konudaki fact\'leri periyodik olarak tek, daha yoğun bir cümlede birleştirir — hiçbir bilgi kaybetmeden. Örnek: "Köpeğinin adı Zeytin", "Golden Retriever\'ı var", "Her sabah 7\'de gezdiriyor" → "3 yaşındaki Golden Retriever\'ı Zeytin\'i her sabah 7\'de gezdiriyor".',
+    'dream_enabled_label': 'Otomatik çalışsın',
+    'dream_initial_delay_label': 'İlk çalışma gecikmesi (dakika)',
+    'dream_interval_label': 'Tekrar aralığı (saat)',
+    'dream_run_now_title': 'Şimdi çalıştır',
+    'dream_run_now_hint':
+        'Zamanlamayı beklemeden, elindeki sabitlenmiş fact\'leri şimdi sıkıştır (en az 2 fact gerekir).',
+    'dream_run_now_btn': 'Şimdi Çalıştır',
+    'dream_run_result_compressed':
+        '\${before} fact, \${after} fact\'e indirildi.',
+    'dream_run_result_not_enough':
+        'Sıkıştırılacak yeterli sabitlenmiş fact yok (en az 2 gerekir).',
     'swarm_title': 'Memo Swarm',
     'swarm_subtitle':
         'Bir bilgisayara sığmayan modeli birkaç bilgisayarın gücünü birleştirerek çalıştır',
@@ -2056,6 +2070,20 @@ class L10n {
     'tab_dev_gateway': 'Developer',
     'tab_swarm': 'Swarm',
     'tab_report_bug': 'Report Bug',
+    'tab_dream': 'Dream',
+    'dream_subtitle':
+        'Pinned facts grow over time. Dream periodically rewrites facts about the same topic into one denser sentence — no information lost. Example: "Dog is named Zeytin", "Has a golden retriever", "Walks him every morning at 7am" → "Has a 3-year-old golden retriever named Zeytin, walks him every morning at 7am".',
+    'dream_enabled_label': 'Run automatically',
+    'dream_initial_delay_label': 'Initial delay (minutes)',
+    'dream_interval_label': 'Repeat interval (hours)',
+    'dream_run_now_title': 'Run now',
+    'dream_run_now_hint':
+        'Compress your current pinned facts right now, without waiting for the schedule (needs at least 2 facts).',
+    'dream_run_now_btn': 'Run Now',
+    'dream_run_result_compressed':
+        'Compressed \${before} facts into \${after}.',
+    'dream_run_result_not_enough':
+        'Not enough pinned facts to compress yet (need at least 2).',
     'swarm_title': 'Memo Swarm',
     'swarm_subtitle':
         'Run a model that will not fit on one PC by pooling several machines',

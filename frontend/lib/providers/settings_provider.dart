@@ -39,6 +39,34 @@ class MemorySettings {
   }
 }
 
+/// Dream (periodic pinned-facts compression) settings — parsed from the same
+/// GET /api/memory/settings response MemorySettings above reads, just
+/// different fields on it. Kept as its own model/provider rather than
+/// folded into MemorySettings since the Dream tab is a separate settings
+/// surface with no need for topK/minSimilarity.
+class DreamSettings {
+  final bool enabled;
+  final int initialDelayMinutes;
+  final int intervalHours;
+
+  const DreamSettings({
+    required this.enabled,
+    required this.initialDelayMinutes,
+    required this.intervalHours,
+  });
+
+  factory DreamSettings.fromJson(Map<String, dynamic> json) {
+    final enabledValue = json['dream_enabled'];
+    final delayValue = json['dream_initial_delay_minutes'];
+    final intervalValue = json['dream_interval_hours'];
+    return DreamSettings(
+      enabled: enabledValue is bool ? enabledValue : true,
+      initialDelayMinutes: delayValue is num ? delayValue.toInt() : 5,
+      intervalHours: intervalValue is num ? intervalValue.toInt() : 24,
+    );
+  }
+}
+
 class LlamaSettings {
   final String engineMode;
   final String binaryPath;
@@ -290,6 +318,46 @@ class MemorySettingsNotifier extends AsyncNotifier<MemorySettings> {
       ref.read(errorMessageProvider.notifier).state =
           '${L10n.t('error')}: Hafıza ayarları kaydedilemedi (${FriendlyError.describeGeneric(e)})';
     }
+  }
+}
+
+final dreamSettingsProvider =
+    AsyncNotifierProvider<DreamSettingsNotifier, DreamSettings>(
+      DreamSettingsNotifier.new,
+    );
+
+class DreamSettingsNotifier extends AsyncNotifier<DreamSettings> {
+  @override
+  Future<DreamSettings> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return DreamSettings.fromJson(const {});
+    }
+    final data = await ref.read(apiClientProvider).getMemorySettings();
+    return DreamSettings.fromJson(data);
+  }
+
+  // Deliberately lets errors propagate (unlike MemorySettingsNotifier.save
+  // above, which swallows into errorMessageProvider) — DreamTab shows its
+  // own inline save-result feedback, matching most other settings tabs.
+  Future<void> save({
+    required bool enabled,
+    required int initialDelayMinutes,
+    required int intervalHours,
+  }) async {
+    await ref
+        .read(apiClientProvider)
+        .setDreamSettings(
+          enabled: enabled,
+          initialDelayMinutes: initialDelayMinutes,
+          intervalHours: intervalHours,
+        );
+    state = AsyncData(
+      DreamSettings(
+        enabled: enabled,
+        initialDelayMinutes: initialDelayMinutes,
+        intervalHours: intervalHours,
+      ),
+    );
   }
 }
 

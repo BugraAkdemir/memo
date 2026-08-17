@@ -12,6 +12,7 @@ import 'settings/tabs/system_prompt_tab.dart';
 import 'settings/tabs/incognito_prompt_tab.dart';
 import 'settings/tabs/memory_tab.dart';
 import 'settings/tabs/memory_import_tab.dart';
+import 'settings/tabs/dream_tab.dart';
 import 'settings/tabs/providers_tab.dart';
 import 'settings/tabs/cli_connections_tab.dart';
 import 'settings/tabs/orchestra_tab.dart';
@@ -79,15 +80,16 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     'lib/icon/slash/list-checks.svg',
     'lib/icon/slash/wrench.svg',
     'lib/icon/slash/people.svg',
+    'lib/icon/slash/brain.svg', // Dream — reuses Memory's icon, same family
   ];
 
   /// Tab indices grouped under an eyebrow header, in sidebar display order.
-  /// Every index 0..20 must appear exactly once — covered by
+  /// Every index 0..21 must appear exactly once — covered by
   /// settings_dialog_test.dart's group-coverage test.
   static const _groups = [
     ('settings_group_general', [0, 1, 2]),
     ('settings_group_providers', [5, 6, 15]),
-    ('settings_group_memory', [3, 4, 9, 10]),
+    ('settings_group_memory', [3, 4, 9, 10, 21]),
     ('settings_group_agents', [7, 8, 11, 18]),
     ('settings_group_system', [12, 13, 14, 20]),
     ('settings_group_other', [16, 17, 19]),
@@ -115,6 +117,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
     L10n.t('tab_taskloop'),
     L10n.t('tab_report_bug'),
     L10n.t('tab_accounts'),
+    L10n.t('tab_dream'),
   ];
 
   @override
@@ -321,6 +324,7 @@ class _SettingsDialogState extends ConsumerState<SettingsDialog> {
       case 18: return TaskLoopTab();
       case 19: return ReportBugTab();
       case 20: return AccountsTab();
+      case 21: return DreamTab();
       default: return const SizedBox.shrink();
     }
   }

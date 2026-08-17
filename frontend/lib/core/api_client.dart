@@ -14,6 +14,7 @@ import '../models/orchestra_config.dart';
 import '../models/provider_config.dart';
 import '../models/server_browse_entry.dart';
 import '../models/dev_gateway.dart';
+import '../models/dream.dart';
 import '../models/swarm.dart';
 import '../models/task_list.dart';
 import '../models/tts_provider_config.dart';
@@ -652,6 +653,30 @@ class MemoApiClient {
 
   Future<void> setMemoryEnabled(bool enabled) async {
     await _dio.put('/api/memory/enabled', data: {'enabled': enabled});
+  }
+
+  // Dream (pinned-facts periodic compression) — reads go through
+  // getMemorySettings() above, dream_enabled/dream_initial_delay_minutes/
+  // dream_interval_hours are just more fields on the same response.
+  Future<void> setDreamSettings({
+    required bool enabled,
+    required int initialDelayMinutes,
+    required int intervalHours,
+  }) async {
+    await _dio.put(
+      '/api/memory/dream/settings',
+      data: {
+        'enabled': enabled,
+        'initial_delay_minutes': initialDelayMinutes,
+        'interval_hours': intervalHours,
+      },
+    );
+  }
+
+  Future<DreamRunResult> runDreamNow() async {
+    final res = await _dio.post('/api/memory/dream/run');
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return DreamRunResult.fromJson(data);
   }
 
   Future<List<MemorySearchResult>> debugMemorySearch(String query) async {

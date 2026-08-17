@@ -123,6 +123,9 @@ done
 if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
     mkdir -p "$MEMO_HOME/binaries"
     cp -R "$DIR/binaries/"* "$MEMO_HOME/binaries/" 2>/dev/null || true
+    # Arşivler execute bitini garanti korumaz — zorla ekle.
+    find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \; 2>/dev/null || true
+    find "$MEMO_HOME/binaries" -name "*.dylib" -exec chmod +x {} \; 2>/dev/null || true
 fi
 
 # Varsayılan config / .env / örnek configler (yoksa)

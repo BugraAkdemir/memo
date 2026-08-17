@@ -11,7 +11,33 @@ import (
 	"memo/internal/api"
 	"memo/internal/config"
 	"memo/internal/provider"
+	"memo/internal/stats"
 )
+
+// TestRecordUsageEvent_ThreadsCategoryThrough is a regression test for the
+// usage-stats category breakdown: recordUsageEvent must forward
+// usageMeta.Category into the persisted stats.Event, not just
+// Provider/Model, or every call site's categoryChat/categoryAgent/... tag
+// would be silently dropped and the Stats tab's category breakdown would
+// only ever show "chat" (RecordEvent's own empty-category fallback).
+func TestRecordUsageEvent_ThreadsCategoryThrough(t *testing.T) {
+	store, err := stats.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("stats.NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	a := &App{statsStore: store}
+	a.recordUsageEvent(usageMeta{Provider: "local", Model: "test-model", Category: categoryDream, PromptTokens: 100}, 20, 1.0, 20.0)
+
+	sum, err := store.Summary(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatalf("Summary() error = %v", err)
+	}
+	if len(sum.CategoryBreakdown) != 1 || sum.CategoryBreakdown[0].Category != categoryDream {
+		t.Fatalf("CategoryBreakdown = %+v, want a single %q entry", sum.CategoryBreakdown, categoryDream)
+	}
+}
 
 // TestClientSwapped is a regression test for BUG-L4: callLLMStream/callLLM
 // capture a.client into a local var under clientMu at the start of a call,

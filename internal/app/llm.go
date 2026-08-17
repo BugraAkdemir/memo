@@ -44,8 +44,29 @@ func estimateMessagesTokens(messages []api.Message) int {
 type usageMeta struct {
 	Provider     string
 	Model        string
+	Category     string
 	PromptTokens int
 }
+
+// Usage event categories — see stats.Event.Category's doc comment. Every
+// call site that constructs a usageMeta (streaming) or calls
+// callLLMCategorized (single-shot) picks exactly one of these, so the Stats
+// tab's category breakdown can show "which kind of call is spending my
+// tokens," not just which model/provider.
+const (
+	categoryChat           = "chat"
+	categoryAgent          = "agent"
+	categoryFactExtraction = "fact_extraction"
+	categoryDream          = "dream"
+	categoryConsolidation  = "consolidation"
+	categoryMemoryImport   = "memory_import"
+	categoryMood           = "mood"
+	categoryTitle          = "title"
+	categoryLearning       = "learning"
+	categoryRoutine        = "routine"
+	categoryProactive      = "proactive"
+	categoryInsight        = "insight"
+)
 
 // currentProviderLabel returns the active external provider's name, or
 // "local" when none is set (matching resolveAgentProvider's own fallback).
@@ -210,7 +231,7 @@ func (a *App) callAgentStream(ctx context.Context, messages []api.Message, userM
 
 		a.agentExecutor.SyncRouter(agentRouter)
 
-		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: estimateMessagesTokens(messages)}
+		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: estimateMessagesTokens(messages)}
 
 		start := time.Now()
 		agentEvents := &agentEventLog{}
@@ -586,7 +607,7 @@ func (a *App) callAgentWithOrchestra(ctx context.Context, messages []api.Message
 		fullBufMu.Unlock()
 		emitUsage(outAccum)
 
-		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, PromptTokens: inputTokens}
+		usageMetaVal := usageMeta{Provider: a.currentProviderLabel(), Model: modelName, Category: categoryAgent, PromptTokens: inputTokens}
 		agentEventsMu.Lock()
 		finalEvents := agentEvents
 		agentEventsMu.Unlock()
@@ -645,7 +666,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 
 			start := time.Now()
 			ocfg := a.orchestraConductor.Config()
-			usageMetaVal := usageMeta{Provider: "orchestra", Model: ocfg.ChiefModel, PromptTokens: estimateContentTokens(conversationCtx)}
+			usageMetaVal := usageMeta{Provider: "orchestra", Model: ocfg.ChiefModel, Category: categoryChat, PromptTokens: estimateContentTokens(conversationCtx)}
 
 			trySend(ctx, outCh, api.StreamChunk{Content: "🎵 **Orchestra Mode Active**\n"})
 			trySend(ctx, outCh, api.StreamChunk{Content: fmt.Sprintf("🧙 Şef: %s/%s\n\n", ocfg.ChiefType, ocfg.ChiefModel)})
@@ -764,7 +785,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 			}
 
 			start := time.Now()
-			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), PromptTokens: estimateMessagesTokens(messages)}
+			usageMetaVal := usageMeta{Provider: activeName, Model: a.activeProviderModel(activeName), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
 			var fullReply strings.Builder
 			tokenCount := 0
 			firstTokenLogged := false
@@ -878,7 +899,7 @@ func (a *App) callLLMStream(ctx context.Context, messages []api.Message, userMsg
 		logx.Printf("LATENCY llm.stream_ready total_ms=%d messages=%d", time.Since(requestStart).Milliseconds(), len(messages))
 
 		start := time.Now()
-		usageMetaVal := usageMeta{Provider: "local", Model: a.localModelName(), PromptTokens: estimateMessagesTokens(messages)}
+		usageMetaVal := usageMeta{Provider: "local", Model: a.localModelName(), Category: categoryChat, PromptTokens: estimateMessagesTokens(messages)}
 		var fullReply strings.Builder
 		tokenCount := 0
 		firstTokenLogged := false
@@ -1044,6 +1065,7 @@ func (a *App) recordUsageEvent(meta usageMeta, completionTokens int, durationSec
 	if err := a.statsStore.RecordEvent(ctx, stats.Event{
 		Provider:         meta.Provider,
 		Model:            meta.Model,
+		Category:         meta.Category,
 		PromptTokens:     meta.PromptTokens,
 		CompletionTokens: completionTokens,
 		DurationSecs:     durationSecs,

@@ -153,7 +153,12 @@ jobs:
           export MEMO_DATA_DIR="$MEMO_HOME/data"
           mkdir -p "$MEMO_HOME"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile,bin}}
 
-          [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ] && cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+          if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
+              cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+              # Archives don't reliably preserve the execute bit — force it.
+              find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
+              find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
+          fi
           [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -f "$DIR/config/config.yaml" ] && cp "$DIR/config/config.yaml" "$MEMO_HOME/config/"
           [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
           [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"
@@ -421,7 +426,12 @@ jobs:
           export MEMO_DATA_DIR="$MEMO_HOME/data"
           mkdir -p "$MEMO_HOME"/{config,data/{models,memory,sessions,agent-backups,skills,whatsapp,profile,bin}}
 
-          [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ] && cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+          if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
+              cp -r "$DIR/binaries" "$MEMO_HOME/binaries/"
+              # Archives don't reliably preserve the execute bit — force it.
+              find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
+              find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
+          fi
           [ ! -f "$MEMO_HOME/config/config.yaml" ] && [ -f "$DIR/config/config.yaml" ] && cp "$DIR/config/config.yaml" "$MEMO_HOME/config/"
           [ ! -f "$MEMO_HOME/data/providers.json" ] && [ -f "$DIR/data/providers.example.json" ] && cp "$DIR/data/providers.example.json" "$MEMO_HOME/data/providers.json"
           [ ! -f "$MEMO_HOME/.env" ] && [ -f "$DIR/.env" ] && cp "$DIR/.env" "$MEMO_HOME/.env"

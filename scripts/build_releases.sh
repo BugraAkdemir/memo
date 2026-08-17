@@ -121,6 +121,9 @@ if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
     echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
     mkdir -p "$MEMO_HOME/binaries"
     cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
+    # Archives don't reliably preserve the execute bit — force it.
+    find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
+    find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
 fi
 
 # Install/refresh the `memo` CLI onto PATH. $DIR is a read-only mount for
@@ -510,6 +513,9 @@ if [ ! -d "$MEMO_HOME/binaries" ] && [ -d "$DIR/binaries" ]; then
     echo "📦 İlk çalıştırma: engine binary'leri kopyalanıyor..."
     mkdir -p "$MEMO_HOME/binaries"
     cp -r "$DIR/binaries/"* "$MEMO_HOME/binaries/"
+    # Archives don't reliably preserve the execute bit — force it.
+    find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
+    find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
 fi
 
 # First-run: copy configs

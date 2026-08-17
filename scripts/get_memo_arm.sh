@@ -150,6 +150,10 @@ if [ -d "$src/binaries" ]; then
         if [ -d "$MEMO_HOME/binaries/linux/cpu-arm64" ] && [ ! -d "$MEMO_HOME/binaries/linux/cpu" ]; then
             mv "$MEMO_HOME/binaries/linux/cpu-arm64" "$MEMO_HOME/binaries/linux/cpu"
         fi
+        # Archives don't reliably preserve the execute bit — force it
+        # (same fix as get-memo.sh/get-memo-server.sh).
+        find "$MEMO_HOME/binaries" -name "llama-server*" -exec chmod +x {} \;
+        find "$MEMO_HOME/binaries" -name "*.so*" -exec chmod +x {} \;
     fi
 else
     echo -e "  ${YELLOW}⚠${NC}  No bundled engine binaries in this archive — llama-server/vec0 will need to be installed separately (Settings → AI Engine)."

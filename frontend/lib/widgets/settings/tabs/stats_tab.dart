@@ -4,16 +4,42 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../../core/l10n.dart';
 import '../../../core/theme.dart';
+import '../../../models/gpu_info.dart';
 import '../../../models/usage_stats.dart';
 import '../../../providers/settings_provider.dart';
+import '../../../providers/chat_provider.dart';
 import '../../../core/friendly_error.dart';
 
-class StatsTab extends ConsumerWidget {
+class StatsTab extends ConsumerStatefulWidget {
   const StatsTab({super.key});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<StatsTab> createState() => _StatsTabState();
+}
+
+class _StatsTabState extends ConsumerState<StatsTab> {
+  MemoryStats? _memoryStats;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) => _loadMemoryStats());
+  }
+
+  Future<void> _loadMemoryStats() async {
+    try {
+      final stats = await ref.read(apiClientProvider).getMemoryStats();
+      if (mounted) setState(() => _memoryStats = stats);
+    } catch (_) {
+      // Best-effort extra card — the usage-stats section above is the
+      // primary content of this tab and must not fail because of this.
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final statsAsync = ref.watch(usageStatsProvider);
+    final selectedDays = ref.watch(statsDaysProvider);
 
     return ListView(
       padding: EdgeInsets.all(32),
@@ -40,10 +66,15 @@ class StatsTab extends ConsumerWidget {
                 ],
               ),
             ),
+            _DaysSelector(selected: selectedDays),
+            SizedBox(width: 8),
             IconButton(
               tooltip: L10n.t('stats_refresh'),
               icon: Icon(Icons.refresh, color: MemoTheme.of(context).textDim),
-              onPressed: () => ref.read(usageStatsProvider.notifier).refresh(),
+              onPressed: () {
+                ref.read(usageStatsProvider.notifier).refresh();
+                _loadMemoryStats();
+              },
             ),
           ],
         ),
@@ -67,9 +98,9 @@ class StatsTab extends ConsumerWidget {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                _StatCardsRow(stats: stats),
+                _StatCardsRow(stats: stats, memoryStats: _memoryStats),
                 SizedBox(height: 24),
-                _UsageChart(stats: stats),
+                _UsageChart(stats: stats, days: selectedDays),
                 SizedBox(height: 24),
                 _ModelBreakdown(stats: stats),
               ],
@@ -77,6 +108,71 @@ class StatsTab extends ConsumerWidget {
           },
         ),
       ],
+    );
+  }
+}
+
+class _DaysSelector extends ConsumerWidget {
+  final int selected;
+  const _DaysSelector({required this.selected});
+
+  static const _options = [7, 30, 90];
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = MemoTheme.of(context);
+    return Container(
+      padding: EdgeInsets.all(2),
+      decoration: BoxDecoration(
+        color: theme.bgApp,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusSm),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          for (final days in _options)
+            _DaysSelectorOption(
+              days: days,
+              active: days == selected,
+              onTap: () => ref.read(statsDaysProvider.notifier).state = days,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DaysSelectorOption extends StatelessWidget {
+  final int days;
+  final bool active;
+  final VoidCallback onTap;
+  const _DaysSelectorOption({
+    required this.days,
+    required this.active,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = MemoTheme.of(context);
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: active ? MemoTheme.accent : Colors.transparent,
+          borderRadius: BorderRadius.circular(MemoTheme.radiusSm - 2),
+        ),
+        child: Text(
+          L10n.t('stats_days_option', {'n': '$days'}),
+          style: TextStyle(
+            fontSize: 12,
+            fontWeight: FontWeight.w600,
+            color: active ? Colors.white : theme.textDim,
+          ),
+        ),
+      ),
     );
   }
 }
@@ -113,7 +209,8 @@ class _EmptyState extends StatelessWidget {
 
 class _StatCardsRow extends StatelessWidget {
   final UsageStatsSummary stats;
-  const _StatCardsRow({required this.stats});
+  final MemoryStats? memoryStats;
+  const _StatCardsRow({required this.stats, this.memoryStats});
 
   @override
   Widget build(BuildContext context) {
@@ -144,6 +241,18 @@ class _StatCardsRow extends StatelessWidget {
           value: stats.mostUsedModel.isEmpty ? L10n.t('stats_no_model') : stats.mostUsedModel,
           wide: true,
         ),
+        // Not from usage_events (LLM call throughput) like the cards above —
+        // this is the pinned-facts block's own footprint, i.e. what every
+        // single one of those requests already paid as fixed system-prompt
+        // overhead before the user's actual message. Shown here (not just
+        // Memory tab, where the pinned *count* already lives) since this
+        // tab is specifically about "how many tokens am I spending."
+        if (memoryStats != null && memoryStats!.explicitCount > 0)
+          _StatCard(
+            label: L10n.t('stats_pinned_tokens'),
+            value: _formatTokens(memoryStats!.pinnedTokens),
+            color: MemoTheme.accent,
+          ),
       ],
     );
   }
@@ -220,11 +329,18 @@ List<DailyUsage> _fillDailySeries(List<DailyUsage> daily, int days) {
 
 class _UsageChart extends StatelessWidget {
   final UsageStatsSummary stats;
-  const _UsageChart({required this.stats});
+  final int days;
+  const _UsageChart({required this.stats, required this.days});
 
   @override
   Widget build(BuildContext context) {
-    final series = _fillDailySeries(stats.daily, 30);
+    // Regression: this used to hardcode 30 regardless of what range was
+    // actually fetched — picking "7 days" still padded the chart out to a
+    // full 30-day window (mostly empty bars looking like inactivity that
+    // was really just "never asked for"), and "90 days" silently dropped
+    // 60 days of real data off the front. days now always matches
+    // statsDaysProvider, the same value the fetch itself used.
+    final series = _fillDailySeries(stats.daily, days);
     final maxY = series
         .map((d) => d.totalTokens)
         .fold<int>(0, (a, b) => a > b ? a : b)

@@ -145,6 +145,11 @@ class MemoryStats {
   final int explicitCount;
   final int addedThisWeek;
   final int pendingDeletion;
+  // Estimated combined token footprint of every pinned fact (explicitCount
+  // rows) — what GetPinnedFacts unconditionally adds to every future
+  // system prompt. Same len/3 heuristic Memo's own backend uses elsewhere
+  // for context budgeting (internal/truncate.EstimateTokens).
+  final int pinnedTokens;
   final List<MemorySearchResult> topRetrieved;
 
   const MemoryStats({
@@ -152,6 +157,7 @@ class MemoryStats {
     required this.explicitCount,
     required this.addedThisWeek,
     required this.pendingDeletion,
+    required this.pinnedTokens,
     required this.topRetrieved,
   });
 
@@ -160,6 +166,7 @@ class MemoryStats {
         explicitCount: json['explicit_count'] as int? ?? 0,
         addedThisWeek: json['added_this_week'] as int? ?? 0,
         pendingDeletion: json['pending_deletion'] as int? ?? 0,
+        pinnedTokens: json['pinned_tokens'] as int? ?? 0,
         topRetrieved: json['top_retrieved'] is List
             ? (json['top_retrieved'] as List)
                 .map((e) => MemorySearchResult.fromJson(e as Map<String, dynamic>))

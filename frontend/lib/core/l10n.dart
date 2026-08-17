@@ -346,7 +346,9 @@ class L10n {
 
     // Usage stats tab
     'stats_title': 'Kullanım İstatistikleri',
-    'stats_subtitle': 'Son 30 gündeki token kullanımı, hız ve model dağılımı.',
+    'stats_subtitle': 'Token kullanımı, hız ve model dağılımı.',
+    'stats_days_option': '\${n}g',
+    'stats_pinned_tokens': 'Pinned Fact Token',
     'stats_refresh': 'Yenile',
     'stats_total_requests': 'Toplam İstek',
     'stats_input_tokens': 'Girdi Token',
@@ -2142,8 +2144,9 @@ class L10n {
 
     // Usage stats tab
     'stats_title': 'Usage Statistics',
-    'stats_subtitle':
-        'Token usage, speed, and model breakdown over the last 30 days.',
+    'stats_subtitle': 'Token usage, speed, and model breakdown.',
+    'stats_days_option': '\${n}d',
+    'stats_pinned_tokens': 'Pinned Fact Tokens',
     'stats_refresh': 'Refresh',
     'stats_total_requests': 'Total Requests',
     'stats_input_tokens': 'Input Tokens',

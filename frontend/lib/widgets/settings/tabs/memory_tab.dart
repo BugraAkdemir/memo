@@ -8,6 +8,12 @@ import '../../../providers/settings_provider.dart';
 import '../../../providers/chat_provider.dart';
 import '../../../core/friendly_error.dart';
 
+String _formatCompactCount(int n) {
+  if (n >= 1000000) return '${(n / 1000000).toStringAsFixed(1)}M';
+  if (n >= 1000) return '${(n / 1000).toStringAsFixed(1)}K';
+  return '$n';
+}
+
 class MemoryTab extends ConsumerStatefulWidget {
   const MemoryTab({super.key});
 
@@ -454,6 +460,12 @@ class MemoryTabState extends ConsumerState<MemoryTab> {
                           _StatChip(
                             label: 'Pinned',
                             value: '${_memoryStats!.explicitCount}',
+                            accent: true,
+                          ),
+                          SizedBox(width: 8),
+                          _StatChip(
+                            label: 'Pinned tokens',
+                            value: _formatCompactCount(_memoryStats!.pinnedTokens),
                             accent: true,
                           ),
                           SizedBox(width: 8),

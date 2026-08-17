@@ -363,6 +363,12 @@ class DreamSettingsNotifier extends AsyncNotifier<DreamSettings> {
 
 // ─── Usage stats ──────────────────────────────────────────────────
 
+/// Selected day-range window for the Stats tab (7/30/90) — separate from
+/// usageStatsProvider itself so switching it is a plain, synchronous state
+/// change; usageStatsProvider.build() reads the current value each time it
+/// (re)builds, which ref.invalidate(usageStatsProvider) triggers.
+final statsDaysProvider = StateProvider<int>((ref) => 30);
+
 final usageStatsProvider =
     AsyncNotifierProvider<UsageStatsNotifier, UsageStatsSummary>(
       UsageStatsNotifier.new,
@@ -375,12 +381,14 @@ class UsageStatsNotifier extends AsyncNotifier<UsageStatsSummary> {
     if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
       return UsageStatsSummary.fromJson(const {});
     }
-    return ref.read(apiClientProvider).getUsageStats();
+    final days = ref.watch(statsDaysProvider);
+    return ref.read(apiClientProvider).getUsageStats(days: days);
   }
 
   Future<void> refresh() async {
+    final days = ref.read(statsDaysProvider);
     state = await AsyncValue.guard(
-      () => ref.read(apiClientProvider).getUsageStats(),
+      () => ref.read(apiClientProvider).getUsageStats(days: days),
     );
   }
 }

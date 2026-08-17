@@ -418,6 +418,7 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 		Dir:           a.cfg.Memory.PersistDir,
 		Dimension:     a.cfg.Memory.EmbeddingDimension,
 		EmbeddingFunc: embeddingFunc,
+		DreamSettings: a.dreamSettings,
 	})
 	if err != nil {
 		logx.Printf("WARN: memory re-init: %v (restoring old store)", err)
@@ -429,6 +430,7 @@ func (a *App) reinitMemoryStore(client *api.Client, model string) {
 	}
 
 	newStore.SetConsolidationFunc(a.mergeMemoriesLLM)
+	newStore.SetDreamFunc(a.dreamPinnedFactsLLM)
 
 	a.storeMu.Lock()
 	if oldStore != nil {
@@ -549,6 +551,65 @@ func (a *App) GetMemoryEnabled() bool {
 	return a.cfg.Memory.MemoryEnabled
 }
 
+// dreamSettings is memory.DreamSettingsFunc's App-side implementation —
+// wired into memory.StoreConfig by reinitMemoryStore. Reads under cfgMu
+// since Settings can change these values concurrently with
+// runDreamScheduler reading them on its own goroutine.
+func (a *App) dreamSettings() (initialDelay, interval time.Duration, enabled bool) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return time.Duration(a.cfg.Memory.DreamInitialDelayMinutes) * time.Minute,
+		time.Duration(a.cfg.Memory.DreamIntervalHours) * time.Hour,
+		a.cfg.Memory.DreamEnabled
+}
+
+// GetMemoryDreamSettings returns Dream's current Settings-tab state.
+func (a *App) GetMemoryDreamSettings() (enabled bool, initialDelayMinutes, intervalHours int) {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.Memory.DreamEnabled, a.cfg.Memory.DreamInitialDelayMinutes, a.cfg.Memory.DreamIntervalHours
+}
+
+// SetMemoryDreamSettings updates Dream's schedule. Takes effect from the
+// scheduler's next check onward (see runDreamScheduler's doc comment) — it
+// does not restart an in-progress wait. For "apply right now" use
+// RunDreamNow instead.
+func (a *App) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {
+	if initialDelayMinutes < 1 || initialDelayMinutes > 1440 {
+		return fmt.Errorf("initial delay must be between 1 and 1440 minutes")
+	}
+	if intervalHours < 1 || intervalHours > 720 {
+		return fmt.Errorf("interval must be between 1 and 720 hours")
+	}
+
+	a.cfgMu.Lock()
+	a.cfg.Memory.DreamEnabled = enabled
+	a.cfg.Memory.DreamInitialDelayMinutes = initialDelayMinutes
+	a.cfg.Memory.DreamIntervalHours = intervalHours
+	a.cfgMu.Unlock()
+
+	if err := config.Save(a.cfg); err != nil {
+		return err
+	}
+	logx.Printf("Dream settings updated: enabled=%v initial_delay=%dm interval=%dh", enabled, initialDelayMinutes, intervalHours)
+	return nil
+}
+
+// RunDreamNow triggers an immediate Dream pass (Settings tab's manual "run
+// now" button) — bypasses the scheduler's dreamThreshold, see
+// memory.Store.RunDreamNow's doc comment. Independent of DreamEnabled: a
+// disabled schedule only means "don't run automatically," not "the user can
+// never trigger it by hand."
+func (a *App) RunDreamNow(ctx context.Context) (before, after int, ran bool, err error) {
+	a.storeMu.RLock()
+	store := a.store
+	a.storeMu.RUnlock()
+	if store == nil {
+		return 0, 0, false, fmt.Errorf("memory store not initialized")
+	}
+	return store.RunDreamNow(ctx)
+}
+
 // mergeMemoriesLLM sends two memory contents to the active provider and returns
 // a single merged memory. Used as the Store's ConsolidationFunc.
 func (a *App) mergeMemoriesLLM(ctx context.Context, content1, content2 string) (string, error) {
@@ -574,6 +635,58 @@ func (a *App) mergeMemoriesLLM(ctx context.Context, content1, content2 string) (
 		return "", fmt.Errorf("merge LLM call: %w", err)
 	}
 	return strings.TrimSpace(resp.Content), nil
+}
+
+const dreamSystemPrompt = `You compress a list of durable personal facts about a user into a shorter list, for long-term memory storage.
+
+Rules:
+- Merge facts that are about the same specific topic (e.g. several facts about the same pet, the same job, the same relationship) into ONE denser fact that preserves every piece of information from all of them.
+- Leave facts about unrelated topics unchanged, each on its own line.
+- Never drop, guess, or invent information. Every detail present in the input must still be present in the output somewhere.
+- Each output line must be a short, self-contained, third-person statement (e.g. "User's dog is named Zeytin", not "my dog is named Zeytin").
+- Output ONLY the resulting facts, one per line. No numbering, no markdown, no explanation, no headers.`
+
+// dreamPinnedFactsLLM sends the entire current pinned-facts set to the
+// active model in one batch and asks it to rewrite the set as a whole,
+// compressing facts about the same topic together — see runDream's doc
+// comment (internal/memory/store.go) for why this needs a batch rewrite
+// rather than mergeMemoriesLLM's pairwise shape. Used as the Store's
+// DreamFunc.
+//
+// Deliberately routes through a.callLLM (Orchestra → external provider →
+// local model), not a.providerRouter directly the way mergeMemoriesLLM
+// above does — that shortcut is a known, already-once-fixed anti-pattern in
+// this package (see extractAndPinFacts' doc comment and AGENTS.md's Memory /
+// Vector Store notes): bypassing callLLM means a local-only setup with no
+// external provider configured gets a nil router and the feature silently
+// never runs. mergeMemoriesLLM itself still has this bug — not touched here,
+// out of scope for this change, but worth fixing the same way separately.
+func (a *App) dreamPinnedFactsLLM(ctx context.Context, facts []string) ([]string, error) {
+	var sb strings.Builder
+	for _, f := range facts {
+		sb.WriteString("- ")
+		sb.WriteString(f)
+		sb.WriteString("\n")
+	}
+
+	msgs := []api.Message{
+		api.NewTextMessage("system", dreamSystemPrompt),
+		api.NewTextMessage("user", sb.String()),
+	}
+	reply := a.callLLM(ctx, msgs)
+	if isLLMErrorReply(reply) {
+		return nil, fmt.Errorf("dream LLM call: %s", reply)
+	}
+
+	var out []string
+	for _, line := range strings.Split(reply, "\n") {
+		line = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "-"))
+		line = strings.TrimSpace(line)
+		if line != "" {
+			out = append(out, line)
+		}
+	}
+	return out, nil
 }
 
 // SetMemoryEnabled toggles the memory feature.

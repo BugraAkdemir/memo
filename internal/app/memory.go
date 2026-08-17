@@ -11,7 +11,6 @@ import (
 	"memo/internal/config"
 	"memo/internal/memory"
 	"memo/internal/models"
-	"memo/internal/provider"
 	"memo/internal/truncate"
 )
 
@@ -613,28 +612,19 @@ func (a *App) RunDreamNow(ctx context.Context) (before, after int, ran bool, err
 // mergeMemoriesLLM sends two memory contents to the active provider and returns
 // a single merged memory. Used as the Store's ConsolidationFunc.
 func (a *App) mergeMemoriesLLM(ctx context.Context, content1, content2 string) (string, error) {
-	a.providerMu.RLock()
-	router := a.providerRouter
-	a.providerMu.RUnlock()
-	if router == nil {
-		return "", fmt.Errorf("no provider router available")
+	msgs := []api.Message{
+		api.NewTextMessage("system",
+			"You are a memory consolidation assistant. Given two similar memory entries, "+
+				"create ONE concise memory that preserves all important information from both. "+
+				"Output ONLY the merged memory text — no explanations, no labels, no prefixes."),
+		api.NewTextMessage("user",
+			fmt.Sprintf("Memory 1: %s\n\nMemory 2: %s\n\nMerge into one memory:", content1, content2)),
 	}
-	req := provider.ChatRequest{
-		MaxTokens: 200,
-		Messages: []provider.Message{
-			provider.TextMessage("system",
-				"You are a memory consolidation assistant. Given two similar memory entries, "+
-					"create ONE concise memory that preserves all important information from both. "+
-					"Output ONLY the merged memory text — no explanations, no labels, no prefixes."),
-			provider.TextMessage("user",
-				fmt.Sprintf("Memory 1: %s\n\nMemory 2: %s\n\nMerge into one memory:", content1, content2)),
-		},
+	reply := a.callLLM(ctx, msgs)
+	if isLLMErrorReply(reply) {
+		return "", fmt.Errorf("merge LLM call: %s", reply)
 	}
-	resp, err := router.ChatCompletion(ctx, req)
-	if err != nil {
-		return "", fmt.Errorf("merge LLM call: %w", err)
-	}
-	return strings.TrimSpace(resp.Content), nil
+	return strings.TrimSpace(reply), nil
 }
 
 const dreamSystemPrompt = `You compress a list of durable personal facts about a user into a shorter list, for long-term memory storage.
@@ -653,14 +643,13 @@ Rules:
 // rather than mergeMemoriesLLM's pairwise shape. Used as the Store's
 // DreamFunc.
 //
-// Deliberately routes through a.callLLM (Orchestra → external provider →
-// local model), not a.providerRouter directly the way mergeMemoriesLLM
-// above does — that shortcut is a known, already-once-fixed anti-pattern in
-// this package (see extractAndPinFacts' doc comment and AGENTS.md's Memory /
-// Vector Store notes): bypassing callLLM means a local-only setup with no
-// external provider configured gets a nil router and the feature silently
-// never runs. mergeMemoriesLLM itself still has this bug — not touched here,
-// out of scope for this change, but worth fixing the same way separately.
+// Routes through a.callLLM (Orchestra → external provider → local model),
+// not a.providerRouter directly — a local-only setup with no external
+// provider configured gets a nil router, so bypassing callLLM would mean
+// this silently never runs (see extractAndPinFacts' doc comment and
+// AGENTS.md's Memory / Vector Store notes for the same anti-pattern found
+// and fixed twice before). mergeMemoriesLLM above used to have this exact
+// bug too — fixed the same way.
 func (a *App) dreamPinnedFactsLLM(ctx context.Context, facts []string) ([]string, error) {
 	var sb strings.Builder
 	for _, f := range facts {

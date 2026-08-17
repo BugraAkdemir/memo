@@ -461,3 +461,28 @@ func TestDebugMemorySearch_IncludesPinnedFacts(t *testing.T) {
 		t.Fatalf("expected the pinned fact labeled MatchType=pinned in debug search results, got %+v", results)
 	}
 }
+
+// TestMergeMemoriesLLMNoModelFailsFastWithClearMessage is a regression test:
+// mergeMemoriesLLM used to call a.providerRouter.ChatCompletion directly,
+// bypassing callLLM's Orchestra/provider/local routing chain — the same
+// anti-pattern ImportMemoryFromText had (see
+// TestImportMemoryFromTextNoModelFailsFastWithClearMessage,
+// memory_import_test.go) and extractAndPinFacts/dreamPinnedFactsLLM were
+// built to avoid from the start. On a local-only setup (no external
+// provider configured — a.providerRouter is nil), the old code returned a
+// bare "no provider router available" with zero indication of what to do
+// about it, and — worse — meant both consolidation passes
+// (runConsolidation/runPinnedConsolidation) silently never merged anything
+// on that setup. mergeMemoriesLLM now routes through callLLM like every
+// other LLM call in this package, which fails immediately via its
+// local.client nil-check with a clear, actionable message instead.
+func TestMergeMemoriesLLMNoModelFailsFastWithClearMessage(t *testing.T) {
+	a := &App{}
+	_, err := a.mergeMemoriesLLM(context.Background(), "memory one", "memory two")
+	if err == nil {
+		t.Fatal("expected error when no model/provider is connected, got nil")
+	}
+	if !strings.Contains(err.Error(), "yüklenmemiş") {
+		t.Errorf("error = %q, want it to contain callLLM's clear no-model-loaded message", err.Error())
+	}
+}

@@ -65,6 +65,12 @@ type FullBridge interface {
 	UpdateWebSearchConfig(enabled bool) error
 	GetMemoryEnabled() bool
 	SetMemoryEnabled(enabled bool) error
+	// Dream settings are read via the existing GetMemorySettings()
+	// config.MemoryConfig above (DreamEnabled/DreamInitialDelayMinutes/
+	// DreamIntervalHours are just more fields on it) — only the write and
+	// the manual-trigger action need their own bridge methods.
+	SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error
+	RunDreamNow(ctx context.Context) (before, after int, ran bool, err error)
 	DebugMemorySearch(query string) []memory.MemoryResult
 	SaveExplicitMemory(content, tags string) error
 	DeleteExplicitMemory(pattern string) (int, error)

@@ -156,6 +156,8 @@ func (s *Server) StartHTTPWithAddr(port int, addr string) error {
 	route("/api/memory/clear", s.handleMemoryClear)
 	route("/api/memory/settings", s.handleMemorySettings)
 	route("/api/memory/enabled", s.handleMemoryEnabled)
+	route("/api/memory/dream/settings", s.handleMemoryDreamSettings)
+	route("/api/memory/dream/run", s.handleMemoryDreamRun)
 	route("/api/memory/debug-search", s.handleMemoryDebugSearch)
 	route("/api/memory/explicit/save", s.handleMemoryExplicitSave)
 	route("/api/memory/explicit/delete", s.handleMemoryExplicitDelete)

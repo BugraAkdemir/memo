@@ -564,6 +564,44 @@ func (s *Server) handleMemorySettings(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (s *Server) handleMemoryDreamSettings(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPut || s.fullBridge == nil {
+		http.Error(w, "PUT only", http.StatusMethodNotAllowed)
+		return
+	}
+	var req struct {
+		Enabled             bool `json:"enabled"`
+		InitialDelayMinutes int  `json:"initial_delay_minutes"`
+		IntervalHours       int  `json:"interval_hours"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "bad json", http.StatusBadRequest)
+		return
+	}
+	if err := s.fullBridge.SetMemoryDreamSettings(req.Enabled, req.InitialDelayMinutes, req.IntervalHours); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	writeJSON(w, map[string]string{"ok": "true"})
+}
+
+func (s *Server) handleMemoryDreamRun(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost || s.fullBridge == nil {
+		http.Error(w, "POST only", http.StatusMethodNotAllowed)
+		return
+	}
+	before, after, ran, err := s.fullBridge.RunDreamNow(r.Context())
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	writeJSON(w, map[string]any{
+		"ran":    ran,
+		"before": before,
+		"after":  after,
+	})
+}
+
 func (s *Server) handleMemoryDebugSearch(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet || s.fullBridge == nil {
 		http.Error(w, "GET only", http.StatusMethodNotAllowed)

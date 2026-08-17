@@ -41,6 +41,8 @@ func TestHandlers_NoFullBridge(t *testing.T) {
 		{"MemorySettings", http.MethodGet, "/api/memory/settings", s.handleMemorySettings, http.StatusNotImplemented},
 		{"MemoryStats", http.MethodGet, "/api/memory/stats", s.handleMemoryStats, http.StatusMethodNotAllowed},
 		{"MemoryDebugSearch", http.MethodGet, "/api/memory/debug-search?q=x", s.handleMemoryDebugSearch, http.StatusMethodNotAllowed},
+		{"MemoryDreamSettings", http.MethodPut, "/api/memory/dream/settings", s.handleMemoryDreamSettings, http.StatusMethodNotAllowed},
+		{"MemoryDreamRun", http.MethodPost, "/api/memory/dream/run", s.handleMemoryDreamRun, http.StatusMethodNotAllowed},
 		{"ModelSearch", http.MethodPost, "/api/models/search", s.handleModelSearch, http.StatusMethodNotAllowed},
 		{"ModelFiles", http.MethodGet, "/api/models/files", s.handleModelFiles, http.StatusNotImplemented},
 		{"LlamaConfigGet", http.MethodGet, "/api/models/config", s.handleLlamaConfigGet, http.StatusNotImplemented},

@@ -51,16 +51,16 @@ type swarmStubBridge struct {
 
 	// Faz 5.1 (yapacam.md) multi-account / role model — see
 	// remote_auth_test.go's handler-level tests.
-	needsSetup         bool
-	installID          string
-	createAdminAccount func(username, password string) (string, error)
-	bootstrapTokenAuth func(deviceName string) (string, error)
-	sessionRole        func(token string) (string, bool)
-	listAccounts       func() interface{}
-	createAccount      func(username, password, role string) error
-	deleteAccount      func(id string) error
+	needsSetup            bool
+	installID             string
+	createAdminAccount    func(username, password string) (string, error)
+	bootstrapTokenAuth    func(deviceName string) (string, error)
+	sessionRole           func(token string) (string, bool)
+	listAccounts          func() interface{}
+	createAccount         func(username, password, role string) error
+	deleteAccount         func(id string) error
 	changeAccountPassword func(sessionToken, id, currentPassword, newPassword string) error
-	browseServerPath   func(path string) (interface{}, error)
+	browseServerPath      func(path string) (interface{}, error)
 }
 
 func (b *swarmStubBridge) GetRemoteAccessToken() string { return b.token }
@@ -189,9 +189,15 @@ func (b *swarmStubBridge) GetWebSearchEnabled() bool                            
 func (b *swarmStubBridge) UpdateWebSearchConfig(enabled bool) error                   { return nil }
 func (b *swarmStubBridge) GetMemoryEnabled() bool                                     { return false }
 func (b *swarmStubBridge) SetMemoryEnabled(enabled bool) error                        { return nil }
-func (b *swarmStubBridge) DebugMemorySearch(query string) []memory.MemoryResult       { return nil }
-func (b *swarmStubBridge) SaveExplicitMemory(content, tags string) error              { return nil }
-func (b *swarmStubBridge) DeleteExplicitMemory(pattern string) (int, error)           { return 0, nil }
+func (b *swarmStubBridge) SetMemoryDreamSettings(enabled bool, initialDelayMinutes, intervalHours int) error {
+	return nil
+}
+func (b *swarmStubBridge) RunDreamNow(ctx context.Context) (before, after int, ran bool, err error) {
+	return 0, 0, false, nil
+}
+func (b *swarmStubBridge) DebugMemorySearch(query string) []memory.MemoryResult { return nil }
+func (b *swarmStubBridge) SaveExplicitMemory(content, tags string) error        { return nil }
+func (b *swarmStubBridge) DeleteExplicitMemory(pattern string) (int, error)     { return 0, nil }
 func (b *swarmStubBridge) ImportMemoryFromText(ctx context.Context, rawText string) (int, bool, error) {
 	return 0, false, nil
 }
@@ -291,7 +297,7 @@ func (b *swarmStubBridge) ListRemoteDevices() interface{}                 { retu
 func (b *swarmStubBridge) CreateRemoteDevice(name string) (string, error) { return "", nil }
 func (b *swarmStubBridge) RevokeRemoteDevice(id string) error             { return nil }
 func (b *swarmStubBridge) NeedsSetup() bool                               { return b.needsSetup }
-func (b *swarmStubBridge) InstallID() string                             { return b.installID }
+func (b *swarmStubBridge) InstallID() string                              { return b.installID }
 func (b *swarmStubBridge) CreateAdminAccount(username, password string) (string, error) {
 	if b.createAdminAccount != nil {
 		return b.createAdminAccount(username, password)

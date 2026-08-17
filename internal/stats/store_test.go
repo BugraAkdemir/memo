@@ -7,6 +7,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"memo/internal/database"
 )
 
 func newTestStore(t *testing.T) (*Store, func()) {
@@ -103,6 +105,107 @@ func TestSummary_SinceFiltersOldEvents(t *testing.T) {
 	}
 }
 
+func TestRecordEvent_DefaultsEmptyCategoryToChat(t *testing.T) {
+	store, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	if err := store.RecordEvent(ctx, Event{Provider: "local", Model: "llama-3-8b", PromptTokens: 10, CompletionTokens: 5}); err != nil {
+		t.Fatalf("RecordEvent: %v", err)
+	}
+
+	sum, err := store.Summary(ctx, time.Time{})
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if len(sum.CategoryBreakdown) != 1 || sum.CategoryBreakdown[0].Category != "chat" {
+		t.Fatalf("CategoryBreakdown = %+v, want a single 'chat' entry", sum.CategoryBreakdown)
+	}
+}
+
+// TestSummary_CategoryBreakdown covers the actual feature this column
+// exists for: telling apart how many tokens went to the user-facing chat
+// reply versus every background call (Dream, fact extraction, ...) — and
+// that the ranking is by total tokens spent, not request count, since a
+// handful of big Dream batches should outrank many tiny title-generation
+// calls even with far fewer requests.
+func TestSummary_CategoryBreakdown(t *testing.T) {
+	store, cleanup := newTestStore(t)
+	defer cleanup()
+	ctx := context.Background()
+
+	events := []Event{
+		{Provider: "local", Model: "m", Category: "chat", PromptTokens: 500, CompletionTokens: 200},
+		{Provider: "local", Model: "m", Category: "chat", PromptTokens: 500, CompletionTokens: 200},
+		// Fewer requests, more total tokens — must still rank first.
+		{Provider: "local", Model: "m", Category: "dream", PromptTokens: 3000, CompletionTokens: 100},
+		{Provider: "local", Model: "m", Category: "title", PromptTokens: 5, CompletionTokens: 3},
+	}
+	for _, e := range events {
+		if err := store.RecordEvent(ctx, e); err != nil {
+			t.Fatalf("RecordEvent(%s): %v", e.Category, err)
+		}
+	}
+
+	sum, err := store.Summary(ctx, time.Time{})
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if len(sum.CategoryBreakdown) != 3 {
+		t.Fatalf("CategoryBreakdown len = %d, want 3, got %+v", len(sum.CategoryBreakdown), sum.CategoryBreakdown)
+	}
+	if got := sum.CategoryBreakdown[0]; got.Category != "dream" || got.Requests != 1 || got.PromptTokens != 3000 {
+		t.Errorf("top category = %+v, want dream (1 request, 3000 prompt tokens) ranked first by total tokens", got)
+	}
+	if got := sum.CategoryBreakdown[1]; got.Category != "chat" || got.Requests != 2 {
+		t.Errorf("second category = %+v, want chat (2 requests)", got)
+	}
+}
+
+func TestMigrateCategoryColumn_AddsColumnToPreExistingTable(t *testing.T) {
+	dir, err := os.MkdirTemp("", "stats-migrate-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+
+	// Simulate a database created before the category column existed:
+	// open with only the base schema (no migration), insert a row, close.
+	db, err := database.Open(database.Config{Path: dir + "/usage.db", MaxPool: 1})
+	if err != nil {
+		t.Fatalf("database.Open: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(), schema); err != nil {
+		t.Fatalf("apply base schema: %v", err)
+	}
+	if _, err := db.ExecContext(context.Background(),
+		`INSERT INTO usage_events (ts, provider, model, prompt_tokens, completion_tokens, duration_secs, tokens_per_second)
+		 VALUES (?, 'openai', 'gpt-4o', 100, 50, 2, 25)`, time.Now().Unix(),
+	); err != nil {
+		t.Fatalf("insert pre-migration row: %v", err)
+	}
+	db.Close()
+
+	// Re-opening via NewStore must migrate the existing table in place and
+	// backfill the pre-existing row as category='chat', not error or drop it.
+	store, err := NewStore(dir)
+	if err != nil {
+		t.Fatalf("NewStore on pre-migration db: %v", err)
+	}
+	defer store.Close()
+
+	sum, err := store.Summary(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatalf("Summary: %v", err)
+	}
+	if sum.TotalRequests != 1 {
+		t.Fatalf("TotalRequests = %d, want 1 (pre-migration row must survive)", sum.TotalRequests)
+	}
+	if len(sum.CategoryBreakdown) != 1 || sum.CategoryBreakdown[0].Category != "chat" {
+		t.Fatalf("CategoryBreakdown = %+v, want the pre-migration row backfilled as 'chat'", sum.CategoryBreakdown)
+	}
+}
+
 func TestSummary_EmptyStoreReturnsZeroValues(t *testing.T) {
 	store, cleanup := newTestStore(t)
 	defer cleanup()
@@ -111,7 +214,7 @@ func TestSummary_EmptyStoreReturnsZeroValues(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Summary: %v", err)
 	}
-	if sum.TotalRequests != 0 || sum.MostUsedModel != "" || len(sum.ModelBreakdown) != 0 || len(sum.Daily) != 0 {
+	if sum.TotalRequests != 0 || sum.MostUsedModel != "" || len(sum.ModelBreakdown) != 0 || len(sum.CategoryBreakdown) != 0 || len(sum.Daily) != 0 {
 		t.Errorf("expected zero-value summary on empty store, got %+v", sum)
 	}
 }

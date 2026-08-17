@@ -44,7 +44,36 @@ func NewStore(dir string) (*Store, error) {
 		db.Close()
 		return nil, fmt.Errorf("stats: schema: %w", err)
 	}
+	if err := migrateCategoryColumn(context.Background(), db); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("stats: migrate: %w", err)
+	}
 	return &Store{db: db}, nil
+}
+
+// migrateCategoryColumn adds usage_events.category to a database created
+// before this column existed — same pattern as internal/memory/store.go's
+// column migration (check pragma_table_info, ALTER TABLE if missing).
+// Defaults existing rows to "chat": every event recorded before this column
+// existed came from the main chat-reply streaming path (finishStream) —
+// callLLM, the shared helper behind every other category (fact extraction,
+// Dream, mood, learning, ...), never recorded usage at all until the same
+// change that added this column, so there is nothing else historical rows
+// could have been.
+func migrateCategoryColumn(ctx context.Context, db *database.DB) error {
+	var count int
+	if err := db.QueryRowContext(ctx,
+		"SELECT COUNT(*) FROM pragma_table_info('usage_events') WHERE name = 'category'",
+	).Scan(&count); err != nil {
+		return err
+	}
+	if count > 0 {
+		return nil
+	}
+	_, err := db.ExecContext(ctx,
+		"ALTER TABLE usage_events ADD COLUMN category TEXT NOT NULL DEFAULT 'chat'",
+	)
+	return err
 }
 
 // Close releases the database connection.
@@ -52,9 +81,17 @@ func (s *Store) Close() error { return s.db.Close() }
 
 // Event is one completed LLM turn's usage.
 type Event struct {
-	Timestamp        time.Time
-	Provider         string
-	Model            string
+	Timestamp time.Time
+	Provider  string
+	Model     string
+	// Category labels *why* this call happened — "chat"/"agent" for the
+	// user-facing reply, or one of the background-call purposes (see
+	// internal/app/llm.go's category constants): "fact_extraction",
+	// "dream", "consolidation", "memory_import", "mood", "title",
+	// "learning", "routine", "proactive", "insight". Defaults to "chat"
+	// (see migrateCategoryColumn) for rows recorded before this field
+	// existed, since only the chat path recorded anything back then.
+	Category         string
 	PromptTokens     int
 	CompletionTokens int
 	DurationSecs     float64
@@ -68,16 +105,31 @@ func (s *Store) RecordEvent(ctx context.Context, e Event) error {
 	if ts.IsZero() {
 		ts = time.Now()
 	}
+	category := e.Category
+	if category == "" {
+		category = "chat"
+	}
 	_, err := s.db.ExecContext(ctx, `
-		INSERT INTO usage_events (ts, provider, model, prompt_tokens, completion_tokens, duration_secs, tokens_per_second)
-		VALUES (?, ?, ?, ?, ?, ?, ?)`,
-		ts.Unix(), e.Provider, e.Model, e.PromptTokens, e.CompletionTokens, e.DurationSecs, e.TokensPerSecond)
+		INSERT INTO usage_events (ts, provider, model, category, prompt_tokens, completion_tokens, duration_secs, tokens_per_second)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		ts.Unix(), e.Provider, e.Model, category, e.PromptTokens, e.CompletionTokens, e.DurationSecs, e.TokensPerSecond)
 	return err
 }
 
 // ModelUsage is one model's aggregated usage within a Summary.
 type ModelUsage struct {
 	Model            string `json:"model"`
+	Requests         int    `json:"requests"`
+	PromptTokens     int64  `json:"prompt_tokens"`
+	CompletionTokens int64  `json:"completion_tokens"`
+}
+
+// CategoryUsage is one category's aggregated usage within a Summary — the
+// "which kind of call is spending my tokens" breakdown (chat vs agent vs
+// Dream vs fact-extraction vs mood vs ...), as opposed to ModelUsage's
+// "which model" breakdown.
+type CategoryUsage struct {
+	Category         string `json:"category"`
 	Requests         int    `json:"requests"`
 	PromptTokens     int64  `json:"prompt_tokens"`
 	CompletionTokens int64  `json:"completion_tokens"`
@@ -93,14 +145,15 @@ type DailyUsage struct {
 
 // Summary is the aggregated usage picture shown in the Settings stats tab.
 type Summary struct {
-	TotalRequests         int          `json:"total_requests"`
-	TotalPromptTokens     int64        `json:"total_prompt_tokens"`
-	TotalCompletionTokens int64        `json:"total_completion_tokens"`
-	AvgTokensPerSecond    float64      `json:"avg_tokens_per_second"`
-	MostUsedModel         string       `json:"most_used_model"`
-	MostUsedModelRequests int          `json:"most_used_model_requests"`
-	ModelBreakdown        []ModelUsage `json:"model_breakdown"`
-	Daily                 []DailyUsage `json:"daily"`
+	TotalRequests         int             `json:"total_requests"`
+	TotalPromptTokens     int64           `json:"total_prompt_tokens"`
+	TotalCompletionTokens int64           `json:"total_completion_tokens"`
+	AvgTokensPerSecond    float64         `json:"avg_tokens_per_second"`
+	MostUsedModel         string          `json:"most_used_model"`
+	MostUsedModelRequests int             `json:"most_used_model_requests"`
+	ModelBreakdown        []ModelUsage    `json:"model_breakdown"`
+	CategoryBreakdown     []CategoryUsage `json:"category_breakdown"`
+	Daily                 []DailyUsage    `json:"daily"`
 }
 
 // Summary aggregates usage since `since` (zero value = all time).
@@ -146,6 +199,25 @@ func (s *Store) Summary(ctx context.Context, since time.Time) (Summary, error) {
 	if len(sum.ModelBreakdown) > 0 {
 		sum.MostUsedModel = sum.ModelBreakdown[0].Model
 		sum.MostUsedModelRequests = sum.ModelBreakdown[0].Requests
+	}
+
+	categoryRows, err := s.db.QueryContext(ctx, `
+		SELECT category, COUNT(*) as cnt, COALESCE(SUM(prompt_tokens), 0), COALESCE(SUM(completion_tokens), 0)
+		FROM usage_events WHERE ts >= ?
+		GROUP BY category ORDER BY (SUM(prompt_tokens) + SUM(completion_tokens)) DESC`, sinceUnix)
+	if err != nil {
+		return sum, fmt.Errorf("stats: category breakdown: %w", err)
+	}
+	defer categoryRows.Close()
+	for categoryRows.Next() {
+		var cu CategoryUsage
+		if err := categoryRows.Scan(&cu.Category, &cu.Requests, &cu.PromptTokens, &cu.CompletionTokens); err != nil {
+			return sum, fmt.Errorf("stats: category breakdown scan: %w", err)
+		}
+		sum.CategoryBreakdown = append(sum.CategoryBreakdown, cu)
+	}
+	if err := categoryRows.Err(); err != nil {
+		return sum, fmt.Errorf("stats: category breakdown rows: %w", err)
 	}
 
 	dailyRows, err := s.db.QueryContext(ctx, `

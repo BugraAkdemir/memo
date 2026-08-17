@@ -6,8 +6,8 @@ import (
 	"encoding/binary"
 	"encoding/json"
 	"fmt"
-	"memo/internal/logx"
 	"math"
+	"memo/internal/logx"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -24,6 +24,20 @@ type EmbeddingFunc func(ctx context.Context, text string) ([]float32, error)
 // Implementations call an LLM and return the merged text.
 type ConsolidationFunc func(ctx context.Context, content1, content2 string) (string, error)
 
+// DreamFunc is ConsolidationFunc's N-to-M counterpart: given the
+// full current pinned-facts set, it returns a compressed replacement set
+// that preserves all information but merges facts about the same topic into
+// fewer, denser lines (e.g. four separate facts about one pet into a single
+// sentence) — see runDream's doc comment for why this needs a
+// different shape than ConsolidationFunc's pairwise near-duplicate merge.
+type DreamFunc func(ctx context.Context, facts []string) ([]string, error)
+
+// DreamSettingsFunc reports the current Dream schedule — read fresh on
+// every scheduler tick (see runDreamScheduler) so a settings change takes
+// effect from the next check onward without needing to restart the
+// goroutine or manage a live-reset channel.
+type DreamSettingsFunc func() (initialDelay, interval time.Duration, enabled bool)
+
 type MemoryResult = models.MemoryResult
 type MemoryFileInfo = models.MemoryFileInfo
 type GobFileInfo = models.MemoryFileInfo
@@ -32,6 +46,8 @@ type Store struct {
 	db            *database.DB
 	embed         EmbeddingFunc
 	consolidateFn ConsolidationFunc
+	dreamFn       DreamFunc
+	dreamSettings DreamSettingsFunc
 	dim           int
 	dir           string
 	dbPath        string
@@ -60,10 +76,23 @@ func (s *Store) SetConsolidationFunc(fn ConsolidationFunc) {
 	s.mu.Unlock()
 }
 
+// SetDreamFunc registers the LLM-backed batch summarizer used by
+// runDream. Pass nil to disable.
+func (s *Store) SetDreamFunc(fn DreamFunc) {
+	s.mu.Lock()
+	s.dreamFn = fn
+	s.mu.Unlock()
+}
+
 type StoreConfig struct {
 	Dir           string
 	Dimension     int
 	EmbeddingFunc EmbeddingFunc
+
+	// DreamSettings, if set, starts runDreamScheduler — nil leaves Dream
+	// entirely unscheduled (still callable directly via RunDreamNow, e.g.
+	// from tests, without ever running automatically).
+	DreamSettings DreamSettingsFunc
 
 	// ForceGoFallback makes NewStore skip sqlite-vec entirely, as if the
 	// extension weren't compiled in — for tests that need to exercise
@@ -105,6 +134,7 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 		dir:             cfg.Dir,
 		dbPath:          dbPath,
 		forceGoFallback: cfg.ForceGoFallback,
+		dreamSettings:   cfg.DreamSettings,
 	}
 
 	if err := s.initSchema(); err != nil {
@@ -114,6 +144,9 @@ func NewStore(cfg StoreConfig) (*Store, error) {
 
 	s.stopCh = make(chan struct{})
 	logx.GoRecover("memory.Store.runImportanceDecay", s.runImportanceDecay)
+	if cfg.DreamSettings != nil {
+		logx.GoRecover("memory.Store.runDreamScheduler", s.runDreamScheduler)
+	}
 
 	return s, nil
 }
@@ -1852,6 +1885,10 @@ func (s *Store) applyImportanceRules() {
 		defer pCancel()
 		s.runPinnedConsolidation(pCtx, fn)
 	}
+	// Dream (runDream) is deliberately NOT run from here — unlike
+	// consolidation above, it has its own user-configurable schedule
+	// (DreamInitialDelayMinutes/DreamIntervalHours), independent of this
+	// loop's fixed 24h cadence. See runDreamScheduler.
 }
 
 // MergeCandidate holds a pair of memories that are similar enough to merge.
@@ -1875,6 +1912,12 @@ const (
 	// Store notes on extractAndPinFacts) — keeping this small bounds how
 	// much extra background load runPinnedConsolidation can add per day.
 	pinnedConsolidateMaxPairs = 3
+
+	// dreamThreshold gates runDream: below this many
+	// pinned facts, there's nothing worth compressing yet. Deliberately well
+	// under pinnedFactsLimit (75) so summarization kicks in with headroom to
+	// spare, rather than only once the set is already at its cap.
+	dreamThreshold = 40
 )
 
 // FindMergeCandidates returns up to limit pairs of memories whose embeddings
@@ -2078,6 +2121,205 @@ func (s *Store) runPinnedConsolidation(ctx context.Context, fn ConsolidationFunc
 	s.runConsolidationWith(ctx, fn, s.FindPinnedMergeCandidates, s.savePinnedMerged, pinnedConsolidateMaxPairs, "pinned consolidation")
 }
 
+// runDream is runPinnedConsolidation's complement, not its
+// replacement: consolidation only ever catches near-duplicate pairs
+// (cosine similarity ≥ 0.92 — the same fact stated twice). It never touches
+// facts that are topically related but not near-duplicates — e.g. "User's
+// dog is named Zeytin", "User has a golden retriever", "User walks Zeytin
+// every morning at 7am", and "User's dog is 3 years old" are four genuinely
+// different facts, so consolidation's pairwise pass leaves all four as
+// separate pinned rows forever, each costing its own slice of every future
+// prompt. This pass instead sends the *entire* current pinned set to fn in
+// one batch and asks it to rewrite the set as a whole, compressing related
+// facts together (four lines above → one: "User has a 3-year-old golden
+// retriever named Zeytin, walks him every morning at 7am") while leaving
+// unrelated facts untouched — the same "periodic full resynthesis" approach
+// ChatGPT's and MemGPT/Letta's memory systems use to keep a bounded
+// footprint instead of a monotonically growing one (see AGENTS.md's Memory
+// / Vector Store notes on GetPinnedFacts for the mem0/Letta research this
+// package's pinned-facts design already drew on once).
+//
+// Fails closed at every step: any error, an empty result, or a result that
+// isn't actually smaller than the input leaves the existing pinned set
+// completely untouched. Compression is a nice-to-have; losing facts is not
+// an acceptable trade for it.
+//
+// runDream (the automatic, scheduled path — see runDreamScheduler) and
+// RunDreamNow (the manual, user-triggered path) share this exact logic via
+// dreamPass, differing only in minCount: the scheduler uses dreamThreshold
+// (40) so the automatic daily check doesn't waste an LLM call on a pinned
+// set that's barely grown; an explicit user request has no such reason to
+// wait, so it only needs enough facts (2) for "compress" to mean anything.
+func (s *Store) runDream(ctx context.Context, fn DreamFunc) {
+	before, after, ran, err := s.dreamPass(ctx, fn, dreamThreshold)
+	if err != nil {
+		logx.Printf("MEMORY: dream: %v", err)
+		return
+	}
+	if ran {
+		logx.Printf("MEMORY: dream: %d facts -> %d facts", before, after)
+	}
+}
+
+// RunDreamNow runs a Dream pass immediately, bypassing the scheduler's
+// dreamThreshold — see runDream's doc comment. Returns the pinned-fact count
+// before/after and whether a pass actually ran (false if Dream is disabled,
+// i.e. SetDreamFunc(nil), or there weren't enough pinned facts to compress).
+func (s *Store) RunDreamNow(ctx context.Context) (before, after int, ran bool, err error) {
+	s.mu.RLock()
+	fn := s.dreamFn
+	s.mu.RUnlock()
+	if fn == nil {
+		return 0, 0, false, fmt.Errorf("dream is disabled")
+	}
+	return s.dreamPass(ctx, fn, 2)
+}
+
+// dreamPass is runDream/RunDreamNow's shared implementation.
+func (s *Store) dreamPass(ctx context.Context, fn DreamFunc, minCount int) (before, after int, ran bool, err error) {
+	ids, contents, err := s.fetchFactsForDream(ctx)
+	if err != nil {
+		return 0, 0, false, fmt.Errorf("scan: %w", err)
+	}
+	before = len(contents)
+	if before < minCount {
+		return before, before, false, nil
+	}
+
+	dreamCtx, cancel := context.WithTimeout(ctx, 90*time.Second)
+	newFacts, err := fn(dreamCtx, contents)
+	cancel()
+	if err != nil {
+		return before, before, false, fmt.Errorf("LLM: %w", err)
+	}
+
+	var cleaned []string
+	for _, f := range newFacts {
+		f = strings.TrimSpace(f)
+		if f != "" {
+			cleaned = append(cleaned, f)
+		}
+	}
+	if len(cleaned) == 0 {
+		return before, before, false, fmt.Errorf("returned nothing usable, keeping existing %d pinned facts untouched", before)
+	}
+	if len(cleaned) >= len(contents) {
+		return before, before, false, nil
+	}
+
+	if err := s.replaceFactsWithDream(ctx, ids, cleaned); err != nil {
+		return before, before, false, fmt.Errorf("save: %w", err)
+	}
+	return before, len(cleaned), true, nil
+}
+
+// fetchFactsForDream returns every current pinned fact's
+// integer row id (needed to mark it pending_deletion — GetPinnedFacts only
+// exposes the uuid, not the id, since callers that build prompts from it
+// never needed the id) alongside its content, in the same order.
+func (s *Store) fetchFactsForDream(ctx context.Context) ([]int64, []string, error) {
+	rows, err := s.db.QueryContext(ctx, `
+		SELECT id, content FROM memories
+		WHERE source = 'explicit' AND importance = 5 AND pending_deletion = 0
+		ORDER BY timestamp DESC
+		LIMIT ?
+	`, pinnedFactsLimit)
+	if err != nil {
+		return nil, nil, err
+	}
+	defer rows.Close()
+
+	var ids []int64
+	var contents []string
+	for rows.Next() {
+		var id int64
+		var content string
+		if err := rows.Scan(&id, &content); err != nil {
+			continue
+		}
+		ids = append(ids, id)
+		contents = append(contents, content)
+	}
+	return ids, contents, rows.Err()
+}
+
+// replaceFactsWithDream atomically retires oldIDs (pending_deletion,
+// same as saveMergedAs — never a hard delete, consistent with how every
+// other merge/consolidation path in this file leaves originals recoverable)
+// and inserts newFacts as fresh pinned rows (source='explicit', importance=5,
+// so they still match GetPinnedFacts' WHERE clause exactly like
+// savePinnedMerged's results do). Embeddings are computed before the
+// transaction opens, same reasoning as saveMergedAs: embedding calls out to
+// an external process/HTTP client and must never happen while holding the
+// db write lock.
+func (s *Store) replaceFactsWithDream(ctx context.Context, oldIDs []int64, newFacts []string) error {
+	type newRow struct {
+		uuid    string
+		content string
+		blob    []byte
+		vec     []float32
+	}
+	rows := make([]newRow, len(newFacts))
+	now := time.Now()
+	for i, content := range newFacts {
+		r := newRow{
+			uuid:    fmt.Sprintf("dream_%d_%d", now.UnixNano(), i),
+			content: content,
+		}
+		if emb, err := s.embed(ctx, content); err != nil {
+			logx.Printf("MEMORY: replaceFactsWithDream embed failed (uuid=%s): %v — will be saved without a vector", r.uuid, err)
+		} else if len(emb) != s.dim {
+			logx.Printf("MEMORY: replaceFactsWithDream embed dimension mismatch (uuid=%s): got %d, want %d — will be saved without a vector", r.uuid, len(emb), s.dim)
+		} else {
+			r.vec = emb
+			r.blob = floatsToBlob(emb)
+		}
+		rows[i] = r
+	}
+
+	timestamp := now.UTC().Format(time.RFC3339)
+	return s.db.Write(ctx, func(tx *sql.Tx) error {
+		for _, r := range rows {
+			res, err := tx.Exec(
+				`INSERT INTO memories(uuid, role, content, timestamp, user_msg, assist_msg, embedding,
+				                      chunk_index, parent_uuid, total_chunks,
+				                      session_id, importance, tags, source, retrieve_count)
+				 VALUES (?, 'user', ?, ?, ?, '', ?, 0, ?, 1, '', 5, 'explicit', 'explicit', 0)`,
+				r.uuid, r.content, timestamp, r.content, r.blob, r.uuid,
+			)
+			if err != nil {
+				return err
+			}
+			rowID, _ := res.LastInsertId()
+			if r.vec != nil && s.useVec {
+				vecJSON, _ := json.Marshal(r.vec)
+				if _, err := tx.Exec("INSERT INTO vec_memories(rowid, embedding) VALUES (?, ?)", rowID, string(vecJSON)); err != nil {
+					logx.Printf("MEMORY: replaceFactsWithDream vec insert: %v", err)
+				}
+			}
+			if s.useFTS {
+				if _, err := tx.Exec(
+					"INSERT INTO memories_fts(rowid, content, user_msg, assist_msg) VALUES (?, ?, ?, '')",
+					rowID, r.content, r.content,
+				); err != nil {
+					logx.Printf("MEMORY: replaceFactsWithDream fts insert: %v", err)
+				}
+			}
+		}
+		if len(oldIDs) > 0 {
+			placeholders := strings.TrimSuffix(strings.Repeat("?,", len(oldIDs)), ",")
+			args := make([]any, len(oldIDs))
+			for i, id := range oldIDs {
+				args[i] = id
+			}
+			if _, err := tx.Exec("UPDATE memories SET pending_deletion = 1 WHERE id IN ("+placeholders+")", args...); err != nil {
+				return err
+			}
+		}
+		return nil
+	})
+}
+
 // runConsolidationWith is runConsolidation/runPinnedConsolidation's shared
 // implementation: find candidates, ask fn to merge each pair's content, and
 // save. find and save are swapped between the two pools so a pinned-fact
@@ -2143,6 +2385,60 @@ func (s *Store) runImportanceDecay() {
 		select {
 		case <-ticker.C:
 			runOnce()
+		case <-s.stopCh:
+			return
+		}
+	}
+}
+
+// runDreamScheduler is Dream's own loop, deliberately separate from
+// runImportanceDecay above even though the shape is the same (a warmup
+// delay, then a repeating interval) — that loop's 24h cadence is fixed and
+// shared with unrelated cleanup/consolidation work; Dream's timing is
+// user-configurable (Settings), so it needs its own independent goroutine
+// that can't be affected by, or accidentally coupled to, the other one's
+// schedule.
+//
+// s.dreamSettings is read fresh at the top of every loop iteration (both at
+// warmup and after each interval), not just once at startup — this is what
+// lets a settings change take effect without restarting the goroutine: it
+// simply applies from the next scheduled check onward. It does not shorten
+// a wait already in progress — RunDreamNow (the Settings tab's manual
+// "run now" button) exists for that.
+func (s *Store) runDreamScheduler() {
+	getSettings := s.dreamSettings
+	if getSettings == nil {
+		return
+	}
+
+	initialDelay, _, _ := getSettings()
+	select {
+	case <-time.After(initialDelay):
+	case <-s.stopCh:
+		return
+	}
+
+	for {
+		_, interval, enabled := getSettings()
+		if enabled {
+			func() {
+				defer logx.Recover("memory.Store.runDreamScheduler/runDream")
+				s.mu.RLock()
+				fn := s.dreamFn
+				s.mu.RUnlock()
+				if fn == nil {
+					return
+				}
+				ctx, cancel := context.WithTimeout(context.Background(), 5*time.Minute)
+				defer cancel()
+				s.runDream(ctx, fn)
+			}()
+		}
+		if interval <= 0 {
+			interval = 24 * time.Hour
+		}
+		select {
+		case <-time.After(interval):
 		case <-s.stopCh:
 			return
 		}

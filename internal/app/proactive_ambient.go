@@ -194,7 +194,7 @@ func (a *App) checkAmbientNudgeSurfaced(pattern *observer.TimePattern, reply str
 		api.NewTextMessage("system", ambientSurfacedSystemPrompt),
 		api.NewTextMessage("user", "Suggested topic: "+pattern.ActivityType+"\n\nAssistant's reply:\n"+reply),
 	}
-	answer := a.callLLM(ctx, msgs)
+	answer := a.callLLMCategorized(ctx, msgs, categoryProactive)
 	if isLLMErrorReply(answer) || !strings.HasPrefix(strings.ToUpper(strings.TrimSpace(answer)), "YES") {
 		return
 	}
@@ -269,7 +269,7 @@ func (a *App) checkAmbientNudgeOutcome(userMsg string) {
 		api.NewTextMessage("system", ambientOutcomeSystemPrompt),
 		api.NewTextMessage("user", "The assistant suggested: "+pending.Message+"\n\nThe user's reply:\n"+userMsg),
 	}
-	answer := strings.ToUpper(strings.TrimSpace(a.callLLM(ctx, msgs)))
+	answer := strings.ToUpper(strings.TrimSpace(a.callLLMCategorized(ctx, msgs, categoryProactive)))
 	if isLLMErrorReply(answer) {
 		return
 	}

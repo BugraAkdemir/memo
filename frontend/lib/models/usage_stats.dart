@@ -21,6 +21,33 @@ class ModelUsage {
       );
 }
 
+/// One usage category's aggregated totals — "which kind of call is
+/// spending my tokens" (chat vs agent vs Dream vs fact extraction vs
+/// mood vs ...), as opposed to ModelUsage's "which model" breakdown.
+/// See internal/stats.CategoryUsage (backend).
+class CategoryUsage {
+  final String category;
+  final int requests;
+  final int promptTokens;
+  final int completionTokens;
+
+  const CategoryUsage({
+    required this.category,
+    required this.requests,
+    required this.promptTokens,
+    required this.completionTokens,
+  });
+
+  int get totalTokens => promptTokens + completionTokens;
+
+  factory CategoryUsage.fromJson(Map<String, dynamic> json) => CategoryUsage(
+        category: json['category'] as String? ?? '',
+        requests: (json['requests'] as num?)?.toInt() ?? 0,
+        promptTokens: (json['prompt_tokens'] as num?)?.toInt() ?? 0,
+        completionTokens: (json['completion_tokens'] as num?)?.toInt() ?? 0,
+      );
+}
+
 class DailyUsage {
   final String date; // YYYY-MM-DD
   final int promptTokens;
@@ -52,6 +79,7 @@ class UsageStatsSummary {
   final String mostUsedModel;
   final int mostUsedModelRequests;
   final List<ModelUsage> modelBreakdown;
+  final List<CategoryUsage> categoryBreakdown;
   final List<DailyUsage> daily;
 
   const UsageStatsSummary({
@@ -62,6 +90,7 @@ class UsageStatsSummary {
     this.mostUsedModel = '',
     this.mostUsedModelRequests = 0,
     this.modelBreakdown = const [],
+    this.categoryBreakdown = const [],
     this.daily = const [],
   });
 
@@ -81,6 +110,11 @@ class UsageStatsSummary {
       modelBreakdown: json['model_breakdown'] is List
           ? (json['model_breakdown'] as List)
               .map((e) => ModelUsage.fromJson(e as Map<String, dynamic>))
+              .toList()
+          : const [],
+      categoryBreakdown: json['category_breakdown'] is List
+          ? (json['category_breakdown'] as List)
+              .map((e) => CategoryUsage.fromJson(e as Map<String, dynamic>))
               .toList()
           : const [],
       daily: json['daily'] is List

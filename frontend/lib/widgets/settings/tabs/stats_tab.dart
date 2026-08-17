@@ -102,6 +102,8 @@ class _StatsTabState extends ConsumerState<StatsTab> {
                 SizedBox(height: 24),
                 _UsageChart(stats: stats, days: selectedDays),
                 SizedBox(height: 24),
+                _CategoryBreakdown(stats: stats),
+                SizedBox(height: 24),
                 _ModelBreakdown(stats: stats),
               ],
             );
@@ -470,6 +472,117 @@ class _LegendDot extends StatelessWidget {
         SizedBox(width: 6),
         Text(label, style: TextStyle(fontSize: 12, color: MemoTheme.of(context).textDim)),
       ],
+    );
+  }
+}
+
+/// Maps a raw category string (internal/app/llm.go's category* constants)
+/// to a localized display label. Falls back to the raw string itself for
+/// anything unmapped (e.g. "uncategorized", from events recorded before
+/// callLLM's categories existed) rather than hiding it.
+String _categoryLabel(String category) {
+  const keys = {
+    'chat': 'stats_category_chat',
+    'agent': 'stats_category_agent',
+    'dream': 'stats_category_dream',
+    'fact_extraction': 'stats_category_fact_extraction',
+    'consolidation': 'stats_category_consolidation',
+    'memory_import': 'stats_category_memory_import',
+    'mood': 'stats_category_mood',
+    'title': 'stats_category_title',
+    'learning': 'stats_category_learning',
+    'routine': 'stats_category_routine',
+    'proactive': 'stats_category_proactive',
+    'insight': 'stats_category_insight',
+  };
+  final key = keys[category];
+  return key != null ? L10n.t(key) : category;
+}
+
+/// "Which kind of call is spending my tokens" — chat vs agent vs Dream vs
+/// fact extraction vs mood vs ... — as opposed to _ModelBreakdown's "which
+/// model" view. Backend already ranks by total tokens spent (not request
+/// count), so the bar below is proportional to tokens too, matching what's
+/// actually being asked here.
+class _CategoryBreakdown extends StatelessWidget {
+  final UsageStatsSummary stats;
+  const _CategoryBreakdown({required this.stats});
+
+  @override
+  Widget build(BuildContext context) {
+    if (stats.categoryBreakdown.isEmpty) return SizedBox.shrink();
+    final theme = MemoTheme.of(context);
+    final maxTokens = stats.categoryBreakdown
+        .map((c) => c.totalTokens)
+        .fold<int>(0, (a, b) => a > b ? a : b);
+
+    return Container(
+      padding: EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.bgPanel,
+        borderRadius: BorderRadius.circular(MemoTheme.radiusMd),
+        border: Border.all(color: theme.borderSoft),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            L10n.t('stats_category_breakdown_title'),
+            style: TextStyle(fontWeight: FontWeight.w600, color: theme.textMain),
+          ),
+          SizedBox(height: 4),
+          Text(
+            L10n.t('stats_category_breakdown_subtitle'),
+            style: TextStyle(fontSize: 12, color: theme.textDim),
+          ),
+          SizedBox(height: 12),
+          for (final c in stats.categoryBreakdown) ...[
+            Padding(
+              padding: EdgeInsets.only(bottom: 10),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _categoryLabel(c.category),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(fontSize: 13, color: theme.textMain),
+                        ),
+                      ),
+                      Text(
+                        _formatTokens(c.totalTokens),
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: MemoTheme.accent,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        L10n.t('stats_model_requests', {'count': '${c.requests}'}),
+                        style: TextStyle(fontSize: 12, color: theme.textDim),
+                      ),
+                    ],
+                  ),
+                  SizedBox(height: 4),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(3),
+                    child: LinearProgressIndicator(
+                      value: maxTokens > 0 ? c.totalTokens / maxTokens : 0,
+                      minHeight: 6,
+                      backgroundColor: theme.borderSoft,
+                      valueColor: AlwaysStoppedAnimation(MemoTheme.accent),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
     );
   }
 }

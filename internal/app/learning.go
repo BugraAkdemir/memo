@@ -58,7 +58,7 @@ func (a *App) buildLearningDecider() intent.Decider {
 			msgs := []api.Message{
 				{Role: "user", Content: prompt},
 			}
-			result := a.callLLM(ctx, msgs)
+			result := a.callLLMCategorized(ctx, msgs, categoryLearning)
 			return result, nil
 		},
 		func(ctx context.Context, modelID, system, user string) (string, error) {

@@ -73,7 +73,7 @@ func (a *App) handleIncognito(userMsg string, b64 string) string {
 	msgs = append(msgs, a.incognitoMessages...)
 	a.incognitoMu.Unlock()
 
-	reply := a.callLLMCategorized(context.Background(), msgs, categoryChat)
+	reply := a.callLLM(context.Background(), msgs, categoryChat)
 
 	a.incognitoMu.Lock()
 	a.incognitoMessages = append(a.incognitoMessages, api.NewTextMessage("assistant", reply))
@@ -635,7 +635,7 @@ func (a *App) updateMoodAsync(userMsg string) {
 			api.NewTextMessage("system", sys),
 			api.NewTextMessage("user", user),
 		}
-		return a.callLLMCategorized(ctx, msgs, categoryMood), nil
+		return a.callLLM(ctx, msgs, categoryMood), nil
 	})
 
 	iAnlik := scorer.Score(ctx, userMsg)

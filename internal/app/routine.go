@@ -46,7 +46,7 @@ func (a *App) buildRoutineDecider() routine.Decider {
 			api.NewTextMessage("system", systemPrompt),
 			api.NewTextMessage("user", userPrompt),
 		}
-		result := a.callLLMCategorized(ctx, msgs, categoryRoutine)
+		result := a.callLLM(ctx, msgs, categoryRoutine)
 		if isLLMErrorReply(result) {
 			return "", fmt.Errorf("routine: llm call failed: %s", result)
 		}
@@ -292,7 +292,7 @@ func (a *App) runSimplePromptRoutine(ctx context.Context, r routine.Routine) (st
 		api.NewTextMessage("system", routineSystemPrompt(r.Language)),
 		api.NewTextMessage("user", prompt),
 	}
-	reply := a.callLLMCategorized(ctx, msgs, categoryRoutine)
+	reply := a.callLLM(ctx, msgs, categoryRoutine)
 	if isLLMErrorReply(reply) {
 		return "", fmt.Errorf("routine: llm call failed: %s", reply)
 	}

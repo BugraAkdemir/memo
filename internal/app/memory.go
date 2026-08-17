@@ -218,7 +218,7 @@ func (a *App) extractAndPinFacts(ctx context.Context, userMsg string) {
 		api.NewTextMessage("system", factExtractionSystemPrompt),
 		api.NewTextMessage("user", fmt.Sprintf("User: %s", userMsg)),
 	}
-	reply2 := a.callLLMCategorized(bgCtx, msgs, categoryFactExtraction)
+	reply2 := a.callLLM(bgCtx, msgs, categoryFactExtraction)
 	if isLLMErrorReply(reply2) {
 		// Best-effort enhancement, not a core save path — log only, never
 		// surface as memory:error (that event means "a message may not be
@@ -620,7 +620,7 @@ func (a *App) mergeMemoriesLLM(ctx context.Context, content1, content2 string) (
 		api.NewTextMessage("user",
 			fmt.Sprintf("Memory 1: %s\n\nMemory 2: %s\n\nMerge into one memory:", content1, content2)),
 	}
-	reply := a.callLLMCategorized(ctx, msgs, categoryConsolidation)
+	reply := a.callLLM(ctx, msgs, categoryConsolidation)
 	if isLLMErrorReply(reply) {
 		return "", fmt.Errorf("merge LLM call: %s", reply)
 	}
@@ -662,7 +662,7 @@ func (a *App) dreamPinnedFactsLLM(ctx context.Context, facts []string) ([]string
 		api.NewTextMessage("system", dreamSystemPrompt),
 		api.NewTextMessage("user", sb.String()),
 	}
-	reply := a.callLLMCategorized(ctx, msgs, categoryDream)
+	reply := a.callLLM(ctx, msgs, categoryDream)
 	if isLLMErrorReply(reply) {
 		return nil, fmt.Errorf("dream LLM call: %s", reply)
 	}

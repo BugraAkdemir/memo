@@ -28,7 +28,7 @@ func (a *App) proactiveDecide(ctx context.Context, systemPrompt, userPrompt stri
 	}
 	dctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
-	reply := a.callLLMCategorized(dctx, msgs, categoryProactive)
+	reply := a.callLLM(dctx, msgs, categoryProactive)
 	if reply == "" || strings.HasPrefix(reply, "⚠️") || strings.HasPrefix(reply, "warning-sign") {
 		return "", fmt.Errorf("LLM returned empty or error response")
 	}

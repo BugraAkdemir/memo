@@ -49,10 +49,10 @@ type usageMeta struct {
 }
 
 // Usage event categories — see stats.Event.Category's doc comment. Every
-// call site that constructs a usageMeta (streaming) or calls
-// callLLMCategorized (single-shot) picks exactly one of these, so the Stats
-// tab's category breakdown can show "which kind of call is spending my
-// tokens," not just which model/provider.
+// call site that constructs a usageMeta (streaming) or calls callLLM
+// (single-shot) picks exactly one of these, so the Stats tab's category
+// breakdown can show "which kind of call is spending my tokens," not just
+// which model/provider.
 const (
 	categoryChat           = "chat"
 	categoryAgent          = "agent"
@@ -1140,24 +1140,14 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 	}
 }
 
-// callLLM is callLLMCategorized's temporary uncategorized entry point —
-// every one of its own call sites is being migrated to callLLMCategorized
-// with a real category one small commit at a time (see the category*
-// constants below), so the Stats tab's category breakdown can eventually
-// show which kind of call is actually spending tokens. Remove once every
-// caller has migrated; nothing should gain a *new* call to this form in the
-// meantime.
-func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
-	return a.callLLMCategorized(ctx, messages, "uncategorized")
-}
-
-// callLLMCategorized is the shared single-completion helper behind every
-// background/utility LLM call in this codebase (chat titles, Dream, fact
-// extraction, mood, learning, routines, proactive checks, memory
-// import/consolidation — see the category* constants above). category tags
-// the resulting usage event so the Stats tab's category breakdown can show
-// which of these is actually spending tokens.
-func (a *App) callLLMCategorized(ctx context.Context, messages []api.Message, category string) string {
+// callLLM is the shared single-completion helper behind every background/
+// utility LLM call in this codebase (chat titles, Dream, fact extraction,
+// mood, learning, routines, proactive checks, memory import/consolidation —
+// see the category* constants above). category tags the resulting usage
+// event so the Stats tab's category breakdown can show which of these is
+// actually spending tokens — required, not defaulted, so a new call site
+// can't silently land as miscategorized or unrecorded.
+func (a *App) callLLM(ctx context.Context, messages []api.Message, category string) string {
 	start := time.Now()
 
 	// Orchestra mode takes priority

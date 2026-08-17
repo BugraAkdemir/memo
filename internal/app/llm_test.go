@@ -375,7 +375,7 @@ func TestCallLLM_ExternalProvider_RecordsCategoryAndRealUsage(t *testing.T) {
 
 	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}, statsStore: store}
 
-	reply := a.callLLMCategorized(context.Background(), []api.Message{api.NewTextMessage("user", "merge these")}, categoryDream)
+	reply := a.callLLM(context.Background(), []api.Message{api.NewTextMessage("user", "merge these")}, categoryDream)
 	if reply != "a merged fact" {
 		t.Fatalf("reply = %q, want %q", reply, "a merged fact")
 	}
@@ -434,7 +434,7 @@ func TestCallLLM_Incognito_DoesNotRecordUsage(t *testing.T) {
 
 	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}, statsStore: store, isIncognito: true}
 
-	reply := a.callLLMCategorized(context.Background(), []api.Message{api.NewTextMessage("user", "hi")}, categoryChat)
+	reply := a.callLLM(context.Background(), []api.Message{api.NewTextMessage("user", "hi")}, categoryChat)
 	if reply != "a reply" {
 		t.Fatalf("reply = %q, want %q", reply, "a reply")
 	}

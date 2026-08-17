@@ -67,7 +67,7 @@ func (a *App) GenerateSelfInsight(ctx context.Context, windowDays int, lang stri
 		api.NewTextMessage("system", insightSystemPrompt(lang, windowDays)),
 		api.NewTextMessage("user", formatInsightContext(memories, moodHistory, lang)),
 	}
-	reply := a.callLLMCategorized(ctx, msgs, categoryInsight)
+	reply := a.callLLM(ctx, msgs, categoryInsight)
 	if isLLMErrorReply(reply) {
 		return "", fmt.Errorf("insight: llm call failed: %s", reply)
 	}

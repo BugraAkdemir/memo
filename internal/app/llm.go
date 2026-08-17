@@ -1140,7 +1140,26 @@ func (a *App) finishStream(start time.Time, tokenCount int, finishReason, reply,
 	}
 }
 
+// callLLM is callLLMCategorized's temporary uncategorized entry point —
+// every one of its own call sites is being migrated to callLLMCategorized
+// with a real category one small commit at a time (see the category*
+// constants below), so the Stats tab's category breakdown can eventually
+// show which kind of call is actually spending tokens. Remove once every
+// caller has migrated; nothing should gain a *new* call to this form in the
+// meantime.
 func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
+	return a.callLLMCategorized(ctx, messages, "uncategorized")
+}
+
+// callLLMCategorized is the shared single-completion helper behind every
+// background/utility LLM call in this codebase (chat titles, Dream, fact
+// extraction, mood, learning, routines, proactive checks, memory
+// import/consolidation — see the category* constants above). category tags
+// the resulting usage event so the Stats tab's category breakdown can show
+// which of these is actually spending tokens.
+func (a *App) callLLMCategorized(ctx context.Context, messages []api.Message, category string) string {
+	start := time.Now()
+
 	// Orchestra mode takes priority
 	a.providerMu.RLock()
 	orchEnabled := a.orchestraConductor != nil && a.orchestraConductor.Config().Enabled
@@ -1181,6 +1200,9 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 		if err != nil {
 			return "⚠️ " + err.Error()
 		}
+		// Orchestra's RunSingle exposes no usage info — estimate both sides
+		// the same way the orchestra branch of callLLMStream already does.
+		a.recordCallLLMUsage(start, "orchestra", "", category, estimateContentTokens(systemPrompt+" "+userPrompt), estimateContentTokens(finalResponse))
 		return finalResponse
 	}
 
@@ -1219,6 +1241,15 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 			}
 			return errMsg
 		}
+		model := resp.Model
+		if model == "" {
+			model = a.activeProviderModel(activeName)
+		}
+		promptTokens, completionTokens := estimateMessagesTokens(messages), estimateContentTokens(resp.Content)
+		if resp.Usage != nil {
+			promptTokens, completionTokens = resp.Usage.PromptTokens, resp.Usage.CompletionTokens
+		}
+		a.recordCallLLMUsage(start, activeName, model, category, promptTokens, completionTokens)
 		return resp.Content
 	}
 
@@ -1226,7 +1257,6 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	lctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
-	start := time.Now()
 	a.clientMu.RLock()
 	llmClient := a.client
 	a.clientMu.RUnlock()
@@ -1255,7 +1285,36 @@ func (a *App) callLLM(ctx context.Context, messages []api.Message) string {
 	reply := resp.Choices[0].Message.GetTextContent()
 	logx.Printf("LATENCY llm.complete total_ms=%d status=ok messages=%d reply_chars=%d", time.Since(start).Milliseconds(), len(messages), len(reply))
 	logx.Printf("<< Reply: %d chars", len(reply))
+	promptTokens, completionTokens := estimateMessagesTokens(messages), estimateContentTokens(reply)
+	if resp.Usage.PromptTokens > 0 || resp.Usage.CompletionTokens > 0 {
+		promptTokens, completionTokens = resp.Usage.PromptTokens, resp.Usage.CompletionTokens
+	}
+	a.recordCallLLMUsage(start, "local", a.localModelName(), category, promptTokens, completionTokens)
 	return reply
+}
+
+// recordCallLLMUsage is callLLM's shared recording tail for all three
+// branches — fired in its own goroutine (matching finishStream's own
+// recordUsageEvent call) so a slow/failing stats write never adds latency
+// to the already-synchronous callLLM return path. Skips incognito sessions
+// entirely, same privacy invariant finishStream applies to the streaming
+// path — token *counts* are still session content in aggregate, not just
+// message text.
+func (a *App) recordCallLLMUsage(start time.Time, provider, model, category string, promptTokens, completionTokens int) {
+	a.incognitoMu.RLock()
+	incog := a.isIncognito
+	a.incognitoMu.RUnlock()
+	if incog {
+		return
+	}
+	duration := time.Since(start).Seconds()
+	tps := 0.0
+	if duration > 0 && completionTokens > 0 {
+		tps = float64(completionTokens) / duration
+	}
+	goRecover("recordUsageEvent", func() {
+		a.recordUsageEvent(usageMeta{Provider: provider, Model: model, Category: category, PromptTokens: promptTokens}, completionTokens, duration, tps)
+	})
 }
 
 // modelSwappedMidStreamMsg replaces a confusing low-level transport error

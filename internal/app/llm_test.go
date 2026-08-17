@@ -343,3 +343,108 @@ func TestDrainAgentStream_EmptyChannelSendsTerminalChunk(t *testing.T) {
 		t.Errorf("expected the terminal chunk to carry an error explaining the empty response, got %+v", chunks[0])
 	}
 }
+
+// TestCallLLM_ExternalProvider_RecordsCategoryAndRealUsage is a regression
+// test for callLLM's new recording behavior: before this, callLLM recorded
+// no usage stats at all (only the streaming path did), so every background
+// call — Dream, fact extraction, mood, title generation, ... — was
+// completely invisible in the Stats tab. This checks two things at once:
+// the caller-supplied category reaches the persisted event, and when the
+// provider's response includes a real usage block, that's used instead of
+// the len/word-count estimate.
+func TestCallLLM_ExternalProvider_RecordsCategoryAndRealUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"a merged fact"}}],"usage":{"prompt_tokens":321,"completion_tokens":42}}`)
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	}})
+
+	store, err := stats.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("stats.NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}, statsStore: store}
+
+	reply := a.callLLMCategorized(context.Background(), []api.Message{api.NewTextMessage("user", "merge these")}, categoryDream)
+	if reply != "a merged fact" {
+		t.Fatalf("reply = %q, want %q", reply, "a merged fact")
+	}
+
+	// recordCallLLMUsage fires the actual write in its own goroutine
+	// (goRecover) — give it a moment to land before asserting.
+	deadline := time.Now().Add(2 * time.Second)
+	var sum stats.Summary
+	for time.Now().Before(deadline) {
+		sum, err = store.Summary(context.Background(), time.Time{})
+		if err != nil {
+			t.Fatalf("Summary() error = %v", err)
+		}
+		if sum.TotalRequests > 0 {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+
+	if sum.TotalRequests != 1 {
+		t.Fatalf("TotalRequests = %d, want 1", sum.TotalRequests)
+	}
+	if len(sum.CategoryBreakdown) != 1 || sum.CategoryBreakdown[0].Category != categoryDream {
+		t.Fatalf("CategoryBreakdown = %+v, want a single %q entry", sum.CategoryBreakdown, categoryDream)
+	}
+	if sum.TotalPromptTokens != 321 || sum.TotalCompletionTokens != 42 {
+		t.Fatalf("prompt/completion tokens = %d/%d, want 321/42 (the response's real usage block, not an estimate)", sum.TotalPromptTokens, sum.TotalCompletionTokens)
+	}
+}
+
+// TestCallLLM_Incognito_DoesNotRecordUsage covers the same privacy
+// invariant finishStream already applies to the streaming path — token
+// *counts* are still session content in aggregate, even with no message
+// text attached, so an incognito call must not show up in the Stats tab
+// at all.
+func TestCallLLM_Incognito_DoesNotRecordUsage(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"choices":[{"message":{"content":"a reply"}}],"usage":{"prompt_tokens":10,"completion_tokens":5}}`)
+	}))
+	defer srv.Close()
+
+	router := provider.NewRouter([]provider.ProviderConfig{{
+		Type:    provider.ProviderCustom,
+		Name:    "test",
+		BaseURL: srv.URL,
+		Model:   "test-model",
+		Enabled: true,
+	}})
+
+	store, err := stats.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatalf("stats.NewStore() error = %v", err)
+	}
+	defer store.Close()
+
+	a := &App{providerRouter: router, activeProviderName: "test", cfg: &config.AppConfig{}, statsStore: store, isIncognito: true}
+
+	reply := a.callLLMCategorized(context.Background(), []api.Message{api.NewTextMessage("user", "hi")}, categoryChat)
+	if reply != "a reply" {
+		t.Fatalf("reply = %q, want %q", reply, "a reply")
+	}
+
+	time.Sleep(100 * time.Millisecond) // let any (incorrectly fired) recordUsageEvent goroutine land
+	sum, err := store.Summary(context.Background(), time.Time{})
+	if err != nil {
+		t.Fatalf("Summary() error = %v", err)
+	}
+	if sum.TotalRequests != 0 {
+		t.Fatalf("TotalRequests = %d, want 0 (incognito calls must not be recorded)", sum.TotalRequests)
+	}
+}

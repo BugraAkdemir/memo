@@ -220,6 +220,18 @@ type WhatsAppConfig struct {
 type DevGatewayConfig struct {
 	RequireAPIKey bool `yaml:"require_api_key" json:"require_api_key"`
 	UseMemory     bool `yaml:"use_memory" json:"use_memory"`
+	// SystemPrompt, when non-empty, is appended to every gateway request's
+	// system message (see mergeMemoryBlock's merge pattern in
+	// internal/app/devgateway.go, which this reuses) — additive on top of
+	// whatever the calling tool (Claude Code, etc.) already sent, never a
+	// replacement. Deliberately NOT Memo's own identity/persona: the
+	// existing design (see injectGatewayMemory's doc comment) is that an
+	// external tool supplies its own system prompt and shouldn't have
+	// Memo's assistant identity forced into it. This is instead a place for
+	// the *local user* to add their own standing instruction to every
+	// gateway call (e.g. "always answer in Turkish", "prefer functional
+	// style") — their choice, not Memo's.
+	SystemPrompt string `yaml:"system_prompt" json:"system_prompt"`
 	// Token is the dev gateway's own API key — deliberately independent of
 	// RemoteAccess's token/device model below (Faz 2, yapacam.md). Before
 	// Faz 2 this feature shared RemoteAccess.Token as a shortcut; that field

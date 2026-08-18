@@ -43,10 +43,10 @@ func TestSplitGatewayModelSpec(t *testing.T) {
 	}
 }
 
-func TestMergeMemoryBlock(t *testing.T) {
+func TestMergeSystemBlock(t *testing.T) {
 	t.Run("blank block is a no-op", func(t *testing.T) {
 		msgs := []provider.Message{{Role: "user", Content: "hi"}}
-		got := mergeMemoryBlock(msgs, "")
+		got := mergeSystemBlock(msgs, "")
 		if len(got) != 1 || got[0].Content != "hi" {
 			t.Errorf("got %+v", got)
 		}
@@ -54,7 +54,7 @@ func TestMergeMemoryBlock(t *testing.T) {
 
 	t.Run("no existing system message: one is added", func(t *testing.T) {
 		msgs := []provider.Message{{Role: "user", Content: "hi"}}
-		got := mergeMemoryBlock(msgs, "user's favorite color is orange")
+		got := mergeSystemBlock(msgs, "user's favorite color is orange")
 		if len(got) != 2 {
 			t.Fatalf("got %+v", got)
 		}
@@ -71,7 +71,7 @@ func TestMergeMemoryBlock(t *testing.T) {
 			{Role: "system", Content: "You are Claude Code."},
 			{Role: "user", Content: "hi"},
 		}
-		got := mergeMemoryBlock(msgs, "user's favorite color is orange")
+		got := mergeSystemBlock(msgs, "user's favorite color is orange")
 		if len(got) != 2 {
 			t.Fatalf("got %+v", got)
 		}
@@ -93,16 +93,17 @@ func TestMergeMemoryBlock(t *testing.T) {
 // own field plumbing is what's under test here, not config.Save's disk I/O.
 func TestGetSetDevGatewayConfig(t *testing.T) {
 	a := &App{cfg: &config.AppConfig{}}
-	requireKey, useMemory := a.GetDevGatewayConfig()
-	if requireKey || useMemory {
-		t.Errorf("zero-value config should default both to false, got (%v, %v)", requireKey, useMemory)
+	requireKey, useMemory, systemPrompt := a.GetDevGatewayConfig()
+	if requireKey || useMemory || systemPrompt != "" {
+		t.Errorf("zero-value config should default to (false, false, \"\"), got (%v, %v, %q)", requireKey, useMemory, systemPrompt)
 	}
 
 	a.cfg.DevGateway.RequireAPIKey = true
 	a.cfg.DevGateway.UseMemory = true
-	requireKey, useMemory = a.GetDevGatewayConfig()
-	if !requireKey || !useMemory {
-		t.Errorf("after setting both true, GetDevGatewayConfig returned (%v, %v)", requireKey, useMemory)
+	a.cfg.DevGateway.SystemPrompt = "always answer in Turkish"
+	requireKey, useMemory, systemPrompt = a.GetDevGatewayConfig()
+	if !requireKey || !useMemory || systemPrompt != "always answer in Turkish" {
+		t.Errorf("after setting all three, GetDevGatewayConfig returned (%v, %v, %q)", requireKey, useMemory, systemPrompt)
 	}
 }
 

@@ -200,8 +200,8 @@ type FullBridge interface {
 
 	// Dev gateway (Settings > Developer): local OpenAI/Anthropic-compatible
 	// API surface that routes to whichever model/provider is configured.
-	GetDevGatewayConfig() (requireAPIKey, useMemory bool)
-	SetDevGatewayConfig(requireAPIKey, useMemory bool) error
+	GetDevGatewayConfig() (requireAPIKey, useMemory bool, systemPrompt string)
+	SetDevGatewayConfig(requireAPIKey, useMemory bool, systemPrompt string) error
 	GetDevGatewayToken() string
 	ListGatewayModels() []models.GatewayModel
 	DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error)

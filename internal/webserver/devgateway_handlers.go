@@ -25,22 +25,24 @@ func (s *Server) handleDevGatewayConfig(w http.ResponseWriter, r *http.Request) 
 	}
 	switch r.Method {
 	case http.MethodGet:
-		requireAPIKey, useMemory := s.fullBridge.GetDevGatewayConfig()
+		requireAPIKey, useMemory, systemPrompt := s.fullBridge.GetDevGatewayConfig()
 		writeJSON(w, map[string]any{
 			"require_api_key": requireAPIKey,
 			"use_memory":      useMemory,
+			"system_prompt":   systemPrompt,
 			"token":           s.fullBridge.GetDevGatewayToken(),
 		})
 	case http.MethodPut:
 		var body struct {
-			RequireAPIKey bool `json:"require_api_key"`
-			UseMemory     bool `json:"use_memory"`
+			RequireAPIKey bool   `json:"require_api_key"`
+			UseMemory     bool   `json:"use_memory"`
+			SystemPrompt  string `json:"system_prompt"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 			http.Error(w, "bad json", http.StatusBadRequest)
 			return
 		}
-		if err := s.fullBridge.SetDevGatewayConfig(body.RequireAPIKey, body.UseMemory); err != nil {
+		if err := s.fullBridge.SetDevGatewayConfig(body.RequireAPIKey, body.UseMemory, body.SystemPrompt); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -109,7 +111,7 @@ func (s *Server) handleAnthropicMessages(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	requireAPIKey, _ := s.fullBridge.GetDevGatewayConfig()
+	requireAPIKey, _, _ := s.fullBridge.GetDevGatewayConfig()
 	if !devGatewayAuthOK(r, requireAPIKey, s.fullBridge.GetDevGatewayToken()) {
 		anthropicapi.WriteError(w, http.StatusUnauthorized, "missing or invalid x-api-key")
 		return

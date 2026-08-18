@@ -28,17 +28,18 @@ var gatewayToolsUnsupportedTypes = map[provider.ProviderType]bool{
 }
 
 // GetDevGatewayConfig returns the dev gateway's settings.
-func (a *App) GetDevGatewayConfig() (requireAPIKey, useMemory bool) {
+func (a *App) GetDevGatewayConfig() (requireAPIKey, useMemory bool, systemPrompt string) {
 	a.cfgMu.RLock()
 	defer a.cfgMu.RUnlock()
-	return a.cfg.DevGateway.RequireAPIKey, a.cfg.DevGateway.UseMemory
+	return a.cfg.DevGateway.RequireAPIKey, a.cfg.DevGateway.UseMemory, a.cfg.DevGateway.SystemPrompt
 }
 
 // SetDevGatewayConfig updates and persists the dev gateway's settings.
-func (a *App) SetDevGatewayConfig(requireAPIKey, useMemory bool) error {
+func (a *App) SetDevGatewayConfig(requireAPIKey, useMemory bool, systemPrompt string) error {
 	a.cfgMu.Lock()
 	a.cfg.DevGateway.RequireAPIKey = requireAPIKey
 	a.cfg.DevGateway.UseMemory = useMemory
+	a.cfg.DevGateway.SystemPrompt = strings.TrimSpace(systemPrompt)
 	cfg := a.cfg
 	a.cfgMu.Unlock()
 	return config.Save(cfg)
@@ -146,15 +147,17 @@ func (a *App) resolveGatewayProvider(typ, modelID string) (provider.Provider, pr
 // "local/qwen2.5", "openai/gpt-4o"); see resolveGatewayProvider for how it
 // resolves.
 //
-// When the dev gateway's "use memory" setting is on, req.Messages gets a
-// RAG memory block prepended to its system message before the call — this
-// mutates req.Messages, it does not return a copy.
+// If a gateway system prompt is configured, it's merged into req.Messages'
+// system message first; then, when the dev gateway's "use memory" setting
+// is on, a RAG memory block is merged in too — this mutates req.Messages,
+// it does not return a copy.
 func (a *App) DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error) {
 	typ, modelID, err := splitGatewayModelSpec(modelSpec)
 	if err != nil {
 		return nil, "", err
 	}
 
+	req.Messages = mergeSystemBlock(req.Messages, a.devGatewaySystemPrompt())
 	if a.devGatewayMemoryEnabled() && a.GetMemoryEnabled() {
 		req.Messages = a.injectGatewayMemory(ctx, req.Messages)
 	}
@@ -189,6 +192,7 @@ func (a *App) DevGatewayChat(ctx context.Context, modelSpec string, req provider
 		return nil, "", err
 	}
 
+	req.Messages = mergeSystemBlock(req.Messages, a.devGatewaySystemPrompt())
 	if a.devGatewayMemoryEnabled() && a.GetMemoryEnabled() {
 		req.Messages = a.injectGatewayMemory(ctx, req.Messages)
 	}
@@ -227,6 +231,16 @@ func (a *App) devGatewayMemoryEnabled() bool {
 	return a.cfg.DevGateway.UseMemory
 }
 
+// devGatewaySystemPrompt returns the local user's configured standing
+// instruction for every dev-gateway request (config.DevGatewayConfig.
+// SystemPrompt) — empty by default, in which case mergeSystemBlock's
+// blank-is-a-no-op behavior leaves the caller's own messages untouched.
+func (a *App) devGatewaySystemPrompt() string {
+	a.cfgMu.RLock()
+	defer a.cfgMu.RUnlock()
+	return a.cfg.DevGateway.SystemPrompt
+}
+
 // splitGatewayModelSpec parses a "type/model-id" gateway model string.
 func splitGatewayModelSpec(modelSpec string) (typ, modelID string, err error) {
 	parts := strings.SplitN(modelSpec, "/", 2)
@@ -261,13 +275,13 @@ func (a *App) injectGatewayMemory(ctx context.Context, messages []provider.Messa
 
 	results := a.retrieveMemory(ctx, lastUserText)
 	block := strings.TrimSpace(memory.FormatMemoriesForPrompt(results))
-	return mergeMemoryBlock(messages, block)
+	return mergeSystemBlock(messages, block)
 }
 
-// mergeMemoryBlock prepends block to messages' leading system message (or
+// mergeSystemBlock prepends block to messages' leading system message (or
 // adds one if there wasn't one). Pure and side-effect-free so it's directly
 // unit-testable without a real memory store. A blank block is a no-op.
-func mergeMemoryBlock(messages []provider.Message, block string) []provider.Message {
+func mergeSystemBlock(messages []provider.Message, block string) []provider.Message {
 	if block == "" {
 		return messages
 	}

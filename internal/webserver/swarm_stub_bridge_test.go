@@ -348,10 +348,12 @@ func (b *swarmStubBridge) BrowseServerPath(path string) (interface{}, error) {
 	}
 	return nil, nil
 }
-func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool)                       { return false, false }
-func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool) error { return nil }
-func (b *swarmStubBridge) GetDevGatewayToken() string                              { return "" }
-func (b *swarmStubBridge) ListGatewayModels() []models.GatewayModel                { return nil }
+func (b *swarmStubBridge) GetDevGatewayConfig() (bool, bool, string) { return false, false, "" }
+func (b *swarmStubBridge) SetDevGatewayConfig(requireAPIKey, useMemory bool, systemPrompt string) error {
+	return nil
+}
+func (b *swarmStubBridge) GetDevGatewayToken() string               { return "" }
+func (b *swarmStubBridge) ListGatewayModels() []models.GatewayModel { return nil }
 func (b *swarmStubBridge) DevGatewayChatStream(ctx context.Context, modelSpec string, req provider.ChatRequest) (<-chan provider.StreamChunk, string, error) {
 	ch := make(chan provider.StreamChunk)
 	close(ch)

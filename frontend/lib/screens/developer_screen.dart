@@ -389,12 +389,12 @@ class _NavSidebar extends StatelessWidget {
 /// gateway's one real endpoint (deliberately not a fetched copy of
 /// memocpp.com's docs — see handoff.md: this stays available offline, and a
 /// 1-endpoint surface doesn't need a whole fetched docs tree).
-class _ReferenceSection extends StatelessWidget {
+class _ReferenceSection extends ConsumerWidget {
   final String baseUrl;
   const _ReferenceSection({super.key, required this.baseUrl});
 
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context, WidgetRef ref) {
     final theme = MemoTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -450,6 +450,10 @@ class _ReferenceSection extends StatelessWidget {
         ),
         const SizedBox(height: 4),
         copyableValueBox(context, 'OPENAI_BASE_URL=$baseUrl/v1', monospace: true),
+        const SizedBox(height: 18),
+        Divider(height: 1, color: theme.borderSoft),
+        const SizedBox(height: 14),
+        _ClaudeCodeCLIConnectRow(baseUrl: baseUrl),
       ],
     );
   }
@@ -492,6 +496,57 @@ class _ReferenceSection extends StatelessWidget {
             style: TextStyle(fontSize: 12, color: theme.textDim, height: 1.4),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// One-click "connect Claude Code CLI" toggle — writes/restores
+/// env.ANTHROPIC_BASE_URL and env.ANTHROPIC_API_KEY in the CLI's own
+/// ~/.claude/settings.json (see internal/app/claudecodecli.go). Deliberately
+/// CLI-only: that settings file belongs to the `claude` binary, not any
+/// separate Claude desktop app, which is untouched by this toggle.
+class _ClaudeCodeCLIConnectRow extends ConsumerWidget {
+  final String baseUrl;
+  const _ClaudeCodeCLIConnectRow({required this.baseUrl});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final theme = MemoTheme.of(context);
+    final connectedAsync = ref.watch(claudeCodeCLIConnectedProvider);
+
+    Future<void> toggle(bool v) async {
+      try {
+        await ref.read(claudeCodeCLIConnectedProvider.notifier).setConnected(v, baseUrl: baseUrl);
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(L10n.t('dev_gateway_claude_cli_error', {'e': FriendlyError.describeGeneric(e)}))),
+          );
+        }
+      }
+    }
+
+    return connectedAsync.when(
+      loading: () => const SizedBox(height: 20, child: Center(child: CircularProgressIndicator(strokeWidth: 2))),
+      error: (e, _) => Text(
+        '${L10n.t('error')}: ${FriendlyError.describeGeneric(e)}',
+        style: TextStyle(color: MemoTheme.red, fontSize: 12),
+      ),
+      data: (connected) => SwitchListTile(
+        title: Text(
+          L10n.t('dev_gateway_claude_cli_connect_label'),
+          style: TextStyle(fontSize: 13, color: theme.textMain),
+        ),
+        subtitle: Text(
+          L10n.t('dev_gateway_claude_cli_connect_desc'),
+          style: TextStyle(fontSize: 11, color: theme.textDim),
+        ),
+        value: connected,
+        onChanged: toggle,
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        activeThumbColor: MemoTheme.accent,
       ),
     );
   }

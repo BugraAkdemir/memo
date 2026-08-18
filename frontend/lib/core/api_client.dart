@@ -779,6 +779,24 @@ class MemoApiClient {
     );
   }
 
+  Future<bool> getClaudeCodeCLIConnected() async {
+    final res = await _dio.get('/api/dev-gateway/claude-code-cli');
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return data['connected'] as bool? ?? false;
+  }
+
+  Future<bool> setClaudeCodeCLIConnected({
+    required bool connect,
+    required String baseUrl,
+  }) async {
+    final res = await _dio.post(
+      '/api/dev-gateway/claude-code-cli',
+      data: {'connect': connect, 'base_url': baseUrl},
+    );
+    final data = _guard<Map<String, dynamic>>(res.data);
+    return data['connected'] as bool? ?? false;
+  }
+
   Future<List<GatewayModel>> getGatewayModels() async {
     final res = await _dio.get('/api/dev-gateway/models');
     final list = res.data;

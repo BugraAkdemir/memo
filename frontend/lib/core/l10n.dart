@@ -416,6 +416,10 @@ class L10n {
         'OpenAI Chat Completions API — OpenAI uyumlu herhangi bir araç için. "model" alanına aynı şekilde "tip/model-id" yaz.',
     'dev_gateway_reference_models_desc':
         'Kullanılabilir modelleri listeler — birçok istemci bağlanınca bunu otomatik çağırıp model seçiciyi doldurur.',
+    'dev_gateway_claude_cli_connect_label': 'Claude Code CLI\'a Otomatik Bağlan',
+    'dev_gateway_claude_cli_connect_desc':
+        'claude komutunu her çalıştırdığında bu ağ geçidini kullanır (~/.claude/settings.json\'a yazılır). Sadece CLI — Claude\'un masaüstü uygulamasını etkilemez. Kapatınca önceki ayarların varsa geri getirilir.',
+    'dev_gateway_claude_cli_error': 'Claude Code CLI bağlantısı değiştirilemedi: \${e}',
     'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
     'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
     'dev_gateway_system_prompt_desc':
@@ -2254,6 +2258,10 @@ class L10n {
         'OpenAI Chat Completions API — for any OpenAI-compatible tool. Use the same "type/model-id" shape as the "model" field.',
     'dev_gateway_reference_models_desc':
         'Lists the available models — many clients call this automatically on connect to populate a model picker.',
+    'dev_gateway_claude_cli_connect_label': 'Auto-Connect Claude Code CLI',
+    'dev_gateway_claude_cli_connect_desc':
+        'Every `claude` command will use this gateway (written to ~/.claude/settings.json). CLI only — doesn\'t affect Claude\'s desktop app. Turning it off restores whatever was there before, if anything.',
+    'dev_gateway_claude_cli_error': 'Failed to change the Claude Code CLI connection: \${e}',
     'dev_gateway_settings_title': 'Gateway Settings',
     'dev_gateway_system_prompt_label': 'Extra System Instruction',
     'dev_gateway_system_prompt_desc':

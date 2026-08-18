@@ -460,6 +460,33 @@ class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
   }
 }
 
+final claudeCodeCLIConnectedProvider =
+    AsyncNotifierProvider<ClaudeCodeCLIConnectedNotifier, bool>(
+      ClaudeCodeCLIConnectedNotifier.new,
+    );
+
+/// Developer screen's one-click "connect Claude Code CLI" toggle — see
+/// api_client.dart's getClaudeCodeCLIConnected/setClaudeCodeCLIConnected
+/// and internal/app/claudecodecli.go for what actually happens on connect
+/// (writes env.ANTHROPIC_BASE_URL/ANTHROPIC_API_KEY into the CLI's own
+/// ~/.claude/settings.json, CLI-only, never touches a desktop app).
+class ClaudeCodeCLIConnectedNotifier extends AsyncNotifier<bool> {
+  @override
+  Future<bool> build() async {
+    if (authGateBlocked(ref.read(authGateProvider).valueOrNull)) {
+      return false;
+    }
+    return ref.read(apiClientProvider).getClaudeCodeCLIConnected();
+  }
+
+  Future<void> setConnected(bool connect, {required String baseUrl}) async {
+    final connected = await ref
+        .read(apiClientProvider)
+        .setClaudeCodeCLIConnected(connect: connect, baseUrl: baseUrl);
+    state = AsyncValue.data(connected);
+  }
+}
+
 final gatewayModelsProvider = FutureProvider<List<GatewayModel>>((ref) async {
   // BUG-ONB11: same trap as gpuInfoProvider (BUG-ONB5), and missed by the
   // BUG-ONB6 sweep because that audit searched for AsyncNotifier.build()

@@ -158,10 +158,68 @@ iki rozet ("Anthropic Uyumlu"/"OpenAI Uyumlu"), ikinci bir kopyalanabilir
 
 Commit'ler: `cf961ba` (backend), `55e8b58` (frontend).
 
+## Ek (aynı oturum): Claude Code CLI'ı tek tıkla bağlama
+
+Kullanıcı sordu: "OpenAI/Anthropic base URL'i, Claude Code veya Codex'e
+bağladığımızda dosya okuma/yazma gerçekten çalışıyor mu?" — bunu canlı test
+ederken (aşağıda) gerçek `claude` CLI'ı gerçek Read/Write tool'larıyla
+gateway üzerinden dosya okuyup yazdığını kanıtladım, `codex` CLI'ının ise
+artık eski "Chat Completions" formatını değil yeni "Responses API"yi
+kullandığını (kod tarafımın sorunu değil, Codex'in kendi sürüm değişikliği)
+dürüstçe raporladım. Ardından kullanıcı "tek tık ile Claude Code CLI
+bağlama getirsek, masaüstü uygulaması etkilenmemeli, sadece CLI" dedi.
+
+**Yapılan:** `internal/app/claudecodecli.go` — Claude Code CLI'ın kendi
+`~/.claude/settings.json`'ına (belgelenen `"env"` alanı — her `claude`
+çalıştırmasına uygulanan string ortam değişkenleri) `ANTHROPIC_BASE_URL`/
+`ANTHROPIC_API_KEY` yazıyor. **Sadece CLI** — bu dosya `claude` binary'sine
+ait, ayrı bir masaüstü uygulaması varsa ona hiç dokunmuyor. Bağlanmadan
+önce o iki anahtarda zaten bir şey varsa (kullanıcı önceden özel bir
+endpoint'e bağlamışsa) yedekliyor, bağlantı kesilince tam olarak o değerleri
+geri getiriyor — sadece silmiyor. Generic `map[string]any` ile oku-değiştir-
+yaz yapıyor (hooks, permissions, Memo'nun hiç bilmediği onlarca alan
+olduğu gibi kalıyor), atomik yazma (temp dosya + rename).
+
+**Test edilirken bulunan gerçek risk:** Bu makinedeki gerçek
+`~/.claude/settings.json`, kullanıcının **canlı çalışan** karmaşık hook
+setup'ı (codebase-memory-mcp + pixel-agents orkestrasyon sistemi, muhtemelen
+bu oturumu yöneten sistemin ta kendisi). Önce bu dosyayı hiç riske atmadan,
+tamamen izole bir scratch `$HOME` (gerçek profilin bir KOPYASI, `HOME` env
+değişkeni backend process'ine override edilerek) üzerinde tam connect/
+disconnect döngüsünü doğruladım — hooks/model/ilgisiz env değişkenleri
+tamamen korundu. Ancak `claude --bare -p` ile bu kopya üzerinden gerçek bir
+CLI çağrısı denerken, hook'ları atlamak için `--bare` kullanmak
+`settings.json`'daki `env` bloğunu OKUMUYOR gibi görünüyor (muhtemelen
+`--bare`'ın kendi belgelenen "auth strictly ANTHROPIC_API_KEY... OAuth ve
+keychain hiç okunmaz" davranışıyla ilgili, ayrı bir mekanizma) — normal
+(hook'lu) modda denemek ise pixel-agents hook'unu (`/home/bugra/
+.pixel-agents/hooks/claude-hook.js`, canlı oturum yönetimine HTTP ile
+rapor veren bir script) tetikleyip **bu oturumu bozma riski** taşıyordu,
+o yüzden bilinçli olarak durduruldu — belgelenen `env` şeması + gerçek
+env-var'larla (shell export) çalıştığı zaten kanıtlanmış olan bağlantı
+mekanizmasıyla yetinildi (settings.json'ın `env`'i sonuçta CLI'ın kendi
+process ortamına aynı şekilde enjekte ediliyor, mekanizma olarak aynı).
+Bu, dürüstçe not edilmesi gereken tek doğrulanmamış halka.
+
+**Sonrasında gerçek dosya üzerinde TEK bir canlı UI testi** yapıldı (md5
++ tam yapısal karşılaştırma öncesi/sonrası): toggle açıldı → dosyada
+sadece 2 anahtar eklendi, hooks/diğer her şey aynen kaldı → toggle
+kapatıldı → dosya tam olarak eski haline döndü (sadece JSON formatlaması
+farklı, içerik birebir aynı — 12 hook event type'ı, matcher'lar, komut
+listesi tek tek doğrulandı).
+
+Commit'ler: `0404cad` (backend), `8c87553` (frontend).
+
 ## Sırada ne var
 
-- Kullanıcı "push atma" dedi — bu 6 commit `main`'de, **push edilmedi**.
+- Kullanıcı "push atma" dedi — bu 8 commit `main`'de, **push edilmedi**.
   Push için ayrıca onay gerekiyor.
+- **`claude --bare` modunun `settings.json`'daki `env` bloğunu okuyup
+  okumadığı doğrulanamadı** (yukarıya bakın) — normal moddaki gerçek
+  davranış hâlâ (a) belgelenen şema, (b) env-var enjeksiyonunun genel
+  olarak çalıştığının kanıtlanmış olması üzerinden çıkarım. Kullanıcı
+  isterse kendi gerçek ortamında (hook riski olmadan, kendi bilgisiyle)
+  hızlıca `claude` çalıştırıp doğrulayabilir.
 - **Web build varsayılan olarak `'light'` temada başlıyor, OS/tarayıcı
   tercihini takip etmiyor** (`memo_theme_mode` state'i `ThemeModeNotifier`
   içinde sabit `'light'` ile başlatılıyor) — bu oturumda fark edilen ama

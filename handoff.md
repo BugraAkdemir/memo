@@ -68,14 +68,62 @@ istedi: "push atma commitle").
   hem `require_api_key` hem `system_prompt` `PUT` ile temiz duruma
   (false/"") geri alındı — canlı test verisi kalıcı config'te bırakılmadı.
 
+## Ek (aynı oturum): "yakın bile değil" — yeniden tasarım
+
+Kullanıcı yukarıdaki 3-panelli sonucu LM Studio ekran görüntüsüyle
+karşılaştırınca net bir şekilde reddetti ("yakın bile değil, tasarımın
+çizim komponentlerin yerleri falan"). Gerçek fark: LM Studio'nun solu üç
+eşit sütundan biri değil, **gerçek bir döküman ağacı** (gruplu bölümler,
+alt satırlar). Flutter'a kör tekrar denemek yerine önce `mcp__visualize`
+ile hızlı bir HTML mockup çizip (koyu tema, mor vurgu, LM Studio'nun
+gerçek bölüm yapısını taklit eden) kullanıcıya onaylattım — "evet aynen
+bu" onayı alınca Flutter'a geçirildi, commit `ccb87b5`.
+
+**Gerçek yeniden tasarım:** Sol kenar çubuğu artık gerçek bir anchor-nav
+(gruplu bölümler + alt satırlar, `GlobalKey` + `Scrollable.ensureVisible`
+ile ana içerik listesinde ilgili bölüme kaydırıyor) — ayrı sayfalar değil,
+çünkü gateway'in tek gerçek endpoint'i var, LM Studio'daki gibi onlarca
+sayfalık bir döküman ağacına içerik yetmiyor. Renkler Memo'nun kendi
+tema sistemi (`theme.bgApp`/`bgPanel`/`bgElement`, bronz vurgu) — LM
+Studio'nun mor/koyu temasını kopyalamadık, kullanıcının isteği "renkler
+Memo'nun tonuna uygun olsun" idi.
+
+**Canlı doğrulamada gerçek bir bug bulundu (statik analizde görünmüyordu):**
+Üst çubuktaki `Wrap` widget'ının içine `Spacer()` koymuşum — `Spacer`,
+`Expanded`'ı sarıyor, `Expanded` da doğrudan bir `Flex` (Row/Column)
+atası gerektiriyor, `Wrap` bu değil. Bu kombinasyon runtime'da patlıyor
+(`ParentDataWidget`/`RenderFlex` hatası) ama `flutter analyze` bunu
+YAKALAMIYOR — release build'de hata widget'ı hiç mesaj göstermeden boş
+bir kutu olarak render oluyor. Tam olarak canlı ekran görüntüsünde
+gördüğüm şey buydu: üst çubuğun ilk iki chip'i çiziliyor, ondan sonraki
+her şey (tüm içerik alanı dahil) boş gri kutu. Düzeltme: tek `Wrap` +
+ortada `Spacer` yerine, `space-between` bir `Row` içinde iki ayrı,
+bağımsız sarılan `Wrap` grubu.
+
+**Doğrulama — 4 kombinasyonun hepsi canlı tarayıcıda:** açık/koyu tema ×
+geniş/dar pencere. Koyu temayı test etmek için `resize_window`'un
+`colorScheme` parametresi işe yaramadı (uygulama OS `prefers-color-scheme`
+takip etmiyor, `memo_theme_mode` tercihi web'de varsayılan olarak sabit
+`'light'` — `frontend/lib/providers/settings_provider.dart:733`) — bunun
+yerine tarayıcının `localStorage`'ına `flutter.memo_theme_mode` anahtarını
+JSON-encoded `"dark"` olarak elle yazıp sayfa yenilendi. Sidebar nav
+tıklamaları doğru bölüme kaydırıyor, toggle'lar ve sistem promptu kaydetme
+gerçek backend'e karşı uçtan uca çalıştı, 700px'te taşma yok. `flutter
+analyze` temiz (aynı 5 pre-existing), `flutter test` 262/262.
+
 ## Sırada ne var
 
-- Kullanıcı "push atma" dedi — bu 3 commit `main`'de, **push edilmedi**.
+- Kullanıcı "push atma" dedi — bu 4 commit `main`'de, **push edilmedi**.
   Push için ayrıca onay gerekiyor.
-- `_ReferencePanel` şu an tek endpoint'i (`POST /v1/messages`) gösteriyor —
+- Reference bölümü şu an tek endpoint'i (`POST /v1/messages`) gösteriyor —
   gateway'e ileride yeni bir endpoint eklenirse (ör. OpenAI-uyumlu
-  `/v1/chat/completions`, şu an yok) bu panele elle eklenmesi gerekecek;
-  otomatik değil.
+  `/v1/chat/completions`, şu an yok) sidebar'a ve içerik kartına elle
+  eklenmesi gerekecek; otomatik değil.
+- **Web build varsayılan olarak `'light'` temada başlıyor, OS/tarayıcı
+  tercihini takip etmiyor** (`memo_theme_mode` state'i `ThemeModeNotifier`
+  içinde sabit `'light'` ile başlatılıyor) — bu oturumda fark edilen ama
+  düzeltilmeyen, ayrı bir potansiyel iyileştirme. Masaüstü build'de aynı
+  davranış var mı kontrol edilmedi.
 
 ---
 

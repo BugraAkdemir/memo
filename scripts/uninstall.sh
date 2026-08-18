@@ -82,7 +82,14 @@ if $DO_BACKUP; then
     echo -e "\n${BOLD}Backing up memory to:${NC} ${GREEN}$BACKUP_FILE${NC}"
 
     if command -v zip >/dev/null 2>&1; then
-        (cd "$MEMO_HOME/data" && zip -qr "$BACKUP_FILE" memory/ sessions/ 2>/dev/null || true)
+        # providers.json holds configured API keys — encrypted at rest
+        # (internal/provider/config.go), so backing it up alongside
+        # memory/sessions is no less safe than the file already sitting on
+        # disk. Without it, a routine uninstall+reinstall silently drops
+        # every configured provider with no warning — the user finds out
+        # only after reinstalling, when chat no longer works and they have
+        # to dig up (or regenerate) their API keys from scratch.
+        (cd "$MEMO_HOME/data" && zip -qr "$BACKUP_FILE" memory/ sessions/ providers.json 2>/dev/null || true)
     elif command -v python3 >/dev/null 2>&1; then
         MEMO_HOME="$MEMO_HOME" BACKUP_FILE="$BACKUP_FILE" python3 -c "
 import zipfile, os, sys

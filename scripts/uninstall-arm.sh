@@ -143,7 +143,12 @@ backup_memory_dir() {
     echo -e "\n${BOLD}Backing up ${label} memory to:${NC} ${GREEN}$backup_file${NC}"
 
     if command -v zip >/dev/null 2>&1; then
-        (cd "$src_data" && zip -qr "$backup_file" memory/ sessions/ 2>/dev/null || true)
+        # providers.json holds configured API keys — encrypted at rest
+        # (internal/provider/config.go), so backing it up alongside
+        # memory/sessions is no less safe than the file already sitting on
+        # disk. Without it, a routine uninstall+reinstall silently drops
+        # every configured provider with no warning.
+        (cd "$src_data" && zip -qr "$backup_file" memory/ sessions/ providers.json 2>/dev/null || true)
     elif command -v python3 >/dev/null 2>&1; then
         SRC_DATA="$src_data" BACKUP_FILE="$backup_file" python3 -c "
 import zipfile, os

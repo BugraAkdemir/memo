@@ -1,3 +1,84 @@
+# Session 18 (2026-08-19): Developer ekranını LM Studio'ya benzer 3 panelli hale getirdik
+
+Kullanıcı LM Studio'nun kendi "Developer" ekranının bir görüntüsünü paylaşıp
+bizimkinin ("bok gibi" — kullanıcının kendi ifadesi) çok daha sade/dağınık
+olduğunu söyledi, LM Studio'daki gibi solda döküman, ortada model listesi +
+log, sağda seçili model ayarları düzenini istedi. İlk teklifi — memocpp.com
+docs'unu **canlı** çekmek — reddettim: Memo'nun "yerel-öncelikli, internetsiz
+çalışır" kimliğiyle çelişir (LM Studio'nun kendi endpoint listesi de zaten
+hardcoded, hiçbir yerden çekmiyor), kazanç da yok (gateway'in tek endpoint'i
+nadiren değişir). Kullanıcı onayladı: "sadece görsel kısmı yap ama... hafızayı
+aç kapat vesaire ekleyebiliriz, api sistem promptunu ayarlayabiliriz gibi
+harika olur." Üç ayrı, doğrulanmış commit'te yapıldı (AGENTS.md Rule 6 —
+parça parça, tek dev commit değil), **push edilmedi** (kullanıcı açıkça
+istedi: "push atma commitle").
+
+## Yapılan değişiklikler (3 commit)
+
+1. **`a014ff5` — backend: dev gateway için opsiyonel "ek sistem talimatı"**
+   `config.DevGatewayConfig.SystemPrompt` eklendi (yeni alan). Boşsa hiçbir
+   şey değişmiyor. Doluysa, `internal/app/devgateway.go`'daki
+   `DevGatewayChat`/`DevGatewayChatStream`, `injectGatewayMemory`'nin zaten
+   kullandığı `mergeSystemBlock` (adı `mergeMemoryBlock`'tan değiştirildi —
+   artık iki farklı türde blok birleştiriyor) ile bunu isteğin sistem
+   mesajına **ekliyor** — aracın (Claude Code vb.) kendi sistem promptunun
+   **yerine geçmiyor**, üstüne ekleniyor. Bilinçli tasarım: `injectGatewayMemory`'nin
+   var olan yorumundaki ilkeyle aynı — harici bir araç kendi sistem
+   promptunu zaten gönderiyor, Memo'nun kendi kimliği/persona'sı ona
+   zorla eklenmemeli. Bu, Memo kullanıcısının kendi eklemek istediği bir
+   standing instruction için (ör. "her zaman Türkçe cevap ver").
+   `GetDevGatewayConfig`/`SetDevGatewayConfig` (App + FullBridge arayüzü)
+   üçüncü bir dönüş/parametre kazandı, tüm çağıran yerler (handler'lar,
+   swarm stub bridge test'i) güncellendi.
+2. **`de71a7f` — frontend: yeni alanı API client'a kadar bağlama**
+   Dart `DevGatewayConfig` modeli, API client (`getDevGatewayConfig`/
+   `setDevGatewayConfig`), `DevGatewayConfigNotifier.save()` — hepsi yeni
+   alanı uçtan uca taşıyor. Bu commit, henüz UI'da düzenleme alanı olmadan
+   (eski `update()` closure'ı değişmeden geçiriyor) derlenip analiz
+   edilebilir bir checkpoint olsun diye ayrı tutuldu.
+3. **`6105383` — frontend: Developer ekranının 3 panelli yeniden tasarımı**
+   İnce bir üst durum çubuğu (yeşil nokta + "Active" + Base URL kopyalanabilir
+   pill) üstünde üç panel: **sol** — gateway'in tek gerçek endpoint'i için
+   kompakt, her zaman doğru, **yerel** bir API referansı (method rozeti +
+   `POST /v1/messages`, Anthropic Messages API) — memocpp.com'dan çekilen
+   değil, bilinçli olarak statik; **orta** — kullanılabilir modeller
+   (kopyalanabilir pill'ler) + canlı istek günlüğü; **sağ** — gateway
+   ayarları: Require API Key + token (eski tek-sütun yerleşiminden
+   taşındı, davranış değişmedi), Use Memory (aynı şekilde taşındı), ve
+   yeni Ek Sistem Talimatı alanı (çok satırlı text field + açık "Save"
+   butonu). ~900px altında tek sütuna çöküyor (`LayoutBuilder` breakpoint'i)
+   — pencere daraltıldığında taşma olmuyor.
+
+## Doğrulama
+
+- Backend: `go build`/`go vet`/`go test -race` (tüm paketler) yeşil.
+- Frontend: `flutter analyze lib/` temiz (aynı 5 pre-existing info-level
+  bulgu, yeni sıfır). `flutter test` 262/262 yeşil. Rule #8 grep
+  (`Text\(`/`Tooltip\(`/`SnackBar\(`/`AlertDialog\(` + quoted literal)
+  değiştirilen 2 dosyada temiz.
+- **Canlı, gerçek tarayıcıda doğrulandı** (`go build` ile backend +
+  `flutter build web --release` ile frontend, `internal/webserver/webapp/`'a
+  kopyalanıp embed edilerek — bu dizin `.gitignore`'da, `index.html` hariç,
+  ve o da flutter'ın kendi varsayılan şablonuyla zaten aynı olduğu için
+  `git status` temiz kaldı): 1400px'te 3 panel yan yana doğru render oldu,
+  700px'e daraltılınca tek sütuna düzgünce çöktü (Live Log dahil her şey
+  görünür kaldı), sistem promptu alanına gerçekten yazıp "Save"e basıldı →
+  `GET /api/dev-gateway/config` değişikliği doğruladı, "Require API Key"
+  toggle'ı açılıp token kutusunun göründüğü canlı görüldü. Test sonrası
+  hem `require_api_key` hem `system_prompt` `PUT` ile temiz duruma
+  (false/"") geri alındı — canlı test verisi kalıcı config'te bırakılmadı.
+
+## Sırada ne var
+
+- Kullanıcı "push atma" dedi — bu 3 commit `main`'de, **push edilmedi**.
+  Push için ayrıca onay gerekiyor.
+- `_ReferencePanel` şu an tek endpoint'i (`POST /v1/messages`) gösteriyor —
+  gateway'e ileride yeni bir endpoint eklenirse (ör. OpenAI-uyumlu
+  `/v1/chat/completions`, şu an yok) bu panele elle eklenmesi gerekecek;
+  otomatik değil.
+
+---
+
 # Session 17 (2026-08-18): Web aramayı blind injection'dan gerçek tool-calling'e taşıdık
 
 Aynı gün, bir önceki oturumun (Session 16) query-extraction yamasını

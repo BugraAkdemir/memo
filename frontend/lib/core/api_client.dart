@@ -767,10 +767,15 @@ class MemoApiClient {
   Future<void> setDevGatewayConfig({
     required bool requireAPIKey,
     required bool useMemory,
+    required String systemPrompt,
   }) async {
     await _dio.put(
       '/api/dev-gateway/config',
-      data: {'require_api_key': requireAPIKey, 'use_memory': useMemory},
+      data: {
+        'require_api_key': requireAPIKey,
+        'use_memory': useMemory,
+        'system_prompt': systemPrompt,
+      },
     );
   }
 

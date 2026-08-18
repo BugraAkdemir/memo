@@ -6,11 +6,13 @@
 class DevGatewayConfig {
   final bool requireAPIKey;
   final bool useMemory;
+  final String systemPrompt;
   final String token;
 
   const DevGatewayConfig({
     this.requireAPIKey = false,
     this.useMemory = false,
+    this.systemPrompt = '',
     this.token = '',
   });
 
@@ -18,6 +20,7 @@ class DevGatewayConfig {
     return DevGatewayConfig(
       requireAPIKey: json['require_api_key'] as bool? ?? false,
       useMemory: json['use_memory'] as bool? ?? false,
+      systemPrompt: json['system_prompt'] as String? ?? '',
       token: json['token'] as String? ?? '',
     );
   }

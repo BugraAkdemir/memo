@@ -444,10 +444,16 @@ class DevGatewayConfigNotifier extends AsyncNotifier<DevGatewayConfig> {
     return ref.read(apiClientProvider).getDevGatewayConfig();
   }
 
-  Future<void> save({required bool requireAPIKey, required bool useMemory}) async {
-    await ref
-        .read(apiClientProvider)
-        .setDevGatewayConfig(requireAPIKey: requireAPIKey, useMemory: useMemory);
+  Future<void> save({
+    required bool requireAPIKey,
+    required bool useMemory,
+    required String systemPrompt,
+  }) async {
+    await ref.read(apiClientProvider).setDevGatewayConfig(
+          requireAPIKey: requireAPIKey,
+          useMemory: useMemory,
+          systemPrompt: systemPrompt,
+        );
     state = await AsyncValue.guard(
       () => ref.read(apiClientProvider).getDevGatewayConfig(),
     );

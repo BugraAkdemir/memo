@@ -159,11 +159,12 @@ class _ConfigSection extends ConsumerWidget {
   Widget build(BuildContext context, WidgetRef ref) {
     final theme = MemoTheme.of(context);
 
-    Future<void> update({bool? requireAPIKey, bool? useMemory}) async {
+    Future<void> update({bool? requireAPIKey, bool? useMemory, String? systemPrompt}) async {
       try {
         await ref.read(devGatewayConfigProvider.notifier).save(
               requireAPIKey: requireAPIKey ?? config.requireAPIKey,
               useMemory: useMemory ?? config.useMemory,
+              systemPrompt: systemPrompt ?? config.systemPrompt,
             );
       } catch (e) {
         if (context.mounted) {

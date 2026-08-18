@@ -142,21 +142,69 @@ her zaman backend'in o anki gerçek durumu oluyor.
    bağlı flaky test, 3 tekrarda 2 geçti 1 kaldı). `flutter analyze`/
    `flutter test` (260/260) temiz.
 
+## Devam — aynı oturum, docs/KNOWN_ISSUES.md'deki 3 eski "hâlâ açık" madde
+
+Kullanıcı "sırada ne var" diye sorunca `BUG_REPORT.md` (canlı takip, "0 açık"
+diyordu ama sadece kullanıcı testinden gelenleri tutuyor) yerine
+`docs/KNOWN_ISSUES.md`'ye (2026-07-04'ten dondurulmuş sistematik denetim)
+bakıldı — orada "Yüksek, hâlâ açık" diye işaretli 3 madde (H04, H05, H10)
+kaynak kodda tek tek elle doğrulandı (hepsi gerçekten hâlâ açıktı) ve
+sırayla düzeltildi:
+
+- `d13d3f9` **fix(whatsapp): escape LIKE wildcards in SearchMessages (H05)**
+  — `internal/whatsapp/store.go`'daki arama, kullanıcı sorgusunu ham
+  `"%"+query+"%"` ile LIKE'a veriyordu; `_`/`%` escape edilmeden. Yeni
+  `escapeLikePattern` + `ESCAPE '\'`. 2 yeni test.
+- `3e7ed7a` **fix(ngrok): reject downloads that aren't actually the archive
+  format (H04)** — ngrok binary indirmesinde hiç bütünlük kontrolü yoktu.
+  Gerçek bir SHA256 pinlenemedi: ngrok bu "stable" rolling CDN linki için
+  checksum yayınlamıyor (ngrok.com/downloads canlı `WebFetch` ile
+  doğrulandı) ve içerik her sürümde değişiyor, sabit hash bir sonraki
+  güncellemeyi kırardı. Bunun yerine `verifyArchiveMagic` — indirilen
+  içeriğin gerçekten söz verilen arşiv formatında (gzip/.tgz, PK/.zip)
+  olduğunu, CDN'in HTML hata sayfası 200 ile dönmesi gibi gerçek bir
+  senaryoya karşı doğruluyor. **Kısmi düzeltme, kasıtlı olarak açık
+  bırakıldı:** tam kriptografik doğrulama belirli bir ngrok sürümünü
+  sabitleyip elle hesaplanmış hash'le pinlemeyi gerektirir — "her zaman
+  en son stable'ı kur" davranışını değiştiren, tek taraflı verilmemiş bir
+  karar.
+- `77468b7` **fix(agent): persist the tool-call audit log to disk (H10)**
+  — `AgentLogEntry` ("auditing için") sadece 1000 kayıtla sınırlı bir
+  bellek dizisindeydi, hiçbir okuyucusu yoktu (kod genelinde grep'lendi,
+  doğrulandı) — 1000'den sonra veya her restart'ta sessizce kayboluyordu.
+  `logEvent` artık her girdiyi `config.DataDir()/agent-audit.jsonl`'a
+  (0600, append-only, best-effort) da yazıyor. Bellekteki liste kaldı,
+  artık sadece hızlı "son kayıtlar" önbelleği, tek kopya değil.
+- `dcdc0bd` **docs(known-issues):** üçü de `docs/KNOWN_ISSUES.md`'de
+  ✅ işaretlendi (H04 kısmi not düşülerek), özet sayıları güncellendi.
+
+Doğrulama: her fix kendi regresyon testiyle geldi, `go vet`/
+`go test -tags "sqlite_fts5" -race ./...` tüm paketlerde yeşil (bu turda
+`internal/memory`'nin flaky `TestRunDreamScheduler_RespectsEnabledFlag`'i
+de dahil tekrar çalıştı, yeşildi).
+
 ## Sıradaki işler
 
 1. **RPi'nin build'i hâlâ güncellenmedi — güvenlik açığı orada hâlâ
-   geçerli.** Kullanıcı "update'i boşver" dedi, bu yüzden 4 commit de
-   RPi'ye hiç ulaşmadı. Şu an tünel ingress kuralı kaldırılmış olduğu
+   geçerli.** Kullanıcı "update'i boşver" dedi, bu yüzden bu oturumun
+   commit'lerinden hiçbiri RPi'ye ulaşmadı (incognito/setup fix'leri +
+   şimdi H04/H05/H10). Şu an tünel ingress kuralı kaldırılmış olduğu
    için RPi doğrudan tehlikede değil, ama `mm.bugradev.com → localhost:8090`
-   benzeri bir kural tekrar eklenirse (kullanıcı bunu tekrar deneyebilir)
-   aynı şekilde şifresiz erişilebilir olur — çünkü çalışan binary hâlâ eski
-   kod. İleride `update.sh` ile veya yeni bir release ile RPi'ye taşınmalı;
-   kullanıcıya güvenlik açığının hâlâ canlı/deploy edilmemiş olduğu
-   tekrar hatırlatılmalı.
+   benzeri bir kural tekrar eklenirse aynı şekilde şifresiz erişilebilir
+   olur. İleride `update.sh` ile veya yeni bir release ile RPi'ye
+   taşınmalı.
 2. Bu oturumda `~/.memo/memo-backend` (bu makinenin **kendi** yerel
    kurulumu) test amaçlı yeni build ile değiştirildi — fonksiyonel olarak
-   daha iyi (4 fix'in tümünü içeriyor) ama resmi bir release değil, sürüm
-   numarası hâlâ V3.5.5 diyor. Karışıklığı önlemek için not düşüldü.
+   daha iyi ama resmi bir release değil, sürüm numarası hâlâ V3.5.5 diyor.
+   Karışıklığı önlemek için not düşüldü.
+3. **H04 tam kapanmadı** — ngrok binary'sini belirli bir sürüme sabitleyip
+   gerçek SHA256 hash'ini pinlemek isteniyorsa (kullanıcı onaylarsa),
+   internet erişimi olan bir ortamda gerçek binary indirilip hash
+   hesaplanmalı; bu sandbox'tan yapılamadı.
+4. `docs/KNOWN_ISSUES.md`'nin Medium/Low/Info bölümleri hâlâ
+   2026-07-04'ten beri yeniden doğrulanmadı — dosyanın kendi notu bunu
+   "taban, tavan değil" olarak işaretliyor. İstenirse aynı yöntemle
+   (elle kaynak koda karşı doğrulama) taranabilir.
 
 ---
 

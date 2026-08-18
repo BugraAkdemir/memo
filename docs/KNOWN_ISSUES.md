@@ -262,15 +262,15 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - ~~`downloadProgressProvider` polled every 1s forever, even with no active download.~~
 - **Fix:** `models_provider.dart` — `downloadProgressProvider` is now `StreamProvider.autoDispose` with an adaptive interval (1s while a download is active, 4s while idle), and stops entirely when no screen is listening.
 
-### H04. ngrok Binary Download Has No Integrity Check
-- **File:** `internal/ngrok/installer.go:34-91`
-- **Detail:** The ngrok binary is downloaded over HTTPS but no SHA256 checksum verification is performed. The download URL (`bin.ngrok.com/c/bNyj1mQVY4c/`) contains a static API key. If the CDN is compromised or the download is intercepted, a malicious binary could be installed.
-- **Risk:** Arbitrary code execution via compromised ngrok binary.
+### ~~H04. ngrok Binary Download Has No Integrity Check~~ ✅ PARTIALLY FIXED (2026-08-18)
+- ~~`internal/ngrok/installer.go:34-91`~~
+- ~~The ngrok binary is downloaded over HTTPS but no SHA256 checksum verification is performed. The download URL (`bin.ngrok.com/c/bNyj1mQVY4c/`) contains a static API key. If the CDN is compromised or the download is intercepted, a malicious binary could be installed.~~
+- **Fix:** `verifyArchiveMagic` rejects a response whose leading bytes don't match the archive format its extension promises (gzip magic for `.tgz`, `PK` for `.zip`) — catches a real CDN failure mode where an error page is served with a 200 status instead of the binary. **Not fully closed:** a real SHA256 pin isn't hardcoded — ngrok doesn't publish checksums for this rolling "stable" shortlink, and the content changes on every release, so a fixed hash would break the next update. Full tamper-resistance against a compromised CDN/origin (HTTPS already covers MITM) needs pinning this repo to one specific ngrok version with a maintainer-verified hash, bumped by hand on every update — a real trade-off against "always installs latest stable," left as a deliberate, documented decision rather than made unilaterally.
 
-### H05. WhatsApp SQL LIKE Injection in `SearchMessages`
-- **File:** `internal/whatsapp/store.go:107-138`
-- **Detail:** User input is wrapped with `"%" + query + "%"` for a LIKE pattern. If `query` contains `_` (single-character wildcard in SQL LIKE), it matches unintended rows. Example: query `"test_"` would match `"test1"`, `"testX"`, etc.
-- **Risk:** Incorrect search results when messages contain underscores.
+### ~~H05. WhatsApp SQL LIKE Injection in `SearchMessages`~~ ✅ FIXED (2026-08-18)
+- ~~`internal/whatsapp/store.go:107-138`~~
+- ~~User input is wrapped with `"%" + query + "%"` for a LIKE pattern. If `query` contains `_` (single-character wildcard in SQL LIKE), it matches unintended rows. Example: query `"test_"` would match `"test1"`, `"testX"`, etc.~~
+- **Fix:** `escapeLikePattern` escapes `\`, `%`, `_` before substring-wrapping the query, paired with `ESCAPE '\'` on the LIKE clause.
 
 ### ~~H06. Flutter: Global Style Cache (`_styleCache`) Memory Leak~~ ✅ RE-CHECKED, NOT A REAL LEAK
 - ~~`frontend/lib/widgets/chat_message_list.dart:13`~~
@@ -289,9 +289,10 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 - ~~Individual tool executions had no timeout enforced by the pipeline.~~
 - **Fix:** `pipeline.go` sets `toolTimeout: 120 * time.Second` and wraps each tool call in a derived context. **2026-07-04 follow-up:** this budget was being silently truncated to 60s by `tools/command.go`'s own hard-coded `DefaultToolTimeout` — fixed so `run_command`/`search_files` now honor the caller's deadline and only fall back to 60s when the caller sets none (see Resolved Issues).
 
-### H10. Agent Audit Log Limited to 1000 Entries
-- **File:** `internal/agent/executor.go:40-45`
-- **Detail:** `logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.
+### ~~H10. Agent Audit Log Limited to 1000 Entries~~ ✅ FIXED (2026-08-18)
+- ~~`internal/agent/executor.go:40-45`~~
+- ~~`logEntries` slice is capped at 1000. Old entries are silently dropped. No rotation or persistence.~~
+- **Fix:** `logEvent` now also appends each entry as one JSON line to `config.DataDir()/agent-audit.jsonl` (0600, append-only, best-effort). The in-memory slice stays capped at 1000 — it's now just a fast "recent" cache, not the only copy.
 
 ### ~~H11. Mobile API Client Missing Most Backend Endpoints~~ ✅ RE-CHECKED, NO LONGER TRUE
 - ~~`mobile/lib/core/api_client.dart`~~
@@ -669,7 +670,8 @@ This document tracks all currently open bugs and technical risks in the Memo pro
 > **Audit scope:** Full codebase — Go backend (app.go, app_skill.go, all internal/ packages) + Flutter frontend + mobile frontend + skill system + orchestra system
 > **2026-07-04 pass:** Every 🔴 Critical and 🟠 High item, plus M09-M12/M31, was individually re-checked against current source. 15 items previously listed as open (CR01, CR02, H01, H02, H03, H07, H08, H09, H14, H16, H17, H18, H20, M10, M11, M12, M31 — one High item cross-linked as a Medium duplicate) were already fixed and are now moved to ✅ Fixed. Two (H15, H19) were partially fixed and downgraded in place (High → Medium/Low) rather than closed outright. Medium items M13-M30 and all ⚪ Low / ⚫ Info items were **not** re-verified this pass and may already be stale in the same way — treat counts below as a floor, not a ceiling.
 > **2026-08-05 spot-check:** H06 (style cache) and H11 (mobile API client) were false positives on re-check; H12 (data race) was also a false positive, but the real narrower issue it pointed at was tracked separately as BUG-L4 and has since been fixed. All three moved to ✅ Fixed above.
-> **Open bugs (as of 2026-07-04, minus the 3 above):** 🔴0, 🟠3 confirmed (H04, H05, H10), 🔵~28 (incl. H15 downgrade, not fully re-verified), ⚪~19 (incl. H19 downgrade, not fully re-verified) — none of these re-verified since 2026-07-04; check `BUG_REPORT.md` for current ground truth
+> **2026-08-18 spot-check:** H04, H05, H10 — the 3 High items this document had flagged as still-confirmed-open since 2026-07-04 — were individually re-verified against current source (all three genuinely still open, unlike the 2026-08-05 false positives) and fixed same-day. All three moved to ✅ Fixed above (H04 only partially — see its entry for the real SHA256-pin limitation left open).
+> **Open bugs (as of 2026-07-04, minus the 6 above):** 🔴0, 🟠0 confirmed, 🔵~28 (incl. H15 downgrade, not fully re-verified), ⚪~19 (incl. H19 downgrade, not fully re-verified) — Medium/Low/Info not re-verified since 2026-07-04; check `BUG_REPORT.md` for current ground truth
 > **Observations:** 24 (I24 spot-checked 2026-07-04, still open)
-> **Fixed:** 61 (43 previous + 15 confirmed 2026-07-04 + 3 confirmed 2026-08-05)
+> **Fixed:** 64 (43 previous + 15 confirmed 2026-07-04 + 3 confirmed 2026-08-05 + 3 confirmed 2026-08-18)
 > **Total issues found:** 108+

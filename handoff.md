@@ -1,3 +1,166 @@
+# Session 17 (2026-08-18): Web aramayı blind injection'dan gerçek tool-calling'e taşıdık
+
+Aynı gün, bir önceki oturumun (Session 16) query-extraction yamasını
+kullanıcıyla birlikte gözden geçirirken kullanıcı iki şey daha sordu:
+"webde aranıyor" animasyonu neden görünmüyor, ve web arama gerçekten
+gerektiğinde mi çalışıyor yoksa her mesajda mı (üstüne bir de artık ekstra
+bir LLM çağrısı daha var — Session 16'nın query-extraction yaması). Kullanıcı
+regex tabanlı bir çözümü reddetti ("hem TR hem EN hem global nasıl olur"),
+ekstra LLM çağrısını da reddetti ("her seferinde bir istek daha atarsak
+sorun olur"). Cevap: agent modunun zaten native tool-calling ile bunu
+**sıfır ekstra istekle** çözdüğünü kod okuyarak bulduk
+(`internal/agent/pipeline.go:120-131` — `Tools:` alanı zaten atılacak olan
+TEK cevap isteğinin içinde, model aynı istekte hem tool çağırıp
+çağırmayacağına karar veriyor hem de çağırmıyorsa direkt cevap üretiyor).
+Kullanıcı onayladı: "agent daki sistemi web için kullanabilir miyiz, hadi
+yap." Session 16'nın query-extraction yaması tamamen söküldü, yerine bu
+geldi. **Canlı olarak kullanıcının kendi çalışan RPi-değil-yerel kurulumunda**
+(`/home/bugra/Documents/memo` cwd'sinde `./data` kullanan, gerçek
+`OpenCode Zen 2` sağlayıcılı, gerçek sohbet geçmişli backend) build alınıp
+test edildi — detaylar aşağıda.
+
+## Yapılan değişiklik
+
+**Yeni mekanizma:** `internal/agent/tools.go`'daki `web_search` tool tanımı
+`registerWebSearchTool()`'a çıkarıldı, `NewWebSearchRegistry()` eklendi
+(sadece bu bir tool'u içeren registry — `NewWhatsAppRegistry()`'nin aynısı
+deseni). `internal/agent/executor.go`'ya `NewWebSearchExecutor(existing
+*Executor)` eklendi — `NewWhatsAppExecutor` gibi, sandbox/permissions/backup/
+audit-log'u paylaşır, sadece registry'si farklı. `web_search`'ün
+`DangerLevel: Safe` olması sayesinde `PermissionManager.Check` onu hep
+otomatik onaylıyor (`permissions.go:66-75`) — bu executor hiçbir zaman izin
+ekranına takılmıyor.
+
+`App` struct'ına `webSearchExecutor *agent.Executor` eklendi
+(`app.go`), `a.agentExecutor` inşa edilir edilmez
+`agent.NewWebSearchExecutor(a.agentExecutor)` ile kuruluyor.
+
+`internal/app/llm.go`'ya `callWebSearchAgentStream` eklendi —
+`callAgentStream`'in küçültülmüş hali: `resolveAgentProvider()` +
+`a.webSearchExecutor.RunStream(...)`, ama agent_event'leri frontend'e
+iletmiyor/kaydetmiyor (agent modunun tool-badge UI'ı bilinçli olarak bu
+modda yok — tek görünür sinyal, tool gerçekten çalışırken `onEvent`
+callback'inden ateşlenen `{FinishReason:"status", Content:"web_search"}`,
+zaten var olan ve doğru TR/EN karşılığı olan "Webde aranıyor..." satırını
+tetikliyor).
+
+`internal/app/chat.go`'daki `routeStream`, agent modu kontrolünden hemen
+sonra yeni bir dal kazandı: `agentEnabled` kapalıyken, web arama açıkken,
+orchestra kapalıyken (conductor'ın `RunSingle` tek-istek akışına
+tool-calling eklemek bu oturumun kapsamı dışında bırakıldı — o kombinasyon
+artık hiç arama yapmıyor, agent+websearch ikisi de kapalıyken zaten
+yapmadığı gibi) ve bir sağlayıcı/yerel model varken `callWebSearchAgentStream`'e
+yönlendiriyor. `SendMessageStream`'deki eski **koşulsuz** ön-chunk (her
+mesajda, arama gerçekten olacak mı olmayacak mı bakmaksızın "web_search"
+status'u basan blok) tamamen silindi — Session 16'nın kendi yorumunda
+zaten teşhis edilmiş "indiscriminate arama" görünümünü şimdi bu yeni mod
+için de üretirdi, çünkü artık arama gerçekten koşullu.
+
+`internal/app/helpers.go`'daki blind injection bloğu (`websearch.Search`
+çağrısı, `buildWebSearchQuery` — Session 16'da eklenen query-extraction
+fonksiyonu) tamamen silindi. `buildMessagesForSession` artık web aramayla
+hiç ilgilenmiyor — karar tamamen `routeStream`'e taşındı.
+
+## Neden bu daha iyi
+
+- **Sıfır ekstra istek:** karar, zaten atılacak olan cevap isteğinin
+  `Tools:` alanına gömülü — modelin aramaya karar vermediği her mesajda
+  (ör. "naber") literal olarak sıfır fazladan network/LLM çağrısı. Session
+  16'nın query-extraction yaması TAM TERSİYDİ — her mesajda bir LLM çağrısı
+  daha ekliyordu.
+- **Regex yok, dil-agnostik:** karar modelin kendi semantik anlayışı,
+  string/keyword eşleştirmesi değil — TR/EN/başka bir dil fark etmiyor.
+- **Gerçekten gerektiğinde çalışıyor:** "naber" gibi mesajlarda hiç
+  aramıyor (aşağıdaki canlı testte kanıtlandı), bilgi gerektiren mesajlarda
+  arıyor.
+
+## Canlı doğrulama (gerçek kullanıcı verisiyle, kullanıcının izniyle)
+
+Kullanıcı açıkça izin verdi: "şuanki ki kişisel datları yok rahatlıkla
+bozabilirsin merak etme". `/home/bugra/Documents/memo` reposunun cwd'si
+`./data`yı kullanan, gerçek `OpenCode Zen 2` sağlayıcılı, gerçek sohbet
+geçmişli **çalışan** backend (`--headless --port 8090`, `go run` ile daha
+önce başlatılmış) `POST /api/shutdown` ile düzgünce kapatıldı, yeni kod
+`CGO_ENABLED=1 go build -tags "sqlite_fts5"` ile derlenip aynı cwd'de aynı
+portta başlatıldı (aynı `data/providers.json`, aynı aktif sağlayıcı, aynı
+oturum geçmişi — hiçbir veri kaybı yok, backend süreci değişti).
+
+1. **`curl -N POST /api/send/stream {"message":"naber"}`** → düz, hızlı
+   cevap, **hiç** `"web_search"` status chunk'ı yok, backend logunda o
+   mesaj civarında `AGENT [web_search]` satırı yok — model aramaya hiç
+   karar vermedi.
+2. **`curl -N POST /api/send/stream {"message":"kanka bugra akdemir kim
+   hakkinda bilgi toplarmisin internetten"}`** (orijinal bug raporundaki
+   örneğin birebir aynısı) → `{"content":"web_search","finish_reason":"status"}`
+   chunk'ı doğru zamanda geldi, backend logunda `AGENT [web_search] SUCCESS`
+   (iki kez — model sorguyu ikinci kez incelemeye karar verdi, kendi
+   tercihi), ve nihai cevap **gerçekten ilgili** kaynaklar içeriyordu
+   (me.bugradev.com, github.com/BugraAkdemir, LinkedIn) — orijinal bug
+   raporundaki alakasız YouTube kanalları/forum gönderilerinin tam tersi.
+3. **Gerçek tarayıcıdan (Browser pane), gerçek Flutter web arayüzünden**
+   (`http://127.0.0.1:8090/`, aynı `"Casual greeting and checkin"` sohbeti —
+   ekran görüntüsündeki sohbetin ta kendisi): "bugün dolar kuru ne kadar
+   bakabilir misin" yazıldı, gönderildi, gerçek ve doğru görünen bir cevap
+   geldi ("USD/TRY: ~47,90 TL — Investing.com'a göre..."). Backend logu
+   burada da tam olarak 2 `AGENT [web_search] SUCCESS` satırı gösterdi,
+   mesajdan ~4 saniye sonra başlayıp.
+4. Fix'ten ÖNCEKİ bir sohbet geçmişinde (aynı sohbet, 22:46-22:47
+   civarı, kullanıcının kendi daha önceki gerçek kullanımından) modelin
+   kendisi zaten şunu söylemişti: *"Yani ikisi de var — sürekli bağlı
+   olmak zorunda değilim ama istediğinde internetten de faydalanırım."*
+   — tam olarak hedeflenen davranış, ilginç bir şekilde model bunu kendi
+   kelimeleriyle zaten doğru tarif ediyordu.
+
+Test sonrası backend **kasıtlı olarak eski (buggy) haline döndürülmedi** —
+düzeltilmiş binary, kullanıcının gerçek verisiyle, o an çalışır halde
+bırakıldı (kullanıcının "test et" isteği zaten canlı deploy niyetiyle
+verilmişti).
+
+## Doğrulama (AGENTS.md)
+
+- Yeni/güncellenen testler:
+  - `internal/app/chat_test.go`: `TestSendMessage_WebSearchOnAgentOff_SendsOnlyWebSearchTool`
+    (agent kapalı + web arama açıkken outbound istek SADECE `web_search`
+    tool tanımını taşıyor, tam agent toolset'ini değil, ve eski blind-injection
+    metni de yok) — `TestSendMessage_AgentModeOn_SendsToolDefinitions`'ın
+    kardeşi, aynı sahte-provider deseniyle.
+  - `internal/app/helpers_test.go`: `TestBuildMessages_NeverBlindlyInjectsWebSearch`
+    (agentEnabled true/false ikisinde de `buildMessagesForSession` artık
+    web aramaya hiç dokunmuyor — hem ağa hiç gitmiyor hem sistem promptuna
+    "Web Search Results" enjekte etmiyor). Session 16'nın
+    `TestBuildWebSearchQuery_*` testleri (artık var olmayan
+    `buildWebSearchQuery` fonksiyonunu test ediyorlardı) silindi.
+- `CGO_ENABLED=1 go build -tags "sqlite_fts5" ./...` temiz.
+- `CGO_ENABLED=1 go vet -tags "sqlite_fts5" ./...` temiz.
+- `CGO_ENABLED=1 go test -tags "sqlite_fts5" ./... -race` — tamamı yeşil.
+- `gofmt -l` değiştirilen dosyalarda temiz (tek istisna `internal/agent/
+  executor.go` — import sıralaması/struct hizalaması önceden de bozuktu,
+  `git stash` ile doğrulandı, bu oturumun değişikliği değil, dokunulmadı).
+- Yukarıdaki canlı test — gerçek backend, gerçek sağlayıcı, gerçek DDG,
+  gerçek tarayıcı.
+- Flutter tarafında hiç değişiklik yapılmadı (mevcut `_TypingIndicator`/
+  `streamingStatusProvider` mekanizması zaten doğruydu, sadece backend'in
+  ne zaman/nasıl tetiklediği değişti), bu yüzden `flutter analyze`/
+  `flutter test` çalıştırılmadı.
+
+## Sırada ne var / bilinçli kapsam dışı
+
+- Orchestra modu + web arama + agent kapalı kombinasyonu artık web arama
+  YAPMIYOR (öncesinde blind injection ile yapıyordu). Nadir bir kombinasyon;
+  conductor'ın `RunSingle`'ına tool-calling eklemek gerekir, bu oturumun
+  kapsamı dışında bırakıldı.
+- `_AgentStatusBar`/`_AgentStatusBadge` (`chat_message_list.dart`) hâlâ
+  tamamen hardcoded Türkçe metin kullanıyor (Rule #8 ihlali, ama pre-existing
+  ve bu oturumda dokunulmadı — bilinçli tercih, ayrı bir iş). `web_search`
+  tool'u için bu widget'larda hâlâ özel bir `_actionLabel`/`_label` case'i
+  yok ama bu sorun değil çünkü `callWebSearchAgentStream` bu widget'lara
+  hiç event göndermiyor (agentEvents boş bırakılıyor, kasıtlı).
+- Belirli bir URL'i "getir" (fetch) isteği hâlâ ayrı bir eksik özellik
+  (Session 16'da not edildi, hâlâ geçerli) — agent'ın gerçek bir
+  `fetch_url`/sayfa-okuma tool'u yok.
+
+---
+
 # Session 16 (2026-08-18): Web arama tam kullanıcı mesajını sorgu olarak gönderiyordu
 
 Kullanıcı doğrudan rapor etti: web arama açıkken Memo, kullanıcının tüm ham

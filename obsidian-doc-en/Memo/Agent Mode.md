@@ -3,7 +3,7 @@
 > **Package:** `internal/agent/` (19 built-in tools, up from the original 8)
 > **Config file:** `data/permissions.json`
 > **API endpoints:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
-> **Requires:** Active external provider (local llama.cpp does not support tool calling)
+> **Requires:** An active external provider, or a running local llama.cpp model — `resolveAgentProvider()` wraps either one into the same `provider.Router`-based tool-calling request, so agent mode isn't external-provider-only. Real-world tool-calling *quality* on local models varies a lot by model (see Known Issues).
 
 Agent Mode transforms Memo from a chat interface into an AI assistant that can interact with the user's computer — reading/writing files, executing commands, searching code, and more. It implements a Claude Code-like experience with a permission-based security model.
 
@@ -88,6 +88,17 @@ Methods:
 - `Execute(ctx, name, args)` — execute with validation
 - `ToOpenAITools()` — convert to `[]provider.ToolDefinition` for LLM API
 
+### Scoped Registries
+
+The full 19-tool registry isn't the only one — `NewRegistry()` builds it via `registerBuiltins()`, but two narrower constructors build a registry with a hand-picked subset instead, each paired with a matching `New*Executor(existing *Executor)` (`executor.go`) that shares sandbox/permissions/backup/audit-log with an existing executor and only swaps the registry:
+
+| Constructor | Tools | Used by |
+|---|---|---|
+| `NewWhatsAppRegistry()` / `NewWhatsAppExecutor()` | The 4 `whatsapp_*` tools | WhatsApp-triggered agent runs |
+| `NewWebSearchRegistry()` / `NewWebSearchExecutor()` | `web_search` only | Plain chat's non-agent "web search mode" (see `web_search`'s entry below) |
+
+This is how a feature gets native tool-calling's "model decides, single request, only pays for a second round-trip if it actually calls the tool" behavior without exposing the *entire* agent toolset (file writes, `run_command`, etc.) to a context that was never meant to be full Agent Mode.
+
 ---
 
 ## Built-in Tools
@@ -161,8 +172,9 @@ Registered in `internal/agent/tools.go` — 19 tools total, up from the original
 - Deletes a range of lines (`start_line`–`end_line`)
 
 ### 12. `web_search` — Safe
-- DuckDuckGo search; the model is instructed to reach for it only for current events/prices/facts that may have changed since training, not for greetings or general knowledge
-- Fixed in v3.3.4: previously ran unconditionally on every message when the (separate, dumber) chat-level web search toggle was on, even with agent mode active — now agent mode's own tool-based decision handles it alone
+- DuckDuckGo search; the model is instructed (via this tool's own `Description`) to reach for it only for current events/prices/facts that may have changed since training, not for greetings or general knowledge
+- Fixed in v3.3.4: previously ran unconditionally on every message when the (separate, dumber) chat-level web search toggle was on, even with agent mode active — agent mode's own tool-based decision started handling it alone.
+- **Redesigned (v3.5.6):** the chat-level toggle no longer has a separate blind-injection mechanism at all — when it's on and agent mode is off, `App.routeStream` (`chat.go`) now dispatches to `callWebSearchAgentStream` (`llm.go`), which runs this exact same tool through a *scoped* executor (`agent.NewWebSearchExecutor` / `NewWebSearchRegistry`, `executor.go`/`tools.go`) containing only `web_search` — nothing else from the full toolset. Same one-request, native-function-calling decision as full agent mode, just with a single tool registered, so plain chat gets "search only when the model actually decides it's needed" without an extra "should I search" LLM call and without exposing file/command tools. Gated off (no tool sent at all) when Orchestra mode is active — its own single-completion `RunSingle` path has nothing to plug tool-calling into — or when Minimal Mode is on, matching how the old blind-injection design was gated (Minimal Mode's whole promise is "zero injection beyond memory," and a tool definition riding along on every request is the same category of overhead). See the root `handoff.md`'s Session 17 entry for the live before/after repro (a bare "naber" now triggers zero web_search calls; a real info-seeking message triggers exactly one precisely-timed status update and a real search).
 
 ### 13. `self_clone` — Dangerous
 - Copies the entire project (source + binary) to another local directory, for local replication/backup
@@ -416,8 +428,8 @@ type AgentLogEntry struct {
 }
 ```
 
-- Buffer size: 1000 entries (oldest dropped when full)
-- Not persisted to disk (in-memory only)
+- In-memory buffer: last 1000 entries (oldest dropped when full) — nothing currently reads this slice; it's a ready-made source for a future in-app view.
+- **Also durably persisted (fixed, BUG-H10):** every entry is additionally appended as one JSON line to `config.DataPath("agent-audit.jsonl")` (`openAuditLogFile()`, `executor.go`) — this file is the actual source of truth across restarts, the in-memory buffer is just a cache. If the file can't be opened (permissions, read-only fs), logging silently falls back to in-memory + `logx` only rather than failing tool execution.
 
 ---
 
@@ -472,8 +484,8 @@ return a.callLLMStream(ctx, messages, userMsg, "", "")
 | Issue | Detail |
 |-------|--------|
 | **No streaming** | Pipeline uses non-streaming ChatCompletion for tool calls — blocks UI |
-| **No per-tool timeout** | Pipeline doesn't enforce individual timeouts (sandbox does for commands) |
-| **Audit log not persisted** | 1000-entry in-memory buffer, lost on restart |
+| ~~No per-tool timeout~~ | Fixed — `Pipeline.toolTimeout` (120s default) wraps every tool execution in its own `context.WithTimeout` (`pipeline.go`), on top of the sandbox's own command-level timeout |
+| ~~Audit log not persisted~~ | Fixed (BUG-H10) — every entry is appended to `agent-audit.jsonl` on disk, not just the in-memory buffer; see the Audit Log section above |
 | **Max 40 iterations** | Hard limit prevents infinite loops but may cut off complex tasks |
 | **Tool schema now budgeted against context (v3.3.4)** | Previously agent mode's tool definitions weren't counted against the model's context size, so even a one-word message could fail on a small-context local model with a confusing error. Fixed; default local context also raised 4096 → 8192. |
 | **Local models** | llama.cpp's own tool-calling support varies by model; starting a model that doesn't support it now shows a warning instead of failing unexplained later (v3.3.4) |

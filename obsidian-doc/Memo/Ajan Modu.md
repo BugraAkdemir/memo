@@ -1,9 +1,9 @@
 # 🤖 Ajan Modu
 
-> **Paket:** `internal/agent/` (8 dosya, ~1450 satır)
+> **Paket:** `internal/agent/` (19 yerleşik araç, başlangıçtaki 8'den)
 > **Yapılandırma dosyası:** `data/permissions.json`
 > **API endpoint'leri:** `/api/agent/enabled`, `/api/agent/permission`, `/api/agent/permissions`
-> **Gereksinim:** Aktif harici sağlayıcı (yerel llama.cpp araç çağırma desteği sunmaz)
+> **Gereksinim:** Aktif bir harici sağlayıcı YA DA çalışan bir yerel llama.cpp modeli — `resolveAgentProvider()` ikisini de aynı `provider.Router` tabanlı tool-calling isteğine sarıyor, yani ajan modu sadece harici sağlayıcıya bağlı değil. Yerel modellerde gerçek tool-calling *kalitesi* modelden modele büyük fark gösteriyor (bkz. Bilinen Sorunlar).
 
 Ajan Modu, Memo'yu bir sohbet arayüzünden bilgisayarla etkileşime girebilen bir AI asistanına dönüştürür — dosya okuma/yazma, komut çalıştırma, kod arama ve daha fazlası. İzin tabanlı bir güvenlik modeliyle Claude Code benzeri bir deneyim sunar.
 
@@ -37,7 +37,7 @@ Kullanıcı Mesajı
 │  │  4. Aracı çalıştır (sandbox'ta)     │ │
 │  │  5. Sonucu LLM'e geri bildir        │ │
 │  │  6. Nihai yanıta kadar tekrarla     │ │
-│  │     (max 20 iterasyon)              │ │
+│  │     (max 40 iterasyon)              │ │
 │  └─────────────────────────────────────┘ │
 └──────────────────┬──────────────────────┘
                    │
@@ -51,18 +51,54 @@ Kullanıcı Mesajı
 
 ## Araç Sistemi
 
-### Yerleşik Araçlar (8 adet)
+### Yerleşik Araçlar (19 adet)
+
+`internal/agent/tools.go`'da kayıtlı — ilk sürümdeki 8 araçtan (`edit_file`/
+`insert_line`/`delete_lines`/`web_search`/`self_clone`/`configure_provider`/
+`get_calendar_events` ve 4 WhatsApp aracı sonradan eklendi) büyüdü. Bunun
+üstüne, **skill araçları da artık gerçek** (v3.3.3): bir skill'in
+`SKILL.md`'i bir `command:` alanı tanımlayabiliyor, ve bu tam olarak aynı
+pipeline ve izin UI'ından çalışıyor.
 
 | Araç | Tehlike | Açıklama |
 |------|---------|----------|
 | `read_file` | ✅ Safe | Dosya içeriğini okur (max 1MB) |
 | `write_file` | ⚠️ Medium | Dosya yazar/oluşturur, `.bak` yedek alır |
+| `edit_file` | ⚠️ Medium | Mevcut dosyayı düzenler (find-replace veya satır aralığı), önizleme destekli |
+| `insert_line` | ⚠️ Medium | Belirli bir satır numarasına içerik ekler |
+| `delete_lines` | ⚠️ Medium | Bir satır aralığını siler |
 | `delete_file` | 🔴 Dangerous | Dosya/dizin siler (`.git` korumalı) |
 | `list_directory` | ✅ Safe | Dizin içeriğini listeler (max 1000) |
-| `run_command` | 🔴 Dangerous | Terminal komutu çalıştırır (60s timeout) |
-| `search_files` | ✅ Safe | Glob pattern ile dosya arar (30s timeout) |
 | `get_file_info` | ✅ Safe | Dosya meta bilgisi döndürür |
+| `search_files` | ✅ Safe | Glob pattern ile dosya arar (30s timeout) |
+| `run_command` | 🔴 Dangerous | Terminal komutu çalıştırır (60s timeout, 23 desenlik kara liste) |
 | `read_env` | ⚠️ Medium | Ortam değişkenlerini listeler (hassas olanları maskeler) |
+| `web_search` | ✅ Safe | DuckDuckGo araması — modele, sadece training cutoff'undan sonra değişmiş olabilecek güncel olay/fiyat/gerçekler için çağırması, selamlaşma veya zaten bildiği genel bilgi için çağırmaması söyleniyor (tool'un kendi `Description` alanında). **Yeniden tasarlandı (v3.5.6):** artık sohbet üst çubuğundaki web arama toggle'ının kendi, ayrı bir "kör enjeksiyon" mekanizması yok — toggle açık ve ajan modu kapalıyken `App.routeStream` (`chat.go`), bu ARACIN BİREBİR AYNISINI sadece `web_search`'ü içeren küçültülmüş bir executor'la (`agent.NewWebSearchExecutor`/`NewWebSearchRegistry`, aşağıdaki "Kapsamlandırılmış Registry'ler" bölümüne bakın) çalıştıran `callWebSearchAgentStream`'e (`llm.go`) yönlendiriyor — tam agent modunun kullandığı aynı tek-istekli native tool-calling kararı, sadece tek bir araçla. Sonuç: normal sohbet de artık "sadece model gerçekten gerekli görürse ara" davranışını, ayrı bir "aramalı mıyım" LLM çağrısı olmadan ve dosya/komut araçlarını hiç açığa çıkarmadan alıyor. Orchestra modu açıkken (kendi tek-istekli `RunSingle` akışına tool-calling eklenemediği için) ya da Minimal Mod açıkken (eski kör-enjeksiyon tasarımının da aynı şekilde kapatıldığı gibi — Minimal Mod'un tüm vaadi "hafıza dışında sıfır enjeksiyon", ve her istekte binen bir tool tanımı da aynı kategoride bir yük) hiç tool gönderilmiyor. Canlı önce/sonra testi için `handoff.md`'nin Session 17 girdisine bakın. |
+| `self_clone` | 🔴 Dangerous | Tüm projeyi (kaynak + binary) başka bir yerel dizine kopyalar |
+| `configure_provider` | 🔴 Dangerous | Sohbet içinden sağlayıcı ekler/günceller, kullanıcı onayı gerektirir |
+| `get_calendar_events` | ✅ Safe | Gerçek takvim verisini (`events.db`) okur — model tahmin etmek yerine bunu çağırmaya yönlendiriliyor |
+| `whatsapp_send` | ⚠️ Medium | WhatsApp'tan bir kişiye mesaj gönderir |
+| `whatsapp_search` | ✅ Safe | WhatsApp mesajlarında metin arar |
+| `whatsapp_latest` | ✅ Safe | En son mesajlaşılan sohbetleri listeler |
+| `whatsapp_messages` | ✅ Safe | Belirli bir sohbetin mesaj geçmişini getirir |
+
+### Kapsamlandırılmış Registry'ler (Scoped Registries)
+
+Tam 19 araçlık registry tek seçenek değil — `NewRegistry()` bunu
+`registerBuiltins()` ile kuruyor, ama iki dar kapsamlı constructor daha var,
+her biri var olan bir executor'ın sandbox/izin/backup/audit-log'unu paylaşıp
+sadece registry'sini değiştiren bir `New*Executor(existing *Executor)`
+(`executor.go`) ile eşleşiyor:
+
+| Constructor | Araçlar | Kim kullanıyor |
+|---|---|---|
+| `NewWhatsAppRegistry()` / `NewWhatsAppExecutor()` | 4 `whatsapp_*` aracı | WhatsApp tetiklemeli ajan çalışmaları |
+| `NewWebSearchRegistry()` / `NewWebSearchExecutor()` | sadece `web_search` | Normal sohbetin (ajan modu kapalı) web arama modu — yukarıdaki `web_search` satırına bakın |
+
+Bu, tam Agent Modu anlamına gelmeyen bir özelliğe (dosya yazma, `run_command`
+gibi tüm araç setini açığa çıkarmadan) native tool-calling'in "model karar
+verir, tek istek, sadece gerçekten çağırırsa ikinci bir round-trip'e mal
+olur" davranışını kazandırmanın yolu.
 
 ---
 
@@ -119,7 +155,7 @@ Executor.RunStream():
          │   f. Sonucu messages'a rol="tool" olarak ekle
          └── Adım 3'e dön (tool sonuçlarıyla)
   5. tool_call yoksa → EventFinalResponse gönder, bitir
-  6. Max 20 iterasyon (güvenlik limiti)
+  6. Max 40 iterasyon (güvenlik limiti)
 ```
 
 ### Executor Metodları
@@ -134,9 +170,9 @@ Executor.RunStream():
 
 ### Audit Trail Sistemi
 
-- **Depolama**: Son 1000 kayıt RAM'de (logEntries slice)
+- **RAM'deki tampon**: Son 1000 kayıt (logEntries slice) — şu an hiçbir yer bu slice'ı okumuyor, gelecekte in-app bir görünüm için hazır kaynak.
 - **Kayıt içeriği**: Zaman, araç adı, argümanlar (hassas olanlar maskelenir), sonuç özeti, izin kararı
-- **Kalıcılık**: Yok — yeniden başlatmada kaybolur
+- **Kalıcılık (düzeltildi, BUG-H10)**: Her kayıt ayrıca `config.DataPath("agent-audit.jsonl")`'a (`openAuditLogFile()`, `executor.go`) tek satır JSON olarak yazılıyor — yeniden başlatmalar arası gerçek kaynak bu dosya, RAM tamponu sadece önbellek. Dosya açılamazsa (izin/read-only fs) loglama sessizce sadece RAM + `logx`'e düşüyor, araç çalıştırmayı engellemiyor.
 - **API**: `GET /api/agent/logs` (planlanan, v3.2.0)
 
 ### Sandbox Yapılandırması
@@ -221,7 +257,7 @@ Aşağıdaki pattern'ler `run_command`'da **engellenir**:
    │   Adım 3'e dön
    └── Eğer tool_calls yoksa:
        └── EventFinalResponse gönder → bitti
-5. Max 20 iterasyon tekrarla (güvenlik limiti)
+5. Max 40 iterasyon tekrarla (güvenlik limiti)
 ```
 
 ---
@@ -244,8 +280,8 @@ Aşağıdaki pattern'ler `run_command`'da **engellenir**:
 | Sorun | Detay |
 |-------|-------|
 | ~~Frontend UI yok~~ | ✅ Düzeltildi — izin dialog'u, araç çağrı kartları, mod toggle'ı (sohbet üst çubuğunda, v3.3.3) tam uygulandı |
-| **Audit log kalıcı değil** | 1000 kayıtlık RAM buffer, yeniden başlatmada kaybolur |
-| **Harici provider gerekli** | Yerel llama.cpp araç çağırma desteği sunmaz — Claude Code CLI/Codex CLI (v3.3.4, bkz. yukarıdaki not) bu sınırlamayı dolaylı olarak aşan ayrı bir mekanizma |
+| ~~Audit log kalıcı değil~~ | ✅ Düzeltildi (BUG-H10) — her kayıt `agent-audit.jsonl`'a da yazılıyor, sadece RAM buffer değil; bkz. yukarıdaki Audit Trail Sistemi |
+| ~~Harici provider gerekli~~ | Yanıltıcıydı — `resolveAgentProvider()` yerel çalışan bir llama.cpp modelini de aynı tool-calling isteğine sarıyor (bkz. sayfa başındaki not). Gerçek sınır: yerel modelin **kendi** tool-calling desteğinin kalitesi, model modelden değişiyor. Claude Code CLI/Codex CLI (v3.3.4) bu konuda ayrı, farklı bir mekanizma. |
 | **Küçük context'li yerel modellerde agent modu (düzeltildi, v3.3.4)** | Araç tanımları context bütçesine hiç dahil edilmiyordu — tek kelimelik bir mesaj bile "request exceeds context size" ile başarısız olabiliyordu. Artık araç şeması context boyutuna göre bütçeleniyor, varsayılan yerel context 4096→8192'ye çıkarıldı. |
 
 ---

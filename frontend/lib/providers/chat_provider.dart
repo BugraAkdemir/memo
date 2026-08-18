@@ -907,7 +907,31 @@ final incognitoProvider = StateNotifierProvider<IncognitoNotifier, bool>(
 
 class IncognitoNotifier extends StateNotifier<bool> {
   final Ref _ref;
-  IncognitoNotifier(this._ref) : super(false);
+  // isIncognito lives only in the backend App struct's memory
+  // (internal/app/chat.go) — one global flag, no per-client concept, and
+  // nothing ever resets it except an explicit toggle (not switching chats,
+  // not a page reload). Defaulting this to false and never checking back
+  // meant a reloaded/new tab always *displayed* "off" regardless of the
+  // backend's real state: if incognito had been left on from an earlier
+  // tab, the reloaded UI showed a normal chat title and background while
+  // the backend kept diverting every assistant reply in that chat to the
+  // incognito-only buffer instead of the visible session history — the
+  // reply streamed to screen once, then was gone for good on the next
+  // load, with no error and no visible reason. _init() below fetches the
+  // real value on startup so the toggle (and the auto-off-on-chat-switch
+  // logic in chat_sidebar.dart, which only fires when this state reads
+  // true) actually reflects reality instead of silently assuming "off".
+  IncognitoNotifier(this._ref) : super(false) {
+    _init();
+  }
+
+  Future<void> _init() async {
+    try {
+      state = await _ref.read(apiClientProvider).getIncognito();
+    } catch (e) {
+      debugPrint('chat: incognito init error: ${FriendlyError.describeGeneric(e)}');
+    }
+  }
 
   Future<void> toggle() async {
     final previous = state;

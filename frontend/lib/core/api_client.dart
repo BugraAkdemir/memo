@@ -542,6 +542,16 @@ class MemoApiClient {
 
   // ─── Incognito ──────────────────────────────────────────────────
 
+  /// The backend's actual current incognito state — isIncognito lives only
+  /// in the App struct's memory (internal/app/chat.go), with no per-client
+  /// concept, so a freshly loaded/reloaded client has to ask instead of
+  /// assuming "off" (see IncognitoNotifier's doc comment for why that
+  /// assumption was wrong).
+  Future<bool> getIncognito() async {
+    final res = await _dio.get('/api/incognito');
+    return _guard<Map<String, dynamic>>(res.data)['enabled'] as bool? ?? false;
+  }
+
   Future<void> toggleIncognito(bool enabled) async {
     await _dio.post('/api/incognito', data: {'enabled': enabled});
   }

@@ -229,6 +229,40 @@ OpenCode Zen anahtarını yeniden girmesi gerekiyor — bu turun yedeği
 duruyor, geri yüklenip yüklenmeyeceği kullanıcıya soruldu, henüz cevap
 gelmedi.
 
+## Yeni özellik — "N anı kullanıldı" rozeti (`5516df4`)
+
+Kullanıcıya tekrar "kullanıcı deneyimini iyileştirecek ne var" diye
+sorulunca bu önerildi ve onaylandı — şartı: **emoji değil düz SVG, metinde
+rahatsız etmesin/göze batmasın**. `/codebase-memory` ile `retrieveMemory`/
+`buildMessagesForSession`/`finishStream` çağrı zinciri çıkarılıp en az
+invaziv yol seçildi:
+
+- Backend: `buildMessagesForSession`'a nil-safe `retrievedCountOut *int`
+  opsiyonel parametre eklendi (7 diğer çağıran etkilenmedi, sadece
+  `sendMessageStreamCore` kullanıyor). Sayı, `routeStream`/`callLLMStream`/
+  `callAgentStream`'e hiç parametre eklemeden, zaten değişmeden akan `ctx`
+  üzerinde yeni bir `memoryUsedCtxKey` ile `finishStream`'e taşınıyor.
+  `finishStream` iki şey yapıyor: `sessions.Manager.SetLastMessageMemoryUsed`
+  ile kalıcı session'a yazıyor (reload/başka cihazdan da görünür), ve
+  `sendMessageStreamCore` ayrıca `web_search` status chunk'ıyla aynı
+  desende canlı bir `finishReason=="memory_used"` chunk'ı yayınlıyor —
+  rozet reload beklemeden, agent_event rozetleri gibi anında çıksın diye.
+- Frontend: `ChatMessage.memoryUsed`, `chat_provider.dart`'ta agent_event ile
+  aynı şekilde canlı chunk işleniyor, `chat_message_list.dart`'ta
+  `_MemoryUsedIndicator` — düz `brain.svg` (zaten Ayarlar'da kullanılıyordu)
+  `textDim` renkli + sayı, agent rozetleri gibi renkli pill YOK, timestamp'in
+  hover-only satırında (mesaj metnine hiç dokunmuyor).
+
+**Doğrulama:** 2 yeni Go entegrasyon testi (gerçek `memory.Store` + sahte
+embedding fonksiyonu + sahte SSE provider — hem canlı chunk hem kalıcı alanı
+doğruluyor, sıfır-sayı durumunda ikisinin de hiç tetiklenmediğini de ayrıca
+doğrulayan bir ikinci test), 1 Flutter widget smoke test. **Gerçek tarayıcıda
+uçtan uca doğrulandı:** bu makinenin kendi yerel kurulumuna elle
+`memory_used:3` alanlı bir session dosyası yazıp yükledim, cevabın üzerine
+gelince beyin ikonu + "3" + "3 memories used for this reply" tooltip'i
+doğru çalıştığı ekran görüntüsüyle kanıtlandı. `go vet`/`go build` ve
+`flutter analyze`/`flutter test` (261/261, yeni widget testi dahil) temiz.
+
 ## Sıradaki işler
 
 1. ~~**RPi'nin build'i güncellenmedi**~~ → **düzeltildi, RPi'ye gerçek

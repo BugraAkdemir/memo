@@ -263,6 +263,69 @@ gelince beyin ikonu + "3" + "3 memories used for this reply" tooltip'i
 doğru çalıştığı ekran görüntüsüyle kanıtlandı. `go vet`/`go build` ve
 `flutter analyze`/`flutter test` (261/261, yeni widget testi dahil) temiz.
 
+## Yeni özellik — Provider bazlı reasoning effort (`1a9785d`)
+
+Kullanıcı isteği: "hani bazı modellerde effort var ya, high/max/low —
+provider'dan çekebiliyorsak çekelim ama sabit/manuel yapamayız, API'ye göre
+olması lazım." Onaylanan kapsam: **her iki UI yüzeyi** (chat ekranındaki
+quick-select + provider config dialog) ve **tüm 9 provider tipi**, hepsi tek
+seferde.
+
+Sorunun özü: değer sadece vendor'a göre değil, **request şekli** de
+değişiyor — OpenAI/Grok/Groq/Ollama/llama.cpp/OpenCode düz
+`reasoning_effort` string'i alıyor; Claude iç içe `thinking`+`output_config`
+istiyor; Gemini isimli seviye değil sayısal `thinkingBudget` istiyor;
+OpenRouter iç içe `reasoning:{effort}` istiyor **ve** hangi seviyelerin
+geçerli olduğu seçilen modele göre değişiyor. Bu yüzden tek bir sabit liste
+mümkün değildi.
+
+- **Backend:** `ProviderConfig`/`ChatRequest` yeni `EffortLevel` alanı aldı.
+  `internal/provider/effort.go` (yeni dosya) 7 tip için statik, vendor
+  dokümantasyonundan çıkarılmış tablolar tutuyor (bu vendor'lar runtime'da
+  bunu yayınlamıyor) + Gemini'nin seviye→bütçe eşlemesi. **Tek gerçek
+  runtime keşif** OpenRouter: `GET /api/providers/effort-levels?type=
+  openrouter&model=X`, OpenRouter'ın kendi `/api/v1/models` cevabındaki
+  o modele özel `reasoning.supported_efforts` alanını sorguluyor —
+  model seçilmeden önce boş liste dönüyor (hata değil, henüz sorulacak bir
+  şey yok). `openai.go`'daki `applyEffortLevel` provider tipine göre düz
+  alan mı iç içe OpenRouter şekli mi kullanılacağına karar veriyor (bu tek
+  dosya, üstüne sıfır override koyan 7 tipi kapsıyor); `claude.go`/
+  `gemini.go` kendi şekillerini kuruyor. `llm.go`, aktif provider'ın
+  `EffortLevel`'ini hem streaming hem streaming-olmayan `ChatRequest`
+  inşasına bağladı (düz sohbet yolu).
+- **Frontend:** Provider config dialog'un Advanced kısmında "Reasoning
+  Effort" dropdown'u (OpenRouter için manuel yenile butonuyla — model
+  alanı her tuş vuruşunda ağ isteği atmasın diye); chat ekranının model
+  dropdown'unun yanında kompakt bir quick-select
+  (`_QuickEffortSelector`, yeni `effortLevelsProvider` family provider'ı
+  ile Riverpod-cache'li). İkisi de aynı `GET .../effort-levels` uç
+  noktasını kullanıyor, yani liste her zaman o provider/modelin gerçekten
+  desteklediğiyle eşleşiyor. Quick-select; local mod, CLI-tabanlı
+  provider'lar (Claude Code/Codex CLI — bunlar kendi effort yönetimine
+  sahip gerçek ajanlar, Memo'nun HTTP provider yolundan geçmiyor) ve
+  effort seviyesi olmayan provider/model kombinasyonlarında tamamen
+  gizleniyor (`SizedBox.shrink()`).
+
+**Bilinçli kapsam dışı bırakılan (kullanıcıya henüz söylenmedi, burada
+kayıtlı):** Agent modu (`internal/agent/pipeline.go`) ve Orchestra modu
+(`internal/orchestra/conductor.go`, 4 nokta) da kendi `ChatRequest`'lerini
+kuruyor ama `EffortLevel`'e bağlanmadı — Agent modunun `App` config'ine
+erişimi yok, Orchestra'nın rol-başına provider config'i çok daha büyük ayrı
+bir yüzey. Yalnız düz sohbet yolu kapsandı.
+
+**Doğrulama:** `go build`/`go vet`/`go test -race` (tüm paketler yeşil, 15
+yeni test `effort_test.go`'da + 8 yeni test `handlers_oauth_test.go`'da);
+`flutter analyze` temiz (yeni dosyalarda sıfır uyarı). **Gerçek tarayıcıda
+uçtan uca doğrulandı:** izole `MEMO_DATA_DIR` ile yerel backend + build
+edilmiş frontend, OpenAI provider'ı sahte anahtarla etkinleştirilip aktif
+yapıldı, chat ekranındaki quick-select'te 7 OpenAI seviyesi doğru listelendi
+(`none/minimal/low/medium/high/xhigh/max`), "high" seçildi, `GET
+/api/providers` üzerinden `effort_level:"high"` olarak kalıcılaştığı
+doğrulandı, ardından Ayarlar → API Providers → OpenAI → Advanced'de aynı
+"high" değerinin dropdown'da göründüğü doğrulandı — iki UI yüzeyi de aynı
+backend alanını okuyup yazıyor. Local mod'a geçilince quick-select'in
+tamamen kaybolduğu da doğrulandı.
+
 ## Sıradaki işler
 
 1. ~~**RPi'nin build'i güncellenmedi**~~ → **düzeltildi, RPi'ye gerçek
@@ -285,6 +348,11 @@ doğru çalıştığı ekran görüntüsüyle kanıtlandı. `go vet`/`go build` 
    2026-07-04'ten beri yeniden doğrulanmadı — dosyanın kendi notu bunu
    "taban, tavan değil" olarak işaretliyor. İstenirse aynı yöntemle
    (elle kaynak koda karşı doğrulama) taranabilir.
+5. **Reasoning effort agent/orchestra modunu kapsamıyor** — yukarıda
+   anlatıldığı gibi, sadece düz sohbet yolu bağlandı; kullanıcı isterse bu
+   iki mod da ayrı bir iş olarak kapsanabilir.
+6. Reasoning effort özelliği henüz RPi'ye deploy edilmedi — kullanıcı
+   istemeden yapılmadı (kurulu tek makine bu geliştirme makinesi).
 
 ---
 

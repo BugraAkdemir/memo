@@ -370,6 +370,14 @@ class _AppShellState extends ConsumerState<AppShell> {
   Widget _buildNavRail() {
     final c = MemoTheme.of(context);
     final glass = c.isGlass;
+    // Incognito is a single global backend flag (internal/app/chat.go),
+    // not scoped to the chat screen — but its only visible cue used to be
+    // the chat screen's own red background/pill, invisible from every
+    // other tab. A user who switched to Settings/Model Store/WhatsApp
+    // while it was on had no way to notice it was still on. This dot on
+    // the logo (always present in the rail, regardless of active tab) is
+    // the app-wide equivalent.
+    final isIncognito = ref.watch(incognitoProvider);
     return Padding(
       // In Glass Light the rail floats off the window edge as a rounded card;
       // dark keeps it flush against the edge.
@@ -390,16 +398,8 @@ class _AppShellState extends ConsumerState<AppShell> {
         children: [
           const SizedBox(height: 14),
 
-          // ─── Logo ────────────────────────────────────
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: Image.asset(
-              'lib/icon/memo.png',
-              width: 36,
-              height: 36,
-              fit: BoxFit.cover,
-            ),
-          ),
+          // ─── Logo (+ incognito indicator) ─────────────
+          _buildLogoWithIncognitoDot(c, isIncognito),
 
           const SizedBox(height: 20),
 
@@ -497,6 +497,42 @@ class _AppShellState extends ConsumerState<AppShell> {
         ),
       ),
     );
+  }
+
+  // Small red dot pinned to the logo's corner when incognito is on — see
+  // _buildNavRail's isIncognito comment for why this lives on the always-
+  // visible logo rather than only on the chat screen.
+  Widget _buildLogoWithIncognitoDot(ThemeColors c, bool isIncognito) {
+    final logo = Stack(
+      clipBehavior: Clip.none,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: Image.asset(
+            'lib/icon/memo.png',
+            width: 36,
+            height: 36,
+            fit: BoxFit.cover,
+          ),
+        ),
+        if (isIncognito)
+          Positioned(
+            right: -2,
+            top: -2,
+            child: Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                color: MemoTheme.red,
+                shape: BoxShape.circle,
+                border: Border.all(color: c.bgPanel, width: 2),
+              ),
+            ),
+          ),
+      ],
+    );
+    if (!isIncognito) return logo;
+    return Tooltip(message: L10n.t('incognito_mode'), child: logo);
   }
 
   Widget _buildLaunchpadOverlay() {

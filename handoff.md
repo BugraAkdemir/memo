@@ -406,6 +406,64 @@ beklentisine güncellendi; canlı curl ile `GET
 artık `{"levels":[]}` dönüyor, `type=openai` hâlâ gerçek listesini
 veriyor. `go build`/`go vet`/`go test -race ./...` tüm repo'da yeşil.
 
+## Devam — Reasoning effort: statik tahmin tamamen kaldırıldı, canlı keşif genişletildi (`c88fd02`)
+
+Kullanıcı OpenCode fix'inden sonra haklı bir soru sordu: "OpenAI, Claude,
+Grok, Groq, Ollama, llama.cpp bunlar nasıl hardcoded, yeni model çıksa ne
+olacak, ek bakım yükü istemiyorum — internetten iyice araştır." Her
+vendor'ın **gerçek** API dokümantasyonunu tek tek çektim (WebFetch/
+WebSearch ile, 2026-08-18 itibariyle):
+
+**Gerçek canlı keşif olduğu ortaya çıkanlar (artık kullanılıyor):**
+- **Claude** — `GET /v1/models/{id}` cevabında
+  `capabilities.effort.{low,medium,high,max,xhigh}.supported` alanları
+  var. Bu ayrıca eski "adaptive mode eski Claude modellerinde 400 verir"
+  bilinen kısıtını da kökten çözdü — artık model gerçekten desteklemiyorsa
+  picker hiç göstermiyoruz, 400'e hiç gidilmiyor.
+- **Gemini** — `GET /v1beta/models/{id}` cevabında `thinking: boolean`
+  alanı var (isimli seviye yok ama en azından picker'ı gösterip
+  göstermeme kararı artık canlı).
+- **Ollama** — Memo'nun kullandığı OpenAI-uyumlu `/v1/...` katmanında yok
+  ama Ollama'nın **native** `POST /api/show {"model":X}` uç noktasında
+  `capabilities: [...]` dizisi var; `"thinking"` varsa model destekliyor
+  demek (Ollama'nın kendi Go kaynak kodundan doğrulandı:
+  `types/model/capability.go`). Gerçek değer seti `low/medium/high/max` —
+  eski statik tablomuzdaki "none" zaten yanlıştı.
+
+**Gerçek keşif olmadığı, üstüne statik tahminin gerçekten tehlikeli
+olduğu ortaya çıkanlar (artık picker tamamen gizleniyor):**
+- **OpenAI** — dokümantasyon kelimenin tam anlamıyla "model sayfasına
+  bak" diyor. Daha da kötüsü, canlı doğrulandı: desteklemeyen bir modele
+  (`gpt-4o`) `reasoning_effort` gönderince backend sessizce yok saymıyor,
+  **400 hatası dönüyor** ("Unsupported parameter"). Yani eski statik
+  liste sadece yanlış görünmüyordu, gerçek isteği kırıyordu — tam
+  OpenCode bug'ının sınıfı, daha kötüsü.
+- **Grok, Groq** — hiçbir capability endpoint'i yok, sadece prose
+  dokümantasyon.
+- **llama.cpp** — `reasoning_effort` sadece model bu şekilde eğitilmişse
+  (GPT-OSS, StepFun) işe yarıyor, diğer tüm modellerde sessizce hiçbir
+  etkisi yok (en azından hata vermiyor, ama işlevsiz).
+
+**Yapılan:** `effort.go`'daki `effortLevelsByType` statik map'i tamamen
+kaldırıldı — `EffortLevelsForType` artık her zaman `nil` dönüyor.
+`handlers_oauth.go`'ya `fetchClaudeModelEffortLevels`/
+`fetchGeminiModelEffortLevels`/`fetchOllamaModelEffortLevels` eklendi,
+`effortDiscoveredTypes` ile hangi 4 tipin (openrouter/claude/gemini/
+ollama) canlı sorgulanacağı tek yerden yönetiliyor. Frontend
+(`provider_config_dialog.dart`, `chat_screen.dart`) artık model
+parametresini her tip için gönderiyor (öncesinde sadece OpenRouter için).
+Claude'un artık gereksiz olan "sadece bazı modeller destekler" uyarı
+metni kaldırıldı.
+
+**Doğrulama:** `effort_test.go`'daki `TestEffortLevelsForType` artık her
+tipin boş döndüğünü doğruluyor. `handlers_oauth_test.go`'ya 14 yeni test
+eklendi (her fetch fonksiyonunun parse mantığı + "capability yok" negatif
+durumu + handler'ın routing/fallback davranışı). `go build`/`go vet`/`go
+test -race ./...` tüm repo'da yeşil; `flutter analyze`/`flutter test`
+temiz (262/262). Canlı curl sweep ile doğrulandı: model olmadan 7
+keşif-dışı tip hepsi `{"levels":[]}`, 4 keşif tipi model gelmeden hiç
+sorgu atmıyor.
+
 ## Sıradaki işler
 
 1. ~~**RPi'nin build'i güncellenmedi**~~ → **düzeltildi, RPi'ye gerçek

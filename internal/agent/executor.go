@@ -7,6 +7,7 @@ import (
 	"memo/internal/logx"
 	"memo/internal/config"
 	"memo/internal/provider"
+	"os"
 	"sync"
 	"time"
 )
@@ -42,9 +43,31 @@ type Executor struct {
 
 	mu                sync.Mutex
 	pendingPerms      map[string]*PermissionRequest
+	// logs holds the most recent entries in memory (see logEvent's H10 doc
+	// comment for why they're also written to auditLogFile) — a cap here
+	// is fine precisely because the file is now the durable copy; nothing
+	// currently reads this slice, but it's kept as a ready-made "recent
+	// activity" source for a future in-app view without needing to parse
+	// the file.
 	logs              []AgentLogEntry
+	auditLogFile      *os.File // nil if it couldn't be opened; logging then falls back to logx only
 	bypassPermissions bool // sistem yönetimi açıkken true
 	autoPermission    bool // kullanıcı Shift+Tab ile açtığında tüm izinleri otomatik onayla
+}
+
+// openAuditLogFile opens the agent's append-only audit trail
+// (config.DataDir()/agent-audit.jsonl, one JSON object per line). Returns
+// nil (not an error) on failure — the executor must keep working even if
+// the audit log can't be opened (permission issue, read-only filesystem);
+// callers just log a warning and lose durability, not availability.
+func openAuditLogFile() *os.File {
+	path := config.DataPath("agent-audit.jsonl")
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0600)
+	if err != nil {
+		logx.Printf("agent: could not open audit log %s: %v — tool-call auditing will not persist across restarts", path, err)
+		return nil
+	}
+	return f
 }
 
 // NewExecutor creates a new agent executor.
@@ -59,11 +82,15 @@ func NewExecutor(basePath string, providerRouter *provider.Router, providerCfgMg
 		backup:         NewBackupManager(config.DataDir()),
 		pendingPerms:   make(map[string]*PermissionRequest),
 		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   openAuditLogFile(),
 	}
 }
 
 // NewWhatsAppExecutor creates a lightweight executor with only WhatsApp tools.
-// Reuses sandbox/permissions from an existing executor to avoid re-init.
+// Reuses sandbox/permissions/the audit log file handle from an existing
+// executor to avoid re-init — a WhatsApp-triggered tool call is still the
+// same agent, so it belongs in the same single audit trail, not a second
+// file.
 func NewWhatsAppExecutor(existing *Executor) *Executor {
 	return &Executor{
 		basePath:       existing.basePath,
@@ -75,6 +102,7 @@ func NewWhatsAppExecutor(existing *Executor) *Executor {
 		backup:         existing.backup,
 		pendingPerms:   make(map[string]*PermissionRequest),
 		logs:           make([]AgentLogEntry, 0),
+		auditLogFile:   existing.auditLogFile,
 	}
 }
 
@@ -291,10 +319,15 @@ func (e *Executor) logEvent(sessionID string, ev AgentEvent) {
 
 	e.mu.Lock()
 	e.logs = append(e.logs, entry)
-	// Keep last 1000 logs
+	// Keep last 1000 in memory — safe to cap now that auditLogFile below is
+	// the durable copy; before H10's fix this in-memory slice was the
+	// *only* copy, so every entry past 1000 (or any restart) was gone for
+	// good, with nothing to fall back on for what an agent session with
+	// file/command access had actually done.
 	if len(e.logs) > 1000 {
 		e.logs = e.logs[1:]
 	}
+	e.appendAuditLogLocked(entry)
 	e.mu.Unlock()
 
 	// Print to console for debugging
@@ -302,5 +335,26 @@ func (e *Executor) logEvent(sessionID string, ev AgentEvent) {
 		logx.Printf("AGENT [%s] ERROR: %v", ev.ToolName, ev.Error)
 	} else {
 		logx.Printf("AGENT [%s] SUCCESS %dms", ev.ToolName, ev.DurationMs)
+	}
+}
+
+// appendAuditLogLocked writes entry to auditLogFile as one JSON line.
+// Called with e.mu already held — piggybacks on the same lock already
+// guarding e.logs rather than adding a second one, since both protect the
+// same "one entry at a time" invariant. Best-effort: a write failure is
+// logged and otherwise ignored, matching every other fire-and-forget
+// persistence path in this codebase (e.g. recordUsageEvent) — a disk error
+// must not break the tool call it's describing.
+func (e *Executor) appendAuditLogLocked(entry AgentLogEntry) {
+	if e.auditLogFile == nil {
+		return
+	}
+	data, err := json.Marshal(entry)
+	if err != nil {
+		logx.Printf("agent: marshal audit log entry: %v", err)
+		return
+	}
+	if _, err := e.auditLogFile.Write(append(data, '\n')); err != nil {
+		logx.Printf("agent: write audit log entry: %v", err)
 	}
 }

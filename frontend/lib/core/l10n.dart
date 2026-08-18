@@ -402,6 +402,15 @@ class L10n {
     'dev_gateway_use_memory_label': 'Hafızayı Kullan',
     'dev_gateway_use_memory_desc':
         'Açıksa bu ağ geçidi üzerinden gelen isteklerde Memo\'nun hafızasındaki bilgiler kullanılır ve sohbet hafızaya kaydedilir — ama sohbet geçmişinde görünmez. Kapalıysa (varsayılan) istekler tamamen ayrı tutulur.',
+    'dev_gateway_status_active': 'Aktif',
+    'dev_gateway_reference_title': 'API Referansı',
+    'dev_gateway_reference_messages_desc':
+        'Anthropic Messages API — Claude Code gibi ANTHROPIC_BASE_URL destekleyen her araç için. "model" alanına "tip/model-id" yaz (ör. "local/qwen2.5", "openai/gpt-4o").',
+    'dev_gateway_settings_title': 'Ağ Geçidi Ayarları',
+    'dev_gateway_system_prompt_label': 'Ek Sistem Talimatı',
+    'dev_gateway_system_prompt_desc':
+        'Bu ağ geçidinden geçen her isteğe eklenir — aracın kendi sistem promptunun yerine geçmez, üstüne eklenir.',
+    'dev_gateway_system_prompt_placeholder': 'Örn: Her zaman Türkçe cevap ver',
     'dev_gateway_save_error': 'Ayarlar kaydedilemedi: \${e}',
     'dev_gateway_logs_title': 'Canlı Günlük',
     'dev_gateway_logs_subtitle':
@@ -2221,6 +2230,15 @@ class L10n {
     'dev_gateway_use_memory_label': 'Use Memory',
     'dev_gateway_use_memory_desc':
         'When on, requests through this gateway draw on Memo\'s memory and get saved to it — but never show up in chat history. When off (default), gateway traffic stays completely separate.',
+    'dev_gateway_status_active': 'Active',
+    'dev_gateway_reference_title': 'API Reference',
+    'dev_gateway_reference_messages_desc':
+        'Anthropic Messages API — for any tool that supports ANTHROPIC_BASE_URL, like Claude Code. Use "type/model-id" as the "model" field (e.g. "local/qwen2.5", "openai/gpt-4o").',
+    'dev_gateway_settings_title': 'Gateway Settings',
+    'dev_gateway_system_prompt_label': 'Extra System Instruction',
+    'dev_gateway_system_prompt_desc':
+        'Added to every request through this gateway — doesn\'t replace the calling tool\'s own system prompt, just adds to it.',
+    'dev_gateway_system_prompt_placeholder': 'e.g. Always answer in Turkish',
     'dev_gateway_save_error': 'Failed to save settings: \${e}',
     'dev_gateway_logs_title': 'Live Log',
     'dev_gateway_logs_subtitle':

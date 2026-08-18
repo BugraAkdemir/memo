@@ -306,12 +306,10 @@ mümkün değildi.
   effort seviyesi olmayan provider/model kombinasyonlarında tamamen
   gizleniyor (`SizedBox.shrink()`).
 
-**Bilinçli kapsam dışı bırakılan (kullanıcıya henüz söylenmedi, burada
-kayıtlı):** Agent modu (`internal/agent/pipeline.go`) ve Orchestra modu
-(`internal/orchestra/conductor.go`, 4 nokta) da kendi `ChatRequest`'lerini
-kuruyor ama `EffortLevel`'e bağlanmadı — Agent modunun `App` config'ine
-erişimi yok, Orchestra'nın rol-başına provider config'i çok daha büyük ayrı
-bir yüzey. Yalnız düz sohbet yolu kapsandı.
+**Bilinçli kapsam dışı bırakılan (bu turda kapatıldı, aşağıya bakın):**
+Agent modu (`internal/agent/pipeline.go`) ve Orchestra modu
+(`internal/orchestra/conductor.go`) da kendi `ChatRequest`'lerini kuruyordu
+ama `EffortLevel`'e bağlı değildi — yalnız düz sohbet yolu kapsanmıştı.
 
 **Doğrulama:** `go build`/`go vet`/`go test -race` (tüm paketler yeşil, 15
 yeni test `effort_test.go`'da + 8 yeni test `handlers_oauth_test.go`'da);
@@ -325,6 +323,55 @@ doğrulandı, ardından Ayarlar → API Providers → OpenAI → Advanced'de ayn
 "high" değerinin dropdown'da göründüğü doğrulandı — iki UI yüzeyi de aynı
 backend alanını okuyup yazıyor. Local mod'a geçilince quick-select'in
 tamamen kaybolduğu da doğrulandı.
+
+## Devam — Agent + Orchestra modu da reasoning effort'a bağlandı (`bcc38ec`)
+
+Kullanıcı önceki turda bilinçli kapsam dışı bırakılan iki modu da istedi:
+"agent ve orkestrada da kapsasın efortlar." 5 çağrı noktası bulunup
+kapatıldı:
+
+- **Agent modu:** `Pipeline` yeni bir `effortLevel` alanı aldı (yapı
+  `bypassPermissions`/`autoPermission` ile aynı desende — Executor,
+  pipeline'ı kurduktan sonra bu alanı set ediyor, yeni bir constructor
+  parametresi değil) ve her `ChatRequest`'e kopyalıyor.
+  `Executor.RunStream` yeni bir `effortLevel` parametresi aldı; 3 çağıranı
+  (`llm.go`'daki düz agent sohbeti, `llm.go`'daki task-loop'un
+  `agentRunner` fallback'i, `whatsapp.go`'daki WhatsApp executor'ı) bunu
+  `modelName`'i zaten çözdükleri aynı yerden çözüyor —
+  `resolveAgentProvider`/`agentRouterFromProviderName` artık model adının
+  yanında effort seviyesini de dönüyor, WhatsApp tarafı zaten var olan
+  `activeProviderEffortLevel` yardımcısını kullanıyor.
+- **Orchestra modu:** `chiefAttempt`, `req.Model = pCfg.Model`'in yanına
+  `req.EffortLevel = pCfg.EffortLevel` ekledi — `RunSingle`, `createPlan`,
+  `synthesize` üçü de `runChiefWithFallback` → `chiefAttempt` üzerinden
+  geçtiği için TEK satırlık bu değişiklik üçünü birden kapsadı.
+  `executeSingleTask` (rol-başına görev çalıştırma) kendi
+  `findProviderConfig` aramasıyla kendi rolünün EffortLevel'ini çözüyor.
+  Task-loop'un Orchestra chief inceleme çağrısı (`app/tasklist.go`,
+  chief/task koddan bağımsız kendi `ChatRequest`'ini kuruyor) için yeni
+  export edilmiş bir `Conductor.FindProviderConfig` sarmalayıcısı eklendi.
+
+**Bilinçli olarak dokunulmayan tek köşe:** `executeSingleTask`'ın "istenen
+provider tipi bulunamadı, başka bir enabled provider'a düş" fallback dalı
+effort seviyesi taşımıyor — tam olarak `req.Model` için zaten var olan
+BUG-H3 duruşuyla aynı (farklı bir vendor'a düşünce orijinal isteğin
+model/effort anlamı o vendor için anlamsız, tahmin etmek yerine boş
+bırakılıyor).
+
+**Doğrulama:** Mock/fake provider'a giden gerçek `ChatRequest`'i doğrudan
+assert eden 4 yeni test — `TestRunStream_SetsEffortLevelOnRequest` (agent
+pipeline), `TestChiefAttemptSetsEffortLevelFromProviderConfig` +
+`TestChiefAttemptOmitsEffortLevelWhenUnset` +
+`TestFindProviderConfigExported` +
+`TestExecuteSingleTaskSetsEffortLevelFromProviderConfig` (orchestra). `go
+build`/`go vet`/`go test -race ./...` tüm repo'da yeşil. **Not:** bu tur
+için ayrıca canlı tarayıcı doğrulaması yapılmadı — değişiklik saf backend
+(hiçbir UI yüzeyi değişmedi, ikisi zaten önceki turda doğrulanmıştı),
+gerçek bir sağlayıcıya giden HTTP isteğinin gövdesini görmek için ağ
+trafiğini proxy'lemek gerekirdi; onun yerine mock provider'a giden
+`ChatRequest`'i doğrudan assert eden testler tercih edildi — bu, sahte bir
+API anahtarıyla gerçek bir sağlayıcıyı çağırıp 401 almaktan (payload'ı hiç
+göstermez) daha güçlü bir kanıt.
 
 ## Sıradaki işler
 
@@ -348,9 +395,9 @@ tamamen kaybolduğu da doğrulandı.
    2026-07-04'ten beri yeniden doğrulanmadı — dosyanın kendi notu bunu
    "taban, tavan değil" olarak işaretliyor. İstenirse aynı yöntemle
    (elle kaynak koda karşı doğrulama) taranabilir.
-5. **Reasoning effort agent/orchestra modunu kapsamıyor** — yukarıda
-   anlatıldığı gibi, sadece düz sohbet yolu bağlandı; kullanıcı isterse bu
-   iki mod da ayrı bir iş olarak kapsanabilir.
+5. ~~**Reasoning effort agent/orchestra modunu kapsamıyor**~~ → **kapatıldı
+   (`bcc38ec`, yukarıda anlatıldı).** Artık düz sohbet + agent modu +
+   orchestra modu (chief ve rol-başına task'lar dahil) hepsi kapsanıyor.
 6. Reasoning effort özelliği henüz RPi'ye deploy edilmedi — kullanıcı
    istemeden yapılmadı (kurulu tek makine bu geliştirme makinesi).
 

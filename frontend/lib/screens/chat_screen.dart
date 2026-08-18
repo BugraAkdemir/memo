@@ -40,13 +40,21 @@ class ChatScreen extends ConsumerWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final narrow = constraints.maxWidth < _sidebarBreakpoint;
+        final isIncognito = ref.watch(incognitoProvider);
 
         final content = Container(
           // Transparent in Glass Light so the soft gradient shows behind the
-          // messages and the frosted input bar; opaque panel in dark.
-          color: MemoTheme.of(context).isGlass
-              ? Colors.transparent
-              : MemoTheme.of(context).bgApp,
+          // messages and the frosted input bar; opaque panel in dark. In
+          // Incognito Mode a translucent wash of the theme's own red is
+          // layered on top instead — background only, so message bubbles,
+          // the input bar and the sidebar keep their normal colors and the
+          // cue reads as "this chat isn't being saved" rather than a
+          // jarring full recolor.
+          color: isIncognito
+              ? MemoTheme.red.withValues(alpha: 0.14)
+              : (MemoTheme.of(context).isGlass
+                  ? Colors.transparent
+                  : MemoTheme.of(context).bgApp),
           child: _ChatContent(showMenuButton: narrow),
         );
 
